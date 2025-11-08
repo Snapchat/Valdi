@@ -1,0 +1,215 @@
+# AGENTS.md - Guide for AI Coding Assistants
+
+This document provides context and guidelines for AI coding assistants working on this Valdi CLI application.
+
+## Overview
+
+This is a Valdi command-line application that runs in a terminal. Valdi compiles TypeScript to native code, enabling you to write performant CLI tools in TypeScript with access to native platform APIs.
+
+## Project Structure
+
+- **`modules/`** - Your application modules
+  - Each module contains TypeScript source files
+  - `BUILD.bazel` files define how modules are built
+  - `src/` contains your application logic code
+- **`WORKSPACE`** - Bazel workspace configuration
+- **`config.yaml`** - Valdi project configuration
+- **`.bazelrc`** - Bazel build settings
+
+## Key Technologies
+
+- **Valdi** - Framework that compiles TypeScript to native code
+- **TypeScript** - Primary development language
+- **Bazel** - Build system (note: `bzl` is an alias for `bazel`)
+
+## Development Workflow
+
+### Initial Setup
+
+```bash
+# Install Valdi CLI (if not already installed)
+cd path/to/valdi/npm_modules/cli
+npm run cli:install
+
+# Setup development environment
+valdi dev_setup
+
+# Sync project (run after changing dependencies or config)
+valdi projectsync
+```
+
+### Building and Running
+
+```bash
+# Build the CLI application
+bazel build //modules/{{MODULE_NAME}}:{{MODULE_NAME}}
+
+# Run the application
+bazel run //modules/{{MODULE_NAME}}:{{MODULE_NAME}}
+
+# Build and run with arguments
+bazel run //modules/{{MODULE_NAME}}:{{MODULE_NAME}} -- --your-args-here
+```
+
+### Common Commands
+
+```bash
+# Sync project configuration
+valdi projectsync
+
+# Build specific targets
+bazel build //modules/{{MODULE_NAME}}:{{MODULE_NAME}}
+
+# Run tests
+bazel test //modules/{{MODULE_NAME}}:tests
+
+# Clean build cache
+bazel clean
+```
+
+## TypeScript Development
+
+### Entry Point
+
+Your CLI application typically has an entry point file (e.g., `index.ts`):
+
+```typescript
+// Example CLI application entry point
+function main(args: string[]) {
+  console.log('Hello from Valdi CLI!');
+  console.log('Arguments:', args);
+  
+  // Your application logic here
+}
+
+// Entry point
+main(process.argv.slice(2));
+```
+
+### Using Standard Library Modules
+
+```typescript
+// HTTP requests
+import { HTTPClient } from 'valdi_http/src/HTTPClient';
+
+// Utilities
+import { Base64 } from 'coreutils/src/Base64';
+import { UUID } from 'coreutils/src/uuidUtils';
+
+// File system operations
+import { FileSystem } from 'file_system/src/FileSystem';
+
+// Persistence
+import { PersistentStorage } from 'persistence/src/PersistentStorage';
+```
+
+## Available Standard Library Modules
+
+- `valdi_core` - Core runtime APIs
+- `valdi_http` - Promise-based HTTP client for network requests
+- `valdi_rxjs` - RxJS integration for reactive programming
+- `persistence` - Key-value storage with encryption and TTL support
+- `file_system` - Low-level file I/O operations
+- `foundation`, `coreutils` - Common utilities (arrays, Base64, LRU cache, UUID, etc.)
+- `worker` - Worker service support for background execution
+
+## Debugging
+
+- **VSCode Integration** - Set breakpoints and debug TypeScript code
+- **Console logging** - Use `console.log()`, `console.error()`, etc.
+- **Command line arguments** - Pass arguments after `--` in bazel run
+
+## Common Patterns
+
+### Command Line Arguments
+
+```typescript
+interface CliArgs {
+  input?: string;
+  output?: string;
+  verbose?: boolean;
+}
+
+function parseArgs(args: string[]): CliArgs {
+  const parsed: CliArgs = {};
+  
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--input' && i + 1 < args.length) {
+      parsed.input = args[i + 1];
+      i++;
+    } else if (args[i] === '--output' && i + 1 < args.length) {
+      parsed.output = args[i + 1];
+      i++;
+    } else if (args[i] === '--verbose') {
+      parsed.verbose = true;
+    }
+  }
+  
+  return parsed;
+}
+```
+
+### Async Operations
+
+```typescript
+async function fetchData(url: string): Promise<void> {
+  try {
+    const client = new HTTPClient();
+    const response = await client.get(url);
+    console.log('Response:', response);
+  } catch (error) {
+    console.error('Error fetching data:', error);
+  }
+}
+```
+
+### File Operations
+
+```typescript
+import { FileSystem } from 'file_system/src/FileSystem';
+
+function readConfigFile(path: string): string {
+  try {
+    const fs = FileSystem.getInstance();
+    return fs.readFileSync(path, 'utf8');
+  } catch (error) {
+    console.error('Error reading file:', error);
+    return '';
+  }
+}
+```
+
+## Common Pitfalls
+
+1. **Always run `valdi projectsync`** after changing dependencies or config files
+2. **Use async/await** for asynchronous operations
+3. **Error handling** - Always handle errors gracefully in CLI applications
+4. **Build cache** - If builds seem stuck, try `bazel clean`
+5. **Arguments** - Remember to use `--` before passing arguments to your CLI app
+
+## Important Files
+
+- **`config.yaml`** - Project configuration (dependencies, settings)
+- **`WORKSPACE`** - Bazel workspace and external dependencies
+- **`BUILD.bazel`** - Build rules for each module
+- **`.bazelrc`** - Bazel build flags and configuration
+
+## Getting Help
+
+- **Documentation** - Valdi docs in the framework repository at `/docs/`
+- **Discord** - Join the [Valdi Discord community](https://discord.gg/uJyNEeYX2U)
+- **Examples** - Check `/apps/` directory in Valdi repository for examples
+- **CLI Documentation** - See `/docs/docs/workflow-cli-application.md`
+
+## Key Points for AI Assistants
+
+1. **This is a CLI application** - No UI components, terminal-based
+2. **TypeScript compiles to native** - Performant native executable
+3. **Use Bazel commands** - Primary tool for building and running CLI apps
+4. **Standard library available** - Access to HTTP, file system, persistence, etc.
+5. **Cross-platform** - Can build for Linux, macOS, and potentially other platforms
+
+---
+
+*This document is intended for AI coding assistants to quickly understand this Valdi CLI application. For comprehensive Valdi framework documentation, refer to the main Valdi repository at https://github.com/Snapchat/Valdi*
+

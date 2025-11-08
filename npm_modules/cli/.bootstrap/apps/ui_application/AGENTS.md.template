@@ -1,0 +1,202 @@
+# AGENTS.md - Guide for AI Coding Assistants
+
+This document provides context and guidelines for AI coding assistants working on this Valdi application.
+
+## Overview
+
+This is a Valdi application that runs natively on iOS, Android, and macOS. Valdi is a cross-platform UI framework that compiles declarative TypeScript components to native views - no web views, no JavaScript bridges.
+
+## Project Structure
+
+- **`modules/`** - Your application modules
+  - Each module contains TypeScript/TSX source files
+  - `BUILD.bazel` files define how modules are built
+  - `src/` contains your component and business logic code
+- **`WORKSPACE`** - Bazel workspace configuration
+- **`config.yaml`** - Valdi project configuration
+- **`.bazelrc`** - Bazel build settings
+
+## Key Technologies
+
+- **Valdi** - Cross-platform UI framework that compiles to native code
+- **TypeScript/TSX** - React-like syntax for declarative UI (but compiles to native, not React)
+- **Bazel** - Build system (note: `bzl` is an alias for `bazel`)
+- **Flexbox** - Layout system with automatic RTL support
+
+## Development Workflow
+
+### Initial Setup
+
+```bash
+# Install Valdi CLI (if not already installed)
+cd path/to/valdi/npm_modules/cli
+npm run cli:install
+
+# Setup development environment
+valdi dev_setup
+
+# Sync project (run after changing dependencies or config)
+valdi projectsync
+```
+
+### Building and Running
+
+```bash
+# Install and run on iOS
+valdi install ios
+
+# Install and run on Android  
+valdi install android
+
+# Install and run on macOS
+valdi install macos
+
+# Start hot reload (for instant updates while developing)
+valdi hotreload
+```
+
+### Common Commands
+
+```bash
+# Sync project configuration and generate IDE files
+valdi projectsync
+
+# Build specific targets with Bazel
+bazel build //modules/{{MODULE_NAME}}:{{MODULE_NAME}}
+
+# Run tests
+bazel test //modules/{{MODULE_NAME}}:tests
+```
+
+## Valdi Component Basics
+
+Components use a class-based pattern with lifecycle methods:
+
+```typescript
+import { Component } from 'valdi_core/src/Component';
+
+class MyComponent extends Component {
+  // Required: Render the component's UI
+  onRender() {
+    <view backgroundColor="#FFFC00" padding={30}>
+      <label value="Hello World" color="black" />
+    </view>;
+  }
+  
+  // Optional lifecycle methods:
+  // onMount() - Called when component is first mounted
+  // onUnmount() - Called before component is removed
+  // onUpdate(prevProps) - Called when component updates
+}
+```
+
+### Key Concepts
+
+- **TSX/JSX Syntax** - Similar to React but compiles to native views
+- **State Management** - Use component properties and setState
+- **Flexbox Layout** - Use flexbox properties for layout
+- **Event Handlers** - Handle user interactions with callbacks
+- **Provider Pattern** - Dependency injection for passing services down the component tree
+
+## Common Patterns
+
+### Styling Components
+
+```typescript
+<view 
+  backgroundColor="#FFFFFF"
+  padding={20}
+  flexDirection="column"
+  alignItems="center"
+>
+  <label value="Styled text" fontSize={16} color="#000000" />
+</view>
+```
+
+### Handling Events
+
+```typescript
+class MyButton extends Component {
+  private handlePress() {
+    console.log('Button pressed!');
+  }
+  
+  onRender() {
+    <view onPress={() => this.handlePress()}>
+      <label value="Click Me" />
+    </view>;
+  }
+}
+```
+
+### Using Providers
+
+```typescript
+import { Provider } from 'valdi_core/src/Provider';
+
+class App extends Component {
+  onRender() {
+    const myService = new MyService();
+    
+    <Provider value={myService}>
+      <MyChildComponent />
+    </Provider>;
+  }
+}
+```
+
+## Available Standard Library Modules
+
+- `valdi_core` - Core component and runtime APIs
+- `valdi_http` - Promise-based HTTP client for network requests
+- `valdi_navigation` - Navigation utilities
+- `valdi_rxjs` - RxJS integration for reactive programming
+- `persistence` - Key-value storage with encryption and TTL support
+- `foundation`, `coreutils` - Common utilities (arrays, Base64, LRU cache, UUID, etc.)
+- `worker` - Worker service support for background JavaScript execution
+
+## Debugging
+
+- **VSCode Integration** - Set breakpoints and debug TypeScript code
+- **Hermes Debugger** - Use Chrome DevTools for JavaScript debugging
+- **Hot Reload** - See changes instantly without rebuilding
+- **Native Debugging** - Use Xcode or Android Studio for platform-specific issues
+
+See Valdi documentation at `/docs/docs/workflow-hermes-debugger.md` for detailed debugging instructions.
+
+## Common Pitfalls
+
+1. **Always run `valdi projectsync`** after changing dependencies or config files
+2. **Use hot reload during development** - Much faster than rebuilding
+3. **Flexbox layout** - Valdi uses flexbox, not native iOS/Android layout
+4. **Component state** - Remember to call `setState()` to trigger re-renders
+5. **Build cache** - If builds seem stuck, try `bazel clean`
+
+## Important Files
+
+- **`config.yaml`** - Project configuration (dependencies, settings)
+- **`WORKSPACE`** - Bazel workspace and external dependencies
+- **`BUILD.bazel`** - Build rules for each module
+- **`.bazelrc`** - Bazel build flags and configuration
+
+## Getting Help
+
+- **Documentation** - Valdi docs in the framework repository at `/docs/`
+- **Discord** - Join the [Valdi Discord community](https://discord.gg/uJyNEeYX2U)
+- **Examples** - Check `/apps/` directory in Valdi repository for examples
+- **API Reference** - See `/docs/api/` for comprehensive API documentation
+- **Codelabs** - Step-by-step tutorials at `/docs/codelabs/`
+
+## Key Points for AI Assistants
+
+1. **This is a Valdi application** - Not React, React Native, or web-based
+2. **TSX compiles to native** - No JavaScript runtime on device, components are compiled
+3. **Use `valdi` CLI commands** - Primary tool for building and running
+4. **Hot reload is fast** - Encourage using it for rapid iteration
+5. **Bazel is the build system** - Direct bazel commands available but CLI preferred
+6. **Cross-platform by default** - Code runs on iOS, Android, and macOS
+
+---
+
+*This document is intended for AI coding assistants to quickly understand this Valdi application. For comprehensive Valdi framework documentation, refer to the main Valdi repository at https://github.com/Snapchat/Valdi*
+
