@@ -15,7 +15,7 @@ curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.s
 ## apt-get install dpependencies
 
 ```
-apt-get install npm openjdk-11-jdk git-lfs libfontconfig1-dev
+apt-get install npm openjdk-17-jdk git-lfs libfontconfig1-dev
 ```
 
 ## Install watchman

@@ -19,8 +19,8 @@ common --incompatible_java_common_parameters=false
 # Flags for compilation
 common --define enable_web=true
 
-build --tool_java_language_version=11
-build --java_language_version=11
+build --tool_java_language_version=17
+build --java_language_version=17
 
 ## Disable sandboxing for macs, both laptops and in CI; the performance hit is much too high.
 build:macos --spawn_strategy=local
@@ -51,7 +51,7 @@ build:macos --copt=-fvisibility=hidden
 # java configuration
 ## Disable some java checks for now, djinni generates code that errors out
 build --javacopt=-XepDisableAllChecks
-build --java_runtime_version=11
+build --java_runtime_version=17
 build --tool_java_runtime_version=17
 
 build --flag_alias=snap_flavor=@snap_platforms//flavors:snap_flavor
