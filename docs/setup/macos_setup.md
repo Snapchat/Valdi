@@ -50,9 +50,9 @@ brew install npm bazelisk openjdk@11 temurin git-lfs watchman ios-webkit-debug-p
 ## Setup JDK path
 
 ```
-sudo ln -sfn /opt/homebrew/opt/openjdk@11/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-11.jdk
-echo 'export PATH="/opt/homebrew/opt/openjdk@11/bin:$PATH"' >> ~/.zshrc
-echo 'export JAVA_HOME=`/usr/libexec/java_home -v 11`' >> ~/.zshrc
+sudo ln -sfn $(brew --prefix openjdk@11)/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-11.jdk
+echo 'export JAVA_HOME=/Library/Java/JavaVirtualMachines/openjdk-11.jdk/Contents/Home' >> ~/.zshrc
+echo 'export PATH="$JAVA_HOME/bin:$PATH"' >> ~/.zshrc
 ```
 
 ## Install git-lfs
