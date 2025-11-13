@@ -18,8 +18,12 @@
 #import "valdi_core/UIView+ValdiBase.h"
 
 typedef NS_ENUM(NSInteger, SCValdiScrollViewKeyboardDismissMode) {
+    // Default behavior, keyboard dismisses as soon as scrolling starts
     SCValdiScrollViewKeyboardDismissModeImmediate,
+    // Keyboard dismisses when touches go beyound the max Y boundary of the scroll view
     SCValdiScrollViewKeyboardDismissModeTouchExitBelow,
+    // Keyboard dismisses when touches go beyound the min Y boundary of the scroll view
+    SCValdiScrollViewKeyboardDismissModeTouchExitAbove,
 };
 
 
@@ -329,6 +333,8 @@ static CGFloat const kSCValdiKeyboardTranslationPadding = 10.0;
 {
     if ([attributeValue isEqualToString:@"touch-exit-below"]) {
         _dismissMode = SCValdiScrollViewKeyboardDismissModeTouchExitBelow;
+    } else if ([attributeValue isEqualToString:@"touch-exit-above"]) {
+        _dismissMode = SCValdiScrollViewKeyboardDismissModeTouchExitAbove;
     } else {
         _dismissMode = SCValdiScrollViewKeyboardDismissModeImmediate;
     }
@@ -754,7 +760,7 @@ static UIView *_Nullable _SCFirstResponderInViewTree(UIView *view)
         return;
     }
 
-    if (_dismissMode != SCValdiScrollViewKeyboardDismissModeTouchExitBelow) {
+    if (_dismissMode == SCValdiScrollViewKeyboardDismissModeImmediate) {
         return;
     }
     
@@ -764,9 +770,19 @@ static UIView *_Nullable _SCFirstResponderInViewTree(UIView *view)
     
     for (NSUInteger i = 0; i < panGesture.numberOfTouches; i++) {
         CGPoint p = [panGesture locationOfTouch:i inView:_scrollView];
-        if (p.y > CGRectGetMaxY(_scrollView.bounds)) {
-            [UIApplication.sharedApplication sendAction:@selector(resignFirstResponder) to:nil from:nil forEvent:nil];
-            return;
+        switch(_dismissMode) {
+            case SCValdiScrollViewKeyboardDismissModeTouchExitBelow:
+                if (p.y > CGRectGetMaxY(_scrollView.bounds)) {
+                    [UIApplication.sharedApplication sendAction:@selector(resignFirstResponder) to:nil from:nil forEvent:nil];
+                    return;
+                }
+                break;
+            case SCValdiScrollViewKeyboardDismissModeTouchExitAbove:
+                if (p.y < CGRectGetMinY(_scrollView.bounds)) {
+                    [UIApplication.sharedApplication sendAction:@selector(resignFirstResponder) to:nil from:nil forEvent:nil];
+                    return;
+                }
+                break;
         }
     }
 }

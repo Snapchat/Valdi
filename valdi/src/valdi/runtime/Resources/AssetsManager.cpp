@@ -639,20 +639,7 @@ void AssetsManager::notifyAssetConsumer(AssetsManagerTransaction& transaction,
         errorStringBox = {errorString};
     }
 
-    // Convert BytesAsset to ValueTypedArray for proper JavaScript marshalling
-    Value assetValue;
-    if (loadedAsset != nullptr) {
-        auto bytesContentResult = loadedAsset->getBytesContent();
-        if (bytesContentResult) {
-            // This is a bytes asset - wrap in ValueTypedArray
-            assetValue = Value(makeShared<ValueTypedArray>(TypedArrayType::Uint8Array, bytesContentResult.value()));
-        } else {
-            // Not a bytes asset, send as-is
-            assetValue = Value(loadedAsset);
-        }
-    }
-
-    assetConsumer->getObserver()->onLoad(observable, assetValue, errorStringBox);
+    assetConsumer->getObserver()->onLoad(observable, Value(loadedAsset), errorStringBox);
 
     transaction.acquireLock();
 }

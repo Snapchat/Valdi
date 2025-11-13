@@ -1632,13 +1632,14 @@ export interface ScrollView extends _ScrollView, CommonView, ContainerTemplateEl
 
   /**
    * When dismissKeyboardOnDrag is `true` this changes the behavior of when the keyboard is dismissed:
-   * 
+   *
    *  - immediate : keyboard is dismissed as soon as scrolling begins
    *  - touch-exit-below : keyboard is dismissed when the scroll drag gesture touches leave the lower boundary of the <scroll> bounds
-   * 
+   *  - touch-exit-above : keyboard is dismissed when the scroll drag gesture touches leave the upper boundary of the <scroll> bounds
+   *
    * @default: 'immediate'
    */
-  dismissKeyboardOnDragMode?: 'immediate' | 'touch-exit-below'
+  dismissKeyboardOnDragMode?: 'immediate' | 'touch-exit-below' | 'touch-exit-above';
 
   /**
    * When enabled, the scroll content offset will always settle on a multiple of the scrollview's size
