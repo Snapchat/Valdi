@@ -173,9 +173,12 @@ def setup_dependencies(workspace_root = None):
         integrity = "sha256-rX/boR6gEcHZJbMonPSvLGajUuGNTHJkOS/q116Rk2M=",
     )
 
-    http_archive(
-        name = "boringssl",
-        url = "https://boringssl.googlesource.com/boringssl/+archive/82f9853fc7d7360ae44f1e1357a6422c5244bbd8.tar.gz",
+   http_archive(
+    name = "boringssl",
+    urls = [
+        "https://boringssl.googlesource.com/boringssl/+archive/82f9853fc7d7360ae44f1e1357a6422c5244bbd8.tar.gz",
+        "https://github.com/google/boringssl/archive/82f9853fc7d7360ae44f1e1357a6422c5244bbd8.tar.gz",  # ← YEDEK KAYNAK
+        ],
     )
 
     # Used for networking, and other utilities like small_vector
