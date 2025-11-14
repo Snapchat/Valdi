@@ -24,7 +24,7 @@ objc_library(
 cc_import(
     name = "jscore_library",
     shared_library = select({
-        "//bzl/conditions:linux": jscore_library(),
+        "//bzl/conditions:linux_x64": jscore_library(),
     }),
     visibility = ["//visibility:public"],
 )

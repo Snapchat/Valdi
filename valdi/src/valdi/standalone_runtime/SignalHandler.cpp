@@ -5,6 +5,8 @@
 //  Created by Simon Corsin on 20/12/22.
 //
 
+#ifndef __ANDROID__
+
 #include "valdi/standalone_runtime/SignalHandler.hpp"
 #include "backward.hpp"
 
@@ -15,3 +17,5 @@ void SignalHandler::install() {
 }
 
 } // namespace Valdi
+
+#endif

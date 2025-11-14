@@ -1068,7 +1068,7 @@ def _setup_native_target(name, deps, additional_native_deps, compiled_module_tar
             debug = [":android.debug.c"],
             release = [":android.release.c"],
         ),
-        deps = native_deps + additional_native_deps,
+        deps = ["{}_android".format(dep) for dep in native_deps] + additional_native_deps,
     )
 
     valdi_module_native(
@@ -1080,7 +1080,7 @@ def _setup_native_target(name, deps, additional_native_deps, compiled_module_tar
         #     debug = [":ios.debug.c"],
         #     release = [":ios.release.c"],
         # ),
-        deps = native_deps + additional_native_deps,
+        deps = ["{}_ios".format(dep) for dep in native_deps] + additional_native_deps,
     )
 
     valdi_module_native(
@@ -1089,7 +1089,7 @@ def _setup_native_target(name, deps, additional_native_deps, compiled_module_tar
             debug = [":android.debug.c"],
             release = [":android.release.c"],
         ) + [":{}".format(static_res_lib_name)],
-        deps = native_deps + additional_native_deps,
+        deps = ["{}_desktop".format(dep) for dep in native_deps] + additional_native_deps,
     )
 
     native.alias(

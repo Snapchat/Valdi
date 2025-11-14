@@ -76,7 +76,7 @@ selects.config_setting_group(
     match_any = [
         "//bzl/conditions:ios",
         "//bzl/conditions:macos",
-        "//bzl/conditions:linux",
+        "//bzl/conditions:linux_x64",
     ],
 )
 

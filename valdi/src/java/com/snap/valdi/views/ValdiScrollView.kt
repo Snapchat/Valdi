@@ -23,7 +23,8 @@ import com.snap.valdi.views.touches.ValdiGesturePointer
 
 enum class KeyboardDismissMode(val value: String) {
     IMMEDIATE("immediate"),
-    TOUCH_EXIT_BELOW("touch-exit-below");
+    TOUCH_EXIT_BELOW("touch-exit-below"),
+    TOUCH_EXIT_ABOVE("touch-exit-above");
     
     companion object {
         fun fromString(value: String): KeyboardDismissMode =
@@ -416,10 +417,23 @@ open class ValdiScrollView(context: Context) : ValdiView(context, attributeSet(c
             ValdiGestureRecognizerState.CHANGED -> {
                 handleScroll(offsetX, offsetY, x, y, invertedVelocityX, invertedVelocityY)
 
-                if (dismissKeyboardOnDrag && dismissKeyboardMode == KeyboardDismissMode.TOUCH_EXIT_BELOW && y > this.getHeight()) {
-                    ViewUtils.resetFocusToRootViewOf(this)
+                if (dismissKeyboardOnDrag) {
+                    when (dismissKeyboardMode) {
+                        KeyboardDismissMode.TOUCH_EXIT_BELOW -> {
+                            if (y > this.getHeight()) {
+                                ViewUtils.resetFocusToRootViewOf(this)
+                            }
+                        }
+                        KeyboardDismissMode.TOUCH_EXIT_ABOVE -> {
+                            if (y < 0) {
+                                ViewUtils.resetFocusToRootViewOf(this)
+                            }
+                        }
+                        KeyboardDismissMode.IMMEDIATE -> {
+                            // noop - this exited on ValdiGestureRecognizerState.BEGAN
+                        }
+                    }
                 }
-
             }
             ValdiGestureRecognizerState.ENDED -> {
 

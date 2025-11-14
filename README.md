@@ -41,7 +41,7 @@ class HelloWorld extends Component {
 - [Codelabs](./docs/docs/start-code-lab.md)
 - [API Reference](./docs/api/api-quick-reference.md)
 - [Frequently Asked Questions](./docs/docs/faq.md)
-- [Component Library (Coming Soon!)](https://github.com/Snapchat/Valdi_Widgets)
+- [Component Library](https://github.com/Snapchat/Valdi_Widgets)
 
 ## Why Choose Valdi?
 
