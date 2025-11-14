@@ -245,9 +245,9 @@ export const builder = (yargs: Argv<CommandParameters>) => {
       type: 'boolean',
       alias: 'y',
     })
-    .option('applicationType', { describe: 'Type of application to create', alias: 't' })
+    .option('applicationType', { describe: 'Type of application to create (ui_application or cli_application)', alias: 't' })
     .option('valdiImport', {
-      describe: 'A full path to a local checkout of the valid repo',
+      describe: 'A full path to a local checkout of the valdi repo',
       type: 'string',
       alias: 'l',
     })
