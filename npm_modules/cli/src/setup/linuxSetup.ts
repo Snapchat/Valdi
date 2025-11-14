@@ -3,6 +3,8 @@ import path from 'path';
 import { checkCommandExists } from '../utils/cliUtils';
 import { DevSetupHelper, HOME_DIR } from './DevSetupHelper';
 import { ANDROID_LINUX_COMMANDLINE_TOOLS } from './versions';
+import { wrapInColor } from '../utils/logUtils';
+import { ANSI_COLORS } from '../core/constants';
 
 const BAZELISK_URL = 'https://github.com/bazelbuild/bazelisk/releases/download/v1.26.0/bazelisk-linux-amd64';
 
@@ -61,8 +63,9 @@ export async function linuxSetup(): Promise<void> {
       await devSetup.runShell('Installing Java Runtime Environment', ['sudo apt install default-jre']);
     }
   } else {
-    console.log('Unsupported package manager, please install the required dependencies manually:');
-    console.log('zlib git-lfs watchman libfontconfig-dev adb libtinfo5 openjdk-17');
+    console.log(wrapInColor('Unsupported package manager, please install the required dependencies manually:', ANSI_COLORS.RED_COLOR));
+    console.log(wrapInColor('zlib git-lfs watchman libfontconfig-dev adb libtinfo5 openjdk-17', ANSI_COLORS.RED_COLOR));
+    console.log()
   }
 
   const bazeliskPathSuffix = '.valdi/bin/bazelisk';
