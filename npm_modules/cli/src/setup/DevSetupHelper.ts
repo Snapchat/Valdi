@@ -59,8 +59,22 @@ export class DevSetupHelper {
   }
 
   async writeEnvVariablesToRcFile(envVariables: readonly EnvVariable[]): Promise<void> {
-    const expectedEnvVariable = envVariables.map(e => `export ${e.name}=${e.value}`);
     const rcFile = this.getRcFile();
+    const isFish = process.env['SHELL']?.endsWith('/fish') ?? false;
+
+    const expectedEnvVariable = envVariables.map(e => {
+      if (isFish) {
+        const value = e.value.replaceAll(/^"|"$/g, '');
+        if (value.includes(':$')) {
+          const parts = value.split(':');
+          return `set -gx ${e.name} ${parts.join(' ')}`;
+        }
+        return `set -gx ${e.name} ${value}`;
+      } else {
+        return `export ${e.name}=${e.value}`;
+      }
+    });
+
     if (!rcFile) {
       console.log();
       console.log(
@@ -181,6 +195,8 @@ export class DevSetupHelper {
       return path.join(homeDir, '.kshrc');
     } else if (shell.endsWith('/tcsh')) {
       return path.join(homeDir, '.tcshrc');
+    } else if (shell.endsWith('/fish')) {
+      return path.join(homeDir, '.config/fish/config.fish');
     } else {
       return undefined;
     }
