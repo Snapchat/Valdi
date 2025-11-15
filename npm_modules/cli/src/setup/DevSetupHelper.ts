@@ -1,16 +1,14 @@
 import fs from 'fs';
 import path from 'path';
 import { ANSI_COLORS } from '../core/constants';
+import { CliError } from '../core/errors';
 import { LoadingIndicator } from '../utils/LoadingIndicator';
 import { spawnCliCommand } from '../utils/cliUtils';
 import { wrapInColor } from '../utils/logUtils';
-import { withTempDir } from '../utils/tempDir';
-import { decompressTo } from '../utils/zipUtils';
 import { ANDROID_BUILD_TOOLS_VERSION, ANDROID_NDK_VERSION, ANDROID_PLATFORM_VERSION } from './versions';
 
 export const HOME_DIR = process.env['HOME'] ?? '';
 const ANDROID_HOME_DIR_SUFFIX = '.valdi/android_home';
-const ANDROID_HOME_TARET_DIR = path.join(HOME_DIR, ANDROID_HOME_DIR_SUFFIX);
 
 export interface EnvVariable {
   name: string;
@@ -120,27 +118,23 @@ export class DevSetupHelper {
     console.log(`${wrapInColor('Dev setup completed!', ANSI_COLORS.GREEN_COLOR)}.${suffix}`);
   }
 
-  async setupAndroidSDK(commandLineToolsURL: string, javaHomeOverride?: string | undefined): Promise<void> {
+  async setupAndroidSDK(javaHomeOverride?: string | undefined): Promise<void> {
     console.log(wrapInColor('Setting up Android SDK...', ANSI_COLORS.YELLOW_COLOR));
     if (!process.env['ANDROID_HOME']) {
-      await withTempDir(async tempDir => {
-        const filename = path.join(tempDir, path.basename(commandLineToolsURL));
-        await this.downloadToPath(commandLineToolsURL, filename);
-        const targetDir = path.join(ANDROID_HOME_TARET_DIR, 'cmdline-tools');
-        await decompressTo(filename, targetDir);
-
-        const target = path.join(targetDir, 'latest');
-        if (fs.existsSync(target)) {
-          await fs.promises.rm(target, { recursive: true, force: true });
-        }
-        fs.renameSync(path.join(targetDir, 'cmdline-tools'), target);
-      });
       process.env['ANDROID_HOME'] = path.join(HOME_DIR, ANDROID_HOME_DIR_SUFFIX);
       await this.writeEnvVariablesToRcFile([{ name: 'ANDROID_HOME', value: `"$HOME/${ANDROID_HOME_DIR_SUFFIX}"` }]);
     }
 
     const androidHome = process.env['ANDROID_HOME'] ?? '';
     const sdkManagerBin = path.join(androidHome, 'cmdline-tools/latest/bin/sdkmanager');
+
+    // Verify Android SDK Command-line Tools is installed
+    if (!fs.existsSync(sdkManagerBin)) {
+      throw new CliError(
+        'Android SDK Command-line Tools is not installed. Follow the developer setup guide to install it.',
+        ANSI_COLORS.RED_COLOR,
+      );
+    }
 
     const sdkManagerEnvVariables: { [key: string]: string } = {};
     if (javaHomeOverride) {

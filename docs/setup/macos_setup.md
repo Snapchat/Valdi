@@ -67,7 +67,7 @@ git lfs install
 
 Download and install Android Studio by following [Google's directions](https://developer.android.com/studio).
 
-Open any project, navigate to `Tools` -> `SDK Manager`
+Open the Android SDK Manager. You can find it on the main screen of Android Studio under `More Actions` -> `SDK Manager`. When a project is open, you can also find it under `Tools` -> `SDK Manager`.
 
 Under **SDK Platforms**, install **API level 35**.
 
@@ -76,6 +76,8 @@ Under **SDK Tools**, uncheck `Hide obsolete packages` check `Show Package Detail
 Install build tools **version 34.0.0**.
 
 Install ndk version **25.2.9519653**
+
+Install the latest version of **Android SDK Command-line Tools**
 
 Update `.zshrc` with the following:
 
