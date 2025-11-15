@@ -45,6 +45,7 @@ import { BazelClient } from '../utils/BazelClient';
 import { checkCommandExists, runCliCommand } from '../utils/cliUtils';
 import { makeCommandHandler } from '../utils/errorUtils';
 import { wrapInColor } from '../utils/logUtils';
+import { isFedora, isUbuntu } from '../setup/linuxSetup';
 
 /** Discord support link for troubleshooting */
 const DISCORD_SUPPORT_URL = 'https://discord.gg/uJyNEeYX2U';
@@ -1166,16 +1167,25 @@ class ValdiDoctor {
   private getFixCommandForDependency(dep: string): string {
     switch (dep) {
       case 'git': {
-        return os.platform() === 'darwin' ? 'brew install git' : 'sudo apt-get install git';
+        if (os.platform() === 'darwin') return 'brew install git';
+        if (isUbuntu) return 'sudo apt-get install git';
+        if (isFedora) return 'sudo dnf install git';
+        return 'Install git for your distribution';
       }
       case 'npm': {
         return 'Install Node.js from https://nodejs.org (includes npm)';
       }
       case 'watchman': {
-        return os.platform() === 'darwin' ? 'brew install watchman' : 'sudo apt-get install watchman';
+        if (os.platform() === 'darwin') return 'brew install watchman';
+        if (isUbuntu) return 'sudo apt-get install watchman';
+        if (isFedora) return 'sudo dnf install watchman';
+        return 'Install watchman for your distribution';
       }
       case 'git-lfs': {
-        return os.platform() === 'darwin' ? 'brew install git-lfs' : 'sudo apt-get install git-lfs';
+        if (os.platform() === 'darwin') return 'brew install git-lfs';
+        if (isUbuntu) return 'sudo apt-get install git-lfs';
+        if (isFedora) return 'sudo dnf install git-lfs';
+        return 'Install git-lfs for your distribution';
       }
       case 'bazelisk': {
         return os.platform() === 'darwin' ? 'brew install bazelisk' : 'valdi dev_setup';
@@ -1184,7 +1194,9 @@ class ValdiDoctor {
         return 'brew install ios-webkit-debug-proxy';
       }
       case 'adb': {
-        return 'sudo apt-get install adb';
+        if (isUbuntu) return 'sudo apt-get install adb';
+        if (isFedora) return 'sudo dnf install android-tools';
+        return 'Install adb for your distribution';
       }
       default: {
         return os.platform() === 'darwin' ? `brew install ${dep}` : `Install ${dep}`;
