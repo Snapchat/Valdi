@@ -11,7 +11,7 @@ import java.io.File
 import java.io.FileWriter
 
 @SupportedAnnotationTypes("com.snap.valdi.modules.RegisterValdiModule", "com.snap.valdi.attributes.RegisterAttributesBinder")
-@SupportedSourceVersion(SourceVersion.RELEASE_11)
+@SupportedSourceVersion(SourceVersion.RELEASE_17)
 class ValdiAnnotationProcessor: AbstractProcessor() {
 
     override fun process(

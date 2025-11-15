@@ -740,7 +740,7 @@ class ValdiDoctor {
     // Check Java tools in PATH
     const pathEnv = process.env['PATH'] || '';
     if (os.platform() === 'darwin') {
-      if (pathEnv.includes('/opt/homebrew/opt/openjdk@17/bin') || pathEnv.includes('/opt/homebrew/opt/openjdk@11/bin')) {
+      if (pathEnv.includes('/opt/homebrew/opt/openjdk@17/bin')) {
         this.addResult({
           name: 'Java PATH',
           status: 'pass',
