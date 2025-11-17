@@ -177,10 +177,10 @@ bazel_dep(name = "jsoncpp", version = "1.9.6")
 
 http_archive(
     name = "harfbuzz",
-    strip_prefix = "harfbuzz-2.5.1",
+    strip_prefix = "harfbuzz-12.2.0",
     build_file = "@valdi//third-party/harfbuzz:harfbuzz.BUILD",
-    integrity = "sha256-bUg0V5q9X3qzhhwIW0xVEp94sn/keWH9lnadNwT2cZ4=",
-    url = "https://github.com/harfbuzz/harfbuzz/releases/download/2.5.1/harfbuzz-2.5.1.tar.xz",
+    integrity = "sha256-7LYDqkJqiyRmVxhme9pkqEwVBNt0VO5Mrb02Lupk5UU=",
+    url = "https://github.com/harfbuzz/harfbuzz/releases/download/12.2.0/harfbuzz-12.2.0.tar.xz",
 )
 
 bazel_dep(name = "backward-cpp", version = "1.6")

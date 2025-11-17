@@ -273,13 +273,13 @@ def setup_dependencies(workspace_root = None):
         url = "https://github.com/open-source-parsers/jsoncpp/archive/refs/tags/1.8.0.zip",
     )
 
-    # From https://github.com/harfbuzz/harfbuzz/releases/tag/2.5.1
+    # From https://github.com/harfbuzz/harfbuzz/releases/tag/12.2.0
     http_archive(
         name = "harfbuzz",
-        strip_prefix = "harfbuzz-2.5.1",
+        strip_prefix = "harfbuzz-12.2.0",
         build_file = "@valdi//third-party/harfbuzz:harfbuzz.BUILD",
-        integrity = "sha256-bUg0V5q9X3qzhhwIW0xVEp94sn/keWH9lnadNwT2cZ4=",
-        url = "https://github.com/harfbuzz/harfbuzz/releases/download/2.5.1/harfbuzz-2.5.1.tar.xz",
+        integrity = "sha256-7LYDqkJqiyRmVxhme9pkqEwVBNt0VO5Mrb02Lupk5UU=",
+        url = "https://github.com/harfbuzz/harfbuzz/releases/download/12.2.0/harfbuzz-12.2.0.tar.xz",
     )
 
     # From https://github.com/protocolbuffers/protobuf/releases/tag/v3.20.0
