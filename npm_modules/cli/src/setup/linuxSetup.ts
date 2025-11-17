@@ -5,6 +5,7 @@ import { DevSetupHelper, HOME_DIR } from './DevSetupHelper';
 import { ANDROID_LINUX_COMMANDLINE_TOOLS } from './versions';
 import { wrapInColor } from '../utils/logUtils';
 import { ANSI_COLORS } from '../core/constants';
+import { execSync } from 'child_process';
 
 const BAZELISK_URL = 'https://github.com/bazelbuild/bazelisk/releases/download/v1.26.0/bazelisk-linux-amd64';
 
@@ -58,6 +59,25 @@ export async function linuxSetup(): Promise<void> {
 
     if (!checkCommandExists('java')) {
       await devSetup.runShell('Installing Java Runtime Environment', ['sudo apt install default-jre']);
+    }
+  } else if (pm === "pacman") {
+    await devSetup.runShell('Installing dependencies from pacman', [
+      `sudo pacman -S zlib git-lfs watchman libfontconfig-dev adb`,
+    ]);
+
+    try {
+      execSync("pacman -Q ncurses5-compat-libs", { stdio: 'ignore' });
+    } catch {
+      await devSetup.runShell('Installing libtinfo5', [
+        `git clone https://aur.archlinux.org/ncurses5-compat-libs.git`,
+        `cd ncurses5-compat-libs`,
+        `makepkg -sic`,
+        `cd ..`
+      ]);
+    }
+
+    if (!checkCommandExists('java')) {
+      await devSetup.runShell('Installing Java Runtime Environment', ['sudo pacman -S jdk17-openjdk']);
     }
   } else {
     console.log(wrapInColor('Unsupported package manager, please install the required dependencies manually:', ANSI_COLORS.RED_COLOR));
