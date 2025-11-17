@@ -5,11 +5,7 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 {{VALDI_IMPORT}}
 
-git_repository(
-    name = "valdi_widgets",
-    branch = "main",
-    remote = "git@github.com{{WIDGET_ALIAS}}:Snapchat/Valdi_Widgets.git",
-)
+{{VALDI_WIDGETS_IMPORT}}
 
 load("@valdi//bzl:workspace_prepare.bzl", "valdi_prepare_workspace")
 

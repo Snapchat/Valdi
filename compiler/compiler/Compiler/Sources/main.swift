@@ -76,9 +76,13 @@ func main() {
             // Sentry doesn't really support running on multiple instances of a program at once.
             // It reads and writes crash data into the same file
             if !isCompilingUnderBazel() {
-                SentryClient.start(dsn: "https://3dac2f6b9e1444ab9962fffa96487f40@sentry.sc-prod.net/149",
-                                tracesSampleRate: 0.25,
-                                username: NSUserName())
+                let arguments = Array(CommandLine.arguments.dropFirst())
+                if let parsedArgs = try? ValdiCompilerArguments.parseAsRoot(arguments) as? ValdiCompilerArguments,
+                   let sentryDsn = parsedArgs.sentryDsn {
+                    SentryClient.start(dsn: sentryDsn,
+                                    tracesSampleRate: 0.25,
+                                    username: NSUserName())
+                }
             }
 
             ValdiCompilerArguments.main()

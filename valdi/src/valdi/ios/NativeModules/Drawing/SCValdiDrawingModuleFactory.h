@@ -5,7 +5,7 @@
 //  Created by Simon Corsin on 8/26/19.
 //
 
-#import "valdi/ios/NativeModules/Drawing/SCValdiDrawingModule.h"
+#import "SCCDrawingTypes/SCValdiDrawingModule.h"
 #import "valdi_core/SCNValdiCoreModuleFactory.h"
 #import <Foundation/Foundation.h>
 

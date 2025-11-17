@@ -1,0 +1,94 @@
+name: Publish NPM Packages
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'npm_modules/*/package.json'
+  workflow_dispatch:
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      cli: ${{ steps.filter.outputs.cli }}
+      eslint-plugin: ${{ steps.filter.outputs.eslint-plugin }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check which packages changed
+        id: filter
+        run: |
+          if git diff HEAD^ HEAD --name-only | grep -q "npm_modules/cli/package.json"; then
+            echo "cli=true" >> $GITHUB_OUTPUT
+          else
+            echo "cli=false" >> $GITHUB_OUTPUT
+          fi
+          
+          if git diff HEAD^ HEAD --name-only | grep -q "npm_modules/eslint-plugin-valdi/package.json"; then
+            echo "eslint-plugin=true" >> $GITHUB_OUTPUT
+          else
+            echo "eslint-plugin=false" >> $GITHUB_OUTPUT
+          fi
+
+  publish-cli:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.cli == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: npm_modules/cli
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package
+        run: npm run build
+
+      - name: Publish @snap/valdi to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-eslint-plugin:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.eslint-plugin == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: npm_modules/eslint-plugin-valdi
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package
+        run: npm run build
+
+      - name: Publish @snap/eslint-plugin-valdi to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+

@@ -201,6 +201,9 @@ struct ValdiCompilerArguments: ParsableCommand {
     @Option(help: "The list of image variants to include for each platform")
     var imageVariantsFilter: String?
 
+    @Option(help: "Sentry DSN for error tracking")
+    var sentryDsn: String?
+
     @Flag(help: "regenerate per module BUILD.bazel build files")
     var regenerateValdiModulesBuildFiles = false
 

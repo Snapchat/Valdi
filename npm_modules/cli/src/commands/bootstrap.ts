@@ -28,6 +28,7 @@ interface CommandParameters {
   projectName: string;
   applicationType: string;
   valdiImport: string;
+  valdiWidgetsImport: string;
   skipProjectsync: boolean;
   withCleanup: boolean;
 }
@@ -52,6 +53,7 @@ const ALL_APPLICATION_TEMPLATES: readonly ApplicationTemplate[] = [
 ];
 
 const VALDI_GIT_URL = 'https://github.com/Snapchat/Valdi';
+const VALDI_WIDGETS_GIT_URL = 'https://github.com/Snapchat/Valdi_Widgets';
 
 const DEFAULT_VALDI_IMPORT = `
 http_archive(
@@ -60,9 +62,23 @@ http_archive(
     url = "${VALDI_GIT_URL}/archive/{{VALDI_RELEASE_REF}}.tar.gz",
 )`;
 
+const DEFAULT_VALDI_WIDGETS_IMPORT = `
+http_archive(
+    name = "valdi_widgets",
+    strip_prefix = "Valdi_Widgets-{{VALDI_WIDGETS_RELEASE_TAG}}",
+    url = "${VALDI_WIDGETS_GIT_URL}/archive/{{VALDI_WIDGETS_RELEASE_REF}}.tar.gz",
+)`;
+
 const LOCAL_VALDI_IMPORT_TEMPLATE = `
 local_repository(
     name = "valdi",
+    path = "{{PATH}}",
+)
+`;
+
+const LOCAL_VALDI_WIDGETS_IMPORT_TEMPLATE = `
+local_repository(
+    name = "valdi_widgets",
     path = "{{PATH}}",
 )
 `;
@@ -129,15 +145,34 @@ function getValdiImport(argv: ArgumentsResolver<CommandParameters>, valdiRelease
   }
 }
 
+function getValdiWidgetsImport(argv: ArgumentsResolver<CommandParameters>, valdiWidgetsReleaseRef: string): string {
+  const valdiWidgetsImport = argv.getArgument('valdiWidgetsImport');
+  if (valdiWidgetsImport) {
+    return processReplacements(LOCAL_VALDI_WIDGETS_IMPORT_TEMPLATE, { PATH: valdiWidgetsImport });
+  } else {
+    const valdiWidgetsReleaseTag = valdiWidgetsReleaseRef.split('/').pop()!;
+    return processReplacements(DEFAULT_VALDI_WIDGETS_IMPORT, {
+      VALDI_WIDGETS_RELEASE_REF: valdiWidgetsReleaseRef,
+      VALDI_WIDGETS_RELEASE_TAG: valdiWidgetsReleaseTag,
+    });
+  }
+}
+
 // Create files from templates
-function initializeConfigFiles(projectName: string, template: ApplicationTemplate, valdiImport: string) {
+function initializeConfigFiles(
+  projectName: string,
+  template: ApplicationTemplate,
+  valdiImport: string,
+  valdiWidgetsImport: string,
+) {
+
   const TEMPLATE_FILES = [
     TemplateFile.init(TEMPLATE_BASE_PATHS.USER_CONFIG).withOutputPath(resolveFilePath(VALDI_CONFIG_PATHS[0] ?? '')),
     TemplateFile.init(TEMPLATE_BASE_PATHS.BAZEL_VERSION),
     TemplateFile.init(TEMPLATE_BASE_PATHS.WORKSPACE).withReplacements({
       WORKSPACE_NAME: projectName,
       VALDI_IMPORT: valdiImport,
-      WIDGET_ALIAS: '',
+      VALDI_WIDGETS_IMPORT: valdiWidgetsImport,
     }),
     TemplateFile.init(TEMPLATE_BASE_PATHS.BAZEL_RC),
     TemplateFile.init(TEMPLATE_BASE_PATHS.README),
@@ -206,12 +241,14 @@ async function valdiBootstrap(argv: ArgumentsResolver<CommandParameters>) {
   }
 
   const valdiCommitHash = await resolveLatestReleaseRef(`${VALDI_GIT_URL}.git`);
+  const valdiWidgetsCommitHash = await resolveLatestReleaseRef(`${VALDI_WIDGETS_GIT_URL}.git`);
 
   const valdiImport = getValdiImport(argv, valdiCommitHash);
+  const valdiWidgetsImport = getValdiWidgetsImport(argv, valdiWidgetsCommitHash);
 
   // Creating basic config files and Hello World application
   console.log(wrapInColor('Initializing config files...', ANSI_COLORS.BLUE_COLOR));
-  initializeConfigFiles(projectName, applicationType, valdiImport);
+  initializeConfigFiles(projectName, applicationType, valdiImport, valdiWidgetsImport);
 
   // Check bazel version matches .bazelversion
   console.log(wrapInColor('Verifying Bazel installation...', ANSI_COLORS.BLUE_COLOR));
@@ -245,18 +282,36 @@ export const builder = (yargs: Argv<CommandParameters>) => {
       type: 'boolean',
       alias: 'y',
     })
-    .option('applicationType', { describe: 'Type of application to create', alias: 't' })
+    .option('applicationType', {
+      describe: 'Type of application to create',
+      alias: 't',
+    })
+    .option('projectName', {
+      describe: 'Name of the project',
+      type: 'string',
+      alias: 'n',
+    })
     .option('valdiImport', {
-      describe: 'A full path to a local checkout of the valid repo',
+      describe:
+        'Path to a local checkout of the Valdi repo. If not specified, uses the latest release from GitHub.',
       type: 'string',
       alias: 'l',
     })
-    .option('skipProjectsync', { describe: 'Skip projectsync for testing purposes', type: 'boolean', alias: 'p' })
+    .option('valdiWidgetsImport', {
+      describe:
+        'Path to a local checkout of the Valdi_Widgets repo. If not specified, uses the latest release from GitHub.',
+      type: 'string',
+      alias: 'w',
+    })
+    .option('skipProjectsync', {
+      describe: 'Skip projectsync for testing purposes',
+      type: 'boolean',
+      alias: 'p',
+    })
     .option('withCleanup', {
       describe: 'Deletes all existing files in the current directory before initiating bootstrap',
       type: 'boolean',
       alias: 'c',
-    })
-    .option('projectName', { describe: 'Name of the project', type: 'string', alias: 'n' });
+    });
 };
 export const handler = makeCommandHandler(valdiBootstrap);
