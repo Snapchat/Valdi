@@ -2,7 +2,7 @@ import 'jasmine/src/jasmine';
 import { Worker, inWorker } from 'worker/src/Worker';
 
 function timeout(ms: number): Promise<void> {
-  // eslint-disable-next-line @snapchat/valdi/assign-timer-id
+  // eslint-disable-next-line @snap/valdi/assign-timer-id
   return new Promise(resolve => setTimeout(resolve, ms, 'timeout'));
 }
 

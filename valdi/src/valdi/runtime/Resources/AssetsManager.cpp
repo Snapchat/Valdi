@@ -639,7 +639,21 @@ void AssetsManager::notifyAssetConsumer(AssetsManagerTransaction& transaction,
         errorStringBox = {errorString};
     }
 
-    assetConsumer->getObserver()->onLoad(observable, Value(loadedAsset), errorStringBox);
+    // Default to sending the asset as-is
+    Value assetValue = Value(loadedAsset);
+
+    // Convert BytesAsset to ValueTypedArray for proper JavaScript marshalling
+    // Only do this for assets loaded with BYTES output type
+    if (loadedAsset != nullptr && assetConsumer->getOutputType() == snap::valdi_core::AssetOutputType::Bytes) {
+        // This was loaded as a bytes asset, try to get bytes content
+        auto bytesContentResult = loadedAsset->getBytesContent();
+        if (bytesContentResult) {
+            // Wrap in ValueTypedArray so JS receives a Uint8Array
+            assetValue = Value(makeShared<ValueTypedArray>(TypedArrayType::Uint8Array, bytesContentResult.value()));
+        }
+    }
+
+    assetConsumer->getObserver()->onLoad(observable, assetValue, errorStringBox);
 
     transaction.acquireLock();
 }

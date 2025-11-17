@@ -580,6 +580,7 @@ objc_library(
         ":valdi_runtime_with_vm",
         ":valdi_snap_drawing",
         "//libs/utils:utils_obj_cpp_ptr_wrapper",
+        "//src/valdi_modules/src/valdi/drawing:drawing_api_objc",
         "//valdi:djinni_objc_cpp",
     ],
 )

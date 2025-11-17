@@ -4,7 +4,7 @@
   "description": "Valdi Helloworld app",
   "license": "ISC",
   "devDependencies": {
-    "@snapchat/eslint-plugin-valdi": "1.0.2",
+    "@snap/eslint-plugin-valdi": "1.0.2",
     "@types/eslint": "^9.6.1",
     "@types/jasmine": "^5.1.7",
     "@typescript-eslint/eslint-plugin": "^6.21.0",

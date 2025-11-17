@@ -1,5 +1,5 @@
 {
-  "name": "valdi",
+  "name": "@snap/valdi",
   "version": "1.0.1",
   "description": "Valdi CLI tools for developers",
   "license": "ISC",

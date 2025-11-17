@@ -1,5 +1,5 @@
 {
-  "name": "@snapchat/eslint-plugin-valdi",
+  "name": "@snap/eslint-plugin-valdi",
   "version": "1.0.2",
   "description": "ESLint rules for the Valdi project",
   "main": "dist/index.js",
