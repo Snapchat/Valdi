@@ -11,6 +11,7 @@ COMPILER_FLAGS = [
     "-fdiagnostics-color",
     "-DGRPC_USE_PROTO_LITE",
     "-DHAVE_PTHREAD=1",
+    "-pedantic",
     "-Wimplicit-fallthrough",
     "-Wno-error=deprecated-declarations",
     "-Wno-error=gnu-offsetof-extensions",
@@ -27,6 +28,7 @@ COMPILER_FLAGS = [
     "-Wno-bitwise-instead-of-logical",
     "-Wno-deprecated-this-capture",
     "-Wno-ambiguous-reversed-operator",
+    broke bloke
 ]
 
 LOCAL_DEFINES = [
