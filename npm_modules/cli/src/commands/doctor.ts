@@ -239,7 +239,7 @@ class ValdiDoctor {
    * - Output structured JSON for machine processing (--json flag)
    * - Display formatted, colored output for human consumption
    *
-   
+
    *
    * @example
    * ```typescript
@@ -632,7 +632,7 @@ class ValdiDoctor {
     }
   }
 
-  private async getLinuxJavaInstallCommnad() {
+  private async getLinuxJavaInstallCommand() {
     const pm = await getLinuxPackageManager();
 
     if (pm === 'apt') {
@@ -665,7 +665,7 @@ class ValdiDoctor {
         const { stdout, stderr } = await runCliCommand('java -version');
         // java -version typically outputs to stderr, but check both
         const versionInfo = stderr || stdout || '';
-        
+
         // Try multiple version string formats:
         // 1. version "17.0.16" (older format)
         // 2. openjdk 17.0.16 (OpenJDK format)
@@ -677,7 +677,7 @@ class ValdiDoctor {
         if (!versionMatch) {
           versionMatch = versionInfo.match(/java\s+(\d+\.\d+\.\d+)/i);
         }
-        
+
         const version = versionMatch?.[1] ?? 'Unknown version';
 
         // Check if Java version is 17 or higher
@@ -698,7 +698,7 @@ class ValdiDoctor {
             message: `Java ${version} is outdated. Java 17+ is recommended`,
             details: 'dev_setup now installs Java 17 for better compatibility',
             fixable: true,
-            fixCommand: os.platform() === 'darwin' ? 'brew install openjdk@17' : await this.getLinuxJavaInstallCommnad(),
+            fixCommand: os.platform() === 'darwin' ? 'brew install openjdk@17' : await this.getLinuxJavaInstallCommand(),
             category: 'Java installation',
           });
         } else {
@@ -726,7 +726,7 @@ class ValdiDoctor {
         message: 'Java not found in PATH',
         details: 'dev_setup installs Java JDK for Android development',
         fixable: true,
-        fixCommand: os.platform() === 'darwin' ? 'brew install openjdk@17' : await this.getLinuxJavaInstallCommnad(),
+        fixCommand: os.platform() === 'darwin' ? 'brew install openjdk@17' : await this.getLinuxJavaInstallCommand(),
         category: 'Java installation',
       });
     }

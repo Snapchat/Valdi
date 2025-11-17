@@ -12,24 +12,21 @@ export async function getLinuxPackageManager(): Promise<string | null> {
   let pm: string | null = null;
   const distro = await fs.promises.readFile('/etc/os-release', 'utf8');
   const match = distro.match(/^ID="?([^"\n]*)"?$/m);
+
+  const distroToPackageManager: { [key: string]: string } = {
+    ubuntu: "apt",
+    fedora: "dnf",
+    debian: "apt",
+    arch: "pacman",
+    linuxmint: "apt",
+    opensuse: "zypper",
+    rhel: "dnf",
+    centos: "dnf",
+    manjaro: "pacman",
+  };
+
   if (match && match[1]) {
-    switch (match[1]) {
-      case 'ubuntu':
-        pm = 'apt';
-        break;
-      case 'debian':
-        pm = 'apt';
-        break;
-      case 'fedora':
-        pm = 'dnf';
-        break;
-      case 'centos':
-        pm = 'yum';
-        break;
-      case 'arch':
-        pm = 'pacman';
-        break;
-    }
+    return distroToPackageManager[match[1]] || null;
   } else {
     if (checkCommandExists('pacman')) {
       pm = 'pacman';
