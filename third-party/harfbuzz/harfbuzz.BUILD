@@ -17,6 +17,7 @@ COMPILER_FLAGS = [
     "-Wno-extra-semi",
     "-Wno-format-pedantic",
     "-Wno-gnu-anonymous-struct",
+    "-Wno-gnu-offsetof-extensions",
     "-Wno-gnu-zero-variadic-macro-arguments",
     "-Wno-nested-anon-types",
     "-Wno-unreachable-code",
