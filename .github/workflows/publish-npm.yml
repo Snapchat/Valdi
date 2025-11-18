@@ -1,4 +1,4 @@
-name: Publish NPM Packages
+ [*] name: Publish NPM Packages
 
 on:
   push:
@@ -92,3 +92,182 @@ jobs:
       - name: Publish @snap/eslint-plugin-valdi to npm
         run: npm publish --access public
 
+            - name: C/C++ Linter
+  # You may pin to the exact commit or the version.
+  # uses: cpp-linter/cpp-linter-action@a645cdb1ded4f83d2a4af4b0e7929546bb040bea
+  uses: cpp-linter/cpp-linter-action@v2.16.6
+  with:
+    # The style rules to use.
+
+- Set this to `file` to have clang-format use the closest relative .clang-format file.
+- Set this to a blank string (`''`) to disable the use of clang-format entirely.
+- Any code style supported by the specified version of clang-format.
+
+    style: # optional, default is llvm
+    # The file extensions to run the action against. This is a comma-separated string.
+    extensions: # optional, default is c,h,C,H,cpp,hpp,cc,hh,c++,h++,cxx,hxx
+    # Comma-separated list of globs with optional `-` prefix.
+Globs are processed in order of appearance in the list.
+Globs without `-` prefix add checks with matching names to the set,
+globs with the `-` prefix remove checks with matching names from the set of enabled checks.
+This option's value is appended to the value of the 'Checks' option in a .clang-tidy file (if any).
+
+- It is possible to disable clang-tidy entirely by setting this option to `'-*'`.
+- It is also possible to rely solely on a .clang-tidy config file by specifying this option as a blank string (`''`).
+
+    tidy-checks: # optional, default is boost-*,bugprone-*,performance-*,readability-*,portability-*,modernize-*,clang-analyzer-*,cppcoreguidelines-*
+    # The relative path to the repository root directory. This path is relative to the path designated as the runner's `GITHUB_WORKSPACE` environment variable.
+
+    repo-root: # optional, default is .
+    # The desired version of the [clang-tools](https://github.com/cpp-linter/clang-tools-pip) to use.
+Accepted options are strings which can be 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10 or 9.
+
+- Set this option to a blank string (`''`) to use the platform's default installed version.
+- This value can also be a path to where the clang tools are installed (if using a custom install location).
+
+    version: # optional, default is 18
+    # This controls the action's verbosity in the workflow's logs.
+Supported options are `info` or `debug`.
+This option does not affect the verbosity of resulting thread comments or file annotations.
+
+The verbosity can also be engaged by enabling debug logs when
+[re-running jobs or workflows](https://docs.github.com/en/actions/managing-workflow-runs/re-running-workflows-and-jobs).
+
+    verbosity: # optional, default is info
+    # This controls what part of the files are analyzed. The following values are accepted:
+
+- `false`: All lines in a file are analyzed.
+- `true`: Only lines in the diff that contain additions are analyzed.
+- `diff`: All lines in the diff are analyzed (including unchanged lines but not subtractions).
+
+!!! info "Important"
+    This feature requires special permissions to perform successfully.
+    See our [documented permissions](permissions.md)
+
+    lines-changed-only: # optional
+    # Set this option to false to analyze any source files in the repo.
+This is automatically enabled if [`lines-changed-only`](#lines-changed-only) is enabled.
+
+!!! info "Important"
+    This feature requires special permissions to perform successfully.
+    See our [documented permissions](permissions.md)
+
+    files-changed-only: # optional, default is true
+    # Set this option with string of path(s) to ignore.
+
+- In the case of multiple paths, you can use a pipe character (`|`)
+  to separate the multiple paths. Multiple lines are forbidden as an input to this option;
+  it must be a single string.
+- This can also have files, but the file's relative path has to be specified
+  as well.
+- There is no need to use `./` for each entry; a blank string (`''`) represents
+  the [`repo-root`](#repo-root) path.
+- Submodules are automatically ignored. Hidden directories (beginning with a `.`) are also ignored
+  automatically.
+- Prefix a path with a bang (`!`) to make it explicitly _not_ ignored. The order of
+  multiple paths does _not_ take precedence. The `!` prefix can be applied to
+  a submodule's path (if desired) but not hidden directories.
+- **As of v2.12**, glob patterns are supported here.
+  All asterisk characters (`*`) were previously literal.
+
+    ignore: # optional, default is .github
+    # Use this option to allow clang-tidy to ignore certain paths/files.
+See [`ignore`](#ignore) for more details on possible values.
+    ignore-tidy: # optional, default is .github
+    # Use this option to allow clang-format to ignore certain paths/files.
+See [`ignore`](#ignore) for more details on possible values.
+    ignore-format: # optional, default is .github
+    # This controls the behavior of posted thread comments as feedback. The following options are supported:
+
+- `true`: enable the use of thread comments. This will always delete an outdated thread comment and post a new comment (triggering a notification for every comment).
+- `update`: update an existing thread comment if one already exists. This option does not trigger a new notification for every thread comment update.
+- `false`: disable the use of thread comments.
+
+!!! info "Important"
+    This feature requires special permissions to perform successfully.
+    See our [documented permissions](permissions.md)
+
+> [!NOTE]
+> If run on a private repository, then this feature is disabled because the GitHub REST API behaves differently for thread comments on a private repository.
+
+    thread-comments: # optional, default is false
+    # Set this option to true or false to enable or disable the use of a
+thread comment or pull request review that basically says 'Looks Good To Me' (when all checks pass).
+The default value, `true` means no LGTM comment posted.
+
+See [`thread-comments`](#thread-comments), [`tidy-review`](#tidy-review),
+and [`format-review`](#format-review) options for further details.
+
+    no-lgtm: # optional, default is true
+    # Set this option to true to append content as part of workflow's job summary.
+
+See implementation details in GitHub's documentation about
+[Adding a job summary](https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary).
+This option is independent of the [`thread-comments`](#thread-comments) option,
+rather this option uses the same content that the
+[`thread-comments`](#thread-comments) option would use.
+
+> [!NOTE]
+> The [`no-lgtm`](#no-lgtm) option is _not_ applied to step summaries.
+
+    step-summary: # optional
+    # Set this option to false to disable the use of file annotations as feedback.
+
+    file-annotations: # optional, default is true
+    # The directory containing compilation database (like compile_commands.json) file.
+    database: # optional, default is 
+    # A string of extra arguments passed to clang-tidy for use as compiler arguments.
+Multiple arguments are separated by spaces so the argument name and value should
+use an `=` sign instead of a space.
+
+!!! example
+
+    ``` yaml
+    extra-args: '-std=c++17 -Wall'
+    ```
+    This will be passed to clang-tidy as multiple `--extra-arg` options:
+    ```
+    clang-tidy --extra-arg=-std=c++17 --extra-arg=-Wall
+    ```
+
+    extra-args: # optional, default is 
+    # Set this option to `true` to enable Pull Request reviews from clang-tidy.
+
+!!! info "Important"
+    This feature requires special permissions to perform successfully.
+    See our [documented permissions](permissions.md).
+
+    See also [the PR review feature caveats](pr-review-caveats.md).
+
+> [!NOTE]
+> The [`no-lgtm`](#no-lgtm) option is applicable to Pull Request reviews.
+
+    tidy-review: # optional
+    # Set this option to `true` to enable Pull Request reviews from clang-format.
+
+!!! info "Important"
+    This feature requires special permissions to perform successfully.
+    See our [documented permissions](permissions.md).
+
+    See also [the PR review feature caveats](pr-review-caveats.md).
+
+> [!NOTE]
+> The [`no-lgtm`](#no-lgtm) option is applicable to Pull Request reviews.
+
+    format-review: # optional
+    # Set this option to `true` to prevent Pull Request reviews from approving or requesting changes.
+
+    passive-reviews: # optional
+    # The number of jobs to run in parallel.
+If less than or equal to 0, the number of jobs is set to
+use the number of all available CPU cores.
+
+    jobs: # optional, default is 0
+    # Controls the caching of cpp-linter dependencies.
+The installed `clang-format` and `clang-tidy` tools are not cached.
+
+By default, this is enabled.
+Any cached assets are kept within the path to this action's source
+(not in the runner's workspace or temp directory).
+    cache-enable: # optional, default is true
+          ¶
