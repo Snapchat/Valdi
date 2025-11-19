@@ -28,6 +28,7 @@
 #include "valdi/runtime/Context/ViewNodeViewStats.hpp"
 #include "valdi_core/cpp/Context/ComponentPath.hpp"
 
+#include "valdi/runtime/JavaScript/Modules/AttributedTextNativeModuleFactory.hpp"
 #include "valdi/runtime/JavaScript/Modules/FileSystemFactory.hpp"
 #include "valdi/runtime/JavaScript/Modules/JavaScriptModuleFactoryBridge.hpp"
 #include "valdi/runtime/JavaScript/Modules/PersistentStoreModuleFactory.hpp"
@@ -158,6 +159,7 @@ void Runtime::postInit() {
                 _diskCache, _workerQueue, _userSession, _keychain, *_logger, disablePersistentStoreEncryption()));
         }
         registerNativeModuleFactory(makeShared<FileSystemFactory>().toShared());
+        registerNativeModuleFactory(makeShared<AttributedTextNativeModuleFactory>(_colorPalette, *_logger).toShared());
 
         registerJavaScriptModuleFactory(makeShared<ProtobufModuleFactory>(*_resourceManager, _workerQueue, *_logger));
         registerJavaScriptModuleFactory(makeShared<UnicodeModuleFactory>());

@@ -7,6 +7,7 @@
 
 #import "valdi_core/SCValdiWrappedValue+Private.h"
 #import "valdi_core/SCValdiObjCConversionUtils.h"
+#import "valdi_core/SCValdiMarshallableObjectDescriptor.h"
 
 @implementation SCValdiWrappedValue {
     Valdi::Value _value;
@@ -41,6 +42,11 @@
 - (NSString *)debugDescription
 {
     return [NSString stringWithFormat:@"<%@ wrapping %@>", self.description, self.debugString];
+}
+
++ (SCValdiMarshallableObjectDescriptor)valdiMarshallableObjectDescriptor
+{
+    return SCValdiMarshallableObjectDescriptorMake(nil, nil, nil, SCValdiMarshallableObjectTypeUntyped);
 }
 
 @end

@@ -9,6 +9,7 @@
 #import "valdi_core/cpp/Attributes/TextAttributeValue.hpp"
 #import "valdi_core/SCValdiObjCConversionUtils.h"
 #import "valdi_core/UIColor+Valdi.h"
+#import "valdi_core/SCValdiWrappedValue+Private.h"
 
 @implementation SCValdiAttributedText {
     Valdi::Ref<Valdi::TextAttributeValue> _cppInstance;
@@ -20,6 +21,18 @@
 
     if (self) {
         _cppInstance = Valdi::unsafeBridge<Valdi::TextAttributeValue>(cppInstance);
+    }
+
+    return self;
+}
+
+- (instancetype)initWithWrappedValue:(SCValdiWrappedValue*)wrappedValue
+{
+    self = [super init];
+
+    if (self) {
+        _cppInstance = wrappedValue.value.getTypedRef<Valdi::TextAttributeValue>();
+        NSAssert(_cppInstance != nullptr, @"Wrapped value is not a TextAttributeValue");
     }
 
     return self;

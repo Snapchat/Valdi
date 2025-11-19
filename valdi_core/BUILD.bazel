@@ -224,6 +224,7 @@ MAC_OS_DEPENDENCIES = glob([
     "src/valdi_core/ios/**/SCValdiFunction.m",
     "src/valdi_core/ios/**/SCValdiInternedString.mm",
     "src/valdi_core/ios/**/ValueFunctionWithSCValdiFunction.mm",
+    "src/valdi_core/ios/**/SCValdiMarshallableObjectDescriptor.m",
 ])
 
 OBJC_HEADERS = glob(

@@ -18,6 +18,7 @@ typedef NS_ENUM(NSUInteger, SCValdiTextDecoration) {
 };
 
 @protocol SCValdiFunction;
+@class SCValdiWrappedValue;
 
 /**
  SCValdiAttributedText is the Objective-C counter part of
@@ -32,6 +33,8 @@ typedef NS_ENUM(NSUInteger, SCValdiTextDecoration) {
 @property (readonly, nonatomic) NSUInteger partsCount;
 
 - (instancetype)initWithCppInstance:(void*)cppInstance;
+
+- (instancetype)initWithWrappedValue:(SCValdiWrappedValue*)wrappedValue;
 
 /**
  Return the string content for the part at the given index
