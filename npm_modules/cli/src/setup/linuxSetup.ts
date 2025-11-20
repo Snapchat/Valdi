@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { checkCommandExists } from '../utils/cliUtils';
 import { DevSetupHelper, HOME_DIR } from './DevSetupHelper';
-import { ANDROID_LINUX_COMMANDLINE_TOOLS } from './versions';
 
 const BAZELISK_URL = 'https://github.com/bazelbuild/bazelisk/releases/download/v1.26.0/bazelisk-linux-amd64';
 
@@ -32,7 +31,7 @@ export async function linuxSetup(): Promise<void> {
 
   await devSetup.writeEnvVariablesToRcFile([{ name: 'PATH', value: `"$HOME/.valdi/bin:$PATH"` }]);
 
-  await devSetup.setupAndroidSDK(ANDROID_LINUX_COMMANDLINE_TOOLS);
+  await devSetup.setupAndroidSDK();
 
   devSetup.onComplete();
 }

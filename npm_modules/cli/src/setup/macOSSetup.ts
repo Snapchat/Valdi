@@ -2,7 +2,6 @@ import fs from 'fs';
 import { CliError } from '../core/errors';
 import { checkCommandExists, runCliCommand } from '../utils/cliUtils';
 import { DevSetupHelper } from './DevSetupHelper';
-import { ANDROID_MACOS_COMMANDLINE_TOOLS } from './versions';
 
 export async function macOSSetup(): Promise<void> {
   const devSetup = new DevSetupHelper();
@@ -36,7 +35,7 @@ export async function macOSSetup(): Promise<void> {
 
   const javaHome = await runCliCommand('/usr/libexec/java_home');
 
-  await devSetup.setupAndroidSDK(ANDROID_MACOS_COMMANDLINE_TOOLS, javaHome.stdout.trim());
+  await devSetup.setupAndroidSDK(javaHome.stdout.trim());
 
   devSetup.onComplete();
 }
