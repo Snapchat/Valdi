@@ -3,23 +3,86 @@ import path from 'path';
 import { checkCommandExists } from '../utils/cliUtils';
 import { DevSetupHelper, HOME_DIR } from './DevSetupHelper';
 import { ANDROID_LINUX_COMMANDLINE_TOOLS } from './versions';
+import { wrapInColor } from '../utils/logUtils';
+import { ANSI_COLORS } from '../core/constants';
+import { execSync } from 'child_process';
 
 const BAZELISK_URL = 'https://github.com/bazelbuild/bazelisk/releases/download/v1.26.0/bazelisk-linux-amd64';
 
+export async function getLinuxPackageManager(): Promise<string | null> {
+  let pm: string | null = null;
+  const distro = await fs.promises.readFile('/etc/os-release', 'utf8');
+  const match = distro.match(/^ID="?([^"\n]*)"?$/m);
+
+  const distroToPackageManager: { [key: string]: string } = {
+    ubuntu: "apt",
+    fedora: "dnf",
+    debian: "apt",
+    arch: "pacman",
+    linuxmint: "apt",
+    opensuse: "zypper",
+    rhel: "dnf",
+    centos: "dnf",
+    manjaro: "pacman",
+  };
+
+  if (match && match[1]) {
+    return distroToPackageManager[match[1]] || null;
+  } else {
+    if (checkCommandExists('pacman')) {
+      pm = 'pacman';
+    } else if (checkCommandExists('dnf')) {
+      pm = 'dnf';
+    } else if (checkCommandExists('yum')) {
+      pm = 'yum';
+    } else if (checkCommandExists('apt')) {
+      pm = 'apt';
+    }
+  }
+
+  return pm;
+}
+
 export async function linuxSetup(): Promise<void> {
   const devSetup = new DevSetupHelper();
+  const pm = await getLinuxPackageManager();
 
-  await devSetup.runShell('Installing dependencies from apt', [
-    `sudo apt-get install zlib1g-dev git-lfs watchman libfontconfig-dev adb`,
-  ]);
+  if (pm === "apt") {
+    await devSetup.runShell('Installing dependencies from apt', [
+      `sudo apt-get install zlib1g-dev git-lfs watchman libfontconfig-dev adb`,
+    ]);
 
-  await devSetup.runShell('Installing libtinfo5', [
-    `wget http://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2ubuntu0.1_amd64.deb`,
-    `sudo apt install ./libtinfo5_6.3-2ubuntu0.1_amd64.deb`,
-  ]);
+    await devSetup.runShell('Installing libtinfo5', [
+      `wget https://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2ubuntu0.1_amd64.deb`,
+      `sudo apt install ./libtinfo5_6.3-2ubuntu0.1_amd64.deb`,
+    ]);
 
-  if (!checkCommandExists('java')) {
-    await devSetup.runShell('Installing Java Runtime Environment', ['sudo apt install default-jre']);
+    if (!checkCommandExists('java')) {
+      await devSetup.runShell('Installing Java Runtime Environment', ['sudo apt install default-jre']);
+    }
+  } else if (pm === "pacman") {
+    await devSetup.runShell('Installing dependencies from pacman', [
+      `sudo pacman -S zlib git-lfs watchman libfontconfig-dev adb`,
+    ]);
+
+    try {
+      execSync("pacman -Q ncurses5-compat-libs", { stdio: 'ignore' });
+    } catch {
+      await devSetup.runShell('Installing libtinfo5', [
+        `git clone https://aur.archlinux.org/ncurses5-compat-libs.git`,
+        `cd ncurses5-compat-libs`,
+        `makepkg -sic`,
+        `cd ..`
+      ]);
+    }
+
+    if (!checkCommandExists('java')) {
+      await devSetup.runShell('Installing Java Runtime Environment', ['sudo pacman -S jdk17-openjdk']);
+    }
+  } else {
+    console.log(wrapInColor('Unsupported package manager, please install the required dependencies manually:', ANSI_COLORS.RED_COLOR));
+    console.log(wrapInColor('zlib git-lfs watchman libfontconfig-dev adb libtinfo5 openjdk-17', ANSI_COLORS.RED_COLOR));
+    console.log()
   }
 
   const bazeliskPathSuffix = '.valdi/bin/bazelisk';

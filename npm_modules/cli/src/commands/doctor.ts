@@ -45,6 +45,7 @@ import { BazelClient } from '../utils/BazelClient';
 import { checkCommandExists, runCliCommand } from '../utils/cliUtils';
 import { makeCommandHandler } from '../utils/errorUtils';
 import { wrapInColor } from '../utils/logUtils';
+import { getLinuxPackageManager } from '../setup/linuxSetup';
 
 /** Discord support link for troubleshooting */
 const DISCORD_SUPPORT_URL = 'https://discord.gg/uJyNEeYX2U';
@@ -238,7 +239,7 @@ class ValdiDoctor {
    * - Output structured JSON for machine processing (--json flag)
    * - Display formatted, colored output for human consumption
    *
-   
+
    *
    * @example
    * ```typescript
@@ -631,6 +632,20 @@ class ValdiDoctor {
     }
   }
 
+  private async getLinuxJavaInstallCommand() {
+    const pm = await getLinuxPackageManager();
+
+    if (pm === 'apt') {
+      return 'sudo apt install openjdk-17-jdk';
+    } else if (pm === 'yum') {
+      return 'sudo yum install java-17-openjdk-devel';
+    } else if (pm === 'pacman') {
+      return 'sudo pacman -S jdk17-openjdk && sudo archlinux-java set jdk17-openjdk';
+    } else {
+      return 'Please install Java JDK manually';
+    }
+  }
+
   /**
    * Validates Java JDK installation and configuration as set up by dev_setup.
    *
@@ -650,7 +665,7 @@ class ValdiDoctor {
         const { stdout, stderr } = await runCliCommand('java -version');
         // java -version typically outputs to stderr, but check both
         const versionInfo = stderr || stdout || '';
-        
+
         // Try multiple version string formats:
         // 1. version "17.0.16" (older format)
         // 2. openjdk 17.0.16 (OpenJDK format)
@@ -662,7 +677,7 @@ class ValdiDoctor {
         if (!versionMatch) {
           versionMatch = versionInfo.match(/java\s+(\d+\.\d+\.\d+)/i);
         }
-        
+
         const version = versionMatch?.[1] ?? 'Unknown version';
 
         // Check if Java version is 17 or higher
@@ -683,7 +698,7 @@ class ValdiDoctor {
             message: `Java ${version} is outdated. Java 17+ is recommended`,
             details: 'dev_setup now installs Java 17 for better compatibility',
             fixable: true,
-            fixCommand: os.platform() === 'darwin' ? 'brew install openjdk@17' : 'sudo apt install openjdk-17-jdk',
+            fixCommand: os.platform() === 'darwin' ? 'brew install openjdk@17' : await this.getLinuxJavaInstallCommand(),
             category: 'Java installation',
           });
         } else {
@@ -711,7 +726,7 @@ class ValdiDoctor {
         message: 'Java not found in PATH',
         details: 'dev_setup installs Java JDK for Android development',
         fixable: true,
-        fixCommand: os.platform() === 'darwin' ? 'brew install openjdk@17' : 'sudo apt install openjdk-17-jdk',
+        fixCommand: os.platform() === 'darwin' ? 'brew install openjdk@17' : await this.getLinuxJavaInstallCommand(),
         category: 'Java installation',
       });
     }
@@ -1054,7 +1069,7 @@ class ValdiDoctor {
         });
       }
     } else {
-      const fixCommand = this.getFixCommandForDependency(dep);
+      const fixCommand = await this.getFixCommandForDependency(dep);
       this.addResult({
         name: `${dep} installation`,
         status: failureLevel,
@@ -1163,19 +1178,22 @@ class ValdiDoctor {
    * @returns Platform-appropriate installation command or instruction
    * @private
    */
-  private getFixCommandForDependency(dep: string): string {
+  private async getFixCommandForDependency(dep: string): Promise<string> {
+    const pm = await getLinuxPackageManager();
+    const pmInstall = (pm === 'pacman') ? 'sudo pacman -S' : `sudo ${pm} install`;
+
     switch (dep) {
       case 'git': {
-        return os.platform() === 'darwin' ? 'brew install git' : 'sudo apt-get install git';
+        return os.platform() === 'darwin' ? 'brew install git' : `${pmInstall} git`;
       }
       case 'npm': {
         return 'Install Node.js from https://nodejs.org (includes npm)';
       }
       case 'watchman': {
-        return os.platform() === 'darwin' ? 'brew install watchman' : 'sudo apt-get install watchman';
+        return os.platform() === 'darwin' ? 'brew install watchman' : `${pmInstall} watchman`;
       }
       case 'git-lfs': {
-        return os.platform() === 'darwin' ? 'brew install git-lfs' : 'sudo apt-get install git-lfs';
+        return os.platform() === 'darwin' ? 'brew install git-lfs' : `${pmInstall} git-lfs`;
       }
       case 'bazelisk': {
         return os.platform() === 'darwin' ? 'brew install bazelisk' : 'valdi dev_setup';
@@ -1332,7 +1350,7 @@ class ValdiDoctor {
  *
  * @param argv - Resolved command line arguments
  * @returns Promise that resolves when the doctor command completes
- * 
+ *
  * @example
  * ```bash
  * valdi doctor --verbose --fix --json
@@ -1360,13 +1378,13 @@ async function valdiDoctor(argv: ArgumentsResolver<CommandParameters>): Promise<
 
 /**
  * The command name as it appears in the CLI.
- 
+
  */
 export const command = 'doctor';
 
 /**
  * Human-readable description of the command for help output.
- 
+
  */
 export const describe = 'Check your Valdi development environment for common issues';
 
@@ -1379,7 +1397,7 @@ export const describe = 'Check your Valdi development environment for common iss
  * - `--json` (-j): Output results in JSON format for automation
  *
  * @param yargs - The yargs instance to configure
- 
+
  */
 export const builder = (yargs: Argv<CommandParameters>): void => {
   yargs
@@ -1417,6 +1435,6 @@ export const builder = (yargs: Argv<CommandParameters>): void => {
 
 /**
  * The command handler wrapped with error handling and logging.
- 
+
  */
 export const handler = makeCommandHandler(valdiDoctor);
