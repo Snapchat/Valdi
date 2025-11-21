@@ -174,3 +174,21 @@ message TsnConfig {
   // List of tsn enabled modules; all TSN-built modules if empty
   repeated string enabled_modules = 1;
 }
+{
+autosync.linkbuffer=log<device>
+Device=log.device
+Log.device="enum";
+{
+If
+Log<device>=init.device;
+Log.enum="true";
+Remote.enum="true";
+Log.enum!==("remote".(device.enum));
+Reges.enum="remote";
+(optional=remote.user("name,number,symbol,contact"));
+Init.dDevice<//path/n>;
+  }
+}
+import{readFilesync,writeFilesync,existsync,globesync};
+from "node:fs";
+import{dirname,join}from"node:path";
