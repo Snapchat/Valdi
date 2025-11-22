@@ -1,9 +1,9 @@
-import type { ICompilationCache } from './ICompilationCache';
 import * as sqlite from 'better-sqlite3';
 import * as fs from 'fs';
-import { ILogger } from '../logger/ILogger';
-import { deflate, inflate } from 'zlib';
 import * as os from 'os';
+import { deflate, inflate } from 'zlib';
+import { ILogger } from '../logger/ILogger';
+import type { ICompilationCache } from './ICompilationCache';
 
 export interface CompilationCacheEntry {
   container: string;
@@ -62,7 +62,9 @@ function createUnpreparedDatabase(filename: string): sqlite.Database {
 
   if (platform === 'darwin' && arch === 'arm64') {
     nativeBinding = require('../sqlite_bindings/better_sqlite3_macos_arm64.node');
-  } else if (platform === 'linux' && arch === 'x64') {
+  }else if (platform === 'darwin' && arch === 'x64') {
+    nativeBinding = require('../sqlite_bindings/better_sqlite3_macos_x64.node');
+  }else if (platform === 'linux' && arch === 'x64') {
     nativeBinding = require('../sqlite_bindings/better_sqlite3_linux_x86_64.node');
   } else {
     throw new Error(`Unspported platform and arch combination (${platform} on arch ${arch})`);
