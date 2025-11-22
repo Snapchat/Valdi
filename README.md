@@ -120,7 +120,7 @@ Valdi generates type-safe bindings between TypeScript and native platforms:
 
 ## Need Help?
 
-Join our [Discord](https://discord.gg/uJyNEeYX2U) for support.
+Join our [Discord](https://discord.gg/uJyNEeYX2U) and thank you for your support.
 
 ## Contributing
 
