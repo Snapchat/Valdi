@@ -53,7 +53,7 @@ Value HTTPRequestManagerModuleFactory::loadModule() {
             // Validate URL to prevent SSRF attacks
             if (!HTTPRequestManagerUtils::isUrlAllowed(url)) {
                 callContext.getExceptionTracker().onError(
-                    Error("URL not allowed: blocked localhost, private IP, or cloud metadata"));
+                    Error("URL not allowed!"));
                 return Value::undefined();
             }
             
