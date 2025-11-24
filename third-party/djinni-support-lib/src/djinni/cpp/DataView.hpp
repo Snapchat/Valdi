@@ -29,6 +29,10 @@ public:
 
     DataView(const DataView&) = default;
 
+    DataView& operator=(DataView&&) = default;
+    
+    DataView& operator=(const DataView&) = default;
+
     uint8_t* buf() const {
         return _buf;
     }
@@ -38,7 +42,7 @@ public:
 
 private:
     uint8_t* _buf;
-    const size_t _len;
+    size_t _len;
 };
 
 } // namespace djinni
