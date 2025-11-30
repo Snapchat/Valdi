@@ -63,7 +63,7 @@ valdi install ios  # or android
 - [Frequently Asked Questions](./docs/docs/faq.md)
 - [Component Library](https://github.com/Snapchat/Valdi_Widgets)
 
-## Why Choose Valdi?
+## Why Valdi?
 
 Valdi is a cross-platform UI framework designed to solve the fundamental problem of cross-platform development: velocity vs. runtime performance. For 8 years, it has powered a large portion of Snap's production apps.
 
