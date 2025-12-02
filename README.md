@@ -117,6 +117,10 @@ Valdi generates type-safe bindings between TypeScript and native platforms:
 - **[Advanced gesture recognition](./docs/docs/core-touches.md)** with platform-native handling
 - **[Built-in testing framework](./docs/docs/workflow-testing.md)** with component-level unit tests
 - **[Bazel integration](./docs/docs/workflow-bazel.md)** for reproducible, incremental builds
+### How to install 
+
+Please refer to  [installation guide]( https://github.com/SnapChat/Valdi/blob/main/docs/INSTALL.md) for detailed setup instructions
+
 
 ## Need Help?
 
