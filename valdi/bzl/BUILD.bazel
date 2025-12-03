@@ -1,0 +1,3 @@
+
+# This allows labels like //bzl:workspace_prepare.bzl to resolve.
+package(default_visibility = ["//visibility:public"])
