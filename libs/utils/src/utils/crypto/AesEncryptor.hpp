@@ -16,7 +16,7 @@ class Span;
 namespace snap::utils::crypto {
 
 /**
- * Convenience class for encrypting/decrypting bytes using AES-128-GCM (128-bit keys and 96-bit nonce/iv).
+ * Convenience class for encrypting/decrypting bytes using AES-256-GCM (256-bit keys and 96-bit nonce/iv).
  * Once initialized with a key, this class should only be used for one round of encryption.
  * Keys and IVs MUST be generated with secure randomness. See utils::generateSecureRandomBytes.
  * DO NOT encrypt more than once with the same key and IV.
@@ -32,7 +32,7 @@ namespace snap::utils::crypto {
  */
 class AesEncryptor {
 public:
-    using Key = std::array<uint8_t, 16>;
+    using Key = std::array<uint8_t, 32>;
     using Iv = std::array<uint8_t, 12>;
 
     // TODO: Allow re-use of keys and setting the IV.
