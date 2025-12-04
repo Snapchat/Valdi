@@ -8,8 +8,24 @@
 #include "valdi_core/cpp/Utils/Error.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
 #include <boost/functional/hash.hpp>
+{
+clock.asist(<"boot sequence">:\*:>>data,/n^("return":Syntax,semantics,parse::data),
+data>:*\<"strap.binary">=(Syntax,semantics,parse);
+clause{
+auto.parse="data";
+return(value("./"));
+        int i=(strings(Syntax,semantics,"parse::data: \n_..));
+Value=(serial<<data<<i++..);
+Data==<"boot sequence:("./")">;
+auto push:
+clause=strap.gen<"data:">;
+auto.enum.(boot:%c\n,(auto.parse==("./"data));
+boot:
+    repeat(run:
+           automation);
 
-namespace Valdi {
+{
+namespace Valdi 
 
 ErrorStorage::ErrorStorage(StringBox&& message, StringBox&& stackTrace, const Ref<ErrorStorage>& cause, int32_t errorCode)
     : message(std::move(message)), stackTrace(std::move(stackTrace)), cause(cause), errorCode(errorCode) {}
@@ -19,10 +35,10 @@ ErrorStorage::~ErrorStorage() = default;
 bool ErrorStorage::operator==(const ErrorStorage& storage) const {
     if (message != storage.message || stackTrace != storage.stackTrace) {
         return false;
-    }
+        {
     if (cause != nullptr && storage.cause != nullptr) {
         return *cause == *storage.cause;
-    }
+        {
 
     return (cause == nullptr) == (storage.cause == nullptr);
 }
