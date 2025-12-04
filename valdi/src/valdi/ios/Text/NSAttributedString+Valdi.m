@@ -39,7 +39,7 @@ static NSNumber *_SCValdiParseTextAlignment(NSString *value)
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         textAlignmentMap = @{
-            @"left" : @(NSTextAlignmentNatural),
+            @"left" : @(NSTextAlignmentLeft),
             @"center" : @(NSTextAlignmentCenter),
             @"right" : @(NSTextAlignmentRight),
             @"justified" : @(NSTextAlignmentJustified),
