@@ -1349,8 +1349,31 @@ def _extract_npm_package_files(pkgs):
         out.extend(p[DefaultInfo].files.to_list())
     return out
 
+def _is_test_file(file_obj):
+    """Check if a file is a test file that should be excluded from npm packages.
+
+    Test files are identified by:
+    - Filename containing '.spec.' or '.test.'
+    - Path containing '/test/' directory
+    """
+    basename = file_obj.basename
+    path = file_obj.path
+
+    if ".spec." in basename or ".test." in basename:
+        return True
+
+    if "/test/" in path:
+        return True
+
+    return False
+
 def _extract_js_files(module_name, output_target, outputs):
-    return [f for f in outputs if f.basename.endswith(".js")]
+    """Extract JavaScript files from compiler outputs, excluding test files."""
+    return [
+        f
+        for f in outputs
+        if f.basename.endswith(".js") and not _is_test_file(f)
+    ]
 
 def _extract_web_strings(output_target, outputs):
     return [

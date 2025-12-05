@@ -133,10 +133,24 @@ export class WebValdiImage extends WebValdiLayout {
     }
   }
 
+  // Finds the first valid src string in a nested object.
+  private recursivelyResolveSrc(src: Record<string, any> | string | undefined): string | undefined {
+    if (!src) {
+      return undefined;
+    }
+
+    if (typeof src === 'string') {
+      return src;
+    }
+
+    return this.recursivelyResolveSrc(src?.src);
+  }
+
   changeAttribute(attributeName: string, attributeValue: any): void {
     switch (attributeName) {
       case 'src':
-        const src = typeof attributeValue === 'string' ? attributeValue : attributeValue?.src;
+        const src = this.recursivelyResolveSrc(attributeValue);
+
         if (src && this.img.src !== src) {
           this.img.src = src;
         }

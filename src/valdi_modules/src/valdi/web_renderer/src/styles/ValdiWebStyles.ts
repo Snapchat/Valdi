@@ -47,7 +47,9 @@ export function generateStyles(attribute: string, value: any): Partial<CSSStyleD
   if (attribute === 'font') {
     const [fontFamily, fontSize, fontWeight] = value.split(' ');
     return {
+      fontFamily,
       fontSize: `${fontSize}px`,
+      fontWeight,
     };
   }
 

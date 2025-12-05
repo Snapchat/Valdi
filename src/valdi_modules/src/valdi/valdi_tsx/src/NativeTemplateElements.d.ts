@@ -714,6 +714,20 @@ interface ViewAttributes {
    */
   boxShadow?: string;
 
+  /**
+   * [Web-Only]
+   * Sets the mouse cursor to be displayed when hovering over the element.
+   * This property is only effective on web platforms.
+   * @example
+   * ```
+   * cursor="pointer"
+   * cursor="default"
+   * cursor="not-allowed"
+   * ```
+   * @default: "default"
+   */
+  cursor?: string;
+
   // Gestures
 
   /**
