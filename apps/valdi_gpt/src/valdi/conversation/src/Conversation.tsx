@@ -4,9 +4,9 @@ import { Message, MesssageViewModel } from './Message';
 import { InputBar } from './InputBar';
 import { AiService, GptRole } from '../../ai_service/src/AiService';
 
-export interface ConversationViewModel {}
+export interface ConversationViewModel { }
 
-export interface ConversationContext {}
+export interface ConversationContext { }
 
 interface ConversationState {
   results: MesssageViewModel[];
@@ -29,7 +29,7 @@ export class Conversation extends StatefulComponent<ConversationViewModel, Conve
       <InputBar onSubmit={this.onSubmit} />
       <scroll>
         <view flexDirection="column-reverse" paddingTop={20}>
-          {[...this.state!.results].reverse().forEach(message => (
+          {[...this.state!.results].reverse().map(message => (
             <Message text={message.text} outbound={message.outbound} />
           ))}
         </view>
