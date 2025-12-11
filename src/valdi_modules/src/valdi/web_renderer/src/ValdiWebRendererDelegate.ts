@@ -71,11 +71,11 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
   onNextLayoutComplete(callback: () => void): void {}
   onRenderStart(): void {
     // TODO(mgharmalkar)
-    console.log('onRenderStart');
+    // console.log('onRenderStart');
   }
   onRenderEnd(): void {
     // TODO(mgharmalkar)
-    console.log('onRenderEnd');
+    // console.log('onRenderEnd');
   }
   onAnimationStart(options: AnimationOptions, token: number): void {
     // TODO: no animation support on web yet, so just call completion with cancelled = false.
@@ -85,11 +85,11 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
   onAnimationCancel(token: number): void {}
   registerVisibilityObserver(observer: VisibilityObserver): void {
     // TODO(mgharmalkar)
-    console.log('registerVisibilityObserver');
+    // console.log('registerVisibilityObserver');
   }
   registerFrameObserver(observer: FrameObserver): void {
     // TOOD(mgharmalkar)
-    console.log('registerFrameObserver');
+    // console.log('registerFrameObserver');
   }
   getNativeView(id: number, callback: (instance: NativeView | undefined) => void): void {}
   getNativeNode(id: number): NativeNode | undefined {

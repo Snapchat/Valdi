@@ -1,4 +1,3 @@
-console.log("start loading everything");
 
 const path = require('path-browserify');
 
@@ -64,7 +63,7 @@ class Runtime {
   // For navigation loading.
   requireByComponent(componentName) {
     if (this.componentPaths.has(componentName)) {
-      console.log("found component in cache");
+      // console.log("found component in cache");
       return this.componentPaths.get(componentName);
     }
 
@@ -75,7 +74,7 @@ class Runtime {
         // Component path is set by the NavigationPage annotation.
         if (component != null && component.hasOwnProperty('componentPath')) {
           if (!this.componentPaths.has(component.componentPath)) {
-            console.log('adding ', component.componentPath);
+            // console.log('adding ', component.componentPath);
             this.componentPaths.set(component.componentPath, component);
           }
 
@@ -105,20 +104,20 @@ class Runtime {
   }
 
   submitRawRenderRequest(renderRequest) {
-    console.log("submitRawRenderRequest", renderRequest);
+    // console.log("submitRawRenderRequest", renderRequest);
   }
 
   createContext(manager) {
-    console.log("createContext", manager);
+    // console.log("createContext", manager);
     return "contextId";
   }
 
   setLayoutSpecs(contextId, width, height, rtl) {
-    console.log("setLayoutSpecs", contextId, width, height, rtl);
+    // console.log("setLayoutSpecs", contextId, width, height, rtl);
   }
 
   postMessage(contextId, command, params) {
-    console.log("postMessage", contextId, command, params);
+    // console.log("postMessage", contextId, command, params);
   }
 
   getAssets(catalogPath) {
@@ -149,7 +148,7 @@ class Runtime {
   }
 
   pushCurrentContext(contextId) {
-    console.log("pushCurrentContext", contextId);
+    // console.log("pushCurrentContext", contextId);
   }
 
   popCurrentContext() {}
@@ -383,5 +382,3 @@ require("../../valdi_core/src/Init.js");
 
 // Restore console
 globalThis.console = globalThis.__originalConsole__;
-
-console.log("end loading everything");
