@@ -69,6 +69,7 @@ public:
     virtual void emitSlowSyncJsCallThreshold(const StringBox& module, const MetricsDuration& duration) = 0;
 
     virtual void emitLoadModuleMemory(const StringBox& module, int64_t totalMemory, int64_t ownMemory) {};
+    virtual void emitLoadModuleDuration(const StringBox& module, int64_t totalDuration, int64_t ownDuration) {};
 
     static ScopedMetrics scopedOnScrollLatency(const Ref<Metrics>& metrics,
                                                const StringBox& module,

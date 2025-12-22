@@ -146,9 +146,16 @@ enum class ModuleLoadMode {
 
 using ModuleLoadResult = std::pair<JSValueRef, ModuleLoadMode>;
 
-struct ModuleMemoryConsumptionInfo {
-    ptrdiff_t waterMark;           // The memory usage water mark before loading
-    ptrdiff_t childrenConsumption; // Total memory usage by children of this module
+/**
+Module resource consumption info, i.e. memory and duration;
+Currently, we monitor resource consumption only if the memory usage is available.
+*/
+struct ModuleResourceConsumptionInfo {
+    int64_t memoryWaterMark;     // The memory usage water mark before loading
+    int64_t childrenMemoryUsage; // Total memory usage by children of this module
+
+    int64_t timestamp;        // Timestamp before loading
+    int64_t childrenDuration; // Total duration of children of this module
 };
 
 /**
@@ -375,7 +382,7 @@ private:
 
     const bool _isWorker;
 
-    std::vector<ModuleMemoryConsumptionInfo> _moduleMemoryTracker;
+    std::vector<ModuleResourceConsumptionInfo> _moduleResourceTracker;
 
     void doInitialize();
 

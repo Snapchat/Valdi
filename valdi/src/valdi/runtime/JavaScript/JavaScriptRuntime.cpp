@@ -123,20 +123,36 @@ static ContextId getParameterAsContextId(JSFunctionNativeCallContext& callContex
     return static_cast<ContextId>(callContext.getParameterAsInt(index));
 }
 
-static ptrdiff_t getMemoryUsageBytes() {
+static int64_t getMemoryUsageBytes() {
 #if defined(__ANDROID__)
-    auto mi = mallinfo();
-    return ptrdiff_t(mi.uordblks);
+    // mallinfo2 is available from API 33 (Android 13) onwards.
+    // __ANDROID_API__ is provided by the NDK.
+#if defined(__ANDROID_API__) && __ANDROID_API__ >= 33
+    struct mallinfo2 mi = mallinfo2();
+    return static_cast<int64_t>(mi.uordblks);
+#else
+    // Fallback for older Android versions
+    struct mallinfo mi = mallinfo();
+    // In mallinfo, uordblks is an int (32-bit), so this may overflow at 2GB
+    return static_cast<int64_t>(mi.uordblks);
+#endif
+
 #elif defined(__APPLE__)
     task_basic_info info;
     mach_msg_type_number_t count = TASK_BASIC_INFO_COUNT;
     if (task_info(mach_task_self(), TASK_BASIC_INFO, (task_info_t)&info, &count) == KERN_SUCCESS) {
-        return ptrdiff_t(info.resident_size);
+        return static_cast<int64_t>(info.resident_size);
     }
     return 0;
+
 #else
     return 0;
 #endif
+}
+
+static int64_t getCurrentTimestampMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
 }
 
 STRING_CONST(callActionMessageName, "callAction")
@@ -1303,8 +1319,11 @@ JSValueRef JavaScriptRuntime::loadJsModule(IJavaScriptContext& jsContext,
     auto importPathStringView = importPath.toStringView();
     auto nativeModuleInfo = jsContext.getNativeModuleInfo(importPathStringView);
 
-    ptrdiff_t moduleMemoryUsage = 0;
-    ptrdiff_t childrenMemoryUsage = 0;
+    int64_t moduleDuration = 0;
+    int64_t childrenDuration = 0;
+
+    int64_t moduleMemoryUsage = 0;
+    int64_t childrenMemoryUsage = 0;
 
     if (nativeModuleInfo && _resourceManager.enableTSN() &&
         _resourceManager.enableTSNForModule(nativeModuleInfo.value().name)) {
@@ -1332,31 +1351,38 @@ JSValueRef JavaScriptRuntime::loadJsModule(IJavaScriptContext& jsContext,
             return jsContext.newUndefined();
         }
 
-        // Record memory watermark before load
-        auto waterMarkBefore = getMemoryUsageBytes();
+        // Record memory watermark and timestamp mark before load
+        auto memoryWaterMarkBefore = getMemoryUsageBytes();
+        auto timestampBefore = getCurrentTimestampMs();
+
         // 0 if the platform does not support querying memory usage
-        if (waterMarkBefore != 0) {
-            _moduleMemoryTracker.push_back({waterMarkBefore, 0});
+        if (memoryWaterMarkBefore != 0) {
+            _moduleResourceTracker.push_back({memoryWaterMarkBefore, 0, timestampBefore, 0});
         }
 
         result = loadJsModuleFromBytes(
             jsContext, jsFileContent.value().content, importPath, parameters, parametersLength, exceptionTracker);
 
-        if (waterMarkBefore != 0) {
-            // Compuete the memory usage: watermark_after - watermark_before
-            moduleMemoryUsage = getMemoryUsageBytes() - _moduleMemoryTracker.back().waterMark;
+        if (memoryWaterMarkBefore != 0) {
+            // Compute the memory usage: watermark_after - watermark_before
+            moduleMemoryUsage = getMemoryUsageBytes() - _moduleResourceTracker.back().memoryWaterMark;
+
+            // Compute the duration: timestamp_mark_after - timestamp_mark_before
+            moduleDuration = getCurrentTimestampMs() - _moduleResourceTracker.back().timestamp;
+
             // This module's children total (0 if no children)
-            childrenMemoryUsage = _moduleMemoryTracker.back().childrenConsumption;
-            _moduleMemoryTracker.pop_back();
-            if (!_moduleMemoryTracker.empty()) {
+            childrenMemoryUsage = _moduleResourceTracker.back().childrenMemoryUsage;
+            childrenDuration = _moduleResourceTracker.back().childrenDuration;
+            _moduleResourceTracker.pop_back();
+            if (!_moduleResourceTracker.empty()) {
                 // If we are not a top-level module, add usage to the parent module's children total
-                _moduleMemoryTracker.back().childrenConsumption += moduleMemoryUsage;
+                _moduleResourceTracker.back().childrenMemoryUsage += moduleMemoryUsage;
+                _moduleResourceTracker.back().childrenDuration += moduleDuration;
             }
             const auto& metrics = getMetrics();
             if (metrics != nullptr) {
-                metrics->emitLoadModuleMemory(importPath,
-                                              static_cast<int64_t>(moduleMemoryUsage),
-                                              static_cast<int64_t>(moduleMemoryUsage - childrenMemoryUsage));
+                metrics->emitLoadModuleMemory(importPath, moduleMemoryUsage, moduleMemoryUsage - childrenMemoryUsage);
+                metrics->emitLoadModuleDuration(importPath, moduleDuration, moduleDuration - childrenDuration);
             }
         }
     }
@@ -1369,12 +1395,15 @@ JSValueRef JavaScriptRuntime::loadJsModule(IJavaScriptContext& jsContext,
 
     if (Valdi::traceLoadModules) {
         VALDI_INFO(*_logger,
-                   "Loaded JS module {} in {} (load mode: {}) own memory usage: {} total memory usage: {}",
+                   "Loaded JS module {} in {} (load mode: {}) own memory usage: {} total memory usage: {} own "
+                   "duration: {} total duration: {}",
                    importPath,
                    sw.elapsed(),
                    moduleLoadModeToString(result.second),
                    moduleMemoryUsage - childrenMemoryUsage,
-                   moduleMemoryUsage);
+                   moduleMemoryUsage,
+                   moduleDuration - childrenDuration,
+                   moduleDuration);
     }
 
     return std::move(result.first);
