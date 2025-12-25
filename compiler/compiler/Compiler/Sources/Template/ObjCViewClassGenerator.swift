@@ -30,7 +30,7 @@ class ObjCViewClassGenerator: LanguageSpecificViewClassGenerator {
          componentContextClass: IOSType?) {
         self.bundleInfo = bundleInfo
         self.iosType = iosType
-        self.className = iosType.name
+        self.className = iosType.name.replacingOccurrences(of: "-", with: "_")
         self.componentPath = componentPath
         self.sourceFilename = sourceFilename
         self.viewModelClass = viewModelClass
@@ -71,7 +71,7 @@ class ObjCViewClassGenerator: LanguageSpecificViewClassGenerator {
         header.appendBody("@property (readonly, nonatomic) \(className) * _Nullable \(nodeId.camelCased);\n")
         // TODO(3521): Update to SCValdiView
         if !className.hasPrefix("UI") && className != "SCValdiView" {
-            header.appendHeader("@class \(className);\n")
+            header.appendHeader("@class \(className.replacingOccurences(of: "-", with: "_");\n")
         }
 
         impl.appendBody("""
