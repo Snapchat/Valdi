@@ -6,6 +6,8 @@ load(
     "pngquant_linux",
     "pngquant_macos",
     "valdi_compiler_companion_files",
+    "valdi_compiler_linux",
+    "valdi_compiler_macos",
 )
 
 filegroup(
@@ -18,8 +20,8 @@ native_binary(
     name = "valdi_compiler",
     src = select(
         {
-            "@bazel_tools//src/conditions:darwin": "@valdi_compiler_macos//:valdi_compiler",
-            "@bazel_tools//src/conditions:linux_x86_64": "@valdi_compiler_linux//:valdi_compiler",
+            "@bazel_tools//src/conditions:darwin": valdi_compiler_macos(),
+            "@bazel_tools//src/conditions:linux_x86_64": valdi_compiler_linux(),
         },
     ),
     out = "valdi_compiler",

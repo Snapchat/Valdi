@@ -107,7 +107,6 @@ export function generateStyles(attribute: string, value: any): Partial<CSSStyleD
         return { borderRadius: processedParts.join(' ') };
       }
     }
-
     // Other string values (like 'inherit', 'initial', or strings with units) - pass through as-is
     return { borderRadius: value };
   }
@@ -132,6 +131,7 @@ export function generateStyles(attribute: string, value: any): Partial<CSSStyleD
   }
 
   if (!isAttributeValidStyle(attribute)) {
+    console.log('Unimplemented web style:', attribute, '=', value);
     return {};
   }
 
