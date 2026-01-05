@@ -192,14 +192,44 @@ async function collectTsConfigDirs(
   };
 
   const tsConfigDirs = new Map<string, TsConfigDir>();
+  let consolidatedModulesPath: string | undefined;
 
+  // First pass: detect if consolidated setup exists by checking for modules/tsconfig.json
+  // Look for any target under a modules/ directory and check if modules/tsconfig.json exists
+  for (const projectSyncOutput of projectSyncOutputs) {
+    if (projectSyncOutput.target.repo) {
+      continue;
+    }
+
+    const targetPath = bazelLabelToAbsolutePath(workspaceInfo, projectSyncOutput.target);
+    const modulesMatch = targetPath.match(/(.+[/\\]modules)[/\\]/);
+    if (modulesMatch) {
+      const potentialModulesPath = modulesMatch[1]!;
+      const consolidatedTsConfigPath = path.join(potentialModulesPath, 'tsconfig.json');
+      if (fsSync.existsSync(consolidatedTsConfigPath)) {
+        consolidatedModulesPath = potentialModulesPath;
+        break;
+      }
+    }
+  }
+
+  // Second pass: group modules into consolidated dir if detected
   for (const projectSyncOutput of projectSyncOutputs) {
     if (projectSyncOutput.target.repo) {
       // Ignore external repo deps
       continue;
     }
 
-    const tsConfigDirPath = bazelLabelToAbsolutePath(workspaceInfo, projectSyncOutput.target);
+    const targetPath = bazelLabelToAbsolutePath(workspaceInfo, projectSyncOutput.target);
+    
+    // If using consolidated setup and target is under modules/, use consolidated dir
+    let tsConfigDirPath: string;
+    if (consolidatedModulesPath && targetPath.startsWith(consolidatedModulesPath + path.sep)) {
+      tsConfigDirPath = consolidatedModulesPath;
+    } else {
+      tsConfigDirPath = targetPath;
+    }
+
     let tsConfigDir = tsConfigDirs.get(tsConfigDirPath);
     if (!tsConfigDir) {
       tsConfigDir = { dir: tsConfigDirPath, matchedTargets: [] };
@@ -239,9 +269,19 @@ function computeTsCompilerOptions(
     compilerOptions = {};
   }
 
+  // Preserve jsx and lib if they exist, or set defaults
+  if (!compilerOptions.jsx) {
+    compilerOptions.jsx = 'preserve';
+  }
+  if (!compilerOptions.lib) {
+    compilerOptions.lib = ['dom', 'ES2019'];
+  }
+
   compilerOptions.paths = {};
   const rootDirs: string[] = [];
   let valdiCoreTarget: TargetDescription | undefined;
+  const seenDependencies = new Set<string>();
+  
   for (const matchedTarget of matchedTargets) {
     const targetRootDirs = matchedTarget.target.paths.map(p => relativePathTo(tsConfigDir, path.dirname(p)));
 
@@ -254,13 +294,36 @@ function computeTsCompilerOptions(
     const selfName = matchedTarget.target.label.name ?? '';
     const selfInclude = `${selfName}/*`;
 
-    const selfImportPaths = matchedTarget.target.paths.map(p => `${relativePathTo(tsConfigDir, p)}/*`);
+    // For consolidated setup, paths should be relative to modules/ directory
+    // For individual module setup, paths are relative to module directory
+    const selfImportPaths: string[] = [];
+    for (const targetPath of matchedTarget.target.paths) {
+      const relativePath = relativePathTo(tsConfigDir, targetPath);
+      selfImportPaths.push(`${relativePath}/*`);
+      
+      // Add projectsync-generated paths if they exist
+      const targetDir = path.dirname(targetPath);
+      const projectsyncGeneratedDir = path.join(targetDir, '.valdi_build/projectsync/generated_ts', selfName);
+      if (fsSync.existsSync(projectsyncGeneratedDir)) {
+        const relativeProjectsyncPath = relativePathTo(tsConfigDir, projectsyncGeneratedDir);
+        if (!selfImportPaths.includes(`${relativeProjectsyncPath}/*`)) {
+          selfImportPaths.push(`${relativeProjectsyncPath}/*`);
+        }
+      }
+    }
 
     compilerOptions.paths[selfInclude] = selfImportPaths;
 
     for (const dependency of matchedTarget.dependencies) {
-      if (!dependency.label.name || compilerOptions.paths[dependency.label.name]) {
-        // Already present
+      if (!dependency.label.name) {
+        continue;
+      }
+
+      const dependencyKey = `${dependency.label.name}/*`;
+      
+      // For consolidated setup, merge paths from all modules
+      // For individual setup, skip if already present
+      if (seenDependencies.has(dependencyKey) && !compilerOptions.paths[dependencyKey]) {
         continue;
       }
 
@@ -268,10 +331,38 @@ function computeTsCompilerOptions(
         valdiCoreTarget = dependency;
       }
 
-      const importPaths = dependency.paths.map(p => `${relativePathTo(tsConfigDir, p)}/*`);
+      const importPaths: string[] = [];
+      for (const depPath of dependency.paths) {
+        const relativePath = relativePathTo(tsConfigDir, depPath);
+        importPaths.push(`${relativePath}/*`);
+        
+        // Add projectsync-generated paths for external dependencies if they exist
+        const depDir = path.dirname(depPath);
+        const depName = dependency.label.name;
+        if (depName) {
+          const projectsyncGeneratedDir = path.join(depDir, '.valdi_build/projectsync/generated_ts', depName);
+          if (fsSync.existsSync(projectsyncGeneratedDir)) {
+            const relativeProjectsyncPath = relativePathTo(tsConfigDir, projectsyncGeneratedDir);
+            if (!importPaths.includes(`${relativeProjectsyncPath}/*`)) {
+              importPaths.push(`${relativeProjectsyncPath}/*`);
+            }
+          }
+        }
+      }
 
-      const key = `${dependency.label.name}/*`;
-      compilerOptions.paths[key] = importPaths;
+      if (compilerOptions.paths[dependencyKey]) {
+        // Merge with existing paths
+        const existing = compilerOptions.paths[dependencyKey];
+        if (Array.isArray(existing)) {
+          compilerOptions.paths[dependencyKey] = [...new Set([...existing, ...importPaths])];
+        } else {
+          compilerOptions.paths[dependencyKey] = importPaths;
+        }
+      } else {
+        compilerOptions.paths[dependencyKey] = importPaths;
+      }
+      
+      seenDependencies.add(dependencyKey);
     }
   }
 
@@ -284,6 +375,10 @@ function computeTsCompilerOptions(
 
   compilerOptions.types = baseTsFiles.map(p => relativePathTo(tsConfigDir, removeTsFileExtension(p)));
 
+  // Ensure rootDirs includes current directory for consolidated setup
+  if (!rootDirs.includes('.')) {
+    rootDirs.unshift('.');
+  }
   compilerOptions.rootDirs = rootDirs;
 
   return compilerOptions;

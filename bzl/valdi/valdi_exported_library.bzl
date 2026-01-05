@@ -1,7 +1,6 @@
 load("@aspect_rules_js//npm:defs.bzl", "npm_package")
 load("@build_bazel_rules_apple//apple:apple.bzl", "apple_xcframework")
 load("//bzl:expand_template.bzl", "expand_template")
-load("//bzl/android:collect_android_assets.bzl", "collect_android_assets")
 load("//bzl/valdi:rewrite_hdrs.bzl", "rewrite_hdrs")
 load("//bzl/valdi:suffixed_deps.bzl", "get_suffixed_deps")
 load("//bzl/valdi:valdi_collapse_web_paths.bzl", "collapse_native_paths", "collapse_web_paths")
@@ -76,28 +75,6 @@ def valdi_exported_library(
     )
 
     java_deps = java_deps + get_suffixed_deps(deps, "_kt")
-
-    collect_android_assets(
-        name = "{}_android_assets".format(name),
-        valdi_deps = deps,
-        deps = java_deps,
-        output_target = source_set_select(
-            debug = "debug",
-            release = "release",
-        ),
-    )
-
-    valdi_android_aar(
-        name = "{}_android".format(name),
-        java_deps = java_deps,
-        native_deps = [
-            "@valdi//valdi",
-        ] + get_suffixed_deps(deps, "_native"),
-        additional_assets = [":{}_android_assets".format(name)],
-        excluded_class_path_patterns = android_excluded_class_path_patterns,
-        so_name = "lib{}.so".format(name),
-        tags = ["valdi_android_exported_library"],
-    )
 
     package_name = web_package_name
     if npm_scope:

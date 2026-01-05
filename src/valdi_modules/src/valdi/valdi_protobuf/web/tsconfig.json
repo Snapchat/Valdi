@@ -20,5 +20,9 @@
   "include": [
     "**/*",
     "../src/headless/descriptor.ts"      // <-- add (path is relative to this tsconfig)
+  ],
+  "exclude": [
+    "debug/**",
+    "release/**"
   ]
 }

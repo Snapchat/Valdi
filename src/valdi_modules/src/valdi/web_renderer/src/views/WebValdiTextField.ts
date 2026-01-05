@@ -15,6 +15,39 @@ class ValdiInput extends HTMLElement {
 
     this.input = document.createElement('input');
 
+    // Style the inner input to remove default browser borders and outlines
+    Object.assign(this.input.style, {
+      width: '100%',
+      height: '100%',
+      border: 'none',
+      outline: 'none',
+      backgroundColor: 'transparent',
+      padding: 0,
+      margin: 0,
+      boxSizing: 'border-box',
+      MozAppearance: 'textfield',
+      WebkitAppearance: 'none',
+    });
+
+    // Add a style element to ensure no focus outlines
+    const style = document.createElement('style');
+    style.textContent = `
+      input {
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+      }
+      input:focus {
+        outline: none !important;
+        box-shadow: none !important;
+      }
+      input:focus-visible {
+        outline: none !important;
+        box-shadow: none !important;
+      }
+    `;
+    shadow.appendChild(style);
+
     const handleInput = this.debounce((event: Event, reason: string) => {
       const value = this.input.value;
       this.attributeDelegate?.updateAttribute(Number(this.input.getAttribute("id")), "value", value);

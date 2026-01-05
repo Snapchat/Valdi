@@ -16,6 +16,12 @@ function loadPath(path) {
 }
 
 class Runtime {
+  constructor() {
+    // Map of task IDs to timeout IDs for scheduleWorkItem
+    this._taskIdCounter = 1;
+    this._scheduledTasks = new Map();
+  }
+
   // This is essentially the require() function that the runtime is using.
   // relativePath is not the contents of require, it is preprocessed by the runtime.
   loadJsModule(relativePath, requireFunc, module, exports) {
@@ -306,10 +312,32 @@ class Runtime {
   }
 
   scheduleWorkItem(cb, delayMs, interruptible) {
-    return 0;
+    const taskId = this._taskIdCounter++;
+    const delay = delayMs || 0;
+    
+    // Use regular browser setTimeout
+    const timeoutId = window.setTimeout(() => {
+      this._scheduledTasks.delete(taskId);
+      try {
+        cb();
+      } catch (err) {
+        this.onUncaughtError('scheduleWorkItem', err);
+      }
+    }, delay);
+    
+    // Store the timeout ID so we can cancel it
+    this._scheduledTasks.set(taskId, timeoutId);
+    
+    return taskId;
   }
 
-  unscheduleWorkItem(taskId) {}
+  unscheduleWorkItem(taskId) {
+    const timeoutId = this._scheduledTasks.get(taskId);
+    if (timeoutId !== undefined) {
+      globalThis.__originalTimingFunctions__.clearTimeout(timeoutId);
+      this._scheduledTasks.delete(taskId);
+    }
+  }
 
   getCurrentContext() {
     return "";
@@ -375,6 +403,16 @@ globalThis.__originalConsole__ = {
   assert: console.assert.bind(console),
 };
 
+// Capture native browser setTimeout/clearTimeout before Valdi replaces them (like we do for console)
+Object.freeze(globalThis.__originalTimingFunctions__);
+
+globalThis.__originalTimingFunctions__ = {
+  setTimeout: window.setTimeout,
+  clearTimeout: window.clearTimeout,
+  setInterval: window.setInterval,
+  clearInterval: window.clearInterval,
+};
+
 // Run the init function
 // Relies on runtime being set so it must happen after
 // Assumes relative to the monolithic npm
@@ -382,3 +420,9 @@ require("../../valdi_core/src/Init.js");
 
 // Restore console
 globalThis.console = globalThis.__originalConsole__;
+globalThis.setTimeout = globalThis.__originalTimingFunctions__.setTimeout;
+globalThis.clearTimeout = globalThis.__originalTimingFunctions__.clearTimeout;
+globalThis.setInterval = globalThis.__originalTimingFunctions__.setInterval;
+globalThis.clearInterval = globalThis.__originalTimingFunctions__.clearInterval;  
+
+console.log("end loading everything");

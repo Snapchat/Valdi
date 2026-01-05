@@ -60,6 +60,14 @@ if [ -z "$bin_output_path" ]; then
   usage
 fi
 
+# Convert to absolute path before changing directories
+# This ensures the path remains correct after we cd to $BASE_PATH
+ORIGINAL_PWD=$(pwd)
+if [[ "$bin_output_path" != /* ]]; then
+  # Relative path - make it absolute from the original working directory
+  bin_output_path="$ORIGINAL_PWD/$bin_output_path"
+fi
+
 # Main
 cd "$BASE_PATH"
 VARIANT="release"
@@ -142,4 +150,11 @@ source src/composer/jenkins/jenkins_helpers.sh
 mkdir -p "$OUT_DIR"
 rm -f "$OUT_DIR/valdi_compiler"
 cp "$OUTPUT_FILE_PATH" "$OUT_DIR/valdi_compiler"
-)
+
+# Verify the copy succeeded
+if [ ! -f "$OUT_DIR/valdi_compiler" ]; then
+  echo "Error: Failed to copy compiler binary to $OUT_DIR/valdi_compiler" >&2
+  exit 1
+fi
+
+echo "All done."
