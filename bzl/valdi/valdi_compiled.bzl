@@ -130,7 +130,8 @@ def _valdi_compiled_impl(ctx):
 
     outputs = _invoke_valdi_compiler(ctx, module_name, module_yaml)
 
-    code_coverage = ctx.attr.code_coverage[BuildSettingInfo].value
+    # Check if code coverage is enabled via `bazel coverage` command or explicit flag
+    code_coverage = ctx.configuration.coverage_enabled or ctx.attr.code_coverage[BuildSettingInfo].value
 
     if not ctx.attr.single_file_codegen:
         outputs += _compress_generated_android_srcs(ctx, module_name, outputs, code_coverage)
@@ -150,6 +151,7 @@ def _valdi_compiled_impl(ctx):
 valdi_compiled = rule(
     implementation = _valdi_compiled_impl,
     toolchains = [VALDI_TOOLCHAIN_TYPE],
+    fragments = ["coverage"],
     attrs = {
         "module": attr.string(
             doc = "The module name",
@@ -340,7 +342,9 @@ def _invoke_valdi_compiler(ctx, module_name, module_yaml):
 
     localization_mode = ctx.attr.localization_mode[BuildSettingInfo].value
     js_bytecode_format = ctx.attr.js_bytecode_format[BuildSettingInfo].value
-    code_coverage = ctx.attr.code_coverage[BuildSettingInfo].value
+
+    # Check if code coverage is enabled via `bazel coverage` command or explicit flag
+    code_coverage = ctx.configuration.coverage_enabled or ctx.attr.code_coverage[BuildSettingInfo].value
 
     #############
     # 3. Gather all outputs produced by the Valdi compiler
@@ -1235,7 +1239,8 @@ def _generate_module_definition(ctx, name):
 
     # When global code coverage is enabled, force ALL modules (even those with disable_code_coverage=true)
     # to build in debug mode to maintain dependency consistency
-    code_coverage = ctx.attr.code_coverage[BuildSettingInfo].value
+    # Check if code coverage is enabled via `bazel coverage` command or explicit flag
+    code_coverage = ctx.configuration.coverage_enabled or ctx.attr.code_coverage[BuildSettingInfo].value
     android_output_target = "debug" if code_coverage else attr.android_output_target
     ios_output_target = "debug" if code_coverage else attr.ios_output_target
 
@@ -1304,7 +1309,8 @@ def _resolve_module_yaml(ctx, module_name):
 
     # When code coverage is enabled, always generate a new module.yaml with debug output targets
     # even if the module has its own module.yaml file, because we need to override output_target
-    code_coverage = ctx.attr.code_coverage[BuildSettingInfo].value
+    # Check if code coverage is enabled via `bazel coverage` command or explicit flag
+    code_coverage = ctx.configuration.coverage_enabled or ctx.attr.code_coverage[BuildSettingInfo].value
 
     if ctx.file.module_yaml and not code_coverage:
         return (ctx.file.module_yaml, module_definition)

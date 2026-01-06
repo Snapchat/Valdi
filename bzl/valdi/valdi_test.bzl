@@ -20,8 +20,8 @@ def _valdi_test_impl(ctx):
 
     has_tests = len(test_paths) > 0
 
-    # Check if code coverage is enabled
-    code_coverage_enabled = ctx.attr.code_coverage[BuildSettingInfo].value
+    # Check if code coverage is enabled via `bazel coverage` command or explicit flag
+    code_coverage_enabled = ctx.configuration.coverage_enabled or ctx.attr.code_coverage[BuildSettingInfo].value
 
     # Always include standalone module runfiles
     valdimodules = _collect_target_runfiles(ctx.attr.target)
@@ -66,6 +66,7 @@ def _valdi_test_impl(ctx):
 valdi_test = rule(
     implementation = _valdi_test_impl,
     test = True,
+    fragments = ["coverage"],
     attrs = {
         "target": attr.label(
             mandatory = True,
