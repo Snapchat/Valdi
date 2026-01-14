@@ -281,7 +281,6 @@ JavaScriptRuntime::JavaScriptRuntime(IJavaScriptBridge& jsBridge,
       _anrDetector(anrDetector),
       _isDisposed(false),
       _enableDebugger(enableDebugger),
-      _enableStackTraceCapture(enableDebugger),
       _platformType(platformType),
       _isWorker(isWorker) {
     VALDI_DEBUG(*_logger, "Creating JavaScriptRuntime (instance ptr {})", static_cast<void*>(this));
@@ -3011,11 +3010,30 @@ void JavaScriptRuntime::onUnhandledRejectedPromise(IJavaScriptContext& jsContext
 }
 
 Ref<JSStackTraceProvider> JavaScriptRuntime::captureCurrentStackTrace() {
-    if (_javaScriptContext == nullptr || !_enableStackTraceCapture) {
+    if (_javaScriptContext == nullptr) {
+        return nullptr;
+    }
+
+    // Debugger and force flags always enable stack trace capture
+    bool shouldCapture = _forceStackTraceCapture || _enableDebugger;
+
+    if (!shouldCapture && _listener != nullptr && isInJsThread()) {
+        auto currentContext = Context::currentRef();
+        if (currentContext != nullptr && !currentContext->getScopeName().isEmpty()) {
+            auto runtimeTweaks = _listener->getRuntimeTweaks();
+            shouldCapture = runtimeTweaks != nullptr && runtimeTweaks->enableScopedContextStackTraceCapture();
+        }
+    }
+
+    if (!shouldCapture) {
         return nullptr;
     }
 
     return doCaptureCurrentStackTrace(*_javaScriptContext);
+}
+
+void JavaScriptRuntime::setForceStackTraceCapture(bool force) {
+    _forceStackTraceCapture = force;
 }
 
 Ref<JSStackTraceProvider> JavaScriptRuntime::doCaptureCurrentStackTrace(IJavaScriptContext& jsContext) {
@@ -3728,9 +3746,6 @@ const Ref<Metrics>& JavaScriptRuntime::getMetrics() const {
     return _resourceManager.getMetrics();
 }
 
-void JavaScriptRuntime::setEnableStackTraceCapture(bool enableStackTraceCapture) {
-    _enableStackTraceCapture = enableStackTraceCapture;
-}
 
 void JavaScriptRuntime::startProfiling() {
     dispatchOnJsThreadUnattributed([](JavaScriptEntryParameters& entry) { entry.jsContext.startProfiling(); });

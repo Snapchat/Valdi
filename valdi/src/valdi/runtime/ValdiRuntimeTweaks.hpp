@@ -31,6 +31,7 @@ public:
     bool shouldNudgeJSThread() const;
     bool disablePersistentStoreEncryption() const;
     bool skipProtoIndex() const;
+    bool enableScopedContextStackTraceCapture() const;
 
 private:
     Shared<ITweakValueProvider> _tweakValueProvider;

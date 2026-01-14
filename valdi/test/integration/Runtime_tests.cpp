@@ -6696,7 +6696,7 @@ TEST_P(RuntimeFixture, attributesHotReloadErrorOnContext) {
 }
 
 TEST_P(RuntimeFixture, showStackTraceResponsibleForEmittingDanglingReference) {
-    wrapper.runtime->getJavaScriptRuntime()->setEnableStackTraceCapture(true);
+    wrapper.runtime->getJavaScriptRuntime()->setForceStackTraceCapture(true);
 
     auto messageHandler = makeShared<MockRuntimeMessageHandler>();
     wrapper.runtime->setRuntimeMessageHandler(messageHandler);
