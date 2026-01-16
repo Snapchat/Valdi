@@ -1,63 +1,96 @@
 /**
- * Error thrown when a DeferredPromise exceeds its specified timeoutMs.
+ * Error thrown when a DeferredPromise exceeds its specified timeout
  */
 export class DeferredPromiseTimeoutError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(timeoutMs: number) {
+    super(`Promise timed out after ${timeoutMs}ms`);
     this.name = 'DeferredPromiseTimeoutError';
-    Object.setPrototypeOf(this, DeferredPromiseTimeoutError.prototype);
   }
 }
 
 /**
- * Creates a Promise that can later be resolved or rejected
+ * A manually controllable Promise that can be resolved/rejected later.
+ * Supports optional timeout that auto-rejects with a typed error.
  */
 export class DeferredPromise<T> implements PromiseLike<T> {
-  private resolved = false;
-  private timeoutId?: any;
+  private _resolve!: (value: T | PromiseLike<T>) => void;
+  private _reject!: (reason?: unknown) => void;
+  private _isSettled = false;
+  private _timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-  readonly promise: Promise<T>;
-  resolve!: (value: T | PromiseLike<T>) => void;
-  reject!: (reason?: unknown) => void;
+  public readonly promise: Promise<T>;
 
   constructor(timeoutMs?: number) {
-    let res: (value: T | PromiseLike<T>) => void;
-    let rej: (reason?: unknown) => void;
-
-    this.promise = new Promise<T>((_res, _rej) => {
-      res = _res;
-      rej = _rej;
+    this.promise = new Promise<T>((resolve, reject) => {
+      this._resolve = resolve;
+      this._reject = reject;
     });
 
-    this.resolve = value => this.finalize(res, value);
-    this.reject = reason => this.finalize(rej, reason);
+    // Prevent accidental late calls after settlement
+    this.resolve = this._settle(this._resolve);
+    this.reject  = this._settle(this._reject);
 
-    if (timeoutMs !== undefined) {
-      this.timeoutId = setTimeout(() => {
-        this.reject(new DeferredPromiseTimeoutError(`Promise timed out after ${timeoutMs}ms`));
+    if (timeoutMs !== undefined && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      this._timeoutId = setTimeout(() => {
+        this.reject(new DeferredPromiseTimeoutError(timeoutMs));
       }, timeoutMs);
     }
   }
 
   /**
-   * Prevents multiple resolutions and clears any active timeout.
+   * Resolve the promise with a value (idempotent)
    */
-  private finalize(callback: Function, arg: any) {
-    if (this.resolved) return;
-    this.resolved = true;
+  public resolve!: (value: T | PromiseLike<T>) => void;
 
-    if (this.timeoutId) {
-      clearTimeout(this.timeoutId);
-      this.timeoutId = undefined;
-    }
+  /**
+   * Reject the promise with a reason (idempotent)
+   */
+  public reject!: (reason?: unknown) => void;
 
-    callback(arg);
+  /**
+   * Check whether the promise has already been resolved or rejected
+   */
+  public get isSettled(): boolean {
+    return this._isSettled;
   }
 
-  then<T1 = T, T2 = never>(
-    onfulfilled?: (value: T) => T1 | PromiseLike<T1>,
-    onrejected?: (reason: any) => T2 | PromiseLike<T2>,
-  ): Promise<T1 | T2> {
+  /**
+   * Clear timeout (if any) and prevent further settlement
+   */
+  public cancelTimeout(): void {
+    if (this._timeoutId !== undefined) {
+      clearTimeout(this._timeoutId);
+      this._timeoutId = undefined;
+    }
+  }
+
+  private _settle<TFn extends (...args: any[]) => void>(callback: TFn) {
+    return (...args: Parameters<TFn>) => {
+      if (this._isSettled) return;
+      this._isSettled = true;
+
+      this.cancelTimeout(); // always clean up
+
+      callback(...args);
+    };
+  }
+
+  // Make it awaitable / thenable
+  then<TResult1 = T, TResult2 = never>(
+    onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null | undefined,
+    onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null | undefined,
+  ): Promise<TResult1 | TResult2> {
     return this.promise.then(onfulfilled, onrejected);
+  }
+
+  // Optional: make catch() and finally() directly available
+  catch<TResult = never>(
+    onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | null | undefined,
+  ): Promise<T | TResult> {
+    return this.promise.catch(onrejected);
+  }
+
+  finally(onfinally?: (() => void) | null | undefined): Promise<T> {
+    return this.promise.finally(onfinally);
   }
 }
