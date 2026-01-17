@@ -1,4 +1,6 @@
+load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+load("@valdi_npm//:defs.bzl", "npm_link_all_packages")
 load("//bzl/valdi:valdi_module.bzl", "valdi_module")
 
 ####################
@@ -7,20 +9,59 @@ load("//bzl/valdi:valdi_module.bzl", "valdi_module")
 ## Regenerate using ./scripts/regenerate_valdi_modules_build_bazel_files.sh
 ####################
 
+# Symlink parent src type definitions into web directory so they're accessible at ../src/
+genrule(
+    name = "web_src_types",
+    srcs = [
+        "src/types.d.ts",
+        "src/ValdiProtobuf.d.ts",
+    ],
+    outs = [
+        "web/src_symlink/types.d.ts",
+        "web/src_symlink/ValdiProtobuf.d.ts",
+    ],
+    cmd = "cp $(SRCS) $(@D)/web/src_symlink/",
+)
+
+# Web code - production and tests compiled together
+# No npm deps specified so this can build in external workspaces without @valdi_npm
 ts_project(
-    name = "valdi_protobuf_web",
-    srcs = glob([
-        "web/**/*.ts",
-        "src/**/*.d.ts",
-        "src/headless/protobuf-js.d.ts",
-        "src/headless/descriptor.ts",
-    ]),
+    name = "valdi_protobuf_web_compiled",
+    srcs = glob(
+        [
+            "web/**/*.ts",
+            "web/**/*.d.ts",
+        ],
+        exclude = [
+            "**/*.js",
+            "web/node_modules/**",
+            "web/src_symlink/**",  # Exclude the generated symlink
+        ],
+    ) + [
+        ":web_src_types",
+    ],
     allow_js = True,
     composite = True,
+    declaration = True,
+    out_dir = "web",
     resolve_json_module = True,
+    root_dir = "web",
     supports_workers = -1,
     transpiler = "tsc",
     tsconfig = "web/tsconfig.json",
+)
+
+# Expose compiled files at web/ path for valdi_module consumption
+js_library(
+    name = "valdi_protobuf_web",
+    srcs = [":valdi_protobuf_web_compiled"],
+    visibility = ["//visibility:public"],
+)
+
+# Export proto files for web tests
+js_library(
+    name = "proto_files",
+    srcs = ["test/proto.protodecl"],
 )
 
 valdi_module(
@@ -37,6 +78,7 @@ valdi_module(
         exclude = [
             "**/scripts/**",
             "**/proto/**",
+            "**/headless/**",  # web-only code, included via web_deps
         ],
     ) + [
         "tsconfig.json",
@@ -45,9 +87,7 @@ valdi_module(
     ios_module_name = "SCCValdiProtobuf",
     ios_output_target = "release",
     module_yaml = "module.yaml",
-    protodecl_srcs = glob([
-        "test/**/*.protodecl",
-    ]),
+    protodecl_srcs = ["test/proto.protodecl"],
     single_file_codegen = False,
     visibility = ["//visibility:public"],
     web_deps = [":valdi_protobuf_web"],
@@ -56,4 +96,18 @@ valdi_module(
         "//src/valdi_modules/src/valdi/valdi_core",
         "//src/valdi_modules/src/valdi/valdi_standalone",
     ],
+)
+
+# Link npm packages for web tests - at the end so external workspaces can skip this
+npm_link_all_packages(name = "node_modules")
+
+# Web tests - require npm packages so only work in valdi workspace
+js_test(
+    name = "valdi_protobuf_web_test",
+    data = [
+        ":node_modules/jest",
+        ":proto_files",
+        ":valdi_protobuf_web_compiled",
+    ],
+    entry_point = "web/test/run_tests.js",
 )

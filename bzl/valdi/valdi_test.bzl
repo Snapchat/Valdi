@@ -1,4 +1,3 @@
-load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load(":valdi_compiled.bzl", "ValdiModuleInfo")
 
@@ -12,11 +11,18 @@ def _collect_target_runfiles(target):
     source_maps = [m.android_debug_sourcemaps for m in module_infos if m.android_debug_sourcemaps]
     return valdi_modules + source_maps
 
+def _is_test_file(f, path_to_module):
+    """Check if a file is in a 'test' directory relative to the module."""
+
+    # Simple check: file path contains /test/ segment or dirname ends with /test
+    path = f.path
+    return "/test/" in path or path.endswith("/test")
+
 def _valdi_test_impl(ctx):
     standalone_binary = ctx.executable._valdi_standalone_binary
 
     path_to_module = ctx.label.package
-    test_paths = [f for f in ctx.files.srcs if paths.relativize(f.dirname, path_to_module).startswith("test")]
+    test_paths = [f for f in ctx.files.srcs if _is_test_file(f, path_to_module)]
 
     has_tests = len(test_paths) > 0
 

@@ -1,14 +1,20 @@
-import type { ValdiProtobufModule } from '../src/ValdiProtobuf';
+import type { ValdiProtobufModule } from './src_symlink/ValdiProtobuf';
 
-// This gets mapped correctly at runtime by package.json.tmpl
-// And at build time by the tsconfig in this directory
-import * as protobuf from '#root/src/valdi_protobuf/src/headless/protobuf-js';
-import descriptorJson from '#root/src/valdi_protobuf/src/headless/descriptor';
+// Re-export types needed by headless modules
+export { FieldType } from './src_symlink/ValdiProtobuf';
 
-// Normalize JSON shape (works for both ESM and CJS outputs)
-const descriptor = (descriptorJson as any)?.default ?? descriptorJson;
-const descriptorRoot = protobuf.Root.fromJSON(descriptor);
-const FileDescriptorSet = descriptorRoot.lookupType("google.protobuf.FileDescriptorSet");
+// Re-export @protobuf-ts/runtime types for tests (web/ is excluded from Valdi compiler checks)
+export { ScalarType, RepeatType } from '@protobuf-ts/runtime';
+export type {
+  ValdiProtobufModule,
+  IField,
+  ILoadMessageResult,
+  INativeMessageArena,
+  INativeMessageFactory,
+  INativeNamespaceEntries,
+  INativeMessageIndex,
+  NativeFieldValues,
+} from './src_symlink/ValdiProtobuf';
 
 /** Webpack's require.context typing (used by Bazel/webpack builds) */
 interface WebpackRequireContext {
@@ -30,8 +36,8 @@ function getWebpackContext(): WebpackRequireContext | undefined {
 }
 
 /**
- * Loads the compiled protodecl JS (bytes), decodes one or more concatenated
- * FileDescriptorSets, merges them, and returns the encoded union.
+ * Loads the compiled protodecl JS (bytes) and returns the raw buffer.
+ * The VALDIPRO header (if present) is stripped by DescriptorDatabase.
  *
  * @param path e.g. "proto.protodecl" (without ".js")
  */
@@ -46,40 +52,12 @@ function loadFn(path: string): Uint8Array {
   // NOTE: your regex is /\.protodecl\.js$/, so `path` should include `.protodecl`
   // ex: "proto.protodecl" -> "./proto.protodecl.js"
   const mod: any = context(`./${path}.js`);
-  const bytes: Uint8Array = (mod?.default ?? mod) as Uint8Array;
-
-  const reader = protobuf.Reader.create(bytes);
-  const descriptorSets: Array<protobuf.Message<{}>> = [];
-
-  while (reader.pos < reader.len) {
-    try {
-      const set = FileDescriptorSet.decode(reader);
-      descriptorSets.push(set);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error("Decode failed at offset", reader.pos, e);
-      break;
-    }
-  }
-
-  const mergedFiles: any[] = [];
-  for (let i = 0; i < descriptorSets.length; i++) {
-    const f = (descriptorSets[i] as any).file as any[] | undefined;
-    if (f && f.length) for (let j = 0; j < f.length; j++) mergedFiles.push(f[j]);
-  }
-
-  const mergedSet = FileDescriptorSet.create({ file: mergedFiles } as any);
-  return FileDescriptorSet.encode(mergedSet).finish();
+  return (mod?.default ?? mod) as Uint8Array;
 }
 
 /* ---------- Headless module wiring ---------- */
 
-// Minimal typing for the valdi dynamic require
-declare function valdiRequire<T = any>(specifier: string): T;
-
-const { HeadlessValdiProtobufModule } = valdiRequire<{
-  HeadlessValdiProtobufModule: new (loader: (path: string) => Uint8Array) => ValdiProtobufModule;
-}>("valdi_protobuf/src/headless/HeadlessValdiProtobufModule");
+import { HeadlessValdiProtobufModule } from './headless/HeadlessValdiProtobufModule';
 
 const moduleInstance: ValdiProtobufModule = new HeadlessValdiProtobufModule(loadFn);
 
