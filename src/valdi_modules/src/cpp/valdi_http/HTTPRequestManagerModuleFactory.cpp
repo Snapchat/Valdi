@@ -49,6 +49,14 @@ Value HTTPRequestManagerModuleFactory::loadModule() {
 
             const auto& requestObject = callContext.getParameter(0);
             auto url = requestObject.getMapValue("url").toStringBox();
+            
+            // Validate URL to prevent SSRF attacks
+            if (!HTTPRequestManagerUtils::isUrlAllowed(url)) {
+                callContext.getExceptionTracker().onError(
+                    Error("URL not allowed!"));
+                return Value::undefined();
+            }
+            
             auto method = requestObject.getMapValue("method").toStringBox();
             auto headers = requestObject.getMapValue("headers");
             auto body = requestObject.getMapValue("body").getTypedArrayRef();
