@@ -119,6 +119,7 @@ def run_valdi_compiler(ctx, args, outputs, inputs, mnemonic, progress_message, u
         input_manifests = input_manifests,
         arguments = [args],
         env = env,
+        use_default_shell_env = True,
         toolchain = VALDI_TOOLCHAIN_TYPE,
         mnemonic = mnemonic,
         progress_message = progress_message,
