@@ -10,7 +10,7 @@ try {
 }
 
 // We rely on a native currency formatter to be set in Android to get around `Intl.NumberFormat` being unavailable in quickjs.
-let nativeNumberWithCurrencyFormatter: ((value: number, currencyCode: string, minimumFractionDigits?: number, maximumFractionDigits?: number) => string) | undefined = undefined;
+let nativeNumberWithCurrencyFormatter: ((value: number, currencyCode: string, minimumFractionDigits?: number, maximumFractionDigits?: number, localeIdentifier?: string) => string) | undefined = undefined;
 
 try {
   nativeNumberWithCurrencyFormatter = getModuleLoader().load('NumberFormatting').formatNumberWithCurrency;
@@ -34,16 +34,41 @@ export function formatNumber(value: number, numFractionalDigits: number = -1): s
   return value.toLocaleString(undefined, options);
 }
 
+/**
+ * Sanitizes a locale identifier to be compatible with Intl.NumberFormat.
+ *
+ * Handles various input formats:
+ * - [language] (e.g., "en")
+ * - [language]_[region] (e.g., "en_US")
+ * - [language]-[script] (e.g., "zh-Hans")
+ * - [language]-[script]_[region] (e.g., "zh-Hans_HK")
+ * - Any of the above with @[extension] suffix (e.g., "en_GB@rg=US")
+ *
+ * Returns a BCP 47 compliant locale string (uses hyphens as separators).
+ */
+function sanitizeLocaleIdentifier(localeIdentifier: string): string {
+  // Remove custom extensions (e.g., "@rg=US")
+  const withoutExtension = localeIdentifier.split('@')[0];
+
+  // Convert underscores to hyphens for BCP 47 compatibility
+  // Apple uses underscore before region (e.g., "en_US"), but Intl expects hyphens ("en-US")
+  return withoutExtension.replace(/_/g, '-');
+}
+
 export function formatNumberWithCurrency(
   value: number,
   currencyCode: string,
-  options?: { minimumFractionDigits?: number; maximumFractionDigits?: number },
+  options?: { minimumFractionDigits?: number; maximumFractionDigits?: number; localeIdentifier?: string },
 ): string {
   if (nativeNumberWithCurrencyFormatter) {
-    return nativeNumberWithCurrencyFormatter(value, currencyCode, options?.minimumFractionDigits, options?.maximumFractionDigits);
+    return nativeNumberWithCurrencyFormatter(value, currencyCode, options?.minimumFractionDigits, options?.maximumFractionDigits, options?.localeIdentifier);
   }
 
-  return new Intl.NumberFormat(undefined, {
+  // Use the provided localeIdentifier if available, otherwise fall back to undefined (device locale)
+  // This ensures currency formatting uses the correct locale from the price data.
+  const locale = options?.localeIdentifier ? sanitizeLocaleIdentifier(options.localeIdentifier) : undefined;
+
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: currencyCode,
     minimumFractionDigits: options?.minimumFractionDigits,
