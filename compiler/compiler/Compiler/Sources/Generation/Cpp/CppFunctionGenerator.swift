@@ -110,7 +110,7 @@ final class CppFunctionGenerator {
             NativeSource(relativePath: cppType.includeDir,
                          filename: "\(cppType.declaration.name).hpp",
                          file: .data(try generator.header.content.indented.utf8Data()),
-                         groupingIdentifier: "\(bundleInfo.name).hpp", groupingPriority: 0),
+                         groupingIdentifier: "\(bundleInfo.name).hpp", groupingPriority: 0, localFilenameDependencies: generator.dependenciesInSameHeaderFile),
             NativeSource(relativePath: cppType.includeDir,
                          filename: "\(cppType.declaration.name).cpp",
                          file: .data(try generator.impl.content.indented.utf8Data()),

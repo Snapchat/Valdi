@@ -342,6 +342,7 @@ final class CppCodeGenerator {
     private(set) var referencedTypes: [CPPTypeReference] = []
     private(set) var referenceTypeKeys: [String] = []
     private(set) var typealiases: [CppTypeAlias] = []
+    private(set) var dependenciesInSameHeaderFile: [String] = []
 
     private let selfIncludePath: String
     private let namespaceResolver: CppCodeGeneratorNamespaceResolver
@@ -447,8 +448,9 @@ final class CppCodeGenerator {
                              defaultInitializationString: nil)
     }
 
-    private func appendReferencedType(_ referencedType: CPPTypeReference, propertyType: ValdiModelPropertyType, includePath: String) {
-        if includePath != self.selfIncludePath {
+    private func appendReferencedType(_ referencedType: CPPTypeReference, propertyType: ValdiModelPropertyType, includePath: String, isRefType: Bool) {
+        let fromSameIncludePath = includePath == self.selfIncludePath
+        if !fromSameIncludePath {
             header.includeSection.addInclude(path: includePath)
         }
 
@@ -461,6 +463,12 @@ final class CppCodeGenerator {
 
         let inserted = referencedTypesIndex.insert(referencedType).inserted
         if inserted {
+            if fromSameIncludePath && !isRefType {
+                // If we are depending on a file in the same header and that the type is not boxed in a Ref, then we have
+                // a hard dependency on that type and the referenced type definition needs to appear before our type when
+                // using single file codegen.
+                dependenciesInSameHeaderFile.append("\(referencedType.declaration.name).hpp")
+            }
             referencedTypes.append(referencedType)
             referenceTypeKeys.append(CppCodeGenerator.makeCanonicalTypeKey(type: propertyType))
         }
@@ -473,7 +481,8 @@ final class CppCodeGenerator {
                                             nameAllocator: PropertyNameAllocator) -> CppTypeParser {
         appendReferencedType(CPPTypeReference(declaration: referencedType.declaration, typeArguments: nil),
                              propertyType: referencedPropertyType,
-                             includePath: referencedType.includePath)
+                             includePath: referencedType.includePath,
+                             isRefType: isRefType)
 
         return CppTypeParser(
             typeNameResolver: isRefType ? CppCodeGenerator.makeRefType(typeName: .with(typeDeclaration: referencedType.declaration)) : .with(typeDeclaration: referencedType.declaration),
@@ -490,7 +499,7 @@ final class CppCodeGenerator {
                                                    typeParsers: [CppTypeParser],
                                                    nameAllocator: PropertyNameAllocator) -> CppTypeParser {
         let typeReference = CPPTypeReference(declaration: referencedType.declaration, typeArguments: typeParsers.map { $0.typeNameResolver.resolve(.rootNamespace) })
-        appendReferencedType(typeReference, propertyType: referencedPropertyType, includePath: referencedType.includePath)
+        appendReferencedType(typeReference, propertyType: referencedPropertyType, includePath: referencedType.includePath, isRefType: false)
 
         let resolveTypeArguments = typeParsers.map { $0.typeNameResolver }
 
@@ -740,9 +749,43 @@ final class CppCodeGenerator {
                                               isRefType: false,
                                               nameAllocator: nameAllocator)
         case .nullable(let elementType):
-            let elementTypeParser = try getTypeParser(type: elementType, namePaths: namePaths, nameAllocator: nameAllocator)
-
-            return toOptionalTypeParser(elementType: elementType, typeParser: elementTypeParser)
+            // For nullable object types, we need to handle them specially because they get wrapped
+            // in Ref<> (which only requires a forward declaration), but the recursive getTypeParser
+            // call would register a hard dependency before we have a chance to wrap it.
+            switch elementType {
+            case .object(let objectType):
+                if !objectType.isGenerated {
+                    return getUntypedTypeParser()
+                }
+                guard let cppType = objectType.cppType else {
+                    throw CompilerError("No C++ type declared for referenced type \(objectType.tsType)")
+                }
+                // Pass isRefType: true since nullable objects become Ref<T> which only needs forward declaration
+                // Use elementType as referencedPropertyType to maintain consistent canonical type keys
+                return getTypeReferenceTypeParser(referencedType: cppType,
+                                                  referencedPropertyType: elementType,
+                                                  isObject: true,
+                                                  isRefType: true,
+                                                  nameAllocator: nameAllocator)
+            case .genericObject(let objectType, let typeArguments):
+                if !objectType.isGenerated {
+                    return getUntypedTypeParser()
+                }
+                guard let cppType = objectType.cppType else {
+                    throw CompilerError("No C++ type declared for referenced type \(objectType.tsType)")
+                }
+                let typeParsers = try typeArguments.map { try getTypeParser(type: $0, namePaths: namePaths, nameAllocator: nameAllocator) }
+                // Pass referenceTypeIsInterface: true since nullable generic objects become Ref<T<...>> which only needs forward declaration
+                // Use elementType as referencedPropertyType to maintain consistent canonical type keys
+                return getGenericTypeReferenceTypeParser(referencedType: cppType,
+                                                         referencedPropertyType: elementType,
+                                                         referenceTypeIsInterface: true,
+                                                         typeParsers: typeParsers,
+                                                         nameAllocator: nameAllocator)
+            default:
+                let elementTypeParser = try getTypeParser(type: elementType, namePaths: namePaths, nameAllocator: nameAllocator)
+                return toOptionalTypeParser(elementType: elementType, typeParser: elementTypeParser)
+            }
         }
     }
 

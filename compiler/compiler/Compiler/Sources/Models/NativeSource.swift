@@ -22,12 +22,19 @@ struct NativeSource {
      */
     let groupingPriority: Int
 
-    init(relativePath: String?, filename: String, file: File, groupingIdentifier: String, groupingPriority: Int) {
+    /**
+     The list of local dependencies that this NativeSource has, where each entry is the filename that should match another NativeSource.
+     This is used for single file codegen to help with dependency ordering. We write the sources that have no dependencies first.
+     */
+    let localFilenameDependencies: [String]
+
+    init(relativePath: String?, filename: String, file: File, groupingIdentifier: String, groupingPriority: Int, localFilenameDependencies: [String] = []) {
         self.relativePath = relativePath
         self.filename = filename
         self.file = file
         self.groupingIdentifier = groupingIdentifier
         self.groupingPriority = groupingPriority
+        self.localFilenameDependencies = localFilenameDependencies
     }
 
     static func iosNativeSourcesFromGeneratedCode(_ generatedCode: GeneratedCode,
