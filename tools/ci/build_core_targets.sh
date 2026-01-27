@@ -9,8 +9,11 @@ set -x
 # Intended to be run from open_source/
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
+# Pre-fetch primary dependencies, limiting threads to reduce memory usage
+bzl fetch //valdi:valdi //valdi_core:valdi_core --loading_phase_threads=4
+
 # High level core targets
-bzl build //valdi:valdi
+bzl build //valdi:valdi 
 bzl build //valdi_core:valdi_core
 
 # Dummy libs
