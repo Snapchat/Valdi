@@ -262,7 +262,8 @@ class Runtime {
   }
 
   makeTraceProxy(tag: string, callback: Function) {
-    return () => callback();
+    // Return callback directly to avoid adding stack frames
+    return callback;
   }
 
   startTraceRecording() {
