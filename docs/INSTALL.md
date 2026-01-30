@@ -10,6 +10,10 @@ This guide will help you set up your development environment and get started wit
 ### Linux
 No prerequisites! The Valdi CLI will install everything you need.
 
+> [!IMPORTANT]
+> Windows is not currently supported. Please wait for upcoming updates!
+
+
 ### All Platforms
 That's it! The `valdi dev_setup` command handles all other dependencies automatically, including:
 - Homebrew (macOS)
@@ -30,6 +34,10 @@ That's it! The `valdi dev_setup` command handles all other dependencies automati
 ```bash
 npm install -g @snap/valdi
 ```
+
+> [!NOTE]
+> During installation, you might see warnings about deprecated packages. These can usually be ignored!
+
 
 ### 2. Set Up Your Development Environment
 
