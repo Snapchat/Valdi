@@ -23,7 +23,7 @@ final class ObjCModelGenerator {
     init(iosType: IOSType, bundleInfo: CompilationItem.BundleInfo, typeParameters: [ValdiTypeParameter]?, properties: [ValdiModelProperty], classMapping: ResolvedClassMapping, sourceFileName: GeneratedSourceFilename, isInterface: Bool, emitLegacyConstructors: Bool, comments: String?) {
         self.iosType = iosType
         self.bundleInfo = bundleInfo
-        self.className = iosType.name
+        self.className = iosType.name.replacingOccurrences(of: "-", with: "_")
         self.typeParameters = typeParameters
         self.properties = properties
         self.classMapping = classMapping
