@@ -19,7 +19,7 @@ import {
   resolveFilePath,
 } from '../utils/fileUtils';
 import { wrapInColor } from '../utils/logUtils';
-import { toPascalCase } from '../utils/stringUtils';
+import { toPascalCase, sanitizeProjectName, validateProjectName } from '../utils/stringUtils';
 import { getAllProjectSyncTargets, runProjectSync } from './projectsync';
 import { resolveLatestReleaseRef } from '../utils/githubUtils';
 
@@ -119,16 +119,45 @@ async function getApplicationType(argv: ArgumentsResolver<CommandParameters>): P
 
 async function getProjectName(argv: ArgumentsResolver<CommandParameters>): Promise<string> {
   return argv.getArgumentOrResolve('projectName', async () => {
-    const result = await inquirer.prompt<{ projectName: string }>([
-      {
-        type: 'input',
-        name: 'projectName',
-        message: 'Please provide a name for this project:',
-        default: defaultProjectName,
-      },
-    ]);
+    let projectName = '';
+    let isValid = false;
 
-    return result.projectName;
+    while (!isValid) {
+      const result = await inquirer.prompt<{ projectName: string }>([
+        {
+          type: 'input',
+          name: 'projectName',
+          message: 'Please provide a name for this project:',
+          default: defaultProjectName,
+        },
+      ]);
+
+      projectName = result.projectName;
+      const validationError = validateProjectName(projectName);
+
+      if (validationError) {
+        console.log(wrapInColor(`\n❌ ${validationError}\n`, ANSI_COLORS.RED_COLOR));
+        continue;
+      }
+
+      const sanitized = sanitizeProjectName(projectName);
+      if (sanitized !== projectName) {
+        console.log(
+          wrapInColor(
+            `\n⚠️  Project name will be sanitized from "${projectName}" to "${sanitized}"`,
+            ANSI_COLORS.YELLOW_COLOR,
+          ),
+        );
+        const confirm = await getUserConfirmation('Do you want to continue with this name?', true);
+        if (!confirm) {
+          continue;
+        }
+      }
+
+      isValid = true;
+    }
+
+    return sanitizeProjectName(projectName);
   });
 }
 
@@ -235,7 +264,17 @@ async function valdiBootstrap(argv: ArgumentsResolver<CommandParameters>) {
 
   // Prompt user for input
   // - Application Name
-  const projectName = await getProjectName(argv);
+  let projectName = await getProjectName(argv);
+  
+  // Validate project name if provided via command line argument
+  if (argv.getArgument('projectName')) {
+    const validationError = validateProjectName(projectName);
+    if (validationError) {
+      throw new CliError(validationError);
+    }
+    projectName = sanitizeProjectName(projectName);
+  }
+  
   if (!projectName) {
     throw new CliError('Project name cannot be empty.');
   }
