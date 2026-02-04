@@ -90,6 +90,19 @@ jobs:
         with:
           lfs: true
       
+      - name: Mount Bazel cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bazel
+            ~/.cache/bazelisk
+          # Include run_id to make key unique (enables incremental caching)
+          # restore-keys will find the most recent cache with matching config
+          key: bazel-${{ runner.os }}-${{ hashFiles('WORKSPACE', 'MODULE.bazel', '**/*.bzl') }}-${{ github.run_id }}
+          restore-keys: |
+            bazel-${{ runner.os }}-${{ hashFiles('WORKSPACE', 'MODULE.bazel', '**/*.bzl') }}-
+            bazel-${{ runner.os }}-
+      
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
@@ -119,6 +132,12 @@ jobs:
           sudo mv bazelisk-linux-amd64 /usr/local/bin/bazel
           sudo ln -s /usr/local/bin/bazel /usr/local/bin/bzl
           bazel --version
+      
+      - name: Configure Bazel cache
+        run: |
+          echo "build --disk_cache=$HOME/.cache/bazel" >> .bazelrc.local
+          echo "build --repository_cache=$HOME/.cache/bazel/repo" >> .bazelrc.local
+          echo "Bazel cache configured at: $HOME/.cache/bazel"
       
       - name: Install system dependencies
         run: |
@@ -168,4 +187,15 @@ jobs:
       
       - name: Build core targets and run tests
         run: ./tools/ci/bazel_build.sh
-
+  
+  comment-results:
+    name: Comment Test Results
+    needs: [smoke-test, validate-bazel]
+    if: always()
+    uses: ./.github/workflows/comment-test-results.yml
+    permissions:
+      pull-requests: write
+    with:
+      workflow_name: "Bazel & CI Test Results"
+      success_message: "**All Bazel configuration and CI tests passed!** ✨\n\nThe build system and core tooling are working correctly."
+      additional_info: "🚀 _Bazel remote cache is now enabled - future builds will be faster!_"
