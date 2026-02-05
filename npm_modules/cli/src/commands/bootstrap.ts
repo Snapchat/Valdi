@@ -21,7 +21,7 @@ import {
 import { wrapInColor } from '../utils/logUtils';
 import { toPascalCase, sanitizeProjectName, validateProjectName } from '../utils/stringUtils';
 import { getAllProjectSyncTargets, runProjectSync } from './projectsync';
-import { resolveLatestReleaseRef } from '../utils/githubUtils';
+import { getLatestReleaseTag } from '../utils/githubUtils';
 
 interface CommandParameters {
   confirmBootstrap: boolean;
@@ -29,6 +29,8 @@ interface CommandParameters {
   applicationType: string;
   valdiImport: string;
   valdiWidgetsImport: string;
+  valdiVersion: string;
+  valdiWidgetsVersion: string;
   skipProjectsync: boolean;
   withCleanup: boolean;
 }
@@ -54,6 +56,11 @@ const ALL_APPLICATION_TEMPLATES: readonly ApplicationTemplate[] = [
 
 const VALDI_GIT_URL = 'https://github.com/Snapchat/Valdi';
 const VALDI_WIDGETS_GIT_URL = 'https://github.com/Snapchat/Valdi_Widgets';
+
+/** Pinned Valdi release used by default for reproducible bootstraps. Bump when cutting a new Valdi release. */
+const DEFAULT_VALDI_RELEASE_TAG = 'beta-0.0.1';
+/** Pinned Valdi_Widgets release used by default. Should match the Valdi release cycle. */
+const DEFAULT_VALDI_WIDGETS_RELEASE_TAG = 'beta-0.0.1';
 
 const DEFAULT_VALDI_IMPORT = `
 http_archive(
@@ -159,6 +166,22 @@ async function getProjectName(argv: ArgumentsResolver<CommandParameters>): Promi
 
     return sanitizeProjectName(projectName);
   });
+}
+
+function resolveValdiReleaseTag(
+  argv: ArgumentsResolver<CommandParameters>,
+  gitUrl: string,
+  defaultTag: string,
+  versionOption: 'valdiVersion' | 'valdiWidgetsVersion' = 'valdiVersion',
+): Promise<string> {
+  const override = argv.getArgument(versionOption);
+  if (!override) {
+    return Promise.resolve(defaultTag);
+  }
+  if (override === 'latest') {
+    return getLatestReleaseTag(gitUrl);
+  }
+  return Promise.resolve(override);
 }
 
 function getValdiImport(argv: ArgumentsResolver<CommandParameters>, valdiReleaseRef: string): string {
@@ -296,11 +319,16 @@ async function valdiBootstrap(argv: ArgumentsResolver<CommandParameters>) {
     throw new CliError('Project name cannot be empty.');
   }
 
-  const valdiCommitHash = await resolveLatestReleaseRef(`${VALDI_GIT_URL}.git`);
-  const valdiWidgetsCommitHash = await resolveLatestReleaseRef(`${VALDI_WIDGETS_GIT_URL}.git`);
+  const valdiReleaseTag = await resolveValdiReleaseTag(argv, VALDI_GIT_URL, DEFAULT_VALDI_RELEASE_TAG);
+  const valdiWidgetsReleaseTag = await resolveValdiReleaseTag(
+    argv,
+    VALDI_WIDGETS_GIT_URL,
+    DEFAULT_VALDI_WIDGETS_RELEASE_TAG,
+    'valdiWidgetsVersion',
+  );
 
-  const valdiImport = getValdiImport(argv, valdiCommitHash);
-  const valdiWidgetsImport = getValdiWidgetsImport(argv, valdiWidgetsCommitHash);
+  const valdiImport = getValdiImport(argv, valdiReleaseTag);
+  const valdiWidgetsImport = getValdiWidgetsImport(argv, valdiWidgetsReleaseTag);
 
   // Creating basic config files and Hello World application
   console.log(wrapInColor('Initializing config files...', ANSI_COLORS.BLUE_COLOR));
@@ -349,15 +377,23 @@ export const builder = (yargs: Argv<CommandParameters>) => {
     })
     .option('valdiImport', {
       describe:
-        'Path to a local checkout of the Valdi repo. If not specified, uses the latest release from GitHub.',
+        'Path to a local checkout of the Valdi repo. If not specified, uses the pinned release (see valdiVersion).',
       type: 'string',
       alias: 'l',
     })
     .option('valdiWidgetsImport', {
       describe:
-        'Path to a local checkout of the Valdi_Widgets repo. If not specified, uses the latest release from GitHub.',
+        'Path to a local checkout of the Valdi_Widgets repo. If not specified, uses the pinned release (see valdiWidgetsVersion).',
       type: 'string',
       alias: 'w',
+    })
+    .option('valdiVersion', {
+      describe: `Valdi release tag to use (e.g. v1.0.0). Use "latest" to fetch the GitHub latest release. Default: ${DEFAULT_VALDI_RELEASE_TAG}`,
+      type: 'string',
+    })
+    .option('valdiWidgetsVersion', {
+      describe: `Valdi_Widgets release tag to use. Use "latest" to fetch the GitHub latest release. Default: ${DEFAULT_VALDI_WIDGETS_RELEASE_TAG}`,
+      type: 'string',
     })
     .option('skipProjectsync', {
       describe: 'Skip projectsync for testing purposes',
