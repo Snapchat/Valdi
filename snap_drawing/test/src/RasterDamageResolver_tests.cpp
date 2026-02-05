@@ -31,7 +31,8 @@ TEST_F(RasterDamageResolverTests, returnsFullRectOnInInitialDraw) {
     auto damageRects = resolveDamage();
 
     ASSERT_EQ(static_cast<size_t>(1), damageRects.size());
-    ASSERT_EQ(Rect::makeXYWH(0, 0, 100, 100), damageRects[0]);
+    // Damage rects include 1px margin for anti-aliasing
+    ASSERT_EQ(Rect::makeXYWH(-1, -1, 102, 102), damageRects[0]);
 }
 
 TEST_F(RasterDamageResolverTests, returnsPartialDamageRect) {
@@ -45,7 +46,8 @@ TEST_F(RasterDamageResolverTests, returnsPartialDamageRect) {
     auto damageRects = resolveDamage();
 
     ASSERT_EQ(static_cast<size_t>(1), damageRects.size());
-    ASSERT_EQ(Rect::makeXYWH(50, 50, 10, 10), damageRects[0]);
+    // Damage rects include 1px margin for anti-aliasing: (50-1, 50-1, 10+2, 10+2)
+    ASSERT_EQ(Rect::makeXYWH(49, 49, 12, 12), damageRects[0]);
 }
 
 TEST_F(RasterDamageResolverTests, returnsMultipleDamageRects) {
@@ -60,8 +62,9 @@ TEST_F(RasterDamageResolverTests, returnsMultipleDamageRects) {
     auto damageRects = resolveDamage();
 
     ASSERT_EQ(static_cast<size_t>(2), damageRects.size());
-    ASSERT_EQ(Rect::makeXYWH(50, 50, 10, 10), damageRects[0]);
-    ASSERT_EQ(Rect::makeXYWH(20, 20, 15, 15), damageRects[1]);
+    // Damage rects include 1px margin for anti-aliasing
+    ASSERT_EQ(Rect::makeXYWH(49, 49, 12, 12), damageRects[0]);
+    ASSERT_EQ(Rect::makeXYWH(19, 19, 17, 17), damageRects[1]);
 }
 
 TEST_F(RasterDamageResolverTests, mergesMultipleDamageRectsWhenPossible) {
@@ -76,7 +79,8 @@ TEST_F(RasterDamageResolverTests, mergesMultipleDamageRectsWhenPossible) {
     auto damageRects = resolveDamage();
 
     ASSERT_EQ(static_cast<size_t>(1), damageRects.size());
-    ASSERT_EQ(Rect::makeXYWH(20, 20, 50, 50), damageRects[0]);
+    // Rects (50,50,20,20) and (20,20,40,40) with 1px margin merge into (19,19,52,52)
+    ASSERT_EQ(Rect::makeXYWH(19, 19, 52, 52), damageRects[0]);
 }
 
 TEST_F(RasterDamageResolverTests, returnsEmptyDamageRectsWhenNoDamage) {
@@ -114,7 +118,8 @@ TEST_F(RasterDamageResolverTests, returnsDamageOnInsertedLayer) {
     auto damageRects = resolveDamage();
 
     ASSERT_EQ(static_cast<size_t>(1), damageRects.size());
-    ASSERT_EQ(Rect::makeXYWH(10, 10, 15, 15), damageRects[0]);
+    // Damage rects include 1px margin for anti-aliasing: (10-1, 10-1, 15+2, 15+2)
+    ASSERT_EQ(Rect::makeXYWH(9, 9, 17, 17), damageRects[0]);
 }
 
 TEST_F(RasterDamageResolverTests, returnsDamageOnRemovedLayer) {
@@ -136,7 +141,8 @@ TEST_F(RasterDamageResolverTests, returnsDamageOnRemovedLayer) {
     auto damageRects = resolveDamage();
 
     ASSERT_EQ(static_cast<size_t>(1), damageRects.size());
-    ASSERT_EQ(Rect::makeXYWH(20, 20, 50, 50), damageRects[0]);
+    // Damage rects include 1px margin for anti-aliasing: (20-1, 20-1, 50+2, 50+2)
+    ASSERT_EQ(Rect::makeXYWH(19, 19, 52, 52), damageRects[0]);
 }
 
 TEST_F(RasterDamageResolverTests, returnsDamageOnMovedLayer) {
@@ -159,8 +165,9 @@ TEST_F(RasterDamageResolverTests, returnsDamageOnMovedLayer) {
     auto damageRects = resolveDamage();
 
     ASSERT_EQ(static_cast<size_t>(2), damageRects.size());
-    ASSERT_EQ(Rect::makeXYWH(50, 50, 10, 10), damageRects[0]);
-    ASSERT_EQ(Rect::makeXYWH(10, 10, 10, 10), damageRects[1]);
+    // Damage rects include 1px margin for anti-aliasing
+    ASSERT_EQ(Rect::makeXYWH(49, 49, 12, 12), damageRects[0]);
+    ASSERT_EQ(Rect::makeXYWH(9, 9, 12, 12), damageRects[1]);
 }
 
 } // namespace snap::drawing
