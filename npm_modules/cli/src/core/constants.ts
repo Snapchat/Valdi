@@ -41,6 +41,8 @@ export enum TEMPLATE_BASE_PATHS {
   README = 'README.md.template',
   WATCHMAN_CONFIG = '.watchmanconfig.template',
   GIT_IGNORE = '.gitignore.template',
+  EDITOR_CONFIG = '.editorconfig.template',
+  CURSOR_RULES = '.cursorrules.template',
 }
 
 export const VALID_PLATFORMS: string[] = [PLATFORM.ANDROID, PLATFORM.IOS, PLATFORM.MACOS, PLATFORM.CLI];

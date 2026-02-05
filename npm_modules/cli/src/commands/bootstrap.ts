@@ -1,7 +1,7 @@
 import path from 'path';
 import inquirer from 'inquirer';
 import type { Argv } from 'yargs';
-import { ANSI_COLORS, BOOTSTRAP_DIR_PATH, TEMPLATE_BASE_PATHS, VALDI_CONFIG_PATHS } from '../core/constants';
+import { ANSI_COLORS, BOOTSTRAP_DIR_PATH, META_DIR_PATH, TEMPLATE_BASE_PATHS, VALDI_CONFIG_PATHS } from '../core/constants';
 import { CliError } from '../core/errors';
 import type { ArgumentsResolver } from '../utils/ArgumentsResolver';
 import { BazelClient } from '../utils/BazelClient';
@@ -207,6 +207,8 @@ function initializeConfigFiles(
     TemplateFile.init(TEMPLATE_BASE_PATHS.README),
     TemplateFile.init(TEMPLATE_BASE_PATHS.GIT_IGNORE),
     TemplateFile.init(TEMPLATE_BASE_PATHS.WATCHMAN_CONFIG),
+    TemplateFile.init(TEMPLATE_BASE_PATHS.EDITOR_CONFIG),
+    TemplateFile.init(TEMPLATE_BASE_PATHS.CURSOR_RULES),
   ];
 
   TEMPLATE_FILES.forEach(templateFile => {
@@ -216,15 +218,30 @@ function initializeConfigFiles(
     templateFile.expandTemplate();
   });
 
-  // Setup hello world application
-  console.log(wrapInColor(`Initializing ${template.name} application...`, ANSI_COLORS.YELLOW_COLOR));
-  const sourcePath = path.join(BOOTSTRAP_DIR_PATH, 'apps', template.path);
-  const destPath = process.cwd();
-
+  // Copy GitHub templates directory (if it exists)
   const replacements: Replacements = {
     MODULE_NAME: projectName,
     MODULE_NAME_PASCAL_CASED: toPascalCase(projectName),
   };
+  const githubSourcePath = path.join(BOOTSTRAP_DIR_PATH, '.github');
+  if (fileExists(githubSourcePath)) {
+    console.log(wrapInColor('Creating GitHub templates...', ANSI_COLORS.YELLOW_COLOR));
+    const githubDestPath = path.join(process.cwd(), '.github');
+    copyBootstrapFiles(githubSourcePath, githubDestPath, replacements);
+  }
+
+  // Copy .cursor rules directory (if it exists)
+  const cursorSourcePath = path.join(META_DIR_PATH, '.cursor');
+  if (fileExists(cursorSourcePath)) {
+    console.log(wrapInColor('Creating Cursor AI rules...', ANSI_COLORS.YELLOW_COLOR));
+    const cursorDestPath = path.join(process.cwd(), '.cursor');
+    copyBootstrapFiles(cursorSourcePath, cursorDestPath, replacements);
+  }
+
+  // Setup hello world application
+  console.log(wrapInColor(`Initializing ${template.name} application...`, ANSI_COLORS.YELLOW_COLOR));
+  const sourcePath = path.join(BOOTSTRAP_DIR_PATH, 'apps', template.path);
+  const destPath = process.cwd();
 
   copyBootstrapFiles(sourcePath, destPath, replacements);
 }
