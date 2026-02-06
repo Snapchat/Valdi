@@ -22,9 +22,8 @@ common --define enable_web=true
 build --tool_java_language_version=11
 build --java_language_version=11
 
-## Disable sandboxing for macs, both laptops and in CI; the performance hit is much too high.
-build:macos --spawn_strategy=local
-build:linux --sandbox_writable_path=/var/tmp
+## Disable sandboxing for both dev machines and in CI; the performance hit is much too high.
+build --spawn_strategy=local
 
 # common cc configuration
 build --cxxopt=-std=c++20
@@ -72,10 +71,6 @@ build --per_file_copt=external/com_github_google_flatbuffers/.*\$@-Wno-everythin
 
 # Enable persistent worker for Valdi compilation
 build --strategy=ValdiCompile=worker
-
-## Disable sandboxing for macs, both laptops and in CI; the performance hit is much too high.
-build:macos --spawn_strategy=local
-build:linux --sandbox_writable_path=/var/tmp
 
 # Disable disk cache to save disk space
 # https://docs.google.com/document/d/1N8W_M83n9jhMi7pgUhXuEuxypb3dmlHBu_CG_eXipXI/edit?usp=sharing
