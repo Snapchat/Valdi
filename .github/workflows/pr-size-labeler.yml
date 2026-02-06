@@ -23,6 +23,10 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            if (context.eventName !== 'pull_request' || !context.payload.pull_request) {
+              console.log('Skipping: not a pull_request event or no pull_request in payload');
+              return;
+            }
             const pr = context.payload.pull_request;
             
             // Get ALL files changed in the PR (handles pagination automatically)
