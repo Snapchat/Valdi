@@ -1032,6 +1032,12 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
         return;
     }
 
+    // Skip during IME composition to avoid interfering with marked text
+    if (textView.markedTextRange != nil) {
+        _placeholder.hidden = textView.text.length > 0;
+        return;
+    }
+
     if (_onWillChange != nil) {
         SCValdiMarshallerScoped(marshaller, {
             SCValdiMarshallEditTextEvent(marshaller, _textView);
@@ -1123,6 +1129,11 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
 - (void)textViewDidChangeSelection:(UITextView *)textView
 {
     if (textView && textView.window && !_updating) {
+        // Skip during IME composition to avoid interfering with marked text
+        if (textView.markedTextRange != nil) {
+            return;
+        }
+
         id<SCValdiViewNodeProtocol> viewNode = self.valdiViewNode;
         id<SCValdiContextProtocol> context = self.valdiContext;
 

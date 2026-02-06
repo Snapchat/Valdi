@@ -26,7 +26,7 @@ public:
 
     virtual void preloadModule(const Valdi::StringBox & path, int32_t maxDepth) = 0;
 
-    virtual /*not-null*/ std::shared_ptr<JSRuntimeNativeObjectsManager> createNativeObjectsManager() = 0;
+    virtual /*not-null*/ std::shared_ptr<JSRuntimeNativeObjectsManager> createNativeObjectsManager(const std::string & scopeName) = 0;
 
     virtual void destroyNativeObjectsManager(const /*not-null*/ std::shared_ptr<JSRuntimeNativeObjectsManager> & nativeObjectsManager) = 0;
 

@@ -55,12 +55,12 @@ CJNIEXPORT void JNICALL Java_com_snapchat_client_valdi_1core_JSRuntime_00024CppP
     } JNI_TRANSLATE_EXCEPTIONS_RETURN(jniEnv, )
 }
 
-CJNIEXPORT jobject JNICALL Java_com_snapchat_client_valdi_1core_JSRuntime_00024CppProxy_native_1createNativeObjectsManager(JNIEnv* jniEnv, jobject /*this*/, jlong nativeRef)
+CJNIEXPORT jobject JNICALL Java_com_snapchat_client_valdi_1core_JSRuntime_00024CppProxy_native_1createNativeObjectsManager(JNIEnv* jniEnv, jobject /*this*/, jlong nativeRef, jstring j_scopeName)
 {
     try {
         DJINNI_FUNCTION_PROLOGUE("JSRuntime.native_createNativeObjectsManager");
         const auto& ref = ::djinni::objectFromHandleAddress<::snap::valdi_core::JSRuntime>(nativeRef);
-        auto r = ref->createNativeObjectsManager();
+        auto r = ref->createNativeObjectsManager(::djinni::String::toCpp(jniEnv, j_scopeName));
         return ::djinni::release(::djinni_generated_client::valdi_core::NativeJSRuntimeNativeObjectsManager::fromCpp(jniEnv, r));
     } JNI_TRANSLATE_EXCEPTIONS_RETURN(jniEnv, 0 /* value doesn't matter */)
 }

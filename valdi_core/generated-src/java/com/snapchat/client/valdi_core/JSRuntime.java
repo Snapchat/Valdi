@@ -17,7 +17,7 @@ public abstract class JSRuntime {
 
     public abstract void preloadModule(java.lang.String path, int maxDepth);
 
-    public abstract JSRuntimeNativeObjectsManager createNativeObjectsManager();
+    public abstract JSRuntimeNativeObjectsManager createNativeObjectsManager(java.lang.String scopeName);
 
     public abstract void destroyNativeObjectsManager(JSRuntimeNativeObjectsManager nativeObjectsManager);
 
@@ -63,12 +63,12 @@ public abstract class JSRuntime {
         private native void native_preloadModule(long _nativeRef, java.lang.String path, int maxDepth);
 
         @Override
-        public JSRuntimeNativeObjectsManager createNativeObjectsManager()
+        public JSRuntimeNativeObjectsManager createNativeObjectsManager(java.lang.String scopeName)
         {
             assert !this.destroyed.get() : "trying to use a destroyed object";
-            return native_createNativeObjectsManager(this.nativeRef);
+            return native_createNativeObjectsManager(this.nativeRef, scopeName);
         }
-        private native JSRuntimeNativeObjectsManager native_createNativeObjectsManager(long _nativeRef);
+        private native JSRuntimeNativeObjectsManager native_createNativeObjectsManager(long _nativeRef, java.lang.String scopeName);
 
         @Override
         public void destroyNativeObjectsManager(JSRuntimeNativeObjectsManager nativeObjectsManager)

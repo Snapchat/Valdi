@@ -22,7 +22,7 @@
 - (void)preloadModule:(nonnull NSString *)path
              maxDepth:(int32_t)maxDepth;
 
-- (nullable SCNValdiCoreJSRuntimeNativeObjectsManager *)createNativeObjectsManager;
+- (nullable SCNValdiCoreJSRuntimeNativeObjectsManager *)createNativeObjectsManagerWithScopeName:(nonnull NSString *)scopeName;
 
 - (void)destroyNativeObjectsManager:(nullable SCNValdiCoreJSRuntimeNativeObjectsManager *)nativeObjectsManager;
 

@@ -73,17 +73,25 @@ void TCPConnectionImpl::lockFreeDoSend() {
 }
 
 void TCPConnectionImpl::close(const Error& error) {
-    if (_closed) {
-        return;
+    Shared<ITCPConnectionDisconnectListener> listener;
+
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+
+        if (_closed) {
+            return;
+        }
+
+        _closed = true;
+
+        boost::system::error_code ec;
+        _socket.shutdown(boost::asio::ip::tcp::socket::shutdown_send, ec);
+        _socket.close(ec);
+
+        listener = _disconnectListener;
     }
 
-    _closed = true;
-
-    boost::system::error_code ec;
-    _socket.shutdown(boost::asio::ip::tcp::socket::shutdown_send, ec);
-    _socket.close(ec);
-
-    auto listener = getDisconnectListener();
+    // Call listener outside the lock to avoid potential deadlocks
     if (listener != nullptr) {
         listener->onDisconnected(strongSmallRef(this), error);
     }

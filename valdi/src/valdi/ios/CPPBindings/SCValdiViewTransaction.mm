@@ -14,6 +14,7 @@
 #import "valdi/ios/SCValdiViewNode+CPP.h"
 #import "valdi/ios/SCValdiViewNode.h"
 
+#import "valdi_core/SCValdiLogger.h"
 #import "valdi_core/SCValdiValueUtils.h"
 #import "valdi_core/SCValdiViewAssetHandlingProtocol.h"
 #import "valdi_core/SCValdiViewOwner.h"
@@ -75,6 +76,16 @@ ViewTransaction::~ViewTransaction() = default;
                         Valdi::ViewNodeTree* viewNodeTree,
                         Valdi::ViewNode* viewNode) {
         SCValdiContext *valdiContext = getValdiContext(viewNodeTree->getContext());
+
+        if (valdiContext == nil) {
+            auto context = viewNodeTree->getContext();
+            auto contextPtr = context.get();
+            SCLogValdiError(@"moveViewToTree: valdiContext is nil. "
+                            @"context=%p, contextId=%u, hasUserData=%d",
+                            contextPtr,
+                            contextPtr ? contextPtr->getContextId() : 0,
+                            contextPtr ? (contextPtr->getUserData() != nullptr) : false);
+        }
 
         UIView *uiView = toUIView(view);
         uiView.valdiContext = valdiContext;

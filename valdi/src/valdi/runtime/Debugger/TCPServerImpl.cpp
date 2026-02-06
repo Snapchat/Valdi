@@ -99,11 +99,14 @@ std::vector<std::string> TCPServerImpl::getAvailableAddresses() {
 
 void TCPServerImpl::stop() {
     _started = false;
-    closeAllConnections(Error("Server stopped"));
 
-    boost::system::error_code ec;
-    _acceptor.close(ec);
+    // First, stop the io_service to cause run() to return
     _ioService.stop();
+
+    // Wait for the io_service thread to exit before accessing sockets.
+    // This is critical for thread-safety: Boost.Asio sockets are NOT
+    // thread-safe for concurrent operations. There can't be any async
+    // operations in-flight before calling socket.close()
     std::unique_lock<Mutex> guard(_mutex);
     auto thread = _asioThread;
     _asioThread = nullptr;
@@ -111,6 +114,12 @@ void TCPServerImpl::stop() {
         guard.unlock();
         thread->join();
     }
+
+    // This should be the only thread accessing sockets now, so it's safe to close
+    closeAllConnections(Error("Server stopped"));
+
+    boost::system::error_code ec;
+    _acceptor.close(ec);
 }
 
 void TCPServerImpl::closeAllConnections(const Error& error) {

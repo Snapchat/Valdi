@@ -104,4 +104,10 @@ bool ValdiRuntimeTweaks::skipProtoIndex() const {
     return getConfigKey("VALDI_PROTO_SKIP_INDEX");
 }
 
+bool ValdiRuntimeTweaks::enableScopedContextStackTraceCapture() const {
+    static const StringBox kKey =
+        StringCache::getGlobal().makeStringFromLiteral("VALDI_ENABLE_SCOPED_CONTEXT_STACK_TRACE_CAPTURE");
+    return _tweakValueProvider->getBool(kKey, false);
+}
+
 } // namespace Valdi

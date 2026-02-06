@@ -4,6 +4,9 @@
 
 Valdi provides a standalone runtime that can execute Valdi code without requiring integration with a host iOS/Android app. Adding new tests is easy and lightweight; they run very fast and can use the hot reloader for rapid iteration. The runtime leverages the [jasmine](https://jasmine.github.io/) testing framework which is probably already familiar to you.
 
+> [!Note]
+> In **Standalone Mode**, Valdi can run on Linux and macOS without any UI, similar to Node.js. This mode is used for running unit tests and scripts, and it evaluates code from `.valdimodule` archives produced by the Valdi compiler.
+
 ### How to add new tests?
 
 You can add .ts/.tsx files to the `test/` directory of your Valdi module. All .ts/.tsx files within the `test/` directory are included when running tests. The convention is to have test files be named `FileToTest.spec.ts`.

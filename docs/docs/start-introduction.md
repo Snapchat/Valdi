@@ -32,6 +32,9 @@ class HelloWorld extends Component {
 We just created our first Valdi component! 
 `onCreate` and `onRender` are Valdi lifecycle events that the Valdi runtime executes to evaluate `this.msg` and then map the value of the `label` on to native views.
 
+> [!Note]
+> Valdi supports **Hot Reloading**, which allows you to see changes in your code immediately without rebuilding the entire application. The compiler works in tandem with the runtime to hot-swap modules and reload components on the fly, significantly increasing developer velocity.
+
 ## Inline Variables
 
 Besides just text, we can bind variables to element attributes:

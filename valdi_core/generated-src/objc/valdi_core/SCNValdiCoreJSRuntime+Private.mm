@@ -65,10 +65,10 @@ static_assert(__has_feature(objc_arc), "Djinni requires ARC to be enabled for th
     } DJINNI_TRANSLATE_EXCEPTIONS()
 }
 
-- (nullable SCNValdiCoreJSRuntimeNativeObjectsManager *)createNativeObjectsManager {
+- (nullable SCNValdiCoreJSRuntimeNativeObjectsManager *)createNativeObjectsManagerWithScopeName:(nonnull NSString *)scopeName {
     try {
         DJINNI_FUNCTION_PROLOGUE("JSRuntime.createNativeObjectsManager");
-        auto objcpp_result_ = _cppRefHandle.get()->createNativeObjectsManager();
+        auto objcpp_result_ = _cppRefHandle.get()->createNativeObjectsManager(::djinni::String::toCpp(scopeName));
         return ::djinni_generated_client::valdi_core::JSRuntimeNativeObjectsManager::fromCpp(objcpp_result_);
     } DJINNI_TRANSLATE_EXCEPTIONS()
 }

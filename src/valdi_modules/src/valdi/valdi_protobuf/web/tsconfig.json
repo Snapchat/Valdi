@@ -1,27 +1,35 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",                // important
+    "baseUrl": ".",
+    "target": "ES2020",
     "module": "commonjs",
     "moduleResolution": "node",
     "strict": true,
     "skipLibCheck": true,
     "composite": true,
+    "declaration": true,
     "allowJs": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "lib": ["DOM", "ES2020"],
+    "typeRoots": [
+      "../../../../../../bzl/valdi/npm/node_modules/@types"
+    ],
     "paths": {
-      "#root/src/valdi_protobuf/*": [
-        "../../valdi_protobuf/*",
-      ]
+      "@protobuf-ts/runtime": ["../../../../../../bzl/valdi/npm/node_modules/@protobuf-ts/runtime"]
     }
   },
   "include": [
-    "**/*",
-    "../src/headless/descriptor.ts"      // <-- add (path is relative to this tsconfig)
+    "./**/*.ts",
+    "./**/*.d.ts",
+    "../src/headless/descriptor.ts"
   ],
   "exclude": [
+    "**/*.js",
+    "**/node_modules/**",
+    "node_modules",
+    "src_symlink",
     "debug/**",
     "release/**"
   ]

@@ -17,7 +17,7 @@ struct ParsedAnnotation {
 }
 
 // TODO: could parse annotation parameters into the enum as associated values
-enum ValdiAnnotationType: String {
+enum ValdiAnnotationType: String, CaseIterable {
     case generateNativeClass = "GenerateNativeClass" // Deprecated, use ExportModel
     case generateNativeInterface = "GenerateNativeInterface" // Deprecated, use ExportProxy
     case generativeNativeEnum = "GenerateNativeEnum" // Deprecated, use ExportEnum
@@ -41,6 +41,44 @@ enum ValdiAnnotationType: String {
     case workerThread = "WorkerThread"
     case untypedMap = "UntypedMap"
     case untyped = "Untyped"
+    
+    /// Returns true if this annotation type can have ios/android parameters that indicate native exports.
+    /// Used for detecting native exports in Vue files and validating annotation parameters.
+    var canHaveNativeExportParameters: Bool {
+        switch self {
+        case .exportModule,
+             .generateNativeClass,
+             .generateNativeInterface,
+             .generativeNativeEnum,
+             .generativeNativeFunction,
+             .exportModel,
+             .exportProxy,
+             .exportEnum,
+             .exportFunction,
+             .nativeClass,
+             .nativeTemplateElement,
+             .nativeInterface:
+            return true
+        case .nativeTypeConverter,
+             .component,
+             .action,
+             .viewModel,
+             .context,
+             .constructorOmitted,
+             .injectable,
+             .singleCall,
+             .workerThread,
+             .untypedMap,
+             .untyped:
+            return false
+        }
+    }
+    
+    /// Returns the annotation names that can have native export parameters (ios/android).
+    /// This is used for scanning Vue files for native exports.
+    static var nativeExportAnnotationNames: [String] {
+        return allCases.filter { $0.canHaveNativeExportParameters }.map { $0.rawValue }
+    }
 }
 
 final class TypeScriptAnnotationsManager {
@@ -69,23 +107,13 @@ final class TypeScriptAnnotationsManager {
     /// Throws if the parsed annotation's parameters are not considered valid, e.g. when the iOS/Android type names
     /// contain disallowed characters
     static func validateAnnotation(_ parsedAnnotation: ParsedAnnotation, symbolIndex: Int) throws {
-        switch parsedAnnotation.type {
-        case .exportModule:
-            if symbolIndex != 0 {
-                throw CompilerError("@ExportModule must be placed at the top of the file")
-            }
-            fallthrough
-        case .generateNativeClass,
-                .generateNativeInterface,
-                .generativeNativeEnum,
-                .generativeNativeFunction,
-                .exportModel,
-                .exportProxy,
-                .exportEnum,
-                .exportFunction,
-                .nativeClass,
-                .nativeTemplateElement,
-                .nativeInterface:
+        // Special validation for @ExportModule which must be at the top of the file
+        if parsedAnnotation.type == .exportModule && symbolIndex != 0 {
+            throw CompilerError("@ExportModule must be placed at the top of the file")
+        }
+        
+        // Validate ios/android type names for annotations that can have native export parameters
+        if parsedAnnotation.type.canHaveNativeExportParameters {
             if let iosTypeName = parsedAnnotation.annotation.parameters?["ios"] {
                 guard ObjCValidation.isValidIOSTypeName(iosTypeName: iosTypeName) else {
                     throw CompilerError("Invalid iOS type name: \(iosTypeName)")
@@ -96,28 +124,6 @@ final class TypeScriptAnnotationsManager {
                     throw CompilerError("Invalid Android type name: \(androidTypeName)")
                 }
             }
-        case .nativeTypeConverter:
-            break
-        case .component:
-            break
-        case .action:
-            break
-        case .viewModel:
-            break
-        case .context:
-            break
-        case .constructorOmitted:
-            break
-        case .injectable:
-            break
-        case .singleCall:
-            break
-        case .workerThread:
-            break
-        case .untyped:
-            break
-        case .untypedMap:
-            break
         }
     }
 }

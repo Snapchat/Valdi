@@ -27,7 +27,7 @@ export class HeadlessValdiProtobufModule implements ValdiProtobufModule {
 
     const allMessageNames = database.getAllMessageDescriptorTypeNames();
 
-    const namespace = generateMonkeyPatchedNamespace(database.root, allMessageNames);
+    const namespace = generateMonkeyPatchedNamespace(database, allMessageNames);
 
     return {
       factory: {},

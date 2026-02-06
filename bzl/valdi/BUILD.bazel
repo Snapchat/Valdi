@@ -170,6 +170,19 @@ config_setting(
     },
 )
 
+bool_flag(
+    name = "code_coverage_enabled",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "valdi_code_coverage_enabled",
+    flag_values = {
+        ":code_coverage_enabled": "true",
+    },
+)
+
 # Create an exhaustive set of configurations because Bazel doesn't support nested selects.
 # Not having nested selects means we have to list all possible conditions in a single flat select.
 # User by valdi_module.bzl to conditionally include apple_resource_bundles in the Valdi objc library.

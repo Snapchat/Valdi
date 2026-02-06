@@ -49,8 +49,6 @@ private:
     void doRead();
     void lockFreeDoSend();
 
-    void doClose(const Error& error);
-
     std::string resolveAddress();
 };
 

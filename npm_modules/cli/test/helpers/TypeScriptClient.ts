@@ -34,7 +34,7 @@ export function createClient(workingDir: string): TSServerClient {
 
   const send = (
     request: Record<string, unknown>,
-    { timeout = 1000 }: { timeout?: number } = {},
+    { timeout = 300000 }: { timeout?: number } = {},
   ): Promise<Record<string, unknown>> => {
     const seq = reserveSequence();
     const body = JSON.stringify({
@@ -113,7 +113,7 @@ export async function lineAndOffset(searchToken: string, file: string): Promise<
   return { line, offset: Math.max(0, offset), position };
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number | false = 400): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms: number | false = 300000): Promise<T> {
   if (ms === false) {
     return promise;
   }

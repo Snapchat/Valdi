@@ -124,6 +124,11 @@ onDestroy()
 Called when the component was destroyed
 
 ```ts
+onError(error: Error)
+```
+Called when a render error occurs in a child component. This allows the component to act as an **Error Boundary**, catching exceptions and potentially rendering a fallback UI instead of crashing the entire tree.
+
+```ts
 registerDisposable(disposable: (() => void) | Unsubscribable)
 ```
 Registers a function or unsubscribable (like an RxJS Subscription) which will be called automatically when the component is destroyed. This is useful for cleaning up subscriptions, timers, or other resources.

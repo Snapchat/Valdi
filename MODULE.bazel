@@ -39,7 +39,7 @@ use_repo(remote_android_extensions, "android_gmaven_r8", "android_tools")
 
 android_sdk_repository_extension = use_extension("@rules_android//rules/android_sdk_repository:rule.bzl", "android_sdk_repository_extension")
 android_sdk_repository_extension.configure(
-    api_level = 35,
+    api_level = 36,
     build_tools_version = "34.0.0",
 )
 use_repo(android_sdk_repository_extension, "androidsdk")

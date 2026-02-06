@@ -23,7 +23,9 @@
     "eslint:fix": "npm run eslint -- --fix",
     "cli:install": "npm ci && npm link",
     "cli:uninstall": "PKG_NAME=$(npm pkg get name | tr -d '\"') && npm uninstall $PKG_NAME -g",
-    "cli:uninstall_all": "PKG_NAME=$(npm pkg get name | tr -d '\"') && npm uninstall $PKG_NAME && npm uninstall -g $PKG_NAME"
+    "cli:uninstall_all": "PKG_NAME=$(npm pkg get name | tr -d '\"') && npm uninstall $PKG_NAME && npm uninstall -g $PKG_NAME",
+    "update-agents-templates": "ts-node scripts/update-agents-templates.ts",
+    "validate-agents": "bash scripts/sync-agents-md.sh"
   },
   "dependencies": {
     "@bazel/bazelisk": "^1.19.0",

@@ -67,7 +67,26 @@ void RegisteredCppGeneratedClass::ensureSchemaRegistered(ExceptionTracker& excep
         }
 
         _schemaRegistered = true;
+
+        if (_getTypeReferencesFunction) {
+            auto dependencies = _getTypeReferencesFunction();
+            for (const auto& dependency : dependencies) {
+                dependency->ensureSchemaRegistered(exceptionTracker);
+                if (!exceptionTracker) {
+                    return;
+                }
+            }
+        }
     }
+}
+
+Result<Ref<ClassSchema>> RegisteredCppGeneratedClass::getResolvedClassSchema() {
+    SimpleExceptionTracker exceptionTracker;
+    auto classSchema = getResolvedClassSchema(exceptionTracker);
+    if (!exceptionTracker) {
+        return exceptionTracker.extractError();
+    }
+    return classSchema;
 }
 
 Ref<ClassSchema> RegisteredCppGeneratedClass::getResolvedClassSchema(ExceptionTracker& exceptionTracker) {
@@ -90,13 +109,6 @@ ValueSchema RegisteredCppGeneratedClass::getResolvedSchema(ExceptionTracker& exc
         std::vector<RegisteredCppGeneratedClass*> dependencies;
         if (_getTypeReferencesFunction) {
             dependencies = _getTypeReferencesFunction();
-
-            for (const auto& dependency : dependencies) {
-                dependency->ensureSchemaRegistered(exceptionTracker);
-                if (!exceptionTracker) {
-                    return ValueSchema::voidType();
-                }
-            }
         }
 
         ValueSchemaTypeResolver typeResolver(_registry);

@@ -66,6 +66,7 @@ class BundleManager {
                                                     disableAnnotationProcessing: false,
                                                     disableDependencyVerification: true,
                                                     disableBazelBuildFileGeneration: true,
+                                                    asyncStrictMode: false,
                                                     webNpmScope: "",
                                                     webVersion: "",
                                                     webPublishConfig: "",
@@ -218,6 +219,7 @@ class BundleManager {
         let disableDependencyVerification = config["disable_dependency_verification"]?.bool ?? false
         let disableCodeCoverage = config["disable_code_coverage"]?.bool ?? false
         let disableBazelBuildFileGeneration = config["bazel_build_file_generation_disabled"]?.bool ?? false
+        let asyncStrictMode = config["async_strict_mode"]?.bool ?? false
 
         let compilationModeConfig = try config["compilation_mode"].map { try CompilationModeConfig.parse(from: $0) } ?? CompilationModeConfig.forJsBytecode()
 
@@ -336,6 +338,7 @@ class BundleManager {
                                                         disableAnnotationProcessing: disableAnnotationProcessing,
                                                         disableDependencyVerification: disableDependencyVerification,
                                                         disableBazelBuildFileGeneration: disableBazelBuildFileGeneration,
+                                                        asyncStrictMode: asyncStrictMode,
                                                         webNpmScope: webNpmScope,
                                                         webVersion: webVersion,
                                                         webPublishConfig: webPublishConfig,

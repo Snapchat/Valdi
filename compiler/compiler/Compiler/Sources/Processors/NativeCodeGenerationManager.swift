@@ -159,6 +159,38 @@ class NativeCodeGenerationManager {
         nativeFunctionsToGenerate.data { $0.append(nativeFuncToGenerate) }
     }
 
+    func hasIOSExports(for bundleInfo: CompilationItem.BundleInfo) -> Bool {
+        let hasIOSClasses = nativeClassesToGenerate.data { classes in
+            classes.contains { $0.compilationItem.bundleInfo.name == bundleInfo.name && $0.nativeClass.iosType != nil }
+        }
+        let hasIOSViewClasses = viewClassesToGenerate.data { classes in
+            classes.contains { $0.compilationItem.bundleInfo.name == bundleInfo.name && $0.nativeClass.iosType != nil }
+        }
+        let hasIOSFunctions = nativeFunctionsToGenerate.data { functions in
+            functions.contains { $0.compilationItem.bundleInfo.name == bundleInfo.name && $0.nativeTypes.iosType != nil }
+        }
+        let hasIOSModules = nativeModulesToGenerate.data { modules in
+            modules.contains { $0.compilationItem.bundleInfo.name == bundleInfo.name && $0.nativeTypes.iosType != nil }
+        }
+        return hasIOSClasses || hasIOSViewClasses || hasIOSFunctions || hasIOSModules
+    }
+
+    func hasAndroidExports(for bundleInfo: CompilationItem.BundleInfo) -> Bool {
+        let hasAndroidClasses = nativeClassesToGenerate.data { classes in
+            classes.contains { $0.compilationItem.bundleInfo.name == bundleInfo.name && $0.nativeClass.androidClass != nil }
+        }
+        let hasAndroidViewClasses = viewClassesToGenerate.data { classes in
+            classes.contains { $0.compilationItem.bundleInfo.name == bundleInfo.name && $0.nativeClass.androidClass != nil }
+        }
+        let hasAndroidFunctions = nativeFunctionsToGenerate.data { functions in
+            functions.contains { $0.compilationItem.bundleInfo.name == bundleInfo.name && $0.nativeTypes.androidClass != nil }
+        }
+        let hasAndroidModules = nativeModulesToGenerate.data { modules in
+            modules.contains { $0.compilationItem.bundleInfo.name == bundleInfo.name && $0.nativeTypes.androidClass != nil }
+        }
+        return hasAndroidClasses || hasAndroidViewClasses || hasAndroidFunctions || hasAndroidModules
+    }
+
     func addNativeTypeConverter(commentedFile: TypeScriptCommentedFile, annotation: ValdiTypeScriptAnnotation, sourceURL: URL, annotatedSymbol: TypeScriptAnnotatedSymbol, compilationItem: CompilationItem, linesIndexer: LinesIndexer) throws {
         let symbol = annotatedSymbol.symbol
         guard let function = symbol.function else {

@@ -178,7 +178,7 @@ swift_library(
     visibility = ["//visibility:public"],
     deps = [
         ":djinni_support_lib_swiftxx",
-        "@com_github_apple_swift_protobuf//:SwiftProtobuf",
+        "@com_github_apple_swift_protobuf_client//:SwiftProtobuf",
     ],
 )
 

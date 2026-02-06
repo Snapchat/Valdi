@@ -1,47 +1,47 @@
 /**
- * Copyright 2021 Snap, Inc.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+  * Copyright 2021 Snap, Inc.
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+  * You may obtain a copy of the License at
+  *
+  *    http://www.apache.org/licenses/LICENSE-2.0
+  *
+  * Unless required by applicable law or agreed to in writing, software
+  * distributed under the License is distributed on an "AS IS" BASIS,
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
 
 #pragma once
 
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
+#include <cstring>
 
 #if !defined(DATAREF_JNI) && !defined(DATAREF_OBJC) && !defined(DATAREF_WASM)
-#if defined(__ANDROID__)
-#define DATAREF_JNI 1
-#elif defined(__APPLE__)
-#define DATAREF_OBJC 1
-#elif defined(__EMSCRIPTEN__)
-#define DATAREF_WASM 1
-#endif
+  #if defined(__ANDROID__)
+    #define DATAREF_JNI 1
+  #elif defined(__APPLE__)
+    #define DATAREF_OBJC 1
+  #elif defined(__EMSCRIPTEN__)
+    #define DATAREF_WASM 1
+  #endif
 #endif
 
 #if DATAREF_JNI
-using PlatformObject = void*;
+  using PlatformObject = void*;
 #elif DATAREF_OBJC
-#include <CoreFoundation/CFData.h>
-using PlatformObject = CFDataRef;
+  #include <CoreFoundation/CFData.h>
+  using PlatformObject = CFDataRef;
 #elif DATAREF_WASM
-#include <emscripten/val.h>
-using PlatformObject = emscripten::val;
+  #include <emscripten/val.h>
+  using PlatformObject = emscripten::val;
 #else
-using PlatformObject = const void*;
+  using PlatformObject = const void*;
 #endif
 
 namespace djinni {
@@ -51,7 +51,7 @@ public:
     class Impl {
     public:
         virtual ~Impl() = default;
-
+        
         virtual const uint8_t* buf() const = 0;
         virtual size_t len() const = 0;
         virtual uint8_t* mutableBuf() = 0;
@@ -60,8 +60,8 @@ public:
     DataRef() = default;
     DataRef(const DataRef&) = default;
     DataRef(DataRef&&) = default;
-
-    explicit DataRef(const std::shared_ptr<Impl>& impl) : _impl(impl) {}
+    
+    explicit DataRef(const std::shared_ptr<Impl>& impl): _impl(impl) {}
 
     // initialize with empty buffer
     explicit DataRef(size_t len);
@@ -87,7 +87,7 @@ public:
 
     DataRef& operator=(const DataRef&) = default;
     DataRef& operator=(DataRef&&) = default;
-
+    
     const uint8_t* buf() const {
         return _impl ? _impl->buf() : nullptr;
     }
@@ -98,9 +98,7 @@ public:
         return _impl ? _impl->mutableBuf() : nullptr;
     }
 
-    std::shared_ptr<Impl> impl() const {
-        return _impl;
-    }
+    std::shared_ptr<Impl> impl() const { return _impl; } 
 
 private:
     std::shared_ptr<Impl> _impl;

@@ -8,12 +8,8 @@
 #if defined(__ANDROID__)
 #define _SC_SYSTEM_ASSERT(path, line, message) __assert(path, line, message)
 #elif defined(__APPLE__)
-// Declaring a function from assert.h. It's hidden if NDEBUG is defined
-#if defined(NDEBUG)
-__attribute__((noinline)) extern "C" void __assert_rtn(const char*, const char*, int, const char*);
-#endif
-// that -1 cast was copied from assert.h to suppress function name:
-#define _SC_SYSTEM_ASSERT(path, line, message) __assert_rtn(reinterpret_cast<const char*>(-1L), path, line, message)
+__attribute__((noreturn)) void __sc_apple_system_assert(const char* expr, const char* path, int line);
+#define _SC_SYSTEM_ASSERT(path, line, message) __sc_apple_system_assert(message, path, line)
 #elif defined(__GLIBC__)
 // Declaring a function from assert.h. It's hidden if NDEBUG is defined
 // NOLINTNEXTLINE(readability-identifier-naming)

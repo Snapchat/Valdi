@@ -24,6 +24,11 @@
     SCValdiErrorThrow([NSString stringWithFormat:@"Function class %@ should override the 'modulePath' class method", className]);
 }
 
++ (BOOL)asyncStrictMode
+{
+    return NO;
+}
+
 + (instancetype)functionWithJSRuntime:(id<SCValdiJSRuntime>)jsRuntime
 {
     return SCValdiMakeBridgeFunctionFromJSRuntime(self, jsRuntime, [self modulePath]);

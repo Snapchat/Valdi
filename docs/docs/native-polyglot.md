@@ -29,7 +29,7 @@ export const DEFAULT_DELIMITER: string;
 export function join(components: string[], delimiter: string): string;
 ```
 
-The `@ExportModule` annotation tells the Valdi compiler to generate Objective-C and Kotlin bindings that will help with implementing the module. Note that the file needs to be a TypeScript definition (`.d.ts` file), at `my_module/src/Joiner.d.ts` for instance.
+The `@ExportModule` annotation tells the Valdi compiler to generate Objective-C, Swift, and Kotlin bindings that will help with implementing the module. Note that the file needs to be a TypeScript definition (`.d.ts` file), at `my_module/src/Joiner.d.ts` for instance.
 
 ### Bazel file
 

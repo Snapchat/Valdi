@@ -25,6 +25,10 @@ Here is a quick comparison of their feature set.
 - each `<layout>` is invisible and lives only in memory of the Valdi runtime
 - each `<view>` generates a native view (depending on the platform)
 
+**Advanced Attributes:**
+- `extendViewportWithChildren`: Impacts how the runtime treats the node in a specific update pass.
+- `zIndex`: Controls the rendering order of overlapping elements.
+
 **What they feel like:**
 - a `<layout>` is the most basic building block
 - a `<view>` is a `<layout>` that also generate a native view in its frame

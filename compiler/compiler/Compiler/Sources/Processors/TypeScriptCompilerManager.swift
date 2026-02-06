@@ -140,6 +140,24 @@ final class TypeScriptCompilerManager {
         return TypeScriptCompilationResult(outItems: outItems, typeScriptItems: allTypeScriptItems)
     }
 
+    func prepareItemsForSymbolDumping(compileSequence: CompilationSequence, items: [CompilationItem], onlyCompileTypeScriptForModules: Set<String>) throws -> TypeScriptCompilationResult {
+        // Similar to checkItems but skips the actual type checking
+        // This is used in regenerate mode where generated files may not exist
+        var (allTypeScriptItems, intermediateTypeScriptItems, _, outItems) = try prepareIntermediateItems(for: items, compilationSequence: compileSequence, dotTsOnly: false)
+
+        // We only open files for the requested modules, if filter is present
+        let filteredIntermediateTypeScriptItems = filterIntermediateTypeScriptItems(intermediateTypeScriptItems, filter: onlyCompileTypeScriptForModules)
+
+        // Just open the files without type checking
+        let openResult = openFiles(items: filteredIntermediateTypeScriptItems, compileSequence: compileSequence).then { (items) -> [CompilationItem] in
+            return items.map { $0.compilationItem }
+        }
+
+        outItems += try openResult.waitForData()
+
+        return TypeScriptCompilationResult(outItems: outItems, typeScriptItems: allTypeScriptItems)
+    }
+
     func compileItems(compileSequence: CompilationSequence, items: [CompilationItem], onlyCompileTypeScriptForModules: Set<String>) throws -> TypeScriptCompilationResult {
         var (allTypeScriptItems, intermediateTypeScriptItems, jsItems, outItems) = try prepareIntermediateItems(for: items, compilationSequence: compileSequence, dotTsOnly: true)
 
@@ -231,7 +249,8 @@ final class TypeScriptCompilerManager {
                     promise = registerTSConfig(src: src, tsConfigFile: resource.file, bundleInfo: item.bundleInfo, compilationSequence: compilationSequence)
                 }
 
-                prepareResults.append(PrepareTypeScriptItemResult(item: item, promise: promise, intermediateTypeScriptItem: nil, shouldPassThroughItem: false))
+                // Pass through tsconfig.json items so they appear in BUILD file generation
+                prepareResults.append(PrepareTypeScriptItemResult(item: item, promise: promise, intermediateTypeScriptItem: nil, shouldPassThroughItem: true))
             } else {
                 outItems.append(item)
             }
@@ -576,7 +595,16 @@ final class TypeScriptCompilerManager {
             }
         }
 
-        let typeScriptItemsAndSymbols = try promises.compactMap { try $0.waitForData() }
+        // Collect successful results, log failures but don't fail the entire operation
+        let typeScriptItemsAndSymbols = promises.compactMap { promise -> TypedScriptItemAndSymbols? in
+            do {
+                return try promise.waitForData()
+            } catch {
+                // Log the error but continue processing other modules
+                logger.warn("Failed to dump symbols: \(error.legibleLocalizedDescription)")
+                return nil
+            }
+        }
 
         let result = DumpAllSymbolsResult(typeScriptItemsAndSymbols: typeScriptItemsAndSymbols)
         return result

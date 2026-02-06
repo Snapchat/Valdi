@@ -140,35 +140,35 @@ final class CppModelGenerator {
                 classWriter.writeMethod(name: cppProperty.name.getterName,
                                         arguments: [],
                                         returnType: .with(specifiers:.constRef, cppProperty.typeParser.typeNameResolver),
-                                        specifiers: nil) { writer in
+                                        specifiers: .const) { writer in
                     writer.appendBody("return \(cppProperty.name.fieldName);\n")
                 }
 
                 classWriter.writeMethod(name: cppProperty.name.setterName,
                                         arguments: [CPPFunctionArgument(typeResolver: .with(specifiers: .constRef, cppProperty.typeParser.typeNameResolver), name: "value")],
                                         returnType: .with(typeName: "void"),
-                                        specifiers: nil) { writer in
+                                        specifiers: .none) { writer in
                     writer.appendBody("\(cppProperty.name.fieldName) = value;\n")
                 }
 
                 classWriter.writeMethod(name: cppProperty.name.setterName,
                                         arguments: [CPPFunctionArgument(typeResolver: .with(specifiers: .rValueRef, cppProperty.typeParser.typeNameResolver), name: "value")],
                                         returnType: .with(typeName: "void"),
-                                        specifiers: nil) { writer in
+                                        specifiers: .none) { writer in
                     writer.appendBody("\(cppProperty.name.fieldName) = std::move(value);\n")
                 }
             } else {
                 classWriter.writeMethod(name: cppProperty.name.getterName,
                                         arguments: [],
                                         returnType: cppProperty.typeParser.typeNameResolver,
-                                        specifiers: nil) { writer in
+                                        specifiers: .const) { writer in
                     writer.appendBody("return \(cppProperty.name.fieldName);\n")
                 }
 
                 classWriter.writeMethod(name: cppProperty.name.setterName,
                                         arguments: [CPPFunctionArgument(typeResolver: cppProperty.typeParser.typeNameResolver, name: "value")],
                                         returnType: .with(typeName: "void"),
-                                        specifiers: nil) { writer in
+                                        specifiers: .none) { writer in
                     writer.appendBody("\(cppProperty.name.fieldName) = value;\n")
                 }
             }
@@ -204,7 +204,7 @@ final class CppModelGenerator {
             classWriter.writeMethod(name: "getRegisteredClass",
                                     arguments: [],
                                     returnType: registeredClassType,
-                                    specifiers: "static") { writer in
+                                    specifiers: .static_) { writer in
                 writer.appendBody("static auto *kRegisteredClass = \(cppGeneratedClass)::registerGenericSchema(\(registerSchemaParameters.joined(separator: ", ")));\n\n")
                 writer.appendBody("return kRegisteredClass;\n");
             }
@@ -212,7 +212,7 @@ final class CppModelGenerator {
             classWriter.writeMethod(name: "getRegisteredClass",
                                     arguments: [],
                                     returnType: registeredClassType,
-                                    specifiers: "static") { writer in
+                                    specifiers: .static_) { writer in
                 writer.appendBody("static auto *kRegisteredClass = \(cppGeneratedClass)::registerSchema(\(registerSchemaParameters.joined(separator: ", ")));\n\n")
                 writer.appendBody("return kRegisteredClass;\n");
             }
@@ -308,7 +308,7 @@ final class CppModelGenerator {
                                         CPPFunctionArgument(typeResolver: .with(specifiers: .ref, .with(typeName: selfTypeName)), name: "out")
                                    ],
                                    returnType: .with(typeName: "void"),
-                                   specifiers: "static") { writer in
+                                   specifiers: .static_) { writer in
             if !cppProperties.isEmpty {
                 writer.appendBody("auto &self = out;\n")
             }
@@ -323,7 +323,7 @@ final class CppModelGenerator {
                                         CPPFunctionArgument(typeResolver: .with(specifiers: .ref, valueType), name: "out")
                                    ],
                                    returnType: .with(typeName: "void"),
-                                   specifiers: "static") { writer in
+                                   specifiers: .static_) { writer in
             if !cppProperties.isEmpty {
                 writer.appendBody("const auto &self = value;\n")
             }
@@ -480,7 +480,7 @@ final class CppModelGenerator {
                                             CPPFunctionArgument(typeResolver: .with(specifiers: .ref, CppCodeGenerator.makeRefType(typeName: .with(typeName: proxyClassName))), name: "out")
                                           ],
                                           returnType: .with(typeName: "void"),
-                                   specifiers: "static") { writer in
+                                          specifiers: .static_) { writer in
             let fieldsReferenceArguments = generateFieldsReferenceArgument(cppProperties: cppProperties)
             writer.appendBody("out = Valdi::makeShared<\(proxyClassName)>();\n")
             if !cppProperties.isEmpty {
@@ -496,7 +496,7 @@ final class CppModelGenerator {
                                         CPPFunctionArgument(typeResolver: .with(specifiers: .ref, cppTypeRefType), name: "out")
                                    ],
                                    returnType: .with(typeName: "void"),
-                                   specifiers: "static") { writer in
+                                   specifiers: .static_) { writer in
             writer.appendBody("Valdi::CppMarshaller::unmarshallProxyObject<\(proxyClassName)>(exceptionTracker, *getRegisteredClass(), value, out);\n")
         }
 
@@ -507,7 +507,7 @@ final class CppModelGenerator {
                                         CPPFunctionArgument(typeResolver: .with(specifiers: .ref, valueType), name: "out")
                                    ],
                                    returnType: .with(typeName: "void"),
-                                   specifiers: "static") { writer in
+                                   specifiers: .static_) { writer in
             let methodsReferenceArguments = generateMethodsReferenceArgument(receiverArgument: "value", cppProperties: cppProperties)
             writer.appendBody("""
                 Valdi::CppMarshaller::marshallProxyObject(exceptionTracker, *getRegisteredClass(), *value, out, [&]() {
@@ -574,7 +574,7 @@ final class CppModelGenerator {
             NativeSource(relativePath: cppType.includeDir,
                          filename: "\(cppType.declaration.name).hpp",
                          file: .data(try generator.header.content.indented.utf8Data()),
-                         groupingIdentifier: "\(bundleInfo.name).hpp", groupingPriority: 0),
+                         groupingIdentifier: "\(bundleInfo.name).hpp", groupingPriority: 0, localFilenameDependencies: generator.dependenciesInSameHeaderFile),
             NativeSource(relativePath: cppType.includeDir,
                          filename: "\(cppType.declaration.name).cpp",
                          file: .data(try generator.impl.content.indented.utf8Data()),

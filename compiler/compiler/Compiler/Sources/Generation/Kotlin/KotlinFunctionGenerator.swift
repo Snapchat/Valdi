@@ -79,6 +79,7 @@ final class KotlinFunctionGenerator {
 
         companion object {
             const val MODULE_PATH = "\(bundleInfo.name)/\(modulePath)"
+            const val ASYNC_STRICT_MODE: Boolean = \(bundleInfo.asyncStrictMode ? "true" : "false")
 
             @JvmStatic
             fun create(runtime: \(jsRuntimeClass.name)): \(containingTypeName) {

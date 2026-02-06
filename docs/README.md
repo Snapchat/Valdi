@@ -28,8 +28,16 @@
  - [`Style<>`](./docs/core-styling.md)
  - [Touches and Gestures](./docs/core-touches.md)
  - [Navigation](./docs/navigation.md)
-
-## Native Integration
+ 
+ ## Internals
+ 
+  - [Runtime Internals](./docs/internals-runtime.md) - Deep dive into `Valdi::Value`, memory management, and the binary protocol
+  - [Renderer Internals](./docs/internals-renderer.md) - Detailed explanation of the diffing algorithm and slot optimizations
+  - [Compiler Internals](./docs/internals-compiler.md) - Pipeline architecture and TSX transformation details
+  - [Native Integration Internals](./docs/internals-native-integration.md) - View factories, pooling, and attribute binding
+  - [API Design & Extensibility](./docs/internals-api-design.md) - Philosophy, bridge modules, and layered architecture
+ 
+ ## Native Integration
 
  - [Annotations](./docs/native-annotations.md)
  - [Native Bindings](./docs/native-bindings.md)

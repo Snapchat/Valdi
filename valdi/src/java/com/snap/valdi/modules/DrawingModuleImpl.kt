@@ -7,6 +7,8 @@ import com.snap.valdi.attributes.impl.richtext.FontAttributes
 import com.snap.valdi.attributes.impl.richtext.TextAlignment
 import com.snap.valdi.exceptions.ValdiException
 import com.snap.valdi.exceptions.messageWithCauses
+import com.snap.valdi.logger.LogLevel
+import com.snap.valdi.logger.Logger
 import com.snap.valdi.modules.drawing.DrawingModule
 import com.snap.valdi.modules.drawing.Font
 import com.snap.valdi.modules.drawing.FontSpecs
@@ -17,8 +19,11 @@ import com.snapchat.client.valdi_core.ModuleFactory
 import com.snap.valdi.attributes.impl.fonts.FontWeight as FontWeightAndroid
 import com.snap.valdi.attributes.impl.fonts.FontStyle as FontStyleAndroid
 
-class DrawingModuleImpl(private val coordinateResolver: CoordinateResolver,
-                        private val fontManager: FontManager): ModuleFactory(), DrawingModule {
+class DrawingModuleImpl(
+    private val coordinateResolver: CoordinateResolver,
+    private val fontManager: FontManager,
+    private val logger: Logger
+): ModuleFactory(), DrawingModule {
 
     override fun getModulePath(): String {
         return "Drawing"
@@ -80,6 +85,12 @@ class DrawingModuleImpl(private val coordinateResolver: CoordinateResolver,
         style: FontStyle,
         filename: String,
     ) {
+        val file = java.io.File(filename)
+        if (!file.exists()) {
+            logger.log(LogLevel.WARN, "Font file not found, skipping registration: $filename")
+            return
+        }
+
         val descriptor = FontDescriptor(
             name = fontName,
             weight = weight.toNative(),
@@ -89,7 +100,8 @@ class DrawingModuleImpl(private val coordinateResolver: CoordinateResolver,
         val typeface = try {
             Typeface.createFromFile(filename)
         } catch (exc: Exception) {
-            throw ValdiException(exc.messageWithCauses(), exc)
+            logger.log(LogLevel.ERROR, exc, "Failed to load font file: $filename")
+            return
         }
 
         fontManager.register(descriptor, typeface)

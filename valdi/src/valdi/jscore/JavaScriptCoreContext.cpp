@@ -986,7 +986,7 @@ void JavaScriptCoreContext::startDebugger([[maybe_unused]] bool isWorker) {
 
     static std::atomic_bool kRemoteInspectorStarted = false;
 
-    auto* debugger = DebuggerProxy::start(_logger);
+    auto* debugger = DebuggerProxy::start();
     if (debugger != nullptr) {
         if (!kRemoteInspectorStarted.exchange(true)) {
             JSRemoteInspectorStart(debugger->getInternalPort());

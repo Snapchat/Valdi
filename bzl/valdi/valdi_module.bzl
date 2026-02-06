@@ -55,6 +55,7 @@ def valdi_module(
         module_yaml = None,
         strings_dir = None,
         disable_annotation_processing = False,
+        async_strict_mode = False,
         ids_yaml = None,
         sql_db_names = None,
         sql_srcs = [],
@@ -69,6 +70,8 @@ def valdi_module(
         no_compiled_valdimodule_output = False,
         inline_assets = False,
         single_file_codegen = True,
+        has_ios_exports = True,
+        has_android_exports = True,
         disable_code_coverage = False,
         disable_dependency_verification = False,
         disable_hotreload = False,
@@ -101,7 +104,7 @@ def valdi_module(
         module_yaml: The module.yaml file containing the module configuration.
         ios_module_name: The name of the iOS module from module.yaml
         ios_output_target: The iOS output target: "release" or "debug".
-        android_class_path: Class path to use when generating Android source files
+        android_class_path: Class path to use when generating Android source files.
         android_output_target: The Android output target: "release" or "debug".
         android_export_strings: Flag to indicate if string resources will be exported.
         srcs: The source files for the valdi module.
@@ -110,6 +113,7 @@ def valdi_module(
         deps: The dependencies of the valdi module.
         strings_dir: The directory containing the strings files.
         disable_annotation_processing: Flag to disable annotation processing.
+        async_strict_mode: When true, raise exceptions for sync calls made by native code.
         disable_dependency_verification: Flag to disable verification of module dependencies
         disable_code_coverage: Flag to disable code coverage reporting.
         disable_hotreload: Flag to disable hotreload
@@ -117,6 +121,8 @@ def valdi_module(
         sql_db_names: The names of the SQL databases.
         sql_srcs: The SQL source files.
         single_file_codegen: Flag to indicate if the module should use single file codegen mde
+        has_ios_exports: Flag to indicate if the module has iOS native exports (default True).
+        has_android_exports: Flag to indicate if the module has Android native exports (default True).
         downloadable_assets: Flag to indicate if the module resources are downloaded remotely or bundled with the app.
         compilation_mode: The JavaScript compilation mode of the valdi module. Can be "js_bytecode", "native" or "js".
         no_compiled_valdimodule_output: Flag to indicate that the module doesn't produce compiled valdi module output.
@@ -156,8 +162,11 @@ def valdi_module(
         ids_yaml = ids_yaml,
         strings_json_srcs = strings_json_srcs,
         disable_annotation_processing = disable_annotation_processing,
+        async_strict_mode = async_strict_mode,
         sql_db_names = sql_db_names,
         sql_srcs = sql_srcs,
+        has_ios_exports = has_ios_exports,
+        has_android_exports = has_android_exports,
         has_dependency_data = len(ios_generated_context_factories) > 0,
         prepared_upload_artifact_name = prepared_upload_artifact_name,
         # TODO(simon): We should figure out a way to get these flags to be automatically resolved
@@ -203,11 +212,11 @@ def valdi_module(
     all_valdi_module_deps = sets.to_list(sets.make(deps))
 
     ### 3. Setup the Android target named {name}_kt
-    _setup_android_target(name, all_valdi_module_deps, android_deps, compiled_module_target, visibility, android_output_target)
+    _setup_android_target(name, all_valdi_module_deps, android_deps, compiled_module_target, visibility, android_output_target, has_android_exports)
 
     ### 4. Setup the iOS target named {name}_objc
     # A module has resource bundle if there are resources on the disk and resources are not downloaded remotely at runtime.
-    _setup_ios_target(name, all_valdi_module_deps, ios_deps, compiled_module_target, ios_module_name, sql_db_names, ios_generated_context_factories, bool(res), downloadable_assets, ios_output_target, visibility, ios_language, single_file_codegen)
+    _setup_ios_target(name, all_valdi_module_deps, ios_deps, compiled_module_target, ios_module_name, sql_db_names, ios_generated_context_factories, bool(res), downloadable_assets, ios_output_target, visibility, ios_language, single_file_codegen, has_ios_exports)
 
     ### 5. Setup the C++ target named {name}_cpp
     _setup_cpp_target(name, all_valdi_module_deps, compiled_module_target, visibility, single_file_codegen)
@@ -303,7 +312,7 @@ def _valdi_source_set_select(debug, release, is_release_output_target, release_d
         release = release if is_release_output_target else release_default_value,
     )
 
-def _setup_android_target(name, deps, android_deps, compiled_module_target, visibility, android_output_target):
+def _setup_android_target(name, deps, android_deps, compiled_module_target, visibility, android_output_target, has_android_exports):
     ################
     ####
     #### Configure the Android library target
@@ -326,19 +335,21 @@ def _setup_android_target(name, deps, android_deps, compiled_module_target, visi
         visibility = visibility,
     )
 
-    extract_valdi_module_output(
-        name = "android.debug.srcjar",
-        compiled_module = compiled_module_target,
-        output_name = "android_debug_srcjar",
-        visibility = visibility,
-    )
+    # Only extract srcjars if the module has Android exports
+    if has_android_exports:
+        extract_valdi_module_output(
+            name = "android.debug.srcjar",
+            compiled_module = compiled_module_target,
+            output_name = "android_debug_srcjar",
+            visibility = visibility,
+        )
 
-    extract_valdi_module_output(
-        name = "android.release.srcjar",
-        compiled_module = compiled_module_target,
-        output_name = "android_release_srcjar",
-        visibility = visibility,
-    )
+        extract_valdi_module_output(
+            name = "android.release.srcjar",
+            compiled_module = compiled_module_target,
+            output_name = "android_release_srcjar",
+            visibility = visibility,
+        )
 
     extract_valdi_module_output(
         name = "android.debug.resource_files",
@@ -389,8 +400,8 @@ def _setup_android_target(name, deps, android_deps, compiled_module_target, visi
     kt_android_library(
         name = name + "_api_kt",
         srcs = _valdi_source_set_select(
-            debug = [":android.debug.srcjar"],
-            release = [":android.release.srcjar"],
+            debug = [":android.debug.srcjar"] if has_android_exports else ["@valdi//bzl/valdi:empty.kt"],
+            release = [":android.release.srcjar"] if has_android_exports else ["@valdi//bzl/valdi:empty.kt"],
             is_release_output_target = is_release,
             release_default_value = ["@valdi//bzl/valdi:empty.kt"],
         ),
@@ -432,7 +443,7 @@ def _setup_android_target(name, deps, android_deps, compiled_module_target, visi
         visibility = visibility,
     )
 
-def _setup_ios_target(name, module_deps, ios_deps, compiled_module_target, ios_module_name, sql_db_names, ios_generated_context_factories, has_resource_bundle, downloadable_assets, ios_output_target, visibility, ios_language, single_file_codegen):
+def _setup_ios_target(name, module_deps, ios_deps, compiled_module_target, ios_module_name, sql_db_names, ios_generated_context_factories, has_resource_bundle, downloadable_assets, ios_output_target, visibility, ios_language, single_file_codegen, has_ios_exports):
     ################
     ####
     #### Configure the objc_library targets
@@ -594,45 +605,71 @@ def _setup_ios_target(name, module_deps, ios_deps, compiled_module_target, ios_m
         objc_srcs = [native.package_relative_label(objc_srcs_name)]
         swift_srcs = [native.package_relative_label(swift_srcs_name)]
 
-        extract_objc_srcs(
-            name = api_objc_hdrs_name,
-            compiled_module = compiled_module_target,
-            extension = ".h",
-            api_only = True,
-            selected_source_set = selected_source_set,
-            visibility = visibility,
-        )
+        # Only extract native sources if the module has iOS exports
+        if has_ios_exports:
+            extract_objc_srcs(
+                name = api_objc_hdrs_name,
+                compiled_module = compiled_module_target,
+                extension = ".h",
+                api_only = True,
+                selected_source_set = selected_source_set,
+                visibility = visibility,
+            )
 
-        extract_objc_srcs(
-            name = api_objc_srcs_name,
-            compiled_module = compiled_module_target,
-            extension = ".m",
-            api_only = True,
-            selected_source_set = selected_source_set,
-        )
+            extract_objc_srcs(
+                name = api_objc_srcs_name,
+                compiled_module = compiled_module_target,
+                extension = ".m",
+                api_only = True,
+                selected_source_set = selected_source_set,
+            )
 
-        extract_objc_srcs(
-            name = objc_hdrs_name,
-            compiled_module = compiled_module_target,
-            extension = ".h",
-            api_only = False,
-            selected_source_set = selected_source_set,
-            visibility = visibility,
-        )
+            extract_objc_srcs(
+                name = objc_hdrs_name,
+                compiled_module = compiled_module_target,
+                extension = ".h",
+                api_only = False,
+                selected_source_set = selected_source_set,
+                visibility = visibility,
+            )
 
-        extract_objc_srcs(
-            name = objc_srcs_name,
-            compiled_module = compiled_module_target,
-            extension = ".m",
-            api_only = False,
-            selected_source_set = selected_source_set,
-        )
+            extract_objc_srcs(
+                name = objc_srcs_name,
+                compiled_module = compiled_module_target,
+                extension = ".m",
+                api_only = False,
+                selected_source_set = selected_source_set,
+            )
 
-        extract_swift_srcs(
-            name = swift_srcs_name,
-            compiled_module = compiled_module_target,
-            selected_source_set = selected_source_set,
-        )
+            extract_swift_srcs(
+                name = swift_srcs_name,
+                compiled_module = compiled_module_target,
+                selected_source_set = selected_source_set,
+            )
+        else:
+            # Create empty filegroups when there are no exports
+            native.filegroup(
+                name = api_objc_hdrs_name,
+                srcs = [],
+                visibility = visibility,
+            )
+            native.filegroup(
+                name = api_objc_srcs_name,
+                srcs = [],
+            )
+            native.filegroup(
+                name = objc_hdrs_name,
+                srcs = [],
+                visibility = visibility,
+            )
+            native.filegroup(
+                name = objc_srcs_name,
+                srcs = [],
+            )
+            native.filegroup(
+                name = swift_srcs_name,
+                srcs = [],
+            )
 
     # iOS target named {ios_module_name}
     resources = source_set_select(
@@ -739,6 +776,7 @@ def _setup_ios_target(name, module_deps, ios_deps, compiled_module_target, ios_m
         visibility = visibility,
         generated_objects = impl_generated_objects,
         single_file_codegen = single_file_codegen,
+        has_ios_exports = has_ios_exports,
         tags = [
             "valdi_objc",
         ],
@@ -762,6 +800,7 @@ def _setup_ios_target(name, module_deps, ios_deps, compiled_module_target, ios_m
         objc_srcs = api_objc_srcs,
         generated_objects = api_generated_objects,
         single_file_codegen = single_file_codegen,
+        has_ios_exports = has_ios_exports,
         visibility = visibility,
     )
 
@@ -905,6 +944,14 @@ def _setup_web_target(name, deps, compiled_module_target, visibility, compilatio
         visibility = visibility,
     )
 
+    # All TypeScript declaration files
+    extract_transitive_valdi_module_output(
+        name = "web.dts.all",
+        modules = [compiled_module_target],
+        output_name = "web_dts_files",
+        visibility = visibility,
+    )
+
     native.filegroup(
         name = "{}_all_web_deps".format(name),
         srcs = [":web.deps.all"],
@@ -919,7 +966,7 @@ def _setup_web_target(name, deps, compiled_module_target, visibility, compilatio
 
     native.filegroup(
         name = "{}_web_srcs_filegroup".format(name),
-        srcs = web_srcs_all + web_resource_files_all + web_strings_all + [":web.protodecl.all", ":web.deps.all"],
+        srcs = web_srcs_all + web_resource_files_all + web_strings_all + [":web.protodecl.all", ":web.deps.all", ":web.dts.all"],
         visibility = visibility,
     )
 
@@ -934,22 +981,15 @@ def npm_package_target_for_target(name):
     label = native.package_relative_label(name)
     return label.relative(":" + npm_package_target_name(label.name))
 
-def _exported_objc_lib(name, ios_module_name, objc_hdrs, objc_srcs, single_file_codegen, **kwargs):
-    internal_umbrella_header_name = name + "_umbrella.h"
-    umbrella_header(
-        name = internal_umbrella_header_name,
-        hdrs = objc_hdrs,
-        umbrella_header_name = ios_module_name + "-Swift",
-        tags = ["manual"],
-    )
-    umbrella_headers = [":" + internal_umbrella_header_name]
-
+def _exported_objc_lib(name, ios_module_name, objc_hdrs, objc_srcs, single_file_codegen, has_ios_exports = True, **kwargs):
     # setup headermaps
-    if single_file_codegen:
-        hmap_hdrs = objc_hdrs + umbrella_headers
+    # When has_ios_exports is False, we use empty hdrs instead of header_tree_artifact_providers
+    # because the headermap rule requires at least one tree artifact when using header_tree_artifact_providers
+    if single_file_codegen or not has_ios_exports:
+        hmap_hdrs = objc_hdrs if has_ios_exports else []
         hmap_header_tree_providers = []
     else:
-        hmap_hdrs = umbrella_headers
+        hmap_hdrs = []
         hmap_header_tree_providers = objc_hdrs
 
     hmap_name = name + "_valdi_module_hmap"
@@ -963,8 +1003,8 @@ def _exported_objc_lib(name, ios_module_name, objc_hdrs, objc_srcs, single_file_
     hmap_deps = [native.package_relative_label(hmap_name)]
     hmap_copts = []
 
-    if single_file_codegen:
-        private_hmap_hdrs = objc_hdrs
+    if single_file_codegen or not has_ios_exports:
+        private_hmap_hdrs = objc_hdrs if has_ios_exports else []
         private_hmap_header_tree_providers = []
     else:
         private_hmap_hdrs = []
@@ -986,10 +1026,29 @@ def _exported_objc_lib(name, ios_module_name, objc_hdrs, objc_srcs, single_file_
     # -I. needs to come last after all .hmap includes
     hmap_copts.append("-I.")
 
+    # The umbrella header is a public header
+    # Umbrella headers for ObjC libraries are meant to only be imported
+    # from -Swift.h generated headers (replacing modular @import).
+    # The -Swift.h headers use workspace-relative imports of umbrella
+    # headers and exposing it via headermap is not necessary.
+    internal_umbrella_header_name = name + "_umbrella.h"
+    umbrella_header(
+        name = internal_umbrella_header_name,
+        hdrs = objc_hdrs if has_ios_exports else [],
+        umbrella_header_name = ios_module_name + "-Swift",
+        tags = ["manual"],
+    )
+    umbrella_headers = [":" + internal_umbrella_header_name]
+
+    # When has_ios_exports is False, use empty.c as a fallback source
+    # because objc_library requires at least one source file
+    actual_objc_srcs = objc_srcs if has_ios_exports else ["@valdi//bzl/valdi:empty.c"]
+    actual_objc_hdrs = objc_hdrs if has_ios_exports else []
+
     client_objc_library(
         name = name,
-        hdrs = [] + objc_hdrs + umbrella_headers,
-        srcs = [] + objc_srcs,
+        hdrs = [] + actual_objc_hdrs + umbrella_headers,
+        srcs = [] + actual_objc_srcs,
         enable_swift_interop = True,
         module_name = ios_module_name,
         copts = COMPILER_FLAGS + hmap_copts,
@@ -1017,6 +1076,8 @@ def _exported_objc_lib(name, ios_module_name, objc_hdrs, objc_srcs, single_file_
     )
 
 def _setup_cpp_target(name, deps, compiled_module_target, visibility, single_file_codegen):
+    cpp_strip_prefix = "cpp/release/src"
+
     # C++ codegen always outputs to release configuration
     if single_file_codegen:
         # For single file codegen, extract individual .cpp and .hpp files
@@ -1043,20 +1104,22 @@ def _setup_cpp_target(name, deps, compiled_module_target, visibility, single_fil
             name = cpp_srcs_name,
             compiled_module = compiled_module_target,
             extension = ".cpp",
+            strip_prefix = cpp_strip_prefix,
         )
 
         extract_cpp_srcs(
             name = cpp_hdrs_name,
             compiled_module = compiled_module_target,
             extension = ".hpp",
+            strip_prefix = cpp_strip_prefix,
         )
 
         cpp_srcs = [native.package_relative_label(cpp_srcs_name)]
         cpp_hdrs = [native.package_relative_label(cpp_hdrs_name)]
 
-    # For single_file_codegen, we need to strip the include prefix to make headers findable
-    # For multi-file codegen, the extract_cpp_srcs rule preserves directory structure
-    # C++ codegen always outputs to release configuration
+    # C++ codegen always outputs to release configuration.
+    # Both single_file_codegen and multi-file codegen strip the cpp/release/src/ prefix
+    # so that #include "valdi_modules/..." works correctly.
     cc_library_kwargs = {
         "name": name + "_cpp",
         "srcs": cpp_srcs,
@@ -1066,9 +1129,8 @@ def _setup_cpp_target(name, deps, compiled_module_target, visibility, single_fil
     }
 
     if single_file_codegen:
-        # For single file mode, strip the cpp/release/src prefix
-        # so that #include "module/file.hpp" works correctly
-        cc_library_kwargs["strip_include_prefix"] = "cpp/release/src"
+        # For single file mode, strip via cc_library's strip_include_prefix
+        cc_library_kwargs["strip_include_prefix"] = cpp_strip_prefix
     else:
         # For multi-file mode, the extracted directory contains subdirectories
         # We need to add it as an include path

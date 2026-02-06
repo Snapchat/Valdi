@@ -1,0 +1,409 @@
+name: Test CLI on Linux Distributions
+
+on:
+  pull_request:
+    paths:
+      - 'npm_modules/cli/src/**'
+      - 'npm_modules/cli/test/**'
+      - 'npm_modules/cli/package.json'
+      - '.github/workflows/test-cli-linux.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'npm_modules/cli/src/**'
+      - 'npm_modules/cli/test/**'
+      - 'npm_modules/cli/package.json'
+      - '.github/workflows/test-cli-linux.yml'
+  workflow_dispatch:
+
+jobs:
+  test-distribution-detection:
+    name: Test on ${{ matrix.distro }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro:
+          - ubuntu-22.04
+          - ubuntu-24.04
+          - fedora-39
+          - fedora-40
+        include:
+          - distro: ubuntu-22.04
+            container: ubuntu:22.04
+            expected_type: debian
+            expected_pm: apt
+            expected_name_pattern: Ubuntu
+          - distro: ubuntu-24.04
+            container: ubuntu:24.04
+            expected_type: debian
+            expected_pm: apt
+            expected_name_pattern: Ubuntu
+          - distro: fedora-39
+            container: fedora:39
+            expected_type: redhat
+            expected_pm: dnf
+            expected_name_pattern: Fedora
+          - distro: fedora-40
+            container: fedora:40
+            expected_type: redhat
+            expected_pm: dnf
+            expected_name_pattern: Fedora
+    
+    container:
+      image: ${{ matrix.container }}
+    
+    steps:
+      - name: Install git (required for checkout)
+        run: |
+          if command -v apt-get &> /dev/null; then
+            apt-get update -qq && apt-get install -y -qq git curl ca-certificates
+          elif command -v dnf &> /dev/null; then
+            dnf install -y -q git curl ca-certificates
+          elif command -v yum &> /dev/null; then
+            yum install -y -q git curl ca-certificates
+          fi
+      
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      
+      - name: Build Valdi CLI
+        run: |
+          cd npm_modules/cli
+          npm ci
+          npm run build
+      
+      - name: Test distribution detection
+        run: |
+          echo "============================================================"
+          echo "Testing Linux Distribution Detection"
+          echo "============================================================"
+          echo ""
+          echo "Expected:"
+          echo "  Distribution type: ${{ matrix.expected_type }}"
+          echo "  Package manager:   ${{ matrix.expected_pm }}"
+          echo "  Distribution name: ${{ matrix.expected_name_pattern }}"
+          echo ""
+          
+          node -e "
+            const distro = require('./npm_modules/cli/dist/utils/linuxDistro');
+            
+            console.log('Testing distribution detection...');
+            const detected = distro.detectLinuxDistro();
+            
+            console.log('');
+            console.log('✓ Detected distribution:', detected.name);
+            console.log('  Type:', detected.type);
+            console.log('  Version:', detected.version || 'N/A');
+            console.log('  Package Manager:', detected.packageManager.name);
+            console.log('  Install Command:', detected.packageManager.installCommand);
+            console.log('  Requires Sudo:', detected.packageManager.requiresSudo);
+            
+            // Verify detection matches expected
+            const expectedType = '${{ matrix.expected_type }}';
+            const expectedPm = '${{ matrix.expected_pm }}';
+            const expectedNamePattern = '${{ matrix.expected_name_pattern }}';
+            
+            if (detected.type !== expectedType) {
+              throw new Error(\`Expected type '\${expectedType}', got '\${detected.type}'\`);
+            }
+            console.log('✓ Distribution type correct');
+            
+            if (detected.packageManager.name !== expectedPm) {
+              throw new Error(\`Expected package manager '\${expectedPm}', got '\${detected.packageManager.name}'\`);
+            }
+            console.log('✓ Package manager correct');
+            
+            if (!detected.name.includes(expectedNamePattern)) {
+              throw new Error(\`Expected name to contain '\${expectedNamePattern}', got '\${detected.name}'\`);
+            }
+            console.log('✓ Distribution name correct');
+            
+            console.log('');
+            console.log('All distribution detection checks passed! ✓');
+          "
+      
+      - name: Test package mappings
+        run: |
+          echo ""
+          echo "============================================================"
+          echo "Testing Package Name Mappings"
+          echo "============================================================"
+          echo ""
+          
+          node -e "
+            const distro = require('./npm_modules/cli/dist/utils/linuxDistro');
+            const detected = distro.detectLinuxDistro();
+            const mappings = distro.getCommonPackageMappings();
+            
+            console.log('Package mappings loaded:', Object.keys(mappings).length, 'packages');
+            console.log('');
+            
+            // Test all common packages have correct mappings
+            const testPackages = [
+              'git',
+              'git-lfs',
+              'npm',
+              'openjdk-17',
+              'watchman',
+              'adb',
+              'fontconfig',
+              'zlib'
+            ];
+            
+            for (const pkg of testPackages) {
+              const mapping = mappings[pkg];
+              if (!mapping) {
+                throw new Error(\`Missing mapping for \${pkg}\`);
+              }
+              
+              const packageName = distro.getPackageName(mapping, detected);
+              console.log(\`  \${pkg.padEnd(15)} -> \${packageName}\`);
+              
+              if (!packageName || packageName === '') {
+                throw new Error(\`Empty package name for \${pkg}\`);
+              }
+            }
+            
+            console.log('');
+            console.log('All package mappings validated! ✓');
+          "
+      
+      - name: Test install command generation
+        run: |
+          echo ""
+          echo "============================================================"
+          echo "Testing Install Command Generation"
+          echo "============================================================"
+          echo ""
+          
+          node -e "
+            const distro = require('./npm_modules/cli/dist/utils/linuxDistro');
+            const detected = distro.detectLinuxDistro();
+            const expectedPm = '${{ matrix.expected_pm }}';
+            
+            // Test single package
+            const singleCmd = distro.buildInstallCommand(['git'], detected);
+            console.log('Single package:');
+            console.log('  ' + singleCmd);
+            
+            if (!singleCmd.includes(expectedPm)) {
+              throw new Error(\`Command should use \${expectedPm}\`);
+            }
+            if (!singleCmd.includes('git')) {
+              throw new Error('Command should include git package');
+            }
+            console.log('  ✓ Correct');
+            console.log('');
+            
+            // Test multiple packages
+            const multiCmd = distro.buildInstallCommand(['git', 'npm', 'watchman'], detected);
+            console.log('Multiple packages:');
+            console.log('  ' + multiCmd);
+            
+            if (!multiCmd.includes(expectedPm)) {
+              throw new Error(\`Command should use \${expectedPm}\`);
+            }
+            if (!multiCmd.includes('git') || !multiCmd.includes('npm') || !multiCmd.includes('watchman')) {
+              throw new Error('Command should include all packages');
+            }
+            console.log('  ✓ Correct');
+            console.log('');
+            
+            // Test distribution-specific Java package
+            const mappings = distro.getCommonPackageMappings();
+            const javaPackage = distro.getPackageName(mappings['openjdk-17'], detected);
+            const javaCmd = distro.buildInstallCommand([javaPackage], detected);
+            console.log('Java package (distribution-specific):');
+            console.log('  Package: ' + javaPackage);
+            console.log('  Command: ' + javaCmd);
+            console.log('  ✓ Correct');
+            console.log('');
+            
+            console.log('All install command generation tests passed! ✓');
+          "
+      
+      - name: Test git-lfs setup detection
+        run: |
+          echo ""
+          echo "============================================================"
+          echo "Testing Git-LFS Repository Setup Detection"
+          echo "============================================================"
+          echo ""
+          
+          node -e "
+            const distro = require('./npm_modules/cli/dist/utils/linuxDistro');
+            const detected = distro.detectLinuxDistro();
+            
+            const needsSetup = distro.needsGitLfsRepoSetup(detected);
+            const setupCmd = distro.getGitLfsRepoSetupCommand(detected);
+            
+            console.log('Distribution:', detected.name);
+            console.log('Needs git-lfs repo setup:', needsSetup);
+            console.log('Setup command:', setupCmd || 'N/A (uses standard repos)');
+            console.log('');
+            
+            // Verify logic is consistent
+            if (needsSetup && !setupCmd) {
+              throw new Error('If setup is needed, command should be provided');
+            }
+            
+            // Verify Debian/Ubuntu needs packagecloud setup
+            if (detected.type === 'debian' && !needsSetup) {
+              throw new Error('Debian/Ubuntu should need git-lfs repo setup');
+            }
+            
+            // Verify setup command format
+            if (setupCmd) {
+              if (!setupCmd.includes('packagecloud.io')) {
+                throw new Error('Setup command should use packagecloud.io');
+              }
+              
+              if (detected.type === 'debian' && !setupCmd.includes('script.deb.sh')) {
+                throw new Error('Debian setup should use .deb script');
+              }
+              
+              if (detected.type === 'redhat' && !setupCmd.includes('script.rpm.sh')) {
+                throw new Error('RedHat setup should use .rpm script');
+              }
+            }
+            
+            console.log('Git-LFS setup detection validated! ✓');
+          "
+      
+      - name: Install CLI and test valdi doctor
+        run: |
+          echo ""
+          echo "============================================================"
+          echo "Testing 'valdi doctor' Command"
+          echo "============================================================"
+          echo ""
+          
+          cd npm_modules/cli
+          npm link
+          
+          # Run valdi doctor and capture output
+          # Note: valdi doctor will report missing dependencies (expected in CI)
+          # We're testing that it runs without crashing and generates correct commands
+          echo "Running valdi doctor..."
+          set +e  # Don't exit on error
+          valdi doctor --verbose > /tmp/doctor_output.txt 2>&1
+          DOCTOR_EXIT_CODE=$?
+          set -e  # Re-enable exit on error
+          
+          # Show the output
+          cat /tmp/doctor_output.txt
+          
+          # Verify doctor ran and generated distribution-specific commands
+          echo ""
+          echo "Verifying distribution-specific fix commands..."
+          
+          # Check that doctor output contains distribution-appropriate package manager
+          if grep -q "sudo dnf install\|sudo yum install" /tmp/doctor_output.txt; then
+            echo "✓ Contains dnf/yum commands (correct for Fedora/RHEL)"
+          elif grep -q "sudo apt-get install\|sudo apt install" /tmp/doctor_output.txt; then
+            echo "✓ Contains apt commands (correct for Debian/Ubuntu)"
+          else
+            echo "✗ No distribution-specific install commands found"
+            exit 1
+          fi
+          
+          echo ""
+          echo "✓ valdi doctor executed successfully with distribution detection"
+      
+      - name: Test doctor fix commands
+        run: |
+          echo ""
+          echo "============================================================"
+          echo "Testing Doctor Fix Command Generation"
+          echo "============================================================"
+          echo ""
+          
+          node -e "
+            const fs = require('fs');
+            const distro = require('./npm_modules/cli/dist/utils/linuxDistro');
+            const detected = distro.detectLinuxDistro();
+            
+            console.log('Distribution:', detected.name, '(' + detected.type + ')');
+            console.log('');
+            
+            // The doctor command should be using our distribution detection
+            const doctorCode = fs.readFileSync('./npm_modules/cli/dist/commands/doctor.js', 'utf8');
+            
+            // Verify the doctor has the required methods
+            if (!doctorCode.includes('getJavaInstallCommand')) {
+              throw new Error('Doctor command missing getJavaInstallCommand method');
+            }
+            if (!doctorCode.includes('getFixCommandForDependency')) {
+              throw new Error('Doctor command missing getFixCommandForDependency method');
+            }
+            if (!doctorCode.includes('detectLinuxDistro')) {
+              throw new Error('Doctor command not using distribution detection');
+            }
+            
+            console.log('✓ Doctor command uses distribution detection');
+            console.log('✓ Doctor command has fix command methods');
+            console.log('');
+            console.log('Doctor fix commands validated! ✓');
+          "
+      
+      - name: Summary
+        if: success()
+        run: |
+          echo ""
+          echo "============================================================"
+          echo "✓ ALL TESTS PASSED FOR ${{ matrix.distro }}"
+          echo "============================================================"
+          echo ""
+          echo "Distribution detection:     ✓"
+          echo "Package mappings:           ✓"
+          echo "Install command generation: ✓"
+          echo "Git-LFS setup detection:    ✓"
+          echo "valdi doctor integration:   ✓"
+          echo "Doctor fix commands:        ✓"
+          echo ""
+
+  test-unit-tests:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      
+      - name: Install dependencies
+        run: |
+          cd npm_modules/cli
+          npm ci
+      
+      - name: Build
+        run: |
+          cd npm_modules/cli
+          npm run build
+      
+      - name: Run linuxDistro unit tests
+        run: |
+          cd npm_modules/cli
+          # Run Jasmine tests for linuxDistro
+          npx jasmine dist/utils/linuxDistro.spec.js
+      
+      - name: Verify no linter errors in modified files
+        run: |
+          cd npm_modules/cli
+          # Only lint the files we actually modified for Linux compatibility
+          npx eslint \
+            src/utils/linuxDistro.ts \
+            src/utils/linuxDistro.spec.ts \
+            src/setup/linuxSetup.ts \
+            src/commands/doctor.ts

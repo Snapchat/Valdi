@@ -127,21 +127,21 @@ interface NativeClass {
 
 /**
  * Can be set on an exported TypeScript function.
- * Asks the compiler to emit an Objective-C/Kotlin function which can call
+ * Asks the compiler to emit Objective-C/Swift/Kotlin functions which can call
  * this function.
  */
 @ExportFunction(class: NativeClass);
 
 /**
  * Can be set on a TypeScript enum.
- * Asks the compiler to emit an Objective-C/Kotlin enum.
+ * Asks the compiler to emit Objective-C/Swift/Kotlin enums.
  * Only string and int enums are supported.
  */
 @ExportEnum(class: NativeClass);
 
 /**
  * Can be set on a TypeScript definition file (.d.ts).
- * Tells the compiler to generate an Objective-C/Kotlin module
+ * Tells the compiler to generate Objective-C/Swift/Kotlin modules
  * that must implement the API for the file itself.
  * See documentation about polyglot modules for more details.
  */

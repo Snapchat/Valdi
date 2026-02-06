@@ -87,6 +87,9 @@ Those view classes are designed to efficiently implement a scrollable region on 
 
 In Valdi you don't have to think or deal with view recycling/re-use, the framework handles everything under the hood for you and it has similar performance to those view classes.
 
+> [!Note]
+> The Valdi runtime automatically calculates the viewport of elements when scrolling. It determines which UI elements are actually visible on the screen and only renders those, ensuring high performance even for very long lists.
+
 Using [flexbox properties](./core-flexbox.md) to layout your child views provides a simple and flexible way to provide a large list of scrollable components. For this reason, Valdi does not currently provide APIs for those view classes.
 
 ## Complete API Reference

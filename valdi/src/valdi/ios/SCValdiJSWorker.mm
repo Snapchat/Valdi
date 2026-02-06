@@ -82,10 +82,15 @@
         });
 }
 
+- (id<SCValdiJSRuntime>)createScopedJSRuntimeWithScopeName:(NSString *)scopeName
+{
+    SCNValdiCoreJSRuntimeNativeObjectsManager *nativeObjectsManager = [_jsRuntime createNativeObjectsManagerWithScopeName:scopeName];
+    return [[SCValdiJSWorker alloc] initWithWorkerRuntime:_jsRuntime nativeObjectsManager:nativeObjectsManager];
+}
+
 - (id<SCValdiJSRuntime>)createScopedJSRuntime
 {
-    SCNValdiCoreJSRuntimeNativeObjectsManager *nativeObjectsManager = [_jsRuntime createNativeObjectsManager];
-    return [[SCValdiJSWorker alloc] initWithWorkerRuntime:_jsRuntime nativeObjectsManager:nativeObjectsManager];
+    return [self createScopedJSRuntimeWithScopeName:@""];
 }
 
 - (void)dispose

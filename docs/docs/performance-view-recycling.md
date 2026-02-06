@@ -8,6 +8,9 @@ To achieve fast inflation and fast scrolling performance, Valdi recycles all the
 - On iOS, if the View overrides `willEnqueueIntoValdiPool`, it will be called and if the view returns false, the view will also be discarded.
 - If the methods above returned true, the View will be placed into a dedicated view pool keyed by its class name.
 
+> [!Note]
+> The recycling logic is managed by **View Factories**. Each view class has a corresponding `ViewFactory` that maintains its own pool of reusable view instances. This ensures that view inflation is as efficient as possible across the entire application.
+
 Later on, whenever Valdi needs to create a view of a certain view class, it will first look up in the view pool if there is one pooled view available. If there is it will use it, otherwise a new instance will be created.
 
 The view pool is _global_, meaning that if there was a previously destroyed Valdi screen, any subsequent opening Valdi screen will inflate faster, as long as they have a fair amount of common views. Because Valdi is designed around composition, most native view trees should have very few different kind of view classes, and as such the number of underlying dedicated view pools should be low and the hit rates on those pools should be high.

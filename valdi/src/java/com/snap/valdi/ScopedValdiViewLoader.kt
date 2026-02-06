@@ -127,7 +127,11 @@ class ScopedValdiRuntime(private val runtime: IValdiRuntime,
     }
 
     override fun createScopedJSRuntime(block: (ValdiScopedJSRuntime) -> Unit) {
-        runtime.createScopedJSRuntime(block)
+        createScopedJSRuntime("", block)
+    }
+
+    override fun createScopedJSRuntime(scopeName: String, block: (ValdiScopedJSRuntime) -> Unit) {
+        runtime.createScopedJSRuntime(scopeName, block)
     }
 
     override fun getFontManager(block: (FontManager) -> Unit) {

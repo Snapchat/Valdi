@@ -77,7 +77,8 @@ public:
             bool updateHandlerSynchronously,
             bool deferRender,
             Runtime* runtime,
-            const Ref<ILogger>& logger);
+            const Ref<ILogger>& logger,
+            const StringBox& scopeName = StringBox());
     ~Context() override;
 
     void postInit();

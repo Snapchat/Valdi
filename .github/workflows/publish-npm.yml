@@ -9,10 +9,6 @@ on:
       - 'npm_modules/*/package.json'
   workflow_dispatch:
 
-permissions:
-  id-token: write  # Required for OIDC
-  contents: read
-
 jobs:
   detect-changes:
     runs-on: ubuntu-latest
@@ -40,7 +36,8 @@ jobs:
             echo "eslint-plugin=false" >> $GITHUB_OUTPUT
           fi
 
-  publish-cli:
+  test-cli:
+    name: Test CLI before publish
     needs: detect-changes
     if: needs.detect-changes.outputs.cli == 'true'
     runs-on: ubuntu-latest
@@ -51,12 +48,65 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Preflight
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package
+        run: npm run build
+
+      - name: Smoke tests (CLI runs)
         run: |
-          node -v
-          npm -v
-          npm ping
-          npm whoami || echo "OIDC identity will be used"
+          node dist/index.js --version
+          node dist/index.js --help
+          node dist/index.js bootstrap --help
+          node dist/index.js doctor --help
+
+  test-cli-build:
+    name: Build bootstrapped app (release test)
+    needs: detect-changes
+    if: needs.detect-changes.outputs.cli == 'true'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install Bazel and watchman
+        run: |
+          brew install bazelisk watchman
+          bazel --version
+          watchman --version
+
+      - name: Run release test (bootstrap from main, build iOS, test)
+        run: ./tools/ci/release_test.sh
+
+  publish-cli:
+    needs: [detect-changes, test-cli, test-cli-build]
+    if: needs.detect-changes.outputs.cli == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: npm_modules/cli
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -71,7 +121,9 @@ jobs:
         run: npm run build
 
       - name: Publish @snap/valdi to npm
-        run: npm publish --provenance --access public
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-eslint-plugin:
     needs: detect-changes
@@ -81,16 +133,8 @@ jobs:
       run:
         working-directory: npm_modules/eslint-plugin-valdi
     steps:
-
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Preflight
-        run: |
-          node -v
-          npm -v
-          npm ping
-          npm whoami || echo "OIDC identity will be used"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -105,5 +149,7 @@ jobs:
         run: npm run build
 
       - name: Publish @snap/eslint-plugin-valdi to npm
-        run: npm publish --provenance --access public
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

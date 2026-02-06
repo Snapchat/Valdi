@@ -77,23 +77,38 @@ void StandaloneExitCoordinator::flushUpdatesSync() {
 }
 
 void StandaloneExitCoordinator::setEnabled(bool enabled) {
-    _coordinatorQueue->async([this, enabled]() {
-        _enabled = enabled;
-        exitIfNeeded();
+    auto weakSelf = weakRef(this);
+    _coordinatorQueue->async([weakSelf, enabled]() {
+        auto self = weakSelf.lock();
+        if (self == nullptr) {
+            return;
+        }
+        self->_enabled = enabled;
+        self->exitIfNeeded();
     });
 }
 
 void StandaloneExitCoordinator::onJsQueueEmpty(bool empty) {
-    _coordinatorQueue->async([this, empty]() {
-        _jsQueueEmpty = empty;
-        exitIfNeeded();
+    auto weakSelf = weakRef(this);
+    _coordinatorQueue->async([weakSelf, empty]() {
+        auto self = weakSelf.lock();
+        if (self == nullptr) {
+            return;
+        }
+        self->_jsQueueEmpty = empty;
+        self->exitIfNeeded();
     });
 }
 
 void StandaloneExitCoordinator::onMainQueueEmpty(bool empty) {
-    _coordinatorQueue->async([this, empty]() {
-        _mainQueueEmpty = empty;
-        exitIfNeeded();
+    auto weakSelf = weakRef(this);
+    _coordinatorQueue->async([weakSelf, empty]() {
+        auto self = weakSelf.lock();
+        if (self == nullptr) {
+            return;
+        }
+        self->_mainQueueEmpty = empty;
+        self->exitIfNeeded();
     });
 }
 

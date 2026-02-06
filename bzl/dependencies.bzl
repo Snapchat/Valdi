@@ -17,7 +17,7 @@ def local_or_nested_repository(workspace_root, name, path):
 def setup_dependencies(workspace_root = None):
     native.android_sdk_repository(
         name = "androidsdk",
-        api_level = 35,  # The API version for Android compileSdk
+        api_level = 36,  # The API version for Android compileSdk
         build_tools_version = "34.0.0",
     )
 
@@ -170,7 +170,9 @@ def setup_dependencies(workspace_root = None):
 
     http_archive(
         name = "boringssl",
-        url = "https://boringssl.googlesource.com/boringssl/+archive/82f9853fc7d7360ae44f1e1357a6422c5244bbd8.tar.gz",
+        url = "https://github.com/google/boringssl/archive/82f9853fc7d7360ae44f1e1357a6422c5244bbd8.tar.gz",
+        strip_prefix = "boringssl-82f9853fc7d7360ae44f1e1357a6422c5244bbd8",
+        integrity = "sha256-Q+jJ5SofjJ1PbWAvAwI7jZ9o1f//x7+ZxV5sLE1XTa0=",
     )
 
     # Used for networking, and other utilities like small_vector

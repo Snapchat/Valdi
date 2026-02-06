@@ -1,28 +1,29 @@
 /**
- * Copyright 2021 Snap, Inc.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+  * Copyright 2021 Snap, Inc.
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+  * You may obtain a copy of the License at
+  *
+  *    http://www.apache.org/licenses/LICENSE-2.0
+  *
+  * Unless required by applicable law or agreed to in writing, software
+  * distributed under the License is distributed on an "AS IS" BASIS,
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
 
 #pragma once
 
-#include "../cpp/Future.hpp"
 #include "djinni_wasm.hpp"
+#include "../cpp/Future.hpp"
 
 namespace djinni {
 
-template<class RESULT>
-class FutureAdaptor {
+template <class RESULT>
+class FutureAdaptor
+{
     using CppResType = typename RESULT::CppType;
 
 public:
@@ -61,19 +62,18 @@ public:
         delete pNativePromise;
     }
 
-    static CppType toCpp(JsType o) {
+    static CppType toCpp(JsType o)
+    {
         auto p = new NativePromiseType();
         auto f = p->getFuture();
         auto makeNativePromiseResolver = em::val::module_property("makeNativePromiseResolver");
         auto makeNativePromiseRejecter = em::val::module_property("makeNativePromiseRejecter");
-        auto next = o.call<em::val>(
-            "then", makeNativePromiseResolver(reinterpret_cast<int>(&resolveNativePromise), reinterpret_cast<int>(p)));
-        next.call<void>(
-            "catch", makeNativePromiseRejecter(reinterpret_cast<int>(&rejectNativePromise), reinterpret_cast<int>(p)));
+        auto next = o.call<em::val>("then", makeNativePromiseResolver(reinterpret_cast<int>(&resolveNativePromise), reinterpret_cast<int>(p)));
+        next.call<void>("catch", makeNativePromiseRejecter(reinterpret_cast<int>(&rejectNativePromise), reinterpret_cast<int>(p)));
         return f;
     }
 
-    class CppResolveHandler : public CppResolveHandlerBase {
+    class CppResolveHandler: public CppResolveHandlerBase {
     public:
         void init(em::val resolveFunc, em::val rejectFunc) override {
             _resolveFunc = resolveFunc;
@@ -87,7 +87,6 @@ public:
             trampoline(this);
 #endif
         }
-
     private:
         em::val _resolveFunc = em::val::undefined();
         em::val _rejectFunc = em::val::undefined();
@@ -106,20 +105,23 @@ public:
                 _rejectFunc(djinni_native_exception_to_js(e));
             }
         }
-        static void trampoline(void* context) {
+        static void trampoline (void *context) {
             CppResolveHandler* pthis = reinterpret_cast<CppResolveHandler*>(context);
             pthis->doResolve();
             delete pthis;
         };
     };
-
-    static JsType fromCpp(CppType c) {
+    
+    static JsType fromCpp(CppType c)
+    {
         static auto jsPromiseBuilderClass = em::val::module_property("DjinniJsPromiseBuilder");
         auto* cppResolveHandler = new CppResolveHandler();
         // Promise constructor calls cppResolveHandler.init(), and stores the JS
         // resolve handler routine in cppResolveHandler.
         em::val jsPromiseBuilder = jsPromiseBuilderClass.new_(reinterpret_cast<int>(cppResolveHandler));
-        c.then([cppResolveHandler](Future<CppResType> res) { cppResolveHandler->resolve(std::move(res)); });
+        c.then([cppResolveHandler] (Future<CppResType> res) {
+            cppResolveHandler->resolve(std::move(res));
+        });
         return jsPromiseBuilder["promise"];
     }
 };

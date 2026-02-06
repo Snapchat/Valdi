@@ -53,7 +53,7 @@ export function destroyElement(id: number) {
   }
 }
 
-export function makeElementRoot(id: number, root: HTMLElement) {
+export function makeElementRoot(id: number, root: HTMLElement | ShadowRoot) {
   const element = nodesRef.get(id);
   if (!element) {
     throw new Error(`makeElementRoot: element is missing, id: ${id}`);

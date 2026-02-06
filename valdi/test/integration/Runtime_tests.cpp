@@ -4423,7 +4423,7 @@ TEST_P(RuntimeFixture, unwrapsProxyObjectThroughUntypedUnmarshalling) {
     auto schema = ValueSchema::cls(STRING_LITERAL("MyClass"), true, {});
     auto proxyObject = makeShared<TestValueTypedProxyObject>(ValueTypedObject::make(schema.getClassRef()));
 
-    auto objectsManager = wrapper.runtime->getJavaScriptRuntime()->createNativeObjectsManager();
+    auto objectsManager = wrapper.runtime->getJavaScriptRuntime()->createNativeObjectsManager("");
 
     auto jsResult = callFunctionSync(wrapper, "test/src/WrapNativeObject", "wrapper", {Value(proxyObject)});
 
@@ -6154,7 +6154,7 @@ class MyNativeObject : public ValdiObject {
 TEST_P(RuntimeFixture, supportsUserCreatedNativeObjects) {
     Ref<MyNativeObject> nativeObject = makeShared<MyNativeObject>();
 
-    auto objectsManager = wrapper.runtime->getJavaScriptRuntime()->createNativeObjectsManager();
+    auto objectsManager = wrapper.runtime->getJavaScriptRuntime()->createNativeObjectsManager("");
 
     ASSERT_EQ(1, nativeObject.use_count());
 
@@ -6696,7 +6696,7 @@ TEST_P(RuntimeFixture, attributesHotReloadErrorOnContext) {
 }
 
 TEST_P(RuntimeFixture, showStackTraceResponsibleForEmittingDanglingReference) {
-    wrapper.runtime->getJavaScriptRuntime()->setEnableStackTraceCapture(true);
+    wrapper.runtime->getJavaScriptRuntime()->setForceStackTraceCapture(true);
 
     auto messageHandler = makeShared<MockRuntimeMessageHandler>();
     wrapper.runtime->setRuntimeMessageHandler(messageHandler);
@@ -6758,6 +6758,44 @@ TEST_P(RuntimeFixture, showStackTraceResponsibleForEmittingDanglingReference) {
     }
 
     ASSERT_EQ(static_cast<size_t>(1), messageHandler->messages().debugMessages.size());
+}
+
+TEST_P(RuntimeFixture, scopeNameAppearsInDisposedReferenceError) {
+    auto messageHandler = makeShared<MockRuntimeMessageHandler>();
+    wrapper.runtime->setRuntimeMessageHandler(messageHandler);
+
+    Ref<MyNativeObject> nativeObject = makeShared<MyNativeObject>();
+
+    // Create objectsManager with a specific scopeName
+    auto objectsManager =
+        wrapper.runtime->getJavaScriptRuntime()->createNativeObjectsManager("MyFeature.MyCallsite");
+
+    // Wrap native object in JS
+    auto jsResult =
+        callFunctionSync(wrapper, objectsManager, "test/src/WrapNativeObject", "wrapper", {Value(nativeObject)});
+    ASSERT_TRUE(jsResult) << jsResult.description();
+
+    auto unwrapObject = [&]() {
+        // Call the function - we expect it to fail, so don't call .value() on the result
+        // The error will be logged to messageHandler
+        (void)jsResult.value().getFunction()->call(Valdi::ValueFunctionFlagsCallSync, {});
+    };
+
+    // Dispose the objectsManager
+    wrapper.runtime->getJavaScriptRuntime()->dispatchSynchronouslyOnJsThread([&](auto& jsEntry) {
+        wrapper.runtime->getJavaScriptRuntime()->destroyNativeObjectsManager(objectsManager);
+        return;
+    });
+
+    // Try to unwrap - should trigger error with scopeName (error is logged, not thrown)
+    unwrapObject();
+    wrapper.flushQueues();
+
+    // Verify error contains scopeName
+    ASSERT_GE(messageHandler->messages().errors.size(), static_cast<size_t>(1));
+    auto errorMessage = messageHandler->messages().errors[0].second;
+    ASSERT_TRUE(errorMessage.contains("MyFeature.MyCallsite"))
+        << "Expected error message to contain scopeName 'MyFeature.MyCallsite', got: " << errorMessage.slowToString();
 }
 
 TEST_P(RuntimeFixture, supportsSingleCallJsFunction) {

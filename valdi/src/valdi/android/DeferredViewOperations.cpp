@@ -60,6 +60,11 @@ Valdi::ByteBuffer& DeferredViewOperations::enqueueApplyAttribute(ViewOperation o
 void DeferredViewOperations::enqueueResetAttribute(const Valdi::Ref<Valdi::View>& view,
                                                    const Valdi::Value& handler,
                                                    const Valdi::Ref<Valdi::Animator>& animator) {
+    if (view == nullptr) {
+        // Skip enqueueing the reset operation since the View no longer exists
+        return;
+    }
+
     updateActiveAnimator(animator);
 
     auto& buffer = writeHeader(ViewOperationResetAttribute, false);

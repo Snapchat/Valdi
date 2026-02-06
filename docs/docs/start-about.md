@@ -110,3 +110,14 @@ Valdi lets you iterate quickly with hot-reload on all platforms, including on de
 * Your UI should never crash
 * What you see on iOS should be the same as what you see on Android
 * It should be possible to build any UI or animation with Valdi
+
+## Layered Architecture
+
+Valdi is built as a series of layers, each with a specific responsibility:
+
+*   **Feature Layer (TypeScript)**: Feature-specific business logic and UI built using high-level TypeScript APIs.
+*   **Framework Layer (TypeScript/C++)**: A generic rendering framework that manages component and element lifecycles.
+*   **Core Layer (C++)**: The Valdi Runtime, which integrates the JavaScript engine, the Yoga layout engine, and processes UI updates.
+*   **Integration Layer (C++/Obj-C/Swift/Kotlin)**: Platform-specific implementations of native elements (e.g., `<label>` becoming `SCValdiLabel` on iOS).
+
+For a deeper dive into the architecture, see [Runtime Internals](./internals-runtime.md).

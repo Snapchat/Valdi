@@ -3,6 +3,7 @@ import valdi_core
 public protocol ValdiBridgeFunction {
     static var className: String { get }
     static func modulePath() -> String
+    static var asyncStrictMode: Bool { get }
 }
 
 public extension ValdiBridgeFunction {

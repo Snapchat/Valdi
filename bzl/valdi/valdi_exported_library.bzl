@@ -1,4 +1,3 @@
-load("@aspect_rules_js//npm:defs.bzl", "npm_package")
 load("@build_bazel_rules_apple//apple:apple.bzl", "apple_xcframework")
 load("//bzl:expand_template.bzl", "expand_template")
 load("//bzl/valdi:rewrite_hdrs.bzl", "rewrite_hdrs")
@@ -33,7 +32,8 @@ def valdi_exported_library(
         java_deps = DEFAULT_JAVA_DEPS,
         web_package_name = None,
         npm_scope = "",
-        npm_version = "1.0.0"):
+        npm_version = "1.0.0",
+        web_exclude_jsx_global_declaration = False):
     if not web_package_name:
         web_package_name = "{}_npm".format(name)
 
@@ -87,7 +87,6 @@ def valdi_exported_library(
         substitutions = {
             "${name}": package_name,
             "${version}": npm_version,
-            "${files}": "{}_tree".format(web_package_name),
         },
     )
 
@@ -116,11 +115,8 @@ def valdi_exported_library(
     )
 
     collapse_web_paths(
-        name = "{}_tree".format(web_package_name),
-        srcs = [":{}_glob".format(web_package_name)],
-    )
-
-    npm_package(
         name = web_package_name,
-        srcs = [":generate_package_json", ":{}_tree".format(web_package_name)],
+        srcs = [":{}_glob".format(web_package_name)],
+        package_name = package_name,
+        exclude_jsx_global_declaration = web_exclude_jsx_global_declaration,
     )

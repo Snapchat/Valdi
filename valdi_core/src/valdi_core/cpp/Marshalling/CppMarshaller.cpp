@@ -6,13 +6,16 @@
 //
 
 #include "valdi_core/cpp/Marshalling/CppMarshaller.hpp"
+#include "fmt/format.h"
 #include "valdi_core/cpp/Marshalling/RegisteredCppGeneratedClass.hpp"
 #include "valdi_core/cpp/Schema/ValueSchema.hpp"
 #include "valdi_core/cpp/Utils/Bytes.hpp"
+#include "valdi_core/cpp/Utils/DefaultValueMarshallers.hpp"
 #include "valdi_core/cpp/Utils/PlatformObjectAttachments.hpp"
 #include "valdi_core/cpp/Utils/ValueMap.hpp"
 #include "valdi_core/cpp/Utils/ValueTypedArray.hpp"
 #include "valdi_core/cpp/Utils/ValueTypedProxyObject.hpp"
+#include <fmt/ostream.h>
 
 namespace Valdi {
 
@@ -138,6 +141,18 @@ Value* CppMarshaller::marshallTypedObjectPrologue(ExceptionTracker& exceptionTra
     return output->getProperties();
 }
 
+void CppMarshaller::onMarshallTypedObjectFailure(ExceptionTracker& exceptionTracker,
+                                                 RegisteredCppGeneratedClass& registeredClass,
+                                                 size_t propertyIndex) {
+    auto classSchema = registeredClass.getResolvedClassSchema();
+    if (!classSchema) {
+        return;
+    }
+
+    exceptionTracker.onError(ObjectValueMarshaller<Value>::getMarshallPropertyErrorMessage(
+        *classSchema.value(), classSchema.value()->getProperty(propertyIndex)));
+}
+
 Ref<ValueTypedObject> CppMarshaller::unmarshallTypedObjectPrologue(ExceptionTracker& exceptionTracker,
                                                                    RegisteredCppGeneratedClass& registeredClass,
                                                                    const Value& value,
@@ -167,6 +182,17 @@ Ref<ValueTypedObject> CppMarshaller::unmarshallTypedObjectPrologue(ExceptionTrac
     }
 
     return typedObject;
+}
+
+void CppMarshaller::onUnmarshallTypedObjectFailure(ExceptionTracker& exceptionTracker,
+                                                   RegisteredCppGeneratedClass& registeredClass,
+                                                   size_t propertyIndex) {
+    auto classSchema = registeredClass.getResolvedClassSchema();
+    if (!classSchema) {
+        return;
+    }
+    exceptionTracker.onError(ObjectValueMarshaller<Value>::getUnmarshallPropertyErrorMessage(
+        *classSchema.value(), classSchema.value()->getProperty(propertyIndex)));
 }
 
 CppProxyMarshaller CppMarshaller::marshallProxyObjectPrologue(CppObjectStore* objectStore,

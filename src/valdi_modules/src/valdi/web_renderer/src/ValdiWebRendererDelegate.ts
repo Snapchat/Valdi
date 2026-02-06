@@ -23,7 +23,7 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
   private attributeDelegate?: UpdateAttributeDelegate;
   private animationManager: WebAnimationManager;
 
-  constructor(private htmlRoot: HTMLElement) {
+  constructor(private htmlRoot: HTMLElement | ShadowRoot) {
     registerElements();
     this.animationManager = new WebAnimationManager();
     // Make animation manager globally accessible for elements

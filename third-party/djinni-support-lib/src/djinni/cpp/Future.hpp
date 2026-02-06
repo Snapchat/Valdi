@@ -19,13 +19,13 @@
 #include "expected.hpp"
 
 #include <atomic>
-#include <cassert>
-#include <condition_variable>
-#include <exception>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <optional>
+#include <condition_variable>
+#include <mutex>
+#include <cassert>
+#include <exception>
 
 #ifdef __has_include
 #if __has_include(<version>)
@@ -33,27 +33,19 @@
 #endif
 #endif
 
+// C++20 standard coroutines
 #if defined(__cpp_impl_coroutine) && defined(__cpp_lib_coroutine)
-#include <coroutine>
-namespace djinni::detail {
-template<typename Promise = void>
-using CoroutineHandle = std::coroutine_handle<Promise>;
-using SuspendNever = std::suspend_never;
-} // namespace djinni::detail
-#define DJINNI_FUTURE_HAS_COROUTINE_SUPPORT 1
-#elif defined(__cpp_coroutines) && __has_include(<experimental/coroutine>)
-#include <experimental/coroutine>
-namespace djinni::detail {
-template<typename Promise = void>
-using CoroutineHandle = std::experimental::coroutine_handle<Promise>;
-using SuspendNever = std::experimental::suspend_never;
-} // namespace djinni::detail
-#define DJINNI_FUTURE_HAS_COROUTINE_SUPPORT 1
+    #include <coroutine>
+    namespace djinni::detail {
+        template <typename Promise = void> using CoroutineHandle = std::coroutine_handle<Promise>;
+        using SuspendNever = std::suspend_never;
+    }
+    #define DJINNI_FUTURE_HAS_COROUTINE_SUPPORT 1
 #endif
 
 namespace djinni {
 
-template<typename T>
+template <typename T>
 class Future;
 
 struct BrokenPromiseException final : public std::exception {
@@ -66,15 +58,13 @@ namespace detail {
 
 // A wrapper object to support both void and non-void result types in
 // Promise/Future
-template<typename T>
+template <typename T>
 struct ValueHolder {
     using type = T;
     std::optional<T> value;
-    T getValueUnsafe() {
-        return std::move(*value);
-    }
+    T getValueUnsafe() {return std::move(*value);}
 };
-template<>
+template <>
 struct ValueHolder<void> {
     using type = bool;
     std::optional<bool> value;
@@ -86,20 +76,19 @@ struct SharedState;
 
 // A simple type erased function container. It would be nice if std::function<>
 // supports move only lambdas.
-template<typename T>
+template <typename T>
 struct ValueHandlerBase {
     virtual ~ValueHandlerBase() = default;
     virtual void call(const std::shared_ptr<SharedState<T>>&) = 0;
 };
-template<typename T, typename F>
+template <typename T, typename F>
 class ValueHandler : public ValueHandlerBase<T> {
 public:
     ValueHandler(F&& f) : _f(std::forward<F>(f)) {}
     ValueHandler(ValueHandler&& other) : _f(std::move(other._f)) {}
-    void call(const std::shared_ptr<SharedState<T>>& s) override {
+    void call (const std::shared_ptr<SharedState<T>>& s) override {
         _f(s);
     }
-
 private:
     std::decay_t<F> _f;
 };
@@ -110,7 +99,7 @@ static auto createValueHandler(FUNC&& f) {
 
 // The shared state object that links the promise and future objects
 template<typename T>
-struct SharedState : ValueHolder<T> {
+struct SharedState: ValueHolder<T> {
     std::condition_variable cv;
     std::mutex mutex;
     std::exception_ptr exception;
@@ -125,7 +114,7 @@ template<typename T>
 using SharedStatePtr = std::shared_ptr<SharedState<T>>;
 
 // Common promise base class, shared by both `void` and `T` results.
-template<typename T>
+template <typename T>
 class PromiseBase {
 public:
     virtual ~PromiseBase() noexcept {
@@ -137,7 +126,7 @@ public:
 
     // moveable
     PromiseBase(PromiseBase&&) noexcept = default;
-    PromiseBase& operator=(PromiseBase&& other) noexcept {
+    PromiseBase& operator= (PromiseBase&& other) noexcept {
         std::swap(other._sharedState, _sharedState);
         std::swap(other._sharedStateReadOnly, _sharedStateReadOnly);
         return *this;
@@ -145,7 +134,7 @@ public:
 
     // not copyable
     PromiseBase(const PromiseBase&) = delete;
-    PromiseBase& operator=(const PromiseBase&) = delete;
+    PromiseBase& operator= (const PromiseBase&) = delete;
 
     Future<T> getFuture();
 
@@ -200,33 +189,36 @@ protected:
     // object, then the handler routine specified by `then()` will immediately
     // be called in the current thread.
     void setValue(const typename ValueHolder<T>::type& val) {
-        updateAndCallResultHandler([&](const detail::SharedStatePtr<T>& sharedState) { sharedState->value = val; });
+        updateAndCallResultHandler([&] (const detail::SharedStatePtr<T>& sharedState) {
+            sharedState->value = val;
+        });
     }
     void setValue(typename ValueHolder<T>::type&& val) {
-        updateAndCallResultHandler(
-            [&](const detail::SharedStatePtr<T>& sharedState) { sharedState->value = std::move(val); });
+        updateAndCallResultHandler([&] (const detail::SharedStatePtr<T>& sharedState) {
+            sharedState->value = std::move(val);
+        });
     }
-    template<typename E>
+    template <typename E>
     void setException(const E& ex) {
         // Let's try to prevent throwing non-exception types.
-        static_assert(std::is_convertible_v<E, std::exception>,
-                      "setException() called with type that is not convertible to std::exception");
+        static_assert(std::is_convertible_v<E, std::exception>, "setException() called with type that is not convertible to std::exception");
 
         setException(std::make_exception_ptr(ex));
     }
     void setException(std::exception_ptr ex) {
-        updateAndCallResultHandler([&](const detail::SharedStatePtr<T>& sharedState) { sharedState->exception = ex; });
+        updateAndCallResultHandler([&] (const detail::SharedStatePtr<T>& sharedState) {
+            sharedState->exception = ex;
+        });
     }
-
 private:
     detail::SharedStatePtr<T> _sharedState = std::make_shared<SharedState<T>>();
     detail::SharedStatePtr<T> _sharedStateReadOnly = _sharedState; // allow calling getFuture() after setValue()
 
-    template<typename UpdateFunc>
+    template <typename UpdateFunc>
     void updateAndCallResultHandler(UpdateFunc&& updater) {
         detail::SharedStatePtr<T> sharedState;
         sharedState = std::atomic_exchange(&_sharedState, sharedState);
-        assert(sharedState); // a second call will trigger assertion
+        assert(sharedState);    // a second call will trigger assertion
         std::unique_ptr<ValueHandlerBase<T>> handler;
         {
             std::lock_guard lk(sharedState->mutex);
@@ -245,8 +237,8 @@ private:
 } // namespace detail
 
 // Promise with non-void result type `T`
-template<typename T>
-class Promise : public detail::PromiseBase<T> {
+template <typename T>
+class Promise: public detail::PromiseBase<T> {
 public:
     using detail::PromiseBase<T>::setValue;
     using detail::PromiseBase<T>::setException;
@@ -254,23 +246,17 @@ public:
 };
 
 // Promise with a void result
-template<>
-class Promise<void> : public detail::PromiseBase<void> {
+template <>
+class Promise<void>: public detail::PromiseBase<void> {
 public:
-    void setValue() {
-        setValue(true);
-    }
+    void setValue() {setValue(true);}
     using detail::PromiseBase<void>::setException;
     using detail::PromiseBase<void>::PromiseBase;
-
+    
 private:
     // hide the bool version
-    void setValue(const bool&) {
-        detail::PromiseBase<void>::setValue(true);
-    }
-    void setValue(bool&&) {
-        detail::PromiseBase<void>::setValue(true);
-    }
+    void setValue(const bool&) {detail::PromiseBase<void>::setValue(true);}
+    void setValue(bool&&) {detail::PromiseBase<void>::setValue(true);}
 };
 
 template<typename T>
@@ -279,14 +265,13 @@ class Future {
     friend class detail::PromiseBase;
     // not user constructable
     Future(detail::SharedStatePtr<T> sharedState) : _sharedState(sharedState) {}
-
 public:
     // moveable
     Future(Future&& other) noexcept = default;
-    Future& operator=(Future&& other) noexcept = default;
+    Future& operator= (Future&& other) noexcept = default;
     // not copyable
     Future(const Future& other) = delete;
-    Future& operator=(const Future& other) = delete;
+    Future& operator= (const Future& other) = delete;
     // Future becomes invalid after `then()` is called on it
     bool isValid() const {
         return std::atomic_load(&_sharedState) != nullptr;
@@ -294,19 +279,19 @@ public:
     // returns true if the result can be `get()` without blocking
     bool isReady() const {
         auto sharedState = std::atomic_load(&_sharedState);
-        assert(sharedState); // call on invalid future will trigger assertion
+        assert(sharedState);    // call on invalid future will trigger assertion
         std::unique_lock lk(sharedState->mutex);
         return sharedState->isReady();
     }
     // wait until future becomes `isReady()`
     void wait() const {
         auto sharedState = std::atomic_load(&_sharedState);
-        assert(sharedState); // call on invalid future will trigger assertion
+        assert(sharedState);    // call on invalid future will trigger assertion
         std::unique_lock lk(sharedState->mutex);
 #if defined(__EMSCRIPTEN__)
         assert(sharedState->isReady()); // in wasm we must not block and wait
 #else
-        sharedState->cv.wait(lk, [state = sharedState] { return state->isReady(); });
+        sharedState->cv.wait(lk, [state = sharedState] {return state->isReady();});
 #endif
     }
     // wait until future becomes `isReady()` and return the result. This can
@@ -314,12 +299,12 @@ public:
     auto get() {
         detail::SharedStatePtr<T> sharedState;
         sharedState = std::atomic_exchange(&_sharedState, sharedState);
-        assert(sharedState); // call on invalid future will trigger assertion
+        assert(sharedState);    // call on invalid future will trigger assertion
         std::unique_lock lk(sharedState->mutex);
 #if defined(__EMSCRIPTEN__)
         assert(sharedState->isReady()); // in wasm we must not block and wait
 #else
-        sharedState->cv.wait(lk, [state = sharedState] { return state->isReady(); });
+        sharedState->cv.wait(lk, [state = sharedState] {return state->isReady();});
 #endif
         if (!sharedState->exception) {
             return sharedState->getValueUnsafe();
@@ -336,13 +321,12 @@ public:
         using HandlerReturnType = std::invoke_result_t<FUNC, Future<T>>;
         detail::SharedStatePtr<T> sharedState;
         sharedState = std::atomic_exchange(&_sharedState, sharedState);
-        assert(sharedState); // a second call will trigger assertion
+        assert(sharedState);    // a second call will trigger assertion
         auto nextPromise = std::make_unique<Promise<HandlerReturnType>>();
         auto nextFuture = nextPromise->getFuture();
-        auto continuation = [handler = std::forward<FUNC>(handler),
-                             nextPromise = std::move(nextPromise)](detail::SharedStatePtr<T> x) mutable {
+        auto continuation = [handler = std::forward<FUNC>(handler), nextPromise = std::move(nextPromise)] (detail::SharedStatePtr<T> x) mutable {
             try {
-                if constexpr (std::is_void_v<HandlerReturnType>) {
+                if constexpr(std::is_void_v<HandlerReturnType>) {
                     handler(Future<T>(x));
                     nextPromise->setValue();
                 } else {
@@ -385,8 +369,8 @@ public:
         return Future<T>(sharedState).get();
     }
     bool await_suspend(detail::CoroutineHandle<> h) {
-        this->then([h, this](Future<T> x) mutable {
-            std::atomic_store(&_sharedState, x._sharedState);
+        this->then([h, this] (Future<T> x) mutable {
+            std::atomic_store(&_sharedState, std::atomic_load(&x._sharedState));
             h();
         });
         return true;
@@ -400,7 +384,7 @@ public:
             constexpr bool await_ready() const noexcept {
                 return false;
             }
-            template<typename P>
+            template <typename P>
             bool await_suspend(detail::CoroutineHandle<P> finished) const noexcept {
                 static_assert(std::is_convertible_v<P*, PromiseTypeBase*>);
                 auto& promise_type = finished.promise();
@@ -418,12 +402,8 @@ public:
             constexpr void await_resume() const noexcept {}
         };
 
-        constexpr detail::SuspendNever initial_suspend() const noexcept {
-            return {};
-        }
-        FinalAwaiter final_suspend() const noexcept {
-            return {};
-        }
+        constexpr detail::SuspendNever initial_suspend() const noexcept { return {}; }
+        FinalAwaiter final_suspend() const noexcept { return {}; }
 
         Future<T> get_return_object() noexcept {
             return _promise.getFuture();
@@ -433,8 +413,8 @@ public:
         }
     };
 
-    struct PromiseType : PromiseTypeBase {
-        template<typename V, typename = std::enable_if_t<std::is_convertible_v<V, T>>>
+    struct PromiseType: PromiseTypeBase {
+        template <typename V, typename = std::enable_if_t<std::is_convertible_v<V, T>>>
         void return_value(V&& value) {
             this->_result.emplace(std::forward<V>(value));
         }
@@ -458,12 +438,12 @@ struct Future<void>::PromiseType : PromiseTypeBase {
 };
 #endif
 
-template<typename T>
+template <typename T>
 Future<T> detail::PromiseBase<T>::getFuture() {
     return Future<T>(_sharedStateReadOnly);
 }
 
-template<typename U>
+template <typename U>
 Future<void> combine(U&& futures, size_t c) {
     struct Context {
         std::atomic<size_t> counter;
@@ -476,8 +456,8 @@ Future<void> combine(U&& futures, size_t c) {
         context->promise.setValue();
         return future;
     }
-    for (auto& f : futures) {
-        f.then([context](auto) {
+    for (auto& f: futures) {
+        f.then([context] (auto) {
             if (--(context->counter) == 0) {
                 context->promise.setValue();
             }
@@ -486,12 +466,12 @@ Future<void> combine(U&& futures, size_t c) {
     return future;
 }
 
-template<typename U>
+template <typename U>
 Future<void> whenAll(U&& futures) {
     return combine(std::forward<U>(futures), futures.size());
 }
 
-template<typename U>
+template <typename U>
 Future<void> whenAny(U&& futures) {
     return combine(std::forward<U>(futures), 1);
 }

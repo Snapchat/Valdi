@@ -1,0 +1,37 @@
+name: Welcome
+
+on:
+  pull_request_target:
+    types: [opened]
+  issues:
+    types: [opened]
+
+jobs:
+  welcome:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/first-interaction@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          issue-message: |
+            👋 Thanks for opening your first issue! 
+            
+            A maintainer will review your issue and respond as soon as possible. 
+            
+            In the meantime, please make sure you've provided all the necessary information in the issue template.
+            
+            If you have questions while waiting, feel free to join our [Discord community](https://discord.gg/uJyNEeYX2U).
+          pr-message: |
+            🎉 Thanks for your first contribution to Valdi!
+            
+            A maintainer will review your PR soon. Here are a few things to check while you wait:
+            
+            - ✅ All tests pass (`bazel test //...`)
+            - ✅ Your changes follow our [coding standards](../CONTRIBUTING.md)
+            - ✅ You've added tests for your changes (if applicable)
+            - ✅ You've updated documentation (if needed)
+            
+            Join our [Discord community](https://discord.gg/uJyNEeYX2U) if you have questions!

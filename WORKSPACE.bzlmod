@@ -1,5 +1,5 @@
 android_sdk_repository(
     name = "androidsdk",
-    api_level = 35,  # The API version for Android compileSdk
+    api_level = 36,  # The API version for Android compileSdk
     build_tools_version = "34.0.0",
 )

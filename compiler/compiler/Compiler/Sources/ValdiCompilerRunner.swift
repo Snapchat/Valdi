@@ -338,8 +338,21 @@ class ValdiCompilerRunner {
         let regenerateValdiModulesBuildFilesOnly = configs.compilerConfig.regenerateValdiModulesBuildFiles
 
         if regenerateValdiModulesBuildFilesOnly {
-            builder.append(preprocessor: GenerateModuleBuildFileProcessor(logger: logger, projectConfig: configs.projectConfig,
-                                                                  compilerConfig: configs.compilerConfig))
+            // Even in regenerate mode, we need annotation processing to detect native exports for correct output file generation
+            // However, we skip type checking since generated files (res, Strings, etc.) may not exist
+            builder.append(processor: DumpTypeScriptSymbolsProcessor(logger: logger, typeScriptCompilerManager: typeScriptCompilerManager, compilerConfig: configs.compilerConfig, skipTypeChecking: true))
+            builder.append(processor: ParseTypeScriptAnnotationsProcessor(logger: logger,
+                                                                          projectClassMappingManager: projectClassMappingManager,
+                                                                          typeScriptCompilerManager: typeScriptCompilerManager,
+                                                                          annotationsManager: typeScriptAnnotationsManager))
+            builder.append(processor: ApplyTypeScriptAnnotationsProcessor(logger: logger,
+                                                                          typeScriptCompilerManager: typeScriptCompilerManager,
+                                                                          typeScriptAnnotationsManager: typeScriptAnnotationsManager,
+                                                                          nativeCodeGenerationManager: nativeCodeGenerationManager))
+            builder.append(processor: GenerateModuleBuildFileProcessor(logger: logger, 
+                                                                       projectConfig: configs.projectConfig,
+                                                                       compilerConfig: configs.compilerConfig,
+                                                                       nativeCodeGenerationManager: nativeCodeGenerationManager))
             builder.append(preprocessor: GenerateGlobalMetadataProcessor(logger: logger,
                                                                          projectConfig: configs.projectConfig,
                                                                          rootBundle: rootBundle,
@@ -437,9 +450,11 @@ class ValdiCompilerRunner {
             if !hotReloadingEnabled && !regenerateValdiModulesBuildFilesOnly {
                 builder.append(postprocessor: GenerateViewClassesProcessor(logger: logger, compilerConfig: configs.compilerConfig))
                 builder.append(postprocessor: GenerateModelsProcessor(logger: logger, compilerConfig: configs.compilerConfig))
+                // GenerateDependencyInjectionDataProcessor must run BEFORE CombineNativeSourcesProcessor
+                // so that Factory classes are included in the combined output for single_file_codegen modules
+                builder.append(postprocessor: GenerateDependencyInjectionDataProcessor(logger: logger, onlyFocusProcessingForModules: configs.compilerConfig.onlyFocusProcessingForModules))
                 builder.append(postprocessor: CombineNativeSourcesProcessor(logger: logger, compilerConfig: configs.compilerConfig, projectConfig: configs.projectConfig, bundleManager: bundleManager))
                 builder.append(postprocessor: GeneratedTypesVerificationProcessor(logger: logger, projectConfig: configs.projectConfig))
-                builder.append(postprocessor: GenerateDependencyInjectionDataProcessor(logger: logger, onlyFocusProcessingForModules: configs.compilerConfig.onlyFocusProcessingForModules))
             }
 
             if !codeGenOnly && !regenerateValdiModulesBuildFilesOnly {
@@ -506,10 +521,15 @@ class ValdiCompilerRunner {
                                                              hotReloadingEnabled: hotReloadingEnabled))
         }
 
+        // In regenerate mode, don't fail immediately on annotation processing errors
+        // These errors are often due to missing type information (generated files don't exist yet)
+        // Modules with errors will default to has_ios_exports=True, has_android_exports=True
+        let failImmediatelyOnError = !hotReloadingEnabled && !configs.compilerConfig.regenerateValdiModulesBuildFiles
+        
         let pipeline = CompilationPipeline(logger: logger,
                                    processors: builder.build(),
                                    deferredWarningCollector: self.deferredWarningCollector,
-                                   failImmediatelyOnError: !hotReloadingEnabled)
+                                   failImmediatelyOnError: failImmediatelyOnError)
 
         teardownCallbacks.forEach(pipeline.onTeardown)
 

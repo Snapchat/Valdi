@@ -433,7 +433,7 @@ class ValdiRuntimeManager(context: Context,
                 ValdiDeviceModule(jsThreadDispatcher, context, forceDarkMode),
                 ValdiDateFormattingModule(context),
                 ValdiNumberFormattingModule(context),
-                DrawingModuleImpl(coordinateResolver, fontManager),
+                DrawingModuleImpl(coordinateResolver, fontManager, logger),
                 // We use `baseContext` here to ensure ContextWrapper is used if one was provided.
                 // This allows us to implement custom behavior when accessing string resources.
                 ValdiStringsModule(baseContext)

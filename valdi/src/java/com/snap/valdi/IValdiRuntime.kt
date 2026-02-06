@@ -57,7 +57,27 @@ interface IValdiRuntime: Disposable {
     // DEPRECATED: DO NOT USE, use createScopedJSRuntime
     fun getJSRuntime(block: (ValdiJSRuntime) -> Unit)
 
+    /**
+     * Creates a scoped JS runtime for executing TypeScript code.
+     *
+     * @param block Callback invoked with the created runtime.
+     */
     fun createScopedJSRuntime(block: (ValdiScopedJSRuntime) -> Unit)
+
+    /**
+     * Creates a scoped JS runtime for executing TypeScript code.
+     *
+     * @param scopeName A descriptive name identifying where this scoped runtime is created from.
+     *                  This name appears in error messages to help debug issues with disposed
+     *                  references. Callers should provide a meaningful name (e.g., class name
+     *                  or feature name) to make error messages actionable.
+     * @param block Callback invoked with the created runtime.
+     */
+    fun createScopedJSRuntime(scopeName: String, block: (ValdiScopedJSRuntime) -> Unit) {
+        // Default implementation for backward compatibility.
+        // Implementations should override this method to use scopeName for attribution.
+        createScopedJSRuntime(block)
+    }
 
     fun getFontManager(block: (FontManager) -> Unit)
 

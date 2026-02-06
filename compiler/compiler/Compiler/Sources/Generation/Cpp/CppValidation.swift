@@ -109,6 +109,8 @@ enum CppValidation {
         "xor",
         "xor_eq",
         "null",
-        "NULL"
+        "NULL",
+        "DEBUG",
+        "NDEBUG"
     ]
 }

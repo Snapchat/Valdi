@@ -39,8 +39,8 @@
 #include "valdi/runtime/Metrics/Metrics.hpp"
 
 #include "valdi/RuntimeMessageHandler.hpp"
-#include "valdi/runtime/Runtime.hpp"
 #include "valdi/runtime/ErrorCodes.hpp"
+#include "valdi/runtime/Runtime.hpp"
 #include "valdi/runtime/ValdiRuntimeTweaks.hpp"
 #include "valdi_core/cpp/Resources/ResourceId.hpp"
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
@@ -256,7 +256,9 @@ SharedViewNodeTree Runtime::getOrCreateViewNodeTreeForContextId(ContextId contex
         return nullptr;
     }
 
-    return createViewNodeTree(context);
+    // Use the thread-safe getOrCreateViewNodeTreeForContext which holds the lock
+    // during both the existence check and creation to avoid TOCTOU race conditions.
+    return _viewNodeManager.getOrCreateViewNodeTreeForContext(context, ViewNodeTreeThreadAffinity::MAIN_THREAD);
 }
 
 void Runtime::destroyContext(const SharedContext& context) {

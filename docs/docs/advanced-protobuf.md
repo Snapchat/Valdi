@@ -2,6 +2,9 @@
 
 Protobuf is a message serialization library written by Google and is widely used at Snap. Valdi has a complete integration of Protobuf provided as a built-in module. It leverages the Protobuf C++ library to perform most operations, and exposes type safe TypeScript APIs which are generated from a Protobuf definition file (`.proto`).
 
+> [!Note]
+> The Valdi runtime provides built-in support for Protobuf serialization. This allows TypeScript components to efficiently serialize and deserialize structured data for network requests, disk storage, and cross-language communication.
+
 ### Protobuf config file
 
 The Valdi Protobuf generation script can take a `proto_config.yaml` and generate API definitions for the messages which the config file includes. This file needs to be added inside the root of a Valdi module directory, same location where the `module.yaml` lives.

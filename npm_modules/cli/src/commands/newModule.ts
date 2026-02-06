@@ -13,7 +13,7 @@ import { makeCommandHandler } from '../utils/errorUtils';
 import type { Replacements } from '../utils/fileUtils';
 import { fileExists } from '../utils/fileUtils';
 import { wrapInColor } from '../utils/logUtils';
-import { toPascalCase, toSnakeCase } from '../utils/stringUtils';
+import { toPascalCase, toSnakeCase, sanitizeProjectName, validateProjectName } from '../utils/stringUtils';
 
 const referenceString = `
 ******************************************
@@ -164,25 +164,15 @@ async function getModuleName(argv: ArgumentsResolver<CommandParameters>): Promis
           name: 'moduleName',
           message: 'Please provide a name for this module:',
           validate: (input: string) => {
-            const isEmpty = input === '';
-            if (isEmpty) {
-              throw new CliError('Module name cannot be empty.');
+            const validationError = validateProjectName(input);
+            if (validationError) {
+              return validationError;
             }
 
-            // TODO: need to change validation logic to match bazel names
-            const snakeCaseName = toSnakeCase(input);
-            const isSnakeCase = snakeCaseName === input;
-            if (!isSnakeCase) {
-              throw new CliError(
-                `Valid names may contain only A-Z, a-z, 0-9, '-', '_', '.', and must start with a letter (ie: '${snakeCaseName}').`,
-              );
-            }
-
-            const destPath = path.join(process.cwd(), input);
+            const sanitized = sanitizeProjectName(input);
+            const destPath = path.join(process.cwd(), sanitized);
             if (fileExists(destPath)) {
-              throw new CliError(
-                `Path ${destPath} already exists. Choose a different name or delete the folder and try again.`,
-              );
+              return `Path ${destPath} already exists. Choose a different name or delete the folder and try again.`;
             }
 
             return true;
@@ -192,7 +182,7 @@ async function getModuleName(argv: ArgumentsResolver<CommandParameters>): Promis
       {},
     );
 
-    return result.moduleName ?? '';
+    return sanitizeProjectName(result.moduleName ?? '');
   });
 }
 
@@ -229,7 +219,16 @@ async function valdiNewModule(argv: ArgumentsResolver<CommandParameters>) {
   const checks: Checks = skipChecks ? {} : await promptChecks();
   const valdiModulePath = checks.valdiModulePath ?? path.join(await getBazelWorkspaceRoot(), 'modules');
 
-  const moduleName = await getModuleName(argv);
+  let moduleName = await getModuleName(argv);
+  
+  // Validate module name if provided via command line argument
+  if (argv.getArgument('moduleName')) {
+    const validationError = validateProjectName(moduleName);
+    if (validationError) {
+      throw new CliError(validationError);
+    }
+    moduleName = sanitizeProjectName(moduleName);
+  }
 
   const destPath = path.join(valdiModulePath, moduleName);
   const didConfirm = skipChecks || (await finalConfirmation(destPath, argv));

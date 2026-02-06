@@ -47,7 +47,8 @@ public:
 
     SharedContext createContext(Ref<ContextHandler> handler,
                                 const Ref<ViewManagerContext>& viewManagerContext,
-                                bool deferRender);
+                                bool deferRender,
+                                const StringBox& scopeName = StringBox());
 
     SharedContext createContext(Ref<ContextHandler> handler,
                                 const Ref<ViewManagerContext>& viewManagerContext,
@@ -55,7 +56,8 @@ public:
                                 const Shared<ValueConvertible>& viewModel,
                                 const Shared<ValueConvertible>& componentContext,
                                 bool updateHandlerSynchronously,
-                                bool deferRender);
+                                bool deferRender,
+                                const StringBox& scopeName = StringBox());
     void destroyContext(const SharedContext& context);
     bool destroyContext(ContextId contextId);
 

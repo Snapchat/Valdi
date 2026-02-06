@@ -18,12 +18,18 @@ namespace Valdi {
 
 class ContextBase : public ValdiObject {
 public:
-    ContextBase(ContextId contextId, const Attribution& attribution, const ComponentPath& path);
+    ContextBase(ContextId contextId, const Attribution& attribution, const ComponentPath& path,
+                const StringBox& scopeName = StringBox());
     ~ContextBase() override;
 
     ContextId getContextId() const;
 
     const ComponentPath& getPath() const;
+
+    /**
+     * Returns the scope name for this context (set by native code when creating scoped runtimes).
+     */
+    const StringBox& getScopeName() const;
 
     std::string getIdAndPathString() const;
 
@@ -45,6 +51,7 @@ private:
     ContextId _contextId;
     Attribution _attribution;
     ComponentPath _path;
+    StringBox _scopeName;
     Ref<RefCountable> _weakReferenceTable;
     Ref<RefCountable> _strongReferenceTable;
 };

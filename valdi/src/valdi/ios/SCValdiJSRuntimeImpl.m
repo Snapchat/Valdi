@@ -85,11 +85,16 @@
     }] forModulePath:modulePath];
 }
 
-- (id<SCValdiJSRuntime>)createScopedJSRuntime
+- (id<SCValdiJSRuntime>)createScopedJSRuntimeWithScopeName:(NSString *)scopeName
 {
     SCNValdiCoreJSRuntime *jsRuntime = [self jsRuntime];
-    SCNValdiCoreJSRuntimeNativeObjectsManager *nativeObjectsManager = [jsRuntime createNativeObjectsManager];
+    SCNValdiCoreJSRuntimeNativeObjectsManager *nativeObjectsManager = [jsRuntime createNativeObjectsManagerWithScopeName:scopeName];
     return [[SCValdiJSRuntimeImpl alloc] initWithJSRuntimeProvider:_jsRuntimeProvider jsRuntime:jsRuntime nativeObjectsManager:nativeObjectsManager];
+}
+
+- (id<SCValdiJSRuntime>)createScopedJSRuntime
+{
+    return [self createScopedJSRuntimeWithScopeName:@""];
 }
 
 - (void)dispose

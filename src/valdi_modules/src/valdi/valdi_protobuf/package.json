@@ -1,8 +1,9 @@
 {
   "name": "valdi_protobuf",
   "version": "1.0.0",
-  "description": "Dependencies for protobufs on web",
+  "description": "Protobuf support for Valdi",
   "dependencies": {
-    "protobufjs": "^7.5.3"
+    "@types/jest": "^29.5.14",
+    "jest": "^29.7.0"
   }
 }

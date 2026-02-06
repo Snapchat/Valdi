@@ -236,6 +236,7 @@ struct CompilationItem {
         let disableAnnotationProcessing: Bool
         let disableDependencyVerification: Bool
         let disableBazelBuildFileGeneration: Bool
+        let asyncStrictMode: Bool
 
         let webNpmScope: String
         let webVersion: String
@@ -309,6 +310,7 @@ struct CompilationItem {
              disableAnnotationProcessing: Bool,
              disableDependencyVerification: Bool,
              disableBazelBuildFileGeneration: Bool,
+             asyncStrictMode: Bool,
              webNpmScope: String,
              webVersion: String,
              webPublishConfig: String,
@@ -344,6 +346,7 @@ struct CompilationItem {
             self.disableAnnotationProcessing = disableAnnotationProcessing
             self.disableDependencyVerification = disableDependencyVerification
             self.disableBazelBuildFileGeneration = disableBazelBuildFileGeneration
+            self.asyncStrictMode = asyncStrictMode
             self.webNpmScope = webNpmScope
             self.webVersion = webVersion
             self.webPublishConfig = webPublishConfig

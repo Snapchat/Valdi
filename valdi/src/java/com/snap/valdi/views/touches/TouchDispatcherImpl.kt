@@ -528,10 +528,13 @@ internal class TouchDispatcherImpl(
 
             // Step 2, we go over all the touch targets which want to handle touch,
             // if one of them consumed the touch event, we skip the gesture recognizers
-            for (candidateView in candidateViews) {
+            var candidateViewIndex = 0
+            while (candidateViewIndex < candidateViews.size) {
+                val candidateView = candidateViews.getOrNull(candidateViewIndex) ?: break
 
                 val touchTarget = candidateView as? ValdiTouchTarget
                 if (touchTarget == null) {
+                    candidateViewIndex++
                     continue
                 }
 
@@ -577,6 +580,7 @@ internal class TouchDispatcherImpl(
                     removeAllGestureRecognizers()
                     return true
                 }
+                candidateViewIndex++
             }
 
             processGestureRecognizers()

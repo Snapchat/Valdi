@@ -262,7 +262,8 @@ public:
 
     void addModuleUnloadObserver(const Valdi::StringBox& path, const Valdi::Value& observer) override;
 
-    std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager> createNativeObjectsManager() override;
+    std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager> createNativeObjectsManager(
+        const std::string& scopeName) override;
 
     void destroyNativeObjectsManager(
         const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager) override;
@@ -280,7 +281,7 @@ public:
 
     std::future<Result<DumpedLogs>> dumpLogs(bool includeMetadata, bool includeVerbose);
 
-    void setEnableStackTraceCapture(bool enableStackTraceCapture);
+    void setForceStackTraceCapture(bool force);
 
     void requestUpdateJsContextHandler(JavaScriptEntryParameters& jsEntry,
                                        JavaScriptComponentContextHandler& handler) override;
@@ -362,7 +363,8 @@ private:
     bool _symbolicating = false;
     bool _running = false;
     bool _enableDebugger;
-    bool _enableStackTraceCapture;
+    // Used for unit testing only
+    std::atomic<bool> _forceStackTraceCapture = false;
     int _daemonClientListenerIdSequence = 0;
 
     PlatformType _platformType;

@@ -11,6 +11,7 @@
 #include "valdi_core/cpp/Utils/Exception.hpp"
 #include "valdi_core/cpp/Utils/ExceptionTracker.hpp"
 #include "valdi_core/cpp/Utils/Function.hpp"
+#include "valdi_core/cpp/Utils/Future.hpp"
 #include "valdi_core/cpp/Utils/ResolvablePromise.hpp"
 #include "valdi_core/cpp/Utils/ValueFunction.hpp"
 #include "valdi_core/cpp/Utils/ValueTypedObject.hpp"
@@ -180,6 +181,34 @@ public:
         marshallEnum(exceptionTracker, value, out);
     }
 
+    template<typename T>
+    static void marshall(ExceptionTracker& exceptionTracker, const Future<T>& value, Value& out) {
+        auto resolvablePromise = makeShared<ResolvablePromise>();
+        out = Value(resolvablePromise);
+
+        value.then([resolvablePromise = std::move(resolvablePromise)](auto result) {
+            if (!result) {
+                resolvablePromise->fulfill(result.moveError());
+                return;
+            }
+
+            if constexpr (std::is_same_v<T, void>) {
+                resolvablePromise->fulfill(Value::undefined());
+            } else {
+                SimpleExceptionTracker exceptionTracker;
+                Value outValue;
+                CppMarshaller::marshall(exceptionTracker, result.moveValue(), outValue);
+
+                if (!exceptionTracker) {
+                    resolvablePromise->fulfill(exceptionTracker.extractError());
+                    return;
+                }
+
+                resolvablePromise->fulfill(Result<Value>(std::move(outValue)));
+            }
+        });
+    }
+
     static void marshall(ExceptionTracker& exceptionTracker, const BytesView& value, Value& out);
 
     inline static void unmarshall(ExceptionTracker& exceptionTracker, const Value& value, int32_t& out) {
@@ -204,6 +233,38 @@ public:
 
     inline static void unmarshall(ExceptionTracker& exceptionTracker, const Value& value, Ref<ValueMap>& out) {
         out = value.checkedTo<Ref<ValueMap>>(exceptionTracker);
+    }
+
+    template<typename T>
+    static void unmarshall(ExceptionTracker& exceptionTracker, const Value& value, Future<T>& out) {
+        auto promise = value.checkedToValdiObject<Promise>(exceptionTracker);
+        if (!exceptionTracker) {
+            return;
+        }
+
+        TypedPromise<T> typedPromise;
+        out = typedPromise.getFuture();
+
+        promise->onComplete([typedPromise = std::move(typedPromise)](const Result<Value>& result) {
+            if (!result) {
+                typedPromise.setError(result.error());
+                return;
+            }
+
+            if constexpr (std::is_same_v<T, void>) {
+                typedPromise.setValue();
+            } else {
+                SimpleExceptionTracker exceptionTracker;
+                T outValue;
+                CppMarshaller::unmarshall(exceptionTracker, result.value(), outValue);
+                if (!exceptionTracker) {
+                    typedPromise.setError(exceptionTracker.extractError());
+                    return;
+                }
+
+                typedPromise.setValue(std::move(outValue));
+            }
+        });
     }
 
     template<typename T, std::enable_if_t<std::is_base_of<CppGeneratedModel, T>::value, int> = 0>
@@ -351,6 +412,24 @@ public:
                                               RegisteredCppGeneratedClass& registeredClass,
                                               Value& out,
                                               size_t inputPropertiesSize);
+    static void onMarshallTypedObjectFailure(ExceptionTracker& exceptionTracker,
+                                             RegisteredCppGeneratedClass& registeredClass,
+                                             size_t propertyIndex);
+
+    template<typename T>
+    inline static bool marshallTypedObjectProperty(ExceptionTracker& exceptionTracker,
+                                                   RegisteredCppGeneratedClass& registeredClass,
+                                                   Value* outputProperties,
+                                                   size_t& propertyIndex,
+                                                   const T& property) {
+        marshall(exceptionTracker, property, outputProperties[propertyIndex]);
+        if (!exceptionTracker) {
+            onMarshallTypedObjectFailure(exceptionTracker, registeredClass, propertyIndex);
+            return false;
+        }
+        propertyIndex++;
+        return true;
+    }
 
     template<typename... T>
     static void marshallTypedObject(ExceptionTracker& exceptionTracker,
@@ -363,22 +442,36 @@ public:
             return;
         }
 
-        (
-            [&] {
-                if (!exceptionTracker) {
-                    return;
-                }
-
-                marshall(exceptionTracker, properties, *outputProperties);
-                outputProperties++;
-            }(),
-            ...);
+        size_t propertyIndex = 0;
+        [[maybe_unused]] auto result =
+            (marshallTypedObjectProperty(
+                 exceptionTracker, registeredClass, outputProperties, propertyIndex, properties) &&
+             ...);
     }
 
     static Ref<ValueTypedObject> unmarshallTypedObjectPrologue(ExceptionTracker& exceptionTracker,
                                                                RegisteredCppGeneratedClass& registeredClass,
                                                                const Value& value,
                                                                size_t outputPropertiesSize);
+
+    static void onUnmarshallTypedObjectFailure(ExceptionTracker& exceptionTracker,
+                                               RegisteredCppGeneratedClass& registeredClass,
+                                               size_t propertyIndex);
+
+    template<typename T>
+    inline static bool unmarshallTypedObjectProperty(ExceptionTracker& exceptionTracker,
+                                                     RegisteredCppGeneratedClass& registeredClass,
+                                                     const Value* inputProperties,
+                                                     size_t& propertyIndex,
+                                                     T& property) {
+        unmarshall(exceptionTracker, inputProperties[propertyIndex], property);
+        if (!exceptionTracker) {
+            onUnmarshallTypedObjectFailure(exceptionTracker, registeredClass, propertyIndex);
+            return false;
+        }
+        propertyIndex++;
+        return true;
+    }
 
     template<typename... T>
     static void unmarshallTypedObject(ExceptionTracker& exceptionTracker,
@@ -391,18 +484,12 @@ public:
             return;
         }
 
-        auto* inputProperties = typedObject->getProperties();
-
-        (
-            [&] {
-                if (!exceptionTracker) {
-                    return;
-                }
-
-                unmarshall(exceptionTracker, *inputProperties, properties);
-                inputProperties++;
-            }(),
-            ...);
+        const Value* inputProperties = typedObject->getProperties();
+        size_t propertyIndex = 0;
+        [[maybe_unused]] auto result =
+            (unmarshallTypedObjectProperty(
+                 exceptionTracker, registeredClass, inputProperties, propertyIndex, properties) &&
+             ...);
     }
 
     static CppProxyMarshaller marshallProxyObjectPrologue(CppObjectStore* objectStore,

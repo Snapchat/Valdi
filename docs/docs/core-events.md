@@ -67,6 +67,12 @@ For advanced usage of gestures and managing their events, refer to the [Touches 
 
 For events based on text editing, Valdi exposes `onChange`, `onWillChange`, `onSelectionChange`, and so on which that receive `EditTextEvent` as part of the callback.
 
+## Layout Lifecycle Events
+
+Valdi provides specialized events to track the layout process:
+
+- **`onLayoutComplete`**: This callback is triggered when the layout pass for the entire tree has completed. It's useful for performing actions that depend on the final positions and sizes of all elements.
+
 An `EditTextEvent` has the following:
 
 ```js

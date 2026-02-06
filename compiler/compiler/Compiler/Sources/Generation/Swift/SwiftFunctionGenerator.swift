@@ -59,6 +59,7 @@ final class SwiftFunctionGenerator {
         public class \(containingTypeName): ValdiBridgeFunction {
             private let callBlock : \(functionTypeParser.methodTypeWithoutNames)
             public static var className = "\(containingTypeName)"
+            public static let asyncStrictMode: Bool = \(bundleInfo.asyncStrictMode ? "true" : "false")
 
             public init(jsRuntime: Any) throws {
                 guard let jsRuntime = jsRuntime as? SCValdiJSRuntime else {

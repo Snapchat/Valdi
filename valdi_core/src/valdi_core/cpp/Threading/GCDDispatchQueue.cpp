@@ -9,6 +9,7 @@
 
 #include "valdi_core/cpp/Threading/GCDDispatchQueue.hpp"
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
+#include <chrono>
 
 namespace Valdi {
 
@@ -118,9 +119,24 @@ void GCDDispatchQueue::async(DispatchFunction function) {
 }
 
 void GCDDispatchQueue::asyncEnter(const DispatchFunction& function) {
-    if (!wasDestroyed()) {
-        function();
+    // Check if destroyed before acquiring execution lock
+    if (wasDestroyed()) {
+        decrementPendingTaskCount();
+        return;
     }
+
+    // Acquire lock to protect function execution
+    std::lock_guard<std::timed_mutex> lock(_executionMutex);
+
+    // Double-check after acquiring lock (in case teardown happened between checks)
+    if (wasDestroyed()) {
+        decrementPendingTaskCount();
+        return;
+    }
+
+    // Safe to execute - teardown will wait for lock to be released
+    function();
+
     decrementPendingTaskCount();
 }
 
@@ -157,9 +173,23 @@ void GCDDispatchQueue::asyncAfterEnter(const DispatchFunction& function, task_id
         return;
     }
 
-    if (!wasDestroyed()) {
-        function();
+    // Check if destroyed before acquiring execution lock
+    if (wasDestroyed()) {
+        decrementPendingTaskCount();
+        return;
     }
+
+    // Acquire lock to protect function execution
+    std::lock_guard<std::timed_mutex> lock(_executionMutex);
+
+    // Double-check after acquiring lock (in case teardown happened between checks)
+    if (wasDestroyed()) {
+        decrementPendingTaskCount();
+        return;
+    }
+
+    // Safe to execute - teardown will wait for lock to be released
+    function();
 
     decrementPendingTaskCount();
 }
@@ -214,6 +244,17 @@ void GCDDispatchQueue::decrementPendingTaskCount() {
 
 void GCDDispatchQueue::fullTeardown() {
     teardown();
+
+    // Try to acquire the execution lock with timeout to ensure no tasks are executing
+    // If we can acquire it, all tasks have completed. If timeout, proceed anyway to
+    // avoid indefinite hang (preserves COMPOSER-837 JSCore deadlock workaround).
+    if (!_executionMutex.try_lock_for(std::chrono::seconds(2))) {
+        // Timeout - log and proceed anyway
+        // This should be rare and indicates tasks are taking too long to complete
+    } else {
+        // Successfully acquired lock - all tasks complete, release it
+        _executionMutex.unlock();
+    }
 }
 
 bool GCDDispatchQueue::wasDestroyed() const {

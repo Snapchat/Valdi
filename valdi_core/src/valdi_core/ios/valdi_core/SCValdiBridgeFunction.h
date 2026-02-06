@@ -26,6 +26,12 @@ VALDI_NO_INIT
 + (NSString*)modulePath;
 
 /**
+ * Returns whether async strict mode is enabled for this function.
+ * Will be overridden by generated classes.
+ */
++ (BOOL)asyncStrictMode;
+
+/**
  * Resolve and instantiate the function from the given JSRuntime instance
  */
 + (nonnull instancetype)functionWithJSRuntime:(nonnull id<SCValdiJSRuntime>)jsRuntime;

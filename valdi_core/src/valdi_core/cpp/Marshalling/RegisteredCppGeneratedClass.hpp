@@ -30,6 +30,7 @@ public:
     void ensureSchemaRegistered(ExceptionTracker& exceptionTracker);
 
     Ref<ClassSchema> getResolvedClassSchema(ExceptionTracker& exceptionTracker);
+    Result<Ref<ClassSchema>> getResolvedClassSchema();
     ValueSchema getResolvedSchema(ExceptionTracker& exceptionTracker);
     const StringBox& getClassName();
 

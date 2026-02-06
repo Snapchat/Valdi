@@ -52,8 +52,8 @@ build:macos --copt=-fvisibility=hidden
 # java configuration
 ## Disable some java checks for now, djinni generates code that errors out
 build --javacopt=-XepDisableAllChecks
-build --java_runtime_version=11
-build --tool_java_runtime_version=17
+build --java_runtime_version=remotejdk_11
+build --tool_java_runtime_version=remotejdk_17
 
 build --flag_alias=snap_flavor=@snap_platforms//flavors:snap_flavor
 build --snap_flavor=client_development

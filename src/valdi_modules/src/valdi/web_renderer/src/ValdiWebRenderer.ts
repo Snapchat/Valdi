@@ -1,4 +1,6 @@
 import { RequireFunc } from 'valdi_core/src/IModuleLoader';
+import { ComponentConstructor, IComponent } from 'valdi_core/src/IComponent';
+import { ComponentPrototype } from 'valdi_core/src/ComponentPrototype';
 declare const require: RequireFunc;
 
 // Require this to get the globals to run and setup env
@@ -19,7 +21,7 @@ const ValdiWebRendererDelegate = rendererDelegate.ValdiWebRendererDelegate;
 export class ValdiWebRenderer extends Renderer implements UpdateAttributeDelegate {
   delegate: ValdiWebRendererDelegateType;
 
-  constructor(private htmlRoot: HTMLElement) {
+  constructor(private htmlRoot: HTMLElement | ShadowRoot) {
     const delegate = new ValdiWebRendererDelegate(htmlRoot);
     super('valdi-web-renderer', ['view', 'label', 'layout', 'scroll', 'image', 'textfield', 'spinner'], delegate);
     delegate.setAttributeDelegate(this);
@@ -27,5 +29,14 @@ export class ValdiWebRenderer extends Renderer implements UpdateAttributeDelegat
   }
   updateAttribute(elementId: number, attributeName: string, attributeValue: any) {
     super.attributeUpdatedExternally(elementId, attributeName, attributeValue);
+  }
+  
+  renderRootComponent<T extends IComponent<ViewModel, Context>, ViewModel = any, Context = any>(
+    ctr: ComponentConstructor<T>,
+    prototype: ComponentPrototype,
+    viewModel: ViewModel,
+    context: Context,
+  ): void {
+    super.renderRootComponent(ctr, prototype, viewModel, context);
   }
 }

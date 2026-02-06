@@ -28,18 +28,18 @@ final class CppFunctionGenerator {
     }
 
     func write() throws -> [NativeSource] {
-        let classNamespace = cppType.declaration.namespace.appending(component: cppType.declaration.name)
+        let typealiasNamespace = cppType.declaration.namespace.appending(component: "\(cppType.declaration.name)TypeAliases")
 
         let generator = CppCodeGenerator(namespace: self.cppType.declaration.namespace,
                                          selfIncludePath: cppType.includePath,
-                                         namespaceResolver: CppCodeGeneratorSingleNamespaceResolver(classNamespace: classNamespace))
+                                         namespaceResolver: CppCodeGeneratorSingleNamespaceResolver(classNamespace: typealiasNamespace))
 
         generator.header.includeSection.addInclude(path: "valdi_core/cpp/Marshalling/CppGeneratedExportedFunction.hpp")
         generator.header.includeSection.addInclude(path: "valdi_core/cpp/Utils/Result.hpp")
         generator.impl.includeSection.addInclude(path: "valdi_core/cpp/Marshalling/CppGeneratedExportedFunctionUtils.hpp")
         generator.impl.includeSection.addInclude(path: cppType.includePath)
 
-        generator.header.body.appendBody(FileHeaderCommentGenerator.generateComment(sourceFilename: sourceFileName, additionalComments: exportedFunction.comments))
+
         generator.header.forwardDeclarations.addForwardDeclaration(typeReference: CPPTypeReference(declaration:
                                                                                                     CPPTypeDeclaration(namespace: CPPNamespace(components: ["snap", "valdi_core"]), name: "JSRuntime", symbolType: .class),
                                                                                                    typeArguments: nil))
@@ -62,7 +62,6 @@ final class CppFunctionGenerator {
 
         try schemaWriter.appendClass(cppType.declaration.name, properties: [property])
 
-
         let allTypeArguments = ([returnTypeParser] + parameterTypeParsers).map { $0.typeNameResolver.resolve(self.cppType.declaration.namespace) }.joined(separator: ", ")
 
         var registerSchemaParameters: [String]
@@ -71,6 +70,16 @@ final class CppFunctionGenerator {
         } else {
             registerSchemaParameters = ["\"\(schemaWriter.str)\"", generator.getTypeReferencesVecExpression(inNamespace: self.cppType.declaration.namespace)]
         }
+
+        if !generator.typealiases.isEmpty {
+            generator.header.body.appendBody("namespace \(typealiasNamespace.components.last!) {\n")
+            for cppTypealias in generator.typealiases {
+                generator.header.body.appendBody(cppTypealias.statement.resolve(typealiasNamespace))
+            }
+            generator.header.body.appendBody("}\n\n")
+        }
+
+        generator.header.body.appendBody(FileHeaderCommentGenerator.generateComment(sourceFilename: sourceFileName, additionalComments: exportedFunction.comments))
 
         let className = cppType.declaration.name
         generator.header.body.appendBody("""
@@ -101,7 +110,7 @@ final class CppFunctionGenerator {
             NativeSource(relativePath: cppType.includeDir,
                          filename: "\(cppType.declaration.name).hpp",
                          file: .data(try generator.header.content.indented.utf8Data()),
-                         groupingIdentifier: "\(bundleInfo.name).hpp", groupingPriority: 0),
+                         groupingIdentifier: "\(bundleInfo.name).hpp", groupingPriority: 0, localFilenameDependencies: generator.dependenciesInSameHeaderFile),
             NativeSource(relativePath: cppType.includeDir,
                          filename: "\(cppType.declaration.name).cpp",
                          file: .data(try generator.impl.content.indented.utf8Data()),

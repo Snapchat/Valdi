@@ -183,8 +183,11 @@ EM_JS(void, djinni_init_wasm, (), {
 });
 
 EM_JS(void, djinni_register_name_in_ns, (const char* prefixedName, const char* namespacedName), {
-        prefixedName = readLatin1String(prefixedName);
-        namespacedName = readLatin1String(namespacedName);
+        // Compatibility: readLatin1String was removed in newer Emscripten versions
+        // Use UTF8ToString as fallback (available in both old and new versions)
+        var stringConverter = (typeof readLatin1String !== 'undefined') ? readLatin1String : UTF8ToString;
+        prefixedName = stringConverter(prefixedName);
+        namespacedName = stringConverter(namespacedName);
         let parts = namespacedName.split('.');
         let name = parts.pop();
         let ns = parts.reduce(function(path, part) {

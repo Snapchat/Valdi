@@ -1,30 +1,40 @@
+// Declare webpack require.context
+declare const require: {
+  (id: string): any;
+  context(directory: string, useSubdirectories: boolean, regExp: RegExp): any;
+};
+
+// Declare global for Node-like environment
+declare const global: any;
 
 const path = require('path-browserify');
 
 // Valdi runtime assumes global instead of globalThis
-globalThis.global = globalThis;
+(globalThis as any).global = globalThis;
 
 // To make tests happy
-globalThis.describe = function(name, func) {};
+(globalThis as any).describe = function(name: string, func: Function) {};
 
 // Load up all of the modules
 const context = require.context('../../', true, /\.js$/);
 
-function loadPath(path) {
-  const module = context(path);
+function loadPath(pathStr: string) {
+  const module = context(pathStr);
   return module;
 }
 
 class Runtime {
-  constructor() {
-    // Map of task IDs to timeout IDs for scheduleWorkItem
-    this._taskIdCounter = 1;
-    this._scheduledTasks = new Map();
-  }
+  componentPaths = new Map();
+  jsonContext = require.context('../../', true, /\.json$/);
+  isDebugEnabled = true;
+  buildType = "debug";
+  // Map of task IDs to timeout IDs for scheduleWorkItem
+  private _taskIdCounter = 1;
+  private _scheduledTasks = new Map<number, number>();
 
   // This is essentially the require() function that the runtime is using.
   // relativePath is not the contents of require, it is preprocessed by the runtime.
-  loadJsModule(relativePath, requireFunc, module, exports) {
+  loadJsModule(relativePath: string, requireFunc: any, module: any, exports: any) {
     relativePath = path.normalize(relativePath);
 
     // There are a few different ways that imports can be resolved
@@ -58,16 +68,14 @@ class Runtime {
     // 3. A catch all looking for the exact path in the available options
     if (!context.keys().includes(relativePath)) {
       var err = new Error(`Module not found: ${relativePath}`);
-      err.code = 'MODULE_NOT_FOUND';
+      (err as any).code = 'MODULE_NOT_FOUND';
       throw err;
     }
     module.exports = loadPath(relativePath);
   }
 
-  componentPaths = new Map();
-
   // For navigation loading.
-  requireByComponent(componentName) {
+  requireByComponent(componentName: string) {
     if (this.componentPaths.has(componentName)) {
       // console.log("found component in cache");
       return this.componentPaths.get(componentName);
@@ -94,12 +102,12 @@ class Runtime {
     console.error("could not find", componentName);
   }
 
-  setColorPalette(palette) {
-    global.currentPalette = palette;
+  setColorPalette(palette: any) {
+    (global as any).currentPalette = palette;
   }
 
   getColorPalette() {
-    return global.currentPalette;
+    return (global as any).currentPalette;
   }
 
   getCurrentPlatform() {
@@ -109,34 +117,34 @@ class Runtime {
     return 3;
   }
 
-  submitRawRenderRequest(renderRequest) {
+  submitRawRenderRequest(renderRequest: any) {
     // console.log("submitRawRenderRequest", renderRequest);
   }
 
-  createContext(manager) {
+  createContext(manager: any) {
     // console.log("createContext", manager);
     return "contextId";
   }
 
-  setLayoutSpecs(contextId, width, height, rtl) {
+  setLayoutSpecs(contextId: string, width: number, height: number, rtl: boolean) {
     // console.log("setLayoutSpecs", contextId, width, height, rtl);
   }
 
-  postMessage(contextId, command, params) {
+  postMessage(contextId: string, command: string, params: any) {
     // console.log("postMessage", contextId, command, params);
   }
 
-  getAssets(catalogPath) {
+  getAssets(catalogPath: string) {
     // Get all images in the monolith
     const imageContext = require.context("../../", true, /\.(png|jpe?g|svg)$/);
 
     // Get just the images in the requested module
-    const filteredImages = imageContext.keys().filter((key) =>
+    const filteredImages = imageContext.keys().filter((key: string) =>
       key.startsWith(`./${catalogPath}/`)
     );
 
     // Get all image modules
-    const images = filteredImages.map((key) => ({
+    const images = filteredImages.map((key: string) => ({
       path: path.basename(key).split('.').slice(0, -1).join('.'),
       //width: 
       src: imageContext(key).default, // Webpack will replace with URL
@@ -145,7 +153,7 @@ class Runtime {
     return images;
   }
 
-  makeAssetFromUrl(url) {
+  makeAssetFromUrl(url: string) {
     return {
       path: url,
       width: 100,
@@ -153,133 +161,133 @@ class Runtime {
     };
   }
 
-  pushCurrentContext(contextId) {
+  pushCurrentContext(contextId: string) {
     // console.log("pushCurrentContext", contextId);
   }
 
   popCurrentContext() {}
 
-  getFrameForElementId(contextId, elementId, callback) {
+  getFrameForElementId(contextId: string, elementId: number, callback: Function) {
     callback(undefined);
   }
 
-  getNativeViewForElementId(contextId, elementId, callback) {
+  getNativeViewForElementId(contextId: string, elementId: number, callback: Function) {
     callback(undefined);
   }
 
-  getNativeNodeForElementId(contextId, elementId) {
+  getNativeNodeForElementId(contextId: string, elementId: number) {
     return undefined;
   }
 
-  makeOpaque(object) {
+  makeOpaque(object: any) {
     return object;
   }
 
-  configureCallback(options, func) {}
+  configureCallback(options: any, func: Function) {}
 
-  getViewNodeDebugInfo(contextId, elementId, callback) {
+  getViewNodeDebugInfo(contextId: string, elementId: number, callback: Function) {
     callback(undefined);
   }
 
-  takeElementSnapshot(contextId, elementId, callback) {
+  takeElementSnapshot(contextId: string, elementId: number, callback: Function) {
     callback(undefined);
   }
 
-  getLayoutDebugInfo(contextId, elementId, callback) {
+  getLayoutDebugInfo(contextId: string, elementId: number, callback: Function) {
     callback(undefined);
   }
 
-  performSyncWithMainThread(func) {
+  performSyncWithMainThread(func: Function) {
     func();
   }
 
-  createWorker(url) {
+  createWorker(url: string) {
     return {
-      postMessage(data) {},
-      setOnMessage(f) {},
+      postMessage(data: any) {},
+      setOnMessage(f: Function) {},
       terminate() {},
     };
   }
 
-  destroyContext(contextId) {}
+  destroyContext(contextId: string) {}
 
-  measureContext(contextId, maxWidth, widthMode, maxHeight, heightMode, rtl) {
+  measureContext(contextId: string, maxWidth: number, widthMode: number, maxHeight: number, heightMode: number, rtl: boolean): [number, number] {
     return [0, 0];
   }
 
-  getCSSModule(path) {
+  getCSSModule(path: string) {
     return {
-      getRule(name) {
+      getRule(name: string) {
         return undefined;
       },
     };
   }
 
-  createCSSRule(attributes) {
+  createCSSRule(attributes: any) {
     return 0;
   }
 
-  internString(str) {
+  internString(str: string) {
     return 0;
   }
 
-  getAttributeId(attributeName) {
+  getAttributeId(attributeName: string) {
     return 0;
   }
 
-  protectNativeRefs(contextId) {
+  protectNativeRefs(contextId: string) {
     return () => {};
   }
 
-  getBackendRenderingTypeForContextId(contextId) {
+  getBackendRenderingTypeForContextId(contextId: string) {
     return 1;
   }
 
-  isModuleLoaded(module) {
+  isModuleLoaded(module: string) {
     return true;
   }
 
-  loadModule(module, completion) {
+  loadModule(module: string, completion?: Function) {
     if (completion) completion();
   }
 
-  jsonContext = require.context('../../', true, /\.json$/);
-  getModuleEntry(module, path, asString) {
-    var filePath = './'+module+'/'+path;
+  getModuleEntry(module: string, pathStr: string, asString: boolean) {
+    var filePath = './'+module+'/'+pathStr;
     return JSON.stringify(this.jsonContext(filePath));
   }
 
-  getModuleJsPaths(module) {
+  getModuleJsPaths(module: string) {
     return [""];
   }
 
-  trace(tag, callback) {
+  trace(tag: string, callback: Function) {
     return callback();
   }
 
-  makeTraceProxy(tag, callback) {
-    return () => callback();
+  makeTraceProxy(tag: string, callback: Function) {
+    // Return callback directly to avoid adding stack frames
+    return callback;
   }
 
   startTraceRecording() {
     return 0;
   }
 
-  stopTraceRecording(id) {
+  stopTraceRecording(id: number) {
     return [];
   }
 
-  callOnMainThread(method, parameters) {
+  callOnMainThread(method: Function, parameters: any) {
     method(parameters);
   }
 
-  onMainThreadIdle(cb) {
+  onMainThreadIdle(cb: Function) {
     requestIdleCallback(() => {
       cb();
     });
   }
 
-  makeAssetFromBytes(bytes) {
+  makeAssetFromBytes(bytes: ArrayBuffer) {
     return {
       path: "",
       width: 100,
@@ -287,7 +295,7 @@ class Runtime {
     };
   }
 
-  makeDirectionalAsset(ltrAsset, rtlAsset) {
+  makeDirectionalAsset(ltrAsset: any, rtlAsset: any) {
     return {
       path: "",
       width: 100,
@@ -295,7 +303,7 @@ class Runtime {
     };
   }
 
-  makePlatformSpecificAsset(defaultAsset, platformAssetOverrides) {
+  makePlatformSpecificAsset(defaultAsset: any, platformAssetOverrides: any) {
     return {
       path: "",
       width: 100,
@@ -303,15 +311,15 @@ class Runtime {
     };
   }
 
-  addAssetLoadObserver(asset, onLoad, outputType, preferredWidth, preferredHeight) {
+  addAssetLoadObserver(asset: any, onLoad: Function, outputType: any, preferredWidth?: number, preferredHeight?: number) {
     return () => {};
   }
 
-  outputLog(type, content) {
+  outputLog(type: string, content: string) {
     //This should never be called, web is using the browser's console.log
   }
 
-  scheduleWorkItem(cb, delayMs, interruptible) {
+  scheduleWorkItem(cb: Function, delayMs: number, interruptible: boolean) {
     const taskId = this._taskIdCounter++;
     const delay = delayMs || 0;
     
@@ -331,7 +339,7 @@ class Runtime {
     return taskId;
   }
 
-  unscheduleWorkItem(taskId) {
+  unscheduleWorkItem(taskId: number) {
     const timeoutId = this._scheduledTasks.get(taskId);
     if (timeoutId !== undefined) {
       globalThis.__originalTimingFunctions__.clearTimeout(timeoutId);
@@ -347,15 +355,15 @@ class Runtime {
     return 0;
   }
 
-  restoreCurrentContext(contextId) {}
+  restoreCurrentContext(contextId: number) {}
 
-  onUncaughtError(message, error) {
+  onUncaughtError(message: string, error: any) {
     console.log("uncaught error", message, error);
   }
 
-  setUncaughtExceptionHandler(cb) {}
+  setUncaughtExceptionHandler(cb: Function) {}
 
-  setUnhandledRejectionHandler(cb) {}
+  setUnhandledRejectionHandler(cb: Function) {}
 
   dumpMemoryStatistics() {
     return {
@@ -373,26 +381,23 @@ class Runtime {
     return new ArrayBuffer(0);
   }
 
-  bytesToString(bytes) {
+  bytesToString(bytes: ArrayBuffer | Uint8Array) {
     const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
     return new TextDecoder().decode(view);
   }
 
-  submitDebugMessage(level, message) {
+  submitDebugMessage(level: string, message: string) {
     // Unused, should go through console.log
   }
-
-  isDebugEnabled = true
-
-  buildType = "debug"
 };
 
-globalThis.runtime = new Runtime();
+const globalAny = globalThis as any;
+globalAny.runtime = new Runtime();
 
 // Init is going to try to overwrite console.log, prevent that
-Object.freeze(globalThis.__originalConsole__);
+Object.freeze((globalThis as any).__originalConsole__);
 
-globalThis.__originalConsole__ = {
+globalAny.__originalConsole__ = {
   log: console.log.bind(console),
   warn: console.warn.bind(console),
   error: console.error.bind(console),
@@ -416,13 +421,13 @@ globalThis.__originalTimingFunctions__ = {
 // Run the init function
 // Relies on runtime being set so it must happen after
 // Assumes relative to the monolithic npm
-require("../../valdi_core/src/Init.js");
+const initModule = require("../../valdi_core/src/Init.js");
 
 // Restore console
-globalThis.console = globalThis.__originalConsole__;
+globalAny.console = globalAny.__originalConsole__;
 globalThis.setTimeout = globalThis.__originalTimingFunctions__.setTimeout;
 globalThis.clearTimeout = globalThis.__originalTimingFunctions__.clearTimeout;
 globalThis.setInterval = globalThis.__originalTimingFunctions__.setInterval;
-globalThis.clearInterval = globalThis.__originalTimingFunctions__.clearInterval;  
+globalThis.clearInterval = globalThis.__originalTimingFunctions__.clearInterval;
 
-console.log("end loading everything");
+export {};

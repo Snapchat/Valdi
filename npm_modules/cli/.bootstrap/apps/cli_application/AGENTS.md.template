@@ -6,6 +6,82 @@ This document provides context and guidelines for AI coding assistants working o
 
 This is a Valdi command-line application that runs in a terminal. Valdi compiles TypeScript to native code, enabling you to write performant CLI tools in TypeScript with access to native platform APIs.
 
+
+## 🚨 CRITICAL: Valdi is NOT React!
+
+**AI assistants often suggest React patterns that DON'T EXIST in Valdi.** This is because TSX/JSX syntax looks like React, but Valdi compiles to native code.
+
+### ❌ FORBIDDEN Patterns (Don't exist in Valdi)
+
+```typescript
+// ❌ WRONG - React hooks don't exist
+const [count, setCount] = useState(0);
+useEffect(() => { ... }, []);
+
+// ❌ WRONG - Functional components don't exist
+const MyComponent = () => <view />;
+
+// ❌ WRONG - Common AI mistakes
+this.markNeedsRender();  // Doesn't exist!
+this.props.title;        // Should be: this.viewModel.title
+onMount() { }            // Should be: onCreate()
+onUpdate() { }           // Should be: onViewModelUpdate()
+onUnmount() { }          // Should be: onDestroy()
+this.context.get(Service);  // Wrong pattern, use withProviders()
+```
+
+### ✅ CORRECT Valdi Patterns
+
+```typescript
+// ✅ Stateful component with state
+import { StatefulComponent } from 'valdi_core/src/Component';
+
+class MyComponent extends StatefulComponent<ViewModel, State> {
+  state = { count: 0 };
+  
+  // Lifecycle methods
+  onCreate() { }                           // Component created
+  onViewModelUpdate(prev: ViewModel) { }  // Props changed
+  onDestroy() { }                          // Before removal
+  
+  // State updates
+  handleClick() {
+    this.setState({ count: this.state.count + 1 }); // Auto re-renders
+  }
+  
+  // Render (returns void, JSX is statement)
+  onRender() {
+    <button 
+      title={`Count: ${this.state.count}`}
+      onPress={this.handleClick}
+    />;
+  }
+}
+
+// ✅ Stateless component (props only)
+import { Component } from 'valdi_core/src/Component';
+
+class SimpleComponent extends Component<ViewModel> {
+  onRender() {
+    <label value={this.viewModel.title} />;  // viewModel, not props!
+  }
+}
+```
+
+### Key Differences from React
+
+| Concept | React | Valdi |
+|---------|-------|-------|
+| **Components** | Functions or classes | Classes only (Component or StatefulComponent) |
+| **State** | `useState` hook | `state = { }` + `setState()` |
+| **Props** | `this.props` | `this.viewModel` |
+| **Lifecycle** | `useEffect` | `onCreate`, `onViewModelUpdate`, `onDestroy` |
+| **Re-render** | `setCount(...)` | `this.setState(...)` |
+| **Return** | `return <view />` | `<view />;` (statement, returns void) |
+
+For complete framework documentation, see: https://github.com/Snapchat/Valdi
+
+
 ## Project Structure
 
 - **`modules/`** - Your application modules

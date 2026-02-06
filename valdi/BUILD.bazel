@@ -206,6 +206,7 @@ cc_library(
     copts = CC_COMPILER_FLAGS,
     defines = ["VALDI_HAS_QUICKJS"],
     strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
     deps = [
         ":valdi_runtime",
         "//third-party/quickjs",

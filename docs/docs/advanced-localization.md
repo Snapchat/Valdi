@@ -71,6 +71,9 @@ val helloWorld = getResources().getString(com.snap.valdi.modules.valdi_example.R
 
 Valdi tooling processes the input strings .json files for both the Base (English) localization and the translations. The tooling generates .strings files for iOS and strings .xml files for Android, which are included in the published Valdi modules artifacts.
 
+> [!Note]
+> The Valdi compiler automatically generates a TypeScript file exposing individual localizable strings, similar to the Asset Catalog. This ensures that using localized strings in TypeScript is type-safe and enables autocompletion in your IDE.
+
 
 ## Template Strings
 

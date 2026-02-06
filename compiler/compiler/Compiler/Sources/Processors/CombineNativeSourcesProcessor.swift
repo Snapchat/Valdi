@@ -147,17 +147,95 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
         return .string(writer.content)
     }
 
+    private func resolveNativeSourcesOrdering(nativeSources: [SelectedItem<NativeSource>]) -> [SelectedItem<NativeSource>] {
+        guard !nativeSources.isEmpty else { return [] }
+
+        // Build a map from filename to native source index
+        var sourceIndexByFilename = [String: Int]()
+        for (index, source) in nativeSources.enumerated() {
+            sourceIndexByFilename[source.data.filename] = index
+        }
+
+        // Calculate in-degree for each source (count of local dependencies that exist in our set)
+        var inDegree = Array(repeating: 0, count: nativeSources.count)
+        for (index, source) in nativeSources.enumerated() {
+            for dependency in source.data.localFilenameDependencies {
+                if sourceIndexByFilename[dependency] != nil {
+                    inDegree[index] += 1
+                }
+            }
+        }
+
+        // Build reverse dependency map: for each filename, track which indices depend on it
+        var dependentIndices = [String: [Int]]()
+        for (index, source) in nativeSources.enumerated() {
+            for dependency in source.data.localFilenameDependencies {
+                dependentIndices[dependency, default: []].append(index)
+            }
+        }
+
+        // Helper to compare source indices by groupingPriority then filename
+        func isOrderedBefore(_ leftIdx: Int, _ rightIdx: Int) -> Bool {
+            let left = nativeSources[leftIdx]
+            let right = nativeSources[rightIdx]
+            if left.data.groupingPriority != right.data.groupingPriority {
+                return left.data.groupingPriority < right.data.groupingPriority
+            }
+            return left.data.filename < right.data.filename
+        }
+
+        // Initialize available list with all items that have in-degree 0, sorted by priority/filename
+        var available = nativeSources.indices.filter { inDegree[$0] == 0 }.sorted(by: isOrderedBefore)
+
+        var result = [SelectedItem<NativeSource>]()
+        result.reserveCapacity(nativeSources.count)
+
+        // Topological sort: pop best available item, update dependents
+        while let selectedIndex = available.first {
+            available.removeFirst()
+            inDegree[selectedIndex] = -1  // Mark as processed
+            result.append(nativeSources[selectedIndex])
+
+            // Decrement in-degree for all sources that depend on the selected one
+            let filename = nativeSources[selectedIndex].data.filename
+            if let indices = dependentIndices[filename] {
+                for depIdx in indices where inDegree[depIdx] > 0 {
+                    inDegree[depIdx] -= 1
+                    if inDegree[depIdx] == 0 {
+                        // Binary search to find insertion point in sorted available list
+                        var low = 0
+                        var high = available.count
+                        while low < high {
+                            let mid = (low + high) / 2
+                            if isOrderedBefore(available[mid], depIdx) {
+                                low = mid + 1
+                            } else {
+                                high = mid
+                            }
+                        }
+                        available.insert(depIdx, at: low)
+                    }
+                }
+            }
+        }
+
+        // Handle cycles: add remaining items sorted by priority/filename
+        if result.count < nativeSources.count {
+            let remainingIndices = nativeSources.indices.filter { inDegree[$0] >= 0 }
+            let sortedRemaining = remainingIndices.sorted(by: isOrderedBefore)
+            for idx in sortedRemaining {
+                result.append(nativeSources[idx])
+            }
+        }
+
+        return result
+    }
+
     private func doCombineNativeSources(filename: String,
                                         bundleInfo: CompilationItem.BundleInfo,
                                         platform: Platform?,
                                         nativeSources: [SelectedItem<NativeSource>]) -> CompilationItem {
-        let sortedNativeSources = nativeSources.sorted { (left, right) -> Bool in
-            if left.data.groupingPriority == right.data.groupingPriority {
-                return left.data.filename < right.data.filename
-            } else {
-                return left.data.groupingPriority < right.data.groupingPriority
-            }
-        }
+        let sortedNativeSources = resolveNativeSourcesOrdering(nativeSources: nativeSources)
 
         var relativePath: String?
         var firstItemSettingRelativePath: CompilationItem?

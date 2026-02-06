@@ -3,10 +3,13 @@
 #include "valdi_core/cpp/Marshalling/CppMarshaller.hpp"
 #include "valdi_core/cpp/Marshalling/RegisteredCppGeneratedClass.hpp"
 #include "valdi_core/cpp/Schema/ValueSchemaRegistry.hpp"
+#include "valdi_core/cpp/Utils/Future.hpp"
+#include "valdi_core/cpp/Utils/Promise.hpp"
 #include "valdi_core/cpp/Utils/ValueFunctionWithCallable.hpp"
 #include "valdi_core/cpp/Utils/ValueTypedProxyObject.hpp"
 #include "valdi_modules/test/test.hpp"
 #include <cstddef>
+#include <future>
 #include <gtest/gtest.h>
 
 using namespace Valdi;
@@ -233,6 +236,38 @@ public:
 
 private:
     GenericContainer<MyCard> _container;
+};
+
+class FutureContainer : public CppGeneratedClass {
+public:
+    FutureContainer() : CppGeneratedClass(getRegisteredClass()) {}
+    ~FutureContainer() = default;
+
+    const Future<MyCard>& getFuture() const {
+        return _future;
+    }
+
+    void setFuture(Future<MyCard> future) {
+        _future = std::move(future);
+    }
+
+    static RegisteredCppGeneratedClass* getRegisteredClass() {
+        static auto* kRegisteredClass =
+            CppGeneratedClass::registerSchema("c 'FutureContainer'{'future': p<r:'[0]'>}",
+                                              []() -> TypeReferencesVec { return {MyCard::getRegisteredClass()}; });
+        return kRegisteredClass;
+    }
+
+    static void marshall(ExceptionTracker& exceptionTracker, const FutureContainer& value, Value& out) {
+        CppMarshaller::marshallTypedObject(exceptionTracker, *getRegisteredClass(), out, value._future);
+    }
+
+    static void unmarshall(ExceptionTracker& exceptionTracker, const Value& value, FutureContainer& out) {
+        CppMarshaller::unmarshallTypedObject(exceptionTracker, *getRegisteredClass(), value, out._future);
+    }
+
+private:
+    Future<MyCard> _future;
 };
 
 struct MyTestCalculator : public ICalculator {
@@ -777,6 +812,65 @@ TEST(CppGeneratedClass, canUnmarshallGenericObject) {
     ASSERT_EQ(24, card.width);
     ASSERT_EQ(50, card.height);
     ASSERT_EQ(false, card.selected);
+}
+
+TEST(CppGeneratedClass, canMarshallFuture) {
+    FutureContainer object;
+
+    TypedPromise<MyCard> promise;
+    object.setFuture(promise.getFuture());
+
+    SimpleExceptionTracker exceptionTracker;
+    Value out;
+    FutureContainer::marshall(exceptionTracker, object, out);
+    auto typedObject = out.getTypedObjectRef();
+    ASSERT_TRUE(typedObject != nullptr);
+
+    auto future =
+        typedObject->getPropertyForName(STRING_LITERAL("future")).checkedToValdiObject<Promise>(exceptionTracker);
+    ASSERT_TRUE(exceptionTracker) << exceptionTracker.extractError();
+
+    Result<Value> storedResult;
+    future->onComplete([&](const Result<Value>& result) { storedResult = result; });
+
+    ASSERT_TRUE(storedResult.empty()) << storedResult.description();
+
+    MyCard card;
+    card.title = StringBox::fromCString("Hello World");
+    promise.setValue(card);
+
+    ASSERT_FALSE(storedResult.empty()) << storedResult.description();
+    ASSERT_TRUE(storedResult.success()) << storedResult.description();
+
+    auto marshalledCard = storedResult.value().checkedTo<Ref<ValueTypedObject>>(exceptionTracker);
+    ASSERT_TRUE(exceptionTracker) << exceptionTracker.extractError();
+
+    auto value = marshalledCard->getPropertyForName(STRING_LITERAL("title"));
+    ASSERT_EQ(STRING_LITERAL("Hello World"), value.toStringBox());
+}
+
+TEST(CppGeneratedClass, canUnmarshallFuture) {
+    auto promise = makeShared<ResolvablePromise>();
+    auto value = Value().setMapValue("future", Value(promise));
+
+    SimpleExceptionTracker exceptionTracker;
+    FutureContainer out;
+    FutureContainer::unmarshall(exceptionTracker, value, out);
+    ASSERT_TRUE(exceptionTracker) << exceptionTracker.extractError();
+
+    Result<MyCard> storedResult;
+    out.getFuture().then([&](Result<MyCard> result) -> void { storedResult = std::move(result); });
+
+    ASSERT_TRUE(storedResult.empty()) << storedResult.description();
+
+    promise->fulfill(Value()
+                         .setMapValue("title", Value(STRING_LITERAL("Hello World")))
+                         .setMapValue("width", Value(42))
+                         .setMapValue("height", Value(100)));
+
+    ASSERT_FALSE(storedResult.empty()) << storedResult.description();
+    ASSERT_TRUE(storedResult.success()) << storedResult.description();
+    ASSERT_EQ(STRING_LITERAL("Hello World"), storedResult.value().title);
 }
 
 TEST(CppGeneratedClass, canCopyGeneratedModel) {

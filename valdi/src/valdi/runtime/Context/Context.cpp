@@ -55,8 +55,9 @@ Context::Context(ContextId contextId,
                  bool updateHandlerSynchronously,
                  bool deferRender,
                  Runtime* runtime,
-                 const Ref<ILogger>& logger)
-    : ContextBase(contextId, attribution, path),
+                 const Ref<ILogger>& logger,
+                 const StringBox& scopeName)
+    : ContextBase(contextId, attribution, path, scopeName),
       _viewModel(viewModel),
       _componentContext(componentContext),
       _handler(std::move(handler)),

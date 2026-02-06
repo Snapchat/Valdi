@@ -706,10 +706,18 @@ interface ViewAttributes {
    * Add a shadow to the view
    * Accepts strings with syntax: '{xOffset} {yOffset} {shadowOverflow} {color}'
    * All numbers values are interpreted as points values
+   *
+   * [iOS-Only] Optionally prefix with 'complex' to use dynamic shadow rendering:
+   * - Without 'complex': Uses pre-calculated shadow path (better performance, may have issues during animations)
+   * - With 'complex': Uses dynamic rendering (slightly slower, works correctly during animations and with changing bounds)
+   *
+   * Note: Android always uses dynamic rendering, so the 'complex' prefix has no effect on Android.
+   *
    * @example
    * ```
    * boxShadow(0, 2, 10, 'rgba(0, 0, 0, 0.1)')
    * boxShadow(0, -2, 0, SemanticColor.Elevation.CELL_SHADOW)
+   * boxShadow='complex 0 3 8 rgba(0, 0, 0, 0.24)' // Use for animated views on iOS
    * ```
    */
   boxShadow?: string;
@@ -1165,7 +1173,7 @@ export interface CommonEditTextInterface extends LeafView, CommonTextAttributes 
 /**
  * Represents an editable TextField.
  *
- * @NativeTemplateElement({ios: 'SCValdiTextField', android: 'com.snap.valdi.views.ValditText', jsx: 'textfield'})
+ * @NativeTemplateElement({ios: 'SCValdiTextField', android: 'com.snap.valdi.views.ValdiEditText', jsx: 'textfield'})
  * */
 export interface TextField extends _TextField, CommonEditTextInterface {
   /**
@@ -1210,7 +1218,7 @@ export interface TextFieldInteractive extends TextField {
   focused?: boolean;
 }
 
-// @NativeTemplateElement({ios: 'SCValdiTextView', android: 'com.snap.valdi.views.ValditTextMultiline', jsx: 'textview'})
+// @NativeTemplateElement({ios: 'SCValdiTextView', android: 'com.snap.valdi.views.ValdiEditTextMultiline', jsx: 'textview'})
 export interface TextView extends _TextView, CommonEditTextInterface {
   /**
    * Setting this property to a different key type changes the visible title of the Return key.

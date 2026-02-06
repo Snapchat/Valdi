@@ -98,6 +98,11 @@ final class ObjCFunctionGenerator {
           return @"\(bundleName)/\(modulePath)";
         }
 
+        + (BOOL)asyncStrictMode
+        {
+          return \(bundleInfo.asyncStrictMode ? "YES" : "NO");
+        }
+
 
         """)
 

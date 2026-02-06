@@ -45,6 +45,8 @@ open class NoOpValdiRuntime(): IValdiRuntime {
 
     override fun createScopedJSRuntime(block: (ValdiScopedJSRuntime) -> Unit) {}
 
+    override fun createScopedJSRuntime(scopeName: String, block: (ValdiScopedJSRuntime) -> Unit) {}
+
     override fun loadModule(moduleName: String, completion: (error: String?) -> Unit) {}
 
     override fun getFontManager(block: (FontManager) -> Unit) {}

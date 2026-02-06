@@ -54,7 +54,8 @@ class ValdiViewManagerOperationsManager(
     // replace all direct buffers because these are released after calling
     // flushViewOperations
     private fun retainPendingOperations() {
-        pendingOperations.replaceAll { operation ->
+        for (i in pendingOperations.indices) {
+            val operation = pendingOperations[i]
             if (operation.byteBuffer.isDirect) {
                 val src = operation.byteBuffer
                 val bufferCopy = ByteBuffer
@@ -62,9 +63,8 @@ class ValdiViewManagerOperationsManager(
                     .order(ByteOrder.LITTLE_ENDIAN)
                 bufferCopy.put(src)
                 bufferCopy.flip()
+                pendingOperations[i] =
                 ValdiViewManagerOperations(bufferCopy, operation.attachedValues)
-            } else {
-                operation
             }
         }
     }

@@ -261,6 +261,12 @@ static Valdi::SharedRuntime getRuntimeFromContext(const Valdi::SharedContext &co
         oldRootView.valdiContext = nil;
     }
 
+    if (rootView != nil && rootView.valdiContext == nil) {
+        SCLogValdiError(@"Root view valdiContext is nil after setRootValdiView. "
+                        @"contextId=%u, componentPath=%@, oldRootView=%p, rootView=%p, sameView=%d",
+                        self.contextId, _componentPath, oldRootView, rootView, oldRootView == rootView);
+    }
+
     [rootView updateTraitCollection];
 }
 

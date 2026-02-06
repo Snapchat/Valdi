@@ -18,6 +18,7 @@ valdi_module(
             "src/**/*.ts",
             "src/**/*.tsx",
             "src/**/*.js",
+            "src/**/*.d.ts",
         ],
     ),
     res = glob([

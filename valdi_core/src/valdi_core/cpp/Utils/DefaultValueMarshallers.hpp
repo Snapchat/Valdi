@@ -1008,10 +1008,16 @@ public:
         allocator.getContainerStartPtr(this)[index] = std::move(propertyMarshaller);
     }
 
+    static std::string getUnmarshallPropertyErrorMessage(ClassSchema& schema, const ClassPropertySchema& property) {
+        return fmt::format("Failed to unmarshall property '{}' of class '{}'", property.name, schema.getClassName());
+    }
+
+    static std::string getMarshallPropertyErrorMessage(ClassSchema& schema, const ClassPropertySchema& property) {
+        return fmt::format("While marshalling property '{}' of class '{}': ", property.name, schema.getClassName());
+    }
+
     ValueType handleUnmarshallPropertyError(const ClassPropertySchema& property, ExceptionTracker& exceptionTracker) {
-        return this->handleUnmarshallError(
-            exceptionTracker,
-            fmt::format("Failed to unmarshall property '{}' of class '{}'", property.name, _schema->getClassName()));
+        return this->handleUnmarshallError(exceptionTracker, getUnmarshallPropertyErrorMessage(*_schema, property));
     }
 
     ValueType doUnmarshall(const Valdi::Value& value,
@@ -1145,19 +1151,13 @@ public:
 
             auto propertyValue = _objectClass->getProperty(value, i, exceptionTracker);
             if (!exceptionTracker) {
-                return this->handleMarshallError(
-                    exceptionTracker,
-                    fmt::format(
-                        "While marshalling property '{}' of class '{}': ", property.name, _schema->getClassName()));
+                return this->handleMarshallError(exceptionTracker, getMarshallPropertyErrorMessage(*_schema, property));
             }
 
             auto marshalledPropertyValue = propertyMarshaller->marshall(
                 receiver, propertyValue, referenceInfoBuilder.withProperty(property.name), exceptionTracker);
             if (!exceptionTracker) {
-                return this->handleMarshallError(
-                    exceptionTracker,
-                    fmt::format(
-                        "While marshalling property '{}' of class '{}': ", property.name, _schema->getClassName()));
+                return this->handleMarshallError(exceptionTracker, getMarshallPropertyErrorMessage(*_schema, property));
             }
 
             typedObject->setProperty(i, marshalledPropertyValue);
