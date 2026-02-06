@@ -12,16 +12,6 @@ def pngquant_macos():
         return "@valdi_pngquant_macos//:pngquant"
     return "pngquant/macos/pngquant"
 
-def valdi_compiler_macos():
-    if INTERNAL_BUILD:
-        pass
-    return "compiler/macos/valdi_compiler"
-
-def valdi_compiler_linux():
-    if INTERNAL_BUILD:
-        pass
-    return "compiler/linux/valdi_compiler"
-
 def valdi_compiler_companion_files():
     if INTERNAL_BUILD:
         return ["@valdi_compiler_companion//:all_files"]
