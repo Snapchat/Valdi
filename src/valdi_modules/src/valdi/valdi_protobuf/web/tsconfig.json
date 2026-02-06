@@ -22,12 +22,15 @@
   },
   "include": [
     "./**/*.ts",
-    "./**/*.d.ts"
+    "./**/*.d.ts",
+    "../src/headless/descriptor.ts"
   ],
   "exclude": [
     "**/*.js",
     "**/node_modules/**",
     "node_modules",
-    "src_symlink"
+    "src_symlink",
+    "debug/**",
+    "release/**"
   ]
 }

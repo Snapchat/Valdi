@@ -259,6 +259,10 @@ export function isDesktop(): boolean {
   return !(isIOS || isAndroid);
 }
 
+export function isWeb(): boolean {
+  return isBrowser;
+}
+
 // On web there is no native back button; some apps emulate via history.
 // Keep undefined to honor your API shape.
 export const setBackButtonObserver: ((observer: (() => boolean) | undefined) => void) | undefined = undefined;

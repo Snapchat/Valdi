@@ -6,5 +6,5 @@
     "skipLibCheck": true,
     "composite": true,
     "allowJs": true
-  },
+  }
 }

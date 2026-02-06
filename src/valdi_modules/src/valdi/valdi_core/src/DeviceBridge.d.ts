@@ -37,4 +37,5 @@ export function observeDisplayInsetChange(observe: () => void): DeviceCancelable
 export function observeDisplaySizeChange(observe: () => void): DeviceCancelable;
 export function observeDarkMode(observe: (isDarkMode: boolean) => void): DeviceCancelable;
 export function isDesktop(): boolean;
+export function isWeb(): boolean;
 export const setBackButtonObserver: ((observer: (() => boolean) | undefined) => void) | undefined;

@@ -21,6 +21,7 @@ import {
   getWindowWidth,
   getTimeZoneDstSecondsFromGMT as nativeGetTimeZoneDstSecondsFromGMT,
   isDesktop,
+  isWeb,
   observeDarkMode as nativeObserveDarkMode,
   observeDisplaySizeChange as nativeObserveDisplaySizeChange,
   observeDisplayInsetChange as nativeObserveDisplayInsetChange,
@@ -65,6 +66,7 @@ const cacheDeviceLocales = new DeviceCache<string[]>(getDeviceLocales ?? (() => 
 const cacheLocaleUsesMetricSystem = new DeviceCache<boolean>(getLocaleUsesMetricSystem ?? (() => false));
 const cacheTimeZoneName = new DeviceCache<string>(getTimeZoneName ?? (() => 'unknown'));
 const cacheIsDesktop = new DeviceCache<boolean>(isDesktop ?? (() => false));
+const cacheIsWeb = new DeviceCache<boolean>(isWeb ?? (() => false));
 const cacheIsRTL = new DeviceCache<boolean>(computeIsRTL);
 
 /**
@@ -81,7 +83,6 @@ function computeIsRTL(): boolean {
   const primaryLanguage = locales[0].split('-')[0].toLowerCase();
   return RTL_LANGUAGES.includes(primaryLanguage);
 }
-
 
 /**
  * Dark mode last cached value
@@ -149,6 +150,13 @@ export namespace Device {
    */
   export function isDesktop() {
     return cacheIsDesktop.get();
+  }
+
+  /**
+   * Check whether the Device is running on the Web platform.
+   */
+  export function isWeb(): boolean {
+    return cacheIsWeb.get();
   }
 
   /**

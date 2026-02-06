@@ -7,6 +7,16 @@ declare const require: {
 // Declare global for Node-like environment
 declare const global: any;
 
+// Declare global timing functions
+declare global {
+  var __originalTimingFunctions__: {
+    setTimeout: typeof setTimeout;
+    clearTimeout: typeof clearTimeout;
+    setInterval: typeof setInterval;
+    clearInterval: typeof clearInterval;
+  };
+}
+
 const path = require('path-browserify');
 
 // Valdi runtime assumes global instead of globalThis
@@ -28,6 +38,9 @@ class Runtime {
   jsonContext = require.context('../../', true, /\.json$/);
   isDebugEnabled = true;
   buildType = "debug";
+  // Map of task IDs to timeout IDs for scheduleWorkItem
+  private _taskIdCounter = 1;
+  private _scheduledTasks = new Map<number, number>();
 
   // This is essentially the require() function that the runtime is using.
   // relativePath is not the contents of require, it is preprocessed by the runtime.
@@ -317,10 +330,32 @@ class Runtime {
   }
 
   scheduleWorkItem(cb: Function, delayMs: number, interruptible: boolean) {
-    return 0;
+    const taskId = this._taskIdCounter++;
+    const delay = delayMs || 0;
+    
+    // Use regular browser setTimeout
+    const timeoutId = window.setTimeout(() => {
+      this._scheduledTasks.delete(taskId);
+      try {
+        cb();
+      } catch (err) {
+        this.onUncaughtError('scheduleWorkItem', err);
+      }
+    }, delay);
+    
+    // Store the timeout ID so we can cancel it
+    this._scheduledTasks.set(taskId, timeoutId);
+    
+    return taskId;
   }
 
-  unscheduleWorkItem(taskId: number) {}
+  unscheduleWorkItem(taskId: number) {
+    const timeoutId = this._scheduledTasks.get(taskId);
+    if (timeoutId !== undefined) {
+      (globalThis as any).__originalTimingFunctions__.clearTimeout(timeoutId);
+      this._scheduledTasks.delete(taskId);
+    }
+  }
 
   getCurrentContext() {
     return "";
@@ -383,6 +418,16 @@ globalAny.__originalConsole__ = {
   assert: console.assert.bind(console),
 };
 
+// Capture native browser setTimeout/clearTimeout before Valdi replaces them (like we do for console)
+Object.freeze((globalThis as any).__originalTimingFunctions__);
+
+(globalThis as any).__originalTimingFunctions__ = {
+  setTimeout: window.setTimeout,
+  clearTimeout: window.clearTimeout,
+  setInterval: window.setInterval,
+  clearInterval: window.clearInterval,
+};
+
 // Run the init function
 // Relies on runtime being set so it must happen after
 // Assumes relative to the monolithic npm
@@ -390,5 +435,9 @@ const initModule = require("../../valdi_core/src/Init.js");
 
 // Restore console
 globalAny.console = globalAny.__originalConsole__;
+globalThis.setTimeout = (globalThis as any).__originalTimingFunctions__.setTimeout;
+globalThis.clearTimeout = (globalThis as any).__originalTimingFunctions__.clearTimeout;
+globalThis.setInterval = (globalThis as any).__originalTimingFunctions__.setInterval;
+globalThis.clearInterval = (globalThis as any).__originalTimingFunctions__.clearInterval;
 
 export {};
