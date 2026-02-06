@@ -10,9 +10,9 @@
 
 @protocol SCValdiViewLayoutAttributes <NSObject>
 
-- (id)valueForAttributeName:(NSString*)attributeName;
-- (BOOL)boolValueForAttributeName:(NSString*)attributeName;
-- (NSString*)stringValueForAttributeName:(NSString*)attributeName;
-- (CGFloat)doubleValueForAttributeName:(NSString*)attributeName;
+- (id)valueForAttributeName:(NSString*)attributeName NS_SWIFT_NAME(value(forAttributeName:));
+- (BOOL)boolValueForAttributeName:(NSString*)attributeName NS_SWIFT_NAME(boolValue(forAttributeName:));
+- (NSString*)stringValueForAttributeName:(NSString*)attributeName NS_SWIFT_NAME(stringValue(forAttributeName:));
+- (CGFloat)doubleValueForAttributeName:(NSString*)attributeName NS_SWIFT_NAME(doubleValue(forAttributeName:));
 
 @end

@@ -83,6 +83,12 @@ typedef id (^SCValdiAttributePreprocessor)(id value);
 
 typedef id (*SCValdiAttributeDeserializer)(id jsInstance);
 
+/**
+ * Measure delegate parameters:
+ * - attributes: layout attributes for the node being measured.
+ * - maxSize: size constraints provided by layout.
+ * - traitCollection: trait collection used for measurement.
+ */
 typedef CGSize (^SCValdiMeasureDelegate)(id<SCValdiViewLayoutAttributes> attributes,
                                          CGSize maxSize,
                                          UITraitCollection* traitCollection);
@@ -102,17 +108,20 @@ typedef NSDictionary<NSString*, SCValdiAttributeBindMethodUntyped> SCAttributeAp
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
             withUntypedBlock:(SCValdiAttributeBindMethodUntyped)untypedBlock
-                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock;
+                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
+    NS_SWIFT_NAME(bindAttribute(_:invalidateLayoutOnChange:withUntypedBlock:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
              withStringBlock:(SCValdiAttributeBindMethodString)stringBlock
-                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock;
+                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
+    NS_SWIFT_NAME(bindAttribute(_:invalidateLayoutOnChange:withStringBlock:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
              withDoubleBlock:(SCValdiAttributeBindMethodDouble)doubleBlock
-                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock;
+                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
+    NS_SWIFT_NAME(bindAttribute(_:invalidateLayoutOnChange:withDouble:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
@@ -122,7 +131,8 @@ typedef NSDictionary<NSString*, SCValdiAttributeBindMethodUntyped> SCAttributeAp
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
                 withIntBlock:(SCValdiAttributeBindMethodInt)intBlock
-                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock;
+                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
+    NS_SWIFT_NAME(bindAttribute(_:invalidateLayoutOnChange:withIntBlock:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
@@ -132,15 +142,18 @@ typedef NSDictionary<NSString*, SCValdiAttributeBindMethodUntyped> SCAttributeAp
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
                withBoolBlock:(SCValdiAttributeBindMethodBool)boolBlock
-                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock;
+                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
+    NS_SWIFT_NAME(bindAttribute(_:invalidateLayoutOnChange:withBoolBlock:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
       withActionBlock:(SCValdiAttributeBindMethodAction)actionBlock
-           resetBlock:(SCValdiAttributeBindMethodResetNonAnimatable)resetBlock;
+           resetBlock:(SCValdiAttributeBindMethodResetNonAnimatable)resetBlock
+    NS_SWIFT_NAME(bindAttribute(_:withActionBlock:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
     withFunctionBlock:(SCValdiAttributeBindMethodFunction)functionBlock
-           resetBlock:(SCValdiAttributeBindMethodResetNonAnimatable)resetBlock;
+           resetBlock:(SCValdiAttributeBindMethodResetNonAnimatable)resetBlock
+    NS_SWIFT_NAME(bindAttribute(_:withFunctionBlock:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
               additionalAttribute:(SCNValdiCoreCompositeAttributePart*)additionalAttribute
@@ -159,7 +172,8 @@ typedef NSDictionary<NSString*, SCValdiAttributeBindMethodUntyped> SCAttributeAp
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
               withArrayBlock:(SCValdiAttributeBindMethodArray)arrayBlock
-                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock;
+                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
+    NS_SWIFT_NAME(bindAttribute(_:invalidateLayoutOnChange:withArrayBlock:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
@@ -169,7 +183,8 @@ typedef NSDictionary<NSString*, SCValdiAttributeBindMethodUntyped> SCAttributeAp
 - (void)bindCompositeAttribute:(NSString*)attributeName
                          parts:(NSArray<SCNValdiCoreCompositeAttributePart*>*)parts
               withUntypedBlock:(SCValdiAttributeBindMethodUntyped)untypedBlock
-                    resetBlock:(SCValdiAttributeBindMethodReset)resetBlock;
+                    resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
+    NS_SWIFT_NAME(bindCompositeAttribute(_:parts:withUntypedBlock:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
@@ -193,7 +208,7 @@ typedef NSDictionary<NSString*, SCValdiAttributeBindMethodUntyped> SCAttributeAp
  * that have an intrinsic size based on their content, like a label for instance, should
  * register a MeasureDelegate. The MeasureDelegate can be called in arbitrary threads.
  */
-- (void)setMeasureDelegate:(SCValdiMeasureDelegate)measureDelegate;
+- (void)setMeasureDelegate:(SCValdiMeasureDelegate)measureDelegate NS_SWIFT_NAME(setMeasureDelegate(_:));
 
 /**
  * Registers a MeasureDelegate that uses a placeholder view instance to measure elements.
