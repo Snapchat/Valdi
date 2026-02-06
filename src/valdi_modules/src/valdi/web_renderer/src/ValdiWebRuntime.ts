@@ -7,6 +7,16 @@ declare const require: {
 // Declare global for Node-like environment
 declare const global: any;
 
+// Declare global timing functions
+declare global {
+  var __originalTimingFunctions__: {
+    setTimeout: typeof setTimeout;
+    clearTimeout: typeof clearTimeout;
+    setInterval: typeof setInterval;
+    clearInterval: typeof clearInterval;
+  };
+}
+
 const path = require('path-browserify');
 
 // Valdi runtime assumes global instead of globalThis
@@ -342,7 +352,7 @@ class Runtime {
   unscheduleWorkItem(taskId: number) {
     const timeoutId = this._scheduledTasks.get(taskId);
     if (timeoutId !== undefined) {
-      globalThis.__originalTimingFunctions__.clearTimeout(timeoutId);
+      (globalThis as any).__originalTimingFunctions__.clearTimeout(timeoutId);
       this._scheduledTasks.delete(taskId);
     }
   }
@@ -409,9 +419,9 @@ globalAny.__originalConsole__ = {
 };
 
 // Capture native browser setTimeout/clearTimeout before Valdi replaces them (like we do for console)
-Object.freeze(globalThis.__originalTimingFunctions__);
+Object.freeze((globalThis as any).__originalTimingFunctions__);
 
-globalThis.__originalTimingFunctions__ = {
+(globalThis as any).__originalTimingFunctions__ = {
   setTimeout: window.setTimeout,
   clearTimeout: window.clearTimeout,
   setInterval: window.setInterval,
@@ -425,9 +435,9 @@ const initModule = require("../../valdi_core/src/Init.js");
 
 // Restore console
 globalAny.console = globalAny.__originalConsole__;
-globalThis.setTimeout = globalThis.__originalTimingFunctions__.setTimeout;
-globalThis.clearTimeout = globalThis.__originalTimingFunctions__.clearTimeout;
-globalThis.setInterval = globalThis.__originalTimingFunctions__.setInterval;
-globalThis.clearInterval = globalThis.__originalTimingFunctions__.clearInterval;
+globalThis.setTimeout = (globalThis as any).__originalTimingFunctions__.setTimeout;
+globalThis.clearTimeout = (globalThis as any).__originalTimingFunctions__.clearTimeout;
+globalThis.setInterval = (globalThis as any).__originalTimingFunctions__.setInterval;
+globalThis.clearInterval = (globalThis as any).__originalTimingFunctions__.clearInterval;
 
 export {};
