@@ -52,25 +52,10 @@ class PrependWebJSProcessor: CompilationProcessor {
             } else if relativePath.hasSuffix(".ts") {
                 relativePath = String(relativePath.dropLast(3))
             }
-            
-            logger.debug("PrependWebJSProcessor: ========== Processing Web JS File ==========")
-            logger.debug("PrependWebJSProcessor: Output file path: \(finalFileOutput)")
-            logger.debug("PrependWebJSProcessor: relativeProjectPath (original): '\(item.relativeProjectPath)'")
-            logger.debug("PrependWebJSProcessor: relativeProjectPath (adjusted): '\(relativePath)'")
-            logger.debug("PrependWebJSProcessor: relativeProjectPath length: \(relativePath.count)")
-            logger.debug("PrependWebJSProcessor: sourceURL: \(item.sourceURL.absoluteString)")
-            logger.debug("PrependWebJSProcessor: bundleInfo.name: \(item.bundleInfo.name)")
-            logger.debug("PrependWebJSProcessor: outputURL.lastPathComponent: \(finalFile.outputURL.lastPathComponent)")
-            
+
             var newFile = finalFile.file
             var contents: String? = try? newFile.readString()
-            let contentsLength = contents?.count ?? 0
-            logger.debug("PrependWebJSProcessor: File contents length: \(contentsLength)")
-            
-            // Count how many require( calls are in the file
-            let requireCount = contents?.components(separatedBy: "require(").count ?? 1
-            logger.debug("PrependWebJSProcessor: Found \(requireCount - 1) 'require(' occurrences")
-            
+
             // Transform require( to customRequire( - this must happen for all web JS files
             // Note: TypeScript with module: "commonjs" already transforms import() to Promise.resolve().then(() => require(...)),
             // so we only need to transform require( to customRequire( and the import() transformation is handled automatically.
@@ -82,8 +67,6 @@ class PrependWebJSProcessor: CompilationProcessor {
             // Note: We use the adjusted relativePath (without .tsx/.ts extension) so module resolution works correctly
             let moduleSetup = "module.path = \"\(relativePath)\";\n"
             let prefix = "\(moduleSetup)var customRequire = globalThis.moduleLoader.resolveRequire(\"\(relativePath)\");\n"
-            logger.debug("PrependWebJSProcessor: Generated prefix (first 100 chars): \(String(prefix.prefix(100)))")
-            logger.debug("PrependWebJSProcessor: ==========================================")
             if let data = (prefix + (contents ?? "" )).data(using: .utf8) {
                 newFile = .data(data)
             }
