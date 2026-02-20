@@ -52,10 +52,9 @@ class PrependWebJSProcessor: CompilationProcessor {
             } else if relativePath.hasSuffix(".ts") {
                 relativePath = String(relativePath.dropLast(3))
             }
-
+            
             var newFile = finalFile.file
             var contents: String? = try? newFile.readString()
-
             // Transform require( to customRequire( - this must happen for all web JS files
             // Note: TypeScript with module: "commonjs" already transforms import() to Promise.resolve().then(() => require(...)),
             // so we only need to transform require( to customRequire( and the import() transformation is handled automatically.

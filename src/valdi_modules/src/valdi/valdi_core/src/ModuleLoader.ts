@@ -66,9 +66,7 @@ function resolveAbsoluteImport(normalizedPathEntries: string[]): ResolvedPath {
 }
 
 function resolveAbsoluteImportFromPath(path: string): ResolvedPath {
-  const normalized = normalizePath(path.split('/'));
-  const result = resolveAbsoluteImport(normalized);
-  return result;
+  return resolveAbsoluteImport(normalizePath(path.split('/')));
 }
 
 function resolvePath(path: string, fromResolvedPath: ResolvedPath): ResolvedPath {
@@ -79,8 +77,7 @@ function resolvePath(path: string, fromResolvedPath: ResolvedPath): ResolvedPath
     const combinedPath = fromResolvedPath.directoryPaths.slice();
     combinedPath.push(...importPathEntries);
     const normalized = normalizePath(combinedPath);
-    const result = resolveAbsoluteImport(normalized);
-    return result;
+    return resolveAbsoluteImport(normalized);
   } else {
     // Absolute import
     const normalized = normalizePath(importPathEntries);
@@ -376,8 +373,7 @@ export class ModuleLoader implements IModuleLoader {
       module = this.modules[resolvedPath.absolutePath]!;
     }
 
-    const requireFunc = this.makeRequire(module);
-    return requireFunc;
+    return this.makeRequire(module);
   }
 
   getOrCreateSourceMap = (path: string, sourceMapFactory: SourceMapFactory): ISourceMap | undefined => {

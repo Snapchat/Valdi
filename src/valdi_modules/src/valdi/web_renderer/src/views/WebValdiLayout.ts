@@ -2,7 +2,6 @@ import { generateStyles, isAttributeValidStyle } from '../styles/ValdiWebStyles'
 import { injectTouchAreaStyles } from '../styles/touchAreaExtension';
 import { UpdateAttributeDelegate } from '../ValdiWebRendererDelegate';
 import { TouchEventState } from 'valdi_tsx/src/GestureEvents';
-import { WebAnimationManager } from '../WebAnimationManager';
 
 export class WebValdiLayout {
   public type = 'layout';
@@ -237,104 +236,9 @@ export class WebValdiLayout {
   }
 
   changeAttribute(attributeName: string, attributeValue: any) {
-    if (attributeName === 'boxShadow' || attributeName === 'borderRadius') {
-      console.log('[WebValdiLayout.changeAttribute] Entry:', { attributeName, attributeValue, elementId: this.id, elementType: this.type });
-    }
     if (isAttributeValidStyle(attributeName)) {
       const generatedStyles = generateStyles(attributeName, attributeValue);
-      if (attributeName === 'boxShadow' || attributeName === 'borderRadius') {
-        console.log('[WebValdiLayout.changeAttribute]', {
-          attributeName,
-          attributeValue,
-          generatedStyles,
-          hasGeneratedStyles: Object.keys(generatedStyles).length > 0,
-        });
-      }
-      
-      // Get animation manager if available
-      const animationManager = (window as any).__valdiAnimationManager as WebAnimationManager | undefined;
-      const animationContext = animationManager?.getAnimationContext(this.id);
-      
-      // Apply all styles
-      Object.keys(generatedStyles).forEach(key => {
-        const value = generatedStyles[key as keyof CSSStyleDeclaration];
-        if (attributeName === 'boxShadow' || attributeName === 'borderRadius') {
-          console.log('[WebValdiLayout] Applying style:', { key, value, elementId: this.id });
-        }
-        if (value === '' || value === null || value === undefined) {
-          this.htmlElement.style.removeProperty(key);
-        } else {
-          (this.htmlElement.style as any)[key] = value;
-          if (attributeName === 'boxShadow' || attributeName === 'borderRadius') {
-            const computedStyle = window.getComputedStyle(this.htmlElement);
-            console.log('[WebValdiLayout] Style applied, element:', {
-              elementId: this.id,
-              styleKey: key,
-              styleValue: this.htmlElement.style[key as any],
-              computedValue: computedStyle[key as any],
-              width: computedStyle.width,
-              height: computedStyle.height,
-              element: this.htmlElement,
-            });
-          }
-        }
-      });
-      
-      // If justifyContent is set (either now or already on element), ensure flexbox is properly configured
-      // Check position after styles are applied (it might be set in this same update)
-      const hasJustifyContent = 'justifyContent' in generatedStyles || 
-                                (this.htmlElement.style.justifyContent !== '' && this.htmlElement.style.justifyContent !== 'normal');
-      const isAbsolute = this.htmlElement.style.position === 'absolute' || generatedStyles.position === 'absolute';
-      
-      if (hasJustifyContent && isAbsolute) {
-        // Ensure display: flex is set for flexbox to work
-        this.htmlElement.style.display = 'flex';
-        // Ensure flexDirection is column for vertical centering (justifyContent centers along main axis)
-        // Only set if not already explicitly set
-        if (!generatedStyles.flexDirection) {
-          this.htmlElement.style.flexDirection = 'column';
-        }
-        // With position: absolute, top: 0, bottom: 0, the element should stretch to parent height
-        // This is needed for justify-content to work properly
-        const hasTop = this.htmlElement.style.top !== '' && this.htmlElement.style.top !== 'auto';
-        const hasBottom = this.htmlElement.style.bottom !== '' && this.htmlElement.style.bottom !== 'auto';
-        if (hasTop && hasBottom) {
-          // Element should automatically have height from top/bottom
-          // Ensure no conflicting height is set
-          if (this.htmlElement.style.height && this.htmlElement.style.height !== 'auto' && this.htmlElement.style.height !== '100%') {
-            // If height is explicitly set to a fixed value, remove it to let top/bottom control the height
-            this.htmlElement.style.height = '';
-          }
-        }
-      }
-      
-      // For child View elements inside a flex container with justifyContent, ensure they don't interfere
-      // Only apply to View elements (not Layout) that are relatively positioned with explicit dimensions
-      // This targets elements like thumbInner that should be simple block elements, not flex containers
-      if (this.type === 'view' && this.parent && 
-          (!this.htmlElement.style.position || this.htmlElement.style.position === 'relative')) {
-        const hasExplicitWidth = this.htmlElement.style.width !== '' && this.htmlElement.style.width !== 'auto';
-        const hasExplicitHeight = this.htmlElement.style.height !== '' && this.htmlElement.style.height !== 'auto';
-        const parentComputedStyle = window.getComputedStyle(this.parent.htmlElement);
-        const parentHasJustifyContent = parentComputedStyle.justifyContent !== 'normal' && 
-                                        parentComputedStyle.justifyContent !== '';
-        
-        // Only override if: View element, explicit dimensions, parent has justifyContent, and not already block
-        if (hasExplicitWidth && hasExplicitHeight && parentHasJustifyContent && 
-            this.htmlElement.style.display === 'flex') {
-          // Simple View element with explicit dimensions inside a flex container with justifyContent
-          // Use block display to prevent flex properties from interfering with centering
-          this.htmlElement.style.display = 'block';
-        }
-      }
-      
-      // Apply animation transitions if element is being animated
-      if (animationContext && animationManager) {
-        const transition = animationManager.getAllPropertiesTransition(animationContext.options);
-        this.htmlElement.style.transition = transition;
-        animationManager.markElementAnimated(this.id, animationContext.token);
-      }
-      
+      Object.assign(this.htmlElement.style, generatedStyles);
       return;
     }
 
@@ -397,9 +301,6 @@ export class WebValdiLayout {
         }
         return;
       case 'slowClipping':
-        // slowClipping enables proper clipping with border-radius by using overflow: hidden
-        this.htmlElement.style.overflow = attributeValue ? 'hidden' : 'visible';
-        return;
       case 'touchEnabled':
       case 'hitTest':
         this.htmlElement.style.pointerEvents = attributeValue ? 'auto' : 'none';
@@ -682,20 +583,10 @@ export class WebValdiLayout {
         console.log('WebValdiLayout not implemented: ', attributeName, attributeValue);
         return;
       case 'width':
-        // Ensure width values are converted to pixels if they're numbers
-        if (typeof attributeValue === 'number') {
-          this.htmlElement.style.width = `${attributeValue}px`;
-        } else {
-          this.htmlElement.style.width = attributeValue;
-        }
+        this.htmlElement.style.width = attributeValue;
         return;
       case 'height':
-        // Ensure height values are converted to pixels if they're numbers
-        if (typeof attributeValue === 'number') {
-          this.htmlElement.style.height = `${attributeValue}px`;
-        } else {
-          this.htmlElement.style.height = attributeValue;
-        }
+        this.htmlElement.style.height = attributeValue;
         return;
     }
 
