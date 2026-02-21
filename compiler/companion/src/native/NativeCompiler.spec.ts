@@ -4001,4 +4001,28 @@ function_end @1
       `.trim(),
     );
   });
+
+  it('escapes single quotes in string literals', () => {
+    const result = configuredCompile(
+      `
+      const enum Foo { Value = "it's a test" }
+      const s = Foo.Value;
+      `,
+      { optimizeSlots: false, optimizeVarRefs: true },
+      false, false, false, false, undefined,
+    );
+    expect(result).toContain("storestring 'it\\'s a test'");
+  });
+
+  it('escapes backslashes in string literals', () => {
+    const result = configuredCompile(
+      String.raw`
+      const enum Foo { Value = "C:\\Users\\file" }
+      const s = Foo.Value;
+      `,
+      { optimizeSlots: false, optimizeVarRefs: true },
+      false, false, false, false, undefined,
+    );
+    expect(result).toContain("storestring 'C:\\\\Users\\\\file'");
+  });
 });
