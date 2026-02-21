@@ -38,6 +38,24 @@ interface Id {
   description?: string;
 }
 
+function escapeObjCString(str: string): string {
+  return str
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
+}
+
+function escapeJSSingleQuotedString(str: string): string {
+  return str
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
+}
+
 function parseIds(moduleName: string, fileContent: string): Id[] {
   const idsYaml = yaml.load(fileContent.toString()) as IdsYaml;
 
@@ -117,7 +135,7 @@ function generateIOSIds(ids: Id[], iosHeaderImportPath: string): ObjectiveCFile 
     header.append(`extern ${functionSignature};\n`);
     impl.append(`${functionSignature} {\n`);
     impl.withIndentation('    ', () => {
-      impl.append(`return @"${id.identifier}";\n`);
+      impl.append(`return @"${escapeObjCString(id.identifier)}";\n`);
     });
     impl.append('}\n');
   }
@@ -150,7 +168,7 @@ function generateTypeScriptIds(ids: Id[]): TypeScriptFile {
     }
     definition.append(`static ${id.name}(): string;\n`);
 
-    implementation.append(`${id.name}: () => '${id.identifier}',\n`);
+    implementation.append(`${id.name}: () => '${escapeJSSingleQuotedString(id.identifier)}',\n`);
   }
 
   definition.endIndent();
