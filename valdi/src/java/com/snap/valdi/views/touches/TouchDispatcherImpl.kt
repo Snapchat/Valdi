@@ -675,8 +675,9 @@ internal class TouchDispatcherImpl(
         }
 
         if (storedLastEvent != null) {
-            gestureRecognizersToCancel.forEach {
-                it.cancel(storedLastEvent)
+            while (gestureRecognizersToCancel.isNotEmpty()) {
+                val recognizer = gestureRecognizersToCancel.removeAt(gestureRecognizersToCancel.size - 1)
+                recognizer.cancel(storedLastEvent)
             }
         }
         gestureRecognizersToCancel.clear()
@@ -684,10 +685,11 @@ internal class TouchDispatcherImpl(
 
     private fun removeAllGestureRecognizers() {
         lastEvent?.let { event ->
-            candidateGestureRecognizers.forEach {
-                it.cancel(event)
+            while (candidateGestureRecognizers.isNotEmpty()) {
+                val recognizer = candidateGestureRecognizers.removeAt(candidateGestureRecognizers.size - 1)
+                recognizer.cancel(event)
                 if (debugTouchEvents) {
-                    logger?.debug("Candidate gesture recognizer ${it::class.java.simpleName}-${System.identityHashCode(it)} removed from TouchDispatcher-${System.identityHashCode(this)}")
+                    logger?.debug("Candidate gesture recognizer ${recognizer::class.java.simpleName}-${System.identityHashCode(recognizer)} removed from TouchDispatcher-${System.identityHashCode(this)}")
                 }
             }
         }
