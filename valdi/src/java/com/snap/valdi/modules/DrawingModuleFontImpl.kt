@@ -12,13 +12,13 @@ import kotlin.math.max
 import kotlin.math.min
 
 class DrawingModuleFontImpl(typeface: Typeface,
-                            val fontSize: Float,
+                            val fontSizePixels: Float,
                             lineHeight: Double?,
                             private val coordinateResolver: CoordinateResolver): Font {
 
     private val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         this.typeface = typeface
-        this.textSize = coordinateResolver.toPixelF(fontSize)
+        this.textSize = fontSizePixels
     }
 
     private val lineSpacing = lineHeight?.toFloat() ?: 1f

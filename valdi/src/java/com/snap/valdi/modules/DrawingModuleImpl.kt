@@ -1,6 +1,7 @@
 package com.snap.valdi.modules
 
 import android.graphics.Typeface
+import android.util.TypedValue
 import com.snap.valdi.attributes.impl.fonts.FontDescriptor
 import com.snap.valdi.attributes.impl.fonts.FontManager
 import com.snap.valdi.attributes.impl.richtext.FontAttributes
@@ -63,8 +64,13 @@ class DrawingModuleImpl(
             }
         }
 
-        return DrawingModuleFontImpl(typeface,
+        val fontSizePixels = TypedValue.applyDimension(
+                fontAttributes.resolveFontSizeUnit(),
                 fontAttributes.resolvedFontSizeValue,
+                fontManager.context.resources.displayMetrics)
+
+        return DrawingModuleFontImpl(typeface,
+                fontSizePixels,
                 specs.lineHeight,
                 coordinateResolver)
     }
