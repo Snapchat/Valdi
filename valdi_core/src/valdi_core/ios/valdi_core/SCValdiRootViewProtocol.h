@@ -3,7 +3,7 @@
 
 #import "valdi_core/SCValdiScrollDirection.h"
 
-@protocol SCValdiRootViewProtocol
+@protocol SCValdiRootViewProtocol <NSObject>
 
 /**
  * Whether view inflation should stay enabled when the view is invisible.

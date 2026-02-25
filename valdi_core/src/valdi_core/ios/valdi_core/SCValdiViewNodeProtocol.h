@@ -11,7 +11,7 @@ typedef void (^SCValdiContextDidFinishLayoutBlock)(__kindof UIView* view, id<SCV
 /**
  Represents a single node in Valdi's "shadow node tree" representation of a given view hierarchy.
  */
-@protocol SCValdiViewNodeProtocol
+@protocol SCValdiViewNodeProtocol <NSObject>
 
 /**
  Get the view that this ViewNode holds

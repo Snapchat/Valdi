@@ -151,6 +151,6 @@
 
 @end
 
-@protocol SCValdiMainRuntimeProvider
+@protocol SCValdiMainRuntimeProvider <NSObject>
 - (id<SCValdiRuntimeProtocol>)provideMainRuntime;
 @end
