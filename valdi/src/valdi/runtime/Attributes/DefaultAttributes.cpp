@@ -97,6 +97,16 @@ void DefaultAttributes::bind(AttributeHandlerById& attributes) {
         });
 
     binder.bind(
+        "macosClass",
+        [](ViewTransactionScope& viewTransactionScope, auto& viewNode, const Value& value) -> Result<Void> {
+            viewNode.setViewClassNameForPlatform(viewTransactionScope, value.toStringBox(), PlatformTypeMacOS);
+            return Void();
+        },
+        [](ViewTransactionScope& viewTransactionScope, auto& viewNode) {
+            viewNode.setViewClassNameForPlatform(viewTransactionScope, StringBox(), PlatformTypeMacOS);
+        });
+
+    binder.bind(
         "viewFactory",
         [](ViewTransactionScope& viewTransactionScope, auto& viewNode, const Value& value) -> Result<Void> {
             auto viewFactory =

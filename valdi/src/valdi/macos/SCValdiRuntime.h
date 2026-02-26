@@ -7,6 +7,8 @@
 
 #import <Foundation/Foundation.h>
 
+@class NSView;
+
 typedef struct Runtime Runtime;
 typedef struct IMainThreadDispatcher IMainThreadDispatcher;
 typedef struct ModuleFactoriesProviderSharedPtr ModuleFactoriesProviderSharedPtr;
@@ -32,6 +34,12 @@ typedef struct SnapDrawingRuntime SnapDrawingRuntime;
 - (void)setApplicationId:(const char*)applicationId;
 - (void)registerModuleFactoriesProvider:(ModuleFactoriesProviderSharedPtr*)moduleFactoriesProvider;
 - (void)setDisplayScale:(double)displayScale;
+
+/// Creates a ViewFactory for a SnapDrawing layer class by name (e.g. @"SCFilePickerView"). Use for desktop so the view is a layer, not a bridged NSView.
+- (id)makeViewFactoryForSnapDrawingLayerClass:(NSString *)className;
+
+/// Returns the SnapDrawing view manager pointer (opaque). Use to register module layer classes (e.g. valdi_polyglot).
+- (void *)snapDrawingViewManager;
 
 + (NSArray<NSString*>*)getLaunchArguments;
 

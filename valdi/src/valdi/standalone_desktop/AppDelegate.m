@@ -10,6 +10,7 @@
 #import "valdi/macos/SCValdiSnapDrawingNSView.h"
 #import "valdi/macos/SCValdiRuntime.h"
 #import "NativeModules.h"
+#import "valdi/standalone_desktop/ValdiDesktopModuleInit.h"
 
 const NSString *kUseTemporaryCacheDirectoryArgument = @"--use_temporary_caches_directory";
 
@@ -29,9 +30,11 @@ const NSString *kUseTemporaryCacheDirectoryArgument = @"--use_temporary_caches_d
     
     _valdiRuntime = [[SCValdiRuntime alloc] initWithUsingTemporaryCachesDirectory:useTemporaryCachesDirectory];
     SCValdiNativeModulesRegister(_valdiRuntime);
+    ValdiRunDesktopModuleInits((__bridge void *)_valdiRuntime);
 
     [_valdiRuntime waitUntilReadyWithCompletion:^{
-        SCValdiSnapDrawingNSView *rootView = [[SCValdiSnapDrawingNSView alloc] initWithValdiRuntime:_valdiRuntime arguments:launchArguments componentContext:nil];
+        id componentContext = SCValdiGetDesktopComponentContext(_valdiRuntime);
+        SCValdiSnapDrawingNSView *rootView = [[SCValdiSnapDrawingNSView alloc] initWithValdiRuntime:_valdiRuntime arguments:launchArguments componentContext:componentContext];
         
         _window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 0, 0) styleMask:NSWindowStyleMaskClosable | NSWindowStyleMaskTitled | NSWindowStyleMaskResizable backing:NSBackingStoreBuffered defer:NO];
         _window.title = @"Valdi Desktop";

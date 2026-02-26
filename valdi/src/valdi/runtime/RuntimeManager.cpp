@@ -55,6 +55,9 @@ Shared<DebuggerService> createDebuggerService(bool enableDebuggerService,
             case PlatformTypeAndroid:
                 platform = snap::valdi_core::Platform::Android;
                 break;
+            case PlatformTypeMacOS:
+                platform = snap::valdi_core::Platform::Ios;
+                break;
         }
         auto debuggerPort = DebuggerService::resolveDebuggerPort(isStandalone);
 

@@ -1250,8 +1250,9 @@ void ViewNode::setViewFactory(ViewTransactionScope& viewTransactionScope, const 
 
         if (viewFactory != nullptr) {
             setIsLayout(viewFactory->getViewClassName() == AttributesManager::getLayoutPlaceholderClassName());
-            _attributesApplier.setBoundAttributes(viewFactory->getBoundAttributes());
-            _flags[kScrollAttributesBound] = viewFactory->getBoundAttributes()->isBackingClassScrollable();
+            auto boundAttributes = viewFactory->getBoundAttributes();
+            _attributesApplier.setBoundAttributes(boundAttributes);
+            _flags[kScrollAttributesBound] = (boundAttributes != nullptr && boundAttributes->isBackingClassScrollable());
 
             if (_flags[kScrollAttributesBound]) {
                 getYogaNodeForInsertingChildren()->getStyle().overflow() = YGOverflowScroll;
@@ -2565,6 +2566,9 @@ bool ViewNode::setAttribute(ViewTransactionScope& viewTransactionScope,
         setPrefersLazyLayout(viewTransactionScope, attributeValue.toBool());
         return true;
     } else {
+        if (_attributesApplier.getBoundAttributes() == nullptr) {
+            return false;
+        }
         auto changed = getAttributesApplier().setAttribute(
             viewTransactionScope, attributeId, attributeOwner, attributeValue, animator);
 
@@ -2583,15 +2587,16 @@ void ViewNode::reapplyAttributesRecursive(ViewTransactionScope& viewTransactionS
         invalidateMeasuredSize();
     }
 
-    for (const auto& attribute : attributes) {
-        getAttributesApplier().reapplyAttribute(viewTransactionScope, attribute);
+    if (_attributesApplier.getBoundAttributes() != nullptr) {
+        for (const auto& attribute : attributes) {
+            getAttributesApplier().reapplyAttribute(viewTransactionScope, attribute);
+        }
+        getAttributesApplier().flush(viewTransactionScope);
     }
 
     for (auto* child : *this) {
         child->reapplyAttributesRecursive(viewTransactionScope, attributes, invalidateMeasure);
     }
-
-    getAttributesApplier().flush(viewTransactionScope);
 }
 
 void ViewNode::notifyAttributeFailed(AttributeId attributeId, const Error& error) {

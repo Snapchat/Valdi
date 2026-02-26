@@ -9,6 +9,8 @@
 #import <Metal/Metal.h>
 #import "snap_drawing/cpp/Drawing/GraphicsContext/MetalGraphicsContext.hpp"
 #import "valdi/snap_drawing/Graphics/ShaderCache.hpp"
+#import "valdi/snap_drawing/Layers/Classes/LayerClass.hpp"
+#import "valdi/snap_drawing/Layers/Classes/LayoutLayerClass.hpp"
 #import "snap_drawing/cpp/Touches/GesturesConfiguration.hpp"
 
 namespace ValdiMacOS {
@@ -33,6 +35,15 @@ snap::drawing::Runtime(Valdi::makeShared<snap::drawing::CVDisplayLinkFrameSchedu
 }
 
 MacOSSnapDrawingRuntime::~MacOSSnapDrawingRuntime() = default;
+
+void MacOSSnapDrawingRuntime::initializeViewManager(Valdi::PlatformType platformType) {
+    snap::drawing::Runtime::initializeViewManager(platformType);
+    auto viewManager = getViewManager();
+    auto baseLayerClass = Valdi::castOrNull<snap::drawing::LayerClass>(viewManager->getBaseLayerClass());
+    if (baseLayerClass != nullptr) {
+        viewManager->registerLayerClass(Valdi::makeShared<snap::drawing::LayoutLayerClass>(getResources(), baseLayerClass));
+    }
+}
 
 void MacOSSnapDrawingRuntime::setActiveDisplay(CGDirectDisplayID displayId) {
     dynamic_cast<snap::drawing::CVDisplayLinkFrameScheduler &>(*getFrameScheduler()).setActiveDisplay(displayId);

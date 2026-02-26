@@ -95,6 +95,9 @@ void ViewNodeRenderer::visit(RenderRequestEntries::SetElementAttribute& entry) {
     if (!setCurrent(entry.getElementId(), entry)) {
         return;
     }
+    if (_currentNode->getViewFactory() == nullptr) {
+        return;
+    }
 
     bool changed = false;
 

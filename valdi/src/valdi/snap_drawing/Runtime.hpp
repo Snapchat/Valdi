@@ -46,7 +46,7 @@ public:
 
     void preload() const;
 
-    void initializeViewManager(Valdi::PlatformType platformType);
+    virtual void initializeViewManager(Valdi::PlatformType platformType);
 
     void registerAssetLoaders(Valdi::AssetLoaderManager& assetLoaderManager);
 

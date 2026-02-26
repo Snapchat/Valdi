@@ -7,6 +7,7 @@
 
 #import "SCValdiObjCUtils.h"
 
+#import "valdi_core/SCValdiNativeConvertible.h"
 #import "valdi_core/cpp/Utils/StringCache.hpp"
 #import "valdi_core/cpp/Utils/ValueFunction.hpp"
 
@@ -135,6 +136,11 @@ Valdi::Value ValueFromNSObject(id object) {
     if ([object isKindOfClass:[SCValdiMacOSFunction class]]) {
         Valdi::ValueFunction *function = (Valdi::ValueFunction *)((SCValdiMacOSFunction *)object).cppInstance;
         return Valdi::Value(Valdi::Ref(function));
+    }
+    if ([object respondsToSelector:@selector(valdi_toNative:)]) {
+        Valdi::Value out;
+        [(id<SCValdiNativeConvertible>)object valdi_toNative:&out];
+        return out;
     }
 
     return Valdi::Value();

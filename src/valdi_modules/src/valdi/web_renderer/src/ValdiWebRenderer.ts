@@ -23,7 +23,7 @@ export class ValdiWebRenderer extends Renderer implements UpdateAttributeDelegat
 
   constructor(private htmlRoot: HTMLElement | ShadowRoot) {
     const delegate = new ValdiWebRendererDelegate(htmlRoot);
-    super('valdi-web-renderer', ['view', 'label', 'layout', 'scroll', 'image', 'textfield', 'textview', 'spinner', 'video', 'shape'], delegate);
+    super('valdi-web-renderer', ['view', 'label', 'layout', 'scroll', 'image', 'textfield', 'textview', 'spinner', 'custom-view', 'video', 'shape'], delegate);
     delegate.setAttributeDelegate(this);
     this.delegate = delegate;
   }

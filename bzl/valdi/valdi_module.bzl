@@ -81,6 +81,7 @@ def valdi_module(
         ios_deps = [],
         android_deps = [],
         native_deps = [],
+        macos_deps = [],
         web_deps = [],
         web_register_native_module_id_overrides = None,
         exclude_patterns = None,
@@ -129,6 +130,8 @@ def valdi_module(
         no_compiled_valdimodule_output: Flag to indicate that the module doesn't produce compiled valdi module output.
         visibility: The visibility of the Bazel target
         ios_language: The language of the iOS target: "objc", "swift" or "objc, swift".
+        native_deps: C++ deps for the module's _desktop native target (SnapDrawing path; macOS and Linux).
+        macos_deps: Obj-C/C++ deps for the module's _desktop native target on macOS only (e.g. NSOpenPanel). Ignored on Linux.
         exclude_patterns: file patterns to exclude from the module
         exclude_globs: glob patterns to exclude from the module
         **kwargs: Additional keyword arguments.
@@ -228,7 +231,7 @@ def valdi_module(
     _setup_web_target(name, all_valdi_module_deps, compiled_module_target, visibility, compilation_mode, web_deps)
 
     ### 7. Setup the native targets named {name}_native
-    _setup_native_target(name, all_valdi_module_deps, native_deps, compiled_module_target, visibility)
+    _setup_native_target(name, all_valdi_module_deps, native_deps, macos_deps, compiled_module_target, visibility)
 
     ### 8. Setup the test target
     _setup_test_target(name, test_target_name, srcs)
@@ -1169,7 +1172,7 @@ def _setup_cpp_target(name, deps, compiled_module_target, visibility, single_fil
 
     native.cc_library(**cc_library_kwargs)
 
-def _setup_native_target(name, deps, additional_native_deps, compiled_module_target, visibility):
+def _setup_native_target(name, deps, additional_native_deps, macos_deps, compiled_module_target, visibility):
     ################
     ####
     #### Configure the native library target
@@ -1240,13 +1243,20 @@ def _setup_native_target(name, deps, additional_native_deps, compiled_module_tar
         deps = ["{}_ios".format(dep) for dep in native_deps] + additional_native_deps,
     )
 
+    desktop_deps = ["{}_desktop".format(dep) for dep in native_deps] + additional_native_deps
+    if macos_deps:
+        desktop_deps = desktop_deps + select({
+            "@snap_platforms//conditions:macos": macos_deps,
+            "//conditions:default": [],
+        })
+
     valdi_module_native(
         name = desktop_native_lib_name,
         srcs = source_set_select(
             debug = [":android.debug.c"],
             release = [":android.release.c"],
         ) + [":{}".format(static_res_lib_name)],
-        deps = ["{}_desktop".format(dep) for dep in native_deps] + additional_native_deps,
+        deps = desktop_deps,
     )
 
     native.alias(

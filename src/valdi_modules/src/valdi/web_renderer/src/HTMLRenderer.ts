@@ -38,6 +38,10 @@ function initViewClass(viewClass: string, id: number, attributeDelegate?: Update
     case 'textview':
     case 'SCValdiTextView':
       return new WebValdiTextView(id, attributeDelegate);
+    case 'custom-view':
+      // Placeholder for native custom views. Renders as a generic view (div).
+      // Polyglot modules use custom-view on Android/iOS; on Web we render a div.
+      return new WebValdiView(id, attributeDelegate);
     case 'video':
     case 'SCValdiVideoView':
       return new WebValdiVideo(id, attributeDelegate);

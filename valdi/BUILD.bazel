@@ -1,5 +1,6 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
+load("@build_bazel_rules_apple//apple:macos.bzl", "macos_unit_test")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_interop_hint", "swift_library")
 load("@rules_android//rules:rules.bzl", "android_library")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
@@ -660,6 +661,29 @@ objc_library(
     ],
 )
 
+objc_library(
+    name = "macos_unit_tests_lib",
+    testonly = True,
+    srcs = glob([
+        "test/macos/**/*.mm",
+    ]),
+    copts = ["-I."],
+    includes = ["src"],
+    module_name = "ValdiMacOSObjcTests",
+    sdk_frameworks = ["AppKit", "Foundation"],
+    deps = [
+        ":valdi_macos",
+        ":valdi_macos_desktop_lib",
+        "//valdi_core",
+    ],
+)
+
+macos_unit_test(
+    name = "valdi_macos_objc_test",
+    minimum_os_version = "10.15",
+    deps = [":macos_unit_tests_lib"],
+)
+
 ios_unit_test(
     name = "valdi_ios_swift_test",
     minimum_os_version = "13.0",
@@ -893,6 +917,14 @@ objc_library(
         ":valdi_snap_drawing",
         ":valdi_standalone_runtime",
     ],
+)
+
+# C API for desktop modules to self-register (include from C++ without Obj-C).
+cc_library(
+    name = "valdi_desktop_module_init_api",
+    hdrs = ["src/valdi/standalone_desktop/ValdiDesktopModuleInit.h"],
+    includes = ["src"],
+    visibility = ["//visibility:public"],
 )
 
 objc_library(

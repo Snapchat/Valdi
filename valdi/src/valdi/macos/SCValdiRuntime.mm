@@ -35,6 +35,9 @@
 #import "SCValdiObjCUtils.h"
 #import "SCValdiDefaultHTTPRequestManager.h"
 #import "SCValdiMacOSViewManager.h"
+#import "valdi_core/SCValdiWrappedValue+Private.h"
+#import "valdi/runtime/Views/ViewFactory.hpp"
+#import "valdi/snap_drawing/Runtime.hpp"
 #import "SCValdiMacOSStringsBridgeModule.h"
 #import "SCDirectoryUtils.h"
 #import "valdi/macos/MacOSSnapDrawingRuntime.h"
@@ -222,6 +225,20 @@ public:
     _snapDrawingRuntime->getResources()->setDisplayScale(static_cast<snap::drawing::Scalar>(displayScale));
 }
 
+- (id)makeViewFactoryForSnapDrawingLayerClass:(NSString *)className
+{
+    if (!className.length) {
+        return nil;
+    }
+    auto snapViewManager = _snapDrawingRuntime->getViewManager();
+    Valdi::StringBox name = StringFromNSString(className);
+    auto factory = snapViewManager->createViewFactory(name, nullptr);
+    if (!factory.get()) {
+        return nil;
+    }
+    return [[SCValdiWrappedValue alloc] initWithValue:Valdi::Value(factory)];
+}
+
 - (void)waitUntilReadyWithCompletion:(dispatch_block_t)completion
 {
     if (![NSThread isMainThread]) {
@@ -257,6 +274,11 @@ public:
 - (SnapDrawingRuntime *)snapDrawingRuntime
 {
     return (SnapDrawingRuntime *)_snapDrawingRuntime.get();
+}
+
+- (void *)snapDrawingViewManager
+{
+    return _snapDrawingRuntime.get() != nullptr ? _snapDrawingRuntime->getViewManager().get() : nullptr;
 }
 
 - (void)setApplicationId:(const char *)applicationId

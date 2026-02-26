@@ -181,6 +181,13 @@
 
     componentContext.setMapValue("programArguments", Valdi::Value(builder.build()));
     componentContext.setMapValue("componentContext", ValueFromNSObject(_componentContext));
+    if ([_componentContext isKindOfClass:[NSDictionary class]]) {
+        NSDictionary *dict = (NSDictionary *)_componentContext;
+        for (NSString *key in dict) {
+            id obj = [dict objectForKey:key];
+            componentContext.setMapValue(StringFromNSString(key), ValueFromNSObject(obj));
+        }
+    }
 
     _valdiView->setComponent(_componentPath, Valdi::Value(), componentContext);
     _valdiView->getValdiContext()->setUserData(ValdiObjectFromNSObject(self, NO));
@@ -300,8 +307,15 @@
 
 - (NSView *)hitTest:(NSPoint)point
 {
-    NSView *view = [super hitTest:point];
-    return view ? self : nil;
+    // Accept all hits within our bounds so we receive mouse events for layer touch handling.
+    // Subviews (e.g. surface presenter) may return nil to pass through; we still need to get the event.
+    // Point is in superview's coordinate system.
+    NSPoint localPoint = [self convertPoint:point fromView:self.superview];
+    BOOL inBounds = NSPointInRect(localPoint, self.bounds);
+    if (inBounds) {
+        return self;
+    }
+    return [super hitTest:point];
 }
 
 - (void)mouseDown:(NSEvent *)event
