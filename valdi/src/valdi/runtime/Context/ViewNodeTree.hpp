@@ -21,7 +21,9 @@
 #include "valdi_core/cpp/Utils/Mutex.hpp"
 #include "valdi_core/cpp/Utils/TrackedLock.hpp"
 #include "valdi_core/cpp/Utils/ValdiObject.hpp"
+#include <chrono>
 #include <deque>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -75,6 +77,7 @@ public:
     ~ViewNodeTree() override;
 
     void clear();
+    void clearRunUpdatesMetricsSession();
 
     void updateCSS(const SharedAnimator& animator);
 
@@ -300,8 +303,13 @@ private:
     int _disableUpdatesCounter = 0;
     int _beginViewTransactionCounter = 0;
     size_t _layoutDirtyCounter = 0;
+    std::chrono::steady_clock::duration _runUpdatesInnerAccumulatedTime{0};
+    std::optional<std::chrono::steady_clock::time_point> _runUpdatesInnerSessionStart;
+    std::optional<std::chrono::steady_clock::time_point> _runUpdatesInnerSessionStop;
 
     std::unique_ptr<AttributeOwner> _parentAttributeOwner;
+
+    void flushRunUpdatesInnerStatsIfNeeded();
 
     void attachRootNodeInParentTreeIfNeeded();
     void runUpdates();

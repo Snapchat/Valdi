@@ -73,6 +73,7 @@ public:
 
     virtual void emitLoadModuleMemory(const StringBox& module, int64_t totalMemory, int64_t ownMemory) {};
     virtual void emitLoadModuleDuration(const StringBox& module, int64_t totalDuration, int64_t ownDuration) {};
+    virtual void emitRunUpdatesInnerTimePercentage(const StringBox& module, int64_t percentage) {};
 
     static ScopedMetrics scopedOnScrollLatency(const Ref<Metrics>& metrics,
                                                const StringBox& module,
