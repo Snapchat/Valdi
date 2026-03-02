@@ -52,7 +52,8 @@ function loadFn(path: string): Uint8Array {
   // NOTE: your regex is /\.protodecl\.js$/, so `path` should include `.protodecl`
   // ex: "proto.protodecl" -> "./proto.protodecl.js"
   const mod: any = context(`./${path}.js`);
-  return (mod?.default ?? mod) as Uint8Array;
+  const b64: string = mod?.default ?? mod;
+  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 }
 
 /* ---------- Headless module wiring ---------- */

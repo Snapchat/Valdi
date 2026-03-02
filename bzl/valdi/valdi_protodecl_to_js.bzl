@@ -30,9 +30,8 @@ def _protodecl_to_js_dir_impl(ctx):
           dest="$OUT/$base.protodecl.js"
           mkdir -p "$(dirname "$dest")"
 
-          # Emit CommonJS that exports a Uint8Array of the raw bytes
-          "$node" -e 'const fs=require("fs");const b=fs.readFileSync(process.argv[1]);
-            process.stdout.write("module.exports = new Uint8Array(["+Array.from(b).join(",")+"]);");' "$f" > "$dest"
+          # Emit CommonJS that exports a base64 string of the raw bytes
+          "$node" -e 'const fs=require("fs");const b=fs.readFileSync(process.argv[1]);process.stdout.write("module.exports="+JSON.stringify(b.toString("base64"))+";");' "$f" > "$dest"
         done
         """,
     )
