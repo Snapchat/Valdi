@@ -53,6 +53,8 @@ void AssetLoaderRequestHandler::startLoadIfNeeded() {
     }
     _loadStarted = true;
 
+    ContextEntry entry(_context);
+
     auto requestPayload = _payloadCache->getRequestPayload();
 
     if (requestPayload.empty()) {
@@ -67,7 +69,6 @@ void AssetLoaderRequestHandler::startLoadIfNeeded() {
     }
 
     VALDI_TRACE("Valdi.loadAsset")
-    ContextEntry entry(_context);
     _cancelable = _payloadCache->getAssetLoader()->loadAsset(
         requestPayload.value(), _requestedWidth, _requestedHeight, _associatedData, Valdi::strongSmallRef(this));
 }
