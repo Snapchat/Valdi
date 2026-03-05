@@ -116,6 +116,98 @@ If you find that `watchman` is observing too many directories or directories tha
 
 Try restarting the hotreloader after the watch list have been cleared. The hotreloader will re-add the watch list to the `valdi_modules` directory automatically.
 
+## Setup issues
+
+### Intel Mac: `valdi: Bad CPU type in executable` or `cannot execute binary file`
+
+The Valdi compiler binary is built for Apple Silicon (arm64). It will not run on Intel Macs (x86_64), even under Rosetta 2.
+
+**Intel Mac is not a supported development platform.** You need an Apple Silicon Mac (M1 or later) for iOS + Android development. If you only need Android, Linux is an alternative — see the [Linux setup guide](../setup/linux_setup.md).
+
+If you're on an Apple Silicon Mac and still see this error, verify Rosetta is not interfering:
+
+```sh
+# Confirm your shell is running natively (should print "arm64")
+uname -m
+```
+
+If `uname -m` returns `x86_64` on an Apple Silicon Mac, your terminal is running under Rosetta. Open a new terminal without Rosetta, or run:
+
+```sh
+arch -arm64 /bin/zsh
+```
+
+### Git LFS: 429 rate limit or `Repository or object not found`
+
+Valdi distributes compiler binaries via Git LFS. If LFS quota is exceeded you will see errors like:
+
+```
+error: failed to fetch some objects from 'https://github.com/Snapchat/Valdi.git/info/lfs/objects/batch'
+LFS: Repository or object not found: ... Error 429
+```
+
+**Workarounds:**
+
+Option 1 — Skip LFS on clone and download only what you need:
+```sh
+GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/Snapchat/Valdi.git
+cd Valdi
+git lfs pull --include="compiler/**"
+```
+
+Option 2 — Download the compiler binary directly from the [GitHub Release assets](https://github.com/Snapchat/Valdi/releases) for your version, and place it at the path `valdi` expects (check `valdi --help` for the expected location).
+
+If none of the above work, ping us in the [Valdi Discord](https://discord.gg/uJyNEeYX2U) or [file a GitHub issue](https://github.com/Snapchat/Valdi/issues) and we can help get you unblocked.
+
+### `valdi install android` fails: `JAVA_HOME` not set or wrong Java version
+
+`valdi install android` requires **Java 17**. Other versions (8, 11, 21) are not supported.
+
+Check your current Java version:
+```sh
+java -version
+# Should print: openjdk version "17.x.x"
+```
+
+**macOS:** Install Java 17 and point `JAVA_HOME` at it:
+```sh
+brew install openjdk@17
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+```
+
+Add the `export` line to your `~/.zshrc` (or `~/.bashrc`) so it persists across sessions.
+
+**Linux:** Install `openjdk-17-jdk` (Debian/Ubuntu) or `java-17-openjdk-devel` (Fedora/RHEL), then:
+```sh
+export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+```
+
+### `res.ts` not found / missing generated resource file
+
+`res.ts` is generated during a full compile step, not by the hotreloader. If VSCode reports it as missing:
+
+1. Run a full build to generate `res.ts`:
+   ```sh
+   valdi build   # or: bazel build //your_module
+   ```
+2. If the file still doesn't appear, run `valdi projectsync` to sync the workspace.
+3. Restart the TypeScript language server in VSCode: open the Command Palette (`Cmd+Shift+P`) → `TypeScript: Restart TS Server`.
+
+If the file is generated but TypeScript still can't find it, check that the `res` directory is included in your `tsconfig.json` paths.
+
+### Fedora / RHEL / non-Debian Linux: `apt-get: command not found`
+
+`valdi dev_setup` detects your distro and uses the appropriate package manager. If auto-detection fails, install dependencies manually:
+
+```sh
+# Fedora / RHEL
+sudo dnf install java-17-openjdk-devel android-tools watchman fontconfig-devel zlib-devel git-lfs npm
+```
+
+Then continue with the [Linux setup guide](../setup/linux_setup.md) for Bazel and Android SDK setup.
+
+If you're still stuck, ping us in the [Valdi Discord](https://discord.gg/uJyNEeYX2U) or [file a GitHub issue](https://github.com/Snapchat/Valdi/issues).
+
 ## Valdi tooling development issues
 
 ### Trying to debug Compiler in Xcode but getting `debugserver is x86_64 binary running in translation`
