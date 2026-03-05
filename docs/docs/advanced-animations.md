@@ -123,7 +123,7 @@ export class YourComponent extends Component {
   onRender() {
     <layout>
       <view ref={this.titleContainer}>
-        <label value='This is a title' ref={this.titleLabe}/>
+        <label value='This is a title' ref={this.titleLabel}/>
       </view>
     </layout>
   }
