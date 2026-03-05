@@ -9,6 +9,7 @@ import {
   destroyElement,
   makeElementRoot,
   moveElement,
+  nodesRef,
   registerElements,
   setAllElementsAttributeDelegate,
 } from './HTMLRenderer';
@@ -19,6 +20,9 @@ export interface UpdateAttributeDelegate {
 
 export class ValdiWebRendererDelegate implements IRendererDelegate {
   private attributeDelegate?: UpdateAttributeDelegate;
+  private frameObserver?: FrameObserver;
+  private resizeObserver?: ResizeObserver;
+  private elementIdByHtmlElement = new WeakMap<Element, number>();
 
   constructor(private htmlRoot: HTMLElement | ShadowRoot) {
     registerElements();
@@ -37,8 +41,17 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
   }
   onElementCreated(id: number, viewClass: string): void {
     createElement(id, viewClass, this.attributeDelegate);
+    const element = nodesRef.get(id);
+    if (element?.htmlElement) {
+      this.elementIdByHtmlElement.set(element.htmlElement, id);
+      this.resizeObserver?.observe(element.htmlElement);
+    }
   }
   onElementDestroyed(id: number): void {
+    const element = nodesRef.get(id);
+    if (element?.htmlElement) {
+      this.resizeObserver?.unobserve(element.htmlElement);
+    }
     destroyElement(id);
   }
   onElementAttributeChangeAny(id: number, attributeName: string, attributeValue: any): void {
@@ -88,8 +101,39 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
     // console.log('registerVisibilityObserver');
   }
   registerFrameObserver(observer: FrameObserver): void {
-    // TOOD(mgharmalkar)
-    // console.log('registerFrameObserver');
+    this.frameObserver = observer;
+
+    this.resizeObserver = new ResizeObserver((entries) => {
+      if (!this.frameObserver) return;
+
+      const updates: number[] = [];
+      for (const entry of entries) {
+        const elementId = this.elementIdByHtmlElement.get(entry.target);
+        if (elementId === undefined) continue;
+
+        const htmlElement = entry.target as HTMLElement;
+        const rect = htmlElement.getBoundingClientRect();
+        const offsetParent = htmlElement.offsetParent as HTMLElement | null;
+
+        let x: number;
+        let y: number;
+        if (offsetParent) {
+          const parentRect = offsetParent.getBoundingClientRect();
+          const cs = getComputedStyle(offsetParent);
+          x = rect.left - parentRect.left + offsetParent.scrollLeft - (parseFloat(cs.borderLeftWidth) || 0);
+          y = rect.top - parentRect.top + offsetParent.scrollTop - (parseFloat(cs.borderTopWidth) || 0);
+        } else {
+          x = rect.left;
+          y = rect.top;
+        }
+
+        updates.push(elementId, x, y, rect.width, rect.height);
+      }
+
+      if (updates.length > 0) {
+        this.frameObserver(new Float64Array(updates));
+      }
+    });
   }
   getNativeView(id: number, callback: (instance: NativeView | undefined) => void): void {}
   getNativeNode(id: number): NativeNode | undefined {
