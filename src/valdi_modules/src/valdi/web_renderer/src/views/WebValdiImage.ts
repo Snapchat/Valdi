@@ -132,13 +132,13 @@ export class WebValdiImage extends WebValdiLayout {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imageData.data;
 
-      // Apply tint to non-transparent pixels
+      // Replace color of non-transparent pixels with tint color (matching native behavior)
       for (let i = 0; i < data.length; i += 4) {
         const alpha = data[i + 3];
         if (alpha === 0) continue;
-        data[i] = (data[i] * tr) / 255; // R
-        data[i + 1] = (data[i + 1] * tg) / 255; // G
-        data[i + 2] = (data[i + 2] * tb) / 255; // B
+        data[i] = tr; // R
+        data[i + 1] = tg; // G
+        data[i + 2] = tb; // B
       }
       ctx.putImageData(imageData, 0, 0);
     }
