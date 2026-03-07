@@ -12,13 +12,13 @@ namespace snap::utils::crypto {
 constexpr auto kTag = "[utils][AesEncryptor]";
 
 AesEncryptor::AesEncryptor(const AesEncryptor::Key& key, const AesEncryptor::Iv& iv)
-    : _cipher(EVP_aead_aes_128_gcm()), _key(key), _iv(iv) {
+    : _cipher(EVP_aead_aes_256_gcm()), _key(key), _iv(iv) {
     SC_ASSERT(_key.size() == EVP_AEAD_key_length(_cipher));
     SC_ASSERT(_iv.size() == EVP_AEAD_nonce_length(_cipher));
 }
 
 AesEncryptor::AesEncryptor(const bssl::Span<uint8_t>& key, const bssl::Span<uint8_t>& iv)
-    : _cipher(EVP_aead_aes_128_gcm()) {
+    : _cipher(EVP_aead_aes_256_gcm()) {
     SC_ASSERT(_key.size() == EVP_AEAD_key_length(_cipher));
     SC_ASSERT(_iv.size() == EVP_AEAD_nonce_length(_cipher));
     std::copy(key.begin(), key.end(), _key.begin());
@@ -26,7 +26,7 @@ AesEncryptor::AesEncryptor(const bssl::Span<uint8_t>& key, const bssl::Span<uint
 }
 
 AesEncryptor::AesEncryptor(const std::vector<uint8_t>& key, const std::vector<uint8_t>& iv)
-    : _cipher(EVP_aead_aes_128_gcm()) {
+    : _cipher(EVP_aead_aes_256_gcm()) {
     SC_ASSERT(_key.size() == EVP_AEAD_key_length(_cipher));
     SC_ASSERT(_iv.size() == EVP_AEAD_nonce_length(_cipher));
     std::copy(key.begin(), key.end(), _key.begin());
