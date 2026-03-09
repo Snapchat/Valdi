@@ -107,6 +107,16 @@ void DefaultAttributes::bind(AttributeHandlerById& attributes) {
         });
 
     binder.bind(
+        "webClass",
+        [](ViewTransactionScope& viewTransactionScope, auto& viewNode, const Value& value) -> Result<Void> {
+            viewNode.setViewClassNameForPlatform(viewTransactionScope, value.toStringBox(), PlatformTypeWeb);
+            return Void();
+        },
+        [](ViewTransactionScope& viewTransactionScope, auto& viewNode) {
+            viewNode.setViewClassNameForPlatform(viewTransactionScope, StringBox(), PlatformTypeWeb);
+        });
+
+    binder.bind(
         "viewFactory",
         [](ViewTransactionScope& viewTransactionScope, auto& viewNode, const Value& value) -> Result<Void> {
             auto viewFactory =

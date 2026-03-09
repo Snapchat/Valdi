@@ -177,6 +177,12 @@ class ValdiTemplateCompiler {
                 try throwError(node: node, message: "Could not resolve Android class for node type \(node.nodeType)")
             }
         }
+        if let webViewClassName = mapping.webViewClassName {
+            jsElement.webViewClass = webViewClassName
+        }
+        if let macosViewClassName = mapping.macosViewClassName {
+            jsElement.macosViewClass = macosViewClassName
+        }
 
         if mapping.isSlot {
             let slotName = jsElement.slotName ?? "default"

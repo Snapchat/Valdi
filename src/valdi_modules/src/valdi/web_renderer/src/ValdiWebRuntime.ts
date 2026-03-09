@@ -427,6 +427,12 @@ globalAny.__originalConsole__ = {
 };
 Object.freeze(globalAny.__originalConsole__);
 
+/** Log to the real browser console even when Init has replaced global.console (e.g. during startup). */
+globalAny.__valdiLogToConsole__ = function (...args: unknown[]) {
+  const c = globalAny.__originalConsole__ || globalAny.console;
+  if (c?.log) c.log.apply(c, args);
+};
+
 // Capture native browser setTimeout/clearTimeout before Valdi replaces them (like we do for console)
 (globalThis as any).__originalTimingFunctions__ = {
   setTimeout: window.setTimeout,

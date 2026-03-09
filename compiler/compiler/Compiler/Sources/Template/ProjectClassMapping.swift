@@ -11,6 +11,8 @@ import Foundation
 struct ValdiClass: Equatable, Codable {
     var androidClassName: String?
     var iosType: IOSType?
+    var webViewClassName: String?
+    var macosViewClassName: String?
     let jsxName: String?
     var valdiViewPath: ComponentPath?
     var isLayout: Bool
@@ -20,7 +22,7 @@ struct ValdiClass: Equatable, Codable {
 }
 
 func==(lhs: ValdiClass, rhs: ValdiClass) -> Bool {
-    return lhs.androidClassName == rhs.androidClassName && lhs.iosType?.name == rhs.iosType?.name && lhs.iosType?.importPrefix == rhs.iosType?.importPrefix && lhs.valdiViewPath == rhs.valdiViewPath && lhs.sourceModuleName == rhs.sourceModuleName
+    return lhs.androidClassName == rhs.androidClassName && lhs.iosType?.name == rhs.iosType?.name && lhs.iosType?.importPrefix == rhs.iosType?.importPrefix && lhs.webViewClassName == rhs.webViewClassName && lhs.macosViewClassName == rhs.macosViewClassName && lhs.valdiViewPath == rhs.valdiViewPath && lhs.sourceModuleName == rhs.sourceModuleName
 }
 
 class ValdiClassResolveError: CompilerError {
@@ -45,12 +47,12 @@ struct ProjectClassMapping {
         self.allowMappingOverride = allowMappingOverride
     }
 
-    mutating func register(bundle: CompilationItem.BundleInfo, nodeType: String, valdiViewPath: ComponentPath?, iosType: IOSType?, androidClassName: String?, jsxName: String?, isLayout: Bool, sourceFilePath: String) throws {
-        try register(bundle: bundle, nodeType: nodeType, valdiViewPath: valdiViewPath, iosType: iosType, androidClassName: androidClassName, jsxName: jsxName, isLayout: isLayout, isSlot: false, sourceFilePath: sourceFilePath)
+    mutating func register(bundle: CompilationItem.BundleInfo, nodeType: String, valdiViewPath: ComponentPath?, iosType: IOSType?, androidClassName: String?, webViewClassName: String? = nil, macosViewClassName: String? = nil, jsxName: String?, isLayout: Bool, sourceFilePath: String) throws {
+        try register(bundle: bundle, nodeType: nodeType, valdiViewPath: valdiViewPath, iosType: iosType, androidClassName: androidClassName, webViewClassName: webViewClassName, macosViewClassName: macosViewClassName, jsxName: jsxName, isLayout: isLayout, isSlot: false, sourceFilePath: sourceFilePath)
     }
 
-    mutating func register(bundle: CompilationItem.BundleInfo, nodeType: String, valdiViewPath: ComponentPath?, iosType: IOSType?, androidClassName: String?, jsxName: String?, isLayout: Bool, isSlot: Bool, sourceFilePath: String) throws {
-        let classDescription = ValdiClass(androidClassName: androidClassName, iosType: iosType, jsxName: jsxName, valdiViewPath: valdiViewPath, isLayout: isLayout, isSlot: isSlot, sourceFilePath: sourceFilePath, sourceModuleName: bundle.name)
+    mutating func register(bundle: CompilationItem.BundleInfo, nodeType: String, valdiViewPath: ComponentPath?, iosType: IOSType?, androidClassName: String?, webViewClassName: String? = nil, macosViewClassName: String? = nil, jsxName: String?, isLayout: Bool, isSlot: Bool, sourceFilePath: String) throws {
+        let classDescription = ValdiClass(androidClassName: androidClassName, iosType: iosType, webViewClassName: webViewClassName, macosViewClassName: macosViewClassName, jsxName: jsxName, valdiViewPath: valdiViewPath, isLayout: isLayout, isSlot: isSlot, sourceFilePath: sourceFilePath, sourceModuleName: bundle.name)
 
         let className =  "\(bundle.name).\(nodeType)"
 
@@ -70,7 +72,7 @@ struct ProjectClassMapping {
     func resolveClass(nodeType: String, currentBundle: CompilationItem.BundleInfo, localMapping: ValdiClassMapping?) throws -> ValdiClass {
         // First local at local mapping (declared inside the .vue file)
         if let resolvedLocalMapping = localMapping?.nodeMappingByClass[nodeType] {
-            return ValdiClass(androidClassName: resolvedLocalMapping.androidClassName, iosType: resolvedLocalMapping.iosType, jsxName: nil, valdiViewPath: nil, isLayout: false, isSlot: false, sourceFilePath: "", sourceModuleName: currentBundle.name)
+            return ValdiClass(androidClassName: resolvedLocalMapping.androidClassName, iosType: resolvedLocalMapping.iosType, webViewClassName: nil, macosViewClassName: nil, jsxName: nil, valdiViewPath: nil, isLayout: false, isSlot: false, sourceFilePath: "", sourceModuleName: currentBundle.name)
         }
 
         let components = nodeType.split(separator: ".")

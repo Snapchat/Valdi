@@ -62,7 +62,7 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
 
   constructor() {
     this.currentPlatform = runtime.getCurrentPlatform();
-    if (this.currentPlatform !== 1 && this.currentPlatform !== 2 && this.currentPlatform != 3) {
+    if (this.currentPlatform !== 1 && this.currentPlatform !== 2 && this.currentPlatform !== 3 && this.currentPlatform !== 4) {
       throw Error(`Unrecognized platform type ${this.currentPlatform.toString()}`);
     }
 
@@ -263,23 +263,36 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
     if (className === 'custom-view') {
       let androidClass: string | undefined;
       let iosClass: string | undefined;
+      let macosClass: string | undefined;
       if (attributes) {
         androidClass = removeProperty(attributes, 'androidClass');
         iosClass = removeProperty(attributes, 'iosClass');
+        macosClass = removeProperty(attributes, 'macosClass');
+        // webClass is left in attributes so WebValdiCustomView receives it via changeAttribute
       }
 
-      if (this.currentPlatform === 2 || this.currentPlatform === 3) {
+      // Platform 3 = web: use 'custom-view' so the web renderer creates WebValdiCustomView
+      if (this.currentPlatform === 3) {
+        return new NodePrototype(className, 'custom-view', attributes);
+      }
+      if (this.currentPlatform === 2) {
         if (iosClass) {
           return new NodePrototype(className, iosClass, attributes);
         } else {
           return new DeferredNodePrototype(className, attributes);
         }
-      } else {
-        if (androidClass) {
-          return new NodePrototype(className, androidClass, attributes);
+      }
+      if (this.currentPlatform === 4) {
+        if (macosClass) {
+          return new NodePrototype(className, macosClass, attributes);
         } else {
           return new DeferredNodePrototype(className, attributes);
         }
+      }
+      if (androidClass) {
+        return new NodePrototype(className, androidClass, attributes);
+      } else {
+        return new DeferredNodePrototype(className, attributes);
       }
     }
 
