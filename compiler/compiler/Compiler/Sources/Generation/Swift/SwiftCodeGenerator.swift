@@ -295,12 +295,6 @@ final class SwiftSourceFileGenerator : CodeWriter {
             let typeName = "\(promiseTypeName)<\(childParser.typeName)>"
 
             return SwiftTypeParser(typeName: typeName, isOptional: isOptional, marshallerName: "Promise")
-        case .observable(let typeArgument):
-            let observableTypeName = "BridgeObservable"
-            let childParser = try getTypeParser(type: typeArgument.unwrappingOptional, isOptional: typeArgument.isOptional, functionHelperName: functionHelperName, nameAllocator: nameAllocator)
-            let typeName = "\(observableTypeName)<\(childParser.typeName)>"
-
-            return SwiftTypeParser(typeName: typeName, isOptional: isOptional, marshallerName: "Observable")
         case .nullable(let type):
             return try getTypeParser(type: type, isOptional: true, functionHelperName: functionHelperName, nameAllocator: nameAllocator)
         }
@@ -317,7 +311,7 @@ final class SwiftSourceFileGenerator : CodeWriter {
     }
 
     private static func marshallerCanThrow(type: SwiftTypeParser) -> Bool {
-        let baseMarshallerNames = ["Array", "Map", "Object", "GenericObject", "Untyped", "Promise", "Observable", "ObjCObject", "GenericTypeParameter"
+        let baseMarshallerNames = ["Array", "Map", "Object", "GenericObject", "Untyped", "Promise", "ObjCObject", "GenericTypeParameter"
         ]
         let marshallerNames = baseMarshallerNames.flatMap { [$0, "Optional\($0)"] }
         return marshallerNames.contains(type.marshallerName ?? "")

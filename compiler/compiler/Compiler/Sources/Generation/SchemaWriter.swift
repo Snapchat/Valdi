@@ -140,13 +140,6 @@ class SchemaWriter {
         str.append(">")
     }
 
-    func appendObservable(isOptional: Bool, typeArgument: ValdiModelPropertyType) throws {
-        doAppendTypeName("o", boxed: false, isOptional: isOptional)
-        str.append("<")
-        try appendType(typeArgument, asBoxed: true, isMethod: false)
-        str.append(">")
-    }
-
     private func doAppendTypeName(_ name: String, boxed: Bool, isOptional: Bool) {
         str.append(name)
         if boxed {
@@ -205,8 +198,6 @@ class SchemaWriter {
             try appendGenTypeRef(nodeMapping: nodeMapping, isOptional: isOptional, hasConverter: nodeMapping.converter != nil, typeArguments: typeArguments)
         case .promise(typeArgument: let typeArgument):
             try appendPromise(isOptional: isOptional, typeArgument: typeArgument)
-        case .observable(typeArgument: let typeArgument):
-            try appendObservable(isOptional: isOptional, typeArgument: typeArgument)
         case .enum(let e):
             let shouldBoxEnum = e.kind == .enum && self.boxIntEnums && (asBoxed || isOptional)
             try appendTypeRef(nodeMapping: e, boxed: shouldBoxEnum, isOptional: isOptional, hasConverter: false)

@@ -538,18 +538,6 @@ final class CppCodeGenerator {
         )
     }
 
-    private func getObservableTypeParser(valueTypeParser: CppTypeParser) -> CppTypeParser {
-        header.includeSection.addInclude(path: "valdi_modules/bridge_observables/BridgeObservable.hpp")
-
-        return CppTypeParser(
-            typeNameResolver: CPPTypeNameResolver.with(templateType: .with(typeName: "valdi_modules::bridge_observables::BridgeObservable"), typeArgument: valueTypeParser.typeNameResolver),
-            method: nil,
-            isMovable: true,
-            isIntrinsicallyNullable: false,
-            defaultInitializationString: nil
-        )
-    }
-
     private func getFunctionTypeParser(parameters: [ValdiModelProperty], returnType: ValdiModelPropertyType, namePaths: [String], nameAllocator: PropertyNameAllocator) throws -> CppTypeParser {
         header.includeSection.addInclude(path: "valdi_core/cpp/Utils/Function.hpp")
 
@@ -634,9 +622,6 @@ final class CppCodeGenerator {
         case .promise(let type):
             let element = makeCanonicalTypeKey(type: type)
             return "promise<\(element)>"
-        case .observable(let type):
-            let element = makeCanonicalTypeKey(type: type)
-            return "observable<\(element)>"
         case .enum(let type):
             if !type.isGenerated {
                 return "any"
@@ -747,10 +732,6 @@ final class CppCodeGenerator {
             let innerType = try getTypeParser(type: type, namePaths: namePaths, nameAllocator: nameAllocator)
 
             return getPromiseTypeParser(valueTypeParser: innerType)
-        case .observable(let type):
-            let innerType = try getTypeParser(type: type, namePaths: namePaths, nameAllocator: nameAllocator)
-
-            return getObservableTypeParser(valueTypeParser: innerType)
         case .enum(let enumType):
             if !enumType.isGenerated {
                 // No support for @NativeClass and @NativeInterface for now.

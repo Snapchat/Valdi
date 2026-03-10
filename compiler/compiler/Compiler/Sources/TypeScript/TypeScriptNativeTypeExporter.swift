@@ -119,8 +119,6 @@ final class TypeScriptNativeTypeExporter {
         case .void:
             fallthrough
         case .promise:
-            fallthrough
-        case .observable:
             // All good
             break
         default:
@@ -198,12 +196,6 @@ final class TypeScriptNativeTypeExporter {
                 }
                 let resolvedTypeArgument = try self.resolveType(type: typeArgument.type, references: references)
                 return .promise(typeArgument: resolvedTypeArgument)
-            } else if typeReference.name == "Observable" {
-                guard let typeArgument = type.typeArguments?.first else {
-                    throw CompilerError("Observable types should have a single type argument")
-                }
-                let resolvedTypeArgument = try self.resolveType(type: typeArgument.type, references: references)
-                return .observable(typeArgument: resolvedTypeArgument)
             } else if typeReference.name == "Map" {
                 // TODO(simon): Real implementation
                 return .map(keyType: .string, valueType: .any)

@@ -401,12 +401,6 @@ final class KotlinCodeGenerator: CodeWriter {
             let typeName = "\(promiseTypeName)<\(childParser.fullTypeName)>"
 
             return getPrimitiveTypeParser(primitiveType: typeName, propertyName: nil, isOptional: isOptional)
-        case .observable(let typeArgument):
-            let observableTypeName = try importClass("com.snap.valdi.bridge_observables.BridgeObservable").name
-            let childParser = try getTypeParser(type: typeArgument.unwrappingOptional, isOptional: typeArgument.isOptional, propertyName: nil, nameAllocator: nameAllocator)
-            let typeName = "\(observableTypeName)<\(childParser.fullTypeName)>"
-
-            return getPrimitiveTypeParser(primitiveType: typeName, propertyName: nil, isOptional: isOptional)
         case .nullable(let type):
             return try getTypeParser(type: type, isOptional: true, propertyName: propertyName, nameAllocator: nameAllocator)
         }

@@ -510,24 +510,6 @@ final class ObjCClassGenerator {
             headerDeclarationSafeTypeNameOverride = "SCValdiPromise<\(childParser.headerDeclarationSafeTypeName)> *"
             propertyAttribute = "strong"
             cElementType = .pointer
-        case .observable(let typeArgument):
-            let observableImportPath = "<SCCBridgeObservables/SCBridgeObservable.h>"
-            apiHeader.addImport(path: observableImportPath)
-            header.addImport(path: observableImportPath)
-
-            let childParser = try writeTypeParser(type: typeArgument.unwrappingOptional,
-                                                  isOptional: typeArgument.isOptional,
-                                                  namePaths: namePaths + ["element"],
-                                                  allowValueType: false,
-                                                  isInterface: false,
-                                                  nameAllocator: nameAllocator.scoped(),
-                                                  typeParameterSafe: true)
-
-            propertyAdditionalHeaderDeclaration = childParser.propertyAdditionalHeaderDeclaration
-            typeName = "SCBridgeObservable<\(childParser.typeName)> *"
-            headerDeclarationSafeTypeNameOverride = "SCBridgeObservable<\(childParser.headerDeclarationSafeTypeName)> *"
-            propertyAttribute = "strong"
-            cElementType = .pointer
         case .nullable(let type):
             return try writeTypeParser(type: type, isOptional: true, namePaths: namePaths, allowValueType: false, isInterface: isInterface, nameAllocator: nameAllocator)
         }

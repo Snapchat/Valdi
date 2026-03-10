@@ -103,7 +103,6 @@ indirect enum ValdiModelPropertyType {
     case genericTypeParameter(name: String)
     case genericObject(ValdiNodeClassMapping, typeArguments: [ValdiModelPropertyType])
     case promise(typeArgument: ValdiModelPropertyType)
-    case observable(typeArgument: ValdiModelPropertyType)
     case `enum`(ValdiNodeClassMapping)
     case nullable(ValdiModelPropertyType)
 
@@ -158,8 +157,6 @@ indirect enum ValdiModelPropertyType {
         case .genericObject:
             return true
         case .promise:
-            return true
-        case .observable:
             return true
         case .nullable(let type):
             return type.includesGenericType
