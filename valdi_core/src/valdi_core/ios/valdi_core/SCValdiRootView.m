@@ -102,16 +102,19 @@ NSNotificationName const SCValdiRootViewTraitCollectionDidChangeNotificationKey 
 
 - (NSString *)bundleName
 {
+    NSString *result = nil;
+
     NSString *componentPath = self.componentPath;
     if (componentPath) {
-        return SCValdiComponentPathGetBundleName(componentPath);
+        result = SCValdiComponentPathGetBundleName(componentPath);
     }
-    return nil;
+
+    return result ?: [NSString stringWithFormat:@"missing-bundle-for-%@", NSStringFromClass([self class])];
 }
 
 - (NSString *)viewName
 {
-    return nil;
+    return [NSString stringWithFormat:@"missing-view-name-for-%@", NSStringFromClass([self class])];
 }
 
 - (void)dealloc
@@ -284,7 +287,7 @@ NSNotificationName const SCValdiRootViewTraitCollectionDidChangeNotificationKey 
 
 + (NSString *)componentPath
 {
-    return nil;
+    return [NSString stringWithFormat:@"missing-component-path-for-%@", NSStringFromClass(self)];
 }
 
 - (BOOL)canScrollAtPoint:(CGPoint)point direction:(SCValdiScrollDirection)direction

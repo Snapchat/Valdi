@@ -60,9 +60,9 @@ SC_EXTERN_C_BEGIN
  implement the class method "valdiMarshallableObjectDescriptor" so
  that the fields can be resolved
  */
-- (id)unmarshallObjectOfClass:(Class)objectClass
-               fromMarshaller:(SCValdiMarshallerRef)marshaller
-                      atIndex:(NSInteger)index;
+- (id _Nullable)unmarshallObjectOfClass:(Class)objectClass
+                         fromMarshaller:(SCValdiMarshallerRef)marshaller
+                                atIndex:(NSInteger)index;
 
 /**
  Set the active current schema to the given object class in the given marshaller.
@@ -72,13 +72,13 @@ SC_EXTERN_C_BEGIN
 /**
  Allocate the fields storage for the given class
  */
-- (void*)allocateStorageForClass:(Class)cls;
+- (void* _Nullable)allocateStorageForClass:(Class)cls;
 
 /**
  Allocate the fields storage for the given class, and populate
  the fields with the given values as va_list
 */
-- (void*)allocateStorageForClass:(Class)cls fieldValues:(va_list)fieldValues;
+- (void* _Nullable)allocateStorageForClass:(Class)cls fieldValues:(va_list)fieldValues;
 
 /**
  Deallocate the given storage for the given class, releasing any objective-c
@@ -89,13 +89,13 @@ SC_EXTERN_C_BEGIN
 /**
  Create an object of the given class with an empty storage.
  */
-- (id)makeObjectOfClass:(Class)objectClass;
+- (id _Nullable)makeObjectOfClass:(Class)objectClass;
 
 /**
  Create an object of the given class, with the storage populated
  with the given values as variable arguments.
  */
-- (id)makeObjectWithFieldValuesOfClass:(Class)objectClass, ...;
+- (id _Nullable)makeObjectWithFieldValuesOfClass:(Class)objectClass, ...;
 
 /**
  Force a class to be loaded inside the object registry.
@@ -112,11 +112,11 @@ SC_EXTERN_C_BEGIN
  Returns a pointer to the underlying ValueSchemaRegistry.
  Used to provide other language marshallers (Swift) with access to the ObjC registry.
  */
-- (void*)getValueSchemaRegistryPtr;
+- (void* _Nullable)getValueSchemaRegistryPtr;
 
 @end
 
-SCValdiMarshallableObjectRegistry* SCValdiMarshallableObjectRegistryGetSharedInstance();
+SCValdiMarshallableObjectRegistry* _Nonnull SCValdiMarshallableObjectRegistryGetSharedInstance();
 
 /**
  * Registers the protocol as a proxy protocol on the class of the given object.

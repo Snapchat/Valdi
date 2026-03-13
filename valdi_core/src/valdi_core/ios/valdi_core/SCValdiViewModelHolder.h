@@ -7,8 +7,12 @@
 
 #import <Foundation/Foundation.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 @protocol SCValdiViewModelHolder <NSObject>
 
-@property (strong, nonatomic) id viewModel;
+@property (strong, nonatomic, nullable) id viewModel;
 
 @end
+
+NS_ASSUME_NONNULL_END

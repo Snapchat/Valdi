@@ -475,7 +475,7 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
     }
 }
 
-- (SCValdiRuntime *)createRuntimeWithCustomModuleProvider:(id<SCValdiCustomModuleProvider>)customModuleProvider
+- (nullable SCValdiRuntime *)createRuntimeWithCustomModuleProvider:(id<SCValdiCustomModuleProvider>)customModuleProvider
 {
     if (_applicationIsTerminating || _forceTornDown) {
         return nil;
@@ -520,7 +520,7 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
     }
 }
 
-- (id<SCSnapDrawingRuntime>)snapDrawingRuntime
+- (nullable id<SCSnapDrawingRuntime>)snapDrawingRuntime
 {
 #ifdef SNAP_DRAWING_ENABLED
     @synchronized (self) {
@@ -658,7 +658,7 @@ static SCValdiCapturedJSStacktrace *toObjCStacktrace(const Valdi::JavaScriptCapt
                                                          threadStatus:toObjCThreadStatus(capturedStacktrace.getStatus())];
 }
 
-- (NSArray<SCValdiCapturedJSStacktrace *> *)captureStackTracesWithTimeoutMs:(NSUInteger)timeoutMs
+- (nullable NSArray<SCValdiCapturedJSStacktrace *> *)captureStackTracesWithTimeoutMs:(NSUInteger)timeoutMs
 {
     NSMutableArray<SCValdiCapturedJSStacktrace *> *capturedJSStacktraces = [NSMutableArray array];
     @synchronized (self) {

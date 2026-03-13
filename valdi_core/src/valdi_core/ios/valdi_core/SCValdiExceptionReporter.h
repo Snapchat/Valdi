@@ -1,5 +1,7 @@
 #import <Foundation/Foundation.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 @protocol SCValdiExceptionReporter <NSObject>
 /**
  * Reports a non-fatal error.
@@ -12,8 +14,8 @@
  */
 - (void)reportNonFatalWithErrorCode:(NSInteger)errorCode
                             message:(NSString*)message
-                             module:(NSString*)module
-                         stackTrace:(NSString*)stackTrace;
+                             module:(nullable NSString*)module
+                         stackTrace:(nullable NSString*)stackTrace;
 
 /**
  * Reports a crash.
@@ -25,7 +27,9 @@
  * @param isANR Indicates if the crash is an Application Not Responding (ANR) error.
  */
 - (void)reportCrashWithMessage:(NSString*)message
-                        module:(NSString*)module
-                    stackTrace:(NSString*)stackTrace
+                        module:(nullable NSString*)module
+                    stackTrace:(nullable NSString*)stackTrace
                          isANR:(BOOL)isANR;
 @end
+
+NS_ASSUME_NONNULL_END

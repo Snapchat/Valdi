@@ -16,21 +16,23 @@
 #import "valdi_core/SCValdiImageLoader.h"
 #import "valdi_core/SCValdiVideoLoader.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 typedef void (^SCValdiPerformHapticFeedbackBlock)(NSString* type);
 
 @interface SCValdiConfiguration : NSObject
 
-@property (copy, nonatomic) NSArray<id<SCValdiImageLoader>>* imageLoaders;
-@property (copy, nonatomic) NSArray<id<SCValdiVideoLoader>>* videoLoaders;
-@property (strong, nonatomic) id<SCNValdiCoreHTTPRequestManager> requestManager;
-@property (strong, nonatomic) id<SCValdiDebugMessageDisplayer> debugMessageDisplayer;
-@property (strong, nonatomic) id<SCValdiExceptionReporter> exceptionReporter;
-@property (strong, nonatomic) id<SCValdiFontLoaderProtocol> fontLoader;
-@property (strong, nonatomic) id<SCValdiCustomModuleProvider> customModuleProvider;
+@property (copy, nonatomic, nullable) NSArray<id<SCValdiImageLoader>>* imageLoaders;
+@property (copy, nonatomic, nullable) NSArray<id<SCValdiVideoLoader>>* videoLoaders;
+@property (strong, nonatomic, nullable) id<SCNValdiCoreHTTPRequestManager> requestManager;
+@property (strong, nonatomic, nullable) id<SCValdiDebugMessageDisplayer> debugMessageDisplayer;
+@property (strong, nonatomic, nullable) id<SCValdiExceptionReporter> exceptionReporter;
+@property (strong, nonatomic, nullable) id<SCValdiFontLoaderProtocol> fontLoader;
+@property (strong, nonatomic, nullable) id<SCValdiCustomModuleProvider> customModuleProvider;
 
-@property (copy, nonatomic) NSString* userId;
+@property (copy, nonatomic, nullable) NSString* userId;
 
-@property (copy, nonatomic) SCValdiPerformHapticFeedbackBlock performHapticFeedbackBlock;
+@property (copy, nonatomic, nullable) SCValdiPerformHapticFeedbackBlock performHapticFeedbackBlock;
 
 // This is controlled by the iOS App Platform dark mode tweak
 @property (assign, nonatomic) BOOL allowDarkMode;
@@ -80,3 +82,5 @@ typedef void (^SCValdiPerformHapticFeedbackBlock)(NSString* type);
 @property (assign, nonatomic) NSInteger anrTimeoutMs;
 
 @end
+
+NS_ASSUME_NONNULL_END

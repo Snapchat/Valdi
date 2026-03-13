@@ -13,6 +13,8 @@
 
 SC_EXTERN_C_BEGIN
 
+NS_ASSUME_NONNULL_BEGIN
+
 @protocol SCValdiEnum <NSObject>
 
 @property (readonly, nonatomic) NSUInteger count;
@@ -35,6 +37,8 @@ SC_EXTERN_C_BEGIN
 - (NSString*)enumCaseForIndex:(NSUInteger)index;
 
 @end
+
+NS_ASSUME_NONNULL_END
 
 #define VALDI_ENUM_CLASS_SUFFIX @"__Enum"
 

@@ -18,21 +18,24 @@
 @class SCValdiRuntimeManager;
 @class SCValdiCapturedJSStacktrace;
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface SCValdiRuntimeManager : NSObject <SCValdiRuntimeManagerProtocol>
 
 /**
  The username of the current user. Used for hot reloading.
  */
-@property (copy, nonatomic) NSString* currentUsername;
+@property (nonatomic, nullable, copy) NSString* currentUsername;
 
-@property (readonly, nonatomic) SCValdiRuntime* mainRuntime;
+@property (nonatomic, nullable, readonly) SCValdiRuntime* mainRuntime;
 
 /**
  Return the underlying C++ instance of the RuntimeManager.
  */
-@property (readonly, nonatomic) void* cppInstance;
+@property (nonatomic, readonly, nullable) void* cppInstance;
 
-- (SCValdiRuntime*)createRuntimeWithCustomModuleProvider:(id<SCValdiCustomModuleProvider>)moduleProvider;
+- (nullable SCValdiRuntime*)createRuntimeWithCustomModuleProvider:
+    (nonnull id<SCValdiCustomModuleProvider>)moduleProvider;
 
 - (void)clearViewPools;
 
@@ -65,3 +68,5 @@
 + (NSArray<SCValdiRuntimeManager*>*)allRuntimeManagers;
 
 @end
+
+NS_ASSUME_NONNULL_END

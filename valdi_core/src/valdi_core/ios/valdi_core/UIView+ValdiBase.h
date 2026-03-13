@@ -2,9 +2,11 @@
 
 #import <UIKit/UIKit.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface UIView (ValdiBase)
 
-@property (strong, nonatomic) id<SCValdiFunction> valdiHitTest;
+@property (strong, nonatomic, nullable) id<SCValdiFunction> valdiHitTest;
 
 /**
  When you are making a change that can alter the view layout,
@@ -48,16 +50,20 @@
 /**
  Implementation of convertPoint:fromView: that takes in account animations
  */
-- (CGPoint)valdi_convertPoint:(CGPoint)point fromView:(UIView*)view;
+- (CGPoint)valdi_convertPoint:(CGPoint)point fromView:(nullable UIView*)view;
 
 /**
  Implementation of convertPoint:toView:
  */
-- (CGPoint)valdi_convertPoint:(CGPoint)point toView:(UIView*)view;
+- (CGPoint)valdi_convertPoint:(CGPoint)point toView:(nullable UIView*)view;
 
 /**
  Implementation of hitTest:withEvent: supporting override by custom hit test
  */
-- (UIView*)valdi_hitTest:(CGPoint)point withEvent:(UIEvent*)event withCustomHitTest:(id<SCValdiFunction>)customHitTest;
+- (nullable UIView*)valdi_hitTest:(CGPoint)point
+                        withEvent:(nullable UIEvent*)event
+                withCustomHitTest:(nullable id<SCValdiFunction>)customHitTest;
 
 @end
+
+NS_ASSUME_NONNULL_END

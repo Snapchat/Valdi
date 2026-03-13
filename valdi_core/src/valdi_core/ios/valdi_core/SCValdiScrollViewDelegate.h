@@ -12,14 +12,18 @@
 
 @protocol SCValdiIScrollPerfLoggerBridge;
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface SCValdiScrollViewDelegate : NSObject <UIScrollViewDelegate>
 
 // Cancels all gestures recognizers on all of the scroll view's child views when scrolling begins
 // Default YES
 @property (assign, nonatomic) BOOL cancelsTouchesOnScroll;
 
-@property (strong, nonatomic) id<SCValdiIScrollPerfLoggerBridge> scrollPerfLoggerBridge;
+@property (strong, nonatomic, nullable) id<SCValdiIScrollPerfLoggerBridge> scrollPerfLoggerBridge;
 
 - (void)scrollViewDidEndScrolling:(UIScrollView*)scrollView;
 
 @end
+
+NS_ASSUME_NONNULL_END
