@@ -16,18 +16,6 @@ The Valdi compiler takes TypeScript source files (using TSX/JSX syntax) and comp
 
 For local Android iteration, prefer the standalone Valdi app plus the hot reloader over repeated native rebuilds.
 
-### Repo-local CLI fallback
-
-If `valdi` is not on `PATH`, use the repo-local CLI directly:
-
-```bash
-cd /path/to/Valdi
-npm ci --prefix npm_modules/cli
-node npm_modules/cli/dist/index.js hotreload --target //path/to:your_app_hotreload
-```
-
-This is useful when the global CLI is not installed but the repo checkout is available.
-
 ### Typical Android loop
 
 1. Install or refresh the app:
