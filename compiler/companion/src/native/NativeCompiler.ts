@@ -3296,7 +3296,11 @@ export class NativeCompiler {
     builder: INativeCompilerBlockBuilder,
     node: ts.EnumDeclaration,
   ) {
-    // TODO(simon): Const enum
+    // Const enums have no runtime representation, values are inlined at call sites
+    const isConstEnum = (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Const) !== 0;
+    if (isConstEnum) {
+      return;
+    }
     this.appendNodeDebugInfo(builder, node);
     const enumName = this.processIdentifierAsAtom(builder, node.name);
     const enumObject = builder.buildNewObject();
