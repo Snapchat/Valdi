@@ -1,44 +1,43 @@
 /**
-  * Copyright 2024 Snap, Inc.
-  *
-  * Licensed under the Apache License, Version 2.0 (the "License");
-  * you may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at
-  *
-  *    http://www.apache.org/licenses/LICENSE-2.0
-  *
-  * Unless required by applicable law or agreed to in writing, software
-  * distributed under the License is distributed on an "AS IS" BASIS,
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  */
+ * Copyright 2024 Snap, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #pragma once
 
+#include "valdi_core/ModuleFactory.hpp"
 #include "valdi_core/cpp/Schema/ValueSchema.hpp"
 #include "valdi_core/cpp/Schema/ValueSchemaRegistry.hpp"
 #include "valdi_core/cpp/Schema/ValueSchemaTypeResolver.hpp"
+#include "valdi_core/cpp/Utils/DjinniUtils.hpp"
 #include "valdi_core/cpp/Utils/Shared.hpp"
+#include "valdi_core/cpp/Utils/StaticString.hpp"
 #include "valdi_core/cpp/Utils/ValueFunction.hpp"
 #include "valdi_core/cpp/Utils/ValueFunctionWithCallable.hpp"
 #include "valdi_core/cpp/Utils/ValueMap.hpp"
-#include "valdi_core/cpp/Utils/DjinniUtils.hpp"
+#include "valdi_core/cpp/Utils/ValueTypedArray.hpp"
 #include "valdi_core/cpp/Utils/ValueTypedObject.hpp"
 #include "valdi_core/cpp/Utils/ValueTypedProxyObject.hpp"
-#include "valdi_core/cpp/Utils/ValueTypedArray.hpp"
-#include "valdi_core/cpp/Utils/StaticString.hpp"
-#include "valdi_core/ModuleFactory.hpp"
 
 #include <fmt/format.h>
 
+#include <functional>
 #include <optional>
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <functional>
-#include <codecvt>
 
 namespace djinni::valdi {
 
@@ -46,22 +45,26 @@ namespace djinni::valdi {
 class JsException : public std::runtime_error {
 public:
     // Input must be an instanceof an Error Type
-    JsException(Valdi::Error e): std::runtime_error(e.toString()), _jsEx(std::move(e))
-    {}
-    const Valdi::Error& cause() const noexcept { return _jsEx; }
+    JsException(Valdi::Error e) : std::runtime_error(e.toString()), _jsEx(std::move(e)) {}
+    const Valdi::Error& cause() const noexcept {
+        return _jsEx;
+    }
+
 private:
     Valdi::Error _jsEx;
 };
 
 template<typename T>
 struct ExceptionHandlingTraits {
-    static Valdi::Value handleNativeException(const std::exception& e, const Valdi::ValueFunctionCallContext& callContext) noexcept {
+    static Valdi::Value handleNativeException(const std::exception& e,
+                                              const Valdi::ValueFunctionCallContext& callContext) noexcept {
         // store C++ exception in JS Error and raise in JS runtime
         auto msg = STRING_FORMAT("C++: {}", e.what());
         callContext.getExceptionTracker().onError(Valdi::Error(std::move(msg)));
         return Valdi::Value::undefined();
     }
-    static Valdi::Value handleNativeException(const JsException& e, const Valdi::ValueFunctionCallContext& callContext) noexcept {
+    static Valdi::Value handleNativeException(const JsException& e,
+                                              const Valdi::ValueFunctionCallContext& callContext) noexcept {
         // JS error passthrough
         callContext.getExceptionTracker().onError(e.cause());
         return Valdi::Value::undefined();
@@ -70,22 +73,23 @@ struct ExceptionHandlingTraits {
 
 template<typename T, typename F>
 Valdi::Value tsFunc(F&& f) noexcept {
-    return Valdi::Value(Valdi::makeShared<Valdi::ValueFunctionWithCallable>([f = std::forward<F>(f)] (const Valdi::ValueFunctionCallContext& callContext) noexcept {
-        try {
-            return f(callContext);
-        }
-        catch (const JsException& e) {
-            return ExceptionHandlingTraits<T>::handleNativeException(e, callContext);
-        } catch (const std::exception& e) {
-            return ExceptionHandlingTraits<T>::handleNativeException(e, callContext);
-        }
-        return Valdi::Value::undefined();
-    }));
+    return Valdi::Value(Valdi::makeShared<Valdi::ValueFunctionWithCallable>(
+        [f = std::forward<F>(f)](const Valdi::ValueFunctionCallContext& callContext) noexcept {
+            try {
+                return f(callContext);
+            } catch (const JsException& e) {
+                return ExceptionHandlingTraits<T>::handleNativeException(e, callContext);
+            } catch (const std::exception& e) {
+                return ExceptionHandlingTraits<T>::handleNativeException(e, callContext);
+            }
+            return Valdi::Value::undefined();
+        }));
 }
 
 void checkForNull(void* ptr, const char* context);
 
-Valdi::ValueSchema resolveSchema(const Valdi::ValueSchema& unresolved, std::function<void()> registerSchemaFunc) noexcept;
+Valdi::ValueSchema resolveSchema(const Valdi::ValueSchema& unresolved,
+                                 std::function<void()> registerSchemaFunc) noexcept;
 
 void registerSchemaImpl(const Valdi::ValueSchema& schema, bool resolve) noexcept;
 
@@ -99,9 +103,9 @@ Valdi::ValueSchema getResolvedSchema(const Valdi::StringBox& typeName) noexcept 
 }
 
 template<class T, class = void>
-struct hasSchemaRef : std::false_type { };
+struct hasSchemaRef : std::false_type {};
 template<class T>
-struct hasSchemaRef<T, std::void_t<decltype(T::schemaRef)>> : std::true_type { };
+struct hasSchemaRef<T, std::void_t<decltype(T::schemaRef)>> : std::true_type {};
 
 template<typename T>
 const Valdi::ValueSchema& schemaOrRef() noexcept {
@@ -177,7 +181,7 @@ public:
 
     static CppType toCpp(const ValdiType& j) noexcept;
     static ValdiType fromCpp(const CppType& c) noexcept;
-    static const Valdi::ValueSchema& schema() noexcept ;
+    static const Valdi::ValueSchema& schema() noexcept;
 };
 
 class Date {
@@ -185,7 +189,7 @@ public:
     using CppType = std::chrono::system_clock::time_point;
     using ValdiType = Valdi::Value;
     using Boxed = Date;
-    
+
     static CppType toCpp(const ValdiType& v) noexcept;
     static ValdiType fromCpp(const CppType& c) noexcept;
     static const Valdi::ValueSchema& schema() noexcept;
@@ -259,10 +263,11 @@ public:
     }
 };
 
-template <typename T>
-class Set  {
+template<typename T>
+class Set {
     using ECppType = typename T::CppType;
     using EValdiType = typename T::Boxed::ValdiType;
+
 public:
     using CppType = std::unordered_set<ECppType>;
     using ValdiType = Valdi::Value;
@@ -278,7 +283,7 @@ public:
     }
     static ValdiType fromCpp(const CppType& c) {
         auto es6set = Valdi::makeShared<Valdi::ES6Set>();
-        for (const auto& k: c) {
+        for (const auto& k : c) {
             es6set->entries.push_back(T::fromCpp(k));
         }
         return Valdi::Value(es6set);
@@ -312,7 +317,7 @@ public:
     }
     static ValdiType fromCpp(const CppType& c) {
         auto es6Map = Valdi::makeShared<Valdi::ES6Map>();
-        for (const auto& [k, v]: c) {
+        for (const auto& [k, v] : c) {
             es6Map->entries.push_back(Key::fromCpp(k));
             es6Map->entries.push_back(Value::fromCpp(v));
         }
@@ -336,27 +341,28 @@ public:
 };
 
 template<size_t N>
-struct CTS { char data[N]; };
-template<size_t N> CTS(const char(&)[N]) -> CTS<N>;
+struct CTS {
+    char data[N];
+};
+template<size_t N>
+CTS(const char (&)[N]) -> CTS<N>;
 
-template<typename CppProto, CTS ... JsClassName>
+template<typename CppProto, CTS... JsClassName>
 class Protobuf {
 public:
     using CppType = CppProto;
     using ValdiType = Valdi::Value;
     using Boxed = Protobuf;
 
-    static CppType toCpp(ValdiType v)
-    {
+    static CppType toCpp(ValdiType v) {
         auto array = v.getTypedArrayRef();
         auto buffer = array->getBuffer();
         CppProto ret;
         ret.ParseFromArray(buffer.data(), static_cast<int>(buffer.size()));
         return ret;
     }
-        
-    static ValdiType fromCpp(const CppType& c)
-    {
+
+    static ValdiType fromCpp(const CppType& c) {
         std::vector<uint8_t> cbuf(c.ByteSizeLong());
         c.SerializeToArray(cbuf.data(), static_cast<int>(cbuf.size()));
         auto bytes = Valdi::makeShared<Valdi::Bytes>();
@@ -372,7 +378,7 @@ public:
     }
 };
 
-template <typename T>
+template<typename T>
 struct Array {
     using CppType = std::vector<typename T::CppType>;
     using ValdiType = Valdi::Value;
@@ -384,13 +390,13 @@ struct Array {
     static ValdiType fromCpp(const CppType& c) {
         return List<T>::fromCpp(c);
     }
-    
+
     static const Valdi::ValueSchema& schema() noexcept {
         return List<T>::schema();
     }
 };
 
-template <typename T, typename U = Array<T>>
+template<typename T, typename U = Array<T>>
 struct PrimitiveArray {
     using CppType = std::vector<typename T::CppType>;
     using ValdiType = Valdi::Value;
@@ -416,35 +422,35 @@ struct PrimitiveArray {
         return schema;
     }
 };
-template <>
+template<>
 struct Array<I8> : PrimitiveArray<I8> {
     static constexpr Valdi::TypedArrayType getArrayType() noexcept {
         return Valdi::TypedArrayType::Int8Array;
     }
 };
-template <>
+template<>
 struct Array<I16> : PrimitiveArray<I16> {
     static constexpr Valdi::TypedArrayType getArrayType() noexcept {
         return Valdi::TypedArrayType::Int16Array;
     }
 };
-template <>
+template<>
 struct Array<I32> : PrimitiveArray<I32> {
     static constexpr Valdi::TypedArrayType getArrayType() noexcept {
         return Valdi::TypedArrayType::Int32Array;
     }
 };
-template <>
+template<>
 struct Array<I64> : PrimitiveArray<I64> {
     // Valdi::TypedArrayType does not support BigInt64Array
 };
-template <>
+template<>
 struct Array<F32> : PrimitiveArray<F32> {
     static constexpr Valdi::TypedArrayType getArrayType() noexcept {
         return Valdi::TypedArrayType::Float32Array;
     }
 };
-template <>
+template<>
 struct Array<F64> : PrimitiveArray<F64> {
     static constexpr Valdi::TypedArrayType getArrayType() noexcept {
         return Valdi::TypedArrayType::Float64Array;
@@ -485,8 +491,9 @@ public:
         if (_methods[i] == nullptr) {
             _methods[i] = _js->getTypedObject()->getProperty(i).getFunctionRef();
         }
-        constexpr auto flags = static_cast<Valdi::ValueFunctionFlags>(Valdi::ValueFunctionFlagsCallSync | Valdi::ValueFunctionFlagsPropagatesError);
-        auto res = _methods[i]->call(flags,  parameters);
+        constexpr auto flags = static_cast<Valdi::ValueFunctionFlags>(Valdi::ValueFunctionFlagsCallSync |
+                                                                      Valdi::ValueFunctionFlagsPropagatesError);
+        auto res = _methods[i]->call(flags, parameters);
         if (res.success()) {
             return res.moveValue();
         } else {
@@ -632,4 +639,4 @@ private:
     }
 };
 
-} // namespace djinni
+} // namespace djinni::valdi
