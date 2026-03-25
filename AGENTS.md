@@ -22,20 +22,20 @@ For local Android iteration, prefer the standalone Valdi app plus the hot reload
 
 ```bash
 cd /path/to/project
-valdi install android --application //modules/Valdi_Dil:dil_playground_app --device_id emulator-5554
+valdi install android --application //modules/Valdi_Demo:demo_app --device_id emulator-5554
 ```
 
 2. Launch the installed app:
 
 ```bash
-adb -s emulator-5554 shell am start -W -n com.snap.valdi.dil_playground_app/.StartActivity
+adb -s emulator-5554 shell am start -W -n com.snap.valdi.demo_app/.StartActivity
 ```
 
 3. Start hot reload:
 
 ```bash
 cd /path/to/project
-valdi hotreload --target //modules/Valdi_Dil:dil_playground_app_hotreload
+valdi hotreload --target //modules/Valdi_Demo:demo_app_hotreload
 ```
 
 ### Logs
