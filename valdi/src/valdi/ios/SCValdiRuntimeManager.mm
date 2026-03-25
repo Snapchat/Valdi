@@ -675,6 +675,19 @@ static SCValdiCapturedJSStacktrace *toObjCStacktrace(const Valdi::JavaScriptCapt
     return [capturedJSStacktraces copy];
 }
 
+- (SCValdiMemoryStatistics)dumpMemoryStatistics
+{
+    SCValdiMemoryStatistics result = {0, 0};
+    @synchronized (self) {
+        if (_cppInstance != nullptr) {
+            auto stats = _cppInstance->dumpMemoryStatistics();
+            result.memoryUsageBytes = static_cast<int64_t>(stats.memoryUsageBytes);
+            result.objectsCount = static_cast<int64_t>(stats.objectsCount);
+        }
+    }
+    return result;
+}
+
 - (void *)cppInstance
 {
     @synchronized (self) {

@@ -12,6 +12,11 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+typedef struct {
+    int64_t memoryUsageBytes;
+    int64_t objectsCount;
+} SCValdiMemoryStatistics;
+
 typedef void (^SCValdiRuntimeCreatedCallback)(id<SCValdiRuntimeProtocol>);
 
 /**
@@ -76,6 +81,11 @@ typedef void (^SCValdiRuntimeCreatedCallback)(id<SCValdiRuntimeProtocol>);
 - (nullable NSArray<SCValdiCapturedJSStacktrace*>*)captureStackTracesWithTimeoutMs:(NSUInteger)timeoutMs;
 
 - (void)getWorkerOnExecutor:(NSString*)executor block:(void (^)(id<SCValdiJSRuntime>))block;
+
+/**
+ Aggregates memory statistics across all JS runtimes managed by this runtime manager.
+ */
+- (SCValdiMemoryStatistics)dumpMemoryStatistics;
 
 @end
 
