@@ -233,10 +233,11 @@ final class ObjCClassGenerator {
     func ensureTypeAvailability(type: IOSType) {
         apiHeader.addImport(path: type.importHeaderStatement(kind: .apiOnly))
         header.addImport(path: type.importHeaderStatement(kind: .withUtilities))
+        let safeTypeName = type.name.replacingOccurrences(of: "-", with: "_")
         if type.kind == .interface {
-            apiHeader.addForwardDeclaration(type: "@protocol \(type.name);")
+            apiHeader.addForwardDeclaration(type: "@protocol \(safeTypeName);")
         } else if type.kind == .class {
-            apiHeader.addForwardDeclaration(type: "@class \(type.name);")
+            apiHeader.addForwardDeclaration(type: "@class \(safeTypeName);")
         }
     }
 
