@@ -93,6 +93,15 @@ function variableToString(variable: NativeCompilerBuilderVariableID): string {
   return variable.variable.toString();
 }
 
+function escapeIRString(str: string): string {
+  return str
+    .replace(/\\/g, '\\\\')  // backslash first
+    .replace(/'/g, "\\'")    // single quote
+    .replace(/\n/g, '\\n')   // newline
+    .replace(/\r/g, '\\r')   // carriage return
+    .replace(/\t/g, '\\t');  // tab
+}
+
 class IRStringWriter {
   constructor(readonly writer: OutputWriter) {}
 
@@ -105,8 +114,7 @@ class IRStringWriter {
     if (str === undefined) {
       return this.append(' <null>');
     } else {
-      // TODO(simon): Escape quotes
-      return this.append(` '${str}'`);
+      return this.append(` '${escapeIRString(str)}'`);
     }
   }
 
@@ -355,7 +363,7 @@ function outputIR(ir: NativeCompilerIR.Base, output: IRStringWriter): IRStringWr
 
       // storestring '<string_value>' <output_variable>
 
-      return output.append(`storestring '${typedIR.value}'`).appendVariable(typedIR.variable);
+      return output.append('storestring').appendQuotedString(typedIR.value).appendVariable(typedIR.variable);
     }
     case NativeCompilerIR.Kind.LiteralBool: {
       const typedIR = ir as NativeCompilerIR.LiteralBool;
