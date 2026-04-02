@@ -1,6 +1,6 @@
 {
   "name": "@snap/valdi",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Valdi CLI tools for developers",
   "license": "MIT",
   "repository": {
@@ -14,7 +14,9 @@
   },
   "files": [
     "dist",
-    "bundled-skills"
+    "bundled-skills",
+    ".metadata",
+    ".bootstrap"
   ],
   "scripts": {
     "prepare": "npm run build",

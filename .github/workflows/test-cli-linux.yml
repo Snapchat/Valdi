@@ -392,11 +392,10 @@ jobs:
           cd npm_modules/cli
           npm run build
       
-      - name: Run linuxDistro unit tests
+      - name: Run unit tests
         run: |
           cd npm_modules/cli
-          # Run Jasmine tests for linuxDistro
-          npx jasmine dist/utils/linuxDistro.spec.js
+          npm test
       
       - name: Verify no linter errors in modified files
         run: |
