@@ -294,7 +294,9 @@ http_archive(
 http_archive(
     name = "zlib_skia",
     build_file = "@skia//bazel/external/zlib_skia:BUILD.bazel",
-    url = "https://chromium.googlesource.com/chromium/src/third_party/zlib/+archive/646b7f569718921d7d4b5b8e22572ff6c76f2596.tar.gz",
+    url = "https://github.com/gsource-mirror/chromium-src-third_party-zlib/archive/646b7f569718921d7d4b5b8e22572ff6c76f2596.tar.gz",
+    strip_prefix = "chromium-src-third_party-zlib-646b7f569718921d7d4b5b8e22572ff6c76f2596",
+    integrity = "sha256-3Wrc+RYXSPFcLyzH36k5cRldSn8jWknXXbTMVDhclo4=",
     patch_args = ["-p1"],
     patches = [
         "@valdi//third-party/zlib_skia:android_ios_x86_64.patch",
