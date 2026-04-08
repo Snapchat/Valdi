@@ -12,6 +12,48 @@ Valdi has been used in production at Snap for 8 years and is now available as op
 
 The Valdi compiler takes TypeScript source files (using TSX/JSX syntax) and compiles them into `.valdimodule` files. These compiled modules are read by the Valdi runtime on each platform to render native views. **This is not TypeScript rendered in a WebView** - Valdi generates true native UI components.
 
+## Android Hot Reload And Logs
+
+For local Android iteration, prefer the standalone Valdi app plus the hot reloader over repeated native rebuilds.
+
+### Typical Android loop
+
+1. Install or refresh the app:
+
+```bash
+cd /path/to/project
+valdi install android --application //modules/Valdi_Demo:demo_app --device_id emulator-5554
+```
+
+2. Launch the installed app:
+
+```bash
+adb -s emulator-5554 shell am start -W -n com.snap.valdi.demo_app/.StartActivity
+```
+
+3. Start hot reload:
+
+```bash
+cd /path/to/project
+valdi hotreload --target //modules/Valdi_Demo:demo_app_hotreload
+```
+
+### Logs
+
+For the fastest signal on Android, tail the Valdi tag directly:
+
+```bash
+adb -s emulator-5554 logcat 'Valdi:I' '*:S'
+```
+
+That shows app-side Valdi and `[JS]` logs without the rest of logcat noise.
+
+### Practical notes
+
+- The first hot reload startup can be slow because Bazel may build toolchains and native dependencies the first time.
+- If you add a new file, Bazel target, or other build graph input, restart the hot reloader after the change.
+- For UI-only edits inside already-tracked files, prefer leaving the hot reloader running and saving the file to trigger an incremental rebuild.
+
 ## 🚨 AI Anti-Hallucination: This is NOT React!
 
 **CRITICAL**: Valdi uses TSX/JSX syntax but **is fundamentally different from React**. The most common AI error is suggesting React patterns that do not exist in Valdi.
