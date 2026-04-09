@@ -55,7 +55,6 @@ jobs:
       - name: Install Valdi CLI
         run: |
           cd npm_modules/cli
-          npm install
           npm run cli:install
       
       - name: Run smoke tests
