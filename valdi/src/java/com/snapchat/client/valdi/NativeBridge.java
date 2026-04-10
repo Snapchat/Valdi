@@ -102,6 +102,7 @@ public class NativeBridge {
     public static native void enqueueWorkerTask(long runtimeManagerHandle, Object runnable);
 
     public static native void performCallback(long nativePayloadHandle);
+    public static native void discardCallback(long nativePayloadHandle);
 
     public static native void deleteNativeHandle(long actionHandle);
     public static native void releaseNativeRef(long nativeHandle);

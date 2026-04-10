@@ -128,6 +128,12 @@ void DeferredViewTransaction::cancelAnimator(const Ref<Animator>& animator) {
     enqueue([=](IViewTransaction& transaction) { transaction.cancelAnimator(animator); });
 }
 
+void DeferredViewTransaction::scheduleOnNextDraw(const Ref<View>& rootView, DispatchFunction callback) {
+    enqueue([rootView, callback = std::move(callback)](IViewTransaction& transaction) mutable {
+        transaction.scheduleOnNextDraw(rootView, std::move(callback));
+    });
+}
+
 void DeferredViewTransaction::executeInTransactionThread(DispatchFunction executeFn) {
     enqueue([executeFn = std::move(executeFn)](IViewTransaction& transaction) {
         transaction.executeInTransactionThread(executeFn);

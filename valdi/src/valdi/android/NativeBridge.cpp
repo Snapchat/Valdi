@@ -339,8 +339,7 @@ jlong ValdiAndroid::NativeBridge::createRuntime( // NOLINT
     auto* runtimeManagerWrapper = getRuntimeManagerWrapper(runtimeManagerHandle);
     auto runtime = runtimeManagerWrapper->createRuntime(customResourceResolver);
 
-    auto* runtimeWrapper =
-        new ValdiAndroid::RuntimeWrapper(runtime, runtimeManagerWrapper);
+    auto* runtimeWrapper = new ValdiAndroid::RuntimeWrapper(runtime, runtimeManagerWrapper);
 
     return reinterpret_cast<std::uintptr_t>(runtimeWrapper);
 }
@@ -864,6 +863,13 @@ void ValdiAndroid::NativeBridge::performCallback( // NOLINT
     std::unique_ptr<Valdi::DispatchFunction> ptr(callback);
 
     (*callback)();
+}
+
+void ValdiAndroid::NativeBridge::discardCallback( // NOLINT
+    fbjni::alias_ref<fbjni::JClass> /* clazz */,  // NOLINT
+    jlong callbackHandle) {
+    auto* callback = reinterpret_cast<Valdi::DispatchFunction*>(callbackHandle);
+    delete callback;
 }
 
 /*
@@ -2401,6 +2407,7 @@ void ValdiAndroid::NativeBridge::registerNatives() {
         makeNativeMethod("loadModule", ValdiAndroid::NativeBridge::loadModule),
         makeNativeMethod("enqueueWorkerTask", ValdiAndroid::NativeBridge::enqueueWorkerTask),
         makeNativeMethod("performCallback", ValdiAndroid::NativeBridge::performCallback),
+        makeNativeMethod("discardCallback", ValdiAndroid::NativeBridge::discardCallback),
         makeNativeMethod("performGcNow", ValdiAndroid::NativeBridge::performGcNow),
         makeNativeMethod("preloadViews", ValdiAndroid::NativeBridge::preloadViews),
         makeNativeMethod("reapplyAttribute", ValdiAndroid::NativeBridge::reapplyAttribute),

@@ -36,6 +36,7 @@
 #include "valdi/standalone_runtime/StandaloneNodeRef.hpp"
 #include "valdi/standalone_runtime/StandaloneView.hpp"
 #include "valdi/standalone_runtime/StandaloneViewManager.hpp"
+#include "valdi/standalone_runtime/StandaloneViewTransaction.hpp"
 #include "valdi_core/AssetLoadObserver.hpp"
 #include "valdi_core/cpp/JavaScript/JavaScriptPathResolver.hpp"
 #include "valdi_core/cpp/Resources/Asset.hpp"
@@ -4188,11 +4189,14 @@ TEST_P(RuntimeFixture, renderRequestCanRetainAndReleaseItsEntries) {
         makeShared<ValueFunctionWithCallable>([](const auto& /*parameters*/) { return Value(); });
     auto layoutCompletionCallback =
         makeShared<ValueFunctionWithCallable>([](const auto& /*parameters*/) { return Value(); });
+    auto drawCompletionCallback =
+        makeShared<ValueFunctionWithCallable>([](const auto& /*parameters*/) { return Value(); });
 
     ASSERT_EQ(1, viewClass.getInternedString().use_count());
     ASSERT_EQ(1, attributeValue.use_count());
     ASSERT_EQ(1, animationsCompletionCallback.use_count());
     ASSERT_EQ(1, layoutCompletionCallback.use_count());
+    ASSERT_EQ(1, drawCompletionCallback.use_count());
 
     auto renderRequest = Valdi::makeShared<RenderRequest>();
 
@@ -4214,10 +4218,14 @@ TEST_P(RuntimeFixture, renderRequestCanRetainAndReleaseItsEntries) {
     auto* onLayoutComplete = renderRequest->appendOnLayoutComplete();
     onLayoutComplete->setCallback(layoutCompletionCallback);
 
+    auto* onNextDraw = renderRequest->appendOnNextDraw();
+    onNextDraw->setCallback(drawCompletionCallback);
+
     ASSERT_EQ(2, viewClass.getInternedString().use_count());
     ASSERT_EQ(2, attributeValue.use_count());
     ASSERT_EQ(2, animationsCompletionCallback.use_count());
     ASSERT_EQ(2, layoutCompletionCallback.use_count());
+    ASSERT_EQ(2, drawCompletionCallback.use_count());
 
     renderRequest = nullptr;
 
@@ -4225,6 +4233,7 @@ TEST_P(RuntimeFixture, renderRequestCanRetainAndReleaseItsEntries) {
     ASSERT_EQ(1, attributeValue.use_count());
     ASSERT_EQ(1, animationsCompletionCallback.use_count());
     ASSERT_EQ(1, layoutCompletionCallback.use_count());
+    ASSERT_EQ(1, drawCompletionCallback.use_count());
 }
 
 struct Visitor {
@@ -4251,6 +4260,7 @@ TEST_P(RuntimeFixture, renderRequestVisitHandlesAlignment) {
     renderRequest->appendStartAnimations();
     renderRequest->appendEndAnimations();
     renderRequest->appendOnLayoutComplete();
+    renderRequest->appendOnNextDraw();
 
     Visitor visitor;
     renderRequest->visitEntries(visitor);
@@ -4300,6 +4310,9 @@ TEST_P(RuntimeFixture, renderRequestCanSerialize) {
     auto* onLayoutComplete = renderRequest->appendOnLayoutComplete();
     onLayoutComplete->setCallback(callback);
 
+    auto* onNextDraw = renderRequest->appendOnNextDraw();
+    onNextDraw->setCallback(callback);
+
     auto result = renderRequest->serialize(attributeIds);
 
     auto expectedCreateElement = Value()
@@ -4338,6 +4351,8 @@ TEST_P(RuntimeFixture, renderRequestCanSerialize) {
     auto expectedEndAnimations = Value().setMapValue("type", Value(STRING_LITERAL("EndAnimations")));
     auto expectedOnLayoutComplete =
         Value().setMapValue("type", Value(STRING_LITERAL("OnLayoutComplete"))).setMapValue("callback", Value(callback));
+    auto expectedOnNextDraw =
+        Value().setMapValue("type", Value(STRING_LITERAL("OnNextDraw"))).setMapValue("callback", Value(callback));
 
     auto expectedEntries = ValueArray::make({expectedCreateElement,
                                              expectedDestroyElement,
@@ -4346,11 +4361,77 @@ TEST_P(RuntimeFixture, renderRequestCanSerialize) {
                                              expectedSetElementAttribute,
                                              expectedStartAnimations,
                                              expectedEndAnimations,
-                                             expectedOnLayoutComplete});
+                                             expectedOnLayoutComplete,
+                                             expectedOnNextDraw});
 
     auto expectedResult = Value().setMapValue("contextID", Value(1)).setMapValue("entries", Value(expectedEntries));
 
     ASSERT_EQ(expectedResult, result);
+}
+
+TEST_P(RuntimeFixture, standaloneViewTransactionRunsOnNextDrawCallbacksAfterRootUpdate) {
+    StandaloneViewTransaction transaction;
+    auto rootView = makeShared<StandaloneView>(STRING_LITERAL("View"));
+
+    int callbackCount = 0;
+    transaction.scheduleOnNextDraw(rootView, [&]() { callbackCount += 1; });
+    transaction.scheduleOnNextDraw(rootView, [&]() { callbackCount += 10; });
+
+    ASSERT_EQ(0, callbackCount);
+
+    transaction.didUpdateRootView(rootView, true);
+
+    ASSERT_EQ(11, callbackCount);
+    ASSERT_EQ(1, rootView->getLayoutDidBecomeDirtyCount());
+
+    transaction.didUpdateRootView(rootView, false);
+
+    ASSERT_EQ(11, callbackCount);
+}
+
+TEST_P(RuntimeFixture, standaloneViewTransactionDefersCallbacksScheduledDuringOnNextDrawUntilNextRootUpdate) {
+    StandaloneViewTransaction transaction;
+    auto rootView = makeShared<StandaloneView>(STRING_LITERAL("View"));
+
+    int callbackCount = 0;
+    transaction.scheduleOnNextDraw(rootView, [&]() {
+        callbackCount += 1;
+        transaction.scheduleOnNextDraw(rootView, [&]() { callbackCount += 10; });
+    });
+
+    transaction.didUpdateRootView(rootView, false);
+
+    ASSERT_EQ(1, callbackCount);
+
+    transaction.didUpdateRootView(rootView, false);
+
+    ASSERT_EQ(11, callbackCount);
+}
+
+TEST_P(RuntimeFixture, viewNodeTreeOnNextDrawCallbacksWaitForRootView) {
+    auto rootView = Valdi::makeShared<StandaloneView>(STRING_LITERAL("MyRootView"));
+
+    auto tree = wrapper.runtime->createViewNodeTreeAndContext(wrapper.standaloneRuntime->getViewManagerContext(),
+                                                              STRING_LITERAL("test/src/BasicViewTree.valdi"));
+
+    wrapper.waitUntilAllUpdatesCompleted();
+    tree->setLayoutSpecs(Size(200, 200), LayoutDirectionLTR);
+
+    int callbackCount = 0;
+    auto callback = makeShared<ValueFunctionWithCallable>([&](const auto& /*callContext*/) -> Value {
+        callbackCount += 1;
+        return Value::undefined();
+    });
+
+    tree->onNextDraw(callback);
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    ASSERT_EQ(0, callbackCount);
+
+    tree->setRootView(rootView);
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    ASSERT_EQ(1, callbackCount);
 }
 
 class TestBridgedClass : public ValdiObject {

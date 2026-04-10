@@ -313,7 +313,7 @@ void ViewManager::doFlushViewOperations(const std::optional<SerializedViewOperat
 
 Valdi::Ref<Valdi::IViewTransaction> ViewManager::createViewTransaction(
     const Valdi::Ref<Valdi::MainThreadManager>& mainThreadManager, bool shouldDefer) {
-    if (!shouldDefer || mainThreadManager->currentThreadIsMainThread()) {
+    if (!shouldDefer || mainThreadManager == nullptr || mainThreadManager->currentThreadIsMainThread()) {
         return Valdi::makeShared<AndroidViewTransaction>(*this);
     } else {
         return Valdi::makeShared<Valdi::DeferredViewTransaction>(*this, *mainThreadManager);

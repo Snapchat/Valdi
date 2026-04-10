@@ -27,6 +27,7 @@ import com.snap.valdi.utils.error
 import com.snap.valdi.utils.trace
 import com.snap.valdi.utils.runOnMainThreadDelayed
 import com.snap.valdi.views.ValdiRootView
+import com.snapchat.client.valdi.NativeBridge
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -158,6 +159,9 @@ class ValdiViewManagerOperationsManager(
                     OP_APPLY_ATTRIBUTE_CORNERS -> {
                         applyAttributeCorners(buffer, attachedValues, hasValue, currentAnimator)
                     }
+                    OP_ON_NEXT_DRAW -> {
+                        onNextDraw(buffer, attachedValues)
+                    }
                     else -> throw ValdiException("Invalid View Operation ${operation} (last operation: ${lastOperation})")
                 }
 
@@ -185,10 +189,10 @@ class ValdiViewManagerOperationsManager(
         }
     }
 
-    private fun getRootView(buffer: ByteBuffer, attachedValues: Array<Any>): ValdiRootView? {
+    private fun getRootView(buffer: ByteBuffer, attachedValues: Array<Any>, logIfNull: Boolean = true): ValdiRootView? {
         val ref = attachedValues[buffer.int] as ViewRef
         val rootView = ref.get() as? ValdiRootView
-        if (rootView == null) {
+        if (rootView == null && logIfNull) {
             logger.error("ValdiRootView is null")
         }
 
@@ -205,6 +209,16 @@ class ValdiViewManagerOperationsManager(
             getRootView(buffer, attachedValues)?.valdiUpdatesEndedAsync(layoutDidBecomeDirty)
         } else {
             getRootView(buffer, attachedValues)?.valdiUpdatesEnded(layoutDidBecomeDirty)
+        }
+    }
+
+    private fun onNextDraw(buffer: ByteBuffer, attachedValues: Array<Any>) {
+        val rootView = getRootView(buffer, attachedValues, logIfNull = false)
+        val callbackHandle = buffer.long
+        if (rootView != null) {
+            rootView.enqueueOnNextDrawCallback(callbackHandle)
+        } else {
+            NativeBridge.discardCallback(callbackHandle)
         }
     }
 
@@ -412,5 +426,6 @@ class ValdiViewManagerOperationsManager(
         private const val OP_APPLY_ATTRIBUTE_OBJECT = 15
         private const val OP_APPLY_ATTRIBUTE_PERCENT = 16
         private const val OP_APPLY_ATTRIBUTE_CORNERS = 17
+        private const val OP_ON_NEXT_DRAW = 18
     }
 }

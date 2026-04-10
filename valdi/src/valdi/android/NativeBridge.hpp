@@ -178,6 +178,7 @@ public:
     static void contextOnCreate(fbjni::alias_ref<fbjni::JClass> clazz, jlong contextHandle);
     static void deleteNativeHandle(fbjni::alias_ref<fbjni::JClass> clazz, jlong nativeHandle);
     static void releaseNativeRef(fbjni::alias_ref<fbjni::JClass> clazz, jlong handle);
+    static void discardCallback(fbjni::alias_ref<fbjni::JClass> clazz, jlong callbackHandle);
     static void deleteRuntime(fbjni::alias_ref<fbjni::JClass> clazz, jlong runtimeHandle);
     static void deleteRuntimeManager(fbjni::alias_ref<fbjni::JClass> clazz, jlong runtimeManagerHandle);
     static void destroyContext(fbjni::alias_ref<fbjni::JClass> clazz, jlong runtimeHandle, jlong contextHandle);

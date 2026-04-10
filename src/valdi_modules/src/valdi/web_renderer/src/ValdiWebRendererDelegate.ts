@@ -82,6 +82,7 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
     changeAttributeOnElement(id, attributeName, fn);
   }
   onNextLayoutComplete(callback: () => void): void {}
+  onNextDraw(callback: (hookTimeMs: number) => void): void {}
   onRenderStart(): void {
     // TODO(mgharmalkar)
     // console.log('onRenderStart');

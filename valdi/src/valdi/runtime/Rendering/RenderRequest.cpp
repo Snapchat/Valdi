@@ -113,6 +113,10 @@ RenderRequestEntries::OnLayoutComplete* RenderRequest::appendOnLayoutComplete() 
     return appendEntry<RenderRequestEntries::OnLayoutComplete>();
 }
 
+RenderRequestEntries::OnNextDraw* RenderRequest::appendOnNextDraw() {
+    return appendEntry<RenderRequestEntries::OnNextDraw>();
+}
+
 RenderRequestEntries::EntryBase* RenderRequest::doAppendEntry(size_t size) {
     auto* buffer = _entries.appendWritable(size);
     _entriesSize++;

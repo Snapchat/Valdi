@@ -2603,6 +2603,16 @@ export class Renderer implements IRenderer {
     }
   }
 
+  onNextDraw(callback: (hookTimeMs: number) => void): void {
+    if (this.began) {
+      this.delegate.onNextDraw(callback);
+    } else {
+      this.doBegin();
+      this.delegate.onNextDraw(callback);
+      this.doEnd();
+    }
+  }
+
   onNextRenderComplete(callback: () => void): void {
     if (!this.completions) {
       this.completions = [];

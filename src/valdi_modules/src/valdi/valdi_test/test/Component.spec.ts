@@ -82,6 +82,8 @@ class TestRenderer implements IRenderer {
 
   onRenderComplete() {}
 
+  onNextDraw(callback: (hookTimeMs: number) => void) {}
+
   onNextRenderComplete() {}
 
   addObserver() {}

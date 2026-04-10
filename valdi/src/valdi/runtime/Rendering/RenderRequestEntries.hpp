@@ -26,6 +26,7 @@ enum RenderRequestEntryType : uint8_t {
     EndAnimations,
     CancelAnimation,
     OnLayoutComplete,
+    OnNextDraw,
 };
 
 namespace RenderRequestEntries {
@@ -253,6 +254,31 @@ private:
     Ref<ValueFunction> _callback;
 };
 
+class OnNextDraw : public EntryBase {
+public:
+    constexpr static RenderRequestEntryType kType = RenderRequestEntryType::OnNextDraw;
+
+    OnNextDraw();
+    ~OnNextDraw();
+
+    constexpr const Ref<ValueFunction>& getCallback() const {
+        return _callback;
+    }
+
+    constexpr void setCallback(Ref<ValueFunction>&& callback) {
+        _callback = std::move(callback);
+    }
+
+    constexpr void setCallback(const Ref<ValueFunction>& callback) {
+        _callback = callback;
+    }
+
+    void serialize(const AttributeIds& attributeIds, ValueMap& value);
+
+private:
+    Ref<ValueFunction> _callback;
+};
+
 template<typename Visitor>
 inline auto visitEntry(EntryBase& entry, Visitor&& visitor) {
     switch (entry.getType()) {
@@ -282,6 +308,9 @@ inline auto visitEntry(EntryBase& entry, Visitor&& visitor) {
         } break;
         case RenderRequestEntryType::OnLayoutComplete: {
             return visitor(reinterpret_cast<OnLayoutComplete&>(entry));
+        } break;
+        case RenderRequestEntryType::OnNextDraw: {
+            return visitor(reinterpret_cast<OnNextDraw&>(entry));
         } break;
         default:
             std::abort();

@@ -570,9 +570,8 @@ Valdi::Value SnapDrawingViewManager::createViewNodeWrapper(const Valdi::Ref<Vald
 
 Valdi::Ref<Valdi::IViewTransaction> SnapDrawingViewManager::createViewTransaction(
     const Valdi::Ref<Valdi::MainThreadManager>& mainThreadManager, bool shouldDefer) {
-    if (!shouldDefer || mainThreadManager->currentThreadIsMainThread()) {
-        static auto* kInstance = new SnapDrawingViewTransaction();
-        return Valdi::Ref(kInstance);
+    if (!shouldDefer || mainThreadManager == nullptr || mainThreadManager->currentThreadIsMainThread()) {
+        return Valdi::makeShared<SnapDrawingViewTransaction>();
     } else {
         return Valdi::makeShared<Valdi::DeferredViewTransaction>(*this, *mainThreadManager);
     }

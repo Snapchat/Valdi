@@ -23,6 +23,8 @@
 #import "valdi_core/cpp/Utils/TrackedLock.hpp"
 #import "snap_drawing/cpp/Utils/BitmapFactory.hpp"
 
+#include <vector>
+
 namespace ValdiMacOS {
 
 class NSViewWrapper: public Valdi::View {
@@ -174,7 +176,12 @@ public:
 
     void willUpdateRootView(const Valdi::Ref<Valdi::View>& view) override {}
 
-    void didUpdateRootView(const Valdi::Ref<Valdi::View>& view, bool layoutDidBecomeDirty) override {}
+    void didUpdateRootView(const Valdi::Ref<Valdi::View>& view, bool layoutDidBecomeDirty) override {
+        auto callbacks = std::move(_pendingOnNextDrawCallbacks);
+        for (auto &callback : callbacks) {
+            callback();
+        }
+    }
 
     void moveViewToTree(const Valdi::Ref<Valdi::View>& view,
                         Valdi::ViewNodeTree* viewNodeTree,
@@ -222,9 +229,16 @@ public:
 
     void cancelAnimator(const Valdi::Ref<Valdi::Animator>& animator) override {}
 
+    void scheduleOnNextDraw(const Valdi::Ref<Valdi::View>& rootView, Valdi::DispatchFunction callback) override {
+        _pendingOnNextDrawCallbacks.emplace_back(std::move(callback));
+    }
+
     void executeInTransactionThread(Valdi::DispatchFunction executeFn) override {
         executeFn();
     }
+
+private:
+    std::vector<Valdi::DispatchFunction> _pendingOnNextDrawCallbacks;
 };
 
 
@@ -419,9 +433,8 @@ Valdi::Value ViewManager::createViewNodeWrapper(const Valdi::Ref<Valdi::ViewNode
 
 Valdi::Ref<Valdi::IViewTransaction> ViewManager::createViewTransaction(
     const Valdi::Ref<Valdi::MainThreadManager>& mainThreadManager, bool shouldDefer) {
-    if (!shouldDefer || mainThreadManager->currentThreadIsMainThread()) {
-        static auto *kInstance = new MacOSViewTransaction();
-        return Valdi::Ref(kInstance);
+    if (!shouldDefer || mainThreadManager == nullptr || mainThreadManager->currentThreadIsMainThread()) {
+        return Valdi::makeShared<MacOSViewTransaction>();
     } else {
         return Valdi::makeShared<Valdi::DeferredViewTransaction>(*this, *mainThreadManager);
     }

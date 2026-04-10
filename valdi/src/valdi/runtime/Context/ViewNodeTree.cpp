@@ -29,6 +29,7 @@
 
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
+#include "valdi_core/cpp/Utils/TimePoint.hpp"
 #include "valdi_core/cpp/Utils/Trace.hpp"
 #include "valdi_core/cpp/Utils/ValueFunction.hpp"
 #include "valdi_core/cpp/Utils/ValueMap.hpp"
@@ -150,6 +151,7 @@ void ViewNodeTree::setRootView(const Ref<View>& view) {
     withLock([&]() {
         if (_rootView != view) {
             _rootView = view;
+            getCurrentViewTransactionScope().setRootView(_rootView);
 
             auto disableUpdate = beginDisableUpdates();
 
@@ -274,6 +276,8 @@ void ViewNodeTree::performUpdates() {
     flushOnLayoutCallbacks();
 
     rootViewNode->updateVisibilityAndPerformUpdates(getCurrentViewTransactionScope());
+
+    flushOnDrawCallbacks();
 }
 
 Size ViewNodeTree::measureLayout(
@@ -615,6 +619,11 @@ void ViewNodeTree::onNextLayout(const Ref<ValueFunction>& callback) {
     schedulePerformUpdates();
 }
 
+void ViewNodeTree::onNextDraw(const Ref<ValueFunction>& callback) {
+    _onDrawCallbacks.emplace_back(callback);
+    schedulePerformUpdates();
+}
+
 void ViewNodeTree::flushOnLayoutCallbacks() {
     if (_onLayoutCallbacks.empty()) {
         return;
@@ -626,6 +635,28 @@ void ViewNodeTree::flushOnLayoutCallbacks() {
         }
 
         (*onLayoutCallback)();
+    }
+}
+
+void ViewNodeTree::flushOnDrawCallbacks() {
+    if (_onDrawCallbacks.empty()) {
+        return;
+    }
+
+    auto rootView = getRootView();
+    if (rootView == nullptr) {
+        return;
+    }
+
+    auto onDrawCallbacks = std::move(_onDrawCallbacks);
+    auto& transaction = getCurrentViewTransactionScope().transaction();
+    for (const auto& onDrawCallback : onDrawCallbacks) {
+        if (onDrawCallback == nullptr) {
+            continue;
+        }
+
+        transaction.scheduleOnNextDraw(
+            rootView, [onDrawCallback]() { (*onDrawCallback)({Value(TimePoint::now().getTime() * 1000.0)}); });
     }
 }
 

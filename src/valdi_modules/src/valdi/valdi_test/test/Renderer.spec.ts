@@ -3920,6 +3920,52 @@ describe('Renderer', () => {
     expect(firstRenderCompleteCount).toBe(1);
   });
 
+  it('can enqueue draw callbacks without executing them immediately', () => {
+    const delegate = new RendererTestDelegate();
+    const renderer = makeRenderer(delegate);
+
+    let nextDrawCount = 0;
+    let observedHookTimeMs = 0;
+    renderer.onNextDraw(() => {
+      nextDrawCount++;
+    });
+    renderer.onNextDraw((hookTimeMs) => {
+      observedHookTimeMs = hookTimeMs;
+    });
+
+    expect(nextDrawCount).toBe(0);
+    expect(observedHookTimeMs).toBe(0);
+    expect(delegate.nextDrawCallbacks.length).toBe(2);
+
+    delegate.nextDrawCallbacks[0](123.5);
+    delegate.nextDrawCallbacks[1](123.5);
+    expect(nextDrawCount).toBe(1);
+    expect(observedHookTimeMs).toBe(123.5);
+  });
+
+  it('can enqueue draw callbacks while rendering', () => {
+    const delegate = new RendererTestDelegate();
+    const renderer = makeRenderer(delegate);
+    const node = makeNodeProtoype('root');
+
+    renderer.begin();
+    renderer.beginElement(node);
+    renderer.endElement();
+
+    let nextDrawCount = 0;
+    renderer.onNextDraw(() => {
+      nextDrawCount++;
+    });
+
+    expect(nextDrawCount).toBe(0);
+    expect(delegate.nextDrawCallbacks.length).toBe(1);
+
+    renderer.end();
+
+    expect(delegate.requests.length).toBe(1);
+    expect(nextDrawCount).toBe(0);
+  });
+
   it('doesnt send destroy element request for whole tree', () => {
     const output = new RendererTestDelegate();
     const renderer = makeRenderer(output);

@@ -192,6 +192,10 @@ void ViewNodeRenderer::visit(RenderRequestEntries::OnLayoutComplete& entry) {
     _viewNodeTree.onNextLayout(entry.getCallback());
 }
 
+void ViewNodeRenderer::visit(RenderRequestEntries::OnNextDraw& entry) {
+    _viewNodeTree.onNextDraw(entry.getCallback());
+}
+
 void ViewNodeRenderer::onCurrentNodeAttributeChange() {
     _currentNodeAttributeChanged = true;
 }

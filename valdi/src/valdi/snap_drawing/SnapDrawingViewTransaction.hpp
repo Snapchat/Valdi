@@ -9,6 +9,8 @@
 #include "valdi/runtime/Interfaces/IViewTransaction.hpp"
 #include "valdi/runtime/Views/View.hpp"
 
+#include <vector>
+
 namespace snap::drawing {
 
 class SnapDrawingViewTransaction : public Valdi::IViewTransaction {
@@ -65,7 +67,12 @@ public:
 
     void cancelAnimator(const Valdi::Ref<Valdi::Animator>& animator) override;
 
+    void scheduleOnNextDraw(const Valdi::Ref<Valdi::View>& rootView, Valdi::DispatchFunction callback) override;
+
     void executeInTransactionThread(Valdi::DispatchFunction executeFn) override;
+
+private:
+    std::vector<Valdi::DispatchFunction> _pendingOnNextDrawCallbacks;
 };
 
 } // namespace snap::drawing

@@ -67,9 +67,33 @@ ViewTransaction::~ViewTransaction() = default;
     void ViewTransaction::willUpdateRootView(const Valdi::Ref<Valdi::View>& view) {}
 
     void ViewTransaction::didUpdateRootView(const Valdi::Ref<Valdi::View>& view, bool layoutDidBecomeDirty) {
+        UIView *uiView = toUIView(view);
+
         if (layoutDidBecomeDirty) {
-            [toUIView(view) invalidateIntrinsicContentSize];
+            [uiView invalidateIntrinsicContentSize];
         }
+
+        if (_pendingOnNextDrawCallbacks.empty()) {
+            return;
+        }
+
+        auto callbacks = std::make_shared<std::vector<Valdi::DispatchFunction>>(std::move(_pendingOnNextDrawCallbacks));
+        if (uiView == nil) {
+            for (auto &callback : *callbacks) {
+                callback();
+            }
+            return;
+        }
+
+        [CATransaction begin];
+        [CATransaction setCompletionBlock:^{
+            for (auto &callback : *callbacks) {
+                callback();
+            }
+        }];
+        [uiView setNeedsLayout];
+        [uiView setNeedsDisplay];
+        [CATransaction commit];
     }
 
     void ViewTransaction::moveViewToTree(const Valdi::Ref<Valdi::View>& view,
@@ -275,6 +299,11 @@ ViewTransaction::~ViewTransaction() = default;
 
     void ViewTransaction::cancelAnimator(const Valdi::Ref<Valdi::Animator>& animator) {
         animator->getNativeAnimator()->cancel();
+    }
+
+    void ViewTransaction::scheduleOnNextDraw(const Valdi::Ref<Valdi::View>& rootView,
+                                             Valdi::DispatchFunction callback) {
+        _pendingOnNextDrawCallbacks.emplace_back(std::move(callback));
     }
 
     void ViewTransaction::executeInTransactionThread(Valdi::DispatchFunction executeFn) {

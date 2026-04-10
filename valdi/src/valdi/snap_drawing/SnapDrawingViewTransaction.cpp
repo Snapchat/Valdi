@@ -45,7 +45,12 @@ void SnapDrawingViewTransaction::flush(bool sync) {}
 
 void SnapDrawingViewTransaction::willUpdateRootView(const Ref<View>& view) {}
 
-void SnapDrawingViewTransaction::didUpdateRootView(const Ref<View>& view, bool layoutDidBecomeDirty) {}
+void SnapDrawingViewTransaction::didUpdateRootView(const Ref<View>& view, bool layoutDidBecomeDirty) {
+    auto callbacks = std::move(_pendingOnNextDrawCallbacks);
+    for (auto& callback : callbacks) {
+        callback();
+    }
+}
 
 void SnapDrawingViewTransaction::moveViewToTree(const Ref<View>& view, ViewNodeTree* viewNodeTree, ViewNode* viewNode) {
     auto layer = toLayer(view);
@@ -257,6 +262,10 @@ void SnapDrawingViewTransaction::flushAnimator(const Ref<Animator>& animator, co
 void SnapDrawingViewTransaction::cancelAnimator(const Ref<Animator>& animator) {
     auto typedAnimator = Valdi::castOrNull<ValdiAnimator>(animator->getNativeAnimator());
     typedAnimator->cancel();
+}
+
+void SnapDrawingViewTransaction::scheduleOnNextDraw(const Ref<View>& rootView, Valdi::DispatchFunction callback) {
+    _pendingOnNextDrawCallbacks.emplace_back(std::move(callback));
 }
 
 void SnapDrawingViewTransaction::executeInTransactionThread(DispatchFunction executeFn) {
