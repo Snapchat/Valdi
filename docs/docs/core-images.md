@@ -35,9 +35,9 @@ export class HelloWorld extends Component {
       <image src={res.emoji} tint='black' height={48} width={48} margin={10} />
       {/* You can Pass an arbitrary url to the src of our image */}
       <image src='https://placedog.net/500' height={48} width={48} margin={10} />
-      {/* Urls are sometimes used for loading BOLT assets */}
+      {/* Urls can also be used for loading remote assets */}
       <image src='https://placecats.com/500/500' height={48} width={48} margin={10} />
-      {/* BOLT Urls can also be obtained from contentObjects using contentObjectImageLoaderUrl */}
+      {/* Remote asset urls can also be obtained from contentObjects using contentObjectImageLoaderUrl */}
       <image
         src={contentObjectImageLoaderUrl({
             contentObject, nativeContentTypeKey:

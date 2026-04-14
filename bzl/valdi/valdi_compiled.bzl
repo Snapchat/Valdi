@@ -258,11 +258,11 @@ valdi_compiled = rule(
             default = False,
         ),
         "downloadable_assets": attr.bool(
-            doc = "Controls how module's assets are acquired: downloaded from Bolt or bundled with the module",
+            doc = "Controls how module's assets are acquired: downloaded from remote asset storage or bundled with the module. NOTE: Using this feature requires configuring a remote asset storage backend (module_upload_base_url in the project config). There is currently no documentation on how to set this up, and it is not recommended for use in open source projects.",
             default = True,
         ),
         "downloadable_sources": attr.bool(
-            doc = "Controls whether module sources are downloaded from Bolt or bundled with the module",
+            doc = "Controls whether module sources are downloaded from remote asset storage or bundled with the module. NOTE: Using this feature requires configuring a remote asset storage backend (module_upload_base_url in the project config). There is currently no documentation on how to set this up, and it is not recommended for use in open source projects.",
             default = False,
         ),
         "strip_assets": attr.bool(
@@ -1371,8 +1371,9 @@ compilation_mode: {compilation_mode}
     #
     # We always emit the structured form `downloadable:\n  assets: true` rather than the boolean
     # shorthand `downloadable: true`, because the boolean form also enables downloadableSources in
-    # the compiler (BundleManager.swift), which triggers source uploads to Bolt. Only modules that
-    # explicitly opt in via downloadable_sources = True should have that behaviour.
+    # the compiler (BundleManager.swift), which triggers source uploads to remote asset storage.
+    # Only modules that explicitly opt in via downloadable_sources = True should have that
+    # behaviour.
     #
     # Note: omitting the `downloadable` key entirely is also valid — the compiler defaults to
     # downloadableAssets=true, downloadableSources=false — but we emit it explicitly so the
