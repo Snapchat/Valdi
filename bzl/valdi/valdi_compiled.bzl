@@ -164,10 +164,6 @@ valdi_compiled = rule(
             doc = "The module name",
             mandatory = True,
         ),
-        "module_yaml": attr.label(
-            doc = "The module.yaml file of this module",
-            allow_single_file = ["module.yaml"],
-        ),
         "ids_yaml": attr.label(
             doc = "Optional ids.yaml file for this module",
             allow_single_file = ["ids.yaml"],
@@ -1400,18 +1396,9 @@ def _yaml_named_list(name, items):
 
 def _resolve_module_yaml(ctx, module_name):
     module_definition = _generate_module_definition(ctx, module_name)
-
-    # When code coverage is enabled, always generate a new module.yaml with debug output targets
-    # even if the module has its own module.yaml file, because we need to override output_target
-    # Check if code coverage is enabled via `bazel coverage` command or explicit flag
-    code_coverage = ctx.configuration.coverage_enabled or ctx.attr.code_coverage[BuildSettingInfo].value
-
-    if ctx.file.module_yaml and not code_coverage:
-        return (ctx.file.module_yaml, module_definition)
-    else:
-        module_yaml = ctx.actions.declare_file("module.yaml")
-        ctx.actions.write(output = module_yaml, content = module_definition)
-        return (module_yaml, module_definition)
+    module_yaml = ctx.actions.declare_file("module.yaml")
+    ctx.actions.write(output = module_yaml, content = module_definition)
+    return (module_yaml, module_definition)
 
 def _create_valdi_module_info(ctx, module_name, module_yaml, module_definition, outputs, code_coverage):
     in_declarations = _extract_dts_files(_get_compiled_srcs(ctx))

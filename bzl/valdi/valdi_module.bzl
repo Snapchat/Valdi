@@ -53,7 +53,6 @@ def valdi_module(
         res = [],
         protodecl_srcs = [],
         deps = [],
-        module_yaml = None,
         strings_dir = None,
         disable_annotation_processing = False,
         async_strict_mode = False,
@@ -88,6 +87,8 @@ def valdi_module(
         web_register_native_module_id_overrides = None,
         exclude_patterns = None,
         exclude_globs = None,
+        # DEPRECATED: module_yaml is no longer used for builds and will be deleted in the future.
+        module_yaml = None,
         **kwargs):
     """ A convenient macro to wrap valdi_compiled rule. Use this macro instead of direct valdi_compiled rule invocation.
 
@@ -105,7 +106,6 @@ def valdi_module(
 
     Args:
         name: The name of the valdi module.
-        module_yaml: The module.yaml file containing the module configuration.
         ios_module_name: The name of the iOS module from module.yaml
         ios_class_prefix: The class prefix for generated iOS classes.
         ios_output_target: The iOS output target: "release" or "debug".
@@ -142,6 +142,9 @@ def valdi_module(
     """
     downloadable_assets = True if downloadable_assets == None else downloadable_assets
 
+    if module_yaml != None:
+        print("WARNING: The 'module_yaml' parameter in valdi_module('{}') is deprecated. module.yaml is no longer used for builds and will be deleted in the future. Please remove the 'module_yaml' parameter from your BUILD.bazel file.".format(name))
+
     if not ios_module_name:
         ios_module_name = name
 
@@ -162,7 +165,6 @@ def valdi_module(
         android_output_target = android_output_target,
         android_export_strings = android_export_strings,
         module = name,
-        module_yaml = module_yaml,
         deps = [_valdi_compiled_target_for_target(dep) for dep in deps],
         web_deps = web_deps,
         web_register_native_module_id_overrides = web_register_native_module_id_overrides or {},
