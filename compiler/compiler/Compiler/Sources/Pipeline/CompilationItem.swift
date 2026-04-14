@@ -277,6 +277,7 @@ struct CompilationItem {
         let cppExpectedReleaseOutputDirectories: OutDirectories?
 
         let androidClassPath: String?
+        let androidExportStrings: Bool
         let iosClassPrefix: String?
         let cppClassPrefix: String?
 
@@ -320,6 +321,7 @@ struct CompilationItem {
              iosLanguage: IOSLanguage,
              iosClassPrefix: String?,
              androidClassPath: String?,
+             androidExportStrings: Bool,
              cppClassPrefix: String?,
              iosCodegenEnabled: Bool,
              androidCodegenEnabled: Bool,
@@ -449,6 +451,7 @@ struct CompilationItem {
 
             self.iosClassPrefix = iosClassPrefix
             self.androidClassPath = androidClassPath
+            self.androidExportStrings = androidExportStrings
             self.cppClassPrefix = cppClassPrefix
 
             self.iosCodegenEnabled = iosCodegenEnabled

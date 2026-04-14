@@ -75,6 +75,7 @@ class BundleManager {
                                                     iosLanguage: IOSLanguage.objc,
                                                     iosClassPrefix: nil,
                                                     androidClassPath: nil,
+                                                    androidExportStrings: true,
                                                     cppClassPrefix: nil,
                                                     iosCodegenEnabled: false,
                                                     androidCodegenEnabled: false,
@@ -298,6 +299,7 @@ class BundleManager {
         }
 
         let androidClassPath = androidConfig?["class_path"]?.string
+        let androidExportStrings = androidConfig?["export_strings"]?.bool ?? true
 
         let dependencyStrings = config["dependencies"]?.array().compactMap({ $0.string }) ?? [String]()
         var dependencies = try resolveDependencies(ofModule: bundleName,
@@ -348,6 +350,7 @@ class BundleManager {
                                                         iosLanguage: iosLanguage,
                                                         iosClassPrefix: iosClassPrefix,
                                                         androidClassPath: androidClassPath,
+                                                        androidExportStrings: androidExportStrings,
                                                         cppClassPrefix: cppClassPrefix,
                                                         iosCodegenEnabled: iosCodegenEnabled,
                                                         androidCodegenEnabled: androidCodegenEnabled,

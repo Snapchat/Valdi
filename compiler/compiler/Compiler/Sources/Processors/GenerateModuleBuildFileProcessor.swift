@@ -41,6 +41,7 @@ private struct ModuleBuildTargetConfig {
     let downloadableAssets: Bool
     let downloadableSources: Bool
     let androidClassPath: String?
+    let androidExportStrings: Bool
     let singleFileCodegen: Bool
     let hasIOSExports: Bool
     let hasAndroidExports: Bool
@@ -327,6 +328,7 @@ private struct ModuleBuildFile {
         maybeAppendStringAttribute("strings_dir", value: config.stringsDir)
         maybeAppendStringAttribute("ids_yaml", value: config.idsYaml)
         maybeAppendStringAttribute("android_class_path", value: config.androidClassPath)
+        maybeAppendBoolAttribute("android_export_strings", value: config.androidExportStrings, appendOnlyIf: .valueFalse)
 
         switch config.iosLanguage {
         case .objc: break // default is "objc", no need to add anything
@@ -617,6 +619,7 @@ final class GenerateModuleBuildFileProcessor: CompilationProcessor {
                                              downloadableAssets: bundleInfo.downloadableAssets,
                                              downloadableSources: bundleInfo.downloadableSources,
                                              androidClassPath: bundleInfo.androidClassPath,
+                                             androidExportStrings: bundleInfo.androidExportStrings,
                                              singleFileCodegen: bundleInfo.singleFileCodegen,
                                              hasIOSExports: hasIOSExports,
                                              hasAndroidExports: hasAndroidExports,
