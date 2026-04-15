@@ -31,6 +31,7 @@ cc_library(
     hdrs = glob(["src/android/include/**/*.h"]),
     copts = ["-Wno-unreachable-code"],
     includes = ["src/android/include"],
+    target_compatible_with = ["@platforms//os:android"],
 )
 
 cc_library(
@@ -70,6 +71,7 @@ objc_library(
     ]),
     includes = ["src/ios"],
     tags = ["exported"],
+    target_compatible_with = ["@platforms//os:ios"],
     deps = [
         ":yoga_cc",
     ],
@@ -78,6 +80,7 @@ objc_library(
 cc_library(
     name = "yoga_android",
     strip_include_prefix = "src/yoga",
+    target_compatible_with = ["@platforms//os:android"],
     deps = [
         ":fbjni",
         ":yoga_cc",

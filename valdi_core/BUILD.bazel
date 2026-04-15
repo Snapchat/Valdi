@@ -47,6 +47,7 @@ objc_library(
         "test/ios/**/*.mm",
     ]),
     copts = OBJC_FLAGS + COMPILER_FLAGS,
+    target_compatible_with = ["@platforms//os:ios"],
     deps = [
         ":valdi_core",
         "@gtest",
@@ -121,6 +122,7 @@ cc_library(
         "src",
         "src/bindings/include",
     ],
+    target_compatible_with = ["@platforms//os:android"],
     visibility = ["//visibility:public"],
     deps = [
         ":private_djinni_generated_cc",
@@ -152,6 +154,7 @@ cc_library(
         "-ljnigraphics",
     ],
     strip_include_prefix = "src",
+    target_compatible_with = ["@platforms//os:android"],
     visibility = ["//visibility:public"],
     deps = [":valdi_core_jni"],
     alwayslink = True,
@@ -276,6 +279,7 @@ swift_library(
     ]),
     copts = ["-Osize"],
     module_name = "ValdiCoreSwift",
+    target_compatible_with = ["@platforms//os:ios"],
     visibility = ["//visibility:public"],
     deps = [
         ":valdi_core_cpp_objc",

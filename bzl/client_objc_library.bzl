@@ -36,7 +36,8 @@ def client_objc_library(
         enable_objcpp = True,
         defines = [],
         generate_hmaps = True,
-        generate_umbrella_header = True):
+        generate_umbrella_header = True,
+        target_compatible_with = None):
     base_copts = OBJC_FLAGS if enable_objcpp else OBJC_ONLY_FLAGS
 
     hmap_deps = []
@@ -102,6 +103,10 @@ def client_objc_library(
         aspect_hints = ["@build_bazel_rules_swift//swift:no_module"]
         clang_module_name = None
 
+    extra_kwargs = {}
+    if target_compatible_with:
+        extra_kwargs["target_compatible_with"] = target_compatible_with
+
     snap_client_ios_library(
         name = name,
         deps = deps + hmap_deps,
@@ -118,4 +123,5 @@ def client_objc_library(
         tags = tags,
         alwayslink = alwayslink,
         visibility = visibility,
+        **extra_kwargs
     )

@@ -819,6 +819,7 @@ def _setup_ios_target(name, module_deps, ios_deps, compiled_module_target, ios_m
         generated_objects = impl_generated_objects,
         single_file_codegen = single_file_codegen,
         has_ios_exports = has_ios_exports,
+        target_compatible_with = ["@platforms//os:ios"],
         tags = [
             "valdi_objc",
         ],
@@ -843,6 +844,7 @@ def _setup_ios_target(name, module_deps, ios_deps, compiled_module_target, ios_m
         generated_objects = api_generated_objects,
         single_file_codegen = single_file_codegen,
         has_ios_exports = has_ios_exports,
+        target_compatible_with = ["@platforms//os:ios"],
         visibility = visibility,
     )
 
@@ -868,6 +870,7 @@ def _setup_ios_target(name, module_deps, ios_deps, compiled_module_target, ios_m
         data = resources,
         copts = ["-Osize", "-Xfrontend", "-internalize-at-link", "-Xcc", "-I."],
         linkopts = ["-dead_strip"],
+        target_compatible_with = ["@platforms//os:ios"],
         visibility = visibility,
     )
 
@@ -1023,7 +1026,7 @@ def npm_package_target_for_target(name):
     label = native.package_relative_label(name)
     return label.relative(":" + npm_package_target_name(label.name))
 
-def _exported_objc_lib(name, ios_module_name, objc_hdrs, objc_srcs, single_file_codegen, has_ios_exports = True, **kwargs):
+def _exported_objc_lib(name, ios_module_name, objc_hdrs, objc_srcs, single_file_codegen, has_ios_exports = True, target_compatible_with = None, **kwargs):
     # setup headermaps
     # When has_ios_exports is False, we use empty hdrs instead of header_tree_artifact_providers
     # because the headermap rule requires at least one tree artifact when using header_tree_artifact_providers
@@ -1116,6 +1119,7 @@ def _exported_objc_lib(name, ios_module_name, objc_hdrs, objc_srcs, single_file_
         enable_objcpp = False,
         generate_hmaps = False,
         generate_umbrella_header = False,
+        target_compatible_with = target_compatible_with,
         **kwargs
     )
 

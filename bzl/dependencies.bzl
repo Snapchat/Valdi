@@ -169,6 +169,13 @@ def setup_dependencies(workspace_root = None):
     )
 
     http_archive(
+        name = "com_github_google_benchmark",
+        strip_prefix = "benchmark-1.9.5",
+        url = "https://github.com/google/benchmark/archive/refs/tags/v1.9.5.tar.gz",
+        integrity = "sha256-ljE0HIK6xKKIvvlR+LJrQfaQIXlBhOzpafhHOXfqo0A=",
+    )
+
+    http_archive(
         name = "boringssl",
         url = "https://github.com/google/boringssl/archive/82f9853fc7d7360ae44f1e1357a6422c5244bbd8.tar.gz",
         strip_prefix = "boringssl-82f9853fc7d7360ae44f1e1357a6422c5244bbd8",

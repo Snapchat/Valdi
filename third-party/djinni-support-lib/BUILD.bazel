@@ -72,6 +72,7 @@ cc_library(
     hdrs = glob(["src/djinni/**/*.h*"]),
     copts = ["-Wno-shorten-64-to-32"],
     defines = ["DATAREF_JNI=1"],
+    target_compatible_with = ["@platforms//os:android"],
     deps = [":djinni_support_lib_cc"],
     alwayslink = 1,
 )
@@ -142,6 +143,7 @@ cc_library(
     ],
     defines = ["DATAREF_WASM=1"],
     strip_include_prefix = "src/djinni",
+    tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = [
         ":djinni_support_lib_cc",

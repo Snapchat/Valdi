@@ -55,6 +55,10 @@ internal class InvokeWithJSRuntimeTest {
         override fun preloadModule(modulePath: String, maxDepth: Int) {
             // No-op for testing
         }
+
+        override fun preloadModules(modulePaths: List<String>, maxDepth: Int) {
+            // No-op for testing
+        }
         
         override fun runOnJsThread(runnable: Runnable) {
             // Capture the callback - DON'T execute it since we can't run JS

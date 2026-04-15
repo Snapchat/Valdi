@@ -5,6 +5,7 @@ objc_library(
     ]),
     hdrs = [],
     copts = ["-I."],
+    target_compatible_with = ["@platforms//os:ios"],
     visibility = ["//visibility:public"],
     deps = [
         "//apps/benchmark/src/valdi/benchmark:benchmark_api_objc",

@@ -100,7 +100,7 @@ describe('ProfileCardTest', () => {
       componentGetElements(nodes[0].component!),
       'follow-button',
     )[0];
-    button?.getAttribute('onTap')?.();
+    button?.getAttribute('onTap')?.({} as any);
     expect(onFollowTap).toHaveBeenCalled();
   });
 

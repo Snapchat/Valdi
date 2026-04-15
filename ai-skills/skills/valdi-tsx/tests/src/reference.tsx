@@ -71,12 +71,12 @@ class Counter extends StatefulComponent<CounterViewModel, CounterState> {
   }
 
   // Class arrow functions — never inline lambdas in JSX props
-  private handleIncrement = (): void => {
+  private handleIncrement = (_event: unknown): void => {
     this.setState({ count: this.state.count + 1 });
   };
 
-  private handleTextChange = (text: string): void => {
-    this.setState({ inputText: text });
+  private handleTextChange = (event: { text: string }): void => {
+    this.setState({ inputText: event.text });
   };
 
   onRender(): void {
@@ -87,7 +87,7 @@ class Counter extends StatefulComponent<CounterViewModel, CounterState> {
         value={this.state.inputText}
         onChange={this.handleTextChange}
       />;
-      <button title="Increment" onPress={this.handleIncrement} />;
+      <label value="Increment" onTap={this.handleIncrement} />;
     </view>;
   }
 }

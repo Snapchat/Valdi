@@ -25,6 +25,7 @@ cc_import(
     name = "jscore_library",
     shared_library = select({
         "//bzl/conditions:linux_x64": jscore_library(),
+        "//conditions:default": None,
     }),
     visibility = ["//visibility:public"],
 )

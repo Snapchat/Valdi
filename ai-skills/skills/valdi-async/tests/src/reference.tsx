@@ -73,7 +73,7 @@ class LiveClock extends StatefulComponent<ClockViewModel, ClockState> {
   onCreate(): void {
     // ✅ Automatically cancelled on destroy — no onDestroy() needed
     const id = setInterval(() => this.tick(), 1000);
-    this.registerDisposable({ cancel: () => clearInterval(id) });
+    this.registerDisposable({ unsubscribe: () => clearInterval(id) });
   }
 
   private tick = (): void => {
