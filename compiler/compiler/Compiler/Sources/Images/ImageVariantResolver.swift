@@ -36,6 +36,19 @@ class ImageVariantResolver {
     static let allExportedVariantSpecs = iosVariantSpecs + androidVariantSpecs + webVariantSpecs
     static let allSupportedVariantSpecs = allExportedVariantSpecs + [svgVariantSpecs]
 
+    /// Returns only the exported variant specs for the given platform enablement flags.
+    /// Falls back to `allExportedVariantSpecs` when all three are enabled (preserves existing behaviour).
+    static func exportedVariantSpecs(android: Bool, ios: Bool, web: Bool) -> [ImageVariantSpecs] {
+        if android && ios && web {
+            return allExportedVariantSpecs
+        }
+        var specs = [ImageVariantSpecs]()
+        if ios { specs += iosVariantSpecs }
+        if android { specs += androidVariantSpecs }
+        if web { specs += webVariantSpecs }
+        return specs
+    }
+
     static func resolveVariant(imageURL: URL, relativeProjectPath: String) throws -> ResolvedImageVariant {
         for variant in allSupportedVariantSpecs {
             if let assetIdentifier = variant.matches(fileURL: imageURL, relativeProjectPath: relativeProjectPath) {

@@ -201,6 +201,37 @@ config_setting(
     },
 )
 
+# Flag to restrict which mobile platforms the Valdi compiler generates output for.
+# Default is "all" (current behaviour: android + ios).
+# Set to "android" or "ios" when building a platform-specific app to skip
+# generating artifacts for the unused platform and save compile time.
+# C++ output is always generated regardless of this flag because it is shared
+# cross-platform infrastructure consumed by both Android and iOS.
+string_flag(
+    name = "target_platforms",
+    build_setting_default = "all",
+    values = [
+        "all",
+        "android",
+        "ios",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "target_platforms_android",
+    flag_values = {
+        ":target_platforms": "android",
+    },
+)
+
+config_setting(
+    name = "target_platforms_ios",
+    flag_values = {
+        ":target_platforms": "ios",
+    },
+)
+
 # Create an exhaustive set of configurations because Bazel doesn't support nested selects.
 # Not having nested selects means we have to list all possible conditions in a single flat select.
 # User by valdi_module.bzl to conditionally include apple_resource_bundles in the Valdi objc library.
