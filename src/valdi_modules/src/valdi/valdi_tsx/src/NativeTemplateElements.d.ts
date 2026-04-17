@@ -466,6 +466,19 @@ interface LayoutChildrenAttributes {
   paddingLeft?: CSSValue;
 
   /**
+   * Sets spacing between children on both axes.
+   */
+  gap?: CSSValue;
+  /**
+   * Sets spacing between flex rows.
+   */
+  rowGap?: CSSValue;
+  /**
+   * Sets spacing between flex columns.
+   */
+  columnGap?: CSSValue;
+
+  /**
    * Layout direction specifies the direction in which children and text in a hierarchy should be laid out.
    * Layout direction also affects what edge start and end refer to.
    * In right-to-left environments, this will be set to `rtl`.

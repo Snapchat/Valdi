@@ -22,6 +22,7 @@
 #include <yoga/enums/Direction.h>
 #include <yoga/enums/Display.h>
 #include <yoga/enums/FlexDirection.h>
+#include <yoga/enums/Gutter.h>
 #include <yoga/enums/Justify.h>
 #include <yoga/enums/Overflow.h>
 #include <yoga/enums/PositionType.h>
@@ -68,6 +69,13 @@ static void setYGBorder(facebook::yoga::Style& style, YGEdge edge, facebook::yog
 
 static void setYGFlexBasis(facebook::yoga::Style& style, facebook::yoga::StyleSizeLength value) {
     style.setFlexBasis(value);
+}
+
+template<facebook::yoga::Gutter gutter>
+static YGNodeValueGetterSetter<facebook::yoga::StyleLength> makeGapGetterSetter() {
+    return YGNodeValueGetterSetter<facebook::yoga::StyleLength>(
+        [](facebook::yoga::Style& style) -> facebook::yoga::StyleLength { return style.gap(gutter); },
+        [](facebook::yoga::Style& style, facebook::yoga::StyleLength value) { style.setGap(gutter, value); });
 }
 
 YogaAttributes::YogaAttributes(YGConfig* const yogaConfig, AttributeIds& attributeIds, float pointScale)
@@ -431,6 +439,10 @@ void YogaAttributes::bind(AttributeHandlerById& attributes) {
         setYGPadding(style, YGEdgeBottom, bottom);
         setYGPadding(style, YGEdgeStart, start);
     });
+
+    bindYGStyleLengthAttribute("gap", true, attributes, makeGapGetterSetter<facebook::yoga::Gutter::All>());
+    bindYGStyleLengthAttribute("rowGap", true, attributes, makeGapGetterSetter<facebook::yoga::Gutter::Row>());
+    bindYGStyleLengthAttribute("columnGap", true, attributes, makeGapGetterSetter<facebook::yoga::Gutter::Column>());
 
     bindYGStyleLengthAttribute(
         "borderTopWidth",

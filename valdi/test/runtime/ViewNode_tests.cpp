@@ -401,6 +401,68 @@ TEST(ViewNode, supportsAllMeasureModes) {
     ASSERT_EQ(30.0f, size.height);
 }
 
+TEST(ViewNode, supportsGap) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createRootView();
+    auto child1 = utils.createView();
+    auto child2 = utils.createView();
+    auto child3 = utils.createView();
+
+    utils.setViewNodeAttribute(root, "flexDirection", Value(STRING_LITERAL("row")));
+    utils.setViewNodeAttribute(root, "gap", Value(5.0));
+
+    utils.setViewNodeAttribute(child1, "width", Value(10.0));
+    utils.setViewNodeAttribute(child1, "height", Value(5.0));
+
+    utils.setViewNodeAttribute(child2, "width", Value(20.0));
+    utils.setViewNodeAttribute(child2, "height", Value(10.0));
+
+    utils.setViewNodeAttribute(child3, "width", Value(20.0));
+    utils.setViewNodeAttribute(child3, "height", Value(15.0));
+
+    root->appendChild(utils.getViewTransactionScope(), child1);
+    root->appendChild(utils.getViewTransactionScope(), child2);
+    root->appendChild(utils.getViewTransactionScope(), child3);
+
+    auto size = root->measureLayout(100, MeasureModeUnspecified, 100, MeasureModeUnspecified, LayoutDirectionLTR);
+
+    ASSERT_EQ(60.0f, size.width);
+    ASSERT_EQ(15.0f, size.height);
+}
+
+TEST(ViewNode, supportsRowAndColumnGap) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createRootView();
+    auto child1 = utils.createView();
+    auto child2 = utils.createView();
+    auto child3 = utils.createView();
+
+    utils.setViewNodeAttribute(root, "flexDirection", Value(STRING_LITERAL("row")));
+    utils.setViewNodeAttribute(root, "flexWrap", Value(STRING_LITERAL("wrap")));
+    utils.setViewNodeAttribute(root, "columnGap", Value(5.0));
+    utils.setViewNodeAttribute(root, "rowGap", Value(7.0));
+
+    utils.setViewNodeAttribute(child1, "width", Value(10.0));
+    utils.setViewNodeAttribute(child1, "height", Value(5.0));
+
+    utils.setViewNodeAttribute(child2, "width", Value(20.0));
+    utils.setViewNodeAttribute(child2, "height", Value(10.0));
+
+    utils.setViewNodeAttribute(child3, "width", Value(20.0));
+    utils.setViewNodeAttribute(child3, "height", Value(15.0));
+
+    root->appendChild(utils.getViewTransactionScope(), child1);
+    root->appendChild(utils.getViewTransactionScope(), child2);
+    root->appendChild(utils.getViewTransactionScope(), child3);
+
+    auto size = root->measureLayout(35, MeasureModeExactly, 100, MeasureModeUnspecified, LayoutDirectionLTR);
+
+    ASSERT_EQ(35.0f, size.width);
+    ASSERT_EQ(32.0f, size.height);
+}
+
 TEST(ViewNode, canCalculateViewport) {
     ViewNodeTestsDependencies utils;
 
