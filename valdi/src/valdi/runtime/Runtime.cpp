@@ -56,6 +56,7 @@
 #include <set>
 #include <vector>
 #include <yoga/YGNode.h>
+#include <yoga/YGValue.h>
 
 namespace Valdi {
 

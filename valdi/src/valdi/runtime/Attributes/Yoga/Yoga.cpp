@@ -7,8 +7,8 @@
 
 #include "valdi/runtime/Attributes/Yoga/Yoga.hpp"
 #include "valdi/runtime/Views/Frame.hpp"
-#include <yoga/YGNode.h>
-#include <yoga/YGNodePrint.h>
+#include <yoga/Yoga.h>
+#include <yoga/node/Node.h>
 
 namespace Valdi {
 
@@ -29,20 +29,20 @@ void Yoga::destroyNode(YGNode* node) {
 }
 
 void Yoga::attachViewNode(YGNode* node, ViewNode* viewNode) {
-    node->setContext(viewNode);
+    facebook::yoga::resolveRef(node)->setContext(viewNode);
 }
 
 ViewNode* Yoga::getAttachedViewNode(YGNode* node) {
-    return reinterpret_cast<ViewNode*>(node->getContext());
+    return reinterpret_cast<ViewNode*>(facebook::yoga::resolveRef(node)->getContext());
 }
 
 void Yoga::detachViewNode(YGNode* node) {
-    node->setContext(nullptr);
+    facebook::yoga::resolveRef(node)->setContext(nullptr);
 }
 
 void Yoga::markNodeDirty(YGNode* node) {
-    if (node->hasMeasureFunc()) {
-        node->markDirtyAndPropogate();
+    if (node != nullptr) {
+        facebook::yoga::resolveRef(node)->markDirtyAndPropagate();
     }
 }
 

@@ -9,16 +9,30 @@
 
 namespace Valdi {
 
-YGValueAttributeHandlerDelegate::YGValueAttributeHandlerDelegate(YGNodeValueGetterSetter<YGCompactValue> getterSetter)
-    : YogaGetterSetterAttributeHandlerDelegate<YGCompactValue>(getterSetter) {}
+YGStyleLengthAttributeHandlerDelegate::YGStyleLengthAttributeHandlerDelegate(
+    YGNodeValueGetterSetter<facebook::yoga::StyleLength> getterSetter)
+    : YogaGetterSetterAttributeHandlerDelegate<facebook::yoga::StyleLength>(getterSetter) {}
 
-Result<Void> YGValueAttributeHandlerDelegate::onApply(YGNodeRef node, const Value& value) {
-    auto ygValue = valueToYGValue(value);
-    if (!ygValue) {
-        return ygValue.moveError();
+Result<Void> YGStyleLengthAttributeHandlerDelegate::onApply(YGNodeRef node, const Value& value) {
+    auto styleLength = valueToYGStyleLength(value);
+    if (!styleLength) {
+        return styleLength.moveError();
     }
 
-    return setValue(node, ygValue.value());
+    return setValue(node, styleLength.value());
+}
+
+YGStyleSizeLengthAttributeHandlerDelegate::YGStyleSizeLengthAttributeHandlerDelegate(
+    YGNodeValueGetterSetter<facebook::yoga::StyleSizeLength> getterSetter)
+    : YogaGetterSetterAttributeHandlerDelegate<facebook::yoga::StyleSizeLength>(getterSetter) {}
+
+Result<Void> YGStyleSizeLengthAttributeHandlerDelegate::onApply(YGNodeRef node, const Value& value) {
+    auto styleSizeLength = valueToYGStyleSizeLength(value);
+    if (!styleSizeLength) {
+        return styleSizeLength.moveError();
+    }
+
+    return setValue(node, styleSizeLength.value());
 }
 
 } // namespace Valdi

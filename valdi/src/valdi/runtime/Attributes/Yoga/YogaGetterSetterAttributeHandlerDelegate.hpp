@@ -9,12 +9,14 @@
 
 #include "valdi/runtime/Attributes/Yoga/YogaAttributeHandlerDelegate.hpp"
 
+#include <yoga/node/Node.h>
+
 namespace Valdi {
 
 template<typename T>
 struct YGNodeValueGetterSetter {
-    using Setter = void (*)(YGNodeRef, T);
-    using Getter = T (*)(YGNodeRef);
+    using Setter = void (*)(facebook::yoga::Style&, T);
+    using Getter = T (*)(facebook::yoga::Style&);
 
     Getter get;
     Setter set;
@@ -30,12 +32,12 @@ public:
 
 protected:
     void onReset(YGNodeRef node, YGNodeRef defaultYogaNode) override {
-        auto defaultValue = _getterSetter.get(defaultYogaNode);
-        _getterSetter.set(node, defaultValue);
+        auto defaultValue = _getterSetter.get(facebook::yoga::resolveRef(defaultYogaNode)->style());
+        _getterSetter.set(facebook::yoga::resolveRef(node)->style(), defaultValue);
     }
 
     inline Result<Void> setValue(YGNodeRef node, const T& value) {
-        _getterSetter.set(node, value);
+        _getterSetter.set(facebook::yoga::resolveRef(node)->style(), value);
         return Void();
     }
 

@@ -41,28 +41,45 @@
 #include <cmath>
 #include <fmt/format.h>
 #include <sstream>
-#include <yoga/YGNode.h>
+#include <yoga/Yoga.h>
+#include <yoga/algorithm/CalculateLayout.h>
+#include <yoga/enums/FlexDirection.h>
+#include <yoga/node/Node.h>
+#include <yoga/style/StyleSizeLength.h>
 
 namespace Valdi {
 
-YGSize ygMeasureYoga(
-    YGNodeRef node, float width, YGMeasureMode widthMode, float height, YGMeasureMode heightMode, void* context);
-void ygDirtiedCallback(YGNodeRef node);
+YGSize ygMeasureYoga(YGNodeConstRef node, float width, YGMeasureMode widthMode, float height, YGMeasureMode heightMode);
+void ygDirtiedCallback(YGNodeConstRef node);
 
 void destroyYogaNode(YGNode* yogaNode) {
     if (yogaNode == nullptr) {
         return;
     }
-    yogaNode->setContext(nullptr);
-    yogaNode->setDirtiedFunc(nullptr);
-    yogaNode->setMeasureFunc(nullptr);
+    auto* node = facebook::yoga::resolveRef(yogaNode);
+    node->setContext(nullptr);
+    node->setDirtiedFunc(nullptr);
+    node->setMeasureFunc(nullptr);
     YGNodeFree(yogaNode);
 }
 
 void setupYogaNode(YGNode* yogaNode, ViewNode* viewNode) {
     Yoga::attachViewNode(yogaNode, viewNode);
-    yogaNode->setDirty(true);
-    yogaNode->setDirtiedFunc(ygDirtiedCallback);
+    auto* node = facebook::yoga::resolveRef(yogaNode);
+    node->setDirty(true);
+    node->setDirtiedFunc(ygDirtiedCallback);
+}
+
+static facebook::yoga::Style& getYogaStyle(YGNodeRef node) {
+    return facebook::yoga::resolveRef(node)->style();
+}
+
+static facebook::yoga::Node* resolveYogaNode(YGNodeRef node) {
+    return facebook::yoga::resolveRef(node);
+}
+
+static const facebook::yoga::Node* resolveYogaNode(YGNodeConstRef node) {
+    return facebook::yoga::resolveRef(node);
 }
 
 static auto getBackend(ViewNodeTree* tree) {
@@ -86,10 +103,11 @@ static inline float sanitizeYogaValue(float yogaValue) {
 }
 
 static Frame ygNodeGetFrame(YGNode* yogaNode, float offsetX) {
-    return Frame(sanitizeYogaValue(YGNodeLayoutGetLeft(yogaNode) + offsetX),
-                 sanitizeYogaValue(YGNodeLayoutGetTop(yogaNode)),
-                 sanitizeYogaValue(YGNodeLayoutGetWidth(yogaNode)),
-                 sanitizeYogaValue(YGNodeLayoutGetHeight(yogaNode)));
+    const auto& layout = resolveYogaNode(yogaNode)->getLayout();
+    return Frame(sanitizeYogaValue(layout.position(facebook::yoga::PhysicalEdge::Left) + offsetX),
+                 sanitizeYogaValue(layout.position(facebook::yoga::PhysicalEdge::Top)),
+                 sanitizeYogaValue(layout.dimension(facebook::yoga::Dimension::Width)),
+                 sanitizeYogaValue(layout.dimension(facebook::yoga::Dimension::Height)));
 }
 
 LazyLayoutData::~LazyLayoutData() {
@@ -1278,7 +1296,7 @@ void ViewNode::setViewFactory(ViewTransactionScope& viewTransactionScope, const 
                 (boundAttributes != nullptr && boundAttributes->isBackingClassScrollable());
 
             if (_flags[kScrollAttributesBound]) {
-                getYogaNodeForInsertingChildren()->getStyle().overflow() = YGOverflowScroll;
+                getYogaStyle(getYogaNodeForInsertingChildren()).setOverflow(facebook::yoga::Overflow::Scroll);
             }
         } else {
             setIsLayout(true);
@@ -1338,7 +1356,7 @@ void ViewNode::removeFromParent(ViewTransactionScope& viewTransactionScope) {
     }
     auto parent = getParent();
 
-    auto* owner = YGNodeGetOwner(_yogaNode);
+    auto* owner = resolveYogaNode(_yogaNode)->getOwner();
     if (owner != nullptr) {
         YGNodeRemoveChild(owner, _yogaNode);
     }
@@ -1364,11 +1382,12 @@ void ViewNode::insertChildAt(ViewTransactionScope& viewTransactionScope, const R
     child->setHasParent(true);
 
     auto* yogaContainer = getYogaNodeForInsertingChildren();
-    if (static_cast<size_t>(YGNodeGetChildCount(yogaContainer)) < index) {
+    auto* yogaContainerNode = resolveYogaNode(yogaContainer);
+    if (yogaContainerNode->getChildCount() < index) {
         VALDI_ERROR(getLogger(),
                     "Cannot insert child at index {} into container with size {} (child had parent: {})",
                     index,
-                    YGNodeGetChildCount(yogaContainer),
+                    yogaContainerNode->getChildCount(),
                     childHadParent);
         VALDI_ERROR(getLogger(), "Root component path: {}", getViewNodeTree()->getContext()->getPath().toString());
         VALDI_ERROR(getLogger(), "Parent XML: {}", toXML());
@@ -1377,8 +1396,8 @@ void ViewNode::insertChildAt(ViewTransactionScope& viewTransactionScope, const R
         return;
     }
 
-    yogaContainer->setMeasureFunc(nullptr);
-    YGNodeInsertChild(yogaContainer, child->_yogaNode, static_cast<uint32_t>(index));
+    yogaContainerNode->setMeasureFunc(nullptr);
+    YGNodeInsertChild(yogaContainer, child->_yogaNode, index);
 
     child->getCSSAttributesManager().setParent(&getCSSAttributesManager());
 
@@ -1418,7 +1437,7 @@ bool ViewNode::invalidateMeasuredSize() {
         return false;
     }
 
-    if (!_yogaNode->getLayout().didUseCustomMeasure()) {
+    if (!facebook::yoga::resolveRef(_yogaNode)->hasMeasureFunc()) {
         // If we did not use a custom measure, there is no need to dirty our yoga node, because it would not have
         // any impact on the layout.
         return false;
@@ -1436,12 +1455,12 @@ bool ViewNode::markLayoutDirty() {
         return false;
     }
 
-    _yogaNode->markDirtyAndPropogate();
+    facebook::yoga::resolveRef(_yogaNode)->markDirtyAndPropagate();
     return true;
 }
 
 bool ViewNode::isFlexLayoutDirty() const {
-    return _yogaNode->isDirty();
+    return resolveYogaNode(_yogaNode)->isDirty();
 }
 
 bool ViewNode::isLazyLayoutDirty() const {
@@ -1548,7 +1567,7 @@ void ViewNode::setIsLayout(bool isLayout) {
 }
 
 bool ViewNode::needsYogaMeasureFunc() const {
-    if (!hasParent() || !_yogaNode->getChildren().empty()) {
+    if (!hasParent() || resolveYogaNode(_yogaNode)->getChildCount() > 0) {
         // No measure func if we are the root or if we are a container
         return false;
     }
@@ -1568,10 +1587,11 @@ void ViewNode::updateYogaMeasureFunc() {
         return;
     }
 
+    auto* node = facebook::yoga::resolveRef(_yogaNode);
     if (needsYogaMeasureFunc()) {
-        _yogaNode->setMeasureFunc(ygMeasureYoga);
+        node->setMeasureFunc(ygMeasureYoga);
     } else {
-        _yogaNode->setMeasureFunc(nullptr);
+        node->setMeasureFunc(nullptr);
     }
 }
 
@@ -1639,7 +1659,8 @@ YGNode* ViewNode::getYogaNodeForInsertingChildren() {
     }
     auto& lazyLayoutData = getOrCreateLazyLayoutData();
     if (lazyLayoutData.yogaNode == nullptr) {
-        lazyLayoutData.yogaNode = Yoga::createNode(_yogaNode->getConfig());
+        lazyLayoutData.yogaNode =
+            Yoga::createNode(const_cast<facebook::yoga::Config*>(facebook::yoga::resolveRef(_yogaNode)->getConfig()));
         setupYogaNode(lazyLayoutData.yogaNode, this);
         // First time we are inserting in this lazyLayout, schedule a lazyLayout pass since our node
         // will be already dirty and won't trigger the yoga dirtied callbacks.
@@ -1655,14 +1676,14 @@ size_t ViewNode::getChildCount() const {
         return 0;
     }
 
-    return yogaNode->getChildren().size();
+    return resolveYogaNode(yogaNode)->getChildCount();
 }
 
 ViewNode* ViewNode::getChildAt(size_t index) const {
     const auto* yogaNode = getContainerYogaNode();
     SC_ASSERT_NOTNULL(yogaNode);
 
-    auto* childYogaNode = yogaNode->getChildren()[index];
+    auto* childYogaNode = resolveYogaNode(yogaNode)->getChild(index);
     auto* childViewNode = reinterpret_cast<ViewNode*>(Yoga::getAttachedViewNode(childYogaNode));
     return childViewNode;
 }
@@ -2018,27 +2039,20 @@ struct MeasureMetrics {
     uint32_t totalMeasure = 0;
 };
 
-YGValue resolveYogaValue(float containerSize, YGValue appliedValue) {
+static thread_local MeasureMetrics* currentMeasureMetrics = nullptr;
+
+facebook::yoga::StyleSizeLength resolveYogaValue(float containerSize, facebook::yoga::StyleSizeLength appliedValue) {
     float resolvedValue;
 
-    switch (appliedValue.unit) {
-        case YGUnitUndefined:
-        case YGUnitAuto:
-            resolvedValue = containerSize;
-            break;
-        case YGUnitPoint:
-            resolvedValue = std::min(appliedValue.value, containerSize);
-            break;
-        case YGUnitPercent:
-            resolvedValue = appliedValue.value * containerSize * 0.01f;
-            break;
+    if (appliedValue.isPoints()) {
+        resolvedValue = std::min(appliedValue.value().unwrap(), containerSize);
+    } else if (appliedValue.isPercent()) {
+        resolvedValue = appliedValue.value().unwrap() * containerSize * 0.01f;
+    } else {
+        resolvedValue = containerSize;
     }
 
-    YGValue out;
-    out.value = resolvedValue;
-    out.unit = YGUnitPoint;
-
-    return out;
+    return facebook::yoga::StyleSizeLength::points(resolvedValue);
 }
 
 static void doCalculateLayoutOnNode(YGNode* yogaNode,
@@ -2048,13 +2062,13 @@ static void doCalculateLayoutOnNode(YGNode* yogaNode,
                                     MeasureMode heightMode,
                                     LayoutDirection direction,
                                     MeasureMetrics& measureCount) {
-    YGDirection yogaDirection;
+    facebook::yoga::Direction yogaDirection;
     switch (direction) {
         case LayoutDirectionLTR:
-            yogaDirection = YGDirectionLTR;
+            yogaDirection = facebook::yoga::Direction::LTR;
             break;
         case LayoutDirectionRTL:
-            yogaDirection = YGDirectionRTL;
+            yogaDirection = facebook::yoga::Direction::RTL;
             break;
     }
 
@@ -2066,8 +2080,8 @@ static void doCalculateLayoutOnNode(YGNode* yogaNode,
         heightMode = MeasureModeUnspecified;
     }
 
-    YGValue savedMaxWidth = yogaNode->getStyle().maxDimensions()[YGDimensionWidth];
-    YGValue savedMaxHeight = yogaNode->getStyle().maxDimensions()[YGDimensionHeight];
+    auto savedMaxWidth = getYogaStyle(yogaNode).maxDimension(facebook::yoga::Dimension::Width);
+    auto savedMaxHeight = getYogaStyle(yogaNode).maxDimension(facebook::yoga::Dimension::Height);
 
     float ownerWidth;
     switch (widthMode) {
@@ -2079,7 +2093,8 @@ static void doCalculateLayoutOnNode(YGNode* yogaNode,
             break;
         case MeasureModeAtMost:
             ownerWidth = width;
-            yogaNode->getStyle().maxDimensions()[YGDimensionWidth] = resolveYogaValue(width, savedMaxWidth);
+            getYogaStyle(yogaNode).setMaxDimension(facebook::yoga::Dimension::Width,
+                                                   resolveYogaValue(width, savedMaxWidth));
             break;
     }
 
@@ -2093,15 +2108,18 @@ static void doCalculateLayoutOnNode(YGNode* yogaNode,
             break;
         case MeasureModeAtMost:
             ownerHeight = height;
-            yogaNode->getStyle().maxDimensions()[YGDimensionHeight] = resolveYogaValue(height, savedMaxHeight);
+            getYogaStyle(yogaNode).setMaxDimension(facebook::yoga::Dimension::Height,
+                                                   resolveYogaValue(height, savedMaxHeight));
             break;
     }
 
-    YGNodeCalculateLayoutWithContext(
-        yogaNode, ownerWidth, ownerHeight, yogaDirection, static_cast<void*>(&measureCount));
+    auto* previousMeasureMetrics = currentMeasureMetrics;
+    currentMeasureMetrics = &measureCount;
+    facebook::yoga::calculateLayout(facebook::yoga::resolveRef(yogaNode), ownerWidth, ownerHeight, yogaDirection);
+    currentMeasureMetrics = previousMeasureMetrics;
 
-    yogaNode->getStyle().maxDimensions()[YGDimensionWidth] = savedMaxWidth;
-    yogaNode->getStyle().maxDimensions()[YGDimensionHeight] = savedMaxHeight;
+    getYogaStyle(yogaNode).setMaxDimension(facebook::yoga::Dimension::Width, savedMaxWidth);
+    getYogaStyle(yogaNode).setMaxDimension(facebook::yoga::Dimension::Height, savedMaxHeight);
 }
 
 bool ViewNode::calculateLayoutOnNodeIfNeeded(YGNode* yogaNode,
@@ -2112,7 +2130,7 @@ bool ViewNode::calculateLayoutOnNodeIfNeeded(YGNode* yogaNode,
                                              LayoutDirection direction,
                                              bool forceLayout,
                                              bool isFromLazyLayout) const {
-    if (!yogaNode->isDirty() && !forceLayout) {
+    if (!resolveYogaNode(yogaNode)->isDirty() && !forceLayout) {
         return false;
     }
 
@@ -2253,7 +2271,7 @@ bool ViewNode::updateCalculatedFrame(float viewOffsetX,
     auto newFrame = ygNodeGetFrame(_yogaNode, rtlOffsetX);
     auto newViewFrame = newFrame.withOffset(viewOffsetX, viewOffsetY);
 
-    auto hasNewLayout = _yogaNode->getHasNewLayout();
+    auto hasNewLayout = resolveYogaNode(_yogaNode)->getHasNewLayout();
     auto hadLayout = _flags[kLayoutDidCompleteOnceFlag];
     auto layoutIsRightToLeft = isRightToLeft();
 
@@ -2282,7 +2300,7 @@ bool ViewNode::updateCalculatedFrame(float viewOffsetX,
 
     _flags[kLayoutDidCompleteOnceFlag] = true;
 
-    _yogaNode->setHasNewLayout(false);
+    resolveYogaNode(_yogaNode)->setHasNewLayout(false);
 
     return true;
 }
@@ -2291,10 +2309,10 @@ bool ViewNode::updateLazyLayout() {
     // Using lazy-layout creates a new "detached" yoga subtree, so the device-level RTL/LTR style that
     // we set on the root node doesn't propagate to that detached subtree.
     // Need to manually set the Direction style on the detached subtree.
-    auto direction = _yogaNode->getLayout().direction();
-    auto previousDirection = _lazyLayoutData->yogaNode->getLayout().direction();
+    auto direction = facebook::yoga::resolveRef(_yogaNode)->getLayout().direction();
+    auto previousDirection = facebook::yoga::resolveRef(_lazyLayoutData->yogaNode)->getLayout().direction();
     auto directionHasChanged = direction != previousDirection;
-    YGNodeStyleSetDirection(_lazyLayoutData->yogaNode, direction);
+    getYogaStyle(_lazyLayoutData->yogaNode).setDirection(direction);
 
     auto sizeHasChanged = _lazyLayoutData->availableWidth != _calculatedFrame.width ||
                           _lazyLayoutData->availableHeight != _calculatedFrame.height;
@@ -2320,26 +2338,29 @@ void ViewNode::updateScrollState() {
     auto& scrollState = getOrCreateScrollState();
     scrollState.setInScrollMode(true);
 
-    auto hadOverflow = _yogaNode->getLayout().hadOverflow();
+    auto hadOverflow = resolveYogaNode(_yogaNode)->getLayout().hadOverflow();
     auto* yogaContainer = getYogaNodeForInsertingChildren();
+    auto* yogaContainerNode = resolveYogaNode(yogaContainer);
 
     float rtlOffsetX = 0;
 
     if (isRightToLeft()) {
-        if (hadOverflow && _yogaNode->getStyle().flexDirection() == YGFlexDirectionRow) {
+        if (hadOverflow && getYogaStyle(_yogaNode).flexDirection() == facebook::yoga::FlexDirection::Row) {
             // On RTL horizontal, we need to adjust the calculated frames as yoga doesn't move the items to the
             // right of the container.
             float lowestLeft = 0;
 
-            for (auto* childYogaNode : yogaContainer->getChildren()) {
-                auto left =
-                    ygNodeGetFrame(childYogaNode, -sanitizeYogaValue(childYogaNode->getLayout().margin[YGEdgeLeft]))
-                        .getLeft();
+            for (auto* childYogaNode : yogaContainerNode->getChildren()) {
+                auto left = ygNodeGetFrame(
+                                childYogaNode,
+                                -sanitizeYogaValue(childYogaNode->getLayout().margin(facebook::yoga::PhysicalEdge::Left)))
+                                .getLeft();
 
                 lowestLeft = std::min(left, lowestLeft);
             }
 
-            lowestLeft -= sanitizeYogaValue(_yogaNode->getLayout().padding[YGEdgeLeft]);
+            lowestLeft -=
+                sanitizeYogaValue(resolveYogaNode(_yogaNode)->getLayout().padding(facebook::yoga::PhysicalEdge::Left));
 
             rtlOffsetX = -lowestLeft;
         } else {
@@ -2352,18 +2373,18 @@ void ViewNode::updateScrollState() {
     float highestWidth = 0;
     float highestHeight = 0;
 
-    for (auto* childYogaNode : yogaContainer->getChildren()) {
+    for (auto* childYogaNode : yogaContainerNode->getChildren()) {
         auto frame = ygNodeGetFrame(childYogaNode, rtlOffsetX);
 
-        auto right = frame.getRight() + childYogaNode->getLayout().margin[YGEdgeRight];
-        auto bottom = frame.getBottom() + childYogaNode->getLayout().margin[YGEdgeBottom];
+        auto right = frame.getRight() + childYogaNode->getLayout().margin(facebook::yoga::PhysicalEdge::Right);
+        auto bottom = frame.getBottom() + childYogaNode->getLayout().margin(facebook::yoga::PhysicalEdge::Bottom);
 
         highestWidth = std::max(right, highestWidth);
         highestHeight = std::max(bottom, highestHeight);
     };
 
-    highestWidth += yogaContainer->getLayout().padding[YGEdgeRight];
-    highestHeight += yogaContainer->getLayout().padding[YGEdgeBottom];
+    highestWidth += yogaContainerNode->getLayout().padding(facebook::yoga::PhysicalEdge::Right);
+    highestHeight += yogaContainerNode->getLayout().padding(facebook::yoga::PhysicalEdge::Bottom);
 
     auto updateResult = scrollState.updateContentSizeAndRtlOffset(
         Size(highestWidth, highestHeight), _calculatedFrame.size(), rtlOffsetX, getPointScale(), isHorizontal());
@@ -2392,10 +2413,12 @@ void ViewNode::updateScrollState() {
             int anchorPosition = anchorNode->getScrollAnchorPosition();
 
             // Compute anchor's Y relative to this scroll node
-            float anchorY = sanitizeYogaValue(YGNodeLayoutGetTop(anchorNode->getYogaNode()));
+            float anchorY = sanitizeYogaValue(
+                resolveYogaNode(anchorNode->getYogaNode())->getLayout().position(facebook::yoga::PhysicalEdge::Top));
             for (auto* parent = anchorNode->getParent().get(); parent != nullptr && parent != this;
                  parent = parent->getParent().get()) {
-                anchorY += sanitizeYogaValue(YGNodeLayoutGetTop(parent->getYogaNode()));
+                anchorY += sanitizeYogaValue(
+                    resolveYogaNode(parent->getYogaNode())->getLayout().position(facebook::yoga::PhysicalEdge::Top));
             }
 
             // Pin anchor to the specified viewport edge
@@ -2634,8 +2657,9 @@ bool ViewNode::handleCSSChange(bool cssChanged) {
 }
 
 bool ViewNode::isHorizontal() {
-    auto flexDirection = getYogaNodeForInsertingChildren()->getStyle().flexDirection();
-    return flexDirection == YGFlexDirectionRow || flexDirection == YGFlexDirectionRowReverse;
+    auto flexDirection = getYogaStyle(getYogaNodeForInsertingChildren()).flexDirection();
+    return flexDirection == facebook::yoga::FlexDirection::Row ||
+           flexDirection == facebook::yoga::FlexDirection::RowReverse;
 }
 
 bool ViewNode::setAttribute(ViewTransactionScope& viewTransactionScope,
@@ -2802,7 +2826,7 @@ bool ViewNode::isRightToLeft() const {
     if (_yogaNode == nullptr) {
         return false;
     }
-    return _yogaNode->getLayout().direction() == YGDirectionRTL;
+    return facebook::yoga::resolveRef(_yogaNode)->getLayout().direction() == facebook::yoga::Direction::RTL;
 }
 
 PlatformType ViewNode::getPlatformType() const {
@@ -3039,15 +3063,16 @@ void ViewNode::updateCSS(ViewTransactionScope& viewTransactionScope, const Ref<A
 }
 
 void ViewNode::setHorizontalScroll(bool horizontalScroll) {
-    YGFlexDirection newDirection;
+    facebook::yoga::FlexDirection newDirection;
     if (horizontalScroll) {
-        newDirection = YGFlexDirectionRow;
+        newDirection = facebook::yoga::FlexDirection::Row;
     } else {
-        newDirection = YGFlexDirectionColumn;
+        newDirection = facebook::yoga::FlexDirection::Column;
     }
 
-    if (getYogaNodeForInsertingChildren()->getStyle().flexDirection() != newDirection) {
-        getYogaNodeForInsertingChildren()->getStyle().flexDirection() = newDirection;
+    auto* yogaNode = getYogaNodeForInsertingChildren();
+    if (getYogaStyle(yogaNode).flexDirection() != newDirection) {
+        getYogaStyle(yogaNode).setFlexDirection(newDirection);
         markLayoutDirty();
     }
 
@@ -3508,15 +3533,13 @@ static MeasureMode yogaMeasureModeToValdiMeasureMode(YGMeasureMode measureMode) 
     }
 }
 
-YGSize ygMeasureYoga(
-    YGNodeRef node, float width, YGMeasureMode widthMode, float height, YGMeasureMode heightMode, void* context) {
-    auto* viewNode = reinterpret_cast<ViewNode*>(Yoga::getAttachedViewNode(node));
+YGSize ygMeasureYoga(YGNodeConstRef node, float width, YGMeasureMode widthMode, float height, YGMeasureMode heightMode) {
+    auto* viewNode = reinterpret_cast<ViewNode*>(facebook::yoga::resolveRef(node)->getContext());
     if (viewNode == nullptr) {
         return {.width = 0, .height = 0};
     }
-    SC_ASSERT(context != nullptr);
-    auto measureCount = reinterpret_cast<MeasureMetrics*>(context);
-    measureCount->totalMeasure++;
+    SC_ASSERT(currentMeasureMetrics != nullptr);
+    currentMeasureMetrics->totalMeasure++;
 
     auto convertedWidthMode = yogaMeasureModeToValdiMeasureMode(widthMode);
     auto convertedHeightMode = yogaMeasureModeToValdiMeasureMode(heightMode);
@@ -3531,8 +3554,8 @@ YGSize ygMeasureYoga(
     };
 }
 
-void ygDirtiedCallback(YGNodeRef node) {
-    auto* viewNode = reinterpret_cast<ViewNode*>(Yoga::getAttachedViewNode(node));
+void ygDirtiedCallback(YGNodeConstRef node) {
+    auto* viewNode = reinterpret_cast<ViewNode*>(facebook::yoga::resolveRef(node)->getContext());
     if (viewNode == nullptr) {
         return;
     }

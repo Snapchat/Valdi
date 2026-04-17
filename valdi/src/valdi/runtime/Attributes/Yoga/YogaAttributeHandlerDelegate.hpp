@@ -9,13 +9,16 @@
 
 #include "valdi/runtime/Attributes/AttributeHandlerDelegate.hpp"
 
-#include <yoga/YGNode.h>
+#include <yoga/Yoga.h>
+#include <yoga/numeric/FloatOptional.h>
+#include <yoga/style/StyleLength.h>
+#include <yoga/style/StyleSizeLength.h>
 
 namespace Valdi {
 
 class AttributeParser;
 class YogaAttributes;
-using YGCompactValue = facebook::yoga::detail::CompactValue;
+using YGFloatOptional = facebook::yoga::FloatOptional;
 
 class YogaAttributeHandlerDelegate : public AttributeHandlerDelegate {
 public:
@@ -39,8 +42,10 @@ protected:
     virtual Result<Void> onApply(YGNodeRef node, const Value& value) = 0;
     virtual void onReset(YGNodeRef node, YGNodeRef defaultYogaNode) = 0;
 
-    std::optional<YGCompactValue> parseYGValue(AttributeParser& parser);
-    Result<YGCompactValue> valueToYGValue(const Value& value);
+    std::optional<facebook::yoga::StyleLength> parseYGStyleLength(AttributeParser& parser);
+    Result<facebook::yoga::StyleLength> valueToYGStyleLength(const Value& value);
+    std::optional<facebook::yoga::StyleSizeLength> parseYGStyleSizeLength(AttributeParser& parser);
+    Result<facebook::yoga::StyleSizeLength> valueToYGStyleSizeLength(const Value& value);
 
 private:
     Ref<YogaAttributes> _yogaAttributes;

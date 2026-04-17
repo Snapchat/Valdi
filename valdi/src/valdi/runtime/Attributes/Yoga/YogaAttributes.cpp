@@ -17,37 +17,120 @@
 #include "valdi/runtime/Context/ViewNode.hpp"
 
 #include <array>
+#include <initializer_list>
+#include <yoga/enums/Align.h>
+#include <yoga/enums/Direction.h>
+#include <yoga/enums/Display.h>
+#include <yoga/enums/FlexDirection.h>
+#include <yoga/enums/Justify.h>
+#include <yoga/enums/Overflow.h>
+#include <yoga/enums/PositionType.h>
+#include <yoga/enums/Wrap.h>
+#include <yoga/node/Node.h>
 
 namespace Valdi {
 
-static void populateAssociativeEnumMap(FlatMap<StringBox, int>& associativeMap,
-                                       int enumCount,
-                                       const char* (*toStringFunction)(int)) {
-    associativeMap.reserve(static_cast<size_t>(enumCount));
-
-    for (int i = 0; i < enumCount; i++) {
-        auto key = STRING_LITERAL(toStringFunction(i));
-        associativeMap[key] = i;
+template<typename Type, typename ToStringFunction>
+static void populateAssociativeEnumMap(FlatMap<StringBox, int>& associateMap,
+                                       std::initializer_list<Type> enumValues,
+                                       ToStringFunction toStringFunction) {
+    associateMap.reserve(enumValues.size());
+    for (auto enumValue : enumValues) {
+        associateMap[STRING_LITERAL(toStringFunction(enumValue))] = static_cast<int>(enumValue);
     }
 }
 
-template<typename Type, const char* (*toStringFunction)(Type)>
-static void populateAssociativeEnumMap(FlatMap<StringBox, int>& associateMap) {
-    populateAssociativeEnumMap(associateMap, facebook::yoga::enums::count<Type>(), [](int index) {
-        return toStringFunction(static_cast<Type>(index));
-    });
+template<typename Type>
+static int toAttributeEnum(Type value) {
+    return static_cast<int>(value);
+}
+
+template<typename Type>
+static Type fromAttributeEnum(int value) {
+    return static_cast<Type>(value);
+}
+
+static void setYGPosition(facebook::yoga::Style& style, YGEdge edge, facebook::yoga::StyleLength value) {
+    style.setPosition(facebook::yoga::scopedEnum(edge), value);
+}
+
+static void setYGMargin(facebook::yoga::Style& style, YGEdge edge, facebook::yoga::StyleLength value) {
+    style.setMargin(facebook::yoga::scopedEnum(edge), value);
+}
+
+static void setYGPadding(facebook::yoga::Style& style, YGEdge edge, facebook::yoga::StyleLength value) {
+    style.setPadding(facebook::yoga::scopedEnum(edge), value);
+}
+
+static void setYGBorder(facebook::yoga::Style& style, YGEdge edge, facebook::yoga::StyleLength value) {
+    style.setBorder(facebook::yoga::scopedEnum(edge), value);
+}
+
+static void setYGFlexBasis(facebook::yoga::Style& style, facebook::yoga::StyleSizeLength value) {
+    style.setFlexBasis(value);
 }
 
 YogaAttributes::YogaAttributes(YGConfig* const yogaConfig, AttributeIds& attributeIds, float pointScale)
     : _defaultYogaNode(Yoga::createNode(yogaConfig)), _attributeIds(attributeIds), _pointScale(pointScale) {
-    populateAssociativeEnumMap<YGDirection, YGDirectionToString>(_directionToEnum);
-    populateAssociativeEnumMap<YGFlexDirection, YGFlexDirectionToString>(_flexDirectionToEnum);
-    populateAssociativeEnumMap<YGJustify, YGJustifyToString>(_justifyToEnum);
-    populateAssociativeEnumMap<YGAlign, YGAlignToString>(_alignToEnum);
-    populateAssociativeEnumMap<YGPositionType, YGPositionTypeToString>(_positionTypeToEnum);
-    populateAssociativeEnumMap<YGWrap, YGWrapToString>(_wrapToEnum);
-    populateAssociativeEnumMap<YGOverflow, YGOverflowToString>(_overflowToEnum);
-    populateAssociativeEnumMap<YGDisplay, YGDisplayToString>(_displayToEnum);
+    populateAssociativeEnumMap<facebook::yoga::Direction>(
+        _directionToEnum,
+        {facebook::yoga::Direction::Inherit, facebook::yoga::Direction::LTR, facebook::yoga::Direction::RTL},
+        [](facebook::yoga::Direction value) { return facebook::yoga::toString(value); });
+    populateAssociativeEnumMap<facebook::yoga::FlexDirection>(
+        _flexDirectionToEnum,
+        {facebook::yoga::FlexDirection::Column,
+         facebook::yoga::FlexDirection::ColumnReverse,
+         facebook::yoga::FlexDirection::Row,
+         facebook::yoga::FlexDirection::RowReverse},
+        [](facebook::yoga::FlexDirection value) { return facebook::yoga::toString(value); });
+    populateAssociativeEnumMap<facebook::yoga::Justify>(
+        _justifyToEnum,
+        {facebook::yoga::Justify::Auto,
+         facebook::yoga::Justify::FlexStart,
+         facebook::yoga::Justify::Center,
+         facebook::yoga::Justify::FlexEnd,
+         facebook::yoga::Justify::SpaceBetween,
+         facebook::yoga::Justify::SpaceAround,
+         facebook::yoga::Justify::SpaceEvenly,
+         facebook::yoga::Justify::Stretch,
+         facebook::yoga::Justify::Start,
+         facebook::yoga::Justify::End},
+        [](facebook::yoga::Justify value) { return facebook::yoga::toString(value); });
+    populateAssociativeEnumMap<facebook::yoga::Align>(
+        _alignToEnum,
+        {facebook::yoga::Align::Auto,
+         facebook::yoga::Align::FlexStart,
+         facebook::yoga::Align::Center,
+         facebook::yoga::Align::FlexEnd,
+         facebook::yoga::Align::Stretch,
+         facebook::yoga::Align::Baseline,
+         facebook::yoga::Align::SpaceBetween,
+         facebook::yoga::Align::SpaceAround,
+         facebook::yoga::Align::SpaceEvenly,
+         facebook::yoga::Align::Start,
+         facebook::yoga::Align::End},
+        [](facebook::yoga::Align value) { return facebook::yoga::toString(value); });
+    populateAssociativeEnumMap<facebook::yoga::PositionType>(
+        _positionTypeToEnum,
+        {facebook::yoga::PositionType::Static,
+         facebook::yoga::PositionType::Relative,
+         facebook::yoga::PositionType::Absolute},
+        [](facebook::yoga::PositionType value) { return facebook::yoga::toString(value); });
+    populateAssociativeEnumMap<facebook::yoga::Wrap>(
+        _wrapToEnum,
+        {facebook::yoga::Wrap::NoWrap, facebook::yoga::Wrap::Wrap, facebook::yoga::Wrap::WrapReverse},
+        [](facebook::yoga::Wrap value) { return facebook::yoga::toString(value); });
+    populateAssociativeEnumMap<facebook::yoga::Overflow>(
+        _overflowToEnum,
+        {facebook::yoga::Overflow::Visible, facebook::yoga::Overflow::Hidden, facebook::yoga::Overflow::Scroll},
+        [](facebook::yoga::Overflow value) { return facebook::yoga::toString(value); });
+    populateAssociativeEnumMap<facebook::yoga::Display>(
+        _displayToEnum,
+        {facebook::yoga::Display::Flex,
+         facebook::yoga::Display::None,
+         facebook::yoga::Display::Contents,
+         facebook::yoga::Display::Grid},
+        [](facebook::yoga::Display value) { return facebook::yoga::toString(value); });
 }
 
 YogaAttributes::~YogaAttributes() {
@@ -65,17 +148,19 @@ void YogaAttributes::bindAttribute(const char* name,
 }
 
 template<YGEdge edge>
-static YGNodeValueGetterSetter<YGCompactValue> makePositionEdgeGetterSetter() {
-    return YGNodeValueGetterSetter<YGCompactValue>(
-        [](YGNodeRef node) -> YGCompactValue { return node->getStyle().position()[edge]; },
-        [](YGNodeRef node, YGCompactValue value) { node->getStyle().position()[edge] = value; });
+static YGNodeValueGetterSetter<facebook::yoga::StyleLength> makePositionEdgeGetterSetter() {
+    return YGNodeValueGetterSetter<facebook::yoga::StyleLength>(
+        [](facebook::yoga::Style& style) -> facebook::yoga::StyleLength {
+            return style.position(facebook::yoga::scopedEnum(edge));
+        },
+        [](facebook::yoga::Style& style, facebook::yoga::StyleLength value) { setYGPosition(style, edge, value); });
 }
 
 void YogaAttributes::bindPositionAttributes(AttributeHandlerById& attributes) {
-    bindYGValueAttribute("top", false, attributes, makePositionEdgeGetterSetter<YGEdgeTop>());
-    bindYGValueAttribute("right", false, attributes, makePositionEdgeGetterSetter<YGEdgeEnd>());
-    bindYGValueAttribute("bottom", false, attributes, makePositionEdgeGetterSetter<YGEdgeBottom>());
-    bindYGValueAttribute("left", false, attributes, makePositionEdgeGetterSetter<YGEdgeStart>());
+    bindYGStyleLengthAttribute("top", false, attributes, makePositionEdgeGetterSetter<YGEdgeTop>());
+    bindYGStyleLengthAttribute("right", false, attributes, makePositionEdgeGetterSetter<YGEdgeEnd>());
+    bindYGStyleLengthAttribute("bottom", false, attributes, makePositionEdgeGetterSetter<YGEdgeBottom>());
+    bindYGStyleLengthAttribute("left", false, attributes, makePositionEdgeGetterSetter<YGEdgeStart>());
 }
 
 static std::array<std::pair<YGEdge, std::string>, 4> getAllEdges() {
@@ -104,22 +189,31 @@ void YogaAttributes::bindYGOptionalAttribute(const char* name,
         name, isForChildrenNode, attributes, makeShared<YGFloatOptionalAttributeHandlerDelegate>(getterSetter));
 }
 
-void YogaAttributes::bindYGValueAttribute(const char* name,
-                                          bool isForChildrenNode,
-                                          AttributeHandlerById& attributes,
-                                          YGNodeValueGetterSetter<YGCompactValue> getterSetter) {
-    bindAttribute(name, isForChildrenNode, attributes, makeShared<YGValueAttributeHandlerDelegate>(getterSetter));
+void YogaAttributes::bindYGStyleLengthAttribute(const char* name,
+                                                bool isForChildrenNode,
+                                                AttributeHandlerById& attributes,
+                                                YGNodeValueGetterSetter<facebook::yoga::StyleLength> getterSetter) {
+    bindAttribute(name, isForChildrenNode, attributes, makeShared<YGStyleLengthAttributeHandlerDelegate>(getterSetter));
 }
 
-template<typename GetEdges>
+void YogaAttributes::bindYGStyleSizeLengthAttribute(
+    const char* name,
+    bool isForChildrenNode,
+    AttributeHandlerById& attributes,
+    YGNodeValueGetterSetter<facebook::yoga::StyleSizeLength> getterSetter) {
+    bindAttribute(
+        name, isForChildrenNode, attributes, makeShared<YGStyleSizeLengthAttributeHandlerDelegate>(getterSetter));
+}
+
+template<typename SetEdges>
 void YogaAttributes::bindPaddingOrMarginAttributes(std::string_view name,
                                                    bool isForChildrenNode,
                                                    AttributeHandlerById& attributes,
-                                                   GetEdges&& getEdges) {
+                                                   SetEdges&& setEdges) {
     bindEdgeAttributes(name,
                        isForChildrenNode,
                        attributes,
-                       makeShared<YGEdgesAttributeHandlerDelegate<GetEdges>>(std::forward<GetEdges>(getEdges)));
+                       makeShared<YGEdgesAttributeHandlerDelegate<SetEdges>>(std::forward<SetEdges>(setEdges)));
 }
 
 void YogaAttributes::bindEdgeAttributes(std::string_view name,
@@ -160,17 +254,22 @@ void YogaAttributes::bind(AttributeHandlerById& attributes) {
         attributes,
         _directionToEnum,
         YGNodeValueGetterSetter<int>(
-            [](YGNodeRef node) { return static_cast<int>(node->getStyle().direction()); },
-            [](YGNodeRef node, int enumValue) { node->getStyle().direction() = static_cast<YGDirection>(enumValue); }));
+            [](facebook::yoga::Style& style) { return toAttributeEnum(style.direction()); },
+            [](facebook::yoga::Style& style, int enumValue) {
+                style.setDirection(fromAttributeEnum<facebook::yoga::Direction>(enumValue));
+            }));
 
     bindEnumAttribute(
         "flexDirection",
         true,
         attributes,
         _flexDirectionToEnum,
-        YGNodeValueGetterSetter<int>([](YGNodeRef node) { return static_cast<int>(node->getStyle().flexDirection()); },
-                                     [](YGNodeRef node, int enumValue) {
-                                         node->getStyle().flexDirection() = static_cast<YGFlexDirection>(enumValue);
+        YGNodeValueGetterSetter<int>([](facebook::yoga::Style& style) {
+                                         return toAttributeEnum(style.flexDirection());
+                                     },
+                                     [](facebook::yoga::Style& style, int enumValue) {
+                                         style.setFlexDirection(
+                                             fromAttributeEnum<facebook::yoga::FlexDirection>(enumValue));
                                      }));
 
     bindEnumAttribute(
@@ -178,9 +277,12 @@ void YogaAttributes::bind(AttributeHandlerById& attributes) {
         true,
         attributes,
         _justifyToEnum,
-        YGNodeValueGetterSetter<int>([](YGNodeRef node) { return static_cast<int>(node->getStyle().justifyContent()); },
-                                     [](YGNodeRef node, int enumValue) {
-                                         node->getStyle().justifyContent() = static_cast<YGJustify>(enumValue);
+        YGNodeValueGetterSetter<int>([](facebook::yoga::Style& style) {
+                                         return toAttributeEnum(style.justifyContent());
+                                     },
+                                     [](facebook::yoga::Style& style, int enumValue) {
+                                         style.setJustifyContent(
+                                             fromAttributeEnum<facebook::yoga::Justify>(enumValue));
                                      }));
 
     bindEnumAttribute(
@@ -189,8 +291,12 @@ void YogaAttributes::bind(AttributeHandlerById& attributes) {
         attributes,
         _alignToEnum,
         YGNodeValueGetterSetter<int>(
-            [](YGNodeRef node) { return static_cast<int>(node->getStyle().alignContent()); },
-            [](YGNodeRef node, int enumValue) { node->getStyle().alignContent() = static_cast<YGAlign>(enumValue); }));
+            [](facebook::yoga::Style& style) {
+                return toAttributeEnum(style.alignContent());
+            },
+            [](facebook::yoga::Style& style, int enumValue) {
+                style.setAlignContent(fromAttributeEnum<facebook::yoga::Align>(enumValue));
+            }));
 
     bindEnumAttribute(
         "alignItems",
@@ -198,8 +304,12 @@ void YogaAttributes::bind(AttributeHandlerById& attributes) {
         attributes,
         _alignToEnum,
         YGNodeValueGetterSetter<int>(
-            [](YGNodeRef node) { return static_cast<int>(node->getStyle().alignItems()); },
-            [](YGNodeRef node, int enumValue) { node->getStyle().alignItems() = static_cast<YGAlign>(enumValue); }));
+            [](facebook::yoga::Style& style) {
+                return toAttributeEnum(style.alignItems());
+            },
+            [](facebook::yoga::Style& style, int enumValue) {
+                style.setAlignItems(fromAttributeEnum<facebook::yoga::Align>(enumValue));
+            }));
 
     bindEnumAttribute(
         "alignSelf",
@@ -207,17 +317,24 @@ void YogaAttributes::bind(AttributeHandlerById& attributes) {
         attributes,
         _alignToEnum,
         YGNodeValueGetterSetter<int>(
-            [](YGNodeRef node) { return static_cast<int>(node->getStyle().alignSelf()); },
-            [](YGNodeRef node, int enumValue) { node->getStyle().alignSelf() = static_cast<YGAlign>(enumValue); }));
+            [](facebook::yoga::Style& style) {
+                return toAttributeEnum(style.alignSelf());
+            },
+            [](facebook::yoga::Style& style, int enumValue) {
+                style.setAlignSelf(fromAttributeEnum<facebook::yoga::Align>(enumValue));
+            }));
 
     bindEnumAttribute(
         "position",
         false,
         attributes,
         _positionTypeToEnum,
-        YGNodeValueGetterSetter<int>([](YGNodeRef node) { return static_cast<int>(node->getStyle().positionType()); },
-                                     [](YGNodeRef node, int enumValue) {
-                                         node->getStyle().positionType() = static_cast<YGPositionType>(enumValue);
+        YGNodeValueGetterSetter<int>([](facebook::yoga::Style& style) {
+                                         return toAttributeEnum(style.positionType());
+                                     },
+                                     [](facebook::yoga::Style& style, int enumValue) {
+                                         style.setPositionType(
+                                             fromAttributeEnum<facebook::yoga::PositionType>(enumValue));
                                      }));
 
     bindEnumAttribute(
@@ -226,8 +343,12 @@ void YogaAttributes::bind(AttributeHandlerById& attributes) {
         attributes,
         _wrapToEnum,
         YGNodeValueGetterSetter<int>(
-            [](YGNodeRef node) { return static_cast<int>(node->getStyle().flexWrap()); },
-            [](YGNodeRef node, int enumValue) { node->getStyle().flexWrap() = static_cast<YGWrap>(enumValue); }));
+            [](facebook::yoga::Style& style) {
+                return toAttributeEnum(style.flexWrap());
+            },
+            [](facebook::yoga::Style& style, int enumValue) {
+                style.setFlexWrap(fromAttributeEnum<facebook::yoga::Wrap>(enumValue));
+            }));
 
     bindEnumAttribute(
         "overflow",
@@ -235,8 +356,12 @@ void YogaAttributes::bind(AttributeHandlerById& attributes) {
         attributes,
         _overflowToEnum,
         YGNodeValueGetterSetter<int>(
-            [](YGNodeRef node) { return static_cast<int>(node->getStyle().overflow()); },
-            [](YGNodeRef node, int enumValue) { node->getStyle().overflow() = static_cast<YGOverflow>(enumValue); }));
+            [](facebook::yoga::Style& style) {
+                return toAttributeEnum(style.overflow());
+            },
+            [](facebook::yoga::Style& style, int enumValue) {
+                style.setOverflow(fromAttributeEnum<facebook::yoga::Overflow>(enumValue));
+            }));
 
     bindEnumAttribute(
         "display",
@@ -244,136 +369,214 @@ void YogaAttributes::bind(AttributeHandlerById& attributes) {
         attributes,
         _displayToEnum,
         YGNodeValueGetterSetter<int>(
-            [](YGNodeRef node) { return static_cast<int>(node->getStyle().display()); },
-            [](YGNodeRef node, int enumValue) { node->getStyle().display() = static_cast<YGDisplay>(enumValue); }));
+            [](facebook::yoga::Style& style) {
+                return toAttributeEnum(style.display());
+            },
+            [](facebook::yoga::Style& style, int enumValue) {
+                style.setDisplay(fromAttributeEnum<facebook::yoga::Display>(enumValue));
+            }));
 
     bindYGOptionalAttribute("flexGrow",
                             false,
                             attributes,
                             YGNodeValueGetterSetter<YGFloatOptional>(
-                                [](YGNodeRef node) -> YGFloatOptional { return node->getStyle().flexGrow(); },
-                                [](YGNodeRef node, YGFloatOptional value) { node->getStyle().flexGrow() = value; }));
+                                [](facebook::yoga::Style& style) -> YGFloatOptional {
+                                    return style.flexGrow();
+                                },
+                                [](facebook::yoga::Style& style, YGFloatOptional value) {
+                                    style.setFlexGrow(value);
+                                }));
 
     bindYGOptionalAttribute("flexShrink",
                             false,
                             attributes,
                             YGNodeValueGetterSetter<YGFloatOptional>(
-                                [](YGNodeRef node) -> YGFloatOptional { return node->getStyle().flexShrink(); },
-                                [](YGNodeRef node, YGFloatOptional value) { node->getStyle().flexShrink() = value; }));
+                                [](facebook::yoga::Style& style) -> YGFloatOptional {
+                                    return style.flexShrink();
+                                },
+                                [](facebook::yoga::Style& style, YGFloatOptional value) {
+                                    style.setFlexShrink(value);
+                                }));
 
-    bindYGValueAttribute("flexBasis",
-                         false,
-                         attributes,
-                         YGNodeValueGetterSetter<YGCompactValue>(
-                             [](YGNodeRef node) -> YGCompactValue { return node->getStyle().flexBasis(); },
-                             [](YGNodeRef node, YGCompactValue value) { node->getStyle().flexBasis() = value; }));
+    bindYGStyleSizeLengthAttribute("flexBasis",
+                                   false,
+                                   attributes,
+                                   YGNodeValueGetterSetter<facebook::yoga::StyleSizeLength>(
+                                       [](facebook::yoga::Style& style) -> facebook::yoga::StyleSizeLength {
+                                           return style.flexBasis();
+                                       },
+                                       [](facebook::yoga::Style& style, facebook::yoga::StyleSizeLength value) {
+                                           setYGFlexBasis(style, value);
+                                       }));
 
     bindPositionAttributes(attributes);
 
-    bindPaddingOrMarginAttributes(
-        "margin", false, attributes, [](YGNodeRef node) -> auto { return node->getStyle().margin(); });
-    bindPaddingOrMarginAttributes(
-        "padding", true, attributes, [](YGNodeRef node) -> auto { return node->getStyle().padding(); });
+    bindPaddingOrMarginAttributes("margin", false, attributes, [](facebook::yoga::Style& style,
+                                                                  const facebook::yoga::StyleLength& top,
+                                                                  const facebook::yoga::StyleLength& end,
+                                                                  const facebook::yoga::StyleLength& bottom,
+                                                                  const facebook::yoga::StyleLength& start) {
+        setYGMargin(style, YGEdgeTop, top);
+        setYGMargin(style, YGEdgeEnd, end);
+        setYGMargin(style, YGEdgeBottom, bottom);
+        setYGMargin(style, YGEdgeStart, start);
+    });
+    bindPaddingOrMarginAttributes("padding", true, attributes, [](facebook::yoga::Style& style,
+                                                                  const facebook::yoga::StyleLength& top,
+                                                                  const facebook::yoga::StyleLength& end,
+                                                                  const facebook::yoga::StyleLength& bottom,
+                                                                  const facebook::yoga::StyleLength& start) {
+        setYGPadding(style, YGEdgeTop, top);
+        setYGPadding(style, YGEdgeEnd, end);
+        setYGPadding(style, YGEdgeBottom, bottom);
+        setYGPadding(style, YGEdgeStart, start);
+    });
 
-    bindYGValueAttribute(
+    bindYGStyleLengthAttribute(
         "borderTopWidth",
         false,
         attributes,
-        YGNodeValueGetterSetter<YGCompactValue>(
-            [](YGNodeRef node) -> YGCompactValue { return node->getStyle().border()[YGEdgeTop]; },
-            [](YGNodeRef node, YGCompactValue value) { node->getStyle().border()[YGEdgeTop] = value; }));
+        YGNodeValueGetterSetter<facebook::yoga::StyleLength>(
+            [](facebook::yoga::Style& style) -> facebook::yoga::StyleLength {
+                return style.border(facebook::yoga::scopedEnum(YGEdgeTop));
+            },
+            [](facebook::yoga::Style& style, facebook::yoga::StyleLength value) {
+                setYGBorder(style, YGEdgeTop, value);
+            }));
 
-    bindYGValueAttribute(
+    bindYGStyleLengthAttribute(
         "borderRightWidth",
         false,
         attributes,
-        YGNodeValueGetterSetter<YGCompactValue>(
-            [](YGNodeRef node) -> YGCompactValue { return node->getStyle().border()[YGEdgeEnd]; },
-            [](YGNodeRef node, YGCompactValue value) { node->getStyle().border()[YGEdgeEnd] = value; }));
+        YGNodeValueGetterSetter<facebook::yoga::StyleLength>(
+            [](facebook::yoga::Style& style) -> facebook::yoga::StyleLength {
+                return style.border(facebook::yoga::scopedEnum(YGEdgeEnd));
+            },
+            [](facebook::yoga::Style& style, facebook::yoga::StyleLength value) {
+                setYGBorder(style, YGEdgeEnd, value);
+            }));
 
-    bindYGValueAttribute(
+    bindYGStyleLengthAttribute(
         "borderBottomWidth",
         false,
         attributes,
-        YGNodeValueGetterSetter<YGCompactValue>(
-            [](YGNodeRef node) -> YGCompactValue { return node->getStyle().border()[YGEdgeBottom]; },
-            [](YGNodeRef node, YGCompactValue value) { node->getStyle().border()[YGEdgeBottom] = value; }));
+        YGNodeValueGetterSetter<facebook::yoga::StyleLength>(
+            [](facebook::yoga::Style& style) -> facebook::yoga::StyleLength {
+                return style.border(facebook::yoga::scopedEnum(YGEdgeBottom));
+            },
+            [](facebook::yoga::Style& style, facebook::yoga::StyleLength value) {
+                setYGBorder(style, YGEdgeBottom, value);
+            }));
 
-    bindYGValueAttribute(
+    bindYGStyleLengthAttribute(
         "borderLeftWidth",
         false,
         attributes,
-        YGNodeValueGetterSetter<YGCompactValue>(
-            [](YGNodeRef node) -> YGCompactValue { return node->getStyle().border()[YGEdgeStart]; },
-            [](YGNodeRef node, YGCompactValue value) { node->getStyle().border()[YGEdgeStart] = value; }));
+        YGNodeValueGetterSetter<facebook::yoga::StyleLength>(
+            [](facebook::yoga::Style& style) -> facebook::yoga::StyleLength {
+                return style.border(facebook::yoga::scopedEnum(YGEdgeStart));
+            },
+            [](facebook::yoga::Style& style, facebook::yoga::StyleLength value) {
+                setYGBorder(style, YGEdgeStart, value);
+            }));
 
-    bindYGValueAttribute(
+    bindYGStyleLengthAttribute(
         "borderWidth",
         false,
         attributes,
-        YGNodeValueGetterSetter<YGCompactValue>(
-            [](YGNodeRef node) -> YGCompactValue { return node->getStyle().border()[YGEdgeAll]; },
-            [](YGNodeRef node, YGCompactValue value) { node->getStyle().border()[YGEdgeAll] = value; }));
+        YGNodeValueGetterSetter<facebook::yoga::StyleLength>(
+            [](facebook::yoga::Style& style) -> facebook::yoga::StyleLength {
+                return style.border(facebook::yoga::scopedEnum(YGEdgeAll));
+            },
+            [](facebook::yoga::Style& style, facebook::yoga::StyleLength value) {
+                setYGBorder(style, YGEdgeAll, value);
+            }));
 
-    bindYGValueAttribute(
+    bindYGStyleSizeLengthAttribute(
         "width",
         false,
         attributes,
-        YGNodeValueGetterSetter<YGCompactValue>(
-            [](YGNodeRef node) -> YGCompactValue { return node->getStyle().dimensions()[YGDimensionWidth]; },
-            [](YGNodeRef node, YGCompactValue value) { node->getStyle().dimensions()[YGDimensionWidth] = value; }));
+        YGNodeValueGetterSetter<facebook::yoga::StyleSizeLength>(
+            [](facebook::yoga::Style& style) -> facebook::yoga::StyleSizeLength {
+                return style.dimension(facebook::yoga::Dimension::Width);
+            },
+            [](facebook::yoga::Style& style, facebook::yoga::StyleSizeLength value) {
+                style.setDimension(facebook::yoga::Dimension::Width, value);
+            }));
 
-    bindYGValueAttribute(
+    bindYGStyleSizeLengthAttribute(
         "height",
         false,
         attributes,
-        YGNodeValueGetterSetter<YGCompactValue>(
-            [](YGNodeRef node) -> YGCompactValue { return node->getStyle().dimensions()[YGDimensionHeight]; },
-            [](YGNodeRef node, YGCompactValue value) { node->getStyle().dimensions()[YGDimensionHeight] = value; }));
+        YGNodeValueGetterSetter<facebook::yoga::StyleSizeLength>(
+            [](facebook::yoga::Style& style) -> facebook::yoga::StyleSizeLength {
+                return style.dimension(facebook::yoga::Dimension::Height);
+            },
+            [](facebook::yoga::Style& style, facebook::yoga::StyleSizeLength value) {
+                style.setDimension(facebook::yoga::Dimension::Height, value);
+            }));
 
-    bindYGValueAttribute(
+    bindYGStyleSizeLengthAttribute(
         "minWidth",
         false,
         attributes,
-        YGNodeValueGetterSetter<YGCompactValue>(
-            [](YGNodeRef node) -> YGCompactValue { return node->getStyle().minDimensions()[YGDimensionWidth]; },
-            [](YGNodeRef node, YGCompactValue value) { node->getStyle().minDimensions()[YGDimensionWidth] = value; }));
+        YGNodeValueGetterSetter<facebook::yoga::StyleSizeLength>(
+            [](facebook::yoga::Style& style) -> facebook::yoga::StyleSizeLength {
+                return style.minDimension(facebook::yoga::Dimension::Width);
+            },
+            [](facebook::yoga::Style& style, facebook::yoga::StyleSizeLength value) {
+                style.setMinDimension(facebook::yoga::Dimension::Width, value);
+            }));
 
-    bindYGValueAttribute(
+    bindYGStyleSizeLengthAttribute(
         "minHeight",
         false,
         attributes,
-        YGNodeValueGetterSetter<YGCompactValue>(
-            [](YGNodeRef node) -> YGCompactValue { return node->getStyle().minDimensions()[YGDimensionHeight]; },
-            [](YGNodeRef node, YGCompactValue value) { node->getStyle().minDimensions()[YGDimensionHeight] = value; }));
+        YGNodeValueGetterSetter<facebook::yoga::StyleSizeLength>(
+            [](facebook::yoga::Style& style) -> facebook::yoga::StyleSizeLength {
+                return style.minDimension(facebook::yoga::Dimension::Height);
+            },
+            [](facebook::yoga::Style& style, facebook::yoga::StyleSizeLength value) {
+                style.setMinDimension(facebook::yoga::Dimension::Height, value);
+            }));
 
-    bindYGValueAttribute(
+    bindYGStyleSizeLengthAttribute(
         "maxWidth",
         false,
         attributes,
-        YGNodeValueGetterSetter<YGCompactValue>(
-            [](YGNodeRef node) -> YGCompactValue { return node->getStyle().maxDimensions()[YGDimensionWidth]; },
-            [](YGNodeRef node, YGCompactValue value) { node->getStyle().maxDimensions()[YGDimensionWidth] = value; }));
+        YGNodeValueGetterSetter<facebook::yoga::StyleSizeLength>(
+            [](facebook::yoga::Style& style) -> facebook::yoga::StyleSizeLength {
+                return style.maxDimension(facebook::yoga::Dimension::Width);
+            },
+            [](facebook::yoga::Style& style, facebook::yoga::StyleSizeLength value) {
+                style.setMaxDimension(facebook::yoga::Dimension::Width, value);
+            }));
 
-    bindYGValueAttribute(
+    bindYGStyleSizeLengthAttribute(
         "maxHeight",
         false,
         attributes,
-        YGNodeValueGetterSetter<YGCompactValue>(
-            [](YGNodeRef node) -> YGCompactValue { return node->getStyle().maxDimensions()[YGDimensionHeight]; },
-            [](YGNodeRef node, YGCompactValue value) { node->getStyle().maxDimensions()[YGDimensionHeight] = value; }));
+        YGNodeValueGetterSetter<facebook::yoga::StyleSizeLength>(
+            [](facebook::yoga::Style& style) -> facebook::yoga::StyleSizeLength {
+                return style.maxDimension(facebook::yoga::Dimension::Height);
+            },
+            [](facebook::yoga::Style& style, facebook::yoga::StyleSizeLength value) {
+                style.setMaxDimension(facebook::yoga::Dimension::Height, value);
+            }));
 
     bindYGOptionalAttribute("aspectRatio",
                             false,
                             attributes,
                             YGNodeValueGetterSetter<YGFloatOptional>(
-                                [](YGNodeRef node) -> YGFloatOptional { return node->getStyle().aspectRatio(); },
-                                [](YGNodeRef node, YGFloatOptional value) {
+                                [](facebook::yoga::Style& style) -> YGFloatOptional {
+                                    return style.aspectRatio();
+                                },
+                                [](facebook::yoga::Style& style, YGFloatOptional value) {
                                     if (!value.isUndefined() && value.unwrap() == 0) {
                                         // safety for aspectRatio 0, we make it undefined instead.
-                                        node->getStyle().aspectRatio() = YGFloatOptional();
+                                        style.setAspectRatio(YGFloatOptional());
                                     } else {
-                                        node->getStyle().aspectRatio() = value;
+                                        style.setAspectRatio(value);
                                     }
                                 }));
 }

@@ -10,6 +10,8 @@
 
 #include "valdi_core/cpp/Attributes/AttributeUtils.hpp"
 
+#include <yoga/node/Node.h>
+
 namespace Valdi {
 
 Result<Void> YGEdgesBaseAttributeHandlerDelegate::onApply(YGNodeRef node, const Value& value) {
@@ -19,10 +21,10 @@ Result<Void> YGEdgesBaseAttributeHandlerDelegate::onApply(YGNodeRef node, const 
 
     const auto& parts = *value.getArray();
 
-    auto topEdge = YGCompactValue::ofUndefined();
-    auto endEdge = YGCompactValue::ofUndefined();
-    auto bottomEdge = YGCompactValue::ofUndefined();
-    auto startEdge = YGCompactValue::ofUndefined();
+    auto topEdge = facebook::yoga::StyleLength::undefined();
+    auto endEdge = facebook::yoga::StyleLength::undefined();
+    auto bottomEdge = facebook::yoga::StyleLength::undefined();
+    auto startEdge = facebook::yoga::StyleLength::undefined();
 
     // Our behavior here is a bit different than how web CSS work.
     // We fill the values using the shorthand value if it is set,
@@ -65,53 +67,54 @@ Result<Void> YGEdgesBaseAttributeHandlerDelegate::onApply(YGNodeRef node, const 
     }
 
     if (!parts[1].isNull()) {
-        auto result = valueToYGValue(parts[1]);
+        auto result = valueToYGStyleLength(parts[1]);
         if (!result) {
             return result.moveError();
         }
         topEdge = result.value();
     }
     if (!parts[2].isNull()) {
-        auto result = valueToYGValue(parts[2]);
+        auto result = valueToYGStyleLength(parts[2]);
         if (!result) {
             return result.moveError();
         }
         endEdge = result.value();
     }
     if (!parts[3].isNull()) {
-        auto result = valueToYGValue(parts[3]);
+        auto result = valueToYGStyleLength(parts[3]);
         if (!result) {
             return result.moveError();
         }
         bottomEdge = result.value();
     }
     if (!parts[4].isNull()) {
-        auto result = valueToYGValue(parts[4]);
+        auto result = valueToYGStyleLength(parts[4]);
         if (!result) {
             return result.moveError();
         }
         startEdge = result.value();
     }
 
-    setEdges(node, topEdge, endEdge, bottomEdge, startEdge);
+    setEdges(facebook::yoga::resolveRef(node)->style(), topEdge, endEdge, bottomEdge, startEdge);
 
     return Void();
 }
 
 void YGEdgesBaseAttributeHandlerDelegate::onReset(YGNodeRef node, YGNodeRef /*defaultYogaNode*/) {
-    setEdges(node,
-             YGCompactValue::ofUndefined(),
-             YGCompactValue::ofUndefined(),
-             YGCompactValue::ofUndefined(),
-             YGCompactValue::ofUndefined());
+    setEdges(facebook::yoga::resolveRef(node)->style(),
+             facebook::yoga::StyleLength::undefined(),
+             facebook::yoga::StyleLength::undefined(),
+             facebook::yoga::StyleLength::undefined(),
+             facebook::yoga::StyleLength::undefined());
 }
 
-Result<std::vector<YGCompactValue>> YGEdgesBaseAttributeHandlerDelegate::parseFlexBoxShorthand(const Value& value) {
-    std::vector<YGCompactValue> values;
+Result<std::vector<facebook::yoga::StyleLength>> YGEdgesBaseAttributeHandlerDelegate::parseFlexBoxShorthand(
+    const Value& value) {
+    std::vector<facebook::yoga::StyleLength> values;
 
     if (value.isNumber()) {
         // Case where we pass a number directly
-        values.emplace_back(valueToYGValue(value).value());
+        values.emplace_back(valueToYGStyleLength(value).value());
 
         return std::move(values);
     } else if (value.isString()) {
@@ -122,7 +125,7 @@ Result<std::vector<YGCompactValue>> YGEdgesBaseAttributeHandlerDelegate::parseFl
 
         AttributeParser parser(strBox.toStringView());
         while (!parser.isAtEnd()) {
-            auto value = parseYGValue(parser);
+            auto value = parseYGStyleLength(parser);
             if (!value) {
                 return parser.getError();
             }

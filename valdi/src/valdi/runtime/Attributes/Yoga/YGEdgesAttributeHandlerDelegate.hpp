@@ -9,6 +9,10 @@
 
 #include "valdi/runtime/Attributes/Yoga/YogaAttributeHandlerDelegate.hpp"
 
+namespace facebook::yoga {
+class Style;
+}
+
 namespace Valdi {
 
 class YGEdgesBaseAttributeHandlerDelegate : public YogaAttributeHandlerDelegate {
@@ -17,36 +21,32 @@ public:
     void onReset(YGNodeRef node, YGNodeRef defaultYogaNode) override;
 
 protected:
-    virtual void setEdges(YGNodeRef node,
-                          const YGCompactValue& top,
-                          const YGCompactValue& end,
-                          const YGCompactValue& bottom,
-                          const YGCompactValue& start) = 0;
+    virtual void setEdges(facebook::yoga::Style& style,
+                          const facebook::yoga::StyleLength& top,
+                          const facebook::yoga::StyleLength& end,
+                          const facebook::yoga::StyleLength& bottom,
+                          const facebook::yoga::StyleLength& start) = 0;
 
 private:
-    Result<std::vector<YGCompactValue>> parseFlexBoxShorthand(const Value& value);
+    Result<std::vector<facebook::yoga::StyleLength>> parseFlexBoxShorthand(const Value& value);
 };
 
 template<typename T>
 class YGEdgesAttributeHandlerDelegate : public YGEdgesBaseAttributeHandlerDelegate {
 public:
-    explicit YGEdgesAttributeHandlerDelegate(T&& getEdges) : _getEdges(std::move(getEdges)) {}
+    explicit YGEdgesAttributeHandlerDelegate(T&& setEdges) : _setEdges(std::move(setEdges)) {}
 
 protected:
-    void setEdges(YGNodeRef node,
-                  const YGCompactValue& top,
-                  const YGCompactValue& end,
-                  const YGCompactValue& bottom,
-                  const YGCompactValue& start) override {
-        auto edges = _getEdges(node);
-        edges[YGEdgeTop] = top;
-        edges[YGEdgeEnd] = end;
-        edges[YGEdgeBottom] = bottom;
-        edges[YGEdgeStart] = start;
+    void setEdges(facebook::yoga::Style& style,
+                  const facebook::yoga::StyleLength& top,
+                  const facebook::yoga::StyleLength& end,
+                  const facebook::yoga::StyleLength& bottom,
+                  const facebook::yoga::StyleLength& start) override {
+        _setEdges(style, top, end, bottom, start);
     }
 
 private:
-    T _getEdges;
+    T _setEdges;
 };
 
 } // namespace Valdi

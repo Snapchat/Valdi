@@ -11,9 +11,21 @@
 
 namespace Valdi {
 
-class YGValueAttributeHandlerDelegate : public YogaGetterSetterAttributeHandlerDelegate<YGCompactValue> {
+class YGStyleLengthAttributeHandlerDelegate
+    : public YogaGetterSetterAttributeHandlerDelegate<facebook::yoga::StyleLength> {
 public:
-    explicit YGValueAttributeHandlerDelegate(YGNodeValueGetterSetter<YGCompactValue> getterSetter);
+    explicit YGStyleLengthAttributeHandlerDelegate(
+        YGNodeValueGetterSetter<facebook::yoga::StyleLength> getterSetter);
+
+protected:
+    Result<Void> onApply(YGNodeRef node, const Value& value) override;
+};
+
+class YGStyleSizeLengthAttributeHandlerDelegate
+    : public YogaGetterSetterAttributeHandlerDelegate<facebook::yoga::StyleSizeLength> {
+public:
+    explicit YGStyleSizeLengthAttributeHandlerDelegate(
+        YGNodeValueGetterSetter<facebook::yoga::StyleSizeLength> getterSetter);
 
 protected:
     Result<Void> onApply(YGNodeRef node, const Value& value) override;

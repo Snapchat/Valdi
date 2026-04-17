@@ -22,13 +22,14 @@
 
 #include <fmt/format.h>
 #include <memory>
-#include <yoga/YGNode.h>
+#include <yoga/Yoga.h>
+#include <yoga/numeric/FloatOptional.h>
 
 struct YGConfig;
 
 namespace Valdi {
 
-using YGCompactValue = facebook::yoga::detail::CompactValue;
+using YGFloatOptional = facebook::yoga::FloatOptional;
 
 class YogaAttributeHandlerDelegate;
 
@@ -71,16 +72,21 @@ private:
                                  AttributeHandlerById& attributes,
                                  YGNodeValueGetterSetter<YGFloatOptional> getterSetter);
 
-    void bindYGValueAttribute(const char* name,
-                              bool isForChildrenNode,
-                              AttributeHandlerById& attributes,
-                              YGNodeValueGetterSetter<YGCompactValue> getterSetter);
+    void bindYGStyleLengthAttribute(const char* name,
+                                    bool isForChildrenNode,
+                                    AttributeHandlerById& attributes,
+                                    YGNodeValueGetterSetter<facebook::yoga::StyleLength> getterSetter);
 
-    template<typename GetEdges>
+    void bindYGStyleSizeLengthAttribute(const char* name,
+                                        bool isForChildrenNode,
+                                        AttributeHandlerById& attributes,
+                                        YGNodeValueGetterSetter<facebook::yoga::StyleSizeLength> getterSetter);
+
+    template<typename SetEdges>
     void bindPaddingOrMarginAttributes(std::string_view name,
                                        bool isForChildrenNode,
                                        AttributeHandlerById& attributes,
-                                       GetEdges&& getEdges);
+                                       SetEdges&& setEdges);
 
     void bindEdgeAttributes(std::string_view name,
                             bool isForChildrenNode,

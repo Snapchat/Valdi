@@ -57,11 +57,11 @@ float YogaAttributeHandlerDelegate::roundToPixelGrid(double value) const {
     return Valdi::roundToPixelGrid(static_cast<float>(value), _yogaAttributes->_pointScale);
 }
 
-std::optional<YGCompactValue> YogaAttributeHandlerDelegate::parseYGValue(AttributeParser& parser) {
+std::optional<facebook::yoga::StyleLength> YogaAttributeHandlerDelegate::parseYGStyleLength(AttributeParser& parser) {
     parser.tryParseWhitespaces();
 
     if (parser.tryParse("auto")) {
-        return YGCompactValue::ofAuto();
+        return facebook::yoga::StyleLength::ofAuto();
     } else {
         auto d = parser.parseDimension();
         if (!d) {
@@ -69,26 +69,64 @@ std::optional<YGCompactValue> YogaAttributeHandlerDelegate::parseYGValue(Attribu
         }
 
         if (d.value().unit == Dimension::Unit::Percent) {
-            return YGCompactValue::of<YGUnitPercent>(static_cast<float>(d.value().value));
+            return facebook::yoga::StyleLength::percent(static_cast<float>(d.value().value));
         } else {
-            return YGCompactValue::of<YGUnitPoint>(roundToPixelGrid(d.value().value));
+            return facebook::yoga::StyleLength::points(roundToPixelGrid(d.value().value));
         }
     }
 }
 
-Result<YGCompactValue> YogaAttributeHandlerDelegate::valueToYGValue(const Value& value) {
+Result<facebook::yoga::StyleLength> YogaAttributeHandlerDelegate::valueToYGStyleLength(const Value& value) {
     if (value.isNumber()) {
-        return YGCompactValue::of<YGUnitPoint>(roundToPixelGrid(value.toDouble()));
+        return facebook::yoga::StyleLength::points(roundToPixelGrid(value.toDouble()));
     } else if (value.isString()) {
         auto strBox = value.toStringBox();
         AttributeParser parser(strBox.toStringView());
 
-        auto ygValue = parseYGValue(parser);
-        if (!ygValue || !parser.ensureIsAtEnd()) {
+        auto styleLength = parseYGStyleLength(parser);
+        if (!styleLength || !parser.ensureIsAtEnd()) {
             return parser.getError();
         }
 
-        return ygValue.value();
+        return styleLength.value();
+    } else {
+        return ValueConverter::invalidTypeFailure(value, ValueType::Double);
+    }
+}
+
+std::optional<facebook::yoga::StyleSizeLength>
+YogaAttributeHandlerDelegate::parseYGStyleSizeLength(AttributeParser& parser) {
+    parser.tryParseWhitespaces();
+
+    if (parser.tryParse("auto")) {
+        return facebook::yoga::StyleSizeLength::ofAuto();
+    } else {
+        auto d = parser.parseDimension();
+        if (!d) {
+            return std::nullopt;
+        }
+
+        if (d.value().unit == Dimension::Unit::Percent) {
+            return facebook::yoga::StyleSizeLength::percent(static_cast<float>(d.value().value));
+        } else {
+            return facebook::yoga::StyleSizeLength::points(roundToPixelGrid(d.value().value));
+        }
+    }
+}
+
+Result<facebook::yoga::StyleSizeLength> YogaAttributeHandlerDelegate::valueToYGStyleSizeLength(const Value& value) {
+    if (value.isNumber()) {
+        return facebook::yoga::StyleSizeLength::points(roundToPixelGrid(value.toDouble()));
+    } else if (value.isString()) {
+        auto strBox = value.toStringBox();
+        AttributeParser parser(strBox.toStringView());
+
+        auto styleSizeLength = parseYGStyleSizeLength(parser);
+        if (!styleSizeLength || !parser.ensureIsAtEnd()) {
+            return parser.getError();
+        }
+
+        return styleSizeLength.value();
     } else {
         return ValueConverter::invalidTypeFailure(value, ValueType::Double);
     }
