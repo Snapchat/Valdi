@@ -9,33 +9,37 @@
 
 #include "snap_drawing/cpp/Layers/Layer.hpp"
 
-#include <yoga/YGStyle.h>
+#include <yoga/Yoga.h>
 
 struct YGNode;
+
+namespace facebook::yoga {
+class Style;
+}
 
 namespace snap::drawing {
 
 struct FlexValue {
-    facebook::yoga::detail::CompactValue value;
+    YGValue value;
 
-    constexpr FlexValue(facebook::yoga::detail::CompactValue value) : value(value) {}
+    constexpr explicit FlexValue(YGValue value) : value(value) {}
 
     inline static FlexValue point(Scalar value) {
-        return facebook::yoga::detail::CompactValue::of<YGUnitPoint>(value);
+        return FlexValue(YGValue{.value = value, .unit = YGUnitPoint});
     }
 
     inline static FlexValue percent(Scalar value) {
-        return facebook::yoga::detail::CompactValue::of<YGUnitPercent>(value);
+        return FlexValue(YGValue{.value = value, .unit = YGUnitPercent});
     }
 
     inline static FlexValue undefined() {
-        return facebook::yoga::detail::CompactValue::ofUndefined();
+        return FlexValue(YGValue{.value = YGUndefined, .unit = YGUnitUndefined});
     }
 };
 
 class FlexboxAttributes {
 public:
-    FlexboxAttributes(YGStyle* _style);
+    FlexboxAttributes(facebook::yoga::Style* style);
 
     FlexboxAttributes& setDirection(YGDirection value);
 
@@ -72,7 +76,7 @@ public:
     FlexboxAttributes& setAspectRatio(std::optional<Scalar> value);
 
 private:
-    YGStyle* _style;
+    facebook::yoga::Style* _style;
 };
 
 /**

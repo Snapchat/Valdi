@@ -6,7 +6,9 @@
 //
 
 #include "snap_drawing/cpp/Layers/FlexboxLayer.hpp"
-#include <yoga/YGNode.h>
+#include <yoga/node/Node.h>
+#include <yoga/style/StyleLength.h>
+#include <yoga/style/StyleSizeLength.h>
 
 namespace snap::drawing {
 
@@ -41,7 +43,7 @@ struct FlexboxNode : public Valdi::SimpleRefCountable {
     }
 
     void setLayoutDirty() const {
-        if (yogaNode->hasMeasureFunc()) {
+        if (facebook::yoga::resolveRef(yogaNode)->hasMeasureFunc()) {
             YGNodeMarkDirty(yogaNode);
         }
     }
@@ -63,143 +65,174 @@ private:
     }
 };
 
-static YGFloatOptional toOptional(const std::optional<Scalar>& value) {
-    if (value) {
-        return YGFloatOptional(value.value());
-    } else {
-        return YGFloatOptional();
+static facebook::yoga::FloatOptional toFloatOptional(const std::optional<Scalar>& value) {
+    return value ? facebook::yoga::FloatOptional(value.value()) : facebook::yoga::FloatOptional();
+}
+
+static facebook::yoga::StyleLength toStyleLength(FlexValue value) {
+    switch (value.value.unit) {
+        case YGUnitAuto:
+            return facebook::yoga::StyleLength::ofAuto();
+        case YGUnitPercent:
+            return facebook::yoga::StyleLength::percent(value.value.value);
+        case YGUnitPoint:
+            return facebook::yoga::StyleLength::points(value.value.value);
+        case YGUnitUndefined:
+        case YGUnitMaxContent:
+        case YGUnitFitContent:
+        case YGUnitStretch:
+            return facebook::yoga::StyleLength::undefined();
     }
 }
 
-FlexboxAttributes::FlexboxAttributes(YGStyle* style) : _style(style) {}
+static facebook::yoga::StyleSizeLength toStyleSizeLength(FlexValue value) {
+    switch (value.value.unit) {
+        case YGUnitAuto:
+            return facebook::yoga::StyleSizeLength::ofAuto();
+        case YGUnitPercent:
+            return facebook::yoga::StyleSizeLength::percent(value.value.value);
+        case YGUnitPoint:
+            return facebook::yoga::StyleSizeLength::points(value.value.value);
+        case YGUnitMaxContent:
+            return facebook::yoga::StyleSizeLength::ofMaxContent();
+        case YGUnitFitContent:
+            return facebook::yoga::StyleSizeLength::ofFitContent();
+        case YGUnitStretch:
+            return facebook::yoga::StyleSizeLength::ofStretch();
+        case YGUnitUndefined:
+            return facebook::yoga::StyleSizeLength::undefined();
+    }
+}
+
+FlexboxAttributes::FlexboxAttributes(facebook::yoga::Style* style) : _style(style) {}
 
 FlexboxAttributes& FlexboxAttributes::setDirection(YGDirection value) {
-    _style->direction() = value;
+    _style->setDirection(facebook::yoga::scopedEnum(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setFlexDirection(YGFlexDirection value) {
-    _style->flexDirection() = value;
+    _style->setFlexDirection(facebook::yoga::scopedEnum(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setJustifyContent(YGJustify value) {
-    _style->justifyContent() = value;
+    _style->setJustifyContent(facebook::yoga::scopedEnum(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setAlignItems(YGAlign value) {
-    _style->alignItems() = value;
+    _style->setAlignItems(facebook::yoga::scopedEnum(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setAlignContent(YGAlign value) {
-    _style->alignContent() = value;
+    _style->setAlignContent(facebook::yoga::scopedEnum(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setAlignSelf(YGAlign value) {
-    _style->alignSelf() = value;
+    _style->setAlignSelf(facebook::yoga::scopedEnum(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setPadding(YGEdge edge, FlexValue value) {
-    _style->padding()[edge] = value.value;
+    _style->setPadding(facebook::yoga::scopedEnum(edge), toStyleLength(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setMargin(YGEdge edge, FlexValue value) {
-    _style->margin()[edge] = value.value;
+    _style->setMargin(facebook::yoga::scopedEnum(edge), toStyleLength(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setBorder(YGEdge edge, FlexValue value) {
-    _style->border()[edge] = value.value;
+    _style->setBorder(facebook::yoga::scopedEnum(edge), toStyleLength(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setPosition(YGEdge edge, FlexValue value) {
-    _style->position()[edge] = value.value;
+    _style->setPosition(facebook::yoga::scopedEnum(edge), toStyleLength(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setPositionType(YGPositionType value) {
-    _style->positionType() = value;
+    _style->setPositionType(facebook::yoga::scopedEnum(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setFlexWrap(YGWrap value) {
-    _style->flexWrap() = value;
+    _style->setFlexWrap(facebook::yoga::scopedEnum(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setOverflow(YGOverflow value) {
-    _style->overflow() = value;
+    _style->setOverflow(facebook::yoga::scopedEnum(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setDisplay(YGDisplay value) {
-    _style->display() = value;
+    _style->setDisplay(facebook::yoga::scopedEnum(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setFlex(std::optional<Scalar> value) {
-    _style->flex() = toOptional(value);
+    _style->setFlex(toFloatOptional(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setFlexGrow(std::optional<Scalar> value) {
-    _style->flexGrow() = toOptional(value);
+    _style->setFlexGrow(toFloatOptional(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setFlexShrink(std::optional<Scalar> value) {
-    _style->flexShrink() = toOptional(value);
+    _style->setFlexShrink(toFloatOptional(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setFlexBasis(FlexValue value) {
-    _style->flexBasis() = value.value;
+    _style->setFlexBasis(toStyleSizeLength(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setWidth(FlexValue value) {
-    _style->dimensions()[YGDimensionWidth] = value.value;
+    _style->setDimension(facebook::yoga::Dimension::Width, toStyleSizeLength(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setHeight(FlexValue value) {
-    _style->dimensions()[YGDimensionHeight] = value.value;
+    _style->setDimension(facebook::yoga::Dimension::Height, toStyleSizeLength(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setMinWidth(FlexValue value) {
-    _style->minDimensions()[YGDimensionWidth] = value.value;
+    _style->setMinDimension(facebook::yoga::Dimension::Width, toStyleSizeLength(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setMinHeight(FlexValue value) {
-    _style->minDimensions()[YGDimensionHeight] = value.value;
+    _style->setMinDimension(facebook::yoga::Dimension::Height, toStyleSizeLength(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setMaxWidth(FlexValue value) {
-    _style->maxDimensions()[YGDimensionWidth] = value.value;
+    _style->setMaxDimension(facebook::yoga::Dimension::Width, toStyleSizeLength(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setMaxHeight(FlexValue value) {
-    _style->maxDimensions()[YGDimensionHeight] = value.value;
+    _style->setMaxDimension(facebook::yoga::Dimension::Height, toStyleSizeLength(value));
     return *this;
 }
 
 FlexboxAttributes& FlexboxAttributes::setAspectRatio(std::optional<Scalar> value) {
-    _style->aspectRatio() = toOptional(value);
+    _style->setAspectRatio(toFloatOptional(value));
     return *this;
 }
 
-void onYogaNodeDirty(YGNodeRef node) {
-    auto* layer = reinterpret_cast<snap::drawing::Layer*>(node->getContext());
+void onYogaNodeDirty(YGNodeConstRef node) {
+    auto* layer = reinterpret_cast<snap::drawing::Layer*>(facebook::yoga::resolveRef(node)->getContext());
     if (layer == nullptr) {
         return;
     }
@@ -207,8 +240,8 @@ void onYogaNodeDirty(YGNodeRef node) {
     layer->setNeedsLayout();
 }
 
-YGSize onYogaMeasure(YGNodeRef node, float width, YGMeasureMode widthMode, float height, YGMeasureMode heightMode) {
-    auto* layer = reinterpret_cast<snap::drawing::Layer*>(node->getContext());
+YGSize onYogaMeasure(YGNodeConstRef node, float width, YGMeasureMode widthMode, float height, YGMeasureMode heightMode) {
+    auto* layer = reinterpret_cast<snap::drawing::Layer*>(facebook::yoga::resolveRef(node)->getContext());
     if (layer == nullptr) {
         return {.width = 0, .height = 0};
     }
@@ -224,11 +257,12 @@ static Ref<FlexboxNode> createAndAssociateFlexboxNode(Layer* layer, bool isOwner
     auto flexboxNode = Valdi::makeShared<FlexboxNode>();
     layer->setAttachedData(flexboxNode);
 
-    flexboxNode->yogaNode->setContext(static_cast<snap::drawing::Layer*>(layer));
-    flexboxNode->yogaNode->setDirtiedFunc(&onYogaNodeDirty);
+    auto* yogaNode = facebook::yoga::resolveRef(flexboxNode->yogaNode);
+    yogaNode->setContext(static_cast<snap::drawing::Layer*>(layer));
+    yogaNode->setDirtiedFunc(&onYogaNodeDirty);
 
     if (!isOwner) {
-        flexboxNode->yogaNode->setMeasureFunc(&onYogaMeasure);
+        yogaNode->setMeasureFunc(&onYogaMeasure);
     }
 
     return flexboxNode;
@@ -302,11 +336,10 @@ FlexboxAttributes FlexboxLayer::updateLayoutAttributesForLayer(const Ref<Layer>&
 // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 FlexboxAttributes FlexboxLayer::updateLayoutAttributesForLayer(Layer* layer) {
     auto flexboxNode = mustGetFlexboxNode(layer);
-    auto& style = flexboxNode->yogaNode->getStyle();
 
     flexboxNode->setLayoutDirty();
 
-    return FlexboxAttributes(&style);
+    return FlexboxAttributes(&facebook::yoga::resolveRef(flexboxNode->yogaNode)->style());
 }
 
 void FlexboxLayer::requestLayout(ILayer* layer) {
