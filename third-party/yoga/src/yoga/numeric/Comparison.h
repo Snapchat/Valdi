@@ -13,6 +13,7 @@
 #include <concepts>
 
 #include <yoga/Yoga.h>
+#include <yoga/YogaAndroidCpp20Compat.h>
 
 namespace facebook::yoga {
 

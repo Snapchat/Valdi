@@ -11,6 +11,8 @@
 #include <iterator>
 #include <type_traits>
 
+#include <yoga/YogaAndroidCpp20Compat.h>
+
 namespace facebook::yoga {
 
 /**

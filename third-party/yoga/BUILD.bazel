@@ -1,6 +1,7 @@
 load("//bzl:valdi_library.bzl", "COMMON_COMPILE_FLAGS")
 
 COMPILER_FLAGS = COMMON_COMPILE_FLAGS + [
+    "-std=c++20",
     "-Os",  # Always set optimization on
     "-Wno-pedantic",
     "-Wno-sign-compare",

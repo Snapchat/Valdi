@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cassert>
+#include <bit>
 #include <cstdint>
 
 #include <yoga/numeric/FloatOptional.h>
@@ -15,6 +16,7 @@
 #include <yoga/style/StyleLength.h>
 #include <yoga/style/StyleSizeLength.h>
 #include <yoga/style/StyleValueHandle.h>
+#include <yoga/YogaAndroidCpp20Compat.h>
 
 namespace facebook::yoga {
 
