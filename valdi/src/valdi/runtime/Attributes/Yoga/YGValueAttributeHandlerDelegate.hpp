@@ -14,8 +14,7 @@ namespace Valdi {
 class YGStyleLengthAttributeHandlerDelegate
     : public YogaGetterSetterAttributeHandlerDelegate<facebook::yoga::StyleLength> {
 public:
-    explicit YGStyleLengthAttributeHandlerDelegate(
-        YGNodeValueGetterSetter<facebook::yoga::StyleLength> getterSetter);
+    explicit YGStyleLengthAttributeHandlerDelegate(YGNodeValueGetterSetter<facebook::yoga::StyleLength> getterSetter);
 
 protected:
     Result<Void> onApply(YGNodeRef node, const Value& value) override;

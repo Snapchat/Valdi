@@ -2351,9 +2351,9 @@ void ViewNode::updateScrollState() {
             float lowestLeft = 0;
 
             for (auto* childYogaNode : yogaContainerNode->getChildren()) {
-                auto left = ygNodeGetFrame(
-                                childYogaNode,
-                                -sanitizeYogaValue(childYogaNode->getLayout().margin(facebook::yoga::PhysicalEdge::Left)))
+                auto left = ygNodeGetFrame(childYogaNode,
+                                           -sanitizeYogaValue(
+                                               childYogaNode->getLayout().margin(facebook::yoga::PhysicalEdge::Left)))
                                 .getLeft();
 
                 lowestLeft = std::min(left, lowestLeft);
@@ -3533,7 +3533,8 @@ static MeasureMode yogaMeasureModeToValdiMeasureMode(YGMeasureMode measureMode) 
     }
 }
 
-YGSize ygMeasureYoga(YGNodeConstRef node, float width, YGMeasureMode widthMode, float height, YGMeasureMode heightMode) {
+YGSize ygMeasureYoga(
+    YGNodeConstRef node, float width, YGMeasureMode widthMode, float height, YGMeasureMode heightMode) {
     auto* viewNode = reinterpret_cast<ViewNode*>(facebook::yoga::resolveRef(node)->getContext());
     if (viewNode == nullptr) {
         return {.width = 0, .height = 0};

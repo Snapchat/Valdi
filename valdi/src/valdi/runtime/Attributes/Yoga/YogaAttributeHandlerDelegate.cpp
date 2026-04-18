@@ -94,8 +94,8 @@ Result<facebook::yoga::StyleLength> YogaAttributeHandlerDelegate::valueToYGStyle
     }
 }
 
-std::optional<facebook::yoga::StyleSizeLength>
-YogaAttributeHandlerDelegate::parseYGStyleSizeLength(AttributeParser& parser) {
+std::optional<facebook::yoga::StyleSizeLength> YogaAttributeHandlerDelegate::parseYGStyleSizeLength(
+    AttributeParser& parser) {
     parser.tryParseWhitespaces();
 
     if (parser.tryParse("auto")) {

@@ -240,7 +240,8 @@ void onYogaNodeDirty(YGNodeConstRef node) {
     layer->setNeedsLayout();
 }
 
-YGSize onYogaMeasure(YGNodeConstRef node, float width, YGMeasureMode widthMode, float height, YGMeasureMode heightMode) {
+YGSize onYogaMeasure(
+    YGNodeConstRef node, float width, YGMeasureMode widthMode, float height, YGMeasureMode heightMode) {
     auto* layer = reinterpret_cast<snap::drawing::Layer*>(facebook::yoga::resolveRef(node)->getContext());
     if (layer == nullptr) {
         return {.width = 0, .height = 0};
