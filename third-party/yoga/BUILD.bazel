@@ -16,7 +16,6 @@ cc_library(
     name = "yoga",
     visibility = ["//visibility:public"],
     deps = [":yoga_cc"] + select({
-        "//bzl/conditions:ios": [":yoga_ios"],
         "//bzl/conditions:android": [":yoga_android"],
         "//conditions:default": [],
     }),
@@ -59,22 +58,6 @@ cc_library(
     ]),
     includes = ["src"],
     tags = ["exported"],
-)
-
-objc_library(
-    name = "yoga_ios",
-    srcs = glob([
-        "src/ios/yoga/**/*.m",
-    ]),
-    hdrs = glob([
-        "src/ios/yoga/**/*.h",
-    ]),
-    includes = ["src/ios"],
-    tags = ["exported"],
-    target_compatible_with = ["@platforms//os:ios"],
-    deps = [
-        ":yoga_cc",
-    ],
 )
 
 cc_library(

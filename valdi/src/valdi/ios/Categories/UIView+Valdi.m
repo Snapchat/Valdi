@@ -21,7 +21,6 @@
 #import "valdi_core/SCValdiGeometricPath.h"
 
 #import <objc/runtime.h>
-#import <yoga/UIView+Yoga.h>
 
 static NSString *const kBackgroundGradientLayoutKey = @"background_gradient";
 static NSString *const kShadowPathLayoutKey = @"shadow_path";

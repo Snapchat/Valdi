@@ -32,7 +32,6 @@
 #import "valdi_core/SCNValdiCoreModuleFactory+Private.h"
 #import "valdi_core/SCNValdiCoreAsset+Private.h"
 #import "valdi/runtime/Runtime.hpp"
-#import <yoga/UIView+Yoga.h>
 #import "SCValdiJSRuntimeImpl.h"
 #import "valdi_core/SCNValdiCoreJSRuntime+Private.h"
 
