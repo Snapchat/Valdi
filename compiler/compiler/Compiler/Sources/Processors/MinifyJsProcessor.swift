@@ -40,12 +40,23 @@ class MinifyJsProcessor: CompilationProcessor {
     // QuickJS stack traces don't include line numbers, so we need to beautify the output for proper tracing.
     private let androidIsQuickJS: Bool
 
+    // The set of native platforms active for this compilation invocation. Used to tag output
+    // items with the correct platform so downstream processors (e.g. SourceMapProcessor) can
+    // route them to platform-specific output directories. Falls back to [nil] when no native
+    // output is configured (e.g. web-only builds).
+    private let enabledNativePlatforms: [Platform?]
+
     init(logger: ILogger, diskCacheProvider: DiskCacheProvider, projectConfig: ValdiProjectConfig, companion: CompanionExecutable, disableMinifyWeb: Bool) {
         self.logger = logger
         self.companion = companion
         self.disableMinifyWeb = disableMinifyWeb
         self.minifyOptions = projectConfig.minifyConfigURL.flatMap { try? String(contentsOf: $0, encoding: .utf8 )}
         self.androidIsQuickJS = projectConfig.androidJsBytecodeFormat == "quickjs"
+
+        var nativePlatforms: [Platform?] = []
+        if projectConfig.iosOutput?.codegenEnabled == true     { nativePlatforms.append(.ios) }
+        if projectConfig.androidOutput?.codegenEnabled == true { nativePlatforms.append(.android) }
+        self.enabledNativePlatforms = nativePlatforms.isEmpty ? [nil] : nativePlatforms
 
         do {
             let minifyOptionsData = minifyOptions?.data(using: .utf8) ?? Data()
@@ -204,8 +215,20 @@ class MinifyJsProcessor: CompilationProcessor {
                 }
                 return batches
             } else {
-                // Use the same minify options for all platforms
-                return uglifyBatch(items: items, minifyOptions: self.minifyOptions, platforms: [nil])
+                // All enabled platforms share the same minify options. Tag items with their
+                // platform so downstream processors (e.g. SourceMapProcessor) can route outputs
+                // correctly, including when only a subset of platforms is being compiled.
+                var batches = uglifyBatch(items: items, minifyOptions: self.minifyOptions, platforms: enabledNativePlatforms)
+                if !enabledNativePlatforms.contains(nil) {
+                    // Native platforms are active; also produce web-tagged items so downstream
+                    // web processors receive output during multi-platform (native + web) builds.
+                    if disableMinifyWeb {
+                        batches += passThrough(items: items, platforms: [.web])
+                    } else {
+                        batches += uglifyBatch(items: items, minifyOptions: self.minifyOptions, platforms: [.web])
+                    }
+                }
+                return batches
             }
         }
     }
