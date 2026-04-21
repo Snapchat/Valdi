@@ -397,6 +397,8 @@ class ValdiRuntimeManager(context: Context,
             } else {
                 preloadAndroid()
             }
+        } else if (preloadingMode == PreloadingMode.FONTS_ONLY && !useSnapDrawing) {
+            fontManager.preloadAll()
         }
 
         if (useSnapDrawing) {
