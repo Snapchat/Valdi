@@ -142,9 +142,6 @@ def valdi_module(
     """
     downloadable_assets = True if downloadable_assets == None else downloadable_assets
 
-    if module_yaml != None:
-        print("WARNING: The 'module_yaml' parameter in valdi_module('{}') is deprecated. module.yaml is no longer used for builds and will be deleted in the future. Please remove the 'module_yaml' parameter from your BUILD.bazel file.".format(name))
-
     if not ios_module_name:
         ios_module_name = name
 
