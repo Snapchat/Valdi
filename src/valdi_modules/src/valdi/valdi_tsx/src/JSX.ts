@@ -6,6 +6,7 @@ import {
   ContainerTemplateElement,
   ImageView,
   VideoView,
+  WebViewElement,
   Label,
   Layout,
   ScrollView,
@@ -43,6 +44,7 @@ declare global {
       label: Label;
       image: ImageView;
       video: VideoView;
+      webview: WebViewElement;
       textfield: TextField;
       textview: TextView;
       blur: BlurView;

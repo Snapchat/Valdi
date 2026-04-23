@@ -440,6 +440,7 @@ jsx.registerNativeElement('label', 'SCValdiLabel', 'com.snap.valdi.views.ValdiTe
 jsx.registerNativeElement('scroll', 'SCValdiScrollView', 'com.snap.valdi.views.ValdiScrollView');
 jsx.registerNativeElement('image', 'SCValdiImageView', 'com.snap.valdi.views.ValdiImageView');
 jsx.registerNativeElement('video', 'SCValdiVideoView', 'com.snap.valdi.views.ValdiVideoView');
+jsx.registerNativeElement('webview', 'SCValdiWebView', 'com.snap.valdi.modules.webview.ValdiWebView');
 jsx.registerNativeElement('button', 'UIButton', 'android.widget.Button');
 jsx.registerNativeElement('spinner', 'SCValdiSpinnerView', 'com.snap.valdi.views.ValdiSpinnerView');
 jsx.registerNativeElement('blur', 'SCValdiBlurView', 'com.snap.valdi.views.ValdiView');

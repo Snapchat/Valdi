@@ -8,6 +8,7 @@ This document provides a comprehensive reference for all native template element
 - [View](#view)
 - [ScrollView](#scrollview)
 - [ImageView](#imageview)
+- [WebView](#webview)
 - [VideoView](#videoview)
 - [Label](#label)
 - [TextField](#textfield)
@@ -822,6 +823,32 @@ All view properties from [View](#view) including:
 
 **`style`**: `IStyle<ImageView | View | Layout>`
 - See [ImageView Style Attributes](api-style-attributes.md#imageview-styles) for a complete list of attributes that can be used in `Style<ImageView>`.
+
+---
+
+## WebView
+
+**JSX Element:** `<webview>`
+
+**iOS Native:** `SCValdiWebView`
+**Android Native:** `com.snap.valdi.views.ValdiWebView`
+
+A host element for a native webview controller created by the `valdi_webview` module.
+
+### Properties
+
+All properties from [Layout Attributes](#layout), plus:
+
+#### Controller
+
+**`controller`**: `IWebViewNativeController`
+- Native webview controller created by `WebView.createController()` from `valdi_webview`.
+- The controller owns the platform webview and is attached to this host element when the attribute is applied.
+
+#### Styling
+
+**`style`**: `IStyle<WebViewElement | View | Layout>`
+- See [View Style Attributes](api-style-attributes.md#view-styles) for common view styling attributes.
 
 ---
 

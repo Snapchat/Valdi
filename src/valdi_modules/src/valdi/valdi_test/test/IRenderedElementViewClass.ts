@@ -3,6 +3,7 @@ export enum IRenderedElementViewClass {
   View = 'SCValdiView',
   Label = 'SCValdiLabel',
   Image = 'SCValdiImageView',
+  WebView = 'SCValdiWebView',
   Spinner = 'SCValdiSpinnerView',
   TextField = 'SCValdiTextField',
   TextView = 'SCValdiTextView',

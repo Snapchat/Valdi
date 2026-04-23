@@ -1,0 +1,54 @@
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+load("//bzl/valdi:valdi_android_library.bzl", "valdi_android_library")
+
+objc_library(
+    name = "valdi_webview_ios_impl",
+    srcs = glob([
+        "ios/**/*.m",
+    ]),
+    hdrs = glob([
+        "ios/**/*.h",
+    ]),
+    copts = ["-I."],
+    sdk_frameworks = [
+        "WebKit",
+    ],
+    target_compatible_with = ["@platforms//os:ios"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_webview_api_objc",
+        "//valdi:valdi_ios",
+        "@valdi//valdi_core:valdi_core_objc",
+    ],
+)
+
+valdi_android_library(
+    name = "valdi_webview_android_impl",
+    srcs = glob([
+        "android/**/*.kt",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_webview_api_kt",
+        "//valdi:valdi_java",
+    ],
+)
+
+valdi_module(
+    name = "valdi_webview",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.d.ts",
+    ]),
+    android_class_path = "com.snap.valdi.modules.webview",
+    android_deps = [":valdi_webview_android_impl"],
+    android_output_target = "release",
+    ios_deps = [":valdi_webview_ios_impl"],
+    ios_module_name = "SCCValdiWebView",
+    ios_output_target = "release",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)
