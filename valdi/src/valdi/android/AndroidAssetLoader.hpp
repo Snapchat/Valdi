@@ -16,9 +16,18 @@ namespace ValdiAndroid {
 
 class ResourceLoader;
 
+} // namespace ValdiAndroid
+
+namespace Valdi {
+class DispatchQueue;
+}
+
+namespace ValdiAndroid {
+
 class AndroidAssetLoaderFactory : public Valdi::AssetLoaderFactory {
 public:
-    AndroidAssetLoaderFactory(const Valdi::Ref<ResourceLoader>& resourceLoader);
+    AndroidAssetLoaderFactory(const Valdi::Ref<ResourceLoader>& resourceLoader,
+                              const Valdi::Ref<Valdi::DispatchQueue>& workerQueue);
     ~AndroidAssetLoaderFactory() override;
 
     snap::valdi_core::AssetOutputType getOutputType() const override;
@@ -29,6 +38,7 @@ public:
 
 private:
     Valdi::Ref<ResourceLoader> _resourceLoader;
+    Valdi::Ref<Valdi::DispatchQueue> _workerQueue;
 };
 
 class AndroidAssetLoader : public Valdi::AssetLoader, public ValdiAndroid::GlobalRefJavaObjectBase {

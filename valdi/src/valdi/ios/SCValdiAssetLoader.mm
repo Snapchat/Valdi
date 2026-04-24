@@ -23,6 +23,8 @@
 #import "valdi_core/cpp/Attributes/ImageFilter.hpp"
 #import "valdi/ios/Utils/SCValdiImageFilter.h"
 
+#include "snap_drawing/cpp/Utils/Image.hpp"
+
 namespace ValdiIOS {
 
 static std::vector<Valdi::StringBox> getSupportedSchemes(NSArray<NSString *> *schemes) {
@@ -103,6 +105,22 @@ static void handleImageLoadResult(SCValdiImage *image,
             handleImageDidFinishLoading(processedImage, nil, completion);
         });
     }
+}
+
+static Valdi::Result<NSData *> rasterizeSVGToPNGData(const Valdi::BytesView& bytes,
+                                                     int32_t preferredWidth,
+                                                     int32_t preferredHeight) {
+    auto image = snap::drawing::Image::makeFromSVG(bytes, preferredWidth, preferredHeight);
+    if (!image) {
+        return image.moveError();
+    }
+
+    auto png = image.value()->toPNG();
+    if (!png) {
+        return png.moveError();
+    }
+
+    return ValdiIOS::NSDataFromBuffer(png.value());
 }
 
 Valdi::Shared<snap::valdi_core::Cancelable> ImageAssetLoaderIOS::loadAsset(const Valdi::Value& requestPayload,
@@ -251,14 +269,16 @@ public:
         const Valdi::Ref<Valdi::AssetLoaderCompletion>& completion) final {
         auto imageFilter = associatedData.getTypedRef<Valdi::ImageFilter>();
         return _downloader->downloadItem(requestPayload.toStringBox(),
-                                         [weakSelf = Valdi::weakRef(this), imageFilter = std::move(imageFilter), completion](const auto& result) {
+                                         [weakSelf = Valdi::weakRef(this), imageFilter = std::move(imageFilter), completion, preferredWidth, preferredHeight](const auto& result) {
                                              if (auto strongSelf = weakSelf.lock()) {
-                                                 strongSelf->onBytesLoaded(result, imageFilter, completion);
+                                                 strongSelf->onBytesLoaded(result, preferredWidth, preferredHeight, imageFilter, completion);
                                              }
                                          });
     }
 
     void onBytesLoaded(const Valdi::Result<Valdi::BytesView>& result,
+                       int32_t preferredWidth,
+                       int32_t preferredHeight,
                        const Valdi::Ref<Valdi::ImageFilter> &imageFilter,
                        const Valdi::Ref<Valdi::AssetLoaderCompletion>& completion) {
         if (!result) {
@@ -266,7 +286,25 @@ public:
             return;
         }
 
-        NSData *data = ValdiIOS::NSDataFromBuffer(result.value());
+        auto bytes = result.value();
+        if (snap::drawing::Image::isSVG(bytes)) {
+            _workerQueue->async([weakSelf = Valdi::weakRef(this), bytes, preferredWidth, preferredHeight, imageFilter, completion]() {
+                auto pngData = rasterizeSVGToPNGData(bytes, preferredWidth, preferredHeight);
+                if (!pngData) {
+                    completion->onLoadComplete(pngData.error());
+                    return;
+                }
+
+                NSError *error = nil;
+                SCValdiImage *image = [SCValdiImage imageWithData:pngData.value() error:&error];
+                if (auto strongSelf = weakSelf.lock()) {
+                    handleImageLoadResult(image, error, imageFilter, strongSelf->_workerQueue, completion);
+                }
+            });
+            return;
+        }
+
+        NSData *data = ValdiIOS::NSDataFromBuffer(bytes);
 
         NSError *error = nil;
         SCValdiImage *image = [SCValdiImage imageWithData:data error:&error];

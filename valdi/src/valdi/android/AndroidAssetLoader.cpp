@@ -13,12 +13,15 @@
 #include "valdi_core/NativeCancelable.hpp"
 #include "valdi_core/cpp/Attributes/ImageFilter.hpp"
 #include "valdi_core/cpp/Resources/LoadedAsset.hpp"
+#include "valdi_core/cpp/Threading/DispatchQueue.hpp"
 #include "valdi_core/cpp/Utils/DiskUtils.hpp"
 #include "valdi_core/cpp/Utils/Marshaller.hpp"
 #include "valdi_core/cpp/Utils/Trace.hpp"
 #include "valdi_core/cpp/Utils/ValueTypedArray.hpp"
 #include "valdi_core/jni/JavaCache.hpp"
 #include "valdi_core/jni/JavaUtils.hpp"
+
+#include "snap_drawing/cpp/Utils/Image.hpp"
 
 namespace ValdiAndroid {
 
@@ -90,12 +93,43 @@ static std::vector<Valdi::StringBox> getUrlSchemes(JavaEnv env, jobject supporte
     return urlSchemes;
 }
 
+static void loadAssetFromBytes(const Valdi::Ref<ResourceLoader>& resourceLoader,
+                               const Valdi::BytesView& bytes,
+                               int32_t preferredWidth,
+                               int32_t preferredHeight,
+                               const Valdi::Value& attachedData,
+                               const Valdi::Ref<Valdi::AssetLoaderCompletion>& completion) {
+    auto* completionHandle = Valdi::unsafeBridgeRetain(completion.get());
+
+    const float* colorMatrixFilter = nullptr;
+    float blurRadiusFilter = 0.0f;
+
+    auto typedFilter = attachedData.getTypedRef<Valdi::ImageFilter>();
+    if (typedFilter != nullptr) {
+        if (!typedFilter->isIdentityColorMatrix()) {
+            colorMatrixFilter = typedFilter->getColorMatrix();
+        }
+        blurRadiusFilter = typedFilter->getBlurRadius();
+    }
+
+    resourceLoader->loadAssetFromBytes(bytes,
+                                       preferredWidth,
+                                       preferredHeight,
+                                       colorMatrixFilter,
+                                       blurRadiusFilter,
+                                       reinterpret_cast<jlong>(completionHandle));
+}
+
 class AndroidAssetLoaderWithDownloader : public Valdi::AssetLoader {
 public:
     AndroidAssetLoaderWithDownloader(const Valdi::Ref<ResourceLoader>& resourceLoader,
                                      const std::vector<Valdi::StringBox>& urlSchemes,
-                                     const Valdi::Ref<Valdi::IRemoteDownloader>& downloader)
-        : Valdi::AssetLoader(urlSchemes), _resourceLoader(resourceLoader), _downloader(downloader) {}
+                                     const Valdi::Ref<Valdi::IRemoteDownloader>& downloader,
+                                     const Valdi::Ref<Valdi::DispatchQueue>& workerQueue)
+        : Valdi::AssetLoader(urlSchemes),
+          _resourceLoader(resourceLoader),
+          _downloader(downloader),
+          _workerQueue(workerQueue) {}
     ~AndroidAssetLoaderWithDownloader() override = default;
 
     snap::valdi_core::AssetOutputType getOutputType() const override {
@@ -114,41 +148,51 @@ public:
         const Valdi::Ref<Valdi::AssetLoaderCompletion>& completion) override {
         return _downloader->downloadItem(
             requestPayload.toStringBox(),
-            [resourceLoader = _resourceLoader, preferredWidth, preferredHeight, attachedData, completion](auto result) {
+            [resourceLoader = _resourceLoader, workerQueue = _workerQueue, preferredWidth, preferredHeight, attachedData, completion](auto result) {
                 if (!result) {
                     completion->onLoadComplete(result.moveError());
                     return;
                 }
 
-                auto* completionHandle = Valdi::unsafeBridgeRetain(completion.get());
+                auto bytes = result.value();
+                if (snap::drawing::Image::isSVG(bytes)) {
+                    workerQueue->async(
+                        [resourceLoader, preferredWidth, preferredHeight, attachedData, completion, bytes]() {
+                            auto image = snap::drawing::Image::makeFromSVG(bytes, preferredWidth, preferredHeight);
+                            if (!image) {
+                                completion->onLoadComplete(image.moveError());
+                                return;
+                            }
 
-                const float* colorMatrixFilter = nullptr;
-                float blurRadiusFilter = 0.0f;
+                            auto rasterizedBytes = image.value()->toPNG();
+                            if (!rasterizedBytes) {
+                                completion->onLoadComplete(rasterizedBytes.moveError());
+                                return;
+                            }
 
-                auto typedFilter = attachedData.getTypedRef<Valdi::ImageFilter>();
-                if (typedFilter != nullptr) {
-                    if (!typedFilter->isIdentityColorMatrix()) {
-                        colorMatrixFilter = typedFilter->getColorMatrix();
-                    }
-                    blurRadiusFilter = typedFilter->getBlurRadius();
+                            loadAssetFromBytes(resourceLoader,
+                                               rasterizedBytes.value(),
+                                               preferredWidth,
+                                               preferredHeight,
+                                               attachedData,
+                                               completion);
+                        });
+                    return;
                 }
 
-                resourceLoader->loadAssetFromBytes(result.value(),
-                                                   preferredWidth,
-                                                   preferredHeight,
-                                                   colorMatrixFilter,
-                                                   blurRadiusFilter,
-                                                   reinterpret_cast<jlong>(completionHandle));
+                loadAssetFromBytes(resourceLoader, bytes, preferredWidth, preferredHeight, attachedData, completion);
             });
     }
 
 private:
     Valdi::Ref<ResourceLoader> _resourceLoader;
     Valdi::Ref<Valdi::IRemoteDownloader> _downloader;
+    Valdi::Ref<Valdi::DispatchQueue> _workerQueue;
 };
 
-AndroidAssetLoaderFactory::AndroidAssetLoaderFactory(const Valdi::Ref<ResourceLoader>& resourceLoader)
-    : _resourceLoader(resourceLoader) {}
+AndroidAssetLoaderFactory::AndroidAssetLoaderFactory(const Valdi::Ref<ResourceLoader>& resourceLoader,
+                                                     const Valdi::Ref<Valdi::DispatchQueue>& workerQueue)
+    : _resourceLoader(resourceLoader), _workerQueue(workerQueue) {}
 AndroidAssetLoaderFactory::~AndroidAssetLoaderFactory() = default;
 
 snap::valdi_core::AssetOutputType AndroidAssetLoaderFactory::getOutputType() const {
@@ -157,7 +201,7 @@ snap::valdi_core::AssetOutputType AndroidAssetLoaderFactory::getOutputType() con
 
 Valdi::Ref<Valdi::AssetLoader> AndroidAssetLoaderFactory::createAssetLoader(
     const std::vector<Valdi::StringBox>& urlSchemes, const Valdi::Ref<Valdi::IRemoteDownloader>& downloader) {
-    return Valdi::makeShared<AndroidAssetLoaderWithDownloader>(_resourceLoader, urlSchemes, downloader);
+    return Valdi::makeShared<AndroidAssetLoaderWithDownloader>(_resourceLoader, urlSchemes, downloader, _workerQueue);
 }
 
 AndroidAssetLoader::AndroidAssetLoader(const Valdi::Ref<ResourceLoader>& resourceLoader,

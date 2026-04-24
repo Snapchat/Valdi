@@ -71,6 +71,7 @@ cc_library(
         "@skia//:png_decode_codec",
         "@skia//:png_encode_codec",
         "@skia//:skottie",
+        "@skia//:svg_renderer",
         "@skia//:webp_decode_codec",
         "@skia//:webp_encode_codec",
     ] + select({
