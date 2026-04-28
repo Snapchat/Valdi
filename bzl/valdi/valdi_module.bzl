@@ -629,6 +629,12 @@ def _setup_ios_target(name, module_deps, ios_deps, compiled_module_target, ios_m
             srcs = objc_hdrs,
             visibility = visibility,
         )
+
+        native.filegroup(
+            name = name + "_swift_srcs",
+            srcs = swift_srcs,
+            visibility = visibility,
+        )
     else:
         api_objc_hdrs_name = name + "_api_objc_hdrs"
         api_objc_srcs_name = name + "_api_objc_srcs"

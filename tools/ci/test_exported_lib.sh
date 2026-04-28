@@ -225,6 +225,57 @@ if [ "$(uname -s)" = "Darwin" ]; then
     echo "================================================================"
     echo "[PASSED] iOS export (valdi export ios) produced valid XCFramework"
     echo "================================================================"
+
+    # --- Swift xcframework export test (ios_swift = True) ---
+    echo ""
+    echo "Building HelloWorld Swift exported XCFramework..."
+    SWIFT_XCFRAMEWORK_PATH="$OUTPUT_DIR/HelloWorldSwift.xcframework"
+    valdi export ios \
+        --library ${TARGET_PREFIX}apps/helloworld:hello_world_swift_export_ios \
+        --output_path "$SWIFT_XCFRAMEWORK_PATH"
+
+    echo "[OK] Swift xcframework export build completed successfully"
+
+    if [ ! -d "$SWIFT_XCFRAMEWORK_PATH" ]; then
+        echo "[ERROR] Swift XCFramework not found at: $SWIFT_XCFRAMEWORK_PATH"
+        popd > /dev/null
+        exit 1
+    fi
+    if [ ! -f "$SWIFT_XCFRAMEWORK_PATH/Info.plist" ]; then
+        echo "[ERROR] Swift XCFramework Info.plist missing"
+        popd > /dev/null
+        exit 1
+    fi
+    FOUND_SWIFT_FRAMEWORK=false
+    for slice in "$SWIFT_XCFRAMEWORK_PATH"/ios-*; do
+        [ -d "$slice" ] || continue
+        FW="$slice/HelloWorldSwift.framework"
+        if [ ! -d "$FW" ]; then
+            continue
+        fi
+        HAS_BIN=false
+        if [ -f "$FW/HelloWorldSwift" ] || [ -f "$FW/Versions/A/HelloWorldSwift" ]; then
+            HAS_BIN=true
+        fi
+        if [ "$HAS_BIN" != true ]; then
+            echo "[ERROR] Swift framework slice missing binary"
+            echo "Contents: $(ls -la "$FW")"
+            popd > /dev/null
+            exit 1
+        fi
+        FOUND_SWIFT_FRAMEWORK=true
+        break
+    done
+    if [ "$FOUND_SWIFT_FRAMEWORK" != true ]; then
+        echo "[ERROR] Swift XCFramework has no ios-* slice with HelloWorldSwift.framework"
+        echo "Contents: $(ls -la "$SWIFT_XCFRAMEWORK_PATH")"
+        popd > /dev/null
+        exit 1
+    fi
+    echo "[OK] Swift XCFramework structure valid"
+    echo "================================================================"
+    echo "[PASSED] Swift xcframework export (ios_swift = True) produced valid XCFramework"
+    echo "================================================================"
 else
     echo ""
     echo "Skipping iOS export test (not on macOS)."

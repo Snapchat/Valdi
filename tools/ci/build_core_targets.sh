@@ -25,6 +25,9 @@ if [[ $(uname) != Linux ]] ; then
     bzl fetch //apps/helloworld:hello_world_macos --loading_phase_threads=4
     bzl build //apps/helloworld:hello_world_macos
 
+    # Swift xcframework export (validates ios_swift = True path)
+    bzl build //apps/helloworld:hello_world_swift_export_ios
+
     # Android depencencies have issues in ci, needs to be fixed
     # bzl build //apps/helloworld:hello_world_android
 fi

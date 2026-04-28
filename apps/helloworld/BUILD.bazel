@@ -21,3 +21,12 @@ valdi_exported_library(
     ios_bundle_name = "HelloWorld",
     deps = ["//apps/helloworld/src/valdi/hello_world"],
 )
+
+valdi_exported_library(
+    name = "hello_world_swift_export",
+    ios_bundle_id = "com.snap.hello_world_swift.lib",
+    ios_bundle_name = "HelloWorldSwift",
+    ios_swift = True,
+    web_package_name = "hello_world_swift_npm",
+    deps = ["//apps/helloworld/src/valdi/hello_world"],
+)

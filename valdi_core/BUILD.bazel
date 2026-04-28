@@ -288,6 +288,14 @@ swift_library(
 )
 
 filegroup(
+    name = "valdi_core_swift_marshaller_srcs",
+    srcs = glob([
+        "src/valdi_core/ios/swift/**/*.swift",
+    ]),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
     name = "valdi_core_ios_public_hdrs",
     srcs = OBJC_HEADERS,
     visibility = ["//visibility:public"],

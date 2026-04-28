@@ -12,6 +12,10 @@ valdi_module(
     android_deps = ["//apps/helloworld/src/android:native_module_android"],
     android_output_target = "release",
     ios_deps = ["//apps/helloworld/src/ios:native_module_ios"],
+    ios_language = [
+        "objc",
+        "swift",
+    ],
     ios_module_name = "SCCHelloWorld",
     ios_output_target = "release",
     native_deps = ["//apps/helloworld/src/cpp:native_module_cpp"],
