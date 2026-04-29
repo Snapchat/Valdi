@@ -44,4 +44,9 @@ data class ValdiTweaks(
           * transform-aware hit-test causes regressions.
           */
          val disableTransformAwareHitTest: Boolean = false,
+         /**
+          * When true, clearing the Valdi `selection` attribute does not move the caret (matches iOS).
+          * When false, legacy behavior resets the caret to index 0.
+          */
+         val editTextResetSelectionMatchesIos: Boolean = false,
 )

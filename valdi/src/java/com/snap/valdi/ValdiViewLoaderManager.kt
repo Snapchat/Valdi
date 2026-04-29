@@ -342,7 +342,12 @@ class ValdiRuntimeManager(context: Context,
                             ?: false, tweaks?.disableSlowClipping ?: false)
 
             val textConverter = RichTextConverter(fontManager)
-            val editTextAttributesBinder = EditTextAttributesBinder(context, textConverter, FontAttributes.default)
+            val editTextAttributesBinder = EditTextAttributesBinder(
+                context,
+                textConverter,
+                FontAttributes.default,
+                resetSelectionMatchesIos = tweaks?.editTextResetSelectionMatchesIos == true,
+            )
 
             arrayOf(
                     viewAttributesBinder,
