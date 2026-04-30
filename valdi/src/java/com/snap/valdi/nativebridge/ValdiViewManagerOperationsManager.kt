@@ -384,33 +384,41 @@ class ValdiViewManagerOperationsManager(
         if (hasValue) {
             val parentView = attachedValues[buffer.int] as ViewRef
             val viewIndex = buffer.int
-            val childView = view.get()
-            val parentViewObj = parentView.get()
-            val childClass = childView?.javaClass?.simpleName ?: "?"
-            val parentClass = parentViewObj?.javaClass?.simpleName ?: "?"
-            val depth = countViewGroupDepth(childView)
 
-            currentMoveOp = "child=$childClass(depth=$depth) -> parent=$parentClass idx=$viewIndex"
+            currentMoveOp = MoveOpRef(view, parentView, viewIndex)
 
             val startNs = System.nanoTime()
             parentView.insertChild(view, viewIndex)
             val elapsedMs = (System.nanoTime() - startNs) / 1_000_000
 
             if (elapsedMs > slowestInsertChildMs) {
-                slowestInsertChildMs = elapsedMs
-                slowestInsertChildOp = currentMoveOp
-                if (depth >= 4 && childView != null) {
-                    val sb = StringBuilder()
-                    dumpViewHierarchy(sb, childView, 0)
-                    slowestInsertChildHierarchy = sb.toString()
-                } else {
-                    slowestInsertChildHierarchy = null
-                }
+                recordSlowInsertChild(view, parentView, viewIndex, elapsedMs)
             }
             currentMoveOp = null
         } else {
             val shouldClearViewNode = buffer.int != 0
             view.removeFromParent(shouldClearViewNode)
+        }
+    }
+
+    private fun recordSlowInsertChild(
+        childRef: ViewRef,
+        parentRef: ViewRef,
+        viewIndex: Int,
+        elapsedMs: Long,
+    ) {
+        val childView = childRef.get()
+        val childClass = childView?.javaClass?.simpleName ?: "?"
+        val parentClass = parentRef.get()?.javaClass?.simpleName ?: "?"
+        val depth = countViewGroupDepth(childView)
+        slowestInsertChildMs = elapsedMs
+        slowestInsertChildOp = "child=$childClass(depth=$depth) -> parent=$parentClass idx=$viewIndex"
+        slowestInsertChildHierarchy = if (depth >= 4 && childView != null) {
+            val sb = StringBuilder()
+            dumpViewHierarchy(sb, childView, 0)
+            sb.toString()
+        } else {
+            null
         }
     }
 
@@ -455,23 +463,28 @@ class ValdiViewManagerOperationsManager(
 
     companion object {
         /**
-         * Diagnostic state for ANR crash reports. Updated on main thread only.
-         *
-         * [currentMoveOp] is set before insertChild and cleared after — if an ANR
-         * fires mid-operation this tells us exactly which view was being attached.
-         * [slowestInsertChildOp] / [slowestInsertChildMs] track the worst-case
-         * insertChild since the last reset, helping triage teams identify which
-         * view subtree is problematic (e.g. a RecyclerView with accumulated
-         * HandlerActionQueue entries).
+         * In-flight insertChild — set before the call and cleared after, so an
+         * ANR mid-operation can identify which view was being attached. Holds
+         * [ViewRef]s rather than a formatted string to keep the hot path to a
+         * single small allocation; class names are resolved lazily when
+         * [dumpDiagnostics] reads at crash time (the views are still live on
+         * stack at that point).
          */
-        @Volatile var currentMoveOp: String? = null
-            private set
-        @Volatile var slowestInsertChildMs: Long = 0
-            private set
-        @Volatile var slowestInsertChildOp: String? = null
-            private set
-        @Volatile var slowestInsertChildHierarchy: String? = null
-            private set
+        class MoveOpRef(val child: ViewRef, val parent: ViewRef, val index: Int)
+
+        /**
+         * Floor for [slowestInsertChildMs]. Inserts faster than this are not
+         * worth recording — they're never the ANR culprit and walking their
+         * subtrees adds overhead to the very flush we're trying to keep cheap.
+         * In healthy operation no insert exceeds this bar so the slow path is
+         * never entered.
+         */
+        private const val SLOW_INSERT_CHILD_THRESHOLD_MS = 10L
+
+        @Volatile private var currentMoveOp: MoveOpRef? = null
+        @Volatile private var slowestInsertChildMs: Long = SLOW_INSERT_CHILD_THRESHOLD_MS
+        @Volatile private var slowestInsertChildOp: String? = null
+        @Volatile private var slowestInsertChildHierarchy: String? = null
 
         fun dumpDiagnostics(): String? {
             val current = currentMoveOp
@@ -480,7 +493,11 @@ class ValdiViewManagerOperationsManager(
 
             val sb = StringBuilder()
             if (current != null) {
-                sb.append("IN_PROGRESS: ").append(current)
+                val c = current.child.get()?.javaClass?.simpleName ?: "?"
+                val p = current.parent.get()?.javaClass?.simpleName ?: "?"
+                sb.append("IN_PROGRESS: child=").append(c)
+                    .append(" -> parent=").append(p)
+                    .append(" idx=").append(current.index)
             }
             if (slowestOp != null) {
                 if (sb.isNotEmpty()) sb.append(" | ")
@@ -494,7 +511,7 @@ class ValdiViewManagerOperationsManager(
         }
 
         fun resetDiagnostics() {
-            slowestInsertChildMs = 0
+            slowestInsertChildMs = SLOW_INSERT_CHILD_THRESHOLD_MS
             slowestInsertChildOp = null
             slowestInsertChildHierarchy = null
         }
