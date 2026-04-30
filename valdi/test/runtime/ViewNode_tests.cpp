@@ -612,6 +612,558 @@ TEST(ViewNode, canExtendViewportWithChildren) {
     ASSERT_EQ(Frame(0, 0, 160, 170), container->getCalculatedViewport());
 }
 
+TEST(ViewNode, scaleTransformAffectsViewportIntersection) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto child = utils.createLayout();
+
+    // child frame (100..150 x 0..50) is outside container (0..100 x 0..100)
+    utils.setViewNodeFrame(container, 0, 0, 100, 100);
+    utils.setViewNodeFrame(child, 100, 0, 50, 50);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_FALSE(child->isVisibleInViewport());
+
+    // Scale 3x from center: child center x=125, scaled left = 125 - 75 = 50, which overlaps 0..100
+    child->setScaleX(3.0f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+    ASSERT_TRUE(child->isVisibleInViewport());
+
+    // Reset scale — should be invisible again
+    child->setScaleX(1.0f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+    ASSERT_FALSE(child->isVisibleInViewport());
+}
+
+TEST(ViewNode, scaleYTransformAffectsViewportIntersection) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto child = utils.createLayout();
+
+    // child frame (0..50 x 100..150) is outside container (0..100 x 0..100)
+    utils.setViewNodeFrame(container, 0, 0, 100, 100);
+    utils.setViewNodeFrame(child, 0, 100, 50, 50);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_FALSE(child->isVisibleInViewport());
+
+    // Scale 3x from center: child center y=125, scaled top = 125 - 75 = 50, which overlaps 0..100
+    child->setScaleY(3.0f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+    ASSERT_TRUE(child->isVisibleInViewport());
+
+    child->setScaleY(1.0f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+    ASSERT_FALSE(child->isVisibleInViewport());
+}
+
+TEST(ViewNode, positiveScaleXOnContainerCorrectlyClipsChildren) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto childIn = utils.createLayout();
+    auto childOut = utils.createLayout();
+
+    // Container: 400 wide (2x viewport). Viewport: 200x200.
+    // scaleX=2 expands container to visual width 800, centered at x=200.
+    // Visible local range: x=100..200 (viewport 0..200 maps to local /2 = 0..100
+    // offset into the clip rect, which starts at bounds.x-subtracted 200, giving 100..200).
+    utils.setViewNodeFrame(container, 0, 0, 400, 200);
+    // childIn at local x=150..200: visual x=100..200 — inside the viewport.
+    utils.setViewNodeFrame(childIn, 150, 0, 50, 200);
+    // childOut at local x=210..260: visual x=220..320 — outside the viewport.
+    utils.setViewNodeFrame(childOut, 210, 0, 50, 200);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), childIn);
+    container->appendChild(utils.getViewTransactionScope(), childOut);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    // Without scale: clip is local 0..200. childIn visible, childOut not.
+    ASSERT_TRUE(childIn->isVisibleInViewport());
+    ASSERT_FALSE(childOut->isVisibleInViewport());
+
+    container->setScaleX(2.0f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    // With scaleX=2: clip rect must be divided by 2 to give local 100..200.
+    // childIn (150..200) intersects; childOut (210..260) does not.
+    ASSERT_TRUE(childIn->isVisibleInViewport());
+    ASSERT_FALSE(childOut->isVisibleInViewport());
+}
+
+TEST(ViewNode, positiveScaleYOnContainerCorrectlyClipsChildren) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto childIn = utils.createLayout();
+    auto childOut = utils.createLayout();
+
+    // Container: 400 tall (2x viewport). Viewport: 200x200.
+    // scaleY=2 expands container to visual height 800, centered at y=200.
+    // Visible local range: y=100..200.
+    utils.setViewNodeFrame(container, 0, 0, 200, 400);
+    utils.setViewNodeFrame(childIn, 0, 150, 200, 50);  // local y=150..200: visual 100..200 ✓
+    utils.setViewNodeFrame(childOut, 0, 210, 200, 50); // local y=210..260: visual 220..320 ✗
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), childIn);
+    container->appendChild(utils.getViewTransactionScope(), childOut);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(childIn->isVisibleInViewport());
+    ASSERT_FALSE(childOut->isVisibleInViewport());
+
+    container->setScaleY(2.0f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(childIn->isVisibleInViewport());
+    ASSERT_FALSE(childOut->isVisibleInViewport());
+}
+
+TEST(ViewNode, negativeScaleYOnContainerMovesBottomChildIntoViewport) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto child = utils.createLayout();
+
+    // Viewport: 200x200.
+    // Container: 200 wide, 400 tall (2x viewport height), at origin.
+    // Child: anchored to the bottom of the container (y=350, h=50).
+    // Without any transform, the child (y=350..400) is fully below the
+    // viewport (0..200) so it should not produce a native view.
+    utils.setViewNodeFrame(container, 0, 0, 200, 400);
+    utils.setViewNodeFrame(child, 0, 350, 200, 50);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(container->isVisibleInViewport());
+    ASSERT_FALSE(child->isVisibleInViewport());
+
+    // scaleY=-1 flips the container around its vertical center (y=200).
+    // The child at local y=350..400 maps to visual y=0..50 — at the top of
+    // the viewport. Both the container and the child must be marked visible
+    // so that native views are produced for them.
+    container->setScaleY(-1.0f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(container->isVisibleInViewport());
+    ASSERT_TRUE(child->isVisibleInViewport());
+}
+
+TEST(ViewNode, negativeScaleXOnContainerMovesRightChildIntoViewport) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto child = utils.createLayout();
+
+    // Viewport: 200x200.
+    // Container: 400 wide (2x viewport width), 200 tall, at origin.
+    // Child: anchored to the right side of the container (x=350, w=50).
+    // Without any transform, the child (x=350..400) is fully past the
+    // viewport (0..200) so it should not produce a native view.
+    utils.setViewNodeFrame(container, 0, 0, 400, 200);
+    utils.setViewNodeFrame(child, 350, 0, 50, 200);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(container->isVisibleInViewport());
+    ASSERT_FALSE(child->isVisibleInViewport());
+
+    // scaleX=-1 flips the container around its horizontal center (x=200).
+    // The child at local x=350..400 maps to visual x=0..50 — at the left
+    // of the viewport. Both the container and the child must be visible.
+    container->setScaleX(-1.0f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(container->isVisibleInViewport());
+    ASSERT_TRUE(child->isVisibleInViewport());
+}
+
+TEST(ViewNode, negativeScaleXFlipsChildOutOfViewport) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto child = utils.createLayout();
+
+    // Container: 400 wide, 200 tall. Viewport: 200x200.
+    // Child on the left side (x=0..50) — normally visible.
+    utils.setViewNodeFrame(container, 0, 0, 400, 200);
+    utils.setViewNodeFrame(child, 0, 0, 50, 200);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(child->isVisibleInViewport());
+
+    // scaleX=-1: child at local x=0..50 maps to visual x=350..400 — past
+    // the viewport edge. It should no longer produce a native view.
+    container->setScaleX(-1.0f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_FALSE(child->isVisibleInViewport());
+}
+
+TEST(ViewNode, negativeScaleYFlipsChildOutOfViewport) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto child = utils.createLayout();
+
+    // Container: 200 wide, 400 tall. Viewport: 200x200.
+    // Child at the top (y=0..50) — normally visible.
+    utils.setViewNodeFrame(container, 0, 0, 200, 400);
+    utils.setViewNodeFrame(child, 0, 0, 200, 50);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(child->isVisibleInViewport());
+
+    // scaleY=-1: child at local y=0..50 maps to visual y=350..400 — below
+    // the viewport edge. It should no longer produce a native view.
+    container->setScaleY(-1.0f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_FALSE(child->isVisibleInViewport());
+}
+
+TEST(ViewNode, negativeScaleXAndScaleYMovesBottomRightChildIntoViewport) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto child = utils.createLayout();
+
+    // Viewport: 200x200.
+    // Container: 400x400 (2x viewport in both dims), at origin.
+    // Child: bottom-right corner (x=350, y=350, 50x50) — fully outside viewport.
+    utils.setViewNodeFrame(container, 0, 0, 400, 400);
+    utils.setViewNodeFrame(child, 350, 350, 50, 50);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(container->isVisibleInViewport());
+    ASSERT_FALSE(child->isVisibleInViewport());
+
+    // scaleX=-1, scaleY=-1 flips both axes around the container center (200,200).
+    // The child at local (350..400, 350..400) maps to visual (0..50, 0..50) —
+    // top-left corner of the viewport.
+    container->setScaleX(-1.0f);
+    container->setScaleY(-1.0f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(container->isVisibleInViewport());
+    ASSERT_TRUE(child->isVisibleInViewport());
+}
+
+TEST(ViewNode, negativeScaleXAndScaleYFlipsTopLeftChildOutOfViewport) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto child = utils.createLayout();
+
+    // Container: 400x400. Viewport: 200x200.
+    // Child at top-left (0,0,50,50) — normally visible.
+    utils.setViewNodeFrame(container, 0, 0, 400, 400);
+    utils.setViewNodeFrame(child, 0, 0, 50, 50);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(child->isVisibleInViewport());
+
+    // scaleX=-1, scaleY=-1: child at local (0..50, 0..50) maps to visual
+    // (350..400, 350..400) — outside the viewport.
+    container->setScaleX(-1.0f);
+    container->setScaleY(-1.0f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_FALSE(child->isVisibleInViewport());
+}
+
+TEST(ViewNode, negativeHalfScaleXOnContainerMovesRightChildIntoViewport) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto child = utils.createLayout();
+
+    // Container: 400 wide (2x viewport), 200 tall. Viewport: 200x200.
+    // Child: right side x=300..400 — outside the viewport.
+    utils.setViewNodeFrame(container, 0, 0, 400, 200);
+    utils.setViewNodeFrame(child, 300, 0, 100, 200);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(container->isVisibleInViewport());
+    ASSERT_FALSE(child->isVisibleInViewport());
+
+    // scaleX=-0.5: flip + shrink. Container visual bounds = x:100..300, half-size.
+    // Viewport (0..200) maps to local x:200..400. Child at x=300..400 is inside
+    // that range — visual center at x=125, visual frame x=100..150.
+    container->setScaleX(-0.5f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(container->isVisibleInViewport());
+    ASSERT_TRUE(child->isVisibleInViewport());
+}
+
+TEST(ViewNode, negativeHalfScaleXFlipsLeftChildOutOfViewport) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto child = utils.createLayout();
+
+    // Container: 400 wide, 200 tall. Viewport: 200x200.
+    // Child: left side x=0..100 — normally visible.
+    utils.setViewNodeFrame(container, 0, 0, 400, 200);
+    utils.setViewNodeFrame(child, 0, 0, 100, 200);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(child->isVisibleInViewport());
+
+    // scaleX=-0.5: viewport (0..200) maps to local x:200..400. Child at x=0..100
+    // falls outside that range — visual frame is at x=250..300, past the viewport.
+    container->setScaleX(-0.5f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_FALSE(child->isVisibleInViewport());
+}
+
+TEST(ViewNode, negativeTwoScaleXOnContainerMovesChildIntoViewport) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto child = utils.createLayout();
+
+    // Container: 400 wide, 200 tall. Viewport: 200x200.
+    // Child: just past the unscaled viewport edge, x=220..270.
+    utils.setViewNodeFrame(container, 0, 0, 400, 200);
+    utils.setViewNodeFrame(child, 220, 0, 50, 200);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(container->isVisibleInViewport());
+    ASSERT_FALSE(child->isVisibleInViewport());
+
+    // scaleX=-2: flip + double-size. Viewport (0..200) maps to local x:200..300.
+    // Child at x=220..270 is inside that range — visual center at x=110,
+    // visual frame x=60..160, inside the viewport.
+    container->setScaleX(-2.0f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(container->isVisibleInViewport());
+    ASSERT_TRUE(child->isVisibleInViewport());
+}
+
+TEST(ViewNode, negativeTwoScaleXFlipsChildOutOfViewport) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto child = utils.createLayout();
+
+    // Container: 400 wide, 200 tall. Viewport: 200x200.
+    // Child: x=50..100 — normally visible.
+    utils.setViewNodeFrame(container, 0, 0, 400, 200);
+    utils.setViewNodeFrame(child, 50, 0, 50, 200);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(child->isVisibleInViewport());
+
+    // scaleX=-2: viewport maps to local x:200..300. Child at x=50..100 is outside
+    // that range — visual center at x=450, visual frame x=400..500, past the viewport.
+    container->setScaleX(-2.0f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_FALSE(child->isVisibleInViewport());
+}
+
+TEST(ViewNode, negativeHalfScaleYOnContainerMovesBottomChildIntoViewport) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto child = utils.createLayout();
+
+    // Container: 200 wide, 400 tall (2x viewport). Viewport: 200x200.
+    // Child: bottom portion y=300..400 — outside the viewport.
+    utils.setViewNodeFrame(container, 0, 0, 200, 400);
+    utils.setViewNodeFrame(child, 0, 300, 200, 100);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(container->isVisibleInViewport());
+    ASSERT_FALSE(child->isVisibleInViewport());
+
+    // scaleY=-0.5: flip + shrink. Container visual bounds = y:100..300, half-size.
+    // Viewport (0..200) maps to local y:200..400. Child at y=300..400 is inside
+    // that range — visual center at y=125, visual frame y=100..150.
+    container->setScaleY(-0.5f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(container->isVisibleInViewport());
+    ASSERT_TRUE(child->isVisibleInViewport());
+}
+
+TEST(ViewNode, negativeHalfScaleYFlipsTopChildOutOfViewport) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto child = utils.createLayout();
+
+    // Container: 200 wide, 400 tall. Viewport: 200x200.
+    // Child: top portion y=0..100 — normally visible.
+    utils.setViewNodeFrame(container, 0, 0, 200, 400);
+    utils.setViewNodeFrame(child, 0, 0, 200, 100);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(child->isVisibleInViewport());
+
+    // scaleY=-0.5: viewport (0..200) maps to local y:200..400. Child at y=0..100
+    // falls outside that range — visual frame is at y=250..300, past the viewport.
+    container->setScaleY(-0.5f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_FALSE(child->isVisibleInViewport());
+}
+
+TEST(ViewNode, negativeTwoScaleYOnContainerMovesChildIntoViewport) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto child = utils.createLayout();
+
+    // Container: 200 wide, 400 tall. Viewport: 200x200.
+    // Child: just past the unscaled viewport edge, y=220..270.
+    utils.setViewNodeFrame(container, 0, 0, 200, 400);
+    utils.setViewNodeFrame(child, 0, 220, 200, 50);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(container->isVisibleInViewport());
+    ASSERT_FALSE(child->isVisibleInViewport());
+
+    // scaleY=-2: flip + double-size. Viewport (0..200) maps to local y:200..300.
+    // Child at y=220..270 is inside that range — visual center at y=110,
+    // visual frame y=60..160, inside the viewport.
+    container->setScaleY(-2.0f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(container->isVisibleInViewport());
+    ASSERT_TRUE(child->isVisibleInViewport());
+}
+
+TEST(ViewNode, negativeTwoScaleYFlipsChildOutOfViewport) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto container = utils.createLayout();
+    auto child = utils.createLayout();
+
+    // Container: 200 wide, 400 tall. Viewport: 200x200.
+    // Child: y=50..100 — normally visible.
+    utils.setViewNodeFrame(container, 0, 0, 200, 400);
+    utils.setViewNodeFrame(child, 0, 50, 200, 50);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(child->isVisibleInViewport());
+
+    // scaleY=-2: viewport maps to local y:200..300. Child at y=50..100 is outside
+    // that range — visual center at y=450, visual frame y=400..500, past the viewport.
+    container->setScaleY(-2.0f);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_FALSE(child->isVisibleInViewport());
+}
+
 TEST(ViewNode, supportsIgnoreParentViewport) {
     ViewNodeTestsDependencies utils;
 

@@ -546,6 +546,9 @@ public:
     float getTranslationY() const;
     void setTranslationY(float translationY);
 
+    void setScaleX(float scaleX);
+    void setScaleY(float scaleY);
+
     void setEstimatedWidth(float estimatedWidth);
     void setEstimatedHeight(float estimatedHeight);
 
@@ -613,6 +616,8 @@ private:
     Frame _previousViewFrame;
     float _translationX = 0;
     float _translationY = 0;
+    float _scaleX = 1.0f;
+    float _scaleY = 1.0f;
     std::unique_ptr<ViewNodeScrollState> _scrollState;
     std::unique_ptr<ViewNodeAccessibilityState> _accessibilityState;
     std::unique_ptr<ViewNodeChildrenIndexer> _childrenIndexer;

@@ -2878,6 +2878,29 @@ TEST_P(RuntimeFixture, handlesTranslationsInLimitToViewport) {
         getRootView(tree));
 }
 
+TEST_P(RuntimeFixture, handlesNegativeScaleYInLimitToViewport) {
+    wrapper.runtime->setLimitToViewportDisabled(false);
+
+    // scaleY=1.0: bottom-child at local y=150..200, outside 100×100 viewport → no view created
+    auto viewModel = makeShared<ValueMap>();
+    (*viewModel)[STRING_LITERAL("scaleY")] = Value(1.0f);
+
+    auto tree = wrapper.createViewNodeTreeAndContext(
+        STRING_LITERAL("ScaleTransformViewport@test/src/ScaleTransformViewport"), Value(viewModel), Value::undefined());
+    wrapper.waitUntilAllUpdatesCompleted();
+    tree->setLayoutSpecs(Size(100, 100), LayoutDirectionLTR);
+
+    ASSERT_EQ(nullptr, tree->getViewForNodePath(parseNodePath("bottom-child")));
+
+    // scaleY=-1.0: container flips, bottom-child appears at visual y=0..50 → inside viewport → view created
+    auto viewModel2 = makeShared<ValueMap>();
+    (*viewModel2)[STRING_LITERAL("scaleY")] = Value(-1.0f);
+    wrapper.setViewModel(tree->getContext(), Value(std::move(viewModel2)));
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    ASSERT_NE(nullptr, tree->getViewForNodePath(parseNodePath("bottom-child")));
+}
+
 TEST_P(RuntimeFixture, slotCanApplyAttributeDynamicallyToChild) {
     auto tree =
         wrapper.createViewNodeTreeAndContext("test", "SlotApplyAttributeParent", Valdi::Value(makeShared<ValueMap>()));

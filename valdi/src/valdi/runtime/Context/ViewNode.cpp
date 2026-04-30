@@ -698,6 +698,27 @@ bool ViewNode::doUpdateVisibility(const Valdi::Frame& viewport,
                 clipRect.x -= bounds.x;
                 clipRect.y -= bounds.y;
 
+                // Reverse-map the clip rect from visual (scaled) space back into
+                // the local coordinate space so children see the correct visible
+                // range. Negative scale also flips the axis; positive scale != 1
+                // only compresses/expands without flipping.
+                if (_scaleX < 0.0f) {
+                    const float absScaleX = -_scaleX;
+                    clipRect.x = (bounds.width - (clipRect.x + clipRect.width)) / absScaleX;
+                    clipRect.width = clipRect.width / absScaleX;
+                } else if (_scaleX > 0.0f && _scaleX != 1.0f) {
+                    clipRect.x /= _scaleX;
+                    clipRect.width /= _scaleX;
+                }
+                if (_scaleY < 0.0f) {
+                    const float absScaleY = -_scaleY;
+                    clipRect.y = (bounds.height - (clipRect.y + clipRect.height)) / absScaleY;
+                    clipRect.height = clipRect.height / absScaleY;
+                } else if (_scaleY > 0.0f && _scaleY != 1.0f) {
+                    clipRect.y /= _scaleY;
+                    clipRect.height /= _scaleY;
+                }
+
                 if (_scrollState != nullptr) {
                     _scrollState->resolveClipRect(clipRect);
                 }
@@ -1779,7 +1800,29 @@ void ViewNode::setHasParent(bool hasParent) {
 }
 
 Frame ViewNode::calculateSelfViewport() const {
-    auto bounds = _calculatedFrame.withOffset(getDirectionDependentTranslationX(), _translationY);
+    auto tx = getDirectionDependentTranslationX();
+    auto ty = _translationY;
+    auto& f = _calculatedFrame;
+    Frame bounds;
+    if (VALDI_LIKELY(_scaleX == 1.0f && _scaleY == 1.0f)) {
+        bounds = f.withOffset(tx, ty);
+    } else {
+        // Scale is applied around the center anchor point (matching iOS CALayer default
+        // anchor of 0.5,0.5 and Android View default pivot at center).
+        auto scaledX = f.x + (f.width * (1.0f - _scaleX)) / 2.0f + tx;
+        auto scaledY = f.y + (f.height * (1.0f - _scaleY)) / 2.0f + ty;
+        bounds = Frame(scaledX, scaledY, f.width * _scaleX, f.height * _scaleY);
+        // Normalize to ensure positive dimensions so that Frame::intersects() and
+        // setLeft/Right/Top/Bottom all work correctly (negative scale flips sign).
+        if (bounds.width < 0.0f) {
+            bounds.x += bounds.width;
+            bounds.width = -bounds.width;
+        }
+        if (bounds.height < 0.0f) {
+            bounds.y += bounds.height;
+            bounds.height = -bounds.height;
+        }
+    }
     if (VALDI_UNLIKELY(extendViewportWithChildren())) {
         for (auto* child : *this) {
             auto childBounds = child->calculateSelfViewport();
@@ -3345,6 +3388,28 @@ float ViewNode::getTranslationY() const {
 
 void ViewNode::setTranslationY(float translationY) {
     updateTranslation(translationY, &_translationY);
+}
+
+void ViewNode::setScaleX(float scaleX) {
+    if (_scaleX != scaleX) {
+        _scaleX = scaleX;
+        setCalculatedViewportNeedsUpdate();
+        auto parent = getParent();
+        if (parent != nullptr) {
+            parent->setChildrenIndexerNeedsUpdate();
+        }
+    }
+}
+
+void ViewNode::setScaleY(float scaleY) {
+    if (_scaleY != scaleY) {
+        _scaleY = scaleY;
+        setCalculatedViewportNeedsUpdate();
+        auto parent = getParent();
+        if (parent != nullptr) {
+            parent->setChildrenIndexerNeedsUpdate();
+        }
+    }
 }
 
 void ViewNode::updateTranslation(float translation, float* outValue) {

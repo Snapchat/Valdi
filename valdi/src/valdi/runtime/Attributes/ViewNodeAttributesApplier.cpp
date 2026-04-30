@@ -184,6 +184,12 @@ void ViewNodeAttributesApplier::processAttributeChange(ViewTransactionScope& vie
         _viewNode->setTranslationX(attribute.getResolvedValue().toFloat());
     } else if (id == DefaultAttributeTranslationY) {
         _viewNode->setTranslationY(attribute.getResolvedValue().toFloat());
+    } else if (id == DefaultAttributeScaleX) {
+        auto value = attribute.getResolvedValue();
+        _viewNode->setScaleX(value.isNullOrUndefined() ? 1.0f : value.toFloat());
+    } else if (id == DefaultAttributeScaleY) {
+        auto value = attribute.getResolvedValue();
+        _viewNode->setScaleY(value.isNullOrUndefined() ? 1.0f : value.toFloat());
     } else if (id == DefaultAttributeAccessibilityId) {
         auto value = attribute.getResolvedValue();
         if (value.isNullOrUndefined()) {
