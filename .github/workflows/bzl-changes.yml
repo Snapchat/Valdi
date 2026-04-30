@@ -7,7 +7,6 @@ on:
       - '**/BUILD.bazel'
       - '**/BUILD'
       - 'MODULE.bazel'
-      - 'WORKSPACE'
       - 'tools/ci/**'
       - 'npm_modules/cli/test/**'
       - '.github/workflows/bzl-changes.yml'
@@ -19,7 +18,6 @@ on:
       - '**/BUILD.bazel'
       - '**/BUILD'
       - 'MODULE.bazel'
-      - 'WORKSPACE'
       - 'tools/ci/**'
       - 'npm_modules/cli/test/**'
       - '.github/workflows/bzl-changes.yml'
@@ -102,15 +100,15 @@ jobs:
       
       - name: Mount Bazel cache
         uses: actions/cache@v4
+        timeout-minutes: 5
+        continue-on-error: true
         with:
           path: |
             ~/.cache/bazel
             ~/.cache/bazelisk
-          # Include run_id to make key unique (enables incremental caching)
-          # restore-keys will find the most recent cache with matching config
-          key: bazel-${{ runner.os }}-${{ hashFiles('WORKSPACE', 'MODULE.bazel', '**/*.bzl') }}-${{ github.run_id }}
+          key: bazel-${{ runner.os }}-${{ hashFiles('MODULE.bazel', '**/*.bzl') }}-${{ github.run_id }}
           restore-keys: |
-            bazel-${{ runner.os }}-${{ hashFiles('WORKSPACE', 'MODULE.bazel', '**/*.bzl') }}-
+            bazel-${{ runner.os }}-${{ hashFiles('MODULE.bazel', '**/*.bzl') }}-
             bazel-${{ runner.os }}-
       
       - name: Setup Java 17

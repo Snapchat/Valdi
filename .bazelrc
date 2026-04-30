@@ -65,11 +65,9 @@ build --define=android_incremental_dexing_tool=d8_dexbuilder
 build --define=android_standalone_dexing_tool=d8_compat_dx
 build --incremental_dexing
 
-# Disable 3rd party libs warnings
-build --per_file_copt=external/com_github_grpc_grpc/.*\$@-Wno-everything
-build --per_file_copt=external/snap_protobuf/.*\$@-Wno-everything
-build --per_file_copt=external/boringssl/.*\$@-Wno-everything
-build --per_file_copt=external/com_github_google_flatbuffers/.*\$@-Wno-everything
+# Disable 3rd party libs warnings (bzlmod canonical names use module~ suffix)
+build --per_file_copt=external/protobuf[^/]*/.*\$@-Wno-everything
+build --per_file_copt=external/boringssl[^/]*/.*\$@-Wno-everything
 
 # Enable persistent worker for Valdi compilation
 build --strategy=ValdiCompile=worker

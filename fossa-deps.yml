@@ -74,8 +74,8 @@ remote-dependencies:
   version: 12.2.0
   url: https://github.com/harfbuzz/harfbuzz/releases/download/12.2.0/harfbuzz-12.2.0.tar.xz
 - name: protobuf_cpp
-  version: 3.20.0
-  url: https://github.com/protocolbuffers/protobuf/releases/download/v3.20.0/protobuf-all-3.20.0.tar.gz
+  version: 27.0
+  url: https://github.com/protocolbuffers/protobuf/releases/download/v27.0/protobuf-27.0.tar.gz
 - name: backward-cpp
   version: 1.6
   url: https://github.com/bombela/backward-cpp/archive/refs/tags/v1.6.tar.gz
