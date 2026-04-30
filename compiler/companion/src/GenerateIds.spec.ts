@@ -102,4 +102,24 @@ NS_ASSUME_NONNULL_END
 `,
     );
   });
+
+  it('escapes double quotes in ObjC impl when module name contains them', () => {
+    const iosImpl = generateIds('hello"world', '"SCHelloWorld/Ids.h"', TEST_ID_FILES).ios.impl;
+    expect(iosImpl).toContain('return @"hello\\"world/my_first_id";');
+  });
+
+  it('escapes backslashes in ObjC impl when module name contains them', () => {
+    const iosImpl = generateIds('hello\\world', '"SCHelloWorld/Ids.h"', TEST_ID_FILES).ios.impl;
+    expect(iosImpl).toContain('return @"hello\\\\world/my_first_id";');
+  });
+
+  it('escapes single quotes in JS impl when module name contains them', () => {
+    const jsImpl = generateIds("hello'world", '"SCHelloWorld/Ids.h"', TEST_ID_FILES).typescript.implementation;
+    expect(jsImpl).toContain("myFirstId: () => 'hello\\'world/my_first_id',");
+  });
+
+  it('escapes backslashes in JS impl when module name contains them', () => {
+    const jsImpl = generateIds('hello\\world', '"SCHelloWorld/Ids.h"', TEST_ID_FILES).typescript.implementation;
+    expect(jsImpl).toContain("myFirstId: () => 'hello\\\\world/my_first_id',");
+  });
 });
