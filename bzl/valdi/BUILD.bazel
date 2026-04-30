@@ -232,6 +232,14 @@ config_setting(
     },
 )
 
+# Flag to opt in to the manifest-based image asset identification path.
+# Default is false so Bazel keeps using the compiler's existing image discovery path.
+bool_flag(
+    name = "use_explicit_image_manifest",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
 # Flag to restrict the Valdi compiler to a single build flavor (debug or release).
 # Default is "all" (generate both, subject to each module's own output_target).
 # Set to "debug" for debug-only builds (e.g. local dev) or "release" for release-only

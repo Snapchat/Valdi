@@ -196,6 +196,9 @@ struct ValdiCompilerArguments: ParsableCommand {
     @Option(help: "path to the file with the list of input files")
     var explicitInputListFile: String?
 
+    @Option(help: "path to the explicit image asset manifest")
+    var explicitImageAssetManifest: String?
+
     @Option(help: "Path to where to store the compiler companion logs")
     var companionLogOutput: String?
 

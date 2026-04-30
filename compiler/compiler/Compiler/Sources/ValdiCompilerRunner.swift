@@ -363,7 +363,15 @@ class ValdiCompilerRunner {
                                                                          rootBundle: rootBundle,
                                                                          shouldMergeWithExistingFile: false))
         } else {
-            builder.append(preprocessor: try IdentifyImageAssetsProcessor(logger: logger,  imageToolbox: imageToolbox, compilerConfig: configs.compilerConfig, diskCacheProvider: diskCacheProvider))
+            if let explicitImageAssetManifest = configs.compilerConfig.explicitImageAssetManifest {
+                builder.append(preprocessor: try ExplicitImageAssetsProcessor(logger: logger,
+                                                                              imageToolbox: imageToolbox,
+                                                                              compilerConfig: configs.compilerConfig,
+                                                                              manifest: explicitImageAssetManifest,
+                                                                              diskCacheProvider: diskCacheProvider))
+            } else {
+                builder.append(preprocessor: try IdentifyImageAssetsProcessor(logger: logger,  imageToolbox: imageToolbox, compilerConfig: configs.compilerConfig, diskCacheProvider: diskCacheProvider))
+            }
             builder.append(preprocessor: IdentifyFontAssetsProcessor())
             builder.append(preprocessor: GenerateAssetCatalogProcessor(logger: logger, fileManager: fileManager, projectConfig: configs.projectConfig, enablePreviewInGeneratedTSFile: enablePreviewInGeneratedTSFile))
             builder.append(preprocessor: TranslationStringsProcessor(logger: logger, fileManager: fileManager, compilerConfig: configs.compilerConfig, projectConfig: configs.projectConfig, emitInlineTranslations: emitInlineTranslations, companion: compilerCompanion))

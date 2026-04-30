@@ -362,6 +362,10 @@ valdi_compiled = rule(
             doc = "Which build flavor(s) to emit. Accepts @valdi//bzl/valdi:output_flavor (values: all, debug, release). 'all' preserves existing behaviour — emits both debug and release variants when the module's output_target allows it. 'debug' or 'release' restricts to that single variant for release-ready modules, skipping the other to save compile time. Debug-only modules always emit debug regardless of this setting.",
             default = "@valdi//bzl/valdi:output_flavor",
         ),
+        "use_explicit_image_manifest": attr.label(
+            doc = "Whether to pass an explicit image asset manifest to the Valdi compiler. Accepts @valdi//bzl/valdi:use_explicit_image_manifest. Default false preserves existing compiler image discovery.",
+            default = "@valdi//bzl/valdi:use_explicit_image_manifest",
+        ),
         # NOTE: Valdi base should probably be moved to its own directory
         "_valdi_base": attr.label(
             doc = "The base module that all Valdi modules depend on",
@@ -413,6 +417,9 @@ def _invoke_valdi_compiler(ctx, module_name, module_yaml, enable_android = True,
     #############
     # 2. Prepare the explicit input list file for the compiler.
     (explicit_input_list_file, all_inputs, module_directory) = _prepare_explicit_input_list_file(ctx, module_yaml)
+    explicit_image_asset_manifest_file = None
+    if ctx.attr.use_explicit_image_manifest[BuildSettingInfo].value:
+        explicit_image_asset_manifest_file = _prepare_explicit_image_asset_manifest_file(ctx, module_name, module_directory)
 
     localization_mode = ctx.attr.localization_mode[BuildSettingInfo].value
     js_bytecode_format = ctx.attr.js_bytecode_format[BuildSettingInfo].value
@@ -459,7 +466,7 @@ def _invoke_valdi_compiler(ctx, module_name, module_yaml, enable_android = True,
     else:
         compiler_output_target = "all"
 
-    args = _prepare_arguments(ctx.actions.args(), ctx.attr.log_level[BuildSettingInfo].value, localization_mode, js_bytecode_format, config_yaml_file, explicit_input_list_file, module_name, base_output_dir, disable_downloadable_assets, ctx.configuration.default_shell_env, prepared_upload_artifact_file, ctx.attr.inline_assets, valdi_copts, enable_web, disable_minify_web, code_coverage, enable_android, enable_ios, emit_debug, emit_release, compiler_output_target)
+    args = _prepare_arguments(ctx.actions.args(), ctx.attr.log_level[BuildSettingInfo].value, localization_mode, js_bytecode_format, config_yaml_file, explicit_input_list_file, explicit_image_asset_manifest_file, module_name, base_output_dir, disable_downloadable_assets, ctx.configuration.default_shell_env, prepared_upload_artifact_file, ctx.attr.inline_assets, valdi_copts, enable_web, disable_minify_web, code_coverage, enable_android, enable_ios, emit_debug, emit_release, compiler_output_target)
 
     #############
     # 5. Set up the action that executes the Valdi compiler
@@ -468,7 +475,7 @@ def _invoke_valdi_compiler(ctx, module_name, module_yaml, enable_android = True,
         ctx = ctx,
         args = args,
         outputs = outputs,
-        inputs = all_inputs + [config_yaml_file, explicit_input_list_file],
+        inputs = all_inputs + [config_yaml_file, explicit_input_list_file] + ([explicit_image_asset_manifest_file] if explicit_image_asset_manifest_file else []),
         mnemonic = "ValdiCompile",
         progress_message = "Compiling Valdi module: " + str(ctx.label),
         use_worker = True,
@@ -599,6 +606,107 @@ def _prepare_explicit_input_list_file(ctx, module_yaml):
     ctx.actions.write(output = explicit_input_list_file, content = content)
 
     return (explicit_input_list_file, ctx.files._valdi_base + dependencies_list, direct_module_directory)
+
+def _android_image_variant_spec(directory):
+    android_scales = {
+        "drawable-mdpi": 1.0,
+        "drawable-hdpi": 1.5,
+        "drawable-xhdpi": 2.0,
+        "drawable-xxhdpi": 3.0,
+        "drawable-xxxhdpi": 4.0,
+    }
+    if directory not in android_scales:
+        return None
+
+    return {
+        "filename_pattern": paths.join(directory, "$file.webp"),
+        "platform": "android",
+        "scale": android_scales[directory],
+    }
+
+def _image_manifest_input(resource, module_name, module_directory):
+    root, ext = paths.split_extension(resource.path)
+    if ext not in [".png", ".webp", ".svg", ".jpeg", ".jpg"]:
+        return None
+
+    relative_project_path = resolve_relative_project_path(resource, module_name, module_directory)
+    basename = paths.basename(root)
+    filename_pattern = None
+    platform = None
+    scale = None
+    relative_project_asset_directory_path = paths.dirname(relative_project_path)
+
+    if ext == ".svg":
+        filename_pattern = "$file.svg"
+        scale = 1.0
+    elif ext in [".png", ".jpg", ".jpeg"]:
+        if basename.endswith("@2x"):
+            filename_pattern = "$file@2x" + ext
+            platform = "ios"
+            scale = 2.0
+        elif basename.endswith("@3x"):
+            filename_pattern = "$file@3x" + ext
+            platform = "ios"
+            scale = 3.0
+        else:
+            filename_pattern = "$file" + ext
+            platform = "web"
+            scale = 1.0
+    elif ext == ".webp":
+        variant_directory = paths.basename(paths.dirname(resource.path))
+        variant_spec = _android_image_variant_spec(variant_directory)
+        if not variant_spec:
+            return None
+
+        filename_pattern = variant_spec["filename_pattern"]
+        platform = variant_spec["platform"]
+        scale = variant_spec["scale"]
+        relative_project_asset_directory_path = paths.dirname(paths.dirname(relative_project_path))
+
+    asset_name = _clean_image_file_name(root)
+
+    return {
+        "asset_name": asset_name,
+        "file": resource.path,
+        "filename_pattern": filename_pattern,
+        "platform": platform,
+        "relative_project_asset_directory_path": relative_project_asset_directory_path,
+        "relative_project_path": relative_project_path,
+        "scale": scale,
+    }
+
+def _prepare_explicit_image_asset_manifest_file(ctx, module_name, module_directory):
+    """Write a JSON file with the list of image assets that should be identified by the Valdi compiler."""
+
+    assets_by_key = {}
+    for resource in ctx.files.res:
+        input = _image_manifest_input(resource, module_name, module_directory)
+        if not input:
+            continue
+
+        key = "{}\n{}\n{}".format(module_name, input["relative_project_asset_directory_path"], input["asset_name"])
+        if key not in assets_by_key:
+            assets_by_key[key] = {
+                "asset_name": input["asset_name"],
+                "inputs": [],
+                "module_name": module_name,
+                "relative_project_asset_directory_path": input["relative_project_asset_directory_path"],
+            }
+
+        assets_by_key[key]["inputs"].append({
+            "file": input["file"],
+            "filename_pattern": input["filename_pattern"],
+            "platform": input["platform"],
+            "relative_project_path": input["relative_project_path"],
+            "scale": input["scale"],
+        })
+
+    assets = [assets_by_key[key] for key in sorted(assets_by_key.keys())]
+    explicit_image_asset_manifest_file = ctx.actions.declare_file("{}_explicit_image_asset_manifest.json".format(ctx.label.name))
+    content = json.encode_indent({"assets": assets}, indent = "  ")
+    ctx.actions.write(output = explicit_image_asset_manifest_file, content = content)
+
+    return explicit_image_asset_manifest_file
 
 def _declare_compiler_outputs(ctx, module_name, module_directory, localization_mode, enable_web, code_coverage, enable_android = True, enable_ios = True, emit_debug = True, emit_release = True):
     files_output_paths = _get_files_output_paths(ctx, module_name, module_directory, localization_mode, enable_web, code_coverage, enable_android, enable_ios, emit_debug, emit_release)
@@ -1206,7 +1314,7 @@ def _declare_files(ctx, paths):
 def _declare_directories(ctx, paths):
     return [ctx.actions.declare_directory(path) for path in paths]
 
-def _prepare_arguments(args, log_level, localization_mode, js_bytecode_format, config_yaml_file, explicit_input_list_file, module_name, base_output_dir, disable_downloadable_assets, shell_env, prepared_upload_artifact_file, inline_assets, additional_copts, enable_web, disable_minify_web, code_coverage, enable_android = True, enable_ios = True, emit_debug = True, emit_release = True, compiler_output_target = "all"):
+def _prepare_arguments(args, log_level, localization_mode, js_bytecode_format, config_yaml_file, explicit_input_list_file, explicit_image_asset_manifest_file, module_name, base_output_dir, disable_downloadable_assets, shell_env, prepared_upload_artifact_file, inline_assets, additional_copts, enable_web, disable_minify_web, code_coverage, enable_android = True, enable_ios = True, emit_debug = True, emit_release = True, compiler_output_target = "all"):
     """ Prepare arguments for the Valdi compiler invocation. """
 
     args.use_param_file("@%s", use_always = True)
@@ -1214,6 +1322,8 @@ def _prepare_arguments(args, log_level, localization_mode, js_bytecode_format, c
 
     args.add("--config", config_yaml_file)
     args.add("--explicit-input-list-file", explicit_input_list_file)
+    if explicit_image_asset_manifest_file:
+        args.add("--explicit-image-asset-manifest", explicit_image_asset_manifest_file)
 
     args.add("--build-dir", paths.join("$PWD", base_output_dir, BUILD_DIR))
 
