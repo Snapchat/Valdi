@@ -1,4 +1,5 @@
 import { generateStyles, isAttributeValidStyle } from '../styles/ValdiWebStyles';
+import { injectTouchAreaStyles } from '../styles/touchAreaExtension';
 import { UpdateAttributeDelegate } from '../ValdiWebRendererDelegate';
 import { TouchEventState } from 'valdi_tsx/src/GestureEvents';
 
@@ -85,10 +86,15 @@ export class WebValdiLayout {
     return element;
   }
 
-  makeRoot(root: HTMLElement) {
+  makeRoot(root: HTMLElement | ShadowRoot) {
     this.parent?.removeChild(this);
     this.parent = null;
     root.replaceChildren(this.htmlElement);
+    if (root instanceof ShadowRoot) {
+      injectTouchAreaStyles(root);
+    } else {
+      injectTouchAreaStyles(root.ownerDocument);
+    }
     if (this._onViewChange && !this._isAttached) {
       this._isAttached = true;
       this._onViewChange({ type: 'Attached' });
@@ -132,18 +138,32 @@ export class WebValdiLayout {
       parts.push(`scale(${scaleX}, ${scaleY})`);
     }
     if (rotation !== 0) {
-      parts.push(`rotate(${rotation}deg)`);
+      parts.push(`rotate(${rotation}rad)`);
     }
     this.htmlElement.style.transform = parts.join(' ');
   }
 
   private updateTouchAreaExtension() {
     const { top, right, bottom, left } = this._touchAreaExtension;
-    this.htmlElement.style.paddingTop = `${top}px`;
-    this.htmlElement.style.paddingRight = `${right}px`;
-    this.htmlElement.style.paddingBottom = `${bottom}px`;
-    this.htmlElement.style.paddingLeft = `${left}px`;
-    this.htmlElement.style.margin = `-${top}px -${right}px -${bottom}px -${left}px`;
+    const hasExtension = top > 0 || right > 0 || bottom > 0 || left > 0;
+
+    if (hasExtension) {
+      const rootNode = this.htmlElement.getRootNode();
+      if (rootNode instanceof ShadowRoot || rootNode instanceof Document) {
+        injectTouchAreaStyles(rootNode);
+      }
+      this.htmlElement.setAttribute('data-touch-ext', '');
+      this.htmlElement.style.setProperty('--touch-ext-top', `${top}px`);
+      this.htmlElement.style.setProperty('--touch-ext-right', `${right}px`);
+      this.htmlElement.style.setProperty('--touch-ext-bottom', `${bottom}px`);
+      this.htmlElement.style.setProperty('--touch-ext-left', `${left}px`);
+    } else {
+      this.htmlElement.removeAttribute('data-touch-ext');
+      this.htmlElement.style.removeProperty('--touch-ext-top');
+      this.htmlElement.style.removeProperty('--touch-ext-right');
+      this.htmlElement.style.removeProperty('--touch-ext-bottom');
+      this.htmlElement.style.removeProperty('--touch-ext-left');
+    }
   }
 
   private setupEventListeners() {
@@ -324,6 +344,13 @@ export class WebValdiLayout {
         return;
       case 'onTap':
         this._onTap = attributeValue;
+        if (attributeValue) {
+          this.htmlElement.style.pointerEvents = 'auto';
+          this.htmlElement.style.cursor = 'pointer';
+        } else {
+          this.htmlElement.style.pointerEvents = 'none';
+          this.htmlElement.style.cursor = '';
+        }
         return;
       case 'onTapPredicate':
         this._onTapPredicate = attributeValue;
@@ -420,7 +447,7 @@ export class WebValdiLayout {
           this._onLayoutObserver = new ResizeObserver(entries => {
             for (const entry of entries) {
               const { width, height, x, y } = entry.contentRect;
-              attributeValue({ layout: { x, y, width, height } });
+              attributeValue({ x, y, width, height });
             }
           });
           this._onLayoutObserver.observe(this.htmlElement);

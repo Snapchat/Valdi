@@ -18,6 +18,8 @@ typedef NS_ENUM(NSUInteger, SCValdiTextDecoration) {
 };
 
 @protocol SCValdiFunction;
+@class SCValdiWrappedValue;
+@class SCValdiImageAttachmentInfo;
 
 /**
  SCValdiAttributedText is the Objective-C counter part of
@@ -32,6 +34,8 @@ typedef NS_ENUM(NSUInteger, SCValdiTextDecoration) {
 @property (readonly, nonatomic) NSUInteger partsCount;
 
 - (instancetype)initWithCppInstance:(void*)cppInstance;
+
+- (instancetype)initWithWrappedValue:(SCValdiWrappedValue*)wrappedValue;
 
 /**
  Return the string content for the part at the given index
@@ -89,6 +93,18 @@ typedef NS_ENUM(NSUInteger, SCValdiTextDecoration) {
  or nil if unspecified.
  */
 - (nullable NSNumber*)outerOutlineWidthAtIndex:(NSUInteger)index;
+
+/**
+ Return the image attachment info for the part at the given index,
+ or nil if the part is not an image attachment.
+ */
+- (nullable SCValdiImageAttachmentInfo*)imageAttachmentAtIndex:(NSUInteger)index;
+
+/**
+ Return the animation transform for the part at the given index,
+ or nil if unspecified.
+ */
+- (nullable NSDictionary<NSString*, NSNumber*>*)animationTransformAtIndex:(NSUInteger)index;
 
 @end
 

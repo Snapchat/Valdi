@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+ 
 #pragma once
 
 #include "Future.hpp"
@@ -53,7 +53,7 @@ public:
         return await_resume();
     }
 
-    template<typename Func>
+    template <typename Func>
     using ResultT = std::remove_cv_t<std::remove_reference_t<std::invoke_result_t<Func, const SharedFuture<T>&>>>;
 
     // Transform the result of this future into a new future. The behavior is same as Future::then except that
@@ -83,7 +83,7 @@ public:
             std::rethrow_exception(_sharedStates->storedValue->error());
         }
         if constexpr (!std::is_void_v<T>) {
-            return const_cast<const T&>(_sharedStates->storedValue->value());
+            return const_cast<const T &>(_sharedStates->storedValue->value());
         }
     }
 

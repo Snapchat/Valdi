@@ -9,6 +9,9 @@ For translations, look at [Localization](./advanced-localization.md).
 #### Label
 The `<label />` is the default for displaying text - this component supports displaying either a single line or multiple lines of text. It offers various styling options, including adjustments to the font, text color, alignment, and autoscaling.
 
+> [!Note]
+> The layout engine relies on the UI backend for measuring labels. This means that the dimensions of a `<label>` are calculated by the native platform (iOS/Android) based on the provided font and text content, ensuring accurate layout across different devices.
+
 #### TextField
 The `<textfield />` is the default for editing text in one line - this component only supports editable text in a single line. This and textview support options like placeholder, text editing configurations, and keyboard and selection settings.
 

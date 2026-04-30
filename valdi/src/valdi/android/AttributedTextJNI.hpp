@@ -119,6 +119,44 @@ public:
         return style.outlineWidth.has_value() ? static_cast<jdouble>(style.outlineWidth.value()) : 0.0;
     }
 
+    // NOLINTNEXTLINE
+    static jfloat nativeGetImageAttachmentWidth(fbjni::alias_ref<fbjni::JClass> /* clazz */, jlong ptr, jint index) {
+        auto attributedText = getAttributedText(ptr);
+        const auto& style = attributedText->getStyleAtIndex(static_cast<size_t>(index));
+        if (!style.imageAttachment) {
+            return 0.0f;
+        }
+        return static_cast<jfloat>(style.imageAttachment->width);
+    }
+
+    // NOLINTNEXTLINE
+    static jfloat nativeGetImageAttachmentHeight(fbjni::alias_ref<fbjni::JClass> /* clazz */, jlong ptr, jint index) {
+        auto attributedText = getAttributedText(ptr);
+        const auto& style = attributedText->getStyleAtIndex(static_cast<size_t>(index));
+        if (!style.imageAttachment) {
+            return 0.0f;
+        }
+        return static_cast<jfloat>(style.imageAttachment->height);
+    }
+
+    // NOLINTNEXTLINE
+    static jbyteArray nativeGetImageAttachmentData(fbjni::alias_ref<fbjni::JClass> /* clazz */, jlong ptr, jint index) {
+        auto attributedText = getAttributedText(ptr);
+        const auto& style = attributedText->getStyleAtIndex(static_cast<size_t>(index));
+        if (!style.imageAttachment || style.imageAttachment->imageData.empty()) {
+            return nullptr;
+        }
+
+        JNIEnv* env = fbjni::Environment::current();
+        const auto& data = style.imageAttachment->imageData;
+        jbyteArray result = env->NewByteArray(static_cast<jsize>(data.size()));
+        if (result != nullptr) {
+            env->SetByteArrayRegion(
+                result, 0, static_cast<jsize>(data.size()), reinterpret_cast<const jbyte*>(data.data()));
+        }
+        return result;
+    }
+
     static void registerNatives() {
         javaClassStatic()->registerNatives({
             makeNativeMethod("nativeGetPartsSize", AttributedTextJNI::nativeGetPartsSize),
@@ -130,6 +168,9 @@ public:
             makeNativeMethod("nativeGetOnLayout", AttributedTextJNI::nativeGetOnLayout),
             makeNativeMethod("nativeGetOutlineColor", AttributedTextJNI::nativeGetOutlineColor),
             makeNativeMethod("nativeGetOutlineWidth", AttributedTextJNI::nativeGetOutlineWidth),
+            makeNativeMethod("nativeGetImageAttachmentWidth", AttributedTextJNI::nativeGetImageAttachmentWidth),
+            makeNativeMethod("nativeGetImageAttachmentHeight", AttributedTextJNI::nativeGetImageAttachmentHeight),
+            makeNativeMethod("nativeGetImageAttachmentData", AttributedTextJNI::nativeGetImageAttachmentData),
         });
     }
 };

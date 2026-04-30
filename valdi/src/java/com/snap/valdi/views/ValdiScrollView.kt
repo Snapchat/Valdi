@@ -23,7 +23,8 @@ import com.snap.valdi.views.touches.ValdiGesturePointer
 
 enum class KeyboardDismissMode(val value: String) {
     IMMEDIATE("immediate"),
-    TOUCH_EXIT_BELOW("touch-exit-below");
+    TOUCH_EXIT_BELOW("touch-exit-below"),
+    TOUCH_EXIT_ABOVE("touch-exit-above");
     
     companion object {
         fun fromString(value: String): KeyboardDismissMode =
@@ -58,6 +59,9 @@ open class ValdiScrollView(context: Context) : ValdiView(context, attributeSet(c
         val flingDecelerationRate = 0.998
         val flingDecelerationCoefficient = 1000 * Math.log(flingDecelerationRate)
         val flingDecelerationCorrection = 1 / -flingDecelerationCoefficient
+        
+        // Android's native fading edge works well up to ~40px. Beyond this, use custom implementation.
+        const val NATIVE_FADE_THRESHOLD = 40
     }
 
     // TODO(796) - deprecate, only used in android on legacy tray integration
@@ -141,6 +145,68 @@ open class ValdiScrollView(context: Context) : ValdiView(context, attributeSet(c
         get() = dragGestureRecognizer.cancelsTouchesOnScroll
         set(value) { dragGestureRecognizer.cancelsTouchesOnScroll = value }
 
+    var fadingEdgeStartEnabled: Boolean = true
+        set(value) {
+            if (field != value) {
+                field = value
+                postInvalidateOnAnimation()
+            }
+        }
+
+    var fadingEdgeEndEnabled: Boolean = true
+        set(value) {
+            if (field != value) {
+                field = value
+                postInvalidateOnAnimation()
+            }
+        }
+
+    // Extended fading edge support for larger fade lengths (matching iOS behavior)
+    // TODO: Remove this flag and always use extended renderer after validation period
+    var androidOnlyEnableExtendedFadingEdge: Boolean = false
+        set(value) {
+            if (field != value) {
+                field = value
+                // Re-apply current fading edge length with new setting
+                setCustomFadingEdgeLength(customFadingEdgeLength)
+            }
+        }
+    
+    private var customFadingEdgeLength: Int = 0
+    private var useExtendedFadingEdge: Boolean = false
+    private val extendedFadingEdgeRenderer by lazy { ExtendedFadingEdgeRenderer() }
+
+    /**
+     * Sets the fading edge length.
+     * - For lengths <= NATIVE_FADE_THRESHOLD, uses Android's native fading edge (efficient)
+     * - For lengths > NATIVE_FADE_THRESHOLD and androidOnlyEnableExtendedFadingEdge=true,
+     *   uses extended fading edge renderer with Porter-Duff compositing
+     * - Otherwise falls back to native implementation
+     */
+    fun setCustomFadingEdgeLength(length: Int) {
+        customFadingEdgeLength = length
+        useExtendedFadingEdge = androidOnlyEnableExtendedFadingEdge && length > NATIVE_FADE_THRESHOLD
+        
+        if (useExtendedFadingEdge) {
+            // Use extended Porter-Duff implementation for large fades (opt-in only)
+            setHorizontalFadingEdgeEnabled(false)
+            setVerticalFadingEdgeEnabled(false)
+        } else if (length > 0) {
+            // Use native Android implementation for small fades or when extended is disabled
+            setHorizontalFadingEdgeEnabled(horizontalScroll)
+            setVerticalFadingEdgeEnabled(!horizontalScroll)
+            setFadingEdgeLength(length)
+        } else {
+            // Disable fading entirely
+            setHorizontalFadingEdgeEnabled(false)
+            setVerticalFadingEdgeEnabled(false)
+        }
+        
+        // Ensure draw() is called when extended fading edge is enabled
+        updateWillNotDraw()
+        postInvalidateOnAnimation()
+    }
+
     var dismissKeyboardOnDrag = false
 
     var dismissKeyboardMode = KeyboardDismissMode.IMMEDIATE
@@ -202,7 +268,7 @@ open class ValdiScrollView(context: Context) : ValdiView(context, attributeSet(c
     }
 
     private fun updateWillNotDraw() {
-        val shouldDraw = edgeEffect || isHorizontalScrollBarEnabled || isVerticalScrollBarEnabled
+        val shouldDraw = edgeEffect || isHorizontalScrollBarEnabled || isVerticalScrollBarEnabled || useExtendedFadingEdge
         if (willNotDraw() != !shouldDraw) {
             setWillNotDraw(!shouldDraw)
         }
@@ -254,6 +320,36 @@ open class ValdiScrollView(context: Context) : ValdiView(context, attributeSet(c
         }
     }
 
+    override fun dispatchDraw(canvas: Canvas) {
+        if (useExtendedFadingEdge && customFadingEdgeLength > 0) {
+            // Save layer to enable Porter-Duff compositing for fade effect
+            val saveCount = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
+            super.dispatchDraw(canvas)
+            drawExtendedFadingEdges(canvas)
+            canvas.restoreToCount(saveCount)
+        } else {
+            super.dispatchDraw(canvas)
+        }
+    }
+
+    private fun drawExtendedFadingEdges(canvas: Canvas) {
+        if (customFadingEdgeLength <= 0) return
+        
+        if (horizontalScroll) {
+            extendedFadingEdgeRenderer.drawHorizontalFadingEdges(
+                canvas, width, height, customFadingEdgeLength.toFloat(),
+                contentWidth, contentOffsetX,
+                fadingEdgeStartEnabled, fadingEdgeEndEnabled
+            )
+        } else {
+            extendedFadingEdgeRenderer.drawVerticalFadingEdges(
+                canvas, width, height, customFadingEdgeLength.toFloat(),
+                contentHeight, contentOffsetY,
+                fadingEdgeStartEnabled, fadingEdgeEndEnabled
+            )
+        }
+    }
+
     private fun updateScrollDirection() {
         horizontalScroll = valdiViewNode?.isLayoutDirectionHorizontal == true
     }
@@ -272,6 +368,9 @@ open class ValdiScrollView(context: Context) : ValdiView(context, attributeSet(c
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+
+        // Release extended fading edge resources
+        extendedFadingEdgeRenderer.release()
 
         cancelScrollAnimation()
         pauseScrollPerfLogger()
@@ -416,15 +515,28 @@ open class ValdiScrollView(context: Context) : ValdiView(context, attributeSet(c
             ValdiGestureRecognizerState.CHANGED -> {
                 handleScroll(offsetX, offsetY, x, y, invertedVelocityX, invertedVelocityY)
 
-                if (dismissKeyboardOnDrag && dismissKeyboardMode == KeyboardDismissMode.TOUCH_EXIT_BELOW && y > this.getHeight()) {
-                    ViewUtils.resetFocusToRootViewOf(this)
+                if (dismissKeyboardOnDrag) {
+                    when (dismissKeyboardMode) {
+                        KeyboardDismissMode.TOUCH_EXIT_BELOW -> {
+                            if (y > this.getHeight()) {
+                                ViewUtils.resetFocusToRootViewOf(this)
+                            }
+                        }
+                        KeyboardDismissMode.TOUCH_EXIT_ABOVE -> {
+                            if (y < 0) {
+                                ViewUtils.resetFocusToRootViewOf(this)
+                            }
+                        }
+                        KeyboardDismissMode.IMMEDIATE -> {
+                            // noop - this exited on ValdiGestureRecognizerState.BEGAN
+                        }
+                    }
                 }
-
             }
             ValdiGestureRecognizerState.ENDED -> {
 
                 // Should we invalidate the edgeEffect
-                var shouldInvalidate = false
+                var shouldInvalidate = useExtendedFadingEdge  // Always invalidate for custom fading edges
                 forEachEdgeEffectWrapper {
                     if (releaseEdgeEffect(it)) {
                         shouldInvalidate = true
@@ -589,6 +701,11 @@ open class ValdiScrollView(context: Context) : ValdiView(context, attributeSet(c
         unclampedContentOffsetY = unclampedY
 
         contentView.scrollTo(x, y)
+
+        // Invalidate to redraw custom fading edges with updated scroll position
+        if (useExtendedFadingEdge) {
+            invalidate()
+        }
     }
 
     private fun applyContentOffset(x: Int, y: Int, unclampedX: Int, unclampedY: Int, invertedVelocityX: Float, invertedVelocityY: Float) {
@@ -675,6 +792,11 @@ open class ValdiScrollView(context: Context) : ValdiView(context, attributeSet(c
             )
         }
         pauseScrollPerfLogger()
+
+        // Ensure custom fading edges are drawn after scroll ends
+        if (useExtendedFadingEdge) {
+            postInvalidateOnAnimation()
+        }
     }
 
     private fun resumeScrollPerfLogger() {
@@ -794,12 +916,14 @@ open class ValdiScrollView(context: Context) : ValdiView(context, attributeSet(c
     }
 
     override fun getTopFadingEdgeStrength(): Float {
+        if (!fadingEdgeStartEnabled) return 0.0f
         val offsetY = computeVerticalScrollOffset()
         val maxOffset = minOf(getVerticalFadingEdgeLength(), contentHeight - height)
         return fadeStrengthForOffset(offsetY, maxOffset)
     }
 
     override fun getBottomFadingEdgeStrength(): Float {
+        if (!fadingEdgeEndEnabled) return 0.0f
         val offsetY = computeVerticalScrollOffset()
         val remaining = contentHeight - height - offsetY
         val maxOffset = minOf(getVerticalFadingEdgeLength(), contentHeight - height)
@@ -807,12 +931,14 @@ open class ValdiScrollView(context: Context) : ValdiView(context, attributeSet(c
     }
 
     override fun getLeftFadingEdgeStrength(): Float {
+        if (!fadingEdgeStartEnabled) return 0.0f
         val offsetX = computeHorizontalScrollOffset()
         val maxOffset = minOf(getHorizontalFadingEdgeLength(), contentWidth - width)
         return fadeStrengthForOffset(offsetX, maxOffset)
     }
 
     override fun getRightFadingEdgeStrength(): Float {
+        if (!fadingEdgeEndEnabled) return 0.0f
         val offsetX = computeHorizontalScrollOffset()
         val remaining = contentWidth - width - offsetX
         val maxOffset = minOf(getHorizontalFadingEdgeLength(), contentWidth - width)

@@ -31,6 +31,8 @@ public:
     int width() const;
     int height() const;
 
+    Valdi::Value getMetadata() const override;
+
     static void initializeCodecs();
 
     /**

@@ -16,6 +16,6 @@ public:
     }
 };
 
-Valdi::RegisterModuleFactory kRegisterDesktopModule([]() { return std::make_shared<DesktopMyNativeModule>(); });
+auto kRegisterDesktopModule = Valdi::RegisterModuleFactory::registerTyped<DesktopMyNativeModule>();
 
 } // namespace snap::valdi::hello_world

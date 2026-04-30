@@ -8,7 +8,7 @@ import com.snap.valdi.utils.ViewRefSupport
 import com.snapchat.client.valdi.NativeBridge
 
 class SnapDrawingRuntimeCPP(private val handle: Lazy<NativeRef>,
-                            private val displayScale: Float,
+                            private var displayScale: Float,
                             private val viewRefSupport: ViewRefSupport,
                             private val context: Context): SnapDrawingRuntime {
 
@@ -20,6 +20,10 @@ class SnapDrawingRuntimeCPP(private val handle: Lazy<NativeRef>,
 
     fun clearCache() {
         surfacePresenterFactory?.clearCache()
+    }
+
+    fun updateDisplayScale(newScale: Float) {
+        displayScale = newScale
     }
 
     override fun createRoot(disallowSynchronousDraw: Boolean): SnapDrawingRootHandle {

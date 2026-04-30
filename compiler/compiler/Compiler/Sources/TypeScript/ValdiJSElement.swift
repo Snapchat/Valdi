@@ -55,6 +55,8 @@ class ValdiJSElement {
 
     var androidViewClass: String?
     var iosViewClass: String?
+    var webViewClass: String?
+    var macosViewClass: String?
 
     var forEachExpr: ValdiJSAttribute?
     var renderIfExpr: ValdiJSAttribute?

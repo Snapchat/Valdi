@@ -54,6 +54,18 @@ class RotationGestureDetector(private val listener: OnRotationGestureListener) {
         return true
     }
 
+    /**
+     * Resets the detector to its initial state without firing any listener callbacks.
+     * Call this from onReset() to handle cases where the gesture is cancelled externally
+     * (e.g. ACTION_CANCEL from a parent view intercepting touch), mirroring the V1
+     * RotateGestureRecognizer pattern of resetting inner detector state on reset.
+     */
+    fun reset() {
+        isRotating = false
+        cumulativeRotation = 0.0
+        initialAngle = 0.0
+    }
+
     private fun calculateAngle(event: MotionEvent, pointerIndex1: Int = 0, pointerIndex2: Int = 1): Double {
         val deltaX = (event.getX(pointerIndex2) - event.getX(pointerIndex1)).toDouble()
         val deltaY = (event.getY(pointerIndex2) - event.getY(pointerIndex1)).toDouble()

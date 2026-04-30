@@ -1,5 +1,7 @@
 output_target: release
 
+bazel_build_file_generation_disabled: true
+
 web:
   version: 1.0.2
   publish_config: '{ "@snapchat:registry": "https://registry.npmjs.org/"

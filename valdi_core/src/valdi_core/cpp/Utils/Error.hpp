@@ -15,8 +15,9 @@ struct ErrorStorage : public SimpleRefCountable {
     StringBox message;
     StringBox stackTrace;
     Ref<ErrorStorage> cause;
+    int32_t errorCode;
 
-    ErrorStorage(StringBox&& message, StringBox&& stackTrace, const Ref<ErrorStorage>& cause);
+    ErrorStorage(StringBox&& message, StringBox&& stackTrace, const Ref<ErrorStorage>& cause, int32_t errorCode = 0);
     ~ErrorStorage() override;
 
     bool operator==(const ErrorStorage& storage) const;
@@ -28,9 +29,10 @@ class Error {
 public:
     Error();
     explicit Error(StringBox message);
-    explicit Error(const std::string& message);
+    explicit Error(const std::string_view& message);
     explicit Error(const char* message);
     Error(StringBox message, StringBox stackTrace, const Error* cause);
+    Error(StringBox message, int32_t errorCode);
     Error(Ref<ErrorStorage> storage);
 
     bool isEmpty() const;
@@ -50,6 +52,12 @@ public:
     const StringBox& getStack() const noexcept;
 
     std::optional<Error> getCause() const noexcept;
+    
+    /**
+     Return the error code associated with this error.
+     Returns 0 if no specific error code was set.
+     */
+    int32_t getErrorCode() const noexcept;
 
     bool operator==(const Error& other) const noexcept;
     bool operator!=(const Error& other) const noexcept;

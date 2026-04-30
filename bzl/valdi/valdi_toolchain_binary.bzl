@@ -1,7 +1,7 @@
 def _transition_impl(settings, attr):
     return {
         "@snap_platforms//flavors:snap_flavor": "production",
-        "@valdi//bzl/runtime_flags:enable_asserts": False,
+        "@valdi//bzl/runtime_flags:enable_asserts_override": False,
         "@valdi//bzl/runtime_flags:enable_logging": False,
         "@valdi//bzl/runtime_flags:enable_tracing": False,
         "@valdi//bzl/runtime_flags:enable_debug": False,
@@ -12,7 +12,7 @@ valdi_toolchain_transition = transition(
     inputs = [],
     outputs = [
         "@snap_platforms//flavors:snap_flavor",
-        "@valdi//bzl/runtime_flags:enable_asserts",
+        "@valdi//bzl/runtime_flags:enable_asserts_override",
         "@valdi//bzl/runtime_flags:enable_logging",
         "@valdi//bzl/runtime_flags:enable_tracing",
         "@valdi//bzl/runtime_flags:enable_debug",

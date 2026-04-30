@@ -3,7 +3,7 @@
 ## Passing view model from native code
 
 View models can be passed from native code. To do so, you first need to generate a strong typed interface for the view model.
-To leverage the compiler's ability to generate an Objective-C and Kotlin view model class, add a `@ExportModel` and `@ViewModel` annotations, as follow:
+To leverage the compiler's ability to generate Objective-C, Swift, and Kotlin view model classes, add `@ExportModel` and `@ViewModel` annotations, as follow:
 
 ```ts
 // @ExportModel({ios: 'SCMyViewModel', android: 'com.snap.valdi.MyViewModel'})

@@ -27,7 +27,9 @@ enum class LogContext {
     DeepLinkResolution,
     Notifications,
     S2REvent,
-    Atlas
+    Atlas,
+    NeoPlayer,
+    MediaStrategyCenter
 };
 
 /**

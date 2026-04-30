@@ -29,6 +29,10 @@ JSObjectRef JSCoreRef::asObjectRefOrThrow(Valdi::IJavaScriptContext& jsContext,
 }
 
 std::pair<const char*, size_t> jsStringToUTF8(JSStringRef stringRef) {
+    if (stringRef == nullptr) {
+        return std::make_pair<const char*, size_t>(nullptr, 0);
+    }
+
     auto maxUtf8Size = JSStringGetMaximumUTF8CStringSize(stringRef);
 
     thread_local static std::vector<char> tBuffer;

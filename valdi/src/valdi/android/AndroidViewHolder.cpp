@@ -28,11 +28,12 @@
 namespace ValdiAndroid {
 
 AndroidViewHolder::AndroidViewHolder(const JavaObject& object, ViewManager& viewManager)
-    : GlobalRefJavaObjectBase(object, "View"), _coordinateResolver(viewManager.getPointScale()) {}
+    : GlobalRefJavaObjectBase(object, "View"), _viewManager(viewManager) {}
 AndroidViewHolder::~AndroidViewHolder() = default;
 
 int32_t AndroidViewHolder::convertPointsToPixels(float points) const {
-    return _coordinateResolver.toPixels(points);
+    Valdi::CoordinateResolver resolver(_viewManager.getPointScale());
+    return resolver.toPixels(points);
 }
 
 bool AndroidViewHolder::isRecyclable() {
@@ -83,10 +84,11 @@ Valdi::Result<Valdi::Void> AndroidViewHolder::rasterInto(const Valdi::Ref<Valdi:
         return Valdi::Error("Invalid bitmap");
     }
 
-    auto left = _coordinateResolver.toPixels(frame.getLeft());
-    auto top = _coordinateResolver.toPixels(frame.getTop());
-    auto right = _coordinateResolver.toPixels(frame.getRight());
-    auto bottom = _coordinateResolver.toPixels(frame.getBottom());
+    Valdi::CoordinateResolver resolver(_viewManager.getPointScale());
+    auto left = resolver.toPixels(frame.getLeft());
+    auto top = resolver.toPixels(frame.getTop());
+    auto right = resolver.toPixels(frame.getRight());
+    auto bottom = resolver.toPixels(frame.getBottom());
 
     auto javaTransform = JavaObject(JavaEnv());
     if (!transform.isIdentity()) {
@@ -95,8 +97,8 @@ Valdi::Result<Valdi::Void> AndroidViewHolder::rasterInto(const Valdi::Ref<Valdi:
         const float b = affineValues[1];
         const float c = affineValues[2];
         const float d = affineValues[3];
-        const float tx = _coordinateResolver.toPixelsF(affineValues[4]);
-        const float ty = _coordinateResolver.toPixelsF(affineValues[5]);
+        const float tx = resolver.toPixelsF(affineValues[4]);
+        const float ty = resolver.toPixelsF(affineValues[5]);
 
         // Android Matrix.setValues expects 9 floats in row-major order:
         // [ MSCALE_X, MSKEW_X, MTRANS_X,

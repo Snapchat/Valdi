@@ -11,6 +11,7 @@
 #include "valdi_core/cpp/Utils/Format.hpp"
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
+#include "valdi_core/cpp/Utils/ValueTypedArray.hpp"
 
 namespace Valdi {
 
@@ -26,6 +27,8 @@ enum TextAttributeValueEntryType : int32_t {
     TextAttributeValueEntryTypePushOutlineWidth,
     TextAttributeValueEntryTypePushOuterOutlineColor,
     TextAttributeValueEntryTypePushOuterOutlineWidth,
+    TextAttributeValueEntryTypePushInlineImage,
+    TextAttributeValueEntryTypePushAnimationTransform,
 };
 
 static Error invalidTextAttributeValueError(const Value& value, std::string_view message) {
@@ -206,6 +209,55 @@ static Result<Ref<TextAttributeValue>> doParse(const ColorPalette* colorPalette,
             } break;
             case TextAttributeValueEntryTypePushOuterOutlineWidth: {
                 pushStyle(stylesStack).outerOutlineWidth = entryValue.toDouble();
+            } break;
+            case TextAttributeValueEntryTypePushAnimationTransform: {
+                if (entryValue.isMap()) {
+                    TextAnimationTransform animationTransform;
+                    auto translationYValue = entryValue.getMapValue("translationY");
+                    if (!translationYValue.isUndefined()) {
+                        animationTransform.translationY = static_cast<float>(translationYValue.toDouble());
+                    }
+                    auto scaleValue = entryValue.getMapValue("scale");
+                    if (!scaleValue.isUndefined()) {
+                        animationTransform.scale = static_cast<float>(scaleValue.toDouble());
+                    }
+                    auto opacityValue = entryValue.getMapValue("opacity");
+                    if (!opacityValue.isUndefined()) {
+                        animationTransform.opacity = static_cast<float>(opacityValue.toDouble());
+                    }
+                    pushStyle(stylesStack).animationTransform = animationTransform;
+                } else {
+                    pushStyle(stylesStack);
+                }
+            } break;
+            case TextAttributeValueEntryTypePushInlineImage: {
+                if (entryValue.isMap()) {
+                    ImageAttachment attachment;
+                    auto attachmentIdValue = entryValue.getMapValue("attachmentId");
+                    if (!attachmentIdValue.isUndefined()) {
+                        attachment.attachmentId = attachmentIdValue.toStringBox();
+                    }
+                    auto widthValue = entryValue.getMapValue("width");
+                    if (!widthValue.isUndefined()) {
+                        attachment.width = static_cast<float>(widthValue.toDouble());
+                    }
+                    auto heightValue = entryValue.getMapValue("height");
+                    if (!heightValue.isUndefined()) {
+                        attachment.height = static_cast<float>(heightValue.toDouble());
+                    }
+                    auto imageDataValue = entryValue.getMapValue("imageData");
+                    if (!imageDataValue.isUndefined()) {
+                        const auto* typedArray = imageDataValue.getTypedArray();
+                        if (typedArray != nullptr) {
+                            const auto& buffer = typedArray->getBuffer();
+                            attachment.imageData.assign(buffer.begin(), buffer.end());
+                        }
+                    }
+
+                    pushStyle(stylesStack).imageAttachment = std::move(attachment);
+                } else {
+                    pushStyle(stylesStack);
+                }
             } break;
             default:
                 return invalidTextAttributeValueError(value, "Invalid entry type");

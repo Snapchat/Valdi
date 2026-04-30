@@ -60,6 +60,11 @@ Valdi::ByteBuffer& DeferredViewOperations::enqueueApplyAttribute(ViewOperation o
 void DeferredViewOperations::enqueueResetAttribute(const Valdi::Ref<Valdi::View>& view,
                                                    const Valdi::Value& handler,
                                                    const Valdi::Ref<Valdi::Animator>& animator) {
+    if (view == nullptr) {
+        // Skip enqueueing the reset operation since the View no longer exists
+        return;
+    }
+
     updateActiveAnimator(animator);
 
     auto& buffer = writeHeader(ViewOperationResetAttribute, false);
@@ -164,6 +169,12 @@ void DeferredViewOperations::enqueueBeginRenderingView(const Valdi::Ref<Valdi::V
 void DeferredViewOperations::enqueueEndRenderingView(const Valdi::Ref<Valdi::View>& view, bool layoutDidBecomeDirty) {
     auto& buffer = writeHeader(ViewOperationEndRenderingView, layoutDidBecomeDirty);
     write(buffer, Valdi::Value(view));
+}
+
+void DeferredViewOperations::enqueueOnNextDraw(const Valdi::Ref<Valdi::View>& view, int64_t callbackHandle) {
+    auto& buffer = writeHeader(ViewOperationOnNextDraw, false);
+    write(buffer, Valdi::Value(view));
+    write(buffer, callbackHandle);
 }
 
 std::optional<SerializedViewOperations> DeferredViewOperations::dequeueOperations() {

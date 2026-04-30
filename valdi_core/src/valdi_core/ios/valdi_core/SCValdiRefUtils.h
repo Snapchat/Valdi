@@ -13,7 +13,7 @@ NS_ASSUME_NONNULL_BEGIN
 @class UIView;
 @protocol SCValdiViewNodeProtocol;
 
-id<SCValdiViewNodeProtocol> _Nullable SCValdiRefGetViewNode(SCValdiRef* ref);
-UIView* _Nullable SCValdiRefGetView(SCValdiRef* ref);
+id<SCValdiViewNodeProtocol> _Nullable SCValdiRefGetViewNode(SCValdiRef* _Nullable ref);
+UIView* _Nullable SCValdiRefGetView(SCValdiRef* _Nullable ref);
 
 NS_ASSUME_NONNULL_END

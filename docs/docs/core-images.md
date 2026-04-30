@@ -12,6 +12,9 @@ You can specify remote assets with a URL.
 
 For local assets in the `res/` folder, the module will expose properties to all the assets available in this directory. Resources should autocomplete in VSCode.
 
+> [!Note]
+> The Valdi compiler generates an **Asset Catalog** which includes the dimensions (in pixel-independent units) for each image asset. This allows the runtime to "measure" images during the layout pass without having to actually load the image data, improving performance and reducing memory usage.
+
 You specify the asset a url in the `src` attribute of `<image>` in TSX.
 
 ```tsx
@@ -32,9 +35,9 @@ export class HelloWorld extends Component {
       <image src={res.emoji} tint='black' height={48} width={48} margin={10} />
       {/* You can Pass an arbitrary url to the src of our image */}
       <image src='https://placedog.net/500' height={48} width={48} margin={10} />
-      {/* Urls are sometimes used for loading BOLT assets */}
+      {/* Urls can also be used for loading remote assets */}
       <image src='https://placecats.com/500/500' height={48} width={48} margin={10} />
-      {/* BOLT Urls can also be obtained from contentObjects using contentObjectImageLoaderUrl */}
+      {/* Remote asset urls can also be obtained from contentObjects using contentObjectImageLoaderUrl */}
       <image
         src={contentObjectImageLoaderUrl({
             contentObject, nativeContentTypeKey:

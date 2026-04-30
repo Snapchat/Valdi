@@ -65,9 +65,17 @@ export class Component<ViewModel = object, ComponentContext = object>
   /**
    * Registers a function or unsubscribable which will be called right after the component is destroyed.
    * @param disposable the callback to call after the component is destroyed
+   * @returns {boolean} true if a disposable was registered to be disposed
    */
-  registerDisposable(disposable: ComponentDisposable): void {
+  registerDisposable(disposable: ComponentDisposable): true
+  registerDisposable(disposable: undefined): false
+  registerDisposable(disposable: ComponentDisposable | undefined): boolean
+  registerDisposable(disposable: ComponentDisposable | undefined): boolean {
+    if (!disposable) {
+      return false;
+    }
     this.renderer.registerComponentDisposable(this, disposable);
+    return true;
   }
 
   /**
@@ -79,12 +87,10 @@ export class Component<ViewModel = object, ComponentContext = object>
   }
 
   /**
-   * Same as @see registerDisposable, but only registers if the disposable is not null or undefined.
-   *  Example:
-   *    this.maybeRegisterDisposable(this.context.optionlObservable?.subscribe(...));
+   * @deprecated @see registerDisposable
    */
-  maybeRegisterDisposable(disposable?: ComponentDisposable): void {
-    if (disposable) {
+  maybeRegisterDisposable(disposable: ComponentDisposable | undefined): void {
+    if (!!disposable) {
       this.registerDisposable(disposable);
     }
   }

@@ -1,5 +1,15 @@
 # Frequently Asked Questions
 
+## Does Valdi support Swift or SwiftUI?
+
+The iOS runtime is written in Objective-C. There are no plans to rewrite it in Swift or to add a SwiftUI interop layer.
+
+This doesn't mean you can't use Swift with Valdi. [Polyglot modules](./native-polyglot.md) let you write performance-critical or platform-specific code in Swift (or Kotlin, C++, or Objective-C) with type-safe bindings to TypeScript. Most Swift integration needs are covered this way.
+
+## Does Valdi support a web / HTML target?
+
+Yes, with caveats. A web renderer that targets HTML/CSS is actively in development and available to try today. Expect rough edges—it's not production-ready. See the [Roadmap](../../ROADMAP.md) for more detail.
+
 ## Why did Snap create this?
 
 The Snapchat iOS and Android applications are meant to be basically exactly the same, with identical designs. This is a trend in that has become very common in the industry. Whereas initially many applications had different designs and user experience on each application, over time these differences faded, and nowadays for many companies, difference of application behaviors between iOS and Android are merely just a result of the codebase being implemented by different engineers and technologies rather than conscious design choices. This observation is why code sharing for both business logic and UI is so attractive on paper for many companies, including Snap.

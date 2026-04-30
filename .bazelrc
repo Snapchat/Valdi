@@ -1,8 +1,8 @@
 try-import %workspace%/.bazelrc.internal
 
-# No bzlmod yet
-common --noenable_bzlmod
-common --enable_workspace
+# Enable bzlmod for module-based dependency resolution
+common --enable_bzlmod
+common --noenable_workspace
 
 common --bes_instance_name=client
 common --enable_platform_specific_config
@@ -19,7 +19,7 @@ common --incompatible_java_common_parameters=false
 # Flags for compilation
 common --define enable_web=true
 
-build --tool_java_language_version=11
+build --tool_java_language_version=17
 build --java_language_version=11
 
 ## Disable sandboxing for macs, both laptops and in CI; the performance hit is much too high.
@@ -29,8 +29,11 @@ build:linux --sandbox_writable_path=/var/tmp
 # common cc configuration
 build --cxxopt=-std=c++20
 build --cxxopt=-Wno-ambiguous-reversed-operator
+build --cxxopt=-Wno-gcc-compat
+build --cxxopt=-Wno-nullability-extension
 build --cxxopt=-D_LIBCPP_ENABLE_CXX20_REMOVED_TYPE_TRAITS
 build --host_cxxopt=-std=c++20
+build --host_cxxopt=-Wno-nullability-extension
 
 ## we need to disable this due to a bug in bazel
 ## see https://github.com/bazelbuild/bazel/issues/12381
@@ -51,13 +54,12 @@ build:macos --copt=-fvisibility=hidden
 # java configuration
 ## Disable some java checks for now, djinni generates code that errors out
 build --javacopt=-XepDisableAllChecks
-build --java_runtime_version=11
-build --tool_java_runtime_version=17
+build --java_runtime_version=remotejdk_11
+build --tool_java_runtime_version=remotejdk_17
 
 build --flag_alias=snap_flavor=@snap_platforms//flavors:snap_flavor
 build --snap_flavor=client_development
 
-build --android_crosstool_top=@androidndk//:toolchain
 build --define=android_dexmerger_tool=d8_dexmerger
 build --define=android_incremental_dexing_tool=d8_dexbuilder
 build --define=android_standalone_dexing_tool=d8_compat_dx
@@ -81,7 +83,7 @@ build:linux --sandbox_writable_path=/var/tmp
 build --disk_cache=""
 
 # common build configuration
-build --experimental_generate_json_trace_profile
+build --generate_json_trace_profile
 # enable grpc log
 build --remote_grpc_log=/tmp/snap_client_grpc.log
 build --experimental_reuse_sandbox_directories

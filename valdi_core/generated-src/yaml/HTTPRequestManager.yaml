@@ -37,3 +37,8 @@ wasm:
 ts:
   typename: HTTPRequestManager
   module: './valdi_core'
+c:
+  typename: 'snap_valdi_core_HTTPRequestManager_ref'
+  translator: '::djinni::c_api::InterfaceTranslator<::snap::valdi_core::HTTPRequestManager>'
+  public_header: '"valdi_core/HTTPRequestManager.h"'
+  private_header: '"valdi_core/HTTPRequestManager.hpp"'

@@ -1,0 +1,17 @@
+# SKILL_NAME skill tests
+
+Compile check for the patterns taught in `../skill.md`.
+
+## Compile check
+
+```bash
+cd client/src/open_source
+bazel build //ai-skills/skills/SKILL_NAME/tests:tests
+```
+
+Expected: `Build completed successfully`
+
+## Updating
+
+When Valdi APIs change (import paths, type signatures), update `src/reference.tsx` to match.
+Also update `../skill.md` with any corrected patterns.

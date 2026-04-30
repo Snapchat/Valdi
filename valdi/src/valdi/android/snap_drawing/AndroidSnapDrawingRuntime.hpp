@@ -42,7 +42,6 @@ public:
 
 private:
     Valdi::Mutex _mutex;
-    Valdi::CoordinateResolver _coordinateResolver;
     ViewManager& _androidViewManager;
 
     Valdi::Ref<snap::drawing::ANativeWindowGraphicsContext> getNativeWindowGraphicsContext();

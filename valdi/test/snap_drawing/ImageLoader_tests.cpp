@@ -35,7 +35,8 @@ protected:
         _downloader->setDataResponse(_url, _imageData);
 
         auto zeroBitmap = loadResourceFromDisk("testdata/0x0.bmp");
-        SC_ASSERT(!zeroBitmap.failure());
+        ASSERT_FALSE(zeroBitmap.failure())
+            << "Failed to load testdata/0x0.bmp (ensure the file is in test data/runfiles)";
         _downloader->setDataResponse(_zeroDimensionErrorUrl, zeroBitmap.value());
 
         _downloader->setDataResponse(_dataErrorUrl, BytesView());

@@ -7,7 +7,7 @@ set -x
 
 # We're not installing the ios_webkit_debug_proxy and we're not runnig any simulators at this point
 # However we want the valdi doctor command to believe there is an ios_webkit_debug_proxy
-mkdir ~/bin
+mkdir -p ~/bin
 export PATH=$HOME/bin:$PATH
 touch ~/bin/ios_webkit_debug_proxy
 chmod +x ~/bin/ios_webkit_debug_proxy

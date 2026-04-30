@@ -1,0 +1,37 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{ts,tsx,js,jsx}]
+indent_style = space
+indent_size = 2
+
+[*.{cpp,hpp,h,cc}]
+indent_style = space
+indent_size = 4
+
+[*.{swift,kt,java}]
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml,json}]
+indent_style = space
+indent_size = 2
+
+[*.{bzl,bazel,BUILD}]
+indent_style = space
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{mm,m}]
+indent_style = space
+indent_size = 4
+
+[Makefile]
+indent_style = tab

@@ -526,6 +526,21 @@ class ViewAttributesBinder(private val context: Context,
         // no-op for now
     }
 
+    // blurStyle is an iOS-only attribute on `<blur>` / `BlurView` (mapped to
+    // SCValdiBlurView on iOS). Android does not have a dedicated BlurView class —
+    // `<blur>` falls through to ValdiView (see the FIXME on BlurView in
+    // valdi_tsx/src/NativeTemplateElements.d.ts). Register the attribute here as a
+    // no-op so the C++ attribute applier finds a handler and does not emit
+    // `Could not find attribute 'blurStyle' in class com.snap.valdi.views.ValdiView`
+    // for every mounted <blur> on Android.
+    fun applyBlurStyle(view: View, value: String, animator: ValdiAnimator?) {
+        // no-op on Android — no native BlurView implementation yet.
+    }
+
+    fun resetBlurStyle(view: View, animator: ValdiAnimator?) {
+        // no-op on Android — no native BlurView implementation yet.
+    }
+
     override fun bindAttributes(attributesBindingContext: AttributesBindingContext<View>) {
         attributesBindingContext.bindArrayAttribute("background", false, this::applyBackground, this::resetBackground)
         attributesBindingContext.bindColorAttribute("backgroundColor", false, this::applyBackgroundColor, this::resetBackground)
@@ -576,5 +591,8 @@ class ViewAttributesBinder(private val context: Context,
         attributesBindingContext.bindFloatAttribute("onTouchDelayDuration", false, this::applyOnTouchDelayDuration, this::resetOnTouchDelayDuration)
 
         attributesBindingContext.bindFunctionAttribute("hitTest", gestureAttributes::applyHitTest, gestureAttributes::resetHitTest)
+
+        // iOS-only BlurView attribute; accepted as no-op on Android — see applyBlurStyle above.
+        attributesBindingContext.bindStringAttribute("blurStyle", false, this::applyBlurStyle, this::resetBlurStyle)
     }
 }

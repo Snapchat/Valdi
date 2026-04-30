@@ -54,6 +54,10 @@ export function deepEqual(a: unknown, b: unknown): boolean {
     if (a instanceof RegExp && b instanceof RegExp) {
       return a.source === b.source && a.flags === b.flags;
     }
+    if (a instanceof Long && b instanceof Long) {
+      // Handle Long objects before valueOf check, which errors for large values
+      return a.compare(b) === 0; // returns 0 if equal
+    }
     if (a.valueOf !== Object.prototype.valueOf) {
       return a.valueOf() === b.valueOf();
     }

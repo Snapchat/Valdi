@@ -6,13 +6,14 @@
 //
 
 #import "valdi/ios/NativeModules/Drawing/SCValdiDrawingModuleFactory.h"
-#import "valdi/ios/NativeModules/Drawing/SCValdiDrawingModule.h"
+#import "SCCDrawing/SCValdiDrawingModule.h"
 
 #import "valdi/ios/Text/NSAttributedString+Valdi.h"
 #import "valdi/ios/Text/SCValdiFont.h"
 #import "valdi/ios/Text/SCValdiFontManager.h"
 #import "valdi/ios/SCValdiContext.h"
 #import "valdi/ios/Views/SCValdiLabel.h"
+#import "valdi/ios/Text/SCValdiAttributedText.h"
 
 #import "valdi_core/SCValdiError.h"
 
@@ -54,6 +55,17 @@
 }
 
 - (SCValdiDrawingSize * _Nonnull)measureTextWithText:(NSString * _Nonnull)text maxWidth:(NSNumber * _Nullable)maxWidth maxHeight:(NSNumber * _Nullable)maxHeight maxLines:(NSNumber * _Nullable)maxLines
+{
+    return [self _measureText:text maxWidth:maxWidth maxHeight:maxHeight maxLines:maxLines];
+}
+
+- (SCValdiDrawingSize * _Nonnull)measureAttributedTextWithAttributedText:(SCValdiWrappedValue * _Nonnull)attributedText maxWidth:(NSNumber * _Nullable)maxWidth maxHeight:(NSNumber * _Nullable)maxHeight maxLines:(NSNumber * _Nullable)maxLines
+{
+    SCValdiAttributedText *valdiAttributedText = [[SCValdiAttributedText alloc] initWithWrappedValue:attributedText];
+    return [self _measureText:valdiAttributedText maxWidth:maxWidth maxHeight:maxHeight maxLines:maxLines];
+}
+
+- (SCValdiDrawingSize * _Nonnull)_measureText:(id)text maxWidth:(NSNumber * _Nullable)maxWidth maxHeight:(NSNumber * _Nullable)maxHeight maxLines:(NSNumber * _Nullable)maxLines
 {
     SCValdiFontAttributes *fontAttributes = [NSAttributedString fontAttributesWithFont:_font
                                                                                     color:nil
@@ -113,7 +125,7 @@
     return SCValdiDrawingModuleMarshall(marshaller, self);
 }
 
-- (id<SCValdiDrawingFont> _Nullable)getFontWithSpecs:(SCValdiDrawingFontSpecs * _Nonnull)specs
+- (id<SCValdiDrawingFont> _Nonnull)getFontWithSpecs:(SCValdiDrawingFontSpecs * _Nonnull)specs
 {
     SCValdiFont *font = [SCValdiFont fontFromValdiAttribute:specs.font fontManager:_fontManager];
 
@@ -142,9 +154,3 @@
 }
 
 @end
-
-/**
- * Marshall the instance into the given SCValdiMarshaller.
- */
-FOUNDATION_EXPORT NSInteger SCValdiDrawingModuleMarshall(SCValdiMarshallerRef _Nonnull marshaller,
-        id<SCValdiDrawingModule> _Nonnull instance);

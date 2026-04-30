@@ -684,6 +684,11 @@ public:
 
     Valdi::Result<Valdi::Ref<ObjCClassDelegate>> getOrCreateObjectClassDelegateForNSClass(__unsafe_unretained Class cls) {
         auto guard = lock();
+
+        if (cls == nil) {
+            return Valdi::Error("Cannot create object class delegate for nil class. This usually means a handler or payload class was not properly registered.");
+        }
+
         auto classDelegate = getObjectClassDelegateForNSClass(cls);
         if (classDelegate != nullptr) {
             return classDelegate;

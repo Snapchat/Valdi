@@ -72,6 +72,10 @@ std::string_view BytesView::asStringView() const {
     return std::string_view(reinterpret_cast<const char*>(_data), _size);
 }
 
+bool BytesView::isStrictlyIdenticalTo(const BytesView& other) const {
+    return _source.get() == other._source.get() && _data == other._data && _size == other._size;
+}
+
 bool BytesView::operator==(const BytesView& other) const {
     if (_size != other.size()) {
         return false;

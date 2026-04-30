@@ -55,8 +55,9 @@ Context::Context(ContextId contextId,
                  bool updateHandlerSynchronously,
                  bool deferRender,
                  Runtime* runtime,
-                 const Ref<ILogger>& logger)
-    : ContextBase(contextId, attribution, path),
+                 const Ref<ILogger>& logger,
+                 const StringBox& scopeName)
+    : ContextBase(contextId, attribution, path, scopeName),
       _viewModel(viewModel),
       _componentContext(componentContext),
       _handler(std::move(handler)),
@@ -467,6 +468,16 @@ Context* Context::currentRoot() {
     }
 
     return current;
+}
+
+std::atomic<bool> Context::s_destroyedContextFixEnabled{true};
+
+bool Context::isDestroyedContextFixEnabled() {
+    return s_destroyedContextFixEnabled.load(std::memory_order_relaxed);
+}
+
+void Context::setDestroyedContextFixEnabled(bool enabled) {
+    s_destroyedContextFixEnabled.store(enabled, std::memory_order_relaxed);
 }
 
 const Ref<ViewManagerContext>& Context::getViewManagerContext() const {

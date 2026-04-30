@@ -59,6 +59,14 @@ double LottieAnimatedImage::getFrameRate() const {
     return _frameRate;
 }
 
+Valdi::Value LottieAnimatedImage::getMetadata() const {
+    return Valdi::Value()
+        .setMapValue("type", Valdi::Value(Valdi::StringBox::fromCString("lottie")))
+        .setMapValue("width", Valdi::Value(static_cast<int32_t>(_size.width)))
+        .setMapValue("height", Valdi::Value(static_cast<int32_t>(_size.height)))
+        .setMapValue("durationMs", Valdi::Value(static_cast<int32_t>(_duration.milliseconds())));
+}
+
 Valdi::Result<Ref<LottieAnimatedImage>> LottieAnimatedImage::make(const Ref<Resources>& resources,
                                                                   const Valdi::Byte* data,
                                                                   size_t length) {

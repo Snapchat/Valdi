@@ -1,4 +1,3 @@
-load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load(":valdi_compiled.bzl", "ValdiModuleInfo")
 
@@ -12,13 +11,23 @@ def _collect_target_runfiles(target):
     source_maps = [m.android_debug_sourcemaps for m in module_infos if m.android_debug_sourcemaps]
     return valdi_modules + source_maps
 
+def _is_test_file(f, path_to_module):
+    """Check if a file is in a 'test' directory relative to the module."""
+
+    # Simple check: file path contains /test/ segment or dirname ends with /test
+    path = f.path
+    return "/test/" in path or path.endswith("/test")
+
 def _valdi_test_impl(ctx):
     standalone_binary = ctx.executable._valdi_standalone_binary
 
     path_to_module = ctx.label.package
-    test_paths = [f for f in ctx.files.srcs if paths.relativize(f.dirname, path_to_module).startswith("test")]
+    test_paths = [f for f in ctx.files.srcs if _is_test_file(f, path_to_module)]
 
     has_tests = len(test_paths) > 0
+
+    # Check if code coverage is enabled via `bazel coverage` command or explicit flag
+    code_coverage_enabled = ctx.configuration.coverage_enabled or ctx.attr.code_coverage[BuildSettingInfo].value
 
     # Always include standalone module runfiles
     valdimodules = _collect_target_runfiles(ctx.attr.target)
@@ -37,6 +46,14 @@ def _valdi_test_impl(ctx):
 
         cmd += " -- --allow_incomplete_test_run --include_module {}".format(ctx.attr.target[ValdiModuleInfo].name)
         cmd += " --junit_report_filename `basename $XML_OUTPUT_FILE` --junit_report_output_dir `dirname $XML_OUTPUT_FILE`"
+
+        # Add code coverage flags when enabled
+        if code_coverage_enabled:
+            cmd += " --code_coverage"
+
+            # Use COVERAGE_OUTPUT_FILE if set by Bazel (when using `bazel coverage`),
+            # otherwise fallback to a file in TEST_UNDECLARED_OUTPUTS_DIR
+            cmd += " --code_coverage_result \"${COVERAGE_OUTPUT_FILE:-$TEST_UNDECLARED_OUTPUTS_DIR/coverage.dat}\""
     else:
         cmd = "echo 'No tests to run'"
 
@@ -55,6 +72,7 @@ def _valdi_test_impl(ctx):
 valdi_test = rule(
     implementation = _valdi_test_impl,
     test = True,
+    fragments = ["coverage"],
     attrs = {
         "target": attr.label(
             mandatory = True,
@@ -76,6 +94,10 @@ valdi_test = rule(
         "js_engine": attr.label(
             default = Label("@valdi//bzl/valdi:js_engine"),
             doc = "The JS engine to use to run the tests",
+        ),
+        "code_coverage": attr.label(
+            default = Label("@valdi//bzl/valdi:code_coverage_enabled"),
+            doc = "Enable code coverage collection during tests",
         ),
         "_valdi_standalone": attr.label(
             default = Label("@valdi//src/valdi_modules/src/valdi/valdi_standalone"),

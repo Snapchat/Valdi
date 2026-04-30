@@ -6,7 +6,6 @@
 #include "valdi/runtime/Context/IViewNodesAssetTracker.hpp"
 #include "valdi/runtime/Context/ViewNodeAssetHandler.hpp"
 #include "valdi/runtime/Context/ViewNodeScrollState.hpp"
-#include "valdi/runtime/Exception.hpp"
 #include "valdi/runtime/Interfaces/ITweakValueProvider.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptANRDetector.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptUtils.hpp"
@@ -22,6 +21,7 @@
 #include "valdi_core/cpp/JavaScript/ModuleFactoryRegistry.hpp"
 #include "valdi_core/cpp/Schema/ValueSchemaRegistry.hpp"
 #include "valdi_core/cpp/Schema/ValueSchemaTypeResolver.hpp"
+#include "valdi_core/cpp/Utils/Exception.hpp"
 #include "valdi_core/cpp/Utils/ValueArrayBuilder.hpp"
 
 #include "valdi/jsbridge/JavaScriptBridge.hpp"
@@ -36,6 +36,7 @@
 #include "valdi/standalone_runtime/StandaloneNodeRef.hpp"
 #include "valdi/standalone_runtime/StandaloneView.hpp"
 #include "valdi/standalone_runtime/StandaloneViewManager.hpp"
+#include "valdi/standalone_runtime/StandaloneViewTransaction.hpp"
 #include "valdi_core/AssetLoadObserver.hpp"
 #include "valdi_core/cpp/JavaScript/JavaScriptPathResolver.hpp"
 #include "valdi_core/cpp/Resources/Asset.hpp"
@@ -50,6 +51,9 @@
 #include "valdi_test_utils.hpp"
 #include "gtest/gtest.h"
 #include <yoga/YGNode.h>
+
+#include "valdi_core/cpp/Marshalling/RegisteredCppGeneratedClass.hpp"
+#include "valdi_modules/test/test.hpp"
 
 #include <atomic>
 #include <condition_variable>
@@ -91,6 +95,10 @@ public:
 
     float getFloat(const StringBox& key, float fallback) override {
         return config.getMapValue(key).toFloat();
+    }
+
+    int32_t getInt(const StringBox& key, int32_t fallback) override {
+        return config.getMapValue(key).toInt();
     }
 
     Value getBinary(const StringBox& key, const Value& fallback) override {
@@ -147,7 +155,7 @@ protected:
 
 static Result<Value> getJsModuleWithSchema(
     Runtime* runtime,
-    const std::shared_ptr<snap::valdi::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
+    const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
     ValueSchemaRegistry* registry,
     std::string_view moduleName,
     const ValueSchema& schema) {
@@ -177,7 +185,7 @@ static Result<Value> getJsModuleWithSchema(
 
 static Result<Value> getJsModulePropertyWithSchema(
     Runtime* runtime,
-    const std::shared_ptr<snap::valdi::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
+    const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
     ValueSchemaRegistry* registry,
     std::string_view moduleName,
     std::string_view propertyName,
@@ -209,7 +217,7 @@ static Result<Value> getJsModulePropertyWithSchema(Runtime* runtime,
 
 static Result<Value> getJsModulePropertyAsValue(
     Runtime* runtime,
-    const std::shared_ptr<snap::valdi::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
+    const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
     std::string_view moduleName,
     std::string_view propertyName) {
     return getJsModulePropertyWithSchema(runtime, nativeObjectsManager, nullptr, moduleName, propertyName, "u");
@@ -217,7 +225,7 @@ static Result<Value> getJsModulePropertyAsValue(
 
 static Result<Ref<ValueFunction>> getJsModulePropertyAsUntypedFunction(
     Runtime* runtime,
-    const std::shared_ptr<snap::valdi::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
+    const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
     std::string_view moduleName,
     std::string_view propertyName) {
     auto value = getJsModulePropertyAsValue(runtime, nativeObjectsManager, moduleName, propertyName);
@@ -232,7 +240,7 @@ static Result<Ref<ValueFunction>> getJsModulePropertyAsUntypedFunction(
 
 static Result<Value> callFunctionSync(
     RuntimeWrapper& wrapper,
-    const std::shared_ptr<snap::valdi::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
+    const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
     std::string_view moduleName,
     std::string_view functionName,
     std::vector<Value> params) {
@@ -4181,11 +4189,14 @@ TEST_P(RuntimeFixture, renderRequestCanRetainAndReleaseItsEntries) {
         makeShared<ValueFunctionWithCallable>([](const auto& /*parameters*/) { return Value(); });
     auto layoutCompletionCallback =
         makeShared<ValueFunctionWithCallable>([](const auto& /*parameters*/) { return Value(); });
+    auto drawCompletionCallback =
+        makeShared<ValueFunctionWithCallable>([](const auto& /*parameters*/) { return Value(); });
 
     ASSERT_EQ(1, viewClass.getInternedString().use_count());
     ASSERT_EQ(1, attributeValue.use_count());
     ASSERT_EQ(1, animationsCompletionCallback.use_count());
     ASSERT_EQ(1, layoutCompletionCallback.use_count());
+    ASSERT_EQ(1, drawCompletionCallback.use_count());
 
     auto renderRequest = Valdi::makeShared<RenderRequest>();
 
@@ -4207,10 +4218,14 @@ TEST_P(RuntimeFixture, renderRequestCanRetainAndReleaseItsEntries) {
     auto* onLayoutComplete = renderRequest->appendOnLayoutComplete();
     onLayoutComplete->setCallback(layoutCompletionCallback);
 
+    auto* onNextDraw = renderRequest->appendOnNextDraw();
+    onNextDraw->setCallback(drawCompletionCallback);
+
     ASSERT_EQ(2, viewClass.getInternedString().use_count());
     ASSERT_EQ(2, attributeValue.use_count());
     ASSERT_EQ(2, animationsCompletionCallback.use_count());
     ASSERT_EQ(2, layoutCompletionCallback.use_count());
+    ASSERT_EQ(2, drawCompletionCallback.use_count());
 
     renderRequest = nullptr;
 
@@ -4218,6 +4233,7 @@ TEST_P(RuntimeFixture, renderRequestCanRetainAndReleaseItsEntries) {
     ASSERT_EQ(1, attributeValue.use_count());
     ASSERT_EQ(1, animationsCompletionCallback.use_count());
     ASSERT_EQ(1, layoutCompletionCallback.use_count());
+    ASSERT_EQ(1, drawCompletionCallback.use_count());
 }
 
 struct Visitor {
@@ -4244,6 +4260,7 @@ TEST_P(RuntimeFixture, renderRequestVisitHandlesAlignment) {
     renderRequest->appendStartAnimations();
     renderRequest->appendEndAnimations();
     renderRequest->appendOnLayoutComplete();
+    renderRequest->appendOnNextDraw();
 
     Visitor visitor;
     renderRequest->visitEntries(visitor);
@@ -4293,6 +4310,9 @@ TEST_P(RuntimeFixture, renderRequestCanSerialize) {
     auto* onLayoutComplete = renderRequest->appendOnLayoutComplete();
     onLayoutComplete->setCallback(callback);
 
+    auto* onNextDraw = renderRequest->appendOnNextDraw();
+    onNextDraw->setCallback(callback);
+
     auto result = renderRequest->serialize(attributeIds);
 
     auto expectedCreateElement = Value()
@@ -4331,6 +4351,8 @@ TEST_P(RuntimeFixture, renderRequestCanSerialize) {
     auto expectedEndAnimations = Value().setMapValue("type", Value(STRING_LITERAL("EndAnimations")));
     auto expectedOnLayoutComplete =
         Value().setMapValue("type", Value(STRING_LITERAL("OnLayoutComplete"))).setMapValue("callback", Value(callback));
+    auto expectedOnNextDraw =
+        Value().setMapValue("type", Value(STRING_LITERAL("OnNextDraw"))).setMapValue("callback", Value(callback));
 
     auto expectedEntries = ValueArray::make({expectedCreateElement,
                                              expectedDestroyElement,
@@ -4339,11 +4361,77 @@ TEST_P(RuntimeFixture, renderRequestCanSerialize) {
                                              expectedSetElementAttribute,
                                              expectedStartAnimations,
                                              expectedEndAnimations,
-                                             expectedOnLayoutComplete});
+                                             expectedOnLayoutComplete,
+                                             expectedOnNextDraw});
 
     auto expectedResult = Value().setMapValue("contextID", Value(1)).setMapValue("entries", Value(expectedEntries));
 
     ASSERT_EQ(expectedResult, result);
+}
+
+TEST_P(RuntimeFixture, standaloneViewTransactionRunsOnNextDrawCallbacksAfterRootUpdate) {
+    StandaloneViewTransaction transaction;
+    auto rootView = makeShared<StandaloneView>(STRING_LITERAL("View"));
+
+    int callbackCount = 0;
+    transaction.scheduleOnNextDraw(rootView, [&]() { callbackCount += 1; });
+    transaction.scheduleOnNextDraw(rootView, [&]() { callbackCount += 10; });
+
+    ASSERT_EQ(0, callbackCount);
+
+    transaction.didUpdateRootView(rootView, true);
+
+    ASSERT_EQ(11, callbackCount);
+    ASSERT_EQ(1, rootView->getLayoutDidBecomeDirtyCount());
+
+    transaction.didUpdateRootView(rootView, false);
+
+    ASSERT_EQ(11, callbackCount);
+}
+
+TEST_P(RuntimeFixture, standaloneViewTransactionDefersCallbacksScheduledDuringOnNextDrawUntilNextRootUpdate) {
+    StandaloneViewTransaction transaction;
+    auto rootView = makeShared<StandaloneView>(STRING_LITERAL("View"));
+
+    int callbackCount = 0;
+    transaction.scheduleOnNextDraw(rootView, [&]() {
+        callbackCount += 1;
+        transaction.scheduleOnNextDraw(rootView, [&]() { callbackCount += 10; });
+    });
+
+    transaction.didUpdateRootView(rootView, false);
+
+    ASSERT_EQ(1, callbackCount);
+
+    transaction.didUpdateRootView(rootView, false);
+
+    ASSERT_EQ(11, callbackCount);
+}
+
+TEST_P(RuntimeFixture, viewNodeTreeOnNextDrawCallbacksWaitForRootView) {
+    auto rootView = Valdi::makeShared<StandaloneView>(STRING_LITERAL("MyRootView"));
+
+    auto tree = wrapper.runtime->createViewNodeTreeAndContext(wrapper.standaloneRuntime->getViewManagerContext(),
+                                                              STRING_LITERAL("test/src/BasicViewTree.valdi"));
+
+    wrapper.waitUntilAllUpdatesCompleted();
+    tree->setLayoutSpecs(Size(200, 200), LayoutDirectionLTR);
+
+    int callbackCount = 0;
+    auto callback = makeShared<ValueFunctionWithCallable>([&](const auto& /*callContext*/) -> Value {
+        callbackCount += 1;
+        return Value::undefined();
+    });
+
+    tree->onNextDraw(callback);
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    ASSERT_EQ(0, callbackCount);
+
+    tree->setRootView(rootView);
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    ASSERT_EQ(1, callbackCount);
 }
 
 class TestBridgedClass : public ValdiObject {
@@ -4421,7 +4509,7 @@ TEST_P(RuntimeFixture, unwrapsProxyObjectThroughUntypedUnmarshalling) {
     auto schema = ValueSchema::cls(STRING_LITERAL("MyClass"), true, {});
     auto proxyObject = makeShared<TestValueTypedProxyObject>(ValueTypedObject::make(schema.getClassRef()));
 
-    auto objectsManager = wrapper.runtime->getJavaScriptRuntime()->createNativeObjectsManager();
+    auto objectsManager = wrapper.runtime->getJavaScriptRuntime()->createNativeObjectsManager("");
 
     auto jsResult = callFunctionSync(wrapper, "test/src/WrapNativeObject", "wrapper", {Value(proxyObject)});
 
@@ -6106,6 +6194,98 @@ TEST_P(RuntimeFixture, supportsLoadStrategy) {
     ASSERT_TRUE(wrapper.runtime->getResourceManager().isBundleLoaded(STRING_LITERAL("test2")));
 }
 
+TEST_P(RuntimeFixture, supportsNativeModule) {
+    auto result = callFunctionSync(wrapper, "test/src/NativeModule", "compute", {});
+
+    ASSERT_TRUE(result) << result.description();
+
+    ASSERT_TRUE(result.value().isNumber());
+    ASSERT_EQ(50.0, result.value().toDouble());
+}
+
+// Verifies that a sync JS call from the main thread triggers the assertion when the module has
+// async_strict_mode and the function is not annotated with @AllowSyncCall. Uses a dedicated
+// test_async_strict module (async_strict_mode=True) so the main test module can stay non-strict.
+TEST_P(RuntimeFixture, AsyncStrictModeSyncCallAssertsOnMainThread) {
+    wrapper.flushQueues();
+
+    // test_async_strict has async_strict_mode=True; compute() has no @AllowSyncCall.
+    // Schema "f|b|():u" = bansync (`b`) so that CallSync triggers the assertion.
+    auto functionValue = getJsModulePropertyWithSchema(
+        wrapper.runtime, nullptr, nullptr, "test_async_strict/src/AsyncStrictModule", "compute", "f|b|():u");
+    ASSERT_TRUE(functionValue) << "getJsModulePropertyWithSchema failed: " << functionValue.description();
+
+    Valdi::SimpleExceptionTracker exceptionTracker;
+    auto valueFunction = functionValue.value().checkedTo<Ref<Valdi::ValueFunction>>(exceptionTracker);
+    ASSERT_TRUE(exceptionTracker) << "compute is not a function";
+
+    EXPECT_DEATH(
+        {
+            wrapper.runtime->getMainThreadManager().markCurrentThreadIsMainThread();
+            (void)valueFunction->call(Valdi::ValueFunctionFlagsCallSync, nullptr, 0);
+        },
+        "Sync JS call");
+}
+
+TEST_P(RuntimeFixture, supportsExportedFunction) {
+    auto result = snap::valdi_modules::test::MakeCalculator::resolve(*wrapper.runtime->getJavaScriptRuntime(), nullptr);
+    ASSERT_TRUE(result) << result.description();
+
+    auto calculator = result.value()();
+
+    calculator->add(10);
+
+    ASSERT_EQ(10.0, calculator->total());
+
+    calculator->mul(3.0);
+
+    ASSERT_EQ(30.0, calculator->total());
+
+    ASSERT_EQ(StringBox::fromCString("30.0"),
+              calculator->toString(snap::valdi_modules::test::CalculatorToStringFormat::DECIMAL));
+    ASSERT_EQ(StringBox::fromCString("30"),
+              calculator->toString(snap::valdi_modules::test::CalculatorToStringFormat::INTEGER));
+}
+
+TEST_P(RuntimeFixture, resolveAsTypedObjectReturnsTypedObject) {
+    auto result = snap::valdi_modules::test::MakeCalculator::resolveAsTypedObject(
+        *wrapper.runtime->getJavaScriptRuntime(), nullptr);
+    ASSERT_TRUE(result) << result.description();
+
+    auto typedObject = result.value();
+    ASSERT_NE(typedObject, nullptr);
+
+    // The TypedObject wraps a class schema named "MakeCalculator" with one property (the function).
+    ASSERT_EQ(typedObject->getClassName(), StringBox::fromCString("MakeCalculator"));
+    ASSERT_EQ(typedObject->getPropertiesSize(), 1u);
+
+    // Property 0 should be the callable function.
+    const auto& functionValue = typedObject->getProperty(0);
+    ASSERT_TRUE(functionValue.isFunction());
+}
+
+TEST_P(RuntimeFixture, registeredSchemaReturnsValidSchema) {
+    auto& schema = snap::valdi_modules::test::MakeCalculator::registeredSchema();
+    ASSERT_EQ(schema.getClassName(), StringBox::fromCString("MakeCalculator"));
+
+    auto classSchemaResult = schema.getResolvedClassSchema();
+    ASSERT_TRUE(classSchemaResult) << classSchemaResult.description();
+
+    auto classSchema = classSchemaResult.value();
+    ASSERT_EQ(classSchema->getClassName(), StringBox::fromCString("MakeCalculator"));
+
+    // MakeCalculator has one property: the makeCalculator function itself.
+    ASSERT_EQ(classSchema->getPropertiesSize(), 1u);
+    const auto& prop = classSchema->getProperty(0);
+    ASSERT_EQ(prop.name, StringBox::fromCString("makeCalculator"));
+    ASSERT_TRUE(prop.schema.isFunction());
+
+    // makeCalculator() takes 0 parameters.
+    auto* funcSchema = prop.schema.getFunction();
+    ASSERT_NE(funcSchema, nullptr);
+    ASSERT_EQ(funcSchema->getParametersSize(), 0u);
+}
+
 TEST_P(RuntimeFixture, supportsLongObject) {
     auto parseResult =
         callFunctionSync(wrapper, "test/src/LongTest", "parse", {Value(STRING_LITERAL("3670116110564327421"))});
@@ -6123,7 +6303,7 @@ class MyNativeObject : public ValdiObject {
 TEST_P(RuntimeFixture, supportsUserCreatedNativeObjects) {
     Ref<MyNativeObject> nativeObject = makeShared<MyNativeObject>();
 
-    auto objectsManager = wrapper.runtime->getJavaScriptRuntime()->createNativeObjectsManager();
+    auto objectsManager = wrapper.runtime->getJavaScriptRuntime()->createNativeObjectsManager("");
 
     ASSERT_EQ(1, nativeObject.use_count());
 
@@ -6168,6 +6348,34 @@ TEST_P(RuntimeFixture, supportsUserCreatedNativeObjects) {
     retValue = unwrapObject();
 
     ASSERT_TRUE(retValue.isUndefined());
+}
+
+TEST_P(RuntimeFixture, destroysNativeRefsWhenUserCreatedContextIsDestroyed) {
+    Ref<MyNativeObject> nativeObject = makeShared<MyNativeObject>();
+
+    auto jsResult = callFunctionSync(wrapper,
+                                     nullptr,
+                                     "test/src/DestroyRefOnChildContext",
+                                     "createChildContext",
+                                     {Value(makeShared<ValueFunctionWithCallable>(
+                                         [nativeObject = nativeObject.get()](const auto& callContext) -> Value {
+                                             return Value(Ref<ValdiObject>(nativeObject));
+                                         }))});
+
+    ASSERT_TRUE(jsResult) << jsResult.description();
+
+    auto contextId = static_cast<ContextId>(jsResult.value().getMapValue("contextId").toInt());
+
+    ASSERT_EQ(2, contextId);
+
+    // 1 ref in the test, 1 in JS
+    ASSERT_EQ(2, nativeObject.use_count());
+
+    wrapper.runtime->getContextManager().destroyContext(contextId);
+    wrapper.flushQueues();
+
+    // The native reference should have been released
+    ASSERT_EQ(1, nativeObject.use_count());
 }
 
 TEST_P(RuntimeFixture, canDumpLogs) {
@@ -6637,7 +6845,7 @@ TEST_P(RuntimeFixture, attributesHotReloadErrorOnContext) {
 }
 
 TEST_P(RuntimeFixture, showStackTraceResponsibleForEmittingDanglingReference) {
-    wrapper.runtime->getJavaScriptRuntime()->setEnableStackTraceCapture(true);
+    wrapper.runtime->getJavaScriptRuntime()->setForceStackTraceCapture(true);
 
     auto messageHandler = makeShared<MockRuntimeMessageHandler>();
     wrapper.runtime->setRuntimeMessageHandler(messageHandler);
@@ -6699,6 +6907,43 @@ TEST_P(RuntimeFixture, showStackTraceResponsibleForEmittingDanglingReference) {
     }
 
     ASSERT_EQ(static_cast<size_t>(1), messageHandler->messages().debugMessages.size());
+}
+
+TEST_P(RuntimeFixture, scopeNameAppearsInDisposedReferenceError) {
+    auto messageHandler = makeShared<MockRuntimeMessageHandler>();
+    wrapper.runtime->setRuntimeMessageHandler(messageHandler);
+
+    Ref<MyNativeObject> nativeObject = makeShared<MyNativeObject>();
+
+    // Create objectsManager with a specific scopeName
+    auto objectsManager = wrapper.runtime->getJavaScriptRuntime()->createNativeObjectsManager("MyFeature.MyCallsite");
+
+    // Wrap native object in JS
+    auto jsResult =
+        callFunctionSync(wrapper, objectsManager, "test/src/WrapNativeObject", "wrapper", {Value(nativeObject)});
+    ASSERT_TRUE(jsResult) << jsResult.description();
+
+    auto unwrapObject = [&]() {
+        // Call the function - we expect it to fail, so don't call .value() on the result
+        // The error will be logged to messageHandler
+        (void)jsResult.value().getFunction()->call(Valdi::ValueFunctionFlagsCallSync, {});
+    };
+
+    // Dispose the objectsManager
+    wrapper.runtime->getJavaScriptRuntime()->dispatchSynchronouslyOnJsThread([&](auto& jsEntry) {
+        wrapper.runtime->getJavaScriptRuntime()->destroyNativeObjectsManager(objectsManager);
+        return;
+    });
+
+    // Try to unwrap - should trigger error with scopeName (error is logged, not thrown)
+    unwrapObject();
+    wrapper.flushQueues();
+
+    // Verify error contains scopeName
+    ASSERT_GE(messageHandler->messages().errors.size(), static_cast<size_t>(1));
+    auto errorMessage = messageHandler->messages().errors[0].second;
+    ASSERT_TRUE(errorMessage.contains("MyFeature.MyCallsite"))
+        << "Expected error message to contain scopeName 'MyFeature.MyCallsite', got: " << errorMessage.slowToString();
 }
 
 TEST_P(RuntimeFixture, supportsSingleCallJsFunction) {
@@ -8535,9 +8780,66 @@ public:
     }
 };
 
-RegisterModuleFactory registerTestModule([]() { return std::make_shared<TestModuleFactory>(); });
+class NativeCalculator : public snap::valdi_modules::test::ICalculator {
+public:
+    NativeCalculator() = default;
+    ~NativeCalculator() override = default;
 
-RegisterModuleFactory registerTestModule2([]() { return std::make_shared<TestModule2Factory>(); });
+    void add(double value) final {
+        _value += value;
+    }
+
+    void sub(double value) final {
+        _value -= value;
+    }
+
+    void mul(double value) final {
+        _value *= value;
+    }
+
+    void div(double value) final {
+        _value /= value;
+    }
+
+    double total() final {
+        return _value;
+    }
+
+    Valdi::StringBox toString(snap::valdi_modules::test::CalculatorToStringFormat format) final {
+        switch (format) {
+            case snap::valdi_modules::test::CalculatorToStringFormat::DECIMAL:
+                return Valdi::StringBox::fromString(std::to_string(_value));
+            case snap::valdi_modules::test::CalculatorToStringFormat::INTEGER:
+                return Valdi::StringBox::fromString(std::to_string(static_cast<int64_t>(_value)));
+        }
+    }
+
+private:
+    double _value = 0;
+};
+
+class NativeCalculatorModuleFactoryImpl : public snap::valdi_modules::test::NativeCalculatorModuleFactory {
+public:
+    NativeCalculatorModuleFactoryImpl() = default;
+
+    Ref<snap::valdi_modules::test::NativeCalculatorModule> onLoadModule() final {
+        class NativeCalculatorModuleImpl : public snap::valdi_modules::test::NativeCalculatorModule {
+        public:
+            NativeCalculatorModuleImpl() = default;
+            ~NativeCalculatorModuleImpl() override = default;
+
+            Ref<snap::valdi_modules::test::ICalculator> makeCalculator() final {
+                return makeShared<NativeCalculator>();
+            }
+        };
+
+        return makeShared<NativeCalculatorModuleImpl>();
+    }
+};
+auto registerNativeCalculatorModule = RegisterModuleFactory::registerTyped<NativeCalculatorModuleFactoryImpl>();
+
+auto registerTestModule = RegisterModuleFactory::registerTyped<TestModuleFactory>();
+auto registerTestModule2 = RegisterModuleFactory::registerTyped<TestModule2Factory>();
 
 TEST_P(RuntimeFixture, supportsModuleRegisteredThroughModuleRegistry) {
     std::string evalBody = "return global.require(\"my_module/src/TestModule\").CONSTANT * 2;";

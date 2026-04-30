@@ -66,6 +66,10 @@ public:
 
     DECLARE_DOUBLE_ATTRIBUTE(ScrollLayer, fadingEdgeLength)
 
+    DECLARE_BOOLEAN_ATTRIBUTE(ScrollLayer, fadingEdgeStart)
+
+    DECLARE_BOOLEAN_ATTRIBUTE(ScrollLayer, fadingEdgeEnd)
+
     // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
     Valdi::Result<Valdi::Value> preprocess_scrollPerfLoggerBridge(const Valdi::Value& value);
 

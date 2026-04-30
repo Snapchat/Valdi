@@ -29,5 +29,5 @@ workspace_type: android
 # Please uncomment an android-SDK platform. Available SDKs are:
 # Selects which android platform from your SDK directory to use.
 # Corresponds to a subdirectory in ~/<sdk>/platforms.
-android_sdk_platform: android-33
+android_sdk_platform: android-36
 android_min_sdk: 21

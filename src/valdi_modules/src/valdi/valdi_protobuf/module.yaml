@@ -1,3 +1,5 @@
+bazel_build_file_generation_disabled: true
+
 web:
   version: 1.0.3
   publish_config: '{ "@snapchat:registry": "https://registry.npmjs.org/"
@@ -13,10 +15,12 @@ exclude_patterns:
   - .*\/scripts\/.*
   - .*\/proto\/.*
   - .*\/web\/.*
+  - .*\/node_modules\/.*
 exclude_globs:
   - "**/scripts/**"
   - "**/proto/**"
   - "**/web/**"
+  - "**/node_modules/**"
 
 output_target: release
 

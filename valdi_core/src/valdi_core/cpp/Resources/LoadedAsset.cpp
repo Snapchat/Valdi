@@ -13,4 +13,8 @@ Result<BytesView> LoadedAsset::getBytesContent() {
     return Error("Not implemented");
 }
 
+Value LoadedAsset::getMetadata() const {
+    return Value::undefined();
+}
+
 } // namespace Valdi

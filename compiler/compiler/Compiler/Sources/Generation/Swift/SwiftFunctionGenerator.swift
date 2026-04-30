@@ -39,7 +39,7 @@ final class SwiftFunctionGenerator {
 
         let nameAllocator = PropertyNameAllocator.forSwift()
 
-        let functionType : ValdiModelPropertyType = .function(parameters: exportedFunction.parameters, returnType: exportedFunction.returnType, isSingleCall: false, shouldCallOnWorkerThread: false)
+        let functionType : ValdiModelPropertyType = .function(parameters: exportedFunction.parameters, returnType: exportedFunction.returnType, isSingleCall: false, shouldCallOnWorkerThread: false, allowSyncCall: exportedFunction.allowSyncCall)
         let typeParser = try generator.getTypeParser(type: functionType, isOptional: false, functionHelperName: "callBlock", nameAllocator: nameAllocator)
         // let swiftProperties = 
 
@@ -55,15 +55,50 @@ final class SwiftFunctionGenerator {
 
         let functionHelpers = try SwiftSourceFileGenerator.writeFunctionHelpers(sourceGenerator: generator)
 
+        // Generate invokeWithJSRuntime method signature
+        var invokeWithJSRuntimeParams = ["jsRuntimeProvider: @escaping () -> SCValdiJSRuntime"]
+        var invokeWithJSRuntimeCallParams: [String] = []
+        
+        // Add original function parameters
+        for (index, paramName) in functionTypeParser.parameterNames.enumerated() {
+            let paramType = functionTypeParser.parameterTypes[index].typeName
+            invokeWithJSRuntimeParams.append("\(paramName): \(paramType)")
+            invokeWithJSRuntimeCallParams.append("\(paramName): \(paramName)")
+        }
+        
+        // Add completionHandler parameter (using completionHandler to avoid naming conflicts)
+        let isVoidReturn = functionTypeParser.returnType.typeName == "Void"
+        let completionType = isVoidReturn ? "() -> Void" : "(\(functionTypeParser.returnType.typeName)) -> Void"
+        invokeWithJSRuntimeParams.append("completionHandler: @escaping \(completionType)")
+        
+        let invokeWithJSRuntimeSignature = "invokeWithJSRuntime(\(invokeWithJSRuntimeParams.joined(separator: ", ")))"
+        let functionCallParams = invokeWithJSRuntimeCallParams.joined(separator: ", ")
+        
+        // Generate the completion call based on return type
+        let completionCallCode: String
+        if isVoidReturn {
+            completionCallCode = """
+                        try function.callBlock(\(functionTypeParser.callableParametersString))
+                                completionHandler()
+            """
+        } else {
+            completionCallCode = """
+                        let result = try function.callBlock(\(functionTypeParser.callableParametersString))
+                                completionHandler(result)
+            """
+        }
+
         generator.appendBody("""
         public class \(containingTypeName): ValdiBridgeFunction {
             private let callBlock : \(functionTypeParser.methodTypeWithoutNames)
             public static var className = "\(containingTypeName)"
+            public static let asyncStrictMode: Bool = \(bundleInfo.asyncStrictMode ? "true" : "false")
 
             public init(jsRuntime: Any) throws {
                 guard let jsRuntime = jsRuntime as? SCValdiJSRuntime else {
                     throw ValdiError.runtimeError("jsRuntime is not of type SCValdiJSRuntime")
                 }
+                Self.assertResolutionNotOnMainThreadIfNeeded(asyncStrictMode: Self.asyncStrictMode)
                 register_\(containingTypeName)()
                 self.callBlock = try Self.create_callBlock_from_bridgeFunction(using: Self.createBridgeFunction(jsRuntime: jsRuntime))
             }
@@ -74,6 +109,20 @@ final class SwiftFunctionGenerator {
             public func \(exportedFunction.functionName)\(functionTypeParser.methodTypeWithNames) {
                 return try self.callBlock(\(functionTypeParser.callableParametersString))
             }
+
+            public static func \(invokeWithJSRuntimeSignature) {
+                let runtime = jsRuntimeProvider()
+                runtime.dispatch(inJsThread: {
+                    do {
+                        let function = try \(containingTypeName)(jsRuntime: runtime)
+        \(completionCallCode)
+                    } catch {
+                        // Handle error - for now we'll just print it
+                        print("Error in invokeWithJSRuntime: \\(error)")
+                    }
+                })
+            }
+
             \(functionHelpers.content)
             \(objectDescriptorGetter.content)
         }

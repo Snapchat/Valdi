@@ -71,8 +71,8 @@ remote-dependencies:
   version: 1.8.0
   url: https://github.com/open-source-parsers/jsoncpp/archive/refs/tags/1.8.0.zip
 - name: harfbuzz
-  version: 2.5.1
-  url: https://github.com/harfbuzz/harfbuzz/releases/download/2.5.1/harfbuzz-2.5.1.tar.xz
+  version: 12.2.0
+  url: https://github.com/harfbuzz/harfbuzz/releases/download/12.2.0/harfbuzz-12.2.0.tar.xz
 - name: protobuf_cpp
   version: 3.20.0
   url: https://github.com/protocolbuffers/protobuf/releases/download/v3.20.0/protobuf-all-3.20.0.tar.gz

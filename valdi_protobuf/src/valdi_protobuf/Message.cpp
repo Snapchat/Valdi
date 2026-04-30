@@ -207,14 +207,14 @@ std::string Message::toJSON(const JSONPrintOptions& options, ExceptionTracker& e
 
     auto outputOptions = google::protobuf::util::JsonPrintOptions();
     outputOptions.add_whitespace = options.pretty;
-    outputOptions.always_print_primitive_fields = options.alwaysPrintPrimitiveFields;
+    outputOptions.always_print_fields_with_no_presence = options.alwaysPrintPrimitiveFields;
     outputOptions.always_print_enums_as_ints = options.alwaysPrintEnumsAsInts;
 
     auto result = google::protobuf::util::BinaryToJsonStream(
         jsonHelper.typeResolver, jsonHelper.typeUrl, &jsonHelper.inputStream, &jsonHelper.outputStream, outputOptions);
 
     if (!result.ok()) {
-        exceptionTracker.onError(result.message().ToString());
+        exceptionTracker.onError(result.message());
         return "";
     }
 
@@ -235,7 +235,7 @@ bool Message::decodeFromJSON(std::string_view json, ExceptionTracker& exceptionT
                                                              &jsonHelper.outputStream,
                                                              google::protobuf::util::JsonParseOptions());
     if (!result.ok()) {
-        exceptionTracker.onError(result.message().ToString());
+        exceptionTracker.onError(result.message());
         return false;
     }
 

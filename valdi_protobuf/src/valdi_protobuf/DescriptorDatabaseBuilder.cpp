@@ -104,29 +104,29 @@ class ProtobufErrorCollector : public google::protobuf::DescriptorPool::ErrorCol
 public:
     ~ProtobufErrorCollector() override = default;
 
-    void AddError(const std::string& filename,
-                  [[maybe_unused]] const std::string& elementName,
-                  [[maybe_unused]] const google::protobuf::Message* descriptor,
-                  [[maybe_unused]] ErrorLocation location,
-                  const std::string& message) final {
+    void RecordError(absl::string_view filename,
+                     [[maybe_unused]] absl::string_view elementName,
+                     [[maybe_unused]] const google::protobuf::Message* descriptor,
+                     [[maybe_unused]] ErrorLocation location,
+                     absl::string_view message) final {
         _messages.emplace_back(ProtobufErrorCollector::makeMessage("error", filename, message));
     }
 
-    void AddWarning(const std::string& filename,
-                    [[maybe_unused]] const std::string& elementName,
-                    [[maybe_unused]] const google::protobuf::Message* descriptor,
-                    [[maybe_unused]] ErrorLocation location,
-                    const std::string& message) final {
+    void RecordWarning(absl::string_view filename,
+                       [[maybe_unused]] absl::string_view elementName,
+                       [[maybe_unused]] const google::protobuf::Message* descriptor,
+                       [[maybe_unused]] ErrorLocation location,
+                       absl::string_view message) final {
         _messages.emplace_back(ProtobufErrorCollector::makeMessage("warning", filename, message));
     }
 
-    void AddError(int line, google::protobuf::io::ColumnNumber column, const std::string& message) final {
+    void RecordError(int line, google::protobuf::io::ColumnNumber column, absl::string_view message) final {
         _messages.emplace_back(STRING_FORMAT("At {}:{}: {}", line, column, message));
     }
 
-    void AddWarning([[maybe_unused]] int line,
-                    [[maybe_unused]] google::protobuf::io::ColumnNumber column,
-                    [[maybe_unused]] const std::string& message) final {}
+    void RecordWarning([[maybe_unused]] int line,
+                       [[maybe_unused]] google::protobuf::io::ColumnNumber column,
+                       [[maybe_unused]] absl::string_view message) final {}
 
     bool failed() const {
         return !_messages.empty();
@@ -139,7 +139,7 @@ public:
 private:
     std::vector<StringBox> _messages;
 
-    static StringBox makeMessage(std::string_view type, const std::string& filename, const std::string& message) {
+    static StringBox makeMessage(std::string_view type, std::string_view filename, std::string_view message) {
         return STRING_FORMAT("{} in {}: {}", type, filename, message);
     }
 };

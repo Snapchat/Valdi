@@ -347,6 +347,7 @@ static UIBezierPath *SCBezierPathWithRadii(CGFloat topLeftRadius, CGFloat topRig
 
 - (BOOL)valdi_setBorderColor:(UIColor *)borderColor animator:(id<SCValdiAnimatorProtocol> )animator
 {
+    borderColor = borderColor ?: [UIColor clearColor];
     if (animator) {
         [animator addAnimationOnLayer:self.layer forKeyPath:@"borderColor" value:(__bridge id)borderColor.CGColor];
     } else {

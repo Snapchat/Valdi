@@ -54,7 +54,7 @@ let package = Package(
         ),
         .testTarget(
             name: "CompilerTests",
-            dependencies: ["Compiler", "SwiftSoup"]
+            dependencies: ["Compiler", "SwiftSoup", "Zstd"]
         ),
     ]
 )

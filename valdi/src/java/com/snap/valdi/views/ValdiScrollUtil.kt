@@ -12,8 +12,8 @@ class ValdiScrollUtil {
     private val rect = Rect()
 
     // Find the first possible drag gesture candidate
-    fun possibleViewDragGesture(view: View, event: MotionEvent): DragGestureRecognizer? {
-        if (!TouchDispatcher.hitTest(view, event, outLocation, rect)) {
+    fun possibleViewDragGesture(view: View, event: MotionEvent, corners: FloatArray = FloatArray(8)): DragGestureRecognizer? {
+        if (!TouchDispatcher.hitTest(view, event, outLocation, rect, corners)) {
             return null
         }
 
@@ -27,9 +27,9 @@ class ValdiScrollUtil {
         if (view !is ViewGroup) {
             return null;
         }
-        
+
         for (i in 0 until view.childCount) {
-            val dragGesture = possibleViewDragGesture(view.getChildAt(i), event)
+            val dragGesture = possibleViewDragGesture(view.getChildAt(i), event, corners)
             if (dragGesture != null) {
                 return dragGesture
             }
@@ -37,9 +37,9 @@ class ValdiScrollUtil {
         return null;
     }
 
-    fun allPossibleViewDragGestures(view: View, event: MotionEvent, gestures: MutableList<DragGestureRecognizer> = mutableListOf()): List<DragGestureRecognizer> {
+    fun allPossibleViewDragGestures(view: View, event: MotionEvent, gestures: MutableList<DragGestureRecognizer> = mutableListOf(), corners: FloatArray = FloatArray(8)): List<DragGestureRecognizer> {
 
-        if (!TouchDispatcher.hitTest(view, event, outLocation, rect)) {
+        if (!TouchDispatcher.hitTest(view, event, outLocation, rect, corners)) {
             return gestures;
         }
 
@@ -55,14 +55,14 @@ class ValdiScrollUtil {
         }
 
         for (i in 0 until view.childCount) {
-            allPossibleViewDragGestures(view.getChildAt(i), event, gestures)
+            allPossibleViewDragGestures(view.getChildAt(i), event, gestures, corners)
         }
 
         return gestures;
     }
 
-    fun canViewScroll(view: View, event: MotionEvent, check: (view: View) -> Boolean): Boolean {
-        if (!TouchDispatcher.hitTest(view, event, outLocation, rect)) {
+    fun canViewScroll(view: View, event: MotionEvent, check: (view: View) -> Boolean, corners: FloatArray = FloatArray(8)): Boolean {
+        if (!TouchDispatcher.hitTest(view, event, outLocation, rect, corners)) {
             return false
         }
 
@@ -79,7 +79,7 @@ class ValdiScrollUtil {
         }
 
         for (i in 0 until view.childCount) {
-            if (canViewScroll(view.getChildAt(i), event, check)) {
+            if (canViewScroll(view.getChildAt(i), event, check, corners)) {
                 return true
             }
         }

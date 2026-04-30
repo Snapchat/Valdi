@@ -75,6 +75,8 @@ public:
 
     void cancelAnimator(const Ref<Animator>& animator) override;
 
+    void scheduleOnNextDraw(const Ref<View>& rootView, DispatchFunction callback) override;
+
     void executeInTransactionThread(DispatchFunction executeFn) override;
 
 private:

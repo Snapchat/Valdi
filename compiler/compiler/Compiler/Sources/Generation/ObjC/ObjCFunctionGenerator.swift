@@ -53,11 +53,36 @@ final class ObjCFunctionGenerator {
         messageDeclaration.append(objcSelector.messageDeclaration)
         messageDeclaration.append(";")
 
+        // Generate invokeWithJSRuntime static method signature
+        let jsRuntimeProviderType = "id<SCValdiJSRuntime> _Nonnull (^ _Nonnull)(void)"
+        var invokeWithJSRuntimeSelectorParts: [String] = []
+        
+        // First part with jsRuntimeProvider
+        invokeWithJSRuntimeSelectorParts.append("invokeWithJSRuntimeProvider:(\(jsRuntimeProviderType))jsRuntimeProvider")
+        
+        // Add original function parameters
+        for param in functionParser.parameters {
+            invokeWithJSRuntimeSelectorParts.append("\(param.name.name):(\(param.parser.typeName))\(param.name.name)")
+        }
+        
+        // Add completionHandler parameter (using completionHandler to avoid naming conflicts)
+        let completionBlockType: String
+        if functionParser.returnParser.cType == .void {
+            completionBlockType = "void (^ _Nonnull)(void)"
+        } else {
+            completionBlockType = "void (^ _Nonnull)(\(functionParser.returnParser.typeName))"
+        }
+        invokeWithJSRuntimeSelectorParts.append("completionHandler:(\(completionBlockType))completionHandler")
+        
+        let invokeWithJSRuntimeDeclaration = "+ (void)\(invokeWithJSRuntimeSelectorParts.joined(separator: " "))"
+
         classGenerator.header.appendBody("""
             \(comments)
             @interface \(typeName): SCValdiBridgeFunction
 
             \(messageDeclaration);
+
+            \(invokeWithJSRuntimeDeclaration);
 
             @end
 
@@ -65,7 +90,7 @@ final class ObjCFunctionGenerator {
 
         let objcProperty = ObjCProperty(propertyName: exportedFunction.functionName, modelProperty:
                                             ValdiModelProperty(name: exportedFunction.functionName,
-                                                                  type: .function(parameters: exportedFunction.parameters, returnType: exportedFunction.returnType, isSingleCall: false, shouldCallOnWorkerThread: false),
+                                                                  type: .function(parameters: exportedFunction.parameters, returnType: exportedFunction.returnType, isSingleCall: false, shouldCallOnWorkerThread: false, allowSyncCall: exportedFunction.allowSyncCall),
                                                                   comments: nil,
                                                                   omitConstructor: nil,
                                                                   injectableParams: .empty))
@@ -98,11 +123,39 @@ final class ObjCFunctionGenerator {
           return @"\(bundleName)/\(modulePath)";
         }
 
+        + (BOOL)asyncStrictMode
+        {
+          return \(bundleInfo.asyncStrictMode ? "YES" : "NO");
+        }
 
         """)
 
         classGenerator.impl.appendBody(messageForwarder)
         classGenerator.impl.appendBody("\n")
+        
+        // Generate invokeWithJSRuntime implementation
+        let invokeWithJSRuntimeImpl = ObjCCodeGenerator()
+        invokeWithJSRuntimeImpl.appendBody("\(invokeWithJSRuntimeDeclaration)\n")
+        invokeWithJSRuntimeImpl.appendBody("{\n")
+        invokeWithJSRuntimeImpl.appendBody("  id<SCValdiJSRuntime> runtime = jsRuntimeProvider();\n")
+        invokeWithJSRuntimeImpl.appendBody("  [runtime dispatchInJsThread:^{\n")
+        invokeWithJSRuntimeImpl.appendBody("    \(typeName) *function = [\(typeName) functionWithJSRuntime:runtime];\n")
+        invokeWithJSRuntimeImpl.appendBody("    \(functionParser.typeName) \(callBlockVariable.name) = (\(functionParser.typeName))function.\(callBlockVariable);\n")
+        let directCallBody = "\(callBlockVariable)(\(objcSelector.parameters.map { $0.name }.joined(separator: ", ")))"
+        
+        if functionParser.returnParser.cType == .void {
+            invokeWithJSRuntimeImpl.appendBody("    \(directCallBody);\n")
+            invokeWithJSRuntimeImpl.appendBody("    completionHandler();\n")
+        } else {
+            invokeWithJSRuntimeImpl.appendBody("    \(functionParser.returnParser.typeName) result = \(directCallBody);\n")
+            invokeWithJSRuntimeImpl.appendBody("    completionHandler(result);\n")
+        }
+        
+        invokeWithJSRuntimeImpl.appendBody("  }];\n")
+        invokeWithJSRuntimeImpl.appendBody("}\n")
+        invokeWithJSRuntimeImpl.appendBody("\n")
+        
+        classGenerator.impl.appendBody(invokeWithJSRuntimeImpl)
         classGenerator.impl.appendBody(objectDescriptor)
         classGenerator.impl.appendBody("\n")
         classGenerator.impl.appendBody("@end\n")

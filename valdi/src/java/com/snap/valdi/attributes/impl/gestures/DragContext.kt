@@ -42,7 +42,7 @@ class DragContext(
     }
 
     override fun shouldBegin(gesture: DragGestureRecognizer, x: Int, y: Int, offsetX: Int, offsetY: Int, velocityX: Float, velocityY: Float, pointerCount: Int, pointerLocations: List<ValdiGesturePointer>): Boolean {
-        return PredicateUtils.shouldBegin(predicate, gesture, x, y, pointerCount, pointerLocations, 4) { marshaller, objectIndex ->
+        return PredicateUtils.shouldBegin(predicate, gesture, x, y, pointerCount, pointerLocations, 4, timeoutMs = PredicateUtils.GESTURE_PREDICATE_TIMEOUT_MS) { marshaller, objectIndex ->
             pushAdditionalParams(gesture, marshaller, objectIndex, offsetX, offsetY, velocityX, velocityY)
         }
     }

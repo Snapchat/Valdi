@@ -28,6 +28,10 @@ public:
         return config.getMapValue(key).toFloat();
     }
 
+    int32_t getInt(const StringBox& key, int32_t fallback) override {
+        return config.getMapValue(key).toInt();
+    }
+
     Value getBinary(const StringBox& key, const Value& fallback) override {
         return config.getMapValue(key);
     }

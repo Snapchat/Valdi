@@ -59,6 +59,10 @@ final class ExportedEnumGenerator: NativeSourceGenerator {
     }
 
     func generateCppSources(parameters: NativeSourceParameters, cppType: CPPType) throws -> [NativeSource] {
-        return []
+        let cppGenerator = CppEnumGenerator(exportedEnum: exportedEnum,
+                                            cppType: cppType,
+                                            bundleInfo: parameters.bundleInfo,
+                                            sourceFileName: parameters.sourceFileName)
+        return try cppGenerator.write()
     }
 }

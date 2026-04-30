@@ -1,0 +1,72 @@
+# HelloWorld Standalone App - Integration Test for valdi_exported_library
+
+load("@rules_android//rules:rules.bzl", "aar_import", "android_binary")
+load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
+load("//bzl:expand_template.bzl", "expand_template")
+
+aar_import(
+    name = "hello_world_aar",
+    aar = "@valdi//apps/helloworld:hello_world_export_android",
+)
+
+kt_android_library(
+    name = "start_activity",
+    srcs = glob(["android/**/*.kt"]),
+    custom_package = "com.snap.helloworld",
+    deps = [
+        ":hello_world_aar",
+        "@valdi//valdi:valdi_android_support",
+    ],
+)
+
+expand_template(
+    name = "hello_world_manifest",
+    src = "@valdi//bzl/valdi/app_templates:AndroidDebugAppManifest.xml.tpl",
+    output = "AndroidAppManifest.xml",
+    substitutions = {
+        "@VALDI_APP_PACKAGE@": "com.snap.helloworld",
+        "@VALDI_APP_NAME@": "helloworld",
+        "@VALDI_APPLICATION_ATTRIBUTES@": "",
+        "@VALDI_ACTIVITY_ATTRIBUTES@": "",
+    },
+)
+
+android_binary(
+    name = "hello_world_standalone",
+    custom_package = "com.snap.helloworld",
+    manifest = ":hello_world_manifest",
+    multidex = "native",
+    tags = ["valdi_android_application"],
+    deps = [
+        ":hello_world_aar",
+        ":start_activity",
+        "@android_mvn//:androidx_appcompat_appcompat",
+    ],
+)
+
+# Instrumentation Tests (not run in CI yet)
+
+kt_android_library(
+    name = "launch_test_lib",
+    testonly = True,
+    srcs = glob(["androidTest/**/*.kt"]),
+    custom_package = "com.snap.helloworld.test",
+    deps = [
+        ":hello_world_aar",
+        ":start_activity",
+        "@android_mvn//:androidx_test_ext_junit",
+        "@android_mvn//:androidx_test_runner",
+        "@android_mvn//:junit_junit",
+    ],
+)
+
+android_binary(
+    name = "hello_world_instrumentation_test_apk",
+    testonly = True,
+    custom_package = "com.snap.helloworld.test",
+    instruments = ":hello_world_standalone",
+    manifest = "androidTest/AndroidManifest.xml",
+    deps = [
+        ":launch_test_lib",
+    ],
+)

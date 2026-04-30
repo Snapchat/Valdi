@@ -35,6 +35,7 @@ public:
     const Duration& getDuration() const override;
     const Size& getSize() const override;
     double getFrameRate() const override;
+    Valdi::Value getMetadata() const override;
 
     static Valdi::Result<Ref<LottieAnimatedImage>> make(const Ref<Resources>& resources,
                                                         const Valdi::Byte* data,

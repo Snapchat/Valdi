@@ -68,6 +68,12 @@ const deepClone = <T>(val: T, seen = new WeakMap()): T => {
   if (val instanceof Uint8Array) {
     return new Uint8Array(val) as T;
   }
+  // handle protobuf Message
+  if (isClonableProtobufMessage(val)) {
+    const cloned = val.clone() as T;
+    seen.set(val, cloned);
+    return cloned;
+  }
 
   throw new Error(`Unsupported type in deepClone ${typeof val} ${val.constructor.name}`);
 };
@@ -83,3 +89,13 @@ const deepClonePlainObject = <T extends object>(obj: T, seen: WeakMap<object, un
 };
 
 export default deepClone;
+
+// Object with a clone method (Protobuf Message)
+interface Cloneable {
+  clone(): unknown;
+}
+
+// Check if value is a protobuf Message (has $arena property and clone method)
+function isClonableProtobufMessage(val: object): val is Cloneable {
+  return '$arena' in val && 'clone' in val && typeof val.clone === 'function';
+}

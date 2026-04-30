@@ -12,6 +12,7 @@
 #import "valdi_core/SCValdiTouches.h"
 #import "valdi_core/SCValdiMarshaller+CPP.h"
 #import "valdi_core/SCValdiError.h"
+#import "valdi_core/SCValdiLogger.h"
 
 #import <UIKit/UIGestureRecognizerSubclass.h>
 
@@ -37,6 +38,10 @@ static void SCValdiHandleTouchEvent(UIView *view,
 {
     if (!action) {
         return;
+    }
+
+    if (gestureType == SCValdiGestureTypeTap) {
+        SCLogValdiInfo(@"[Valdi] tap dispatching to JS");
     }
 
     auto pointerLocations = SCValdiGetPointerDataFromEvent(uiEvent);

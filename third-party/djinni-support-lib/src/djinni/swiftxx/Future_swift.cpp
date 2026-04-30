@@ -22,4 +22,4 @@ void storeSubscription(const AnyValue* futureValue, void* subscription) {
     holder->subscription = subscription;
 }
 
-} // namespace djinni::swift
+}

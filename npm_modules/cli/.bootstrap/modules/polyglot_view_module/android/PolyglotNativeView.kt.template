@@ -1,0 +1,41 @@
+package com.snap.modules.{{MODULE_NAME}}
+
+import android.content.Context
+import android.graphics.Color
+import android.view.MotionEvent
+import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
+import com.snap.valdi.views.ValdiTouchEventResult
+import com.snap.valdi.views.ValdiTouchTarget
+
+/**
+ * Android native view for the {{MODULE_NAME}} polyglot module.
+ * ReflectionViewFactory requires a single-arg (Context) constructor.
+ */
+class PolyglotNativeView(context: Context) : LinearLayout(context), ValdiTouchTarget {
+
+    init {
+        orientation = VERTICAL
+        layoutParams = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        )
+        setBackgroundColor(Color.parseColor("#E8E8E8"))
+
+        val label = TextView(context).apply {
+            text = "Hello from Android ({{MODULE_NAME}})"
+            setPadding(32, 32, 32, 16)
+        }
+        addView(label)
+    }
+
+    override fun processTouchEvent(event: MotionEvent): ValdiTouchEventResult {
+        val consumed = dispatchTouchEvent(event)
+        return if (consumed) {
+            ValdiTouchEventResult.ConsumeEventAndCancelOtherGestures
+        } else {
+            ValdiTouchEventResult.IgnoreEvent
+        }
+    }
+}

@@ -11,6 +11,8 @@
 
 namespace Valdi {
 
+using StaticStringAllocator = InlineContainerAllocator<StaticString, uint8_t>;
+
 StaticString::StaticString(size_t size, Encoding encoding) : _size(size), _encoding(encoding) {}
 StaticString::~StaticString() = default;
 
@@ -23,12 +25,12 @@ StaticString::Encoding StaticString::encoding() const {
 }
 
 const void* StaticString::data() const {
-    InlineContainerAllocator<StaticString, void*> allocator;
+    StaticStringAllocator allocator;
     return allocator.getContainerStartPtr(this);
 }
 
 void* StaticString::data() {
-    InlineContainerAllocator<StaticString, void*> allocator;
+    StaticStringAllocator allocator;
     return allocator.getContainerStartPtr(this);
 }
 
@@ -149,7 +151,7 @@ StaticStringUTF32Storage StaticString::utf32Storage() const {
 }
 
 Ref<StaticString> StaticString::makeUTF8(size_t size) {
-    InlineContainerAllocator<StaticString, void*> allocator;
+    StaticStringAllocator allocator;
     auto ref = allocator.allocate((size * sizeof(char)) + 1, size, Encoding::UTF8);
     // Always null terminate UTF8 strings
     ref->utf8Data()[size] = 0;
@@ -157,12 +159,12 @@ Ref<StaticString> StaticString::makeUTF8(size_t size) {
 }
 
 Ref<StaticString> StaticString::makeUTF16(size_t size) {
-    InlineContainerAllocator<StaticString, void*> allocator;
+    StaticStringAllocator allocator;
     return allocator.allocate(size * sizeof(char16_t), size, Encoding::UTF16);
 }
 
 Ref<StaticString> StaticString::makeUTF32(size_t size) {
-    InlineContainerAllocator<StaticString, void*> allocator;
+    StaticStringAllocator allocator;
     return allocator.allocate(size * sizeof(char32_t), size, Encoding::UTF32);
 }
 

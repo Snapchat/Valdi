@@ -42,7 +42,7 @@ export function polyfillPromise() {
       (Promise as any)._setAsap(ourAsap);
     } else {
       const ourAsap = (callback: (arg: any) => void, arg: any) => {
-        // eslint-disable-next-line @snapchat/valdi/assign-timer-id
+        // eslint-disable-next-line @snap/valdi/assign-timer-id
         setTimeoutUninterruptible(() => {
           callback(arg);
         }, 1);

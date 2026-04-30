@@ -34,6 +34,10 @@ valdi_module(
     ios_output_target = "debug",
     visibility = ["//visibility:public"],
     web_deps = [":file_system_web"],
+    web_register_native_module_id_overrides = {
+        # file_system/src/FileSystem.ts does require('FileSystem')
+        "file_system/web/FileSystem.js": "FileSystem",
+    },
     deps = [
         "//src/valdi_modules/src/valdi/coreutils",
         "//src/valdi_modules/src/valdi/jasmine",

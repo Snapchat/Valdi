@@ -10,8 +10,18 @@
         self.bouncesFromDragAtStart = YES;
         self.bouncesFromDragAtEnd = YES;
         self.panGestureRecognizerEnabled = YES;
+        self.stopScrollingOnTouch = NO;
     }
     return self;
+}
+
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event
+{
+    if (self.stopScrollingOnTouch && self.isDecelerating && [self pointInside:point withEvent:event]) {
+        [self setContentOffset:self.contentOffset animated:NO];
+        [self.layer removeAllAnimations];
+    }
+    return [super hitTest:point withEvent:event];
 }
 
 - (void)setPanGestureRecognizerEnabled:(BOOL)panGestureRecognizerEnabled

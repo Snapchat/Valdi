@@ -37,3 +37,8 @@ wasm:
 ts:
   typename: HTTPResponse
   module: './valdi_core'
+c:
+  typename: 'snap_valdi_core_HTTPResponse_ref'
+  translator: '::djinni::c_api::RecordTranslator<::snap::valdi_core::HTTPResponse>'
+  public_header: '"valdi_core/HTTPResponse.h"'
+  private_header: '"valdi_core/HTTPResponse.hpp"'

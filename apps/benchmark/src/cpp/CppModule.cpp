@@ -48,6 +48,7 @@ public:
                              })));
     }
 };
-Valdi::RegisterModuleFactory kRegisterCppHelperModule([]() { return std::make_shared<CppHelperModule>(); });
+
+auto kRegisterCppHelperModule = Valdi::RegisterModuleFactory::registerTyped<CppHelperModule>();
 
 } // namespace snap::valdi::benchmark

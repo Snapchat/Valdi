@@ -12,6 +12,7 @@
 #import "valdi/ios/Text/SCValdiOnTapAttribute.h"
 #import "valdi/ios/Text/SCValdiOnLayoutAttribute.h"
 #import "valdi/ios/Text/SCValdiAttributedText.h"
+#import "valdi/ios/Text/SCValdiImageAttachmentInfo.h"
 
 #import "valdi_core/SCNValdiCoreCompositeAttributePart.h"
 #import "valdi_core/UIColor+Valdi.h"
@@ -31,6 +32,7 @@ NSString *const kSCValdiAttributedStringKeyOnTap = @"valdi_onTap";
 NSString *const kSCValdiAttributedStringKeyOnLayout = @"valdi_onLayout";
 NSString *const kSCValdiOuterOutlineColorAttribute = @"valdi_outerOutlineColor";
 NSString *const kSCValdiOuterOutlineWidthAttribute = @"valdi_outerOutlineWidth";
+NSString *const kSCValdiAttributedStringKeyAnimationTransform = @"valdi_animationTransform";
 
 /// Returns a boxed NSTextAlignment value, or nil
 static NSNumber *_SCValdiParseTextAlignment(NSString *value)
@@ -39,7 +41,7 @@ static NSNumber *_SCValdiParseTextAlignment(NSString *value)
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         textAlignmentMap = @{
-            @"left" : @(NSTextAlignmentNatural),
+            @"left" : @(NSTextAlignmentLeft),
             @"center" : @(NSTextAlignmentCenter),
             @"right" : @(NSTextAlignmentRight),
             @"justified" : @(NSTextAlignmentJustified),
@@ -129,6 +131,8 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
         NSNumber *outlineWidth = [valdiAttributedText outlineWidthAtIndex:i];
         UIColor *outerOutlineColor = [valdiAttributedText outerOutlineColorAtIndex:i];
         NSNumber *outerOutlineWidth = [valdiAttributedText outerOutlineWidthAtIndex:i];
+        SCValdiImageAttachmentInfo *imageAttachment = [valdiAttributedText imageAttachmentAtIndex:i];
+        NSDictionary<NSString *, NSNumber *> *animationTransform = [valdiAttributedText animationTransformAtIndex:i];
 
         if (color) {
             nsAttrs[NSForegroundColorAttributeName] = color;
@@ -158,10 +162,40 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
         if (onLayoutCallback) {
             nsAttrs[kSCValdiAttributedStringKeyOnLayout] = [[SCValdiOnLayoutAttribute alloc] initWithCallback:onLayoutCallback];
         }
+        if (animationTransform) {
+            nsAttrs[kSCValdiAttributedStringKeyAnimationTransform] = animationTransform;
+        }
 
         _SCValdiAppendTextDecoration(nsAttrs, textDecoration);
 
-        [resultString appendAttributedString:[[NSAttributedString alloc] initWithString:content attributes:nsAttrs]];
+        NSAttributedString *partString;
+        if (imageAttachment) {
+            NSTextAttachment *attachment = [[NSTextAttachment alloc] init];
+            if (imageAttachment.imageData.length > 0) {
+                attachment.image = [UIImage imageWithData:imageAttachment.imageData
+                                                    scale:UIScreen.mainScreen.scale];
+            } else {
+                // Create transparent placeholder to avoid file replacement character icon
+                attachment.image = [[UIImage alloc] init];
+            }
+            // Calculate baseline offset to vertically center the image with the text.
+            UIFont *font = nsAttrs[NSFontAttributeName];
+            CGFloat baselineOffset = 0;
+            if (font) {
+                CGFloat textCenter = (font.ascender + font.descender) / 2.0;
+                baselineOffset = textCenter - imageAttachment.height / 2.0;
+            }
+            attachment.bounds = CGRectMake(0, baselineOffset, imageAttachment.width, imageAttachment.height);
+            partString = [NSAttributedString attributedStringWithAttachment:attachment];
+            [resultString appendAttributedString:partString];
+            // Append thin space after attachment to allow line breaks
+            [resultString appendAttributedString:[[NSAttributedString alloc] initWithString:@"\u2009" attributes:nsAttrs]];
+            continue;
+        } else {
+            partString = [[NSAttributedString alloc] initWithString:content attributes:nsAttrs];
+        }
+
+        [resultString appendAttributedString:partString];
     }
 
     return [resultString copy];

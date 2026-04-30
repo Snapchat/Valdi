@@ -55,6 +55,49 @@ You can run your tests using `bazel test` directly. See documentation about it h
 
 Once implemented, users will be able to run linting for a single module using Bazel.
 
+## Rebuilding the compiler and companion
+
+By default, Bazel uses the **prebuilt compiler** and builds the **companion from source** (the companion is the JS/TS app in `compiler/companion`). To use your own builds so they are not overwritten by prebuilts:
+
+### Using a locally built compiler
+
+
+1. Build the Valdi compiler and place the binary where the toolchain can find it:
+   ```sh
+   compiler/compiler/scripts/update_compiler.sh -s -o compiler/compiler/out
+   ```
+   This produces `compiler/compiler/out/macos/valdi_compiler` (or `out/linux/valdi_compiler` on Linux). The `-s` flag skips analytics upload. The script works in both the mirrored public repo and the mobile monorepo.
+
+2. Build Valdi modules with the local compiler:
+   ```sh
+   bazel build //src/valdi_modules/src/valdi/jasmine --//bzl/valdi:use_local_compiler=true
+   ```
+
+The `out/` directory is gitignored so your local binary is never committed.
+
+> [!TIP]
+> To confirm the local binary is being picked up, check the Bazel worker log after the first build:
+> ```sh
+> cat "$(ls ~/.cache/bazel/*/bazel-workers/worker-*-ValdiCompile.log 2>/dev/null | head -1)"
+> ```
+> The first line should read `[local-compiler] valdi compiler (local build) starting` (or whatever marker you added). The worker log path is also printed by Bazel when `--worker_verbose` is passed.
+
+### Using a locally built companion
+
+The toolchain already uses the **source-built companion** by default (`use_prebuilt_companion` is false), so the companion is built from `compiler/companion` (e.g. webpack output). To avoid Bazel overwriting your npm-built companion output:
+
+1. Build the companion in dev mode (writes to `dist_dev/` instead of `dist/`):
+   ```sh
+   cd compiler/companion && npm run build-dev
+   ```
+
+2. Build or run Valdi with the dev-mode companion:
+   ```sh
+   bazel build //src/valdi_modules/src/valdi/jasmine --//compiler/companion:dev_mode=true
+   ```
+
+Bazel will use `dist_dev/bundle.js` and will not overwrite your `dist/` folder.
+
 ## Known issues and limitations
 
 * Updating proto config doesn't trigger a valdi module rebuild

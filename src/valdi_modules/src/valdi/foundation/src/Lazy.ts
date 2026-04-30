@@ -13,4 +13,8 @@ export class Lazy<T> {
     }
     return this.value.value;
   }
+
+  get isCreated(): boolean {
+    return this.value !== undefined;
+  }
 }

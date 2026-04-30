@@ -69,7 +69,7 @@ AnyValue strongify(const WeakSwiftProxy& v) {
 
 InterfaceInfo getInterfaceInfo(const AnyValue* v) {
     auto i = std::get<InterfaceValue>(*v);
-    return {i.ptr.get(), i.sptr ? i.sptr->ctx() : nullptr};
+    return {i.ptr.get(), i.sptr ? i.sptr->ctx() : nullptr };
 }
 
 AnyValue makeVoidValue() {
@@ -80,8 +80,9 @@ bool isVoidValue(const AnyValue* c) {
     return std::holds_alternative<VoidValue>(*c);
 }
 
+
 AnyValue makeCompositeValue() {
-    return {std::make_shared<CompositeValue>()};
+    return { std::make_shared<CompositeValue>() }; 
 }
 
 bool isError(const AnyValue* ret) {
@@ -92,7 +93,9 @@ ErrorValue getError(const AnyValue* ret) {
     return std::get<ErrorValue>(*ret);
 }
 
-ProtocolWrapper::ProtocolWrapper(void* ctx, DispatchFunc dispatcher) : _ctx(ctx), _dispatcher(dispatcher) {}
+ProtocolWrapper::ProtocolWrapper(void* ctx, DispatchFunc dispatcher):
+    _ctx(ctx), _dispatcher(dispatcher)
+{}
 
 ProtocolWrapper::~ProtocolWrapper() {
     _dispatcher(_ctx, -1, nullptr, nullptr);
@@ -114,4 +117,35 @@ AnyValue ProtocolWrapper::callProtocol(int idx, const ParameterList* params) {
     return ret;
 }
 
-} // namespace djinni::swift
+// -------- Provider bridge (callable from Swift as callProviderFunction / makeProviderFunction)
+AnyValue callProviderFunction(const AnyValue& providerValue) {
+    auto ptr = std::get<OpaqueValuePtr>(providerValue);
+    auto* callable = dynamic_cast<CallableProvider*>(ptr.get());
+    if (!callable) {
+        throw ErrorValue("callProviderFunction: value is not a provider");
+    }
+    return callable->call();
+}
+
+namespace {
+struct CallbackProviderHolder : CallableProvider {
+    AnyValue (*callback)(void*);
+    void* context;
+    void (*releaseContext)(void*);
+    CallbackProviderHolder(AnyValue (*cb)(void*), void* ctx, void (*release)(void*) = nullptr)
+        : callback(cb), context(ctx), releaseContext(release) {}
+    ~CallbackProviderHolder() override {
+        if (releaseContext && context) {
+            releaseContext(context);
+        }
+    }
+    AnyValue call() override { return callback(context); }
+};
+}
+
+AnyValue makeProviderFunction(AnyValue (*callback)(void*), void* context, void (*releaseContext)(void*)) {
+    auto holder = std::make_shared<CallbackProviderHolder>(callback, context, releaseContext);
+    return AnyValue{OpaqueValuePtr(holder)};
+}
+
+}

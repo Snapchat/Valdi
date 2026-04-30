@@ -43,6 +43,12 @@ public:
 
     BytesView subrange(size_t start, size_t length) const;
 
+    /**
+    Check whether the data and source of this BytesView points to the same data and source as the given BytesView,
+    and the size is the same.
+     */
+    bool isStrictlyIdenticalTo(const BytesView& other) const;
+
     const Ref<RefCountable>& getSource() const;
 
     // Compares whether the data that this BytesView holds is equals to the data the

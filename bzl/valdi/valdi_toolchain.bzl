@@ -34,7 +34,7 @@ valdi_toolchain = rule(
             executable = True,
             cfg = "exec",
             allow_single_file = True,
-            doc = "The Valdi compiler to use.",
+            doc = "The Valdi compiler to use. Must be a single-file executable. For local development, see //compiler/compiler:local_valdi_compiler.",
         ),
         "compiler_toolbox": attr.label(
             executable = True,

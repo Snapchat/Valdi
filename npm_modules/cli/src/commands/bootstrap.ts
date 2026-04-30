@@ -1,7 +1,7 @@
 import path from 'path';
 import inquirer from 'inquirer';
 import type { Argv } from 'yargs';
-import { ANSI_COLORS, BOOTSTRAP_DIR_PATH, TEMPLATE_BASE_PATHS, VALDI_CONFIG_PATHS } from '../core/constants';
+import { ANSI_COLORS, BOOTSTRAP_DIR_PATH, META_DIR_PATH, TEMPLATE_BASE_PATHS, VALDI_CONFIG_PATHS } from '../core/constants';
 import { CliError } from '../core/errors';
 import type { ArgumentsResolver } from '../utils/ArgumentsResolver';
 import { BazelClient } from '../utils/BazelClient';
@@ -19,15 +19,18 @@ import {
   resolveFilePath,
 } from '../utils/fileUtils';
 import { wrapInColor } from '../utils/logUtils';
-import { toPascalCase } from '../utils/stringUtils';
+import { toPascalCase, sanitizeProjectName, validateProjectName } from '../utils/stringUtils';
 import { getAllProjectSyncTargets, runProjectSync } from './projectsync';
-import { resolveLatestReleaseRef } from '../utils/githubUtils';
+import { getLatestReleaseTag } from '../utils/githubUtils';
 
 interface CommandParameters {
   confirmBootstrap: boolean;
   projectName: string;
   applicationType: string;
   valdiImport: string;
+  valdiWidgetsImport: string;
+  valdiVersion: string;
+  valdiWidgetsVersion: string;
   skipProjectsync: boolean;
   withCleanup: boolean;
 }
@@ -52,6 +55,12 @@ const ALL_APPLICATION_TEMPLATES: readonly ApplicationTemplate[] = [
 ];
 
 const VALDI_GIT_URL = 'https://github.com/Snapchat/Valdi';
+const VALDI_WIDGETS_GIT_URL = 'https://github.com/Snapchat/Valdi_Widgets';
+
+/** Pinned Valdi release used by default for reproducible bootstraps. Bump when cutting a new Valdi release. */
+const DEFAULT_VALDI_RELEASE_TAG = 'beta-0.0.3';
+/** Pinned Valdi_Widgets release used by default. Should match the Valdi release cycle. */
+const DEFAULT_VALDI_WIDGETS_RELEASE_TAG = 'beta-0.0.3';
 
 const DEFAULT_VALDI_IMPORT = `
 http_archive(
@@ -60,9 +69,23 @@ http_archive(
     url = "${VALDI_GIT_URL}/archive/{{VALDI_RELEASE_REF}}.tar.gz",
 )`;
 
+const DEFAULT_VALDI_WIDGETS_IMPORT = `
+http_archive(
+    name = "valdi_widgets",
+    strip_prefix = "Valdi_Widgets-{{VALDI_WIDGETS_RELEASE_TAG}}",
+    url = "${VALDI_WIDGETS_GIT_URL}/archive/{{VALDI_WIDGETS_RELEASE_REF}}.tar.gz",
+)`;
+
 const LOCAL_VALDI_IMPORT_TEMPLATE = `
 local_repository(
     name = "valdi",
+    path = "{{PATH}}",
+)
+`;
+
+const LOCAL_VALDI_WIDGETS_IMPORT_TEMPLATE = `
+local_repository(
+    name = "valdi_widgets",
     path = "{{PATH}}",
 )
 `;
@@ -103,17 +126,62 @@ async function getApplicationType(argv: ArgumentsResolver<CommandParameters>): P
 
 async function getProjectName(argv: ArgumentsResolver<CommandParameters>): Promise<string> {
   return argv.getArgumentOrResolve('projectName', async () => {
-    const result = await inquirer.prompt<{ projectName: string }>([
-      {
-        type: 'input',
-        name: 'projectName',
-        message: 'Please provide a name for this project:',
-        default: defaultProjectName,
-      },
-    ]);
+    let projectName = '';
+    let isValid = false;
 
-    return result.projectName;
+    while (!isValid) {
+      const result = await inquirer.prompt<{ projectName: string }>([
+        {
+          type: 'input',
+          name: 'projectName',
+          message: 'Please provide a name for this project:',
+          default: defaultProjectName,
+        },
+      ]);
+
+      projectName = result.projectName;
+      const validationError = validateProjectName(projectName);
+
+      if (validationError) {
+        console.log(wrapInColor(`\n❌ ${validationError}\n`, ANSI_COLORS.RED_COLOR));
+        continue;
+      }
+
+      const sanitized = sanitizeProjectName(projectName);
+      if (sanitized !== projectName) {
+        console.log(
+          wrapInColor(
+            `\n⚠️  Project name will be sanitized from "${projectName}" to "${sanitized}"`,
+            ANSI_COLORS.YELLOW_COLOR,
+          ),
+        );
+        const confirm = await getUserConfirmation('Do you want to continue with this name?', true);
+        if (!confirm) {
+          continue;
+        }
+      }
+
+      isValid = true;
+    }
+
+    return sanitizeProjectName(projectName);
   });
+}
+
+function resolveValdiReleaseTag(
+  argv: ArgumentsResolver<CommandParameters>,
+  gitUrl: string,
+  defaultTag: string,
+  versionOption: 'valdiVersion' | 'valdiWidgetsVersion' = 'valdiVersion',
+): Promise<string> {
+  const override = argv.getArgument(versionOption);
+  if (!override) {
+    return Promise.resolve(defaultTag);
+  }
+  if (override === 'latest') {
+    return getLatestReleaseTag(gitUrl);
+  }
+  return Promise.resolve(override);
 }
 
 function getValdiImport(argv: ArgumentsResolver<CommandParameters>, valdiReleaseRef: string): string {
@@ -129,20 +197,41 @@ function getValdiImport(argv: ArgumentsResolver<CommandParameters>, valdiRelease
   }
 }
 
+function getValdiWidgetsImport(argv: ArgumentsResolver<CommandParameters>, valdiWidgetsReleaseRef: string): string {
+  const valdiWidgetsImport = argv.getArgument('valdiWidgetsImport');
+  if (valdiWidgetsImport) {
+    return processReplacements(LOCAL_VALDI_WIDGETS_IMPORT_TEMPLATE, { PATH: valdiWidgetsImport });
+  } else {
+    const valdiWidgetsReleaseTag = valdiWidgetsReleaseRef.split('/').pop()!;
+    return processReplacements(DEFAULT_VALDI_WIDGETS_IMPORT, {
+      VALDI_WIDGETS_RELEASE_REF: valdiWidgetsReleaseRef,
+      VALDI_WIDGETS_RELEASE_TAG: valdiWidgetsReleaseTag,
+    });
+  }
+}
+
 // Create files from templates
-function initializeConfigFiles(projectName: string, template: ApplicationTemplate, valdiImport: string) {
+function initializeConfigFiles(
+  projectName: string,
+  template: ApplicationTemplate,
+  valdiImport: string,
+  valdiWidgetsImport: string,
+) {
+
   const TEMPLATE_FILES = [
     TemplateFile.init(TEMPLATE_BASE_PATHS.USER_CONFIG).withOutputPath(resolveFilePath(VALDI_CONFIG_PATHS[0] ?? '')),
     TemplateFile.init(TEMPLATE_BASE_PATHS.BAZEL_VERSION),
     TemplateFile.init(TEMPLATE_BASE_PATHS.WORKSPACE).withReplacements({
       WORKSPACE_NAME: projectName,
       VALDI_IMPORT: valdiImport,
-      WIDGET_ALIAS: '',
+      VALDI_WIDGETS_IMPORT: valdiWidgetsImport,
     }),
     TemplateFile.init(TEMPLATE_BASE_PATHS.BAZEL_RC),
     TemplateFile.init(TEMPLATE_BASE_PATHS.README),
     TemplateFile.init(TEMPLATE_BASE_PATHS.GIT_IGNORE),
     TemplateFile.init(TEMPLATE_BASE_PATHS.WATCHMAN_CONFIG),
+    TemplateFile.init(TEMPLATE_BASE_PATHS.EDITOR_CONFIG),
+    TemplateFile.init(TEMPLATE_BASE_PATHS.AGENTS).withReplacements({ MODULE_NAME: projectName }),
   ];
 
   TEMPLATE_FILES.forEach(templateFile => {
@@ -152,15 +241,22 @@ function initializeConfigFiles(projectName: string, template: ApplicationTemplat
     templateFile.expandTemplate();
   });
 
-  // Setup hello world application
-  console.log(wrapInColor(`Initializing ${template.name} application...`, ANSI_COLORS.YELLOW_COLOR));
-  const sourcePath = path.join(BOOTSTRAP_DIR_PATH, 'apps', template.path);
-  const destPath = process.cwd();
-
+  // Copy GitHub templates directory (if it exists)
   const replacements: Replacements = {
     MODULE_NAME: projectName,
     MODULE_NAME_PASCAL_CASED: toPascalCase(projectName),
   };
+  const githubSourcePath = path.join(BOOTSTRAP_DIR_PATH, '.github');
+  if (fileExists(githubSourcePath)) {
+    console.log(wrapInColor('Creating GitHub templates...', ANSI_COLORS.YELLOW_COLOR));
+    const githubDestPath = path.join(process.cwd(), '.github');
+    copyBootstrapFiles(githubSourcePath, githubDestPath, replacements);
+  }
+
+  // Setup hello world application
+  console.log(wrapInColor(`Initializing ${template.name} application...`, ANSI_COLORS.YELLOW_COLOR));
+  const sourcePath = path.join(BOOTSTRAP_DIR_PATH, 'apps', template.path);
+  const destPath = process.cwd();
 
   copyBootstrapFiles(sourcePath, destPath, replacements);
 }
@@ -200,18 +296,35 @@ async function valdiBootstrap(argv: ArgumentsResolver<CommandParameters>) {
 
   // Prompt user for input
   // - Application Name
-  const projectName = await getProjectName(argv);
+  let projectName = await getProjectName(argv);
+  
+  // Validate project name if provided via command line argument
+  if (argv.getArgument('projectName')) {
+    const validationError = validateProjectName(projectName);
+    if (validationError) {
+      throw new CliError(validationError);
+    }
+    projectName = sanitizeProjectName(projectName);
+  }
+  
   if (!projectName) {
     throw new CliError('Project name cannot be empty.');
   }
 
-  const valdiCommitHash = await resolveLatestReleaseRef(`${VALDI_GIT_URL}.git`);
+  const valdiReleaseTag = await resolveValdiReleaseTag(argv, VALDI_GIT_URL, DEFAULT_VALDI_RELEASE_TAG);
+  const valdiWidgetsReleaseTag = await resolveValdiReleaseTag(
+    argv,
+    VALDI_WIDGETS_GIT_URL,
+    DEFAULT_VALDI_WIDGETS_RELEASE_TAG,
+    'valdiWidgetsVersion',
+  );
 
-  const valdiImport = getValdiImport(argv, valdiCommitHash);
+  const valdiImport = getValdiImport(argv, valdiReleaseTag);
+  const valdiWidgetsImport = getValdiWidgetsImport(argv, valdiWidgetsReleaseTag);
 
   // Creating basic config files and Hello World application
   console.log(wrapInColor('Initializing config files...', ANSI_COLORS.BLUE_COLOR));
-  initializeConfigFiles(projectName, applicationType, valdiImport);
+  initializeConfigFiles(projectName, applicationType, valdiImport, valdiWidgetsImport);
 
   // Check bazel version matches .bazelversion
   console.log(wrapInColor('Verifying Bazel installation...', ANSI_COLORS.BLUE_COLOR));
@@ -245,18 +358,44 @@ export const builder = (yargs: Argv<CommandParameters>) => {
       type: 'boolean',
       alias: 'y',
     })
-    .option('applicationType', { describe: 'Type of application to create', alias: 't' })
+    .option('applicationType', {
+      describe: 'Type of application to create',
+      alias: 't',
+    })
+    .option('projectName', {
+      describe: 'Name of the project',
+      type: 'string',
+      alias: 'n',
+    })
     .option('valdiImport', {
-      describe: 'A full path to a local checkout of the valid repo',
+      describe:
+        'Path to a local checkout of the Valdi repo. If not specified, uses the pinned release (see valdiVersion).',
       type: 'string',
       alias: 'l',
     })
-    .option('skipProjectsync', { describe: 'Skip projectsync for testing purposes', type: 'boolean', alias: 'p' })
+    .option('valdiWidgetsImport', {
+      describe:
+        'Path to a local checkout of the Valdi_Widgets repo. If not specified, uses the pinned release (see valdiWidgetsVersion).',
+      type: 'string',
+      alias: 'w',
+    })
+    .option('valdiVersion', {
+      describe: `Valdi release tag to use (e.g. v1.0.0). Use "latest" to fetch the GitHub latest release. Default: ${DEFAULT_VALDI_RELEASE_TAG}`,
+      type: 'string',
+    })
+    .option('valdiWidgetsVersion', {
+      describe: `Valdi_Widgets release tag to use. Use "latest" to fetch the GitHub latest release. Default: ${DEFAULT_VALDI_WIDGETS_RELEASE_TAG}`,
+      type: 'string',
+    })
+    .option('skipProjectsync', {
+      describe: 'Skip projectsync for testing purposes',
+      type: 'boolean',
+      alias: 'p',
+    })
     .option('withCleanup', {
       describe: 'Deletes all existing files in the current directory before initiating bootstrap',
       type: 'boolean',
       alias: 'c',
-    })
-    .option('projectName', { describe: 'Name of the project', type: 'string', alias: 'n' });
+    });
 };
 export const handler = makeCommandHandler(valdiBootstrap);

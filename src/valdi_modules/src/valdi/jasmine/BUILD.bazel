@@ -16,6 +16,7 @@ valdi_module(
         "tsconfig.json",
     ],
     android_output_target = "debug",
+    compilation_mode = "js",
     disable_annotation_processing = True,
     ios_module_name = "SCCJasmine",
     ios_output_target = "debug",

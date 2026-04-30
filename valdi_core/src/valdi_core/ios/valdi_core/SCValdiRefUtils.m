@@ -12,6 +12,9 @@
 #import <UIKit/UIKit.h>
 
 id<SCValdiViewNodeProtocol> SCValdiRefGetViewNode(SCValdiRef *ref) {
+    if (!ref || ![ref isKindOfClass:[SCValdiRef class]]) {
+        return nil;
+    }
     id instance = ref.instance;
     if ([instance conformsToProtocol:@protocol(SCValdiViewNodeProtocol)] ) {
         return instance;
@@ -24,6 +27,9 @@ id<SCValdiViewNodeProtocol> SCValdiRefGetViewNode(SCValdiRef *ref) {
 }
 
 UIView *SCValdiRefGetView(SCValdiRef *ref) {
+    if (!ref || ![ref isKindOfClass:[SCValdiRef class]]) {
+        return nil;
+    }
     id instance = ref.instance;
     if ([instance isKindOfClass:[UIView class]]) {
         return instance;

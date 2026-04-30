@@ -1,0 +1,25 @@
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_interop_hint")
+
+swift_interop_hint(
+    name = "swift_interop",
+    module_name = "Zstd",
+)
+
+cc_library(
+    name = "Zstd",
+    srcs = glob(
+        [
+            "Sources/*.c",
+            "Sources/*.h",
+        ],
+        exclude = ["Sources/include/**"],
+    ),
+    hdrs = ["Sources/include/zstd.h"],
+    aspect_hints = [":swift_interop"],
+    copts = [
+        "-DZSTD_MULTITHREAD=0",
+        "-fPIC",
+    ],
+    includes = ["Sources/include"],
+    visibility = ["//visibility:public"],
+)

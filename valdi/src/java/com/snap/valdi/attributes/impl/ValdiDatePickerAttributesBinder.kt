@@ -46,6 +46,14 @@ class ValdiDatePickerAttributesBinder(private val context: Context, val logger: 
         view.onChangeFunction = null
     }
 
+    private fun applyPreferredStyle(view: ValdiDatePicker, value: Int, animator: ValdiAnimator?) {
+        view.preferredStyle = value
+    }
+
+    private fun resetPreferredStyle(view: ValdiDatePicker, animator: ValdiAnimator?) {
+        view.preferredStyle = 1 // spinner
+    }
+
     private fun noopApplyColor(view: ValdiDatePicker, value: Int, animator: ValdiAnimator?) {
         // noop
         // DO NOT USE - @mli6 - temporary workaround pending release of iOS dark mode
@@ -61,6 +69,7 @@ class ValdiDatePickerAttributesBinder(private val context: Context, val logger: 
         attributesBindingContext.bindFloatAttribute("minimumDateSeconds", false, this::applyMinimumDateSeconds, this::resetMinimumDateSeconds)
         attributesBindingContext.bindFloatAttribute("maximumDateSeconds", false, this::applyMaximumDateSeconds, this::resetMaximumDateSeconds)
         attributesBindingContext.bindFunctionAttribute("onChange", this::applyOnChange, this::resetOnChange)
+        attributesBindingContext.bindIntAttribute("preferredStyle", true, this::applyPreferredStyle, this::resetPreferredStyle)
         attributesBindingContext.bindColorAttribute("color", false, this::noopApplyColor, this::noopResetColor)
 
         attributesBindingContext.setPlaceholderViewMeasureDelegate(lazy {

@@ -293,3 +293,298 @@ onRender() {
     </MeasuredView>
 }
 ```
+
+## Project Setup
+
+A React project built with `create-react-app` or Vite maps to a Valdi project bootstrapped with `valdi bootstrap`.
+
+| React | Valdi |
+|---|---|
+| `npx create-react-app my-app` | `mkdir my-app && cd my-app && valdi bootstrap` |
+| `package.json` deps | `BUILD.bazel` + `valdi_module()` deps |
+| `npm start` / `vite dev` | `valdi hotreload` |
+| Single `src/index.tsx` entrypoint | Per-module `BUILD.bazel` — modules load lazily |
+| `npm run build` | `bazel build //my_module` |
+
+A Valdi module's `BUILD.bazel`:
+
+```python
+load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "my_module",
+    srcs = glob(["src/**/*.ts", "src/**/*.tsx"]),
+    deps = [
+        "@valdi//src/valdi_modules/src/valdi/valdi_core",
+        "@valdi//src/valdi_modules/src/valdi/valdi_http",
+    ],
+)
+```
+
+Unlike a React app's single `main.jsbundle`, each Valdi module compiles to an independent `.valdimodule` archive that is lazy-loaded by the host app.
+
+## Navigation
+
+React Router and React Navigation both map to Valdi's `NavigationController`, accessed through `NavigationRoot`.
+
+```tsx
+// React Router
+import { BrowserRouter, Route, Link, useNavigate } from 'react-router-dom';
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Route path="/detail/:id" element={<DetailPage />} />
+    </BrowserRouter>
+  );
+}
+
+function HomePage() {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate('/detail/123')}>Go</button>;
+}
+```
+
+```tsx
+// Valdi
+import { NavigationRoot } from 'valdi_navigation/src/NavigationRoot';
+import { NavigationPageComponent } from 'valdi_navigation/src/NavigationPageComponent';
+import { $slot } from 'valdi_core/src/CompilerIntrinsics';
+
+class App extends Component {
+  onRender() {
+    <NavigationRoot>
+      {$slot(navigationController => {
+        <HomePage navigationController={navigationController} />;
+      })}
+    </NavigationRoot>;
+  }
+}
+
+@NavigationPage(module)
+class HomePage extends NavigationPageComponent<{}> {
+  private goToDetail = () => {
+    // push = horizontal slide; present = vertical modal
+    this.navigationController.push(DetailPage, { id: '123' });
+  };
+
+  onRender() {
+    <view onTap={this.goToDetail}>
+      <label value="Go to detail" />;
+    </view>;
+  }
+}
+```
+
+| React Router / React Navigation | Valdi |
+|---|---|
+| `<BrowserRouter>` / `<NavigationContainer>` | `<NavigationRoot>` |
+| `navigate('/path')` / `navigation.navigate('Screen')` | `this.navigationController.push(Page, viewModel)` |
+| `navigation.goBack()` | `this.navigationController.pop()` |
+| `<Modal>` / bottom sheet | `this.navigationController.present(Page, viewModel)` |
+| Dismiss modal | `this.navigationController.dismiss()` |
+| `useNavigation()` hook | `this.navigationController` (available on all `NavigationPageComponent`) |
+
+## Lists
+
+React's `Array.map()` and `FlatList` map to a `forEach` loop inside `<scroll>`. The key difference: React's `map()` works because `render()` returns a value. In Valdi, `onRender()` emits JSX as side-effects — `map()` returns an array that is **silently discarded**.
+
+```tsx
+// React — map() works because render() returns JSX
+function UserList({ users }) {
+  return (
+    <FlatList
+      data={users}
+      keyExtractor={u => u.id}
+      renderItem={({ item }) => <UserRow user={item} />}
+    />
+  );
+}
+```
+
+```tsx
+// Valdi — use forEach, not map()
+class UserList extends Component<{ users: User[] }> {
+  onRender() {
+    <scroll>
+      {this.viewModel.users.forEach(user => {
+        <UserRow key={user.id} data={user} />;
+      })}
+    </scroll>;
+  }
+}
+```
+
+Valdi's `<scroll>` automatically handles viewport-aware rendering — elements outside the visible area are not inflated. For expensive items, add `lazy={true}` to further limit rendering to the visible viewport.
+
+## Networking
+
+`fetch` and `axios` map to Valdi's `HTTPClient` from the `valdi_http` module. All requests return a `CancelablePromise`.
+
+```tsx
+// React
+useEffect(() => {
+  const controller = new AbortController();
+  fetch('/api/users', { signal: controller.signal })
+    .then(r => r.json())
+    .then(data => setUsers(data));
+  return () => controller.abort();
+}, []);
+```
+
+```tsx
+// Valdi
+import { HTTPClient } from 'valdi_http/src/HTTPClient';
+
+class UserList extends StatefulComponent<{}, { users: User[] }> {
+  state = { users: [] };
+  private client = new HTTPClient('https://api.example.com');
+  private request?: { cancel(): void };
+
+  onCreate() {
+    this.request = this.client.get('/users');
+    this.request.then(response => {
+      const users = JSON.parse(new TextDecoder().decode(response.body));
+      this.setState({ users });
+    });
+  }
+
+  onDestroy() {
+    this.request?.cancel(); // Equivalent to AbortController.abort()
+  }
+
+  onRender() {
+    <scroll>
+      {this.state.users.forEach(u => {
+        <label key={u.id} value={u.name} />;
+      })}
+    </scroll>;
+  }
+}
+```
+
+Add to `BUILD.bazel` deps: `@valdi//src/valdi_modules/src/valdi/valdi_http`
+
+## Styling
+
+`styled-components`, CSS modules, and React Native's `StyleSheet` all map to Valdi's `Style<T>` objects.
+
+```tsx
+// React — styled-components
+const Card = styled.div`
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+`;
+
+// React Native — StyleSheet
+const styles = StyleSheet.create({
+  card: { backgroundColor: 'white', borderRadius: 8, padding: 16 },
+});
+```
+
+```tsx
+// Valdi — Style<T> at module level (never inside onRender)
+import { Style } from 'valdi_core/src/Style';
+import { View } from 'valdi_tsx/src/NativeTemplateElements';
+
+const cardStyle = new Style<View>({
+  backgroundColor: '#ffffff',
+  borderRadius: 8,
+  padding: 16,
+  boxShadow: '0 2 8 rgba(0,0,0,0.1)',
+});
+
+class Card extends Component<{ title: string }> {
+  onRender() {
+    <view style={cardStyle}>
+      <label value={this.viewModel.title} />;
+    </view>;
+  }
+}
+```
+
+> [!Important]
+> Never create `new Style()` inside `onRender()`. Valdi assigns each `Style` instance a unique integer ID on first use; creating new instances every render defeats this optimization. Define styles at module level or as class properties.
+
+Combine styles with `Style.merge()` or `.extend()`:
+
+```tsx
+const activeCardStyle = cardStyle.extend({ borderColor: '#FFFC00', borderWidth: 2 });
+const combinedStyle = Style.merge(baseStyle, overrideStyle);
+```
+
+For theming (equivalent to React's `ThemeContext`), use the [Provider pattern](./advanced-provider.md).
+
+## Storage
+
+`localStorage` and `AsyncStorage` (React Native) map to `PersistentStore`.
+
+```tsx
+// React / React Native
+localStorage.setItem('token', value);
+const token = localStorage.getItem('token');
+// or AsyncStorage.setItem / getItem
+```
+
+```tsx
+// Valdi
+import { PersistentStore } from 'persistence/src/PersistentStore';
+
+const store = new PersistentStore('my_store', {
+  enableEncryption: true, // for sensitive data like tokens
+});
+
+await store.storeString('token', value);
+const token = await store.fetchString('token');
+await store.remove('token');
+```
+
+Add to deps: `@valdi//src/valdi_modules/src/valdi/persistence`
+
+## Testing
+
+Jest and React Testing Library map to Valdi's jasmine-based test framework with `valdiIt` and `IComponentTestDriver`.
+
+```tsx
+// React Testing Library
+test('renders counter', () => {
+  render(<Counter label="Clicks" />);
+  expect(screen.getByText('Clicks: 0')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button'));
+  expect(screen.getByText('Clicks: 1')).toBeInTheDocument();
+});
+```
+
+```tsx
+// Valdi — test/Counter.spec.tsx
+import 'jasmine/src/jasmine';
+import { valdiIt } from 'valdi_core/src/testing';
+
+describe('Counter', () => {
+  valdiIt('renders initial count', async driver => {
+    await driver.render(Counter, { label: 'Clicks' });
+    const label = driver.findFirst('label');
+    expect(label?.getAttribute('value')).toBe('Clicks: 0');
+  });
+});
+```
+
+Run tests:
+```sh
+bazel test //my_module:test
+```
+
+See [Testing documentation](./workflow-testing.md) for full details on `IComponentTestDriver` and hot-reload iteration.
+
+## Common Pitfalls
+
+| React pattern | Valdi equivalent | Why it matters |
+|---|---|---|
+| Inline lambda: `onTap={() => fn()}` | Class arrow fn: `private fn = () => {}` | Inline lambdas create new references each render, causing unnecessary child re-renders |
+| `items.map(i => <Item />)` | `items.forEach(i => { <Item />; })` | `map()` returns are discarded; `forEach` emits as side-effects |
+| `new Style({...})` inside `onRender()` | Module-level `const s = new Style({...})` | Style interning requires stable object identity |
+| `label: JSX.Element` prop | `label: () => void` render prop | JSX can't be passed as a value — it must be called at the right time |
+| `import { x } from 'react'` | `import { x } from 'valdi_core/src/...'` | No React dependency in Valdi |
+| `createReusableCallback` not needed (React) | Use when callback identity must be stable across renders | Prevents spurious viewModel updates in children |

@@ -11,10 +11,14 @@
 
 #import <UIKit/UIKit.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface UIView (ValdiObjects)
 
-@property (strong, nonatomic) id<SCValdiContextProtocol> valdiContext;
+@property (strong, nonatomic, nullable) id<SCValdiContextProtocol> valdiContext;
 
-@property (strong, nonatomic) id<SCValdiViewNodeProtocol> valdiViewNode;
+@property (strong, nonatomic, nullable) id<SCValdiViewNodeProtocol> valdiViewNode;
 
 @end
+
+NS_ASSUME_NONNULL_END

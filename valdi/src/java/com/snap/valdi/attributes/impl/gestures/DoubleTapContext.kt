@@ -22,7 +22,7 @@ class DoubleTapContext(private val function: ValdiFunction, private val predicat
     }
 
     override fun shouldBegin(gesture: DoubleTapGestureRecognizer, x: Int, y: Int, pointerCount: Int, pointerLocations: List<ValdiGesturePointer>): Boolean {
-        return PredicateUtils.shouldBegin(predicate, gesture, x, y, pointerCount, pointerLocations, 0) { _, _ -> }
+        return PredicateUtils.shouldBegin(predicate, gesture, x, y, pointerCount, pointerLocations, 0, timeoutMs = PredicateUtils.GESTURE_PREDICATE_TIMEOUT_MS) { _, _ -> }
     }
 
 }

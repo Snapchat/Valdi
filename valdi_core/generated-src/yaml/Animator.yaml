@@ -37,3 +37,8 @@ wasm:
 ts:
   typename: Animator
   module: './valdi_core'
+c:
+  typename: 'snap_valdi_core_Animator_ref'
+  translator: '::djinni::c_api::InterfaceTranslator<::snap::valdi_core::Animator>'
+  public_header: '"valdi_core/Animator.h"'
+  private_header: '"valdi_core/Animator.hpp"'

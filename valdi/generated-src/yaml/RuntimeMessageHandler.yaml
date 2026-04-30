@@ -37,3 +37,8 @@ wasm:
 ts:
   typename: RuntimeMessageHandler
   module: './valdi'
+c:
+  typename: 'snap_valdi_RuntimeMessageHandler_ref'
+  translator: '::djinni::c_api::InterfaceTranslator<::snap::valdi::RuntimeMessageHandler>'
+  public_header: '"valdi/RuntimeMessageHandler.h"'
+  private_header: '"valdi/RuntimeMessageHandler.hpp"'

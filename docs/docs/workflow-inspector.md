@@ -2,6 +2,9 @@
 
 Valdi Inspector is a desktop application, written in Valdi itself, which can be used to help debugging a Valdi VirtualNode tree.
 
+> [!Note]
+> Valdi provides a suite of development tools to assist engineers, including a live TypeScript debugger integrated into VSCode, the Valdi Inspector for UI debugging, and a logs viewer for application logs. These tools work in tandem with the hot reloader to provide a responsive development experience.
+
 ![Screenshot of Valdi Inspector](./assets/advanced-inspector/Inspector.png)
 
 ## Features
@@ -41,6 +44,16 @@ Valdi Inspector is a desktop application, written in Valdi itself, which can be 
 * Inspector UI itself is written in Valdi!
     * Take a peek at [the implementation][]
     * Feel free to play around with the code if you want to improve the tool. You can hot reload the inspector the same way you can hot reload your components on iOS and Android.
+
+### Hot Reloader Communication
+
+The hot reloader establishes a TCP connection between the device/simulator and the developer's machine running the `valdi hotreload` daemon. This bidirectional communication enables:
+- **Live code reloading**: The runtime detects module changes and triggers re-renders via `RootComponentsManager`
+- **Inspector debugging**: Remote tree inspection and attribute viewing through `DaemonClientManager`
+- **File transfer**: Reading/writing files on the host machine using `DaemonClientFileManager` (useful for debug data export/import)
+- **Custom messages**: Development tools can send custom requests between device and host
+
+> **Note**: The connection uses a native TCP implementation with a custom packet protocol (not the `TCPSocket` TypeScript module). A low-level `TCPSocket` module exists for specialized internal tooling and is only available in dev/gold builds.
 
 ## Limitations
 * Currently only supported on macOS

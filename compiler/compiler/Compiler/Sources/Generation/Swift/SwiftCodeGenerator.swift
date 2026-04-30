@@ -22,6 +22,7 @@ private final class SwiftImportSection: CodeWriterContent {
 struct SwiftTypeParser {
     let typeName: String
     let isOptional: Bool
+    let isInterface: Bool
     let functionTypeParser: SwiftFunctionTypeParser?
     let innerTypeParser: [SwiftTypeParser]?
     let typeArguments: [SwiftTypeParser]?
@@ -50,9 +51,24 @@ struct SwiftTypeParser {
     ) {
         self.typeName = SwiftTypeParser.getFullTypeName(typeName: typeName, isOptional: isOptional, isFunction: (functionTypeParser != nil),  typeArguments: typeArguments)
         self.isOptional = isOptional
+        self.isInterface = false
         self.functionTypeParser = functionTypeParser
         self.typeArguments = typeArguments
         self.innerTypeParser = innerTypeParser.map { [$0] }
+        self.marshallerName = marshallerName.map { (isOptional ? "Optional" : "") + $0 }
+    }
+    init(
+      typeName: String,
+      isOptional: Bool,
+      marshallerName: String?,
+      isInterface: Bool
+    ) {
+        self.typeName = SwiftTypeParser.getFullTypeName(typeName: typeName, isOptional: isOptional, isFunction: false,  typeArguments: nil)
+        self.isOptional = isOptional
+        self.isInterface = isInterface
+        self.functionTypeParser = nil
+        self.typeArguments = nil
+        self.innerTypeParser = nil
         self.marshallerName = marshallerName.map { (isOptional ? "Optional" : "") + $0 }
     }
 
@@ -62,6 +78,13 @@ struct SwiftTypeParser {
             return "\(typeName)<\(typeArguments.map { $0.typeName }.joined(separator: ", "))>\(optionalMarkIfNeeded)"
         } else {
             return "\(typeName)\(optionalMarkIfNeeded)"
+        }
+    }
+    public func typeNameRemoveOptional() -> String {
+        if self.typeName.hasSuffix("?") {
+            return String(self.typeName.dropLast())
+        } else {
+            return self.typeName
         }
     }
 }
@@ -214,7 +237,7 @@ final class SwiftSourceFileGenerator : CodeWriter {
             return SwiftTypeParser(typeName: "Any", isOptional: true, marshallerName: "Untyped")
         case .void:
             return SwiftTypeParser(typeName: "Void", isOptional: false, marshallerName: nil)
-        case .function(let parameters, let returnType, _, _):
+        case .function(let parameters, let returnType, _, _, _):
             guard let functionHelperName = functionHelperName else {
                 throw CompilerError("Function type must have a name")
             }
@@ -246,8 +269,12 @@ final class SwiftSourceFileGenerator : CodeWriter {
                 let language = mapping.iosType?.iosLanguage.rawValue ?? "Unknown"
                 throw CompilerError("Unknown language for object \(resolvedType): \(language)")
             }
-
-            return SwiftTypeParser(typeName: resolvedType, isOptional: isOptional, marshallerName: marshallerName)
+            switch mapping.kind {
+            case .interface:
+                return SwiftTypeParser(typeName: resolvedType, isOptional: isOptional, marshallerName: marshallerName, isInterface: marshallerName == "Object")
+            default:
+                return SwiftTypeParser(typeName: resolvedType, isOptional: isOptional, marshallerName: marshallerName)
+            }
         case .genericTypeParameter(let name):
             return try getGenericTypeParameterTypeParser(name: name, isOptional: isOptional, nameAllocator: nameAllocator)
         case .genericObject(let mapping, let typeArguments):
@@ -321,6 +348,15 @@ final class SwiftSourceFileGenerator : CodeWriter {
             return ""
         }
 
+        if typeParser.isInterface {
+            if typeParser.isOptional {
+                let proxyUnmarshaller = "try \(typeParser.typeNameRemoveOptional())_Proxy(from:marshaller, at:$0)"
+                return "try marshaller.getOptional(\(parameter)) { \(proxyUnmarshaller) }"
+            } else {
+                return "try \(typeParser.typeNameRemoveOptional())_Proxy(from:marshaller, at:\(parameter))"
+            }
+        }
+
         let innerMarshaller = typeParser.innerTypeParser.map { innerTypeParser in
             " { \(getUnmarshallerFunction(for: innerTypeParser[0], withParameter: "$0")) }"
         } ?? ""
@@ -391,7 +427,8 @@ final class SwiftSourceFileGenerator : CodeWriter {
             default:
                 let enumsAndObjectMarshallers = ["Enum", "OptionalEnum", "Object", "OptionalObject"]
                 let functionMarshallers = ["Function", "OptionalFunction"]
-                if let marshallerName = property.typeParser.marshallerName, enumsAndObjectMarshallers.contains(marshallerName) {
+                if !property.typeParser.isInterface,
+                   let marshallerName = property.typeParser.marshallerName, enumsAndObjectMarshallers.contains(marshallerName) {
                     return "self.\(propertyNameOrFunctionImpl) = try marshaller.getTypedObjectProperty\(marshallerName)(objectIndex, \(index))"
                 } else if let marshallerName = property.typeParser.marshallerName,
                           let functionHelperName = property.typeParser.functionTypeParser?.functionHelperName,

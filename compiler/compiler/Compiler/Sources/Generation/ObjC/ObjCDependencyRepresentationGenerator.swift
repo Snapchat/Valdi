@@ -15,14 +15,21 @@ final class ObjCDependencyRepresentationGenerator {
         let injectable: Bool
     }
 
-    private let items: [IntermediateDependencyMetadata]
+    private struct DependencyDataOutput: Encodable {
+        let single_file_codegen: Bool
+        let contexts: [String: [ContextFactoryProperty]]
+    }
 
-    init(items: [IntermediateDependencyMetadata]) {
+    private let items: [IntermediateDependencyMetadata]
+    private let singleFileCodegen: Bool
+
+    init(items: [IntermediateDependencyMetadata], singleFileCodegen: Bool) {
         self.items = items
+        self.singleFileCodegen = singleFileCodegen
     }
 
     func generate() throws -> File {
-        let out = try items.reduce(into: [String: [ContextFactoryProperty]]()) { initialItems, dependencyMetadata in
+        let contexts = try items.reduce(into: [String: [ContextFactoryProperty]]()) { initialItems, dependencyMetadata in
             let model = dependencyMetadata.model
 
             guard let iosType = model.iosType else {
@@ -51,12 +58,14 @@ final class ObjCDependencyRepresentationGenerator {
             initialItems[className] = properties
         }
 
+        let output = DependencyDataOutput(single_file_codegen: singleFileCodegen, contexts: contexts)
+
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
 
         let data: Data
         do {
-            data = try encoder.encode(out)
+            data = try encoder.encode(output)
         } catch {
             throw CompilerError("Failed to encode dependency metadata")
         }

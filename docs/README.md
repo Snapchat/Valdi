@@ -5,6 +5,12 @@
  - [Valdi Code Labs](./docs/start-code-lab.md)
  - [Valdi Command Line References](./docs/command-line-references.md)
 
+## Coming From Another Framework
+
+ - [Migrating from React](./docs/start-from-react.md)
+ - [Migrating from Flutter](./docs/migrate-from-flutter.md)
+ - [Migrating from Jetpack Compose](./docs/migrate-from-compose.md)
+
 ## API Reference
 
  - [API Reference](./api/api-reference-elements.md) - Comprehensive API documentation for all native elements
@@ -28,8 +34,16 @@
  - [`Style<>`](./docs/core-styling.md)
  - [Touches and Gestures](./docs/core-touches.md)
  - [Navigation](./docs/navigation.md)
-
-## Native Integration
+ 
+ ## Internals
+ 
+  - [Runtime Internals](./docs/internals-runtime.md) - Deep dive into `Valdi::Value`, memory management, and the binary protocol
+  - [Renderer Internals](./docs/internals-renderer.md) - Detailed explanation of the diffing algorithm and slot optimizations
+  - [Compiler Internals](./docs/internals-compiler.md) - Pipeline architecture and TSX transformation details
+  - [Native Integration Internals](./docs/internals-native-integration.md) - View factories, pooling, and attribute binding
+  - [API Design & Extensibility](./docs/internals-api-design.md) - Philosophy, bridge modules, and layered architecture
+ 
+ ## Native Integration
 
  - [Annotations](./docs/native-annotations.md)
  - [Native Bindings](./docs/native-bindings.md)
@@ -82,7 +96,16 @@
  - [Hermes Debugger](./docs/workflow-hermes-debugger.md)
  - [Disk Management](./docs/workflow-disk.md)
 
- ## Misc
+## Example Apps
+ - [Hello World](../apps/helloworld) - minimal component with hot reload
+ - [Navigation Example](../apps/navigation_example) - screen navigation patterns
+ - [Managed Context Example](../apps/managed_context_example) - shared state across components
+ - [Valdi GPT](../apps/valdi_gpt) - AI-driven dynamic UI rendered at runtime
+ - [CLI Application Example](../apps/cli_example) - building a Valdi CLI app
+ - [Benchmark](../apps/benchmark) - performance benchmarks
+
+## Misc
+ - [Roadmap](../ROADMAP.md)
  - [Third party dependencies](./docs/third-party-dependencies.md)
  - [Frequently Asked Questions](./docs/faq.md)
 

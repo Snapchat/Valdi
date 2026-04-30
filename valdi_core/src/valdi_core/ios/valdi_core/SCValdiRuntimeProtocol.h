@@ -11,6 +11,8 @@
 @protocol SCValdiViewFactory;
 @class SCNValdiCoreAsset;
 
+NS_ASSUME_NONNULL_BEGIN
+
 /**
  * The Valdi runtime is the main workhorse of the framework
  *  An instance of the runtime is all that’s needed to initialize a UIView that is configured and driven by a given
@@ -27,63 +29,63 @@
 /** Call to asynchronously get an opaque instance of the underlying JS runtime that can then be used with
  * @GenerateNativeFunc generated code to call functions defined in your Valdi modules.
  */
-- (void)getJSRuntimeWithBlock:(void (^)(id<SCValdiJSRuntime>))block;
+- (void)getJSRuntimeWithBlock:(void (^)(id<SCValdiJSRuntime> _Nullable))block;
 
 /**
  Returns the JS Runtime instance that can then be used with
  * @GenerateNativeFunc generated code to call functions defined in your Valdi modules.
  */
-- (id<SCValdiJSRuntime>)jsRuntime;
+- (id<SCValdiJSRuntime> _Nullable)jsRuntime;
 
 /**
  Inflate a valdi view directly. It will add all the subviews and apply the styling that are specified in the
  document.
  */
 - (void)inflateView:(UIView<SCValdiRootViewProtocol>*)view
-               owner:(id)owner
-           viewModel:(id)viewModel
-    componentContext:(id)componentContext;
+               owner:(id _Nullable)owner
+           viewModel:(id _Nullable)viewModel
+    componentContext:(id _Nullable)componentContext;
 
 /**
  Inflate a valdi view directly. It will add all the subviews and apply the styling that are specified in the
  document.
  */
-- (void)inflateView:(UIView<SCValdiRootViewProtocol>*)view owner:(id)owner cppMarshaller:(void*)cppMarshaller;
+- (void)inflateView:(UIView<SCValdiRootViewProtocol>*)view owner:(id _Nullable)owner cppMarshaller:(void*)cppMarshaller;
 
 /**
  Create a Valdi Context with the given componentPath, initial view model and component context.
  The backing component will asynchronously render.
  */
-- (id<SCValdiContextProtocol>)createContextWithComponentPath:(NSString*)componentPath
-                                                   viewModel:(id)viewModel
-                                            componentContext:(id)componentContext;
+- (id<SCValdiContextProtocol> _Nullable)createContextWithComponentPath:(NSString*)componentPath
+                                                             viewModel:(id _Nullable)viewModel
+                                                      componentContext:(id _Nullable)componentContext;
 
 /**
  Create a Valdi Context with the given view class, initial view model and component context.
  The view class MUST be inheriting SCValdiRootView
  The backing component will asynchronously render.
  */
-- (id<SCValdiContextProtocol>)createContextWithViewClass:(Class)viewClass
-                                               viewModel:(id)viewModel
-                                        componentContext:(id)componentContext;
+- (id<SCValdiContextProtocol> _Nullable)createContextWithViewClass:(Class)viewClass
+                                                         viewModel:(id _Nullable)viewModel
+                                                  componentContext:(id _Nullable)componentContext;
 
 /**
  Load the view given the Valdi document name. The document should be
  in the app bundle under <bundleName>/<viewName>.valdi to load the document.
  */
-- (UIView<SCValdiRootViewProtocol>*)loadViewWithComponentPath:(NSString*)componentPath
-                                                        owner:(id)owner
-                                                        error:(NSError**)error;
+- (UIView<SCValdiRootViewProtocol>* _Nullable)loadViewWithComponentPath:(NSString*)componentPath
+                                                                  owner:(id _Nullable)owner
+                                                                  error:(NSError* _Nullable* _Nullable)error;
 
 /**
  Load the view given the Valdi document name. The document should be
  in the app bundle under <bundleName>/<viewName>.valdi to load the document.
  */
-- (UIView<SCValdiRootViewProtocol>*)loadViewWithComponentPath:(NSString*)componentPath
-                                                        owner:(id)owner
-                                                    viewModel:(id)viewModel
-                                             componentContext:(id)componentContext
-                                                        error:(NSError**)error;
+- (UIView<SCValdiRootViewProtocol>* _Nullable)loadViewWithComponentPath:(NSString*)componentPath
+                                                                  owner:(id _Nullable)owner
+                                                              viewModel:(id _Nullable)viewModel
+                                                       componentContext:(id _Nullable)componentContext
+                                                                  error:(NSError* _Nullable* _Nullable)error;
 
 /**
  * Execute the provided block on the runtime's main thread manager's main thread batch.
@@ -104,7 +106,7 @@
  * Get the current ValdiContext instance.
  * Will be only available as part of call of JS to Objective-C
  */
-- (id<SCValdiContextProtocol>)currentContext;
+- (id<SCValdiContextProtocol> _Nullable)currentContext;
 
 /**
   Creates a SCValdiViewFactory instance from the given factory block and attributes binder.
@@ -114,27 +116,27 @@
   The view class is used to resolve the attributes of the view.
  */
 - (id<SCValdiViewFactory>)makeViewFactoryWithBlock:(SCValdiViewFactoryBlock)viewFactory
-                                  attributesBinder:(SCValdiBindAttributesCallback)attributesBinder
+                                  attributesBinder:(SCValdiBindAttributesCallback _Nullable)attributesBinder
                                           forClass:(Class)viewClass;
 
 /**
  * Get the runtime manager that is responsible for this runtime.
  */
-- (id<SCValdiRuntimeManagerProtocol>)manager;
+- (id<SCValdiRuntimeManagerProtocol> _Nullable)manager;
 
 /**
  * Returns a Valdi asset for the given module name and path.
  * The returned asset can be used to load its underlying content for use
  * in iOS code, or it can be sent back to TS code for further processing.
  */
-- (SCNValdiCoreAsset*)assetWithModuleName:(NSString*)moduleName path:(NSString*)path;
+- (SCNValdiCoreAsset* _Nullable)assetWithModuleName:(NSString*)moduleName path:(NSString*)path;
 
 /**
  * Returns a Valdi asset for the given URL.
  * The returned asset can be used to load its underlying content for use
  * in iOS code, or it can be sent back to TS code for further processing.
  */
-- (SCNValdiCoreAsset*)assetWithURL:(NSString*)url;
+- (SCNValdiCoreAsset* _Nullable)assetWithURL:(NSString*)url;
 
 /**
  Synchronously flush the pending load operations that were enqueued in the main thread.
@@ -151,6 +153,8 @@
 
 @end
 
-@protocol SCValdiMainRuntimeProvider
-- (id<SCValdiRuntimeProtocol>)provideMainRuntime;
+@protocol SCValdiMainRuntimeProvider <NSObject>
+- (id<SCValdiRuntimeProtocol> _Nullable)provideMainRuntime;
 @end
+
+NS_ASSUME_NONNULL_END

@@ -11,12 +11,13 @@
 #include "valdi/runtime/Debugger/DebuggerService.hpp"
 #include "valdi/runtime/Debugger/IDebuggerServiceListener.hpp"
 #include "valdi/runtime/Debugger/TCPClient.hpp"
+#include "valdi/runtime/Debugger/TCPServer.hpp"
 #include "valdi_core/cpp/Threading/TaskQueue.hpp"
 #include "valdi_core/cpp/Utils/ValueUtils.hpp"
 
-#include "valdi/runtime/Exception.hpp"
 #include "valdi_core/cpp/Resources/ValdiPacket.hpp"
 #include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
+#include "valdi_core/cpp/Utils/Exception.hpp"
 
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 #include "valdi_core/cpp/Utils/Mutex.hpp"
@@ -328,6 +329,143 @@ TEST(DebuggerService, canForwardLogs) {
 
     ASSERT_EQ(STRING_LITERAL("info"), log.getMapValue("severity").toStringBox());
     ASSERT_EQ(STRING_LITERAL("This is a great log"), log.getMapValue("log").toStringBox());
+}
+
+enum TCPServerEventType {
+    TCPServerEventTypeClientConnected,
+    TCPServerEventTypeClientDisconnected,
+};
+
+struct TCPServerEvent {
+    TCPServerEventType type;
+    Ref<ITCPConnection> client;
+    std::optional<Error> error;
+};
+
+struct MockTCPServerListener : public ITCPServerListener, public MockListener<TCPServerEvent> {
+    void onClientConnected(const Ref<ITCPConnection>& client) override {
+        TCPServerEvent event;
+        event.type = TCPServerEventTypeClientConnected;
+        event.client = client;
+        enqueueEvent(event);
+    }
+
+    void onClientDisconnected(const Ref<ITCPConnection>& client, const Error& error) override {
+        TCPServerEvent event;
+        event.type = TCPServerEventTypeClientDisconnected;
+        event.client = client;
+        event.error = {error};
+        enqueueEvent(event);
+    }
+};
+
+TEST(TCPServer, canRestartAndAcceptConnections) {
+    auto serverListener = makeShared<MockTCPServerListener>();
+    auto server = TCPServer::create(0, serverListener.get());
+
+    auto result = server->start();
+    ASSERT_TRUE(result.success()) << result.description();
+    ASSERT_NE(0, server->getBoundPort());
+
+    server->stop();
+
+    result = server->start();
+    ASSERT_TRUE(result.success()) << result.description();
+    ASSERT_NE(0, server->getBoundPort());
+
+    auto client = makeShared<TCPClient>();
+    auto clientListener = makeShared<MockTCPClientListener>();
+    client->connect("127.0.0.1", static_cast<int32_t>(server->getBoundPort()), clientListener);
+
+    auto clientEvent = clientListener->dequeueNextEvent();
+    ASSERT_EQ(TCPClientEventTypeConnected, clientEvent.type);
+
+    auto serverEvent = serverListener->dequeueNextEvent();
+    ASSERT_EQ(TCPServerEventTypeClientConnected, serverEvent.type);
+
+    clientEvent.connection->close(Error("Done"));
+
+    auto disconnectEvent = serverListener->dequeueNextEvent();
+    ASSERT_EQ(TCPServerEventTypeClientDisconnected, disconnectEvent.type);
+
+    client->disconnect();
+    server->stop();
+}
+
+TEST(TCPClient, canReconnectAfterDisconnect) {
+    auto serverListener = makeShared<MockTCPServerListener>();
+    auto server = TCPServer::create(0, serverListener.get());
+
+    auto result = server->start();
+    ASSERT_TRUE(result.success()) << result.description();
+
+    auto client = makeShared<TCPClient>();
+    auto port = static_cast<int32_t>(server->getBoundPort());
+
+    // First connection
+    auto listener1 = makeShared<MockTCPClientListener>();
+    client->connect("127.0.0.1", port, listener1);
+
+    auto connectEvent1 = listener1->dequeueNextEvent();
+    ASSERT_EQ(TCPClientEventTypeConnected, connectEvent1.type);
+    serverListener->dequeueNextEvent(); // server sees connect
+
+    connectEvent1.connection->close(Error("Disconnect"));
+    serverListener->dequeueNextEvent(); // server sees disconnect
+    client->disconnect();
+
+    // Reconnect with same client
+    auto listener2 = makeShared<MockTCPClientListener>();
+    client->connect("127.0.0.1", port, listener2);
+
+    auto connectEvent2 = listener2->dequeueNextEvent();
+    ASSERT_EQ(TCPClientEventTypeConnected, connectEvent2.type);
+
+    auto serverEvent2 = serverListener->dequeueNextEvent();
+    ASSERT_EQ(TCPServerEventTypeClientConnected, serverEvent2.type);
+
+    connectEvent2.connection->close(Error("Done"));
+    serverListener->dequeueNextEvent(); // server sees disconnect
+    client->disconnect();
+    server->stop();
+}
+
+TEST(TCPServer, rapidStopStartDoesNotCrash) {
+    auto serverListener = makeShared<MockTCPServerListener>();
+    auto server = TCPServer::create(0, serverListener.get());
+
+    for (int i = 0; i < 20; i++) {
+        auto result = server->start();
+        ASSERT_TRUE(result.success()) << "Iteration " << i << ": " << result.description();
+        ASSERT_NE(0, server->getBoundPort());
+        server->stop();
+    }
+}
+
+TEST(TCPClient, rapidDisconnectReconnectDoesNotCrash) {
+    auto serverListener = makeShared<MockTCPServerListener>();
+    auto server = TCPServer::create(0, serverListener.get());
+
+    auto result = server->start();
+    ASSERT_TRUE(result.success()) << result.description();
+
+    auto client = makeShared<TCPClient>();
+    auto port = static_cast<int32_t>(server->getBoundPort());
+
+    for (int i = 0; i < 10; i++) {
+        auto listener = makeShared<MockTCPClientListener>();
+        client->connect("127.0.0.1", port, listener);
+
+        auto connectEvent = listener->dequeueNextEvent();
+        ASSERT_EQ(TCPClientEventTypeConnected, connectEvent.type) << "Iteration " << i;
+        serverListener->dequeueNextEvent(); // server sees connect
+
+        connectEvent.connection->close(Error("Cycle"));
+        serverListener->dequeueNextEvent(); // server sees disconnect
+        client->disconnect();
+    }
+
+    server->stop();
 }
 
 } // namespace ValdiTest

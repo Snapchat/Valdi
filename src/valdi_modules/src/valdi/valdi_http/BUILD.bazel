@@ -32,8 +32,10 @@ valdi_module(
     ios_output_target = "release",
     native_deps = ["@valdi//src/valdi_modules/src/cpp/valdi_http:valdi_http_cpp"],
     visibility = ["//visibility:public"],
-    # Include a web specific target, this is expected to be a JSInfo or NodeModuleInfo provider
     web_deps = [":valdi_http_web"],
+    web_register_native_module_id_overrides = {
+        "valdi_http/web/WebHTTPClient.js": "valdi_http/src/NativeHTTPClient",
+    },
     deps = [
         "//src/valdi_modules/src/valdi/coreutils",
         "//src/valdi_modules/src/valdi/valdi_core",

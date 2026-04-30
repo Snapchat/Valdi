@@ -5,27 +5,31 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 bazel_dep(name = "toolchains_llvm", version = "1.3.0")
 bazel_dep(name = "apple_support", version = "1.21.0", repo_name = "build_bazel_apple_support")
 
-http_archive(
-    name = "protobuf_cpp",
-    strip_prefix = "protobuf-3.20.0",
-    build_file = "@valdi//third-party/protobuf_cpp:protobuf_cpp.BUILD",
-    url = "https://github.com/protocolbuffers/protobuf/releases/download/v3.20.0/protobuf-all-3.20.0.tar.gz",
-    integrity = "sha256-ocB26D9FtkueMK6JqZC6Sq6ffcGKypD3aQ9FjcWuBoE=",
+bazel_dep(name = "protobuf", version = "27.0", repo_name = "protobuf_cpp")
+single_version_override(
+    module_name = "protobuf",
+    version = "27.0",
 )
 bazel_dep(name = "rules_pkg", version = "0.9.1")
 single_version_override(
     module_name = "rules_pkg",
     version = "0.9.1",
 )
-bazel_dep(name = "rules_proto", version = "7.1.0")
+bazel_dep(name = "rules_proto", version = "6.0.2")
 bazel_dep(name = "rules_python", version = "1.4.1")
 
 bazel_dep(name = "rules_cc", version = "0.0.17")
+bazel_dep(name = "google_benchmark", version = "1.9.5", repo_name = "com_github_google_benchmark")
+bazel_dep(name = "googletest", version = "1.13.0", repo_name = "gtest")
+single_version_override(
+    module_name = "zlib",
+    version = "1.3.2",
+)
 
 bazel_dep(name = "bazel_skylib", version = "1.2.0")
 bazel_dep(name = "rules_java", version = "7.4.0")
 
-bazel_dep(name = "rules_android", version = "0.5.1")
+bazel_dep(name = "rules_android", version = "0.6.5")
 bazel_dep(name = "rules_android_ndk", version = "0.1.3")
 single_version_override(module_name = "rules_android_ndk", patches = [
     "@valdi//third-party/rules_android_ndk/patches:expose_bins.patch",
@@ -39,7 +43,7 @@ use_repo(remote_android_extensions, "android_gmaven_r8", "android_tools")
 
 android_sdk_repository_extension = use_extension("@rules_android//rules/android_sdk_repository:rule.bzl", "android_sdk_repository_extension")
 android_sdk_repository_extension.configure(
-    api_level = 35,
+    api_level = 36,
     build_tools_version = "34.0.0",
 )
 use_repo(android_sdk_repository_extension, "androidsdk")
@@ -65,16 +69,30 @@ bazel_dep(name = "rules_jvm_external", version = "6.2")
 bazel_dep(name = "rules_xcodeproj", version = "3.2.0")
 
 bazel_dep(name = "rules_swift", version = "3.1.2", repo_name = "build_bazel_rules_swift")
+single_version_override(
+    module_name = "rules_swift",
+    patches = ["@valdi//third-party/rules_swift/patches:rules_swift.patch"],
+    patch_strip = 1,
+)
 
 bazel_dep(name = "rules_apple", version = "4.0.0", repo_name = "build_bazel_rules_apple")
+single_version_override(
+    module_name = "rules_apple",
+    version = "4.0.0",
+)
 
 bazel_dep(name = "bazel_features", version = "1.10.0")
 
 bazel_dep(name = "platforms", version = "0.0.11")
 
 bazel_dep(name = "aspect_rules_js", version = "2.0.0")
+bazel_dep(name = "aspect_bazel_lib", version = "2.14.0")
 
 bazel_dep(name = "aspect_rules_ts", version = "3.7.0")
+
+rules_ts_ext = use_extension("@aspect_rules_ts//ts:extensions.bzl", "ext")
+rules_ts_ext.deps(ts_version = "5.3.3")
+use_repo(rules_ts_ext, "npm_typescript")
 
 http_archive(
     name = "zoo",
@@ -177,10 +195,10 @@ bazel_dep(name = "jsoncpp", version = "1.9.6")
 
 http_archive(
     name = "harfbuzz",
-    strip_prefix = "harfbuzz-2.5.1",
+    strip_prefix = "harfbuzz-12.2.0",
     build_file = "@valdi//third-party/harfbuzz:harfbuzz.BUILD",
-    integrity = "sha256-bUg0V5q9X3qzhhwIW0xVEp94sn/keWH9lnadNwT2cZ4=",
-    url = "https://github.com/harfbuzz/harfbuzz/releases/download/2.5.1/harfbuzz-2.5.1.tar.xz",
+    integrity = "sha256-7LYDqkJqiyRmVxhme9pkqEwVBNt0VO5Mrb02Lupk5UU=",
+    urls = ["https://github.com/harfbuzz/harfbuzz/releases/download/12.2.0/harfbuzz-12.2.0.tar.xz"],
 )
 
 bazel_dep(name = "backward-cpp", version = "1.6")
@@ -210,6 +228,11 @@ http_archive(
 )
 
 bazel_dep(name = "websocketpp", version = "0.8.2.bcr.3")
+single_version_override(
+    module_name = "websocketpp",
+    patches = ["@valdi//third-party/websocketpp/patches:fix_ios_lrt.patch"],
+    patch_strip = 1,
+)
 
 http_archive(
     name = "test262",
@@ -229,6 +252,8 @@ http_archive(
 
 bazel_dep(name = "rules_license", version = "1.0.0")
 
+bazel_dep(name = "rules_fuzzing", version = "0.5.2")
+
 SKIA_URL = "https://github.com/google/skia/archive/8d5c6efb04514a31f09a2e865940f99cdf60ce21.zip"
 SKIA_STRIP_PREFIX = "skia-8d5c6efb04514a31f09a2e865940f99cdf60ce21"
 SKIA_INTEGRITY = "sha256-piM7FfzT3xekYxvwEDlejJ8Zj+zaxa3oIKpDsx1y6eQ="
@@ -243,7 +268,9 @@ http_archive(
 http_archive(
     name = "libjpeg_turbo",
     build_file = "@skia//bazel/external/libjpeg_turbo:BUILD.bazel",
-    url = "https://chromium.googlesource.com/chromium/deps/libjpeg_turbo/+archive/e14cbfaa85529d47f9f55b0f104a579c1061f9ad.tar.gz",
+    url = "https://github.com/librepo/chromium-libjpeg_turbo/archive/e14cbfaa85529d47f9f55b0f104a579c1061f9ad.tar.gz",
+    strip_prefix = "chromium-libjpeg_turbo-e14cbfaa85529d47f9f55b0f104a579c1061f9ad",
+    integrity = "sha256-tjyUKJeHb8oX2Y8LcO+b4P1GUWHsGaf3dQHOtN/bnf4=",
     patches = [
         "@valdi//third-party/libjpeg_turbo:warning_fix.patch",
         "@valdi//third-party/libjpeg_turbo:include_fix.patch",
@@ -253,7 +280,9 @@ http_archive(
 http_archive(
     name = "libpng",
     build_file = "@skia//bazel/external/libpng:BUILD.bazel",
-    url = "https://skia.googlesource.com/third_party/libpng.git/+archive/ed217e3e601d8e462f7fd1e04bed43ac42212429.tar.gz",
+    url = "https://github.com/aosp-mirror/platform_external_libpng/archive/ed217e3e601d8e462f7fd1e04bed43ac42212429.tar.gz",
+    strip_prefix = "platform_external_libpng-ed217e3e601d8e462f7fd1e04bed43ac42212429",
+    integrity = "sha256-W+kzz3e2EKLJ2pqXKwV4v7TAmJJAW2T0PpLD0K4s48Q=",
     patch_args = ["-p1"],
     patches = [
         "@valdi//third-party/libpng:fix_armv7.patch",
@@ -263,13 +292,16 @@ http_archive(
 http_archive(
     name = "libwebp",
     build_file = "@skia//bazel/external/libwebp:BUILD.bazel",
-    url = "https://chromium.googlesource.com/webm/libwebp.git/+archive/845d5476a866141ba35ac133f856fa62f0b7445f.tar.gz",
+    url = "https://github.com/webmproject/libwebp/archive/845d5476a866141ba35ac133f856fa62f0b7445f.tar.gz",
+    strip_prefix = "libwebp-845d5476a866141ba35ac133f856fa62f0b7445f",
 )
 
 http_archive(
     name = "zlib_skia",
     build_file = "@skia//bazel/external/zlib_skia:BUILD.bazel",
-    url = "https://chromium.googlesource.com/chromium/src/third_party/zlib/+archive/646b7f569718921d7d4b5b8e22572ff6c76f2596.tar.gz",
+    url = "https://github.com/gsource-mirror/chromium-src-third_party-zlib/archive/646b7f569718921d7d4b5b8e22572ff6c76f2596.tar.gz",
+    strip_prefix = "chromium-src-third_party-zlib-646b7f569718921d7d4b5b8e22572ff6c76f2596",
+    integrity = "sha256-3Wrc+RYXSPFcLyzH36k5cRldSn8jWknXXbTMVDhclo4=",
     patch_args = ["-p1"],
     patches = [
         "@valdi//third-party/zlib_skia:android_ios_x86_64.patch",
@@ -279,14 +311,28 @@ http_archive(
 http_archive(
     name = "freetype",
     build_file = "@skia//bazel/external/freetype:BUILD.bazel",
-    url = "https://chromium.googlesource.com/chromium/src/third_party/freetype2.git/+archive/5d4e649f740c675426fbe4cdaffc53ee2a4cb954.tar.gz",
+    url = "https://github.com/freetype/freetype/archive/5d4e649f740c675426fbe4cdaffc53ee2a4cb954.tar.gz",
+    strip_prefix = "freetype-5d4e649f740c675426fbe4cdaffc53ee2a4cb954",
 )
 
 http_archive(
     name = "expat",
     build_file = "@skia//bazel/external/expat:BUILD.bazel",
-    url = "https://chromium.googlesource.com/external/github.com/libexpat/libexpat.git/+archive/624da0f593bb8d7e146b9f42b06d8e6c80d032a3.tar.gz",
+    url = "https://github.com/libexpat/libexpat/archive/624da0f593bb8d7e146b9f42b06d8e6c80d032a3.tar.gz",
+    strip_prefix = "libexpat-624da0f593bb8d7e146b9f42b06d8e6c80d032a3",
 )
+
+npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm")
+npm.npm_translate_lock(
+    name = "valdi_npm",
+    pnpm_lock = "//bzl/valdi/npm:pnpm-lock.yaml",
+    lifecycle_hooks = {
+        "better-sqlite3@9.6.0": [],
+        "remotedebug-ios-webkit-adapter@0.4.2": [],
+    },
+    link_workspace = "valdi",
+)
+use_repo(npm, "valdi_npm")
 
 maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
 
@@ -306,6 +352,10 @@ maven.install(
         "androidx.lifecycle:lifecycle-process:2.2.0",
         "androidx.lifecycle:lifecycle-viewmodel:2.2.0",
         "androidx.recyclerview:recyclerview:1.2.1",
+        "androidx.test:core:1.5.0",
+        "androidx.test.ext:junit:1.1.3",
+        "androidx.test:monitor:1.5.0",
+        "androidx.test:runner:1.5.0",
         "com.google.android.material:material:1.2.0",
         "com.google.code.findbugs:jsr305:3.0.2",
         "com.google.code.gson:gson:2.8.6",
@@ -318,6 +368,17 @@ maven.install(
         "io.reactivex.rxjava3:rxjava:3.1.0",
         "io.reactivex.rxjava3:rxkotlin:3.0.0",
         "javax.inject:javax.inject:1",
+        "junit:junit:4.13.2",
+        "org.junit.jupiter:junit-jupiter-api:5.9.3",
+        "org.junit.jupiter:junit-jupiter-engine:5.9.3",
+        "org.junit.jupiter:junit-jupiter-params:5.9.3",
+        "org.junit.platform:junit-platform-console:1.9.2",
+        "org.junit.platform:junit-platform-launcher:1.9.2",
+        "org.junit.platform:junit-platform-reporting:1.9.2",
+        "org.junit.vintage:junit-vintage-engine:5.9.3",
+        "org.robolectric:android-all:10-robolectric-5803371",
+        "org.robolectric:annotations:4.10.3",
+        "org.robolectric:robolectric:4.10.3",
     ],
     repositories = [
         "https://repo1.maven.org/maven2",
@@ -344,4 +405,52 @@ http_archive(
     integrity = SKIA_INTEGRITY,
 )
 
+http_archive(
+    name = "ocmock",
+    build_file = "@valdi//third-party/ocmock:OCMock.build",
+    integrity = "sha256-PC3Gc8g0GKYhPmOmQ9lmw/eQaTtOhXjg309oriiuP+o=",
+    strip_prefix = "ocmock-3.9.4",
+    url = "https://github.com/erikdoe/ocmock/archive/refs/tags/v3.9.4.tar.gz",
+)
+
+# Expose prebuilt compiler/pngquant/jscore repos to the main workspace.
+# The bin/ sub-module also uses this extension, but targets in the main workspace
+# reference these repos via prebuilt_tools.bzl (e.g. @jscore_libs, @valdi_pngquant_*).
+valdi_compiler_repos = use_extension("//bzl:valdi_compiler_repos_extension.bzl", "valdi_compiler_repos")
+use_repo(valdi_compiler_repos, "jscore_libs", "valdi_compiler_macos", "valdi_compiler_linux", "valdi_pngquant_macos", "valdi_pngquant_linux")
+
 register_toolchains("@valdi//bzl/valdi:valdi_toolchain")
+
+# C++ toolchains: register both Apple CC and LLVM for standalone bzlmod builds.
+# Apple CC toolchains (from @local_config_apple_cc_toolchains) are registered first so they
+# win on macOS/iOS/tvOS targets — they declare target_compatible_with including
+# @build_bazel_apple_support//constraints:apple and support the "objc-compile" action needed by
+# objc_library. LLVM is registered second: on Linux, Apple CC toolchains require exec=macOS so
+# they never match, and LLVM's linux toolchain is selected instead (providing C++ stdlib headers).
+apple_cc_configure = use_extension("@build_bazel_apple_support//crosstool:setup.bzl", "apple_cc_configure_extension")
+use_repo(apple_cc_configure, "local_config_apple_cc_toolchains", "local_config_apple_cc")
+register_toolchains("@local_config_apple_cc_toolchains//:all")
+
+llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm")
+llvm.toolchain(name = "llvm_toolchain", llvm_version = "16.0.0")
+use_repo(llvm, "llvm_toolchain")
+register_toolchains("@llvm_toolchain//:all")
+
+# Swift Package Manager deps for //compiler/compiler:local_valdi_compiler.
+# Consumers loading @valdi via bzlmod should also use this extension; see
+# bzl/valdi_compiler_swift_deps.bzl.
+valdi_compiler_swift_deps = use_extension("//bzl:valdi_compiler_swift_deps.bzl", "valdi_compiler_swift_deps")
+use_repo(
+    valdi_compiler_swift_deps,
+    "chalk",
+    "legible_error",
+    "swift_argument_parser",
+    "swift_backtrace",
+    "swift_collections",
+    "swift_crypto",
+    "swift_protobuf",
+    "swiftsoup",
+    "swxmlhash",
+    "yams",
+    "zip_lib",
+)

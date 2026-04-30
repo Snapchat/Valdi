@@ -40,6 +40,13 @@ void Image::initializeCodecs() {
     });
 }
 
+Valdi::Value Image::getMetadata() const {
+    return Valdi::Value()
+        .setMapValue("type", Valdi::Value(Valdi::StringBox::fromCString("image")))
+        .setMapValue("width", Valdi::Value(static_cast<int32_t>(_skImage->width())))
+        .setMapValue("height", Valdi::Value(static_cast<int32_t>(_skImage->height())));
+}
+
 const sk_sp<SkImage>& Image::getSkValue() const {
     return _skImage;
 }

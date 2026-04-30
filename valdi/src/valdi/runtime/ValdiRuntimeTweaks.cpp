@@ -100,8 +100,31 @@ bool ValdiRuntimeTweaks::disableAnimationRemoveOnCompleteIos() const {
     return getConfigKey("VALDI_DISABLE_ANIMATION_REMOVE_ON_COMPLETE_IOS");
 }
 
-bool ValdiRuntimeTweaks::skipProtoIndex() const {
-    return getConfigKey("VALDI_PROTO_SKIP_INDEX");
+bool ValdiRuntimeTweaks::enableScopedContextStackTraceCapture() const {
+    static const StringBox kKey =
+        StringCache::getGlobal().makeStringFromLiteral("VALDI_ENABLE_SCOPED_CONTEXT_STACK_TRACE_CAPTURE");
+    return _tweakValueProvider->getBool(kKey, false);
+}
+
+bool ValdiRuntimeTweaks::disableJsLogging() const {
+    auto configKey = StringCache::getGlobal().makeStringFromLiteral(std::string_view("VALDI_DISABLE_JS_LOGGING"));
+    return _tweakValueProvider->getBool(configKey, false);
+}
+
+bool ValdiRuntimeTweaks::enableRenderRequestContextFix() const {
+    auto configKey =
+        StringCache::getGlobal().makeStringFromLiteral(std::string_view("VALDI_ENABLE_RENDER_REQUEST_CONTEXT_FIX"));
+    return _tweakValueProvider->getBool(configKey, true);
+}
+
+bool ValdiRuntimeTweaks::disableHitTestSyncDeadline() const {
+    return getConfigKey("VALDI_DISABLE_HIT_TEST_SYNC_DEADLINE");
+}
+
+bool ValdiRuntimeTweaks::useTopDownMoveOrder() const {
+    auto configKey =
+        StringCache::getGlobal().makeStringFromLiteral(std::string_view("VALDI_MAX_VIEW_OPERATIONS_PROCESSING_TIME"));
+    return _tweakValueProvider->getInt(configKey, 0) > 0;
 }
 
 } // namespace Valdi

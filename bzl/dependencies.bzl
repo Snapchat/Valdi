@@ -1,5 +1,6 @@
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("//bzl:nested_repository.bzl", "nested_repository")
+load("//bzl:valdi_compiler_swift_deps.bzl", "setup_valdi_compiler_swift_deps")
 
 def local_or_nested_repository(workspace_root, name, path):
     if workspace_root:
@@ -17,7 +18,7 @@ def local_or_nested_repository(workspace_root, name, path):
 def setup_dependencies(workspace_root = None):
     native.android_sdk_repository(
         name = "androidsdk",
-        api_level = 35,  # The API version for Android compileSdk
+        api_level = 36,  # The API version for Android compileSdk
         build_tools_version = "34.0.0",
     )
 
@@ -31,16 +32,16 @@ def setup_dependencies(workspace_root = None):
 
     http_archive(
         name = "com_google_protobuf",
-        sha256 = "da288bf1daa6c04d03a9051781caa52aceb9163586bff9aa6cfb12f69b9395aa",
+        #sha256 = "",
         strip_prefix = "protobuf-27.0",
         url = "https://github.com/protocolbuffers/protobuf/releases/download/v27.0/protobuf-27.0.tar.gz",
     )
 
     http_archive(
         name = "rules_cc",
-        sha256 = "abc605dd850f813bb37004b77db20106a19311a96b2da1c92b789da529d28fe1",
-        strip_prefix = "rules_cc-0.0.17",
-        urls = ["https://github.com/bazelbuild/rules_cc/releases/download/0.0.17/rules_cc-0.0.17.tar.gz"],
+        #sha256 = "",
+        strip_prefix = "rules_cc-0.0.12",
+        urls = ["https://github.com/bazelbuild/rules_cc/releases/download/0.0.12/rules_cc-0.0.12.tar.gz"],
     )
 
     http_archive(
@@ -69,15 +70,10 @@ def setup_dependencies(workspace_root = None):
         strip_prefix = "rules_android-5e74650496dff30e97b8eee5a8b12968de3bdec3",
         patch_args = ["-p1"],
         patches = [
-            # We can probably move to a more recent upstream commit and abandon these three patches in the future
-            # Right now there's an error with regards to io_bazel_rules_go that can't easily be resolved
             "@valdi//third-party/build_bazel_rules_android/patches:rules_android_rules_attrs.patch",
             "@valdi//third-party/build_bazel_rules_android/patches:rules_android_rules_android_local_test.patch",
             "@valdi//third-party/build_bazel_rules_android/patches:rules_android_android_rules.patch",
-            # Patch to propgate resources in aar_import rule
             "@valdi//third-party/build_bazel_rules_android/patches:rules_android_rules_aar_import.patch",
-            # Patch to fix StarlarkAndroidResourcesInfo provider loading
-            "@valdi//third-party/build_bazel_rules_android/patches:rules_android_starlark_providers_fix.patch",
         ],
     )
 
@@ -174,8 +170,17 @@ def setup_dependencies(workspace_root = None):
     )
 
     http_archive(
+        name = "com_github_google_benchmark",
+        strip_prefix = "benchmark-1.9.5",
+        url = "https://github.com/google/benchmark/archive/refs/tags/v1.9.5.tar.gz",
+        integrity = "sha256-ljE0HIK6xKKIvvlR+LJrQfaQIXlBhOzpafhHOXfqo0A=",
+    )
+
+    http_archive(
         name = "boringssl",
-        url = "https://boringssl.googlesource.com/boringssl/+archive/82f9853fc7d7360ae44f1e1357a6422c5244bbd8.tar.gz",
+        url = "https://github.com/google/boringssl/archive/82f9853fc7d7360ae44f1e1357a6422c5244bbd8.tar.gz",
+        strip_prefix = "boringssl-82f9853fc7d7360ae44f1e1357a6422c5244bbd8",
+        integrity = "sha256-Q+jJ5SofjJ1PbWAvAwI7jZ9o1f//x7+ZxV5sLE1XTa0=",
     )
 
     # Used for networking, and other utilities like small_vector
@@ -273,22 +278,30 @@ def setup_dependencies(workspace_root = None):
         url = "https://github.com/open-source-parsers/jsoncpp/archive/refs/tags/1.8.0.zip",
     )
 
-    # From https://github.com/harfbuzz/harfbuzz/releases/tag/2.5.1
+    # From https://github.com/harfbuzz/harfbuzz/releases/tag/12.2.0
     http_archive(
         name = "harfbuzz",
-        strip_prefix = "harfbuzz-2.5.1",
+        strip_prefix = "harfbuzz-12.2.0",
         build_file = "@valdi//third-party/harfbuzz:harfbuzz.BUILD",
-        integrity = "sha256-bUg0V5q9X3qzhhwIW0xVEp94sn/keWH9lnadNwT2cZ4=",
-        url = "https://github.com/harfbuzz/harfbuzz/releases/download/2.5.1/harfbuzz-2.5.1.tar.xz",
+        integrity = "sha256-7LYDqkJqiyRmVxhme9pkqEwVBNt0VO5Mrb02Lupk5UU=",
+        urls = ["https://github.com/harfbuzz/harfbuzz/releases/download/12.2.0/harfbuzz-12.2.0.tar.xz"],
     )
 
-    # From https://github.com/protocolbuffers/protobuf/releases/tag/v3.20.0
+    http_archive(
+        name = "com_google_absl",
+        type = "tar.gz",
+        strip_prefix = "abseil-cpp-20230802.0",
+        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20230802.0.tar.gz",
+        sha256 = "59d2976af9d6ecf001a81a35749a6e551a335b949d34918cfade07737b9d93c5",
+    )
+
+    # From https://github.com/protocolbuffers/protobuf/releases/tag/v27.0
     http_archive(
         name = "protobuf_cpp",
-        strip_prefix = "protobuf-3.20.0",
-        build_file = "@valdi//third-party/protobuf_cpp:protobuf_cpp.BUILD",
-        url = "https://github.com/protocolbuffers/protobuf/releases/download/v3.20.0/protobuf-all-3.20.0.tar.gz",
-        integrity = "sha256-ocB26D9FtkueMK6JqZC6Sq6ffcGKypD3aQ9FjcWuBoE=",
+        strip_prefix = "protobuf-27.0",
+        #build_file = "@valdi//third-party/protobuf_cpp:protobuf_cpp.BUILD",
+        url = "https://github.com/protocolbuffers/protobuf/releases/download/v27.0/protobuf-27.0.tar.gz",
+        #integrity = "sha256-ocB26D9FtkueMK6JqZC6Sq6ffcGKypD3aQ9FjcWuBoE=",
     )
 
     http_archive(
@@ -304,6 +317,16 @@ def setup_dependencies(workspace_root = None):
         build_file = "@valdi//third-party/xxhash:xxhash.BUILD",
         integrity = "sha256-uu4Mav1PAxZd56TmeYjRbw8rJXtR0OPLkZCTAqJqecQ=",
         url = "https://github.com/Cyan4973/xxHash/archive/refs/tags/v0.8.2.tar.gz",
+    )
+
+    http_archive(
+        name = "zlib",
+        build_file = Label("@valdi//third-party/zlib:zlib.BUILD"),
+        #sha256 = "d14c38e313afc35a9a8760dadf26042f51ea0f5d154b0630a31da0540107fb98",
+        strip_prefix = "zlib-1.3.1",
+        urls = [
+            "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.xz",
+        ],
     )
 
     # Transitive dependency of skia
@@ -439,7 +462,9 @@ def setup_dependencies(workspace_root = None):
     http_archive(
         name = "libjpeg_turbo",
         build_file = "@skia//bazel/external/libjpeg_turbo:BUILD.bazel",
-        url = "https://chromium.googlesource.com/chromium/deps/libjpeg_turbo/+archive/e14cbfaa85529d47f9f55b0f104a579c1061f9ad.tar.gz",
+        url = "https://github.com/librepo/chromium-libjpeg_turbo/archive/e14cbfaa85529d47f9f55b0f104a579c1061f9ad.tar.gz",
+        strip_prefix = "chromium-libjpeg_turbo-e14cbfaa85529d47f9f55b0f104a579c1061f9ad",
+        integrity = "sha256-tjyUKJeHb8oX2Y8LcO+b4P1GUWHsGaf3dQHOtN/bnf4=",
         patches = [
             "@valdi//third-party/libjpeg_turbo:warning_fix.patch",
         ],
@@ -448,7 +473,9 @@ def setup_dependencies(workspace_root = None):
     http_archive(
         name = "libpng",
         build_file = "@skia//bazel/external/libpng:BUILD.bazel",
-        url = "https://skia.googlesource.com/third_party/libpng.git/+archive/ed217e3e601d8e462f7fd1e04bed43ac42212429.tar.gz",
+        url = "https://github.com/aosp-mirror/platform_external_libpng/archive/ed217e3e601d8e462f7fd1e04bed43ac42212429.tar.gz",
+        strip_prefix = "platform_external_libpng-ed217e3e601d8e462f7fd1e04bed43ac42212429",
+        integrity = "sha256-W+kzz3e2EKLJ2pqXKwV4v7TAmJJAW2T0PpLD0K4s48Q=",
         patch_args = ["-p1"],
         patches = [
             "@valdi//third-party/libpng:fix_armv7.patch",
@@ -458,13 +485,16 @@ def setup_dependencies(workspace_root = None):
     http_archive(
         name = "libwebp",
         build_file = "@skia//bazel/external/libwebp:BUILD.bazel",
-        url = "https://chromium.googlesource.com/webm/libwebp.git/+archive/845d5476a866141ba35ac133f856fa62f0b7445f.tar.gz",
+        url = "https://github.com/webmproject/libwebp/archive/845d5476a866141ba35ac133f856fa62f0b7445f.tar.gz",
+        strip_prefix = "libwebp-845d5476a866141ba35ac133f856fa62f0b7445f",
     )
 
     http_archive(
         name = "zlib_skia",
         build_file = "@skia//bazel/external/zlib_skia:BUILD.bazel",
-        url = "https://chromium.googlesource.com/chromium/src/third_party/zlib/+archive/646b7f569718921d7d4b5b8e22572ff6c76f2596.tar.gz",
+        url = "https://github.com/gsource-mirror/chromium-src-third_party-zlib/archive/646b7f569718921d7d4b5b8e22572ff6c76f2596.tar.gz",
+        strip_prefix = "chromium-src-third_party-zlib-646b7f569718921d7d4b5b8e22572ff6c76f2596",
+        integrity = "sha256-3Wrc+RYXSPFcLyzH36k5cRldSn8jWknXXbTMVDhclo4=",
         patch_args = ["-p1"],
         patches = [
             "@valdi//third-party/zlib_skia:android_ios_x86_64.patch",
@@ -474,13 +504,15 @@ def setup_dependencies(workspace_root = None):
     http_archive(
         name = "freetype",
         build_file = "@skia//bazel/external/freetype:BUILD.bazel",
-        url = "https://chromium.googlesource.com/chromium/src/third_party/freetype2.git/+archive/5d4e649f740c675426fbe4cdaffc53ee2a4cb954.tar.gz",
+        url = "https://github.com/freetype/freetype/archive/5d4e649f740c675426fbe4cdaffc53ee2a4cb954.tar.gz",
+        strip_prefix = "freetype-5d4e649f740c675426fbe4cdaffc53ee2a4cb954",
     )
 
     http_archive(
         name = "expat",
         build_file = "@skia//bazel/external/expat:BUILD.bazel",
-        url = "https://chromium.googlesource.com/external/github.com/libexpat/libexpat.git/+archive/624da0f593bb8d7e146b9f42b06d8e6c80d032a3.tar.gz",
+        url = "https://github.com/libexpat/libexpat/archive/624da0f593bb8d7e146b9f42b06d8e6c80d032a3.tar.gz",
+        strip_prefix = "libexpat-624da0f593bb8d7e146b9f42b06d8e6c80d032a3",
     )
 
     nested_repository(
@@ -502,3 +534,7 @@ def setup_dependencies(workspace_root = None):
         strip_prefix = "ocmock-3.9.4",
         url = "https://github.com/erikdoe/ocmock/archive/refs/tags/v3.9.4.tar.gz",
     )
+
+    # Swift Package Manager deps for //compiler/compiler:local_valdi_compiler.
+    # See bzl/valdi_compiler_swift_deps.bzl.
+    setup_valdi_compiler_swift_deps()

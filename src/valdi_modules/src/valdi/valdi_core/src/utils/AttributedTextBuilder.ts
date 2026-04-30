@@ -1,11 +1,13 @@
 import {
   AttributedText,
   AttributedTextAttributes,
+  AttributedTextAnimationTransform,
   AttributedTextChunk,
   AttributedTextEntryType,
   AttributedTextOnTap,
   AttributedTextOnLayout,
 } from 'valdi_tsx/src/AttributedText';
+import { AttributedTextInlineImageAttachment } from 'valdi_tsx/src/AttributedTextInlineImageAttachment';
 import { LabelTextDecoration } from 'valdi_tsx/src/NativeTemplateElements';
 import { AnyFunction } from './Callback';
 
@@ -149,6 +151,38 @@ export class AttributedTextBuilder {
   }
 
   /**
+   * Push an inline image attachment on the Style stack.
+   * Used for embedding images (like rendered LaTeX) inline with text.
+   */
+  pushInlineImage(attachment: AttributedTextInlineImageAttachment): AttributedTextBuilder {
+    this.components.push(AttributedTextEntryType.PushInlineImage, attachment);
+    return this;
+  }
+
+  /**
+   * Push a per-part animation transform on the Style stack.
+   */
+  pushAnimationTransform(animationTransform: AttributedTextAnimationTransform): AttributedTextBuilder {
+    this.components.push(AttributedTextEntryType.PushAnimationTransform, animationTransform);
+    return this;
+  }
+
+  /**
+   * Append an inline image as an attributed text attachment.
+   * The image will be rendered inline with surrounding text using native text layout
+   * (NSTextAttachment on iOS, ReplacementSpan on Android).
+   *
+   * @param attachment The image attachment configuration including dimensions and image data
+   * @param placeholderChar Character to use as placeholder in the text (default: U+FFFC Object Replacement Character)
+   */
+  appendInlineImage(attachment: AttributedTextInlineImageAttachment, placeholderChar: string = '\uFFFC'): AttributedTextBuilder {
+    this.pushInlineImage(attachment);
+    this.appendText(placeholderChar);
+    this.pop();
+    return this;
+  }
+
+  /**
    * Pop the Style that is on the top of the Style stack. Every pushFont/pushColor/pushTextDecoration
    * needs to have a matching pop() call.
    */
@@ -205,6 +239,11 @@ export class AttributedTextBuilder {
 
     if (attributes.outerOutlineWidth) {
       this.pushOuterOutlineWidth(attributes.outerOutlineWidth);
+      popCount++;
+    }
+
+    if (attributes.animationTransform) {
+      this.pushAnimationTransform(attributes.animationTransform);
       popCount++;
     }
 

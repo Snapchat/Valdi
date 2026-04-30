@@ -30,7 +30,8 @@ void Bitmap::dispose() {
 
 Valdi::Result<Ref<Bitmap>> Bitmap::make(const Valdi::BitmapInfo& info) {
     SkBitmap skBitmap;
-    if (!skBitmap.tryAllocPixels(toSkiaImageInfo(info))) {
+    auto imageInfo = toSkiaImageInfo(info);
+    if (!skBitmap.tryAllocPixels(imageInfo, std::max(info.rowBytes, imageInfo.minRowBytes()))) {
         return Valdi::Error("Failed to allocate pixels for bitmap");
     }
 

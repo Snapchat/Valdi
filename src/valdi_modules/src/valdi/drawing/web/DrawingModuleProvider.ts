@@ -44,6 +44,11 @@ const Drawing: DrawingModule = {
         // ignore wrapping/maxLines in this stub
         return { width, height };
       },
+      measureAttributedText(attributedText: any, maxWidth?: number, maxHeight?: number, maxLines?: number): Size {
+        // TODO: Implement this properly. For now just measure the plain text.
+        const plainText = attributedText?.text || '';
+        return this.measureText(plainText, maxWidth, maxHeight, maxLines);
+      },
     };
   },
 

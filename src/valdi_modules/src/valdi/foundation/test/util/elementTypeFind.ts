@@ -3,14 +3,15 @@ import { IRenderedElement } from 'valdi_core/src/IRenderedElement';
 import { IRenderedElementViewClass } from 'valdi_test/test/IRenderedElementViewClass';
 import { componentGetElements } from './componentGetElements';
 import { isRenderedElement } from './isRenderedElement';
+import { ElementForViewClass } from 'valdi_test/test/ElementForViewClass';
 
 type Node = IComponent | IRenderedElement;
 
 /**
  * Find elements with an type recursively
  */
-export function elementTypeFind(element: Node | Node[], viewClass: IRenderedElementViewClass): IRenderedElement[] {
-  const results: IRenderedElement[] = [];
+export function elementTypeFind<T extends IRenderedElementViewClass>(element: Node | Node[], viewClass: T): IRenderedElement<ElementForViewClass<T>>[] {
+  const results: IRenderedElement<ElementForViewClass<T>>[] = [];
 
   const recursor = (current: Node) => {
     const isElement = isRenderedElement(current);

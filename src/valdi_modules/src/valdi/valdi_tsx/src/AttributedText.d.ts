@@ -1,7 +1,14 @@
 import { LabelTextDecoration } from './NativeTemplateElements';
+import { AttributedTextInlineImageAttachment } from './AttributedTextInlineImageAttachment';
 
 export type AttributedTextOnTap = () => void;
 export type AttributedTextOnLayout = (x: number, y: number, width: number, height: number) => void;
+
+export interface AttributedTextAnimationTransform {
+  translationY?: number;
+  scale?: number;
+  opacity?: number;
+}
 
 export interface AttributedTextAttributes {
   font?: string;
@@ -19,6 +26,9 @@ export interface AttributedTextAttributes {
   // outer outline is only supported on textview
   outerOutlineColor?: string;
   outerOutlineWidth?: number;
+
+  // Applies a per-part animation transform during native text rendering.
+  animationTransform?: AttributedTextAnimationTransform;
 }
 
 export const enum AttributedTextEntryType {
@@ -67,6 +77,16 @@ export const enum AttributedTextEntryType {
    * Pushes an outer outline width at the top of the style stack.
    */
   PushOuterOutlineWidth,
+  /**
+   * Pushes an inline image attachment at the top of the style stack.
+   * The value should be an AttributedTextInlineImageAttachment object.
+   * Content should be the Unicode Object Replacement Character (U+FFFC).
+   */
+  PushInlineImage,
+  /**
+   * Pushes a per-part animation transform at the top of the style stack.
+   */
+  PushAnimationTransform,
 }
 
 export type AttributedTextChunk =
@@ -74,6 +94,8 @@ export type AttributedTextChunk =
   | string
   | number
   | AttributedTextOnTap
-  | AttributedTextOnLayout;
+  | AttributedTextOnLayout
+  | AttributedTextInlineImageAttachment
+  | AttributedTextAnimationTransform;
 
 export type AttributedText = AttributedTextChunk[];

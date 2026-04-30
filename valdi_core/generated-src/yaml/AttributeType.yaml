@@ -37,3 +37,8 @@ wasm:
 ts:
   typename: AttributeType
   module: './valdi_core'
+c:
+  typename: 'snap_valdi_core_AttributeType'
+  translator: '::djinni::c_api::EnumTranslator<::snap::valdi_core::AttributeType, snap_valdi_core_AttributeType>'
+  public_header: '"valdi_core/AttributeType.h"'
+  private_header: '"valdi_core/AttributeType.hpp"'

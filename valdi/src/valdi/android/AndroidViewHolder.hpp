@@ -52,7 +52,7 @@ public:
     int32_t convertPointsToPixels(float point) const;
 
 private:
-    Valdi::CoordinateResolver _coordinateResolver;
+    ViewManager& _viewManager;
     std::optional<bool> _isRecyclable;
 };
 

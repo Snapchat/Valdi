@@ -25,6 +25,11 @@ class ZstdCompressor {
             throw CompilerError("zstd: \(String(cString: ZSTD_getErrorName(initResult)))")
         }
 
+        let pledgeResult = ZSTD_CCtx_setPledgedSrcSize(stream, UInt64(data.count))
+        guard ZSTD_isError(pledgeResult) == 0 else {
+            throw CompilerError("zstd: \(String(cString: ZSTD_getErrorName(pledgeResult)))")
+        }
+
         var output = Data()
 
         try data.withUnsafePointer { (inputBytes: UnsafePointer<UInt8>) in

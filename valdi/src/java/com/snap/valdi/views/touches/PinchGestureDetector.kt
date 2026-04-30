@@ -55,6 +55,18 @@ class PinchGestureDetector(context: Context, private val listener: PinchGestureD
         return true
     }
 
+    /**
+     * Resets the detector to its initial state without firing any listener callbacks.
+     * Call this from onReset() to handle cases where the gesture is cancelled externally
+     * (e.g. ACTION_CANCEL from a parent view intercepting touch), mirroring the V1
+     * PinchGestureRecognizer pattern of resetting inner detector state on reset.
+     */
+    fun reset() {
+        isScaling = false
+        cumulativeScaleFactor = 1f
+        initialDistance = 0f
+    }
+
     private fun calculateDistance(event: MotionEvent, index1: Int = 0, index2: Int = 1): Float {
         val deltaX = event.getX(index2) - event.getX(index1)
         val deltaY = event.getY(index2) - event.getY(index1)

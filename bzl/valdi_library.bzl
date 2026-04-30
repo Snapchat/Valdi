@@ -43,6 +43,9 @@ WARNING_FLAGS = [
 
     # Temporary solution for zlib build errors
     "-Wno-implicit-fallthrough",
+    # Third-party headers (e.g. phmap) use [[nodiscard]] patterns that trigger
+    # this warning under newer Clang toolchains
+    "-Wno-unused-result",
 ] + select({
     # some protobuf headers trigger a very noisy warning from sysroot about major/minor
     # macros :(

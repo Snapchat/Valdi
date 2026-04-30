@@ -1,5 +1,9 @@
 package com.snap.valdi.views
 
+import android.app.Activity
+import android.app.TimePickerDialog
+import android.content.ContextWrapper
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.MotionEvent
@@ -8,10 +12,12 @@ import android.content.res.Resources
 import androidx.annotation.Keep
 import android.widget.DatePicker
 import android.widget.NumberPicker
+import android.widget.TextView
 import android.widget.TimePicker
 import android.util.Xml.asAttributeSet
 import android.os.Build
 import android.util.AttributeSet
+import android.util.TypedValue
 import android.text.format.DateFormat
 import com.snap.valdi.logger.Logger
 import com.snap.valdi.context.ValdiContext
@@ -23,29 +29,41 @@ import com.snap.valdi.utils.attributeSetFromXml
 import com.snap.valdi.callable.ValdiFunction
 import com.snap.valdi.utils.ValdiMarshaller
 import com.snap.valdi.utils.InternedString
+import java.util.Calendar
 
 @Keep
 open class ValdiTimePicker(context: Context) : ViewGroup(context), ValdiTouchTarget {
 
-    var hourOfDay: Int?
-        get() {
-            return underlyingTimePickerHour
+    companion object {
+        private val hourOfDayProperty = InternedString.create("hourOfDay")
+        private val minuteOfHourProperty = InternedString.create("minuteOfHour")
+
+        // Source of truth: STYLE_MAP in composer/coreui/src/components/pickers/DatePickerPreferredStyle.ts
+        private const val STYLE_SPINNER = 1
+        private const val STYLE_OVERLAY = 2
+
+        fun timePickerAttributeSet(context: Context): AttributeSet? {
+            return attributeSetFromXml(context, com.snapchat.client.R.xml.valdi_time_picker)
         }
+    }
+
+    private var currentHour: Int = 0
+    private var currentMinute: Int = 0
+
+    var hourOfDay: Int?
+        get() = currentHour
         set(value) {
-            safeUpdate {
-                underlyingTimePickerHour = value ?: 0
-            }
+            currentHour = value ?: 0
+            safeUpdate { underlyingTimePickerHour = currentHour }
+            updateOverlayLabel()
         }
 
     var minuteOfHour: Int?
-        get() {
-            return underlyingTimePickerMinuteIndex * intervalMinutes
-        }
+        get() = currentMinute
         set(value) {
-            safeUpdate {
-                val min = (value ?: 0) / intervalMinutes
-                underlyingTimePickerMinuteIndex = min ?: 0
-            }
+            currentMinute = value ?: 0
+            safeUpdate { underlyingTimePickerMinuteIndex = currentMinute / intervalMinutes }
+            updateOverlayLabel()
         }
 
     var intervalMinutes: Int = 1
@@ -55,7 +73,6 @@ open class ValdiTimePicker(context: Context) : ViewGroup(context), ValdiTouchTar
                 field = value
             }
         }
-        
 
     private var underlyingTimePickerHour: Int
         get() {
@@ -73,7 +90,6 @@ open class ValdiTimePicker(context: Context) : ViewGroup(context), ValdiTouchTar
             }
         }
 
-    // the index of the time picker minute, multiplied by the minute interval
     private var underlyingTimePickerMinuteIndex: Int
         get() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -92,15 +108,29 @@ open class ValdiTimePicker(context: Context) : ViewGroup(context), ValdiTouchTar
 
     var onChangeFunction: ValdiFunction? = null
 
+    var preferredStyle: Int = STYLE_SPINNER
+        set(value) {
+            if (field == value) return
+            field = value
+            applyStyle()
+        }
+
     val timePicker = TimePicker(context, timePickerAttributeSet(context))
+    private val overlayLabel = TextView(context).apply {
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+        gravity = Gravity.CENTER_VERTICAL
+        val outValue = TypedValue()
+        context.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+        setBackgroundResource(outValue.resourceId)
+        setOnClickListener { showTimeDialog() }
+        visibility = GONE
+    }
 
     val valdiContext: ValdiContext?
         get() = ViewUtils.findValdiContext(this)
 
     val logger: Logger?
-        get() {
-            return valdiContext?.runtime?.logger
-        }
+        get() = valdiContext?.runtime?.logger
 
     private var isSettingValueCount = 0
 
@@ -115,44 +145,89 @@ open class ValdiTimePicker(context: Context) : ViewGroup(context), ValdiTouchTar
 
     init {
         addView(timePicker)
-        timePicker.setIs24HourView(DateFormat.is24HourFormat(context));
+        addView(overlayLabel)
+
+        val c = Calendar.getInstance()
+        currentHour = c.get(Calendar.HOUR_OF_DAY)
+        currentMinute = c.get(Calendar.MINUTE)
+
+        timePicker.setIs24HourView(DateFormat.is24HourFormat(context))
         timePicker.setOnTimeChangedListener(object: TimePicker.OnTimeChangedListener {
             override fun onTimeChanged(view: TimePicker, hourOfDay: Int, minute: Int) {
-                if (isSettingValueCount > 0) {
-                    return
-                }
+                if (isSettingValueCount > 0) return
 
-                ViewUtils.notifyAttributeChanged(view, hourOfDayProperty, hourOfDay)
-                ViewUtils.notifyAttributeChanged(view, minuteOfHourProperty, minute * intervalMinutes)
-
-                if (onChangeFunction == null) {
-                    return
-                }
-
-                ValdiMarshaller.use {
-                    val objectIndex = it.pushMap(2)
-                    it.putMapPropertyOptionalDouble(hourOfDayProperty, objectIndex, hourOfDay.toDouble())
-                    it.putMapPropertyOptionalDouble(minuteOfHourProperty, objectIndex, (minute * intervalMinutes).toDouble())
-                    onChangeFunction?.perform(it)
-                }
+                currentHour = hourOfDay
+                currentMinute = minute * intervalMinutes
+                fireOnChange()
             }
         })
         timePicker.setDescendantFocusability(TimePicker.FOCUS_BLOCK_DESCENDANTS)
+        updateOverlayLabel()
     }
 
-    companion object {
-        private val hourOfDayProperty = InternedString.create("hourOfDay")
-        private val minuteOfHourProperty = InternedString.create("minuteOfHour")
+    private fun applyStyle() {
+        if (preferredStyle == STYLE_OVERLAY) {
+            timePicker.visibility = GONE
+            overlayLabel.visibility = VISIBLE
+            updateOverlayLabel()
+        } else {
+            timePicker.visibility = VISIBLE
+            overlayLabel.visibility = GONE
+        }
+        requestLayout()
+    }
 
-        fun timePickerAttributeSet(context: Context): AttributeSet? {
-            return attributeSetFromXml(context, com.snapchat.client.R.xml.valdi_time_picker)
+    private fun updateOverlayLabel() {
+        val c = Calendar.getInstance()
+        c.set(Calendar.HOUR_OF_DAY, currentHour)
+        c.set(Calendar.MINUTE, currentMinute)
+        overlayLabel.text = DateFormat.getTimeFormat(context).format(c.time)
+    }
+
+    private fun resolveActivity(): Activity? {
+        var current: View? = this
+        while (current != null) {
+            var ctx = current.context
+            while (ctx is ContextWrapper) {
+                if (ctx is Activity) return ctx
+                ctx = ctx.baseContext
+            }
+            current = current.parent as? View
+        }
+        return null
+    }
+
+    private fun showTimeDialog() {
+        val activity = resolveActivity()
+        if (activity == null || activity.isFinishing || activity.isDestroyed) return
+
+        val is24Hour = DateFormat.is24HourFormat(activity)
+        TimePickerDialog(activity, { _, hour, minute ->
+            currentHour = hour
+            currentMinute = minute
+            safeUpdate {
+                underlyingTimePickerHour = hour
+                underlyingTimePickerMinuteIndex = minute / intervalMinutes
+            }
+            updateOverlayLabel()
+            fireOnChange()
+        }, currentHour, currentMinute, is24Hour).show()
+    }
+
+    private fun fireOnChange() {
+        ViewUtils.notifyAttributeChanged(timePicker, hourOfDayProperty, currentHour)
+        ViewUtils.notifyAttributeChanged(timePicker, minuteOfHourProperty, currentMinute)
+
+        val fn = onChangeFunction ?: return
+        ValdiMarshaller.use {
+            val objectIndex = it.pushMap(2)
+            it.putMapPropertyOptionalDouble(hourOfDayProperty, objectIndex, currentHour.toDouble())
+            it.putMapPropertyOptionalDouble(minuteOfHourProperty, objectIndex, currentMinute.toDouble())
+            fn.perform(it)
         }
     }
 
     override fun processTouchEvent(event: MotionEvent): ValdiTouchEventResult {
-        // We could have a more comprehensive logic here
-        // we could check if the view's state actually changed after receiving the event
-        // but for now we just swallow the event when dispatch succeeds
         if (this.dispatchTouchEvent(event)) {
             return ValdiTouchEventResult.ConsumeEventAndCancelOtherGestures
         }
@@ -161,17 +236,14 @@ open class ValdiTimePicker(context: Context) : ViewGroup(context), ValdiTouchTar
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-        this.timePicker.measure(
-            widthMeasureSpec,
-            heightMeasureSpec
-        )
-        val width = this.timePicker.getMeasuredWidth()
-        val height = this.timePicker.getMeasuredHeight()
-        setMeasuredDimension(width, height)
+        val activeChild = if (preferredStyle == STYLE_OVERLAY) overlayLabel else timePicker
+        activeChild.measure(widthMeasureSpec, heightMeasureSpec)
+        setMeasuredDimension(activeChild.measuredWidth, activeChild.measuredHeight)
     }
 
     override fun onLayout(p0: Boolean, l: Int, t: Int, r: Int, b: Int) {
-        timePicker.layout(0, 0, r - l, b - t)
+        val activeChild = if (preferredStyle == STYLE_OVERLAY) overlayLabel else timePicker
+        activeChild.layout(0, 0, r - l, b - t)
     }
 
     override fun hasOverlappingRendering(): Boolean {
@@ -198,5 +270,4 @@ open class ValdiTimePicker(context: Context) : ViewGroup(context), ValdiTouchTar
             }
         }
     }
-
 }

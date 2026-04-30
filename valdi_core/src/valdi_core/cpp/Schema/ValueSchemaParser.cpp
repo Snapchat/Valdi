@@ -1,4 +1,4 @@
- //
+//
 //  ValueSchemaParser.cpp
 //  valdi_core-pc
 //
@@ -6,6 +6,7 @@
 //
 
 #include "valdi_core/cpp/Schema/ValueSchemaParser.hpp"
+#include "ValueSchemaParser.hpp"
 #include "valdi_core/cpp/Utils/Format.hpp"
 #include "valdi_core/cpp/Utils/SmallVector.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
@@ -181,7 +182,7 @@ static std::optional<ValueSchema> parseGenericTypeReferenceSchema(TextParser& pa
         typeReference.value(), typeArguments.value().data(), typeArguments.value().size());
 }
 
-static std::optional<ValueSchema> parseClassSchema(TextParser& parser) {
+static std::optional<ValueSchema> doParseClassSchema(TextParser& parser, bool includeProperties) {
     auto isInterface = parser.tryParse(kStringTypeClassModifierInterface[0]);
 
     parser.tryParseWhitespaces();
@@ -191,6 +192,10 @@ static std::optional<ValueSchema> parseClassSchema(TextParser& parser) {
         return std::nullopt;
     }
     parser.tryParseWhitespaces();
+
+    if (!includeProperties) {
+        return ValueSchema::cls(classNameResult.value(), isInterface, {});
+    }
 
     auto properties =
         parseList<ClassPropertySchema>(parser, '{', '}', [](TextParser& parser) -> std::optional<ClassPropertySchema> {
@@ -218,6 +223,10 @@ static std::optional<ValueSchema> parseClassSchema(TextParser& parser) {
     }
 
     return ValueSchema::cls(classNameResult.value(), isInterface, properties.value().data(), properties.value().size());
+}
+
+static std::optional<ValueSchema> parseClassSchema(TextParser& parser) {
+    return doParseClassSchema(parser, true);
 }
 
 static std::optional<ValueSchema> parseEnumSchema(TextParser& parser) {
@@ -286,6 +295,7 @@ ValueFunctionSchemaAttributes parseFunctionAttributes(TextParser& parser) {
     bool isMethod = parser.tryParse("*");
     bool isSingleCall = parser.tryParse("!");
     bool isWorkerThread = false;
+    bool allowSyncCall = true; // Default: allow sync (omit `b` / bansync in schema)
 
     if (parser.peek('|')) {
         readList<ValueSchema>(parser, '|', '|', [&](TextParser& parser) -> bool {
@@ -295,12 +305,14 @@ ValueFunctionSchemaAttributes parseFunctionAttributes(TextParser& parser) {
                 isSingleCall = true;
             } else if (parser.tryParse(kStringTypeFunctionAttributeWorkerThread[0])) {
                 isWorkerThread = true;
+            } else if (parser.tryParse(kStringTypeFunctionAttributeBanSync[0])) {
+                allowSyncCall = false; // `b` = bansync (async_strict, no @AllowSyncCall)
             }
             return true;
         });
     }
 
-    return ValueFunctionSchemaAttributes(isMethod, isSingleCall, isWorkerThread);
+    return ValueFunctionSchemaAttributes(isMethod, isSingleCall, isWorkerThread, allowSyncCall);
 }
 
 static std::optional<ValueSchema> parseFunctionSchema(TextParser& parser) {
@@ -471,6 +483,14 @@ std::optional<ValueSchema> ValueSchemaParser::parse(TextParser& parser) {
     parser.setErrorAtCurrentPosition("Unrecognized token");
 
     return std::nullopt;
+}
+
+std::optional<ValueSchema> ValueSchemaParser::parseClassSchema(TextParser& parser, bool includeProperties) {
+    if (!parser.tryParse(kStringTypeClass[0])) {
+        return std::nullopt;
+    }
+
+    return doParseClassSchema(parser, true);
 }
 
 } // namespace Valdi

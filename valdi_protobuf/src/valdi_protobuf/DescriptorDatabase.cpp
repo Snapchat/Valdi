@@ -15,7 +15,7 @@
 
 namespace Valdi::Protobuf {
 
-DescriptorDatabase::DescriptorDatabase(bool skipProtoIndex) : _skipProtoIndex(skipProtoIndex) {}
+DescriptorDatabase::DescriptorDatabase() = default;
 
 bool DescriptorDatabase::addFileDescriptorSet(const BytesView& data, ExceptionTracker& exceptionTracker) {
     // prebuilt index can only be loaded once. Supporting loading things in
@@ -30,11 +30,6 @@ bool DescriptorDatabase::addFileDescriptorSet(const BytesView& data, ExceptionTr
             const uint8_t* pIndex = reinterpret_cast<const uint8_t*>(data.data() + 12);
             const uint8_t* pBody = pIndex + indexSize;
             size_t bodySize = data.size() - 12 /*header*/ - indexSize;
-
-            // index disabled by tweak
-            if (_skipProtoIndex) {
-                return addFileDescriptorSetWithBuilder(data.subrange(12 + indexSize, bodySize), exceptionTracker);
-            }
 
             // load from prebuilt index
             _retainedBuffers.emplace_back(data);

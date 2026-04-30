@@ -2,15 +2,6 @@
 
 import Foundation
 
-fileprivate extension Data {
-    mutating func appendNewline() {
-        var newline: UInt8 = 10
-        Swift.withUnsafePointer(to: &newline) {
-            append($0, count: 1)
-        }
-    }
-}
-
 class BazelPersistentWorker {
 
     struct Request {
@@ -34,12 +25,18 @@ class BazelPersistentWorker {
     private let stdout: FileHandle
     private let workQueue = DispatchQueue(label: "com.snap.valdi.compiler.BazelWorkQueue", qos: .userInitiated)
     private let logger: ILogger
+    private let format: WorkerProtocolFormat
+    private let adapter: WorkerProtocolAdapter
     private var requestById = [Int: CurrentRequest]()
+    private var buffer = Data()
+    private var readSource: DispatchSourceRead?
 
-    init(stdin: FileHandle, stdout: FileHandle, logger: ILogger) {
+    init(stdin: FileHandle, stdout: FileHandle, logger: ILogger, format: WorkerProtocolFormat = .protobuf) {
         self.stdin = FileHandleReader(fileHandle: stdin, dispatchQueue: DispatchQueue.main)
         self.stdout = stdout
         self.logger = logger
+        self.format = format
+        self.adapter = WorkerProtocolAdapterFactory.createAdapter(for: format)
     }
 
     func run(startHandler: @escaping StartHandler) {
@@ -51,13 +48,16 @@ class BazelPersistentWorker {
     }
 
     private func submitResponse(exitCode: Int, output: String, requestId: Int, wasCancelled: Bool) {
-        let workResponse = BazelWorkerProtocol.WorkResponse(exitCode: exitCode, output: output, requestId: requestId, wasCancelled: wasCancelled)
+        let response = ParsedWorkResponse(
+            exitCode: exitCode,
+            output: output,
+            requestId: requestId,
+            wasCancelled: wasCancelled
+        )
 
         do {
-            var json = try workResponse.toJSON(keyEncodingStrategy: .useDefaultKeys)
-            json.appendNewline()
-
-            try self.stdout.write(contentsOf: json)
+            let wireData = try adapter.serializeWorkResponseForWire(response)
+            try self.stdout.write(contentsOf: wireData)
         } catch let error {
             logger.error("Failed to write Bazel response: \(error.legibleLocalizedDescription)")
             logger.flush()
@@ -79,7 +79,6 @@ class BazelPersistentWorker {
         case .failure(let error):
             exitCode = EXIT_FAILURE
             if let errorData = try? error.legibleLocalizedDescription.utf8Data() {
-                logData.appendNewline()
                 logData.append(errorData)
             }
         }
@@ -88,15 +87,15 @@ class BazelPersistentWorker {
 
     private func process(data: Data, startHandler: @escaping StartHandler) {
         do {
-            let workRequest = try BazelWorkerProtocol.WorkRequest.fromJSON(data, keyDecodingStrategy: .useDefaultKeys)
-            let requestId = workRequest.requestId ?? 0
+            let workRequest = try adapter.parseWorkRequest(from: data)
+            let requestId = workRequest.requestId
+            
+            if workRequest.cancel {
 
-            if let cancel = workRequest.cancel, cancel {
                 if let cancelToken = self.requestById.removeValue(forKey: requestId) {
                     cancelToken.cancelableToken.cancel()
                     self.submitResponse(exitCode: 0, output: "", requestId: requestId, wasCancelled: true)
                 }
-
                 return
             }
 
@@ -128,13 +127,64 @@ class BazelPersistentWorker {
     }
 
     private func consumeNextRequest(startHandler: @escaping StartHandler) -> Bool {
-        guard let newLineIndex = stdin.content.fastFirstIndex(of: /* newline separator */ 10) else {
+        switch format {
+        case .json:
+            return consumeNextJSONRequest(startHandler: startHandler)
+        case .protobuf:
+            return consumeNextProtobufRequest(startHandler: startHandler)
+        }
+    }
+
+    private func consumeNextProtobufRequest(startHandler: @escaping StartHandler) -> Bool {
+        let bufferData = stdin.content
+        
+        // Need at least 1 byte for varint
+        guard !bufferData.isEmpty else {
+            return false
+        }
+        
+        let varintResult: VarintEncoding.ReadResult
+        do {
+            varintResult = try VarintEncoding.readVarint(from: bufferData)
+        } catch VarintEncoding.Error.bufferTooShort {
+            return false
+        } catch {
+            logger.error("Failed to parse varint length prefix: \(error.legibleLocalizedDescription)")
+            logger.flush()
+            _exit(1)
+        }
+        
+        let messageLength = varintResult.value
+        let varintBytes = varintResult.bytesRead
+        let totalBytesNeeded = varintBytes + messageLength
+        
+        guard bufferData.count >= totalBytesNeeded else {
             return false
         }
 
-        process(data: stdin.content[..<newLineIndex], startHandler: startHandler)
-        stdin.trimContent(by: newLineIndex + 1)
-
+        let messageData = bufferData.subdata(in: varintBytes..<totalBytesNeeded)
+        stdin.trimContent(by: totalBytesNeeded)
+        process(data: messageData, startHandler: startHandler)
         return true
     }
+
+    private func consumeNextJSONRequest(startHandler: @escaping StartHandler) -> Bool {
+        let bufferData = stdin.content
+        
+        // JSON messages are newline-delimited
+        guard !bufferData.isEmpty else {
+            return false
+        }
+        
+        guard let newlineIndex = bufferData.firstIndex(of: 0x0A) else {
+            return false
+        }
+        
+        let messageData = bufferData.subdata(in: 0..<newlineIndex)
+        stdin.trimContent(by: newlineIndex + 1)
+        
+        process(data: messageData, startHandler: startHandler)
+        return true
+    }
+
 }

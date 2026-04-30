@@ -37,3 +37,8 @@ wasm:
 ts:
   typename: Cancelable
   module: './valdi_core'
+c:
+  typename: 'snap_valdi_core_Cancelable_ref'
+  translator: '::djinni::c_api::InterfaceTranslator<::snap::valdi_core::Cancelable>'
+  public_header: '"valdi_core/Cancelable.h"'
+  private_header: '"valdi_core/Cancelable.hpp"'

@@ -2,6 +2,7 @@ import * as ts from 'typescript';
 import { isExpressionNode, resolveTypeOfExpression, SymbolType, Transpiler } from './TSUtils';
 import { mergeSourceMaps } from './SourceMapUtils';
 import { ILogger } from './logger/ILogger';
+import { createConsoleLogTransformer } from './ConsoleLogTransformer';
 
 enum JSXAttributeValueKind {
   dynamic = 1,
@@ -1548,6 +1549,7 @@ export class JSXFileProcessor extends JSXProcessor {
     });
 
     const transforms = this.makeTransformers(transpiler.program.getTypeChecker());
+    transforms.push(createConsoleLogTransformer());
     const result = transpiler.transpile({ before: transforms });
 
     let compiledJs = result.outputText;

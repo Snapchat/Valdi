@@ -82,6 +82,8 @@ class TestRenderer implements IRenderer {
 
   onRenderComplete() {}
 
+  onNextDraw(callback: (hookTimeMs: number) => void) {}
+
   onNextRenderComplete() {}
 
   addObserver() {}
@@ -112,7 +114,7 @@ class TestComponent extends LegacyVueComponent<TestViewModel, TestViewState> {
     const viewModel = exists(this.viewModel);
 
     this.onCreateCount++;
-    // eslint-disable-next-line @snapchat/valdi/mutate-state-without-set-state
+    // eslint-disable-next-line @snap/valdi/mutate-state-without-set-state
     this.state.value = viewModel.value;
   }
 

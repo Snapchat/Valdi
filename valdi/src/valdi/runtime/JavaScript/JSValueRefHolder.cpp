@@ -7,6 +7,7 @@
 
 #include "valdi/runtime/JavaScript/JSValueRefHolder.hpp"
 #include "valdi/runtime/Context/Context.hpp"
+#include "valdi/runtime/ErrorCodes.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptTaskScheduler.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptUtils.hpp"
 #include "valdi_core/cpp/Utils/Format.hpp"
@@ -82,7 +83,7 @@ JSValue JSValueRefHolder::getJsValue(IJavaScriptContext& jsContext, JSExceptionT
             "Cannot unwrap JS value reference '{}' as it was disposed. Reference was taken from context {}",
             _referenceInfo,
             _context->getIdAndPathString());
-        throwReferenceError(exceptionTracker, Error(errorMessage));
+        throwReferenceError(exceptionTracker, Error(errorMessage, ErrorCodes::Composer::CANNOT_UNWRAP_DISPOSED_JS_VALUE));
         return JSValue();
     }
 

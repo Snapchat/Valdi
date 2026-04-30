@@ -36,7 +36,10 @@ private:
 
     Valdi::Value createValdiContextWithSnapDrawing(const Valdi::ValueFunctionCallContext& callContext);
     Valdi::Value destroyValdiContextWithSnapDrawing(const Valdi::ValueFunctionCallContext& callContext);
+    Valdi::Value layoutAsync(const Valdi::ValueFunctionCallContext& callContext);
+    Valdi::Value measureAsync(const Valdi::ValueFunctionCallContext& callContext);
     Valdi::Value drawFrame(const Valdi::ValueFunctionCallContext& callContext);
+    Valdi::Value drawFrameSync(const Valdi::ValueFunctionCallContext& callContext);
     Valdi::Value disposeFrame(const Valdi::ValueFunctionCallContext& callContext);
     Valdi::Value rasterFrame(const Valdi::ValueFunctionCallContext& callContext);
 };

@@ -4,3 +4,9 @@ bazel_dep(name = "valdi", version = "0.1")
 
 bazel_dep(name = "bazel_skylib", version = "1.2.0")
 bazel_dep(name = "aspect_rules_js", version = "1.37.0")
+
+# In bzlmod mode, WORKSPACE.bzlmod replaces WORKSPACE, so the compiler repos
+# that workspace_prepare.bzl would normally create are never set up.
+# This extension creates them and makes them visible to this module.
+valdi_tools = use_extension("@valdi//bzl:valdi_compiler_repos_extension.bzl", "valdi_compiler_repos")
+use_repo(valdi_tools, "valdi_compiler_macos", "valdi_compiler_linux", "valdi_pngquant_macos", "valdi_pngquant_linux", "jscore_libs")

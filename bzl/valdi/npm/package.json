@@ -1,6 +1,22 @@
 {
   "name": "valdi",
+  "dependencies": {
+    "@protobuf-ts/runtime": "^2.11.1",
+    "@puppeteer/browsers": "^2.4.1",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^20.14.10",
+    "jest": "^29.7.0",
+    "puppeteer": "^22.0.0"
+  },
   "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "bufferutil",
+      "es5-ext",
+      "fsevents",
+      "typemoq",
+      "utf-8-validate"
+    ],
     "packageExtensions": {
       "@babel/core": {
         "peerDependencies": {

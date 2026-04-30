@@ -1,0 +1,6 @@
+output_target: release
+dependencies:
+  - valdi_core
+  - coreutils
+  - foundation
+  - valdi_protobuf

@@ -1,6 +1,8 @@
+#include "valdi_core/cpp/Marshalling/CppGeneratedClass.hpp"
+#include "valdi_core/cpp/Marshalling/RegisteredCppGeneratedClass.hpp"
 #include "valdi_core/cpp/Schema/ValueSchema.hpp"
 #include "valdi_core/cpp/Schema/ValueSchemaRegistry.hpp"
-#include "valdi_core/cpp/Utils/CppGeneratedClass.hpp"
+#include "valdi_core/cpp/Utils/ExceptionTracker.hpp"
 #include <gtest/gtest.h>
 
 using namespace Valdi;
@@ -17,14 +19,14 @@ protected:
         _registry = nullptr;
     }
 
-    RegisteredCppGeneratedClass registerSchema(
-        std::string_view schemaString,
-        RegisteredCppGeneratedClass::GetTypeReferencesCallback getTypeReferencesCallback) {
-        return RegisteredCppGeneratedClass(_registry.get(), schemaString, std::move(getTypeReferencesCallback));
+    RegisteredCppGeneratedClass registerSchema(const char* schemaString,
+                                               GetTypeReferencesFunction getTypeReferencesFunction) {
+        return RegisteredCppGeneratedClass(
+            _registry.get(), schemaString, std::move(getTypeReferencesFunction), GetTypeArgumentsFunction());
     }
 
-    RegisteredCppGeneratedClass registerSchema(std::string_view schemaString) {
-        return registerSchema(schemaString, []() -> RegisteredCppGeneratedClass::TypeReferencesVec { return {}; });
+    RegisteredCppGeneratedClass registerSchema(const char* schemaString) {
+        return registerSchema(schemaString, []() -> std::vector<RegisteredCppGeneratedClass*> { return {}; });
     }
 
     Ref<ValueSchemaRegistry> _registry;
@@ -54,9 +56,8 @@ TEST_F(CppGeneratedClassTests, registersSchema) {
 TEST_F(CppGeneratedClassTests, resolvesSchema) {
     auto registeredClass1 = registerSchema("c 'MyObject' {'prop': b}");
 
-    auto registeredClass2 =
-        registerSchema("c 'MyObjectList' {'array': a<r:'MyObject'>}",
-                       [&]() -> RegisteredCppGeneratedClass::TypeReferencesVec { return {&registeredClass1}; });
+    auto registeredClass2 = registerSchema("c 'MyObjectList' {'array': a<r:'MyObject'>}",
+                                           [&]() -> TypeReferencesVec { return {&registeredClass1}; });
 
     SimpleExceptionTracker exceptionTracker;
     auto classSchema = registeredClass2.getResolvedClassSchema(exceptionTracker);
@@ -68,9 +69,8 @@ TEST_F(CppGeneratedClassTests, resolvesSchema) {
 TEST_F(CppGeneratedClassTests, registersSchemaDependenciesWhenResolvingSchema) {
     auto registeredClass1 = registerSchema("c 'MyObject' {'prop': b}");
 
-    auto registeredClass2 =
-        registerSchema("c 'MyObjectList' {'array': a<r:'MyObject'>}",
-                       [&]() -> RegisteredCppGeneratedClass::TypeReferencesVec { return {&registeredClass1}; });
+    auto registeredClass2 = registerSchema("c 'MyObjectList' {'array': a<r:'MyObject'>}",
+                                           [&]() -> TypeReferencesVec { return {&registeredClass1}; });
 
     ASSERT_EQ(std::vector<ValueSchema>(), _registry->getAllSchemas());
 

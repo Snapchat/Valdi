@@ -147,7 +147,7 @@ private:
 
     StaticString(size_t size, Encoding encoding);
 
-    friend InlineContainerAllocator<StaticString, void*>;
+    friend InlineContainerAllocator<StaticString, uint8_t>;
 };
 
 std::ostream& operator<<(std::ostream& os, const StaticString& value);

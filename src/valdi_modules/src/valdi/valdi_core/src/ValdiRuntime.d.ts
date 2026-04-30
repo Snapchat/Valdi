@@ -59,6 +59,33 @@ export const enum BackendRenderingType {
 
 export type AssetEntry = Asset | string;
 
+export interface LoadedAsset {
+  brand?: 'LoadedAsset';
+}
+
+export interface LoadedAssetImageMetadata {
+  type: 'image';
+  width: number;
+  height: number;
+}
+
+export interface LoadedAssetLottieMetadata {
+  type: 'lottie';
+  width: number;
+  height: number;
+  durationMs: number;
+}
+
+export interface LoadedAssetSkCodecMetadata {
+  type: 'skcodec';
+  width: number;
+  height: number;
+  numberOfFrames: number;
+  durationMs: number;
+}
+
+export type LoadedAssetMetadata = LoadedAssetImageMetadata | LoadedAssetLottieMetadata | LoadedAssetSkCodecMetadata;
+
 export interface ValdiRuntime extends RuntimeBase {
   postMessage(contextId: string, command: string, params: any): void;
   getFrameForElementId(
@@ -139,11 +166,12 @@ export interface ValdiRuntime extends RuntimeBase {
   getAssets(catalogPath: string): AssetEntry[];
   addAssetLoadObserver(
     asset: string | Asset,
-    onLoad: (loadedAsset: unknown, error: string | undefined) => void,
+    onLoad: (loadedAsset: LoadedAsset | Uint8Array | undefined, error: string | undefined) => void,
     outputType: number,
     preferredWidth: number | undefined,
     preferredHeight: number | undefined,
   ): () => void;
+  getLoadedAssetMetadata(loadedAsset: LoadedAsset): LoadedAssetMetadata | undefined;
 
   setColorPalette(colorPalette: ColorPalette): void;
 
@@ -180,6 +208,19 @@ export interface ValdiRuntime extends RuntimeBase {
   dumpHeap?(): ArrayBuffer;
 
   isDebugEnabled: boolean;
+
+  /**
+   * Whether JS logging (console.log/warn/error/info/debug) is enabled.
+   * In non-appstore builds this is always true.
+   * In appstore builds this is controlled by the VALDI_DISABLE_JS_LOGGING COF key.
+   */
+  isLoggingEnabled: boolean;
+
+  /**
+   * When true, the renderer emits moves in top-down order (parent before children) to reduce ANR risk.
+   * Gated by VALDI_MAX_VIEW_OPERATIONS_PROCESSING_TIME (same COF as view-op throttling); true when that value > 0.
+   */
+  useTopDownMoveOrder: boolean;
 
   buildType: string;
 }

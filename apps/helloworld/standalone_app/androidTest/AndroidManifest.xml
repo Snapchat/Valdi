@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.snap.helloworld.test">
+
+    <uses-sdk android:minSdkVersion="24"
+        android:targetSdkVersion="34"/>
+
+    <instrumentation
+        android:name="androidx.test.runner.AndroidJUnitRunner"
+        android:targetPackage="com.snap.helloworld" />
+
+</manifest>
+

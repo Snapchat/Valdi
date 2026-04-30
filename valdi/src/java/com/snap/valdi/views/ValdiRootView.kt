@@ -5,6 +5,7 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.view.KeyEvent
 import android.graphics.Rect
 import androidx.core.view.ViewCompat
@@ -16,6 +17,7 @@ import com.snap.valdi.keyboard.KeyboardManager
 import com.snap.valdi.nodes.ValdiViewNode
 import com.snap.valdi.utils.ValdiLeakTracker
 import com.snap.valdi.utils.Disposable
+import com.snap.valdi.utils.getValdiHandler
 import com.snap.valdi.utils.runOnMainThreadIfNeeded
 import com.snap.valdi.utils.trace
 import com.snap.valdi.utils.ValdiMarshaller
@@ -25,6 +27,8 @@ import com.snap.valdi.views.touches.TouchDispatcher
 import com.snap.valdi.views.touches.backbutton.BackButtonListener
 import com.snap.valdi.callable.ValdiFunction
 import com.snap.valdi.callable.performSync
+import com.snapchat.client.valdi.NativeBridge
+import java.util.ArrayDeque
 import java.lang.ref.WeakReference
 import kotlin.math.min
 
@@ -53,12 +57,12 @@ open class ValdiRootView: ValdiView, Disposable {
     var useNewMultiTouchExperience = false
 
     // Implements fixes when using onRotate.
-    // enableMultiTouchFixes must also be enabled for this to work correctly.
     var enableRotateGestureRecognizeV2 = false
 
     // Implements fixes when using onPinch.
-    // enableMultiTouchFixes must also be enabled for this to work correctly.
     var enablePinchGestureRecognizeV2 = false
+
+    var enableV2GestureDetectorReset = false
 
     var disableLeakTracking = false
 
@@ -137,6 +141,10 @@ open class ValdiRootView: ValdiView, Disposable {
     private var contextReadyCallbacks: MutableList<(ValdiContext) -> Unit>? = null
     private var activeVisibility = View.INVISIBLE
     private var valdiUpdatesCount = 0
+    private val onNextDrawCallbackHandles = ArrayDeque<Long>()
+    private var onNextDrawPreDrawListener: ViewTreeObserver.OnPreDrawListener? = null
+    private var onNextDrawPreDrawObserver: ViewTreeObserver? = null
+    private var onNextDrawAttachListener: View.OnAttachStateChangeListener? = null
 
     val performingUpdates: Boolean
         get() = valdiUpdatesCount > 0
@@ -176,13 +184,16 @@ open class ValdiRootView: ValdiView, Disposable {
      * Destroys the ValdiContext, which releases all its resources.
      */
     fun destroy() {
-        destroyed = true
+        runOnMainThreadIfNeeded {
+            destroyed = true
+            discardPendingOnNextDrawCallbacks()
 
-        getValdiContext {
-            ViewUtils.setViewNodeId(this, 0)
-            ViewUtils.setValdiContext(this, null)
-            setOnSystemUiVisibilityChangeListener(null)
-            it.destroy()
+            getValdiContext {
+                ViewUtils.setViewNodeId(this, 0)
+                ViewUtils.setValdiContext(this, null)
+                setOnSystemUiVisibilityChangeListener(null)
+                it.destroy()
+            }
         }
     }
 
@@ -364,6 +375,7 @@ open class ValdiRootView: ValdiView, Disposable {
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
 
+        clearOnNextDrawPreDrawListener()
         updateViewInflationState(false)
 
         if (ValdiLeakTracker.enabled && !disableLeakTracking) {
@@ -378,6 +390,9 @@ open class ValdiRootView: ValdiView, Disposable {
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
 
+        if (onNextDrawCallbackHandles.isNotEmpty()) {
+            scheduleOnNextDrawDispatch()
+        }
         updateViewInflationState(true)
 
         if (isLeakTracked) {
@@ -474,6 +489,24 @@ open class ValdiRootView: ValdiView, Disposable {
         super.requestLayout()
     }
 
+    internal fun enqueueOnNextDrawCallback(callbackHandle: Long) {
+        if (callbackHandle == 0L) {
+            return
+        }
+
+        if (destroyed) {
+            NativeBridge.discardCallback(callbackHandle)
+            return
+        }
+
+        val shouldInvalidate = onNextDrawCallbackHandles.isEmpty()
+        onNextDrawCallbackHandles.addLast(callbackHandle)
+        if (shouldInvalidate) {
+            scheduleOnNextDrawDispatch()
+            postInvalidateOnAnimation()
+        }
+    }
+
     internal fun valdiUpdatesBegan() {
         valdiUpdatesCount++
     }
@@ -482,6 +515,105 @@ open class ValdiRootView: ValdiView, Disposable {
         valdiUpdatesCount--
         if (valdiUpdatesCount == 0 && !isLayoutRequested) {
             applyValdiLayout()
+        }
+    }
+    internal fun valdiUpdatesEndedAsync(layoutDidBecomeDirty: Boolean) {
+        valdiUpdatesCount--
+        if (valdiUpdatesCount == 0 && !isLayoutRequested) {
+            // This is called outside of normal update cycle
+            // so we can't directly call applyValdiLayout().
+            // Otherwise we can get java.lang.IllegalStateException
+            // due to calling layout in the middle of RecyclerView’s
+            // layout stage
+            post {
+                requestLayout()
+            }
+        }
+    }
+
+    private fun discardPendingOnNextDrawCallbacks() {
+        clearOnNextDrawPreDrawListener()
+        clearOnNextDrawAttachListener()
+        while (onNextDrawCallbackHandles.isNotEmpty()) {
+            NativeBridge.discardCallback(requireNotNull(onNextDrawCallbackHandles.pollFirst()))
+        }
+    }
+
+    private fun scheduleOnNextDrawDispatch() {
+        if (onNextDrawPreDrawListener != null || onNextDrawAttachListener != null) {
+            return
+        }
+
+        if (!isAttachedToWindow) {
+            val attachListener = object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: View) {
+                    clearOnNextDrawAttachListener()
+                    scheduleOnNextDrawDispatch()
+                }
+
+                override fun onViewDetachedFromWindow(v: View) = Unit
+            }
+            onNextDrawAttachListener = attachListener
+            addOnAttachStateChangeListener(attachListener)
+            return
+        }
+
+        val observer = viewTreeObserver
+        if (!observer.isAlive) {
+            getValdiHandler().post {
+                if (onNextDrawCallbackHandles.isNotEmpty()) {
+                    scheduleOnNextDrawDispatch()
+                }
+            }
+            return
+        }
+
+        val listener = object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                clearOnNextDrawPreDrawListener()
+                getValdiHandler().postAtFrontOfQueue {
+                    if (onNextDrawCallbackHandles.isNotEmpty()) {
+                        performPendingOnNextDrawCallbacks()
+                    }
+                }
+                return true
+            }
+        }
+        onNextDrawPreDrawListener = listener
+        onNextDrawPreDrawObserver = observer
+        observer.addOnPreDrawListener(listener)
+    }
+
+    private fun clearOnNextDrawPreDrawListener() {
+        val listener = onNextDrawPreDrawListener ?: return
+        onNextDrawPreDrawListener = null
+        val observer = onNextDrawPreDrawObserver
+        onNextDrawPreDrawObserver = null
+        if (observer?.isAlive == true) {
+            observer.removeOnPreDrawListener(listener)
+            return
+        }
+
+        val currentObserver = viewTreeObserver
+        if (currentObserver.isAlive) {
+            currentObserver.removeOnPreDrawListener(listener)
+        }
+    }
+
+    private fun clearOnNextDrawAttachListener() {
+        val listener = onNextDrawAttachListener ?: return
+        onNextDrawAttachListener = null
+        removeOnAttachStateChangeListener(listener)
+    }
+
+    private fun performPendingOnNextDrawCallbacks() {
+        val callbackHandles = ArrayList<Long>(onNextDrawCallbackHandles.size)
+        while (onNextDrawCallbackHandles.isNotEmpty()) {
+            callbackHandles.add(requireNotNull(onNextDrawCallbackHandles.pollFirst()))
+        }
+
+        for (callbackHandle in callbackHandles) {
+            NativeBridge.performCallback(callbackHandle)
         }
     }
 
@@ -509,8 +641,11 @@ open class ValdiRootView: ValdiView, Disposable {
     }
 
     protected fun finalize() {
-        if (destroyValdiContextOnFinalize) {
-            valdiContext?.destroy()
+        runOnMainThreadIfNeeded {
+            discardPendingOnNextDrawCallbacks()
+            if (destroyValdiContextOnFinalize) {
+                valdiContext?.destroy()
+            }
         }
     }
 

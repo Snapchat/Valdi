@@ -60,7 +60,19 @@ Rect Rect::makeFittingSize(Size size, FittingSizeMode mode) const {
 }
 
 bool Rect::intersects(const Rect& other) const {
+    // Use Skia's exact floating-point comparison for general intersection checks.
+    // This is important for Compositor plane optimization logic.
     return getSkValue().intersects(other.getSkValue());
+}
+
+bool Rect::intersectsWithTolerance(const Rect& other) const {
+    // Use epsilon-based comparison for damage rect merging.
+    // This prevents gaps when rects computed through different transformation paths
+    // have tiny numerical differences (e.g., 10.499999 vs 10.500001).
+    constexpr Scalar epsilon = 0.0001f; // ~1/10000th of a pixel
+
+    return !(other.right < left - epsilon || right < other.left - epsilon || other.bottom < top - epsilon ||
+             bottom < other.top - epsilon);
 }
 
 bool Rect::contains(const Point& point) const {

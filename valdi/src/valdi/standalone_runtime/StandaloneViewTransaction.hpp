@@ -10,6 +10,8 @@
 #include "valdi/runtime/Interfaces/IViewTransaction.hpp"
 #include "valdi/runtime/Views/View.hpp"
 
+#include <vector>
+
 namespace Valdi {
 
 class StandaloneViewTransaction : public IViewTransaction {
@@ -60,7 +62,12 @@ public:
 
     void cancelAnimator(const Ref<Animator>& animator) override;
 
+    void scheduleOnNextDraw(const Ref<View>& rootView, DispatchFunction callback) override;
+
     void executeInTransactionThread(DispatchFunction executeFn) override;
+
+private:
+    std::vector<DispatchFunction> _pendingOnNextDrawCallbacks;
 };
 
 } // namespace Valdi

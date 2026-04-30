@@ -76,6 +76,16 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
         return false
     }
 
+    override fun getImageAttachmentAtIndex(index: Int): ImageAttachmentInfo? {
+        val width = nativeGetImageAttachmentWidth(native.nativeHandle, index)
+        if (width <= 0) {
+            return null
+        }
+        val height = nativeGetImageAttachmentHeight(native.nativeHandle, index)
+        val imageData = nativeGetImageAttachmentData(native.nativeHandle, index)
+        return ImageAttachmentInfo(width, height, imageData)
+    }
+
     companion object {
         private const val TEXT_DECORATION_UNSET = Int.MIN_VALUE
         private const val TEXT_DECORATION_NONE = 0
@@ -99,5 +109,11 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
         private external fun nativeGetOnTap(nativeHandle: Long, index: Int): Any?
         @JvmStatic
         private external fun nativeGetOnLayout(nativeHandle: Long, index: Int): Any?
+        @JvmStatic
+        private external fun nativeGetImageAttachmentWidth(nativeHandle: Long, index: Int): Float
+        @JvmStatic
+        private external fun nativeGetImageAttachmentHeight(nativeHandle: Long, index: Int): Float
+        @JvmStatic
+        private external fun nativeGetImageAttachmentData(nativeHandle: Long, index: Int): ByteArray?
     }
 }

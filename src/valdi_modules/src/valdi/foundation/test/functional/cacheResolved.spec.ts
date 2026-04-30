@@ -53,7 +53,7 @@ describe('cacheResovled', () => {
     const cached = cacheResolved<[number], string>(x => x.toString())(longOperation);
     longOperation.and.callThrough();
 
-    // eslint-disable-next-line @snapchat/valdi/assign-timer-id
+    // eslint-disable-next-line @snap/valdi/assign-timer-id
     setTimeout(() => Object.entries(resolvers).forEach(([value, resolver]) => resolver(`done ${value}`)), 10);
 
     expect(await Promise.all([cached(1), cached(2), cached(1)])).toEqual(['done 1', 'done 2', 'done 1']);

@@ -1,0 +1,17 @@
+load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+# Minimal module with async_strict_mode=True used only by AsyncStrictModeSyncCallAssertsOnMainThread
+# to verify that sync JS calls from the main thread trigger the assertion when the function
+# is not annotated with @AllowSyncCall.
+valdi_module(
+    name = "test_async_strict",
+    srcs = glob(["src/**/*.ts"]),
+    android_output_target = "release",
+    async_strict_mode = True,
+    ios_module_name = "SCCTestAsyncStrict",
+    ios_output_target = "release",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+    ],
+)

@@ -14,6 +14,8 @@
 #include "valdi_core/cpp/Utils/StringBox.hpp"
 #include "valdi_core/cpp/Utils/ValdiObject.hpp"
 
+#include <mutex>
+
 #include "valdi_protobuf/FullyQualifiedName.hpp"
 
 #include <google/protobuf/descriptor.h>
@@ -26,7 +28,7 @@ class DescriptorDatabase;
 
 class ProtobufMessageFactory : public ValdiObject {
 public:
-    explicit ProtobufMessageFactory(bool skipProtoIndex);
+    ProtobufMessageFactory();
     ~ProtobufMessageFactory() override;
 
     struct NamespaceEntry {
@@ -58,11 +60,18 @@ public:
     std::vector<NamespaceEntry> getRootNamespaceEntries() const;
     std::vector<NamespaceEntry> getNamespaceEntriesForId(size_t id, ExceptionTracker& exceptionTracker) const;
 
+    /**
+     * Acquire the factory lock before calling a sequence of factory methods that must complete
+     * atomically. The lock is recursive, so internal factory methods may also acquire it.
+     */
+    std::unique_lock<std::recursive_mutex> lock() const;
+
     VALDI_CLASS_HEADER(ProtobufMessageFactory)
 
 private:
     std::unique_ptr<Protobuf::DescriptorDatabase> _descriptorDatabase;
     google::protobuf::DescriptorPool _pool;
+    mutable std::recursive_mutex _mutex;
 };
 
 } // namespace Valdi

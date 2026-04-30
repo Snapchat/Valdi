@@ -2,9 +2,9 @@
 
 ## Introduction
 
-Valdi supports injecting regular `UIView` (iOS) and `View` (Android) inside of an existing valdi feature through the `<custom-view>` element in TSX.
+Valdi supports injecting native views inside of an existing valdi feature through the `<custom-view>` element in TSX. This works on all four platforms: iOS (`UIView`), Android (`View`), macOS (`NSView`), and web (DOM elements).
 
-This type of integration is useful when a very complex view (such as a system view) is already implemented in Android/iOS and we want to re-use both iOS and Android code instead of writing a new cross-platform component.
+This type of integration is useful when a very complex view (such as a system view) is already implemented natively and we want to re-use platform-specific code instead of writing a new cross-platform component.
 
 ## Using a `<custom-view>`
 
@@ -245,11 +245,27 @@ It is very likely than writing the slider as a component would have been easier 
 > [!NOTE]
 > In most cases it is easier and safer to use a `ViewFactory` instead
 
-Alternatively in TSX, you can use an arbitrary view class in your render template by using the `<custom-view>` element and pass it the iOS and Android class names.
+Alternatively in TSX, you can use an arbitrary view class in your render template by using the `<custom-view>` element and pass it the platform-specific class names.
 
-In order for the view class to be instantiable by Valdi, it needs to have a working `initWithFrame:` initializer in iOS, and `init(context: Context)` in Android. If the view class does not have those constructors, you can create your own view class that wraps the native view class you want to use. If the view class ultimately needs additional native dependencies to be constructed, the Valdi way to provide them is to use attributes.
+In order for the view class to be instantiable by Valdi, it needs to have a working `initWithFrame:` initializer in iOS/macOS, and `init(context: Context)` in Android. If the view class does not have those constructors, you can create your own view class that wraps the native view class you want to use. If the view class ultimately needs additional native dependencies to be constructed, the Valdi way to provide them is to use attributes.
 
 If a view class is designed to be re-usable across multiple features, consider abstracting out the native view class inside a component.
+
+### Platform class attributes
+
+The `<custom-view>` element supports four platform-specific class attributes:
+
+| Attribute | Platform | Example |
+|-----------|----------|---------|
+| `iosClass` | iOS | `'SliderView'` |
+| `androidClass` | Android | `'com.snap.valdi.SliderView'` |
+| `macosClass` | macOS | `'SliderView'` |
+| `webClass` | Web | `'slider-view'` |
+
+**Platform fallthrough rules:**
+- **macOS** falls through to `iosClass` when `macosClass` is not specified. This means if your iOS and macOS views share the same class, you only need `iosClass`.
+- **Web** uses `webClass` to look up a registered factory in the `WebViewClassRegistry`.
+- You only need to specify the platforms your app targets.
 
 ### TypeScript
 
@@ -262,10 +278,23 @@ export class Slider extends Component<SliderViewModel> {
     <custom-view
       iosClass='SliderView'
       androidClass='com.snap.valdi.SliderView'
+      macosClass='MacOSSliderView'
+      webClass='slider-view'
       progress={this.viewModel.progress}
     />
   }
 }
+```
+
+If your macOS view uses the same class as iOS, omit `macosClass`:
+
+```tsx
+// macOS will automatically use 'SliderView' (the iosClass)
+<custom-view
+  iosClass='SliderView'
+  androidClass='com.snap.valdi.SliderView'
+  progress={this.viewModel.progress}
+/>
 ```
 
 ### Android
@@ -293,4 +322,96 @@ val view = MyFeature.create(runtime, null, null)
 MyFeature *view = [[MyFeature alloc] initWithRuntime:runtime
                                               viewModel:nil
                                        componentContext:nil];
+```
+
+### macOS
+
+macOS custom views work the same as iOS. If your macOS and iOS views share a class name (which is common since both use Objective-C), the `iosClass` fallthrough handles it automatically. Define a separate `macosClass` only when the macOS view is different:
+
+```objectivec
+// macOS-specific view (e.g., using NSPopUpButton instead of UIPickerView)
+@implementation MacOSSliderView {}
++ (void)bindAttributes:(SCValdiAttributesBindingContext *)bindingContext
+{
+  // Define macOS-specific attributes
+}
+@end
+```
+
+### Web
+
+Web custom views use a factory registration pattern. Register a factory function that creates a DOM element and optionally returns an attribute handler:
+
+```typescript
+// In your web polyglot module (e.g., web/src/MyWebViews.ts)
+
+interface AttributeHandler {
+  changeAttribute(name: string, value: unknown): void;
+}
+
+type ViewFactory = (container: HTMLElement) => AttributeHandler;
+
+function createSliderFactory(): ViewFactory {
+  return (container: HTMLElement): AttributeHandler => {
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    container.appendChild(slider);
+
+    return {
+      changeAttribute(name: string, value: unknown): void {
+        if (name === 'progress' && typeof value === 'number') {
+          slider.value = String(value * 100);
+        }
+      },
+    };
+  };
+}
+
+// Class names must match the webClass attributes in the corresponding TSX components.
+export const webPolyglotViews: Record<string, ViewFactory> = {
+  'slider-view': createSliderFactory(),
+};
+```
+
+The factory function receives a container DOM element and returns an object with a `changeAttribute(name, value)` method to receive attribute updates from the Valdi renderer.
+
+To register web factories, create a `ts_project` (never a `filegroup`) and add it as `web_deps` in your `BUILD.bazel`. The `ts_project` requires `transpiler = "tsc"` and a dedicated `web/tsconfig.json`:
+
+```python
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+
+ts_project(
+    name = "my_web_views",
+    srcs = glob([
+        "web/**/*.ts",
+        "src/**/*.d.ts",       # include if web code imports module type declarations
+    ], exclude = [
+        "web/**/*.d.ts",       # avoid TS5055 output collision with composite
+    ]),
+    allow_js = True,
+    composite = True,
+    transpiler = "tsc",
+    tsconfig = "web/tsconfig.json",
+)
+
+valdi_module(
+    name = "my_module",
+    # ...
+    web_deps = [":my_web_views"],
+)
+```
+
+The `web/tsconfig.json` should be standalone (not extending the module-level tsconfig):
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2016",
+    "module": "commonjs",
+    "strict": true,
+    "composite": true,
+    "allowJs": true,
+    "lib": ["dom", "ES2019"]
+  }
+}
 ```

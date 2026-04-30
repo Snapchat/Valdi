@@ -98,7 +98,7 @@ indirect enum ValdiModelPropertyType {
     case map(keyType: ValdiModelPropertyType, valueType: ValdiModelPropertyType)
     case any
     case void
-    case function(parameters: [ValdiModelProperty], returnType: ValdiModelPropertyType, isSingleCall: Bool, shouldCallOnWorkerThread: Bool)
+    case function(parameters: [ValdiModelProperty], returnType: ValdiModelPropertyType, isSingleCall: Bool, shouldCallOnWorkerThread: Bool, allowSyncCall: Bool)
     case object(ValdiNodeClassMapping)
     case genericTypeParameter(name: String)
     case genericObject(ValdiNodeClassMapping, typeArguments: [ValdiModelPropertyType])
@@ -150,7 +150,7 @@ indirect enum ValdiModelPropertyType {
             return false
         case .array(let elementType):
             return elementType.includesGenericType
-        case .function(let parameters, let returnType, _, _):
+        case .function(let parameters, let returnType, _, _, _):
             return parameters.contains(where: { $0.type.includesGenericType }) || returnType.includesGenericType
         case .genericTypeParameter:
             return true
@@ -316,6 +316,15 @@ struct IOSType: Codable {
         let filename = importHeaderFilename(kind: kind)
         if let importPrefix = importPrefix {
             if isImportPrefixOverridden {
+                if fromSingleFileCodegen {
+                    // If the import prefix is explicitly overridden (eg. with iosImportPrefix)
+                    // AND the type comes from a single_file_codegen module, then the final 
+                    // output type should map to an external native header.
+                    // For example, if iosImportPrefix is "valdi_core" and the type is "INavigator",
+                    // then output should be <valdi_core/INavigator.h>, not <valdi_core/SCCNavigationTypes.h>
+                    // Return the header with the type's name, instead of using the consolidated module header.
+                    return "<\(importPrefix)/\(name).h>"
+                }
                 return "<\(importPrefix)/\(filename)>"
             } else {
                 let suffix: String
@@ -350,7 +359,9 @@ struct IOSType: Codable {
     }
 }
 
-struct CPPNamespace: Codable {
+struct CPPNamespace: Codable, Hashable, Comparable {
+    static let rootNamespace = CPPNamespace(components: [])
+    
     let components: [String]
 
     func resolve(other: CPPNamespace) -> CPPNamespace {
@@ -366,25 +377,59 @@ struct CPPNamespace: Codable {
 
         return CPPNamespace(components: outComponents)
     }
+
+    var description: String {
+        return components.joined(separator: "::")
+    }
+
+    func appending(component: String) -> CPPNamespace {
+        var components = self.components
+        components.append(component)
+        return CPPNamespace(components: components)
+    }
+
+    static func < (lhs: CPPNamespace, rhs: CPPNamespace) -> Bool {
+        return lhs.description < rhs.description
+    }
 }
 
-struct CPPTypeDeclaration: Codable {
+struct CPPTypeDeclaration: Codable, Hashable {
+    enum SymbolType: Codable, Hashable, Comparable {
+        case `class`
+        case `enum`
+
+        var declarationString: String {
+            switch self {
+            case .class:
+                return "class"
+            case .enum:
+                return "enum class"
+            }
+        }
+    }
+
     let namespace: CPPNamespace
     let name: String
+    let symbolType: SymbolType
 
     init(namespace: CPPNamespace,
-         name: String) {
+         name: String,
+         symbolType: SymbolType) {
         self.namespace = namespace
         self.name = name
+        self.symbolType = symbolType
     }
 
     init(namespace: String,
-         name: String) {
+         name: String,
+         symbolType: SymbolType) {
         self.namespace = CPPNamespace(components: namespace.components(separatedBy: "::"))
         self.name = name
+        self.symbolType = symbolType
     }
 
-    init(name: String) {
+    init(name: String,
+         symbolType: SymbolType) {
         let components = name.components(separatedBy: "::")
         if components.count == 1 {
             self.namespace = CPPNamespace(components: [])
@@ -393,6 +438,7 @@ struct CPPTypeDeclaration: Codable {
             self.namespace = CPPNamespace(components: components[0..<(components.count - 1)].map { String($0) })
             self.name = String(components.last!)
         }
+        self.symbolType = symbolType
     }
 
     var fullTypeName: String {
@@ -410,24 +456,66 @@ struct CPPTypeDeclaration: Codable {
     }
 }
 
+struct CPPTypeReference: Hashable {
+    let declaration: CPPTypeDeclaration
+    let typeArguments: [String]?
+
+    var fullTypeName: String {
+        if let typeArguments {
+            return "\(declaration.fullTypeName)<\(typeArguments.joined(separator: ", "))>"
+        } else {
+            return declaration.fullTypeName
+        }
+    }
+
+    func resolveTypeName(inNamespace: CPPNamespace) -> String {
+        if let typeArguments {
+            return "\(declaration.resolveTypeName(inNamespace: inNamespace))<\(typeArguments.joined(separator: ","))>"
+        } else {
+            return declaration.resolveTypeName(inNamespace: inNamespace)
+        }
+    }
+}
+
 struct CPPType: Codable {
     let declaration: CPPTypeDeclaration
     let includePath: String
+    let includePrefix: String?
+
+    var includeDir: String? {
+        guard let index = self.includePath.lastIndex(of: "/") else {
+            return ""
+        }
+
+        return String(self.includePath[self.includePath.startIndex..<index])
+    }
 
     init(declaration: CPPTypeDeclaration,
-         moduleName: String,
+         module: CompilationItem.BundleInfo,
          includePrefix: String?) {
         self.declaration = declaration
-        self.includePath = CPPType.resolveIncludePath(moduleName: moduleName, prefix: includePrefix, typeName: declaration.name)
+        self.includePath = CPPType.resolveIncludePath(moduleName: module.name,
+                                                      prefix: includePrefix,
+                                                      typeName: declaration.name,
+                                                      singleFileCodegen: module.singleFileCodegen)
+        self.includePrefix = includePrefix
     }
 
     private static func resolveIncludePath(moduleName: String,
                                            prefix: String?,
-                                           typeName: String) -> String {
+                                           typeName: String,
+                                           singleFileCodegen: Bool) -> String {
+        let resolvedIncludePrefix: String
         if let prefix = prefix {
-            return "\(prefix)\(moduleName)/\(typeName).hpp"
+            resolvedIncludePrefix = "\(prefix)\(moduleName)"
         } else {
-            return "\(moduleName)/\(typeName).hpp"
+            resolvedIncludePrefix = moduleName
+        }
+
+        if singleFileCodegen {
+            return "\(resolvedIncludePrefix)/\(moduleName).hpp"
+        } else {
+            return "\(resolvedIncludePrefix)/\(typeName).hpp"
         }
     }
 }

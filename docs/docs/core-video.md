@@ -4,6 +4,9 @@
 
 Valdi supports video playback through the `<video>` element in TSX.
 
+> [!Note]
+> The `<video>` element is implemented as a **Custom View Class**. Because implementing a video player from scratch in TypeScript would be slow and impractical, Valdi leverages the native video player implementations on iOS and Android. TypeScript provides the configuration (source, volume, seek time), while the native platform handles the high-performance rendering and decoding.
+
 Unlike with images, Valdi does not support videos in the `res/` folder. We recommend you do not bundle videos for app size reasons.
 
 By default the tag supports `https` and local `file` objects.

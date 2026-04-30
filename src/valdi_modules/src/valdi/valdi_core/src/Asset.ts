@@ -1,5 +1,5 @@
 import { Asset } from 'valdi_tsx/src/Asset';
-import { BackendRenderingType, ValdiRuntime } from './ValdiRuntime';
+import { BackendRenderingType, LoadedAsset, LoadedAssetMetadata, ValdiRuntime } from './ValdiRuntime';
 import { Device } from './Device';
 
 export { Asset };
@@ -100,7 +100,7 @@ export function makePlatformSpecificAsset(
 /**
  * Callback called whenever an asset has finished loading.
  */
-export type AssetLoadObserver = (loadedAsset: unknown, error: string | undefined) => void;
+export type AssetLoadObserver = (loadedAsset: LoadedAsset | Uint8Array | undefined, error: string | undefined) => void;
 
 export interface AssetSubscription {
   unsubscribe(): void;
@@ -165,4 +165,11 @@ export function addAssetLoadObserver(
 ): AssetSubscription {
   const unsubscribe = runtime.addAssetLoadObserver(asset, onLoad, outputType, preferredWidth, preferredHeight);
   return { unsubscribe };
+}
+
+/**
+ * Returns the metadata reported by the LoadedAsset.
+ */
+export function getLoadedAssetMetadata(loadedAsset: LoadedAsset): LoadedAssetMetadata | undefined {
+  return runtime.getLoadedAssetMetadata(loadedAsset);
 }

@@ -8,23 +8,46 @@
 import Foundation
 
 class CppSchemaWriterListener: SchemaWriterListener {
-    func getClassName(nodeMapping: ValdiNodeClassMapping) throws -> String? {
-        guard let cppType = nodeMapping.cppType else {
-            if !nodeMapping.isGenerated {
-                return nil
-            }
+    private let generator: CppCodeGenerator?
+    private let referencedTypes: [String]
+    private let indexByTypeName: [String: Int]
 
-            throw CompilerError("No C++ type provided for type \(nodeMapping.tsType)")
+    init(generator: CppCodeGenerator?) {
+        self.generator = generator
+        self.referencedTypes = generator?.referenceTypeKeys ?? []
+
+        self.indexByTypeName = referencedTypes.enumerated().associate {
+            ($0.element, $0.offset)
+        }
+    }
+
+    func getClassName(nodeMapping: ValdiNodeClassMapping, typeArguments: [ValdiModelPropertyType]?) throws -> String? {
+        if !nodeMapping.isGenerated {
+            return nil
         }
 
-        return cppType.declaration.fullTypeName
+        let fullTypeName: String
+        if let typeArguments {
+            fullTypeName = CppCodeGenerator.makeCanonicalTypeKey(type: .genericObject(nodeMapping, typeArguments: typeArguments))
+        } else {
+            fullTypeName = CppCodeGenerator.makeCanonicalTypeKey(type: .object(nodeMapping))
+        }
+
+        guard let index = self.indexByTypeName[fullTypeName] else {
+            throw CompilerError("Could not resolve dependent declaration for type \(fullTypeName)")
+        }
+
+        return "[\(index)]"
     }
 }
 
 class CppSchemaWriter: SchemaWriter {
-    init(typeParameters: [ValdiTypeParameter]?) {
+    private let cppWriterListener: CppSchemaWriterListener
+
+    init(typeParameters: [ValdiTypeParameter]?, generator: CppCodeGenerator?) {
+        self.cppWriterListener = CppSchemaWriterListener(generator: generator)
         super.init(typeParameters: typeParameters,
-                   listener: CppSchemaWriterListener(),
+                   listener: cppWriterListener,
                    alwaysBoxFunctionParametersAndReturnValue: false,
                    boxIntEnums: false)
     }

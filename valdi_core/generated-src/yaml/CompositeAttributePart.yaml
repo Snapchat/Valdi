@@ -37,3 +37,8 @@ wasm:
 ts:
   typename: CompositeAttributePart
   module: './valdi_core'
+c:
+  typename: 'snap_valdi_core_CompositeAttributePart_ref'
+  translator: '::djinni::c_api::RecordTranslator<::snap::valdi_core::CompositeAttributePart>'
+  public_header: '"valdi_core/CompositeAttributePart.h"'
+  private_header: '"valdi_core/CompositeAttributePart.hpp"'

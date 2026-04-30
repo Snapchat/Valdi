@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <atomic>
+
 #include "valdi/runtime/RuntimeManager.hpp"
 #include "valdi_core/cpp/Utils/Bytes.hpp"
 #include "valdi_core/cpp/Utils/Lazy.hpp"
@@ -83,6 +85,7 @@ public:
     Logger& getLogger();
 
     float getPointScale() const;
+    void setPointScale(float pointScale);
 
     void setRequestManager(const Valdi::Shared<snap::valdi_core::HTTPRequestManager>& requestManager);
 
@@ -114,7 +117,7 @@ private:
     Valdi::Ref<ResourceLoader> _resourceLoader;
     Valdi::Ref<Valdi::IDiskCache> _diskCache;
     Valdi::StringBox _applicationId;
-    float _pointScale;
+    std::atomic<float> _pointScale;
 
     Valdi::Ref<Valdi::RuntimeManager> _runtimeManager;
 

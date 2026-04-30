@@ -12,9 +12,13 @@
 #include "valdi/runtime/JavaScript/JavaScriptTaskScheduler.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptUtils.hpp"
 #include "valdi/runtime/Utils/MainThreadManager.hpp"
+#include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 #include "valdi_core/cpp/Utils/ResolvablePromise.hpp"
 #include "valdi_core/cpp/Utils/SmallVector.hpp"
 #include "valdi_core/cpp/Utils/Trace.hpp"
+#include "valdi_core/cpp/Utils/Value.hpp"
+
+#include "utils/debugging/Assert.hpp"
 
 #include <future>
 
@@ -30,6 +34,7 @@ ValueFunctionWithJSValue::ValueFunctionWithJSValue(IJavaScriptContext& context,
     : JSValueRefHolder(context, value, referenceInfo, exceptionTracker, true),
       _callSequence(0),
       _mainThreadManager(context.getListener() != nullptr ? context.getListener()->getMainThreadManager() : nullptr),
+      _creationContext(weakRef(Context::current())),
       _isSingleCall(isSingleCall) {}
 
 // See explanation in JSValueRefHolder.cpp
@@ -49,6 +54,10 @@ bool ValueFunctionWithJSValue::prefersSyncCalls() const {
 
 void ValueFunctionWithJSValue::setShouldBlockMainThread(bool shouldBlockMainThread) {
     _shouldBlockMainThread = shouldBlockMainThread;
+}
+
+void ValueFunctionWithJSValue::setAllowSyncCall(bool allowSyncCall) {
+    _allowSyncCall = allowSyncCall;
 }
 
 bool ValueFunctionWithJSValue::isSingleCall() const {
@@ -75,6 +84,13 @@ bool ValueFunctionWithJSValue::shouldCallSync(ValueFunctionFlags callFlags,
     }
 
     return (callFlags & ValueFunctionFlagsCallSync) != ValueFunctionFlagsNone || _shouldBlockMainThread;
+}
+
+bool ValueFunctionWithJSValue::isSyncCallAllowed(ValueFunctionFlags flags) const {
+    if ((flags & ValueFunctionFlagsCallSync) == ValueFunctionFlagsNone && !_shouldBlockMainThread) {
+        return true;
+    }
+    return _allowSyncCall;
 }
 
 Value ValueFunctionWithJSValue::doJsCall(JavaScriptEntryParameters& jsEntry,
@@ -196,8 +212,23 @@ Value ValueFunctionWithJSValue::operator()(const ValueFunctionCallContext& callC
     if (taskScheduler == nullptr) {
         return Value::undefined();
     }
-    if (_ignoreIfValdiContextIsDestroyed && getContext()->isDestroyed()) {
-        return Value::undefined();
+    if (_ignoreIfValdiContextIsDestroyed) {
+        if (Context::isDestroyedContextFixEnabled()) {
+            auto ctx = _creationContext.lock();
+            if (ctx == nullptr || ctx->isDestroyed()) {
+                VALDI_WARN(getContext()->getLogger(),
+                           "Function call skipped: creation context {} is destroyed (function: {})",
+                           ctx != nullptr ? std::to_string(ctx->getContextId()) : "expired",
+                           getReferenceInfo().toString());
+                return Value::undefined();
+            }
+        } else if (getContext()->isDestroyed()) {
+            VALDI_WARN(getContext()->getLogger(),
+                       "Function call skipped: ValdiContext {} is destroyed (function: {})",
+                       getContext()->getContextId(),
+                       getReferenceInfo().toString());
+            return Value::undefined();
+        }
     }
 
     auto flags = callContext.getFlags();
@@ -208,6 +239,17 @@ Value ValueFunctionWithJSValue::operator()(const ValueFunctionCallContext& callC
     // later. In the mean time this allows native to return values to JS which is very useful.
 
     if (shouldCallSync(flags, *taskScheduler)) {
+        // Only assert on main thread: sync JS calls from main thread can cause ANR; worker threads are less
+        // problematic.
+        if (_mainThreadManager != nullptr && _mainThreadManager->currentThreadIsMainThread()) {
+            if (!isSyncCallAllowed(flags)) {
+                SC_ASSERT(
+                    false &&
+                    "Sync JS call is not allowed: this module has async_strict_mode enabled and the function is not "
+                    "annotated with @AllowSyncCall. Consider making the function return Promise or void, or add "
+                    "@AllowSyncCall to allow blocking the JS thread.");
+            }
+        }
         return callSync(flags, taskScheduler, callContext);
     } else if ((flags & ValueFunctionFlagsAllowThrottling) != ValueFunctionFlagsNone) {
         auto callId = ++_callSequence;
@@ -246,6 +288,15 @@ Value ValueFunctionWithJSValue::callPromise(const Ref<JavaScriptTaskScheduler>& 
             Value result = self->doJsCall(jsEntry, parameters.data(), parameters.size(), nullptr, false);
             if (!jsEntry.exceptionTracker) {
                 promise->fulfill(jsEntry.exceptionTracker.extractError());
+                return;
+            }
+
+            // When an interruptible callback is skipped (Valdi context destroyed), doJsCall returns
+            // undefined. Fulfilling the promise with undefined would cause native unmarshalling to
+            // fail (e.g. expected NativeSnapDoc). Reject the promise so the caller can handle it.
+            if (result.getType() == ValueType::Undefined && self->_ignoreIfValdiContextIsDestroyed &&
+                self->getContext() != nullptr && self->getContext()->isDestroyed()) {
+                promise->fulfill(Result<Value>(Error("Valdi context destroyed")));
                 return;
             }
 

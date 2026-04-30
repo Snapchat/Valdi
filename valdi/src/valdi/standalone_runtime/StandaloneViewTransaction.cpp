@@ -25,6 +25,11 @@ void StandaloneViewTransaction::didUpdateRootView(const Ref<View>& view, bool la
     if (layoutDidBecomeDirty) {
         StandaloneView::unwrap(view)->incrementLayoutDidBecomeDirty();
     }
+
+    auto callbacks = std::move(_pendingOnNextDrawCallbacks);
+    for (auto& callback : callbacks) {
+        callback();
+    }
 }
 
 void StandaloneViewTransaction::moveViewToTree(const Ref<View>& view, ViewNodeTree* viewNodeTree, ViewNode* viewNode) {
@@ -97,6 +102,10 @@ void StandaloneViewTransaction::snapshotView(const Ref<View>& view, Function<voi
 void StandaloneViewTransaction::flushAnimator(const Ref<Animator>& animator, const Value& completionCallback) {}
 
 void StandaloneViewTransaction::cancelAnimator(const Ref<Animator>& animator) {}
+
+void StandaloneViewTransaction::scheduleOnNextDraw(const Ref<View>& rootView, DispatchFunction callback) {
+    _pendingOnNextDrawCallbacks.emplace_back(std::move(callback));
+}
 
 void StandaloneViewTransaction::executeInTransactionThread(DispatchFunction executeFn) {
     executeFn();

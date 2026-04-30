@@ -8,6 +8,7 @@ import { createReusableCallback } from 'valdi_core/src/utils/Callback';
 import { MicroBenchTest } from './MicroBenchTest';
 import { MarshallingTest } from './MarshallingTest';
 import { RenderTest } from './RenderTest';
+import { DrawFrameBenchmark } from './DrawFrameBenchmark';
 import { ProtoImportTest } from './ProtoImportTest';
 
 // Bechmarks
@@ -30,6 +31,7 @@ export class App extends Component {
     this.renderButton('MicroBench', MicroBenchTest, navigationController);
     this.renderButton('Marshalling', MarshallingTest, navigationController);
     this.renderButton('Rendering', RenderTest, navigationController);
+    this.renderButton('DrawFrame', DrawFrameBenchmark, navigationController);
     this.renderButton('Protobuf Import', ProtoImportTest, navigationController);
   }
 

@@ -26,7 +26,7 @@ class DescriptorDatabaseBuilder;
  */
 class DescriptorDatabase : public google::protobuf::DescriptorDatabase {
 public:
-    explicit DescriptorDatabase(bool skipProtoIndex);
+    DescriptorDatabase();
 
     bool addFileDescriptorSet(const BytesView& data, ExceptionTracker& exceptionTracker);
 
@@ -75,7 +75,6 @@ private:
     FlatMap<std::string, size_t> _packageIndexByName;
     bool _prebuiltIndexLoaded = false;
     std::shared_ptr<DescriptorDatabaseBuilder> _builder;
-    const bool _skipProtoIndex;
 
     void finaliseIndex();
     bool copyProtoOfFile(size_t fileIndex, google::protobuf::FileDescriptorProto* output);

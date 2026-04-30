@@ -48,12 +48,18 @@ class ValueFunctionSchemaAttributes {
 public:
     ValueFunctionSchemaAttributes();
     ValueFunctionSchemaAttributes(bool isMethod, bool isSingleCall, bool shouldDispatchToWorkerThread);
+    ValueFunctionSchemaAttributes(bool isMethod,
+                                  bool isSingleCall,
+                                  bool shouldDispatchToWorkerThread,
+                                  bool allowSyncCall);
 
     bool empty() const;
 
     bool isMethod() const;
     bool isSingleCall() const;
     bool shouldDispatchToWorkerThread() const;
+    /** True if sync call is allowed (either module is not async-strict, or function has @AllowSyncCall). */
+    bool allowSyncCall() const;
 
     bool operator==(const ValueFunctionSchemaAttributes& other) const;
     bool operator!=(const ValueFunctionSchemaAttributes& other) const;
@@ -62,6 +68,8 @@ private:
     bool _isMethod = false;
     bool _isSingleCall = false;
     bool _shouldDispatchToWorkerThread = false;
+    /** Default true to limit impact on existing code; set false only when async_strict_mode and no @AllowSyncCall. */
+    bool _allowSyncCall = true;
 };
 
 /**

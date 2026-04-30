@@ -121,7 +121,19 @@ class ImageResourcesProcessor: CompilationProcessor {
     }
 
     private func shouldInclude(variantSpecs: ImageVariantSpecs) -> Bool {
-        guard let platform = variantSpecs.platform, let imageVariantsFilter else {
+        guard let platform = variantSpecs.platform else {
+            return true
+        }
+
+        // Gate on which platforms are enabled before consulting the variants filter.
+        switch platform {
+        case .android where !compilerConfig.outputForAndroid: return false
+        case .ios where !compilerConfig.outputForIOS: return false
+        case .web where !compilerConfig.outputForWeb: return false
+        default: break
+        }
+
+        guard let imageVariantsFilter else {
             return true
         }
 
@@ -130,7 +142,12 @@ class ImageResourcesProcessor: CompilationProcessor {
 
     private func findMissingVariants(currentVariants: [ImageAssetVariant]) -> [ImageVariantSpecs] {
         let existingVariants = Set(currentVariants.map { $0.variantSpecs.identifier })
-        return ImageVariantResolver.allExportedVariantSpecs.filter { shouldInclude(variantSpecs: $0) && !existingVariants.contains($0.identifier) }
+        let targetSpecs = ImageVariantResolver.exportedVariantSpecs(
+            android: compilerConfig.outputForAndroid,
+            ios: compilerConfig.outputForIOS,
+            web: compilerConfig.outputForWeb
+        )
+        return targetSpecs.filter { shouldInclude(variantSpecs: $0) && !existingVariants.contains($0.identifier) }
     }
 
     private func makeImageResourceItem(fromCompilationItem: CompilationItem, imageAsset: ImageAsset) -> [CompilationItem] {

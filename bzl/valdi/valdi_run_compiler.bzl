@@ -77,7 +77,7 @@ def resolve_compiler_executable(ctx, toolchain, include_tools):
 
     return (toolchain.compiler.files.to_list()[0], depset(transitive = inputs_depsets), manifests)
 
-def run_valdi_compiler(ctx, args, outputs, inputs, mnemonic, progress_message, use_worker, include_tools = True):
+def run_valdi_compiler(ctx, args, outputs, inputs, mnemonic, progress_message, use_worker, include_tools = True, worker_protocol = "proto"):
     """ Run the Valdi compiler with the provided arguments.
     This will resolve the Valdi toolchain with the compiler executable
     and emits outputs.
@@ -111,16 +111,21 @@ def run_valdi_compiler(ctx, args, outputs, inputs, mnemonic, progress_message, u
     if "VALDI_COMPILER_GCP_SERVICE_ACCOUNT" in ctx.configuration.default_shell_env:
         env["VALDI_COMPILER_GCP_SERVICE_ACCOUNT"] = ctx.configuration.default_shell_env["VALDI_COMPILER_GCP_SERVICE_ACCOUNT"]
 
+    action_arguments = [args]
+    if use_worker:
+        action_arguments = ["--persistent_worker_protocol=" + worker_protocol, args]
+
     ctx.actions.run(
         outputs = outputs,
         inputs = inputs,
         executable = executable,
         tools = tools,
         input_manifests = input_manifests,
-        arguments = [args],
+        arguments = action_arguments,
         env = env,
+        use_default_shell_env = True,
         toolchain = VALDI_TOOLCHAIN_TYPE,
         mnemonic = mnemonic,
         progress_message = progress_message,
-        execution_requirements = {"supports-workers": "1" if use_worker else "0", "requires-worker-protocol": "json"},
+        execution_requirements = {"supports-workers": "1" if use_worker else "0", "requires-worker-protocol": worker_protocol},
     )

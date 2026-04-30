@@ -28,12 +28,22 @@ ios:
 
 android:
   class_path: com.snap.modules
-  js_bytecode_format: quickjs
   output:
     base: {ANDROID_OUTPUT_BASE}
     debug_path: debug
     release_path: release
     metadata_path: '.'
+
+cpp:
+  codegen_enabled: true
+  default_class_prefix: 'snap::valdi_modules::'
+  import_path_prefix: 'valdi_modules/'
+  output:
+    base: cpp
+    debug_path: debug
+    release_path: release
+    metadata_path: '.'
+
 
 compiler_companion_binary: {COMPANION_BINARY}
 

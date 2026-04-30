@@ -10,6 +10,8 @@
 #include "valdi/runtime/Interfaces/IViewTransaction.hpp"
 #include "valdi/runtime/Views/View.hpp"
 
+#include <vector>
+
 namespace ValdiAndroid {
 
 class DeferredViewOperations;
@@ -69,13 +71,21 @@ public:
 
     void cancelAnimator(const Valdi::Ref<Valdi::Animator>& animator) override;
 
+    void scheduleOnNextDraw(const Valdi::Ref<Valdi::View>& rootView, Valdi::DispatchFunction callback) override;
+
     void executeInTransactionThread(Valdi::DispatchFunction executeFn) override;
 
     DeferredViewOperations& getViewOperations();
 
 private:
+    struct PendingOnNextDrawCallback {
+        Valdi::Ref<Valdi::View> rootView;
+        int64_t callbackHandle = 0;
+    };
+
     ViewManager& _viewManager;
     Valdi::Ref<DeferredViewOperations> _viewOperations;
+    std::vector<PendingOnNextDrawCallback> _pendingOnNextDrawCallbacks;
 };
 
 } // namespace ValdiAndroid

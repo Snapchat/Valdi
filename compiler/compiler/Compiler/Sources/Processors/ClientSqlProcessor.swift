@@ -129,6 +129,16 @@ final class ClientSqlProcessor: CompilationProcessor {
         // Run the external compiler
         let compilerPath = try projectConfig.ensureClientSqlCompiler()
 
+        // Clear any stale files from prior runs so the post-compile enumerator
+        // only picks up files emitted by this invocation. The directory path is
+        // Valdi-controlled (generatedTsDirectoryURL / <bundle> / src/sqlgen),
+        // not user-supplied, so a scoped wipe is safe here.
+        if let existing = try? FileManager.default.contentsOfDirectory(at: outputDirectory, includingPropertiesForKeys: nil) {
+            for url in existing {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+
         let args = ["-s", sqlDir,
                     "-p", pkg,
                     "-c", clazz,

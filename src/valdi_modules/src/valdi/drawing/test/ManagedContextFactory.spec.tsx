@@ -23,7 +23,7 @@ describe('ManagedContextFactory', () => {
     expect(context.renderer.getRootVirtualNode()).toBeUndefined();
   });
 
-  it('can layout', () => {
+  it('can layout', async () => {
     const context = createManagedContext();
 
     const roofRef = new ElementRef<Layout>();
@@ -34,7 +34,7 @@ describe('ManagedContextFactory', () => {
       </layout>;
     });
 
-    context.layout(100, 100, false);
+    await context.layout(100, 100, false);
 
     expect(roofRef.single()?.frame).toEqual({
       width: 100,
@@ -53,7 +53,7 @@ describe('ManagedContextFactory', () => {
     context.dispose();
   });
 
-  it('can measure', () => {
+  it('can measure', async () => {
     const context = createManagedContext();
     context.render(() => {
       <layout padding={20} alignItems="stretch" alignContent="stretch">
@@ -61,12 +61,12 @@ describe('ManagedContextFactory', () => {
       </layout>;
     });
 
-    const result = context.measure(1000, MeasureMode.AT_MOST, 1000, MeasureMode.AT_MOST, false);
+    const result = await context.measure(1000, MeasureMode.AT_MOST, 1000, MeasureMode.AT_MOST, false);
 
     expect(result).toEqual({ width: 80, height: 70 });
   });
 
-  it('can draw', () => {
+  it('can draw', async () => {
     const context = createManagedContext();
     context.render(() => {
       <view width={2} height={2} flexDirection="column">
@@ -81,9 +81,9 @@ describe('ManagedContextFactory', () => {
       </view>;
     });
 
-    context.layout(2, 2, false);
+    await context.layout(2, 2, false);
 
-    const frame = context.draw();
+    const { frame } = await context.draw();
     const bitmap = createBitmap({
       width: 2,
       height: 2,
@@ -126,7 +126,7 @@ describe('ManagedContextFactory', () => {
       </view>;
     });
 
-    context.layout(100, 100, false);
+    await context.layout(100, 100, false);
 
     const result = await context.onAllAssetsLoaded();
     expect(result.loadedAssetsCount).toBe(1);
@@ -141,7 +141,7 @@ describe('ManagedContextFactory', () => {
         <image width={'100%'} height={'100%'} src={image} />
       </view>;
     });
-    context.layout(100, 100, false);
+    await context.layout(100, 100, false);
 
     const result = await context.onAllAssetsLoaded();
     expect(result.loadedAssetsCount).toBe(1);

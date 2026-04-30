@@ -3,16 +3,26 @@ package com.snap.valdi.preload
 import com.snap.valdi.ValdiRuntimeManager
 import com.snap.valdi.IValdiRuntime
 import com.snap.valdi.exceptions.ValdiException
+import com.snap.valdi.schema.ValdiClass
+import com.snap.valdi.schema.ValdiFunctionClass
+import com.snap.valdi.schema.ValdiInterface
 import com.snap.valdi.schema.ValdiValueMarshallerRegistry
+import com.snap.valdi.logger.Logger
 import com.snap.valdi.utils.ValdiMarshallable
 import com.snap.valdi.utils.ValdiMarshaller
+import com.snap.valdi.utils.trace
+import com.snap.valdi.utils.warn
 import com.snap.valdi.views.ValdiGeneratedRootView
+import kotlin.reflect.KClass
 
 /**
  * The Preloader provides some APIs to preload modules within the Valdi Runtime
  * so that they can evaluate faster later on.
  */
-class ValdiPreloader(private val runtime: IValdiRuntime) {
+class ValdiPreloader(
+    private val runtime: IValdiRuntime,
+    private val logger: Logger? = null,
+) {
 
     /**
     Preload the module given as an absolute path (e.g. 'valdi_core/src/Renderer').
@@ -55,7 +65,63 @@ class ValdiPreloader(private val runtime: IValdiRuntime) {
         }
     }
 
+    /**
+     * Preload the ValueMarshallers for the given root classes and all their transitive type
+     * references in a single worker thread task. This walks the type graph via
+     * @ValdiClass / @ValdiInterface / @ValdiFunctionClass annotation typeReferences and eagerly
+     * registers every discovered marshallable class so that setupRootComponent finds them
+     * already cached.
+     */
+    fun preloadMarshallerTransitive(vararg rootClasses: Class<*>) {
+        runtime.getManager { manager ->
+            manager.enqueueWorkerTask(Runnable {
+                trace({ "Valdi.preloadMarshallerTransitive" }) {
+                    val visited = mutableSetOf<String>()
+                    val queue = ArrayDeque<Class<*>>()
+                    rootClasses.forEach { queue.add(it) }
+
+                    ValdiMarshaller.use { marshaller ->
+                        while (queue.isNotEmpty()) {
+                            val cls = queue.removeAt(0)
+                            if (cls.name in visited) continue
+                            visited.add(cls.name)
+
+                            if (!ValdiMarshallable::class.java.isAssignableFrom(cls)) continue
+
+                            try {
+                                ValdiValueMarshallerRegistry.shared
+                                    .setActiveSchemaOfClassToMarshaller(cls, marshaller)
+                            } catch (e: Exception) {
+                                // Registration failed; continue traversal to discover
+                                // transitive type references regardless.
+                                logger?.warn("preloadMarshallerTransitive: failed to register ${cls.name}: ${e.message}")
+                            }
+
+                            getAnnotationTypeReferences(cls).forEach { refClass ->
+                                if (refClass.java.name !in visited) {
+                                    queue.add(refClass.java)
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+        }
+    }
+
     companion object {
+
+        /**
+         * Read the typeReferences array from whichever Valdi annotation is present on [cls].
+         * Returns an empty array if the class has no recognised Valdi annotation.
+         */
+        private fun getAnnotationTypeReferences(cls: Class<*>): Array<out KClass<*>> {
+            return cls.getAnnotation(ValdiClass::class.java)?.typeReferences
+                ?: cls.getAnnotation(ValdiInterface::class.java)?.typeReferences
+                ?: cls.getAnnotation(ValdiFunctionClass::class.java)?.typeReferences
+                ?: emptyArray()
+        }
+
         /**
          * Preload the given root view class into the given runtime.
          * The JS modules that this module is using will be preloaded with a depth of 1,

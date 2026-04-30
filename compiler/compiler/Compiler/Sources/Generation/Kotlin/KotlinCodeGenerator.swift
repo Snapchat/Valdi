@@ -93,7 +93,7 @@ private class KotlinSchemaWriterListener: SchemaWriterListener {
         self.emittedTypeReferences = emittedTypeReferences
     }
 
-    func getClassName(nodeMapping: ValdiNodeClassMapping) throws -> String? {
+    func getClassName(nodeMapping: ValdiNodeClassMapping, typeArguments: [ValdiModelPropertyType]?) throws -> String? {
         guard let androidClassName = nodeMapping.androidClassName else {
             throw CompilerError("No Android type declared")
         }
@@ -355,7 +355,7 @@ final class KotlinCodeGenerator: CodeWriter {
         case .void:
             let typeName = "Unit"
             return KotlinTypeParser(typeName: typeName)
-        case .function(let parameters, let returnType, _, _):
+        case .function(let parameters, let returnType, _, _, _):
             let functionTypeParser = try getFunctionTypeParser(returnType: returnType, parameters: parameters, nameAllocator: nameAllocator)
 
             let typeName = functionTypeParser.lambdaTypeName

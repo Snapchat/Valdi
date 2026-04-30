@@ -77,7 +77,8 @@ public:
             bool updateHandlerSynchronously,
             bool deferRender,
             Runtime* runtime,
-            const Ref<ILogger>& logger);
+            const Ref<ILogger>& logger,
+            const StringBox& scopeName = StringBox());
     ~Context() override;
 
     void postInit();
@@ -144,6 +145,9 @@ public:
     static Context* currentRoot();
     static void setCurrent(const Ref<Context>& currentContext);
 
+    static bool isDestroyedContextFixEnabled();
+    static void setDestroyedContextFixEnabled(bool enabled);
+
 protected:
     void willLog(LogType type, const std::string& message) override;
 
@@ -178,6 +182,8 @@ private:
     bool _updateHandlerSynchronously = false;
     bool _deferRender = false;
     std::atomic_int _disposableRefCount = 0;
+
+    static std::atomic<bool> s_destroyedContextFixEnabled;
 
     ContextUpdateId lockFreeEnqueueUpdate();
     void markUpdateCompleted(ContextUpdateId updateId, std::unique_lock<Mutex>& guard);

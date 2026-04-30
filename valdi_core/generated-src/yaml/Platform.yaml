@@ -37,3 +37,8 @@ wasm:
 ts:
   typename: Platform
   module: './valdi_core'
+c:
+  typename: 'snap_valdi_core_Platform'
+  translator: '::djinni::c_api::EnumTranslator<::snap::valdi_core::Platform, snap_valdi_core_Platform>'
+  public_header: '"valdi_core/Platform.h"'
+  private_header: '"valdi_core/Platform.hpp"'

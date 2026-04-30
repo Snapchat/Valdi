@@ -56,7 +56,8 @@ static Valdi::Ref<BridgeLayer> getBridgeLayer(const Valdi::Ref<Valdi::View>& vie
 }
 
 static Valdi::Ref<Valdi::View> getBridgeView(const Valdi::Ref<Valdi::View>& view) {
-    return getBridgeLayer(view)->getView();
+    auto layer = getBridgeLayer(view);
+    return layer != nullptr ? layer->getView() : Valdi::Ref<Valdi::View>();
 }
 
 static Valdi::Ref<Valdi::View> makeBridgeLayer(const Valdi::Ref<Resources>& resources,
@@ -80,6 +81,12 @@ public:
                                        const Valdi::Value& value,
                                        const Valdi::Ref<Valdi::Animator>& /*animator*/) override {
         auto layer = getBridgeLayer(view);
+        if (layer == nullptr) {
+            return Valdi::Void();
+        }
+        if (_sourceDelegate == nullptr) {
+            return Valdi::Void();
+        }
         auto result = _sourceDelegate->onApply(
             viewTransactionScope.withViewManager(_hostViewManager), viewNode, layer->getView(), name, value, nullptr);
 
@@ -94,7 +101,12 @@ public:
                  const Valdi::StringBox& name,
                  const Valdi::Ref<Valdi::Animator>& /*animator*/) override {
         auto layer = getBridgeLayer(view);
-
+        if (layer == nullptr) {
+            return;
+        }
+        if (_sourceDelegate == nullptr) {
+            return;
+        }
         _sourceDelegate->onReset(
             viewTransactionScope.withViewManager(_hostViewManager), viewNode, layer->getView(), name, nullptr);
 
@@ -120,7 +132,11 @@ public:
                             Valdi::MeasureMode widthMode,
                             float height,
                             Valdi::MeasureMode heightMode) override {
-        return _sourceMeasureDelegate->measureView(getBridgeView(view), width, widthMode, height, heightMode);
+        auto bridgeView = getBridgeView(view);
+        if (bridgeView == nullptr) {
+            return Valdi::Size(0, 0);
+        }
+        return _sourceMeasureDelegate->measureView(bridgeView, width, widthMode, height, heightMode);
     }
 
     Valdi::Ref<Valdi::View> createPlaceholderView() override {
@@ -330,8 +346,6 @@ SnapDrawingViewManager::SnapDrawingViewManager(const Ref<Resources>& resources, 
     auto imageViewClass = Valdi::makeShared<ImageLayerClass>(_resources, layerClass);
     registerLayerClass(imageViewClass);
     registerLayerClass(Valdi::makeShared<AnimatedImageLayerClass>(_resources, layerClass));
-
-    VALDI_DEBUG(_logger, "SnapDrawing Layer alloc size is {} bytes", sizeof(Layer));
 }
 
 SnapDrawingViewManager::~SnapDrawingViewManager() = default;
@@ -341,6 +355,8 @@ Valdi::StringBox SnapDrawingViewManager::getClassName(const ILayerClass& layerCl
         case Valdi::PlatformTypeAndroid:
             return STRING_LITERAL(layerClass.getAndroidClassName());
         case Valdi::PlatformTypeIOS:
+        case Valdi::PlatformTypeMacOS:
+        case Valdi::PlatformTypeWeb:
             return STRING_LITERAL(layerClass.getIOSClassName());
     }
 }
@@ -361,9 +377,13 @@ Valdi::Ref<Valdi::ViewFactory> SnapDrawingViewManager::createViewFactory(
     const Valdi::StringBox& className, const Valdi::Ref<Valdi::BoundAttributes>& boundAttributes) {
     if (shouldBridgeLayerClass(className)) {
         auto hostViewFactory = _hostViewManager->createViewFactory(className, nullptr);
-        return Valdi::makeShared<BridgeLayerFactory>(
-            _resources, hostViewFactory, *this, *_hostViewManager, boundAttributes);
-    } else {
+        if (hostViewFactory.get() != nullptr) {
+            return Valdi::makeShared<BridgeLayerFactory>(
+                _resources, hostViewFactory, *this, *_hostViewManager, boundAttributes);
+        }
+        // Host doesn't actually provide this class (e.g. "Layout" on macOS); use layer fallback
+    }
+    {
         auto layerClass = getLayerClass(className);
         if (layerClass == nullptr) {
             VALDI_ERROR(_logger,
@@ -509,7 +529,6 @@ bool SnapDrawingViewManager::shouldBridgeLayerClass(const Valdi::StringBox& laye
     if (_hostViewManager == nullptr) {
         return false;
     }
-
     return _hostViewManager->supportsClassNameNatively(layerClassName);
 }
 
@@ -551,9 +570,8 @@ Valdi::Value SnapDrawingViewManager::createViewNodeWrapper(const Valdi::Ref<Vald
 
 Valdi::Ref<Valdi::IViewTransaction> SnapDrawingViewManager::createViewTransaction(
     const Valdi::Ref<Valdi::MainThreadManager>& mainThreadManager, bool shouldDefer) {
-    if (!shouldDefer || mainThreadManager->currentThreadIsMainThread()) {
-        static auto* kInstance = new SnapDrawingViewTransaction();
-        return Valdi::Ref(kInstance);
+    if (!shouldDefer || mainThreadManager == nullptr || mainThreadManager->currentThreadIsMainThread()) {
+        return Valdi::makeShared<SnapDrawingViewTransaction>();
     } else {
         return Valdi::makeShared<Valdi::DeferredViewTransaction>(*this, *mainThreadManager);
     }

@@ -280,10 +280,9 @@ Ref<DaemonClient> DebuggerService::addDaemonClient(const Ref<ITCPConnection>& tc
 
 void DebuggerService::daemonClientDidDisconnect(DaemonClient* daemonClient, const Error& error) {
     bool erased = false;
+    auto ref = strongRef(daemonClient);
     {
         std::lock_guard<Mutex> guard(_mutex);
-
-        auto ref = strongRef(daemonClient);
 
         erased = Valdi::eraseFirstIf(_clients, [=](const auto& client) { return client.get() == daemonClient; });
 

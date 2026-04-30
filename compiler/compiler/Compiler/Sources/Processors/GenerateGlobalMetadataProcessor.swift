@@ -50,9 +50,20 @@ final class GenerateGlobalMetadataProcessor: CompilationProcessor {
         let existingAllModulesAndDeps: [String: AllModulesAndDepsRecord]
         if shouldMergeWithExistingFile && FileManager.default.fileExists(atPath: outputURL.path) {
             do {
-                let existingContents = String(data: try Data(contentsOf: outputURL), encoding: .utf8)
-                guard let existingJson = existingContents?.dropFirst("ALL_MODULES_AND_DEPS = ".count).data(using: .utf8) else {
-                    throw CompilerError("Unexpected contents in existing ALL_MODULES_AND_DEPS.bzl")
+                let existingContents = String(data: try Data(contentsOf: outputURL), encoding: .utf8) ?? ""
+                // Find the _GENERATED_MODULES_AND_DEPS dict in the file
+                let marker = "_GENERATED_MODULES_AND_DEPS = "
+                guard let markerRange = existingContents.range(of: marker) else {
+                    throw CompilerError("Unexpected contents in existing ALL_MODULES_AND_DEPS.bzl - missing _GENERATED_MODULES_AND_DEPS")
+                }
+                let afterMarker = existingContents[markerRange.upperBound...]
+                // Find the closing brace that ends the dict (before the merge line)
+                guard let endRange = afterMarker.range(of: "\n\nALL_MODULES_AND_DEPS = ") else {
+                    throw CompilerError("Unexpected contents in existing ALL_MODULES_AND_DEPS.bzl - missing merge statement")
+                }
+                let jsonString = String(afterMarker[..<endRange.lowerBound])
+                guard let existingJson = jsonString.data(using: .utf8) else {
+                    throw CompilerError("Failed to convert existing ALL_MODULES_AND_DEPS.bzl content to data")
                 }
                 existingAllModulesAndDeps = try .fromJSON(existingJson, keyDecodingStrategy: .convertFromSnakeCase)
             } catch {
@@ -85,7 +96,11 @@ final class GenerateGlobalMetadataProcessor: CompilationProcessor {
         let allModulesAndDepsString = String(data: allModulesAndDepsData, encoding: .utf8) ?? "{}"
 
         let fileContents = """
-ALL_MODULES_AND_DEPS = \(allModulesAndDepsString)
+load(":MANUAL_MODULES_AND_DEPS.bzl", "MANUAL_MODULES_AND_DEPS")
+
+_GENERATED_MODULES_AND_DEPS = \(allModulesAndDepsString)
+
+ALL_MODULES_AND_DEPS = _GENERATED_MODULES_AND_DEPS | MANUAL_MODULES_AND_DEPS
 """
 
         let file = File.data(try fileContents.utf8Data())

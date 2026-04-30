@@ -18,11 +18,13 @@ namespace Valdi {
 DefaultAttributes::DefaultAttributes(YGConfig* yogaConfig, AttributeIds& attributeIds, float pointScale)
     : _attributeIds(attributeIds),
       _yogaAttributes(Valdi::makeShared<YogaAttributes>(yogaConfig, attributeIds, pointScale)),
-      _accessibilityAttributes(Valdi::makeShared<AccessibilityAttributes>(attributeIds)) {}
+      _accessibilityAttributes(Valdi::makeShared<AccessibilityAttributes>(attributeIds)),
+      _scrollAnchorAttributes(Valdi::makeShared<ScrollAnchorAttributes>(attributeIds)) {}
 
 void DefaultAttributes::bind(AttributeHandlerById& attributes) {
     _yogaAttributes->bind(attributes);
     _accessibilityAttributes->bind(attributes);
+    _scrollAnchorAttributes->bind(attributes);
 
     AttributesBinderHelper binder(_attributeIds, attributes);
 
@@ -94,6 +96,26 @@ void DefaultAttributes::bind(AttributeHandlerById& attributes) {
         },
         [](ViewTransactionScope& viewTransactionScope, auto& viewNode) {
             viewNode.setViewClassNameForPlatform(viewTransactionScope, StringBox(), PlatformTypeAndroid);
+        });
+
+    binder.bind(
+        "macosClass",
+        [](ViewTransactionScope& viewTransactionScope, auto& viewNode, const Value& value) -> Result<Void> {
+            viewNode.setViewClassNameForPlatform(viewTransactionScope, value.toStringBox(), PlatformTypeMacOS);
+            return Void();
+        },
+        [](ViewTransactionScope& viewTransactionScope, auto& viewNode) {
+            viewNode.setViewClassNameForPlatform(viewTransactionScope, StringBox(), PlatformTypeMacOS);
+        });
+
+    binder.bind(
+        "webClass",
+        [](ViewTransactionScope& viewTransactionScope, auto& viewNode, const Value& value) -> Result<Void> {
+            viewNode.setViewClassNameForPlatform(viewTransactionScope, value.toStringBox(), PlatformTypeWeb);
+            return Void();
+        },
+        [](ViewTransactionScope& viewTransactionScope, auto& viewNode) {
+            viewNode.setViewClassNameForPlatform(viewTransactionScope, StringBox(), PlatformTypeWeb);
         });
 
     binder.bind(

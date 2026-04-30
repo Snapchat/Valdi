@@ -552,6 +552,14 @@ export class Renderer implements IRenderer {
   private eventListener: IRendererEventListener | undefined = undefined;
   private allowedRootElementTypes?: StringSet;
 
+  /** Moves buffered during render; flushed in top-down order at end to avoid bottom-up attach (ANR). */
+  private pendingRootMove: { elementId: number } | undefined = undefined;
+  private pendingMovesByParent = new Map<number, Array<{ elementId: number; parentIndex: number }>>();
+  private pendingMoveElementIds = new Set<number>();
+
+  /** When true (gated by VALDI_MAX_VIEW_OPERATIONS_PROCESSING_TIME), emit moves in top-down order. */
+  private _useTopDownMoveOrder: boolean = false;
+
   enableLog: boolean = false;
   private logComponentsOnly = true;
 
@@ -559,9 +567,15 @@ export class Renderer implements IRenderer {
     return this.beginCount > 0;
   }
 
-  constructor(contextId: string, allowedRootElementTypes: string[] | undefined, delegate: IRendererDelegate) {
+  constructor(
+    contextId: string,
+    allowedRootElementTypes: string[] | undefined,
+    delegate: IRendererDelegate,
+    useTopDownMoveOrder?: boolean,
+  ) {
     this.contextId = contextId;
     this.delegate = delegate;
+    this._useTopDownMoveOrder = useTopDownMoveOrder ?? false;
     if (allowedRootElementTypes) {
       this.allowedRootElementTypes = {};
       for (const allowedRootElementType of allowedRootElementTypes) {
@@ -751,6 +765,9 @@ export class Renderer implements IRenderer {
     }
 
     if (this.beginCount === 1) {
+      if (this._useTopDownMoveOrder) {
+        this.flushPendingMovesInTopDownOrder();
+      }
       // Flush our pending nested render callbacks
       while (this.pendingRenders.length) {
         const pendingRender = this.pendingRenders.shift();
@@ -1099,11 +1116,72 @@ export class Renderer implements IRenderer {
       if (this.allowedRootElementTypes && !this.allowedRootElementTypes[tag]) {
         this.throwDisallowedRootElementType(tag);
       }
-
-      this.delegate.onElementBecameRoot(id);
+      if (this._useTopDownMoveOrder) {
+        this.pendingRootMove = { elementId: id };
+        this.pendingMoveElementIds.add(id);
+      } else {
+        this.delegate.onElementBecameRoot(id);
+      }
     } else {
-      this.delegate.onElementMoved(id, parentId, index);
+      if (this._useTopDownMoveOrder) {
+        this.pendingMoveElementIds.add(id);
+        let list = this.pendingMovesByParent.get(parentId);
+        if (!list) {
+          list = [];
+          this.pendingMovesByParent.set(parentId, list);
+        }
+        list.push({ elementId: id, parentIndex: index });
+      } else {
+        this.delegate.onElementMoved(id, parentId, index);
+      }
     }
+  }
+
+  /** Emit buffered moves in top-down order (parent attached before children) to avoid ANR. */
+  private flushPendingMovesInTopDownOrder() {
+    if (this.pendingRootMove === undefined && this.pendingMovesByParent.size === 0) {
+      return;
+    }
+
+    if (this.pendingRootMove) {
+      this.delegate.onElementBecameRoot(this.pendingRootMove.elementId);
+    }
+
+    for (const list of this.pendingMovesByParent.values()) {
+      list.sort((a, b) => a.parentIndex - b.parentIndex);
+    }
+
+    // Start BFS from the new root (if any) and from any stable parents (parents that are not
+    // being moved this pass but have children moving into them). Without including stable
+    // parents, a pass that both sets a new root and reparents nodes into non-root stable
+    // parents would drop those moves because the BFS only follows move chains from the root.
+    let queue: number[];
+    if (this.pendingRootMove) {
+      queue = [this.pendingRootMove.elementId];
+    } else {
+      queue = [];
+    }
+    for (const parentId of this.pendingMovesByParent.keys()) {
+      if (!this.pendingMoveElementIds.has(parentId)) {
+        queue.push(parentId);
+      }
+    }
+    queue.sort((a, b) => a - b);
+
+    let head = 0;
+    while (head < queue.length) {
+      const parentId = queue[head++];
+      const children = this.pendingMovesByParent.get(parentId);
+      if (!children) continue;
+      for (const m of children) {
+        this.delegate.onElementMoved(m.elementId, parentId, m.parentIndex);
+        queue.push(m.elementId);
+      }
+    }
+
+    this.pendingRootMove = undefined;
+    this.pendingMovesByParent.clear();
+    this.pendingMoveElementIds.clear();
   }
 
   private doElementIterate(
@@ -2521,6 +2599,16 @@ export class Renderer implements IRenderer {
     } else {
       this.doBegin();
       this.delegate.onNextLayoutComplete(callback);
+      this.doEnd();
+    }
+  }
+
+  onNextDraw(callback: (hookTimeMs: number) => void): void {
+    if (this.began) {
+      this.delegate.onNextDraw(callback);
+    } else {
+      this.doBegin();
+      this.delegate.onNextDraw(callback);
       this.doEnd();
     }
   }

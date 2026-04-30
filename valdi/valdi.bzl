@@ -8,12 +8,13 @@ COMPILER_FLAGS = [
     # '-Os', # Uncomment to enable optimizations
     "-Wno-c11-extensions",
     "-Wno-c99-extensions",
+    "-Wno-gnu-conditional-omitted-operand",
+    "-Wno-gnu-statement-expression",
+    "-Wno-implicit-function-declaration",
     "-Wno-keyword-macro",
+    "-Wno-pedantic",
     "-Wno-vla-extension",
     "-Wno-zero-length-array",
-    "-Wno-gnu-statement-expression",
-    "-Wno-gnu-conditional-omitted-operand",
-    "-Wno-pedantic",
 ]
 
 ANDROIDX_RUNTIME_LIBRARIES = [

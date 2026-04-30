@@ -66,6 +66,7 @@ class BundleManager {
                                                     disableAnnotationProcessing: false,
                                                     disableDependencyVerification: true,
                                                     disableBazelBuildFileGeneration: true,
+                                                    asyncStrictMode: false,
                                                     webNpmScope: "",
                                                     webVersion: "",
                                                     webPublishConfig: "",
@@ -74,6 +75,7 @@ class BundleManager {
                                                     iosLanguage: IOSLanguage.objc,
                                                     iosClassPrefix: nil,
                                                     androidClassPath: nil,
+                                                    androidExportStrings: true,
                                                     cppClassPrefix: nil,
                                                     iosCodegenEnabled: false,
                                                     androidCodegenEnabled: false,
@@ -81,6 +83,7 @@ class BundleManager {
                                                     disableCodeCoverage: false,
                                                     singleFileCodegen: false,
                                                     compilationModeConfig: CompilationModeConfig(js: nil, jsBytecode: nil, native: nil),
+                                                    compilationModeExplicit: false,
                                                     iosOutputTarget: .releaseReady,
                                                     iosGeneratedContextFactories: [],
                                                     androidOutputTarget: .releaseReady,
@@ -218,6 +221,7 @@ class BundleManager {
         let disableDependencyVerification = config["disable_dependency_verification"]?.bool ?? false
         let disableCodeCoverage = config["disable_code_coverage"]?.bool ?? false
         let disableBazelBuildFileGeneration = config["bazel_build_file_generation_disabled"]?.bool ?? false
+        let asyncStrictMode = config["async_strict_mode"]?.bool ?? false
 
         let compilationModeConfig = try config["compilation_mode"].map { try CompilationModeConfig.parse(from: $0) } ?? CompilationModeConfig.forJsBytecode()
 
@@ -240,12 +244,10 @@ class BundleManager {
         let parsedIosOutputTarget = try Self.parseOutputTarget(mapping: iosConfig)
         let parsedAndroidOutputTarget = try Self.parseOutputTarget(mapping: androidConfig)
         let parsedWebOutputTarget = try Self.parseOutputTarget(mapping: webConfig)
-        let parsedCppOutputTarget = try Self.parseOutputTarget(mapping: cppConfig)
 
         let iosOutputTarget: ModuleOutputTarget?
         let androidOutputTarget: ModuleOutputTarget?
         let webOutputTarget: ModuleOutputTarget?
-        let cppOutputTarget = parsedCppOutputTarget
         switch (parsedCommonOutputTarget, parsedIosOutputTarget, parsedAndroidOutputTarget) {
         case (.none, .none, .none):
             throw CompilerError("No output_target in the \(bundleName) module.yaml. Supported values are 'debug' and 'release'")
@@ -297,6 +299,7 @@ class BundleManager {
         }
 
         let androidClassPath = androidConfig?["class_path"]?.string
+        let androidExportStrings = androidConfig?["export_strings"]?.bool ?? true
 
         let dependencyStrings = config["dependencies"]?.array().compactMap({ $0.string }) ?? [String]()
         var dependencies = try resolveDependencies(ofModule: bundleName,
@@ -338,6 +341,7 @@ class BundleManager {
                                                         disableAnnotationProcessing: disableAnnotationProcessing,
                                                         disableDependencyVerification: disableDependencyVerification,
                                                         disableBazelBuildFileGeneration: disableBazelBuildFileGeneration,
+                                                        asyncStrictMode: asyncStrictMode,
                                                         webNpmScope: webNpmScope,
                                                         webVersion: webVersion,
                                                         webPublishConfig: webPublishConfig,
@@ -346,6 +350,7 @@ class BundleManager {
                                                         iosLanguage: iosLanguage,
                                                         iosClassPrefix: iosClassPrefix,
                                                         androidClassPath: androidClassPath,
+                                                        androidExportStrings: androidExportStrings,
                                                         cppClassPrefix: cppClassPrefix,
                                                         iosCodegenEnabled: iosCodegenEnabled,
                                                         androidCodegenEnabled: androidCodegenEnabled,
@@ -353,11 +358,12 @@ class BundleManager {
                                                         disableCodeCoverage: disableCodeCoverage,
                                                         singleFileCodegen: singleFileCodegen,
                                                         compilationModeConfig: compilationModeConfig,
+                                                        compilationModeExplicit: config["compilation_mode"] != nil,
                                                         iosOutputTarget: iosOutputTarget,
                                                         iosGeneratedContextFactories: iosGeneratedContextFactories,
                                                         androidOutputTarget: androidOutputTarget,
                                                         webOutputTarget: webOutputTarget,
-                                                        cppOutputTarget: cppOutputTarget,
+                                                        cppOutputTarget: .releaseReady,
                                                         downloadableAssets: downloadableAssets,
                                                         downloadableSources: downloadableSources,
                                                         inclusionConfig: inclusionConfig,

@@ -13,6 +13,10 @@ namespace Valdi::V8 {
 
 class V8JavaScriptContextFactory : public IJavaScriptBridge {
 public:
+    const char* getName() override {
+        return "V8";
+    }
+
     Ref<IJavaScriptContext> createJsContext(JavaScriptTaskScheduler* taskScheduler, ILogger& logger) override;
 
     BytesView dumpHeap(std::span<IJavaScriptContext*> jsContexts, JSExceptionTracker& exceptionTracker) final;

@@ -105,7 +105,7 @@ public:
 
     ~ObjCBlockValueFunction() override = default;
 
-    Valdi::Value operator()(const Valdi::ValueFunctionCallContext &callContext) final {
+    Valdi::Value operator()(const Valdi::ValueFunctionCallContext &callContext) noexcept final {
         return Valdi::handleBridgeCall(_trampoline->getCallQueue(),
                                           _trampoline->isPromiseReturnType(),
                                           this,
@@ -251,7 +251,7 @@ public:
         return instance;
     }
 
-    Valdi::Value operator()(const Valdi::ValueFunctionCallContext &callContext) final {
+    Valdi::Value operator()(const Valdi::ValueFunctionCallContext &callContext) noexcept final {
         id receiver = getReceiver(callContext.getExceptionTracker());
         if (!receiver) {
             return Valdi::Value();

@@ -23,8 +23,9 @@ ContextManager::~ContextManager() = default;
 
 SharedContext ContextManager::createContext(Ref<ContextHandler> handler, // NOLINT(performance-unnecessary-value-param)
                                             const Ref<ViewManagerContext>& viewManagerContext,
-                                            bool deferRender) {
-    return createContext(std::move(handler), viewManagerContext, ComponentPath(), nullptr, nullptr, false, deferRender);
+                                            bool deferRender,
+                                            const StringBox& scopeName) {
+    return createContext(std::move(handler), viewManagerContext, ComponentPath(), nullptr, nullptr, false, deferRender, scopeName);
 }
 
 SharedContext ContextManager::createContext(Ref<ContextHandler> handler, // NOLINT(performance-unnecessary-value-param)
@@ -33,7 +34,8 @@ SharedContext ContextManager::createContext(Ref<ContextHandler> handler, // NOLI
                                             const Shared<ValueConvertible>& viewModel,
                                             const Shared<ValueConvertible>& componentContext,
                                             bool updateHandlerSynchronously,
-                                            bool deferRender) {
+                                            bool deferRender,
+                                            const StringBox& scopeName) {
     Ref<Context> context;
     {
         std::lock_guard<std::mutex> lock(_mutex);
@@ -52,16 +54,26 @@ SharedContext ContextManager::createContext(Ref<ContextHandler> handler, // NOLI
                                              updateHandlerSynchronously,
                                              deferRender,
                                              _runtime,
-                                             _logger);
+                                             _logger,
+                                             scopeName);
         context->postInit();
 
         _contextById[contextId] = context;
     }
     if (Valdi::traceInitialization) {
-        VALDI_INFO(*_logger,
-                   "Creating Valdi Context with id {} with component path '{}'",
-                   context->getContextId(),
-                   path.toString());
+        if (!path.isEmpty()) {
+            VALDI_INFO(*_logger,
+                       "Creating Valdi Context with id {} with component path '{}'",
+                       context->getContextId(),
+                       path.toString());
+        } else if (!scopeName.isEmpty()) {
+            VALDI_INFO(*_logger,
+                       "Creating Valdi Context with id {} in scope '{}'",
+                       context->getContextId(),
+                       scopeName.slowToString());
+        } else {
+            VALDI_INFO(*_logger, "Creating Valdi Context with id {}", context->getContextId());
+        }
     }
 
     if (_listener != nullptr) {

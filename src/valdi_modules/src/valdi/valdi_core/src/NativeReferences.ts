@@ -46,6 +46,38 @@ export function protectNativeRefsForCurrentContextId(): () => void {
 }
 
 /**
+ * By default, bridged objects from native are disposed after onDestroy()
+ * is called on the root component. If you need a bridged object to last the
+ * lifetime of a Promise's resolution, use this function to keep the current
+ * context alive until the promise is resolved or rejected.
+ */
+export function asyncWithProtectedRefsForCurrentContextId<T>(asyncAction: () => Promise<T>): Promise<T> {
+  const dispose = protectNativeRefsForCurrentContextId();
+  try {
+    return asyncAction().finally(() => dispose());
+  } catch (e) {
+    dispose();
+    throw e;
+  }
+}
+
+/**
+ * Like asyncWithProtectedRefsForCurrentContextId, but uses an explicit context
+ * id rather than the current context. Prefer this when the promise may be
+ * created or chained inside an async callback where the "current context" is
+ * not guaranteed to be the component's context (e.g. inside a .then() handler).
+ */
+export function asyncWithProtectedRefsForContextId<T>(contextId: string, asyncAction: () => Promise<T>): Promise<T> {
+  const dispose = protectNativeRefsForContextId(contextId);
+  try {
+    return asyncAction().finally(() => dispose());
+  } catch (e) {
+    dispose();
+    throw e;
+  }
+}
+
+/**
  * Evaluate the given block with a global native refs scope.
  * Any native references emitted while the block is evaluated
  * will be associated with the global native references, which
@@ -73,6 +105,41 @@ export function withLocalNativeRefs<T>(contextId: string, cb: () => T): T {
   } finally {
     runtime.popCurrentContext();
   }
+}
+
+/**
+ * Given an async function, returns a new async function with native references that will be protected
+ * for the duration of the async execution.
+ * 
+ * This is a convenience for:
+ * 
+ * ```ts
+ * async function someAsyncFunction() {
+ *  const dispose = protectNativeRefsForCurrentContextId();
+ *  try {
+ *    // do async work
+ *    await someWork();
+ *    // do more async work
+ *    await someMoreWork()
+ *  } finally {
+ *    dispose();
+ *  }
+ * }
+ * ```
+ * 
+ * This can be written as:
+ * 
+ * ```ts
+ * const someAsyncFunction = withCurrentContextProtected(async () => {
+ *  // do async work
+ *  await someWork();
+ *  // do more async work
+ *  await someMoreWork();
+ * })
+ * ```
+ */
+export function withCurrentContextProtected<Args extends unknown[], R>(asyncAction: (...args: Args) => Promise<R>) {
+  return (...args: Args): Promise<R> => asyncWithProtectedRefsForCurrentContextId(() => asyncAction(...args));
 }
 
 /**

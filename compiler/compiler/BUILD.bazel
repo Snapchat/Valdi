@@ -1,0 +1,77 @@
+load("@bazel_skylib//rules:native_binary.bzl", "native_binary")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_binary")
+
+# Bazel-built Valdi compiler. rules_swift swift_binary built from source.
+# Usable directly with:
+#   bzl build //compiler/compiler:local_valdi_compiler
+#
+# The valdi toolchain routes through this target on macOS when
+# --//bzl/valdi:use_local_compiler=true is set (see bzl/valdi:compiler_source).
+# On Linux the toolchain uses :local_valdi_compiler_native (below) instead,
+# but this target is still directly buildable on Linux via the pinned Swift
+# toolchain registered in //bzl/swift_toolchains.
+#
+# Notes:
+#   - Sentry is excluded; add @sentry//:Sentry to deps when needed.
+#   - For a macOS universal binary (arm64+x86_64), build separately per arch and
+#     combine with `lipo`. Bazel produces a single-arch binary per invocation.
+#   - On Linux, swift-crypto needs BoringSSL; see third-party/swift-packages/swift-crypto.BUILD.
+swift_binary(
+    name = "local_valdi_compiler",
+    srcs = glob(["Compiler/Sources/**/*.swift"]),
+    copts = [
+        "-DSWIFT_PACKAGE",
+        # Emit debug info even in release/optimised builds to aid crash reports.
+        # Mirrors `-Xswiftc -g` in the old update_compiler.sh.
+        "-g",
+        # Silence nullability-completeness warnings from the clang importer
+        # that processes imported C modules (e.g. glibc stdio) during Swift
+        # compilation. Mirrors -Xcc flags the upstream project historically
+        # accepted via SPM's implicit clang config.
+        "-Xcc",
+        "-Wno-nullability",
+    ],
+    # DEBUG disables the Sentry import in Utils/SentryClient.swift. We don't
+    # link Sentry into Bazel builds (see note above about excluding Sentry).
+    defines = ["DEBUG"],
+    module_name = "Compiler",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//compiler/compiler/Compiler/Vendors/BlueSocket",
+        "//compiler/compiler/Compiler/Vendors/Clibsass",
+        "//compiler/compiler/Compiler/Vendors/SwiftCSSParser",
+        "//compiler/compiler/Compiler/Vendors/Zstd",
+        "@chalk//:Chalk",
+        "@legible_error//:LegibleError",
+        "@swift_argument_parser//:ArgumentParser",
+        "@swift_backtrace//:Backtrace",
+        "@swift_collections//:Collections",
+        "@swift_crypto//:Crypto",
+        "@swift_protobuf//:SwiftProtobuf",
+        "@swiftsoup//:SwiftSoup",
+        "@swxmlhash//:SWXMLHash",
+        "@yams//:Yams",
+        "@zip_lib//:Zip",
+    ],
+)
+
+# Pre-built Valdi compiler consumed by the valdi toolchain on Linux when
+# --//bzl/valdi:use_local_compiler=true is set (see bzl/valdi:compiler_source).
+# The binary is produced out-of-band by scripts/update_compiler.sh -o out,
+# which drops the artifact at out/{macos,linux}/valdi_compiler. We prefer
+# this over the swift_binary target on Linux because the Bazel build there
+# needs a pinned Swift toolchain + vendored deps that are heavier to drag
+# through CI; the script path is the existing flow and keeps working.
+#
+# macOS keeps going through swift_binary above, so this select has a darwin
+# branch only so the target still analyzes on both OSes (the file doesn't
+# need to exist until someone actually builds it).
+native_binary(
+    name = "local_valdi_compiler_native",
+    src = select({
+        "@bazel_tools//src/conditions:darwin": "out/macos/valdi_compiler",
+        "@bazel_tools//src/conditions:linux_x86_64": "out/linux/valdi_compiler",
+    }),
+    out = "local_valdi_compiler_native",
+    visibility = ["//visibility:public"],
+)

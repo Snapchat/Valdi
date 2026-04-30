@@ -20,4 +20,9 @@ export { skip } from './operators/skip';
 export { map } from './operators/map';
 export { tap } from './operators/tap';
 export { filter } from './operators/filter';
+export { switchMap } from './operators/switchMap';
 export { distinctUntilChanged } from './operators/distinctUntilChanged';
+
+export { combineLatest } from './observable/combineLatest';
+export { of } from './observable/of';
+export { catchError } from './operators/catchError';

@@ -101,6 +101,12 @@ public:
 
     bool onScrollCallbackPrefersSyncCalls() const;
 
+    // Scroll anchor: when enabled, updateScrollState will find a descendant with
+    // scrollAnchorPosition != 0 and pin the scroll offset to keep it at the specified
+    // viewport edge (1=top, 2=bottom). TS toggles this on during pagination and off after layout settles.
+    void setMaintainScrollAnchor(bool maintain);
+    bool getMaintainScrollAnchor() const;
+
 private:
     Point _directionAgnosticContentOffset;
     Point _directionAgnosticUnclampedContentOffset;
@@ -121,6 +127,7 @@ private:
     bool _currentlyAnimating = false;
     bool _inScrollMode = false;
     bool _isHorizontal = false;
+    bool _maintainScrollAnchor = false;
 
     Ref<ValueFunction> _onScrollCallback;
     Ref<ValueFunction> _onScrollEndCallback;

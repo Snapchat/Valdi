@@ -1,0 +1,17 @@
+package com.snap.modules.{{MODULE_NAME}}
+
+import android.content.Context
+import com.snap.valdi.attributes.AttributesBinder
+import com.snap.valdi.attributes.AttributesBindingContext
+import com.snap.valdi.attributes.RegisterAttributesBinder
+
+@RegisterAttributesBinder
+class PolyglotNativeViewAttributesBinder constructor(private val context: Context) : AttributesBinder<PolyglotNativeView> {
+
+    override val viewClass: Class<PolyglotNativeView>
+        get() = PolyglotNativeView::class.java
+
+    override fun bindAttributes(attributesBindingContext: AttributesBindingContext<PolyglotNativeView>) {
+        // Add custom attribute bindings here.
+    }
+}

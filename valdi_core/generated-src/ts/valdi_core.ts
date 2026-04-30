@@ -108,7 +108,7 @@ export interface /*record*/ HTTPRequest {
     url: any;
     method: any;
     headers: any;
-    body?: any;
+    body?: Uint8Array;
     /** Between 0 being lowest, to 10 being maximum */
     priority: number;
 }
@@ -116,7 +116,7 @@ export interface /*record*/ HTTPRequest {
 export interface /*record*/ HTTPResponse {
     statusCode: number;
     headers: any;
-    body?: any;
+    body?: Uint8Array;
 }
 
 export interface HTTPRequestManagerCompletion {
@@ -134,6 +134,34 @@ export enum JavaScriptEngineType {
     JSCORE = 2,
     V8 = 3,
     HERMES = 4,
+}
+
+/**
+ * Owns a set of native object references tied to a scope. When destroyed via
+ * destroyNativeObjectsManager, all native references in this scope are released
+ * immediately rather than waiting for JS garbage collection.
+ *
+ * Typically each bounded task creates its own manager and destroys it when done.
+ * See the platform-specific APIs (IValdiRuntime on Android, SCValdiJSRuntime
+ * on iOS) for guidance on recommended usage patterns.
+ */
+export interface JSRuntimeNativeObjectsManager {
+    getReachableObjectsDescription(): any;
+}
+
+export interface JSRuntime {
+    /**
+     * Push the module unmarshalled using the schema in the given marshaller handle
+     * into the marshaller.
+     */
+    pushModuleToMarshaller(nativeObjectsManager: JSRuntimeNativeObjectsManager, path: any, marshallerHandle: bigint): number;
+    addModuleUnloadObserver(path: any, observer: any): void;
+    preloadModule(path: any, maxDepth: number): void;
+    preloadModules(paths: Array<any>, maxDepth: number): void;
+    createNativeObjectsManager(scopeName: string): JSRuntimeNativeObjectsManager;
+    destroyNativeObjectsManager(nativeObjectsManager: JSRuntimeNativeObjectsManager): void;
+    createWorker(): JSRuntime;
+    runOnJsThread(runnable: any): void;
 }
 
 export interface ValdiCore_statics {

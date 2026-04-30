@@ -9,6 +9,8 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 @protocol SCValdiViewOwner <NSObject>
 
 @optional
@@ -27,8 +29,10 @@
  If you return nil or don't implement this method, the runtime will
  use initWithFrame:
  */
-- (UIView*)valdiWillCreateViewForClass:(Class)aClass nodeId:(NSString*)nodeId;
+- (UIView* _Nullable)valdiWillCreateViewForClass:(Class)aClass nodeId:(NSString*)nodeId;
 
 - (void)didRenderValdiView:(UIView*)view;
 
 @end
+
+NS_ASSUME_NONNULL_END

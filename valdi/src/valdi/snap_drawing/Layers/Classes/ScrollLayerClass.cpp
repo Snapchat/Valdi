@@ -131,6 +131,8 @@ void ScrollLayerClass::bindAttributes(Valdi::AttributesBindingContext& binder) {
     BIND_BOOLEAN_ATTRIBUTE(ScrollLayer, dismissKeyboardOnDrag, false);
 
     BIND_DOUBLE_ATTRIBUTE(ScrollLayer, fadingEdgeLength, true);
+    BIND_BOOLEAN_ATTRIBUTE(ScrollLayer, fadingEdgeStart, false);
+    BIND_BOOLEAN_ATTRIBUTE(ScrollLayer, fadingEdgeEnd, false);
 
     REGISTER_PREPROCESSOR(scrollPerfLoggerBridge, false);
 }
@@ -254,5 +256,23 @@ IMPLEMENT_DOUBLE_ATTRIBUTE(
         return Valdi::Void();
     },
     { view.setFadingEdgeLength(0); })
+
+IMPLEMENT_BOOLEAN_ATTRIBUTE(
+    ScrollLayer,
+    fadingEdgeStart,
+    {
+        view.setFadingEdgeStart(value);
+        return Valdi::Void();
+    },
+    { view.setFadingEdgeStart(true); })
+
+IMPLEMENT_BOOLEAN_ATTRIBUTE(
+    ScrollLayer,
+    fadingEdgeEnd,
+    {
+        view.setFadingEdgeEnd(value);
+        return Valdi::Void();
+    },
+    { view.setFadingEdgeEnd(true); })
 
 } // namespace snap::drawing

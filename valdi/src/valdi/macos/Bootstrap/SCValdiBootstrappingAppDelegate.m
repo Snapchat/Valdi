@@ -3,6 +3,7 @@
 #import "valdi/macos/SCValdiRuntime.h"
 
 const NSString *kBootstrappingAppDelegateUseTemporaryCacheDirectoryArgument = @"--use_temporary_caches_directory";
+const NSString *kBootstrappingAppDelegateUseHermesEngineArgument = @"--use_hermes_engine";
 
 @implementation SCValdiBootstrappingNSAppDelegate {
     NSString *_rootValdiComponentPath;
@@ -10,6 +11,7 @@ const NSString *kBootstrappingAppDelegateUseTemporaryCacheDirectoryArgument = @"
     int _windowWidth;
     int _windowHeight;
     bool _windowResizable;
+    bool _useHermesEngine;
     SCValdiRuntime *_valdiRuntime;
     NSWindow *_window;
 }
@@ -21,6 +23,22 @@ const NSString *kBootstrappingAppDelegateUseTemporaryCacheDirectoryArgument = @"
         windowHeight:(int)windowHeight
         windowResizable:(bool)windowResizable
 {
+    return [self initWithRootValdiComponentPath:rootValdiComponentPath
+                                         title:title
+                                   windowWidth:windowWidth
+                                  windowHeight:windowHeight
+                               windowResizable:windowResizable
+                               useHermesEngine:false];
+}
+
+- (instancetype)initWithRootValdiComponentPath:
+        (NSString *)rootValdiComponentPath
+        title:(NSString *)title
+        windowWidth:(int)windowWidth
+        windowHeight:(int)windowHeight
+        windowResizable:(bool)windowResizable
+        useHermesEngine:(bool)useHermesEngine
+{
     self = [super init];
 
     if (self) {
@@ -29,6 +47,7 @@ const NSString *kBootstrappingAppDelegateUseTemporaryCacheDirectoryArgument = @"
         _windowWidth = windowWidth;
         _windowHeight = windowHeight;
         _windowResizable = windowResizable;
+        _useHermesEngine = useHermesEngine;
     }
 
     return self;
@@ -38,7 +57,9 @@ const NSString *kBootstrappingAppDelegateUseTemporaryCacheDirectoryArgument = @"
     // Configure whether to use the temporary caches directory.
     NSMutableArray *launchArguments = [[SCValdiRuntime getLaunchArguments] mutableCopy];
     BOOL useTemporaryCachesDirectory = [launchArguments containsObject:kBootstrappingAppDelegateUseTemporaryCacheDirectoryArgument];
-    _valdiRuntime = [[SCValdiRuntime alloc] initWithUsingTemporaryCachesDirectory:useTemporaryCachesDirectory];
+    BOOL useHermes = _useHermesEngine || [launchArguments containsObject:kBootstrappingAppDelegateUseHermesEngineArgument];
+    _valdiRuntime = [[SCValdiRuntime alloc] initWithUsingTemporaryCachesDirectory:useTemporaryCachesDirectory
+                                                                 useHermesEngine:useHermes];
 
     NSLog(@"Starting %@ for component %@", _title, _rootValdiComponentPath);
     __weak SCValdiBootstrappingNSAppDelegate *weakSelf = self;

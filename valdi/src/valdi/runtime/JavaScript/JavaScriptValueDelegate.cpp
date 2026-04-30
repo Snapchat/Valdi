@@ -463,8 +463,9 @@ class JavaScriptFunctionClassDelegate : public PlatformFunctionClassDelegate<JSV
 public:
     JavaScriptFunctionClassDelegate(IJavaScriptContext& jsContext,
                                     const Ref<PlatformFunctionTrampoline<JSValueRef>>& trampoline,
-                                    bool isSingleCall)
-        : _jsContext(jsContext), _trampoline(trampoline), _isSingleCall(isSingleCall) {}
+                                    bool isSingleCall,
+                                    bool allowSyncCall)
+        : _jsContext(jsContext), _trampoline(trampoline), _isSingleCall(isSingleCall), _allowSyncCall(allowSyncCall) {}
 
     ~JavaScriptFunctionClassDelegate() override = default;
 
@@ -485,7 +486,7 @@ public:
                                        const JSValueRef& function,
                                        const ReferenceInfoBuilder& referenceInfoBuilder,
                                        ExceptionTracker& exceptionTracker) final {
-        return jsFunctionToFunction(
+        auto result = jsFunctionToFunction(
             _jsContext,
             function.get(),
             referenceInfoBuilder,
@@ -508,12 +509,20 @@ public:
                         jsContext, jsValue, isSingleCall, referenceInfo, exceptionTracker, *trampoline);
                 }
             });
+        if (result != nullptr) {
+            auto vf = castOrNull<ValueFunctionWithJSValue>(result);
+            if (vf != nullptr) {
+                vf->setAllowSyncCall(_allowSyncCall);
+            }
+        }
+        return result;
     }
 
 private:
     IJavaScriptContext& _jsContext;
     Ref<PlatformFunctionTrampoline<JSValueRef>> _trampoline;
     bool _isSingleCall;
+    bool _allowSyncCall;
 };
 
 JavaScriptValueDelegate::JavaScriptValueDelegate(IJavaScriptContext& jsContext,
@@ -846,7 +855,8 @@ Ref<PlatformFunctionClassDelegate<JSValueRef>> JavaScriptValueDelegate::newFunct
     const Ref<PlatformFunctionTrampoline<JSValueRef>>& trampoline,
     const Ref<ValueFunctionSchema>& schema,
     ExceptionTracker& exceptionTracker) {
-    return makeShared<JavaScriptFunctionClassDelegate>(*_jsContext, trampoline, schema->getAttributes().isSingleCall());
+    return makeShared<JavaScriptFunctionClassDelegate>(
+        *_jsContext, trampoline, schema->getAttributes().isSingleCall(), schema->getAttributes().allowSyncCall());
 }
 
 bool JavaScriptValueDelegate::valueIsNull(const JSValueRef& value) const {

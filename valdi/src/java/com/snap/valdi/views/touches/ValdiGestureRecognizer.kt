@@ -97,6 +97,15 @@ abstract class ValdiGestureRecognizer(val view: View) {
             state = ValdiGestureRecognizerState.CHANGED
         }
 
+        // Reset hasFailed at the start of a new gesture sequence (when state is POSSIBLE).
+        // This ensures that the hasFailed flag from a previous gesture doesn't persist into
+        // the current gesture. Without this, if gesture 1 fails due to a predicate returning
+        // false, hasFailed would remain true when gesture 2 begins, causing systems that check
+        // hasFailed (like navigation gesture handlers) to incorrectly think gesture 2 also failed.
+        if (wasPossible) {
+            hasFailed = false
+        }
+
         updating = true
 
         val requestedNewState = deferredNewState

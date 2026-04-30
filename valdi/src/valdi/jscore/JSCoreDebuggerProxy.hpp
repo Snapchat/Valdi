@@ -27,7 +27,7 @@ namespace ValdiJSCore {
  */
 class DebuggerProxy : public Valdi::ITCPServerListener {
 public:
-    explicit DebuggerProxy(Valdi::ILogger& logger);
+    DebuggerProxy();
 
     void onClientConnected(const Valdi::Ref<Valdi::ITCPConnection>& client) override;
 
@@ -36,10 +36,9 @@ public:
     uint16_t getExternalPort() const;
     uint16_t getInternalPort() const;
 
-    static DebuggerProxy* start(Valdi::ILogger& logger);
+    static DebuggerProxy* start();
 
 private:
-    Valdi::ILogger& _logger;
     Valdi::Ref<Valdi::ITCPServer> _jsHost;
     Valdi::Ref<Valdi::ITCPServer> _externHost;
 };
@@ -49,7 +48,7 @@ private:
  */
 class DebuggerConnection : public Valdi::SharedPtrRefCountable, public Valdi::ITCPConnectionDataListener {
 public:
-    DebuggerConnection(Valdi::ITCPConnection& client, Valdi::ILogger& logger);
+    explicit DebuggerConnection(Valdi::ITCPConnection& client);
 
     void onDataReceived(const Valdi::Ref<Valdi::ITCPConnection>& connection, const Valdi::BytesView& bytes) override;
 
@@ -58,11 +57,8 @@ public:
 
     virtual void processMessage(const Valdi::StringBox& message) = 0;
 
-    Valdi::ILogger& getLogger() const;
-
 private:
     Valdi::ITCPConnection& _client;
-    Valdi::ILogger& _logger;
     Valdi::Mutex _mutex;
     Valdi::Bytes _buffer;
 
@@ -76,7 +72,7 @@ private:
  */
 class JSDebuggerConnection : public DebuggerConnection {
 public:
-    JSDebuggerConnection(Valdi::ITCPServer& externHost, Valdi::ITCPConnection& client, Valdi::ILogger& logger);
+    JSDebuggerConnection(Valdi::ITCPServer& externHost, Valdi::ITCPConnection& client);
     ~JSDebuggerConnection() override;
 
     void processMessage(const Valdi::StringBox& message) override;
@@ -99,7 +95,7 @@ private:
  */
 class ExternalDebuggerConnection : public DebuggerConnection {
 public:
-    ExternalDebuggerConnection(Valdi::ITCPServer& jsHost, Valdi::ITCPConnection& client, Valdi::ILogger& logger);
+    ExternalDebuggerConnection(Valdi::ITCPServer& jsHost, Valdi::ITCPConnection& client);
 
     ~ExternalDebuggerConnection() override;
 

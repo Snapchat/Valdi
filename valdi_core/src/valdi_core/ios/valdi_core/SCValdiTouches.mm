@@ -146,8 +146,20 @@ Valdi::TouchEvents::PointerLocations SCValdiGetPointerDataFromEvent(UIEvent *uiE
 
 BOOL SCValdiCallSyncActionWithUIEventAndView(id<SCValdiFunction> action, CGPoint location, UIEvent* uiEvent, UIView* view)
 {
-    Valdi::SimpleExceptionTracker exceptionTracker;
-    Valdi::Marshaller params(exceptionTracker);
     auto event = SCValdiMakeTouchEvent(view, location, UIGestureRecognizerStatePossible, SCValdiGetPointerDataFromEvent(uiEvent));
+
+    if ([action respondsToSelector:@selector(performWithMarshaller:flags:)]) {
+        // Use callSyncWithDeadline instead of dispatch_sync to prevent the main thread from
+        // blocking indefinitely when the JS queue is busy. On timeout, returning NO safely
+        // drops the hit test. VALDI_DISABLE_HIT_TEST_SYNC_DEADLINE reverts to legacy path.
+        if (!view.valdiContext.disableHitTestSyncDeadline) {
+            const auto& fn = [(SCValdiFunctionWithCPPFunction *)action getFunction];
+            Valdi::Value params[] = { event };
+            auto result = fn->callSyncWithDeadline(std::chrono::milliseconds(250), params, 1);
+            return result.success() ? result.value().toBool() : NO;
+        }
+    }
+
+    // Legacy path: non-C++ ValueFunction implementations, or when sync deadline is disabled.
     return SCValdiCallActionWithEvent(action, event, Valdi::ValueFunctionFlagsCallSync);
 }

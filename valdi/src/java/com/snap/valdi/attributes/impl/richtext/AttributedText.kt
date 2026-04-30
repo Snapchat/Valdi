@@ -50,4 +50,9 @@ interface AttributedText {
      * This is to preserve selection/calcs of the initial text
      */
     fun hasOutline(): Boolean
+
+    /**
+     * Return the image attachment info for the part at the given index, or null if not an image attachment.
+     */
+    fun getImageAttachmentAtIndex(index: Int): ImageAttachmentInfo?
 }

@@ -141,8 +141,8 @@ export class App extends StatefulComponent<{}, State> {
   private async doRasterize(): Promise<Asset> {
     const [componentWidth, componentHeight] = this.getComponentSize();
     const context = createManagedContext({
-      useNewExternalSurfaceRasterMethod: this.state.rasterMethod,
-      enableDeltaRasterization: true,
+      embeddedPlatformViewRasterMethod: this.state.rasterMethod,
+      deltaRasterization: true,
     });
     context.render(() => {
       <InnerComponent />;
@@ -150,9 +150,9 @@ export class App extends StatefulComponent<{}, State> {
 
     await context.onAllAssetsLoaded();
 
-    context.layout(componentWidth, componentHeight, false);
+    await context.layout(componentWidth, componentHeight, false);
 
-    const frame = context.draw();
+    const { frame } = await context.draw();
 
     const scale = Device.getDisplayScale() / DOWNSCALE_RATIO[this.state.downscaleRatioIndex];
     const rasterWidth = Math.floor(scale * componentWidth);

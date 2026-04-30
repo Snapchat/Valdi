@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../cpp/Future.hpp"
 #include "djinni_support.hpp"
+#include "../cpp/Future.hpp"
 
 namespace djinni::swift {
 
@@ -16,29 +16,25 @@ void setFutureResult(const AnyValue* futureValue, const AnyValue* futureResult);
 void storeSubscription(const AnyValue* futureValue, void* subscription);
 
 // Common interface for a Swift accessible C++ future
-struct AbstractCppFutureHolder : OpaqueValue {
+struct AbstractCppFutureHolder: OpaqueValue {
     virtual ~AbstractCppFutureHolder() = default;
     virtual void setFutureCb(FutureCb cb, void* ctx) = 0;
 };
 
 // Holds a C++ future that returns a RESULT type
 template<typename RESULT>
-struct CppFutureHolder : AbstractCppFutureHolder {
+struct CppFutureHolder: AbstractCppFutureHolder {
     using CppResType = typename RESULT::CppType;
     djinni::Future<CppResType> future;
     explicit CppFutureHolder(djinni::Future<CppResType> f) : future(std::move(f)) {}
 
     template<typename T>
-    static AnyValue getFutureResult(Future<T>& f) {
-        return RESULT::fromCpp(f.get());
-    }
+    static AnyValue getFutureResult(Future<T>& f) {return RESULT::fromCpp(f.get());}
     template<>
-    static AnyValue getFutureResult(Future<void>& f) {
-        return makeVoidValue();
-    }
+    static AnyValue getFutureResult(Future<void>& f) {return makeVoidValue();}
 
     void setFutureCb(FutureCb cb, void* ctx) override {
-        future.then([cb, ctx](Future<CppResType> f) {
+        future.then([cb, ctx] (Future<CppResType> f) {
             try {
                 auto v = getFutureResult(f);
                 cb(ctx, &v);
@@ -51,7 +47,7 @@ struct CppFutureHolder : AbstractCppFutureHolder {
 };
 
 // Maintains the link from a Swift future to a C++ accessible future
-struct SwiftFutureHolder : OpaqueValue {
+struct SwiftFutureHolder: OpaqueValue {
     djinni::Promise<AnyValue> promise;
     std::shared_ptr<djinni::Future<AnyValue>> future;
     void* subscription = nullptr;
@@ -68,19 +64,15 @@ struct SwiftFutureHolder : OpaqueValue {
     }
 };
 
-template<class RESULT>
-class FutureAdaptor {
+template <class RESULT>
+class FutureAdaptor
+{
     using CppResType = typename RESULT::CppType;
 
     template<typename T>
-    static void setValue(Promise<T>& p, const AnyValue& res) {
-        p.setValue(RESULT::toCpp(res));
-    }
+    static void setValue(Promise<T>& p, const AnyValue& res) {p.setValue(RESULT::toCpp(res));}
     template<>
-    static void setValue(Promise<void>& p, const AnyValue& res) {
-        p.setValue();
-    }
-
+    static void setValue(Promise<void>& p, const AnyValue& res) {p.setValue();}
 public:
     using CppType = Future<CppResType>;
 
@@ -95,7 +87,7 @@ public:
         Promise<CppResType> p;
         auto f = p.getFuture();
         // And return a C++ future connected to it
-        swiftHolder->future->then([p = std::move(p)](Future<AnyValue> f) mutable {
+        swiftHolder->future->then([p = std::move(p)] (Future<AnyValue> f) mutable {
             auto res = f.get();
             if (std::holds_alternative<ErrorValue>(res)) {
                 const auto& e = std::get<ErrorValue>(res);
@@ -112,4 +104,4 @@ public:
     }
 };
 
-} // namespace djinni::swift
+}

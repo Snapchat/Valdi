@@ -13,6 +13,7 @@
 #include "valdi_core/cpp/Utils/Mutex.hpp"
 #include <atomic>
 #include <dispatch/dispatch.h>
+#include <mutex>
 
 namespace Valdi {
 
@@ -52,6 +53,7 @@ private:
     FlatSet<task_id_t> _activeTasks;
     task_id_t _sequence = 0;
     std::atomic<int> _pendingTasksCount;
+    std::timed_mutex _executionMutex;
     std::atomic_bool _hasListener;
     std::atomic_bool _destroyed;
     Shared<IQueueListener> _listener;

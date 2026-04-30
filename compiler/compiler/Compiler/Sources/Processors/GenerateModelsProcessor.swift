@@ -103,7 +103,7 @@ final class GenerateModelsProcessor: CompilationProcessor {
                                   intermediateItem: item,
                                   iosType: exportedFunc.containingIosType,
                                   androidClassName: exportedFunc.containingAndroidTypeName,
-                                  cppType: nil,
+                                  cppType: exportedFunc.containingCppType,
                                   generationType: "function",
                                   generator: ExportedFunctionGenerator(exportedFunction: exportedFunc, modulePath: selectedItem.item.relativeBundleURL.deletingPathExtension().absoluteString))
             case .module(let exportedModule):

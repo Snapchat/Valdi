@@ -31,6 +31,9 @@ bool ViewNodeAttributesApplier::setAttribute(ViewTransactionScope& viewTransacti
     if (_viewNode == nullptr) {
         return false;
     }
+    if (_viewNode->getViewFactory() == nullptr) {
+        return false;
+    }
 
     if (value.isNullOrUndefined()) {
         auto it = _attributes.find(id);
@@ -441,7 +444,11 @@ void ViewNodeAttributesApplier::setBoundAttributes(Ref<BoundAttributes> boundAtt
     auto hadAttributes = _boundAttributes != nullptr;
     _boundAttributes = std::move(boundAttributes);
 
-    if (VALDI_UNLIKELY(hadAttributes && _boundAttributes != nullptr)) {
+    if (_boundAttributes == nullptr) {
+        // Clear state so flush() / emplaceAttribute() are never called with null _boundAttributes.
+        _dirtyCompositeAttributes.clear();
+        _attributes.clear();
+    } else if (VALDI_UNLIKELY(hadAttributes)) {
         updateAttributeHandlers();
     }
 }

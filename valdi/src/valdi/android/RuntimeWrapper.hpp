@@ -16,7 +16,7 @@ class RuntimeManagerWrapper;
 
 class RuntimeWrapper {
 public:
-    RuntimeWrapper(const Valdi::SharedRuntime& runtime, RuntimeManagerWrapper* runtimeManagerWrapper, float pointScale);
+    RuntimeWrapper(const Valdi::SharedRuntime& runtime, RuntimeManagerWrapper* runtimeManagerWrapper);
     ~RuntimeWrapper();
 
     Valdi::Runtime& getRuntime() const;
@@ -28,7 +28,6 @@ public:
 private:
     Valdi::SharedRuntime _runtime;
     RuntimeManagerWrapper* _runtimeManagerWrapper;
-    float _pointScale;
 };
 
 } // namespace ValdiAndroid

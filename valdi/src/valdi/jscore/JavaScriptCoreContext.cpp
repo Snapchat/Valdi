@@ -373,7 +373,15 @@ Valdi::JSValueRef JavaScriptCoreContext::onNewNumber(double number) {
 
 Valdi::JSValueRef JavaScriptCoreContext::newStringUTF8(const std::string_view& str,
                                                        Valdi::JSExceptionTracker& exceptionTracker) {
-    auto jsString = newPropertyName(str);
+    // JSStringCreateWithUTF8CString (used by newPropertyName) internally calls strlen(),
+    // truncating strings with embedded null bytes. Use JSStringCreateWithCharacters instead,
+    // which takes an explicit length. JSCore uses UTF-16 internally, so both paths do the
+    // same conversion — this one just handles null bytes correctly.
+    auto utf16 = Valdi::utf8ToUtf16(str.data(), str.size());
+    auto jsString = Valdi::JSPropertyNameRef(
+        this,
+        toValdiJSPropertyName(JSStringCreateWithCharacters(reinterpret_cast<const JSChar*>(utf16.first), utf16.second)),
+        true);
 
     return returnJSValueRef(JSValueMakeString(getJSGlobalContext(), fromValdiJSPropertyName(jsString.get())),
                             kJSTypeString);
@@ -986,7 +994,7 @@ void JavaScriptCoreContext::startDebugger([[maybe_unused]] bool isWorker) {
 
     static std::atomic_bool kRemoteInspectorStarted = false;
 
-    auto* debugger = DebuggerProxy::start(_logger);
+    auto* debugger = DebuggerProxy::start();
     if (debugger != nullptr) {
         if (!kRemoteInspectorStarted.exchange(true)) {
             JSRemoteInspectorStart(debugger->getInternalPort());

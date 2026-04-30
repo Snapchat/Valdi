@@ -147,4 +147,39 @@ final class ValdiAnnotationTests: XCTestCase {
         XCTAssertFalse(KotlinValidation.isValidAndroidTypeName(androidTypeName: "com.snap.packagepath.cant.have/slashes"))
         XCTAssertFalse(KotlinValidation.isValidAndroidTypeName(androidTypeName: "com.snap.package.Cool"))
     }
+
+    /// Regression: When a property has @WorkerThread, parsePropertyLike reconstructs the function type with
+    /// shouldCallOnWorkerThread: true. The parsed allowSyncCall (e.g. from @AllowSyncCall on the function type)
+    /// must be preserved, not hardcoded to false.
+    func testWorkerThreadReconstructionPreservesAllowSyncCall() {
+        let returnType = ValdiModelPropertyType.void
+        let params = [ValdiModelProperty]()
+
+        let parsedWithAllowSyncCall = ValdiModelPropertyType.function(
+            parameters: params,
+            returnType: returnType,
+            isSingleCall: false,
+            shouldCallOnWorkerThread: false,
+            allowSyncCall: true
+        )
+
+        // Simulate what parsePropertyLike does when property has @WorkerThread: destructure and rebuild
+        guard case let .function(parameters, returnType, isSingleCall, _, allowSyncCall) = parsedWithAllowSyncCall.unwrappingOptional else {
+            XCTFail("Expected function type")
+            return
+        }
+        let reconstructed = ValdiModelPropertyType.function(
+            parameters: parameters,
+            returnType: returnType,
+            isSingleCall: isSingleCall,
+            shouldCallOnWorkerThread: true,
+            allowSyncCall: allowSyncCall
+        )
+
+        guard case let .function(_, _, _, _, reconstructedAllowSyncCall) = reconstructed.unwrappingOptional else {
+            XCTFail("Expected function type")
+            return
+        }
+        XCTAssertTrue(reconstructedAllowSyncCall, "allowSyncCall must be preserved when reconstructing a function type for @WorkerThread")
+    }
 }

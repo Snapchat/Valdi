@@ -23,7 +23,6 @@ public:
     SnapDrawingLayerRootHost(const Valdi::Ref<snap::drawing::DrawLooper>& drawLooper,
                              const Valdi::Ref<snap::drawing::Resources>& resources,
                              const Valdi::Ref<snap::drawing::ANativeWindowGraphicsContext>& graphicsContext,
-                             const Valdi::CoordinateResolver& coordinateResolver,
                              ViewManager& androidViewManager);
 
     ~SnapDrawingLayerRootHost() override;
@@ -67,7 +66,6 @@ public:
 private:
     Valdi::Ref<snap::drawing::DrawLooper> _drawLooper;
     Valdi::Ref<snap::drawing::ANativeWindowGraphicsContext> _graphicsContext;
-    Valdi::CoordinateResolver _coordinateResolver;
     ViewManager& _androidViewManager;
     bool _disallowSynchronousDraw = false;
 

@@ -49,6 +49,9 @@ public:
     virtual void emitANR() = 0;
 
     virtual void emitRuntimeManagerInitLatency(const MetricsDuration& duration) = 0;
+    virtual void emitRuntimeManagerXpatInitLatency(const MetricsDuration& duration) = 0;
+    virtual void emitRuntimeManagerIosInitLatency(const MetricsDuration& duration) = 0;
+    virtual void emitRuntimePreInitLatency(const MetricsDuration& duration) = 0;
     virtual void emitRuntimeInitLatency(const MetricsDuration& duration) = 0;
     virtual void emitUserSessionReadyLatency(const MetricsDuration& duration) = 0;
 
@@ -69,6 +72,8 @@ public:
     virtual void emitSlowSyncJsCallThreshold(const StringBox& module, const MetricsDuration& duration) = 0;
 
     virtual void emitLoadModuleMemory(const StringBox& module, int64_t totalMemory, int64_t ownMemory) {};
+    virtual void emitLoadModuleDuration(const StringBox& module, int64_t totalDuration, int64_t ownDuration) {};
+    virtual void emitRunUpdatesInnerTimePercentage(const StringBox& module, int64_t percentage) {};
 
     static ScopedMetrics scopedOnScrollLatency(const Ref<Metrics>& metrics,
                                                const StringBox& module,

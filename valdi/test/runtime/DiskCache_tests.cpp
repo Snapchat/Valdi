@@ -5,9 +5,9 @@
 //  Created by Simon Corsin on 10/1/19.
 //
 
-#include "valdi/runtime/Exception.hpp"
 #include "valdi/runtime/Resources/DiskCacheImpl.hpp"
 #include "valdi_core/cpp/Utils/DiskUtils.hpp"
+#include "valdi_core/cpp/Utils/Exception.hpp"
 #include "valdi_core/cpp/Utils/Format.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
 #include "gtest/gtest.h"

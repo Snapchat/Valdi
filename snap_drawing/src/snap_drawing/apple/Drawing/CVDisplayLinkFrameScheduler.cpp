@@ -26,29 +26,44 @@ CVDisplayLinkFrameScheduler::CVDisplayLinkFrameScheduler(Valdi::ILogger& logger)
 
 CVDisplayLinkFrameScheduler::~CVDisplayLinkFrameScheduler() {
     auto guard = lock();
-    destroyDisplayLink();
+    destroyDisplayLink(guard);
 }
 
 void CVDisplayLinkFrameScheduler::setActiveDisplay(CGDirectDisplayID displayId) {
     auto guard = lock();
 
     if (displayId != _activeDisplay) {
-        destroyDisplayLink();
+        destroyDisplayLink(guard);
+        // Re-acquire if destroyDisplayLink released the lock
+        if (!guard.owns_lock()) {
+            guard.lock();
+        }
+        // Re-check after re-acquiring — another thread may have changed _activeDisplay
+        // while the lock was released during destroyDisplayLink.
+        if (displayId == _activeDisplay) {
+            return;
+        }
         _activeDisplay = displayId;
         createDisplayLink(guard);
         onDisplayLinkChanged(guard);
     }
 }
 
-void CVDisplayLinkFrameScheduler::destroyDisplayLink() {
+void CVDisplayLinkFrameScheduler::destroyDisplayLink(std::unique_lock<Valdi::Mutex>& guard) {
     if (_activeDisplay != kCGNullDirectDisplay) {
-        if (_displayLink) {
-            CVDisplayLinkStop(_displayLink);
-            CVDisplayLinkRelease(_displayLink);
-            _displayLink = nil;
-        }
-
+        // Capture and nil the display link while still holding the lock,
+        // then unlock before stopping. CVDisplayLinkStop waits for any
+        // in-flight callback to finish, and that callback acquires this
+        // same lock — so holding it during stop would deadlock.
+        auto displayLink = _displayLink;
+        _displayLink = nil;
         _activeDisplay = kCGNullDirectDisplay;
+
+        if (displayLink) {
+            guard.unlock();
+            CVDisplayLinkStop(displayLink);
+            CVDisplayLinkRelease(displayLink);
+        }
     }
 }
 

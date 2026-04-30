@@ -98,6 +98,10 @@ void logToExternalLogger(LogLevel logLevel, LogContext logContext, const std::st
                     return "S2REvent";
                 case LogContext::Atlas:
                     return "Atlas";
+                case LogContext::NeoPlayer:
+                    return "NeoPlayer";
+                case LogContext::MediaStrategyCenter:
+                    return "MediaStrategyCenter";
             }
         };
 

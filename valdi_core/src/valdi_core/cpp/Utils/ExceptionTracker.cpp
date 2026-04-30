@@ -6,6 +6,7 @@
 //
 
 #include "valdi_core/cpp/Utils/ExceptionTracker.hpp"
+#include "valdi_core/cpp/Context/ContextBase.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
 
 namespace Valdi {
@@ -60,6 +61,16 @@ void ExceptionTracker::clearError() {
 void ExceptionTracker::assertEmpty() const {
     if (!_isEmpty) {
         auto message = getError().toString();
+        auto* context = ContextBase::current();
+        if (context != nullptr) {
+            const auto& attribution = context->getAttribution();
+            if (!attribution.moduleName.isEmpty() || !attribution.owner.isEmpty()) {
+                message += "\n[valdi_attribution] module=";
+                message += attribution.moduleName.toStringView();
+                message += " owner=";
+                message += attribution.owner.toStringView();
+            }
+        }
         SC_ASSERT_FAIL(message.c_str());
     }
 }

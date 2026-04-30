@@ -37,3 +37,8 @@ wasm:
 ts:
   typename: AnimationType
   module: './valdi_core'
+c:
+  typename: 'snap_valdi_core_AnimationType'
+  translator: '::djinni::c_api::EnumTranslator<::snap::valdi_core::AnimationType, snap_valdi_core_AnimationType>'
+  public_header: '"valdi_core/AnimationType.h"'
+  private_header: '"valdi_core/AnimationType.hpp"'

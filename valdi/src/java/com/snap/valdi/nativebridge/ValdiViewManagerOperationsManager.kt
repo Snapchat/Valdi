@@ -1,6 +1,9 @@
 package com.snap.valdi.nativebridge
 
+import android.os.SystemClock
+import android.view.Choreographer
 import android.view.View
+import android.view.ViewGroup
 import com.snap.valdi.ViewRef
 import com.snap.valdi.attributes.AttributeHandlerDelegate
 import com.snap.valdi.attributes.BooleanAttributeHandlerDelegate
@@ -18,41 +21,87 @@ import com.snap.valdi.exceptions.ValdiFatalException
 import com.snap.valdi.exceptions.messageWithCauses
 import com.snap.valdi.extensions.ViewUtils
 import com.snap.valdi.logger.Logger
+import com.snap.valdi.utils.info
 import com.snap.valdi.utils.error
 import com.snap.valdi.utils.trace
+import com.snap.valdi.utils.runOnMainThreadDelayed
 import com.snap.valdi.views.ValdiRootView
+import com.snapchat.client.valdi.NativeBridge
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-class ValdiViewManagerOperationsManager(private val logger: Logger) {
-
-    private var pendingOperations: ValdiViewManagerOperations? = null
+class ValdiViewManagerOperationsManager(
+    private val logger: Logger,
+    private val maxViewOperationsProcessingTimeMs: Int,
+) {
+    private var pendingOperations = ArrayDeque<ValdiViewManagerOperations>()
     private var currentAnimator: ValdiAnimator? = null
 
+    private var lastOperation = 0
+
+    // Controls wether to throttle when maxViewOperationsProcessingTimeMs
+    // is exceeded. maxViewOperationsProcessingTimeMs = 0 means no throttling
+    private val throttlingEnabled = maxViewOperationsProcessingTimeMs > 0
+
+    // Indicates there are remaining updates to be completed later
+    private var throttled = false
+
     fun appendViewOperations(byteBuffer: ByteBuffer, attachedValues: Array<Any>?) {
-        val operations = ValdiViewManagerOperations(byteBuffer.order(ByteOrder.LITTLE_ENDIAN),
-            attachedValues ?: emptyArray())
+        val operations = ValdiViewManagerOperations(byteBuffer.order(ByteOrder.LITTLE_ENDIAN), attachedValues ?: emptyArray())
+        pendingOperations.add(operations)
+    }
 
-        var pendingOperations = this.pendingOperations
-        if (pendingOperations == null) {
-            this.pendingOperations = operations
-        } else {
-            while (pendingOperations!!.next != null) {
-                pendingOperations = pendingOperations.next
+    // replace all direct buffers because these are released after calling
+    // flushViewOperations
+    private fun retainPendingOperations() {
+        for (i in pendingOperations.indices) {
+            val operation = pendingOperations[i]
+            if (operation.byteBuffer.isDirect) {
+                val src = operation.byteBuffer
+                val bufferCopy = ByteBuffer
+                    .allocate(src.remaining())
+                    .order(ByteOrder.LITTLE_ENDIAN)
+                bufferCopy.put(src)
+                bufferCopy.flip()
+                pendingOperations[i] =
+                ValdiViewManagerOperations(bufferCopy, operation.attachedValues)
             }
-
-            pendingOperations.next = operations
         }
     }
 
-    fun flushViewOperations() {
-        while (this.pendingOperations != null) {
-            val operations = this.pendingOperations!!
+    private fun shouldThrottle(t: Long, deadline: Long): Boolean =
+        throttlingEnabled && t > deadline
+
+    fun flushViewOperations(sync: Boolean) {
+        if (this.throttled && !pendingOperations.isEmpty() && !sync) {
+            // return if there is already a pending completion scheduled
+            // buf we need to make sure all the buffers are safe
+            retainPendingOperations()
+            return
+        }
+        doFlushViewOperations(sync, false)
+    }
+    
+    fun doFlushViewOperations(sync: Boolean, resume: Boolean) {
+        // We have a limited time window to process as many pending operations as we can
+        // After that we will return to the system looper and schedule another pass to
+        // complete the rest. This is to avoid spending too much time in a function and
+        // being marked as ANR.
+        var processingStartTime = SystemClock.elapsedRealtime()
+        val deadline = processingStartTime + maxViewOperationsProcessingTimeMs
+
+        // Exit the loop if the deadline is passed. We will process at least one
+        // operation becase in the beginning, processingStartTime is guaranteed
+        // to be less than the deadline.
+        while (!this.pendingOperations.isEmpty() &&
+                (sync || !shouldThrottle(processingStartTime, deadline))) {
+            val operations = this.pendingOperations.first()
             val buffer = operations.byteBuffer
             val attachedValues = operations.attachedValues
 
-            var lastOperation = 0
-            while (buffer.hasRemaining()) {
+            // Exit the loop if the deadline is passed
+            while (buffer.hasRemaining() &&
+                   (sync || !shouldThrottle(processingStartTime, deadline))) {
                 val header = buffer.int
                 val operation = header and 0xFF
                 val hasValue = ((header shr 8) and 0xFF) != 0
@@ -62,7 +111,7 @@ class ValdiViewManagerOperationsManager(private val logger: Logger) {
                         beginRenderingView(buffer, attachedValues, hasValue)
                     }
                     OP_END_RENDERING_VIEW -> {
-                        endRenderingView(buffer, attachedValues, hasValue)
+                        endRenderingView(buffer, attachedValues, hasValue, resume)
                     }
                     OP_MOVED_TO_TREE -> {
                         movedToTree(buffer, attachedValues, hasValue)
@@ -109,24 +158,40 @@ class ValdiViewManagerOperationsManager(private val logger: Logger) {
                     OP_APPLY_ATTRIBUTE_CORNERS -> {
                         applyAttributeCorners(buffer, attachedValues, hasValue, currentAnimator)
                     }
+                    OP_ON_NEXT_DRAW -> {
+                        onNextDraw(buffer, attachedValues)
+                    }
                     else -> throw ValdiException("Invalid View Operation ${operation} (last operation: ${lastOperation})")
                 }
 
                 lastOperation = operation
+                
+                // update the timestamp
+                processingStartTime = SystemClock.elapsedRealtime()
             }
-
-            if (operations === this.pendingOperations) {
-                this.pendingOperations = operations.next
+            if (!buffer.hasRemaining() && operations == this.pendingOperations.firstOrNull()) {
+                this.pendingOperations.removeAt(0)
+                this.currentAnimator = null // reset animator after completing a buffer
             }
         }
 
-        this.currentAnimator = null
+        if (!this.pendingOperations.isEmpty()) {
+            // If there are still pending operations, it means we failed to
+            // process all pending operations within the time window. We need to
+            // schedule another pass on the main thread to finish the rest.
+            this.throttled = true
+            retainPendingOperations()
+            Choreographer.getInstance().postFrameCallback({
+                this.throttled = false
+                this.doFlushViewOperations(false, true)
+            })
+        }
     }
 
-    private fun getRootView(buffer: ByteBuffer, attachedValues: Array<Any>): ValdiRootView? {
+    private fun getRootView(buffer: ByteBuffer, attachedValues: Array<Any>, logIfNull: Boolean = true): ValdiRootView? {
         val ref = attachedValues[buffer.int] as ViewRef
         val rootView = ref.get() as? ValdiRootView
-        if (rootView == null) {
+        if (rootView == null && logIfNull) {
             logger.error("ValdiRootView is null")
         }
 
@@ -137,9 +202,23 @@ class ValdiViewManagerOperationsManager(private val logger: Logger) {
         getRootView(buffer, attachedValues)?.valdiUpdatesBegan()
     }
 
-    private fun endRenderingView(buffer: ByteBuffer, attachedValues: Array<Any>, hasValue: Boolean) {
+    private fun endRenderingView(buffer: ByteBuffer, attachedValues: Array<Any>, hasValue: Boolean, async: Boolean) {
         val layoutDidBecomeDirty = hasValue
-        getRootView(buffer, attachedValues)?.valdiUpdatesEnded(layoutDidBecomeDirty)
+        if (async) {
+            getRootView(buffer, attachedValues)?.valdiUpdatesEndedAsync(layoutDidBecomeDirty)
+        } else {
+            getRootView(buffer, attachedValues)?.valdiUpdatesEnded(layoutDidBecomeDirty)
+        }
+    }
+
+    private fun onNextDraw(buffer: ByteBuffer, attachedValues: Array<Any>) {
+        val rootView = getRootView(buffer, attachedValues, logIfNull = false)
+        val callbackHandle = buffer.long
+        if (rootView != null) {
+            rootView.enqueueOnNextDrawCallback(callbackHandle)
+        } else {
+            NativeBridge.discardCallback(callbackHandle)
+        }
     }
 
     private fun handleApplyFailure(delegate: AttributeHandlerDelegate?, viewRef: ViewRef?, exception: Throwable) {
@@ -165,7 +244,11 @@ class ValdiViewManagerOperationsManager(private val logger: Logger) {
         val loadedAsset: Any? = if (hasValue) attachedValues[buffer.int] else null
 
         trace({"Valdi.applyImageAsset"}) {
-            ref.onLoadedAssetChanged(loadedAsset, shouldDrawFlipped)
+            try {
+                ref.onLoadedAssetChanged(loadedAsset, shouldDrawFlipped)
+            } catch (e: ValdiException) {
+                logger.error("Failed to set loaded asset: ${e.message}")
+            }
         }
     }
 
@@ -301,10 +384,56 @@ class ValdiViewManagerOperationsManager(private val logger: Logger) {
         if (hasValue) {
             val parentView = attachedValues[buffer.int] as ViewRef
             val viewIndex = buffer.int
+            val childView = view.get()
+            val parentViewObj = parentView.get()
+            val childClass = childView?.javaClass?.simpleName ?: "?"
+            val parentClass = parentViewObj?.javaClass?.simpleName ?: "?"
+            val depth = countViewGroupDepth(childView)
+
+            currentMoveOp = "child=$childClass(depth=$depth) -> parent=$parentClass idx=$viewIndex"
+
+            val startNs = System.nanoTime()
             parentView.insertChild(view, viewIndex)
+            val elapsedMs = (System.nanoTime() - startNs) / 1_000_000
+
+            if (elapsedMs > slowestInsertChildMs) {
+                slowestInsertChildMs = elapsedMs
+                slowestInsertChildOp = currentMoveOp
+                if (depth >= 4 && childView != null) {
+                    val sb = StringBuilder()
+                    dumpViewHierarchy(sb, childView, 0)
+                    slowestInsertChildHierarchy = sb.toString()
+                } else {
+                    slowestInsertChildHierarchy = null
+                }
+            }
+            currentMoveOp = null
         } else {
             val shouldClearViewNode = buffer.int != 0
             view.removeFromParent(shouldClearViewNode)
+        }
+    }
+
+    private fun countViewGroupDepth(view: View?): Int {
+        if (view !is ViewGroup || view.childCount == 0) return 0
+        var maxChildDepth = 0
+        for (i in 0 until view.childCount) {
+            val d = countViewGroupDepth(view.getChildAt(i))
+            if (d > maxChildDepth) maxChildDepth = d
+        }
+        return 1 + maxChildDepth
+    }
+
+    private fun dumpViewHierarchy(sb: StringBuilder, view: View, level: Int) {
+        val name = view.javaClass.simpleName
+        sb.append("  ".repeat(level)).append(name)
+        if (view is ViewGroup) {
+            sb.append("(${view.childCount}ch)")
+            for (i in 0 until view.childCount) {
+                val child = view.getChildAt(i) ?: continue
+                sb.append("\n")
+                dumpViewHierarchy(sb, child, level + 1)
+            }
         }
     }
 
@@ -325,6 +454,51 @@ class ValdiViewManagerOperationsManager(private val logger: Logger) {
     }
 
     companion object {
+        /**
+         * Diagnostic state for ANR crash reports. Updated on main thread only.
+         *
+         * [currentMoveOp] is set before insertChild and cleared after — if an ANR
+         * fires mid-operation this tells us exactly which view was being attached.
+         * [slowestInsertChildOp] / [slowestInsertChildMs] track the worst-case
+         * insertChild since the last reset, helping triage teams identify which
+         * view subtree is problematic (e.g. a RecyclerView with accumulated
+         * HandlerActionQueue entries).
+         */
+        @Volatile var currentMoveOp: String? = null
+            private set
+        @Volatile var slowestInsertChildMs: Long = 0
+            private set
+        @Volatile var slowestInsertChildOp: String? = null
+            private set
+        @Volatile var slowestInsertChildHierarchy: String? = null
+            private set
+
+        fun dumpDiagnostics(): String? {
+            val current = currentMoveOp
+            val slowestOp = slowestInsertChildOp
+            if (current == null && slowestOp == null) return null
+
+            val sb = StringBuilder()
+            if (current != null) {
+                sb.append("IN_PROGRESS: ").append(current)
+            }
+            if (slowestOp != null) {
+                if (sb.isNotEmpty()) sb.append(" | ")
+                sb.append("SLOWEST: ").append(slowestOp)
+                    .append(" (").append(slowestInsertChildMs).append("ms)")
+                slowestInsertChildHierarchy?.let { h ->
+                    sb.append("\n").append(h)
+                }
+            }
+            return sb.toString()
+        }
+
+        fun resetDiagnostics() {
+            slowestInsertChildMs = 0
+            slowestInsertChildOp = null
+            slowestInsertChildHierarchy = null
+        }
+
         private const val OP_BEGIN_RENDERING_VIEW = 1
         private const val OP_END_RENDERING_VIEW = 2
         private const val OP_MOVED_TO_TREE = 3
@@ -342,5 +516,6 @@ class ValdiViewManagerOperationsManager(private val logger: Logger) {
         private const val OP_APPLY_ATTRIBUTE_OBJECT = 15
         private const val OP_APPLY_ATTRIBUTE_PERCENT = 16
         private const val OP_APPLY_ATTRIBUTE_CORNERS = 17
+        private const val OP_ON_NEXT_DRAW = 18
     }
 }

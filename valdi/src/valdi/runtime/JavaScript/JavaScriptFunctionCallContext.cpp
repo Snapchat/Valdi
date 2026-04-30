@@ -76,6 +76,10 @@ JSTypedArray JSFunctionNativeCallContext::getParameterAsTypedArray(size_t index)
     return _context.valueToTypedArray(getParameter(index), _exceptionTracker);
 }
 
+Ref<RefCountable> JSFunctionNativeCallContext::getParameterAsWrappedObject(size_t index) {
+    return _context.valueToWrappedObject(getParameter(index), _exceptionTracker);
+}
+
 BytesView JSFunctionNativeCallContext::getParameterAsBytesView(size_t index) {
     auto typedArray = jsTypedArrayToValueTypedArray(
         _context, getParameter(index), ReferenceInfoBuilder(_referenceInfo), _exceptionTracker);

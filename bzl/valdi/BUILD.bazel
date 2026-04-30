@@ -6,12 +6,30 @@ exports_files([
     "AndroidManifest.xml.tpl",
     "valdi_config.yaml.tpl",
     "empty.c",
+    "empty.swift",
     "empty.kt",
     "empty.js",
+    "Empty.bundle/Info.plist",
     "Info.plist",
     "package.json.tmpl",
     "tsconfig.json",
 ])
+
+# No-op fallback for extract_valdi_module_output when no empty fallback is needed.
+# Must be public: any package that uses extract_valdi_module_output (e.g. valdi_module in jasmine, apps, etc.) depends on this default when not passing empty_bundle_fallback.
+filegroup(
+    name = "empty_bundle_fallback_none",
+    srcs = [],
+    visibility = ["//visibility:public"],
+)
+
+# Placeholder so resource_bundle extract targets never produce zero files (apple_bundle_import requires path containing ".bundle").
+# Must be public: valdi_module.bzl references this from arbitrary packages when has_resource_bundle is True.
+filegroup(
+    name = "empty_bundle",
+    srcs = ["Empty.bundle/Info.plist"],
+    visibility = ["//visibility:public"],
+)
 
 # Flag to control the valdi compilation log level
 string_flag(
@@ -56,6 +74,38 @@ string_flag(
         "inline",
     ],
     visibility = ["//visibility:public"],
+)
+
+string_flag(
+    name = "js_bytecode_format",
+    build_setting_default = "quickjs",
+    values = [
+        "none",
+        "hermes",
+        "quickjs",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "js_bytecode_format_none",
+    flag_values = {
+        ":js_bytecode_format": "none",
+    },
+)
+
+config_setting(
+    name = "js_bytecode_format_hermes",
+    flag_values = {
+        ":js_bytecode_format": "hermes",
+    },
+)
+
+config_setting(
+    name = "js_bytecode_format_quickjs",
+    flag_values = {
+        ":js_bytecode_format": "quickjs",
+    },
 )
 
 config_setting(
@@ -138,6 +188,81 @@ config_setting(
     },
 )
 
+bool_flag(
+    name = "code_coverage_enabled",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "valdi_code_coverage_enabled",
+    flag_values = {
+        ":code_coverage_enabled": "true",
+    },
+)
+
+# Flag to restrict which mobile platforms the Valdi compiler generates output for.
+# Default is "all" (current behaviour: android + ios).
+# Set to "android" or "ios" when building a platform-specific app to skip
+# generating artifacts for the unused platform and save compile time.
+# C++ output is always generated regardless of this flag because it is shared
+# cross-platform infrastructure consumed by both Android and iOS.
+string_flag(
+    name = "target_platforms",
+    build_setting_default = "all",
+    values = [
+        "all",
+        "android",
+        "ios",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "target_platforms_android",
+    flag_values = {
+        ":target_platforms": "android",
+    },
+)
+
+config_setting(
+    name = "target_platforms_ios",
+    flag_values = {
+        ":target_platforms": "ios",
+    },
+)
+
+# Flag to restrict the Valdi compiler to a single build flavor (debug or release).
+# Default is "all" (generate both, subject to each module's own output_target).
+# Set to "debug" for debug-only builds (e.g. local dev) or "release" for release-only
+# builds to skip generating the unused variant and save compile time.
+# Modules whose output_target is "debug" always emit debug regardless of this flag
+# (there is no release variant to emit for them).
+string_flag(
+    name = "output_flavor",
+    build_setting_default = "all",
+    values = [
+        "all",
+        "debug",
+        "release",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "output_flavor_debug",
+    flag_values = {
+        ":output_flavor": "debug",
+    },
+)
+
+config_setting(
+    name = "output_flavor_release",
+    flag_values = {
+        ":output_flavor": "release",
+    },
+)
+
 # Create an exhaustive set of configurations because Bazel doesn't support nested selects.
 # Not having nested selects means we have to list all possible conditions in a single flat select.
 # User by valdi_module.bzl to conditionally include apple_resource_bundles in the Valdi objc library.
@@ -188,6 +313,50 @@ config_setting(
     },
 )
 
+# Flag to build the compiler from source instead of using the prebuilt from the toolchain.
+# When enabled, the valdi toolchain routes through @valdi//compiler/compiler
+# targets instead of the prebuilt @valdi_toolchain//:valdi_compiler artifact.
+# Enable with: --//bzl/valdi:use_local_compiler=true
+#
+# Per-OS routing (see :compiler_source below):
+#   - macOS  -> :local_valdi_compiler (rules_swift swift_binary, built by Bazel)
+#   - Linux  -> :local_valdi_compiler_native (native_binary, expects
+#               scripts/update_compiler.sh output at out/linux/valdi_compiler)
+# The swift_binary target is still directly buildable on Linux
+# (`bzl build @valdi//compiler/compiler:local_valdi_compiler`) for
+# experimentation, but the toolchain doesn't go through it there -- the
+# script path is what Linux CI publishes.
+bool_flag(
+    name = "use_local_compiler",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "use_local_compiler_enabled",
+    flag_values = {
+        ":use_local_compiler": "true",
+    },
+)
+
+# The two OS-specific groups are mutually exclusive by construction
+# (linux vs macos constraints), so the select() below stays unambiguous.
+selects.config_setting_group(
+    name = "use_local_compiler_on_macos",
+    match_all = [
+        ":use_local_compiler_enabled",
+        "@snap_platforms//conditions:macos",
+    ],
+)
+
+selects.config_setting_group(
+    name = "use_local_compiler_on_linux",
+    match_all = [
+        ":use_local_compiler_enabled",
+        "@snap_platforms//conditions:linux",
+    ],
+)
+
 # Alias to choose between prebuilt binary and source-built companion
 alias(
     name = "compiler_companion_source",
@@ -198,10 +367,23 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+# Compiler: prebuilt from toolchain, or one of the local variants when
+# use_local_compiler=true is set. See the flag docstring above for the
+# per-OS routing rationale.
+alias(
+    name = "compiler_source",
+    actual = select({
+        ":use_local_compiler_on_macos": "//compiler/compiler:local_valdi_compiler",
+        ":use_local_compiler_on_linux": "//compiler/compiler:local_valdi_compiler_native",
+        "//conditions:default": "@valdi_toolchain//:valdi_compiler",
+    }),
+    visibility = ["//visibility:private"],
+)
+
 # Platform-specific rule definition, for macos
 valdi_toolchain(
     name = "valdi",
-    compiler = "@valdi_toolchain//:valdi_compiler",
+    compiler = ":compiler_source",
     compiler_companion = ":compiler_companion_source",
     compiler_toolbox = "@valdi_toolchain//:valdi_compiler_toolbox",
     pngquant = "@valdi_toolchain//:pngquant",

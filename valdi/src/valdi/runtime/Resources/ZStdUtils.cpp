@@ -13,6 +13,8 @@
 
 namespace Valdi {
 
+static constexpr size_t kMaxSinglePassDecompressSize = 128 * 1024 * 1024;
+
 bool ZStdUtils::isZstdFile(const Byte* input, size_t length) {
     if (length < 4) {
         return false;
@@ -23,24 +25,39 @@ bool ZStdUtils::isZstdFile(const Byte* input, size_t length) {
 }
 
 Result<Ref<ByteBuffer>> ZStdUtils::decompress(const Byte* input, size_t len) {
+    auto firstFrameSize = ZSTD_findFrameCompressedSize(input, len);
+    bool isSingleFrame = !ZSTD_isError(firstFrameSize) && firstFrameSize == len;
+
+    if (isSingleFrame) {
+        auto contentSize = ZSTD_getFrameContentSize(input, len);
+        if (contentSize != ZSTD_CONTENTSIZE_UNKNOWN && contentSize != ZSTD_CONTENTSIZE_ERROR &&
+            contentSize <= kMaxSinglePassDecompressSize) {
+            auto output = makeShared<ByteBuffer>();
+            output->resize(static_cast<size_t>(contentSize));
+
+            auto result = ZSTD_decompress(output->data(), output->size(), input, len);
+            if (ZSTD_isError(result) != 0) {
+                return Error(STRING_FORMAT("Could not decompress: {}", ZSTD_getErrorName(result)));
+            }
+
+            return output;
+        }
+    }
+
     auto* dstream = ZSTD_createDStream();
     if (dstream == nullptr) {
         return Error("Could not create ZSTD stream");
     }
 
-    auto bufferSize = ZSTD_DStreamOutSize();
-
-    ByteBuffer buffer;
-    buffer.resize(bufferSize);
-
-    /* In more complex scenarios, a file may consist of multiple appended frames (ex : pzstd).
-     *  The following example decompresses only the first frame.
-     *  It is compatible with other provided streaming examples */
     auto initResult = ZSTD_initDStream(dstream);
     if (ZSTD_isError(initResult) != 0) {
         ZSTD_freeDStream(dstream);
         return Error(STRING_FORMAT("Could not initialize stream: {}", ZSTD_getErrorName(initResult)));
     }
+
+    auto bufferSize = ZSTD_DStreamOutSize();
+    ByteBuffer buffer;
+    buffer.resize(bufferSize);
 
     ZSTD_inBuffer inBuffer;
     inBuffer.src = input;
@@ -53,7 +70,6 @@ Result<Ref<ByteBuffer>> ZStdUtils::decompress(const Byte* input, size_t len) {
     outBuffer.size = bufferSize;
 
     auto output = makeShared<ByteBuffer>();
-    output->reserve(len * 4);
 
     while (inBuffer.pos < len) {
         auto result = ZSTD_decompressStream(dstream, &outBuffer, &inBuffer);
@@ -62,9 +78,7 @@ Result<Ref<ByteBuffer>> ZStdUtils::decompress(const Byte* input, size_t len) {
             return Error(STRING_FORMAT("Could not decompress stream: {}", ZSTD_getErrorName(result)));
         }
 
-        auto written = outBuffer.pos;
-
-        output->append(buffer.begin(), buffer.begin() + written);
+        output->append(buffer.begin(), buffer.begin() + outBuffer.pos);
         outBuffer.pos = 0;
     }
 

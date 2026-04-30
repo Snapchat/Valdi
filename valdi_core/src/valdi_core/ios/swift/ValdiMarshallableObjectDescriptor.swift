@@ -61,13 +61,15 @@ open class ValdiMarshallableObjectDescriptor {
     }
 
     public func getOrCreateCDescriptor() -> SwiftValdiMarshallableObjectRegistry_ObjectDescriptor {
-        if self.cDescriptor == nil {
-            allocCDescriptor()
+        guard let cDescriptor = self.cDescriptor else {
+            let cDescriptor = allocCDescriptor()
+            self.cDescriptor = cDescriptor
+            return cDescriptor
         }
-        return self.cDescriptor!
+        return cDescriptor
     }
 
-    private func allocCDescriptor() {
+    private func allocCDescriptor() -> SwiftValdiMarshallableObjectRegistry_ObjectDescriptor {
         // Build field descriptors array with a terminator that has null name and type
         var cFieldDescs = self.fields.map {
             SwiftValdiMarshallableObjectRegistry_FieldDescriptor(
@@ -81,7 +83,7 @@ open class ValdiMarshallableObjectDescriptor {
         var cIdentifiers : [CString] = self.identifiers.map { $0.name.toCString() }
         cIdentifiers.append(nil)
 
-        self.cDescriptor = SwiftValdiMarshallableObjectRegistry_ObjectDescriptor(
+        return SwiftValdiMarshallableObjectRegistry_ObjectDescriptor(
             fields: cFieldDescs.toCArray(),
             identifiers: cIdentifiers.toCArray(),
             objectType: getCType()

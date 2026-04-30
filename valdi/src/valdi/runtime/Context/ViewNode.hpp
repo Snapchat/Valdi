@@ -11,6 +11,7 @@
 #include "valdi/runtime/Attributes/ViewNodeAttributesApplier.hpp"
 #include "valdi/runtime/CSS/CSSAttributesManager.hpp"
 #include "valdi/runtime/Context/RawViewNodeId.hpp"
+#include "valdi/runtime/Context/ScrollAnchorPosition.hpp"
 #include "valdi/runtime/Context/ViewNodeAccessibility.hpp"
 #include "valdi/runtime/Views/Frame.hpp"
 #include "valdi/runtime/Views/Measure.hpp"
@@ -467,6 +468,11 @@ public:
     void setViewportExtensionLeft(float viewportExtensionLeft);
     void setViewportExtensionRight(float viewportExtensionRight);
 
+    // Scroll anchor: pin a child at the top or bottom of the viewport during pagination
+    void setScrollAnchorPosition(int position);
+    int getScrollAnchorPosition() const;
+    void setMaintainScrollAnchor(bool maintain);
+
     /**
      * Accessibility attributes (checkout NativeTemplateElement.ts for more info)
      */
@@ -620,6 +626,7 @@ private:
     int _animationsCount = 0;
     int _lastChildrenIndexerId = 0;
     RawViewNodeId _rawId = 0;
+    int _scrollAnchorPosition = ScrollAnchorPositionNone;
 
     std::bitset<30> _flags;
 

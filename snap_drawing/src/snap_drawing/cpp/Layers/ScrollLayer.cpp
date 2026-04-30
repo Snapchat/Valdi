@@ -359,6 +359,22 @@ void ScrollLayer::setFadingEdgeLength(Scalar length) {
     }
 }
 
+void ScrollLayer::setFadingEdgeStart(bool enabled) {
+    if (_fadingEdgeStartEnabled == enabled) {
+        return;
+    }
+    _fadingEdgeStartEnabled = enabled;
+    updateEdgeGradient();
+}
+
+void ScrollLayer::setFadingEdgeEnd(bool enabled) {
+    if (_fadingEdgeEndEnabled == enabled) {
+        return;
+    }
+    _fadingEdgeEndEnabled = enabled;
+    updateEdgeGradient();
+}
+
 void ScrollLayer::updateEdgeGradient() {
     if (_fadingEdgeLength <= 0) {
         return;
@@ -367,14 +383,18 @@ void ScrollLayer::updateEdgeGradient() {
     auto frame = getFrame();
     auto bounds = Rect::makeXYWH(0, 0, frame.width(), frame.height());
     if (_horizontal) {
-        auto leadingEdgeLength = std::clamp<Scalar>(offset.x, 0, _fadingEdgeLength);
+        auto leadingEdgeLength = _fadingEdgeStartEnabled ? std::clamp<Scalar>(offset.x, 0, _fadingEdgeLength) : 0;
         auto trailingEdgeLength =
-            std::clamp<Scalar>(_contentSize.width - bounds.width() - offset.x, 0, _fadingEdgeLength);
+            _fadingEdgeEndEnabled ?
+                std::clamp<Scalar>(_contentSize.width - bounds.width() - offset.x, 0, _fadingEdgeLength) :
+                0;
         _fadingEdgesMaskLayer->configure(_horizontal, bounds, leadingEdgeLength, trailingEdgeLength);
     } else {
-        auto leadingEdgeLength = std::clamp<Scalar>(offset.y, 0, _fadingEdgeLength);
+        auto leadingEdgeLength = _fadingEdgeStartEnabled ? std::clamp<Scalar>(offset.y, 0, _fadingEdgeLength) : 0;
         auto trailingEdgeLength =
-            std::clamp<Scalar>(_contentSize.height - bounds.height() - offset.y, 0, _fadingEdgeLength);
+            _fadingEdgeEndEnabled ?
+                std::clamp<Scalar>(_contentSize.height - bounds.height() - offset.y, 0, _fadingEdgeLength) :
+                0;
         _fadingEdgesMaskLayer->configure(_horizontal, bounds, leadingEdgeLength, trailingEdgeLength);
     }
 }

@@ -1,0 +1,27 @@
+# SKILL_NAME
+
+SKILL_DESCRIPTION
+
+## When to use
+
+Describe the scenarios or file types where this skill applies.
+
+## Key concepts
+
+Explain the important concepts for this area of Valdi.
+
+## Correct patterns
+
+```typescript
+// ✅ Correct example
+```
+
+## Common mistakes
+
+```typescript
+// ❌ Wrong example — explain why
+```
+
+## More information
+
+- Valdi docs: https://github.com/Snapchat/Valdi

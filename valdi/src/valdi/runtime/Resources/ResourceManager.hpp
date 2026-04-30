@@ -105,6 +105,8 @@ public:
 
     void preloadForComponentPath(const ComponentPath& componentPath);
 
+    void warmUpBundles(const std::vector<StringBox>& modulePaths);
+
     bool enableAccessibility() const;
     bool enableDeferredGC() const;
     bool isLazyModulePreloadingEnabled() const;

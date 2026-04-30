@@ -32,6 +32,11 @@ final class ExportedModuleGenerator: NativeSourceGenerator {
     }
 
     func generateCppSources(parameters: NativeSourceParameters, cppType: CPPType) throws -> [NativeSource] {
-        return []
+        let cppGenerator = CppModuleGenerator(bundleInfo: parameters.bundleInfo,
+                                              cppType: cppType,
+                                              exportedModule: exportedModule,
+                                              classMapping: parameters.classMapping,
+                                              sourceFileName: parameters.sourceFileName)
+        return try cppGenerator.write()
     }
 }

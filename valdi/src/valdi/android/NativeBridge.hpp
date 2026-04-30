@@ -112,6 +112,7 @@ public:
     static void applicationSetConfiguration(fbjni::alias_ref<fbjni::JClass> clazz,
                                             jlong runtimeManagerHandle,
                                             jfloat dynamicTypeScale);
+    static void setPointScale(fbjni::alias_ref<fbjni::JClass> clazz, jlong runtimeManagerHandle, jfloat pointScale);
     static void applicationDidResume(fbjni::alias_ref<fbjni::JClass> clazz, jlong runtimeManagerHandle);
     static void applicationIsInLowMemory(fbjni::alias_ref<fbjni::JClass> clazz, jlong runtimeManagerHandle);
     static void applicationWillPause(fbjni::alias_ref<fbjni::JClass> clazz, jlong runtimeManagerHandle);
@@ -177,6 +178,7 @@ public:
     static void contextOnCreate(fbjni::alias_ref<fbjni::JClass> clazz, jlong contextHandle);
     static void deleteNativeHandle(fbjni::alias_ref<fbjni::JClass> clazz, jlong nativeHandle);
     static void releaseNativeRef(fbjni::alias_ref<fbjni::JClass> clazz, jlong handle);
+    static void discardCallback(fbjni::alias_ref<fbjni::JClass> clazz, jlong callbackHandle);
     static void deleteRuntime(fbjni::alias_ref<fbjni::JClass> clazz, jlong runtimeHandle);
     static void deleteRuntimeManager(fbjni::alias_ref<fbjni::JClass> clazz, jlong runtimeManagerHandle);
     static void destroyContext(fbjni::alias_ref<fbjni::JClass> clazz, jlong runtimeHandle, jlong contextHandle);

@@ -1,15 +1,9 @@
-import { RequireFunc } from "valdi_core/src/IModuleLoader";
-import { getModuleLoader } from "valdi_core/src/ModuleLoaderGlobal";
-
-declare const require: RequireFunc;
-
-interface NativeModule {
-    doSomeMath(l: number, r: number): number;
-}
-
-const nativeModule: NativeModule = require('NativeModuleTest');
+import { makeCalculator } from './NativeCalculator';
 
 export function compute(): number {
-    return nativeModule.doSomeMath(42, 8);
+  const calculator = makeCalculator();
+  calculator.add(42);
+  calculator.add(8);
+  return calculator.total();
 }
 

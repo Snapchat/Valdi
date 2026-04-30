@@ -5,10 +5,31 @@ package com.snap.valdi.utils
 import android.os.Handler
 import android.os.Looper
 
+// Lazy main thread reference so we don't load Looper at class init (fails on JVM unit tests).
+private val mainThreadOrNull: Thread? by lazy {
+    try {
+        Looper.getMainLooper()?.thread
+    } catch (e: NoClassDefFoundError) {
+        null
+    } catch (e: ClassNotFoundException) {
+        null
+    } catch (e: NullPointerException) {
+        // Robolectric / SDK stubs: Looper exists but getMainLooper() or .thread can be null
+        null
+    }
+}
+
+// When not on Android (e.g. JVM tests), treat the first thread that asks as "main" so
+// strict-mode checks (e.g. assertResolutionNotOnMainThreadIfNeeded) still trigger.
+private object JvmMainThreadFallback {
+    @Volatile
+    var mainThread: Thread? = null
+}
+
 // Convenience methods to run runnables in the UI thread.
 
 fun runOnMainThreadIfNeeded(task: () -> Unit) {
-    if (Thread.currentThread() == Looper.getMainLooper().thread) {
+    if (isMainThread()) {
         task()
     } else {
         dispatchOnMainThread(task)
@@ -20,7 +41,17 @@ fun dispatchOnMainThread(task: () -> Unit) {
 }
 
 fun isMainThread(): Boolean {
-    return Thread.currentThread() === Looper.getMainLooper().thread
+    val main = mainThreadOrNull
+    if (main != null) {
+        return Thread.currentThread() === main
+    }
+    // JVM unit test: no Android Looper. Use first caller as "main" so strict-mode still throws.
+    synchronized(JvmMainThreadFallback) {
+        if (JvmMainThreadFallback.mainThread == null) {
+            JvmMainThreadFallback.mainThread = Thread.currentThread()
+        }
+        return Thread.currentThread() === JvmMainThreadFallback.mainThread
+    }
 }
 
 fun assertMainThread() {
@@ -45,4 +76,6 @@ fun runOnMainThreadDelayed(delayMs: Long, task: Runnable) {
 
 fun getValdiHandler(): Handler = handler
 
-private val handler = object: Handler(Looper.getMainLooper()) {}
+private val handler by lazy {
+    object : Handler(Looper.getMainLooper()) {}
+}

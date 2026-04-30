@@ -311,7 +311,12 @@ Logger& RuntimeManagerWrapper::getLogger() {
 }
 
 float RuntimeManagerWrapper::getPointScale() const {
-    return _pointScale;
+    return _pointScale.load(std::memory_order_relaxed);
+}
+
+void RuntimeManagerWrapper::setPointScale(float pointScale) {
+    _pointScale.store(pointScale, std::memory_order_relaxed);
+    _viewManager->setPointScale(pointScale);
 }
 
 Valdi::RuntimeManager& RuntimeManagerWrapper::getRuntimeManager() const {

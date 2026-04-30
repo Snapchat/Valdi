@@ -75,6 +75,20 @@ private:
     void addDamageIfNeeded(const Rect& bounds) {
         const auto& context = getCurrentContext();
         auto absoluteRect = context.compositionState.getAbsoluteClippedRect(bounds);
+
+        // Apply damage rect expansion:
+        // 1. Round outward to pixel boundaries (floor/ceil) to handle sub-pixel coordinates
+        absoluteRect = absoluteRect.makeOutset();
+
+        // 2. Expand by 1px for anti-aliasing bleed
+        // When rendering, anti-aliasing can affect pixels OUTSIDE the geometric bounds.
+        // The damage rect is used as a clip rect (RasterContext.cpp:251), so if we don't
+        // account for AA bleed, pixels at edges won't be updated, causing trailing artifacts.
+        absoluteRect.left -= 1.0f;
+        absoluteRect.top -= 1.0f;
+        absoluteRect.right += 1.0f;
+        absoluteRect.bottom += 1.0f;
+
         _rasterDamageResolver.addNonTransparentLayerInRect(context.layerId,
                                                            absoluteRect,
                                                            context.compositionState.getAbsoluteMatrix(),
@@ -93,7 +107,13 @@ void RasterDamageResolver::beginUpdates(Scalar surfaceWidth, Scalar surfaceHeigh
     _height = surfaceHeight;
 
     if (changed) {
-        addDamageInRect(Rect::makeXYWH(0, 0, surfaceWidth, surfaceHeight));
+        // Apply same expansion as other damage rects: rounding + 1px margin for anti-aliasing
+        auto damageRect = Rect::makeXYWH(0, 0, surfaceWidth, surfaceHeight).makeOutset();
+        damageRect.left -= 1.0f;
+        damageRect.top -= 1.0f;
+        damageRect.right += 1.0f;
+        damageRect.bottom += 1.0f;
+        addDamageInRect(damageRect);
     }
 }
 
@@ -159,7 +179,9 @@ void RasterDamageResolver::addDamageInRect(const Rect& rect) {
      */
     auto it = _damageRects.begin();
     while (it != _damageRects.end()) {
-        if (it->intersects(damageToAdd)) {
+        // Use epsilon-tolerant intersection check for damage rect merging to handle
+        // floating-point precision issues from scaling/transformation
+        if (it->intersectsWithTolerance(damageToAdd)) {
             damageToAdd.join(*it);
             _damageRects.erase(it);
             it = _damageRects.begin();

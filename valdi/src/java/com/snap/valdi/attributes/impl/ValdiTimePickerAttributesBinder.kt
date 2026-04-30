@@ -63,6 +63,14 @@ class ValdiTimePickerAttributesBinder(private val context: Context, val logger: 
         view.onChangeFunction = null
     }
 
+    private fun applyPreferredStyle(view: ValdiTimePicker, value: Int, animator: ValdiAnimator?) {
+        view.preferredStyle = value
+    }
+
+    private fun resetPreferredStyle(view: ValdiTimePicker, animator: ValdiAnimator?) {
+        view.preferredStyle = 1 // spinner
+    }
+
     private fun noopApplyColor(view: ValdiTimePicker, value: Int, animator: ValdiAnimator?) {
         // noop
         // DO NOT USE - @mli6 - temporary workaround pending release of iOS dark mode
@@ -78,6 +86,7 @@ class ValdiTimePickerAttributesBinder(private val context: Context, val logger: 
         attributesBindingContext.bindIntAttribute("minuteOfHour", false, this::applyMinuteOfHour, this::resetMinuteOfHour)
         attributesBindingContext.bindIntAttribute("intervalMinutes", false, this::applyInterval, this::resetInterval)
         attributesBindingContext.bindFunctionAttribute("onChange", this::applyOnChange, this::resetOnChange)
+        attributesBindingContext.bindIntAttribute("preferredStyle", true, this::applyPreferredStyle, this::resetPreferredStyle)
         attributesBindingContext.bindColorAttribute("color", false, this::noopApplyColor, this::noopResetColor)
 
         attributesBindingContext.setPlaceholderViewMeasureDelegate(lazy {

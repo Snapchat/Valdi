@@ -21,8 +21,9 @@ function makeRenderer(
   delegate: IRendererDelegate,
   allowedRootElementTypes?: string[],
   disableProxy?: boolean,
+  useTopDownMoveOrder?: boolean,
 ): Renderer {
-  const renderer = new Renderer('', allowedRootElementTypes, delegate);
+  const renderer = new Renderer('', allowedRootElementTypes, delegate, useTopDownMoveOrder);
 
   // return renderer;
   if (disableProxy) {
@@ -180,6 +181,46 @@ describe('Renderer', () => {
         ],
       },
     ]);
+  });
+
+  it('with useTopDownMoveOrder emits setRootElement first then moves in top-down order', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output, undefined, true, true);
+
+    const node1 = makeNodeProtoype('layout');
+    const node2 = makeNodeProtoype('view');
+    const node3 = makeNodeProtoype('label');
+
+    renderer.begin();
+    renderer.beginElement(node1);
+    renderer.beginElement(node2);
+    renderer.endElement();
+    renderer.beginElement(node3);
+    renderer.endElement();
+    renderer.endElement();
+    renderer.end();
+
+    expect(output.requests.length).toBe(1);
+    const entries = output.requests[0].entries;
+    const setRootIdx = entries.findIndex(e => e.type === RawRenderRequestEntryType.setRootElement);
+    const moveIndices = entries
+      .map((e, i) => (e.type === RawRenderRequestEntryType.moveElementToParent ? i : -1))
+      .filter(i => i >= 0);
+    // setRootElement must appear before any move (top-down: root first)
+    expect(setRootIdx).toBeGreaterThanOrEqual(0);
+    moveIndices.forEach(moveIdx => expect(moveIdx).toBeGreaterThan(setRootIdx));
+    // For every move (id, parentId, index), the parent must have been "attached" before this move.
+    // Root (id 1) is attached via setRootElement; others via an earlier move.
+    const attachedBefore = new Set<number>();
+    for (const e of entries) {
+      if (e.type === RawRenderRequestEntryType.setRootElement && e.id != null) {
+        attachedBefore.add(e.id);
+      }
+      if (e.type === RawRenderRequestEntryType.moveElementToParent && e.id != null && e.parentId != null) {
+        expect(attachedBefore.has(e.parentId)).toBeTrue();
+        attachedBefore.add(e.id);
+      }
+    }
   });
 
   it('can apply attributes', () => {
@@ -3877,6 +3918,52 @@ describe('Renderer', () => {
 
     expect(secondRenderCompleteCount).toBe(1);
     expect(firstRenderCompleteCount).toBe(1);
+  });
+
+  it('can enqueue draw callbacks without executing them immediately', () => {
+    const delegate = new RendererTestDelegate();
+    const renderer = makeRenderer(delegate);
+
+    let nextDrawCount = 0;
+    let observedHookTimeMs = 0;
+    renderer.onNextDraw(() => {
+      nextDrawCount++;
+    });
+    renderer.onNextDraw((hookTimeMs) => {
+      observedHookTimeMs = hookTimeMs;
+    });
+
+    expect(nextDrawCount).toBe(0);
+    expect(observedHookTimeMs).toBe(0);
+    expect(delegate.nextDrawCallbacks.length).toBe(2);
+
+    delegate.nextDrawCallbacks[0](123.5);
+    delegate.nextDrawCallbacks[1](123.5);
+    expect(nextDrawCount).toBe(1);
+    expect(observedHookTimeMs).toBe(123.5);
+  });
+
+  it('can enqueue draw callbacks while rendering', () => {
+    const delegate = new RendererTestDelegate();
+    const renderer = makeRenderer(delegate);
+    const node = makeNodeProtoype('root');
+
+    renderer.begin();
+    renderer.beginElement(node);
+    renderer.endElement();
+
+    let nextDrawCount = 0;
+    renderer.onNextDraw(() => {
+      nextDrawCount++;
+    });
+
+    expect(nextDrawCount).toBe(0);
+    expect(delegate.nextDrawCallbacks.length).toBe(1);
+
+    renderer.end();
+
+    expect(delegate.requests.length).toBe(1);
+    expect(nextDrawCount).toBe(0);
   });
 
   it('doesnt send destroy element request for whole tree', () => {

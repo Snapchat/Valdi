@@ -8,6 +8,7 @@
 #import <Foundation/Foundation.h>
 #import <XCTest/XCTest.h>
 #import "valdi/ios/CPPBindings/SCValdiViewManager.h"
+#import "valdi/runtime/Interfaces/IViewTransaction.hpp"
 #import "valdi/ios/Text/SCValdiFontManager.h"
 
 @interface MockExceptionReporter : NSObject <SCValdiExceptionReporter>
@@ -74,6 +75,25 @@
     XCTAssertEqualObjects(self.mockExceptionReporter.reportedModule, @"TestModule");
     XCTAssertEqualObjects(self.mockExceptionReporter.reportedStackTrace, @"Test stack trace");
 }
+
+- (void)testCreateViewTransactionReturnsDistinctInstancesForOnNextDrawCallbacks {
+    auto firstTransaction = self.viewManager->createViewTransaction(nullptr, false);
+    auto secondTransaction = self.viewManager->createViewTransaction(nullptr, false);
+
+    XCTAssertTrue(firstTransaction.get() != secondTransaction.get());
+
+    int callbackCount = 0;
+    firstTransaction->scheduleOnNextDraw(nullptr, [&]() {
+        callbackCount += 1;
+    });
+
+    secondTransaction->didUpdateRootView(nullptr, false);
+    XCTAssertEqual(callbackCount, 0);
+
+    firstTransaction->didUpdateRootView(nullptr, false);
+    XCTAssertEqual(callbackCount, 1);
+}
+
 -(void)testOnJsCrash {
     self.viewManager->setExceptionReporter(self.mockExceptionReporter);
     

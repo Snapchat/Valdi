@@ -7,6 +7,5 @@
 scripts/valdi-swift-toolchain
 
 # Binaries
-scripts/mirroring/bin
 .nlo-venv
 **deploy_manifest.txt

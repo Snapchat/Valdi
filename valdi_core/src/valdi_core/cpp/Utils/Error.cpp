@@ -11,8 +11,8 @@
 
 namespace Valdi {
 
-ErrorStorage::ErrorStorage(StringBox&& message, StringBox&& stackTrace, const Ref<ErrorStorage>& cause)
-    : message(std::move(message)), stackTrace(std::move(stackTrace)), cause(cause) {}
+ErrorStorage::ErrorStorage(StringBox&& message, StringBox&& stackTrace, const Ref<ErrorStorage>& cause, int32_t errorCode)
+    : message(std::move(message)), stackTrace(std::move(stackTrace)), cause(cause), errorCode(errorCode) {}
 
 ErrorStorage::~ErrorStorage() = default;
 
@@ -40,11 +40,13 @@ size_t ErrorStorage::hash() const {
 
 Error::Error() = default;
 Error::Error(StringBox message) : Error(std::move(message), StringBox(), nullptr) {}
-Error::Error(const std::string& message) : Error(StringCache::getGlobal().makeString(message)) {}
+Error::Error(const std::string_view& message) : Error(StringCache::getGlobal().makeString(message)) {}
 Error::Error(const char* message) : Error(STRING_LITERAL(message), StringBox(), nullptr) {}
 Error::Error(StringBox message, StringBox stackTrace, const Error* cause)
     : _storage(makeShared<ErrorStorage>(
-          std::move(message), std::move(stackTrace), cause != nullptr ? cause->_storage : nullptr)) {}
+          std::move(message), std::move(stackTrace), cause != nullptr ? cause->_storage : nullptr, 0)) {}
+Error::Error(StringBox message, int32_t errorCode)
+    : _storage(makeShared<ErrorStorage>(std::move(message), StringBox(), nullptr, errorCode)) {}
 Error::Error(Ref<ErrorStorage> storage) : _storage(std::move(storage)) {}
 
 bool Error::hasStack() const {
@@ -164,6 +166,10 @@ bool Error::operator!=(const Error& other) const noexcept {
 
 bool Error::isEmpty() const {
     return _storage == nullptr;
+}
+
+int32_t Error::getErrorCode() const noexcept {
+    return _storage != nullptr ? _storage->errorCode : 0;
 }
 
 size_t Error::hash() const {

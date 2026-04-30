@@ -43,6 +43,7 @@ public:
     RuntimeManager& getRuntimeManager() const;
     StandaloneViewManager& getViewManager() const;
     const Ref<ViewManagerContext>& getViewManagerContext() const;
+    const Ref<StandaloneMainQueue>& getMainQueue() const;
 
     void setupJsRuntime(const std::vector<StringBox>& jsArguments);
     void evalScript(const StringBox& scriptPath, const std::vector<StringBox>& jsArguments);

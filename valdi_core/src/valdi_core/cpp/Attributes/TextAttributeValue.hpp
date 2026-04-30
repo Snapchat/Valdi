@@ -57,6 +57,27 @@ enum class TextDecoration {
     Underline,
 };
 
+/**
+ * Represents an inline image attachment that can be embedded within attributed text.
+ * Used for rendering images (like LaTeX equations) inline with text using native text layout.
+ */
+struct ImageAttachment {
+    /** Unique identifier for the image attachment */
+    StringBox attachmentId;
+    /** Width of the image in logical pixels */
+    float width = 0;
+    /** Height of the image in logical pixels */
+    float height = 0;
+    /** PNG image data. Empty if placeholder. */
+    std::vector<uint8_t> imageData;
+};
+
+struct TextAnimationTransform {
+    float translationY = 0;
+    float scale = 1;
+    float opacity = 1;
+};
+
 struct TextAttributeValueStyle {
     std::optional<StringBox> font;
     TextDecoration textDecoration = TextDecoration::Unset;
@@ -67,6 +88,8 @@ struct TextAttributeValueStyle {
     std::optional<float> outlineWidth;
     std::optional<Color> outerOutlineColor;
     std::optional<float> outerOutlineWidth;
+    std::optional<ImageAttachment> imageAttachment;
+    std::optional<TextAnimationTransform> animationTransform;
 };
 
 /**

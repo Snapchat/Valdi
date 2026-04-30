@@ -8,6 +8,10 @@ load("//bzl/valdi:valdi_module.bzl", "valdi_module")
 ## Regenerate using ./scripts/regenerate_valdi_modules_build_bazel_files.sh
 ####################
 
+exports_files([
+    "web/JSX.stub.d.ts",
+])
+
 ts_project(
     name = "valdi_tsx_web",
     srcs = glob([

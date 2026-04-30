@@ -84,6 +84,10 @@ installTraceProxy(Renderer);
 The Valdi runtime traces some default important events that happens during the lifecycle of your component. This section explains some of them:
 
 - `Valdi.processRenderRequest`: TypeScript rendering has completed, and the framework is now processing the request to update the nodes. Every time a render happens at the TypeScript level, if the render has made any changes, a render request will be emitted that will end up being processed by the runtime. This is where the Valdi C++ runtime syncs its internal state with the state of the nodes in TypeScript.
+
+> [!Note]
+> The Valdi runtime uses **Source Maps** to symbolicate stack traces in the JavaScript engine. This ensures that performance traces and error reports provide meaningful information about your TypeScript code, even when running minified or compiled bytecode.
+
 - `Valdi.updateViewTree`: The framework is going through the nodes and updating the view hierarchy to reflect the changes. This is where the backing views of the nodes are created/destroyed/recycled. This pass might happen after processing a render request, or when scrolling.
 - `Valdi.setUserDefinedViewport`: The framework is reacting to a scroll change.
 - `Valdi.updateVisibility`: The framework is resolving the viewports for the nodes. It is finding out which nodes are visible and which nodes are not visible on the screen.

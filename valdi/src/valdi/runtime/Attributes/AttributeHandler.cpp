@@ -55,6 +55,10 @@ Result<Void> AttributeHandler::applyAttribute(ViewTransactionScope& viewTransact
     Result<Void> result;
     auto postprocessedValue = postprocess(viewNode, value);
     if (postprocessedValue) {
+        SC_ASSERT(_delegate != nullptr, "AttributeHandler::applyAttribute called with null delegate");
+        if (_delegate == nullptr) {
+            return Error("AttributeHandler::applyAttribute called with null delegate");
+        }
         result = _delegate->onApply(
             viewTransactionScope, viewNode, viewNode.getView(), _name, postprocessedValue.value(), animator);
     } else {
@@ -136,6 +140,11 @@ void AttributeHandler::resetAttribute(ViewTransactionScope& viewTransactionScope
                                       ViewNode& viewNode,
                                       const SharedAnimator& animator) const {
     SC_ASSERT(!requiresView() || viewNode.hasView());
+    SC_ASSERT(_delegate != nullptr, "AttributeHandler::resetAttribute called with null delegate");
+
+    if (_delegate == nullptr) {
+        return;
+    }
 
     _delegate->onReset(viewTransactionScope, viewNode, viewNode.getView(), _name, animator);
 }

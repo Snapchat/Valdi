@@ -35,10 +35,11 @@
 #import "valdi_core/SCNValdiCoreHTTPRequestManager+Private.h"
 #import "valdi_core/SCNValdiCoreModuleFactoriesProvider+Private.h"
 #import "valdi/SCNValdiKeychain+Private.h"
-#import "valdi/SCNValdiJSRuntime+Private.h"
+#import "valdi_core/SCNValdiCoreJSRuntime+Private.h"
 #import "valdi/ios/SCValdiDefaultHTTPRequestManager.h"
 #import "valdi/ios/SCValdiKeychainStore.h"
 #import "valdi/ios/SCValdiUserDefaultsStore.h"
+#import "valdi/runtime/JavaScript/JavaScriptANRDetector.hpp"
 #import "valdi/runtime/RuntimeManager.hpp"
 #import "valdi/runtime/Resources/AssetLoaderManager.hpp"
 
@@ -48,6 +49,7 @@
 
 #import "valdi/ios/SCValdiJSWorker.h"
 
+#include <chrono>
 #import <memory>
 #import <utils/debugging/Assert.hpp>
 
@@ -307,7 +309,8 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
 
     _referenceTrackingEnabled = configuration.enableReferenceTracking;
     BOOL useScreenUserInterfaceStyleForDarkMode = !configuration.useViewControllerBasedUserInterfaceStyleForDarkMode;
-    [_mainRuntime setAllowDarkMode:configuration.allowDarkMode useScreenUserInterfaceStyleForDarkMode:useScreenUserInterfaceStyleForDarkMode];
+    [_mainRuntime setAllowDarkMode:configuration.allowDarkMode
+        useScreenUserInterfaceStyleForDarkMode:useScreenUserInterfaceStyleForDarkMode];
     [_mainRuntime setIsIntegrationTestEnvironment:configuration.isTestEnvironment];
     _mainRuntime.disableLegacyMeasureBehaviorByDefault = configuration.disableLegacyMeasureBehaviorByDefault;
     [_mainRuntime setPerformHapticFeedbackFunctionBlock:configuration.performHapticFeedbackBlock];
@@ -326,6 +329,12 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
 
     if (configuration.disableGcStackUsageDetection) {
         Valdi::forceRetainJsObjects = true;
+    }
+
+    if (configuration.anrTimeoutMs > 0) {
+        _cppInstance->getANRDetector()->start(std::chrono::milliseconds(configuration.anrTimeoutMs));
+    } else {
+        _cppInstance->getANRDetector()->stop();
     }
 
     [_fontManager setFontLoader:configuration.fontLoader];
@@ -465,7 +474,7 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
     }
 }
 
-- (SCValdiRuntime *)createRuntimeWithCustomModuleProvider:(id<SCValdiCustomModuleProvider>)customModuleProvider
+- (nullable SCValdiRuntime *)createRuntimeWithCustomModuleProvider:(id<SCValdiCustomModuleProvider>)customModuleProvider
 {
     if (_applicationIsTerminating || _forceTornDown) {
         return nil;
@@ -479,7 +488,12 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
 
     auto runtime =
     _cppInstance->createRuntime(Valdi::makeShared<ValdiIOS::ResourceLoader>(customModuleProvider), static_cast<double>(_viewManagerContext->getViewManager().getPointScale()));
+    _cppInstance->emitXpatCreateRuntimeMetrics();
+
     SCValdiRuntime *objcRuntime = [[SCValdiRuntime alloc] initWithCppInstance:runtime viewManagerContext:_viewManagerContext runtimeManager:self fontManager:_fontManager];
+
+    _cppInstance->emitIosRuntimeCreateMetrics();
+
     _cppInstance->attachHotReloader(runtime);
 
     return objcRuntime;
@@ -505,7 +519,7 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
     }
 }
 
-- (id<SCSnapDrawingRuntime>)snapDrawingRuntime
+- (nullable id<SCSnapDrawingRuntime>)snapDrawingRuntime
 {
 #ifdef SNAP_DRAWING_ENABLED
     @synchronized (self) {
@@ -643,7 +657,7 @@ static SCValdiCapturedJSStacktrace *toObjCStacktrace(const Valdi::JavaScriptCapt
                                                          threadStatus:toObjCThreadStatus(capturedStacktrace.getStatus())];
 }
 
-- (NSArray<SCValdiCapturedJSStacktrace *> *)captureStackTracesWithTimeoutMs:(NSUInteger)timeoutMs
+- (nullable NSArray<SCValdiCapturedJSStacktrace *> *)captureStackTracesWithTimeoutMs:(NSUInteger)timeoutMs
 {
     NSMutableArray<SCValdiCapturedJSStacktrace *> *capturedJSStacktraces = [NSMutableArray array];
     @synchronized (self) {
@@ -658,6 +672,19 @@ static SCValdiCapturedJSStacktrace *toObjCStacktrace(const Valdi::JavaScriptCapt
     }
 
     return [capturedJSStacktraces copy];
+}
+
+- (SCValdiMemoryStatistics)dumpMemoryStatistics
+{
+    SCValdiMemoryStatistics result = {0, 0};
+    @synchronized (self) {
+        if (_cppInstance != nullptr) {
+            auto stats = _cppInstance->dumpMemoryStatistics();
+            result.memoryUsageBytes = static_cast<int64_t>(stats.memoryUsageBytes);
+            result.objectsCount = static_cast<int64_t>(stats.objectsCount);
+        }
+    }
+    return result;
 }
 
 - (void *)cppInstance
@@ -681,7 +708,7 @@ static SCValdiCapturedJSStacktrace *toObjCStacktrace(const Valdi::JavaScriptCapt
         SC_ASSERT(runtimeInstance != nullptr);
         auto runtime = runtimeInstance->getJavaScriptRuntime();
         SC_ASSERT(runtime);
-        auto workerRuntime = djinni_generated_client::valdi::JSRuntime::fromCpp(runtime->createWorker());
+        auto workerRuntime = djinni_generated_client::valdi_core::JSRuntime::fromCpp(runtime->createWorker());
         SC_ASSERT(workerRuntime);
         auto newWorker = [[SCValdiJSWorker alloc] initWithWorkerRuntime:workerRuntime];
         SC_ASSERT(newWorker);

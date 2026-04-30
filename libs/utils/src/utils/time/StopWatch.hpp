@@ -92,6 +92,10 @@ public:
         return static_cast<int64_t>(elapsed().milliseconds());
     }
 
+    int64_t elapsedUs() const {
+        return static_cast<int64_t>(elapsed().microseconds());
+    }
+
     // Total elapsed time while this stopwatch was running.
     Duration<Clock> elapsed() const {
         auto elapsed = _elapsedTotal;

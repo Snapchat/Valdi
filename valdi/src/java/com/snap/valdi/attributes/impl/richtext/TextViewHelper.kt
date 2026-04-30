@@ -144,15 +144,21 @@ class TextViewHelper(private val view: TextView,
         if (view.getText() !is Spanned || !needsUpdateOnLayoutCallbacks) {
             return
         }
-        val attributeLayoutSpans = (view.getText() as Spanned).getSpans(
-            0, view.getText().length,
+        val layout = view.getLayout() ?: return
+        val layoutText = layout.text as? Spanned ?: return
+
+        val attributeLayoutSpans = layoutText.getSpans(
+            0, layoutText.length,
             OnLayoutSpan::class.java
         )
-        val layout = view.getLayout()
 
         for (span in attributeLayoutSpans) {
-            val start = span.start
-            val end = span.start + span.length
+            val start = layoutText.getSpanStart(span)
+            val end = layoutText.getSpanEnd(span)
+
+            if (start < 0 || end < 0 || start > end || end > layoutText.length) {
+                continue
+            }
 
             val lineStart = layout.getLineForOffset(start)
             val xStart = coordinateResolver.fromPixel(layout.getPrimaryHorizontal(start))
@@ -243,7 +249,8 @@ class TextViewHelper(private val view: TextView,
 
     fun convertAttributedText(text: AttributedText): Spannable {
         val fontAttributes = this.fontAttributes ?: defaultAttributes
-        return textConverter.convert(text, fontAttributes, this, disableTextReplacement)
+        val density = view.resources.displayMetrics.density
+        return textConverter.convert(text, fontAttributes, this, disableTextReplacement, density)
     }
 
     fun drawOnTopAttributedText(canvas: Canvas, layout: Layout, text: AttributedText) {

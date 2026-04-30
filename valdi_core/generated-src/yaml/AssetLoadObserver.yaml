@@ -37,3 +37,8 @@ wasm:
 ts:
   typename: AssetLoadObserver
   module: './valdi_core'
+c:
+  typename: 'snap_valdi_core_AssetLoadObserver_ref'
+  translator: '::djinni::c_api::InterfaceTranslator<::snap::valdi_core::AssetLoadObserver>'
+  public_header: '"valdi_core/AssetLoadObserver.h"'
+  private_header: '"valdi_core/AssetLoadObserver.hpp"'

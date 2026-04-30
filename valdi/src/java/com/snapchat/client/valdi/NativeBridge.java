@@ -102,6 +102,7 @@ public class NativeBridge {
     public static native void enqueueWorkerTask(long runtimeManagerHandle, Object runnable);
 
     public static native void performCallback(long nativePayloadHandle);
+    public static native void discardCallback(long nativePayloadHandle);
 
     public static native void deleteNativeHandle(long actionHandle);
     public static native void releaseNativeRef(long nativeHandle);
@@ -151,6 +152,8 @@ public class NativeBridge {
     public static native void clearViewPools(long runtimeManagerHandle);
 
     public static native void applicationSetConfiguration(long runtimeManagerHandle, float dynamicTypeScale);
+
+    public static native void setPointScale(long runtimeManagerHandle, float pointScale);
 
     public static native void applicationDidResume(long runtimeManagerHandle);
 

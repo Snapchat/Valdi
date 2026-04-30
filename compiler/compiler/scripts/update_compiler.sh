@@ -7,6 +7,16 @@ echo "Updating Valdi compiler..."
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 BASE_PATH="${SCRIPT_DIR}/../Compiler"
+
+# Compute the repo/client root now (before any cd) so we can resolve relative paths correctly
+# regardless of the caller's working directory.
+# - Mobile repo (SnapCI): SCRIPT_DIR contains "open_source", root is client/
+# - Public/mirrored repo (post-Copybara): root is the open_source repo root
+if [[ "$SCRIPT_DIR" == *"open_source"* ]]; then
+    COPY_DEST_ROOT="$(cd "$SCRIPT_DIR/../../../../../" && pwd)"
+else
+    COPY_DEST_ROOT="$(cd "$SCRIPT_DIR/../../../" && pwd)"
+fi
 OUTPUT_FILENAME="Compiler"
 ENTITLEMENTS_PATH="$SCRIPT_DIR/entitlements.plist"
 
@@ -57,6 +67,12 @@ fi
 
 if [ -z "$bin_output_path" ]; then
   usage
+fi
+
+# Resolve bin_output_path relative to COPY_DEST_ROOT (not the caller's CWD),
+# so the output location is correct regardless of where the script is invoked from.
+if [[ "$bin_output_path" != /* ]]; then
+  bin_output_path="$COPY_DEST_ROOT/$bin_output_path"
 fi
 
 # Main
@@ -128,12 +144,19 @@ fi
 
 if [[ "$IS_LINUX" = true ]]; then
     OUT_DIR="$bin_output_path/linux"
+    SHA256_VAR_NAME="VALDI_COMPILER_LINUX_SHA256"
 else
     OUT_DIR="$bin_output_path/macos"
+    SHA256_VAR_NAME="VALDI_COMPILER_MACOS_SHA256"
+fi
+
+(
+cd "$COPY_DEST_ROOT"
+if [[ -f "src/composer/jenkins/jenkins_helpers.sh" ]]; then
+    source src/composer/jenkins/jenkins_helpers.sh
 fi
 
 mkdir -p "$OUT_DIR"
 rm -f "$OUT_DIR/valdi_compiler"
 cp "$OUTPUT_FILE_PATH" "$OUT_DIR/valdi_compiler"
-
-echo "All done."
+)

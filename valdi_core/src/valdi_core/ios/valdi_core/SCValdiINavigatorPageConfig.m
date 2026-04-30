@@ -13,6 +13,7 @@
 @dynamic platformNavigationTitle;
 @dynamic isPartiallyHiding;
 @dynamic disableSwipeToDismissModal;
+@dynamic showDimmingOverlay;
 
 + (SCValdiMarshallableObjectDescriptor)valdiMarshallableObjectDescriptor
 {
@@ -25,6 +26,7 @@
         {.name = "platformNavigationTitle", .selName = nil, .type = "s?"},
         {.name = "isPartiallyHiding", .selName = nil, .type = "b@?"},
         {.name = "disableSwipeToDismissModal", .selName = nil, .type = "b@?"},
+        {.name = "showDimmingOverlay", .selName = nil, .type = "b@?"},
         {.name = nil},
     };
     return SCValdiMarshallableObjectDescriptorMake(kFields, nil, nil, NO);

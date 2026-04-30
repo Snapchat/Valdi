@@ -1,10 +1,23 @@
 # Valdi Command Line References
 
-The Valdi command line tools will be installed as part of the installation steps, and serves as a single point to getting started and managing existing projects.
+The Valdi command line tools serve as the primary interface for setting up your environment, creating projects, building applications, and managing your Valdi workflow.
 
 ## Installation
 
-See [INSTALL.md](../INSTALL.md).
+```bash
+npm install -g @snap/valdi
+valdi dev_setup  # Sets up your entire development environment
+```
+
+For detailed installation instructions, see the [Installation Guide](../INSTALL.md).
+
+> [!TIP]
+> If you're contributing to Valdi itself, install from source instead:
+> ```bash
+> git clone git@github.com:Snapchat/Valdi.git
+> cd Valdi/npm_modules/cli/
+> npm run cli:install
+> ```
 
 ## Basic Usage
 
@@ -30,6 +43,7 @@ Commands:
   valdi test [--module module_name] [--target target_name]     Runs tests for given module(s) or target(s). Runs all
                                                                tests if no module or target is specified.
   valdi lint <command>                                         Checks and formats the code
+  valdi skills <command>                                       Manage AI assistant skills for Valdi development
   valdi doctor                                                 Check your Valdi development environment for common issues
   valdi log                                                    Streams Valdi logs from the connected device to console
 
@@ -143,6 +157,36 @@ Executes the test(s) for the provided targets. Note that multiple modules OR tar
 `valdi lint check [files...]`\
 `valdi lint format [files...]`\
 Runs the prettier linter on the provided files. The files given can be passed via wildcards. If a prettier config does not exist, a basic one will be created. Further customizations can be done via manually editing the created `.prettierrc.json`.<br></br>
+
+`valdi skills list [--category=framework|client]`\
+`valdi skills install [name] [--for=claude|cursor|copilot|all] [--category=framework|client]`\
+`valdi skills update`\
+`valdi skills remove <name>`\
+`valdi skills create`\
+Manage Valdi AI skills — context files that teach AI coding assistants (Claude Code, Cursor, GitHub Copilot) about Valdi-specific patterns so they generate correct code instead of React patterns. Skills are bundled in the npm package and work offline.
+
+- `list`: Shows all available skills with per-agent install status. Use `--category` to filter by `framework` (Valdi repo internals) or `client` (module development)
+- `install [name]`: Installs one skill or all skills. Without `--for`, auto-detects which AI tools are installed. Use `--category` to install only framework or client skills
+- `update`: Re-installs all already-installed skills from the bundled package
+- `remove <name>`: Removes a skill from all agents where it is installed
+- `create`: Interactive scaffold — must be run from within a Valdi framework checkout. Prompts for name, description, and category; creates `skill.md` in the correct location and registers it in `registry.json`
+
+Example:
+```sh
+# See all available skills and which are installed
+valdi skills list
+
+# Install all skills for all detected AI tools
+valdi skills install
+
+# Install only module-development skills for Cursor
+valdi skills install --category=client --for=cursor
+
+# Contribute a new skill (run from Valdi repo root)
+valdi skills create
+```
+
+Skills are stored in `ai-skills/` in the Valdi repository. See [Working with AI Assistants](./ai-tooling.md) for more information.<br></br>
 
 `valdi doctor [--verbose] [--fix] [--json] [--framework] [--project]`\
 Check your Valdi development environment for common issues. Performs comprehensive health checks on system requirements, tool installations, and workspace configuration.

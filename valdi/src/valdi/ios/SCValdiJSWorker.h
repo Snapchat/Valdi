@@ -7,7 +7,7 @@
 
 #import <Foundation/Foundation.h>
 
-#import "valdi/SCNValdiJSRuntime.h"
+#import "valdi_core/SCNValdiCoreJSRuntime.h"
 #import "valdi_core/SCValdiJSQueueDispatcher.h"
 #import "valdi_core/SCValdiJSRuntime.h"
 
@@ -15,7 +15,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface SCValdiJSWorker : NSObject <SCValdiJSRuntime>
 
-- (instancetype)initWithWorkerRuntime:(SCNValdiJSRuntime*)runtime;
+- (instancetype)initWithWorkerRuntime:(SCNValdiCoreJSRuntime*)runtime;
 
 @end
 
