@@ -3541,6 +3541,40 @@ function_end @1
     );
   });
 
+  it('does not emit a runtime object for an inline const enum declaration', () => {
+    const result = configuredCompile(
+      `
+      const enum Color { Red = 0, Green = 1, Blue = 2 }
+      const c = Color.Green;
+    `,
+      { optimizeSlots: false, optimizeVarRefs: true },
+      false,
+      false,
+      false,
+      false,
+      undefined,
+    );
+    expect(result).toContain('storeint 1');
+    expect(result).not.toContain('newobject');
+  });
+
+  it('inlines string const enum values declared inline', () => {
+    const result = configuredCompile(
+      `
+      const enum Direction { Up = 'UP', Down = 'DOWN' }
+      const d = Direction.Up;
+    `,
+      { optimizeSlots: false, optimizeVarRefs: true },
+      false,
+      false,
+      false,
+      false,
+      undefined,
+    );
+    expect(result).toContain("storestring 'UP'");
+    expect(result).not.toContain('newobject');
+  });
+
   it('supports try finally', () => {
     const result = configuredCompile(
       `
