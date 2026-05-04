@@ -172,6 +172,23 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "valdi_svg",
+    srcs = glob([
+        "src/valdi/svg/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/svg/**/*.hpp",
+    ]),
+    copts = CC_COMPILER_FLAGS,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//snap_drawing:snap_drawing_cc",
+        "//valdi_core:valdi_core_cc",
+    ],
+)
+
 # Implementation of the JS engine abstraction
 # using JavaScriptCore
 cc_library(
@@ -408,6 +425,7 @@ cc_library(
         ":valdi_jni",
         ":valdi_runtime_with_vm",
         ":valdi_snap_drawing",
+        ":valdi_svg",
         "//libs/utils:utils_encoding_cc",
         "//valdi_core:valdi_core_android",
     ],
@@ -593,6 +611,7 @@ objc_library(
     deps = [
         ":valdi_runtime_with_vm",
         ":valdi_snap_drawing",
+        ":valdi_svg",
         "//libs/utils:utils_obj_cpp_ptr_wrapper",
         "//src/valdi_modules/src/valdi/drawing:drawing_objc",
         "//valdi:djinni_objc_cpp",
@@ -770,6 +789,15 @@ valdi_test(
     ],
 )
 
+valdi_test(
+    name = "test_svg",
+    srcs = glob(["test/svg/**/*.cpp"]),
+    deps = [
+        ":valdi_svg",
+        "//snap_drawing:test_utils",
+    ],
+)
+
 # Embed generated .valdiarchive containing the fake uploaded resources
 valdi_static_resource(
     name = "remote_assets_static_res",
@@ -848,6 +876,7 @@ cc_test(
         ":test_integration_lib",
         ":test_runtime_lib",
         ":test_snap_drawing_lib",
+        ":test_svg_lib",
         "@gtest//:gtest_main",
     ],
 )

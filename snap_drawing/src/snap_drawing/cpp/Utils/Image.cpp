@@ -9,10 +9,10 @@
 #include "snap_drawing/cpp/Utils/BytesUtils.hpp"
 
 #include "snap_drawing/cpp/Utils/Bitmap.hpp"
+#include "snap_drawing/cpp/Utils/BitmapFactory.hpp"
 #include "snap_drawing/cpp/Utils/SVGUtils.hpp"
 
 #include "valdi_core/cpp/Interfaces/IBitmap.hpp"
-#include "valdi_core/cpp/Utils/TextParser.hpp"
 #include "valdi_core/cpp/Utils/ValueTypedArray.hpp"
 
 #include "snap_drawing/cpp/Utils/BitmapUtils.hpp"
@@ -185,64 +185,17 @@ Valdi::Result<Ref<Image>> Image::make(const Valdi::BytesView& data) {
 }
 
 bool Image::isSVG(const Valdi::BytesView& data) {
-    Valdi::TextParser parser(std::string_view(reinterpret_cast<const char*>(data.data()), data.size()));
-    parser.tryParseWhitespaces();
-    return parser.tryParse("<svg") || parser.tryParse("<?xml");
-}
-
-static int resolveSVGDimension(int preferredDimension, SkScalar intrinsicDimension) {
-    if (preferredDimension > 0) {
-        return preferredDimension;
-    }
-    return static_cast<int>(std::ceil(intrinsicDimension));
+    return snap::drawing::isSVG(data);
 }
 
 Valdi::Result<Ref<Image>> Image::makeFromSVG(const Valdi::BytesView& data, int preferredWidth, int preferredHeight) {
-    auto dom = makeSVGDOM(data);
-    if (!dom) {
-        return dom.moveError();
+    auto bitmap = rasterizeSVG(
+        data, BitmapFactory::getInstance(Valdi::ColorType::ColorTypeRGBA8888), preferredWidth, preferredHeight);
+    if (!bitmap) {
+        return bitmap.moveError();
     }
 
-    auto intrinsicSize = dom.value()->containerSize();
-    auto intrinsicWidth = intrinsicSize.width();
-    auto intrinsicHeight = intrinsicSize.height();
-
-    if (preferredWidth > 0 && preferredHeight <= 0 && intrinsicWidth > 0 && intrinsicHeight > 0) {
-        preferredHeight = static_cast<int>(std::ceil(preferredWidth * intrinsicHeight / intrinsicWidth));
-    } else if (preferredHeight > 0 && preferredWidth <= 0 && intrinsicWidth > 0 && intrinsicHeight > 0) {
-        preferredWidth = static_cast<int>(std::ceil(preferredHeight * intrinsicWidth / intrinsicHeight));
-    }
-
-    auto outputWidth = resolveSVGDimension(preferredWidth, intrinsicWidth);
-    auto outputHeight = resolveSVGDimension(preferredHeight, intrinsicHeight);
-    if (outputWidth <= 0 || outputHeight <= 0) {
-        return Valdi::Error("SVG doesn't have a valid size");
-    }
-
-    auto imageInfo = SkImageInfo::MakeN32Premul(outputWidth, outputHeight);
-    auto surface = SkSurfaces::Raster(imageInfo);
-    if (!surface) {
-        return Valdi::Error("Unable to create SVG rasterization surface");
-    }
-
-    auto* canvas = surface->getCanvas();
-    canvas->clear(SK_ColorTRANSPARENT);
-
-    if (intrinsicWidth > 0 && intrinsicHeight > 0) {
-        canvas->scale(static_cast<SkScalar>(outputWidth) / intrinsicWidth,
-                      static_cast<SkScalar>(outputHeight) / intrinsicHeight);
-        dom.value()->setContainerSize(intrinsicSize);
-    } else {
-        dom.value()->setContainerSize(SkSize::Make(outputWidth, outputHeight));
-    }
-
-    dom.value()->render(canvas);
-    auto skImage = surface->makeImageSnapshot();
-    if (!skImage) {
-        return Valdi::Error("Unable to create image from SVG");
-    }
-
-    return Ref<Image>(Valdi::makeShared<Image>(skImage));
+    return makeFromBitmap(bitmap.moveValue(), false);
 }
 
 Valdi::Result<Ref<Image>> Image::makeFromPixelsData(const Valdi::BitmapInfo& bitmapInfo,

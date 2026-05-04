@@ -21,9 +21,10 @@
 #import "valdi_core/cpp/Resources/LoadedAsset.hpp"
 #import "valdi_core/SCNValdiCoreCancelable+Private.h"
 #import "valdi_core/cpp/Attributes/ImageFilter.hpp"
+#import "valdi_core/SCValdiIOSBitmapFactory.hpp"
 #import "valdi/ios/Utils/SCValdiImageFilter.h"
 
-#include "snap_drawing/cpp/Utils/Image.hpp"
+#include "valdi/svg/SVGRenderer.hpp"
 
 namespace ValdiIOS {
 
@@ -105,22 +106,6 @@ static void handleImageLoadResult(SCValdiImage *image,
             handleImageDidFinishLoading(processedImage, nil, completion);
         });
     }
-}
-
-static Valdi::Result<NSData *> rasterizeSVGToPNGData(const Valdi::BytesView& bytes,
-                                                     int32_t preferredWidth,
-                                                     int32_t preferredHeight) {
-    auto image = snap::drawing::Image::makeFromSVG(bytes, preferredWidth, preferredHeight);
-    if (!image) {
-        return image.moveError();
-    }
-
-    auto png = image.value()->toPNG();
-    if (!png) {
-        return png.moveError();
-    }
-
-    return ValdiIOS::NSDataFromBuffer(png.value());
 }
 
 Valdi::Shared<snap::valdi_core::Cancelable> ImageAssetLoaderIOS::loadAsset(const Valdi::Value& requestPayload,
@@ -287,18 +272,24 @@ public:
         }
 
         auto bytes = result.value();
-        if (snap::drawing::Image::isSVG(bytes)) {
+        if (Valdi::SVGRenderer::isSVG(bytes)) {
             _workerQueue->async([weakSelf = Valdi::weakRef(this), bytes, preferredWidth, preferredHeight, imageFilter, completion]() {
-                auto pngData = rasterizeSVGToPNGData(bytes, preferredWidth, preferredHeight);
-                if (!pngData) {
-                    completion->onLoadComplete(pngData.error());
+                auto bitmap = Valdi::SVGRenderer::rasterizeSVG(
+                    bytes, ValdiIOS::getIOSBitmapFactory(), preferredWidth, preferredHeight);
+                if (!bitmap) {
+                    completion->onLoadComplete(bitmap.error());
                     return;
                 }
 
-                NSError *error = nil;
-                SCValdiImage *image = [SCValdiImage imageWithData:pngData.value() error:&error];
+                auto imageResult = ValdiIOS::imageFromBitmap(bitmap.moveValue());
+                if (!imageResult) {
+                    completion->onLoadComplete(imageResult.error());
+                    return;
+                }
+
                 if (auto strongSelf = weakSelf.lock()) {
-                    handleImageLoadResult(image, error, imageFilter, strongSelf->_workerQueue, completion);
+                    auto imageRef = imageResult.moveValue();
+                    handleImageLoadResult((SCValdiImage *)imageRef.getValue(), nil, imageFilter, strongSelf->_workerQueue, completion);
                 }
             });
             return;

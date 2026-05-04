@@ -205,6 +205,7 @@ PRIVATE_HEADERS = [
     "src/valdi_core/ios/valdi_core/SCValdiObjCConversionUtils.h",
     "src/valdi_core/ios/valdi_core/SCValdiObjCValue.h",
     "src/valdi_core/ios/valdi_core/SCValdiObjCValueDelegate.h",
+    "src/valdi_core/ios/valdi_core/SCValdiIOSBitmapFactory.hpp",
     "src/valdi_core/ios/valdi_core/SCValdiTouches.h",
     "src/valdi_core/ios/valdi_core/SCValdiValueUtils.h",
     "src/valdi_core/ios/valdi_core/ValueFunctionWithSCValdiFunction.h",
@@ -344,8 +345,11 @@ objc_library(
     ],
     module_name = "valdi_core",
     sdk_frameworks = select({
-        "@platforms//os:ios": ["UIKit"],
-        "@platforms//os:macos": [],
+        "@platforms//os:ios": [
+            "CoreGraphics",
+            "UIKit",
+        ],
+        "@platforms//os:macos": ["Foundation"],
     }),
     tags = [
         "core_target",

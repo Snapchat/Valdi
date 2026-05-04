@@ -46,6 +46,7 @@ ResourceLoader::ResourceLoader(JavaEnv env,
     cls.getMethod("requestPayloadFromURL", _requestPayloadFromURLMethod);
     cls.getMethod("loadAsset", _loadAssetMethod);
     cls.getMethod("loadAssetFromBytes", _loadAssetFromBytes);
+    cls.getMethod("loadAssetFromBitmap", _loadAssetFromBitmap);
 
 #ifdef __ANDROID__
     _assetManager = AAssetManager_fromJava(JavaEnv::getUnsafeEnv(), _assetManagerJava.get());
@@ -160,6 +161,23 @@ JavaObject ResourceLoader::loadAssetFromBytes(const Valdi::BytesView& bytes,
                                     jColorMatrixFilter,
                                     blurRadiusFilter,
                                     callbackHandle);
+}
+
+JavaObject ResourceLoader::loadAssetFromBitmap(const JavaObject& bitmap,
+                                               int32_t preferredWidth,
+                                               int32_t preferredHeight,
+                                               const float* colorMatrixFilter,
+                                               float blurRadiusFilter,
+                                               int64_t callbackHandle) {
+    auto jColorMatrixFilter = colorMatrixToFloatArray(colorMatrixFilter);
+
+    return _loadAssetFromBitmap.call(_localResourceResolver.toObject(),
+                                     bitmap,
+                                     preferredWidth,
+                                     preferredHeight,
+                                     jColorMatrixFilter,
+                                     blurRadiusFilter,
+                                     callbackHandle);
 }
 
 } // namespace ValdiAndroid

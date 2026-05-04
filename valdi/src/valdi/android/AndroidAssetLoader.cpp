@@ -7,9 +7,11 @@
 
 #include "valdi/android/AndroidAssetLoader.hpp"
 #include "valdi/android/AndroidBitmap.hpp"
+#include "valdi/android/AndroidBitmapFactory.hpp"
 #include "valdi/android/ResourceLoader.hpp"
 #include "valdi/runtime/Interfaces/IRemoteDownloader.hpp"
 #include "valdi/runtime/Resources/AssetLoaderCompletion.hpp"
+#include "valdi/svg/SVGRenderer.hpp"
 #include "valdi_core/NativeCancelable.hpp"
 #include "valdi_core/cpp/Attributes/ImageFilter.hpp"
 #include "valdi_core/cpp/Resources/LoadedAsset.hpp"
@@ -20,8 +22,6 @@
 #include "valdi_core/cpp/Utils/ValueTypedArray.hpp"
 #include "valdi_core/jni/JavaCache.hpp"
 #include "valdi_core/jni/JavaUtils.hpp"
-
-#include "snap_drawing/cpp/Utils/Image.hpp"
 
 namespace ValdiAndroid {
 
@@ -120,6 +120,39 @@ static void loadAssetFromBytes(const Valdi::Ref<ResourceLoader>& resourceLoader,
                                        reinterpret_cast<jlong>(completionHandle));
 }
 
+static void loadAssetFromBitmap(const Valdi::Ref<ResourceLoader>& resourceLoader,
+                                const Valdi::Ref<Valdi::IBitmap>& bitmap,
+                                int32_t preferredWidth,
+                                int32_t preferredHeight,
+                                const Valdi::Value& attachedData,
+                                const Valdi::Ref<Valdi::AssetLoaderCompletion>& completion) {
+    auto androidBitmap = Valdi::castOrNull<AndroidBitmap>(bitmap);
+    if (androidBitmap == nullptr) {
+        completion->onLoadComplete(Valdi::Error("SVG rasterization did not return an Android bitmap"));
+        return;
+    }
+
+    auto* completionHandle = Valdi::unsafeBridgeRetain(completion.get());
+
+    const float* colorMatrixFilter = nullptr;
+    float blurRadiusFilter = 0.0f;
+
+    auto typedFilter = attachedData.getTypedRef<Valdi::ImageFilter>();
+    if (typedFilter != nullptr) {
+        if (!typedFilter->isIdentityColorMatrix()) {
+            colorMatrixFilter = typedFilter->getColorMatrix();
+        }
+        blurRadiusFilter = typedFilter->getBlurRadius();
+    }
+
+    resourceLoader->loadAssetFromBitmap(androidBitmap->getJavaBitmap(),
+                                        preferredWidth,
+                                        preferredHeight,
+                                        colorMatrixFilter,
+                                        blurRadiusFilter,
+                                        reinterpret_cast<jlong>(completionHandle));
+}
+
 class AndroidAssetLoaderWithDownloader : public Valdi::AssetLoader {
 public:
     AndroidAssetLoaderWithDownloader(const Valdi::Ref<ResourceLoader>& resourceLoader,
@@ -155,27 +188,18 @@ public:
                 }
 
                 auto bytes = result.value();
-                if (snap::drawing::Image::isSVG(bytes)) {
+                if (Valdi::SVGRenderer::isSVG(bytes)) {
                     workerQueue->async(
                         [resourceLoader, preferredWidth, preferredHeight, attachedData, completion, bytes]() {
-                            auto image = snap::drawing::Image::makeFromSVG(bytes, preferredWidth, preferredHeight);
-                            if (!image) {
-                                completion->onLoadComplete(image.moveError());
+                            auto bitmap = Valdi::SVGRenderer::rasterizeSVG(
+                                bytes, AndroidBitmapFactory::getSharedInstance(), preferredWidth, preferredHeight);
+                            if (!bitmap) {
+                                completion->onLoadComplete(bitmap.moveError());
                                 return;
                             }
 
-                            auto rasterizedBytes = image.value()->toPNG();
-                            if (!rasterizedBytes) {
-                                completion->onLoadComplete(rasterizedBytes.moveError());
-                                return;
-                            }
-
-                            loadAssetFromBytes(resourceLoader,
-                                               rasterizedBytes.value(),
-                                               preferredWidth,
-                                               preferredHeight,
-                                               attachedData,
-                                               completion);
+                            loadAssetFromBitmap(
+                                resourceLoader, bitmap.moveValue(), preferredWidth, preferredHeight, attachedData, completion);
                         });
                     return;
                 }
