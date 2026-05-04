@@ -28,6 +28,7 @@ single_version_override(
 
 bazel_dep(name = "bazel_skylib", version = "1.2.0")
 bazel_dep(name = "rules_java", version = "7.4.0")
+bazel_dep(name = "rules_rust", version = "0.64.0")
 
 bazel_dep(name = "rules_android", version = "0.6.5")
 bazel_dep(name = "rules_android_ndk", version = "0.1.3")
@@ -200,12 +201,6 @@ local_path_override(
     path = "bin",
 )
 
-bazel_dep(name = "resvg_libs")
-local_path_override(
-    module_name = "resvg_libs",
-    path = "third-party/resvg/resvg_libs",
-)
-
 bazel_dep(name = "jsoncpp", version = "1.9.6")
 
 http_archive(
@@ -259,11 +254,53 @@ http_archive(
 
 http_archive(
     name = "resvg",
-    url = "https://github.com/RazrFalcon/resvg/archive/a739aef5d01360ec238c886bc50674f31458df00.zip",
+    url = "https://github.com/linebender/resvg/archive/b3c7f58d059da6aa0a25141b1948c61b8c579c12.zip",
     build_file = "@valdi//third-party/resvg:resvg.BUILD",
-    strip_prefix = "resvg-a739aef5d01360ec238c886bc50674f31458df00",
-    integrity = "sha256-kohUhIYyFoaeIHLBhYwq6g7+h34r3i9/IIQoWyJAmSE=",
+    strip_prefix = "resvg-b3c7f58d059da6aa0a25141b1948c61b8c579c12",
+    integrity = "sha256-0F/rzIZh2AQW3zyJ8S0c269xlbCvn8rFSAI2r0jLdgU=",
 )
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2024",
+    extra_target_triples = ["aarch64-linux-android"],
+    versions = ["1.87.0"],
+)
+use_repo(rust, "rust_toolchains")
+register_toolchains("@rust_toolchains//:all")
+
+resvg_crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
+resvg_crate.spec(package = "base64", version = "0.22.1")
+resvg_crate.spec(package = "data-url", version = "0.3.2")
+resvg_crate.spec(package = "flate2", default_features = False, features = ["rust_backend"], version = "1.1.5")
+resvg_crate.spec(package = "imagesize", version = "0.14.0")
+resvg_crate.spec(package = "kurbo", version = "0.13.0")
+resvg_crate.spec(package = "log", version = "0.4.29")
+resvg_crate.spec(package = "pico-args", features = ["eq-separator"], version = "0.5.0")
+resvg_crate.spec(package = "rgb", version = "0.8.52")
+resvg_crate.spec(package = "roxmltree", version = "0.21.1")
+resvg_crate.spec(package = "simplecss", version = "0.2.2")
+resvg_crate.spec(package = "siphasher", version = "1.0.1")
+resvg_crate.spec(package = "strict-num", version = "0.1.1")
+resvg_crate.spec(package = "svgtypes", version = "0.16.1")
+resvg_crate.spec(package = "tiny-skia", version = "0.12.0")
+resvg_crate.spec(package = "tiny-skia-path", version = "0.12.0")
+resvg_crate.spec(package = "xmlwriter", version = "0.1.0")
+resvg_crate.render_config(
+    default_package_name = "",
+    repositories = ["resvg_crates"],
+)
+resvg_crate.from_specs(
+    name = "resvg_crates",
+    lockfile = "//third-party/resvg:cargo-bazel-lock.json",
+    supported_platform_triples = [
+        "aarch64-apple-darwin",
+        "aarch64-linux-android",
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+    ],
+)
+use_repo(resvg_crate, "resvg_crates")
 
 bazel_dep(name = "rules_license", version = "1.0.0")
 

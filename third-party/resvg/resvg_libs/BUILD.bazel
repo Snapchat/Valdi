@@ -1,9 +1,0 @@
-cc_import(
-    name = "resvg_libs",
-    static_library = select({
-        "@valdi//bzl/conditions:macos_arm64": "libs/Macos/armv8/lib/libresvg.a",
-        "@valdi//bzl/conditions:macos_x86_64": "libs/Macos/x86_64/lib/libresvg.a",
-        "@snap_platforms//conditions:linux": "libs/Linux/x86_64/lib/libresvg.a",
-    }),
-    visibility = ["//visibility:public"],
-)

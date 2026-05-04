@@ -1,6 +1,8 @@
 load("@llvm_toolchain//:toolchains.bzl", "llvm_register_toolchains")
+load("@resvg_crates//:defs.bzl", resvg_crates = "crate_repositories")
 load("@rules_jvm_external//:setup.bzl", "rules_jvm_external_setup")
 
 def valdi_post_initialize_workspace():
     llvm_register_toolchains()
+    resvg_crates()
     rules_jvm_external_setup()

@@ -263,12 +263,6 @@ def setup_dependencies(workspace_root = None):
         path = "/bin",
     )
 
-    local_or_nested_repository(
-        workspace_root = workspace_root,
-        name = "resvg_libs",
-        path = "/third-party/resvg/resvg_libs",
-    )
-
     # From https://github.com/open-source-parsers/jsoncpp/releases/tag/1.8.0
     http_archive(
         name = "jsoncpp",
@@ -429,6 +423,12 @@ def setup_dependencies(workspace_root = None):
         url = "https://github.com/bazel-contrib/bazel-lib/releases/download/v2.21.2/bazel-lib-v2.21.2.tar.gz",
     )
 
+    http_archive(
+        name = "rules_rust",
+        integrity = "sha256-2GH766nwQzOgrmnkSO6D1pF/JC3bt/41xo/CEqarpUY=",
+        urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.64.0/rules_rust-0.64.0.tar.gz"],
+    )
+
     # fuzzing rules directly copied from https://github.com/bazelbuild/rules_fuzzing/tree/1dbcd9167300ad226d29972f5f9c925d6d81f441?tab=readme-ov-file#configuring-the-workspace
     http_archive(
         name = "rules_fuzzing",
@@ -446,10 +446,10 @@ def setup_dependencies(workspace_root = None):
 
     http_archive(
         name = "resvg",
-        url = "https://github.com/RazrFalcon/resvg/archive/a739aef5d01360ec238c886bc50674f31458df00.zip",
+        url = "https://github.com/linebender/resvg/archive/b3c7f58d059da6aa0a25141b1948c61b8c579c12.zip",
         build_file = "@valdi//third-party/resvg:resvg.BUILD",
-        strip_prefix = "resvg-a739aef5d01360ec238c886bc50674f31458df00",
-        integrity = "sha256-kohUhIYyFoaeIHLBhYwq6g7+h34r3i9/IIQoWyJAmSE=",
+        strip_prefix = "resvg-b3c7f58d059da6aa0a25141b1948c61b8c579c12",
+        integrity = "sha256-0F/rzIZh2AQW3zyJ8S0c269xlbCvn8rFSAI2r0jLdgU=",
     )
 
     http_archive(

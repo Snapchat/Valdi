@@ -120,14 +120,14 @@ Valdi::Result<snap::drawing::Ref<snap::drawing::Image>> SVGRenderer::render(cons
 
     auto* outputBytes = outputBitmap->lockBytes();
 
-    resvg_fit_to fitTo;
-    fitTo.type = RESVG_FIT_TO_TYPE_ZOOM;
-    fitTo.value = std::max(static_cast<float>(surfaceWidth) / static_cast<float>(svgSize.first),
-                           static_cast<float>(surfaceHeight) / static_cast<float>(svgSize.second));
+    auto transform = resvg_transform_identity();
+    auto scale = std::max(static_cast<float>(surfaceWidth) / static_cast<float>(svgSize.first),
+                          static_cast<float>(surfaceHeight) / static_cast<float>(svgSize.second));
+    transform.a = scale;
+    transform.d = scale;
 
     resvg_render(result.value()->tree(),
-                 fitTo,
-                 resvg_transform_identity(),
+                 transform,
                  static_cast<uint32_t>(surfaceWidth),
                  static_cast<uint32_t>(surfaceHeight),
                  reinterpret_cast<char*>(outputBytes));

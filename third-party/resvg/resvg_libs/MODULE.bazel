@@ -1,4 +1,0 @@
-module(name = "resvg_libs")
-
-bazel_dep(name = "valdi", version = "0.1")
-bazel_dep(name = "snap_platforms")
