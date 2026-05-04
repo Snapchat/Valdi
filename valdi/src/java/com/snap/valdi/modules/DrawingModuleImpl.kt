@@ -49,7 +49,8 @@ class DrawingModuleImpl(
                 TextAlignment.LEFT,
                 false,
                 null,
-                0F)
+                0F,
+                null)
         fontAttributes.applyFont(fontName)
 
         val descriptor = FontDescriptor(fontAttributes.fontName!!)
