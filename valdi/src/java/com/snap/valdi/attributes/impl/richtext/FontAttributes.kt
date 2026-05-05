@@ -8,12 +8,14 @@ import android.graphics.Typeface
 import android.text.Layout
 import android.text.TextPaint
 import android.text.style.AlignmentSpan
+import android.text.style.CharacterStyle
 import android.text.style.ClickableSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.MetricAffectingSpan
 import android.text.style.ReplacementSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.UnderlineSpan
+import android.text.style.UpdateAppearance
 import android.util.TypedValue
 import com.snap.valdi.attributes.impl.fonts.FontDescriptor
 import com.snap.valdi.attributes.impl.fonts.FontManager
@@ -63,7 +65,13 @@ class InvisibleReplacementSpan : ReplacementSpan() {
     }
 }
 
-class InvisibleForegroundColorSpan : ForegroundColorSpan(Color.TRANSPARENT)
+class InvisibleForegroundColorSpan : CharacterStyle(), UpdateAppearance {
+    override fun updateDrawState(tp: TextPaint) {
+        tp.color = Color.TRANSPARENT
+        tp.bgColor = Color.TRANSPARENT
+        tp.clearShadowLayer()
+    }
+}
 
 data class FontAttributes(
     var textDecoration: TextDecoration?,

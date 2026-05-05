@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Rect
 import android.text.InputType
+import android.text.Spanned
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
@@ -20,6 +21,10 @@ import androidx.appcompat.widget.AppCompatEditText
 import com.snap.valdi.attributes.impl.ValdiTextViewBackgroundEffects
 import com.snap.valdi.attributes.impl.ValdiTextViewBackgroundEffectsLayoutManager
 import com.snap.valdi.attributes.impl.richtext.AttributedText
+import com.snap.valdi.attributes.impl.richtext.InvisibleForegroundColorSpan
+import com.snap.valdi.attributes.impl.richtext.InvisibleReplacementSpan
+import com.snap.valdi.attributes.impl.richtext.hasActiveAnimationTransform
+import com.snap.valdi.attributes.impl.richtext.hasRenderableAnimationTransform
 import com.snap.valdi.attributes.impl.richtext.OnLayoutSpan
 import com.snap.valdi.attributes.impl.richtext.TextViewHelper
 import com.snap.valdi.callable.ValdiFunction
@@ -45,18 +50,66 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
             value?.disableTextReplacement = true
         }
 
+    private var pendingAttributedTextRebind: AttributedText? = null
+    private val attributedTextRebindRunnable = Runnable {
+        val pendingText = pendingAttributedTextRebind
+        pendingAttributedTextRebind = null
+        if (pendingText != null && isAttributedText && pendingText === attributedText) {
+            textViewHelper?.forceRebindAttributedText(pendingText)
+        }
+    }
+
     // Necessary for drawing
     override fun onDraw(canvas: Canvas) {
         backgroundEffects?.let {
             backgroundEffectsLayoutManager.drawBackgroundEffects(canvas, it)
         }
 
-        super.onDraw(canvas)
         attributedText?.let {
-            if (isAttributedText && it.hasOutline()) {
+            val hasActiveAnimationTransform = it.hasActiveAnimationTransform()
+            val hasRenderableAnimationTransform = it.hasRenderableAnimationTransform()
+            val hasPendingInvisibleBaseText = boundTextHasInvisibleReplacementSpan()
+            if (isAttributedText &&
+                !hasActiveAnimationTransform &&
+                hasPendingInvisibleBaseText
+            ) {
+                scheduleAttributedTextRebind(it)
+            }
+            if (shouldDrawAttributedTextOverlay(it, hasRenderableAnimationTransform, hasPendingInvisibleBaseText)) {
+                super.onDraw(canvas)
                 textViewHelper?.drawOnTopAttributedText(canvas, layout, it)
+                return
             }
         }
+        super.onDraw(canvas)
+    }
+
+    private fun shouldDrawAttributedTextOverlay(
+        attributedText: AttributedText,
+        hasRenderableAnimationTransform: Boolean,
+        hasPendingInvisibleBaseText: Boolean,
+    ): Boolean {
+        return isAttributedText &&
+            (attributedText.hasOutline() || hasRenderableAnimationTransform || hasPendingInvisibleBaseText)
+    }
+
+    private fun boundTextHasInvisibleReplacementSpan(): Boolean {
+        val currentText = text as? Spanned ?: return false
+        return currentText.hasSpanWithoutAllocation(InvisibleReplacementSpan::class.java) ||
+            currentText.hasSpanWithoutAllocation(InvisibleForegroundColorSpan::class.java)
+    }
+
+    private fun <T> Spanned.hasSpanWithoutAllocation(spanType: Class<T>): Boolean {
+        return nextSpanTransition(-1, length, spanType) < length
+    }
+
+    private fun scheduleAttributedTextRebind(text: AttributedText) {
+        if (pendingAttributedTextRebind === text) {
+            return
+        }
+        pendingAttributedTextRebind = text
+        removeCallbacks(attributedTextRebindRunnable)
+        post(attributedTextRebindRunnable)
     }
 
     // Maps to the typescript's EditTextUnfocusReason
@@ -168,6 +221,8 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
     }
 
     override fun onDetachedFromWindow() {
+        removeCallbacks(attributedTextRebindRunnable)
+        pendingAttributedTextRebind = null
         if (lastFocusState) {
             ViewUtils.getKeyboardManager(this)?.hideKeyboard(this)
         }
@@ -290,9 +345,21 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
         setAttributedText(attributedText, spannable)
     }
 
+    fun updateAttributedText(nextAttributedText: AttributedText) {
+        isAttributedText = true
+        attributedText = nextAttributedText
+        if (pendingAttributedTextRebind != null) {
+            removeCallbacks(attributedTextRebindRunnable)
+            pendingAttributedTextRebind = null
+        }
+        invalidate()
+    }
+
     fun setTextAndSelection(value: String, start: Int = selectionStart, end: Int = selectionEnd) {
         isAttributedText = false
         attributedText = null
+        pendingAttributedTextRebind = null
+        removeCallbacks(attributedTextRebindRunnable)
         val textClamped = clampProcessTextIfNeeded(value)
         setText(textClamped)
         setSelectionClamped(start, end)
@@ -331,6 +398,12 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
             // We also remove onLayout spans as these can get out of sync when the text changes.
             superText.getSpans(0, spannable.length, OnLayoutSpan::class.java).forEach { onLayoutSpan ->
                 superText.removeSpan(onLayoutSpan)
+            }
+            superText.getSpans(0, spannable.length, InvisibleReplacementSpan::class.java).forEach { invisibleSpan ->
+                superText.removeSpan(invisibleSpan)
+            }
+            superText.getSpans(0, spannable.length, InvisibleForegroundColorSpan::class.java).forEach { invisibleSpan ->
+                superText.removeSpan(invisibleSpan)
             }
             superText.getSpans(0, spannable.length, Object::class.java).forEach { span ->
                 val isInNewSpans = newSpans.find { newSpan ->
@@ -385,6 +458,8 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
     }
 
     override fun prepareForRecycling() {
+        pendingAttributedTextRebind = null
+        removeCallbacks(attributedTextRebindRunnable)
         setText("")
     }
 
