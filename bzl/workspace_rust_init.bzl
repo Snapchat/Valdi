@@ -6,7 +6,14 @@ def valdi_initialize_rust_workspace():
     rules_rust_dependencies()
     rust_register_toolchains(
         edition = "2024",
-        extra_target_triples = ["aarch64-linux-android"],
+        extra_target_triples = [
+            "aarch64-apple-ios",
+            "aarch64-apple-ios-sim",
+            "aarch64-linux-android",
+            "armv7-linux-androideabi",
+            "x86_64-apple-ios",
+            "x86_64-linux-android",
+        ],
         versions = ["1.87.0"],
     )
 
@@ -37,6 +44,9 @@ def valdi_initialize_rust_workspace():
         supported_platform_triples = [
             "aarch64-apple-darwin",
             "aarch64-linux-android",
+            "armv7-linux-androideabi",
+            "x86_64-apple-ios",
+            "x86_64-linux-android",
             "x86_64-apple-darwin",
             "x86_64-unknown-linux-gnu",
         ],
