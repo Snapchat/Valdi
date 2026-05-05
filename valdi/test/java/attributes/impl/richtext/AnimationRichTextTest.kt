@@ -8,6 +8,10 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PointF
 import android.graphics.Typeface
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.TextPaint
 import android.text.Layout
 import android.text.StaticLayout
@@ -39,7 +43,9 @@ import com.snap.valdi.views.ValdiTextView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -109,6 +115,165 @@ internal class AnimationRichTextTest {
             kotlin.math.ceil(paint.measureText(text).toDouble()).toInt(),
             span.getSize(paint, text, 0, text.length, null),
         )
+    }
+
+    @Test
+    fun textValueSetterDoesNotBypassEqualityForStaticAttributedText() {
+        val view = TextView(getApplicationContext())
+        val helper = TextViewHelper(view, converter, FontAttributes.default, 0)
+        val dirtyField = TextViewHelper::class.java.getDeclaredField("textValueDirty")
+        dirtyField.isAccessible = true
+        val text = FakeAttributedText(listOf(Part("a", null)))
+
+        helper.textValue = text
+        view.text = "a"
+        dirtyField.set(helper, false)
+        helper.textValue = text
+
+        assertFalse(dirtyField.getBoolean(helper))
+    }
+
+    @Test
+    fun textValueSetterRebindsSameStaticAttributedTextWhenViewTextDrifts() {
+        val view = TextView(getApplicationContext())
+        val helper = TextViewHelper(view, converter, FontAttributes.default, 0)
+        val dirtyField = TextViewHelper::class.java.getDeclaredField("textValueDirty")
+        dirtyField.isAccessible = true
+        val text = FakeAttributedText(listOf(Part("a", null)))
+
+        helper.textValue = text
+        view.text = "b"
+        dirtyField.set(helper, false)
+        helper.textValue = text
+
+        assertTrue(dirtyField.getBoolean(helper))
+    }
+
+    @Test
+    fun valdiTextViewUpdateAttributedTextAcceptsSameRenderedContentAfterSetAttributedText() {
+        val view = ValdiTextView(getApplicationContext())
+        val initial = FakeAttributedText(listOf(Part("ab", null)))
+        val updated = FakeAttributedText(listOf(Part("ab", TextAnimationTransform(0f, 1.1f, 1f))))
+
+        view.setAttributedText(initial, SpannableString("ab"))
+        view.updateAttributedText(updated)
+    }
+
+    @Test
+    fun convertOnlyAddsPartIndexSpansForAnimatedText() {
+        val staticText = FakeAttributedText(listOf(Part("a", null), Part("b", null)))
+        val staticSpannable = converter.convert(
+            attributedText = staticText,
+            startingAttributes = FontAttributes.default,
+            missingFontsTracker = missingFontsTracker,
+            disableTextReplacement = false,
+            suppressAnimatedBase = false,
+            renderMode = FontAttributes.RenderMode.BASE,
+            density = 1.0f,
+        )
+
+        assertTrue(
+            staticSpannable.getSpans(0, staticSpannable.length, RichTextConverter.PartIndexSpan::class.java).isEmpty(),
+        )
+
+        val animatedText = FakeAttributedText(
+            listOf(
+                Part("a", TextAnimationTransform(0f, 1.1f, 1f)),
+                Part("b", null),
+            ),
+        )
+        val animatedSpannable = converter.convert(
+            attributedText = animatedText,
+            startingAttributes = FontAttributes.default,
+            missingFontsTracker = missingFontsTracker,
+            disableTextReplacement = false,
+            suppressAnimatedBase = false,
+            renderMode = FontAttributes.RenderMode.BASE,
+            density = 1.0f,
+        )
+
+        assertEquals(
+            2,
+            animatedSpannable.getSpans(0, animatedSpannable.length, RichTextConverter.PartIndexSpan::class.java).size,
+        )
+    }
+
+    @Test
+    fun overlayConvertSkipsPartIndexSpanForImageAttachmentParts() {
+        val text = FakeAttributedText(
+            listOf(
+                Part("a", TextAnimationTransform(0f, 1.1f, 1f)),
+                Part("i", null, imageAttachment = ImageAttachmentInfo(10f, 10f, null)),
+            ),
+        )
+        val overlaySpannable = converter.convert(
+            attributedText = text,
+            startingAttributes = FontAttributes.default,
+            missingFontsTracker = missingFontsTracker,
+            disableTextReplacement = false,
+            suppressAnimatedBase = false,
+            renderMode = FontAttributes.RenderMode.OVERLAY,
+            density = 1.0f,
+        )
+        val spans = overlaySpannable.getSpans(
+            0,
+            overlaySpannable.length,
+            RichTextConverter.PartIndexSpan::class.java,
+        )
+
+        assertEquals(1, spans.size)
+        assertEquals(0, spans.single().partIndex)
+    }
+
+    @Test
+    fun isTextValueEqualMatchesImageAttachmentBreakCharacters() {
+        val text = FakeAttributedText(
+            listOf(
+                Part("a", null, imageAttachment = ImageAttachmentInfo(10f, 10f, null)),
+                Part("b", null),
+            ),
+        )
+
+        assertTrue(TextViewHelper.isTextValueEqual(text, "a\u2009b"))
+        assertFalse(TextViewHelper.isTextValueEqual(text, "ab"))
+        assertTrue(TextViewHelper.isTextValueEqual(text, "ab", disableTextReplacement = true))
+    }
+
+    @Test
+    fun overlayLayoutCacheRecycleRecyclesChunkBitmaps() {
+        val bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+        val cache = RichTextConverter.OverlayLayoutCache(
+            overlaySpannable = SpannableString("a"),
+            width = 4,
+            alignment = Layout.Alignment.ALIGN_NORMAL,
+            lineSpacingExtra = 0f,
+            lineSpacingMultiplier = 1f,
+            includeFontPadding = false,
+            breakStrategy = 0,
+            hyphenationFrequency = 0,
+            justificationMode = 0,
+            textDirection = null,
+            drawChunks = listOf(
+                RichTextConverter.OverlayDrawChunk(
+                    partIndex = 0,
+                    startOffset = 0,
+                    chunkText = "a",
+                    x = 0f,
+                    baselineY = 0f,
+                    lineIndex = 0,
+                    drawBounds = android.graphics.RectF(),
+                    bitmap = bitmap,
+                    bitmapLeft = 0f,
+                    bitmapTop = 0f,
+                ),
+            ),
+            drawChunksByPartIndex = emptyMap(),
+            lineCenterByIndex = emptyMap(),
+        )
+
+        cache.recycle()
+
+        assertTrue(bitmap.isRecycled)
     }
 
     @Test
@@ -199,6 +364,35 @@ internal class AnimationRichTextTest {
             false,
             method.invoke(converter, TextAnimationTransform(0.02f, 1.2f, 1f))
         )
+    }
+
+    @Test
+    fun applyAttributedTextKeepsOverlayCacheForUnchangedStaticText() {
+        val context = getApplicationContext<Context>()
+        val view = ValdiTextView(context)
+        val helper = TextViewHelper(view, converter, FontAttributes.default, 0).also {
+            it.fontAttributes = FontAttributes.default
+        }
+        val applyMethod = TextViewHelper::class.java.getDeclaredMethod(
+            "applyAttributedText",
+            AttributedText::class.java,
+        )
+        applyMethod.isAccessible = true
+        val overlayField = TextViewHelper::class.java.getDeclaredField("overlayAttributedTextSpannable")
+        overlayField.isAccessible = true
+        val text = FakeAttributedText(
+            listOf(
+                Part("hello", null, color = Color.RED),
+            )
+        )
+
+        applyMethod.invoke(helper, text)
+        val firstOverlay = overlayField.get(helper)
+
+        applyMethod.invoke(helper, text)
+        val secondOverlay = overlayField.get(helper)
+
+        assertSame(firstOverlay, secondOverlay)
     }
 
     @Test
@@ -414,6 +608,19 @@ internal class AnimationRichTextTest {
     }
 
     @Test
+    fun valdiTextViewUpdateAttributedTextRejectsChangedRenderedContent() {
+        withDebuggableApp {
+            val view = ValdiTextView(getApplicationContext())
+            view.setAttributedText(
+                FakeAttributedText(listOf(Part("old", null))),
+                SpannableStringBuilder("old"),
+            )
+
+            assertFalse(view.updateAttributedText(FakeAttributedText(listOf(Part("newer", null)))))
+        }
+    }
+
+    @Test
     fun valdiTextViewUpdateAndClearInvalidateView() {
         val view = ValdiTextView(getApplicationContext())
         val text = FakeAttributedText(listOf(Part("a", TextAnimationTransform(0f, 1.1f, 1f))))
@@ -424,6 +631,39 @@ internal class AnimationRichTextTest {
         view.clearAttributedText()
 
         assertTrue(shadowOf(view).wasInvalidated())
+    }
+
+    @Test
+    fun invisibleForegroundColorSpanSuppressesShadowLayer() {
+        val context = getApplicationContext<Context>()
+        val textView = TextView(context)
+        textView.setTextColor(Color.WHITE)
+        textView.setShadowLayer(4f, 2f, 2f, Color.BLACK)
+
+        val spannable = SpannableString("a")
+        spannable.setSpan(
+            InvisibleForegroundColorSpan(),
+            0,
+            spannable.length,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+
+        val layout = StaticLayout.Builder.obtain(
+            spannable,
+            0,
+            spannable.length,
+            TextPaint(textView.paint),
+            200,
+        )
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setIncludePad(false)
+            .setTextDirection(TextViewUtils.resolveTextDirectionHeuristic(textView))
+            .build()
+
+        val bitmap = Bitmap.createBitmap(200, 80, Bitmap.Config.ARGB_8888)
+        layout.draw(Canvas(bitmap))
+
+        assertFalse(bitmapContainsVisiblePixel(bitmap))
     }
 
     private fun drawOverlay(text: FakeAttributedText): Bitmap {
@@ -494,6 +734,17 @@ internal class AnimationRichTextTest {
         }
         return false
     }
+
+    private fun withDebuggableApp(block: () -> Unit) {
+        val appInfo = getApplicationContext<Context>().applicationInfo
+        val originalFlags = appInfo.flags
+        appInfo.flags = originalFlags or ApplicationInfo.FLAG_DEBUGGABLE
+        try {
+            block()
+        } finally {
+            appInfo.flags = originalFlags
+        }
+    }
 }
 
 private data class Part(
@@ -502,6 +753,7 @@ private data class Part(
     val color: Int? = null,
     val outlineColor: Int? = null,
     val outlineWidth: Float = 0f,
+    val imageAttachment: ImageAttachmentInfo? = null,
 )
 
 private class FakeAttributedText(private val parts: List<Part>) : AttributedText {
@@ -517,5 +769,5 @@ private class FakeAttributedText(private val parts: List<Part>) : AttributedText
     override fun hasOutline(): Boolean = parts.any { it.outlineColor != null && it.outlineWidth > 0f }
     override fun getAnimationTransformAtIndex(index: Int): TextAnimationTransform? = parts[index].animationTransform
     override fun hasAnimationTransform(): Boolean = parts.any { it.animationTransform != null }
-    override fun getImageAttachmentAtIndex(index: Int): ImageAttachmentInfo? = null
+    override fun getImageAttachmentAtIndex(index: Int): ImageAttachmentInfo? = parts[index].imageAttachment
 }

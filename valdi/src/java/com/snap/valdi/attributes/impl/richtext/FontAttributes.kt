@@ -8,14 +8,11 @@ import android.graphics.Typeface
 import android.text.Layout
 import android.text.TextPaint
 import android.text.style.AlignmentSpan
-import android.text.style.CharacterStyle
 import android.text.style.ClickableSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.MetricAffectingSpan
-import android.text.style.ReplacementSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.UnderlineSpan
-import android.text.style.UpdateAppearance
 import android.util.TypedValue
 import com.snap.valdi.attributes.impl.fonts.FontDescriptor
 import com.snap.valdi.attributes.impl.fonts.FontManager
@@ -29,47 +26,6 @@ class CustomTypefaceSpan(val typeface: Typeface) : MetricAffectingSpan() {
 
     override fun updateMeasureState(tp: TextPaint) {
         tp.typeface = typeface
-    }
-}
-
-class InvisibleReplacementSpan : ReplacementSpan() {
-    override fun getSize(
-        paint: Paint,
-        text: CharSequence?,
-        start: Int,
-        end: Int,
-        fm: Paint.FontMetricsInt?
-    ): Int {
-        if (fm != null) {
-            paint.getFontMetricsInt(fm)
-        }
-
-        return if (text != null) {
-            kotlin.math.ceil(paint.measureText(text, start, end).toDouble()).toInt()
-        } else {
-            0
-        }
-    }
-
-    override fun draw(
-        canvas: android.graphics.Canvas,
-        text: CharSequence?,
-        start: Int,
-        end: Int,
-        x: Float,
-        top: Int,
-        y: Int,
-        bottom: Int,
-        paint: Paint
-    ) {
-    }
-}
-
-class InvisibleForegroundColorSpan : CharacterStyle(), UpdateAppearance {
-    override fun updateDrawState(tp: TextPaint) {
-        tp.color = Color.TRANSPARENT
-        tp.bgColor = Color.TRANSPARENT
-        tp.clearShadowLayer()
     }
 }
 

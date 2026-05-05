@@ -48,13 +48,32 @@ class TextViewHelper(private val view: TextView,
         const val GRADIENT_BL_TR = 5
         const val GRADIENT_LEFT_RIGHT = 6
         const val GRADIENT_TL_BR = 7
+        private const val IMAGE_ATTACHMENT_BREAK_CHAR = '\u2009'
 
-        fun isTextValueEqual(valdiText: Any?, viewText: CharSequence): Boolean {
-            return if (valdiText is String) {
-                valdiText == viewText.toString()
-            } else {
-                false
+        fun isTextValueEqual(
+            valdiText: Any?,
+            viewText: CharSequence,
+            disableTextReplacement: Boolean = false,
+        ): Boolean {
+            return when (valdiText) {
+                is String -> valdiText == viewText.toString()
+                is AttributedText -> viewText.contentEquals(buildComparableTextValue(valdiText, disableTextReplacement))
+                else -> false
             }
+        }
+
+        private fun buildComparableTextValue(
+            valdiText: AttributedText,
+            disableTextReplacement: Boolean,
+        ): String {
+            val builder = StringBuilder()
+            for (index in 0 until valdiText.getPartsSize()) {
+                builder.append(valdiText.getContentAtIndex(index))
+                if (valdiText.getImageAttachmentAtIndex(index) != null && !disableTextReplacement) {
+                    builder.append(IMAGE_ATTACHMENT_BREAK_CHAR)
+                }
+            }
+            return builder.toString()
         }
     }
 
@@ -84,15 +103,41 @@ class TextViewHelper(private val view: TextView,
 
     var textValue: Any? = null
         set(value) {
-            if (
-                    value is AttributedText ||
-                    field != value  ||
-                    // textValue can get out of sync with the view so we may need to compare them
-                    !isTextValueEqual(value, view.text)
-            ) {
+            val shouldUpdate = when (value) {
+                is AttributedText -> {
+                    val isSameTextValue = field == value
+                    val hasAnimationTransform =
+                        if (isSameTextValue) textValueHasAnimationTransform else value.hasAnimationTransform()
+                    val comparableTextValue = if (
+                        isSameTextValue &&
+                        textValueComparableDisableTextReplacement == disableTextReplacement
+                    ) {
+                        textValueComparableText
+                    } else {
+                        buildComparableTextValue(value, disableTextReplacement).also {
+                            textValueComparableText = it
+                            textValueComparableDisableTextReplacement = disableTextReplacement
+                        }
+                    }
+                    if (!isSameTextValue) {
+                        textValueHasAnimationTransform = hasAnimationTransform
+                    }
+                    hasAnimationTransform || !isSameTextValue || !view.text.contentEquals(comparableTextValue)
+                }
+                else ->
+                    field != value ||
+                        // textValue can get out of sync with the view so we may need to compare them
+                        !isTextValueEqual(value, view.text, disableTextReplacement)
+            }
+            if (shouldUpdate) {
                 field = value
                 textValueDirty = true
                 isAttributedText = value is AttributedText
+                if (value !is AttributedText) {
+                    textValueHasAnimationTransform = false
+                    textValueComparableText = null
+                    textValueComparableDisableTextReplacement = false
+                }
                 onDirty()
             }
         }
@@ -116,6 +161,9 @@ class TextViewHelper(private val view: TextView,
         }
     private var selectionDirty = false
 
+    private var textValueHasAnimationTransform = false
+    private var textValueComparableText: String? = null
+    private var textValueComparableDisableTextReplacement = false
     private var fontAttributesDirty = true
     private var fontAutofitDirty = true
 
@@ -266,13 +314,12 @@ class TextViewHelper(private val view: TextView,
     fun convertAttributedText(text: AttributedText): Spannable {
         val fontAttributes = this.fontAttributes ?: defaultAttributes
         val density = view.resources.displayMetrics.density
-        val suppressAnimatedBase = view is ValdiEditText && text.hasActiveAnimationTransform()
         return textConverter.convert(
             attributedText = text,
             startingAttributes = fontAttributes,
             missingFontsTracker = this,
             disableTextReplacement = disableTextReplacement,
-            suppressAnimatedBase = suppressAnimatedBase,
+            suppressAnimatedBase = false,
             renderMode = FontAttributes.RenderMode.BASE,
             density = density,
         )
@@ -430,21 +477,31 @@ class TextViewHelper(private val view: TextView,
 
         val spannable = view.text as? Spannable ?: return
         val desiredRanges = mutableListOf<Triple<Int, Int, Boolean>>()
-
-        var start = 0
         val spannableLength = spannable.length
+        val effectiveAttributes = parsedAttributedText?.attributes
+        val partRangesByIndex = spannable
+            .getSpans(0, spannableLength, RichTextConverter.PartIndexSpan::class.java)
+            .associate { span ->
+                span.partIndex to Pair(spannable.getSpanStart(span), spannable.getSpanEnd(span))
+            }
+        var fallbackStart = 0
         for (index in 0 until text.getPartsSize()) {
-            val nextEnd = start + text.getContentAtIndex(index).length
-            val clampedStart = start.coerceAtMost(spannableLength)
-            val clampedEnd = nextEnd.coerceAtMost(spannableLength)
+            val fallbackEnd = fallbackStart + text.getContentAtIndex(index).length
+            val (rangeStart, rangeEnd) = partRangesByIndex[index]
+                ?: Pair(fallbackStart, fallbackEnd)
+            val clampedStart = rangeStart.coerceAtMost(spannableLength)
+            val clampedEnd = rangeEnd.coerceAtMost(spannableLength)
             if (clampedStart < clampedEnd && isActiveAnimationTransform(text.getAnimationTransformAtIndex(index))) {
+                val outlineColor = effectiveAttributes?.getOrNull(index)?.outlineColor ?: text.getOutlineColorAtIndex(index)
+                val outlineWidth = effectiveAttributes?.getOrNull(index)?.outlineWidth ?: text.getOutlineWidthAtIndex(index)
                 val usesReplacementSpan =
                     !disableTextReplacement &&
-                    text.getOutlineColorAtIndex(index) != null &&
-                    text.getOutlineWidthAtIndex(index) > 0f
+                    outlineColor != null &&
+                    outlineWidth > 0f
                 desiredRanges.add(Triple(clampedStart, clampedEnd, usesReplacementSpan))
             }
-            start = nextEnd
+            fallbackStart = fallbackEnd +
+                if (text.getImageAttachmentAtIndex(index) != null && !disableTextReplacement) 1 else 0
         }
 
         val existingRanges = buildAnimatedBaseVisibilitySpanRanges(spannable)

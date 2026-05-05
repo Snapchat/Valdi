@@ -9,9 +9,9 @@ import android.text.Layout
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.StaticLayout
+import android.text.TextDirectionHeuristic
 import android.text.TextPaint
 import android.text.TextUtils
-import android.text.TextDirectionHeuristic
 import android.text.style.AlignmentSpan
 import android.view.Gravity
 import android.widget.TextView
@@ -154,7 +154,9 @@ class RichTextConverter(val fontManager: FontManager) {
             val onLayout = attributedText.getOnLayoutAtIndex(index)
             val imageAttachment = attributedText.getImageAttachmentAtIndex(index)
 
-            if (hasAnimationTransform || renderMode == FontAttributes.RenderMode.OVERLAY) {
+            if ((hasAnimationTransform || renderMode == FontAttributes.RenderMode.OVERLAY) &&
+                (renderMode != FontAttributes.RenderMode.OVERLAY || imageAttachment == null)
+            ) {
                 spannable.setSpan(
                     PartIndexSpan(index),
                     start,
