@@ -9,7 +9,7 @@
 
 /** Store the given string blob into the keychain */
 - (nonnull SCValdiResult *)store:(nonnull NSString *)key
-                              value:(nonnull NSData *)value;
+                           value:(nonnull NSData *)value;
 
 /**
  * Retrieve the stored blob for the given key.

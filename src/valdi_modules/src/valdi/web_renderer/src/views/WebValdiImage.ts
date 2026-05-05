@@ -2,6 +2,8 @@ import { WebValdiLayout } from './WebValdiLayout';
 import { UpdateAttributeDelegate } from '../ValdiWebRendererDelegate';
 import { convertColor, hexToRGBColor } from '../styles/ValdiWebStyles';
 
+const WEB_IMAGE_NATURAL_SCALE = 3;
+
 export class WebValdiImage extends WebValdiLayout {
   public type = 'image';
   img: HTMLImageElement;
@@ -13,6 +15,10 @@ export class WebValdiImage extends WebValdiLayout {
   private _contentScaleX = 1;
   private _contentScaleY = 1;
   private _flipOnRtl = false;
+  private _explicitWidth: number | string | undefined;
+  private _explicitHeight: number | string | undefined;
+  private _rotation = 0;
+  private _observer?: ResizeObserver;
 
   constructor(id: number, attributeDelegate?: UpdateAttributeDelegate) {
     super(id, attributeDelegate);
@@ -20,7 +26,9 @@ export class WebValdiImage extends WebValdiLayout {
     // Allow cross-origin images to be used on canvas without tainting it
     this.img.crossOrigin = 'Anonymous';
     this.img.onload = () => {
-      this._onAssetLoad?.({ width: this.img.naturalWidth, height: this.img.naturalHeight });
+      const w = this.img.naturalWidth / WEB_IMAGE_NATURAL_SCALE;
+      const h = this.img.naturalHeight / WEB_IMAGE_NATURAL_SCALE;
+      this._onAssetLoad?.({ width: w, height: h });
       this.updateImage();
       this._onImageDecoded?.();
     };
@@ -42,7 +50,20 @@ export class WebValdiImage extends WebValdiLayout {
       pointerEvents: 'auto',
     });
 
+    // Redraw when the layout engine changes the canvas's CSS size, ensuring
+    // the backing buffer stays in sync with the display size (fixes blurriness
+    // on Retina/HiDPI displays when the first draw happens before layout settles).
+    if (typeof ResizeObserver !== 'undefined') {
+      this._observer = new ResizeObserver(() => this.updateImage());
+      this._observer.observe(element);
+    }
+
     return element;
+  }
+
+  destroy() {
+    this._observer?.disconnect();
+    super.destroy();
   }
 
   private updateImage() {
@@ -56,58 +77,79 @@ export class WebValdiImage extends WebValdiLayout {
     const { naturalWidth: iw, naturalHeight: ih } = this.img;
     if (iw === 0 || ih === 0) return;
 
-    const { width: cw, height: ch } = canvas.getBoundingClientRect();
-    if (cw === 0 || ch === 0) {
-      // If canvas has no size from layout, use image size.
-      canvas.width = iw;
-      canvas.height = ih;
-    } else {
-      canvas.width = cw;
-      canvas.height = ch;
+    // Logical dimensions (assume 3x assets for web)
+    const logicalW = iw / WEB_IMAGE_NATURAL_SCALE;
+    const logicalH = ih / WEB_IMAGE_NATURAL_SCALE;
+
+    if (!this._explicitWidth && !this._explicitHeight) {
+      const isRotated90or270 = Math.abs(Math.abs(this._rotation) % Math.PI - Math.PI / 2) < 0.01;
+      if (isRotated90or270) {
+        this.htmlElement.style.width = `${logicalH}px`;
+        this.htmlElement.style.height = `${logicalW}px`;
+      } else {
+        this.htmlElement.style.width = `${logicalW}px`;
+        this.htmlElement.style.height = `${logicalH}px`;
+      }
     }
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const isRotated90or270 = Math.abs(Math.abs(this._rotation) % Math.PI - Math.PI / 2) < 0.01;
+    const effectiveIw = isRotated90or270 ? logicalH : logicalW;
+    const effectiveIh = isRotated90or270 ? logicalW : logicalH;
+
+    // Use element's display size for canvas so aspect ratio matches layout (avoids squishing when layout gives e.g. square box)
+    const rect = canvas.getBoundingClientRect();
+    const dpr = typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1;
+    const displayW = rect.width > 0 ? rect.width : logicalW;
+    const displayH = rect.height > 0 ? rect.height : logicalH;
+    const backingW = Math.max(1, Math.round(displayW * dpr));
+    const backingH = Math.max(1, Math.round(displayH * dpr));
+
+    canvas.width = backingW;
+    canvas.height = backingH;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    ctx.clearRect(0, 0, displayW, displayH);
 
     // Handle flipOnRtl
     const flip = this._flipOnRtl && document.dir === 'rtl';
     if (flip) {
       ctx.save();
       ctx.scale(-1, 1);
-      ctx.translate(-canvas.width, 0);
+      ctx.translate(-displayW, 0);
     }
 
-    // Handle content transforms (scale, rotation)
-    ctx.save();
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    ctx.rotate((this._contentRotation * Math.PI) / 180);
-    ctx.scale(this._contentScaleX, this._contentScaleY);
-    ctx.translate(-canvas.width / 2, -canvas.height / 2);
-
-    // Handle objectFit
-    let dx = 0,
-      dy = 0,
-      dw = canvas.width,
-      dh = canvas.height;
-    if (this._objectFit !== 'fill') {
-      const imageAspectRatio = iw / ih;
-      const canvasAspectRatio = canvas.width / canvas.height;
+    // objectFit: fit image (effectiveIw x effectiveIh) into (displayW x displayH) to preserve aspect ratio
+    let dw = displayW,
+      dh = displayH;
+    const boxAspect = displayW / displayH;
+    const imageAspect = effectiveIw / effectiveIh;
+    const aspectMismatch = Math.abs(boxAspect - imageAspect) > 0.01;
+    // When layout box and image aspect ratios differ, use contain so we don't squish (e.g. wide icon in square slot)
+    const effectiveFit =
+      this._objectFit === 'fill' && aspectMismatch ? 'contain' : this._objectFit;
+    if (effectiveFit !== 'fill') {
       let scale = 1;
-      if (this._objectFit === 'contain') {
-        scale = Math.min(canvas.width / iw, canvas.height / ih);
-      } else if (this._objectFit === 'cover') {
-        scale = Math.max(canvas.width / iw, canvas.height / ih);
-      } else if (this._objectFit === 'scale-down') {
-        scale = Math.min(1, Math.min(canvas.width / iw, canvas.height / ih));
+      if (effectiveFit === 'contain') {
+        scale = Math.min(displayW / effectiveIw, displayH / effectiveIh);
+      } else if (effectiveFit === 'cover') {
+        scale = Math.max(displayW / effectiveIw, displayH / effectiveIh);
+      } else if (effectiveFit === 'scale-down') {
+        scale = Math.min(1, Math.min(displayW / effectiveIw, displayH / effectiveIh));
       } // 'none' means scale = 1
-
-      dw = iw * scale;
-      dh = ih * scale;
-      dx = (canvas.width - dw) / 2;
-      dy = (canvas.height - dh) / 2;
+      dw = effectiveIw * scale;
+      dh = effectiveIh * scale;
     }
 
-    // Draw the image
-    ctx.drawImage(this.img, dx, dy, dw, dh);
+    // Handle content transforms (scale, rotation) - draw centered and rotated
+    const totalRotation = (this._contentRotation * Math.PI) / 180 + this._rotation;
+    ctx.save();
+    ctx.translate(displayW / 2, displayH / 2);
+    ctx.rotate(totalRotation);
+    ctx.scale(this._contentScaleX, this._contentScaleY);
+
+    const drawW = isRotated90or270 ? dh : dw;
+    const drawH = isRotated90or270 ? dw : dh;
+    ctx.drawImage(this.img, -drawW / 2, -drawH / 2, drawW, drawH);
     ctx.restore(); // Restore from content transforms
 
     // Apply tint
@@ -117,13 +159,13 @@ export class WebValdiImage extends WebValdiLayout {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imageData.data;
 
-      // Apply tint to non-transparent pixels
+      // Replace color of non-transparent pixels with tint color (matching native behavior)
       for (let i = 0; i < data.length; i += 4) {
         const alpha = data[i + 3];
         if (alpha === 0) continue;
-        data[i] = (data[i] * tr) / 255; // R
-        data[i + 1] = (data[i + 1] * tg) / 255; // G
-        data[i + 2] = (data[i + 2] * tb) / 255; // B
+        data[i] = tr; // R
+        data[i + 1] = tg; // G
+        data[i + 2] = tb; // B
       }
       ctx.putImageData(imageData, 0, 0);
     }
@@ -133,10 +175,24 @@ export class WebValdiImage extends WebValdiLayout {
     }
   }
 
+  // Finds the first valid src string in a nested object.
+  private recursivelyResolveSrc(src: Record<string, any> | string | undefined): string | undefined {
+    if (!src) {
+      return undefined;
+    }
+
+    if (typeof src === 'string') {
+      return src;
+    }
+
+    return this.recursivelyResolveSrc(src?.src);
+  }
+
   changeAttribute(attributeName: string, attributeValue: any): void {
     switch (attributeName) {
       case 'src':
-        const src = typeof attributeValue === 'string' ? attributeValue : attributeValue?.src;
+        const src = this.recursivelyResolveSrc(attributeValue);
+
         if (src && this.img.src !== src) {
           this.img.src = src;
         }
@@ -176,6 +232,18 @@ export class WebValdiImage extends WebValdiLayout {
         return;
       case 'ref':
         // This is likely for framework-level component references. No-op at this level.
+        return;
+      case 'width':
+        this._explicitWidth = attributeValue;
+        super.changeAttribute(attributeName, attributeValue);
+        return;
+      case 'height':
+        this._explicitHeight = attributeValue;
+        super.changeAttribute(attributeName, attributeValue);
+        return;
+      case 'rotation':
+        this._rotation = Number(attributeValue) || 0;
+        this.updateImage();
         return;
     }
 

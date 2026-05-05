@@ -22,9 +22,11 @@ import kotlin.math.roundToInt
 /**
  * Binds attributes for the EditText's view class
  */
-class EditTextAttributesBinder(private val context: Context,
-                               private val textConverter: RichTextConverter,
-                               private val defaultAttributes: FontAttributes
+class EditTextAttributesBinder(
+    private val context: Context,
+    private val textConverter: RichTextConverter,
+    private val defaultAttributes: FontAttributes,
+    private val resetSelectionMatchesIos: Boolean = false,
 ) : AttributesBinder<ValdiEditText> {
 
     private var valueAttributeId = 0
@@ -479,7 +481,13 @@ class EditTextAttributesBinder(private val context: Context,
     }
 
     private fun resetSelection(editText: ValdiEditText, animator: ValdiAnimator?) {
-        editText.setSelection(0)
+        if (resetSelectionMatchesIos) {
+            // Match iOS: clearing the `selection` attribute does not move the caret.
+            // (iOS `valdi_setSelection` with an empty/invalid array returns early without changing `selectedRange`.)
+            getTextViewHelper(editText).selection = null
+        } else {
+            editText.setSelection(0)
+        }
     }
 
     private fun applyOnSelectionChange(editText: ValdiEditText, action: ValdiFunction) {

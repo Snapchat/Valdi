@@ -50,7 +50,6 @@ selects.config_setting_group(
         "@snap_platforms//flavors:platform_development",
         "@snap_platforms//flavors:platform_address_sanitizer",
         "@snap_platforms//flavors:master",
-        "@snap_platforms//flavors:gold",
         "@snap_platforms//flavors:sanitizer",
         "@snap_platforms//flavors:sanitizer_debug",
         "@snap_platforms//flavors:development_native_snapos",
@@ -61,6 +60,7 @@ selects.config_setting_group(
     name = "snap_flavors_releaseish",
     match_any = [
         "@snap_platforms//flavors:alpha",
+        "@snap_platforms//flavors:gold",
         "@snap_platforms//flavors:production",
         "@snap_platforms//flavors:diagnostic_production",
         "@snap_platforms//flavors:coverage",

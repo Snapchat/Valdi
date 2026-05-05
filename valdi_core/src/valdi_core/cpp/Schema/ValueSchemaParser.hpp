@@ -37,6 +37,9 @@ constexpr std::string_view kStringTypeClassModifierInterface = "+";
 constexpr std::string_view kStringTypeFunctionAttributeMethod = "method";
 constexpr std::string_view kStringTypeFunctionAttributeSingleCall = "singlecall";
 constexpr std::string_view kStringTypeFunctionAttributeWorkerThread = "workerthread";
+/** Compact token is first char `b` (same pattern as method/singlecall/workerthread). Human-readable prints full word.
+ */
+constexpr std::string_view kStringTypeFunctionAttributeBanSync = "bansync";
 
 class TextParser;
 
@@ -44,6 +47,7 @@ class ValueSchemaParser {
 public:
     static Result<ValueSchema> parse(std::string_view str);
     static std::optional<ValueSchema> parse(TextParser& parser);
+    static std::optional<ValueSchema> parseClassSchema(TextParser& parser, bool includeProperties);
 };
 
 } // namespace Valdi

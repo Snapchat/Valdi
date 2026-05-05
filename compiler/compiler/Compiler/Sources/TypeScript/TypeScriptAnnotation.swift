@@ -83,15 +83,14 @@ struct ValdiTypeScriptAnnotation {
     }
 
     private static func parseAnnotationKeyValue(property: Substring, rangeInFile: NSRange, fileContent: String) throws -> (key: String, value: String) {
-        let keyValue = property.split(separator: ":")
-        if keyValue.count != 2 {
-            try throwAnnotationError(message: "Cannot parse annotation - missing/extra key/value separator :?",
+        guard let separatorIndex = property.firstIndex(of: ":") else {
+            try throwAnnotationError(message: "Cannot parse annotation - missing column separator",
                                      range: rangeInFile,
                                      inDocument: fileContent)
         }
 
-        let key = String(keyValue[0].trimmingCharacters(in: trimCharSet).unquote)
-        let value = String(keyValue[1].trimmingCharacters(in: trimCharSet).unquote)
+        let key = String(property[..<separatorIndex].trimmingCharacters(in: trimCharSet).unquote)
+        let value = String(property[property.index(separatorIndex, offsetBy: 1)...].trimmingCharacters(in: trimCharSet).unquote)
 
         let keyOrValueHasQuotes = [key, value].contains(where: { $0.unicodeScalars.contains(where: quoteCharSet.contains) })
         if keyOrValueHasQuotes {

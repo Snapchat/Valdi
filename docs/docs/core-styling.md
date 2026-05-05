@@ -248,6 +248,7 @@ class MyFastComponentWithLogic extends StatefulComponent<State> {
 
 - DO use Style for batches of static attributes
 - using Style is extremely fast (faster than attributes)
+- **Style Interning**: The first time a style instance is sent to the native runtime, it is assigned a unique integer identifier. Subsequent uses of the same style object only require passing this ID, drastically reducing marshalling overhead. This is why you should reuse style objects instead of creating them on the fly.
 - instantiating/merging/extending Style is costly, don't do it at render-time
 - instantiating/merging/extending Style should be done once, at initialization or lazy loaded
 - use attributes for any dynamic value

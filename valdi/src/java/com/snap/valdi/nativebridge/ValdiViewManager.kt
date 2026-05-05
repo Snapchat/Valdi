@@ -32,10 +32,11 @@ import java.nio.ByteBuffer
 @SuppressWarnings("unused")
 @Suppress("UNCHECKED_CAST")
 class ValdiViewManager(
-        val context: Context,
-        val logger: Logger,
-        val disableAnimations: Boolean,
-        val viewRefSupport: ViewRefSupport
+    val context: Context,
+    val logger: Logger,
+    val disableAnimations: Boolean,
+    val viewRefSupport: ViewRefSupport,
+    private val maxViewOperationsProcessingTimeMs: Int,
 ) {
 
     var debugMessagePresenter: DebugMessagePresenter?
@@ -280,17 +281,17 @@ class ValdiViewManager(
     }
 
     @Keep
-    fun performViewOperations(untypedByteBuffer: Any?, attachedValues: Array<Any>?) {
+    fun performViewOperations(untypedByteBuffer: Any?, attachedValues: Array<Any>?, sync: Boolean) {
         handleUncaughtException {
             var viewOperationsManager = this.operationsManager.get()
             if (viewOperationsManager == null) {
-                viewOperationsManager = ValdiViewManagerOperationsManager(this.logger)
+                viewOperationsManager = ValdiViewManagerOperationsManager(this.logger, this.maxViewOperationsProcessingTimeMs)
                 this.operationsManager.set(viewOperationsManager)
             }
             if (untypedByteBuffer != null) {
                 viewOperationsManager.appendViewOperations(untypedByteBuffer as ByteBuffer, attachedValues)
             }
-            viewOperationsManager.flushViewOperations()
+            viewOperationsManager.flushViewOperations(sync)
         }
     }
 }

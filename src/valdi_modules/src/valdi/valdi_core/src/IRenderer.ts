@@ -65,6 +65,23 @@ export interface IRenderer {
   onLayoutComplete(callback: () => void): void;
 
   /**
+   * Enqueue a callback to be called after the next root draw/commit pass reaches
+   * Valdi's platform rendering callback.
+   *
+   * On Android, this runs after the traversal that reached `OnPreDraw` returns
+   * to the main queue. On iOS, it runs from the `CATransaction` completion for
+   * the root view update.
+   *
+   * This is later than `onLayoutComplete`, but it is not a guaranteed
+   * screen-presentation callback. `hookTimeMs` is a monotonic platform-thread
+   * timestamp in milliseconds captured when Valdi begins executing that native
+   * next-draw callback. On Android, this can be slightly later than
+   * `OnPreDraw` itself because the callback is posted back onto the main queue
+   * after the traversal continues.
+   */
+  onNextDraw(callback: (hookTimeMs: number) => void): void;
+
+  /**
    * Enqueue a callback to be called when the next render completes.
    */
   onNextRenderComplete(callback: () => void): void;

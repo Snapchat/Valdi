@@ -21,6 +21,7 @@ class IJavaScriptBridge;
 class RuntimeManager;
 class Arguments;
 class StringBox;
+class ValdiStandaloneRuntime;
 
 struct StandaloneArguments {
     StringBox scriptPath;
@@ -31,7 +32,10 @@ struct StandaloneArguments {
     std::vector<std::shared_ptr<snap::valdi_core::ModuleFactoriesProvider>> moduleFactoriesProviders;
     bool enableDebuggerService = false;
     bool enableHotReloader = false;
+    bool enableTSN = false;
 };
+
+Ref<ValdiStandaloneRuntime> createValdiStandaloneRuntime(const StandaloneArguments& arguments);
 
 int runValdiStandalone(const StandaloneArguments& arguments);
 

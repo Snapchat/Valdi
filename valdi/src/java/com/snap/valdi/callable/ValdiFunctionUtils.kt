@@ -17,6 +17,33 @@ fun ValdiFunction.performSync(marshaller: ValdiMarshaller, propagatesError: Bool
     }
 }
 
+/**
+ * Performs a synchronous call to the function with a timeout.
+ * If the call does not complete within the specified timeout, returns false.
+ * 
+ * @param marshaller The marshaller containing the parameters
+ * @param propagatesError Whether to propagate errors from the function
+ * @param timeoutMs Maximum time to wait for the function to complete (in milliseconds)
+ * @return true if the function completed successfully and returned a value, false otherwise
+ */
+fun ValdiFunction.performSyncWithTimeout(
+    marshaller: ValdiMarshaller,
+    propagatesError: Boolean,
+    timeoutMs: Long
+): Boolean {
+    return if (this is ValdiFunctionNative) {
+        val flags = if (propagatesError) {
+            ValdiFunctionNative.FLAGS_CALL_SYNC or ValdiFunctionNative.FLAGS_PROPAGATES_ERROR
+        } else {
+            ValdiFunctionNative.FLAGS_CALL_SYNC
+        }
+        return this.performWithTimeout(flags, marshaller, timeoutMs)
+    } else {
+        // Fallback to regular sync call for non-native functions
+        this.perform(marshaller)
+    }
+}
+
 fun ValdiFunction.performThrottled(marshaller: ValdiMarshaller): Boolean {
     return if (this is ValdiFunctionNative) {
         this.perform(ValdiFunctionNative.FLAGS_ALLOW_THROTTLING, marshaller)

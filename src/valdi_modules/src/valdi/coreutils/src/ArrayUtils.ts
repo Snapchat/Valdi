@@ -58,8 +58,13 @@ export function lazyMap<T>(array: T[] | undefined, visitor: (item: T) => T): T[]
  * 0 to indicate a perfect match.
  */
 const binarySearchRangeResult: Range = { min: 0, max: 0 };
-export function binarySearch<T>(array: T[], compareFn: (item: T) => number): number {
-  const range = binarySearchRange(array, compareFn, binarySearchRangeResult);
+export function binarySearch<T>(
+  array: T[],
+  compareFn: (item: T) => number,
+  start?: number,
+  end?: number,
+): number {
+  const range = binarySearchRange(array, compareFn, binarySearchRangeResult, start, end);
   if (range.min === range.max) {
     return range.min;
   }
@@ -73,14 +78,20 @@ export function binarySearch<T>(array: T[], compareFn: (item: T) => number): num
  * than the searched index, <0 to indicate that the given item is "lower",
  * 0 to indicate a perfect match.
  */
-export function binarySearchRange<T>(array: T[], compareFn: (item: T) => number, result?: Range): Range {
-  let start = 0;
-  let end = array.length - 1;
+export function binarySearchRange<T>(
+  array: T[],
+  compareFn: (item: T) => number,
+  result?: Range,
+  start?: number,
+  end?: number,
+): Range {
+  let lo = start ?? 0;
+  let hi = end ?? array.length - 1;
 
   // Iterate while start not meets end
-  while (start <= end) {
+  while (lo <= hi) {
     // Find the mid index
-    const mid = Math.floor((start + end) / 2);
+    const mid = Math.floor((lo + hi) / 2);
 
     const diff = compareFn(array[mid]);
     if (diff === 0) {
@@ -89,14 +100,14 @@ export function binarySearchRange<T>(array: T[], compareFn: (item: T) => number,
         max: mid,
       };
     } else if (diff > 0) {
-      end = mid - 1;
+      hi = mid - 1;
     } else {
-      start = mid + 1;
+      lo = mid + 1;
     }
   }
 
-  const min = Math.min(start, end);
-  const max = Math.max(start, end);
+  const min = Math.min(lo, hi);
+  const max = Math.max(lo, hi);
   if (result) {
     result.min = min;
     result.max = max;
@@ -107,6 +118,61 @@ export function binarySearchRange<T>(array: T[], compareFn: (item: T) => number,
       max: max,
     };
   }
+}
+
+/**
+ * Exponential search from a start index within a sorted array.
+ * O(log d) where d is the distance from startIdx to the target.
+ *
+ * the compareFn should return >0 to indicate that the given item is "higher"
+ * than the searched index, <0 to indicate that the given item is "lower",
+ * 0 to indicate a perfect match.
+ */
+export function exponentialSearch<T>(
+  array: T[],
+  compareFn: (item: T) => number,
+  startIdx: number = 0,
+): number {
+  const len = array.length;
+  if (len === 0) {
+    return -1;
+  }
+
+  startIdx = Math.max(0, Math.min(startIdx, len - 1));
+
+  const diff = compareFn(array[startIdx]);
+  if (diff === 0) {
+    return startIdx;
+  }
+
+  let lo: number;
+  let hi: number;
+
+  if (diff < 0) {
+    // Entry is "lower" than target — search forward.
+    let bound = 1;
+    while (startIdx + bound < len) {
+      const d = compareFn(array[startIdx + bound]);
+      if (d === 0) return startIdx + bound;
+      if (d > 0) break;
+      bound *= 2;
+    }
+    lo = startIdx + Math.floor(bound / 2) + 1;
+    hi = Math.min(startIdx + bound - 1, len - 1);
+  } else {
+    // Entry is "higher" than target — search backward.
+    let bound = 1;
+    while (startIdx - bound >= 0) {
+      const d = compareFn(array[startIdx - bound]);
+      if (d === 0) return startIdx - bound;
+      if (d < 0) break;
+      bound *= 2;
+    }
+    lo = Math.max(startIdx - bound + 1, 0);
+    hi = startIdx - Math.floor(bound / 2) - 1;
+  }
+
+  return lo <= hi ? binarySearch(array, compareFn, lo, hi) : -1;
 }
 
 /**

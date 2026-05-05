@@ -1,4 +1,3 @@
-load("@android_macros//:android.bzl", "STARLARK_RULES_ANDROID_ENABLED")
 load("@aspect_rules_esbuild//esbuild:repositories.bzl", "LATEST_ESBUILD_VERSION", "esbuild_register_toolchains")
 load("@aspect_rules_ts//ts:repositories.bzl", "rules_ts_dependencies")
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
@@ -97,6 +96,10 @@ def _register_android_deps():
             "androidx.lifecycle:lifecycle-process:2.2.0",
             "androidx.lifecycle:lifecycle-viewmodel:2.2.0",
             "androidx.recyclerview:recyclerview:1.2.1",
+            "androidx.test:core:1.5.0",
+            "androidx.test.ext:junit:1.1.3",
+            "androidx.test:monitor:1.5.0",
+            "androidx.test:runner:1.5.0",
             "com.google.android.material:material:1.2.0",
             "com.google.code.findbugs:jsr305:3.0.2",
             "com.google.code.gson:gson:2.8.6",
@@ -109,16 +112,23 @@ def _register_android_deps():
             "io.reactivex.rxjava3:rxjava:3.1.0",
             "io.reactivex.rxjava3:rxkotlin:3.0.0",
             "javax.inject:javax.inject:1",
+            "junit:junit:4.13.2",
+            "org.junit.jupiter:junit-jupiter-api:5.9.3",
             "org.junit.jupiter:junit-jupiter-engine:5.9.3",
             "org.junit.jupiter:junit-jupiter-params:5.9.3",
-            "org.junit.platform:junit-platform-launcher:1.9.2",
             "org.junit.platform:junit-platform-console:1.9.2",
+            "org.junit.platform:junit-platform-launcher:1.9.2",
+            "org.junit.platform:junit-platform-reporting:1.9.2",
+            "org.junit.vintage:junit-vintage-engine:5.9.3",
+            "org.robolectric:android-all:10-robolectric-5803371",
+            "org.robolectric:annotations:4.10.3",
+            "org.robolectric:robolectric:4.10.3",
         ],
         repositories = [
             "https://repo1.maven.org/maven2",
             "https://maven.google.com",
         ],
-        use_starlark_android_rules = STARLARK_RULES_ANDROID_ENABLED,
+        use_starlark_android_rules = True,
         # Let's force the pinned version:
         # https://github.com/bazelbuild/rules_jvm_external#resolving-user-specified-and-transitive-dependency-version-conflicts
         version_conflict_policy = "pinned",

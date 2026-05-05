@@ -76,6 +76,16 @@ interface LayoutAttributes {
   lazyLayout?: boolean;
 
   /**
+   * @experimental This feature is experimental and may change in future releases.
+   *
+   * Scroll anchor position for this element within the nearest parent scroll view.
+   * When set to 'top' or 'bottom', the parent scroll view (with maintainScrollAnchor={true})
+   * will pin this element to the specified viewport edge during layout.
+   * @default: 'none'
+   */
+  scrollAnchorPosition?: ScrollAnchorPosition;
+
+  /**
    * If set, the node will be set as a lazyLayout, and the given measure callback
    * will be called whenever the node needs to be measured. The callback
    * should return a MeasuredSize tuple representing how big the node should be.
@@ -706,13 +716,35 @@ interface ViewAttributes {
    * Add a shadow to the view
    * Accepts strings with syntax: '{xOffset} {yOffset} {shadowOverflow} {color}'
    * All numbers values are interpreted as points values
+   *
+   * [iOS-Only] Optionally prefix with 'complex' to use dynamic shadow rendering:
+   * - Without 'complex': Uses pre-calculated shadow path (better performance, may have issues during animations)
+   * - With 'complex': Uses dynamic rendering (slightly slower, works correctly during animations and with changing bounds)
+   *
+   * Note: Android always uses dynamic rendering, so the 'complex' prefix has no effect on Android.
+   *
    * @example
    * ```
    * boxShadow(0, 2, 10, 'rgba(0, 0, 0, 0.1)')
    * boxShadow(0, -2, 0, SemanticColor.Elevation.CELL_SHADOW)
+   * boxShadow='complex 0 3 8 rgba(0, 0, 0, 0.24)' // Use for animated views on iOS
    * ```
    */
   boxShadow?: string;
+
+  /**
+   * [Web-Only]
+   * Sets the mouse cursor to be displayed when hovering over the element.
+   * This property is only effective on web platforms.
+   * @example
+   * ```
+   * cursor="pointer"
+   * cursor="default"
+   * cursor="not-allowed"
+   * ```
+   * @default: "default"
+   */
+  cursor?: string;
 
   // Gestures
 
@@ -1151,7 +1183,7 @@ export interface CommonEditTextInterface extends LeafView, CommonTextAttributes 
 /**
  * Represents an editable TextField.
  *
- * @NativeTemplateElement({ios: 'SCValdiTextField', android: 'com.snap.valdi.views.ValditText', jsx: 'textfield'})
+ * @NativeTemplateElement({ios: 'SCValdiTextField', android: 'com.snap.valdi.views.ValdiEditText', jsx: 'textfield'})
  * */
 export interface TextField extends _TextField, CommonEditTextInterface {
   /**
@@ -1196,7 +1228,7 @@ export interface TextFieldInteractive extends TextField {
   focused?: boolean;
 }
 
-// @NativeTemplateElement({ios: 'SCValdiTextView', android: 'com.snap.valdi.views.ValditTextMultiline', jsx: 'textview'})
+// @NativeTemplateElement({ios: 'SCValdiTextView', android: 'com.snap.valdi.views.ValdiEditTextMultiline', jsx: 'textview'})
 export interface TextView extends _TextView, CommonEditTextInterface {
   /**
    * Setting this property to a different key type changes the visible title of the Return key.
@@ -1625,6 +1657,15 @@ export interface ScrollView extends _ScrollView, CommonView, ContainerTemplateEl
   cancelsTouchesOnScroll?: boolean;
 
   /**
+   * [iOS-Only]
+   * When enabled, any touch on the scroll view will immediately stop an ongoing
+   * deceleration animation so that the touch is delivered to content views
+   * instead of being consumed by the scroll view.
+   * @default: false
+   */
+  stopScrollingOnTouch?: boolean;
+
+  /**
    * If the keyboard is open, close it when we start scrolling
    * @default: false
    */
@@ -1632,13 +1673,14 @@ export interface ScrollView extends _ScrollView, CommonView, ContainerTemplateEl
 
   /**
    * When dismissKeyboardOnDrag is `true` this changes the behavior of when the keyboard is dismissed:
-   * 
+   *
    *  - immediate : keyboard is dismissed as soon as scrolling begins
    *  - touch-exit-below : keyboard is dismissed when the scroll drag gesture touches leave the lower boundary of the <scroll> bounds
-   * 
+   *  - touch-exit-above : keyboard is dismissed when the scroll drag gesture touches leave the upper boundary of the <scroll> bounds
+   *
    * @default: 'immediate'
    */
-  dismissKeyboardOnDragMode?: 'immediate' | 'touch-exit-below'
+  dismissKeyboardOnDragMode?: 'immediate' | 'touch-exit-below' | 'touch-exit-above';
 
   /**
    * When enabled, the scroll content offset will always settle on a multiple of the scrollview's size
@@ -1710,6 +1752,40 @@ export interface ScrollView extends _ScrollView, CommonView, ContainerTemplateEl
    * @default: 0
    */
   fadingEdgeLength?: number;
+
+  /**
+   * Enable or disable the fading edge effect at the start of the scroll view
+   * (top edge for vertical scroll, left edge for horizontal scroll)
+   *
+   * Only applies if fadingEdgeLength is greater than 0
+   *
+   * @default: true
+   */
+  fadingEdgeStart?: boolean;
+
+  /**
+   * Enable or disable the fading edge effect at the end of the scroll view
+   * (bottom edge for vertical scroll, right edge for horizontal scroll)
+   *
+   * Only applies if fadingEdgeLength is greater than 0
+   *
+   * @default: true
+   */
+  fadingEdgeEnd?: boolean;
+
+  /**
+   * [Android-Only]
+   * Enable extended fading edge rendering for larger fade lengths.
+   * This uses a custom Porter-Duff compositing implementation to match iOS visual appearance.
+   *
+   * When true and fadingEdgeLength exceeds the native threshold, uses enhanced rendering with square root fade curves.
+   * When false, uses Android's native fading edge (limited by platform constraints).
+   *
+   * TODO: This flag will be removed after validation across all call sites.
+   *
+   * @default: false
+   */
+  androidOnlyEnableExtendedFadingEdge?: boolean;
 
   /**
    * [iOS-Only]
@@ -1791,6 +1867,16 @@ export interface ScrollViewInteractive extends ScrollView {
    * Setting this value will skip waiting for the measure step and allow operations such as scrolling to occurr faster.
    */
   staticContentHeight?: number;
+
+  /**
+   * @experimental This feature is experimental and may change in future releases.
+   *
+   * When enabled, the scroll view will look for a descendant with scrollAnchorPosition set to
+   * 'top' or 'bottom' and pin it to the specified viewport edge during layout.
+   * Toggle this on when pagination triggers and off after layout settles.
+   * @default: false
+   */
+  maintainScrollAnchor?: boolean;
 }
 
 // @NativeTemplateElement({ios: 'SCValdiSpinnerView', android: 'com.snap.valdi.views.ValiSpinnerView', jsx: 'spinner'})
@@ -2042,6 +2128,8 @@ type LayoutJustifyContentProperty =
   | 'space-evenly';
 
 type LayoutFlexBasisProperty = CSSValue;
+
+export type ScrollAnchorPosition = 'none' | 'top' | 'bottom';
 
 export type LayoutAccessibilityCategory =
   | 'auto'

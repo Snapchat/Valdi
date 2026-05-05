@@ -17,29 +17,7 @@
 @extern "../valdi_core/generated-src/yaml/Cancelable.yaml"
 @extern "../valdi_core/generated-src/yaml/HTTPRequestManagerCompletion.yaml"
 @extern "../valdi_core/generated-src/yaml/HTTPRequestManager.yaml"
-
-JSRuntimeNativeObjectsManager = interface +c {
-  getReachableObjectsDescription(): Value;
-}
-
-JSRuntime = interface +c {
-
-  # Push the module unmarshalled using the schema in the given marshaller handle
-  # into the marshaller.
-  pushModuleToMarshaller(nativeObjectsManager: JSRuntimeNativeObjectsManager, path: InternedString, marshallerHandle: i64): i32;
-
-  addModuleUnloadObserver(path: InternedString, observer: Value);
-
-  preloadModule(path: InternedString, maxDepth: i32);
-
-  createNativeObjectsManager(): JSRuntimeNativeObjectsManager;
-
-  destroyNativeObjectsManager(nativeObjectsManager: JSRuntimeNativeObjectsManager);
-
-  createWorker(): JSRuntime;
-
-  runOnJsThread(runnable: Value);
-}
+@extern "../valdi_core/generated-src/yaml/JSRuntime.yaml"
 
 Keychain = interface +j +o {
   # Store the given string blob into the keychain

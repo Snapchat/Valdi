@@ -7,7 +7,6 @@
 
 #include "RequestManagerMock.hpp"
 #include "TestAsyncUtils.hpp"
-#include "valdi/runtime/Exception.hpp"
 #include "valdi/runtime/Resources/Remote/DownloadableModuleManifestWrapper.hpp"
 #include "valdi/runtime/Resources/Remote/RemoteModuleManager.hpp"
 #include "valdi/runtime/Resources/Remote/RemoteModuleResources.hpp"
@@ -19,6 +18,7 @@
 #include "valdi_core/cpp/Resources/ValdiArchive.hpp"
 #include "valdi_core/cpp/Threading/DispatchQueue.hpp"
 #include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
+#include "valdi_core/cpp/Utils/Exception.hpp"
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
 #include <gtest/gtest.h>

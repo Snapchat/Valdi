@@ -37,3 +37,8 @@ wasm:
 ts:
   typename: Asset
   module: './valdi_core'
+c:
+  typename: 'snap_valdi_core_Asset_ref'
+  translator: '::djinni::c_api::InterfaceTranslator<::snap::valdi_core::Asset>'
+  public_header: '"valdi_core/Asset.h"'
+  private_header: '"valdi_core/Asset.hpp"'

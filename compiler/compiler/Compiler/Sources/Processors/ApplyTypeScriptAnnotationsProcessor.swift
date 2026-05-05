@@ -45,12 +45,46 @@ final class ApplyTypeScriptAnnotationsProcessor: CompilationProcessor {
         return false
     }
 
-    private func processAnnotations(items: [CompilationItem]) -> [CompilationItem] {
+    /// Fails fast when the same Valdi native-export annotation (e.g. `@ExportModel`) is attached more than once to one symbol.
+    /// Common cause: text such as "due to @ExportModel limitations" — the scanner treats any `@ExportModel` substring as a real tag.
+    private func throwIfDuplicateConflictingNativeExportAnnotations(_ allAnnotations: [(URL, ParsedAnnotation)]) throws {
+        struct Key: Hashable {
+            let filePath: String
+            let symbol: String
+            let annotationType: ValdiAnnotationType
+        }
+        var buckets: [Key: [(URL, ParsedAnnotation)]] = [:]
+        for (url, pa) in allAnnotations {
+            switch pa.type {
+            case .exportModel, .generateNativeClass, .exportProxy, .generateNativeInterface, .exportEnum, .generativeNativeEnum, .exportFunction, .generativeNativeFunction:
+                let key = Key(filePath: url.standardizedFileURL.path, symbol: pa.symbol.symbol.text, annotationType: pa.type)
+                buckets[key, default: []].append((url, pa))
+            default:
+                break
+            }
+        }
+        for (key, group) in buckets where group.count > 1 {
+            let atTag = "@\(key.annotationType.rawValue)"
+            var lines: [String] = []
+            for (index, pair) in group.enumerated() {
+                let (_, pa) = pair
+                let text = pa.annotation.content.replacingOccurrences(of: "\n", with: " ")
+                lines.append("\(index + 1). \(text)")
+            }
+            let proseHint = "Text in the same block that contains the substring \"\(atTag)\" (for example, \"due to \(atTag) limitations\") is parsed as a second export and must be removed. Only one real \(atTag) annotation may apply to this symbol."
+            throw CompilerError(
+                "Multiple \(atTag) annotations have been detected for \(key.symbol) in file \(key.filePath). Only one can be used and duplicates must be removed.\n\(lines.joined(separator: "\n"))\n\n\(proseHint)"
+            )
+        }
+    }
+
+    private func processAnnotations(items: [CompilationItem]) throws -> [CompilationItem] {
         let out = DocumentsIndexer(items: items)
 
         nativeCodeGenerationManager.clear()
 
         let allAnnotations = typeScriptAnnotationsManager.listAllAnnotations()
+        try throwIfDuplicateConflictingNativeExportAnnotations(allAnnotations)
         for (sourceURL, parsedAnnotation) in allAnnotations {
             let commentedFile = parsedAnnotation.file
             let linesIndexer = commentedFile.linesIndexer
@@ -171,6 +205,9 @@ final class ApplyTypeScriptAnnotationsProcessor: CompilationProcessor {
                     break
                 case .workerThread:
                     // WorkerThread annotations get processed inside TypeScriptNativeTypeExporter
+                    break
+                case .allowSyncCall:
+                    // AllowSyncCall annotations get processed inside TypeScriptNativeTypeExporter
                     break
                 case .untyped:
                     // Untyped annotations get processed inside TypeScriptNativeTypeExporter
@@ -295,7 +332,7 @@ final class ApplyTypeScriptAnnotationsProcessor: CompilationProcessor {
 
     func process(items: CompilationItems) throws -> CompilationItems {
         // process the previously-parsed file annotations
-        let outItems = processAnnotations(items: items.allItems)
+        let outItems = try processAnnotations(items: items.allItems)
         let failedFiles = extractErrors(items: outItems)
 
         // generate the TS files from the CompilationResult's

@@ -30,8 +30,8 @@
 
 #include "valdi_core/cpp/Resources/ResourceId.hpp"
 
-#include "valdi/JSRuntime.hpp"
 #include "valdi_core/AnimationType.hpp"
+#include "valdi_core/JSRuntime.hpp"
 
 #include "valdi/runtime/JavaScript/JSPropertyNameIndex.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptComponentContextHandler.hpp"
@@ -146,9 +146,16 @@ enum class ModuleLoadMode {
 
 using ModuleLoadResult = std::pair<JSValueRef, ModuleLoadMode>;
 
-struct ModuleMemoryConsumptionInfo {
-    ptrdiff_t waterMark;           // The memory usage water mark before loading
-    ptrdiff_t childrenConsumption; // Total memory usage by children of this module
+/**
+Module resource consumption info, i.e. memory and duration;
+Currently, we monitor resource consumption only if the memory usage is available.
+*/
+struct ModuleResourceConsumptionInfo {
+    int64_t memoryWaterMark;     // The memory usage water mark before loading
+    int64_t childrenMemoryUsage; // Total memory usage by children of this module
+
+    int64_t timestamp;        // Timestamp before loading
+    int64_t childrenDuration; // Total duration of children of this module
 };
 
 /**
@@ -158,7 +165,7 @@ struct ModuleMemoryConsumptionInfo {
  */
 class JavaScriptRuntime : public JavaScriptTaskScheduler,
                           public IJavaScriptContextListener,
-                          public snap::valdi::JSRuntime,
+                          public snap::valdi_core::JSRuntime,
                           public JavaScriptComponentContextHandlerListener {
 public:
     JavaScriptRuntime(IJavaScriptBridge& jsBridge,
@@ -238,29 +245,34 @@ public:
     bool isJsModuleLoaded(const ResourceId& resourceId);
 
     Ref<JavaScriptModuleContainer> getModule(
-        const std::shared_ptr<snap::valdi::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
+        const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
         const Valdi::StringBox& path);
 
     void preloadModule(const StringBox& path, int32_t maxDepth) override;
 
+    void preloadModules(const std::vector<Valdi::StringBox>& paths, int32_t maxDepth) override;
+
+    void warmUpValueMarshaller(const Value& value);
+
     int32_t pushModuleToMarshaller(
-        const /*not-null*/ std::shared_ptr<snap::valdi::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
+        const /*not-null*/ std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
         const Valdi::StringBox& path,
         int64_t marshallerHandle) override;
 
     int32_t pushModuleToMarshaller(
-        const /*not-null*/ std::shared_ptr<snap::valdi::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
+        const /*not-null*/ std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
         const Valdi::StringBox& path,
         Marshaller& marshaller);
 
     void addModuleUnloadObserver(const Valdi::StringBox& path, const Valdi::Value& observer) override;
 
-    std::shared_ptr<snap::valdi::JSRuntimeNativeObjectsManager> createNativeObjectsManager() override;
+    std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager> createNativeObjectsManager(
+        const std::string& scopeName) override;
 
     void destroyNativeObjectsManager(
-        const std::shared_ptr<snap::valdi::JSRuntimeNativeObjectsManager>& nativeObjectsManager) override;
+        const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager) override;
 
-    std::shared_ptr<snap::valdi::JSRuntime> createWorker() override;
+    std::shared_ptr<snap::valdi_core::JSRuntime> createWorker() override;
 
     void runOnJsThread(const Value& runnable) override;
 
@@ -273,7 +285,7 @@ public:
 
     std::future<Result<DumpedLogs>> dumpLogs(bool includeMetadata, bool includeVerbose);
 
-    void setEnableStackTraceCapture(bool enableStackTraceCapture);
+    void setForceStackTraceCapture(bool force);
 
     void requestUpdateJsContextHandler(JavaScriptEntryParameters& jsEntry,
                                        JavaScriptComponentContextHandler& handler) override;
@@ -334,7 +346,7 @@ private:
     Result<JSValueRef> _symbolicateFunction;
     Result<JSValueRef> _onDaemonClientEventFunction;
     JSValueRef _moduleLoader;
-    JSPropertyNameIndex<6> _propertyNameIndex;
+    JSPropertyNameIndex<7> _propertyNameIndex;
 
     Ref<IDiskCache> _diskCache;
     // List of JS modules which should be reloaded whenever they are unloaded
@@ -355,7 +367,8 @@ private:
     bool _symbolicating = false;
     bool _running = false;
     bool _enableDebugger;
-    bool _enableStackTraceCapture;
+    // Used for unit testing only
+    std::atomic<bool> _forceStackTraceCapture = false;
     int _daemonClientListenerIdSequence = 0;
 
     PlatformType _platformType;
@@ -375,7 +388,7 @@ private:
 
     const bool _isWorker;
 
-    std::vector<ModuleMemoryConsumptionInfo> _moduleMemoryTracker;
+    std::vector<ModuleResourceConsumptionInfo> _moduleResourceTracker;
 
     void doInitialize();
 
@@ -422,6 +435,7 @@ private:
     JSValueRef runtimeGetAssets(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeMakeDirectionalAsset(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeMakePlatformSpecificAsset(JSFunctionNativeCallContext& callContext);
+    JSValueRef runtimeGetLoadedAssetMetadata(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeSetColorPalette(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeTakeElementSnapshot(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeGetNativeNodeForElementId(JSFunctionNativeCallContext& callContext);

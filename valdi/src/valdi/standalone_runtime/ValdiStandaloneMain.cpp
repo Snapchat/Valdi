@@ -40,13 +40,17 @@ public:
         return config.getMapValue(key).toFloat();
     }
 
+    int32_t getInt(const StringBox& key, int32_t fallback) override {
+        return config.getMapValue(key).toInt();
+    }
+
     Value getBinary(const StringBox& key, const Value& fallback) override {
         return config.getMapValue(key);
     }
 };
 } // namespace
 
-int runValdiStandalone(const StandaloneArguments& arguments) {
+Ref<ValdiStandaloneRuntime> createValdiStandaloneRuntime(const StandaloneArguments& arguments) {
     ConsoleLogger::getLogger().setMinLogType(arguments.logLevel);
 
     auto resourceLoader = Valdi::makeShared<StandaloneResourceLoader>();
@@ -56,6 +60,10 @@ int runValdiStandalone(const StandaloneArguments& arguments) {
 
     auto mainQueue = Valdi::makeShared<StandaloneMainQueue>();
     auto tweakValueProvider = Valdi::makeShared<TestTweakValueProvider>();
+    if (arguments.enableTSN) {
+        tweakValueProvider->config.setMapValue(StringBox::fromCString("VALDI_ENABLE_TSN"), Value(true));
+    }
+
     auto runtime = ValdiStandaloneRuntime::create(arguments.enableDebuggerService,
                                                   !arguments.enableHotReloader,
                                                   false,
@@ -72,9 +80,15 @@ int runValdiStandalone(const StandaloneArguments& arguments) {
         runtime->getRuntimeManager().registerModuleFactoriesProvider(moduleFactoriesProvider);
     }
 
+    return runtime;
+}
+
+int runValdiStandalone(const StandaloneArguments& arguments) {
+    auto runtime = createValdiStandaloneRuntime(arguments);
+
     runtime->evalScript(arguments.scriptPath, arguments.jsArguments);
 
-    return mainQueue->runIndefinitely();
+    return runtime->getMainQueue()->runIndefinitely();
 }
 
 } // namespace Valdi

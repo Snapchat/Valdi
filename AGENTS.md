@@ -12,10 +12,228 @@ Valdi has been used in production at Snap for 8 years and is now available as op
 
 The Valdi compiler takes TypeScript source files (using TSX/JSX syntax) and compiles them into `.valdimodule` files. These compiled modules are read by the Valdi runtime on each platform to render native views. **This is not TypeScript rendered in a WebView** - Valdi generates true native UI components.
 
+## 🚨 AI Anti-Hallucination: This is NOT React!
+
+**CRITICAL**: Valdi uses TSX/JSX syntax but **is fundamentally different from React**. The most common AI error is suggesting React patterns that do not exist in Valdi.
+
+### ❌ FORBIDDEN React Patterns (Do NOT use these)
+
+These React APIs **DO NOT EXIST** in Valdi and will cause compilation errors:
+
+```typescript
+// ❌ WRONG - useState does not exist in Valdi
+const [count, setCount] = useState(0);
+
+// ❌ WRONG - useEffect does not exist in Valdi  
+useEffect(() => { ... }, []);
+
+// ❌ WRONG - useContext does not exist in Valdi
+const value = useContext(MyContext);
+
+// ❌ WRONG - useMemo, useCallback, useRef do not exist
+const memoized = useMemo(() => ..., []);
+const callback = useCallback(() => ..., []);
+const ref = useRef(null);
+
+// ❌ WRONG - React.Component does not exist
+class MyComponent extends React.Component { ... }
+
+// ❌ WRONG - Functional components do not exist
+function MyComponent(props) { return <view />; }
+const MyComponent = () => <view />;
+```
+
+### ⚠️ COMMON AI MISTAKES (Even advanced models make these errors!)
+
+**These patterns DO NOT EXIST in Valdi** but are commonly suggested by AI models:
+
+```typescript
+// ❌ WRONG - markNeedsRender() does NOT exist
+class MyComponent extends Component {
+  count = 0;
+  handleClick() {
+    this.count++;
+    this.markNeedsRender(); // ERROR: This method doesn't exist!
+  }
+}
+
+// ❌ WRONG - scheduleRender() exists but is DEPRECATED
+class MyComponent extends Component {
+  count = 0;
+  handleClick() {
+    this.count++;
+    this.scheduleRender(); // DEPRECATED: Use StatefulComponent with setState() instead
+  }
+}
+
+// ❌ WRONG - onMount/onUpdate/onUnmount do NOT exist (React-like names)
+class MyComponent extends Component {
+  onMount() { }        // Should be: onCreate()
+  onUpdate() { }       // Should be: onViewModelUpdate(previousViewModel)
+  onUnmount() { }      // Should be: onDestroy()
+}
+
+// ❌ WRONG - this.props does NOT exist
+class MyComponent extends Component {
+  onRender() {
+    <label value={this.props.title} />; // Should be: this.viewModel.title
+  }
+}
+
+// ❌ WRONG - this.context.get() does NOT exist
+class MyComponent extends Component {
+  onRender() {
+    const service = this.context.get(MyService); // This API doesn't exist!
+  }
+}
+
+// ❌ WRONG - Returning JSX from onRender()
+class MyComponent extends Component {
+  onRender() {
+    return <view />; // onRender() returns void, not JSX!
+  }
+}
+```
+
+**Why these errors happen**: AI models are heavily trained on React code, and Valdi's TSX syntax triggers incorrect React pattern suggestions. Always verify against actual Valdi APIs.
+
+### ✅ CORRECT Valdi Patterns (Use these instead)
+
+Valdi uses a **class-based component model** with explicit lifecycle methods:
+
+```typescript
+// ✅ CORRECT - Stateful Valdi component pattern
+import { StatefulComponent } from 'valdi_core/src/Component';
+
+class MyComponent extends StatefulComponent<ViewModel, State> {
+  // State management via StatefulComponent
+  state = { count: 0 };
+  
+  // Lifecycle: Called when component is first created
+  onCreate() {
+    console.log('Component created');
+  }
+  
+  // Lifecycle: Called when viewModel changes
+  onViewModelUpdate(previousViewModel: ViewModel) {
+    console.log('ViewModel changed');
+  }
+  
+  // Lifecycle: Called before component is removed
+  onDestroy() {
+    console.log('Component destroying');
+  }
+  
+  // Required: Render method returns void (not JSX!)
+  onRender() {
+    // Note: onRender returns VOID, not JSX
+    // JSX is written as a statement, not returned
+    <view>
+      <label value={`Count: ${this.state.count}`} />
+      <button 
+        title="Increment"
+        onPress={() => {
+          this.setState({ count: this.state.count + 1 }); // setState triggers re-render
+        }}
+      />
+    </view>;
+  }
+}
+
+// For components without state, use Component
+import { Component } from 'valdi_core/src/Component';
+
+class SimpleComponent extends Component<ViewModel> {
+  onRender() {
+    <label value={this.viewModel.title} />;
+  }
+}
+```
+
+### Key Valdi Concepts
+
+1. **State Management**: Use `StatefulComponent` with `setState()`, not `useState`
+2. **Props Access**: Use `this.viewModel`, not `this.props`
+3. **Re-rendering**: `setState()` automatically triggers re-render
+4. **Lifecycle Methods**: `onCreate()`, `onViewModelUpdate()`, `onDestroy()`
+5. **Dependency Injection**: Use `createProviderComponent()` + `withProviders()` HOC pattern
+6. **Return Type**: `onRender()` returns `void`, not JSX (JSX is written as a statement)
+7. **Component Definition**: Always use `class` extending `Component` or `StatefulComponent`, never functions
+
+### State Management with StatefulComponent
+
+```typescript
+// ✅ CORRECT - Use StatefulComponent with setState()
+class Counter extends StatefulComponent<ViewModel, State> {
+  state = { count: 0 };
+  
+  handleClick = () => {
+    this.setState({ count: this.state.count + 1 }); // Automatically triggers re-render
+  };
+  
+  onRender() {
+    <button title={`Count: ${this.state.count}`} onPress={this.handleClick} />;
+  }
+}
+
+// ❌ WRONG - Using markNeedsRender() doesn't exist
+handleClick() {
+  this.count++;
+  this.markNeedsRender(); // ERROR: markNeedsRender is not a function!
+}
+```
+
+### Provider Pattern (Not useContext)
+
+```typescript
+// ✅ CORRECT - Valdi provider pattern
+import { createProviderComponentWithKeyName } from 'valdi_core/src/provider/createProvider';
+import { withProviders } from 'valdi_core/src/provider/withProviders';
+import { ProvidersValuesViewModel } from 'valdi_core/src/provider/withProviders';
+import { Component } from 'valdi_core/src/Component';
+
+// Step 1: Define service
+class MyService {
+  getData() { return 'data'; }
+}
+
+// Step 2: Create provider component
+const MyServiceProvider = createProviderComponentWithKeyName<MyService>('MyServiceProvider');
+
+// Step 3: Provide value in parent
+class ParentComponent extends Component {
+  private service = new MyService();
+  
+  onRender() {
+    <MyServiceProvider value={this.service}>
+      <ChildComponentWithProvider />
+    </MyServiceProvider>;
+  }
+}
+
+// Step 4: Consume in child - extend viewModel from ProvidersValuesViewModel
+interface ChildViewModel extends ProvidersValuesViewModel<[MyService]> {
+  // other props if needed
+}
+
+class ChildComponent extends Component<ChildViewModel> {
+  onRender() {
+    // Access provider via viewModel.providersValues
+    const [myService] = this.viewModel.providersValues;
+    const data = myService.getData();
+    
+    <label value={data} />;
+  }
+}
+
+// Step 5: Wrap component with provider HOC
+const ChildComponentWithProvider = withProviders(MyServiceProvider)(ChildComponent);
+```
+
 ## Key Technologies
 
 - **Valdi**: TypeScript-based declarative UI framework that compiles to native code
-- **TSX/JSX**: React-like syntax for declarative UI (but this is not React - Valdi compiles to native)
+- **TSX/JSX**: React-like syntax for declarative UI (but this is **NOT React** - Valdi compiles to native)
 - **Bazel**: Primary build system for reproducible builds
 - **TypeScript/JavaScript**: Application and UI layer
 - **C++**: Cross-platform runtime and layout engine
@@ -185,10 +403,15 @@ Pre-built binaries are stored in `/bin/`:
 
 ### Web
 - TypeScript runtime for web targets
+- **Custom views**: Use `webClass` attribute on `<custom-view>`. Factories are registered via `webPolyglotViews` exports and looked up in `WebViewClassRegistry`. Factories receive a container DOM element and can return a `changeAttribute(name, value)` handler.
+- **`web_deps` must be a `ts_project`** — never use `filegroup` for web code. Always use typed TypeScript with `ts_project` from `@aspect_rules_ts`.
 - See `/src/valdi_modules/src/valdi/web_renderer/` for web implementation
 
 ### Desktop (macOS)
-- Native macOS implementation
+- Native macOS implementation using AppKit (`NSView`, `NSWindow`)
+- **Platform type**: `PlatformTypeMacOS` (3) — distinct from iOS (2)
+- **Class name resolution**: macOS falls through to iOS class names for both built-in elements and custom views. This means `iosClass` works on macOS without specifying `macosClass`.
+- **SnapDrawing**: Shares iOS layer classes (registered under iOS names like `SCValdiView`, `SCValdiLabel`)
 - See `/valdi/src/valdi/macos/` for desktop implementations
 
 ## Development Workflow
@@ -219,9 +442,9 @@ class MyComponent extends Component {
   }
   
   // Optional lifecycle methods:
-  // onMount() - Called when component is first mounted
-  // onUnmount() - Called before component is removed
-  // onUpdate(prevProps) - Called when component updates
+  // onCreate() - Called when component is first created
+  // onDestroy() - Called before component is removed
+  // onViewModelUpdate(previousViewModel) - Called when viewModel updates
 }
 ```
 
@@ -233,11 +456,80 @@ class MyComponent extends Component {
 
 ### Native Polyglot Modules
 
-For performance-critical code, write native implementations with TypeScript bindings:
+For performance-critical code or platform-specific views, write native implementations with TypeScript bindings:
 - Define interfaces in TypeScript
 - Specify polyglot modules in build files (BUILD.bazel)
 - Implement in C++, Swift, Kotlin, or Objective-C
 - Compiler generates type-safe bindings
+
+### Custom Views (`<custom-view>`)
+
+Custom views inject native platform views into Valdi components. Use platform-specific class attributes:
+
+```tsx
+<custom-view
+  iosClass='MyIOSView'
+  androidClass='com.example.MyAndroidView'
+  macosClass='MyMacOSView'
+  webClass='my-web-view'
+  myAttribute={42}
+/>
+```
+
+**Platform resolution rules:**
+- **macOS falls through to iOS**: If `macosClass` is not specified, `iosClass` is used. This applies both in TypeScript (`JSXBootstrap.ts`) and C++ (`ViewNode.cpp`).
+- **Built-in elements** (view, label, image, scroll, etc.) always resolve to iOS class names on macOS (e.g., `SCValdiView`, `SCValdiLabel`).
+- **Web** uses `webClass` to look up a factory in `WebViewClassRegistry`. Factories can return a `changeAttribute(name, value)` handler to receive attribute updates.
+- See `/docs/docs/native-customviews.md` for full examples on all platforms.
+
+**Bazel dependencies for custom views:**
+
+```python
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+
+# Web views MUST be a ts_project, never a filegroup.
+# - transpiler = "tsc" is required (aspect_rules_ts does not default it)
+# - Provide a dedicated web/tsconfig.json (standalone, not extending the module tsconfig)
+# - If web code imports .d.ts from the module's src/, include "src/**/*.d.ts" in srcs
+# - Exclude "web/**/*.d.ts" from srcs to avoid TS5055 collisions with composite: true
+ts_project(
+    name = "my_web_views",
+    srcs = glob([
+        "web/**/*.ts",
+        "src/**/*.d.ts",       # only if web code imports module type declarations
+    ], exclude = [
+        "web/**/*.d.ts",       # avoid TS5055 output collision with composite
+    ]),
+    allow_js = True,
+    composite = True,
+    transpiler = "tsc",
+    tsconfig = "web/tsconfig.json",
+)
+
+valdi_module(
+    name = "my_module",
+    srcs = [...],
+    ios_deps = [":my_ios_views"],          # objc_library
+    macos_deps = [":my_macos_views"],      # objc_library (or omit to share ios_deps)
+    android_deps = [":my_android_views"],  # valdi_android_library
+    web_deps = [":my_web_views"],          # ts_project (never filegroup)
+)
+```
+
+**Web `tsconfig.json`** — the `web/tsconfig.json` should be standalone (not extending the module-level tsconfig) since `ts_project` compiles independently:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2016",
+    "module": "commonjs",
+    "strict": true,
+    "composite": true,
+    "allowJs": true,
+    "lib": ["dom", "ES2019"]
+  }
+}
+```
 
 ### Worker Services
 
@@ -380,6 +672,20 @@ For more details on specific topics, see the `/docs/` directory:
 - Codelabs for hands-on learning
 - Advanced features (animations, gestures, protobuf)
 - Native bindings and custom views
+
+## AI Skills (Context for AI Agents)
+
+The Valdi CLI ships context files ("skills") that give AI agents accurate knowledge about Valdi APIs, patterns, and conventions. Install them once to reduce hallucinations:
+
+```bash
+npm install -g @snap/valdi
+valdi skills install          # installs all skills for detected AI agents
+# or install by category:
+valdi skills install --category=client     # module development skills
+valdi skills install --category=framework  # framework internals skills
+```
+
+Skills are bundled inside the npm package — no network access required after install.
 
 ## Contributing
 

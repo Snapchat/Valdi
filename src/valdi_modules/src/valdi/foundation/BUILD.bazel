@@ -28,6 +28,7 @@ valdi_module(
     ]) + [
         "tsconfig.json",
     ],
+    android_class_path = "com.snap.valdi.foundation",
     android_output_target = "release",
     ios_module_name = "SCCFoundation",
     ios_output_target = "release",

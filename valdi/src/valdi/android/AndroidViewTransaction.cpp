@@ -26,10 +26,14 @@ namespace ValdiAndroid {
 
 AndroidViewTransaction::AndroidViewTransaction(ViewManager& viewManager) : _viewManager(viewManager) {}
 
-AndroidViewTransaction::~AndroidViewTransaction() = default;
+AndroidViewTransaction::~AndroidViewTransaction() {
+    for (const auto& pendingCallback : _pendingOnNextDrawCallbacks) {
+        delete reinterpret_cast<Valdi::DispatchFunction*>(pendingCallback.callbackHandle);
+    }
+}
 
 void AndroidViewTransaction::flush(bool sync) {
-    _viewManager.flushViewOperations(std::move(_viewOperations));
+    _viewManager.flushViewOperations(std::move(_viewOperations), sync);
 }
 
 void AndroidViewTransaction::willUpdateRootView(const Valdi::Ref<Valdi::View>& view) {
@@ -38,6 +42,18 @@ void AndroidViewTransaction::willUpdateRootView(const Valdi::Ref<Valdi::View>& v
 
 void AndroidViewTransaction::didUpdateRootView(const Valdi::Ref<Valdi::View>& view, bool layoutDidBecomeDirty) {
     getViewOperations().enqueueEndRenderingView(view, layoutDidBecomeDirty);
+
+    for (const auto& pendingCallback : _pendingOnNextDrawCallbacks) {
+        auto callbackRootView = pendingCallback.rootView != nullptr ? pendingCallback.rootView : view;
+        if (callbackRootView == nullptr) {
+            delete reinterpret_cast<Valdi::DispatchFunction*>(pendingCallback.callbackHandle);
+            continue;
+        }
+
+        getViewOperations().enqueueOnNextDraw(callbackRootView, pendingCallback.callbackHandle);
+    }
+
+    _pendingOnNextDrawCallbacks.clear();
 }
 
 void AndroidViewTransaction::moveViewToTree(const Valdi::Ref<Valdi::View>& view,
@@ -142,6 +158,14 @@ void AndroidViewTransaction::flushAnimator(const Valdi::Ref<Valdi::Animator>& an
 
 void AndroidViewTransaction::cancelAnimator(const Valdi::Ref<Valdi::Animator>& animator) {
     animator->getNativeAnimator()->cancel();
+}
+
+void AndroidViewTransaction::scheduleOnNextDraw(const Valdi::Ref<Valdi::View>& rootView,
+                                                Valdi::DispatchFunction callback) {
+    PendingOnNextDrawCallback pendingCallback;
+    pendingCallback.rootView = rootView;
+    pendingCallback.callbackHandle = reinterpret_cast<int64_t>(new Valdi::DispatchFunction(std::move(callback)));
+    _pendingOnNextDrawCallbacks.emplace_back(std::move(pendingCallback));
 }
 
 void AndroidViewTransaction::executeInTransactionThread(Valdi::DispatchFunction executeFn) {

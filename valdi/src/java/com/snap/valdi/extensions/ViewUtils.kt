@@ -29,9 +29,12 @@ import com.snap.valdi.views.ValdiClippableView
 import com.snap.valdi.views.ValdiForegroundHolder
 import com.snap.valdi.views.touches.ValdiGestureRecognizer
 import com.snap.valdi.views.touches.GestureRecognizers
+import com.snapchat.client.valdi.UndefinedValue
 import com.snapchat.client.valdi.utils.NativeHandleWrapper
 
 object ViewUtils {
+
+    var enableTextAlignmentForRTL: Boolean = true
 
     private fun getOptionalValdiObjects(view: View): ValdiObjects? {
         return view.tag as? ValdiObjects
@@ -377,6 +380,33 @@ object ViewUtils {
 
     fun setIsRightToLeft(view: View, isRightToLeft: Boolean) {
         getOrCreateValdiObjects(view).isRightToLeft = isRightToLeft
+
+        if (!enableTextAlignmentForRTL) {
+            return;
+        }
+
+        // Skip ValdiRootView as its layout direction is controlled by the application.
+        if (view is ValdiRootView) {
+            return
+        }
+
+        // Set the native Android layout direction on TextViews so text alignment respects
+        // the Valdi-computed direction. We only need this on views that render text, since
+        // Yoga already handles the layout positioning for all views.
+        // 
+        // TextView is the base class for EditText, AppCompatEditText, AppCompatTextView, etc.
+        if (view is android.widget.TextView) {
+            val targetDirection = if (isRightToLeft) {
+                View.LAYOUT_DIRECTION_RTL
+            } else {
+                View.LAYOUT_DIRECTION_LTR
+            }
+            
+            // Only set if changed to avoid potential invalidation overhead
+            if (view.layoutDirection != targetDirection) {
+                view.layoutDirection = targetDirection
+            }
+        }
     }
 
     /**
@@ -483,6 +513,10 @@ object ViewUtils {
      * Resolves the IValdiViewNode instance from the given Ref object
      */
     fun getViewNodeFromRef(ref: Ref): IValdiViewNode? {
+        // UndefinedValue may be returned by the Valdi C++ bridge when a component ref is in an
+        // undefined state (not yet initialized or already destroyed). It doesn't implement Ref
+        // despite being passed as one, so calling ref.get() would throw IncompatibleClassChangeError.
+        if ((ref as Any) is UndefinedValue) return null
         val item = ref.get()
 
         return when (item) {
@@ -497,6 +531,7 @@ object ViewUtils {
      */
     @Deprecated("This will stop working with SnapDrawing. Use getViewNodeFromRef() instead")
     fun getViewFromRef(ref: Ref): View? {
+        if ((ref as Any) is UndefinedValue) return null
         val item = ref.get()
 
         return when (item) {
@@ -510,6 +545,7 @@ object ViewUtils {
      * Return a Drawable representation of the given Ref.
      */
     fun refToDrawable(ref: Ref): Drawable? {
+        if ((ref as Any) is UndefinedValue) return null
         val item = ref.get()
 
         return when (item) {

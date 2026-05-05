@@ -1,5 +1,15 @@
 # Frequently Asked Questions
 
+## Does Valdi support Swift or SwiftUI?
+
+The iOS runtime is written in Objective-C. There are no plans to rewrite it in Swift or to add a SwiftUI interop layer.
+
+This doesn't mean you can't use Swift with Valdi. [Polyglot modules](./native-polyglot.md) let you write performance-critical or platform-specific code in Swift (or Kotlin, C++, or Objective-C) with type-safe bindings to TypeScript. Most Swift integration needs are covered this way.
+
+## Does Valdi support a web / HTML target?
+
+Yes, with caveats. A web renderer that targets HTML/CSS is actively in development and available to try today. Expect rough edges—it's not production-ready. See the [Roadmap](../../ROADMAP.md) for more detail.
+
 ## Why did Snap create this?
 
 The Snapchat iOS and Android applications are meant to be basically exactly the same, with identical designs. This is a trend in that has become very common in the industry. Whereas initially many applications had different designs and user experience on each application, over time these differences faded, and nowadays for many companies, difference of application behaviors between iOS and Android are merely just a result of the codebase being implemented by different engineers and technologies rather than conscious design choices. This observation is why code sharing for both business logic and UI is so attractive on paper for many companies, including Snap.
@@ -24,7 +34,7 @@ Valdi is used on almost every Snapchat screen: sometimes to render some smaller 
 
 When we started Valdi, we actually had no intention of making it a React Native competitor. It was initially a small framework, with a clear set of use cases it was meant to help with. We wanted the framework to be really good at solving these use cases knowing that developers would have to initially resort to a large amount of platform native code. Over time, as we kept adding more and more features, Valdi became similar to React Native, although with a different development vision and implementation.
 
-React Native and Valdi are quite similar in how they work, at their core they are each development platforms allowing users to write their UI in TypeScript, with the backing UI system ultimately using platform native UI components. React Native is more web centric and more compatible with web technologies in general. Valdi breaks with web standards when that enables optimizations that can improve performance on mobile, or when it lowers the bar to entry to mobile engineers. For example, the module loader in Valdi is lazy by default, where dependency module files only actually get imported when they get used for the first time, rather than when their dependent modules get loaded. This solves a common pain point that many companies had where as codebase grew, so did the load time for the main application bundle. In Valdi, each module is independant, there is not a `main.jsbundle`. In Valdi, modules build with Bazel, and native code is an integral part of applications that are built using it. The list of differences is very long, and it'd take many pages to list them all out. The sum of these differences all add up to a technology that was ultimately possible to integrate in so many surfaces on Snapchat.
+React Native and Valdi are quite similar in how they work, at their core they are each development platforms allowing users to write their UI in TypeScript, with the backing UI system ultimately using platform native UI components. React Native is more web centric and more compatible with web technologies in general. Valdi breaks with web standards when that enables optimizations that can improve performance on mobile, or when it lowers the bar to entry to mobile engineers. For example, the module loader in Valdi is lazy by default, where dependency module files only actually get imported when they get used for the first time, rather than when their dependent modules get loaded. This solves a common pain point that many companies had where as codebase grew, so did the load time for the main application bundle. In Valdi, each module is independent, there is not a `main.jsbundle`. In Valdi, modules build with Bazel, and native code is an integral part of applications that are built using it. The list of differences is very long, and it'd take many pages to list them all out. The sum of these differences all add up to a technology that was ultimately possible to integrate in so many surfaces on Snapchat.
 
 React Native is a fantastic technology and we don't claim Valdi is strictly superior to it. We chose a different set of trade-offs for Valdi to make it work at Snap, and other projects might also find these trade-offs desirable. The main target audience for Valdi are developers that have strong requirements for performance and scalability and/or have an existing native application and want to efficiently use some cross-platform business logic or UI.
 

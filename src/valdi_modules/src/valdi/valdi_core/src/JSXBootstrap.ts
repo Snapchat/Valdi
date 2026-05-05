@@ -62,7 +62,7 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
 
   constructor() {
     this.currentPlatform = runtime.getCurrentPlatform();
-    if (this.currentPlatform !== 1 && this.currentPlatform !== 2 && this.currentPlatform != 3) {
+    if (this.currentPlatform !== 1 && this.currentPlatform !== 2 && this.currentPlatform !== 3 && this.currentPlatform !== 4) {
       throw Error(`Unrecognized platform type ${this.currentPlatform.toString()}`);
     }
 
@@ -263,23 +263,39 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
     if (className === 'custom-view') {
       let androidClass: string | undefined;
       let iosClass: string | undefined;
+      let macosClass: string | undefined;
       if (attributes) {
         androidClass = removeProperty(attributes, 'androidClass');
         iosClass = removeProperty(attributes, 'iosClass');
+        macosClass = removeProperty(attributes, 'macosClass');
+        // webClass is left in attributes so WebValdiCustomView receives it via changeAttribute
       }
 
-      if (this.currentPlatform === 2 || this.currentPlatform === 3) {
+      // 1 = Android, 2 = iOS, 3 = MacOS, 4 = Web
+      if (this.currentPlatform === 4) {
+        return new NodePrototype(className, 'custom-view', attributes);
+      }
+      if (this.currentPlatform === 2) {
         if (iosClass) {
           return new NodePrototype(className, iosClass, attributes);
         } else {
           return new DeferredNodePrototype(className, attributes);
         }
-      } else {
-        if (androidClass) {
-          return new NodePrototype(className, androidClass, attributes);
+      }
+      if (this.currentPlatform === 3) {
+        if (macosClass) {
+          return new NodePrototype(className, macosClass, attributes);
+        } else if (iosClass) {
+          // macOS falls through to iOS class names
+          return new NodePrototype(className, iosClass, attributes);
         } else {
           return new DeferredNodePrototype(className, attributes);
         }
+      }
+      if (androidClass) {
+        return new NodePrototype(className, androidClass, attributes);
+      } else {
+        return new DeferredNodePrototype(className, attributes);
       }
     }
 
@@ -303,10 +319,12 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
   }
 
   makeRendererWithAllowedRootElementTypes(allowedRootElementTypes: string[] | undefined, treeId: string): Renderer {
+    const useTopDownMoveOrder = typeof runtime.useTopDownMoveOrder === 'boolean' ? runtime.useTopDownMoveOrder : false;
     return new Renderer(
       treeId,
       allowedRootElementTypes,
       new JSXRendererDelegate(treeId, this.stringCache, this.attributeCache, this.injectedAttributeCache),
+      useTopDownMoveOrder,
     );
   }
 
@@ -314,7 +332,8 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
 
   registerNativeElement(className: string, iosClass: string, androidClass: string): void {
     let viewClassName: string;
-    if (this.currentPlatform === 2) {
+    if (this.currentPlatform === 2 || this.currentPlatform === 3) {
+      // macOS (3) falls through to iOS class names
       viewClassName = iosClass;
     } else if (this.currentPlatform === 1) {
       viewClassName = androidClass;

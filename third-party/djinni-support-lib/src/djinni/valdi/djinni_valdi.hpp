@@ -32,7 +32,6 @@
 
 #include <fmt/format.h>
 
-#include <codecvt>
 #include <functional>
 #include <optional>
 #include <stdexcept>
@@ -149,12 +148,7 @@ using String = Primitive<std::string>;
 template<typename T>
 using Enum = Primitive<T, int32_t>;
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 class WString {
-    using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
-    using Utf16Converter = std::wstring_convert<std::codecvt_utf16<wchar_t>>;
-
 public:
     using CppType = std::wstring;
     using ValdiType = Valdi::Value;
@@ -163,28 +157,21 @@ public:
 
     static CppType toCpp(const ValdiType& v) {
         if (v.isInternedString()) {
-            auto utf8str = v.toStringBox().toStringView();
-            return Utf8Converter{}.from_bytes(utf8str.data(), utf8str.data() + utf8str.size());
+            return Valdi::StaticString::utf8ToWString(v.toStringBox().toStringView());
         } else {
-            const auto* sstr = v.getStaticString();
-            if (sstr->encoding() == Valdi::StaticString::Encoding::UTF8) {
-                return Utf8Converter{}.from_bytes(sstr->utf8Data(), sstr->utf8Data() + sstr->size());
-            } else {
-                const auto* begin = reinterpret_cast<const char*>(sstr->utf16Data());
-                const auto* end = reinterpret_cast<const char*>(sstr->utf16Data() + sstr->size());
-                return Utf16Converter{}.from_bytes(begin, end);
-            }
+            return v.getStaticString()->toStdWString();
         }
     }
+
     static ValdiType fromCpp(const CppType& c) {
-        return ValdiType(Utf8Converter{}.to_bytes(c));
+        return ValdiType(Valdi::StaticString::makeWithWideChars(c.data(), c.size()));
     }
+
     static const Valdi::ValueSchema& schema() noexcept {
         static auto schema = Valdi::ValueSchema::string();
         return schema;
     }
 };
-#pragma clang diagnostic pop
 
 class Binary {
 public:

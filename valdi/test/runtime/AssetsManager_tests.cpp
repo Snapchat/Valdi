@@ -51,22 +51,19 @@ public:
                 const std::optional<Valdi::StringBox>& error) override {
         SC_ASSERT(_allowMultipleResults || _results.empty());
 
-        auto loadedAssetRef = loadedAsset.getTypedRef<LoadedAsset>();
-
-        if (loadedAssetRef != nullptr) {
-            _results.emplace_back(loadedAssetRef);
-        } else {
+        if (error) {
             _results.emplace_back(Error(error.value()));
+        } else {
+            _results.emplace_back(loadedAsset);
         }
     }
 
-    Result<Ref<Valdi::LoadedAsset>> load(
-        const Ref<MainQueue>& mainQueue,
-        const Ref<Asset>& asset,
-        int32_t preferredWidth = 0,
-        int32_t preferredHeight = 0,
-        Value filter = Value(),
-        snap::valdi_core::AssetOutputType outputType = snap::valdi_core::AssetOutputType::Dummy) {
+    Result<Value> load(const Ref<MainQueue>& mainQueue,
+                       const Ref<Asset>& asset,
+                       int32_t preferredWidth = 0,
+                       int32_t preferredHeight = 0,
+                       Value filter = Value(),
+                       snap::valdi_core::AssetOutputType outputType = snap::valdi_core::AssetOutputType::Dummy) {
         asset->addLoadObserver(strongRef(this), outputType, preferredWidth, preferredHeight, filter);
 
         mainQueue->runUntilTrue([&]() { return !_results.empty(); });
@@ -86,11 +83,11 @@ public:
         _allowMultipleResults = allowMultipleResults;
     }
 
-    std::vector<Result<Ref<Valdi::LoadedAsset>>> getResults() const {
+    std::vector<Result<Value>> getResults() const {
         return _results;
     }
 
-    static Result<Ref<Valdi::LoadedAsset>> loadSync(
+    static Result<Value> loadSync(
         const Ref<MainQueue>& mainQueue,
         const Ref<Asset>& asset,
         int32_t preferredWidth,
@@ -103,7 +100,7 @@ public:
     }
 
 private:
-    std::vector<Result<Ref<Valdi::LoadedAsset>>> _results;
+    std::vector<Result<Value>> _results;
     bool _allowMultipleResults = false;
 };
 
@@ -190,10 +187,10 @@ struct AssetsManagerWrapper : public AssetsManagerListener {
         }
     }
 
-    Result<Ref<Valdi::LoadedAsset>> loadAssetSync(const AssetKey& assetKey,
-                                                  int32_t preferredWidth = 0,
-                                                  int32_t preferredHeight = 0,
-                                                  Value filter = Value()) {
+    Result<Value> loadAssetSync(const AssetKey& assetKey,
+                                int32_t preferredWidth = 0,
+                                int32_t preferredHeight = 0,
+                                Value filter = Value()) {
         auto asset = assetsManager->getAsset(assetKey);
         assets.emplace_back(asset);
         return SyncAssetLoadObserver::loadSync(mainQueue, asset, preferredWidth, preferredHeight, filter);
@@ -333,7 +330,11 @@ TEST(AssetsManager, canResolveAndLoadLocalAsset) {
 
     ASSERT_TRUE(result) << result.description();
 
-    ASSERT_EQ(assetToLoad, result.value());
+    auto loadedAsset = result.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset != nullptr) << result.description();
+
+    ASSERT_EQ(assetToLoad, loadedAsset);
 
     wrapper.tearDown();
 }
@@ -385,7 +386,11 @@ TEST(AssetsManager, canResolveAndLoadRemoteAsset) {
 
     ASSERT_TRUE(result) << result.description();
 
-    ASSERT_EQ(assetToLoad, result.value());
+    auto loadedAsset = result.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset != nullptr) << result.description();
+
+    ASSERT_EQ(assetToLoad, loadedAsset);
 
     wrapper.tearDown();
 }
@@ -510,7 +515,11 @@ TEST(AssetsManager, canLoadAssetAsynchronously) {
 
     ASSERT_TRUE(result) << result.description();
 
-    ASSERT_EQ(assetToLoad, result.value());
+    auto loadedAsset = result.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset != nullptr) << result.description();
+
+    ASSERT_EQ(assetToLoad, loadedAsset);
     wrapper.tearDown();
 }
 
@@ -563,7 +572,11 @@ TEST(AssetsManager, canLoadAssetFromURL) {
 
     ASSERT_TRUE(result) << result.description();
 
-    ASSERT_EQ(assetToLoad, result.value());
+    auto loadedAsset = result.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset != nullptr) << result.description();
+
+    ASSERT_EQ(assetToLoad, loadedAsset);
     wrapper.tearDown();
 }
 
@@ -585,7 +598,11 @@ TEST(AssetsManager, doesntLoadAssetAgainWhenReceivingNewConsumersWithSameSpecs) 
 
     ASSERT_TRUE(result) << result.description();
 
-    ASSERT_EQ(assetToLoad, result.value());
+    auto loadedAsset = result.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset != nullptr) << result.description();
+
+    ASSERT_EQ(assetToLoad, loadedAsset);
     ASSERT_TRUE(wrapper.allCallbacksCalled());
 
     auto assetToLoad2 = makeShared<StandaloneLoadedAsset>(BytesView(), 0, 0);
@@ -619,8 +636,12 @@ TEST(AssetsManager, doesntLoadAssetAgainWhenReceivingNewConsumersWithSameSpecs) 
 
     ASSERT_TRUE(result2) << result2.description();
 
-    ASSERT_NE(assetToLoad2, result2.value());
-    ASSERT_EQ(assetToLoad, result2.value());
+    auto loadedAsset2 = result2.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset2 != nullptr) << result2.description();
+
+    ASSERT_NE(assetToLoad2, loadedAsset2);
+    ASSERT_EQ(assetToLoad, loadedAsset2);
     wrapper.tearDown();
 }
 
@@ -642,7 +663,11 @@ TEST(AssetsManager, loadAssetAgainWhenReceivingNewConsumersWithDifferentSpecs) {
 
     ASSERT_TRUE(result) << result.description();
 
-    ASSERT_EQ(assetToLoad, result.value());
+    auto loadedAsset = result.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset != nullptr) << result.description();
+
+    ASSERT_EQ(assetToLoad, loadedAsset);
     ASSERT_TRUE(wrapper.allCallbacksCalled());
 
     auto assetToLoad2 = makeShared<StandaloneLoadedAsset>(BytesView(), 0, 0);
@@ -676,7 +701,11 @@ TEST(AssetsManager, loadAssetAgainWhenReceivingNewConsumersWithDifferentSpecs) {
 
     ASSERT_TRUE(result2) << result2.description();
 
-    ASSERT_EQ(assetToLoad2, result2.value());
+    auto loadedAsset2 = result2.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset2 != nullptr) << result2.description();
+
+    ASSERT_EQ(assetToLoad2, loadedAsset2);
 
     auto assetToLoad3 = makeShared<StandaloneLoadedAsset>(BytesView(), 0, 0);
     wrapper.assetLoader->setAssetResponse(url, assetToLoad3);
@@ -692,7 +721,11 @@ TEST(AssetsManager, loadAssetAgainWhenReceivingNewConsumersWithDifferentSpecs) {
 
     ASSERT_TRUE(result3) << result3.description();
 
-    ASSERT_EQ(assetToLoad3, result3.value());
+    auto loadedAsset3 = result3.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset3 != nullptr) << result3.description();
+
+    ASSERT_EQ(assetToLoad3, loadedAsset3);
 
     wrapper.tearDown();
 }
@@ -779,7 +812,7 @@ TEST(AssetsManager, unloadAssetOnRemoveConsumer) {
     asset->removeLoadObserver(strongRef(observer1.get()));
     wrapper.workerQueue->sync([]() {});
 
-    result = Result<Ref<LoadedAsset>>();
+    result = Result<Value>();
     observer1 = nullptr;
 
     ASSERT_EQ(static_cast<long>(2), assetToLoad.use_count());
@@ -1023,7 +1056,12 @@ TEST(AssetsManager, retriesResolveOnNetworkFailure) {
     auto result2 = wrapper.loadAssetSync(assetKey);
 
     ASSERT_TRUE(result2) << result2.description();
-    ASSERT_EQ(assetToLoad, result2.value());
+
+    auto loadedAsset2 = result2.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset2 != nullptr) << result2.description();
+
+    ASSERT_EQ(assetToLoad, loadedAsset2);
 
     wrapper.tearDown();
 }
@@ -1259,7 +1297,11 @@ TEST(AssetsManager, loaderCanCallLoadCallbackMultipleTimes) {
     ASSERT_EQ(static_cast<size_t>(1), results1.size());
     ASSERT_TRUE(results1[0]) << results1[0].description();
 
-    ASSERT_EQ(assetToLoad, results1[0].value());
+    auto loadedAsset1 = results1[0].value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset1 != nullptr) << results1[0].description();
+
+    ASSERT_EQ(assetToLoad, loadedAsset1);
     ASSERT_TRUE(wrapper.allCallbacksCalled());
 
     auto assetToLoad2 = makeShared<StandaloneLoadedAsset>(BytesView(), 0, 0);
@@ -1272,7 +1314,11 @@ TEST(AssetsManager, loaderCanCallLoadCallbackMultipleTimes) {
     ASSERT_EQ(static_cast<size_t>(2), results2.size());
     ASSERT_TRUE(results2[1]) << results2[1].description();
 
-    ASSERT_EQ(assetToLoad2, results2[1].value());
+    auto loadedAsset2 = results2[1].value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset2 != nullptr) << results2[1].description();
+
+    ASSERT_EQ(assetToLoad2, loadedAsset2);
 
     wrapper.tearDown();
 }
@@ -1303,7 +1349,11 @@ TEST(AssetsManager, cachesRequestPayload) {
 
     ASSERT_TRUE(result) << result.description();
 
-    ASSERT_EQ(assetToLoad, result.value());
+    auto loadedAsset = result.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset != nullptr) << result.description();
+
+    ASSERT_EQ(assetToLoad, loadedAsset);
 
     ASSERT_EQ(static_cast<size_t>(1), wrapper.assetLoader->getRequestPayloadCallCount());
 
@@ -1313,7 +1363,11 @@ TEST(AssetsManager, cachesRequestPayload) {
 
     ASSERT_TRUE(result) << result.description();
 
-    ASSERT_EQ(assetToLoad, result.value());
+    loadedAsset = result.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset != nullptr) << result.description();
+
+    ASSERT_EQ(assetToLoad, loadedAsset);
 
     // requestPayload should have been called only once
     ASSERT_EQ(static_cast<size_t>(1), wrapper.assetLoader->getRequestPayloadCallCount());
@@ -1491,7 +1545,12 @@ TEST(AssetsManager, canOverrideResolvedAssetLocationAfterResolving) {
     auto result = observer->load(wrapper.mainQueue, asset);
 
     ASSERT_TRUE(result);
-    ASSERT_EQ(assetToLoad, result.value());
+
+    auto loadedAsset = result.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset != nullptr) << result.description();
+
+    ASSERT_EQ(assetToLoad, loadedAsset);
 
     wrapper.callbacks.emplace_back([](const auto& asset) {});
 
@@ -1548,7 +1607,12 @@ TEST(AssetsManager, canOverrideResolvedAssetLocatioDuringResolving) {
     auto result = observer->load(wrapper.mainQueue, asset);
 
     ASSERT_TRUE(result);
-    ASSERT_EQ(assetToLoad, result.value());
+
+    auto loadedAsset = result.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset != nullptr) << result.description();
+
+    ASSERT_EQ(assetToLoad, loadedAsset);
 
     wrapper.tearDown();
 }
@@ -1601,7 +1665,12 @@ TEST(AssetsManager, canOverrideResolvedAssetLocatioDuringLoading) {
     auto result = observer->load(wrapper.mainQueue, asset);
 
     ASSERT_TRUE(result);
-    ASSERT_EQ(assetToLoad, result.value());
+
+    auto loadedAsset = result.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset != nullptr) << result.description();
+
+    ASSERT_EQ(assetToLoad, loadedAsset);
 
     wrapper.tearDown();
 }
@@ -1642,7 +1711,12 @@ TEST(AssetsManager, canOverrideResolvedAssetLocatioAfterLoading) {
     auto result = observer->load(wrapper.mainQueue, asset);
 
     ASSERT_TRUE(result);
-    ASSERT_EQ(assetToLoad, result.value());
+
+    auto loadedAsset = result.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset != nullptr) << result.description();
+
+    ASSERT_EQ(assetToLoad, loadedAsset);
 
     auto updatedUrl = STRING_LITERAL("file://some_location");
     AssetLocation expectedLocation(updatedUrl, false);
@@ -1675,7 +1749,12 @@ TEST(AssetsManager, canOverrideResolvedAssetLocatioAfterLoading) {
 
     auto secondResult = observer->getResults()[1];
     ASSERT_TRUE(secondResult);
-    ASSERT_EQ(assetToLoad2, secondResult.value());
+
+    auto loadedAsset2 = secondResult.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset2 != nullptr) << secondResult.description();
+
+    ASSERT_EQ(assetToLoad2, loadedAsset2);
 
     wrapper.tearDown();
 }
@@ -1694,11 +1773,11 @@ TEST(AssetsManager, canLoadBytesAssetWithBytesOutput) {
 
     ASSERT_TRUE(result) << result.description();
 
-    auto bytesContentResult = result.value()->getBytesContent();
+    auto typedArray = result.value().getTypedRef<ValueTypedArray>();
 
-    ASSERT_TRUE(bytesContentResult) << result.description();
+    ASSERT_TRUE(typedArray != nullptr) << result.description();
 
-    ASSERT_EQ(bytesContentResult.value(), bytes->toBytesView());
+    ASSERT_EQ(typedArray->getBuffer(), bytes->toBytesView());
 
     wrapper.tearDown();
 }
@@ -1719,10 +1798,13 @@ TEST(AssetsManager, canLoadBytesAssetWithNonBytesOutput) {
 
     ASSERT_TRUE(result) << result.description();
 
-    auto bytesContentResult = result.value()->getBytesContent();
+    auto loadedAsset = result.value().getTypedRef<LoadedAsset>();
+
+    ASSERT_TRUE(loadedAsset != nullptr) << result.description();
+
+    auto bytesContentResult = loadedAsset->getBytesContent();
 
     ASSERT_TRUE(bytesContentResult) << result.description();
-
     ASSERT_EQ(bytesContentResult.value(), bytes->toBytesView());
 
     wrapper.tearDown();

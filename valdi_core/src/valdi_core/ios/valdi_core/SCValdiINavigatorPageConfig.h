@@ -27,4 +27,6 @@
 
 @property (copy, nonatomic) NSNumber* _Nullable disableSwipeToDismissModal;
 
+@property (copy, nonatomic) NSNumber* _Nullable showDimmingOverlay;
+
 @end

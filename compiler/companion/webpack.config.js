@@ -46,6 +46,9 @@ module.exports = {
         ],
         exclude: /node_modules/,
         loader: 'ts-loader',
+        options: {
+          configFile: path.resolve(__dirname, 'tsconfig.base.json'),
+        },
       },
       {
         test: /\.node$/,

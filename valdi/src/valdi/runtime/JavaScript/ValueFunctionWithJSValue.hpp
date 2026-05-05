@@ -39,6 +39,7 @@ public:
     void setSingleCall(bool singleCall);
 
     void setShouldBlockMainThread(bool shouldBlockMainThread);
+    void setAllowSyncCall(bool allowSyncCall);
     void setIgnoreIfValdiContextIsDestroyed(bool ignoreIfValdiContextIsDestroyed);
 
 protected:
@@ -56,11 +57,16 @@ private:
     std::atomic_int _callSequence;
     StringBox _functionName;
     MainThreadManager* _mainThreadManager;
+    Weak<Context> _creationContext;
     bool _shouldBlockMainThread = false;
+    bool _allowSyncCall = true;
     bool _ignoreIfValdiContextIsDestroyed = false;
     bool _isSingleCall;
 
     bool shouldCallSync(ValueFunctionFlags flags, JavaScriptTaskScheduler& taskScheduler) const;
+
+    /** Returns false if a sync call was requested but is disallowed (schema has allowSyncCall false). */
+    bool isSyncCallAllowed(ValueFunctionFlags flags) const;
 
     Value doJsCall(JavaScriptEntryParameters& jsEntry,
                    const Value* parameters,

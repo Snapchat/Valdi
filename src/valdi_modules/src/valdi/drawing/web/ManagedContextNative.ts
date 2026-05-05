@@ -6,6 +6,7 @@ import {
   AssetTrackerCallback,
   AssetTrackerEventType,
 } from '../src/ManagedContextNative';
+import type { Rect } from '../src/ManagedContextNative';
 
 /** Internal no-op tracker state */
 let _nextContextId = 1;
@@ -56,6 +57,8 @@ export function rasterFrame(
   _native: SnapDrawingFrameNative,
   _bitmapNative: INativeBitmap,
   _shouldClearBitmapBeforeDrawing: boolean,
-): void {
-  // no-op
+  _deltaRasterization: boolean,
+): Rect[] {
+  // no-op - return empty damage rects array
+  return [];
 }

@@ -6,6 +6,7 @@ import mutateStateWithoutSetState from './rules/mutate-state-without-set-state';
 import noImportFromTestOutsideTestDir from './rules/no-import-from-test-outside-test-dir';
 import onlyConstEnum from './rules/only-const-enum';
 import noDeclareTestWithoutDescribe from './rules/no-declare-test-without-describe';
+import noReactPatterns from './rules/no-react-patterns';
 
 export = {
   rules: {
@@ -17,5 +18,6 @@ export = {
     'mutate-state-without-set-state': mutateStateWithoutSetState,
     'no-import-from-test-outside-test-dir': noImportFromTestOutsideTestDir,
     'no-declare-test-without-describe': noDeclareTestWithoutDescribe,
+    'no-react-patterns': noReactPatterns,
   },
 };

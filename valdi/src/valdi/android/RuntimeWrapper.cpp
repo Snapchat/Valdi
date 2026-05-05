@@ -6,13 +6,13 @@
 //  Copyright © 2018 Snap Inc. All rights reserved.
 //
 #include "valdi/android/RuntimeWrapper.hpp"
+#include "valdi/android/RuntimeManagerWrapper.hpp"
 
 namespace ValdiAndroid {
 
 RuntimeWrapper::RuntimeWrapper(const Valdi::SharedRuntime& runtime,
-                               RuntimeManagerWrapper* runtimeManagerWrapper,
-                               float pointScale)
-    : _runtime(runtime), _runtimeManagerWrapper(runtimeManagerWrapper), _pointScale(pointScale) {}
+                               RuntimeManagerWrapper* runtimeManagerWrapper)
+    : _runtime(runtime), _runtimeManagerWrapper(runtimeManagerWrapper) {}
 
 RuntimeWrapper::~RuntimeWrapper() {
     _runtime->fullTeardown();
@@ -31,7 +31,7 @@ RuntimeManagerWrapper* RuntimeWrapper::getRuntimeManagerWrapper() const {
 }
 
 float RuntimeWrapper::getPointScale() const {
-    return _pointScale;
+    return _runtimeManagerWrapper->getPointScale();
 }
 
 } // namespace ValdiAndroid

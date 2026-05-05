@@ -42,7 +42,7 @@ export function promisifyProducer<T>(fn: () => T): Promise<T> {
  */
 export function wait(delayMs: number): Promise<void> {
   return new Promise(resolve => {
-    // eslint-disable-next-line @snapchat/valdi/assign-timer-id
+    // eslint-disable-next-line @snap/valdi/assign-timer-id
     setTimeout(() => {
       resolve();
     }, delayMs);
@@ -55,7 +55,7 @@ export function wait(delayMs: number): Promise<void> {
  */
 export function waitInterruptible(delayMs: number): Promise<void> {
   return new Promise(resolve => {
-    // eslint-disable-next-line @snapchat/valdi/assign-timer-id
+    // eslint-disable-next-line @snap/valdi/assign-timer-id
     setTimeoutInterruptible(() => {
       resolve();
     }, delayMs);

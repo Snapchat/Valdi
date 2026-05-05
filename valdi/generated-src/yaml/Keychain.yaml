@@ -37,3 +37,8 @@ wasm:
 ts:
   typename: Keychain
   module: './valdi'
+c:
+  typename: 'snap_valdi_Keychain_ref'
+  translator: '::djinni::c_api::InterfaceTranslator<::snap::valdi::Keychain>'
+  public_header: '"valdi/Keychain.h"'
+  private_header: '"valdi/Keychain.hpp"'

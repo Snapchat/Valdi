@@ -121,23 +121,21 @@
 
 - (UIEdgeInsets)_currentInsets
 {
-    if (@available(iOS 11.0, *)) {
-        UIEdgeInsets insets = UIApplication.sharedApplication.keyWindow.safeAreaInsets;
-        SCLogValdiDebug(@"SCValdiDeviceModule: calculated insets from safeAreaInsets (%0.1f,%0.1f,%0.1f,%0.1f), keyWindow=%@",
-                          insets.top, insets.left, insets.bottom, insets.right,
-                          UIApplication.sharedApplication.keyWindow ? @"present" : @"nil");
-        if (UIEdgeInsetsEqualToEdgeInsets(UIApplication.sharedApplication.keyWindow.safeAreaInsets, UIEdgeInsetsZero)) {
-            // Fallback on status bar frame for non iPhone X.
-            CGFloat statusBarHeight = UIApplication.sharedApplication.statusBarFrame.size.height;
-            SCLogValdiDebug(@"SCValdiDeviceModule: using status bar fallback height=%0.1f", statusBarHeight);
-            return UIEdgeInsetsMake(statusBarHeight, 0, 0, 0);
-        }
-        return insets;
-    } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    UIEdgeInsets keyWindowInsets = UIApplication.sharedApplication.keyWindow.safeAreaInsets;
+#pragma clang diagnostic pop
+    SCLogValdiDebug(@"SCValdiDeviceModule: [legacy] insets from safeAreaInsets (%0.1f,%0.1f,%0.1f,%0.1f)",
+                    keyWindowInsets.top, keyWindowInsets.left, keyWindowInsets.bottom, keyWindowInsets.right);
+    if (UIEdgeInsetsEqualToEdgeInsets(keyWindowInsets, UIEdgeInsetsZero)) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
         CGFloat statusBarHeight = UIApplication.sharedApplication.statusBarFrame.size.height;
-        SCLogValdiDebug(@"SCValdiDeviceModule: iOS < 11, using status bar height=%0.1f", statusBarHeight);
+#pragma clang diagnostic pop
+        SCLogValdiDebug(@"SCValdiDeviceModule: [legacy] using status bar fallback height=%0.1f", statusBarHeight);
         return UIEdgeInsetsMake(statusBarHeight, 0, 0, 0);
     }
+    return keyWindowInsets;
 }
 
 - (void)_dispatchOnJsQueue:(dispatch_block_t)block
@@ -193,7 +191,6 @@
         _displayWidth = screen.bounds.size.width;
         _displayHeight = screen.bounds.size.height;
         _displayScale = screen.scale;
-        // this clears the javascript caches and forces the next Device.getWidth() to read from the native side
         [self _dispatchOnJsQueue:^{
             [self->_displayInsetsObserver notifyWithMarshaller:nil];
         }];
@@ -243,7 +240,8 @@
     }
 }
 
-- (void)setAllowDarkMode:(BOOL)allowDarkMode useScreenUserInterfaceStyleForDarkMode:(BOOL)useScreenUserInterfaceStyleForDarkMode
+- (void)setAllowDarkMode:(BOOL)allowDarkMode
+    useScreenUserInterfaceStyleForDarkMode:(BOOL)useScreenUserInterfaceStyleForDarkMode
 {
     @synchronized (self) {
         _allowDarkMode = allowDarkMode;

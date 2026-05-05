@@ -13,7 +13,6 @@
 
 #include "utils/platform/BuildOptions.hpp"
 #include "utils/time/StopWatch.hpp"
-#include "valdi/JSRuntimeNativeObjectsManager.hpp"
 #include "valdi/runtime/Attributes/AttributeIds.hpp"
 #include "valdi/runtime/JavaScript/JSFunctionWithCallable.hpp"
 #include "valdi/runtime/JavaScript/JSFunctionWithMethod.hpp"
@@ -30,7 +29,9 @@
 #include "valdi/runtime/Resources/DirectionalAsset.hpp"
 #include "valdi/runtime/Resources/PlatformSpecificAsset.hpp"
 #include "valdi/runtime/ValdiRuntimeTweaks.hpp"
+#include "valdi_core/JSRuntimeNativeObjectsManager.hpp"
 #include "valdi_core/cpp/Constants.hpp"
+#include "valdi_core/cpp/Resources/LoadedAsset.hpp"
 #include "valdi_core/cpp/Resources/ResourceId.hpp"
 #include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
@@ -105,6 +106,7 @@ constexpr size_t kIsLoadedPropertyName = 2;
 constexpr size_t kUnloadPropertyName = 3;
 constexpr size_t kRegisterModulePropertyName = 4;
 constexpr size_t kPreloadModulePropertyName = 5;
+constexpr size_t kPreloadBatchPropertyName = 6;
 
 const ResourceId& valdiModuleResourceId() {
     static auto kValdiModuleResourceId =
@@ -122,20 +124,36 @@ static ContextId getParameterAsContextId(JSFunctionNativeCallContext& callContex
     return static_cast<ContextId>(callContext.getParameterAsInt(index));
 }
 
-static ptrdiff_t getMemoryUsageBytes() {
+static int64_t getMemoryUsageBytes() {
 #if defined(__ANDROID__)
-    auto mi = mallinfo();
-    return ptrdiff_t(mi.uordblks);
+    // mallinfo2 is available from API 33 (Android 13) onwards.
+    // __ANDROID_API__ is provided by the NDK.
+#if defined(__ANDROID_API__) && __ANDROID_API__ >= 33
+    struct mallinfo2 mi = mallinfo2();
+    return static_cast<int64_t>(mi.uordblks);
+#else
+    // Fallback for older Android versions
+    struct mallinfo mi = mallinfo();
+    // In mallinfo, uordblks is an int (32-bit), so this may overflow at 2GB
+    return static_cast<int64_t>(mi.uordblks);
+#endif
+
 #elif defined(__APPLE__)
     task_basic_info info;
     mach_msg_type_number_t count = TASK_BASIC_INFO_COUNT;
     if (task_info(mach_task_self(), TASK_BASIC_INFO, (task_info_t)&info, &count) == KERN_SUCCESS) {
-        return ptrdiff_t(info.resident_size);
+        return static_cast<int64_t>(info.resident_size);
     }
     return 0;
+
 #else
     return 0;
 #endif
+}
+
+static int64_t getCurrentTimestampMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
 }
 
 STRING_CONST(callActionMessageName, "callAction")
@@ -175,7 +193,7 @@ private:
     JSValue _callback;
 };
 
-class JSRuntimeNativeObjectsManagerImpl : public snap::valdi::JSRuntimeNativeObjectsManager {
+class JSRuntimeNativeObjectsManagerImpl : public snap::valdi_core::JSRuntimeNativeObjectsManager {
 public:
     JSRuntimeNativeObjectsManagerImpl(ContextManager& contextManager, Ref<Context>&& context)
         : _contextManager(contextManager), _context(context) {}
@@ -264,10 +282,9 @@ JavaScriptRuntime::JavaScriptRuntime(IJavaScriptBridge& jsBridge,
       _anrDetector(anrDetector),
       _isDisposed(false),
       _enableDebugger(enableDebugger),
-      _enableStackTraceCapture(enableDebugger),
       _platformType(platformType),
       _isWorker(isWorker) {
-    VALDI_DEBUG(*_logger, "++JavaScriptRuntime({})", static_cast<void*>(this));
+    VALDI_DEBUG(*_logger, "Creating JavaScriptRuntime (instance ptr {})", static_cast<void*>(this));
 
     auto queueName = STRING_LITERAL(isWorker ? "Valdi JS Worker Thread" : "Valdi JS Thread");
     if (jsBridge.requiresDedicatedThread()) {
@@ -282,6 +299,7 @@ JavaScriptRuntime::JavaScriptRuntime(IJavaScriptBridge& jsBridge,
     _propertyNameIndex.set(kUnloadPropertyName, "unload");
     _propertyNameIndex.set(kRegisterModulePropertyName, "registerModule");
     _propertyNameIndex.set(kPreloadModulePropertyName, "preload");
+    _propertyNameIndex.set(kPreloadBatchPropertyName, "preloadBatch");
 
     _upTime.start();
     _initLock.enter();
@@ -312,7 +330,7 @@ void JavaScriptRuntime::postInit() {
 }
 
 JavaScriptRuntime::~JavaScriptRuntime() {
-    VALDI_DEBUG(*_logger, "--JavaScriptRuntime({})", static_cast<void*>(this));
+    VALDI_DEBUG(*_logger, "Destroying JavaScriptRuntime (instance ptr {})", static_cast<void*>(this));
     fullTeardown();
 }
 
@@ -446,6 +464,10 @@ Result<Void> JavaScriptRuntime::initializeContext() {
     Ref<ValdiRuntimeTweaks> runtimeTweaks;
     if (_listener != nullptr) {
         runtimeTweaks = _listener->getRuntimeTweaks();
+    }
+
+    if (runtimeTweaks != nullptr) {
+        Context::setDestroyedContextFixEnabled(runtimeTweaks->enableRenderRequestContextFix());
     }
 
     VALDI_INFO(*_logger, "Creating JSContext from engine '{}'", _javaScriptBridge.getName());
@@ -652,6 +674,10 @@ JSValueRef JavaScriptRuntime::runtimeGetCurrentPlatform(JSFunctionNativeCallCont
             return callContext.getContext().newNumber(static_cast<int32_t>(1));
         case PlatformTypeIOS:
             return callContext.getContext().newNumber(static_cast<int32_t>(2));
+        case PlatformTypeMacOS:
+            return callContext.getContext().newNumber(static_cast<int32_t>(3));
+        case PlatformTypeWeb:
+            return callContext.getContext().newNumber(static_cast<int32_t>(4));
     }
 }
 
@@ -682,6 +708,8 @@ JSValueRef JavaScriptRuntime::runtimeGetBackendRenderingTypeForContextId(JSFunct
                 result = kBackendRenderingTypeAndroid;
                 break;
             case PlatformTypeIOS:
+            case PlatformTypeMacOS:
+            case PlatformTypeWeb:
                 result = kBackendRenderingTypeIOS;
                 break;
         }
@@ -735,10 +763,16 @@ JSValueRef JavaScriptRuntime::runtimeCreateContext(JSFunctionNativeCallContext& 
     auto callerContextId = static_cast<int32_t>(callerContextRef->getContextId());
     auto newContextId = static_cast<int32_t>(context->getContextId());
     if (context->getParent() == nullptr && callerContextId != 1 /* Ignore root context */) {
-        VALDI_DEBUG(*_logger, "Setting context {}'s parent context to {}", newContextId, callerContextId);
-
-        context->setParent(callerContextRef);
-        callerContextRef->getRoot()->retainDisposables();
+        if (callerContextRef->getRoot()->isDestroyed() && Context::isDestroyedContextFixEnabled()) {
+            VALDI_WARN(*_logger,
+                       "Skipping destroyed caller root context {} when creating context {}",
+                       callerContextRef->getRoot()->getContextId(),
+                       newContextId);
+        } else {
+            VALDI_DEBUG(*_logger, "Setting context {}'s parent context to {}", newContextId, callerContextId);
+            context->setParent(callerContextRef);
+            callerContextRef->getRoot()->retainDisposables();
+        }
     }
 
     return callContext.getContext().newNumber(newContextId);
@@ -849,6 +883,50 @@ JSValueRef JavaScriptRuntime::runtimeSubmitRenderRequest(JSFunctionNativeCallCon
     CHECK_CALL_CONTEXT(callContext);
     auto callback = callContext.getParameterAsFunction(1);
     CHECK_CALL_CONTEXT(callContext);
+
+    // JS code can execute under a context that has already been destroyed (eg. a
+    // callback firing after a modal is dismissed or a component is torn down).
+    // Native function bridges created in that state capture the destroyed context,
+    // causing all subsequent calls through those bridges to be silently dropped.
+    // This typically manifests as unresponsive UI (tap, dismiss, etc. stop working).
+    //
+    // The destroyed context may be either the root (Context::currentRoot()) or a
+    // leaf with a living root (Context::current() is destroyed, but currentRoot()
+    // is alive).
+    //
+    // Fix: if the current context is destroyed, temporarily override it with the
+    // render request's owning component context (treeId), which is still alive.
+    //
+    // Gated by COF VALDI_ENABLE_RENDER_REQUEST_CONTEXT_FIX (default: on)
+    std::unique_ptr<ContextEntry> contextOverride;
+    auto* currentCtx = Context::current();
+    auto* currentRoot = Context::currentRoot();
+    bool isCurrentContextDestroyed =
+        (currentCtx != nullptr && currentCtx->isDestroyed()) || (currentRoot != nullptr && currentRoot->isDestroyed());
+    if (isCurrentContextDestroyed && Context::isDestroyedContextFixEnabled()) {
+        auto& jsContext = callContext.getContext();
+        auto treeIdValue = jsContext.getObjectProperty(rawRequest, std::string_view("treeId"), exceptionTracker);
+        CHECK_CALL_CONTEXT(callContext);
+        auto treeId = static_cast<ContextId>(jsContext.valueToInt(treeIdValue.get(), exceptionTracker));
+        CHECK_CALL_CONTEXT(callContext);
+        auto treeContext = _contextManager.getContext(treeId);
+        if (treeContext != nullptr && !treeContext->isDestroyed()) {
+            VALDI_INFO(*_logger,
+                       "Render request context fix: overriding destroyed context (current={}, root={}) with treeCtx={}",
+                       currentCtx != nullptr ? static_cast<int>(currentCtx->getContextId()) : -1,
+                       currentRoot != nullptr ? static_cast<int>(currentRoot->getContextId()) : -1,
+                       treeId);
+            contextOverride = std::make_unique<ContextEntry>(treeContext);
+        } else {
+            VALDI_WARN(*_logger,
+                       "Render request context fix: destroyed context (current={}, root={}) but tree context {} is {}",
+                       currentCtx != nullptr ? static_cast<int>(currentCtx->getContextId()) : -1,
+                       currentRoot != nullptr ? static_cast<int>(currentRoot->getContextId()) : -1,
+                       treeId,
+                       treeContext == nullptr ? "null" : "also destroyed");
+        }
+    }
+
     auto renderRequest = _runtimeDeserializers->deserializeRenderRequest(rawRequest, referenceInfo, exceptionTracker);
     if (exceptionTracker && _listener != nullptr) {
         _listener->receivedRenderRequest(renderRequest);
@@ -1302,8 +1380,11 @@ JSValueRef JavaScriptRuntime::loadJsModule(IJavaScriptContext& jsContext,
     auto importPathStringView = importPath.toStringView();
     auto nativeModuleInfo = jsContext.getNativeModuleInfo(importPathStringView);
 
-    ptrdiff_t moduleMemoryUsage = 0;
-    ptrdiff_t childrenMemoryUsage = 0;
+    int64_t moduleDuration = 0;
+    int64_t childrenDuration = 0;
+
+    int64_t moduleMemoryUsage = 0;
+    int64_t childrenMemoryUsage = 0;
 
     if (nativeModuleInfo && _resourceManager.enableTSN() &&
         _resourceManager.enableTSNForModule(nativeModuleInfo.value().name)) {
@@ -1331,31 +1412,38 @@ JSValueRef JavaScriptRuntime::loadJsModule(IJavaScriptContext& jsContext,
             return jsContext.newUndefined();
         }
 
-        // Record memory watermark before load
-        auto waterMarkBefore = getMemoryUsageBytes();
+        // Record memory watermark and timestamp mark before load
+        auto memoryWaterMarkBefore = getMemoryUsageBytes();
+        auto timestampBefore = getCurrentTimestampMs();
+
         // 0 if the platform does not support querying memory usage
-        if (waterMarkBefore != 0) {
-            _moduleMemoryTracker.push_back({waterMarkBefore, 0});
+        if (memoryWaterMarkBefore != 0) {
+            _moduleResourceTracker.push_back({memoryWaterMarkBefore, 0, timestampBefore, 0});
         }
 
         result = loadJsModuleFromBytes(
             jsContext, jsFileContent.value().content, importPath, parameters, parametersLength, exceptionTracker);
 
-        if (waterMarkBefore != 0) {
-            // Compuete the memory usage: watermark_after - watermark_before
-            moduleMemoryUsage = getMemoryUsageBytes() - _moduleMemoryTracker.back().waterMark;
+        if (memoryWaterMarkBefore != 0) {
+            // Compute the memory usage: watermark_after - watermark_before
+            moduleMemoryUsage = getMemoryUsageBytes() - _moduleResourceTracker.back().memoryWaterMark;
+
+            // Compute the duration: timestamp_mark_after - timestamp_mark_before
+            moduleDuration = getCurrentTimestampMs() - _moduleResourceTracker.back().timestamp;
+
             // This module's children total (0 if no children)
-            childrenMemoryUsage = _moduleMemoryTracker.back().childrenConsumption;
-            _moduleMemoryTracker.pop_back();
-            if (!_moduleMemoryTracker.empty()) {
+            childrenMemoryUsage = _moduleResourceTracker.back().childrenMemoryUsage;
+            childrenDuration = _moduleResourceTracker.back().childrenDuration;
+            _moduleResourceTracker.pop_back();
+            if (!_moduleResourceTracker.empty()) {
                 // If we are not a top-level module, add usage to the parent module's children total
-                _moduleMemoryTracker.back().childrenConsumption += moduleMemoryUsage;
+                _moduleResourceTracker.back().childrenMemoryUsage += moduleMemoryUsage;
+                _moduleResourceTracker.back().childrenDuration += moduleDuration;
             }
             const auto& metrics = getMetrics();
             if (metrics != nullptr) {
-                metrics->emitLoadModuleMemory(importPath,
-                                              static_cast<int64_t>(moduleMemoryUsage),
-                                              static_cast<int64_t>(moduleMemoryUsage - childrenMemoryUsage));
+                metrics->emitLoadModuleMemory(importPath, moduleMemoryUsage, moduleMemoryUsage - childrenMemoryUsage);
+                metrics->emitLoadModuleDuration(importPath, moduleDuration, moduleDuration - childrenDuration);
             }
         }
     }
@@ -1368,12 +1456,15 @@ JSValueRef JavaScriptRuntime::loadJsModule(IJavaScriptContext& jsContext,
 
     if (Valdi::traceLoadModules) {
         VALDI_INFO(*_logger,
-                   "Loaded JS module {} in {} (load mode: {}) own memory usage: {} total memory usage: {}",
+                   "Loaded JS module {} in {} (load mode: {}) own memory usage: {} total memory usage: {} own "
+                   "duration: {} total duration: {}",
                    importPath,
                    sw.elapsed(),
                    moduleLoadModeToString(result.second),
                    moduleMemoryUsage - childrenMemoryUsage,
-                   moduleMemoryUsage);
+                   moduleMemoryUsage,
+                   moduleDuration - childrenDuration,
+                   moduleDuration);
     }
 
     return std::move(result.first);
@@ -1638,6 +1729,20 @@ JSValueRef JavaScriptRuntime::runtimeMakePlatformSpecificAsset(JSFunctionNativeC
     auto asset = makeShared<PlatformSpecificAsset>(defaultAsset, iOSAsset, androidAsset);
 
     return makeWrappedObject(callContext.getContext(), asset, callContext.getExceptionTracker(), false);
+}
+
+JSValueRef JavaScriptRuntime::runtimeGetLoadedAssetMetadata(JSFunctionNativeCallContext& callContext) {
+    auto loadedAsset = castOrNull<LoadedAsset>(callContext.getParameterAsWrappedObject(0));
+    CHECK_CALL_CONTEXT(callContext);
+
+    if (loadedAsset == nullptr) {
+        return callContext.throwError(Error("Invalid loaded asset"));
+    }
+
+    auto metadata = loadedAsset->getMetadata();
+
+    return valueToJSValue(
+        callContext.getContext(), metadata, ReferenceInfoBuilder(), callContext.getExceptionTracker());
 }
 
 JSValueRef JavaScriptRuntime::runtimeAddAssetLoadObserver(JSFunctionNativeCallContext& callContext) {
@@ -2158,6 +2263,30 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
         return;
     }
 
+    // Expose isLoggingEnabled to JS.
+    // In appstore builds this is controlled by VALDI_DISABLE_JS_LOGGING:
+    // COF false (default/control) = logging enabled, COF true (treatment) = logging disabled.
+    // In non-appstore builds this is always true.
+    bool isLoggingEnabled = true;
+    if constexpr (snap::kIsAppstoreBuild) {
+        // Defaults to true (logging enabled) when no tweaks provider is available (e.g., unit tests).
+        isLoggingEnabled = tweaks != nullptr ? !tweaks->disableJsLogging() : true;
+    }
+    auto jsIsLoggingEnabled = context.newBool(isLoggingEnabled);
+    context.setObjectProperty(runtimeObject.get(), "isLoggingEnabled", jsIsLoggingEnabled.get(), exceptionTracker);
+    if (!exceptionTracker) {
+        return;
+    }
+
+    // Gate top-down move order behind VALDI_MAX_VIEW_OPERATIONS_PROCESSING_TIME (same as view-op throttling).
+    bool useTopDownMoveOrder = tweaks != nullptr && tweaks->useTopDownMoveOrder();
+    auto jsUseTopDownMoveOrder = context.newBool(useTopDownMoveOrder);
+    context.setObjectProperty(
+        runtimeObject.get(), "useTopDownMoveOrder", jsUseTopDownMoveOrder.get(), exceptionTracker);
+    if (!exceptionTracker) {
+        return;
+    }
+
     std::string_view moduleLoaderTypeStr =
         (tweaks != nullptr && tweaks->enableCommonJsModuleLoader()) ? "commonjs" : "valdi";
 
@@ -2202,6 +2331,7 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
 
     JS_BIND(context, exceptionTracker, runtimeObject, "makeDirectionalAsset", runtimeMakeDirectionalAsset);
     JS_BIND(context, exceptionTracker, runtimeObject, "makePlatformSpecificAsset", runtimeMakePlatformSpecificAsset);
+    JS_BIND(context, exceptionTracker, runtimeObject, "getLoadedAssetMetadata", runtimeGetLoadedAssetMetadata);
     JS_BIND(context, exceptionTracker, runtimeObject, "setColorPalette", runtimeSetColorPalette);
     JS_BIND(context, exceptionTracker, runtimeObject, "onMainThreadIdle", runtimeOnMainThreadIdle);
     JS_BIND(context, exceptionTracker, runtimeObject, "createWorker", runtimeCreateWorker);
@@ -2966,11 +3096,30 @@ void JavaScriptRuntime::onUnhandledRejectedPromise(IJavaScriptContext& jsContext
 }
 
 Ref<JSStackTraceProvider> JavaScriptRuntime::captureCurrentStackTrace() {
-    if (_javaScriptContext == nullptr || !_enableStackTraceCapture) {
+    if (_javaScriptContext == nullptr) {
+        return nullptr;
+    }
+
+    // Debugger and force flags always enable stack trace capture
+    bool shouldCapture = _forceStackTraceCapture || _enableDebugger;
+
+    if (!shouldCapture && _listener != nullptr && isInJsThread()) {
+        auto currentContext = Context::currentRef();
+        if (currentContext != nullptr && !currentContext->getScopeName().isEmpty()) {
+            auto runtimeTweaks = _listener->getRuntimeTweaks();
+            shouldCapture = runtimeTweaks != nullptr && runtimeTweaks->enableScopedContextStackTraceCapture();
+        }
+    }
+
+    if (!shouldCapture) {
         return nullptr;
     }
 
     return doCaptureCurrentStackTrace(*_javaScriptContext);
+}
+
+void JavaScriptRuntime::setForceStackTraceCapture(bool force) {
+    _forceStackTraceCapture = force;
 }
 
 Ref<JSStackTraceProvider> JavaScriptRuntime::doCaptureCurrentStackTrace(IJavaScriptContext& jsContext) {
@@ -3048,7 +3197,7 @@ Result<Void> JavaScriptRuntime::evalModuleSync(const StringBox& path, bool reeva
 }
 
 int32_t JavaScriptRuntime::pushModuleToMarshaller(
-    const std::shared_ptr<snap::valdi::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
+    const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
     const Valdi::StringBox& path,
     int64_t marshallerHandle) {
     auto marshaller = reinterpret_cast<Marshaller*>(marshallerHandle);
@@ -3056,7 +3205,7 @@ int32_t JavaScriptRuntime::pushModuleToMarshaller(
 }
 
 int32_t JavaScriptRuntime::pushModuleToMarshaller(
-    const /*not-null*/ std::shared_ptr<snap::valdi::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
+    const /*not-null*/ std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
     const Valdi::StringBox& path,
     Marshaller& marshaller) {
     int32_t retValue = 0;
@@ -3121,14 +3270,47 @@ void JavaScriptRuntime::preloadModule(const StringBox& path, int32_t maxDepth) {
     });
 }
 
-std::shared_ptr<snap::valdi::JSRuntimeNativeObjectsManager> JavaScriptRuntime::createNativeObjectsManager() {
-    auto context = _contextManager.createContext(nullptr, nullptr, /* deferRender */ true);
+void JavaScriptRuntime::preloadModules(const std::vector<StringBox>& paths, int32_t maxDepth) {
+    _resourceManager.warmUpBundles(paths);
+
+    dispatchOnJsThreadAsync(nullptr, [=](JavaScriptEntryParameters& jsEntry) {
+        VALDI_TRACE("Valdi.preloadModules");
+
+        auto pathsArray =
+            jsEntry.jsContext.newArrayWithValues(paths.size(), jsEntry.exceptionTracker, [&](size_t i) -> JSValueRef {
+                return jsEntry.jsContext.newStringUTF8(paths[i].toStringView(), jsEntry.exceptionTracker);
+            });
+
+        if (!jsEntry.exceptionTracker) {
+            return;
+        }
+
+        std::initializer_list<JSValueRef> params = {pathsArray, jsEntry.jsContext.newNumber(maxDepth)};
+
+        JSFunctionCallContext callContext(jsEntry.jsContext, params.begin(), params.size(), jsEntry.exceptionTracker);
+
+        jsEntry.jsContext.callObjectProperty(
+            _moduleLoader.get(), _propertyNameIndex.getJsName(kPreloadBatchPropertyName), callContext);
+    });
+}
+
+void JavaScriptRuntime::warmUpValueMarshaller(const Value& value) {
+    dispatchOnJsThreadAsync(nullptr, [value](JavaScriptEntryParameters& jsEntry) {
+        VALDI_TRACE("Valdi.warmUpValueMarshaller");
+        valueToJSValue(jsEntry.jsContext, value, ReferenceInfoBuilder(), jsEntry.exceptionTracker);
+    });
+}
+
+std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager> JavaScriptRuntime::createNativeObjectsManager(
+    const std::string& scopeName) {
+    auto scopeNameBox = scopeName.empty() ? StringBox() : StringCache::getGlobal().makeString(scopeName);
+    auto context = _contextManager.createContext(nullptr, nullptr, /* deferRender */ true, scopeNameBox);
 
     return makeShared<JSRuntimeNativeObjectsManagerImpl>(_contextManager, std::move(context));
 }
 
 void JavaScriptRuntime::destroyNativeObjectsManager(
-    const std::shared_ptr<snap::valdi::JSRuntimeNativeObjectsManager>& nativeObjectsManager) {
+    const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager) {
     auto* impl = dynamic_cast<JSRuntimeNativeObjectsManagerImpl*>(nativeObjectsManager.get());
     dispatchOnJsThread(
         impl->getContext(), JavaScriptTaskScheduleTypeDefault, 0, [nativeObjectsManager](auto& /*jsEntry*/) {
@@ -3137,7 +3319,7 @@ void JavaScriptRuntime::destroyNativeObjectsManager(
         });
 }
 
-std::shared_ptr<snap::valdi::JSRuntime> JavaScriptRuntime::createWorker() {
+std::shared_ptr<snap::valdi_core::JSRuntime> JavaScriptRuntime::createWorker() {
     auto workerRuntime = makeShared<JavaScriptRuntime>(_javaScriptBridge,
                                                        _resourceManager,
                                                        _contextManager,
@@ -3157,7 +3339,7 @@ std::shared_ptr<snap::valdi::JSRuntime> JavaScriptRuntime::createWorker() {
         workerRuntime->registerTypeConverter(typeConverter.typeName, typeConverter.functionPath);
     }
     _jsWorkers.emplace_back(weakRef(workerRuntime.get()));
-    return std::dynamic_pointer_cast<snap::valdi::JSRuntime>(*workerRuntime->getInnerSharedPtr());
+    return std::dynamic_pointer_cast<snap::valdi_core::JSRuntime>(*workerRuntime->getInnerSharedPtr());
 }
 
 void JavaScriptRuntime::runOnJsThread(const Value& runnable) {
@@ -3679,10 +3861,6 @@ void JavaScriptRuntime::handleUncaughtJsErrorNoHandler(const Ref<Context>& owner
 
 const Ref<Metrics>& JavaScriptRuntime::getMetrics() const {
     return _resourceManager.getMetrics();
-}
-
-void JavaScriptRuntime::setEnableStackTraceCapture(bool enableStackTraceCapture) {
-    _enableStackTraceCapture = enableStackTraceCapture;
 }
 
 void JavaScriptRuntime::startProfiling() {

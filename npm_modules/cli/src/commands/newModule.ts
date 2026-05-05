@@ -13,7 +13,7 @@ import { makeCommandHandler } from '../utils/errorUtils';
 import type { Replacements } from '../utils/fileUtils';
 import { fileExists } from '../utils/fileUtils';
 import { wrapInColor } from '../utils/logUtils';
-import { toPascalCase, toSnakeCase } from '../utils/stringUtils';
+import { toPascalCase, toSnakeCase, sanitizeProjectName, validateProjectName } from '../utils/stringUtils';
 
 const referenceString = `
 ******************************************
@@ -31,9 +31,10 @@ my_application/          # Root directory of your application
 └── modules/
     ├── module_a/
     │   ├── BUILD.bazel
-    │   ├── android/     # Native Android sources
-    │   ├── ios/         # Native iOS sources
-    │   ├── cpp/         # Native C++ sources
+    │   ├── android/     # Native Android sources (Kotlin)
+    │   ├── ios/         # Native iOS sources (Objective-C)
+    │   ├── macos/       # Native macOS sources (Objective-C)
+    │   ├── web/         # Web sources (TypeScript, compiled by tsc)
     │   └── src/         # Valdi sources
     │       └── ModuleAComponent.tsx
     ├── module_b/
@@ -56,19 +57,14 @@ const ALL_MODULE_TEMPLATES: readonly ModuleTemplate[] = [
     description: `Exports a Valdi component, which can render UI elements`,
   },
   {
-    name: 'iOS/Android Bridge module',
-    path: 'ios_android_bridge_module',
-    description: `Bridge module with a TypeScript API backed by Objective-C and Kotlin implementation`,
+    name: 'Polyglot Bridge module',
+    path: 'polyglot_bridge_module',
+    description: `Bridge module with a TypeScript API backed by Kotlin (Android), Objective-C (iOS), and TypeScript (Web/macOS)`,
   },
   {
-    name: 'C++ Bridge module',
-    path: 'cpp_bridge_module',
-    description: `Bridge module with a TypeScript API backed by a cross-platform C++ implementation`,
-  },
-  {
-    name: 'iOS/Android View module',
-    path: 'ios_android_view_module',
-    description: `iOS and Android view exported to TypeScript, rendered through a Valdi component`,
+    name: 'Polyglot View module',
+    path: 'polyglot_view_module',
+    description: `Native view with <custom-view> implementations for all platforms: Android, iOS, macOS, and Web`,
   },
 ];
 
@@ -164,25 +160,15 @@ async function getModuleName(argv: ArgumentsResolver<CommandParameters>): Promis
           name: 'moduleName',
           message: 'Please provide a name for this module:',
           validate: (input: string) => {
-            const isEmpty = input === '';
-            if (isEmpty) {
-              throw new CliError('Module name cannot be empty.');
+            const validationError = validateProjectName(input);
+            if (validationError) {
+              return validationError;
             }
 
-            // TODO: need to change validation logic to match bazel names
-            const snakeCaseName = toSnakeCase(input);
-            const isSnakeCase = snakeCaseName === input;
-            if (!isSnakeCase) {
-              throw new CliError(
-                `Valid names may contain only A-Z, a-z, 0-9, '-', '_', '.', and must start with a letter (ie: '${snakeCaseName}').`,
-              );
-            }
-
-            const destPath = path.join(process.cwd(), input);
+            const sanitized = sanitizeProjectName(input);
+            const destPath = path.join(process.cwd(), sanitized);
             if (fileExists(destPath)) {
-              throw new CliError(
-                `Path ${destPath} already exists. Choose a different name or delete the folder and try again.`,
-              );
+              return `Path ${destPath} already exists. Choose a different name or delete the folder and try again.`;
             }
 
             return true;
@@ -192,7 +178,7 @@ async function getModuleName(argv: ArgumentsResolver<CommandParameters>): Promis
       {},
     );
 
-    return result.moduleName ?? '';
+    return sanitizeProjectName(result.moduleName ?? '');
   });
 }
 
@@ -229,7 +215,16 @@ async function valdiNewModule(argv: ArgumentsResolver<CommandParameters>) {
   const checks: Checks = skipChecks ? {} : await promptChecks();
   const valdiModulePath = checks.valdiModulePath ?? path.join(await getBazelWorkspaceRoot(), 'modules');
 
-  const moduleName = await getModuleName(argv);
+  let moduleName = await getModuleName(argv);
+  
+  // Validate module name if provided via command line argument
+  if (argv.getArgument('moduleName')) {
+    const validationError = validateProjectName(moduleName);
+    if (validationError) {
+      throw new CliError(validationError);
+    }
+    moduleName = sanitizeProjectName(moduleName);
+  }
 
   const destPath = path.join(valdiModulePath, moduleName);
   const didConfirm = skipChecks || (await finalConfirmation(destPath, argv));

@@ -3,7 +3,7 @@ package com.snap.valdi.attributes.impl.richtext
 import android.graphics.Canvas
 import android.text.Layout
 import android.text.Spannable
-import android.text.SpannableString
+import android.text.SpannableStringBuilder
 import com.snap.valdi.attributes.impl.fonts.FontManager
 import com.snap.valdi.attributes.impl.fonts.MissingFontsTracker
 import com.snap.valdi.attributes.impl.gestures.TapContext
@@ -40,16 +40,6 @@ class RichTextConverter(val fontManager: FontManager) {
         }
     }
 
-    private fun parseCompleteContent(attributedText: AttributedText): StringBuilder {
-        val partsSize = attributedText.getPartsSize()
-        val completeContent = StringBuilder()
-        for (index in 0 until partsSize) {
-            val content = attributedText.getContentAtIndex(index)
-            completeContent.append(content)
-        }
-        return completeContent
-    }
-
     private fun getIndexAtCharacter(character: Int, contentLengths: Array<Int>): Int {
         var total = 0
         for ((index, partLength) in contentLengths.withIndex()) {
@@ -72,48 +62,54 @@ class RichTextConverter(val fontManager: FontManager) {
     fun convert(attributedText: AttributedText,
                 startingAttributes: FontAttributes,
                 missingFontsTracker: MissingFontsTracker,
-                disableTextReplacement: Boolean = false): Spannable {
+                disableTextReplacement: Boolean = false,
+                density: Float = 1.0f): Spannable {
         val contentLengths = parseContentLengths(attributedText)
-        val completeContent = parseCompleteContent(attributedText)
-
-        val spanable = SpannableString(completeContent)
-
-        var currentStringIndex = 0
-
         val attributes = parseAttributes(attributedText, startingAttributes, contentLengths)
+        val spannable = SpannableStringBuilder()
 
         for ((index, attribute) in attributes.withIndex()) {
-            val length = contentLengths[index]
+            val content = attributedText.getContentAtIndex(index)
+            val start = spannable.length
+            spannable.append(content)
+            val end = spannable.length
+
             val onTap = attributedText.getOnTapAtIndex(index)
             val onLayout = attributedText.getOnLayoutAtIndex(index)
+            val imageAttachment = attributedText.getImageAttachmentAtIndex(index)
 
-            attribute.enumerateSpans(fontManager, missingFontsTracker, disableTextReplacement) {
-                spanable.setSpan(it,
-                        currentStringIndex,
-                        currentStringIndex + length,
-                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
+            if (imageAttachment != null && !disableTextReplacement) {
+                spannable.setSpan(ImageAttachmentSpan(imageAttachment, density),
+                        start,
+                        end,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                spannable.append("\u2009") // thin space for line break opportunity
+            } else {
+                attribute.enumerateSpans(fontManager, missingFontsTracker, disableTextReplacement) {
+                    spannable.setSpan(it,
+                            start,
+                            end,
+                            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
             }
 
             if (onTap != null) {
                 val onTapSpan = OnTapSpan(TapContext(onTap, null))
-                spanable.setSpan(onTapSpan,
-                        currentStringIndex,
-                        currentStringIndex + length,
+                spannable.setSpan(onTapSpan,
+                        start,
+                        end,
                         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
 
             if (onLayout != null) {
-                spanable.setSpan(OnLayoutSpan(onLayout, currentStringIndex, length),
-                        currentStringIndex,
-                        currentStringIndex + length,
+                spannable.setSpan(OnLayoutSpan(onLayout, start, end - start),
+                        start,
+                        end,
                         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
-
-            currentStringIndex += length
         }
 
-        return spanable
+        return spannable
     }
 
 

@@ -1,32 +1,32 @@
 /**
- * Copyright 2024 Snap, Inc.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+  * Copyright 2024 Snap, Inc.
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+  * You may obtain a copy of the License at
+  *
+  *    http://www.apache.org/licenses/LICENSE-2.0
+  *
+  * Unless required by applicable law or agreed to in writing, software
+  * distributed under the License is distributed on an "AS IS" BASIS,
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
 
-#include "DataRef_valdi.hpp"
 #include "../cpp/DataRef.hpp"
+#include "DataRef_valdi.hpp"
 #include <variant>
 
 namespace djinni::valdi {
 
-struct ValdiDataObject : Valdi::ValdiObject {
+struct ValdiDataObject: Valdi::ValdiObject {
     VALDI_CLASS_HEADER(ValdiDataObject);
     std::variant<std::vector<uint8_t>, std::string, std::shared_ptr<DataRef::Impl>> _data;
 };
 VALDI_CLASS_IMPL(ValdiDataObject);
 
-class DataRefValdi : public DataRef::Impl {
+class DataRefValdi: public DataRef::Impl {
 public:
     // create an empty buffer from c++
     explicit DataRefValdi(size_t len) {
@@ -46,7 +46,7 @@ public:
         auto bytes = containedVec.data();
         auto len = containedVec.size();
         _array = Valdi::makeShared<Valdi::ValueTypedArray>(Valdi::kDefaultTypedArrayType,
-                                                           Valdi::BytesView(container, bytes, len));
+                                                       Valdi::BytesView(container, bytes, len));
     }
     // take over a std::string's buffer without copying it
     explicit DataRefValdi(std::string&& str) {
@@ -56,7 +56,7 @@ public:
         auto bytes = reinterpret_cast<const uint8_t*>(containedStr.data());
         auto len = containedStr.size();
         _array = Valdi::makeShared<Valdi::ValueTypedArray>(Valdi::kDefaultTypedArrayType,
-                                                           Valdi::BytesView(container, bytes, len));
+                                                                 Valdi::BytesView(container, bytes, len));
     }
 
     DataRefValdi(const DataRefValdi&) = delete;
@@ -74,7 +74,7 @@ public:
     Valdi::Ref<Valdi::ValueTypedArray> platformObj() const {
         return _array;
     }
-
+    
 private:
     Valdi::Ref<Valdi::ValueTypedArray> _array;
 };
@@ -96,7 +96,7 @@ Valdi::Value NativeDataRef::fromCpp(const DataRef& c) {
         auto len = c.len();
         container->_data = c.impl();
         auto arr = Valdi::makeShared<Valdi::ValueTypedArray>(Valdi::kDefaultTypedArrayType,
-                                                             Valdi::BytesView(container, bytes, len));
+                                                                   Valdi::BytesView(container, bytes, len));
         return Valdi::Value(arr);
     }
 }
@@ -106,4 +106,5 @@ const Valdi::ValueSchema& NativeDataRef::schema() {
     return schema;
 }
 
-} // namespace djinni::valdi
+
+} // namespace djinni

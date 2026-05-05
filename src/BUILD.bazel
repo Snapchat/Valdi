@@ -1,4 +1,4 @@
-load("@android_macros//:android.bzl", "android_library")
+load("@rules_android//rules:rules.bzl", "android_library")
 
 # Note don't add any c++ deps to this target as it doesn't work
 # Add C++ deps to the package_aar rule below
@@ -47,19 +47,21 @@ cc_binary(
         ],
         "//conditions:default": [],
     }),
-    linkopts = [
-        "-fuse-ld=lld",
-        "--no-undefined",
-        "-landroid",
-        "-ldl",
-        "-llog",
-        "-lm",
-        "-lz",
-    ] + select({
-        "@snap_platforms//conditions:android": ["-Wl,--version-script=$(location :android_exports.lst) $(location :build_id_note_symbols.ld)"],
+    linkopts = select({
+        "@snap_platforms//conditions:android": [
+            "-fuse-ld=lld",
+            "--no-undefined",
+            "-landroid",
+            "-ldl",
+            "-llog",
+            "-lm",
+            "-lz",
+            "-Wl,--version-script=$(location :android_exports.lst) $(location :build_id_note_symbols.ld)",
+        ],
         "//conditions:default": [],
     }),
     linkshared = True,
+    target_compatible_with = ["@platforms//os:android"],
     visibility = ["//visibility:public"],
     deps = [
         "//src/utils:utils_logging_cc",

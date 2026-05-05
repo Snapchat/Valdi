@@ -46,6 +46,9 @@ valdi_module(
     single_file_codegen = False,
     visibility = ["//visibility:public"],
     web_deps = [":valdi_core_web"],
+    web_register_native_module_id_overrides = {
+        "valdi_core/web/DeviceBridge.js": "DeviceBridge",
+    },
     deps = [
         "//src/valdi_modules/src/valdi/coreutils",
         "//src/valdi_modules/src/valdi/jasmine",

@@ -15,7 +15,7 @@ class ObjCSchemaWriterListener: SchemaWriterListener {
         self.emittedIdentifiers = emittedIdentifiers
     }
 
-    func getClassName(nodeMapping: ValdiNodeClassMapping) throws -> String? {
+    func getClassName(nodeMapping: ValdiNodeClassMapping, typeArguments: [ValdiModelPropertyType]?) throws -> String? {
         guard let iosType = nodeMapping.iosType else {
             throw CompilerError("No iOS type in given mapping")
         }

@@ -18,7 +18,26 @@ private struct CppProperty {
     let name: CppPropertyName
     let property: ValdiModelProperty
     let typeParser: CppTypeParser
-    let implementationTypeName: String
+}
+
+private final class CppCodeGeneratorModelNamespaceResolver: CppCodeGeneratorNamespaceResolver {
+    private let classNamespace: CPPNamespace
+    private let proxyNamespace: CPPNamespace
+    private let isInterface: Bool
+
+    init(classNamespace: CPPNamespace, proxyNamespace: CPPNamespace, isInterface: Bool) {
+        self.classNamespace = classNamespace
+        self.proxyNamespace = proxyNamespace
+        self.isInterface = isInterface
+    }
+
+    func getNamespace(forTypeAlias typeAlias: CppTypeAlias) -> CPPNamespace {
+        if isInterface && typeAlias.isOnMethod {
+            return proxyNamespace
+        } else {
+            return classNamespace
+        }
+    }
 }
 
 final class CppModelGenerator {
@@ -49,146 +68,157 @@ final class CppModelGenerator {
         self.comments = comments
     }
 
-    private func resolveProperties(codeGenerator: CppCodeGenerator) throws -> [CppProperty] {
+    private func resolveProperties(codeGenerator: CppCodeGenerator, nameAllocator: PropertyNameAllocator) throws -> [CppProperty] {
         return try properties.map { property in
-            let typeParser = try codeGenerator.getTypeParser(type: property.type, namePaths: [property.name], nameAllocator: codeGenerator.nameAllocator)
-            let fieldName = codeGenerator.nameAllocator.allocate(property: "_\(property.name)").name
-            let getterName = codeGenerator.nameAllocator.allocate(property: "get\(property.name.pascalCased)").name
-            let setterName = codeGenerator.nameAllocator.allocate(property: "set\(property.name.pascalCased)").name
-            let constructorParameterName = codeGenerator.nameAllocator.allocate(property: property.name).name
-            let implementationTypeName = typeParser.isTypeAlias ? "\(cppType.declaration.name)::\(typeParser.typeName)" : typeParser.typeName
+            let typeParser = try codeGenerator.getTypeParser(type: property.type, namePaths: [property.name], nameAllocator: nameAllocator)
+            let fieldName = nameAllocator.allocate(property: "_\(property.name)").name
+            let getterName = nameAllocator.allocate(property: "get\(property.name.pascalCased)").name
+            let setterName = nameAllocator.allocate(property: "set\(property.name.pascalCased)").name
+            let constructorParameterName = nameAllocator.allocate(property: property.name).name
 
             return CppProperty(name:
                                 CppPropertyName(fieldName: fieldName, getterName: getterName, setterName: setterName, constructorParameterName: constructorParameterName),
                                property: property,
-                               typeParser: typeParser,
-                               implementationTypeName: implementationTypeName)
+                               typeParser: typeParser)
         }
     }
 
-    private func generateClassFields(cppProperties: [CppProperty]) -> CppCodeWriter {
+    private func generateClassFields(classNamespace: CPPNamespace, cppProperties: [CppProperty]) -> CppCodeWriter {
         let decl = CppCodeWriter()
         for cppProperty in cppProperties {
+            let typeName = cppProperty.typeParser.typeNameResolver.resolve(classNamespace)
             if let fieldInitializationString = cppProperty.typeParser.defaultInitializationString {
-                decl.appendBody("\(cppProperty.typeParser.typeName) \(cppProperty.name.fieldName) = \(fieldInitializationString);\n")
+                decl.appendBody("\(typeName) \(cppProperty.name.fieldName) = \(fieldInitializationString);\n")
             } else {
-                decl.appendBody("\(cppProperty.typeParser.typeName) \(cppProperty.name.fieldName);\n")
+                decl.appendBody("\(typeName) \(cppProperty.name.fieldName);\n")
             }
         }
 
         return decl
     }
 
-    private func generateClassConstructors(cppProperties: [CppProperty]) -> (decl: CppCodeWriter, impl: CppCodeWriter) {
-        let constructorsDecl = CppCodeWriter()
-        constructorsDecl.appendBody("\(cppType.declaration.name)();\n")
+    private func makeClassWriter() -> CppClassWriter {
+        let header = CppCodeWriter()
+        let impl = CppCodeWriter()
+        let inlineImplementation = typeParameters != nil
 
-        let constructorsImpl = CppCodeWriter()
-        constructorsImpl.appendBody("\(cppType.declaration.name)::\(cppType.declaration.name)() = default;\n\n")
+        return CppClassWriter(namespace: cppType.declaration.namespace, className: cppType.declaration.name, header: header, impl: impl, inlineImplementation: inlineImplementation)
+    }
+
+    private func generateClassConstructors(classNamespace: CPPNamespace, cppProperties: [CppProperty], parentClassName: String) -> (decl: CppCodeWriter, impl: CppCodeWriter) {
+        let classWriter = makeClassWriter()
+
+        classWriter.writeConstructor(arguments: [], memberInitializerList: "\(parentClassName)(getRegisteredClass())") { writer in
+
+        }
 
         if !cppProperties.isEmpty {
-            let ctorDeclParameters = cppProperties.map { "\($0.typeParser.typeName) \($0.name.constructorParameterName)" }.joined(separator: ", ")
-            let ctorImplParameters = cppProperties.map { "\($0.implementationTypeName) \($0.name.constructorParameterName)" }.joined(separator: ", ")
+            let ctorParameters = cppProperties.map {
+                if $0.typeParser.isMovable {
+                    return CPPFunctionArgument(typeResolver: .with(specifiers:.constRef, $0.typeParser.typeNameResolver), name: $0.name.constructorParameterName)
+                } else {
+                    return CPPFunctionArgument(typeResolver: $0.typeParser.typeNameResolver, name: $0.name.constructorParameterName)
+                }
+            }
             let ctorFieldInitializers = cppProperties.map {
                 let initializer = $0.typeParser.isMovable ? "std::move(\($0.name.constructorParameterName))" : $0.name.constructorParameterName
                 return "\($0.name.fieldName)(\(initializer))"
             }.joined(separator: ",\n")
 
-            constructorsDecl.appendBody("\(cppType.declaration.name)(\(ctorDeclParameters));\n")
-            constructorsImpl.appendBody("""
-            \(cppType.declaration.name)::\(cppType.declaration.name)(\(ctorImplParameters)):
-            \(ctorFieldInitializers) {
+            classWriter.writeConstructor(arguments: ctorParameters, memberInitializerList: "\(parentClassName)(getRegisteredClass()),\n\(ctorFieldInitializers)") { writer in
+
             }
-
-
-            """)
         }
 
-        return (constructorsDecl, constructorsImpl)
+        return (classWriter.header, classWriter.impl)
     }
 
-    private func generateClassMethods(cppProperties: [CppProperty]) -> (decl: CppCodeWriter, impl: CppCodeWriter) {
-        let decl = CppCodeWriter()
-        let impl = CppCodeWriter()
-
+    private func generateClassMethods(classNamespace: CPPNamespace, cppProperties: [CppProperty]) -> (decl: CppCodeWriter, impl: CppCodeWriter) {
+        let classWriter = makeClassWriter()
         for cppProperty in cppProperties {
             if cppProperty.typeParser.isMovable {
-                decl.appendBody("""
-                    const \(cppProperty.typeParser.typeName) &\(cppProperty.name.getterName)() const;
-                    void \(cppProperty.name.setterName)(const \(cppProperty.typeParser.typeName) &value);
-                    void \(cppProperty.name.setterName)(\(cppProperty.typeParser.typeName) value);
+                classWriter.writeMethod(name: cppProperty.name.getterName,
+                                        arguments: [],
+                                        returnType: .with(specifiers:.constRef, cppProperty.typeParser.typeNameResolver),
+                                        specifiers: .const) { writer in
+                    writer.appendBody("return \(cppProperty.name.fieldName);\n")
+                }
 
+                classWriter.writeMethod(name: cppProperty.name.setterName,
+                                        arguments: [CPPFunctionArgument(typeResolver: .with(specifiers: .constRef, cppProperty.typeParser.typeNameResolver), name: "value")],
+                                        returnType: .with(typeName: "void"),
+                                        specifiers: .none) { writer in
+                    writer.appendBody("\(cppProperty.name.fieldName) = value;\n")
+                }
 
-                    """)
-
-                impl.appendBody("""
-                    const \(cppProperty.implementationTypeName) &\(cppType.declaration.name)::\(cppProperty.name.getterName)() const {
-                      return \(cppProperty.name.fieldName);
-                    }
-
-                    void \(cppType.declaration.name)::\(cppProperty.name.setterName)(const \(cppProperty.implementationTypeName) &value) const {
-                      \(cppProperty.name.fieldName) = value;
-                    }
-
-                    void \(cppType.declaration.name)::\(cppProperty.name.setterName)(\(cppProperty.implementationTypeName) value) const {
-                      \(cppProperty.name.fieldName) = std::move(value);
-                    }
-
-
-                    """)
+                classWriter.writeMethod(name: cppProperty.name.setterName,
+                                        arguments: [CPPFunctionArgument(typeResolver: .with(specifiers: .rValueRef, cppProperty.typeParser.typeNameResolver), name: "value")],
+                                        returnType: .with(typeName: "void"),
+                                        specifiers: .none) { writer in
+                    writer.appendBody("\(cppProperty.name.fieldName) = std::move(value);\n")
+                }
             } else {
-                decl.appendBody("""
-                    \(cppProperty.typeParser.typeName) \(cppProperty.name.getterName)() const;
-                    void \(cppProperty.name.setterName)(\(cppProperty.typeParser.typeName) value);
+                classWriter.writeMethod(name: cppProperty.name.getterName,
+                                        arguments: [],
+                                        returnType: cppProperty.typeParser.typeNameResolver,
+                                        specifiers: .const) { writer in
+                    writer.appendBody("return \(cppProperty.name.fieldName);\n")
+                }
 
-
-                    """)
-
-                impl.appendBody("""
-                    \(cppProperty.implementationTypeName) \(cppType.declaration.name)::\(cppProperty.name.getterName)() const {
-                      return \(cppProperty.name.fieldName);
-                    }
-
-                    void \(cppType.declaration.name)::\(cppProperty.name.setterName)(\(cppProperty.implementationTypeName) value) const {
-                      \(cppProperty.name.fieldName) = value;
-                    }
-
-
-                    """)
+                classWriter.writeMethod(name: cppProperty.name.setterName,
+                                        arguments: [CPPFunctionArgument(typeResolver: cppProperty.typeParser.typeNameResolver, name: "value")],
+                                        returnType: .with(typeName: "void"),
+                                        specifiers: .none) { writer in
+                    writer.appendBody("\(cppProperty.name.fieldName) = value;\n")
+                }
             }
         }
 
-        return (decl, impl)
+        return (classWriter.header, classWriter.impl)
     }
 
-    private func generateRegisterClassBody(generator: CppCodeGenerator) throws -> CppCodeWriter {
-        let cppGeneratedClass = generator.getValdiTypeName(typeName: "CppGeneratedClass")
-        let registeredClassType = generator.getValdiTypeName(typeName: "RegisteredCppGeneratedClass")
+    private func generateRegisterClass(generator: CppCodeGenerator) throws -> (decl: CppCodeWriter, impl: CppCodeWriter) {
+        let cppGeneratedClass = CppCodeGenerator.getValdiTypeName(typeName: "CppGeneratedClass").resolve(cppType.declaration.namespace)
+        let registeredClassType = CPPTypeNameResolver.with(specifiers: .ptr, CppCodeGenerator.getValdiTypeName(typeName: "RegisteredCppGeneratedClass"))
 
-        let schemaWriter = CppSchemaWriter(typeParameters: typeParameters)
+        let schemaWriter = CppSchemaWriter(typeParameters: typeParameters, generator: generator)
         if isInterface {
-            try schemaWriter.appendInterface(cppType.declaration.fullTypeName, properties: self.properties)
+            try schemaWriter.appendInterface(cppType.declaration.fullTypeName, properties: self.properties, asyncStrictMode: bundleInfo.asyncStrictMode)
         } else {
-            try schemaWriter.appendClass(cppType.declaration.fullTypeName, properties: self.properties)
+            try schemaWriter.appendClass(cppType.declaration.fullTypeName, properties: self.properties, asyncStrictMode: bundleInfo.asyncStrictMode)
         }
 
-        let typeReferencesVecString = generator.referencedTypes.map { "&\($0)::registeredClass" }.joined(separator: ", ")
+        let classWriter = makeClassWriter()
 
-        let writer = CppCodeWriter()
-
-        writer.appendBody("""
-        \(registeredClassType) *\(cppType.declaration.name)::getRegisteredClass() const {
-            return &\(cppType.declaration.name)::registeredClass;
+        var registerSchemaParameters: [String]
+        if generator.referencedTypes.isEmpty {
+            registerSchemaParameters = ["\"\(schemaWriter.str)\""]
+        } else {
+            registerSchemaParameters = ["\"\(schemaWriter.str)\"", generator.getTypeReferencesVecExpression(inNamespace: self.cppType.declaration.namespace)]
         }
 
-       \(registeredClassType) \(cppType.declaration.name)::registeredClass = \(cppGeneratedClass)::registerSchema("\(schemaWriter.str)", []() -> \(registeredClassType)::TypeReferencesVec {
-           return {\(typeReferencesVecString)};
-       });
+        if let typeParameters {
+            registerSchemaParameters.append("Valdi::CppGeneratedGenericClass::makeTypeArgumentsCallback<\(typeParameters.map { $0.name }.joined(separator: ", "))>()")
+            generator.header.includeSection.addInclude(path: "valdi_core/cpp/Marshalling/CppGeneratedGenericClass.hpp")
 
+            classWriter.writeMethod(name: "getRegisteredClass",
+                                    arguments: [],
+                                    returnType: registeredClassType,
+                                    specifiers: .static_) { writer in
+                writer.appendBody("static auto *kRegisteredClass = \(cppGeneratedClass)::registerGenericSchema(\(registerSchemaParameters.joined(separator: ", ")));\n\n")
+                writer.appendBody("return kRegisteredClass;\n");
+            }
+        } else {
+            classWriter.writeMethod(name: "getRegisteredClass",
+                                    arguments: [],
+                                    returnType: registeredClassType,
+                                    specifiers: .static_) { writer in
+                writer.appendBody("static auto *kRegisteredClass = \(cppGeneratedClass)::registerSchema(\(registerSchemaParameters.joined(separator: ", ")));\n\n")
+                writer.appendBody("return kRegisteredClass;\n");
+            }
+        }
 
-       """)
-
-        return writer
+        return (classWriter.header, classWriter.impl)
     }
 
     private func generateFieldsReferenceArgument(cppProperties: [CppProperty]) -> String {
@@ -206,8 +236,7 @@ final class CppModelGenerator {
         } else {
             let methodsReferenceString = cppProperties.map { cppProperty in
                 if cppProperty.typeParser.method != nil {
-                    // TODO(3521): Update to Valdi
-                    return "Valdi::CppMarshaller::methodToFunction(\(receiverArgument), &\(cppType.declaration.name)::\(cppProperty.name.constructorParameterName))"
+                    return "Valdi::CppMarshaller::methodToFunction<\(cppType.declaration.name), &\(cppType.declaration.name)::\(cppProperty.name.constructorParameterName)>(\(receiverArgument))"
                 } else {
                     return "\(receiverArgument)->\(cppProperty.name.constructorParameterName)()"
                 }
@@ -216,24 +245,50 @@ final class CppModelGenerator {
         }
     }
 
-    private func writeClass(generator: CppCodeGenerator, cppProperties: [CppProperty]) throws {
-        let parentClassName = generator.getValdiTypeName(typeName: "CppGeneratedModel")
-        let cppTypeRefType = generator.makeRefType(typeName: cppType.declaration.name)
-        let exceptionTrackerTypeName = generator.getValdiTypeName(typeName: "ExceptionTracker")
-        let valueType = generator.getValdiTypeName(typeName: "Value")
-        let registeredClassType = generator.getValdiTypeName(typeName: "RegisteredCppGeneratedClass")
+    private func writeClassPrologue(parentClassName: String, header: CodeWriter) {
+        header.appendBody(FileHeaderCommentGenerator.generateComment(sourceFilename: self.sourceFileName, additionalComments: self.comments))
+        header.appendBody("\n")
 
-        let (constructorsDecl, constructorsImpl) = generateClassConstructors(cppProperties: cppProperties)
-        let (methodsDecl, methodsImpl) = generateClassMethods(cppProperties: cppProperties)
-        let fieldsDeclaration = generateClassFields(cppProperties: cppProperties)
-        let registerClassBody = try generateRegisterClassBody(generator: generator)
+        if let typeParameters {
+            let typeNames = typeParameters.map { "typename \($0.name)" }.joined(separator: ", ")
+            header.appendBody("template<\(typeNames)>\n")
+        }
+        header.appendBody("class \(cppType.declaration.name): public \(parentClassName) {\n")
+    }
+
+    private func getSelfTypename() -> String {
+        if let typeParameters {
+            let typeNames = typeParameters.map { $0.name }.joined(separator: ", ")
+            return "\(cppType.declaration.name)<\(typeNames)>"
+        } else {
+            return cppType.declaration.name
+        }
+    }
+
+    private func writeClass(classNamespace: CPPNamespace, generator: CppCodeGenerator, cppProperties: [CppProperty]) throws {
+        let parentClassName = CppFileGenerator.getValdiTypeDeclaration(typeName: "CppGeneratedModel").resolveTypeName(inNamespace: classNamespace)
+        let exceptionTrackerTypeDeclaration = CppFileGenerator.getValdiTypeDeclaration(typeName: "ExceptionTracker")
+        let valueTypeDeclaration = CppFileGenerator.getValdiTypeDeclaration(typeName: "Value")
+
+        generator.header.forwardDeclarations.addForwardDeclaration(typeReference: CPPTypeReference(declaration: exceptionTrackerTypeDeclaration, typeArguments: nil))
+        generator.header.forwardDeclarations.addForwardDeclaration(typeReference: CPPTypeReference(declaration: valueTypeDeclaration, typeArguments: nil))
+
+        let exceptionTrackerType = CPPTypeNameResolver.with(specifiers: .ref, .with(typeDeclaration: exceptionTrackerTypeDeclaration))
+        let valueType = CPPTypeNameResolver.with(typeDeclaration: valueTypeDeclaration)
+
+        let (constructorsDecl, constructorsImpl) = generateClassConstructors(classNamespace: classNamespace, cppProperties: cppProperties, parentClassName: parentClassName)
+        let (methodsDecl, methodsImpl) = generateClassMethods(classNamespace: classNamespace, cppProperties: cppProperties)
+        let fieldsDeclaration = generateClassFields(classNamespace: classNamespace, cppProperties: cppProperties)
+        let (registerClassHeader, registerClassBody) = try generateRegisterClass(generator: generator)
+
+        let selfTypeName = getSelfTypename()
 
         /* Header generation */
-        generator.header.body.appendBody("class \(cppType.declaration.name): public \(parentClassName) {\n")
+        writeClassPrologue(parentClassName: parentClassName, header: generator.header.body)
         generator.header.body.appendBody("public:\n")
         if !generator.typealiases.isEmpty {
             for cppTypealias in generator.typealiases {
-                generator.header.body.appendBody(cppTypealias.statement)
+                generator.header.body.appendBody(cppTypealias.statement.resolve(classNamespace))
             }
             generator.header.body.appendBody("\n")
         }
@@ -241,16 +296,41 @@ final class CppModelGenerator {
         generator.header.body.appendBody(constructorsDecl)
         generator.header.body.appendBody("\n")
         generator.header.body.appendBody(methodsDecl)
-        generator.header.body.appendBody("""
+        generator.header.body.appendBody(registerClassHeader)
 
-        \(registeredClassType) *getRegisteredClass() const final;
+        let marshallWriter = makeClassWriter()
+        let fieldsReferenceArguments = generateFieldsReferenceArgument(cppProperties: cppProperties)
 
-        static void unmarshall(\(exceptionTrackerTypeName) &exceptionTracker, const \(valueType) &value, \(cppTypeRefType) &out);
-        static void marshall(\(exceptionTrackerTypeName) &exceptionTracker, const \(cppTypeRefType) &value, \(valueType) &out);
+        marshallWriter.writeMethod(name: "unmarshall",
+                                   arguments: [
+                                        CPPFunctionArgument(typeResolver: exceptionTrackerType, name: "exceptionTracker"),
+                                        CPPFunctionArgument(typeResolver: .with(specifiers: .constRef, valueType), name: "value"),
+                                        CPPFunctionArgument(typeResolver: .with(specifiers: .ref, .with(typeName: selfTypeName)), name: "out")
+                                   ],
+                                   returnType: .with(typeName: "void"),
+                                   specifiers: .static_) { writer in
+            if !cppProperties.isEmpty {
+                writer.appendBody("auto &self = out;\n")
+            }
 
-        static \(registeredClassType) registeredClass;
+            writer.appendBody("Valdi::CppMarshaller::unmarshallTypedObject(exceptionTracker, *getRegisteredClass(), value\(fieldsReferenceArguments));\n")
+        }
 
-        """)
+        marshallWriter.writeMethod(name: "marshall",
+                                   arguments: [
+                                        CPPFunctionArgument(typeResolver: exceptionTrackerType, name: "exceptionTracker"),
+                                        CPPFunctionArgument(typeResolver: .with(specifiers: .constRef, .with(typeName: selfTypeName)), name: "value"),
+                                        CPPFunctionArgument(typeResolver: .with(specifiers: .ref, valueType), name: "out")
+                                   ],
+                                   returnType: .with(typeName: "void"),
+                                   specifiers: .static_) { writer in
+            if !cppProperties.isEmpty {
+                writer.appendBody("const auto &self = value;\n")
+            }
+            writer.appendBody("Valdi::CppMarshaller::marshallTypedObject(exceptionTracker, *getRegisteredClass(), out\(fieldsReferenceArguments));\n")
+        }
+
+        generator.header.body.appendBody(marshallWriter.header)
 
         generator.header.body.appendBody("\nprivate:\n")
         generator.header.body.appendBody(fieldsDeclaration)
@@ -260,62 +340,63 @@ final class CppModelGenerator {
 
         generator.impl.body.appendBody(constructorsImpl)
         generator.impl.body.appendBody(methodsImpl)
-
-        let fieldsReferenceArguments = generateFieldsReferenceArgument(cppProperties: cppProperties)
-
-        let unmarshallTypedObjectString = "Valdi::CppMarshaller::unmarshallTypedObject(exceptionTracker, \(cppType.declaration.name)::registeredClass, value\(fieldsReferenceArguments));"
-        let marshallTypedObjectString = "Valdi::CppMarshaller::marshallTypedObject(exceptionTracker, \(cppType.declaration.name)::registeredClass, out\(fieldsReferenceArguments));"
-
-        generator.impl.body.appendBody("""
-
-        void \(cppType.declaration.name)::unmarshall(\(exceptionTrackerTypeName) &exceptionTracker, const \(valueType) &value, \(cppTypeRefType) &out) {
-           out = Valdi::makeShared<\(cppType.declaration.name)>();
-           auto &self = *out;
-           \(unmarshallTypedObjectString)
-       }
-
-        void \(cppType.declaration.name)::marshall(\(exceptionTrackerTypeName) &exceptionTracker, const \(cppTypeRefType) &value, \(valueType) &out) {
-           auto &self = *value;
-          \(marshallTypedObjectString)
-       }
-
-
-       """)
-
+        generator.impl.body.appendBody(marshallWriter.impl)
         generator.impl.body.appendBody(registerClassBody)
     }
 
-    private func generateInterfaceMethods(generator: CppCodeGenerator, cppProperties: [CppProperty]) -> (decl: CppCodeWriter, impl: CppCodeWriter) {
+    private func generateInterfaceMethods(classNamespace: CPPNamespace,
+                                          proxyNamespace: CPPNamespace,
+                                          generator: CppCodeGenerator,
+                                          nameAllocator: PropertyNameAllocator,
+                                          cppProperties: [CppProperty]) -> (decl: CppCodeWriter, impl: CppCodeWriter) {
         let decl = CppCodeWriter()
         let impl = CppCodeWriter()
 
         for cppProperty in cppProperties {
-            let scopedNameAllocator = generator.nameAllocator.scoped()
+            let scopedNameAllocator = nameAllocator.scoped()
 
             if let cppMethod = cppProperty.typeParser.method {
+                let returnTypeName = cppMethod.returnTypeNameResolver.resolve(classNamespace)
+                let returnPrefix = returnTypeName == "void" ? "" : "return "
+
                 let parameterNames = cppMethod.parameters.map { scopedNameAllocator.allocate(property: $0.name).name }
                 let parameterWithTypes = cppMethod.parameters.indices.map {
                     let parameterName = parameterNames[$0]
-                    let parameterType = cppMethod.parameters[$0].typeName
+                    let parameterType = cppMethod.parameters[$0].typeNameResolver.resolve(classNamespace)
                     return "\(parameterType) \(parameterName)"
                 }.joined(separator: ", ")
 
-                decl.appendBody("virtual \(cppMethod.returnTypeName) \(cppProperty.name.constructorParameterName)(\(parameterWithTypes)) = 0;\n")
+                decl.appendBody("virtual \(returnTypeName) \(cppProperty.name.constructorParameterName)(\(parameterWithTypes)) = 0;\n\n")
 
-                impl.appendBody("""
-                \(cppMethod.returnTypeName) \(cppProperty.name.constructorParameterName)(\(parameterWithTypes)) final {
-                  return \(cppProperty.name.fieldName)(\(parameterNames.joined(separator: ", ") ));
+                if cppProperty.property.type.isOptional {
+                    impl.appendBody("""
+                    \(returnTypeName) \(cppProperty.name.constructorParameterName)(\(parameterWithTypes)) final {
+                      if (!\(cppProperty.name.fieldName)) {
+                        Valdi::CppMarshaller::throwUnimplementedMethod();
+                      }
+                      \(returnPrefix)\(cppProperty.name.fieldName).value()(\(parameterNames.joined(separator: ", ") ));
+                    }
+
+
+                    """)
+                } else {
+                    impl.appendBody("""
+                    \(returnTypeName) \(cppProperty.name.constructorParameterName)(\(parameterWithTypes)) final {
+                      \(returnPrefix)\(cppProperty.name.fieldName)(\(parameterNames.joined(separator: ", ") ));
+                    }
+
+
+                    """)
                 }
-
-
-                """)
             } else {
-                decl.appendBody("virtual \(cppProperty.typeParser.typeName) \(cppProperty.name.constructorParameterName)() = 0;\n")
+                decl.appendBody("virtual \(cppProperty.typeParser.typeNameResolver.resolve(classNamespace)) \(cppProperty.name.constructorParameterName)() = 0;\n\n")
 
                 impl.appendBody("""
-                \(cppProperty.typeParser.typeName) \(cppProperty.name.constructorParameterName)() final {
+                \(cppProperty.typeParser.typeNameResolver.resolve(proxyNamespace)) \(cppProperty.name.constructorParameterName)() final {
                   return \(cppProperty.name.fieldName);
                 }
+
+
                 """)
             }
         }
@@ -323,122 +404,178 @@ final class CppModelGenerator {
         return (decl, impl)
     }
 
-    private func writeInterface(generator: CppCodeGenerator, cppProperties: [CppProperty]) throws {
-        let parentClassName = generator.getValdiTypeName(typeName: "CppGeneratedInterface")
-        let registeredClassType = generator.getValdiTypeName(typeName: "RegisteredCppGeneratedClass")
-        let exceptionTrackerTypeName = generator.getValdiTypeName(typeName: "ExceptionTracker")
-        let valueType = generator.getValdiTypeName(typeName: "Value")
-        let cppTypeRefType = generator.makeRefType(typeName: cppType.declaration.name)
-        let registerClassBody = try generateRegisterClassBody(generator: generator)
+    private func writeInterface(classNamespace: CPPNamespace,
+                                generator: CppCodeGenerator,
+                                proxyClassName: String,
+                                proxyNamespace: CPPNamespace,
+                                nameAllocator: PropertyNameAllocator,
+                                cppProperties: [CppProperty]) throws {
+        let parentClassName = CppFileGenerator.getValdiTypeDeclaration(typeName: "CppGeneratedInterface").resolveTypeName(inNamespace: classNamespace)
+        let exceptionTrackerTypeDeclaration = CppFileGenerator.getValdiTypeDeclaration(typeName: "ExceptionTracker")
+        let valueTypeDeclaration = CppFileGenerator.getValdiTypeDeclaration(typeName: "Value")
 
-        let (methodsDecl, methodsImpl) = generateInterfaceMethods(generator: generator, cppProperties: cppProperties)
-        let fieldsDeclaration = generateClassFields(cppProperties: cppProperties)
+        generator.header.forwardDeclarations.addForwardDeclaration(typeReference: CPPTypeReference(declaration: exceptionTrackerTypeDeclaration, typeArguments: nil))
+        generator.header.forwardDeclarations.addForwardDeclaration(typeReference: CPPTypeReference(declaration: valueTypeDeclaration, typeArguments: nil))
+
+        let exceptionTrackerType = CPPTypeNameResolver.with(specifiers: .ref, .with(typeDeclaration: exceptionTrackerTypeDeclaration))
+        let valueType = CPPTypeNameResolver.with(typeDeclaration: valueTypeDeclaration)
+
+        let cppTypeRefType = CppCodeGenerator.makeRefType(typeName: .with(typeName: getSelfTypename()))
+        let (registerClassHeader, registerClassBody) = try generateRegisterClass(generator: generator)
+
+        let (methodsDecl, methodsImpl) = generateInterfaceMethods(classNamespace: classNamespace,
+                                                                  proxyNamespace: proxyNamespace,
+                                                                  generator: generator,
+                                                                  nameAllocator: nameAllocator,
+                                                                  cppProperties: cppProperties)
+        let fieldsDeclaration = generateClassFields(classNamespace: proxyNamespace, cppProperties: cppProperties)
 
         /* Header generation */
-        generator.header.body.appendBody("class \(cppType.declaration.name): public \(parentClassName) {\n")
+        writeClassPrologue(parentClassName: parentClassName, header: generator.header.body)
         generator.header.body.appendBody("public:\n")
         let nonMethodsTypealiases = generator.typealiases.filter { !$0.isOnMethod }
         if !nonMethodsTypealiases.isEmpty {
             for cppTypealias in nonMethodsTypealiases {
-                generator.header.body.appendBody(cppTypealias.statement)
+                generator.header.body.appendBody(cppTypealias.statement.resolve(classNamespace))
             }
             generator.header.body.appendBody("\n")
         }
 
+        let ctor = makeClassWriter()
+
+        generator.header.body.appendBody(ctor.header)
         generator.header.body.appendBody(methodsDecl)
-        generator.header.body.appendBody("""
+        generator.header.body.appendBody(registerClassHeader)
 
-        \(registeredClassType) *getRegisteredClass() const final;
+        let marshallWriter = makeClassWriter()
 
-        static void unmarshall(\(exceptionTrackerTypeName) &exceptionTracker, const \(valueType) &value, \(cppTypeRefType) &out);
-        static void marshall(\(exceptionTrackerTypeName) &exceptionTracker, const \(cppTypeRefType) &value, \(valueType) &out);
-
-        static \(registeredClassType) registeredClass;
-
-        """)
+        generator.header.body.appendBody(marshallWriter.header)
         generator.header.body.appendBody("};\n")
+
+        ctor.writeConstructor(arguments: [], memberInitializerList: "\(parentClassName)(getRegisteredClass())") { writer in
+        }
 
         /* Impl generation */
 
-        let proxyClassName = generator.nameAllocator.allocate(property: "\(cppType.declaration.name)Proxy")
-
-        generator.impl.body.appendBody("class \(proxyClassName.name): public \(cppType.declaration.name) {\n")
+        generator.impl.body.appendBody("class \(proxyClassName): public \(cppType.declaration.name) {\n")
         generator.impl.body.appendBody("public:\n")
 
         let methodsTypealiases = generator.typealiases.filter { $0.isOnMethod }
         if !methodsTypealiases.isEmpty {
             for cppTypealias in methodsTypealiases {
-                generator.impl.body.appendBody(cppTypealias.statement)
+                generator.impl.body.appendBody(cppTypealias.statement.resolve(classNamespace))
             }
             generator.impl.body.appendBody("\n")
         }
 
-        generator.impl.body.appendBody("\(proxyClassName.name)() = default;\n")
-        generator.impl.body.appendBody("~\(proxyClassName.name)() override = default;\n\n")
+        generator.impl.body.appendBody("\(proxyClassName)() = default;\n")
+        generator.impl.body.appendBody("~\(proxyClassName)() override = default;\n\n")
         generator.impl.body.appendBody(methodsImpl)
 
-        let fieldsReferenceArguments = generateFieldsReferenceArgument(cppProperties: cppProperties)
-        let methodsReferenceArguments = generateMethodsReferenceArgument(receiverArgument: "value", cppProperties: cppProperties)
-        let unmarshallTypedObjectString = "Valdi::CppMarshaller::unmarshallTypedObject(exceptionTracker, \(cppType.declaration.name)::registeredClass, value\(fieldsReferenceArguments));"
-
-        generator.impl.body.appendBody("""
-        static void unmarshall(\(exceptionTrackerTypeName) &exceptionTracker, const \(valueType) &value, \(generator.makeRefType(typeName: proxyClassName.name)) &out) {
-             out = Valdi::makeShared<\(proxyClassName.name)>();
-             auto &self = *out;
-           \(unmarshallTypedObjectString)
+        let proxyUnmarshallWriter = CppClassWriter(namespace: cppType.declaration.namespace, className: proxyClassName, header: generator.impl.body, impl: generator.impl.body, inlineImplementation: true)
+        proxyUnmarshallWriter.writeMethod(name: "unmarshall",
+                                          arguments: [
+                                            CPPFunctionArgument(typeResolver: exceptionTrackerType, name: "exceptionTracker"),
+                                            CPPFunctionArgument(typeResolver: .with(specifiers: .constRef, valueType), name: "value"),
+                                            CPPFunctionArgument(typeResolver: .with(specifiers: .ref, CppCodeGenerator.makeRefType(typeName: .with(typeName: proxyClassName))), name: "out")
+                                          ],
+                                          returnType: .with(typeName: "void"),
+                                          specifiers: .static_) { writer in
+            let fieldsReferenceArguments = generateFieldsReferenceArgument(cppProperties: cppProperties)
+            writer.appendBody("out = Valdi::makeShared<\(proxyClassName)>();\n")
+            if !cppProperties.isEmpty {
+                writer.appendBody("auto &self = *out;\n")
+            }
+            writer.appendBody("Valdi::CppMarshaller::unmarshallTypedObject(exceptionTracker, *getRegisteredClass(), value\(fieldsReferenceArguments));\n")
         }
 
+        marshallWriter.writeMethod(name: "unmarshall",
+                                   arguments: [
+                                        CPPFunctionArgument(typeResolver: exceptionTrackerType, name: "exceptionTracker"),
+                                        CPPFunctionArgument(typeResolver: .with(specifiers: .constRef, valueType), name: "value"),
+                                        CPPFunctionArgument(typeResolver: .with(specifiers: .ref, cppTypeRefType), name: "out")
+                                   ],
+                                   returnType: .with(typeName: "void"),
+                                   specifiers: .static_) { writer in
+            writer.appendBody("Valdi::CppMarshaller::unmarshallProxyObject<\(proxyClassName)>(exceptionTracker, *getRegisteredClass(), value, out);\n")
+        }
 
-        """)
+        marshallWriter.writeMethod(name: "marshall",
+                                   arguments: [
+                                        CPPFunctionArgument(typeResolver: exceptionTrackerType, name: "exceptionTracker"),
+                                        CPPFunctionArgument(typeResolver: .with(specifiers: .constRef, cppTypeRefType), name: "value"),
+                                        CPPFunctionArgument(typeResolver: .with(specifiers: .ref, valueType), name: "out")
+                                   ],
+                                   returnType: .with(typeName: "void"),
+                                   specifiers: .static_) { writer in
+            let methodsReferenceArguments = generateMethodsReferenceArgument(receiverArgument: "value", cppProperties: cppProperties)
+            writer.appendBody("""
+                Valdi::CppMarshaller::marshallProxyObject(exceptionTracker, *getRegisteredClass(), *value, out, [&]() {
+                   Valdi::CppMarshaller::marshallTypedObject(exceptionTracker, *getRegisteredClass(), out\(methodsReferenceArguments));
+                });
+
+                """)
+        }
 
         generator.impl.body.appendBody("private:\n")
         generator.impl.body.appendBody(fieldsDeclaration)
         generator.impl.body.appendBody("};\n\n")
 
-        generator.impl.body.appendBody("""
+        generator.impl.body.appendBody(ctor.impl)
 
-        void \(cppType.declaration.name)::unmarshall(\(exceptionTrackerTypeName) &exceptionTracker, const \(valueType) &value, \(cppTypeRefType) &out) {
-           Valdi::CppMarshaller::unmarshallProxyObject<\(proxyClassName.name)>(exceptionTracker, \(cppType.declaration.name)::registeredClass, value, out);
-       }
-
-        void \(cppType.declaration.name)::marshall(\(exceptionTrackerTypeName) &exceptionTracker, const \(cppTypeRefType) &value, \(valueType) &out) {
-           Valdi::CppMarshaller::marshallProxyObject(exceptionTracker, \(cppType.declaration.name)::registeredClass, *value, out, [&]() {
-              Valdi::CppMarshaller::marshallTypedObject(exceptionTracker, \(cppType.declaration.name)::registeredClass, out\(methodsReferenceArguments));
-           });
-       }
-
-
-       """)
+        generator.impl.body.appendBody(marshallWriter.impl)
 
         generator.impl.body.appendBody(registerClassBody)
     }
 
     func write() throws -> [NativeSource] {
-        let generator = CppCodeGenerator(namespace: cppType.declaration.namespace)
+        let namespace = cppType.declaration.namespace
+        let classNamespace = namespace.appending(component: self.cppType.declaration.name)
+
+        let nameAllocator = PropertyNameAllocator.forCpp()
+        let proxyClassName = nameAllocator.allocate(property: "\(cppType.declaration.name)Proxy")
+
+        let proxyNamespace = namespace.appending(component: proxyClassName.name)
+
+        let generator = CppCodeGenerator(namespace: namespace,
+                                         selfIncludePath: cppType.includePath,
+                                         namespaceResolver: CppCodeGeneratorModelNamespaceResolver(classNamespace: classNamespace,
+                                                                                                   proxyNamespace: proxyNamespace,
+                                                                                                   isInterface: isInterface))
         ["getRegisteredClass", "registeredClass"].forEach {
-            _ = generator.nameAllocator.allocate(property: $0)
+            _ = nameAllocator.allocate(property: $0)
         }
 
-        // TODO(3521): Update to valdi_core
-        generator.header.includeSection.addInclude(path: "valdi_core/cpp/Utils/CppGeneratedClass.hpp")
+        generator.header.includeSection.addInclude(path: "valdi_core/cpp/Marshalling/CppGeneratedClass.hpp")
 
         generator.impl.includeSection.addInclude(path: cppType.includePath)
-        generator.impl.includeSection.addInclude(path: "valdi_core/cpp/Utils/CppMarshaller.hpp")
+        if typeParameters != nil {
+            generator.header.includeSection.addInclude(path: "valdi_core/cpp/Marshalling/CppMarshaller.hpp")
+        } else {
+            generator.impl.includeSection.addInclude(path: "valdi_core/cpp/Marshalling/CppMarshaller.hpp")
+        }
 
-        let cppProperties = try resolveProperties(codeGenerator: generator)
+        let cppProperties = try resolveProperties(codeGenerator: generator, nameAllocator: nameAllocator)
 
         if isInterface {
-            try writeInterface(generator: generator, cppProperties: cppProperties)
+            try writeInterface(classNamespace: classNamespace,
+                               generator: generator,
+                               proxyClassName: proxyClassName.name,
+                               proxyNamespace: proxyNamespace,
+                               nameAllocator: nameAllocator,
+                               cppProperties: cppProperties)
         } else {
-            try writeClass(generator: generator, cppProperties: cppProperties)
+            try writeClass(classNamespace: classNamespace,
+                           generator: generator,
+                           cppProperties: cppProperties)
         }
 
         return [
-            NativeSource(relativePath: nil,
+            NativeSource(relativePath: cppType.includeDir,
                          filename: "\(cppType.declaration.name).hpp",
                          file: .data(try generator.header.content.indented.utf8Data()),
-                         groupingIdentifier: "\(bundleInfo.name).hpp", groupingPriority: 0),
-            NativeSource(relativePath: nil,
+                         groupingIdentifier: "\(bundleInfo.name).hpp", groupingPriority: 0, localFilenameDependencies: generator.dependenciesInSameHeaderFile),
+            NativeSource(relativePath: cppType.includeDir,
                          filename: "\(cppType.declaration.name).cpp",
                          file: .data(try generator.impl.content.indented.utf8Data()),
                          groupingIdentifier: "\(bundleInfo.name).cpp", groupingPriority: 0)

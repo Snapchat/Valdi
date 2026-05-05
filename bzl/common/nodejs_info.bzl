@@ -3,6 +3,8 @@ Constants for the current Node version and major version that is
 used by bazel in this WORKSPACE
 """
 
+load("//bzl:additional_dependencies.bzl", "ADDITIONAL_NODE_URLS")
+
 CURRENT_NODE_VERSION = "22.12.0"
 CURRENT_NODE_MAJOR_VERSION = "22"
 
@@ -21,8 +23,7 @@ EXTRA_NODE_REPOSITORIES = {
 # URLS in priority order of where to download nodejs from.
 # We keep nodejs.org in the list for local builds which can't see the
 # jenkins mirror; it will fallback with a warning.
-NODE_URLS = [
-    "http://nodejs-dist.c.everybodysaydance.internal/dist/v{version}/{filename}",
-    "https://nodejs.org.mirror.proxy.local/dist/v{version}/{filename}",
-    "https://nodejs.org/dist/v{version}/{filename}",
+NODE_URLS = ADDITIONAL_NODE_URLS + [
+    "https://nodejs.org.mirror.proxy.local/dist/v{version}/{filename}",  # Proxy mirror
+    "https://nodejs.org/dist/v{version}/{filename}",  # Public fallback
 ]

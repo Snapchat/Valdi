@@ -10,9 +10,14 @@
 
 #import "valdi_core/SCValdiContextProtocol.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface UIImage (Valdi)
 
-+ (UIImage*)imageFromValdiAttributeValue:(id)attributeValue context:(id<SCValdiContextProtocol>)context;
-+ (UIImage*)imageNamed:(NSString*)imageName inValdiBundle:(NSString*)bundleName;
++ (nullable UIImage*)imageFromValdiAttributeValue:(nullable id)attributeValue
+                                          context:(id<SCValdiContextProtocol>)context;
++ (nullable UIImage*)imageNamed:(NSString*)imageName inValdiBundle:(NSString*)bundleName;
 
 @end
+
+NS_ASSUME_NONNULL_END

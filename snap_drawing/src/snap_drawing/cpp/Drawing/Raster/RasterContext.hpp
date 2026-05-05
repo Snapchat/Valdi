@@ -63,6 +63,7 @@ public:
 
     struct RasterResult {
         size_t renderedPixelsCount = 0;
+        std::vector<Rect> damageRects;
     };
 
     Valdi::Result<RasterResult> raster(const Ref<DisplayList>& displayList,

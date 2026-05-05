@@ -42,7 +42,8 @@ data class FontAttributes(
     var alignment: TextAlignment,
     var isUnscaled: Boolean = false,
     var outlineColor: Int? = null,
-    var outlineWidth: Float
+    var outlineWidth: Float,
+    var animationTransform: TextAnimationTransform? = null
 ) {
 
     companion object {
@@ -59,7 +60,8 @@ data class FontAttributes(
             TextAlignment.LEFT,
             false,
             null,
-            0F)
+            0F,
+            null)
         val buttonDefault = FontAttributes(
             null,
             12f,
@@ -73,7 +75,8 @@ data class FontAttributes(
             TextAlignment.CENTER,
             false,
             null,
-            0F
+            0F,
+            null
         )
         private const val PX_SUFFIX = "px"
         private const val PT_SUFFIX = "pt"

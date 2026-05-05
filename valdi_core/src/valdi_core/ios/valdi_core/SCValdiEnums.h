@@ -13,6 +13,8 @@
 
 SC_EXTERN_C_BEGIN
 
+NS_ASSUME_NONNULL_BEGIN
+
 @protocol SCValdiEnum <NSObject>
 
 @property (readonly, nonatomic) NSUInteger count;
@@ -36,6 +38,8 @@ SC_EXTERN_C_BEGIN
 
 @end
 
+NS_ASSUME_NONNULL_END
+
 #define VALDI_ENUM_CLASS_SUFFIX @"__Enum"
 
 #define VALDI_ENUM_CLASS_NAME(__enumName) __enumName##__Enum
@@ -51,12 +55,12 @@ SC_EXTERN_C_BEGIN
     @end
 
 #define VALDI_INT_ENUM(__name, ...)                                                                                    \
-    static NSInteger __kAllEnumCases[] = {__VA_ARGS__};                                                                \
     @interface VALDI_ENUM_CLASS_NAME (__name): SCValdiIntEnum\
 @end                                                                                                                   \
                                                                                                                        \
     @implementation VALDI_ENUM_CLASS_NAME (__name)                                                                     \
     -(instancetype)init {                                                                                              \
+        static NSInteger __kAllEnumCases[] = {__VA_ARGS__};                                                            \
         return [self initWithEnumCases:__kAllEnumCases count:(sizeof(__kAllEnumCases) / sizeof(NSInteger))];           \
     }                                                                                                                  \
     @end

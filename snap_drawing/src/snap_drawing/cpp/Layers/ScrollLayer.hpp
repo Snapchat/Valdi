@@ -74,6 +74,8 @@ public:
     void setDismissKeyboardOnDrag(bool dismissKeyboardOnDrag);
 
     void setFadingEdgeLength(Scalar length);
+    void setFadingEdgeStart(bool enabled);
+    void setFadingEdgeEnd(bool enabled);
 
     void setPagingEnabled(bool pagingEnabled);
 
@@ -123,6 +125,8 @@ private:
 
     Ref<ScrollLayerFadingEdgesMaskLayer> _fadingEdgesMaskLayer;
     Scalar _fadingEdgeLength = 0;
+    bool _fadingEdgeStartEnabled = true;
+    bool _fadingEdgeEndEnabled = true;
 
     Scalar getMinContentOffsetX() const;
     Scalar getMinContentOffsetY() const;

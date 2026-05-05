@@ -10,6 +10,14 @@ enum class PreloadingMode {
     AGGRESSIVE,
 
     /**
+     * Preload fonts on a background thread but skip the heavy native
+     * render backend initialization. Use when the feature renders on
+     * app startup and full AGGRESSIVE preloading causes contention,
+     * but font availability is still needed for text layout.
+     */
+    FONTS_ONLY,
+
+    /**
      * Reduce preloading as much as possible within the runtime.
      * This is suited when rendering a feature on app startup,
      * where contention is typically already very high, and the

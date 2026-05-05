@@ -77,7 +77,7 @@ Valdi::Result<RasterContext::RasterResult> RasterContext::raster(const Ref<Displ
     if (_deltaRasterizationEnabled) {
         std::lock_guard<std::recursive_mutex> lock(_mutex);
 
-        auto damageRects = computeDamageRects(displayList, inputBitmapInfo);
+        output.damageRects = computeDamageRects(displayList, inputBitmapInfo);
 
         if (needsNewBitmap(inputBitmapInfo)) {
             // Cannot do a delta raster if the input bitmap info has changed
@@ -102,8 +102,15 @@ Valdi::Result<RasterContext::RasterResult> RasterContext::raster(const Ref<Displ
             if (!result) {
                 return result.moveError();
             }
+
+            // Calculate rendered pixel count from damage rects for consistency
+            output.renderedPixelsCount = 0;
+            for (const auto& damageRect : output.damageRects) {
+                output.renderedPixelsCount +=
+                    static_cast<size_t>(damageRect.width()) * static_cast<size_t>(damageRect.height());
+            }
         } else {
-            auto result = doRasterDelta(composition, _lastBitmap, inputBitmapInfo, damageRects, rasterId);
+            auto result = doRasterDelta(composition, _lastBitmap, inputBitmapInfo, output.damageRects, rasterId);
             if (!result) {
                 return result.moveError();
             }
@@ -148,6 +155,8 @@ Valdi::Result<Valdi::Void> RasterContext::blitDeltaBitmapToOutputBitmap(const Re
         }
     }
 
+    auto deltaBitmapInfo = deltaBitmap->getInfo();
+
     // Copy bytes from our bitmap to the input bitmap
     auto inputBytes = deltaBitmap->lockBytes();
     if (inputBytes == nullptr) {
@@ -161,7 +170,19 @@ Valdi::Result<Valdi::Void> RasterContext::blitDeltaBitmapToOutputBitmap(const Re
     }
 
     if (fullReplace) {
-        std::memcpy(outputBytes, inputBytes, bitmapInfo.bytesLength());
+        if (deltaBitmapInfo.bytesLength() == bitmapInfo.bytesLength()) {
+            std::memcpy(outputBytes, inputBytes, bitmapInfo.bytesLength());
+        } else {
+            auto minRowBytes = std::min(deltaBitmapInfo.rowBytes, bitmapInfo.rowBytes);
+            auto* outputPtr = reinterpret_cast<uint8_t*>(outputBytes);
+            const auto* inputPtr = reinterpret_cast<const uint8_t*>(inputBytes);
+            for (int y = 0; y < bitmapInfo.height; y++) {
+                std::memcpy(outputPtr, inputPtr, minRowBytes);
+
+                inputPtr += deltaBitmapInfo.rowBytes;
+                outputPtr += bitmapInfo.rowBytes;
+            }
+        }
     } else {
         auto processProc = SkBlitRow::Factory32(SkBlitRow::kSrcPixelAlpha_Flag32);
 
@@ -174,7 +195,7 @@ Valdi::Result<Valdi::Void> RasterContext::blitDeltaBitmapToOutputBitmap(const Re
                         bitmapInfo.width,
                         255);
 
-            inputPtr += bitmapInfo.rowBytes;
+            inputPtr += deltaBitmapInfo.rowBytes;
             outputPtr += bitmapInfo.rowBytes;
         }
     }
@@ -206,6 +227,10 @@ Valdi::Result<RasterContext::RasterResult> RasterContext::rasterDelta(const Ref<
     auto result = doRasterDelta(composition, bitmap, bitmap->getInfo(), damageRects, rasterId);
 
     removeUnusedCachedRasterizedExternalSurfaces(rasterId);
+
+    if (result) {
+        result.value().damageRects = std::move(damageRects);
+    }
 
     return result;
 }
@@ -376,7 +401,7 @@ Valdi::Result<Ref<Image>> RasterContext::getOrCreateRasterImageForExternalSurfac
 
     void* pixels = bitmap.value()->lockBytes();
     if (pixels != nullptr) {
-        std::memset(pixels, 0, bitmapInfo.bytesLength());
+        std::memset(pixels, 0, bitmap.value()->getInfo().bytesLength());
         bitmap.value()->unlockBytes();
     }
 
@@ -409,7 +434,9 @@ bool RasterContext::needsNewBitmap(const Valdi::BitmapInfo& inputBitmapInfo) con
     }
 
     auto lastBitmapInfo = _lastBitmap->getInfo();
-    return lastBitmapInfo != inputBitmapInfo;
+    return lastBitmapInfo.width != inputBitmapInfo.width || lastBitmapInfo.height != inputBitmapInfo.height ||
+           lastBitmapInfo.colorType != inputBitmapInfo.colorType ||
+           lastBitmapInfo.alphaType != inputBitmapInfo.alphaType;
 }
 
 } // namespace snap::drawing

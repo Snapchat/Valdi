@@ -11,6 +11,7 @@
 #include "valdi/runtime/Context/AttributionResolver.hpp"
 #include "valdi/runtime/Context/ViewManagerContext.hpp"
 #include "valdi/runtime/Resources/BytesAssetLoader.hpp"
+#include "valdi/runtime/ValdiBuildFlags.hpp"
 #include "valdi/runtime/ValdiRuntimeTweaks.hpp"
 
 #include "valdi/runtime/Resources/AssetLoaderManager.hpp"
@@ -53,6 +54,10 @@ Shared<DebuggerService> createDebuggerService(bool enableDebuggerService,
                 break;
             case PlatformTypeAndroid:
                 platform = snap::valdi_core::Platform::Android;
+                break;
+            case PlatformTypeMacOS:
+            case PlatformTypeWeb:
+                platform = snap::valdi_core::Platform::Ios;
                 break;
         }
         auto debuggerPort = DebuggerService::resolveDebuggerPort(isStandalone);
@@ -465,17 +470,60 @@ void RuntimeManager::onColorPaletteUpdated(const ColorPalette& /*colorPalette*/)
     auto allAttributes = makeShared<std::vector<AttributeId>>();
     allAttributes->insert(allAttributes->end(), attributesToReapply.begin(), attributesToReapply.end());
 
-    for (const auto& runtime : getAllRuntimes()) {
-        for (const auto& tree : runtime->getViewNodeTreeManager().getAllRootViewNodeTrees()) {
-            tree->scheduleExclusiveUpdate([treePtr = tree.get(), allAttributes]() {
-                auto rootViewNode = treePtr->getRootViewNode();
-                if (rootViewNode != nullptr) {
-                    rootViewNode->reapplyAttributesRecursive(
-                        treePtr->getCurrentViewTransactionScope(), *allAttributes, false);
-                }
-            });
+#if VALDI_DEBUG_TREE_UPDATES
+    std::string applyTrigger = "apply_attributes";
+    if (!_viewManagerContexts.empty() && !attributesToReapply.empty()) {
+        const auto& attributeIds = _viewManagerContexts.front()->getAttributesManager().getAttributeIds();
+        std::string names;
+        size_t count = 0;
+        constexpr size_t kMaxNames = 12;
+        constexpr size_t kMaxLen = 80;
+        for (AttributeId id : attributesToReapply) {
+            if (count >= kMaxNames || (count > 0 && names.size() >= kMaxLen)) {
+                names += ",...";
+                break;
+            }
+            if (count != 0) {
+                names += ",";
+            }
+            names += attributeIds.getNameForId(id).slowToString();
+            ++count;
+        }
+        if (!names.empty()) {
+            applyTrigger += ":";
+            applyTrigger += names;
         }
     }
+
+    for (const auto& runtime : getAllRuntimes()) {
+        for (const auto& tree : runtime->getViewNodeTreeManager().getAllRootViewNodeTrees()) {
+            tree->scheduleExclusiveUpdate(
+                [treePtr = tree.get(), allAttributes]() {
+                    auto rootViewNode = treePtr->getRootViewNode();
+                    if (rootViewNode != nullptr) {
+                        rootViewNode->reapplyAttributesRecursive(
+                            treePtr->getCurrentViewTransactionScope(), *allAttributes, false);
+                    }
+                },
+                Valdi::DispatchFunction(),
+                applyTrigger);
+        }
+    }
+#else
+    for (const auto& runtime : getAllRuntimes()) {
+        for (const auto& tree : runtime->getViewNodeTreeManager().getAllRootViewNodeTrees()) {
+            tree->scheduleExclusiveUpdate(
+                [treePtr = tree.get(), allAttributes]() {
+                    auto rootViewNode = treePtr->getRootViewNode();
+                    if (rootViewNode != nullptr) {
+                        rootViewNode->reapplyAttributesRecursive(
+                            treePtr->getCurrentViewTransactionScope(), *allAttributes, false);
+                    }
+                },
+                Valdi::DispatchFunction());
+        }
+    }
+#endif
 }
 
 Valdi::ILogger& RuntimeManager::getLogger() const {
@@ -690,6 +738,14 @@ void RuntimeManager::emitMetrics(void (Metrics::*emitterFunc)(const MetricsDurat
 
 void RuntimeManager::emitInitMetrics() {
     emitMetrics(&Metrics::emitRuntimeManagerInitLatency);
+}
+
+void RuntimeManager::emitXpatCreateRuntimeMetrics() {
+    emitMetrics(&Metrics::emitRuntimeManagerXpatInitLatency);
+}
+
+void RuntimeManager::emitIosRuntimeCreateMetrics() {
+    emitMetrics(&Metrics::emitRuntimeManagerIosInitLatency);
 }
 
 void RuntimeManager::emitUserSessionReadyMetrics() {

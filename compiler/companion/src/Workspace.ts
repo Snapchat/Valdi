@@ -10,6 +10,7 @@ import {
 } from './AST';
 import { ILogger } from './logger/ILogger';
 import { JSXProcessor } from './JSXProcessor';
+import { createConsoleLogTransformer } from './ConsoleLogTransformer';
 import {
   Diagnostic,
   DumpedInterface,
@@ -244,6 +245,10 @@ export class Workspace implements IWorkspace {
         ...jsxProcessor.makeTransformers(openedFile.workspaceProject.typeChecker),
       );
     }
+
+    // Wrap console.log/warn/error/info/debug calls in runtime.isLoggingEnabled guards.
+    // This is safe in dev builds because runtime.isLoggingEnabled is always true.
+    resolvedCustomTransformers.before!.push(createConsoleLogTransformer());
 
     resolvedCustomTransformers = mergeCustomTransformers(resolvedCustomTransformers, customTransformers);
 

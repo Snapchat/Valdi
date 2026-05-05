@@ -127,6 +127,18 @@ void OnLayoutComplete::serialize(const AttributeIds& attributeIds, ValueMap& val
     EntryBase::serialize(kOnLayoutComplete, attributeIds, value);
 }
 
+OnNextDraw::OnNextDraw() : EntryBase(OnNextDraw::kType) {}
+OnNextDraw::~OnNextDraw() = default;
+
+void OnNextDraw::serialize(const AttributeIds& attributeIds, ValueMap& value) {
+    static auto kOnNextDraw = STRING_LITERAL("OnNextDraw");
+    static auto kCallback = STRING_LITERAL("callback");
+
+    value[kCallback] = Value(_callback);
+
+    EntryBase::serialize(kOnNextDraw, attributeIds, value);
+}
+
 Value serializeEntry(EntryBase& entry, const AttributeIds& attributeIds) {
     auto map = makeShared<ValueMap>();
     visitEntry(entry, [&](auto& entry) { entry.serialize(attributeIds, *map); });

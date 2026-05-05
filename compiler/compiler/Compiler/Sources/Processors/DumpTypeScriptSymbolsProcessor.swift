@@ -20,18 +20,30 @@ final class DumpTypeScriptSymbolsProcessor: CompilationProcessor {
     private let logger: ILogger
     private let typeScriptCompilerManager: TypeScriptCompilerManager
     private let compilerConfig: CompilerConfig
+    private let skipTypeChecking: Bool
 
-    init(logger: ILogger, typeScriptCompilerManager: TypeScriptCompilerManager, compilerConfig: CompilerConfig) {
+    init(logger: ILogger, typeScriptCompilerManager: TypeScriptCompilerManager, compilerConfig: CompilerConfig, skipTypeChecking: Bool = false) {
         self.logger = logger
         self.typeScriptCompilerManager = typeScriptCompilerManager
         self.compilerConfig = compilerConfig
+        self.skipTypeChecking = skipTypeChecking
     }
 
     func process(items: CompilationItems) throws -> CompilationItems {
-        // open and check the user written TS files
-        let userResult = try typeScriptCompilerManager.checkItems(compileSequence: items.compileSequence,
-                                                                  items: items.allItems,
-                                                                  onlyCompileTypeScriptForModules: compilerConfig.onlyCompileTypeScriptForModules)
+        let userResult: TypeScriptCompilationResult
+        
+        if skipTypeChecking {
+            // In regenerate mode, skip type checking since generated files may not exist
+            // Just prepare items and open files without checking
+            userResult = try typeScriptCompilerManager.prepareItemsForSymbolDumping(compileSequence: items.compileSequence,
+                                                                                     items: items.allItems,
+                                                                                     onlyCompileTypeScriptForModules: compilerConfig.onlyCompileTypeScriptForModules)
+        } else {
+            // Full type checking in normal compilation mode
+            userResult = try typeScriptCompilerManager.checkItems(compileSequence: items.compileSequence,
+                                                                   items: items.allItems,
+                                                                   onlyCompileTypeScriptForModules: compilerConfig.onlyCompileTypeScriptForModules)
+        }
 
         // parse the TS file annotations
         let typeScriptItems = userResult.typeScriptItems

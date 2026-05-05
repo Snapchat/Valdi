@@ -1,0 +1,71 @@
+module(
+    name = "rules_kotlin",
+    version = "1.9.0",
+    compatibility_level = 1,
+    repo_name = "rules_kotlin",
+)
+
+bazel_dep(name = "platforms", version = "0.0.6")
+bazel_dep(name = "bazel_skylib", version = "1.4.2")
+bazel_dep(name = "rules_java", version = "6.4.0")
+bazel_dep(name = "rules_python", version = "0.23.1")
+bazel_dep(name = "rules_cc", version = "0.0.8")
+
+rules_kotlin_extensions = use_extension("//src/main/starlark/core/repositories:bzlmod_setup.bzl", "rules_kotlin_extensions")
+use_repo(
+    rules_kotlin_extensions,
+    "buildkite_config",
+    "com_github_google_ksp",
+    "com_github_jetbrains_kotlin",
+    "com_github_pinterest_ktlint",
+    "kt_java_stub_template",
+    "rules_android",
+)
+
+register_toolchains("//kotlin/internal:default_toolchain")
+
+# TODO(bencodes) We should be able to remove this once rules_android has rolled out official Bzlmod support
+remote_android_extensions = use_extension("@bazel_tools//tools/android:android_extensions.bzl", "remote_android_tools_extensions")
+use_repo(remote_android_extensions, "android_gmaven_r8", "android_tools")
+
+# Development dependencies
+# TODO(bencodes) A bunch of these dependencies need to be marked as dev_dependencies but before we can do that
+# we need to sort out a few cases around how these rules are consumed in various ways.
+
+bazel_dep(name = "rules_jvm_external", version = "5.3")
+
+maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
+maven.install(
+    name = "kotlin_rules_maven",
+    artifacts = [
+        "com.google.code.findbugs:jsr305:3.0.2",
+        "junit:junit:4.13-beta-3",
+        "com.google.protobuf:protobuf-java:3.6.0",
+        "com.google.protobuf:protobuf-java-util:3.6.0",
+        "com.google.guava:guava:27.1-jre",
+        "com.google.truth:truth:0.45",
+        "com.google.auto.service:auto-service:1.0.1",
+        "com.google.auto.service:auto-service-annotations:1.0.1",
+        "com.google.auto.value:auto-value:1.10.1",
+        "com.google.auto.value:auto-value-annotations:1.10.1",
+        "com.google.dagger:dagger:2.43.2",
+        "com.google.dagger:dagger-compiler:2.43.2",
+        "com.google.dagger:dagger-producers:2.43.2",
+        "javax.annotation:javax.annotation-api:1.3.2",
+        "javax.inject:javax.inject:1",
+        "org.pantsbuild:jarjar:1.7.2",
+        "org.jetbrains.kotlinx:atomicfu-js:0.15.2",
+        "org.jetbrains.kotlinx:kotlinx-serialization-runtime:1.0-M1-1.4.0-rc",
+    ],
+    fetch_sources = True,
+    repositories = [
+        "https://maven-central.storage.googleapis.com/repos/central/data/",
+        "https://maven.google.com",
+        "https://repo1.maven.org/maven2",
+    ],
+)
+use_repo(maven, "kotlin_rules_maven")
+
+bazel_dep(name = "rules_pkg", version = "0.7.0")
+bazel_dep(name = "stardoc", version = "0.5.6", repo_name = "io_bazel_stardoc")
+bazel_dep(name = "rules_proto", version = "5.3.0-21.7")

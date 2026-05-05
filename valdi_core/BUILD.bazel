@@ -1,20 +1,19 @@
-load("@android_macros//:android.bzl", "android_library")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_interop_hint", "swift_library")
+load("@rules_android//rules:rules.bzl", "android_library")
 load("@rules_hdrs//umbrella_header:umbrella_header.bzl", "umbrella_header")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 load("@valdi//bzl:modulemap.bzl", "modulemap")
 load("@valdi//bzl:valdi_library.bzl", "COMMON_COMPILE_FLAGS", "OBJC_FLAGS")
 load("djinni_compat.bzl", "generate_djinni_compat_target")
 
-COMPILER_FLAGS = [
+COMPILER_FLAGS_CC = [
     # '-Os', # Uncomment to enable optimizations
     "-Wno-c11-extensions",
     "-Wno-c99-extensions",
     "-Wno-keyword-macro",
     "-Wno-vla-extension",
     "-Wno-zero-length-array",
-    "-fno-exceptions",
     "-Wno-deprecated-declarations",
     "-Wno-pedantic",
     "-Wno-shorten-64-to-32",
@@ -23,6 +22,8 @@ COMPILER_FLAGS = [
     "//conditions:default": [],
     "//bzl/conditions:android_with_jni": ["-DANDROID"],
 })
+
+COMPILER_FLAGS = COMPILER_FLAGS_CC + ["-fno-exceptions"]
 
 # Main rule building the valdi framework with the modules
 # matching the current platform being build.
@@ -46,6 +47,7 @@ objc_library(
         "test/ios/**/*.mm",
     ]),
     copts = OBJC_FLAGS + COMPILER_FLAGS,
+    target_compatible_with = ["@platforms//os:ios"],
     deps = [
         ":valdi_core",
         "@gtest",
@@ -85,7 +87,7 @@ cc_library(
         "src/valdi_core/cpp/**/*.h",
         "src/valdi_core/cpp/**/*.hpp",
     ]),
-    copts = COMMON_COMPILE_FLAGS + COMPILER_FLAGS,
+    copts = COMMON_COMPILE_FLAGS + COMPILER_FLAGS_CC,
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
@@ -120,6 +122,7 @@ cc_library(
         "src",
         "src/bindings/include",
     ],
+    target_compatible_with = ["@platforms//os:android"],
     visibility = ["//visibility:public"],
     deps = [
         ":private_djinni_generated_cc",
@@ -151,6 +154,7 @@ cc_library(
         "-ljnigraphics",
     ],
     strip_include_prefix = "src",
+    target_compatible_with = ["@platforms//os:android"],
     visibility = ["//visibility:public"],
     deps = [":valdi_core_jni"],
     alwayslink = True,
@@ -224,6 +228,7 @@ MAC_OS_DEPENDENCIES = glob([
     "src/valdi_core/ios/**/SCValdiFunction.m",
     "src/valdi_core/ios/**/SCValdiInternedString.mm",
     "src/valdi_core/ios/**/ValueFunctionWithSCValdiFunction.mm",
+    "src/valdi_core/ios/**/SCValdiMarshallableObjectDescriptor.m",
 ])
 
 OBJC_HEADERS = glob(
@@ -274,11 +279,20 @@ swift_library(
     ]),
     copts = ["-Osize"],
     module_name = "ValdiCoreSwift",
+    target_compatible_with = ["@platforms//os:ios"],
     visibility = ["//visibility:public"],
     deps = [
         ":valdi_core_cpp_objc",
         ":valdi_core_swift_interop_lib",
     ],
+)
+
+filegroup(
+    name = "valdi_core_swift_marshaller_srcs",
+    srcs = glob([
+        "src/valdi_core/ios/swift/**/*.swift",
+    ]),
+    visibility = ["//visibility:public"],
 )
 
 filegroup(

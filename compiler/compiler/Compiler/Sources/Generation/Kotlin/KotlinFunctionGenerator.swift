@@ -44,7 +44,7 @@ final class KotlinFunctionGenerator {
 
         let fieldName = nameAllocator.allocate(property: "_invoker").name
 
-        let typeParser = try generator.getTypeParser(type: .function(parameters: exportedFunction.parameters, returnType: exportedFunction.returnType, isSingleCall: false, shouldCallOnWorkerThread: false), isOptional: false, propertyName: nil, nameAllocator: nameAllocator)
+        let typeParser = try generator.getTypeParser(type: .function(parameters: exportedFunction.parameters, returnType: exportedFunction.returnType, isSingleCall: false, shouldCallOnWorkerThread: false, allowSyncCall: exportedFunction.allowSyncCall), isOptional: false, propertyName: nil, nameAllocator: nameAllocator)
 
         guard let functionTypeParser = typeParser.functionTypeParser else {
             throw CompilerError("Expecting functionTypePArser")
@@ -61,7 +61,7 @@ final class KotlinFunctionGenerator {
         generator.appendBody("class \(containingTypeName): \(bridgeFunctionClass.name) {\n\n")
 
         let fieldAnnotation = try descriptorAnnotation.appendField(propertyIndex: 0, propertyName: exportedFunction.functionName, kotlinFieldName: fieldName, expectedKotlinFieldName: "_invoker") { schemaWriter in
-            try schemaWriter.appendFunction(returnType: exportedFunction.returnType, parameters: exportedFunction.parameters, isOptional: false, isMethod: false, isSingleCall: false, shouldCallOnWorkerThread: false)
+            try schemaWriter.appendFunction(returnType: exportedFunction.returnType, parameters: exportedFunction.parameters, isOptional: false, isMethod: false, isSingleCall: false, shouldCallOnWorkerThread: false, allowSyncCall: exportedFunction.allowSyncCall, asyncStrictMode: bundleInfo.asyncStrictMode)
         }
 
         generator.appendBody(fieldAnnotation)
@@ -79,10 +79,21 @@ final class KotlinFunctionGenerator {
 
         companion object {
             const val MODULE_PATH = "\(bundleInfo.name)/\(modulePath)"
+            const val ASYNC_STRICT_MODE: Boolean = \(bundleInfo.asyncStrictMode ? "true" : "false")
 
             @JvmStatic
             fun create(runtime: \(jsRuntimeClass.name)): \(containingTypeName) {
+              \(bridgeFunctionClass.name).assertResolutionNotOnMainThreadIfNeeded(ASYNC_STRICT_MODE)
               return \(bridgeFunctionClass.name).createFromRuntime(runtime, \(containingTypeName)::class.java, MODULE_PATH)
+            }
+
+            @JvmStatic
+            fun invokeWithJSRuntime(jsRuntimeProvider: () -> \(jsRuntimeClass.name)\(functionTypeParser.parameterNames.isEmpty ? "" : ", ")\(functionTypeParser.parameterNames.enumerated().map { "\($0.element.name): \(functionTypeParser.parameterTypes[$0.offset].fullTypeName)" }.joined(separator: ", ")), completionHandler: \(functionTypeParser.returnType.fullTypeName == "Unit" ? "() -> Unit" : "(\(functionTypeParser.returnType.fullTypeName)) -> Unit")) {
+                val runtime = jsRuntimeProvider()
+                runtime.runOnJsThread {
+                    val function = create(runtime)
+                    \(functionTypeParser.returnType.fullTypeName == "Unit" ? "function.\(fieldName)(\(invokeParameters))\n                    completionHandler()" : "val result = function.\(fieldName)(\(invokeParameters))\n                    completionHandler(result)")
+                }
             }
         }
         }

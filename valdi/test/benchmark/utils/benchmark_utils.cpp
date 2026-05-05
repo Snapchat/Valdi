@@ -13,8 +13,11 @@ std::vector<StringBox> internStrings(StringCache& stringCache, const std::vector
 }
 
 std::default_random_engine generator;
-std::uniform_int_distribution<char> distribution(' ', '~');
-auto randomCharacterGenerator = std::bind(distribution, generator);
+std::uniform_int_distribution<int> distribution(' ', '~');
+
+char randomCharacterGenerator() {
+    return static_cast<char>(distribution(generator));
+}
 
 std::string makeRandomString(size_t strLength) {
     std::string out;

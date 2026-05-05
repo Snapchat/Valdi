@@ -8,6 +8,8 @@ export interface INavigatorPageConfig {
   platformNavigationTitle?: string;
   // Keeps the source page partially visible.
   isPartiallyHiding?: boolean;
+  // Android only: enable using the gesture touch adjustments
+  enableGestureAdjustCoordinates?: boolean;
 }
 
 /**

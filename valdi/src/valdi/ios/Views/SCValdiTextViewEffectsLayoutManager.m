@@ -1,7 +1,6 @@
 
 #import "SCValdiTextViewEffectsLayoutManager.h"
 #import "valdi/ios/Text/NSAttributedString+Valdi.h"
-
 #import <CoreText/CoreText.h>
 
 @implementation SCValdiTextViewBackgroundEffects
@@ -15,8 +14,69 @@
 @implementation SCValdiTextViewOutline
 @end
 
+@interface SCValdiTextViewAnimationRange : NSObject
+@property (nonatomic, assign) NSRange range;
+@property (nonatomic, assign) CGFloat translationY;
+@property (nonatomic, assign) CGFloat scale;
+@property (nonatomic, assign) CGFloat opacity;
+@end
+@implementation SCValdiTextViewAnimationRange
+@end
+
+@interface SCValdiTextViewEffectsLayoutManager ()
+@property (nonatomic, strong) NSArray<SCValdiTextViewAnimationRange *> *cachedAnimationRanges;
+@property (nonatomic, strong) NSArray<SCValdiTextViewOutline *> *cachedOutlineRanges;
+@end
 
 @implementation SCValdiTextViewEffectsLayoutManager
+
+static BOOL SCValdiAnimationRangeHasVisibleTransform(SCValdiTextViewAnimationRange *animationRange)
+{
+    return fabs(animationRange.translationY) > DBL_EPSILON ||
+           fabs(animationRange.scale - 1.0) > DBL_EPSILON ||
+           fabs(animationRange.opacity - 1.0) > DBL_EPSILON;
+}
+
+static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
+                                                          NSArray<SCValdiTextViewAnimationRange *> *animationRanges)
+{
+    NSMutableArray<NSValue *> *remainingRanges = [NSMutableArray new];
+    // Walk the original range left-to-right and emit only the gaps that are not animated.
+    // This depends on animationRanges being in ascending document order. That is currently
+    // guaranteed by _animationRangesForAttributedString:, which builds the array via
+    // enumerateAttribute:inRange: and therefore yields monotonic ranges.
+    NSUInteger currentLocation = range.location;
+    NSUInteger rangeEnd = NSMaxRange(range);
+
+    for (SCValdiTextViewAnimationRange *animationRange in animationRanges) {
+        NSRange intersectionRange = NSIntersectionRange(range, animationRange.range);
+        // Ignore animation ranges that do not overlap the outline range at all.
+        if (intersectionRange.length == 0) {
+            continue;
+        }
+
+        // Preserve any static text that appears before this animated subrange. Because the
+        // input ranges are monotonic, this is always the next untouched static segment.
+        if (intersectionRange.location > currentLocation) {
+            [remainingRanges addObject:[NSValue valueWithRange:NSMakeRange(currentLocation, intersectionRange.location - currentLocation)]];
+        }
+
+        // Advance past the animated portion. MAX keeps the cursor monotonic if adjacent or
+        // overlapping animation ranges ever collapse into the same covered region.
+        currentLocation = MAX(currentLocation, NSMaxRange(intersectionRange));
+        // Once we've consumed the full range, there is nothing left to emit.
+        if (currentLocation >= rangeEnd) {
+            break;
+        }
+    }
+
+    // Emit the trailing static segment after the last overlapping animation range.
+    if (currentLocation < rangeEnd) {
+        [remainingRanges addObject:[NSValue valueWithRange:NSMakeRange(currentLocation, rangeEnd - currentLocation)]];
+    }
+
+    return remainingRanges;
+}
 
 - (UIColor *)backgroundColor
 {
@@ -46,71 +106,77 @@
 {
     NSRange totalGlyphRange = [self glyphRangeForCharacterRange:NSMakeRange(0, self.textStorage.length) actualCharacterRange:nil];
 
-    NSAttributedString *attributedString = [self.textStorage attributedSubstringFromRange:[self characterRangeForGlyphRange:totalGlyphRange actualGlyphRange:nil]];
-    __block NSMutableArray<SCValdiTextViewOutline *> *outlineRanges = [NSMutableArray new];
-    [attributedString enumerateAttribute:kSCValdiOuterOutlineWidthAttribute inRange:NSMakeRange(0, attributedString.length) options:0 usingBlock:^(id value, NSRange range, BOOL *stop) {
-        if ([value isKindOfClass:[NSNumber class]]) {
-            SCValdiTextViewOutline *outline = [SCValdiTextViewOutline new];
-            outline.range = range;
-            outline.width = [(NSNumber *)value floatValue];
-            id colorAttribute = [attributedString attribute:kSCValdiOuterOutlineColorAttribute atIndex:range.location effectiveRange:&range];
-            if ([colorAttribute isKindOfClass:[UIColor class]]) {
-                outline.color = (UIColor *)colorAttribute;
-            }
-            [outlineRanges addObject:outline];
-        }
-    }];
+    NSAttributedString *attributedString = self.textStorage;
+    NSArray<SCValdiTextViewAnimationRange *> *animationRanges = [self _visibleAnimationRangesForAttributedString:attributedString];
+    NSArray<SCValdiTextViewOutline *> *outlineRanges = [self _outlineRangesForAttributedString:attributedString];
     
-    if (outlineRanges.count == 0) {
-        // No outlines to draw
+    if (outlineRanges.count == 0 && animationRanges.count == 0) {
+        // No outlines or animated glyphs to draw.
         [super drawGlyphsForGlyphRange:glyphsToShow atPoint:origin];
         return;
     }
 
     // Adjust the origin to account for the size increase of the text container in `usedRectForTextContainer:`
     CGPoint adjustedOrigin = [self _getAdjustedOriginForPoint:origin];
-    
     CGContextRef context = UIGraphicsGetCurrentContext();
 
-    // First draw the outlines for the text
+    // First draw the outlines for the text.
     for (SCValdiTextViewOutline *outline in outlineRanges) {
         [self _drawOutline:outline attributedString:attributedString glyphsOrigin:adjustedOrigin context:context];
     }
-    
-    // Last draw the text itself to cover any strange artifacts that might occur inside the outline's stroke
-    [super drawGlyphsForGlyphRange:glyphsToShow atPoint:adjustedOrigin];
+
+    // Paint the non-animated glyphs now so the transformed glyph pass only needs to redraw the animated ranges.
+    [self _drawStaticGlyphsForGlyphRange:glyphsToShow atPoint:adjustedOrigin animationRanges:animationRanges];
+
+    // Last draw the animated glyphs themselves with the configured transform for each range.
+    for (SCValdiTextViewAnimationRange *animationRange in animationRanges) {
+        [self _drawAnimatedRange:animationRange glyphsOrigin:adjustedOrigin context:context];
+    }
+}
+
+- (void)processEditingForTextStorage:(NSTextStorage *)textStorage
+                              edited:(NSTextStorageEditActions)editedMask
+                               range:(NSRange)newCharRange
+                      changeInLength:(NSInteger)delta
+                    invalidatedRange:(NSRange)invalidatedCharRange
+{
+    [super processEditingForTextStorage:textStorage
+                                 edited:editedMask
+                                  range:newCharRange
+                         changeInLength:delta
+                       invalidatedRange:invalidatedCharRange];
+
+    if ((editedMask & NSTextStorageEditedAttributes) != 0 || (editedMask & NSTextStorageEditedCharacters) != 0) {
+        self.cachedAnimationRanges = nil;
+        self.cachedOutlineRanges = nil;
+    }
 }
 
 - (CGRect)usedRectForTextContainer:(NSTextContainer *)container
 {
     CGRect rect = [super usedRectForTextContainer:container];
     // Increase the size of the text container to account for the outline's width, otherwise the outline can clip with the edge of the container
-    CGFloat maxOutlineWidth = [self _maximumOuterOutlineSize];
+    CGFloat maxOutlineWidth = [self _maximumDrawnOuterOutlineSize];
     rect.size.width += maxOutlineWidth;
     rect.size.height += maxOutlineWidth;
     return rect;
 }
 
-- (CGFloat)_maximumOuterOutlineSize
+- (CGFloat)_maximumDrawnOuterOutlineSize
 {
-    __block CGFloat maxOutlineWidth = 0.0;
-    [self.textStorage enumerateAttribute:kSCValdiOuterOutlineWidthAttribute
-                                 inRange:NSMakeRange(0, self.textStorage.length)
-                                 options:0
-                              usingBlock:^(id value, NSRange range, BOOL *stop) {
-        if ([value isKindOfClass:[NSNumber class]]) {
-            CGFloat width = [(NSNumber *)value floatValue];
-            if (width > maxOutlineWidth) {
-                maxOutlineWidth = width;
-            }
+    CGFloat maxOutlineWidth = 0.0;
+    for (SCValdiTextViewOutline *outline in [self _outlineRangesForAttributedString:self.textStorage
+                                                                              range:NSMakeRange(0, self.textStorage.length)]) {
+        if (outline.width > maxOutlineWidth) {
+            maxOutlineWidth = outline.width;
         }
-    }];
+    }
     return maxOutlineWidth;
 }
 
 - (CGPoint)_getAdjustedOriginForPoint:(CGPoint)origin
 {
-    CGFloat maxOutlineSize = [self _maximumOuterOutlineSize] / 2.0;
+    CGFloat maxOutlineSize = [self _maximumDrawnOuterOutlineSize] / 2.0;
     if (maxOutlineSize <= 0) {
         return origin;
     }
@@ -164,7 +230,7 @@
         // Get each glyph from this line's runs
         // This is done over getting the glyph directly from the layoutmanager as the run accounts for ligatures like "fi"
         NSAttributedString *subAttrString = [attributedString attributedSubstringFromRange:intersectionRange];
-        CTLineRef line = CTLineCreateWithAttributedString((CFAttributedStringRef)subAttrString);
+        CTLineRef line = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)subAttrString);
         CFArrayRef runs = CTLineGetGlyphRuns(line);
         CFIndex runCount = CFArrayGetCount(runs);
         for (CFIndex runIndex = 0; runIndex < runCount; runIndex++) {
@@ -208,6 +274,197 @@
 
         CFRelease(line);
         CGContextRestoreGState(context);
+
+        charIndex = NSMaxRange(intersectionRange);
+    }
+}
+
+- (NSArray<SCValdiTextViewAnimationRange *> *)_animationRangesForAttributedString:(NSAttributedString *)attributedString
+{
+    if (self.cachedAnimationRanges != nil) {
+        return self.cachedAnimationRanges;
+    }
+
+    NSMutableArray<SCValdiTextViewAnimationRange *> *animationRanges = [NSMutableArray new];
+    [attributedString enumerateAttribute:kSCValdiAttributedStringKeyAnimationTransform
+                                 inRange:NSMakeRange(0, attributedString.length)
+                                 options:0
+                              usingBlock:^(id value, NSRange range, BOOL *stop) {
+        if (![value isKindOfClass:[NSDictionary class]] || range.length == 0) {
+            return;
+        }
+
+        NSDictionary<NSString *, NSNumber *> *animationTransform = value;
+        SCValdiTextViewAnimationRange *animationRange = [SCValdiTextViewAnimationRange new];
+        animationRange.range = range;
+        animationRange.translationY = animationTransform[@"translationY"].doubleValue;
+        animationRange.scale = animationTransform[@"scale"] != nil ? animationTransform[@"scale"].doubleValue : 1.0;
+        animationRange.opacity = animationTransform[@"opacity"] != nil ? animationTransform[@"opacity"].doubleValue : 1.0;
+        [animationRanges addObject:animationRange];
+    }];
+
+    self.cachedAnimationRanges = animationRanges;
+    return self.cachedAnimationRanges;
+}
+
+- (NSArray<SCValdiTextViewAnimationRange *> *)_visibleAnimationRangesForAttributedString:(NSAttributedString *)attributedString
+{
+    NSArray<SCValdiTextViewAnimationRange *> *animationRanges = [self _animationRangesForAttributedString:attributedString];
+    NSMutableArray<SCValdiTextViewAnimationRange *> *visibleAnimationRanges = [NSMutableArray new];
+    for (SCValdiTextViewAnimationRange *animationRange in animationRanges) {
+        if (SCValdiAnimationRangeHasVisibleTransform(animationRange)) {
+            [visibleAnimationRanges addObject:animationRange];
+        }
+    }
+    return visibleAnimationRanges;
+}
+
+- (NSArray<SCValdiTextViewOutline *> *)_outlineRangesForAttributedString:(NSAttributedString *)attributedString
+{
+    if (self.cachedOutlineRanges != nil) {
+        return self.cachedOutlineRanges;
+    }
+
+    NSArray<SCValdiTextViewAnimationRange *> *animationRanges = [self _visibleAnimationRangesForAttributedString:attributedString];
+    NSMutableArray<SCValdiTextViewOutline *> *outlineRanges = [NSMutableArray new];
+    [attributedString enumerateAttribute:kSCValdiOuterOutlineWidthAttribute
+                                 inRange:NSMakeRange(0, attributedString.length)
+                                 options:0
+                              usingBlock:^(id value, NSRange range, BOOL *stop) {
+        if (![value isKindOfClass:[NSNumber class]]) {
+            return;
+        }
+
+        id colorAttribute = [attributedString attribute:kSCValdiOuterOutlineColorAttribute
+                                                atIndex:range.location
+                                         effectiveRange:nil];
+        UIColor *outlineColor = [colorAttribute isKindOfClass:[UIColor class]] ? (UIColor *)colorAttribute : nil;
+
+        for (NSValue *remainingRangeValue in SCValdiSubtractAnimationRanges(range, animationRanges)) {
+            NSRange remainingRange = remainingRangeValue.rangeValue;
+            if (remainingRange.length == 0) {
+                continue;
+            }
+
+            SCValdiTextViewOutline *outline = [SCValdiTextViewOutline new];
+            outline.range = remainingRange;
+            outline.width = [(NSNumber *)value floatValue];
+            outline.color = outlineColor;
+            [outlineRanges addObject:outline];
+        }
+    }];
+
+    self.cachedOutlineRanges = outlineRanges;
+    return self.cachedOutlineRanges;
+}
+
+- (NSArray<SCValdiTextViewOutline *> *)_outlineRangesForAttributedString:(NSAttributedString *)attributedString
+                                                                   range:(NSRange)range
+{
+    NSMutableArray<SCValdiTextViewOutline *> *outlineRanges = [NSMutableArray new];
+    if (range.length == 0) {
+        return outlineRanges;
+    }
+
+    [attributedString enumerateAttribute:kSCValdiOuterOutlineWidthAttribute
+                                 inRange:range
+                                 options:0
+                              usingBlock:^(id value, NSRange attributeRange, BOOL *stop) {
+        if (![value isKindOfClass:[NSNumber class]] || attributeRange.length == 0) {
+            return;
+        }
+
+        id colorAttribute = [attributedString attribute:kSCValdiOuterOutlineColorAttribute
+                                                atIndex:attributeRange.location
+                                         effectiveRange:nil];
+        UIColor *outlineColor = [colorAttribute isKindOfClass:[UIColor class]] ? (UIColor *)colorAttribute : nil;
+
+        SCValdiTextViewOutline *outline = [SCValdiTextViewOutline new];
+        outline.range = attributeRange;
+        outline.width = [(NSNumber *)value floatValue];
+        outline.color = outlineColor;
+        [outlineRanges addObject:outline];
+    }];
+
+    return outlineRanges;
+}
+
+- (void)_drawStaticGlyphsForGlyphRange:(NSRange)glyphsToShow
+                               atPoint:(CGPoint)origin
+                       animationRanges:(NSArray<SCValdiTextViewAnimationRange *> *)animationRanges
+{
+    if (animationRanges.count == 0) {
+        [super drawGlyphsForGlyphRange:glyphsToShow atPoint:origin];
+        return;
+    }
+
+    NSUInteger currentGlyphLocation = glyphsToShow.location;
+    NSUInteger glyphEnd = NSMaxRange(glyphsToShow);
+
+    // _animationRangesForAttributedString builds ranges in document order, and this
+    // walk relies on that monotonic ordering when advancing currentGlyphLocation.
+    for (SCValdiTextViewAnimationRange *animationRange in animationRanges) {
+        NSRange animationGlyphRange = [self glyphRangeForCharacterRange:animationRange.range actualCharacterRange:nil];
+        NSRange intersectionGlyphRange = NSIntersectionRange(glyphsToShow, animationGlyphRange);
+        if (intersectionGlyphRange.length == 0) {
+            continue;
+        }
+
+        if (intersectionGlyphRange.location > currentGlyphLocation) {
+            NSRange staticGlyphRange = NSMakeRange(currentGlyphLocation, intersectionGlyphRange.location - currentGlyphLocation);
+            [super drawGlyphsForGlyphRange:staticGlyphRange atPoint:origin];
+        }
+
+        currentGlyphLocation = MAX(currentGlyphLocation, NSMaxRange(intersectionGlyphRange));
+        if (currentGlyphLocation >= glyphEnd) {
+            return;
+        }
+    }
+
+    if (currentGlyphLocation < glyphEnd) {
+        [super drawGlyphsForGlyphRange:NSMakeRange(currentGlyphLocation, glyphEnd - currentGlyphLocation) atPoint:origin];
+    }
+}
+
+- (void)_drawAnimatedRange:(SCValdiTextViewAnimationRange *)animationRange
+               glyphsOrigin:(CGPoint)origin
+                    context:(CGContextRef)context
+{
+    if (animationRange.range.length == 0 || animationRange.opacity <= 0) {
+        return;
+    }
+
+    NSUInteger charIndex = animationRange.range.location;
+    NSUInteger charRangeEnd = NSMaxRange(animationRange.range);
+
+    while (charIndex < charRangeEnd) {
+        NSUInteger glyphIndex = [self glyphIndexForCharacterAtIndex:charIndex];
+        NSRange lineGlyphRange;
+        [self lineFragmentRectForGlyphAtIndex:glyphIndex effectiveRange:&lineGlyphRange];
+        NSRange lineCharRange = [self characterRangeForGlyphRange:lineGlyphRange actualGlyphRange:nil];
+        NSRange intersectionRange = NSIntersectionRange(animationRange.range, lineCharRange);
+        if (intersectionRange.length == 0) {
+            charIndex = NSMaxRange(lineCharRange);
+            continue;
+        }
+
+        NSRange intersectionGlyphRange = [self glyphRangeForCharacterRange:intersectionRange actualCharacterRange:nil];
+        NSTextContainer *textContainer = [self textContainerForGlyphAtIndex:intersectionGlyphRange.location effectiveRange:nil];
+        CGRect boundingRect = [self boundingRectForGlyphRange:intersectionGlyphRange inTextContainer:textContainer];
+        if (!CGRectIsEmpty(boundingRect)) {
+            CGPoint drawCenter = CGPointMake(origin.x + CGRectGetMidX(boundingRect), origin.y + CGRectGetMidY(boundingRect));
+
+            CGContextSaveGState(context);
+            CGContextSetAlpha(context, animationRange.opacity);
+            CGContextTranslateCTM(context, drawCenter.x, drawCenter.y + animationRange.translationY);
+            CGContextScaleCTM(context, animationRange.scale, animationRange.scale);
+            CGContextTranslateCTM(context, -drawCenter.x, -drawCenter.y);
+            for (SCValdiTextViewOutline *outline in [self _outlineRangesForAttributedString:self.textStorage range:intersectionRange]) {
+                [self _drawOutline:outline attributedString:self.textStorage glyphsOrigin:origin context:context];
+            }
+            [super drawGlyphsForGlyphRange:intersectionGlyphRange atPoint:origin];
+            CGContextRestoreGState(context);
+        }
 
         charIndex = NSMaxRange(intersectionRange);
     }

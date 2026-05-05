@@ -10,7 +10,9 @@ valdi_module(
     visibility = ["//visibility:public"],
     deps = [
         "//src/valdi_modules/src/valdi/drawing",
+        "//src/valdi_modules/src/valdi/jasmine",
         "//src/valdi_modules/src/valdi/valdi_navigation",
+        "//src/valdi_modules/src/valdi/valdi_test",
     ],
 )
 

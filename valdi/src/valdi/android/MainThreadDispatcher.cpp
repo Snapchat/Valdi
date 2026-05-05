@@ -26,7 +26,12 @@ void MainThreadDispatcher::dispatch(Valdi::DispatchFunction* function, bool sync
         std::promise<void> promise;
         auto future = promise.get_future();
 
-        auto wrappedFn = new Valdi::DispatchFunction([&]() {
+        // Capture `function` by value (copy the pointer) to avoid a dangling reference.
+        // The original code used [&] which captured `function` by reference to the stack
+        // variable. After promise.set_value(), the calling thread wakes up from future.get()
+        // and could potentially destroy its stack frame before `delete function` executes,
+        // causing a use-after-free on the `function` pointer itself.
+        auto wrappedFn = new Valdi::DispatchFunction([function, &promise]() {
             (*function)();
             promise.set_value();
             delete function;

@@ -3,8 +3,8 @@
 
 @interface SwiftValdiRuntimeManager : NSObject
 
-- (id<SCValdiRuntimeManagerProtocol>)createRuntimeManager;
+- (nonnull id<SCValdiRuntimeManagerProtocol>)createRuntimeManager;
 
-- (id<SCValdiRuntimeProtocol>)createRuntime;
+- (nullable id<SCValdiRuntimeProtocol>)createRuntime;
 
 @end

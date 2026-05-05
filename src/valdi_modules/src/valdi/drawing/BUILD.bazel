@@ -40,6 +40,10 @@ valdi_module(
     single_file_codegen = False,
     visibility = ["//visibility:public"],
     web_deps = [":drawing_web"],
+    web_register_native_module_id_overrides = {
+        # drawing/src/Drawing.ts does require('Drawing') to get the native provider
+        "drawing/web/DrawingModuleProvider.js": "drawing/src/Drawing,Drawing",
+    },
     deps = [
         "@valdi//src/valdi_modules/src/valdi/jasmine",
         "@valdi//src/valdi_modules/src/valdi/valdi_core",

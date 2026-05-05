@@ -85,6 +85,8 @@ final class ParseTypeScriptAnnotationsProcessor: CompilationProcessor {
 
                         let iosTypeName = annotation.parameters?["ios"]?.nonEmpty
                         let androidClassName = annotation.parameters?["android"]?.nonEmpty
+                        let webViewClassName = annotation.parameters?["web"]?.nonEmpty
+                        let macosViewClassName = annotation.parameters?["macos"]?.nonEmpty
                         let jsxName = annotation.parameters?["jsx"]?.nonEmpty
 
                         guard isSlot || isLayout || (iosTypeName != nil && androidClassName != nil) else {
@@ -98,6 +100,8 @@ final class ParseTypeScriptAnnotationsProcessor: CompilationProcessor {
                                                       valdiViewPath: nil,
                                                       iosType: iosType,
                                                       androidClassName: androidClassName,
+                                                      webViewClassName: webViewClassName,
+                                                      macosViewClassName: macosViewClassName,
                                                       jsxName: jsxName,
                                                       isLayout: isLayout,
                                                       isSlot: isSlot,

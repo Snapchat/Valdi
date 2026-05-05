@@ -1,5 +1,7 @@
 module(name = "snap_client_toolchains")
 
+bazel_dep(name = "valdi")
+bazel_dep(name = "snap_platforms")
 bazel_dep(name = "bazel_skylib", version = "1.2.0")
 bazel_dep(name = "rules_kotlin", version = "1.9.0", repo_name = "rules_kotlin")
 

@@ -1,5 +1,7 @@
 output_target: debug
 
+bazel_build_file_generation_disabled: true
+
 dependencies:
   - valdi_core
   - coreutils

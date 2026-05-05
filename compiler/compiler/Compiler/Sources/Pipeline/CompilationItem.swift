@@ -236,6 +236,7 @@ struct CompilationItem {
         let disableAnnotationProcessing: Bool
         let disableDependencyVerification: Bool
         let disableBazelBuildFileGeneration: Bool
+        let asyncStrictMode: Bool
 
         let webNpmScope: String
         let webVersion: String
@@ -256,6 +257,7 @@ struct CompilationItem {
         let dependencies: [BundleInfo]
 
         let compilationModeConfig: CompilationModeConfig
+        let compilationModeExplicit: Bool
 
         let projectConfig: ValdiProjectConfig
 
@@ -275,6 +277,7 @@ struct CompilationItem {
         let cppExpectedReleaseOutputDirectories: OutDirectories?
 
         let androidClassPath: String?
+        let androidExportStrings: Bool
         let iosClassPrefix: String?
         let cppClassPrefix: String?
 
@@ -309,6 +312,7 @@ struct CompilationItem {
              disableAnnotationProcessing: Bool,
              disableDependencyVerification: Bool,
              disableBazelBuildFileGeneration: Bool,
+             asyncStrictMode: Bool,
              webNpmScope: String,
              webVersion: String,
              webPublishConfig: String,
@@ -317,6 +321,7 @@ struct CompilationItem {
              iosLanguage: IOSLanguage,
              iosClassPrefix: String?,
              androidClassPath: String?,
+             androidExportStrings: Bool,
              cppClassPrefix: String?,
              iosCodegenEnabled: Bool,
              androidCodegenEnabled: Bool,
@@ -324,6 +329,7 @@ struct CompilationItem {
              disableCodeCoverage: Bool,
              singleFileCodegen: Bool,
              compilationModeConfig: CompilationModeConfig,
+             compilationModeExplicit: Bool,
              iosOutputTarget: ModuleOutputTarget?,
              iosGeneratedContextFactories: [String],
              androidOutputTarget: ModuleOutputTarget?,
@@ -344,6 +350,7 @@ struct CompilationItem {
             self.disableAnnotationProcessing = disableAnnotationProcessing
             self.disableDependencyVerification = disableDependencyVerification
             self.disableBazelBuildFileGeneration = disableBazelBuildFileGeneration
+            self.asyncStrictMode = asyncStrictMode
             self.webNpmScope = webNpmScope
             self.webVersion = webVersion
             self.webPublishConfig = webPublishConfig
@@ -366,6 +373,7 @@ struct CompilationItem {
             self.allDependenciesNames = Set(allDependencies.map { $0.name })
 
             self.compilationModeConfig = compilationModeConfig
+            self.compilationModeExplicit = compilationModeExplicit
             self.projectConfig = projectConfig
 
             if !isRoot {
@@ -443,6 +451,7 @@ struct CompilationItem {
 
             self.iosClassPrefix = iosClassPrefix
             self.androidClassPath = androidClassPath
+            self.androidExportStrings = androidExportStrings
             self.cppClassPrefix = cppClassPrefix
 
             self.iosCodegenEnabled = iosCodegenEnabled
@@ -629,7 +638,7 @@ struct CompilationItem {
 
             let assetsURL: URL = outputURL.appendingPathComponent("assets", isDirectory: true)
 
-            let srcURL = outputURL.appendingPathComponent("src", isDirectory: true).appendingPathComponent(moduleName, isDirectory: true)
+            let srcURL = outputURL.appendingPathComponent("src", isDirectory: true)
             let resourcesURL = outputURL.appendingPathComponent("res", isDirectory: true)
 
             return OutDirectories(

@@ -41,6 +41,9 @@ valdi export ios --build_config release --output_path my_framework.xcframework
 
 To use your `.xcframework` in your Xcode project, just drag and drop the built `.xcframework` file into Xcode. You should be able to import it and use the generated classes from it.
 
+- The **module name** you `import` is the **`ios_bundle_name`** of your `valdi_exported_library()` (e.g. `HelloWorld`).
+- The **root view class** is the Valdi module’s **`ios_module_name`** (or class prefix) plus the root component name (e.g. `SCCHelloWorldApp` for module name `SCCHelloWorld` and root component `App`). If your module does not set `ios_module_name`, the class is **`<module_name><ComponentName>`** where `module_name` is the Valdi module's `name` in BUILD (snake_case, e.g. `test_test` → `test_testApp`). Set your view controller’s view to this class in `loadView()`.
+
 ```swift
 import UIKit
 import HelloWorld
@@ -58,6 +61,16 @@ class ViewController: UIViewController {
         self.view = SCCHelloWorldApp(viewModel: nil, componentContext: nil, runtime: runtimeManager.mainRuntime)
     }
 }
+```
+
+**Troubleshooting (iOS):** If the host app fails to build with **"SCValdiDrawingModule.h file not found"**, the exported xcframework may omit this header. Add a stub header in both slices of your `.xcframework` (e.g. `YourName.xcframework/ios-arm64/YourBundleName.framework/Headers/` and `.../ios-arm64_x86_64-simulator/.../Headers/`): create `SCValdiDrawingModule.h` with:
+
+```objc
+#import <Foundation/Foundation.h>
+NS_ASSUME_NONNULL_BEGIN
+@protocol SCValdiDrawingModule <NSObject>
+@end
+NS_ASSUME_NONNULL_END
 ```
 
 ### SwiftPM
@@ -167,12 +180,12 @@ valdi_exported_library(
 ```
 `valdi_exported_library()` by default strips out Kotlin runtime files, so it expects that the project importing the `.aar` already bundles Kotlin.
 
-You should now be able to import the Valdi runtime classes and instantiate your component:
+You should now be able to import the Valdi runtime classes and instantiate your component. Generated view classes (your root component and other exported components) use the package **`com.snap.modules.<module_name>`**, not `com.snap.valdi.modules`:
 
 ```kotlin
 import com.snap.valdi.ValdiRuntimeManager
 import com.snap.valdi.support.SupportValdiRuntimeManager
-import com.snap.valdi.modules.hello_world.App
+import com.snap.modules.hello_world.App
 
 class MainActivity : Activity() {
     var runtimeManager: ValdiRuntimeManager? = null

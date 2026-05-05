@@ -1,10 +1,7 @@
-/**
- * This file uses the Valdi compiler to generate code, but due to depenency cycle must be copied to another module
- * (eg valdi_example), and remove the "@__" annotation prefixes, then copy the generated code back over.
- */
+import { AttributedTextNative } from './AttributedTextNative';
 
 /**
- * @__ExportProxy({ios: 'SCValdiDrawingFontSpecs', android: 'com.snap.valdi.modules.drawing.FontSpecs'})
+ * @ExportModel({ios: 'SCValdiDrawingFontSpecs', android: 'com.snap.valdi.modules.drawing.FontSpecs'})
  */
 export interface FontSpecs {
   font: string;
@@ -12,7 +9,7 @@ export interface FontSpecs {
 }
 
 /**
- * @__ExportProxy
+ * @ExportModel({ios: 'SCValdiDrawingSize', android: 'com.snap.valdi.modules.drawing.Size'})
  */
 export interface Size {
   width: number;
@@ -20,7 +17,7 @@ export interface Size {
 }
 
 /**
- * @__ExportEnum({ios: 'SCValdiDrawingFontWeight', android: 'com.snap.valdi.modules.drawing.FontWeight'})
+ * @ExportEnum({ios: 'SCValdiDrawingFontWeight', android: 'com.snap.valdi.modules.drawing.FontWeight'})
  */
 export const enum FontWeight {
   LIGHT = 'light',
@@ -32,7 +29,7 @@ export const enum FontWeight {
 }
 
 /**
- * @__ExportEnum({ios: 'SCValdiDrawingFontStyle', android: 'com.snap.valdi.modules.drawing.FontStyle'})
+ * @ExportEnum({ios: 'SCValdiDrawingFontStyle', android: 'com.snap.valdi.modules.drawing.FontStyle'})
  */
 export const enum FontStyle {
   NORMAL = 'normal',
@@ -40,14 +37,20 @@ export const enum FontStyle {
 }
 
 /**
- * @__ExportProxy({ios: 'SCValdiDrawingFont', android: 'com.snap.valdi.modules.drawing.Font'})
+ * @ExportProxy({ios: 'SCValdiDrawingFont', android: 'com.snap.valdi.modules.drawing.Font'})
  */
 export interface Font {
   measureText(text: string, maxWidth?: number, maxHeight?: number, maxLines?: number): Size;
+  measureAttributedText(
+    attributedText: AttributedTextNative,
+    maxWidth?: number,
+    maxHeight?: number,
+    maxLines?: number,
+  ): Size;
 }
 
 /**
- * @__ExportProxy({android: 'com.snap.valdi.modules.drawing.DrawingModule', ios: 'SCValdiDrawingModule'})
+ * @ExportProxy({android: 'com.snap.valdi.modules.drawing.DrawingModule', ios: 'SCValdiDrawingModule'})
  */
 export interface DrawingModule {
   getFont(specs: FontSpecs): Font;

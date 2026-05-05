@@ -2,6 +2,10 @@
 
 ## Communicating between native and JS
 
+Valdi is designed with a clear performance motto: *"What is the highest level API we can expose that's easy and safe to use while allowing us to achieve a high level of performance?"*
+
+To achieve this, Valdi uses a unified data container called `Valdi::Value` in C++ to represent data as it crosses the bridge between TypeScript, Objective-C, and Java. This minimizes the overhead of data conversion and enables features like interned strings and styles.
+
 There are two main ways you can communicate between native and JS.
 
 Choose which one to use based on your use case.
@@ -125,7 +129,7 @@ export function multiply(left: number, right: number): number {
   return left * right;
 }
 ```
-This will generate an Objective-C/Kotlin file which can call this function, and will handle parameter serialization/deserialization automatically:
+This will generate Objective-C/Swift/Kotlin files which can call this function, and will handle parameter serialization/deserialization automatically:
 ```objectivec
 #import <ModuleName/SCMultiplier.h>
 

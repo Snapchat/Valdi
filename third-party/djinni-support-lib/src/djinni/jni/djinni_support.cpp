@@ -23,7 +23,14 @@
 #include <cstdlib>
 #include <cstring>
 #include <locale>
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 #include <codecvt>
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 static_assert(sizeof(jlong) >= sizeof(void*), "must be able to fit a void* into a jlong");
  
@@ -435,6 +442,11 @@ void JniLocalScope::_popLocalFrame(JNIEnv* const env, jobject returnRef) {
     env->PopLocalFrame(returnRef);
 }
 
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+// std::codecvt / wstring_convert are deprecated in C++17 with no standard replacement
 using WcharConverter = std::wstring_convert<std::codecvt_utf16<wchar_t, 0x10ffff, std::codecvt_mode::little_endian>>;
 using Utf8Converter = std::wstring_convert<std::codecvt_utf8_utf16<char16_t, 0x10ffff, std::codecvt_mode::little_endian>, char16_t>;
 
@@ -472,6 +484,9 @@ std::string jniUTF8FromString(JNIEnv* env, const jstring jstr) {
     env->ReleaseStringChars(jstr, u16);
     return out;
 }
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 DJINNI_WEAK_DEFINITION
 void jniSetPendingFromCurrent(JNIEnv * env, const char * ctx) noexcept {

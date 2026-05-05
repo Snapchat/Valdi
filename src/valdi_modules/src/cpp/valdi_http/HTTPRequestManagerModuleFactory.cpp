@@ -110,8 +110,6 @@ Value HTTPRequestManagerModuleFactory::loadModule() {
     return out;
 }
 
-static Valdi::RegisterModuleFactory kRegisterModule([]() {
-    return std::make_shared<HTTPRequestManagerModuleFactory>();
-});
+static auto kRegisterModule = Valdi::RegisterModuleFactory::registerTyped<HTTPRequestManagerModuleFactory>();
 
 } // namespace Valdi

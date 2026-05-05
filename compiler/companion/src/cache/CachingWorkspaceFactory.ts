@@ -7,7 +7,7 @@ import { ILogger } from '../logger/ILogger';
 /**
  * Should be incremented every time the workspace implementation changes.
  */
-const CACHE_VERSION = '1';
+const CACHE_VERSION = '2';
 
 export function createCachingWorkspace(
   cacheDir: string,

@@ -1,0 +1,18 @@
+load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "startup_benchmark",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.json",
+    ]),
+    android_output_target = "release",
+    compilation_mode = "native",
+    inline_assets = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)

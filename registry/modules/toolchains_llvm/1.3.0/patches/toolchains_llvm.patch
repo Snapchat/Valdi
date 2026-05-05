@@ -1,0 +1,12 @@
+--- a/toolchain/extensions/llvm.bzl
++++ b/toolchain/extensions/llvm.bzl
+@@ -50,8 +50,8 @@
+
+ def _llvm_impl_(module_ctx):
+     for mod in module_ctx.modules:
+         if not mod.is_root:
+-            fail("Only the root module can use the 'llvm' extension")
++            continue
+         toolchain_names = []
+         for toolchain_attr in mod.tags.toolchain:
+             name = toolchain_attr.name

@@ -8,6 +8,8 @@
 
 #import <UIKit/UIKit.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface UIColor (Valdi)
 
 /**
@@ -26,3 +28,5 @@ UIColor* UIColorFromValdiAttributeValue(int64_t value);
 #ifdef __cplusplus
 }
 #endif
+
+NS_ASSUME_NONNULL_END

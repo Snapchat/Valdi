@@ -6,6 +6,7 @@ package com.snap.valdi.attributes.impl.richtext
  * where each part has a string content and an associated style.
  */
 import com.snap.valdi.callable.ValdiFunction
+import kotlin.math.abs
 
 interface AttributedText {
     /**
@@ -50,4 +51,38 @@ interface AttributedText {
      * This is to preserve selection/calcs of the initial text
      */
     fun hasOutline(): Boolean
+
+    /**
+     * Return the animation transform for the part at the given index, or null if unspecified.
+     */
+    fun getAnimationTransformAtIndex(index: Int): TextAnimationTransform?
+
+    /**
+     * Returns true when any part has animation metadata, even if the current transform is resting.
+     * Use hasRenderableAnimationTransform when callers only care about visible overlay changes.
+     */
+    fun hasAnimationTransform(): Boolean
+
+    /**
+     * Return the image attachment info for the part at the given index, or null if not an image attachment.
+     */
+    fun getImageAttachmentAtIndex(index: Int): ImageAttachmentInfo?
+}
+
+fun isRenderableAnimationTransform(animationTransform: TextAnimationTransform?): Boolean {
+    // TODO(CREATE-86642): Define animation-state semantics once in shared Valdi code
+    // (or bridge explicit state from TS) so Android/iOS stop duplicating thresholds.
+    return animationTransform != null &&
+        (abs(animationTransform.translationY) > 0.01f ||
+            abs(animationTransform.scale - 1f) > 0.01f ||
+            abs(animationTransform.opacity - 1f) > 0.001f)
+}
+
+fun AttributedText.hasRenderableAnimationTransform(): Boolean {
+    for (index in 0 until getPartsSize()) {
+        if (isRenderableAnimationTransform(getAnimationTransformAtIndex(index))) {
+            return true
+        }
+    }
+    return false
 }

@@ -1,7 +1,7 @@
 package com.snap.valdi.jsmodules
 
 import com.snap.valdi.utils.ValdiMarshaller
-import com.snapchat.client.valdi.JSRuntime
+import com.snapchat.client.valdi_core.JSRuntime
 
 interface ValdiJSRuntime: JSThreadDispatcher {
 
@@ -19,6 +19,11 @@ interface ValdiJSRuntime: JSThreadDispatcher {
      modulePath imports, up until the given depth.
      */
     fun preloadModule(modulePath: String, maxDepth: Int)
+
+    /**
+     * Batch-preload multiple modules in a single JNI/JS-thread dispatch.
+     */
+    fun preloadModules(modulePaths: List<String>, maxDepth: Int)
 
     /**
      * Return the native JSRuntime handle

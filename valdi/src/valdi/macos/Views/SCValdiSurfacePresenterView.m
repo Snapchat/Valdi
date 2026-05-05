@@ -106,6 +106,10 @@
     _viewFrame = frame;
     _viewTransform = transform;
 
+    if (!_embeddedView) {
+        return;
+    }
+
     _embeddedView.layer.transform = transform;
     _embeddedView.frame = frame;
     _embeddedView.alphaValue = opacity;
@@ -142,6 +146,8 @@
     SCValdiSurfacePresenterView *surfaceView = [SCValdiEmbeddedSurfaceView new];
     surfaceView.wantsLayer = YES;
     surfaceView.embeddedView = embeddedView;
+
+    embeddedView.translatesAutoresizingMaskIntoConstraints = YES;
 
     [surfaceView addSubview:embeddedView];
 

@@ -43,7 +43,7 @@ open class NoOpValdiRuntime(): IValdiRuntime {
 
     override fun getJSRuntime(block: (ValdiJSRuntime) -> Unit) {}
 
-    override fun createScopedJSRuntime(block: (ValdiScopedJSRuntime) -> Unit) {}
+    override fun createScopedJSRuntime(scopeName: String, block: (ValdiScopedJSRuntime) -> Unit) {}
 
     override fun loadModule(moduleName: String, completion: (error: String?) -> Unit) {}
 

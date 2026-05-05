@@ -1,0 +1,26 @@
+{
+  "version": "1.0.0",
+  "skills": [
+    { "name": "valdi-tsx", "description": "Valdi TSX component patterns, lifecycle, styling — NOT React", "tags": ["tsx", "components", "patterns", "styling"], "path": "skills/valdi-tsx/skill.md", "category": ["client"] },
+    { "name": "valdi-bazel", "description": "Valdi Bazel build rules, valdi_module, platform builds", "tags": ["bazel", "build"], "path": "skills/valdi-bazel/skill.md", "category": ["framework", "client"] },
+    { "name": "valdi-testing", "description": "Valdi unit and integration testing patterns", "tags": ["testing"], "path": "skills/valdi-testing/skill.md", "category": ["client"] },
+    { "name": "valdi-ios", "description": "Valdi iOS platform integration, Swift/ObjC bridging", "tags": ["ios", "swift", "objc"], "path": "skills/valdi-ios/skill.md", "category": ["framework", "client"] },
+    { "name": "valdi-android", "description": "Valdi Android platform integration, Kotlin/Java bridging", "tags": ["android", "kotlin"], "path": "skills/valdi-android/skill.md", "category": ["framework", "client"] },
+    { "name": "valdi-cpp-runtime", "description": "Valdi C++ runtime internals, renderer, event system", "tags": ["cpp", "runtime"], "path": "skills/valdi-cpp-runtime/skill.md", "category": ["framework"] },
+    { "name": "valdi-compiler", "description": "Valdi compiler pipeline, TSX→native compilation", "tags": ["compiler"], "path": "skills/valdi-compiler/skill.md", "category": ["framework"] },
+    { "name": "valdi-polyglot-module", "description": "Valdi polyglot module system: cross-platform APIs, web polyglot entry pattern, webPolyglotViews", "tags": ["polyglot", "modules", "web"], "path": "skills/valdi-polyglot-module/skill.md", "category": ["client"] },
+    { "name": "valdi-custom-view", "description": "Valdi custom native view integration", "tags": ["custom-view", "native"], "path": "skills/valdi-custom-view/skill.md", "category": ["client"] },
+    { "name": "valdi-overview", "description": "Valdi framework overview and project conventions", "tags": ["overview", "conventions"], "path": "skills/valdi-overview/skill.md", "category": ["client"] },
+    { "name": "valdi-async", "description": "Valdi async lifecycle safety: CancelablePromise, registerDisposable, isDestroyed guards", "tags": ["async", "lifecycle", "http"], "path": "skills/valdi-async/skill.md", "category": ["client"] },
+    { "name": "valdi-perf", "description": "Valdi performance: viewModel identity stability, createReusableCallback, layout vs view, Style interning", "tags": ["performance", "rendering"], "path": "skills/valdi-perf/skill.md", "category": ["client"] },
+    { "name": "valdi-component-tests", "description": "Valdi component test patterns: elementKeyFind, componentTypeFind, tapNodeWithKey, discriminated unions, arrays", "tags": ["testing", "components", "jasmine"], "path": "skills/valdi-component-tests/skill.md", "category": ["client"] },
+    { "name": "valdi-setup", "description": "Valdi module setup: BUILD.bazel, valdi_module(), tsconfig, deps, ios_module_name, hot reload", "tags": ["setup", "bazel", "build"], "path": "skills/valdi-setup/skill.md", "category": ["client"] },
+    { "name": "valdi-migrate", "description": "Migrate Flutter, React, or Jetpack Compose code to Valdi — component model, lifecycle, element mapping tables", "tags": ["migration", "flutter", "react", "compose"], "path": "skills/valdi-migrate/skill.md", "category": ["client"] },
+    { "name": "valdi-inspect", "description": "Inspect a live Valdi app: contexts, component trees, screenshots, heap dumps via valdi inspect CLI", "tags": ["inspect", "debug", "runtime", "cli"], "path": "skills/valdi-inspect/skill.md", "category": ["client"] },
+    { "name": "valdi-preview", "description": "Preview a Valdi component: read its API, render it in the preview harness, inspect the view tree, and capture screenshots", "tags": ["preview", "inspect", "components", "widgets"], "path": "skills/valdi-preview/skill.md", "category": ["client"] },
+    { "name": "valdi-mock-breakdown", "description": "Generate Valdi TSX from a screenshot or design mock: analyze layout, decompose into components, produce code", "tags": ["mock", "codegen", "design", "screenshot", "ai"], "path": "skills/valdi-mock-breakdown/skill.md", "category": ["client"] },
+    { "name": "valdi-mock-iterate", "description": "Compare a design mock against a rendered Valdi screenshot and produce specific visual diff feedback", "tags": ["mock", "critique", "visual-diff", "iterate", "ai"], "path": "skills/valdi-mock-iterate/skill.md", "category": ["client"] },
+    { "name": "valdi-mock-to-module", "description": "Turn a screenshot into a running Valdi module: orchestrates breakdown, preview, and critic iteration loop", "tags": ["mock", "codegen", "pipeline", "orchestrator", "ai"], "path": "skills/valdi-mock-to-module/skill.md", "category": ["client"] },
+    { "name": "valdi-profile", "description": "Capture CPU profiles from a running Valdi app: diagnose slow renders, identify hot functions, understand JS thread activity", "tags": ["profile", "performance", "debug", "cli"], "path": "skills/valdi-profile/skill.md", "category": ["client"] }
+  ]
+}

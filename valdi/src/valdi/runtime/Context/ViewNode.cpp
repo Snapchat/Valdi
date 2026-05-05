@@ -10,6 +10,7 @@
 #include "valdi/runtime/Attributes/Yoga/Yoga.hpp"
 #include "valdi/runtime/CSS/CSSAttributesManager.hpp"
 #include "valdi/runtime/Context/IViewNodeAssetHandler.hpp"
+#include "valdi/runtime/Context/ScrollAnchorPosition.hpp"
 #include "valdi/runtime/Context/ViewManagerContext.hpp"
 #include "valdi/runtime/Context/ViewNodeAccessibilityState.hpp"
 #include "valdi/runtime/Context/ViewNodeChildrenIndexer.hpp"
@@ -21,6 +22,7 @@
 #include "valdi/runtime/Interfaces/IViewManager.hpp"
 #include "valdi/runtime/Interfaces/IViewTransaction.hpp"
 #include "valdi/runtime/Utils/MainThreadManager.hpp"
+#include "valdi/runtime/ValdiBuildFlags.hpp"
 #include "valdi/runtime/Views/MeasureDelegate.hpp"
 #include "valdi/runtime/Views/ViewTransactionScope.hpp"
 #include "valdi_core/cpp/Constants.hpp"
@@ -696,6 +698,27 @@ bool ViewNode::doUpdateVisibility(const Valdi::Frame& viewport,
                 clipRect.x -= bounds.x;
                 clipRect.y -= bounds.y;
 
+                // Reverse-map the clip rect from visual (scaled) space back into
+                // the local coordinate space so children see the correct visible
+                // range. Negative scale also flips the axis; positive scale != 1
+                // only compresses/expands without flipping.
+                if (_scaleX < 0.0f) {
+                    const float absScaleX = -_scaleX;
+                    clipRect.x = (bounds.width - (clipRect.x + clipRect.width)) / absScaleX;
+                    clipRect.width = clipRect.width / absScaleX;
+                } else if (_scaleX > 0.0f && _scaleX != 1.0f) {
+                    clipRect.x /= _scaleX;
+                    clipRect.width /= _scaleX;
+                }
+                if (_scaleY < 0.0f) {
+                    const float absScaleY = -_scaleY;
+                    clipRect.y = (bounds.height - (clipRect.y + clipRect.height)) / absScaleY;
+                    clipRect.height = clipRect.height / absScaleY;
+                } else if (_scaleY > 0.0f && _scaleY != 1.0f) {
+                    clipRect.y /= _scaleY;
+                    clipRect.height /= _scaleY;
+                }
+
                 if (_scrollState != nullptr) {
                     _scrollState->resolveClipRect(clipRect);
                 }
@@ -1249,8 +1272,10 @@ void ViewNode::setViewFactory(ViewTransactionScope& viewTransactionScope, const 
 
         if (viewFactory != nullptr) {
             setIsLayout(viewFactory->getViewClassName() == AttributesManager::getLayoutPlaceholderClassName());
-            _attributesApplier.setBoundAttributes(viewFactory->getBoundAttributes());
-            _flags[kScrollAttributesBound] = viewFactory->getBoundAttributes()->isBackingClassScrollable();
+            auto boundAttributes = viewFactory->getBoundAttributes();
+            _attributesApplier.setBoundAttributes(boundAttributes);
+            _flags[kScrollAttributesBound] =
+                (boundAttributes != nullptr && boundAttributes->isBackingClassScrollable());
 
             if (_flags[kScrollAttributesBound]) {
                 getYogaNodeForInsertingChildren()->getStyle().overflow() = YGOverflowScroll;
@@ -1265,8 +1290,13 @@ void ViewNode::setViewFactory(ViewTransactionScope& viewTransactionScope, const 
 void ViewNode::setViewClassNameForPlatform(ViewTransactionScope& viewTransactionScope,
                                            const StringBox& viewClassName,
                                            PlatformType platformType) {
-    if (_viewNodeTree->getViewManagerContext()->getViewManager().getPlatformType() != platformType) {
-        return;
+    auto currentPlatformType = _viewNodeTree->getViewManagerContext()->getViewManager().getPlatformType();
+    if (currentPlatformType != platformType) {
+        // macOS falls through to iOS class names (iosClass is bound before macosClass,
+        // so macosClass will overwrite if explicitly set)
+        if (!(currentPlatformType == PlatformTypeMacOS && platformType == PlatformTypeIOS)) {
+            return;
+        }
     }
 
     if (viewClassName.isEmpty()) {
@@ -1770,7 +1800,29 @@ void ViewNode::setHasParent(bool hasParent) {
 }
 
 Frame ViewNode::calculateSelfViewport() const {
-    auto bounds = _calculatedFrame.withOffset(getDirectionDependentTranslationX(), _translationY);
+    auto tx = getDirectionDependentTranslationX();
+    auto ty = _translationY;
+    auto& f = _calculatedFrame;
+    Frame bounds;
+    if (VALDI_LIKELY(_scaleX == 1.0f && _scaleY == 1.0f)) {
+        bounds = f.withOffset(tx, ty);
+    } else {
+        // Scale is applied around the center anchor point (matching iOS CALayer default
+        // anchor of 0.5,0.5 and Android View default pivot at center).
+        auto scaledX = f.x + (f.width * (1.0f - _scaleX)) / 2.0f + tx;
+        auto scaledY = f.y + (f.height * (1.0f - _scaleY)) / 2.0f + ty;
+        bounds = Frame(scaledX, scaledY, f.width * _scaleX, f.height * _scaleY);
+        // Normalize to ensure positive dimensions so that Frame::intersects() and
+        // setLeft/Right/Top/Bottom all work correctly (negative scale flips sign).
+        if (bounds.width < 0.0f) {
+            bounds.x += bounds.width;
+            bounds.width = -bounds.width;
+        }
+        if (bounds.height < 0.0f) {
+            bounds.y += bounds.height;
+            bounds.height = -bounds.height;
+        }
+    }
     if (VALDI_UNLIKELY(extendViewportWithChildren())) {
         for (auto* child : *this) {
             auto childBounds = child->calculateSelfViewport();
@@ -2067,7 +2119,11 @@ bool ViewNode::calculateLayoutOnNodeIfNeeded(YGNode* yogaNode,
     auto backendString = getBackendString(getBackend(_viewNodeTree));
     auto module = getModuleName();
 
+#if VALDI_DEBUG_TREE_UPDATES
+    VALDI_TRACE_META("Valdi.calculateLayout", std::to_string(getRecursiveChildCount()));
+#else
     VALDI_TRACE("Valdi.calculateLayout");
+#endif
     auto metricsObj = getMetrics();
     ScopedMetrics metrics = isFromLazyLayout ?
                                 Metrics::scopedCalculateLazyLayoutLatency(metricsObj, module, backendString) :
@@ -2311,6 +2367,60 @@ void ViewNode::updateScrollState() {
 
     auto updateResult = scrollState.updateContentSizeAndRtlOffset(
         Size(highestWidth, highestHeight), _calculatedFrame.size(), rtlOffsetX, getPointScale(), isHorizontal());
+
+    // Scroll anchor: find a descendant with scrollAnchorPosition != 0 and pin the scroll
+    // offset so it appears at the specified viewport edge. Only active when maintainScrollAnchor is true.
+    if (scrollState.getMaintainScrollAnchor()) {
+        float viewportH = _calculatedFrame.height;
+
+        // Find the child with scrollAnchorPosition != 0
+        std::function<ViewNode*(ViewNode*, int)> findAnchor = [&](ViewNode* node, int depth) -> ViewNode* {
+            if (depth <= 0)
+                return nullptr;
+            for (auto* child : *node) {
+                if (child->getScrollAnchorPosition() != ScrollAnchorPositionNone)
+                    return child;
+                auto* found = findAnchor(child, depth - 1);
+                if (found)
+                    return found;
+            }
+            return nullptr;
+        };
+        auto* anchorNode = findAnchor(this, 5);
+
+        if (anchorNode) {
+            int anchorPosition = anchorNode->getScrollAnchorPosition();
+
+            // Compute anchor's Y relative to this scroll node
+            float anchorY = sanitizeYogaValue(YGNodeLayoutGetTop(anchorNode->getYogaNode()));
+            for (auto* parent = anchorNode->getParent().get(); parent != nullptr && parent != this;
+                 parent = parent->getParent().get()) {
+                anchorY += sanitizeYogaValue(YGNodeLayoutGetTop(parent->getYogaNode()));
+            }
+
+            // Pin anchor to the specified viewport edge
+            float currentOffset = scrollState.getDirectionAgnosticContentOffset().y;
+            float targetOffset;
+            if (anchorPosition == ScrollAnchorPositionTop) {
+                targetOffset = anchorY;
+            } else {
+                targetOffset = anchorY - viewportH;
+            }
+
+            // Clamp to [0, maxScroll]
+            float maxScroll = std::max(highestHeight - viewportH, 0.0f);
+            targetOffset = std::max(0.0f, std::min(targetOffset, maxScroll));
+
+            float deltaY = targetOffset - currentOffset;
+            if (std::abs(deltaY) > 0.5f) {
+                auto currentContentOffset = scrollState.getDirectionAgnosticContentOffset();
+                currentContentOffset.y += deltaY;
+                scrollState.updateDirectionAgnosticContentOffset(currentContentOffset, currentContentOffset);
+                updateResult.changed = true;
+                scrollState.setNeedsSyncWithView(true);
+            }
+        }
+    }
 
     if (updateResult.changed) {
         setCalculatedViewportNeedsUpdate();
@@ -2560,6 +2670,9 @@ bool ViewNode::setAttribute(ViewTransactionScope& viewTransactionScope,
         setPrefersLazyLayout(viewTransactionScope, attributeValue.toBool());
         return true;
     } else {
+        if (_attributesApplier.getBoundAttributes() == nullptr) {
+            return false;
+        }
         auto changed = getAttributesApplier().setAttribute(
             viewTransactionScope, attributeId, attributeOwner, attributeValue, animator);
 
@@ -2578,15 +2691,16 @@ void ViewNode::reapplyAttributesRecursive(ViewTransactionScope& viewTransactionS
         invalidateMeasuredSize();
     }
 
-    for (const auto& attribute : attributes) {
-        getAttributesApplier().reapplyAttribute(viewTransactionScope, attribute);
+    if (_attributesApplier.getBoundAttributes() != nullptr) {
+        for (const auto& attribute : attributes) {
+            getAttributesApplier().reapplyAttribute(viewTransactionScope, attribute);
+        }
+        getAttributesApplier().flush(viewTransactionScope);
     }
 
     for (auto* child : *this) {
         child->reapplyAttributesRecursive(viewTransactionScope, attributes, invalidateMeasure);
     }
-
-    getAttributesApplier().flush(viewTransactionScope);
 }
 
 void ViewNode::notifyAttributeFailed(AttributeId attributeId, const Error& error) {
@@ -2968,6 +3082,19 @@ void ViewNode::setScrollStaticContentHeight(float staticContentHeight) {
     }
 }
 
+void ViewNode::setScrollAnchorPosition(int position) {
+    _scrollAnchorPosition = position;
+}
+
+int ViewNode::getScrollAnchorPosition() const {
+    return _scrollAnchorPosition;
+}
+
+void ViewNode::setMaintainScrollAnchor(bool maintain) {
+    auto& scrollState = getOrCreateScrollState();
+    scrollState.setMaintainScrollAnchor(maintain);
+}
+
 template<typename F>
 void ViewNode::updateViewportExtension(F&& handler) {
     auto& scrollState = getOrCreateScrollState();
@@ -3261,6 +3388,28 @@ float ViewNode::getTranslationY() const {
 
 void ViewNode::setTranslationY(float translationY) {
     updateTranslation(translationY, &_translationY);
+}
+
+void ViewNode::setScaleX(float scaleX) {
+    if (_scaleX != scaleX) {
+        _scaleX = scaleX;
+        setCalculatedViewportNeedsUpdate();
+        auto parent = getParent();
+        if (parent != nullptr) {
+            parent->setChildrenIndexerNeedsUpdate();
+        }
+    }
+}
+
+void ViewNode::setScaleY(float scaleY) {
+    if (_scaleY != scaleY) {
+        _scaleY = scaleY;
+        setCalculatedViewportNeedsUpdate();
+        auto parent = getParent();
+        if (parent != nullptr) {
+            parent->setChildrenIndexerNeedsUpdate();
+        }
+    }
 }
 
 void ViewNode::updateTranslation(float translation, float* outValue) {

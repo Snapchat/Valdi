@@ -82,6 +82,7 @@ public:
     Ref<ValueFunction> getParameterAsFunction(size_t index);
     JSTypedArray getParameterAsTypedArray(size_t index);
     BytesView getParameterAsBytesView(size_t index);
+    Ref<RefCountable> getParameterAsWrappedObject(size_t index);
 
 private:
     const ReferenceInfo& _referenceInfo;

@@ -64,7 +64,8 @@ std::vector</*not-null*/ std::shared_ptr<snap::valdi_core::ModuleFactory>> Modul
     return output;
 }
 
-RegisterModuleFactory::RegisterModuleFactory(ModuleFactoryFn factory) : _factory(factory), _prev(kModuleFactoryPtr) {
+RegisterModuleFactory::RegisterModuleFactory(ModuleFactoryFn factory)
+    : _factory(std::move(factory)), _prev(kModuleFactoryPtr) {
     kModuleFactoryPtr = this;
 }
 

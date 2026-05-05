@@ -1,5 +1,9 @@
 output_target: debug
 
+single_file_codegen: true
+
+async_strict_mode: true
+
 dependencies:
   - jasmine
   - source_map

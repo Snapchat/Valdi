@@ -14,6 +14,7 @@
 #import "valdi/ios/SCValdiViewNode+CPP.h"
 #import "valdi/ios/SCValdiViewNode.h"
 
+#import "valdi_core/SCValdiLogger.h"
 #import "valdi_core/SCValdiValueUtils.h"
 #import "valdi_core/SCValdiViewAssetHandlingProtocol.h"
 #import "valdi_core/SCValdiViewOwner.h"
@@ -27,6 +28,7 @@
 #import "valdi_core/SCValdiView.h"
 #import "valdi_core/SCValdiViewComponent.h"
 #import "valdi_core/UIView+ValdiObjects.h"
+#import "valdi_core/UIView+ValdiBase.h"
 
 #import "valdi_core/SCNValdiCoreAnimator+Private.h"
 
@@ -66,15 +68,49 @@ ViewTransaction::~ViewTransaction() = default;
     void ViewTransaction::willUpdateRootView(const Valdi::Ref<Valdi::View>& view) {}
 
     void ViewTransaction::didUpdateRootView(const Valdi::Ref<Valdi::View>& view, bool layoutDidBecomeDirty) {
+        UIView *uiView = toUIView(view);
+
         if (layoutDidBecomeDirty) {
-            [toUIView(view) invalidateIntrinsicContentSize];
+            [uiView invalidateIntrinsicContentSize];
         }
+
+        if (_pendingOnNextDrawCallbacks.empty()) {
+            return;
+        }
+
+        auto callbacks = std::make_shared<std::vector<Valdi::DispatchFunction>>(std::move(_pendingOnNextDrawCallbacks));
+        if (uiView == nil) {
+            for (auto &callback : *callbacks) {
+                callback();
+            }
+            return;
+        }
+
+        [CATransaction begin];
+        [CATransaction setCompletionBlock:^{
+            for (auto &callback : *callbacks) {
+                callback();
+            }
+        }];
+        [uiView setNeedsLayout];
+        [uiView setNeedsDisplay];
+        [CATransaction commit];
     }
 
     void ViewTransaction::moveViewToTree(const Valdi::Ref<Valdi::View>& view,
                         Valdi::ViewNodeTree* viewNodeTree,
                         Valdi::ViewNode* viewNode) {
         SCValdiContext *valdiContext = getValdiContext(viewNodeTree->getContext());
+
+        if (valdiContext == nil) {
+            auto context = viewNodeTree->getContext();
+            auto contextPtr = context.get();
+            SCLogValdiError(@"moveViewToTree: valdiContext is nil. "
+                            @"context=%p, contextId=%u, hasUserData=%d",
+                            contextPtr,
+                            contextPtr ? contextPtr->getContextId() : 0,
+                            contextPtr ? (contextPtr->getUserData() != nullptr) : false);
+        }
 
         UIView *uiView = toUIView(view);
         uiView.valdiContext = valdiContext;
@@ -220,6 +256,8 @@ ViewTransaction::~ViewTransaction() = default;
         }
 
         if (allowRecycling) {
+            [uiView valdi_prepareForPoolReuse];
+
             if (uiView.layer.animationKeys.count) {
                 [uiView.layer removeAllAnimations];
                 // If we had animations, the CALayer is going to be dirty and re-using
@@ -264,6 +302,11 @@ ViewTransaction::~ViewTransaction() = default;
 
     void ViewTransaction::cancelAnimator(const Valdi::Ref<Valdi::Animator>& animator) {
         animator->getNativeAnimator()->cancel();
+    }
+
+    void ViewTransaction::scheduleOnNextDraw(const Valdi::Ref<Valdi::View>& rootView,
+                                             Valdi::DispatchFunction callback) {
+        _pendingOnNextDrawCallbacks.emplace_back(std::move(callback));
     }
 
     void ViewTransaction::executeInTransactionThread(Valdi::DispatchFunction executeFn) {

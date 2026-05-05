@@ -9,6 +9,7 @@
 
 #include "valdi/runtime/Debugger/TCPServer.hpp"
 #include "valdi_core/cpp/Utils/ByteBuffer.hpp"
+#include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
 #include "valdi_core/cpp/Utils/ValueUtils.hpp"
@@ -24,15 +25,15 @@ constexpr bool kDebugRequests = false;
 
 #if TARGET_OS_IPHONE
 
-DebuggerProxy* DebuggerProxy::start(Valdi::ILogger& logger) {
+DebuggerProxy* DebuggerProxy::start() {
     return nullptr;
 }
 
 #else
 
-DebuggerProxy* DebuggerProxy::start(Valdi::ILogger& logger) {
+DebuggerProxy* DebuggerProxy::start() {
     if constexpr (snap::kIsDevBuild) {
-        static auto* kProxy = new DebuggerProxy(logger);
+        static auto* kProxy = new DebuggerProxy();
         return kProxy;
     }
 
@@ -41,13 +42,12 @@ DebuggerProxy* DebuggerProxy::start(Valdi::ILogger& logger) {
 
 #endif
 
-DebuggerConnection::DebuggerConnection(Valdi::ITCPConnection& client, Valdi::ILogger& logger)
-    : _client(client), _logger(logger) {}
+DebuggerConnection::DebuggerConnection(Valdi::ITCPConnection& client) : _client(client) {}
 
 void DebuggerConnection::onDataReceived(const Valdi::Ref<Valdi::ITCPConnection>& connection,
                                         const Valdi::BytesView& bytes) {
     if constexpr (kDebugRequests) {
-        VALDI_INFO(_logger, "[JSDebugger] Received debugger data of size {}", bytes.size());
+        VALDI_INFO(Valdi::ConsoleLogger::getLogger(), "[JSDebugger] Received debugger data of size {}", bytes.size());
     }
 
     std::lock_guard<Valdi::Mutex> lock(_mutex);
@@ -64,7 +64,7 @@ void DebuggerConnection::submitMessage(const Valdi::Value& value) {
 
 void DebuggerConnection::submitJson(const std::string_view& json) {
     if constexpr (kDebugRequests) {
-        VALDI_INFO(_logger, "[JSDebugger] Submitting JSON: {}", json);
+        VALDI_INFO(Valdi::ConsoleLogger::getLogger(), "[JSDebugger] Submitting JSON: {}", json);
     }
 
     auto packet = Valdi::makeShared<Valdi::ByteBuffer>();
@@ -104,25 +104,19 @@ bool DebuggerConnection::consumeBuffer() {
     return true;
 }
 
-Valdi::ILogger& DebuggerConnection::getLogger() const {
-    return _logger;
-}
-
-JSDebuggerConnection::JSDebuggerConnection(Valdi::ITCPServer& externHost,
-                                           Valdi::ITCPConnection& client,
-                                           Valdi::ILogger& logger)
-    : DebuggerConnection(client, logger), _externHost(externHost) {}
+JSDebuggerConnection::JSDebuggerConnection(Valdi::ITCPServer& externHost, Valdi::ITCPConnection& client)
+    : DebuggerConnection(client), _externHost(externHost) {}
 
 JSDebuggerConnection::~JSDebuggerConnection() = default;
 
 void JSDebuggerConnection::processMessage(const Valdi::StringBox& message) {
     if constexpr (kDebugRequests) {
-        VALDI_INFO(getLogger(), "[JSDebugger] Received JS message: {}", message);
+        VALDI_INFO(Valdi::ConsoleLogger::getLogger(), "[JSDebugger] Received JS message: {}", message);
     }
 
     auto result = Valdi::jsonToValue(message.toStringView());
     if (!result) {
-        VALDI_ERROR(getLogger(), "[JSDebugger] Failed to parse JS message: {}", result.error());
+        VALDI_ERROR(Valdi::ConsoleLogger::getLogger(), "[JSDebugger] Failed to parse JS message: {}", result.error());
         return;
     }
     auto jsMessage = result.moveValue();
@@ -152,7 +146,8 @@ void JSDebuggerConnection::setTargetList(const Valdi::StringBox& message) {
     auto convertedValue = Valdi::jsonToValue(message.toStringView());
 
     if (!convertedValue) {
-        VALDI_ERROR(getLogger(), "[JSDebugger] Failed to parse message: {}", convertedValue.error());
+        VALDI_ERROR(
+            Valdi::ConsoleLogger::getLogger(), "[JSDebugger] Failed to parse message: {}", convertedValue.error());
         return;
     }
 
@@ -172,16 +167,14 @@ int JSDebuggerConnection::getTargetId() const {
     return _targetId;
 }
 
-ExternalDebuggerConnection::ExternalDebuggerConnection(Valdi::ITCPServer& jsHost,
-                                                       Valdi::ITCPConnection& client,
-                                                       Valdi::ILogger& logger)
-    : DebuggerConnection(client, logger), _jsHost(jsHost) {}
+ExternalDebuggerConnection::ExternalDebuggerConnection(Valdi::ITCPServer& jsHost, Valdi::ITCPConnection& client)
+    : DebuggerConnection(client), _jsHost(jsHost) {}
 
 ExternalDebuggerConnection::~ExternalDebuggerConnection() = default;
 
 void ExternalDebuggerConnection::processMessage(const Valdi::StringBox& message) {
     if constexpr (kDebugRequests) {
-        VALDI_INFO(getLogger(), "[JSDebugger] Received External message: {}", message);
+        VALDI_INFO(Valdi::ConsoleLogger::getLogger(), "[JSDebugger] Received External message: {}", message);
     }
 
     static auto kSendMessageToTarget = STRING_LITERAL("SendMessageToTarget");
@@ -207,32 +200,36 @@ void ExternalDebuggerConnection::submitMessageToJs(const Valdi::StringBox& event
     }
 }
 
-DebuggerProxy::DebuggerProxy(Valdi::ILogger& logger) : _logger(logger) {
+DebuggerProxy::DebuggerProxy() {
     _jsHost = Valdi::TCPServer::create(kJsDebuggerPort, this);
 
     auto result = _jsHost->start();
     if (result) {
-        VALDI_INFO(_logger, "[JSDebugger] Started JS debugger host on {}", kJsDebuggerPort);
+        VALDI_INFO(Valdi::ConsoleLogger::getLogger(), "[JSDebugger] Started JS debugger host on {}", kJsDebuggerPort);
     } else {
-        VALDI_ERROR(_logger, "[JSDebugger] Failed to start JS debugger host: {}", result.error());
+        VALDI_ERROR(
+            Valdi::ConsoleLogger::getLogger(), "[JSDebugger] Failed to start JS debugger host: {}", result.error());
     }
 
     _externHost = Valdi::TCPServer::create(kDebuggerProxyPort, this);
     result = _externHost->start();
     if (result) {
-        VALDI_INFO(_logger, "[JSDebugger] Started Debugger proxy on {}", kDebuggerProxyPort);
+        VALDI_INFO(Valdi::ConsoleLogger::getLogger(), "[JSDebugger] Started Debugger proxy on {}", kDebuggerProxyPort);
     } else {
-        VALDI_ERROR(_logger, "[JSDebugger] Failed to start Debugger proxy: {}", result.error());
+        VALDI_ERROR(
+            Valdi::ConsoleLogger::getLogger(), "[JSDebugger] Failed to start Debugger proxy: {}", result.error());
     }
 }
 
 void DebuggerProxy::onClientConnected(const Valdi::Ref<Valdi::ITCPConnection>& client) {
     if (_jsHost->ownsClient(client)) {
-        VALDI_INFO(_logger, "[JSDebugger] JSCore client connected from {}", client->getAddress());
-        client->setDataListener(Valdi::makeShared<JSDebuggerConnection>(*_externHost, *client, _logger).toShared());
+        VALDI_INFO(
+            Valdi::ConsoleLogger::getLogger(), "[JSDebugger] JSCore client connected from {}", client->getAddress());
+        client->setDataListener(Valdi::makeShared<JSDebuggerConnection>(*_externHost, *client).toShared());
     } else {
-        VALDI_INFO(_logger, "[JSDebugger] External client connected from {}", client->getAddress());
-        auto connection = Valdi::makeShared<ExternalDebuggerConnection>(*_jsHost, *client, _logger);
+        VALDI_INFO(
+            Valdi::ConsoleLogger::getLogger(), "[JSDebugger] External client connected from {}", client->getAddress());
+        auto connection = Valdi::makeShared<ExternalDebuggerConnection>(*_jsHost, *client);
         client->setDataListener(connection.toShared());
 
         connection->submitMessageToJs(STRING_LITERAL("Setup"), STRING_LITERAL("{}"));
@@ -241,9 +238,15 @@ void DebuggerProxy::onClientConnected(const Valdi::Ref<Valdi::ITCPConnection>& c
 
 void DebuggerProxy::onClientDisconnected(const Valdi::Ref<Valdi::ITCPConnection>& client, const Valdi::Error& error) {
     if (_jsHost->ownsClient(client)) {
-        VALDI_INFO(_logger, "[JSDebugger] JSCore client disconnecte from {}: {}", client->getAddress(), error);
+        VALDI_INFO(Valdi::ConsoleLogger::getLogger(),
+                   "[JSDebugger] JSCore client disconnected from {}: {}",
+                   client->getAddress(),
+                   error);
     } else {
-        VALDI_INFO(_logger, "[JSDebugger] External client disconnected from {}: {}", client->getAddress(), error);
+        VALDI_INFO(Valdi::ConsoleLogger::getLogger(),
+                   "[JSDebugger] External client disconnected from {}: {}",
+                   client->getAddress(),
+                   error);
 
         auto connection = std::dynamic_pointer_cast<ExternalDebuggerConnection>(client->getDataListener());
         connection->submitMessageToJs(STRING_LITERAL("FrontendDidClose"), STRING_LITERAL("{}"));

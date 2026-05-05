@@ -34,6 +34,8 @@ export interface RenderRequest {
 
 export class RendererTestDelegate implements IRendererDelegate {
   requests: RenderRequest[] = [];
+  nextLayoutCompleteCallbacks: Array<() => void> = [];
+  nextDrawCallbacks: Array<(hookTimeMs: number) => void> = [];
   private entries: RawRenderRequestEntry[];
   private observer: VisibilityObserver | undefined;
   private error: Error | undefined;
@@ -45,6 +47,8 @@ export class RendererTestDelegate implements IRendererDelegate {
 
   clear() {
     this.requests = [];
+    this.nextLayoutCompleteCallbacks = [];
+    this.nextDrawCallbacks = [];
   }
 
   onElementBecameRoot(id: number): void {
@@ -115,7 +119,13 @@ export class RendererTestDelegate implements IRendererDelegate {
     this.onElementAttributeChangeAny(id, attributeName, fn);
   }
 
-  onNextLayoutComplete(cb: () => void) {}
+  onNextLayoutComplete(cb: () => void) {
+    this.nextLayoutCompleteCallbacks.push(cb);
+  }
+
+  onNextDraw(cb: (hookTimeMs: number) => void) {
+    this.nextDrawCallbacks.push(cb);
+  }
 
   onAnimationStart(options: AnimationOptions) {
     this.entries.push({

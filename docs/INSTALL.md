@@ -1,38 +1,58 @@
 # Getting Started with Valdi
 
+> **Install the Valdi CLI from npm.** This guide assumes you install the CLI with `npm install -g @snap/valdi`. If you are contributing to Valdi itself, see [DEV_SETUP.md](DEV_SETUP.md) instead.
+
 This guide will help you set up your development environment and get started with your first project.
 
 ## Prerequisites
 
-Before you begin, ensure you have the necessary system dependencies installed:
+### macOS
+**Install Xcode** from the [App Store](https://apps.apple.com/us/app/xcode/id497799835) - this is required for iOS development.
 
-- [MacOS Setup Guide](./setup/macos_setup.md)
-- [Linux Setup Guide](./setup/linux_setup.md)
+### Linux
+No prerequisites! The Valdi CLI will install everything you need.
 
-> [!IMPORTANT]
-> Installing these dependencies is required. Without them, you may encounter errors during setup and development.
+### All Platforms
+That's it! The `valdi dev_setup` command handles all other dependencies automatically, including:
+- Homebrew (macOS)
+- Bazelisk
+- Java JDK 17
+- Android SDK command-line tools
+- Git LFS
+- Watchman
+- Shell autocomplete, JDK symlink (macOS), Android env vars, and platform-specific extras (e.g. ios-webkit-debug-proxy on macOS; adb, zlib/fontconfig dev libs on Linux)
 
-## Installation Steps
+> [!TIP]
+> For manual installation details, see the [macOS](./setup/macos_setup.md) or [Linux](./setup/linux_setup.md) reference guides.
 
-### 1. Clone the Repository
+## Installation
+
+### 1. Install the Valdi CLI
 
 ```bash
-git clone git@github.com:Snapchat/Valdi.git
+npm install -g @snap/valdi
 ```
 
-### 2. Install Valdi CLI
-
-Navigate to the CLI directory and install the command-line tools:
+### 2. Set Up Your Development Environment
 
 ```bash
-cd Valdi/npm_modules/cli/
-
-# This next command will install the valdi command line tool
-npm run cli:install
-
-# Set up the development environment
+# Set up your development environment (installs all dependencies)
 valdi dev_setup
+
+# Verify everything is working
+valdi doctor
 ```
+
+> [!NOTE]
+> The first time you run `valdi dev_setup`, it will download and install several gigabytes of dependencies. This may take 10-20 minutes depending on your internet connection.
+
+> [!TIP]
+> **Contributing to Valdi?** If you're developing Valdi itself (not just using it), clone the repository and install from source:
+> ```bash
+> git clone git@github.com:Snapchat/Valdi.git
+> cd Valdi/npm_modules/cli/
+> npm run cli:install
+> ```
 
 ## Creating Your First Project
 
@@ -64,7 +84,7 @@ valdi install android
 ```
 
 > [!NOTE]
-> The first build may take several minutes as it sets up the development environment.
+> The first build may take several minutes as it sets up the bazel WORKSPACE.
 
 ### 3. Enable Hot Reloading
 
@@ -74,32 +94,56 @@ Once your app is running in a simulator or emulator, start the hot reloader to s
 valdi hotreload
 ```
 
-## Development Environment Setup
+## VSCode/Cursor Setup (Optional but Recommended)
 
-### VSCode Configuration
+Valdi provides editor extensions for syntax highlighting, debugging, and device logs during hot reload.
 
-1. **Install VSCode**
+### 1. Install VSCode or Cursor
 
-   - Download and install [VSCode](https://code.visualstudio.com/download)
-   - Launch VSCode
-   - Open Command Palette (Cmd+Shift+P)
-   - Type `shell command` and select `> Install 'code' command in PATH`
-   - Restart your terminal
+- **VSCode**: Download from [code.visualstudio.com](https://code.visualstudio.com/download)
+- **Cursor**: Download from [cursor.com](https://cursor.com)
 
-2. **Install Valdi Extension**
+### 2. Add Shell Command to PATH
 
-   ```bash
-   scripts/vscode/install_extensions.sh
-   ```
+For **VSCode**:
+- Launch VSCode
+- Open Command Palette (Cmd+Shift+P or Ctrl+Shift+P)
+- Type `shell command` and select `> Install 'code' command in PATH`
+- Restart your terminal
 
-3. **Configure TypeScript**
-   - Open any TypeScript file (.tsx)
-   - Press `Cmd+Shift+P`
-   - Select "TypeScript: Select TypeScript Version..."
-   - Choose `Use Workspace Version`
+For **Cursor**:
+- Launch Cursor
+- Open Command Palette (Cmd+Shift+P or Ctrl+Shift+P)
+- Type `shell command` and select `> Install 'cursor' command in PATH`
+- Restart your terminal
+
+### 3. Install Valdi Extensions
+
+Download the extension files from the [latest release](https://github.com/Snapchat/Valdi/releases/latest):
+- `valdi-vivaldi.vsix` - Device logs and Valdi language support
+- `valdi-debug.vsix` - JavaScript debugger for Valdi apps
+
+**Install the extensions:**
+```bash
+# For VSCode
+code --install-extension /path/to/valdi-vivaldi.vsix
+code --install-extension /path/to/valdi-debug.vsix
+
+# For Cursor
+cursor --install-extension /path/to/valdi-vivaldi.vsix
+cursor --install-extension /path/to/valdi-debug.vsix
+```
+
+### 4. Configure TypeScript
+
+After creating your first Valdi project:
+- Open any TypeScript file (.tsx) in your project
+- Press `Cmd+Shift+P` (or Ctrl+Shift+P)
+- Select "TypeScript: Select TypeScript Version..."
+- Choose `Use Workspace Version`
 
 > [!IMPORTANT]
-> The TypeScript version configuration is crucial for proper development and cannot be automated.
+> Selecting the workspace TypeScript version is crucial for proper development and cannot be automated.
 
 ## Project Synchronization
 
@@ -115,13 +159,33 @@ Run this command to update your project configuration:
 valdi projectsync
 ```
 
+## Troubleshooting
+
+If you encounter any issues during setup:
+
+1. **Run diagnostics:**
+   ```bash
+   valdi doctor
+   ```
+   This will check your environment and provide specific fix suggestions.
+
+2. **Check prerequisites:**
+   - **macOS:** Ensure Xcode is installed and configured (`sudo xcode-select -s /Applications/Xcode.app`)
+   - **All platforms:** Ensure you have a stable internet connection for downloading dependencies
+
+3. **Review detailed setup guides:**
+   - [macOS Setup Reference](./setup/macos_setup.md)
+   - [Linux Setup Reference](./setup/linux_setup.md)
+
+4. **Get help:**
+   - Join our [Discord community](https://discord.gg/uJyNEeYX2U)
+   - Check [Troubleshooting Guide](./TROUBLESHOOTING.md)
+
 ## Next Steps
 
 Ready to start building? Check out:
 
 - [Getting Started Codelab](https://github.com/Snapchat/Valdi/blob/main/docs/codelabs/getting_started/1-introduction.md)
 - [Documentation](https://github.com/Snapchat/Valdi/tree/main/docs#the-basics)
-
-## Need Help?
-
-Join our [Discord community](https://discord.gg/uJyNEeYX2U) for support and discussions.
+- [API Reference](https://github.com/Snapchat/Valdi/tree/main/docs/api)
+- [Command Line Reference](./docs/command-line-references.md)

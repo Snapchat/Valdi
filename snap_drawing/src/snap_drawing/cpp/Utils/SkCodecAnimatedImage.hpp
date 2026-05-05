@@ -37,6 +37,7 @@ public:
     const Duration& getDuration() const override;
     const Size& getSize() const override;
     double getFrameRate() const override;
+    Valdi::Value getMetadata() const override;
 
     static Valdi::Result<Ref<SkCodecAnimatedImage>> make(std::unique_ptr<SkCodec> codec);
 
@@ -54,6 +55,7 @@ private:
     Duration _duration;
     Duration _currentTime;
     Size _size;
+    size_t _numberOfFrames = 0;
     double _frameRate;
 };
 

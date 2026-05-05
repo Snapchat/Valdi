@@ -125,6 +125,9 @@ class ValdiCompilerRunner {
             } else if self.arguments.genStaticRes {
                 try StaticResGenerator.generate(baseUrl: baseUrl, inputFiles: self.arguments.input, to: self.arguments.out!)
                 return true
+            } else if self.arguments.imageProcessingOnly {
+                let configs = try ResolvedConfigs.from(logger: logger, baseURL: baseUrl, userConfigURL: URL.valdiUserConfigURL, args: self.arguments)
+                return try runImageProcessingOnly(configs: configs, fileManager: fileManager, baseUrl: baseUrl)
             } else if self.arguments.out != nil {
                 throw CompilerError("Specifying --out only makes sense if you're using one of the utility commands: --build OR --build-module OR --unpack-module OR --upload-module")
             }
@@ -338,14 +341,40 @@ class ValdiCompilerRunner {
         let regenerateValdiModulesBuildFilesOnly = configs.compilerConfig.regenerateValdiModulesBuildFiles
 
         if regenerateValdiModulesBuildFilesOnly {
-            builder.append(preprocessor: GenerateModuleBuildFileProcessor(logger: logger, projectConfig: configs.projectConfig,
-                                                                  compilerConfig: configs.compilerConfig))
+            // Even in regenerate mode, we need annotation processing to detect native exports for correct output file generation
+            // However, we skip type checking since generated files (res, Strings, etc.) may not exist
+
+            // .vue files must be parsed and their scripts extracted so that TypeScript files
+            // importing from .vue modules can resolve those imports during symbol dumping.
+            builder.append(processor: ParseDocumentsProcessor(logger: logger, globalIosImportPrefix: configs.projectConfig.iosDefaultModuleNamePrefix))
+            builder.append(processor: DocumentUserScriptExtractionProcessor(logger: logger, fileManager: fileManager, userScriptManager: userScriptManager, projectConfig: configs.projectConfig))
+            builder.append(processor: DumpTypeScriptSymbolsProcessor(logger: logger, typeScriptCompilerManager: typeScriptCompilerManager, compilerConfig: configs.compilerConfig, skipTypeChecking: true))
+            builder.append(processor: ParseTypeScriptAnnotationsProcessor(logger: logger,
+                                                                          projectClassMappingManager: projectClassMappingManager,
+                                                                          typeScriptCompilerManager: typeScriptCompilerManager,
+                                                                          annotationsManager: typeScriptAnnotationsManager))
+            builder.append(processor: ApplyTypeScriptAnnotationsProcessor(logger: logger,
+                                                                          typeScriptCompilerManager: typeScriptCompilerManager,
+                                                                          typeScriptAnnotationsManager: typeScriptAnnotationsManager,
+                                                                          nativeCodeGenerationManager: nativeCodeGenerationManager))
+            builder.append(processor: GenerateModuleBuildFileProcessor(logger: logger, 
+                                                                       projectConfig: configs.projectConfig,
+                                                                       compilerConfig: configs.compilerConfig,
+                                                                       nativeCodeGenerationManager: nativeCodeGenerationManager))
             builder.append(preprocessor: GenerateGlobalMetadataProcessor(logger: logger,
                                                                          projectConfig: configs.projectConfig,
                                                                          rootBundle: rootBundle,
                                                                          shouldMergeWithExistingFile: false))
         } else {
-            builder.append(preprocessor: try IdentifyImageAssetsProcessor(logger: logger,  imageToolbox: imageToolbox, compilerConfig: configs.compilerConfig, diskCacheProvider: diskCacheProvider))
+            if let explicitImageAssetManifest = configs.compilerConfig.explicitImageAssetManifest {
+                builder.append(preprocessor: try ExplicitImageAssetsProcessor(logger: logger,
+                                                                              imageToolbox: imageToolbox,
+                                                                              compilerConfig: configs.compilerConfig,
+                                                                              manifest: explicitImageAssetManifest,
+                                                                              diskCacheProvider: diskCacheProvider))
+            } else {
+                builder.append(preprocessor: try IdentifyImageAssetsProcessor(logger: logger,  imageToolbox: imageToolbox, compilerConfig: configs.compilerConfig, diskCacheProvider: diskCacheProvider))
+            }
             builder.append(preprocessor: IdentifyFontAssetsProcessor())
             builder.append(preprocessor: GenerateAssetCatalogProcessor(logger: logger, fileManager: fileManager, projectConfig: configs.projectConfig, enablePreviewInGeneratedTSFile: enablePreviewInGeneratedTSFile))
             builder.append(preprocessor: TranslationStringsProcessor(logger: logger, fileManager: fileManager, compilerConfig: configs.compilerConfig, projectConfig: configs.projectConfig, emitInlineTranslations: emitInlineTranslations, companion: compilerCompanion))
@@ -437,9 +466,11 @@ class ValdiCompilerRunner {
             if !hotReloadingEnabled && !regenerateValdiModulesBuildFilesOnly {
                 builder.append(postprocessor: GenerateViewClassesProcessor(logger: logger, compilerConfig: configs.compilerConfig))
                 builder.append(postprocessor: GenerateModelsProcessor(logger: logger, compilerConfig: configs.compilerConfig))
-                builder.append(postprocessor: CombineNativeSourcesProcessor(logger: logger, compilerConfig: configs.compilerConfig, bundleManager: bundleManager))
-                builder.append(postprocessor: GeneratedTypesVerificationProcessor(logger: logger, projectConfig: configs.projectConfig))
+                // GenerateDependencyInjectionDataProcessor must run BEFORE CombineNativeSourcesProcessor
+                // so that Factory classes are included in the combined output for single_file_codegen modules
                 builder.append(postprocessor: GenerateDependencyInjectionDataProcessor(logger: logger, onlyFocusProcessingForModules: configs.compilerConfig.onlyFocusProcessingForModules))
+                builder.append(postprocessor: CombineNativeSourcesProcessor(logger: logger, compilerConfig: configs.compilerConfig, projectConfig: configs.projectConfig, bundleManager: bundleManager))
+                builder.append(postprocessor: GeneratedTypesVerificationProcessor(logger: logger, projectConfig: configs.projectConfig))
             }
 
             if !codeGenOnly && !regenerateValdiModulesBuildFilesOnly {
@@ -506,14 +537,36 @@ class ValdiCompilerRunner {
                                                              hotReloadingEnabled: hotReloadingEnabled))
         }
 
+        // In regenerate mode, don't fail immediately on annotation processing errors
+        // These errors are often due to missing type information (generated files don't exist yet)
+        // Modules with errors will default to has_ios_exports=True, has_android_exports=True
+        let failImmediatelyOnError = !hotReloadingEnabled && !configs.compilerConfig.regenerateValdiModulesBuildFiles
+        
         let pipeline = CompilationPipeline(logger: logger,
                                    processors: builder.build(),
                                    deferredWarningCollector: self.deferredWarningCollector,
-                                   failImmediatelyOnError: !hotReloadingEnabled)
+                                   failImmediatelyOnError: failImmediatelyOnError)
 
         teardownCallbacks.forEach(pipeline.onTeardown)
 
         return pipeline
+    }
+
+    private func runImageProcessingOnly(configs: ResolvedConfigs, fileManager: ValdiFileManager, baseUrl: URL) throws -> Bool {
+        guard let manifest = configs.compilerConfig.explicitImageAssetManifest else {
+            throw CompilerError("--image-processing-only requires --explicit-image-asset-manifest")
+        }
+
+        let toolboxExecutable = ToolboxExecutable(logger: logger, compilerToolboxURL: configs.projectConfig.compilerToolboxURL)
+        let imageToolbox = ImageToolbox(toolboxExecutable: toolboxExecutable)
+        let imageConverter = ImageConverter(logger: logger, fileManager: fileManager, projectConfig: configs.projectConfig, imageToolbox: imageToolbox)
+
+        let generator = ExplicitImageAssetGenerator(logger: logger,
+                                                    fileManager: fileManager,
+                                                    imageToolbox: imageToolbox,
+                                                    imageConverter: imageConverter)
+        try generator.process(manifest: manifest, baseURL: baseUrl)
+        return true
     }
 
     private func getCompanionExecutable(configs: ResolvedConfigs, diskCacheProvider: DiskCacheProvider) throws -> CompanionExecutable {
