@@ -385,9 +385,9 @@ class ValdiViewManagerOperationsManager(
             val parentView = attachedValues[buffer.int] as ViewRef
             val viewIndex = buffer.int
 
-            currentMoveOp = MoveOpRef(view, parentView, viewIndex)
-
             val startNs = System.nanoTime()
+            currentMoveOp = MoveOpRef(view, parentView, viewIndex, startNs)
+
             parentView.insertChild(view, viewIndex)
             val elapsedMs = (System.nanoTime() - startNs) / 1_000_000
 
@@ -470,7 +470,7 @@ class ValdiViewManagerOperationsManager(
          * [dumpDiagnostics] reads at crash time (the views are still live on
          * stack at that point).
          */
-        class MoveOpRef(val child: ViewRef, val parent: ViewRef, val index: Int)
+        class MoveOpRef(val child: ViewRef, val parent: ViewRef, val index: Int, val startedNs: Long)
 
         /**
          * Floor for [slowestInsertChildMs]. Inserts faster than this are not
@@ -495,9 +495,11 @@ class ValdiViewManagerOperationsManager(
             if (current != null) {
                 val c = current.child.get()?.javaClass?.simpleName ?: "?"
                 val p = current.parent.get()?.javaClass?.simpleName ?: "?"
+                val elapsedMs = (System.nanoTime() - current.startedNs) / 1_000_000
                 sb.append("IN_PROGRESS: child=").append(c)
                     .append(" -> parent=").append(p)
                     .append(" idx=").append(current.index)
+                    .append(" elapsed=").append(elapsedMs).append("ms")
             }
             if (slowestOp != null) {
                 if (sb.isNotEmpty()) sb.append(" | ")
