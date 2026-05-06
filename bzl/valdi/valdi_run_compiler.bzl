@@ -18,7 +18,6 @@ def generate_config(ctx):
     companion_path = toolchain.companion.files.to_list()[0].path
     minify_config_path = toolchain.minify_config.files.to_list()[0].path
     compiler_toolbox_path = toolchain.compiler_toolbox.files.to_list()[0].path
-    pngquant_path = toolchain.pngquant.files.to_list()[0].path
 
     ctx.actions.expand_template(
         output = out,
@@ -29,7 +28,6 @@ def generate_config(ctx):
             "{COMPANION_BINARY}": companion_path + "/scripts/run.sh",
             "{MINIFY_CONFIG_PATH}": "$PWD/" + minify_config_path,
             "{COMPILER_TOOLBOX_PATH}": "$PWD/" + compiler_toolbox_path,
-            "{PNGQUANT_PATH}": "$PWD/" + pngquant_path,
             "{NODE_MODULES_DIR}": NODE_MODULES_BASE,
         },
     )
@@ -42,7 +40,6 @@ def resolve_compiler_executable(ctx, toolchain, include_tools):
         * compiler_toolbox binary
         * companion tool (see //src/valdi_internal/compiler/companion:bin_wrapper)
         * minify config file
-        * pngquant binary
         * sqldelight compiler binary
 
     Args:
@@ -66,7 +63,6 @@ def resolve_compiler_executable(ctx, toolchain, include_tools):
     if include_tools:
         inputs_depsets.append(toolchain.compiler_toolbox.files)
         inputs_depsets.append(toolchain.minify_config.files)
-        inputs_depsets.append(toolchain.pngquant.files)
         inputs_depsets.append(toolchain.sqldelight_compiler.files)
 
         sqldelight_compiler = toolchain.sqldelight_compiler
@@ -87,14 +83,12 @@ def run_valdi_compiler(ctx, args, outputs, inputs, mnemonic, progress_message, u
 
     companion_bin_wrapper = toolchain.companion.files.to_list()[0]
     compiler_toolbox = toolchain.compiler_toolbox.files.to_list()[0]
-    pngquant = toolchain.pngquant.files.to_list()[0]
     minify_config = toolchain.minify_config.files.to_list()[0]
     client_sql = toolchain.sqldelight_compiler.files.to_list()
 
     args.add("--bazel")
     args.add("--direct-companion-path", companion_bin_wrapper)
     args.add("--direct-compiler-toolbox-path", compiler_toolbox)
-    args.add("--direct-pngquant-path", pngquant)
     args.add("--direct-minify-config-path", minify_config)
 
     if client_sql:

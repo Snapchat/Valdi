@@ -69,6 +69,10 @@ class ToolboxExecutable {
         logIfNeeded(runOutput: output)
     }
 
+    func pngquant(arguments: [String]) throws -> String {
+        return try run(arguments: ["pngquant"] + arguments)
+    }
+
     func getVersionString() throws -> String {
         return try lock.lock {
             if let version {

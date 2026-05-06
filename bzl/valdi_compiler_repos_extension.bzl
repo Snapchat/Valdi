@@ -79,8 +79,6 @@ def _valdi_compiler_repos_impl(module_ctx):
     repos = {
         "valdi_compiler_macos": "bin/compiler/macos",
         "valdi_compiler_linux": "bin/compiler/linux",
-        "valdi_pngquant_macos": "bin/pngquant/macos",
-        "valdi_pngquant_linux": "bin/pngquant/linux",
         "jscore_libs": "third-party/jscore/libs",
     }
     for name, target_dir in repos.items():

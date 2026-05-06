@@ -5,11 +5,13 @@
 
 #include "image_toolbox/ImageToolbox.hpp"
 #include "valdi/compiler_toolbox/CompilerToolbox.hpp"
+#include "valdi/compiler_toolbox/PNGQuant.hpp"
 #include "valdi/compiler_toolbox/RewriteHeader.hpp"
 #include "valdi/stamp/Stamp.hpp"
 #include "valdi_core/cpp/Utils/Format.hpp"
 
 #include <iostream>
+#include <string>
 
 using namespace snap::valdi_core;
 
@@ -24,6 +26,7 @@ Available commands:
   precompile      Precompile a JavaScript file into JS ByteCode
   image_info      Retrieves the info of an image
   image_convert   Convert an image into a different format and or size
+  pngquant        Optimize PNG images
   rewrite_header  Rewrites imports of a C or Objective-C header
     )D3LIM" << std::endl;
     return -1;
@@ -135,6 +138,22 @@ static int imageConvert(Arguments& arguments) {
     return EXIT_SUCCESS;
 }
 
+static int pngquant(Arguments& arguments) {
+    ArgumentsParser parser;
+    auto input = parser.addArgument("-i")->setDescription("The input PNG file to optimize")->setRequired();
+
+    auto result = parser.parse(arguments);
+    if (!result) {
+        return printErrorAndUsage(result.error(), parser, "pngquant");
+    }
+
+    result = optimizePNG(input->value());
+    if (!result) {
+        return onError(result.error());
+    }
+    return EXIT_SUCCESS;
+}
+
 static int rewriteHeader(Arguments& arguments) {
     ArgumentsParser parser;
     auto input = parser.addArgument("-i")->setDescription("The input header file to process")->setRequired();
@@ -184,6 +203,8 @@ int runCompilerToolbox(int argc, const char** argv) {
         return imageInfo(arguments);
     } else if (command == "image_convert") {
         return imageConvert(arguments);
+    } else if (command == "pngquant") {
+        return pngquant(arguments);
     } else if (command == "version") {
         return version(arguments);
     } else if (command == "rewrite_header") {

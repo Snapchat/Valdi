@@ -67,8 +67,6 @@ struct ValdiProjectConfig {
 
     let minifyConfigURL: URL?
 
-    let pngquantURL: URL?
-
     let clientSqlURL: URL?
     
     let sqlExportPathTemplate: String?
@@ -273,16 +271,6 @@ struct ValdiProjectConfig {
             throw CompilerError("compiler_toolbox_path not configured in the Valdi project config file")
         }
 
-        var pngquantURL: URL?
-        if let path = args.directPngquantPath {
-            logger.info("Using direct pngquant: \(path)")
-            pngquantURL = currentDirectoryUrl.resolving(path: path)
-        } else {
-            pngquantURL = try getOSSpecificValue(config: config, key: "pngquant_bin_path")?.string
-                .map { try $0.resolvingVariables(environment) }
-                .flatMap { configDirectoryUrl.resolving(path: $0, isDirectory: false) }
-        }
-
         var minifyConfigURL:URL?
         if let path = args.directMinifyConfigPath {
             logger.info("Using direct minify config: \(path)")
@@ -355,7 +343,6 @@ struct ValdiProjectConfig {
                                                   shouldSkipRemoveOrphanFiles: false,
                                                   compilerToolboxURL: compilerToolboxURL,
                                                   minifyConfigURL: minifyConfigURL,
-                                                  pngquantURL: pngquantURL,
                                                   clientSqlURL: clientSqlURL,
                                                   sqlExportPathTemplate: sqlExportPathTemplate,
                                                   androidDefaultClassPath: androidDefaultClassPath,

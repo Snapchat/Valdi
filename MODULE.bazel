@@ -260,6 +260,14 @@ http_archive(
     integrity = "sha256-0F/rzIZh2AQW3zyJ8S0c269xlbCvn8rFSAI2r0jLdgU=",
 )
 
+http_archive(
+    name = "pngquant",
+    url = "https://github.com/kornelski/pngquant/archive/5b4e91f5dd6af27c928474ffd526bb69e17b0f37.zip",
+    build_file = "@valdi//third-party/pngquant:pngquant.BUILD",
+    strip_prefix = "pngquant-5b4e91f5dd6af27c928474ffd526bb69e17b0f37",
+    integrity = "sha256-CqMGdZFDTa+6gyxJN3Wvr6d5O4ezR9xvyBd1tzUNR+8=",
+)
+
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
 rust.toolchain(
     edition = "2024",
@@ -311,6 +319,30 @@ resvg_crate.from_specs(
     ],
 )
 use_repo(resvg_crate, "resvg_crates")
+
+pngquant_crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
+pngquant_crate.spec(package = "cc", version = "1.0.72")
+pngquant_crate.spec(package = "dunce", version = "1.0.4")
+pngquant_crate.spec(package = "getopts", version = "0.2.21")
+pngquant_crate.spec(package = "imagequant-sys", version = "4.1.0")
+pngquant_crate.spec(package = "libc", version = "0.2.112")
+pngquant_crate.spec(package = "libpng-sys", version = "1.1.9")
+pngquant_crate.spec(package = "libz-sys", version = "1.1.28")
+pngquant_crate.spec(package = "wild", version = "2.2.0")
+pngquant_crate.render_config(
+    default_package_name = "",
+    repositories = ["pngquant_crates"],
+)
+pngquant_crate.from_specs(
+    name = "pngquant_crates",
+    lockfile = "//third-party/pngquant:cargo-bazel-lock.json",
+    supported_platform_triples = [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+    ],
+)
+use_repo(pngquant_crate, "pngquant_crates")
 
 bazel_dep(name = "rules_license", version = "1.0.0")
 

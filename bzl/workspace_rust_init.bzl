@@ -51,3 +51,25 @@ def valdi_initialize_rust_workspace():
             "x86_64-unknown-linux-gnu",
         ],
     )
+
+    crates_repository(
+        name = "pngquant_crates",
+        cargo_lockfile = "@valdi//third-party/pngquant:Cargo.lock",
+        lockfile = "@valdi//third-party/pngquant:cargo-bazel-lock.json",
+        packages = {
+            "cc": crate.spec(version = "1.0.72"),
+            "dunce": crate.spec(version = "1.0.4"),
+            "getopts": crate.spec(version = "0.2.21"),
+            "imagequant-sys": crate.spec(version = "4.1.0"),
+            "libc": crate.spec(version = "0.2.112"),
+            "libpng-sys": crate.spec(version = "1.1.9"),
+            "libz-sys": crate.spec(version = "1.1.28"),
+            "wild": crate.spec(version = "2.2.0"),
+        },
+        render_config = render_config(default_package_name = ""),
+        supported_platform_triples = [
+            "aarch64-apple-darwin",
+            "x86_64-apple-darwin",
+            "x86_64-unknown-linux-gnu",
+        ],
+    )

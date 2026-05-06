@@ -2,16 +2,6 @@
 
 INTERNAL_BUILD = False
 
-def pngquant_linux():
-    if INTERNAL_BUILD:
-        return "@valdi_pngquant_linux//:pngquant"
-    return "pngquant/linux/pngquant"
-
-def pngquant_macos():
-    if INTERNAL_BUILD:
-        return "@valdi_pngquant_macos//:pngquant"
-    return "pngquant/macos/pngquant"
-
 def valdi_compiler_companion_files():
     if INTERNAL_BUILD:
         return ["@valdi_compiler_companion//:all_files"]

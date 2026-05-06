@@ -2226,7 +2226,6 @@ def _prepare_hotreload_arguments(module_names, config_yaml_file, explicit_input_
 
     companion_bin_wrapper = toolchain.companion.files.to_list()[0]
     compiler_toolbox = toolchain.compiler_toolbox.files.to_list()[0]
-    pngquant = toolchain.pngquant.files.to_list()[0]
     minify_config = toolchain.minify_config.files.to_list()[0]
     client_sql = toolchain.sqldelight_compiler.files.to_list()
 
@@ -2243,8 +2242,6 @@ def _prepare_hotreload_arguments(module_names, config_yaml_file, explicit_input_
     args.append(companion_bin_wrapper.path)
     args.append("--direct-compiler-toolbox-path")
     args.append(compiler_toolbox.path)
-    args.append("--direct-pngquant-path")
-    args.append(pngquant.path)
     args.append("--direct-minify-config-path")
     args.append(minify_config.path)
 

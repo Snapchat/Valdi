@@ -117,8 +117,3 @@ echo
 echo "********************************************************************************"
 echo "Installing usbmuxd, adb..."
 sudo apt-get --assume-yes --quiet install usbmuxd adb
-
-echo
-echo "********************************************************************************"
-echo "Installing Valdi image processing dependencies..."
-sudo apt-get --assume-yes --quiet install pngquant

@@ -21,6 +21,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":stamp",
+        "@pngquant//:pngquant_lib",
         "@valdi//libs/image_toolbox:lib",
         "@valdi//valdi:valdi_jsbridge_for_toolbox",
         "@valdi//valdi:valdi_standalone_runtime",

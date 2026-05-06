@@ -49,38 +49,16 @@ final class ImageConverter {
 
     func dependenciesVersions() throws -> [String: String] {
         return [
-            "pnquant": try pngquantVersionString(),
             "image_toolbox": try imageToolbox.getVersion()
         ]
-    }
-
-    func pngquantCommand() -> String {
-        return projectConfig.pngquantURL?.path ?? "pngquant"
-    }
-
-    private func pngquantVersionString() throws -> String {
-        logger.debug("Resolving pngquant version")
-        return try run(logger: logger, command: [
-            pngquantCommand(),
-            "--version"
-        ]).trimmed
     }
 
     private func optimizePNG(outputFileURL: URL) throws {
         guard outputFileURL.pathExtension == "png" else {
             return
         }
-        
-        _ = try run(logger: logger,
-                    command: [
-                        pngquantCommand(),
-                        "--skip-if-larger",
-                        "--ext=.png",
-                        "--force",
-                        "--speed=1",
-                        "--quality=70-90",
-                        outputFileURL.path
-                    ])
+
+        try imageToolbox.optimizePNG(inputPath: outputFileURL.path)
     }
 
     public func convert(imageInfo: ImageInfo, filePath: String, outputFileURL: URL, conversionInfo: ImageConversionInfo) throws -> ImageInfo {
@@ -108,12 +86,4 @@ final class ImageConverter {
         return ImageInfo(size: conversionInfo.outputSize)
     }
 
-    private func run(logger: ILogger, command: [String]) throws -> String {
-        let handle = SyncProcessHandle.usingEnv(logger: logger, command: command)
-        try handle.run()
-        if !handle.stderr.content.isEmpty {
-            throw CompilerError("ImageConverter error: " + handle.stderr.contentAsString)
-        }
-        return handle.stdout.contentAsString
-    }
 }
