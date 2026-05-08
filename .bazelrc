@@ -1,4 +1,5 @@
 try-import %workspace%/.bazelrc.internal
+try-import %workspace%/.bazelrc.local
 
 # Enable bzlmod for module-based dependency resolution
 common --enable_bzlmod

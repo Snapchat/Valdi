@@ -176,6 +176,8 @@ jobs:
         run: |
           echo "build --disk_cache=$HOME/.cache/bazel/disk" >> .bazelrc.local
           echo "build --repository_cache=$HOME/.cache/bazel/repo" >> .bazelrc.local
+          echo "build --repo_env=ANDROID_HOME" >> .bazelrc.local
+          echo "build --repo_env=ANDROID_NDK_HOME" >> .bazelrc.local
 
       - name: Install system dependencies
         run: |
