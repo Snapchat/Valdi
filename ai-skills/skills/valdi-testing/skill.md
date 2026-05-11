@@ -42,20 +42,24 @@ my_module/
 
 ## BUILD.bazel for Tests
 
-Add a `ts_project` or `valdi_module` test target. The test target lists test spec files in `srcs` and shares `deps` with the main module:
+Tests are included in the same `valdi_module` target as source files. The `valdi_module` rule auto-generates a test target from `test/` files:
 
 ```python
 load("//bzl/valdi:valdi_module.bzl", "valdi_module")
 
 valdi_module(
-    name = "my_module_tests",
-    srcs = glob(["test/**/*.spec.tsx", "test/**/*.spec.ts"]),
-    testonly = True,
+    name = "my_module",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "test/**/*.ts",
+        "test/**/*.tsx",
+    ]) + ["tsconfig.json"],
     deps = [
-        ":my_module",
-        "//src/valdi_modules/src/valdi/valdi_test",
-        "//src/valdi_modules/src/foundation/test/util",
+        "//src/valdi_modules/src/valdi/valdi_core",
         "//src/valdi_modules/src/valdi/valdi_tsx",
+        "//src/valdi_modules/src/valdi/valdi_test",
+        "//src/valdi_modules/src/valdi/foundation/test/util",
     ],
 )
 ```
@@ -63,3 +67,15 @@ valdi_module(
 ## Platform Tests
 
 For C++, iOS, and Android platform layer tests, see the `valdi-cpp-runtime`, `valdi-ios`, and `valdi-android` skills respectively.
+
+## Combined Validation with agent-check
+
+Instead of running build and test separately, use `agent-check`:
+
+```bash
+valdi agent-check --module my_module                   # build + lint + test
+valdi agent-check --module my_module --quick           # lint + test only (hot reloader running)
+valdi agent-check --module my_module --quick --json    # machine-readable output
+```
+
+See the **valdi-setup** skill for the full hot reloader + agent-check iteration workflow.

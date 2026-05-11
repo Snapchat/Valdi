@@ -38,13 +38,14 @@ valdi_module(
 
 ```json
 {
-    "extends": "../../../../src/valdi_modules/src/valdi/_configs/base.tsconfig.json"
+    "extends": "../_configs/base.tsconfig.json"
 }
 ```
 
-Adjust the `../../../../` prefix to match how many directories deep your module is
-from the repo root. The base config sets up `paths` aliases so `'valdi_core/src/...'`
-imports resolve correctly.
+The `extends` path must resolve to a `_configs/base.tsconfig.json` file. The relative
+depth depends on where your module lives — check neighboring modules for the correct
+prefix. The base config sets up `paths` aliases so `'valdi_core/src/...'` imports
+resolve correctly.
 
 ## Dependency Table
 
@@ -54,7 +55,6 @@ imports resolve correctly.
 | JSX elements (`<view>`, `<label>`, etc.), `NativeTemplateElements` | `//src/valdi_modules/src/valdi/valdi_tsx` |
 | `HTTPClient`, `HTTPResponse` | `//src/valdi_modules/src/valdi/valdi_http` |
 | `PersistentStore` | `//src/valdi_modules/src/valdi/persistence` |
-| Pre-built UI components (buttons, cards, etc.) | `//src/valdi_modules/src/valdi/valdi_widgets_core` |
 
 ## ios_module_name Convention
 
@@ -142,3 +142,38 @@ valdi hotreload --network   # Discover device over Wi-Fi instead of USB
 
 If hot reload stops reflecting changes, stop with `Ctrl+C` and restart — the CLI
 will clean stale build artifacts automatically.
+
+## Agent Iteration Workflow
+
+When an AI agent is editing Valdi TypeScript, use the hot reloader for compile
+feedback and `agent-check` for lint + test validation.
+
+### During iteration
+
+1. Hot reloader is running (`valdi hotreload`). It recompiles on every file save.
+2. Watch the hot reloader output for compile results:
+   - `"Recompilation pass finished"` — change compiled successfully
+   - `[ERROR]` lines — compile error, fix before continuing
+3. Run a quick validation (lint + tests, skips the Bazel build):
+
+```bash
+valdi agent-check --module my_module --quick
+valdi agent-check --module my_module --quick --json   # machine-readable
+```
+
+### Before committing
+
+Run the full pipeline to catch build config issues, lint drift, and test regressions:
+
+```bash
+valdi agent-check --module my_module
+```
+
+### agent-check flags
+
+| Flag | Effect |
+|---|---|
+| `--module <name>` | Valdi module name to validate |
+| `--target <label>` | Bazel target path (alternative to --module) |
+| `--quick` | Skip build step (hot reloader already compiled) |
+| `--json` | Structured JSON output for agent consumption |

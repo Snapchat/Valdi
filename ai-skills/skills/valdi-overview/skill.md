@@ -49,10 +49,13 @@ Skills available (`valdi skills list`):
 ## Quick Commands
 
 ```bash
-bazel build //...          # Build everything
-bazel test //...           # Run all tests
-valdi install ios          # Build & install iOS app
-valdi hotreload            # Start hot reload
+bazel build //...                              # Build everything
+bazel test //...                               # Run all tests
+valdi install ios                              # Build & install iOS app
+valdi hotreload                                # Start hot reload
+valdi agent-check --module X                   # Full validation (build + lint + test)
+valdi agent-check --module X --quick           # Quick check (lint + test, no build)
+valdi agent-check --module X --quick --json    # Quick check with machine-readable output
 ```
 
 ## More Information
