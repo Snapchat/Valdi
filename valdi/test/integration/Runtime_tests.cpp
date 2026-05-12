@@ -1098,37 +1098,6 @@ TEST_P(RuntimeFixture, requiredCompositeAttributeParts) {
               getRootView(tree));
 }
 
-TEST_P(RuntimeFixture, removeCompositeAttributesOnDestroy) {
-    auto viewModel = makeShared<ValueMap>();
-    (*viewModel)[STRING_LITERAL("style")] = Value(STRING_LITERAL("dotted"));
-    (*viewModel)[STRING_LITERAL("left")] = Value(1.0);
-
-    auto tree = wrapper.createViewNodeTreeAndContext("test", "CompositeAttributes", Value(viewModel));
-
-    wrapper.waitUntilAllUpdatesCompleted();
-
-    auto rectangleView = tree->getRootViewNode()->getChildAt(0)->getView();
-
-    // Composite attribute "rectangle" should be applied
-    auto values = ValueArray::make(5);
-    (*values)[0] = Value(1.0);
-    (*values)[1] = Value(2.0);
-    (*values)[2] = Value(3.0);
-    (*values)[3] = Value(4.0);
-    (*values)[4] = Value(std::string("dotted"));
-
-    ASSERT_EQ(
-        DummyView("UIRectangleView").addAttribute("id", "container").addAttribute("rectangle", Valdi::Value(values)),
-        getDummyView(rectangleView));
-
-    wrapper.runtime->destroyViewNodeTree(*tree);
-
-    // After destroy, composite attributes must be reset — not just non-composite ones.
-    // This verifies that willRemoveView properly resets composite attributes
-    // (bound with requiresView=false) that would otherwise retain stale values.
-    ASSERT_EQ(DummyView("UIRectangleView").addAttribute("id", "container"), getDummyView(rectangleView));
-}
-
 TEST_P(RuntimeFixture, canPassCompositeAttributesExplicity) {
     auto viewModel = makeShared<ValueMap>();
     (*viewModel)[STRING_LITERAL("rectangle")] = Value(STRING_LITERAL("some rectangle"));

@@ -259,11 +259,6 @@ void ViewNode::setView(ViewTransactionScope& viewTransactionScope,
             _attributesApplier.willRemoveView(viewTransactionScope);
 
             if (shouldEnqueueToPool && _viewFactory != nullptr) {
-                // Force-reset attributes that willRemoveView didn't handle
-                // (composites with requiresView=false like transform) so recycled
-                // views don't carry stale state. Not called for limitToViewport
-                // temporary removal where the ViewNode persists and reapplies later.
-                _attributesApplier.resetRemainingAttributesForPool(viewTransactionScope);
                 viewTransactionScope.transaction().willEnqueueViewToPool(
                     _view, [viewFactory = _viewFactory](View& view) {
                         viewFactory->enqueueViewToPool(strongSmallRef(&view));

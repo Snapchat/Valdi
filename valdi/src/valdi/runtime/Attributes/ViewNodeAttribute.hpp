@@ -38,8 +38,7 @@ public:
                                       ViewNode* viewNode,
                                       bool hasView,
                                       bool justAddedView,
-                                      const Ref<Animator>& animator,
-                                      bool forceReset = false);
+                                      const Ref<Animator>& animator);
 
     void markDirty();
 
