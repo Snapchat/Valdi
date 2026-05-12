@@ -60,6 +60,7 @@ public:
     void updateAttributeWithoutUpdate(AttributeId id, const Value& value);
 
     void willRemoveView(ViewTransactionScope& viewTransactionScope);
+    void resetRemainingAttributesForPool(ViewTransactionScope& viewTransactionScope);
     void didAddView(ViewTransactionScope& viewTransactionScope, const Ref<Animator>& animator);
 
     /**
@@ -117,13 +118,15 @@ private:
 
     void updateAttributes(ViewTransactionScope& viewTransactionScope,
                           const Ref<Animator>& animator,
-                          bool justAddedView);
+                          bool justAddedView,
+                          bool forceReset = false);
 
     void updateAttribute(ViewTransactionScope& viewTransactionScope,
                          AttributeId id,
                          ViewNodeAttribute& attribute,
                          const Ref<Animator>& animator,
-                         bool justAddedView);
+                         bool justAddedView,
+                         bool forceReset = false);
 
     AttributeIds& getAttributeIds() const;
     StringBox getAttributeName(AttributeId id) const;

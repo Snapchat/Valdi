@@ -343,8 +343,9 @@ Result<Void> ViewNodeAttribute::update(ViewTransactionScope& viewTransactionScop
                                        ViewNode* viewNode,
                                        bool hasView,
                                        bool justAddedView,
-                                       const Ref<Animator>& animator) {
-    auto needValue = !empty() && (!_handlerNeedsView || hasView);
+                                       const Ref<Animator>& animator,
+                                       bool forceReset) {
+    auto needValue = !forceReset && !empty() && (!_handlerNeedsView || hasView);
 
     if (needValue) {
         if (!_hasAppliedValue || _appliedValueDirty) {

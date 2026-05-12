@@ -213,6 +213,28 @@ void ViewNodeAttributesApplier::willRemoveView(ViewTransactionScope& viewTransac
     updateAttributes(viewTransactionScope, nullptr, false);
 }
 
+void ViewNodeAttributesApplier::resetRemainingAttributesForPool(ViewTransactionScope& viewTransactionScope) {
+    // Called after willRemoveView when the view is going to the pool.
+    // Composite attributes with requiresView=false (e.g., the transform
+    // composite) aren't reset by willRemoveView because their needValue
+    // stays true even when hasView is false. Force-reset them here so
+    // recycled views don't carry stale transform/scale/rotation state.
+    //
+    // Only composites are targeted — non-composite requiresView=false
+    // attributes (e.g., scroll offsets) must not be force-reset as they
+    // may affect active layout or interaction state.
+    //
+    // This must NOT be called for limitToViewport temporary removal — the
+    // same ViewNode will call didAddView later and needs attribute values
+    // to persist across the remove/add cycle.
+    for (const auto& it : _attributes) {
+        if (it.second->isCompositePart() || it.second->getCompositeAttribute() == nullptr) {
+            continue;
+        }
+        updateAttribute(viewTransactionScope, it.first, *it.second, nullptr, false, /* forceReset */ true);
+    }
+}
+
 void ViewNodeAttributesApplier::didAddView(ViewTransactionScope& viewTransactionScope, const Ref<Animator>& animator) {
     SC_ASSERT(!_hasView);
 
@@ -222,7 +244,8 @@ void ViewNodeAttributesApplier::didAddView(ViewTransactionScope& viewTransaction
 
 void ViewNodeAttributesApplier::updateAttributes(ViewTransactionScope& viewTransactionScope,
                                                  const Ref<Animator>& animator,
-                                                 bool justAddedView) {
+                                                 bool justAddedView,
+                                                 bool forceReset) {
     for (const auto& it : _attributes) {
         if (it.second->isCompositePart()) {
             continue;
@@ -230,7 +253,7 @@ void ViewNodeAttributesApplier::updateAttributes(ViewTransactionScope& viewTrans
 
         auto key = it.first;
         auto attribute = it.second;
-        updateAttribute(viewTransactionScope, key, *attribute, animator, justAddedView);
+        updateAttribute(viewTransactionScope, key, *attribute, animator, justAddedView, forceReset);
     }
 }
 
@@ -238,12 +261,13 @@ void ViewNodeAttributesApplier::updateAttribute(ViewTransactionScope& viewTransa
                                                 AttributeId id,
                                                 ViewNodeAttribute& attribute,
                                                 const Ref<Animator>& animator,
-                                                bool justAddedView) {
+                                                bool justAddedView,
+                                                bool forceReset) {
     Result<Void> result;
     if (animator != nullptr && _viewNode->isAnimationsEnabled()) {
-        result = attribute.update(viewTransactionScope, _viewNode, _hasView, justAddedView, animator);
+        result = attribute.update(viewTransactionScope, _viewNode, _hasView, justAddedView, animator, forceReset);
     } else {
-        result = attribute.update(viewTransactionScope, _viewNode, _hasView, justAddedView, nullptr);
+        result = attribute.update(viewTransactionScope, _viewNode, _hasView, justAddedView, nullptr, forceReset);
     }
 
     if (!result) {
