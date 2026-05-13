@@ -15,6 +15,7 @@ namespace Valdi {
 std::shared_ptr<YGConfig> Yoga::createConfig(float pointScale) {
     auto* config = YGConfigNew();
     YGConfigSetExperimentalFeatureEnabled(config, YGExperimentalFeatureWebFlexBasis, true);
+    YGConfigSetExperimentalFeatureEnabled(config, YGExperimentalFeatureFixFlexBasisFitContent, true);
     YGConfigSetPointScaleFactor(config, pointScale);
 
     return std::shared_ptr<YGConfig>(config, YGConfigFree);
