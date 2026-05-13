@@ -1,3 +1,8 @@
+---
+name: valdi-tsx
+description: "Valdi TypeScript/TSX component authoring patterns including StatefulComponent lifecycle (onCreate, onViewModelUpdate, onDestroy), state management with setState, viewModel props, type-safe Style styling, provider dependency injection, event handling (onTap, onPress), and common anti-patterns versus React. Use when writing or reviewing .tsx component files in /src/valdi_modules/, /apps/, /modules/, or /npm_modules/ directories."
+---
+
 # Valdi TypeScript/TSX Component Rules
 
 **Applies to**: TypeScript and TSX files in `/src/valdi_modules/`, `/apps/`, `/modules/`, `/npm_modules/`
@@ -60,6 +65,18 @@ class MyComponent extends StatefulComponent<ViewModel, State> {
 | **Re-render** | `setCount(...)` | `this.setState(...)` |
 | **Return** | `return <view />` | `<view />;` (statement) |
 
+## New Component Checklist
+
+1. Create `.tsx` file in the appropriate module directory
+2. Define `ViewModel` interface (add `@ViewModel @ExportModel` if native code needs it)
+3. Define `State` interface if the component manages local state
+4. Extend `StatefulComponent<ViewModel, State>` (or `Component<ViewModel>` for stateless)
+5. Initialize `state = { ... }` with defaults
+6. Implement `onRender()` — remember it returns `void`, not JSX
+7. Add lifecycle methods as needed: `onCreate()`, `onViewModelUpdate()`, `onDestroy()`
+8. Build and verify: `bazel build //path/to:target`
+9. If build fails: check for React-isms (`useState`, `this.props`, `return <jsx>`), unsupported style properties (`gap`, `flex`, `fontSize`), or `@ExportModel` type violations (see sections below)
+
 ## Provider Pattern (Dependency Injection)
 
 ```typescript
@@ -116,8 +133,6 @@ document.addEventListener('click', ...);  // Doesn't work!
 )}
 ```
 
-**Important**: Valdi doesn't support `addEventListener`, `keydown`, or other global DOM events. Use element-specific callbacks like `onTap`, `onPress`, `onChange`, etc. For keyboard input on macOS desktop, use a polyglot `<custom-view>` with a native NSView that captures `keyDown:` events and forwards them via a bound callback attribute.
-
 ## Timers and Scheduling
 
 ```typescript
@@ -145,8 +160,6 @@ setInterval(() => { ... }, 100);  // Won't auto-cleanup!
 // ❌ WRONG - Don't use setTimeout directly
 setTimeout(() => { ... }, 100);  // Won't auto-cleanup!
 ```
-
-**Important**: Always use `this.setTimeoutDisposable()` in components. It automatically cleans up when the component is destroyed, preventing memory leaks.
 
 ## Styling
 
@@ -227,115 +240,21 @@ const largeButton = styles.button.extend({
 Style.merge(styles.viewStyle, styles.labelStyle);  // Type error!
 ```
 
-### Spacing: Padding & Margin
+### Spacing, Layout, and Positioning
 
-```typescript
-// ✅ CORRECT - Valdi spacing syntax
-new Style<View>({
-  // Single value - all sides
-  padding: 10,
-  margin: 5,
-  
-  // String shorthand - vertical horizontal
-  padding: '10 20',    // 10pt top/bottom, 20pt left/right
-  margin: '5 10',
-  
-  // Individual sides
-  paddingTop: 5,
-  paddingRight: 10,
-  paddingBottom: 5,
-  paddingLeft: 10,
-  
-  // Percentages (relative to parent)
-  padding: '5%',       // 5% of parent width/height
-  marginLeft: '10%',   // 10% of parent width
-})
+Key rules for spacing and layout (Valdi uses Yoga flexbox):
 
-// ❌ WRONG - These don't exist in Valdi
-new Style<View>({
-  gap: 10,                  // ❌ Use margin on children
-  paddingHorizontal: 20,    // ❌ Use padding: '0 20'
-  paddingVertical: 10,      // ❌ Use padding: '10 0'
-  paddingInline: 15,        // ❌ Doesn't exist
-})
+- **Padding/margin**: `padding: 10`, `padding: '10 20'` (vertical horizontal), or individual sides (`paddingTop`, etc.)
+- **No `gap`**: Use margin on children instead. No `paddingHorizontal`/`paddingVertical` — use string shorthand
+- **Flexbox**: Use `flexGrow: 1` (not `flex: 1`), standard `flexDirection`, `justifyContent`, `alignItems`
+- **No CSS Grid**: Only flexbox layout is supported
+- **Position**: `position: 'relative' | 'absolute'` with `top`/`right`/`bottom`/`left`
+- **Size**: Points (`width: 200`), percentage (`width: '50%'`), or `'auto'`
+- **Borders**: `borderRadius`, `borderWidth`, `borderColor` only — no per-side border properties (`borderRight` etc.)
+- **Overflow**: Only `'visible' | 'scroll'` — `'hidden'` does not exist
+- **Shadow**: `boxShadow: '0 2 4 rgba(0, 0, 0, 0.1)'`
 
-// ❌ WRONG - gap property doesn't exist on View
-new Style<View>({ flexDirection: 'row', gap: '8' })
-// ✅ CORRECT - use margin on child elements instead
-// In JSX: <view marginRight={8}> or margin="0 8 0 0"
-```
-
-### Layout: Flexbox (Yoga)
-
-```typescript
-// ✅ CORRECT - Valdi uses Yoga flexbox
-new Style<View>({
-  // Container properties
-  flexDirection: 'row',          // 'row' | 'column' | 'row-reverse' | 'column-reverse'
-  justifyContent: 'center',      // 'flex-start' | 'center' | 'flex-end' | 'space-between' | 'space-around' | 'space-evenly'
-  alignItems: 'center',          // 'flex-start' | 'center' | 'flex-end' | 'stretch' | 'baseline'
-  alignContent: 'flex-start',    // For multi-line flex containers
-  flexWrap: 'wrap',              // 'wrap' | 'nowrap' | 'wrap-reverse'
-  
-  // Child properties
-  flexGrow: 1,                   // Grow to fill space (NOTE: use flexGrow, not flex)
-  flexShrink: 1,                 // How much to shrink
-  flexBasis: 100,                // Base size before flex
-  alignSelf: 'center',           // Override parent's alignItems
-})
-
-// ❌ WRONG - These don't exist
-new Style<View>({
-  display: 'grid',               // ❌ Only 'flex' supported
-  gridTemplateColumns: '1fr 1fr', // ❌ No CSS Grid
-  flex: 1,                       // ❌ Use flexGrow: 1 instead!
-})
-```
-
-### Position & Size
-
-```typescript
-// ✅ CORRECT - Positioning
-new Style<View>({
-  // Size
-  width: 200,           // Points
-  width: '50%',         // Percentage of parent
-  width: 'auto',        // Auto-size
-  height: 100,
-  minWidth: 50,
-  maxWidth: 500,
-  aspectRatio: 16/9,    // Width:height ratio
-  
-  // Position
-  position: 'relative', // 'relative' | 'absolute'
-  top: 10,
-  right: 10,
-  bottom: 10,
-  left: 10,
-})
-```
-
-### Common Properties
-
-```typescript
-// ✅ CORRECT - Frequently used properties
-new Style<View>({
-  backgroundColor: '#fff',
-  opacity: 0.8,
-  
-  // Borders
-  borderRadius: 8,
-  borderWidth: 1,
-  borderColor: '#ccc',
-  borderTopWidth: 2,
-  
-  // Shadow
-  boxShadow: '0 2 4 rgba(0, 0, 0, 0.1)',
-  
-  // Overflow — only 'visible' | 'scroll' (NOT 'hidden'!)
-  overflow: 'scroll',   // 'visible' | 'scroll'
-})
-```
+> See `/docs/api/api-style-attributes.md` for the complete 1290+ property reference.
 
 ### Type Safety
 
@@ -383,26 +302,14 @@ interface GameState {
 }
 ```
 
-## Common Mistakes to Avoid
+## Additional Pitfalls
 
-1. **Returning JSX from onRender()** - It returns void, JSX is a statement
-2. **Forgetting setState()** - Direct mutation won't trigger re-render
-3. **Using this.props** - Should be this.viewModel
-4. **Wrong lifecycle names** - onCreate/onViewModelUpdate/onDestroy (not mount/update/unmount)
-5. **Suggesting scheduleRender()** - Deprecated, use StatefulComponent + setState()
-6. **Using addEventListener** - Use element callbacks like onTap, onPress, onChange
-7. **Using setInterval/setTimeout directly** - Use this.setTimeoutDisposable()
-8. **Using CSS properties that don't exist** - No gap, paddingHorizontal, paddingVertical; use margin on children for gap
-9. **Using `flex: 1`** - `flex` doesn't exist on `View`; use `flexGrow: 1` instead
-10. **Using `fontSize` on Label** - Labels use `font: 'system 20'` (string), not `fontSize`
-11. **Typing SIGIcon values as `string`** - `SIGIcon.cameraStroke` etc. return `Asset`, not `string`; use `import { Asset } from 'valdi_core/src/Asset'` for ViewModel fields that store icon references
-12. **Using `overflow: 'hidden'`** - `View` only accepts `'visible' | 'scroll'`; remove overflow or use 'scroll'
-13. **Using type aliases in `@ExportModel` ViewModels** - Only primitives and other `@ExportModel` types are allowed
-14. **Importing `Shape` instead of `ShapeView`** - `Shape` is not exported; use `import { ShapeView } from 'valdi_tsx/src/NativeTemplateElements'` and `new Style<ShapeView>({...})`
-15. **Using per-side border properties** - No `borderRight`, `borderRightWidth`, etc. Only `borderWidth`, `borderColor`, `borderRadius` exist. Use a thin `<view>` as a divider instead.
-16. **Using `font: 'system-semibold 16'`** - Only `system` (regular) and `system-bold` are reliably available. Use `system-bold` for semibold.
-17. **ViewModel/Context name collisions** - When a module has multiple components, each exported `ViewModel` and `ComponentContext` must have a unique name (e.g. `WeatherCardViewModel` not just `ViewModel`), or the compiler will emit conflicting platform types.
-18. **Using `flexDirection` on ScrollView** - ScrollView doesn't support flexDirection; it scrolls vertically by default
+Beyond the anti-patterns shown inline above, watch for these less obvious mistakes:
+
+- **SIGIcon is Asset, not string** — `SIGIcon.cameraStroke` returns `Asset`; use `import { Asset } from 'valdi_core/src/Asset'` for ViewModel fields storing icon references
+- **Import ShapeView, not Shape** — `Shape` is not exported; use `import { ShapeView } from 'valdi_tsx/src/NativeTemplateElements'`
+- **No per-side border properties** — `borderRight`, `borderRightWidth` etc. do not exist; use a thin `<view>` divider instead
+- **ViewModel/Context name collisions** — each exported `ViewModel` and `ComponentContext` must have a unique name across the module (e.g. `WeatherCardViewModel`, not just `ViewModel`)
 
 ## Platform Detection
 
