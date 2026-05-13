@@ -1,6 +1,11 @@
 #include "ImageToolbox.hpp"
 #include "SVGRenderer.hpp"
+#include "snap_drawing/cpp/Drawing/DisplayList/DisplayList.hpp"
+#include "snap_drawing/cpp/Drawing/DrawingContext.hpp"
+#include "snap_drawing/cpp/Drawing/GraphicsContext/BitmapGraphicsContext.hpp"
+#include "snap_drawing/cpp/Drawing/Surface/DrawableSurfaceCanvas.hpp"
 #include "snap_drawing/cpp/Utils/Image.hpp"
+#include "snap_drawing/cpp/Utils/Path.hpp"
 #include "valdi_core/cpp/Utils/DiskUtils.hpp"
 #include "valdi_core/cpp/Utils/Format.hpp"
 #include "valdi_core/cpp/Utils/Function.hpp"
@@ -48,6 +53,42 @@ static Valdi::Result<Ref<Image>> loadImage(const Valdi::StringBox& imageFilePath
         });
 }
 
+static Valdi::Result<Ref<Image>> clipImageToCircle(const Ref<Image>& image) {
+    auto width = image->width();
+    auto height = image->height();
+
+    DrawingContext drawingContext(width, height);
+
+    Path clipPath;
+    clipPath.addOval(Rect::makeXYWH(0, 0, width, height), true);
+    drawingContext.clipPath(clipPath);
+
+    auto imageRect = Rect::makeXYWH(0, 0, image->width(), image->height());
+    auto targetRect = Rect::makeXYWH(0, 0, width, height);
+    drawingContext.drawImage(*image, imageRect, targetRect, nullptr);
+
+    auto displayList = Valdi::makeShared<DisplayList>(Size(width, height), TimePoint(0.0));
+    displayList->appendLayerContent(drawingContext.finish(), 1.0);
+
+    BitmapGraphicsContext bitmapContext;
+    auto surface = bitmapContext.createBitmapSurface(
+        Valdi::BitmapInfo(width, height, Valdi::ColorTypeRGBA8888, Valdi::AlphaTypePremul, 0));
+
+    auto canvas = surface->prepareCanvas();
+    if (!canvas) {
+        return canvas.moveError();
+    }
+
+    displayList->draw(canvas.value(), kDisplayListAllPlaneIndexes, true);
+
+    auto snapshot = canvas.value().snapshot();
+    if (!snapshot) {
+        return snapshot.moveError();
+    }
+
+    return snapshot.moveValue();
+}
+
 Valdi::Result<ImageInfo> getImageInfo(const Valdi::StringBox& imageFilePath) {
     auto imageSize = processImage<std::pair<int, int>>(
         imageFilePath,
@@ -89,7 +130,8 @@ Valdi::Result<Valdi::BytesView> convertImage(const Valdi::StringBox& inputImageF
                                              const Valdi::StringBox& outputImageFilePath,
                                              const std::optional<int>& outputWidth,
                                              const std::optional<int>& outputHeight,
-                                             double qualityRatio) {
+                                             double qualityRatio,
+                                             bool roundOutput) {
     Valdi::Path outputPath(outputImageFilePath.toStringView());
 
     snap::drawing::EncodedImageFormat outputFormat;
@@ -128,8 +170,21 @@ Valdi::Result<Valdi::BytesView> convertImage(const Valdi::StringBox& inputImageF
         newWidth = static_cast<int>(round(newHeight * ratio));
     }
 
-    if (newWidth != image->width() && newHeight != image->height()) {
+    if (newWidth != image->width() || newHeight != image->height()) {
         image = image->resized(newWidth, newHeight);
+    }
+
+    if (roundOutput) {
+        if (newWidth != newHeight) {
+            return Valdi::Error("Round image output requires equal width and height");
+        }
+
+        auto clippedImage = clipImageToCircle(image);
+        if (!clippedImage) {
+            return clippedImage.moveError();
+        }
+
+        image = clippedImage.moveValue();
     }
 
     auto encodeResult = image->encode(outputFormat, qualityRatio);

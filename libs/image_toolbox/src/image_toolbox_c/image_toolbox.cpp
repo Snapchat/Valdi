@@ -36,7 +36,8 @@ int imagetoolbox_convert(
                                                    Valdi::StringCache::getGlobal().makeStringFromLiteral(output_path),
                                                    {outputWidth},
                                                    {outputHeight},
-                                                   1.0);
+                                                   1.0,
+                                                   false);
 
     if (result) {
         return 0;

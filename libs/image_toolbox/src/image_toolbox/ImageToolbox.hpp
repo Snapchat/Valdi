@@ -19,6 +19,7 @@ Valdi::Result<Valdi::BytesView> convertImage(const Valdi::StringBox& inputImageF
                                              const Valdi::StringBox& outputImageFilePath,
                                              const std::optional<int>& outputWidth,
                                              const std::optional<int>& outputHeight,
-                                             double qualityRatio);
+                                             double qualityRatio,
+                                             bool roundOutput);
 
 } // namespace snap::imagetoolbox

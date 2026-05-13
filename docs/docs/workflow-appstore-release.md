@@ -41,6 +41,43 @@ ls app_icons/ios/Assets.xcassets/AppIcon.appiconset
 1024.png	120.png		152.png		167.png		180.png		20.png		29.png		40.png		58.png		60.png		80.png		87.png		Contents.json
 ```
 
+You can also generate app icons from a single source image at build time:
+
+```py
+load(
+    "//bzl/valdi:valdi_application.bzl",
+    "valdi_application",
+    "valdi_application_icons",
+)
+
+valdi_application(
+    name = "hello_world",
+    icons = valdi_application_icons(src = "app_icon.png"),
+)
+```
+
+If platform-specific source images are needed, use the platform icon macros directly:
+
+```py
+load(
+    "//bzl/valdi:valdi_application.bzl",
+    "valdi_application",
+    "valdi_android_application_icons",
+    "valdi_ios_application_icons",
+    "valdi_macos_application_icons",
+)
+
+valdi_application(
+    name = "hello_world",
+    ios_app_icons = valdi_ios_application_icons(src = "ios_icon.png"),
+    android_app_icons = valdi_android_application_icons(
+        src = "android_icon.png",
+        round_src = "android_round_icon.png",
+    ),
+    macos_app_icons = valdi_macos_application_icons(src = "macos_icon.png"),
+)
+```
+
 Build your app in release mode using the `valdi package` command:
 ```sh
 valdi package ios --build_config release --output_path hello_world.ipa

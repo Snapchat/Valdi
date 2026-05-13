@@ -1,12 +1,15 @@
-load("//bzl/valdi:valdi_application.bzl", "valdi_application")
+load(
+    "//bzl/valdi:valdi_application.bzl",
+    "valdi_application",
+    "valdi_application_icons",
+)
 load("//bzl/valdi:valdi_exported_library.bzl", "valdi_exported_library")
 
 valdi_application(
     name = "hello_world",
     android_activity_theme_name = "Theme.MyApp.Launch",
-    android_app_icon_name = "app_icon",
     android_resource_files = glob(["app_assets/android/**"]),
-    ios_app_icons = glob(["app_assets/ios/Icons.xcassets/**"]),
+    icons = valdi_application_icons(src = "app_assets/icon.png"),
     ios_bundle_id = "com.snap.valdi.helloworld",
     ios_families = ["iphone"],
     root_component_path = "App@hello_world/src/HelloWorldApp",

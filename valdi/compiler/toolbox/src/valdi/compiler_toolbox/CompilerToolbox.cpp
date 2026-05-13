@@ -100,6 +100,7 @@ static int imageConvert(Arguments& arguments) {
     auto width = parser.addArgument("-w")->setDescription("The output width");
     auto height = parser.addArgument("-h")->setDescription("The output height");
     auto quality = parser.addArgument("-q")->setDescription("The quality ratio between 0 and 1, applicable for JPG");
+    auto round = parser.addArgument("--round")->setDescription("Clip the output image to a circle")->setAsFlag();
 
     auto result = parser.parse(arguments);
     if (!result) {
@@ -124,8 +125,8 @@ static int imageConvert(Arguments& arguments) {
         }
     }
 
-    auto convertResult =
-        snap::imagetoolbox::convertImage(input->value(), output->value(), outputWidth, outputHeight, qualityRatio);
+    auto convertResult = snap::imagetoolbox::convertImage(
+        input->value(), output->value(), outputWidth, outputHeight, qualityRatio, round->hasValue());
     if (!convertResult) {
         return onError(convertResult.error());
     }
