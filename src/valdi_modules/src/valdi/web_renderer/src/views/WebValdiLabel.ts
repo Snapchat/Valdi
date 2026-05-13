@@ -1,3 +1,4 @@
+import { isAttributedText, renderAttributedText } from '../utils/parseAttributedText';
 import { WebValdiLayout } from './WebValdiLayout';
 
 export class WebValdiLabel extends WebValdiLayout {
@@ -21,7 +22,7 @@ export class WebValdiLabel extends WebValdiLayout {
       whiteSpace: 'pre-wrap',
       wordWrap: 'break-word',
       fontFamily: 'sans-serif',
-      font: 'AvenirNext-DemiBold',
+      font: 'Montserrat-SemiBold',
       pointerEvents: 'auto',
     });
 
@@ -31,7 +32,12 @@ export class WebValdiLabel extends WebValdiLayout {
   changeAttribute(attributeName: string, attributeValue: any): void {
     switch (attributeName) {
       case 'value':
-        this.htmlElement.textContent = attributeValue;
+        if (isAttributedText(attributeValue)) {
+          this.htmlElement.textContent = '';
+          this.htmlElement.appendChild(renderAttributedText(attributeValue));
+        } else {
+          this.htmlElement.textContent = attributeValue;
+        }
         return;
       case 'numberOfLines':
         // Not yet implemented

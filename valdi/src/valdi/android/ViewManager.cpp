@@ -220,7 +220,11 @@ Valdi::NativeAnimator ViewManager::createAnimator(snap::valdi_core::AnimationTyp
 }
 
 float ViewManager::getPointScale() const {
-    return _pointScale;
+    return _pointScale.load(std::memory_order_relaxed);
+}
+
+void ViewManager::setPointScale(float pointScale) {
+    _pointScale.store(pointScale, std::memory_order_relaxed);
 }
 
 void ViewManager::onDebugMessage(int32_t level, const std::string& message) {
@@ -281,17 +285,17 @@ Valdi::Ref<DeferredViewOperations> ViewManager::makeViewOperations() {
     return _viewOperationsPool->make();
 }
 
-void ViewManager::flushViewOperations(Valdi::Ref<DeferredViewOperations> viewOperations) {
+void ViewManager::flushViewOperations(Valdi::Ref<DeferredViewOperations> viewOperations, bool sync) {
     if (viewOperations == nullptr) {
-        doFlushViewOperations(std::nullopt);
+        doFlushViewOperations(std::nullopt, sync);
     } else {
         auto operations = viewOperations->dequeueOperations();
-        doFlushViewOperations(operations);
+        doFlushViewOperations(operations, sync);
         _viewOperationsPool->release(std::move(viewOperations));
     }
 }
 
-void ViewManager::doFlushViewOperations(const std::optional<SerializedViewOperations>& operations) {
+void ViewManager::doFlushViewOperations(const std::optional<SerializedViewOperations>& operations, bool sync) {
     VALDI_TRACE("Valdi.flushOperations");
 
     if (operations) {
@@ -301,15 +305,15 @@ void ViewManager::doFlushViewOperations(const std::optional<SerializedViewOperat
             getEnv(), const_cast<void*>(reinterpret_cast<const void*>(buffer->data())), buffer->size());
         auto objectJArray = ValdiAndroid::toJavaObject(getEnv(), attachedValues);
 
-        _performViewOperationsMethod.call(toObject(), byteBuffer, objectJArray);
+        _performViewOperationsMethod.call(toObject(), byteBuffer, objectJArray, sync);
     } else {
-        _performViewOperationsMethod.call(toObject(), JavaObject(getEnv()), ObjectArray(getEnv()));
+        _performViewOperationsMethod.call(toObject(), JavaObject(getEnv()), ObjectArray(getEnv()), sync);
     }
 }
 
 Valdi::Ref<Valdi::IViewTransaction> ViewManager::createViewTransaction(
     const Valdi::Ref<Valdi::MainThreadManager>& mainThreadManager, bool shouldDefer) {
-    if (!shouldDefer || mainThreadManager->currentThreadIsMainThread()) {
+    if (!shouldDefer || mainThreadManager == nullptr || mainThreadManager->currentThreadIsMainThread()) {
         return Valdi::makeShared<AndroidViewTransaction>(*this);
     } else {
         return Valdi::makeShared<Valdi::DeferredViewTransaction>(*this, *mainThreadManager);

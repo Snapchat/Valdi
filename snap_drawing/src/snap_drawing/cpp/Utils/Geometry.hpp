@@ -213,12 +213,28 @@ struct Rect : public BridgedSkValue<Rect, SkRect> {
 
     bool intersects(const Rect& other) const;
 
+    /**
+     Returns true if the two rectangles intersect, using a small tolerance for floating-point
+     comparison. This is useful for damage rect merging where rects computed through different
+     transformation paths may have tiny numerical differences but should still be considered
+     as intersecting.
+     */
+    bool intersectsWithTolerance(const Rect& other) const;
+
     bool contains(const Point& point) const;
 
     /**
      Return the closest point to the given point that is within the rectangle bounds.
      */
     Point closestPoint(const Point& toPoint) const;
+
+    /**
+     Returns a new rect with outward rounding to ensure all fractional pixels are included.
+     This is useful for damage rect calculations where missing sub-pixels can cause artifacts.
+     */
+    Rect makeOutset() const {
+        return Rect::makeLTRB(std::floor(left), std::floor(top), std::ceil(right), std::ceil(bottom));
+    }
 };
 
 std::ostream& operator<<(std::ostream& os, const Vector& vec);

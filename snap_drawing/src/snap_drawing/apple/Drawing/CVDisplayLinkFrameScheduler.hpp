@@ -28,7 +28,7 @@ private:
     CGDirectDisplayID _activeDisplay = kCGNullDirectDisplay;
     CVDisplayLinkRef _displayLink = nullptr;
 
-    void destroyDisplayLink();
+    void destroyDisplayLink(std::unique_lock<Valdi::Mutex>& guard);
     void createDisplayLink(std::unique_lock<Valdi::Mutex>& lock);
 
     static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink,

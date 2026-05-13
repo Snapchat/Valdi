@@ -2,6 +2,9 @@
 
 The `persistence` module provides a simple key-value store that persists data across app sessions, with optional encryption and LRU caching.
 
+> [!Note]
+> The Valdi runtime provides a built-in **Disk Store** mechanism. This allows TypeScript components to persist data locally on the device, ensuring that user preferences, session tokens, and cached assets are available even after the application is restarted.
+
 ## Overview
 
 `PersistentStore` allows you to store binary data or strings that survive app restarts. It supports:

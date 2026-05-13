@@ -4,6 +4,9 @@
 
 Valdi uses [FlexBox](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_flexible_box_layout/Basic_concepts_of_flexbox) for layout. This should be familiar if you have done any web development.
 
+> [!Note]
+> The Valdi runtime integrates a cross-platform layout engine that follows the **Web Flexbox specification**. This engine calculates the positions and sizes of each element on the screen based on the properties provided in TypeScript, ensuring consistent layout across iOS, Android, and Desktop.
+
 You can find examples and documentation on the different attributes for laying out views on the screen on the following references:
 - https://css-tricks.com/snippets/css/a-guide-to-flexbox/
 - https://jonibologna.com/flexbox-cheatsheet

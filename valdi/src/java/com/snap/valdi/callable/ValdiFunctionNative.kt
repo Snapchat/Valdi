@@ -23,6 +23,10 @@ internal class ValdiFunctionNative(ptr: Long): ValdiCPPAction(ptr), ValdiFunctio
         return nativePerform(nativeHandle, flags, marshaller.nativeHandle)
     }
 
+    fun performWithTimeout(flags: Int, marshaller: ValdiMarshaller, timeoutMs: Long): Boolean {
+        return nativePerformWithTimeout(nativeHandle, flags, marshaller.nativeHandle, timeoutMs)
+    }
+
     fun perform(flags: Int, parameters: Array<Any?>): Any? {
         return ValdiMarshaller.use {
             for (param in parameters) {
@@ -53,6 +57,9 @@ internal class ValdiFunctionNative(ptr: Long): ValdiCPPAction(ptr), ValdiFunctio
 
         @JvmStatic
         private external fun nativePerform(ptr: Long, flags: Int, marshallerHandle: Long): Boolean
+
+        @JvmStatic
+        private external fun nativePerformWithTimeout(ptr: Long, flags: Int, marshallerHandle: Long, timeoutMs: Long): Boolean
 
         @JvmStatic
         fun performFromNative(function: ValdiFunction, marshallerHandle: Long) {

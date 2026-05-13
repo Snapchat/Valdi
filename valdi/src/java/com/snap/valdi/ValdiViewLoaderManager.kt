@@ -40,6 +40,7 @@ import com.snap.valdi.context.ContextManager
 import com.snap.valdi.drawables.BoxShadowRendererPool
 import com.snap.valdi.exceptions.GlobalExceptionHandler
 import com.snap.valdi.exceptions.HostUncaughtExceptionHandler
+import com.snap.valdi.extensions.ViewUtils
 import com.snap.valdi.imageloading.ValdiImageLoaderPostprocessor
 import com.snap.valdi.imageloading.DefaultValdiImageLoader
 import com.snap.valdi.jsmodules.ValdiStringsModule
@@ -167,7 +168,7 @@ class ValdiRuntimeManager(context: Context,
     val viewRefSupport: ViewRefSupport
     val imageLoaderPostprocessor: ValdiImageLoaderPostprocessor
 
-    private val displayScale = context.resources.displayMetrics.density
+    private var displayScale = context.resources.displayMetrics.density
 
     private val snapDrawingRuntimeField: SnapDrawingRuntimeCPP?
 
@@ -207,9 +208,11 @@ class ValdiRuntimeManager(context: Context,
             NativeHandlesManager.start()
         }
         ValdiLeakTracker.enabled = tweaks?.enableLeakTracker == true
+        ViewUtils.enableTextAlignmentForRTL = tweaks?.enableTextAlignmentForRTL ?: true
 
-        viewManager = ValdiViewManager(context, logger, tweaks?.disableAnimations
-                ?: false, viewRefSupport)
+        viewManager = ValdiViewManager(context, logger,
+            tweaks?.disableAnimations ?: false, viewRefSupport,
+            tweaks?.maxViewOperationsProcessingTimeMs ?: 0)
 
         contextManager = ContextManager(nativeBridge, logger)
 
@@ -339,7 +342,12 @@ class ValdiRuntimeManager(context: Context,
                             ?: false, tweaks?.disableSlowClipping ?: false)
 
             val textConverter = RichTextConverter(fontManager)
-            val editTextAttributesBinder = EditTextAttributesBinder(context, textConverter, FontAttributes.default)
+            val editTextAttributesBinder = EditTextAttributesBinder(
+                context,
+                textConverter,
+                FontAttributes.default,
+                resetSelectionMatchesIos = tweaks?.editTextResetSelectionMatchesIos == true,
+            )
 
             arrayOf(
                     viewAttributesBinder,
@@ -394,6 +402,8 @@ class ValdiRuntimeManager(context: Context,
             } else {
                 preloadAndroid()
             }
+        } else if (preloadingMode == PreloadingMode.FONTS_ONLY && !useSnapDrawing) {
+            fontManager.preloadAll()
         }
 
         if (useSnapDrawing) {
@@ -432,7 +442,7 @@ class ValdiRuntimeManager(context: Context,
                 ValdiDeviceModule(jsThreadDispatcher, context, forceDarkMode),
                 ValdiDateFormattingModule(context),
                 ValdiNumberFormattingModule(context),
-                DrawingModuleImpl(coordinateResolver, fontManager),
+                DrawingModuleImpl(coordinateResolver, fontManager, logger),
                 // We use `baseContext` here to ensure ContextWrapper is used if one was provided.
                 // This allows us to implement custom behavior when accessing string resources.
                 ValdiStringsModule(baseContext)
@@ -663,6 +673,11 @@ class ValdiRuntimeManager(context: Context,
     fun applicationDidResume() {
         runOnMainThreadIfNeeded {
             val density = context.resources.displayMetrics.density
+            if (tweaks?.updatePointScaleOnResume == true && density != displayScale) {
+                displayScale = density
+                NativeBridge.setPointScale(handle.nativeHandle, density)
+                snapDrawingRuntimeField?.updateDisplayScale(density)
+            }
             val scaledDensity = context.resources.displayMetrics.scaledDensity
             val dynamicTypeScale = scaledDensity / density
             NativeBridge.applicationSetConfiguration(handle.nativeHandle, dynamicTypeScale)

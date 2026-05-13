@@ -39,6 +39,19 @@ my_application/          # Root directory of your application
             └── ModuleBComponent.tsx
 ```
 
+## Project Structure
+
+A Valdi project is defined by:
+- **`WORKSPACE`**: The Bazel workspace file that defines external dependencies. Created automatically by `valdi bootstrap`.
+- **`.bazelrc`**: Bazel configuration file with build settings.
+- **User Config** (`~/.valdi/config.yaml`): Per-user CLI settings (created by `valdi bootstrap`).
+- **Modules**: A list of directories, each containing a `BUILD.bazel` file defining a Valdi module.
+
+Run `valdi bootstrap` to initialize a new project with the correct structure.
+
+### Module Archives
+The compiler outputs a `.valdimodule` file for each module, which is a bundled archive of compiled TypeScript and metadata. Modules can reference each other as dependencies using standard Bazel target syntax (e.g., `//src/valdi/other_module`).
+
 ## Module directory layout
 
 ### `res`
@@ -196,6 +209,21 @@ List of SQL database names if this module uses SQL databases.
 #### `sql_srcs` (Default: `[]`)
 
 SQL source files to include in the module.
+
+## Module Loading & Execution
+
+### `JsEvaluator`
+The Valdi C++ runtime uses a `JsEvaluator` to load and execute modules. When a module is requested, the evaluator:
+1. Locates the file within the `.valdimodule` archive.
+2. Evaluates the code within the JavaScript engine (QuickJS or JavaScriptCore).
+3. Returns a module function that encapsulates the module's scope.
+
+### Lazy Loading
+To optimize application startup time, Valdi uses **Lazy Module Loading**. When you `import` or `require()` a module, Valdi returns an ES6 Proxy instead of the actual exports. The module's code is only evaluated the first time you access a property on that proxy.
+
+This ensures that a large Valdi project doesn't slow down the "cold start" of your application, as only the code path required for the initial screen is executed.
+
+For more details on the runtime implementation, see [Runtime Internals](./internals-runtime.md).
 
 ## `ids_yaml`
 

@@ -160,6 +160,20 @@ EM_JS(void, djinni_init_wasm, (), {
             };
         };
 
+        // Helper to create provider functions that call back into C++
+        // The handlerPtr points to a std::function<em::val()> that will be called when the provider is evaluated.
+        // Register the JS function with FinalizationRegistry so we free the C++ handler when the function is GC'd.
+        Module.nativeProviderCallbackFinalizerRegistry = new FinalizationRegistry(handlerPtr => {
+            Module._releaseNativeProviderCallback(handlerPtr);
+        });
+        Module.makeNativeProviderCallback = function(handlerPtr) {
+            var fn = function() {
+                return Module.callNativeProviderCallback(handlerPtr);
+            };
+            Module.nativeProviderCallbackFinalizerRegistry.register(fn, handlerPtr);
+            return fn;
+        };
+
         Module.writeNativeMemory = function(src, nativePtr) {
             var srcByteView = new Uint8Array(src.buffer, src.byteOffset, src.byteLength);
             Module.HEAPU8.set(srcByteView, nativePtr);
@@ -183,8 +197,11 @@ EM_JS(void, djinni_init_wasm, (), {
 });
 
 EM_JS(void, djinni_register_name_in_ns, (const char* prefixedName, const char* namespacedName), {
-        prefixedName = readLatin1String(prefixedName);
-        namespacedName = readLatin1String(namespacedName);
+        // Compatibility: readLatin1String was removed in newer Emscripten versions
+        // Use UTF8ToString as fallback (available in both old and new versions)
+        var stringConverter = (typeof readLatin1String !== 'undefined') ? readLatin1String : UTF8ToString;
+        prefixedName = stringConverter(prefixedName);
+        namespacedName = stringConverter(namespacedName);
         let parts = namespacedName.split('.');
         let name = parts.pop();
         let ns = parts.reduce(function(path, part) {
@@ -211,12 +228,31 @@ void djinni_throw_native_exception(const std::exception& e) {
     djinni_native_exception_to_js(e).throw_();
 }
 
+// Provider callback - called from JavaScript when a provider is evaluated
+static em::val callNativeProviderCallback(int handlerPtr) {
+    if (!handlerPtr) {
+        return em::val::undefined();
+    }
+
+    auto* callback = reinterpret_cast<std::function<em::val()>*>(handlerPtr);
+    return (*callback)();
+}
+
+// Called by FinalizationRegistry when the JS provider function is GC'd; frees the C++ handler
+extern "C" EMSCRIPTEN_KEEPALIVE
+void releaseNativeProviderCallback(int handlerPtr) {
+    if (handlerPtr) {
+        delete reinterpret_cast<std::function<em::val()>*>(handlerPtr);
+    }
+}
+
 EMSCRIPTEN_BINDINGS(djinni_wasm) {
-    djinni_init_wasm();    
+    djinni_init_wasm();
     em::function("allocateWasmBuffer", &allocateWasmBuffer);
     em::function("initCppResolveHandler", &CppResolveHandlerBase::initInstance);
     em::function("resolveNativePromise", &CppResolveHandlerBase::resolveNativePromise);
     em::function("rejectNativePromise", &CppResolveHandlerBase::rejectNativePromise);
+    em::function("callNativeProviderCallback", &callNativeProviderCallback);
 }
 
 }

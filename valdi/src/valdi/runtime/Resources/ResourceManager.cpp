@@ -395,6 +395,28 @@ void ResourceManager::preloadForComponentPath(const ComponentPath& componentPath
     });
 }
 
+void ResourceManager::warmUpBundles(const std::vector<StringBox>& modulePaths) {
+    FlatSet<StringBox> seen;
+    std::vector<StringBox> bundles;
+    for (const auto& path : modulePaths) {
+        auto sv = path.toStringView();
+        auto slash = sv.find('/');
+        if (slash != std::string_view::npos) {
+            auto bundleName = StringCache::getGlobal().makeString(sv.substr(0, slash));
+            if (seen.insert(bundleName).second) {
+                bundles.push_back(bundleName);
+            }
+        }
+    }
+
+    _workerQueue->async([self = strongSmallRef(this), bundles = std::move(bundles)]() {
+        VALDI_TRACE("Valdi.warmUpBundles");
+        for (const auto& bundleName : bundles) {
+            self->getBundle(bundleName);
+        }
+    });
+}
+
 void ResourceManager::loadModuleAsync(const StringBox& bundleName,
                                       ResourceManagerLoadModuleType loadType,
                                       Function<void(Result<Void>)> onComplete) {

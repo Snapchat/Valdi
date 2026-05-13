@@ -12,11 +12,15 @@
 #include "valdi/runtime/Views/View.hpp"
 #include "valdi_core/jni/GlobalRefJavaObject.hpp"
 
+#include <unordered_map>
+
 namespace ValdiAndroid {
+
+class ViewManager;
 
 class AndroidSurfacePresenterManager : public snap::drawing::SurfacePresenterManager, public GlobalRefJavaObjectBase {
 public:
-    AndroidSurfacePresenterManager(JavaEnv env, jobject javaRepr, const Valdi::CoordinateResolver& coordinateResolver);
+    AndroidSurfacePresenterManager(JavaEnv env, jobject javaRepr, ViewManager& viewManager);
     ~AndroidSurfacePresenterManager() override;
 
     snap::drawing::Ref<snap::drawing::DrawableSurface> createPresenterWithDrawableSurface(
@@ -34,7 +38,8 @@ public:
     void onDrawableSurfacePresenterUpdated(snap::drawing::SurfacePresenterId presenterId) override;
 
 private:
-    Valdi::CoordinateResolver _coordinateResolver;
+    ViewManager& _viewManager;
+    std::unordered_map<snap::drawing::SurfacePresenterId, float> _lastPointScales;
 };
 
 } // namespace ValdiAndroid

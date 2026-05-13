@@ -47,6 +47,7 @@ Now you can edit your TypeScript files and see changes instantly on your device!
 For complete documentation, see:
 - [Command Line Reference](https://github.com/Snapchat/Valdi/blob/main/docs/docs/command-line-references.md)
 - [Installation Guide](https://github.com/Snapchat/Valdi/blob/main/docs/INSTALL.md)
+- [Troubleshooting](https://github.com/Snapchat/Valdi/blob/main/docs/TROUBLESHOOTING.md) — run `valdi doctor` to diagnose issues, or ask on [Discord](https://discord.gg/uJyNEeYX2U)
 
 ### Key Commands
 
@@ -71,6 +72,7 @@ For complete documentation, see:
 - Creates a new Valdi project in the current directory
 - Sets up BUILD.bazel, WORKSPACE, package.json, and source files
 - Supports multiple application templates (Hello World, Counter, etc.)
+- Options: `-y` (skip confirmation), `-n` (project name), `-t` (application type), `-l` (local Valdi path), `-c` (clean directory first). Run `valdi bootstrap --help` for all options.
 
 **`valdi install <platform>`** - Build and install
 - Builds and installs app to connected device/simulator
@@ -80,6 +82,15 @@ For complete documentation, see:
 - Enables instant hot reload during development
 - Watches for file changes and updates app in milliseconds
 
+**`valdi skills`** - AI assistant skills
+- Installs Valdi context files into Claude Code, Cursor, or GitHub Copilot so AI tools generate correct Valdi code instead of React patterns
+- `valdi skills install` — auto-detects installed AI tools and installs all skills
+- `valdi skills list` — show available skills and install status per agent
+- `valdi skills update` — re-install already-installed skills from the bundled package
+- `valdi skills create` — scaffold a new skill (run from within the Valdi repo)
+
+**Other commands:** `valdi build <platform>` (build without installing), `valdi package <platform>` (create distributable app), `valdi export <platform>` (export library for native apps), `valdi test` (run tests), `valdi lint check` / `valdi lint format` (lint and format code), `valdi log` (stream device logs), `valdi projectsync` (sync VS Code project and native bindings), `valdi completion` (shell autocomplete setup). Use `valdi <command> --help` for options.
+
 For complete command documentation, see [Command Line Reference](https://github.com/Snapchat/Valdi/blob/main/docs/docs/command-line-references.md).
 
 ### Creating New Modules
@@ -87,8 +98,8 @@ For complete command documentation, see [Command Line Reference](https://github.
 ```sh
 valdi new_module
 
-# Create module without prompts
-valdi new_module my_new_module --skip-checks --android-class-path='com.example.my_module' --ios-module-name='XYZMyModule'
+# Create module without prompts (specify template to skip the prompt)
+valdi new_module my_new_module --skip-checks --template=ui_component
 
 # Help
 $ valdi new_module --help
@@ -110,8 +121,10 @@ my_application/          # Root directory of your application
 └── modules/
     ├── module_a/
     │   ├── BUILD.bazel
-    │   ├── android/     # Native Android sources
-    │   ├── ios/         # Native iOS sources
+    │   ├── android/     # Native Android sources (Kotlin)
+    │   ├── ios/         # Native iOS sources (Objective-C)
+    │   ├── macos/       # Native macOS sources (Objective-C)
+    │   ├── web/         # Web sources (TypeScript, compiled by tsc)
     │   ├── cpp/         # Native C++ sources
     │   └── src/         # Valdi sources
     │       └── ModuleAComponent.tsx
@@ -132,12 +145,11 @@ Positionals:
   module-name  Name of the Valdi module.
 
 Options:
-  --debug               Run with debug logging                                                                                                  [boolean] [default: false]
-  --version             Show version number                                                                                                                      [boolean]
-  --help                Show help                                                                                                                                [boolean]
-  --skip-checks         Skips confirmation prompts.                                                                                                              [boolean]
-  --android-class-path  Android class path to use for generated Android sources.                                                                                  [string]
-  --ios-module-name     iOS class prefix to use for generated iOS sources.                                                                                        [string]
+  --debug        Run with debug logging                    [boolean] [default: false]
+  --version      Show version number                       [boolean]
+  --help         Show help                                 [boolean]
+  --skip-checks  Skips confirmation prompts.               [boolean]
+  --template     Module template to use (skips the prompt). One of: ui_component, polyglot_bridge_module, polyglot_view_module  [string]
 ```
 
 ## For Contributors

@@ -37,3 +37,8 @@ wasm:
 ts:
   typename: HTTPRequestManagerCompletion
   module: './valdi_core'
+c:
+  typename: 'snap_valdi_core_HTTPRequestManagerCompletion_ref'
+  translator: '::djinni::c_api::InterfaceTranslator<::snap::valdi_core::HTTPRequestManagerCompletion>'
+  public_header: '"valdi_core/HTTPRequestManagerCompletion.h"'
+  private_header: '"valdi_core/HTTPRequestManagerCompletion.hpp"'

@@ -21,7 +21,7 @@ function withKeepAlive(cb: () => Promise<void>): Promise<void> {
 export async function renderAsBitmap(bitmapInfo: BitmapInfo, renderFn: () => void): Promise<IBitmap> {
   const context = createManagedContext();
   context.render(renderFn);
-  context.layout(bitmapInfo.width, bitmapInfo.height, false);
+  await context.layout(bitmapInfo.width, bitmapInfo.height, false);
 
   await withKeepAlive(async () => {
     await waitForIdle();
@@ -29,7 +29,7 @@ export async function renderAsBitmap(bitmapInfo: BitmapInfo, renderFn: () => voi
   });
 
   try {
-    const frame = context.draw();
+    const { frame } = await context.draw();
 
     const bitmap = createBitmap(bitmapInfo);
     frame.rasterInto(bitmap, true);

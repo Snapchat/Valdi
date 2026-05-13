@@ -245,16 +245,32 @@ class BundleResourcesProcessor: CompilationProcessor {
         let maxAttempts = 3
         var attempt = 0
         var retryDelay = 500.0
+        let startTime = Date()
+        let requestId = String(UUID().uuidString.prefix(8))
         while (true) {
-            do {
-                let promise = try uploadArtifact(artifactUploader: artifactUploader, artifactName: artifactName, moduleData: moduleData, sha256Digest: sha256Digest)
-                return promise
-            } catch {
-                if (attempt >= maxAttempts) {
+            let promise = uploadArtifact(artifactUploader: artifactUploader, artifactName: artifactName, moduleData: moduleData, sha256Digest: sha256Digest)
+            let result = promise.waitForResult()
+            
+            switch result {
+            case .success(let artifact):
+                return Promise(data: artifact)
+            case .failure(let error):
+                let elapsedTime = Date().timeIntervalSince(startTime)
+                
+                logger.warn("[\(requestId)] buildAndUpload attempt \(attempt + 1)/\(maxAttempts) failed for '\(artifactName)'")
+                logger.warn("[\(requestId)]   Module: \(moduleInfo.name)")
+                logger.warn("[\(requestId)]   Artifact size: \(moduleData.count) bytes")
+                logger.warn("[\(requestId)]   SHA256: \(sha256Digest)")
+                logger.warn("[\(requestId)]   Error: \(error.legibleLocalizedDescription)")
+                logger.warn("[\(requestId)]   Error type: \(type(of: error))")
+                logger.warn("[\(requestId)]   Time since start: \(String(format: "%.2f", elapsedTime))s")
+                
+                if ((attempt + 1) >= maxAttempts) {
+                    logger.error("[\(requestId)] buildAndUpload exhausted all \(maxAttempts) attempts for '\(artifactName)' after \(String(format: "%.2f", elapsedTime))s")
                     return Promise(error: error)
                 }
 
-                logger.info("buildAndUpload attempt \(attempt) failed, waiting \(retryDelay)ms to retry")
+                logger.info("[\(requestId)] buildAndUpload waiting \(retryDelay)ms before retry \(attempt + 2)")
                 Thread.sleep(forTimeInterval: (retryDelay / 1000.0))
                 retryDelay *= 2
                 attempt += 1
@@ -262,8 +278,7 @@ class BundleResourcesProcessor: CompilationProcessor {
         }
     }
 
-    private func uploadArtifact(artifactUploader: ArtifactUploader, artifactName: String, moduleData: Data, sha256Digest: String) throws -> Promise<Valdi_DownloadableModuleArtifact> {
-        let logger = self.logger
+    private func uploadArtifact(artifactUploader: ArtifactUploader, artifactName: String, moduleData: Data, sha256Digest: String) -> Promise<Valdi_DownloadableModuleArtifact> {
         let artifactInfoPromise: Promise<ArtifactInfo>
         if let _ = self.projectConfig.preparedUploadArtifactOutput {
             artifactInfoPromise = artifactUploader.appendToPreparedArtifact(artifactName: artifactName, artifactData: moduleData, sha256: sha256Digest)
@@ -279,10 +294,6 @@ class BundleResourcesProcessor: CompilationProcessor {
             artifact.sha256Digest = sha256Digest
 
             return artifact
-        }.catch { (error) -> Error in
-            let errorMessage = "buildAndUpload failed to upload artifact '\(artifactName)': \(error.legibleLocalizedDescription)"
-            logger.error(errorMessage)
-            return CompilerError(errorMessage)
         }
         return promise
     }

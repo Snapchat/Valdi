@@ -2,7 +2,6 @@
 
 #include "valdi/runtime/Context/ViewManagerContext.hpp"
 #include "valdi/runtime/Context/ViewNodePath.hpp"
-#include "valdi/runtime/Exception.hpp"
 #include "valdi/runtime/Interfaces/IResourceLoader.hpp"
 #include "valdi/runtime/Metrics/Metrics.hpp"
 #include "valdi/runtime/Runtime.hpp"
@@ -14,6 +13,7 @@
 #include "valdi_core/cpp/Utils/ByteBuffer.hpp"
 #include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
 #include "valdi_core/cpp/Utils/DiskUtils.hpp"
+#include "valdi_core/cpp/Utils/Exception.hpp"
 #include "valdi_core/cpp/Utils/FlatMap.hpp"
 #include "valdi_core/cpp/Utils/LazyValueConvertible.hpp"
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"

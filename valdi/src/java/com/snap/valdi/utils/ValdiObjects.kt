@@ -52,6 +52,7 @@ class ValdiObjects: DrawableInfoProvider {
     var calculatedHeight = 0
 
     override var maskPathRenderer: MaskPathRenderer? = null
+    var maskImageGradient: com.snap.valdi.attributes.impl.gradients.ValdiGradient? = null
 
     private var innerViewNode: ValdiViewNode? = null
     private var didFinishLayoutForKey: MutableMap<String, (view: View) -> Unit>? = null

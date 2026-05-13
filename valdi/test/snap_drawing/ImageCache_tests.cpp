@@ -29,7 +29,8 @@ protected:
         _cache->setMaxAge(_maxAge);
 
         auto zeroBitmap = loadResourceFromDisk("testdata/0x0.bmp");
-        SC_ASSERT(!zeroBitmap.failure());
+        ASSERT_FALSE(zeroBitmap.failure())
+            << "Failed to load testdata/0x0.bmp (ensure the file is in test data/runfiles)";
 
         _width = img->width();
         _height = img->height();

@@ -126,7 +126,7 @@ DataRef::DataRef(CFDataRef platformObj) {
     _impl = std::make_shared<DataRefSwift>(platformObj);
 }
 
-} // namespace djinni
+}
 
 namespace djinni::swift {
 
@@ -156,4 +156,4 @@ AnyValue DataRefAdaptor::fromCpp(const DataRef& c) {
     return RangeValue{reinterpret_cast<const uint8_t*>(cfdata), 0};
 }
 
-} // namespace djinni::swift
+}

@@ -52,6 +52,9 @@ struct CompilerConfig {
     /// List of input files to pass to the compiler instead of automatically discovering them
     let explicitInputList: CompilerFileInputList?
 
+    /// Explicit image assets supplied by the build system.
+    let explicitImageAssetManifest: ExplicitImageAssetManifest?
+
     /// When set, this will _rewrite_ the BUILD.bazel files within the sources of each Valdi module
     let regenerateValdiModulesBuildFiles: Bool
 
@@ -99,6 +102,23 @@ struct CompilerConfig {
                 return try parsed.resolvingVariables(environment)
             }
 
+        let explicitImageAssetManifest = try args.explicitImageAssetManifest
+            .map {
+                let url = baseURL.appendingPathComponent($0)
+                var isDirectory: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
+                    throw CompilerError("Explicit image asset manifest file does not exist at \(url.path)")
+                }
+
+                do {
+                    let data = try File.url(url).readData()
+                    let parsed = try ExplicitImageAssetManifest.fromJSON(data, keyDecodingStrategy: .convertFromSnakeCase)
+                    return try parsed.resolvingVariables(environment)
+                } catch let error {
+                    throw CompilerError("Failed to parse explicit image asset manifest at \(url.path): \(error.legibleLocalizedDescription)")
+                }
+            }
+
         return CompilerConfig(
             hotReloadingEnabled: hotReloadingEnabled,
             disableDiskCache: disableDiskCache,
@@ -115,6 +135,7 @@ struct CompilerConfig {
             onlyFocusProcessingForModules: Set(args.onlyFocusProcessingForModule),
             directCompanionPath: args.directCompanionPath,
             explicitInputList: explicitInputList,
+            explicitImageAssetManifest: explicitImageAssetManifest,
             regenerateValdiModulesBuildFiles: args.regenerateValdiModulesBuildFiles,
             generateTSResFiles: args.generateTSResFiles,
             verifyDownloadableArtifacts: args.verifyDownloadableArtifacts,

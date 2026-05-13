@@ -172,6 +172,7 @@ cc_library(
         "-ljnigraphics",
     ],
     strip_include_prefix = "src",
+    target_compatible_with = ["@platforms//os:android"],
     visibility = ["//visibility:public"],
     deps = [
         ":snap_drawing_cc",
@@ -185,6 +186,8 @@ kt_android_library(
     srcs = glob([
         "src/java/**/*.kt",
     ]),
+    tags = ["manual"],  # kt_android_library requires Android SDK toolchain
+    target_compatible_with = ["@platforms//os:android"],
     visibility = ["//visibility:public"],
     exports = [
     ],
@@ -243,6 +246,7 @@ objc_library(
         "CoreMedia",
         "CoreVideo",
     ],
+    target_compatible_with = ["@platforms//os:ios"],
     deps = [
         ":snap_drawing",
         "@valdi//valdi:valdi_standalone_runtime",

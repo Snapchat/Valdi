@@ -37,3 +37,8 @@ wasm:
 ts:
   typename: ModuleFactory
   module: './valdi_core'
+c:
+  typename: 'snap_valdi_core_ModuleFactory_ref'
+  translator: '::djinni::c_api::InterfaceTranslator<::snap::valdi_core::ModuleFactory>'
+  public_header: '"valdi_core/ModuleFactory.h"'
+  private_header: '"valdi_core/ModuleFactory.hpp"'

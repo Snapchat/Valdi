@@ -6,6 +6,7 @@
 //
 
 #import "valdi/ios/Text/SCValdiAttributedText.h"
+#import "valdi/ios/Text/SCValdiImageAttachmentInfo.h"
 #import "valdi_core/cpp/Attributes/TextAttributeValue.hpp"
 #import "valdi_core/SCValdiObjCConversionUtils.h"
 #import "valdi_core/UIColor+Valdi.h"
@@ -149,5 +150,44 @@
     return @(style.outerOutlineWidth.value());
 }
 
+- (nullable SCValdiImageAttachmentInfo *)imageAttachmentAtIndex:(NSUInteger)index
+{
+    const auto &style = _cppInstance->getStyleAtIndex(index);
+    if (!style.imageAttachment) {
+        return nil;
+    }
+
+    const auto &attachment = style.imageAttachment.value();
+
+    NSString *attachmentId = ValdiIOS::NSStringFromString(attachment.attachmentId);
+    CGFloat width = attachment.width;
+    CGFloat height = attachment.height;
+
+    NSData *imageData = nil;
+    if (!attachment.imageData.empty()) {
+        imageData = [NSData dataWithBytes:attachment.imageData.data()
+                                   length:attachment.imageData.size()];
+    }
+
+    return [[SCValdiImageAttachmentInfo alloc] initWithAttachmentId:attachmentId
+                                                              width:width
+                                                             height:height
+                                                          imageData:imageData];
+}
+
+- (nullable NSDictionary<NSString *, NSNumber *> *)animationTransformAtIndex:(NSUInteger)index
+{
+    const auto &style = _cppInstance->getStyleAtIndex(index);
+    if (!style.animationTransform) {
+        return nil;
+    }
+
+    const auto &animationTransform = style.animationTransform.value();
+    return @{
+        @"translationY": @(animationTransform.translationY),
+        @"scale": @(animationTransform.scale),
+        @"opacity": @(animationTransform.opacity),
+    };
+}
 
 @end

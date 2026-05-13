@@ -7,7 +7,7 @@
 
 #import <Foundation/Foundation.h>
 
-#import "valdi/SCNValdiJSRuntime.h"
+#import "valdi_core/SCNValdiCoreJSRuntime.h"
 #import "valdi_core/SCValdiJSQueueDispatcher.h"
 #import "valdi_core/SCValdiJSRuntime.h"
 
@@ -15,7 +15,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @protocol SCValdiJSRuntimeProvider <SCValdiJSQueueDispatcher>
 
-- (SCNValdiJSRuntime*)getJsRuntime;
+- (SCNValdiCoreJSRuntime*)getJsRuntime;
 
 @end
 

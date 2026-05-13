@@ -13,6 +13,11 @@ function main() {
     .demandCommand(1, 'Need at least one command to execute')
     .recommendCommands()
     .strict()
+    .option('debug', {
+      describe: 'Run with debug logging',
+      type: 'boolean',
+      default: false,
+    })
     .version('version', 'Show version number', version)
     .scriptName('valdi')
     .wrap(yargs.terminalWidth())

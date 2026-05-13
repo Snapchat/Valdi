@@ -28,6 +28,21 @@
     return self;
 }
 
+- (CGSize)sizeThatFits:(CGSize)size
+{
+    if (@available(iOS 13.4, *)) {
+        if (self.preferredDatePickerStyle == UIDatePickerStyleCompact) {
+            CGSize fittingSize = [self systemLayoutSizeFittingSize:UILayoutFittingCompressedSize
+                                    withHorizontalFittingPriority:UILayoutPriorityFittingSizeLevel
+                                          verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
+            if (fittingSize.width > 0 && fittingSize.height > 0) {
+                return fittingSize;
+            }
+        }
+    }
+    return [super sizeThatFits:size];
+}
+
 - (CGPoint)convertPoint:(CGPoint)point fromView:(UIView *)view
 {
     return [self valdi_convertPoint:point fromView:view];
@@ -165,6 +180,14 @@ INTERNED_STRING_CONST("minuteOfHour", SCValdiTimePickerMinuteOfHourKey);
             [view valdi_setTextColor:nil];
     }];
 
+    [attributesBinder bindAttribute:@"preferredStyle"
+           invalidateLayoutOnChange:YES
+                       withIntBlock:^BOOL(SCValdiTimePicker *view, NSInteger attributeValue, id<SCValdiAnimatorProtocol> animator) {
+        SCValdiSetDatePickerStyle(view, attributeValue);
+        return YES;
+    } resetBlock:^(SCValdiTimePicker *view, id<SCValdiAnimatorProtocol> animator) {
+        SCValdiSetDatePickerStyle(view, 1 /* wheels */);
+    }];
 
     [attributesBinder setPlaceholderViewMeasureDelegate:^UIView *{
         return [SCValdiTimePicker new];

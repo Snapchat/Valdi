@@ -15,6 +15,7 @@ valdi_module(
         "tsconfig.json",
     ],
     android_output_target = "debug",
+    compilation_mode = "js",
     ios_module_name = "SCCValdiStandalone",
     ios_output_target = "debug",
     single_file_codegen = False,

@@ -528,10 +528,13 @@ internal class TouchDispatcherImpl(
 
             // Step 2, we go over all the touch targets which want to handle touch,
             // if one of them consumed the touch event, we skip the gesture recognizers
-            for (candidateView in candidateViews) {
+            var candidateViewIndex = 0
+            while (candidateViewIndex < candidateViews.size) {
+                val candidateView = candidateViews.getOrNull(candidateViewIndex) ?: break
 
                 val touchTarget = candidateView as? ValdiTouchTarget
                 if (touchTarget == null) {
+                    candidateViewIndex++
                     continue
                 }
 
@@ -577,6 +580,7 @@ internal class TouchDispatcherImpl(
                     removeAllGestureRecognizers()
                     return true
                 }
+                candidateViewIndex++
             }
 
             processGestureRecognizers()
@@ -671,8 +675,9 @@ internal class TouchDispatcherImpl(
         }
 
         if (storedLastEvent != null) {
-            gestureRecognizersToCancel.forEach {
-                it.cancel(storedLastEvent)
+            while (gestureRecognizersToCancel.isNotEmpty()) {
+                val recognizer = gestureRecognizersToCancel.removeAt(gestureRecognizersToCancel.size - 1)
+                recognizer.cancel(storedLastEvent)
             }
         }
         gestureRecognizersToCancel.clear()
@@ -680,10 +685,11 @@ internal class TouchDispatcherImpl(
 
     private fun removeAllGestureRecognizers() {
         lastEvent?.let { event ->
-            candidateGestureRecognizers.forEach {
-                it.cancel(event)
+            while (candidateGestureRecognizers.isNotEmpty()) {
+                val recognizer = candidateGestureRecognizers.removeAt(candidateGestureRecognizers.size - 1)
+                recognizer.cancel(event)
                 if (debugTouchEvents) {
-                    logger?.debug("Candidate gesture recognizer ${it::class.java.simpleName}-${System.identityHashCode(it)} removed from TouchDispatcher-${System.identityHashCode(this)}")
+                    logger?.debug("Candidate gesture recognizer ${recognizer::class.java.simpleName}-${System.identityHashCode(recognizer)} removed from TouchDispatcher-${System.identityHashCode(this)}")
                 }
             }
         }

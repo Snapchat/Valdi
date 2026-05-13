@@ -3,7 +3,7 @@ package com.snap.valdi.nativebridge
 import com.snapchat.client.valdi.NativeBridge
 import com.snap.valdi.context.ValdiContext
 import com.snap.valdi.utils.BitmapPool
-import com.snapchat.client.valdi.JSRuntime
+import com.snapchat.client.valdi_core.JSRuntime
 import com.snapchat.client.valdi_core.ModuleFactory
 import com.snapchat.client.valdi.utils.NativeHandleWrapper
 import java.lang.Runnable

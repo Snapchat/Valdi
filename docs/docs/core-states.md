@@ -59,6 +59,9 @@ In other words, state is similar to a view model, except it's private to the Com
 
 State is also an [immutable](https://en.wikipedia.org/wiki/Immutable_object) object, but you can modify it by using `this.setState({ .. })` API which will cause your component to be re-rendered with that new state. 
 
+> [!Note]
+> Under the hood, `setState()` uses the `Renderer.renderComponent()` API. This allows Valdi to re-render only the specific component that changed, rather than the entire tree, ensuring high performance for state updates.
+
 
 ```tsx
 // Import the StatefulComponent

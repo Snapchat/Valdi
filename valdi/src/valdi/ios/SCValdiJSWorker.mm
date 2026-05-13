@@ -1,15 +1,15 @@
 #import "valdi/ios/SCValdiJSWorker.h"
 #import "valdi/runtime/JavaScript/JavaScriptRuntime.hpp"
-#import "valdi/SCNValdiJSRuntime+Private.h"
+#import "valdi_core/SCNValdiCoreJSRuntime+Private.h"
 #import "valdi_core/SCValdiFunctionWithBlock.h"
 #import "valdi_core/SCValdiObjCConversionUtils.h"
 
 @implementation SCValdiJSWorker {
-    SCNValdiJSRuntime *_jsRuntime;
-    SCNValdiJSRuntimeNativeObjectsManager *_nativeObjectsManager;
+    SCNValdiCoreJSRuntime *_jsRuntime;
+    SCNValdiCoreJSRuntimeNativeObjectsManager *_nativeObjectsManager;
 }
 
-- (instancetype)initWithWorkerRuntime:(SCNValdiJSRuntime*)runtime
+- (instancetype)initWithWorkerRuntime:(SCNValdiCoreJSRuntime*)runtime
 {
     self = [super init];
 
@@ -20,8 +20,8 @@
     return self;
 }
 
-- (instancetype)initWithWorkerRuntime:(SCNValdiJSRuntime*)runtime
-                 nativeObjectsManager:(SCNValdiJSRuntimeNativeObjectsManager *)nativeObjectsManager
+- (instancetype)initWithWorkerRuntime:(SCNValdiCoreJSRuntime*)runtime
+                 nativeObjectsManager:(SCNValdiCoreJSRuntimeNativeObjectsManager *)nativeObjectsManager
 {
     self = [super init];
 
@@ -42,7 +42,7 @@
 
 - (std::shared_ptr<Valdi::JavaScriptRuntime>)cppRuntime
 {
-    auto cppInterface = djinni_generated_client::valdi::JSRuntime::toCpp(_jsRuntime);
+    auto cppInterface = djinni_generated_client::valdi_core::JSRuntime::toCpp(_jsRuntime);
     auto cppRuntimeInstance = std::dynamic_pointer_cast<Valdi::JavaScriptRuntime>(cppInterface);
     SC_ASSERT(cppRuntimeInstance);
     return cppRuntimeInstance;
@@ -58,6 +58,21 @@
 - (void)preloadModuleAtPath:(NSString *)path maxDepth:(NSUInteger)maxDepth
 {
     [_jsRuntime preloadModule:path maxDepth:(int32_t)maxDepth];
+}
+
+- (void)preloadModulesAtPaths:(NSArray<NSString *> *)paths maxDepth:(NSUInteger)maxDepth
+{
+    [_jsRuntime preloadModules:paths maxDepth:(int32_t)maxDepth];
+}
+
+- (void)warmUpValueMarshallerForObject:(id)object
+{
+    auto cpp = [self cppRuntime];
+    if (!cpp) {
+        return;
+    }
+    auto value = ValdiIOS::ValueFromNSObject(object);
+    cpp->warmUpValueMarshaller(value);
 }
 
 - (void)addHotReloadObserver:(id<SCValdiFunction>)hotReloadObserver forModulePath:(NSString *)modulePath
@@ -82,9 +97,9 @@
         });
 }
 
-- (id<SCValdiJSRuntime>)createScopedJSRuntime
+- (id<SCValdiJSRuntime>)createScopedJSRuntimeWithScopeName:(NSString *)scopeName
 {
-    SCNValdiJSRuntimeNativeObjectsManager *nativeObjectsManager = [_jsRuntime createNativeObjectsManager];
+    SCNValdiCoreJSRuntimeNativeObjectsManager *nativeObjectsManager = [_jsRuntime createNativeObjectsManager:scopeName];
     return [[SCValdiJSWorker alloc] initWithWorkerRuntime:_jsRuntime nativeObjectsManager:nativeObjectsManager];
 }
 

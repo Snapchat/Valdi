@@ -230,8 +230,7 @@ void ViewManager::onUncaughtJsError(const int32_t errorCode, const Valdi::String
 Valdi::Ref<Valdi::IViewTransaction> ViewManager::createViewTransaction(
     const Valdi::Ref<Valdi::MainThreadManager>& mainThreadManager, bool shouldDefer) {
     if (mainThreadManager == nullptr || mainThreadManager->currentThreadIsMainThread()) {
-        static auto *kInstance = new ValdiIOS::ViewTransaction();
-        return Valdi::Ref(kInstance);
+        return Valdi::makeShared<ValdiIOS::ViewTransaction>();
     } else {
         // Always use deferred view transaction on iOS if the current thread is not the main thread
         return Valdi::makeShared<Valdi::DeferredViewTransaction>(*this, *mainThreadManager);

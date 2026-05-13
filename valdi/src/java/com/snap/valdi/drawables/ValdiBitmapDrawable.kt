@@ -143,7 +143,7 @@ class ValdiBitmapDrawable(val clipper: CanvasClipper): Drawable() {
             this.tintColor = tintColor
 
             if (tintColor != Color.TRANSPARENT) {
-                paint.colorFilter = PorterDuffColorFilter(tintColor, PorterDuff.Mode.SRC_ATOP)
+                paint.colorFilter = PorterDuffColorFilter(tintColor, PorterDuff.Mode.SRC_IN)
             } else {
                 paint.colorFilter = null
             }

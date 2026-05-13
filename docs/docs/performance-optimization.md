@@ -130,3 +130,19 @@ class MyComponent extends Component {
   }
 }
 ```
+
+## Advanced Optimizations
+
+### Bypassed Rendering
+Valdi avoids unnecessary work by skipping the `onRender` call of any component whose `viewModel` hasn't changed. This prevents updates from cascading through the entire tree.
+
+### Slot Re-rendering
+Valdi can re-render a slot's content without re-rendering the component that contains the slot. This is particularly useful for high-level layout components. See [Renderer Internals](./internals-renderer.md) for details.
+
+### Lazy Module Loading
+Valdi modules are loaded lazily using ES6 Proxies. Code is only evaluated when it's actually used, which keeps cold start times fast even as your codebase grows.
+
+### Interned Strings and Styles
+The bridge between TypeScript and C++ is optimized using interning:
+- **Strings**: Common strings (attribute names, view classes) are interned as integers.
+- **Styles**: `Style<>` objects are interned on first use. Reusing style objects in your code allows Valdi to pass a single ID across the bridge instead of a full dictionary of properties.

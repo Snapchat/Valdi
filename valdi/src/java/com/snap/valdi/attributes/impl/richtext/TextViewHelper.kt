@@ -25,6 +25,8 @@ import com.snap.valdi.utils.Disposable
 import com.snap.valdi.utils.LoadCompletion
 import com.snap.valdi.utils.runOnMainThreadIfNeeded
 import com.snap.valdi.views.ValdiEditText
+import com.snap.valdi.views.TextViewUtils
+import com.snap.valdi.views.ValdiTextView
 import com.snap.valdi.views.touches.AttributedTextTapGestureRecognizer
 import kotlin.math.max
 
@@ -46,13 +48,32 @@ class TextViewHelper(private val view: TextView,
         const val GRADIENT_BL_TR = 5
         const val GRADIENT_LEFT_RIGHT = 6
         const val GRADIENT_TL_BR = 7
+        private const val IMAGE_ATTACHMENT_BREAK_CHAR = '\u2009'
 
-        fun isTextValueEqual(valdiText: Any?, viewText: CharSequence): Boolean {
-            return if (valdiText is String) {
-                valdiText == viewText.toString()
-            } else {
-                false
+        fun isTextValueEqual(
+            valdiText: Any?,
+            viewText: CharSequence,
+            disableTextReplacement: Boolean = false,
+        ): Boolean {
+            return when (valdiText) {
+                is String -> valdiText == viewText.toString()
+                is AttributedText -> viewText.contentEquals(buildComparableTextValue(valdiText, disableTextReplacement))
+                else -> false
             }
+        }
+
+        private fun buildComparableTextValue(
+            valdiText: AttributedText,
+            disableTextReplacement: Boolean,
+        ): String {
+            val builder = StringBuilder()
+            for (index in 0 until valdiText.getPartsSize()) {
+                builder.append(valdiText.getContentAtIndex(index))
+                if (valdiText.getImageAttachmentAtIndex(index) != null && !disableTextReplacement) {
+                    builder.append(IMAGE_ATTACHMENT_BREAK_CHAR)
+                }
+            }
+            return builder.toString()
         }
     }
 
@@ -82,14 +103,41 @@ class TextViewHelper(private val view: TextView,
 
     var textValue: Any? = null
         set(value) {
-            if (
-                    field != value  ||
-                    // textValue can get out of sync with the view so we may need to compare them
-                    !isTextValueEqual(value, view.text)
-            ) {
+            val shouldUpdate = when (value) {
+                is AttributedText -> {
+                    val isSameTextValue = field == value
+                    val hasAnimationTransform =
+                        if (isSameTextValue) textValueHasAnimationTransform else value.hasAnimationTransform()
+                    val comparableTextValue = if (
+                        isSameTextValue &&
+                        textValueComparableDisableTextReplacement == disableTextReplacement
+                    ) {
+                        textValueComparableText
+                    } else {
+                        buildComparableTextValue(value, disableTextReplacement).also {
+                            textValueComparableText = it
+                            textValueComparableDisableTextReplacement = disableTextReplacement
+                        }
+                    }
+                    if (!isSameTextValue) {
+                        textValueHasAnimationTransform = hasAnimationTransform
+                    }
+                    hasAnimationTransform || !isSameTextValue || !view.text.contentEquals(comparableTextValue)
+                }
+                else ->
+                    field != value ||
+                        // textValue can get out of sync with the view so we may need to compare them
+                        !isTextValueEqual(value, view.text, disableTextReplacement)
+            }
+            if (shouldUpdate) {
                 field = value
                 textValueDirty = true
                 isAttributedText = value is AttributedText
+                if (value !is AttributedText) {
+                    textValueHasAnimationTransform = false
+                    textValueComparableText = null
+                    textValueComparableDisableTextReplacement = false
+                }
                 onDirty()
             }
         }
@@ -113,6 +161,9 @@ class TextViewHelper(private val view: TextView,
         }
     private var selectionDirty = false
 
+    private var textValueHasAnimationTransform = false
+    private var textValueComparableText: String? = null
+    private var textValueComparableDisableTextReplacement = false
     private var fontAttributesDirty = true
     private var fontAutofitDirty = true
 
@@ -125,6 +176,12 @@ class TextViewHelper(private val view: TextView,
     private lateinit var initialGradientSize: Size
 
     private var fontLoadDisposables: MutableMap<FontDescriptor, Disposable>? = null
+    private var overlayAttributedTextSpannable: Spannable? = null
+    private var parsedAttributedTextSource: AttributedText? = null
+    private var parsedAttributedText: RichTextConverter.ParsedAttributedText? = null
+    private var overlayLayoutCache: RichTextConverter.OverlayLayoutCache? = null
+    private var attributedTextShapeSignature: String? = null
+    private var hadActiveAnimationTransform: Boolean = false
 
     fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         updateTextAttributes()
@@ -144,15 +201,21 @@ class TextViewHelper(private val view: TextView,
         if (view.getText() !is Spanned || !needsUpdateOnLayoutCallbacks) {
             return
         }
-        val attributeLayoutSpans = (view.getText() as Spanned).getSpans(
-            0, view.getText().length,
+        val layout = view.getLayout() ?: return
+        val layoutText = layout.text as? Spanned ?: return
+
+        val attributeLayoutSpans = layoutText.getSpans(
+            0, layoutText.length,
             OnLayoutSpan::class.java
         )
-        val layout = view.getLayout()
 
         for (span in attributeLayoutSpans) {
-            val start = span.start
-            val end = span.start + span.length
+            val start = layoutText.getSpanStart(span)
+            val end = layoutText.getSpanEnd(span)
+
+            if (start < 0 || end < 0 || start > end || end > layoutText.length) {
+                continue
+            }
 
             val lineStart = layout.getLineForOffset(start)
             val xStart = coordinateResolver.fromPixel(layout.getPrimaryHorizontal(start))
@@ -217,6 +280,13 @@ class TextViewHelper(private val view: TextView,
     }
 
     private fun applyTextSimple(text: String?) {
+        overlayAttributedTextSpannable = null
+        parsedAttributedText = null
+        clearOverlayLayoutCache()
+        attributedTextShapeSignature = null
+        if (view is ValdiTextView) {
+            view.clearAttributedText()
+        }
         if (view is ValdiEditText) {
             view.setTextAndSelection(text ?: "")
         } else {
@@ -243,21 +313,118 @@ class TextViewHelper(private val view: TextView,
 
     fun convertAttributedText(text: AttributedText): Spannable {
         val fontAttributes = this.fontAttributes ?: defaultAttributes
-        return textConverter.convert(text, fontAttributes, this, disableTextReplacement)
+        val density = view.resources.displayMetrics.density
+        return textConverter.convert(
+            attributedText = text,
+            startingAttributes = fontAttributes,
+            missingFontsTracker = this,
+            disableTextReplacement = disableTextReplacement,
+            suppressAnimatedBase = false,
+            renderMode = FontAttributes.RenderMode.BASE,
+            density = density,
+        )
     }
 
-    fun drawOnTopAttributedText(canvas: Canvas, layout: Layout, text: AttributedText) {
+    fun convertOverlayAttributedText(text: AttributedText): Spannable {
         val fontAttributes = this.fontAttributes ?: defaultAttributes
-        textConverter.drawOnTop(canvas, layout, text, fontAttributes, this)
+        val density = view.resources.displayMetrics.density
+        return textConverter.convert(
+            text,
+            fontAttributes,
+            this,
+            disableTextReplacement = disableTextReplacement,
+            suppressAnimatedBase = false,
+            renderMode = FontAttributes.RenderMode.OVERLAY,
+            density = density,
+        )
+    }
+
+    fun drawOnTopAttributedText(canvas: Canvas, layout: Layout, text: AttributedText): Boolean {
+        val overlaySpannable = overlayAttributedTextSpannable ?: convertOverlayAttributedText(text).also {
+            overlayAttributedTextSpannable = it
+        }
+        val parsedText = if (parsedAttributedTextSource === text) {
+            parsedAttributedText
+        } else {
+            null
+        } ?: textConverter.parseAttributedText(text, this.fontAttributes ?: defaultAttributes).also {
+            parsedAttributedTextSource = text
+            parsedAttributedText = it
+        }
+        val cachedOverlayLayout = overlayLayoutCache
+        val currentBreakStrategy = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) view.breakStrategy else 0
+        val currentHyphenationFrequency = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) view.hyphenationFrequency else 0
+        val currentJustificationMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) view.justificationMode else 0
+        val overlayLayout = if (cachedOverlayLayout != null &&
+            cachedOverlayLayout.overlaySpannable === overlaySpannable &&
+            cachedOverlayLayout.width == layout.width &&
+            cachedOverlayLayout.alignment == layout.alignment &&
+            cachedOverlayLayout.lineSpacingExtra == view.lineSpacingExtra &&
+            cachedOverlayLayout.lineSpacingMultiplier == view.lineSpacingMultiplier &&
+            cachedOverlayLayout.includeFontPadding == view.includeFontPadding &&
+            cachedOverlayLayout.breakStrategy == currentBreakStrategy &&
+            cachedOverlayLayout.hyphenationFrequency == currentHyphenationFrequency &&
+            cachedOverlayLayout.justificationMode == currentJustificationMode &&
+            cachedOverlayLayout.textDirection == TextViewUtils.resolveTextDirectionHeuristic(view)
+        ) {
+            cachedOverlayLayout
+        } else {
+            textConverter.buildOverlayLayoutCache(layout, view, overlaySpannable)?.also {
+                if (cachedOverlayLayout !== it) {
+                    cachedOverlayLayout?.recycle()
+                }
+                overlayLayoutCache = it
+            }
+        } ?: return false
+
+        textConverter.drawOnTop(canvas, layout, overlayLayout, view, parsedText, this)
+        return true
+    }
+
+    fun forceRebindAttributedText(text: AttributedText) {
+        val fontAttributes = this.fontAttributes ?: defaultAttributes
+        forceRebindAttributedText(text, buildAttributedTextShapeSignature(text, fontAttributes))
     }
 
     private fun applyAttributedText(text: AttributedText) {
+        val fontAttributes = this.fontAttributes ?: defaultAttributes
+        val nextShapeSignature = buildAttributedTextShapeSignature(text, fontAttributes)
+        val hasActiveAnimation = text.hasActiveAnimationTransform()
+
+        if (attributedTextShapeSignature == nextShapeSignature &&
+            hadActiveAnimationTransform == hasActiveAnimation
+        ) {
+            if (view is ValdiEditText) {
+                view.updateAttributedText(text)
+            } else if (view is ValdiTextView) {
+                if (!view.updateAttributedText(text)) {
+                    forceRebindAttributedText(text, nextShapeSignature)
+                    return
+                }
+            }
+            refreshAnimatedBaseVisibilitySpans(text, hasActiveAnimation)
+        } else {
+            forceRebindAttributedText(text, nextShapeSignature)
+        }
+    }
+
+    private fun forceRebindAttributedText(text: AttributedText, shapeSignature: String) {
+        parsedAttributedTextSource = text
+        parsedAttributedText = textConverter.parseAttributedText(text, this.fontAttributes ?: defaultAttributes)
         val spannable = convertAttributedText(text)
+        overlayAttributedTextSpannable = null
+        clearOverlayLayoutCache()
+        attributedTextShapeSignature = shapeSignature
+        val hasActiveAnimation = text.hasActiveAnimationTransform()
+        hadActiveAnimationTransform = hasActiveAnimation
         if (view is ValdiEditText) {
             view.setTextAndSelection(text, spannable)
+        } else if (view is ValdiTextView) {
+            view.setAttributedText(text, spannable)
         } else {
             view.text = SpannableString(spannable)
         }
+        refreshAnimatedBaseVisibilitySpans(text, hasActiveAnimation)
 
         needsUpdateOnLayoutCallbacks = true
 
@@ -267,6 +434,113 @@ class TextViewHelper(private val view: TextView,
         } else {
             addAttributedTextTapGestureRecognizer(spannable)
         }
+    }
+
+    private fun buildAttributedTextShapeSignature(text: AttributedText, fontAttributes: FontAttributes): String {
+        return buildString {
+            append(fontAttributes.fontName).append('|')
+            append(fontAttributes.fontSize).append('|')
+            append(fontAttributes.lineHeight).append('|')
+            append(fontAttributes.letterSpacing).append('|')
+            append(fontAttributes.color).append('|')
+            append(fontAttributes.outlineColor).append('|')
+            append(fontAttributes.outlineWidth).append('|')
+            append(fontAttributes.textDecoration).append('|')
+            append(fontAttributes.alignment).append('|')
+            append(fontAttributes.numberOfLines).append('|')
+            append(fontAttributes.isUnscaled).append('|')
+
+            val partsSize = text.getPartsSize()
+            append(partsSize).append('|')
+            for (index in 0 until partsSize) {
+                // The fast path is only shape-based. Closures and attachments are compared by identity
+                // because animated frame updates reuse the rendered content and only mutate transform values.
+                append(text.getContentAtIndex(index)).append('|')
+                append(text.getFontAtIndex(index)).append('|')
+                append(text.getColorAtIndex(index)).append('|')
+                append(text.getOutlineColorAtIndex(index)).append('|')
+                append(text.getOutlineWidthAtIndex(index)).append('|')
+                append(text.getTextDecorationAtIndex(index)).append('|')
+                append(text.getImageAttachmentAtIndex(index)?.let { System.identityHashCode(it) }).append('|')
+                append(text.getOnTapAtIndex(index)?.let { System.identityHashCode(it) }).append('|')
+                append(text.getOnLayoutAtIndex(index)?.let { System.identityHashCode(it) }).append('|')
+                append(text.getAnimationTransformAtIndex(index) != null).append('|')
+            }
+        }
+    }
+
+    private fun refreshAnimatedBaseVisibilitySpans(text: AttributedText, hasActiveAnimation: Boolean) {
+        if (view !is ValdiEditText || !hasActiveAnimation) {
+            clearAnimatedBaseVisibilitySpans()
+            return
+        }
+
+        val spannable = view.text as? Spannable ?: return
+        val desiredRanges = mutableListOf<Triple<Int, Int, Boolean>>()
+        val spannableLength = spannable.length
+        val effectiveAttributes = parsedAttributedText?.attributes
+        val partRangesByIndex = spannable
+            .getSpans(0, spannableLength, RichTextConverter.PartIndexSpan::class.java)
+            .associate { span ->
+                span.partIndex to Pair(spannable.getSpanStart(span), spannable.getSpanEnd(span))
+            }
+        var fallbackStart = 0
+        for (index in 0 until text.getPartsSize()) {
+            val fallbackEnd = fallbackStart + text.getContentAtIndex(index).length
+            val (rangeStart, rangeEnd) = partRangesByIndex[index]
+                ?: Pair(fallbackStart, fallbackEnd)
+            val clampedStart = rangeStart.coerceAtMost(spannableLength)
+            val clampedEnd = rangeEnd.coerceAtMost(spannableLength)
+            if (clampedStart < clampedEnd && isActiveAnimationTransform(text.getAnimationTransformAtIndex(index))) {
+                val outlineColor = effectiveAttributes?.getOrNull(index)?.outlineColor ?: text.getOutlineColorAtIndex(index)
+                val outlineWidth = effectiveAttributes?.getOrNull(index)?.outlineWidth ?: text.getOutlineWidthAtIndex(index)
+                val usesReplacementSpan =
+                    !disableTextReplacement &&
+                    outlineColor != null &&
+                    outlineWidth > 0f
+                desiredRanges.add(Triple(clampedStart, clampedEnd, usesReplacementSpan))
+            }
+            fallbackStart = fallbackEnd +
+                if (text.getImageAttachmentAtIndex(index) != null && !disableTextReplacement) 1 else 0
+        }
+
+        val existingRanges = buildAnimatedBaseVisibilitySpanRanges(spannable)
+            .sortedWith(compareBy<Triple<Int, Int, Boolean>> { it.first }.thenBy { it.second }.thenBy { it.third })
+
+        if (existingRanges == desiredRanges) {
+            return
+        }
+
+        clearAnimatedBaseVisibilitySpans(spannable)
+        desiredRanges.forEach { (rangeStart, rangeEnd, usesReplacementSpan) ->
+            val span = if (usesReplacementSpan) InvisibleReplacementSpan() else InvisibleForegroundColorSpan()
+            spannable.setSpan(span, rangeStart, rangeEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
+
+    private fun clearAnimatedBaseVisibilitySpans(existingSpannable: Spannable? = view.text as? Spannable) {
+        val spannable = existingSpannable ?: return
+        spannable.getSpans(0, spannable.length, InvisibleReplacementSpan::class.java).forEach { span ->
+            spannable.removeSpan(span)
+        }
+        spannable.getSpans(0, spannable.length, InvisibleForegroundColorSpan::class.java).forEach { span ->
+            spannable.removeSpan(span)
+        }
+    }
+
+    private fun buildAnimatedBaseVisibilitySpanRanges(spannable: Spannable): List<Triple<Int, Int, Boolean>> {
+        val replacementRanges = spannable
+            .getSpans(0, spannable.length, InvisibleReplacementSpan::class.java)
+            .map { Triple(spannable.getSpanStart(it), spannable.getSpanEnd(it), true) }
+        val transparentRanges = spannable
+            .getSpans(0, spannable.length, InvisibleForegroundColorSpan::class.java)
+            .map { Triple(spannable.getSpanStart(it), spannable.getSpanEnd(it), false) }
+        return replacementRanges + transparentRanges
+    }
+
+    internal fun clearOverlayLayoutCache() {
+        overlayLayoutCache?.recycle()
+        overlayLayoutCache = null
     }
 
     // Apply all known specified text rendering attributes

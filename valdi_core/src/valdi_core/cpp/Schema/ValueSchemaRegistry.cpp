@@ -201,6 +201,11 @@ ValueSchemaRegistrySchemaIdentifier ValueSchemaRegistry::registerSchema(const Va
                                                                         const ValueSchema& schema) {
     std::lock_guard<std::recursive_mutex> guard(_mutex);
 
+    const auto& it = _entryIndexByKey.find(schemaKey);
+    if (it != _entryIndexByKey.end() && _entries[it->second].schema == schema) {
+        return it->second;
+    }
+
     auto entryIndex = _entries.size();
     auto& entry = _entries.emplace_back();
     entry.schema = schema;

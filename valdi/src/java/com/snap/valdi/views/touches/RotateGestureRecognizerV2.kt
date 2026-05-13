@@ -5,7 +5,8 @@ import android.view.View
 
 class RotateGestureRecognizerV2(
         view: View,
-        val listener: RotateGestureRecognizerListener
+        val listener: RotateGestureRecognizerListener,
+        val resetDetector: Boolean = false
 ) : ValdiGestureRecognizer(view){
 
     var rotation = 0.0f
@@ -41,6 +42,13 @@ class RotateGestureRecognizerV2(
     override fun onReset(event: MotionEvent) {
         super.onReset(event)
         rotation = 0.0f
+        if (resetDetector) {
+            // Reset the inner detector state to avoid spurious onRotationEnd() callbacks on the next
+            // gesture sequence. This mirrors the V1 RotateGestureRecognizer pattern where
+            // gestureDetector.onTouchEvent(event) is called in onReset() to flush detector state.
+            rotationDetector.reset()
+        }
+
     }
 
     override fun canRecognizeSimultaneously(other: ValdiGestureRecognizer): Boolean {

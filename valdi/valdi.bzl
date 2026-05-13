@@ -8,12 +8,13 @@ COMPILER_FLAGS = [
     # '-Os', # Uncomment to enable optimizations
     "-Wno-c11-extensions",
     "-Wno-c99-extensions",
+    "-Wno-gnu-conditional-omitted-operand",
+    "-Wno-gnu-statement-expression",
+    "-Wno-implicit-function-declaration",
     "-Wno-keyword-macro",
+    "-Wno-pedantic",
     "-Wno-vla-extension",
     "-Wno-zero-length-array",
-    "-Wno-gnu-statement-expression",
-    "-Wno-gnu-conditional-omitted-operand",
-    "-Wno-pedantic",
 ]
 
 ANDROIDX_RUNTIME_LIBRARIES = [
@@ -111,7 +112,7 @@ def valdi_android_aar(
         deps = ANDROIDX_RUNTIME_LIBRARIES,
     )
 
-def valdi_test(name, srcs = [], hdrs = {}, deps = [], data = None):
+def valdi_test(name, srcs = [], hdrs = {}, deps = [], data = None, size = None):
     lib_name = "{}_lib".format(name)
     native.cc_library(
         name = lib_name,
@@ -126,12 +127,16 @@ def valdi_test(name, srcs = [], hdrs = {}, deps = [], data = None):
         ] + deps),
     )
 
-    native.cc_test(
-        name = name,
-        linkstatic = True,
-        visibility = ["//visibility:public"],
-        deps = [
+    kwargs = {
+        "name": name,
+        "linkstatic": True,
+        "visibility": ["//visibility:public"],
+        "deps": [
             ":{}".format(lib_name),
             "@gtest//:gtest_main",
         ],
-    )
+    }
+    if size:
+        kwargs["size"] = size
+
+    native.cc_test(**kwargs)

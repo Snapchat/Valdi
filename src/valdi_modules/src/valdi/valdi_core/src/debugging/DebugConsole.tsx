@@ -85,7 +85,7 @@ const rootStyle = new Style<Layout>({
 });
 
 const issueTextSelectorStyle = new Style<Label>({
-  font: 'AvenirNext-Medium 13',
+  font: 'Montserrat-Medium 13',
   margin: 8,
 });
 
@@ -154,7 +154,7 @@ export class DebugConsole
           <layout style={headerContainerStyle}>
             <layout style={topHeaderTopStyle}>
               <DebugButton text='Dismiss' onTap={this.close} />
-              <label value={`${this.state.issues.length} Valdi Warnings`} font='AvenirNext-Demibold 13' />
+              <label value={`${this.state.issues.length} Valdi Warnings`} font='Montserrat-SemiBold 13' />
               <DebugButton
                 text={this.state.collapseState === CollapseState.expanded ? 'Collapse' : 'Expand'}
                 onTap={this.expandOrCollapse}

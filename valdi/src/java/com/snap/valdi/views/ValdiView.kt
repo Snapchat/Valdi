@@ -175,6 +175,19 @@ open class ValdiView : ViewGroup, ValdiRecyclableView, ValdiClippableView, Valdi
         return ViewUtils.verifyDrawable(this, who) || super.verifyDrawable(who)
     }
 
+    // maskImage wraps entire draw (background + content + children)
+    override fun draw(canvas: Canvas) {
+        val maskImageGradient = ViewUtils.getOptionalImageMaskGradient(this)
+        if (maskImageGradient != null && width > 0 && height > 0) {
+            val saveCount = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
+            super.draw(canvas)
+            ViewUtils.drawImageMaskGradient(canvas, width.toFloat(), height.toFloat(), maskImageGradient)
+            canvas.restoreToCount(saveCount)
+        } else {
+            super.draw(canvas)
+        }
+    }
+
     // clipping support
 
     override fun dispatchDraw(canvas: Canvas) {

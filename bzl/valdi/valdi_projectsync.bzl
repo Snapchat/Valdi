@@ -153,9 +153,10 @@ def _invoke_valdi_compiler(ctx, module_name):
 
     return outputs
 
-def _to_bazel_str(label):
-    if label.repo_name:
-        return "@{}//{}:{}".format(label.repo_name, label.package, label.name)
+def _to_bazel_str(label, own_repo_name = ""):
+    repo = label.repo_name if label.repo_name else own_repo_name
+    if repo:
+        return "@{}//{}:{}".format(repo, label.package, label.name)
     else:
         return "//{}:{}".format(label.package, label.name)
 
@@ -165,12 +166,13 @@ def _valdi_projectsync_impl(ctx):
 
     projectsync_json = ctx.actions.declare_file("projectsync.json")
 
+    own_repo = ctx.label.repo_name
     all_deps = []
     for dep in ctx.attr.target[ValdiModuleInfo].deps.to_list():
-        all_deps.append(_to_bazel_str(dep.label))
+        all_deps.append(_to_bazel_str(dep.label, own_repo))
 
     projectsync_json_dict = {
-        "target": _to_bazel_str(ctx.attr.target.label),
+        "target": _to_bazel_str(ctx.attr.target.label, own_repo),
         "dependencies": all_deps,
     }
 

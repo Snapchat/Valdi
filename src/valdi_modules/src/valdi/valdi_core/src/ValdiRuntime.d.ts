@@ -209,5 +209,18 @@ export interface ValdiRuntime extends RuntimeBase {
 
   isDebugEnabled: boolean;
 
+  /**
+   * Whether JS logging (console.log/warn/error/info/debug) is enabled.
+   * In non-appstore builds this is always true.
+   * In appstore builds this is controlled by the VALDI_DISABLE_JS_LOGGING COF key.
+   */
+  isLoggingEnabled: boolean;
+
+  /**
+   * When true, the renderer emits moves in top-down order (parent before children) to reduce ANR risk.
+   * Gated by VALDI_MAX_VIEW_OPERATIONS_PROCESSING_TIME (same COF as view-op throttling); true when that value > 0.
+   */
+  useTopDownMoveOrder: boolean;
+
   buildType: string;
 }

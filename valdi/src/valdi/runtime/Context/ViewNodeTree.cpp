@@ -21,6 +21,7 @@
 #include "valdi/runtime/Metrics/Metrics.hpp"
 #include "valdi/runtime/Resources/AssetsManager.hpp"
 #include "valdi/runtime/Runtime.hpp"
+#include "valdi/runtime/ValdiBuildFlags.hpp"
 #include "valdi/runtime/Views/GlobalViewFactories.hpp"
 #include "valdi/runtime/Views/MeasureDelegate.hpp"
 #include "valdi/runtime/Views/ViewTransactionScope.hpp"
@@ -28,6 +29,7 @@
 
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
+#include "valdi_core/cpp/Utils/TimePoint.hpp"
 #include "valdi_core/cpp/Utils/Trace.hpp"
 #include "valdi_core/cpp/Utils/ValueFunction.hpp"
 #include "valdi_core/cpp/Utils/ValueMap.hpp"
@@ -35,6 +37,10 @@
 #include "valdi_core/cpp/Utils/ContainerUtils.hpp"
 #include <cmath>
 #include <yoga/YGNode.h>
+
+// Flush the runTreeUpdates() throughput metric at most every 32ms
+static constexpr size_t kUpdateRunTreeWindowDurationsMs = 32;
+static constexpr size_t kUpdateRunTreeMinPercentage = 5;
 
 namespace Valdi {
 
@@ -69,9 +75,17 @@ ViewNodeTree::~ViewNodeTree() {
 }
 
 void ViewNodeTree::clear() {
+    flushRunUpdatesInnerStatsIfNeeded();
+    clearRunUpdatesMetricsSession();
     _runtime = nullptr;
     _viewFactories.clear();
     _updateFunctions.clear();
+}
+
+void ViewNodeTree::clearRunUpdatesMetricsSession() {
+    _runUpdatesInnerSessionStart = std::nullopt;
+    _runUpdatesInnerSessionStop = std::nullopt;
+    _runUpdatesInnerAccumulatedTime = std::chrono::steady_clock::duration(0);
 }
 
 Ref<View> ViewNodeTree::getViewForNodePath(const ViewNodePath& nodePath) const {
@@ -137,6 +151,7 @@ void ViewNodeTree::setRootView(const Ref<View>& view) {
     withLock([&]() {
         if (_rootView != view) {
             _rootView = view;
+            getCurrentViewTransactionScope().setRootView(_rootView);
 
             auto disableUpdate = beginDisableUpdates();
 
@@ -261,6 +276,8 @@ void ViewNodeTree::performUpdates() {
     flushOnLayoutCallbacks();
 
     rootViewNode->updateVisibilityAndPerformUpdates(getCurrentViewTransactionScope());
+
+    flushOnDrawCallbacks();
 }
 
 Size ViewNodeTree::measureLayout(
@@ -306,7 +323,11 @@ void ViewNodeTree::setLayoutSpecs(Size layoutSize, LayoutDirection layoutDirecti
         _layoutDirty = true;
     }
 
-    scheduleExclusiveUpdate([this]() { this->performUpdates(); });
+#if VALDI_DEBUG_TREE_UPDATES
+    scheduleExclusiveUpdate([this]() { this->performUpdates(); }, DispatchFunction(), "setLayoutSpecs");
+#else
+    scheduleExclusiveUpdate([this]() { this->performUpdates(); }, DispatchFunction());
+#endif
 }
 
 void ViewNodeTree::setViewport(std::optional<Frame> viewport) {
@@ -342,8 +363,12 @@ void ViewNodeTree::onRootViewNodeNeedsUpdate() {
 void ViewNodeTree::schedulePerformUpdates() {
     if (!_scheduledPerformUpdates) {
         _scheduledPerformUpdates = true;
-
-        scheduleExclusiveUpdate([this]() { this->performUpdatesIfLayoutSpecsUpToDate(); });
+#if VALDI_DEBUG_TREE_UPDATES
+        scheduleExclusiveUpdate(
+            [this]() { this->performUpdatesIfLayoutSpecsUpToDate(); }, DispatchFunction(), "root_needs_update");
+#else
+        scheduleExclusiveUpdate([this]() { this->performUpdatesIfLayoutSpecsUpToDate(); }, DispatchFunction());
+#endif
     }
 }
 
@@ -359,14 +384,42 @@ void ViewNodeTree::performUpdatesIfLayoutSpecsUpToDate() {
 
 void ViewNodeTree::scheduleReapplyAttributesRecursive(const std::vector<StringBox>& attributeNames,
                                                       bool invalidateMeasure) {
-    scheduleExclusiveUpdate([this, attributeNames, invalidateMeasure]() {
-        auto& attributesManager = getViewManagerContext()->getAttributesManager();
-        auto attributeIds = attributesManager.getAttributeIds().getIdsForNames(attributeNames);
-        auto rootViewNode = getRootViewNode();
-        if (rootViewNode != nullptr) {
-            rootViewNode->reapplyAttributesRecursive(getCurrentViewTransactionScope(), attributeIds, invalidateMeasure);
+#if VALDI_DEBUG_TREE_UPDATES
+    std::string trigger = "reapply_attributes:";
+    for (size_t i = 0; i < attributeNames.size(); ++i) {
+        if (i != 0) {
+            trigger += ",";
         }
-    });
+        trigger += attributeNames[i].slowToString();
+    }
+    if (invalidateMeasure) {
+        trigger += ",invalidateMeasure";
+    }
+    scheduleExclusiveUpdate(
+        [this, attributeNames, invalidateMeasure]() {
+            auto& attributesManager = getViewManagerContext()->getAttributesManager();
+            auto attributeIds = attributesManager.getAttributeIds().getIdsForNames(attributeNames);
+            auto rootViewNode = getRootViewNode();
+            if (rootViewNode != nullptr) {
+                rootViewNode->reapplyAttributesRecursive(
+                    getCurrentViewTransactionScope(), attributeIds, invalidateMeasure);
+            }
+        },
+        DispatchFunction(),
+        std::move(trigger));
+#else
+    scheduleExclusiveUpdate(
+        [this, attributeNames, invalidateMeasure]() {
+            auto& attributesManager = getViewManagerContext()->getAttributesManager();
+            auto attributeIds = attributesManager.getAttributeIds().getIdsForNames(attributeNames);
+            auto rootViewNode = getRootViewNode();
+            if (rootViewNode != nullptr) {
+                rootViewNode->reapplyAttributesRecursive(
+                    getCurrentViewTransactionScope(), attributeIds, invalidateMeasure);
+            }
+        },
+        DispatchFunction());
+#endif
 }
 
 void ViewNodeTree::updateCSS(const SharedAnimator& animator) {
@@ -566,6 +619,11 @@ void ViewNodeTree::onNextLayout(const Ref<ValueFunction>& callback) {
     schedulePerformUpdates();
 }
 
+void ViewNodeTree::onNextDraw(const Ref<ValueFunction>& callback) {
+    _onDrawCallbacks.emplace_back(callback);
+    schedulePerformUpdates();
+}
+
 void ViewNodeTree::flushOnLayoutCallbacks() {
     if (_onLayoutCallbacks.empty()) {
         return;
@@ -577,6 +635,28 @@ void ViewNodeTree::flushOnLayoutCallbacks() {
         }
 
         (*onLayoutCallback)();
+    }
+}
+
+void ViewNodeTree::flushOnDrawCallbacks() {
+    if (_onDrawCallbacks.empty()) {
+        return;
+    }
+
+    auto rootView = getRootView();
+    if (rootView == nullptr) {
+        return;
+    }
+
+    auto onDrawCallbacks = std::move(_onDrawCallbacks);
+    auto& transaction = getCurrentViewTransactionScope().transaction();
+    for (const auto& onDrawCallback : onDrawCallbacks) {
+        if (onDrawCallback == nullptr) {
+            continue;
+        }
+
+        transaction.scheduleOnNextDraw(
+            rootView, [onDrawCallback]() { (*onDrawCallback)({Value(TimePoint::now().getTime() * 1000.0)}); });
     }
 }
 
@@ -621,12 +701,18 @@ StringBox ViewNodeTree::getAttributeSource(AttributeId /*id*/) const {
 }
 
 void ViewNodeTree::scheduleExclusiveUpdate(DispatchFunction updateFunction) {
-    scheduleExclusiveUpdate(std::move(updateFunction), DispatchFunction());
+    scheduleExclusiveUpdate(std::move(updateFunction), DispatchFunction(), {});
 }
 
 void ViewNodeTree::scheduleExclusiveUpdate(DispatchFunction updateFunction, DispatchFunction completion) {
+    scheduleExclusiveUpdate(std::move(updateFunction), std::move(completion), {});
+}
+
+void ViewNodeTree::scheduleExclusiveUpdate(DispatchFunction updateFunction,
+                                           DispatchFunction completion,
+                                           std::string traceTrigger) {
     auto lockGuard = lock();
-    _updateFunctions.emplace_back(std::move(updateFunction), std::move(completion));
+    _updateFunctions.emplace_back(std::move(updateFunction), std::move(completion), std::move(traceTrigger));
 
     if (!_updating) {
         runUpdates();
@@ -656,7 +742,10 @@ void ViewNodeTree::runUpdates() {
 }
 
 void ViewNodeTree::runUpdatesInner() {
-    VALDI_TRACE("Valdi.runTreeUpdates")
+    const auto runUpdatesStart = std::chrono::steady_clock::now();
+    if (!_runUpdatesInnerSessionStart.has_value()) {
+        _runUpdatesInnerSessionStart = runUpdatesStart;
+    }
 
     ContextEntry contextEntry(_context);
     auto viewTransactionScope = beginViewTransaction();
@@ -671,9 +760,32 @@ void ViewNodeTree::runUpdatesInner() {
         assetsManager->beginPauseUpdates();
     }
 
+#if !VALDI_DEBUG_TREE_UPDATES
+    VALDI_TRACE("Valdi.runTreeUpdates");
+#endif
+
     while (!_updateFunctions.empty()) {
         auto updates = std::move(_updateFunctions.front());
         _updateFunctions.pop_front();
+
+#if VALDI_DEBUG_TREE_UPDATES
+        // Emit trace per update with component name (symbol only) and trigger.
+        std::string traceSuffix;
+        if (!_context->getPath().isEmpty()) {
+            const auto& path = _context->getPath();
+            traceSuffix = path.getSymbolName().isEmpty() ? path.toString() : path.getSymbolName().slowToString();
+        }
+        if (!updates.traceTrigger.empty()) {
+            if (!traceSuffix.empty()) {
+                traceSuffix += "|";
+            }
+            traceSuffix += updates.traceTrigger;
+        }
+        if (traceSuffix.empty()) {
+            traceSuffix = "unknown";
+        }
+        VALDI_TRACE_META("Valdi.runTreeUpdates", traceSuffix);
+#endif
 
         updates.performUpdates();
         if (updates.completion) {
@@ -700,6 +812,34 @@ void ViewNodeTree::runUpdatesInner() {
     }
 
     endViewTransaction(viewTransactionScope, layoutDidBecomeDirty);
+
+    _runUpdatesInnerSessionStop = std::chrono::steady_clock::now();
+    _runUpdatesInnerAccumulatedTime += *_runUpdatesInnerSessionStop - runUpdatesStart;
+
+    flushRunUpdatesInnerStatsIfNeeded();
+}
+
+void ViewNodeTree::flushRunUpdatesInnerStatsIfNeeded() {
+    auto metrics = getMetrics();
+    if (metrics == nullptr || !_runUpdatesInnerSessionStart.has_value() || !_runUpdatesInnerSessionStop.has_value()) {
+        return;
+    }
+
+    const auto sessionDuration = *_runUpdatesInnerSessionStop - *_runUpdatesInnerSessionStart;
+    const auto sessionDurationMs = std::chrono::duration<double, std::milli>(sessionDuration).count();
+    if (sessionDurationMs <= kUpdateRunTreeWindowDurationsMs) {
+        // Throttle by time interval by checking that the session duration is long enough
+        return;
+    }
+
+    const auto runUpdatesInnerMs = std::chrono::duration<double, std::milli>(_runUpdatesInnerAccumulatedTime).count();
+    const auto percentage = static_cast<size_t>(std::ceil((runUpdatesInnerMs / sessionDurationMs) * 100.0));
+
+    if (percentage >= kUpdateRunTreeMinPercentage) {
+        metrics->emitRunUpdatesInnerTimePercentage(_context->getPath().getResourceId().bundleName, percentage);
+    }
+
+    clearRunUpdatesMetricsSession();
 }
 
 bool ViewNodeTree::inExclusiveUpdate() const {

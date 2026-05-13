@@ -4,7 +4,7 @@ import { jsx } from 'valdi_core/src/JSXBootstrap';
 import { Renderer } from 'valdi_core/src/Renderer';
 import { Size } from './DrawingModuleProvider';
 import { IBitmap } from './IBitmap';
-import { IManagedContext, IManagedContextAssetsLoadResult, IManagedContextFrame, MeasureMode, RasterResult } from './IManagedContext';
+import { IManagedContext, IManagedContextAssetsLoadResult, IManagedContextDrawResult, IManagedContextFrame, MeasureMode, RasterResult } from './IManagedContext';
 import { ManagedContextAssetTracker } from './ManagedContextAssetTracker';
 import {
   AssetTrackerEventType,
@@ -14,6 +14,9 @@ import {
   destroyValdiContextWithSnapDrawing,
   disposeFrame,
   drawFrame,
+  drawFrameSync,
+  layoutAsync,
+  measureAsync,
   rasterFrame,
 } from './ManagedContextNative';
 
@@ -44,8 +47,14 @@ class ManagedContextImpl implements IManagedContext {
   private contextId: string;
   private _renderer: Renderer;
   private assetTracker: ManagedContextAssetTracker;
+  private readonly useAsyncPath: boolean;
 
-  constructor(useNewExternalSurfaceRasterMethod: boolean, enableDeltaRasterization: boolean) {
+  constructor(
+    useNewExternalSurfaceRasterMethod: boolean,
+    enableDeltaRasterization: boolean,
+    useAsyncPath: boolean,
+  ) {
+    this.useAsyncPath = useAsyncPath;
     this.snapDrawingValdiContext = createValdiContextWithSnapDrawing(
       useNewExternalSurfaceRasterMethod,
       enableDeltaRasterization,
@@ -78,18 +87,63 @@ class ManagedContextImpl implements IManagedContext {
     this._renderer.renderRoot(renderFunc);
   }
 
-  measure(maxWidth: number, widthMode: MeasureMode, maxHeight: number, heightMode: MeasureMode, rtl: boolean): Size {
-    const result = runtime.measureContext(this.contextId, maxWidth, widthMode, maxHeight, heightMode, rtl);
-    return { width: result[0], height: result[1] };
+  measure(maxWidth: number, widthMode: MeasureMode, maxHeight: number, heightMode: MeasureMode, rtl: boolean): Promise<Size> {
+    if (this.useAsyncPath) {
+      return new Promise(resolve => {
+        measureAsync(
+          this.snapDrawingValdiContext.native,
+          maxWidth,
+          widthMode,
+          maxHeight,
+          heightMode,
+          rtl,
+          (width: number, height: number) => {
+            resolve({ width, height });
+          },
+        );
+      });
+    }
+    // Sync path: use runtime.measureContext directly (same as original implementation; no native module dispatch).
+    const result = runtime.measureContext(
+      this.contextId,
+      maxWidth,
+      widthMode,
+      maxHeight,
+      heightMode,
+      rtl,
+    );
+    return Promise.resolve({ width: result[0], height: result[1] });
   }
 
-  layout(width: number, height: number, rtl: boolean): void {
+  layout(width: number, height: number, rtl: boolean): Promise<void> {
+    if (this.useAsyncPath) {
+      return new Promise(resolve => {
+        layoutAsync(this.snapDrawingValdiContext.native, width, height, rtl, () => {
+          resolve();
+        });
+      });
+    }
+    // Sync path: use runtime.setLayoutSpecs directly (same as original implementation).
     runtime.setLayoutSpecs(this.contextId, width, height, rtl);
+    return Promise.resolve();
   }
 
-  draw(): IManagedContextFrame {
-    const frameNative = drawFrame(this.snapDrawingValdiContext.native);
-    return new FrameImpl(frameNative);
+  draw(): Promise<IManagedContextDrawResult> {
+    if (this.useAsyncPath) {
+      return new Promise(resolve => {
+        drawFrame(
+          this.snapDrawingValdiContext.native,
+          (frameNative: SnapDrawingFrameNative, mainThreadMs: number) => {
+            resolve({ frame: new FrameImpl(frameNative), mainThreadMs });
+          },
+        );
+      });
+    }
+    const frameNative = drawFrameSync(this.snapDrawingValdiContext.native);
+    return Promise.resolve({
+      frame: new FrameImpl(frameNative),
+      mainThreadMs: 0,
+    });
   }
 
   onAllAssetsLoaded(): Promise<IManagedContextAssetsLoadResult> {
@@ -134,6 +188,11 @@ export const enum EmbeddedPlatformViewRasterMethod {
 export interface IManagedContextOptions {
   embeddedPlatformViewRasterMethod?: EmbeddedPlatformViewRasterMethod;
   deltaRasterization?: boolean;
+  /**
+   * When false or unset (default, control), use sync path. When true (treatment), use async path.
+   * AB test: compare deadlock rate and performance; CoF MANAGED_CONTEXT_USE_ASYNC.
+   */
+  useAsyncPath?: boolean;
 }
 
 /**
@@ -143,5 +202,6 @@ export function createManagedContext(options?: IManagedContextOptions): IManaged
   const useNewExternalSurfaceRasterMethod =
     options?.embeddedPlatformViewRasterMethod === EmbeddedPlatformViewRasterMethod.ACCURATE;
   const enableDeltaRasterization = options?.deltaRasterization ?? false;
-  return new ManagedContextImpl(useNewExternalSurfaceRasterMethod, enableDeltaRasterization);
+  const useAsyncPath = options?.useAsyncPath ?? false;
+  return new ManagedContextImpl(useNewExternalSurfaceRasterMethod, enableDeltaRasterization, useAsyncPath);
 }

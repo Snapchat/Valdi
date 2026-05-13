@@ -22,6 +22,7 @@ import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.snap.valdi.context.ValdiContext
 import com.snap.valdi.nodes.IValdiViewNode.AccessibilityNode
 import com.snap.valdi.nodes.IValdiViewNode.AccessibilityCategory
+import java.util.IdentityHashMap
 
 /**
  * ValdiAccessibilityDelegateHierarchy is a ValdiAccessibilityDelegate implementation
@@ -38,8 +39,12 @@ import com.snap.valdi.nodes.IValdiViewNode.AccessibilityCategory
 class ValdiAccessibilityDelegateHierarchy(host: View, val valdiContext: ValdiContext) : ValdiAccessibilityDelegate(host) {
 
     private var accessibilityNodes = mutableMapOf<Int, AccessibilityNode>()
+    private var customViewVirtualIds = IdentityHashMap<View, Int>()
 
     private var hostLocationOnScreen = IntArray(2)
+
+    private val enableAccessibilityCustomViewVirtualIdFix: Boolean
+        get() = valdiContext.runtimeOrNull?.manager?.tweaks?.enableAccessibilityCustomViewVirtualIdFix == true
 
     /**
      * Called by the android system when the user hover the finger over the UI
@@ -68,7 +73,7 @@ class ValdiAccessibilityDelegateHierarchy(host: View, val valdiContext: ValdiCon
             val xOffset = getXOffsetRelativeToHost(view)
             val yOffset = getYOffsetRelativeToHost(view)
             val hitChild = hitTestCustomView(accessibilityNode.customView, x.toInt() - xOffset, y.toInt() - yOffset)
-            if (hitChild > 0) {
+            if (isValidCustomViewHitResult(hitChild)) {
                 return hitChild
             }
         }
@@ -108,15 +113,27 @@ class ValdiAccessibilityDelegateHierarchy(host: View, val valdiContext: ValdiCon
                 child.getHitRect(childBounds)
                 if (childBounds.contains(x, y)) {
                     val hitChild = hitTestCustomView(child, translateX(child, x), translateY(child, y))
-                    if (hitChild > 0) {
+                    if (isValidCustomViewHitResult(hitChild)) {
                         return hitChild
                     }
 
-                    return child.id
+                    return if (enableAccessibilityCustomViewVirtualIdFix) {
+                        customViewVirtualIds[child] ?: VIRTUAL_VIEW_ID_INVALID
+                    } else {
+                        child.id
+                    }
                 }
             }
         }
-        return -1
+        return if (enableAccessibilityCustomViewVirtualIdFix) VIRTUAL_VIEW_ID_INVALID else -1
+    }
+
+    private fun isValidCustomViewHitResult(virtualViewId: Int): Boolean {
+        return if (enableAccessibilityCustomViewVirtualIdFix) {
+            virtualViewId != VIRTUAL_VIEW_ID_INVALID
+        } else {
+            virtualViewId > 0
+        }
     }
 
     /**
@@ -179,6 +196,7 @@ class ValdiAccessibilityDelegateHierarchy(host: View, val valdiContext: ValdiCon
     override fun onPopulateNodeForHost(nodeInfo: AccessibilityNodeInfoCompat) {
         nodeInfo.setClassName(CLASS_NAME_VIEW)
         accessibilityNodes.clear()
+        customViewVirtualIds.clear()
         val rootViewNode = valdiContext.getRootViewNode()
         if (rootViewNode == null) {
             return
@@ -186,7 +204,7 @@ class ValdiAccessibilityDelegateHierarchy(host: View, val valdiContext: ValdiCon
         host.getLocationOnScreen(hostLocationOnScreen)
         val accessibilityHierarchy = rootViewNode.getAccessibilityHierarchy()
         for (accessibilityNode in accessibilityHierarchy) {
-            nodeInfo.addChild(host, accessibilityNode.id)
+            addAccessibilityChild(nodeInfo, accessibilityNode.id)
         }
         indexAccessibilityHierarchy(nodeInfo, accessibilityHierarchy)
     }
@@ -197,6 +215,9 @@ class ValdiAccessibilityDelegateHierarchy(host: View, val valdiContext: ValdiCon
     private fun indexAccessibilityHierarchy(nodeInfo: AccessibilityNodeInfoCompat, nodes: List<AccessibilityNode>) {
         for (node in nodes) {
             accessibilityNodes[node.id] = node
+            if (enableAccessibilityCustomViewVirtualIdFix && node.customView != null) {
+                customViewVirtualIds[node.customView] = node.id
+            }
             if (node.children.size > 0) {
 
                 indexAccessibilityHierarchy(nodeInfo, node.children)
@@ -299,10 +320,10 @@ class ValdiAccessibilityDelegateHierarchy(host: View, val valdiContext: ValdiCon
         nodeInfo.setBoundsInScreen(boundsInScreen)
         // Mark parent/child relationship
         for (child in accessibilityNode.children) {
-            nodeInfo.addChild(host, child.id)
+            addAccessibilityChild(nodeInfo, child.id)
         }
         val parent = accessibilityNode.parent
-        if (parent != null) {
+        if (parent != null && isValidVirtualParentId(parent.id)) {
             nodeInfo.setParent(host, parent.id)
         } else {
             nodeInfo.setParent(host)
@@ -314,6 +335,28 @@ class ValdiAccessibilityDelegateHierarchy(host: View, val valdiContext: ValdiCon
         nodeInfo.addAction(AccessibilityNodeInfoCompat.ACTION_LONG_CLICK)
 
         nodeInfo.viewIdResourceName = accessibilityNode.accessibilityId
+    }
+
+    private fun addAccessibilityChild(nodeInfo: AccessibilityNodeInfoCompat, childId: Int) {
+        if (enableAccessibilityCustomViewVirtualIdFix) {
+            addVirtualChild(nodeInfo, childId)
+        } else {
+            nodeInfo.addChild(host, childId)
+        }
+    }
+
+    private fun addVirtualChild(nodeInfo: AccessibilityNodeInfoCompat, childId: Int) {
+        if (isValidVirtualChildId(childId)) {
+            nodeInfo.addChild(host, childId)
+        }
+    }
+
+    private fun isValidVirtualParentId(virtualViewId: Int): Boolean {
+        return !enableAccessibilityCustomViewVirtualIdFix || isValidVirtualChildId(virtualViewId)
+    }
+
+    private fun isValidVirtualChildId(virtualViewId: Int): Boolean {
+        return virtualViewId != VIRTUAL_VIEW_ID_HOST && virtualViewId != VIRTUAL_VIEW_ID_INVALID
     }
 
     /**

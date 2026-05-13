@@ -53,6 +53,7 @@ private:
     Valdi::Mutex _existingStoreMutex;
     bool _disableEncryptionByDefault;
     bool shouldEncrypt(std::optional<bool> enableEncryption);
+    StringBox getEffectiveStorePath(const StringBox& basePath, std::optional<bool> enableEncryption);
 };
 
 } // namespace Valdi

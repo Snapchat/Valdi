@@ -8,6 +8,18 @@ Valdi supports extensible type conversions between TypeScript and Android/iOS en
 
 The following type conversions are available in Valdi:
 
+## The `Valdi::Value` Container
+
+Under the hood, all data passed between TypeScript and native environments is encapsulated in a unified C++ container called `Valdi::Value`.
+
+### Characteristics of `Valdi::Value`
+- **128-bit Variant**: It uses 64 bits for data (or a pointer) and 64 bits for type information.
+- **Zero-Copy Marshalling**: Designed to minimize heap allocations when passing data across the bridge.
+- **Reference Counted**: Complex types like maps and arrays are ref-counted to ensure memory safety across threads.
+- **Immutable**: Once created, a `Valdi::Value` is immutable and thread-safe.
+
+This unified representation allows Valdi to handle complex data structures efficiently without repeated conversions as they move between JavaScript, Objective-C, and Java.
+
 | TypeScript  | Android (Kotlin) | iOS (Objective-C)  |
 | ------------- | ------------- | ------------- |
 | `boolean` | `Boolean` | `BOOL`, or `NSNumber*` if optional |

@@ -13,6 +13,8 @@
 
 @class SCValdiActionHandlerHolder;
 
+NS_ASSUME_NONNULL_BEGIN
+
 /**
  Contains all actions given their name.
  */
@@ -26,6 +28,8 @@ VALDI_NO_INIT
 - (instancetype)initWithActionByName:(NSDictionary<NSString*, id<SCValdiAction>>*)actionByName
                  actionHandlerHolder:(SCValdiActionHandlerHolder*)actionHandlerHolder;
 
-- (id<SCValdiAction>)actionForName:(NSString*)name;
+- (nullable id<SCValdiAction>)actionForName:(NSString*)name;
 
 @end
+
+NS_ASSUME_NONNULL_END

@@ -307,6 +307,12 @@ final class TypeScriptGenerator {
                 if let iosViewClass = element.iosViewClass {
                     staticProperties["iosClass"] = "'\(iosViewClass)'"
                 }
+                if let webViewClass = element.webViewClass {
+                    staticProperties["webClass"] = "'\(webViewClass)'"
+                }
+                if let macosViewClass = element.macosViewClass {
+                    staticProperties["macosClass"] = "'\(macosViewClass)'"
+                }
             }
 
             let staticPropertiesContent = toPropertyList(dict: staticProperties)

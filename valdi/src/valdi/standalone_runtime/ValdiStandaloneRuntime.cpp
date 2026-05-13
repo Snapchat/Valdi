@@ -110,8 +110,15 @@ ValdiStandaloneRuntime::ValdiStandaloneRuntime(Ref<RuntimeManager> runtimeManage
 }
 
 ValdiStandaloneRuntime::~ValdiStandaloneRuntime() {
+    if (_exitCoordinator != nullptr) {
+        _exitCoordinator->flushUpdatesSync();
+    }
     _exitCoordinator = nullptr;
-    _runtime->fullTeardown();
+    // Stop debugger services and other shared resources BEFORE tearing down the runtime.
+    // This prevents the debugger from accepting new connections during runtime teardown.
+    // Note: _runtime was created via _runtimeManager->createRuntime(), so it's in _runtimes
+    // and will be torn down by _runtimeManager->fullTeardown(). Don't call it again.
+    _runtimeManager->fullTeardown();
     _runtime = nullptr;
     _runtimeManager = nullptr;
 }

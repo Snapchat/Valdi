@@ -65,8 +65,12 @@ void SkCodecAnimatedImage::doDraw(SkCanvas* canvas,
     _player->seek(_currentTime.milliseconds());
     const auto& image = _player->getFrame();
     const SkRect srcR = SkRect::MakeWH(_size.width, _size.height);
-    canvas->drawImageRect(
-        image, srcR, drawBounds.getSkValue(), SkSamplingOptions(), nullptr, SkCanvas::kStrict_SrcRectConstraint);
+    canvas->drawImageRect(image,
+                          srcR,
+                          drawBounds.getSkValue(),
+                          SkSamplingOptions(SkFilterMode::kLinear, SkMipmapMode::kNone),
+                          nullptr,
+                          SkCanvas::kStrict_SrcRectConstraint);
 }
 
 Valdi::Result<Ref<SkCodecAnimatedImage>> SkCodecAnimatedImage::make(std::unique_ptr<SkCodec> codec) {

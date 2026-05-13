@@ -15,6 +15,7 @@
 #include "valdi/runtime/Context/ViewNodeTree.hpp"
 #include "valdi/runtime/Interfaces/IViewManager.hpp"
 #include "valdi/runtime/Interfaces/IViewTransaction.hpp"
+#include "valdi/runtime/Views/Measure.hpp"
 
 #include "snap_drawing/cpp/Drawing/GraphicsContext/BitmapGraphicsContext.hpp"
 #include "valdi/android/AndroidViewHolder.hpp"
@@ -74,11 +75,9 @@ SnapDrawingLayerRootHost::SnapDrawingLayerRootHost(
     const Valdi::Ref<snap::drawing::DrawLooper>& drawLooper,
     const Valdi::Ref<snap::drawing::Resources>& resources,
     const Valdi::Ref<snap::drawing::ANativeWindowGraphicsContext>& graphicsContext,
-    const Valdi::CoordinateResolver& coordinateResolver,
     ViewManager& androidViewManager)
     : _drawLooper(drawLooper),
       _graphicsContext(graphicsContext),
-      _coordinateResolver(coordinateResolver),
       _androidViewManager(androidViewManager) {
     _layerRoot = snap::drawing::makeLayer<snap::drawing::LayerRoot>(resources);
 }
@@ -124,13 +123,13 @@ void SnapDrawingLayerRootHost::setSurfacePresenterManager(jobject surfacePresent
     removeFromDrawLooper();
     if (surfacePresenterManagerJava != nullptr) {
         addToDrawLooper(Valdi::makeShared<AndroidSurfacePresenterManager>(
-            JavaEnv(), surfacePresenterManagerJava, _coordinateResolver));
+            JavaEnv(), surfacePresenterManagerJava, _androidViewManager));
     }
 }
 
 void SnapDrawingLayerRootHost::setSize(int width, int height) {
     _layerRoot->setSize(snap::drawing::Size::make(convertUnit(width), convertUnit(height)),
-                        _coordinateResolver.getPointScale());
+                        _androidViewManager.getPointScale());
 }
 
 void SnapDrawingLayerRootHost::drawInBitmap(snap::drawing::SurfacePresenterId surfacePresenterId,
@@ -215,7 +214,7 @@ bool SnapDrawingLayerRootHost::dispatchTouchEvent(snap::drawing::TouchEventType 
 }
 
 snap::drawing::Scalar SnapDrawingLayerRootHost::convertUnit(int i) const {
-    return _coordinateResolver.toPoints(i);
+    return Valdi::pixelsToPoints(i, _androidViewManager.getPointScale());
 }
 
 Valdi::Result<Valdi::Void> SnapDrawingLayerRootHost::drawLayerInBitmap(const Valdi::Ref<Valdi::View>& layer,

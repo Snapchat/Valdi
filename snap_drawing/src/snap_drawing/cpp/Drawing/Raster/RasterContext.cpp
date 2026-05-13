@@ -102,6 +102,13 @@ Valdi::Result<RasterContext::RasterResult> RasterContext::raster(const Ref<Displ
             if (!result) {
                 return result.moveError();
             }
+
+            // Calculate rendered pixel count from damage rects for consistency
+            output.renderedPixelsCount = 0;
+            for (const auto& damageRect : output.damageRects) {
+                output.renderedPixelsCount +=
+                    static_cast<size_t>(damageRect.width()) * static_cast<size_t>(damageRect.height());
+            }
         } else {
             auto result = doRasterDelta(composition, _lastBitmap, inputBitmapInfo, output.damageRects, rasterId);
             if (!result) {
@@ -394,7 +401,7 @@ Valdi::Result<Ref<Image>> RasterContext::getOrCreateRasterImageForExternalSurfac
 
     void* pixels = bitmap.value()->lockBytes();
     if (pixels != nullptr) {
-        std::memset(pixels, 0, bitmapInfo.bytesLength());
+        std::memset(pixels, 0, bitmap.value()->getInfo().bytesLength());
         bitmap.value()->unlockBytes();
     }
 

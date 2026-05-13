@@ -18,19 +18,19 @@ AesEncryptor::AesEncryptor(const AesEncryptor::Key& key, const AesEncryptor::Iv&
 }
 
 AesEncryptor::AesEncryptor(const bssl::Span<uint8_t>& key, const bssl::Span<uint8_t>& iv)
-    : _cipher(EVP_aead_aes_128_gcm()) {
-    SC_ASSERT(_key.size() == EVP_AEAD_key_length(_cipher));
-    SC_ASSERT(_iv.size() == EVP_AEAD_nonce_length(_cipher));
-    std::copy(key.begin(), key.end(), _key.begin());
-    std::copy(iv.begin(), iv.end(), _iv.begin());
+    : _cipher(EVP_aead_aes_128_gcm()), _key{}, _iv{} {
+    SC_ASSERT(key.size() == EVP_AEAD_key_length(_cipher), "AES key size mismatch");
+    SC_ASSERT(iv.size() == EVP_AEAD_nonce_length(_cipher), "AES IV size mismatch");
+    std::copy_n(key.begin(), std::min(key.size(), _key.size()), _key.begin());
+    std::copy_n(iv.begin(), std::min(iv.size(), _iv.size()), _iv.begin());
 }
 
 AesEncryptor::AesEncryptor(const std::vector<uint8_t>& key, const std::vector<uint8_t>& iv)
-    : _cipher(EVP_aead_aes_128_gcm()) {
-    SC_ASSERT(_key.size() == EVP_AEAD_key_length(_cipher));
-    SC_ASSERT(_iv.size() == EVP_AEAD_nonce_length(_cipher));
-    std::copy(key.begin(), key.end(), _key.begin());
-    std::copy(iv.begin(), iv.end(), _iv.begin());
+    : _cipher(EVP_aead_aes_128_gcm()), _key{}, _iv{} {
+    SC_ASSERT(key.size() == EVP_AEAD_key_length(_cipher), "AES key size mismatch");
+    SC_ASSERT(iv.size() == EVP_AEAD_nonce_length(_cipher), "AES IV size mismatch");
+    std::copy_n(key.begin(), std::min(key.size(), _key.size()), _key.begin());
+    std::copy_n(iv.begin(), std::min(iv.size(), _iv.size()), _iv.begin());
 }
 
 std::optional<std::vector<uint8_t>> AesEncryptor::encrypt(const uint8_t* plainText, size_t len) {

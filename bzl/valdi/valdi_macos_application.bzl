@@ -26,7 +26,7 @@ def valdi_macos_application(
     expand_template(
         name = main_target,
         src = "@valdi//bzl/valdi/app_templates:macos_main.m.tpl",
-        output = "main.m",
+        output = "main_macos.m",
         substitutions = {
             "@VALDI_ROOT_COMPONENT_PATH@": root_component_path,
             "@VALDI_TITLE@": title,

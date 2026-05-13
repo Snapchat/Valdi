@@ -11,8 +11,9 @@
 
 namespace Valdi {
 
-ContextBase::ContextBase(ContextId contextId, const Attribution& attribution, const ComponentPath& path)
-    : _contextId(contextId), _attribution(attribution), _path(path) {}
+ContextBase::ContextBase(ContextId contextId, const Attribution& attribution, const ComponentPath& path,
+                         const StringBox& scopeName)
+    : _contextId(contextId), _attribution(attribution), _path(path), _scopeName(scopeName) {}
 
 ContextBase::~ContextBase() = default;
 
@@ -24,8 +25,15 @@ const ComponentPath& ContextBase::getPath() const {
     return _path;
 }
 
+const StringBox& ContextBase::getScopeName() const {
+    return _scopeName;
+}
+
 std::string ContextBase::getIdAndPathString() const {
     if (_path.isEmpty()) {
+        if (!_scopeName.isEmpty()) {
+            return fmt::format("id {} in scope '{}'", _contextId, _scopeName.slowToString());
+        }
         return fmt::format("id {}", _contextId);
     } else {
         return fmt::format("id {} with component path {}", _contextId, _path.toString());

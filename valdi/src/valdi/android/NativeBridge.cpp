@@ -28,9 +28,9 @@
 
 #include "utils/platform/BuildOptions.hpp"
 #include "utils/time/StopWatch.hpp"
-#include "valdi/NativeJSRuntime.hpp"
 #include "valdi_core/NativeAsset.hpp"
 #include "valdi_core/NativeHTTPRequestManager.hpp"
+#include "valdi_core/NativeJSRuntime.hpp"
 #include "valdi_core/NativeModuleFactoriesProvider.hpp"
 #include "valdi_core/NativeModuleFactory.hpp"
 #include "valdi_core/cpp/Utils/DiskUtils.hpp"
@@ -41,6 +41,7 @@
 #include "valdi_core/cpp/Utils/ValueFunction.hpp"
 
 #include "valdi/runtime/Runtime.hpp"
+#include "valdi/runtime/ValdiBuildFlags.hpp"
 #include "valdi_core/cpp/Utils/Function.hpp"
 
 #include "valdi/android/AccessibilityBridge.hpp"
@@ -338,8 +339,7 @@ jlong ValdiAndroid::NativeBridge::createRuntime( // NOLINT
     auto* runtimeManagerWrapper = getRuntimeManagerWrapper(runtimeManagerHandle);
     auto runtime = runtimeManagerWrapper->createRuntime(customResourceResolver);
 
-    auto* runtimeWrapper =
-        new ValdiAndroid::RuntimeWrapper(runtime, runtimeManagerWrapper, runtimeManagerWrapper->getPointScale());
+    auto* runtimeWrapper = new ValdiAndroid::RuntimeWrapper(runtime, runtimeManagerWrapper);
 
     return reinterpret_cast<std::uintptr_t>(runtimeWrapper);
 }
@@ -816,7 +816,13 @@ void ValdiAndroid::NativeBridge::scheduleExclusiveUpdate( // NOLINT
 
     auto runnableRef = Valdi::makeShared<ValdiAndroid::JavaRunnable>(ValdiAndroid::JavaEnv(), runnable);
 
-    viewNodeTree->scheduleExclusiveUpdate([runnableRef = std::move(runnableRef)]() { (*runnableRef)(); });
+#if VALDI_DEBUG_TREE_UPDATES
+    viewNodeTree->scheduleExclusiveUpdate(
+        [runnableRef = std::move(runnableRef)]() { (*runnableRef)(); }, Valdi::DispatchFunction(), "native_bridge");
+#else
+    viewNodeTree->scheduleExclusiveUpdate([runnableRef = std::move(runnableRef)]() { (*runnableRef)(); },
+                                          Valdi::DispatchFunction());
+#endif
 }
 
 void ValdiAndroid::NativeBridge::setViewInflationEnabled( // NOLINT
@@ -857,6 +863,13 @@ void ValdiAndroid::NativeBridge::performCallback( // NOLINT
     std::unique_ptr<Valdi::DispatchFunction> ptr(callback);
 
     (*callback)();
+}
+
+void ValdiAndroid::NativeBridge::discardCallback( // NOLINT
+    fbjni::alias_ref<fbjni::JClass> /* clazz */,  // NOLINT
+    jlong callbackHandle) {
+    auto* callback = reinterpret_cast<Valdi::DispatchFunction*>(callbackHandle);
+    delete callback;
 }
 
 /*
@@ -1367,6 +1380,18 @@ void ValdiAndroid::NativeBridge::applicationSetConfiguration( // NOLINT
     wrapper->setDynamicTypeScale(dynamicTypeScale);
 }
 
+void ValdiAndroid::NativeBridge::setPointScale(  // NOLINT
+    fbjni::alias_ref<fbjni::JClass> /* clazz */, // NOLINT
+    jlong runtimeManagerHandle,
+    jfloat pointScale) {
+    auto* wrapper = getRuntimeManagerWrapper(runtimeManagerHandle);
+    if (wrapper == nullptr) {
+        return;
+    }
+
+    wrapper->setPointScale(pointScale);
+}
+
 void ValdiAndroid::NativeBridge::applicationDidResume( // NOLINT
     fbjni::alias_ref<fbjni::JClass> /* clazz */,       // NOLINT
     jlong runtimeManagerHandle) {
@@ -1791,8 +1816,8 @@ jobject ValdiAndroid::NativeBridge::getJSRuntime( // NOLINT
         return nullptr;
     }
 
-    return djinni_generated_client::valdi::NativeJSRuntime::fromCpp(env,
-                                                                    Valdi::strongRef(runtime->getJavaScriptRuntime()))
+    return djinni_generated_client::valdi_core::NativeJSRuntime::fromCpp(
+               env, Valdi::strongRef(runtime->getJavaScriptRuntime()))
         .release();
 }
 
@@ -2349,6 +2374,7 @@ void ValdiAndroid::NativeBridge::registerNatives() {
         makeNativeMethod("canViewNodeScroll", ValdiAndroid::NativeBridge::canViewNodeScroll),
         makeNativeMethod("isViewNodeScrollingOrAnimating", ValdiAndroid::NativeBridge::isViewNodeScrollingOrAnimating),
         makeNativeMethod("applicationSetConfiguration", ValdiAndroid::NativeBridge::applicationSetConfiguration),
+        makeNativeMethod("setPointScale", ValdiAndroid::NativeBridge::setPointScale),
         makeNativeMethod("applicationDidResume", ValdiAndroid::NativeBridge::applicationDidResume),
         makeNativeMethod("applicationIsInLowMemory", ValdiAndroid::NativeBridge::applicationIsInLowMemory),
         makeNativeMethod("applicationWillPause", ValdiAndroid::NativeBridge::applicationWillPause),
@@ -2381,6 +2407,7 @@ void ValdiAndroid::NativeBridge::registerNatives() {
         makeNativeMethod("loadModule", ValdiAndroid::NativeBridge::loadModule),
         makeNativeMethod("enqueueWorkerTask", ValdiAndroid::NativeBridge::enqueueWorkerTask),
         makeNativeMethod("performCallback", ValdiAndroid::NativeBridge::performCallback),
+        makeNativeMethod("discardCallback", ValdiAndroid::NativeBridge::discardCallback),
         makeNativeMethod("performGcNow", ValdiAndroid::NativeBridge::performGcNow),
         makeNativeMethod("preloadViews", ValdiAndroid::NativeBridge::preloadViews),
         makeNativeMethod("reapplyAttribute", ValdiAndroid::NativeBridge::reapplyAttribute),

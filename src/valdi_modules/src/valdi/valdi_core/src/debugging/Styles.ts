@@ -2,9 +2,9 @@ import { Label, View } from 'valdi_tsx/src/NativeTemplateElements';
 import { Style } from '../Style';
 
 export const fonts = {
-  body: 'Menlo-Regular 12',
-  medium: 'Menlo-Bold 12',
-  title: 'Menlo-Bold 16',
+  body: 'RobotoMono-Regular 12',
+  medium: 'RobotoMono-Bold 12',
+  title: 'RobotoMono-Bold 16',
 };
 
 export const colors = {

@@ -44,11 +44,28 @@ class PrependWebJSProcessor: CompilationProcessor {
                 }
             }
 
-            let relativePath = item.relativeProjectPath
+            var relativePath = item.relativeProjectPath
+            // Strip TypeScript extensions (.tsx, .ts) from the path since compiled files are .js
+            // This ensures module.path matches what the module loader expects
+            if relativePath.hasSuffix(".tsx") {
+                relativePath = String(relativePath.dropLast(4))
+            } else if relativePath.hasSuffix(".ts") {
+                relativePath = String(relativePath.dropLast(3))
+            }
+            
             var newFile = finalFile.file
             var contents: String? = try? newFile.readString()
+            // Transform require( to customRequire( - this must happen for all web JS files
+            // Note: TypeScript with module: "commonjs" already transforms import() to Promise.resolve().then(() => require(...)),
+            // so we only need to transform require( to customRequire( and the import() transformation is handled automatically.
             contents = contents?.replacingOccurrences(of: "require(", with: "customRequire(")
-            let prefix = "var customRequire = globalThis.moduleLoader.resolveRequire(\"\(relativePath)\");\n"
+            
+            // Set up module.path for code that uses NavigationPage decorator
+            // The module variable is provided by webpack as a function parameter, so we just set the path property
+            // The module variable is declared in source code as: declare const module: { path: string; exports: unknown };
+            // Note: We use the adjusted relativePath (without .tsx/.ts extension) so module resolution works correctly
+            let moduleSetup = "module.path = \"\(relativePath)\";\n"
+            let prefix = "\(moduleSetup)var customRequire = globalThis.moduleLoader.resolveRequire(\"\(relativePath)\");\n"
             if let data = (prefix + (contents ?? "" )).data(using: .utf8) {
                 newFile = .data(data)
             }

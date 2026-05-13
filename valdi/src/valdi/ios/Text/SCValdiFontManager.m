@@ -91,8 +91,14 @@
             } else {
                 font = [_fontLoader loadFontWithName:fontName fontSize:fontSize];
             }
-        } else {
+        }
+
+        if (!font) {
             font = [UIFont fontWithName:fontName size:fontSize];
+        }
+
+        if (!font) {
+            font = [UIFont systemFontOfSize:fontSize];
         }
 
         return font;
@@ -151,4 +157,3 @@
 }
 
 @end
-

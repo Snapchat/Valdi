@@ -1,6 +1,8 @@
 # Getting set up to contribute to Valdi
 
-Follow all instructions in [INSTALL.md](INSTALL.md)
+> **Most users:** Install the CLI from npm and use `valdi dev_setup` — see [INSTALL.md](INSTALL.md). This page is for contributors who are developing Valdi itself (the framework), not just building Valdi apps.
+
+Follow all instructions in [INSTALL.md](INSTALL.md).
 
 Run `dev_setup.sh`
 

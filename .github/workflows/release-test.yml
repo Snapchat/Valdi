@@ -1,0 +1,61 @@
+# Run before cutting a release: bootstrap an app from bleeding edge (main) of
+# the public GitHub Valdi/Valdi_Widgets, build and test. Ensures "if we cut a
+# release now, things won't fail."
+name: Release Test (Public GitHub)
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'v*'
+      - 'beta-*'
+  pull_request:
+    paths:
+      - 'npm_modules/cli/src/commands/bootstrap.ts'
+      - 'npm_modules/cli/src/utils/githubUtils.ts'
+      - 'tools/ci/release_test.sh'
+      - '.github/workflows/release-test.yml'
+
+jobs:
+  release-test:
+    name: Bootstrap from main (bleeding edge), build & test
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install Bazel and watchman
+        run: |
+          brew install bazelisk watchman
+          bazel --version
+          watchman --version
+
+      - name: Run release test
+        run: ./tools/ci/release_test.sh
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-test-failure
+          path: |
+            /tmp/valdi_release_test/WORKSPACE
+            /tmp/valdi_release_test/.bazelrc
+            /tmp/valdi_release_test/BUILD.bazel
+          retention-days: 7

@@ -72,6 +72,7 @@ cc_library(
     hdrs = glob(["src/djinni/**/*.h*"]),
     copts = ["-Wno-shorten-64-to-32"],
     defines = ["DATAREF_JNI=1"],
+    target_compatible_with = ["@platforms//os:android"],
     deps = [":djinni_support_lib_cc"],
     alwayslink = 1,
 )
@@ -122,6 +123,9 @@ java_library(
     name = "djinni_support_lib_java",
     srcs = glob(["src/djinni/java/**/*.java"]),
     visibility = ["//visibility:public"],
+    deps = [
+        "@android_mvn//:javax_inject_javax_inject",
+    ],
 )
 
 cc_library(
@@ -139,6 +143,7 @@ cc_library(
     ],
     defines = ["DATAREF_WASM=1"],
     strip_include_prefix = "src/djinni",
+    tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = [
         ":djinni_support_lib_cc",
@@ -178,7 +183,7 @@ swift_library(
     visibility = ["//visibility:public"],
     deps = [
         ":djinni_support_lib_swiftxx",
-        "@com_github_apple_swift_protobuf//:SwiftProtobuf",
+        "@com_github_apple_swift_protobuf_client//:SwiftProtobuf",
     ],
 )
 

@@ -37,3 +37,8 @@ wasm:
 ts:
   typename: JavaScriptEngineType
   module: './valdi_core'
+c:
+  typename: 'snap_valdi_core_JavaScriptEngineType'
+  translator: '::djinni::c_api::EnumTranslator<::snap::valdi_core::JavaScriptEngineType, snap_valdi_core_JavaScriptEngineType>'
+  public_header: '"valdi_core/JavaScriptEngineType.h"'
+  private_header: '"valdi_core/JavaScriptEngineType.hpp"'

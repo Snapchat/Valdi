@@ -43,51 +43,59 @@ extern SCValdiDoubleValue SCValdiDoubleMakePercent(CGFloat percent);
 @protocol SCValdiViewLayoutAttributes;
 @protocol SCValdiFontManagerProtocol;
 
+NS_ASSUME_NONNULL_BEGIN
+
 typedef BOOL (^SCValdiAttributeBindMethodUntyped)(__kindof UIView* view,
-                                                  id attributeValue,
-                                                  id<SCValdiAnimatorProtocol> animator);
-typedef void (^SCValdiAttributeBindMethodAction)(__kindof UIView* view, id<SCValdiAction> attributeValue);
-typedef void (^SCValdiAttributeBindMethodFunction)(__kindof UIView* view, id<SCValdiFunction> attributeValue);
+                                                  id _Nullable attributeValue,
+                                                  id<SCValdiAnimatorProtocol> _Nullable animator);
+typedef void (^SCValdiAttributeBindMethodAction)(__kindof UIView* view, id<SCValdiAction> _Nullable attributeValue);
+typedef void (^SCValdiAttributeBindMethodFunction)(__kindof UIView* view, id<SCValdiFunction> _Nullable attributeValue);
 typedef void (^SCValdiAttributeBindMethodFunctionAndPredicate)(__kindof UIView* view,
-                                                               id<SCValdiFunction> attributeValue,
-                                                               id<SCValdiFunction> predicate,
-                                                               id additionalValue);
+                                                               id<SCValdiFunction> _Nullable attributeValue,
+                                                               id<SCValdiFunction> _Nullable predicate,
+                                                               id _Nullable additionalValue);
 
 typedef BOOL (^SCValdiAttributeBindMethodArray)(__kindof UIView* view,
-                                                NSArray* attributeValue,
-                                                id<SCValdiAnimatorProtocol> animator);
+                                                NSArray* _Nullable attributeValue,
+                                                id<SCValdiAnimatorProtocol> _Nullable animator);
 typedef BOOL (^SCValdiAttributeBindMethodString)(__kindof UIView* view,
-                                                 NSString* attributeValue,
-                                                 id<SCValdiAnimatorProtocol> animator);
+                                                 NSString* _Nullable attributeValue,
+                                                 id<SCValdiAnimatorProtocol> _Nullable animator);
 typedef BOOL (^SCValdiAttributeBindMethodDouble)(__kindof UIView* view,
                                                  CGFloat attributeValue,
-                                                 id<SCValdiAnimatorProtocol> animator);
+                                                 id<SCValdiAnimatorProtocol> _Nullable animator);
 typedef BOOL (^SCValdiAttributeBindMethodPercent)(__kindof UIView* view,
                                                   SCValdiDoubleValue attributeValue,
-                                                  id<SCValdiAnimatorProtocol> animator);
+                                                  id<SCValdiAnimatorProtocol> _Nullable animator);
 typedef BOOL (^SCValdiAttributeBindMethodInt)(__kindof UIView* view,
                                               NSInteger attributeValue,
-                                              id<SCValdiAnimatorProtocol> animator);
+                                              id<SCValdiAnimatorProtocol> _Nullable animator);
 typedef BOOL (^SCValdiAttributeBindMethodColor)(__kindof UIView* view,
-                                                UIColor* attributeValue,
-                                                id<SCValdiAnimatorProtocol> animator);
+                                                UIColor* _Nullable attributeValue,
+                                                id<SCValdiAnimatorProtocol> _Nullable animator);
 typedef BOOL (^SCValdiAttributeBindMethodBool)(__kindof UIView* view,
                                                BOOL attributeValue,
-                                               id<SCValdiAnimatorProtocol> animator);
+                                               id<SCValdiAnimatorProtocol> _Nullable animator);
 typedef BOOL (^SCValdiAttributeBindMethodBorders)(__kindof UIView* view,
                                                   SCValdiCornerValues attributeValue,
-                                                  id<SCValdiAnimatorProtocol> animator);
-typedef void (^SCValdiAttributeBindMethodReset)(__kindof UIView* view, id<SCValdiAnimatorProtocol> animator);
+                                                  id<SCValdiAnimatorProtocol> _Nullable animator);
+typedef void (^SCValdiAttributeBindMethodReset)(__kindof UIView* view, id<SCValdiAnimatorProtocol> _Nullable animator);
 typedef void (^SCValdiAttributeBindMethodResetNonAnimatable)(__kindof UIView* view);
-typedef id (^SCValdiAttributePreprocessor)(id value);
+typedef id _Nullable (^SCValdiAttributePreprocessor)(id _Nullable value);
 
-typedef id (*SCValdiAttributeDeserializer)(id jsInstance);
+typedef id _Nullable (*SCValdiAttributeDeserializer)(id _Nullable jsInstance);
 
+/**
+ * Measure delegate parameters:
+ * - attributes: layout attributes for the node being measured.
+ * - maxSize: size constraints provided by layout.
+ * - traitCollection: trait collection used for measurement.
+ */
 typedef CGSize (^SCValdiMeasureDelegate)(id<SCValdiViewLayoutAttributes> attributes,
                                          CGSize maxSize,
-                                         UITraitCollection* traitCollection);
+                                         UITraitCollection* _Nullable traitCollection);
 
-typedef UIView* (^SCValdiPlaceholderViewMeasureDelegate)();
+typedef UIView* _Nonnull (^SCValdiPlaceholderViewMeasureDelegate)(void);
 
 typedef NSDictionary<NSString*, SCValdiAttributeBindMethodUntyped> SCAttributeApplierByName;
 
@@ -102,17 +110,20 @@ typedef NSDictionary<NSString*, SCValdiAttributeBindMethodUntyped> SCAttributeAp
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
             withUntypedBlock:(SCValdiAttributeBindMethodUntyped)untypedBlock
-                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock;
+                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
+    NS_SWIFT_NAME(bindAttribute(_:invalidateLayoutOnChange:withUntypedBlock:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
              withStringBlock:(SCValdiAttributeBindMethodString)stringBlock
-                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock;
+                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
+    NS_SWIFT_NAME(bindAttribute(_:invalidateLayoutOnChange:withStringBlock:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
              withDoubleBlock:(SCValdiAttributeBindMethodDouble)doubleBlock
-                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock;
+                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
+    NS_SWIFT_NAME(bindAttribute(_:invalidateLayoutOnChange:withDouble:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
@@ -122,7 +133,8 @@ typedef NSDictionary<NSString*, SCValdiAttributeBindMethodUntyped> SCAttributeAp
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
                 withIntBlock:(SCValdiAttributeBindMethodInt)intBlock
-                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock;
+                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
+    NS_SWIFT_NAME(bindAttribute(_:invalidateLayoutOnChange:withIntBlock:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
@@ -132,18 +144,21 @@ typedef NSDictionary<NSString*, SCValdiAttributeBindMethodUntyped> SCAttributeAp
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
                withBoolBlock:(SCValdiAttributeBindMethodBool)boolBlock
-                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock;
+                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
+    NS_SWIFT_NAME(bindAttribute(_:invalidateLayoutOnChange:withBoolBlock:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
       withActionBlock:(SCValdiAttributeBindMethodAction)actionBlock
-           resetBlock:(SCValdiAttributeBindMethodResetNonAnimatable)resetBlock;
+           resetBlock:(SCValdiAttributeBindMethodResetNonAnimatable)resetBlock
+    NS_SWIFT_NAME(bindAttribute(_:withActionBlock:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
     withFunctionBlock:(SCValdiAttributeBindMethodFunction)functionBlock
-           resetBlock:(SCValdiAttributeBindMethodResetNonAnimatable)resetBlock;
+           resetBlock:(SCValdiAttributeBindMethodResetNonAnimatable)resetBlock
+    NS_SWIFT_NAME(bindAttribute(_:withFunctionBlock:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
-              additionalAttribute:(SCNValdiCoreCompositeAttributePart*)additionalAttribute
+              additionalAttribute:(nullable SCNValdiCoreCompositeAttributePart*)additionalAttribute
     withFunctionAndPredicateBlock:(SCValdiAttributeBindMethodFunctionAndPredicate)actionBlock
                        resetBlock:(SCValdiAttributeBindMethodResetNonAnimatable)resetBlock;
 
@@ -159,7 +174,8 @@ typedef NSDictionary<NSString*, SCValdiAttributeBindMethodUntyped> SCAttributeAp
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
               withArrayBlock:(SCValdiAttributeBindMethodArray)arrayBlock
-                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock;
+                  resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
+    NS_SWIFT_NAME(bindAttribute(_:invalidateLayoutOnChange:withArrayBlock:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
@@ -169,7 +185,8 @@ typedef NSDictionary<NSString*, SCValdiAttributeBindMethodUntyped> SCAttributeAp
 - (void)bindCompositeAttribute:(NSString*)attributeName
                          parts:(NSArray<SCNValdiCoreCompositeAttributePart*>*)parts
               withUntypedBlock:(SCValdiAttributeBindMethodUntyped)untypedBlock
-                    resetBlock:(SCValdiAttributeBindMethodReset)resetBlock;
+                    resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
+    NS_SWIFT_NAME(bindCompositeAttribute(_:parts:withUntypedBlock:resetBlock:));
 
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
@@ -193,7 +210,7 @@ typedef NSDictionary<NSString*, SCValdiAttributeBindMethodUntyped> SCAttributeAp
  * that have an intrinsic size based on their content, like a label for instance, should
  * register a MeasureDelegate. The MeasureDelegate can be called in arbitrary threads.
  */
-- (void)setMeasureDelegate:(SCValdiMeasureDelegate)measureDelegate;
+- (void)setMeasureDelegate:(SCValdiMeasureDelegate)measureDelegate NS_SWIFT_NAME(setMeasureDelegate(_:));
 
 /**
  * Registers a MeasureDelegate that uses a placeholder view instance to measure elements.
@@ -214,3 +231,5 @@ typedef NSDictionary<NSString*, SCValdiAttributeBindMethodUntyped> SCAttributeAp
 - (id<SCValdiFontManagerProtocol>)fontManager;
 
 @end
+
+NS_ASSUME_NONNULL_END

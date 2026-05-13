@@ -15,6 +15,11 @@ export interface RasterResult {
   damageRects: Rect[];
 }
 
+export interface IManagedContextDrawResult {
+  frame: IManagedContextFrame;
+  mainThreadMs: number;
+}
+
 export interface IManagedContextAssetsLoadResult {
   loadedAssetsCount: number;
   errors: string[] | undefined;
@@ -32,23 +37,27 @@ export interface IManagedContext {
   render(renderFunc: () => void): void;
 
   /**
-   * Measure the context with the given max size and returned
+   * Measure the context with the given max size and return
    * a size that fits within the size constraint.
+   * When using the async path, measurement is dispatched to the main thread.
+   * If the context is disposed before completion (async path), the promise still resolves with { width: 0, height: 0 }.
    */
-  measure(maxWidth: number, widthMode: MeasureMode, maxHeight: number, heightMode: MeasureMode, rtl: boolean): Size;
+  measure(maxWidth: number, widthMode: MeasureMode, maxHeight: number, heightMode: MeasureMode, rtl: boolean): Promise<Size>;
 
   /**
-   * Set the layout specifications of the tree
+   * Set the layout specifications of the tree.
+   * When using the async path, layout is dispatched to the main thread.
+   * If the context is disposed before completion (async path), the promise still resolves (no-op).
    */
-  layout(width: number, height: number, rtl: boolean): void;
+  layout(width: number, height: number, rtl: boolean): Promise<void>;
 
   /**
    * Draw the rendered tree with the previously provided layout specs.
    * Return a frame that contains the instructions that represents the scene.
-   * The frame can be then rasterized either at the TS level or at the native level,
-   * in any thread.
+   * When using the async path, draw is dispatched to the main thread.
+   * If the context is disposed before completion (async path), the promise still resolves with an empty frame.
    */
-  draw(): IManagedContextFrame;
+  draw(): Promise<IManagedContextDrawResult>;
 
   /**
    * Schedule a callback to be called when all the assets have been loaded.

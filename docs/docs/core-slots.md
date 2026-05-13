@@ -115,3 +115,16 @@ export class HelloWorld extends Component {
 ```
 
 ![Screenshot of component rendering named slots](./assets/core-slots/IMG_1457.jpg)
+
+## Performance Benefits
+
+Slots are not just a convenience; they are a key performance optimization in Valdi.
+
+### Slot Re-rendering
+When a parent component passes children to a child component via a slot, Valdi's Renderer can re-render those children independently. If the parent re-renders but the child component's own ViewModel hasn't changed, Valdi will:
+1. Re-render the content of the slot.
+2. Skip re-rendering the child component itself.
+
+This "surgical" update significantly reduces the amount of TypeScript code that needs to execute and minimizes the blast radius of UI updates.
+
+For a deeper look at how this works, see [Renderer Internals](./internals-renderer.md).

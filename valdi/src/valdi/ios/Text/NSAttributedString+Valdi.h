@@ -17,6 +17,7 @@ extern NSString* const kSCValdiAttributedStringKeyOnTap;
 extern NSString* const kSCValdiAttributedStringKeyOnLayout;
 extern NSString* const kSCValdiOuterOutlineColorAttribute;
 extern NSString* const kSCValdiOuterOutlineWidthAttribute;
+extern NSString* const kSCValdiAttributedStringKeyAnimationTransform;
 
 @interface NSAttributedString (Valdi)
 

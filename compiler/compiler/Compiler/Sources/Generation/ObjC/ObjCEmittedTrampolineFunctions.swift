@@ -182,6 +182,8 @@ class ObjCEmittedTrampolineFunctions {
 
     private func appendTrampoline(typeEncoding: String, parametersTypeEncoding: String, parameters: [CType], returnType: CType) {
         let functionNameSuffix = "\(parametersTypeEncoding.uppercased())_\(returnType.typeEncoding)"
+        // If additional function names are added, make sure to update the logic in CombineNativeSourcesProcessor.swift
+        // that looks for trampoline function definitions in order to deduplicate them (see trampolineFunctionName)
         let invokeFunctionName = "SCValdiFunctionInvoke\(functionNameSuffix)"
         let createBlockFunctionName = "SCValdiBlockCreate\(functionNameSuffix)"
 

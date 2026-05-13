@@ -43,67 +43,10 @@ void logToExternalLogger(LogLevel logLevel, LogContext logContext, const std::st
         }
 
 #if defined(SC_DESKTOP) || defined(EMSCRIPTEN)
-        auto logLevelToStr = [](LogLevel level) {
-            switch (level) {
-                case LogLevel::Verbose:
-                    return "VERBOSE";
-                case LogLevel::Debug:
-                    return "DEBUG";
-                case LogLevel::Info:
-                    return "INFO";
-                case LogLevel::Warn:
-                    return "WARN";
-                case LogLevel::Error:
-                    return "ERROR";
-                case LogLevel::None:
-                    return "NONE";
-            }
-        };
-
-        auto logContextToStr = [](LogContext context) {
-            switch (context) {
-                case LogContext::Chat:
-                    return "Chat";
-                case LogContext::ContentManager:
-                    return "ContentManager";
-                case LogContext::General:
-                    return "General";
-                case LogContext::GRPC:
-                    return "GRPC";
-                case LogContext::GRPCTrace:
-                    return "GRPCTrace";
-                case LogContext::Map:
-                    return "Map";
-                case LogContext::Network:
-                    return "Network";
-                case LogContext::Duplex:
-                    return "Duplex";
-                case LogContext::Talk:
-                    return "Talk";
-                case LogContext::Core:
-                    return "Core";
-                case LogContext::CUPS:
-                    return "CUPS";
-                case LogContext::Ad:
-                    return "Ad";
-                case LogContext::TIV:
-                    return "TIV";
-                case LogContext::OnDeviceML:
-                    return "OnDeviceML";
-                case LogContext::DeepLinkResolution:
-                    return "DeepLinkResolution";
-                case LogContext::Notifications:
-                    return "Notifications";
-                case LogContext::S2REvent:
-                    return "S2REvent";
-                case LogContext::Atlas:
-                    return "Atlas";
-            }
-        };
 
 #if defined(EMSCRIPTEN)
 
-        fmt::print("[{}] {} {} {}\n", logLevelToStr(logLevel), logContextToStr(logContext), tag, message);
+        fmt::print("[{}] {} {} {}\n", toString(logLevel), toString(logContext), tag, message);
 
 #else // defined(EMSCRIPTEN)
 
@@ -126,10 +69,10 @@ void logToExternalLogger(LogLevel logLevel, LogContext logContext, const std::st
         };
         fmt::print(getStyle(),
                    "[{}][{:<14}] [{}] {} {} {}",
-                   logLevelToStr(logLevel),
+                   toString(logLevel),
                    std::this_thread::get_id(),
                    millisecondsToString(milliseconds),
-                   logContextToStr(logContext),
+                   toString(logContext),
                    tag,
                    message);
         fmt::print("\n");

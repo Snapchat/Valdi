@@ -74,6 +74,7 @@ static UIBezierPath *SCBezierPathWithRadii(CGFloat topLeftRadius, CGFloat topRig
 
 @property (strong, nonatomic) id maskPath;
 @property (assign, nonatomic) CGFloat maskOpacity;
+@property (strong, nonatomic) CAGradientLayer *maskImageGradientLayer;
 
 @end
 
@@ -103,6 +104,7 @@ static UIBezierPath *SCBezierPathWithRadii(CGFloat topLeftRadius, CGFloat topRig
     [super layoutSublayers];
 
     _innerMaskLayer.frame = self.bounds;
+    _maskImageGradientLayer.frame = self.bounds;
 
     [self _updatePath];
 }
@@ -155,7 +157,7 @@ static UIBezierPath *SCBezierPathWithRadii(CGFloat topLeftRadius, CGFloat topRig
 
 - (BOOL)isEmpty
 {
-    return ![self hasCornerRadius] && self.maskPath == nil && self.maskOpacity == 1.0f;
+    return ![self hasCornerRadius] && self.maskPath == nil && self.maskOpacity == 1.0f && self.maskImageGradientLayer == nil;
 }
 
 - (void)setTopLeftCornerRadius:(CGFloat)topLeftCornerRadius
@@ -194,6 +196,16 @@ static UIBezierPath *SCBezierPathWithRadii(CGFloat topLeftRadius, CGFloat topRig
 {
     _maskOpacity = maskOpacity;
     _innerMaskLayer.opacity = 1.0 - maskOpacity;
+}
+
+- (void)setMaskImageGradientLayer:(CAGradientLayer *)maskImageGradientLayer
+{
+    _maskImageGradientLayer = maskImageGradientLayer;
+    if (maskImageGradientLayer) {
+        maskImageGradientLayer.frame = self.bounds;
+    }
+    self.mask = maskImageGradientLayer;
+    [self _updatePath];
 }
 
 @end
@@ -347,6 +359,7 @@ static UIBezierPath *SCBezierPathWithRadii(CGFloat topLeftRadius, CGFloat topRig
 
 - (BOOL)valdi_setBorderColor:(UIColor *)borderColor animator:(id<SCValdiAnimatorProtocol> )animator
 {
+    borderColor = borderColor ?: [UIColor clearColor];
     if (animator) {
         [animator addAnimationOnLayer:self.layer forKeyPath:@"borderColor" value:(__bridge id)borderColor.CGColor];
     } else {
@@ -413,6 +426,35 @@ static UIBezierPath *SCBezierPathWithRadii(CGFloat topLeftRadius, CGFloat topRig
 - (void)valdi_resetMaskOpacity:(id<SCValdiAnimatorProtocol>)animator
 {
     [self valdi_applyMaskOpacity:1 animator:animator];
+}
+
+- (BOOL)valdi_applyImageMask:(NSArray *)attributeValue animator:(id<SCValdiAnimatorProtocol>)animator
+{
+    NSArray *colors = attributeValue.firstObject;
+
+    if (colors.count < 2) {
+        [self valdi_updateMaskLayerWithBlock:^(SCValdiMaskLayer *maskLayer) {
+            maskLayer.maskImageGradientLayer = nil;
+        }];
+        return YES;
+    }
+
+    [self valdi_updateMaskLayerWithBlock:^(SCValdiMaskLayer *maskLayer) {
+        CAGradientLayer *gradientLayer = maskLayer.maskImageGradientLayer;
+        if (!gradientLayer) {
+            gradientLayer = [[CAGradientLayer alloc] init];
+            gradientLayer.delegate = [SCValdiNoAnimationDelegate sharedInstance];
+        }
+        gradientLayer = setUpGradientLayerForRawAttributes(attributeValue, gradientLayer);
+        maskLayer.maskImageGradientLayer = gradientLayer;
+    }];
+
+    return YES;
+}
+
+- (void)valdi_resetImageMaskWithAnimator:(id<SCValdiAnimatorProtocol>)animator
+{
+    [self valdi_applyImageMask:@[] animator:animator];
 }
 
 - (BOOL)valdi_setBackground:(NSArray *)attributeValue animator:(id<SCValdiAnimatorProtocol> )animator
@@ -923,6 +965,15 @@ static void SCValdiDetermineCornerRadiusMethod(CGFloat topLeftRadius, CGFloat to
     } resetBlock:^(__kindof UIView *view, id<SCValdiAnimatorProtocol> animator) {
         [view valdi_resetMaskOpacity:animator];
     }];
+
+    [attributesBinder bindAttribute:@"maskImage"
+        invalidateLayoutOnChange:NO
+        withArrayBlock:^BOOL(__kindof UIView *view, NSArray *attributeValue, id<SCValdiAnimatorProtocol> animator) {
+            return [view valdi_applyImageMask:attributeValue animator:animator];
+        }
+        resetBlock:^(__kindof UIView *view, id<SCValdiAnimatorProtocol> animator) {
+            [view valdi_resetImageMaskWithAnimator:animator];
+        }];
 
     [attributesBinder bindAttribute:@"onTap"
         withFunctionAndPredicateBlock:^(__kindof UIView *view, id<SCValdiFunction> attributeValue, id<SCValdiFunction> predicate, id additionalValue) {

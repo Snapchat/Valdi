@@ -2,11 +2,20 @@ import { WebValdiLayout } from './views/WebValdiLayout';
 import { WebValdiLabel } from './views/WebValdiLabel';
 import { WebValdiScroll } from './views/WebValdiScroll';
 import { WebValdiView } from './views/WebValdiView';
+import { WebValdiCustomView } from './views/WebValdiCustomView';
 import { WebValdiTextField, registerTextFieldElements } from './views/WebValdiTextField';
+import { WebValdiTextView } from './views/WebValdiTextView';
 import { WebValdiImage } from './views/WebValdiImage';
+import { WebValdiSpinner } from './views/WebValdiSpinner';
+import { WebValdiVideo } from './views/WebValdiVideo';
+import { WebValdiShape } from './views/WebValdiShape';
 import { UpdateAttributeDelegate } from './ValdiWebRendererDelegate';
 
 export const nodesRef = new Map<number, WebValdiLayout>();
+// Expose on globalThis so app and NPM bundle share the same Map when module is loaded twice
+if (typeof globalThis !== 'undefined') {
+  (globalThis as unknown as { __valdiNodesRef?: Map<number, WebValdiLayout> }).__valdiNodesRef = nodesRef;
+}
 export let rootNode: WebValdiLayout | null = null;
 
 export function registerElements() {
@@ -23,12 +32,25 @@ function initViewClass(viewClass: string, id: number, attributeDelegate?: Update
       return new WebValdiView(id, attributeDelegate);
     case 'image':
       return new WebValdiImage(id, attributeDelegate);
+    case 'spinner':
+      return new WebValdiSpinner(id, attributeDelegate);
     case 'SCValdiDatePicker':
       return new WebValdiView(id, attributeDelegate);
     case 'scroll':
       return new WebValdiScroll(id, attributeDelegate);
     case 'textfield':
       return new WebValdiTextField(id, attributeDelegate);
+    case 'textview':
+    case 'SCValdiTextView':
+      return new WebValdiTextView(id, attributeDelegate);
+    case 'custom-view':
+      return new WebValdiCustomView(id, attributeDelegate);
+    case 'video':
+    case 'SCValdiVideoView':
+      return new WebValdiVideo(id, attributeDelegate);
+    case 'shape':
+    case 'SCValdiShapeView':
+      return new WebValdiShape(id, attributeDelegate);
 
     default:
       throw new Error(`Unknown viewClass: ${viewClass}`);
@@ -37,7 +59,6 @@ function initViewClass(viewClass: string, id: number, attributeDelegate?: Update
 
 export function createElement(id: number, viewClass: string, attributeDelegate?: UpdateAttributeDelegate) {
   const element = initViewClass(viewClass, id, attributeDelegate);
-
   nodesRef.set(id, element);
   return element;
 }
@@ -50,7 +71,7 @@ export function destroyElement(id: number) {
   }
 }
 
-export function makeElementRoot(id: number, root: HTMLElement) {
+export function makeElementRoot(id: number, root: HTMLElement | ShadowRoot) {
   const element = nodesRef.get(id);
   if (!element) {
     throw new Error(`makeElementRoot: element is missing, id: ${id}`);
@@ -75,9 +96,6 @@ export function changeAttributeOnElement(id: number, attributeName: string, attr
   if (!element) {
     throw new Error(`changeAttributeOnElement: element is missing, id: ${id}`);
   }
-
-  // Stripping $ prefix for injected attributes to match native behavior.
-  // Injected attributes like $width, $height should become width, height respectively.
   const actualAttributeName = attributeName.startsWith('$') ? attributeName.substring(1) : attributeName;
 
   element.changeAttribute(actualAttributeName, attributeValue);

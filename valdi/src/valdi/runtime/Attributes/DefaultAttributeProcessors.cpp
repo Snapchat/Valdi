@@ -393,6 +393,7 @@ void registerDefaultProcessors(AttributesManager& attributesManager) {
     auto backgroundAttributeId = attributesManager.getAttributeIds().getIdForName("background");
     auto borderRadiusAttributeId = attributesManager.getAttributeIds().getIdForName("borderRadius");
     auto textGradientAttributeId = attributesManager.getAttributeIds().getIdForName("textGradient");
+    auto maskImageAttributeId = attributesManager.getAttributeIds().getIdForName("maskImage");
 
     attributesManager.registerPreprocessor(borderAttributeId, &preprocessBorder);
     attributesManager.registerPreprocessor(boxShadowAttributeId, &preprocessBoxShadow);
@@ -400,11 +401,13 @@ void registerDefaultProcessors(AttributesManager& attributesManager) {
     attributesManager.registerPreprocessor(backgroundAttributeId, &preprocessGradient);
     attributesManager.registerPreprocessor(borderRadiusAttributeId, &preprocessBorderRadius);
     attributesManager.registerPreprocessor(textGradientAttributeId, &preprocessGradient);
+    attributesManager.registerPreprocessor(maskImageAttributeId, &preprocessGradient);
 
     attributesManager.registerPostprocessor(boxShadowAttributeId, &postprocessBoxShadow);
     attributesManager.registerPostprocessor(backgroundAttributeId, &postprocessGradient);
     attributesManager.registerPostprocessor(borderRadiusAttributeId, &postprocessBorderRadius);
     attributesManager.registerPostprocessor(textGradientAttributeId, &postprocessGradient);
+    attributesManager.registerPostprocessor(maskImageAttributeId, &postprocessGradient);
 }
 
 } // namespace Valdi

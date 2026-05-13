@@ -50,6 +50,8 @@ static CGFloat const kSCValdiKeyboardTranslationPadding = 10.0;
     CGFloat _fadingEdgeLength;
     CAGradientLayer *_fadingEdgeGradient;
     NSMutableArray<NSNumber *> *_fadingEdgeLocations;
+    BOOL _fadingEdgeStartEnabled;
+    BOOL _fadingEdgeEndEnabled;
 }
 @end
 
@@ -68,6 +70,8 @@ static CGFloat const kSCValdiKeyboardTranslationPadding = 10.0;
         _rawContentSize = CGSizeZero;
         _dismissOnDrag = NO;
         _dismissMode = SCValdiScrollViewKeyboardDismissModeImmediate;
+        _fadingEdgeStartEnabled = YES;
+        _fadingEdgeEndEnabled = YES;
         if (@available(iOS 11, *)) {
             _scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
         }
@@ -378,6 +382,12 @@ static CGFloat const kSCValdiKeyboardTranslationPadding = 10.0;
     return YES;
 }
 
+- (BOOL)valdi_setStopScrollingOnTouch:(BOOL)attributeValue
+{
+    _scrollView.stopScrollingOnTouch = attributeValue;
+    return YES;
+}
+
 - (void)valdi_setScrollEnabled:(BOOL)attributeValue
 {
     _scrollView.panGestureRecognizerEnabled = attributeValue;
@@ -443,6 +453,20 @@ static CGFloat const kSCValdiKeyboardTranslationPadding = 10.0;
     [self _updateFadingEdgeDirection];
 }
 
+- (BOOL)valdi_setFadingEdgeStart:(BOOL)attributeValue
+{
+    _fadingEdgeStartEnabled = attributeValue;
+    [self _updateFadingEdge];
+    return YES;
+}
+
+- (BOOL)valdi_setFadingEdgeEnd:(BOOL)attributeValue
+{
+    _fadingEdgeEndEnabled = attributeValue;
+    [self _updateFadingEdge];
+    return YES;
+}
+
 - (void)_updateFadingEdgeDirection
 {
     [self _updateFadingEdgeDirectionAndInvalidateLayout:YES];
@@ -476,16 +500,16 @@ static CGFloat const kSCValdiKeyboardTranslationPadding = 10.0;
         
         if (_horizontalScroll) {
             CGFloat maxOffset = MIN(_fadingEdgeLength, contentSize.width - boundsSize.width);
-            CGFloat startFadeStrength = [self _fadeStrengthForOffset:offset.x maxOffset:maxOffset];
-            CGFloat endFadeStrength = [self _fadeStrengthForOffset:contentSize.width - boundsSize.width - offset.x maxOffset:maxOffset];
+            CGFloat startFadeStrength = _fadingEdgeStartEnabled ? [self _fadeStrengthForOffset:offset.x maxOffset:maxOffset] : 0.0;
+            CGFloat endFadeStrength = _fadingEdgeEndEnabled ? [self _fadeStrengthForOffset:contentSize.width - boundsSize.width - offset.x maxOffset:maxOffset] : 0.0;
             
             CGFloat edgeFadeRatio = _fadingEdgeLength / boundsSize.width;
             [_fadingEdgeLocations replaceObjectAtIndex:1 withObject:@(edgeFadeRatio * startFadeStrength)];
             [_fadingEdgeLocations replaceObjectAtIndex:2 withObject:@(1 - edgeFadeRatio * endFadeStrength)];
         } else {
             CGFloat maxOffset = MIN(_fadingEdgeLength, contentSize.height - boundsSize.height);
-            CGFloat startFadeStrength = [self _fadeStrengthForOffset:offset.y maxOffset:maxOffset];
-            CGFloat endFadeStrength = [self _fadeStrengthForOffset:contentSize.height - boundsSize.height - offset.y maxOffset:maxOffset];
+            CGFloat startFadeStrength = _fadingEdgeStartEnabled ? [self _fadeStrengthForOffset:offset.y maxOffset:maxOffset] : 0.0;
+            CGFloat endFadeStrength = _fadingEdgeEndEnabled ? [self _fadeStrengthForOffset:contentSize.height - boundsSize.height - offset.y maxOffset:maxOffset] : 0.0;
             
             CGFloat edgeFadeRatio = _fadingEdgeLength / boundsSize.height;
             [_fadingEdgeLocations replaceObjectAtIndex:1 withObject:@(edgeFadeRatio * startFadeStrength)];
@@ -611,6 +635,15 @@ static CGFloat const kSCValdiKeyboardTranslationPadding = 10.0;
             [view valdi_setCancelsTouchesOnScroll:YES];
         }];
 
+    [attributesBinder bindAttribute:@"stopScrollingOnTouch"
+        invalidateLayoutOnChange:NO
+        withBoolBlock:^BOOL(SCValdiScrollView *view, BOOL attributeValue, id<SCValdiAnimatorProtocol> animator) {
+            return [view valdi_setStopScrollingOnTouch:attributeValue];
+        }
+        resetBlock:^(SCValdiScrollView *view, id<SCValdiAnimatorProtocol> animator) {
+            [view valdi_setStopScrollingOnTouch:NO];
+        }];
+
     [attributesBinder bindAttribute:@"bouncesFromDragAtStart"
         invalidateLayoutOnChange:NO
         withBoolBlock:^BOOL(SCValdiScrollView *view, BOOL attributeValue, id<SCValdiAnimatorProtocol> animator) {
@@ -657,6 +690,36 @@ static CGFloat const kSCValdiKeyboardTranslationPadding = 10.0;
                          resetBlock:^(SCValdiScrollView *view, id<SCValdiAnimatorProtocol> animator) {
                             [view valdi_setFadingEdgeLength:0];
                          }];
+    
+    [attributesBinder bindAttribute:@"fadingEdgeStart"
+           invalidateLayoutOnChange:NO
+                      withBoolBlock:^BOOL(SCValdiScrollView *view, BOOL attributeValue, id<SCValdiAnimatorProtocol> animator) {
+                          return [view valdi_setFadingEdgeStart:attributeValue];
+                      }
+                         resetBlock:^(SCValdiScrollView *view, id<SCValdiAnimatorProtocol> animator) {
+                            [view valdi_setFadingEdgeStart:YES];
+                         }];
+    
+    [attributesBinder bindAttribute:@"fadingEdgeEnd"
+           invalidateLayoutOnChange:NO
+                      withBoolBlock:^BOOL(SCValdiScrollView *view, BOOL attributeValue, id<SCValdiAnimatorProtocol> animator) {
+                          return [view valdi_setFadingEdgeEnd:attributeValue];
+                      }
+                         resetBlock:^(SCValdiScrollView *view, id<SCValdiAnimatorProtocol> animator) {
+                           [view valdi_setFadingEdgeEnd:YES];
+                         }];
+    
+    // Android-only attribute - no-op on iOS
+    [attributesBinder bindAttribute:@"androidOnlyEnableExtendedFadingEdge"
+           invalidateLayoutOnChange:NO
+                      withBoolBlock:^BOOL(SCValdiScrollView *view, BOOL attributeValue, id<SCValdiAnimatorProtocol> animator) {
+                          // This attribute is Android-only and has no effect on iOS
+                          return YES;
+                      }
+                         resetBlock:^(SCValdiScrollView *view, id<SCValdiAnimatorProtocol> animator) {
+                           // No-op
+                         }];
+    
     [attributesBinder bindAttribute:@"decelerationRate"
            invalidateLayoutOnChange:NO
                       withStringBlock:^BOOL(SCValdiScrollView *view, NSString *attributeValue, id<SCValdiAnimatorProtocol> animator) {

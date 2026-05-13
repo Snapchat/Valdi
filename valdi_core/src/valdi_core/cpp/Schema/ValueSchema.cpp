@@ -275,6 +275,7 @@ std::ostream& ValueSchema::outputToStream(std::ostream& os,
                 printAttributeIfNeeded(os, attributes.isSingleCall(), kStringTypeFunctionAttributeSingleCall, hasPrev);
                 printAttributeIfNeeded(
                     os, attributes.shouldDispatchToWorkerThread(), kStringTypeFunctionAttributeWorkerThread, hasPrev);
+                printAttributeIfNeeded(os, !attributes.allowSyncCall(), kStringTypeFunctionAttributeBanSync, hasPrev);
 
                 os << "|";
             }
@@ -395,6 +396,7 @@ size_t ValueSchema::hash() const {
             boost::hash_combine(baseHash, attributes.isMethod());
             boost::hash_combine(baseHash, attributes.isSingleCall());
             boost::hash_combine(baseHash, attributes.shouldDispatchToWorkerThread());
+            boost::hash_combine(baseHash, attributes.allowSyncCall());
             boost::hash_combine(baseHash, functionSchema.getReturnValue().hash());
             for (size_t i = 0; i < functionSchema.getParametersSize(); i++) {
                 boost::hash_combine(baseHash, functionSchema.getParameter(i).hash());
@@ -1173,8 +1175,18 @@ ValueFunctionSchemaAttributes::ValueFunctionSchemaAttributes(bool isMethod,
                                                              bool shouldDispatchToWorkerThread)
     : _isMethod(isMethod), _isSingleCall(isSingleCall), _shouldDispatchToWorkerThread(shouldDispatchToWorkerThread) {}
 
+ValueFunctionSchemaAttributes::ValueFunctionSchemaAttributes(bool isMethod,
+                                                             bool isSingleCall,
+                                                             bool shouldDispatchToWorkerThread,
+                                                             bool allowSyncCall)
+    : _isMethod(isMethod),
+      _isSingleCall(isSingleCall),
+      _shouldDispatchToWorkerThread(shouldDispatchToWorkerThread),
+      _allowSyncCall(allowSyncCall) {}
+
 bool ValueFunctionSchemaAttributes::empty() const {
-    return !(_isMethod || _isSingleCall || _shouldDispatchToWorkerThread);
+    // Show modifiers block when we have any; bansync (`b`) is emitted when allowSyncCall is false
+    return !(_isMethod || _isSingleCall || _shouldDispatchToWorkerThread || !_allowSyncCall);
 }
 
 bool ValueFunctionSchemaAttributes::isMethod() const {
@@ -1189,9 +1201,14 @@ bool ValueFunctionSchemaAttributes::shouldDispatchToWorkerThread() const {
     return _shouldDispatchToWorkerThread;
 }
 
+bool ValueFunctionSchemaAttributes::allowSyncCall() const {
+    return _allowSyncCall;
+}
+
 bool ValueFunctionSchemaAttributes::operator==(const ValueFunctionSchemaAttributes& other) const {
     return _isMethod == other._isMethod && _isSingleCall == other._isSingleCall &&
-           _shouldDispatchToWorkerThread == other._shouldDispatchToWorkerThread;
+           _shouldDispatchToWorkerThread == other._shouldDispatchToWorkerThread &&
+           _allowSyncCall == other._allowSyncCall;
 }
 
 bool ValueFunctionSchemaAttributes::operator!=(const ValueFunctionSchemaAttributes& other) const {

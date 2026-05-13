@@ -142,7 +142,7 @@ cc_library(
         ":utils_core_cc",
         ":utils_logging_cc",
         "@boost",
-        "@protobuf_cpp//:protobuf_lite",
+        "@protobuf_cpp//:protobuf",
     ],
 )
 

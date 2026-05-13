@@ -21,16 +21,16 @@ const baseTextStyle = new Style<Label>({
 });
 
 const errorTypeStyle = baseTextStyle.extend({
-  font: 'AvenirNext-Bold 16',
+  font: 'Montserrat-Bold 16',
   marginBottom: 8,
 });
 
 const titleStyle = baseTextStyle.extend({
-  font: 'AvenirNext-DemiBold 12',
+  font: 'Montserrat-SemiBold 12',
 });
 
 const genericTextStyle = baseTextStyle.extend({
-  font: 'AvenirNext-Medium 12',
+  font: 'Montserrat-Medium 12',
 });
 
 export class RuntimeIssueDisplayer extends Component<RuntimeIssueViewModel> {

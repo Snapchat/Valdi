@@ -15,6 +15,7 @@ ts_project(
     ]),
     allow_js = True,
     composite = True,
+    declaration = True,
     transpiler = "tsc",
     tsconfig = "web/tsconfig.json",
     deps = [
@@ -37,6 +38,10 @@ valdi_module(
     ios_output_target = "release",
     visibility = ["//visibility:public"],
     web_deps = [":persistence_web"],
+    web_register_native_module_id_overrides = {
+        # persistence/src/PersistentStore.ts does require('PersistentStoreNative')
+        "persistence/web/PersistentStoreNative.js": "PersistentStoreNative",
+    },
     deps = [
         "@valdi//src/valdi_modules/src/valdi/coreutils",
         "@valdi//src/valdi_modules/src/valdi/valdi_core",

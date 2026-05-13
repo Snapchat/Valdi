@@ -95,6 +95,11 @@ public:
                                      LinearGradientOrientation orientation);
     void setBackgroundRadialGradient(std::vector<Scalar>&& locations, std::vector<Color>&& colors);
 
+    void setMaskImageLinearGradient(std::vector<Scalar>&& locations,
+                                    std::vector<Color>&& colors,
+                                    LinearGradientOrientation orientation);
+    void setMaskImageRadialGradient(std::vector<Scalar>&& locations, std::vector<Color>&& colors);
+
     void setTouchEnabled(bool touchEnabled);
     bool isTouchEnabled() const;
 
@@ -265,6 +270,7 @@ private:
     Color _borderColor = Color::transparent();
     BorderRadius _borderRadius;
     GradientWrapper _gradientWrapper;
+    GradientWrapper _maskImageGradient;
     Ref<BoxShadow> _boxShadow;
     Ref<IMaskLayer> _maskLayer;
     LayerContent _cachedBackground;

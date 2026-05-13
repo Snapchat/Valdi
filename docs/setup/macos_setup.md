@@ -1,7 +1,6 @@
 # macOS Setup Reference Guide
 
-> [!TIP]
-> **Most users should use `valdi dev_setup` instead!** This guide is a reference for manual installation or troubleshooting. The `valdi dev_setup` command automatically handles most of these steps.
+> **Get the CLI from npm:** `npm install -g @snap/valdi`. Then run `valdi dev_setup` for automated setup. This guide is a reference for manual installation or troubleshooting only.
 
 ## About
 
@@ -98,4 +97,4 @@ source ~/.zshrc
 
 # Next steps
 
-[Valdi setup](https://github.com/Snapchat/Valdi/blob/main/docs/INSTALL.md#valdi-setup)
+[Installation guide](../INSTALL.md#installation)

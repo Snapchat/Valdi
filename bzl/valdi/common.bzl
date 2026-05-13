@@ -24,6 +24,11 @@ _WEB_OUTPUT_BASE = "web"
 _WEB_DEBUG_ONLY_BASE = paths.join(_WEB_OUTPUT_BASE, "debug")
 _WEB_RELEASE_READY_BASE = paths.join(_WEB_OUTPUT_BASE, "release")
 
+_CPP_OUTPUT_BASE = "cpp"
+_CPP_DEBUG_ONLY_BASE = paths.join(_CPP_OUTPUT_BASE, "debug")
+_CPP_RELEASE_READY_BASE = paths.join(_CPP_OUTPUT_BASE, "release")
+_CPP_METADATA_BASE = _CPP_OUTPUT_BASE  # metadata is written to the base directory for C++
+
 # NOTE(vfomin): this should probably go into the config file
 _IOS_DEFAULT_MODULE_PREFIX = "SCC"
 
@@ -64,14 +69,14 @@ def base_relative_dir(platform, output_target, relative_dir):
     """Helper function for constructing paths relative to the _BASE_DIR.
 
     Args:
-        platform: The platform (android or ios).
+        platform: The platform (android, ios, web, or cpp).
         output_target: The output target (debug or release).
         relative_dir: The relative directory.
 
     Returns:
         The constructed path relative to the _BASE_DIR.
     """
-    if platform not in ["android", "ios", "web"]:
+    if platform not in ["android", "ios", "web", "cpp"]:
         fail("Unexpected platform: {platform}".format(platform = platform))
 
     if output_target not in ["debug", "release", "metadata"]:
@@ -83,12 +88,20 @@ def base_relative_dir(platform, output_target, relative_dir):
             base = _ANDROID_DEBUG_ONLY_BASE
         elif platform == "web":
             base = _WEB_DEBUG_ONLY_BASE
+        elif platform == "cpp":
+            base = _CPP_DEBUG_ONLY_BASE
     elif output_target == "release":
         base = _IOS_RELEASE_READY_BASE
         if platform == "android":
             base = _ANDROID_RELEASE_READY_BASE
         elif platform == "web":
             base = _WEB_RELEASE_READY_BASE
+        elif platform == "cpp":
+            base = _CPP_RELEASE_READY_BASE
+    elif platform == "android":
+        base = _ANDROID_METADATA_BASE
+    elif platform == "cpp":
+        base = _CPP_METADATA_BASE
     else:
-        base = _ANDROID_METADATA_BASE if platform == "android" else _IOS_METADATA_BASE
+        base = _IOS_METADATA_BASE
     return paths.join(base, relative_dir)

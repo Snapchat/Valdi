@@ -8,6 +8,19 @@
 
 import Foundation
 
+private struct ExplicitImageAssetKey: Hashable {
+    let moduleName: String
+    let relativeProjectAssetDirectoryPath: String
+    let assetName: String
+}
+
+private struct ExplicitImageAssetOutput {
+    let specs: ImageVariantSpecs
+    /// Pre-generated file path when the build system supplied one. When set, the
+    /// processor reads the file directly instead of running `generateImage`.
+    let preGeneratedFile: URL?
+}
+
 // [.imageAsset] -> [.imageResource]
 class ImageResourcesProcessor: CompilationProcessor {
 
@@ -26,8 +39,9 @@ class ImageResourcesProcessor: CompilationProcessor {
     private let lock = DispatchSemaphore.newLock()
     private var imageConverterDependencies: [String: String]?
     private let imageVariantsFilter: ImageVariantsFilter?
+    private let explicitOutputsByAsset: [ExplicitImageAssetKey: [ExplicitImageAssetOutput]]?
 
-    init(logger: ILogger, 
+    init(logger: ILogger,
          fileManager: ValdiFileManager,
          diskCacheProvider: DiskCacheProvider,
          projectConfig: ValdiProjectConfig,
@@ -43,6 +57,21 @@ class ImageResourcesProcessor: CompilationProcessor {
         self.imageVariantsFilter = imageVariantsFilter
         self.alwaysUseVariantAgnosticFilenames = alwaysUseVariantAgnosticFilenames
         self.imageConverter = ImageConverter(logger: logger, fileManager: fileManager, projectConfig: projectConfig, imageToolbox: imageToolbox)
+        let baseURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+        self.explicitOutputsByAsset = compilerConfig.explicitImageAssetManifest.map { manifest in
+            var map = [ExplicitImageAssetKey: [ExplicitImageAssetOutput]]()
+            for asset in manifest.assets {
+                let key = ExplicitImageAssetKey(moduleName: asset.moduleName,
+                                                relativeProjectAssetDirectoryPath: asset.relativeProjectAssetDirectoryPath,
+                                                assetName: asset.assetName)
+                map[key] = asset.outputs.map { output in
+                    let specs = ImageVariantSpecs(filenamePattern: output.filenamePattern, scale: output.scale, platform: output.platform)
+                    let preGeneratedFile = output.file.map { baseURL.appendingPathComponent($0) }
+                    return ExplicitImageAssetOutput(specs: specs, preGeneratedFile: preGeneratedFile)
+                }
+            }
+            return map
+        }
 
         // Warm up the disk caches we know we will use
         FileExtensions.exportedImages.forEach { imageExt in
@@ -121,16 +150,53 @@ class ImageResourcesProcessor: CompilationProcessor {
     }
 
     private func shouldInclude(variantSpecs: ImageVariantSpecs) -> Bool {
-        guard let platform = variantSpecs.platform, let imageVariantsFilter else {
+        guard let platform = variantSpecs.platform else {
+            return true
+        }
+
+        // Gate on which platforms are enabled before consulting the variants filter.
+        switch platform {
+        case .android where !compilerConfig.outputForAndroid: return false
+        case .ios where !compilerConfig.outputForIOS: return false
+        case .web where !compilerConfig.outputForWeb: return false
+        default: break
+        }
+
+        guard let imageVariantsFilter else {
             return true
         }
 
         return imageVariantsFilter.shouldInclude(platform: platform, scale: variantSpecs.scale)
     }
 
-    private func findMissingVariants(currentVariants: [ImageAssetVariant]) -> [ImageVariantSpecs] {
+    private func findMissingVariants(currentVariants: [ImageAssetVariant], targetSpecs: [ImageVariantSpecs]) -> [ImageVariantSpecs] {
         let existingVariants = Set(currentVariants.map { $0.variantSpecs.identifier })
-        return ImageVariantResolver.allExportedVariantSpecs.filter { shouldInclude(variantSpecs: $0) && !existingVariants.contains($0.identifier) }
+        return targetSpecs.filter { !existingVariants.contains($0.identifier) }
+    }
+
+    private func explicitOutputs(for item: SelectedItem<ImageAsset>) -> [ExplicitImageAssetOutput]? {
+        guard let explicitOutputsByAsset else { return nil }
+        let key = ExplicitImageAssetKey(moduleName: item.item.bundleInfo.name,
+                                        relativeProjectAssetDirectoryPath: item.data.identifier.relativeProjectAssetDirectoryPath,
+                                        assetName: item.data.identifier.assetName)
+        return explicitOutputsByAsset[key]
+    }
+
+    private func variantFromPreGeneratedFile(specs: ImageVariantSpecs, file: URL) -> ImageAssetVariant {
+        // imageInfo on output variants is never consumed downstream (makeImageResourceItem
+        // only reads file + scale + platform + fileExtension), so a dummy size is fine.
+        return ImageAssetVariant(imageInfo: ImageInfo(size: ImageSize(width: 0, height: 0)),
+                                 file: .url(file),
+                                 variantSpecs: specs)
+    }
+
+    private func defaultTargetSpecs() -> [ImageVariantSpecs] {
+        let targetSpecs = ImageVariantResolver.exportedVariantSpecs(
+            android: compilerConfig.outputForAndroid,
+            ios: compilerConfig.outputForIOS,
+            web: compilerConfig.outputForWeb
+        )
+        return targetSpecs.filter { shouldInclude(variantSpecs: $0) }
     }
 
     private func makeImageResourceItem(fromCompilationItem: CompilationItem, imageAsset: ImageAsset) -> [CompilationItem] {
@@ -171,21 +237,44 @@ class ImageResourcesProcessor: CompilationProcessor {
                 throw CompilerError("No variants available!")
             }
 
-            // Step 1: We find the image variants which we don't currently have
-            let missingVariants = findMissingVariants(currentVariants: item.data.variants)
+            // Fast path: when the manifest carries pre-generated output files (produced by an
+            // upstream ValdiProcessImages action), skip in-process generation entirely and
+            // build variants directly from those files.
+            if let explicitOutputs = explicitOutputs(for: item),
+               !explicitOutputs.isEmpty,
+               explicitOutputs.allSatisfy({ $0.preGeneratedFile != nil }) {
+                let variants = explicitOutputs.map { variantFromPreGeneratedFile(specs: $0.specs, file: $0.preGeneratedFile!) }
+                let newImageAsset = ImageAsset(identifier: item.data.identifier, size: item.data.size, variants: variants)
+                return makeImageResourceItem(fromCompilationItem: item.item, imageAsset: newImageAsset)
+            }
 
-            // Step 2: Find the variant we can use for resizing the images
+            // Step 1: Determine the set of output variants we need to emit. When an explicit
+            // image asset manifest is configured, the target list comes from the manifest
+            // (Bazel has already applied platform/scale gating). Otherwise we fall back to
+            // the compiler's own platform + variants-filter rules.
+            let targetSpecs: [ImageVariantSpecs]
+            if let outputs = explicitOutputs(for: item) {
+                targetSpecs = outputs.map { $0.specs }
+            } else {
+                targetSpecs = defaultTargetSpecs()
+            }
+
+            // Step 2: Find variants we don't already have on disk and need to generate.
+            let missingVariants = findMissingVariants(currentVariants: item.data.variants, targetSpecs: targetSpecs)
+
+            // Step 3: Find the variant we can use for resizing the images
             let bestVariant = item.data.bestVariant!
 
             let inputImage = bestVariant.file
 
             return try inputImage.withURL { url in
-                // Step 3: Generate all the missing variants
+                // Step 4: Generate all the missing variants
 
                 let generatedImages = try missingVariants.map { try generateImage(fromImageAssetVariant: bestVariant, sourceItemProjectPath: item.item.relativeProjectPath, inputImageURL: url, inputImageData: try inputImage.readData(), variantSpecs: $0) }
 
+                let targetIdentifiers = Set(targetSpecs.map { $0.identifier })
                 let allVariants = (item.data.variants + generatedImages).filter { variant in
-                    return shouldInclude(variantSpecs: variant.variantSpecs)
+                    return targetIdentifiers.contains(variant.variantSpecs.identifier)
                 }
 
                 let newImageAsset = ImageAsset(identifier: item.data.identifier, size: item.data.size, variants: allVariants)

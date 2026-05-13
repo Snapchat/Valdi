@@ -56,7 +56,7 @@ public final class HTTPRequest {
                 "mUrl=" + mUrl +
                 "," + "mMethod=" + mMethod +
                 "," + "mHeaders=" + mHeaders +
-                "," + "mBody=" + java.util.Arrays.toString(mBody) +
+                "," + "mBody=" + mBody +
                 "," + "mPriority=" + mPriority +
         "}";
     }

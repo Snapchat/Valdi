@@ -1,0 +1,41 @@
+area/runtime:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'valdi/src/valdi/runtime/**'
+      - 'valdi/src/valdi/android/**'
+      - 'valdi/src/valdi/ios/**'
+
+area/compiler:
+  - changed-files:
+    - any-glob-to-any-file: 'compiler/**'
+
+area/yoga:
+  - changed-files:
+    - any-glob-to-any-file: 'third-party/yoga/**'
+
+area/build-system:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.bzl'
+      - '**/BUILD.bazel'
+      - 'MODULE.bazel'
+      - '.bazelrc'
+      - 'tools/ci/**'
+
+area/docs:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'docs/**'
+      - '*.md'
+
+area/snap-drawing:
+  - changed-files:
+    - any-glob-to-any-file: 'snap_drawing/**'
+
+platform/ios:
+  - changed-files:
+    - any-glob-to-any-file: 'valdi/src/valdi/ios/**'
+
+platform/android:
+  - changed-files:
+    - any-glob-to-any-file: 'valdi/src/valdi/android/**'

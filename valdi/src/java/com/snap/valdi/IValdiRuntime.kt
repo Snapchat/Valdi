@@ -57,7 +57,31 @@ interface IValdiRuntime: Disposable {
     // DEPRECATED: DO NOT USE, use createScopedJSRuntime
     fun getJSRuntime(block: (ValdiJSRuntime) -> Unit)
 
-    fun createScopedJSRuntime(block: (ValdiScopedJSRuntime) -> Unit)
+    /**
+     * Creates a scoped JS runtime for executing TypeScript code.
+     *
+     * Each scoped runtime has its own [NativeObjectsManager], which means all native objects
+     * created through it are released immediately when [ValdiScopedJSRuntime.dispose] is called,
+     * rather than waiting for the JS garbage collector.
+     *
+     * **Why scoped runtimes exist:** On Android, two garbage-collected runtimes (JVM and JS)
+     * compete for object lifetimes. Cross-language references can form retain cycles where Java
+     * prevents TS from collecting an object and vice versa, leading to memory leaks. Scoped
+     * runtimes break these cycles on dispose.
+     *
+     * **Each task should create and dispose its own scoped runtime.** Do not cache or share a
+     * single scoped runtime across features or for the lifetime of a user session. A long-lived
+     * shared scope  could accumulate native references from all consumers with no opportunity for
+     * cleanup until the scope is finally disposed, effectively recreating the memory pressure
+     * that scoped runtimes were designed to prevent.
+     *
+     * @param scopeName A descriptive name identifying where this scoped runtime is created from.
+     *                  This name appears in error messages to help debug issues with disposed
+     *                  references. Callers should provide a meaningful name (e.g., class name
+     *                  or feature name) to make error messages actionable.
+     * @param block Callback invoked with the created runtime.
+     */
+    fun createScopedJSRuntime(scopeName: String, block: (ValdiScopedJSRuntime) -> Unit)
 
     fun getFontManager(block: (FontManager) -> Unit)
 

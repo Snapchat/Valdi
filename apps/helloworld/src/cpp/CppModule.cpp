@@ -25,6 +25,6 @@ public:
     }
 };
 
-Valdi::RegisterModuleFactory kRegisterModule([]() { return std::make_shared<CppModule>(); });
+auto kRegisterModule = Valdi::RegisterModuleFactory::registerTyped<CppModule>();
 
 } // namespace snap::valdi::hello_world

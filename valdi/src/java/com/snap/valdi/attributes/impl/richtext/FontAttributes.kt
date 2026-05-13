@@ -42,8 +42,13 @@ data class FontAttributes(
     var alignment: TextAlignment,
     var isUnscaled: Boolean = false,
     var outlineColor: Int? = null,
-    var outlineWidth: Float
+    var outlineWidth: Float,
+    var animationTransform: TextAnimationTransform? = null
 ) {
+    enum class RenderMode {
+        BASE,
+        OVERLAY,
+    }
 
     companion object {
         val default = FontAttributes(
@@ -59,7 +64,8 @@ data class FontAttributes(
             TextAlignment.LEFT,
             false,
             null,
-            0F)
+            0F,
+            null)
         val buttonDefault = FontAttributes(
             null,
             12f,
@@ -73,7 +79,8 @@ data class FontAttributes(
             TextAlignment.CENTER,
             false,
             null,
-            0F
+            0F,
+            null
         )
         private const val PX_SUFFIX = "px"
         private const val PT_SUFFIX = "pt"
@@ -83,6 +90,8 @@ data class FontAttributes(
     fun enumerateSpans(fontManager: FontManager,
                        missingFontsTracker: MissingFontsTracker,
                        disableTextReplacement: Boolean = false,
+                       renderMode: RenderMode = RenderMode.BASE,
+                       suppressAnimatedBase: Boolean = false,
                        closure: (Any) -> Unit) {
         closure(TextSizeSpan(resolveFontSize(fontManager.context)))
 
@@ -106,9 +115,32 @@ data class FontAttributes(
             closure(CustomTypefaceSpan(typeface))
         }
 
-        // forceOutline renders transparent text for non-outlined text, and gets us only the outlines
-        // this is then overriden in onDraw for ValdiEditText to overlay on top of text\
-        if (!disableTextReplacement && outlineColor != null && outlineWidth > 0) {
+        if (animationTransform != null) {
+            val shouldAnimateInOverlay = isActiveAnimationTransform(animationTransform)
+            if (renderMode == RenderMode.OVERLAY) {
+                if (!disableTextReplacement && outlineColor != null && outlineWidth > 0) {
+                    closure(OutlineReplacementSpan(color, outlineColor!!, outlineWidth))
+                } else {
+                    closure(ForegroundColorSpan(color))
+                }
+            } else if (shouldAnimateInOverlay && suppressAnimatedBase) {
+                if (disableTextReplacement || outlineColor == null || outlineWidth <= 0f) {
+                    closure(InvisibleForegroundColorSpan())
+                } else {
+                    closure(InvisibleReplacementSpan())
+                }
+            } else if (!disableTextReplacement && outlineColor != null && outlineWidth > 0) {
+                closure(OutlineReplacementSpan(color, outlineColor!!, outlineWidth))
+            } else {
+                closure(ForegroundColorSpan(color))
+            }
+        } else if (renderMode == RenderMode.OVERLAY) {
+            if (!disableTextReplacement && outlineColor != null && outlineWidth > 0) {
+                closure(OutlineReplacementSpan(color, outlineColor!!, outlineWidth))
+            } else {
+                closure(ForegroundColorSpan(color))
+            }
+        } else if (!disableTextReplacement && outlineColor != null && outlineWidth > 0) {
             closure(OutlineReplacementSpan(color, outlineColor!!, outlineWidth))
         } else {
             closure(ForegroundColorSpan(color))

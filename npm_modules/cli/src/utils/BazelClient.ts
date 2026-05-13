@@ -73,8 +73,23 @@ export class BazelLabel {
     }
   }
 
+  get apparentRepo(): string | undefined {
+    if (!this.repo) return undefined;
+    const tildeIndex = this.repo.indexOf('~');
+    return tildeIndex >= 0 ? this.repo.slice(0, tildeIndex) : this.repo;
+  }
+
   toString(): string {
     const repoPrefix = this.repo ? `@${this.repo}` : '';
+    if (this.name) {
+      return `${repoPrefix}${this.target}:${this.name}`;
+    } else {
+      return repoPrefix + this.target;
+    }
+  }
+
+  toBuildableString(): string {
+    const repoPrefix = this.apparentRepo ? `@${this.apparentRepo}` : '';
     if (this.name) {
       return `${repoPrefix}${this.target}:${this.name}`;
     } else {

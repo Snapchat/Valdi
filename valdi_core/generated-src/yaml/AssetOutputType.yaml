@@ -37,3 +37,8 @@ wasm:
 ts:
   typename: AssetOutputType
   module: './valdi_core'
+c:
+  typename: 'snap_valdi_core_AssetOutputType'
+  translator: '::djinni::c_api::EnumTranslator<::snap::valdi_core::AssetOutputType, snap_valdi_core_AssetOutputType>'
+  public_header: '"valdi_core/AssetOutputType.h"'
+  private_header: '"valdi_core/AssetOutputType.hpp"'

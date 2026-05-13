@@ -261,6 +261,12 @@ static Valdi::SharedRuntime getRuntimeFromContext(const Valdi::SharedContext &co
         oldRootView.valdiContext = nil;
     }
 
+    if (rootView != nil && rootView.valdiContext == nil) {
+        SCLogValdiError(@"Root view valdiContext is nil after setRootValdiView. "
+                        @"contextId=%u, componentPath=%@, oldRootView=%p, rootView=%p, sameView=%d",
+                        self.contextId, _componentPath, oldRootView, rootView, oldRootView == rootView);
+    }
+
     [rootView updateTraitCollection];
 }
 
@@ -696,6 +702,15 @@ static Valdi::MeasureMode resolveMeasureMode(CGFloat size, BOOL useLegacyMeasure
     @synchronized (self) {
         return _destroyed;
     }
+}
+
+- (BOOL)disableHitTestSyncDeadline
+{
+    auto runtime = getRuntimeFromContext(_context);
+    if (runtime.get() == nullptr) {
+        return NO;
+    }
+    return runtime->disableHitTestSyncDeadline();
 }
 
 + (SCValdiContext *)currentContext

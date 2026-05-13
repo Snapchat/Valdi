@@ -1,5 +1,7 @@
 # Getting Started with Valdi
 
+> **Get the Valdi CLI from npm.** Run `npm install -g @snap/valdi` and use the commands below. If you're contributing to Valdi itself, see [DEV_SETUP.md](../DEV_SETUP.md).
+
 ## Prerequisites
 
 **macOS only:** Install [Xcode from the App Store](https://apps.apple.com/us/app/xcode/id497799835)

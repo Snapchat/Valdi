@@ -236,14 +236,21 @@ def get_resources_dts_paths(module_name, resources):
 
     resources_paths = []
     for current_directory in filtered_variant_directories:
-        # by default, we use res.ts
-        # nested subfolders use the name of the folder as the name of their generated typescript file, inside a res directory
+        # The compiler writes res.ts into generated_ts/ as a side effect (for VSCode/linter autocomplete).
+        # It also emits res.d.ts into typescript/output/ via TypeScript compilation (for downstream modules).
+        # Both must be declared outputs so they are cached and available to consumers.
         if current_directory == "res":
-            output_basename = "res.d.ts"
+            ts_basename = "res.ts"
+            dts_basename = "res.d.ts"
         else:
-            output_basename = paths.join("res", current_directory + ".d.ts")
+            ts_basename = paths.join("res", current_directory + ".ts")
+            dts_basename = paths.join("res", current_directory + ".d.ts")
 
-        resources_paths.append(paths.join(TYPESCRIPT_OUTPUT_DIR, module_name, output_basename))
+        # Declare the generated .ts file so it gets cached and downloaded by the linter sync
+        resources_paths.append(paths.join(TYPESCRIPT_GENERATED_TS_DIR, module_name, ts_basename))
+
+        # Declare the compiled .d.ts file for downstream TypeScript compilation
+        resources_paths.append(paths.join(TYPESCRIPT_OUTPUT_DIR, module_name, dts_basename))
 
     return resources_paths
 

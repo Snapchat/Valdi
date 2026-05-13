@@ -51,9 +51,11 @@ Valdi::Ref<PersistentStore> PersistentStoreModuleFactory::getOrCreatePersistentS
     uint64_t maxWeight,
     bool disableBatchWrites,
     std::optional<bool> enableEncryption) {
+    auto effectivePath = getEffectiveStorePath(stringPath, enableEncryption);
+
     std::lock_guard<Valdi::Mutex> guard(_existingStoreMutex);
 
-    auto result = _existingStores.find(stringPath);
+    auto result = _existingStores.find(effectivePath);
     if (result != _existingStores.end()) {
         auto store = result->second;
         if (auto spt = store.lock()) {
@@ -67,8 +69,8 @@ Valdi::Ref<PersistentStore> PersistentStoreModuleFactory::getOrCreatePersistentS
     auto keychain = shouldEncrypt(enableEncryption) ? _keychain : NULL;
 
     auto persistentStore = Valdi::makeShared<PersistentStore>(
-        stringPath, _diskCache, userSession, keychain, _dispatchQueue, _logger, maxWeight, disableBatchWrites);
-    _existingStores[stringPath] = persistentStore;
+        effectivePath, _diskCache, userSession, keychain, _dispatchQueue, _logger, maxWeight, disableBatchWrites);
+    _existingStores[effectivePath] = persistentStore;
     persistentStore->populate();
     return persistentStore;
 }
@@ -76,6 +78,16 @@ Valdi::Ref<PersistentStore> PersistentStoreModuleFactory::getOrCreatePersistentS
 // Use the COF value only if a non-null bool is provided
 bool PersistentStoreModuleFactory::shouldEncrypt(std::optional<bool> enableEncryption) {
     return enableEncryption.value_or(!_disableEncryptionByDefault);
+}
+
+StringBox PersistentStoreModuleFactory::getEffectiveStorePath(const StringBox& basePath,
+                                                              std::optional<bool> enableEncryption) {
+    // We are AB'ing a change to the persistent store encryption behavior.
+    // Appending a suffix to the store path will prevent reading old encrypted data.
+    if (_disableEncryptionByDefault && !enableEncryption.has_value()) {
+        return STRING_FORMAT("{}_V2", basePath);
+    }
+    return basePath;
 }
 
 Value PersistentStoreModuleFactory::loadModule() {

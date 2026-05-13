@@ -181,6 +181,13 @@
 
     componentContext.setMapValue("programArguments", Valdi::Value(builder.build()));
     componentContext.setMapValue("componentContext", ValueFromNSObject(_componentContext));
+    if ([_componentContext isKindOfClass:[NSDictionary class]]) {
+        NSDictionary *dict = (NSDictionary *)_componentContext;
+        for (NSString *key in dict) {
+            id obj = [dict objectForKey:key];
+            componentContext.setMapValue(StringFromNSString(key), ValueFromNSObject(obj));
+        }
+    }
 
     _valdiView->setComponent(_componentPath, Valdi::Value(), componentContext);
     _valdiView->getValdiContext()->setUserData(ValdiObjectFromNSObject(self, NO));
@@ -301,7 +308,17 @@
 - (NSView *)hitTest:(NSPoint)point
 {
     NSView *view = [super hitTest:point];
-    return view ? self : nil;
+    if (view == nil) {
+        return nil;
+    }
+    // If the hit landed on a native embedded view (e.g. NSDatePicker, NSPopUpButton),
+    // return it directly so it receives real NSWindow-dispatched mouse events.
+    // Synthetic event forwarding via BridgeGestureRecognizer doesn't work for controls
+    // that need full AppKit event loop integration.
+    if (view != self) {
+        return view;
+    }
+    return self;
 }
 
 - (void)mouseDown:(NSEvent *)event

@@ -4,15 +4,17 @@ export class WebValdiScroll extends WebValdiLayout {
   public type = 'scroll';
   private _onScrollEndTimer: number | null = null;
   private _contentOffsetAnimated: boolean = false;
+  private _fadingEdgeLength: number = 0;
+  private _fadingEdgeStartEnabled: boolean = true;
+  private _fadingEdgeEndEnabled: boolean = true;
 
   createHtmlElement(): HTMLElement {
     const element = super.createHtmlElement();
 
     Object.assign(element.style, {
       // Default to vertical scrolling
-      //overflowX: 'hidden',
-      //overflowY: 'auto',
-      overflow: 'visible',
+      overflowX: 'hidden',
+      overflowY: 'auto',
       pointerEvents: 'auto',
     });
 
@@ -154,12 +156,17 @@ export class WebValdiScroll extends WebValdiLayout {
         // Complex features requiring custom implementation.
         console.log("WebValdiScroll not implemented: ", attributeName, attributeValue);
         return;
-      case "fadingEdgeLength":
-        const length = `${attributeValue}px`;
-        const isHorizontal = this.htmlElement.style.overflowX !== 'hidden';
-        const gradientDirection = isHorizontal ? 'to right' : 'to bottom';
-        this.htmlElement.style.maskImage = `linear-gradient(${gradientDirection}, transparent, black ${length}, black calc(100% - ${length}), transparent)`;
-        this.htmlElement.style.webkitMaskImage = `linear-gradient(${gradientDirection}, transparent, black ${length}, black calc(100% - ${length}), transparent)`;
+      case 'fadingEdgeLength':
+        this._fadingEdgeLength = attributeValue;
+        this._updateFadingEdge();
+        return;
+      case 'fadingEdgeStart':
+        this._fadingEdgeStartEnabled = attributeValue;
+        this._updateFadingEdge();
+        return;
+      case 'fadingEdgeEnd':
+        this._fadingEdgeEndEnabled = attributeValue;
+        this._updateFadingEdge();
         return;
       case "decelerationRate":
         // Controls scroll momentum, not directly controllable via standard web APIs.
@@ -197,5 +204,34 @@ export class WebValdiScroll extends WebValdiLayout {
         return;
     }
     super.changeAttribute(attributeName, attributeValue);
+  }
+
+  private _updateFadingEdge(): void {
+    if (this._fadingEdgeLength <= 0) {
+      this.htmlElement.style.maskImage = '';
+      this.htmlElement.style.webkitMaskImage = '';
+      return;
+    }
+
+    const length = `${this._fadingEdgeLength}px`;
+    const isHorizontal = this.htmlElement.style.overflowX !== 'hidden';
+    const gradientDirection = isHorizontal ? 'to right' : 'to bottom';
+
+    let gradientStops: string;
+    if (this._fadingEdgeStartEnabled && this._fadingEdgeEndEnabled) {
+      gradientStops = `transparent, black ${length}, black calc(100% - ${length}), transparent`;
+    } else if (this._fadingEdgeStartEnabled) {
+      gradientStops = `transparent, black ${length}, black`;
+    } else if (this._fadingEdgeEndEnabled) {
+      gradientStops = `black, black calc(100% - ${length}), transparent`;
+    } else {
+      this.htmlElement.style.maskImage = '';
+      this.htmlElement.style.webkitMaskImage = '';
+      return;
+    }
+
+    const gradient = `linear-gradient(${gradientDirection}, ${gradientStops})`;
+    this.htmlElement.style.maskImage = gradient;
+    this.htmlElement.style.webkitMaskImage = gradient;
   }
 }

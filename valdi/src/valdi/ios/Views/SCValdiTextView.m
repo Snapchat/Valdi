@@ -49,12 +49,69 @@
 @end
 
 static NSString* const kSCValdiTextViewContentSizeKey = @"contentSize";
+static CGFloat const SCValdiAnimatedTextOverlayPadding = 8.0;
 
 typedef NS_ENUM(NSUInteger, SCValdiTextViewTextGravity) {
     SCValdiTextViewTextGravityTop,
     SCValdiTextViewTextGravityCenter,
     SCValdiTextViewTextGravityBottom,
 };
+
+static BOOL SCValdiAttributedStringHasAnimationTransform(NSAttributedString *attributedString)
+{
+    if (attributedString.length == 0) {
+        return NO;
+    }
+
+    __block BOOL hasAnimationTransform = NO;
+    [attributedString enumerateAttribute:kSCValdiAttributedStringKeyAnimationTransform
+                                 inRange:NSMakeRange(0, attributedString.length)
+                                 options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
+                              usingBlock:^(id value, NSRange range, BOOL *stop) {
+        if (value != nil && range.length > 0) {
+            hasAnimationTransform = YES;
+            *stop = YES;
+        }
+    }];
+    return hasAnimationTransform;
+}
+
+static CGFloat SCValdiAnimatedTextVerticalOverflowPadding(NSAttributedString *attributedString)
+{
+    if (attributedString.length == 0) {
+        return 0.0;
+    }
+
+    __block CGFloat maxTranslation = 0.0;
+    __block CGFloat maxScaleOverflow = 0.0;
+    [attributedString enumerateAttributesInRange:NSMakeRange(0, attributedString.length)
+                                         options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
+                                      usingBlock:^(NSDictionary<NSAttributedStringKey, id> *attrs, NSRange range, BOOL *stop) {
+        NSDictionary<NSString *, NSNumber *> *animationTransform = attrs[kSCValdiAttributedStringKeyAnimationTransform];
+        if (![animationTransform isKindOfClass:[NSDictionary class]]) {
+            return;
+        }
+
+        maxTranslation = MAX(maxTranslation, fabs(animationTransform[@"translationY"].doubleValue));
+        CGFloat scale = animationTransform[@"scale"] != nil ? animationTransform[@"scale"].doubleValue : 1.0;
+        UIFont *font = attrs[NSFontAttributeName];
+        CGFloat lineHeight = [font isKindOfClass:[UIFont class]] ? font.lineHeight : 0.0;
+        maxScaleOverflow = MAX(maxScaleOverflow, MAX(fabs(scale) - 1.0, 0.0) * lineHeight * 0.5);
+    }];
+
+    return ceil(maxTranslation + maxScaleOverflow + SCValdiAnimatedTextOverlayPadding);
+}
+
+static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedString *attributedString)
+{
+    NSMutableAttributedString *backgroundOnlyAttributedString = [attributedString mutableCopy];
+    NSRange fullRange = NSMakeRange(0, backgroundOnlyAttributedString.length);
+    [backgroundOnlyAttributedString addAttribute:NSForegroundColorAttributeName value:[UIColor clearColor] range:fullRange];
+    [backgroundOnlyAttributedString addAttribute:NSStrokeColorAttributeName value:[UIColor clearColor] range:fullRange];
+    [backgroundOnlyAttributedString addAttribute:kSCValdiOuterOutlineColorAttribute value:[UIColor clearColor] range:fullRange];
+    [backgroundOnlyAttributedString removeAttribute:kSCValdiAttributedStringKeyAnimationTransform range:fullRange];
+    return backgroundOnlyAttributedString;
+}
 
 @implementation SCValdiTextView {
     /// YES if pressing the return key should dismiss the keyboard, o/w NO
@@ -85,11 +142,20 @@ typedef NS_ENUM(NSUInteger, SCValdiTextViewTextGravity) {
     SCValdiTextViewEffectsLayoutManager *_effectsLayoutManager;
 
     SCValdiTextInputUnfocusReason _lastUnfocusReason;
+
+    // State for the animated text overlay used when per-glyph transforms are present.
+    SCValdiTextViewInternal *_animatedTextView;
+    CGFloat _animatedTextVerticalOverflowPadding;
+    BOOL _slowClipping;
+
 }
 
 - (void)valdi_applySlowClipping:(BOOL)slowClipping animator:(id<SCValdiAnimatorProtocol> )animator
 {
+    _slowClipping = slowClipping;
     _textView.clipsToBounds = slowClipping;
+    _animatedTextView.clipsToBounds = slowClipping;
+    _animatedTextView.layer.masksToBounds = slowClipping;
 }
 
 - (id)initWithFrame:(CGRect)frame
@@ -120,8 +186,26 @@ typedef NS_ENUM(NSUInteger, SCValdiTextViewTextGravity) {
             _textView.inlinePredictionType = UITextInlinePredictionTypeNo;
         }
 
+        NSTextStorage *animatedTextStorage = [[NSTextStorage alloc] init];
+        SCValdiTextViewEffectsLayoutManager *animatedLayoutManager = [SCValdiTextViewEffectsLayoutManager new];
+        [animatedTextStorage addLayoutManager:animatedLayoutManager];
+        NSTextContainer *animatedTextContainer = [[NSTextContainer alloc] init];
+        [animatedLayoutManager addTextContainer:animatedTextContainer];
+        _animatedTextView = [[SCValdiTextViewInternal alloc] initWithFrame:frame textContainer:animatedTextContainer];
+        _animatedTextView.backgroundColor = [UIColor clearColor];
+        _animatedTextView.userInteractionEnabled = NO;
+        _animatedTextView.isAccessibilityElement = NO;
+        _animatedTextView.accessibilityElementsHidden = YES;
+        _animatedTextView.editable = NO;
+        _animatedTextView.scrollEnabled = YES;
+        _animatedTextView.textContainerInset = UIEdgeInsetsZero;
+        _animatedTextView.textContainer.lineFragmentPadding = 0;
+        _animatedTextView.showsHorizontalScrollIndicator = NO;
+        _animatedTextView.adjustsFontForContentSizeCategory = NO;
+        _animatedTextView.hidden = YES;
 
         [self addSubview:_textView];
+        [self addSubview:_animatedTextView];
 
         _placeholder = [[SCValdiTextViewPlaceholder alloc] initWithFrame:frame];
         _placeholder.textColor = [UIColor lightGrayColor];
@@ -173,6 +257,13 @@ typedef NS_ENUM(NSUInteger, SCValdiTextViewTextGravity) {
     [self _updateOnLayoutIfNeeded];
 }
 
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView
+{
+    if (scrollView == _textView) {
+        _animatedTextView.contentOffset = scrollView.contentOffset;
+    }
+}
+
 - (void)_updateFrame
 {
     // necessary to handle that on one line with higher heights, setting frame actually causes an adjustment in scroll slightly by a pixel (25.666 => 26 ex)
@@ -182,6 +273,14 @@ typedef NS_ENUM(NSUInteger, SCValdiTextViewTextGravity) {
     if (!CGRectEqualToRect(_textView.frame, self.bounds)) {
         _textView.frame = self.bounds;
         _updateOnLayout = YES;
+    }
+
+    CGRect animatedTextBounds = CGRectMake(self.bounds.origin.x,
+                                           self.bounds.origin.y - _animatedTextVerticalOverflowPadding,
+                                           self.bounds.size.width,
+                                           self.bounds.size.height + (_animatedTextVerticalOverflowPadding * 2.0));
+    if (!CGRectEqualToRect(_animatedTextView.frame, animatedTextBounds)) {
+        _animatedTextView.frame = animatedTextBounds;
     }
 }
 
@@ -196,7 +295,7 @@ typedef NS_ENUM(NSUInteger, SCValdiTextViewTextGravity) {
 
 - (void)_updateTextViewInset:(UITextView *)textView
 {
-    CGFloat boundsHeight = self.bounds.size.height;
+    CGFloat boundsHeight = textView.bounds.size.height;
     CGFloat contentSizeHeight = textView.contentSize.height;
     CGFloat topCorrection;
 
@@ -221,6 +320,7 @@ typedef NS_ENUM(NSUInteger, SCValdiTextViewTextGravity) {
 - (void)_updateContentInset
 {
     [self _updateTextViewInset:(_textView)];
+    [self _updateTextViewInset:(_animatedTextView)];
 }
 
 - (void)_updatePlaceholderInset
@@ -283,6 +383,54 @@ typedef NS_ENUM(NSUInteger, SCValdiTextViewTextGravity) {
     _textView.textContainer.lineFragmentPadding = _effectsLayoutManager.backgroundPadding;
     CGFloat textContainerVerticalInset = _effectsLayoutManager.backgroundPadding / 2.0;
     _textView.textContainerInset = UIEdgeInsetsMake(textContainerVerticalInset, 0, textContainerVerticalInset, 0);
+
+    SCValdiTextViewEffectsLayoutManager *animatedEffectsLayoutManager =
+        (SCValdiTextViewEffectsLayoutManager *)_animatedTextView.textStorage.layoutManagers.firstObject;
+    // The base text view already draws background effects. The overlay should only paint transformed glyphs.
+    animatedEffectsLayoutManager.effects = nil;
+    _animatedTextView.textContainer.lineFragmentPadding = _textView.textContainer.lineFragmentPadding;
+    _animatedTextView.textContainer.maximumNumberOfLines = _textView.textContainer.maximumNumberOfLines;
+    _animatedTextView.textContainer.lineBreakMode = _textView.textContainer.lineBreakMode;
+    UIEdgeInsets animatedBaseInset = _textView.textContainerInset;
+    _animatedTextView.textContainerInset = UIEdgeInsetsMake(animatedBaseInset.top + _animatedTextVerticalOverflowPadding,
+                                                            animatedBaseInset.left,
+                                                            animatedBaseInset.bottom + _animatedTextVerticalOverflowPadding,
+                                                            animatedBaseInset.right);
+
+    // Mark the textview to display again as the layout manager can get cached for only a color change
+    [_textView setNeedsDisplay];
+    [_animatedTextView setNeedsDisplay];
+}
+
+- (BOOL)_shouldUseAnimatedTextOverlayForAttributedString:(NSAttributedString *)attributedString
+{
+    return SCValdiAttributedStringHasAnimationTransform(attributedString);
+}
+
+- (void)_updateAnimatedTextOverlayWithAttributedString:(NSAttributedString *)attributedString
+                                             isEnabled:(BOOL)isEnabled
+{
+    _animatedTextVerticalOverflowPadding =
+        isEnabled && attributedString != nil ? SCValdiAnimatedTextVerticalOverflowPadding(attributedString) : 0.0;
+    _animatedTextView.hidden = !isEnabled;
+    _animatedTextView.backgroundColor = [UIColor clearColor];
+    _animatedTextView.textContainer.lineFragmentPadding = _textView.textContainer.lineFragmentPadding;
+    _animatedTextView.textContainer.maximumNumberOfLines = _textView.textContainer.maximumNumberOfLines;
+    _animatedTextView.textContainer.lineBreakMode = _textView.textContainer.lineBreakMode;
+    UIEdgeInsets baseInset = _textView.textContainerInset;
+    _animatedTextView.textContainerInset = UIEdgeInsetsMake(baseInset.top + _animatedTextVerticalOverflowPadding,
+                                                            baseInset.left,
+                                                            baseInset.bottom + _animatedTextVerticalOverflowPadding,
+                                                            baseInset.right);
+    _animatedTextView.clipsToBounds = _slowClipping;
+    _animatedTextView.layer.masksToBounds = _slowClipping;
+
+    if (isEnabled) {
+        [self bringSubviewToFront:_animatedTextView];
+    }
+
+    [self _updateFrame];
+    _animatedTextView.attributedText = isEnabled ? attributedString : nil;
 }
 
 
@@ -380,6 +528,7 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
                                                                                         traitCollection:traitCollection];
 
             __block BOOL hasOnLayoutAttribute = NO;
+            __block BOOL needsEffectsLayoutManager = NO;
             [attributedString enumerateAttribute:kSCValdiAttributedStringKeyOnLayout
                                          inRange:NSMakeRange(0, attributedString.length)
                                          options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
@@ -397,28 +546,48 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
                                         usingBlock:^(id value, NSRange range, BOOL *stop) {
                 if (value) {
                     *stop = YES;
-                    [self _updateEffectsLayoutManager];
+                    needsEffectsLayoutManager = YES;
                 }
             }];
+
+            [attributedString enumerateAttribute:kSCValdiAttributedStringKeyAnimationTransform
+                                        inRange:NSMakeRange(0, attributedString.length)
+                                        options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
+                                     usingBlock:^(id value, NSRange range, BOOL *stop) {
+                if (value) {
+                    *stop = YES;
+                    needsEffectsLayoutManager = YES;
+                }
+            }];
+
+            if (needsEffectsLayoutManager) {
+                [self _updateEffectsLayoutManager];
+            }
 
             NSAttributedString *trimmedString = SCValdiClampAttributedStringValue(attributedString, [_characterLimit integerValue], _ignoreNewlines);
             if (![attributedString isEqualToAttributedString:trimmedString]) {
                 changed = YES;
             }
+
+            BOOL useAnimatedTextOverlay = [self _shouldUseAnimatedTextOverlayForAttributedString:trimmedString];
+            NSAttributedString *textViewAttributedString =
+                useAnimatedTextOverlay ? SCValdiBackgroundOnlyAttributedString(trimmedString) : trimmedString;
             
             // Cursor position should be updated if it's not at the end of the string
             BOOL updateCursorPosition = range.location != _textView.attributedText.string.length && range.location < trimmedString.length;
-            if (![_textView.attributedText isEqualToAttributedString:trimmedString] || labelModeChanged) {
-                _textView.attributedText = trimmedString;
+            if (![_textView.attributedText isEqualToAttributedString:textViewAttributedString] || labelModeChanged) {
+                _textView.attributedText = textViewAttributedString;
                 if (updateCursorPosition) {
                     [self _applySelectionStart:range.location selectionEnd:range.location + range.length];
                 }
             }
+            [self _updateAnimatedTextOverlayWithAttributedString:trimmedString isEnabled:useAnimatedTextOverlay];
 
             _placeholder.hidden = _textView.attributedText.length > 0;
         } else {
             [self updateLabelMode:SCValdiTextModeText];;
             SCValdiSetTextHolderAttributes(_textView, fontAttributes, traitCollection, isRightToLeft, fontAttributes.color);
+            [self _updateAnimatedTextOverlayWithAttributedString:nil isEnabled:NO];
 
             NSString *value = SCValdiClampTextValue(_textValue, [_characterLimit integerValue], _ignoreNewlines);
             if (![_textView.text isEqualToString:value]) {
@@ -541,6 +710,8 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
 - (BOOL)valdi_setEnabled:(BOOL)enabled
 {
     _textView.editable = enabled;
+    _needAttributedTextUpdate = YES;
+    [self _updateAttributedTextIfNeeded];
     return YES;
 }
 
@@ -655,12 +826,14 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
 - (BOOL)valdi_setTextShadow:(NSArray *)textShadow
 {
     SCValdiSetTextHolderTextShadow(_placeholder, textShadow);
-    return SCValdiSetTextHolderTextShadow(_textView, textShadow);
+    SCValdiSetTextHolderTextShadow(_textView, textShadow);
+    return SCValdiSetTextHolderTextShadow(_animatedTextView, textShadow);
 }
 
 - (void) valdi_resetTextShadow
 {
     SCValdiResetTextHolderTextShadow(_placeholder);
+    SCValdiResetTextHolderTextShadow(_animatedTextView);
     SCValdiResetTextHolderTextShadow(_textView);
 }
 
@@ -1030,6 +1203,12 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
         return;
     }
 
+    // Skip during IME composition to avoid interfering with marked text
+    if (textView.markedTextRange != nil) {
+        _placeholder.hidden = textView.text.length > 0;
+        return;
+    }
+
     if (_onWillChange != nil) {
         SCValdiMarshallerScoped(marshaller, {
             SCValdiMarshallEditTextEvent(marshaller, _textView);
@@ -1121,6 +1300,11 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
 - (void)textViewDidChangeSelection:(UITextView *)textView
 {
     if (textView && textView.window && !_updating) {
+        // Skip during IME composition to avoid interfering with marked text
+        if (textView.markedTextRange != nil) {
+            return;
+        }
+
         id<SCValdiViewNodeProtocol> viewNode = self.valdiViewNode;
         id<SCValdiContextProtocol> context = self.valdiContext;
 

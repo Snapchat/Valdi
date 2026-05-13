@@ -7,7 +7,9 @@
     "url": "https://github.com/Snapchat/Valdi.git",
     "directory": "npm_modules/eslint-plugin-valdi"
   },
-  "publishConfig": { "access": "public" },
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "dist/index.js",
   "scripts": {
     "build": "npm exec --package=typescript@5.7.2 tsc",
@@ -24,5 +26,9 @@
     "@typescript-eslint/utils": "^6.21.0",
     "eslint": "^8.27.0",
     "typescript": "^5.3.3"
+  },
+  "devDependencies": {
+    "@typescript-eslint/rule-tester": "^6.21.0",
+    "mocha": "^11.7.5"
   }
 }

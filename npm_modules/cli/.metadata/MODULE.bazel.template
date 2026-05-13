@@ -1,0 +1,62 @@
+module(name = "{{WORKSPACE_NAME}}", version = "0.1")
+
+# -- Valdi framework (https://github.com/Snapchat/Valdi) ---------------------
+VALDI_TAG = "{{VALDI_RELEASE_TAG}}"
+VALDI_URL = "https://github.com/Snapchat/Valdi/archive/" + VALDI_TAG + ".tar.gz"
+VALDI_PREFIX = "Valdi-" + VALDI_TAG
+
+bazel_dep(name = "valdi", version = "0.1")
+archive_override(
+    module_name = "valdi",
+    urls = [VALDI_URL],
+    strip_prefix = VALDI_PREFIX,
+)
+
+# Valdi internal sub-modules: local_path_override in Valdi's own MODULE.bazel
+# only takes effect when Valdi is the root module. Consumers must provide
+# archive_override entries that point into the Valdi release archive.
+bazel_dep(name = "android_macros")
+archive_override(module_name = "android_macros", urls = [VALDI_URL], strip_prefix = VALDI_PREFIX + "/bzl/macros")
+
+bazel_dep(name = "snap_macros")
+archive_override(module_name = "snap_macros", urls = [VALDI_URL], strip_prefix = VALDI_PREFIX + "/bzl/valdi/snap_macros")
+
+bazel_dep(name = "snap_client_toolchains")
+archive_override(module_name = "snap_client_toolchains", urls = [VALDI_URL], strip_prefix = VALDI_PREFIX + "/bzl/toolchains")
+
+bazel_dep(name = "snap_platforms")
+archive_override(module_name = "snap_platforms", urls = [VALDI_URL], strip_prefix = VALDI_PREFIX + "/bzl/platforms")
+
+bazel_dep(name = "skia_user_config")
+archive_override(module_name = "skia_user_config", urls = [VALDI_URL], strip_prefix = VALDI_PREFIX + "/third-party/skia_user_config")
+
+bazel_dep(name = "rules_hdrs")
+archive_override(module_name = "rules_hdrs", urls = [VALDI_URL], strip_prefix = VALDI_PREFIX + "/third-party/rules_hdrs")
+
+bazel_dep(name = "valdi_toolchain")
+archive_override(module_name = "valdi_toolchain", urls = [VALDI_URL], strip_prefix = VALDI_PREFIX + "/bin")
+
+bazel_dep(name = "resvg_libs")
+archive_override(module_name = "resvg_libs", urls = [VALDI_URL], strip_prefix = VALDI_PREFIX + "/third-party/resvg/resvg_libs")
+
+# -- Valdi Widgets (https://github.com/Snapchat/Valdi_Widgets) ---------------
+WIDGETS_TAG = "{{VALDI_WIDGETS_RELEASE_TAG}}"
+
+bazel_dep(name = "valdi_widgets")
+archive_override(
+    module_name = "valdi_widgets",
+    urls = ["https://github.com/Snapchat/Valdi_Widgets/archive/" + WIDGETS_TAG + ".tar.gz"],
+    strip_prefix = "Valdi_Widgets-" + WIDGETS_TAG,
+)
+
+# -- C++ toolchains (Apple CC before LLVM for ObjC priority) ------------------
+valdi_toolchains = use_extension("@valdi//bzl:valdi_toolchains.bzl", "valdi_toolchains")
+use_repo(valdi_toolchains, "local_config_apple_cc_toolchains", "local_config_apple_cc", "llvm_toolchain", "llvm_toolchain_llvm")
+register_toolchains("@local_config_apple_cc_toolchains//:all")
+register_toolchains("@llvm_toolchain//:all")
+
+# -- Version pins (must match Valdi's MODULE.bazel) ---------------------------
+single_version_override(module_name = "protobuf", version = "27.0")
+single_version_override(module_name = "rules_apple", version = "4.0.0")
+single_version_override(module_name = "rules_pkg", version = "0.9.1")
+single_version_override(module_name = "zlib", version = "1.3.2")

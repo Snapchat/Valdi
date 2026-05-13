@@ -36,7 +36,8 @@ def client_objc_library(
         enable_objcpp = True,
         defines = [],
         generate_hmaps = True,
-        generate_umbrella_header = True):
+        generate_umbrella_header = True,
+        target_compatible_with = None):
     base_copts = OBJC_FLAGS if enable_objcpp else OBJC_ONLY_FLAGS
 
     hmap_deps = []
@@ -44,6 +45,17 @@ def client_objc_library(
     hmap_copts = []
     if hdrs:
         module_name = module_name or name
+        if generate_hmaps:
+            # setup headermaps
+            hmap_name = name + "_hmap"
+            headermap(
+                name = hmap_name,
+                cc_hdrs = hdrs,
+                cc_includes = includes,
+                tags = ["manual"],
+            )
+            hmap_deps.append(native.package_relative_label(hmap_name))
+
         if generate_umbrella_header:
             internal_umbrella_header_name = name + "_umbrella.h"
             umbrella_header(
@@ -55,19 +67,6 @@ def client_objc_library(
             umbrella_headers = [":" + internal_umbrella_header_name]
         else:
             umbrella_headers = []
-
-        if generate_hmaps:
-            # setup headermaps
-            hmap_name = name + "_hmap"
-            headermap(
-                name = hmap_name,
-                cc_hdrs = hdrs,
-                cc_includes = includes,
-                hdrs = umbrella_headers,
-                namespace = module_name,
-                tags = ["manual"],
-            )
-            hmap_deps.append(native.package_relative_label(hmap_name))
 
         # The umbrella header is a public header
         hdrs += umbrella_headers
@@ -104,6 +103,10 @@ def client_objc_library(
         aspect_hints = ["@build_bazel_rules_swift//swift:no_module"]
         clang_module_name = None
 
+    extra_kwargs = {}
+    if target_compatible_with:
+        extra_kwargs["target_compatible_with"] = target_compatible_with
+
     snap_client_ios_library(
         name = name,
         deps = deps + hmap_deps,
@@ -120,4 +123,5 @@ def client_objc_library(
         tags = tags,
         alwayslink = alwayslink,
         visibility = visibility,
+        **extra_kwargs
     )

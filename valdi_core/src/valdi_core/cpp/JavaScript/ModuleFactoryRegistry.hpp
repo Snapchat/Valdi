@@ -1,15 +1,14 @@
 #pragma once
 
+#include "utils/base/Function.hpp"
 #include "valdi_core/ModuleFactoriesProvider.hpp"
 #include "valdi_core/ModuleFactory.hpp"
-#include "valdi_core/cpp/JavaScript/ModuleFactoryRegistry.hpp"
-#include "valdi_core/cpp/Utils/Function.hpp"
 #include "valdi_core/cpp/Utils/Mutex.hpp"
 #include <variant>
 
 namespace Valdi {
 
-using ModuleFactoryFn = Function<std::shared_ptr<snap::valdi_core::ModuleFactory>()>;
+using ModuleFactoryFn = snap::OptimizedCopyableFunction<void* [1], std::shared_ptr<snap::valdi_core::ModuleFactory>()>;
 
 /**
  * The ModuleFactoryRegister holds the list of ModuleFactory that should
@@ -46,7 +45,20 @@ private:
  */
 class RegisterModuleFactory {
 public:
+    // NOLINTNEXTLINE(google-explicit-constructor)
     RegisterModuleFactory(ModuleFactoryFn factory);
+
+    RegisterModuleFactory(const RegisterModuleFactory&) = delete;
+    RegisterModuleFactory(RegisterModuleFactory&&) noexcept = delete;
+
+    RegisterModuleFactory& operator=(const RegisterModuleFactory&) = delete;
+    RegisterModuleFactory& operator=(RegisterModuleFactory&&) noexcept = delete;
+
+    template<typename T>
+    static RegisterModuleFactory registerTyped() {
+        return RegisterModuleFactory(
+            []() -> std::shared_ptr<snap::valdi_core::ModuleFactory> { return std::make_shared<T>(); });
+    }
 
 private:
     ModuleFactoryFn _factory;

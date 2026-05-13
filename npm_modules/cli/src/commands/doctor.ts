@@ -44,6 +44,13 @@ import type { ArgumentsResolver } from '../utils/ArgumentsResolver';
 import { BazelClient } from '../utils/BazelClient';
 import { checkCommandExists, runCliCommand } from '../utils/cliUtils';
 import { makeCommandHandler } from '../utils/errorUtils';
+import {
+  type LinuxDistroInfo,
+  buildInstallCommand,
+  detectLinuxDistro,
+  getCommonPackageMappings,
+  getPackageName,
+} from '../utils/linuxDistro';
 import { wrapInColor } from '../utils/logUtils';
 
 /** Discord support link for troubleshooting */
@@ -141,6 +148,9 @@ class ValdiDoctor {
   /** Whether to include project-specific checks */
   private readonly projectMode: boolean;
 
+  /** Cached Linux distribution info (only on Linux) */
+  private readonly linuxDistro?: LinuxDistroInfo;
+
   /**
    * Creates a new ValdiDoctor instance.
    *
@@ -156,6 +166,11 @@ class ValdiDoctor {
     this.jsonOutput = jsonOutput;
     this.frameworkMode = frameworkMode;
     this.projectMode = projectMode;
+
+    // Detect Linux distribution if on Linux
+    if (os.platform() === 'linux') {
+      this.linuxDistro = detectLinuxDistro();
+    }
   }
 
   /**
@@ -232,7 +247,7 @@ class ValdiDoctor {
 
     // Framework-specific checks (only if requested)
     if (this.frameworkMode) {
-      await this.checkFrameworkDependencies();
+      this.checkFrameworkDependencies();
       this.checkAdvancedAndroidSDK();
       this.checkEnvironmentVariables();
     }
@@ -742,7 +757,7 @@ class ValdiDoctor {
             message: `Java ${version} is outdated. Java 17+ is required`,
             details: 'dev_setup installs Java 17 for Android development',
             fixable: true,
-            fixCommand: os.platform() === 'darwin' ? 'brew install openjdk@17' : 'sudo apt install openjdk-17-jdk',
+            fixCommand: this.getJavaInstallCommand(),
             category: 'Java installation',
           });
         } else {
@@ -770,7 +785,7 @@ class ValdiDoctor {
         message: 'Java not found in PATH',
         details: 'dev_setup installs Java JDK for Android development',
         fixable: true,
-        fixCommand: os.platform() === 'darwin' ? 'brew install openjdk@17' : 'sudo apt install openjdk-17-jdk',
+        fixCommand: this.getJavaInstallCommand(),
         category: 'Java installation',
       });
     }
@@ -995,13 +1010,14 @@ class ValdiDoctor {
   private async checkGitLfsInitialization(): Promise<void> {
     // First check if git-lfs command exists
     if (!checkCommandExists('git-lfs')) {
+      const fixCommand = this.getFixCommandForDependency('git-lfs');
       this.addResult({
         name: 'Git LFS',
         status: 'warn',
         message: 'git-lfs not installed',
         details: 'Required for working with large files in the repository',
         fixable: true,
-        fixCommand: os.platform() === 'darwin' ? 'brew install git-lfs' : 'sudo apt-get install git-lfs',
+        fixCommand,
         category: 'Development tools',
       });
       return;
@@ -1105,7 +1121,7 @@ class ValdiDoctor {
       const rcContent = fs.readFileSync(rcFile, 'utf8');
       const rcLines = rcContent.split('\n');
       
-      let missingLines: string[] = [];
+      const missingLines: string[] = [];
       for (const required of requiredLines) {
         if (!rcLines.includes(required)) {
           missingLines.push(required);
@@ -1230,10 +1246,9 @@ class ValdiDoctor {
    *
    * Note: git-lfs is now checked in core dependencies with initialization verification
    *
-   * @returns Promise that resolves when framework dependency checks are complete
    * @private
    */
-  private async checkFrameworkDependencies(): Promise<void> {
+  private checkFrameworkDependencies(): void {
     // git-lfs is now checked in core with initialization verification
 
     // Platform-specific framework dependencies
@@ -1484,6 +1499,22 @@ class ValdiDoctor {
   }
 
   /**
+   * Gets the appropriate Java installation command for the current platform
+   * @private
+   */
+  private getJavaInstallCommand(): string {
+    if (os.platform() === 'darwin') {
+      return 'brew install openjdk@17';
+    } else if (os.platform() === 'linux' && this.linuxDistro) {
+      const packageMappings = getCommonPackageMappings();
+      const javaPackage = getPackageName(packageMappings['openjdk-17']!, this.linuxDistro);
+      return buildInstallCommand([javaPackage], this.linuxDistro);
+    } else {
+      return 'Install Java 17 JDK for your distribution';
+    }
+  }
+
+  /**
    * Generates platform-specific fix commands for missing dependencies.
    *
    * Provides appropriate installation commands based on the current platform
@@ -1495,30 +1526,78 @@ class ValdiDoctor {
    * @private
    */
   private getFixCommandForDependency(dep: string): string {
-    switch (dep) {
-      case 'git': {
-        return os.platform() === 'darwin' ? 'brew install git' : 'sudo apt-get install git';
+    // macOS-specific dependencies
+    if (os.platform() === 'darwin') {
+      switch (dep) {
+        case 'git': {
+          return 'brew install git';
+        }
+        case 'npm': {
+          return 'Install Node.js from https://nodejs.org (includes npm)';
+        }
+        case 'watchman': {
+          return 'brew install watchman';
+        }
+        case 'git-lfs': {
+          return 'brew install git-lfs';
+        }
+        case 'bazelisk': {
+          return 'brew install bazelisk';
+        }
+        case 'ios_webkit_debug_proxy': {
+          return 'brew install ios-webkit-debug-proxy';
+        }
+        default: {
+          return `brew install ${dep}`;
+        }
       }
+    }
+
+    // Linux dependencies with distribution detection
+    if (os.platform() === 'linux' && this.linuxDistro) {
+      const packageMappings = getCommonPackageMappings();
+
+      switch (dep) {
+        case 'git': {
+          return buildInstallCommand(['git'], this.linuxDistro);
+        }
+        case 'npm': {
+          return buildInstallCommand([getPackageName(packageMappings['npm']!, this.linuxDistro)], this.linuxDistro);
+        }
+        case 'watchman': {
+          const watchmanPkg = getPackageName(packageMappings['watchman']!, this.linuxDistro);
+          const cmd = buildInstallCommand([watchmanPkg], this.linuxDistro);
+          // Add note for RHEL-based systems
+          if (this.linuxDistro.packageManager.name === 'yum' || this.linuxDistro.packageManager.name === 'dnf') {
+            return `${cmd} (may require EPEL repository)`;
+          }
+          return cmd;
+        }
+        case 'git-lfs': {
+          return buildInstallCommand([getPackageName(packageMappings['git-lfs']!, this.linuxDistro)], this.linuxDistro);
+        }
+        case 'bazelisk': {
+          return 'valdi dev_setup';
+        }
+        case 'adb': {
+          return buildInstallCommand([getPackageName(packageMappings['adb']!, this.linuxDistro)], this.linuxDistro);
+        }
+        default: {
+          return buildInstallCommand([dep], this.linuxDistro);
+        }
+      }
+    }
+
+    // Fallback for unknown platforms or when distro detection fails
+    switch (dep) {
       case 'npm': {
         return 'Install Node.js from https://nodejs.org (includes npm)';
       }
-      case 'watchman': {
-        return os.platform() === 'darwin' ? 'brew install watchman' : 'sudo apt-get install watchman';
-      }
-      case 'git-lfs': {
-        return os.platform() === 'darwin' ? 'brew install git-lfs' : 'sudo apt-get install git-lfs';
-      }
       case 'bazelisk': {
-        return os.platform() === 'darwin' ? 'brew install bazelisk' : 'valdi dev_setup';
-      }
-      case 'ios_webkit_debug_proxy': {
-        return 'brew install ios-webkit-debug-proxy';
-      }
-      case 'adb': {
-        return 'sudo apt-get install adb';
+        return 'valdi dev_setup';
       }
       default: {
-        return os.platform() === 'darwin' ? `brew install ${dep}` : `Install ${dep}`;
+        return `Install ${dep} using your system's package manager`;
       }
     }
   }

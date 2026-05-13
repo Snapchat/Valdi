@@ -76,6 +76,39 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
         return false
     }
 
+    override fun getAnimationTransformAtIndex(index: Int): TextAnimationTransform? {
+        val scale = nativeGetAnimationScale(native.nativeHandle, index).toFloat()
+        if (scale.isNaN()) {
+            return null
+        }
+
+        return TextAnimationTransform(
+            translationY = nativeGetAnimationTranslationY(native.nativeHandle, index).toFloat(),
+            scale = scale,
+            opacity = nativeGetAnimationOpacity(native.nativeHandle, index).toFloat(),
+        )
+    }
+
+    override fun hasAnimationTransform(): Boolean {
+        val partsSize = getPartsSize()
+        for (index in 0 until partsSize) {
+            if (!nativeGetAnimationScale(native.nativeHandle, index).toFloat().isNaN()) {
+                return true
+            }
+        }
+        return false
+    }
+
+    override fun getImageAttachmentAtIndex(index: Int): ImageAttachmentInfo? {
+        val width = nativeGetImageAttachmentWidth(native.nativeHandle, index)
+        if (width <= 0) {
+            return null
+        }
+        val height = nativeGetImageAttachmentHeight(native.nativeHandle, index)
+        val imageData = nativeGetImageAttachmentData(native.nativeHandle, index)
+        return ImageAttachmentInfo(width, height, imageData)
+    }
+
     companion object {
         private const val TEXT_DECORATION_UNSET = Int.MIN_VALUE
         private const val TEXT_DECORATION_NONE = 0
@@ -96,8 +129,20 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
         @JvmStatic
         private external fun nativeGetOutlineWidth(nativeHandle: Long, index: Int): Double
         @JvmStatic
+        private external fun nativeGetAnimationTranslationY(nativeHandle: Long, index: Int): Double
+        @JvmStatic
+        private external fun nativeGetAnimationScale(nativeHandle: Long, index: Int): Double
+        @JvmStatic
+        private external fun nativeGetAnimationOpacity(nativeHandle: Long, index: Int): Double
+        @JvmStatic
         private external fun nativeGetOnTap(nativeHandle: Long, index: Int): Any?
         @JvmStatic
         private external fun nativeGetOnLayout(nativeHandle: Long, index: Int): Any?
+        @JvmStatic
+        private external fun nativeGetImageAttachmentWidth(nativeHandle: Long, index: Int): Float
+        @JvmStatic
+        private external fun nativeGetImageAttachmentHeight(nativeHandle: Long, index: Int): Float
+        @JvmStatic
+        private external fun nativeGetImageAttachmentData(nativeHandle: Long, index: Int): ByteArray?
     }
 }

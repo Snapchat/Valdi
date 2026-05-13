@@ -18,10 +18,10 @@
 #import "valdi_core/cpp/Threading/GCDDispatchQueue.hpp"
 #import "valdi_core/SCValdiScrollView.h"
 #import "valdi_core/SCValdiRootView.h"
+#import "valdi_core/UIView+ValdiBase.h"
 
-#import <SCCValdiTest/SCCValdiTestIntegrationTests.h>
-#import <SCCValdiTestTypes/SCCValdiTestViewModel.h>
-#import <SCCValdiTestTypes/SCCValdiTestContext.h>
+#import <SCCValdiTest/SCCValdiTest.h>
+#import <SCCValdiTestTypes/SCCValdiTestTypes.h>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
@@ -268,21 +268,21 @@
     rootView.frame = CGRectMake(0, 0, 400, 800);
     [rootView layoutSubviews];
 
-    [self _simulateTapOnView:rootView atLocation:CGPointMake(196, 68)];
+    [self _simulateTapOnView:rootView atLocation:CGPointMake(196, 55)];
 
     @synchronized (tappedCards) {
         XCTAssertEqual(1, tappedCards.count);
         XCTAssertEqualObjects(@(0), tappedCards[0]);
     }
 
-    [self _simulateTapOnView:rootView atLocation:CGPointMake(196, 88)];
+    [self _simulateTapOnView:rootView atLocation:CGPointMake(196, 70)];
 
     @synchronized (tappedCards) {
         XCTAssertEqual(2, tappedCards.count);
         XCTAssertEqualObjects(@(1), tappedCards[1]);
     }
 
-    [self _simulateTapOnView:rootView atLocation:CGPointMake(196, 107)];
+    [self _simulateTapOnView:rootView atLocation:CGPointMake(196, 85)];
 
     @synchronized (tappedCards) {
         XCTAssertEqual(3, tappedCards.count);
@@ -315,22 +315,22 @@
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX) direction:SCValdiLayoutDirectionLTR];
 
-        XCTAssertEqualWithAccuracy(118.67, size.width, 0.5);
-        XCTAssertEqualWithAccuracy(132.0, size.height, 0.5);
+        XCTAssertEqualWithAccuracy(85.33, size.width, 0.5);
+        XCTAssertEqualWithAccuracy(108.0, size.height, 0.5);
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(500, CGFLOAT_MAX) direction:SCValdiLayoutDirectionLTR];
 
-        XCTAssertEqualWithAccuracy(118.67, size.width, 0.5);
-        XCTAssertEqualWithAccuracy(132.0, size.height, 0.5);
+        XCTAssertEqualWithAccuracy(85.33, size.width, 0.5);
+        XCTAssertEqualWithAccuracy(108.0, size.height, 0.5);
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(80, CGFLOAT_MAX) direction:SCValdiLayoutDirectionLTR];
 
-        XCTAssertEqualWithAccuracy(77.67, size.width, 0.5);
-        XCTAssertEqualWithAccuracy(151.0, size.height, 0.5);
+        XCTAssertEqualWithAccuracy(74.0, size.width, 0.5);
+        XCTAssertEqualWithAccuracy(108.0, size.height, 0.5);
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(80, 100) direction:SCValdiLayoutDirectionLTR];
 
-        XCTAssertEqualWithAccuracy(77.67, size.width, 0.5);
+        XCTAssertEqualWithAccuracy(74.0, size.width, 0.5);
         XCTAssertEqualWithAccuracy(100.0, size.height, 0.5);
     }
 
@@ -339,18 +339,18 @@
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX) direction:SCValdiLayoutDirectionLTR];
 
-        XCTAssertEqualWithAccuracy(118.67, size.width, 0.5);
-        XCTAssertEqualWithAccuracy(132.0, size.height, 0.5);
+        XCTAssertEqualWithAccuracy(85.33, size.width, 0.5);
+        XCTAssertEqualWithAccuracy(108.0, size.height, 0.5);
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(500, CGFLOAT_MAX) direction:SCValdiLayoutDirectionLTR];
 
         XCTAssertEqualWithAccuracy(500.0, size.width, 0.5);
-        XCTAssertEqualWithAccuracy(132.0, size.height, 0.5);
+        XCTAssertEqualWithAccuracy(108.0, size.height, 0.5);
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(80, CGFLOAT_MAX) direction:SCValdiLayoutDirectionLTR];
 
         XCTAssertEqualWithAccuracy(80.0, size.width, 0.5);
-        XCTAssertEqualWithAccuracy(151.0, size.height, 0.5);
+        XCTAssertEqualWithAccuracy(108.0, size.height, 0.5);
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(80, 100) direction:SCValdiLayoutDirectionLTR];
 
@@ -529,7 +529,7 @@
 // clearCaches should only trigger if there were no recent calls to postprocessImage
 //
 // Make multiple calls to rasterizeImage (through postprocessImage) and check:
-// 1) clearCaches was called at least once 
+// 1) clearCaches was called at least once
 // 2) clearCaches call count is less than rasterizeImage call count
 - (void)testClearCIContextCache
 {
@@ -565,7 +565,7 @@
         queueRef->sync(dispatchFn);
         // Simulate a delay between continuous rasterizeImage calls
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    }    
+    }
 
     // Wait for arbitrary time period longer than rasterizeImage's clear threshold
     // It is not necessary (nor should it be possible) for enter/leave count to match
@@ -586,6 +586,82 @@
     UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
     UIGraphicsEndImageContext();
     return image;
+}
+
+- (void)testInvokeWithJSRuntimeProvider
+{
+    XCTestExpectation *expectation = [self expectationWithDescription:@"invokeWithJSRuntimeProvider completes"];
+    
+    // Use getRuntimeUsingBatch:NO so we're not inside executeMainThreadBatch. Otherwise the runtime
+    // may run the dispatched block synchronously on the main thread (ScheduleTypeDefault), and with
+    // async_strict_mode the resolution (functionWithJSRuntime:) would assert for being on main thread.
+    [self getRuntimeUsingBatch:NO withBlock:^(id<SCValdiRuntimeProtocol> runtime) {
+        // Test the new invokeWithJSRuntimeProvider method
+        [SCCValdiTestMakeTestObject invokeWithJSRuntimeProvider:^id<SCValdiJSRuntime> {
+            return [runtime jsRuntime];
+        } completionHandler:^(id<SCCValdiTestITestObject> testObject) {
+            XCTAssertNotNil(testObject, @"Test object should not be nil");
+            
+            // Test that the object works and returns correct values
+            double result1 = [testObject addWithValue:10.0];
+            XCTAssertEqual(result1, 10.0, @"First add should return 10");
+            
+            double result2 = [testObject addWithValue:32.0];
+            XCTAssertEqual(result2, 42.0, @"Second add should return 42 (10 + 32)");
+            
+            [expectation fulfill];
+        }];
+    }];
+    
+    [self waitForExpectations:@[expectation] timeout:5.0];
+}
+
+- (void)testResolvingExportedFunctionOnMainThreadTriggersAssertionFailure
+{
+    // valdi_test has async_strict_mode enabled. Resolving (functionWithJSRuntime:) from the main thread
+    // must trigger an assertion (to avoid ANRs). NSAssert raises NSInternalInconsistencyException.
+    XCTestExpectation *expectation = [self expectationWithDescription:@"resolution from main thread triggers assertion"];
+    __block id<SCValdiRuntimeProtocol> capturedRuntime = nil;
+
+    [self getRuntimeWithBlock:^(id<SCValdiRuntimeProtocol> runtime) {
+        capturedRuntime = runtime;
+    }];
+
+    XCTAssertNotNil(capturedRuntime);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @try {
+            (void)[SCCValdiTestMakeTestObject functionWithJSRuntime:[capturedRuntime jsRuntime]];
+            XCTFail(@"Expected resolution from main thread to trigger an assertion (NSInternalInconsistencyException)");
+        } @catch (NSException *exception) {
+            XCTAssertTrue([exception.name isEqualToString:NSInternalInconsistencyException],
+                         @"Expected NSInternalInconsistencyException, got %@", exception.name);
+            [expectation fulfill];
+        }
+    });
+
+    [self waitForExpectations:@[expectation] timeout:5.0];
+}
+
+- (void)testPrepareForPoolReuseResetsTransform
+{
+    // valdi_prepareForPoolReuse is called unconditionally by the pool infrastructure
+    // on every recycled view. Verify it resets a stale CALayer transform — the
+    // scenario that occurs when a transform animation is cancelled mid-flight:
+    // the Valdi animation system sets the model value to the target before the
+    // CAAnimation starts, so cancellation snaps the layer to that model value.
+    UIView *view = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 200, 44)];
+    view.layer.transform = CATransform3DMakeTranslation(-216, 0, 0);
+    XCTAssertFalse(CATransform3DIsIdentity(view.layer.transform));
+
+    [view valdi_prepareForPoolReuse];
+
+    XCTAssertTrue(CATransform3DIsIdentity(view.layer.transform));
+}
+
+- (void)testLabelAllowsPoolReentry
+{
+    SCValdiLabel *label = [[SCValdiLabel alloc] initWithFrame:CGRectMake(0, 0, 200, 44)];
+    XCTAssertTrue([label willEnqueueIntoValdiPool]);
 }
 
 @end

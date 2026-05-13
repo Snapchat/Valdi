@@ -1581,4 +1581,28 @@ function onRender(viewModel: ViewModel) {
     `;
     expect(result).toBe(sanitize(expected));
   });
+  it('emits setAttributeString for custom-view androidClass and webClass', () => {
+    const result = compile(`
+    const AC = 'com.example.FooView';
+    const WC = 'WebFooView';
+    <custom-view androidClass={AC} webClass={WC} width="100%" height={120}/>
+    `);
+    expect(result).toContain("__Renderer.setAttributeString('androidClass', AC)");
+    expect(result).toContain("__Renderer.setAttributeString('webClass', WC)");
+    expect(result).toContain("makeNodePrototype('custom-view'");
+  });
+
+  it('emits setAttributeString for all custom-view class attrs (androidClass, iosClass, macosClass, webClass)', () => {
+    const result = compile(`
+    const AC = 'com.snap.modules.valdi_polyglot.FilePickerView';
+    const IC = 'SCFilePickerView';
+    const MC = 'SCFilePickerView';
+    const WC = 'ValdiPolyglotFilePicker';
+    <custom-view androidClass={AC} iosClass={IC} macosClass={MC} webClass={WC} width="100%" height={120}/>
+    `);
+    expect(result).toContain("__Renderer.setAttributeString('androidClass', AC)");
+    expect(result).toContain("__Renderer.setAttributeString('iosClass', IC)");
+    expect(result).toContain("__Renderer.setAttributeString('macosClass', MC)");
+    expect(result).toContain("__Renderer.setAttributeString('webClass', WC)");
+  });
 });

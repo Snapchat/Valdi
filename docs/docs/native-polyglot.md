@@ -3,6 +3,7 @@
 ## Introduction
 
 Polyglot modules are a special kind of Valdi modules that expose a TypeScript API backed by a foreign language implementation, like Objective-C, Swift, C++, Java or Kotlin. When a regular Valdi module depends on a polyglot module, it will also depend on its implementation in the separate language. Some example of usecases for polyglot modules include:
+
 - Exposing a third party library written in another language like C into TypeScript.
 - Providing a more optimized implementation of a function or module in another language.
 - Implementing some functionality that requires access to dependencies that are not currently visible by TypeScript.
@@ -10,6 +11,7 @@ Polyglot modules are a special kind of Valdi modules that expose a TypeScript AP
 ## Implementing a polyglot module
 
 A polyglot module has two key components:
+
 - It has some part of the TypeScript type definition implemented in a separate language.
 - Its `valdi_module()` Bazel target in the `BUILD.bazel` depends on user defined Android, iOS or native dependencies.
 
@@ -18,6 +20,7 @@ A regular Valdi module can be turned into a polyglot module at any time. We will
 ### TypeScript definition
 
 We start by declaring the TypeScript API of the module for which we want an implementation in a foreign language:
+
 ```ts
 /* @ExportModule */
 
@@ -26,20 +29,22 @@ export const DEFAULT_DELIMITER: string;
 export function join(components: string[], delimiter: string): string;
 ```
 
-The `@ExportModule` annotation tells the Valdi compiler to generate Objective-C and Kotlin bindings that will help with implementing the module. Note that the file needs to be a TypeScript definition (`.d.ts` file), at `my_module/src/Joiner.d.ts` for instance.
+The `@ExportModule` annotation tells the Valdi compiler to generate Objective-C, Swift, and Kotlin bindings that will help with implementing the module. Note that the file needs to be a TypeScript definition (`.d.ts` file), at `my_module/src/Joiner.d.ts` for instance.
 
 ### Bazel file
 
 The `valdi_module` Bazel rule that is used for defining Valdi modules exports three properties that can be used to help writing a polyglot modules:
+
 - `android_deps`: Defines a list of `android_library` dependencies, implemented in a JVM language, that will be built and included on an Android build. This can be used to add a JVM based implementation when targeting Android.
 - `ios_deps`: Defines a list of `apple_library` or `cc_library` dependencies, implemented in a native language like Objective-C, Swift, and will be built and included on an iOS build. This can be used to add a native implementation when targeting iOS.
 - `native_deps`: Defines a list of `cc_library` dependencies, implemented in a native cross-platform language like C++, and will be built and included on all platforms like iOS, Android or Desktop. This can be used to add a native and cross-platform implementation.
 
-In a typical implementation, either `native_deps` is used, or `android_deps` and `ios_deps`  are used. If the implementation is native cross-platform, like when writing bindings for a native library like `zstd`, `native_deps` would be used. If the implementation is platform dependent, like when writing bindings for a Camera API, `android_deps` and `ios_deps` would be used.
+In a typical implementation, either `native_deps` is used, or `android_deps` and `ios_deps` are used. If the implementation is native cross-platform, like when writing bindings for a native library like `zstd`, `native_deps` would be used. If the implementation is platform dependent, like when writing bindings for a Camera API, `android_deps` and `ios_deps` would be used.
 
 ### iOS implementation
 
 We start by adding a `objc_library` target in the `BUILD.bazel` file of the module, which will contain the iOS specific implementation of the polyglot module:
+
 ```python
 objc_library(
     name = "my_module_ios_impl",
@@ -59,6 +64,7 @@ objc_library(
 ```
 
 The implementation target will need to be referenced as `ios_deps` on the `valdi_module` target of the `BUILD.bazel` representing the module:
+
 ```python
 valdi_module(
     name = "my_module",
@@ -70,6 +76,7 @@ valdi_module(
 ```
 
 We then write an Objective-C implementation file:
+
 ```objc
 #import "valdi_core/SCValdiModuleFactoryRegistry.h"
 #import <SCCMyModuleTypes/SCCMyModuleTypes.h>
@@ -122,6 +129,7 @@ That's it! When TypeScript imports the `.d.ts` file, on iOS the `onLoadModule` o
 ### Android implementation
 
 We start by adding a `valdi_android_library` target in the `BUILD.bazel` file of the module, which will contain the Android specific implementation of the polyglot module:
+
 ```python
 load("//bzl/valdi:valdi_android_library.bzl", "valdi_android_library")
 
@@ -141,6 +149,7 @@ valdi_android_library(
 ```
 
 The implementation target will need to be referenced as `android_deps` on the `valdi_module` target of the `BUILD.bazel` representing the module:
+
 ```python
 valdi_module(
     name = "my_module",
@@ -152,6 +161,7 @@ valdi_module(
 ```
 
 We then write a Kotlin implementation file:
+
 ```kotlin
 package com.snap.valdi.modules.my_module
 
@@ -184,6 +194,7 @@ That's it! When TypeScript imports the `.d.ts` file, on Android the `onLoadModul
 ### C++ implementation
 
 We start by adding a `cc_library` target in the `BUILD.bazel` file of the module, which will contain the native implementation of the polyglot module:
+
 ```python
 cc_library(
     name = "my_module_native_impl",
@@ -193,15 +204,15 @@ cc_library(
     # Required for automatic registration of the module into the Valdi runtime
     alwayslink = 1,
     deps = [
-        # Depend on the generated Kotlin API of the module
-        # Depend on the Valdi runtime
-        "@valdi//valdi_core"
+        # Depend on the generated C++ API of the module
+        ":my_module_cpp",
     ],
 )
 
 ```
 
 The implementation target will need to be referenced as `native_deps` on the `valdi_module` target of the `BUILD.bazel` representing the module:
+
 ```python
 valdi_module(
     name = "my_module",
@@ -213,51 +224,40 @@ valdi_module(
 We then write a C++ implementation file. The Valdi compiler does not yet support C++ codegen, so unfortunately the bindings currently have to be hand written in C++:
 
 ```c++
-#include "valdi_core/cpp/JavaScript/ModuleFactoryRegistry.hpp"
-#include "valdi_core/cpp/Utils/ValueFunctionWithCallable.hpp"
-#include "valdi_core/cpp/Utils/ValueArray.hpp"
+#include "valdi_modules/my_module/my_module.hpp"
 
 using namespace Valdi;
 
-namespace snap::valdi::my_module {
+namespace snap::valdi_modules::my_module {
 
-class MyJoinerModule: public ModuleFactory {
+class JoinerModuleFactoryImpl: public JoinerModuleFactory {
 public:
-    MyJoinerModule() = default;
-    ~MyJoinerModule() override = default;
+    JoinerModuleFactoryImpl() = default;
+    ~JoinerModuleFactoryImpl() override = default;
 
-    StringBox getModulePath() final {
-        // Return the import path at the TypeScript level where this module should be made available.
-        return StringBox::fromCString("my_module/src/Joiner");
-    }
+    Ref<JoinerModule> onLoadModule() final {
+        class JoinerModuleImpl: public JoinerModule {
+        public:
+            JoinerModuleImpl() = default;
+            ~JoinerModuleImpl() override = default;
 
-    Value loadModule() final {
-        // Valdi compiler does not yet support C++ codegen, so unfortunately
-        // the bindings currently have to be hand written.
-        return Value()
-            .setMapValue("DEFAULT_DELIMITER", Value(" "))
-            .setMapValue("join", Value(makeShared<ValueFunctionWithCallable>([](const ValueFunctionCallContext& callContext) -> Value {
-                auto components = callContext.getParameterAsArray(0);
-                auto delimiter = callContext.getParameterAsString(1);
+            StringBox DEFAULT_DELIMITER() final {
+                return StringBox::fromCString(" ");
+            }
 
-                std::vector<StringBox> componentsStr;
-                for (const auto &c: components) {
-                  componentsStr.emplace_back(c.toStringBox());
-                }
+            StringBox join(const std::vector<StringBox> &components, const StringBox &delimiter) final {
+                return StringBox::join(components, delimiter);
+            }
+        };
 
-                return Value(StringBox::join(componentsStr, delimiter));
-            })));
+        return makeShared<JoinerModuleImpl>();
     }
 };
 
 // Register our module to the Valdi runtime
-RegisterModuleFactory kRegisterModule([]() {
-    return std::make_shared<MyJoinerModule>();
-});
+auto kRegisterModule = RegisterModuleFactory::registerTyped<MyJoinerModule>();
 
 }
 ```
 
 That's it! When TypeScript imports the `.d.ts` file, on all platforms the `loadModule()` of `MyJoinerModule` will be called, which will return the module instance that backs the implementation of the module.
-
-

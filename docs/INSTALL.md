@@ -1,5 +1,7 @@
 # Getting Started with Valdi
 
+> **Install the Valdi CLI from npm.** This guide assumes you install the CLI with `npm install -g @snap/valdi`. If you are contributing to Valdi itself, see [DEV_SETUP.md](DEV_SETUP.md) instead.
+
 This guide will help you set up your development environment and get started with your first project.
 
 ## Prerequisites
@@ -22,7 +24,7 @@ That's it! The `valdi dev_setup` command handles all other dependencies automati
 - Android SDK command-line tools
 - Git LFS
 - Watchman
-- And more...
+- Shell autocomplete, JDK symlink (macOS), Android env vars, and platform-specific extras (e.g. ios-webkit-debug-proxy on macOS; adb, zlib/fontconfig dev libs on Linux)
 
 > [!TIP]
 > For manual installation details, see the [macOS](./setup/macos_setup.md) or [Linux](./setup/linux_setup.md) reference guides.

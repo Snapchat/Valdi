@@ -12,6 +12,8 @@
 
 #import "valdi/runtime/Interfaces/IViewTransaction.hpp"
 
+#include <vector>
+
 namespace ValdiIOS {
 
 class ViewTransaction : public Valdi::IViewTransaction {
@@ -68,7 +70,12 @@ public:
 
     void cancelAnimator(const Valdi::Ref<Valdi::Animator>& animator) override;
 
+    void scheduleOnNextDraw(const Valdi::Ref<Valdi::View>& rootView, Valdi::DispatchFunction callback) override;
+
     void executeInTransactionThread(Valdi::DispatchFunction executeFn) override;
+
+private:
+    std::vector<Valdi::DispatchFunction> _pendingOnNextDrawCallbacks;
 };
 
 } // namespace ValdiIOS

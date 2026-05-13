@@ -1,7 +1,6 @@
 # Linux Setup Reference Guide
 
-> [!TIP]
-> **Most users should use `valdi dev_setup` instead!** This guide is a reference for manual installation or troubleshooting. The `valdi dev_setup` command automatically handles all of these steps.
+> **Get the CLI from npm:** `npm install -g @snap/valdi`. Then run `valdi dev_setup` for automated setup. This guide is a reference for manual installation or troubleshooting only.
 
 ## About
 
@@ -17,13 +16,13 @@ curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.s
 
 ## apt-get install dependencies
 
+On Debian/Ubuntu, install the same dependencies that `valdi dev_setup` would use:
+
 ```
-apt-get install npm openjdk-17-jdk git-lfs libfontconfig1-dev
+apt-get install npm openjdk-17-jdk git-lfs watchman adb libfontconfig1-dev zlib1g-dev
 ```
 
-## Install watchman
-
-Watchman is available via apt-get and will be installed with other dependencies.
+(On other distros, use the equivalent packages: e.g. RHEL/Fedora use `java-17-openjdk-devel`, `android-tools`, `fontconfig-devel`, `zlib-devel`. The CLI detects your distro and installs the right packages.)
 
 ## Install bazel
 
@@ -76,7 +75,7 @@ source ~/.bashrc
 
 # Next steps
 
-[Valdi setup](https://github.com/Snapchat/Valdi/blob/main/docs/INSTALL.md#valdi-setup)
+[Installation guide](../INSTALL.md#installation)
 
 ## Troubleshooting
 
