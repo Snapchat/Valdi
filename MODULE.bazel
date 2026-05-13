@@ -53,6 +53,7 @@ register_toolchains(
     "@rules_android//toolchains/android_sdk:all",
 )
 register_toolchains("@androidsdk//:sdk-toolchain", "@androidsdk//:all")
+register_toolchains("//:legacy_android_sdk_toolchain")
 
 android_ndk_repository_extension = use_extension("@rules_android_ndk//:extension.bzl", "android_ndk_repository_extension")
 use_repo(android_ndk_repository_extension, "androidndk")
@@ -62,7 +63,12 @@ register_toolchains("@androidndk//:all")
 bazel_dep(name = "rules_kotlin", version = "1.9.0")
 single_version_override(
     module_name = "rules_kotlin",
-    patches = ["@valdi//registry/modules/rules_kotlin/1.9.0/patches:rules_kotlin.patch"],
+    version = "1.9.5",
+    patches = [
+        "@valdi//registry/modules/rules_kotlin/1.9.0/patches:rules_kotlin.patch",
+        "@valdi//registry/modules/rules_kotlin/1.9.0/patches:rules_kotlin_android_sdk.patch",
+        "@valdi//registry/modules/rules_kotlin/1.9.0/patches:rules_kotlin_module_bzl.patch",
+    ],
 )
 bazel_dep(name = "rules_jvm_external", version = "6.2")
 

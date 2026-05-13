@@ -7,6 +7,7 @@ on:
       - '**/BUILD.bazel'
       - '**/BUILD'
       - 'MODULE.bazel'
+      - 'registry/**'
       - 'tools/ci/**'
       - 'npm_modules/cli/test/**'
       - '.github/workflows/bzl-changes.yml'
@@ -26,6 +27,7 @@ on:
       - '**/BUILD.bazel'
       - '**/BUILD'
       - 'MODULE.bazel'
+      - 'registry/**'
       - 'tools/ci/**'
       - 'npm_modules/cli/test/**'
       - '.github/workflows/bzl-changes.yml'
@@ -161,8 +163,8 @@ jobs:
           yes | sdkmanager --licenses || true
           sdkmanager "platforms;android-36"
           sdkmanager "build-tools;34.0.0"
-          sdkmanager "ndk;23.0.7599858"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/23.0.7599858" >> $GITHUB_ENV
+          sdkmanager "ndk;28.0.13004108"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.13004108" >> $GITHUB_ENV
 
       - name: Setup Bazel
         run: |

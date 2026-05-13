@@ -268,21 +268,21 @@
     rootView.frame = CGRectMake(0, 0, 400, 800);
     [rootView layoutSubviews];
 
-    [self _simulateTapOnView:rootView atLocation:CGPointMake(196, 55)];
+    [self _simulateTapOnView:rootView atLocation:CGPointMake(196, 62)];
 
     @synchronized (tappedCards) {
         XCTAssertEqual(1, tappedCards.count);
         XCTAssertEqualObjects(@(0), tappedCards[0]);
     }
 
-    [self _simulateTapOnView:rootView atLocation:CGPointMake(196, 70)];
+    [self _simulateTapOnView:rootView atLocation:CGPointMake(196, 79)];
 
     @synchronized (tappedCards) {
         XCTAssertEqual(2, tappedCards.count);
         XCTAssertEqualObjects(@(1), tappedCards[1]);
     }
 
-    [self _simulateTapOnView:rootView atLocation:CGPointMake(196, 85)];
+    [self _simulateTapOnView:rootView atLocation:CGPointMake(196, 97)];
 
     @synchronized (tappedCards) {
         XCTAssertEqual(3, tappedCards.count);
@@ -315,18 +315,18 @@
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX) direction:SCValdiLayoutDirectionLTR];
 
-        XCTAssertEqualWithAccuracy(85.33, size.width, 0.5);
-        XCTAssertEqualWithAccuracy(108.0, size.height, 0.5);
+        XCTAssertEqualWithAccuracy(108.67, size.width, 0.5);
+        XCTAssertEqualWithAccuracy(122.33, size.height, 0.5);
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(500, CGFLOAT_MAX) direction:SCValdiLayoutDirectionLTR];
 
-        XCTAssertEqualWithAccuracy(85.33, size.width, 0.5);
-        XCTAssertEqualWithAccuracy(108.0, size.height, 0.5);
+        XCTAssertEqualWithAccuracy(108.67, size.width, 0.5);
+        XCTAssertEqualWithAccuracy(122.33, size.height, 0.5);
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(80, CGFLOAT_MAX) direction:SCValdiLayoutDirectionLTR];
 
         XCTAssertEqualWithAccuracy(74.0, size.width, 0.5);
-        XCTAssertEqualWithAccuracy(108.0, size.height, 0.5);
+        XCTAssertEqualWithAccuracy(122.33, size.height, 0.5);
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(80, 100) direction:SCValdiLayoutDirectionLTR];
 
@@ -339,18 +339,18 @@
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX) direction:SCValdiLayoutDirectionLTR];
 
-        XCTAssertEqualWithAccuracy(85.33, size.width, 0.5);
-        XCTAssertEqualWithAccuracy(108.0, size.height, 0.5);
+        XCTAssertEqualWithAccuracy(108.67, size.width, 0.5);
+        XCTAssertEqualWithAccuracy(122.33, size.height, 0.5);
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(500, CGFLOAT_MAX) direction:SCValdiLayoutDirectionLTR];
 
         XCTAssertEqualWithAccuracy(500.0, size.width, 0.5);
-        XCTAssertEqualWithAccuracy(108.0, size.height, 0.5);
+        XCTAssertEqualWithAccuracy(122.33, size.height, 0.5);
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(80, CGFLOAT_MAX) direction:SCValdiLayoutDirectionLTR];
 
         XCTAssertEqualWithAccuracy(80.0, size.width, 0.5);
-        XCTAssertEqualWithAccuracy(108.0, size.height, 0.5);
+        XCTAssertEqualWithAccuracy(122.33, size.height, 0.5);
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(80, 100) direction:SCValdiLayoutDirectionLTR];
 
