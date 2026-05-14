@@ -1,22 +1,43 @@
 #include "TestDataUtils.hpp"
 #include "valdi_core/cpp/Utils/DiskUtils.hpp"
+#include <initializer_list>
 #include <unistd.h>
 
 using namespace Valdi;
 
 namespace snap::drawing {
 
-Path resolveTestPath(const std::string& path) {
+namespace {
+
+constexpr const char* kTestDataSubDir = "snap_drawing/testdata";
+
+Path resolveRunfilesTestPath(std::initializer_list<const char*> subDirsToCheck) {
     char cwdBuffer[PATH_MAX];
     (void)::getcwd(cwdBuffer, PATH_MAX);
 
-    auto basePath = Path(cwdBuffer);
+    auto cwdPath = Path(cwdBuffer);
+    Path basePath;
 
-    basePath.append("../+local_repos+valdi/snap_drawing/testdata");
-    basePath.append(path);
-    basePath.normalize();
+    for (const auto& subDir : subDirsToCheck) {
+        basePath = cwdPath;
+        basePath.append(subDir);
+        basePath.append(kTestDataSubDir);
+        basePath.normalize();
+
+        if (DiskUtils::isDirectory(basePath)) {
+            return basePath;
+        }
+    }
 
     return basePath;
+}
+
+} // namespace
+
+Path resolveTestPath(const std::string& path) {
+    auto testPath = resolveRunfilesTestPath({".", "../+local_repos+valdi"});
+    testPath.append(path);
+    return testPath;
 }
 
 Valdi::Result<Valdi::BytesView> getTestData(const std::string& filename) {
