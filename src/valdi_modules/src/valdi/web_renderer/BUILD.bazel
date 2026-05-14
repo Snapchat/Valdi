@@ -19,6 +19,8 @@ valdi_module(
             "src/**/*.tsx",
             "src/**/*.js",
             "src/**/*.d.ts",
+            "test/**/*.ts",
+            "test/**/*.tsx",
         ],
     ),
     res = glob([
@@ -30,6 +32,7 @@ valdi_module(
     ]),
     visibility = ["//visibility:public"],
     deps = [
+        "@valdi//src/valdi_modules/src/valdi/jasmine",
         "@valdi//src/valdi_modules/src/valdi/valdi_core",
         "@valdi//src/valdi_modules/src/valdi/valdi_tsx",
     ],

@@ -18,7 +18,7 @@ if (!runfiles) {
 // Try multiple possible runfiles paths (local workspace vs external workspace referencing valdi)
 const possiblePaths = [
   path.join(runfiles, 'valdi/src/valdi_modules/src/valdi/valdi_protobuf/node_modules'), // Local valdi workspace
-  path.join(runfiles, '_main~local_repos~valdi/src/valdi_modules/src/valdi/valdi_protobuf/node_modules'), // External workspace referencing valdi
+  path.join(runfiles, '+local_repos+valdi/src/valdi_modules/src/valdi/valdi_protobuf/node_modules'), // External workspace referencing valdi
 ];
 
 let nodeModulesPath = null;

@@ -1,7 +1,6 @@
 # HelloWorld Standalone App - Integration Test for valdi_exported_library
 
-load("@android_macros//:android.bzl", "android_binary")
-load("@rules_android//rules:rules.bzl", "aar_import")
+load("@rules_android//rules:rules.bzl", "aar_import", "android_binary")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 load("//bzl:expand_template.bzl", "expand_template")
 

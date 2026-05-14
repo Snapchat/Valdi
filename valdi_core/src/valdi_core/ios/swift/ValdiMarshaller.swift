@@ -53,7 +53,8 @@ public class ValdiFunction {
         } else if let functionRef {
             return SwiftValdiMarshaller_CallFunction(functionRef, marshaller.marshallerCpp, sync)
         } else {
-            fatalError("ValdiFunction was not initialized with a callable or functionRef")
+            marshaller.setError("ValdiFunction was not initialized with a callable or functionRef")
+            return false
         }
     }
 }
@@ -103,7 +104,6 @@ open class ValdiMarshaller {
     public func checkError() throws {
         if SwiftValdiMarshaller_CheckError(marshallerCpp) {
             guard let cfString = SwiftValdiMarshaller_GetError(marshallerCpp) else {
-                try checkError()
                 throw ValdiError.runtimeError("ValdiMarshaller.checkError unknown error")
             }
             let error = cfStringToString(cfString)
@@ -366,7 +366,11 @@ open class ValdiMarshaller {
 
     public func getObjCObject<T>(_ index: Int) throws -> T {
         if let objcType = T.self as? SCValdiMarshallable.Type {
-            return SCValdiMarshallableObjectUnmarshall(OpaquePointer(marshallerCpp), index, objcType) as! T
+            if let instance = SCValdiMarshallableObjectUnmarshall(OpaquePointer(marshallerCpp), index, objcType) as? T {
+                return instance               
+            } else {
+                throw ValdiError.runtimeError("Proxy object is not of type \(T.self)")
+            }
         }
         else {
             throw ValdiError.runtimeError("Not a marshallable object \(T.self)")
@@ -393,12 +397,12 @@ open class ValdiMarshaller {
             return try getData(index) as! T
         case let enumType as any ValdiMarshallableEnum.Type:
             return try enumType.init(from: self, at: index) as! T
-        case let mashallableType as ValdiMarshallableObject.Type:
-            return try mashallableType.init(from: self, at: index) as! T
+        case let marshallableType as ValdiMarshallableObject.Type:
+            return try marshallableType.init(from: self, at: index) as! T
         case let objcType as SCValdiMarshallable.Type:
             return SCValdiMarshallableObjectUnmarshall(OpaquePointer(marshallerCpp), index, objcType) as! T
         default:
-            fatalError("getGenericTypeParameter<\(String(describing: T.self))>(): Object is not marshallable")
+            throw ValdiError.runtimeError("getGenericTypeParameter<\(String(describing: T.self))>(): Type is not marshallable")
         }
     }
     // primitive getters
@@ -560,7 +564,7 @@ open class ValdiMarshaller {
         case let objcValue as SCValdiMarshallable:
             return try pushObjCObject(objcValue)
         default:
-            fatalError("pushGenericTypeParameter<\(String(describing: T.self))>(): Object is not marshallable")
+            throw ValdiError.runtimeError("pushGenericTypeParameter<\(String(describing: T.self))>(): Object is not marshallable")
         }
     }
 
@@ -964,31 +968,47 @@ open class ValdiMarshaller {
     /// - Returns: Index of the value
     /// - Throws: If the value is not a supported type
     public func pushUntyped(_ value: Any?) throws -> Int {
-        if value == nil {
+        switch value {
+        case nil:
             return pushNull()
-        } else if value is Bool {
-            return pushBool(value as! Bool)
-        } else if value is Int32 {
-            return pushInt(value as! Int32)
-        } else if (value is Int64 || value is Int) {
-            return pushLong(value as! Int64)
-        } else if value is Double {
-            return pushDouble(value as! Double)
-        } else if value is String {
-            return pushString(value as! String)
-        } else if value is Data {
-            return pushData(value as! Data)
-        } else if value is [String: Any] {
-            return try pushUntypedMap(value as! [String: Any?])
-        } else if value is [Any] {
-            return try pushArray(value as! [Any]) {
-                try pushUntyped($0)
-            }
-        } else if value is ValdiMarshallableObject {
-            let valueObj = value as! ValdiMarshallableObject
-            return try valueObj.push(to: self)
+            
+        case let boolValue as Bool:
+            return pushBool(boolValue)
+            
+        case let int32Value as Int32:
+            return pushInt(int32Value)
+            
+        case let int64Value as Int64:
+            return pushLong(int64Value)
+            
+        case let intValue as Int:
+            // Safely converts Int to Int64 instead of force-casting
+            return pushLong(Int64(intValue))
+            
+        case let doubleValue as Double:
+            return pushDouble(doubleValue)
+            
+        case let stringValue as String:
+            return pushString(stringValue)
+            
+        case let dataValue as Data:
+            return pushData(dataValue)
+            
+        case let mapValue as [String: Any?]:
+            // Casts map values to Optional to match your original signature
+            return try pushUntypedMap(mapValue)
+            
+        case let arrayValue as [Any?]:
+            return try pushArray(arrayValue) { try pushUntyped($0) }
+            
+        case let marshallableObj as ValdiMarshallableObject:
+            return try marshallableObj.push(to: self)
+            
+        default:
+            // Added the type to the error message to make debugging easier
+            let typeName = type(of: value)
+            throw ValdiError.runtimeError("Pushing unsupported type to marshaller: \(typeName)")
         }
-        throw ValdiError.runtimeError("Pushing unsupported type to marshaller")
     }
 }
 

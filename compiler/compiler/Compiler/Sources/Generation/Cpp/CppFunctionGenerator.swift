@@ -36,6 +36,8 @@ final class CppFunctionGenerator {
 
         generator.header.includeSection.addInclude(path: "valdi_core/cpp/Marshalling/CppGeneratedExportedFunction.hpp")
         generator.header.includeSection.addInclude(path: "valdi_core/cpp/Utils/Result.hpp")
+        generator.header.includeSection.addInclude(path: "valdi_core/cpp/Utils/Shared.hpp")
+        generator.header.includeSection.addInclude(path: "valdi_core/cpp/Utils/ValueTypedObject.hpp")
         generator.impl.includeSection.addInclude(path: "valdi_core/cpp/Marshalling/CppGeneratedExportedFunctionUtils.hpp")
         generator.impl.includeSection.addInclude(path: cppType.includePath)
 
@@ -46,9 +48,12 @@ final class CppFunctionGenerator {
         generator.header.forwardDeclarations.addForwardDeclaration(typeReference: CPPTypeReference(declaration:
                                                                                                     CPPTypeDeclaration(namespace: CPPNamespace(components: ["snap", "valdi_core"]), name: "JSRuntimeNativeObjectsManager", symbolType: .class),
                                                                                                    typeArguments: nil))
+        generator.header.forwardDeclarations.addForwardDeclaration(typeReference: CPPTypeReference(declaration:
+                                                                                                    CPPTypeDeclaration(namespace: CPPNamespace(components: ["Valdi"]), name: "RegisteredCppGeneratedClass", symbolType: .class),
+                                                                                                   typeArguments: nil))
 
         let property = ValdiModelProperty(name: exportedFunction.functionName,
-                                          type: .function(parameters: exportedFunction.parameters, returnType: exportedFunction.returnType, isSingleCall: false, shouldCallOnWorkerThread: false),
+                                          type: .function(parameters: exportedFunction.parameters, returnType: exportedFunction.returnType, isSingleCall: false, shouldCallOnWorkerThread: false, allowSyncCall: exportedFunction.allowSyncCall),
                                           comments: exportedFunction.comments,
                                           omitConstructor: nil,
                                           injectableParams: .empty)
@@ -60,7 +65,7 @@ final class CppFunctionGenerator {
 
         let schemaWriter = CppSchemaWriter(typeParameters: nil, generator: generator)
 
-        try schemaWriter.appendClass(cppType.declaration.name, properties: [property])
+        try schemaWriter.appendClass(cppType.declaration.name, properties: [property], asyncStrictMode: bundleInfo.asyncStrictMode)
 
         let allTypeArguments = ([returnTypeParser] + parameterTypeParsers).map { $0.typeNameResolver.resolve(self.cppType.declaration.namespace) }.joined(separator: ", ")
 
@@ -87,22 +92,38 @@ final class CppFunctionGenerator {
             class \(className): public Valdi::CppGeneratedExportedFunction<\(allTypeArguments)> {
             public:
                 using CppGeneratedExportedFunction<\(allTypeArguments)>::CppGeneratedExportedFunction;
-            
+
                 /**
                 * Resolve the function from the given JS runtime. If the native objects manager is provided,
-                * emitted native objects will be associated with the given manager, otherwise they will be 
+                * emitted native objects will be associated with the given manager, otherwise they will be
                 * associated with the global native objects manager and only be cleaned up on JS GC.
                 */
                 static Valdi::Result<\(className)> resolve(snap::valdi_core::JSRuntime &jsRuntime, const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager);
+
+                /**
+                * Resolve the function as a ValueTypedObject without C++ type instantiation.
+                * Useful for bridging scenarios where only the typed schema representation is needed.
+                */
+                static Valdi::Result<Valdi::Ref<Valdi::ValueTypedObject>> resolveAsTypedObject(snap::valdi_core::JSRuntime &jsRuntime, const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager);
+
+                static Valdi::RegisteredCppGeneratedClass& registeredSchema();
             };
 
             """)
 
         generator.impl.body.appendBody("""
-            
-            Valdi::Result<\(className)> \(className)::resolve(snap::valdi_core::JSRuntime &jsRuntime, const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager) {
+
+            Valdi::RegisteredCppGeneratedClass& \(className)::registeredSchema() {
                 static auto *kSchema = Valdi::CppGeneratedExportedFunctionUtils::registerFunctionSchema(\(registerSchemaParameters.joined(separator: ", ")));
-                return Valdi::CppGeneratedExportedFunctionUtils::resolve<\(className)>(jsRuntime, nativeObjectsManager, "\(bundleInfo.name)/\(modulePath)", *kSchema);
+                return *kSchema;
+            }
+
+            Valdi::Result<\(className)> \(className)::resolve(snap::valdi_core::JSRuntime &jsRuntime, const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager) {
+                return Valdi::CppGeneratedExportedFunctionUtils::resolve<\(className)>(jsRuntime, nativeObjectsManager, "\(bundleInfo.name)/\(modulePath)", registeredSchema());
+            }
+
+            Valdi::Result<Valdi::Ref<Valdi::ValueTypedObject>> \(className)::resolveAsTypedObject(snap::valdi_core::JSRuntime &jsRuntime, const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager) {
+                return Valdi::CppGeneratedExportedFunctionUtils::resolveAsTypedObject(jsRuntime, nativeObjectsManager, "\(bundleInfo.name)/\(modulePath)", registeredSchema());
             }
             """)
 

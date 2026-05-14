@@ -75,6 +75,7 @@ class BundleManager {
                                                     iosLanguage: IOSLanguage.objc,
                                                     iosClassPrefix: nil,
                                                     androidClassPath: nil,
+                                                    androidExportStrings: true,
                                                     cppClassPrefix: nil,
                                                     iosCodegenEnabled: false,
                                                     androidCodegenEnabled: false,
@@ -82,6 +83,7 @@ class BundleManager {
                                                     disableCodeCoverage: false,
                                                     singleFileCodegen: false,
                                                     compilationModeConfig: CompilationModeConfig(js: nil, jsBytecode: nil, native: nil),
+                                                    compilationModeExplicit: false,
                                                     iosOutputTarget: .releaseReady,
                                                     iosGeneratedContextFactories: [],
                                                     androidOutputTarget: .releaseReady,
@@ -297,6 +299,7 @@ class BundleManager {
         }
 
         let androidClassPath = androidConfig?["class_path"]?.string
+        let androidExportStrings = androidConfig?["export_strings"]?.bool ?? true
 
         let dependencyStrings = config["dependencies"]?.array().compactMap({ $0.string }) ?? [String]()
         var dependencies = try resolveDependencies(ofModule: bundleName,
@@ -347,6 +350,7 @@ class BundleManager {
                                                         iosLanguage: iosLanguage,
                                                         iosClassPrefix: iosClassPrefix,
                                                         androidClassPath: androidClassPath,
+                                                        androidExportStrings: androidExportStrings,
                                                         cppClassPrefix: cppClassPrefix,
                                                         iosCodegenEnabled: iosCodegenEnabled,
                                                         androidCodegenEnabled: androidCodegenEnabled,
@@ -354,6 +358,7 @@ class BundleManager {
                                                         disableCodeCoverage: disableCodeCoverage,
                                                         singleFileCodegen: singleFileCodegen,
                                                         compilationModeConfig: compilationModeConfig,
+                                                        compilationModeExplicit: config["compilation_mode"] != nil,
                                                         iosOutputTarget: iosOutputTarget,
                                                         iosGeneratedContextFactories: iosGeneratedContextFactories,
                                                         androidOutputTarget: androidOutputTarget,

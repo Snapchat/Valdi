@@ -89,6 +89,9 @@ website/i18n/*
 .docusaurus
 .cache-loader
 
+# Local Valdi compiler binary (from scripts/update_compiler.sh -o out)
+out/
+
 # misc
 .DS_Store
 .env.local

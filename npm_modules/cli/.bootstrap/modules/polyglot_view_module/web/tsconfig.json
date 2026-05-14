@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "lib": ["DOM", "ES2020"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "skipLibCheck": true,
+    "composite": false,
+    "allowJs": true
+  },
+  "include": [
+    "./**/*.ts",
+    "./**/*.d.ts"
+  ]
+}

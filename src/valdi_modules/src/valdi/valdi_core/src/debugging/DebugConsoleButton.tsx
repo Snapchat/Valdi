@@ -18,7 +18,7 @@ const buttonStyle = new Style<View>({
 export class DebugButton extends Component<ButtonViewModel> {
   onRender() {
     <view onTap={this.viewModel.onTap} style={buttonStyle}>
-      <label value={this.viewModel.text} font='AvenirNext-DemiBold 12' />
+      <label value={this.viewModel.text} font='Montserrat-SemiBold 12' />
     </view>;
   }
 }

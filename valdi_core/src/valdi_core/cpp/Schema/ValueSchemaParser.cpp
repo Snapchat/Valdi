@@ -295,6 +295,7 @@ ValueFunctionSchemaAttributes parseFunctionAttributes(TextParser& parser) {
     bool isMethod = parser.tryParse("*");
     bool isSingleCall = parser.tryParse("!");
     bool isWorkerThread = false;
+    bool allowSyncCall = true; // Default: allow sync (omit `b` / bansync in schema)
 
     if (parser.peek('|')) {
         readList<ValueSchema>(parser, '|', '|', [&](TextParser& parser) -> bool {
@@ -304,12 +305,14 @@ ValueFunctionSchemaAttributes parseFunctionAttributes(TextParser& parser) {
                 isSingleCall = true;
             } else if (parser.tryParse(kStringTypeFunctionAttributeWorkerThread[0])) {
                 isWorkerThread = true;
+            } else if (parser.tryParse(kStringTypeFunctionAttributeBanSync[0])) {
+                allowSyncCall = false; // `b` = bansync (async_strict, no @AllowSyncCall)
             }
             return true;
         });
     }
 
-    return ValueFunctionSchemaAttributes(isMethod, isSingleCall, isWorkerThread);
+    return ValueFunctionSchemaAttributes(isMethod, isSingleCall, isWorkerThread, allowSyncCall);
 }
 
 static std::optional<ValueSchema> parseFunctionSchema(TextParser& parser) {

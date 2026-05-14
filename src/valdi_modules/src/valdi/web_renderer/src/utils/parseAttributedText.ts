@@ -1,5 +1,6 @@
 import { AttributedText, AttributedTextOnTap } from 'valdi_tsx/src/AttributedText';
 import { LabelTextDecoration } from 'valdi_tsx/src/NativeTemplateElements';
+import { convertColor } from '../styles/ValdiWebStyles';
 
 const enum AttributedTextEntryType {
   Content = 1,
@@ -14,6 +15,7 @@ const enum AttributedTextEntryType {
   PushOuterOutlineColor,
   PushOuterOutlineWidth,
   PushInlineImage,
+  PushAnimationTransform,
 }
 
 interface StyleState {
@@ -98,6 +100,7 @@ export function renderAttributedText(attributedText: AttributedText): HTMLSpanEl
       case AttributedTextEntryType.PushOuterOutlineColor:
       case AttributedTextEntryType.PushOuterOutlineWidth:
       case AttributedTextEntryType.PushInlineImage:
+      case AttributedTextEntryType.PushAnimationTransform:
         i += 2;
         break;
       default:
@@ -114,7 +117,7 @@ function createStyledSpan(text: string, style: StyleState): HTMLSpanElement {
   span.textContent = text;
 
   if (style.color) {
-    span.style.color = style.color;
+    span.style.color = convertColor(style.color);
   }
 
   if (style.font) {

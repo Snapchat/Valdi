@@ -39,6 +39,7 @@ enum ValdiAnnotationType: String, CaseIterable {
     case injectable = "Injectable"
     case singleCall = "SingleCall"
     case workerThread = "WorkerThread"
+    case allowSyncCall = "AllowSyncCall"
     case untypedMap = "UntypedMap"
     case untyped = "Untyped"
     
@@ -68,6 +69,7 @@ enum ValdiAnnotationType: String, CaseIterable {
              .injectable,
              .singleCall,
              .workerThread,
+             .allowSyncCall,
              .untypedMap,
              .untyped:
             return false

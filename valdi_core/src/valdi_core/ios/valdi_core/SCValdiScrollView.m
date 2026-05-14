@@ -382,6 +382,12 @@ static CGFloat const kSCValdiKeyboardTranslationPadding = 10.0;
     return YES;
 }
 
+- (BOOL)valdi_setStopScrollingOnTouch:(BOOL)attributeValue
+{
+    _scrollView.stopScrollingOnTouch = attributeValue;
+    return YES;
+}
+
 - (void)valdi_setScrollEnabled:(BOOL)attributeValue
 {
     _scrollView.panGestureRecognizerEnabled = attributeValue;
@@ -627,6 +633,15 @@ static CGFloat const kSCValdiKeyboardTranslationPadding = 10.0;
         }
         resetBlock:^(SCValdiScrollView *view, id<SCValdiAnimatorProtocol> animator) {
             [view valdi_setCancelsTouchesOnScroll:YES];
+        }];
+
+    [attributesBinder bindAttribute:@"stopScrollingOnTouch"
+        invalidateLayoutOnChange:NO
+        withBoolBlock:^BOOL(SCValdiScrollView *view, BOOL attributeValue, id<SCValdiAnimatorProtocol> animator) {
+            return [view valdi_setStopScrollingOnTouch:attributeValue];
+        }
+        resetBlock:^(SCValdiScrollView *view, id<SCValdiAnimatorProtocol> animator) {
+            [view valdi_setStopScrollingOnTouch:NO];
         }];
 
     [attributesBinder bindAttribute:@"bouncesFromDragAtStart"

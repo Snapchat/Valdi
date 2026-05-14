@@ -193,6 +193,11 @@ public:
     void reset_background(Layer& view, const AttributeContext& context);
 
     // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    Valdi::Result<Valdi::Void> apply_maskImage(Layer& view, const Valdi::Value& value, const AttributeContext& context);
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    void reset_maskImage(Layer& view, const AttributeContext& context);
+
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
     Valdi::Result<Valdi::Void> apply_accessibilityId(Layer& view,
                                                      const Valdi::Value& value,
                                                      const AttributeContext& context);

@@ -30,6 +30,10 @@ class ValdiJSRuntimeImpl(val jsRuntime: JSRuntime,
         jsRuntime.preloadModule(modulePath, maxDepth)
     }
 
+    override fun preloadModules(modulePaths: List<String>, maxDepth: Int) {
+        jsRuntime.preloadModules(ArrayList(modulePaths), maxDepth)
+    }
+
     override fun runOnJsThread(runnable: Runnable) {
         return jsThreadDispatcher.runOnJsThread(runnable)
     }

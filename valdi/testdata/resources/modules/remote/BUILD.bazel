@@ -8,6 +8,7 @@ valdi_module(
     ]),
     android_output_target = "release",
     downloadable_assets = True,
+    downloadable_sources = True,
     ios_module_name = "SCCRemote",
     ios_output_target = "release",
     legacy_vue_srcs = glob([

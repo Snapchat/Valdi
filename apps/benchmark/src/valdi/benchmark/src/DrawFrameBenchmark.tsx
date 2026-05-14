@@ -727,7 +727,7 @@ const styles = {
 
 function monoSpaceFont(size: number): string {
   if (Device.isIOS()) {
-    return `Menlo ${size}`;
+    return `RobotoMono ${size}`;
   } else {
     return `monospace ${size}`;
   }

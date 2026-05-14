@@ -127,10 +127,6 @@ open class AsyncValdiRuntime(
         }
     }
 
-    override fun createScopedJSRuntime(block: (ValdiScopedJSRuntime) -> Unit) {
-        createScopedJSRuntime("", block)
-    }
-
     override fun createScopedJSRuntime(scopeName: String, block: (ValdiScopedJSRuntime) -> Unit) {
         getRuntime { it.createScopedJSRuntime(scopeName, block) }
     }

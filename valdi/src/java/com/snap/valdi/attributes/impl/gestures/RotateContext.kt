@@ -31,7 +31,7 @@ class RotateContext(private val function: ValdiFunction, private val predicate: 
     }
 
     override fun shouldBegin(gesture: ValdiGestureRecognizer, x: Int, y: Int, rotation: Float, pointerCount: Int, pointerLocations: List<ValdiGesturePointer>): Boolean {
-        return PredicateUtils.shouldBegin(predicate, gesture, x, y, pointerCount, pointerLocations, 1) { marshaller, objectIndex ->
+        return PredicateUtils.shouldBegin(predicate, gesture, x, y, pointerCount, pointerLocations, 1, timeoutMs = PredicateUtils.GESTURE_PREDICATE_TIMEOUT_MS) { marshaller, objectIndex ->
             marshaller.putMapPropertyFloat(rotationProperty, objectIndex, rotation)
         }
     }

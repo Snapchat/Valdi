@@ -15,6 +15,7 @@ valdi_module(
         "tsconfig.json",
     ],
     android_output_target = "release",
+    compilation_mode = "js",
     ios_module_name = "SCCHelloWorld",
     ios_output_target = "release",
     module_yaml = "module.yaml",

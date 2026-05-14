@@ -89,6 +89,17 @@ struct CompilationModeConfig {
         return CompilationModeConfig(js: jsInclusionConfig, jsBytecode: jsBytecodeInclusionConfig, native: nativeInclusionConfig)
     }
 
+    /// Returns the compilation mode string for BUILD.bazel if this is a simple (non-pattern-based) config,
+    /// or nil for complex pattern-based configs.
+    var asBazelString: String? {
+        switch (js, jsBytecode, native) {
+        case (.some, nil, nil): return "js"
+        case (nil, .some, nil): return "js_bytecode"
+        case (nil, nil, .some): return "native"
+        default: return nil
+        }
+    }
+
     /**
      Resolves the compilation mode to use for the item at the given path.
      Will use native if one of the include patterns matches the item path.

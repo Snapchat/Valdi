@@ -1,0 +1,21 @@
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "tests",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+    ]) + [
+        "tsconfig.json",
+    ],
+    android_output_target = "release",
+    ios_module_name = "SKILL_IOS_MODULE_NAME",
+    ios_output_target = "release",
+    visibility = ["//visibility:public"],
+    deps = [
+        # Add deps for the imports used in src/reference.tsx
+        # Common options: valdi_core, valdi_tsx, valdi_http, foundation, valdi_test, jasmine
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)

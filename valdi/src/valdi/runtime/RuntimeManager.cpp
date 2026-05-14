@@ -55,6 +55,10 @@ Shared<DebuggerService> createDebuggerService(bool enableDebuggerService,
             case PlatformTypeAndroid:
                 platform = snap::valdi_core::Platform::Android;
                 break;
+            case PlatformTypeMacOS:
+            case PlatformTypeWeb:
+                platform = snap::valdi_core::Platform::Ios;
+                break;
         }
         auto debuggerPort = DebuggerService::resolveDebuggerPort(isStandalone);
 
@@ -734,6 +738,14 @@ void RuntimeManager::emitMetrics(void (Metrics::*emitterFunc)(const MetricsDurat
 
 void RuntimeManager::emitInitMetrics() {
     emitMetrics(&Metrics::emitRuntimeManagerInitLatency);
+}
+
+void RuntimeManager::emitXpatCreateRuntimeMetrics() {
+    emitMetrics(&Metrics::emitRuntimeManagerXpatInitLatency);
+}
+
+void RuntimeManager::emitIosRuntimeCreateMetrics() {
+    emitMetrics(&Metrics::emitRuntimeManagerIosInitLatency);
 }
 
 void RuntimeManager::emitUserSessionReadyMetrics() {

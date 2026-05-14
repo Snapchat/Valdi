@@ -1,0 +1,9 @@
+{
+    "integrity": "sha256-h8YXHFvntpU41Gldne0priYmxe12qa3u3ON7Y8c772c=",
+    "strip_prefix": "rules_nodejs-6.2.0",
+    "url": "https://github.com/bazelbuild/rules_nodejs/releases/download/v6.2.0/rules_nodejs-v6.2.0.tar.gz",
+    "patches": {
+        "rules_nodejs.patch": "sha256-e+YhglHF6f70dDPE7lGAsoIoWez9Pmo9SmLJ2txs3ME="
+    },
+    "patch_strip": 1
+}

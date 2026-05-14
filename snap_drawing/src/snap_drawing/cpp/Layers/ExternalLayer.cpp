@@ -42,7 +42,10 @@ Valdi::Result<Ref<Image>> ExternalLayer::rasterExternalSurface(int width, int he
     if (bitmapFactory == nullptr) {
         return Valdi::Error("No bitmap factory");
     }
-    auto displayScale = getResources()->getDisplayScale();
+    // When rasterizing to off-screen buffer, use 1:1 scale. This is because
+    // unlike the display, the off-screen rasterization buffer is not high
+    // density.
+    auto displayScale = shouldRasterizeExternalSurface() ? 1 : getResources()->getDisplayScale();
     auto widthInPixels = static_cast<int>(width * displayScale);
     auto heightInPixels = static_cast<int>(height * displayScale);
     auto bitmap = bitmapFactory->createBitmap(widthInPixels, heightInPixels);

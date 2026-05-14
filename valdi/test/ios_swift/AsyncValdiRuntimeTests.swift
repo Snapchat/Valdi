@@ -4,19 +4,19 @@ import valdi_core
 
 class MockValdiRuntime: NSObject, SCValdiRuntimeProtocol {
     func registerNativeModuleFactory(_ moduleFactory: SCNValdiCoreModuleFactory) {}
-    func getJSRuntime(_ block: (@Sendable ((any SCValdiJSRuntime)?) -> Void)!) {}
+    func getJSRuntime(_ block: (@Sendable ((any SCValdiJSRuntime)?) -> Void)) {}
     func jsRuntime() -> (any SCValdiJSRuntime)? { nil }
-    func inflateView(_ view: UIView & SCValdiRootViewProtocol, owner: Any, viewModel: Any, componentContext: Any) {}
-    func inflateView(_ view: UIView & SCValdiRootViewProtocol, owner: Any, cppMarshaller: UnsafeMutableRawPointer) {}
-    func createContext(withComponentPath componentPath: String, viewModel: Any, componentContext: Any) -> SCValdiContextProtocol? { nil }
-    func createContext(withViewClass viewClass: AnyClass, viewModel: Any, componentContext: Any) -> SCValdiContextProtocol? { nil }
-    func loadView(withComponentPath componentPath: String, owner: Any) throws -> UIView & SCValdiRootViewProtocol { fatalError() }
-    func loadView(withComponentPath componentPath: String, owner: Any, viewModel: Any, componentContext: Any) throws -> UIView & SCValdiRootViewProtocol { fatalError() }
+    func inflateView(_ view: UIView & SCValdiRootViewProtocol, owner: Any?, viewModel: Any?, componentContext: Any?) {}
+    func inflateView(_ view: UIView & SCValdiRootViewProtocol, owner: Any?, cppMarshaller: UnsafeMutableRawPointer) {}
+    func createContext(withComponentPath componentPath: String, viewModel: Any?, componentContext: Any?) -> SCValdiContextProtocol? { nil }
+    func createContext(withViewClass viewClass: AnyClass, viewModel: Any?, componentContext: Any?) -> SCValdiContextProtocol? { nil }
+    func loadView(withComponentPath componentPath: String, owner: Any?) throws -> UIView & SCValdiRootViewProtocol { fatalError() }
+    func loadView(withComponentPath componentPath: String, owner: Any?, viewModel: Any?, componentContext: Any?) throws -> UIView & SCValdiRootViewProtocol { fatalError() }
     func executeMainThreadBatch(_ function: @escaping () -> Void) {}
     func dumpLogMetadata() -> String { "" }
     func dumpLogs() -> String { "" }
     func currentContext() -> SCValdiContextProtocol? { nil }
-    func makeViewFactory(_ viewFactory: SCValdiViewFactoryBlock!, attributesBinder: SCValdiBindAttributesCallback!, for viewClass: AnyClass!) -> (any SCValdiViewFactory)! { nil }
+    func makeViewFactory(_ viewFactory: SCValdiViewFactoryBlock, attributesBinder: SCValdiBindAttributesCallback?, for viewClass: AnyClass) -> (any SCValdiViewFactory) { fatalError() }
     func manager() -> SCValdiRuntimeManagerProtocol? { nil }
     func asset(withModuleName moduleName: String, path: String) -> SCNValdiCoreAsset? { nil }
     func asset(withURL url: String) -> SCNValdiCoreAsset? { nil }

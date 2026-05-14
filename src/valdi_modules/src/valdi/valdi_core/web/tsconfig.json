@@ -5,6 +5,7 @@
     "strict": true,
     "skipLibCheck": true,
     "composite": true,
-    "allowJs": true
+    "allowJs": true,
+    "declaration": true
   },
 }

@@ -1,3 +1,4 @@
+import { execSync } from 'child_process';
 import type { Argv } from 'yargs';
 import { ANSI_COLORS } from '../core/constants';
 import { CliError } from '../core/errors';
@@ -13,7 +14,22 @@ interface CommandParameters {
   target: string | undefined;
 }
 
+function killExistingHotreloaders(): void {
+  const commands = [
+    'pkill -f valdi_companion',
+    'pkill -f run_hotreloader',
+  ];
+  for (const cmd of commands) {
+    try {
+      execSync(cmd, { stdio: 'ignore' });
+    } catch {
+      // Process not found — nothing to kill
+    }
+  }
+}
+
 async function hotreloadResolvedTarget(client: BazelClient, resolvedTarget: string) {
+  killExistingHotreloaders();
   await client.buildTarget(resolvedTarget);
   const workspaceRoot = await client.getWorkspaceRoot();
   const buildOutputs = await client.queryBuildOutputs([resolvedTarget]);

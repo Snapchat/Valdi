@@ -40,6 +40,13 @@ class EditTextMultilineAttributesBinder(
             this::resetTextGravity
         )
 
+        attributesBindingContext.bindStringAttribute(
+            "contentType",
+            false,
+            this::applyContentType,
+            this::resetContentType,
+        )
+
         attributesBindingContext.setPlaceholderViewMeasureDelegate(lazy {
             ValdiEditTextMultiline(context).apply {
                 layoutParams = ViewGroup.LayoutParams(
@@ -75,5 +82,27 @@ class EditTextMultilineAttributesBinder(
 
     private fun resetTextGravity(editText: ValdiEditTextMultiline, animator: ValdiAnimator?) {
         applyTextGravity(editText, "center", animator)
+    }
+
+    private fun applyContentType(editText: ValdiEditTextMultiline, value: String, animator: ValdiAnimator?) {
+        val cleared = editText.inputType and InputType.TYPE_MASK_VARIATION.inv() and InputType.TYPE_MASK_CLASS.inv()
+        editText.privateImeOptions = null
+        editText.disableMediaContent = false
+        when (value) {
+            "noSuggestions" -> {
+                editText.inputType = (cleared or
+                        InputType.TYPE_CLASS_TEXT or
+                        InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+                        InputType.TYPE_TEXT_VARIATION_FILTER) and
+                        InputType.TYPE_TEXT_FLAG_AUTO_CORRECT.inv()
+                editText.privateImeOptions = "disableSticker=true;disableGifKeyboard=true"
+                editText.disableMediaContent = true
+            }
+            else -> editText.inputType = cleared or InputType.TYPE_CLASS_TEXT
+        }
+    }
+
+    private fun resetContentType(editText: ValdiEditTextMultiline, animator: ValdiAnimator?) {
+        applyContentType(editText, "default", animator)
     }
 }

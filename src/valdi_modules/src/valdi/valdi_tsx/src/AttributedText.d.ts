@@ -4,6 +4,12 @@ import { AttributedTextInlineImageAttachment } from './AttributedTextInlineImage
 export type AttributedTextOnTap = () => void;
 export type AttributedTextOnLayout = (x: number, y: number, width: number, height: number) => void;
 
+export interface AttributedTextAnimationTransform {
+  translationY?: number;
+  scale?: number;
+  opacity?: number;
+}
+
 export interface AttributedTextAttributes {
   font?: string;
   color?: string;
@@ -20,6 +26,9 @@ export interface AttributedTextAttributes {
   // outer outline is only supported on textview
   outerOutlineColor?: string;
   outerOutlineWidth?: number;
+
+  // Applies a per-part animation transform during native text rendering.
+  animationTransform?: AttributedTextAnimationTransform;
 }
 
 export const enum AttributedTextEntryType {
@@ -74,6 +83,10 @@ export const enum AttributedTextEntryType {
    * Content should be the Unicode Object Replacement Character (U+FFFC).
    */
   PushInlineImage,
+  /**
+   * Pushes a per-part animation transform at the top of the style stack.
+   */
+  PushAnimationTransform,
 }
 
 export type AttributedTextChunk =
@@ -82,6 +95,7 @@ export type AttributedTextChunk =
   | number
   | AttributedTextOnTap
   | AttributedTextOnLayout
-  | AttributedTextInlineImageAttachment;
+  | AttributedTextInlineImageAttachment
+  | AttributedTextAnimationTransform;
 
 export type AttributedText = AttributedTextChunk[];

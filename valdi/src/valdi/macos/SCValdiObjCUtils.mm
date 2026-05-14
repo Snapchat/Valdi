@@ -7,6 +7,7 @@
 
 #import "SCValdiObjCUtils.h"
 
+#import "valdi_core/SCValdiNativeConvertible.h"
 #import "valdi_core/cpp/Utils/StringCache.hpp"
 #import "valdi_core/cpp/Utils/ValueFunction.hpp"
 
@@ -76,7 +77,17 @@ id NSObjectFromValue(const Valdi::Value &value) {
         case Valdi::ValueType::Bool:
             return @(value.toBool());
         case Valdi::ValueType::Map:
-        case Valdi::ValueType::Array:
+            return nil;
+        case Valdi::ValueType::Array: {
+            const Valdi::ValueArray* arr = value.getArray();
+            if (!arr) return nil;
+            NSMutableArray *result = [NSMutableArray arrayWithCapacity:arr->size()];
+            for (const Valdi::Value& element : *arr) {
+                id obj = NSObjectFromValue(element);
+                [result addObject:obj ?: [NSNull null]];
+            }
+            return result;
+        }
         case Valdi::ValueType::TypedArray:
             return nil;
         case Valdi::ValueType::Function: {
@@ -135,6 +146,11 @@ Valdi::Value ValueFromNSObject(id object) {
     if ([object isKindOfClass:[SCValdiMacOSFunction class]]) {
         Valdi::ValueFunction *function = (Valdi::ValueFunction *)((SCValdiMacOSFunction *)object).cppInstance;
         return Valdi::Value(Valdi::Ref(function));
+    }
+    if ([object respondsToSelector:@selector(valdi_toNative:)]) {
+        Valdi::Value out;
+        [(id<SCValdiNativeConvertible>)object valdi_toNative:&out];
+        return out;
     }
 
     return Valdi::Value();

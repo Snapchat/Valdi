@@ -456,4 +456,12 @@ bool ViewNodeScrollState::onScrollCallbackPrefersSyncCalls() const {
     return false;
 }
 
+void ViewNodeScrollState::setMaintainScrollAnchor(bool maintain) {
+    _maintainScrollAnchor = maintain;
+}
+
+bool ViewNodeScrollState::getMaintainScrollAnchor() const {
+    return _maintainScrollAnchor;
+}
+
 } // namespace Valdi

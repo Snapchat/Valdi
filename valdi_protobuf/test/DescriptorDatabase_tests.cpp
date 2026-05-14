@@ -64,7 +64,7 @@ message MyOtherMessage {
 
 TEST(DescriptorDatabase, canFindFileByName) {
     SimpleExceptionTracker exceptionTracker;
-    Protobuf::DescriptorDatabase database(false);
+    Protobuf::DescriptorDatabase database;
 
     ASSERT_TRUE(registerProtoInDatabase(database, exceptionTracker)) << exceptionTracker.extractError();
 
@@ -85,7 +85,7 @@ TEST(DescriptorDatabase, canFindFileByName) {
 
 TEST(DescriptorDatabase, canFindFileContainingSymbol) {
     SimpleExceptionTracker exceptionTracker;
-    Protobuf::DescriptorDatabase database(false);
+    Protobuf::DescriptorDatabase database;
 
     ASSERT_TRUE(registerProtoInDatabase(database, exceptionTracker)) << exceptionTracker.extractError();
 
@@ -103,7 +103,7 @@ TEST(DescriptorDatabase, canFindFileContainingSymbol) {
 
 TEST(DescriptorDatabase, canFindAllFileNames) {
     SimpleExceptionTracker exceptionTracker;
-    Protobuf::DescriptorDatabase database(false);
+    Protobuf::DescriptorDatabase database;
 
     ASSERT_TRUE(registerProtoInDatabase(database, exceptionTracker)) << exceptionTracker.extractError();
 
@@ -115,7 +115,7 @@ TEST(DescriptorDatabase, canFindAllFileNames) {
 
 TEST(DescriptorDatabase, canRetrieveSymbolNames) {
     SimpleExceptionTracker exceptionTracker;
-    Protobuf::DescriptorDatabase database(false);
+    Protobuf::DescriptorDatabase database;
 
     ASSERT_TRUE(registerProtoInDatabase(database, exceptionTracker)) << exceptionTracker.extractError();
 
@@ -138,7 +138,7 @@ TEST(DescriptorDatabase, canRetrieveSymbolNames) {
 
 TEST(DescriptorDatabase, canRetrievePackages) {
     SimpleExceptionTracker exceptionTracker;
-    Protobuf::DescriptorDatabase database(false);
+    Protobuf::DescriptorDatabase database;
 
     ASSERT_TRUE(registerProtoInDatabase(database, exceptionTracker)) << exceptionTracker.extractError();
 

@@ -447,7 +447,7 @@ export class WebValdiLayout {
           this._onLayoutObserver = new ResizeObserver(entries => {
             for (const entry of entries) {
               const { width, height, x, y } = entry.contentRect;
-              attributeValue({ layout: { x, y, width, height } });
+              attributeValue({ x, y, width, height });
             }
           });
           this._onLayoutObserver.observe(this.htmlElement);

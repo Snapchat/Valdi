@@ -4,3 +4,4 @@ bazel_dep(name = "rules_apple", version = "4.3.3", repo_name = "build_bazel_rule
 bazel_dep(name = "bazel_skylib", version = "1.2.0")
 bazel_dep(name = "rules_swift", version = "3.1.2", repo_name = "build_bazel_rules_swift")
 bazel_dep(name = "rules_cc", version = "0.0.17")
+bazel_dep(name = "rules_pkg", version = "0.9.1")

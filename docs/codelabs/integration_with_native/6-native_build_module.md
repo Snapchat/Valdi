@@ -83,7 +83,7 @@ Common options:
 - **`android`**: Android specific configuration
     - **`class_path`**: a Kotlin class path for the generated native code
     - **`output_target`**: as discussed above
-- **`downloadable_assets`**: Valdi will upload your assets to BOLT and replace all references with appropriate BOLT urls. This will reduce binary size.
+- **`downloadable_assets`**: When enabled, assets are hosted on remote asset storage rather than bundled with the app, which reduces binary size. Note: this feature requires configuring a remote asset storage backend and is not recommended for open source projects without additional setup.
 - **`disable_precompilation`**: This only impacts Android and refers to compiling javascript into bytecode that the Android JS engine quickly run. Disabling precompilation will reduce binary size but lead to slower cold starts because the JS engine needs to parse the raw JS file.
 
 ## `valdimodule` troubleshooting

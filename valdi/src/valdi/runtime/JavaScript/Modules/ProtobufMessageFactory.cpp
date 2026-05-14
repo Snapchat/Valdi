@@ -12,15 +12,18 @@
 
 namespace Valdi {
 
-ProtobufMessageFactory::ProtobufMessageFactory(bool skipProtoIndex)
-    : _descriptorDatabase(std::make_unique<Protobuf::DescriptorDatabase>(skipProtoIndex)),
-      _pool(_descriptorDatabase.get()) {
+ProtobufMessageFactory::ProtobufMessageFactory()
+    : _descriptorDatabase(std::make_unique<Protobuf::DescriptorDatabase>()), _pool(_descriptorDatabase.get()) {
     _pool.InternalSetLazilyBuildDependencies();
 }
 ProtobufMessageFactory::~ProtobufMessageFactory() = default;
 
 bool ProtobufMessageFactory::load(const BytesView& data, ExceptionTracker& exceptionTracker) {
     return _descriptorDatabase->addFileDescriptorSet(data, exceptionTracker);
+}
+
+std::unique_lock<std::recursive_mutex> ProtobufMessageFactory::lock() const {
+    return std::unique_lock<std::recursive_mutex>(_mutex);
 }
 
 bool ProtobufMessageFactory::parseAndLoad(const std::string& filename,
@@ -46,6 +49,11 @@ const google::protobuf::Descriptor* ProtobufMessageFactory::getDescriptorAtIndex
         exceptionTracker.onError("Invalid descriptor index");
         return nullptr;
     }
+
+    // Acquire the lock to protect the lazy pool lookup and descriptor cache write.
+    // _mutex is recursive so callers holding the lock externally (e.g. for atomicity
+    // across multiple factory calls) do not deadlock.
+    auto lock = std::unique_lock<std::recursive_mutex>(_mutex);
 
     const auto* descriptor = _descriptorDatabase->getDescriptorOfSymbolAtIndex(index);
     if (descriptor == nullptr) {

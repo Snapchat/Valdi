@@ -183,9 +183,9 @@ final class CppModelGenerator {
 
         let schemaWriter = CppSchemaWriter(typeParameters: typeParameters, generator: generator)
         if isInterface {
-            try schemaWriter.appendInterface(cppType.declaration.fullTypeName, properties: self.properties)
+            try schemaWriter.appendInterface(cppType.declaration.fullTypeName, properties: self.properties, asyncStrictMode: bundleInfo.asyncStrictMode)
         } else {
-            try schemaWriter.appendClass(cppType.declaration.fullTypeName, properties: self.properties)
+            try schemaWriter.appendClass(cppType.declaration.fullTypeName, properties: self.properties, asyncStrictMode: bundleInfo.asyncStrictMode)
         }
 
         let classWriter = makeClassWriter()

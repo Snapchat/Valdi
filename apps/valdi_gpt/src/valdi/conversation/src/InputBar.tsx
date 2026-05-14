@@ -34,6 +34,6 @@ export class InputBar extends Component<InputBarViewModel> {
 
 const styles = {
   textfield: new Style<TextField>({
-    font: 'AvenirNext-Demibold 20',
+    font: 'Montserrat-SemiBold 20',
   }),
 };

@@ -3,7 +3,9 @@
 
 #import "valdi_core/SCValdiScrollDirection.h"
 
-@protocol SCValdiRootViewProtocol
+NS_ASSUME_NONNULL_BEGIN
+
+@protocol SCValdiRootViewProtocol <NSObject>
 
 /**
  * Whether view inflation should stay enabled when the view is invisible.
@@ -27,7 +29,7 @@
 /// Derived from the componentPath
 @property (readonly, nonatomic) NSString* bundleName;
 
-- (void)waitUntilInitialRenderWithCompletion:(void (^)())completion;
+- (void)waitUntilInitialRenderWithCompletion:(void (^)(void))completion;
 
 /**
  * Check if the view is scrollable in the specified direction at the specified touch point
@@ -40,3 +42,5 @@
 - (void)updateTraitCollection;
 
 @end
+
+NS_ASSUME_NONNULL_END

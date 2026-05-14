@@ -165,7 +165,7 @@ You can also manually trigger the workflow:
 
 Note: Manual triggers will attempt to publish all packages, so ensure versions have been updated to avoid npm publish errors.
 
-### Troubleshooting
+### Troubleshooting things
 
 - **401 Unauthorized**: Check that the `NPM_TOKEN` secret is correctly configured
 - **403 Forbidden**: Ensure the npm account has publishing permissions for the package

@@ -230,13 +230,18 @@ final class ObjCClassGenerator {
                                   propertyAdditionalHeaderDeclaration: propertyAdditionalHeaderDeclaration)
     }
 
-    func ensureTypeAvailability(type: IOSType) {
+    func ensureTypeAvailability(type: IOSType, typeParameterCount: Int = 0) {
         apiHeader.addImport(path: type.importHeaderStatement(kind: .apiOnly))
         header.addImport(path: type.importHeaderStatement(kind: .withUtilities))
         if type.kind == .interface {
             apiHeader.addForwardDeclaration(type: "@protocol \(type.name);")
         } else if type.kind == .class {
-            apiHeader.addForwardDeclaration(type: "@class \(type.name);")
+            if typeParameterCount > 0 {
+                let typeParamList = (0..<typeParameterCount).map { "T\($0)" }.joined(separator: ", ")
+                apiHeader.addForwardDeclaration(type: "@class \(type.name)<\(typeParamList)>;")
+            } else {
+                apiHeader.addForwardDeclaration(type: "@class \(type.name);")
+            }
         }
     }
 
@@ -397,7 +402,7 @@ final class ObjCClassGenerator {
                 isVoid = true
                 cElementType = .void
             }
-        case .function(let parameters, let returnType, _, _):
+        case .function(let parameters, let returnType, _, _, _):
             let functionParser = try writeFunctionTypeParser(returnType: returnType,
                                                              parameters: parameters,
                                                              namePaths: namePaths,
@@ -446,7 +451,7 @@ final class ObjCClassGenerator {
                 throw CompilerError("No iOS type declared")
             }
 
-            ensureTypeAvailability(type: resolvedType)
+            ensureTypeAvailability(type: resolvedType, typeParameterCount: typeArguments.count)
 
             guard case .class = mapping.kind else {
                 throw CompilerError("Generic object must be a class, not a protocol")

@@ -74,15 +74,16 @@ struct ValdiCompilerArguments: ParsableCommand {
     @Option(help: "the maximum number of concurrent requests to process module uploads")
     var maxUploadConcurrentRequests: Int = 4
 
-    @Option(help: "Whether to compile for debug, release, or both", transform: {
-        if $0 == "debug" {
+    // Explicit closure return type disambiguates the Optional-wrapping vs non-wrapping
+    @Option(help: "Whether to compile for debug, release, or both", transform: { (arg: String) throws -> OutputTarget in
+        if arg == "debug" {
             return OutputTarget.debug
-        } else if $0 == "release" {
+        } else if arg == "release" {
             return OutputTarget.release
-        } else if $0 == "all" {
+        } else if arg == "all" {
             return OutputTarget.all
         } else {
-            throw ValidationError("Unsupported output target '\($0)', must be one of 'debug', 'release' or 'all'")
+            throw ValidationError("Unsupported output target '\(arg)', must be one of 'debug', 'release' or 'all'")
         }
     })
     var outputTarget: OutputTarget?
@@ -195,8 +196,17 @@ struct ValdiCompilerArguments: ParsableCommand {
     @Option(help: "path to the file with the list of input files")
     var explicitInputListFile: String?
 
+    @Option(help: "path to the explicit image asset manifest")
+    var explicitImageAssetManifest: String?
+
+    @Flag(help: "Run only the image processing pipeline (reads the explicit input list + image asset manifest, writes each output variant to the manifest's `file` path). Used by Bazel's ValdiProcessImages action.")
+    var imageProcessingOnly = false
+
     @Option(help: "Path to where to store the compiler companion logs")
     var companionLogOutput: String?
+
+    @Option(help: "Path to write the updated image asset manifest with embedded image sizes. Used by --image-processing-only to produce the manifest for ValdiCompile.")
+    var imageAssetManifestOutput: String?
 
     @Option(help: "The list of image variants to include for each platform")
     var imageVariantsFilter: String?
@@ -227,9 +237,9 @@ struct ValdiCompilerArguments: ParsableCommand {
     var parsedImageVariantsFilter: ImageVariantsFilter? = nil
 
     mutating func validate() throws {
-        let selectedCount = [self.compile, self.monitor, !self.buildModule.isEmpty, !self.unpackModule.isEmpty, !self.textconvModule.isEmpty, !self.uploadModule.isEmpty, self.dumpModulesInfo, self.genStaticRes].filter{$0}.count
+        let selectedCount = [self.compile, self.monitor, !self.buildModule.isEmpty, !self.unpackModule.isEmpty, !self.textconvModule.isEmpty, !self.uploadModule.isEmpty, self.dumpModulesInfo, self.genStaticRes, self.imageProcessingOnly].filter{$0}.count
         guard selectedCount == 1 else {
-            throw ValidationError("Must provide only one of: --compile OR --monitor OR --build-module OR --unpack-module OR --textconv-module OR --upload-module OR --dump-modules-info")
+            throw ValidationError("Must provide only one of: --compile OR --monitor OR --build-module OR --unpack-module OR --textconv-module OR --upload-module OR --dump-modules-info OR --image-processing-only")
         }
         
         let requiresOutput = [!self.buildModule.isEmpty, !self.unpackModule.isEmpty, !self.textconvModule.isEmpty, !self.uploadModule.isEmpty, self.dumpModulesInfo, self.genStaticRes].filter{$0}.count > 0

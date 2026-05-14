@@ -136,6 +136,15 @@ export enum JavaScriptEngineType {
     HERMES = 4,
 }
 
+/**
+ * Owns a set of native object references tied to a scope. When destroyed via
+ * destroyNativeObjectsManager, all native references in this scope are released
+ * immediately rather than waiting for JS garbage collection.
+ *
+ * Typically each bounded task creates its own manager and destroys it when done.
+ * See the platform-specific APIs (IValdiRuntime on Android, SCValdiJSRuntime
+ * on iOS) for guidance on recommended usage patterns.
+ */
 export interface JSRuntimeNativeObjectsManager {
     getReachableObjectsDescription(): any;
 }
@@ -148,7 +157,8 @@ export interface JSRuntime {
     pushModuleToMarshaller(nativeObjectsManager: JSRuntimeNativeObjectsManager, path: any, marshallerHandle: bigint): number;
     addModuleUnloadObserver(path: any, observer: any): void;
     preloadModule(path: any, maxDepth: number): void;
-    createNativeObjectsManager(): JSRuntimeNativeObjectsManager;
+    preloadModules(paths: Array<any>, maxDepth: number): void;
+    createNativeObjectsManager(scopeName: string): JSRuntimeNativeObjectsManager;
     destroyNativeObjectsManager(nativeObjectsManager: JSRuntimeNativeObjectsManager): void;
     createWorker(): JSRuntime;
     runOnJsThread(runnable: any): void;

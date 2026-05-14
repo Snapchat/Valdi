@@ -1,0 +1,19 @@
+Force-unwrap filePointer when passing to fwrite on Linux.
+
+On Linux, Swift's clang importer types `FILE*` as the nullable
+`UnsafeMutablePointer<FILE>?`, so passing the optional `filePointer`
+directly to `fwrite`'s non-optional parameter is rejected. The surrounding
+`while filePointer != nil` already guarantees non-nil at this call site,
+so a force-unwrap is safe.
+
+--- a/Zip/Zip.swift
++++ b/Zip/Zip.swift
+@@ -211,7 +211,7 @@ public class Zip {
+             while filePointer != nil {
+                 let readBytes = unzReadCurrentFile(zip, &buffer, bufferSize)
+                 if readBytes > 0 {
+-                    guard fwrite(buffer, Int(readBytes), 1, filePointer) == 1 else {
++                    guard fwrite(buffer, Int(readBytes), 1, filePointer!) == 1 else {
+                         throw ZipError.unzipFail
+                     }
+                     writeBytes += UInt64(readBytes)

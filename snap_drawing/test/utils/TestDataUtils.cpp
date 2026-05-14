@@ -12,7 +12,7 @@ Path resolveTestPath(const std::string& path) {
 
     auto basePath = Path(cwdBuffer);
 
-    basePath.append("external/_main~local_repos~valdi/snap_drawing/testdata");
+    basePath.append("../+local_repos+valdi/snap_drawing/testdata");
     basePath.append(path);
     basePath.normalize();
 

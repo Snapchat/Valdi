@@ -73,6 +73,8 @@ void ScrollAttributes::bind(AttributeHandlerById& attributes) {
 
     binder.bindViewNodeFloat("staticContentWidth", &ViewNode::setScrollStaticContentWidth);
     binder.bindViewNodeFloat("staticContentHeight", &ViewNode::setScrollStaticContentHeight);
+
+    binder.bindViewNodeBoolean("maintainScrollAnchor", &ViewNode::setMaintainScrollAnchor);
 }
 
 } // namespace Valdi

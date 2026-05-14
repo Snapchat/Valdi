@@ -76,6 +76,29 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
         return false
     }
 
+    override fun getAnimationTransformAtIndex(index: Int): TextAnimationTransform? {
+        val scale = nativeGetAnimationScale(native.nativeHandle, index).toFloat()
+        if (scale.isNaN()) {
+            return null
+        }
+
+        return TextAnimationTransform(
+            translationY = nativeGetAnimationTranslationY(native.nativeHandle, index).toFloat(),
+            scale = scale,
+            opacity = nativeGetAnimationOpacity(native.nativeHandle, index).toFloat(),
+        )
+    }
+
+    override fun hasAnimationTransform(): Boolean {
+        val partsSize = getPartsSize()
+        for (index in 0 until partsSize) {
+            if (!nativeGetAnimationScale(native.nativeHandle, index).toFloat().isNaN()) {
+                return true
+            }
+        }
+        return false
+    }
+
     override fun getImageAttachmentAtIndex(index: Int): ImageAttachmentInfo? {
         val width = nativeGetImageAttachmentWidth(native.nativeHandle, index)
         if (width <= 0) {
@@ -105,6 +128,12 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
         private external fun nativeGetOutlineColor(nativeHandle: Long, index: Int): Long
         @JvmStatic
         private external fun nativeGetOutlineWidth(nativeHandle: Long, index: Int): Double
+        @JvmStatic
+        private external fun nativeGetAnimationTranslationY(nativeHandle: Long, index: Int): Double
+        @JvmStatic
+        private external fun nativeGetAnimationScale(nativeHandle: Long, index: Int): Double
+        @JvmStatic
+        private external fun nativeGetAnimationOpacity(nativeHandle: Long, index: Int): Double
         @JvmStatic
         private external fun nativeGetOnTap(nativeHandle: Long, index: Int): Any?
         @JvmStatic

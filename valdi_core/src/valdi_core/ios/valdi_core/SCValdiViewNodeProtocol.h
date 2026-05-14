@@ -6,12 +6,14 @@
 
 @protocol SCValdiAnimatorProtocol;
 
+NS_ASSUME_NONNULL_BEGIN
+
 typedef void (^SCValdiContextDidFinishLayoutBlock)(__kindof UIView* view, id<SCValdiAnimatorProtocol> animator);
 
 /**
  Represents a single node in Valdi's "shadow node tree" representation of a given view hierarchy.
  */
-@protocol SCValdiViewNodeProtocol
+@protocol SCValdiViewNodeProtocol <NSObject>
 
 /**
  Get the view that this ViewNode holds
@@ -44,7 +46,7 @@ typedef void (^SCValdiContextDidFinishLayoutBlock)(__kindof UIView* view, id<SCV
 
  Used internally by SCValdiAttributesBinder.mm.
 */
-- (void)setRetainedObject:(id)object forKey:(NSString*)key;
+- (void)setRetainedObject:(id _Nullable)object forKey:(NSString*)key;
 
 /**
 
@@ -58,12 +60,12 @@ typedef void (^SCValdiContextDidFinishLayoutBlock)(__kindof UIView* view, id<SCV
 
  Used by UIView+Valdi.m.
 */
-- (void)setValue:(id)value forValdiAttribute:(NSString*)attributeName;
+- (void)setValue:(id _Nullable)value forValdiAttribute:(NSString*)attributeName;
 
 /**
  Gets the current value for a given attribute
 */
-- (id)valueForValdiAttribute:(NSString*)attributeName;
+- (id _Nullable)valueForValdiAttribute:(NSString*)attributeName;
 
 /**
  Remove the value for a given attribute (as if it was removed on the JS side)
@@ -75,14 +77,14 @@ typedef void (^SCValdiContextDidFinishLayoutBlock)(__kindof UIView* view, id<SCV
 /**
  Gets the current preprocessed value for a given attribute
 */
-- (id)preprocessedValueForValdiAttribute:(NSString*)attributeName;
+- (id _Nullable)preprocessedValueForValdiAttribute:(NSString*)attributeName;
 
 /**
  Set a block to be executed once layout completes.
 
  Used by UIView+Valdi.m.
 */
-- (void)setDidFinishLayoutBlock:(SCValdiContextDidFinishLayoutBlock)block forKey:(NSString*)key;
+- (void)setDidFinishLayoutBlock:(SCValdiContextDidFinishLayoutBlock _Nullable)block forKey:(NSString*)key;
 
 /**
  Returns whether the view node has a registered setDidFinishLayoutBlock for the given key
@@ -113,7 +115,7 @@ typedef void (^SCValdiContextDidFinishLayoutBlock)(__kindof UIView* view, id<SCV
 - (CGFloat)resolveDeltaX:(CGFloat)deltaX directionAgnostic:(BOOL)directionAgnostic;
 
 - (void)notifyOnScrollWithContentOffset:(CGPoint)contentOffset
-                   updatedContentOffset:(inout CGPoint*)updatedContentOffset
+                   updatedContentOffset:(inout CGPoint* _Nonnull)updatedContentOffset
                                velocity:(CGPoint)velocity;
 
 - (void)notifyOnScrollEndWithContentOffset:(CGPoint)contentOffset;
@@ -122,8 +124,10 @@ typedef void (^SCValdiContextDidFinishLayoutBlock)(__kindof UIView* view, id<SCV
 
 - (void)notifyOnDragEndingWithContentOffset:(CGPoint)contentOffset
                                    velocity:(CGPoint)velocity
-                       updatedContentOffset:(inout CGPoint*)updatedContentOffset;
+                       updatedContentOffset:(inout CGPoint* _Nonnull)updatedContentOffset;
 
 - (BOOL)canScrollAtPoint:(CGPoint)point direction:(SCValdiScrollDirection)direction;
 
 @end
+
+NS_ASSUME_NONNULL_END

@@ -140,6 +140,7 @@ Ref<RenderRequest> JavaScriptRuntimeDeserializers::parseRequestDescriptor(
     const RenderRequestDescriptor& requestDescriptor, JSExceptionTracker& exceptionTracker) {
     static auto kAnimationCompletion = STRING_LITERAL("animationCompletion");
     static auto kOnLayoutComplete = STRING_LITERAL("onLayoutComplete");
+    static auto kOnNextDraw = STRING_LITERAL("onNextDraw");
 
     auto renderRequest = Valdi::makeShared<RenderRequest>();
     renderRequest->setContextId(requestDescriptor.treeId);
@@ -388,6 +389,22 @@ Ref<RenderRequest> JavaScriptRuntimeDeserializers::parseRequestDescriptor(
 
             auto* entry = renderRequest->appendCancelAnimation();
             entry->setToken(tokenInt);
+        } else if (type == 18) {
+            if (current + 1 > length) {
+                return onParseError(exceptionTracker);
+            }
+            auto valueIndex = static_cast<size_t>(descriptor[current++]);
+
+            auto* entry = renderRequest->appendOnNextDraw();
+            entry->setCallback(getAttachedValue(requestDescriptor,
+                                                values,
+                                                valueIndex,
+                                                ReferenceInfoBuilder().withObject(kOnNextDraw),
+                                                exceptionTracker)
+                                   .getFunctionRef());
+            if (!exceptionTracker) {
+                return nullptr;
+            }
         } else {
             return onParseError(exceptionTracker);
         }

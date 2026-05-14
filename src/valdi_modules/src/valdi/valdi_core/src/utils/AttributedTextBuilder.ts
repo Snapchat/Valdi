@@ -1,6 +1,7 @@
 import {
   AttributedText,
   AttributedTextAttributes,
+  AttributedTextAnimationTransform,
   AttributedTextChunk,
   AttributedTextEntryType,
   AttributedTextOnTap,
@@ -159,6 +160,14 @@ export class AttributedTextBuilder {
   }
 
   /**
+   * Push a per-part animation transform on the Style stack.
+   */
+  pushAnimationTransform(animationTransform: AttributedTextAnimationTransform): AttributedTextBuilder {
+    this.components.push(AttributedTextEntryType.PushAnimationTransform, animationTransform);
+    return this;
+  }
+
+  /**
    * Append an inline image as an attributed text attachment.
    * The image will be rendered inline with surrounding text using native text layout
    * (NSTextAttachment on iOS, ReplacementSpan on Android).
@@ -230,6 +239,11 @@ export class AttributedTextBuilder {
 
     if (attributes.outerOutlineWidth) {
       this.pushOuterOutlineWidth(attributes.outerOutlineWidth);
+      popCount++;
+    }
+
+    if (attributes.animationTransform) {
+      this.pushAnimationTransform(attributes.animationTransform);
       popCount++;
     }
 

@@ -60,6 +60,21 @@
     [_jsRuntime preloadModule:path maxDepth:(int32_t)maxDepth];
 }
 
+- (void)preloadModulesAtPaths:(NSArray<NSString *> *)paths maxDepth:(NSUInteger)maxDepth
+{
+    [_jsRuntime preloadModules:paths maxDepth:(int32_t)maxDepth];
+}
+
+- (void)warmUpValueMarshallerForObject:(id)object
+{
+    auto cpp = [self cppRuntime];
+    if (!cpp) {
+        return;
+    }
+    auto value = ValdiIOS::ValueFromNSObject(object);
+    cpp->warmUpValueMarshaller(value);
+}
+
 - (void)addHotReloadObserver:(id<SCValdiFunction>)hotReloadObserver forModulePath:(NSString *)modulePath
 {
     [_jsRuntime addModuleUnloadObserver:modulePath observer:hotReloadObserver];
@@ -84,13 +99,8 @@
 
 - (id<SCValdiJSRuntime>)createScopedJSRuntimeWithScopeName:(NSString *)scopeName
 {
-    SCNValdiCoreJSRuntimeNativeObjectsManager *nativeObjectsManager = [_jsRuntime createNativeObjectsManagerWithScopeName:scopeName];
+    SCNValdiCoreJSRuntimeNativeObjectsManager *nativeObjectsManager = [_jsRuntime createNativeObjectsManager:scopeName];
     return [[SCValdiJSWorker alloc] initWithWorkerRuntime:_jsRuntime nativeObjectsManager:nativeObjectsManager];
-}
-
-- (id<SCValdiJSRuntime>)createScopedJSRuntime
-{
-    return [self createScopedJSRuntimeWithScopeName:@""];
 }
 
 - (void)dispose

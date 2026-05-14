@@ -141,8 +141,8 @@ export class App extends StatefulComponent<{}, State> {
   private async doRasterize(): Promise<Asset> {
     const [componentWidth, componentHeight] = this.getComponentSize();
     const context = createManagedContext({
-      useNewExternalSurfaceRasterMethod: this.state.rasterMethod,
-      enableDeltaRasterization: true,
+      embeddedPlatformViewRasterMethod: this.state.rasterMethod,
+      deltaRasterization: true,
     });
     context.render(() => {
       <InnerComponent />;

@@ -16,15 +16,15 @@ RegisteredCppGeneratedClass* CppGeneratedExportedFunctionUtils::registerFunction
         ValueSchemaRegistry::sharedInstance().get(), schemaString, std::move(getTypeReferencesFunction), {});
 }
 
-Value CppGeneratedExportedFunctionUtils::resolveModule(
-    ExceptionTracker& exceptionTracker,
+Result<Ref<ValueTypedObject>> CppGeneratedExportedFunctionUtils::resolveAsTypedObject(
     snap::valdi_core::JSRuntime& jsRuntime,
     const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
     const char* modulePath,
     RegisteredCppGeneratedClass& registeredClass) {
+    SimpleExceptionTracker exceptionTracker;
     auto schema = registeredClass.getResolvedSchema(exceptionTracker);
     if (!exceptionTracker) {
-        return Value();
+        return exceptionTracker.extractError();
     }
 
     Marshaller marshaller(exceptionTracker);
@@ -33,15 +33,30 @@ Value CppGeneratedExportedFunctionUtils::resolveModule(
     auto objectIndex = jsRuntime.pushModuleToMarshaller(
         nativeObjectsManager, Valdi::StringBox::fromCString(modulePath), reinterpret_cast<int64_t>(&marshaller));
     if (!exceptionTracker) {
-        return Value();
+        return exceptionTracker.extractError();
     }
 
     auto typedObject = marshaller.getTypedObject(objectIndex);
     if (!exceptionTracker) {
+        return exceptionTracker.extractError();
+    }
+
+    return typedObject;
+}
+
+Value CppGeneratedExportedFunctionUtils::resolveModule(
+    ExceptionTracker& exceptionTracker,
+    snap::valdi_core::JSRuntime& jsRuntime,
+    const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
+    const char* modulePath,
+    RegisteredCppGeneratedClass& registeredClass) {
+    auto result = resolveAsTypedObject(jsRuntime, nativeObjectsManager, modulePath, registeredClass);
+    if (!result) {
+        exceptionTracker.onError(result.moveError());
         return Value();
     }
 
-    return typedObject->getProperty(0);
+    return result.value()->getProperty(0);
 }
 
 } // namespace Valdi

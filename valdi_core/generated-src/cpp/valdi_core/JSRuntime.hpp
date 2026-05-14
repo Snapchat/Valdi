@@ -7,6 +7,8 @@
 #include "valdi_core/cpp/Utils/Value.hpp"
 #include <cstdint>
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace snap::valdi_core {
 
@@ -25,6 +27,8 @@ public:
     virtual void addModuleUnloadObserver(const Valdi::StringBox & path, const Valdi::Value & observer) = 0;
 
     virtual void preloadModule(const Valdi::StringBox & path, int32_t maxDepth) = 0;
+
+    virtual void preloadModules(const std::vector<Valdi::StringBox> & paths, int32_t maxDepth) = 0;
 
     virtual /*not-null*/ std::shared_ptr<JSRuntimeNativeObjectsManager> createNativeObjectsManager(const std::string & scopeName) = 0;
 

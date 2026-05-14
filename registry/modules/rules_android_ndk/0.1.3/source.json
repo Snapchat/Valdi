@@ -1,0 +1,9 @@
+{
+    "integrity": "sha256-ib9QElZ6W63kx46sWsVsM2aVw7/SgamwiU/2YFMo0tU=",
+    "strip_prefix": "rules_android_ndk-0.1.3",
+    "url": "https://github.com/bazelbuild/rules_android_ndk/releases/download/v0.1.3/rules_android_ndk-v0.1.3.tar.gz",
+    "patches": {
+        "rules_android_ndk.patch": "sha256-ywQMwDZw05iicr1WDzEOxmmiUvooNEvnA15O99cAJ1E="
+    },
+    "patch_strip": 0
+}

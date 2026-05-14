@@ -39,7 +39,14 @@ func main() {
 
     if shouldRunAsPersistentWorker() {
         let logger = Logger(output: FileHandleLoggerOutput(stdout: FileHandle.standardError, stderr: FileHandle.standardError))
-        let bazelPersistentWorker = BazelPersistentWorker(stdin: FileHandle.standardInput, stdout: FileHandle.standardOutput, logger: logger)
+        
+        let format = WorkerProtocolFormat.fromCommandLineArguments(CommandLine.arguments)
+        let bazelPersistentWorker = BazelPersistentWorker(
+            stdin: FileHandle.standardInput,
+            stdout: FileHandle.standardOutput,
+            logger: logger,
+            format: format
+        )
         let companionExecutableProvider = CompanionExecutableProvider(logger: logger)
         bazelPersistentWorker.run { request in
             let arguments: ValdiCompilerArguments

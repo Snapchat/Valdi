@@ -29,6 +29,7 @@ export interface IRendererDelegate {
   onElementAttributeChangeFunction(id: number, attributeName: string, fn: () => void): void;
 
   onNextLayoutComplete(callback: () => void): void;
+  onNextDraw(callback: (hookTimeMs: number) => void): void;
 
   onRenderStart(): void;
   onRenderEnd(): void;

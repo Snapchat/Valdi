@@ -156,6 +156,7 @@ final class TypeScriptNativeTypeExporter {
 
             var isSingleCall = false
             var shouldCallOnWorkerThread = false
+            var allowSyncCall = false
             if let annotations = annotations {
                 for annotation in annotations {
                     guard let annotation = ValdiAnnotationType(rawValue: annotation.name) else {
@@ -168,13 +169,15 @@ final class TypeScriptNativeTypeExporter {
                         try validateWorkerThreadAnnotation(functionReturnType: returnValue, leadingComments: type.leadingComments!)
 
                         shouldCallOnWorkerThread = true
+                    } else if annotation == .allowSyncCall {
+                        allowSyncCall = true
                     } else {
-                        try self.throwAnnotationError(comments: type.leadingComments!, message: "Function only support the @SingleCall and @WorkerThread annotations")
+                        try self.throwAnnotationError(comments: type.leadingComments!, message: "Function only support the @SingleCall, @WorkerThread and @AllowSyncCall annotations")
                     }
                 }
             }
 
-            return .function(parameters: functionParameters, returnType: returnValue, isSingleCall: isSingleCall, shouldCallOnWorkerThread: shouldCallOnWorkerThread)
+            return .function(parameters: functionParameters, returnType: returnValue, isSingleCall: isSingleCall, shouldCallOnWorkerThread: shouldCallOnWorkerThread, allowSyncCall: allowSyncCall)
         }
 
         if let typeReferenceIndex = type.typeReferenceIndex {
@@ -364,12 +367,12 @@ final class TypeScriptNativeTypeExporter {
             }
 
             if propertyMetadata.shouldCallOnWorkerThread {
-                guard case let .function(parameters, returnType, isSingleCall, _) = parsedType.unwrappingOptional else {
+                guard case let .function(parameters, returnType, isSingleCall, _, allowSyncCall) = parsedType.unwrappingOptional else {
                     try throwAnnotationError(comments: leadingComments, message: "@WorkerThread can only be set on functions or methods")
                 }
                 try validateWorkerThreadAnnotation(functionReturnType: returnType, leadingComments: leadingComments)
 
-                let newType = ValdiModelPropertyType.function(parameters: parameters, returnType: returnType, isSingleCall: isSingleCall, shouldCallOnWorkerThread: true)
+                let newType = ValdiModelPropertyType.function(parameters: parameters, returnType: returnType, isSingleCall: isSingleCall, shouldCallOnWorkerThread: true, allowSyncCall: allowSyncCall)
                 if parsedType.isOptional {
                     parsedType = ValdiModelPropertyType.nullable(newType)
                 } else {
@@ -423,6 +426,7 @@ final class TypeScriptNativeTypeExporter {
         }
 
         let comments = annotatedSymbol.mergedCommentsWithoutAnnotations()
+        let allowSyncCall = annotatedSymbol.annotations.contains(where: { $0.name == ValdiAnnotationType.allowSyncCall.rawValue })
 
         do {
             let parameters = try dumpedFunction.type.parameters.map { try self.parsePropertyOrParameter(propertyLikeDeclaration: $0, references: self.commentedFile.references) }
@@ -433,6 +437,7 @@ final class TypeScriptNativeTypeExporter {
                                                     functionName: dumpedFunction.name,
                                                     parameters: parameters,
                                                     returnType: returnType,
+                                                    allowSyncCall: allowSyncCall,
                                                     comments: comments)
             let classMapping = ValdiClassMapping()
             return Promise(data: (exportedFunction, classMapping))

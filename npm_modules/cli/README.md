@@ -82,6 +82,13 @@ For complete documentation, see:
 - Enables instant hot reload during development
 - Watches for file changes and updates app in milliseconds
 
+**`valdi skills`** - AI assistant skills
+- Installs Valdi context files into Claude Code, Cursor, or GitHub Copilot so AI tools generate correct Valdi code instead of React patterns
+- `valdi skills install` — auto-detects installed AI tools and installs all skills
+- `valdi skills list` — show available skills and install status per agent
+- `valdi skills update` — re-install already-installed skills from the bundled package
+- `valdi skills create` — scaffold a new skill (run from within the Valdi repo)
+
 **Other commands:** `valdi build <platform>` (build without installing), `valdi package <platform>` (create distributable app), `valdi export <platform>` (export library for native apps), `valdi test` (run tests), `valdi lint check` / `valdi lint format` (lint and format code), `valdi log` (stream device logs), `valdi projectsync` (sync VS Code project and native bindings), `valdi completion` (shell autocomplete setup). Use `valdi <command> --help` for options.
 
 For complete command documentation, see [Command Line Reference](https://github.com/Snapchat/Valdi/blob/main/docs/docs/command-line-references.md).
@@ -114,8 +121,10 @@ my_application/          # Root directory of your application
 └── modules/
     ├── module_a/
     │   ├── BUILD.bazel
-    │   ├── android/     # Native Android sources
-    │   ├── ios/         # Native iOS sources
+    │   ├── android/     # Native Android sources (Kotlin)
+    │   ├── ios/         # Native iOS sources (Objective-C)
+    │   ├── macos/       # Native macOS sources (Objective-C)
+    │   ├── web/         # Web sources (TypeScript, compiled by tsc)
     │   ├── cpp/         # Native C++ sources
     │   └── src/         # Valdi sources
     │       └── ModuleAComponent.tsx
@@ -140,7 +149,7 @@ Options:
   --version      Show version number                       [boolean]
   --help         Show help                                 [boolean]
   --skip-checks  Skips confirmation prompts.               [boolean]
-  --template     Module template to use (skips the prompt). One of: ui_component, ios_android_bridge_module, cpp_bridge_module, ios_android_view_module  [string]
+  --template     Module template to use (skips the prompt). One of: ui_component, polyglot_bridge_module, polyglot_view_module  [string]
 ```
 
 ## For Contributors

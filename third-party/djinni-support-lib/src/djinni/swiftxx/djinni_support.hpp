@@ -1,18 +1,18 @@
 #pragma once
 
-#include <chrono>
-#include <codecvt>
-#include <locale>
-#include <memory>
+#include <variant>
 #include <string>
+#include <vector>
+#include <memory>
+#include <chrono>
+#include <locale>
+#include <codecvt>
 #include <unordered_map>
 #include <unordered_set>
-#include <variant>
-#include <vector>
 
 namespace djinni::swift {
 // -------- Intermediate data structure and functions to manipulate them from Swift
-struct VoidValue {};
+struct VoidValue{};
 // I32 covers bool, i8, i16, i32, enum
 using I32Value = int32_t;
 using I64Value = int64_t;
@@ -25,18 +25,20 @@ struct RangeValue {
     size_t size;
 };
 using DateValue = std::chrono::system_clock::time_point;
-struct ErrorValue : public std::exception {
+struct ErrorValue: public std::exception {
     std::string msg;
     std::exception_ptr cause;
 
-    ErrorValue(const std::string& msg) : msg(msg), cause(nullptr) {}
-    ErrorValue(const std::string& msg, std::exception_ptr cause) : msg(msg), cause(cause) {}
+    ErrorValue(const std::string& msg)
+        :msg(msg), cause(nullptr) {}
+    ErrorValue(const std::string& msg, std::exception_ptr cause)
+        :msg(msg), cause(cause) {}
     ErrorValue(const ErrorValue& other) = default;
     ErrorValue(ErrorValue&& other) = default;
 
     ErrorValue& operator=(const ErrorValue& other) = default;
     ErrorValue& operator=(ErrorValue&& other) = default;
-
+    
     const char* what() const noexcept override {
         return msg.c_str();
     }
@@ -58,18 +60,16 @@ struct OpaqueValue {
 };
 using OpaqueValuePtr = std::shared_ptr<OpaqueValue>;
 
-using AnyValue = std::variant<VoidValue,
-                              I32Value,
-                              I64Value,
-                              DoubleValue,
-                              StringValue,
-                              BinaryValue,
-                              DateValue,
-                              ErrorValue,
-                              OpaqueValuePtr,
-                              RangeValue,
-                              InterfaceValue,
-                              CompositeValuePtr>;
+using AnyValue = std::variant<VoidValue, I32Value, I64Value, DoubleValue,
+    StringValue, BinaryValue, DateValue, ErrorValue, OpaqueValuePtr, RangeValue,
+    InterfaceValue, CompositeValuePtr>;
+
+// Base for opaque values that can be invoked as a provider (returns AnyValue).
+// Used by callProviderFunction so Swift can call into C++/Swift provider holders.
+struct CallableProvider : OpaqueValue {
+    virtual AnyValue call() = 0;
+};
+using CallableProviderPtr = std::shared_ptr<CallableProvider>;
 
 struct CompositeValue {
     virtual ~CompositeValue() = default;
@@ -81,15 +81,11 @@ struct CompositeValue {
     void addValue(AnyValue&& v) {
         _elems.push_back(std::move(v));
     }
-    AnyValue getValue(size_t i) const {
-        return _elems[i];
-    }
-    size_t getSize() const {
-        return _elems.size();
-    }
+    AnyValue getValue(size_t i) const { return _elems[i]; }
+    size_t getSize() const { return _elems.size(); }
 };
 
-struct ParameterList : CompositeValue {};
+struct ParameterList: CompositeValue {};
 
 // Swift callable functions
 AnyValue makeStringValue(const char* bytes, size_t size);
@@ -109,6 +105,10 @@ AnyValue makeCompositeValue();
 bool isError(const AnyValue* ret);
 ErrorValue getError(const AnyValue* ret);
 
+// Provider bridge: call a provider held in AnyValue (C++ or Swift), or create one from a callback.
+AnyValue callProviderFunction(const AnyValue& providerValue);
+AnyValue makeProviderFunction(AnyValue (*callback)(void*), void* context, void (*releaseContext)(void*) = nullptr);
+
 struct InterfaceInfo {
     void* cppPointer;
     void* ctxPointer;
@@ -127,16 +127,13 @@ protected:
     DispatchFunc _dispatcher;
     ProtocolWrapper(void* ctx, DispatchFunc dispatcher);
     AnyValue callProtocol(int idx, const ParameterList* params);
-
 public:
     virtual ~ProtocolWrapper();
-    void* ctx() const {
-        return _ctx;
-    }
+    void* ctx() const { return _ctx; }
 };
 
 // -------- Built-in marshallers (conversion between C++ types and intermediate types)
-template<typename T /*C++ type*/, typename U /*storage type*/>
+template <typename T /*C++ type*/, typename U/*storage type*/>
 struct Number {
     using CppType = T;
     static AnyValue fromCpp(T v) {
@@ -156,7 +153,7 @@ using I64 = Number<int64_t, I64Value>;
 using F32 = Number<float, DoubleValue>;
 using F64 = Number<double, DoubleValue>;
 
-template<typename T>
+template <typename T>
 struct Enum {
     using CppType = T;
     static AnyValue fromCpp(T v) {
@@ -195,7 +192,7 @@ struct List {
     using CppType = std::vector<typename T::CppType>;
     static AnyValue fromCpp(const CppType& v) {
         auto ret = std::make_shared<CompositeValue>();
-        for (const auto& e : v) {
+        for (const auto& e: v) {
             ret->addValue(T::fromCpp(e));
         }
         return {ret};
@@ -203,22 +200,21 @@ struct List {
     static CppType toCpp(const AnyValue& v) {
         CppType vec;
         auto c = std::get<CompositeValuePtr>(v);
-        for (const auto& item : c->_elems) {
+        for (const auto& item: c->_elems) {
             vec.push_back(T::toCpp(item));
         }
         return vec;
     }
 };
 
-template<typename T>
-using Array = List<T>;
+template<typename T> using Array = List<T>;
 
 template<typename T>
 struct Set {
     using CppType = std::unordered_set<typename T::CppType>;
     static AnyValue fromCpp(const CppType& v) {
         auto ret = std::make_shared<CompositeValue>();
-        for (const auto& e : v) {
+        for (const auto& e: v) {
             ret->addValue(T::fromCpp(e));
         }
         return {ret};
@@ -226,7 +222,7 @@ struct Set {
     static CppType toCpp(const AnyValue& v) {
         CppType vec;
         auto c = std::get<CompositeValuePtr>(v);
-        for (const auto& item : c->_elems) {
+        for (const auto& item: c->_elems) {
             vec.insert(T::toCpp(item));
         }
         return vec;
@@ -238,7 +234,7 @@ struct Map {
     using CppType = std::unordered_map<typename T::CppType, typename U::CppType>;
     static AnyValue fromCpp(const CppType& c) {
         auto ret = std::make_shared<CompositeValue>();
-        for (const auto& [k, v] : c) {
+        for (const auto& [k, v]: c) {
             ret->addValue(T::fromCpp(k));
             ret->addValue(U::fromCpp(v));
         }
@@ -248,7 +244,7 @@ struct Map {
         CppType map;
         auto c = std::get<CompositeValuePtr>(v);
         for (auto i = c->_elems.begin(); i != c->_elems.end(); i += 2) {
-            map.insert_or_assign(T::toCpp(*i), U::toCpp(*(i + 1)));
+            map.insert_or_assign(T::toCpp(*i), U::toCpp(*(i+1)));
         }
         return map;
     }
@@ -284,7 +280,7 @@ struct Optional {
 class Date {
 public:
     using CppType = std::chrono::system_clock::time_point;
-
+    
     static CppType toCpp(const AnyValue& v) {
         auto millisecondsSinceEpoch = std::chrono::milliseconds(std::get<I64Value>(v));
         return CppType(std::chrono::duration_cast<std::chrono::system_clock::duration>(millisecondsSinceEpoch));
@@ -312,7 +308,7 @@ public:
     using CppType = void;
 };
 
-template<typename T>
+template <typename T>
 struct Interface {
     using CppType = std::shared_ptr<T>;
     using CppOptType = std::shared_ptr<T>;
@@ -328,7 +324,7 @@ struct Interface {
     }
 };
 
-template<typename CPP_PROTO>
+template <typename CPP_PROTO>
 class Protobuf {
 public:
     using CppType = CPP_PROTO;
@@ -351,4 +347,4 @@ public:
     }
 };
 
-} // namespace djinni::swift
+}

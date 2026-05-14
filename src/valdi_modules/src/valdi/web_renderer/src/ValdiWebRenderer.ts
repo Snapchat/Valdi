@@ -21,9 +21,9 @@ const ValdiWebRendererDelegate = rendererDelegate.ValdiWebRendererDelegate;
 export class ValdiWebRenderer extends Renderer implements UpdateAttributeDelegate {
   delegate: ValdiWebRendererDelegateType;
 
-  constructor(private htmlRoot: HTMLElement | ShadowRoot) {
+  constructor(htmlRoot: HTMLElement | ShadowRoot) {
     const delegate = new ValdiWebRendererDelegate(htmlRoot);
-    super('valdi-web-renderer', ['view', 'label', 'layout', 'scroll', 'image', 'textfield', 'textview', 'spinner', 'video', 'shape'], delegate);
+    super('valdi-web-renderer', ['view', 'label', 'layout', 'scroll', 'image', 'textfield', 'textview', 'spinner', 'custom-view', 'video', 'shape'], delegate);
     delegate.setAttributeDelegate(this);
     this.delegate = delegate;
   }
@@ -31,6 +31,10 @@ export class ValdiWebRenderer extends Renderer implements UpdateAttributeDelegat
     super.attributeUpdatedExternally(elementId, attributeName, attributeValue);
   }
   
+  destroy() {
+    this.delegate.onDestroyed();
+  }
+
   renderRootComponent<T extends IComponent<ViewModel, Context>, ViewModel = any, Context = any>(
     ctr: ComponentConstructor<T>,
     prototype: ComponentPrototype,

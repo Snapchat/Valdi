@@ -31,6 +31,10 @@
 
 + (instancetype)functionWithJSRuntime:(id<SCValdiJSRuntime>)jsRuntime
 {
+    if ([self asyncStrictMode]) {
+        NSAssert(![NSThread isMainThread],
+                 @"When async_strict_mode is enabled, function resolution (functionWithJSRuntime:) must not be called from the main thread (to avoid ANRs). Use a background thread, the JS thread, or invokeWithJSRuntimeProvider:completionHandler:.");
+    }
     return SCValdiMakeBridgeFunctionFromJSRuntime(self, jsRuntime, [self modulePath]);
 }
 

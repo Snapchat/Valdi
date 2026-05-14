@@ -32,6 +32,7 @@ NSString *const kSCValdiAttributedStringKeyOnTap = @"valdi_onTap";
 NSString *const kSCValdiAttributedStringKeyOnLayout = @"valdi_onLayout";
 NSString *const kSCValdiOuterOutlineColorAttribute = @"valdi_outerOutlineColor";
 NSString *const kSCValdiOuterOutlineWidthAttribute = @"valdi_outerOutlineWidth";
+NSString *const kSCValdiAttributedStringKeyAnimationTransform = @"valdi_animationTransform";
 
 /// Returns a boxed NSTextAlignment value, or nil
 static NSNumber *_SCValdiParseTextAlignment(NSString *value)
@@ -131,6 +132,7 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
         UIColor *outerOutlineColor = [valdiAttributedText outerOutlineColorAtIndex:i];
         NSNumber *outerOutlineWidth = [valdiAttributedText outerOutlineWidthAtIndex:i];
         SCValdiImageAttachmentInfo *imageAttachment = [valdiAttributedText imageAttachmentAtIndex:i];
+        NSDictionary<NSString *, NSNumber *> *animationTransform = [valdiAttributedText animationTransformAtIndex:i];
 
         if (color) {
             nsAttrs[NSForegroundColorAttributeName] = color;
@@ -159,6 +161,9 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
         id<SCValdiFunction> onLayoutCallback = [valdiAttributedText onLayoutAtIndex:i];
         if (onLayoutCallback) {
             nsAttrs[kSCValdiAttributedStringKeyOnLayout] = [[SCValdiOnLayoutAttribute alloc] initWithCallback:onLayoutCallback];
+        }
+        if (animationTransform) {
+            nsAttrs[kSCValdiAttributedStringKeyAnimationTransform] = animationTransform;
         }
 
         _SCValdiAppendTextDecoration(nsAttrs, textDecoration);

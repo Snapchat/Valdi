@@ -1,0 +1,75 @@
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+load("@valdi//bzl/valdi:valdi_android_library.bzl", "valdi_android_library")
+load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_android_library(
+    name = "android_impl",
+    srcs = glob([
+        "android/**/*.kt",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":{{MODULE_NAME}}_api_kt",
+        "@valdi//valdi:valdi_java",
+    ],
+)
+
+objc_library(
+    name = "ios_impl",
+    srcs = glob([
+        "ios/**/*.m",
+    ]),
+    hdrs = glob([
+        "ios/**/*.h",
+    ]),
+    copts = ["-I."],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":{{MODULE_NAME}}_api_objc",
+    ],
+)
+
+objc_library(
+    name = "macos_impl",
+    srcs = glob([
+        "macos/**/*.m",
+    ]),
+    hdrs = glob([
+        "macos/**/*.h",
+    ]),
+    copts = ["-I."],
+    sdk_frameworks = ["AppKit"],
+    visibility = ["//visibility:public"],
+)
+
+ts_project(
+    name = "{{MODULE_NAME}}_web",
+    srcs = glob([
+        "web/**/*.ts",
+        "web/**/*.d.ts",
+    ]),
+    allow_js = True,
+    composite = False,
+    transpiler = "tsc",
+    tsconfig = "web/tsconfig.json",
+    visibility = ["//visibility:public"],
+)
+
+valdi_module(
+    name = "{{MODULE_NAME}}",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+    ]),
+    android_deps = [":android_impl"],
+    ios_deps = [":ios_impl"],
+    ios_module_name = "SCC{{MODULE_NAME_PASCAL_CASED}}",
+    macos_deps = [":macos_impl"],
+    visibility = ["//visibility:public"],
+    web_deps = [":{{MODULE_NAME}}_web"],
+    deps = [
+        "@valdi//src/valdi_modules/src/valdi/foundation",
+        "@valdi//src/valdi_modules/src/valdi/valdi_core",
+        "@valdi//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)

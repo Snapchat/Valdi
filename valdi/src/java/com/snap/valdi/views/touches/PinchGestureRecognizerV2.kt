@@ -5,7 +5,8 @@ import android.view.View
 
 class PinchGestureRecognizerV2 (
         view: View,
-        val listener: PinchGestureRecognizerListener
+        val listener: PinchGestureRecognizerListener,
+        val resetDetector: Boolean = false
 ) : ValdiGestureRecognizer(view){
 
     var scale = 1.0f
@@ -40,6 +41,12 @@ class PinchGestureRecognizerV2 (
     override fun onReset(event: MotionEvent) {
         super.onReset(event)
         scale = 1.0f
+        if (resetDetector) {
+            // Reset the inner detector state to avoid spurious onScaleEnd() callbacks on the next
+            // gesture sequence. This mirrors the V1 PinchGestureRecognizer pattern where
+            // gestureDetector.onTouchEvent(event) is called in onReset() to flush detector state.
+            pinchDetector.reset()
+        }
     }
 
 

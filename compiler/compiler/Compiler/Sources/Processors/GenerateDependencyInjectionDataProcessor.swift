@@ -37,7 +37,7 @@ final class GenerateDependencyInjectionDataProcessor: CompilationProcessor {
 
         // Process iOS dependency data.
         let intermediateMetadata = items.map { item in item.data }
-        let generator = ObjCDependencyRepresentationGenerator(items: intermediateMetadata)
+        let generator = ObjCDependencyRepresentationGenerator(items: intermediateMetadata, singleFileCodegen: bundleInfo.singleFileCodegen)
         let metadataModel = try DependencyMetadata(file: generator.generate())
 
         out.append(CompilationItem(sourceURL: bundleInfo.baseDir,

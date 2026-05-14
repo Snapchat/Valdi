@@ -237,7 +237,7 @@ final class SwiftSourceFileGenerator : CodeWriter {
             return SwiftTypeParser(typeName: "Any", isOptional: true, marshallerName: "Untyped")
         case .void:
             return SwiftTypeParser(typeName: "Void", isOptional: false, marshallerName: nil)
-        case .function(let parameters, let returnType, _, _):
+        case .function(let parameters, let returnType, _, _, _):
             guard let functionHelperName = functionHelperName else {
                 throw CompilerError("Function type must have a name")
             }

@@ -4,6 +4,7 @@
 package com.snapchat.client.valdi_core;
 
 import com.snapchat.djinni.NativeObjectManager;
+import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public abstract class JSRuntime {
@@ -17,7 +18,9 @@ public abstract class JSRuntime {
 
     public abstract void preloadModule(java.lang.String path, int maxDepth);
 
-    public abstract JSRuntimeNativeObjectsManager createNativeObjectsManager(java.lang.String scopeName);
+    public abstract void preloadModules(ArrayList<java.lang.String> paths, int maxDepth);
+
+    public abstract JSRuntimeNativeObjectsManager createNativeObjectsManager(String scopeName);
 
     public abstract void destroyNativeObjectsManager(JSRuntimeNativeObjectsManager nativeObjectsManager);
 
@@ -63,12 +66,20 @@ public abstract class JSRuntime {
         private native void native_preloadModule(long _nativeRef, java.lang.String path, int maxDepth);
 
         @Override
-        public JSRuntimeNativeObjectsManager createNativeObjectsManager(java.lang.String scopeName)
+        public void preloadModules(ArrayList<java.lang.String> paths, int maxDepth)
+        {
+            assert !this.destroyed.get() : "trying to use a destroyed object";
+            native_preloadModules(this.nativeRef, paths, maxDepth);
+        }
+        private native void native_preloadModules(long _nativeRef, ArrayList<java.lang.String> paths, int maxDepth);
+
+        @Override
+        public JSRuntimeNativeObjectsManager createNativeObjectsManager(String scopeName)
         {
             assert !this.destroyed.get() : "trying to use a destroyed object";
             return native_createNativeObjectsManager(this.nativeRef, scopeName);
         }
-        private native JSRuntimeNativeObjectsManager native_createNativeObjectsManager(long _nativeRef, java.lang.String scopeName);
+        private native JSRuntimeNativeObjectsManager native_createNativeObjectsManager(long _nativeRef, String scopeName);
 
         @Override
         public void destroyNativeObjectsManager(JSRuntimeNativeObjectsManager nativeObjectsManager)

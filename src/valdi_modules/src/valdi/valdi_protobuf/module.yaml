@@ -15,10 +15,12 @@ exclude_patterns:
   - .*\/scripts\/.*
   - .*\/proto\/.*
   - .*\/web\/.*
+  - .*\/node_modules\/.*
 exclude_globs:
   - "**/scripts/**"
   - "**/proto/**"
   - "**/web/**"
+  - "**/node_modules/**"
 
 output_target: release
 

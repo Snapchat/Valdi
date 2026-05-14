@@ -7,6 +7,15 @@
 
 namespace snap::valdi_core {
 
+/**
+ * Owns a set of native object references tied to a scope. When destroyed via
+ * destroyNativeObjectsManager, all native references in this scope are released
+ * immediately rather than waiting for JS garbage collection.
+ *
+ * Typically each bounded task creates its own manager and destroys it when done.
+ * See the platform-specific APIs (IValdiRuntime on Android, SCValdiJSRuntime
+ * on iOS) for guidance on recommended usage patterns.
+ */
 class JSRuntimeNativeObjectsManager {
 public:
     virtual ~JSRuntimeNativeObjectsManager() = default;

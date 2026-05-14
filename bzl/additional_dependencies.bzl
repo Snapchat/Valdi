@@ -13,7 +13,7 @@ filegroup(
 )
 """
 
-def setup_additional_dependencies():
+def setup_additional_dependencies(bzlmod = False):
     # Create repositories that point to local files stored in git LFS within the @valdi repository.
     # These binaries are stored locally in the bin/ directory structure.
     #
@@ -22,11 +22,16 @@ def setup_additional_dependencies():
     #
     # In WORKSPACE-based mirrored repo: "valdi" is the main workspace itself, so we use
     # native.new_local_repository to point to local directories within the workspace.
-    
-    # Detect if we're in the main workspace or if @valdi is external
-    # In WORKSPACE files, we can check if native.existing_rule("valdi") exists
-    # If @valdi doesn't exist as an external repo, we're in the main workspace
-    is_main_workspace = (native.existing_rule("valdi") == None)
+    #
+    # bzlmod: pass True when calling from a bzlmod module extension to skip the
+    # native.existing_rule() check, which is only available in WORKSPACE context.
+
+    if bzlmod:
+        is_main_workspace = False
+    else:
+        # Detect if we're in the main workspace or if @valdi is external.
+        # In WORKSPACE files, native.existing_rule("valdi") exists when valdi is external.
+        is_main_workspace = (native.existing_rule("valdi") == None)
     
     if is_main_workspace:
         # WORKSPACE-based repo: use new_local_repository to reference local directories

@@ -18,6 +18,7 @@ public:
     virtual StringBox getString(const StringBox& key, const StringBox& fallback) = 0;
     virtual bool getBool(const StringBox& key, bool fallback) = 0;
     virtual float getFloat(const StringBox& key, float fallback) = 0;
+    virtual int32_t getInt(const StringBox& key, int32_t fallback) = 0;
     virtual Value getBinary(const StringBox& key, const Value& fallback) = 0;
 };
 

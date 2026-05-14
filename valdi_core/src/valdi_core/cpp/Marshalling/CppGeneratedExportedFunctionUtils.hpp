@@ -5,6 +5,7 @@
 #include "valdi_core/cpp/Marshalling/CppMarshaller.hpp"
 #include "valdi_core/cpp/Utils/ExceptionTracker.hpp"
 #include "valdi_core/cpp/Utils/Result.hpp"
+#include "valdi_core/cpp/Utils/ValueTypedObject.hpp"
 
 namespace snap::valdi_core {
 class JSRuntime;
@@ -20,6 +21,15 @@ public:
     static RegisteredCppGeneratedClass* registerFunctionSchema(const char* schemaString);
     static RegisteredCppGeneratedClass* registerFunctionSchema(const char* schemaString,
                                                                GetTypeReferencesCallback getTypeReferencesFunction);
+
+    /// Resolve an @ExportFunction module as a ValueTypedObject without C++ type instantiation.
+    /// Unlike resolve<T>(), this does not require the C++ callable type to be instantiable,
+    /// making it suitable for bridging scenarios where only the typed schema is needed.
+    static Result<Ref<ValueTypedObject>> resolveAsTypedObject(
+        snap::valdi_core::JSRuntime& jsRuntime,
+        const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
+        const char* modulePath,
+        RegisteredCppGeneratedClass& registeredClass);
 
     template<typename T>
     static Result<T> resolve(

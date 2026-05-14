@@ -31,9 +31,10 @@ my_application/          # Root directory of your application
 └── modules/
     ├── module_a/
     │   ├── BUILD.bazel
-    │   ├── android/     # Native Android sources
-    │   ├── ios/         # Native iOS sources
-    │   ├── cpp/         # Native C++ sources
+    │   ├── android/     # Native Android sources (Kotlin)
+    │   ├── ios/         # Native iOS sources (Objective-C)
+    │   ├── macos/       # Native macOS sources (Objective-C)
+    │   ├── web/         # Web sources (TypeScript, compiled by tsc)
     │   └── src/         # Valdi sources
     │       └── ModuleAComponent.tsx
     ├── module_b/
@@ -56,19 +57,14 @@ const ALL_MODULE_TEMPLATES: readonly ModuleTemplate[] = [
     description: `Exports a Valdi component, which can render UI elements`,
   },
   {
-    name: 'iOS/Android Bridge module',
-    path: 'ios_android_bridge_module',
-    description: `Bridge module with a TypeScript API backed by Objective-C and Kotlin implementation`,
+    name: 'Polyglot Bridge module',
+    path: 'polyglot_bridge_module',
+    description: `Bridge module with a TypeScript API backed by Kotlin (Android), Objective-C (iOS), and TypeScript (Web/macOS)`,
   },
   {
-    name: 'C++ Bridge module',
-    path: 'cpp_bridge_module',
-    description: `Bridge module with a TypeScript API backed by a cross-platform C++ implementation`,
-  },
-  {
-    name: 'iOS/Android View module',
-    path: 'ios_android_view_module',
-    description: `iOS and Android view exported to TypeScript, rendered through a Valdi component`,
+    name: 'Polyglot View module',
+    path: 'polyglot_view_module',
+    description: `Native view with <custom-view> implementations for all platforms: Android, iOS, macOS, and Web`,
   },
 ];
 

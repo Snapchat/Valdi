@@ -73,6 +73,13 @@ def _dest(rel):
     if _is_native_module_js(rel):
         return "native/" + _dest_native(rel)
 
+    # Place native module .d.ts alongside their .js counterparts in native/.
+    # Check if the corresponding .js would be a native module.
+    if rel.endswith(".d.ts") and "/web/" in rel:
+        js_rel = rel[:-5] + ".js"  # .d.ts -> .js
+        if _is_native_module_js(js_rel):
+            return "native/" + _dest_native(rel)
+
     # Handle external repository paths (short_path starts with ../ for external repos)
     # and regular source paths. Extract everything after /src/valdi_modules/src/valdi/
     # Works with any external repo name (e.g., ../<repo>/src/valdi_modules/src/valdi/...)
@@ -301,6 +308,9 @@ def _generate_register_native_modules_impl(ctx):
         " * Generated from _all_web_deps.",
         " */",
         "",
+        "var _cbs = globalThis.__valdiWebViewClassRegistryCallbacks =",
+        "  globalThis.__valdiWebViewClassRegistryCallbacks || [];",
+        "",
     ]
     seen_dest = {}
     n = 0
@@ -323,6 +333,11 @@ def _generate_register_native_modules_impl(ctx):
         lines.append("var {} = require('{}');".format(var_name, require_path))
         for mid in module_ids:
             lines.append("global.moduleLoader.registerModule('{}', () => {});".format(mid, var_name))
+        lines.append("if ({v}.webPolyglotViews) {{".format(v = var_name))
+        lines.append("  _cbs.push(function(registry) {")
+        lines.append("    Object.entries({v}.webPolyglotViews).forEach(function(e) {{ registry.set(e[0], e[1]); }});".format(v = var_name))
+        lines.append("  });")
+        lines.append("}")
         lines.append("")
     ctx.actions.write(output = out, content = "\n".join(lines))
     return [DefaultInfo(files = depset([out]))]

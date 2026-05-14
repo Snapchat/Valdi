@@ -34,7 +34,7 @@ private:
     ObjectPoolEntry<ArrayBuffer, void (*)(ArrayBuffer&)> _array;
 };
 
-TCPConnectionImpl::TCPConnectionImpl(boost::asio::io_service& ioService) : _socket(ioService) {}
+TCPConnectionImpl::TCPConnectionImpl(boost::asio::io_service& ioService) : _ioService(ioService), _socket(ioService) {}
 
 TCPConnectionImpl::~TCPConnectionImpl() = default;
 
@@ -44,10 +44,21 @@ boost::asio::ip::tcp::socket& TCPConnectionImpl::getSocket() {
 
 void TCPConnectionImpl::submitData(const BytesView& bytes) {
     std::lock_guard<Mutex> guard(_mutex);
+
+    if (_closed) {
+        return;
+    }
+
+    bool wasEmpty = _pendingPackets.empty();
     _pendingPackets.emplace_back(bytes);
 
-    if (_pendingPackets.size() == 1) {
-        lockFreeDoSend();
+    if (wasEmpty) {
+        _ioService.post([strongSelf = strongSmallRef(this)]() {
+            std::lock_guard<Mutex> lock(strongSelf->_mutex);
+            if (!strongSelf->_closed) {
+                strongSelf->lockFreeDoSend();
+            }
+        });
     }
 }
 
@@ -67,6 +78,9 @@ void TCPConnectionImpl::lockFreeDoSend() {
                                  }
 
                                  std::lock_guard<Mutex> guard(strongSelf->_mutex);
+                                 if (strongSelf->_closed) {
+                                     return;
+                                 }
                                  strongSelf->_pendingPackets.pop_front();
                                  strongSelf->lockFreeDoSend();
                              });
@@ -146,7 +160,13 @@ void TCPConnectionImpl::doRead() {
             if (ec.failed()) {
                 strongSelf->close(errorFromBoostError(ec));
             } else {
-                strongSelf->doRead();
+                {
+                    std::lock_guard<Mutex> guard(strongSelf->_mutex);
+                    if (strongSelf->_closed) {
+                        return;
+                    }
+                    strongSelf->doRead();
+                }
 
                 auto listener = strongSelf->getDataListener();
                 if (listener != nullptr) {

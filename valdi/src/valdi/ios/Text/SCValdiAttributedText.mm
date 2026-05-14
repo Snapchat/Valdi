@@ -175,4 +175,19 @@
                                                           imageData:imageData];
 }
 
+- (nullable NSDictionary<NSString *, NSNumber *> *)animationTransformAtIndex:(NSUInteger)index
+{
+    const auto &style = _cppInstance->getStyleAtIndex(index);
+    if (!style.animationTransform) {
+        return nil;
+    }
+
+    const auto &animationTransform = style.animationTransform.value();
+    return @{
+        @"translationY": @(animationTransform.translationY),
+        @"scale": @(animationTransform.scale),
+        @"opacity": @(animationTransform.opacity),
+    };
+}
+
 @end

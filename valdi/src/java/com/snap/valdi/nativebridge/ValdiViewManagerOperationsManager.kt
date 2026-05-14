@@ -1,10 +1,9 @@
 package com.snap.valdi.nativebridge
 
 import android.os.SystemClock
-import android.os.Handler
-import android.os.Looper
 import android.view.Choreographer
 import android.view.View
+import android.view.ViewGroup
 import com.snap.valdi.ViewRef
 import com.snap.valdi.attributes.AttributeHandlerDelegate
 import com.snap.valdi.attributes.BooleanAttributeHandlerDelegate
@@ -27,8 +26,10 @@ import com.snap.valdi.utils.error
 import com.snap.valdi.utils.trace
 import com.snap.valdi.utils.runOnMainThreadDelayed
 import com.snap.valdi.views.ValdiRootView
+import com.snapchat.client.valdi.NativeBridge
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.ConcurrentHashMap
 
 class ValdiViewManagerOperationsManager(
     private val logger: Logger,
@@ -158,6 +159,9 @@ class ValdiViewManagerOperationsManager(
                     OP_APPLY_ATTRIBUTE_CORNERS -> {
                         applyAttributeCorners(buffer, attachedValues, hasValue, currentAnimator)
                     }
+                    OP_ON_NEXT_DRAW -> {
+                        onNextDraw(buffer, attachedValues)
+                    }
                     else -> throw ValdiException("Invalid View Operation ${operation} (last operation: ${lastOperation})")
                 }
 
@@ -185,10 +189,10 @@ class ValdiViewManagerOperationsManager(
         }
     }
 
-    private fun getRootView(buffer: ByteBuffer, attachedValues: Array<Any>): ValdiRootView? {
+    private fun getRootView(buffer: ByteBuffer, attachedValues: Array<Any>, logIfNull: Boolean = true): ValdiRootView? {
         val ref = attachedValues[buffer.int] as ViewRef
         val rootView = ref.get() as? ValdiRootView
-        if (rootView == null) {
+        if (rootView == null && logIfNull) {
             logger.error("ValdiRootView is null")
         }
 
@@ -205,6 +209,16 @@ class ValdiViewManagerOperationsManager(
             getRootView(buffer, attachedValues)?.valdiUpdatesEndedAsync(layoutDidBecomeDirty)
         } else {
             getRootView(buffer, attachedValues)?.valdiUpdatesEnded(layoutDidBecomeDirty)
+        }
+    }
+
+    private fun onNextDraw(buffer: ByteBuffer, attachedValues: Array<Any>) {
+        val rootView = getRootView(buffer, attachedValues, logIfNull = false)
+        val callbackHandle = buffer.long
+        if (rootView != null) {
+            rootView.enqueueOnNextDrawCallback(callbackHandle)
+        } else {
+            NativeBridge.discardCallback(callbackHandle)
         }
     }
 
@@ -371,10 +385,64 @@ class ValdiViewManagerOperationsManager(
         if (hasValue) {
             val parentView = attachedValues[buffer.int] as ViewRef
             val viewIndex = buffer.int
+
+            val startNs = System.nanoTime()
+            currentMoveOp = MoveOpRef(view, parentView, viewIndex, startNs)
+
             parentView.insertChild(view, viewIndex)
+            val elapsedMs = (System.nanoTime() - startNs) / 1_000_000
+
+            if (elapsedMs > slowestInsertChildMs) {
+                recordSlowInsertChild(view, parentView, viewIndex, elapsedMs)
+            }
+            currentMoveOp = null
         } else {
             val shouldClearViewNode = buffer.int != 0
             view.removeFromParent(shouldClearViewNode)
+        }
+    }
+
+    private fun recordSlowInsertChild(
+        childRef: ViewRef,
+        parentRef: ViewRef,
+        viewIndex: Int,
+        elapsedMs: Long,
+    ) {
+        val childView = childRef.get()
+        val childClass = childView?.javaClass?.simpleName ?: "?"
+        val parentClass = parentRef.get()?.javaClass?.simpleName ?: "?"
+        val depth = countViewGroupDepth(childView)
+        slowestInsertChildMs = elapsedMs
+        slowestInsertChildOp = "child=$childClass(depth=$depth) -> parent=$parentClass idx=$viewIndex"
+        slowestInsertChildHierarchy = if (depth >= 4 && childView != null) {
+            val sb = StringBuilder()
+            dumpViewHierarchy(sb, childView, 0)
+            sb.toString()
+        } else {
+            null
+        }
+    }
+
+    private fun countViewGroupDepth(view: View?): Int {
+        if (view !is ViewGroup || view.childCount == 0) return 0
+        var maxChildDepth = 0
+        for (i in 0 until view.childCount) {
+            val d = countViewGroupDepth(view.getChildAt(i))
+            if (d > maxChildDepth) maxChildDepth = d
+        }
+        return 1 + maxChildDepth
+    }
+
+    private fun dumpViewHierarchy(sb: StringBuilder, view: View, level: Int) {
+        val name = view.javaClass.simpleName
+        sb.append("  ".repeat(level)).append(name)
+        if (view is ViewGroup) {
+            sb.append("(${view.childCount}ch)")
+            for (i in 0 until view.childCount) {
+                val child = view.getChildAt(i) ?: continue
+                sb.append("\n")
+                dumpViewHierarchy(sb, child, level + 1)
+            }
         }
     }
 
@@ -395,6 +463,79 @@ class ValdiViewManagerOperationsManager(
     }
 
     companion object {
+        /**
+         * In-flight insertChild — set before the call and cleared after, so an
+         * ANR mid-operation can identify which view was being attached. Holds
+         * [ViewRef]s rather than a formatted string to keep the hot path to a
+         * single small allocation; class names are resolved lazily when
+         * [dumpDiagnostics] reads at crash time (the views are still live on
+         * stack at that point).
+         */
+        class MoveOpRef(val child: ViewRef, val parent: ViewRef, val index: Int, val startedNs: Long)
+
+        /**
+         * Floor for [slowestInsertChildMs]. Inserts faster than this are not
+         * worth recording — they're never the ANR culprit and walking their
+         * subtrees adds overhead to the very flush we're trying to keep cheap.
+         * In healthy operation no insert exceeds this bar so the slow path is
+         * never entered.
+         */
+        private const val SLOW_INSERT_CHILD_THRESHOLD_MS = 10L
+
+        @Volatile private var currentMoveOp: MoveOpRef? = null
+        @Volatile private var slowestInsertChildMs: Long = SLOW_INSERT_CHILD_THRESHOLD_MS
+        @Volatile private var slowestInsertChildOp: String? = null
+        @Volatile private var slowestInsertChildHierarchy: String? = null
+
+        /**
+         * Subsystems outside valdi can register a contributor whose return
+         * value is appended to [dumpDiagnostics] output as `name: value`.
+         * Used to surface subsystem-specific state in ANR crash reports without
+         * forcing valdi to depend on those subsystems.
+         */
+        private val additionalDiagnostics = ConcurrentHashMap<String, () -> String?>()
+
+        fun registerAdditionalDiagnostics(name: String, contributor: () -> String?) {
+            additionalDiagnostics[name] = contributor
+        }
+
+        fun dumpDiagnostics(): String? {
+            val current = currentMoveOp
+            val slowestOp = slowestInsertChildOp
+            val sb = StringBuilder()
+            if (current != null) {
+                val c = current.child.get()?.javaClass?.simpleName ?: "?"
+                val p = current.parent.get()?.javaClass?.simpleName ?: "?"
+                val elapsedMs = (System.nanoTime() - current.startedNs) / 1_000_000
+                sb.append("IN_PROGRESS: child=").append(c)
+                    .append(" -> parent=").append(p)
+                    .append(" idx=").append(current.index)
+                    .append(" elapsed=").append(elapsedMs).append("ms")
+            }
+            if (slowestOp != null) {
+                if (sb.isNotEmpty()) sb.append(" | ")
+                sb.append("SLOWEST: ").append(slowestOp)
+                    .append(" (").append(slowestInsertChildMs).append("ms)")
+                slowestInsertChildHierarchy?.let { h ->
+                    sb.append("\n").append(h)
+                }
+            }
+            for ((name, contributor) in additionalDiagnostics) {
+                val value = try { contributor() } catch (t: Throwable) { null }
+                if (!value.isNullOrEmpty()) {
+                    if (sb.isNotEmpty()) sb.append(" | ")
+                    sb.append(name).append(": ").append(value)
+                }
+            }
+            return sb.toString().takeIf { it.isNotEmpty() }
+        }
+
+        fun resetDiagnostics() {
+            slowestInsertChildMs = SLOW_INSERT_CHILD_THRESHOLD_MS
+            slowestInsertChildOp = null
+            slowestInsertChildHierarchy = null
+        }
+
         private const val OP_BEGIN_RENDERING_VIEW = 1
         private const val OP_END_RENDERING_VIEW = 2
         private const val OP_MOVED_TO_TREE = 3
@@ -412,5 +553,6 @@ class ValdiViewManagerOperationsManager(
         private const val OP_APPLY_ATTRIBUTE_OBJECT = 15
         private const val OP_APPLY_ATTRIBUTE_PERCENT = 16
         private const val OP_APPLY_ATTRIBUTE_CORNERS = 17
+        private const val OP_ON_NEXT_DRAW = 18
     }
 }

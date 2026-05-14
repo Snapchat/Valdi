@@ -21,7 +21,9 @@
 #include "valdi_core/cpp/Utils/Mutex.hpp"
 #include "valdi_core/cpp/Utils/TrackedLock.hpp"
 #include "valdi_core/cpp/Utils/ValdiObject.hpp"
+#include <chrono>
 #include <deque>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -75,6 +77,7 @@ public:
     ~ViewNodeTree() override;
 
     void clear();
+    void clearRunUpdatesMetricsSession();
 
     void updateCSS(const SharedAnimator& animator);
 
@@ -230,6 +233,7 @@ public:
     void setAssetTracker(const Ref<IViewNodesAssetTracker>& assetTracker);
 
     void onNextLayout(const Ref<ValueFunction>& callback);
+    void onNextDraw(const Ref<ValueFunction>& callback);
 
     [[nodiscard]] ViewNodeTreeDisableUpdates beginDisableUpdates();
 
@@ -267,6 +271,7 @@ private:
     Ref<ViewTransactionScope> _currentViewTransactionScope;
     std::deque<ViewNodeTreeUpdates> _updateFunctions;
     std::vector<Ref<ValueFunction>> _onLayoutCallbacks;
+    std::vector<Ref<ValueFunction>> _onDrawCallbacks;
     mutable RecursiveMutex _mutex;
 
     FlatMap<AnimationCancelToken, SharedAnimator> _pendingCancellableAnimations;
@@ -300,14 +305,20 @@ private:
     int _disableUpdatesCounter = 0;
     int _beginViewTransactionCounter = 0;
     size_t _layoutDirtyCounter = 0;
+    std::chrono::steady_clock::duration _runUpdatesInnerAccumulatedTime{0};
+    std::optional<std::chrono::steady_clock::time_point> _runUpdatesInnerSessionStart;
+    std::optional<std::chrono::steady_clock::time_point> _runUpdatesInnerSessionStop;
 
     std::unique_ptr<AttributeOwner> _parentAttributeOwner;
+
+    void flushRunUpdatesInnerStatsIfNeeded();
 
     void attachRootNodeInParentTreeIfNeeded();
     void runUpdates();
     void runUpdatesInner();
 
     void flushOnLayoutCallbacks();
+    void flushOnDrawCallbacks();
 
     void schedulePerformUpdates();
     void performUpdatesIfLayoutSpecsUpToDate();

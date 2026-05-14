@@ -1,7 +1,8 @@
+import fs from 'fs';
 import path from 'path';
 import inquirer from 'inquirer';
 import type { Argv } from 'yargs';
-import { ANSI_COLORS, BOOTSTRAP_DIR_PATH, META_DIR_PATH, TEMPLATE_BASE_PATHS, VALDI_CONFIG_PATHS } from '../core/constants';
+import { ANSI_COLORS, BOOTSTRAP_DIR_PATH, TEMPLATE_BASE_PATHS, VALDI_CONFIG_PATHS } from '../core/constants';
 import { CliError } from '../core/errors';
 import type { ArgumentsResolver } from '../utils/ArgumentsResolver';
 import { BazelClient } from '../utils/BazelClient';
@@ -15,7 +16,6 @@ import {
   deleteAll,
   fileExists,
   isDirectoryEmpty,
-  processReplacements,
   resolveFilePath,
 } from '../utils/fileUtils';
 import { wrapInColor } from '../utils/logUtils';
@@ -27,10 +27,9 @@ interface CommandParameters {
   confirmBootstrap: boolean;
   projectName: string;
   applicationType: string;
-  valdiImport: string;
-  valdiWidgetsImport: string;
   valdiVersion: string;
   valdiWidgetsVersion: string;
+  localValdiPath: string;
   skipProjectsync: boolean;
   withCleanup: boolean;
 }
@@ -62,36 +61,9 @@ const DEFAULT_VALDI_RELEASE_TAG = 'beta-0.0.3';
 /** Pinned Valdi_Widgets release used by default. Should match the Valdi release cycle. */
 const DEFAULT_VALDI_WIDGETS_RELEASE_TAG = 'beta-0.0.3';
 
-const DEFAULT_VALDI_IMPORT = `
-http_archive(
-    name = "valdi",
-    strip_prefix = "Valdi-{{VALDI_RELEASE_TAG}}",
-    url = "${VALDI_GIT_URL}/archive/{{VALDI_RELEASE_REF}}.tar.gz",
-)`;
-
-const DEFAULT_VALDI_WIDGETS_IMPORT = `
-http_archive(
-    name = "valdi_widgets",
-    strip_prefix = "Valdi_Widgets-{{VALDI_WIDGETS_RELEASE_TAG}}",
-    url = "${VALDI_WIDGETS_GIT_URL}/archive/{{VALDI_WIDGETS_RELEASE_REF}}.tar.gz",
-)`;
-
-const LOCAL_VALDI_IMPORT_TEMPLATE = `
-local_repository(
-    name = "valdi",
-    path = "{{PATH}}",
-)
-`;
-
-const LOCAL_VALDI_WIDGETS_IMPORT_TEMPLATE = `
-local_repository(
-    name = "valdi_widgets",
-    path = "{{PATH}}",
-)
-`;
 
 function isAlreadyInitialized(): boolean {
-  return fileExists(path.join(process.cwd(), 'WORKSPACE'));
+  return fileExists(path.join(process.cwd(), 'MODULE.bazel')) || fileExists(path.join(process.cwd(), 'WORKSPACE'));
 }
 
 async function getShouldBootstrap(argv: ArgumentsResolver<CommandParameters>): Promise<boolean> {
@@ -184,54 +156,30 @@ function resolveValdiReleaseTag(
   return Promise.resolve(override);
 }
 
-function getValdiImport(argv: ArgumentsResolver<CommandParameters>, valdiReleaseRef: string): string {
-  const valdiImport = argv.getArgument('valdiImport');
-  if (valdiImport) {
-    return processReplacements(LOCAL_VALDI_IMPORT_TEMPLATE, { PATH: valdiImport });
-  } else {
-    const valdiReleaseTag = valdiReleaseRef.split('/').pop()!;
-    return processReplacements(DEFAULT_VALDI_IMPORT, {
-      VALDI_RELEASE_REF: valdiReleaseRef,
-      VALDI_RELEASE_TAG: valdiReleaseTag,
-    });
-  }
-}
-
-function getValdiWidgetsImport(argv: ArgumentsResolver<CommandParameters>, valdiWidgetsReleaseRef: string): string {
-  const valdiWidgetsImport = argv.getArgument('valdiWidgetsImport');
-  if (valdiWidgetsImport) {
-    return processReplacements(LOCAL_VALDI_WIDGETS_IMPORT_TEMPLATE, { PATH: valdiWidgetsImport });
-  } else {
-    const valdiWidgetsReleaseTag = valdiWidgetsReleaseRef.split('/').pop()!;
-    return processReplacements(DEFAULT_VALDI_WIDGETS_IMPORT, {
-      VALDI_WIDGETS_RELEASE_REF: valdiWidgetsReleaseRef,
-      VALDI_WIDGETS_RELEASE_TAG: valdiWidgetsReleaseTag,
-    });
-  }
-}
 
 // Create files from templates
 function initializeConfigFiles(
   projectName: string,
   template: ApplicationTemplate,
-  valdiImport: string,
-  valdiWidgetsImport: string,
+  valdiReleaseTag: string,
+  valdiWidgetsReleaseTag: string,
 ) {
 
   const TEMPLATE_FILES = [
     TemplateFile.init(TEMPLATE_BASE_PATHS.USER_CONFIG).withOutputPath(resolveFilePath(VALDI_CONFIG_PATHS[0] ?? '')),
     TemplateFile.init(TEMPLATE_BASE_PATHS.BAZEL_VERSION),
-    TemplateFile.init(TEMPLATE_BASE_PATHS.WORKSPACE).withReplacements({
+    TemplateFile.init(TEMPLATE_BASE_PATHS.MODULE_BAZEL).withReplacements({
       WORKSPACE_NAME: projectName,
-      VALDI_IMPORT: valdiImport,
-      VALDI_WIDGETS_IMPORT: valdiWidgetsImport,
+      VALDI_RELEASE_TAG: valdiReleaseTag,
+      VALDI_WIDGETS_RELEASE_TAG: valdiWidgetsReleaseTag,
     }),
-    TemplateFile.init(TEMPLATE_BASE_PATHS.BAZEL_RC),
+    TemplateFile.init(TEMPLATE_BASE_PATHS.BAZEL_RC).withReplacements({
+      VALDI_RELEASE_TAG: valdiReleaseTag,
+    }),
     TemplateFile.init(TEMPLATE_BASE_PATHS.README),
     TemplateFile.init(TEMPLATE_BASE_PATHS.GIT_IGNORE),
     TemplateFile.init(TEMPLATE_BASE_PATHS.WATCHMAN_CONFIG),
     TemplateFile.init(TEMPLATE_BASE_PATHS.EDITOR_CONFIG),
-    TemplateFile.init(TEMPLATE_BASE_PATHS.CURSOR_RULES),
     TemplateFile.init(TEMPLATE_BASE_PATHS.AGENTS).withReplacements({ MODULE_NAME: projectName }),
   ];
 
@@ -242,7 +190,7 @@ function initializeConfigFiles(
     templateFile.expandTemplate();
   });
 
-  // Copy GitHub templates directory (if it exists)
+  // Copy shared bootstrap directories
   const replacements: Replacements = {
     MODULE_NAME: projectName,
     MODULE_NAME_PASCAL_CASED: toPascalCase(projectName),
@@ -254,20 +202,62 @@ function initializeConfigFiles(
     copyBootstrapFiles(githubSourcePath, githubDestPath, replacements);
   }
 
-  // Copy .cursor rules directory (if it exists)
-  const cursorSourcePath = path.join(META_DIR_PATH, '.cursor');
-  if (fileExists(cursorSourcePath)) {
-    console.log(wrapInColor('Creating Cursor AI rules...', ANSI_COLORS.YELLOW_COLOR));
-    const cursorDestPath = path.join(process.cwd(), '.cursor');
-    copyBootstrapFiles(cursorSourcePath, cursorDestPath, replacements);
-  }
-
   // Setup hello world application
   console.log(wrapInColor(`Initializing ${template.name} application...`, ANSI_COLORS.YELLOW_COLOR));
   const sourcePath = path.join(BOOTSTRAP_DIR_PATH, 'apps', template.path);
   const destPath = process.cwd();
 
   copyBootstrapFiles(sourcePath, destPath, replacements);
+}
+
+const VALDI_SUB_MODULES: readonly { name: string; subPath: string }[] = [
+  { name: 'android_macros', subPath: 'bzl/macros' },
+  { name: 'snap_macros', subPath: 'bzl/valdi/snap_macros' },
+  { name: 'snap_client_toolchains', subPath: 'bzl/toolchains' },
+  { name: 'snap_platforms', subPath: 'bzl/platforms' },
+  { name: 'skia_user_config', subPath: 'third-party/skia_user_config' },
+  { name: 'rules_hdrs', subPath: 'third-party/rules_hdrs' },
+  { name: 'valdi_toolchain', subPath: 'bin' },
+  { name: 'resvg_libs', subPath: 'third-party/resvg/resvg_libs' },
+];
+
+function applyLocalOverrides(localValdiPath: string) {
+  const resolvedPath = path.resolve(localValdiPath);
+  const registryPath = path.join(resolvedPath, 'registry');
+
+  const moduleBazelPath = path.join(process.cwd(), 'MODULE.bazel');
+  let content = fs.readFileSync(moduleBazelPath, 'utf-8');
+
+  // Replace Valdi archive variables + override with local_path_override
+  content = content.replace(
+    /VALDI_TAG = .*\nVALDI_URL = .*\nVALDI_PREFIX = .*\n\nbazel_dep\(name = "valdi".*\)\narchive_override\(\n\s+module_name = "valdi",\n\s+urls = \[VALDI_URL\],\n\s+strip_prefix = VALDI_PREFIX,\n\)/,
+    `bazel_dep(name = "valdi", version = "0.1")\nlocal_path_override(module_name = "valdi", path = "${resolvedPath}")`,
+  );
+
+  // Replace sub-module archive_overrides with local_path_override
+  for (const sub of VALDI_SUB_MODULES) {
+    content = content.replace(
+      new RegExp(`bazel_dep\\(name = "${sub.name}"\\)\\narchive_override\\(module_name = "${sub.name}".*\\)`),
+      `bazel_dep(name = "${sub.name}")\nlocal_path_override(module_name = "${sub.name}", path = "${resolvedPath}/${sub.subPath}")`,
+    );
+  }
+
+  // Remove Widgets section entirely in local mode (not available locally)
+  content = content.replace(
+    /# -- Valdi Widgets.*\nWIDGETS_TAG = .*\n\nbazel_dep\(name = "valdi_widgets"\)\narchive_override\(\n\s+module_name = "valdi_widgets",\n\s+urls = \[.*\],\n\s+strip_prefix = .*,\n\)/,
+    '',
+  );
+
+  fs.writeFileSync(moduleBazelPath, content);
+
+  // Update .bazelrc to use local registry
+  const bazelrcPath = path.join(process.cwd(), '.bazelrc');
+  let bazelrc = fs.readFileSync(bazelrcPath, 'utf-8');
+  bazelrc = bazelrc.replace(
+    /common --registry=https:\/\/raw\.githubusercontent\.com\/Snapchat\/Valdi\/.*\/registry/,
+    `common --registry=file://${registryPath}`,
+  );
+  fs.writeFileSync(bazelrcPath, bazelrc);
 }
 
 async function valdiBootstrap(argv: ArgumentsResolver<CommandParameters>) {
@@ -328,12 +318,15 @@ async function valdiBootstrap(argv: ArgumentsResolver<CommandParameters>) {
     'valdiWidgetsVersion',
   );
 
-  const valdiImport = getValdiImport(argv, valdiReleaseTag);
-  const valdiWidgetsImport = getValdiWidgetsImport(argv, valdiWidgetsReleaseTag);
-
   // Creating basic config files and Hello World application
   console.log(wrapInColor('Initializing config files...', ANSI_COLORS.BLUE_COLOR));
-  initializeConfigFiles(projectName, applicationType, valdiImport, valdiWidgetsImport);
+  initializeConfigFiles(projectName, applicationType, valdiReleaseTag, valdiWidgetsReleaseTag);
+
+  const localValdiPath = argv.getArgument('localValdiPath');
+  if (localValdiPath) {
+    console.log(wrapInColor(`Applying local overrides for ${localValdiPath}...`, ANSI_COLORS.YELLOW_COLOR));
+    applyLocalOverrides(localValdiPath);
+  }
 
   // Check bazel version matches .bazelversion
   console.log(wrapInColor('Verifying Bazel installation...', ANSI_COLORS.BLUE_COLOR));
@@ -376,25 +369,18 @@ export const builder = (yargs: Argv<CommandParameters>) => {
       type: 'string',
       alias: 'n',
     })
-    .option('valdiImport', {
-      describe:
-        'Path to a local checkout of the Valdi repo. If not specified, uses the pinned release (see valdiVersion).',
-      type: 'string',
-      alias: 'l',
-    })
-    .option('valdiWidgetsImport', {
-      describe:
-        'Path to a local checkout of the Valdi_Widgets repo. If not specified, uses the pinned release (see valdiWidgetsVersion).',
-      type: 'string',
-      alias: 'w',
-    })
     .option('valdiVersion', {
-      describe: `Valdi release tag to use (e.g. v1.0.0). Use "latest" to fetch the GitHub latest release. Default: ${DEFAULT_VALDI_RELEASE_TAG}`,
+      describe: `Valdi release tag or branch to use (e.g. beta-0.1.0, main). Use "latest" for the GitHub latest release, or "main" for bleeding edge. Default: ${DEFAULT_VALDI_RELEASE_TAG}`,
       type: 'string',
     })
     .option('valdiWidgetsVersion', {
-      describe: `Valdi_Widgets release tag to use. Use "latest" to fetch the GitHub latest release. Default: ${DEFAULT_VALDI_WIDGETS_RELEASE_TAG}`,
+      describe: `Valdi_Widgets release tag or branch to use. Use "latest" for the GitHub latest release, or "main" for bleeding edge. Default: ${DEFAULT_VALDI_WIDGETS_RELEASE_TAG}`,
       type: 'string',
+    })
+    .option('localValdiPath', {
+      describe: 'Path to a local Valdi checkout. Generates local_path_override entries instead of archive_override.',
+      type: 'string',
+      alias: 'l',
     })
     .option('skipProjectsync', {
       describe: 'Skip projectsync for testing purposes',

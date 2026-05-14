@@ -1,0 +1,29 @@
+"bzlmod declaration for bazelbuild/rules_nodejs"
+
+module(
+    name = "rules_nodejs",
+    version = "6.2.0",
+    compatibility_level = 1,
+)
+
+bazel_dep(name = "bazel_skylib", version = "1.4.1")
+bazel_dep(name = "platforms", version = "0.0.5")
+
+node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node")
+node.toolchain()
+use_repo(node, "nodejs_toolchains")
+
+register_toolchains("@nodejs_toolchains//:linux_amd64_toolchain_target")
+register_toolchains("@nodejs_toolchains//:linux_amd64_toolchain")
+register_toolchains("@nodejs_toolchains//:linux_arm64_toolchain_target")
+register_toolchains("@nodejs_toolchains//:linux_arm64_toolchain")
+register_toolchains("@nodejs_toolchains//:linux_s390x_toolchain_target")
+register_toolchains("@nodejs_toolchains//:linux_s390x_toolchain")
+register_toolchains("@nodejs_toolchains//:linux_ppc64le_toolchain_target")
+register_toolchains("@nodejs_toolchains//:linux_ppc64le_toolchain")
+register_toolchains("@nodejs_toolchains//:darwin_amd64_toolchain_target")
+register_toolchains("@nodejs_toolchains//:darwin_amd64_toolchain")
+register_toolchains("@nodejs_toolchains//:darwin_arm64_toolchain_target")
+register_toolchains("@nodejs_toolchains//:darwin_arm64_toolchain")
+register_toolchains("@nodejs_toolchains//:windows_amd64_toolchain_target")
+register_toolchains("@nodejs_toolchains//:windows_amd64_toolchain")

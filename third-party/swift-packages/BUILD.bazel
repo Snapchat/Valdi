@@ -1,0 +1,3 @@
+# This BUILD file makes the .BUILD files in this directory accessible as
+# build_file targets for http_archive rules.
+exports_files(glob(["*.BUILD"]))

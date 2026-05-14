@@ -98,7 +98,7 @@ indirect enum ValdiModelPropertyType {
     case map(keyType: ValdiModelPropertyType, valueType: ValdiModelPropertyType)
     case any
     case void
-    case function(parameters: [ValdiModelProperty], returnType: ValdiModelPropertyType, isSingleCall: Bool, shouldCallOnWorkerThread: Bool)
+    case function(parameters: [ValdiModelProperty], returnType: ValdiModelPropertyType, isSingleCall: Bool, shouldCallOnWorkerThread: Bool, allowSyncCall: Bool)
     case object(ValdiNodeClassMapping)
     case genericTypeParameter(name: String)
     case genericObject(ValdiNodeClassMapping, typeArguments: [ValdiModelPropertyType])
@@ -150,7 +150,7 @@ indirect enum ValdiModelPropertyType {
             return false
         case .array(let elementType):
             return elementType.includesGenericType
-        case .function(let parameters, let returnType, _, _):
+        case .function(let parameters, let returnType, _, _, _):
             return parameters.contains(where: { $0.type.includesGenericType }) || returnType.includesGenericType
         case .genericTypeParameter:
             return true

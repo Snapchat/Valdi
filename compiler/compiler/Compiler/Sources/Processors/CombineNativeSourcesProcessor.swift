@@ -383,7 +383,6 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
                                               matchedItems: [SelectedItem<NativeSource>]) -> [CompilationItem] {
         var output = [CompilationItem]()
         let hasKotlin = matchedItems.contains(where: { $0.data.filename.hasSuffix(".kt") })
-        let hasSwift = matchedItems.contains(where: { $0.data.filename.hasSuffix(".swift") })
         let hasObjectiveC = matchedItems.contains(where: { $0.data.filename.hasSuffix(".m") })
         let hasCpp = matchedItems.contains(where: { $0.data.filename.hasSuffix(".cpp") })
 
@@ -411,8 +410,19 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
             }
         }
 
-        if bundle.iosCodegenEnabled && bundle.iosLanguage == .swift && !hasSwift {
-            output.append(makeEmptySource(bundle: bundle, filename: "\(bundle.iosModuleName).swift", platform: .ios))
+        if bundle.iosCodegenEnabled && (bundle.iosLanguage == .swift || bundle.iosLanguage == .both) {
+            let mainSwiftId = "\(bundle.iosModuleName).\(FileExtensions.swift)"
+            let typesSwiftId = "\(bundle.iosModuleName)\(IOSType.HeaderImportKind.apiOnlyModuleNameSuffix).\(FileExtensions.swift)"
+
+            let hasMainSwift = matchedItems.contains(where: { $0.data.groupingIdentifier == mainSwiftId })
+            let hasTypesSwift = matchedItems.contains(where: { $0.data.groupingIdentifier == typesSwiftId })
+
+            if !hasMainSwift {
+                output.append(makeEmptySource(bundle: bundle, filename: mainSwiftId, platform: .ios))
+            }
+            if !hasTypesSwift {
+                output.append(makeEmptySource(bundle: bundle, filename: typesSwiftId, platform: .ios))
+            }
         }
 
         if bundle.cppCodegenEnabled && !hasCpp {
@@ -429,6 +439,92 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
         return output
     }
 
+    private func outputContainsIosNativeSourceFilename(_ output: [CompilationItem], bundle: CompilationItem.BundleInfo, filename: String) -> Bool {
+        output.contains { item in
+            guard item.bundleInfo == bundle, item.platform == .ios else { return false }
+            guard case .nativeSource(let nativeSource) = item.kind else { return false }
+            return nativeSource.filename == filename
+        }
+    }
+
+    private func selectedItemsContainIosObjcImplementation(_ selectedItems: [SelectedItem<NativeSource>]) -> Bool {
+        selectedItems.contains { item in
+            item.item.platform == .ios && item.data.filename.hasSuffix(".m")
+        }
+    }
+
+    /// For **ObjC** `single_file_codegen`, Bazel always declares Types umbrella outputs (`…Types.h` /
+    /// `…Types.m`) alongside the main framework. When the module only emits main-framework sources
+    /// (e.g. views), emit minimal Types placeholders so those declared outputs exist. Swift outputs
+    /// are not synthesized here (see `generateEmptySourcesIfNeeded` for the `--only-generate-native-code`
+    /// path only).
+    private func emitMissingSingleFileCodegenIosNativeOutputs(
+        bundles: [CompilationItem.BundleInfo: [SelectedItem<NativeSource>]],
+        combinedOutput: [CompilationItem]
+    ) -> [CompilationItem] {
+        var extras = [CompilationItem]()
+
+        for (bundleInfo, selectedItems) in bundles {
+            guard shouldProcessBundle(bundle: bundleInfo) else { continue }
+            guard bundleInfo.singleFileCodegen, bundleInfo.iosCodegenEnabled else { continue }
+
+            let typesSuffix = IOSType.HeaderImportKind.apiOnlyModuleNameSuffix
+            let mainObjcUmbrellaImpl = "\(bundleInfo.iosModuleName).m"
+            let typesHeaderFilename = "\(bundleInfo.iosModuleName)\(typesSuffix).h"
+            let typesImplFilename = "\(bundleInfo.iosModuleName)\(typesSuffix).m"
+
+            if bundleInfo.iosLanguage == .objc || bundleInfo.iosLanguage == .both {
+                let hasTypesImpl = outputContainsIosNativeSourceFilename(combinedOutput + extras, bundle: bundleInfo, filename: typesImplFilename)
+                let hasTypesHeader = outputContainsIosNativeSourceFilename(combinedOutput + extras, bundle: bundleInfo, filename: typesHeaderFilename)
+                if !hasTypesImpl || !hasTypesHeader {
+                    let hasMainObjcUmbrella = outputContainsIosNativeSourceFilename(combinedOutput + extras, bundle: bundleInfo, filename: mainObjcUmbrellaImpl)
+                    let hadObjcInputs = selectedItemsContainIosObjcImplementation(selectedItems)
+                    if hasMainObjcUmbrella || hadObjcInputs {
+                        let relativePath = "../\(bundleInfo.iosModuleName)\(typesSuffix)"
+                        let guardMacro = "\(bundleInfo.iosModuleName)\(typesSuffix)_h"
+                        let headerBody = """
+// Placeholder: single_file_codegen module emitted no Types (API) sources; satisfies declared outputs.
+#ifndef \(guardMacro)
+#define \(guardMacro)
+#endif
+"""
+                        let implBody = """
+#import "\(typesHeaderFilename)"
+"""
+                        if !hasTypesHeader {
+                            extras.append(makeNativeStringSource(bundle: bundleInfo,
+                                                                 relativePath: relativePath,
+                                                                 filename: typesHeaderFilename,
+                                                                 body: headerBody,
+                                                                 platform: .ios))
+                        }
+                        if !hasTypesImpl {
+                            extras.append(makeNativeStringSource(bundle: bundleInfo,
+                                                                 relativePath: relativePath,
+                                                                 filename: typesImplFilename,
+                                                                 body: implBody,
+                                                                 platform: .ios))
+                        }
+                    }
+                }
+            }
+        }
+
+        return extras
+    }
+
+    private func makeNativeStringSource(bundle: CompilationItem.BundleInfo,
+                                        relativePath: String,
+                                        filename: String,
+                                        body: String,
+                                        platform: Platform) -> CompilationItem {
+        let nativeSource = NativeSource(relativePath: relativePath,
+                                        filename: filename,
+                                        file: .string(body),
+                                        groupingIdentifier: filename,
+                                        groupingPriority: 0)
+        return CompilationItem(generatedFromBundleInfo: bundle, kind: .nativeSource(nativeSource), platform: platform, outputTarget: .all)
+    }
 
     private func combineNativeSources(selectedItems: [SelectedItem<NativeSource>]) -> [CompilationItem] {
         let selectedItemsByBundleInfo = selectedItems.groupBy { item in
@@ -451,6 +547,9 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
                                                      nativeSources: nativeSources))
             }
         }
+
+        output += emitMissingSingleFileCodegenIosNativeOutputs(bundles: selectedItemsByBundleInfo,
+                                                               combinedOutput: output)
 
         // Generate dummy empty sources if --only-generate-native-code-for-modules is specified
         // and nothing was generated.

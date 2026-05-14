@@ -18,7 +18,7 @@ typedef NS_ENUM(NSInteger, SCValdiLoggerLevel) {
     SCValdiLoggerLevelError,
 };
 
-@protocol SCValdiLogger
+@protocol SCValdiLogger <NSObject>
 
 - (BOOL)isLogEnabledForLevel:(SCValdiLoggerLevel)level;
 

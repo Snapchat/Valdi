@@ -3,8 +3,8 @@ import { IRenderedElement } from 'valdi_core/src/IRenderedElement';
 /**
  * Find elements with a specific key recursively
  */
-export function elementKeyFind(element: IRenderedElement | IRenderedElement[], key: string): IRenderedElement[] {
-  const results: IRenderedElement[] = [];
+export function elementKeyFind<T = any>(element: IRenderedElement | IRenderedElement[], key: string): IRenderedElement<T>[] {
+  const results: IRenderedElement<T>[] = [];
 
   const recursor = (current: IRenderedElement) => {
     if (current.key === key) {

@@ -15,6 +15,7 @@ ts_project(
     ]),
     allow_js = True,
     composite = True,
+    declaration = True,
     transpiler = "tsc",
     tsconfig = "web/tsconfig.json",
 )

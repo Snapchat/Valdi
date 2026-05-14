@@ -25,7 +25,15 @@ ViewTransactionScope::ViewTransactionScope(IViewManager* viewManager,
 ViewTransactionScope::~ViewTransactionScope() = default;
 
 void ViewTransactionScope::setRootView(Ref<View> rootView) {
+    if (_rootView == rootView) {
+        return;
+    }
+
     _rootView = std::move(rootView);
+
+    if (_transaction != nullptr && _rootView != nullptr) {
+        _transaction->willUpdateRootView(_rootView);
+    }
 }
 
 void ViewTransactionScope::submit() {

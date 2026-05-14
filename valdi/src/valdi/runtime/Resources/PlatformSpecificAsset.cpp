@@ -44,6 +44,8 @@ Ref<Asset> PlatformSpecificAsset::withPlatform(PlatformType platformType) {
             }
             return _androidAsset;
         case PlatformTypeIOS:
+        case PlatformTypeMacOS:
+        case PlatformTypeWeb:
             if (_iOSAsset == nullptr) {
                 return _defaultAsset;
             }

@@ -38,6 +38,7 @@ public:
     void onReady();
 
 private:
+    boost::asio::io_service& _ioService;
     boost::asio::ip::tcp::socket _socket;
     mutable Mutex _mutex;
     Shared<ITCPConnectionDataListener> _dataListener;

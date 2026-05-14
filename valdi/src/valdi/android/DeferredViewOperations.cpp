@@ -171,6 +171,12 @@ void DeferredViewOperations::enqueueEndRenderingView(const Valdi::Ref<Valdi::Vie
     write(buffer, Valdi::Value(view));
 }
 
+void DeferredViewOperations::enqueueOnNextDraw(const Valdi::Ref<Valdi::View>& view, int64_t callbackHandle) {
+    auto& buffer = writeHeader(ViewOperationOnNextDraw, false);
+    write(buffer, Valdi::Value(view));
+    write(buffer, callbackHandle);
+}
+
 std::optional<SerializedViewOperations> DeferredViewOperations::dequeueOperations() {
     if (_buffer.empty()) {
         return std::nullopt;

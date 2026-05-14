@@ -60,12 +60,20 @@ interface IValdiRuntime: Disposable {
     /**
      * Creates a scoped JS runtime for executing TypeScript code.
      *
-     * @param block Callback invoked with the created runtime.
-     */
-    fun createScopedJSRuntime(block: (ValdiScopedJSRuntime) -> Unit)
-
-    /**
-     * Creates a scoped JS runtime for executing TypeScript code.
+     * Each scoped runtime has its own [NativeObjectsManager], which means all native objects
+     * created through it are released immediately when [ValdiScopedJSRuntime.dispose] is called,
+     * rather than waiting for the JS garbage collector.
+     *
+     * **Why scoped runtimes exist:** On Android, two garbage-collected runtimes (JVM and JS)
+     * compete for object lifetimes. Cross-language references can form retain cycles where Java
+     * prevents TS from collecting an object and vice versa, leading to memory leaks. Scoped
+     * runtimes break these cycles on dispose.
+     *
+     * **Each task should create and dispose its own scoped runtime.** Do not cache or share a
+     * single scoped runtime across features or for the lifetime of a user session. A long-lived
+     * shared scope  could accumulate native references from all consumers with no opportunity for
+     * cleanup until the scope is finally disposed, effectively recreating the memory pressure
+     * that scoped runtimes were designed to prevent.
      *
      * @param scopeName A descriptive name identifying where this scoped runtime is created from.
      *                  This name appears in error messages to help debug issues with disposed
@@ -73,11 +81,7 @@ interface IValdiRuntime: Disposable {
      *                  or feature name) to make error messages actionable.
      * @param block Callback invoked with the created runtime.
      */
-    fun createScopedJSRuntime(scopeName: String, block: (ValdiScopedJSRuntime) -> Unit) {
-        // Default implementation for backward compatibility.
-        // Implementations should override this method to use scopeName for attribution.
-        createScopedJSRuntime(block)
-    }
+    fun createScopedJSRuntime(scopeName: String, block: (ValdiScopedJSRuntime) -> Unit)
 
     fun getFontManager(block: (FontManager) -> Unit)
 

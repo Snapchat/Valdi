@@ -1,6 +1,6 @@
 {
   "name": "@snap/valdi",
-  "version": "1.0.7",
+  "version": "1.0.11",
   "description": "Valdi CLI tools for developers",
   "license": "MIT",
   "repository": {
@@ -8,14 +8,23 @@
     "url": "https://github.com/Snapchat/Valdi.git",
     "directory": "npm_modules/cli"
   },
-  "publishConfig": { "access": "public" },
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "valdi": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "bundled-skills",
+    ".metadata",
+    ".bootstrap"
+  ],
   "scripts": {
     "prepare": "npm run build",
+    "prebuild": "node scripts/bundle-skills.js",
     "build": "npm exec --package=typescript@5.9.2 tsc -- --project ./tsconfig.dist.json",
-    "test": "ts-node node_modules/jasmine/bin/jasmine",
+    "test": "tsx node_modules/jasmine/bin/jasmine",
     "watch": "tsc --watch",
     "main": "ts-node ./src/index.ts",
     "format": "prettier --ignore-path .gitignore --write \"**/*.+(js|ts|json)\"",
@@ -51,9 +60,15 @@
     "@types/eslint": "^9.6.1",
     "@types/jasmine": "^5.1.7",
     "jasmine": "^5.6.0",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.0"
   },
   "overrides": {
-    "brace-expansion": "2.0.2"
+    "minimatch@3": {
+      "brace-expansion": "2.0.2"
+    },
+    "minimatch@9": {
+      "brace-expansion": "2.0.2"
+    }
   }
 }

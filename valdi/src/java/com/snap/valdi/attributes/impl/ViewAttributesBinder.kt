@@ -518,12 +518,48 @@ class ViewAttributesBinder(private val context: Context,
         updateMaskOpacity(view, 1.0f, animator)
     }
 
+    fun applyImageMask(view: View, value: Array<Any>, animator: ValdiAnimator?) {
+        val gradient = ValdiGradient.fromGradientData(value)
+        if (gradient.colors.size < 2) {
+            resetImageMask(view, animator)
+            return
+        }
+        ViewUtils.setImageMaskGradient(view, gradient)
+        // ViewGroup defaults willNotDraw=true, skipping draw() entirely.
+        // Force draw() so our mask in ValdiView.draw() runs.
+        view.setWillNotDraw(false)
+        view.invalidate()
+    }
+
+    fun resetImageMask(view: View, animator: ValdiAnimator?) {
+        ViewUtils.setImageMaskGradient(view, null)
+        if (view.background == null) {
+            view.setWillNotDraw(true)
+        }
+        view.invalidate()
+    }
+
     fun applyOnTouchDelayDuration(view: View, value: Float, animator: ValdiAnimator?) {
         // no-op for now
     }
 
     fun resetOnTouchDelayDuration(view: View, animator: ValdiAnimator?) {
         // no-op for now
+    }
+
+    // blurStyle is an iOS-only attribute on `<blur>` / `BlurView` (mapped to
+    // SCValdiBlurView on iOS). Android does not have a dedicated BlurView class —
+    // `<blur>` falls through to ValdiView (see the FIXME on BlurView in
+    // valdi_tsx/src/NativeTemplateElements.d.ts). Register the attribute here as a
+    // no-op so the C++ attribute applier finds a handler and does not emit
+    // `Could not find attribute 'blurStyle' in class com.snap.valdi.views.ValdiView`
+    // for every mounted <blur> on Android.
+    fun applyBlurStyle(view: View, value: String, animator: ValdiAnimator?) {
+        // no-op on Android — no native BlurView implementation yet.
+    }
+
+    fun resetBlurStyle(view: View, animator: ValdiAnimator?) {
+        // no-op on Android — no native BlurView implementation yet.
     }
 
     override fun bindAttributes(attributesBindingContext: AttributesBindingContext<View>) {
@@ -551,6 +587,7 @@ class ViewAttributesBinder(private val context: Context,
 
         attributesBindingContext.bindUntypedAttribute("maskPath", false, this::applyMaskPath, this::resetMaskPath)
         attributesBindingContext.bindFloatAttribute("maskOpacity", false, this::applyMaskOpacity, this::resetMaskOpacity)
+        attributesBindingContext.bindArrayAttribute("maskImage", false, this::applyImageMask, this::resetImageMask)
 
         attributesBindingContext.bindCompositeAttribute("touchAreaExtensionComposite", arrayListOf(
                 CompositeAttributePart("touchAreaExtension", AttributeType.DOUBLE, true, false),
@@ -576,5 +613,8 @@ class ViewAttributesBinder(private val context: Context,
         attributesBindingContext.bindFloatAttribute("onTouchDelayDuration", false, this::applyOnTouchDelayDuration, this::resetOnTouchDelayDuration)
 
         attributesBindingContext.bindFunctionAttribute("hitTest", gestureAttributes::applyHitTest, gestureAttributes::resetHitTest)
+
+        // iOS-only BlurView attribute; accepted as no-op on Android — see applyBlurStyle above.
+        attributesBindingContext.bindStringAttribute("blurStyle", false, this::applyBlurStyle, this::resetBlurStyle)
     }
 }
