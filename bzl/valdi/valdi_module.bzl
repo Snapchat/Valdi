@@ -47,12 +47,12 @@ def valdi_module(
         name,
         srcs,
         ios_module_name = None,
+        ios_class_prefix = None,
         ios_output_target = "release",
         android_output_target = "release",
         res = [],
         protodecl_srcs = [],
         deps = [],
-        module_yaml = None,
         strings_dir = None,
         disable_annotation_processing = False,
         async_strict_mode = False,
@@ -60,6 +60,7 @@ def valdi_module(
         sql_db_names = None,
         sql_srcs = [],
         downloadable_assets = None,
+        downloadable_sources = False,
         test_target_name = "test",
         compilation_mode = "js_bytecode",
         # class path of generated files
@@ -81,10 +82,13 @@ def valdi_module(
         ios_deps = [],
         android_deps = [],
         native_deps = [],
+        macos_deps = [],
         web_deps = [],
         web_register_native_module_id_overrides = None,
         exclude_patterns = None,
         exclude_globs = None,
+        # DEPRECATED: module_yaml is no longer used for builds and will be deleted in the future.
+        module_yaml = None,
         **kwargs):
     """ A convenient macro to wrap valdi_compiled rule. Use this macro instead of direct valdi_compiled rule invocation.
 
@@ -102,8 +106,8 @@ def valdi_module(
 
     Args:
         name: The name of the valdi module.
-        module_yaml: The module.yaml file containing the module configuration.
         ios_module_name: The name of the iOS module from module.yaml
+        ios_class_prefix: The class prefix for generated iOS classes.
         ios_output_target: The iOS output target: "release" or "debug".
         android_class_path: Class path to use when generating Android source files.
         android_output_target: The Android output target: "release" or "debug".
@@ -125,10 +129,13 @@ def valdi_module(
         has_ios_exports: Flag to indicate if the module has iOS native exports (default True).
         has_android_exports: Flag to indicate if the module has Android native exports (default True).
         downloadable_assets: Flag to indicate if the module resources are downloaded remotely or bundled with the app.
+        downloadable_sources: Flag to indicate if the module sources are downloaded remotely or bundled with the module.
         compilation_mode: The JavaScript compilation mode of the valdi module. Can be "js_bytecode", "native" or "js".
         no_compiled_valdimodule_output: Flag to indicate that the module doesn't produce compiled valdi module output.
         visibility: The visibility of the Bazel target
         ios_language: The language of the iOS target: "objc", "swift" or "objc, swift".
+        native_deps: C++ deps for the module's _desktop native target (SnapDrawing path; macOS and Linux).
+        macos_deps: Obj-C/C++ deps for the module's _desktop native target on macOS only (e.g. NSOpenPanel). Ignored on Linux.
         exclude_patterns: file patterns to exclude from the module
         exclude_globs: glob patterns to exclude from the module
         **kwargs: Additional keyword arguments.
@@ -150,11 +157,11 @@ def valdi_module(
     valdi_compiled(
         name = name,
         ios_module_name = ios_module_name,
+        ios_class_prefix = ios_class_prefix,
         ios_output_target = ios_output_target,
         android_output_target = android_output_target,
         android_export_strings = android_export_strings,
         module = name,
-        module_yaml = module_yaml,
         deps = [_valdi_compiled_target_for_target(dep) for dep in deps],
         web_deps = web_deps,
         web_register_native_module_id_overrides = web_register_native_module_id_overrides or {},
@@ -180,6 +187,7 @@ def valdi_module(
             "@valdi//bzl/valdi:strip_assets": False,
             "@valdi//bzl/valdi:inline_assets": False,
         }),
+        downloadable_sources = downloadable_sources,
         strip_assets = False if prepared_upload_artifact_name else select({
             "@valdi//bzl/valdi:strip_assets": downloadable_assets,
             "@valdi//bzl/valdi:upload_assets": False,
@@ -228,7 +236,7 @@ def valdi_module(
     _setup_web_target(name, all_valdi_module_deps, compiled_module_target, visibility, compilation_mode, web_deps)
 
     ### 7. Setup the native targets named {name}_native
-    _setup_native_target(name, all_valdi_module_deps, native_deps, compiled_module_target, visibility)
+    _setup_native_target(name, all_valdi_module_deps, native_deps, macos_deps, compiled_module_target, visibility)
 
     ### 8. Setup the test target
     _setup_test_target(name, test_target_name, srcs)
@@ -621,6 +629,12 @@ def _setup_ios_target(name, module_deps, ios_deps, compiled_module_target, ios_m
             srcs = objc_hdrs,
             visibility = visibility,
         )
+
+        native.filegroup(
+            name = name + "_swift_srcs",
+            srcs = swift_srcs,
+            visibility = visibility,
+        )
     else:
         api_objc_hdrs_name = name + "_api_objc_hdrs"
         api_objc_srcs_name = name + "_api_objc_srcs"
@@ -808,6 +822,7 @@ def _setup_ios_target(name, module_deps, ios_deps, compiled_module_target, ios_m
         generated_objects = impl_generated_objects,
         single_file_codegen = single_file_codegen,
         has_ios_exports = has_ios_exports,
+        target_compatible_with = ["@platforms//os:ios"],
         tags = [
             "valdi_objc",
         ],
@@ -832,6 +847,7 @@ def _setup_ios_target(name, module_deps, ios_deps, compiled_module_target, ios_m
         generated_objects = api_generated_objects,
         single_file_codegen = single_file_codegen,
         has_ios_exports = has_ios_exports,
+        target_compatible_with = ["@platforms//os:ios"],
         visibility = visibility,
     )
 
@@ -857,6 +873,7 @@ def _setup_ios_target(name, module_deps, ios_deps, compiled_module_target, ios_m
         data = resources,
         copts = ["-Osize", "-Xfrontend", "-internalize-at-link", "-Xcc", "-I."],
         linkopts = ["-dead_strip"],
+        target_compatible_with = ["@platforms//os:ios"],
         visibility = visibility,
     )
 
@@ -1012,7 +1029,7 @@ def npm_package_target_for_target(name):
     label = native.package_relative_label(name)
     return label.relative(":" + npm_package_target_name(label.name))
 
-def _exported_objc_lib(name, ios_module_name, objc_hdrs, objc_srcs, single_file_codegen, has_ios_exports = True, **kwargs):
+def _exported_objc_lib(name, ios_module_name, objc_hdrs, objc_srcs, single_file_codegen, has_ios_exports = True, target_compatible_with = None, **kwargs):
     # setup headermaps
     # When has_ios_exports is False, we use empty hdrs instead of header_tree_artifact_providers
     # because the headermap rule requires at least one tree artifact when using header_tree_artifact_providers
@@ -1083,8 +1100,10 @@ def _exported_objc_lib(name, ios_module_name, objc_hdrs, objc_srcs, single_file_
         enable_swift_interop = True,
         module_name = ios_module_name,
         copts = COMPILER_FLAGS + hmap_copts,
-        sdk_frameworks = [
-            "UIKit",
+        sdk_frameworks = select({
+            "@snap_platforms//conditions:macos": ["AppKit"],
+            "//conditions:default": ["UIKit"],
+        }) + [
             "JavaScriptCore",
             "QuartzCore",
             "CoreGraphics",
@@ -1103,6 +1122,7 @@ def _exported_objc_lib(name, ios_module_name, objc_hdrs, objc_srcs, single_file_
         enable_objcpp = False,
         generate_hmaps = False,
         generate_umbrella_header = False,
+        target_compatible_with = target_compatible_with,
         **kwargs
     )
 
@@ -1169,7 +1189,7 @@ def _setup_cpp_target(name, deps, compiled_module_target, visibility, single_fil
 
     native.cc_library(**cc_library_kwargs)
 
-def _setup_native_target(name, deps, additional_native_deps, compiled_module_target, visibility):
+def _setup_native_target(name, deps, additional_native_deps, macos_deps, compiled_module_target, visibility):
     ################
     ####
     #### Configure the native library target
@@ -1240,13 +1260,20 @@ def _setup_native_target(name, deps, additional_native_deps, compiled_module_tar
         deps = ["{}_ios".format(dep) for dep in native_deps] + additional_native_deps,
     )
 
+    desktop_deps = ["{}_desktop".format(dep) for dep in native_deps] + additional_native_deps
+    if macos_deps:
+        desktop_deps = desktop_deps + select({
+            "@snap_platforms//conditions:macos": macos_deps,
+            "//conditions:default": [],
+        })
+
     valdi_module_native(
         name = desktop_native_lib_name,
         srcs = source_set_select(
             debug = [":android.debug.c"],
             release = [":android.release.c"],
         ) + [":{}".format(static_res_lib_name)],
-        deps = ["{}_desktop".format(dep) for dep in native_deps] + additional_native_deps,
+        deps = desktop_deps,
     )
 
     native.alias(

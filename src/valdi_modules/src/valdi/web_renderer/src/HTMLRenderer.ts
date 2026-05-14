@@ -2,6 +2,7 @@ import { WebValdiLayout } from './views/WebValdiLayout';
 import { WebValdiLabel } from './views/WebValdiLabel';
 import { WebValdiScroll } from './views/WebValdiScroll';
 import { WebValdiView } from './views/WebValdiView';
+import { WebValdiCustomView } from './views/WebValdiCustomView';
 import { WebValdiTextField, registerTextFieldElements } from './views/WebValdiTextField';
 import { WebValdiTextView } from './views/WebValdiTextView';
 import { WebValdiImage } from './views/WebValdiImage';
@@ -11,6 +12,10 @@ import { WebValdiShape } from './views/WebValdiShape';
 import { UpdateAttributeDelegate } from './ValdiWebRendererDelegate';
 
 export const nodesRef = new Map<number, WebValdiLayout>();
+// Expose on globalThis so app and NPM bundle share the same Map when module is loaded twice
+if (typeof globalThis !== 'undefined') {
+  (globalThis as unknown as { __valdiNodesRef?: Map<number, WebValdiLayout> }).__valdiNodesRef = nodesRef;
+}
 export let rootNode: WebValdiLayout | null = null;
 
 export function registerElements() {
@@ -38,6 +43,8 @@ function initViewClass(viewClass: string, id: number, attributeDelegate?: Update
     case 'textview':
     case 'SCValdiTextView':
       return new WebValdiTextView(id, attributeDelegate);
+    case 'custom-view':
+      return new WebValdiCustomView(id, attributeDelegate);
     case 'video':
     case 'SCValdiVideoView':
       return new WebValdiVideo(id, attributeDelegate);
@@ -89,7 +96,6 @@ export function changeAttributeOnElement(id: number, attributeName: string, attr
   if (!element) {
     throw new Error(`changeAttributeOnElement: element is missing, id: ${id}`);
   }
-
   const actualAttributeName = attributeName.startsWith('$') ? attributeName.substring(1) : attributeName;
 
   element.changeAttribute(actualAttributeName, attributeValue);

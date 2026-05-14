@@ -26,7 +26,7 @@ if [[ -z "$NODE_BIN" ]]; then
 fi
 
 # The valdi external repo name
-VALDI_REPO="_main~local_repos~valdi"
+VALDI_REPO="+local_repos+valdi"
 
 # Path to node_modules in runfiles
 NODE_MODULES_DIR="$RUNFILES/$VALDI_REPO/bzl/valdi/npm/node_modules"

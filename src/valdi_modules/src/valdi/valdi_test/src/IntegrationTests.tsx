@@ -87,7 +87,7 @@ const styles = {
     alignItems: 'center',
   }),
   header: new Style<Label>({
-    font: 'AvenirNext-Bold 16',
+    font: 'Montserrat-Bold 16',
     margin: 10,
   }),
   card: new Style<View>({
@@ -98,7 +98,7 @@ const styles = {
   }),
   cardLabel: new Style<Label>({
     touchEnabled: true,
-    font: 'AvenirNext-Medium 14',
+    font: 'Montserrat-Medium 14',
     numberOfLines: 0,
   }),
 };

@@ -85,14 +85,20 @@
             font = [UIFont boldSystemFontOfSize:fontSize];
         } else if ([fontName isEqualToString:@"system-italic"]) {
             font = [UIFont italicSystemFontOfSize:fontSize];
-        } else if (_fontLoader) {
+        } else if (_fontLoader && [UIFont fontWithName:fontName size:fontSize]) {
             if ([_fontLoader shouldBypassContextForLegibilityWeight]) {
                 font = [_fontLoader loadFontWithName:fontName fontSize:fontSize legibilityWeight:legibilityWeight];
             } else {
                 font = [_fontLoader loadFontWithName:fontName fontSize:fontSize];
             }
-        } else {
+        }
+
+        if (!font) {
             font = [UIFont fontWithName:fontName size:fontSize];
+        }
+
+        if (!font) {
+            font = [UIFont systemFontOfSize:fontSize];
         }
 
         return font;
@@ -151,4 +157,3 @@
 }
 
 @end
-

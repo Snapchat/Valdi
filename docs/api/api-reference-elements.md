@@ -917,7 +917,7 @@ All properties from [Layout Attributes](#layout), plus:
   2. required: the size of the font
   3. optional: the scaling type (or 'unscaled' for no scaling)
   4. optional: the maximum size of the font after scaling
-- Example: `'AvenirNext-Bold 16 unscaled 16'`
+- Example: `'Montserrat-Bold 16 unscaled 16'`
 - Default: `'system 12'`
 
 **`color`**: `Color`

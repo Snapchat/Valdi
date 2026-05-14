@@ -704,6 +704,15 @@ static Valdi::MeasureMode resolveMeasureMode(CGFloat size, BOOL useLegacyMeasure
     }
 }
 
+- (BOOL)disableHitTestSyncDeadline
+{
+    auto runtime = getRuntimeFromContext(_context);
+    if (runtime.get() == nullptr) {
+        return NO;
+    }
+    return runtime->disableHitTestSyncDeadline();
+}
+
 + (SCValdiContext *)currentContext
 {
     return ValdiIOS::getValdiContext(Valdi::Context::current());

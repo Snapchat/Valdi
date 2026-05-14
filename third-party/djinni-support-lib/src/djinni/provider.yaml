@@ -1,0 +1,55 @@
+name: provider
+typedef: 'record'
+params: [T]
+prefix: ''
+cpp:
+  typename: '::djinni::Provider'
+  header: '"$Provider.hpp"'
+  byValue: false
+  moveOnly: false
+objc:
+  typename: 'DJProvider'
+  header: '"$DJProvider.h"'
+  boxed: 'DJProvider'
+  pointer: true
+  generic: true
+  hash: '%s.hash'
+objcpp:
+  translator: '::djinni::ProviderAdaptor'
+  header: '"$Provider_objc.hpp"'
+java:
+  typename: 'javax.inject.Provider'
+  boxed: 'javax.inject.Provider'
+  reference: true
+  generic: true
+  hash: '%s.hashCode()'
+jni:
+  translator: '::djinni::ProviderAdaptor'
+  header: '"$Provider_jni.hpp"'
+  typename: jobject
+  typeSignature: 'Ljavax/inject/Provider;'
+wasm:
+  typename: 'em::val'
+  translator: '::djinni::ProviderAdaptor'
+  header: '"$Provider_wasm.hpp"'
+ts:
+  typename: 'Provider'
+  module: '@djinni_support/Provider'
+  generic: true
+valdi:
+  translator: '::djinni::valdi::ProviderAdaptor'
+  header: '"$Provider_valdi.hpp"'
+swift:
+  typename: 'Provider'
+  module: 'DjinniSupport'
+  generic: true
+  translator: 'ProviderMarshaller'
+  translator.module: 'DjinniSupport'
+swiftxx:
+  translator: '::djinni::swift::ProviderAdaptor'
+  header: '"$Provider_swift.hpp"'
+c:
+  typename: 'djinni_provider_ref'
+  translator: '::djinni::c_api::ProviderTranslator'
+  public_header: '"$Provider_c.h"'
+  private_header: '"$Provider_c_translator.hpp"'

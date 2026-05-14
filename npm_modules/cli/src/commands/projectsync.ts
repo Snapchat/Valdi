@@ -112,7 +112,7 @@ function isExternalLabel(workspaceInfo: BazelWorkspaceInfo, label: BazelLabel): 
 }
 
 function getSymlinkedBazelExecutionRoot(workspaceInfo: BazelWorkspaceInfo): string {
-  return path.join(workspaceInfo.workspaceRoot, `bazel-${workspaceInfo.workspaceName}`);
+  return path.join(workspaceInfo.workspaceRoot, `bazel-${path.basename(workspaceInfo.workspaceRoot)}`);
 }
 
 function bazelLabelToAbsolutePath(workspaceInfo: BazelWorkspaceInfo, label: BazelLabel): string {
@@ -151,19 +151,21 @@ async function syncPathsByLabel(
 
   // TODO(simon): Refactor projectsync bzl rule so that it recursively resolves
   // all of these without us having to take care of it.
-  const missingTargets = new Set<string>();
+  const missingLabels = new Map<string, BazelLabel>();
 
   for (const projectSyncOutput of projectSyncOutputs) {
     for (const dependency of projectSyncOutput.dependencies) {
-      const target = dependency.toString();
-      if (!pathsByLabel.has(target)) {
-        missingTargets.add(target);
+      const key = dependency.toString();
+      if (!pathsByLabel.has(key)) {
+        missingLabels.set(key, dependency);
       }
     }
   }
 
-  if (missingTargets.size > 0) {
-    const targets = [...missingTargets.values()].sort().map(f => `${f}_projectsync`);
+  if (missingLabels.size > 0) {
+    const targets = [...missingLabels.values()]
+      .sort((a, b) => a.toString().localeCompare(b.toString()))
+      .map(label => `${label.toBuildableString()}_projectsync`);
     const newProjectSyncOutputs = await buildProjectSyncs(client, workspaceInfo.workspaceRoot, targets);
     await syncPathsByLabel(client, workspaceInfo, pathsByLabel, newProjectSyncOutputs);
   }

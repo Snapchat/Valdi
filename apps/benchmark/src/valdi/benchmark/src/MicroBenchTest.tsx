@@ -62,7 +62,7 @@ const styles = {
 
 function monoSpaceFont(size: number): string {
   if (Device.isIOS()) {
-    return `Menlo ${size}`;
+    return `RobotoMono ${size}`;
     // } else if (Device.isAndroid()) {
     //   return `Roboto Mono ${size}`;
   } else {

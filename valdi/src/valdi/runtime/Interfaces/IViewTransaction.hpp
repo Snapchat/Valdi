@@ -135,6 +135,13 @@ public:
     virtual void cancelAnimator(const Ref<Animator>& animator) = 0;
 
     /**
+     Schedule a callback to run after the next draw/commit pass for the given root view completes.
+     This is a platform rendering-pipeline hook, not a strict guarantee that the frame has already
+     been physically presented on screen.
+     */
+    virtual void scheduleOnNextDraw(const Ref<View>& rootView, DispatchFunction callback) = 0;
+
+    /**
       Execute an arbitrary callback in the thread where the transaction will be flushed.
      */
     virtual void executeInTransactionThread(DispatchFunction executeFn) = 0;

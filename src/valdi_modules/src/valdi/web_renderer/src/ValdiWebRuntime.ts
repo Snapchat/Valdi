@@ -132,10 +132,8 @@ class Runtime {
   }
 
   getCurrentPlatform() {
-    // 1 = Android
-    // 2 = iOS
-    // 3 = web 
-    return 3;
+    // 1 = Android, 2 = iOS, 3 = MacOS, 4 = Web
+    return 4;
   }
 
   submitRawRenderRequest(renderRequest: any) {
@@ -427,12 +425,20 @@ globalAny.__originalConsole__ = {
 };
 Object.freeze(globalAny.__originalConsole__);
 
+/** Log to the real browser console even when Init has replaced global.console (e.g. during startup). */
+globalAny.__valdiLogToConsole__ = function (...args: unknown[]) {
+  const c = globalAny.__originalConsole__ || globalAny.console;
+  if (c?.log) c.log.apply(c, args);
+};
+
 // Capture native browser setTimeout/clearTimeout before Valdi replaces them (like we do for console)
+// Bind to window so they can be called without a receiver (e.g. timing.setTimeout(...)) without
+// throwing "Illegal invocation" on native functions that require window as `this`.
 (globalThis as any).__originalTimingFunctions__ = {
-  setTimeout: window.setTimeout,
-  clearTimeout: window.clearTimeout,
-  setInterval: window.setInterval,
-  clearInterval: window.clearInterval,
+  setTimeout: window.setTimeout.bind(window),
+  clearTimeout: window.clearTimeout.bind(window),
+  setInterval: window.setInterval.bind(window),
+  clearInterval: window.clearInterval.bind(window),
 };
 Object.freeze((globalThis as any).__originalTimingFunctions__);
 

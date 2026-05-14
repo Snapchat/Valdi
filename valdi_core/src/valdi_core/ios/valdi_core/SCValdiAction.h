@@ -7,13 +7,17 @@
 
 #import <Foundation/Foundation.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 extern NSString* const SCValdiActionSenderKey;
 
 @protocol SCValdiAction <NSObject>
 
-- (void)performWithSender:(id)sender;
+- (void)performWithSender:(nullable id)sender;
 
 // This can be called from any thread, so this needs to be thread safe.
-- (id)performWithParameters:(NSArray<id>*)parameters;
+- (nullable id)performWithParameters:(NSArray<id>*)parameters;
 
 @end
+
+NS_ASSUME_NONNULL_END

@@ -126,10 +126,6 @@ class ScopedValdiRuntime(private val runtime: IValdiRuntime,
         runtime.getJSRuntime(block)
     }
 
-    override fun createScopedJSRuntime(block: (ValdiScopedJSRuntime) -> Unit) {
-        createScopedJSRuntime("", block)
-    }
-
     override fun createScopedJSRuntime(scopeName: String, block: (ValdiScopedJSRuntime) -> Unit) {
         runtime.createScopedJSRuntime(scopeName, block)
     }

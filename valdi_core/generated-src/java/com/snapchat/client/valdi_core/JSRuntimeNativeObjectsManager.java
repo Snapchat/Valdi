@@ -6,6 +6,15 @@ package com.snapchat.client.valdi_core;
 import com.snapchat.djinni.NativeObjectManager;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * Owns a set of native object references tied to a scope. When destroyed via
+ * destroyNativeObjectsManager, all native references in this scope are released
+ * immediately rather than waiting for JS garbage collection.
+ *
+ * Typically each bounded task creates its own manager and destroys it when done.
+ * See the platform-specific APIs (IValdiRuntime on Android, SCValdiJSRuntime
+ * on iOS) for guidance on recommended usage patterns.
+ */
 public abstract class JSRuntimeNativeObjectsManager {
     public abstract java.lang.Object getReachableObjectsDescription();
 

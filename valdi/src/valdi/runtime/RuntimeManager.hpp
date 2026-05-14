@@ -148,6 +148,8 @@ public:
     void flushLoadOperations();
 
     void emitInitMetrics();
+    void emitXpatCreateRuntimeMetrics();
+    void emitIosRuntimeCreateMetrics();
     void emitUserSessionReadyMetrics();
 
     void setMetrics(const Ref<Metrics>& metrics);

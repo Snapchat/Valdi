@@ -44,6 +44,9 @@ public:
 
     void setAttribute(const Valdi::Ref<Valdi::View> &view, id value) {
         id resolvedView = ValdiMacOS::fromValdiView(view);
+        if (resolvedView == nil) {
+            return;
+        }
         IMP imp = class_getMethodImplementation([resolvedView class], _sel);
         ((SCValdiObjectSetter)imp)(resolvedView, _sel, value);
     }

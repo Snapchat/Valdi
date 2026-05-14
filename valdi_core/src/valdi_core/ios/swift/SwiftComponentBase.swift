@@ -5,13 +5,13 @@ open class SwiftComponentBase: SCValdiRootView {
                 context:(any ValdiMarshallableObject)? = nil,
                 runtime: SCValdiRuntimeProtocol) throws {
         let marshaller: ValdiMarshaller = ValdiMarshaller()
-        if (viewModel != nil) {
-            _ = try marshaller.push(viewModel!)
+        if let viewModel {
+            _ = try marshaller.push(viewModel)
         } else {
             _ = try marshaller.pushUntypedMap([:])
         }
-        if (context != nil) {
-            _ = try marshaller.push(context!)
+        if let context {
+            _ = try marshaller.push(context)
         } else {
             _ = try marshaller.pushUntypedMap([:])
         }

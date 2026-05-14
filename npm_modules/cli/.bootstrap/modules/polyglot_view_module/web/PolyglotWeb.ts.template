@@ -1,0 +1,30 @@
+/**
+ * Web polyglot entry for {{MODULE_NAME}}.
+ *
+ * Exports view factories that are auto-registered with the WebViewClassRegistry
+ * by the build-generated RegisterNativeModules.js.
+ */
+
+function createWebViewFactory(): (container: HTMLElement) => void {
+  return (container: HTMLElement) => {
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.justifyContent = 'center';
+    container.style.padding = '12px';
+    container.style.backgroundColor = '#f8f9fa';
+    container.style.borderRadius = '8px';
+    container.style.border = '1px solid #ccc';
+    container.style.minHeight = '80px';
+
+    const label = document.createElement('span');
+    label.textContent = 'Hello from Web ({{MODULE_NAME}})';
+    label.style.fontSize = '14px';
+    label.style.fontWeight = '500';
+    container.appendChild(label);
+  };
+}
+
+export const webPolyglotViews: Record<string, (container: HTMLElement) => void> = {
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  {{MODULE_NAME_PASCAL_CASED}}WebView: createWebViewFactory(),
+};

@@ -1,0 +1,23 @@
+import 'valdi_tsx/src/JSX';
+import { View } from 'valdi_tsx/src/NativeTemplateElements';
+
+export interface PolyglotCustomViewModel extends View {}
+
+/**
+ * Polyglot custom-view wrapper.
+ *
+ * Each platform resolves the view by class name:
+ *  - Android: ReflectionViewFactory creates PolyglotNativeView(context)
+ *  - iOS:     ObjC class linked via ios_deps
+ *  - macOS:   NSClassFromString() linked via macos_deps
+ *  - Web:     webPolyglotViews factory in web/ auto-registered at bundle time
+ */
+export function PolyglotCustomView(viewModel: PolyglotCustomViewModel) {
+  <custom-view
+    androidClass={'com.snap.modules.{{MODULE_NAME}}.PolyglotNativeView'}
+    iosClass={'SCPolyglotView'}
+    macosClass={'SCPolyglotView'}
+    webClass={'{{MODULE_NAME_PASCAL_CASED}}WebView'}
+    {...viewModel}
+  />;
+}

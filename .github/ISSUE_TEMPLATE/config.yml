@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discord Community
+    url: https://discord.gg/uJyNEeYX2U
+    about: Ask questions and discuss Valdi with the community
+  - name: Documentation
+    url: https://valdi.snap.com
+    about: Check the docs before filing an issue

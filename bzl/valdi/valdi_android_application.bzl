@@ -1,4 +1,4 @@
-load("@android_macros//:android.bzl", "android_binary")
+load("@rules_android//rules:rules.bzl", "android_binary")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 load("@valdi//valdi:valdi.bzl", "valdi_android_aar")
 load("//bzl:expand_template.bzl", "expand_template")

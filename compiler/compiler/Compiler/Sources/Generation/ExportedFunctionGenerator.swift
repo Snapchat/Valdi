@@ -15,6 +15,7 @@ struct ExportedFunction {
     let functionName: String
     let parameters: [ValdiModelProperty]
     let returnType: ValdiModelPropertyType
+    let allowSyncCall: Bool
     let comments: String?
 }
 

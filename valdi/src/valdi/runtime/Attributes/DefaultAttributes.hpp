@@ -11,6 +11,7 @@ struct YGConfig;
 
 #include "valdi/runtime/Attributes/AccessibilityAttributes.hpp"
 #include "valdi/runtime/Attributes/AttributeHandler.hpp"
+#include "valdi/runtime/Attributes/ScrollAnchorAttributes.hpp"
 
 #include "valdi_core/cpp/Utils/Function.hpp"
 #include "valdi_core/cpp/Utils/StringBox.hpp"
@@ -33,6 +34,7 @@ private:
     AttributeIds& _attributeIds;
     Ref<YogaAttributes> _yogaAttributes;
     Ref<AccessibilityAttributes> _accessibilityAttributes;
+    Ref<ScrollAnchorAttributes> _scrollAnchorAttributes;
 };
 
 } // namespace Valdi

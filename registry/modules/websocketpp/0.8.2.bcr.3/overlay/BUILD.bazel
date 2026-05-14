@@ -1,0 +1,41 @@
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+bool_flag(
+    name = "use_boost",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "use_boost_setting",
+    flag_values = {":use_boost": "True"},
+)
+
+cc_library(
+    name = "websocketpp",
+    hdrs = glob(["websocketpp/**/*.hpp"]),
+    defines = select({
+        ":use_boost_setting": ["_WEBSOCKETPP_CPP11_STL_"],
+        "//conditions:default": [
+            "_WEBSOCKETPP_CPP11_STL_",
+            "ASIO_STANDALONE",
+        ],
+    }),
+    includes = ["."],
+    linkopts = select({
+        "@platforms//os:linux": [
+            "-lpthread",
+            "-lrt",
+        ],
+        "//conditions:default": [
+            "-lpthread",
+        ],
+    }),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@zlib",
+    ] + select({
+        ":use_boost_setting": ["@boost.asio"],
+        "//conditions:default": ["@asio"],
+    }),
+)

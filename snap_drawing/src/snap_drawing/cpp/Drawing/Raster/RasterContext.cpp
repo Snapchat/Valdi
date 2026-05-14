@@ -401,7 +401,7 @@ Valdi::Result<Ref<Image>> RasterContext::getOrCreateRasterImageForExternalSurfac
 
     void* pixels = bitmap.value()->lockBytes();
     if (pixels != nullptr) {
-        std::memset(pixels, 0, bitmapInfo.bytesLength());
+        std::memset(pixels, 0, bitmap.value()->getInfo().bytesLength());
         bitmap.value()->unlockBytes();
     }
 

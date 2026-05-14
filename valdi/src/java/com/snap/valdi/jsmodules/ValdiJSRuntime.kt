@@ -21,6 +21,11 @@ interface ValdiJSRuntime: JSThreadDispatcher {
     fun preloadModule(modulePath: String, maxDepth: Int)
 
     /**
+     * Batch-preload multiple modules in a single JNI/JS-thread dispatch.
+     */
+    fun preloadModules(modulePaths: List<String>, maxDepth: Int)
+
+    /**
      * Return the native JSRuntime handle
      */
     fun getNativeObject(): JSRuntime;

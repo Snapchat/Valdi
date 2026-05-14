@@ -15,6 +15,7 @@ import com.snap.valdi.logger.Logger
 import com.snap.valdi.jsmodules.JSThreadDispatcher
 import com.snap.valdi.modules.ValdiNativeModules
 import com.snap.valdi.nativebridge.RuntimeNative
+import com.snap.valdi.nativebridge.ValdiViewManagerOperationsManager
 import com.snap.valdi.utils.ValdiMarshallable
 import com.snap.valdi.utils.ValdiMarshaller
 import com.snap.valdi.utils.JavaScriptCapturedStacktrace
@@ -255,10 +256,6 @@ class ValdiRuntime(
         }
     }
 
-    override fun createScopedJSRuntime(block: (ValdiScopedJSRuntime) -> Unit) {
-        createScopedJSRuntime("", block)
-    }
-
     override fun createScopedJSRuntime(scopeName: String, block: (ValdiScopedJSRuntime) -> Unit) {
         runOnJsThread {
             val jsRuntime = native.getJSRuntime()
@@ -304,11 +301,17 @@ class ValdiRuntime(
         val lastMeasuredText = TextViewHelper.lastMeasuredText?.toString() ?: ""
         val lastMeasuredFontAttributes = TextViewHelper.lastMeasuredFontAttributes?.toString() ?: ""
 
-        return listOf(
+        val result = mutableListOf(
                 "VALDI_METADATA" to metadata,
                 "VALDI_LAST_MEASURED_TEXT" to lastMeasuredText,
                 "VALDI_LAST_MEASURED_FONT_ATTRIBUTES" to lastMeasuredFontAttributes
         )
+
+        ValdiViewManagerOperationsManager.dumpDiagnostics()?.let {
+            result.add("VALDI_MOVE_OP" to it)
+        }
+
+        return result
     }
 
     override fun startProfiling() {

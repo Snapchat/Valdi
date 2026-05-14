@@ -1,0 +1,8 @@
+// SKILL_NAME skill reference — compile check for patterns in ../skill.md.
+// Add code that exercises every import path and API shown in the skill.
+// Run: bazel build //ai-skills/skills/SKILL_NAME/tests:tests
+
+import { Component } from 'valdi_core/src/Component';
+
+// TODO: add reference examples here
+void Component;

@@ -36,6 +36,7 @@
 #include "valdi/standalone_runtime/StandaloneNodeRef.hpp"
 #include "valdi/standalone_runtime/StandaloneView.hpp"
 #include "valdi/standalone_runtime/StandaloneViewManager.hpp"
+#include "valdi/standalone_runtime/StandaloneViewTransaction.hpp"
 #include "valdi_core/AssetLoadObserver.hpp"
 #include "valdi_core/cpp/JavaScript/JavaScriptPathResolver.hpp"
 #include "valdi_core/cpp/Resources/Asset.hpp"
@@ -51,6 +52,7 @@
 #include "gtest/gtest.h"
 #include <yoga/YGNode.h>
 
+#include "valdi_core/cpp/Marshalling/RegisteredCppGeneratedClass.hpp"
 #include "valdi_modules/test/test.hpp"
 
 #include <atomic>
@@ -93,6 +95,10 @@ public:
 
     float getFloat(const StringBox& key, float fallback) override {
         return config.getMapValue(key).toFloat();
+    }
+
+    int32_t getInt(const StringBox& key, int32_t fallback) override {
+        return config.getMapValue(key).toInt();
     }
 
     Value getBinary(const StringBox& key, const Value& fallback) override {
@@ -2872,6 +2878,29 @@ TEST_P(RuntimeFixture, handlesTranslationsInLimitToViewport) {
         getRootView(tree));
 }
 
+TEST_P(RuntimeFixture, handlesNegativeScaleYInLimitToViewport) {
+    wrapper.runtime->setLimitToViewportDisabled(false);
+
+    // scaleY=1.0: bottom-child at local y=150..200, outside 100×100 viewport → no view created
+    auto viewModel = makeShared<ValueMap>();
+    (*viewModel)[STRING_LITERAL("scaleY")] = Value(1.0f);
+
+    auto tree = wrapper.createViewNodeTreeAndContext(
+        STRING_LITERAL("ScaleTransformViewport@test/src/ScaleTransformViewport"), Value(viewModel), Value::undefined());
+    wrapper.waitUntilAllUpdatesCompleted();
+    tree->setLayoutSpecs(Size(100, 100), LayoutDirectionLTR);
+
+    ASSERT_EQ(nullptr, tree->getViewForNodePath(parseNodePath("bottom-child")));
+
+    // scaleY=-1.0: container flips, bottom-child appears at visual y=0..50 → inside viewport → view created
+    auto viewModel2 = makeShared<ValueMap>();
+    (*viewModel2)[STRING_LITERAL("scaleY")] = Value(-1.0f);
+    wrapper.setViewModel(tree->getContext(), Value(std::move(viewModel2)));
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    ASSERT_NE(nullptr, tree->getViewForNodePath(parseNodePath("bottom-child")));
+}
+
 TEST_P(RuntimeFixture, slotCanApplyAttributeDynamicallyToChild) {
     auto tree =
         wrapper.createViewNodeTreeAndContext("test", "SlotApplyAttributeParent", Valdi::Value(makeShared<ValueMap>()));
@@ -4183,11 +4212,14 @@ TEST_P(RuntimeFixture, renderRequestCanRetainAndReleaseItsEntries) {
         makeShared<ValueFunctionWithCallable>([](const auto& /*parameters*/) { return Value(); });
     auto layoutCompletionCallback =
         makeShared<ValueFunctionWithCallable>([](const auto& /*parameters*/) { return Value(); });
+    auto drawCompletionCallback =
+        makeShared<ValueFunctionWithCallable>([](const auto& /*parameters*/) { return Value(); });
 
     ASSERT_EQ(1, viewClass.getInternedString().use_count());
     ASSERT_EQ(1, attributeValue.use_count());
     ASSERT_EQ(1, animationsCompletionCallback.use_count());
     ASSERT_EQ(1, layoutCompletionCallback.use_count());
+    ASSERT_EQ(1, drawCompletionCallback.use_count());
 
     auto renderRequest = Valdi::makeShared<RenderRequest>();
 
@@ -4209,10 +4241,14 @@ TEST_P(RuntimeFixture, renderRequestCanRetainAndReleaseItsEntries) {
     auto* onLayoutComplete = renderRequest->appendOnLayoutComplete();
     onLayoutComplete->setCallback(layoutCompletionCallback);
 
+    auto* onNextDraw = renderRequest->appendOnNextDraw();
+    onNextDraw->setCallback(drawCompletionCallback);
+
     ASSERT_EQ(2, viewClass.getInternedString().use_count());
     ASSERT_EQ(2, attributeValue.use_count());
     ASSERT_EQ(2, animationsCompletionCallback.use_count());
     ASSERT_EQ(2, layoutCompletionCallback.use_count());
+    ASSERT_EQ(2, drawCompletionCallback.use_count());
 
     renderRequest = nullptr;
 
@@ -4220,6 +4256,7 @@ TEST_P(RuntimeFixture, renderRequestCanRetainAndReleaseItsEntries) {
     ASSERT_EQ(1, attributeValue.use_count());
     ASSERT_EQ(1, animationsCompletionCallback.use_count());
     ASSERT_EQ(1, layoutCompletionCallback.use_count());
+    ASSERT_EQ(1, drawCompletionCallback.use_count());
 }
 
 struct Visitor {
@@ -4246,6 +4283,7 @@ TEST_P(RuntimeFixture, renderRequestVisitHandlesAlignment) {
     renderRequest->appendStartAnimations();
     renderRequest->appendEndAnimations();
     renderRequest->appendOnLayoutComplete();
+    renderRequest->appendOnNextDraw();
 
     Visitor visitor;
     renderRequest->visitEntries(visitor);
@@ -4295,6 +4333,9 @@ TEST_P(RuntimeFixture, renderRequestCanSerialize) {
     auto* onLayoutComplete = renderRequest->appendOnLayoutComplete();
     onLayoutComplete->setCallback(callback);
 
+    auto* onNextDraw = renderRequest->appendOnNextDraw();
+    onNextDraw->setCallback(callback);
+
     auto result = renderRequest->serialize(attributeIds);
 
     auto expectedCreateElement = Value()
@@ -4333,6 +4374,8 @@ TEST_P(RuntimeFixture, renderRequestCanSerialize) {
     auto expectedEndAnimations = Value().setMapValue("type", Value(STRING_LITERAL("EndAnimations")));
     auto expectedOnLayoutComplete =
         Value().setMapValue("type", Value(STRING_LITERAL("OnLayoutComplete"))).setMapValue("callback", Value(callback));
+    auto expectedOnNextDraw =
+        Value().setMapValue("type", Value(STRING_LITERAL("OnNextDraw"))).setMapValue("callback", Value(callback));
 
     auto expectedEntries = ValueArray::make({expectedCreateElement,
                                              expectedDestroyElement,
@@ -4341,11 +4384,77 @@ TEST_P(RuntimeFixture, renderRequestCanSerialize) {
                                              expectedSetElementAttribute,
                                              expectedStartAnimations,
                                              expectedEndAnimations,
-                                             expectedOnLayoutComplete});
+                                             expectedOnLayoutComplete,
+                                             expectedOnNextDraw});
 
     auto expectedResult = Value().setMapValue("contextID", Value(1)).setMapValue("entries", Value(expectedEntries));
 
     ASSERT_EQ(expectedResult, result);
+}
+
+TEST_P(RuntimeFixture, standaloneViewTransactionRunsOnNextDrawCallbacksAfterRootUpdate) {
+    StandaloneViewTransaction transaction;
+    auto rootView = makeShared<StandaloneView>(STRING_LITERAL("View"));
+
+    int callbackCount = 0;
+    transaction.scheduleOnNextDraw(rootView, [&]() { callbackCount += 1; });
+    transaction.scheduleOnNextDraw(rootView, [&]() { callbackCount += 10; });
+
+    ASSERT_EQ(0, callbackCount);
+
+    transaction.didUpdateRootView(rootView, true);
+
+    ASSERT_EQ(11, callbackCount);
+    ASSERT_EQ(1, rootView->getLayoutDidBecomeDirtyCount());
+
+    transaction.didUpdateRootView(rootView, false);
+
+    ASSERT_EQ(11, callbackCount);
+}
+
+TEST_P(RuntimeFixture, standaloneViewTransactionDefersCallbacksScheduledDuringOnNextDrawUntilNextRootUpdate) {
+    StandaloneViewTransaction transaction;
+    auto rootView = makeShared<StandaloneView>(STRING_LITERAL("View"));
+
+    int callbackCount = 0;
+    transaction.scheduleOnNextDraw(rootView, [&]() {
+        callbackCount += 1;
+        transaction.scheduleOnNextDraw(rootView, [&]() { callbackCount += 10; });
+    });
+
+    transaction.didUpdateRootView(rootView, false);
+
+    ASSERT_EQ(1, callbackCount);
+
+    transaction.didUpdateRootView(rootView, false);
+
+    ASSERT_EQ(11, callbackCount);
+}
+
+TEST_P(RuntimeFixture, viewNodeTreeOnNextDrawCallbacksWaitForRootView) {
+    auto rootView = Valdi::makeShared<StandaloneView>(STRING_LITERAL("MyRootView"));
+
+    auto tree = wrapper.runtime->createViewNodeTreeAndContext(wrapper.standaloneRuntime->getViewManagerContext(),
+                                                              STRING_LITERAL("test/src/BasicViewTree.valdi"));
+
+    wrapper.waitUntilAllUpdatesCompleted();
+    tree->setLayoutSpecs(Size(200, 200), LayoutDirectionLTR);
+
+    int callbackCount = 0;
+    auto callback = makeShared<ValueFunctionWithCallable>([&](const auto& /*callContext*/) -> Value {
+        callbackCount += 1;
+        return Value::undefined();
+    });
+
+    tree->onNextDraw(callback);
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    ASSERT_EQ(0, callbackCount);
+
+    tree->setRootView(rootView);
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    ASSERT_EQ(1, callbackCount);
 }
 
 class TestBridgedClass : public ValdiObject {
@@ -6117,6 +6226,30 @@ TEST_P(RuntimeFixture, supportsNativeModule) {
     ASSERT_EQ(50.0, result.value().toDouble());
 }
 
+// Verifies that a sync JS call from the main thread triggers the assertion when the module has
+// async_strict_mode and the function is not annotated with @AllowSyncCall. Uses a dedicated
+// test_async_strict module (async_strict_mode=True) so the main test module can stay non-strict.
+TEST_P(RuntimeFixture, AsyncStrictModeSyncCallAssertsOnMainThread) {
+    wrapper.flushQueues();
+
+    // test_async_strict has async_strict_mode=True; compute() has no @AllowSyncCall.
+    // Schema "f|b|():u" = bansync (`b`) so that CallSync triggers the assertion.
+    auto functionValue = getJsModulePropertyWithSchema(
+        wrapper.runtime, nullptr, nullptr, "test_async_strict/src/AsyncStrictModule", "compute", "f|b|():u");
+    ASSERT_TRUE(functionValue) << "getJsModulePropertyWithSchema failed: " << functionValue.description();
+
+    Valdi::SimpleExceptionTracker exceptionTracker;
+    auto valueFunction = functionValue.value().checkedTo<Ref<Valdi::ValueFunction>>(exceptionTracker);
+    ASSERT_TRUE(exceptionTracker) << "compute is not a function";
+
+    EXPECT_DEATH(
+        {
+            wrapper.runtime->getMainThreadManager().markCurrentThreadIsMainThread();
+            (void)valueFunction->call(Valdi::ValueFunctionFlagsCallSync, nullptr, 0);
+        },
+        "Sync JS call");
+}
+
 TEST_P(RuntimeFixture, supportsExportedFunction) {
     auto result = snap::valdi_modules::test::MakeCalculator::resolve(*wrapper.runtime->getJavaScriptRuntime(), nullptr);
     ASSERT_TRUE(result) << result.description();
@@ -6135,6 +6268,45 @@ TEST_P(RuntimeFixture, supportsExportedFunction) {
               calculator->toString(snap::valdi_modules::test::CalculatorToStringFormat::DECIMAL));
     ASSERT_EQ(StringBox::fromCString("30"),
               calculator->toString(snap::valdi_modules::test::CalculatorToStringFormat::INTEGER));
+}
+
+TEST_P(RuntimeFixture, resolveAsTypedObjectReturnsTypedObject) {
+    auto result = snap::valdi_modules::test::MakeCalculator::resolveAsTypedObject(
+        *wrapper.runtime->getJavaScriptRuntime(), nullptr);
+    ASSERT_TRUE(result) << result.description();
+
+    auto typedObject = result.value();
+    ASSERT_NE(typedObject, nullptr);
+
+    // The TypedObject wraps a class schema named "MakeCalculator" with one property (the function).
+    ASSERT_EQ(typedObject->getClassName(), StringBox::fromCString("MakeCalculator"));
+    ASSERT_EQ(typedObject->getPropertiesSize(), 1u);
+
+    // Property 0 should be the callable function.
+    const auto& functionValue = typedObject->getProperty(0);
+    ASSERT_TRUE(functionValue.isFunction());
+}
+
+TEST_P(RuntimeFixture, registeredSchemaReturnsValidSchema) {
+    auto& schema = snap::valdi_modules::test::MakeCalculator::registeredSchema();
+    ASSERT_EQ(schema.getClassName(), StringBox::fromCString("MakeCalculator"));
+
+    auto classSchemaResult = schema.getResolvedClassSchema();
+    ASSERT_TRUE(classSchemaResult) << classSchemaResult.description();
+
+    auto classSchema = classSchemaResult.value();
+    ASSERT_EQ(classSchema->getClassName(), StringBox::fromCString("MakeCalculator"));
+
+    // MakeCalculator has one property: the makeCalculator function itself.
+    ASSERT_EQ(classSchema->getPropertiesSize(), 1u);
+    const auto& prop = classSchema->getProperty(0);
+    ASSERT_EQ(prop.name, StringBox::fromCString("makeCalculator"));
+    ASSERT_TRUE(prop.schema.isFunction());
+
+    // makeCalculator() takes 0 parameters.
+    auto* funcSchema = prop.schema.getFunction();
+    ASSERT_NE(funcSchema, nullptr);
+    ASSERT_EQ(funcSchema->getParametersSize(), 0u);
 }
 
 TEST_P(RuntimeFixture, supportsLongObject) {
@@ -6767,8 +6939,7 @@ TEST_P(RuntimeFixture, scopeNameAppearsInDisposedReferenceError) {
     Ref<MyNativeObject> nativeObject = makeShared<MyNativeObject>();
 
     // Create objectsManager with a specific scopeName
-    auto objectsManager =
-        wrapper.runtime->getJavaScriptRuntime()->createNativeObjectsManager("MyFeature.MyCallsite");
+    auto objectsManager = wrapper.runtime->getJavaScriptRuntime()->createNativeObjectsManager("MyFeature.MyCallsite");
 
     // Wrap native object in JS
     auto jsResult =

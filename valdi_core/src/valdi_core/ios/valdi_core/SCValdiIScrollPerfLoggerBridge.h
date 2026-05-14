@@ -7,7 +7,7 @@
  *
  * @see: SCValdiIScrollPerfLoggerBridgeFactory
  */
-@protocol SCValdiIScrollPerfLoggerBridge
+@protocol SCValdiIScrollPerfLoggerBridge <NSObject>
 
 - (void)resume;
 - (void)pauseAndCancelLogging:(BOOL)cancelLogging;

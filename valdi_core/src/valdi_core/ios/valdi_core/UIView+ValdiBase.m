@@ -45,6 +45,17 @@ static BOOL SCValdiLayerHasAnimation(CALayer *layer)
     return self.class == [UIView class];
 }
 
+- (void)valdi_prepareForPoolReuse
+{
+    // Reset the CALayer transform to identity. Valdi animations set the CALayer
+    // model value to the animation target before the CAAnimation starts visually.
+    // If the animation is cancelled mid-flight the animation key is removed and the
+    // layer snaps to that model value. By the time the pool enqueue fires the
+    // animation key is gone, so it cannot be detected via animationKeys — the
+    // transform must be reset unconditionally here.
+    self.layer.transform = CATransform3DIdentity;
+}
+
 - (BOOL)requiresLayoutWhenAnimatingBounds
 {
     return YES;

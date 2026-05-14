@@ -22,7 +22,7 @@ export class WebValdiLabel extends WebValdiLayout {
       whiteSpace: 'pre-wrap',
       wordWrap: 'break-word',
       fontFamily: 'sans-serif',
-      font: 'AvenirNext-DemiBold',
+      font: 'Montserrat-SemiBold',
       pointerEvents: 'auto',
     });
 

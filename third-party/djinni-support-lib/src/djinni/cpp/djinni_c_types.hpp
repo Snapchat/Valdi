@@ -4,7 +4,7 @@
 #include <memory>
 
 #ifndef DJINNI_CHECKED_C_API
-#if DEBUG
+#ifndef NDEBUG
 #define DJINNI_CHECKED_C_API 1
 #else
 #define DJINNI_CHECKED_C_API 0

@@ -165,6 +165,7 @@ std::vector<std::pair<std::string_view, int64_t>> getDefaultColors() {
         {"teal", 0x008080FF},
         {"thistle", 0xD8BFD8FF},
         {"tomato", 0xFF6347FF},
+        {"transparent", 0x00000000},
         {"turquoise", 0x40E0D0FF},
         {"violet", 0xEE82EEFF},
         {"wheat", 0xF5DEB3FF},

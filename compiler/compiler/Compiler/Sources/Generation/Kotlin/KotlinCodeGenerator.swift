@@ -355,7 +355,7 @@ final class KotlinCodeGenerator: CodeWriter {
         case .void:
             let typeName = "Unit"
             return KotlinTypeParser(typeName: typeName)
-        case .function(let parameters, let returnType, _, _):
+        case .function(let parameters, let returnType, _, _, _):
             let functionTypeParser = try getFunctionTypeParser(returnType: returnType, parameters: parameters, nameAllocator: nameAllocator)
 
             let typeName = functionTypeParser.lambdaTypeName

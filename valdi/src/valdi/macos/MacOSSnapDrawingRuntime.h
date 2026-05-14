@@ -8,12 +8,9 @@
 #pragma once
 
 #include "snap_drawing/apple/Drawing/CVDisplayLinkFrameScheduler.hpp"
+#include "snap_drawing/cpp/Drawing/GraphicsContext/MetalGraphicsContext.hpp"
 #include "valdi/snap_drawing/Runtime.hpp"
 
-namespace snap::drawing {
-class MetalGraphicsContext;
-
-}
 namespace ValdiMacOS {
 
 class MacOSSnapDrawingRuntime : public snap::drawing::Runtime {
@@ -25,6 +22,8 @@ public:
                             uint64_t maxCacheSizeInBytes);
 
     ~MacOSSnapDrawingRuntime() override;
+
+    void initializeViewManager(Valdi::PlatformType platformType) override;
 
     void setActiveDisplay(CGDirectDisplayID displayId);
 

@@ -11,7 +11,9 @@
 #import "valdi_core/SCValdiFunctionCompat.h"
 #import <Foundation/Foundation.h>
 
-typedef id (^SCValdiActionBlock)(NSArray<id>* parameters);
+NS_ASSUME_NONNULL_BEGIN
+
+typedef id _Nullable (^SCValdiActionBlock)(NSArray<id>* parameters);
 
 /**
  An SCValdiAction that responds using a block.
@@ -25,3 +27,5 @@ VALDI_NO_INIT
 + (instancetype)actionWithBlock:(SCValdiActionBlock)block;
 
 @end
+
+NS_ASSUME_NONNULL_END

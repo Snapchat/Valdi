@@ -17,6 +17,7 @@ valdi_module(
         "tsconfig.json",
     ],
     android_output_target = "debug",
+    async_strict_mode = True,
     ios_module_name = "SCCValdiTest",
     ios_output_target = "debug",
     strings_dir = "strings",

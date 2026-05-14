@@ -275,7 +275,7 @@ class PropertyTypeDescription: Encodable {
             typeStr = "any"
         case .void:
             typeStr = "void"
-        case let .function(parameters, returnType, _, _):
+        case let .function(parameters, returnType, _, _, _):
             typeStr = "function"
             let parameters = parameters.map(PropertyDescription.init)
             let returnType = PropertyTypeDescription(propType: returnType)

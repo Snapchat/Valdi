@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 
 namespace snap::utils::logging {
 
@@ -27,7 +28,9 @@ enum class LogContext {
     DeepLinkResolution,
     Notifications,
     S2REvent,
-    Atlas
+    Atlas,
+    NeoPlayer,
+    MediaStrategyCenter
 };
 
 /**
@@ -54,6 +57,70 @@ void logToExternalLogger(LogLevel logLevel, LogContext logContext, const std::st
  * @brief Sets max log level for cases when external logger is not specified
  */
 void setInternalLoggerLogLevel(LogLevel maxLogLevel);
+
+constexpr std::string_view toString(LogLevel level) {
+    switch (level) {
+        case LogLevel::Verbose:
+            return "VERBOSE";
+        case LogLevel::Debug:
+            return "DEBUG";
+        case LogLevel::Info:
+            return "INFO";
+        case LogLevel::Warn:
+            return "WARN";
+        case LogLevel::Error:
+            return "ERROR";
+        case LogLevel::None:
+            return "NONE";
+    }
+    return "?";
+}
+
+constexpr std::string_view toString(LogContext context) {
+    switch (context) {
+        case LogContext::Chat:
+            return "Chat";
+        case LogContext::ContentManager:
+            return "ContentManager";
+        case LogContext::General:
+            return "General";
+        case LogContext::GRPC:
+            return "GRPC";
+        case LogContext::GRPCTrace:
+            return "GRPCTrace";
+        case LogContext::Map:
+            return "Map";
+        case LogContext::Network:
+            return "Network";
+        case LogContext::Duplex:
+            return "Duplex";
+        case LogContext::Talk:
+            return "Talk";
+        case LogContext::Core:
+            return "Core";
+        case LogContext::CUPS:
+            return "CUPS";
+        case LogContext::Ad:
+            return "Ad";
+        case LogContext::TIV:
+            return "TIV";
+        case LogContext::OnDeviceML:
+            return "OnDeviceML";
+        case LogContext::DeepLinkResolution:
+            return "DeepLinkResolution";
+        case LogContext::Notifications:
+            return "Notifications";
+        case LogContext::S2REvent:
+            return "S2REvent";
+        case LogContext::Atlas:
+            return "Atlas";
+        case LogContext::NeoPlayer:
+            return "NeoPlayer";
+        case LogContext::MediaStrategyCenter:
+            return "MediaStrategyCenter";
+    }
+    return "?";
+}
 
 /**
  * @brief Formats milliseconds since epoch into a local time string for logging

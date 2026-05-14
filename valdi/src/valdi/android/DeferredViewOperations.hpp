@@ -49,6 +49,7 @@ enum ViewOperation : uint8_t {
     ViewOperationApplyAttributeObject = 15,
     ViewOperationApplyAttributePercent = 16,
     ViewOperationApplyAttributeCorners = 17,
+    ViewOperationOnNextDraw = 18,
 };
 
 struct SerializedViewOperations {
@@ -118,6 +119,7 @@ public:
 
     void enqueueBeginRenderingView(const Valdi::Ref<Valdi::View>& view);
     void enqueueEndRenderingView(const Valdi::Ref<Valdi::View>& view, bool layoutDidBecomeDirty);
+    void enqueueOnNextDraw(const Valdi::Ref<Valdi::View>& view, int64_t callbackHandle);
 
     void write(Valdi::ByteBuffer& buffer, const Valdi::Value& value);
     void write(Valdi::ByteBuffer& buffer, int32_t value);

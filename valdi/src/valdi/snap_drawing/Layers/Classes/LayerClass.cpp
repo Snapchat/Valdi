@@ -152,6 +152,7 @@ void LayerClass::bindAttributes(Valdi::AttributesBindingContext& binder) {
 
     BIND_UNTYPED_ATTRIBUTE(Layer, maskPath, false);
     BIND_DOUBLE_ATTRIBUTE(Layer, maskOpacity, false);
+    BIND_UNTYPED_ATTRIBUTE(Layer, maskImage, false);
 
     BIND_BOOLEAN_ATTRIBUTE(Layer, slowClipping, false);
     BIND_BOOLEAN_ATTRIBUTE(Layer, touchEnabled, false);
@@ -361,6 +362,52 @@ Valdi::Result<Valdi::Void> LayerClass::apply_background(Layer& view,
 // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
 void LayerClass::reset_background(Layer& view, const AttributeContext& /*context*/) {
     view.setBackgroundLinearGradient({}, {}, snap::drawing::LinearGradientOrientationTopBottom);
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+Valdi::Result<Valdi::Void> LayerClass::apply_maskImage(Layer& view,
+                                                       const Valdi::Value& value,
+                                                       const AttributeContext& /*context*/) {
+    const auto* array = value.getArray();
+    if (array == nullptr || array->size() != 4) {
+        return Valdi::Error("Expecting 4 values");
+    }
+
+    const auto* colors = (*array)[0].getArray();
+    const auto* locations = (*array)[1].getArray();
+    auto orientation = static_cast<snap::drawing::LinearGradientOrientation>((*array)[2].toInt());
+    auto radial = (*array)[3].toBool();
+
+    if (colors == nullptr || locations == nullptr) {
+        return Valdi::Error("Expecting 2 arrays");
+    }
+
+    std::vector<Color> outColors;
+    outColors.reserve(colors->size());
+
+    for (const auto& color : *colors) {
+        outColors.emplace_back(snapDrawingColorFromValdiColor(color.toLong()));
+    }
+
+    std::vector<Scalar> outLocations;
+    outLocations.reserve(locations->size());
+
+    for (const auto& location : *locations) {
+        outLocations.emplace_back(static_cast<Scalar>(location.toDouble()));
+    }
+
+    if (radial) {
+        view.setMaskImageRadialGradient(std::move(outLocations), std::move(outColors));
+    } else {
+        view.setMaskImageLinearGradient(std::move(outLocations), std::move(outColors), orientation);
+    }
+
+    return Valdi::Void();
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+void LayerClass::reset_maskImage(Layer& view, const AttributeContext& /*context*/) {
+    view.setMaskImageLinearGradient({}, {}, snap::drawing::LinearGradientOrientationTopBottom);
 }
 
 static void callEventHandler(const Valdi::Ref<Valdi::ValueFunction>& value, Valdi::Value& jsEvent) {

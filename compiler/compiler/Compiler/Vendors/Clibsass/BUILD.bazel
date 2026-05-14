@@ -1,0 +1,60 @@
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_interop_hint")
+
+swift_interop_hint(
+    name = "swift_interop",
+    module_name = "Clibsass",
+)
+
+# Pure C sources — compiled without -std=c++14 which Apple clang rejects on C.
+cc_library(
+    name = "Clibsass_c",
+    srcs = glob([
+        "Sources/*.c",
+        "Sources/b64/*.c",
+    ]),
+    copts = ["-Wno-error"],
+    includes = [
+        "Sources",
+        "Sources/include",
+    ],
+    textual_hdrs = glob([
+        "Sources/*.h",
+        "Sources/*.hpp",
+        "Sources/b64/*.h",
+        "Sources/include/*.h",
+        "Sources/include/sass/*.h",
+        "Sources/memory/*.hpp",
+        "Sources/support/*.hpp",
+        "Sources/utf8/*.h",
+    ]),
+)
+
+# C++ sources — compiled with C++14 to avoid C++20 operator ambiguity errors.
+# This target owns the public headers for the swift_interop_hint module map.
+cc_library(
+    name = "Clibsass",
+    srcs = glob(["Sources/*.cpp"]),
+    hdrs = glob([
+        "Sources/include/*.h",
+        "Sources/include/sass/*.h",
+    ]),
+    aspect_hints = [":swift_interop"],
+    copts = [
+        "-std=c++14",
+        "-Wno-error",
+    ],
+    includes = [
+        "Sources",
+        "Sources/include",
+    ],
+    textual_hdrs = glob([
+        "Sources/*.h",
+        "Sources/*.hpp",
+        "Sources/b64/*.h",
+        "Sources/memory/*.hpp",
+        "Sources/support/*.hpp",
+        "Sources/utf8/*.h",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [":Clibsass_c"],
+)

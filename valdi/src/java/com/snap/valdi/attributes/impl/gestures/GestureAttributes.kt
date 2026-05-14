@@ -78,7 +78,7 @@ class GestureAttributes(private val coordinateResolver: CoordinateResolver) {
     fun applyOnPinch(view: View, action: ValdiFunction, predicate: ValdiFunction?, additionalValue: Any?) {
         val gestureRecognizer = addGestureRecognizersIfNeeded(view)
         val pinchRecognizer = if (enablePinchGestureRecognizeV2(view)) {
-            PinchGestureRecognizerV2(view, PinchContext(action, predicate))
+            PinchGestureRecognizerV2(view, PinchContext(action, predicate), enableV2GestureDetectorReset(view))
         } else {
             PinchGestureRecognizer(view, PinchContext(action, predicate))
         }
@@ -92,7 +92,7 @@ class GestureAttributes(private val coordinateResolver: CoordinateResolver) {
     fun applyOnRotate(view: View, action: ValdiFunction, predicate: ValdiFunction?, additionalValue: Any?) {
         val gestureRecognizer = addGestureRecognizersIfNeeded(view)
         val rotateRecognizer = if (enableRotateGestureRecognizeV2(view))
-            RotateGestureRecognizerV2(view, RotateContext(action, predicate))
+            RotateGestureRecognizerV2(view, RotateContext(action, predicate), enableV2GestureDetectorReset(view))
         else
             RotateGestureRecognizer(view, RotateContext(action, predicate))
         gestureRecognizer.addGestureRecognizer(rotateRecognizer)
@@ -121,6 +121,15 @@ class GestureAttributes(private val coordinateResolver: CoordinateResolver) {
             ViewUtils.findValdiContext(view)?.rootView
         }
         return rootView?.enablePinchGestureRecognizeV2 ?: false
+    }
+
+    private fun enableV2GestureDetectorReset(view: View): Boolean {
+        val rootView = if (view is ValdiRootView) {
+            view
+        } else {
+            ViewUtils.findValdiContext(view)?.rootView
+        }
+        return rootView?.enableV2GestureDetectorReset ?: false
     }
 
 

@@ -598,7 +598,7 @@ final class CppCodeGenerator {
             return "any"
         case .void:
             return "void"
-        case .function(parameters: let parameters, returnType: let returnType, _, _):
+        case .function(parameters: let parameters, returnType: let returnType, _, _, _):
             let parameterStrings = parameters.map { makeCanonicalTypeKey(type: $0.type) }.joined(separator: ", ")
             return "(\(parameterStrings)): \(makeCanonicalTypeKey(type: returnType))"
         case .object(let type):
@@ -680,7 +680,7 @@ final class CppCodeGenerator {
                 isIntrinsicallyNullable: false,
                 defaultInitializationString: nil
             )
-        case .function(parameters: let parameters, returnType: let returnType, _, _):
+        case .function(parameters: let parameters, returnType: let returnType, _, _, _):
             return try getFunctionTypeParser(parameters: parameters, returnType: returnType, namePaths: namePaths, nameAllocator: nameAllocator)
         case .object(let objectType):
             if !objectType.isGenerated {

@@ -9,5 +9,5 @@
 #pragma once
 
 namespace Valdi {
-enum PlatformType { PlatformTypeAndroid, PlatformTypeIOS };
+enum PlatformType { PlatformTypeAndroid, PlatformTypeIOS, PlatformTypeMacOS, PlatformTypeWeb };
 }

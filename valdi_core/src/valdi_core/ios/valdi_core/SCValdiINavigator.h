@@ -7,7 +7,9 @@
 
 @protocol SCValdiINavigator;
 
-typedef void (^SCValdiINavigatorSetBackButtonObserverObserverBlock)();
+NS_ASSUME_NONNULL_BEGIN
+
+typedef void (^SCValdiINavigatorSetBackButtonObserverObserverBlock)(void);
 typedef void (^SCValdiINavigatorSetPageVisibilityObserverObserverBlock)(double);
 
 /**
@@ -20,7 +22,7 @@ typedef void (^SCValdiINavigatorSetPageVisibilityObserverObserverBlock)(double);
  * NOTE: This method can be called from any thread.
  */
 @required
-- (void)pushComponentWithPage:(SCValdiINavigatorPageConfig* _Nonnull)page animated:(BOOL)animated;
+- (void)pushComponentWithPage:(SCValdiINavigatorPageConfig*)page animated:(BOOL)animated;
 
 /**
  * NOTE: This method can be called from any thread.
@@ -38,7 +40,7 @@ typedef void (^SCValdiINavigatorSetPageVisibilityObserverObserverBlock)(double);
  * NOTE: This method can be called from any thread.
  */
 @required
-- (void)presentComponentWithPage:(SCValdiINavigatorPageConfig* _Nonnull)page animated:(BOOL)animated;
+- (void)presentComponentWithPage:(SCValdiINavigatorPageConfig*)page animated:(BOOL)animated;
 
 /**
  * NOTE: This method can be called from any thread.
@@ -57,18 +59,19 @@ typedef void (^SCValdiINavigatorSetPageVisibilityObserverObserverBlock)(double);
  * NOTE: This method can be called from any thread.
  */
 @optional
-- (void)setBackButtonObserverWithObserver:(SCValdiINavigatorSetBackButtonObserverObserverBlock _Nonnull)observer;
+- (void)setBackButtonObserverWithObserver:(SCValdiINavigatorSetBackButtonObserverObserverBlock)observer;
 
 /**
  * NOTE: This method can be called from any thread.
  */
 @optional
-- (void)setPageVisibilityObserver:(SCValdiINavigatorSetPageVisibilityObserverObserverBlock _Nullable)observer;
+- (void)setPageVisibilityObserver:(nullable SCValdiINavigatorSetPageVisibilityObserverObserverBlock)observer;
 
 @end
 
 /**
  * Marshall the instance into the given SCValdiMarshaller.
  */
-FOUNDATION_EXPORT NSInteger SCValdiINavigatorMarshall(SCValdiMarshallerRef _Nonnull marshaller,
-                                                      id<SCValdiINavigator> _Nonnull instance);
+FOUNDATION_EXPORT NSInteger SCValdiINavigatorMarshall(SCValdiMarshallerRef marshaller, id<SCValdiINavigator> instance);
+
+NS_ASSUME_NONNULL_END

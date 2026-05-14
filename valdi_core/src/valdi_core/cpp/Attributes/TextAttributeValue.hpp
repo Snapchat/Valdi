@@ -72,6 +72,12 @@ struct ImageAttachment {
     std::vector<uint8_t> imageData;
 };
 
+struct TextAnimationTransform {
+    float translationY = 0;
+    float scale = 1;
+    float opacity = 1;
+};
+
 struct TextAttributeValueStyle {
     std::optional<StringBox> font;
     TextDecoration textDecoration = TextDecoration::Unset;
@@ -83,6 +89,7 @@ struct TextAttributeValueStyle {
     std::optional<Color> outerOutlineColor;
     std::optional<float> outerOutlineWidth;
     std::optional<ImageAttachment> imageAttachment;
+    std::optional<TextAnimationTransform> animationTransform;
 };
 
 /**

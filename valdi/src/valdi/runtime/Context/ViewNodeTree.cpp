@@ -29,6 +29,7 @@
 
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
+#include "valdi_core/cpp/Utils/TimePoint.hpp"
 #include "valdi_core/cpp/Utils/Trace.hpp"
 #include "valdi_core/cpp/Utils/ValueFunction.hpp"
 #include "valdi_core/cpp/Utils/ValueMap.hpp"
@@ -36,6 +37,10 @@
 #include "valdi_core/cpp/Utils/ContainerUtils.hpp"
 #include <cmath>
 #include <yoga/YGNode.h>
+
+// Flush the runTreeUpdates() throughput metric at most every 32ms
+static constexpr size_t kUpdateRunTreeWindowDurationsMs = 32;
+static constexpr size_t kUpdateRunTreeMinPercentage = 5;
 
 namespace Valdi {
 
@@ -70,9 +75,17 @@ ViewNodeTree::~ViewNodeTree() {
 }
 
 void ViewNodeTree::clear() {
+    flushRunUpdatesInnerStatsIfNeeded();
+    clearRunUpdatesMetricsSession();
     _runtime = nullptr;
     _viewFactories.clear();
     _updateFunctions.clear();
+}
+
+void ViewNodeTree::clearRunUpdatesMetricsSession() {
+    _runUpdatesInnerSessionStart = std::nullopt;
+    _runUpdatesInnerSessionStop = std::nullopt;
+    _runUpdatesInnerAccumulatedTime = std::chrono::steady_clock::duration(0);
 }
 
 Ref<View> ViewNodeTree::getViewForNodePath(const ViewNodePath& nodePath) const {
@@ -138,6 +151,7 @@ void ViewNodeTree::setRootView(const Ref<View>& view) {
     withLock([&]() {
         if (_rootView != view) {
             _rootView = view;
+            getCurrentViewTransactionScope().setRootView(_rootView);
 
             auto disableUpdate = beginDisableUpdates();
 
@@ -262,6 +276,8 @@ void ViewNodeTree::performUpdates() {
     flushOnLayoutCallbacks();
 
     rootViewNode->updateVisibilityAndPerformUpdates(getCurrentViewTransactionScope());
+
+    flushOnDrawCallbacks();
 }
 
 Size ViewNodeTree::measureLayout(
@@ -603,6 +619,11 @@ void ViewNodeTree::onNextLayout(const Ref<ValueFunction>& callback) {
     schedulePerformUpdates();
 }
 
+void ViewNodeTree::onNextDraw(const Ref<ValueFunction>& callback) {
+    _onDrawCallbacks.emplace_back(callback);
+    schedulePerformUpdates();
+}
+
 void ViewNodeTree::flushOnLayoutCallbacks() {
     if (_onLayoutCallbacks.empty()) {
         return;
@@ -614,6 +635,28 @@ void ViewNodeTree::flushOnLayoutCallbacks() {
         }
 
         (*onLayoutCallback)();
+    }
+}
+
+void ViewNodeTree::flushOnDrawCallbacks() {
+    if (_onDrawCallbacks.empty()) {
+        return;
+    }
+
+    auto rootView = getRootView();
+    if (rootView == nullptr) {
+        return;
+    }
+
+    auto onDrawCallbacks = std::move(_onDrawCallbacks);
+    auto& transaction = getCurrentViewTransactionScope().transaction();
+    for (const auto& onDrawCallback : onDrawCallbacks) {
+        if (onDrawCallback == nullptr) {
+            continue;
+        }
+
+        transaction.scheduleOnNextDraw(
+            rootView, [onDrawCallback]() { (*onDrawCallback)({Value(TimePoint::now().getTime() * 1000.0)}); });
     }
 }
 
@@ -699,6 +742,11 @@ void ViewNodeTree::runUpdates() {
 }
 
 void ViewNodeTree::runUpdatesInner() {
+    const auto runUpdatesStart = std::chrono::steady_clock::now();
+    if (!_runUpdatesInnerSessionStart.has_value()) {
+        _runUpdatesInnerSessionStart = runUpdatesStart;
+    }
+
     ContextEntry contextEntry(_context);
     auto viewTransactionScope = beginViewTransaction();
 
@@ -764,6 +812,34 @@ void ViewNodeTree::runUpdatesInner() {
     }
 
     endViewTransaction(viewTransactionScope, layoutDidBecomeDirty);
+
+    _runUpdatesInnerSessionStop = std::chrono::steady_clock::now();
+    _runUpdatesInnerAccumulatedTime += *_runUpdatesInnerSessionStop - runUpdatesStart;
+
+    flushRunUpdatesInnerStatsIfNeeded();
+}
+
+void ViewNodeTree::flushRunUpdatesInnerStatsIfNeeded() {
+    auto metrics = getMetrics();
+    if (metrics == nullptr || !_runUpdatesInnerSessionStart.has_value() || !_runUpdatesInnerSessionStop.has_value()) {
+        return;
+    }
+
+    const auto sessionDuration = *_runUpdatesInnerSessionStop - *_runUpdatesInnerSessionStart;
+    const auto sessionDurationMs = std::chrono::duration<double, std::milli>(sessionDuration).count();
+    if (sessionDurationMs <= kUpdateRunTreeWindowDurationsMs) {
+        // Throttle by time interval by checking that the session duration is long enough
+        return;
+    }
+
+    const auto runUpdatesInnerMs = std::chrono::duration<double, std::milli>(_runUpdatesInnerAccumulatedTime).count();
+    const auto percentage = static_cast<size_t>(std::ceil((runUpdatesInnerMs / sessionDurationMs) * 100.0));
+
+    if (percentage >= kUpdateRunTreeMinPercentage) {
+        metrics->emitRunUpdatesInnerTimePercentage(_context->getPath().getResourceId().bundleName, percentage);
+    }
+
+    clearRunUpdatesMetricsSession();
 }
 
 bool ViewNodeTree::inExclusiveUpdate() const {

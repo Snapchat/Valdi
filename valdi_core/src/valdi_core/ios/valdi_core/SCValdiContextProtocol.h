@@ -9,15 +9,17 @@
 @protocol SCValdiAttributesBinderProtocol;
 @protocol SCValdiRuntimeProtocol;
 
-typedef UIView* (^SCValdiViewFactoryBlock)();
-typedef void (^SCValdiBindAttributesCallback)(__kindof id<SCValdiAttributesBinderProtocol> attributesBinder);
-
 typedef NS_ENUM(NSUInteger, SCValdiLayoutDirection) {
     SCValdiLayoutDirectionLTR,
     SCValdiLayoutDirectionRTL,
 };
 
 typedef uint32_t SCValdiContextId;
+
+NS_ASSUME_NONNULL_BEGIN
+
+typedef UIView* _Nullable (^SCValdiViewFactoryBlock)(void);
+typedef void (^SCValdiBindAttributesCallback)(__kindof id<SCValdiAttributesBinderProtocol> _Nullable attributesBinder);
 
 /**
  A Valdi context is created for every Valdi-based view subtree and attaches to the root view.
@@ -67,21 +69,21 @@ typedef uint32_t SCValdiContextId;
 
  Used by SCValdiView subclasses.
 */
-@property (strong, nonatomic) id viewModel;
+@property (strong, nonatomic, nullable) id viewModel;
 
 /**
  Reference to the root view's component's action handler.
 
  This is a legacy API currently used in iOS. Will be removed.
 */
-@property (weak, nonatomic) id actionHandler;
+@property (weak, nonatomic, nullable) id actionHandler;
 
 /**
  Reference to the root view's SCValdiViewOwner.
 
  This is a legacy API, currently used in iOS. Will be removed.
 */
-@property (weak, nonatomic) id owner;
+@property (weak, nonatomic, nullable) id owner;
 
 /**
  Returns whether this Valdi Context was destroyed
@@ -89,26 +91,33 @@ typedef uint32_t SCValdiContextId;
 @property (readonly, nonatomic) BOOL destroyed;
 
 /**
+ * Returns whether the hit test sync deadline (callSyncWithDeadline) should be disabled,
+ * reverting to the legacy blocking dispatch_sync behavior. Controlled via the
+ * VALDI_DISABLE_HIT_TEST_SYNC_DEADLINE runtime tweak.
+ */
+@property (readonly, nonatomic) BOOL disableHitTestSyncDeadline;
+
+/**
  Reference to the root view's component's actions.
 
  This is a legacy API used to allow JS code to trigger Objective-C actions.
  Currently used in iOS. Will be removed.
 */
-@property (strong, nonatomic) SCValdiActions* actions;
+@property (strong, nonatomic, nullable) SCValdiActions* actions;
 
 /**
  * Reference to the trait collection that was propagated to the valdi context from the root view
  * This trait collection is used to scale and render text based on the accessibility settings of the user's device
  * If this trait collection is not set, valdi will use default scaling and text rendering, ignoring accessibility
  */
-@property (strong, nonatomic) UITraitCollection* traitCollection;
+@property (strong, nonatomic, nullable) UITraitCollection* traitCollection;
 
 /**
  Reference to the root view's Valdi context.
 
  This is a legacy API currently used in iOS. Will be removed.
 */
-@property (readonly, nonatomic) id<SCValdiContextProtocol> rootContext;
+@property (readonly, nonatomic, nullable) id<SCValdiContextProtocol> rootContext;
 
 /** returns YES if this view has rendered a view model at least once, or has none, and all of its child components also
  * have.
@@ -137,13 +146,13 @@ typedef uint32_t SCValdiContextId;
 /**
  Set a gesture listener that will be notified whenever a gesture is trigerred.
  */
-@property (strong, nonatomic) id<SCValdiGestureListener> gestureListener;
+@property (strong, nonatomic, nullable) id<SCValdiGestureListener> gestureListener;
 
 /**
  Returns a copy of all the Objective-C references that were tracked.
  Will return nil if references tracking was not enabled.
  */
-@property (readonly, nonatomic) NSArray<id>* trackedObjCReferences;
+@property (readonly, nonatomic, nullable) NSArray<id>* trackedObjCReferences;
 
 /**
  Notify the runtime that a value has changed for the given attribute.
@@ -152,7 +161,7 @@ typedef uint32_t SCValdiContextId;
 
  Prefer using didChangeValue:forInternedValdiAttribute:inViewNode: for better performance.
  */
-- (void)didChangeValue:(id)value
+- (void)didChangeValue:(nullable id)value
      forValdiAttribute:(NSString*)attributeName
             inViewNode:(id<SCValdiViewNodeProtocol>)viewNode;
 
@@ -162,7 +171,7 @@ typedef uint32_t SCValdiContextId;
  For example the text value of an editable text view.
 
  */
-- (void)didChangeValue:(id)value
+- (void)didChangeValue:(nullable id)value
     forInternedValdiAttribute:(SCValdiInternedStringRef)attributeName
                    inViewNode:(id<SCValdiViewNodeProtocol>)viewNode;
 
@@ -177,19 +186,19 @@ typedef uint32_t SCValdiContextId;
 
  Used internally by framework utilities.
 */
-- (UIView*)rootValdiView;
+- (nullable UIView*)rootValdiView;
 
 /**
  Set the root view to use on this Valdi Context.
  The view hierarchy will be populated and added to the given rootView.
  Passing nil will teardown the view hierarchy from the previous root view.
  */
-- (void)setRootValdiView:(UIView<SCValdiRootViewProtocol>*)rootValdiView;
+- (void)setRootValdiView:(nullable UIView<SCValdiRootViewProtocol>*)rootValdiView;
 
 /**
  Get the root ViewNode, or nil if the Valdi Context was never rendered
  */
-- (id<SCValdiViewNodeProtocol>)rootViewNode;
+- (nullable id<SCValdiViewNodeProtocol>)rootViewNode;
 
 /**
  Set the layout size and direction for the component. This will potentially
@@ -222,7 +231,7 @@ typedef uint32_t SCValdiContextId;
 
  Used internally by framework utilities.
 */
-- (void)waitUntilInitialRenderWithCompletion:(void (^)())completion;
+- (void)waitUntilInitialRenderWithCompletion:(void (^)(void))completion;
 
 /**
  Register a custom view factory for the given view class. The created views from
@@ -236,7 +245,7 @@ typedef uint32_t SCValdiContextId;
  If provided, the attributesBinder callback will be used to bind any additional attributes.
  */
 - (void)registerViewFactory:(SCValdiViewFactoryBlock)viewFactory
-           attributesBinder:(SCValdiBindAttributesCallback)attributesBinder
+           attributesBinder:(nullable SCValdiBindAttributesCallback)attributesBinder
                    forClass:(Class)viewClass;
 
 /**
@@ -245,18 +254,18 @@ Return the platform UIView instance for a given node identifier.
 
 Used from SCValdiView subclasses to implement view getters based on identifiers.
 */
-- (UIView*)viewForNodeId:(NSString*)nodeId;
+- (nullable UIView*)viewForNodeId:(NSString*)nodeId;
 
 /**
 
 Used from SCValdiView subclasses to implement @Action selectors.
 */
-- (void)performJsAction:(NSString*)actionName parameters:(NSArray*)parameters;
+- (void)performJsAction:(NSString*)actionName parameters:(nullable NSArray*)parameters;
 
 /**
  Attaches this context to the given parent context.
  */
-- (void)setParentContext:(id<SCValdiContextProtocol>)parentContext;
+- (void)setParentContext:(nullable id<SCValdiContextProtocol>)parentContext;
 
 /**
  Synchronously wait until the context has completed rendering
@@ -275,13 +284,15 @@ Used from SCValdiView subclasses to implement @Action selectors.
  Asynchronously wait until the context has completed rendering, and call the
  completion when done.
  */
-- (void)waitUntilRenderCompletedWithCompletion:(void (^)())completion;
+- (void)waitUntilRenderCompletedWithCompletion:(void (^)(void))completion;
 
 /**
   Registers a callback to be called whenever the Valdi layout becomes dirty. This happens
   whenever a node is moved/removed/added or when a layout attribute is changed during a render.
   A dirty layout means that the measured size of the Valdi component might change.
  */
-- (void)onLayoutDirty:(void (^)())onLayoutDirtyCallback;
+- (void)onLayoutDirty:(void (^)(void))onLayoutDirtyCallback;
 
 @end
+
+NS_ASSUME_NONNULL_END

@@ -5,6 +5,12 @@
  - [Valdi Code Labs](./docs/start-code-lab.md)
  - [Valdi Command Line References](./docs/command-line-references.md)
 
+## Coming From Another Framework
+
+ - [Migrating from React](./docs/start-from-react.md)
+ - [Migrating from Flutter](./docs/migrate-from-flutter.md)
+ - [Migrating from Jetpack Compose](./docs/migrate-from-compose.md)
+
 ## API Reference
 
  - [API Reference](./api/api-reference-elements.md) - Comprehensive API documentation for all native elements
@@ -90,7 +96,16 @@
  - [Hermes Debugger](./docs/workflow-hermes-debugger.md)
  - [Disk Management](./docs/workflow-disk.md)
 
- ## Misc
+## Example Apps
+ - [Hello World](../apps/helloworld) - minimal component with hot reload
+ - [Navigation Example](../apps/navigation_example) - screen navigation patterns
+ - [Managed Context Example](../apps/managed_context_example) - shared state across components
+ - [Valdi GPT](../apps/valdi_gpt) - AI-driven dynamic UI rendered at runtime
+ - [CLI Application Example](../apps/cli_example) - building a Valdi CLI app
+ - [Benchmark](../apps/benchmark) - performance benchmarks
+
+## Misc
+ - [Roadmap](../ROADMAP.md)
  - [Third party dependencies](./docs/third-party-dependencies.md)
  - [Frequently Asked Questions](./docs/faq.md)
 

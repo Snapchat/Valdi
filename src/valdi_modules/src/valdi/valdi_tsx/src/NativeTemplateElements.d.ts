@@ -76,6 +76,16 @@ interface LayoutAttributes {
   lazyLayout?: boolean;
 
   /**
+   * @experimental This feature is experimental and may change in future releases.
+   *
+   * Scroll anchor position for this element within the nearest parent scroll view.
+   * When set to 'top' or 'bottom', the parent scroll view (with maintainScrollAnchor={true})
+   * will pin this element to the specified viewport edge during layout.
+   * @default: 'none'
+   */
+  scrollAnchorPosition?: ScrollAnchorPosition;
+
+  /**
    * If set, the node will be set as a lazyLayout, and the given measure callback
    * will be called whenever the node needs to be measured. The callback
    * should return a MeasuredSize tuple representing how big the node should be.
@@ -643,6 +653,15 @@ interface ViewAttributes {
    * Use `"linear-gradient(color1 stop1, color2 stop2, color3 stop3...)"` to set a color with custom stops.
    */
   background?: string;
+
+  /**
+   * Applies an alpha mask to the view using a gradient. The gradient's alpha channel
+   * controls visibility: opaque regions remain visible, transparent regions are hidden.
+   *
+   * Use `"linear-gradient(#000000, transparent)"` to fade from fully visible to fully transparent.
+   * Use `"linear-gradient(color1 stop1, color2 stop2, ...)"` for custom stops.
+   */
+  maskImage?: string;
 
   /**
    * Sets the background color of the view.
@@ -1221,6 +1240,13 @@ export interface TextFieldInteractive extends TextField {
 // @NativeTemplateElement({ios: 'SCValdiTextView', android: 'com.snap.valdi.views.ValdiEditTextMultiline', jsx: 'textview'})
 export interface TextView extends _TextView, CommonEditTextInterface {
   /**
+   * The content type identifies what keyboard keys
+   * and capabilities are available on the input and which ones appear by default.
+   * @default: 'default'
+   */
+  contentType?: TextFieldContentType;
+
+  /**
    * Setting this property to a different key type changes the visible title of the Return key.
    * Setting this property will also impact the behavior of the return key.
    * "linereturn" will let users add line returns, but any other value will be constrained to single line text
@@ -1450,7 +1476,7 @@ export interface CommonTextAttributes {
    * - 2) required: the size of the font
    * - 3) optional: the scaling type (or 'unscaled' for no scaling)
    * - 4) optional: the maximum size of the font after scaling
-   * @example: 'AvenirNext-Bold 16 unscaled 16'
+   * @example: 'Montserrat-Bold 16 unscaled 16'
    * @default: 'system 12'
    */
   font?: string;
@@ -1645,6 +1671,15 @@ export interface ScrollView extends _ScrollView, CommonView, ContainerTemplateEl
    * @default: true
    */
   cancelsTouchesOnScroll?: boolean;
+
+  /**
+   * [iOS-Only]
+   * When enabled, any touch on the scroll view will immediately stop an ongoing
+   * deceleration animation so that the touch is delivered to content views
+   * instead of being consumed by the scroll view.
+   * @default: false
+   */
+  stopScrollingOnTouch?: boolean;
 
   /**
    * If the keyboard is open, close it when we start scrolling
@@ -1848,6 +1883,16 @@ export interface ScrollViewInteractive extends ScrollView {
    * Setting this value will skip waiting for the measure step and allow operations such as scrolling to occurr faster.
    */
   staticContentHeight?: number;
+
+  /**
+   * @experimental This feature is experimental and may change in future releases.
+   *
+   * When enabled, the scroll view will look for a descendant with scrollAnchorPosition set to
+   * 'top' or 'bottom' and pin it to the specified viewport edge during layout.
+   * Toggle this on when pagination triggers and off after layout settles.
+   * @default: false
+   */
+  maintainScrollAnchor?: boolean;
 }
 
 // @NativeTemplateElement({ios: 'SCValdiSpinnerView', android: 'com.snap.valdi.views.ValiSpinnerView', jsx: 'spinner'})
@@ -2099,6 +2144,8 @@ type LayoutJustifyContentProperty =
   | 'space-evenly';
 
 type LayoutFlexBasisProperty = CSSValue;
+
+export type ScrollAnchorPosition = 'none' | 'top' | 'bottom';
 
 export type LayoutAccessibilityCategory =
   | 'auto'

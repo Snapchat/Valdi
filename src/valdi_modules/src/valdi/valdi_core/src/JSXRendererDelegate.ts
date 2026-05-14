@@ -33,6 +33,7 @@ const enum RenderRequestEntryType {
   END_ANIMATIONS = 15,
   ON_LAYOUT_COMPLETE = 16,
   CANCEL_ANIMATION = 17,
+  ON_NEXT_DRAW = 18,
 }
 
 const bufferPool = [new Buffer(512)];
@@ -283,6 +284,11 @@ export class JSXRendererDelegate implements IRendererDelegate {
   onNextLayoutComplete(cb: () => void) {
     const attachedValuesIndex = this.getAttachedValueIndex(cb);
     this.buffer.putUint32_2(RenderRequestEntryType.ON_LAYOUT_COMPLETE, attachedValuesIndex);
+  }
+
+  onNextDraw(cb: (hookTimeMs: number) => void) {
+    const attachedValuesIndex = this.getAttachedValueIndex(cb);
+    this.buffer.putUint32_2(RenderRequestEntryType.ON_NEXT_DRAW, attachedValuesIndex);
   }
 
   onRenderStart(): void {

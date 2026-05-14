@@ -69,6 +69,7 @@ cc_binary(
         "src/benchmark/*.cpp",
     ]),
     linkstatic = True,
+    tags = ["manual"],  # Source uses outdated Message::parse API
     deps = [
         ":test_proto",
         ":valdi_protobuf",

@@ -58,7 +58,7 @@ const rule = createRule({
     type: 'problem',
     docs: {
       description: 'Prevents React patterns that do not exist in Valdi',
-      recommended: 'error',
+      recommended: 'strict',
     },
     messages: {
       reactImport: 'Do not import from "react". Valdi is not React. Use "valdi_core" instead.',
@@ -147,7 +147,7 @@ const rule = createRule({
             superClass.object.type === AST_NODE_TYPES.Identifier &&
             superClass.object.name === 'React' &&
             superClass.property.type === AST_NODE_TYPES.Identifier &&
-            superClass.property.property.name === 'Component'
+            superClass.property.name === 'Component'
           ) {
             context.report({
               node: node.superClass,

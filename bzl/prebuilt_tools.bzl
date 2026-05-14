@@ -24,7 +24,7 @@ def valdi_compiler_companion_files():
 def bundle_js():
     if INTERNAL_BUILD:
         return "@valdi_compiler_companion//:bundle.js"
-    return "compiler_companion/bundle.js"
+    return "//compiler_companion:bundle.js"
 
 def jscore_library():
     if INTERNAL_BUILD:

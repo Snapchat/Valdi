@@ -470,6 +470,16 @@ Context* Context::currentRoot() {
     return current;
 }
 
+std::atomic<bool> Context::s_destroyedContextFixEnabled{true};
+
+bool Context::isDestroyedContextFixEnabled() {
+    return s_destroyedContextFixEnabled.load(std::memory_order_relaxed);
+}
+
+void Context::setDestroyedContextFixEnabled(bool enabled) {
+    s_destroyedContextFixEnabled.store(enabled, std::memory_order_relaxed);
+}
+
 const Ref<ViewManagerContext>& Context::getViewManagerContext() const {
     return _viewManagerContext;
 }

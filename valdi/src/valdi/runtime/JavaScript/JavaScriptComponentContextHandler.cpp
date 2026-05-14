@@ -255,10 +255,19 @@ void JavaScriptComponentContextHandler::doOnCreate(JavaScriptEntryParameters& js
     resolveParentContext(componentContextAsValue, parentContext);
 
     if (parentContext != nullptr && parentContext->getContextId() != 1 /* Ignore root context */) {
-        VALDI_DEBUG(
-            _logger, "Resolved parent context of {} to {}", componentPathString, parentContext->getPath().toString());
-        jsEntry.valdiContext->setParent(parentContext);
-        parentContext->getRoot()->retainDisposables();
+        if (parentContext->isDestroyed() && Context::isDestroyedContextFixEnabled()) {
+            VALDI_WARN(_logger,
+                       "Skipping destroyed parent context {} for {}",
+                       parentContext->getContextId(),
+                       componentPathString);
+        } else {
+            VALDI_DEBUG(_logger,
+                        "Resolved parent context of {} to {}",
+                        componentPathString,
+                        parentContext->getPath().toString());
+            jsEntry.valdiContext->setParent(parentContext);
+            parentContext->getRoot()->retainDisposables();
+        }
     }
 
     auto jsComponentPath = jsEntry.jsContext.newStringUTF8(componentPathString, jsEntry.exceptionTracker);

@@ -25,10 +25,10 @@ struct TextLayoutTestContainer {
         fontManager = makeShared<FontManager>(ConsoleLogger::getLogger());
         fontManager->load();
 
-        avenirNext = registerFont("Avenir Next",
+        avenirNext = registerFont("Montserrat",
                                   FontStyle(FontWidthNormal, FontWeightNormal, FontSlantUpright),
-                                  "AvenirNext-Regular",
-                                  "avenir_next_regular",
+                                  "Montserrat-Regular",
+                                  "montserrat_regular",
                                   false);
 
         auto arabicText = utf8ToUnicode("ر");
@@ -398,7 +398,7 @@ TEST(TextLayout, canBeConvertedToJSON) {
                       Value()
                           .setMapValue("bounds", toJSONValue(segmentsBounds))
                           .setMapValue("characters", Value("Hello world"))
-                          .setMapValue("font", Value("Avenir Next 17 x1")));
+                          .setMapValue("font", Value("Montserrat 17 x1")));
 
     auto decorations = ValueArray::make(1);
     decorations->emplace(

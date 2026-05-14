@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <atomic>
+
 #include "valdi_core/jni/GlobalRefJavaObject.hpp"
 
 #include "valdi/runtime/Interfaces/IViewManager.hpp"
@@ -65,6 +67,7 @@ public:
     void bindAttributes(const Valdi::StringBox& className, Valdi::AttributesBindingContext& binder) override;
 
     float getPointScale() const override;
+    void setPointScale(float pointScale);
 
     void onUncaughtJsError(const int32_t errorCode,
                            const Valdi::StringBox& moduleName,
@@ -102,7 +105,7 @@ public:
 
 private:
     Valdi::Ref<DeferredViewOperationsPool> _viewOperationsPool;
-    float _pointScale;
+    std::atomic<float> _pointScale;
     [[maybe_unused]] Valdi::ILogger& _logger;
 
     JavaMethod<JavaObject, jclass> _createViewFactoryMethod;

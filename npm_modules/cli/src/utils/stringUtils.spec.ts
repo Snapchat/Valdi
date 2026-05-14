@@ -87,8 +87,9 @@ describe('stringUtils', () => {
       });
 
       it('handles names that start with numbers', () => {
-        // These are valid because sanitization will prefix with underscore
-        expect(validateProjectName('123project')).toBeNull();
+        // Names starting with numbers get prefixed with underscore during sanitization,
+        // so validateProjectName returns a warning about the change
+        expect(validateProjectName('123project')).toContain('sanitized');
       });
     });
 });

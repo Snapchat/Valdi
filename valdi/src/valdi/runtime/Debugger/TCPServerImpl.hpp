@@ -13,6 +13,7 @@
 #include "valdi_core/cpp/Threading/Thread.hpp"
 #include "valdi_core/cpp/Utils/Mutex.hpp"
 #include <atomic>
+#include <memory>
 #include <vector>
 
 namespace Valdi {
@@ -46,6 +47,7 @@ private:
     std::vector<Ref<TCPServerConnectionImpl>> _connections;
     Mutex _mutex;
     Ref<Thread> _asioThread;
+    std::shared_ptr<boost::asio::io_service::work> _work;
     std::atomic_bool _started;
 
     friend TCPServerDisconnectHandler;

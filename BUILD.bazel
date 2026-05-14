@@ -1,5 +1,13 @@
 load("@aspect_rules_js//npm:defs.bzl", "npm_link_package")
 
+# Bridge toolchain: rules_android 0.6.5 registers toolchains for its own type
+# but some rules still resolve the legacy @@bazel_tools//tools/android:sdk_toolchain_type.
+toolchain(
+    name = "legacy_android_sdk_toolchain",
+    toolchain = "@androidsdk//:sdk",
+    toolchain_type = "@bazel_tools//tools/android:sdk_toolchain_type",
+)
+
 # tsc demands that these be defined in the root of the workspace
 npm_link_package(
     name = "valdi_tsx_link",

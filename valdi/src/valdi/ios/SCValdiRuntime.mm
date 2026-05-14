@@ -130,7 +130,6 @@
         _jsRuntime = [[SCValdiJSRuntimeImpl alloc] initWithJSRuntimeProvider:self];
 
         _viewManagerContext->setAccessibilityEnabled(_runtime->getResourceManager().enableAccessibility());
-
     }
 
     return self;
@@ -366,9 +365,11 @@
     [_applicationModule setIsIntegrationTestEnvironment:isIntegrationTestEnvironment];
 }
 
-- (void)setAllowDarkMode:(BOOL)allowDarkMode useScreenUserInterfaceStyleForDarkMode:(BOOL)useScreenUserInterfaceStyleForDarkMode
+- (void)setAllowDarkMode:(BOOL)allowDarkMode
+    useScreenUserInterfaceStyleForDarkMode:(BOOL)useScreenUserInterfaceStyleForDarkMode
 {
-    [_deviceModule setAllowDarkMode:allowDarkMode useScreenUserInterfaceStyleForDarkMode:useScreenUserInterfaceStyleForDarkMode];
+    [_deviceModule setAllowDarkMode:allowDarkMode
+        useScreenUserInterfaceStyleForDarkMode:useScreenUserInterfaceStyleForDarkMode];
 }
 
 #pragma mark - Asset factories

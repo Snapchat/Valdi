@@ -276,6 +276,12 @@ public:
      */
     static Ref<Runtime> currentRuntime();
 
+    /**
+     * Returns whether the hit test sync deadline should be disabled,
+     * as controlled by the VALDI_DISABLE_HIT_TEST_SYNC_DEADLINE runtime tweak.
+     */
+    bool disableHitTestSyncDeadline() const;
+
 protected:
     void receivedRenderRequest(const Ref<RenderRequest>& renderRequest) override;
 

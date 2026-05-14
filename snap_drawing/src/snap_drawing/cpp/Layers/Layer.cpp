@@ -19,7 +19,10 @@
 #include "snap_drawing/cpp/Drawing/BoxShadow.hpp"
 #include "snap_drawing/cpp/Drawing/DisplayList/DisplayList.hpp"
 #include "snap_drawing/cpp/Drawing/LinearGradient.hpp"
+#include "snap_drawing/cpp/Drawing/Mask/PaintMask.hpp"
 #include "snap_drawing/cpp/Utils/GradientWrapper.hpp"
+
+#include "include/core/SkBlendMode.h"
 
 #include <iostream>
 
@@ -88,6 +91,22 @@ void Layer::draw(DisplayList& displayList, DrawMetrics& metrics) {
         mask = _maskLayer->createMask(Rect::makeLTRB(0, 0, width, height));
     }
 
+    Ref<IMask> maskImage;
+    if (_maskImageGradient.hasGradient()) {
+        auto viewRect = Rect::makeLTRB(0, 0, width, height);
+        _maskImageGradient.update(viewRect);
+
+        Paint maskPaint;
+        _maskImageGradient.applyToPaint(maskPaint);
+        maskPaint.setBlendMode(SkBlendMode::kDstIn);
+
+        maskImage = Valdi::makeShared<PaintMask>(maskPaint, Path(), viewRect);
+    }
+
+    if (maskImage != nullptr) {
+        displayList.appendPrepareMask(maskImage.get());
+    }
+
     if (mask != nullptr && maskPositioning == MaskLayerPositioning::BelowBackground) {
         displayList.appendPrepareMask(mask.get());
     }
@@ -121,6 +140,10 @@ void Layer::draw(DisplayList& displayList, DrawMetrics& metrics) {
 
     if (!_cachedForeground.isEmpty()) {
         displayList.appendLayerContent(_cachedForeground, resolvedPictureOpacity);
+    }
+
+    if (maskImage != nullptr) {
+        displayList.appendApplyMask(maskImage.get());
     }
 
     if (_needsDisplay) {
@@ -404,6 +427,46 @@ void Layer::setBackgroundRadialGradient(std::vector<Scalar>&& locations, std::ve
     _gradientWrapper.setAsRadial(std::move(locations), std::move(colors));
 
     if (_gradientWrapper.isDirty()) {
+        setNeedsDisplay();
+    }
+}
+
+void Layer::setMaskImageLinearGradient(std::vector<Scalar>&& locations,
+                                       std::vector<Color>&& colors,
+                                       LinearGradientOrientation orientation) {
+    if (_maskImageGradient.clearIfNeeded(GradientWrapper::GradientType::RADIAL)) {
+        setNeedsDisplay();
+    }
+
+    if (colors.empty()) {
+        if (_maskImageGradient.clearIfNeeded(GradientWrapper::GradientType::LINEAR)) {
+            setNeedsDisplay();
+        }
+        return;
+    }
+
+    _maskImageGradient.setAsLinear(std::move(locations), std::move(colors), orientation);
+
+    if (_maskImageGradient.isDirty()) {
+        setNeedsDisplay();
+    }
+}
+
+void Layer::setMaskImageRadialGradient(std::vector<Scalar>&& locations, std::vector<Color>&& colors) {
+    if (_maskImageGradient.clearIfNeeded(GradientWrapper::GradientType::LINEAR)) {
+        setNeedsDisplay();
+    }
+
+    if (colors.empty()) {
+        if (_maskImageGradient.clearIfNeeded(GradientWrapper::GradientType::RADIAL)) {
+            setNeedsDisplay();
+        }
+        return;
+    }
+
+    _maskImageGradient.setAsRadial(std::move(locations), std::move(colors));
+
+    if (_maskImageGradient.isDirty()) {
         setNeedsDisplay();
     }
 }

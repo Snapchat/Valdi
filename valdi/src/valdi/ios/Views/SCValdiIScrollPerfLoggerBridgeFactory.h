@@ -7,7 +7,7 @@
  *
  * @see: SCValdiIScrollPerfLoggerBridge
  */
-@protocol SCValdiIScrollPerfLoggerBridgeFactory
+@protocol SCValdiIScrollPerfLoggerBridgeFactory <NSObject>
 
 - (id<SCValdiIScrollPerfLoggerBridge>)createScrollPerfLoggerBridgeWithTag:(NSString*)tag
                                                                   feature:(NSString*)feature

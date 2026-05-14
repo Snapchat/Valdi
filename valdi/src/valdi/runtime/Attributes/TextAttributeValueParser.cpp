@@ -28,6 +28,7 @@ enum TextAttributeValueEntryType : int32_t {
     TextAttributeValueEntryTypePushOuterOutlineColor,
     TextAttributeValueEntryTypePushOuterOutlineWidth,
     TextAttributeValueEntryTypePushInlineImage,
+    TextAttributeValueEntryTypePushAnimationTransform,
 };
 
 static Error invalidTextAttributeValueError(const Value& value, std::string_view message) {
@@ -208,6 +209,26 @@ static Result<Ref<TextAttributeValue>> doParse(const ColorPalette* colorPalette,
             } break;
             case TextAttributeValueEntryTypePushOuterOutlineWidth: {
                 pushStyle(stylesStack).outerOutlineWidth = entryValue.toDouble();
+            } break;
+            case TextAttributeValueEntryTypePushAnimationTransform: {
+                if (entryValue.isMap()) {
+                    TextAnimationTransform animationTransform;
+                    auto translationYValue = entryValue.getMapValue("translationY");
+                    if (!translationYValue.isUndefined()) {
+                        animationTransform.translationY = static_cast<float>(translationYValue.toDouble());
+                    }
+                    auto scaleValue = entryValue.getMapValue("scale");
+                    if (!scaleValue.isUndefined()) {
+                        animationTransform.scale = static_cast<float>(scaleValue.toDouble());
+                    }
+                    auto opacityValue = entryValue.getMapValue("opacity");
+                    if (!opacityValue.isUndefined()) {
+                        animationTransform.opacity = static_cast<float>(opacityValue.toDouble());
+                    }
+                    pushStyle(stylesStack).animationTransform = animationTransform;
+                } else {
+                    pushStyle(stylesStack);
+                }
             } break;
             case TextAttributeValueEntryTypePushInlineImage: {
                 if (entryValue.isMap()) {

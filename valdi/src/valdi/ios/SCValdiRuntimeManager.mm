@@ -309,7 +309,8 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
 
     _referenceTrackingEnabled = configuration.enableReferenceTracking;
     BOOL useScreenUserInterfaceStyleForDarkMode = !configuration.useViewControllerBasedUserInterfaceStyleForDarkMode;
-    [_mainRuntime setAllowDarkMode:configuration.allowDarkMode useScreenUserInterfaceStyleForDarkMode:useScreenUserInterfaceStyleForDarkMode];
+    [_mainRuntime setAllowDarkMode:configuration.allowDarkMode
+        useScreenUserInterfaceStyleForDarkMode:useScreenUserInterfaceStyleForDarkMode];
     [_mainRuntime setIsIntegrationTestEnvironment:configuration.isTestEnvironment];
     _mainRuntime.disableLegacyMeasureBehaviorByDefault = configuration.disableLegacyMeasureBehaviorByDefault;
     [_mainRuntime setPerformHapticFeedbackFunctionBlock:configuration.performHapticFeedbackBlock];
@@ -473,7 +474,7 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
     }
 }
 
-- (SCValdiRuntime *)createRuntimeWithCustomModuleProvider:(id<SCValdiCustomModuleProvider>)customModuleProvider
+- (nullable SCValdiRuntime *)createRuntimeWithCustomModuleProvider:(id<SCValdiCustomModuleProvider>)customModuleProvider
 {
     if (_applicationIsTerminating || _forceTornDown) {
         return nil;
@@ -487,7 +488,12 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
 
     auto runtime =
     _cppInstance->createRuntime(Valdi::makeShared<ValdiIOS::ResourceLoader>(customModuleProvider), static_cast<double>(_viewManagerContext->getViewManager().getPointScale()));
+    _cppInstance->emitXpatCreateRuntimeMetrics();
+
     SCValdiRuntime *objcRuntime = [[SCValdiRuntime alloc] initWithCppInstance:runtime viewManagerContext:_viewManagerContext runtimeManager:self fontManager:_fontManager];
+
+    _cppInstance->emitIosRuntimeCreateMetrics();
+
     _cppInstance->attachHotReloader(runtime);
 
     return objcRuntime;
@@ -513,7 +519,7 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
     }
 }
 
-- (id<SCSnapDrawingRuntime>)snapDrawingRuntime
+- (nullable id<SCSnapDrawingRuntime>)snapDrawingRuntime
 {
 #ifdef SNAP_DRAWING_ENABLED
     @synchronized (self) {
@@ -651,7 +657,7 @@ static SCValdiCapturedJSStacktrace *toObjCStacktrace(const Valdi::JavaScriptCapt
                                                          threadStatus:toObjCThreadStatus(capturedStacktrace.getStatus())];
 }
 
-- (NSArray<SCValdiCapturedJSStacktrace *> *)captureStackTracesWithTimeoutMs:(NSUInteger)timeoutMs
+- (nullable NSArray<SCValdiCapturedJSStacktrace *> *)captureStackTracesWithTimeoutMs:(NSUInteger)timeoutMs
 {
     NSMutableArray<SCValdiCapturedJSStacktrace *> *capturedJSStacktraces = [NSMutableArray array];
     @synchronized (self) {
@@ -666,6 +672,19 @@ static SCValdiCapturedJSStacktrace *toObjCStacktrace(const Valdi::JavaScriptCapt
     }
 
     return [capturedJSStacktraces copy];
+}
+
+- (SCValdiMemoryStatistics)dumpMemoryStatistics
+{
+    SCValdiMemoryStatistics result = {0, 0};
+    @synchronized (self) {
+        if (_cppInstance != nullptr) {
+            auto stats = _cppInstance->dumpMemoryStatistics();
+            result.memoryUsageBytes = static_cast<int64_t>(stats.memoryUsageBytes);
+            result.objectsCount = static_cast<int64_t>(stats.objectsCount);
+        }
+    }
+    return result;
 }
 
 - (void *)cppInstance

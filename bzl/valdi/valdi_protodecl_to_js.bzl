@@ -1,3 +1,5 @@
+NODEJS_TOOLCHAIN_TYPE = "@rules_nodejs//nodejs:toolchain_type"
+
 def _protodecl_to_js_dir_impl(ctx):
     # Emits under: bazel-bin/<pkg>/<target>/__protodecl__/
     outdir = ctx.actions.declare_directory("%s/__protodecl__" % ctx.label.name)
@@ -30,9 +32,8 @@ def _protodecl_to_js_dir_impl(ctx):
           dest="$OUT/$base.protodecl.js"
           mkdir -p "$(dirname "$dest")"
 
-          # Emit CommonJS that exports a Uint8Array of the raw bytes
-          "$node" -e 'const fs=require("fs");const b=fs.readFileSync(process.argv[1]);
-            process.stdout.write("module.exports = new Uint8Array(["+Array.from(b).join(",")+"]);");' "$f" > "$dest"
+          # Emit CommonJS that exports a base64 string of the raw bytes
+          "$node" -e 'const fs=require("fs");const b=fs.readFileSync(process.argv[1]);process.stdout.write("module.exports="+JSON.stringify(b.toString("base64"))+";");' "$f" > "$dest"
         done
         """,
     )
@@ -40,13 +41,17 @@ def _protodecl_to_js_dir_impl(ctx):
     inputs = depset(transitive = [t[DefaultInfo].files for t in ctx.attr.srcs])
     args = [outdir.path] + [f.path for f in inputs.to_list()]
 
+    node_info = ctx.toolchains[NODEJS_TOOLCHAIN_TYPE].nodeinfo
+    node_path = node_info.target_tool_path
+    node_inputs = node_info.tool_files
+
     ctx.actions.run(
         inputs = depset([script], transitive = [inputs]),
         outputs = [outdir],
-        tools = [ctx.file._node],
+        tools = node_inputs,
         executable = script,
         arguments = args,
-        env = {"NODE": ctx.file._node.path},
+        env = {"NODE": node_path},
         progress_message = "protodecl → js into %s" % outdir.path,
     )
     return [DefaultInfo(files = depset([outdir]))]
@@ -55,12 +60,10 @@ protodecl_to_js_dir = rule(
     implementation = _protodecl_to_js_dir_impl,
     attrs = {
         "srcs": attr.label_list(allow_files = True),
-        "_node": attr.label(
-            default = Label("@@nodejs//:node_bin"),
-            allow_single_file = True,
-            cfg = "exec",
-        ),
     },
+    toolchains = [
+        NODEJS_TOOLCHAIN_TYPE,
+    ],
 )
 
 def _collapse_protodecl_paths_impl(ctx):

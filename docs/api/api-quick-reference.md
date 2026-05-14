@@ -205,7 +205,7 @@ myScrollRef.setAttribute('contentOffsetAnimated', true);
   value="Hello World"    // or attributedText
   
   // Text styling
-  font="AvenirNext-Bold 16 unscaled 16"
+  font="Montserrat-Bold 16 unscaled 16"
   color="#000000"
   textGradient="linear-gradient(#ff0000, #0000ff)"
   textShadow="rgba(0,0,0,0.1) 1 1 1 1"

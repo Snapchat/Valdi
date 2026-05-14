@@ -32,7 +32,6 @@ AndroidSnapDrawingRuntime::AndroidSnapDrawingRuntime(const GlobalRefJavaObjectBa
                              logger,
                              workerQueue,
                              maxCacheSizeInBytes),
-      _coordinateResolver(androidViewManager.getPointScale()),
       _androidViewManager(androidViewManager) {
     auto scrollConstants = ScrollConstants::resolve(diskCache, logger);
 
@@ -63,7 +62,7 @@ Valdi::Ref<snap::drawing::ANativeWindowGraphicsContext> AndroidSnapDrawingRuntim
 
 Valdi::Ref<ValdiAndroid::SnapDrawingLayerRootHost> AndroidSnapDrawingRuntime::createHost(bool disallowSynchronousDraw) {
     auto rootHost = Valdi::makeShared<ValdiAndroid::SnapDrawingLayerRootHost>(
-        getDrawLooper(), getResources(), getNativeWindowGraphicsContext(), _coordinateResolver, _androidViewManager);
+        getDrawLooper(), getResources(), getNativeWindowGraphicsContext(), _androidViewManager);
     rootHost->setDisallowSynchronousDraw(disallowSynchronousDraw);
     return rootHost;
 }

@@ -250,6 +250,10 @@ public:
 
     void preloadModule(const StringBox& path, int32_t maxDepth) override;
 
+    void preloadModules(const std::vector<Valdi::StringBox>& paths, int32_t maxDepth) override;
+
+    void warmUpValueMarshaller(const Value& value);
+
     int32_t pushModuleToMarshaller(
         const /*not-null*/ std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager,
         const Valdi::StringBox& path,
@@ -342,7 +346,7 @@ private:
     Result<JSValueRef> _symbolicateFunction;
     Result<JSValueRef> _onDaemonClientEventFunction;
     JSValueRef _moduleLoader;
-    JSPropertyNameIndex<6> _propertyNameIndex;
+    JSPropertyNameIndex<7> _propertyNameIndex;
 
     Ref<IDiskCache> _diskCache;
     // List of JS modules which should be reloaded whenever they are unloaded

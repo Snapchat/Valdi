@@ -63,10 +63,10 @@ protected:
         fontManager = Valdi::makeShared<FontManager>(Valdi::ConsoleLogger::getLogger());
         fontManager->load();
 
-        avenirNext = registerFont("Avenir Next",
+        avenirNext = registerFont("Montserrat",
                                   FontStyle(FontWidthNormal, FontWeightNormal, FontSlantUpright),
-                                  "AvenirNext-Regular",
-                                  "avenir_next_regular");
+                                  "Montserrat-Regular",
+                                  "montserrat_regular");
         testTextShaper = Valdi::makeShared<TestTextShaper>();
     }
 

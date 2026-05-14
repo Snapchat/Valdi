@@ -65,10 +65,20 @@ Result<Void> TCPServerImpl::start() {
     }
 
     _started = true;
+    // Allow io_service to be reused after a previous stop()
+    _ioService.reset();
+    // Use a work guard to keep run() active until handler returns to
+    // prevent possible deadlock if asio thread exits (eg. error or other thread closure)
+    // and we post and wait indefinitely for the non-existent thread to complete.
+    _work = std::make_shared<boost::asio::io_service::work>(_ioService);
 
-    _asioThread = Thread::create(STRING_LITERAL("Valdi TCP Server"), ThreadQoSClassNormal, [this]() {
-                      runIOService();
-                  }).moveValue();
+    auto threadResult =
+        Thread::create(STRING_LITERAL("Valdi TCP Server"), ThreadQoSClassNormal, [this]() { runIOService(); });
+    if (!threadResult) {
+        _work.reset();
+        return threadResult.moveError();
+    }
+    _asioThread = threadResult.moveValue();
 
     return Void();
 }
@@ -100,26 +110,63 @@ std::vector<std::string> TCPServerImpl::getAvailableAddresses() {
 void TCPServerImpl::stop() {
     _started = false;
 
-    // First, stop the io_service to cause run() to return
-    _ioService.stop();
-
-    // Wait for the io_service thread to exit before accessing sockets.
-    // This is critical for thread-safety: Boost.Asio sockets are NOT
-    // thread-safe for concurrent operations. There can't be any async
-    // operations in-flight before calling socket.close()
-    std::unique_lock<Mutex> guard(_mutex);
-    auto thread = _asioThread;
-    _asioThread = nullptr;
-    if (thread != nullptr) {
-        guard.unlock();
-        thread->join();
+    Ref<Thread> thread;
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        thread = _asioThread;
+        // Don't clear _asioThread yet: keeping it non-null prevents
+        // a concurrent start() from creating a new service while
+        // shutdown is still in progress.
     }
 
-    // This should be the only thread accessing sockets now, so it's safe to close
-    closeAllConnections(Error("Server stopped"));
+    if (thread == nullptr) {
+        boost::system::error_code ec;
+        _acceptor.close(ec);
+        return;
+    }
 
-    boost::system::error_code ec;
-    _acceptor.close(ec);
+    // COMPOSER-5531: Close sockets on the Asio thread *before* stopping io_service
+    // because socket::close requires a valid service and will crash otherwise.
+    // Since the Asio thread owns the socket, post cleanup to the thread to prevent
+    // concurrent socket access; only Asio thread should access socket during closure
+    std::atomic<bool> shutdownDone{false};
+
+    _ioService.post([this, &shutdownDone]() {
+        closeAllConnections(Error("Server stopped"));
+
+        boost::system::error_code ec;
+        _acceptor.close(ec);
+        _ioService.stop();
+        _work.reset();
+        shutdownDone.store(true);
+    });
+
+    // join() blocks until run() returns: either because posted lambda
+    // called stop() or because run() exited due to an exception.
+    thread->join();
+
+    // If run() exited before posted lambda could execute, clean up directly.
+    // The Asio thread is dead (just joined it), so no concurrent socket access.
+    if (!shutdownDone.load()) {
+        closeAllConnections(Error("Server stopped"));
+
+        boost::system::error_code ec;
+        _acceptor.close(ec);
+        _ioService.stop();
+        _work.reset();
+    }
+
+    // Drain stale handlers (e.g. cancelled async_accept/async_read) that
+    // were queued but not dispatched before io_service was stopped.
+    // The asio thread is joined, so there's no concurrent access.
+    _ioService.reset();
+    _ioService.poll();
+
+    // Shutdown fully complete; now allow start() to proceed.
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        _asioThread = nullptr;
+    }
 }
 
 void TCPServerImpl::closeAllConnections(const Error& error) {

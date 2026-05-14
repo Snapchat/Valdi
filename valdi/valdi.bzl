@@ -1,8 +1,8 @@
+load("@android_macros//:android.bzl", "aar_import")
 load("@valdi//bzl:valdi_library.bzl", "COMMON_COMPILE_FLAGS")
 load("@valdi//bzl/android:filter_jar.bzl", "filter_jar")
 load("@valdi//bzl/android:package_aar.bzl", "package_aar")
 load("@valdi//bzl/android:platform_transition.bzl", "android_aar_platforms")
-load("@valdi//bzl/macros:android.bzl", "aar_import")
 
 COMPILER_FLAGS = [
     # '-Os', # Uncomment to enable optimizations
@@ -112,7 +112,7 @@ def valdi_android_aar(
         deps = ANDROIDX_RUNTIME_LIBRARIES,
     )
 
-def valdi_test(name, srcs = [], hdrs = {}, deps = [], data = None):
+def valdi_test(name, srcs = [], hdrs = {}, deps = [], data = None, size = None):
     lib_name = "{}_lib".format(name)
     native.cc_library(
         name = lib_name,
@@ -127,12 +127,16 @@ def valdi_test(name, srcs = [], hdrs = {}, deps = [], data = None):
         ] + deps),
     )
 
-    native.cc_test(
-        name = name,
-        linkstatic = True,
-        visibility = ["//visibility:public"],
-        deps = [
+    kwargs = {
+        "name": name,
+        "linkstatic": True,
+        "visibility": ["//visibility:public"],
+        "deps": [
             ":{}".format(lib_name),
             "@gtest//:gtest_main",
         ],
-    )
+    }
+    if size:
+        kwargs["size"] = size
+
+    native.cc_test(**kwargs)

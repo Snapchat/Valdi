@@ -31,7 +31,7 @@ export const ALL_ARCHITECTURES: Architecture[] = [Architecture.ARMV7, Architectu
 
 // Relative path starts at .metadata
 export enum TEMPLATE_BASE_PATHS {
-  WORKSPACE = 'WORKSPACE.template',
+  MODULE_BAZEL = 'MODULE.bazel.template',
   BAZEL_RC = '.bazelrc.template',
   BAZEL_VERSION = '.bazelversion.template',
   USER_CONFIG = 'config.yaml.template',
@@ -42,7 +42,6 @@ export enum TEMPLATE_BASE_PATHS {
   WATCHMAN_CONFIG = '.watchmanconfig.template',
   GIT_IGNORE = '.gitignore.template',
   EDITOR_CONFIG = '.editorconfig.template',
-  CURSOR_RULES = '.cursorrules.template',
   AGENTS = 'AGENTS.md.template',
 }
 

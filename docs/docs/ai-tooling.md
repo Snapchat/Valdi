@@ -206,9 +206,26 @@ When asking AI for help, be explicit that you're using Valdi:
 
 ## Setting Up AI Tools
 
+### Quick Setup with `valdi skills`
+
+The fastest way to configure any AI tool for Valdi development is the `valdi skills` command. It installs Valdi-specific context files (bundled in the npm package) into whichever AI tools you have:
+
+```sh
+# Auto-detects Claude Code, Cursor, and Copilot — installs all skills for each
+valdi skills install
+
+# See what's available and what's already installed
+valdi skills list
+
+# Keep skills up to date
+valdi skills update
+```
+
+Skills cover TSX patterns, Bazel, iOS/Android integration, async lifecycle, performance, testing, and more. See [ai-skills/CONTRIBUTING_SKILLS.md](../../ai-skills/CONTRIBUTING_SKILLS.md) to contribute a new skill.
+
 ### Cursor
 
-Cursor will automatically use the `.cursorrules` file in the repository root, which includes Valdi-specific guidelines.
+Use `valdi skills install --for=cursor` to install skills to `~/.cursor/rules/`. Skills activate automatically based on file type when you work on Valdi projects.
 
 ### GitHub Copilot
 
@@ -224,11 +241,17 @@ Add this to your workspace settings:
 }
 ```
 
-### Claude / ChatGPT
+### Claude Code
 
-When starting a conversation, include:
+Run `valdi skills install --for=claude` to install Valdi skills globally into Claude Code (`~/.claude/plugins/valdi/skills/`). Skills activate automatically when you work on Valdi projects in any directory.
+
+For one-off conversations without skills installed, include this in your first message:
 
 > "I'm working with Valdi, a cross-platform UI framework that uses TSX syntax but is NOT React. Valdi uses class-based components (StatefulComponent with setState() for state, or Component for stateless), not functional components or hooks. Props are accessed via this.viewModel. Lifecycle methods are onCreate(), onViewModelUpdate(), and onDestroy(). The onRender() method returns void, with JSX written as statements."
+
+### ChatGPT
+
+When starting a conversation, include the same context as the Claude one-off prompt above.
 
 ## Reviewing AI Suggestions
 
@@ -253,7 +276,7 @@ Always check AI-generated code for these red flags:
 
 If AI tools are consistently giving incorrect suggestions:
 
-1. **Check configuration**: Ensure `.cursorrules` is in your project root
+1. **Install skills**: Run `valdi skills install` to give your AI tool Valdi context
 2. **Be explicit**: Mention "Valdi (not React)" in your prompts
 3. **Report issues**: [Open an issue](https://github.com/Snapchat/Valdi/issues) if patterns are consistently wrong
 4. **Join Discord**: [Ask the community](https://discord.gg/uJyNEeYX2U) for help

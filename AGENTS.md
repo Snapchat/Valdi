@@ -380,7 +380,7 @@ Use existing apps in `/apps/` as templates. Each app needs:
 - `/docs/DEV_SETUP.md` - Developer environment setup
 - `/CONTRIBUTING.md` - Contribution guidelines
 - `/CODE_OF_CONDUCT.md` - Community standards
-- `/LICENSE.md` - MIT License information
+- `/LICENSE` - MIT License information
 
 ## Toolchain Locations
 
@@ -403,10 +403,15 @@ Pre-built binaries are stored in `/bin/`:
 
 ### Web
 - TypeScript runtime for web targets
+- **Custom views**: Use `webClass` attribute on `<custom-view>`. Factories are registered via `webPolyglotViews` exports and looked up in `WebViewClassRegistry`. Factories receive a container DOM element and can return a `changeAttribute(name, value)` handler.
+- **`web_deps` must be a `ts_project`** — never use `filegroup` for web code. Always use typed TypeScript with `ts_project` from `@aspect_rules_ts`.
 - See `/src/valdi_modules/src/valdi/web_renderer/` for web implementation
 
 ### Desktop (macOS)
-- Native macOS implementation
+- Native macOS implementation using AppKit (`NSView`, `NSWindow`)
+- **Platform type**: `PlatformTypeMacOS` (3) — distinct from iOS (2)
+- **Class name resolution**: macOS falls through to iOS class names for both built-in elements and custom views. This means `iosClass` works on macOS without specifying `macosClass`.
+- **SnapDrawing**: Shares iOS layer classes (registered under iOS names like `SCValdiView`, `SCValdiLabel`)
 - See `/valdi/src/valdi/macos/` for desktop implementations
 
 ## Development Workflow
@@ -451,11 +456,80 @@ class MyComponent extends Component {
 
 ### Native Polyglot Modules
 
-For performance-critical code, write native implementations with TypeScript bindings:
+For performance-critical code or platform-specific views, write native implementations with TypeScript bindings:
 - Define interfaces in TypeScript
 - Specify polyglot modules in build files (BUILD.bazel)
 - Implement in C++, Swift, Kotlin, or Objective-C
 - Compiler generates type-safe bindings
+
+### Custom Views (`<custom-view>`)
+
+Custom views inject native platform views into Valdi components. Use platform-specific class attributes:
+
+```tsx
+<custom-view
+  iosClass='MyIOSView'
+  androidClass='com.example.MyAndroidView'
+  macosClass='MyMacOSView'
+  webClass='my-web-view'
+  myAttribute={42}
+/>
+```
+
+**Platform resolution rules:**
+- **macOS falls through to iOS**: If `macosClass` is not specified, `iosClass` is used. This applies both in TypeScript (`JSXBootstrap.ts`) and C++ (`ViewNode.cpp`).
+- **Built-in elements** (view, label, image, scroll, etc.) always resolve to iOS class names on macOS (e.g., `SCValdiView`, `SCValdiLabel`).
+- **Web** uses `webClass` to look up a factory in `WebViewClassRegistry`. Factories can return a `changeAttribute(name, value)` handler to receive attribute updates.
+- See `/docs/docs/native-customviews.md` for full examples on all platforms.
+
+**Bazel dependencies for custom views:**
+
+```python
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+
+# Web views MUST be a ts_project, never a filegroup.
+# - transpiler = "tsc" is required (aspect_rules_ts does not default it)
+# - Provide a dedicated web/tsconfig.json (standalone, not extending the module tsconfig)
+# - If web code imports .d.ts from the module's src/, include "src/**/*.d.ts" in srcs
+# - Exclude "web/**/*.d.ts" from srcs to avoid TS5055 collisions with composite: true
+ts_project(
+    name = "my_web_views",
+    srcs = glob([
+        "web/**/*.ts",
+        "src/**/*.d.ts",       # only if web code imports module type declarations
+    ], exclude = [
+        "web/**/*.d.ts",       # avoid TS5055 output collision with composite
+    ]),
+    allow_js = True,
+    composite = True,
+    transpiler = "tsc",
+    tsconfig = "web/tsconfig.json",
+)
+
+valdi_module(
+    name = "my_module",
+    srcs = [...],
+    ios_deps = [":my_ios_views"],          # objc_library
+    macos_deps = [":my_macos_views"],      # objc_library (or omit to share ios_deps)
+    android_deps = [":my_android_views"],  # valdi_android_library
+    web_deps = [":my_web_views"],          # ts_project (never filegroup)
+)
+```
+
+**Web `tsconfig.json`** — the `web/tsconfig.json` should be standalone (not extending the module-level tsconfig) since `ts_project` compiles independently:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2016",
+    "module": "commonjs",
+    "strict": true,
+    "composite": true,
+    "allowJs": true,
+    "lib": ["dom", "ES2019"]
+  }
+}
+```
 
 ### Worker Services
 
@@ -598,6 +672,20 @@ For more details on specific topics, see the `/docs/` directory:
 - Codelabs for hands-on learning
 - Advanced features (animations, gestures, protobuf)
 - Native bindings and custom views
+
+## AI Skills (Context for AI Agents)
+
+The Valdi CLI ships context files ("skills") that give AI agents accurate knowledge about Valdi APIs, patterns, and conventions. Install them once to reduce hallucinations:
+
+```bash
+npm install -g @snap/valdi
+valdi skills install          # installs all skills for detected AI agents
+# or install by category:
+valdi skills install --category=client     # module development skills
+valdi skills install --category=framework  # framework internals skills
+```
+
+Skills are bundled inside the npm package — no network access required after install.
 
 ## Contributing
 

@@ -1,5 +1,6 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
+load("@build_bazel_rules_apple//apple:macos.bzl", "macos_unit_test")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_interop_hint", "swift_library")
 load("@rules_android//rules:rules.bzl", "android_library")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
@@ -267,7 +268,9 @@ cc_library(
         "src/valdi/v8/**/*.h",
         "src/valdi/v8/**/*.hpp",
     ]),
-    copts = CC_COMPILER_FLAGS,
+    copts = CC_COMPILER_FLAGS + [
+        "-Wno-cast-function-type-mismatch",
+    ],
     defines = [
         "VALDI_HAS_V8",
         "V8_COMPRESS_POINTERS",
@@ -295,6 +298,7 @@ cc_library(
         "src",
         "src/bindings/include",
     ],
+    target_compatible_with = ["@platforms//os:android"],
     deps = [
         ":valdi_runtime",
         "//valdi:djinni_generated_cc",
@@ -497,6 +501,7 @@ kt_android_library(
 
 kt_jvm_test(
     name = "test_java",
+    size = "small",
     srcs = glob([
         "test/java/**/*.kt",
     ]),
@@ -508,12 +513,19 @@ kt_jvm_test(
         "@android_mvn//:org_junit_jupiter_junit_jupiter_engine",
         "@android_mvn//:org_junit_platform_junit_platform_launcher",
         "@android_mvn//:org_junit_platform_junit_platform_reporting",
+        "@android_mvn//:org_junit_vintage_junit_vintage_engine",
     ],
     deps = [
         ":valdi_java",
+        "//src/valdi_modules/src/valdi/valdi_test:valdi_test_kt",
+        "@android_mvn//:androidx_test_core",
+        "@android_mvn//:junit_junit",
         "@android_mvn//:org_junit_jupiter_junit_jupiter_api",
         "@android_mvn//:org_junit_jupiter_junit_jupiter_params",
         "@android_mvn//:org_junit_platform_junit_platform_console",
+        "@android_mvn//:org_robolectric_android_all",
+        "@android_mvn//:org_robolectric_annotations",
+        "@android_mvn//:org_robolectric_robolectric",
     ],
 )
 
@@ -577,6 +589,7 @@ objc_library(
         "src/bindings/include",
     ],
     tags = ["exported"],
+    target_compatible_with = ["@platforms//os:ios"],
     deps = [
         ":valdi_runtime_with_vm",
         ":valdi_snap_drawing",
@@ -610,6 +623,7 @@ objc_library(
         "CoreImage",
         "Security",
     ],
+    target_compatible_with = ["@platforms//os:ios"],
     visibility = ["//visibility:public"],
     deps = [
         ":valdi_cpp_ios",
@@ -628,6 +642,7 @@ objc_library(
     copts = COMPILER_FLAGS + ["-I."],
     defines = SNAP_DRAWING_ENABLED_DEFINES,
     module_name = "ValdiSwift",
+    target_compatible_with = ["@platforms//os:ios"],
     visibility = ["//visibility:public"],
     deps = [
         ":valdi_ios",
@@ -652,11 +667,38 @@ objc_library(
     copts = ["-I."],
     includes = ["src"],
     module_name = "ValdiIosObjcTests",
+    target_compatible_with = ["@platforms//os:ios"],
     deps = [
         ":valdi_ios",
         "//src/valdi_modules/src/valdi/valdi_test:valdi_test_objc",
         "@ocmock",
     ],
+)
+
+objc_library(
+    name = "macos_unit_tests_lib",
+    testonly = True,
+    srcs = glob([
+        "test/macos/**/*.mm",
+    ]),
+    copts = ["-I."],
+    includes = ["src"],
+    module_name = "ValdiMacOSObjcTests",
+    sdk_frameworks = [
+        "AppKit",
+        "Foundation",
+    ],
+    deps = [
+        ":valdi_macos",
+        ":valdi_macos_desktop_lib",
+        "//valdi_core",
+    ],
+)
+
+macos_unit_test(
+    name = "valdi_macos_objc_test",
+    minimum_os_version = "10.15",
+    deps = [":macos_unit_tests_lib"],
 )
 
 ios_unit_test(
@@ -673,6 +715,7 @@ swift_library(
         "test/ios_swift/**/*.swift",
     ]),
     module_name = "ValdiIosSwiftTests",
+    target_compatible_with = ["@platforms//os:ios"],
     deps = [
         ":valdi_ios",
         "//valdi_core:valdi_core_swift_marshaller",
@@ -755,6 +798,35 @@ valdi_test(
         "//valdi/testdata/resources/modules/test:test_cpp",
         "//valdi/testdata/resources/modules/test:test_native",
         "//valdi/testdata/resources/modules/test2:test2_native",
+        "//valdi/testdata/resources/modules/test_async_strict:test_async_strict_native",
+    ],
+)
+
+valdi_test(
+    name = "test_layout",
+    size = "large",
+    srcs = [
+        "test/integration/JSBridgeTestFixture.cpp",
+        "test/integration/JSIntegrationTestsUtils.cpp",
+        "test/integration/LayoutRegression_tests.cpp",
+        "test/integration/RuntimeTestsUtils.cpp",
+        "test/integration/TSNTestUtils.cpp",
+    ],
+    hdrs = glob(["test/integration/**/*.hpp"]),
+    deps = [
+        ":test_utils",
+        ":valdi_runtime_with_vm",
+        "//src/valdi_modules/src/valdi/persistence:persistence_native",
+        "//src/valdi_modules/src/valdi/valdi_core:valdi_core_native",
+        "//src/valdi_modules/src/valdi/valdi_protobuf:valdi_protobuf_native",
+        "//tsn",
+        "//valdi/testdata/resources/modules/local:local_native",
+        "//valdi/testdata/resources/modules/remote:remote_native",
+        "//valdi/testdata/resources/modules/remote_assets:remote_assets_native",
+        "//valdi/testdata/resources/modules/test:test_cpp",
+        "//valdi/testdata/resources/modules/test:test_native",
+        "//valdi/testdata/resources/modules/test2:test2_native",
+        "//valdi/testdata/resources/modules/test_async_strict:test_async_strict_native",
     ],
 )
 
@@ -787,6 +859,7 @@ cc_binary(
         "test/benchmark/ProtobufBenchmark.cpp",
     ]),
     linkstatic = True,
+    tags = ["manual"],  # Source references deleted JSModule.hpp
     deps = [
         ":test_utils",
         ":valdi_runtime_with_vm",
@@ -802,6 +875,7 @@ cc_binary(
         "test/benchmark/string_benchmark.cpp",
     ]),
     linkstatic = True,
+    tags = ["manual"],  # Source references deleted FlatMap type
     deps = [
         ":benchmark_utils",
         "//valdi_core",
@@ -857,6 +931,7 @@ cc_binary(
     copts = [
         "-DV8_COMPRESS_POINTERS",
     ],
+    target_compatible_with = ["@platforms//os:android"],
     deps = [
         ":valdi_runtime",
         ":valdi_v8",
@@ -892,6 +967,14 @@ objc_library(
         ":valdi_snap_drawing",
         ":valdi_standalone_runtime",
     ],
+)
+
+# C API for desktop modules to self-register (include from C++ without Obj-C).
+cc_library(
+    name = "valdi_desktop_module_init_api",
+    hdrs = ["src/valdi/standalone_desktop/ValdiDesktopModuleInit.h"],
+    includes = ["src"],
+    visibility = ["//visibility:public"],
 )
 
 objc_library(
@@ -1005,6 +1088,7 @@ cc_library(
     includes = [
         "generated-src/jni",
     ],
+    target_compatible_with = ["@platforms//os:android"],
     visibility = ["//visibility:public"],
     deps = [
         ":djinni_generated_cc",

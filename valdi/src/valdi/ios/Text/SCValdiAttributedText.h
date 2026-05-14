@@ -100,6 +100,12 @@ typedef NS_ENUM(NSUInteger, SCValdiTextDecoration) {
  */
 - (nullable SCValdiImageAttachmentInfo*)imageAttachmentAtIndex:(NSUInteger)index;
 
+/**
+ Return the animation transform for the part at the given index,
+ or nil if unspecified.
+ */
+- (nullable NSDictionary<NSString*, NSNumber*>*)animationTransformAtIndex:(NSUInteger)index;
+
 @end
 
 NS_ASSUME_NONNULL_END
