@@ -1,5 +1,5 @@
 {
-  "checksum": "6508ed96a535fcc3a286d2e1474c5ea78577bccbd159088005a1f99effd88e37",
+  "checksum": "a473cc5ec76eb0c45a5f883af326157afb91095a00ae79e375ab8dca73a7008a",
   "crates": {
     "arrayvec 0.7.6": {
       "name": "arrayvec",
@@ -433,43 +433,6 @@
         "compile_data_glob": [
           "**"
         ],
-        "deps": {
-          "common": [
-            {
-              "id": "cc 1.2.61",
-              "target": "cc"
-            },
-            {
-              "id": "dunce 1.0.5",
-              "target": "dunce"
-            },
-            {
-              "id": "getopts 0.2.24",
-              "target": "getopts"
-            },
-            {
-              "id": "imagequant-sys 4.1.0",
-              "target": "imagequant_sys"
-            },
-            {
-              "id": "libc 0.2.186",
-              "target": "libc"
-            },
-            {
-              "id": "libpng-sys 1.1.11",
-              "target": "libpng_sys"
-            },
-            {
-              "id": "libz-sys 1.1.28",
-              "target": "libz_sys"
-            },
-            {
-              "id": "wild 2.2.1",
-              "target": "wild"
-            }
-          ],
-          "selects": {}
-        },
         "edition": "2018",
         "version": "0.0.1"
       },
@@ -971,7 +934,9 @@
         "crate_features": {
           "common": [
             "default",
-            "libz-sys"
+            "libz-sys",
+            "static",
+            "static-libz"
           ],
           "selects": {}
         },
@@ -1084,6 +1049,7 @@
           "common": [
             "default",
             "libc",
+            "static",
             "stock-zlib"
           ],
           "selects": {}
@@ -1226,6 +1192,150 @@
         "MIT"
       ],
       "license_file": "LICENSE-APACHE"
+    },
+    "pngquant 3.0.0": {
+      "name": "pngquant",
+      "version": "3.0.0",
+      "package_url": "https://github.com/kornelski/pngquant.git",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/pngquant/3.0.0/download",
+          "sha256": "ea98a6bcdba2e4b93ef7f49241643cef3d117ad09fef1d0fefe1a427de234a4c",
+          "patch_args": [
+            "-p1"
+          ],
+          "patches": [
+            "@@//third-party/pngquant:pngquant-build-script-bazel-headers.patch"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "Binary": {
+            "crate_name": "pngquant",
+            "crate_root": "rust/bin.rs",
+            "srcs": {
+              "allow_empty": true,
+              "include": [
+                "**/*.rs"
+              ]
+            }
+          }
+        },
+        {
+          "BuildScript": {
+            "crate_name": "build_script_build",
+            "crate_root": "rust/build.rs",
+            "srcs": {
+              "allow_empty": true,
+              "include": [
+                "**/*.rs"
+              ]
+            }
+          }
+        }
+      ],
+      "library_target_name": null,
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "crate_features": {
+          "common": [
+            "png-static",
+            "z-static"
+          ],
+          "selects": {}
+        },
+        "deps": {
+          "common": [
+            {
+              "id": "getopts 0.2.24",
+              "target": "getopts"
+            },
+            {
+              "id": "imagequant-sys 4.1.0",
+              "target": "imagequant_sys"
+            },
+            {
+              "id": "libc 0.2.186",
+              "target": "libc"
+            },
+            {
+              "id": "libpng-sys 1.1.11",
+              "target": "libpng_sys"
+            },
+            {
+              "id": "pngquant 3.0.0",
+              "target": "build_script_build"
+            },
+            {
+              "id": "wild 2.2.1",
+              "target": "wild"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2021",
+        "version": "3.0.0"
+      },
+      "build_script_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "compile_data_glob_excludes": [
+          "**/*.rs"
+        ],
+        "data": {
+          "common": [
+            "@pngquant_crates__imagequant-sys-4.1.0//:libimagequant.h",
+            "@pngquant_crates__libpng-sys-1.1.11//:vendor/png.h",
+            "@pngquant_crates__libpng-sys-1.1.11//:vendor/pngconf.h"
+          ],
+          "selects": {}
+        },
+        "data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "cc 1.2.61",
+              "target": "cc"
+            },
+            {
+              "id": "dunce 1.0.5",
+              "target": "dunce"
+            }
+          ],
+          "selects": {}
+        },
+        "link_deps": {
+          "common": [
+            {
+              "id": "imagequant-sys 4.1.0",
+              "target": "imagequant_sys"
+            },
+            {
+              "id": "libpng-sys 1.1.11",
+              "target": "libpng_sys"
+            }
+          ],
+          "selects": {}
+        },
+        "build_script_env": {
+          "common": {
+            "DEP_IMAGEQUANT_INCLUDE_FILE": "$(execpath @pngquant_crates__imagequant-sys-4.1.0//:libimagequant.h)",
+            "DEP_PNG_INCLUDE_FILE": "$(execpath @pngquant_crates__libpng-sys-1.1.11//:vendor/png.h)"
+          },
+          "selects": {}
+        }
+      },
+      "license": "GPL-3.0-or-later",
+      "license_ids": [
+        "GPL-3.0"
+      ],
+      "license_file": null
     },
     "rayon 1.12.0": {
       "name": "rayon",
@@ -1642,7 +1752,9 @@
       "license_file": "LICENSE"
     }
   },
-  "binary_crates": [],
+  "binary_crates": [
+    "pngquant 3.0.0"
+  ],
   "workspace_members": {
     "direct-cargo-bazel-deps 0.0.1": ""
   },
@@ -1658,16 +1770,7 @@
       "x86_64-unknown-linux-gnu"
     ]
   },
-  "direct_deps": [
-    "cc 1.2.61",
-    "dunce 1.0.5",
-    "getopts 0.2.24",
-    "imagequant-sys 4.1.0",
-    "libc 0.2.186",
-    "libpng-sys 1.1.11",
-    "libz-sys 1.1.28",
-    "wild 2.2.1"
-  ],
+  "direct_deps": [],
   "direct_dev_deps": [],
   "unused_patches": []
 }

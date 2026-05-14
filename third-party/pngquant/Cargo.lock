@@ -65,14 +65,7 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 name = "direct-cargo-bazel-deps"
 version = "0.0.1"
 dependencies = [
- "cc",
- "dunce",
- "getopts",
- "imagequant-sys",
- "libc",
- "libpng-sys",
- "libz-sys",
- "wild",
+ "pngquant",
 ]
 
 [[package]]
@@ -174,6 +167,21 @@ name = "pkg-config"
 version = "0.3.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
+
+[[package]]
+name = "pngquant"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea98a6bcdba2e4b93ef7f49241643cef3d117ad09fef1d0fefe1a427de234a4c"
+dependencies = [
+ "cc",
+ "dunce",
+ "getopts",
+ "imagequant-sys",
+ "libc",
+ "libpng-sys",
+ "wild",
+]
 
 [[package]]
 name = "rayon"

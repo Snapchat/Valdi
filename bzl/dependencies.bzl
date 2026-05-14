@@ -458,6 +458,8 @@ def setup_dependencies(workspace_root = None):
         build_file = "@valdi//third-party/pngquant:pngquant.BUILD",
         strip_prefix = "pngquant-5b4e91f5dd6af27c928474ffd526bb69e17b0f37",
         integrity = "sha256-CqMGdZFDTa+6gyxJN3Wvr6d5O4ezR9xvyBd1tzUNR+8=",
+        patch_args = ["-p1"],
+        patches = ["@valdi//third-party/pngquant:pngquant-build-script-bazel-headers.patch"],
     )
 
     http_archive(

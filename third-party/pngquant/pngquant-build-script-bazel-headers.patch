@@ -1,0 +1,28 @@
+diff --git a/rust/build.rs b/rust/build.rs
+index 055b872..695cd64 100644
+--- a/rust/build.rs
++++ b/rust/build.rs
+@@ -38,6 +38,10 @@ fn main() {
+-    if let Ok(p) = env::var("DEP_IMAGEQUANT_INCLUDE") {
++    if let Ok(p) = env::var("DEP_IMAGEQUANT_INCLUDE_FILE") {
++        if let Some(parent) = dunce::simplified(Path::new(&p)).parent() {
++            cc.include(parent);
++        }
++    } else if let Ok(p) = env::var("DEP_IMAGEQUANT_INCLUDE") {
+         cc.include(dunce::simplified(Path::new(&p)));
+     } else {
+         cc.include("lib");
+         cc.include("lib/imagequant-sys");
+     }
+@@ -45,5 +49,10 @@ fn main() {
+-    if let Ok(p) = env::var("DEP_PNG_INCLUDE") {
++    if let Ok(p) = env::var("DEP_PNG_INCLUDE_FILE") {
++        if let Some(parent) = dunce::simplified(Path::new(&p)).parent() {
++            cc.include(parent);
++        }
++    }
++    if let Ok(p) = env::var("DEP_PNG_INCLUDE") {
+         for p in env::split_paths(&p) {
+             cc.include(dunce::simplified(&p));
+         }
+     }

@@ -14,7 +14,10 @@ def valdi_initialize_rust_workspace():
             "x86_64-apple-ios",
             "x86_64-linux-android",
         ],
-        versions = ["1.87.0"],
+        versions = [
+            "1.87.0",
+            "nightly/2025-04-03",
+        ],
     )
 
     crate_universe_dependencies()
@@ -43,6 +46,8 @@ def valdi_initialize_rust_workspace():
         render_config = render_config(default_package_name = ""),
         supported_platform_triples = [
             "aarch64-apple-darwin",
+            "aarch64-apple-ios",
+            "aarch64-apple-ios-sim",
             "aarch64-linux-android",
             "armv7-linux-androideabi",
             "x86_64-apple-ios",
@@ -54,19 +59,29 @@ def valdi_initialize_rust_workspace():
 
     crates_repository(
         name = "pngquant_crates",
+        annotations = {
+            "pngquant": [crate.annotation(
+                build_script_data = [
+                    "@pngquant_crates__imagequant-sys-4.1.0//:libimagequant.h",
+                    "@pngquant_crates__libpng-sys-1.1.11//:vendor/png.h",
+                    "@pngquant_crates__libpng-sys-1.1.11//:vendor/pngconf.h",
+                ],
+                build_script_env = {
+                    "DEP_IMAGEQUANT_INCLUDE_FILE": "$(execpath @pngquant_crates__imagequant-sys-4.1.0//:libimagequant.h)",
+                    "DEP_PNG_INCLUDE_FILE": "$(execpath @pngquant_crates__libpng-sys-1.1.11//:vendor/png.h)",
+                },
+                gen_binaries = True,
+                patch_args = ["-p1"],
+                patches = ["@valdi//third-party/pngquant:pngquant-build-script-bazel-headers.patch"],
+            )],
+        },
         cargo_lockfile = "@valdi//third-party/pngquant:Cargo.lock",
         lockfile = "@valdi//third-party/pngquant:cargo-bazel-lock.json",
         packages = {
-            "cc": crate.spec(version = "1.0.72"),
-            "dunce": crate.spec(version = "1.0.4"),
-            "getopts": crate.spec(version = "0.2.21"),
-            "imagequant-sys": crate.spec(version = "4.1.0"),
-            "libc": crate.spec(version = "0.2.112"),
-            "libpng-sys": crate.spec(version = "1.1.9"),
-            "libz-sys": crate.spec(version = "1.1.28"),
-            "wild": crate.spec(version = "2.2.0"),
+            "pngquant": crate.spec(artifact = "bin", default_features = False, features = ["png-static", "z-static"], version = "=3.0.0"),
         },
         render_config = render_config(default_package_name = ""),
+        rust_version = "nightly/2025-04-03",
         supported_platform_triples = [
             "aarch64-apple-darwin",
             "x86_64-apple-darwin",

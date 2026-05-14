@@ -266,6 +266,8 @@ http_archive(
     build_file = "@valdi//third-party/pngquant:pngquant.BUILD",
     strip_prefix = "pngquant-5b4e91f5dd6af27c928474ffd526bb69e17b0f37",
     integrity = "sha256-CqMGdZFDTa+6gyxJN3Wvr6d5O4ezR9xvyBd1tzUNR+8=",
+    patch_args = ["-p1"],
+    patches = ["@valdi//third-party/pngquant:pngquant-build-script-bazel-headers.patch"],
 )
 
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
@@ -285,31 +287,34 @@ use_repo(rust, "rust_toolchains")
 register_toolchains("@rust_toolchains//:all")
 
 resvg_crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
-resvg_crate.spec(package = "base64", version = "0.22.1")
-resvg_crate.spec(package = "data-url", version = "0.3.2")
-resvg_crate.spec(package = "flate2", default_features = False, features = ["rust_backend"], version = "1.1.5")
-resvg_crate.spec(package = "imagesize", version = "0.14.0")
-resvg_crate.spec(package = "kurbo", version = "0.13.0")
-resvg_crate.spec(package = "log", version = "0.4.29")
-resvg_crate.spec(package = "pico-args", features = ["eq-separator"], version = "0.5.0")
-resvg_crate.spec(package = "rgb", version = "0.8.52")
-resvg_crate.spec(package = "roxmltree", version = "0.21.1")
-resvg_crate.spec(package = "simplecss", version = "0.2.2")
-resvg_crate.spec(package = "siphasher", version = "1.0.1")
-resvg_crate.spec(package = "strict-num", version = "0.1.1")
-resvg_crate.spec(package = "svgtypes", version = "0.16.1")
-resvg_crate.spec(package = "tiny-skia", version = "0.12.0")
-resvg_crate.spec(package = "tiny-skia-path", version = "0.12.0")
-resvg_crate.spec(package = "xmlwriter", version = "0.1.0")
+resvg_crate.spec(package = "base64", repositories = ["resvg_crates"], version = "0.22.1")
+resvg_crate.spec(package = "data-url", repositories = ["resvg_crates"], version = "0.3.2")
+resvg_crate.spec(package = "flate2", default_features = False, features = ["rust_backend"], repositories = ["resvg_crates"], version = "1.1.5")
+resvg_crate.spec(package = "imagesize", repositories = ["resvg_crates"], version = "0.14.0")
+resvg_crate.spec(package = "kurbo", repositories = ["resvg_crates"], version = "0.13.0")
+resvg_crate.spec(package = "log", repositories = ["resvg_crates"], version = "0.4.29")
+resvg_crate.spec(package = "pico-args", features = ["eq-separator"], repositories = ["resvg_crates"], version = "0.5.0")
+resvg_crate.spec(package = "rgb", repositories = ["resvg_crates"], version = "0.8.52")
+resvg_crate.spec(package = "roxmltree", repositories = ["resvg_crates"], version = "0.21.1")
+resvg_crate.spec(package = "simplecss", repositories = ["resvg_crates"], version = "0.2.2")
+resvg_crate.spec(package = "siphasher", repositories = ["resvg_crates"], version = "1.0.1")
+resvg_crate.spec(package = "strict-num", repositories = ["resvg_crates"], version = "0.1.1")
+resvg_crate.spec(package = "svgtypes", repositories = ["resvg_crates"], version = "0.16.1")
+resvg_crate.spec(package = "tiny-skia", repositories = ["resvg_crates"], version = "0.12.0")
+resvg_crate.spec(package = "tiny-skia-path", repositories = ["resvg_crates"], version = "0.12.0")
+resvg_crate.spec(package = "xmlwriter", repositories = ["resvg_crates"], version = "0.1.0")
 resvg_crate.render_config(
     default_package_name = "",
     repositories = ["resvg_crates"],
 )
 resvg_crate.from_specs(
     name = "resvg_crates",
+    cargo_lockfile = "@resvg//:Cargo.lock",
     lockfile = "//third-party/resvg:cargo-bazel-lock.json",
     supported_platform_triples = [
         "aarch64-apple-darwin",
+        "aarch64-apple-ios",
+        "aarch64-apple-ios-sim",
         "aarch64-linux-android",
         "armv7-linux-androideabi",
         "x86_64-apple-ios",
@@ -320,21 +325,39 @@ resvg_crate.from_specs(
 )
 use_repo(resvg_crate, "resvg_crates")
 
+rust_host_tools = use_extension("@rules_rust//rust:extensions.bzl", "rust_host_tools")
+rust_host_tools.host_tools(
+    name = "rust_host_tools_nightly",
+    version = "nightly",
+)
+use_repo(rust_host_tools, "rust_host_tools_nightly")
+
 pngquant_crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
-pngquant_crate.spec(package = "cc", version = "1.0.72")
-pngquant_crate.spec(package = "dunce", version = "1.0.4")
-pngquant_crate.spec(package = "getopts", version = "0.2.21")
-pngquant_crate.spec(package = "imagequant-sys", version = "4.1.0")
-pngquant_crate.spec(package = "libc", version = "0.2.112")
-pngquant_crate.spec(package = "libpng-sys", version = "1.1.9")
-pngquant_crate.spec(package = "libz-sys", version = "1.1.28")
-pngquant_crate.spec(package = "wild", version = "2.2.0")
+pngquant_crate.spec(package = "pngquant", artifact = "bin", default_features = False, features = ["png-static", "z-static"], repositories = ["pngquant_crates"], version = "=3.0.0")
+pngquant_crate.annotation(
+    crate = "pngquant",
+    build_script_data = [
+        "@pngquant_crates__imagequant-sys-4.1.0//:libimagequant.h",
+        "@pngquant_crates__libpng-sys-1.1.11//:vendor/png.h",
+        "@pngquant_crates__libpng-sys-1.1.11//:vendor/pngconf.h",
+    ],
+    build_script_env = {
+        "DEP_IMAGEQUANT_INCLUDE_FILE": "$(execpath @pngquant_crates__imagequant-sys-4.1.0//:libimagequant.h)",
+        "DEP_PNG_INCLUDE_FILE": "$(execpath @pngquant_crates__libpng-sys-1.1.11//:vendor/png.h)",
+    },
+    gen_all_binaries = True,
+    patch_args = ["-p1"],
+    patches = ["//third-party/pngquant:pngquant-build-script-bazel-headers.patch"],
+    repositories = ["pngquant_crates"],
+)
 pngquant_crate.render_config(
     default_package_name = "",
     repositories = ["pngquant_crates"],
 )
 pngquant_crate.from_specs(
     name = "pngquant_crates",
+    cargo_lockfile = "//third-party/pngquant:Cargo.lock",
+    host_tools = "@rust_host_tools_nightly",
     lockfile = "//third-party/pngquant:cargo-bazel-lock.json",
     supported_platform_triples = [
         "aarch64-apple-darwin",
@@ -342,7 +365,18 @@ pngquant_crate.from_specs(
         "x86_64-unknown-linux-gnu",
     ],
 )
-use_repo(pngquant_crate, "pngquant_crates")
+use_repo(
+    pngquant_crate,
+    "pngquant_crates",
+    "pngquant_crates__cc-1.2.61",
+    "pngquant_crates__dunce-1.0.5",
+    "pngquant_crates__getopts-0.2.24",
+    "pngquant_crates__imagequant-sys-4.1.0",
+    "pngquant_crates__libc-0.2.186",
+    "pngquant_crates__libpng-sys-1.1.11",
+    "pngquant_crates__libz-sys-1.1.28",
+    "pngquant_crates__wild-2.2.1",
+)
 
 bazel_dep(name = "rules_license", version = "1.0.0")
 

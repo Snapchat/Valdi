@@ -1,5 +1,5 @@
 {
-  "checksum": "67a51ae2af037351f4d514b8ad1cc478d7d50895963b481743c76a6f2035847d",
+  "checksum": "6d17b28f8de314389d0e6c52a5e722291c6237f5bd6cd70e713138b93c375d60",
   "crates": {
     "adler2 2.0.1": {
       "name": "adler2",
@@ -1826,6 +1826,12 @@
   "conditions": {
     "aarch64-apple-darwin": [
       "aarch64-apple-darwin"
+    ],
+    "aarch64-apple-ios": [
+      "aarch64-apple-ios"
+    ],
+    "aarch64-apple-ios-sim": [
+      "aarch64-apple-ios-sim"
     ],
     "aarch64-linux-android": [
       "aarch64-linux-android"
