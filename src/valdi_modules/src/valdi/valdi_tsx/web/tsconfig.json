@@ -7,4 +7,5 @@
     "composite": true,
     "allowJs": true
   },
+  "exclude": ["debug", "release"]
 }
