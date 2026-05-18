@@ -1390,6 +1390,27 @@ export interface ImageView extends _ImageView, LeafView {
   ref?: IRenderedElementHolder<this>;
 }
 
+export interface IWebViewNativeController {}
+
+// @NativeTemplateElement({ios: 'SCValdiWebView', android: 'com.snap.valdi.modules.webview.ValdiWebView', jsx: 'webview'})
+export interface WebViewElement extends LeafView {
+  /**
+   * Native webview controller created by valdi_webview.
+   */
+  controller?: IWebViewNativeController;
+
+  /**
+   * Styling object allows to set multiple attribute at once
+   */
+  style?: _Style<WebViewElement | View | Layout>;
+
+  /**
+   * Sets an element reference holder, which will keep track
+   * of the rendered elements.
+   */
+  ref?: IRenderedElementHolder<this>;
+}
+
 // @NativeTemplateElement({ios: 'SCValdiVideoView', android: 'com.snap.valdi.views.ValdiVideoView', jsx: 'video'})
 export interface VideoView extends _VideoView, LeafView {
   /**

@@ -1,4 +1,5 @@
 import { Component, StatefulComponent } from 'valdi_core/src/Component';
+import { IWebViewNativeController } from 'valdi_tsx/src/NativeTemplateElements';
 import 'jasmine/src/jasmine';
 import { createComponent, makeComponentTest } from './JSXTestUtils';
 
@@ -41,6 +42,24 @@ describe('JSX', () => {
         },
       ],
     });
+  });
+
+  it('can render a webview element', async () => {
+    class WebViewComponent extends Component {
+      private controller: IWebViewNativeController = {};
+
+      onRender() {
+        <webview controller={this.controller} />;
+      }
+    }
+
+    const component = createComponent(WebViewComponent);
+    const rootNode = await component.getRenderedNode();
+    const simplified = rootNode.simplify(['viewClass', 'attributes']);
+    const attributes = simplified.attributes!;
+
+    expect(simplified.viewClass).toEqual('SCValdiWebView');
+    expect(attributes.controller).toBeDefined();
   });
 
   it('can render a component with view model', async () => {

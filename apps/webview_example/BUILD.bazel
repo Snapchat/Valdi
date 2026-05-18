@@ -1,0 +1,28 @@
+load("//bzl/valdi:valdi_application.bzl", "valdi_application")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "webview_example",
+    srcs = glob([
+        "**/*.ts",
+        "**/*.tsx",
+    ]),
+    res = glob([
+        "res/**/*.svg",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+        "//src/valdi_modules/src/valdi/valdi_webview",
+    ],
+)
+
+valdi_application(
+    name = "webview_example_app",
+    ios_bundle_id = "com.snap.valdi.webviewexample",
+    ios_families = ["iphone"],
+    root_component_path = "App@webview_example/WebViewExample",
+    title = "Valdi WebView Example",
+    deps = [":webview_example"],
+)

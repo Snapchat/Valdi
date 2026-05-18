@@ -477,6 +477,18 @@ class MyComponent extends Component {
 </scroll>
 ```
 
+### Web Content
+
+```tsx
+<webview
+  width="100%"
+  height={400}
+  controller={this.webViewController}
+/>
+```
+
+Create the controller with `WebView.createController()` from `valdi_webview`, then call controller methods such as `load`, `reload`, and `goBack` imperatively.
+
 ### Form Input
 
 ```tsx
