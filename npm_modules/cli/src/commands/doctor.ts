@@ -39,7 +39,6 @@ import path from 'path';
 import type { Argv } from 'yargs';
 import { ANSI_COLORS } from '../core/constants';
 
-import { ANDROID_NDK_VERSION, ANDROID_PLATFORM_VERSION } from '../setup/versions';
 import type { ArgumentsResolver } from '../utils/ArgumentsResolver';
 import { BazelClient } from '../utils/BazelClient';
 import { checkCommandExists, runCliCommand } from '../utils/cliUtils';
@@ -229,9 +228,6 @@ class ValdiDoctor {
 
     // Java for Android development
     await this.checkJavaInstallation();
-
-    // Android SDK basics
-    this.checkAndroidSDKBasics();
 
     // Core development dependencies
     await this.checkCoreDependencies();
@@ -599,23 +595,42 @@ class ValdiDoctor {
    * @private
    */
   private async checkEssentialPlatformTools(): Promise<void> {
-    // Check Android SDK (essential for mobile app development)
-    const androidHome = process.env['ANDROID_HOME'] || process.env['ANDROID_SDK_ROOT'];
-    if (androidHome && fs.existsSync(androidHome)) {
-      this.addResult({
-        name: 'Android SDK',
-        status: 'pass',
-        message: `Android SDK found at ${androidHome}`,
-        category: 'Android installation',
-      });
+    // Android SDK, NDK, and build tools are downloaded hermetically by Bazel
+    this.addResult({
+      name: 'Android SDK',
+      status: 'pass',
+      message: 'Android SDK, NDK, and build tools are managed hermetically by Bazel',
+      details: 'See bzl/hermetic_android_sdk.bzl and bzl/hermetic_ndk.bzl',
+      category: 'Android installation',
+    });
+
+    // adb is still needed locally for device interaction (push, logcat, etc.)
+    if (checkCommandExists('adb')) {
+      try {
+        const { stdout } = await runCliCommand('adb --version');
+        const versionLine = stdout.split('\n')[0] || 'Unknown version';
+        this.addResult({
+          name: 'adb (Android Debug Bridge)',
+          status: 'pass',
+          message: `adb is installed: ${versionLine}`,
+          category: 'Android installation',
+        });
+      } catch {
+        this.addResult({
+          name: 'adb (Android Debug Bridge)',
+          status: 'pass',
+          message: 'adb is installed',
+          category: 'Android installation',
+        });
+      }
     } else {
+      const fixCommand = this.getFixCommandForDependency('adb');
       this.addResult({
-        name: 'Android SDK',
+        name: 'adb (Android Debug Bridge)',
         status: 'warn',
-        message: 'Android SDK not found',
-        details: 'Required for Android app development. Set ANDROID_HOME environment variable.',
+        message: 'adb is not installed — needed for device interaction (push, logcat, etc.)',
         fixable: true,
-        fixCommand: 'Install Android Studio and set ANDROID_HOME',
+        fixCommand,
         category: 'Android installation',
       });
     }
@@ -881,97 +896,6 @@ class ValdiDoctor {
   }
 
 
-
-  /**
-   * Validates basic Android SDK components needed for app development.
-   *
-   * Checks essential Android SDK components without overwhelming users:
-   * - Android Platform (latest)
-   * - Build Tools (basic check)
-   *
-   * @private
-   */
-  private checkAndroidSDKBasics(): void {
-    const androidHome = process.env['ANDROID_HOME'] || process.env['ANDROID_SDK_ROOT'];
-
-    if (!androidHome || !fs.existsSync(androidHome)) {
-      this.addResult({
-        name: 'Android SDK Components',
-        status: 'warn',
-        message: 'Cannot check Android SDK components - ANDROID_HOME not set',
-        details: 'Set ANDROID_HOME environment variable for Android development',
-        fixable: true,
-        fixCommand: 'Install Android Studio and set ANDROID_HOME',
-        category: 'Android installation',
-      });
-      return;
-    }
-
-    // Check for any Android Platform (not specific version)
-    const platformsDir = path.join(androidHome, 'platforms');
-    if (fs.existsSync(platformsDir)) {
-      const platforms = fs.readdirSync(platformsDir).filter(dir => dir.startsWith('android-'));
-      if (platforms.length > 0) {
-        this.addResult({
-          name: 'Android Platform',
-          status: 'pass',
-          message: `Android Platform installed (${platforms.length} version${platforms.length > 1 ? 's' : ''})`,
-          category: 'Android installation',
-        });
-      } else {
-        this.addResult({
-          name: 'Android Platform',
-          status: 'warn',
-          message: 'No Android Platform found',
-          details: 'Install an Android Platform via Android Studio SDK Manager',
-          fixable: true,
-          fixCommand: 'Open Android Studio > SDK Manager > Install an Android Platform',
-          category: 'Android installation',
-        });
-      }
-    } else {
-      this.addResult({
-        name: 'Android Platform',
-        status: 'warn',
-        message: 'Android platforms directory not found',
-        fixable: true,
-        fixCommand: 'Install Android Studio and configure SDK',
-        category: 'Android installation',
-      });
-    }
-
-    // Check for any Build Tools (not specific version)
-    const buildToolsDir = path.join(androidHome, 'build-tools');
-    if (fs.existsSync(buildToolsDir)) {
-      const buildTools = fs.readdirSync(buildToolsDir);
-      if (buildTools.length > 0) {
-        this.addResult({
-          name: 'Android Build Tools',
-          status: 'pass',
-          message: `Android Build Tools installed (${buildTools.length} version${buildTools.length > 1 ? 's' : ''})`,
-          category: 'Android installation',
-        });
-      } else {
-        this.addResult({
-          name: 'Android Build Tools',
-          status: 'warn',
-          message: 'No Android Build Tools found',
-          fixable: true,
-          fixCommand: 'Install Build Tools via Android Studio SDK Manager',
-          category: 'Android installation',
-        });
-      }
-    } else {
-      this.addResult({
-        name: 'Android Build Tools',
-        status: 'warn',
-        message: 'Build tools directory not found',
-        fixable: true,
-        fixCommand: 'Install Android Studio and configure SDK',
-        category: 'Android installation',
-      });
-    }
-  }
 
   /**
    * Validates core development dependencies needed for app development.
@@ -1280,60 +1204,19 @@ class ValdiDoctor {
    * Validates advanced Android SDK components for framework development.
    *
    * Detailed Android SDK validation including:
-   * - Specific platform versions
-   * - NDK installation
-   * - Command line tools
+   * Android SDK, NDK, and build tools are downloaded hermetically by Bazel.
+   * No local installation is required.
    *
    * @private
    */
   private checkAdvancedAndroidSDK(): void {
-    const androidHome = process.env['ANDROID_HOME'] || process.env['ANDROID_SDK_ROOT'];
-
-    if (!androidHome || !fs.existsSync(androidHome)) {
-      return; // Already checked in basics
-    }
-
-    // Check specific Android Platform version
-    const platformPath = path.join(androidHome, 'platforms', ANDROID_PLATFORM_VERSION);
-    if (fs.existsSync(platformPath)) {
-      this.addResult({
-        name: `Android Platform ${ANDROID_PLATFORM_VERSION}`,
-        status: 'pass',
-        message: `Android Platform ${ANDROID_PLATFORM_VERSION} installed`,
-        category: 'Android installation',
-      });
-    } else {
-      this.addResult({
-        name: `Android Platform ${ANDROID_PLATFORM_VERSION}`,
-        status: 'warn',
-        message: `Android Platform ${ANDROID_PLATFORM_VERSION} not found`,
-        details: 'Specific platform version for framework development',
-        fixable: true,
-        fixCommand: `sdkmanager --install 'platforms;${ANDROID_PLATFORM_VERSION}'`,
-        category: 'Android installation',
-      });
-    }
-
-    // Check Android NDK
-    const ndkPath = path.join(androidHome, 'ndk', ANDROID_NDK_VERSION);
-    if (fs.existsSync(ndkPath)) {
-      this.addResult({
-        name: 'Android NDK',
-        status: 'pass',
-        message: `Android NDK ${ANDROID_NDK_VERSION} installed`,
-        category: 'Android installation',
-      });
-    } else {
-      this.addResult({
-        name: 'Android NDK',
-        status: 'warn',
-        message: `Android NDK ${ANDROID_NDK_VERSION} not found`,
-        details: 'Required for native development in framework',
-        fixable: true,
-        fixCommand: `sdkmanager --install 'ndk;${ANDROID_NDK_VERSION}'`,
-        category: 'Android installation',
-      });
-    }
+    this.addResult({
+      name: 'Android SDK',
+      status: 'pass',
+      message: 'Android SDK, NDK, and build tools are managed hermetically by Bazel',
+      details: 'See bzl/hermetic_android_sdk.bzl and bzl/hermetic_ndk.bzl',
+      category: 'Android installation',
+    });
   }
 
 
@@ -1394,82 +1277,15 @@ class ValdiDoctor {
    * Validates environment variables as configured by dev_setup.
    *
    * Checks for essential environment variables that dev_setup configures:
-   * - ANDROID_HOME: Android SDK location
-   * - ANDROID_NDK_HOME: Android NDK location
    * - JAVA_HOME: Java JDK location
-   * - PATH modifications: Java, Android tools, Bazelisk
+   * - PATH modifications: Java, Bazelisk
+   *
+   * ANDROID_HOME and ANDROID_NDK_HOME are no longer required — Bazel downloads
+   * the SDK and NDK hermetically.
    *
    * @private
    */
   private checkEnvironmentVariables(): void {
-    // Check ANDROID_HOME
-    const androidHome = process.env['ANDROID_HOME'];
-    if (androidHome && fs.existsSync(androidHome)) {
-      this.addResult({
-        name: 'ANDROID_HOME',
-        status: 'pass',
-        message: `ANDROID_HOME set to ${androidHome}`,
-        category: 'Android installation',
-      });
-    } else {
-      this.addResult({
-        name: 'ANDROID_HOME',
-        status: 'fail',
-        message: 'ANDROID_HOME not set or invalid',
-        details: 'dev_setup configures ANDROID_HOME for Android development',
-        fixable: true,
-        fixCommand: 'valdi dev_setup',
-        category: 'Android installation',
-      });
-    }
-
-    // Check ANDROID_NDK_HOME
-    const androidNdkHome = process.env['ANDROID_NDK_HOME'];
-    if (androidNdkHome && fs.existsSync(androidNdkHome)) {
-      this.addResult({
-        name: 'ANDROID_NDK_HOME',
-        status: 'pass',
-        message: `ANDROID_NDK_HOME set to ${androidNdkHome}`,
-        category: 'Android installation',
-      });
-    } else {
-      this.addResult({
-        name: 'ANDROID_NDK_HOME',
-        status: 'warn',
-        message: 'ANDROID_NDK_HOME not set or invalid',
-        details: 'dev_setup configures ANDROID_NDK_HOME for native development',
-        fixable: true,
-        fixCommand: 'valdi dev_setup',
-        category: 'Android installation',
-      });
-    }
-
-    // Check platform-tools in PATH
-    const pathEnvAndroid = process.env['PATH'] || '';
-    const androidHomeForPath = process.env['ANDROID_HOME'];
-    if (androidHomeForPath) {
-      const platformToolsInPath = pathEnvAndroid.includes(`${androidHomeForPath}/platform-tools`) || 
-                                   pathEnvAndroid.includes('platform-tools');
-      if (platformToolsInPath) {
-        this.addResult({
-          name: 'Android platform-tools PATH',
-          status: 'pass',
-          message: 'Android platform-tools in PATH',
-          category: 'Android installation',
-        });
-      } else {
-        this.addResult({
-          name: 'Android platform-tools PATH',
-          status: 'warn',
-          message: 'Android platform-tools not in PATH',
-          details: 'dev_setup adds platform-tools (containing adb) to PATH',
-          fixable: true,
-          fixCommand: 'export PATH="$ANDROID_HOME/platform-tools:$PATH"',
-          category: 'Android installation',
-        });
-      }
-    }
-
     // JAVA_HOME is checked in Java installation section to avoid duplication
 
     // Check PATH modifications
@@ -1546,6 +1362,9 @@ class ValdiDoctor {
         }
         case 'ios_webkit_debug_proxy': {
           return 'brew install ios-webkit-debug-proxy';
+        }
+        case 'adb': {
+          return 'brew install android-platform-tools';
         }
         default: {
           return `brew install ${dep}`;

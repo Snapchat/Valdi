@@ -2,7 +2,6 @@ import fs from 'fs';
 import { CliError } from '../core/errors';
 import { checkCommandExists, runCliCommand } from '../utils/cliUtils';
 import { DevSetupHelper } from './DevSetupHelper';
-import { ANDROID_MACOS_COMMANDLINE_TOOLS } from './versions';
 
 export async function macOSSetup(): Promise<void> {
   const devSetup = new DevSetupHelper();
@@ -88,7 +87,7 @@ export async function macOSSetup(): Promise<void> {
   }
 
   // Install dependencies, skipping already installed ones
-  const packages = ['npm', 'bazelisk', 'openjdk@17', 'temurin', 'git-lfs', 'watchman', 'ios-webkit-debug-proxy'];
+  const packages = ['npm', 'bazelisk', 'openjdk@17', 'temurin', 'git-lfs', 'watchman', 'ios-webkit-debug-proxy', 'android-platform-tools'];
   const packagesToInstall: string[] = [];
   
   for (const pkg of packages) {
@@ -148,9 +147,7 @@ export async function macOSSetup(): Promise<void> {
     { name: 'JAVA_HOME', value: '`/usr/libexec/java_home -v 17`' },
   ]);
 
-  const javaHome = await runCliCommand('/usr/libexec/java_home');
-
-  await devSetup.setupAndroidSDK(ANDROID_MACOS_COMMANDLINE_TOOLS, javaHome.stdout.trim());
+  // Android SDK and NDK are downloaded hermetically by Bazel — no local install needed.
 
   devSetup.onComplete();
 }

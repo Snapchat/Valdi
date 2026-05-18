@@ -65,35 +65,11 @@ Git Large File Storage (LFS) manages the binaries that we need for Valdi.
 git lfs install
 ```
 
-## Install Android SDK (only required for Android development)
+## Android SDK and NDK
 
-> [!NOTE]
-> **`valdi dev_setup` installs Android SDK command-line tools automatically.** You only need Android Studio if you prefer using its GUI or need Android emulator management.
+> **You do not need to install the Android SDK, build tools, or NDK manually.** Bazel downloads the correct versions hermetically during the build.
 
-### Option 1: Automated (Recommended)
-Run `valdi dev_setup` - it will download and install Android SDK command-line tools, including:
-- Platform tools (API level 35)
-- Build tools (version 34.0.0)
-- NDK (version 25.2.9519653)
-
-### Option 2: Manual via Android Studio
-If you prefer using Android Studio's GUI:
-
-1. Download and install Android Studio from [developer.android.com/studio](https://developer.android.com/studio)
-2. Open any project, navigate to `Tools` -> `SDK Manager`
-3. Under **SDK Platforms**, install **API level 35**
-4. Under **SDK Tools**, uncheck `Hide obsolete packages`, check `Show Package Details`
-5. Install build tools **version 34.0.0**
-6. Install NDK version **25.2.9519653**
-
-Update `.zshrc` with the following:
-
-```
-echo "export ANDROID_HOME=$HOME/Library/Android/sdk" >> ~/.zshrc
-echo "export ANDROID_NDK_HOME=\$ANDROID_HOME/ndk-bundle" >> ~/.zshrc
-echo "export PATH=\$ANDROID_HOME/platform-tools:\$PATH" >> ~/.zshrc
-source ~/.zshrc
-```
+If you want to use Android Studio or `adb` outside of Bazel, you can optionally install the SDK via `valdi dev_setup` or [Android Studio](https://developer.android.com/studio).
 
 # Next steps
 

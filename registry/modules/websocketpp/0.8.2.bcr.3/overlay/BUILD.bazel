@@ -22,15 +22,7 @@ cc_library(
         ],
     }),
     includes = ["."],
-    linkopts = select({
-        "@platforms//os:linux": [
-            "-lpthread",
-            "-lrt",
-        ],
-        "//conditions:default": [
-            "-lpthread",
-        ],
-    }),
+    linkopts = [],
     visibility = ["//visibility:public"],
     deps = [
         "@zlib",

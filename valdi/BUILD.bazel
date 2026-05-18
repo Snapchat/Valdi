@@ -426,6 +426,7 @@ cc_library(
         ":valdi_runtime_with_vm",
         ":valdi_snap_drawing",
         ":valdi_svg",
+        "//libs/utils:utils_core_cc",
         "//libs/utils:utils_encoding_cc",
         "//valdi_core:valdi_core_android",
     ],

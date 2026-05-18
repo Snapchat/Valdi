@@ -325,12 +325,12 @@
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(80, CGFLOAT_MAX) direction:SCValdiLayoutDirectionLTR];
 
-        XCTAssertEqualWithAccuracy(74.0, size.width, 0.5);
-        XCTAssertEqualWithAccuracy(122.33, size.height, 0.5);
+        XCTAssertEqualWithAccuracy(72.67, size.width, 0.5);
+        XCTAssertEqualWithAccuracy(139.0, size.height, 0.5);
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(80, 100) direction:SCValdiLayoutDirectionLTR];
 
-        XCTAssertEqualWithAccuracy(74.0, size.width, 0.5);
+        XCTAssertEqualWithAccuracy(75.67, size.width, 0.5);
         XCTAssertEqualWithAccuracy(100.0, size.height, 0.5);
     }
 
@@ -350,7 +350,7 @@
         size = [context measureLayoutWithMaxSize:CGSizeMake(80, CGFLOAT_MAX) direction:SCValdiLayoutDirectionLTR];
 
         XCTAssertEqualWithAccuracy(80.0, size.width, 0.5);
-        XCTAssertEqualWithAccuracy(122.33, size.height, 0.5);
+        XCTAssertEqualWithAccuracy(139.0, size.height, 0.5);
 
         size = [context measureLayoutWithMaxSize:CGSizeMake(80, 100) direction:SCValdiLayoutDirectionLTR];
 

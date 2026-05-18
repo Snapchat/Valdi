@@ -146,26 +146,6 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Setup Android SDK
-        run: |
-          export ANDROID_HOME=$HOME/Android/Sdk
-          mkdir -p "$ANDROID_HOME/cmdline-tools"
-          curl -sS -o /tmp/cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-12266719_latest.zip"
-          unzip -q -o /tmp/cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools"
-          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
-          rm /tmp/cmdline-tools.zip
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
-
-      - name: Install Android SDK components and set NDK path
-        run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-36"
-          sdkmanager "build-tools;34.0.0"
-          sdkmanager "ndk;28.0.13004108"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.13004108" >> $GITHUB_ENV
-
       - name: Setup Bazel
         run: |
           wget https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64
@@ -178,8 +158,6 @@ jobs:
         run: |
           echo "build --disk_cache=$HOME/.cache/bazel/disk" >> .bazelrc.local
           echo "build --repository_cache=$HOME/.cache/bazel/repo" >> .bazelrc.local
-          echo "build --repo_env=ANDROID_HOME" >> .bazelrc.local
-          echo "build --repo_env=ANDROID_NDK_HOME" >> .bazelrc.local
 
       - name: Install system dependencies
         run: |

@@ -38,29 +38,9 @@ if [[ $(uname) == Linux ]] ; then
         sudo update-java-alternatives --set java-1.8.0-openjdk-amd64
         export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-amd64
     fi
-    export ANDROID_HOME=${ANDROID_HOME:-$HOME/Android/Sdk}
-else
-    export JAVA_HOME=${JAVA_HOME:-/Library/Java/JavaVirtualMachines/jdk1.8.0_151.jdk/Contents/Home}
-    export ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
 fi
 
-export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/23.0.7599858
-
-export ANDROID_SDK=$ANDROID_HOME
-export ANDROID_SDK_ROOT=$ANDROID_SDK
-
-mkdir -p "$ANDROID_HOME"
-
-# Optional: Internal CI Android SDK setup (not mirrored to external repos)
-# Skip if Android SDK is already provided by Nix (which has everything pre-configured)
-# The sdkmanager tool requires JAXB which was removed from Java 11+, causing failures with Java 17
-if [ -f ./Jenkins/install/install_android_sdk.sh ] && [[ ! "$ANDROID_HOME" =~ ^/nix/store ]]; then
-    ./Jenkins/install/install_android_sdk.sh $ANDROID_HOME
-    ./Jenkins/install/install_ndk_r23.sh -d $ANDROID_NDK_HOME -f
-    ln -s "$ANDROID_HOME/cmdline-tools/latest" "$ANDROID_HOME/tools" || true # Do not error if symlink exists
-    $ANDROID_HOME/tools/bin/sdkmanager "platforms;android-36"
-    $ANDROID_HOME/tools/bin/sdkmanager "build-tools;34.0.0"
-fi
+# Android SDK and NDK are downloaded hermetically by Bazel — no local install needed.
 
 # Optional: Internal CI dependency fetcher (not mirrored to external repos)
 if [ -f ./tools/repo-archiver.sh ]; then

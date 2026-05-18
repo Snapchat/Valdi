@@ -4,7 +4,7 @@
     "strip_prefix": "websocketpp-0.8.2",
     "overlay": {
         "MODULE.bazel": "sha256-4+VsPEhXsnPBJNVPuYf6lrx22I42rUkk2HQKmiwH11s=",
-        "BUILD.bazel": "sha256-3pBxePrYFYXb0Hu32NEdJ2NPvnKAs/+8w8/7Pli88G4="
+        "BUILD.bazel": "sha256-4Y4x9+tApN555kz0UT+iFTn4Enr47BE4JY++lstF3Sc="
     },
     "patch_strip": 0
 }

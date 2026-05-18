@@ -1,17 +1,17 @@
 --- a/BUILD.bazel
 +++ b/BUILD.bazel
-@@ -23,12 +23,12 @@
+@@ -23,12 +23,9 @@
      }),
      includes = ["."],
      linkopts = select({
 -        "@platforms//os:osx": [
+-            "-lpthread",
+-        ],
+-        "//conditions:default": [
+-            "-lpthread",
 +        "@platforms//os:linux": [
-             "-lpthread",
-+            "-lrt",
+             "-lrt",
          ],
-         "//conditions:default": [
-             "-lpthread",
--            "-lrt",
-         ],
++        "//conditions:default": [],
      }),
      visibility = ["//visibility:public"],

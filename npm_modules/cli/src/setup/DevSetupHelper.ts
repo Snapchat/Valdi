@@ -4,24 +4,8 @@ import { ANSI_COLORS } from '../core/constants';
 import { LoadingIndicator } from '../utils/LoadingIndicator';
 import { spawnCliCommand } from '../utils/cliUtils';
 import { wrapInColor } from '../utils/logUtils';
-import { withTempDir } from '../utils/tempDir';
-import { decompressTo } from '../utils/zipUtils';
-import { ANDROID_BUILD_TOOLS_VERSION, ANDROID_NDK_VERSION, ANDROID_PLATFORM_VERSION } from './versions';
 
 export const HOME_DIR = process.env['HOME'] ?? '';
-
-// Platform-specific Android SDK locations matching documentation
-function getAndroidHomeDir(): string {
-  const platform = process.platform;
-  if (platform === 'darwin') {
-    return path.join(HOME_DIR, 'Library', 'Android', 'sdk');
-  } else {
-    // Linux and others
-    return path.join(HOME_DIR, 'Android', 'Sdk');
-  }
-}
-
-const ANDROID_HOME_TARGET_DIR = getAndroidHomeDir();
 
 export interface EnvVariable {
   name: string;
@@ -210,66 +194,6 @@ export class DevSetupHelper {
     })
       .setText(wrapInColor('Setting up shell autocomplete...', ANSI_COLORS.YELLOW_COLOR))
       .show();
-  }
-
-  async setupAndroidSDK(commandLineToolsURL: string, javaHomeOverride?: string | undefined): Promise<void> {
-    console.log(wrapInColor('Setting up Android SDK...', ANSI_COLORS.YELLOW_COLOR));
-    if (!process.env['ANDROID_HOME']) {
-      await withTempDir(async tempDir => {
-        const filename = path.join(tempDir, path.basename(commandLineToolsURL));
-        await this.downloadToPath(commandLineToolsURL, filename);
-        const targetDir = path.join(ANDROID_HOME_TARGET_DIR, 'cmdline-tools');
-        await decompressTo(filename, targetDir);
-
-        const target = path.join(targetDir, 'latest');
-        if (fs.existsSync(target)) {
-          await fs.promises.rm(target, { recursive: true, force: true });
-        }
-        fs.renameSync(path.join(targetDir, 'cmdline-tools'), target);
-      });
-      process.env['ANDROID_HOME'] = ANDROID_HOME_TARGET_DIR;
-      
-      // Set ANDROID_HOME with platform-specific path
-      const androidHomeValue = process.platform === 'darwin' 
-        ? '"$HOME/Library/Android/sdk"'
-        : '"$HOME/Android/Sdk"';
-      await this.writeEnvVariablesToRcFile([{ name: 'ANDROID_HOME', value: androidHomeValue }]);
-    }
-
-    const androidHome = process.env['ANDROID_HOME'] ?? '';
-    const sdkManagerBin = path.join(androidHome, 'cmdline-tools/latest/bin/sdkmanager');
-
-    const sdkManagerEnvVariables: { [key: string]: string } = {};
-    if (javaHomeOverride) {
-      sdkManagerEnvVariables['JAVA_HOME'] = javaHomeOverride;
-    }
-
-    await this.runShell(
-      'Installing Android platform',
-      [`${sdkManagerBin} --install 'platforms;${ANDROID_PLATFORM_VERSION}'`],
-      sdkManagerEnvVariables,
-    );
-    await this.runShell(
-      'Installing Android NDK',
-      [`${sdkManagerBin} --install 'ndk;${ANDROID_NDK_VERSION}'`],
-      sdkManagerEnvVariables,
-    );
-    await this.runShell(
-      'Installing Android build-tools',
-      [`${sdkManagerBin} --install 'build-tools;${ANDROID_BUILD_TOOLS_VERSION}'`],
-      sdkManagerEnvVariables,
-    );
-
-    const ndkBundle = path.join(androidHome, 'ndk-bundle');
-    if (!fs.existsSync(ndkBundle)) {
-      fs.symlinkSync(`ndk/${ANDROID_NDK_VERSION}`, ndkBundle);
-    }
-    
-    // Set up Android environment variables including platform-tools in PATH
-    await this.writeEnvVariablesToRcFile([
-      { name: 'ANDROID_NDK_HOME', value: `"$ANDROID_HOME/ndk-bundle"` },
-      { name: 'PATH', value: `"$ANDROID_HOME/platform-tools:$PATH"` },
-    ]);
   }
 
   private getRcFile(): string | undefined {
