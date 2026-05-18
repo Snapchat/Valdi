@@ -83,6 +83,10 @@ cc_library(
         "src/utils/debugging/**/*.hpp",
     ]),
     copts = COMMON_COMPILE_FLAGS,
+    defines = select({
+        "@platforms//os:android": ["ANDROID_WITH_JNI"],
+        "//conditions:default": [],
+    }),
     includes = ["src"],
     tags = ["exported"],
     visibility = ["//visibility:public"],

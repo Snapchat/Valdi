@@ -17,8 +17,10 @@ bzl build //valdi_core:valdi_core
 bzl build //libs/dummy:dummy
 bzl build //libs/dummy:dummy_android
 
-# Android hello world (NDK downloaded hermetically by Bazel)
-bzl build //apps/helloworld:hello_world_android --define=client_repo_arm64=true
+# Android hello world AAR (NDK downloaded hermetically by Bazel)
+# Build just the AAR, not the full android_binary — aar_import filters for
+# host arch (x86_64 on Linux CI) which won't match the arm64-only native libs.
+bzl build //apps/helloworld:hello_world_android_aar --define=client_repo_arm64=true
 
 if [[ $(uname) != Linux ]] ; then
     # Hello world apps (Apple platforms — macOS only)
