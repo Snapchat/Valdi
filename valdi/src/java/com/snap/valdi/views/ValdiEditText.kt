@@ -68,7 +68,7 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
             backgroundEffectsLayoutManager.drawBackgroundEffects(canvas, it)
         }
 
-        attributedText?.let {
+        attributedText?.takeIf { attributedTextMatchesLiveText }?.let {
             val hasActiveAnimationTransform = it.hasActiveAnimationTransform()
             val hasRenderableAnimationTransform = it.hasRenderableAnimationTransform()
             val hasPendingInvisibleBaseText = boundTextHasInvisibleReplacementSpan()
@@ -115,6 +115,14 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
         post(attributedTextRebindRunnable)
     }
 
+    private fun hasSameRenderedTextContent(attributedText: AttributedText): Boolean {
+        return TextViewHelper.isTextValueEqual(
+            attributedText,
+            text ?: "",
+            disableTextReplacement = true,
+        )
+    }
+
     // Maps to the typescript's EditTextUnfocusReason
     enum class UnfocusReason(val value: Int) {
         Unknown(0),
@@ -129,6 +137,7 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
 
     private var isAttributedText = false
     private var attributedText: AttributedText? = null
+    private var attributedTextMatchesLiveText = true
 
     init {
         layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -245,6 +254,13 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
         super.onTextChanged(text, start, lengthBefore, lengthAfter)
 
         if (isSettingTextCount == 0) {
+            val currentAttributedText = attributedText
+            attributedTextMatchesLiveText = currentAttributedText == null || hasSameRenderedTextContent(currentAttributedText)
+            if (isAttributedText && !attributedTextMatchesLiveText) {
+                pendingAttributedTextRebind = null
+                removeCallbacks(attributedTextRebindRunnable)
+                textViewHelper?.clearAnimatedTextOverlayState()
+            }
 
             val originalText = text.toString()
             val originalSelectionStart = selectionStart
@@ -360,6 +376,10 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
     fun updateAttributedText(nextAttributedText: AttributedText) {
         isAttributedText = true
         attributedText = nextAttributedText
+        attributedTextMatchesLiveText = hasSameRenderedTextContent(nextAttributedText)
+        if (!attributedTextMatchesLiveText) {
+            textViewHelper?.clearAnimatedTextOverlayState()
+        }
         if (pendingAttributedTextRebind != null) {
             removeCallbacks(attributedTextRebindRunnable)
             pendingAttributedTextRebind = null
@@ -370,8 +390,10 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
     fun setTextAndSelection(value: String, start: Int = selectionStart, end: Int = selectionEnd) {
         isAttributedText = false
         attributedText = null
+        attributedTextMatchesLiveText = true
         pendingAttributedTextRebind = null
         removeCallbacks(attributedTextRebindRunnable)
+        textViewHelper?.clearAnimatedTextOverlayState()
         val textClamped = clampProcessTextIfNeeded(value)
         setText(textClamped)
         setSelectionClamped(start, end)
@@ -389,6 +411,7 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
     private fun setAttributedText(nextAttributedText: AttributedText, spannable: Spannable) {
         isAttributedText = true
         attributedText = nextAttributedText
+        attributedTextMatchesLiveText = true
         setSpannableAndSelection(spannable)
     }
 

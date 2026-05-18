@@ -538,6 +538,12 @@ class TextViewHelper(private val view: TextView,
         return replacementRanges + transparentRanges
     }
 
+    fun clearAnimatedTextOverlayState() {
+        clearOverlayLayoutCache()
+        clearAnimatedBaseVisibilitySpans()
+        view.invalidate()
+    }
+
     internal fun clearOverlayLayoutCache() {
         overlayLayoutCache?.recycle()
         overlayLayoutCache = null
