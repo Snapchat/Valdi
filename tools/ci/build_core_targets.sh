@@ -9,13 +9,13 @@ set -x
 # Intended to be run from open_source/
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
-# High level core targets
-bzl build //valdi:valdi 
-bzl build //valdi_core:valdi_core
-
-# Dummy libs
-bzl build //libs/dummy:dummy
-bzl build //libs/dummy:dummy_android
+# Build all core targets in a single invocation to avoid repeated Bazel startup
+# and allow maximum parallelism across the dependency graph.
+bzl build \
+  //valdi:valdi \
+  //valdi_core:valdi_core \
+  //libs/dummy:dummy \
+  //libs/dummy:dummy_android
 
 # Android hello world AAR (NDK downloaded hermetically by Bazel)
 # Build just the AAR, not the full android_binary — aar_import filters for

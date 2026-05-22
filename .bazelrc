@@ -78,7 +78,8 @@ build --strategy=ValdiCompile=worker
 build:macos --spawn_strategy=local
 build:linux --sandbox_writable_path=/var/tmp
 
-# Disable disk cache to save disk space
+# Disk cache disabled by default for internal builds (saves disk space on dev machines).
+# CI overrides this via .bazelrc.ci which is imported last (see bottom of file).
 # https://docs.google.com/document/d/1N8W_M83n9jhMi7pgUhXuEuxypb3dmlHBu_CG_eXipXI/edit?usp=sharing
 build --disk_cache=""
 
@@ -96,3 +97,6 @@ build --valdi_js_engine=hermes
 build --define=open_source_build=true
 
 common --@aspect_rules_ts//ts:skipLibCheck=always
+
+# CI-specific overrides (must be last to win over earlier flags like --disk_cache="")
+try-import %workspace%/.bazelrc.ci

@@ -132,17 +132,22 @@ jobs:
         continue-on-error: true
         with:
           path: |
-            ~/.cache/bazel
+            ~/.cache/bazel/disk
+            ~/.cache/bazel/repo
             ~/.cache/bazelisk
           key: bazel-${{ runner.os }}-${{ matrix.task }}-${{ hashFiles('MODULE.bazel', '**/*.bzl') }}-${{ github.run_id }}
           restore-keys: |
             bazel-${{ runner.os }}-${{ matrix.task }}-${{ hashFiles('MODULE.bazel', '**/*.bzl') }}-
             bazel-${{ runner.os }}-${{ matrix.task }}-
 
-      - name: Configure Bazel cache
+      - name: Configure Bazel CI cache
         run: |
-          echo "build --disk_cache=$HOME/.cache/bazel/disk" >> .bazelrc.local
-          echo "build --repository_cache=$HOME/.cache/bazel/repo" >> .bazelrc.local
+          # Write to .bazelrc.ci which is imported LAST in .bazelrc, so these
+          # flags override the default --disk_cache="" for developer machines.
+          # Previously written to .bazelrc.local which is imported at the TOP
+          # of .bazelrc — the later --disk_cache="" silently overrode it.
+          echo "build --disk_cache=$HOME/.cache/bazel/disk" >> .bazelrc.ci
+          echo "build --repository_cache=$HOME/.cache/bazel/repo" >> .bazelrc.ci
 
       - name: Setup environment and install Valdi CLI
         if: matrix.task == 'build-export'
@@ -217,4 +222,4 @@ jobs:
     with:
       workflow_name: "Bazel & CI Test Results"
       success_message: "**All Bazel configuration and CI tests passed!** ✨\n\nThe build system and core tooling are working correctly."
-      additional_info: "🚀 _Bazel remote cache is now enabled - future builds will be faster!_"
+      additional_info: "🚀 _Bazel disk cache is enabled - builds with warm cache will be faster!_"
