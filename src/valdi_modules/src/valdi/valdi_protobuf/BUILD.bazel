@@ -80,6 +80,12 @@ valdi_module(
         "tsconfig.json",
     ],
     android_output_target = "release",
+    exclude_patterns = [
+        ".*/scripts/.*",
+        ".*/proto/.*",
+        ".*/web/.*",
+        ".*/node_modules/.*",
+    ],
     ios_module_name = "SCCValdiProtobuf",
     ios_output_target = "release",
     protodecl_srcs = ["test/proto.protodecl"],
