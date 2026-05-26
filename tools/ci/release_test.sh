@@ -53,12 +53,25 @@ node "$CLI_DIR/dist/index.js" bootstrap \
   --valdiWidgetsVersion=main \
   --with-cleanup
 
-# Verify WORKSPACE points at public GitHub (not local)
-if ! grep -q 'github.com/Snapchat/Valdi' WORKSPACE; then
-  echo "ERROR: WORKSPACE does not reference public GitHub Valdi"
+# Verify the project references public GitHub (not local).
+# Bootstrapped projects may use MODULE.bazel (bzlmod) or WORKSPACE.
+if [[ -f MODULE.bazel ]]; then
+  CHECK_FILE="MODULE.bazel"
+elif [[ -f WORKSPACE ]]; then
+  CHECK_FILE="WORKSPACE"
+else
+  echo "ERROR: Neither MODULE.bazel nor WORKSPACE found in bootstrapped app"
   exit 1
 fi
-echo "WORKSPACE references public GitHub ✓"
+if grep -q 'local_path_override.*module_name.*=.*"valdi"' "$CHECK_FILE"; then
+  echo "ERROR: $CHECK_FILE uses local_path_override for valdi (expected remote)"
+  exit 1
+fi
+if ! grep -q 'github.com/Snapchat/Valdi' "$CHECK_FILE"; then
+  echo "ERROR: $CHECK_FILE does not reference public GitHub Valdi"
+  exit 1
+fi
+echo "$CHECK_FILE references public GitHub (remote, not local) ✓"
 
 # Build and test
 if [[ -z "${SKIP_BUILD:-}" ]]; then

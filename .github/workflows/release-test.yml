@@ -55,6 +55,7 @@ jobs:
         with:
           name: release-test-failure
           path: |
+            /tmp/valdi_release_test/MODULE.bazel
             /tmp/valdi_release_test/WORKSPACE
             /tmp/valdi_release_test/.bazelrc
             /tmp/valdi_release_test/BUILD.bazel
