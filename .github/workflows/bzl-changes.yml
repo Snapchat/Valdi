@@ -44,13 +44,17 @@ on:
       - 'apps/snapshot_tests/**'
       - 'snap_drawing/**'
 
+# Workflow-level permissions: id-token: write needed for GCP WIF auth on push events.
+# For fork PRs, GitHub automatically downgrades to read-only — the auth step
+# has continue-on-error so builds proceed without remote cache.
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   smoke-test:
     name: Valdi Smoke Tests
     runs-on: macos-latest
-    permissions:
-      contents: read
-      id-token: write
 
     steps:
       - name: Checkout code
@@ -114,9 +118,6 @@ jobs:
   linux-ci:
     name: "Linux: ${{ matrix.name }}"
     runs-on: ${{ github.event_name == 'push' && 'Valdi-Larger-Runner' || 'ubuntu-latest' }}
-    permissions:
-      contents: read
-      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -179,9 +180,6 @@ jobs:
   snapshot-tests:
     name: Snapshot Tests
     runs-on: macos-latest
-    permissions:
-      contents: read
-      id-token: write
 
     steps:
       - name: Checkout code
@@ -231,6 +229,7 @@ jobs:
     if: always()
     uses: ./.github/workflows/comment-test-results.yml
     permissions:
+      contents: read
       pull-requests: write
     with:
       workflow_name: "Bazel & CI Test Results"

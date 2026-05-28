@@ -18,13 +18,14 @@ on:
       - 'tools/ci/release_test.sh'
       - '.github/workflows/release-test.yml'
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   release-test:
     name: Bootstrap from main (bleeding edge), build & test
     runs-on: macos-latest
-    permissions:
-      contents: read
-      id-token: write
 
     steps:
       - name: Checkout code
