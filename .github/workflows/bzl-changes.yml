@@ -113,7 +113,7 @@ jobs:
 
   linux-ci:
     name: "Linux: ${{ matrix.name }}"
-    runs-on: Valdi-Larger-Runner
+    runs-on: ${{ github.event_name == 'push' && 'Valdi-Larger-Runner' || 'ubuntu-latest' }}
     permissions:
       contents: read
       id-token: write

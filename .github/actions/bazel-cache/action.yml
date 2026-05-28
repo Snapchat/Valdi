@@ -24,6 +24,7 @@ runs:
   steps:
     - name: Authenticate to Google Cloud
       id: auth
+      continue-on-error: true
       uses: google-github-actions/auth@v2
       with:
         project_id: ${{ inputs.gcp_project_id }}
@@ -34,31 +35,58 @@ runs:
     - name: Configure Bazel remote cache
       shell: bash
       run: |
-        # Checkout directory config
+        # Always write config=ci for non-remote flags (circuit breaker, etc.)
         echo "build --config=ci" >> .bazelrc.local
+
+        # Write user-level bazelrc to a job-specific file to avoid race conditions
+        # on persistent runners where multiple matrix jobs share ~/.bazelrc
+        JOB_BAZELRC="${GITHUB_WORKSPACE}/.bazelrc.user-cache"
+        > "$JOB_BAZELRC"
+
+        if [ "${{ steps.auth.outcome }}" != "success" ]; then
+          echo "Auth failed (expected for fork PRs). Skipping remote cache."
+          # Still set up the user-level bazelrc symlink (empty) for bootstrapped projects
+          ln -sf "$JOB_BAZELRC" ~/.bazelrc
+          exit 0
+        fi
+
+        # Checkout directory config
         echo "build --remote_cache=https://storage.googleapis.com/${{ inputs.cache_bucket }}" >> .bazelrc.local
         echo "build \"--remote_header=Authorization=Bearer ${{ steps.auth.outputs.access_token }}\"" >> .bazelrc.local
-        # TODO: Restore PR read-only after initial cache seeding
         # Only upload cache results on push (trusted) events, not pull requests
-        echo "build --remote_upload_local_results=true" >> .bazelrc.local
-        # User-level config for bootstrapped projects (e.g. /tmp/valdi_app)
-        # Use > for first write to prevent unbounded growth on persistent runners
-        echo "build --remote_cache=https://storage.googleapis.com/${{ inputs.cache_bucket }}" > ~/.bazelrc
-        echo "build \"--remote_header=Authorization=Bearer ${{ steps.auth.outputs.access_token }}\"" >> ~/.bazelrc
-        echo "build --experimental_circuit_breaker_strategy=failure" >> ~/.bazelrc
-        echo "build --remote_upload_local_results=true" >> ~/.bazelrc
+        if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "release" ]; then
+          echo "build --remote_upload_local_results=true" >> .bazelrc.local
+        else
+          echo "build --remote_upload_local_results=false" >> .bazelrc.local
+        fi
 
-    - name: Configure disk cache
+        # User-level config for bootstrapped projects (e.g. /tmp/valdi_app)
+        echo "build --remote_cache=https://storage.googleapis.com/${{ inputs.cache_bucket }}" >> "$JOB_BAZELRC"
+        echo "build \"--remote_header=Authorization=Bearer ${{ steps.auth.outputs.access_token }}\"" >> "$JOB_BAZELRC"
+        echo "build --experimental_circuit_breaker_strategy=failure" >> "$JOB_BAZELRC"
+        if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "release" ]; then
+          echo "build --remote_upload_local_results=true" >> "$JOB_BAZELRC"
+        else
+          echo "build --remote_upload_local_results=false" >> "$JOB_BAZELRC"
+        fi
+        # Symlink so Bazel picks it up as ~/.bazelrc
+        ln -sf "$JOB_BAZELRC" ~/.bazelrc
+
+    - name: Prune and configure disk cache
       if: inputs.cache_key != ''
       shell: bash
       run: |
-        echo "build --disk_cache=$HOME/.cache/bazel/disk" >> .bazelrc.local
-        echo "build --repository_cache=$HOME/.cache/bazel/repo" >> .bazelrc.local
-        echo "build --disk_cache=$HOME/.cache/bazel/disk" >> ~/.bazelrc
-        echo "build --repository_cache=$HOME/.cache/bazel/repo" >> ~/.bazelrc
+        # Prune old cache files to prevent unbounded growth on persistent runners
+        find "$HOME/.cache/bazel/disk" -type f -atime +7 -delete 2>/dev/null || true
+        find "$HOME/.cache/bazel/repo" -type f -atime +7 -delete 2>/dev/null || true
+
+        echo "build:ci --disk_cache=$HOME/.cache/bazel/disk" >> .bazelrc.local
+        echo "build:ci --repository_cache=$HOME/.cache/bazel/repo" >> .bazelrc.local
+        echo "build --disk_cache=$HOME/.cache/bazel/disk" >> "${GITHUB_WORKSPACE}/.bazelrc.user-cache"
+        echo "build --repository_cache=$HOME/.cache/bazel/repo" >> "${GITHUB_WORKSPACE}/.bazelrc.user-cache"
 
     - name: Mount Bazel cache
-      if: inputs.cache_key != ''
+      if: inputs.cache_key != '' && runner.environment == 'github-hosted'
       uses: actions/cache@v4
       continue-on-error: true
       with:
