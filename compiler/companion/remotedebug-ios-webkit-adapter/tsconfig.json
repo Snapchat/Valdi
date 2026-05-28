@@ -6,7 +6,8 @@
     "composite": true,
     "declaration": true,
     "outDir": "src",
-    "rootDir": "src"
+    "rootDir": "src",
+    "types": []
   },
   "include": ["src/**/*.ts", "package.json"],
   "exclude": ["src/**/*.json", "node_modules"]
