@@ -98,5 +98,5 @@ build --define=open_source_build=true
 
 common --@aspect_rules_ts//ts:skipLibCheck=always
 
-# CI-specific overrides (must be last to win over earlier flags like --disk_cache="")
-try-import %workspace%/.bazelrc.ci
+# Remote cache (activated in CI via .bazelrc.local)
+build:ci --experimental_circuit_breaker_strategy=failure

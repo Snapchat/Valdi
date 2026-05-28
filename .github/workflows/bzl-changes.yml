@@ -48,12 +48,24 @@ jobs:
   smoke-test:
     name: Valdi Smoke Tests
     runs-on: macos-latest
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           lfs: true
+
+      - name: Configure Bazel cache
+        uses: ./.github/actions/bazel-cache
+        with:
+          gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
+          cache_key: smoke-test
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -101,7 +113,10 @@ jobs:
 
   linux-ci:
     name: "Linux: ${{ matrix.name }}"
-    runs-on: ubuntu-latest
+    runs-on: Valdi-Larger-Runner
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -123,31 +138,17 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
+      - name: Configure Bazel cache
+        uses: ./.github/actions/bazel-cache
+        with:
+          gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
+          cache_key: ${{ matrix.task }}
+
       - name: Setup Linux environment
         run: source ./tools/ci/setup_linux_env.sh
-
-      - name: Mount Bazel cache
-        uses: actions/cache@v4
-        timeout-minutes: 5
-        continue-on-error: true
-        with:
-          path: |
-            ~/.cache/bazel/disk
-            ~/.cache/bazel/repo
-            ~/.cache/bazelisk
-          key: bazel-${{ runner.os }}-${{ matrix.task }}-${{ hashFiles('MODULE.bazel', '**/*.bzl') }}-${{ github.run_id }}
-          restore-keys: |
-            bazel-${{ runner.os }}-${{ matrix.task }}-${{ hashFiles('MODULE.bazel', '**/*.bzl') }}-
-            bazel-${{ runner.os }}-${{ matrix.task }}-
-
-      - name: Configure Bazel CI cache
-        run: |
-          # Write to .bazelrc.ci which is imported LAST in .bazelrc, so these
-          # flags override the default --disk_cache="" for developer machines.
-          # Previously written to .bazelrc.local which is imported at the TOP
-          # of .bazelrc — the later --disk_cache="" silently overrode it.
-          echo "build --disk_cache=$HOME/.cache/bazel/disk" >> .bazelrc.ci
-          echo "build --repository_cache=$HOME/.cache/bazel/repo" >> .bazelrc.ci
 
       - name: Setup environment and install Valdi CLI
         if: matrix.task == 'build-export'
@@ -178,12 +179,24 @@ jobs:
   snapshot-tests:
     name: Snapshot Tests
     runs-on: macos-latest
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           lfs: true
+
+      - name: Configure Bazel cache
+        uses: ./.github/actions/bazel-cache
+        with:
+          gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
+          cache_key: snapshot-tests
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -222,4 +235,4 @@ jobs:
     with:
       workflow_name: "Bazel & CI Test Results"
       success_message: "**All Bazel configuration and CI tests passed!** ✨\n\nThe build system and core tooling are working correctly."
-      additional_info: "🚀 _Bazel disk cache is enabled - builds with warm cache will be faster!_"
+      additional_info: "🚀 _Bazel remote cache is now enabled - future builds will be faster!_"

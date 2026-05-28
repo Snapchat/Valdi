@@ -22,12 +22,23 @@ jobs:
   release-test:
     name: Bootstrap from main (bleeding edge), build & test
     runs-on: macos-latest
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           lfs: true
+
+      - name: Configure Bazel cache
+        uses: ./.github/actions/bazel-cache
+        with:
+          gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

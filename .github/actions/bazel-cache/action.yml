@@ -1,0 +1,79 @@
+name: 'Configure Bazel Cache'
+description: 'Set up GCS remote cache and optional disk cache for Bazel builds'
+
+inputs:
+  gcp_project_id:
+    description: 'GCP project ID'
+    required: true
+  workload_identity_provider:
+    description: 'Full workload identity provider resource name'
+    required: true
+  service_account:
+    description: 'GCP service account email'
+    required: true
+  cache_bucket:
+    description: 'GCS bucket name for remote cache'
+    required: true
+  cache_key:
+    description: 'Cache key prefix for disk cache via actions/cache. Omit to skip disk cache.'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Authenticate to Google Cloud
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        project_id: ${{ inputs.gcp_project_id }}
+        workload_identity_provider: ${{ inputs.workload_identity_provider }}
+        service_account: ${{ inputs.service_account }}
+        token_format: 'access_token'
+
+    - name: Configure Bazel remote cache
+      shell: bash
+      run: |
+        # Checkout directory config
+        echo "build --config=ci" >> .bazelrc.local
+        echo "build --remote_cache=https://storage.googleapis.com/${{ inputs.cache_bucket }}" >> .bazelrc.local
+        echo "build \"--remote_header=Authorization=Bearer ${{ steps.auth.outputs.access_token }}\"" >> .bazelrc.local
+        # Only upload cache results on push (trusted) events, not pull requests
+        if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "release" ]; then
+          echo "build --remote_upload_local_results=true" >> .bazelrc.local
+        else
+          echo "build --remote_upload_local_results=false" >> .bazelrc.local
+        fi
+        # User-level config for bootstrapped projects (e.g. /tmp/valdi_app)
+        # Use > for first write to prevent unbounded growth on persistent runners
+        echo "build --remote_cache=https://storage.googleapis.com/${{ inputs.cache_bucket }}" > ~/.bazelrc
+        echo "build \"--remote_header=Authorization=Bearer ${{ steps.auth.outputs.access_token }}\"" >> ~/.bazelrc
+        echo "build --experimental_circuit_breaker_strategy=failure" >> ~/.bazelrc
+        if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "release" ]; then
+          echo "build --remote_upload_local_results=true" >> ~/.bazelrc
+        else
+          echo "build --remote_upload_local_results=false" >> ~/.bazelrc
+        fi
+
+    - name: Configure disk cache
+      if: inputs.cache_key != ''
+      shell: bash
+      run: |
+        echo "build --disk_cache=$HOME/.cache/bazel/disk" >> .bazelrc.local
+        echo "build --repository_cache=$HOME/.cache/bazel/repo" >> .bazelrc.local
+        echo "build --disk_cache=$HOME/.cache/bazel/disk" >> ~/.bazelrc
+        echo "build --repository_cache=$HOME/.cache/bazel/repo" >> ~/.bazelrc
+
+    - name: Mount Bazel cache
+      if: inputs.cache_key != ''
+      uses: actions/cache@v4
+      continue-on-error: true
+      with:
+        path: |
+          ~/.cache/bazel/disk
+          ~/.cache/bazel/repo
+          ~/.cache/bazelisk
+        key: bazel-${{ runner.os }}-${{ inputs.cache_key }}-${{ hashFiles('MODULE.bazel', '**/*.bzl') }}-${{ github.run_id }}
+        restore-keys: |
+          bazel-${{ runner.os }}-${{ inputs.cache_key }}-${{ hashFiles('MODULE.bazel', '**/*.bzl') }}-
+          bazel-${{ runner.os }}-${{ inputs.cache_key }}-
