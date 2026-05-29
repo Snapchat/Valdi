@@ -34,27 +34,32 @@ runs:
 
     - name: Configure Bazel remote cache
       shell: bash
+      env:
+        AUTH_OUTCOME: ${{ steps.auth.outcome }}
+        CACHE_BUCKET: ${{ inputs.cache_bucket }}
+        ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        EVENT_NAME: ${{ github.event_name }}
       run: |
         # Always write config=ci for non-remote flags (circuit breaker, etc.)
         echo "build --config=ci" >> .bazelrc.local
 
         # Write cache config to a job-specific file. Bootstrapped projects
-        # (e.g. /tmp/valdi_app) import this via BAZEL_CACHE_RC env var,
-        # avoiding races on ~/.bazelrc when concurrent jobs share a runner.
+        # (e.g. /tmp/valdi_app) import this via try-import in ~/.bazelrc,
+        # avoiding races when concurrent jobs share a runner.
         CACHE_RC="/tmp/bazelrc-cache-${GITHUB_RUN_ID}-${GITHUB_JOB}"
         > "$CACHE_RC"
         echo "BAZEL_CACHE_RC=$CACHE_RC" >> "$GITHUB_ENV"
 
-        if [ "${{ steps.auth.outcome }}" != "success" ]; then
+        if [ "$AUTH_OUTCOME" != "success" ]; then
           echo "Auth skipped (expected for fork PRs). Building without remote cache."
           exit 0
         fi
 
         # Checkout directory config
-        echo "build --remote_cache=https://storage.googleapis.com/${{ inputs.cache_bucket }}" >> .bazelrc.local
-        echo "build \"--remote_header=Authorization=Bearer ${{ steps.auth.outputs.access_token }}\"" >> .bazelrc.local
+        echo "build --remote_cache=https://storage.googleapis.com/$CACHE_BUCKET" >> .bazelrc.local
+        echo "build \"--remote_header=Authorization=Bearer $ACCESS_TOKEN\"" >> .bazelrc.local
         # Only upload cache results on push (trusted) events, not pull requests
-        if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "release" ]; then
+        if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$EVENT_NAME" = "release" ]; then
           echo "build --remote_upload_local_results=true" >> .bazelrc.local
         else
           echo "build --remote_upload_local_results=false" >> .bazelrc.local
@@ -65,10 +70,10 @@ runs:
         echo "try-import $CACHE_RC" > ~/.bazelrc
 
         # Cache config for bootstrapped projects (discovered via try-import above)
-        echo "build --remote_cache=https://storage.googleapis.com/${{ inputs.cache_bucket }}" >> "$CACHE_RC"
-        echo "build \"--remote_header=Authorization=Bearer ${{ steps.auth.outputs.access_token }}\"" >> "$CACHE_RC"
+        echo "build --remote_cache=https://storage.googleapis.com/$CACHE_BUCKET" >> "$CACHE_RC"
+        echo "build \"--remote_header=Authorization=Bearer $ACCESS_TOKEN\"" >> "$CACHE_RC"
         echo "build --experimental_circuit_breaker_strategy=failure" >> "$CACHE_RC"
-        if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "release" ]; then
+        if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$EVENT_NAME" = "release" ]; then
           echo "build --remote_upload_local_results=true" >> "$CACHE_RC"
         else
           echo "build --remote_upload_local_results=false" >> "$CACHE_RC"
