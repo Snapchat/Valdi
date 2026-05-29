@@ -38,9 +38,12 @@ runs:
         # Always write config=ci for non-remote flags (circuit breaker, etc.)
         echo "build --config=ci" >> .bazelrc.local
 
-        # Write user-level bazelrc directly (not symlinked) for bootstrapped projects
-        # Content is identical across same-repo matrix jobs so concurrent writes are safe
-        > ~/.bazelrc
+        # Write cache config to a job-specific file. Bootstrapped projects
+        # (e.g. /tmp/valdi_app) import this via BAZEL_CACHE_RC env var,
+        # avoiding races on ~/.bazelrc when concurrent jobs share a runner.
+        CACHE_RC="/tmp/bazelrc-cache-${GITHUB_RUN_ID}-${GITHUB_JOB}"
+        > "$CACHE_RC"
+        echo "BAZEL_CACHE_RC=$CACHE_RC" >> "$GITHUB_ENV"
 
         if [ "${{ steps.auth.outcome }}" != "success" ]; then
           echo "Auth skipped (expected for fork PRs). Building without remote cache."
@@ -57,14 +60,18 @@ runs:
           echo "build --remote_upload_local_results=false" >> .bazelrc.local
         fi
 
-        # User-level config for bootstrapped projects (e.g. /tmp/valdi_app)
-        echo "build --remote_cache=https://storage.googleapis.com/${{ inputs.cache_bucket }}" > ~/.bazelrc
-        echo "build \"--remote_header=Authorization=Bearer ${{ steps.auth.outputs.access_token }}\"" >> ~/.bazelrc
-        echo "build --experimental_circuit_breaker_strategy=failure" >> ~/.bazelrc
+        # Point ~/.bazelrc to the job-specific file via try-import.
+        # Single atomic write — no truncation window for concurrent jobs.
+        echo "try-import $CACHE_RC" > ~/.bazelrc
+
+        # Cache config for bootstrapped projects (discovered via try-import above)
+        echo "build --remote_cache=https://storage.googleapis.com/${{ inputs.cache_bucket }}" >> "$CACHE_RC"
+        echo "build \"--remote_header=Authorization=Bearer ${{ steps.auth.outputs.access_token }}\"" >> "$CACHE_RC"
+        echo "build --experimental_circuit_breaker_strategy=failure" >> "$CACHE_RC"
         if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "release" ]; then
-          echo "build --remote_upload_local_results=true" >> ~/.bazelrc
+          echo "build --remote_upload_local_results=true" >> "$CACHE_RC"
         else
-          echo "build --remote_upload_local_results=false" >> ~/.bazelrc
+          echo "build --remote_upload_local_results=false" >> "$CACHE_RC"
         fi
 
     - name: Prune and configure disk cache
@@ -77,8 +84,10 @@ runs:
 
         echo "build:ci --disk_cache=$HOME/.cache/bazel/disk" >> .bazelrc.local
         echo "build:ci --repository_cache=$HOME/.cache/bazel/repo" >> .bazelrc.local
-        echo "build --disk_cache=$HOME/.cache/bazel/disk" >> ~/.bazelrc
-        echo "build --repository_cache=$HOME/.cache/bazel/repo" >> ~/.bazelrc
+        if [ -n "$BAZEL_CACHE_RC" ]; then
+          echo "build --disk_cache=$HOME/.cache/bazel/disk" >> "$BAZEL_CACHE_RC"
+          echo "build --repository_cache=$HOME/.cache/bazel/repo" >> "$BAZEL_CACHE_RC"
+        fi
 
     - name: Mount Bazel cache
       if: inputs.cache_key != '' && runner.environment == 'github-hosted'
