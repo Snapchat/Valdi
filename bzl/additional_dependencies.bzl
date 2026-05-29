@@ -48,18 +48,6 @@ def setup_additional_dependencies(bzlmod = False):
         )
         
         native.new_local_repository(
-            name = "valdi_pngquant_macos",
-            path = "bin/pngquant/macos",
-            build_file_content = SOURCES_FILEGROUP_BUILD_FILE_CONTENT,
-        )
-        
-        native.new_local_repository(
-            name = "valdi_pngquant_linux",
-            path = "bin/pngquant/linux",
-            build_file_content = SOURCES_FILEGROUP_BUILD_FILE_CONTENT,
-        )
-        
-        native.new_local_repository(
             name = "valdi_compiler_companion",
             path = "bin/compiler_companion",
             build_file_content = SOURCES_FILEGROUP_BUILD_FILE_CONTENT,
@@ -88,18 +76,6 @@ def setup_additional_dependencies(bzlmod = False):
             name = "valdi_compiler_macos",
             source_repo = "valdi",
             target_dir = "bin/compiler/macos",
-        )
-
-        nested_repository(
-            name = "valdi_pngquant_macos",
-            source_repo = "valdi",
-            target_dir = "bin/pngquant/macos",
-        )
-
-        nested_repository(
-            name = "valdi_pngquant_linux",
-            source_repo = "valdi",
-            target_dir = "bin/pngquant/linux",
         )
 
         nested_repository(

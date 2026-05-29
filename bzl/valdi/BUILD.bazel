@@ -405,7 +405,6 @@ valdi_toolchain(
     compiler = ":compiler_source",
     compiler_companion = ":compiler_companion_source",
     compiler_toolbox = "@valdi_toolchain//:valdi_compiler_toolbox",
-    pngquant = "@valdi_toolchain//:pngquant",
     sqldelight_compiler = "@valdi_toolchain//:sqldelight_compiler",
 )
 

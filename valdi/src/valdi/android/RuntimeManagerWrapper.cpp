@@ -170,7 +170,7 @@ RuntimeManagerWrapper::RuntimeManagerWrapper(JavaEnv env,
     }
 #endif
     _runtimeManager->getAssetLoaderManager()->registerAssetLoaderFactory(
-        Valdi::makeShared<AndroidAssetLoaderFactory>(_resourceLoader));
+        Valdi::makeShared<AndroidAssetLoaderFactory>(_resourceLoader, _runtimeManager->getWorkerQueue()));
 }
 
 RuntimeManagerWrapper::~RuntimeManagerWrapper() {

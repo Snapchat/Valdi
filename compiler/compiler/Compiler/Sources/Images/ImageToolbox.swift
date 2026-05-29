@@ -30,4 +30,11 @@ class ImageToolbox {
     func getVersion() throws -> String {
         return try toolboxExecutable.getVersionString()
     }
+
+    func optimizePNG(inputPath: String) throws {
+        _ = try toolboxExecutable.pngquant(arguments: [
+            "-i",
+            inputPath
+        ])
+    }
 }

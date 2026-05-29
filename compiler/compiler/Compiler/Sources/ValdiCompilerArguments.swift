@@ -184,9 +184,6 @@ struct ValdiCompilerArguments: ParsableCommand {
     @Option(help: "path to the compiler toolbox app")
     var directCompilerToolboxPath: String?
 
-    @Option(help: "path to the pngquant app")
-    var directPngquantPath: String?
-
     @Option(help: "path to the minify config")
     var directMinifyConfigPath: String?
 

@@ -9,6 +9,8 @@
 #include "snap_drawing/cpp/Utils/BytesUtils.hpp"
 
 #include "snap_drawing/cpp/Utils/Bitmap.hpp"
+#include "snap_drawing/cpp/Utils/BitmapFactory.hpp"
+#include "snap_drawing/cpp/Utils/SVGUtils.hpp"
 
 #include "valdi_core/cpp/Interfaces/IBitmap.hpp"
 #include "valdi_core/cpp/Utils/ValueTypedArray.hpp"
@@ -19,11 +21,16 @@
 #include "include/codec/SkJpegDecoder.h"
 #include "include/codec/SkPngDecoder.h"
 #include "include/codec/SkWebpDecoder.h"
+#include "include/core/SkCanvas.h"
 #include "include/core/SkStream.h"
+#include "include/core/SkSurface.h"
 #include "include/encode/SkJpegEncoder.h"
 #include "include/encode/SkPngEncoder.h"
 #include "include/encode/SkWebpEncoder.h"
+#include "modules/svg/include/SkSVGDOM.h"
 #include "src/image/SkImage_Base.h"
+
+#include <cmath>
 
 namespace snap::drawing {
 
@@ -161,6 +168,10 @@ const Ref<Valdi::ImageFilter>& Image::getFilter() const {
 }
 
 Valdi::Result<Ref<Image>> Image::make(const Valdi::BytesView& data) {
+    if (isSVG(data)) {
+        return makeFromSVG(data);
+    }
+
     Image::initializeCodecs();
     auto skData = skDataFromBytes(data, DataConversionModeNeverCopy);
 
@@ -171,6 +182,20 @@ Valdi::Result<Ref<Image>> Image::make(const Valdi::BytesView& data) {
     }
 
     return Ref<Image>(Valdi::makeShared<Image>(skImage));
+}
+
+bool Image::isSVG(const Valdi::BytesView& data) {
+    return snap::drawing::isSVG(data);
+}
+
+Valdi::Result<Ref<Image>> Image::makeFromSVG(const Valdi::BytesView& data, int preferredWidth, int preferredHeight) {
+    auto bitmap = rasterizeSVG(
+        data, BitmapFactory::getInstance(Valdi::ColorType::ColorTypeRGBA8888), preferredWidth, preferredHeight);
+    if (!bitmap) {
+        return bitmap.moveError();
+    }
+
+    return makeFromBitmap(bitmap.moveValue(), false);
 }
 
 Valdi::Result<Ref<Image>> Image::makeFromPixelsData(const Valdi::BitmapInfo& bitmapInfo,

@@ -17,6 +17,7 @@ import com.snap.valdi.utils.info
 import com.snapchat.client.valdi_core.Cancelable
 
 import android.util.Log
+import android.graphics.Bitmap
 import com.snap.valdi.imageloading.ValdiImageLoaderPostprocessor
 import com.snap.valdi.utils.ValdiImageFactory
 
@@ -122,6 +123,32 @@ class ResourceResolver(private val context: Context,
                            colorMatrixFilter: Any?,
                            blurRadiusFilter: Float,
                            completionHandle: Long): Any? {
+        return loadBitmapAsset(preferredWidth, preferredHeight, colorMatrixFilter, blurRadiusFilter, completionHandle) {
+            ValdiImageFactory.fromByteArray(bytes)
+        }
+    }
+
+    /**
+    Called by C++ to perform a load from an already-rasterized bitmap into a ValdiImage.
+     */
+    @Keep
+    fun loadAssetFromBitmap(bitmap: Any,
+                            preferredWidth: Int,
+                            preferredHeight: Int,
+                            colorMatrixFilter: Any?,
+                            blurRadiusFilter: Float,
+                            completionHandle: Long): Any? {
+        return loadBitmapAsset(preferredWidth, preferredHeight, colorMatrixFilter, blurRadiusFilter, completionHandle) {
+            ValdiImageFactory.fromBitmap(bitmap as Bitmap)
+        }
+    }
+
+    private fun loadBitmapAsset(preferredWidth: Int,
+                                preferredHeight: Int,
+                                colorMatrixFilter: Any?,
+                                blurRadiusFilter: Float,
+                                completionHandle: Long,
+                                createImage: () -> ValdiImage): Any? {
         val completion = AssetImageLoaderCompletion(completionHandle, colorMatrixFilter as? FloatArray)
         val options = ValdiImageLoadOptions(
             preferredWidth,
@@ -132,7 +159,7 @@ class ResourceResolver(private val context: Context,
 
         this.postprocessor.executor.submit {
             val valdiImage = try {
-                ValdiImageFactory.fromByteArray(bytes)
+                createImage()
             } catch (err: Throwable) {
                 completion.onImageLoadComplete(0, 0, null, err)
                 return@submit

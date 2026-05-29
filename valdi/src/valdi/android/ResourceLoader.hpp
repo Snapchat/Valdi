@@ -46,6 +46,13 @@ public:
                                   float blurRadiusFilter,
                                   int64_t callbackHandle);
 
+    JavaObject loadAssetFromBitmap(const JavaObject& bitmap,
+                                   int32_t preferredWidth,
+                                   int32_t preferredHeight,
+                                   const float* colorMatrixFilter,
+                                   float blurRadiusFilter,
+                                   int64_t callbackHandle);
+
 private:
     [[maybe_unused]] AAssetManager* _assetManager = nullptr;
     GlobalRefJavaObjectBase _localResourceResolver;
@@ -56,6 +63,7 @@ private:
     JavaMethod<JavaObject, JavaObject, JavaObject, int32_t, int32_t, JavaObject, float, int32_t, int64_t>
         _loadAssetMethod;
     JavaMethod<JavaObject, ByteArray, int32_t, int32_t, JavaObject, float, int64_t> _loadAssetFromBytes;
+    JavaMethod<JavaObject, JavaObject, int32_t, int32_t, JavaObject, float, int64_t> _loadAssetFromBitmap;
     bool _shouldDeferModuleLoadToJava;
 };
 

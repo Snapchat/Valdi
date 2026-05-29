@@ -51,10 +51,6 @@ compiler_toolbox_path:
   linux: {COMPILER_TOOLBOX_PATH}
   macos: {COMPILER_TOOLBOX_PATH}
 
-pngquant_bin_path:
-  linux: {PNGQUANT_PATH}
-  macos: {PNGQUANT_PATH}
-
 minify_config_path: {MINIFY_CONFIG_PATH}
 
 node_modules_dir: {NODE_MODULES_DIR}

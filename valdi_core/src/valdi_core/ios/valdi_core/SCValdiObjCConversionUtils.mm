@@ -144,6 +144,8 @@ ObjCObjectDirectRef::ObjCObjectDirectRef() = default;
 
 ObjCObjectDirectRef::ObjCObjectDirectRef(id value): _value(value) {}
 
+ObjCObjectDirectRef::ObjCObjectDirectRef(const ObjCObjectDirectRef &other): _value(other._value) {}
+
 ObjCObjectDirectRef::ObjCObjectDirectRef(ObjCObjectDirectRef &&other): _value(other._value) {
     other._value = nil;
 }

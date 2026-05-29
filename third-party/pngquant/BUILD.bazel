@@ -1,0 +1,5 @@
+exports_files([
+    "Cargo.lock",
+    "cargo-bazel-lock.json",
+    "pngquant.BUILD",
+])

@@ -15,6 +15,16 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "test",
+    srcs = glob(["test/**/*.cpp"]),
+    linkstatic = True,
+    deps = [
+        ":lib",
+        "@gtest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "image_toolbox_c",
     srcs = glob(["src/image_toolbox_c/**/*.cpp"]),

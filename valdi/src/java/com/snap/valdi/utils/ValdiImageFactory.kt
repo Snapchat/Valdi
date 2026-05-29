@@ -26,6 +26,11 @@ object ValdiImageFactory {
     }
 
     @JvmStatic
+    fun fromBitmap(bitmap: Bitmap): ValdiImage {
+        return createImage(bitmap)
+    }
+
+    @JvmStatic
     fun fromFilePath(filePath: String): ValdiImage {
         return createImage(BitmapFactory.decodeFile(filePath))
     }

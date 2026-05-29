@@ -1,6 +1,6 @@
 # Module extension to expose compiler tool repos to the valdi_toolchain sub-module.
 #
-# For each repo (compiler, pngquant, jscore), first checks if the binary exists
+# For each repo (compiler, jscore), first checks if the binary exists
 # locally (e.g. from repo-archiver or a local build). If not, downloads from GCS
 # using the URLs in open_source_archives.bzl — matching the old WORKSPACE-era
 # setup_additional_dependencies() behavior.
@@ -79,8 +79,6 @@ def _valdi_compiler_repos_impl(module_ctx):
     repos = {
         "valdi_compiler_macos": "bin/compiler/macos",
         "valdi_compiler_linux": "bin/compiler/linux",
-        "valdi_pngquant_macos": "bin/pngquant/macos",
-        "valdi_pngquant_linux": "bin/pngquant/linux",
         "jscore_libs": "third-party/jscore/libs",
     }
     for name, target_dir in repos.items():

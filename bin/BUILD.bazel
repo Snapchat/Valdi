@@ -3,8 +3,6 @@ load("@bazel_skylib//rules:native_binary.bzl", "native_binary")
 load(
     "@valdi//bzl:prebuilt_tools.bzl",
     "bundle_js",
-    "pngquant_linux",
-    "pngquant_macos",
     "valdi_compiler_companion_files",
 )
 
@@ -29,18 +27,6 @@ native_binary(
 alias(
     name = "valdi_compiler_toolbox",
     actual = "@valdi//valdi/compiler/toolbox:valdi_compiler_toolbox",
-    visibility = ["//visibility:public"],
-)
-
-native_binary(
-    name = "pngquant",
-    src = select(
-        {
-            "@bazel_tools//src/conditions:darwin": pngquant_macos(),
-            "@bazel_tools//src/conditions:linux_x86_64": pngquant_linux(),
-        },
-    ),
-    out = "pngquant",
     visibility = ["//visibility:public"],
 )
 

@@ -28,6 +28,7 @@ single_version_override(
 
 bazel_dep(name = "bazel_skylib", version = "1.2.0")
 bazel_dep(name = "rules_java", version = "7.4.0")
+bazel_dep(name = "rules_rust", version = "0.64.0")
 
 bazel_dep(name = "rules_android", version = "0.6.5")
 bazel_dep(name = "rules_shell", version = "0.1.2")
@@ -201,12 +202,6 @@ local_path_override(
     path = "bin",
 )
 
-bazel_dep(name = "resvg_libs")
-local_path_override(
-    module_name = "resvg_libs",
-    path = "third-party/resvg/resvg_libs",
-)
-
 bazel_dep(name = "jsoncpp", version = "1.9.6")
 
 http_archive(
@@ -260,10 +255,131 @@ http_archive(
 
 http_archive(
     name = "resvg",
-    url = "https://github.com/RazrFalcon/resvg/archive/a739aef5d01360ec238c886bc50674f31458df00.zip",
+    url = "https://github.com/linebender/resvg/archive/b3c7f58d059da6aa0a25141b1948c61b8c579c12.zip",
     build_file = "@valdi//third-party/resvg:resvg.BUILD",
-    strip_prefix = "resvg-a739aef5d01360ec238c886bc50674f31458df00",
-    integrity = "sha256-kohUhIYyFoaeIHLBhYwq6g7+h34r3i9/IIQoWyJAmSE=",
+    strip_prefix = "resvg-b3c7f58d059da6aa0a25141b1948c61b8c579c12",
+    integrity = "sha256-0F/rzIZh2AQW3zyJ8S0c269xlbCvn8rFSAI2r0jLdgU=",
+)
+
+http_archive(
+    name = "pngquant",
+    url = "https://github.com/kornelski/pngquant/archive/5b4e91f5dd6af27c928474ffd526bb69e17b0f37.zip",
+    build_file = "@valdi//third-party/pngquant:pngquant.BUILD",
+    strip_prefix = "pngquant-5b4e91f5dd6af27c928474ffd526bb69e17b0f37",
+    integrity = "sha256-CqMGdZFDTa+6gyxJN3Wvr6d5O4ezR9xvyBd1tzUNR+8=",
+    patch_args = ["-p1"],
+    patches = ["@valdi//third-party/pngquant:pngquant-build-script-bazel-headers.patch"],
+)
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2024",
+    extra_target_triples = [
+        "aarch64-apple-ios",
+        "aarch64-apple-ios-sim",
+        "aarch64-linux-android",
+        "armv7-linux-androideabi",
+        "x86_64-apple-ios",
+        "x86_64-linux-android",
+    ],
+    versions = ["1.87.0"],
+)
+use_repo(rust, "rust_toolchains")
+register_toolchains("@rust_toolchains//:all")
+
+resvg_crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
+resvg_crate.spec(package = "gif", repositories = ["resvg_crates"], version = "0.14.1")
+resvg_crate.spec(package = "image-webp", repositories = ["resvg_crates"], version = "0.2.4")
+resvg_crate.spec(package = "zune-jpeg", repositories = ["resvg_crates"], version = "0.5.8")
+resvg_crate.spec(package = "base64", repositories = ["resvg_crates"], version = "0.22.1")
+resvg_crate.spec(package = "data-url", repositories = ["resvg_crates"], version = "0.3.2")
+resvg_crate.spec(package = "flate2", default_features = False, features = ["rust_backend"], repositories = ["resvg_crates"], version = "1.1.5")
+resvg_crate.spec(package = "imagesize", repositories = ["resvg_crates"], version = "0.14.0")
+resvg_crate.spec(package = "kurbo", repositories = ["resvg_crates"], version = "0.13.0")
+resvg_crate.spec(package = "log", repositories = ["resvg_crates"], version = "0.4.29")
+resvg_crate.spec(package = "pico-args", features = ["eq-separator"], repositories = ["resvg_crates"], version = "0.5.0")
+resvg_crate.spec(package = "rgb", repositories = ["resvg_crates"], version = "0.8.52")
+resvg_crate.spec(package = "roxmltree", repositories = ["resvg_crates"], version = "0.21.1")
+resvg_crate.spec(package = "simplecss", repositories = ["resvg_crates"], version = "0.2.2")
+resvg_crate.spec(package = "siphasher", repositories = ["resvg_crates"], version = "1.0.1")
+resvg_crate.spec(package = "strict-num", repositories = ["resvg_crates"], version = "0.1.1")
+resvg_crate.spec(package = "svgtypes", repositories = ["resvg_crates"], version = "0.16.1")
+resvg_crate.spec(package = "tiny-skia", repositories = ["resvg_crates"], version = "0.12.0")
+resvg_crate.spec(package = "tiny-skia-path", repositories = ["resvg_crates"], version = "0.12.0")
+resvg_crate.spec(package = "xmlwriter", repositories = ["resvg_crates"], version = "0.1.0")
+resvg_crate.render_config(
+    default_package_name = "",
+    repositories = ["resvg_crates"],
+)
+resvg_crate.from_specs(
+    name = "resvg_crates",
+    cargo_lockfile = "@resvg//:Cargo.lock",
+    lockfile = "//third-party/resvg:cargo-bazel-lock.json",
+    supported_platform_triples = [
+        "aarch64-apple-darwin",
+        "aarch64-apple-ios",
+        "aarch64-apple-ios-sim",
+        "aarch64-linux-android",
+        "armv7-linux-androideabi",
+        "x86_64-apple-ios",
+        "x86_64-linux-android",
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+    ],
+)
+use_repo(resvg_crate, "resvg_crates")
+
+rust_host_tools = use_extension("@rules_rust//rust:extensions.bzl", "rust_host_tools")
+rust_host_tools.host_tools(
+    name = "rust_host_tools_nightly",
+    version = "nightly",
+)
+use_repo(rust_host_tools, "rust_host_tools_nightly")
+
+pngquant_crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
+pngquant_crate.spec(package = "pngquant", artifact = "bin", default_features = False, features = ["png-static", "z-static"], repositories = ["pngquant_crates"], version = "=3.0.0")
+pngquant_crate.annotation(
+    crate = "pngquant",
+    build_script_data = [
+        "@pngquant_crates__imagequant-sys-4.1.0//:libimagequant.h",
+        "@pngquant_crates__libpng-sys-1.1.11//:vendor/png.h",
+        "@pngquant_crates__libpng-sys-1.1.11//:vendor/pngconf.h",
+    ],
+    build_script_env = {
+        "DEP_IMAGEQUANT_INCLUDE_FILE": "$(execpath @pngquant_crates__imagequant-sys-4.1.0//:libimagequant.h)",
+        "DEP_PNG_INCLUDE_FILE": "$(execpath @pngquant_crates__libpng-sys-1.1.11//:vendor/png.h)",
+    },
+    gen_all_binaries = True,
+    patch_args = ["-p1"],
+    patches = ["//third-party/pngquant:pngquant-build-script-bazel-headers.patch"],
+    repositories = ["pngquant_crates"],
+)
+pngquant_crate.render_config(
+    default_package_name = "",
+    repositories = ["pngquant_crates"],
+)
+pngquant_crate.from_specs(
+    name = "pngquant_crates",
+    cargo_lockfile = "//third-party/pngquant:Cargo.lock",
+    host_tools = "@rust_host_tools_nightly",
+    lockfile = "//third-party/pngquant:cargo-bazel-lock.json",
+    supported_platform_triples = [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+    ],
+)
+use_repo(
+    pngquant_crate,
+    "pngquant_crates",
+    "pngquant_crates__cc-1.2.61",
+    "pngquant_crates__dunce-1.0.5",
+    "pngquant_crates__getopts-0.2.24",
+    "pngquant_crates__imagequant-sys-4.1.0",
+    "pngquant_crates__libc-0.2.186",
+    "pngquant_crates__libpng-sys-1.1.11",
+    "pngquant_crates__libz-sys-1.1.28",
+    "pngquant_crates__wild-2.2.1",
 )
 
 bazel_dep(name = "rules_license", version = "1.0.0")
@@ -432,11 +548,11 @@ http_archive(
     url = "https://github.com/erikdoe/ocmock/archive/refs/tags/v3.9.4.tar.gz",
 )
 
-# Expose prebuilt compiler/pngquant/jscore repos to the main workspace.
+# Expose prebuilt compiler/jscore repos to the main workspace.
 # The bin/ sub-module also uses this extension, but targets in the main workspace
-# reference these repos via prebuilt_tools.bzl (e.g. @jscore_libs, @valdi_pngquant_*).
+# reference these repos via prebuilt_tools.bzl (e.g. @jscore_libs).
 valdi_compiler_repos = use_extension("//bzl:valdi_compiler_repos_extension.bzl", "valdi_compiler_repos")
-use_repo(valdi_compiler_repos, "jscore_libs", "valdi_compiler_macos", "valdi_compiler_linux", "valdi_pngquant_macos", "valdi_pngquant_linux")
+use_repo(valdi_compiler_repos, "jscore_libs", "valdi_compiler_macos", "valdi_compiler_linux")
 
 register_toolchains("@valdi//bzl/valdi:valdi_toolchain")
 

@@ -5,6 +5,7 @@
 #include "snap_drawing/cpp/Utils/BytesUtils.hpp"
 #include "snap_drawing/cpp/Utils/Image.hpp"
 #include "snap_drawing/cpp/Utils/LottieAnimatedImage.hpp"
+#include "snap_drawing/cpp/Utils/SVGAnimatedImage.hpp"
 #include "snap_drawing/cpp/Utils/SkCodecAnimatedImage.hpp"
 #include "valdi_core/cpp/Utils/JSONReader.hpp"
 
@@ -39,6 +40,10 @@ Valdi::Result<Ref<AnimatedImage>> AnimatedImage::make(const Ref<IFontManager>& f
     }
 
     const Valdi::BytesView bytesView(nullptr, data, length);
+    if (Image::isSVG(bytesView)) {
+        return SVGAnimatedImage::make(data, length).map<Ref<AnimatedImage>>();
+    }
+
     auto skData = skDataFromBytes(bytesView, DataConversionModeAlwaysCopy);
     auto codec = SkCodec::MakeFromData(skData);
     if (codec == nullptr) {
