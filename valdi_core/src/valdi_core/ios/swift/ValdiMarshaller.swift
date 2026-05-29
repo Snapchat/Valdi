@@ -402,6 +402,8 @@ open class ValdiMarshaller {
             return try enumType.init(from: self, at: index) as! T
         case let marshallableType as ValdiMarshallableObject.Type:
             return try marshallableType.init(from: self, at: index) as! T
+        case let arrayType as ValdiMarshallableArray.Type:
+            return try arrayType.init(from: self, at: index) as! T
         case let objcType as SCValdiMarshallable.Type:
             return SCValdiMarshallableObjectUnmarshall(OpaquePointer(marshallerCpp), index, objcType) as! T
         default:
