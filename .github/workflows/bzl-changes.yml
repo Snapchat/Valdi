@@ -117,7 +117,7 @@ jobs:
 
   linux-ci:
     name: "Linux: ${{ matrix.name }}"
-    runs-on: ${{ github.event_name == 'push' && 'Valdi-Larger-Runner' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
