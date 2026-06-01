@@ -1,5 +1,5 @@
 {
-  "checksum": "a473cc5ec76eb0c45a5f883af326157afb91095a00ae79e375ab8dca73a7008a",
+  "checksum": "c9687e213a126ecb324bdb055de48cb13040ab322b4d9932714ca671bb3df5bc",
   "crates": {
     "arrayvec 0.7.6": {
       "name": "arrayvec",
@@ -1205,7 +1205,7 @@
             "-p1"
           ],
           "patches": [
-            "@@//third-party/pngquant:pngquant-build-script-bazel-headers.patch"
+            "@@valdi~//third-party/pngquant:pngquant-build-script-bazel-headers.patch"
           ]
         }
       },

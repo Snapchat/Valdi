@@ -22,9 +22,17 @@ interface HistoryState {
 
 const ANIMATION_DURATION_MS = 250;
 
+export type WebNavStackBuildUrl = (
+  paths: string[],
+  routeRegistry: RouteRegistry | undefined,
+  basePath: string,
+) => string;
+
 export interface WebNavStackOptions {
   routeRegistry?: RouteRegistry;
   basePath?: string;
+  /** Override URL generation from the current stack's component paths. */
+  buildUrl?: WebNavStackBuildUrl;
 }
 
 export class WebNavStack {
@@ -32,6 +40,7 @@ export class WebNavStack {
   private container: HTMLElement;
   private routeRegistry: RouteRegistry | undefined;
   private basePath: string;
+  private buildUrlFn: WebNavStackBuildUrl | undefined;
   // Sync guard: when set, the next popstate matching this depth is suppressed.
   private expectedDepth: number | null = null;
   private boundOnPopState: (e: PopStateEvent) => void;
@@ -46,6 +55,7 @@ export class WebNavStack {
     this.container.style.height = '100%';
     this.routeRegistry = options?.routeRegistry;
     this.basePath = (options?.basePath ?? '').replace(/\/+$/, '');
+    this.buildUrlFn = options?.buildUrl;
     this.initialPathname = window.location.pathname;
 
     this.boundOnPopState = this.onPopState.bind(this);
@@ -57,7 +67,8 @@ export class WebNavStack {
     const navigator = new WebNavigator(this, pageIndex);
 
     const pageDiv = document.createElement('div');
-    pageDiv.style.cssText = 'position:absolute;inset:0;background:white;';
+    pageDiv.style.cssText =
+      'position:absolute;inset:0;background:white;overflow:hidden;display:flex;flex-direction:column;min-height:0;';
 
     const runtime = (globalThis as any).runtime;
     const ctor = runtime?.requireByComponent?.(page.componentPath);
@@ -117,7 +128,8 @@ export class WebNavStack {
     const navigator = new WebNavigator(this, pageIndex);
 
     const pageDiv = document.createElement('div');
-    pageDiv.style.cssText = 'position:absolute;inset:0;background:white;';
+    pageDiv.style.cssText =
+      'position:absolute;inset:0;background:white;overflow:hidden;display:flex;flex-direction:column;min-height:0;';
 
     const renderer = new ValdiWebRenderer(pageDiv);
     const contextWithNav = { ...(context ?? {} as any), navigator };
@@ -169,9 +181,10 @@ export class WebNavStack {
     const navigator = new WebNavigator(this, pageIndex);
 
     const pageDiv = document.createElement('div');
-    pageDiv.style.cssText = 'position:absolute;inset:0;';
+    pageDiv.style.cssText =
+      'position:absolute;inset:0;overflow:hidden;display:flex;flex-direction:column;min-height:0;';
     const contentDiv = document.createElement('div');
-    contentDiv.style.cssText = 'width:100%;height:100%;';
+    contentDiv.style.cssText = 'width:100%;height:100%;min-height:0;flex:1;display:flex;flex-direction:column;';
     pageDiv.appendChild(contentDiv);
     renderFn(contentDiv, navigator);
 
@@ -455,6 +468,9 @@ export class WebNavStack {
   }
 
   private buildUrl(paths: string[]): string {
+    if (this.buildUrlFn) {
+      return this.buildUrlFn(paths, this.routeRegistry, this.basePath);
+    }
     const base = this.basePath || '';
     if (!this.routeRegistry || paths.length === 0) {
       return base || '/';

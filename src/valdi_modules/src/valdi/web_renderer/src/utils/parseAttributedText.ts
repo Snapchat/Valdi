@@ -25,6 +25,7 @@ interface StyleState {
   onTap?: AttributedTextOnTap;
   outlineColor?: string;
   outlineWidth?: number;
+  outerOutlineColor?: string;
 }
 
 interface StyleStackEntry {
@@ -98,6 +99,9 @@ export function renderAttributedText(attributedText: AttributedText): HTMLSpanEl
         i += 2;
         break;
       case AttributedTextEntryType.PushOuterOutlineColor:
+        styleStack.push({ type: 'outerOutlineColor', value: attributedText[i + 1] });
+        i += 2;
+        break;
       case AttributedTextEntryType.PushOuterOutlineWidth:
       case AttributedTextEntryType.PushInlineImage:
       case AttributedTextEntryType.PushAnimationTransform:
@@ -121,7 +125,16 @@ function createStyledSpan(text: string, style: StyleState): HTMLSpanElement {
   }
 
   if (style.font) {
-    span.style.fontFamily = style.font;
+    const parts = style.font.trim().split(/\s+/);
+    if (parts[0]) {
+      span.style.fontFamily = parts[0];
+    }
+    if (parts[1] && !Number.isNaN(Number(parts[1]))) {
+      span.style.fontSize = `${parts[1]}px`;
+    }
+    if (parts[2]) {
+      span.style.fontWeight = parts[2];
+    }
   }
 
   if (style.textDecoration === 'underline') {
@@ -130,9 +143,18 @@ function createStyledSpan(text: string, style: StyleState): HTMLSpanElement {
     span.style.textDecoration = 'line-through';
   }
 
-  if (style.outlineColor && style.outlineWidth) {
+  if (style.outerOutlineColor) {
+    span.style.backgroundColor = convertColor(style.outerOutlineColor);
+    span.style.borderRadius = '6px';
+    span.style.padding = '2px 8px';
+    span.style.setProperty('box-decoration-break', 'clone');
+    span.style.setProperty('-webkit-box-decoration-break', 'clone');
+    if (style.outlineColor) {
+      span.style.border = `1px solid ${convertColor(style.outlineColor)}`;
+    }
+  } else if (style.outlineColor && style.outlineWidth) {
     const w = style.outlineWidth;
-    span.style.textShadow = `-${w}px -${w}px 0 ${style.outlineColor}, ${w}px -${w}px 0 ${style.outlineColor}, -${w}px ${w}px 0 ${style.outlineColor}, ${w}px ${w}px 0 ${style.outlineColor}`;
+    span.style.textShadow = `-${w}px -${w}px 0 ${convertColor(style.outlineColor)}, ${w}px -${w}px 0 ${convertColor(style.outlineColor)}, -${w}px ${w}px 0 ${convertColor(style.outlineColor)}, ${w}px ${w}px 0 ${convertColor(style.outlineColor)}`;
   }
 
   if (style.onTap) {
