@@ -75,6 +75,19 @@ public:
     virtual void emitLoadModuleDuration(const StringBox& module, int64_t totalDuration, int64_t ownDuration) {};
     virtual void emitRunUpdatesInnerTimePercentage(const StringBox& module, int64_t percentage) {};
 
+    // Module archive decompression A/B telemetry.
+    // Exactly one of these counters is incremented per ValdiModuleArchive::decompress call.
+    virtual void emitModuleArchiveMmapSuccess(const StringBox& module) {};
+    virtual void emitModuleArchiveMmapFallback(const StringBox& module) {};
+    virtual void emitModuleArchiveHeap(const StringBox& module) {};
+    // Wall-clock time spent decompressing a module archive (either backing).
+    virtual void emitModuleDecompressLatency(const StringBox& module, const MetricsDuration& duration) {};
+    // Mmap region created and decompressed successfully, but std::rename of the
+    // tmp file onto the cache path failed. The returned MmapBuffer is still
+    // valid for the session (the inode is kept alive while mapped); this
+    // counter exists so the A/B can observe and alert on the publish failure.
+    virtual void emitModuleArchiveMmapPublishFail(const StringBox& module) {};
+
     static ScopedMetrics scopedOnScrollLatency(const Ref<Metrics>& metrics,
                                                const StringBox& module,
                                                const StringBox& backend);

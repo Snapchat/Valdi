@@ -195,7 +195,6 @@ SharedRuntime RuntimeManager::createRuntime(const Shared<IResourceLoader>& resou
     std::vector<std::shared_ptr<::snap::valdi_core::ModuleFactory>> moduleFactories;
     std::vector<RegisteredTypeConverter> typeConverters;
     std::vector<Ref<IRuntimeManagerListener>> listeners;
-    Ref<ValdiRuntimeTweaks> runtimeTweaks;
     Ref<AttributionResolver> attributionResolver;
     Ref<Metrics> metrics;
 
@@ -209,13 +208,22 @@ SharedRuntime RuntimeManager::createRuntime(const Shared<IResourceLoader>& resou
         moduleFactories = _registeredModuleFactories;
         typeConverters = _registeredTypeConverters;
         listeners = _listeners;
-        runtimeTweaks = _runtimeTweaks;
         attributionResolver = _attributionResolver;
         metrics = _metrics;
         autoRenderDisabled = _loadOperationsCount > 0;
+        // Apply state that has a peer RuntimeManager::set*() iterating runtimes
+        // while still holding _mutex. If we read into a local and applied after
+        // releasing the lock, a concurrent setter could interleave: it would
+        // see the just-added runtime in its snapshot and apply the new value
+        // to it, and we would then overwrite with our stale local copy.
+        //
+        // Runtime::set*() below only takes the ResourceManager's mutex (a
+        // different one), so there is no lock-inversion risk. This mirrors how
+        // the peer setters (e.g. setMmapCacheDirectory, setTweakValueProvider)
+        // already operate on runtimes they iterate.
+        runtime->setMmapCacheDirectory(_mmapCacheDirectory);
+        runtime->setRuntimeTweaks(_runtimeTweaks);
     }
-
-    runtime->setRuntimeTweaks(runtimeTweaks);
     runtime->setAutoRenderDisabled(autoRenderDisabled);
     runtime->setMetrics(metrics);
     runtime->getContextManager().setAttributionResolver(attributionResolver);
@@ -762,6 +770,14 @@ PlatformType RuntimeManager::getPlatformType() const {
 
 const Ref<JavaScriptANRDetector>& RuntimeManager::getANRDetector() const {
     return _anrDetector;
+}
+
+void RuntimeManager::setMmapCacheDirectory(const Path& path) {
+    std::lock_guard<Mutex> guard(_mutex);
+    _mmapCacheDirectory = path;
+    for (const auto& runtime : getAllRuntimes(guard)) {
+        runtime->setMmapCacheDirectory(path);
+    }
 }
 
 VALDI_CLASS_IMPL(RuntimeManager)

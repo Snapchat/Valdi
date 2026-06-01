@@ -93,7 +93,66 @@ Result<Ref<ValdiModuleArchive>> ResourceManager::getArchiveForModule(const Strin
 
     const auto& data = bundleContent.value();
 
-    auto result = ValdiModuleArchive::decompress(data.data(), data.size());
+    bool useMmap = false;
+    Path mmapCacheDir;
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        if (_runtimeTweaks != nullptr) {
+            useMmap = _runtimeTweaks->enableMmapModuleArchives() && !_mmapCacheDirectory.empty();
+        }
+        mmapCacheDir = _mmapCacheDirectory;
+    }
+
+    bool usedMmap = false;
+    bool mmapPublishFailed = false;
+    MetricsStopWatch decompressStopWatch;
+    Result<ValdiModuleArchive> result = [&]() {
+        if (useMmap) {
+            // Flat filename keyed by SHA-256 of the module path. Avoids
+            // nested directories under the cache dir, sidesteps any
+            // path-traversal concern from manifest-supplied module paths,
+            // and is deterministic across app launches (std::hash is not —
+            // libc++ may seed it randomly, which would orphan every cache
+            // file on every restart and slowly fill the user's disk).
+            auto modulePathView = modulePath.toStringView();
+            auto flatName =
+                BytesUtils::sha256String(reinterpret_cast<const Byte*>(modulePathView.data()), modulePathView.size());
+            auto mmapPath = mmapCacheDir.appending(std::string_view(flatName));
+            return ValdiModuleArchive::decompress(data.data(), data.size(), mmapPath, &usedMmap, &mmapPublishFailed);
+        }
+        return ValdiModuleArchive::decompress(data.data(), data.size());
+    }();
+    auto decompressDuration = decompressStopWatch.elapsed();
+
+    // A/B telemetry. Emit a single path counter and a latency timer per call.
+    // Failures don't get a path counter — they wouldn't tell us anything useful
+    // about realized mmap rate.
+    if (result) {
+        Ref<Metrics> metricsLocal;
+        {
+            std::lock_guard<Mutex> guard(_mutex);
+            metricsLocal = _metrics;
+        }
+        if (metricsLocal != nullptr) {
+            if (useMmap) {
+                if (usedMmap) {
+                    metricsLocal->emitModuleArchiveMmapSuccess(modulePath);
+                    // Emitted alongside Mmap_Success when the rename-into-cache step
+                    // failed; the in-memory buffer is still valid but no file was
+                    // published. Expected to be ~0 in production.
+                    if (mmapPublishFailed) {
+                        metricsLocal->emitModuleArchiveMmapPublishFail(modulePath);
+                    }
+                } else {
+                    metricsLocal->emitModuleArchiveMmapFallback(modulePath);
+                }
+            } else {
+                metricsLocal->emitModuleArchiveHeap(modulePath);
+            }
+            metricsLocal->emitModuleDecompressLatency(modulePath, decompressDuration);
+        }
+    }
+
     if (!result) {
         return result.moveError();
     }
@@ -586,6 +645,11 @@ void ResourceManager::setEnableTSN(bool enableTSN) {
 void ResourceManager::setInlineAssetsEnabled(bool inlineAssetsEnabled) {
     std::lock_guard<Mutex> guard(_mutex);
     _inlineAssetsEnabled = inlineAssetsEnabled;
+}
+
+void ResourceManager::setMmapCacheDirectory(const Path& path) {
+    std::lock_guard<Mutex> guard(_mutex);
+    _mmapCacheDirectory = path;
 }
 
 } // namespace Valdi

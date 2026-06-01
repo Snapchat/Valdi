@@ -117,6 +117,8 @@ public:
 
     void setInlineAssetsEnabled(bool inlineAssetsEnabled);
 
+    void setMmapCacheDirectory(const Path& path);
+
 private:
     Shared<IResourceLoader> _resourceLoader;
     Ref<IDiskCache> _diskCache;
@@ -131,6 +133,7 @@ private:
     bool _inlineAssetsEnabled = true;
     bool _hotReloaderEnabled;
     std::atomic_bool _lazyModulePreloadingEnabled = true;
+    Path _mmapCacheDirectory;
 
     ILogger& _logger;
     FlatMap<StringBox, Ref<Bundle>> _bundleByName;

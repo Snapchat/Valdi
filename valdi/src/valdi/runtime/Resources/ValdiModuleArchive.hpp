@@ -9,6 +9,7 @@
 
 #include "valdi_core/cpp/Utils/Bytes.hpp"
 #include "valdi_core/cpp/Utils/FlatMap.hpp"
+#include "valdi_core/cpp/Utils/PathUtils.hpp"
 #include "valdi_core/cpp/Utils/Result.hpp"
 #include "valdi_core/cpp/Utils/StringBox.hpp"
 #include <vector>
@@ -35,6 +36,26 @@ public:
     const BytesView& getDecompressedContent() const;
 
     [[nodiscard]] static Result<ValdiModuleArchive> decompress(const Byte* data, size_t len);
+
+    /**
+     * Decompress using mmap-backed storage when possible.
+     * Falls back to heap allocation if the mmap path fails (e.g. legacy modules
+     * without encoded content size).
+     *
+     * If outUsedMmap is non-null, it is set to true iff the returned archive is
+     * backed by an MmapBuffer and false iff the call fell back to a heap
+     * ByteBuffer. Useful for A/B telemetry. Untouched on error.
+     *
+     * If outMmapPublishFailed is non-null, it is set to true iff the mmap path
+     * succeeded in-memory but failed to publish the cache file to disk (the
+     * returned archive is still valid). Untouched on the heap path or on error.
+     */
+    [[nodiscard]] static Result<ValdiModuleArchive> decompress(const Byte* data,
+                                                               size_t len,
+                                                               const Path& mmapFilePath,
+                                                               bool* outUsedMmap = nullptr,
+                                                               bool* outMmapPublishFailed = nullptr);
+
     [[nodiscard]] static Result<ValdiModuleArchive> deserialize(BytesView decompressedContent);
 
     bool operator==(const ValdiModuleArchive& other) const;

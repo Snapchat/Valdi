@@ -200,6 +200,12 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
         _cppInstance->postInit();
         NSString *bundleIdentifier = [NSBundle mainBundle].bundleIdentifier;
         _cppInstance->setApplicationId(ValdiIOS::StringFromNSString(bundleIdentifier));
+
+        NSString *cachesDir = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject;
+        if (cachesDir) {
+            NSURL *mmapCacheURL = [[NSURL fileURLWithPath:cachesDir] URLByAppendingPathComponent:@"valdi_mmap_cache"];
+            _cppInstance->setMmapCacheDirectory(Valdi::Path(ValdiIOS::StringFromNSString(mmapCacheURL.path)));
+        }
         if ([NSThread isMainThread]) {
             _cppInstance->getMainThreadManager().markCurrentThreadIsMainThread();
         }

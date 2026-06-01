@@ -127,4 +127,8 @@ bool ValdiRuntimeTweaks::useTopDownMoveOrder() const {
     return _tweakValueProvider->getInt(configKey, 0) > 0;
 }
 
+bool ValdiRuntimeTweaks::enableMmapModuleArchives() const {
+    return getConfigKey("VALDI_ENABLE_MMAP_MODULE_ARCHIVES");
+}
+
 } // namespace Valdi
