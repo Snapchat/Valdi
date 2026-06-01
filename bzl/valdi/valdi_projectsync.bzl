@@ -61,9 +61,13 @@ def _get_files_output_paths(ctx, module_name, module_directory):
     strings_json_srcs = ctx.files.strings_json_srcs
     outputs += get_strings_dts_path(_TYPESCRIPT_GENERATED_TS_DIR, module_name, strings_json_srcs)
 
-    # res.ts
+    # res.ts (and res/<subdir>.ts for nested resource dirs)
     for res_dir in get_resources_dirs(ctx.files.res):
-        res_file = paths.join(_TYPESCRIPT_GENERATED_TS_DIR, module_name, "{}.ts".format(res_dir))
+        if res_dir == "res":
+            ts_basename = "res.ts"
+        else:
+            ts_basename = paths.join("res", res_dir + ".ts")
+        res_file = paths.join(_TYPESCRIPT_GENERATED_TS_DIR, module_name, ts_basename)
         outputs.append(res_file)
 
     return outputs
