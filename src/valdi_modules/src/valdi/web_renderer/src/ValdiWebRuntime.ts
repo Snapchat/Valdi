@@ -175,6 +175,7 @@ class Runtime {
   makeAssetFromUrl(url: string) {
     return {
       path: url,
+      src: url,
       width: 100,
       height: 100,
     };
@@ -307,26 +308,44 @@ class Runtime {
   }
 
   makeAssetFromBytes(bytes: ArrayBuffer) {
+    const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    let binary = '';
+    for (let i = 0; i < view.length; i++) {
+      binary += String.fromCharCode(view[i]);
+    }
+    const src = 'data:image/png;base64,' + btoa(binary);
     return {
       path: "",
+      src,
       width: 100,
       height: 100,
     };
   }
 
   makeDirectionalAsset(ltrAsset: any, rtlAsset: any) {
+    const isRtl = typeof document !== 'undefined' && document.dir === 'rtl';
+    const asset = isRtl ? rtlAsset : ltrAsset;
+    if (typeof asset === 'string') {
+      return { path: asset, src: asset, width: 100, height: 100 };
+    }
     return {
-      path: "",
-      width: 100,
-      height: 100,
+      path: asset?.path ?? "",
+      src: asset?.src ?? asset?.path ?? "",
+      width: asset?.width ?? 100,
+      height: asset?.height ?? 100,
     };
   }
 
   makePlatformSpecificAsset(defaultAsset: any, platformAssetOverrides: any) {
+    const asset = defaultAsset;
+    if (typeof asset === 'string') {
+      return { path: asset, src: asset, width: 100, height: 100 };
+    }
     return {
-      path: "",
-      width: 100,
-      height: 100,
+      path: asset?.path ?? "",
+      src: asset?.src ?? asset?.path ?? "",
+      width: asset?.width ?? 100,
+      height: asset?.height ?? 100,
     };
   }
 
