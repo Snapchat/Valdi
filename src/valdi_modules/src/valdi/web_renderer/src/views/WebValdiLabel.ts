@@ -40,8 +40,21 @@ export class WebValdiLabel extends WebValdiLayout {
         }
         return;
       case 'numberOfLines':
-        // Not yet implemented
-        // If this falls through to the super call it'll break things.
+        if (attributeValue && attributeValue > 0) {
+          Object.assign(this.htmlElement.style, {
+            display: '-webkit-box',
+            WebkitLineClamp: String(attributeValue),
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          });
+        } else {
+          Object.assign(this.htmlElement.style, {
+            display: 'inline',
+            WebkitLineClamp: '',
+            WebkitBoxOrient: '',
+            overflow: 'visible',
+          });
+        }
         return;
     }
 

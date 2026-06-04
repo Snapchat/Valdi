@@ -7,6 +7,9 @@ export class WebValdiScroll extends WebValdiLayout {
   private _fadingEdgeLength: number = 0;
   private _fadingEdgeStartEnabled: boolean = true;
   private _fadingEdgeEndEnabled: boolean = true;
+  private _pagingEnabled: boolean = false;
+  private _pagingObserver?: MutationObserver;
+  private _scrollListeners: { type: string; handler: EventListener }[] = [];
 
   createHtmlElement(): HTMLElement {
     const element = super.createHtmlElement();
@@ -21,10 +24,22 @@ export class WebValdiScroll extends WebValdiLayout {
     return element;
   }
 
+  destroy() {
+    if (this._onScrollEndTimer !== null) {
+      clearTimeout(this._onScrollEndTimer);
+    }
+    this._pagingObserver?.disconnect();
+    for (const { type, handler } of this._scrollListeners) {
+      this.htmlElement.removeEventListener(type, handler);
+    }
+    this._scrollListeners = [];
+    super.destroy();
+  }
+
   changeAttribute(attributeName: string, attributeValue: any): void {
     switch (attributeName) {
       case "onScroll":
-        this.htmlElement.addEventListener('scroll', () => {
+        this._replaceScrollListener('onScroll', 'scroll', (() => {
           if (typeof attributeValue === 'function') {
             attributeValue({
               contentOffset: {
@@ -41,10 +56,10 @@ export class WebValdiScroll extends WebValdiLayout {
               },
             });
           }
-        });
+        }) as EventListener);
         return;
       case "onScrollEnd":
-        this.htmlElement.addEventListener('scroll', () => {
+        this._replaceScrollListener('onScrollEnd', 'scroll', (() => {
           if (this._onScrollEndTimer !== null) {
             clearTimeout(this._onScrollEndTimer);
           }
@@ -52,18 +67,15 @@ export class WebValdiScroll extends WebValdiLayout {
             if (typeof attributeValue === 'function') {
               attributeValue();
             }
-          }, 100); // 100ms delay to detect scroll end
-        });
+          }, 100);
+        }) as EventListener);
         return;
       case "onDragStart":
-        this.htmlElement.addEventListener('mousedown', attributeValue);
-        this.htmlElement.addEventListener('touchstart', attributeValue);
+        this._replaceScrollListener('onDragStart:mousedown', 'mousedown', attributeValue);
+        this._replaceScrollListener('onDragStart:touchstart', 'touchstart', attributeValue);
         return;
       case "onDragEnding":
-        // This is tricky on the web. It relates to scroll momentum.
-        // The closest web equivalent might be 'scrollend' event, but it's not widely supported.
-        // For now, we'll treat it like onScrollEnd with a slightly longer delay.
-        this.htmlElement.addEventListener('scroll', () => {
+        this._replaceScrollListener('onDragEnding', 'scroll', (() => {
           if (this._onScrollEndTimer !== null) {
             clearTimeout(this._onScrollEndTimer);
           }
@@ -72,11 +84,11 @@ export class WebValdiScroll extends WebValdiLayout {
               attributeValue();
             }
           }, 150);
-        });
+        }) as EventListener);
         return;
       case "onDragEnd":
-        this.htmlElement.addEventListener('mouseup', attributeValue);
-        this.htmlElement.addEventListener('touchend', attributeValue);
+        this._replaceScrollListener('onDragEnd:mouseup', 'mouseup', attributeValue);
+        this._replaceScrollListener('onDragEnd:touchend', 'touchend', attributeValue);
         return;
       case "onContentSizeChange":
         const observer = new ResizeObserver(entries => {
@@ -110,17 +122,28 @@ export class WebValdiScroll extends WebValdiLayout {
         // This is default browser behavior. A no-op.
         return;
       case "dismissKeyboardOnDrag":
-        this.htmlElement.addEventListener('scroll', () => {
+        this._replaceScrollListener('dismissKeyboardOnDrag', 'scroll', (() => {
           if (attributeValue && document.activeElement instanceof HTMLElement) {
             document.activeElement.blur();
           }
-        });
+        }) as EventListener);
         return;
       case "pagingEnabled":
+        this._pagingEnabled = !!attributeValue;
         if (attributeValue) {
           this.htmlElement.style.scrollSnapType = this.htmlElement.style.overflowX === 'hidden' ? 'y mandatory' : 'x mandatory';
+          this._applySnapAlignToChildren();
+          if (!this._pagingObserver) {
+            this._pagingObserver = new MutationObserver(() => this._applySnapAlignToChildren());
+            this._pagingObserver.observe(this.htmlElement, { childList: true });
+          }
         } else {
           this.htmlElement.style.scrollSnapType = '';
+          this._pagingObserver?.disconnect();
+          this._pagingObserver = undefined;
+          for (const child of Array.from(this.htmlElement.children) as HTMLElement[]) {
+            child.style.scrollSnapAlign = '';
+          }
         }
         return;
       case "horizontal":
@@ -204,6 +227,23 @@ export class WebValdiScroll extends WebValdiLayout {
         return;
     }
     super.changeAttribute(attributeName, attributeValue);
+  }
+
+  private _applySnapAlignToChildren(): void {
+    if (!this._pagingEnabled) return;
+    for (const child of Array.from(this.htmlElement.children) as HTMLElement[]) {
+      child.style.scrollSnapAlign = 'start';
+    }
+  }
+
+  private _replaceScrollListener(key: string, eventType: string, handler: EventListener) {
+    const idx = this._scrollListeners.findIndex(l => l.type === key);
+    if (idx >= 0) {
+      this.htmlElement.removeEventListener(eventType, this._scrollListeners[idx].handler);
+      this._scrollListeners.splice(idx, 1);
+    }
+    this.htmlElement.addEventListener(eventType, handler);
+    this._scrollListeners.push({ type: key, handler });
   }
 
   private _updateFadingEdge(): void {

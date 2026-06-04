@@ -136,6 +136,29 @@ describe('WebValdiImage – src resolution', () => {
   });
 });
 
+describe('WebValdiImage – error handling', () => {
+  afterEach(() => uninstallDomStubs());
+
+  it('calls onAssetLoad with zero dimensions on error', () => {
+    const { img } = makeImage();
+    let reportedW = -1;
+    let reportedH = -1;
+    img.changeAttribute('onAssetLoad', (e: { width: number; height: number }) => {
+      reportedW = e.width;
+      reportedH = e.height;
+    });
+    img.img.onerror?.({} as any);
+
+    expect(reportedW).toBe(0);
+    expect(reportedH).toBe(0);
+  });
+
+  it('sets onerror handler on the internal img element', () => {
+    const { img } = makeImage();
+    expect(img.img.onerror).not.toBeNull();
+  });
+});
+
 describe('WebValdiImage – 3x asset handling', () => {
   afterEach(() => uninstallDomStubs());
 

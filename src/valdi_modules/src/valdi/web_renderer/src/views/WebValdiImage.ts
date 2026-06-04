@@ -30,6 +30,9 @@ export class WebValdiImage extends WebValdiLayout {
       this.updateImage();
       this._onImageDecoded?.();
     };
+    this.img.onerror = () => {
+      this._onAssetLoad?.({ width: 0, height: 0 });
+    };
   }
 
   createHtmlElement() {
