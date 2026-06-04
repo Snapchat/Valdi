@@ -9,3 +9,5 @@ bazel_dep(name = "rules_android_ndk", version = "0.1.3")
 
 android_ndk_repository_extension = use_extension("@rules_android_ndk//:extension.bzl", "android_ndk_repository_extension")
 use_repo(android_ndk_repository_extension, "androidndk")
+
+register_toolchains("//:android_ndk_tools_llvm_ndk_28_0_13004108_toolchain")

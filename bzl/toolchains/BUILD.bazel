@@ -1,5 +1,6 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@rules_kotlin//kotlin:kotlin.bzl", "define_kt_toolchain")
+load("@valdi//bzl/android:ndk_tools.bzl", "android_ndk_tools_toolchain")
 load("@valdi//bzl/conditions:custom_selects.bzl", "custom_selects")
 
 KOTLIN_LANGUAGE_LEVEL = "1.8"
@@ -117,4 +118,18 @@ alias(
     name = "llvm_ndk_28_0_13004108_strip_libs",
     actual = "@androidndk//:strip_libs",
     visibility = ["//visibility:public"],
+)
+
+toolchain_type(name = "android_ndk_tools_toolchain_type")
+
+android_ndk_tools_toolchain(
+    name = "android_ndk_tools_llvm_ndk_28_0_13004108",
+    strip = ":llvm_ndk_28_0_13004108_strip",
+    strip_libs = ":llvm_ndk_28_0_13004108_strip_libs",
+)
+
+toolchain(
+    name = "android_ndk_tools_llvm_ndk_28_0_13004108_toolchain",
+    toolchain = ":android_ndk_tools_llvm_ndk_28_0_13004108",
+    toolchain_type = ":android_ndk_tools_toolchain_type",
 )

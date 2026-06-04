@@ -7,6 +7,7 @@
 # the native libraries and replace the class jar with a monolithic one.
 # Probably a good idea to write a better rule for this in the future.
 
+load("//bzl/android:ndk_tools.bzl", "ANDROID_NDK_TOOLS_TOOLCHAIN_TYPE")
 load("//bzl/android:platform_transition.bzl", "platform_transition")
 
 # From developer.android.com/studio/projects/android-library#aar-contents.
@@ -27,6 +28,7 @@ AAR_KNOWN_DIRS = [
 ]
 
 def _impl(ctx):
+    ndk_tools = ctx.toolchains[ANDROID_NDK_TOOLS_TOOLCHAIN_TYPE]
     dso_inputs = []
     cp_dsos_commands = []
 
@@ -70,7 +72,7 @@ def _impl(ctx):
                     input_file = f.path,
                     basename = f.basename,
                     compressed_basename = compressed_basename,
-                    strip = ctx.file._stripper.path,
+                    strip = ndk_tools.strip.path,
                     compressor = ctx.executable._compressor.path,
                     compression_args = " ".join(ctx.attr.compression_args),
                 ))
@@ -144,7 +146,7 @@ def _impl(ctx):
     ctx.actions.run_shell(
         outputs = [aar_dir],
         inputs = inputs,
-        tools = [ctx.executable._zipper, ctx.file._stripper, ctx.executable._compressor] + ctx.files._stripper_libs,
+        tools = [ctx.executable._zipper, ndk_tools.strip, ctx.executable._compressor] + ndk_tools.strip_libs,
         command = """
 set -euo pipefail
 {zipper} x {input_aar} -d {output_dir}
@@ -263,24 +265,6 @@ _package_aar_internal = rule(
             executable = True,
             cfg = "exec",
         ),
-        # This is bad form, and regrettably fragile; it means that we have to touch
-        # this anytime we want to update the toolchain.  More elegant solutions might be:
-        # 1) We could depend directly on the "<target>.stripped" output.  If we
-        #    pursue that path, remember also to set --stripopts; the default strip
-        #    settings are not right for us.
-        # 2) We could perhaps get strip from the toolchain indirectly, so that
-        #    we would always have the right stripper for the active toolchain.  One
-        #    example is https://github.com/bazelbuild/rules_cc/blob/master/examples/my_c_archive/my_c_archive.bzl,
-        #    except that it doesn't handle the transition - we want the android stripper,
-        #    not the host's.
-        "_stripper": attr.label(
-            default = "@snap_client_toolchains//:llvm_ndk_28_0_13004108_strip",
-            allow_single_file = True,
-        ),
-        "_stripper_libs": attr.label(
-            default = "@snap_client_toolchains//:llvm_ndk_28_0_13004108_strip_libs",
-            allow_files = True,
-        ),
         "_allowlist_function_transition": attr.label(
             default = "@bazel_tools//tools/allowlists/function_transition_allowlist",
         ),
@@ -295,6 +279,7 @@ _package_aar_internal = rule(
         ),
     },
     fragments = ["cpp"],
+    toolchains = [ANDROID_NDK_TOOLS_TOOLCHAIN_TYPE],
 )
 
 def package_aar(**kwargs):
