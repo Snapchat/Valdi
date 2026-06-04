@@ -538,6 +538,26 @@ def _get_direct_dependencies(file, files, module_yaml):
 def _get_transitive_intermediates(deps):
     return [dep[ValdiModuleInfo].intermediates for dep in deps]
 
+def build_dependency_entries(deps):
+    """Build explicit_input_list entries for dependency modules.
+
+    Args:
+        deps: An iterable of targets, each providing ValdiModuleInfo.
+
+    Returns:
+        A list of dicts with module_name, module_path, module_content, and files keys.
+    """
+    entries = []
+    for dep in deps:
+        info = dep[ValdiModuleInfo]
+        entries.append({
+            "module_name": info.name,
+            "module_path": info.base_path,
+            "module_content": info.module_definition,
+            "files": [],
+        })
+    return entries
+
 def _resolve_valdi_base_entry(valdi_base_files, for_hotreloading):
     all_files = []
     tsconfig_file_entry = None

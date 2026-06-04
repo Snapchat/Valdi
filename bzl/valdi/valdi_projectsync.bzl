@@ -1,6 +1,6 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
-load(":valdi_compiled.bzl", "ValdiModuleInfo")
+load(":valdi_compiled.bzl", "ValdiModuleInfo", "build_dependency_entries")
 load(":valdi_paths.bzl", "get_ids_yaml_dts_path", "get_resources_dirs", "get_sql_dts_paths", "get_strings_dts_path", "infer_base_output_dir", "resolve_module_dir_and_name", "resolve_relative_project_path")
 load(":valdi_run_compiler.bzl", "generate_config", "run_valdi_compiler")
 load(":valdi_toolchain_type.bzl", "VALDI_TOOLCHAIN_TYPE")
@@ -36,7 +36,9 @@ def _prepare_explicit_input_list_file(ctx, module_name):
 
     module_content = ctx.attr.target[ValdiModuleInfo].module_definition
 
-    content = json.encode_indent({"entries": [
+    dep_entries = build_dependency_entries(ctx.attr.target[ValdiModuleInfo].deps.to_list())
+
+    content = json.encode_indent({"entries": dep_entries + [
         {
             "module_name": module_name,
             "module_path": module_directory,

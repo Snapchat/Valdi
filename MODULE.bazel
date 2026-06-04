@@ -362,7 +362,6 @@ pngquant_crate.from_specs(
     name = "pngquant_crates",
     cargo_lockfile = "//third-party/pngquant:Cargo.lock",
     host_tools = "@rust_host_tools_nightly",
-    lockfile = "//third-party/pngquant:cargo-bazel-lock.json",
     supported_platform_triples = [
         "aarch64-apple-darwin",
         "x86_64-apple-darwin",
