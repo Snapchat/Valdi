@@ -222,14 +222,13 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
 
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(_willEnterForeground)
-                                                     name:@"SCLegacyUIApplicationWillEnterForegroundNotification"
+                                                     name:UIApplicationWillEnterForegroundNotification
                                                    object:nil];
 
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(_didEnterBackground)
                                                      name:UIApplicationDidEnterBackgroundNotification
                                                    object:nil];
-                                                   
         if ([UIApplication sharedApplication].applicationState != UIApplicationStateBackground) {
             _cppInstance->applicationDidResume();
         }
