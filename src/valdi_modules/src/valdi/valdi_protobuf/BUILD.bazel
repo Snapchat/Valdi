@@ -86,10 +86,12 @@ valdi_module(
         ".*/web/.*",
         ".*/node_modules/.*",
     ],
+    has_android_exports = False,
+    has_ios_exports = False,
     ios_module_name = "SCCValdiProtobuf",
     ios_output_target = "release",
     protodecl_srcs = ["test/proto.protodecl"],
-    single_file_codegen = False,
+    single_file_codegen = True,
     visibility = ["//visibility:public"],
     web_deps = [":valdi_protobuf_web"],
     web_register_native_module_id_overrides = {
