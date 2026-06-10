@@ -116,6 +116,7 @@ jobs:
     needs: [detect-changes, test-cli, test-cli-build]
     if: needs.detect-changes.outputs.cli == 'true'
     runs-on: ubuntu-latest
+    environment: npm-publish
     defaults:
       run:
         working-directory: npm_modules/cli
@@ -136,14 +137,13 @@ jobs:
         run: npm run build
 
       - name: Publish @snap/valdi to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
 
   publish-eslint-plugin:
     needs: detect-changes
     if: needs.detect-changes.outputs.eslint-plugin == 'true'
     runs-on: ubuntu-latest
+    environment: npm-publish
     defaults:
       run:
         working-directory: npm_modules/eslint-plugin-valdi
@@ -164,7 +164,5 @@ jobs:
         run: npm run build
 
       - name: Publish @snap/eslint-plugin-valdi to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
 
