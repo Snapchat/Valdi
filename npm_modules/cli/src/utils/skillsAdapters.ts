@@ -32,6 +32,9 @@ function copyDirSync(src: string, dst: string): void {
 const CLAUDE_PLUGIN_NAME = 'valdi@local';
 const CLAUDE_PLUGIN_VERSION = '1.0.0';
 
+/** Plugin keys to remove from installed_plugins.json during install (prevents conflicts). */
+export const conflictingClaudePluginKeys: string[] = [];
+
 function getClaudePluginInstallPath(): string {
   return path.join(
     os.homedir(),
@@ -41,6 +44,26 @@ function getClaudePluginInstallPath(): string {
     'local',
     'valdi',
     CLAUDE_PLUGIN_VERSION,
+  );
+}
+
+function ensureClaudePluginManifest(): void {
+  const installPath = getClaudePluginInstallPath();
+  const manifestDir = path.join(installPath, '.claude-plugin');
+  const manifestFile = path.join(manifestDir, 'plugin.json');
+  fs.mkdirSync(manifestDir, { recursive: true });
+  fs.writeFileSync(
+    manifestFile,
+    JSON.stringify(
+      {
+        name: 'valdi',
+        description: 'Valdi framework AI skills for development in the Snap monorepo',
+        version: CLAUDE_PLUGIN_VERSION,
+      },
+      null,
+      2,
+    ),
+    'utf8',
   );
 }
 
@@ -67,6 +90,13 @@ function ensureClaudePluginRegistered(): void {
     lastUpdated: now,
   };
 
+  for (const key of conflictingClaudePluginKeys) {
+    if (data.plugins[key]) {
+      delete data.plugins[key];
+      console.log(`Removed conflicting ${key} plugin (this install provides all skills).`);
+    }
+  }
+
   const existing = data.plugins[CLAUDE_PLUGIN_NAME] as Array<{ installPath: string; lastUpdated: string }> | undefined;
   if (existing && existing.length > 0) {
     existing[0]!.installPath = installPath;
@@ -77,6 +107,8 @@ function ensureClaudePluginRegistered(): void {
 
   fs.mkdirSync(path.dirname(pluginsFile), { recursive: true });
   fs.writeFileSync(pluginsFile, JSON.stringify(data, null, 4), 'utf8');
+
+  ensureClaudePluginManifest();
 }
 
 // ClaudeCodeAdapter: installs to ~/.claude/plugins/cache/local/valdi/<version>/skills/<name>/SKILL.md
