@@ -77,7 +77,10 @@ static StringBox resolveSourceMapFilePath(const StringBox& modulePath) {
     return modulePath.append(".map.json");
 }
 
-Result<Ref<ValdiModuleArchive>> ResourceManager::getArchiveForModule(const StringBox& modulePath) {
+Result<Ref<ValdiModuleArchive>> ResourceManager::getArchiveForModule(const StringBox& modulePath,
+                                                                     bool useMmap,
+                                                                     const Path& mmapCacheDir,
+                                                                     const Ref<Metrics>& metrics) {
     auto bundleFilePath = resolveModuleArchiveFilePath(modulePath);
 
     auto bundleContent = _resourceLoader->loadModuleContent(bundleFilePath);
@@ -93,15 +96,10 @@ Result<Ref<ValdiModuleArchive>> ResourceManager::getArchiveForModule(const Strin
 
     const auto& data = bundleContent.value();
 
-    bool useMmap = false;
-    Path mmapCacheDir;
-    {
-        std::lock_guard<Mutex> guard(_mutex);
-        if (_runtimeTweaks != nullptr) {
-            useMmap = _runtimeTweaks->enableMmapModuleArchives() && !_mmapCacheDirectory.empty();
-        }
-        mmapCacheDir = _mmapCacheDirectory;
-    }
+    // NOTE: do not acquire _mutex anywhere in this function. It is called from getBundle while the
+    // BundleInitializer holds the Bundle's mutex; the cleanup path (removeUnusedResources) takes
+    // _mutex and then a Bundle mutex, so taking _mutex here inverts that order and can deadlock.
+    // The mmap/metrics settings are snapshotted by getBundle under _mutex and passed in.
 
     bool usedMmap = false;
     bool mmapPublishFailed = false;
@@ -127,30 +125,23 @@ Result<Ref<ValdiModuleArchive>> ResourceManager::getArchiveForModule(const Strin
     // A/B telemetry. Emit a single path counter and a latency timer per call.
     // Failures don't get a path counter — they wouldn't tell us anything useful
     // about realized mmap rate.
-    if (result) {
-        Ref<Metrics> metricsLocal;
-        {
-            std::lock_guard<Mutex> guard(_mutex);
-            metricsLocal = _metrics;
-        }
-        if (metricsLocal != nullptr) {
-            if (useMmap) {
-                if (usedMmap) {
-                    metricsLocal->emitModuleArchiveMmapSuccess(modulePath);
-                    // Emitted alongside Mmap_Success when the rename-into-cache step
-                    // failed; the in-memory buffer is still valid but no file was
-                    // published. Expected to be ~0 in production.
-                    if (mmapPublishFailed) {
-                        metricsLocal->emitModuleArchiveMmapPublishFail(modulePath);
-                    }
-                } else {
-                    metricsLocal->emitModuleArchiveMmapFallback(modulePath);
+    if (result && metrics != nullptr) {
+        if (useMmap) {
+            if (usedMmap) {
+                metrics->emitModuleArchiveMmapSuccess(modulePath);
+                // Emitted alongside Mmap_Success when the rename-into-cache step
+                // failed; the in-memory buffer is still valid but no file was
+                // published. Expected to be ~0 in production.
+                if (mmapPublishFailed) {
+                    metrics->emitModuleArchiveMmapPublishFail(modulePath);
                 }
             } else {
-                metricsLocal->emitModuleArchiveHeap(modulePath);
+                metrics->emitModuleArchiveMmapFallback(modulePath);
             }
-            metricsLocal->emitModuleDecompressLatency(modulePath, decompressDuration);
+        } else {
+            metrics->emitModuleArchiveHeap(modulePath);
         }
+        metrics->emitModuleDecompressLatency(modulePath, decompressDuration);
     }
 
     if (!result) {
@@ -327,6 +318,16 @@ Ref<Bundle> ResourceManager::getBundle(const StringBox& bundleName) {
     auto bundleInitializer = registerBundle(bundleName);
     auto inlineAssetsEnabled = _inlineAssetsEnabled;
 
+    // Snapshot the mmap/metrics settings while we still hold _mutex. getArchiveForModule runs below
+    // while the BundleInitializer holds the Bundle's mutex; it must not take _mutex itself, or it
+    // would invert the cleanup path's (_mutex -> Bundle mutex) order and can deadlock.
+    bool useMmap = false;
+    if (_runtimeTweaks != nullptr) {
+        useMmap = _runtimeTweaks->enableMmapModuleArchives() && !_mmapCacheDirectory.empty();
+    }
+    auto mmapCacheDir = _mmapCacheDirectory;
+    auto metrics = _metrics;
+
     // We now have a lock on the Bundle itself. Release our lock so that
     // other threads can query the ResourceManager on other bundles.
     lock.unlock();
@@ -334,7 +335,7 @@ Ref<Bundle> ResourceManager::getBundle(const StringBox& bundleName) {
     auto assetPackageKey = STRING_LITERAL("res.assetpackage");
     auto hasAssetPackage = false;
 
-    auto archiveResult = getArchiveForModule(bundleName);
+    auto archiveResult = getArchiveForModule(bundleName, useMmap, mmapCacheDir, metrics);
     if (!archiveResult) {
         if (!_hotReloaderEnabled) {
             VALDI_ERROR(_logger, "Failed to load archive of Module '{}': {}", bundleName, archiveResult.error());

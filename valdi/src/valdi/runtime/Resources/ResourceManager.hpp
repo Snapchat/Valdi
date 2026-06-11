@@ -142,7 +142,13 @@ private:
     std::shared_ptr<snap::valdi_core::HTTPRequestManager> _requestManager;
     mutable Mutex _mutex;
 
-    [[nodiscard]] Result<Ref<ValdiModuleArchive>> getArchiveForModule(const StringBox& modulePath);
+    // Resolved mmap/metrics settings are passed in by the caller (getBundle) rather than read
+    // here: this runs while the caller holds the Bundle's mutex, and acquiring _mutex under that
+    // lock would invert the cleanup path's _mutex -> Bundle order and can deadlock.
+    [[nodiscard]] Result<Ref<ValdiModuleArchive>> getArchiveForModule(const StringBox& modulePath,
+                                                                      bool useMmap,
+                                                                      const Path& mmapCacheDir,
+                                                                      const Ref<Metrics>& metrics);
     void initializeBundle(BundleInitializer& bundleInitializer, Ref<ValdiModuleArchive> moduleArchive);
 
     BundleInitializer registerBundle(const StringBox& bundleName);
