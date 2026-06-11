@@ -707,6 +707,11 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
     return SCValdiTextInputSetKeyboardAppearance(_textView, keyboardAppearance);
 }
 
+- (BOOL)valdi_setTextDirection:(NSString *)textDirection
+{
+    return SCValdiTextInputSetTextDirection(_textView, textDirection);
+}
+
 - (BOOL)valdi_setEnabled:(BOOL)enabled
 {
     _textView.editable = enabled;
@@ -926,6 +931,15 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
         }
         resetBlock:^(SCValdiTextView *textView, id<SCValdiAnimatorProtocol> animator) {
             [textView valdi_setAutocorrection:nil];
+        }];
+
+    [attributesBinder bindAttribute:@"textDirection"
+        invalidateLayoutOnChange:NO
+        withStringBlock:^BOOL(SCValdiTextView *textView, NSString *attributeValue, id<SCValdiAnimatorProtocol> animator) {
+            return [textView valdi_setTextDirection:attributeValue];
+        }
+        resetBlock:^(SCValdiTextView *textView, id<SCValdiAnimatorProtocol> animator) {
+            [textView valdi_setTextDirection:nil];
         }];
 
     [attributesBinder bindAttribute:@"keyboardAppearance"

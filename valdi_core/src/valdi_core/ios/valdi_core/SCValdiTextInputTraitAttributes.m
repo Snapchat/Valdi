@@ -163,3 +163,21 @@ BOOL SCValdiTextInputSetAutocorrection(UIView<UITextInput> *view, NSString *auto
     }
     return NO;
 }
+
+BOOL SCValdiTextInputSetTextDirection(UIView<UITextInput> *view, NSString *textDirection)
+{
+    textDirection = [textDirection lowercaseString];
+    if ([textDirection isEqualToString:@"ltr"]) {
+        view.semanticContentAttribute = UISemanticContentAttributeForceLeftToRight;
+        return YES;
+    }
+    if ([textDirection isEqualToString:@"rtl"]) {
+        view.semanticContentAttribute = UISemanticContentAttributeForceRightToLeft;
+        return YES;
+    }
+    if (textDirection.length == 0 || [textDirection isEqualToString:@"locale"]) {
+        view.semanticContentAttribute = UISemanticContentAttributeUnspecified;
+        return YES;
+    }
+    return NO;
+}

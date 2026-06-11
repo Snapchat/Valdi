@@ -1128,6 +1128,13 @@ export interface CommonEditTextInterface extends LeafView, CommonTextAttributes 
   textAlign?: TextFieldTextAlign;
 
   /**
+   * Force the text direction within the text input, overriding the locale default.
+   * Useful to ensure numeric content (e.g. card numbers) always renders LTR in RTL locales.
+   * @default: "locale"
+   */
+  textDirection?: TextFieldTextDirection;
+
+  /**
    * Determines at what times the Shift key is automatically pressed,
    * thereby making the typed character a capital letter.
    * @default: "sentences"
@@ -2208,6 +2215,7 @@ export type ImageObjectFit = 'fill' | 'contain' | 'cover' | 'none';
 export type TextFieldAutocapitalization = 'sentences' | 'words' | 'characters' | 'none';
 export type TextFieldAutocorrection = 'default' | 'none';
 export type TextFieldTextAlign = 'left' | 'center' | 'right';
+export type TextFieldTextDirection = 'ltr' | 'rtl' | 'locale';
 export type TextFieldReturnKeyText = 'done' | 'go' | 'join' | 'next' | 'search' | 'send' | 'continue';
 export type TextFieldKeyboardAppearance = 'default' | 'dark' | 'light';
 export type TextFieldContentType =

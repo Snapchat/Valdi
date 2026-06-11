@@ -4,6 +4,7 @@ import android.content.Context
 import android.text.InputType
 import android.graphics.Color
 import android.text.InputFilter
+import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import com.snap.valdi.attributes.AttributesBinder
@@ -177,6 +178,13 @@ class EditTextAttributesBinder(
             false,
             this::applyEnableInlinePredictionsNoop,
             this::resetEnableInlinePredictionsNoop,
+        )
+
+        attributesBindingContext.bindStringAttribute(
+            "textDirection",
+            false,
+            this::applyTextDirection,
+            this::resetTextDirection,
         )
 
         attributesBindingContext.bindColorAttribute(
@@ -504,6 +512,19 @@ class EditTextAttributesBinder(
 
     private fun resetEnableInlinePredictionsNoop(view: ValdiEditText, animator: ValdiAnimator?) {
         // No-op
+    }
+
+    private fun applyTextDirection(editText: ValdiEditText, value: String, animator: ValdiAnimator?) {
+        editText.textDirection = when (value) {
+            "ltr" -> View.TEXT_DIRECTION_LTR
+            "rtl" -> View.TEXT_DIRECTION_RTL
+            "locale" -> View.TEXT_DIRECTION_LOCALE
+            else -> View.TEXT_DIRECTION_LOCALE // defensive fallback
+        }
+    }
+
+    private fun resetTextDirection(editText: ValdiEditText, animator: ValdiAnimator?) {
+        editText.textDirection = View.TEXT_DIRECTION_LOCALE
     }
 
     fun applyBackgroundEffectColor(view: ValdiEditText, value: Int, animator: ValdiAnimator?) {

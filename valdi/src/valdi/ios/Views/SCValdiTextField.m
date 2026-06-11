@@ -827,6 +827,15 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextField
         resetBlock:^(SCValdiTextField *textField, id<SCValdiAnimatorProtocol> animator) {
             [textField valdi_setEnableInlinePredictions:NO];
         }];
+
+    [attributesBinder bindAttribute:@"textDirection"
+        invalidateLayoutOnChange:NO
+        withStringBlock:^BOOL(SCValdiTextField *textField, NSString *attributeValue, id<SCValdiAnimatorProtocol> animator) {
+            return SCValdiTextInputSetTextDirection(textField, attributeValue);
+        }
+        resetBlock:^(SCValdiTextField *textField, id<SCValdiAnimatorProtocol> animator) {
+            SCValdiTextInputSetTextDirection(textField, nil);
+        }];
 }
 
 #pragma mark - Private property methods
