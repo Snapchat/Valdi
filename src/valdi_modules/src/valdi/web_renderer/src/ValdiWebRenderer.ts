@@ -1,25 +1,15 @@
-import { RequireFunc } from 'valdi_core/src/IModuleLoader';
 import { ComponentConstructor, IComponent } from 'valdi_core/src/IComponent';
 import { ComponentPrototype } from 'valdi_core/src/ComponentPrototype';
-declare const require: RequireFunc;
+import { Renderer } from 'valdi_core/src/Renderer';
+import { UpdateAttributeDelegate, ValdiWebRendererDelegate } from './ValdiWebRendererDelegate';
 
-// Require this to get the globals to run and setup env
+declare const require: (id: string) => any;
+
+// Bootstrap the runtime (sets up globals, moduleLoader, etc.)
 require('./ValdiWebRuntime');
 
-declare const moduleLoader: any;
-
-var customRequire = moduleLoader.resolveRequire('web_renderer/src/ValdiWebRenderer.ts');
-
-
-const { Renderer } = customRequire('valdi_core/src/Renderer');
-const rendererDelegate = customRequire('./ValdiWebRendererDelegate');
-type UpdateAttributeDelegate = typeof rendererDelegate.UpdateAttributeDelegate;
-type ValdiWebRendererDelegateType = typeof rendererDelegate.ValdiWebRendererDelegate;
-const ValdiWebRendererDelegate = rendererDelegate.ValdiWebRendererDelegate;
-
-
 export class ValdiWebRenderer extends Renderer implements UpdateAttributeDelegate {
-  delegate: ValdiWebRendererDelegateType;
+  delegate: InstanceType<typeof ValdiWebRendererDelegate>;
 
   constructor(htmlRoot: HTMLElement | ShadowRoot) {
     const delegate = new ValdiWebRendererDelegate(htmlRoot);
@@ -30,7 +20,7 @@ export class ValdiWebRenderer extends Renderer implements UpdateAttributeDelegat
   updateAttribute(elementId: number, attributeName: string, attributeValue: any) {
     super.attributeUpdatedExternally(elementId, attributeName, attributeValue);
   }
-  
+
   destroy() {
     this.delegate.onDestroyed();
   }

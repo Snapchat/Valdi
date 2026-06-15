@@ -1,5 +1,6 @@
-import type { GlobalWithModulePath, WebPolyglotModuleLoader, WebPolyglotRegistryModule } from './WebPolyglotTypes';
-declare const moduleLoader: WebPolyglotModuleLoader;
+import type { GlobalWithModulePath, WebPolyglotRegistryModule } from './WebPolyglotTypes';
+
+declare const require: (id: string) => any;
 
 /**
  * Registers a web polyglot custom-view class with the web renderer registry.
@@ -10,10 +11,7 @@ export function registerWebPolyglotViewClassOrThrow(
   className: string,
   factory: (container: HTMLElement) => void,
 ): void {
-  const runtimeGlobal = globalThis as GlobalWithModulePath;
-  const modulePath = runtimeGlobal.module?.path ?? fallbackModulePath;
-  const customRequire = moduleLoader.resolveRequire(modulePath);
-  const registryModule = customRequire('web_renderer/src/WebPolyglotRegistry') as WebPolyglotRegistryModule;
+  const registryModule = require('web_renderer/src/WebPolyglotRegistry') as WebPolyglotRegistryModule;
   if (!registryModule.registerWebPolyglotViewClass) {
     throw new Error('web_renderer/src/WebPolyglotRegistry.registerWebPolyglotViewClass is unavailable');
   }

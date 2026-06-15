@@ -25,10 +25,11 @@
 
   const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
   if (!isBrowser) {
-    // Valdi is probably alone in this js runtime, overwrite whatever globals you want
+    // Native runtime: override global require so bare module paths resolve via moduleLoader
     global.require = instance.load.bind(instance);
   } else {
-    // Valdi is not alone on the web, don't overwrite require for everyone.
+    // Deprecated: valdiRequire remains for backwards compatibility with existing
+    // consumers. Use standard require() with package-relative paths instead.
     global.valdiRequire = instance.load.bind(instance);
   }
   global.moduleLoader = instance;

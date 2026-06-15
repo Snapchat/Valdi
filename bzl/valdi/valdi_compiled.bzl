@@ -1521,8 +1521,10 @@ def _prepare_arguments(args, log_level, localization_mode, js_bytecode_format, c
 
     if enable_web:
         args.add("--web")
-        if disable_minify_web:
-            args.add("--disable-minify-web")
+
+        # Always disable minification for web — webpack handles its own minification.
+        # This preserves @valdi-require comment annotations for the Python transform.
+        args.add("--disable-minify-web")
 
     # Allow to pass the timeout via --action_env parameter
     args.add("--timeout", shell_env.get("VALDI_COMPILER_TIMEOUT_SECONDS", COMPILER_TIMEOUT_SECONDS))

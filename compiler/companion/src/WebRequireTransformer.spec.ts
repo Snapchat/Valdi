@@ -21,18 +21,14 @@ function transform(input: string): string {
 }
 
 const MARKER = '/* @valdi-dynamic */';
+const STRIP_START = '/* @valdi-web-strip-start */';
+const STRIP_END = '/* @valdi-web-strip-end */';
 
 describe('WebRequireTransformer', () => {
   describe('string literal requires are untouched', () => {
     it('keeps single-arg string require', () => {
       const result = transform(`const x = require("DeviceBridge");`);
       expect(result).toContain('require("DeviceBridge")');
-      expect(result).not.toContain(MARKER);
-    });
-
-    it('keeps multi-arg string require', () => {
-      const result = transform(`const x = require("DeviceBridge", true);`);
-      expect(result).toContain('require("DeviceBridge", true)');
       expect(result).not.toContain(MARKER);
     });
 
@@ -80,8 +76,42 @@ describe('WebRequireTransformer', () => {
     });
   });
 
+  describe('string-literal multi-arg requires are wrapped in sentinels', () => {
+    it('wraps require with two extra args', () => {
+      const result = transform(`const x = require("DeviceBridge", true, true);`);
+      expect(result).toContain(`${STRIP_START} require("DeviceBridge", true, true) ${STRIP_END}`);
+    });
+
+    it('wraps require with one extra arg', () => {
+      const result = transform(`const x = require("Cof", true);`);
+      expect(result).toContain(`${STRIP_START} require("Cof", true) ${STRIP_END}`);
+    });
+
+    it('does not wrap single-arg requires', () => {
+      const result = transform(`const x = require("DeviceBridge");`);
+      expect(result).not.toContain(STRIP_START);
+      expect(result).not.toContain(STRIP_END);
+    });
+
+    it('does not wrap variable-first-arg requires', () => {
+      const result = transform(`const x = require(modulePath, true);`);
+      expect(result).not.toContain(STRIP_START);
+      expect(result).toContain(MARKER);
+    });
+
+    it('handles single-quoted strings', () => {
+      const result = transform(`const x = require('Cof', true);`);
+      expect(result).toContain(`${STRIP_START} require('Cof', true) ${STRIP_END}`);
+    });
+
+    it('preserves nested call args between sentinels', () => {
+      const result = transform(`const x = require("X", getFlag(), other(1, 2));`);
+      expect(result).toContain(`${STRIP_START} require("X", getFlag(), other(1, 2)) ${STRIP_END}`);
+    });
+  });
+
   describe('mixed requires in one file', () => {
-    it('only annotates variable requires', () => {
+    it('annotates variable requires and wraps string-literal multi-arg requires', () => {
       const input = `
         const a = require("DeviceBridge");
         const b = require(dynamicPath, true);
@@ -90,9 +120,11 @@ describe('WebRequireTransformer', () => {
       const result = transform(input);
       expect(result).toContain('require("DeviceBridge")');
       expect(result).toContain(`${MARKER} require(dynamicPath, true)`);
-      expect(result).toContain('require("Cof", true)');
-      // Only one annotation
+      expect(result).toContain(`${STRIP_START} require("Cof", true) ${STRIP_END}`);
+      // One dynamic annotation, one strip sentinel pair
       expect((result.match(/@valdi-dynamic/g) || []).length).toBe(1);
+      expect((result.match(/@valdi-web-strip-start/g) || []).length).toBe(1);
+      expect((result.match(/@valdi-web-strip-end/g) || []).length).toBe(1);
     });
   });
 });

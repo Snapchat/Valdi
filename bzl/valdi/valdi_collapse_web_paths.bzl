@@ -20,7 +20,6 @@ _REGISTER_NATIVE_EXCLUDE_SUBSTRINGS = [
     "/test/",
     ".test.",
     ".spec.",
-    "_debugging/",  # Optional/debug-only modules (e.g. ..._debugging/web/); not bundled in web package
 ]
 
 def _should_register_native_module(dest_path):
@@ -41,7 +40,10 @@ def _is_native_module_js(rel):
 
 def _should_exclude_from_package(short_path):
     """True if this file should not be copied into the collapsed package (test files, tree root, or unregistered native .js)."""
-    for sub in _REGISTER_NATIVE_EXCLUDE_SUBSTRINGS:
+
+    # Exclude test files but NOT debug modules — debug modules may be
+    # transitive deps whose compiled JS is needed by the web bundler.
+    for sub in ["/test/", ".test.", ".spec."]:
         if sub in short_path:
             return True
 
@@ -49,9 +51,10 @@ def _should_exclude_from_package(short_path):
     idx = short_path.rfind("web_native")
     if idx >= 0 and not short_path[idx + len("web_native"):].lstrip("/"):
         return True
-    d = _dest_native(short_path)
-    if d.endswith(".js") and not _should_register_native_module(d):
-        return True
+
+    # Don't exclude native .js based on registration — all native web .js
+    # files should be in the package for shim resolution. Registration
+    # exclusion only affects auto-registration in RegisterNativeModules.js.
     return False
 
 def _dest(rel):
@@ -209,12 +212,14 @@ def _impl(ctx):
         override_ids = [s.strip() for s in override_raw.split(",") if s.strip()]
 
         # Collect all unique paths that need shims + all module IDs for auto-registration.
+        # Bare names (no "/") like "Graphene" get a shim at src/Graphene.js so
+        # webpack resolve.modules can find them via require('Graphene').
         all_paths = {}
         all_paths[subpath] = True
-        if "/" in default_mid:
+        if default_mid:
             all_paths[default_mid] = True
         for mid in override_ids:
-            if "/" in mid:
+            if mid:
                 all_paths[mid] = True
 
         # Collect ALL module IDs (including magic strings) for auto-registration
@@ -239,73 +244,10 @@ def _impl(ctx):
 
     ctx.actions.write(shim_manifest, "\n".join(shim_lines) + "\n")
 
-    # Python script for native module require() rewriting (string-literal only).
-    # Multi-arg and variable requires are handled by the AST transformer in the
-    # TypeScript companion (WebRequireTransformer.ts).
-    transform_script = ctx.actions.declare_file(ctx.label.name + "_transform.py")
-    ctx.actions.write(
-        output = transform_script,
-        content = """
-import json, os, sys, re
-
-with open(sys.argv[1]) as f:
-    mapping = json.load(f)
-src_dir = sys.argv[2]
-pkg_name = sys.argv[3] if len(sys.argv) > 3 else ''
-
-for root, dirs, files in os.walk(src_dir):
-    for fname in files:
-        if not fname.endswith('.js'):
-            continue
-        fpath = os.path.join(root, fname)
-        with open(fpath, 'r') as f:
-            content = f.read()
-        if 'require(' not in content and 'moduleLoader.load(' not in content:
-            continue
-        changed = False
-
-        # Rewrite native module names to subpaths.
-        # require() gets the full package path for bundler resolution.
-        # moduleLoader.load() keeps bare subpath (moduleLoader uses IDs, not package paths).
-        for old_id, new_id in mapping.items():
-            for q in ['"', "'"]:
-                old1 = 'require(' + q + old_id + q + ')'
-                new1 = 'require(' + q + pkg_name + '/' + new_id + q + ')' if pkg_name else 'require(' + q + new_id + q + ')'
-                if old1 in content:
-                    content = content.replace(old1, new1)
-                    changed = True
-                old2 = 'moduleLoader.load(' + q + old_id + q
-                new2 = 'moduleLoader.load(' + q + new_id + q
-                if old2 in content:
-                    content = content.replace(old2, new2)
-                    changed = True
-
-        # Convert remaining magic-string requires (not in mapping = no web impl)
-        # to globalThis.moduleLoader.load so webpack doesn't fail.
-        # Skip names that look like npm packages: contain /, ., -, @, or start
-        # with lowercase (npm packages are lowercase; Valdi native modules use
-        # PascalCase like DeviceBridge, Cof, AppTheme).
-        req_pat = re.compile("require\\\\(([\\x22\\x27])(.*?)\\\\1\\\\)")
-        for match in req_pat.finditer(content):
-            q = match.group(1)
-            name = match.group(2)
-            if '/' in name or name.startswith('.') or '-' in name or '@' in name:
-                continue
-            if name in mapping:
-                continue
-            if name and name[0].islower():
-                continue
-            old = 'require(' + q + name + q + ')'
-            new = 'globalThis.moduleLoader.load(' + q + name + q + ')'
-            if old in content:
-                content = content.replace(old, new)
-                changed = True
-
-        if changed:
-            with open(fpath, 'w') as f:
-                f.write(content)
-""",
-    )
+    # No Python require transform needed — the companion AST transformer handles
+    # variable requires (→ moduleLoader.load) and PrependWebJsProcessor strips
+    # extra args from string-literal requires. Shims + resolve.modules handle
+    # native module name resolution.
 
     # Python script for generating package.json exports
     exports_script = ctx.actions.declare_file(ctx.label.name + "_exports.py")
@@ -326,9 +268,13 @@ if os.path.isdir(src_dir):
     for mod in sorted(os.listdir(src_dir)):
         mod_dir = os.path.join(src_dir, mod)
         if os.path.isdir(mod_dir):
-            # Per-module wildcard exports for subpath resolution
             exports['./' + mod + '/src/*'] = {'types': './src/' + mod + '/src/*.d.ts', 'default': './src/' + mod + '/src/*.js'}
             exports['./' + mod + '/*'] = {'default': './src/' + mod + '/*.js'}
+            # Directory-as-module: ./mod/src -> ./src/mod/src/index.js
+            mod_src_index = os.path.join(mod_dir, 'src', 'index.js')
+            if os.path.isfile(mod_src_index):
+                entry = {'./' + mod + '/src': {'types': './src/' + mod + '/src/index.d.ts', 'default': './src/' + mod + '/src/index.js'}}
+                exports.update(entry)
 
 native_dir = os.path.join(out_dir, 'native')
 if os.path.isdir(native_dir):
@@ -336,6 +282,18 @@ if os.path.isdir(native_dir):
 
 # Backward compat: existing @snapchat/PKG/src/... import paths
 exports['./src/*'] = {'default': './src/*.js'}
+# Directory-as-module for all index.js under src/
+for dirpath, dirnames, filenames in os.walk(src_dir):
+    if 'index.js' in filenames:
+        rel = os.path.relpath(dirpath, out_dir)
+        key = './' + rel
+        if key not in exports:
+            dts = './' + rel + '/index.d.ts'
+            js = './' + rel + '/index.js'
+            entry = {'default': js}
+            if os.path.isfile(os.path.join(dirpath, 'index.d.ts')):
+                entry = {'types': dts, 'default': js}
+            exports[key] = entry
 
 pkg['exports'] = exports
 
@@ -405,15 +363,138 @@ with open(out_path, 'w') as f:
             f.write("  '%s': typeof import('./%s');\\n" % (mid, imp))
     f.write('}\\n\\n')
 
-    f.write('declare global {\\n')
-    f.write('  var __valdiModuleOverrides: Partial<ValdiModuleOverrides> | undefined;\\n\\n')
-    f.write('  var moduleLoader: {\\n')
+    # Augment IModuleLoader — typed registerModule/load via ValdiModuleMap.
+    # Works regardless of how moduleLoader is obtained (import or global).
+    imodule_path = pkg_name + '/src/valdi_core/src/IModuleLoader' if pkg_name else 'valdi_core/src/IModuleLoader'
+    f.write("declare module '%s' {\\n" % imodule_path)
+    f.write('  interface IModuleLoader {\\n')
     f.write('    registerModule<K extends string>(id: K, factory: () => K extends keyof ValdiModuleMap ? ValdiModuleMap[K] : unknown): void;\\n')
     f.write('    load<K extends string>(id: K): K extends keyof ValdiModuleMap ? ValdiModuleMap[K] : unknown;\\n')
-    f.write('    hasModuleFactory(id: string): boolean;\\n')
-    f.write('  };\\n')
+    f.write('  }\\n')
     f.write('}\\n\\n')
+
+    # Global declaration for __valdiModuleOverrides
+    f.write('declare global {\\n')
+    f.write('  var __valdiModuleOverrides: Partial<ValdiModuleOverrides> | undefined;\\n')
+    f.write('}\\n\\n')
+
     f.write('export {};\\n')
+""",
+    )
+
+    # Python script for rewriting internal bare requires to relative paths.
+    # Handles both bare native names (Graphene → ./graphene/Graphene.js)
+    # and path-style internal requires (valdi_core/src/JSX → ../../valdi_core/src/JSX.js).
+    # With --validate flag, checks for remaining bare internal requires and fails if found.
+    bare_require_script = ctx.actions.declare_file(ctx.label.name + "_bare_require.py")
+    ctx.actions.write(
+        output = bare_require_script,
+        content = """
+import json, os, sys
+
+src_dir = sys.argv[1]
+native_map_path = sys.argv[2] if len(sys.argv) > 2 else ''
+validate_only = len(sys.argv) > 3 and sys.argv[3] == '--validate'
+
+# Build index of all .js files in src/ (keys without .js extension)
+internal = set()
+for root, _, files in os.walk(src_dir):
+    for fname in files:
+        if fname.endswith('.js'):
+            rel = os.path.relpath(os.path.join(root, fname), src_dir)
+            internal.add(rel[:-3])
+
+# Bare native name rewrites from native_module_map.json (no '/' in key)
+bare_names = {}
+if native_map_path:
+    try:
+        with open(native_map_path) as f:
+            bare_names = {k: v for k, v in json.load(f).items() if '/' not in k}
+    except Exception:
+        pass
+
+# Vendored libraries: short npm-style name -> internal path.
+# These are libraries copied into the source tree that TypeScript's
+# importHelpers / paths config resolves by short name. The compiler
+# leaves bare requires for these (they look like npm deps), so we
+# resolve them here.
+# Per-module packaging note: when modules are split into separate npm
+# packages, each package that uses tslib will need its own copy (or
+# list it as a real npm dependency). The alias here works because the
+# monolith has a single src/ tree where valdi_core/src/tslib.js is
+# always reachable by relative path from any module.
+# Bare names that map to vendored copies inside the monolith. Strict package
+# managers (pnpm, yarn PnP) won't hoist these from transitive deps, so we
+# rewrite them to relative paths. Extend this map if a consumer hits an
+# unresolved bare require that works under npm but fails under pnpm.
+vendored_aliases = {'tslib': 'valdi_core/src/tslib'}
+bare_names.update(vendored_aliases)
+
+def find_requires(content):
+    found = set()
+    for quote in ("'", '"'):
+        target = "require(" + quote
+        i = 0
+        while True:
+            idx = content.find(target, i)
+            if idx == -1:
+                break
+            start = idx + len(target)
+            end = content.find(quote, start)
+            if end == -1:
+                break
+            found.add(content[start:end])
+            i = end + 1
+    return found
+
+errors = []
+rewritten = 0
+for root, _, files in os.walk(src_dir):
+    for fname in files:
+        if not fname.endswith('.js'):
+            continue
+        fpath = os.path.join(root, fname)
+        with open(fpath) as f:
+            content = f.read()
+
+        requires = find_requires(content)
+        file_dir = os.path.relpath(os.path.dirname(fpath), src_dir)
+        changes = {}
+
+        for arg in requires:
+            if arg.startswith('.') or arg.startswith('@'):
+                continue
+            resolved = bare_names.get(arg, arg)
+            key = resolved[:-3] if resolved.endswith('.js') else resolved
+            if key not in internal:
+                continue
+            if validate_only:
+                errors.append(os.path.relpath(fpath, src_dir) + ': require(' + arg + ')')
+                continue
+            target_path = key + '.js'
+            rel = os.path.relpath(target_path, file_dir)
+            if not rel.startswith('.'):
+                rel = './' + rel
+            changes[arg] = rel
+
+        if changes:
+            for old_arg, new_arg in changes.items():
+                for quote in ("'", '"'):
+                    old = "require(" + quote + old_arg + quote + ")"
+                    new = "require(" + quote + new_arg + quote + ")"
+                    content = content.replace(old, new)
+            rewritten += 1
+            with open(fpath, 'w') as f:
+                f.write(content)
+
+if validate_only:
+    if errors:
+        sys.stderr.write('ERROR: Bare internal requires remain after rewrite:\\n')
+        for e in sorted(errors):
+            sys.stderr.write('  ' + e + '\\n')
+        sys.exit(1)
+else:
+    sys.stderr.write('Rewrote internal requires in ' + str(rewritten) + ' files\\n')
 """,
     )
 
@@ -425,19 +506,29 @@ with open(out_path, 'w') as f:
         is_executable = True,
         content = """#!/usr/bin/env bash
 set -euo pipefail
-OUT="$1"; MAN="$2"; PKG_NAME="$3"; NATIVE_MAP="$4"; TRANSFORM_SCRIPT="$5"; SHIM_MAN="$6"; EXPORTS_SCRIPT="$7"; OVERRIDES_SCRIPT="$8"; STRINGS_MAN="$9"; DTS_MAN="${10}"
+OUT="$1"; MAN="$2"; PKG_NAME="$3"; NATIVE_MAP="$4"; SHIM_MAN="$5"; EXPORTS_SCRIPT="$6"; OVERRIDES_SCRIPT="$7"; STRINGS_MAN="$8"; DTS_MAN="$9"; BARE_REQ_SCRIPT="${10}"
+[ -d "$OUT" ] && chmod -R u+w "$OUT" 2>/dev/null || true
 rm -rf "$OUT"; mkdir -p "$OUT"
 
 # ── Step 1: Copy files from manifest ──
+# cp preserves mode from source by default and bazel inputs are read-only,
+# so the just-copied files are read-only too. Subsequent overwrites by
+# a later overlapping entry would fail. Manifest dedup is by exact dest
+# path, so dir-vs-file overlaps aren't caught — handle via post-copy
+# chmod (scoped to just the freshly-written subtree) and rm -f before
+# file overwrites. chmod stays inside the action's own output dir.
 while IFS=$'\\t' read -r SRC DEST; do
   [ -z "$SRC" ] && continue
   if [ -d "$SRC" ]; then
     mkdir -p "$OUT/$DEST"
     cp -R "$SRC/." "$OUT/$DEST/"
+    chmod -R u+w "$OUT/$DEST" 2>/dev/null || true
   else
     D="$OUT/$(dirname "$DEST")"
     mkdir -p "$D"
+    rm -f "$OUT/$DEST"
     cp -f "$SRC" "$OUT/$DEST"
+    chmod u+w "$OUT/$DEST" 2>/dev/null || true
   fi
 done < "$MAN"
 
@@ -457,49 +548,54 @@ if [ -f "$DTS_MAN" ]; then
     DEST="$OUT/src/$MOD_NAME/$REL"
     DEST_DIR=$(dirname "$DEST")
     mkdir -p "$DEST_DIR"
+    # rm -f the dest first: Step 1's cp -R preserves mode from bazel inputs
+    # (read-only). Without this, cp -f can't overwrite the existing read-only
+    # destination file. Avoid chmod-ing bazel-tracked output paths.
+    rm -f "$DEST"
     cp -f "$DTS_SRC" "$DEST"
   done < "$DTS_MAN"
 fi
 
 # ── Step 2: Rewrite .d.ts imports to use full package paths ──
-find "$OUT" -name "*.d.ts" -type f | while read -r file; do
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' -E "s|from '([a-zA-Z0-9_.-]+/src/[^']+)'|from '${PKG_NAME}/src/\\1'|g" "$file"
-    sed -i '' -E "s|from \\"([a-zA-Z0-9_.-]+/src/[^\\"]+)\\"|from \\"${PKG_NAME}/src/\\1\\"|g" "$file"
-    sed -i '' -E "s|import '([a-zA-Z0-9_.-]+/src/[^']+)'|import '${PKG_NAME}/src/\\1'|g" "$file"
-    sed -i '' -E "s|import \\"([a-zA-Z0-9_.-]+/src/[^\\"]+)\\"|import \\"${PKG_NAME}/src/\\1\\"|g" "$file"
-  else
-    sed -i -E "s|from '([a-zA-Z0-9_.-]+/src/[^']+)'|from '${PKG_NAME}/src/\\1'|g" "$file"
-    sed -i -E "s|from \\"([a-zA-Z0-9_.-]+/src/[^\\"]+)\\"|from \\"${PKG_NAME}/src/\\1\\"|g" "$file"
-    sed -i -E "s|import '([a-zA-Z0-9_.-]+/src/[^']+)'|import '${PKG_NAME}/src/\\1'|g" "$file"
-    sed -i -E "s|import \\"([a-zA-Z0-9_.-]+/src/[^\\"]+)\\"|import \\"${PKG_NAME}/src/\\1\\"|g" "$file"
-  fi
-done
+# Write sed script to a temp file to avoid shell quoting issues with find -exec.
+# Batches all non-native .d.ts via find -exec + (one sed process for thousands of files).
+DTS_SED_SCRIPT="$OUT/_dts_rewrite.sed"
+cat > "$DTS_SED_SCRIPT" <<SEDEOF
+s|from '([a-zA-Z0-9_.-]+/src/[^']+)'|from '${PKG_NAME}/src/\\1'|g
+s|from "([a-zA-Z0-9_.-]+/src/[^"]+)"|from "${PKG_NAME}/src/\\1"|g
+s|import '([a-zA-Z0-9_.-]+/src/[^']+)'|import '${PKG_NAME}/src/\\1'|g
+s|import "([a-zA-Z0-9_.-]+/src/[^"]+)"|import "${PKG_NAME}/src/\\1"|g
+SEDEOF
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  find "$OUT" -not -path "$OUT/native/*" -name "*.d.ts" -type f -exec sed -i '' -E -f "$DTS_SED_SCRIPT" {} +
+else
+  find "$OUT" -not -path "$OUT/native/*" -name "*.d.ts" -type f -exec sed -i -E -f "$DTS_SED_SCRIPT" {} +
+fi
 
-# ── Step 2c: Fix native .d.ts imports with broken ../src/ paths ──
-# Step 2 rewrites "module/src/File" to "PKG/src/module/src/File" but native
-# .d.ts files had relative imports that become "PKG/src/../src/File".
-# Fix: for each native .d.ts at native/<module>/web/*, replace
-# "PKG/src/../src/" with "PKG/src/<module>/src/".
+# Step 2b: Native .d.ts need additional fixups for ../src/ paths (per-module).
 if [ -d "$OUT/native" ]; then
   find "$OUT/native" -name "*.d.ts" -type f | while read -r file; do
     REL="${file#"$OUT/native/"}"
     MOD_NAME="${REL%%/*}"
     if [[ "$OSTYPE" == "darwin"* ]]; then
-      sed -i '' "s|${PKG_NAME}/src/\\.\\./${MOD_NAME}/src/|${PKG_NAME}/src/${MOD_NAME}/src/|g" "$file"
-      sed -i '' "s|${PKG_NAME}/src/\\.\\./src/|${PKG_NAME}/src/${MOD_NAME}/src/|g" "$file"
+      sed -i '' -E \
+        -f "$DTS_SED_SCRIPT" \
+        -e "s|${PKG_NAME}/src/\\.\\./${MOD_NAME}/src/|${PKG_NAME}/src/${MOD_NAME}/src/|g" \
+        -e "s|${PKG_NAME}/src/\\.\\./src/|${PKG_NAME}/src/${MOD_NAME}/src/|g" \
+        "$file"
     else
-      sed -i "s|${PKG_NAME}/src/\\.\\./${MOD_NAME}/src/|${PKG_NAME}/src/${MOD_NAME}/src/|g" "$file"
-      sed -i "s|${PKG_NAME}/src/\\.\\./src/|${PKG_NAME}/src/${MOD_NAME}/src/|g" "$file"
+      sed -i -E \
+        -f "$DTS_SED_SCRIPT" \
+        -e "s|${PKG_NAME}/src/\\.\\./${MOD_NAME}/src/|${PKG_NAME}/src/${MOD_NAME}/src/|g" \
+        -e "s|${PKG_NAME}/src/\\.\\./src/|${PKG_NAME}/src/${MOD_NAME}/src/|g" \
+        "$file"
     fi
   done
 fi
+rm -f "$DTS_SED_SCRIPT"
 
-# ── Step 3: Make src/ writable + transform native module requires ──
+# ── Step 3: Make src/ writable ──
 [ -d "$OUT/src" ] && chmod -R u+w "$OUT/src" 2>/dev/null || true
-if [ -f "$NATIVE_MAP" ] && [ -d "$OUT/src" ]; then
-  python3 "$TRANSFORM_SCRIPT" "$NATIVE_MAP" "$OUT/src" "$PKG_NAME"
-fi
 
 # ── Step 4: Generate native module shims ──
 # Each shim checks __valdiModuleOverrides for consumer overrides,
@@ -514,20 +610,22 @@ if [ -f "$SHIM_MAN" ]; then
     chmod -R u+w "$SHIM_DIR" 2>/dev/null || true
     rm -f "$SHIM_FILE"
 
-    # Build registration lines for ALL module IDs (subpath + magic strings)
+    # Build override check + registration lines for ALL module IDs
+    OVERRIDE_CHECKS=""
     REG_LINES=""
     IFS=',' read -ra IDS <<< "$ALL_IDS"
     for MID in "${IDS[@]}"; do
       [ -z "$MID" ] && continue
+      OVERRIDE_CHECKS="${OVERRIDE_CHECKS} || (__o && '$MID' in __o && ((module.exports = __o['$MID']), true))"
       REG_LINES="${REG_LINES}
 if (__ml && !__ml.hasModuleFactory('$MID')) { __ml.registerModule('$MID', function() { return module.exports; }); }"
     done
+    # Strip leading " || "
+    OVERRIDE_CHECKS="${OVERRIDE_CHECKS# || }"
 
     cat > "$SHIM_FILE" << SHIMEOF
 var __o = typeof globalThis !== 'undefined' && globalThis.__valdiModuleOverrides;
-if (__o && '$SUBPATH' in __o) {
-  module.exports = __o['$SUBPATH'];
-} else {
+if (!(${OVERRIDE_CHECKS})) {
   module.exports = require('$NATIVE_PATH');
 }
 var __ml = typeof globalThis !== 'undefined' && globalThis.moduleLoader;${REG_LINES}
@@ -535,18 +633,75 @@ SHIMEOF
   done < "$SHIM_MAN"
 fi
 
+# ── Step 4b: Generate NavigationPage registry ──
+# Instead of a blanket require.context that maps every .js file, generate
+# a small file with explicit requires for only the files that use
+# @NavigationPage. requireByComponent() uses this to resolve
+# 'Symbol@FilePath' component paths at runtime.
+if [ -d "$OUT/src" ]; then
+  NAV_FILES=$(grep -rl --include='*.js' 'NavigationPage)(module)' "$OUT/src" 2>/dev/null || true)
+  REGISTRY="$OUT/src/_navigation_registry.js"
+  {
+    echo "var __r = (globalThis.__valdiNavigationPages = globalThis.__valdiNavigationPages || {});"
+    if [ -n "$NAV_FILES" ]; then
+      for file in $NAV_FILES; do
+        REL="${file#"$OUT/src/"}"
+        REL_NO_EXT="${REL%.js}"
+        echo "__r['${REL_NO_EXT}'] = function() { return require('./${REL_NO_EXT}'); };"
+      done
+    fi
+  } > "$REGISTRY"
+fi
+
+# ── Step 4c: Generate worker service registry ──
+# Same pattern as NavigationPage registry but for @workerService decorator.
+# WorkerServiceExecutor uses moduleLoader.load(task.file) to resolve workers.
+if [ -d "$OUT/src" ]; then
+  WORKER_FILES=$(grep -rl --include='*.js' 'workerService' "$OUT/src" 2>/dev/null || true)
+  WORKER_REGISTRY="$OUT/src/_worker_registry.js"
+  {
+    echo "var __r = (globalThis.__valdiWorkerModules = globalThis.__valdiWorkerModules || {});"
+    if [ -n "$WORKER_FILES" ]; then
+      for file in $WORKER_FILES; do
+        REL="${file#"$OUT/src/"}"
+        REL_NO_EXT="${REL%.js}"
+        echo "__r['${REL_NO_EXT}'] = function() { return require('./${REL_NO_EXT}'); };"
+      done
+    fi
+  } > "$WORKER_REGISTRY"
+fi
+
+# ── Step 4d: Rewrite internal requires to relative paths ──
+# Bare module requires (e.g. require('valdi_core/src/JSX')) become
+# relative (e.g. require('../../valdi_core/src/JSX.js')). Also rewrites
+# bare native names (e.g. require('Graphene') -> relative path to shim).
+# Must run AFTER shim + registry generation so all src/ files exist.
+if [ -d "$OUT/src" ]; then
+  python3 "$BARE_REQ_SCRIPT" "$OUT/src" "$NATIVE_MAP"
+  python3 "$BARE_REQ_SCRIPT" "$OUT/src" "$NATIVE_MAP" --validate
+fi
+
 # ── Step 5: Copy native_module_map.json to package root ──
 [ -f "$NATIVE_MAP" ] && cp -f "$NATIVE_MAP" "$OUT/native_module_map.json"
 
 # ── Step 6: Generate package.json with exports ──
-if [ -d "$OUT/src" ] && [ -f "$OUT/package.json" ]; then
-  chmod u+w "$OUT/package.json" 2>/dev/null || true
-  python3 "$EXPORTS_SCRIPT" "$OUT/package.json" "$OUT"
-fi
+# Disabled: exports field breaks consumers that use require.context() to scan
+# the package directory (e.g. snapchat-web image asset loading). Re-enable
+# when consumers migrate to asset registries and HMR support is added.
+# Follow-up: tracked in project_valdi_web_followups (re-enable exports field).
+# if [ -d "$OUT/src" ] && [ -f "$OUT/package.json" ]; then
+#   chmod u+w "$OUT/package.json" 2>/dev/null || true
+#   python3 "$EXPORTS_SCRIPT" "$OUT/package.json" "$OUT"
+# fi
 
-# ── Step 7: Generate ValdiModuleOverrides.d.ts ──
+# ── Step 7: Generate ValdiModuleOverrides.d.ts + .js stub ──
+# The .d.ts declares the ValdiModuleOverrides interface + __valdiModuleOverrides
+# global. Consumers `import '<pkg>/ValdiModuleOverrides'` to pull the ambient
+# declarations into scope. webpack needs a runtime file at that path too, so
+# emit an empty .js sibling (the module has no runtime behaviour).
 if [ -f "$SHIM_MAN" ]; then
   python3 "$OVERRIDES_SCRIPT" "$SHIM_MAN" "$OUT/ValdiModuleOverrides.d.ts" "$PKG_NAME"
+  echo "// Runtime stub — types live in ValdiModuleOverrides.d.ts." > "$OUT/ValdiModuleOverrides.js"
 fi
 
 # ── Step 8: Generate _strings_preload.js for each module with locale JSON ──
@@ -598,19 +753,19 @@ done < "$STRINGS_MAN"
     for m in all_modules_for_dts.to_list():
         dts_files.extend(m[ValdiModuleInfo].web_dts_files)
 
-    inputs = [manifest, strings_manifest, dts_manifest, transform_script, shim_manifest, exports_script, overrides_script] + ctx.files.srcs + dts_files
+    inputs = [manifest, strings_manifest, dts_manifest, shim_manifest, exports_script, overrides_script, bare_require_script] + ctx.files.srcs + dts_files
     args = [outdir.path, manifest.path, package_name]
     if native_map_file:
         inputs.append(native_map_file)
         args.append(native_map_file.path)
     else:
         args.append("/dev/null")
-    args.append(transform_script.path)
     args.append(shim_manifest.path)
     args.append(exports_script.path)
     args.append(overrides_script.path)
     args.append(strings_manifest.path)
     args.append(dts_manifest.path)
+    args.append(bare_require_script.path)
 
     ctx.actions.run(
         inputs = inputs,

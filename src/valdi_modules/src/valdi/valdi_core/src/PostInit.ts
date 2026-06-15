@@ -90,9 +90,15 @@ Long.prototype.valueOf = function (this: Long) {
 };
 
 export function postInit(): void {
-  global.console = new Console(runtime.outputLog);
+  // On web, browser console and timing functions are already correct —
+  // overwriting them breaks dev tools and webpack-dev-server HMR.
+  const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
 
-  if (!global.realTimingFunctions) {
+  if (!isBrowser) {
+    global.console = new Console(runtime.outputLog);
+  }
+
+  if (!isBrowser && !global.realTimingFunctions) {
     // We only configure the timing functions once to avoid messing up jasmine's internal checks
     // when it installs the mocked jasmine.Clock.
     global.realTimingFunctions = {

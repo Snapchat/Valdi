@@ -1,20 +1,24 @@
 import * as ts from 'typescript';
 
 /**
- * TypeScript transformer that annotates source-level variable-arg require()
- * calls with a /* @valdi-dynamic *​/ comment.
+ * TypeScript transformer that annotates source-level require() calls with
+ * sentinel comments consumed by PrependWebJsProcessor (web-only).
  *
  * In the TypeScript AST (before tsc's module transform):
  * - `import X from "Y"` → ImportDeclaration node (NOT a require call)
  * - `require("Y")` in source → CallExpression with Identifier("require")
  *
- * This transformer only annotates CallExpressions where the first argument
- * is NOT a string literal (variable/dynamic requires). String-literal
- * requires are left untouched — they work on all platforms as-is.
- *
- * The annotation is consumed by PrependWebJsProcessor (web-only) which
- * converts the annotated require to globalThis.moduleLoader.load().
- * On native, the minifier strips the comment — zero behavior change.
+ * Three cases:
+ * 1. Variable first-arg require — annotated with /* @valdi-dynamic *​/.
+ *    PrependWebJsProcessor rewrites to globalThis.moduleLoader.load().
+ * 2. String-literal first-arg with extra args — wrapped in
+ *    /* @valdi-web-strip-start *​/ ... /* @valdi-web-strip-end *​/.
+ *    PrependWebJsProcessor strips the extras so webpack can statically
+ *    resolve `require("X")`. Native keeps the extras because the
+ *    minifier drops the comments and the call survives intact —
+ *    `instance.load("X", true, true)` (disableProxy/disableSyncDeps).
+ * 3. Single-arg string-literal require — left untouched. Works on all
+ *    platforms as-is.
  */
 
 export function createWebRequireTransformer(): ts.TransformerFactory<ts.SourceFile> {
@@ -33,8 +37,37 @@ export function createWebRequireTransformer(): ts.TransformerFactory<ts.SourceFi
         ) {
           const firstArg = visitedNode.arguments[0];
 
-          // String literal (including no-substitution template literals) —
-          // leave untouched for all platforms
+          // String-literal first arg with extra args — wrap in sentinel
+          // pair so the Swift PrependWebJsProcessor (web-only) can locate
+          // the call and strip args without paren-counting. Native keeps
+          // the extras (disableProxy/disableSyncDeps) because the minifier
+          // drops the comments and the call survives intact.
+          // Spread args to force a new node — see comment on variable-arg
+          // branch below.
+          if (ts.isStringLiteralLike(firstArg) && visitedNode.arguments.length > 1) {
+            const freshNode = factory.updateCallExpression(
+              visitedNode,
+              visitedNode.expression,
+              visitedNode.typeArguments,
+              [...visitedNode.arguments],
+            );
+            ts.addSyntheticLeadingComment(
+              freshNode,
+              ts.SyntaxKind.MultiLineCommentTrivia,
+              ' @valdi-web-strip-start ',
+              /* hasTrailingNewLine */ false,
+            );
+            ts.addSyntheticTrailingComment(
+              freshNode,
+              ts.SyntaxKind.MultiLineCommentTrivia,
+              ' @valdi-web-strip-end ',
+              /* hasTrailingNewLine */ false,
+            );
+            return freshNode;
+          }
+
+          // Single-arg string literal (including no-substitution template
+          // literals) — leave untouched for all platforms.
           if (ts.isStringLiteralLike(firstArg)) {
             return visitedNode;
           }

@@ -1,7 +1,8 @@
 // Declare webpack require.context
 declare const require: {
   (id: string): any;
-  context(directory: string, useSubdirectories: boolean, regExp: RegExp): any;
+  // 'mode' param enables webpack 'weak' context (lookup-only, no bundling)
+  context(directory: string, useSubdirectories: boolean, regExp: RegExp, mode?: string): any;
 };
 
 // Declare global for Node-like environment
@@ -25,102 +26,105 @@ const path = require('path-browserify');
 // To make tests happy
 (globalThis as any).describe = function(name: string, func: Function) {};
 
-// Load up all of the modules
-const context = require.context('../../', true, /\.js$/);
-
-function loadPath(pathStr: string) {
-  const module = context(pathStr);
-  return module;
-}
+// Eager context removed — modules are now resolved lazily via:
+// 1. __valdiBootstrapModules (statically imported essentials)
+// 2. moduleLoader factories (registerModule'd native modules)
 
 class Runtime {
   componentPaths = new Map();
-  jsonContext = require.context('../../', true, /\.json$/);
   isDebugEnabled = true;
+  // ConsoleLogTransformer guards use runtime.isLoggingEnabled
+  isLoggingEnabled = true;
   buildType = "debug";
   // Map of task IDs to timeout IDs for scheduleWorkItem
   private _taskIdCounter = 1;
   private _scheduledTasks = new Map<number, number>();
 
-  // This is essentially the require() function that the runtime is using.
-  // relativePath is not the contents of require, it is preprocessed by the runtime.
+  // jsEvaluator for the ModuleLoader. Called when a compiled module's lazy
+  // Proxy is first accessed. Resolves via bootstrap modules (Init.js deps)
+  // then moduleLoader factories (native module shims registered at startup).
+  // Most modules are loaded by webpack's own require — loadJsModule only
+  // handles modules requested via valdiRequire / moduleLoader.load().
   loadJsModule(relativePath: string, requireFunc: any, module: any, exports: any) {
     relativePath = path.normalize(relativePath);
-    
-    // Set module.path for hot reload system (onHotReload uses module.path)
     module.path = relativePath;
 
-    // There are a few different ways that imports can be resolved
-    // 1. Relative path
-    var resolvedImportPath = './' + relativePath + '.js';
-    
-    if (context.keys().includes(resolvedImportPath)) {
-      module.exports = loadPath(resolvedImportPath);
+    // 1. Bootstrap modules — statically imported so webpack always includes
+    //    them, but lazily evaluated (the cache stores factories, not exports)
+    //    so evaluation order respects Init.js's global setup (e.g. PostInit
+    //    needs global.Long which Init.js installs partway through).
+    const bootstrap = (globalThis as any).__valdiBootstrapModules;
+    if (bootstrap?.[relativePath]) {
+      module.exports = bootstrap[relativePath]();
       return;
-    } 
-
-    // 2. Legacy vue paths
-    var vueImportPath = './' + relativePath + 'vue.js';
-    
-    if (context.keys().includes(vueImportPath)) {
-      module.exports = loadPath(vueImportPath);
-      return;
-    } 
-
-    // 3. Some modules try to import from nested res folders but they are flattened into the top
-    // level res
-    const segments = relativePath.split('/');
-    if (segments[1] === "res") {
-      var resPath = './' + path.join(segments[0], 'res.js');
-      if (context.keys().includes(resPath)) {
-        module.exports = loadPath(resPath);
-        return;
-      }
     }
 
-    // 4. A catch all looking for the exact path in the available options
-    if (!context.keys().includes(relativePath)) {
-      // Imports inside webpack-bundled code bypass the ModuleLoader and come here directly.
-      // Check if the module was registered via registerModule() (stored in moduleFactory).
-      const moduleLoader = (global as any).moduleLoader;
-      if (moduleLoader?.hasModuleFactory?.(relativePath)) {
-        module.exports = moduleLoader.load(relativePath, true);
-        return;
-      }
-      
-      var err = new Error(`Module not found: ${relativePath}`);
-      (err as any).code = 'MODULE_NOT_FOUND';
-      throw err;
+    // 2. moduleLoader factories — native modules registered via shims or setup.ts
+    const ml = (global as any).moduleLoader;
+    if (ml?.hasModuleFactory?.(relativePath)) {
+      module.exports = ml.load(relativePath, true);
+      return;
     }
-    module.exports = loadPath(relativePath);
+
+    // 3. Dynamic-module registries — build-time generated maps for modules
+    //    that are targets of dynamic require(variable) calls. Each registry
+    //    covers one category: NavigationPage components, worker entry points.
+    const navPages = (globalThis as any).__valdiNavigationPages;
+    if (navPages?.[relativePath]) {
+      module.exports = navPages[relativePath]();
+      return;
+    }
+    const workers = (globalThis as any).__valdiWorkerModules;
+    if (workers?.[relativePath]) {
+      module.exports = workers[relativePath]();
+      return;
+    }
+
+    if ((globalThis as any).runtime?.isLoggingEnabled) {
+      console.warn(`[ValdiWebRuntime] Module not found: ${relativePath}`);
+    }
   }
 
-  // For navigation loading.
+  // NavigationPage component resolution. Parses "Symbol@FilePath" format
+  // and resolves via the generated _navigation_registry.js (collapse_web_paths
+  // greps compiled output for NavigationPage usage and emits explicit requires).
   requireByComponent(componentName: string) {
     if (this.componentPaths.has(componentName)) {
-      // console.log("found component in cache");
       return this.componentPaths.get(componentName);
     }
 
-    for (const key of context.keys()) {
-      var module = context(key);
-      for (const exported of Object.keys(module)) {
-        var component = module[exported];
-        // Component path is set by the NavigationPage annotation.
-        if (component != null && component.hasOwnProperty('componentPath')) {
-          if (!this.componentPaths.has(component.componentPath)) {
-            // console.log('adding ', component.componentPath);
-            this.componentPaths.set(component.componentPath, component);
-          }
+    const atIdx = componentName.indexOf('@');
+    if (atIdx >= 0) {
+      const symbolName = componentName.substring(0, atIdx);
+      const filePath = componentName.substring(atIdx + 1);
 
-          if (component.componentPath === componentName) {
-            return component;
+      const pages = (globalThis as any).__valdiNavigationPages;
+      if (pages?.[filePath]) {
+        try {
+          const mod = pages[filePath]();
+          if (mod && mod[symbolName]) {
+            this.componentPaths.set(componentName, mod[symbolName]);
+            return mod[symbolName];
           }
+        } catch (e) {
+          // fall through to moduleLoader fallback
+        }
+      }
+
+      // Fallback: try moduleLoader (for native module components)
+      const ml = (global as any).moduleLoader;
+      if (ml?.hasModuleFactory?.(filePath)) {
+        const mod = ml.load(filePath, true);
+        if (mod && mod[symbolName]) {
+          this.componentPaths.set(componentName, mod[symbolName]);
+          return mod[symbolName];
         }
       }
     }
 
-    console.error("could not find", componentName);
+    if ((globalThis as any).runtime?.isLoggingEnabled) {
+      console.error("could not find", componentName);
+    }
   }
 
   setColorPalette(palette: any) {
@@ -153,23 +157,20 @@ class Runtime {
     // console.log("postMessage", contextId, command, params);
   }
 
+  // Image context moved from hardcoded require.context to __valdiImageContext,
+  // set by playground setup.ts. Decouples image bundling from ValdiWebRuntime.
   getAssets(catalogPath: string) {
-    // Get all images in the monolith
-    const imageContext = require.context("../../", true, /\.(png|jpe?g|svg)$/);
-
-    // Get just the images in the requested module
-    const filteredImages = imageContext.keys().filter((key: string) =>
-      key.startsWith(`./${catalogPath}/`)
-    );
-
-    // Get all image modules
-    const images = filteredImages.map((key: string) => ({
+    const imgCtx = (globalThis as any).__valdiImageContext;
+    if (!imgCtx) {
+      return [];
+    }
+    const prefix = `./${catalogPath}/`;
+    const allKeys = imgCtx.keys();
+    const filteredImages = allKeys.filter((key: string) => key.startsWith(prefix));
+    return filteredImages.map((key: string) => ({
       path: path.basename(key).split('.').slice(0, -1).join('.'),
-      //width: 
-      src: imageContext(key).default, // Webpack will replace with URL
+      src: imgCtx(key).default || imgCtx(key),
     }));
-
-    return images;
   }
 
   makeAssetFromUrl(url: string) {
@@ -271,9 +272,10 @@ class Runtime {
     if (completion) completion();
   }
 
+  // Stubbed — was using jsonContext (removed). Localized strings now use
+  // _strings_preload.js generated by collapse_web_paths instead.
   getModuleEntry(module: string, pathStr: string, asString: boolean) {
-    var filePath = './'+module+'/'+pathStr;
-    return JSON.stringify(this.jsonContext(filePath));
+    return '{}';
   }
 
   getModuleJsPaths(module: string) {
@@ -395,7 +397,7 @@ class Runtime {
   restoreCurrentContext(contextId: number) {}
 
   onUncaughtError(message: string, error: any) {
-    console.log("uncaught error", message, error);
+    if ((globalThis as any).runtime?.isLoggingEnabled) console.log("uncaught error", message, error);
   }
 
   setUncaughtExceptionHandler(cb: Function) {}
@@ -461,10 +463,26 @@ globalAny.__valdiLogToConsole__ = function (...args: unknown[]) {
 };
 Object.freeze((globalThis as any).__originalTimingFunctions__);
 
-// Run the init function
-// Relies on runtime being set so it must happen after
-// Assumes relative to the monolithic npm
-const initModule = require("../../valdi_core/src/Init.js");
+// Bootstrap modules Init.js needs via loadJsModule. Statically required
+// so webpack includes them, but wrapped in factories so evaluation is
+// deferred until first access. Order matters: PostInit references the
+// global `Long` that Init.js installs after loading the Long module, so
+// PostInit MUST NOT evaluate at bundle-load time.
+const _bootstrapModules: Record<string, () => unknown> = {
+  'valdi_core/src/ModuleLoader': () => require('valdi_core/src/ModuleLoader'),
+  'valdi_core/src/Long': () => require('valdi_core/src/Long'),
+  'valdi_core/src/tslib': () => require('valdi_core/src/tslib'),
+  'valdi_core/src/PostInit': () => require('valdi_core/src/PostInit'),
+  // PostInit overwrites global.TextEncoder/TextDecoder when UnicodeNative registers.
+  // It loads TextCoding via moduleLoader.load() — must be resolvable here.
+  'coreutils/src/unicode/TextCoding': () => require('coreutils/src/unicode/TextCoding'),
+};
+(globalThis as any).__valdiBootstrapModules = _bootstrapModules;
+
+// Init.js creates moduleLoader and runs PostInit (which gates browser-specific
+// globals internally). Uses standard module path — webpack resolves via
+// resolve.modules config.
+const initModule = require("valdi_core/src/Init");
 
 // Patch moduleLoader.onHotReload to handle undefined paths gracefully.
 // Webpack's module objects don't have .path, so modules that call
@@ -473,18 +491,14 @@ if (globalAny.moduleLoader) {
   const originalOnHotReload = globalAny.moduleLoader.onHotReload.bind(globalAny.moduleLoader);
   globalAny.moduleLoader.onHotReload = function(module: any, modulePath: string, callback: () => void) {
     if (!modulePath) {
-      // On web, skip hot reload registration when path is unavailable
       return () => {};
     }
     return originalOnHotReload(module, modulePath, callback);
   };
 }
 
-// Restore console
-globalAny.console = globalAny.__originalConsole__;
-globalThis.setTimeout = (globalThis as any).__originalTimingFunctions__.setTimeout;
-globalThis.clearTimeout = (globalThis as any).__originalTimingFunctions__.clearTimeout;
-globalThis.setInterval = (globalThis as any).__originalTimingFunctions__.setInterval;
-globalThis.clearInterval = (globalThis as any).__originalTimingFunctions__.clearInterval;
+// Console/timing restoration removed — PostInit now gates console and
+// timing overwrites internally (isBrowser check), so they're never
+// overwritten on web in the first place.
 
 export {};
