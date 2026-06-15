@@ -5,17 +5,21 @@ load("@build_bazel_rules_swift//swift:swift.bzl", "swift_binary")
 # Usable directly with:
 #   bzl build //compiler/compiler:local_valdi_compiler
 #
-# The valdi toolchain routes through this target on macOS when
+# The valdi toolchain routes through this target on macOS and Linux when
 # --//bzl/valdi:use_local_compiler=true is set (see bzl/valdi:compiler_source).
-# On Linux the toolchain uses :local_valdi_compiler_native (below) instead,
-# but this target is still directly buildable on Linux via the pinned Swift
-# toolchain registered in //bzl/swift_toolchains.
+# On Linux it builds via the pinned Swift toolchain registered in
+# //bzl/swift_toolchains.
 #
 # Notes:
 #   - Sentry is excluded; add @sentry//:Sentry to deps when needed.
 #   - For a macOS universal binary (arm64+x86_64), build separately per arch and
 #     combine with `lipo`. Bazel produces a single-arch binary per invocation.
 #   - On Linux, swift-crypto needs BoringSSL; see third-party/swift-packages/swift-crypto.BUILD.
+#   - On Linux the Swift runtime is linked statically (so the binary runs on
+#     hosts without a Swift installation, mirroring the script's
+#     --static-swift-stdlib). That comes from the `swift.static_stdlib`
+#     feature on the toolchain in //bzl/swift_toolchains -- rules_swift reads
+#     it from the toolchain target, so setting it here would have no effect.
 swift_binary(
     name = "local_valdi_compiler",
     srcs = glob(["Compiler/Sources/**/*.swift"]),
@@ -34,9 +38,44 @@ swift_binary(
     # DEBUG disables the Sentry import in Utils/SentryClient.swift. We don't
     # link Sentry into Bazel builds (see note above about excluding Sentry).
     defines = ["DEBUG"],
+    linkopts = select({
+        # Mirror the flags SwiftPM injects from the toolchain's
+        # lib/swift_static/linux/static-stdlib-args.lnk when building with
+        # --static-swift-stdlib: -export-dynamic keeps the binary's own
+        # symbols visible to dladdr so Backtrace crash reports stay
+        # symbolicated; --exclude-libs ALL keeps the statically linked
+        # runtime archives out of the dynamic symbol table.
+        #
+        # The libicu*swift.a archives are ICU as vendored by the Swift
+        # toolchain repo (symbols suffixed _69_swift); the static
+        # libFoundation.a references them, whereas the dynamic runtime
+        # bundles them as .so files next to libFoundation.so. Resolved via
+        # the toolchain's -L .../swift_static/linux search path, so they are
+        # hermetic (no host library involved).
+        "@platforms//os:linux": [
+            "-Wl,-export-dynamic",
+            "-Wl,--exclude-libs,ALL",
+            "-l:libicui18nswift.a",
+            "-l:libicuucswift.a",
+            "-l:libicudataswift.a",
+        ],
+        "//conditions:default": [],
+    }),
     module_name = "Compiler",
     visibility = ["//visibility:public"],
-    deps = [
+    deps = select({
+        # Static-runtime link support, hermetic counterparts of what the
+        # dynamic Swift runtime would pull from the host at runtime:
+        #   - @libxml2: libFoundationXML.a (used via SWXMLHash) needs libxml2;
+        #     built from source instead of linking the host's libxml2.so.2.
+        #   - shims: two symbols the Swift 5.10 static archives reference
+        #     that nothing in our hermetic toolchain provides.
+        "@platforms//os:linux": [
+            ":linux_static_link_shims",
+            "@libxml2",
+        ],
+        "//conditions:default": [],
+    }) + [
         "//compiler/compiler/Compiler/Vendors/BlueSocket",
         "//compiler/compiler/Compiler/Vendors/Clibsass",
         "//compiler/compiler/Compiler/Vendors/SwiftCSSParser",
@@ -55,17 +94,24 @@ swift_binary(
     ],
 )
 
-# Pre-built Valdi compiler consumed by the valdi toolchain on Linux when
-# --//bzl/valdi:use_local_compiler=true is set (see bzl/valdi:compiler_source).
-# The binary is produced out-of-band by scripts/update_compiler.sh -o out,
-# which drops the artifact at out/{macos,linux}/valdi_compiler. We prefer
-# this over the swift_binary target on Linux because the Bazel build there
-# needs a pinned Swift toolchain + vendored deps that are heavier to drag
-# through CI; the script path is the existing flow and keeps working.
-#
-# macOS keeps going through swift_binary above, so this select has a darwin
-# branch only so the target still analyzes on both OSes (the file doesn't
-# need to exist until someone actually builds it).
+# Symbol shims for the Linux static-runtime link; see
+# linux_static_link_shims.cpp for what each shim covers and why.
+# alwayslink because the references come from Swift runtime archives that
+# appear later on the link line than this library.
+cc_library(
+    name = "linux_static_link_shims",
+    srcs = ["linux_static_link_shims.cpp"],
+    linkstatic = True,
+    target_compatible_with = ["@platforms//os:linux"],
+    alwayslink = True,
+)
+
+# Pre-built Valdi compiler, produced out-of-band by
+# scripts/update_compiler.sh -o out, which drops the artifact at
+# out/{macos,linux}/valdi_compiler. No longer consumed by the valdi
+# toolchain (both OSes go through the swift_binary above); kept as an
+# escape hatch for running a script-built compiler through Bazel. The file
+# doesn't need to exist until someone actually builds this target.
 native_binary(
     name = "local_valdi_compiler_native",
     src = select({

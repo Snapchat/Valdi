@@ -337,14 +337,11 @@ config_setting(
 # targets instead of the prebuilt @valdi_toolchain//:valdi_compiler artifact.
 # Enable with: --//bzl/valdi:use_local_compiler=true
 #
-# Per-OS routing (see :compiler_source below):
-#   - macOS  -> :local_valdi_compiler (rules_swift swift_binary, built by Bazel)
-#   - Linux  -> :local_valdi_compiler_native (native_binary, expects
-#               scripts/update_compiler.sh output at out/linux/valdi_compiler)
-# The swift_binary target is still directly buildable on Linux
-# (`bzl build @valdi//compiler/compiler:local_valdi_compiler`) for
-# experimentation, but the toolchain doesn't go through it there -- the
-# script path is what Linux CI publishes.
+# Both OSes route through :local_valdi_compiler (rules_swift swift_binary,
+# built by Bazel; see :compiler_source below). On Linux it links the Swift
+# runtime statically so the binary runs on hosts without a Swift install.
+# :local_valdi_compiler_native (script-built, out/linux/valdi_compiler) is
+# still available as an out-of-band escape hatch.
 bool_flag(
     name = "use_local_compiler",
     build_setting_default = False,
@@ -393,7 +390,7 @@ alias(
     name = "compiler_source",
     actual = select({
         ":use_local_compiler_on_macos": "//compiler/compiler:local_valdi_compiler",
-        ":use_local_compiler_on_linux": "//compiler/compiler:local_valdi_compiler_native",
+        ":use_local_compiler_on_linux": "//compiler/compiler:local_valdi_compiler",
         "//conditions:default": "@valdi_toolchain//:valdi_compiler",
     }),
     visibility = ["//visibility:private"],

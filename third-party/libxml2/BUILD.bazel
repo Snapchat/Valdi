@@ -1,0 +1,9 @@
+# Support files for the @libxml2 external repo (see libxml2.BUILD and
+# bzl/valdi_compiler_swift_deps.bzl). config.h and xmlversion.h are the
+# hand-maintained equivalents of what autoconf would generate; see the
+# comments in those files for the module selection rationale.
+exports_files([
+    "libxml2.BUILD",
+    "config.h",
+    "xmlversion.h",
+])

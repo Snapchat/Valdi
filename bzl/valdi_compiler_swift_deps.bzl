@@ -44,6 +44,19 @@ def setup_valdi_compiler_swift_deps():
             patch_args = ["-p1"],
         )
 
+    # Not a Swift package, but a dependency of the Linux compiler binary: the
+    # Swift static runtime's libFoundationXML.a needs libxml2 at link time,
+    # and we build it from source and link it statically so the produced
+    # binary doesn't require libxml2.so.2 on whatever host runs it. See
+    # third-party/libxml2/libxml2.BUILD.
+    http_archive(
+        name = "libxml2",
+        url = "https://github.com/GNOME/libxml2/archive/refs/tags/v2.9.14.tar.gz",
+        sha256 = "77e7c7240ce447582d2c3471f050423c01ec0e201c3bf2fd6731064d1891f362",
+        strip_prefix = "libxml2-2.9.14",
+        build_file = "@valdi//third-party/libxml2:libxml2.BUILD",
+    )
+
 def _valdi_compiler_swift_deps_impl(_module_ctx):
     setup_valdi_compiler_swift_deps()
 

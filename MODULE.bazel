@@ -579,6 +579,7 @@ use_repo(
     valdi_compiler_swift_deps,
     "chalk",
     "legible_error",
+    "libxml2",
     "swift_argument_parser",
     "swift_backtrace",
     "swift_collections",
