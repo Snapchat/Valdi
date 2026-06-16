@@ -718,6 +718,53 @@ static Valdi::MeasureMode resolveMeasureMode(CGFloat size, BOOL useLegacyMeasure
     return ValdiIOS::getValdiContext(Valdi::Context::current());
 }
 
++ (UITraitCollection *_Nullable)currentTraitCollectionForMeasurementContextDestroyed:
+    (BOOL *_Nullable)contextDestroyed
+{
+    if (contextDestroyed != NULL) {
+        *contextDestroyed = NO;
+    }
+
+    auto context = Valdi::Context::currentRef();
+    if (context == nullptr) {
+        return nil;
+    }
+
+    if (context->isDestroyed()) {
+        if (contextDestroyed != NULL) {
+            *contextDestroyed = YES;
+        }
+        return nil;
+    }
+
+    auto *rootContext = Valdi::Context::currentRoot();
+    if (rootContext != nullptr && rootContext->isDestroyed()) {
+        if (contextDestroyed != NULL) {
+            *contextDestroyed = YES;
+        }
+        return nil;
+    }
+
+    auto userData = context->getUserData();
+    if (userData == nullptr) {
+        return nil;
+    }
+
+    SCValdiContext *objcContext = ObjectAs(ValdiIOS::NSObjectFromValdiObject(userData, NO), SCValdiContext);
+    if (objcContext == nil) {
+        return nil;
+    }
+
+    if (objcContext.destroyed) {
+        if (contextDestroyed != NULL) {
+            *contextDestroyed = YES;
+        }
+        return nil;
+    }
+
+    return objcContext.traitCollection;
+}
+
 #if !defined(NS_BLOCK_ASSERTIONS)
 - (NSString *)description {
     return [NSString stringWithFormat:

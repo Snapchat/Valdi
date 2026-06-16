@@ -17,6 +17,13 @@
 
 #import <UIKit/UIKit.h>
 
+@interface SCValdiContext (DrawingMeasurement)
+
++ (UITraitCollection *_Nullable)currentTraitCollectionForMeasurementContextDestroyed:
+    (BOOL *_Nullable)contextDestroyed;
+
+@end
+
 @interface SCValdiDrawingFontImpl: NSObject<SCValdiDrawingFont>
 
 - (instancetype)initWithFont:(SCValdiFont *)font
@@ -78,9 +85,18 @@
     CGFloat maxHeightF = maxHeight != nil ? maxHeight.doubleValue : CGFLOAT_MAX;
     CGSize maxSize = CGSizeMake(maxWidthF, maxHeightF);
 
-    UITraitCollection *traitCollection = SCValdiContext.currentContext.traitCollection;
+    BOOL destroyedContext = NO;
+    UITraitCollection *traitCollection =
+        [SCValdiContext currentTraitCollectionForMeasurementContextDestroyed:&destroyedContext];
+    if (destroyedContext) {
+        return [[SCValdiDrawingSize alloc] initWithWidth:0 height:0];
+    }
 
-    CGSize measuredSize = [SCValdiLabel measureSizeWithMaxSize:maxSize fontAttributes:fontAttributes fontManager:_font.fontManager text:text traitCollection:traitCollection];
+    CGSize measuredSize = [SCValdiLabel measureSizeWithMaxSize:maxSize
+                                                fontAttributes:fontAttributes
+                                                   fontManager:_font.fontManager
+                                                          text:text
+                                               traitCollection:traitCollection];
 
     return [[SCValdiDrawingSize alloc] initWithWidth:ceil(measuredSize.width) height:ceil(measuredSize.height)];
 }
