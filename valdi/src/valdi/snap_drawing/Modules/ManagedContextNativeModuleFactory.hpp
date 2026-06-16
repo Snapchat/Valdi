@@ -40,6 +40,7 @@ private:
     Valdi::Value measureAsync(const Valdi::ValueFunctionCallContext& callContext);
     Valdi::Value drawFrame(const Valdi::ValueFunctionCallContext& callContext);
     Valdi::Value drawFrameSync(const Valdi::ValueFunctionCallContext& callContext);
+    Valdi::Value processFrame(const Valdi::ValueFunctionCallContext& callContext);
     Valdi::Value disposeFrame(const Valdi::ValueFunctionCallContext& callContext);
     Valdi::Value rasterFrame(const Valdi::ValueFunctionCallContext& callContext);
 };

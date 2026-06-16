@@ -58,6 +58,8 @@ export function drawFrame(
 
 export function drawFrameSync(native: SnapDrawingValdiContextNative): SnapDrawingFrameNative;
 
+export function processFrame(native: SnapDrawingValdiContextNative, deltaMs: number): void;
+
 export function disposeFrame(native: SnapDrawingFrameNative): void;
 
 /**

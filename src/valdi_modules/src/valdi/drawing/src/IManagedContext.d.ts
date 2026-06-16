@@ -60,6 +60,14 @@ export interface IManagedContext {
   draw(): Promise<IManagedContextDrawResult>;
 
   /**
+   * Advance native SnapDrawing animations by the given delta in milliseconds.
+   * Flushes the event queue so pending animation frame callbacks fire,
+   * causing Layer::processAnimations to run with the given time delta.
+   * Call draw() after this to capture the updated animation state.
+   */
+  processFrame(deltaMs: number): void;
+
+  /**
    * Schedule a callback to be called when all the assets have been loaded.
    */
   onAllAssetsLoaded(): Promise<IManagedContextAssetsLoadResult>;

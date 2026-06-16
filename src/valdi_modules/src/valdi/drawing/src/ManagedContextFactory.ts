@@ -17,6 +17,7 @@ import {
   drawFrameSync,
   layoutAsync,
   measureAsync,
+  processFrame as nativeProcessFrame,
   rasterFrame,
 } from './ManagedContextNative';
 
@@ -144,6 +145,10 @@ class ManagedContextImpl implements IManagedContext {
       frame: new FrameImpl(frameNative),
       mainThreadMs: 0,
     });
+  }
+
+  processFrame(deltaMs: number): void {
+    nativeProcessFrame(this.snapDrawingValdiContext.native, deltaMs);
   }
 
   onAllAssetsLoaded(): Promise<IManagedContextAssetsLoadResult> {
