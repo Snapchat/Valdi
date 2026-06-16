@@ -7,7 +7,10 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.KeyEvent
+import android.view.ViewStructure
 import android.graphics.Rect
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.core.view.ViewCompat
 import com.snap.valdi.context.ValdiContext
 import com.snap.valdi.context.ValdiViewOwner
@@ -682,6 +685,34 @@ open class ValdiRootView: ValdiView, Disposable {
         }
         super.onFocusChanged(focused, direction, previouslyFocusedRect)
         accessibilityDelegate?.onFocusChanged(focused, direction, previouslyFocusedRect)
+    }
+
+    /**
+     * Android's Assist/Autofill framework requests the entire virtual accessibility tree
+     * synchronously on the main thread (ActivityThread.handleRequestAssistContextExtras ->
+     * View.onProvideVirtualStructure). For large or pathologically duplicated Valdi trees this
+     * recurses into tens of thousands of nodes and ANRs, predominantly on low-end Android 8
+     * devices (COMPOSER-5846). When the accessibility COF is enabled we skip exposing the Valdi
+     * virtual tree to these structure requests. TalkBack and other accessibility services use the
+     * AccessibilityNodeProvider path (getAccessibilityNodeProvider) and are unaffected.
+     */
+    override fun onProvideVirtualStructure(structure: ViewStructure?) {
+        if (shouldSkipAssistAccessibilityStructure()) {
+            return
+        }
+        super.onProvideVirtualStructure(structure)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    override fun onProvideAutofillVirtualStructure(structure: ViewStructure?, flags: Int) {
+        if (shouldSkipAssistAccessibilityStructure()) {
+            return
+        }
+        super.onProvideAutofillVirtualStructure(structure, flags)
+    }
+
+    private fun shouldSkipAssistAccessibilityStructure(): Boolean {
+        return valdiContext?.runtimeOrNull?.manager?.tweaks?.enableAccessibilityCustomViewVirtualIdFix == true
     }
 
 }

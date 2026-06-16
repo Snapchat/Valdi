@@ -39,8 +39,6 @@ class ValdiViewNode(nativeHandle: Long,
     private data class AccessibilityHierarchyRepresentation(
         val array: Array<Any?>,
         var index: Int,
-        val enableAccessibilityCustomViewVirtualIdFix: Boolean = false,
-        var nextCustomViewVirtualId: Int = FIRST_CUSTOM_VIEW_VIRTUAL_ID,
     )
 
     override val id: Int
@@ -118,13 +116,7 @@ class ValdiViewNode(nativeHandle: Long,
     override fun getAccessibilityHierarchy(): List<AccessibilityNode> {
         val array = NativeBridge.getViewNodeAccessibilityHierarchyRepresentation(runtimeNativeHandle, nativeHandle) as Array<Any?>
         val output = mutableListOf<AccessibilityNode>()
-        val enableAccessibilityCustomViewVirtualIdFix =
-            context?.runtimeOrNull?.manager?.tweaks?.enableAccessibilityCustomViewVirtualIdFix == true
-        val representation = AccessibilityHierarchyRepresentation(
-            array,
-            0,
-            enableAccessibilityCustomViewVirtualIdFix = enableAccessibilityCustomViewVirtualIdFix,
-        )
+        val representation = AccessibilityHierarchyRepresentation(array, 0)
         readAccessibilityHierarchyRepresentation(representation, null, output)
         return output
     }
@@ -336,7 +328,7 @@ class ValdiViewNode(nativeHandle: Long,
 
             // If we have a custom view, we need to harvest it's children.
             if (hasCustomView) {
-                readAccessibilityHierarchyForCustomView(representation, accessibilityNode, children)
+                readAccessibilityHierarchyForCustomView(accessibilityNode, children)
             }
 
             // We always want to keep walking the tree.
@@ -348,11 +340,7 @@ class ValdiViewNode(nativeHandle: Long,
         }
     }
 
-    private fun readAccessibilityHierarchyForCustomView(
-        representation: AccessibilityHierarchyRepresentation,
-        parent: AccessibilityNode,
-        output: MutableList<AccessibilityNode>
-    ) {
+    private fun readAccessibilityHierarchyForCustomView(parent: AccessibilityNode, output: MutableList<AccessibilityNode>) {
         // This function only gathers information to build out ViewNodeCompats later.
         // This is only used for displaying outlines and metadata.
         // Hit testing will be done on the View itself.
@@ -373,11 +361,7 @@ class ValdiViewNode(nativeHandle: Long,
                 val accessibilityNode = AccessibilityNode(
                     viewNode = null,
                     customView = child,
-                    id = if (representation.enableAccessibilityCustomViewVirtualIdFix) {
-                        nextCustomViewVirtualId(representation)
-                    } else {
-                        child.id
-                    },
+                    id = child.id,
                     parent = parent,
                     children = children,
                     boundsInRoot = Rect(),
@@ -391,13 +375,9 @@ class ValdiViewNode(nativeHandle: Long,
                     accessibilityStateLiveRegion = true,
                 )
                 output.add(accessibilityNode)
-                readAccessibilityHierarchyForCustomView(representation, accessibilityNode, children)
+                readAccessibilityHierarchyForCustomView(accessibilityNode, children)
             }
         }
-    }
-
-    private fun nextCustomViewVirtualId(representation: AccessibilityHierarchyRepresentation): Int {
-        return representation.nextCustomViewVirtualId++
     }
 
     private fun readAccessibilityHierarchyRepresentationInt32(representation: AccessibilityHierarchyRepresentation): Int {
@@ -435,7 +415,6 @@ class ValdiViewNode(nativeHandle: Long,
 
     companion object {
         const val INVALID_ID = 0
-        private const val FIRST_CUSTOM_VIEW_VIRTUAL_ID = -2147483647
 
         const val SCROLL_EVENT_TYPE_ON_SCROLL = 1
         const val SCROLL_EVENT_TYPE_ON_SCROLL_END = 2
