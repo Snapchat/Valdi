@@ -15,10 +15,10 @@ Run client/src/dev_setup.sh. This should download and install Swift, clone and b
 To build and use the compiler from source (instead of the prebuilt binary):
 
 ```sh
-compiler/compiler/scripts/update_compiler.sh -s -o compiler/compiler/out
+compiler/compiler/scripts/update_compiler_bazel.sh -o compiler/compiler/out
 ```
 
-- `-s` skips analytics upload (recommended for local builds)
+- The compiler is built with Bazel (`//compiler/compiler:local_valdi_compiler`); no Swift toolchain install is required.
 - `-o compiler/compiler/out` writes the binary to `out/macos/valdi_compiler` (or `out/linux/valdi_compiler` on Linux)
 
 The `out/` directory is gitignored.
@@ -42,7 +42,7 @@ See [docs/docs/workflow-bazel.md](../../docs/docs/workflow-bazel.md) for more de
 To update the prebuilt binary that gets downloaded by other developers (SnapCI job):
 
 ```sh
-./scripts/update_compiler.sh
+./scripts/update_compiler_bazel.sh -o bin/compiler
 ```
 
 ## Debugging C++ JNI crashes

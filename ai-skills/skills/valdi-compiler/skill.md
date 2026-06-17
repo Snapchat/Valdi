@@ -55,7 +55,7 @@ enum CompilerError: Error {
 
 ## Testing
 
-Tests are critical - add tests for new features and error cases. The `update_compiler.sh` script runs tests automatically.
+Tests are critical - add tests for new features and error cases. Run the test suite with `bzl test //compiler/compiler/...` (the build script below does not run tests).
 
 ## Build
 
@@ -63,12 +63,12 @@ Tests are critical - add tests for new features and error cases. The `update_com
 
 ```bash
 cd compiler/compiler
-./scripts/update_compiler.sh ../../bin/compiler
+./scripts/update_compiler_bazel.sh -o bin/compiler
 ```
 
 This script:
-- Runs `swift test` automatically
-- Builds the compiler for the correct architecture
+- Builds the compiler with Bazel (`//compiler/compiler:local_valdi_compiler`); no Swift toolchain install is required
+- Builds the compiler for the correct architecture (on macOS, lipos arm64 + x86_64 into a universal binary and codesigns it)
 - Copies the binary to `bin/compiler/macos/valdi_compiler` (or `linux/valdi_compiler`)
 - Handles platform differences (macOS vs Linux)
 

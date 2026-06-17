@@ -64,9 +64,9 @@ By default, Bazel uses the **prebuilt compiler** and builds the **companion from
 
 1. Build the Valdi compiler and place the binary where the toolchain can find it:
    ```sh
-   compiler/compiler/scripts/update_compiler.sh -s -o compiler/compiler/out
+   compiler/compiler/scripts/update_compiler_bazel.sh -o compiler/compiler/out
    ```
-   This produces `compiler/compiler/out/macos/valdi_compiler` (or `out/linux/valdi_compiler` on Linux). The `-s` flag skips analytics upload. The script works in both the mirrored public repo and the mobile monorepo.
+   This produces `compiler/compiler/out/macos/valdi_compiler` (or `out/linux/valdi_compiler` on Linux). The compiler is built with Bazel (`//compiler/compiler:local_valdi_compiler`), so no Swift toolchain install is required. The script works in both the mirrored public repo and the mobile monorepo.
 
 2. Build Valdi modules with the local compiler:
    ```sh

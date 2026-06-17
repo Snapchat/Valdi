@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
 
-# Bazel-based equivalent of update_compiler.sh. Builds the
-# //compiler/compiler:local_valdi_compiler swift_binary instead of invoking
-# the Swift toolchain directly. Same -o interface as update_compiler.sh;
-# output lands at <bin_output_path>/{linux,macos}/valdi_compiler.
+# Builds the Valdi compiler with Bazel
+# (//compiler/compiler:local_valdi_compiler swift_binary) instead of
+# invoking the Swift toolchain directly. Output lands at
+# <bin_output_path>/{linux,macos}/valdi_compiler (-o interface).
 #
 # Linux: single build; the target statically links the Swift runtime with
 # hermetic deps (see compiler/compiler/BUILD.bazel), so the host needs no
 # Swift install and the binary runs on hosts without one.
 #
 # macOS: Bazel produces one arch per invocation, so this builds arm64 and
-# x86_64 separately, combines them with lipo (matching the universal binary
-# the SwiftPM flow produced), and codesigns with the same entitlements.
-# Unlike update_compiler.sh, this does not run swift test or produce a
-# dSYM for Sentry.
+# x86_64 separately, combines them with lipo into a universal binary, and
+# codesigns it with the entitlements. Note: this does not run tests or
+# produce a dSYM for Sentry.
 
 set -e
 set -x
@@ -21,8 +20,7 @@ set -x
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 ENTITLEMENTS_PATH="$SCRIPT_DIR/entitlements.plist"
 
-# Workspace root and target label depend on which repo we're in (mirrors
-# update_compiler.sh):
+# Workspace root and target label depend on which repo we're in:
 # - Mobile repo: SCRIPT_DIR contains "open_source", workspace is client/,
 #   and the compiler package is addressed through the @valdi repo.
 # - Public/mirrored repo (post-Copybara): workspace is the repo root.
@@ -43,9 +41,8 @@ usage() {
   exit 1
 }
 
-# -s (skip analytics) is accepted for CLI compatibility with
-# update_compiler.sh but is a no-op: the Bazel build never uploads
-# analytics.
+# -s (skip analytics) is accepted for CLI compatibility but is a no-op:
+# the Bazel build never uploads analytics.
 while getopts ":o:s" opt; do
   case "$opt" in
     s)
@@ -75,8 +72,7 @@ if [ -z "$bin_output_path" ]; then
   usage
 fi
 
-# Resolve bin_output_path relative to WORKSPACE_ROOT (not the caller's CWD),
-# matching update_compiler.sh.
+# Resolve bin_output_path relative to WORKSPACE_ROOT (not the caller's CWD).
 if [[ "$bin_output_path" != /* ]]; then
   bin_output_path="$WORKSPACE_ROOT/$bin_output_path"
 fi

@@ -26,7 +26,6 @@ swift_binary(
     copts = [
         "-DSWIFT_PACKAGE",
         # Emit debug info even in release/optimised builds to aid crash reports.
-        # Mirrors `-Xswiftc -g` in the old update_compiler.sh.
         "-g",
         # Silence nullability-completeness warnings from the clang importer
         # that processes imported C modules (e.g. glibc stdio) during Swift
@@ -107,7 +106,7 @@ cc_library(
 )
 
 # Pre-built Valdi compiler, produced out-of-band by
-# scripts/update_compiler.sh -o out, which drops the artifact at
+# scripts/update_compiler_bazel.sh -o out, which drops the artifact at
 # out/{macos,linux}/valdi_compiler. No longer consumed by the valdi
 # toolchain (both OSes go through the swift_binary above); kept as an
 # escape hatch for running a script-built compiler through Bazel. The file
