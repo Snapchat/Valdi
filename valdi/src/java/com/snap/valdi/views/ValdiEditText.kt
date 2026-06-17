@@ -346,8 +346,16 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
         return objectIndex
     }
 
+    /**
+     * Incremented every time the text is set programmatically. Lets callers tell whether a setText
+     * actually ran during an update pass, since that is what moves the caret to the start on Android.
+     */
+    var setTextGeneration: Int = 0
+        private set
+
     override fun setText(text: CharSequence?, type: BufferType?) {
         isSettingTextCount += 1
+        setTextGeneration += 1
         try {
             super.setText(text, type)
         } finally {
@@ -388,6 +396,7 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
     }
 
     fun setTextAndSelection(value: String, start: Int = selectionStart, end: Int = selectionEnd) {
+        val wasAttributedText = isAttributedText
         isAttributedText = false
         attributedText = null
         attributedTextMatchesLiveText = true
@@ -395,7 +404,14 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
         removeCallbacks(attributedTextRebindRunnable)
         textViewHelper?.clearAnimatedTextOverlayState()
         val textClamped = clampProcessTextIfNeeded(value)
-        setText(textClamped)
+        // Skip setText only on a genuine no-op: the string is unchanged AND we weren't rendering
+        // attributed text. setText resets the caret to the start, so skipping it avoids caret churn;
+        // but a rich->plain transition must call setText to clear leftover converter/mention spans
+        // (color, underline, OnTap, ...) that would otherwise linger and render on the now-plain text.
+        val superText = super.getText()
+        if (superText == null || superText.toString() != textClamped || wasAttributedText) {
+            setText(textClamped)
+        }
         setSelectionClamped(start, end)
     }
 

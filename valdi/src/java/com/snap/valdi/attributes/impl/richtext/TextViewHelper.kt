@@ -91,6 +91,13 @@ class TextViewHelper(private val view: TextView,
      */
     var disableTextReplacement = false
 
+    /**
+     * When true, match iOS: after text is set programmatically, keep the caret at the end of the
+     * text instead of Android's default of moving it to the start, unless an explicit selection is
+     * provided. Gated by the VALDI_EDITTEXT_RESET_SELECTION_MATCHES_IOS COF; applies to ValdiEditText.
+     */
+    var matchIosTextSetCaret = false
+
     var fontAttributes: FontAttributes? = null
         set(value) {
             if (field != value) {
@@ -232,6 +239,11 @@ class TextViewHelper(private val view: TextView,
     }
 
     private fun updateTextAttributes() {
+        val editText = view as? ValdiEditText
+        // Snapshot before applying text so we can tell whether a setText actually ran below. A new
+        // text value can re-bind without calling setText (e.g. identical content), in which case the
+        // caret was never disturbed and must not be moved.
+        val setTextGenerationBefore = editText?.setTextGeneration ?: 0
         if (isAttributedText) {
             if (fontAttributesDirty || textValueDirty) {
                 fontAttributesDirty = false
@@ -251,11 +263,25 @@ class TextViewHelper(private val view: TextView,
             }
         }
 
-        if (view is ValdiEditText && selectionDirty) {
-            selectionDirty = false
-            selection?.let { (first, second) ->
-                view.setSelectionClamped(first, second)
+        if (editText != null) {
+            val currentSelection = selection
+            // A programmatic setText resets the native caret to the start on Android, so a setText
+            // that ran this pass must be corrected even when the selection itself didn't change.
+            val textWasSet = editText.setTextGeneration != setTextGenerationBefore
+            if (currentSelection != null) {
+                // Apply the explicit selection when it changed, or reapply it after a setText that
+                // would otherwise silently drop the controlled selection to the start. Reapplying
+                // after setText is iOS-aligned, so gate it on the flag.
+                if (selectionDirty || (matchIosTextSetCaret && textWasSet)) {
+                    editText.setSelectionClamped(currentSelection.first, currentSelection.second)
+                }
+            } else if (matchIosTextSetCaret && textWasSet) {
+                // Match iOS: with no explicit selection, keep the caret at the end after a setText
+                // instead of Android's default of moving it to the start. Only runs when a setText
+                // actually happened, so unrelated re-binds don't disturb the caret.
+                editText.setSelectionClamped(Int.MAX_VALUE, Int.MAX_VALUE)
             }
+            selectionDirty = false
         }
     }
 

@@ -221,6 +221,7 @@ class EditTextAttributesBinder(
             helper = TextViewHelper(view, textConverter, defaultAttributes, valueAttributeId)
             view.textViewHelper = helper
         }
+        helper.matchIosTextSetCaret = resetSelectionMatchesIos
 
         return helper
     }

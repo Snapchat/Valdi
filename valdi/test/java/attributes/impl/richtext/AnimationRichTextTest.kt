@@ -15,6 +15,7 @@ import android.text.Spanned
 import android.text.TextPaint
 import android.text.Layout
 import android.text.StaticLayout
+import android.text.style.CharacterStyle
 import android.view.Gravity
 import android.view.View
 import android.widget.TextView
@@ -39,9 +40,11 @@ import com.snap.valdi.attributes.impl.richtext.isActiveAnimationTransform
 import com.snap.valdi.attributes.impl.richtext.isRenderableAnimationTransform
 import com.snap.valdi.callable.ValdiFunction
 import com.snap.valdi.views.TextViewUtils
+import com.snap.valdi.views.ValdiEditText
 import com.snap.valdi.views.ValdiTextView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
@@ -744,6 +747,138 @@ internal class AnimationRichTextTest {
         } finally {
             appInfo.flags = originalFlags
         }
+    }
+
+    // Flushes pending text/selection changes (the private apply pass driven by measure/layout).
+    private fun flushTextAttributes(helper: TextViewHelper) {
+        val method = TextViewHelper::class.java.getDeclaredMethod("updateTextAttributes")
+        method.isAccessible = true
+        method.invoke(helper)
+    }
+
+    private fun newEditTextHelper(matchIosTextSetCaret: Boolean): Pair<ValdiEditText, TextViewHelper> {
+        val editText = ValdiEditText(getApplicationContext())
+        val helper = TextViewHelper(editText, converter, FontAttributes.default, 0)
+        editText.textViewHelper = helper
+        helper.matchIosTextSetCaret = matchIosTextSetCaret
+        return editText to helper
+    }
+
+    @Test
+    fun editTextKeepsCaretAtEndAfterSetTextWhenSelectionClearedAndMatchIosOn() {
+        val (editText, helper) = newEditTextHelper(matchIosTextSetCaret = true)
+
+        helper.textValue = FakeAttributedText(listOf(Part("Hello", null)))
+        flushTextAttributes(helper)
+
+        assertEquals(5, editText.selectionStart)
+        assertEquals(5, editText.selectionEnd)
+    }
+
+    @Test
+    fun editTextKeepsCaretAtEndAfterPlainTextSetWhenSelectionClearedAndMatchIosOn() {
+        val (editText, helper) = newEditTextHelper(matchIosTextSetCaret = true)
+
+        // A plain String value goes through the non-attributed applyTextSimple path.
+        helper.textValue = "Hello"
+        flushTextAttributes(helper)
+
+        assertEquals(5, editText.selectionStart)
+        assertEquals(5, editText.selectionEnd)
+    }
+
+    @Test
+    fun editTextDoesNotMoveCaretOnRebindWithoutSetText() {
+        val (editText, helper) = newEditTextHelper(matchIosTextSetCaret = true)
+
+        helper.textValue = FakeAttributedText(listOf(Part("Hello", null)))
+        flushTextAttributes(helper)
+
+        // User places the caret in the middle of the text.
+        editText.setSelection(2)
+        assertEquals(2, editText.selectionStart)
+
+        // A new AttributedText instance with identical content arrives (an unrelated re-render).
+        // This re-binds without calling setText, so the caret must be left untouched.
+        helper.textValue = FakeAttributedText(listOf(Part("Hello", null)))
+        flushTextAttributes(helper)
+
+        assertEquals(2, editText.selectionStart)
+        assertEquals(2, editText.selectionEnd)
+    }
+
+    @Test
+    fun editTextRespectsExplicitSelectionOverEndWhenMatchIosOn() {
+        val (editText, helper) = newEditTextHelper(matchIosTextSetCaret = true)
+
+        helper.textValue = FakeAttributedText(listOf(Part("Hello", null)))
+        helper.selection = Pair(1, 1)
+        flushTextAttributes(helper)
+
+        assertEquals(1, editText.selectionStart)
+        assertEquals(1, editText.selectionEnd)
+    }
+
+    @Test
+    fun editTextDoesNotForceCaretToEndWhenMatchIosOff() {
+        val (editText, helper) = newEditTextHelper(matchIosTextSetCaret = false)
+
+        helper.textValue = FakeAttributedText(listOf(Part("Hello", null)))
+        flushTextAttributes(helper)
+
+        // With the flag off we never force the caret to the end; Android leaves it at the start.
+        assertEquals(0, editText.selectionStart)
+    }
+
+    @Test
+    fun editTextReappliesExplicitSelectionAfterSetTextEvenWhenSelectionUnchanged() {
+        val (editText, helper) = newEditTextHelper(matchIosTextSetCaret = true)
+
+        helper.textValue = FakeAttributedText(listOf(Part("Hello", null)))
+        helper.selection = Pair(1, 1)
+        flushTextAttributes(helper)
+        assertEquals(1, editText.selectionStart)
+
+        // New text content forces setText (native caret -> 0), but the controlled selection value
+        // is unchanged so it is not marked dirty. It must still be reapplied, not left at 0.
+        helper.textValue = FakeAttributedText(listOf(Part("Goodbye", null)))
+        helper.selection = Pair(1, 1)
+        flushTextAttributes(helper)
+
+        assertEquals(1, editText.selectionStart)
+        assertEquals(1, editText.selectionEnd)
+    }
+
+    @Test
+    fun setTextAndSelectionSkipsSetTextWhenPlainTextUnchanged() {
+        val editText = ValdiEditText(getApplicationContext())
+
+        editText.setTextAndSelection("Hello", 5, 5)
+        val generationAfterFirstSet = editText.setTextGeneration
+
+        // Same text, different caret: setText must be skipped (no caret churn), selection applied.
+        editText.setTextAndSelection("Hello", 2, 2)
+
+        assertEquals(generationAfterFirstSet, editText.setTextGeneration)
+        assertEquals(2, editText.selectionStart)
+    }
+
+    @Test
+    fun setTextAndSelectionClearsConverterSpansOnRichToPlainWithIdenticalString() {
+        val (editText, helper) = newEditTextHelper(matchIosTextSetCaret = true)
+
+        // Rich text -> the converter applies styling spans and marks the view as attributed.
+        helper.textValue = FakeAttributedText(listOf(Part("Hello", null, color = Color.RED)))
+        flushTextAttributes(helper)
+        val generationAfterRich = editText.setTextGeneration
+
+        // Switch to plain text with the identical visible string. setText must still run so the
+        // leftover converter spans are cleared, even though the string is unchanged.
+        helper.textValue = "Hello"
+        flushTextAttributes(helper)
+
+        assertNotEquals(generationAfterRich, editText.setTextGeneration)
+        assertTrue(editText.text.getSpans(0, editText.text.length, CharacterStyle::class.java).isEmpty())
     }
 }
 
