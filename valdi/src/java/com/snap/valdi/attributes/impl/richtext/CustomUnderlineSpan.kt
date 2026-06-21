@@ -4,7 +4,10 @@ import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.PathEffect
 
-class CustomUnderlineSpan(private val style: CustomUnderlineStyle) : PatternUnderlineSpan() {
+class CustomUnderlineSpan(
+    private val style: CustomUnderlineStyle,
+    animation: AttributedTextAnimation?
+) : PatternUnderlineSpan(animation) {
     override fun resolveStrokeWidth(paint: Paint, density: Float): Float {
         return style.height * density
     }

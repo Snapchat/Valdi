@@ -76,6 +76,10 @@ public class NativeBridge {
 
     public static native String getViewClassName(long viewNodeHandle);
 
+    public static native Object getStoredObjectForViewNode(long viewNodeHandle, long key);
+
+    public static native void setStoredObjectForViewNode(long viewNodeHandle, long key, Object object);
+
     public static native void callJSFunction(long runtimeHandle, long contextHandle, String functionName, Object[] parameters);
 
     public static native Object getViewInContextForId(long contextHandle, String viewId);

@@ -6,6 +6,7 @@ import android.graphics.drawable.Drawable
 import android.view.View
 import com.snap.valdi.context.IValdiContext
 import com.snap.valdi.schema.ValdiUntypedClass
+import com.snap.valdi.utils.InternedString
 import com.snap.valdi.views.ValdiRootView.ScrollDirection
 
 @ValdiUntypedClass
@@ -65,6 +66,10 @@ interface IValdiViewNode {
     fun setAttribute(attributeName: String, attributeValue: Any?, keepAsOverride: Boolean)
 
     fun getAttribute(attributeName: String): Any?
+
+    fun setStoredObject(key: InternedString, value: Any?)
+
+    fun getStoredObject(key: InternedString): Any?
 
     fun reapplyAttribute(attributeName: String)
 

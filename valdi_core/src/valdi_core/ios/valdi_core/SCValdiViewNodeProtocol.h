@@ -2,6 +2,7 @@
 #import <UIKit/UIKit.h>
 
 #import "valdi_core/SCValdiRectUtils.h"
+#import "valdi_core/SCValdiInternedStringBase.h"
 #import "valdi_core/SCValdiScrollDirection.h"
 
 @protocol SCValdiAnimatorProtocol;
@@ -52,6 +53,16 @@ typedef void (^SCValdiContextDidFinishLayoutBlock)(__kindof UIView* view, id<SCV
  Used internally by SCValdiAttributesBinder.mm.
 */
 - (void)setRetainedObject:(id _Nullable)object forKey:(NSString*)key;
+
+/**
+ Store an object in the underlying ViewNode so it survives backing native view recycling.
+ */
+- (void)setStoredObject:(id _Nullable)object forKey:(SCValdiInternedStringRef)key;
+
+/**
+ Retrieve an object stored in the underlying ViewNode.
+ */
+- (id _Nullable)storedObjectForKey:(SCValdiInternedStringRef)key;
 
 /**
 

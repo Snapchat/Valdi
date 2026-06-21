@@ -448,6 +448,10 @@ static Result<Ref<TextAttributeValue>> doParse(const ColorPalette* colorPalette,
                     if (!timeOffsetBetweenPartsValue.isUndefined()) {
                         animationTransform.timeOffsetBetweenParts = timeOffsetBetweenPartsValue.toDouble();
                     }
+                    auto partPatternValue = entryValue.getMapValue("partPattern");
+                    if (!partPatternValue.isUndefined()) {
+                        animationTransform.partPattern = partPatternValue.toStringBox();
+                    }
                     animationTransform.groupIndex = static_cast<uint32_t>(animationPartCounts.size());
                     animationPartCounts.emplace_back(0);
                     pushStyle(stylesStack).animationTransform = animationTransform;

@@ -236,6 +236,9 @@
 
     const auto &animationTransform = style.animationTransform.value();
     NSString *key = animationTransform.key ? ValdiIOS::NSStringFromString(animationTransform.key.value()) : nil;
+    NSString *partPattern = animationTransform.partPattern.isEmpty()
+        ? nil
+        : ValdiIOS::NSStringFromString(animationTransform.partPattern);
     return [[SCValdiTextAnimationTransform alloc] initWithKey:key
                                                     partIndex:index
                                                  translationY:animationTransform.translationY
@@ -244,7 +247,8 @@
                                                      duration:animationTransform.duration
                                        timeOffsetBetweenParts:animationTransform.timeOffsetBetweenParts
                                                    groupIndex:animationTransform.groupIndex
-                                             partIndexInGroup:animationTransform.partIndexInGroup];
+                                             partIndexInGroup:animationTransform.partIndexInGroup
+                                                  partPattern:partPattern];
 }
 
 @end

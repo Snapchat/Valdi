@@ -23,6 +23,8 @@ import com.snap.valdi.attributes.impl.fonts.FontDescriptor
 import com.snap.valdi.attributes.impl.fonts.MissingFontsTracker
 import com.snap.valdi.attributes.impl.gradients.ValdiGradient
 import com.snap.valdi.extensions.ViewUtils
+import com.snap.valdi.logger.Logger
+import com.snap.valdi.nodes.IValdiViewNode
 import com.snap.valdi.utils.CoordinateResolver
 import com.snap.valdi.utils.Disposable
 import com.snap.valdi.utils.LoadCompletion
@@ -38,6 +40,7 @@ class TextViewHelper(private val view: TextView,
                      private val fontManager: FontManager,
                      private val defaultAttributes: FontAttributes,
                      private val valueAttributeId: Int,
+                     private val logger: Logger,
                      private val textHolder: ValdiTextHolder? = view as? ValdiTextHolder) : MissingFontsTracker {
 
     companion object {
@@ -160,6 +163,11 @@ class TextViewHelper(private val view: TextView,
     private lateinit var initialGradientSize: Size
 
     private var fontLoadDisposables: MutableMap<FontDescriptor, Disposable>? = null
+    var viewNode: IValdiViewNode? = null
+        set(value) {
+            field = value
+            attributedTextAnimator?.viewNode = value
+        }
 
     fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         updateTextAttributes()
@@ -320,6 +328,7 @@ class TextViewHelper(private val view: TextView,
             text,
             fontAttributes,
             this,
+            logger,
             attributedTextAnimator,
             disableTextReplacement,
             density
@@ -373,8 +382,10 @@ class TextViewHelper(private val view: TextView,
     fun applyTextAnimationTimeline(timeline: AttributedTextAnimationTimeline?, basePartIndex: Int) {
         textAnimationTimeline = timeline
         textAnimationBasePartIndex = basePartIndex
-        attributedTextAnimator?.groupedTimeline = timeline
-        attributedTextAnimator?.basePartIndex = basePartIndex
+        attributedTextAnimator?.let {
+            it.groupedTimeline = timeline
+            it.basePartIndex = basePartIndex
+        }
         if (timeline != null) {
             cancelAnimationFrameLoop()
         }
@@ -477,6 +488,12 @@ class TextViewHelper(private val view: TextView,
             } finally {
                 animator?.endSync()
             }
+            if (convertedText.animationTransformsCount > 0) {
+                textAnimationPartCount = convertedText.animationTransformsCount
+                updateTextAnimationGroupRegistration()
+            } else if (animator != null) {
+                clearTextAnimationState()
+            }
             convertedText
         } else {
             clearTextAnimationState()
@@ -532,12 +549,25 @@ class TextViewHelper(private val view: TextView,
         return AttributedTextAnimator().also {
             it.groupedTimeline = textAnimationTimeline
             it.basePartIndex = textAnimationBasePartIndex
+            it.viewNode = viewNode
             attributedTextAnimator = it
         }
     }
 
+    fun saveTextAnimationState() {
+        attributedTextAnimator?.let {
+            it.saveStoredAnimationStartTimes()
+        }
+    }
+
+    fun prepareForRecycling() {
+        saveTextAnimationState()
+        clearTextAnimationState()
+    }
+
     private fun clearAttributedTextAnimator() {
         val animator = attributedTextAnimator ?: return
+        animator.saveStoredAnimationStartTimes()
         animator.clear(view.text as? Spannable)
         attributedTextAnimator = null
     }
@@ -556,7 +586,7 @@ class TextViewHelper(private val view: TextView,
         }
 
         val attributes = fontAttributes ?: defaultAttributes
-        attributes.enumerateSpans(fontManager, this, disableTextReplacement) {
+        attributes.enumerateSpans(fontManager, this, disableTextReplacement, true) {
             spannable.setSpan(it, 0, spannable.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         return spannable

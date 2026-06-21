@@ -98,14 +98,6 @@ open class ValdiView : ViewGroup, ValdiRecyclableView, ValdiClippableView, Valdi
         ViewUtils.applyLayoutToValdiChildren(this)
     }
 
-    open fun onMovedToValdiContext(valdiContext: ValdiContext) {
-
-    }
-
-    internal fun movedToValdiContext(valdiContext: ValdiContext) {
-        onMovedToValdiContext(valdiContext)
-    }
-
     private fun isLargeView(): Boolean {
         // use the main runtime manager if the current view does not have one
         val viewloadeManager = valdiContext?.runtimeOrNull?.manager ?: ValdiRuntimeManager.allRuntimes().firstOrNull()?.manager

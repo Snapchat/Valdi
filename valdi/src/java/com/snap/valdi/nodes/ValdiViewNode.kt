@@ -25,6 +25,8 @@ import com.snap.valdi.utils.NativeRef
 import com.snap.valdi.nodes.IValdiViewNode.AccessibilityNode
 import com.snap.valdi.nodes.IValdiViewNode.AccessibilityCategory
 import com.snap.valdi.utils.CanvasClipper
+import com.snap.valdi.utils.InternedString
+import com.snap.valdi.utils.InternedStringCPP
 import com.snap.valdi.utils.Ref
 import com.snap.valdi.utils.error
 import com.snap.valdi.views.ValdiRootView.ScrollDirection
@@ -83,6 +85,14 @@ class ValdiViewNode(nativeHandle: Long,
 
     override fun getAttribute(attributeName: String): Any? {
         return NativeBridge.getValueForAttribute(nativeHandle, attributeName)
+    }
+
+    override fun setStoredObject(key: InternedString, value: Any?) {
+        NativeBridge.setStoredObjectForViewNode(nativeHandle, (key as InternedStringCPP).nativeHandle, value)
+    }
+
+    override fun getStoredObject(key: InternedString): Any? {
+        return NativeBridge.getStoredObjectForViewNode(nativeHandle, (key as InternedStringCPP).nativeHandle)
     }
 
     override fun reapplyAttribute(attributeName: String) {

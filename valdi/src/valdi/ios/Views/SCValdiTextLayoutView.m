@@ -73,6 +73,7 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
     BOOL _usesEffectsLayoutManager;
     __weak SCValdiTextAnimationGroup *_textAnimationGroup;
     __weak SCValdiTextAnimationCoordinator *_textAnimationCoordinator;
+    __weak id<SCValdiViewNodeProtocol> _textAnimationViewNode;
     NSUInteger _textAnimationBasePartIndex;
     NSUInteger _textAnimationPartCount;
 }
@@ -208,11 +209,22 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
     _textLayout.processedText = processedText;
     _textLayout.maxNumberOfLines = maxNumberOfLines;
     _textLayout.size = self.bounds.size;
+    _textLayoutEffectsLayoutManager.valdiViewNode = _textAnimationViewNode;
     _textLayoutEffectsLayoutManager.processedText = processedText;
+    _textLayoutEffectsLayoutManager.customUnderlineStyle = _customUnderlineStyle;
+    _textLayoutEffectsLayoutManager.customUnderlineSourceAttributedString = _customUnderlineSourceAttributedString;
+    _textLayoutEffectsLayoutManager.customUnderlineCharacterRanges = _customUnderlineCharacterRanges;
+    _textLayoutEffectsLayoutManager.customUnderlineFallbackColor = _defaultTextColor ?: UIColor.blackColor;
     _textAnimationPartCount = usesEffectsLayoutManager && processedText != nil ? processedText.animationTransformsCount : 0;
     [self setTextAnimationCoordinator:_textAnimationCoordinator basePartIndex:_textAnimationBasePartIndex];
     [self _updateTextAnimationGroupRegistration];
     [self setNeedsDisplay];
+}
+
+- (void)setTextAnimationViewNode:(id<SCValdiViewNodeProtocol>)viewNode
+{
+    _textAnimationViewNode = viewNode;
+    _textLayoutEffectsLayoutManager.valdiViewNode = viewNode;
 }
 
 - (void)setMaxNumberOfLines:(NSUInteger)maxNumberOfLines
@@ -250,7 +262,21 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
     _customUnderlineStyle = customUnderlineStyle;
     _customUnderlineSourceAttributedString = sourceAttributedString;
     _customUnderlineCharacterRanges = [characterRanges copy];
+    _textLayoutEffectsLayoutManager.customUnderlineStyle = customUnderlineStyle;
+    _textLayoutEffectsLayoutManager.customUnderlineSourceAttributedString = sourceAttributedString;
+    _textLayoutEffectsLayoutManager.customUnderlineCharacterRanges = characterRanges;
+    _textLayoutEffectsLayoutManager.customUnderlineFallbackColor = _defaultTextColor ?: UIColor.blackColor;
     [self setNeedsDisplay];
+}
+
+- (void)setDefaultTextColor:(UIColor *)defaultTextColor
+{
+    if (_defaultTextColor == defaultTextColor) {
+        return;
+    }
+
+    _defaultTextColor = defaultTextColor;
+    _textLayoutEffectsLayoutManager.customUnderlineFallbackColor = defaultTextColor ?: UIColor.blackColor;
 }
 
 - (void)performOnLayoutCallbacks
@@ -269,6 +295,11 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
                 [callback performWithMarshaller:marshaller];
             });
     }];
+}
+
+- (id<SCValdiViewNodeProtocol>)_resolveValdiViewNode
+{
+    return [_delegate valdiViewNodeForTextLayoutView:self];
 }
 
 - (void)invalidateAnimatedTextProgress
@@ -382,6 +413,15 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
 
 - (void)stopAnimations
 {
+    [_textLayoutEffectsLayoutManager saveAnimatedTextProgress];
+    [_animatedTextDisplayLink invalidate];
+    _animatedTextDisplayLink = nil;
+}
+
+- (void)prepareForRecycling
+{
+    [_textLayoutEffectsLayoutManager saveAnimatedTextProgress];
+    [_textLayoutEffectsLayoutManager clearAnimatedTextProgress];
     [_animatedTextDisplayLink invalidate];
     _animatedTextDisplayLink = nil;
 }
@@ -418,6 +458,7 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
 - (void)_drawCustomUnderlinesInRect:(CGRect)rect
 {
     if (!_customUnderlineStyle
+        || _textLayoutEffectsLayoutManager != nil
         || !_customUnderlineSourceAttributedString
         || _customUnderlineCharacterRanges.count == 0
         || !_textLayout) {
@@ -539,7 +580,7 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
 {
     SCValdiLabelSelectionState *selectionState = _selectionState;
     id<SCValdiContextProtocol> context = [_delegate valdiContextForTextLayoutView:self];
-    id<SCValdiViewNodeProtocol> viewNode = [_delegate valdiViewNodeForTextLayoutView:self];
+    id<SCValdiViewNodeProtocol> viewNode = [self _resolveValdiViewNode];
     if (!selectionState.selectable || !self.window || !context || !viewNode) {
         return;
     }

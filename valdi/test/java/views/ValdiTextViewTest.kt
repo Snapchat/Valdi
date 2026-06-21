@@ -20,6 +20,7 @@ import com.snap.valdi.attributes.impl.richtext.TextViewHelper
 import com.snap.valdi.attributes.impl.richtext.TextAnimationTransform
 import com.snap.valdi.attributes.impl.richtext.TextDecoration
 import com.snap.valdi.callable.ValdiFunction
+import com.snap.valdi.logger.Logger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -34,6 +35,11 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], manifest = Config.NONE)
 internal class ValdiTextViewTest {
+    private object NoopLogger : Logger {
+        override fun log(level: Int, message: String?) = Unit
+        override fun log(level: Int, err: Throwable?, message: String?) = Unit
+    }
+
     private class Part(
         val content: String,
         val inlineViewAttachment: InlineViewAttachmentInfo? = null,
@@ -133,7 +139,8 @@ internal class ValdiTextViewTest {
         textView.getOrCreateTextViewHelper(
             createFontManager(context),
             FontAttributes.default.copy(fontSize = 20f, numberOfLines = 0),
-            0
+            0,
+            NoopLogger
         ).textValue = attributedText
         children.forEachIndexed { index, child ->
             textView.addValdiChildView(child, index)
@@ -172,7 +179,8 @@ internal class ValdiTextViewTest {
         textView.getOrCreateTextViewHelper(
             createFontManager(context),
             FontAttributes.default.copy(fontSize = 20f, numberOfLines = 0),
-            0
+            0,
+            NoopLogger
         ).textValue = FakeAttributedText(
             listOf(
                 Part("אבג "),
@@ -206,13 +214,15 @@ internal class ValdiTextViewTest {
             duration = 100.0,
             timeOffsetBetweenParts = 0.0,
             groupIndex = 0,
-            partIndexInGroup = 0
+            partIndexInGroup = 0,
+            partPattern = null
         )
 
         textView.getOrCreateTextViewHelper(
             createFontManager(context),
             FontAttributes.default.copy(fontSize = 20f, numberOfLines = 0),
-            0
+            0,
+            NoopLogger
         ).textValue = FakeAttributedText(
             listOf(
                 Part("Before "),
@@ -250,13 +260,51 @@ internal class ValdiTextViewTest {
     }
 
     @Test
+    fun textAnimationPartCountUsesExpandedPartPatternRanges() {
+        val context = getApplicationContext<Context>()
+        val textView = TestValdiTextViewBase(context)
+        val helper = textView.getOrCreateTextViewHelper(
+            createFontManager(context),
+            FontAttributes.default.copy(fontSize = 20f, numberOfLines = 0),
+            0,
+            NoopLogger
+        )
+
+        helper.textValue = FakeAttributedText(
+            listOf(
+                Part(
+                    "abc",
+                    animationTransform = TextAnimationTransform(
+                        key = "chars",
+                        translationY = 8f,
+                        scale = 0.7f,
+                        opacity = 0f,
+                        duration = 100.0,
+                        timeOffsetBetweenParts = 0.1,
+                        groupIndex = 0,
+                        partIndexInGroup = 0,
+                        partPattern = "."
+                    )
+                )
+            )
+        )
+
+        val widthSpec = View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY)
+        val heightSpec = View.MeasureSpec.makeMeasureSpec(80, View.MeasureSpec.EXACTLY)
+        textView.measure(widthSpec, heightSpec)
+
+        assertEquals(3, helper.textAnimationPartCount)
+    }
+
+    @Test
     fun labelTextGradientInitializesFromFinalBackingTextViewBounds() {
         val context = getApplicationContext<Context>()
         val textView = TestValdiTextViewBase(context)
         val helper = textView.getOrCreateTextViewHelper(
             createFontManager(context),
             FontAttributes.default.copy(fontSize = 20f),
-            0
+            0,
+            NoopLogger
         )
         helper.textValue = "Gradient text"
         helper.textGradient = ValdiGradient(

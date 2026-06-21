@@ -153,6 +153,76 @@ static SCValdiProcessedTextRangeValue *SCValdiProcessedTextMakeRangeValue(NSRang
     return item;
 }
 
+static NSUInteger SCValdiProcessedTextNextPartIndexInGroup(NSMutableArray<NSNumber *> **partIndexesByGroup,
+                                                           NSUInteger groupIndex)
+{
+    if (*partIndexesByGroup == nil) {
+        *partIndexesByGroup = [NSMutableArray new];
+    }
+    while ((*partIndexesByGroup).count <= groupIndex) {
+        [*partIndexesByGroup addObject:@0];
+    }
+    NSUInteger partIndex = (*partIndexesByGroup)[groupIndex].unsignedIntegerValue;
+    (*partIndexesByGroup)[groupIndex] = @(partIndex + 1);
+    return partIndex;
+}
+
+static void SCValdiProcessedTextAppendAnimationItem(NSMutableArray<SCValdiProcessedTextRangeValue *> *animationItems,
+                                                    NSRange range,
+                                                    SCValdiTextAnimationTransform *animationTransform,
+                                                    NSMutableArray<NSNumber *> **partIndexesByGroup,
+                                                    NSUInteger partIndex)
+{
+    NSUInteger partIndexInGroup =
+        SCValdiProcessedTextNextPartIndexInGroup(partIndexesByGroup, animationTransform.groupIndex);
+    SCValdiTextAnimationTransform *emittedTransform =
+        [animationTransform copyWithPartIndex:partIndex partIndexInGroup:partIndexInGroup];
+    [animationItems addObject:SCValdiProcessedTextMakeRangeValue(range, emittedTransform)];
+}
+
+static void SCValdiProcessedTextAppendAnimationItems(NSMutableArray<SCValdiProcessedTextRangeValue *> *animationItems,
+                                                     NSRange partRange,
+                                                     NSString *content,
+                                                     BOOL isAttachmentPart,
+                                                     SCValdiTextAnimationTransform *animationTransform,
+                                                     NSMutableArray<NSNumber *> **partIndexesByGroup,
+                                                     NSUInteger *nextSyntheticPartIndex)
+{
+    NSString *partPattern = animationTransform.partPattern;
+    if (isAttachmentPart || partPattern.length == 0) {
+        SCValdiProcessedTextAppendAnimationItem(animationItems,
+                                               partRange,
+                                               animationTransform,
+                                               partIndexesByGroup,
+                                               animationTransform.partIndex);
+        return;
+    }
+
+    NSError *error = nil;
+    NSRegularExpression *regularExpression =
+        [NSRegularExpression regularExpressionWithPattern:partPattern options:0 error:&error];
+    if (regularExpression == nil) {
+        SCLogValdiWarning(@"Ignoring invalid text animation partPattern '%@': %@", partPattern, error.localizedDescription);
+        return;
+    }
+
+    NSArray<NSTextCheckingResult *> *matches = [regularExpression matchesInString:content
+                                                                          options:0
+                                                                            range:NSMakeRange(0, content.length)];
+    for (NSTextCheckingResult *match in matches) {
+        NSRange matchRange = match.range;
+        if (matchRange.length == 0) {
+            continue;
+        }
+        NSRange animationRange = NSMakeRange(partRange.location + matchRange.location, matchRange.length);
+        SCValdiProcessedTextAppendAnimationItem(animationItems,
+                                               animationRange,
+                                               animationTransform,
+                                               partIndexesByGroup,
+                                               (*nextSyntheticPartIndex)++);
+    }
+}
+
 static BOOL SCValdiProcessedTextRangeContainsIndex(NSRange range, NSUInteger index)
 {
     return range.location != NSNotFound && index >= range.location && index < NSMaxRange(range);
@@ -454,6 +524,8 @@ static void SCValdiProcessedTextApplyConfiguration(
     NSMutableArray<SCValdiProcessedTextRangeValue *> *onLayoutItems = nil;
     NSMutableArray<SCValdiProcessedTextRangeValue *> *inlineAttachmentItems = nil;
     NSMutableArray<SCValdiProcessedTextRangeValue *> *animationItems = nil;
+    NSMutableArray<NSNumber *> *animationPartIndexesByGroup = nil;
+    NSUInteger nextSyntheticAnimationPartIndex = valdiAttributedText.partsCount;
     NSMutableArray<SCValdiProcessedTextOuterOutline *> *outlineItems = nil;
 
     NSUInteger count = valdiAttributedText.partsCount;
@@ -556,7 +628,13 @@ static void SCValdiProcessedTextApplyConfiguration(
             if (animationItems == nil) {
                 animationItems = [NSMutableArray new];
             }
-            [animationItems addObject:SCValdiProcessedTextMakeRangeValue(partRange, animationTransform)];
+            SCValdiProcessedTextAppendAnimationItems(animationItems,
+                                                    partRange,
+                                                    content,
+                                                    imageAttachment != nil || inlineViewAttachment != nil,
+                                                    animationTransform,
+                                                    &animationPartIndexesByGroup,
+                                                    &nextSyntheticAnimationPartIndex);
         }
 
         if (outerOutlineWidth && outerOutlineColor) {

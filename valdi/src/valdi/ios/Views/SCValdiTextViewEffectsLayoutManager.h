@@ -7,6 +7,7 @@ NS_ASSUME_NONNULL_BEGIN
 @class SCValdiProcessedText;
 @class SCValdiTextAnimationCoordinator;
 @class SCValdiTextAnimationPresentation;
+@protocol SCValdiViewNodeProtocol;
 
 FOUNDATION_EXPORT NSAttributedStringKey const kSCValdiTextViewCustomUnderlineColorAttribute;
 
@@ -26,6 +27,9 @@ FOUNDATION_EXPORT NSAttributedStringKey const kSCValdiTextViewCustomUnderlineCol
 
 @property (nonatomic, strong, nullable) SCValdiTextViewBackgroundEffects* effects;
 @property (nonatomic, strong, nullable) SCValdiCustomUnderlineStyle* customUnderlineStyle;
+@property (nonatomic, strong, nullable) NSAttributedString *customUnderlineSourceAttributedString;
+@property (nonatomic, copy, nullable) NSArray<NSValue *> *customUnderlineCharacterRanges;
+@property (nonatomic, strong, nullable) UIColor *customUnderlineFallbackColor;
 @property (nonatomic, strong, nullable) SCValdiProcessedText* processedText;
 
 @property (nonatomic, strong, readonly) UIColor* backgroundColor;
@@ -34,9 +38,12 @@ FOUNDATION_EXPORT NSAttributedStringKey const kSCValdiTextViewCustomUnderlineCol
 @property (nonatomic, assign, readonly) BOOL hasActiveAnimationRanges;
 @property (nonatomic, weak, nullable) SCValdiTextAnimationCoordinator* textAnimationCoordinator;
 @property (nonatomic, assign) NSUInteger textAnimationBasePartIndex;
+@property (nonatomic, weak, nullable) id<SCValdiViewNodeProtocol> valdiViewNode;
 
 - (void)prepareGroupedAnimatedTextProgress;
 - (BOOL)invalidateAnimatedTextProgress;
+- (void)saveAnimatedTextProgress;
+- (void)clearAnimatedTextProgress;
 - (CGFloat)opacityForAnimationRange:(NSRange)range;
 - (nullable SCValdiTextAnimationPresentation *)presentationForAnimationRange:(NSRange)range;
 

@@ -40,6 +40,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)initWithFrame:(CGRect)frame usesEffectsLayoutManager:(BOOL)usesEffectsLayoutManager NS_DESIGNATED_INITIALIZER;
 - (nullable instancetype)initWithCoder:(NSCoder *)coder NS_DESIGNATED_INITIALIZER;
 - (void)configureWithUsesEffectsLayoutManager:(BOOL)usesEffectsLayoutManager;
+- (void)setTextAnimationViewNode:(nullable id<SCValdiViewNodeProtocol>)viewNode;
 - (void)setProcessedText:(nullable SCValdiProcessedText *)processedText;
 - (void)updateInlineAttachmentsAndUpdate;
 - (void)setCustomUnderlineStyle:(nullable SCValdiCustomUnderlineStyle *)customUnderlineStyle
@@ -53,6 +54,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (CGFloat)animatedTextOpacityForRange:(NSRange)range;
 - (nullable SCValdiTextAnimationPresentation *)animatedTextPresentationForRange:(NSRange)range;
 - (void)stopAnimations;
+- (void)prepareForRecycling;
 
 - (void)setSelectable:(BOOL)selectable;
 - (BOOL)setSelection:(NSArray *)selection;

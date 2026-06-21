@@ -146,7 +146,6 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
 }
 
 @interface SCValdiTextView() <SCValdiAttributedTextOnTapGestureRecognizerFunctionProvider, SCValdiContentViewProviding, SCValdiTextAnimationGroupParticipant>
-
 @end
 
 @implementation SCValdiTextView {
@@ -297,8 +296,18 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
 
 #pragma mark - UIView+Valdi
 
+- (void)didMoveToValdiContext:(id<SCValdiContextProtocol>)valdiContext
+                      viewNode:(id<SCValdiViewNodeProtocol>)viewNode
+{
+    (void)valdiContext;
+    _effectsLayoutManager.valdiViewNode = viewNode;
+    _animatedTextEffectsLayoutManager.valdiViewNode = viewNode;
+}
+
 - (BOOL)willEnqueueIntoValdiPool
 {
+    [_animatedTextEffectsLayoutManager saveAnimatedTextProgress];
+    [_animatedTextEffectsLayoutManager clearAnimatedTextProgress];
     [_textAnimationGroup unregisterTextAnimationParticipant:self];
     _textAnimationGroup = nil;
     _textAnimationPartCount = 0;

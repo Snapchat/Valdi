@@ -377,6 +377,19 @@ public:
         return static_cast<jint>(animationTransform->partIndexInGroup);
     }
 
+    // NOLINTNEXTLINE
+    static jstring nativeGetAnimationTransformPartPattern(fbjni::alias_ref<fbjni::JClass> /* clazz */,
+                                                          jlong ptr,
+                                                          jint index) {
+        const auto* animationTransform = getAnimationTransformOrThrow(ptr, index);
+        if (animationTransform == nullptr || animationTransform->partPattern.isEmpty()) {
+            return nullptr;
+        }
+
+        auto javaStr = toJavaObject(JavaEnv(), animationTransform->partPattern);
+        return reinterpret_cast<jstring>(javaStr.releaseObject());
+    }
+
     static void registerNatives() {
         javaClassStatic()->registerNatives({
             makeNativeMethod("nativeGetPartsSize", AttributedTextJNI::nativeGetPartsSize),
@@ -419,6 +432,8 @@ public:
                              AttributedTextJNI::nativeGetAnimationTransformGroupIndex),
             makeNativeMethod("nativeGetAnimationTransformPartIndexInGroup",
                              AttributedTextJNI::nativeGetAnimationTransformPartIndexInGroup),
+            makeNativeMethod("nativeGetAnimationTransformPartPattern",
+                             AttributedTextJNI::nativeGetAnimationTransformPartPattern),
         });
     }
 };

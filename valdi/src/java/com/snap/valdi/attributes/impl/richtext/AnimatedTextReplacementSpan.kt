@@ -14,6 +14,10 @@ class AnimatedTextReplacementSpan(
     private val missingFontsTracker: MissingFontsTracker,
     private val density: Float
 ) : ReplacementSpan() {
+    private var outlinePaint: Paint? = null
+    private var fillPaint: Paint? = null
+    private var patternUnderlineSpan: PatternUnderlineSpan? = null
+
     override fun getSize(
         paint: Paint,
         text: CharSequence?,
@@ -56,20 +60,50 @@ class AnimatedTextReplacementSpan(
         val centerX = x + width / 2f
         val centerY = (top + bottom) / 2f
 
+        val outlinePaint = outlinePaintForAlpha(alpha)
+        val fillPaint = fillPaintForAlpha(alpha)
+
         canvas.save()
         canvas.translate(centerX, centerY + animation.translationY * density)
         canvas.scale(animation.scale, animation.scale)
         canvas.translate(-centerX, -centerY)
 
-        if (attributes.outlineColor != null && attributes.outlineWidth > 0f) {
-            val outlinePaint = Paint(attributes.toPaint(fontManager, missingFontsTracker))
-            outlinePaint.alpha = alpha
+        if (outlinePaint != null) {
             canvas.drawText(text, start, end, x, y.toFloat(), outlinePaint)
         }
 
-        val fillPaint = Paint(attributes.toFillPaint(fontManager, missingFontsTracker))
-        fillPaint.alpha = alpha
         canvas.drawText(text, start, end, x, y.toFloat(), fillPaint)
+        patternUnderlineSpan()?.drawUnderlineRange(canvas, fillPaint, x, x + width, top, y, bottom)
         canvas.restore()
+    }
+
+    private fun outlinePaintForAlpha(alpha: Int): Paint? {
+        if (attributes.outlineColor == null || attributes.outlineWidth <= 0f) {
+            return null
+        }
+
+        val paint = outlinePaint ?: attributes.toPaint(fontManager, missingFontsTracker).also {
+            outlinePaint = it
+        }
+        paint.alpha = alpha
+        return paint
+    }
+
+    private fun fillPaintForAlpha(alpha: Int): Paint {
+        val paint = fillPaint ?: attributes.toFillPaint(fontManager, missingFontsTracker).also {
+            fillPaint = it
+        }
+        paint.alpha = alpha
+        return paint
+    }
+
+    private fun patternUnderlineSpan(): PatternUnderlineSpan? {
+        if (!attributes.requiresDrawableUnderlineSpan()) {
+            return null
+        }
+
+        return patternUnderlineSpan ?: attributes.createDrawableUnderlineSpan(null).also {
+            patternUnderlineSpan = it
+        }
     }
 }

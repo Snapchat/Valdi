@@ -21,6 +21,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign, readonly) double timeOffsetBetweenParts;
 @property (nonatomic, assign, readonly) NSUInteger groupIndex;
 @property (nonatomic, assign, readonly) NSUInteger partIndexInGroup;
+@property (nonatomic, copy, nullable, readonly) NSString *partPattern;
 
 - (instancetype)initWithKey:(nullable NSString *)key
                   partIndex:(NSUInteger)partIndex
@@ -30,7 +31,11 @@ NS_ASSUME_NONNULL_BEGIN
                    duration:(double)duration
      timeOffsetBetweenParts:(double)timeOffsetBetweenParts
                  groupIndex:(NSUInteger)groupIndex
-           partIndexInGroup:(NSUInteger)partIndexInGroup;
+           partIndexInGroup:(NSUInteger)partIndexInGroup
+                partPattern:(nullable NSString *)partPattern;
+
+- (instancetype)copyWithPartIndex:(NSUInteger)partIndex
+                 partIndexInGroup:(NSUInteger)partIndexInGroup;
 
 @end
 

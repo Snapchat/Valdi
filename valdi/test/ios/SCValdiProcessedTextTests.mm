@@ -9,7 +9,9 @@
 #import "valdi/ios/Text/SCValdiProcessedText.h"
 #import "valdi/ios/Text/SCValdiTextAnimationPresentation.h"
 #import "valdi/ios/Text/SCValdiTextAnimationTransform.h"
+#import "valdi/ios/Text/SCValdiTextLayout.h"
 #import "valdi/ios/Views/SCValdiLabel.h"
+#import "valdi/ios/Views/SCValdiTextLayoutView.h"
 #import "valdi/ios/Views/SCValdiTextView.h"
 #import "valdi/ios/Views/SCValdiTextViewEffectsLayoutManager.h"
 #import "valdi_core/SCValdiContentViewProviding.h"
@@ -97,6 +99,48 @@ static void SCValdiAssertColorEqual(UIColor *actualColor, UIColor *expectedColor
 {
     XCTAssertNotNil(actualColor);
     XCTAssertEqual(actualColor.valdiAttributeValue, expectedColor.valdiAttributeValue);
+}
+
+static NSUInteger SCValdiVisiblePixelCountNearRow(UIImage *image, NSInteger centerRow, NSInteger radius)
+{
+    CGImageRef imageRef = image.CGImage;
+    if (imageRef == nil) {
+        return 0;
+    }
+
+    size_t width = CGImageGetWidth(imageRef);
+    size_t height = CGImageGetHeight(imageRef);
+    if (width == 0 || height == 0 || centerRow < 0 || centerRow >= (NSInteger)height) {
+        return 0;
+    }
+
+    std::vector<unsigned char> pixels(width * height * 4);
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGBitmapInfo bitmapInfo = kCGBitmapByteOrder32Big | static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedLast);
+    CGContextRef context = CGBitmapContextCreate(pixels.data(),
+                                                 width,
+                                                 height,
+                                                 8,
+                                                 width * 4,
+                                                 colorSpace,
+                                                 bitmapInfo);
+    CGContextDrawImage(context, CGRectMake(0, 0, width, height), imageRef);
+    CGContextRelease(context);
+    CGColorSpaceRelease(colorSpace);
+
+    NSInteger startRow = MAX((NSInteger)0, centerRow - radius);
+    NSInteger endRow = MIN((NSInteger)height - 1, centerRow + radius);
+    NSUInteger visiblePixelCount = 0;
+    for (NSInteger row = startRow; row <= endRow; row++) {
+        size_t rowOffset = (size_t)row * width * 4;
+        for (size_t column = 0; column < width; column++) {
+            unsigned char alpha = pixels[rowOffset + column * 4 + 3];
+            if (alpha > 16) {
+                visiblePixelCount++;
+            }
+        }
+    }
+    return visiblePixelCount;
 }
 
 static NSTextAttachment *SCValdiTextAttachmentAtRange(SCValdiProcessedText *processedText, NSRange range)
@@ -206,6 +250,18 @@ static NSTextStorage *SCValdiConfigureLayoutManagerForProcessedText(SCValdiProce
 {
     (void)object;
     (void)key;
+}
+
+- (void)setStoredObject:(id)object forKey:(SCValdiInternedStringRef)key
+{
+    (void)object;
+    (void)key;
+}
+
+- (id)storedObjectForKey:(SCValdiInternedStringRef)key
+{
+    (void)key;
+    return nil;
 }
 
 - (void)didApplyLayoutWithAnimator:(id<SCValdiAnimatorProtocol>)animator
@@ -804,7 +860,7 @@ static NSTextStorage *SCValdiConfigureLayoutManagerForProcessedText(SCValdiProce
         XCTAssertEqualWithAccuracy(animationTransform.duration, 0.2, 0.001);
         XCTAssertEqualWithAccuracy(animationTransform.timeOffsetBetweenParts, 0.6, 0.001);
         XCTAssertEqual(animationTransform.groupIndex, 7U);
-        XCTAssertEqual(animationTransform.partIndexInGroup, 3U);
+        XCTAssertEqual(animationTransform.partIndexInGroup, 0U);
         XCTAssertTrue(NSEqualRanges(animationRange, NSMakeRange(5, 4)));
         animationCount++;
         *stop = YES;
@@ -866,6 +922,217 @@ static NSTextStorage *SCValdiConfigureLayoutManagerForProcessedText(SCValdiProce
     XCTAssertLessThan(presentation.scale, 0.85);
 
     XCTAssertNil([layoutManager presentationForAnimationRange:NSMakeRange(20, 1)]);
+}
+
+- (void)testTextLayoutViewAnimatesCustomUnderlinesWithTextTransform
+{
+    UIFont *font = [UIFont systemFontOfSize:20];
+    SCValdiCustomUnderlineStyle *customUnderlineStyle = [[SCValdiCustomUnderlineStyle alloc] initWithHeight:2
+                                                                                                    onWidth:0
+                                                                                                   offWidth:0
+                                                                                                     offset:0];
+    SCValdiProcessedTextConfiguration *configuration = [SCValdiProcessedTextConfiguration new];
+    configuration.customUnderlineStyle = customUnderlineStyle;
+    configuration.customUnderlineMode = SCValdiProcessedTextCustomUnderlineModeRemoveNativeUnderline;
+
+    Valdi::TextAttributeValue::Parts parts;
+    auto &animatedStyle = SCValdiTestAppendTextPart(parts, STRING_LITERAL("move"));
+    animatedStyle.color = Valdi::Color(0, 0, 0, 0);
+    animatedStyle.textDecoration = Valdi::TextDecoration::Underline;
+    animatedStyle.animationTransform = Valdi::TextAnimationTransform{
+        std::nullopt,
+        20,
+        1,
+        1,
+        100,
+        0,
+        0,
+        0,
+    };
+
+    SCValdiProcessedText *processedText =
+        SCValdiProcessedTextWithParts(std::move(parts), @{ NSFontAttributeName: font }, configuration);
+
+    SCValdiTextLayoutView *textLayoutView =
+        [[SCValdiTextLayoutView alloc] initWithFrame:CGRectMake(0, 0, 160, 100) usesEffectsLayoutManager:YES];
+    textLayoutView.defaultTextColor = UIColor.redColor;
+    [textLayoutView setCustomUnderlineStyle:customUnderlineStyle
+                     sourceAttributedString:processedText.customUnderlineSourceString
+                            characterRanges:processedText.customUnderlineCharacterRanges];
+    [textLayoutView setProcessedText:processedText];
+    [textLayoutView invalidateAnimatedTextProgress];
+
+    NSArray<NSValue *> *underlineRectValues =
+        [textLayoutView.textLayout underlineRectsForRange:NSMakeRange(0, processedText.attributedString.length)
+                                            inDrawingRect:textLayoutView.bounds
+                                                lineWidth:customUnderlineStyle.height
+                                          underlineOffset:customUnderlineStyle.offset];
+    XCTAssertEqual(underlineRectValues.count, 1U);
+
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+    format.opaque = NO;
+    format.scale = 1;
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:textLayoutView.bounds.size
+                                                                               format:format];
+    UIImage *image = [renderer imageWithActions:^(__unused UIGraphicsImageRendererContext *context) {
+        [textLayoutView drawRect:textLayoutView.bounds];
+    }];
+
+    CGRect staticUnderlineRect = underlineRectValues.firstObject.CGRectValue;
+    NSInteger staticUnderlineRow = (NSInteger)lround(CGRectGetMidY(staticUnderlineRect));
+    NSInteger animatedUnderlineRow = (NSInteger)lround(CGRectGetMidY(staticUnderlineRect) + 20.0);
+
+    XCTAssertEqual(SCValdiVisiblePixelCountNearRow(image, staticUnderlineRow, 2), 0U);
+    XCTAssertGreaterThan(SCValdiVisiblePixelCountNearRow(image, animatedUnderlineRow, 2), 0U);
+}
+
+- (void)testTextAnimationPartPatternSplitsCharacters
+{
+    Valdi::TextAttributeValue::Parts parts;
+    auto &animatedStyle = SCValdiTestAppendTextPart(parts, STRING_LITERAL("abc"));
+    animatedStyle.animationTransform = Valdi::TextAnimationTransform{
+        STRING_LITERAL("chars"),
+        4,
+        1,
+        0,
+        0.25,
+        0.1,
+        0,
+        0,
+        STRING_LITERAL("."),
+    };
+
+    SCValdiProcessedText *processedText =
+        SCValdiProcessedTextWithParts(std::move(parts), @{ NSFontAttributeName: [UIFont systemFontOfSize:20] }, nil);
+
+    XCTAssertEqual(processedText.animationTransformsCount, 3U);
+    __block NSUInteger animationIndex = 0;
+    [processedText enumerateAnimationTransformsUsingBlock:^(SCValdiTextAnimationTransform *animationTransform,
+                                                            NSRange range,
+                                                            BOOL *stop) {
+        XCTAssertTrue(NSEqualRanges(range, NSMakeRange(animationIndex, 1)));
+        XCTAssertEqual(animationTransform.partIndex, animationIndex + 1);
+        XCTAssertEqual(animationTransform.partIndexInGroup, animationIndex);
+        animationIndex++;
+    }];
+    XCTAssertEqual(animationIndex, 3U);
+}
+
+- (void)testTextAnimationPartPatternSplitsWordsAndSkipsSeparators
+{
+    Valdi::TextAttributeValue::Parts parts;
+    auto &animatedStyle = SCValdiTestAppendTextPart(parts, STRING_LITERAL("hi there"));
+    animatedStyle.animationTransform = Valdi::TextAnimationTransform{
+        STRING_LITERAL("words"),
+        4,
+        1,
+        0,
+        0.25,
+        0.1,
+        0,
+        0,
+        STRING_LITERAL("\\S+"),
+    };
+
+    SCValdiProcessedText *processedText =
+        SCValdiProcessedTextWithParts(std::move(parts), @{ NSFontAttributeName: [UIFont systemFontOfSize:20] }, nil);
+
+    NSArray<NSValue *> *expectedRanges = @[
+        [NSValue valueWithRange:NSMakeRange(0, 2)],
+        [NSValue valueWithRange:NSMakeRange(3, 5)],
+    ];
+    __block NSUInteger animationIndex = 0;
+    [processedText enumerateAnimationTransformsUsingBlock:^(SCValdiTextAnimationTransform *animationTransform,
+                                                            NSRange range,
+                                                            BOOL *stop) {
+        XCTAssertTrue(NSEqualRanges(range, expectedRanges[animationIndex].rangeValue));
+        XCTAssertEqual(animationTransform.partIndexInGroup, animationIndex);
+        animationIndex++;
+    }];
+    XCTAssertEqual(animationIndex, expectedRanges.count);
+}
+
+- (void)testTextAnimationPartPatternKeepsGroupIndexesContinuousAcrossParts
+{
+    Valdi::TextAttributeValue::Parts parts;
+    auto &firstStyle = SCValdiTestAppendTextPart(parts, STRING_LITERAL("ab"));
+    firstStyle.animationTransform = Valdi::TextAnimationTransform{
+        STRING_LITERAL("group"),
+        4,
+        1,
+        0,
+        0.25,
+        0.1,
+        2,
+        0,
+        STRING_LITERAL("."),
+    };
+    auto &secondStyle = SCValdiTestAppendTextPart(parts, STRING_LITERAL("cd"));
+    secondStyle.animationTransform = Valdi::TextAnimationTransform{
+        STRING_LITERAL("group"),
+        4,
+        1,
+        0,
+        0.25,
+        0.1,
+        2,
+        99,
+    };
+
+    SCValdiProcessedText *processedText =
+        SCValdiProcessedTextWithParts(std::move(parts), @{ NSFontAttributeName: [UIFont systemFontOfSize:20] }, nil);
+
+    NSArray<NSValue *> *expectedRanges = @[
+        [NSValue valueWithRange:NSMakeRange(0, 1)],
+        [NSValue valueWithRange:NSMakeRange(1, 1)],
+        [NSValue valueWithRange:NSMakeRange(2, 2)],
+    ];
+    __block NSUInteger animationIndex = 0;
+    [processedText enumerateAnimationTransformsUsingBlock:^(SCValdiTextAnimationTransform *animationTransform,
+                                                            NSRange range,
+                                                            BOOL *stop) {
+        XCTAssertTrue(NSEqualRanges(range, expectedRanges[animationIndex].rangeValue));
+        XCTAssertEqual(animationTransform.groupIndex, 2U);
+        XCTAssertEqual(animationTransform.partIndexInGroup, animationIndex);
+        animationIndex++;
+    }];
+    XCTAssertEqual(animationIndex, expectedRanges.count);
+}
+
+- (void)testTextAnimationPartPatternDoesNotSplitInlineAttachments
+{
+    CGSize attachmentSize = CGSizeMake(12, 10);
+    auto attachment = Valdi::makeShared<SCValdiTestInlineAttachment>(0, &attachmentSize);
+
+    Valdi::TextAttributeValue::Parts parts;
+    auto &part = parts.emplace_back();
+    part.style.inlineViewAttachment = attachment;
+    part.style.animationTransform = Valdi::TextAnimationTransform{
+        STRING_LITERAL("inline"),
+        4,
+        1,
+        0,
+        0.25,
+        0.1,
+        0,
+        0,
+        STRING_LITERAL("."),
+    };
+
+    SCValdiProcessedText *processedText =
+        SCValdiProcessedTextWithParts(std::move(parts), @{ NSFontAttributeName: [UIFont systemFontOfSize:20] }, nil);
+
+    XCTAssertEqual(processedText.animationTransformsCount, 1U);
+    __block NSUInteger animationCount = 0;
+    [processedText enumerateAnimationTransformsUsingBlock:^(SCValdiTextAnimationTransform *animationTransform,
+                                                            NSRange range,
+                                                            BOOL *stop) {
+        XCTAssertTrue(NSEqualRanges(range, NSMakeRange(0, 1)));
+        XCTAssertEqual(animationTransform.partIndex, 0U);
+        XCTAssertEqual(animationTransform.partIndexInGroup, 0U);
+        animationCount++;
+    }];
+    XCTAssertEqual(animationCount, 1U);
 }
 
 - (void)testEnumeratorsHonorStopWithMultipleItems

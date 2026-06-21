@@ -23,6 +23,7 @@ import com.snap.valdi.attributes.impl.richtext.FontAttributes
 import com.snap.valdi.attributes.impl.richtext.PatternUnderlineSpan
 import com.snap.valdi.attributes.impl.richtext.TextDecoration
 import com.snap.valdi.attributes.impl.richtext.TextViewHelper
+import com.snap.valdi.logger.Logger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -34,6 +35,11 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], manifest = Config.NONE)
 internal class CustomUnderlineSpanTest {
+    private object NoopLogger : Logger {
+        override fun log(level: Int, message: String?) = Unit
+        override fun log(level: Int, err: Throwable?, message: String?) = Unit
+    }
+
     private fun createFontManager(context: Context): FontManager {
         return FontManager(context, object : TypefaceResLoader {
             override fun loadTypeface(context: Context, resId: Int): Typeface = Typeface.DEFAULT
@@ -52,7 +58,7 @@ internal class CustomUnderlineSpanTest {
             override fun onFontMissing(fontDescriptor: FontDescriptor) {}
         }
 
-        attributes.enumerateSpans(fontManager, missingFontsTracker) { spans.add(it) }
+        attributes.enumerateSpans(fontManager, missingFontsTracker, false, true) { spans.add(it) }
 
         assertTrue(spans.any { it is CustomUnderlineSpan })
     }
@@ -65,7 +71,8 @@ internal class CustomUnderlineSpanTest {
             view,
             createFontManager(context),
             FontAttributes.default,
-            0
+            0,
+            NoopLogger
         )
 
         helper.textValue = "custom underline"
@@ -80,7 +87,7 @@ internal class CustomUnderlineSpanTest {
 
     @Test
     fun customUnderlineStyleDoesNotAffectLineHeight() {
-        val span: Any = CustomUnderlineSpan(CustomUnderlineStyle(1f, 1f, 1f, 3f))
+        val span: Any = CustomUnderlineSpan(CustomUnderlineStyle(1f, 1f, 1f, 3f), null)
 
         assertFalse(span is LineHeightSpan)
     }
@@ -100,7 +107,8 @@ internal class CustomUnderlineSpanTest {
             view,
             createFontManager(context),
             FontAttributes.default,
-            0
+            0,
+            NoopLogger
         )
 
         helper.textValue = "native underline"
@@ -156,7 +164,7 @@ internal class CustomUnderlineSpanTest {
         }
     }
 
-    private class CapturingUnderlineSpan : PatternUnderlineSpan() {
+    private class CapturingUnderlineSpan : PatternUnderlineSpan(null) {
         var startX: Float = Float.NaN
         var endX: Float = Float.NaN
 
@@ -176,7 +184,7 @@ internal class CustomUnderlineSpanTest {
     private class ClampedUnderlineSpan(
         private val underlineY: Float,
         private val strokeWidth: Float
-    ) : PatternUnderlineSpan() {
+    ) : PatternUnderlineSpan(null) {
         override fun resolveStrokeWidth(paint: Paint, density: Float): Float = strokeWidth
 
         fun resolveVisibleUnderlineYForTest(paint: Paint, baseline: Int, bottom: Int): Float {

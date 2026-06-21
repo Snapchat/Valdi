@@ -5,11 +5,13 @@
 #import "valdi/ios/Text/SCValdiTextAnimationCoordinator.h"
 #import "valdi/ios/Text/SCValdiTextAnimationPresentation.h"
 #import "valdi/ios/Text/SCValdiTextAnimationTransform.h"
+#import "valdi_core/SCValdiInternedString.h"
+#import "valdi_core/SCValdiViewNodeProtocol.h"
 #import <CoreText/CoreText.h>
 #import <QuartzCore/QuartzCore.h>
-#import <math.h>
 
 NSAttributedStringKey const kSCValdiTextViewCustomUnderlineColorAttribute = @"valdi_textViewCustomUnderlineColor";
+INTERNED_STRING_CONST("valdi.textAnimationStartTimes", SCValdiTextAnimationStartTimesStorageKey);
 
 @implementation SCValdiTextViewBackgroundEffects
 @end
@@ -27,6 +29,17 @@ NSAttributedStringKey const kSCValdiTextViewCustomUnderlineColorAttribute = @"va
 @property (nonatomic, assign) CGFloat translationY;
 @property (nonatomic, assign) CGFloat scale;
 @property (nonatomic, assign) CGFloat opacity;
+@property (nonatomic, assign) CGFloat initialTranslationY;
+@property (nonatomic, assign) CGFloat initialScale;
+@property (nonatomic, assign) CGFloat initialOpacity;
+@property (nonatomic, assign) double duration;
+@property (nonatomic, assign) double startDelay;
+@property (nonatomic, assign) double timeOffset;
+@property (nonatomic, copy) NSString *rangeKey;
+@property (nonatomic, copy) NSString *timelineKey;
+@property (nonatomic, assign) BOOL shouldStoreStartTime;
+@property (nonatomic, assign) BOOL hasStartTime;
+@property (nonatomic, assign) double startTime;
 @end
 @implementation SCValdiTextViewAnimationRange
 @end
@@ -45,15 +58,53 @@ NSAttributedStringKey const kSCValdiTextViewCustomUnderlineColorAttribute = @"va
 @interface SCValdiTextViewCustomUnderline : NSObject
 @property (nonatomic, assign) NSRange range;
 @property (nonatomic, strong) UIColor* color;
+
++ (instancetype)customUnderlineWithRange:(NSRange)range color:(UIColor *)color;
+
 @end
+
 @implementation SCValdiTextViewCustomUnderline
+
+- (instancetype)initWithRange:(NSRange)range color:(UIColor *)color
+{
+    self = [super init];
+    if (!self) {
+        return nil;
+    }
+    _range = range;
+    _color = color;
+    return self;
+}
+
++ (instancetype)customUnderlineWithRange:(NSRange)range color:(UIColor *)color
+{
+    return [[self alloc] initWithRange:range color:color];
+}
+
+@end
+
+@interface SCValdiTextAnimationStoredProgress : NSObject
+@property (nonatomic, strong, readonly) NSMutableDictionary<NSString *, NSNumber *> *startTimes;
+@end
+@implementation SCValdiTextAnimationStoredProgress
+- (instancetype)init
+{
+    self = [super init];
+    if (self) {
+        _startTimes = [NSMutableDictionary new];
+    }
+    return self;
+}
 @end
 
 @interface SCValdiTextViewEffectsLayoutManager ()
+@property (nonatomic, strong) NSArray<SCValdiTextViewAnimationRange *> *animationEntries;
 @property (nonatomic, strong) NSArray<SCValdiTextViewAnimationRange *> *cachedAnimationRanges;
+@property (nonatomic, strong) NSArray<SCValdiTextViewAnimationRange *> *cachedVisibleAnimationRanges;
 @property (nonatomic, strong) NSArray<SCValdiTextViewOutline *> *cachedOutlineRanges;
 @property (nonatomic, strong) NSArray<SCValdiTextViewCustomUnderline *> *cachedCustomUnderlineRanges;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *animationStartTimes;
+@property (nonatomic, strong) SCValdiTextAnimationStoredProgress *storedAnimationProgress;
 @property (nonatomic, assign, readwrite) BOOL hasActiveAnimationRanges;
 @end
 
@@ -170,7 +221,7 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
 
 - (BOOL)invalidateAnimatedTextProgress
 {
-    self.cachedAnimationRanges = nil;
+    [self _invalidateAnimationRangeCaches];
     [self _animationRanges];
     [self invalidateDisplayForCharacterRange:NSMakeRange(0, self.textStorage.length)];
     return self.hasActiveAnimationRanges;
@@ -205,8 +256,9 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
         return;
     }
     _processedText = processedText;
-    self.cachedAnimationRanges = nil;
+    [self _invalidateAnimationEntries];
     self.cachedOutlineRanges = nil;
+    self.cachedCustomUnderlineRanges = nil;
     [self invalidateDisplayForCharacterRange:NSMakeRange(0, self.textStorage.length)];
 }
 
@@ -217,7 +269,7 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     }
 
     _textAnimationCoordinator = textAnimationCoordinator;
-    self.cachedAnimationRanges = nil;
+    [self _invalidateAnimationEntries];
 }
 
 - (void)setTextAnimationBasePartIndex:(NSUInteger)textAnimationBasePartIndex
@@ -227,7 +279,17 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     }
 
     _textAnimationBasePartIndex = textAnimationBasePartIndex;
-    self.cachedAnimationRanges = nil;
+    [self _invalidateAnimationEntries];
+}
+
+- (void)setValdiViewNode:(id<SCValdiViewNodeProtocol>)valdiViewNode
+{
+    if (_valdiViewNode == valdiViewNode) {
+        return;
+    }
+
+    _valdiViewNode = valdiViewNode;
+    self.storedAnimationProgress = [self _storedAnimationProgressInViewNode:valdiViewNode createIfNeeded:NO];
 }
 
 - (void)prepareGroupedAnimatedTextProgress
@@ -237,34 +299,40 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
         return;
     }
 
-    SCValdiProcessedText *processedText = self.processedText;
-    if (processedText == nil || processedText.attributedString.length == 0) {
-        return;
+    for (SCValdiTextViewAnimationRange *animationEntry in [self _animationEntries]) {
+        if (!animationEntry.hasStartTime) {
+            continue;
+        }
+
+        [coordinator recordExistingAnimationScheduledStartTime:animationEntry.startTime + animationEntry.startDelay
+                                                forTimelineKey:animationEntry.timelineKey];
     }
+}
 
-    if (self.animationStartTimes == nil) {
-        self.animationStartTimes = [NSMutableDictionary new];
+- (void)saveAnimatedTextProgress
+{
+    [self _animationRanges];
+    SCValdiTextAnimationStoredProgress *storedProgress = self.storedAnimationProgress;
+    BOOL didResolveStoredProgress = storedProgress != nil;
+    for (SCValdiTextViewAnimationRange *animationEntry in [self _animationEntries]) {
+        if (animationEntry.shouldStoreStartTime && animationEntry.hasStartTime) {
+            if (!didResolveStoredProgress) {
+                storedProgress = [self _storedAnimationProgressCreatingIfNeeded];
+                didResolveStoredProgress = YES;
+            }
+            [self _storeAnimationStartTime:animationEntry.startTime
+                                forRangeKey:animationEntry.rangeKey
+                          inStoredProgress:storedProgress];
+        }
     }
+}
 
-    [processedText enumerateAnimationTransformsUsingBlock:^(SCValdiTextAnimationTransform *animationTransform,
-                                                            NSRange range,
-                                                            BOOL *stop) {
-        if (range.length == 0) {
-            return;
-        }
-        double startDelay = SCValdiAnimationStartDelay(animationTransform, self.textAnimationBasePartIndex);
-        if (!SCValdiAnimationShouldTrack(animationTransform, startDelay)) {
-            return;
-        }
-
-        NSNumber *startTime = self.animationStartTimes[SCValdiAnimationRangeKey(animationTransform)];
-        if (startTime == nil) {
-            return;
-        }
-
-        [coordinator recordExistingAnimationScheduledStartTime:startTime.doubleValue + startDelay
-                                                forTimelineKey:SCValdiAnimationTimelineKey(animationTransform)];
-    }];
+- (void)clearAnimatedTextProgress
+{
+    [self.animationStartTimes removeAllObjects];
+    self.animationEntries = nil;
+    self.hasActiveAnimationRanges = NO;
+    [self _invalidateAnimationRangeCaches];
 }
 
 - (void)setCustomUnderlineStyle:(SCValdiCustomUnderlineStyle *)customUnderlineStyle
@@ -274,6 +342,39 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     }
 
     _customUnderlineStyle = customUnderlineStyle;
+    self.cachedCustomUnderlineRanges = nil;
+    [self invalidateDisplayForCharacterRange:NSMakeRange(0, self.textStorage.length)];
+}
+
+- (void)setCustomUnderlineSourceAttributedString:(NSAttributedString *)customUnderlineSourceAttributedString
+{
+    if (_customUnderlineSourceAttributedString == customUnderlineSourceAttributedString) {
+        return;
+    }
+
+    _customUnderlineSourceAttributedString = customUnderlineSourceAttributedString;
+    self.cachedCustomUnderlineRanges = nil;
+    [self invalidateDisplayForCharacterRange:NSMakeRange(0, self.textStorage.length)];
+}
+
+- (void)setCustomUnderlineCharacterRanges:(NSArray<NSValue *> *)customUnderlineCharacterRanges
+{
+    if (_customUnderlineCharacterRanges == customUnderlineCharacterRanges) {
+        return;
+    }
+
+    _customUnderlineCharacterRanges = [customUnderlineCharacterRanges copy];
+    self.cachedCustomUnderlineRanges = nil;
+    [self invalidateDisplayForCharacterRange:NSMakeRange(0, self.textStorage.length)];
+}
+
+- (void)setCustomUnderlineFallbackColor:(UIColor *)customUnderlineFallbackColor
+{
+    if (_customUnderlineFallbackColor == customUnderlineFallbackColor) {
+        return;
+    }
+
+    _customUnderlineFallbackColor = customUnderlineFallbackColor;
     self.cachedCustomUnderlineRanges = nil;
     [self invalidateDisplayForCharacterRange:NSMakeRange(0, self.textStorage.length)];
 }
@@ -319,7 +420,11 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
         [self _drawAnimatedRange:animationRange glyphsOrigin:adjustedOrigin context:context];
     }
 
-    [self _drawCustomUnderlines:customUnderlineRanges glyphsToShow:glyphsToShow glyphsOrigin:adjustedOrigin context:context];
+    [self _drawStaticCustomUnderlines:customUnderlineRanges
+                      animationRanges:animationRanges
+                         glyphsToShow:glyphsToShow
+                         glyphsOrigin:adjustedOrigin
+                              context:context];
 }
 
 - (void)processEditingForTextStorage:(NSTextStorage *)textStorage
@@ -335,7 +440,7 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
                        invalidatedRange:invalidatedCharRange];
 
     if ((editedMask & NSTextStorageEditedAttributes) != 0 || (editedMask & NSTextStorageEditedCharacters) != 0) {
-        self.cachedAnimationRanges = nil;
+        [self _invalidateAnimationEntries];
         self.cachedOutlineRanges = nil;
         self.cachedCustomUnderlineRanges = nil;
     }
@@ -467,133 +572,235 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     }
 }
 
-- (NSArray<SCValdiTextViewAnimationRange *> *)_animationRanges
+- (void)_invalidateAnimationRangeCaches
 {
-    if (self.cachedAnimationRanges != nil) {
-        return self.cachedAnimationRanges;
+    self.cachedAnimationRanges = nil;
+    self.cachedVisibleAnimationRanges = nil;
+}
+
+- (void)_invalidateAnimationEntries
+{
+    self.animationEntries = nil;
+    [self _invalidateAnimationRangeCaches];
+}
+
+- (NSArray<SCValdiTextViewAnimationRange *> *)_animationEntries
+{
+    if (self.animationEntries != nil) {
+        return self.animationEntries;
     }
 
     if (self.animationStartTimes == nil) {
         self.animationStartTimes = [NSMutableDictionary new];
     }
 
-    NSMutableArray<SCValdiTextViewAnimationRange *> *animationRanges = [NSMutableArray new];
-    NSMutableSet<NSString *> *currentKeys = [NSMutableSet new];
-    SCValdiTextAnimationCoordinator *coordinator = self.textAnimationCoordinator;
-    NSMutableDictionary<NSString *, SCValdiTextViewAnimationTimelineState *> *animationTimelineStates = coordinator ? nil : [NSMutableDictionary new];
-    __block BOOL hasActiveAnimationRanges = NO;
-    CFTimeInterval currentTime = CACurrentMediaTime();
-
     SCValdiProcessedText *processedText = self.processedText;
     if (processedText == nil) {
-        self.hasActiveAnimationRanges = NO;
-        self.cachedAnimationRanges = @[];
-        return self.cachedAnimationRanges;
+        self.animationEntries = @[];
+        [self.animationStartTimes removeAllObjects];
+        return self.animationEntries;
     }
 
-    if (coordinator) {
-        [self prepareGroupedAnimatedTextProgress];
-    } else {
-        [processedText enumerateAnimationTransformsUsingBlock:^(SCValdiTextAnimationTransform *animationTransform,
-                                                                NSRange range,
-                                                                BOOL *stop) {
-            if (range.length == 0) {
-                return;
-            }
-            NSString *key = SCValdiAnimationRangeKey(animationTransform);
-
-            double startDelay = SCValdiAnimationStartDelay(animationTransform, 0);
-            if (!SCValdiAnimationShouldTrack(animationTransform, startDelay)) {
-                return;
-            }
-            [currentKeys addObject:key];
-
-            NSNumber *startTime = self.animationStartTimes[key];
-            if (startTime == nil) {
-                return;
-            }
-
-            NSString *timelineKey = SCValdiAnimationTimelineKey(animationTransform);
-            double scheduledStartTime = startTime.doubleValue + startDelay;
-            SCValdiTextViewAnimationTimelineState *timelineState =
-                SCValdiAnimationTimelineStateForKey(animationTimelineStates, timelineKey);
-            if (!timelineState.hasExistingAnimationStartTime ||
-                scheduledStartTime > timelineState.existingAnimationStartTime) {
-                timelineState.hasExistingAnimationStartTime = YES;
-                timelineState.existingAnimationStartTime = scheduledStartTime;
-            }
-        }];
-    }
-
+    NSMutableArray<SCValdiTextViewAnimationRange *> *animationEntries = [NSMutableArray new];
+    NSMutableSet<NSString *> *currentKeys = [NSMutableSet new];
+    SCValdiTextAnimationStoredProgress *storedProgress = self.storedAnimationProgress;
+    NSUInteger basePartIndex = self.textAnimationCoordinator ? self.textAnimationBasePartIndex : 0;
     [processedText enumerateAnimationTransformsUsingBlock:^(SCValdiTextAnimationTransform *animationTransform,
                                                             NSRange range,
                                                             BOOL *stop) {
         if (range.length == 0) {
             return;
         }
-        NSString *key = SCValdiAnimationRangeKey(animationTransform);
 
-        CGFloat initialTranslationY = animationTransform.translationY;
-        CGFloat initialScale = animationTransform.scale;
-        CGFloat initialOpacity = animationTransform.opacity;
-        double duration = animationTransform.duration;
-        double startDelay = SCValdiAnimationStartDelay(animationTransform, coordinator ? self.textAnimationBasePartIndex : 0);
-
-        double progress = 1.0;
-        if (SCValdiAnimationShouldTrack(animationTransform, startDelay)) {
-            [currentKeys addObject:key];
-            NSNumber *startTime = self.animationStartTimes[key];
-            if (startTime == nil) {
-                NSString *timelineKey = SCValdiAnimationTimelineKey(animationTransform);
-                if (coordinator) {
-                    startTime = @([coordinator startTimeForNewAnimationWithTimelineKey:timelineKey
-                                                                            timeOffset:SCValdiAnimationTimeOffset(animationTransform)
-                                                                           currentTime:currentTime]);
-                } else {
-                    SCValdiTextViewAnimationTimelineState *timelineState =
-                        SCValdiAnimationTimelineStateForKey(animationTimelineStates, timelineKey);
-                    if (!timelineState.hasNewAnimationBaseStartDelay) {
-                        timelineState.hasNewAnimationBaseStartDelay = YES;
-                        timelineState.newAnimationBaseStartDelay = startDelay;
-                    }
-                    if (!timelineState.hasNewAnimationStartTime) {
-                        timelineState.hasNewAnimationStartTime = YES;
-                        timelineState.newAnimationStartTime = timelineState.hasExistingAnimationStartTime ?
-                            MAX(currentTime, timelineState.existingAnimationStartTime + SCValdiAnimationTimeOffset(animationTransform)) :
-                            currentTime;
-                    }
-                    startTime = @(timelineState.newAnimationStartTime - timelineState.newAnimationBaseStartDelay);
-                }
-                self.animationStartTimes[key] = startTime;
-            }
-            CFTimeInterval delayedElapsedTime = currentTime - startTime.doubleValue - startDelay;
-            progress = duration > 0.0 ? MIN(MAX(delayedElapsedTime / duration, 0.0), 1.0)
-                                      : (delayedElapsedTime >= 0.0 ? 1.0 : 0.0);
-            if (progress < 1.0) {
-                hasActiveAnimationRanges = YES;
-            }
-            progress = 1.0 - pow(1.0 - progress, 3.0);
+        double startDelay = SCValdiAnimationStartDelay(animationTransform, basePartIndex);
+        if (!SCValdiAnimationShouldTrack(animationTransform, startDelay)) {
+            return;
         }
 
-        SCValdiTextViewAnimationRange *animationRange = [SCValdiTextViewAnimationRange new];
-        animationRange.range = range;
-        animationRange.translationY = initialTranslationY * (1.0 - progress);
-        animationRange.scale = initialScale + (1.0 - initialScale) * progress;
-        animationRange.opacity = initialOpacity + (1.0 - initialOpacity) * progress;
-        [animationRanges addObject:animationRange];
+        SCValdiTextViewAnimationRange *animationEntry = [SCValdiTextViewAnimationRange new];
+        animationEntry.range = range;
+        animationEntry.translationY = 0.0;
+        animationEntry.scale = 1.0;
+        animationEntry.opacity = 1.0;
+        animationEntry.initialTranslationY = animationTransform.translationY;
+        animationEntry.initialScale = animationTransform.scale;
+        animationEntry.initialOpacity = animationTransform.opacity;
+        animationEntry.duration = animationTransform.duration;
+        animationEntry.startDelay = startDelay;
+        animationEntry.timeOffset = SCValdiAnimationTimeOffset(animationTransform);
+        animationEntry.rangeKey = SCValdiAnimationRangeKey(animationTransform);
+        animationEntry.timelineKey = SCValdiAnimationTimelineKey(animationTransform);
+        animationEntry.shouldStoreStartTime = animationTransform.key != nil;
+        [currentKeys addObject:animationEntry.rangeKey];
+
+        NSNumber *startTime = self.animationStartTimes[animationEntry.rangeKey];
+        if (startTime == nil && animationEntry.shouldStoreStartTime) {
+            startTime = [self _storedAnimationStartTimeForRangeKey:animationEntry.rangeKey
+                                                  inStoredProgress:storedProgress];
+        }
+        if (startTime != nil) {
+            animationEntry.hasStartTime = YES;
+            animationEntry.startTime = startTime.doubleValue;
+        }
+
+        [animationEntries addObject:animationEntry];
     }];
 
     NSMutableSet<NSString *> *previousKeys = [NSMutableSet setWithArray:self.animationStartTimes.allKeys];
     [previousKeys minusSet:currentKeys];
     [self.animationStartTimes removeObjectsForKeys:previousKeys.allObjects];
 
+    self.animationEntries = animationEntries;
+    return self.animationEntries;
+}
+
+- (NSArray<SCValdiTextViewAnimationRange *> *)_animationRanges
+{
+    if (self.cachedAnimationRanges != nil) {
+        return self.cachedAnimationRanges;
+    }
+
+    NSArray<SCValdiTextViewAnimationRange *> *animationEntries = [self _animationEntries];
+    if (animationEntries.count == 0) {
+        self.hasActiveAnimationRanges = NO;
+        self.cachedAnimationRanges = @[];
+        self.cachedVisibleAnimationRanges = nil;
+        return self.cachedAnimationRanges;
+    }
+
+    SCValdiTextAnimationCoordinator *coordinator = self.textAnimationCoordinator;
+    NSMutableDictionary<NSString *, SCValdiTextViewAnimationTimelineState *> *animationTimelineStates = coordinator ? nil : [NSMutableDictionary new];
+    __block BOOL hasActiveAnimationRanges = NO;
+    CFTimeInterval currentTime = CACurrentMediaTime();
+    SCValdiTextAnimationStoredProgress *storedProgress = self.storedAnimationProgress;
+    BOOL didResolveStoredProgress = storedProgress != nil;
+
+    if (coordinator) {
+        [self prepareGroupedAnimatedTextProgress];
+    } else {
+        for (SCValdiTextViewAnimationRange *animationEntry in animationEntries) {
+            if (!animationEntry.hasStartTime) {
+                continue;
+            }
+            double scheduledStartTime = animationEntry.startTime + animationEntry.startDelay;
+            SCValdiTextViewAnimationTimelineState *timelineState =
+                SCValdiAnimationTimelineStateForKey(animationTimelineStates, animationEntry.timelineKey);
+            if (!timelineState.hasExistingAnimationStartTime ||
+                scheduledStartTime > timelineState.existingAnimationStartTime) {
+                timelineState.hasExistingAnimationStartTime = YES;
+                timelineState.existingAnimationStartTime = scheduledStartTime;
+            }
+        }
+    }
+
+    for (SCValdiTextViewAnimationRange *animationEntry in animationEntries) {
+        if (!animationEntry.hasStartTime) {
+            double startTime = currentTime;
+            if (coordinator) {
+                startTime = [coordinator startTimeForNewAnimationWithTimelineKey:animationEntry.timelineKey
+                                                                       timeOffset:animationEntry.timeOffset
+                                                                      currentTime:currentTime];
+            } else {
+                SCValdiTextViewAnimationTimelineState *timelineState =
+                    SCValdiAnimationTimelineStateForKey(animationTimelineStates, animationEntry.timelineKey);
+                if (!timelineState.hasNewAnimationBaseStartDelay) {
+                    timelineState.hasNewAnimationBaseStartDelay = YES;
+                    timelineState.newAnimationBaseStartDelay = animationEntry.startDelay;
+                }
+                if (!timelineState.hasNewAnimationStartTime) {
+                    timelineState.hasNewAnimationStartTime = YES;
+                    timelineState.newAnimationStartTime = timelineState.hasExistingAnimationStartTime ?
+                        MAX(currentTime, timelineState.existingAnimationStartTime + animationEntry.timeOffset) :
+                        currentTime;
+                }
+                startTime = timelineState.newAnimationStartTime - timelineState.newAnimationBaseStartDelay;
+            }
+            animationEntry.hasStartTime = YES;
+            animationEntry.startTime = startTime;
+            self.animationStartTimes[animationEntry.rangeKey] = @(startTime);
+            if (animationEntry.shouldStoreStartTime) {
+                if (!didResolveStoredProgress) {
+                    storedProgress = [self _storedAnimationProgressCreatingIfNeeded];
+                    didResolveStoredProgress = YES;
+                }
+                [self _storeAnimationStartTime:startTime
+                                    forRangeKey:animationEntry.rangeKey
+                              inStoredProgress:storedProgress];
+            }
+        }
+
+        CFTimeInterval delayedElapsedTime = currentTime - animationEntry.startTime - animationEntry.startDelay;
+        double progress = animationEntry.duration > 0.0 ?
+            MIN(MAX(delayedElapsedTime / animationEntry.duration, 0.0), 1.0) :
+            (delayedElapsedTime >= 0.0 ? 1.0 : 0.0);
+        if (progress < 1.0) {
+            hasActiveAnimationRanges = YES;
+        }
+        double inverseProgress = 1.0 - progress;
+        progress = 1.0 - inverseProgress * inverseProgress * inverseProgress;
+
+        animationEntry.translationY = animationEntry.initialTranslationY * (1.0 - progress);
+        animationEntry.scale = animationEntry.initialScale + (1.0 - animationEntry.initialScale) * progress;
+        animationEntry.opacity = animationEntry.initialOpacity + (1.0 - animationEntry.initialOpacity) * progress;
+    }
+
     self.hasActiveAnimationRanges = hasActiveAnimationRanges;
-    self.cachedAnimationRanges = animationRanges;
+    self.cachedAnimationRanges = animationEntries;
+    self.cachedVisibleAnimationRanges = nil;
     return self.cachedAnimationRanges;
+}
+
+- (SCValdiTextAnimationStoredProgress *)_storedAnimationProgressCreatingIfNeeded
+{
+    SCValdiTextAnimationStoredProgress *storedProgress = self.storedAnimationProgress;
+    if (storedProgress != nil) {
+        return storedProgress;
+    }
+
+    storedProgress = [self _storedAnimationProgressInViewNode:self.valdiViewNode createIfNeeded:YES];
+    self.storedAnimationProgress = storedProgress;
+    return storedProgress;
+}
+
+- (SCValdiTextAnimationStoredProgress *)_storedAnimationProgressInViewNode:(id<SCValdiViewNodeProtocol>)viewNode
+                                                           createIfNeeded:(BOOL)createIfNeeded
+{
+    if (viewNode == nil) {
+        return nil;
+    }
+
+    id storedObject = [viewNode storedObjectForKey:SCValdiTextAnimationStartTimesStorageKey()];
+    SCValdiTextAnimationStoredProgress *storedProgress =
+        [storedObject isKindOfClass:SCValdiTextAnimationStoredProgress.class] ? storedObject : nil;
+    if (storedProgress == nil && createIfNeeded) {
+        storedProgress = [SCValdiTextAnimationStoredProgress new];
+        [viewNode setStoredObject:storedProgress forKey:SCValdiTextAnimationStartTimesStorageKey()];
+    }
+    return storedProgress;
+}
+
+- (NSNumber *)_storedAnimationStartTimeForRangeKey:(NSString *)rangeKey
+                                  inStoredProgress:(SCValdiTextAnimationStoredProgress *)storedProgress
+{
+    id startTime = storedProgress.startTimes[rangeKey];
+    return [startTime isKindOfClass:NSNumber.class] ? startTime : nil;
+}
+
+- (void)_storeAnimationStartTime:(double)startTime forRangeKey:(NSString *)rangeKey
+                inStoredProgress:(SCValdiTextAnimationStoredProgress *)storedProgress
+{
+    if (storedProgress == nil) {
+        return;
+    }
+    storedProgress.startTimes[rangeKey] = @(startTime);
 }
 
 - (NSArray<SCValdiTextViewAnimationRange *> *)_visibleAnimationRanges
 {
+    if (self.cachedVisibleAnimationRanges != nil) {
+        return self.cachedVisibleAnimationRanges;
+    }
+
     NSArray<SCValdiTextViewAnimationRange *> *animationRanges = [self _animationRanges];
     NSMutableArray<SCValdiTextViewAnimationRange *> *visibleAnimationRanges = [NSMutableArray new];
     for (SCValdiTextViewAnimationRange *animationRange in animationRanges) {
@@ -601,7 +808,8 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
             [visibleAnimationRanges addObject:animationRange];
         }
     }
-    return visibleAnimationRanges;
+    self.cachedVisibleAnimationRanges = visibleAnimationRanges;
+    return self.cachedVisibleAnimationRanges;
 }
 
 - (NSArray<SCValdiTextViewOutline *> *)_outlineRanges
@@ -670,6 +878,23 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     }
 
     NSMutableArray<SCValdiTextViewCustomUnderline *> *customUnderlineRanges = [NSMutableArray new];
+    if (self.customUnderlineSourceAttributedString != nil && self.customUnderlineCharacterRanges.count > 0) {
+        UIColor *fallbackColor = self.customUnderlineFallbackColor ?: UIColor.blackColor;
+        for (NSValue *rangeValue in self.customUnderlineCharacterRanges) {
+            NSRange range = rangeValue.rangeValue;
+            if (range.length == 0) {
+                continue;
+            }
+
+            UIColor *color = SCValdiCustomUnderlineColorForRange(self.customUnderlineSourceAttributedString,
+                                                                 range,
+                                                                 fallbackColor);
+            [customUnderlineRanges addObject:[SCValdiTextViewCustomUnderline customUnderlineWithRange:range color:color]];
+        }
+        self.cachedCustomUnderlineRanges = customUnderlineRanges;
+        return self.cachedCustomUnderlineRanges;
+    }
+
     [attributedString enumerateAttribute:kSCValdiTextViewCustomUnderlineColorAttribute
                                  inRange:NSMakeRange(0, attributedString.length)
                                  options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
@@ -678,10 +903,7 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
             return;
         }
 
-        SCValdiTextViewCustomUnderline *customUnderline = [SCValdiTextViewCustomUnderline new];
-        customUnderline.range = range;
-        customUnderline.color = value;
-        [customUnderlineRanges addObject:customUnderline];
+        [customUnderlineRanges addObject:[SCValdiTextViewCustomUnderline customUnderlineWithRange:range color:value]];
     }];
 
     self.cachedCustomUnderlineRanges = customUnderlineRanges;
@@ -725,10 +947,74 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     }
 }
 
-- (void)_drawCustomUnderlines:(NSArray<SCValdiTextViewCustomUnderline *> *)customUnderlineRanges
-                 glyphsToShow:(NSRange)glyphsToShow
-                 glyphsOrigin:(CGPoint)origin
-                      context:(CGContextRef)context
+- (void)_drawCustomUnderlineRange:(NSRange)range
+                            color:(UIColor *)color
+                     glyphsToShow:(NSRange)glyphsToShow
+                     glyphsOrigin:(CGPoint)origin
+                          context:(CGContextRef)context
+{
+    NSArray<NSValue *> *underlineRects = SCValdiCustomUnderlineRectsForRange(self.textStorage,
+                                                                             self,
+                                                                             range,
+                                                                             glyphsToShow,
+                                                                             YES,
+                                                                             origin,
+                                                                             self.customUnderlineStyle.height,
+                                                                             self.customUnderlineStyle.offset);
+    [color setStroke];
+    SCValdiCustomUnderlineDrawRects(context, underlineRects);
+}
+
+- (void)_drawStaticCustomUnderline:(SCValdiTextViewCustomUnderline *)customUnderline
+                   animationRanges:(NSArray<SCValdiTextViewAnimationRange *> *)animationRanges
+                      glyphsToShow:(NSRange)glyphsToShow
+                      glyphsOrigin:(CGPoint)origin
+                           context:(CGContextRef)context
+{
+    if (animationRanges.count == 0) {
+        [self _drawCustomUnderlineRange:customUnderline.range
+                                  color:customUnderline.color
+                           glyphsToShow:glyphsToShow
+                           glyphsOrigin:origin
+                                context:context];
+        return;
+    }
+
+    NSRange underlineRange = customUnderline.range;
+    NSUInteger currentLocation = underlineRange.location;
+    NSUInteger rangeEnd = NSMaxRange(underlineRange);
+    for (SCValdiTextViewAnimationRange *animationRange in animationRanges) {
+        NSRange intersectionRange = NSIntersectionRange(underlineRange, animationRange.range);
+        if (intersectionRange.length == 0) {
+            continue;
+        }
+        if (intersectionRange.location > currentLocation) {
+            [self _drawCustomUnderlineRange:NSMakeRange(currentLocation, intersectionRange.location - currentLocation)
+                                      color:customUnderline.color
+                               glyphsToShow:glyphsToShow
+                               glyphsOrigin:origin
+                                    context:context];
+        }
+        currentLocation = MAX(currentLocation, NSMaxRange(intersectionRange));
+        if (currentLocation >= rangeEnd) {
+            return;
+        }
+    }
+
+    if (currentLocation < rangeEnd) {
+        [self _drawCustomUnderlineRange:NSMakeRange(currentLocation, rangeEnd - currentLocation)
+                                  color:customUnderline.color
+                           glyphsToShow:glyphsToShow
+                           glyphsOrigin:origin
+                                context:context];
+    }
+}
+
+- (void)_drawStaticCustomUnderlines:(NSArray<SCValdiTextViewCustomUnderline *> *)customUnderlineRanges
+                    animationRanges:(NSArray<SCValdiTextViewAnimationRange *> *)animationRanges
+                       glyphsToShow:(NSRange)glyphsToShow
+                       glyphsOrigin:(CGPoint)origin
+                            context:(CGContextRef)context
 {
     if (!self.customUnderlineStyle || customUnderlineRanges.count == 0 || glyphsToShow.length == 0) {
         return;
@@ -739,27 +1025,42 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     SCValdiCustomUnderlineApplyDashPattern(context, self.customUnderlineStyle);
 
     for (SCValdiTextViewCustomUnderline *customUnderline in customUnderlineRanges) {
-        [customUnderline.color setStroke];
-        [self _drawCustomUnderline:customUnderline glyphsToShow:glyphsToShow glyphsOrigin:origin context:context];
+        [self _drawStaticCustomUnderline:customUnderline
+                         animationRanges:animationRanges
+                            glyphsToShow:glyphsToShow
+                            glyphsOrigin:origin
+                                 context:context];
     }
 
     CGContextRestoreGState(context);
 }
 
-- (void)_drawCustomUnderline:(SCValdiTextViewCustomUnderline *)customUnderline
-                glyphsToShow:(NSRange)glyphsToShow
-                glyphsOrigin:(CGPoint)origin
-                     context:(CGContextRef)context
+- (void)_drawCustomUnderlinesInRange:(NSRange)range
+                        glyphsToShow:(NSRange)glyphsToShow
+                        glyphsOrigin:(CGPoint)origin
+                             context:(CGContextRef)context
 {
-    NSArray<NSValue *> *underlineRects = SCValdiCustomUnderlineRectsForRange(self.textStorage,
-                                                                             self,
-                                                                             customUnderline.range,
-                                                                             glyphsToShow,
-                                                                             YES,
-                                                                             origin,
-                                                                             self.customUnderlineStyle.height,
-                                                                             self.customUnderlineStyle.offset);
-    SCValdiCustomUnderlineDrawRects(context, underlineRects);
+    if (!self.customUnderlineStyle || range.length == 0 || glyphsToShow.length == 0) {
+        return;
+    }
+
+    CGContextSaveGState(context);
+    CGContextSetLineWidth(context, self.customUnderlineStyle.height);
+    SCValdiCustomUnderlineApplyDashPattern(context, self.customUnderlineStyle);
+
+    for (SCValdiTextViewCustomUnderline *customUnderline in [self _customUnderlineRangesForAttributedString:self.textStorage]) {
+        NSRange intersectionRange = NSIntersectionRange(range, customUnderline.range);
+        if (intersectionRange.length == 0) {
+            continue;
+        }
+        [self _drawCustomUnderlineRange:intersectionRange
+                                  color:customUnderline.color
+                           glyphsToShow:glyphsToShow
+                           glyphsOrigin:origin
+                                context:context];
+    }
+
+    CGContextRestoreGState(context);
 }
 
 - (void)_drawAnimatedRange:(SCValdiTextViewAnimationRange *)animationRange
@@ -799,6 +1100,10 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
                 [self _drawOutline:outline attributedString:self.textStorage glyphsOrigin:origin context:context];
             }
             [super drawGlyphsForGlyphRange:intersectionGlyphRange atPoint:origin];
+            [self _drawCustomUnderlinesInRange:intersectionRange
+                                  glyphsToShow:intersectionGlyphRange
+                                  glyphsOrigin:origin
+                                       context:context];
             CGContextRestoreGState(context);
         }
 

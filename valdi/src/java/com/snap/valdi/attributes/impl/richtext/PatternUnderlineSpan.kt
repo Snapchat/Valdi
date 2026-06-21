@@ -8,8 +8,9 @@ import android.text.Spanned
 import android.text.TextPaint
 import android.text.style.LineBackgroundSpan
 import android.text.style.MetricAffectingSpan
+import kotlin.math.roundToInt
 
-abstract class PatternUnderlineSpan : LineBackgroundSpan {
+abstract class PatternUnderlineSpan(private val animation: AttributedTextAnimation?) : LineBackgroundSpan {
     final override fun drawBackground(
         canvas: Canvas,
         paint: Paint,
@@ -36,8 +37,47 @@ abstract class PatternUnderlineSpan : LineBackgroundSpan {
         val strokeWidth = resolveStrokeWidth(paint, density)
         val resolvedStartX = resolveStartX(startX, strokeWidth, density)
         val resolvedEndX = resolveEndX(endX, strokeWidth, density)
+        drawResolvedUnderline(canvas, paint, resolvedStartX, resolvedEndX, top, baseline, bottom, density, strokeWidth)
+    }
+
+    fun drawUnderlineRange(
+        canvas: Canvas,
+        paint: Paint,
+        startX: Float,
+        endX: Float,
+        top: Int,
+        baseline: Int,
+        bottom: Int
+    ) {
+        val density = resolveDensity(paint)
+        val strokeWidth = resolveStrokeWidth(paint, density)
+        val resolvedStartX = resolveStartX(startX, strokeWidth, density)
+        val resolvedEndX = resolveEndX(endX, strokeWidth, density)
+        drawResolvedUnderline(canvas, paint, resolvedStartX, resolvedEndX, top, baseline, bottom, density, strokeWidth)
+    }
+
+    private fun drawResolvedUnderline(
+        canvas: Canvas,
+        paint: Paint,
+        resolvedStartX: Float,
+        resolvedEndX: Float,
+        top: Int,
+        baseline: Int,
+        bottom: Int,
+        density: Float,
+        strokeWidth: Float
+    ) {
         if (resolvedStartX > resolvedEndX) {
             return
+        }
+
+        val previousAlpha = paint.alpha
+        if (animation != null) {
+            val alpha = (animation.opacity * previousAlpha).roundToInt().coerceIn(0, 255)
+            if (alpha <= 0) {
+                return
+            }
+            paint.alpha = alpha
         }
 
         val underlineY = resolveVisibleUnderlineY(paint, baseline, bottom, strokeWidth, density)
@@ -48,10 +88,28 @@ abstract class PatternUnderlineSpan : LineBackgroundSpan {
         paint.style = resolvePaintStyle()
         paint.strokeWidth = strokeWidth
         paint.pathEffect = createPathEffect(strokeWidth, density)
-        canvas.drawLine(resolvedStartX, underlineY, resolvedEndX, underlineY, paint)
-        paint.pathEffect = previousPathEffect
-        paint.style = previousStyle
-        paint.strokeWidth = previousStrokeWidth
+        try {
+            if (animation != null) {
+                val centerX = (resolvedStartX + resolvedEndX) / 2f
+                val centerY = (top + bottom) / 2f
+                val saveCount = canvas.save()
+                canvas.translate(centerX, centerY + animation.translationY * density)
+                canvas.scale(animation.scale, animation.scale)
+                canvas.translate(-centerX, -centerY)
+                try {
+                    canvas.drawLine(resolvedStartX, underlineY, resolvedEndX, underlineY, paint)
+                } finally {
+                    canvas.restoreToCount(saveCount)
+                }
+            } else {
+                canvas.drawLine(resolvedStartX, underlineY, resolvedEndX, underlineY, paint)
+            }
+        } finally {
+            paint.alpha = previousAlpha
+            paint.pathEffect = previousPathEffect
+            paint.style = previousStyle
+            paint.strokeWidth = previousStrokeWidth
+        }
     }
 
     protected open fun resolveStrokeWidth(paint: Paint, density: Float): Float {

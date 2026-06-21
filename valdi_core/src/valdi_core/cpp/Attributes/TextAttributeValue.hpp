@@ -96,6 +96,7 @@ struct TextAnimationTransform {
     double timeOffsetBetweenParts = 0.0;
     uint32_t groupIndex = 0;
     uint32_t partIndexInGroup = 0;
+    StringBox partPattern;
 };
 
 struct TextBackgroundPadding {

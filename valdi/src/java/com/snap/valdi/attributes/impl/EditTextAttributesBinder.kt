@@ -13,6 +13,7 @@ import com.snap.valdi.attributes.impl.fonts.FontManager
 import com.snap.valdi.attributes.impl.richtext.FontAttributes
 import com.snap.valdi.attributes.impl.richtext.TextViewHelper
 import com.snap.valdi.callable.ValdiFunction
+import com.snap.valdi.logger.Logger
 import com.snap.valdi.views.ValdiEditText
 import com.snap.valdi.views.ValdiEditTextMultiline
 
@@ -22,7 +23,8 @@ import com.snap.valdi.views.ValdiEditTextMultiline
 class EditTextAttributesBinder(private val context: Context,
                                private val fontManager: FontManager,
                                private val defaultAttributes: FontAttributes,
-                               private val resetSelectionMatchesIos: Boolean = false
+                               private val resetSelectionMatchesIos: Boolean,
+                               private val logger: Logger
 ) : AttributesBinder<ValdiEditText> {
 
     private var valueAttributeId = 0
@@ -194,7 +196,7 @@ class EditTextAttributesBinder(private val context: Context,
     }
 
     private fun getTextViewHelper(view: ValdiEditText): TextViewHelper {
-        return view.getOrCreateTextViewHelper(fontManager, defaultAttributes, valueAttributeId).also {
+        return view.getOrCreateTextViewHelper(fontManager, defaultAttributes, valueAttributeId, logger).also {
             it.matchIosTextSetCaret = resetSelectionMatchesIos
         }
     }

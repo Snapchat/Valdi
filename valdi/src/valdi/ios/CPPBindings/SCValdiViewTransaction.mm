@@ -248,12 +248,12 @@ ViewTransaction::~ViewTransaction() = default;
 
         BOOL allowRecycling = YES;
 
-        uiView.valdiContext = nil;
-        uiView.valdiViewNode = nil;
-
         if (![uiView respondsToSelector:@selector(willEnqueueIntoValdiPool)] || ![uiView willEnqueueIntoValdiPool]) {
             allowRecycling = NO;
         }
+
+        uiView.valdiContext = nil;
+        uiView.valdiViewNode = nil;
 
         if (allowRecycling) {
             [uiView valdi_prepareForPoolReuse];

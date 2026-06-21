@@ -3,10 +3,16 @@ package com.snap.valdi.attributes.impl.richtext
 import android.text.Spannable
 import android.text.Spanned
 import android.view.animation.AnimationUtils
+import com.snap.valdi.nodes.IValdiViewNode
+import com.snap.valdi.utils.InternedString
 import java.util.ArrayDeque
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+
+private class TextAnimationStoredProgress {
+    val startTimes = HashMap<String, Long>()
+}
 
 class AttributedTextAnimationTimeline {
     private data class TimelineState(
@@ -38,6 +44,10 @@ class AttributedTextAnimationTimeline {
 }
 
 class AttributedTextAnimator {
+    companion object {
+        private val TEXT_ANIMATION_START_TIMES_STORAGE_KEY by lazy { InternedString.create("valdi.textAnimationStartTimes") }
+    }
+
     private data class TimelineState(
         var existingAnimationStartMillis: Long? = null,
         var newAnimationBaseDelayMillis: Long? = null,
@@ -59,6 +69,12 @@ class AttributedTextAnimator {
     private var syncTimeMillis = 0L
     var groupedTimeline: AttributedTextAnimationTimeline? = null
     var basePartIndex: Int = 0
+    var viewNode: IValdiViewNode? = null
+        set(value) {
+            field = value
+            storedProgress = value?.getStoredObject(TEXT_ANIMATION_START_TIMES_STORAGE_KEY) as? TextAnimationStoredProgress
+        }
+    private var storedProgress: TextAnimationStoredProgress? = null
 
     fun beginSync() {
         isSyncing = true
@@ -115,6 +131,7 @@ class AttributedTextAnimator {
                 animation.progress = 0f
                 animation.active = true
                 applyProgress(animation, 0f)
+                storeAnimationStartTimeIfNeeded(animation)
                 activeAnimations.add(animation)
             }
         }
@@ -140,10 +157,7 @@ class AttributedTextAnimator {
             existingAnimation.rangeStart = start
             existingAnimation.rangeEnd = end
             recordPartAnimation(partIndex, existingAnimation)
-            val timelineState = timelineStates.getOrPut(existingAnimation.timelineKey) { TimelineState() }
-            timelineState.existingAnimationStartMillis =
-                max(timelineState.existingAnimationStartMillis ?: Long.MIN_VALUE,
-                    existingAnimation.scheduledStartTimeMillis)
+            recordExistingAnimationScheduledStartTime(existingAnimation)
             return existingAnimation
         }
 
@@ -154,6 +168,26 @@ class AttributedTextAnimator {
         )
         animation.rangeStart = start
         animation.rangeEnd = end
+        val storedStartTimeMillis = storedStartTimeMillisFor(key, transform)
+        if (storedStartTimeMillis != null) {
+            animation.startTimeMillis = storedStartTimeMillis
+            animation.scheduledStartTimeMillis = storedStartTimeMillis + startDelayMillis
+            val progress = progress(animation, syncTimeMillis)
+            if (progress >= 1f) {
+                storeAnimationStartTimeIfNeeded(animation)
+                return null
+            }
+
+            animation.progress = progress
+            animation.active = true
+            applyProgress(animation, easeOut(progress))
+            animations[key] = animation
+            activeAnimations.add(animation)
+            recordExistingAnimationScheduledStartTime(animation)
+            recordPartAnimation(partIndex, animation)
+            return animation
+        }
+
         animations[key] = animation
         pendingAnimations.add(PendingAnimation(animation, startDelayMillis))
         recordPartAnimation(partIndex, animation)
@@ -179,23 +213,37 @@ class AttributedTextAnimator {
         animations.clear()
     }
 
+    fun saveStoredAnimationStartTimes() {
+        animations.values.forEach { animation ->
+            storeAnimationStartTimeIfNeeded(animation)
+        }
+    }
+
     fun hasAnimationRuns(): Boolean {
         return activeAnimations.isNotEmpty()
     }
 
     fun update(spannable: Spannable): Boolean {
+        val activeBefore = activeAnimations.size
         val currentTimeMillis = currentAnimationTimeMillis()
-        repeat(activeAnimations.size) {
+        repeat(activeBefore) {
             val animation = activeAnimations.removeFirst()
+            val previousProgress = animation.progress
             val progress = progress(animation, currentTimeMillis)
-            val easedProgress = easeOut(progress)
-            applyProgress(animation, easedProgress)
-            animation.progress = progress
+            val didProgressChange = progress != previousProgress
+            if (didProgressChange) {
+                val easedProgress = easeOut(progress)
+                applyProgress(animation, easedProgress)
+                animation.progress = progress
+            }
             animation.active = progress < 1f
             if (!animation.active) {
+                storeAnimationStartTimeIfNeeded(animation)
                 spannable.removeSpan(animation)
-            } else {
+            } else if (didProgressChange) {
                 invalidateAnimation(spannable, animation)
+                activeAnimations.addLast(animation)
+            } else {
                 activeAnimations.addLast(animation)
             }
         }
@@ -223,6 +271,31 @@ class AttributedTextAnimator {
             partAnimations.add(null)
         }
         partAnimations[partIndex] = animation
+    }
+
+    private fun recordExistingAnimationScheduledStartTime(animation: AttributedTextAnimation) {
+        val timelineState = timelineStates.getOrPut(animation.timelineKey) { TimelineState() }
+        timelineState.existingAnimationStartMillis =
+            max(timelineState.existingAnimationStartMillis ?: Long.MIN_VALUE, animation.scheduledStartTimeMillis)
+    }
+
+    private fun storedStartTimeMillisFor(key: String, transform: TextAnimationTransform): Long? {
+        if (transform.key == null) {
+            return null
+        }
+        return storedProgress?.startTimes?.get(key)
+    }
+
+    private fun storeAnimationStartTimeIfNeeded(animation: AttributedTextAnimation) {
+        if (animation.startTransform.key == null) {
+            return
+        }
+        val viewNode = viewNode ?: return
+        val currentStoredProgress = storedProgress ?: TextAnimationStoredProgress().also {
+            storedProgress = it
+            viewNode.setStoredObject(TEXT_ANIMATION_START_TIMES_STORAGE_KEY, it)
+        }
+        currentStoredProgress.startTimes[animation.key] = animation.startTimeMillis
     }
 
     private fun keyFor(partIndex: Int, transform: TextAnimationTransform): String {

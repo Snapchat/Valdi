@@ -126,7 +126,8 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
             duration = nativeGetAnimationTransformDuration(native.nativeHandle, index),
             timeOffsetBetweenParts = nativeGetAnimationTransformTimeOffsetBetweenParts(native.nativeHandle, index),
             groupIndex = nativeGetAnimationTransformGroupIndex(native.nativeHandle, index),
-            partIndexInGroup = nativeGetAnimationTransformPartIndexInGroup(native.nativeHandle, index)
+            partIndexInGroup = nativeGetAnimationTransformPartIndexInGroup(native.nativeHandle, index),
+            partPattern = nativeGetAnimationTransformPartPattern(native.nativeHandle, index)
         )
     }
 
@@ -191,5 +192,7 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
         private external fun nativeGetAnimationTransformGroupIndex(nativeHandle: Long, index: Int): Int
         @JvmStatic
         private external fun nativeGetAnimationTransformPartIndexInGroup(nativeHandle: Long, index: Int): Int
+        @JvmStatic
+        private external fun nativeGetAnimationTransformPartPattern(nativeHandle: Long, index: Int): String?
     }
 }

@@ -5,7 +5,7 @@ import android.graphics.PathDashPathEffect
 import android.graphics.PathEffect
 import android.graphics.Paint
 
-class DottedUnderlineSpan : PatternUnderlineSpan() {
+class DottedUnderlineSpan(animation: AttributedTextAnimation?) : PatternUnderlineSpan(animation) {
     companion object {
         private const val STROKE_WIDTH_DP = 2f
         private const val GAP_DP = 2f

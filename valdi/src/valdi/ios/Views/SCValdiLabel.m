@@ -804,6 +804,7 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
     } else if (_textLayoutView.usesEffectsLayoutManager != usesEffectsLayoutManager) {
         [_textLayoutView configureWithUsesEffectsLayoutManager:usesEffectsLayoutManager];
     }
+    [_textLayoutView setTextAnimationViewNode:self.valdiViewNode];
 
     return _textLayoutView;
 }
@@ -882,12 +883,21 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
     self.attributedText = nil;
 }
 
+- (void)didMoveToValdiContext:(id<SCValdiContextProtocol>)valdiContext
+                      viewNode:(id<SCValdiViewNodeProtocol>)viewNode
+{
+    (void)valdiContext;
+    [_textLayoutView setTextAnimationViewNode:viewNode];
+}
+
 - (BOOL)willEnqueueIntoValdiPool
 {
     if (_labelMode != SCValdiTextModeText) {
         [self updateLabelMode:SCValdiTextModeText];
         _needAttributedTextUpdate = YES;
     }
+
+    [_textLayoutView prepareForRecycling];
 
     return self.class == [SCValdiLabel class];
 }

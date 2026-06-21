@@ -1500,6 +1500,52 @@ void ValdiAndroid::NativeBridge::setValueForAttribute( // NOLINT
     }
 }
 
+jobject ValdiAndroid::NativeBridge::getStoredObjectForViewNode( // NOLINT
+    fbjni::alias_ref<fbjni::JClass> /* clazz */,                 // NOLINT
+    jlong viewNodeHandle,
+    jlong key) {
+    auto viewNode = getViewNode(viewNodeHandle);
+    if (viewNode == nullptr) {
+        return nullptr;
+    }
+
+    auto javaEnv = ValdiAndroid::JavaEnv();
+    auto storedKey = ValdiAndroid::unwrapInternedString(key);
+    auto* viewNodeTree = viewNode->getViewNodeTree();
+    if (viewNodeTree == nullptr) {
+        return nullptr;
+    }
+
+    Valdi::Value value = Valdi::Value::undefined();
+    viewNodeTree->withLock([&]() { value = viewNode->getStoredObject(storedKey); });
+    if (value.isNullOrUndefined()) {
+        return nullptr;
+    }
+
+    return ValdiAndroid::toJavaObject(javaEnv, value).releaseObject();
+}
+
+void ValdiAndroid::NativeBridge::setStoredObjectForViewNode( // NOLINT
+    fbjni::alias_ref<fbjni::JClass> /* clazz */,             // NOLINT
+    jlong viewNodeHandle,
+    jlong key,
+    jobject object) {
+    auto viewNode = getViewNode(viewNodeHandle);
+    if (viewNode == nullptr) {
+        return;
+    }
+
+    auto javaEnv = ValdiAndroid::JavaEnv();
+    auto storedKey = ValdiAndroid::unwrapInternedString(key);
+    auto storedValue = ValdiAndroid::toValue(javaEnv, ValdiAndroid::JavaEnv::newLocalRef(object));
+    auto* viewNodeTree = viewNode->getViewNodeTree();
+    if (viewNodeTree == nullptr) {
+        return;
+    }
+
+    viewNodeTree->withLock([&]() { viewNode->setStoredObject(storedKey, storedValue); });
+}
+
 void ValdiAndroid::NativeBridge::setInlineTextAnimationAttributesForViewNode( // NOLINT
     fbjni::alias_ref<fbjni::JClass> /* clazz */,                              // NOLINT
     jlong viewNodeHandle,
@@ -2417,6 +2463,8 @@ void ValdiAndroid::NativeBridge::registerNatives() {
         makeNativeMethod("getNodeId", ValdiAndroid::NativeBridge::getNodeId),
         makeNativeMethod("getViewClassName", ValdiAndroid::NativeBridge::getViewClassName),
         makeNativeMethod("getViewNodeDebugDescription", ValdiAndroid::NativeBridge::getViewNodeDebugDescription),
+        makeNativeMethod("getStoredObjectForViewNode", ValdiAndroid::NativeBridge::getStoredObjectForViewNode),
+        makeNativeMethod("setStoredObjectForViewNode", ValdiAndroid::NativeBridge::setStoredObjectForViewNode),
         makeNativeMethod("invalidateLayout", ValdiAndroid::NativeBridge::invalidateLayout),
         makeNativeMethod("isViewNodeLayoutDirectionHorizontal",
                          ValdiAndroid::NativeBridge::isViewNodeLayoutDirectionHorizontal),

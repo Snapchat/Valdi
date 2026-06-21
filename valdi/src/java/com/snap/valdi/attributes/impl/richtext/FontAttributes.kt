@@ -96,12 +96,15 @@ data class FontAttributes(
         private const val POSITION_OF_DYNAMIC_TYPE = 3
     }
 
-    fun enumerateSpans(fontManager: FontManager,
-                       missingFontsTracker: MissingFontsTracker,
-                       disableTextReplacement: Boolean = false,
-                       renderMode: RenderMode = RenderMode.BASE,
-                       suppressAnimatedBase: Boolean = false,
-                       closure: (Any) -> Unit) {
+    fun enumerateSpans(
+        fontManager: FontManager,
+        missingFontsTracker: MissingFontsTracker,
+        disableTextReplacement: Boolean = false,
+        includeTextDecoration: Boolean = true,
+        renderMode: RenderMode = RenderMode.BASE,
+        suppressAnimatedBase: Boolean = false,
+        closure: (Any) -> Unit
+    ) {
         closure(TextSizeSpan(resolveFontSize(fontManager.context)))
 
         closure(AlignmentSpan.Standard(when (alignment) {
@@ -111,14 +114,8 @@ data class FontAttributes(
             else -> Layout.Alignment.ALIGN_NORMAL
         }))
 
-        if (textDecoration != null) {
-            when (textDecoration!!) {
-                TextDecoration.UNDERLINE -> closure(customUnderlineStyle?.let { CustomUnderlineSpan(it) } ?: UnderlineSpan())
-                TextDecoration.DASHED_UNDERLINE -> closure(customUnderlineStyle?.let { CustomUnderlineSpan(it) } ?: DashedUnderlineSpan())
-                TextDecoration.DOTTED_UNDERLINE -> closure(customUnderlineStyle?.let { CustomUnderlineSpan(it) } ?: DottedUnderlineSpan())
-                TextDecoration.STRIKETHROUGH -> closure(StrikethroughSpan())
-                TextDecoration.NONE -> {}
-            }
+        if (includeTextDecoration) {
+            createTextDecorationLayoutSpan()?.let(closure)
         }
 
         val typeface = resolveTypeface(fontManager, missingFontsTracker)
@@ -159,6 +156,41 @@ data class FontAttributes(
             closure(OutlineReplacementSpan(color, outlineColor!!, outlineWidth))
         } else {
             closure(ForegroundColorSpan(color))
+        }
+    }
+
+    fun requiresDrawableUnderlineSpan(): Boolean {
+        return when (textDecoration) {
+            TextDecoration.UNDERLINE -> customUnderlineStyle != null
+            TextDecoration.DASHED_UNDERLINE,
+            TextDecoration.DOTTED_UNDERLINE -> true
+            else -> false
+        }
+    }
+
+    fun createTextDecorationLayoutSpan(): Any? {
+        return createDrawableUnderlineSpan(null) ?: when (textDecoration) {
+            TextDecoration.UNDERLINE -> UnderlineSpan()
+            TextDecoration.STRIKETHROUGH -> StrikethroughSpan()
+            TextDecoration.NONE,
+            null -> null
+            TextDecoration.DASHED_UNDERLINE,
+            TextDecoration.DOTTED_UNDERLINE -> null
+        }
+    }
+
+    fun createDrawableUnderlineSpan(animation: AttributedTextAnimation?): PatternUnderlineSpan? {
+        return when (textDecoration) {
+            TextDecoration.UNDERLINE -> customUnderlineStyle?.let { CustomUnderlineSpan(it, animation) }
+            TextDecoration.DASHED_UNDERLINE -> customUnderlineStyle?.let {
+                CustomUnderlineSpan(it, animation)
+            } ?: DashedUnderlineSpan(animation)
+            TextDecoration.DOTTED_UNDERLINE -> customUnderlineStyle?.let {
+                CustomUnderlineSpan(it, animation)
+            } ?: DottedUnderlineSpan(animation)
+            TextDecoration.STRIKETHROUGH,
+            TextDecoration.NONE,
+            null -> null
         }
     }
 
@@ -274,7 +306,7 @@ data class FontAttributes(
             typeface = resolveTypeface(fontManager, missingFontsTracker)
             color = outlineColor ?: Color.TRANSPARENT
             strokeWidth = outlineWidth ?: 0f
-            isUnderlineText = textDecoration == TextDecoration.UNDERLINE
+            isUnderlineText = textDecoration == TextDecoration.UNDERLINE && customUnderlineStyle == null
             isStrikeThruText = textDecoration == TextDecoration.STRIKETHROUGH
             style = Paint.Style.STROKE
         }
@@ -285,7 +317,7 @@ data class FontAttributes(
             textSize = resolveFontSize(fontManager.context)
             typeface = resolveTypeface(fontManager, missingFontsTracker)
             color = this@FontAttributes.color
-            isUnderlineText = textDecoration == TextDecoration.UNDERLINE
+            isUnderlineText = textDecoration == TextDecoration.UNDERLINE && customUnderlineStyle == null
             isStrikeThruText = textDecoration == TextDecoration.STRIKETHROUGH
             style = Paint.Style.FILL
         }

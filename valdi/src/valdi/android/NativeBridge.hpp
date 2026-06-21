@@ -22,6 +22,13 @@ public:
     static jobject getJSRuntime(fbjni::alias_ref<fbjni::JClass> clazz, jlong runtimeHandle);
     static jstring getViewClassName(fbjni::alias_ref<fbjni::JClass> clazz, jlong viewNodeHandle);
     static jobject getValueForAttribute(fbjni::alias_ref<fbjni::JClass> clazz, jlong viewNodeHandle, jstring attribute);
+    static jobject getStoredObjectForViewNode(fbjni::alias_ref<fbjni::JClass> clazz,
+                                              jlong viewNodeHandle,
+                                              jlong key);
+    static void setStoredObjectForViewNode(fbjni::alias_ref<fbjni::JClass> clazz,
+                                           jlong viewNodeHandle,
+                                           jlong key,
+                                           jobject object);
     static jobject getViewInContextForId(fbjni::alias_ref<fbjni::JClass> clazz, jlong contextHandle, jstring viewId);
     static jlong getRetainedViewNodeInContext(fbjni::alias_ref<fbjni::JClass> clazz,
                                               jlong contextHandle,

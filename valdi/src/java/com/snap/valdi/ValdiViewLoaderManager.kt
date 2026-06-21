@@ -347,7 +347,7 @@ class ValdiRuntimeManager(context: Context,
                     tweaks?.disableBoxShadow
                             ?: false, tweaks?.disableSlowClipping ?: false)
 
-            val editTextAttributesBinder = EditTextAttributesBinder(context, fontManager, FontAttributes.default)
+            val editTextAttributesBinder = EditTextAttributesBinder(context, fontManager, FontAttributes.default, false, logger)
 
             arrayOf(
                     viewAttributesBinder,
@@ -358,7 +358,7 @@ class ValdiRuntimeManager(context: Context,
                     ValdiImageViewAttributesBinder(context),
                     ValdiSpinnerViewAttributesBinder(),
                     ValdiVideoViewAttributesBinder(context),
-                    ValdiTextViewBaseAttributesBinder(context, fontManager, FontAttributes.default),
+                    ValdiTextViewBaseAttributesBinder(context, fontManager, FontAttributes.default, logger),
                     ValdiTextViewAttributesBinder(context),
                     editTextAttributesBinder,
                     EditTextMultilineAttributesBinder(context),

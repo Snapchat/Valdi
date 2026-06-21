@@ -11,8 +11,10 @@ import com.snap.valdi.attributes.impl.richtext.FontAttributes
 import com.snap.valdi.attributes.impl.richtext.InlineViewAttachmentSpan
 import com.snap.valdi.attributes.impl.richtext.TextViewHelper
 import com.snap.valdi.callable.ValdiFunction
+import com.snap.valdi.context.ValdiContext
 import com.snap.valdi.extensions.removeFromParentView
 import com.snap.valdi.extensions.ViewUtils
+import com.snap.valdi.logger.Logger
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -28,7 +30,7 @@ import kotlin.math.roundToInt
 abstract class ValdiTextViewBase(
     context: Context,
     val backingTextView: TextView
-) : ViewGroup(context), ValdiRecyclableView, ValdiTextHolder, CustomChildViewAppender, ValdiChildFrameManagingView {
+) : ViewGroup(context), ValdiContextMovedListener, ValdiRecyclableView, ValdiTextHolder, CustomChildViewAppender, ValdiChildFrameManagingView {
 
     private var inlineChildrenContainer: ViewGroup? = null
 
@@ -37,6 +39,7 @@ abstract class ValdiTextViewBase(
             field = value
             if (value != null) {
                 configureTextViewHelper(value)
+                value.viewNode = ViewUtils.findViewNode(this)
             }
         }
 
@@ -50,14 +53,19 @@ abstract class ValdiTextViewBase(
 
     protected open fun configureTextViewHelper(helper: TextViewHelper) {}
 
+    override fun onMovedToValdiContext(valdiContext: ValdiContext) {
+        textViewHelper?.viewNode = ViewUtils.findViewNode(this)
+    }
+
     fun getOrCreateTextViewHelper(
         fontManager: FontManager,
         defaultAttributes: FontAttributes,
-        valueAttributeId: Int
+        valueAttributeId: Int,
+        logger: Logger
     ): TextViewHelper {
         var helper = textViewHelper
         if (helper == null) {
-            helper = TextViewHelper(backingTextView, fontManager, defaultAttributes, valueAttributeId, this)
+            helper = TextViewHelper(backingTextView, fontManager, defaultAttributes, valueAttributeId, logger, this)
             textViewHelper = helper
         }
         return helper
@@ -280,7 +288,7 @@ abstract class ValdiTextViewBase(
     }
 
     override fun prepareForRecycling() {
-        textViewHelper?.unregisterTextAnimationGroup()
+        textViewHelper?.prepareForRecycling()
     }
 
     /**

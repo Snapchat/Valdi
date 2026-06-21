@@ -38,7 +38,7 @@ enum class KeyboardDismissMode(val value: String) {
  */
 @Keep
 open class ValdiScrollView(context: Context) : ValdiView(context, attributeSet(context)),
-        ValdiScrollableView, CustomChildViewAppender, Runnable, DragGestureRecognizerListener {
+        ValdiContextMovedListener, ValdiScrollableView, CustomChildViewAppender, Runnable, DragGestureRecognizerListener {
 
     companion object {
         fun attributeSet(context: Context): AttributeSet? {
@@ -275,8 +275,6 @@ open class ValdiScrollView(context: Context) : ValdiView(context, attributeSet(c
     }
 
     override fun onMovedToValdiContext(valdiContext: ValdiContext) {
-        super.onMovedToValdiContext(valdiContext)
-
         updateScrollDirection()
     }
 

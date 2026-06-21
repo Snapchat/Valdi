@@ -13,15 +13,20 @@ import com.snap.valdi.attributes.impl.fonts.TypefaceResLoader
 import com.snap.valdi.attributes.impl.richtext.AttributedText
 import com.snap.valdi.attributes.impl.richtext.AttributedTextAnimator
 import com.snap.valdi.attributes.impl.richtext.AnimatedTextReplacementSpan
+import com.snap.valdi.attributes.impl.richtext.CustomUnderlineSpan
+import com.snap.valdi.attributes.impl.richtext.CustomUnderlineStyle
 import com.snap.valdi.attributes.impl.richtext.FontAttributes
 import com.snap.valdi.attributes.impl.richtext.ImageAttachmentInfo
 import com.snap.valdi.attributes.impl.richtext.InlineViewAttachmentInfo
 import com.snap.valdi.attributes.impl.richtext.InlineViewVerticalAlignment
+import com.snap.valdi.attributes.impl.richtext.OutlineReplacementSpan
 import com.snap.valdi.attributes.impl.richtext.TextAnimationTransform
 import com.snap.valdi.attributes.impl.richtext.TextDecoration
 import com.snap.valdi.attributes.impl.richtext.TextSizeSpan
 import com.snap.valdi.attributes.impl.richtext.ValdiProcessedText
 import com.snap.valdi.callable.ValdiFunction
+import com.snap.valdi.logger.LogLevel
+import com.snap.valdi.logger.Logger
 import com.snap.valdi.utils.ValdiMarshaller
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -76,10 +81,54 @@ internal class ValdiProcessedTextTest {
         override fun onFontMissing(fontDescriptor: FontDescriptor) {}
     }
 
+    private object NoopLogger : Logger {
+        override fun log(level: Int, message: String?) = Unit
+        override fun log(level: Int, err: Throwable?, message: String?) = Unit
+    }
+
+    private data class LogEntry(
+        val level: Int,
+        val err: Throwable?,
+        val message: String?
+    )
+
+    private class CaptureLogger : Logger {
+        val entries = mutableListOf<LogEntry>()
+
+        override fun log(level: Int, message: String?) {
+            entries.add(LogEntry(level, null, message))
+        }
+
+        override fun log(level: Int, err: Throwable?, message: String?) {
+            entries.add(LogEntry(level, err, message))
+        }
+    }
+
     private fun createFontManager(context: Context): FontManager {
         return FontManager(context, object : TypefaceResLoader {
             override fun loadTypeface(context: Context, resId: Int): Typeface = Typeface.DEFAULT
         })
+    }
+
+    private fun parseWithAnimator(parts: List<Part>): ValdiProcessedText {
+        return parseWithAnimator(parts, NoopLogger)
+    }
+
+    private fun parseWithAnimator(parts: List<Part>, logger: Logger): ValdiProcessedText {
+        val animator = AttributedTextAnimator()
+        animator.beginSync()
+        return try {
+            ValdiProcessedText.parse(
+                createFontManager(getApplicationContext()),
+                FakeAttributedText(parts),
+                FontAttributes.default,
+                NoopMissingFontsTracker(),
+                logger,
+                attributedTextAnimator = animator
+            )
+        } finally {
+            animator.endSync()
+        }
     }
 
     @Test
@@ -103,6 +152,7 @@ internal class ValdiProcessedTextTest {
             ),
             FontAttributes.default,
             NoopMissingFontsTracker(),
+            NoopLogger,
             density = 2f
         )
 
@@ -134,7 +184,8 @@ internal class ValdiProcessedTextTest {
             createFontManager(getApplicationContext()),
             FakeAttributedText(listOf(Part("colored", color = Color.RED))),
             FontAttributes.default,
-            NoopMissingFontsTracker()
+            NoopMissingFontsTracker(),
+            NoopLogger
         )
 
         val colorSpans = processedText.spannable.getSpans(0, processedText.spannable.length, ForegroundColorSpan::class.java)
@@ -163,7 +214,8 @@ internal class ValdiProcessedTextTest {
                 )
             ),
             FontAttributes.default,
-            NoopMissingFontsTracker()
+            NoopMissingFontsTracker(),
+            NoopLogger
         )
 
         val inlineItem = processedText.inlineViewAttachments!![0]
@@ -193,7 +245,8 @@ internal class ValdiProcessedTextTest {
                 )
             ),
             FontAttributes.default,
-            NoopMissingFontsTracker()
+            NoopMissingFontsTracker(),
+            NoopLogger
         )
         val span = processedText.inlineViewAttachments!![0].value
         val paint = Paint()
@@ -225,13 +278,15 @@ internal class ValdiProcessedTextTest {
                                 duration = 0.25,
                                 timeOffsetBetweenParts = 0.0,
                                 groupIndex = 0,
-                                partIndexInGroup = 0
+                                partIndexInGroup = 0,
+                                partPattern = null
                             )
                         )
                     )
                 ),
                 FontAttributes.default,
                 NoopMissingFontsTracker(),
+                NoopLogger,
                 attributedTextAnimator = animator
             )
         } finally {
@@ -243,6 +298,240 @@ internal class ValdiProcessedTextTest {
         val animationTransforms = processedText.animationTransforms!!
         assertEquals(0, animationTransforms[0].start)
         assertEquals("animated".length, animationTransforms[0].end)
+    }
+
+    @Test
+    fun parseIndexesCharacterPartPatternAnimationTransforms() {
+        val processedText = parseWithAnimator(
+            listOf(
+                Part(
+                    "abc",
+                    animationTransform = TextAnimationTransform(
+                        key = "chars",
+                        translationY = 4f,
+                        scale = 0.5f,
+                        opacity = 0f,
+                        duration = 0.25,
+                        timeOffsetBetweenParts = 0.1,
+                        groupIndex = 0,
+                        partIndexInGroup = 0,
+                        partPattern = "."
+                    )
+                )
+            )
+        )
+
+        assertEquals(3, processedText.animationTransformsCount)
+        val animationTransforms = processedText.animationTransforms!!
+        for (index in 0 until 3) {
+            assertEquals(index, animationTransforms[index].start)
+            assertEquals(index + 1, animationTransforms[index].end)
+            assertEquals("chars:${index + 1}", animationTransforms[index].value.key)
+            assertEquals(index, animationTransforms[index].value.startTransform.partIndexInGroup)
+        }
+    }
+
+    @Test
+    fun parseIndexesWordPartPatternAnimationTransforms() {
+        val processedText = parseWithAnimator(
+            listOf(
+                Part(
+                    "hi there",
+                    animationTransform = TextAnimationTransform(
+                        key = "words",
+                        translationY = 4f,
+                        scale = 0.5f,
+                        opacity = 0f,
+                        duration = 0.25,
+                        timeOffsetBetweenParts = 0.1,
+                        groupIndex = 0,
+                        partIndexInGroup = 0,
+                        partPattern = "\\S+"
+                    )
+                )
+            )
+        )
+
+        assertEquals(2, processedText.animationTransformsCount)
+        val animationTransforms = processedText.animationTransforms!!
+        assertEquals(0, animationTransforms[0].start)
+        assertEquals(2, animationTransforms[0].end)
+        assertEquals(3, animationTransforms[1].start)
+        assertEquals(8, animationTransforms[1].end)
+        assertEquals(0, animationTransforms[0].value.startTransform.partIndexInGroup)
+        assertEquals(1, animationTransforms[1].value.startTransform.partIndexInGroup)
+    }
+
+    @Test
+    fun parseLeavesAnimatedCustomUnderlineSpansToReplacementSpansAcrossPartPattern() {
+        val animator = AttributedTextAnimator()
+        animator.beginSync()
+        val processedText = try {
+            ValdiProcessedText.parse(
+                createFontManager(getApplicationContext()),
+                FakeAttributedText(
+                    listOf(
+                        Part(
+                            "hi there",
+                            animationTransform = TextAnimationTransform(
+                                key = "underlined-words",
+                                translationY = 4f,
+                                scale = 0.5f,
+                                opacity = 0f,
+                                duration = 0.25,
+                                timeOffsetBetweenParts = 0.1,
+                                groupIndex = 0,
+                                partIndexInGroup = 0,
+                                partPattern = "\\S+"
+                            )
+                        )
+                    )
+                ),
+                FontAttributes.default.copy(
+                    textDecoration = TextDecoration.UNDERLINE,
+                    customUnderlineStyle = CustomUnderlineStyle(1f, 1f, 1f, -2f)
+                ),
+                NoopMissingFontsTracker(),
+                NoopLogger,
+                attributedTextAnimator = animator
+            )
+        } finally {
+            animator.endSync()
+        }
+
+        val underlineSpans = processedText.spannable.getSpans(
+            0,
+            processedText.spannable.length,
+            CustomUnderlineSpan::class.java
+        )
+        val underlineRanges = underlineSpans
+            .map { processedText.spannable.getSpanStart(it) to processedText.spannable.getSpanEnd(it) }
+            .sortedBy { it.first }
+        val replacementSpans = processedText.spannable.getSpans(
+            0,
+            processedText.spannable.length,
+            AnimatedTextReplacementSpan::class.java
+        )
+        val replacementRanges = replacementSpans
+            .map { processedText.spannable.getSpanStart(it) to processedText.spannable.getSpanEnd(it) }
+            .sortedBy { it.first }
+
+        assertEquals(listOf(2 to 3), underlineRanges)
+        assertEquals(listOf(0 to 2, 3 to 8), replacementRanges)
+    }
+
+    @Test
+    fun parseIndexesInvalidPartPatternLogsAndSkipsAnimationRanges() {
+        val logger = CaptureLogger()
+        val processedText = parseWithAnimator(
+            listOf(
+                Part(
+                    "abc",
+                    animationTransform = TextAnimationTransform(
+                        key = "invalid",
+                        translationY = 4f,
+                        scale = 0.5f,
+                        opacity = 0f,
+                        duration = 0.25,
+                        timeOffsetBetweenParts = 0.1,
+                        groupIndex = 0,
+                        partIndexInGroup = 0,
+                        partPattern = "["
+                    )
+                )
+            ),
+            logger
+        )
+
+        assertFalse(processedText.hasAnimationTransform)
+        assertEquals(0, processedText.animationTransformsCount)
+        assertEquals(1, logger.entries.size)
+        assertEquals(LogLevel.ERROR, logger.entries[0].level)
+        assertTrue(logger.entries[0].err is IllegalArgumentException)
+        assertTrue(logger.entries[0].message!!.contains("Invalid text animation partPattern"))
+    }
+
+    @Test
+    fun parseIndexesPartPatternKeepsGroupIndexesContinuousAcrossParts() {
+        val processedText = parseWithAnimator(
+            listOf(
+                Part(
+                    "ab",
+                    animationTransform = TextAnimationTransform(
+                        key = "group",
+                        translationY = 4f,
+                        scale = 0.5f,
+                        opacity = 0f,
+                        duration = 0.25,
+                        timeOffsetBetweenParts = 0.1,
+                        groupIndex = 7,
+                        partIndexInGroup = 0,
+                        partPattern = "."
+                    )
+                ),
+                Part(
+                    "cd",
+                    animationTransform = TextAnimationTransform(
+                        key = "group",
+                        translationY = 4f,
+                        scale = 0.5f,
+                        opacity = 0f,
+                        duration = 0.25,
+                        timeOffsetBetweenParts = 0.1,
+                        groupIndex = 7,
+                        partIndexInGroup = 99,
+                        partPattern = null
+                    )
+                )
+            )
+        )
+
+        assertEquals(3, processedText.animationTransformsCount)
+        val animationTransforms = processedText.animationTransforms!!
+        assertEquals(0, animationTransforms[0].value.startTransform.partIndexInGroup)
+        assertEquals(1, animationTransforms[1].value.startTransform.partIndexInGroup)
+        assertEquals(2, animationTransforms[2].value.startTransform.partIndexInGroup)
+        assertEquals(0, animationTransforms[0].start)
+        assertEquals(1, animationTransforms[1].start)
+        assertEquals(2, animationTransforms[2].start)
+        assertEquals(4, animationTransforms[2].end)
+    }
+
+    @Test
+    fun parseIndexesOutlinedPartPatternDoesNotOverlapReplacementSpans() {
+        val processedText = parseWithAnimator(
+            listOf(
+                Part(
+                    "hi there",
+                    outlineColor = Color.RED,
+                    outlineWidth = 2f,
+                    animationTransform = TextAnimationTransform(
+                        key = "outline",
+                        translationY = 4f,
+                        scale = 0.5f,
+                        opacity = 0f,
+                        duration = 0.25,
+                        timeOffsetBetweenParts = 0.1,
+                        groupIndex = 0,
+                        partIndexInGroup = 0,
+                        partPattern = "\\S+"
+                    )
+                )
+            )
+        )
+
+        val animatedSpans = processedText.spannable.getSpans(
+            0,
+            processedText.spannable.length,
+            AnimatedTextReplacementSpan::class.java
+        )
+        val outlineReplacementSpans = processedText.spannable.getSpans(
+            0,
+            processedText.spannable.length,
+            OutlineReplacementSpan::class.java
+        )
+        assertEquals(2, animatedSpans.size)
+        assertEquals(0, outlineReplacementSpans.size)
     }
 
     @Test
@@ -271,13 +560,15 @@ internal class ValdiProcessedTextTest {
                                 duration = 0.25,
                                 timeOffsetBetweenParts = 0.0,
                                 groupIndex = 0,
-                                partIndexInGroup = 0
+                                partIndexInGroup = 0,
+                                partPattern = "."
                             )
                         )
                     )
                 ),
                 FontAttributes.default,
                 NoopMissingFontsTracker(),
+                NoopLogger,
                 attributedTextAnimator = animator
             )
         } finally {
@@ -312,6 +603,7 @@ internal class ValdiProcessedTextTest {
             FakeAttributedText(listOf(inlinePart)),
             FontAttributes.default,
             NoopMissingFontsTracker(),
+            NoopLogger,
             density = 1f
         )
 
@@ -337,6 +629,7 @@ internal class ValdiProcessedTextTest {
             FakeAttributedText(listOf(inlinePart)),
             FontAttributes.default,
             NoopMissingFontsTracker(),
+            NoopLogger,
             density = 2f
         )
 

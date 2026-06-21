@@ -22,9 +22,11 @@
 #include "valdi_core/cpp/Utils/Function.hpp"
 #include "valdi_core/cpp/Utils/ObjectPool.hpp"
 #include "valdi_core/cpp/Utils/Shared.hpp"
+#include "valdi_core/cpp/Utils/Value.hpp"
 #include "valdi_core/cpp/Utils/ValueMap.hpp"
 #include <bitset>
 #include <memory>
+#include <string>
 
 struct YGNode;
 struct YGConfig;
@@ -276,6 +278,9 @@ public:
      * SCValdiRef on iOS.
      */
     Value toPlaformRepresentation(bool wrapInPlatformReference);
+
+    void setStoredObject(const StringBox& key, const Value& value);
+    Value getStoredObject(const StringBox& key) const;
 
     void setView(ViewTransactionScope& viewTransactionScope, const Ref<View>& view, const Ref<Animator>& animator);
     bool removeView(ViewTransactionScope& viewTransactionScope);
@@ -654,6 +659,7 @@ private:
     Ref<View> _view;
     Ref<ViewFactory> _viewFactory;
     Ref<IViewNodeAssetHandler> _assetHandler;
+    Ref<ValueMap> _storedObjects;
 
     Ref<ValueFunction> _onViewCreatedCallback;
     Ref<ValueFunction> _onViewDestroyedCallback;

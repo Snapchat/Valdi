@@ -61,7 +61,6 @@ class ValdiTextAnimationGroup(context: Context) : ValdiView(context) {
     }
 
     fun startTextAnimationFrameLoopIfNeeded() {
-        requestLayout()
         if (animationFrameCallbackPosted) {
             return
         }
@@ -91,9 +90,7 @@ class ValdiTextAnimationGroup(context: Context) : ValdiView(context) {
             ensureParticipantBaseIndexes()
             val orderedParticipants = orderedParticipants
             textAnimationTimeline.resetFrameState()
-
             orderedParticipants.forEach { it.prepareGroupedTextAnimationFrame() }
-
             val hasActiveAnimations = orderedParticipants.fold(false) { active, participant ->
                 participant.updateGroupedTextAnimationFrame() || active
             }

@@ -18,6 +18,7 @@
      timeOffsetBetweenParts:(double)timeOffsetBetweenParts
                  groupIndex:(NSUInteger)groupIndex
            partIndexInGroup:(NSUInteger)partIndexInGroup
+                partPattern:(nullable NSString *)partPattern
 {
     self = [super init];
     if (self) {
@@ -30,8 +31,24 @@
         _timeOffsetBetweenParts = timeOffsetBetweenParts;
         _groupIndex = groupIndex;
         _partIndexInGroup = partIndexInGroup;
+        _partPattern = [partPattern copy];
     }
     return self;
+}
+
+- (instancetype)copyWithPartIndex:(NSUInteger)partIndex
+                 partIndexInGroup:(NSUInteger)partIndexInGroup
+{
+    return [[SCValdiTextAnimationTransform alloc] initWithKey:self.key
+                                                    partIndex:partIndex
+                                                 translationY:self.translationY
+                                                        scale:self.scale
+                                                      opacity:self.opacity
+                                                     duration:self.duration
+                                       timeOffsetBetweenParts:self.timeOffsetBetweenParts
+                                                   groupIndex:self.groupIndex
+                                             partIndexInGroup:partIndexInGroup
+                                                  partPattern:self.partPattern];
 }
 
 @end

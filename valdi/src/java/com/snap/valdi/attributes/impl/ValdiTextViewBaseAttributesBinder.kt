@@ -14,6 +14,7 @@ import com.snap.valdi.attributes.impl.richtext.FontAttributes
 import com.snap.valdi.attributes.impl.richtext.TextViewHelper
 import com.snap.valdi.callable.ValdiFunction
 import com.snap.valdi.exceptions.AttributeError
+import com.snap.valdi.logger.Logger
 import com.snap.valdi.utils.CoordinateResolver
 import com.snap.valdi.views.ValdiTextSelection
 import com.snap.valdi.views.ValdiTextViewBase
@@ -33,6 +34,7 @@ class ValdiTextViewBaseAttributesBinder(
     context: Context,
     private val fontManager: FontManager,
     private val defaultAttributes: FontAttributes,
+    private val logger: Logger
 ) : AttributesBinder<ValdiTextViewBase> {
     private val coordinateResolver = CoordinateResolver(context)
     private var valueAttributeId = 0
@@ -105,7 +107,7 @@ class ValdiTextViewBaseAttributesBinder(
     }
 
     private fun getTextViewHelper(view: ValdiTextViewBase): TextViewHelper {
-        return view.getOrCreateTextViewHelper(fontManager, defaultAttributes, valueAttributeId)
+        return view.getOrCreateTextViewHelper(fontManager, defaultAttributes, valueAttributeId, logger)
     }
 
     fun applyFontAttributes(view: ValdiTextViewBase, value: Any?, animator: ValdiAnimator?) {

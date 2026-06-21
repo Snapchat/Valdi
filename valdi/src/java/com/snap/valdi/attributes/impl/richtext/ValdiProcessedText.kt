@@ -7,8 +7,13 @@ import android.text.SpannableStringBuilder
 import com.snap.valdi.attributes.impl.fonts.FontManager
 import com.snap.valdi.attributes.impl.fonts.MissingFontsTracker
 import com.snap.valdi.callable.ValdiFunction
+import com.snap.valdi.logger.LogLevel
+import com.snap.valdi.logger.Logger
 import com.snap.valdi.utils.CoordinateResolver
 import com.snap.valdi.utils.ValdiMarshaller
+import java.util.concurrent.ConcurrentHashMap
+import java.util.regex.Pattern
+import java.util.regex.PatternSyntaxException
 
 /**
  * Parsed, platform-ready representation of Valdi attributed text on Android.
@@ -188,15 +193,19 @@ class ValdiProcessedText private constructor(
     }
 
     companion object {
+        private val compiledPartPatterns = ConcurrentHashMap<String, Pattern>()
+
         fun parse(
             fontManager: FontManager,
             attributedText: AttributedText,
             startingAttributes: FontAttributes,
             missingFontsTracker: MissingFontsTracker,
+            logger: Logger,
             attributedTextAnimator: AttributedTextAnimator? = null,
             disableTextReplacement: Boolean = false,
             density: Float = 1.0f
         ): ValdiProcessedText {
+            val sourcePartCount = attributedText.getPartsSize()
             val attributes = parseAttributes(attributedText, startingAttributes)
             val spannable = SpannableStringBuilder()
             var onTapCallbacks: MutableList<RangeValue<ValdiFunction>>? = null
@@ -206,6 +215,8 @@ class ValdiProcessedText private constructor(
             var inlineViewAttachmentsByChildIndex: MutableList<RangeValue<InlineViewAttachmentSpan>?>? = null
             var animationTransforms: MutableList<RangeValue<AttributedTextAnimation>>? = null
             var drawOnTopItems: MutableList<RangeValue<DrawOnTopValue>>? = null
+            var animationPartIndexesByGroup: MutableList<Int>? = null
+            var nextSyntheticAnimationPartIndex = sourcePartCount
 
             for ((index, attribute) in attributes.withIndex()) {
                 val content = attributedText.getContentAtIndex(index)
@@ -218,44 +229,80 @@ class ValdiProcessedText private constructor(
                 val imageAttachment = attributedText.getImageAttachmentAtIndex(index)
                 val inlineViewAttachment = attributedText.getInlineViewAttachmentAtIndex(index)
                 val animationTransform = attributedText.getAnimationTransformAtIndex(index)
-                val animation = if (attributedTextAnimator != null &&
+                var animationRange: RangeValue<AttributedTextAnimation>? = null
+                var splitAnimationRanges: MutableList<RangeValue<AttributedTextAnimation>>? = null
+                if (attributedTextAnimator != null &&
                     imageAttachment == null &&
                     animationTransform != null
                 ) {
-                    attributedTextAnimator.animationForPart(index, animationTransform, start, end)
-                } else {
-                    null
+                    nextSyntheticAnimationPartIndex = forAnimationParts(
+                        animationTransform,
+                        content,
+                        start,
+                        end,
+                        index,
+                        inlineViewAttachment != null,
+                        nextSyntheticAnimationPartIndex,
+                        logger
+                    ) { partStart, partEnd, partIndex, isSynthetic ->
+                        val newAnimationRange = animationRangeForPart(
+                            attributedTextAnimator,
+                            animationTransform,
+                            partStart,
+                            partEnd,
+                            partIndex,
+                            animationPartIndexesByGroup
+                        ) {
+                            mutableListOf<Int>().also {
+                                animationPartIndexesByGroup = it
+                            }
+                        }
+                        if (newAnimationRange != null) {
+                            if (isSynthetic) {
+                                splitAnimationRanges = appendValue(splitAnimationRanges, newAnimationRange)
+                            } else {
+                                animationRange = newAnimationRange
+                            }
+                        }
+                    }
                 }
-                val useAnimatedReplacementSpan = animation != null && inlineViewAttachment == null
+                val hasAnimationRanges = animationRange != null || splitAnimationRanges != null
+                val useAnimatedReplacementSpan = hasAnimationRanges && inlineViewAttachment == null
                 val usesAttachmentReplacementSpan = inlineViewAttachment != null || (imageAttachment != null && !disableTextReplacement)
                 val disableAttributeTextReplacement = disableTextReplacement || useAnimatedReplacementSpan || usesAttachmentReplacementSpan
+                val hasAnimatedDrawableUnderline = hasAnimationRanges && attribute.requiresDrawableUnderlineSpan()
 
-                attribute.enumerateSpans(fontManager, missingFontsTracker, disableAttributeTextReplacement) {
+                attribute.enumerateSpans(
+                    fontManager,
+                    missingFontsTracker,
+                    disableAttributeTextReplacement,
+                    !hasAnimatedDrawableUnderline
+                ) {
                     spannable.setSpan(it, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+                if (hasAnimatedDrawableUnderline) {
+                    appendDrawableUnderlineSpans(
+                        spannable,
+                        attribute,
+                        start,
+                        end,
+                        animationRange,
+                        splitAnimationRanges,
+                        includeAnimatedRanges = !useAnimatedReplacementSpan
+                    )
                 }
 
                 if (inlineViewAttachment != null) {
-                    val span = InlineViewAttachmentSpan(inlineViewAttachment, density, animation)
+                    val span = InlineViewAttachmentSpan(inlineViewAttachment, density, animationRange?.value)
                     spannable.setSpan(span, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                     spannable.append(THIN_SPACE_FOR_LINE_BREAK)
-                    if (inlineViewAttachments == null) {
-                        inlineViewAttachments = mutableListOf()
-                    }
-                    if (inlineViewAttachmentPartIndexes == null) {
-                        inlineViewAttachmentPartIndexes = mutableListOf()
-                    }
                     val rangeValue = RangeValue(start, end, span)
-                    inlineViewAttachments.add(rangeValue)
-                    inlineViewAttachmentPartIndexes.add(index)
+                    inlineViewAttachments = appendValue(inlineViewAttachments, rangeValue)
+                    inlineViewAttachmentPartIndexes = appendValue(inlineViewAttachmentPartIndexes, index)
                     val childIndex = inlineViewAttachment.childIndex
                     if (childIndex >= 0) {
-                        if (inlineViewAttachmentsByChildIndex == null) {
-                            inlineViewAttachmentsByChildIndex = mutableListOf()
-                        }
-                        while (inlineViewAttachmentsByChildIndex.size <= childIndex) {
-                            inlineViewAttachmentsByChildIndex.add(null)
-                        }
-                        inlineViewAttachmentsByChildIndex[childIndex] = rangeValue
+                        inlineViewAttachmentsByChildIndex =
+                            setValueAtIndex(inlineViewAttachmentsByChildIndex, childIndex, rangeValue)
                     }
                 } else if (imageAttachment != null && !disableTextReplacement) {
                     spannable.setSpan(
@@ -268,39 +315,41 @@ class ValdiProcessedText private constructor(
                 }
 
                 if (onTap != null) {
-                    if (onTapCallbacks == null) {
-                        onTapCallbacks = mutableListOf()
-                    }
-                    onTapCallbacks.add(RangeValue(start, end, onTap))
+                    onTapCallbacks = appendValue(onTapCallbacks, RangeValue(start, end, onTap))
                 }
 
                 if (onLayout != null) {
-                    if (onLayoutCallbacks == null) {
-                        onLayoutCallbacks = mutableListOf()
-                    }
-                    onLayoutCallbacks.add(RangeValue(start, end, onLayout))
+                    onLayoutCallbacks = appendValue(onLayoutCallbacks, RangeValue(start, end, onLayout))
                 }
 
-                if (animation != null) {
-                    if (useAnimatedReplacementSpan) {
-                        spannable.setSpan(
-                            AnimatedTextReplacementSpan(animation, attribute, fontManager, missingFontsTracker, density),
-                            start,
-                            end,
-                            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                if (hasAnimationRanges) {
+                    forAnimationRanges(animationRange, splitAnimationRanges) { range ->
+                        animationTransforms = appendAnimationRange(
+                            animationTransforms,
+                            spannable,
+                            range,
+                            useAnimatedReplacementSpan,
+                            attribute,
+                            fontManager,
+                            missingFontsTracker,
+                            density
                         )
                     }
-                    if (animationTransforms == null) {
-                        animationTransforms = mutableListOf()
-                    }
-                    animationTransforms.add(RangeValue(start, end, animation))
                 }
 
-                if (animation == null && attribute.outlineColor != null && attribute.outlineWidth > 0f) {
-                    if (drawOnTopItems == null) {
-                        drawOnTopItems = mutableListOf()
+                if (attribute.outlineColor != null && attribute.outlineWidth > 0f) {
+                    if (!hasAnimationRanges) {
+                        drawOnTopItems = appendDrawOnTopRange(drawOnTopItems, start, end, attribute)
+                    } else if (useAnimatedReplacementSpan) {
+                        drawOnTopItems = addUnanimatedOutlineRanges(
+                            drawOnTopItems,
+                            start,
+                            end,
+                            animationRange,
+                            splitAnimationRanges,
+                            attribute
+                        )
                     }
-                    drawOnTopItems.add(RangeValue(start, end, DrawOnTopValue(attribute, animation)))
                 }
             }
 
@@ -315,6 +364,289 @@ class ValdiProcessedText private constructor(
                 animationTransforms,
                 drawOnTopItems
             )
+        }
+
+        private fun <T> appendValue(items: MutableList<T>?, value: T): MutableList<T> {
+            val output = items ?: mutableListOf()
+            output.add(value)
+            return output
+        }
+
+        private fun <T> setValueAtIndex(items: MutableList<T?>?, index: Int, value: T): MutableList<T?> {
+            val output = items ?: mutableListOf()
+            while (output.size <= index) {
+                output.add(null)
+            }
+            output[index] = value
+            return output
+        }
+
+        private fun appendAnimationRange(
+            animationTransforms: MutableList<RangeValue<AttributedTextAnimation>>?,
+            spannable: SpannableStringBuilder,
+            animationRange: RangeValue<AttributedTextAnimation>,
+            useAnimatedReplacementSpan: Boolean,
+            attribute: FontAttributes,
+            fontManager: FontManager,
+            missingFontsTracker: MissingFontsTracker,
+            density: Float
+        ): MutableList<RangeValue<AttributedTextAnimation>> {
+            if (useAnimatedReplacementSpan) {
+                spannable.setSpan(
+                    AnimatedTextReplacementSpan(animationRange.value, attribute, fontManager, missingFontsTracker, density),
+                    animationRange.start,
+                    animationRange.end,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+            return appendValue(animationTransforms, animationRange)
+        }
+
+        private fun appendDrawableUnderlineSpans(
+            spannable: SpannableStringBuilder,
+            attribute: FontAttributes,
+            start: Int,
+            end: Int,
+            animationRange: RangeValue<AttributedTextAnimation>?,
+            splitAnimationRanges: List<RangeValue<AttributedTextAnimation>>?,
+            includeAnimatedRanges: Boolean
+        ) {
+            if (animationRange != null) {
+                val rangeEnd = appendDrawableUnderlineSpans(spannable, attribute, start, animationRange, includeAnimatedRanges)
+                appendDrawableUnderlineSpanIfNotEmpty(spannable, attribute, rangeEnd, end, null)
+                return
+            }
+
+            if (splitAnimationRanges == null) {
+                return
+            }
+
+            var rangeStart = start
+            for (splitAnimationRange in splitAnimationRanges) {
+                rangeStart = appendDrawableUnderlineSpans(
+                    spannable,
+                    attribute,
+                    rangeStart,
+                    splitAnimationRange,
+                    includeAnimatedRanges
+                )
+            }
+            appendDrawableUnderlineSpanIfNotEmpty(spannable, attribute, rangeStart, end, null)
+        }
+
+        private fun appendDrawableUnderlineSpans(
+            spannable: SpannableStringBuilder,
+            attribute: FontAttributes,
+            rangeStart: Int,
+            animationRange: RangeValue<AttributedTextAnimation>,
+            includeAnimatedRange: Boolean
+        ): Int {
+            appendDrawableUnderlineSpanIfNotEmpty(spannable, attribute, rangeStart, animationRange.start, null)
+            if (includeAnimatedRange) {
+                appendDrawableUnderlineSpanIfNotEmpty(
+                    spannable,
+                    attribute,
+                    animationRange.start,
+                    animationRange.end,
+                    animationRange.value
+                )
+            }
+            return animationRange.end
+        }
+
+        private fun appendDrawableUnderlineSpanIfNotEmpty(
+            spannable: SpannableStringBuilder,
+            attribute: FontAttributes,
+            start: Int,
+            end: Int,
+            animation: AttributedTextAnimation?
+        ) {
+            if (start >= end) {
+                return
+            }
+
+            val span = attribute.createDrawableUnderlineSpan(animation) ?: return
+            spannable.setSpan(span, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+
+        private inline fun forAnimationRanges(
+            animationRange: RangeValue<AttributedTextAnimation>?,
+            splitAnimationRanges: List<RangeValue<AttributedTextAnimation>>?,
+            block: (RangeValue<AttributedTextAnimation>) -> Unit
+        ) {
+            if (animationRange != null) {
+                block(animationRange)
+            }
+            if (splitAnimationRanges != null) {
+                for (splitAnimationRange in splitAnimationRanges) {
+                    block(splitAnimationRange)
+                }
+            }
+        }
+
+        private fun forAnimationParts(
+            animationTransform: TextAnimationTransform,
+            content: String,
+            partStart: Int,
+            partEnd: Int,
+            partIndex: Int,
+            isAttachmentPart: Boolean,
+            nextSyntheticPartIndex: Int,
+            logger: Logger,
+            onPart: (Int, Int, Int, Boolean) -> Unit
+        ): Int {
+            val partPattern = animationTransform.partPattern
+            if (isAttachmentPart || partPattern.isNullOrEmpty()) {
+                onPart(partStart, partEnd, partIndex, false)
+                return nextSyntheticPartIndex
+            }
+
+            val pattern = compiledPartPattern(partPattern, logger) ?: return nextSyntheticPartIndex
+            var nextPartIndex = nextSyntheticPartIndex
+            val matcher = pattern.matcher(content)
+            while (matcher.find()) {
+                val matchStart = matcher.start()
+                val matchEnd = matcher.end()
+                if (matchEnd > matchStart) {
+                    onPart(partStart + matchStart, partStart + matchEnd, nextPartIndex++, true)
+                }
+            }
+            return nextPartIndex
+        }
+
+        private fun compiledPartPattern(partPattern: String, logger: Logger): Pattern? {
+            val cachedPattern = compiledPartPatterns[partPattern]
+            if (cachedPattern != null) {
+                return cachedPattern
+            }
+
+            val compiledPattern = try {
+                Pattern.compile(partPattern)
+            } catch (exc: PatternSyntaxException) {
+                logger.log(
+                    LogLevel.ERROR,
+                    exc,
+                    "Invalid text animation partPattern: $partPattern"
+                )
+                return null
+            }
+
+             // Prevent unbounded growth if partPattern values are dynamic.
+             if (compiledPartPatterns.size > 64) {
+                 compiledPartPatterns.clear()
+             }
+
+            return compiledPartPatterns.putIfAbsent(partPattern, compiledPattern) ?: compiledPattern
+        }
+
+        private inline fun animationRangeForPart(
+            attributedTextAnimator: AttributedTextAnimator,
+            animationTransform: TextAnimationTransform,
+            start: Int,
+            end: Int,
+            partIndex: Int,
+            partIndexesByGroup: MutableList<Int>?,
+            createPartIndexesByGroup: () -> MutableList<Int>
+        ): RangeValue<AttributedTextAnimation>? {
+            val groupIndex = animationTransform.groupIndex
+            val partIndexInGroup = partIndexesByGroup?.getOrNull(groupIndex) ?: 0
+            val emittedTransform = textAnimationTransformWithPartIndexInGroup(
+                animationTransform,
+                partIndexInGroup
+            )
+            val animation = attributedTextAnimator.animationForPart(partIndex, emittedTransform, start, end) ?: return null
+            val mutablePartIndexesByGroup = partIndexesByGroup ?: createPartIndexesByGroup()
+            while (mutablePartIndexesByGroup.size <= groupIndex) {
+                mutablePartIndexesByGroup.add(0)
+            }
+            mutablePartIndexesByGroup[groupIndex] = partIndexInGroup + 1
+            return RangeValue(start, end, animation)
+        }
+
+        private fun textAnimationTransformWithPartIndexInGroup(
+            animationTransform: TextAnimationTransform,
+            partIndexInGroup: Int
+        ): TextAnimationTransform {
+            return TextAnimationTransform(
+                key = animationTransform.key,
+                translationY = animationTransform.translationY,
+                scale = animationTransform.scale,
+                opacity = animationTransform.opacity,
+                duration = animationTransform.duration,
+                timeOffsetBetweenParts = animationTransform.timeOffsetBetweenParts,
+                groupIndex = animationTransform.groupIndex,
+                partIndexInGroup = partIndexInGroup,
+                partPattern = animationTransform.partPattern
+            )
+        }
+
+        private fun addUnanimatedOutlineRanges(
+            drawOnTopItems: MutableList<RangeValue<DrawOnTopValue>>?,
+            start: Int,
+            end: Int,
+            animationRange: RangeValue<AttributedTextAnimation>?,
+            splitAnimationRanges: List<RangeValue<AttributedTextAnimation>>?,
+            attribute: FontAttributes
+        ): MutableList<RangeValue<DrawOnTopValue>>? {
+            return if (animationRange != null) {
+                addUnanimatedOutlineRanges(drawOnTopItems, start, end, animationRange, attribute)
+            } else if (splitAnimationRanges != null) {
+                addUnanimatedOutlineRanges(drawOnTopItems, start, end, splitAnimationRanges, attribute)
+            } else {
+                drawOnTopItems
+            }
+        }
+
+        private fun addUnanimatedOutlineRanges(
+            drawOnTopItems: MutableList<RangeValue<DrawOnTopValue>>?,
+            start: Int,
+            end: Int,
+            animationRange: RangeValue<AttributedTextAnimation>,
+            attribute: FontAttributes
+        ): MutableList<RangeValue<DrawOnTopValue>>? {
+            var items = drawOnTopItems
+            items = appendDrawOnTopRangeIfNotEmpty(items, start, animationRange.start, attribute)
+            items = appendDrawOnTopRangeIfNotEmpty(items, animationRange.end, end, attribute)
+            return items
+        }
+
+        private fun addUnanimatedOutlineRanges(
+            drawOnTopItems: MutableList<RangeValue<DrawOnTopValue>>?,
+            start: Int,
+            end: Int,
+            animationRanges: List<RangeValue<AttributedTextAnimation>>,
+            attribute: FontAttributes
+        ): MutableList<RangeValue<DrawOnTopValue>>? {
+            var items = drawOnTopItems
+            var rangeStart = start
+            for (animationRange in animationRanges) {
+                items = appendDrawOnTopRangeIfNotEmpty(items, rangeStart, animationRange.start, attribute)
+                rangeStart = animationRange.end
+            }
+            items = appendDrawOnTopRangeIfNotEmpty(items, rangeStart, end, attribute)
+            return items
+        }
+
+        private fun appendDrawOnTopRangeIfNotEmpty(
+            drawOnTopItems: MutableList<RangeValue<DrawOnTopValue>>?,
+            start: Int,
+            end: Int,
+            attribute: FontAttributes
+        ): MutableList<RangeValue<DrawOnTopValue>>? {
+            return if (start < end) {
+                appendDrawOnTopRange(drawOnTopItems, start, end, attribute)
+            } else {
+                drawOnTopItems
+            }
+        }
+
+        private fun appendDrawOnTopRange(
+            drawOnTopItems: MutableList<RangeValue<DrawOnTopValue>>?,
+            start: Int,
+            end: Int,
+            attribute: FontAttributes
+        ): MutableList<RangeValue<DrawOnTopValue>> {
+            return appendValue(drawOnTopItems, RangeValue(start, end, DrawOnTopValue(attribute, null)))
         }
 
         private fun parseAttributes(attributedText: AttributedText, startingAttributes: FontAttributes): Array<FontAttributes> {

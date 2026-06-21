@@ -8,5 +8,6 @@ data class TextAnimationTransform(
     val duration: Double,
     val timeOffsetBetweenParts: Double,
     val groupIndex: Int,
-    val partIndexInGroup: Int
+    val partIndexInGroup: Int,
+    val partPattern: String?
 )

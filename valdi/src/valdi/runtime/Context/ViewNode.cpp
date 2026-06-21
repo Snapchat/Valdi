@@ -199,6 +199,33 @@ Value ViewNode::toPlaformRepresentation(bool wrapInPlatformReference) {
                                                                                           wrapInPlatformReference);
 }
 
+void ViewNode::setStoredObject(const StringBox& key, const Value& value) {
+    if (value.isNullOrUndefined()) {
+        if (_storedObjects != nullptr) {
+            _storedObjects->erase(key);
+        }
+        return;
+    }
+
+    if (_storedObjects == nullptr) {
+        _storedObjects = makeShared<ValueMap>();
+    }
+    (*_storedObjects)[key] = value;
+}
+
+Value ViewNode::getStoredObject(const StringBox& key) const {
+    if (_storedObjects == nullptr) {
+        return Value::undefined();
+    }
+
+    auto it = _storedObjects->find(key);
+    if (it == _storedObjects->end()) {
+        return Value::undefined();
+    }
+
+    return it->second;
+}
+
 static void callViewCallbackIfNeeded(const Ref<ValueFunction>& valueFunction) {
     if (valueFunction != nullptr) {
         (*valueFunction)();

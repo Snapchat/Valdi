@@ -10,8 +10,13 @@ export interface AttributedTextAnimationTransform {
    * Stable animation identity for parts using this transform.
    *
    * When provided, native renderers use this key together with each part index
-   * to preserve animation state across attributed text updates. When omitted,
-   * the part index alone is used.
+   * to preserve animation progress in the owning ViewNode. This lets an
+   * animation continue from wall-clock elapsed time when the native label view
+   * is destroyed and later recreated from the view pool. When omitted, the
+   * animation is only identified by its part index within the currently
+   * committed text.
+   *
+   * Change the key when you intentionally want to start the animation again.
    */
   key?: string;
 
@@ -51,6 +56,15 @@ export interface AttributedTextAnimationTransform {
    * so on.
    */
   timeOffsetBetweenParts?: number;
+
+  /**
+   * Native regex whose non-overlapping matches become separate animated parts
+   * inside each attributed text part using this transform.
+   *
+   * Unmatched text is rendered normally and left unanimated. When omitted or
+   * empty, the whole attributed text part animates as one part.
+   */
+  partPattern?: string;
 }
 
 export interface AttributedTextBackgroundPadding {
