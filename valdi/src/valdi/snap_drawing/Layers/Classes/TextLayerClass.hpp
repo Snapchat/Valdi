@@ -24,6 +24,48 @@ public:
 
     void bindAttributes(Valdi::AttributesBindingContext& binder) override;
 
+    Valdi::Result<Valdi::Void> applyTextAttribute(TextLayer& textLayer, const Valdi::Value& value);
+    void resetTextAttribute(TextLayer& textLayer);
+
+    Valdi::Result<Valdi::Void> applyFontAttribute(TextLayer& textLayer, const Valdi::Value& value);
+    void resetFontAttribute(TextLayer& textLayer);
+
+    Valdi::Result<Valdi::Void> applyColorAttribute(TextLayer& textLayer, int64_t value);
+    void resetColorAttribute(TextLayer& textLayer);
+
+    Valdi::Result<Valdi::Void> applyTextAlignAttribute(TextLayer& textLayer, const String& value);
+    void resetTextAlignAttribute(TextLayer& textLayer);
+
+    Valdi::Result<Valdi::Void> applyTextDecorationAttribute(TextLayer& textLayer, const String& value);
+    void resetTextDecorationAttribute(TextLayer& textLayer);
+
+    Valdi::Result<Valdi::Void> applyTextOverflowAttribute(TextLayer& textLayer, const String& value);
+    void resetTextOverflowAttribute(TextLayer& textLayer);
+
+    Valdi::Result<Valdi::Void> applyNumberOfLinesAttribute(TextLayer& textLayer, int64_t value);
+    void resetNumberOfLinesAttribute(TextLayer& textLayer);
+
+    Valdi::Result<Valdi::Void> applyAdjustsFontSizeToFitWidthAttribute(TextLayer& textLayer, bool value);
+    void resetAdjustsFontSizeToFitWidthAttribute(TextLayer& textLayer);
+
+    Valdi::Result<Valdi::Void> applyMinimumScaleFactorAttribute(TextLayer& textLayer, double value);
+    void resetMinimumScaleFactorAttribute(TextLayer& textLayer);
+
+    Valdi::Result<Valdi::Void> applyLineHeightMultipleAttribute(TextLayer& textLayer, double value);
+    void resetLineHeightMultipleAttribute(TextLayer& textLayer);
+
+    Valdi::Result<Valdi::Void> applyLineHeightAttribute(TextLayer& textLayer, double value);
+    void resetLineHeightAttribute(TextLayer& textLayer);
+
+    Valdi::Result<Valdi::Void> applyLetterSpacingAttribute(TextLayer& textLayer, double value);
+    void resetLetterSpacingAttribute(TextLayer& textLayer);
+
+    Valdi::Result<Valdi::Void> applyTextShadowAttribute(TextLayer& textLayer, const Valdi::Value& value);
+    void resetTextShadowAttribute(TextLayer& textLayer);
+
+    Valdi::Result<Valdi::Void> applyTextGradientAttribute(TextLayer& textLayer, const Valdi::Value& value);
+    void resetTextGradientAttribute(TextLayer& textLayer);
+
     DECLARE_TEXT_ATTRIBUTE(TextLayer, value)
 
     DECLARE_INT_ATTRIBUTE(TextLayer, numberOfLines)

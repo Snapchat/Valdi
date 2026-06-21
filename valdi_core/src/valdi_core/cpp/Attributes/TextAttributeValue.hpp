@@ -46,6 +46,16 @@ public:
         return _parts[index].style;
     }
 
+    bool isContentEmpty() const {
+        for (const auto& part : _parts) {
+            if (!part.content.isEmpty()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
 private:
     Parts _parts;
 };

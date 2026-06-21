@@ -37,6 +37,8 @@ struct TextShadow {
     }
 };
 
+enum TextVerticalAlignment { TextVerticalAlignmentTop, TextVerticalAlignmentCenter };
+
 class TextLayer : public Layer {
 public:
     explicit TextLayer(const Ref<Resources>& resources);
@@ -55,6 +57,9 @@ public:
 
     void setTextAlign(TextAlign textAlign);
     TextAlign getTextAlign() const;
+
+    void setTextVerticalAlignment(TextVerticalAlignment textVerticalAlignment);
+    TextVerticalAlignment getTextVerticalAlignment() const;
 
     void setTextDecoration(TextDecoration textDecoration);
     TextDecoration getTextDecoration() const;
@@ -162,6 +167,7 @@ private:
     TextDecoration _textDecoration = TextDecorationNone;
     TextShadow _textShadow;
     TextOverflow _textOverflow = TextOverflowEllipsis;
+    TextVerticalAlignment _textVerticalAlignment = TextVerticalAlignmentTop;
     int _numberOfLines = 1;
     bool _adjustsFontSizeToFitWidth = false;
     double _minimumScaleFactor = 0.0;

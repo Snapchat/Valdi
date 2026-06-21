@@ -81,9 +81,10 @@ void TextLayer::onDraw(DrawingContext& drawingContext) {
     auto respectDynamicType = getResources()->getRespectDynamicType();
     auto displayScale = getResources()->getDisplayScale();
     auto dynamicTypeScale = getResources()->getDynamicTypeScale();
-    auto& layout = getTextLayout(
-        Size::make(getFrame().width(), getFrame().height()), respectDynamicType, displayScale, dynamicTypeScale);
-    drawingContext.concat(Matrix::makeScaleTranslate(1.0f / displayScale, 1.0f / displayScale, 0.0f, 0.0f));
+    auto layerSize = Size::make(getFrame().width(), getFrame().height());
+    auto& layout = getTextLayout(layerSize, respectDynamicType, displayScale, dynamicTypeScale);
+    auto offsetY = getTextVerticalOffset(layerSize, layout, displayScale);
+    drawingContext.concat(Matrix::makeScaleTranslate(1.0f / displayScale, 1.0f / displayScale, 0.0f, offsetY));
 
     if (hasTextShadow()) {
         // Draw all of the shadows first
@@ -291,6 +292,26 @@ void TextLayer::setTextAlign(TextAlign textAlign) {
 
 TextAlign TextLayer::getTextAlign() const {
     return _textAlign;
+}
+
+void TextLayer::setTextVerticalAlignment(TextVerticalAlignment textVerticalAlignment) {
+    if (_textVerticalAlignment != textVerticalAlignment) {
+        _textVerticalAlignment = textVerticalAlignment;
+        setNeedsDisplay();
+    }
+}
+
+TextVerticalAlignment TextLayer::getTextVerticalAlignment() const {
+    return _textVerticalAlignment;
+}
+
+Scalar TextLayer::getTextVerticalOffset(const Size& layerSize, const TextLayout& layout, Scalar displayScale) const {
+    if (_textVerticalAlignment == TextVerticalAlignmentCenter) {
+        auto layoutHeight = layout.getBounds().height() / displayScale;
+        return std::max<Scalar>((layerSize.height - layoutHeight) / 2.0f, 0.0f);
+    }
+
+    return 0.0f;
 }
 
 void TextLayer::setTextDecoration(TextDecoration textDecoration) {

@@ -30,6 +30,10 @@ const char* ILayerClass::getAndroidClassName() const {
     return _androidClassName;
 }
 
+bool ILayerClass::isFallback() const {
+    return false;
+}
+
 const Ref<ILayerClass>& ILayerClass::getParent() const {
     return _parentClass;
 }

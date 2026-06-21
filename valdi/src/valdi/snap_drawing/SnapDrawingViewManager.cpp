@@ -36,6 +36,7 @@
 #include "snap_drawing/cpp/Layers/TextLayer.hpp"
 
 #include "valdi/snap_drawing/Layers/Classes/AnimatedImageLayerClass.hpp"
+#include "valdi/snap_drawing/Layers/Classes/EditableTextLayerClass.hpp"
 #include "valdi/snap_drawing/Layers/Classes/ImageLayerClass.hpp"
 #include "valdi/snap_drawing/Layers/Classes/LayerClass.hpp"
 #include "valdi/snap_drawing/Layers/Classes/ScrollLayerClass.hpp"
@@ -338,6 +339,8 @@ SnapDrawingViewManager::SnapDrawingViewManager(const Ref<Resources>& resources, 
     auto textLayerClass = Valdi::makeShared<TextLayerClass>(_resources, layerClass);
     registerLayerClass(layerClass);
     registerLayerClass(textLayerClass);
+    registerLayerClass(EditableTextLayerClass::makeForTextField(_resources, textLayerClass));
+    registerLayerClass(EditableTextLayerClass::makeForTextView(_resources, textLayerClass));
     registerLayerClass(
         Valdi::makeShared<ScrollLayerClass>(_resources, platformType == Valdi::PlatformTypeAndroid, layerClass));
     registerLayerClass(Valdi::makeShared<SpinnerLayerClass>(_resources, layerClass));
@@ -523,13 +526,14 @@ void SnapDrawingViewManager::bindAttributes(const Valdi::StringBox& className,
 }
 
 bool SnapDrawingViewManager::shouldBridgeLayerClass(const Valdi::StringBox& layerClassName) {
-    if (getLayerClass(layerClassName) != nullptr) {
+    auto layerClass = getLayerClass(layerClassName);
+    if (layerClass != nullptr && !layerClass->isFallback()) {
         return false;
     }
-    if (_hostViewManager == nullptr) {
-        return false;
+    if (_hostViewManager != nullptr && _hostViewManager->supportsClassNameNatively(layerClassName)) {
+        return true;
     }
-    return _hostViewManager->supportsClassNameNatively(layerClassName);
+    return false;
 }
 
 float SnapDrawingViewManager::getPointScale() const {
