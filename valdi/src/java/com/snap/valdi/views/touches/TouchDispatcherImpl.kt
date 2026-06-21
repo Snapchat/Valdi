@@ -150,6 +150,9 @@ internal class TouchDispatcherImpl(
                 logger?.debug("Valdi touch target ${view::class.java.simpleName}-${System.identityHashCode(view)} wants to handle touch event")
             }
             candidateViews.add(view)
+            if (view.allowsSameViewGestureRecognizers()) {
+                captureGestureRecognizers(view, pointerIndex, event.actionMasked)
+            }
             return true
         }
 
@@ -172,21 +175,25 @@ internal class TouchDispatcherImpl(
             }
         }
 
-        val gestureRecognizer = ViewUtils.getGestureRecognizers(view, false) ?: return true
+        captureGestureRecognizers(view, pointerIndex, event.actionMasked)
+
+        return true
+    }
+
+    private fun captureGestureRecognizers(view: View, pointerIndex: Int, eventActionMasked: Int) {
+        val gestureRecognizer = ViewUtils.getGestureRecognizers(view, false) ?: return
 
         gestureRecognizer.gestureRecognizers.forEach {
             // TODO(2951) for now - we choose to only add touch gesture recognizers for subsequent pointer downs
             if (pointerIndex == 0 || it is TouchGestureRecognizer) {
                 if (!candidateGestureRecognizers.contains(it)) {
                     if (debugTouchEvents) {
-                        logger?.debug("Adding candidate gesture recognizer $it to TouchDispatcher-${System.identityHashCode(this)} for event ${event.actionMasked}")
+                        logger?.debug("Adding candidate gesture recognizer $it to TouchDispatcher-${System.identityHashCode(this)} for event $eventActionMasked")
                     }
                     candidateGestureRecognizers.add(it)
                 }
             }
         }
-
-        return true
     }
 
     private inline fun <T> adjustEventCoordinatesToView(

@@ -49,11 +49,15 @@ public:
 
     DECLARE_STRING_ATTRIBUTE(EditableTextLayer, textDecoration)
 
+    DECLARE_UNTYPED_ATTRIBUTE(EditableTextLayer, customUnderlineStyle)
+
     DECLARE_STRING_ATTRIBUTE(EditableTextLayer, textOverflow)
 
     DECLARE_BOOLEAN_ATTRIBUTE(EditableTextLayer, adjustsFontSizeToFitWidth)
 
     DECLARE_DOUBLE_ATTRIBUTE(EditableTextLayer, minimumScaleFactor)
+
+    DECLARE_DOUBLE_ATTRIBUTE(EditableTextLayer, lineHeightMultiple)
 
     DECLARE_DOUBLE_ATTRIBUTE(EditableTextLayer, lineHeight)
 
@@ -69,6 +73,9 @@ public:
 
     // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
     Valdi::Result<Valdi::Value> preprocess_font(const Valdi::Value& value);
+
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    Valdi::Result<Valdi::Value> preprocess_customUnderlineStyle(const Valdi::Value& value);
 
 private:
     Ref<TextLayerClass> _textLayerClass;

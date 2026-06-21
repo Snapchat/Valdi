@@ -26,6 +26,7 @@ import com.snap.valdi.utils.LoadCompletion
 import com.snap.valdi.utils.runOnMainThreadIfNeeded
 import com.snap.valdi.views.ValdiEditText
 import com.snap.valdi.views.TextViewUtils
+import com.snap.valdi.views.ValdiEditTextMultiline
 import com.snap.valdi.views.ValdiTextView
 import com.snap.valdi.views.touches.AttributedTextTapGestureRecognizer
 import kotlin.math.max
@@ -84,6 +85,8 @@ class TextViewHelper(private val view: TextView,
      * This is to avoid conflicts when a view uses another attribute that conflicts and does not uses "numberOfLines"
      */
     var managesNumberOfLines = true
+
+    var defaultNumberOfLines = 1
 
     /**
      * For TextViews that don't support selection, we allow text replacement by default
@@ -207,6 +210,10 @@ class TextViewHelper(private val view: TextView,
         updateTextAutofit()
         updateTextGradient(changed)
         updateOnLayoutCallbacks()
+    }
+
+    fun applyCurrentNumberOfLines() {
+        applyNumberOfLines(fontAttributes ?: defaultAttributes)
     }
 
     private fun updateOnLayoutCallbacks() {
@@ -763,11 +770,14 @@ class TextViewHelper(private val view: TextView,
         if (!managesNumberOfLines) {
             return
         }
-        val numberOfLines = attributes.numberOfLines ?: 1
+        val numberOfLines = attributes.numberOfLines ?: defaultNumberOfLines
         if (numberOfLines <= 0) {
             view.maxLines = Int.MAX_VALUE
         } else {
             view.maxLines = numberOfLines
+        }
+        if (view is ValdiEditTextMultiline) {
+            view.onNumberOfLinesChanged()
         }
     }
 

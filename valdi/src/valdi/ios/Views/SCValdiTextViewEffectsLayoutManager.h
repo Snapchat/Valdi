@@ -1,6 +1,10 @@
 
 #import <UIKit/UIKit.h>
 
+@class SCValdiCustomUnderlineStyle;
+
+FOUNDATION_EXPORT NSAttributedStringKey const kSCValdiTextViewCustomUnderlineColorAttribute;
+
 @interface SCValdiTextViewBackgroundEffects : NSObject
 
 @property (nonatomic, strong) UIColor* color;
@@ -17,6 +21,7 @@
 @interface SCValdiTextViewEffectsLayoutManager : NSLayoutManager
 
 @property (nonatomic, strong) SCValdiTextViewBackgroundEffects* effects;
+@property (nonatomic, strong) SCValdiCustomUnderlineStyle* customUnderlineStyle;
 
 @property (nonatomic, strong, readonly) UIColor* backgroundColor;
 @property (nonatomic, assign, readonly) CGFloat backgroundBorderRadius;

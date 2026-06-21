@@ -385,8 +385,9 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
     NSString *textDecoration = ObjectAs(compositeValue[4], NSString);
     SCValdiFont *font = ObjectAs(compositeValue[5], SCValdiFont);
     NSNumber *letterSpacing = ObjectAs(compositeValue[6], NSNumber);
+    NSNumber *numberOfLines = ObjectAs(compositeValue[7], NSNumber);
 
-    // forcefully set number of lines and textOverflow to allow for word wrapping + growing lines
+    // Force textOverflow to allow for word wrapping + growing lines.
     return [self fontAttributesWithFont:font
                                   color:color
                              textAlign:textAlign
@@ -394,7 +395,7 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
                      lineHeightMultiple:lineHeightMultiple
                          textDecoration:textDecoration
                           letterSpacing:letterSpacing
-                          numberOfLines:@0
+                          numberOfLines:numberOfLines ?: @0
                            textOverflow:nil];
 }
 
@@ -452,6 +453,10 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
                                              invalidateLayoutOnChange:YES],
             [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:kSCValdiLetterSpacingAttribute
                                                                  type:SCNValdiCoreAttributeTypeDouble
+                                                             optional:YES
+                                             invalidateLayoutOnChange:YES],
+            [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:kSCValdiNumberOfLinesAttribute
+                                                                 type:SCNValdiCoreAttributeTypeInt
                                                              optional:YES
                                              invalidateLayoutOnChange:YES]
         ];

@@ -1172,7 +1172,7 @@ All view properties from [View](#view).
 **JSX Element:** `<textview>`
 
 **iOS Native:** `SCValdiTextView`  
-**Android Native:** `com.snap.valdi.views.ValditTextMultiline`
+**Android Native:** `com.snap.valdi.views.ValdiEditTextMultiline`
 
 A multi-line text input field.
 
@@ -1194,6 +1194,34 @@ All properties from [TextField](#textfield), except `returnKeyText` is replaced 
 **`textGravity`**: `'top' | 'center' | 'bottom'`
 - Set the text gravity/alignment vertically within the text view.
 - Default: `'center'`
+
+#### Text Rendering
+
+**`numberOfLines`**: `number`
+- Controls the maximum number of visible text lines.
+- Set to `0` to remove the limit and allow as many lines as needed.
+- Default: `0`
+
+**`textOverflow`**: `'ellipsis' | 'clip'`
+- Controls how hidden text overflow content is signaled to users.
+
+**`textDecoration`**: `'none' | 'strikethrough' | 'underline' | 'dashed-underline' | 'dotted-underline'`
+- Optionally adds a visual decoration effect to the text view's text.
+
+**`lineHeight`**: `number`
+- Explicit rendering size of each line of the text view, in points.
+- When both `lineHeight` and `lineHeightMultiple` are provided, `lineHeight` takes precedence.
+
+**`lineHeightMultiple`**: `number`
+- Rendering size of each line of the text view as a multiple of the font height.
+- Default: `1`
+
+**`customUnderlineStyle`**: `string`
+- Overrides underline drawing geometry for underlined text ranges.
+- Format: `"height onWidth offWidth offset"`.
+
+**`textGradient`**: `string`
+- Sets a gradient color for the text string.
 
 #### Background Effect
 

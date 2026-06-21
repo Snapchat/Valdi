@@ -4,6 +4,7 @@
 //
 
 #import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
+#import "valdi_core/SCMacros.h"
 
 #include <math.h>
 
@@ -31,6 +32,225 @@ static BOOL SCValdiCustomUnderlineStyleScanNumber(NSScanner *scanner, double *va
     }
 
     return YES;
+}
+
+static BOOL SCValdiCustomUnderlineColorIsVisible(UIColor *color)
+{
+    return color != nil && CGColorGetAlpha(color.CGColor) > 0;
+}
+
+BOOL SCValdiCustomUnderlineShouldReplaceNativeUnderline(id value)
+{
+    NSNumber *underlineStyleValue = ObjectAs(value, NSNumber);
+    if (!underlineStyleValue) {
+        return NO;
+    }
+
+    NSInteger underlineStyle = underlineStyleValue.integerValue;
+    return (underlineStyle & NSUnderlineStyleSingle) == NSUnderlineStyleSingle;
+}
+
+UIColor *SCValdiCustomUnderlineColorForRange(NSAttributedString *attributedString,
+                                             NSRange range,
+                                             UIColor *fallbackColor)
+{
+    if (attributedString.length == 0 || range.location >= attributedString.length) {
+        return fallbackColor ?: [UIColor blackColor];
+    }
+
+    UIColor *underlineColor = ObjectAs([attributedString attribute:NSUnderlineColorAttributeName
+                                                           atIndex:range.location
+                                                    effectiveRange:nil], UIColor);
+    if (SCValdiCustomUnderlineColorIsVisible(underlineColor)) {
+        return underlineColor;
+    }
+
+    UIColor *foregroundColor = ObjectAs([attributedString attribute:NSForegroundColorAttributeName
+                                                            atIndex:range.location
+                                                     effectiveRange:nil], UIColor);
+    if (SCValdiCustomUnderlineColorIsVisible(foregroundColor)) {
+        return foregroundColor;
+    }
+
+    return fallbackColor ?: [UIColor blackColor];
+}
+
+NSAttributedString *SCValdiAttributedStringByRemovingNativeUnderlines(NSAttributedString *attributedString,
+                                                                      NSArray<NSValue *> **customUnderlineRanges)
+{
+    if (customUnderlineRanges) {
+        *customUnderlineRanges = nil;
+    }
+    if (attributedString.length == 0) {
+        return attributedString;
+    }
+
+    __block NSMutableAttributedString *displayAttributedString;
+    __block NSMutableArray<NSValue *> *ranges;
+    [attributedString enumerateAttribute:NSUnderlineStyleAttributeName
+                                 inRange:NSMakeRange(0, attributedString.length)
+                                 options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
+                              usingBlock:^(id value, NSRange range, BOOL *stop) {
+        if (!SCValdiCustomUnderlineShouldReplaceNativeUnderline(value)) {
+            return;
+        }
+
+        if (!displayAttributedString) {
+            displayAttributedString = [attributedString mutableCopy];
+            ranges = [NSMutableArray array];
+        }
+
+        [displayAttributedString removeAttribute:NSUnderlineStyleAttributeName range:range];
+        [displayAttributedString removeAttribute:NSUnderlineColorAttributeName range:range];
+        [ranges addObject:[NSValue valueWithRange:range]];
+    }];
+
+    if (!displayAttributedString) {
+        return attributedString;
+    }
+
+    if (customUnderlineRanges) {
+        *customUnderlineRanges = [ranges copy];
+    }
+    return displayAttributedString;
+}
+
+NSAttributedString *SCValdiAttributedStringByReplacingNativeUnderlinesWithColorAttribute(
+    NSAttributedString *attributedString,
+    NSAttributedStringKey colorAttributeName,
+    UIColor *fallbackColor,
+    BOOL *hasCustomUnderline)
+{
+    if (hasCustomUnderline) {
+        *hasCustomUnderline = NO;
+    }
+    if (attributedString.length == 0) {
+        return attributedString;
+    }
+
+    __block NSMutableAttributedString *displayAttributedString;
+    [attributedString enumerateAttribute:NSUnderlineStyleAttributeName
+                                 inRange:NSMakeRange(0, attributedString.length)
+                                 options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
+                              usingBlock:^(id value, NSRange range, BOOL *stop) {
+        if (!SCValdiCustomUnderlineShouldReplaceNativeUnderline(value)) {
+            return;
+        }
+
+        if (!displayAttributedString) {
+            displayAttributedString = [attributedString mutableCopy];
+        }
+
+        UIColor *underlineColor = SCValdiCustomUnderlineColorForRange(attributedString, range, fallbackColor);
+        [displayAttributedString removeAttribute:NSUnderlineStyleAttributeName range:range];
+        [displayAttributedString removeAttribute:NSUnderlineColorAttributeName range:range];
+        [displayAttributedString addAttribute:colorAttributeName value:underlineColor range:range];
+        if (hasCustomUnderline) {
+            *hasCustomUnderline = YES;
+        }
+    }];
+
+    return displayAttributedString ?: attributedString;
+}
+
+void SCValdiCustomUnderlineApplyDashPattern(CGContextRef context, SCValdiCustomUnderlineStyle *style)
+{
+    if (!style.patterned) {
+        CGContextSetLineDash(context, 0, nil, 0);
+        return;
+    }
+
+    CGFloat lengths[] = {style.onWidth, style.offWidth};
+    CGContextSetLineDash(context, 0, lengths, 2);
+}
+
+NSArray<NSValue *> *SCValdiCustomUnderlineRectsForRange(NSAttributedString *attributedString,
+                                                        NSLayoutManager *layoutManager,
+                                                        NSRange range,
+                                                        NSRange visibleGlyphRange,
+                                                        BOOL clipToVisibleGlyphRange,
+                                                        CGPoint origin,
+                                                        CGFloat lineWidth,
+                                                        CGFloat underlineOffset)
+{
+    if (range.length == 0 || range.location == NSNotFound || range.location >= attributedString.length) {
+        return @[];
+    }
+
+    NSRange clampedRange = NSIntersectionRange(range, NSMakeRange(0, attributedString.length));
+    if (clampedRange.length == 0) {
+        return @[];
+    }
+
+    NSMutableArray<NSValue *> *rects = [NSMutableArray array];
+    [attributedString enumerateAttribute:NSFontAttributeName
+                                 inRange:clampedRange
+                                 options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
+                              usingBlock:^(id value, NSRange fontRange, BOOL *stop) {
+        (void)stop;
+
+        UIFont *font = [value isKindOfClass:[UIFont class]] ? value : nil;
+        NSRange characterRun = NSIntersectionRange(clampedRange, fontRange);
+        if (characterRun.length == 0) {
+            return;
+        }
+
+        NSRange glyphRun = [layoutManager glyphRangeForCharacterRange:characterRun actualCharacterRange:nil];
+        if (clipToVisibleGlyphRange) {
+            glyphRun = NSIntersectionRange(glyphRun, visibleGlyphRange);
+        }
+        if (glyphRun.length == 0) {
+            return;
+        }
+
+        [layoutManager enumerateLineFragmentsForGlyphRange:glyphRun
+                                                usingBlock:^(CGRect lineRect,
+                                                             CGRect usedRect,
+                                                             NSTextContainer *textContainer,
+                                                             NSRange lineGlyphRange,
+                                                             BOOL *lineStop) {
+            (void)usedRect;
+            (void)lineStop;
+
+            NSRange runOnLine = NSIntersectionRange(glyphRun, lineGlyphRange);
+            if (runOnLine.length == 0) {
+                return;
+            }
+
+            CGRect boundingRect = [layoutManager boundingRectForGlyphRange:runOnLine inTextContainer:textContainer];
+            if (CGRectIsEmpty(boundingRect)) {
+                return;
+            }
+
+            CGPoint glyphLocation = [layoutManager locationForGlyphAtIndex:runOnLine.location];
+            CGFloat baselineY = CGRectGetMinY(lineRect) + glyphLocation.y;
+            CGFloat descentDistance = font ? -font.descender : 0;
+            CGFloat underlineCenterY = origin.y + baselineY + descentDistance / 2.0 + underlineOffset;
+            CGRect underlineRect = CGRectMake(origin.x + CGRectGetMinX(boundingRect),
+                                              underlineCenterY - lineWidth / 2.0,
+                                              CGRectGetWidth(boundingRect),
+                                              lineWidth);
+            [rects addObject:[NSValue valueWithCGRect:underlineRect]];
+        }];
+    }];
+
+    return rects;
+}
+
+void SCValdiCustomUnderlineDrawRects(CGContextRef context,
+                                     NSArray<NSValue *> *underlineRects)
+{
+    for (NSValue *rectValue in underlineRects) {
+        CGRect underlineRect = rectValue.CGRectValue;
+        if (CGRectIsEmpty(underlineRect)) {
+            continue;
+        }
+
+        CGFloat y = CGRectGetMidY(underlineRect);
+        CGContextMoveToPoint(context, CGRectGetMinX(underlineRect), y);
+        CGContextAddLineToPoint(context, CGRectGetMaxX(underlineRect), y);
+        CGContextStrokePath(context);
+    }
 }
 
 @implementation SCValdiCustomUnderlineStyle

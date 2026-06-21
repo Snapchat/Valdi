@@ -1,7 +1,10 @@
 
 #import "SCValdiTextViewEffectsLayoutManager.h"
 #import "valdi/ios/Text/NSAttributedString+Valdi.h"
+#import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
 #import <CoreText/CoreText.h>
+
+NSAttributedStringKey const kSCValdiTextViewCustomUnderlineColorAttribute = @"valdi_textViewCustomUnderlineColor";
 
 @implementation SCValdiTextViewBackgroundEffects
 @end
@@ -23,9 +26,17 @@
 @implementation SCValdiTextViewAnimationRange
 @end
 
+@interface SCValdiTextViewCustomUnderline : NSObject
+@property (nonatomic, assign) NSRange range;
+@property (nonatomic, strong) UIColor* color;
+@end
+@implementation SCValdiTextViewCustomUnderline
+@end
+
 @interface SCValdiTextViewEffectsLayoutManager ()
 @property (nonatomic, strong) NSArray<SCValdiTextViewAnimationRange *> *cachedAnimationRanges;
 @property (nonatomic, strong) NSArray<SCValdiTextViewOutline *> *cachedOutlineRanges;
+@property (nonatomic, strong) NSArray<SCValdiTextViewCustomUnderline *> *cachedCustomUnderlineRanges;
 @end
 
 @implementation SCValdiTextViewEffectsLayoutManager
@@ -95,6 +106,17 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     return _effects.padding ? _effects.padding : 0.0;
 }
 
+- (void)setCustomUnderlineStyle:(SCValdiCustomUnderlineStyle *)customUnderlineStyle
+{
+    if (_customUnderlineStyle == customUnderlineStyle) {
+        return;
+    }
+
+    _customUnderlineStyle = customUnderlineStyle;
+    self.cachedCustomUnderlineRanges = nil;
+    [self invalidateDisplayForCharacterRange:NSMakeRange(0, self.textStorage.length)];
+}
+
 
 #pragma mark - Outline Drawing
 
@@ -111,9 +133,10 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     NSAttributedString *attributedString = self.textStorage;
     NSArray<SCValdiTextViewAnimationRange *> *animationRanges = [self _visibleAnimationRangesForAttributedString:attributedString];
     NSArray<SCValdiTextViewOutline *> *outlineRanges = [self _outlineRangesForAttributedString:attributedString];
+    NSArray<SCValdiTextViewCustomUnderline *> *customUnderlineRanges = [self _customUnderlineRangesForAttributedString:attributedString];
     
-    if (outlineRanges.count == 0 && animationRanges.count == 0) {
-        // No outlines or animated glyphs to draw.
+    if (outlineRanges.count == 0 && animationRanges.count == 0 && customUnderlineRanges.count == 0) {
+        // No outlines, custom underlines, or animated glyphs to draw.
         [super drawGlyphsForGlyphRange:glyphsToShow atPoint:origin];
         return;
     }
@@ -134,6 +157,8 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     for (SCValdiTextViewAnimationRange *animationRange in animationRanges) {
         [self _drawAnimatedRange:animationRange glyphsOrigin:adjustedOrigin context:context];
     }
+
+    [self _drawCustomUnderlines:customUnderlineRanges glyphsToShow:glyphsToShow glyphsOrigin:adjustedOrigin context:context];
 }
 
 - (void)processEditingForTextStorage:(NSTextStorage *)textStorage
@@ -151,6 +176,7 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     if ((editedMask & NSTextStorageEditedAttributes) != 0 || (editedMask & NSTextStorageEditedCharacters) != 0) {
         self.cachedAnimationRanges = nil;
         self.cachedOutlineRanges = nil;
+        self.cachedCustomUnderlineRanges = nil;
     }
 }
 
@@ -391,6 +417,36 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     return outlineRanges;
 }
 
+- (NSArray<SCValdiTextViewCustomUnderline *> *)_customUnderlineRangesForAttributedString:(NSAttributedString *)attributedString
+{
+    if (self.cachedCustomUnderlineRanges != nil) {
+        return self.cachedCustomUnderlineRanges;
+    }
+
+    if (!self.customUnderlineStyle || attributedString.length == 0) {
+        self.cachedCustomUnderlineRanges = @[];
+        return self.cachedCustomUnderlineRanges;
+    }
+
+    NSMutableArray<SCValdiTextViewCustomUnderline *> *customUnderlineRanges = [NSMutableArray new];
+    [attributedString enumerateAttribute:kSCValdiTextViewCustomUnderlineColorAttribute
+                                 inRange:NSMakeRange(0, attributedString.length)
+                                 options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
+                              usingBlock:^(id value, NSRange range, BOOL *stop) {
+        if (![value isKindOfClass:[UIColor class]] || range.length == 0) {
+            return;
+        }
+
+        SCValdiTextViewCustomUnderline *customUnderline = [SCValdiTextViewCustomUnderline new];
+        customUnderline.range = range;
+        customUnderline.color = value;
+        [customUnderlineRanges addObject:customUnderline];
+    }];
+
+    self.cachedCustomUnderlineRanges = customUnderlineRanges;
+    return self.cachedCustomUnderlineRanges;
+}
+
 - (void)_drawStaticGlyphsForGlyphRange:(NSRange)glyphsToShow
                                atPoint:(CGPoint)origin
                        animationRanges:(NSArray<SCValdiTextViewAnimationRange *> *)animationRanges
@@ -426,6 +482,43 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     if (currentGlyphLocation < glyphEnd) {
         [super drawGlyphsForGlyphRange:NSMakeRange(currentGlyphLocation, glyphEnd - currentGlyphLocation) atPoint:origin];
     }
+}
+
+- (void)_drawCustomUnderlines:(NSArray<SCValdiTextViewCustomUnderline *> *)customUnderlineRanges
+                 glyphsToShow:(NSRange)glyphsToShow
+                 glyphsOrigin:(CGPoint)origin
+                      context:(CGContextRef)context
+{
+    if (!self.customUnderlineStyle || customUnderlineRanges.count == 0 || glyphsToShow.length == 0) {
+        return;
+    }
+
+    CGContextSaveGState(context);
+    CGContextSetLineWidth(context, self.customUnderlineStyle.height);
+    SCValdiCustomUnderlineApplyDashPattern(context, self.customUnderlineStyle);
+
+    for (SCValdiTextViewCustomUnderline *customUnderline in customUnderlineRanges) {
+        [customUnderline.color setStroke];
+        [self _drawCustomUnderline:customUnderline glyphsToShow:glyphsToShow glyphsOrigin:origin context:context];
+    }
+
+    CGContextRestoreGState(context);
+}
+
+- (void)_drawCustomUnderline:(SCValdiTextViewCustomUnderline *)customUnderline
+                glyphsToShow:(NSRange)glyphsToShow
+                glyphsOrigin:(CGPoint)origin
+                     context:(CGContextRef)context
+{
+    NSArray<NSValue *> *underlineRects = SCValdiCustomUnderlineRectsForRange(self.textStorage,
+                                                                             self,
+                                                                             customUnderline.range,
+                                                                             glyphsToShow,
+                                                                             YES,
+                                                                             origin,
+                                                                             self.customUnderlineStyle.height,
+                                                                             self.customUnderlineStyle.offset);
+    SCValdiCustomUnderlineDrawRects(context, underlineRects);
 }
 
 - (void)_drawAnimatedRange:(SCValdiTextViewAnimationRange *)animationRange

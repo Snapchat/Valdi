@@ -743,6 +743,12 @@ const textViewStyle = new Style<TextView>({
   // TextView-specific attributes
   returnType: 'linereturn',  // 'linereturn' | TextFieldReturnKeyText
   textGravity: 'top',        // 'top' | 'center' | 'bottom'
+  numberOfLines: 2,          // number (0=unlimited)
+  textOverflow: 'ellipsis',  // 'ellipsis' | 'clip'
+  textDecoration: 'underline', // 'none' | 'strikethrough' | 'underline' | 'dashed-underline' | 'dotted-underline'
+  lineHeight: 24,
+  lineHeightMultiple: 1.2,
+  customUnderlineStyle: '1 1 1 -2',
   closesWhenReturnKeyPressed: false,  // typically false for multiline
   
   // Background effect
@@ -756,6 +762,7 @@ const textViewStyle = new Style<TextView>({
 - ✅ All TextField attributes
 - ✅ Return Type Configuration
 - ✅ Text Gravity Attributes
+- ✅ Text Rendering Attributes
 - ✅ Background Effect Attributes
 - ❌ `value`, `placeholder` (dynamic, use inline)
 - ❌ `focused` (programmatic only)

@@ -1280,6 +1280,56 @@ export interface TextView extends _TextView, CommonEditTextInterface {
   textGravity?: TextViewTextGravity;
 
   /**
+   * This property controls the maximum number of lines to use to fit the text view's text into its bounding rectangle.
+   * To remove any maximum limit, and use as many lines as needed, set the value to 0.
+   * @default: 0
+   */
+  numberOfLines?: number;
+
+  /**
+   * Optionally adds a visual decoration effect to the text view's text.
+   * @default: undefined
+   */
+  textDecoration?: LabelTextDecoration;
+
+  /**
+   * Controls how hidden text overflow content is signaled to users. It can be clipped or display
+   * an ellipsis.
+   * @default: undefined
+   */
+  textOverflow?: 'ellipsis' | 'clip';
+
+  /**
+   * Explicit rendering size of each line of the text view, in points.
+   * When both lineHeight and lineHeightMultiple are provided, lineHeight takes precedence.
+   * @default: undefined
+   */
+  lineHeight?: number;
+
+  /**
+   * Rendering size of each line of the text view as a multiple of the font height.
+   * If the lineHeightMultiple value is above 1, spacing is added on top of each line of the text.
+   * @default: 1
+   * Example: A value of 2 will double the height of each line.
+   */
+  lineHeightMultiple?: number;
+
+  /**
+   * Overrides underline drawing geometry for underlined text ranges.
+   *
+   * Format: "height onWidth offWidth offset".
+   * Use "0 0" for onWidth/offWidth to draw a solid underline.
+   *
+   * @example
+   * ```
+   * customUnderlineStyle="1 1 1 -2"
+   * ```
+   *
+   * @default: undefined
+   */
+  customUnderlineStyle?: LabelCustomUnderlineStyle;
+
+  /**
    * Set the color for the background effect of the text view
    * This background is drawn behind each line fragment of the text, wrapping each line together making a coheasive
    * background that follows the text shape

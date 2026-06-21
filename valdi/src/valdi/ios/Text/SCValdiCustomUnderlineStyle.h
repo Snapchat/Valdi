@@ -3,8 +3,7 @@
 //  Valdi
 //
 
-#import <CoreGraphics/CoreGraphics.h>
-#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -26,5 +25,36 @@ NS_ASSUME_NONNULL_BEGIN
 + (nullable instancetype)styleWithString:(NSString *)styleString error:(NSError *_Nullable *_Nullable)error;
 
 @end
+
+FOUNDATION_EXPORT BOOL SCValdiCustomUnderlineShouldReplaceNativeUnderline(id _Nullable value);
+
+FOUNDATION_EXPORT UIColor *SCValdiCustomUnderlineColorForRange(NSAttributedString *attributedString,
+                                                               NSRange range,
+                                                               UIColor *_Nullable fallbackColor);
+
+FOUNDATION_EXPORT NSAttributedString *SCValdiAttributedStringByRemovingNativeUnderlines(
+    NSAttributedString *attributedString,
+    NSArray<NSValue *> *_Nullable *_Nullable customUnderlineRanges);
+
+FOUNDATION_EXPORT NSAttributedString *SCValdiAttributedStringByReplacingNativeUnderlinesWithColorAttribute(
+    NSAttributedString *attributedString,
+    NSAttributedStringKey colorAttributeName,
+    UIColor *_Nullable fallbackColor,
+    BOOL *_Nullable hasCustomUnderline);
+
+FOUNDATION_EXPORT void SCValdiCustomUnderlineApplyDashPattern(CGContextRef context,
+                                                              SCValdiCustomUnderlineStyle *style);
+
+FOUNDATION_EXPORT NSArray<NSValue *> *SCValdiCustomUnderlineRectsForRange(NSAttributedString *attributedString,
+                                                                          NSLayoutManager *layoutManager,
+                                                                          NSRange range,
+                                                                          NSRange visibleGlyphRange,
+                                                                          BOOL clipToVisibleGlyphRange,
+                                                                          CGPoint origin,
+                                                                          CGFloat lineWidth,
+                                                                          CGFloat underlineOffset);
+
+FOUNDATION_EXPORT void SCValdiCustomUnderlineDrawRects(CGContextRef context,
+                                                       NSArray<NSValue *> *underlineRects);
 
 NS_ASSUME_NONNULL_END

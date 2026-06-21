@@ -278,6 +278,10 @@ myTextFieldRef.setAttribute('focused', true);
   // Similar to textfield, plus:
   returnType="linereturn" // or any TextFieldReturnKeyText
   textGravity="top"       // or "center", "bottom"
+  numberOfLines={2}       // 0 means unlimited
+  textDecoration="underline" // or "none", "strikethrough", "dashed-underline", "dotted-underline"
+  lineHeight={24}         // explicit line height in points
+  lineHeightMultiple={1.2} // ratio of font height
   closesWhenReturnKeyPressed={false}
   
   // Background effect

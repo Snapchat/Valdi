@@ -113,6 +113,7 @@ void EditableTextLayerClass::bindAttributes(Valdi::AttributesBindingContext& bin
 
     BIND_STRING_ATTRIBUTE(EditableTextLayer, textAlign, false);
     BIND_STRING_ATTRIBUTE(EditableTextLayer, textDecoration, false);
+    BIND_UNTYPED_ATTRIBUTE(EditableTextLayer, customUnderlineStyle, false);
     BIND_STRING_ATTRIBUTE(EditableTextLayer, textOverflow, true);
 
     BIND_INT_ATTRIBUTE(EditableTextLayer, numberOfLines, true);
@@ -122,6 +123,7 @@ void EditableTextLayerClass::bindAttributes(Valdi::AttributesBindingContext& bin
 
     BIND_DOUBLE_ATTRIBUTE(EditableTextLayer, letterSpacing, true);
 
+    BIND_DOUBLE_ATTRIBUTE(EditableTextLayer, lineHeightMultiple, true);
     BIND_DOUBLE_ATTRIBUTE(EditableTextLayer, lineHeight, true);
 
     BIND_UNTYPED_ATTRIBUTE(EditableTextLayer, textShadow, true);
@@ -132,6 +134,7 @@ void EditableTextLayerClass::bindAttributes(Valdi::AttributesBindingContext& bin
     BIND_COLOR_ATTRIBUTE(EditableTextLayer, placeholderColor, false);
 
     REGISTER_PREPROCESSOR(font, true);
+    REGISTER_PREPROCESSOR(customUnderlineStyle, true);
 }
 
 IMPLEMENT_TEXT_ATTRIBUTE(
@@ -162,6 +165,17 @@ IMPLEMENT_UNTYPED_ATTRIBUTE(
 // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
 Valdi::Result<Valdi::Value> EditableTextLayerClass::preprocess_font(const Valdi::Value& value) {
     return _textLayerClass->preprocess_font(value);
+}
+
+IMPLEMENT_UNTYPED_ATTRIBUTE(
+    EditableTextLayer,
+    customUnderlineStyle,
+    { return _textLayerClass->applyCustomUnderlineStyleAttribute(view.getTextLayer(), value); },
+    { _textLayerClass->resetCustomUnderlineStyleAttribute(view.getTextLayer()); })
+
+// NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+Valdi::Result<Valdi::Value> EditableTextLayerClass::preprocess_customUnderlineStyle(const Valdi::Value& value) {
+    return _textLayerClass->preprocess_customUnderlineStyle(value);
 }
 
 IMPLEMENT_COLOR_ATTRIBUTE(
@@ -208,6 +222,12 @@ IMPLEMENT_DOUBLE_ATTRIBUTE(
     minimumScaleFactor,
     { return _textLayerClass->applyMinimumScaleFactorAttribute(view.getTextLayer(), value); },
     { _textLayerClass->resetMinimumScaleFactorAttribute(view.getTextLayer()); })
+
+IMPLEMENT_DOUBLE_ATTRIBUTE(
+    EditableTextLayer,
+    lineHeightMultiple,
+    { return _textLayerClass->applyLineHeightMultipleAttribute(view.getTextLayer(), value); },
+    { _textLayerClass->resetLineHeightMultipleAttribute(view.getTextLayer()); })
 
 IMPLEMENT_DOUBLE_ATTRIBUTE(
     EditableTextLayer,

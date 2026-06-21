@@ -9,7 +9,6 @@ namespace snap::drawing {
 
 EditableTextLayer::EditableTextLayer(const Ref<Resources>& resources)
     : Layer(resources), _textLayer(makeLayer<TextLayer>(resources)) {
-    _textLayer->setTouchEnabled(false);
     updateDisplayedText();
 }
 

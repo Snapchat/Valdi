@@ -16,6 +16,7 @@ import com.snap.valdi.attributes.impl.richtext.TextViewHelper
 import com.snap.valdi.callable.ValdiFunction
 import com.snap.valdi.exceptions.ValdiException
 import com.snap.valdi.views.ValdiEditText
+import com.snap.valdi.views.ValdiEditTextMultiline
 import com.snap.valdi.views.ValdiTextHolder
 import com.snap.valdi.exceptions.AttributeError
 import kotlin.math.roundToInt
@@ -243,23 +244,23 @@ class EditTextAttributesBinder(
     }
 
     private fun applyAutoCapitalization(editText: ValdiEditText, value: String, animator: ValdiAnimator?) {
-        val clearedInputType = editText.inputType and (
+        val clearedInputType = editText.valdiInputType and (
             InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
             InputType.TYPE_TEXT_FLAG_CAP_WORDS or
             InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
         ).inv()
         when (value) {
             "sentences" -> {
-                editText.inputType = clearedInputType or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+                editText.setValdiInputType(clearedInputType or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
             }
             "words" -> {
-                editText.inputType = clearedInputType or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+                editText.setValdiInputType(clearedInputType or InputType.TYPE_TEXT_FLAG_CAP_WORDS)
             }
             "characters" -> {
-                editText.inputType = clearedInputType or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+                editText.setValdiInputType(clearedInputType or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS)
             }
             "none" -> {
-                editText.inputType = clearedInputType
+                editText.setValdiInputType(clearedInputType)
             }
         }
     }
@@ -281,8 +282,12 @@ class EditTextAttributesBinder(
     }
 
     private fun applyEnabled(view: ValdiEditText, value: Boolean, animator: ValdiAnimator?) {
-        view.isFocusable = value
-        view.isFocusableInTouchMode = value
+        if (view is ValdiEditTextMultiline) {
+            view.setValdiEditable(value)
+        } else {
+            view.isFocusable = value
+            view.isFocusableInTouchMode = value
+        }
     }
 
     private fun resetEnabled(view: ValdiEditText, animator: ValdiAnimator?) {
@@ -393,16 +398,16 @@ class EditTextAttributesBinder(
     }
 
     private fun applyAutocorrection(editText: ValdiEditText, value: String, animator: ValdiAnimator?) {
-        val clearedInputType = editText.inputType and (
+        val clearedInputType = editText.valdiInputType and (
             InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
             InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
         ).inv()
         when (value) {
             "none"-> {
-                editText.inputType = clearedInputType or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                editText.setValdiInputType(clearedInputType or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS)
             }
             else -> {
-                editText.inputType = clearedInputType or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
+                editText.setValdiInputType(clearedInputType or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT)
             }
         }
     }
@@ -412,46 +417,46 @@ class EditTextAttributesBinder(
     }
 
     private fun applyContentType(editText: ValdiEditText, value: String, animator: ValdiAnimator?) {
-        val inputType = editText.inputType
+        val inputType = editText.valdiInputType
         val clearedInputType = (inputType and InputType.TYPE_MASK_VARIATION.inv() and InputType.TYPE_MASK_CLASS.inv())
 
         when (value) {
             "phoneNumber"-> {
-                editText.inputType = clearedInputType or InputType.TYPE_CLASS_PHONE
+                editText.setValdiInputType(clearedInputType or InputType.TYPE_CLASS_PHONE)
             }
             "password" -> {
-                editText.inputType = clearedInputType or InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+                editText.setValdiInputType(clearedInputType or InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
             }
             "email" -> {
-                editText.inputType = clearedInputType or InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+                editText.setValdiInputType(clearedInputType or InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS)
             }
             "url" -> {
-                editText.inputType = clearedInputType or InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+                editText.setValdiInputType(clearedInputType or InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
             }
             "number" -> {
-                editText.inputType = clearedInputType or InputType.TYPE_CLASS_NUMBER
+                editText.setValdiInputType(clearedInputType or InputType.TYPE_CLASS_NUMBER)
             }
             "numberDecimal" -> {
-                editText.inputType = clearedInputType or InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+                editText.setValdiInputType(clearedInputType or InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
             }
             "numberDecimalSigned" -> {
-                editText.inputType = clearedInputType or InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED
+                editText.setValdiInputType(clearedInputType or InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED)
             }
             "passwordNumber" -> {
-                editText.inputType = clearedInputType or InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+                editText.setValdiInputType(clearedInputType or InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD)
             }
             "passwordVisible" -> {
-                editText.inputType = clearedInputType or InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                editText.setValdiInputType(clearedInputType or InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD)
             }
             "noSuggestions" -> {
-                editText.inputType = clearedInputType or
+                editText.setValdiInputType(clearedInputType or
                         InputType.TYPE_CLASS_TEXT or
                         InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
                         InputType.TYPE_TEXT_VARIATION_FILTER or
-                        InputType.TYPE_TEXT_FLAG_AUTO_CORRECT.inv()
+                        InputType.TYPE_TEXT_FLAG_AUTO_CORRECT.inv())
             }
             else -> {
-                editText.inputType = clearedInputType or InputType.TYPE_CLASS_TEXT
+                editText.setValdiInputType(clearedInputType or InputType.TYPE_CLASS_TEXT)
             }
         }
     }

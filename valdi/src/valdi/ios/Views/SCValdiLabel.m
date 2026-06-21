@@ -16,9 +16,9 @@
 #import "valdi/ios/Text/SCValdiAttributedText.h"
 #import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
 #import "valdi/ios/Text/SCValdiTextLayout.h"
+#import "valdi/ios/Text/SCValdiTextGradientHelper.h"
 #import "valdi/ios/Text/SCValdiOnTapAttribute.h"
 #import "valdi/ios/Text/SCValdiOnLayoutAttribute.h"
-#import "valdi/ios/Utils/GradientUtils.h"
 #import "valdi/ios/Gestures/SCValdiGestureRecognizers.h"
 
 #import "valdi_core/SCMacros.h"
@@ -39,9 +39,7 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
     BOOL _needAttributedTextUpdate;
     SCValdiTextMode _labelMode;
     BOOL _hasOnTapGestureRecognizer;
-    BOOL _needTextGradientColorUpdate;
-    UIColor *_textGradientColor;
-    CAGradientLayer *_textGradientLayer;
+    SCValdiTextGradientHelper *_textGradientHelper;
     BOOL _updateOnLayout;
     SCValdiCustomUnderlineStyle *_customUnderlineStyle;
     NSAttributedString *_customUnderlineSourceAttributedString;
@@ -143,46 +141,11 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
                             text:(id)text
                  traitCollection:(UITraitCollection *)traitCollection
 {
-    if (!traitCollection) {
-        SCLogValdiWarning(@"Trait collection is nil. This will cause incorrect text measurement for different font sizes");
-    }
-
-    if (!fontAttributes) {
-        fontAttributes = [NSAttributedString defaultFontAttributes];
-    }
-
-    NSString *textValue = ObjectAs(text, NSString);
-    if (!textValue && [text isKindOfClass:[NSNull class]]) {
-        textValue = @"";
-    }
-
-    BOOL isRightToLeft = NO; // Hard-coding this to NO, as it may have no measurement impact either way (and NO is faster)
-
-    NSDictionary<NSAttributedStringKey, id> *attributes = [fontAttributes resolveAttributesWithIsRightToLeft:isRightToLeft traitCollection:traitCollection];
-
-    NSStringDrawingContext *context = [[NSStringDrawingContext alloc] init];
-    [context setValue:@(fontAttributes.numberOfLines) forKey:@"maximumNumberOfLines"];
-
-    NSStringDrawingOptions options = NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingTruncatesLastVisibleLine;
-
-    CGRect boundingRect;
-    if (textValue) {
-        boundingRect = [textValue boundingRectWithSize:maxSize options:options attributes:attributes context:context];
-    } else {
-        NSAttributedString *attributedString = [NSAttributedString attributedStringWithValdiText:text
-                                                                                         attributes:attributes
-                                                                                      isRightToLeft:isRightToLeft
-                                                                                        fontManager:fontManager
-                                                                                    traitCollection:traitCollection];
-        boundingRect = [attributedString boundingRectWithSize:maxSize options:options context:context];
-    }
-
-    CGSize outSize = boundingRect.size;
-
-    outSize.width = CGFloatNormalizeCeil(outSize.width);
-    outSize.height = CGFloatNormalizeCeil(outSize.height);
-
-    return outSize;
+    return [SCValdiTextLayout measureSizeWithMaxSize:maxSize
+                                      fontAttributes:fontAttributes
+                                         fontManager:fontManager
+                                                text:text
+                                     traitCollection:traitCollection];
 }
 
 - (BOOL)_needAttributedString
@@ -253,17 +216,6 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
     }
 }
 
-- (BOOL)_shouldUseCustomUnderlineForNativeUnderlineStyle:(id)value
-{
-    NSNumber *underlineStyleValue = ObjectAs(value, NSNumber);
-    if (!underlineStyleValue) {
-        return NO;
-    }
-
-    NSInteger underlineStyle = underlineStyleValue.integerValue;
-    return (underlineStyle & NSUnderlineStyleSingle) == NSUnderlineStyleSingle;
-}
-
 - (NSAttributedString *)_displayAttributedStringForAttributedString:(NSAttributedString *)attributedString
 {
     _customUnderlineSourceAttributedString = nil;
@@ -272,71 +224,21 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
         return attributedString;
     }
 
-    __block NSMutableAttributedString *displayAttributedString;
-    __block NSMutableArray<NSValue *> *customUnderlineCharacterRanges;
-    [attributedString enumerateAttribute:NSUnderlineStyleAttributeName
-                                 inRange:NSMakeRange(0, attributedString.length)
-                                 options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
-                              usingBlock:^(id  _Nullable value, NSRange range, BOOL * _Nonnull stop) {
-        if (![self _shouldUseCustomUnderlineForNativeUnderlineStyle:value]) {
-            return;
-        }
-        if (!displayAttributedString) {
-            displayAttributedString = [attributedString mutableCopy];
-            customUnderlineCharacterRanges = [NSMutableArray array];
-        }
-        [displayAttributedString removeAttribute:NSUnderlineStyleAttributeName range:range];
-        [displayAttributedString removeAttribute:NSUnderlineColorAttributeName range:range];
-        [customUnderlineCharacterRanges addObject:[NSValue valueWithRange:range]];
-    }];
-
-    if (!displayAttributedString) {
+    NSArray<NSValue *> *customUnderlineCharacterRanges = nil;
+    NSAttributedString *displayAttributedString =
+        SCValdiAttributedStringByRemovingNativeUnderlines(attributedString, &customUnderlineCharacterRanges);
+    if (customUnderlineCharacterRanges.count == 0) {
         return attributedString;
     }
 
     _customUnderlineSourceAttributedString = [attributedString copy];
-    _customUnderlineCharacterRanges = [customUnderlineCharacterRanges copy];
+    _customUnderlineCharacterRanges = customUnderlineCharacterRanges;
     return displayAttributedString;
-}
-
-- (CGFloat)_customUnderlineLineWidth
-{
-    return _customUnderlineStyle.height;
-}
-
-- (CGFloat)_customUnderlineOffset
-{
-    return _customUnderlineStyle.offset;
-}
-
-- (void)_applyCustomUnderlineDashPatternInContext:(CGContextRef)context
-{
-    if (!_customUnderlineStyle.patterned) {
-        CGContextSetLineDash(context, 0, nil, 0);
-        return;
-    }
-
-    CGFloat lengths[] = {_customUnderlineStyle.onWidth, _customUnderlineStyle.offWidth};
-    CGContextSetLineDash(context, 0, lengths, 2);
 }
 
 - (UIColor *)_customUnderlineColorForRange:(NSRange)range
 {
-    UIColor *underlineColor = ObjectAs([_customUnderlineSourceAttributedString attribute:NSUnderlineColorAttributeName
-                                                                                atIndex:range.location
-                                                                         effectiveRange:nil], UIColor);
-    if (underlineColor) {
-        return underlineColor;
-    }
-
-    UIColor *foregroundColor = ObjectAs([_customUnderlineSourceAttributedString attribute:NSForegroundColorAttributeName
-                                                                                  atIndex:range.location
-                                                                           effectiveRange:nil], UIColor);
-    if (foregroundColor) {
-        return foregroundColor;
-    }
-
-    return self.textColor ?: [UIColor blackColor];
+    return SCValdiCustomUnderlineColorForRange(_customUnderlineSourceAttributedString, range, self.textColor);
 }
 
 - (void)_drawCustomUnderlinesInRect:(CGRect)rect
@@ -354,28 +256,18 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
     }
 
     CGContextSaveGState(context);
-    CGFloat underlineLineWidth = [self _customUnderlineLineWidth];
+    CGFloat underlineLineWidth = _customUnderlineStyle.height;
     CGContextSetLineWidth(context, underlineLineWidth);
-    [self _applyCustomUnderlineDashPatternInContext:context];
+    SCValdiCustomUnderlineApplyDashPattern(context, _customUnderlineStyle);
 
-    CGFloat underlineOffset = [self _customUnderlineOffset];
+    CGFloat underlineOffset = _customUnderlineStyle.offset;
     for (NSValue *rangeValue in _customUnderlineCharacterRanges) {
         NSRange range = rangeValue.rangeValue;
         [[self _customUnderlineColorForRange:range] setStroke];
-        for (NSValue *rectValue in [_textLayout underlineRectsForRange:range
-                                                          inDrawingRect:rect
-                                                              lineWidth:underlineLineWidth
-                                                        underlineOffset:underlineOffset]) {
-            CGRect underlineRect = rectValue.CGRectValue;
-            if (CGRectIsEmpty(underlineRect)) {
-                continue;
-            }
-
-            CGFloat y = CGRectGetMidY(underlineRect);
-            CGContextMoveToPoint(context, CGRectGetMinX(underlineRect), y);
-            CGContextAddLineToPoint(context, CGRectGetMaxX(underlineRect), y);
-            CGContextStrokePath(context);
-        }
+        SCValdiCustomUnderlineDrawRects(context, [_textLayout underlineRectsForRange:range
+                                                                       inDrawingRect:rect
+                                                                           lineWidth:underlineLineWidth
+                                                                     underlineOffset:underlineOffset]);
     }
 
     CGContextRestoreGState(context);
@@ -468,8 +360,9 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
         }
 
         // Overrides color for attributed and non-attributed text if text gradient is specified
-        if (_textGradientColor && self.textColor != _textGradientColor) {
-            self.textColor = _textGradientColor;
+        UIColor *textGradientColor = _textGradientHelper.gradientColor;
+        if (textGradientColor && self.textColor != textGradientColor) {
+            self.textColor = textGradientColor;
         }
 
         if (self.numberOfLines != fontAttributes.numberOfLines) {
@@ -527,23 +420,33 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
     [self setNeedsDisplay];
 }
 
+- (SCValdiTextGradientHelper *)_createTextGradientHelperIfNeeded
+{
+    if (!_textGradientHelper) {
+        _textGradientHelper = [SCValdiTextGradientHelper new];
+    }
+    return _textGradientHelper;
+}
+
 - (BOOL)valdi_setTextGradient:(NSArray *)attributeValue
                         animator:(id<SCValdiAnimatorProtocol>)animator
 {
     NSArray *colors = attributeValue.firstObject;
-
-    // Error checking
     if (colors.count < 2) {
+        if (_textGradientHelper) {
+            [_textGradientHelper setGradientAttributes:nil];
+        }
         [self.valdiViewNode setDidFinishLayoutBlock:nil forKey:kTextGradientLayoutKey];
-        _textGradientLayer = nil;
         _needAttributedTextUpdate = YES;
+        [self setNeedsLayout];
         [self setNeedsDisplay];
-
         return YES;
     }
 
-    _textGradientLayer = setUpGradientLayerForRawAttributes(attributeValue, nil);
-
+    [[self _createTextGradientHelperIfNeeded] setGradientAttributes:attributeValue];
+    _needAttributedTextUpdate = YES;
+    [self setNeedsLayout];
+    [self setNeedsDisplay];
     [self _updateTextGradientLayerWithAnimator:animator];
 
     [self.valdiViewNode setDidFinishLayoutBlock:^(SCValdiLabel *view, id<SCValdiAnimatorProtocol> animator) {
@@ -555,51 +458,21 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
 
 - (void)valdi_layoutTextGradientLayerWithAnimator:(id<SCValdiAnimatorProtocol>)animator
 {
-    if (_textGradientLayer == nil) {
-        return;
-    }
-
-    if (animator) {
-        CGSize size = self.frame.size;
-        CGPoint center = CGPointMake(size.width / 2, size.height / 2);
-        [animator addAnimationOnLayer:_textGradientLayer forKeyPath:@"position" value:[NSValue valueWithCGPoint:center]];
-        [animator addAnimationOnLayer:_textGradientLayer forKeyPath:@"bounds" value:[NSValue valueWithCGRect:CGRectMake(0, 0, size.width, size.height)]];
-    } else {
-        _textGradientLayer.frame = self.layer.bounds;
-    }
+    [_textGradientHelper layoutInView:self animator:animator];
 }
 
 - (void)_updateTextGradientColorIfNeeded
 {
-    if (!_needTextGradientColorUpdate) {
-        return;
-    } else if (_textGradientLayer == nil) {
-        _needTextGradientColorUpdate = NO;
-        _textGradientColor = nil;
-        return;
+    if ([_textGradientHelper updateColorIfNeeded]) {
+        _needAttributedTextUpdate = YES;
     }
-
-    UIGraphicsBeginImageContext(_textGradientLayer.bounds.size);
-    [_textGradientLayer renderInContext:UIGraphicsGetCurrentContext()];
-
-    UIImage *gradientImage = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
-
-    UIColor *gradientColor = [UIColor colorWithPatternImage:gradientImage];
-
-    _textGradientColor = gradientColor;
-    _needTextGradientColorUpdate = NO;
 }
 
 - (void)_updateTextGradientLayerWithAnimator:(id<SCValdiAnimatorProtocol>)animator
 {
-    if (_textGradientLayer == nil || CGRectEqualToRect(_textGradientLayer.frame, self.layer.bounds)) {
+    if (![_textGradientHelper layoutIfNeededInView:self animator:animator]) {
         return;
     }
-
-    [self valdi_layoutTextGradientLayerWithAnimator:animator];
-
-    _needTextGradientColorUpdate = YES;
     _needAttributedTextUpdate = YES;
     [self setNeedsDisplay];
 }
@@ -698,7 +571,7 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
             return [view valdi_setTextGradient:attributeValue animator:animator];
         }
         resetBlock:^(SCValdiLabel *view, id<SCValdiAnimatorProtocol> animator) {
-            [view valdi_setTextGradient:@[] animator:animator];
+            [view valdi_setTextGradient:nil animator:animator];
         }];
 
     [attributesBinder bindCompositeAttribute:@"shadowAttributes"

@@ -164,6 +164,9 @@ internal class TouchDispatcherNewExperience(
                 }
             }
 
+            if (view.allowsSameViewGestureRecognizers()) {
+                captureGestureRecognizers(view, pointerId, isDown)
+            }
             return true;
         }
 
@@ -185,7 +188,13 @@ internal class TouchDispatcherNewExperience(
             }
         }
 
-        val gestureRecognizer = ViewUtils.getGestureRecognizers(view, false) ?: return true
+        captureGestureRecognizers(view, pointerId, isDown)
+
+        return true
+    }
+
+    private fun captureGestureRecognizers(view: View, pointerId: Int, isDown: Boolean) {
+        val gestureRecognizer = ViewUtils.getGestureRecognizers(view, false) ?: return
         gestureRecognizer.gestureRecognizers.forEach {
             // TODO(2951) for now - we choose to only add touch gesture recognizers for subsequent pointer downs
             if (isDown || it is TouchGestureRecognizer) {
@@ -204,8 +213,6 @@ internal class TouchDispatcherNewExperience(
                 }
             }
         }
-
-        return true
     }
 
     private inline fun <T>adjustEventCoordinatesToView(parentView: View, view: View, event: MotionEvent, crossinline action: (success: Boolean) -> T): T {

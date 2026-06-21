@@ -7,6 +7,11 @@
 
 
 #import "valdi/ios/Text/SCValdiTextLayout.h"
+#import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
+#import "valdi/ios/Text/NSAttributedString+Valdi.h"
+#import "valdi/ios/Text/SCValdiFontAttributes.h"
+#import "valdi_core/SCValdiLogger.h"
+#import "valdi_core/SCValdiRectUtils.h"
 
 @implementation SCValdiTextLayout {
     NSLayoutManager *_layoutManager;
@@ -126,66 +131,16 @@
                                      lineWidth:(CGFloat)lineWidth
                                underlineOffset:(CGFloat)underlineOffset
 {
-    if (range.length == 0 || range.location == NSNotFound || range.location >= _textStorage.length) {
-        return @[];
-    }
-
     [self ensureLayout];
-
-    NSRange clampedRange = NSIntersectionRange(range, NSMakeRange(0, _textStorage.length));
     CGRect drawRect = [self _resolveDrawRectWithOrigin:rect.origin];
-    NSMutableArray<NSValue *> *rects = [NSMutableArray array];
-
-    [_textStorage enumerateAttribute:NSFontAttributeName
-                             inRange:clampedRange
-                             options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
-                          usingBlock:^(id value, NSRange fontRange, BOOL *stop) {
-        (void)stop;
-
-        UIFont *font = [value isKindOfClass:[UIFont class]] ? value : nil;
-        NSRange characterRun = NSIntersectionRange(clampedRange, fontRange);
-        if (characterRun.length == 0) {
-            return;
-        }
-
-        NSRange glyphRun = [_layoutManager glyphRangeForCharacterRange:characterRun actualCharacterRange:nil];
-        if (glyphRun.length == 0) {
-            return;
-        }
-
-        [_layoutManager enumerateLineFragmentsForGlyphRange:glyphRun usingBlock:^(
-            CGRect lineRect,
-            CGRect usedRect,
-            NSTextContainer *textContainer,
-            NSRange lineGlyphRange,
-            BOOL *lineStop
-        ) {
-            (void)usedRect;
-            (void)lineStop;
-
-            NSRange runOnLine = NSIntersectionRange(glyphRun, lineGlyphRange);
-            if (runOnLine.length == 0) {
-                return;
-            }
-
-            CGRect boundingRect = [_layoutManager boundingRectForGlyphRange:runOnLine inTextContainer:textContainer];
-            if (CGRectIsEmpty(boundingRect)) {
-                return;
-            }
-
-            CGPoint glyphLocation = [_layoutManager locationForGlyphAtIndex:runOnLine.location];
-            CGFloat baselineY = CGRectGetMinY(lineRect) + glyphLocation.y;
-            CGFloat descentDistance = font ? -font.descender : 0;
-            CGFloat underlineCenterY = baselineY + descentDistance / 2.0 + underlineOffset;
-            CGRect underlineRect = CGRectMake(CGRectGetMinX(boundingRect) + drawRect.origin.x,
-                                              underlineCenterY - lineWidth / 2.0 + drawRect.origin.y,
-                                              CGRectGetWidth(boundingRect),
-                                              lineWidth);
-            [rects addObject:[NSValue valueWithCGRect:underlineRect]];
-        }];
-    }];
-
-    return rects;
+    return SCValdiCustomUnderlineRectsForRange(_textStorage,
+                                               _layoutManager,
+                                               range,
+                                               NSMakeRange(0, 0),
+                                               NO,
+                                               drawRect.origin,
+                                               lineWidth,
+                                               underlineOffset);
 }
 
 + (CGRect)boundingRectWithAttributedString:(NSAttributedString *)attributedString
@@ -198,6 +153,52 @@
     textLayout.maxNumberOfLines = maxNumberOfLines;
 
     return textLayout.usedRect;
+}
+
++ (CGSize)measureSizeWithMaxSize:(CGSize)maxSize
+                   fontAttributes:(SCValdiFontAttributes *)fontAttributes
+                      fontManager:(id<SCValdiFontManagerProtocol>)fontManager
+                             text:(id)text
+                  traitCollection:(UITraitCollection *)traitCollection
+{
+    if (!traitCollection) {
+        SCLogValdiWarning(@"Trait collection is nil. This will cause incorrect text measurement for different font sizes");
+    }
+
+    if (!fontAttributes) {
+        fontAttributes = [NSAttributedString defaultFontAttributes];
+    }
+
+    NSString *textValue = [text isKindOfClass:[NSString class]] ? text : nil;
+    if (!textValue && [text isKindOfClass:[NSNull class]]) {
+        textValue = @"";
+    }
+
+    BOOL isRightToLeft = NO; // Hard-coding this to NO, as it may have no measurement impact either way (and NO is faster)
+    NSDictionary<NSAttributedStringKey, id> *attributes = [fontAttributes resolveAttributesWithIsRightToLeft:isRightToLeft
+                                                                                              traitCollection:traitCollection];
+
+    NSStringDrawingContext *context = [[NSStringDrawingContext alloc] init];
+    [context setValue:@(fontAttributes.numberOfLines) forKey:@"maximumNumberOfLines"];
+
+    NSStringDrawingOptions options = NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingTruncatesLastVisibleLine;
+
+    CGRect boundingRect;
+    if (textValue) {
+        boundingRect = [textValue boundingRectWithSize:maxSize options:options attributes:attributes context:context];
+    } else {
+        NSAttributedString *attributedString = [NSAttributedString attributedStringWithValdiText:text
+                                                                                      attributes:attributes
+                                                                                   isRightToLeft:isRightToLeft
+                                                                                     fontManager:fontManager
+                                                                                 traitCollection:traitCollection];
+        boundingRect = [attributedString boundingRectWithSize:maxSize options:options context:context];
+    }
+
+    CGSize outSize = boundingRect.size;
+    outSize.width = CGFloatNormalizeCeil(outSize.width);
+    outSize.height = CGFloatNormalizeCeil(outSize.height);
+    return outSize;
 }
 
 @end

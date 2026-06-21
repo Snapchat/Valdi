@@ -4,12 +4,14 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Rect
+import android.os.Build
 import android.text.InputType
 import android.text.Spanned
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
 import android.text.TextUtils
+import android.text.method.KeyListener
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -46,7 +48,7 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
         ValdiTextViewBackgroundEffectsLayoutManager(this)
     }
 
-    override var textViewHelper: TextViewHelper? = null
+    open override var textViewHelper: TextViewHelper? = null
         set(value) {
             field = value
             value?.managesNumberOfLines = false
@@ -139,12 +141,21 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
     private var attributedText: AttributedText? = null
     private var attributedTextMatchesLiveText = true
 
+    var valdiInputType: Int = 0
+        private set
+
+    private var valdiEditable = true
+    private var editableKeyListener: KeyListener? = null
+
+    protected val isValdiEditable: Boolean
+        get() = valdiEditable
+
     init {
         layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         maxLines = 1
         ellipsize = TextUtils.TruncateAt.END
         includeFontPadding = false
-        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
+        setValdiInputType(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT)
         isFocusableInTouchMode = true
         gravity = Gravity.CENTER_VERTICAL
         textDirection = View.TEXT_DIRECTION_LOCALE
@@ -160,6 +171,47 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
         }
         this.setOnKeyListener { _, keyCode, keyEvent ->
             this.onKeyCallback(keyCode, keyEvent)
+        }
+    }
+
+    fun setValdiInputType(value: Int) {
+        valdiInputType = value
+        super.setInputType(value)
+        editableKeyListener = keyListener
+        if (!valdiEditable) {
+            applyValdiEditableState()
+        }
+    }
+
+    fun setValdiEditable(editable: Boolean) {
+        valdiEditable = editable
+        applyValdiEditableState()
+        textViewHelper?.applyCurrentNumberOfLines()
+    }
+
+    private fun applyValdiEditableState() {
+        if (valdiEditable) {
+            setTextIsSelectable(false)
+            keyListener = editableKeyListener
+            super.setRawInputType(valdiInputType)
+            setShowSoftInputOnFocusCompat(true)
+            isCursorVisible = true
+            isFocusable = true
+            isFocusableInTouchMode = true
+        } else {
+            editableKeyListener = keyListener ?: editableKeyListener
+            keyListener = null
+            setShowSoftInputOnFocusCompat(false)
+            isCursorVisible = false
+            setTextIsSelectable(true)
+            isFocusable = true
+            isFocusableInTouchMode = true
+        }
+    }
+
+    private fun setShowSoftInputOnFocusCompat(value: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            showSoftInputOnFocus = value
         }
     }
 
@@ -572,6 +624,11 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
     }
 
     override fun processTouchEvent(event: MotionEvent): ValdiTouchEventResult {
+        if (allowsSameViewGestureRecognizers()) {
+            this.dispatchTouchEvent(event)
+            return ValdiTouchEventResult.IgnoreEvent
+        }
+
         // If the view is not focuseable, we deny it any kind of events
         if (!isFocusable || !isFocusableInTouchMode) {
             return ValdiTouchEventResult.IgnoreEvent

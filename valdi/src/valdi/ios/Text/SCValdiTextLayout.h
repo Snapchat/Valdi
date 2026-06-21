@@ -10,6 +10,9 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+@class SCValdiFontAttributes;
+@protocol SCValdiFontManagerProtocol;
+
 /**
  A TextLayout implementation that leverages TextKit.
  Used for layouts that requires introspection at runtime
@@ -57,6 +60,12 @@ NS_ASSUME_NONNULL_BEGIN
 + (CGRect)boundingRectWithAttributedString:(NSAttributedString*)attributedString
                                    maxSize:(CGSize)maxSize
                           maxNumberOfLines:(NSUInteger)maxNumberOfLines;
+
++ (CGSize)measureSizeWithMaxSize:(CGSize)maxSize
+                   fontAttributes:(nullable SCValdiFontAttributes *)fontAttributes
+                      fontManager:(id<SCValdiFontManagerProtocol>)fontManager
+                             text:(nullable id)text
+                  traitCollection:(nullable UITraitCollection *)traitCollection;
 
 @end
 
