@@ -1565,12 +1565,19 @@ export interface CommonLabel extends CommonTextAttributes {
   textDecoration?: LabelTextDecoration;
 
   /**
-   * Rendering size of each line of the label, this value is a ratio of the font height.
-   * If the lineHeight ratio is above 1, spacing is added on top of each line of the text
-   * @default: 1
-   * Example: A value of 2 will double the height of each line
+   * Explicit rendering size of each line of the label, in points.
+   * When both lineHeight and lineHeightMultiple are provided, lineHeight takes precedence.
+   * @default: undefined
    */
   lineHeight?: number;
+
+  /**
+   * Rendering size of each line of the label as a multiple of the font height.
+   * If the lineHeightMultiple value is above 1, spacing is added on top of each line of the text.
+   * @default: 1
+   * Example: A value of 2 will double the height of each line.
+   */
+  lineHeightMultiple?: number;
 
   /**
    * Extra spacing added at the end of each character, in points
@@ -2203,7 +2210,7 @@ export type LayoutAccessibilityPriority = number | AccessibilityPriority;
 
 // Label attributes types
 export type LabelValue = string | AttributedText;
-export type LabelTextDecoration = 'none' | 'strikethrough' | 'underline';
+export type LabelTextDecoration = 'none' | 'strikethrough' | 'underline' | 'dashed-underline' | 'dotted-underline';
 export type LabelTextAlign = 'left' | 'right' | 'center' | 'justified';
 export type LabelFontWeight = 'light' | 'normal' | 'medium' | 'demi-bold' | 'bold' | 'black';
 export type LabelFontStyle = 'normal' | 'italic';

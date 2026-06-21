@@ -92,6 +92,11 @@ class RichTextConverter(val fontManager: FontManager) {
                 attributes.color = color
             }
 
+            val backgroundColor = attributedText.getBackgroundColorAtIndex(it)
+            if (backgroundColor != null) {
+                attributes.backgroundColor = backgroundColor
+            }
+
             val outlineColor = attributedText.getOutlineColorAtIndex(it)
             if (outlineColor != null) {
                 attributes.outlineColor = outlineColor

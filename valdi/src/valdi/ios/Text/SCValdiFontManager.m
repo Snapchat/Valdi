@@ -81,11 +81,27 @@
         UIFont *font;
         if ([fontName isEqualToString:@"system"]) {
             font = [UIFont systemFontOfSize:fontSize];
+        } else if ([fontName isEqualToString:@"system-medium"]) {
+            font = [UIFont systemFontOfSize:fontSize weight:UIFontWeightMedium];
         } else if ([fontName isEqualToString:@"system-bold"]) {
             font = [UIFont boldSystemFontOfSize:fontSize];
+        } else if ([fontName isEqualToString:@"system-demi-bold"] || [fontName isEqualToString:@"system-semibold"]) {
+            font = [UIFont systemFontOfSize:fontSize weight:UIFontWeightSemibold];
         } else if ([fontName isEqualToString:@"system-italic"]) {
             font = [UIFont italicSystemFontOfSize:fontSize];
-        } else if (_fontLoader && [UIFont fontWithName:fontName size:fontSize]) {
+        } else if ([fontName isEqualToString:@"system-medium-italic"]) {
+            UIFontDescriptor *descriptor = [[UIFont systemFontOfSize:fontSize weight:UIFontWeightMedium].fontDescriptor
+                fontDescriptorWithSymbolicTraits:UIFontDescriptorTraitItalic];
+            font = [UIFont fontWithDescriptor:descriptor size:fontSize] ?: [UIFont italicSystemFontOfSize:fontSize];
+        } else if ([fontName isEqualToString:@"system-demi-bold-italic"] || [fontName isEqualToString:@"system-semibold-italic"]) {
+            UIFontDescriptor *descriptor = [[UIFont systemFontOfSize:fontSize weight:UIFontWeightSemibold].fontDescriptor
+                fontDescriptorWithSymbolicTraits:UIFontDescriptorTraitItalic];
+            font = [UIFont fontWithDescriptor:descriptor size:fontSize] ?: [UIFont italicSystemFontOfSize:fontSize];
+        } else if ([fontName isEqualToString:@"system-bold-italic"]) {
+            UIFontDescriptor *descriptor = [[UIFont boldSystemFontOfSize:fontSize].fontDescriptor
+                fontDescriptorWithSymbolicTraits:UIFontDescriptorTraitBold | UIFontDescriptorTraitItalic];
+            font = [UIFont fontWithDescriptor:descriptor size:fontSize] ?: [UIFont boldSystemFontOfSize:fontSize];
+        } else if (_fontLoader) {
             if ([_fontLoader shouldBypassContextForLegibilityWeight]) {
                 font = [_fontLoader loadFontWithName:fontName fontSize:fontSize legibilityWeight:legibilityWeight];
             } else {

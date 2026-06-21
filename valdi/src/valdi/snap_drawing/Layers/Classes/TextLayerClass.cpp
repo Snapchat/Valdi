@@ -27,6 +27,7 @@ Size TextLayerClass::onMeasure(const Valdi::Value& attributes, Size maxSize, boo
     auto text = attributes.getMapValue("value");
     auto font = Valdi::castOrNull<Font>(attributes.getMapValue("font").getValdiObject());
     auto numberOfLines = attributes.getMapValue("numberOfLines");
+    auto lineHeightMultiple = attributes.getMapValue("lineHeightMultiple");
     auto lineHeight = attributes.getMapValue("lineHeight");
     auto letterSpacing = attributes.getMapValue("letterSpacing");
     auto adjustsFontSizeToFitWidth = attributes.getMapValue("adjustsFontSizeToFitWidth");
@@ -55,7 +56,12 @@ Size TextLayerClass::onMeasure(const Valdi::Value& attributes, Size maxSize, boo
     }
 
     auto resolvedNumberOfLines = numberOfLines.isNumber() ? numberOfLines.toInt() : 1;
-    auto resolvedLineHeight = lineHeight.isNumber() ? lineHeight.toDouble() : 1.0;
+    auto resolvedLineHeight = lineHeightMultiple.isNumber()
+        ? TextLayoutLineHeight::multiple(static_cast<Scalar>(lineHeightMultiple.toDouble()))
+        : TextLayoutLineHeight::multiple(1.0f);
+    if (lineHeight.isNumber()) {
+        resolvedLineHeight = TextLayoutLineHeight::absolute(static_cast<Scalar>(lineHeight.toDouble() * displayScale));
+    }
     auto resolvedLetterSpacing = letterSpacing.isNumber() ? letterSpacing.toDouble() : 0.0;
 
     auto scaledMaxSize = Size::make(maxSize.width * displayScale, maxSize.height * displayScale);
@@ -73,7 +79,7 @@ Size TextLayerClass::onMeasure(const Valdi::Value& attributes, Size maxSize, boo
                                            TextDecorationNone,
                                            textOverflow,
                                            resolvedNumberOfLines,
-                                           static_cast<Scalar>(resolvedLineHeight),
+                                           resolvedLineHeight,
                                            static_cast<Scalar>(resolvedLetterSpacing),
                                            false,
                                            adjustsFontSizeToFitWidth.toBool(),
@@ -105,6 +111,7 @@ void TextLayerClass::bindAttributes(Valdi::AttributesBindingContext& binder) {
 
     BIND_DOUBLE_ATTRIBUTE(TextLayer, letterSpacing, true);
 
+    BIND_DOUBLE_ATTRIBUTE(TextLayer, lineHeightMultiple, true);
     BIND_DOUBLE_ATTRIBUTE(TextLayer, lineHeight, true);
 
     BIND_UNTYPED_ATTRIBUTE(TextLayer, textShadow, true);
@@ -212,6 +219,10 @@ IMPLEMENT_STRING_ATTRIBUTE(
             view.setTextDecoration(TextDecorationStrikethrough);
         } else if (value == "underline") {
             view.setTextDecoration(TextDecorationUnderline);
+        } else if (value == "dashed-underline") {
+            view.setTextDecoration(TextDecorationDashedUnderline);
+        } else if (value == "dotted-underline") {
+            view.setTextDecoration(TextDecorationDottedUnderline);
         } else {
             return Valdi::Error("Invalid textDecoration");
         }
@@ -265,12 +276,21 @@ IMPLEMENT_DOUBLE_ATTRIBUTE(
 
 IMPLEMENT_DOUBLE_ATTRIBUTE(
     TextLayer,
-    lineHeight,
+    lineHeightMultiple,
     {
         view.setLineHeightMultiple(static_cast<Scalar>(value));
         return Valdi::Void();
     },
     { view.setLineHeightMultiple(1.0f); })
+
+IMPLEMENT_DOUBLE_ATTRIBUTE(
+    TextLayer,
+    lineHeight,
+    {
+        view.setLineHeight(static_cast<Scalar>(value));
+        return Valdi::Void();
+    },
+    { view.resetLineHeight(); })
 
 IMPLEMENT_DOUBLE_ATTRIBUTE(
     TextLayer,

@@ -11,6 +11,10 @@
 
 #import "valdi/ios/SCValdiRuntimeManager.h"
 #import "valdi/ios/Views/SCValdiLabel.h"
+#import "valdi/ios/Views/SCValdiTextField.h"
+#import "valdi/ios/Text/NSAttributedString+Valdi.h"
+#import "valdi/ios/Text/SCValdiFont.h"
+#import "valdi/ios/Text/SCValdiFontAttributes.h"
 #import "valdi/ios/Gestures/SCValdiGestureRecognizers.h"
 #import "valdi/ios/Utils/SCValdiImageFilter.h"
 #import "valdi/runtime/Utils/AsyncGroup.hpp"
@@ -46,6 +50,14 @@
         self.onRenderCallback();
     }
 }
+
+@end
+
+@interface SCValdiTextField (SCValdiRuntimeTests)
+
+- (void)valdi_setFontAttributes:(SCValdiFontAttributes *)fontAttributes;
+- (void)valdi_setValue:(id)textValue;
+- (BOOL)_updateAttributedTextIfNeeded;
 
 @end
 
@@ -91,6 +103,117 @@
 - (void)tearDown
 {
     self.runtimeManager = nil;
+}
+
+- (void)testFontAttributesResolveLineHeightFromFontMetrics
+{
+    UIFont *font = [UIFont systemFontOfSize:14];
+    CGFloat lineHeight = 18;
+    SCValdiFont *valdiFont = [[SCValdiFont alloc] initWithFont:font
+                                                     textStyle:nil
+                                                       maxSize:0
+                                                   fontManager:nil];
+    SCValdiFontAttributes *fontAttributes = [NSAttributedString fontAttributesWithFont:valdiFont
+                                                                                 color:nil
+                                                                             textAlign:nil
+                                                                            lineHeight:nil
+                                                                    lineHeightMultiple:@(lineHeight / font.pointSize)
+                                                                        textDecoration:nil
+                                                                         letterSpacing:nil
+                                                                         numberOfLines:@1
+                                                                          textOverflow:nil];
+
+    NSDictionary<NSAttributedStringKey, id> *attributes = [fontAttributes resolveAttributesWithIsRightToLeft:NO
+                                                                                              traitCollection:nil];
+    NSParagraphStyle *paragraphStyle = attributes[NSParagraphStyleAttributeName];
+    NSNumber *baselineOffset = attributes[NSBaselineOffsetAttributeName];
+    NSAttributedString *attributedString = [[NSAttributedString alloc] initWithString:@"Detroit Pistons"
+                                                                           attributes:attributes];
+    CGRect boundingRect = [attributedString boundingRectWithSize:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX)
+                                                         options:NSStringDrawingUsesLineFragmentOrigin
+                                                         context:nil];
+
+    XCTAssertEqualWithAccuracy(paragraphStyle.minimumLineHeight, 18, 0.001);
+    XCTAssertEqualWithAccuracy(paragraphStyle.maximumLineHeight, 18, 0.001);
+    XCTAssertEqualWithAccuracy(baselineOffset.doubleValue, (lineHeight - font.lineHeight) / 2.0, 0.001);
+    XCTAssertEqualWithAccuracy(CGRectGetHeight(boundingRect), 18, 0.001);
+}
+
+- (void)testFontAttributesApplyNegativeBaselineOffsetForCompressedLineHeight
+{
+    UIFont *font = [UIFont systemFontOfSize:48 weight:UIFontWeightMedium];
+    CGFloat lineHeight = 48;
+    SCValdiFont *valdiFont = [[SCValdiFont alloc] initWithFont:font
+                                                     textStyle:nil
+                                                       maxSize:0
+                                                   fontManager:nil];
+    SCValdiFontAttributes *fontAttributes = [NSAttributedString fontAttributesWithFont:valdiFont
+                                                                                 color:nil
+                                                                             textAlign:nil
+                                                                            lineHeight:nil
+                                                                    lineHeightMultiple:@(lineHeight / font.pointSize)
+                                                                        textDecoration:nil
+                                                                         letterSpacing:nil
+                                                                         numberOfLines:@1
+                                                                          textOverflow:nil];
+
+    NSDictionary<NSAttributedStringKey, id> *attributes = [fontAttributes resolveAttributesWithIsRightToLeft:NO
+                                                                                              traitCollection:nil];
+    NSNumber *baselineOffset = attributes[NSBaselineOffsetAttributeName];
+
+    XCTAssertEqualWithAccuracy(baselineOffset.doubleValue, lineHeight - font.lineHeight, 0.001);
+    XCTAssertLessThan(baselineOffset.doubleValue, 0);
+}
+
+- (void)testFontAttributesCenterExplicitCompressedLineHeight
+{
+    UIFont *font = [UIFont systemFontOfSize:48 weight:UIFontWeightMedium];
+    CGFloat lineHeight = 48;
+    SCValdiFont *valdiFont = [[SCValdiFont alloc] initWithFont:font
+                                                     textStyle:nil
+                                                       maxSize:0
+                                                   fontManager:nil];
+    SCValdiFontAttributes *fontAttributes = [NSAttributedString fontAttributesWithFont:valdiFont
+                                                                                 color:nil
+                                                                             textAlign:nil
+                                                                            lineHeight:@(lineHeight)
+                                                                    lineHeightMultiple:nil
+                                                                        textDecoration:nil
+                                                                         letterSpacing:nil
+                                                                         numberOfLines:@1
+                                                                          textOverflow:nil];
+
+    NSDictionary<NSAttributedStringKey, id> *attributes = [fontAttributes resolveAttributesWithIsRightToLeft:NO
+                                                                                              traitCollection:nil];
+    NSNumber *baselineOffset = attributes[NSBaselineOffsetAttributeName];
+
+    XCTAssertEqualWithAccuracy(baselineOffset.doubleValue, (lineHeight - font.lineHeight) / 2.0, 0.001);
+    XCTAssertLessThan(baselineOffset.doubleValue, 0);
+}
+
+- (void)testTextFieldPreservesExplicitTextAlignment
+{
+    SCValdiTextField *textField = [SCValdiTextField new];
+    UIFont *font = [UIFont systemFontOfSize:48 weight:UIFontWeightMedium];
+    SCValdiFont *valdiFont = [[SCValdiFont alloc] initWithFont:font
+                                                     textStyle:nil
+                                                       maxSize:0
+                                                   fontManager:nil];
+    SCValdiFontAttributes *fontAttributes = [NSAttributedString fontAttributesWithFont:valdiFont
+                                                                                 color:nil
+                                                                             textAlign:@"right"
+                                                                            lineHeight:nil
+                                                                    lineHeightMultiple:nil
+                                                                        textDecoration:nil
+                                                                         letterSpacing:nil
+                                                                         numberOfLines:@1
+                                                                          textOverflow:nil];
+
+    [textField valdi_setFontAttributes:fontAttributes];
+    [textField valdi_setValue:@"4"];
+    [textField _updateAttributedTextIfNeeded];
+
+    XCTAssertEqual(textField.textAlignment, NSTextAlignmentRight);
 }
 
 - (BOOL)_simulateTapOnView:(UIView *)view atLocation:(CGPoint)location

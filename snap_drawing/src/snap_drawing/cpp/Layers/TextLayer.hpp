@@ -69,6 +69,9 @@ public:
     void setMinimumScaleFactor(double minimumScaleFactor);
     double getMinimumScaleFactor() const;
 
+    void setLineHeight(Scalar lineHeight);
+    void resetLineHeight();
+
     void setLineHeightMultiple(Scalar lineHeightMultiple);
     Scalar getLineHeightMultiple() const;
 
@@ -98,7 +101,7 @@ public:
                             TextDecoration textDecoration,
                             TextOverflow textOverflow,
                             int numberOfLines,
-                            Scalar lineHeightMultiple,
+                            TextLayoutLineHeight lineHeight,
                             Scalar letterSpacing,
                             bool isRightToLeft,
                             bool adjustsFontSizeToFitWidth,
@@ -116,7 +119,7 @@ public:
                                           TextDecoration textDecoration,
                                           TextOverflow textOverflow,
                                           int numberOfLines,
-                                          Scalar lineHeightMultiple,
+                                          TextLayoutLineHeight lineHeight,
                                           Scalar letterSpacing,
                                           bool isRightToLeft,
                                           bool adjustsFontSizeToFitWidth,
@@ -135,7 +138,7 @@ public:
                                                   TextDecoration textDecoration,
                                                   TextOverflow textOverflow,
                                                   int numberOfLines,
-                                                  Scalar lineHeightMultiple,
+                                                  TextLayoutLineHeight lineHeight,
                                                   Scalar letterSpacing,
                                                   bool isRightToLeft,
                                                   double fontScale,
@@ -162,7 +165,9 @@ private:
     int _numberOfLines = 1;
     bool _adjustsFontSizeToFitWidth = false;
     double _minimumScaleFactor = 0.0;
-    Scalar _lineHeightMultiple = 1.0f;
+    bool _usesExplicitLineHeight = false;
+    Scalar _lineHeight = 0.0f;
+    Scalar _lineHeightMultipleValue = 1.0f;
     Scalar _letterSpacing = 0.0f;
 
     Ref<TextLayout> _textLayout;
@@ -170,17 +175,20 @@ private:
 
     TextLayout& getTextLayout(Size size, bool respectDynamicType, Scalar displayScale, Scalar dynamicTypeScale);
 
+    Scalar getTextVerticalOffset(const Size& layerSize, const TextLayout& layout, Scalar displayScale) const;
+    TextLayoutLineHeight resolveLineHeight(Scalar displayScale) const;
+
     void setNeedsTextLayout();
 
     void removeOnTapGestureRecognizer();
     void addOnTapGestureRecognizer();
 
-    void drawTextDecorationsShadows(DrawingContext& drawingContext,
-                                    const std::vector<TextLayoutDecorationEntry>& textDecorations);
+    void drawTextVisualEntriesShadows(DrawingContext& drawingContext,
+                                      const std::vector<TextLayoutVisualEntry>& visualEntries);
 
-    void drawTextDecorations(DrawingContext& drawingContext,
-                             const std::vector<TextLayoutDecorationEntry>& textDecorations,
-                             bool predraw);
+    void drawTextVisualEntries(DrawingContext& drawingContext,
+                               const std::vector<TextLayoutVisualEntry>& visualEntries,
+                               bool predraw);
 
     void applyGradientToTextPaint(Paint& paint);
 

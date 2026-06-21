@@ -27,9 +27,9 @@ static void TextLayoutSimpleTextSingleLine(benchmark::State& state) {
     doBenchmark(state, [&](const auto& fontManager) {
         auto font = fontManager->getDefaultFont().moveValue();
 
-        TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, Size::make(5000, 5000), 1, fontManager, false);
+        TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, Size::make(5000, 5000), 1, fontManager, false, 1.0f);
 
-        builder.append("Hello World!", font, 1.0f, 0.0f, TextDecorationNone);
+        builder.append("Hello World!", font, TextLayoutLineHeight::multiple(1.0f), 0.0f, TextDecorationNone);
 
         benchmark::DoNotOptimize(builder.build());
     });
@@ -39,12 +39,12 @@ static void TextLayoutLongTextSingleLine(benchmark::State& state) {
     doBenchmark(state, [&](const auto& fontManager) {
         auto font = fontManager->getDefaultFont().moveValue();
 
-        TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, Size::make(50000, 5000), 0, fontManager, false);
+        TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, Size::make(50000, 5000), 0, fontManager, false, 1.0f);
 
         builder.append("Hello World! This string might be pretty long, and because of that we will have to lay it out "
                        "on multiple lines",
                        font,
-                       1.0f,
+                       TextLayoutLineHeight::multiple(1.0f),
                        0.0f,
                        TextDecorationNone);
 
@@ -56,12 +56,12 @@ static void TextLayoutLongTextMultiLine(benchmark::State& state) {
     doBenchmark(state, [&](const auto& fontManager) {
         auto font = fontManager->getDefaultFont().moveValue();
 
-        TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, Size::make(100, 5000), 0, fontManager, false);
+        TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, Size::make(100, 5000), 0, fontManager, false, 1.0f);
 
         builder.append("Hello World! This string might be pretty long, and because of that we will have to lay it out "
                        "on multiple lines",
                        font,
-                       1.0f,
+                       TextLayoutLineHeight::multiple(1.0f),
                        0.0f,
                        TextDecorationNone);
 
@@ -73,9 +73,9 @@ static void TextLayoutEmojiText(benchmark::State& state) {
     doBenchmark(state, [&](const auto& fontManager) {
         auto font = fontManager->getDefaultFont().moveValue();
 
-        TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, Size::make(5000, 5000), 1, fontManager, false);
+        TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, Size::make(5000, 5000), 1, fontManager, false, 1.0f);
 
-        builder.append("Hello World 😀😃😄! We like emojis here 😍😍😍.", font, 1.0f, 0.0f, TextDecorationNone);
+        builder.append("Hello World 😀😃😄! We like emojis here 😍😍😍.", font, TextLayoutLineHeight::multiple(1.0f), 0.0f, TextDecorationNone);
 
         benchmark::DoNotOptimize(builder.build());
     });
@@ -85,9 +85,9 @@ static void TextLayoutArabicText(benchmark::State& state) {
     doBenchmark(state, [&](const auto& fontManager) {
         auto font = fontManager->getDefaultFont().moveValue();
 
-        TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, Size::make(5000, 5000), 1, fontManager, false);
+        TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, Size::make(5000, 5000), 1, fontManager, false, 1.0f);
 
-        builder.append("قرأ Wikipedia™ طوال اليوم.", font, 1.0, 0.0, TextDecorationNone);
+        builder.append("قرأ Wikipedia™ طوال اليوم.", font, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationNone);
 
         benchmark::DoNotOptimize(builder.build());
     });

@@ -76,6 +76,10 @@
             return SCValdiTextDecorationStrikethrough;
         case Valdi::TextDecoration::Underline:
             return SCValdiTextDecorationUnderline;
+        case Valdi::TextDecoration::DashedUnderline:
+            return SCValdiTextDecorationDashedUnderline;
+        case Valdi::TextDecoration::DottedUnderline:
+            return SCValdiTextDecorationDottedUnderline;
     }
 }
 
@@ -87,6 +91,16 @@
     }
 
     return UIColorFromValdiAttributeValue(style.color.value().value);
+}
+
+- (nullable UIColor *)backgroundColorAtIndex:(NSUInteger)index
+{
+    const auto &style = _cppInstance->getStyleAtIndex(index);
+    if (style.background == nullptr || !style.background->color) {
+        return nil;
+    }
+
+    return UIColorFromValdiAttributeValue(style.background->color.value().value);
 }
 
 - (nullable id<SCValdiFunction>)onTapAtIndex:(NSUInteger)index
@@ -165,8 +179,7 @@
 
     NSData *imageData = nil;
     if (!attachment.imageData.empty()) {
-        imageData = [NSData dataWithBytes:attachment.imageData.data()
-                                   length:attachment.imageData.size()];
+        imageData = ValdiIOS::NSDataFromBuffer(attachment.imageData);
     }
 
     return [[SCValdiImageAttachmentInfo alloc] initWithAttachmentId:attachmentId

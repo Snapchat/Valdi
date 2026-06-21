@@ -33,6 +33,12 @@ interface AttributedText {
      * Return the text color for the part at the given index, or null if unspecified.
      */
     fun getColorAtIndex(index: Int): Int?
+
+    /**
+     * Return the text background color for the part at the given index, or null if unspecified.
+     */
+    fun getBackgroundColorAtIndex(index: Int): Int?
+
     fun getOnTapAtIndex(index: Int): ValdiFunction?
     fun getOnLayoutAtIndex(index: Int): ValdiFunction?
 

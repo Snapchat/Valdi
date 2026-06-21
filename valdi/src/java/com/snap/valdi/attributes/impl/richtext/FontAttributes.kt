@@ -8,7 +8,7 @@ import android.graphics.Typeface
 import android.text.Layout
 import android.text.TextPaint
 import android.text.style.AlignmentSpan
-import android.text.style.ClickableSpan
+import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.MetricAffectingSpan
 import android.text.style.StrikethroughSpan
@@ -33,12 +33,14 @@ data class FontAttributes(
     var textDecoration: TextDecoration?,
     var fontSize: Float,
     var fontName: String?,
+    var lineHeightMultiple: Float?,
     var lineHeight: Float?,
     var numberOfLines: Int?,
     var letterSpacing: Float?,
     var adjustsFontSizeToFitWidth: Boolean?,
     var minimumScaleFactor: Float?,
     var color: Int,
+    var backgroundColor: Int? = null,
     var alignment: TextAlignment,
     var isUnscaled: Boolean = false,
     var outlineColor: Int? = null,
@@ -60,7 +62,9 @@ data class FontAttributes(
             null,
             null,
             null,
+            null,
             Color.BLACK,
+            null,
             TextAlignment.LEFT,
             false,
             null,
@@ -75,7 +79,9 @@ data class FontAttributes(
             null,
             null,
             null,
+            null,
             Color.BLACK,
+            null,
             TextAlignment.CENTER,
             false,
             null,
@@ -105,6 +111,8 @@ data class FontAttributes(
         if (textDecoration != null) {
             when (textDecoration!!) {
                 TextDecoration.UNDERLINE -> closure(UnderlineSpan())
+                TextDecoration.DASHED_UNDERLINE -> closure(DashedUnderlineSpan())
+                TextDecoration.DOTTED_UNDERLINE -> closure(DottedUnderlineSpan())
                 TextDecoration.STRIKETHROUGH -> closure(StrikethroughSpan())
                 TextDecoration.NONE -> {}
             }
@@ -113,6 +121,10 @@ data class FontAttributes(
         val typeface = resolveTypeface(fontManager, missingFontsTracker)
         if (typeface != null) {
             closure(CustomTypefaceSpan(typeface))
+        }
+
+        if (backgroundColor != null) {
+            closure(BackgroundColorSpan(backgroundColor!!))
         }
 
         if (animationTransform != null) {
@@ -193,6 +205,8 @@ data class FontAttributes(
     fun applyTextDecoration(attributeVal: String) {
         textDecoration = when (attributeVal) {
             "underline" -> TextDecoration.UNDERLINE
+            "dashed-underline" -> TextDecoration.DASHED_UNDERLINE
+            "dotted-underline" -> TextDecoration.DOTTED_UNDERLINE
             "strikethrough" -> TextDecoration.STRIKETHROUGH
             else -> TextDecoration.NONE
         }

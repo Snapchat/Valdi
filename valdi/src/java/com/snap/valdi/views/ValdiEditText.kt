@@ -395,6 +395,11 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
         invalidate()
     }
 
+    fun setTextAndSelection(spannable: Spannable) {
+        attributedText = null
+        setSpannableAndSelection(spannable)
+    }
+
     fun setTextAndSelection(value: String, start: Int = selectionStart, end: Int = selectionEnd) {
         val wasAttributedText = isAttributedText
         isAttributedText = false

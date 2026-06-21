@@ -49,6 +49,8 @@ public:
         static constexpr jint kTextDecorationNone = static_cast<jint>(0);
         static constexpr jint kTextDecorationUnderline = static_cast<jint>(1);
         static constexpr jint kTextDecorationStrikethrough = static_cast<jint>(2);
+        static constexpr jint kTextDecorationDashedUnderline = static_cast<jint>(3);
+        static constexpr jint kTextDecorationDottedUnderline = static_cast<jint>(4);
 
         auto attributedText = getAttributedText(ptr);
         const auto& style = attributedText->getStyleAtIndex(static_cast<size_t>(index));
@@ -61,6 +63,10 @@ public:
                 return kTextDecorationUnderline;
             case Valdi::TextDecoration::Strikethrough:
                 return kTextDecorationStrikethrough;
+            case Valdi::TextDecoration::DashedUnderline:
+                return kTextDecorationDashedUnderline;
+            case Valdi::TextDecoration::DottedUnderline:
+                return kTextDecorationDottedUnderline;
         }
     }
 
@@ -75,6 +81,19 @@ public:
         }
 
         return static_cast<jlong>(style.color.value().value);
+    }
+
+    // NOLINTNEXTLINE
+    static jlong nativeGetBackgroundColor(fbjni::alias_ref<fbjni::JClass> /* clazz */, jlong ptr, jint index) {
+        static constexpr jlong kColorUnset = static_cast<jlong>(std::numeric_limits<int64_t>::min());
+
+        auto attributedText = getAttributedText(ptr);
+        const auto& style = attributedText->getStyleAtIndex(static_cast<size_t>(index));
+        if (style.background == nullptr || !style.background->color) {
+            return kColorUnset;
+        }
+
+        return static_cast<jlong>(style.background->color.value().value);
     }
 
     // NOLINTNEXTLINE
@@ -203,6 +222,7 @@ public:
             makeNativeMethod("nativeGetFont", AttributedTextJNI::nativeGetFont),
             makeNativeMethod("nativeGetTextDecoration", AttributedTextJNI::nativeGetTextDecoration),
             makeNativeMethod("nativeGetColor", AttributedTextJNI::nativeGetColor),
+            makeNativeMethod("nativeGetBackgroundColor", AttributedTextJNI::nativeGetBackgroundColor),
             makeNativeMethod("nativeGetOnTap", AttributedTextJNI::nativeGetOnTap),
             makeNativeMethod("nativeGetOnLayout", AttributedTextJNI::nativeGetOnLayout),
             makeNativeMethod("nativeGetOutlineColor", AttributedTextJNI::nativeGetOutlineColor),

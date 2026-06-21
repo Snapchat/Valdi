@@ -17,12 +17,47 @@
 #include "snap_drawing/cpp/Text/TextLayoutBuilder.hpp"
 #include "snap_drawing/cpp/Touches/AttributedTextOnTapGestureRecognizer.hpp"
 #include "snap_drawing/cpp/Utils/GradientWrapper.hpp"
+#include "snap_drawing/cpp/Utils/Path.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace snap::drawing {
 
 constexpr double kMaxAdjustsFontSizeToFitWidthAttempt = 8;
+
+static Path makeTextDecorationPath(const Rect& bounds) {
+    Path path;
+    auto centerY = bounds.y() + bounds.height() / 2.0f;
+    path.moveTo(bounds.x(), centerY);
+    path.lineTo(bounds.right, centerY);
+    return path;
+}
+
+static void drawTextDecoration(DrawingContext& drawingContext,
+                               Paint& paint,
+                               TextLayoutDecorationStyle style,
+                               const Rect& bounds) {
+    if (style == TextLayoutDecorationStyleDashed) {
+        auto strokeWidth = std::max<Scalar>(bounds.height(), 1.0f);
+        paint.setStroke(true);
+        paint.setStrokeWidth(strokeWidth);
+        paint.setStrokeCap(PaintStrokeCapButt);
+        paint.setStrokeDashPattern(strokeWidth * 3.0f, strokeWidth * 2.0f);
+
+        auto path = makeTextDecorationPath(bounds);
+        drawingContext.drawPaint(paint, path);
+    } else if (style == TextLayoutDecorationStyleDotted) {
+        auto strokeWidth = std::max<Scalar>(bounds.height(), 1.0f);
+        paint.setStroke(false);
+        paint.setStrokeDotPattern(strokeWidth / 2.0f, strokeWidth * 2.0f);
+
+        auto path = makeTextDecorationPath(bounds);
+        drawingContext.drawPaint(paint, path);
+    } else {
+        drawingContext.drawPaint(paint, bounds);
+    }
+}
 
 TextLayer::TextLayer(const Ref<Resources>& resources) : Layer(resources) {
     _textPaint.setAntiAlias(true);
@@ -52,7 +87,7 @@ void TextLayer::onDraw(DrawingContext& drawingContext) {
 
     if (hasTextShadow()) {
         // Draw all of the shadows first
-        drawTextDecorationsShadows(drawingContext, layout.getDecorations());
+        drawTextVisualEntriesShadows(drawingContext, layout.getVisualEntries());
         for (const auto& entry : layout.getEntries()) {
             if (entry.textBlob != nullptr) {
                 drawTextShadows(drawingContext, entry.textBlob);
@@ -61,7 +96,7 @@ void TextLayer::onDraw(DrawingContext& drawingContext) {
     }
 
     // Then draw all of the text things
-    drawTextDecorations(drawingContext, layout.getDecorations(), /* predraw */ true);
+    drawTextVisualEntries(drawingContext, layout.getVisualEntries(), /* predraw */ true);
 
     for (const auto& entry : layout.getEntries()) {
         if (entry.textBlob != nullptr) {
@@ -69,12 +104,16 @@ void TextLayer::onDraw(DrawingContext& drawingContext) {
         }
     }
 
-    drawTextDecorations(drawingContext, layout.getDecorations(), /* predraw */ false);
+    drawTextVisualEntries(drawingContext, layout.getVisualEntries(), /* predraw */ false);
 }
 
-void TextLayer::drawTextDecorationsShadows(DrawingContext& drawingContext,
-                                           const std::vector<TextLayoutDecorationEntry>& textDecorations) {
-    for (const auto& decoration : textDecorations) {
+void TextLayer::drawTextVisualEntriesShadows(DrawingContext& drawingContext,
+                                             const std::vector<TextLayoutVisualEntry>& visualEntries) {
+    for (const auto& visualEntry : visualEntries) {
+        if (visualEntry.kind == TextLayoutVisualEntryKindBackground) {
+            continue;
+        }
+
         auto resolvedPaint = _textPaint;
         resolvedPaint.getSkValue().setMaskFilter(
             SkMaskFilter::MakeBlur(SkBlurStyle::kNormal_SkBlurStyle, _textShadow.radius, false));
@@ -82,31 +121,41 @@ void TextLayer::drawTextDecorationsShadows(DrawingContext& drawingContext,
         resolvedPaint.setColor(_textShadow.color);
         resolvedPaint.setAlpha(_textShadow.opacity);
 
-        auto bounds = decoration.bounds;
+        auto bounds = visualEntry.bounds;
         bounds.offsetX(_textShadow.offsetX);
         bounds.offsetY(_textShadow.offsetY);
 
-        drawingContext.drawPaint(resolvedPaint, bounds);
+        drawTextDecoration(drawingContext, resolvedPaint, visualEntry.style, bounds);
     }
 }
 
-void TextLayer::drawTextDecorations(DrawingContext& drawingContext,
-                                    const std::vector<TextLayoutDecorationEntry>& textDecorations,
-                                    bool predraw) {
-    for (const auto& decoration : textDecorations) {
-        if (decoration.predraw != predraw) {
+void TextLayer::drawTextVisualEntries(DrawingContext& drawingContext,
+                                      const std::vector<TextLayoutVisualEntry>& visualEntries,
+                                      bool predraw) {
+    for (const auto& visualEntry : visualEntries) {
+        if (visualEntry.predraw != predraw) {
             continue;
         }
 
         auto resolvedPaint = _textPaint;
 
-        if (_gradientWrapper.hasGradient()) {
+        if (visualEntry.kind == TextLayoutVisualEntryKindBackground) {
+            if (!visualEntry.color) {
+                continue;
+            }
+            resolvedPaint.setColor(visualEntry.color.value());
+            if (!visualEntry.borderRadius.isEmpty()) {
+                auto path = visualEntry.borderRadius.getPath(visualEntry.bounds);
+                drawingContext.drawPaint(resolvedPaint, path);
+                continue;
+            }
+        } else if (_gradientWrapper.hasGradient()) {
             applyGradientToTextPaint(resolvedPaint);
-        } else if (decoration.color) {
-            resolvedPaint.setColor(decoration.color.value());
+        } else if (visualEntry.color) {
+            resolvedPaint.setColor(visualEntry.color.value());
         }
 
-        drawingContext.drawPaint(resolvedPaint, decoration.bounds);
+        drawTextDecoration(drawingContext, resolvedPaint, visualEntry.style, visualEntry.bounds);
     }
 }
 
@@ -332,9 +381,25 @@ double TextLayer::getMinimumScaleFactor() const {
     return _minimumScaleFactor;
 }
 
+void TextLayer::setLineHeight(Scalar lineHeight) {
+    if (_usesExplicitLineHeight != true || _lineHeight != lineHeight) {
+        _usesExplicitLineHeight = true;
+        _lineHeight = lineHeight;
+        setNeedsTextLayout();
+    }
+}
+
+void TextLayer::resetLineHeight() {
+    if (_usesExplicitLineHeight) {
+        _usesExplicitLineHeight = false;
+        _lineHeight = 0.0f;
+        setNeedsTextLayout();
+    }
+}
+
 void TextLayer::setLineHeightMultiple(Scalar lineHeightMultiple) {
-    if (_lineHeightMultiple != lineHeightMultiple) {
-        _lineHeightMultiple = lineHeightMultiple;
+    if (_lineHeightMultipleValue != lineHeightMultiple) {
+        _lineHeightMultipleValue = lineHeightMultiple;
         setNeedsTextLayout();
     }
 }
@@ -351,7 +416,7 @@ Scalar TextLayer::getLetterSpacing() const {
 }
 
 Scalar TextLayer::getLineHeightMultiple() const {
-    return _lineHeightMultiple;
+    return _lineHeightMultipleValue;
 }
 
 void TextLayer::setNeedsTextLayout() {
@@ -384,6 +449,7 @@ TextLayout& TextLayer::getTextLayout(Size size, bool respectDynamicType, Scalar 
 
     if (_textLayout == nullptr) {
         VALDI_TRACE("SnapDrawing.makeTextLayout");
+        auto resolvedLineHeight = resolveLineHeight(displayScale);
         _textLayout = TextLayer::makeTextLayout(maxSize,
                                                 _text,
                                                 _attributedText,
@@ -392,7 +458,7 @@ TextLayout& TextLayer::getTextLayout(Size size, bool respectDynamicType, Scalar 
                                                 _textDecoration,
                                                 _textOverflow,
                                                 _numberOfLines,
-                                                _lineHeightMultiple,
+                                                resolvedLineHeight,
                                                 _letterSpacing,
                                                 isRightToLeft(),
                                                 _adjustsFontSizeToFitWidth,
@@ -411,6 +477,14 @@ TextLayout& TextLayer::getTextLayout(Size size, bool respectDynamicType, Scalar 
     }
 
     return *_textLayout;
+}
+
+TextLayoutLineHeight TextLayer::resolveLineHeight(Scalar displayScale) const {
+    if (!_usesExplicitLineHeight) {
+        return TextLayoutLineHeight::multiple(_lineHeightMultipleValue);
+    }
+
+    return TextLayoutLineHeight::absolute(_lineHeight * displayScale);
 }
 
 void TextLayer::removeOnTapGestureRecognizer() {
@@ -444,7 +518,7 @@ Size TextLayer::measureText(Size maxSize,
                             TextDecoration textDecoration,
                             TextOverflow textOverflow,
                             int numberOfLines,
-                            Scalar lineHeightMultiple,
+                            TextLayoutLineHeight lineHeight,
                             Scalar letterSpacing,
                             bool isRightToLeft,
                             bool adjustsFontSizeToFitWidth,
@@ -461,7 +535,7 @@ Size TextLayer::measureText(Size maxSize,
                                      textDecoration,
                                      textOverflow,
                                      numberOfLines,
-                                     lineHeightMultiple,
+                                     lineHeight,
                                      letterSpacing,
                                      isRightToLeft,
                                      adjustsFontSizeToFitWidth,
@@ -483,7 +557,7 @@ Ref<TextLayout> TextLayer::makeTextLayout(Size maxSize,
                                           TextDecoration textDecoration,
                                           TextOverflow textOverflow,
                                           int numberOfLines,
-                                          Scalar lineHeightMultiple,
+                                          TextLayoutLineHeight lineHeight,
                                           Scalar letterSpacing,
                                           bool isRightToLeft,
                                           bool adjustsFontSizeToFitWidth,
@@ -502,7 +576,7 @@ Ref<TextLayout> TextLayer::makeTextLayout(Size maxSize,
                                       textDecoration,
                                       textOverflow,
                                       numberOfLines,
-                                      lineHeightMultiple,
+                                      lineHeight,
                                       letterSpacing,
                                       isRightToLeft,
                                       1.0,
@@ -525,7 +599,7 @@ Ref<TextLayout> TextLayer::makeTextLayout(Size maxSize,
                                              textDecoration,
                                              textOverflow,
                                              numberOfLines,
-                                             lineHeightMultiple,
+                                             lineHeight,
                                              letterSpacing,
                                              isRightToLeft,
                                              currentScale,
@@ -561,7 +635,7 @@ Ref<TextLayout> TextLayer::makeTextLayoutUnscaled(Size maxSize,
                                                   TextDecoration textDecoration,
                                                   TextOverflow textOverflow,
                                                   int numberOfLines,
-                                                  Scalar lineHeightMultiple,
+                                                  TextLayoutLineHeight lineHeight,
                                                   Scalar letterSpacing,
                                                   bool isRightToLeft,
                                                   double fontScale,
@@ -570,7 +644,8 @@ Ref<TextLayout> TextLayer::makeTextLayoutUnscaled(Size maxSize,
                                                   Scalar displayScale,
                                                   Scalar dynamicTypeScale,
                                                   const Ref<FontManager>& fontManager) {
-    TextLayoutBuilder builder(textAlign, textOverflow, maxSize, numberOfLines, fontManager, isRightToLeft);
+    TextLayoutBuilder builder(
+        textAlign, textOverflow, maxSize, numberOfLines, fontManager, isRightToLeft, displayScale, false);
     builder.setIncludeTextBlob(includeTextBlob);
 
     auto textFont = font;
@@ -593,21 +668,28 @@ Ref<TextLayout> TextLayer::makeTextLayoutUnscaled(Size maxSize,
             auto resolvedFontScale =
                 resolveFontScale(resolvedFont, fontScale, respectDynamicType, displayScale, dynamicTypeScale);
             auto resolvedTextDecoration = style.textDecoration ? style.textDecoration.value() : textDecoration;
+            std::optional<TextBackgroundStyle> backgroundStyle;
+            if (style.backgroundColor) {
+                backgroundStyle = TextBackgroundStyle{style.backgroundColor,
+                                                      style.backgroundPadding.value_or(TextBackgroundPadding()),
+                                                      style.backgroundBorderRadius.value_or(BorderRadius())};
+            }
 
             builder.append(content.toStringView(),
                            resolvedFont->withScale(resolvedFontScale),
-                           lineHeightMultiple,
+                           lineHeight,
                            letterSpacing,
                            resolvedTextDecoration,
                            style.onTap,
-                           style.color);
+                           style.color,
+                           backgroundStyle);
         }
     } else if (!text.isEmpty() && textFont != nullptr) {
         auto resolvedFontScale =
             resolveFontScale(textFont, fontScale, respectDynamicType, displayScale, dynamicTypeScale);
         builder.append(text.toStringView(),
                        textFont->withScale(resolvedFontScale),
-                       lineHeightMultiple,
+                       lineHeight,
                        letterSpacing,
                        textDecoration,
                        nullptr,

@@ -286,6 +286,7 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
 
 - (CGSize)sizeThatFits:(CGSize)size
 {
+    [self _updateAttributedTextIfNeeded];
     CGSize placeholderSize = [_placeholder sizeThatFits:size];
     CGSize textViewSize = [_textView sizeThatFits:size];
     CGFloat finalWidth = MAX(placeholderSize.width, textViewSize.width);

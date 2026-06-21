@@ -646,8 +646,9 @@ const labelStyle = new Style<Label>({
   // Text layout
   numberOfLines: 2,        // number (0=unlimited)
   textAlign: 'left',       // 'left' | 'right' | 'center' | 'justified'
-  textDecoration: 'none',  // 'none' | 'strikethrough' | 'underline'
-  lineHeight: 1.2,         // number (ratio)
+  textDecoration: 'none',  // 'none' | 'strikethrough' | 'underline' | 'dashed-underline' | 'dotted-underline'
+  lineHeight: 24,          // number (points)
+  lineHeightMultiple: 1.2, // number (ratio)
   letterSpacing: 0,        // number (points)
   textOverflow: 'ellipsis',// 'ellipsis' | 'clip'
   
@@ -1286,4 +1287,3 @@ const mixedStyles = {
 - [The Style<> Guide](../docs/core-styling.md) - Usage patterns and best practices
 - [Quick Reference](api-quick-reference.md) - Common properties lookup
 - [Core Flexbox](../docs/core-flexbox.md) - Understanding flexbox layout
-

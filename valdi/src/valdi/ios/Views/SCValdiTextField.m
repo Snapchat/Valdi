@@ -83,6 +83,12 @@
     [super layoutSubviews];
 }
 
+- (CGSize)sizeThatFits:(CGSize)size
+{
+    [self _updateAttributedTextIfNeeded];
+    return [super sizeThatFits:size];
+}
+
 - (CGPoint)convertPoint:(CGPoint)point fromView:(UIView *)view
 {
     return [self valdi_convertPoint:point fromView:view];
@@ -361,9 +367,7 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextField
             // NSTextAlignmentNatural switches alignment based on keyboard language instead of app language,
             // introduce fix under COF to use NSTextAlignmentLeft and NSTextAlignmentRight
             // instead of Natural (the NSTextAlignment used for left)
-            if (resolvedTextAlignment != NSTextAlignmentCenter &&
-                resolvedTextAlignment != NSTextAlignmentJustified) {
-
+            if (resolvedTextAlignment == NSTextAlignmentNatural) {
                 if (traitCollection.layoutDirection == UITraitEnvironmentLayoutDirectionRightToLeft) {
                     resolvedTextAlignment = NSTextAlignmentRight;
                 }

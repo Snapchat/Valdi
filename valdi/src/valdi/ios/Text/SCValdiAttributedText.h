@@ -14,7 +14,9 @@ typedef NS_ENUM(NSUInteger, SCValdiTextDecoration) {
     SCValdiTextDecorationUnset,
     SCValdiTextDecorationNone,
     SCValdiTextDecorationUnderline,
-    SCValdiTextDecorationStrikethrough
+    SCValdiTextDecorationStrikethrough,
+    SCValdiTextDecorationDashedUnderline,
+    SCValdiTextDecorationDottedUnderline
 };
 
 @protocol SCValdiFunction;
@@ -58,6 +60,12 @@ typedef NS_ENUM(NSUInteger, SCValdiTextDecoration) {
  or nil if unspecified.
  */
 - (nullable UIColor*)colorAtIndex:(NSUInteger)index;
+
+/**
+ Return the text background color for the part at the given index,
+ or nil if unspecified.
+ */
+- (nullable UIColor*)backgroundColorAtIndex:(NSUInteger)index;
 
 /**
  Return the onTap callback for the part the given index,

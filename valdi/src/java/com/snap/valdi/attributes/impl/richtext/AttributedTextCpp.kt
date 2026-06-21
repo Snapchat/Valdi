@@ -28,12 +28,23 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
             TEXT_DECORATION_NONE -> TextDecoration.NONE
             TEXT_DECORATION_UNDERLINE -> TextDecoration.UNDERLINE
             TEXT_DECORATION_STRIKETHROUGH -> TextDecoration.STRIKETHROUGH
+            TEXT_DECORATION_DASHED_UNDERLINE -> TextDecoration.DASHED_UNDERLINE
+            TEXT_DECORATION_DOTTED_UNDERLINE -> TextDecoration.DOTTED_UNDERLINE
             else -> ValdiFatalException.handleFatal("Invalid textDecoration $textDecorationInt")
         }
     }
 
     override fun getColorAtIndex(index: Int): Int? {
         val colorLong = nativeGetColor(native.nativeHandle, index)
+        if (colorLong == Long.MIN_VALUE) {
+            return null
+        }
+
+        return ColorConversions.fromRGBA(colorLong)
+    }
+
+    override fun getBackgroundColorAtIndex(index: Int): Int? {
+        val colorLong = nativeGetBackgroundColor(native.nativeHandle, index)
         if (colorLong == Long.MIN_VALUE) {
             return null
         }
@@ -114,6 +125,8 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
         private const val TEXT_DECORATION_NONE = 0
         private const val TEXT_DECORATION_UNDERLINE = 1
         private const val TEXT_DECORATION_STRIKETHROUGH = 2
+        private const val TEXT_DECORATION_DASHED_UNDERLINE = 3
+        private const val TEXT_DECORATION_DOTTED_UNDERLINE = 4
         @JvmStatic
         private external fun nativeGetPartsSize(nativeHandle: Long): Int
         @JvmStatic
@@ -124,6 +137,8 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
         private external fun nativeGetTextDecoration(nativeHandle: Long, index: Int): Int
         @JvmStatic
         private external fun nativeGetColor(nativeHandle: Long, index: Int): Long
+        @JvmStatic
+        private external fun nativeGetBackgroundColor(nativeHandle: Long, index: Int): Long
         @JvmStatic
         private external fun nativeGetOutlineColor(nativeHandle: Long, index: Int): Long
         @JvmStatic

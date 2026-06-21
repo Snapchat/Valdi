@@ -154,8 +154,43 @@ static Scalar computeAdvance(const ShapedGlyph* shapedGlyphs, size_t length) {
     return advance;
 }
 
+static size_t appendUniqueColor(std::vector<std::optional<Color>>& colors, const std::optional<Color>& color) {
+    for (size_t i = 0; i < colors.size(); i++) {
+        if (colors[i] == color) {
+            return i;
+        }
+    }
+
+    auto previousSize = colors.size();
+    colors.emplace_back(color);
+    return previousSize;
+}
+
+static size_t appendUniqueBackgroundStyle(std::vector<TextBackgroundStyle>& styles, const TextBackgroundStyle& style) {
+    for (size_t i = 0; i < styles.size(); i++) {
+        if (styles[i] == style) {
+            return i;
+        }
+    }
+
+    auto previousSize = styles.size();
+    styles.emplace_back(style);
+    return previousSize;
+}
+
 TextLayoutSpecs TextLayoutSpecs::withFont(const Ref<Font>& newFont) const {
-    return TextLayoutSpecs(newFont, attachment, lineHeightMultiple, letterSpacing, textDecoration, colorIndex);
+    return TextLayoutSpecs(
+        newFont, attachment, lineHeight, letterSpacing, textDecoration, colorIndex, backgroundStyleIndex);
+}
+
+LineMetrics TextLayoutLineHeight::getLineMetrics(const FontMetrics& fontMetrics) const {
+    auto lineHeightMultiple = _value;
+    if (_kind == TextLayoutLineHeight::Kind::Absolute) {
+        auto fontLineHeight = fontMetrics.descent - fontMetrics.ascent;
+        lineHeightMultiple = fontLineHeight > 0 ? _value / fontLineHeight : 1.0f;
+    }
+
+    return LineMetrics(fontMetrics.ascent * lineHeightMultiple, fontMetrics.descent * lineHeightMultiple);
 }
 
 TextLayoutBuilder::TextLayoutBuilder(TextAlign textAlign,
@@ -164,6 +199,7 @@ TextLayoutBuilder::TextLayoutBuilder(TextAlign textAlign,
                                      int maxLinesCount,
                                      const Ref<FontManager>& fontManager,
                                      bool isRightToLeft,
+                                     Scalar displayScale,
                                      bool prioritizeFewerFonts)
     : _textAlign(textAlign),
       _textOverflow(textOverflow),
@@ -172,6 +208,7 @@ TextLayoutBuilder::TextLayoutBuilder(TextAlign textAlign,
       _maxLinesCount(maxLinesCount),
       _isRightToLeft(isRightToLeft),
       _prioritizeFewerFonts(prioritizeFewerFonts),
+      _displayScale(displayScale),
       _fontManager(fontManager),
       _shaper(fontManager != nullptr ? fontManager->getTextShaper() : nullptr) {}
 
@@ -189,6 +226,7 @@ void TextLayoutBuilder::appendSegment(
     segment.font = specs.font;
     segment.attachment = specs.attachment;
     segment.colorIndex = specs.colorIndex;
+    segment.backgroundStyleIndex = specs.backgroundStyleIndex;
     segment.isRightToLeft = isRightToLeft;
     segment.textDecoration = specs.textDecoration;
 }
@@ -210,16 +248,31 @@ bool TextLayoutBuilder::computeLineMetrics(const TextLayoutSpecs& specs,
                                            const FontMetrics& fontMetrics,
                                            LineMetrics& output) {
     output = _currentLineMetrics;
-    output.join(
-        LineMetrics(fontMetrics.ascent * specs.lineHeightMultiple, fontMetrics.descent * specs.lineHeightMultiple));
+    auto lineMetrics = specs.lineHeight.getLineMetrics(fontMetrics);
+
+    if (const auto* backgroundStyle = getBackgroundStyle(specs.backgroundStyleIndex)) {
+        lineMetrics.ascent -= backgroundStyle->padding.top;
+        lineMetrics.descent += backgroundStyle->padding.bottom;
+    }
+
+    output.join(lineMetrics);
     return _position.y + output.height() <= _maxSize.height;
 }
 
 Rect TextLayoutBuilder::computeChunkBounds(const TextLayoutSpecs& specs,
                                            Scalar advance,
-                                           const FontMetrics& fontMetrics) {
-    auto bounds = Rect::makeLTRB(
-        0, fontMetrics.ascent * specs.lineHeightMultiple, advance, fontMetrics.descent * specs.lineHeightMultiple);
+                                           const FontMetrics& fontMetrics) const {
+    auto left = static_cast<Scalar>(0);
+    auto right = advance;
+    auto lineMetrics = specs.lineHeight.getLineMetrics(fontMetrics);
+
+    if (const auto* backgroundStyle = getBackgroundStyle(specs.backgroundStyleIndex)) {
+        lineMetrics.ascent -= backgroundStyle->padding.top;
+        right += backgroundStyle->horizontalPadding();
+        lineMetrics.descent += backgroundStyle->padding.bottom;
+    }
+
+    auto bounds = Rect::makeLTRB(left, lineMetrics.ascent, right, lineMetrics.descent);
 
     return bounds;
 }
@@ -408,6 +461,9 @@ void TextLayoutBuilder::processUnidirectionalRun(const TextLayoutSpecs& specs,
 
     const auto* shapedGlyphIt = shapeResult.glyphsStart;
     const auto& fontMetrics = specs.font->metrics();
+    const auto* backgroundStyle = getBackgroundStyle(specs.backgroundStyleIndex);
+    const auto backgroundHorizontalPadding =
+        backgroundStyle != nullptr ? backgroundStyle->horizontalPadding() : static_cast<Scalar>(0);
     LineMetrics lineMetrics;
 
     // Resolve all the segments of our blob.
@@ -421,7 +477,11 @@ void TextLayoutBuilder::processUnidirectionalRun(const TextLayoutSpecs& specs,
         }
 
         // Consume the unicode string until we reach the max size or a new line character
-        auto result = lineBreak(shapedGlyphIt, shapeResult.glyphsEnd, _lineBreakStrategy, _maxSize.width, _position.x);
+        auto result = lineBreak(shapedGlyphIt,
+                                shapeResult.glyphsEnd,
+                                _lineBreakStrategy,
+                                _maxSize.width,
+                                _position.x + backgroundHorizontalPadding);
 
         auto shouldProcessEllipsis = false;
         if (result.reachedEndLine && shouldProcessEllipsisAfterLineBreak(shapedGlyphIt, result.end, result.next)) {
@@ -429,8 +489,11 @@ void TextLayoutBuilder::processUnidirectionalRun(const TextLayoutSpecs& specs,
             // In this case we actually want to break by character so that we can remove
             // the trailing characters to fit the ellipsis.
             shouldProcessEllipsis = true;
-            result = lineBreak(
-                shapedGlyphIt, shapeResult.glyphsEnd, LineBreakStrategy::ByCharacter, _maxSize.width, _position.x);
+            result = lineBreak(shapedGlyphIt,
+                               shapeResult.glyphsEnd,
+                               LineBreakStrategy::ByCharacter,
+                               _maxSize.width,
+                               _position.x + backgroundHorizontalPadding);
         }
 
         auto consumedGlyphCount = result.end - shapedGlyphIt;
@@ -445,7 +508,7 @@ void TextLayoutBuilder::processUnidirectionalRun(const TextLayoutSpecs& specs,
             auto advance = computeAdvance(shapedGlyphIt, consumedGlyphCount);
             auto bounds = computeChunkBounds(specs, advance, fontMetrics);
             appendSegment(specs, shapedGlyphIt - _glyphs.data(), consumedGlyphCount, bounds, isRTL);
-            _position.x += advance;
+            _position.x += bounds.width();
         }
 
         if (result.reachedEndLine) {
@@ -476,24 +539,34 @@ void TextLayoutBuilder::processUnidirectionalRun(const TextLayoutSpecs& specs,
 }
 
 size_t TextLayoutBuilder::appendColor(const std::optional<Color>& color) {
-    for (size_t i = 0; i < _colors.size(); i++) {
-        if (_colors[i] == color) {
-            return i;
-        }
+    return appendUniqueColor(_colors, color);
+}
+
+std::optional<size_t> TextLayoutBuilder::appendBackgroundStyle(
+    const std::optional<TextBackgroundStyle>& backgroundStyle) {
+    if (!backgroundStyle || !backgroundStyle->hasBackground()) {
+        return std::nullopt;
     }
 
-    auto previousSize = _colors.size();
-    _colors.emplace_back(color);
-    return previousSize;
+    return appendUniqueBackgroundStyle(_backgroundStyles, backgroundStyle.value());
+}
+
+const TextBackgroundStyle* TextLayoutBuilder::getBackgroundStyle(std::optional<size_t> backgroundStyleIndex) const {
+    if (!backgroundStyleIndex) {
+        return nullptr;
+    }
+
+    return &_backgroundStyles[backgroundStyleIndex.value()];
 }
 
 size_t TextLayoutBuilder::append(const std::string_view& text,
                                  const Ref<Font>& font,
-                                 Scalar lineHeightMultiple,
+                                 TextLayoutLineHeight lineHeight,
                                  Scalar letterSpacing,
                                  TextDecoration textDecoration,
                                  Ref<Valdi::RefCountable> attachment,
-                                 std::optional<Color> color) {
+                                 std::optional<Color> color,
+                                 std::optional<TextBackgroundStyle> backgroundStyle) {
     if (font == nullptr || text.empty()) {
         return 0;
     }
@@ -507,11 +580,12 @@ size_t TextLayoutBuilder::append(const std::string_view& text,
 
     auto& entry = _entries.emplace_back();
     entry.specs.font = font;
-    entry.specs.lineHeightMultiple = lineHeightMultiple;
+    entry.specs.lineHeight = lineHeight;
     entry.specs.letterSpacing = letterSpacing;
     entry.specs.textDecoration = textDecoration;
     entry.specs.attachment = std::move(attachment);
     entry.specs.colorIndex = appendColor(color);
+    entry.specs.backgroundStyleIndex = appendBackgroundStyle(backgroundStyle);
     entry.charactersStart = charactersStart;
     entry.charactersEnd = charactersStart + unicodeCount;
 
@@ -923,8 +997,20 @@ void TextLayoutBuilder::buildSegments() {
     VALDI_TRACE("SnapDrawing.shape");
     for (const auto& shapeableSegment : resolvedShapeableSegments.shapeableSegments) {
         if (shapeableSegment.resolvedFont != nullptr) {
+            auto specs = shapeableSegment.entry->specs.withFont(shapeableSegment.resolvedFont);
+            if (const auto* resolvedBackgroundStyle = getBackgroundStyle(specs.backgroundStyleIndex)) {
+                auto backgroundStyle = *resolvedBackgroundStyle;
+                if (shapeableSegment.charactersStart != shapeableSegment.entry->charactersStart) {
+                    backgroundStyle.padding.left = 0;
+                }
+                if (shapeableSegment.charactersEnd != shapeableSegment.entry->charactersEnd) {
+                    backgroundStyle.padding.right = 0;
+                }
+                specs.backgroundStyleIndex = appendBackgroundStyle(backgroundStyle);
+            }
+
             const auto* characters = _characters.data() + shapeableSegment.charactersStart;
-            processUnidirectionalRun(shapeableSegment.entry->specs.withFont(shapeableSegment.resolvedFont),
+            processUnidirectionalRun(specs,
                                      shapeableSegment.entry->specs.font,
                                      characters,
                                      shapeableSegment.charactersEnd - shapeableSegment.charactersStart,
@@ -1119,35 +1205,69 @@ void TextLayoutBuilder::doJustify(Scalar containerWidth) {
         });
 }
 
-void TextLayoutBuilder::appendDecorationIfNeeded(std::vector<TextLayoutDecorationEntry>& decorations,
+void TextLayoutBuilder::appendBackgroundIfNeeded(std::vector<TextLayoutVisualEntry>& visualEntries,
+                                                 const TextLayoutBuilderSegment& segment,
+                                                 Scalar resolvedSegmentX,
+                                                 Scalar /* resolvedSegmentY */) const {
+    const auto* backgroundStyle = getBackgroundStyle(segment.backgroundStyleIndex);
+    if (backgroundStyle == nullptr) {
+        return;
+    }
+
+    visualEntries.emplace_back(Rect::makeXYWH(resolvedSegmentX,
+                                              segment.drawPosition.y,
+                                              segment.bounds.width(),
+                                              segment.bounds.height()),
+                               true,
+                               backgroundStyle->color,
+                               TextLayoutVisualEntryKindBackground,
+                               TextLayoutDecorationStyleSolid,
+                               backgroundStyle->borderRadius);
+}
+
+void TextLayoutBuilder::appendDecorationIfNeeded(std::vector<TextLayoutVisualEntry>& visualEntries,
                                                  const TextLayoutBuilderSegment& segment,
                                                  const std::optional<Color>& color,
                                                  Scalar resolvedSegmentX,
-                                                 Scalar resolvedSegmentY) {
+                                                 Scalar resolvedSegmentY) const {
+    constexpr auto kDottedUnderlineStrokeWidth = 2.0f;
+    constexpr auto kDottedUnderlineOffset = 0.5f;
+
     switch (segment.textDecoration) {
         case TextDecorationNone:
             break;
         case TextDecorationStrikethrough: {
             const auto& metrics = segment.font->metrics();
 
-            auto& decorationEntry = decorations.emplace_back();
-            decorationEntry.bounds = Rect::makeXYWH(resolvedSegmentX,
-                                                    resolvedSegmentY + metrics.strikeoutPosition,
-                                                    segment.bounds.width(),
-                                                    metrics.strikeoutThickness);
-            decorationEntry.predraw = false;
-            decorationEntry.color = color;
+            auto& visualEntry = visualEntries.emplace_back();
+            visualEntry.bounds = Rect::makeXYWH(resolvedSegmentX,
+                                                resolvedSegmentY + metrics.strikeoutPosition,
+                                                segment.bounds.width(),
+                                                metrics.strikeoutThickness);
+            visualEntry.predraw = false;
+            visualEntry.color = color;
         } break;
-        case TextDecorationUnderline: {
+        case TextDecorationUnderline:
+        case TextDecorationDashedUnderline:
+        case TextDecorationDottedUnderline: {
             const auto& metrics = segment.font->metrics();
+            const auto underlineThickness = segment.textDecoration == TextDecorationDottedUnderline
+                ? kDottedUnderlineStrokeWidth * _displayScale
+                : metrics.underlineThickness;
+            const auto underlinePosition = segment.textDecoration == TextDecorationDottedUnderline
+                ? underlineThickness + (kDottedUnderlineOffset * _displayScale) - (underlineThickness / 2.0f)
+                : metrics.underlinePosition;
 
-            auto& decorationEntry = decorations.emplace_back();
-            decorationEntry.bounds = Rect::makeXYWH(resolvedSegmentX,
-                                                    resolvedSegmentY + metrics.underlinePosition,
-                                                    segment.bounds.width(),
-                                                    metrics.underlineThickness);
-            decorationEntry.predraw = true;
-            decorationEntry.color = color;
+            auto& visualEntry = visualEntries.emplace_back();
+            visualEntry.bounds =
+                Rect::makeXYWH(resolvedSegmentX, resolvedSegmentY + underlinePosition, segment.bounds.width(), underlineThickness);
+            visualEntry.predraw = true;
+            visualEntry.color = color;
+            if (segment.textDecoration == TextDecorationDashedUnderline) {
+                visualEntry.style = TextLayoutDecorationStyleDashed;
+            } else if (segment.textDecoration == TextDecorationDottedUnderline) {
+                visualEntry.style = TextLayoutDecorationStyleDotted;
+            }
         } break;
     }
 }
@@ -1164,7 +1284,7 @@ Ref<TextLayout> TextLayoutBuilder::build() {
     std::vector<TextLayoutEntry> entries;
     entries.reserve(_colors.size());
 
-    std::vector<TextLayoutDecorationEntry> decorations;
+    std::vector<TextLayoutVisualEntry> visualEntries;
     std::vector<TextLayoutAttachment> attachments;
 
     /**
@@ -1199,7 +1319,8 @@ Ref<TextLayout> TextLayoutBuilder::build() {
             auto resolvedSegmentX = segment.drawPosition.x + lineOffset.horizontalOffset;
             auto resolvedSegmentY = segment.drawPosition.y + baseline;
 
-            appendDecorationIfNeeded(decorations, segment, layoutEntry.color, resolvedSegmentX, resolvedSegmentY);
+            appendBackgroundIfNeeded(visualEntries, segment, resolvedSegmentX, resolvedSegmentY);
+            appendDecorationIfNeeded(visualEntries, segment, layoutEntry.color, resolvedSegmentX, resolvedSegmentY);
 
             auto resolvedBounds = Rect::makeXYWH(
                 resolvedSegmentX, segment.drawPosition.y, segment.bounds.width(), segment.bounds.height());
@@ -1235,6 +1356,9 @@ Ref<TextLayout> TextLayoutBuilder::build() {
                 auto* outGlyphs = run.glyphs;
 
                 Scalar drawX = resolvedSegmentX;
+                if (const auto* backgroundStyle = getBackgroundStyle(segment.backgroundStyleIndex)) {
+                    drawX += backgroundStyle->padding.left;
+                }
                 Scalar drawY = resolvedSegmentY;
 
                 while (glyphsIt != glyphsEnd) {
@@ -1261,7 +1385,7 @@ Ref<TextLayout> TextLayoutBuilder::build() {
     }
 
     return Valdi::makeShared<TextLayout>(
-        _maxSize, std::move(entries), std::move(decorations), std::move(attachments), !_reachedMaxLines);
+        _maxSize, std::move(entries), std::move(visualEntries), std::move(attachments), !_reachedMaxLines);
 }
 
 } // namespace snap::drawing

@@ -1,0 +1,87 @@
+package com.snap.valdi.attributes.impl.richtext
+
+import android.content.res.Resources
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.PathEffect
+import android.text.Spanned
+import android.text.TextPaint
+import android.text.style.LineBackgroundSpan
+
+abstract class PatternUnderlineSpan : LineBackgroundSpan {
+    final override fun drawBackground(
+        canvas: Canvas,
+        paint: Paint,
+        left: Int,
+        right: Int,
+        top: Int,
+        baseline: Int,
+        bottom: Int,
+        text: CharSequence,
+        start: Int,
+        end: Int,
+        lineNumber: Int
+    ) {
+        val spanned = text as? Spanned ?: return
+        val spanStart = spanned.getSpanStart(this).coerceAtLeast(start)
+        val spanEnd = spanned.getSpanEnd(this).coerceAtMost(end)
+        if (spanStart >= spanEnd) {
+            return
+        }
+
+        val startX = left + paint.measureText(text.subSequence(start, spanStart).toString())
+        val endX = left + paint.measureText(text.subSequence(start, spanEnd).toString())
+        val density = resolveDensity(paint)
+        val strokeWidth = resolveStrokeWidth(paint, density)
+        val resolvedStartX = resolveStartX(startX, strokeWidth, density)
+        val resolvedEndX = resolveEndX(endX, strokeWidth, density)
+        if (resolvedStartX > resolvedEndX) {
+            return
+        }
+
+        val underlineY = resolveUnderlineY(paint, baseline, strokeWidth, density)
+        val previousPathEffect = paint.pathEffect
+        val previousStyle = paint.style
+        val previousStrokeWidth = paint.strokeWidth
+
+        paint.style = resolvePaintStyle()
+        paint.strokeWidth = strokeWidth
+        paint.pathEffect = createPathEffect(strokeWidth, density)
+        canvas.drawLine(resolvedStartX, underlineY, resolvedEndX, underlineY, paint)
+        paint.pathEffect = previousPathEffect
+        paint.style = previousStyle
+        paint.strokeWidth = previousStrokeWidth
+    }
+
+    protected open fun resolveStrokeWidth(paint: Paint, density: Float): Float {
+        return paint.strokeWidth.coerceAtLeast(1f)
+    }
+
+    protected open fun resolveStartX(startX: Float, strokeWidth: Float, density: Float): Float {
+        return startX
+    }
+
+    protected open fun resolveEndX(endX: Float, strokeWidth: Float, density: Float): Float {
+        return endX
+    }
+
+    protected open fun resolveUnderlineY(
+        paint: Paint,
+        baseline: Int,
+        strokeWidth: Float,
+        density: Float
+    ): Float {
+        return baseline + paint.fontMetrics.descent * 0.5f
+    }
+
+    protected open fun resolvePaintStyle(): Paint.Style {
+        return Paint.Style.STROKE
+    }
+
+    protected abstract fun createPathEffect(strokeWidth: Float, density: Float): PathEffect
+
+    private fun resolveDensity(paint: Paint): Float {
+        val textPaintDensity = (paint as? TextPaint)?.density ?: 0f
+        return textPaintDensity.takeIf { it > 0f } ?: Resources.getSystem().displayMetrics.density
+    }
+}

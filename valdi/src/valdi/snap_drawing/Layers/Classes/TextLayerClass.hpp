@@ -42,6 +42,8 @@ public:
 
     DECLARE_DOUBLE_ATTRIBUTE(TextLayer, minimumScaleFactor)
 
+    DECLARE_DOUBLE_ATTRIBUTE(TextLayer, lineHeightMultiple)
+
     DECLARE_DOUBLE_ATTRIBUTE(TextLayer, lineHeight)
 
     DECLARE_DOUBLE_ATTRIBUTE(TextLayer, letterSpacing)

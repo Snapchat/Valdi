@@ -10,9 +10,21 @@ export interface AttributedTextAnimationTransform {
   opacity?: number;
 }
 
+export interface AttributedTextBackgroundPadding {
+  left?: number;
+  top?: number;
+  right?: number;
+  bottom?: number;
+}
+
+export type AttributedTextBackgroundPaddingValue = number | AttributedTextBackgroundPadding;
+
 export interface AttributedTextAttributes {
   font?: string;
   color?: string;
+  backgroundColor?: string;
+  backgroundPadding?: AttributedTextBackgroundPaddingValue;
+  backgroundBorderRadius?: number | string;
   textDecoration?: LabelTextDecoration;
   onTap?: AttributedTextOnTap;
   // onLayout currently supports single line text only.
@@ -87,6 +99,18 @@ export const enum AttributedTextEntryType {
    * Pushes a per-part animation transform at the top of the style stack.
    */
   PushAnimationTransform,
+  /**
+   * Pushes a background color at the top of the style stack.
+   */
+  PushBackgroundColor,
+  /**
+   * Pushes background padding at the top of the style stack.
+   */
+  PushBackgroundPadding,
+  /**
+   * Pushes background border radius at the top of the style stack.
+   */
+  PushBackgroundBorderRadius,
 }
 
 export type AttributedTextChunk =
@@ -96,6 +120,7 @@ export type AttributedTextChunk =
   | AttributedTextOnTap
   | AttributedTextOnLayout
   | AttributedTextInlineImageAttachment
+  | AttributedTextBackgroundPaddingValue
   | AttributedTextAnimationTransform;
 
 export type AttributedText = AttributedTextChunk[];

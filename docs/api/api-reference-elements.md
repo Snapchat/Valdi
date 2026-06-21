@@ -977,13 +977,18 @@ All properties from [Layout Attributes](#layout), plus:
   - In RTL locales, "right" will align text to the left of the label's bounds
 - Default: `'left'`
 
-**`textDecoration`**: `'none' | 'strikethrough' | 'underline'`
+**`textDecoration`**: `'none' | 'strikethrough' | 'underline' | 'dashed-underline' | 'dotted-underline'`
 - Optionally adds a visual decoration effect to the label's text.
 - Default: `undefined`
 
 **`lineHeight`**: `number`
+- Explicit rendering size of each line of the label, in points.
+- When both `lineHeight` and `lineHeightMultiple` are provided, `lineHeight` takes precedence.
+- Default: `undefined`
+
+**`lineHeightMultiple`**: `number`
 - Rendering size of each line of the label, this value is a ratio of the font height.
-- If the lineHeight ratio is above 1, spacing is added on top of each line of the text.
+- If the `lineHeightMultiple` value is above 1, spacing is added on top of each line of the text.
 - Example: A value of 2 will double the height of each line.
 - Default: `1`
 
@@ -1599,7 +1604,7 @@ type LayoutAccessibilityNavigation =
 #### Label Enums
 
 ```typescript
-type LabelTextDecoration = 'none' | 'strikethrough' | 'underline';
+type LabelTextDecoration = 'none' | 'strikethrough' | 'underline' | 'dashed-underline' | 'dotted-underline';
 type LabelTextAlign = 'left' | 'right' | 'center' | 'justified';
 type LabelFontWeight = 'light' | 'normal' | 'medium' | 'demi-bold' | 'bold' | 'black';
 type LabelFontStyle = 'normal' | 'italic';
@@ -1756,4 +1761,3 @@ type BlurStyle =
 - [Core Text Guide](../docs/core-text.md) - Working with text and inputs
 - [Core Flexbox](../docs/core-flexbox.md) - Understanding flexbox layout
 - [Advanced Animations](../docs/advanced-animations.md) - Animating properties
-

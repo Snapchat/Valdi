@@ -37,6 +37,7 @@ class TextViewAttributesBinder(
             CompositeAttributePart("textDecoration", AttributeType.STRING, true, false),
             CompositeAttributePart("textAlign", AttributeType.STRING, true, false),
             CompositeAttributePart("font", AttributeType.STRING, true, true),
+            CompositeAttributePart("lineHeightMultiple", AttributeType.DOUBLE, true, true),
             CompositeAttributePart("lineHeight", AttributeType.DOUBLE, true, true),
             CompositeAttributePart("numberOfLines", AttributeType.DOUBLE, true, true),
             CompositeAttributePart("letterSpacing", AttributeType.DOUBLE, true, true),
@@ -57,11 +58,12 @@ class TextViewAttributesBinder(
         val textDecoration = valuesArray[1] as? String
         val textAlign = valuesArray[2] as? String
         val font = valuesArray[3] as? String
-        val lineHeight = valuesArray[4] as? Double
-        val numberOfLines = valuesArray[5] as? Double
-        val letterSpacing = valuesArray[6] as? Double
-        val adjustsFontSizeToFitWidth = valuesArray[7] as? Boolean
-        val minimumScaleFactor = valuesArray[8] as? Double
+        val lineHeightMultiple = valuesArray[4] as? Double
+        val lineHeight = valuesArray[5] as? Double
+        val numberOfLines = valuesArray[6] as? Double
+        val letterSpacing = valuesArray[7] as? Double
+        val adjustsFontSizeToFitWidth = valuesArray[8] as? Boolean
+        val minimumScaleFactor = valuesArray[9] as? Double
 
         val attributes = defaultAttributes.copy()
         if (color != null) {
@@ -80,6 +82,7 @@ class TextViewAttributesBinder(
             attributes.applyFont(font)
         }
 
+        attributes.lineHeightMultiple = lineHeightMultiple?.toFloat()
         attributes.lineHeight = lineHeight?.toFloat()
         attributes.numberOfLines = numberOfLines?.toInt()
         attributes.letterSpacing = letterSpacing?.toFloat()

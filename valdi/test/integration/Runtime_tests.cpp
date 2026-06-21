@@ -6069,9 +6069,9 @@ TEST_P(RuntimeFixture, supportsTextAttribute) {
 
     ASSERT_TRUE(attributedText != nullptr);
 
-    ASSERT_EQ("Hello World!?!", attributedText->toString());
+    ASSERT_EQ("Hello World Code!?!", attributedText->toString());
 
-    ASSERT_EQ(static_cast<size_t>(6), attributedText->getPartsSize());
+    ASSERT_EQ(static_cast<size_t>(8), attributedText->getPartsSize());
 
     {
         ASSERT_EQ(STRING_LITERAL("Hello"), attributedText->getContentAtIndex(0));
@@ -6080,6 +6080,7 @@ TEST_P(RuntimeFixture, supportsTextAttribute) {
         ASSERT_EQ(std::nullopt, style.font);
         ASSERT_EQ(TextDecoration::Unset, style.textDecoration);
         ASSERT_EQ(std::nullopt, style.color);
+        ASSERT_EQ(nullptr, style.background);
         ASSERT_EQ(nullptr, style.onTap);
     }
 
@@ -6088,8 +6089,12 @@ TEST_P(RuntimeFixture, supportsTextAttribute) {
         const auto& style = attributedText->getStyleAtIndex(1);
 
         ASSERT_EQ(std::make_optional(STRING_LITERAL("title")), style.font);
-        ASSERT_EQ(TextDecoration::Underline, style.textDecoration);
+        ASSERT_EQ(TextDecoration::DashedUnderline, style.textDecoration);
         ASSERT_EQ(std::make_optional(Valdi::Color(static_cast<int64_t>(0xFF0000FF))), style.color);
+        ASSERT_NE(nullptr, style.background);
+        ASSERT_EQ(std::make_optional(Valdi::Color(static_cast<int64_t>(0xFFFF00FF))), style.background->color);
+        ASSERT_EQ((Valdi::TextBackgroundPadding{1, 2, 3, 4}), style.background->padding);
+        ASSERT_EQ((Valdi::Dimension{5, Valdi::Dimension::Unit::Percent}), style.background->borderRadius);
         ASSERT_EQ(nullptr, style.onTap);
     }
 
@@ -6098,28 +6103,36 @@ TEST_P(RuntimeFixture, supportsTextAttribute) {
         const auto& style = attributedText->getStyleAtIndex(2);
 
         ASSERT_EQ(std::make_optional(STRING_LITERAL("title")), style.font);
-        ASSERT_EQ(TextDecoration::Underline, style.textDecoration);
+        ASSERT_EQ(TextDecoration::DashedUnderline, style.textDecoration);
         ASSERT_EQ(std::make_optional(Valdi::Color(static_cast<int64_t>(0xFF0000FF))), style.color);
+        ASSERT_NE(nullptr, style.background);
+        ASSERT_EQ(std::make_optional(Valdi::Color(static_cast<int64_t>(0xFFFF00FF))), style.background->color);
+        ASSERT_EQ((Valdi::TextBackgroundPadding{1, 2, 3, 4}), style.background->padding);
+        ASSERT_EQ((Valdi::Dimension{5, Valdi::Dimension::Unit::Percent}), style.background->borderRadius);
         ASSERT_EQ(nullptr, style.onTap);
     }
 
     {
-        ASSERT_EQ(STRING_LITERAL("!"), attributedText->getContentAtIndex(3));
+        ASSERT_EQ(STRING_LITERAL(" "), attributedText->getContentAtIndex(3));
         const auto& style = attributedText->getStyleAtIndex(3);
 
         ASSERT_EQ(std::nullopt, style.font);
         ASSERT_EQ(TextDecoration::Unset, style.textDecoration);
-        ASSERT_EQ(std::make_optional(Valdi::Color(static_cast<int64_t>(0x0000FFFF))), style.color);
+        ASSERT_EQ(std::nullopt, style.color);
+        ASSERT_EQ(nullptr, style.background);
         ASSERT_EQ(nullptr, style.onTap);
     }
 
     {
-        ASSERT_EQ(STRING_LITERAL("?"), attributedText->getContentAtIndex(4));
+        ASSERT_EQ(STRING_LITERAL("Code"), attributedText->getContentAtIndex(4));
         const auto& style = attributedText->getStyleAtIndex(4);
 
         ASSERT_EQ(std::nullopt, style.font);
         ASSERT_EQ(TextDecoration::Unset, style.textDecoration);
-        ASSERT_EQ(std::make_optional(Valdi::Color(static_cast<int64_t>(0x008000FF))), style.color);
+        ASSERT_EQ(std::nullopt, style.color);
+        ASSERT_NE(nullptr, style.background);
+        ASSERT_EQ(std::make_optional(Valdi::Color(static_cast<int64_t>(0xFFFF00FF))), style.background->color);
+        ASSERT_EQ((Valdi::TextBackgroundPadding{6, 6, 6, 6}), style.background->padding);
         ASSERT_EQ(nullptr, style.onTap);
     }
 
@@ -6130,6 +6143,29 @@ TEST_P(RuntimeFixture, supportsTextAttribute) {
         ASSERT_EQ(std::nullopt, style.font);
         ASSERT_EQ(TextDecoration::Unset, style.textDecoration);
         ASSERT_EQ(std::make_optional(Valdi::Color(static_cast<int64_t>(0x0000FFFF))), style.color);
+        ASSERT_EQ(nullptr, style.background);
+        ASSERT_EQ(nullptr, style.onTap);
+    }
+
+    {
+        ASSERT_EQ(STRING_LITERAL("?"), attributedText->getContentAtIndex(6));
+        const auto& style = attributedText->getStyleAtIndex(6);
+
+        ASSERT_EQ(std::nullopt, style.font);
+        ASSERT_EQ(TextDecoration::Unset, style.textDecoration);
+        ASSERT_EQ(std::make_optional(Valdi::Color(static_cast<int64_t>(0x008000FF))), style.color);
+        ASSERT_EQ(nullptr, style.background);
+        ASSERT_EQ(nullptr, style.onTap);
+    }
+
+    {
+        ASSERT_EQ(STRING_LITERAL("!"), attributedText->getContentAtIndex(7));
+        const auto& style = attributedText->getStyleAtIndex(7);
+
+        ASSERT_EQ(std::nullopt, style.font);
+        ASSERT_EQ(TextDecoration::Unset, style.textDecoration);
+        ASSERT_EQ(std::make_optional(Valdi::Color(static_cast<int64_t>(0x0000FFFF))), style.color);
+        ASSERT_EQ(nullptr, style.background);
         ASSERT_EQ(nullptr, style.onTap);
     }
 }
@@ -6147,7 +6183,7 @@ TEST_P(RuntimeFixture, supportsAccesibilityValueInTextAttribute) {
     auto labelViewNode = rootViewNode->getChildAt(0);
     auto accessibilityValue = labelViewNode->getAccessibilityValue();
 
-    ASSERT_EQ(STRING_LITERAL("Hello World!?!"), accessibilityValue);
+    ASSERT_EQ(STRING_LITERAL("Hello World Code!?!"), accessibilityValue);
 }
 
 TEST_P(RuntimeFixture, FLAKY_workerWorks) {

@@ -33,6 +33,9 @@ public:
 struct AttributedTextPartStyle {
     Ref<Font> font;
     std::optional<Color> color;
+    std::optional<Color> backgroundColor;
+    std::optional<TextBackgroundPadding> backgroundPadding;
+    std::optional<BorderRadius> backgroundBorderRadius;
     std::optional<TextDecoration> textDecoration;
     Ref<AttributedTextOnTapAttribute> onTap;
 };

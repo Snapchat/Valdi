@@ -101,9 +101,15 @@ class TextViewHelper(private val view: TextView,
     var fontAttributes: FontAttributes? = null
         set(value) {
             if (field != value) {
+                val text = textValue as? String
+                val didRequireAttributedText = textRequiresAttributedText(text, field)
+                val willRequireAttributedText = textRequiresAttributedText(text, value)
                 field = value
                 fontAttributesDirty = true
                 fontAutofitDirty = true
+                if (didRequireAttributedText != willRequireAttributedText) {
+                    textValueDirty = true
+                }
                 onDirty()
             }
         }
@@ -244,12 +250,20 @@ class TextViewHelper(private val view: TextView,
         // text value can re-bind without calling setText (e.g. identical content), in which case the
         // caret was never disturbed and must not be moved.
         val setTextGenerationBefore = editText?.setTextGeneration ?: 0
+        val text = textValue as? String
         if (isAttributedText) {
             if (fontAttributesDirty || textValueDirty) {
                 fontAttributesDirty = false
                 textValueDirty = false
                 applyFontAttributes(fontAttributes ?: defaultAttributes)
                 applyAttributedText(textValue as AttributedText)
+            }
+        } else if (textRequiresAttributedText(text)) {
+            if (fontAttributesDirty || textValueDirty) {
+                fontAttributesDirty = false
+                textValueDirty = false
+                applyFontAttributes(fontAttributes ?: defaultAttributes)
+                applyTextWithAttributes(text)
             }
         } else {
             if (fontAttributesDirty) {
@@ -259,7 +273,7 @@ class TextViewHelper(private val view: TextView,
 
             if (textValueDirty) {
                 textValueDirty = false
-                applyTextSimple(textValue as? String)
+                applyTextSimple(text)
             }
         }
 
@@ -317,6 +331,22 @@ class TextViewHelper(private val view: TextView,
             view.setTextAndSelection(text ?: "")
         } else {
             view.text = text
+        }
+    }
+
+    private fun textRequiresAttributedText(text: String?): Boolean {
+        return textRequiresAttributedText(text, fontAttributes)
+    }
+
+    private fun textRequiresAttributedText(text: String?, attributes: FontAttributes?): Boolean {
+        if (text.isNullOrEmpty() || attributes == null) {
+            return false
+        }
+
+        return when (attributes.textDecoration) {
+            TextDecoration.DASHED_UNDERLINE,
+            TextDecoration.DOTTED_UNDERLINE -> true
+            else -> false
         }
     }
 
@@ -462,6 +492,22 @@ class TextViewHelper(private val view: TextView,
         }
     }
 
+    private fun applyTextWithAttributes(text: String?) {
+        val spannable = convertTextToSpannable(text ?: "")
+        overlayAttributedTextSpannable = null
+        parsedAttributedText = null
+        clearOverlayLayoutCache()
+        attributedTextShapeSignature = null
+        if (view is ValdiTextView) {
+            view.clearAttributedText()
+        }
+        if (view is ValdiEditText) {
+            view.setTextAndSelection(spannable)
+        } else {
+            view.text = SpannableString(spannable)
+        }
+    }
+
     private fun buildAttributedTextShapeSignature(text: AttributedText, fontAttributes: FontAttributes): String {
         return buildString {
             append(fontAttributes.fontName).append('|')
@@ -573,6 +619,19 @@ class TextViewHelper(private val view: TextView,
     internal fun clearOverlayLayoutCache() {
         overlayLayoutCache?.recycle()
         overlayLayoutCache = null
+    }
+
+    private fun convertTextToSpannable(text: String): Spannable {
+        val spannable = SpannableString(text)
+        if (text.isEmpty()) {
+            return spannable
+        }
+
+        val attributes = fontAttributes ?: defaultAttributes
+        attributes.enumerateSpans(textConverter.fontManager, this, disableTextReplacement) {
+            spannable.setSpan(it, 0, spannable.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        return spannable
     }
 
     // Apply all known specified text rendering attributes
@@ -712,12 +771,23 @@ class TextViewHelper(private val view: TextView,
 
     // Compute the line height after the view.textSize has been resolved
     private fun applyLineHeight(attributes: FontAttributes) {
-        val lineHeightRatio = attributes.lineHeight
-        if (lineHeightRatio != null) {
+        val lineHeight = attributes.lineHeight
+        if (lineHeight != null) {
+            view.paint.getFontMetrics(fontMetrics)
+            val resolvedLineHeight = coordinateResolver.toPixelF(lineHeight)
+            val fontLineHeight = fontMetrics.descent - fontMetrics.ascent
+            val lineSpacingExtra = resolvedLineHeight - fontLineHeight
+            view.setLineSpacing(lineSpacingExtra, 1.0f)
+            view.setPadding(0, (lineSpacingExtra / 2.0f).toInt(), 0, 0)
+            return
+        }
+
+        val lineHeightMultiple = attributes.lineHeightMultiple
+        if (lineHeightMultiple != null) {
             view.paint.getFontMetrics(fontMetrics)
             val lineOverflow = (fontMetrics.bottom - fontMetrics.top) / (fontMetrics.descent - fontMetrics.ascent)
-            val lineHeightExtra = ((lineHeightRatio - 1) * view.textSize * lineOverflow).toInt()
-            view.setLineSpacing(0.0f, lineHeightRatio)
+            val lineHeightExtra = ((lineHeightMultiple - 1) * view.textSize * lineOverflow).toInt()
+            view.setLineSpacing(0.0f, lineHeightMultiple)
             view.setPadding(0, lineHeightExtra, 0, 0)
         } else {
             view.setLineSpacing(0.0f, 1.0f)
@@ -752,6 +822,8 @@ class TextViewHelper(private val view: TextView,
             paintFlags = when (textDecoration) {
                 TextDecoration.UNDERLINE -> flagUnderline
                 TextDecoration.STRIKETHROUGH -> flagStrike
+                TextDecoration.DASHED_UNDERLINE -> 0
+                TextDecoration.DOTTED_UNDERLINE -> 0
                 TextDecoration.NONE -> 0
             }
         }

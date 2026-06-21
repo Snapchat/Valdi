@@ -40,9 +40,22 @@ static std::optional<TextDecoration> parseTextDecoration(const Valdi::TextDecora
             return {TextDecorationNone};
         case Valdi::TextDecoration::Underline:
             return {TextDecorationUnderline};
+        case Valdi::TextDecoration::DashedUnderline:
+            return {TextDecorationDashedUnderline};
+        case Valdi::TextDecoration::DottedUnderline:
+            return {TextDecorationDottedUnderline};
         case Valdi::TextDecoration::Strikethrough:
             return {TextDecorationStrikethrough};
     }
+}
+
+static TextBackgroundPadding snapDrawingPaddingFromValdiPadding(const Valdi::TextBackgroundPadding& padding) {
+    return TextBackgroundPadding{padding.left, padding.top, padding.right, padding.bottom};
+}
+
+static BorderRadius snapDrawingBorderRadiusFromValdiDimension(const Valdi::Dimension& dimension) {
+    return BorderRadius::makeOval(static_cast<Scalar>(dimension.value),
+                                  dimension.unit == Valdi::Dimension::Unit::Percent);
 }
 
 Valdi::Result<Valdi::Ref<AttributedText>> AttributedTextParser::parse(FontManager& fontManager,
@@ -74,6 +87,15 @@ Valdi::Result<Valdi::Ref<AttributedText>> AttributedTextParser::parse(FontManage
 
         if (style.color) {
             part.style.color = {snapDrawingColorFromValdiColor(style.color.value().value)};
+        }
+
+        if (style.background != nullptr) {
+            if (style.background->color) {
+                part.style.backgroundColor = {snapDrawingColorFromValdiColor(style.background->color.value().value)};
+            }
+            part.style.backgroundPadding = snapDrawingPaddingFromValdiPadding(style.background->padding);
+            part.style.backgroundBorderRadius =
+                snapDrawingBorderRadiusFromValdiDimension(style.background->borderRadius);
         }
 
         if (style.onTap != nullptr) {
