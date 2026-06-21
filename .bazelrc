@@ -105,3 +105,10 @@ build --repo_env=CARGO_BAZEL_REPIN=true
 
 # Remote cache (activated in CI via .bazelrc.local)
 build:ci --experimental_circuit_breaker_strategy=failure
+
+build --cxxopt=-Wno-deprecated-builtins
+build --cxxopt=-Wno-deprecated-literal-operator
+build --host_cxxopt=-Wno-deprecated-builtins
+build --host_cxxopt=-Wno-deprecated-literal-operator
+build --cxxopt=-Wno-nontrivial-memcall
+build --host_cxxopt=-Wno-nontrivial-memcall
