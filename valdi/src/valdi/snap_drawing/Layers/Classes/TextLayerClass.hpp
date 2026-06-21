@@ -20,6 +20,8 @@ public:
 
     Valdi::Ref<Layer> instantiate() override;
 
+    bool managesChildFrames() const override;
+
     Size onMeasure(const Valdi::Value& attributes, Size maxSize, bool isRightToLeft) override;
 
     void bindAttributes(Valdi::AttributesBindingContext& binder) override;

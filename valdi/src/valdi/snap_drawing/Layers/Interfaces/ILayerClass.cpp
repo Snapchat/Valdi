@@ -34,6 +34,10 @@ bool ILayerClass::isFallback() const {
     return false;
 }
 
+bool ILayerClass::managesChildFrames() const {
+    return false;
+}
+
 const Ref<ILayerClass>& ILayerClass::getParent() const {
     return _parentClass;
 }

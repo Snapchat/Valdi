@@ -42,6 +42,9 @@ public:
     void setIsUserSpecified(bool isUserSpecified);
     bool isUserSpecified() const;
 
+    void setManagesChildFrames(bool managesChildFrames);
+    bool managesChildFrames() const;
+
     VALDI_CLASS_HEADER(ViewFactory);
 
 protected:
@@ -54,6 +57,7 @@ private:
     std::deque<Ref<View>> _pooledViews;
     mutable Mutex _mutex;
     bool _isUserSpecified = false;
+    bool _managesChildFrames = false;
 };
 
 } // namespace Valdi

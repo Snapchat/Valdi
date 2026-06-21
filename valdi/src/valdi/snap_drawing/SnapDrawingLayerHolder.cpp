@@ -26,7 +26,7 @@
 #include "snap_drawing/cpp/Layers/Interfaces/ILoadedAssetLayer.hpp"
 #include "snap_drawing/cpp/Layers/LayerRoot.hpp"
 #include "snap_drawing/cpp/Layers/ScrollLayer.hpp"
-#include "valdi/runtime/Views/Measure.hpp"
+#include "valdi_core/cpp/Views/Measure.hpp"
 
 namespace snap::drawing {
 

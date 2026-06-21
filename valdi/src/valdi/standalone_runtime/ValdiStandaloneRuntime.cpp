@@ -163,19 +163,20 @@ void ValdiStandaloneRuntime::setupJsRuntime(const std::vector<StringBox>& jsArgu
     auto exitCoordinator = _exitCoordinator;
 
     auto standaloneRuntime = makeShared<ValueMap>();
-    (*standaloneRuntime)[STRING_LITERAL("exit")] = Value(makeShared<ValueFunctionWithCallable>(
-        [this, exitCoordinator](const ValueFunctionCallContext& callContext) -> Value {
-            if (exitCoordinator != nullptr) {
-                exitCoordinator->setEnabled(false);
-            }
+    auto exitFunction = makeShared<ValueFunctionWithCallable>([this, exitCoordinator](
+                                                                 const ValueFunctionCallContext& callContext) -> Value {
+        if (exitCoordinator != nullptr) {
+            exitCoordinator->setEnabled(false);
+        }
 
-            if (callContext.getParametersSize() > 0) {
-                _mainQueue->exit(static_cast<int>(callContext.getParameter(0).toInt()));
-            } else {
-                _mainQueue->exit(0);
-            }
-            return Value::undefined();
-        }));
+        if (callContext.getParametersSize() > 0) {
+            _mainQueue->exit(static_cast<int>(callContext.getParameter(0).toInt()));
+        } else {
+            _mainQueue->exit(0);
+        }
+        return Value::undefined();
+    });
+    (*standaloneRuntime)[STRING_LITERAL("exit")] = Value(exitFunction);
     (*standaloneRuntime)[STRING_LITERAL("debuggerEnabled")] = Value(_runtimeManager->debuggerServiceEnabled());
 
     (*standaloneRuntime)[STRING_LITERAL("destroyAllComponents")] =
@@ -231,14 +232,12 @@ void ValdiStandaloneRuntime::setupJsRuntime(const std::vector<StringBox>& jsArgu
 
     auto process = makeShared<ValueMap>();
     (*process)[STRING_LITERAL("argv")] = Value(processArguments.build());
+    (*process)[STRING_LITERAL("exit")] = Value(exitFunction);
     (*process)[STRING_LITERAL("stdout")] = Value(stdoutObject);
     _runtime->getJavaScriptRuntime()->setValueToGlobalObject(STRING_LITERAL("process"), Value(process));
 
     (*standaloneRuntime)[STRING_LITERAL("arguments")] = Value(outJsArguments.build());
 
-    // TODO(4112): only get valdiStandalone once we're building tests from source
-    _runtime->getJavaScriptRuntime()->setValueToGlobalObject(STRING_LITERAL("valdiStandalone"),
-                                                             Value(standaloneRuntime));
     _runtime->getJavaScriptRuntime()->setValueToGlobalObject(STRING_LITERAL("valdiStandalone"),
                                                              Value(standaloneRuntime));
 }

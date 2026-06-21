@@ -14,6 +14,8 @@
 
 #include "valdi_core/cpp/Utils/PlatformResult.hpp"
 
+#include <vector>
+
 namespace snap::drawing {
 
 class FontManager;
@@ -159,8 +161,14 @@ public:
                                                   const Ref<FontManager>& fontManager,
                                                   std::optional<TextCustomUnderlineStyle> customUnderlineStyle);
 
+    void layoutInlineChildrenInLayer(Layer& childrenLayer);
+
 protected:
     void onDraw(DrawingContext& drawingContext) override;
+    void onBoundsChanged() override;
+    void onChildInserted(Layer* childLayer, size_t index) override;
+    void onChildRemoved(Layer* childLayer) override;
+    void onLayout() override;
     void onRightToLeftChanged() override;
 
 private:
@@ -186,6 +194,7 @@ private:
     Ref<TextLayout> _textLayout;
     GradientWrapper _gradientWrapper;
 
+    TextLayout& getTextLayout(Size size, const Resources& resources);
     TextLayout& getTextLayout(Size size, bool respectDynamicType, Scalar displayScale, Scalar dynamicTypeScale);
 
     Scalar getTextVerticalOffset(const Size& layerSize, const TextLayout& layout, Scalar displayScale) const;

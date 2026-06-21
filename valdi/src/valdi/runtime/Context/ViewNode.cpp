@@ -98,6 +98,10 @@ LazyLayoutData::~LazyLayoutData() {
 
 void LazyLayoutData::destroyNode() {
     if (yogaNode != nullptr) {
+        yogaNode->setDirtiedFunc(nullptr);
+        while (YGNodeGetChildCount(yogaNode) > 0) {
+            YGNodeRemoveChild(yogaNode, YGNodeGetChild(yogaNode, 0));
+        }
         destroyYogaNode(yogaNode);
         yogaNode = nullptr;
     }
@@ -137,6 +141,10 @@ constexpr size_t kHasChildWithAccessibilityId = 26;
 constexpr size_t kCanAlwaysScrollHorizontal = 27;
 constexpr size_t kCanAlwaysScrollVertical = 28;
 constexpr size_t kAccessibilityTreeNeedsUpdate = 29;
+constexpr size_t kParentManagesChildFrames = 30;
+constexpr size_t kManagesChildFrames = 31;
+constexpr size_t kIsMeasuring = 32;
+constexpr size_t kManagedChildrenLayoutNeedsCommit = 33;
 
 ViewNode::ViewNode(YGConfig* yogaConfig, AttributeIds& attributeIds, ILogger& logger)
     : _yogaNode(yogaConfig != nullptr ? Yoga::createNode(yogaConfig) : nullptr),
@@ -1256,6 +1264,14 @@ const Frame& ViewNode::getCalculatedFrame() const {
     return _calculatedFrame;
 }
 
+Frame ViewNode::getMeasuredFrame() const {
+    auto parent = getParent();
+    if (parent != nullptr && parent->_flags[kIsMeasuring] && _yogaNode != nullptr) {
+        return ygNodeGetFrame(_yogaNode, parent->getRtlScrollOffsetX());
+    }
+    return getCalculatedFrame();
+}
+
 Frame ViewNode::getDirectionAgnosticFrame() const {
     auto frame = getCalculatedFrame();
 
@@ -1377,6 +1393,15 @@ void ViewNode::setViewFactory(ViewTransactionScope& viewTransactionScope, const 
     if (_viewFactory != viewFactory) {
         removeView(viewTransactionScope);
         _viewFactory = viewFactory;
+        auto previousManagesChildFrames = managesChildFrames();
+        _flags[kManagesChildFrames] = viewFactory != nullptr && viewFactory->managesChildFrames();
+        if (previousManagesChildFrames != managesChildFrames()) {
+            auto previousIsLazyLayout = isLazyLayout();
+            updateIsLazyLayout(viewTransactionScope);
+            if (previousIsLazyLayout == isLazyLayout()) {
+                reinsertChildrenInYogaContainer(viewTransactionScope);
+            }
+        }
 
         if (viewFactory != nullptr) {
             setIsLayout(viewFactory->getViewClassName() == AttributesManager::getLayoutPlaceholderClassName());
@@ -1388,6 +1413,7 @@ void ViewNode::setViewFactory(ViewTransactionScope& viewTransactionScope, const 
             if (_flags[kScrollAttributesBound]) {
                 getYogaNodeForInsertingChildren()->getStyle().overflow() = YGOverflowScroll;
             }
+            updateYogaMeasureFunc();
         } else {
             setIsLayout(true);
             _attributesApplier.setBoundAttributes(nullptr);
@@ -1445,6 +1471,7 @@ void ViewNode::removeFromParent(ViewTransactionScope& viewTransactionScope) {
         return;
     }
     auto parent = getParent();
+    auto previousParentManagedChildFrames = parentManagesChildFrames();
 
     auto* owner = YGNodeGetOwner(_yogaNode);
     if (owner != nullptr) {
@@ -1457,10 +1484,14 @@ void ViewNode::removeFromParent(ViewTransactionScope& viewTransactionScope) {
     getCSSAttributesManager().setParent(nullptr);
     _parent.reset();
     setHasParent(false);
+    _flags[kParentManagesChildFrames] = false;
+    if (previousParentManagedChildFrames) {
+        _yogaNode->getStyle().positionType() = YGPositionTypeRelative;
+    }
 }
 
 void ViewNode::appendChild(ViewTransactionScope& viewTransactionScope, const Ref<ViewNode>& child) {
-    insertChildAt(viewTransactionScope, child, getChildCount());
+    insertChildAt(viewTransactionScope, child, getLiveChildCount());
 }
 
 void ViewNode::insertChildAt(ViewTransactionScope& viewTransactionScope, const Ref<ViewNode>& child, size_t index) {
@@ -1470,6 +1501,7 @@ void ViewNode::insertChildAt(ViewTransactionScope& viewTransactionScope, const R
     child->removeFromParent(viewTransactionScope);
     child->_parent = weakRef(this);
     child->setHasParent(true);
+    child->_flags[kParentManagesChildFrames] = managesChildFrames();
 
     auto* yogaContainer = getYogaNodeForInsertingChildren();
     if (static_cast<size_t>(YGNodeGetChildCount(yogaContainer)) < index) {
@@ -1485,8 +1517,14 @@ void ViewNode::insertChildAt(ViewTransactionScope& viewTransactionScope, const R
         return;
     }
 
-    yogaContainer->setMeasureFunc(nullptr);
-    YGNodeInsertChild(yogaContainer, child->_yogaNode, static_cast<uint32_t>(index));
+    if (managesChildFrames()) {
+        child->_yogaNode->getStyle().positionType() = YGPositionTypeAbsolute;
+    } else {
+        yogaContainer->setMeasureFunc(nullptr);
+    }
+    YGNodeInsertChild(yogaContainer,
+                      child->_yogaNode,
+                      static_cast<uint32_t>(resolveYogaInsertionIndexForLiveIndex(index)));
 
     child->getCSSAttributesManager().setParent(&getCSSAttributesManager());
 
@@ -1520,6 +1558,10 @@ void ViewNode::scheduleUpdates() {
 bool ViewNode::invalidateMeasuredSize() {
     if (_emittingViewNode != nullptr) {
         return _emittingViewNode->invalidateMeasuredSize();
+    }
+
+    if (parentManagesChildFrames()) {
+        return getParent()->markLayoutDirty();
     }
 
     if (_yogaNode == nullptr) {
@@ -1557,19 +1599,29 @@ bool ViewNode::isLazyLayoutDirty() const {
 }
 
 Size ViewNode::onMeasure(float width, MeasureMode widthMode, float height, MeasureMode heightMode) {
+    _flags[kIsMeasuring] = true;
+
+    Size measuredSize;
+    if (managesChildFrames()) {
+        updateManagedChildrenLayout(width, widthMode, height, heightMode, /* forceLayout */ true);
+    }
+
     if (_lazyLayoutData != nullptr && _lazyLayoutData->onMeasureCallback != nullptr) {
         VALDI_TRACE("Valdi.onMeasureNode.external");
-        return measureExternal(width, widthMode, height, heightMode);
+        measuredSize = measureExternal(width, widthMode, height, heightMode);
     } else if (_attributesApplier.getBoundAttributes() != nullptr &&
                _attributesApplier.getBoundAttributes()->getMeasureDelegate() != nullptr) {
         VALDI_TRACE("Valdi.onMeasureNode.delegate");
-        return _attributesApplier.getBoundAttributes()->getMeasureDelegate()->measure(
+        measuredSize = _attributesApplier.getBoundAttributes()->getMeasureDelegate()->measure(
             *this, width, widthMode, height, heightMode);
     } else if (_lazyLayoutData != nullptr) {
-        return Size(_lazyLayoutData->estimatedWidth, _lazyLayoutData->estimatedHeight);
+        measuredSize = Size(_lazyLayoutData->estimatedWidth, _lazyLayoutData->estimatedHeight);
     } else {
-        return Size();
+        measuredSize = Size();
     }
+
+    _flags[kIsMeasuring] = false;
+    return measuredSize;
 }
 
 Ref<ViewNode> ViewNode::makePlaceholderViewNode(ViewTransactionScope& viewTransactionScope,
@@ -1620,6 +1672,10 @@ bool ViewNode::isMeasurerPlaceholder() const {
     return _emittingViewNode != nullptr;
 }
 
+ViewNode* ViewNode::getEmittingViewNode() const {
+    return _emittingViewNode.get();
+}
+
 void ViewNode::valueChanged(AttributeId attribute, const Value& value, bool shouldNotifySync) {
     _attributesApplier.updateAttributeWithoutUpdate(attribute, value);
 
@@ -1656,7 +1712,12 @@ void ViewNode::setIsLayout(bool isLayout) {
 }
 
 bool ViewNode::needsYogaMeasureFunc() const {
-    if (!hasParent() || !_yogaNode->getChildren().empty()) {
+    if (!hasParent()) {
+        // No measure func if we are the root.
+        return false;
+    }
+
+    if (!managesChildFrames() && !_yogaNode->getChildren().empty()) {
         // No measure func if we are the root or if we are a container
         return false;
     }
@@ -1669,6 +1730,30 @@ bool ViewNode::needsYogaMeasureFunc() const {
         // If we are a view, we always use a measure func if we are a leaf
         return true;
     }
+}
+
+bool ViewNode::updateManagedChildrenLayout(float width,
+                                           MeasureMode widthMode,
+                                           float height,
+                                           MeasureMode heightMode,
+                                           bool forceLayout) {
+    auto* managedChildrenYogaNode = getDetachedYogaNode();
+    if (managedChildrenYogaNode == nullptr) {
+        return false;
+    }
+
+    auto updated = calculateLayoutOnNodeIfNeeded(managedChildrenYogaNode,
+                                                 width,
+                                                 widthMode,
+                                                 height,
+                                                 heightMode,
+                                                 _flags[kLayoutIsRightToLeft] ? LayoutDirectionRTL : LayoutDirectionLTR,
+                                                 forceLayout,
+                                                 /* isFromLazyLayout */ false);
+    if (updated) {
+        _flags[kManagedChildrenLayoutNeedsCommit] = true;
+    }
+    return updated;
 }
 
 void ViewNode::updateYogaMeasureFunc() {
@@ -1688,6 +1773,7 @@ bool ViewNode::isLazyLayout() const {
 }
 
 void ViewNode::setIsLazyLayout(ViewTransactionScope& viewTransactionScope, bool isLazyLayout) {
+    isLazyLayout = isLazyLayout && !managesChildFrames();
     if (_flags[kIsLazyLayoutFlag] == isLazyLayout) {
         return;
     }
@@ -1718,8 +1804,19 @@ void ViewNode::setPrefersLazyLayout(ViewTransactionScope& viewTransactionScope, 
 
 void ViewNode::updateIsLazyLayout(ViewTransactionScope& viewTransactionScope) {
     setIsLazyLayout(viewTransactionScope,
-                    _flags[kPrefersLazyLayoutFlag] ||
-                        (_lazyLayoutData != nullptr && _lazyLayoutData->onMeasureCallback != nullptr));
+                    !managesChildFrames() &&
+                        (_flags[kPrefersLazyLayoutFlag] ||
+                         (_lazyLayoutData != nullptr && _lazyLayoutData->onMeasureCallback != nullptr)));
+}
+
+void ViewNode::reinsertChildrenInYogaContainer(ViewTransactionScope& viewTransactionScope) {
+    auto allChildren = copyChildren();
+    for (const auto& childViewNode : allChildren) {
+        childViewNode->removeFromParent(viewTransactionScope);
+    }
+    for (const auto& childViewNode : allChildren) {
+        appendChild(viewTransactionScope, childViewNode);
+    }
 }
 
 LazyLayoutData& ViewNode::getOrCreateLazyLayoutData() {
@@ -1729,32 +1826,40 @@ LazyLayoutData& ViewNode::getOrCreateLazyLayoutData() {
     return *_lazyLayoutData;
 }
 
+YGNode* ViewNode::getOrCreateDetachedYogaNode() {
+    auto& lazyLayoutData = getOrCreateLazyLayoutData();
+    if (lazyLayoutData.yogaNode == nullptr) {
+        lazyLayoutData.yogaNode = Yoga::createNode(_yogaNode->getConfig());
+        setupYogaNode(lazyLayoutData.yogaNode, this);
+    }
+    return lazyLayoutData.yogaNode;
+}
+
+YGNode* ViewNode::getDetachedYogaNode() const {
+    return _lazyLayoutData != nullptr ? _lazyLayoutData->yogaNode : nullptr;
+}
+
 YGNode* ViewNode::getLazyLayoutYogaNode() const {
     return _lazyLayoutData != nullptr ? _lazyLayoutData->yogaNode : nullptr;
 }
 
 const YGNode* ViewNode::getContainerYogaNode() const {
-    if (_lazyLayoutData == nullptr || _lazyLayoutData->yogaNode == nullptr) {
-        return _yogaNode;
-    } else {
-        return _lazyLayoutData->yogaNode;
-    }
+    auto* detachedYogaNode = getDetachedYogaNode();
+    return detachedYogaNode != nullptr ? detachedYogaNode : _yogaNode;
 }
 
 YGNode* ViewNode::getYogaNodeForInsertingChildren() {
-    if (!_flags[kIsLazyLayoutFlag]) {
+    if (!_flags[kIsLazyLayoutFlag] && !managesChildFrames()) {
         return _yogaNode;
     }
-    auto& lazyLayoutData = getOrCreateLazyLayoutData();
-    if (lazyLayoutData.yogaNode == nullptr) {
-        lazyLayoutData.yogaNode = Yoga::createNode(_yogaNode->getConfig());
-        setupYogaNode(lazyLayoutData.yogaNode, this);
+    auto* detachedYogaNode = getOrCreateDetachedYogaNode();
+    if (_flags[kIsLazyLayoutFlag] && YGNodeGetChildCount(detachedYogaNode) == 0) {
         // First time we are inserting in this lazyLayout, schedule a lazyLayout pass since our node
         // will be already dirty and won't trigger the yoga dirtied callbacks.
         scheduleLazyLayout();
     }
 
-    return lazyLayoutData.yogaNode;
+    return detachedYogaNode;
 }
 
 size_t ViewNode::getChildCount() const {
@@ -1766,6 +1871,14 @@ size_t ViewNode::getChildCount() const {
     return yogaNode->getChildren().size();
 }
 
+size_t ViewNode::getLiveChildCount() const {
+    return getChildCount();
+}
+
+size_t ViewNode::resolveYogaInsertionIndexForLiveIndex(size_t liveIndex) {
+    return liveIndex;
+}
+
 ViewNode* ViewNode::getChildAt(size_t index) const {
     const auto* yogaNode = getContainerYogaNode();
     SC_ASSERT_NOTNULL(yogaNode);
@@ -1773,6 +1886,14 @@ ViewNode* ViewNode::getChildAt(size_t index) const {
     auto* childYogaNode = yogaNode->getChildren()[index];
     auto* childViewNode = reinterpret_cast<ViewNode*>(Yoga::getAttachedViewNode(childYogaNode));
     return childViewNode;
+}
+
+bool ViewNode::managesChildFrames() const {
+    return _flags[kManagesChildFrames];
+}
+
+bool ViewNode::parentManagesChildFrames() const {
+    return _flags[kParentManagesChildFrames];
 }
 
 std::string ViewNode::getLayoutDebugDescription() const {
@@ -2309,7 +2430,7 @@ Size ViewNode::measureLayout(
     }
 }
 
-void ViewNode::layoutFinished(ViewTransactionScope& viewTransactionScope, bool didPerformLayout) {
+bool ViewNode::layoutFinished(ViewTransactionScope& viewTransactionScope, bool didPerformLayout) {
     ViewNodesFrameObserver* frameObserver = nullptr;
     if (_viewNodeTree != nullptr) {
         frameObserver = _viewNodeTree->getViewNodesFrameObserver();
@@ -2324,17 +2445,18 @@ void ViewNode::layoutFinished(ViewTransactionScope& viewTransactionScope, bool d
     }
 
     VALDI_TRACE("Valdi.updateCalculatedFrames");
-    layoutFinished(viewTransactionScope,
-                   didPerformLayout,
-                   getViewOffsetX(),
-                   getViewOffsetY(),
-                   rtlOffsetX,
-                   nullptr,
-                   parentChildrenIndexer,
-                   frameObserver);
+    auto calculatedFrameDidChange = layoutFinished(viewTransactionScope,
+                                                   didPerformLayout,
+                                                   getViewOffsetX(),
+                                                   getViewOffsetY(),
+                                                   rtlOffsetX,
+                                                   nullptr,
+                                                   parentChildrenIndexer,
+                                                   frameObserver);
     if (frameObserver != nullptr) {
         frameObserver->flush();
     }
+    return calculatedFrameDidChange;
 }
 
 bool ViewNode::isInScrollMode() const {
@@ -2584,7 +2706,7 @@ void ViewNode::updateScrollState() {
     }
 }
 
-void ViewNode::layoutFinished(ViewTransactionScope& viewTransactionScope,
+bool ViewNode::layoutFinished(ViewTransactionScope& viewTransactionScope,
                               bool didPerformLayout,
                               float viewOffsetX,
                               float viewOffsetY,
@@ -2641,8 +2763,21 @@ void ViewNode::layoutFinished(ViewTransactionScope& viewTransactionScope,
         }
     }
 
+    if (managesChildFrames()) {
+        updateManagedChildrenLayout(_calculatedFrame.width,
+                                    MeasureModeExactly,
+                                    _calculatedFrame.height,
+                                    MeasureModeExactly,
+                                    calculatedSizeDidChange);
+        if (_flags[kManagedChildrenLayoutNeedsCommit]) {
+            _flags[kManagedChildrenLayoutNeedsCommit] = false;
+            didPerformLayoutForChildren = true;
+            shouldVisitChildren = true;
+        }
+    }
+
     if (!shouldVisitChildren) {
-        return;
+        return calculatedFrameDidChange;
     }
 
     float childrenViewOffsetX = 0.0f;
@@ -2670,15 +2805,20 @@ void ViewNode::layoutFinished(ViewTransactionScope& viewTransactionScope,
     }
 
     auto* childrenIndexer = _childrenIndexer.get();
+    auto childCalculatedFrameDidChange = false;
     for (auto* childViewNode : *this) {
-        childViewNode->layoutFinished(viewTransactionScope,
-                                      didPerformLayoutForChildren,
-                                      childrenViewOffsetX,
-                                      childrenViewOffsetY,
-                                      childrenRtlOffsetX,
-                                      resolvedAnimator,
-                                      childrenIndexer,
-                                      frameObserver);
+        childCalculatedFrameDidChange |= childViewNode->layoutFinished(viewTransactionScope,
+                                                                       didPerformLayoutForChildren,
+                                                                       childrenViewOffsetX,
+                                                                       childrenViewOffsetY,
+                                                                       childrenRtlOffsetX,
+                                                                       resolvedAnimator,
+                                                                       childrenIndexer,
+                                                                       frameObserver);
+    }
+
+    if (childCalculatedFrameDidChange && managesChildFrames() && _view != nullptr) {
+        viewTransactionScope.transaction().invalidateViewLayout(_view);
     }
 
     syncScrollSpecsWithViewIfNeeded(viewTransactionScope);
@@ -2697,6 +2837,8 @@ void ViewNode::layoutFinished(ViewTransactionScope& viewTransactionScope,
             frameObserver->onFrameChanged(_rawId, getDirectionAgnosticFrame());
         }
     }
+
+    return calculatedFrameDidChange;
 }
 
 bool ViewNode::updateViewFrameIfNeeded(ViewTransactionScope& viewTransactionScope, const Ref<Animator>& animator) {
@@ -2767,6 +2909,13 @@ void ViewNode::applyFrame(ViewTransactionScope& viewTransactionScope,
     if (!hasParent() || !hasView()) {
         // Root node doesn't need to call onViewFrameChanged.
         // Its frame is driven by native code.
+        return;
+    }
+
+    if (parentManagesChildFrames()) {
+        if (notifyAssetHandler && _assetHandler != nullptr) {
+            _assetHandler->onContainerSizeChanged(frame.width, frame.height);
+        }
         return;
     }
 
@@ -3703,6 +3852,10 @@ void ygDirtiedCallback(YGNodeRef node) {
 
     if (viewNode->isLazyLayout()) {
         viewNode->scheduleLazyLayout();
+    }
+
+    if (viewNode->managesChildFrames() && node != viewNode->getYogaNode()) {
+        viewNode->invalidateMeasuredSize();
     }
 
     if (!viewNode->hasParent()) {

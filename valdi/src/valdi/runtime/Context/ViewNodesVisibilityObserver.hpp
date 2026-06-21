@@ -8,7 +8,7 @@
 #pragma once
 
 #include "valdi/runtime/Context/RawViewNodeId.hpp"
-#include "valdi/runtime/Views/Frame.hpp"
+#include "valdi_core/cpp/Views/Frame.hpp"
 
 #include "valdi_core/cpp/Utils/FlatMap.hpp"
 #include "valdi_core/cpp/Utils/TimePoint.hpp"

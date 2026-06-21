@@ -3,7 +3,7 @@
 //  valdi-pc
 //
 
-#include "valdi/runtime/Views/Measure.hpp"
+#include "valdi_core/cpp/Views/Measure.hpp"
 #include <gtest/gtest.h>
 
 using namespace Valdi;

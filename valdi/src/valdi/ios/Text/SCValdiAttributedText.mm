@@ -7,6 +7,7 @@
 
 #import "valdi/ios/Text/SCValdiAttributedText.h"
 #import "valdi/ios/Text/SCValdiImageAttachmentInfo.h"
+#import "valdi/ios/Text/SCValdiInlineViewAttachmentInfo.h"
 #import "valdi/ios/Text/SCValdiTextAnimationTransform.h"
 #import "valdi_core/cpp/Attributes/TextAttributeValue.hpp"
 #import "valdi_core/SCValdiObjCConversionUtils.h"
@@ -192,6 +193,38 @@
                                                               width:width
                                                              height:height
                                                           imageData:imageData];
+}
+
+- (nullable SCValdiInlineViewAttachmentInfo *)inlineViewAttachmentAtIndex:(NSUInteger)index
+{
+    const auto &style = _cppInstance->getStyleAtIndex(index);
+    if (style.inlineViewAttachment == nullptr) {
+        return nil;
+    }
+
+    auto verticalAlignment = SCValdiInlineViewVerticalAlignmentCenter;
+    switch (style.inlineViewAttachment->getVerticalAlignment()) {
+        case Valdi::InlineViewVerticalAlignment::Top:
+            verticalAlignment = SCValdiInlineViewVerticalAlignmentTop;
+            break;
+        case Valdi::InlineViewVerticalAlignment::Bottom:
+            verticalAlignment = SCValdiInlineViewVerticalAlignmentBottom;
+            break;
+        case Valdi::InlineViewVerticalAlignment::Baseline:
+            verticalAlignment = SCValdiInlineViewVerticalAlignmentBaseline;
+            break;
+        case Valdi::InlineViewVerticalAlignment::Center:
+            verticalAlignment = SCValdiInlineViewVerticalAlignmentCenter;
+            break;
+    }
+    auto inlineViewAttachment = style.inlineViewAttachment;
+    return [[SCValdiInlineViewAttachmentInfo alloc]
+        initWithChildIndex:(NSInteger)inlineViewAttachment->getChildIndex()
+         verticalAlignment:verticalAlignment
+              sizeProvider:^CGSize{
+                  auto size = inlineViewAttachment->getSize();
+                  return CGSizeMake(size.width, size.height);
+              }];
 }
 
 - (nullable SCValdiTextAnimationTransform *)animationTransformAtIndex:(NSUInteger)index

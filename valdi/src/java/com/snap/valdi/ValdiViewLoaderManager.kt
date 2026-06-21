@@ -16,14 +16,15 @@ import com.snap.valdi.attributes.impl.ValdiRootViewAttributesBinder
 import com.snap.valdi.attributes.impl.ValdiIndexPickerAttributesBinder
 import com.snap.valdi.attributes.impl.ValdiDatePickerAttributesBinder
 import com.snap.valdi.attributes.impl.ValdiImageViewAttributesBinder
+import com.snap.valdi.attributes.impl.ValdiSpinnerViewAttributesBinder
 import com.snap.valdi.attributes.impl.ValdiVideoViewAttributesBinder
 import com.snap.valdi.attributes.impl.ValdiTextViewAttributesBinder
+import com.snap.valdi.attributes.impl.ValdiTextViewBaseAttributesBinder
 import com.snap.valdi.attributes.impl.ValdiTimePickerAttributesBinder
 import com.snap.valdi.attributes.impl.EditTextAttributesBinder
 import com.snap.valdi.attributes.impl.EditTextMultilineAttributesBinder
 import com.snap.valdi.attributes.impl.ScrollViewAttributesBinder
 import com.snap.valdi.attributes.impl.ShapeViewAttributesBinder
-import com.snap.valdi.attributes.impl.TextViewAttributesBinder
 import com.snap.valdi.attributes.impl.ViewAttributesBinder
 import com.snap.valdi.attributes.impl.ViewGroupAttributesBinder
 import com.snap.valdi.attributes.impl.fonts.DefaultFonts
@@ -33,7 +34,6 @@ import com.snap.valdi.attributes.impl.fonts.FontDescriptor
 import com.snap.valdi.attributes.impl.fonts.FontManager
 import com.snap.valdi.attributes.impl.fonts.TypefaceResLoader
 import com.snap.valdi.attributes.impl.richtext.FontAttributes
-import com.snap.valdi.attributes.impl.richtext.RichTextConverter
 import com.snap.valdi.bundle.IValdiCustomModuleProvider
 import com.snap.valdi.bundle.ResourceResolver
 import com.snap.valdi.context.ContextManager
@@ -113,8 +113,6 @@ class ValdiRuntimeManager(context: Context,
     }
 
     private var forceDarkMode = false
-
-    private var useLocaleLanguageTag = false
 
     private var isIntegrationTestEnvironment = false
 
@@ -224,8 +222,6 @@ class ValdiRuntimeManager(context: Context,
 
         forceDarkMode = tweaks?.forceDarkMode ?: false
 
-        useLocaleLanguageTag = tweaks?.useLocaleLanguageTag ?: false
-
         isIntegrationTestEnvironment = tweaks?.isTestEnvironment ?: false
 
         val anrTimeoutMs = tweaks?.anrTimeoutMs ?: 0
@@ -246,7 +242,9 @@ class ValdiRuntimeManager(context: Context,
         var debugTouchEvents = false
         var maxCacheSizeInBytes = 2 * displayMetrics.widthPixels.toLong() * displayMetrics.heightPixels.toLong()
         if (tweaks != null) {
-            maxCacheSizeInBytes = tweaks.maxImageCacheSizeInBytes ?: maxCacheSizeInBytes
+            if (tweaks.maxImageCacheSizeInBytes > 0) {
+                maxCacheSizeInBytes = tweaks.maxImageCacheSizeInBytes
+            }
             debugTouchEvents = tweaks.debugTouchEvents
         }
         val javaScriptEngineType = tweaks?.javaScriptEngineType ?: JavaScriptEngineType.AUTO
@@ -303,7 +301,11 @@ class ValdiRuntimeManager(context: Context,
         compositeRequestManager.addRequestManager("https", httpRequestManager)
         NativeBridge.setRuntimeManagerRequestManager(handle.nativeHandle, compositeRequestManager)
 
-        registerAssetLoader(DefaultValdiImageLoader(context, imageLoaderPostprocessor, httpRequestManager))
+        registerAssetLoader(DefaultValdiImageLoader(
+            context,
+            imageLoaderPostprocessor,
+            httpRequestManager,
+            ValdiSVGRasterizer(maxCacheSizeInBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())))
         registerAssetLoader(ValdiRawImageResourceLoader(lazy { ExecutorsUtil.newSingleThreadCachedExecutor() }, context))
 
         fontManager.listener = this
@@ -345,13 +347,7 @@ class ValdiRuntimeManager(context: Context,
                     tweaks?.disableBoxShadow
                             ?: false, tweaks?.disableSlowClipping ?: false)
 
-            val textConverter = RichTextConverter(fontManager)
-            val editTextAttributesBinder = EditTextAttributesBinder(
-                context,
-                textConverter,
-                FontAttributes.default,
-                resetSelectionMatchesIos = tweaks?.editTextResetSelectionMatchesIos == true,
-            )
+            val editTextAttributesBinder = EditTextAttributesBinder(context, fontManager, FontAttributes.default)
 
             arrayOf(
                     viewAttributesBinder,
@@ -360,11 +356,12 @@ class ValdiRuntimeManager(context: Context,
                     ScrollViewAttributesBinder(coordinateResolver, logger),
                     ShapeViewAttributesBinder(),
                     ValdiImageViewAttributesBinder(context),
+                    ValdiSpinnerViewAttributesBinder(),
                     ValdiVideoViewAttributesBinder(context),
-                    TextViewAttributesBinder(context, textConverter, FontAttributes.default),
+                    ValdiTextViewBaseAttributesBinder(context, fontManager, FontAttributes.default),
                     ValdiTextViewAttributesBinder(context),
                     editTextAttributesBinder,
-                    EditTextMultilineAttributesBinder(context, editTextAttributesBinder),
+                    EditTextMultilineAttributesBinder(context),
                     ValdiIndexPickerAttributesBinder(context, logger),
                     ValdiDatePickerAttributesBinder(context, logger),
                     ValdiTimePickerAttributesBinder(context, logger)
@@ -443,7 +440,7 @@ class ValdiRuntimeManager(context: Context,
     fun createNativeModules(jsThreadDispatcher: JSThreadDispatcher): ValdiNativeModules {
         return ValdiNativeModules(
                 ValdiApplicationModule(context, isIntegrationTestEnvironment),
-                ValdiDeviceModule(jsThreadDispatcher, context, forceDarkMode, useLocaleLanguageTag),
+                ValdiDeviceModule(jsThreadDispatcher, context, forceDarkMode),
                 ValdiDateFormattingModule(context),
                 ValdiNumberFormattingModule(context),
                 DrawingModuleImpl(coordinateResolver, fontManager, logger),

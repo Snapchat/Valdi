@@ -75,6 +75,15 @@ static UIAccessibilityTraits SCValdiAccessibilityCategoryToAccessibilityTrait(Va
     return ValdiIOS::UIViewHolder::uiViewFromRef(_viewNode->getViewAndDisablePooling());
 }
 
+- (CGRect)relativeFrame
+{
+    auto frame = _viewNode->getDirectionAgnosticFrame();
+    return CGRectMake(CGFloatNormalize(frame.x),
+                      CGFloatNormalize(frame.y),
+                      CGFloatNormalize(frame.width),
+                      CGFloatNormalize(frame.height));
+}
+
 - (void)_getViewNode:(void(^)(Valdi::ViewTransactionScope &viewTransactionScope, Valdi::ViewNode *))block
 {
     auto* viewNodeTree = _viewNode->getViewNodeTree();

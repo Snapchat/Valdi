@@ -13,6 +13,7 @@ NS_ASSUME_NONNULL_BEGIN
 @class SCValdiTextAnimationCoordinator;
 @class SCValdiTextLayout;
 @class SCValdiTextLayoutView;
+@class SCValdiProcessedText;
 @protocol SCValdiContextProtocol;
 @protocol SCValdiFunction;
 @protocol SCValdiViewNodeProtocol;
@@ -37,7 +38,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)initWithFrame:(CGRect)frame usesEffectsLayoutManager:(BOOL)usesEffectsLayoutManager NS_DESIGNATED_INITIALIZER;
 - (nullable instancetype)initWithCoder:(NSCoder *)coder NS_DESIGNATED_INITIALIZER;
 - (void)configureWithUsesEffectsLayoutManager:(BOOL)usesEffectsLayoutManager;
-- (void)setAttributedString:(nullable NSAttributedString *)attributedString;
+- (void)setProcessedText:(nullable SCValdiProcessedText *)processedText;
+- (void)updateInlineAttachmentsAndUpdate;
 - (void)setCustomUnderlineStyle:(nullable SCValdiCustomUnderlineStyle *)customUnderlineStyle
          sourceAttributedString:(nullable NSAttributedString *)sourceAttributedString
                 characterRanges:(nullable NSArray<NSValue *> *)characterRanges;
@@ -54,11 +56,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)setOnTextSelectionMenu:(nullable id<SCValdiFunction>)onTextSelectionMenu;
 - (void)setOnTextSelectionMenuAction:(nullable id<SCValdiFunction>)onTextSelectionMenuAction;
 - (BOOL)pointInsideActiveSelectionHandleBounds:(CGPoint)point;
-
-+ (NSAttributedString *)displayAttributedStringForAttributedString:(NSAttributedString *)attributedString
-                                             customUnderlineStyle:(nullable SCValdiCustomUnderlineStyle *)customUnderlineStyle
-                                          sourceAttributedString:(NSAttributedString *_Nullable *_Nullable)sourceAttributedString
-                                                 characterRanges:(NSArray<NSValue *> *_Nullable *_Nullable)characterRanges;
 
 @end
 

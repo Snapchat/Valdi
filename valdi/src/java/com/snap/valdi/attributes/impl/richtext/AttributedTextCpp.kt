@@ -100,6 +100,19 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
         return ImageAttachmentInfo(width, height, imageData)
     }
 
+    override fun getInlineViewAttachmentAtIndex(index: Int): InlineViewAttachmentInfo? {
+        val childIndex = nativeGetInlineViewAttachmentChildIndex(native.nativeHandle, index)
+        if (childIndex < 0) {
+            return null
+        }
+        val verticalAlignment = InlineViewVerticalAlignment.fromRawValue(
+            nativeGetInlineViewAttachmentVerticalAlignment(native.nativeHandle, index)
+        )
+        val width = nativeGetInlineViewAttachmentWidth(native.nativeHandle, index)
+        val height = nativeGetInlineViewAttachmentHeight(native.nativeHandle, index)
+        return InlineViewAttachmentInfo(childIndex, verticalAlignment, width, height)
+    }
+
     override fun getAnimationTransformAtIndex(index: Int): TextAnimationTransform? {
         if (!nativeHasAnimationTransform(native.nativeHandle, index)) {
             return null
@@ -150,6 +163,14 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
         private external fun nativeGetImageAttachmentHeight(nativeHandle: Long, index: Int): Float
         @JvmStatic
         private external fun nativeGetImageAttachmentData(nativeHandle: Long, index: Int): ByteArray?
+        @JvmStatic
+        private external fun nativeGetInlineViewAttachmentChildIndex(nativeHandle: Long, index: Int): Int
+        @JvmStatic
+        private external fun nativeGetInlineViewAttachmentVerticalAlignment(nativeHandle: Long, index: Int): Int
+        @JvmStatic
+        private external fun nativeGetInlineViewAttachmentWidth(nativeHandle: Long, index: Int): Float
+        @JvmStatic
+        private external fun nativeGetInlineViewAttachmentHeight(nativeHandle: Long, index: Int): Float
         @JvmStatic
         private external fun nativeGetAnimationTransformsSize(nativeHandle: Long): Int
         @JvmStatic

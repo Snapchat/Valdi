@@ -255,6 +255,12 @@ public:
             attribute, parts, Valdi::makeShared<BridgeAttributeHandlerDelegate>(delegate, _hostViewManager));
     }
 
+    Valdi::AttributeId bindTransformAttributes(
+        const Valdi::Ref<Valdi::AttributeHandlerDelegate>& delegate) override {
+        return _sourceBinder.bindTransformAttributes(
+            Valdi::makeShared<BridgeAttributeHandlerDelegate>(delegate, _hostViewManager));
+    }
+
     void setDefaultDelegate(const Valdi::Ref<Valdi::AttributeHandlerDelegate>& delegate) override {}
 
     void setMeasureDelegate(const Valdi::Ref<Valdi::MeasureDelegate>& measureDelegate) override {
@@ -288,7 +294,9 @@ public:
                            Valdi::Ref<Valdi::BoundAttributes> boundAttributes,
                            const Ref<ILayerClass>& viewClass)
         : Valdi::ViewFactory(std::move(viewClassName), viewManager, std::move(boundAttributes)),
-          _viewClass(viewClass) {}
+          _viewClass(viewClass) {
+        setManagesChildFrames(_viewClass != nullptr && _viewClass->managesChildFrames());
+    }
 
     ~SnapDrawingViewFactory() override = default;
 
@@ -317,6 +325,7 @@ public:
           _hostViewManager(hostViewManager) {
         // These are always custom
         setIsUserSpecified(factory->isUserSpecified());
+        setManagesChildFrames(factory->managesChildFrames());
     }
 
     ~BridgeLayerFactory() override = default;

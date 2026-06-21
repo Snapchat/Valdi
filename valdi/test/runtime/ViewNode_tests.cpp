@@ -1,4 +1,5 @@
 #include "ViewNodeTestsUtils.hpp"
+#include "valdi/runtime/Attributes/ViewNodeTextInlineAttachment.hpp"
 #include "gtest/gtest.h"
 
 using namespace Valdi;
@@ -15,6 +16,15 @@ void assertAllFlagsAreUpToDate(ViewNode* viewNode) {
     for (auto* child : *viewNode) {
         assertAllFlagsAreUpToDate(child);
     }
+}
+
+static Ref<ViewNode> createManagedChildFrameNode(ViewNodeTestsDependencies& utils) {
+    auto viewNode = utils.createNode("ManagedChildFrameView");
+    auto viewFactory = viewNode->getViewFactory();
+    viewFactory->setManagesChildFrames(true);
+    viewNode->setViewFactory(utils.getViewTransactionScope(), nullptr);
+    viewNode->setViewFactory(utils.getViewTransactionScope(), viewFactory);
+    return viewNode;
 }
 
 TEST(ViewNode, canInsertChildren) {
@@ -57,6 +67,184 @@ TEST(ViewNode, canRemoveChildren) {
 
     ASSERT_EQ(1, static_cast<int>(YGNodeGetChildCount(root->getYogaNode())));
     ASSERT_EQ(child2->getYogaNode(), YGNodeGetChild(root->getYogaNode(), 0));
+}
+
+TEST(ViewNode, managedChildFrameParentInsertsChildrenInDetachedYogaNode) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createLayout();
+    auto managedParent = createManagedChildFrameNode(utils);
+    auto child = utils.createView();
+    auto child2 = utils.createView();
+
+    root->appendChild(utils.getViewTransactionScope(), managedParent);
+    managedParent->appendChild(utils.getViewTransactionScope(), child);
+    managedParent->appendChild(utils.getViewTransactionScope(), child2);
+
+    auto* managedChildrenYogaNode = managedParent->getYogaNodeForInsertingChildren();
+    ASSERT_TRUE(managedParent->managesChildFrames());
+    ASSERT_FALSE(managedParent->parentManagesChildFrames());
+    ASSERT_TRUE(child->parentManagesChildFrames());
+    ASSERT_TRUE(child2->parentManagesChildFrames());
+    ASSERT_NE(managedParent->getYogaNode(), managedChildrenYogaNode);
+    ASSERT_EQ(0, static_cast<int>(YGNodeGetChildCount(managedParent->getYogaNode())));
+    ASSERT_EQ(2, static_cast<int>(YGNodeGetChildCount(managedChildrenYogaNode)));
+    ASSERT_EQ(child->getYogaNode(), YGNodeGetChild(managedChildrenYogaNode, 0));
+    ASSERT_EQ(child2->getYogaNode(), YGNodeGetChild(managedChildrenYogaNode, 1));
+    ASSERT_EQ(child.get(), managedParent->getChildAt(0));
+    ASSERT_EQ(child2.get(), managedParent->getChildAt(1));
+    ASSERT_EQ(YGPositionTypeAbsolute, YGNodeStyleGetPositionType(child->getYogaNode()));
+    ASSERT_EQ(YGPositionTypeAbsolute, YGNodeStyleGetPositionType(child2->getYogaNode()));
+}
+
+TEST(ViewNode, reparentingFromManagedChildFrameParentRestoresRegularYogaInsertion) {
+    ViewNodeTestsDependencies utils;
+
+    auto managedParent = createManagedChildFrameNode(utils);
+    auto regularParent = utils.createLayout();
+    auto child = utils.createView();
+
+    managedParent->appendChild(utils.getViewTransactionScope(), child);
+
+    ASSERT_TRUE(child->parentManagesChildFrames());
+    ASSERT_EQ(YGPositionTypeAbsolute, YGNodeStyleGetPositionType(child->getYogaNode()));
+    ASSERT_EQ(child->getYogaNode(), YGNodeGetChild(managedParent->getYogaNodeForInsertingChildren(), 0));
+
+    regularParent->appendChild(utils.getViewTransactionScope(), child);
+
+    ASSERT_FALSE(child->parentManagesChildFrames());
+    ASSERT_EQ(YGPositionTypeRelative, YGNodeStyleGetPositionType(child->getYogaNode()));
+    ASSERT_EQ(0, static_cast<int>(YGNodeGetChildCount(managedParent->getYogaNodeForInsertingChildren())));
+    ASSERT_EQ(1, static_cast<int>(YGNodeGetChildCount(regularParent->getYogaNode())));
+    ASSERT_EQ(child->getYogaNode(), YGNodeGetChild(regularParent->getYogaNode(), 0));
+    ASSERT_EQ(child.get(), regularParent->getChildAt(0));
+}
+
+TEST(ViewNode, removingFromManagedChildFrameParentClearsManagedParentState) {
+    ViewNodeTestsDependencies utils;
+
+    auto managedParent = createManagedChildFrameNode(utils);
+    auto child = utils.createView();
+
+    managedParent->appendChild(utils.getViewTransactionScope(), child);
+
+    ASSERT_TRUE(child->parentManagesChildFrames());
+    ASSERT_EQ(YGPositionTypeAbsolute, YGNodeStyleGetPositionType(child->getYogaNode()));
+
+    child->removeFromParent(utils.getViewTransactionScope());
+
+    ASSERT_FALSE(child->parentManagesChildFrames());
+    ASSERT_EQ(YGPositionTypeRelative, YGNodeStyleGetPositionType(child->getYogaNode()));
+    ASSERT_EQ(0, static_cast<int>(YGNodeGetChildCount(managedParent->getYogaNodeForInsertingChildren())));
+}
+
+TEST(ViewNode, managedChildFrameParentDoesNotBecomeLazyLayout) {
+    ViewNodeTestsDependencies utils;
+
+    auto managedParent = createManagedChildFrameNode(utils);
+    auto child = utils.createView();
+
+    ASSERT_FALSE(managedParent->isLazyLayout());
+    managedParent->setPrefersLazyLayout(utils.getViewTransactionScope(), true);
+
+    ASSERT_TRUE(managedParent->managesChildFrames());
+    ASSERT_FALSE(managedParent->isLazyLayout());
+    ASSERT_NE(managedParent->getYogaNode(), managedParent->getYogaNodeForInsertingChildren());
+
+    managedParent->appendChild(utils.getViewTransactionScope(), child);
+    ASSERT_TRUE(child->parentManagesChildFrames());
+    ASSERT_EQ(YGPositionTypeAbsolute, YGNodeStyleGetPositionType(child->getYogaNode()));
+}
+
+TEST(ViewNode, managedChildFrameParentCalculatesChildrenButDoesNotApplyNativeFrames) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createRootView();
+    auto managedParent = createManagedChildFrameNode(utils);
+    auto child = utils.createView();
+
+    root->appendChild(utils.getViewTransactionScope(), managedParent);
+    managedParent->appendChild(utils.getViewTransactionScope(), child);
+
+    utils.setViewNodeFrame(managedParent, 0, 0, 100, 60);
+    utils.setViewNodeFrame(child, 10, 5, 30, 20);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    auto managedView = StandaloneView::unwrap(managedParent->getView());
+    auto childView = StandaloneView::unwrap(child->getView());
+
+    ASSERT_TRUE(managedView != nullptr);
+    ASSERT_TRUE(childView != nullptr);
+    ASSERT_EQ(Frame(0, 0, 100, 60), managedParent->getCalculatedFrame());
+    ASSERT_EQ(Frame(10, 5, 30, 20), child->getCalculatedFrame());
+    ASSERT_EQ(Frame(0, 0, 100, 60), managedView->getFrame());
+    ASSERT_EQ(Frame(), childView->getFrame());
+}
+
+TEST(ViewNode, managedChildFrameParentInvalidatesViewLayoutWhenChildrenLayoutIsCalculated) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createRootView();
+    auto managedParent = createManagedChildFrameNode(utils);
+    auto child = utils.createView();
+
+    root->appendChild(utils.getViewTransactionScope(), managedParent);
+    managedParent->appendChild(utils.getViewTransactionScope(), child);
+
+    utils.setViewNodeFrame(managedParent, 0, 0, 100, 60);
+    utils.setViewNodeFrame(child, 10, 5, 30, 20);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    auto managedView = StandaloneView::unwrap(managedParent->getView());
+    ASSERT_TRUE(managedView != nullptr);
+    auto invalidateLayoutCountBeforeLayout = managedView->getInvalidateLayoutCount();
+
+    utils.setViewNodeAttribute(child, "width", Value(45.0));
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+
+    ASSERT_EQ(invalidateLayoutCountBeforeLayout + 1, managedView->getInvalidateLayoutCount());
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+
+    ASSERT_EQ(invalidateLayoutCountBeforeLayout + 1, managedView->getInvalidateLayoutCount());
+}
+
+TEST(ViewNode, dirtyManagedChildrenYogaNodeInvalidatesManagedParentMeasurement) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createRootView();
+    auto managedParent = createManagedChildFrameNode(utils);
+    auto child = utils.createView();
+
+    root->appendChild(utils.getViewTransactionScope(), managedParent);
+    managedParent->appendChild(utils.getViewTransactionScope(), child);
+
+    utils.setViewNodeFrame(managedParent, 0, 0, 100, 60);
+    utils.setViewNodeFrame(child, 10, 5, 30, 20);
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_FALSE(root->isFlexLayoutDirty());
+    ASSERT_FALSE(managedParent->isFlexLayoutDirty());
+
+    utils.setViewNodeAttribute(child, "width", Value(45.0));
+
+    ASSERT_TRUE(managedParent->isFlexLayoutDirty());
+    ASSERT_TRUE(root->isFlexLayoutDirty());
+
+    root->performLayout(utils.getViewTransactionScope(), Size(200, 200), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    auto childView = StandaloneView::unwrap(child->getView());
+    ASSERT_EQ(Frame(10, 5, 45, 20), child->getCalculatedFrame());
+    ASSERT_TRUE(childView != nullptr);
+    ASSERT_EQ(Frame(), childView->getFrame());
 }
 
 TEST(ViewNode, canIterateOverChildren) {
@@ -3003,6 +3191,72 @@ TEST(ViewNode, supportsOnMeasureCallback) {
     ASSERT_EQ(Frame(0, 0, 30, 30), root->getCalculatedFrame());
     ASSERT_EQ(Frame(0, 0, 30, 30), container->getCalculatedFrame());
     ASSERT_EQ(Frame(8, 8, 14, 14), child->getCalculatedFrame());
+}
+
+TEST(ViewNode, inlineTextAttachmentUsesYogaFrameOnlyWhileParentIsMeasuring) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createRootView();
+    auto container = createManagedChildFrameNode(utils);
+    auto child = utils.createView();
+    auto grandchild = utils.createView();
+    auto attachment = makeShared<ViewNodeTextInlineAttachment>(0, child);
+
+    root->appendChild(utils.getViewTransactionScope(), container);
+    container->appendChild(utils.getViewTransactionScope(), child);
+    child->appendChild(utils.getViewTransactionScope(), grandchild);
+
+    utils.setViewNodeAttribute(child, "width", Value(10.0));
+    utils.setViewNodeAttribute(child, "height", Value(12.0));
+    child->getAttributesApplier().flush(utils.getViewTransactionScope());
+    utils.setViewNodeAttribute(grandchild, "width", Value(4.0));
+    utils.setViewNodeAttribute(grandchild, "height", Value(5.0));
+    grandchild->getAttributesApplier().flush(utils.getViewTransactionScope());
+
+    Size attachmentSizeDuringMeasure;
+    container->setOnMeasureCallback(
+        utils.getViewTransactionScope(),
+        makeShared<ValueFunctionWithCallable>([&](const ValueFunctionCallContext& callContext) -> Value {
+            attachmentSizeDuringMeasure = attachment->getSize();
+            auto width = callContext.getParameterAsDouble(0);
+            auto height = callContext.getParameterAsDouble(2);
+            return Value(ValueArray::make({Value(width), Value(height)}));
+        }));
+
+    root->performLayout(utils.getViewTransactionScope(), Size(100, 100), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+    ASSERT_EQ(Frame(0, 0, 10, 12), child->getCalculatedFrame());
+    ASSERT_EQ(Size(10, 12), attachment->getSize());
+
+    auto containerView = StandaloneView::unwrap(container->getView());
+    ASSERT_TRUE(containerView != nullptr);
+    auto initialInvalidateLayoutCount = containerView->getInvalidateLayoutCount();
+
+    utils.setViewNodeAttribute(child, "width", Value(30.0));
+    utils.setViewNodeAttribute(child, "height", Value(40.0));
+    child->getAttributesApplier().flush(utils.getViewTransactionScope());
+
+    attachmentSizeDuringMeasure = Size();
+    ASSERT_EQ(Size(100, 100), container->onMeasure(100, MeasureModeExactly, 100, MeasureModeExactly));
+    ASSERT_EQ(Size(30, 40), attachmentSizeDuringMeasure);
+    ASSERT_EQ(Frame(0, 0, 10, 12), child->getCalculatedFrame());
+    ASSERT_EQ(Size(10, 12), attachment->getSize());
+    ASSERT_EQ(initialInvalidateLayoutCount, containerView->getInvalidateLayoutCount());
+
+    root->performLayout(utils.getViewTransactionScope(), Size(100, 100), LayoutDirectionLTR);
+    ASSERT_EQ(Frame(0, 0, 30, 40), child->getCalculatedFrame());
+    ASSERT_EQ(initialInvalidateLayoutCount + 1, containerView->getInvalidateLayoutCount());
+
+    root->performLayout(utils.getViewTransactionScope(), Size(120, 100), LayoutDirectionLTR);
+    ASSERT_EQ(Frame(0, 0, 120, 100), container->getCalculatedFrame());
+    ASSERT_EQ(initialInvalidateLayoutCount + 1, containerView->getInvalidateLayoutCount());
+
+    utils.setViewNodeAttribute(grandchild, "width", Value(6.0));
+    utils.setViewNodeAttribute(grandchild, "height", Value(7.0));
+    grandchild->getAttributesApplier().flush(utils.getViewTransactionScope());
+    root->performLayout(utils.getViewTransactionScope(), Size(120, 100), LayoutDirectionLTR);
+    ASSERT_EQ(Frame(0, 0, 6, 7), grandchild->getCalculatedFrame());
+    ASSERT_EQ(initialInvalidateLayoutCount + 1, containerView->getInvalidateLayoutCount());
 }
 
 struct UpdateStep {

@@ -1,7 +1,7 @@
 
 #import "SCValdiTextViewEffectsLayoutManager.h"
-#import "valdi/ios/Text/NSAttributedString+Valdi.h"
 #import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
+#import "valdi/ios/Text/SCValdiProcessedText.h"
 #import "valdi/ios/Text/SCValdiTextAnimationCoordinator.h"
 #import "valdi/ios/Text/SCValdiTextAnimationTransform.h"
 #import <CoreText/CoreText.h>
@@ -118,9 +118,7 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
 {
     NSMutableArray<NSValue *> *remainingRanges = [NSMutableArray new];
     // Walk the original range left-to-right and emit only the gaps that are not animated.
-    // This depends on animationRanges being in ascending document order. That is currently
-    // guaranteed by _animationRangesForAttributedString:, which builds the array via
-    // enumerateAttribute:inRange: and therefore yields monotonic ranges.
+    // This depends on animationRanges being in ascending document order.
     NSUInteger currentLocation = range.location;
     NSUInteger rangeEnd = NSMaxRange(range);
 
@@ -172,9 +170,20 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
 - (BOOL)invalidateAnimatedTextProgress
 {
     self.cachedAnimationRanges = nil;
-    [self _animationRangesForAttributedString:self.textStorage];
+    [self _animationRanges];
     [self invalidateDisplayForCharacterRange:NSMakeRange(0, self.textStorage.length)];
     return self.hasActiveAnimationRanges;
+}
+
+- (void)setProcessedText:(SCValdiProcessedText *)processedText
+{
+    if (_processedText == processedText) {
+        return;
+    }
+    _processedText = processedText;
+    self.cachedAnimationRanges = nil;
+    self.cachedOutlineRanges = nil;
+    [self invalidateDisplayForCharacterRange:NSMakeRange(0, self.textStorage.length)];
 }
 
 - (void)setTextAnimationCoordinator:(SCValdiTextAnimationCoordinator *)textAnimationCoordinator
@@ -204,8 +213,8 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
         return;
     }
 
-    NSAttributedString *attributedString = self.textStorage;
-    if (attributedString.length == 0) {
+    SCValdiProcessedText *processedText = self.processedText;
+    if (processedText == nil || processedText.attributedString.length == 0) {
         return;
     }
 
@@ -213,15 +222,12 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
         self.animationStartTimes = [NSMutableDictionary new];
     }
 
-    [attributedString enumerateAttribute:kSCValdiAttributedStringKeyAnimationTransform
-                                 inRange:NSMakeRange(0, attributedString.length)
-                                 options:0
-                              usingBlock:^(id value, NSRange range, BOOL *stop) {
-        if (![value isKindOfClass:[SCValdiTextAnimationTransform class]] || range.length == 0) {
+    [processedText enumerateAnimationTransformsUsingBlock:^(SCValdiTextAnimationTransform *animationTransform,
+                                                            NSRange range,
+                                                            BOOL *stop) {
+        if (range.length == 0) {
             return;
         }
-
-        SCValdiTextAnimationTransform *animationTransform = value;
         double startDelay = SCValdiAnimationStartDelay(animationTransform, self.textAnimationBasePartIndex);
         if (!SCValdiAnimationShouldTrack(animationTransform, startDelay)) {
             return;
@@ -262,8 +268,8 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     NSRange totalGlyphRange = [self glyphRangeForCharacterRange:NSMakeRange(0, self.textStorage.length) actualCharacterRange:nil];
 
     NSAttributedString *attributedString = self.textStorage;
-    NSArray<SCValdiTextViewAnimationRange *> *animationRanges = [self _visibleAnimationRangesForAttributedString:attributedString];
-    NSArray<SCValdiTextViewOutline *> *outlineRanges = [self _outlineRangesForAttributedString:attributedString];
+    NSArray<SCValdiTextViewAnimationRange *> *animationRanges = [self _visibleAnimationRanges];
+    NSArray<SCValdiTextViewOutline *> *outlineRanges = [self _outlineRanges];
     NSArray<SCValdiTextViewCustomUnderline *> *customUnderlineRanges = [self _customUnderlineRangesForAttributedString:attributedString];
     
     if (outlineRanges.count == 0 && animationRanges.count == 0 && customUnderlineRanges.count == 0) {
@@ -324,8 +330,7 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
 - (CGFloat)_maximumDrawnOuterOutlineSize
 {
     CGFloat maxOutlineWidth = 0.0;
-    for (SCValdiTextViewOutline *outline in [self _outlineRangesForAttributedString:self.textStorage
-                                                                              range:NSMakeRange(0, self.textStorage.length)]) {
+    for (SCValdiTextViewOutline *outline in [self _outlineRangesInRange:NSMakeRange(0, self.textStorage.length)]) {
         if (outline.width > maxOutlineWidth) {
             maxOutlineWidth = outline.width;
         }
@@ -438,7 +443,7 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     }
 }
 
-- (NSArray<SCValdiTextViewAnimationRange *> *)_animationRangesForAttributedString:(NSAttributedString *)attributedString
+- (NSArray<SCValdiTextViewAnimationRange *> *)_animationRanges
 {
     if (self.cachedAnimationRanges != nil) {
         return self.cachedAnimationRanges;
@@ -455,18 +460,22 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     __block BOOL hasActiveAnimationRanges = NO;
     CFTimeInterval currentTime = CACurrentMediaTime();
 
+    SCValdiProcessedText *processedText = self.processedText;
+    if (processedText == nil) {
+        self.hasActiveAnimationRanges = NO;
+        self.cachedAnimationRanges = @[];
+        return self.cachedAnimationRanges;
+    }
+
     if (coordinator) {
         [self prepareGroupedAnimatedTextProgress];
     } else {
-        [attributedString enumerateAttribute:kSCValdiAttributedStringKeyAnimationTransform
-                                     inRange:NSMakeRange(0, attributedString.length)
-                                     options:0
-                                  usingBlock:^(id value, NSRange range, BOOL *stop) {
-            if (![value isKindOfClass:[SCValdiTextAnimationTransform class]] || range.length == 0) {
+        [processedText enumerateAnimationTransformsUsingBlock:^(SCValdiTextAnimationTransform *animationTransform,
+                                                                NSRange range,
+                                                                BOOL *stop) {
+            if (range.length == 0) {
                 return;
             }
-
-            SCValdiTextAnimationTransform *animationTransform = value;
             NSString *key = SCValdiAnimationRangeKey(animationTransform);
 
             double startDelay = SCValdiAnimationStartDelay(animationTransform, 0);
@@ -492,15 +501,12 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
         }];
     }
 
-    [attributedString enumerateAttribute:kSCValdiAttributedStringKeyAnimationTransform
-                                 inRange:NSMakeRange(0, attributedString.length)
-                                 options:0
-                              usingBlock:^(id value, NSRange range, BOOL *stop) {
-        if (![value isKindOfClass:[SCValdiTextAnimationTransform class]] || range.length == 0) {
+    [processedText enumerateAnimationTransformsUsingBlock:^(SCValdiTextAnimationTransform *animationTransform,
+                                                            NSRange range,
+                                                            BOOL *stop) {
+        if (range.length == 0) {
             return;
         }
-
-        SCValdiTextAnimationTransform *animationTransform = value;
         NSString *key = SCValdiAnimationRangeKey(animationTransform);
 
         CGFloat initialTranslationY = animationTransform.translationY;
@@ -562,9 +568,9 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     return self.cachedAnimationRanges;
 }
 
-- (NSArray<SCValdiTextViewAnimationRange *> *)_visibleAnimationRangesForAttributedString:(NSAttributedString *)attributedString
+- (NSArray<SCValdiTextViewAnimationRange *> *)_visibleAnimationRanges
 {
-    NSArray<SCValdiTextViewAnimationRange *> *animationRanges = [self _animationRangesForAttributedString:attributedString];
+    NSArray<SCValdiTextViewAnimationRange *> *animationRanges = [self _animationRanges];
     NSMutableArray<SCValdiTextViewAnimationRange *> *visibleAnimationRanges = [NSMutableArray new];
     for (SCValdiTextViewAnimationRange *animationRange in animationRanges) {
         if (SCValdiAnimationRangeHasVisibleTransform(animationRange)) {
@@ -574,26 +580,18 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     return visibleAnimationRanges;
 }
 
-- (NSArray<SCValdiTextViewOutline *> *)_outlineRangesForAttributedString:(NSAttributedString *)attributedString
+- (NSArray<SCValdiTextViewOutline *> *)_outlineRanges
 {
     if (self.cachedOutlineRanges != nil) {
         return self.cachedOutlineRanges;
     }
 
-    NSArray<SCValdiTextViewAnimationRange *> *animationRanges = [self _visibleAnimationRangesForAttributedString:attributedString];
+    NSArray<SCValdiTextViewAnimationRange *> *animationRanges = [self _visibleAnimationRanges];
     NSMutableArray<SCValdiTextViewOutline *> *outlineRanges = [NSMutableArray new];
-    [attributedString enumerateAttribute:kSCValdiOuterOutlineWidthAttribute
-                                 inRange:NSMakeRange(0, attributedString.length)
-                                 options:0
-                              usingBlock:^(id value, NSRange range, BOOL *stop) {
-        if (![value isKindOfClass:[NSNumber class]]) {
+    [self.processedText enumerateOuterOutlinesUsingBlock:^(UIColor *color, CGFloat width, NSRange range, BOOL *stop) {
+        if (range.length == 0) {
             return;
         }
-
-        id colorAttribute = [attributedString attribute:kSCValdiOuterOutlineColorAttribute
-                                                atIndex:range.location
-                                         effectiveRange:nil];
-        UIColor *outlineColor = [colorAttribute isKindOfClass:[UIColor class]] ? (UIColor *)colorAttribute : nil;
 
         for (NSValue *remainingRangeValue in SCValdiSubtractAnimationRanges(range, animationRanges)) {
             NSRange remainingRange = remainingRangeValue.rangeValue;
@@ -603,8 +601,8 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
 
             SCValdiTextViewOutline *outline = [SCValdiTextViewOutline new];
             outline.range = remainingRange;
-            outline.width = [(NSNumber *)value floatValue];
-            outline.color = outlineColor;
+            outline.width = width;
+            outline.color = color;
             [outlineRanges addObject:outline];
         }
     }];
@@ -613,31 +611,23 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     return self.cachedOutlineRanges;
 }
 
-- (NSArray<SCValdiTextViewOutline *> *)_outlineRangesForAttributedString:(NSAttributedString *)attributedString
-                                                                   range:(NSRange)range
+- (NSArray<SCValdiTextViewOutline *> *)_outlineRangesInRange:(NSRange)range
 {
     NSMutableArray<SCValdiTextViewOutline *> *outlineRanges = [NSMutableArray new];
     if (range.length == 0) {
         return outlineRanges;
     }
 
-    [attributedString enumerateAttribute:kSCValdiOuterOutlineWidthAttribute
-                                 inRange:range
-                                 options:0
-                              usingBlock:^(id value, NSRange attributeRange, BOOL *stop) {
-        if (![value isKindOfClass:[NSNumber class]] || attributeRange.length == 0) {
+    [self.processedText enumerateOuterOutlinesUsingBlock:^(UIColor *color, CGFloat width, NSRange attributeRange, BOOL *stop) {
+        NSRange intersectionRange = NSIntersectionRange(range, attributeRange);
+        if (intersectionRange.length == 0) {
             return;
         }
 
-        id colorAttribute = [attributedString attribute:kSCValdiOuterOutlineColorAttribute
-                                                atIndex:attributeRange.location
-                                         effectiveRange:nil];
-        UIColor *outlineColor = [colorAttribute isKindOfClass:[UIColor class]] ? (UIColor *)colorAttribute : nil;
-
         SCValdiTextViewOutline *outline = [SCValdiTextViewOutline new];
-        outline.range = attributeRange;
-        outline.width = [(NSNumber *)value floatValue];
-        outline.color = outlineColor;
+        outline.range = intersectionRange;
+        outline.width = width;
+        outline.color = color;
         [outlineRanges addObject:outline];
     }];
 
@@ -686,8 +676,8 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     NSUInteger currentGlyphLocation = glyphsToShow.location;
     NSUInteger glyphEnd = NSMaxRange(glyphsToShow);
 
-    // _animationRangesForAttributedString builds ranges in document order, and this
-    // walk relies on that monotonic ordering when advancing currentGlyphLocation.
+    // _animationRanges builds ranges in document order, and this walk relies on
+    // that monotonic ordering when advancing currentGlyphLocation.
     for (SCValdiTextViewAnimationRange *animationRange in animationRanges) {
         NSRange animationGlyphRange = [self glyphRangeForCharacterRange:animationRange.range actualCharacterRange:nil];
         NSRange intersectionGlyphRange = NSIntersectionRange(glyphsToShow, animationGlyphRange);
@@ -781,7 +771,7 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
             CGContextTranslateCTM(context, drawCenter.x, drawCenter.y + animationRange.translationY);
             CGContextScaleCTM(context, animationRange.scale, animationRange.scale);
             CGContextTranslateCTM(context, -drawCenter.x, -drawCenter.y);
-            for (SCValdiTextViewOutline *outline in [self _outlineRangesForAttributedString:self.textStorage range:intersectionRange]) {
+            for (SCValdiTextViewOutline *outline in [self _outlineRangesInRange:intersectionRange]) {
                 [self _drawOutline:outline attributedString:self.textStorage glyphsOrigin:origin context:context];
             }
             [super drawGlyphsForGlyphRange:intersectionGlyphRange atPoint:origin];

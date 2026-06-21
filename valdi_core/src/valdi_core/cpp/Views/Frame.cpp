@@ -5,8 +5,8 @@
 //  Created by Simon Corsin on 10/5/18.
 //
 
-#include "valdi/runtime/Views/Frame.hpp"
-#include "valdi/runtime/Views/Measure.hpp"
+#include "valdi_core/cpp/Views/Frame.hpp"
+#include "valdi_core/cpp/Views/Measure.hpp"
 
 #include "valdi_core/cpp/Utils/StringCache.hpp"
 

@@ -9,14 +9,22 @@
 #import "valdi/ios/Utils/ContextUtils.h"
 #import "valdi/ios/CPPBindings/UIViewHolder.h"
 
-#import "valdi_core/UIView+ValdiBase.h"
+#import "valdi/ios/Categories/UIView+Valdi.h"
 #import "valdi_core/SCValdiObjCConversionUtils.h"
 #import "valdi_core/SCValdiLogger.h"
 #import "valdi_core/SCValdiViewOwner.h"
 #import "valdi_core/SCValdiView.h"
+#import "valdi_core/cpp/Utils/StringCache.hpp"
 
 namespace ValdiIOS
 {
+
+static bool viewClassManagesChildFrames(Class cls) {
+    if (![cls respondsToSelector:@selector(valdi_managesChildFrames)]) {
+        return false;
+    }
+    return [cls valdi_managesChildFrames];
+}
 
 class IOSViewFactory: public Valdi::ViewFactory {
 public:
@@ -24,8 +32,6 @@ public:
         : Valdi::ViewFactory(std::move(viewClassName), viewManager, std::move(boundAttributes)) {}
 
     ~IOSViewFactory() override = default;
-    
-protected:
 
     Class lookupClass() {
         if (_cachedClass != nullptr) {
@@ -133,13 +139,16 @@ Valdi::Ref<Valdi::ViewFactory> createLocalViewFactory(SCValdiViewFactoryBlock vi
                                                                const Valdi::Ref<Valdi::BoundAttributes> &boundAttributes) {
     auto factory = Valdi::makeShared<LocalViewFactory>(viewFactory, viewClassName, viewManager, boundAttributes);
     factory->setIsUserSpecified(true);
+    factory->setManagesChildFrames(viewClassManagesChildFrames(factory->lookupClass()));
     return factory;
 }
 
 Valdi::Ref<Valdi::ViewFactory> createGlobalViewFactory(const Valdi::StringBox &viewClassName,
                                                                 Valdi::IViewManager& viewManager,
                                                                 const Valdi::Ref<Valdi::BoundAttributes> &boundAttributes) {
-    return Valdi::makeShared<GlobalViewFactory>(viewClassName, viewManager, boundAttributes);
+    auto factory = Valdi::makeShared<GlobalViewFactory>(viewClassName, viewManager, boundAttributes);
+    factory->setManagesChildFrames(viewClassManagesChildFrames(factory->lookupClass()));
+    return factory;
 }
 
 }

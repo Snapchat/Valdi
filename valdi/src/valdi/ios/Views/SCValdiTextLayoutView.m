@@ -5,11 +5,9 @@
 
 #import "valdi/ios/Views/SCValdiTextLayoutView.h"
 
-#import "valdi/ios/Text/NSAttributedString+Valdi.h"
 #import "valdi/ios/Text/SCValdiAttributedText.h"
 #import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
-#import "valdi/ios/Text/SCValdiOnLayoutAttribute.h"
-#import "valdi/ios/Text/SCValdiOnTapAttribute.h"
+#import "valdi/ios/Text/SCValdiProcessedText.h"
 #import "valdi/ios/Text/SCValdiTextAnimationCoordinator.h"
 #import "valdi/ios/Text/SCValdiTextAnimationGroupParticipant.h"
 #import "valdi/ios/Text/SCValdiTextLayout.h"
@@ -30,20 +28,6 @@ INTERNED_STRING_CONST("selectionStart", SCValdiLabelSelectionStartKey);
 INTERNED_STRING_CONST("selectionEnd", SCValdiLabelSelectionEndKey);
 
 static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
-
-static NSUInteger SCValdiTextAnimationPartCount(NSAttributedString *attributedString)
-{
-    __block NSUInteger count = 0;
-    [attributedString enumerateAttribute:kSCValdiAttributedStringKeyAnimationTransform
-                                 inRange:NSMakeRange(0, attributedString.length)
-                                 options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
-                              usingBlock:^(id value, NSRange range, BOOL *stop) {
-        if (value != nil && range.length > 0) {
-            count++;
-        }
-    }];
-    return count;
-}
 
 @interface SCValdiTextLayoutView () <UITextInput, UITextInteractionDelegate, SCValdiTextAnimationGroupParticipant>
 - (void)_becomeSelectionFirstResponder;
@@ -78,6 +62,7 @@ static NSUInteger SCValdiTextAnimationPartCount(NSAttributedString *attributedSt
 
 @implementation SCValdiTextLayoutView {
     SCValdiTextLayout *_textLayout;
+    SCValdiProcessedText *_processedText;
     SCValdiTextViewEffectsLayoutManager *_textLayoutEffectsLayoutManager;
     CADisplayLink *_animatedTextDisplayLink;
     SCValdiCustomUnderlineStyle *_customUnderlineStyle;
@@ -207,7 +192,7 @@ static NSUInteger SCValdiTextAnimationPartCount(NSAttributedString *attributedSt
         return;
     }
 
-    NSAttributedString *attributedString = _textLayout.attributedString;
+    SCValdiProcessedText *processedText = _processedText;
     NSUInteger maxNumberOfLines = _textLayout.maxNumberOfLines ?: _maxNumberOfLines;
 
     _usesEffectsLayoutManager = usesEffectsLayoutManager;
@@ -219,12 +204,11 @@ static NSUInteger SCValdiTextAnimationPartCount(NSAttributedString *attributedSt
         _textLayout = [SCValdiTextLayout new];
     }
 
-    _textLayout.attributedString = attributedString;
+    _textLayout.processedText = processedText;
     _textLayout.maxNumberOfLines = maxNumberOfLines;
     _textLayout.size = self.bounds.size;
-    _textAnimationPartCount = usesEffectsLayoutManager && attributedString != nil ?
-        SCValdiTextAnimationPartCount(attributedString) :
-        0;
+    _textLayoutEffectsLayoutManager.processedText = processedText;
+    _textAnimationPartCount = usesEffectsLayoutManager && processedText != nil ? processedText.animationTransformsCount : 0;
     [self setTextAnimationCoordinator:_textAnimationCoordinator basePartIndex:_textAnimationBasePartIndex];
     [self _updateTextAnimationGroupRegistration];
     [self setNeedsDisplay];
@@ -236,14 +220,25 @@ static NSUInteger SCValdiTextAnimationPartCount(NSAttributedString *attributedSt
     _textLayout.maxNumberOfLines = maxNumberOfLines;
 }
 
-- (void)setAttributedString:(NSAttributedString *)attributedString
+- (void)setProcessedText:(SCValdiProcessedText *)processedText
 {
-    [self _ensureTextLayout].attributedString = attributedString;
-    _textAnimationPartCount = self.usesEffectsLayoutManager && attributedString != nil ?
-        SCValdiTextAnimationPartCount(attributedString) :
-        0;
+    _processedText = processedText;
+    [self _ensureTextLayout].processedText = processedText;
+    _textLayoutEffectsLayoutManager.processedText = processedText;
+    _textAnimationPartCount = self.usesEffectsLayoutManager && processedText != nil ? processedText.animationTransformsCount : 0;
     [self _updateTextAnimationGroupRegistration];
     [self _clampSelectionToCurrentText];
+    [self setNeedsDisplay];
+}
+
+- (void)updateInlineAttachmentsAndUpdate
+{
+    if (![_processedText updateInlineAttachments]) {
+        return;
+    }
+
+    [_textLayout refreshProcessedTextStorage];
+    [_textLayout invalidateLayout];
     [self setNeedsDisplay];
 }
 
@@ -252,33 +247,26 @@ static NSUInteger SCValdiTextAnimationPartCount(NSAttributedString *attributedSt
                 characterRanges:(NSArray<NSValue *> *)characterRanges
 {
     _customUnderlineStyle = customUnderlineStyle;
-    _customUnderlineSourceAttributedString = [sourceAttributedString copy];
+    _customUnderlineSourceAttributedString = sourceAttributedString;
     _customUnderlineCharacterRanges = [characterRanges copy];
     [self setNeedsDisplay];
 }
 
 - (void)performOnLayoutCallbacks
 {
-    NSAttributedString *attributedString = _textLayout.attributedString;
-    if (!attributedString) {
+    if (_processedText == nil) {
         return;
     }
 
-    [attributedString enumerateAttribute:kSCValdiAttributedStringKeyOnLayout
-                                 inRange:NSMakeRange(0, attributedString.length)
-                                 options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
-                              usingBlock:^(id  _Nullable value, NSRange range, BOOL * _Nonnull stop) {
-        if (value) {
-            SCValdiOnLayoutAttribute *attribute = value;
+    [_processedText enumerateOnLayoutCallbacksUsingBlock:^(id<SCValdiFunction> callback, NSRange range, BOOL *stop) {
             CGRect newBounds = [self->_textLayout boundingRectForRange:range];
             SCValdiMarshallerScoped(marshaller, {
                 SCValdiMarshallerPushDouble(marshaller, CGFloatNormalize(newBounds.origin.x));
                 SCValdiMarshallerPushDouble(marshaller, CGFloatNormalize(newBounds.origin.y));
                 SCValdiMarshallerPushDouble(marshaller, CGFloatNormalize(newBounds.size.width));
                 SCValdiMarshallerPushDouble(marshaller, CGFloatNormalize(newBounds.size.height));
-                [attribute.callback performWithMarshaller:marshaller];
+                [callback performWithMarshaller:marshaller];
             });
-        }
     }];
 }
 
@@ -381,40 +369,9 @@ static NSUInteger SCValdiTextAnimationPartCount(NSAttributedString *attributedSt
     _animatedTextDisplayLink = nil;
 }
 
-+ (NSAttributedString *)displayAttributedStringForAttributedString:(NSAttributedString *)attributedString
-                                             customUnderlineStyle:(SCValdiCustomUnderlineStyle *)customUnderlineStyle
-                                          sourceAttributedString:(NSAttributedString **)sourceAttributedString
-                                                 characterRanges:(NSArray<NSValue *> **)characterRanges
-{
-    if (sourceAttributedString) {
-        *sourceAttributedString = nil;
-    }
-    if (characterRanges) {
-        *characterRanges = nil;
-    }
-    if (!customUnderlineStyle || attributedString.length == 0) {
-        return attributedString;
-    }
-
-    NSArray<NSValue *> *customUnderlineCharacterRanges = nil;
-    NSAttributedString *displayAttributedString =
-        SCValdiAttributedStringByRemovingNativeUnderlines(attributedString, &customUnderlineCharacterRanges);
-    if (customUnderlineCharacterRanges.count == 0) {
-        return attributedString;
-    }
-
-    if (sourceAttributedString) {
-        *sourceAttributedString = [attributedString copy];
-    }
-    if (characterRanges) {
-        *characterRanges = customUnderlineCharacterRanges;
-    }
-    return displayAttributedString;
-}
-
 - (id<SCValdiFunction>)onTapFunctionAtLocation:(CGPoint)location
 {
-    NSAttributedString *attributedString = _textLayout.attributedString;
+    NSAttributedString *attributedString = _processedText.attributedString;
     if (!attributedString) {
         return nil;
     }
@@ -424,11 +381,7 @@ static NSUInteger SCValdiTextAnimationPartCount(NSAttributedString *attributedSt
         return nil;
     }
 
-    SCValdiOnTapAttribute *onTapAttribute = [attributedString
-                                                attribute:kSCValdiAttributedStringKeyOnTap
-                                                atIndex:index
-                                                effectiveRange:nil];
-    return onTapAttribute.callback;
+    return [_processedText onTapAtIndex:index effectiveRange:NULL];
 }
 
 - (SCValdiTextLayout *)_ensureTextLayout
@@ -501,7 +454,7 @@ static NSUInteger SCValdiTextAnimationPartCount(NSAttributedString *attributedSt
 
 - (NSString *)_currentTextString
 {
-    return _textLayout.attributedString.string ?: @"";
+    return _processedText.attributedString.string ?: @"";
 }
 
 - (NSUInteger)_currentTextLength
@@ -1213,7 +1166,7 @@ static NSUInteger SCValdiTextAnimationPartCount(NSAttributedString *attributedSt
 - (NSDictionary<NSAttributedStringKey, id> *)textStylingAtPosition:(UITextPosition *)position
                                                        inDirection:(UITextStorageDirection)direction
 {
-    NSAttributedString *attributedString = _textLayout.attributedString;
+    NSAttributedString *attributedString = _processedText.attributedString;
     NSInteger offset = [self _offsetFromTextPosition:position];
     if (offset < 0 || offset >= (NSInteger)attributedString.length) {
         return nil;

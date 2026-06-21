@@ -25,7 +25,7 @@ Value AttributedTextNativeModuleFactory::loadModule() {
 
 Value AttributedTextNativeModuleFactory::makeNativeAttributedText(const ValueFunctionCallContext& callContext) const {
     auto value = callContext.getParameter(0);
-    auto result = TextAttributeValueParser::parse(*_colorPalette, value, _logger, true);
+    auto result = TextAttributeValueParser::parse(*_colorPalette, value, _logger, nullptr, 0, true);
     if (!result) {
         callContext.getExceptionTracker().onError(result.moveError());
         return Value::undefined();

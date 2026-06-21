@@ -3,37 +3,42 @@ package com.snap.valdi.attributes.impl
 import android.content.Context
 import android.graphics.Color
 import android.text.TextUtils
-import android.widget.TextView
 import com.snap.valdi.attributes.AttributesBinder
 import com.snap.valdi.attributes.AttributesBindingContext
 import com.snap.valdi.attributes.conversions.ColorConversions
 import com.snap.valdi.attributes.impl.animations.ValdiAnimator
+import com.snap.valdi.attributes.impl.fonts.FontManager
 import com.snap.valdi.attributes.impl.gradients.ValdiGradient
 import com.snap.valdi.attributes.impl.richtext.CustomUnderlineStyle
-import com.snap.valdi.attributes.impl.richtext.RichTextConverter
 import com.snap.valdi.attributes.impl.richtext.FontAttributes
 import com.snap.valdi.attributes.impl.richtext.TextViewHelper
 import com.snap.valdi.callable.ValdiFunction
 import com.snap.valdi.exceptions.AttributeError
-import com.snap.valdi.exceptions.ValdiException
 import com.snap.valdi.utils.CoordinateResolver
-import com.snap.valdi.views.ValdiTextHolder
 import com.snap.valdi.views.ValdiTextSelection
+import com.snap.valdi.views.ValdiTextViewBase
 import com.snapchat.client.valdi_core.AttributeType
 import com.snapchat.client.valdi_core.CompositeAttributePart
 import kotlin.math.roundToInt
 
 /**
- * Binds attributes for the TextView's view class
+ * Attribute binder for properties shared by all Android text controls backed by
+ * ValdiTextViewBase.
+ *
+ * Registering this binder against the base class keeps label, textview, and
+ * textfield text behavior in one place: attributed text parsing, font
+ * attributes, selection, shadows, gradients, overflow, and shared callbacks.
  */
-class TextViewAttributesBinder(
-        private val context: Context,
-        private val textConverter: RichTextConverter,
-        private val defaultAttributes: FontAttributes
-) : AttributesBinder<TextView> {
-    private val scaledDensity = context.resources.displayMetrics.scaledDensity
-
+class ValdiTextViewBaseAttributesBinder(
+    context: Context,
+    private val fontManager: FontManager,
+    private val defaultAttributes: FontAttributes,
+) : AttributesBinder<ValdiTextViewBase> {
+    private val coordinateResolver = CoordinateResolver(context)
     private var valueAttributeId = 0
+
+    override val viewClass: Class<ValdiTextViewBase>
+        get() = ValdiTextViewBase::class.java
 
     companion object {
         val FONT_ATTRIBUTES_PARTS = arrayListOf(
@@ -50,11 +55,6 @@ class TextViewAttributesBinder(
             CompositeAttributePart("customUnderlineStyle", AttributeType.STRING, true, false),
         )
     }
-
-    private val coordinateResolver = CoordinateResolver(context)
-
-    override val viewClass: Class<TextView>
-        get() = TextView::class.java
 
     fun preprocessFontAttributes(values: Any?): Any {
         val valuesArray = values as? Array<*> ?: throw AttributeError("Expecting array for spannable string")
@@ -79,15 +79,12 @@ class TextViewAttributesBinder(
         if (color != null) {
             attributes.color = ColorConversions.fromRGBA(color)
         }
-
         if (textDecoration != null) {
             attributes.applyTextDecoration(textDecoration)
         }
-
         if (textAlign != null) {
             attributes.applyTextAlign(textAlign)
         }
-
         if (font != null) {
             attributes.applyFont(font)
         }
@@ -99,7 +96,6 @@ class TextViewAttributesBinder(
         attributes.adjustsFontSizeToFitWidth = adjustsFontSizeToFitWidth
         attributes.minimumScaleFactor = minimumScaleFactor?.toFloat()
         attributes.customUnderlineStyle = customUnderlineStyle
-
         return attributes
     }
 
@@ -108,44 +104,35 @@ class TextViewAttributesBinder(
         return CustomUnderlineStyle.parse(styleString)
     }
 
-    private fun getTextViewHelper(view: TextView): TextViewHelper {
-        if (view !is ValdiTextHolder) {
-            throw ValdiException("TextView class ${view.javaClass.name} does not implement ValdiTextHolder")
-        }
-        var helper = view.textViewHelper
-        if (helper == null) {
-            helper = TextViewHelper(view, textConverter, defaultAttributes, valueAttributeId)
-            view.textViewHelper = helper
-        }
-
-        return helper
+    private fun getTextViewHelper(view: ValdiTextViewBase): TextViewHelper {
+        return view.getOrCreateTextViewHelper(fontManager, defaultAttributes, valueAttributeId)
     }
 
-    fun applyFontAttributes(view: TextView, value: Any?, animator: ValdiAnimator?) {
+    fun applyFontAttributes(view: ValdiTextViewBase, value: Any?, animator: ValdiAnimator?) {
         getTextViewHelper(view).fontAttributes = value as? FontAttributes
     }
 
-    fun resetFontAttributes(view: TextView, animator: ValdiAnimator?) {
+    fun resetFontAttributes(view: ValdiTextViewBase, animator: ValdiAnimator?) {
         getTextViewHelper(view).fontAttributes = null
     }
 
-    fun applyValue(view: TextView, value: Any?, animator: ValdiAnimator?) {
+    fun applyValue(view: ValdiTextViewBase, value: Any?, animator: ValdiAnimator?) {
         getTextViewHelper(view).textValue = value
     }
 
-    fun resetValue(view: TextView, animator: ValdiAnimator?) {
+    fun resetValue(view: ValdiTextViewBase, animator: ValdiAnimator?) {
         getTextViewHelper(view).textValue = null
     }
 
-    fun applyTextGradient(view: TextView, value: Array<Any>, animator: ValdiAnimator?) {
+    fun applyTextGradient(view: ValdiTextViewBase, value: Array<Any>, animator: ValdiAnimator?) {
         getTextViewHelper(view).textGradient = ValdiGradient.fromGradientData(value)
     }
 
-    fun resetTextGradient(view: TextView, animator: ValdiAnimator?) {
+    fun resetTextGradient(view: ValdiTextViewBase, animator: ValdiAnimator?) {
         getTextViewHelper(view).textGradient = null
     }
 
-    fun applyTextShadow(view: TextView, value: Any?, animator: ValdiAnimator?) {
+    fun applyTextShadow(view: ValdiTextViewBase, value: Any?, animator: ValdiAnimator?) {
         if (value !is Array<*>) {
             resetTextShadow(view, animator)
             return
@@ -158,102 +145,77 @@ class TextViewAttributesBinder(
         var color = ColorConversions.fromRGBA(value[0] as? Long ?: 0)
         var radius = coordinateResolver.toPixel((value[1] as? Double ?: 0.0))
         val opacity = value[2] as? Double ?: 0.0
-
         val widthOffset = coordinateResolver.toPixel(value[3] as? Double ?: 0.0)
         val heightOffset = coordinateResolver.toPixel(value[4] as? Double ?: 0.0)
 
-        // When the radius is 0 on Android, the shadow doesn't render
-        // When the radius is 0 on iOS, if there's an offset, the shadow will still render
         if (radius == 0) {
             if (widthOffset.equals(0f) && heightOffset.equals(0f)) {
                 resetTextShadow(view, animator)
                 return
             }
-            // This is the pixel equivalent of epsilon so that we get some shadow instead of no
-            // shadow
             radius = 1
         }
 
         if (opacity < 1) {
-            // If the passed in opacity is less than 1, use it instead of the color's alpha
-            // for feature parity with iOS
-            // Fancy bit math because the Android APIs to do this don't go far enough back
-            // Color.valueOf was added in API 26 we support back to API 21
-            var bitmask = 0x00ffffff
-            // Shift up to opacity bits
-            var shiftedOpacity = (opacity * 255).toInt() shl 24
-            var clearedAlpha = color and bitmask
+            val bitmask = 0x00ffffff
+            val shiftedOpacity = (opacity * 255).toInt() shl 24
+            val clearedAlpha = color and bitmask
             color = shiftedOpacity or clearedAlpha
         }
 
-        view.setShadowLayer(radius.toFloat(), widthOffset.toFloat(), heightOffset.toFloat(), color);
+        view.backingTextView.setShadowLayer(radius.toFloat(), widthOffset.toFloat(), heightOffset.toFloat(), color)
     }
 
-    fun resetTextShadow(view: TextView, animator: ValdiAnimator?) {
-        view.setShadowLayer(0f, 0f, 0f, 0);
+    fun resetTextShadow(view: ValdiTextViewBase, animator: ValdiAnimator?) {
+        view.backingTextView.setShadowLayer(0f, 0f, 0f, 0)
     }
 
-    fun applyTextOverflow(view: TextView, value: String, animator: ValdiAnimator?) {
-        view.ellipsize = when (value) {
+    fun applyTextOverflow(view: ValdiTextViewBase, value: String, animator: ValdiAnimator?) {
+        view.backingTextView.ellipsize = when (value) {
             "ellipsis" -> TextUtils.TruncateAt.END
             "clip" -> null
             else -> throw AttributeError("Invalid textOverflow value")
         }
     }
 
-    fun resetTextOverflow(view: TextView, animator: ValdiAnimator?) {
-        view.ellipsize = TextUtils.TruncateAt.END
+    fun resetTextOverflow(view: ValdiTextViewBase, animator: ValdiAnimator?) {
+        view.backingTextView.ellipsize = TextUtils.TruncateAt.END
     }
 
-    fun applySelectable(view: TextView, value: Boolean, animator: ValdiAnimator?) {
-        if (view is ValdiTextHolder) {
-            view.setValdiSelectable(value)
-        } else {
-            view.setTextIsSelectable(value)
-        }
+    fun applySelectable(view: ValdiTextViewBase, value: Boolean, animator: ValdiAnimator?) {
+        view.setValdiSelectable(value)
     }
 
-    fun resetSelectable(view: TextView, animator: ValdiAnimator?) {
+    fun resetSelectable(view: ValdiTextViewBase, animator: ValdiAnimator?) {
         applySelectable(view, false, animator)
     }
 
-    fun applySelection(view: TextView, selection: Any?, animator: ValdiAnimator?) {
+    fun applySelection(view: ValdiTextViewBase, selection: Any?, animator: ValdiAnimator?) {
         if (selection !is Array<*>) {
             resetSelection(view, animator)
             return
         }
-
         if (selection.size != ValdiTextSelection.EXPECTED_SELECTION_DATA_SIZE) {
             throw AttributeError("Selection should have two values in the given array: start + end")
         }
-
         val start = (selection[0] as? Double)?.roundToInt() ?: 0
         val end = (selection[1] as? Double)?.roundToInt() ?: 0
         getTextViewHelper(view).selection = Pair(start, end)
     }
 
-    fun resetSelection(view: TextView, animator: ValdiAnimator?) {
-        if (view is ValdiTextHolder) {
-            view.setValdiSelection(0, 0)
-        } else {
-            ValdiTextSelection.setSelectionClamped(view, 0, 0)
-        }
+    fun resetSelection(view: ValdiTextViewBase, animator: ValdiAnimator?) {
+        view.setValdiSelection(0, 0)
     }
 
-    fun applyOnSelectionChange(view: TextView, action: ValdiFunction) {
-        if (view !is ValdiTextHolder) {
-            throw ValdiException("TextView class ${view.javaClass.name} does not implement ValdiTextHolder")
-        }
+    fun applyOnSelectionChange(view: ValdiTextViewBase, action: ValdiFunction) {
         view.onSelectionChangeFunction = action
     }
 
-    fun resetOnSelectionChange(view: TextView) {
-        if (view is ValdiTextHolder) {
-            view.onSelectionChangeFunction = null
-        }
+    fun resetOnSelectionChange(view: ValdiTextViewBase) {
+        view.onSelectionChangeFunction = null
     }
 
-    override fun bindAttributes(attributesBindingContext: AttributesBindingContext<TextView>) {
+    override fun bindAttributes(attributesBindingContext: AttributesBindingContext<ValdiTextViewBase>) {
         attributesBindingContext.bindCompositeAttribute("fontAttributes", FONT_ATTRIBUTES_PARTS, this::applyFontAttributes, this::resetFontAttributes)
         attributesBindingContext.registerPreprocessor("customUnderlineStyle", true, this::preprocessCustomUnderlineStyle)
         attributesBindingContext.registerPreprocessor("fontAttributes", true, this::preprocessFontAttributes)
@@ -265,8 +227,6 @@ class TextViewAttributesBinder(
         attributesBindingContext.bindBooleanAttribute("selectable", false, this::applySelectable, this::resetSelectable)
         attributesBindingContext.bindUntypedAttribute("selection", false, this::applySelection, this::resetSelection)
         attributesBindingContext.bindFunctionAttribute("onSelectionChange", this::applyOnSelectionChange, this::resetOnSelectionChange)
-
-        this.valueAttributeId = attributesBindingContext.getBoundAttributeId("value")
+        valueAttributeId = attributesBindingContext.getBoundAttributeId("value")
     }
-
 }

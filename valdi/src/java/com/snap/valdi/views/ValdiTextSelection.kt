@@ -3,6 +3,7 @@ package com.snap.valdi.views
 import android.text.Selection
 import android.text.Spannable
 import android.text.SpannableString
+import android.view.View
 import android.widget.TextView
 import com.snap.valdi.callable.ValdiFunction
 import com.snap.valdi.extensions.ViewUtils
@@ -29,8 +30,8 @@ object ValdiTextSelection {
         textView.postInvalidateOnAnimation()
     }
 
-    fun notifySelectionChanged(textView: TextView, selectionStart: Int, selectionEnd: Int) {
-        ViewUtils.notifyAttributeChanged(textView, selectionProperty, intArrayOf(selectionStart, selectionEnd))
+    fun notifySelectionChanged(view: View, selectionStart: Int, selectionEnd: Int) {
+        ViewUtils.notifyAttributeChanged(view, selectionProperty, intArrayOf(selectionStart, selectionEnd))
     }
 
     fun callSelectionChangeCallback(

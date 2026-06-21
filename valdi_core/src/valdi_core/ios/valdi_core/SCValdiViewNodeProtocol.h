@@ -21,6 +21,11 @@ typedef void (^SCValdiContextDidFinishLayoutBlock)(__kindof UIView* view, id<SCV
 @property (readonly, nonatomic) UIView* view;
 
 /**
+ Frame calculated by Yoga in the parent ViewNode coordinate space.
+ */
+@property (readonly, nonatomic) CGRect relativeFrame;
+
+/**
  Is the current UI yoga flexbox layout direction horizontal (i.e. row or row-reversed)?
 
  Used by SCValdiScrollView.

@@ -83,11 +83,17 @@ TextLayerClass::TextLayerClass(const Ref<Resources>& resources, const Ref<LayerC
 
 TextLayerClass::~TextLayerClass() = default;
 
+bool TextLayerClass::managesChildFrames() const {
+    return true;
+}
+
 Valdi::Ref<Layer> TextLayerClass::instantiate() {
     return snap::drawing::makeLayer<snap::drawing::TextLayer>(getResources());
 }
 
-Size TextLayerClass::onMeasure(const Valdi::Value& attributes, Size maxSize, bool isRightToLeft) {
+Size TextLayerClass::onMeasure(const Valdi::Value& attributes,
+                               Size maxSize,
+                               bool isRightToLeft) {
     auto text = attributes.getMapValue("value");
     auto font = Valdi::castOrNull<Font>(attributes.getMapValue("font").getValdiObject());
     auto numberOfLines = attributes.getMapValue("numberOfLines");

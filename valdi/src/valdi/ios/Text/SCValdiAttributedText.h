@@ -22,6 +22,7 @@ typedef NS_ENUM(NSUInteger, SCValdiTextDecoration) {
 @protocol SCValdiFunction;
 @class SCValdiWrappedValue;
 @class SCValdiImageAttachmentInfo;
+@class SCValdiInlineViewAttachmentInfo;
 @class SCValdiTextAnimationTransform;
 
 /**
@@ -113,6 +114,12 @@ typedef NS_ENUM(NSUInteger, SCValdiTextDecoration) {
  or nil if the part is not an image attachment.
  */
 - (nullable SCValdiImageAttachmentInfo*)imageAttachmentAtIndex:(NSUInteger)index;
+
+/**
+ Return the inline view attachment info for the part at the given index,
+ or nil if the part is not an inline view attachment.
+ */
+- (nullable SCValdiInlineViewAttachmentInfo*)inlineViewAttachmentAtIndex:(NSUInteger)index;
 
 /**
  Return the animation transform for the part at the given index,

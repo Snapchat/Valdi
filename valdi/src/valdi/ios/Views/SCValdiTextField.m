@@ -24,6 +24,7 @@
 
 #import "valdi/ios/Text/SCValdiAttributedTextHelper.h"
 #import "valdi/ios/Text/SCValdiFont.h"
+#import "valdi/ios/Text/SCValdiProcessedText.h"
 
 @implementation SCValdiTextField {
     /// YES if pressing the return key should dismiss the keyboard, o/w NO
@@ -333,11 +334,14 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextField
         SCValdiFontAttributes *fontAttributes = [self fontAttributes];
 
         if ([self _needAttributedString]) {
-            NSAttributedString *attributedString = [NSAttributedString attributedStringWithValdiText:_textValue
-                                                                                             attributes:[fontAttributes resolveAttributesWithIsRightToLeft:isRightToLeft traitCollection:traitCollection]
-                                                                                          isRightToLeft:isRightToLeft
-                                                                                            fontManager:_fontManager
-                                                                                        traitCollection:traitCollection];
+            SCValdiProcessedText *processedText =
+                [SCValdiProcessedText processedTextWithAttributeValue:_textValue
+                                                           attributes:[fontAttributes resolveAttributesWithIsRightToLeft:isRightToLeft traitCollection:traitCollection]
+                                                        isRightToLeft:isRightToLeft
+                                                          fontManager:_fontManager
+                                                      traitCollection:traitCollection
+                                                        configuration:nil];
+            NSAttributedString *attributedString = processedText.attributedString;
 
             [self updateLabelMode:SCValdiTextModeAttributedText];
 

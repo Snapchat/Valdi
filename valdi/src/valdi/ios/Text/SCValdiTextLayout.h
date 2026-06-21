@@ -11,6 +11,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @class SCValdiFontAttributes;
+@class SCValdiProcessedText;
 @protocol SCValdiFontManagerProtocol;
 
 /**
@@ -20,8 +21,9 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @interface SCValdiTextLayout : NSObject
 
-@property (copy, nonatomic, nullable) NSAttributedString* attributedString;
+@property (strong, nonatomic, nullable) SCValdiProcessedText* processedText;
 @property (strong, nonatomic, readonly) NSLayoutManager* layoutManager;
+@property (strong, nonatomic, readonly) NSTextContainer* textContainer;
 
 @property (assign, nonatomic) CGSize size;
 @property (assign, nonatomic) NSUInteger maxNumberOfLines;
@@ -74,13 +76,8 @@ NS_ASSUME_NONNULL_BEGIN
                                      lineWidth:(CGFloat)lineWidth
                                underlineOffset:(CGFloat)underlineOffset;
 
-/**
- Return the bounding rect for the given attributed string, constrained to the
- given maxSize and max number of lines.
- */
-+ (CGRect)boundingRectWithAttributedString:(NSAttributedString*)attributedString
-                                   maxSize:(CGSize)maxSize
-                          maxNumberOfLines:(NSUInteger)maxNumberOfLines;
+- (void)invalidateLayout;
+- (void)refreshProcessedTextStorage;
 
 + (CGSize)measureSizeWithMaxSize:(CGSize)maxSize
                    fontAttributes:(nullable SCValdiFontAttributes *)fontAttributes

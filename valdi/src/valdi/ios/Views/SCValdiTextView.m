@@ -15,13 +15,15 @@
 #import "valdi/ios/Text/SCValdiFont.h"
 #import "valdi/ios/Text/SCValdiAttributedTextHelper.h"
 #import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
-#import "valdi/ios/Text/SCValdiOnTapAttribute.h"
+#import "valdi/ios/Text/SCValdiInlineTextChildLayout.h"
+#import "valdi/ios/Text/SCValdiProcessedText.h"
 #import "valdi/ios/Text/SCValdiTextAnimationTransform.h"
 #import "valdi/ios/Text/SCValdiTextGradientHelper.h"
 #import "valdi/ios/Text/SCValdiTextLayout.h"
 #import "valdi/ios/Views/SCValdiTextAnimationGroup.h"
 
 #import "valdi_core/UIColor+Valdi.h"
+#import "valdi_core/SCValdiContentViewProviding.h"
 #import "valdi_core/SCValdiTextInputTraitAttributes.h"
 #import "valdi_core/SCValdiError.h"
 #import "valdi_core/SCValdiLogger.h"
@@ -29,7 +31,7 @@
 #import "valdi_core/SCValdiConfigurableTextHolder.h"
 #import "valdi_core/SCValdiConfigurableTextHolderTraitAttributes.h"
 #import "valdi_core/SCValdiTextInputUnfocusReason.h"
-#import "valdi/ios/Text/SCValdiOnLayoutAttribute.h"
+#import "valdi_core/SCValdiViewNodeProtocol.h"
 #import "valdi/ios/Gestures/SCValdiGestureRecognizers.h"
 #import "valdi/ios/Views/SCValdiLabelSelection.h"
 
@@ -83,46 +85,34 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
 static NSString* const kSCValdiTextViewContentSizeKey = @"contentSize";
 static CGFloat const SCValdiAnimatedTextOverlayPadding = 8.0;
 
-static NSUInteger SCValdiTextViewAnimationPartCount(NSAttributedString *attributedString)
-{
-    __block NSUInteger count = 0;
-    [attributedString enumerateAttribute:kSCValdiAttributedStringKeyAnimationTransform
-                                 inRange:NSMakeRange(0, attributedString.length)
-                                 options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
-                              usingBlock:^(id value, NSRange range, BOOL *stop) {
-        if (value != nil && range.length > 0) {
-            count++;
-        }
-    }];
-    return count;
-}
-
 typedef NS_ENUM(NSUInteger, SCValdiTextViewTextGravity) {
     SCValdiTextViewTextGravityTop,
     SCValdiTextViewTextGravityCenter,
     SCValdiTextViewTextGravityBottom,
 };
 
-static CGFloat SCValdiAnimatedTextVerticalOverflowPadding(NSAttributedString *attributedString)
+static CGFloat SCValdiAnimatedTextVerticalOverflowPadding(SCValdiProcessedText *processedText,
+                                                          NSAttributedString *attributedString)
 {
-    if (attributedString.length == 0) {
+    if (processedText == nil || attributedString.length == 0) {
         return 0.0;
     }
 
     __block CGFloat maxTranslation = 0.0;
     __block CGFloat maxScaleOverflow = 0.0;
-    [attributedString enumerateAttributesInRange:NSMakeRange(0, attributedString.length)
-                                         options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
-                                      usingBlock:^(NSDictionary<NSAttributedStringKey, id> *attrs, NSRange range, BOOL *stop) {
-        SCValdiTextAnimationTransform *animationTransform = attrs[kSCValdiAttributedStringKeyAnimationTransform];
-        if (![animationTransform isKindOfClass:[SCValdiTextAnimationTransform class]]) {
+    [processedText enumerateAnimationTransformsUsingBlock:^(SCValdiTextAnimationTransform *animationTransform,
+                                                            NSRange range,
+                                                            BOOL *stop) {
+        (void)stop;
+        if (range.length == 0 || range.location >= attributedString.length) {
             return;
         }
-
+        UIFont *font = ObjectAs([attributedString attribute:NSFontAttributeName
+                                                    atIndex:range.location
+                                             effectiveRange:nil], UIFont);
         maxTranslation = MAX(maxTranslation, fabs(animationTransform.translationY));
         CGFloat scale = animationTransform.scale;
-        UIFont *font = attrs[NSFontAttributeName];
-        CGFloat lineHeight = [font isKindOfClass:[UIFont class]] ? font.lineHeight : 0.0;
+        CGFloat lineHeight = font != nil ? font.lineHeight : 0.0;
         maxScaleOverflow = MAX(maxScaleOverflow, MAX(fabs(scale) - 1.0, 0.0) * lineHeight * 0.5);
     }];
 
@@ -135,12 +125,27 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
     NSRange fullRange = NSMakeRange(0, backgroundOnlyAttributedString.length);
     [backgroundOnlyAttributedString addAttribute:NSForegroundColorAttributeName value:[UIColor clearColor] range:fullRange];
     [backgroundOnlyAttributedString addAttribute:NSStrokeColorAttributeName value:[UIColor clearColor] range:fullRange];
-    [backgroundOnlyAttributedString addAttribute:kSCValdiOuterOutlineColorAttribute value:[UIColor clearColor] range:fullRange];
-    [backgroundOnlyAttributedString removeAttribute:kSCValdiAttributedStringKeyAnimationTransform range:fullRange];
     return backgroundOnlyAttributedString;
 }
 
-@interface SCValdiTextView() <SCValdiAttributedTextOnTapGestureRecognizerFunctionProvider, SCValdiTextAnimationGroupParticipant>
+static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
+                                                      CGFloat baseTopInset,
+                                                      CGFloat baseBottomInset)
+{
+    if (textView.attributedText.length == 0) {
+        return textView.contentSize.height;
+    }
+
+    [textView.layoutManager ensureLayoutForTextContainer:textView.textContainer];
+    CGRect usedRect = [textView.layoutManager usedRectForTextContainer:textView.textContainer];
+    if (CGRectIsEmpty(usedRect)) {
+        return textView.contentSize.height;
+    }
+
+    return CGRectGetMaxY(usedRect) + baseTopInset + baseBottomInset;
+}
+
+@interface SCValdiTextView() <SCValdiAttributedTextOnTapGestureRecognizerFunctionProvider, SCValdiContentViewProviding, SCValdiTextAnimationGroupParticipant>
 
 @end
 
@@ -157,6 +162,7 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
     BOOL _ignoreNewlines;
     BOOL _enabled;
     BOOL _updating;
+    BOOL _updatingContentInset;
     BOOL _updateOnLayout;
     /// The vertical gravity of the text
     SCValdiTextViewTextGravity _textGravity;
@@ -177,6 +183,7 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
     SCValdiTextViewInternal *_textView;
     SCValdiTextViewEffectsLayoutManager *_effectsLayoutManager;
     NSAttributedString *_attributedTextOnTapString;
+    SCValdiProcessedText *_processedText;
     BOOL _hasOnTapGestureRecognizer;
     SCValdiCustomUnderlineStyle *_customUnderlineStyle;
     BOOL _hasCustomUnderlineAttribute;
@@ -188,6 +195,7 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
 
     // State for the animated text overlay used when per-glyph transforms are present.
     SCValdiTextViewInternal *_animatedTextView;
+    UIView *_valdiChildrenContainerView;
     SCValdiTextViewEffectsLayoutManager *_animatedTextEffectsLayoutManager;
     CGFloat _animatedTextVerticalOverflowPadding;
     BOOL _slowClipping;
@@ -195,6 +203,11 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
     __weak SCValdiTextAnimationGroup *_textAnimationGroup;
     NSUInteger _textAnimationPartCount;
 
+}
+
++ (BOOL)valdi_managesChildFrames
+{
+    return YES;
 }
 
 - (void)valdi_applySlowClipping:(BOOL)slowClipping animator:(id<SCValdiAnimatorProtocol> )animator
@@ -320,12 +333,14 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
     }
     [self _updateTextGradientColorIfNeeded];
     [self _updateAttributedTextIfNeeded];
+    [self _updateInlineTextAttachmentsIfNeeded];
     [super layoutSubviews];
 
     [self _updateFrame];
     [self _updateContentInset];
     [self _updatePlaceholderInset];
     [self _updateOnLayoutIfNeeded];
+    [self _updateInlineTextChildFrames];
 }
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView
@@ -337,6 +352,7 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
 
 - (void)_updateFrame
 {
+    _valdiChildrenContainerView.frame = self.bounds;
     // necessary to handle that on one line with higher heights, setting frame actually causes an adjustment in scroll slightly by a pixel (25.666 => 26 ex)
     if (!CGRectEqualToRect(_placeholder.frame, self.bounds)) {
         _placeholder.frame = self.bounds;
@@ -360,16 +376,19 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
     [self _updateAttributedTextIfNeeded];
     return [self.class measureSizeWithMaxSize:size
                                fontAttributes:[self fontAttributes]
-                                  fontManager:_fontManager
-                                         text:_textValue
-                                  placeholder:_placeholder.text
+                                 fontManager:_fontManager
+                                        text:_textValue
+                                 placeholder:_placeholder.text
                               traitCollection:self.valdiContext.traitCollection];
 }
 
 - (void)_updateTextViewInset:(UITextView *)textView
 {
+    UIEdgeInsets textContainerInset = textView.textContainerInset;
+    CGFloat baseTopInset = textContainerInset.bottom;
+    CGFloat baseBottomInset = textContainerInset.bottom;
     CGFloat boundsHeight = textView.bounds.size.height;
-    CGFloat contentSizeHeight = textView.contentSize.height;
+    CGFloat contentSizeHeight = SCValdiTextViewContentHeightForGravity(textView, baseTopInset, baseBottomInset);
     CGFloat topCorrection;
 
     switch (_textGravity) {
@@ -387,13 +406,25 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
 
     topCorrection = (topCorrection < 0.0 ? 0.0 : topCorrection);
 
-    [textView setContentInset:UIEdgeInsetsMake(topCorrection, 0, 0, 0)];
+    textContainerInset.top = baseTopInset + topCorrection;
+    textContainerInset.bottom = baseBottomInset;
+    if (!UIEdgeInsetsEqualToEdgeInsets(textView.textContainerInset, textContainerInset)) {
+        textView.textContainerInset = textContainerInset;
+    }
+    if (!UIEdgeInsetsEqualToEdgeInsets(textView.contentInset, UIEdgeInsetsZero)) {
+        textView.contentInset = UIEdgeInsetsZero;
+    }
 }
 
 - (void)_updateContentInset
 {
+    if (_updatingContentInset) {
+        return;
+    }
+    _updatingContentInset = YES;
     [self _updateTextViewInset:(_textView)];
     [self _updateTextViewInset:(_animatedTextView)];
+    _updatingContentInset = NO;
 }
 
 - (void)_updatePlaceholderInset
@@ -407,40 +438,92 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
         return;
     }
 
-    NSAttributedString *attributedString = _textView.attributedText;
-    if (!attributedString) {
+    if (_processedText == nil) {
         return;
     }
     UITextView *textView = _textView;
 
-    [attributedString enumerateAttribute:kSCValdiAttributedStringKeyOnLayout
-                                                inRange:NSMakeRange(0, attributedString.length)
-                                                options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
-                                            usingBlock:^(id  _Nullable value, NSRange range, BOOL * _Nonnull stop) {
-                    if (!value) {
-                        return;
-                    }
-                    SCValdiOnLayoutAttribute *attribute = value;
-                    UITextPosition *startPosition = [textView positionFromPosition:textView.beginningOfDocument offset:range.location];
-                    UITextPosition *endPosition = [textView positionFromPosition:startPosition offset:range.length];
-                    UITextRange *textRange = [textView textRangeFromPosition:startPosition toPosition:endPosition];
-                    CGRect newBounds = [textView firstRectForRange:textRange];
-                    SCValdiMarshallerScoped(marshaller, {
-                        SCValdiMarshallerPushDouble(marshaller, CGFloatNormalize(newBounds.origin.x + textView.contentInset.left));
-                        SCValdiMarshallerPushDouble(marshaller, CGFloatNormalize(newBounds.origin.y + textView.contentInset.top));
-                        SCValdiMarshallerPushDouble(marshaller, CGFloatNormalize(newBounds.size.width));
-                        SCValdiMarshallerPushDouble(marshaller, CGFloatNormalize(newBounds.size.height));
-                        [attribute.callback performWithMarshaller:marshaller];
-                    });
-                }];
+    [_processedText enumerateOnLayoutCallbacksUsingBlock:^(id<SCValdiFunction> callback, NSRange range, BOOL *stop) {
+        (void)stop;
+        UITextPosition *startPosition = [textView positionFromPosition:textView.beginningOfDocument offset:range.location];
+        UITextPosition *endPosition = [textView positionFromPosition:startPosition offset:range.length];
+        UITextRange *textRange = [textView textRangeFromPosition:startPosition toPosition:endPosition];
+        CGRect newBounds = [textView firstRectForRange:textRange];
+        SCValdiMarshallerScoped(marshaller, {
+            SCValdiMarshallerPushDouble(marshaller, CGFloatNormalize(newBounds.origin.x + textView.contentInset.left));
+            SCValdiMarshallerPushDouble(marshaller, CGFloatNormalize(newBounds.origin.y + textView.contentInset.top));
+            SCValdiMarshallerPushDouble(marshaller, CGFloatNormalize(newBounds.size.width));
+            SCValdiMarshallerPushDouble(marshaller, CGFloatNormalize(newBounds.size.height));
+            [callback performWithMarshaller:marshaller];
+        });
+    }];
 
     _updateOnLayout = NO;
+}
+
+- (void)_updateInlineTextAttachmentsIfNeeded
+{
+    if (!_processedText.hasInlineViewAttachment) {
+        return;
+    }
+    if ([_processedText updateInlineAttachments]) {
+        _textView.attributedText = _processedText.attributedString;
+        [self _updateAnimatedTextOverlayWithAttributedString:_processedText.attributedString
+                                                   isEnabled:_processedText.hasAnimationTransform];
+        NSRange range = NSMakeRange(0, _textView.attributedText.length);
+        [_textView.layoutManager invalidateLayoutForCharacterRange:range actualCharacterRange:NULL];
+        [_textView.layoutManager invalidateDisplayForCharacterRange:range];
+        [_textView setNeedsDisplay];
+        [_animatedTextView setNeedsDisplay];
+    }
+}
+
+- (void)_updateInlineTextChildFrames
+{
+    UIView *childrenContainerView = _valdiChildrenContainerView;
+    if (childrenContainerView == nil) {
+        return;
+    }
+    NSAttributedString *attributedString = _textView.attributedText;
+    if (attributedString.length == 0) {
+        SCValdiApplyInlineTextChildFrames(_processedText, nil, nil, CGPointZero, childrenContainerView);
+        return;
+    }
+
+    NSLayoutManager *layoutManager = _textView.layoutManager;
+    NSTextContainer *textContainer = _textView.textContainer;
+    [layoutManager ensureLayoutForTextContainer:textContainer];
+
+    UIEdgeInsets textContainerInset = _textView.textContainerInset;
+    UIEdgeInsets contentInset = _textView.contentInset;
+    CGPoint contentOffset = _textView.contentOffset;
+    CGPoint originOffset = CGPointMake(textContainerInset.left + contentInset.left - contentOffset.x,
+                                       textContainerInset.top + contentInset.top - contentOffset.y);
+    SCValdiApplyInlineTextChildFrames(_processedText,
+                                      layoutManager,
+                                      textContainer,
+                                      originOffset,
+                                      childrenContainerView);
+}
+
+#pragma mark - SCValdiContentViewProviding
+
+- (UIView *)contentViewForInsertingValdiChildren
+{
+    if (_valdiChildrenContainerView == nil) {
+        _valdiChildrenContainerView = [[UIView alloc] initWithFrame:self.bounds];
+        _valdiChildrenContainerView.backgroundColor = [UIColor clearColor];
+        _valdiChildrenContainerView.isAccessibilityElement = NO;
+        [self addSubview:_valdiChildrenContainerView];
+    }
+    return _valdiChildrenContainerView;
 }
 
 - (void)_updateEffectsLayoutManager
 {
     _effectsLayoutManager.effects = _backgroundEffects;
     _effectsLayoutManager.customUnderlineStyle = _customUnderlineStyle;
+    _effectsLayoutManager.processedText = _processedText;
     _textView.textContainer.lineFragmentPadding = _effectsLayoutManager.backgroundPadding;
     CGFloat textContainerVerticalInset = _effectsLayoutManager.backgroundPadding / 2.0;
     _textView.textContainerInset = UIEdgeInsetsMake(textContainerVerticalInset, 0, textContainerVerticalInset, 0);
@@ -448,6 +531,7 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
     // The base text view already draws background effects. The overlay should only paint transformed glyphs.
     _animatedTextEffectsLayoutManager.effects = nil;
     _animatedTextEffectsLayoutManager.customUnderlineStyle = nil;
+    _animatedTextEffectsLayoutManager.processedText = _processedText;
     _animatedTextView.textContainer.lineFragmentPadding = _textView.textContainer.lineFragmentPadding;
     _animatedTextView.textContainer.maximumNumberOfLines = _textView.textContainer.maximumNumberOfLines;
     _animatedTextView.textContainer.lineBreakMode = _textView.textContainer.lineBreakMode;
@@ -460,11 +544,6 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
     // Mark the textview to display again as the layout manager can get cached for only a color change
     [_textView setNeedsDisplay];
     [_animatedTextView setNeedsDisplay];
-}
-
-- (BOOL)_shouldUseAnimatedTextOverlayForAttributedString:(NSAttributedString *)attributedString
-{
-    return [attributedString hasValdiAnimationTransform];
 }
 
 - (SCValdiTextViewEffectsLayoutManager *)_animatedTextEffectsLayoutManager
@@ -503,7 +582,7 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
                                              isEnabled:(BOOL)isEnabled
 {
     _animatedTextVerticalOverflowPadding =
-        isEnabled && attributedString != nil ? SCValdiAnimatedTextVerticalOverflowPadding(attributedString) : 0.0;
+        isEnabled && attributedString != nil ? SCValdiAnimatedTextVerticalOverflowPadding(_processedText, attributedString) : 0.0;
     _animatedTextView.hidden = !isEnabled;
     _animatedTextView.backgroundColor = [UIColor clearColor];
     _animatedTextView.textContainer.lineFragmentPadding = _textView.textContainer.lineFragmentPadding;
@@ -566,7 +645,7 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
     }
 
     NSAttributedString *attributedString = _attributedTextOnTapString;
-    if (!attributedString || attributedString.length == 0) {
+    if (!_processedText.hasOnTap || !attributedString || attributedString.length == 0) {
         return nil;
     }
 
@@ -587,16 +666,7 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
         return nil;
     }
 
-    NSRange onTapRange = NSMakeRange(0, 0);
-    SCValdiOnTapAttribute *onTapAttribute = [attributedString attribute:kSCValdiAttributedStringKeyOnTap
-                                                                atIndex:characterIndex
-                                                  longestEffectiveRange:&onTapRange
-                                                                inRange:NSMakeRange(0, attributedString.length)];
-    if (!onTapAttribute.callback || onTapRange.length == 0) {
-        return nil;
-    }
-
-    return onTapAttribute.callback;
+    return [_processedText onTapAtIndex:characterIndex effectiveRange:NULL];
 }
 
 - (SCValdiAttributedTextOnTapGestureRecognizer *)_getAttributedTextOnTapGestureRecognizer
@@ -705,50 +775,22 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
     return SCValdiNeedAttributedString(self, [self fontAttributes]);
 }
 
-- (NSAttributedString *)_displayAttributedStringForAttributedString:(NSAttributedString *)attributedString
-                                                    fontAttributes:(SCValdiFontAttributes *)fontAttributes
-{
-    _hasCustomUnderlineAttribute = NO;
-    if (!_customUnderlineStyle || attributedString.length == 0) {
-        return attributedString;
-    }
-
-    UIColor *fallbackColor = _textGradientHelper.gradientColor ?: fontAttributes.color ?: [UIColor blackColor];
-    return SCValdiAttributedStringByReplacingNativeUnderlinesWithColorAttribute(
-        attributedString,
-        kSCValdiTextViewCustomUnderlineColorAttribute,
-        fallbackColor,
-        &_hasCustomUnderlineAttribute);
-}
-
-- (NSDictionary<NSAttributedStringKey, id> *)_textAttributesForFontAttributes:(SCValdiFontAttributes *)fontAttributes
-                                                               isRightToLeft:(BOOL)isRightToLeft
-                                                             traitCollection:(UITraitCollection *)traitCollection
-{
-    NSDictionary<NSAttributedStringKey, id> *attributes = [fontAttributes resolveAttributesWithIsRightToLeft:isRightToLeft
-                                                                                              traitCollection:traitCollection];
-    UIColor *gradientColor = _textGradientHelper.gradientColor;
-    if (!gradientColor) {
-        return attributes;
-    }
-
-    NSMutableDictionary<NSAttributedStringKey, id> *gradientAttributes = [attributes mutableCopy];
-    gradientAttributes[NSForegroundColorAttributeName] = gradientColor;
-    return [gradientAttributes copy];
-}
-
-- (NSAttributedString *)_attributedStringByApplyingTextGradientColorIfNeeded:(NSAttributedString *)attributedString
+- (SCValdiProcessedTextConfiguration *)_processedTextConfigurationWithFontAttributes:(SCValdiFontAttributes *)fontAttributes
 {
     UIColor *gradientColor = _textGradientHelper.gradientColor;
-    if (!gradientColor || attributedString.length == 0) {
-        return attributedString;
+    if (gradientColor == nil && _customUnderlineStyle == nil) {
+        return nil;
     }
 
-    NSMutableAttributedString *gradientAttributedString = [attributedString mutableCopy];
-    [gradientAttributedString addAttribute:NSForegroundColorAttributeName
-                                     value:gradientColor
-                                     range:NSMakeRange(0, gradientAttributedString.length)];
-    return gradientAttributedString;
+    SCValdiProcessedTextConfiguration *configuration = [SCValdiProcessedTextConfiguration new];
+    configuration.foregroundColorOverride = gradientColor;
+    if (_customUnderlineStyle != nil) {
+        configuration.customUnderlineStyle = _customUnderlineStyle;
+        configuration.customUnderlineMode = SCValdiProcessedTextCustomUnderlineModeReplaceNativeUnderlineWithColorAttribute;
+        configuration.customUnderlineColorAttributeName = kSCValdiTextViewCustomUnderlineColorAttribute;
+        configuration.customUnderlineFallbackColor = gradientColor ?: fontAttributes.color ?: [UIColor blackColor];
+    }
+    return configuration;
 }
 
 - (BOOL)_updateAttributedTextIfNeeded
@@ -769,81 +811,47 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
             NSRange range = _textView.selectedRange;
             BOOL labelModeChanged = [self updateLabelMode:SCValdiTextModeAttributedText];
 
-            NSAttributedString *attributedString = [NSAttributedString attributedStringWithValdiText:_textValue
-                                                                                             attributes:[self _textAttributesForFontAttributes:fontAttributes
-                                                                                                                                 isRightToLeft:isRightToLeft
-                                                                                                                               traitCollection:traitCollection]
-                                                                                          isRightToLeft:isRightToLeft
-                                                                                            fontManager:_fontManager
-                                                                                        traitCollection:traitCollection];
-            attributedString = [self _attributedStringByApplyingTextGradientColorIfNeeded:attributedString];
+            _processedText =
+                [SCValdiProcessedText processedTextWithAttributeValue:_textValue
+                                                           attributes:[fontAttributes resolveAttributesWithIsRightToLeft:isRightToLeft
+                                                                                                          traitCollection:traitCollection]
+                                                        isRightToLeft:isRightToLeft
+                                                          fontManager:_fontManager
+                                                      traitCollection:traitCollection
+                                                        configuration:[self _processedTextConfigurationWithFontAttributes:fontAttributes]];
 
-            __block BOOL hasOnLayoutAttribute = NO;
-            __block BOOL hasOnTapAttribute = NO;
-            __block BOOL needsEffectsLayoutManager = NO;
-            [attributedString enumerateAttribute:kSCValdiAttributedStringKeyOnLayout
-                                         inRange:NSMakeRange(0, attributedString.length)
-                                         options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
-                                      usingBlock:^(id  _Nullable value, NSRange range, BOOL * _Nonnull stop) {
-                if (value) {
-                    *stop = YES;
-                    hasOnLayoutAttribute = YES;
-                }
-            }];
-            _updateOnLayout = hasOnLayoutAttribute;
-
-            [attributedString enumerateAttribute:kSCValdiAttributedStringKeyOnTap
-                                         inRange:NSMakeRange(0, attributedString.length)
-                                         options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
-                                      usingBlock:^(id  _Nullable value, NSRange range, BOOL * _Nonnull stop) {
-                if (value) {
-                    *stop = YES;
-                    hasOnTapAttribute = YES;
-                }
-            }];
-
-            [attributedString enumerateAttribute:kSCValdiOuterOutlineWidthAttribute 
-                                        inRange:NSMakeRange(0, attributedString.length) 
-                                        options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired 
-                                        usingBlock:^(id value, NSRange range, BOOL *stop) {
-                if (value) {
-                    *stop = YES;
-                    needsEffectsLayoutManager = YES;
-                }
-            }];
-
-            [attributedString enumerateAttribute:kSCValdiAttributedStringKeyAnimationTransform
-                                        inRange:NSMakeRange(0, attributedString.length)
-                                        options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
-                                     usingBlock:^(id value, NSRange range, BOOL *stop) {
-                if (value) {
-                    *stop = YES;
-                    needsEffectsLayoutManager = YES;
-                }
-            }];
-
-            NSAttributedString *trimmedString = SCValdiClampAttributedStringValue(attributedString, [_characterLimit integerValue], _ignoreNewlines);
-            if (![attributedString isEqualToAttributedString:trimmedString]) {
+            BOOL didClamp = NO;
+            [_processedText clampToCharacterLimit:[_characterLimit integerValue]
+                                   ignoreNewlines:_ignoreNewlines
+                                        didChange:&didClamp];
+            if (didClamp) {
                 changed = YES;
             }
+            NSAttributedString *displayAttributedString = _processedText.attributedString;
+            _hasCustomUnderlineAttribute = _processedText.hasCustomUnderline;
 
-            NSAttributedString *displayAttributedString = [self _displayAttributedStringForAttributedString:trimmedString
-                                                                                             fontAttributes:fontAttributes];
+            BOOL hasOnLayout = _processedText.hasOnLayout;
+            BOOL hasOnTap = _processedText.hasOnTap;
+            BOOL needsEffectsLayoutManager =
+                _processedText.hasAnimationTransform || _processedText.hasOuterOutline;
             if (_hasCustomUnderlineAttribute) {
                 needsEffectsLayoutManager = YES;
             }
 
+            _effectsLayoutManager.processedText = _processedText;
+            _animatedTextEffectsLayoutManager.processedText = _processedText;
+            _updateOnLayout = hasOnLayout;
             if (needsEffectsLayoutManager) {
                 [self _updateEffectsLayoutManager];
             }
 
-            BOOL useAnimatedTextOverlay = [self _shouldUseAnimatedTextOverlayForAttributedString:displayAttributedString];
-            _textAnimationPartCount = useAnimatedTextOverlay ? SCValdiTextViewAnimationPartCount(displayAttributedString) : 0;
+            BOOL useAnimatedTextOverlay = _processedText.hasAnimationTransform;
+            _textAnimationPartCount = useAnimatedTextOverlay ? _processedText.animationTransformsCount : 0;
             [self _updateTextAnimationGroupRegistration];
             [self _updateTextAnimationGroupContext];
             NSAttributedString *textViewAttributedString =
                 useAnimatedTextOverlay ? SCValdiBackgroundOnlyAttributedString(displayAttributedString) : displayAttributedString;
-            
+
             // Cursor position should be updated if it's not at the end of the string
             BOOL updateCursorPosition = range.location != _textView.attributedText.string.length && range.location < displayAttributedString.length;
             if (![_textView.attributedText isEqualToAttributedString:textViewAttributedString] || labelModeChanged) {
@@ -854,7 +862,7 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
             }
             [self _updateAnimatedTextOverlayWithAttributedString:displayAttributedString isEnabled:useAnimatedTextOverlay];
 
-            if (hasOnTapAttribute) {
+            if (hasOnTap) {
                 _attributedTextOnTapString = displayAttributedString;
                 [self _addAttributedTextOnTapGestureRecognizer];
             } else {
@@ -865,6 +873,9 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
             _placeholder.hidden = _textView.attributedText.length > 0;
         } else {
             [self updateLabelMode:SCValdiTextModeText];;
+            _processedText = nil;
+            _effectsLayoutManager.processedText = nil;
+            _animatedTextEffectsLayoutManager.processedText = nil;
             _textAnimationPartCount = 0;
             [self _updateTextAnimationGroupRegistration];
             SCValdiSetTextHolderAttributes(_textView, fontAttributes, traitCollection, isRightToLeft, _textGradientHelper.gradientColor ?: fontAttributes.color);
@@ -1660,8 +1671,13 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
             SCValdiAnimatorTransitionWrap(animator, textView, { [textView valdi_setPlaceholder:nil]; });
         }];
 
-    [attributesBinder setMeasureDelegate:^CGSize(id<SCValdiViewLayoutAttributes> attributes, CGSize maxSize, UITraitCollection *traitCollection) {
-        return [SCValdiTextView valdi_onMeasureWithAttributes:attributes maxSize:maxSize fontManager:fontManager traitCollection:traitCollection];
+    [attributesBinder setMeasureDelegate:^CGSize(id<SCValdiViewLayoutAttributes> attributes,
+                                                 CGSize maxSize,
+                                                 UITraitCollection *traitCollection) {
+        return [SCValdiTextView valdi_onMeasureWithAttributes:attributes
+                                                      maxSize:maxSize
+                                                  fontManager:fontManager
+                                              traitCollection:traitCollection];
     }];
 
     [attributesBinder bindAttribute:@"selection"

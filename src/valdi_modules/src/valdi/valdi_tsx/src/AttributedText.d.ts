@@ -1,5 +1,6 @@
 import { LabelTextDecoration } from './NativeTemplateElements';
 import { AttributedTextInlineImageAttachment } from './AttributedTextInlineImageAttachment';
+import { AttributedTextInlineViewAttachment } from './AttributedTextInlineViewAttachment';
 
 export type AttributedTextOnTap = () => void;
 export type AttributedTextOnLayout = (x: number, y: number, width: number, height: number) => void;
@@ -132,11 +133,10 @@ export const enum AttributedTextEntryType {
    */
   PushOuterOutlineWidth,
   /**
-   * Pushes an inline image attachment at the top of the style stack.
+   * Appends an inline image attachment.
    * The value should be an AttributedTextInlineImageAttachment object.
-   * Content should be the Unicode Object Replacement Character (U+FFFC).
    */
-  PushInlineImage,
+  InlineImage,
   /**
    * Pushes a per-part animation transform at the top of the style stack.
    */
@@ -153,6 +153,11 @@ export const enum AttributedTextEntryType {
    * Pushes background border radius at the top of the style stack.
    */
   PushBackgroundBorderRadius,
+  /**
+   * Appends an inline view attachment.
+   * The value should be an AttributedTextInlineViewAttachment object.
+   */
+  InlineView,
 }
 
 export type AttributedTextChunk =
@@ -162,6 +167,7 @@ export type AttributedTextChunk =
   | AttributedTextOnTap
   | AttributedTextOnLayout
   | AttributedTextInlineImageAttachment
+  | AttributedTextInlineViewAttachment
   | AttributedTextBackgroundPaddingValue
   | AttributedTextAnimationTransform;
 

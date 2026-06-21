@@ -10,12 +10,13 @@
 #import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
 #import "valdi/ios/Text/NSAttributedString+Valdi.h"
 #import "valdi/ios/Text/SCValdiFontAttributes.h"
+#import "valdi/ios/Text/SCValdiProcessedText.h"
 #import "valdi_core/SCValdiLogger.h"
+#import "valdi_core/SCMacros.h"
 #import "valdi_core/SCValdiRectUtils.h"
 
 @implementation SCValdiTextLayout {
     NSTextStorage *_textStorage;
-    NSTextContainer *_textContainer;
 }
 
 - (instancetype)init
@@ -41,17 +42,17 @@
     return self;
 }
 
-- (void)setAttributedString:(NSAttributedString *)attributedString
+- (void)setProcessedText:(SCValdiProcessedText *)processedText
 {
-    if (_attributedString != attributedString) {
-        _attributedString = attributedString;
-
-        if (!attributedString) {
-            [_textStorage setAttributedString:[NSAttributedString new]];
-        } else {
-            [_textStorage setAttributedString:attributedString];
-        }
+    if (_processedText != processedText) {
+        _processedText = processedText;
+        [self refreshProcessedTextStorage];
     }
+}
+
+- (void)refreshProcessedTextStorage
+{
+    [_textStorage setAttributedString:_processedText.attributedString ?: [NSAttributedString new]];
 }
 
 - (void)ensureLayout
@@ -59,12 +60,23 @@
     [_layoutManager ensureLayoutForTextContainer:_textContainer];
 }
 
+- (void)invalidateLayout
+{
+    if (_textStorage.length == 0) {
+        return;
+    }
+    NSRange range = NSMakeRange(0, _textStorage.length);
+    [_layoutManager invalidateLayoutForCharacterRange:range actualCharacterRange:NULL];
+    [_layoutManager invalidateDisplayForCharacterRange:range];
+}
+
 - (CGRect)_resolveDrawRectWithOrigin:(CGPoint)origin
 {
     CGRect usedRect = self.usedRect;
     CGSize layoutSize = self.size;
 
-    CGPoint drawOrigin = CGPointMake(origin.x, origin.y + (layoutSize.height - usedRect.size.height) / 2);
+    CGPoint drawOrigin = CGPointMake(origin.x - usedRect.origin.x,
+                                     origin.y + (layoutSize.height - usedRect.size.height) / 2 - usedRect.origin.y);
 
     return CGRectMake(drawOrigin.x, drawOrigin.y, usedRect.size.width, usedRect.size.height);
 }
@@ -269,18 +281,6 @@
                                                underlineOffset);
 }
 
-+ (CGRect)boundingRectWithAttributedString:(NSAttributedString *)attributedString
-                                   maxSize:(CGSize)maxSize
-                          maxNumberOfLines:(NSUInteger)maxNumberOfLines
-{
-    SCValdiTextLayout *textLayout = [SCValdiTextLayout new];
-    [textLayout setAttributedString:attributedString];
-    textLayout.size = maxSize;
-    textLayout.maxNumberOfLines = maxNumberOfLines;
-
-    return textLayout.usedRect;
-}
-
 + (CGSize)measureSizeWithMaxSize:(CGSize)maxSize
                    fontAttributes:(SCValdiFontAttributes *)fontAttributes
                       fontManager:(id<SCValdiFontManagerProtocol>)fontManager
@@ -313,12 +313,14 @@
     if (textValue) {
         boundingRect = [textValue boundingRectWithSize:maxSize options:options attributes:attributes context:context];
     } else {
-        NSAttributedString *attributedString = [NSAttributedString attributedStringWithValdiText:text
-                                                                                      attributes:attributes
-                                                                                   isRightToLeft:isRightToLeft
-                                                                                     fontManager:fontManager
-                                                                                 traitCollection:traitCollection];
-        boundingRect = [attributedString boundingRectWithSize:maxSize options:options context:context];
+        SCValdiProcessedText *processedText =
+            [SCValdiProcessedText processedTextWithAttributeValue:text
+                                                       attributes:attributes
+                                                   isRightToLeft:isRightToLeft
+                                                     fontManager:fontManager
+                                                 traitCollection:traitCollection
+                                                   configuration:nil];
+        boundingRect = [processedText.attributedString boundingRectWithSize:maxSize options:options context:context];
     }
 
     CGSize outSize = boundingRect.size;

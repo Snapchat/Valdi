@@ -9,6 +9,7 @@
 
 #include "valdi_core/cpp/Attributes/AttributeUtils.hpp"
 #include "valdi_core/cpp/Attributes/ColorPalette.hpp"
+#include "valdi_core/cpp/Attributes/TextInlineAttachment.hpp"
 #include "valdi_core/cpp/Utils/Bytes.hpp"
 #include "valdi_core/cpp/Utils/SmallVector.hpp"
 #include "valdi_core/cpp/Utils/ValdiObject.hpp"
@@ -135,6 +136,7 @@ struct TextAttributeValueStyle {
     std::optional<Color> outerOutlineColor;
     std::optional<float> outerOutlineWidth;
     std::optional<ImageAttachment> imageAttachment;
+    Ref<TextInlineAttachment> inlineViewAttachment;
     std::optional<TextAnimationTransform> animationTransform;
 };
 

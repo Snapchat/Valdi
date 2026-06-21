@@ -216,6 +216,54 @@ public:
     }
 
     // NOLINTNEXTLINE
+    static jint nativeGetInlineViewAttachmentChildIndex(fbjni::alias_ref<fbjni::JClass> /* clazz */,
+                                                        jlong ptr,
+                                                        jint index) {
+        auto attributedText = getAttributedText(ptr);
+        const auto& style = attributedText->getStyleAtIndex(static_cast<size_t>(index));
+        if (style.inlineViewAttachment == nullptr) {
+            return -1;
+        }
+        return static_cast<jint>(style.inlineViewAttachment->getChildIndex());
+    }
+
+    // NOLINTNEXTLINE
+    static jint nativeGetInlineViewAttachmentVerticalAlignment(fbjni::alias_ref<fbjni::JClass> /* clazz */,
+                                                              jlong ptr,
+                                                              jint index) {
+        auto attributedText = getAttributedText(ptr);
+        const auto& style = attributedText->getStyleAtIndex(static_cast<size_t>(index));
+        if (style.inlineViewAttachment == nullptr) {
+            return static_cast<jint>(Valdi::InlineViewVerticalAlignment::Center);
+        }
+        return static_cast<jint>(style.inlineViewAttachment->getVerticalAlignment());
+    }
+
+    // NOLINTNEXTLINE
+    static jfloat nativeGetInlineViewAttachmentWidth(fbjni::alias_ref<fbjni::JClass> /* clazz */,
+                                                     jlong ptr,
+                                                     jint index) {
+        auto attributedText = getAttributedText(ptr);
+        const auto& style = attributedText->getStyleAtIndex(static_cast<size_t>(index));
+        if (style.inlineViewAttachment == nullptr) {
+            return 0.0f;
+        }
+        return static_cast<jfloat>(style.inlineViewAttachment->getSize().width);
+    }
+
+    // NOLINTNEXTLINE
+    static jfloat nativeGetInlineViewAttachmentHeight(fbjni::alias_ref<fbjni::JClass> /* clazz */,
+                                                      jlong ptr,
+                                                      jint index) {
+        auto attributedText = getAttributedText(ptr);
+        const auto& style = attributedText->getStyleAtIndex(static_cast<size_t>(index));
+        if (style.inlineViewAttachment == nullptr) {
+            return 0.0f;
+        }
+        return static_cast<jfloat>(style.inlineViewAttachment->getSize().height);
+    }
+
+    // NOLINTNEXTLINE
     static jboolean nativeHasAnimationTransform(fbjni::alias_ref<fbjni::JClass> /* clazz */, jlong ptr, jint index) {
         auto attributedText = getAttributedText(ptr);
         const auto& style = attributedText->getStyleAtIndex(static_cast<size_t>(index));
@@ -347,6 +395,14 @@ public:
             makeNativeMethod("nativeGetImageAttachmentWidth", AttributedTextJNI::nativeGetImageAttachmentWidth),
             makeNativeMethod("nativeGetImageAttachmentHeight", AttributedTextJNI::nativeGetImageAttachmentHeight),
             makeNativeMethod("nativeGetImageAttachmentData", AttributedTextJNI::nativeGetImageAttachmentData),
+            makeNativeMethod("nativeGetInlineViewAttachmentChildIndex",
+                             AttributedTextJNI::nativeGetInlineViewAttachmentChildIndex),
+            makeNativeMethod("nativeGetInlineViewAttachmentVerticalAlignment",
+                             AttributedTextJNI::nativeGetInlineViewAttachmentVerticalAlignment),
+            makeNativeMethod("nativeGetInlineViewAttachmentWidth",
+                             AttributedTextJNI::nativeGetInlineViewAttachmentWidth),
+            makeNativeMethod("nativeGetInlineViewAttachmentHeight",
+                             AttributedTextJNI::nativeGetInlineViewAttachmentHeight),
             makeNativeMethod("nativeGetAnimationTransformsSize", AttributedTextJNI::nativeGetAnimationTransformsSize),
             makeNativeMethod("nativeHasAnimationTransform", AttributedTextJNI::nativeHasAnimationTransform),
             makeNativeMethod("nativeGetAnimationTransformKey", AttributedTextJNI::nativeGetAnimationTransformKey),

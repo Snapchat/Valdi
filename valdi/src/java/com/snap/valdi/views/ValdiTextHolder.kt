@@ -4,9 +4,8 @@ import com.snap.valdi.attributes.impl.richtext.TextViewHelper
 import com.snap.valdi.callable.ValdiFunction
 
 /**
- * Views that inherit TextView must implement this interface
- * so that the TextViewAttributesBinder can inject the TextViewHelper.
- * Subclasses should also call update() on the helper in the onMeasure() method.
+ * Views that render Valdi text implement this interface so text attribute binders
+ * can install and update their TextViewHelper.
  */
 interface ValdiTextHolder {
 

@@ -14,8 +14,12 @@ const enum AttributedTextEntryType {
   PushOutlineWidth,
   PushOuterOutlineColor,
   PushOuterOutlineWidth,
-  PushInlineImage,
+  InlineImage,
   PushAnimationTransform,
+  PushBackgroundColor,
+  PushBackgroundPadding,
+  PushBackgroundBorderRadius,
+  InlineView,
 }
 
 interface StyleState {
@@ -103,8 +107,12 @@ export function renderAttributedText(attributedText: AttributedText): HTMLSpanEl
         i += 2;
         break;
       case AttributedTextEntryType.PushOuterOutlineWidth:
-      case AttributedTextEntryType.PushInlineImage:
+      case AttributedTextEntryType.InlineImage:
       case AttributedTextEntryType.PushAnimationTransform:
+      case AttributedTextEntryType.PushBackgroundColor:
+      case AttributedTextEntryType.PushBackgroundPadding:
+      case AttributedTextEntryType.PushBackgroundBorderRadius:
+      case AttributedTextEntryType.InlineView:
         i += 2;
         break;
       default:

@@ -1,0 +1,22 @@
+load("//bzl/valdi:valdi_application.bzl", "valdi_application")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "text_animation_group_example",
+    srcs = glob([
+        "**/*.ts",
+        "**/*.tsx",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)
+
+valdi_application(
+    name = "text_animation_group_example_app",
+    root_component_path = "App@text_animation_group_example/TextAnimationGroupExample",
+    title = "Text Animation Group",
+    deps = [":text_animation_group_example"],
+)

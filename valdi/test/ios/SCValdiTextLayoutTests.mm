@@ -1,10 +1,19 @@
 #import <XCTest/XCTest.h>
 
-#import "valdi/ios/Text/SCValdiTextLayout.h"
-#import "valdi/ios/Text/NSAttributedString+Valdi.h"
-#import "valdi/ios/Text/SCValdiTextAnimationTransform.h"
+#import "valdi/ios/Text/SCValdiProcessedText.h"
 #import "valdi/ios/Text/SCValdiTextAnimationCoordinator.h"
+#import "valdi/ios/Text/SCValdiTextLayout.h"
 #import "valdi/ios/Views/SCValdiTextViewEffectsLayoutManager.h"
+
+static SCValdiProcessedText *SCValdiProcessedTextFromAttributedString(NSAttributedString *attributedString)
+{
+    return [SCValdiProcessedText processedTextWithAttributeValue:attributedString
+                                                     attributes:nil
+                                                  isRightToLeft:NO
+                                                    fontManager:nil
+                                                traitCollection:nil
+                                                  configuration:nil];
+}
 
 @interface SCValdiTextLayoutTests: XCTestCase
 
@@ -20,33 +29,21 @@
     XCTAssertEqual(layout.layoutManager, layoutManager);
 }
 
-- (void)testAnimationLayoutManagerReportsActiveAnimation
+- (void)testAnimationLayoutManagerReportsNoActiveAnimationWithoutProcessedText
 {
     SCValdiTextViewEffectsLayoutManager *layoutManager = [SCValdiTextViewEffectsLayoutManager new];
     SCValdiTextLayout *layout = [[SCValdiTextLayout alloc] initWithLayoutManager:layoutManager];
-    SCValdiTextAnimationTransform *animationTransform =
-        [[SCValdiTextAnimationTransform alloc] initWithKey:@"title"
-                                                 partIndex:0
-                                              translationY:12.0
-                                                     scale:0.5
-                                                   opacity:0.0
-                                                  duration:1.0
-                                    timeOffsetBetweenParts:0.0
-                                                groupIndex:0
-                                          partIndexInGroup:0];
     NSAttributedString *attributedString =
         [[NSAttributedString alloc] initWithString:@"Hello"
                                         attributes:@{
                                             NSFontAttributeName: [UIFont systemFontOfSize:20],
-                                            kSCValdiAttributedStringKeyAnimationTransform: animationTransform,
                                         }];
 
-    layout.attributedString = attributedString;
+    layout.processedText = SCValdiProcessedTextFromAttributedString(attributedString);
     layout.size = CGSizeMake(200, 100);
 
-    XCTAssertTrue([attributedString hasValdiAnimationTransform]);
-    XCTAssertTrue([layoutManager invalidateAnimatedTextProgress]);
-    XCTAssertTrue(layoutManager.hasActiveAnimationRanges);
+    XCTAssertFalse([layoutManager invalidateAnimatedTextProgress]);
+    XCTAssertFalse(layoutManager.hasActiveAnimationRanges);
 }
 
 - (void)testTextAnimationCoordinatorReusesStartTimeForNewAnimationsInSameTimeline
@@ -83,7 +80,7 @@
         [[NSAttributedString alloc] initWithString:@"Hello"
                                         attributes:@{ NSFontAttributeName: font }];
     SCValdiTextLayout *layout = [SCValdiTextLayout new];
-    layout.attributedString = attributedString;
+    layout.processedText = SCValdiProcessedTextFromAttributedString(attributedString);
 
     CGRect drawingRect = CGRectMake(0, 0, 200, 100);
     layout.size = drawingRect.size;
@@ -125,7 +122,7 @@
                              range:NSMakeRange(6, 3)];
 
     SCValdiTextLayout *layout = [SCValdiTextLayout new];
-    layout.attributedString = attributedString;
+    layout.processedText = SCValdiProcessedTextFromAttributedString(attributedString);
 
     CGRect drawingRect = CGRectMake(0, 0, 500, 100);
     layout.size = drawingRect.size;

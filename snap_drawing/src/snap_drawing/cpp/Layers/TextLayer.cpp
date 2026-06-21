@@ -19,7 +19,6 @@
 #include "snap_drawing/cpp/Utils/GradientWrapper.hpp"
 #include "snap_drawing/cpp/Utils/Path.hpp"
 
-#include <algorithm>
 #include <cmath>
 
 namespace snap::drawing {
@@ -78,10 +77,8 @@ TextLayer::TextLayer(const Ref<Resources>& resources) : Layer(resources) {
 TextLayer::~TextLayer() = default;
 
 Size TextLayer::sizeThatFits(Size maxSize) {
-    auto respectDynamicType = getResources()->getRespectDynamicType();
     auto displayScale = getResources()->getDisplayScale();
-    auto dynamicTypeScale = getResources()->getDynamicTypeScale();
-    auto& layout = getTextLayout(maxSize, respectDynamicType, displayScale, dynamicTypeScale);
+    auto& layout = getTextLayout(maxSize, *getResources());
 
     return Size::make(layout.getBounds().width() / displayScale, layout.getBounds().height() / displayScale);
 }
@@ -89,11 +86,9 @@ Size TextLayer::sizeThatFits(Size maxSize) {
 void TextLayer::onDraw(DrawingContext& drawingContext) {
     Layer::onDraw(drawingContext);
 
-    auto respectDynamicType = getResources()->getRespectDynamicType();
     auto displayScale = getResources()->getDisplayScale();
-    auto dynamicTypeScale = getResources()->getDynamicTypeScale();
     auto layerSize = Size::make(getFrame().width(), getFrame().height());
-    auto& layout = getTextLayout(layerSize, respectDynamicType, displayScale, dynamicTypeScale);
+    auto& layout = getTextLayout(layerSize, *getResources());
     auto offsetY = getTextVerticalOffset(layerSize, layout, displayScale);
     drawingContext.concat(Matrix::makeScaleTranslate(1.0f / displayScale, 1.0f / displayScale, 0.0f, offsetY));
 
@@ -117,6 +112,68 @@ void TextLayer::onDraw(DrawingContext& drawingContext) {
     }
 
     drawTextVisualEntries(drawingContext, layout.getVisualEntries(), /* predraw */ false);
+}
+
+void TextLayer::onBoundsChanged() {
+    Layer::onBoundsChanged();
+    setNeedsLayout();
+}
+
+void TextLayer::onChildInserted(Layer* childLayer, size_t index) {
+    Layer::onChildInserted(childLayer, index);
+    setNeedsLayout();
+}
+
+void TextLayer::onChildRemoved(Layer* childLayer) {
+    Layer::onChildRemoved(childLayer);
+    setNeedsLayout();
+}
+
+void TextLayer::onLayout() {
+    Layer::onLayout();
+    layoutInlineChildrenInLayer(*this);
+}
+
+void TextLayer::layoutInlineChildrenInLayer(Layer& childrenLayer) {
+    auto displayScale = getResources()->getDisplayScale();
+    auto layerSize = Size::make(getFrame().width(), getFrame().height());
+    auto& layout = getTextLayout(layerSize, *getResources());
+    auto offsetY = getTextVerticalOffset(layerSize, layout, displayScale);
+    auto childrenSize = childrenLayer.getChildrenSize();
+    struct InlineChildLayout {
+        Ref<Valdi::TextInlineAttachment> attachment;
+        Rect bounds;
+    };
+    std::vector<InlineChildLayout> childIndexToInlineChildLayouts(childrenSize);
+
+    for (const auto& attachment : layout.getAttachments()) {
+        auto inlineViewAttachment = Valdi::castOrNull<Valdi::TextInlineAttachment>(attachment.attachment);
+        if (inlineViewAttachment == nullptr) {
+            continue;
+        }
+
+        auto childIndex = inlineViewAttachment->getChildIndex();
+        if (childIndex >= childrenSize) {
+            continue;
+        }
+
+        childIndexToInlineChildLayouts[childIndex] = { inlineViewAttachment, attachment.bounds };
+    }
+
+    for (size_t childIndex = 0; childIndex < childrenSize; childIndex++) {
+        const auto& inlineChildLayout = childIndexToInlineChildLayouts[childIndex];
+        if (inlineChildLayout.attachment == nullptr) {
+            childrenLayer.getChild(childIndex)->setFrame(Rect::makeXYWH(0, 0, 0, 0));
+            continue;
+        }
+
+        auto bounds = inlineChildLayout.bounds;
+        childrenLayer.getChild(childIndex)
+            ->setFrame(Rect::makeXYWH(bounds.x() / displayScale,
+                                      (bounds.y() / displayScale) + offsetY,
+                                      bounds.width() / displayScale,
+                                      bounds.height() / displayScale));
+    }
 }
 
 void TextLayer::drawTextVisualEntriesShadows(DrawingContext& drawingContext,
@@ -469,6 +526,7 @@ void TextLayer::setNeedsTextLayout() {
         if (_attributedTextOnTapGestureRecognizer != nullptr) {
             _attributedTextOnTapGestureRecognizer->setTextLayout(nullptr);
         }
+        setNeedsLayout();
         setNeedsDisplay();
     }
 }
@@ -483,11 +541,36 @@ static bool hasOnTapAttributeInTextLayout(const TextLayout& textLayout) {
     return false;
 }
 
+static bool textLayoutHasStaleInlineAttachmentSizes(const TextLayout& textLayout, Scalar displayScale) {
+    for (const auto& attachment : textLayout.getAttachments()) {
+        auto inlineViewAttachment = Valdi::castOrNull<Valdi::TextInlineAttachment>(attachment.attachment);
+        if (inlineViewAttachment == nullptr) {
+            continue;
+        }
+
+        auto currentSize = inlineViewAttachment->getSize();
+        auto currentReplacementSize = Size::make(currentSize.width * displayScale, currentSize.height * displayScale);
+        if (attachment.replacementSize != currentReplacementSize) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+TextLayout& TextLayer::getTextLayout(Size size, const Resources& resources) {
+    return getTextLayout(size,
+                         resources.getRespectDynamicType(),
+                         resources.getDisplayScale(),
+                         resources.getDynamicTypeScale());
+}
+
 TextLayout& TextLayer::getTextLayout(Size size, bool respectDynamicType, Scalar displayScale, Scalar dynamicTypeScale) {
     // Align maxSize to pixel grid
     auto maxSize = Size::make(ceilf(size.width * displayScale), ceilf(size.height * displayScale));
 
-    if (_textLayout != nullptr && (_textLayout->getMaxSize() != maxSize)) {
+    if (_textLayout != nullptr && (_textLayout->getMaxSize() != maxSize ||
+                                   textLayoutHasStaleInlineAttachmentSizes(*_textLayout, displayScale))) {
         _textLayout = nullptr;
     }
 
@@ -726,15 +809,27 @@ Ref<TextLayout> TextLayer::makeTextLayoutUnscaled(Size maxSize,
                                                       style.backgroundBorderRadius.value_or(BorderRadius())};
             }
 
+            Ref<Valdi::RefCountable> attachment = style.onTap;
+            std::optional<Size> replacementSize;
+            auto replacementVerticalAlignment = Valdi::InlineViewVerticalAlignment::Center;
+            if (style.inlineViewAttachment != nullptr) {
+                attachment = style.inlineViewAttachment;
+                auto inlineViewSize = style.inlineViewAttachment->getSize();
+                replacementSize = Size::make(inlineViewSize.width * displayScale, inlineViewSize.height * displayScale);
+                replacementVerticalAlignment = style.inlineViewAttachment->getVerticalAlignment();
+            }
+
             builder.append(content.toStringView(),
                            resolvedFont->withScale(resolvedFontScale),
                            lineHeight,
                            letterSpacing,
                            resolvedTextDecoration,
-                           style.onTap,
+                           attachment,
                            style.color,
                            backgroundStyle,
-                           customUnderlineStyle);
+                           customUnderlineStyle,
+                           replacementSize,
+                           replacementVerticalAlignment);
         }
     } else if (!text.isEmpty() && textFont != nullptr) {
         auto resolvedFontScale =

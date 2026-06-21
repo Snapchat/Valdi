@@ -181,12 +181,35 @@ static size_t appendUniqueBackgroundStyle(std::vector<TextBackgroundStyle>& styl
 TextLayoutSpecs TextLayoutSpecs::withFont(const Ref<Font>& newFont) const {
     return TextLayoutSpecs(newFont,
                            attachment,
+                           replacementSize,
+                           replacementVerticalAlignment,
                            lineHeight,
                            letterSpacing,
                            textDecoration,
                            customUnderlineStyle,
                            colorIndex,
                            backgroundStyleIndex);
+}
+
+static LineMetrics resolveReplacementLineMetrics(const LineMetrics& lineMetrics,
+                                                 const Size& replacementSize,
+                                                 Valdi::InlineViewVerticalAlignment verticalAlignment) {
+    switch (verticalAlignment) {
+        case Valdi::InlineViewVerticalAlignment::Top:
+            return LineMetrics(lineMetrics.ascent, lineMetrics.ascent + replacementSize.height);
+        case Valdi::InlineViewVerticalAlignment::Bottom:
+            return LineMetrics(lineMetrics.descent - replacementSize.height, lineMetrics.descent);
+        case Valdi::InlineViewVerticalAlignment::Baseline:
+            return LineMetrics(-replacementSize.height, 0);
+        case Valdi::InlineViewVerticalAlignment::Center: {
+            auto textCenter = (lineMetrics.ascent + lineMetrics.descent) / 2.0f;
+            auto ascent = textCenter - (replacementSize.height / 2.0f);
+            return LineMetrics(ascent, ascent + replacementSize.height);
+        }
+    }
+    auto textCenter = (lineMetrics.ascent + lineMetrics.descent) / 2.0f;
+    auto ascent = textCenter - (replacementSize.height / 2.0f);
+    return LineMetrics(ascent, ascent + replacementSize.height);
 }
 
 LineMetrics TextLayoutLineHeight::getLineMetrics(const FontMetrics& fontMetrics) const {
@@ -231,6 +254,8 @@ void TextLayoutBuilder::appendSegment(
     segment.lineMetrics = _currentLineMetrics;
     segment.font = specs.font;
     segment.attachment = specs.attachment;
+    segment.isReplacement = specs.replacementSize.has_value();
+    segment.replacementSize = specs.replacementSize;
     segment.colorIndex = specs.colorIndex;
     segment.backgroundStyleIndex = specs.backgroundStyleIndex;
     segment.isRightToLeft = isRightToLeft;
@@ -257,6 +282,12 @@ bool TextLayoutBuilder::computeLineMetrics(const TextLayoutSpecs& specs,
     output = _currentLineMetrics;
     auto lineMetrics = specs.lineHeight.getLineMetrics(fontMetrics);
 
+    if (specs.replacementSize) {
+        auto replacementLineMetrics =
+            resolveReplacementLineMetrics(lineMetrics, specs.replacementSize.value(), specs.replacementVerticalAlignment);
+        lineMetrics.join(replacementLineMetrics);
+    }
+
     if (const auto* backgroundStyle = getBackgroundStyle(specs.backgroundStyleIndex)) {
         lineMetrics.ascent -= backgroundStyle->padding.top;
         lineMetrics.descent += backgroundStyle->padding.bottom;
@@ -270,8 +301,13 @@ Rect TextLayoutBuilder::computeChunkBounds(const TextLayoutSpecs& specs,
                                            Scalar advance,
                                            const FontMetrics& fontMetrics) const {
     auto left = static_cast<Scalar>(0);
-    auto right = advance;
+    auto right = specs.replacementSize ? specs.replacementSize->width : advance;
     auto lineMetrics = specs.lineHeight.getLineMetrics(fontMetrics);
+
+    if (specs.replacementSize) {
+        lineMetrics =
+            resolveReplacementLineMetrics(lineMetrics, specs.replacementSize.value(), specs.replacementVerticalAlignment);
+    }
 
     if (const auto* backgroundStyle = getBackgroundStyle(specs.backgroundStyleIndex)) {
         lineMetrics.ascent -= backgroundStyle->padding.top;
@@ -465,6 +501,14 @@ void TextLayoutBuilder::processUnidirectionalRun(const TextLayoutSpecs& specs,
     }
 
     auto shapeResult = shape(specs, characters, charactersLength, script, isRTL);
+    if (specs.replacementSize) {
+        auto glyphStartIndex = shapeResult.glyphsStart - _glyphs.data();
+        auto glyphEndIndex = shapeResult.glyphsEnd - _glyphs.data();
+        for (auto glyphIndex = glyphStartIndex; glyphIndex < glyphEndIndex; glyphIndex++) {
+            _glyphs[glyphIndex].advanceX =
+                glyphIndex == glyphStartIndex ? specs.replacementSize->width : 0.0f;
+        }
+    }
 
     const auto* shapedGlyphIt = shapeResult.glyphsStart;
     const auto& fontMetrics = specs.font->metrics();
@@ -574,7 +618,9 @@ size_t TextLayoutBuilder::append(const std::string_view& text,
                                  Ref<Valdi::RefCountable> attachment,
                                  std::optional<Color> color,
                                  std::optional<TextBackgroundStyle> backgroundStyle,
-                                 std::optional<TextCustomUnderlineStyle> customUnderlineStyle) {
+                                 std::optional<TextCustomUnderlineStyle> customUnderlineStyle,
+                                 std::optional<Size> replacementSize,
+                                 Valdi::InlineViewVerticalAlignment replacementVerticalAlignment) {
     if (font == nullptr || text.empty()) {
         return 0;
     }
@@ -593,6 +639,8 @@ size_t TextLayoutBuilder::append(const std::string_view& text,
     entry.specs.textDecoration = textDecoration;
     entry.specs.customUnderlineStyle = customUnderlineStyle;
     entry.specs.attachment = std::move(attachment);
+    entry.specs.replacementSize = replacementSize;
+    entry.specs.replacementVerticalAlignment = replacementVerticalAlignment;
     entry.specs.colorIndex = appendColor(color);
     entry.specs.backgroundStyleIndex = appendBackgroundStyle(backgroundStyle);
     entry.charactersStart = charactersStart;
@@ -1057,6 +1105,11 @@ static void appendSegmentWord(const TextLayoutBuilderSegment& segment,
                               Point* drawPosition,
                               std::vector<TextLayoutBuilderSegment>& out) {
     auto& newSegment = out.emplace_back(segment);
+    if (segment.isReplacement) {
+        newSegment.drawPosition = *drawPosition;
+        drawPosition->x += segment.bounds.width();
+        return;
+    }
     newSegment.glyphsStart = glyphsStart - glyphs;
     newSegment.glyphsCount = glyphsEnd - glyphsStart;
     newSegment.drawPosition = *drawPosition;
@@ -1346,7 +1399,13 @@ Ref<TextLayout> TextLayoutBuilder::build() {
             entryBounds.join(resolvedBounds);
 
             if (segment.attachment != nullptr) {
-                attachments.emplace_back(resolvedBounds, segment.attachment);
+                auto attachmentBounds = segment.isReplacement
+                    ? Rect::makeXYWH(resolvedSegmentX,
+                                     resolvedSegmentY + segment.bounds.y(),
+                                     segment.bounds.width(),
+                                     segment.bounds.height())
+                    : resolvedBounds;
+                attachments.emplace_back(attachmentBounds, segment.attachment, segment.replacementSize);
             }
 
             const auto* glyphsIt = _glyphs.data() + segment.glyphsStart;
@@ -1356,7 +1415,7 @@ Ref<TextLayout> TextLayoutBuilder::build() {
                 outputSegmentToEntry(layoutEntry, glyphsIt, glyphsEnd, resolvedBounds, segment.font);
             }
 
-            if (_includeTextBlob) {
+            if (_includeTextBlob && !segment.isReplacement) {
                 ptrdiff_t itIncrement;
 
                 if (segment.isRightToLeft) {

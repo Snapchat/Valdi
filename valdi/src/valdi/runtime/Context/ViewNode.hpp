@@ -13,8 +13,8 @@
 #include "valdi/runtime/Context/RawViewNodeId.hpp"
 #include "valdi/runtime/Context/ScrollAnchorPosition.hpp"
 #include "valdi/runtime/Context/ViewNodeAccessibility.hpp"
-#include "valdi/runtime/Views/Frame.hpp"
-#include "valdi/runtime/Views/Measure.hpp"
+#include "valdi_core/cpp/Views/Frame.hpp"
+#include "valdi_core/cpp/Views/Measure.hpp"
 #include "valdi/runtime/Views/View.hpp"
 
 #include "valdi_core/cpp/Context/PlatformType.hpp"
@@ -171,6 +171,12 @@ public:
      * Returns the calculated frame from Yoga, taking in account RTL offset.
      */
     const Frame& getCalculatedFrame() const;
+
+    /**
+     * Returns the Yoga frame being measured for a managed child-frame parent,
+     * or the last committed calculated frame outside a measurement pass.
+     */
+    Frame getMeasuredFrame() const;
 
     /**
      * Get the calculated frame without taking in account the LTR or RTL direction.
@@ -346,6 +352,7 @@ public:
     bool isScrollingOrAnimatingScroll() const;
 
     bool isMeasurerPlaceholder() const;
+    ViewNode* getEmittingViewNode() const;
 
     /**
      Measure the node by itself, ignoring its children.
@@ -371,6 +378,7 @@ public:
     void findAllNodesWithId(const StringBox& nodeId, std::vector<SharedViewNode>& output);
 
     size_t getChildCount() const;
+    size_t getLiveChildCount() const;
     ViewNode* getChildAt(size_t index) const;
     void insertChildAt(ViewTransactionScope& viewTransactionScope, const Ref<ViewNode>& child, size_t index);
     void appendChild(ViewTransactionScope& viewTransactionScope, const Ref<ViewNode>& child);
@@ -576,6 +584,9 @@ public:
 
     Result<Ref<ValueMap>> copyProcessedViewLayoutAttributes();
 
+    bool managesChildFrames() const;
+    bool parentManagesChildFrames() const;
+
     Frame computeVisualFrameInRoot() const;
 
     void ensureFrameIsVisibleWithinParentScrolls(ViewTransactionScope& viewTransactionScope, bool animated) const;
@@ -636,7 +647,7 @@ private:
     RawViewNodeId _rawId = 0;
     int _scrollAnchorPosition = ScrollAnchorPositionNone;
 
-    std::bitset<30> _flags;
+    std::bitset<34> _flags;
 
     ViewNodeTree* _viewNodeTree = nullptr;
 
@@ -649,8 +660,8 @@ private:
     Ref<ValueFunction> _onViewChangedCallback;
     Ref<ValueFunction> _onLayoutCompletedCallback;
 
-    void layoutFinished(ViewTransactionScope& viewTransactionScope, bool didPerformLayout);
-    void layoutFinished(ViewTransactionScope& viewTransactionScope,
+    bool layoutFinished(ViewTransactionScope& viewTransactionScope, bool didPerformLayout);
+    bool layoutFinished(ViewTransactionScope& viewTransactionScope,
                         bool didPerformLayout,
                         float viewOffsetX,
                         float viewOffsetY,
@@ -665,6 +676,11 @@ private:
 
     bool updateViewFrameIfNeeded(ViewTransactionScope& viewTransactionScope, const Ref<Animator>& animator);
     void setViewFrameNeedsUpdate();
+    bool updateManagedChildrenLayout(float width,
+                                     MeasureMode widthMode,
+                                     float height,
+                                     MeasureMode heightMode,
+                                     bool forceLayout);
 
     bool updateLazyLayout();
     void doUpdateViewTree(ViewTransactionScope& viewTransactionScope,
@@ -695,6 +711,7 @@ private:
 
     bool createView(ViewTransactionScope& viewTransactionScope, const Ref<Animator>& animator);
     bool removeView(ViewTransactionScope& viewTransactionScope, bool safeRemove);
+    size_t resolveYogaInsertionIndexForLiveIndex(size_t liveIndex);
 
     void callViewChangedIfNeeded();
 
@@ -776,6 +793,7 @@ private:
 
     void setIsLazyLayout(ViewTransactionScope& viewTransactionScope, bool isLazyLayout);
     void updateIsLazyLayout(ViewTransactionScope& viewTransactionScope);
+    void reinsertChildrenInYogaContainer(ViewTransactionScope& viewTransactionScope);
 
     void setAccessibilityTreeNeedsUpdate();
     void propagateAccessibilityTreeUpToDate();
@@ -783,6 +801,8 @@ private:
     bool isMemberOfAccessibilityTree();
 
     LazyLayoutData& getOrCreateLazyLayoutData();
+    YGNode* getOrCreateDetachedYogaNode();
+    YGNode* getDetachedYogaNode() const;
     YGNode* getLazyLayoutYogaNode() const;
     const YGNode* getContainerYogaNode() const;
 

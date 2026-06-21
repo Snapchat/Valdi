@@ -16,25 +16,28 @@
 #import "valdi/ios/Text/SCValdiFont.h"
 #import "valdi/ios/Text/SCValdiAttributedText.h"
 #import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
+#import "valdi/ios/Text/SCValdiInlineTextChildLayout.h"
 #import "valdi/ios/Text/SCValdiTextLayout.h"
 #import "valdi/ios/Text/SCValdiTextGradientHelper.h"
-#import "valdi/ios/Text/SCValdiOnTapAttribute.h"
-#import "valdi/ios/Text/SCValdiOnLayoutAttribute.h"
+#import "valdi/ios/Text/SCValdiProcessedText.h"
 #import "valdi/ios/Gestures/SCValdiGestureRecognizers.h"
 
+#import "valdi_core/SCValdiContentViewProviding.h"
 #import "valdi_core/SCMacros.h"
 #import "valdi_core/SCValdiRectUtils.h"
 #import "valdi_core/SCValdiResult.h"
 
 static NSString *const kTextGradientLayoutKey = @"text_gradient";
 
-@interface SCValdiLabel() <SCValdiTextLayoutViewDelegate>
+@interface SCValdiLabel() <SCValdiContentViewProviding, SCValdiTextLayoutViewDelegate>
 
 - (void)updateLabelMode:(SCValdiTextMode)labelMode;
 - (void)updateLabelMode:(SCValdiTextMode)labelMode usesEffectsLayoutManager:(BOOL)usesEffectsLayoutManager;
 - (SCValdiTextLayoutView *)_ensureTextLayoutViewWithUsesEffectsLayoutManager:(BOOL)usesEffectsLayoutManager;
 - (void)_applySelectionStateToTextLayoutView;
 - (void)_setNeedsAttributedTextUpdateForPendingSelectableTextLayoutViewIfNeeded;
+- (void)_updateInlineTextAttachmentsIfNeeded;
+- (void)_updateInlineTextChildFrames;
 
 - (void)updateLabelMode:(SCValdiTextMode)labelMode;
 - (void)updateLabelMode:(SCValdiTextMode)labelMode usesEffectsLayoutManager:(BOOL)usesEffectsLayoutManager;
@@ -43,6 +46,7 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
 
 @implementation SCValdiLabel {
     SCValdiTextLayoutView *_textLayoutView;
+    UIView *_valdiChildrenContainerView;
     SCValdiFontAttributes *_fontAttributes;
     id<SCValdiFontManagerProtocol> _fontManager;
     id _textValue;
@@ -50,6 +54,7 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
     SCValdiTextMode _labelMode;
     BOOL _hasOnTapGestureRecognizer;
     SCValdiTextGradientHelper *_textGradientHelper;
+    SCValdiProcessedText *_processedText;
     BOOL _updateOnLayout;
     SCValdiCustomUnderlineStyle *_customUnderlineStyle;
     BOOL _selectable;
@@ -57,6 +62,11 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
     id<SCValdiFunction> _onSelectionChange;
     id<SCValdiFunction> _onTextSelectionMenu;
     id<SCValdiFunction> _onTextSelectionMenuAction;
+}
+
++ (BOOL)valdi_managesChildFrames
+{
+    return YES;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -87,9 +97,12 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
 {
     [self _updateTextGradientColorIfNeeded];
     [self _updateAttributedTextIfNeeded];
+    [self _updateInlineTextAttachmentsIfNeeded];
     [super layoutSubviews];
     _textLayoutView.frame = self.bounds;
+    _valdiChildrenContainerView.frame = self.bounds;
     [_textLayoutView layoutIfNeeded];
+    [self _updateInlineTextChildFrames];
 
     // TODO(3065): Also update on view size changed
     if (_updateOnLayout) {
@@ -157,6 +170,55 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
 - (BOOL)_isSelectable
 {
     return _selectable;
+}
+
+- (void)_updateInlineTextAttachmentsIfNeeded
+{
+    if (_labelMode != SCValdiTextModeValdiTextLayout || _textLayoutView == nil) {
+        return;
+    }
+    if (!_processedText.hasInlineViewAttachment) {
+        return;
+    }
+    [_textLayoutView updateInlineAttachmentsAndUpdate];
+}
+
+- (void)_updateInlineTextChildFrames
+{
+    if (_labelMode != SCValdiTextModeValdiTextLayout || _textLayoutView == nil) {
+        return;
+    }
+    UIView *childrenContainerView = _valdiChildrenContainerView;
+    if (childrenContainerView == nil) {
+        return;
+    }
+    SCValdiTextLayout *textLayout = _textLayoutView.textLayout;
+    CGRect usedRect = textLayout.usedRect;
+    CGPoint drawOrigin = CGPointMake(self.bounds.origin.x - usedRect.origin.x,
+                                     self.bounds.origin.y + (textLayout.size.height - usedRect.size.height) / 2.0 -
+                                         usedRect.origin.y);
+    SCValdiApplyInlineTextChildFrames(_processedText,
+                                      textLayout.layoutManager,
+                                      textLayout.textContainer,
+                                      drawOrigin,
+                                      childrenContainerView);
+}
+
+#pragma mark - SCValdiContentViewProviding
+
+- (UIView *)contentViewForInsertingValdiChildren
+{
+    if (_valdiChildrenContainerView == nil) {
+        _valdiChildrenContainerView = [[UIView alloc] initWithFrame:self.bounds];
+        _valdiChildrenContainerView.backgroundColor = [UIColor clearColor];
+        _valdiChildrenContainerView.isAccessibilityElement = NO;
+        if (_textLayoutView.superview == self) {
+            [self insertSubview:_valdiChildrenContainerView aboveSubview:_textLayoutView];
+        } else {
+            [self addSubview:_valdiChildrenContainerView];
+        }
+    }
+    return _valdiChildrenContainerView;
 }
 
 - (void)valdi_setSelectable:(BOOL)selectable
@@ -268,51 +330,39 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
         SCValdiFontAttributes *fontAttributes = [self fontAttributes];
 
         if ([self _needAttributedString] || [self _isSelectable]) {
-            NSAttributedString *attributedString = [NSAttributedString attributedStringWithValdiText:_textValue
-                                                                                             attributes:[fontAttributes resolveAttributesWithIsRightToLeft:isRightToLeft traitCollection:traitCollection]
-                                                                                          isRightToLeft:isRightToLeft
-                                                                                            fontManager:_fontManager
-                                                                                        traitCollection:traitCollection];
-            NSAttributedString *customUnderlineSourceAttributedString = nil;
-            NSArray<NSValue *> *customUnderlineCharacterRanges = nil;
-            NSAttributedString *displayAttributedString =
-                [SCValdiTextLayoutView displayAttributedStringForAttributedString:attributedString
-                                                             customUnderlineStyle:_customUnderlineStyle
-                                                          sourceAttributedString:&customUnderlineSourceAttributedString
-                                                                 characterRanges:&customUnderlineCharacterRanges];
-
-            __block BOOL hasOnTapAttribute = NO;
-            [attributedString enumerateAttribute:kSCValdiAttributedStringKeyOnTap
-                                         inRange:NSMakeRange(0, attributedString.length)
-                                         options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
-                                      usingBlock:^(id  _Nullable value, NSRange range, BOOL * _Nonnull stop) {
-                if (value) {
-                    *stop = YES;
-                    hasOnTapAttribute = YES;
+            UIColor *textGradientColor = _textGradientHelper.gradientColor;
+            SCValdiProcessedTextConfiguration *configuration = nil;
+            if (textGradientColor != nil || _customUnderlineStyle != nil) {
+                configuration = [SCValdiProcessedTextConfiguration new];
+                configuration.foregroundColorOverride = textGradientColor;
+                if (_customUnderlineStyle != nil) {
+                    configuration.customUnderlineStyle = _customUnderlineStyle;
+                    configuration.customUnderlineMode = SCValdiProcessedTextCustomUnderlineModeRemoveNativeUnderline;
                 }
-            }];
+            }
 
-            __block BOOL hasOnLayoutAttribute = NO;
-            [attributedString enumerateAttribute:kSCValdiAttributedStringKeyOnLayout
-                                         inRange:NSMakeRange(0, attributedString.length)
-                                         options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
-                                      usingBlock:^(id  _Nullable value, NSRange range, BOOL * _Nonnull stop) {
-                if (value) {
-                    *stop = YES;
-                    hasOnLayoutAttribute = YES;
-                }
-            }];
+            _processedText =
+                [SCValdiProcessedText processedTextWithAttributeValue:_textValue
+                                                           attributes:[fontAttributes resolveAttributesWithIsRightToLeft:isRightToLeft traitCollection:traitCollection]
+                                                        isRightToLeft:isRightToLeft
+                                                          fontManager:_fontManager
+                                                      traitCollection:traitCollection
+                                                        configuration:configuration];
+            NSAttributedString *displayAttributedString = _processedText.attributedString;
 
-            BOOL hasAnimationTransform = [displayAttributedString hasValdiAnimationTransform];
-            BOOL hasCustomUnderlineAttribute = customUnderlineSourceAttributedString != nil;
-            if ([self _isSelectable] || hasOnTapAttribute || hasOnLayoutAttribute || hasCustomUnderlineAttribute || hasAnimationTransform) {
+            BOOL hasOnTap = _processedText.hasOnTap;
+            BOOL hasOnLayout = _processedText.hasOnLayout;
+            BOOL hasAnimationTransform = _processedText.hasAnimationTransform;
+            BOOL hasInlineViewAttachment = _processedText.hasInlineViewAttachment;
+            BOOL hasCustomUnderlineAttribute = _processedText.hasCustomUnderline;
+            if ([self _isSelectable] || hasOnTap || hasOnLayout || hasCustomUnderlineAttribute || hasAnimationTransform || hasInlineViewAttachment) {
                 [self updateLabelMode:SCValdiTextModeValdiTextLayout
               usesEffectsLayoutManager:hasAnimationTransform];
                 [_textLayoutView setCustomUnderlineStyle:_customUnderlineStyle
-                                  sourceAttributedString:customUnderlineSourceAttributedString
-                                         characterRanges:customUnderlineCharacterRanges];
+                                  sourceAttributedString:_processedText.customUnderlineSourceString
+                                         characterRanges:_processedText.customUnderlineCharacterRanges];
                 _textLayoutView.maxNumberOfLines = fontAttributes.numberOfLines;
-                [_textLayoutView setAttributedString:displayAttributedString];
+                [_textLayoutView setProcessedText:_processedText];
                 [self _applySelectionStateToTextLayoutView];
                 if (hasAnimationTransform) {
                     [_textLayoutView invalidateAnimatedTextProgress];
@@ -326,11 +376,11 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
                 self.attributedText = displayAttributedString;
             }
 
-            if (hasOnLayoutAttribute) {
+            if (hasOnLayout) {
                 _updateOnLayout = YES;
             }
 
-            if (hasOnTapAttribute) {
+            if (hasOnTap) {
                 [self _addAttributedTextOnTapGestureRecognizer];
             } else {
                 [self _removeAttributedTextOnTapGestureRecognizer];
@@ -339,6 +389,7 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
         } else {
             // Can set without attributed text
 
+            _processedText = nil;
             [self updateLabelMode:SCValdiTextModeText];
             [_textLayoutView stopAnimations];
             [self _removeAttributedTextOnTapGestureRecognizer];
@@ -488,11 +539,11 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
     SCValdiFontAttributes *fontAttributes = ObjectAs([attributes valueForAttributeName:@"fontSpecs"], SCValdiFontAttributes);
     id text = [attributes valueForAttributeName:@"value"];
 
-    return [SCValdiLabel measureSizeWithMaxSize:maxSize
-                                    fontAttributes:fontAttributes
-                                        fontManager:fontManager
-                                              text:text
-                                   traitCollection:traitCollection];
+    return [SCValdiTextLayout measureSizeWithMaxSize:maxSize
+                                      fontAttributes:fontAttributes
+                                         fontManager:fontManager
+                                                text:text
+                                     traitCollection:traitCollection];
 }
 
 + (void)bindAttributes:(id<SCValdiAttributesBinderProtocol>)attributesBinder
@@ -648,8 +699,13 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
             SCValdiResetTextHolderTextShadow(label);
     }];
 
-    [attributesBinder setMeasureDelegate:^CGSize(id<SCValdiViewLayoutAttributes> attributes, CGSize maxSize, UITraitCollection *traitCollection) {
-        return [SCValdiLabel valdi_onMeasureWithAttributes:attributes maxSize:maxSize fontManager:fontManager traitCollection:traitCollection];
+    [attributesBinder setMeasureDelegate:^CGSize(id<SCValdiViewLayoutAttributes> attributes,
+                                                 CGSize maxSize,
+                                                 UITraitCollection *traitCollection) {
+        return [SCValdiLabel valdi_onMeasureWithAttributes:attributes
+                                                   maxSize:maxSize
+                                               fontManager:fontManager
+                                           traitCollection:traitCollection];
     }];
 }
 
@@ -713,7 +769,7 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
             _textLayoutView.frame = self.bounds;
             [_textLayoutView layoutIfNeeded];
             if (_textLayoutView.superview != self) {
-                [self addSubview:_textLayoutView];
+                [self insertSubview:_textLayoutView atIndex:0];
             }
             break;
     }
@@ -815,7 +871,7 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
 - (NSString *)accessibilityLabel
 {
     if (_labelMode == SCValdiTextModeValdiTextLayout) {
-        return [_textLayoutView.textLayout.attributedString string];
+        return _processedText.attributedString.string;
     }
 
     return [super accessibilityLabel];

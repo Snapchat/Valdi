@@ -9,6 +9,10 @@ import {
   AttributedTextOnLayout,
 } from 'valdi_tsx/src/AttributedText';
 import { AttributedTextInlineImageAttachment } from 'valdi_tsx/src/AttributedTextInlineImageAttachment';
+import {
+  AttributedTextInlineViewAttachment,
+  AttributedTextInlineViewVerticalAlignment,
+} from 'valdi_tsx/src/AttributedTextInlineViewAttachment';
 import { LabelTextDecoration } from 'valdi_tsx/src/NativeTemplateElements';
 import { AnyFunction } from './Callback';
 
@@ -179,15 +183,6 @@ export class AttributedTextBuilder {
   }
 
   /**
-   * Push an inline image attachment on the Style stack.
-   * Used for embedding images (like rendered LaTeX) inline with text.
-   */
-  pushInlineImage(attachment: AttributedTextInlineImageAttachment): AttributedTextBuilder {
-    this.components.push(AttributedTextEntryType.PushInlineImage, attachment);
-    return this;
-  }
-
-  /**
    * Push a per-part animation transform on the Style stack.
    */
   pushAnimationTransform(animationTransform: AttributedTextAnimationTransform): AttributedTextBuilder {
@@ -199,17 +194,22 @@ export class AttributedTextBuilder {
    * Append an inline image as an attributed text attachment.
    * The image will be rendered inline with surrounding text using native text layout
    * (NSTextAttachment on iOS, ReplacementSpan on Android).
-   *
-   * @param attachment The image attachment configuration including dimensions and image data
-   * @param placeholderChar Character to use as placeholder in the text (default: U+FFFC Object Replacement Character)
    */
-  appendInlineImage(
-    attachment: AttributedTextInlineImageAttachment,
-    placeholderChar: string = '\uFFFC',
+  appendInlineImage(attachment: AttributedTextInlineImageAttachment): AttributedTextBuilder {
+    this.components.push(AttributedTextEntryType.InlineImage, attachment);
+    return this;
+  }
+
+  /**
+   * Append an inline child view as an attributed text attachment.
+   * The child is sized by Yoga and positioned by native text layout.
+   */
+  appendInlineView(
+    childIndex: number,
+    verticalAlignment: AttributedTextInlineViewVerticalAlignment = AttributedTextInlineViewVerticalAlignment.Center,
   ): AttributedTextBuilder {
-    this.pushInlineImage(attachment);
-    this.appendText(placeholderChar);
-    this.pop();
+    const attachment: AttributedTextInlineViewAttachment = { childIndex, verticalAlignment };
+    this.components.push(AttributedTextEntryType.InlineView, attachment);
     return this;
   }
 

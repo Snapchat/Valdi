@@ -69,6 +69,11 @@ interface AttributedText {
     fun getImageAttachmentAtIndex(index: Int): ImageAttachmentInfo?
 
     /**
+     * Return the inline view attachment info for the part at the given index, or null if not an inline view attachment.
+     */
+    fun getInlineViewAttachmentAtIndex(index: Int): InlineViewAttachmentInfo?
+
+    /**
      * Return the animation transform for the part at the given index, or null if unspecified.
      */
     fun getAnimationTransformAtIndex(index: Int): TextAnimationTransform?

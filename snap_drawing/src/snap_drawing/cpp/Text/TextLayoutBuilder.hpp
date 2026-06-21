@@ -16,6 +16,7 @@
 #include "snap_drawing/cpp/Utils/Geometry.hpp"
 
 #include "include/core/SkTextBlob.h"
+#include "valdi_core/cpp/Attributes/TextAttributeValue.hpp"
 
 #include <memory>
 #include <optional>
@@ -47,6 +48,8 @@ struct TextBackgroundStyle {
 struct TextLayoutSpecs {
     Ref<Font> font;
     Ref<Valdi::RefCountable> attachment;
+    std::optional<Size> replacementSize;
+    Valdi::InlineViewVerticalAlignment replacementVerticalAlignment = Valdi::InlineViewVerticalAlignment::Center;
     TextLayoutLineHeight lineHeight;
     Scalar letterSpacing;
     TextDecoration textDecoration;
@@ -57,6 +60,8 @@ struct TextLayoutSpecs {
     TextLayoutSpecs() = default;
     inline TextLayoutSpecs(const Ref<Font>& font,
                            const Ref<Valdi::RefCountable>& attachment,
+                           std::optional<Size> replacementSize,
+                           Valdi::InlineViewVerticalAlignment replacementVerticalAlignment,
                            TextLayoutLineHeight lineHeight,
                            Scalar letterSpacing,
                            TextDecoration textDecoration,
@@ -65,6 +70,8 @@ struct TextLayoutSpecs {
                            std::optional<size_t> backgroundStyleIndex)
         : font(font),
           attachment(attachment),
+          replacementSize(replacementSize),
+          replacementVerticalAlignment(replacementVerticalAlignment),
           lineHeight(lineHeight),
           letterSpacing(letterSpacing),
           textDecoration(textDecoration),
@@ -114,6 +121,13 @@ struct TextLayoutBuilderSegment {
 
     // The attachment that was passed in through the append() call
     Ref<Valdi::RefCountable> attachment;
+
+    // Replacement segments reserve layout space but do not emit text glyphs.
+    bool isReplacement = false;
+
+    // The original replacement size requested by the caller, before it is
+    // resolved into line-relative attachment bounds.
+    std::optional<Size> replacementSize;
 
     // The color on which the segment should be drawn
     size_t colorIndex;
@@ -213,7 +227,10 @@ public:
                   Ref<Valdi::RefCountable> attachment = nullptr,
                   std::optional<Color> color = std::nullopt,
                   std::optional<TextBackgroundStyle> backgroundStyle = std::nullopt,
-                  std::optional<TextCustomUnderlineStyle> customUnderlineStyle = std::nullopt);
+                  std::optional<TextCustomUnderlineStyle> customUnderlineStyle = std::nullopt,
+                  std::optional<Size> replacementSize = std::nullopt,
+                  Valdi::InlineViewVerticalAlignment replacementVerticalAlignment =
+                      Valdi::InlineViewVerticalAlignment::Center);
 
     void setIncludeSegments(bool includeSegments);
 

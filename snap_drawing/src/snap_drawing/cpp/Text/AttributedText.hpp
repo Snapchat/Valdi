@@ -38,6 +38,7 @@ struct AttributedTextPartStyle {
     std::optional<BorderRadius> backgroundBorderRadius;
     std::optional<TextDecoration> textDecoration;
     std::optional<Valdi::TextAnimationTransform> animationTransform;
+    Valdi::Ref<Valdi::TextInlineAttachment> inlineViewAttachment;
     Ref<AttributedTextOnTapAttribute> onTap;
 };
 

@@ -5,11 +5,12 @@
 
 #pragma once
 
+#include "snap_drawing/cpp/Layers/Interfaces/IChildInsertionLayerProvider.hpp"
 #include "snap_drawing/cpp/Layers/TextLayer.hpp"
 
 namespace snap::drawing {
 
-class EditableTextLayer : public Layer {
+class EditableTextLayer : public Layer, public IChildInsertionLayerProvider {
 public:
     explicit EditableTextLayer(const Ref<Resources>& resources);
     ~EditableTextLayer() override;
@@ -21,6 +22,7 @@ public:
     void setAttributedText(const Valdi::Ref<AttributedText>& attributedText);
 
     TextLayer& getTextLayer();
+    Layer& getChildInsertionLayer() override;
 
     void setTextColor(Color textColor);
 

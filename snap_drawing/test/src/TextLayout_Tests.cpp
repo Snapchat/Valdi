@@ -1,11 +1,16 @@
 #include <gtest/gtest.h>
 
+#include "snap_drawing/cpp/Layers/EditableTextLayer.hpp"
+#include "snap_drawing/cpp/Layers/TextLayer.hpp"
+#include "snap_drawing/cpp/Resources.hpp"
+#include "snap_drawing/cpp/Text/AttributedText.hpp"
 #include "snap_drawing/cpp/Text/FontManager.hpp"
 #include "snap_drawing/cpp/Text/TextLayout.hpp"
 #include "snap_drawing/cpp/Text/TextLayoutBuilder.hpp"
 #include "snap_drawing/cpp/Text/TextShaper.hpp"
 #include "snap_drawing/cpp/Utils/JSONUtils.hpp"
 #include "snap_drawing/cpp/Utils/UTFUtils.hpp"
+#include "valdi_core/cpp/Attributes/TextInlineAttachment.hpp"
 #include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
 
 #include "TestDataUtils.hpp"
@@ -77,6 +82,22 @@ struct TextLayoutTestContainer {
         SC_ASSERT(font.success(), font.description());
         return font.moveValue();
     }
+};
+
+class MutableInlineAttachment final : public TextInlineAttachment {
+public:
+    MutableInlineAttachment(size_t childIndex, const Valdi::Size& size) : TextInlineAttachment(childIndex), _size(size) {}
+
+    Valdi::Size getSize() const override {
+        return _size;
+    }
+
+    void setSize(const Valdi::Size& size) {
+        _size = size;
+    }
+
+private:
+    Valdi::Size _size;
 };
 
 Valdi::Value makeTextLayoutJSON(Size maxSize,
@@ -1731,6 +1752,121 @@ TEST(TextLayut, supportsAttachments) {
     ASSERT_EQ(attachment2, layout->getAttachments()[1].attachment);
 }
 
+TEST(TextLayut, baselineAlignedReplacementAttachmentBottomMatchesBaseline) {
+    auto attachment = Valdi::makeShared<Attachment>();
+
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(300, 10000);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
+    builder.setIncludeSegments(true);
+    builder.append("x",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone,
+                   attachment,
+                   std::nullopt,
+                   std::nullopt,
+                   std::nullopt,
+                   Size::make(18, 40),
+                   InlineViewVerticalAlignment::Baseline);
+
+    auto layout = builder.build();
+    ASSERT_EQ(static_cast<size_t>(1), layout->getAttachments().size());
+
+    const auto& layoutEntry = layout->getEntries()[0];
+    const auto& attachmentBounds = layout->getAttachments()[0].bounds;
+    ASSERT_NEAR(layoutEntry.bounds.y(), attachmentBounds.y(), 0.0001f);
+    ASSERT_NEAR(layoutEntry.bounds.y() + layoutEntry.bounds.height() - testContainer.primaryFont->metrics().descent,
+                attachmentBounds.y() + attachmentBounds.height(),
+                0.0001f);
+}
+
+TEST(TextLayut, textLayerRebuildsCachedLayoutWhenInlineAttachmentSizeChanges) {
+    auto attachment = Valdi::makeShared<MutableInlineAttachment>(0, Valdi::Size(10, 20));
+
+    TextLayoutTestContainer testContainer;
+    auto resources = makeShared<Resources>(testContainer.fontManager, 1.0f, ConsoleLogger::getLogger());
+    TextLayer textLayer(resources);
+
+    AttributedText::Parts parts;
+    auto& part = parts.emplace_back();
+    part.content = StringCache::getGlobal().makeString(std::string_view("x"));
+    part.style.font = testContainer.primaryFont;
+    part.style.inlineViewAttachment = attachment;
+    textLayer.setAttributedText(makeShared<AttributedText>(std::move(parts)));
+
+    auto maxSize = Size::make(300, 10000);
+    auto initialSize = textLayer.sizeThatFits(maxSize);
+    ASSERT_NEAR(10.0f, initialSize.width, 0.0001f);
+
+    attachment->setSize(Valdi::Size(42, 20));
+
+    auto updatedSize = textLayer.sizeThatFits(maxSize);
+    ASSERT_NEAR(42.0f, updatedSize.width, 0.0001f);
+}
+
+TEST(TextLayut, textLayerClearsPreviouslyLaidOutInlineChildrenThatAreNoLongerReferenced) {
+    auto attachment = Valdi::makeShared<MutableInlineAttachment>(0, Valdi::Size(10, 20));
+
+    TextLayoutTestContainer testContainer;
+    auto resources = makeShared<Resources>(testContainer.fontManager, 1.0f, ConsoleLogger::getLogger());
+    TextLayer textLayer(resources);
+    auto childLayer = makeLayer<Layer>(resources);
+    textLayer.addChild(childLayer);
+    textLayer.setFrame(Rect::makeXYWH(0, 0, 300, 100));
+
+    AttributedText::Parts inlineParts;
+    auto& inlinePart = inlineParts.emplace_back();
+    inlinePart.content = StringCache::getGlobal().makeString(std::string_view("x"));
+    inlinePart.style.font = testContainer.primaryFont;
+    inlinePart.style.inlineViewAttachment = attachment;
+    textLayer.setAttributedText(makeShared<AttributedText>(std::move(inlineParts)));
+    textLayer.layoutInlineChildrenInLayer(textLayer);
+
+    ASSERT_NEAR(10.0f, childLayer->getFrame().width(), 0.0001f);
+    ASSERT_NEAR(20.0f, childLayer->getFrame().height(), 0.0001f);
+
+    AttributedText::Parts plainParts;
+    auto& plainPart = plainParts.emplace_back();
+    plainPart.content = StringCache::getGlobal().makeString(std::string_view("plain"));
+    plainPart.style.font = testContainer.primaryFont;
+    textLayer.setAttributedText(makeShared<AttributedText>(std::move(plainParts)));
+    textLayer.layoutInlineChildrenInLayer(textLayer);
+
+    ASSERT_EQ(Rect::makeXYWH(0, 0, 0, 0), childLayer->getFrame());
+}
+
+TEST(TextLayut, editableTextLayerReportsTextLayerAsContentLayerForInlineChildren) {
+    auto attachment = Valdi::makeShared<MutableInlineAttachment>(0, Valdi::Size(10, 20));
+
+    TextLayoutTestContainer testContainer;
+    auto resources = makeShared<Resources>(testContainer.fontManager, 1.0f, ConsoleLogger::getLogger());
+    auto editableTextLayer = makeLayer<EditableTextLayer>(resources);
+    auto inlineChildLayer = makeLayer<Layer>(resources);
+    auto unreferencedChildLayer = makeLayer<Layer>(resources);
+    auto& contentLayer = editableTextLayer->getChildInsertionLayer();
+    contentLayer.addChild(inlineChildLayer);
+    contentLayer.addChild(unreferencedChildLayer);
+    unreferencedChildLayer->setFrame(Rect::makeXYWH(5, 6, 7, 8));
+    editableTextLayer->setFrame(Rect::makeXYWH(0, 0, 300, 100));
+
+    AttributedText::Parts inlineParts;
+    auto& inlinePart = inlineParts.emplace_back();
+    inlinePart.content = StringCache::getGlobal().makeString(std::string_view("x"));
+    inlinePart.style.font = testContainer.primaryFont;
+    inlinePart.style.inlineViewAttachment = attachment;
+    editableTextLayer->setAttributedText(makeShared<AttributedText>(std::move(inlineParts)));
+    editableTextLayer->layoutIfNeeded();
+
+    ASSERT_EQ(Rect::makeXYWH(0, 0, 300, 100), editableTextLayer->getTextLayer().getFrame());
+    ASSERT_EQ(&editableTextLayer->getTextLayer(), &contentLayer);
+    ASSERT_NEAR(10.0f, inlineChildLayer->getFrame().width(), 0.0001f);
+    ASSERT_NEAR(20.0f, inlineChildLayer->getFrame().height(), 0.0001f);
+    ASSERT_EQ(Rect::makeXYWH(0, 0, 0, 0), unreferencedChildLayer->getFrame());
+}
+
 TEST(TextLayut, canQueryAttachmentByPoint) {
     auto attachment1 = Valdi::makeShared<Attachment>();
     auto attachment2 = Valdi::makeShared<Attachment>();
@@ -1739,8 +1875,8 @@ TEST(TextLayut, canQueryAttachmentByPoint) {
     auto bounds2 = Rect::makeXYWH(0.00000, 46.444, 150.000000, 23.222);
 
     std::vector<TextLayoutAttachment> attachments;
-    attachments.emplace_back(bounds1, attachment1);
-    attachments.emplace_back(bounds2, attachment2);
+    attachments.emplace_back(bounds1, attachment1, std::nullopt);
+    attachments.emplace_back(bounds2, attachment2, std::nullopt);
 
     auto maxSize = Size::make(300, 10000);
     TextLayout textLayout(maxSize, {}, {}, std::move(attachments), true);
@@ -1793,8 +1929,8 @@ TEST(TextLayut, canQueryAttachmentByPointWithTolerance) {
     auto bounds2 = Rect::makeXYWH(0.00000, 46.444, 150.000000, 23.222);
 
     std::vector<TextLayoutAttachment> attachments;
-    attachments.emplace_back(bounds1, attachment1);
-    attachments.emplace_back(bounds2, attachment2);
+    attachments.emplace_back(bounds1, attachment1, std::nullopt);
+    attachments.emplace_back(bounds2, attachment2, std::nullopt);
 
     auto maxSize = Size::make(300, 10000);
     TextLayout textLayout(maxSize, {}, {}, std::move(attachments), true);

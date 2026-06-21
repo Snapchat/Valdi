@@ -75,82 +75,32 @@ UIColor *SCValdiCustomUnderlineColorForRange(NSAttributedString *attributedStrin
     return fallbackColor ?: [UIColor blackColor];
 }
 
-NSAttributedString *SCValdiAttributedStringByRemovingNativeUnderlines(NSAttributedString *attributedString,
-                                                                      NSArray<NSValue *> **customUnderlineRanges)
+NSArray<NSValue *> *SCValdiCustomUnderlineRemoveNativeUnderlines(NSMutableAttributedString *attributedString,
+                                                                 BOOL removeUnderlineColor)
 {
-    if (customUnderlineRanges) {
-        *customUnderlineRanges = nil;
-    }
-    if (attributedString.length == 0) {
-        return attributedString;
-    }
-
-    __block NSMutableAttributedString *displayAttributedString;
-    __block NSMutableArray<NSValue *> *ranges;
+    __block NSMutableArray<NSValue *> *ranges = nil;
     [attributedString enumerateAttribute:NSUnderlineStyleAttributeName
                                  inRange:NSMakeRange(0, attributedString.length)
                                  options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
                               usingBlock:^(id value, NSRange range, BOOL *stop) {
+        (void)stop;
         if (!SCValdiCustomUnderlineShouldReplaceNativeUnderline(value)) {
             return;
         }
-
-        if (!displayAttributedString) {
-            displayAttributedString = [attributedString mutableCopy];
-            ranges = [NSMutableArray array];
+        if (ranges == nil) {
+            ranges = [NSMutableArray new];
         }
-
-        [displayAttributedString removeAttribute:NSUnderlineStyleAttributeName range:range];
-        [displayAttributedString removeAttribute:NSUnderlineColorAttributeName range:range];
         [ranges addObject:[NSValue valueWithRange:range]];
     }];
 
-    if (!displayAttributedString) {
-        return attributedString;
-    }
-
-    if (customUnderlineRanges) {
-        *customUnderlineRanges = [ranges copy];
-    }
-    return displayAttributedString;
-}
-
-NSAttributedString *SCValdiAttributedStringByReplacingNativeUnderlinesWithColorAttribute(
-    NSAttributedString *attributedString,
-    NSAttributedStringKey colorAttributeName,
-    UIColor *fallbackColor,
-    BOOL *hasCustomUnderline)
-{
-    if (hasCustomUnderline) {
-        *hasCustomUnderline = NO;
-    }
-    if (attributedString.length == 0) {
-        return attributedString;
-    }
-
-    __block NSMutableAttributedString *displayAttributedString;
-    [attributedString enumerateAttribute:NSUnderlineStyleAttributeName
-                                 inRange:NSMakeRange(0, attributedString.length)
-                                 options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
-                              usingBlock:^(id value, NSRange range, BOOL *stop) {
-        if (!SCValdiCustomUnderlineShouldReplaceNativeUnderline(value)) {
-            return;
+    for (NSValue *rangeValue in ranges) {
+        NSRange range = rangeValue.rangeValue;
+        [attributedString removeAttribute:NSUnderlineStyleAttributeName range:range];
+        if (removeUnderlineColor) {
+            [attributedString removeAttribute:NSUnderlineColorAttributeName range:range];
         }
-
-        if (!displayAttributedString) {
-            displayAttributedString = [attributedString mutableCopy];
-        }
-
-        UIColor *underlineColor = SCValdiCustomUnderlineColorForRange(attributedString, range, fallbackColor);
-        [displayAttributedString removeAttribute:NSUnderlineStyleAttributeName range:range];
-        [displayAttributedString removeAttribute:NSUnderlineColorAttributeName range:range];
-        [displayAttributedString addAttribute:colorAttributeName value:underlineColor range:range];
-        if (hasCustomUnderline) {
-            *hasCustomUnderline = YES;
-        }
-    }];
-
-    return displayAttributedString ?: attributedString;
+    }
+    return ranges;
 }
 
 void SCValdiCustomUnderlineApplyDashPattern(CGContextRef context, SCValdiCustomUnderlineStyle *style)

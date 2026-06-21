@@ -1279,7 +1279,7 @@ export interface TextFieldInteractive extends TextField {
 }
 
 // @NativeTemplateElement({ios: 'SCValdiTextView', android: 'com.snap.valdi.views.ValdiEditTextMultiline', jsx: 'textview'})
-export interface TextView extends _TextView, CommonEditTextInterface {
+export interface TextView extends _TextView, CommonEditTextInterface, ContainerTemplateElement {
   /**
    * The content type identifies what keyboard keys
    * and capabilities are available on the input and which ones appear by default.
@@ -1732,8 +1732,8 @@ export interface CommonLabel extends CommonTextAttributes {
   onTextSelectionMenuAction?: (event: TextSelectionMenuActionEvent) => void;
 }
 
-// @NativeTemplateElement({ios: 'SCValdiLabel', android: 'android.widget.TextView', jsx: 'label'})
-export interface Label extends _Label, LeafView, CommonLabel {
+// @NativeTemplateElement({ios: 'SCValdiLabel', android: 'com.snap.valdi.views.ValdiTextView', jsx: 'label'})
+export interface Label extends _Label, LeafView, ContainerTemplateElement, CommonLabel {
   /**
    * Styling object allows to set multiple attribute at once
    */

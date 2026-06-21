@@ -21,7 +21,6 @@ import com.snap.valdi.attributes.impl.richtext.CustomUnderlineSpan
 import com.snap.valdi.attributes.impl.richtext.CustomUnderlineStyle
 import com.snap.valdi.attributes.impl.richtext.FontAttributes
 import com.snap.valdi.attributes.impl.richtext.PatternUnderlineSpan
-import com.snap.valdi.attributes.impl.richtext.RichTextConverter
 import com.snap.valdi.attributes.impl.richtext.TextDecoration
 import com.snap.valdi.attributes.impl.richtext.TextViewHelper
 import org.junit.Assert.assertEquals
@@ -64,7 +63,7 @@ internal class CustomUnderlineSpanTest {
         val view = TextView(context)
         val helper = TextViewHelper(
             view,
-            RichTextConverter(createFontManager(context)),
+            createFontManager(context),
             FontAttributes.default,
             0
         )
@@ -99,7 +98,7 @@ internal class CustomUnderlineSpanTest {
         val view = TextView(context)
         val helper = TextViewHelper(
             view,
-            RichTextConverter(createFontManager(context)),
+            createFontManager(context),
             FontAttributes.default,
             0
         )

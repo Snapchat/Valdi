@@ -24,12 +24,15 @@ public:
                            const char* iosClassName,
                            const char* androidClassName,
                            int defaultNumberOfLines,
+                           bool managesChildFrames,
                            TextVerticalAlignment textVerticalAlignment);
     ~EditableTextLayerClass() override;
 
     bool isFallback() const override {
         return true;
     }
+
+    bool managesChildFrames() const override;
 
     Valdi::Ref<Layer> instantiate() override;
 
@@ -91,6 +94,7 @@ public:
 private:
     Ref<TextLayerClass> _textLayerClass;
     int _defaultNumberOfLines;
+    bool _managesChildFrames;
     TextVerticalAlignment _textVerticalAlignment;
 };
 

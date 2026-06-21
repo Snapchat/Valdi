@@ -1,5 +1,6 @@
 import { AttributedTextBuilder } from 'valdi_core/src/utils/AttributedTextBuilder';
 import { AttributedTextEntryType } from 'valdi_tsx/src/AttributedText';
+import { AttributedTextInlineViewVerticalAlignment } from 'valdi_tsx/src/AttributedTextInlineViewAttachment';
 import 'jasmine/src/jasmine';
 
 describe('AtributedTextBuilder', () => {
@@ -79,6 +80,68 @@ describe('AtributedTextBuilder', () => {
       AttributedTextEntryType.Content,
       'World',
       AttributedTextEntryType.Pop,
+    ]);
+  });
+
+  it('can append an inline view attachment', () => {
+    const output = new AttributedTextBuilder().append('Before ').appendInlineView(1).append(' after').build();
+    expect(output).toEqual([
+      AttributedTextEntryType.Content,
+      'Before ',
+      AttributedTextEntryType.InlineView,
+      { childIndex: 1, verticalAlignment: AttributedTextInlineViewVerticalAlignment.Center },
+      AttributedTextEntryType.Content,
+      ' after',
+    ]);
+  });
+
+  it('can append an inline image attachment', () => {
+    const imageAttachment = { attachmentId: 'image-1', width: 12, height: 8, imageData: new Uint8Array([1, 2, 3]) };
+    const output = new AttributedTextBuilder()
+      .append('Before ')
+      .appendInlineImage(imageAttachment)
+      .append(' after')
+      .build();
+    expect(output).toEqual([
+      AttributedTextEntryType.Content,
+      'Before ',
+      AttributedTextEntryType.InlineImage,
+      imageAttachment,
+      AttributedTextEntryType.Content,
+      ' after',
+    ]);
+  });
+
+  it('can append an inline view attachment with vertical alignment', () => {
+    const output = new AttributedTextBuilder()
+      .append('Before ')
+      .appendInlineView(2, AttributedTextInlineViewVerticalAlignment.Bottom)
+      .append(' after')
+      .build();
+    expect(output).toEqual([
+      AttributedTextEntryType.Content,
+      'Before ',
+      AttributedTextEntryType.InlineView,
+      { childIndex: 2, verticalAlignment: AttributedTextInlineViewVerticalAlignment.Bottom },
+      AttributedTextEntryType.Content,
+      ' after',
+    ]);
+  });
+
+  it('can append an inline view attachment with baseline alignment', () => {
+    const output = new AttributedTextBuilder()
+      .append('Before ')
+      .appendInlineView(2, AttributedTextInlineViewVerticalAlignment.Baseline)
+      .append(' after')
+      .build();
+
+    expect(output).toEqual([
+      AttributedTextEntryType.Content,
+      'Before ',
+      AttributedTextEntryType.InlineView,
+      { childIndex: 2, verticalAlignment: AttributedTextInlineViewVerticalAlignment.Baseline },
+      AttributedTextEntryType.Content,
+      ' after',
     ]);
   });
 

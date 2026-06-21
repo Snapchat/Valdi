@@ -46,6 +46,7 @@ Ref<EditableTextLayerClass> EditableTextLayerClass::makeForTextField(const Ref<R
                                                      kTextFieldIOSClassName,
                                                      kTextFieldAndroidClassName,
                                                      kTextFieldDefaultNumberOfLines,
+                                                     false,
                                                      TextVerticalAlignmentCenter);
 }
 
@@ -56,6 +57,7 @@ Ref<EditableTextLayerClass> EditableTextLayerClass::makeForTextView(const Ref<Re
                                                      kTextViewIOSClassName,
                                                      kTextViewAndroidClassName,
                                                      kTextViewDefaultNumberOfLines,
+                                                     true,
                                                      TextVerticalAlignmentTop);
 }
 
@@ -64,13 +66,19 @@ EditableTextLayerClass::EditableTextLayerClass(const Ref<Resources>& resources,
                                                const char* iosClassName,
                                                const char* androidClassName,
                                                int defaultNumberOfLines,
+                                               bool managesChildFrames,
                                                TextVerticalAlignment textVerticalAlignment)
     : ILayerClass(resources, iosClassName, androidClassName, parentClass, true),
       _textLayerClass(parentClass),
       _defaultNumberOfLines(defaultNumberOfLines),
+      _managesChildFrames(managesChildFrames),
       _textVerticalAlignment(textVerticalAlignment) {}
 
 EditableTextLayerClass::~EditableTextLayerClass() = default;
+
+bool EditableTextLayerClass::managesChildFrames() const {
+    return _managesChildFrames;
+}
 
 Valdi::Ref<Layer> EditableTextLayerClass::instantiate() {
     auto layer = snap::drawing::makeLayer<snap::drawing::EditableTextLayer>(getResources());
@@ -79,7 +87,9 @@ Valdi::Ref<Layer> EditableTextLayerClass::instantiate() {
     return layer;
 }
 
-Size EditableTextLayerClass::onMeasure(const Valdi::Value& attributes, Size maxSize, bool isRightToLeft) {
+Size EditableTextLayerClass::onMeasure(const Valdi::Value& attributes,
+                                       Size maxSize,
+                                       bool isRightToLeft) {
     auto value = attributes.getMapValue("value");
     auto placeholder = attributes.getMapValue("placeholder");
     auto numberOfLines = attributes.getMapValue("numberOfLines");

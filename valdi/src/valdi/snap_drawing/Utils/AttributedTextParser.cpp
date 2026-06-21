@@ -103,6 +103,7 @@ Valdi::Result<Valdi::Ref<AttributedText>> AttributedTextParser::parse(FontManage
                 LayerClass::makeTapGestureListener(style.onTap));
         }
 
+        part.style.inlineViewAttachment = style.inlineViewAttachment;
         part.style.animationTransform = style.animationTransform;
         part.style.textDecoration = parseTextDecoration(style.textDecoration);
     }

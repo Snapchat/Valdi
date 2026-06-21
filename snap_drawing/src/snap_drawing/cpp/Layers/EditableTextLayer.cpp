@@ -44,6 +44,10 @@ TextLayer& EditableTextLayer::getTextLayer() {
     return *_textLayer;
 }
 
+Layer& EditableTextLayer::getChildInsertionLayer() {
+    return *_textLayer;
+}
+
 void EditableTextLayer::setTextColor(Color textColor) {
     if (_textColor != textColor) {
         _textColor = textColor;

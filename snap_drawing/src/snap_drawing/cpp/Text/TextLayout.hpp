@@ -188,12 +188,23 @@ struct TextLayoutEntry {
     ~TextLayoutEntry();
 };
 
+/**
+ * Attachment geometry emitted by SnapDrawing text layout.
+ *
+ * Inline images and inline Valdi child views both reserve a replacement range
+ * inside shaped text. bounds is the resolved text-layout rectangle, attachment
+ * identifies the source object, and replacementSize records the original
+ * unscaled reserved size so callers can detect when cached text layout is stale.
+ */
 struct TextLayoutAttachment {
     Rect bounds;
     Ref<Valdi::RefCountable> attachment;
+    std::optional<Size> replacementSize;
 
-    inline TextLayoutAttachment(const Rect& bounds, const Ref<Valdi::RefCountable>& attachment)
-        : bounds(bounds), attachment(attachment) {}
+    inline TextLayoutAttachment(const Rect& bounds,
+                                const Ref<Valdi::RefCountable>& attachment,
+                                std::optional<Size> replacementSize)
+        : bounds(bounds), attachment(attachment), replacementSize(replacementSize) {}
 };
 
 class TextLayout : public Valdi::SimpleRefCountable {

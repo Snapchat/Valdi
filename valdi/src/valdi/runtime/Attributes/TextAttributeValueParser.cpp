@@ -27,12 +27,15 @@ enum TextAttributeValueEntryType : int32_t {
     TextAttributeValueEntryTypePushOutlineWidth,
     TextAttributeValueEntryTypePushOuterOutlineColor,
     TextAttributeValueEntryTypePushOuterOutlineWidth,
-    TextAttributeValueEntryTypePushInlineImage,
+    TextAttributeValueEntryTypeInlineImage,
     TextAttributeValueEntryTypePushAnimationTransform,
     TextAttributeValueEntryTypePushBackgroundColor,
     TextAttributeValueEntryTypePushBackgroundPadding,
     TextAttributeValueEntryTypePushBackgroundBorderRadius,
+    TextAttributeValueEntryTypeInlineView,
 };
+
+STRING_CONST(objectReplacementCharacter, "\xEF\xBF\xBC")
 
 static Error invalidTextAttributeValueError(const Value& value, std::string_view message) {
     return Error(STRING_FORMAT("Invalid TextAttributeValue: {} (value was '{}')", message, value.toString()));
@@ -180,9 +183,38 @@ static std::optional<Error> parseAndPushBackgroundStyle(StylesStack& stylesStack
     return std::nullopt;
 }
 
+static void appendTextAttributePart(TextAttributeValue::Parts& parts,
+                                    const StylesStack& stylesStack,
+                                    SmallVector<uint32_t, 8>& animationPartCounts,
+                                    const StringBox& content,
+                                    const std::optional<ImageAttachment>& imageAttachment,
+                                    Ref<TextInlineAttachment> inlineViewAttachment) {
+    auto& part = parts.emplace_back();
+    part.content = content;
+
+    if (!stylesStack.empty()) {
+        part.style = stylesStack[stylesStack.size() - 1];
+        if (part.style.animationTransform) {
+            auto& animationTransform = part.style.animationTransform.value();
+            if (animationTransform.groupIndex < animationPartCounts.size()) {
+                animationTransform.partIndexInGroup = animationPartCounts[animationTransform.groupIndex]++;
+            }
+        }
+    }
+
+    if (imageAttachment) {
+        part.style.imageAttachment = imageAttachment.value();
+    }
+    if (inlineViewAttachment != nullptr) {
+        part.style.inlineViewAttachment = inlineViewAttachment;
+    }
+}
+
 static Result<Ref<TextAttributeValue>> doParse(const ColorPalette* colorPalette,
                                                const Value& value,
                                                ILogger* logger,
+                                               const Ref<TextInlineAttachment>* attachments,
+                                               size_t attachmentsLength,
                                                bool strict) {
     const auto* components = value.getArray();
     if (components == nullptr) {
@@ -217,19 +249,8 @@ static Result<Ref<TextAttributeValue>> doParse(const ColorPalette* colorPalette,
 
         switch (type) {
             case TextAttributeValueEntryTypeContent: {
-                auto content = entryValue.toStringBox();
-                auto& part = parts.emplace_back();
-                part.content = entryValue.toStringBox();
-
-                if (!stylesStack.empty()) {
-                    part.style = stylesStack[stylesStack.size() - 1];
-                    if (part.style.animationTransform) {
-                        auto& animationTransform = part.style.animationTransform.value();
-                        if (animationTransform.groupIndex < animationPartCounts.size()) {
-                            animationTransform.partIndexInGroup = animationPartCounts[animationTransform.groupIndex]++;
-                        }
-                    }
-                }
+                appendTextAttributePart(
+                    parts, stylesStack, animationPartCounts, entryValue.toStringBox(), std::nullopt, nullptr);
             } break;
             case TextAttributeValueEntryTypePop:
                 if (stylesStack.empty()) {
@@ -434,7 +455,7 @@ static Result<Ref<TextAttributeValue>> doParse(const ColorPalette* colorPalette,
                     pushStyle(stylesStack);
                 }
             } break;
-            case TextAttributeValueEntryTypePushInlineImage: {
+            case TextAttributeValueEntryTypeInlineImage: {
                 if (entryValue.isMap()) {
                     ImageAttachment attachment;
                     auto attachmentIdValue = entryValue.getMapValue("attachmentId");
@@ -457,9 +478,55 @@ static Result<Ref<TextAttributeValue>> doParse(const ColorPalette* colorPalette,
                         }
                     }
 
-                    pushStyle(stylesStack).imageAttachment = std::move(attachment);
-                } else {
-                    pushStyle(stylesStack);
+                    appendTextAttributePart(
+                        parts, stylesStack, animationPartCounts, objectReplacementCharacter(), attachment, nullptr);
+                }
+            } break;
+            case TextAttributeValueEntryTypeInlineView: {
+                if (entryValue.isMap()) {
+                    int32_t childIndex = -1;
+                    auto childIndexValue = entryValue.getMapValue("childIndex");
+                    if (!childIndexValue.isUndefined()) {
+                        childIndex = childIndexValue.toInt();
+                    }
+                    if (childIndex < 0 || static_cast<size_t>(childIndex) >= attachmentsLength) {
+                        error = {invalidTextAttributeValueError(value, "Invalid inline view child index")};
+                        if (strict) {
+                            return error.value();
+                        }
+                        logParseError(logger, error);
+                        appendTextAttributePart(parts,
+                                                stylesStack,
+                                                animationPartCounts,
+                                                objectReplacementCharacter(),
+                                                std::nullopt,
+                                                nullptr);
+                        break;
+                    }
+                    const auto& attachment = attachments[static_cast<size_t>(childIndex)];
+
+                    auto verticalAlignmentValue = entryValue.getMapValue("verticalAlignment");
+                    if (!verticalAlignmentValue.isUndefined()) {
+                        auto verticalAlignment = verticalAlignmentValue.toInt();
+                        if (verticalAlignment == static_cast<int32_t>(InlineViewVerticalAlignment::Top)) {
+                            attachment->setVerticalAlignment(InlineViewVerticalAlignment::Top);
+                        } else if (verticalAlignment == static_cast<int32_t>(InlineViewVerticalAlignment::Bottom)) {
+                            attachment->setVerticalAlignment(InlineViewVerticalAlignment::Bottom);
+                        } else if (verticalAlignment == static_cast<int32_t>(InlineViewVerticalAlignment::Baseline)) {
+                            attachment->setVerticalAlignment(InlineViewVerticalAlignment::Baseline);
+                        } else {
+                            attachment->setVerticalAlignment(InlineViewVerticalAlignment::Center);
+                        }
+                    } else {
+                        attachment->setVerticalAlignment(InlineViewVerticalAlignment::Center);
+                    }
+
+                    appendTextAttributePart(parts,
+                                            stylesStack,
+                                            animationPartCounts,
+                                            objectReplacementCharacter(),
+                                            std::nullopt,
+                                            attachment);
                 }
             } break;
             default:
@@ -484,8 +551,10 @@ static Result<Ref<TextAttributeValue>> doParse(const ColorPalette* colorPalette,
 Result<Value> TextAttributeValueParser::parse(const ColorPalette& colorPalette,
                                               const Value& value,
                                               ILogger& logger,
+                                              const Ref<TextInlineAttachment>* attachments,
+                                              size_t attachmentsLength,
                                               bool strict) {
-    auto parsed = doParse(&colorPalette, value, &logger, strict);
+    auto parsed = doParse(&colorPalette, value, &logger, attachments, attachmentsLength, strict);
     if (!parsed) {
         return parsed.moveError();
     }
@@ -494,7 +563,7 @@ Result<Value> TextAttributeValueParser::parse(const ColorPalette& colorPalette,
 }
 
 StringBox TextAttributeValueParser::toString(const Value& value) {
-    auto parsed = doParse(nullptr, value, nullptr, false);
+    auto parsed = doParse(nullptr, value, nullptr, nullptr, 0, false);
     if (!parsed) {
         return StringBox();
     }

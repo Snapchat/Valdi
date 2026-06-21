@@ -32,15 +32,9 @@ FOUNDATION_EXPORT UIColor *SCValdiCustomUnderlineColorForRange(NSAttributedStrin
                                                                NSRange range,
                                                                UIColor *_Nullable fallbackColor);
 
-FOUNDATION_EXPORT NSAttributedString *SCValdiAttributedStringByRemovingNativeUnderlines(
-    NSAttributedString *attributedString,
-    NSArray<NSValue *> *_Nullable *_Nullable customUnderlineRanges);
-
-FOUNDATION_EXPORT NSAttributedString *SCValdiAttributedStringByReplacingNativeUnderlinesWithColorAttribute(
-    NSAttributedString *attributedString,
-    NSAttributedStringKey colorAttributeName,
-    UIColor *_Nullable fallbackColor,
-    BOOL *_Nullable hasCustomUnderline);
+FOUNDATION_EXPORT NSArray<NSValue *> *_Nullable SCValdiCustomUnderlineRemoveNativeUnderlines(
+    NSMutableAttributedString *attributedString,
+    BOOL removeUnderlineColor);
 
 FOUNDATION_EXPORT void SCValdiCustomUnderlineApplyDashPattern(CGContextRef context,
                                                               SCValdiCustomUnderlineStyle *style);
