@@ -1,7 +1,6 @@
 import { requiresUnitlessNumber } from './requiresUnitlessNumber';
 import { isNumber } from './isNumber';
 import { handleMarginPadding } from './handleMarginPadding';
-import { fontStylesFromString } from '../utils/textStyle';
 const VALID_STYLE_KEYS = document.createElement('div').style;
 
 declare const global: {
@@ -12,26 +11,10 @@ declare const global: {
 
 export function isAttributeValidStyle(attribute: string): boolean {
   // Include flexbox properties that might not be in VALID_STYLE_KEYS
-  const flexboxProperties = [
-    'justifyContent',
-    'alignItems',
-    'alignContent',
-    'alignSelf',
-    'flexDirection',
-    'flexWrap',
-    'flex',
-    'flexGrow',
-    'flexShrink',
-    'flexBasis',
-  ];
+  const flexboxProperties = ['justifyContent', 'alignItems', 'alignContent', 'alignSelf', 'flexDirection', 'flexWrap', 'flex', 'flexGrow', 'flexShrink', 'flexBasis'];
   // Include zIndex, boxShadow, and borderRadius explicitly since they're critical for styling
   const additionalProperties = ['zIndex', 'boxShadow', 'borderRadius'];
-  return (
-    attribute in VALID_STYLE_KEYS ||
-    attribute === 'style' ||
-    flexboxProperties.includes(attribute) ||
-    additionalProperties.includes(attribute)
-  );
+  return attribute in VALID_STYLE_KEYS || attribute === "style" || flexboxProperties.includes(attribute) || additionalProperties.includes(attribute);
 }
 
 export function isStyleKeyColor(attribute: string): boolean {
@@ -50,10 +33,7 @@ export function hexToRGBColor(hex: string): RGBColor {
 
   // Support short form (#f36 → #ff3366)
   if (hex.length === 3) {
-    hex = hex
-      .split('')
-      .map(c => c + c)
-      .join('');
+    hex = hex.split('').map(c => c + c).join('');
   }
 
   if (hex.length !== 6) {
@@ -73,7 +53,12 @@ export function generateStyles(attribute: string, value: any): Partial<CSSStyleD
   }
 
   if (attribute === 'font') {
-    return fontStylesFromString(value);
+    const [fontFamily, fontSize, fontWeight] = value.split(' ');
+    return {
+      fontFamily,
+      fontSize: `${fontSize}px`,
+      fontWeight,
+    };
   }
 
   if (attribute === 'lineHeightMultiple') {
@@ -102,7 +87,7 @@ export function generateStyles(attribute: string, value: any): Partial<CSSStyleD
       // Creates a circle for square elements
       return { borderRadius: '9999px' };
     }
-
+    
     // Handle borderRadius values - can be numbers (px), percentages, or other CSS values
     if (typeof value === 'string' && value.includes('%')) {
       return { borderRadius: value };
@@ -143,18 +128,9 @@ export function generateStyles(attribute: string, value: any): Partial<CSSStyleD
 
   // Handle flexbox properties BEFORE the isAttributeValidStyle check
   // JavaScript style object uses camelCase
-  if (
-    attribute === 'justifyContent' ||
-    attribute === 'alignItems' ||
-    attribute === 'alignContent' ||
-    attribute === 'alignSelf' ||
-    attribute === 'flexDirection' ||
-    attribute === 'flexWrap' ||
-    attribute === 'flex' ||
-    attribute === 'flexGrow' ||
-    attribute === 'flexShrink' ||
-    attribute === 'flexBasis'
-  ) {
+  if (attribute === 'justifyContent' || attribute === 'alignItems' || attribute === 'alignContent' || attribute === 'alignSelf' || 
+      attribute === 'flexDirection' || attribute === 'flexWrap' || attribute === 'flex' || 
+      attribute === 'flexGrow' || attribute === 'flexShrink' || attribute === 'flexBasis') {
     // Keep camelCase for JavaScript style object assignment
     return { [attribute]: value };
   }
