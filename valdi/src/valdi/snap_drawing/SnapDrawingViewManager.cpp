@@ -41,6 +41,7 @@
 #include "valdi/snap_drawing/Layers/Classes/LayerClass.hpp"
 #include "valdi/snap_drawing/Layers/Classes/ScrollLayerClass.hpp"
 #include "valdi/snap_drawing/Layers/Classes/SpinnerLayerClass.hpp"
+#include "valdi/snap_drawing/Layers/Classes/TextAnimationGroupLayerClass.hpp"
 #include "valdi/snap_drawing/Layers/Classes/TextLayerClass.hpp"
 #include "valdi/snap_drawing/Layers/Classes/ValdiShapeLayerClass.hpp"
 
@@ -341,6 +342,7 @@ SnapDrawingViewManager::SnapDrawingViewManager(const Ref<Resources>& resources, 
     registerLayerClass(textLayerClass);
     registerLayerClass(EditableTextLayerClass::makeForTextField(_resources, textLayerClass));
     registerLayerClass(EditableTextLayerClass::makeForTextView(_resources, textLayerClass));
+    registerLayerClass(Valdi::makeShared<TextAnimationGroupLayerClass>(_resources, layerClass));
     registerLayerClass(
         Valdi::makeShared<ScrollLayerClass>(_resources, platformType == Valdi::PlatformTypeAndroid, layerClass));
     registerLayerClass(Valdi::makeShared<SpinnerLayerClass>(_resources, layerClass));

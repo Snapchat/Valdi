@@ -1,13 +1,16 @@
 
 #import <UIKit/UIKit.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 @class SCValdiCustomUnderlineStyle;
+@class SCValdiTextAnimationCoordinator;
 
 FOUNDATION_EXPORT NSAttributedStringKey const kSCValdiTextViewCustomUnderlineColorAttribute;
 
 @interface SCValdiTextViewBackgroundEffects : NSObject
 
-@property (nonatomic, strong) UIColor* color;
+@property (nonatomic, strong, nullable) UIColor* color;
 @property (nonatomic, assign) CGFloat borderRadius;
 @property (nonatomic, assign) CGFloat padding;
 
@@ -20,11 +23,19 @@ FOUNDATION_EXPORT NSAttributedStringKey const kSCValdiTextViewCustomUnderlineCol
 ///  `kSCValdiOuterOutlineWidthAttribute`.
 @interface SCValdiTextViewEffectsLayoutManager : NSLayoutManager
 
-@property (nonatomic, strong) SCValdiTextViewBackgroundEffects* effects;
-@property (nonatomic, strong) SCValdiCustomUnderlineStyle* customUnderlineStyle;
+@property (nonatomic, strong, nullable) SCValdiTextViewBackgroundEffects* effects;
+@property (nonatomic, strong, nullable) SCValdiCustomUnderlineStyle* customUnderlineStyle;
 
 @property (nonatomic, strong, readonly) UIColor* backgroundColor;
 @property (nonatomic, assign, readonly) CGFloat backgroundBorderRadius;
 @property (nonatomic, assign, readonly) CGFloat backgroundPadding;
+@property (nonatomic, assign, readonly) BOOL hasActiveAnimationRanges;
+@property (nonatomic, weak, nullable) SCValdiTextAnimationCoordinator* textAnimationCoordinator;
+@property (nonatomic, assign) NSUInteger textAnimationBasePartIndex;
+
+- (void)prepareGroupedAnimatedTextProgress;
+- (BOOL)invalidateAnimatedTextProgress;
 
 @end
+
+NS_ASSUME_NONNULL_END

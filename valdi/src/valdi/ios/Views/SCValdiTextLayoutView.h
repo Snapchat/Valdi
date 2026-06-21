@@ -10,6 +10,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @class SCValdiCustomUnderlineStyle;
+@class SCValdiTextAnimationCoordinator;
 @class SCValdiTextLayout;
 @class SCValdiTextLayoutView;
 @protocol SCValdiContextProtocol;
@@ -41,6 +42,9 @@ NS_ASSUME_NONNULL_BEGIN
          sourceAttributedString:(nullable NSAttributedString *)sourceAttributedString
                 characterRanges:(nullable NSArray<NSValue *> *)characterRanges;
 - (void)performOnLayoutCallbacks;
+- (void)setTextAnimationCoordinator:(nullable SCValdiTextAnimationCoordinator *)coordinator basePartIndex:(NSUInteger)basePartIndex;
+- (void)prepareGroupedTextAnimationFrame;
+- (BOOL)invalidateGroupedTextAnimationFrame;
 - (void)invalidateAnimatedTextProgress;
 - (void)stopAnimations;
 

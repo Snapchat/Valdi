@@ -557,6 +557,7 @@ type _VideoView = { __nativeElementType?: 'VideoView' };
 type _Label = { __nativeElementType?: 'Label' };
 type _TextField = { __nativeElementType?: 'TextField' };
 type _TextView = { __nativeElementType?: 'TextView' };
+type _TextAnimationGroup = { __nativeElementType?: 'TextAnimationGroup' };
 type _BlurView = { __nativeElementType?: 'BlurView' };
 type _SpinnerView = { __nativeElementType?: 'SpinnerView' };
 type _ShapeView = { __nativeElementType?: 'ShapeView' };
@@ -1020,6 +1021,20 @@ export interface View extends _View, CommonView, ContainerTemplateElement {
    * Styling object allows to set multiple attribute at once
    */
   style?: _Style<View | Layout>;
+
+  /**
+   * Sets an element reference holder, which will keep track
+   * of the rendered elements.
+   */
+  ref?: IRenderedElementHolder<this>;
+}
+
+// @NativeTemplateElement({ios: 'SCValdiTextAnimationGroup', android: 'com.snap.valdi.views.ValdiTextAnimationGroup', jsx: 'textanimationgroup'})
+export interface TextAnimationGroup extends _TextAnimationGroup, CommonView, ContainerTemplateElement {
+  /**
+   * Styling object allows to set multiple attribute at once
+   */
+  style?: _Style<TextAnimationGroup | View | Layout>;
 
   /**
    * Sets an element reference holder, which will keep track

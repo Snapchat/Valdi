@@ -139,6 +139,7 @@ class RichTextConverter(val fontManager: FontManager) {
         attributedText: AttributedText,
         startingAttributes: FontAttributes,
         missingFontsTracker: MissingFontsTracker,
+        attributedTextAnimator: AttributedTextAnimator? = null,
         disableTextReplacement: Boolean = false,
         suppressAnimatedBase: Boolean = false,
         renderMode: FontAttributes.RenderMode = FontAttributes.RenderMode.BASE,
@@ -158,6 +159,13 @@ class RichTextConverter(val fontManager: FontManager) {
             val onTap = attributedText.getOnTapAtIndex(index)
             val onLayout = attributedText.getOnLayoutAtIndex(index)
             val imageAttachment = attributedText.getImageAttachmentAtIndex(index)
+            val animationTransform = attributedText.getAnimationTransformAtIndex(index)
+            val animation = if (attributedTextAnimator != null && imageAttachment == null && animationTransform != null) {
+                attributedTextAnimator.animationForPart(index, animationTransform, start, end)
+            } else {
+                null
+            }
+            val useAnimatedReplacementSpan = animation != null
 
             if ((hasAnimationTransform || renderMode == FontAttributes.RenderMode.OVERLAY) &&
                 (renderMode != FontAttributes.RenderMode.OVERLAY || imageAttachment == null)
@@ -180,7 +188,7 @@ class RichTextConverter(val fontManager: FontManager) {
                 attribute.enumerateSpans(
                     fontManager,
                     missingFontsTracker,
-                    disableTextReplacement,
+                    disableTextReplacement || useAnimatedReplacementSpan,
                     renderMode,
                     suppressAnimatedBase,
                 ) {
@@ -204,6 +212,18 @@ class RichTextConverter(val fontManager: FontManager) {
                         start,
                         end,
                         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+
+            if (animation != null) {
+                spannable.setSpan(AnimatedTextReplacementSpan(
+                        animation,
+                        attribute,
+                        fontManager,
+                        missingFontsTracker,
+                        density),
+                    start,
+                    end,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
         }
 
@@ -293,7 +313,8 @@ class RichTextConverter(val fontManager: FontManager) {
         layout: Layout,
         attributedText: AttributedText,
         startingAttributes: FontAttributes,
-        missingFontsTracker: MissingFontsTracker
+        missingFontsTracker: MissingFontsTracker,
+        attributedTextAnimator: AttributedTextAnimator? = null
     ) {
         val partsSize = attributedText.getPartsSize()
         val contentLengths = parseContentLengths(attributedText)
@@ -306,6 +327,7 @@ class RichTextConverter(val fontManager: FontManager) {
         for (index in 0 until partsSize) {
             val attributes = fontAttributesArray[index]
             val chunkLength = contentLengths[index]
+            val animation = attributedTextAnimator?.animationForPartIndex(index)
             var remainingChunkLength = chunkLength
 
             while (remainingChunkLength > 0) {
@@ -319,8 +341,7 @@ class RichTextConverter(val fontManager: FontManager) {
                 val x = layout.getPrimaryHorizontal(chunkStartInLine)
                 val y = layout.getLineBaseline(lineIndex).toFloat()
 
-                // only overdraw for outlined chunks
-                if (attributes.outlineColor != null && attributes.outlineWidth > 0f) {
+                if (animation == null && attributes.outlineColor != null && attributes.outlineWidth > 0f) {
                     val paint = attributes.toPaint(fontManager, missingFontsTracker)
                     canvas.drawText(chunkText, x, y, paint)
                 }

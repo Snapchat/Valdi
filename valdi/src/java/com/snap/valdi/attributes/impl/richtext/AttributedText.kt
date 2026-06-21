@@ -59,20 +59,23 @@ interface AttributedText {
     fun hasOutline(): Boolean
 
     /**
-     * Return the animation transform for the part at the given index, or null if unspecified.
+     * Return the number of parts with animation transforms.
      */
-    fun getAnimationTransformAtIndex(index: Int): TextAnimationTransform?
-
-    /**
-     * Returns true when any part has animation metadata, even if the current transform is resting.
-     * Use hasRenderableAnimationTransform when callers only care about visible overlay changes.
-     */
-    fun hasAnimationTransform(): Boolean
+    fun getAnimationTransformsSize(): Int
 
     /**
      * Return the image attachment info for the part at the given index, or null if not an image attachment.
      */
     fun getImageAttachmentAtIndex(index: Int): ImageAttachmentInfo?
+
+    /**
+     * Return the animation transform for the part at the given index, or null if unspecified.
+     */
+    fun getAnimationTransformAtIndex(index: Int): TextAnimationTransform?
+}
+
+fun AttributedText.hasAnimationTransform(): Boolean {
+    return getAnimationTransformsSize() > 0
 }
 
 fun isRenderableAnimationTransform(animationTransform: TextAnimationTransform?): Boolean {

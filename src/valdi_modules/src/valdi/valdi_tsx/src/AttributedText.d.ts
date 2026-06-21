@@ -5,9 +5,51 @@ export type AttributedTextOnTap = () => void;
 export type AttributedTextOnLayout = (x: number, y: number, width: number, height: number) => void;
 
 export interface AttributedTextAnimationTransform {
+  /**
+   * Stable animation identity for parts using this transform.
+   *
+   * When provided, native renderers use this key together with each part index
+   * to preserve animation state across attributed text updates. When omitted,
+   * the part index alone is used.
+   */
+  key?: string;
+
+  /**
+   * Initial vertical offset, in logical pixels, applied to each animated part.
+   *
+   * The part animates from this offset back to its normal text position.
+   */
   translationY?: number;
+
+  /**
+   * Initial scale applied to each animated part.
+   *
+   * The part animates from this scale back to 1.
+   */
   scale?: number;
+
+  /**
+   * Initial opacity applied to each animated part.
+   *
+   * The part animates from this opacity back to 1.
+   */
   opacity?: number;
+
+  /**
+   * Duration, in seconds, for each part to animate from the initial transform
+   * back to its normal text appearance.
+   */
+  duration?: number;
+
+  /**
+   * Delay, in seconds, between the start of each attributed text part in
+   * the same animation transaction.
+   *
+   * A value of 0 starts all parts at the same time. A value of 0.1 starts the
+   * first part immediately, the second after 0.1s, the third after 0.2s, and
+   * so on.
+   */
+  timeOffsetBetweenParts?: number;
 }
 
 export interface AttributedTextBackgroundPadding {

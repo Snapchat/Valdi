@@ -15,6 +15,8 @@
 #include "valdi_core/cpp/Utils/Value.hpp"
 #include "valdi_core/cpp/Utils/ValueFunction.hpp"
 
+#include <cstdint>
+
 namespace Valdi {
 
 template<typename StyleType>
@@ -85,9 +87,14 @@ struct ImageAttachment {
 };
 
 struct TextAnimationTransform {
+    std::optional<StringBox> key;
     float translationY = 0;
     float scale = 1;
     float opacity = 1;
+    double duration = 0.35;
+    double timeOffsetBetweenParts = 0.0;
+    uint32_t groupIndex = 0;
+    uint32_t partIndexInGroup = 0;
 };
 
 struct TextBackgroundPadding {
@@ -146,7 +153,12 @@ public:
      */
     std::string toString() const;
 
+    size_t getAnimationTransformsSize() const;
+
     VALDI_CLASS_HEADER(TextAttributeValue)
+
+private:
+    size_t _animationTransformsSize = 0;
 };
 
 } // namespace Valdi

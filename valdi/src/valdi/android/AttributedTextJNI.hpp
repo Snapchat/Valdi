@@ -215,6 +215,120 @@ public:
         return result;
     }
 
+    // NOLINTNEXTLINE
+    static jboolean nativeHasAnimationTransform(fbjni::alias_ref<fbjni::JClass> /* clazz */, jlong ptr, jint index) {
+        auto attributedText = getAttributedText(ptr);
+        const auto& style = attributedText->getStyleAtIndex(static_cast<size_t>(index));
+        return style.animationTransform.has_value();
+    }
+
+    // NOLINTNEXTLINE
+    static jint nativeGetAnimationTransformsSize(fbjni::alias_ref<fbjni::JClass> /* clazz */, jlong ptr) {
+        auto attributedText = getAttributedText(ptr);
+        return static_cast<jint>(attributedText->getAnimationTransformsSize());
+    }
+
+    static const Valdi::TextAnimationTransform* getAnimationTransformOrThrow(jlong ptr, jint index) {
+        auto attributedText = getAttributedText(ptr);
+        const auto& style = attributedText->getStyleAtIndex(static_cast<size_t>(index));
+        if (!style.animationTransform.has_value()) {
+            throwJavaValdiException(
+                JavaEnv::getUnsafeEnv(), "AttributedText part does not have an animation transform");
+            return nullptr;
+        }
+        return &style.animationTransform.value();
+    }
+
+    // NOLINTNEXTLINE
+    static jstring nativeGetAnimationTransformKey(fbjni::alias_ref<fbjni::JClass> /* clazz */,
+                                                  jlong ptr,
+                                                  jint index) {
+        const auto* animationTransform = getAnimationTransformOrThrow(ptr, index);
+        if (animationTransform == nullptr || !animationTransform->key) {
+            return nullptr;
+        }
+
+        auto javaStr = toJavaObject(JavaEnv(), animationTransform->key.value());
+        return reinterpret_cast<jstring>(javaStr.releaseObject());
+    }
+
+    // NOLINTNEXTLINE
+    static jfloat nativeGetAnimationTransformTranslationY(fbjni::alias_ref<fbjni::JClass> /* clazz */,
+                                                         jlong ptr,
+                                                         jint index) {
+        const auto* animationTransform = getAnimationTransformOrThrow(ptr, index);
+        if (animationTransform == nullptr) {
+            return 0.0f;
+        }
+        return static_cast<jfloat>(animationTransform->translationY);
+    }
+
+    // NOLINTNEXTLINE
+    static jfloat nativeGetAnimationTransformScale(fbjni::alias_ref<fbjni::JClass> /* clazz */,
+                                                   jlong ptr,
+                                                   jint index) {
+        const auto* animationTransform = getAnimationTransformOrThrow(ptr, index);
+        if (animationTransform == nullptr) {
+            return 0.0f;
+        }
+        return static_cast<jfloat>(animationTransform->scale);
+    }
+
+    // NOLINTNEXTLINE
+    static jfloat nativeGetAnimationTransformOpacity(fbjni::alias_ref<fbjni::JClass> /* clazz */,
+                                                     jlong ptr,
+                                                     jint index) {
+        const auto* animationTransform = getAnimationTransformOrThrow(ptr, index);
+        if (animationTransform == nullptr) {
+            return 0.0f;
+        }
+        return static_cast<jfloat>(animationTransform->opacity);
+    }
+
+    // NOLINTNEXTLINE
+    static jdouble nativeGetAnimationTransformDuration(fbjni::alias_ref<fbjni::JClass> /* clazz */,
+                                                       jlong ptr,
+                                                       jint index) {
+        const auto* animationTransform = getAnimationTransformOrThrow(ptr, index);
+        if (animationTransform == nullptr) {
+            return 0.0;
+        }
+        return static_cast<jdouble>(animationTransform->duration);
+    }
+
+    // NOLINTNEXTLINE
+    static jdouble nativeGetAnimationTransformTimeOffsetBetweenParts(fbjni::alias_ref<fbjni::JClass> /* clazz */,
+                                                                     jlong ptr,
+                                                                     jint index) {
+        const auto* animationTransform = getAnimationTransformOrThrow(ptr, index);
+        if (animationTransform == nullptr) {
+            return 0.0;
+        }
+        return static_cast<jdouble>(animationTransform->timeOffsetBetweenParts);
+    }
+
+    // NOLINTNEXTLINE
+    static jint nativeGetAnimationTransformGroupIndex(fbjni::alias_ref<fbjni::JClass> /* clazz */,
+                                                      jlong ptr,
+                                                      jint index) {
+        const auto* animationTransform = getAnimationTransformOrThrow(ptr, index);
+        if (animationTransform == nullptr) {
+            return 0;
+        }
+        return static_cast<jint>(animationTransform->groupIndex);
+    }
+
+    // NOLINTNEXTLINE
+    static jint nativeGetAnimationTransformPartIndexInGroup(fbjni::alias_ref<fbjni::JClass> /* clazz */,
+                                                            jlong ptr,
+                                                            jint index) {
+        const auto* animationTransform = getAnimationTransformOrThrow(ptr, index);
+        if (animationTransform == nullptr) {
+            return 0;
+        }
+        return static_cast<jint>(animationTransform->partIndexInGroup);
+    }
+
     static void registerNatives() {
         javaClassStatic()->registerNatives({
             makeNativeMethod("nativeGetPartsSize", AttributedTextJNI::nativeGetPartsSize),
@@ -233,6 +347,22 @@ public:
             makeNativeMethod("nativeGetImageAttachmentWidth", AttributedTextJNI::nativeGetImageAttachmentWidth),
             makeNativeMethod("nativeGetImageAttachmentHeight", AttributedTextJNI::nativeGetImageAttachmentHeight),
             makeNativeMethod("nativeGetImageAttachmentData", AttributedTextJNI::nativeGetImageAttachmentData),
+            makeNativeMethod("nativeGetAnimationTransformsSize", AttributedTextJNI::nativeGetAnimationTransformsSize),
+            makeNativeMethod("nativeHasAnimationTransform", AttributedTextJNI::nativeHasAnimationTransform),
+            makeNativeMethod("nativeGetAnimationTransformKey", AttributedTextJNI::nativeGetAnimationTransformKey),
+            makeNativeMethod("nativeGetAnimationTransformTranslationY",
+                             AttributedTextJNI::nativeGetAnimationTransformTranslationY),
+            makeNativeMethod("nativeGetAnimationTransformScale", AttributedTextJNI::nativeGetAnimationTransformScale),
+            makeNativeMethod("nativeGetAnimationTransformOpacity",
+                             AttributedTextJNI::nativeGetAnimationTransformOpacity),
+            makeNativeMethod("nativeGetAnimationTransformDuration",
+                             AttributedTextJNI::nativeGetAnimationTransformDuration),
+            makeNativeMethod("nativeGetAnimationTransformTimeOffsetBetweenParts",
+                             AttributedTextJNI::nativeGetAnimationTransformTimeOffsetBetweenParts),
+            makeNativeMethod("nativeGetAnimationTransformGroupIndex",
+                             AttributedTextJNI::nativeGetAnimationTransformGroupIndex),
+            makeNativeMethod("nativeGetAnimationTransformPartIndexInGroup",
+                             AttributedTextJNI::nativeGetAnimationTransformPartIndexInGroup),
         });
     }
 };

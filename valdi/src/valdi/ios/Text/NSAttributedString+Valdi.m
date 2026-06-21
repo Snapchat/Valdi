@@ -13,6 +13,7 @@
 #import "valdi/ios/Text/SCValdiOnLayoutAttribute.h"
 #import "valdi/ios/Text/SCValdiAttributedText.h"
 #import "valdi/ios/Text/SCValdiImageAttachmentInfo.h"
+#import "valdi/ios/Text/SCValdiTextAnimationTransform.h"
 
 #import "valdi_core/SCNValdiCoreCompositeAttributePart.h"
 #import "valdi_core/UIColor+Valdi.h"
@@ -53,6 +54,25 @@ static NSNumber *_SCValdiParseTextAlignment(NSString *value)
 }
 
 @implementation NSAttributedString (Valdi)
+
+- (BOOL)hasValdiAnimationTransform
+{
+    if (self.length == 0) {
+        return NO;
+    }
+
+    __block BOOL hasAnimationTransform = NO;
+    [self enumerateAttribute:kSCValdiAttributedStringKeyAnimationTransform
+                     inRange:NSMakeRange(0, self.length)
+                     options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
+                  usingBlock:^(id value, NSRange range, BOOL *stop) {
+        if (value != nil && range.length > 0) {
+            hasAnimationTransform = YES;
+            *stop = YES;
+        }
+    }];
+    return hasAnimationTransform;
+}
 
 + (NSAttributedString *)attributedStringWithValdiText:(id)textValue
                                               attributes:(NSDictionary *)attributes
@@ -154,7 +174,7 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
         UIColor *outerOutlineColor = [valdiAttributedText outerOutlineColorAtIndex:i];
         NSNumber *outerOutlineWidth = [valdiAttributedText outerOutlineWidthAtIndex:i];
         SCValdiImageAttachmentInfo *imageAttachment = [valdiAttributedText imageAttachmentAtIndex:i];
-        NSDictionary<NSString *, NSNumber *> *animationTransform = [valdiAttributedText animationTransformAtIndex:i];
+        SCValdiTextAnimationTransform *animationTransform = [valdiAttributedText animationTransformAtIndex:i];
 
         if (color) {
             nsAttrs[NSForegroundColorAttributeName] = color;

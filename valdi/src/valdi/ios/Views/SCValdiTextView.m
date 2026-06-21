@@ -16,8 +16,10 @@
 #import "valdi/ios/Text/SCValdiAttributedTextHelper.h"
 #import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
 #import "valdi/ios/Text/SCValdiOnTapAttribute.h"
+#import "valdi/ios/Text/SCValdiTextAnimationTransform.h"
 #import "valdi/ios/Text/SCValdiTextGradientHelper.h"
 #import "valdi/ios/Text/SCValdiTextLayout.h"
+#import "valdi/ios/Views/SCValdiTextAnimationGroup.h"
 
 #import "valdi_core/UIColor+Valdi.h"
 #import "valdi_core/SCValdiTextInputTraitAttributes.h"
@@ -81,30 +83,25 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
 static NSString* const kSCValdiTextViewContentSizeKey = @"contentSize";
 static CGFloat const SCValdiAnimatedTextOverlayPadding = 8.0;
 
-typedef NS_ENUM(NSUInteger, SCValdiTextViewTextGravity) {
-    SCValdiTextViewTextGravityTop,
-    SCValdiTextViewTextGravityCenter,
-    SCValdiTextViewTextGravityBottom,
-};
-
-static BOOL SCValdiAttributedStringHasAnimationTransform(NSAttributedString *attributedString)
+static NSUInteger SCValdiTextViewAnimationPartCount(NSAttributedString *attributedString)
 {
-    if (attributedString.length == 0) {
-        return NO;
-    }
-
-    __block BOOL hasAnimationTransform = NO;
+    __block NSUInteger count = 0;
     [attributedString enumerateAttribute:kSCValdiAttributedStringKeyAnimationTransform
                                  inRange:NSMakeRange(0, attributedString.length)
                                  options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
                               usingBlock:^(id value, NSRange range, BOOL *stop) {
         if (value != nil && range.length > 0) {
-            hasAnimationTransform = YES;
-            *stop = YES;
+            count++;
         }
     }];
-    return hasAnimationTransform;
+    return count;
 }
+
+typedef NS_ENUM(NSUInteger, SCValdiTextViewTextGravity) {
+    SCValdiTextViewTextGravityTop,
+    SCValdiTextViewTextGravityCenter,
+    SCValdiTextViewTextGravityBottom,
+};
 
 static CGFloat SCValdiAnimatedTextVerticalOverflowPadding(NSAttributedString *attributedString)
 {
@@ -117,13 +114,13 @@ static CGFloat SCValdiAnimatedTextVerticalOverflowPadding(NSAttributedString *at
     [attributedString enumerateAttributesInRange:NSMakeRange(0, attributedString.length)
                                          options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
                                       usingBlock:^(NSDictionary<NSAttributedStringKey, id> *attrs, NSRange range, BOOL *stop) {
-        NSDictionary<NSString *, NSNumber *> *animationTransform = attrs[kSCValdiAttributedStringKeyAnimationTransform];
-        if (![animationTransform isKindOfClass:[NSDictionary class]]) {
+        SCValdiTextAnimationTransform *animationTransform = attrs[kSCValdiAttributedStringKeyAnimationTransform];
+        if (![animationTransform isKindOfClass:[SCValdiTextAnimationTransform class]]) {
             return;
         }
 
-        maxTranslation = MAX(maxTranslation, fabs(animationTransform[@"translationY"].doubleValue));
-        CGFloat scale = animationTransform[@"scale"] != nil ? animationTransform[@"scale"].doubleValue : 1.0;
+        maxTranslation = MAX(maxTranslation, fabs(animationTransform.translationY));
+        CGFloat scale = animationTransform.scale;
         UIFont *font = attrs[NSFontAttributeName];
         CGFloat lineHeight = [font isKindOfClass:[UIFont class]] ? font.lineHeight : 0.0;
         maxScaleOverflow = MAX(maxScaleOverflow, MAX(fabs(scale) - 1.0, 0.0) * lineHeight * 0.5);
@@ -143,7 +140,7 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
     return backgroundOnlyAttributedString;
 }
 
-@interface SCValdiTextView() <SCValdiAttributedTextOnTapGestureRecognizerFunctionProvider>
+@interface SCValdiTextView() <SCValdiAttributedTextOnTapGestureRecognizerFunctionProvider, SCValdiTextAnimationGroupParticipant>
 
 @end
 
@@ -194,6 +191,9 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
     SCValdiTextViewEffectsLayoutManager *_animatedTextEffectsLayoutManager;
     CGFloat _animatedTextVerticalOverflowPadding;
     BOOL _slowClipping;
+    CADisplayLink *_animatedTextDisplayLink;
+    __weak SCValdiTextAnimationGroup *_textAnimationGroup;
+    NSUInteger _textAnimationPartCount;
 
 }
 
@@ -275,6 +275,8 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
 
 - (void)dealloc
 {
+    [_textAnimationGroup unregisterTextAnimationParticipant:self];
+    [_animatedTextDisplayLink invalidate];
     [_textView removeObserver:self forKeyPath:kSCValdiTextViewContentSizeKey];
     _textView.delegate = nil;
     _textView.textStorage.delegate = nil;
@@ -284,11 +286,26 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
 
 - (BOOL)willEnqueueIntoValdiPool
 {
+    [_textAnimationGroup unregisterTextAnimationParticipant:self];
+    _textAnimationGroup = nil;
+    _textAnimationPartCount = 0;
     [_textView unmarkText];
     [_textView resignFirstResponder];
     _lastUnfocusReason = SCValdiTextInputUnfocusReasonUnknown;
 
     return self.class == [SCValdiTextView class];
+}
+
+- (void)didMoveToSuperview
+{
+    [super didMoveToSuperview];
+    [self _updateTextAnimationGroupRegistration];
+}
+
+- (void)didMoveToWindow
+{
+    [super didMoveToWindow];
+    [self _updateTextAnimationGroupRegistration];
 }
 
 -(void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
@@ -447,7 +464,39 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
 
 - (BOOL)_shouldUseAnimatedTextOverlayForAttributedString:(NSAttributedString *)attributedString
 {
-    return SCValdiAttributedStringHasAnimationTransform(attributedString);
+    return [attributedString hasValdiAnimationTransform];
+}
+
+- (SCValdiTextViewEffectsLayoutManager *)_animatedTextEffectsLayoutManager
+{
+    return (SCValdiTextViewEffectsLayoutManager *)_animatedTextView.textStorage.layoutManagers.firstObject;
+}
+
+- (void)_startAnimatedTextDisplayLinkIfNeeded
+{
+    if (_animatedTextDisplayLink != nil) {
+        return;
+    }
+
+    _animatedTextDisplayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(_animatedTextDisplayLinkDidFire:)];
+    [_animatedTextDisplayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+}
+
+- (void)_stopAnimatedTextDisplayLink
+{
+    [_animatedTextDisplayLink invalidate];
+    _animatedTextDisplayLink = nil;
+}
+
+- (void)_animatedTextDisplayLinkDidFire:(CADisplayLink *)displayLink
+{
+    SCValdiTextViewEffectsLayoutManager *layoutManager = [self _animatedTextEffectsLayoutManager];
+    BOOL hasActiveAnimationRanges = [layoutManager invalidateAnimatedTextProgress];
+    [_animatedTextView setNeedsDisplay];
+
+    if (!hasActiveAnimationRanges) {
+        [self _stopAnimatedTextDisplayLink];
+    }
 }
 
 - (void)_updateAnimatedTextOverlayWithAttributedString:(NSAttributedString *)attributedString
@@ -474,6 +523,16 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
 
     [self _updateFrame];
     _animatedTextView.attributedText = isEnabled ? attributedString : nil;
+    if (isEnabled) {
+        [[self _animatedTextEffectsLayoutManager] invalidateAnimatedTextProgress];
+        if (_textAnimationGroup != nil) {
+            [_textAnimationGroup startTextAnimationFrameLoopIfNeeded];
+        } else {
+            [self _startAnimatedTextDisplayLinkIfNeeded];
+        }
+    } else {
+        [self _stopAnimatedTextDisplayLink];
+    }
 }
 
 - (void)_applyTextOverflowAttributes
@@ -779,6 +838,9 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
             }
 
             BOOL useAnimatedTextOverlay = [self _shouldUseAnimatedTextOverlayForAttributedString:displayAttributedString];
+            _textAnimationPartCount = useAnimatedTextOverlay ? SCValdiTextViewAnimationPartCount(displayAttributedString) : 0;
+            [self _updateTextAnimationGroupRegistration];
+            [self _updateTextAnimationGroupContext];
             NSAttributedString *textViewAttributedString =
                 useAnimatedTextOverlay ? SCValdiBackgroundOnlyAttributedString(displayAttributedString) : displayAttributedString;
             
@@ -803,6 +865,8 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
             _placeholder.hidden = _textView.attributedText.length > 0;
         } else {
             [self updateLabelMode:SCValdiTextModeText];;
+            _textAnimationPartCount = 0;
+            [self _updateTextAnimationGroupRegistration];
             SCValdiSetTextHolderAttributes(_textView, fontAttributes, traitCollection, isRightToLeft, _textGradientHelper.gradientColor ?: fontAttributes.color);
             [self _updateAnimatedTextOverlayWithAttributedString:nil isEnabled:NO];
             _attributedTextOnTapString = nil;
@@ -823,6 +887,82 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
     _updating = NO;
 
     return changed;
+}
+
+- (SCValdiTextAnimationGroup *)_nearestTextAnimationGroup
+{
+    UIView *ancestor = self.superview;
+    while (ancestor != nil) {
+        SCValdiTextAnimationGroup *group = ObjectAs(ancestor, SCValdiTextAnimationGroup);
+        if (group != nil) {
+            return group;
+        }
+        ancestor = ancestor.superview;
+    }
+    return nil;
+}
+
+- (void)_updateTextAnimationGroupRegistration
+{
+    SCValdiTextAnimationGroup *group = [self _nearestTextAnimationGroup];
+    if (group == _textAnimationGroup) {
+        if (group != nil) {
+            [self valdi_applyTextAnimationCoordinator:group.textAnimationCoordinator basePartIndex:0];
+            [group setNeedsLayout];
+        }
+        return;
+    }
+
+    [_textAnimationGroup unregisterTextAnimationParticipant:self];
+    _textAnimationGroup = group;
+    if (group != nil) {
+        [group registerTextAnimationParticipant:self];
+    } else {
+        [self valdi_applyTextAnimationCoordinator:nil basePartIndex:0];
+    }
+}
+
+- (void)_updateTextAnimationGroupContext
+{
+    if (_textAnimationGroup != nil) {
+        [self valdi_applyTextAnimationCoordinator:_textAnimationGroup.textAnimationCoordinator basePartIndex:0];
+        [_textAnimationGroup setNeedsLayout];
+    } else {
+        [self valdi_applyTextAnimationCoordinator:nil basePartIndex:0];
+    }
+}
+
+- (NSUInteger)valdi_textAnimationPartCount
+{
+    return _textAnimationPartCount;
+}
+
+- (void)valdi_applyTextAnimationCoordinator:(SCValdiTextAnimationCoordinator *)coordinator
+                              basePartIndex:(NSUInteger)basePartIndex
+{
+    _animatedTextEffectsLayoutManager.textAnimationCoordinator = coordinator;
+    _animatedTextEffectsLayoutManager.textAnimationBasePartIndex = basePartIndex;
+    if (coordinator != nil) {
+        [self _stopAnimatedTextDisplayLink];
+    }
+}
+
+- (void)valdi_clearTextAnimationGroupRegistration
+{
+    _textAnimationGroup = nil;
+    [self valdi_applyTextAnimationCoordinator:nil basePartIndex:0];
+}
+
+- (void)valdi_prepareGroupedTextAnimationFrame
+{
+    [_animatedTextEffectsLayoutManager prepareGroupedAnimatedTextProgress];
+}
+
+- (BOOL)valdi_invalidateGroupedTextAnimationFrame
+{
+    BOOL hasActiveAnimationRanges = [_animatedTextEffectsLayoutManager invalidateAnimatedTextProgress];
+    [_animatedTextView setNeedsDisplay];
+    return hasActiveAnimationRanges;
 }
 
 #pragma mark - Attributes

@@ -10,8 +10,11 @@
 #import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
 #import "valdi/ios/Text/SCValdiOnLayoutAttribute.h"
 #import "valdi/ios/Text/SCValdiOnTapAttribute.h"
+#import "valdi/ios/Text/SCValdiTextAnimationCoordinator.h"
+#import "valdi/ios/Text/SCValdiTextAnimationGroupParticipant.h"
 #import "valdi/ios/Text/SCValdiTextLayout.h"
 #import "valdi/ios/Views/SCValdiLabelSelection.h"
+#import "valdi/ios/Views/SCValdiTextAnimationGroup.h"
 #import "valdi/ios/Views/SCValdiTextViewEffectsLayoutManager.h"
 
 #import "valdi_core/SCMacros.h"
@@ -28,10 +31,25 @@ INTERNED_STRING_CONST("selectionEnd", SCValdiLabelSelectionEndKey);
 
 static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
 
-@interface SCValdiTextLayoutView () <UITextInput, UITextInteractionDelegate>
+static NSUInteger SCValdiTextAnimationPartCount(NSAttributedString *attributedString)
+{
+    __block NSUInteger count = 0;
+    [attributedString enumerateAttribute:kSCValdiAttributedStringKeyAnimationTransform
+                                 inRange:NSMakeRange(0, attributedString.length)
+                                 options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
+                              usingBlock:^(id value, NSRange range, BOOL *stop) {
+        if (value != nil && range.length > 0) {
+            count++;
+        }
+    }];
+    return count;
+}
+
+@interface SCValdiTextLayoutView () <UITextInput, UITextInteractionDelegate, SCValdiTextAnimationGroupParticipant>
 - (void)_becomeSelectionFirstResponder;
 - (void)_installSelectionInteractionsIfNeeded;
 - (void)_removeSelectionInteractionOverlay;
+- (void)_updateTextAnimationGroupRegistration;
 @end
 
 @interface SCValdiTextLayoutSelectionInteractionView : UIView
@@ -67,6 +85,10 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
     NSArray<NSValue *> *_customUnderlineCharacterRanges;
     SCValdiLabelSelectionState *_selectionState;
     BOOL _usesEffectsLayoutManager;
+    __weak SCValdiTextAnimationGroup *_textAnimationGroup;
+    __weak SCValdiTextAnimationCoordinator *_textAnimationCoordinator;
+    NSUInteger _textAnimationBasePartIndex;
+    NSUInteger _textAnimationPartCount;
 }
 
 - (void)_finishInitializationWithUsesEffectsLayoutManager:(BOOL)usesEffectsLayoutManager
@@ -102,6 +124,7 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
 
 - (void)dealloc
 {
+    [_textAnimationGroup unregisterTextAnimationParticipant:self];
     [self stopAnimations];
     [self _removeSelectionInteractions];
 }
@@ -158,11 +181,18 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
 - (void)didMoveToWindow
 {
     [super didMoveToWindow];
+    [self _updateTextAnimationGroupRegistration];
     if (self.window) {
         [self _updateSelectionInteractionOverlayForCurrentSelection];
     } else {
         [self _removeSelectionInteractionOverlay];
     }
+}
+
+- (void)didMoveToSuperview
+{
+    [super didMoveToSuperview];
+    [self _updateTextAnimationGroupRegistration];
 }
 
 - (void)drawRect:(CGRect)rect
@@ -192,6 +222,11 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
     _textLayout.attributedString = attributedString;
     _textLayout.maxNumberOfLines = maxNumberOfLines;
     _textLayout.size = self.bounds.size;
+    _textAnimationPartCount = usesEffectsLayoutManager && attributedString != nil ?
+        SCValdiTextAnimationPartCount(attributedString) :
+        0;
+    [self setTextAnimationCoordinator:_textAnimationCoordinator basePartIndex:_textAnimationBasePartIndex];
+    [self _updateTextAnimationGroupRegistration];
     [self setNeedsDisplay];
 }
 
@@ -204,6 +239,10 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
 - (void)setAttributedString:(NSAttributedString *)attributedString
 {
     [self _ensureTextLayout].attributedString = attributedString;
+    _textAnimationPartCount = self.usesEffectsLayoutManager && attributedString != nil ?
+        SCValdiTextAnimationPartCount(attributedString) :
+        0;
+    [self _updateTextAnimationGroupRegistration];
     [self _clampSelectionToCurrentText];
     [self setNeedsDisplay];
 }
@@ -246,7 +285,94 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
 - (void)invalidateAnimatedTextProgress
 {
     [_textLayoutEffectsLayoutManager invalidateAnimatedTextProgress];
-    [self _startAnimatedTextDisplayLinkIfNeeded];
+    if (_textLayoutEffectsLayoutManager.textAnimationCoordinator == nil) {
+        [self _startAnimatedTextDisplayLinkIfNeeded];
+    } else {
+        [_textAnimationGroup startTextAnimationFrameLoopIfNeeded];
+    }
+}
+
+- (void)setTextAnimationCoordinator:(SCValdiTextAnimationCoordinator *)coordinator basePartIndex:(NSUInteger)basePartIndex
+{
+    _textAnimationCoordinator = coordinator;
+    _textAnimationBasePartIndex = basePartIndex;
+    _textLayoutEffectsLayoutManager.textAnimationCoordinator = coordinator;
+    _textLayoutEffectsLayoutManager.textAnimationBasePartIndex = basePartIndex;
+    if (coordinator != nil) {
+        [self stopAnimations];
+    }
+}
+
+- (void)prepareGroupedTextAnimationFrame
+{
+    [_textLayoutEffectsLayoutManager prepareGroupedAnimatedTextProgress];
+}
+
+- (BOOL)invalidateGroupedTextAnimationFrame
+{
+    BOOL hasActiveAnimationRanges = [_textLayoutEffectsLayoutManager invalidateAnimatedTextProgress];
+    [self setNeedsDisplay];
+    return hasActiveAnimationRanges;
+}
+
+- (void)valdi_prepareGroupedTextAnimationFrame
+{
+    [self prepareGroupedTextAnimationFrame];
+}
+
+- (BOOL)valdi_invalidateGroupedTextAnimationFrame
+{
+    return [self invalidateGroupedTextAnimationFrame];
+}
+
+- (SCValdiTextAnimationGroup *)_nearestTextAnimationGroup
+{
+    UIView *ancestor = self.superview;
+    while (ancestor != nil) {
+        SCValdiTextAnimationGroup *group = ObjectAs(ancestor, SCValdiTextAnimationGroup);
+        if (group != nil) {
+            return group;
+        }
+        ancestor = ancestor.superview;
+    }
+    return nil;
+}
+
+- (void)_updateTextAnimationGroupRegistration
+{
+    SCValdiTextAnimationGroup *group = _textAnimationPartCount > 0 ? [self _nearestTextAnimationGroup] : nil;
+    if (group == _textAnimationGroup) {
+        if (group != nil) {
+            [self setTextAnimationCoordinator:group.textAnimationCoordinator basePartIndex:0];
+            [group setNeedsLayout];
+        }
+        return;
+    }
+
+    [_textAnimationGroup unregisterTextAnimationParticipant:self];
+    _textAnimationGroup = group;
+    if (group != nil) {
+        [group registerTextAnimationParticipant:self];
+    } else {
+        [self setTextAnimationCoordinator:nil basePartIndex:0];
+    }
+}
+
+- (NSUInteger)valdi_textAnimationPartCount
+{
+    return _textAnimationPartCount;
+}
+
+- (void)valdi_applyTextAnimationCoordinator:(SCValdiTextAnimationCoordinator *)coordinator
+                              basePartIndex:(NSUInteger)basePartIndex
+{
+    [self setTextAnimationCoordinator:coordinator basePartIndex:basePartIndex];
+}
+
+- (void)valdi_clearTextAnimationGroupRegistration
+{
+    _textAnimationGroup = nil;
+    [self setTextAnimationCoordinator:nil basePartIndex:0];
 }
 
 - (void)stopAnimations

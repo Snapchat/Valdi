@@ -1,12 +1,80 @@
 #import <XCTest/XCTest.h>
 
 #import "valdi/ios/Text/SCValdiTextLayout.h"
+#import "valdi/ios/Text/NSAttributedString+Valdi.h"
+#import "valdi/ios/Text/SCValdiTextAnimationTransform.h"
+#import "valdi/ios/Text/SCValdiTextAnimationCoordinator.h"
+#import "valdi/ios/Views/SCValdiTextViewEffectsLayoutManager.h"
 
 @interface SCValdiTextLayoutTests: XCTestCase
 
 @end
 
 @implementation SCValdiTextLayoutTests
+
+- (void)testCanUseSuppliedLayoutManager
+{
+    NSLayoutManager *layoutManager = [NSLayoutManager new];
+    SCValdiTextLayout *layout = [[SCValdiTextLayout alloc] initWithLayoutManager:layoutManager];
+
+    XCTAssertEqual(layout.layoutManager, layoutManager);
+}
+
+- (void)testAnimationLayoutManagerReportsActiveAnimation
+{
+    SCValdiTextViewEffectsLayoutManager *layoutManager = [SCValdiTextViewEffectsLayoutManager new];
+    SCValdiTextLayout *layout = [[SCValdiTextLayout alloc] initWithLayoutManager:layoutManager];
+    SCValdiTextAnimationTransform *animationTransform =
+        [[SCValdiTextAnimationTransform alloc] initWithKey:@"title"
+                                                 partIndex:0
+                                              translationY:12.0
+                                                     scale:0.5
+                                                   opacity:0.0
+                                                  duration:1.0
+                                    timeOffsetBetweenParts:0.0
+                                                groupIndex:0
+                                          partIndexInGroup:0];
+    NSAttributedString *attributedString =
+        [[NSAttributedString alloc] initWithString:@"Hello"
+                                        attributes:@{
+                                            NSFontAttributeName: [UIFont systemFontOfSize:20],
+                                            kSCValdiAttributedStringKeyAnimationTransform: animationTransform,
+                                        }];
+
+    layout.attributedString = attributedString;
+    layout.size = CGSizeMake(200, 100);
+
+    XCTAssertTrue([attributedString hasValdiAnimationTransform]);
+    XCTAssertTrue([layoutManager invalidateAnimatedTextProgress]);
+    XCTAssertTrue(layoutManager.hasActiveAnimationRanges);
+}
+
+- (void)testTextAnimationCoordinatorReusesStartTimeForNewAnimationsInSameTimeline
+{
+    SCValdiTextAnimationCoordinator *coordinator = [SCValdiTextAnimationCoordinator new];
+
+    CFTimeInterval firstStartTime = [coordinator startTimeForNewAnimationWithTimelineKey:@"intro"
+                                                                              timeOffset:0.08
+                                                                             currentTime:10.0];
+    CFTimeInterval secondStartTime = [coordinator startTimeForNewAnimationWithTimelineKey:@"intro"
+                                                                               timeOffset:0.08
+                                                                              currentTime:10.4];
+
+    XCTAssertEqualWithAccuracy(firstStartTime, 10.0, 0.001);
+    XCTAssertEqualWithAccuracy(secondStartTime, 10.0, 0.001);
+}
+
+- (void)testTextAnimationCoordinatorOffsetsAfterExistingAnimations
+{
+    SCValdiTextAnimationCoordinator *coordinator = [SCValdiTextAnimationCoordinator new];
+    [coordinator recordExistingAnimationScheduledStartTime:12.0 forTimelineKey:@"intro"];
+
+    CFTimeInterval startTime = [coordinator startTimeForNewAnimationWithTimelineKey:@"intro"
+                                                                         timeOffset:0.08
+                                                                        currentTime:10.0];
+
+    XCTAssertEqualWithAccuracy(startTime, 12.08, 0.001);
+}
 
 - (void)testUnderlineRectsUseFontDescentAndNotStrokeWidth
 {

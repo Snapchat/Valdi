@@ -30,6 +30,20 @@ class ValdiTextView(context: Context) : TextView(context), ValdiRecyclableView, 
         TextViewUtils.configure(this)
     }
 
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        textViewHelper?.updateTextAnimationGroupRegistration()
+    }
+
+    override fun onDetachedFromWindow() {
+        textViewHelper?.unregisterTextAnimationGroup()
+        super.onDetachedFromWindow()
+    }
+
+    override fun prepareForRecycling() {
+        textViewHelper?.unregisterTextAnimationGroup()
+    }
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         trace({"ValdiTextView.onMeasure"}) {
             textViewHelper?.onMeasure(widthMeasureSpec, heightMeasureSpec)
@@ -52,11 +66,13 @@ class ValdiTextView(context: Context) : TextView(context), ValdiRecyclableView, 
             val currentLayout = layout
             if (currentLayout != null) {
                 if (textViewHelper?.drawOnTopAttributedText(canvas, currentLayout, currentAttributedText) == true) {
+                    textViewHelper?.postInvalidateOnAnimationIfNeeded()
                     return
                 }
             }
         }
         super.onDraw(canvas)
+        textViewHelper?.postInvalidateOnAnimationIfNeeded()
     }
 
     fun setAttributedText(attributedText: AttributedText, spannable: Spannable) {

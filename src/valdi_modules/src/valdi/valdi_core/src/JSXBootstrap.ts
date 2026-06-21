@@ -446,6 +446,7 @@ jsx.registerNativeElement('spinner', 'SCValdiSpinnerView', 'com.snap.valdi.views
 jsx.registerNativeElement('blur', 'SCValdiBlurView', 'com.snap.valdi.views.ValdiView');
 jsx.registerNativeElement('textfield', 'SCValdiTextField', 'com.snap.valdi.views.ValdiEditText');
 jsx.registerNativeElement('textview', 'SCValdiTextView', 'com.snap.valdi.views.ValdiEditTextMultiline');
+jsx.registerNativeElement('textanimationgroup', 'SCValdiTextAnimationGroup', 'com.snap.valdi.views.ValdiTextAnimationGroup');
 jsx.registerNativeElement('shape', 'SCValdiShapeView', 'com.snap.valdi.views.ShapeView');
 jsx.registerNativeElement(
   'animatedimage',

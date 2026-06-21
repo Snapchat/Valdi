@@ -36,6 +36,9 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
 - (void)_applySelectionStateToTextLayoutView;
 - (void)_setNeedsAttributedTextUpdateForPendingSelectableTextLayoutViewIfNeeded;
 
+- (void)updateLabelMode:(SCValdiTextMode)labelMode;
+- (void)updateLabelMode:(SCValdiTextMode)labelMode usesEffectsLayoutManager:(BOOL)usesEffectsLayoutManager;
+
 @end
 
 @implementation SCValdiLabel {
@@ -254,7 +257,6 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
     attributedOnTapGestureRecognizer.functionProvider = _textLayoutView;
 }
 
-
 - (void)_updateAttributedTextIfNeeded
 {
     if (_needAttributedTextUpdate) {
@@ -301,7 +303,7 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
                 }
             }];
 
-            BOOL hasAnimationTransform = NO;
+            BOOL hasAnimationTransform = [displayAttributedString hasValdiAnimationTransform];
             BOOL hasCustomUnderlineAttribute = customUnderlineSourceAttributedString != nil;
             if ([self _isSelectable] || hasOnTapAttribute || hasOnLayoutAttribute || hasCustomUnderlineAttribute || hasAnimationTransform) {
                 [self updateLabelMode:SCValdiTextModeValdiTextLayout

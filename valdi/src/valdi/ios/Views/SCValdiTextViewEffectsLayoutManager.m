@@ -2,7 +2,11 @@
 #import "SCValdiTextViewEffectsLayoutManager.h"
 #import "valdi/ios/Text/NSAttributedString+Valdi.h"
 #import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
+#import "valdi/ios/Text/SCValdiTextAnimationCoordinator.h"
+#import "valdi/ios/Text/SCValdiTextAnimationTransform.h"
 #import <CoreText/CoreText.h>
+#import <QuartzCore/QuartzCore.h>
+#import <math.h>
 
 NSAttributedStringKey const kSCValdiTextViewCustomUnderlineColorAttribute = @"valdi_textViewCustomUnderlineColor";
 
@@ -26,6 +30,17 @@ NSAttributedStringKey const kSCValdiTextViewCustomUnderlineColorAttribute = @"va
 @implementation SCValdiTextViewAnimationRange
 @end
 
+@interface SCValdiTextViewAnimationTimelineState : NSObject
+@property (nonatomic, assign) BOOL hasExistingAnimationStartTime;
+@property (nonatomic, assign) double existingAnimationStartTime;
+@property (nonatomic, assign) BOOL hasNewAnimationBaseStartDelay;
+@property (nonatomic, assign) double newAnimationBaseStartDelay;
+@property (nonatomic, assign) BOOL hasNewAnimationStartTime;
+@property (nonatomic, assign) double newAnimationStartTime;
+@end
+@implementation SCValdiTextViewAnimationTimelineState
+@end
+
 @interface SCValdiTextViewCustomUnderline : NSObject
 @property (nonatomic, assign) NSRange range;
 @property (nonatomic, strong) UIColor* color;
@@ -37,6 +52,8 @@ NSAttributedStringKey const kSCValdiTextViewCustomUnderlineColorAttribute = @"va
 @property (nonatomic, strong) NSArray<SCValdiTextViewAnimationRange *> *cachedAnimationRanges;
 @property (nonatomic, strong) NSArray<SCValdiTextViewOutline *> *cachedOutlineRanges;
 @property (nonatomic, strong) NSArray<SCValdiTextViewCustomUnderline *> *cachedCustomUnderlineRanges;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *animationStartTimes;
+@property (nonatomic, assign, readwrite) BOOL hasActiveAnimationRanges;
 @end
 
 @implementation SCValdiTextViewEffectsLayoutManager
@@ -48,6 +65,52 @@ static BOOL SCValdiAnimationRangeHasVisibleTransform(SCValdiTextViewAnimationRan
     return fabs(animationRange.translationY) > DBL_EPSILON ||
            fabs(animationRange.scale - 1.0) > DBL_EPSILON ||
            fabs(animationRange.opacity - 1.0) > DBL_EPSILON;
+}
+
+static NSString *SCValdiAnimationRangeKey(SCValdiTextAnimationTransform *animationTransform)
+{
+    if (animationTransform.key != nil) {
+        return [NSString stringWithFormat:@"%@:%lu", animationTransform.key, (unsigned long)animationTransform.partIndex];
+    }
+    return [NSString stringWithFormat:@"%lu", (unsigned long)animationTransform.partIndex];
+}
+
+static NSString *SCValdiAnimationTimelineKey(SCValdiTextAnimationTransform *animationTransform)
+{
+    if (animationTransform.key != nil) {
+        return animationTransform.key;
+    }
+    return [NSString stringWithFormat:@"group:%lu", (unsigned long)animationTransform.groupIndex];
+}
+
+static double SCValdiAnimationTimeOffset(SCValdiTextAnimationTransform *animationTransform)
+{
+    return MAX(animationTransform.timeOffsetBetweenParts, 0.0);
+}
+
+static double SCValdiAnimationStartDelay(SCValdiTextAnimationTransform *animationTransform, NSUInteger basePartIndex)
+{
+    return SCValdiAnimationTimeOffset(animationTransform) * (basePartIndex + animationTransform.partIndexInGroup);
+}
+
+static BOOL SCValdiAnimationShouldTrack(SCValdiTextAnimationTransform *animationTransform, double startDelay)
+{
+    BOOL hasVisibleStartTransform = fabs(animationTransform.translationY) > DBL_EPSILON ||
+                                    fabs(animationTransform.scale - 1.0) > DBL_EPSILON ||
+                                    fabs(animationTransform.opacity - 1.0) > DBL_EPSILON;
+    return hasVisibleStartTransform && (animationTransform.duration > DBL_EPSILON || startDelay > DBL_EPSILON);
+}
+
+static SCValdiTextViewAnimationTimelineState *SCValdiAnimationTimelineStateForKey(
+    NSMutableDictionary<NSString *, SCValdiTextViewAnimationTimelineState *> *animationTimelineStates,
+    NSString *timelineKey)
+{
+    SCValdiTextViewAnimationTimelineState *timelineState = animationTimelineStates[timelineKey];
+    if (timelineState == nil) {
+        timelineState = [SCValdiTextViewAnimationTimelineState new];
+        animationTimelineStates[timelineKey] = timelineState;
+    }
+    return timelineState;
 }
 
 static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
@@ -104,6 +167,74 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
 - (CGFloat)backgroundPadding
 {
     return _effects.padding ? _effects.padding : 0.0;
+}
+
+- (BOOL)invalidateAnimatedTextProgress
+{
+    self.cachedAnimationRanges = nil;
+    [self _animationRangesForAttributedString:self.textStorage];
+    [self invalidateDisplayForCharacterRange:NSMakeRange(0, self.textStorage.length)];
+    return self.hasActiveAnimationRanges;
+}
+
+- (void)setTextAnimationCoordinator:(SCValdiTextAnimationCoordinator *)textAnimationCoordinator
+{
+    if (_textAnimationCoordinator == textAnimationCoordinator) {
+        return;
+    }
+
+    _textAnimationCoordinator = textAnimationCoordinator;
+    self.cachedAnimationRanges = nil;
+}
+
+- (void)setTextAnimationBasePartIndex:(NSUInteger)textAnimationBasePartIndex
+{
+    if (_textAnimationBasePartIndex == textAnimationBasePartIndex) {
+        return;
+    }
+
+    _textAnimationBasePartIndex = textAnimationBasePartIndex;
+    self.cachedAnimationRanges = nil;
+}
+
+- (void)prepareGroupedAnimatedTextProgress
+{
+    SCValdiTextAnimationCoordinator *coordinator = self.textAnimationCoordinator;
+    if (!coordinator) {
+        return;
+    }
+
+    NSAttributedString *attributedString = self.textStorage;
+    if (attributedString.length == 0) {
+        return;
+    }
+
+    if (self.animationStartTimes == nil) {
+        self.animationStartTimes = [NSMutableDictionary new];
+    }
+
+    [attributedString enumerateAttribute:kSCValdiAttributedStringKeyAnimationTransform
+                                 inRange:NSMakeRange(0, attributedString.length)
+                                 options:0
+                              usingBlock:^(id value, NSRange range, BOOL *stop) {
+        if (![value isKindOfClass:[SCValdiTextAnimationTransform class]] || range.length == 0) {
+            return;
+        }
+
+        SCValdiTextAnimationTransform *animationTransform = value;
+        double startDelay = SCValdiAnimationStartDelay(animationTransform, self.textAnimationBasePartIndex);
+        if (!SCValdiAnimationShouldTrack(animationTransform, startDelay)) {
+            return;
+        }
+
+        NSNumber *startTime = self.animationStartTimes[SCValdiAnimationRangeKey(animationTransform)];
+        if (startTime == nil) {
+            return;
+        }
+
+        [coordinator recordExistingAnimationScheduledStartTime:startTime.doubleValue + startDelay
+                                                forTimelineKey:SCValdiAnimationTimelineKey(animationTransform)];
+    }];
 }
 
 - (void)setCustomUnderlineStyle:(SCValdiCustomUnderlineStyle *)customUnderlineStyle
@@ -313,24 +444,120 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
         return self.cachedAnimationRanges;
     }
 
+    if (self.animationStartTimes == nil) {
+        self.animationStartTimes = [NSMutableDictionary new];
+    }
+
     NSMutableArray<SCValdiTextViewAnimationRange *> *animationRanges = [NSMutableArray new];
+    NSMutableSet<NSString *> *currentKeys = [NSMutableSet new];
+    SCValdiTextAnimationCoordinator *coordinator = self.textAnimationCoordinator;
+    NSMutableDictionary<NSString *, SCValdiTextViewAnimationTimelineState *> *animationTimelineStates = coordinator ? nil : [NSMutableDictionary new];
+    __block BOOL hasActiveAnimationRanges = NO;
+    CFTimeInterval currentTime = CACurrentMediaTime();
+
+    if (coordinator) {
+        [self prepareGroupedAnimatedTextProgress];
+    } else {
+        [attributedString enumerateAttribute:kSCValdiAttributedStringKeyAnimationTransform
+                                     inRange:NSMakeRange(0, attributedString.length)
+                                     options:0
+                                  usingBlock:^(id value, NSRange range, BOOL *stop) {
+            if (![value isKindOfClass:[SCValdiTextAnimationTransform class]] || range.length == 0) {
+                return;
+            }
+
+            SCValdiTextAnimationTransform *animationTransform = value;
+            NSString *key = SCValdiAnimationRangeKey(animationTransform);
+
+            double startDelay = SCValdiAnimationStartDelay(animationTransform, 0);
+            if (!SCValdiAnimationShouldTrack(animationTransform, startDelay)) {
+                return;
+            }
+            [currentKeys addObject:key];
+
+            NSNumber *startTime = self.animationStartTimes[key];
+            if (startTime == nil) {
+                return;
+            }
+
+            NSString *timelineKey = SCValdiAnimationTimelineKey(animationTransform);
+            double scheduledStartTime = startTime.doubleValue + startDelay;
+            SCValdiTextViewAnimationTimelineState *timelineState =
+                SCValdiAnimationTimelineStateForKey(animationTimelineStates, timelineKey);
+            if (!timelineState.hasExistingAnimationStartTime ||
+                scheduledStartTime > timelineState.existingAnimationStartTime) {
+                timelineState.hasExistingAnimationStartTime = YES;
+                timelineState.existingAnimationStartTime = scheduledStartTime;
+            }
+        }];
+    }
+
     [attributedString enumerateAttribute:kSCValdiAttributedStringKeyAnimationTransform
                                  inRange:NSMakeRange(0, attributedString.length)
                                  options:0
                               usingBlock:^(id value, NSRange range, BOOL *stop) {
-        if (![value isKindOfClass:[NSDictionary class]] || range.length == 0) {
+        if (![value isKindOfClass:[SCValdiTextAnimationTransform class]] || range.length == 0) {
             return;
         }
 
-        NSDictionary<NSString *, NSNumber *> *animationTransform = value;
+        SCValdiTextAnimationTransform *animationTransform = value;
+        NSString *key = SCValdiAnimationRangeKey(animationTransform);
+
+        CGFloat initialTranslationY = animationTransform.translationY;
+        CGFloat initialScale = animationTransform.scale;
+        CGFloat initialOpacity = animationTransform.opacity;
+        double duration = animationTransform.duration;
+        double startDelay = SCValdiAnimationStartDelay(animationTransform, coordinator ? self.textAnimationBasePartIndex : 0);
+
+        double progress = 1.0;
+        if (SCValdiAnimationShouldTrack(animationTransform, startDelay)) {
+            [currentKeys addObject:key];
+            NSNumber *startTime = self.animationStartTimes[key];
+            if (startTime == nil) {
+                NSString *timelineKey = SCValdiAnimationTimelineKey(animationTransform);
+                if (coordinator) {
+                    startTime = @([coordinator startTimeForNewAnimationWithTimelineKey:timelineKey
+                                                                            timeOffset:SCValdiAnimationTimeOffset(animationTransform)
+                                                                           currentTime:currentTime]);
+                } else {
+                    SCValdiTextViewAnimationTimelineState *timelineState =
+                        SCValdiAnimationTimelineStateForKey(animationTimelineStates, timelineKey);
+                    if (!timelineState.hasNewAnimationBaseStartDelay) {
+                        timelineState.hasNewAnimationBaseStartDelay = YES;
+                        timelineState.newAnimationBaseStartDelay = startDelay;
+                    }
+                    if (!timelineState.hasNewAnimationStartTime) {
+                        timelineState.hasNewAnimationStartTime = YES;
+                        timelineState.newAnimationStartTime = timelineState.hasExistingAnimationStartTime ?
+                            MAX(currentTime, timelineState.existingAnimationStartTime + SCValdiAnimationTimeOffset(animationTransform)) :
+                            currentTime;
+                    }
+                    startTime = @(timelineState.newAnimationStartTime - timelineState.newAnimationBaseStartDelay);
+                }
+                self.animationStartTimes[key] = startTime;
+            }
+            CFTimeInterval delayedElapsedTime = currentTime - startTime.doubleValue - startDelay;
+            progress = duration > DBL_EPSILON ? MIN(MAX(delayedElapsedTime / duration, 0.0), 1.0)
+                                               : (delayedElapsedTime >= 0.0 ? 1.0 : 0.0);
+            if (progress < 1.0) {
+                hasActiveAnimationRanges = YES;
+            }
+            progress = 1.0 - pow(1.0 - progress, 3.0);
+        }
+
         SCValdiTextViewAnimationRange *animationRange = [SCValdiTextViewAnimationRange new];
         animationRange.range = range;
-        animationRange.translationY = animationTransform[@"translationY"].doubleValue;
-        animationRange.scale = animationTransform[@"scale"] != nil ? animationTransform[@"scale"].doubleValue : 1.0;
-        animationRange.opacity = animationTransform[@"opacity"] != nil ? animationTransform[@"opacity"].doubleValue : 1.0;
+        animationRange.translationY = initialTranslationY * (1.0 - progress);
+        animationRange.scale = initialScale + (1.0 - initialScale) * progress;
+        animationRange.opacity = initialOpacity + (1.0 - initialOpacity) * progress;
         [animationRanges addObject:animationRange];
     }];
 
+    NSMutableSet<NSString *> *previousKeys = [NSMutableSet setWithArray:self.animationStartTimes.allKeys];
+    [previousKeys minusSet:currentKeys];
+    [self.animationStartTimes removeObjectsForKeys:previousKeys.allObjects];
+
+    self.hasActiveAnimationRanges = hasActiveAnimationRanges;
     self.cachedAnimationRanges = animationRanges;
     return self.cachedAnimationRanges;
 }

@@ -14,6 +14,7 @@ import android.text.Spannable
 import android.text.SpannableString
 import android.text.Spanned
 import android.util.Size
+import android.view.ViewGroup
 import android.widget.TextView
 import androidx.core.widget.TextViewCompat
 import com.snap.valdi.attributes.impl.fonts.FontDescriptor
@@ -28,6 +29,7 @@ import com.snap.valdi.views.ValdiEditText
 import com.snap.valdi.views.TextViewUtils
 import com.snap.valdi.views.ValdiEditTextMultiline
 import com.snap.valdi.views.ValdiTextHolder
+import com.snap.valdi.views.ValdiTextAnimationGroup
 import com.snap.valdi.views.ValdiTextView
 import com.snap.valdi.views.touches.AttributedTextTapGestureRecognizer
 import kotlin.math.max
@@ -186,6 +188,17 @@ class TextViewHelper(private val view: TextView,
 
     private var textValueDirty = false
     private var isAttributedText = false
+    private var attributedTextValue: AttributedText? = null
+    private var attributedTextAnimator: AttributedTextAnimator? = null
+    private var animationFrameCallbackPosted = false
+    private var animationFrameCallback: Runnable? = null
+    private var textAnimationGroup: ValdiTextAnimationGroup? = null
+    private var textAnimationTimeline: AttributedTextAnimationTimeline? = null
+    var textAnimationPartCount: Int = 0
+        private set
+    private var textAnimationBasePartIndex: Int = 0
+    internal val textAnimationView: TextView
+        get() = view
 
     private var needsUpdateOnLayoutCallbacks = false
 
@@ -201,6 +214,7 @@ class TextViewHelper(private val view: TextView,
     private var hadActiveAnimationTransform: Boolean = false
 
     fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        updateTextAnimationGroupRegistration()
         updateTextAttributes()
         TextViewHelper.lastMeasuredText = view.text
         TextViewHelper.lastMeasuredFontAttributes = fontAttributes
@@ -340,6 +354,8 @@ class TextViewHelper(private val view: TextView,
         if (view is ValdiTextView) {
             view.clearAttributedText()
         }
+        attributedTextValue = null
+        clearTextAnimationState()
         if (view is ValdiEditText) {
             view.setTextAndSelection(text ?: "")
         } else {
@@ -382,13 +398,14 @@ class TextViewHelper(private val view: TextView,
         attributedTextTapGestureRecognizer.spannable = spannable
     }
 
-    fun convertAttributedText(text: AttributedText): Spannable {
+    fun convertAttributedText(text: AttributedText, attributedTextAnimator: AttributedTextAnimator? = null): Spannable {
         val fontAttributes = this.fontAttributes ?: defaultAttributes
         val density = view.resources.displayMetrics.density
         return textConverter.convert(
             attributedText = text,
             startingAttributes = fontAttributes,
             missingFontsTracker = this,
+            attributedTextAnimator = attributedTextAnimator,
             disableTextReplacement = disableTextReplacement,
             suppressAnimatedBase = false,
             renderMode = FontAttributes.RenderMode.BASE,
@@ -403,11 +420,132 @@ class TextViewHelper(private val view: TextView,
             text,
             fontAttributes,
             this,
+            attributedTextAnimator = attributedTextAnimator,
             disableTextReplacement = disableTextReplacement,
             suppressAnimatedBase = false,
             renderMode = FontAttributes.RenderMode.OVERLAY,
             density = density,
         )
+    }
+
+    fun needsDrawOnTopAttributedText(): Boolean {
+        val attributedText = attributedTextValue ?: return false
+        return disableTextReplacement && attributedText.hasOutline()
+    }
+
+    fun postInvalidateOnAnimationIfNeeded() {
+        val attributedTextAnimator = attributedTextAnimator
+        if (attributedTextAnimator?.hasAnimationRuns() != true) {
+            cancelAnimationFrameLoop()
+            return
+        }
+
+        val textAnimationGroup = textAnimationGroup
+        if (textAnimationGroup != null) {
+            textAnimationGroup.startTextAnimationFrameLoopIfNeeded()
+            return
+        }
+
+        postAnimationFrameCallback()
+    }
+
+    fun updateTextAnimationGroupRegistration() {
+        val group = nearestTextAnimationGroup()
+        if (group == textAnimationGroup) {
+            group?.let {
+                applyTextAnimationTimeline(it.textAnimationTimeline, 0)
+                it.markParticipantBaseIndexesDirty()
+            }
+            return
+        }
+
+        textAnimationGroup?.unregisterParticipant(this)
+        textAnimationGroup = group
+        if (group != null) {
+            group.registerParticipant(this)
+        } else {
+            applyTextAnimationTimeline(null, 0)
+        }
+    }
+
+    fun unregisterTextAnimationGroup() {
+        textAnimationGroup?.unregisterParticipant(this)
+    }
+
+    fun applyTextAnimationTimeline(timeline: AttributedTextAnimationTimeline?, basePartIndex: Int) {
+        textAnimationTimeline = timeline
+        textAnimationBasePartIndex = basePartIndex
+        attributedTextAnimator?.groupedTimeline = timeline
+        attributedTextAnimator?.basePartIndex = basePartIndex
+        if (timeline != null) {
+            cancelAnimationFrameLoop()
+        }
+    }
+
+    fun clearTextAnimationGroupRegistration() {
+        textAnimationGroup = null
+        applyTextAnimationTimeline(null, 0)
+    }
+
+    fun prepareGroupedTextAnimationFrame() {
+        attributedTextAnimator?.prepareGroupedFrame()
+    }
+
+    fun updateGroupedTextAnimationFrame(): Boolean {
+        val animator = attributedTextAnimator ?: return false
+        val spannable = view.text as? Spannable ?: return false
+        val hasActiveAnimations = animator.update(spannable)
+        if (hasActiveAnimations) {
+            view.invalidate()
+        }
+        return hasActiveAnimations
+    }
+
+    private fun nearestTextAnimationGroup(): ValdiTextAnimationGroup? {
+        var parent = view.parent
+        while (parent is ViewGroup) {
+            if (parent is ValdiTextAnimationGroup) {
+                return parent
+            }
+            parent = parent.parent
+        }
+        return null
+    }
+
+    private fun postAnimationFrameCallback() {
+        if (animationFrameCallbackPosted) {
+            return
+        }
+
+        animationFrameCallbackPosted = true
+        view.postOnAnimation(animationFrameCallback())
+    }
+
+    private fun animationFrameCallback(): Runnable {
+        val existingFrameCallback = animationFrameCallback
+        if (existingFrameCallback != null) {
+            return existingFrameCallback
+        }
+
+        return Runnable {
+            animationFrameCallbackPosted = false
+            val attributedTextAnimator = attributedTextAnimator ?: return@Runnable
+            val spannable = view.text as? Spannable ?: return@Runnable
+            val hasActiveAnimations = attributedTextAnimator.update(spannable)
+            if (hasActiveAnimations) {
+                postAnimationFrameCallback()
+            }
+            view.invalidate()
+        }.also {
+            animationFrameCallback = it
+        }
+    }
+
+    private fun cancelAnimationFrameLoop() {
+        if (animationFrameCallbackPosted) {
+            animationFrameCallback?.let { view.removeCallbacks(it) }
+            animationFrameCallbackPosted = false
+        }
     }
 
     fun drawOnTopAttributedText(canvas: Canvas, layout: Layout, text: AttributedText): Boolean {
@@ -461,9 +599,11 @@ class TextViewHelper(private val view: TextView,
         val fontAttributes = this.fontAttributes ?: defaultAttributes
         val nextShapeSignature = buildAttributedTextShapeSignature(text, fontAttributes)
         val hasActiveAnimation = text.hasActiveAnimationTransform()
+        val hasAnimationTransform = text.hasAnimationTransform()
 
         if (attributedTextShapeSignature == nextShapeSignature &&
-            hadActiveAnimationTransform == hasActiveAnimation
+            hadActiveAnimationTransform == hasActiveAnimation &&
+            !hasAnimationTransform
         ) {
             if (view is ValdiEditText) {
                 view.updateAttributedText(text)
@@ -480,9 +620,27 @@ class TextViewHelper(private val view: TextView,
     }
 
     private fun forceRebindAttributedText(text: AttributedText, shapeSignature: String) {
+        attributedTextValue = text
         parsedAttributedTextSource = text
         parsedAttributedText = textConverter.parseAttributedText(text, this.fontAttributes ?: defaultAttributes)
-        val spannable = convertAttributedText(text)
+        val animationTransformsSize = text.getAnimationTransformsSize()
+        val animator = if (animationTransformsSize > 0) {
+            textAnimationPartCount = animationTransformsSize
+            updateTextAnimationGroupRegistration()
+            getOrCreateAttributedTextAnimator().also {
+                it.groupedTimeline = textAnimationTimeline
+                it.basePartIndex = textAnimationBasePartIndex
+                it.beginSync()
+            }
+        } else {
+            clearTextAnimationState()
+            null
+        }
+        val spannable = try {
+            convertAttributedText(text, animator)
+        } finally {
+            animator?.endSync()
+        }
         overlayAttributedTextSpannable = null
         clearOverlayLayoutCache()
         attributedTextShapeSignature = shapeSignature
@@ -493,17 +651,23 @@ class TextViewHelper(private val view: TextView,
         } else if (view is ValdiTextView) {
             view.setAttributedText(text, spannable)
         } else {
-            view.text = SpannableString(spannable)
+            view.setText(spannable, TextView.BufferType.SPANNABLE)
         }
         refreshAnimatedBaseVisibilitySpans(text, hasActiveAnimation)
 
         needsUpdateOnLayoutCallbacks = true
 
-        val spans = spannable.getSpans(0, spannable.length, OnTapSpan::class.java)
+        val activeSpannable = view.text as? Spannable ?: spannable
+        if (animator != null) {
+            attributedTextAnimator?.update(activeSpannable)
+        }
+        postInvalidateOnAnimationIfNeeded()
+
+        val spans = activeSpannable.getSpans(0, activeSpannable.length, OnTapSpan::class.java)
         if (spans.isNullOrEmpty()) {
             removeAttributedTextTapGestureRecognizer()
         } else {
-            addAttributedTextTapGestureRecognizer(spannable)
+            addAttributedTextTapGestureRecognizer(activeSpannable)
         }
     }
 
@@ -513,6 +677,8 @@ class TextViewHelper(private val view: TextView,
         parsedAttributedText = null
         clearOverlayLayoutCache()
         attributedTextShapeSignature = null
+        attributedTextValue = null
+        clearTextAnimationState()
         if (view is ValdiTextView) {
             view.clearAttributedText()
         }
@@ -634,6 +800,32 @@ class TextViewHelper(private val view: TextView,
     internal fun clearOverlayLayoutCache() {
         overlayLayoutCache?.recycle()
         overlayLayoutCache = null
+    }
+
+    private fun getOrCreateAttributedTextAnimator(): AttributedTextAnimator {
+        val animator = attributedTextAnimator
+        if (animator != null) {
+            return animator
+        }
+
+        return AttributedTextAnimator().also {
+            it.groupedTimeline = textAnimationTimeline
+            it.basePartIndex = textAnimationBasePartIndex
+            attributedTextAnimator = it
+        }
+    }
+
+    private fun clearAttributedTextAnimator() {
+        val animator = attributedTextAnimator ?: return
+        animator.clear(view.text as? Spannable)
+        attributedTextAnimator = null
+    }
+
+    private fun clearTextAnimationState() {
+        textAnimationPartCount = 0
+        unregisterTextAnimationGroup()
+        clearAttributedTextAnimator()
+        cancelAnimationFrameLoop()
     }
 
     private fun convertTextToSpannable(text: String): Spannable {

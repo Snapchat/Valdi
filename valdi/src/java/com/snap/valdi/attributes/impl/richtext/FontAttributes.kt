@@ -279,4 +279,15 @@ data class FontAttributes(
             style = Paint.Style.STROKE
         }
     }
+
+    fun toFillPaint(fontManager: FontManager, missingFontsTracker: MissingFontsTracker): Paint {
+        return Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = resolveFontSize(fontManager.context)
+            typeface = resolveTypeface(fontManager, missingFontsTracker)
+            color = this@FontAttributes.color
+            isUnderlineText = textDecoration == TextDecoration.UNDERLINE
+            isStrikeThruText = textDecoration == TextDecoration.STRIKETHROUGH
+            style = Paint.Style.FILL
+        }
+    }
 }

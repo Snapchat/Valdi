@@ -21,12 +21,14 @@ NS_ASSUME_NONNULL_BEGIN
 @interface SCValdiTextLayout : NSObject
 
 @property (copy, nonatomic, nullable) NSAttributedString* attributedString;
+@property (strong, nonatomic, readonly) NSLayoutManager* layoutManager;
 
 @property (assign, nonatomic) CGSize size;
 @property (assign, nonatomic) NSUInteger maxNumberOfLines;
 @property (readonly, nonatomic) CGRect usedRect;
 
 - (instancetype)init;
+- (instancetype)initWithLayoutManager:(NSLayoutManager*)layoutManager NS_DESIGNATED_INITIALIZER;
 
 /**
  Draw the entire text layout inside the given rect

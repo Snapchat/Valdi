@@ -13,6 +13,7 @@ import {
   ShapeView,
   Slot,
   SpinnerView,
+  TextAnimationGroup,
   TextField,
   TextView,
   View,
@@ -47,6 +48,7 @@ declare global {
       webview: WebViewElement;
       textfield: TextField;
       textview: TextView;
+      textanimationgroup: TextAnimationGroup;
       blur: BlurView;
       slot: Slot;
       slotted: Slotted;

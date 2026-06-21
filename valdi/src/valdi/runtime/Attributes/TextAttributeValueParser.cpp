@@ -196,6 +196,7 @@ static Result<Ref<TextAttributeValue>> doParse(const ColorPalette* colorPalette,
     std::optional<Error> error;
     TextAttributeValue::Parts parts;
     StylesStack stylesStack;
+    SmallVector<uint32_t, 8> animationPartCounts;
 
     size_t index = 0;
     auto size = components->size();
@@ -222,6 +223,12 @@ static Result<Ref<TextAttributeValue>> doParse(const ColorPalette* colorPalette,
 
                 if (!stylesStack.empty()) {
                     part.style = stylesStack[stylesStack.size() - 1];
+                    if (part.style.animationTransform) {
+                        auto& animationTransform = part.style.animationTransform.value();
+                        if (animationTransform.groupIndex < animationPartCounts.size()) {
+                            animationTransform.partIndexInGroup = animationPartCounts[animationTransform.groupIndex]++;
+                        }
+                    }
                 }
             } break;
             case TextAttributeValueEntryTypePop:
@@ -396,6 +403,10 @@ static Result<Ref<TextAttributeValue>> doParse(const ColorPalette* colorPalette,
             case TextAttributeValueEntryTypePushAnimationTransform: {
                 if (entryValue.isMap()) {
                     TextAnimationTransform animationTransform;
+                    auto keyValue = entryValue.getMapValue("key");
+                    if (!keyValue.isUndefined()) {
+                        animationTransform.key = keyValue.toStringBox();
+                    }
                     auto translationYValue = entryValue.getMapValue("translationY");
                     if (!translationYValue.isUndefined()) {
                         animationTransform.translationY = static_cast<float>(translationYValue.toDouble());
@@ -408,6 +419,16 @@ static Result<Ref<TextAttributeValue>> doParse(const ColorPalette* colorPalette,
                     if (!opacityValue.isUndefined()) {
                         animationTransform.opacity = static_cast<float>(opacityValue.toDouble());
                     }
+                    auto durationValue = entryValue.getMapValue("duration");
+                    if (!durationValue.isUndefined()) {
+                        animationTransform.duration = durationValue.toDouble();
+                    }
+                    auto timeOffsetBetweenPartsValue = entryValue.getMapValue("timeOffsetBetweenParts");
+                    if (!timeOffsetBetweenPartsValue.isUndefined()) {
+                        animationTransform.timeOffsetBetweenParts = timeOffsetBetweenPartsValue.toDouble();
+                    }
+                    animationTransform.groupIndex = static_cast<uint32_t>(animationPartCounts.size());
+                    animationPartCounts.emplace_back(0);
                     pushStyle(stylesStack).animationTransform = animationTransform;
                 } else {
                     pushStyle(stylesStack);

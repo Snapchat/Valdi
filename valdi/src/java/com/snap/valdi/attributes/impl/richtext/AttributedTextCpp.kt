@@ -1,6 +1,5 @@
 package com.snap.valdi.attributes.impl.richtext
 
-import android.util.Log
 import androidx.annotation.Keep
 import com.snap.valdi.attributes.conversions.ColorConversions
 import com.snap.valdi.callable.ValdiFunction
@@ -87,27 +86,8 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
         return false
     }
 
-    override fun getAnimationTransformAtIndex(index: Int): TextAnimationTransform? {
-        val scale = nativeGetAnimationScale(native.nativeHandle, index).toFloat()
-        if (scale.isNaN()) {
-            return null
-        }
-
-        return TextAnimationTransform(
-            translationY = nativeGetAnimationTranslationY(native.nativeHandle, index).toFloat(),
-            scale = scale,
-            opacity = nativeGetAnimationOpacity(native.nativeHandle, index).toFloat(),
-        )
-    }
-
-    override fun hasAnimationTransform(): Boolean {
-        val partsSize = getPartsSize()
-        for (index in 0 until partsSize) {
-            if (!nativeGetAnimationScale(native.nativeHandle, index).toFloat().isNaN()) {
-                return true
-            }
-        }
-        return false
+    override fun getAnimationTransformsSize(): Int {
+        return nativeGetAnimationTransformsSize(native.nativeHandle)
     }
 
     override fun getImageAttachmentAtIndex(index: Int): ImageAttachmentInfo? {
@@ -118,6 +98,23 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
         val height = nativeGetImageAttachmentHeight(native.nativeHandle, index)
         val imageData = nativeGetImageAttachmentData(native.nativeHandle, index)
         return ImageAttachmentInfo(width, height, imageData)
+    }
+
+    override fun getAnimationTransformAtIndex(index: Int): TextAnimationTransform? {
+        if (!nativeHasAnimationTransform(native.nativeHandle, index)) {
+            return null
+        }
+
+        return TextAnimationTransform(
+            key = nativeGetAnimationTransformKey(native.nativeHandle, index),
+            translationY = nativeGetAnimationTransformTranslationY(native.nativeHandle, index),
+            scale = nativeGetAnimationTransformScale(native.nativeHandle, index),
+            opacity = nativeGetAnimationTransformOpacity(native.nativeHandle, index),
+            duration = nativeGetAnimationTransformDuration(native.nativeHandle, index),
+            timeOffsetBetweenParts = nativeGetAnimationTransformTimeOffsetBetweenParts(native.nativeHandle, index),
+            groupIndex = nativeGetAnimationTransformGroupIndex(native.nativeHandle, index),
+            partIndexInGroup = nativeGetAnimationTransformPartIndexInGroup(native.nativeHandle, index)
+        )
     }
 
     companion object {
@@ -144,12 +141,6 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
         @JvmStatic
         private external fun nativeGetOutlineWidth(nativeHandle: Long, index: Int): Double
         @JvmStatic
-        private external fun nativeGetAnimationTranslationY(nativeHandle: Long, index: Int): Double
-        @JvmStatic
-        private external fun nativeGetAnimationScale(nativeHandle: Long, index: Int): Double
-        @JvmStatic
-        private external fun nativeGetAnimationOpacity(nativeHandle: Long, index: Int): Double
-        @JvmStatic
         private external fun nativeGetOnTap(nativeHandle: Long, index: Int): Any?
         @JvmStatic
         private external fun nativeGetOnLayout(nativeHandle: Long, index: Int): Any?
@@ -159,5 +150,25 @@ class AttributedTextCpp(private val native: CppObjectWrapper): AttributedText {
         private external fun nativeGetImageAttachmentHeight(nativeHandle: Long, index: Int): Float
         @JvmStatic
         private external fun nativeGetImageAttachmentData(nativeHandle: Long, index: Int): ByteArray?
+        @JvmStatic
+        private external fun nativeGetAnimationTransformsSize(nativeHandle: Long): Int
+        @JvmStatic
+        private external fun nativeHasAnimationTransform(nativeHandle: Long, index: Int): Boolean
+        @JvmStatic
+        private external fun nativeGetAnimationTransformKey(nativeHandle: Long, index: Int): String?
+        @JvmStatic
+        private external fun nativeGetAnimationTransformTranslationY(nativeHandle: Long, index: Int): Float
+        @JvmStatic
+        private external fun nativeGetAnimationTransformScale(nativeHandle: Long, index: Int): Float
+        @JvmStatic
+        private external fun nativeGetAnimationTransformOpacity(nativeHandle: Long, index: Int): Float
+        @JvmStatic
+        private external fun nativeGetAnimationTransformDuration(nativeHandle: Long, index: Int): Double
+        @JvmStatic
+        private external fun nativeGetAnimationTransformTimeOffsetBetweenParts(nativeHandle: Long, index: Int): Double
+        @JvmStatic
+        private external fun nativeGetAnimationTransformGroupIndex(nativeHandle: Long, index: Int): Int
+        @JvmStatic
+        private external fun nativeGetAnimationTransformPartIndexInGroup(nativeHandle: Long, index: Int): Int
     }
 }

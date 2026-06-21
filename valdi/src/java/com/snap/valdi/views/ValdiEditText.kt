@@ -83,10 +83,12 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
             if (shouldDrawAttributedTextOverlay(it, hasRenderableAnimationTransform, hasPendingInvisibleBaseText)) {
                 super.onDraw(canvas)
                 textViewHelper?.drawOnTopAttributedText(canvas, layout, it)
+                textViewHelper?.postInvalidateOnAnimationIfNeeded()
                 return
             }
         }
         super.onDraw(canvas)
+        textViewHelper?.postInvalidateOnAnimationIfNeeded()
     }
 
     private fun shouldDrawAttributedTextOverlay(
@@ -176,6 +178,11 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
         this.setOnKeyListener { _, keyCode, keyEvent ->
             this.onKeyCallback(keyCode, keyEvent)
         }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        textViewHelper?.updateTextAnimationGroupRegistration()
     }
 
     fun setValdiInputType(value: Int) {
@@ -306,6 +313,7 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
     override fun onDetachedFromWindow() {
         removeCallbacks(attributedTextRebindRunnable)
         pendingAttributedTextRebind = null
+        textViewHelper?.unregisterTextAnimationGroup()
         if (lastFocusState) {
             ViewUtils.getKeyboardManager(this)?.hideKeyboard(this)
         }
@@ -577,6 +585,7 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
     override fun prepareForRecycling() {
         pendingAttributedTextRebind = null
         removeCallbacks(attributedTextRebindRunnable)
+        textViewHelper?.unregisterTextAnimationGroup()
         setText("")
     }
 

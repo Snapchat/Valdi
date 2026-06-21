@@ -21,6 +21,8 @@ extern NSString* const kSCValdiAttributedStringKeyAnimationTransform;
 
 @interface NSAttributedString (Valdi)
 
+- (BOOL)hasValdiAnimationTransform;
+
 + (NSAttributedString*)attributedStringWithValdiText:(id)text
                                           attributes:(NSDictionary<NSAttributedStringKey, id>*)attributes
                                        isRightToLeft:(BOOL)isRightToLeft

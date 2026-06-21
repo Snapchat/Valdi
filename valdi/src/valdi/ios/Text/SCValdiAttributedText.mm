@@ -7,6 +7,7 @@
 
 #import "valdi/ios/Text/SCValdiAttributedText.h"
 #import "valdi/ios/Text/SCValdiImageAttachmentInfo.h"
+#import "valdi/ios/Text/SCValdiTextAnimationTransform.h"
 #import "valdi_core/cpp/Attributes/TextAttributeValue.hpp"
 #import "valdi_core/SCValdiObjCConversionUtils.h"
 #import "valdi_core/UIColor+Valdi.h"
@@ -47,6 +48,11 @@
 - (NSUInteger)partsCount
 {
     return (NSUInteger)_cppInstance->getPartsSize();
+}
+
+- (NSUInteger)animationTransformsCount
+{
+    return (NSUInteger)_cppInstance->getAnimationTransformsSize();
 }
 
 - (NSString *)contentAtIndex:(NSUInteger)index
@@ -188,7 +194,7 @@
                                                           imageData:imageData];
 }
 
-- (nullable NSDictionary<NSString *, NSNumber *> *)animationTransformAtIndex:(NSUInteger)index
+- (nullable SCValdiTextAnimationTransform *)animationTransformAtIndex:(NSUInteger)index
 {
     const auto &style = _cppInstance->getStyleAtIndex(index);
     if (!style.animationTransform) {
@@ -196,11 +202,16 @@
     }
 
     const auto &animationTransform = style.animationTransform.value();
-    return @{
-        @"translationY": @(animationTransform.translationY),
-        @"scale": @(animationTransform.scale),
-        @"opacity": @(animationTransform.opacity),
-    };
+    NSString *key = animationTransform.key ? ValdiIOS::NSStringFromString(animationTransform.key.value()) : nil;
+    return [[SCValdiTextAnimationTransform alloc] initWithKey:key
+                                                    partIndex:index
+                                                 translationY:animationTransform.translationY
+                                                        scale:animationTransform.scale
+                                                      opacity:animationTransform.opacity
+                                                     duration:animationTransform.duration
+                                       timeOffsetBetweenParts:animationTransform.timeOffsetBetweenParts
+                                                   groupIndex:animationTransform.groupIndex
+                                             partIndexInGroup:animationTransform.partIndexInGroup];
 }
 
 @end

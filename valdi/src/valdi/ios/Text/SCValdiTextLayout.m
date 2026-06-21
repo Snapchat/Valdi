@@ -14,17 +14,21 @@
 #import "valdi_core/SCValdiRectUtils.h"
 
 @implementation SCValdiTextLayout {
-    NSLayoutManager *_layoutManager;
     NSTextStorage *_textStorage;
     NSTextContainer *_textContainer;
 }
 
 - (instancetype)init
 {
+    return [self initWithLayoutManager:[[NSLayoutManager alloc] init]];
+}
+
+- (instancetype)initWithLayoutManager:(NSLayoutManager *)layoutManager
+{
     self = [super init];
 
     if (self) {
-        _layoutManager = [[NSLayoutManager alloc] init];
+        _layoutManager = layoutManager;
         _textStorage = [[NSTextStorage alloc] init];
         [_textStorage addLayoutManager:_layoutManager];
 
