@@ -27,6 +27,22 @@ static Ref<ViewNode> createManagedChildFrameNode(ViewNodeTestsDependencies& util
     return viewNode;
 }
 
+TEST(ViewNode, classChangePrunesDirtyCompositeAttributes) {
+    ViewNodeTestsDependencies utils;
+    utils.getViewManager().setRegisterCustomAttributes(true);
+
+    auto viewNode = utils.createNode("UIRectangleView");
+    utils.setViewNodeAttribute(viewNode, "left", Value(10.0));
+
+    ASSERT_TRUE(viewNode->getAttributesApplier().needsFlush());
+
+    // Platform class attributes use this same setter in production; this fixture has no ViewManagerContext.
+    viewNode->setViewFactory(utils.getViewTransactionScope(), utils.getViewFactory("SCValdiLabel"));
+
+    EXPECT_FALSE(viewNode->getAttributesApplier().needsFlush());
+    viewNode->getAttributesApplier().flush(utils.getViewTransactionScope());
+}
+
 TEST(ViewNode, canInsertChildren) {
     ViewNodeTestsDependencies utils;
 
