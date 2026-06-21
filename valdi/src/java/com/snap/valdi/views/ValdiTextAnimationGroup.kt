@@ -12,7 +12,7 @@ import java.util.WeakHashMap
 class ValdiTextAnimationGroup(context: Context) : ValdiView(context) {
     private val participants = Collections.newSetFromMap(WeakHashMap<TextViewHelper, Boolean>())
     private val participantsByView = WeakHashMap<View, WeakReference<TextViewHelper>>()
-    private val orderedParticipants = arrayListOf<TextViewHelper>()
+    private var orderedParticipants: List<TextViewHelper> = emptyList()
     private var participantBaseIndexesDirty = false
     private var animationFrameCallbackPosted = false
     private var animationFrameCallback: Runnable? = null
@@ -40,7 +40,7 @@ class ValdiTextAnimationGroup(context: Context) : ValdiView(context) {
 
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
         super.onLayout(changed, l, t, r, b)
-        rebuildOrderedParticipantsAndApplyBaseIndexes()
+        ensureParticipantBaseIndexes()
     }
 
     private fun ensureParticipantBaseIndexes() {
@@ -50,8 +50,7 @@ class ValdiTextAnimationGroup(context: Context) : ValdiView(context) {
     }
 
     private fun rebuildOrderedParticipantsAndApplyBaseIndexes() {
-        orderedParticipants.clear()
-        collectOrderedParticipants()
+        orderedParticipants = collectOrderedParticipants()
         participantBaseIndexesDirty = false
 
         var basePartIndex = 0
@@ -76,7 +75,7 @@ class ValdiTextAnimationGroup(context: Context) : ValdiView(context) {
         participants.forEach { it.clearTextAnimationGroupRegistration() }
         participants.clear()
         participantsByView.clear()
-        orderedParticipants.clear()
+        orderedParticipants = emptyList()
         participantBaseIndexesDirty = false
         textAnimationTimeline.resetFrameState()
     }
@@ -113,10 +112,12 @@ class ValdiTextAnimationGroup(context: Context) : ValdiView(context) {
         }
     }
 
-    private fun collectOrderedParticipants() {
+    private fun collectOrderedParticipants(): List<TextViewHelper> {
+        val orderedParticipants = arrayListOf<TextViewHelper>()
         for (index in 0 until childCount) {
             collectParticipants(getChildAt(index), orderedParticipants)
         }
+        return orderedParticipants
     }
 
     private fun collectParticipants(view: View, output: MutableList<TextViewHelper>) {

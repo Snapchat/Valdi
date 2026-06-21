@@ -38,6 +38,7 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
 - (void)_setNeedsAttributedTextUpdateForPendingSelectableTextLayoutViewIfNeeded;
 - (void)_updateInlineTextAttachmentsIfNeeded;
 - (void)_updateInlineTextChildFrames;
+- (void)_updateInlineTextChildAnimations;
 
 - (void)updateLabelMode:(SCValdiTextMode)labelMode;
 - (void)updateLabelMode:(SCValdiTextMode)labelMode usesEffectsLayoutManager:(BOOL)usesEffectsLayoutManager;
@@ -103,6 +104,7 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
     _valdiChildrenContainerView.frame = self.bounds;
     [_textLayoutView layoutIfNeeded];
     [self _updateInlineTextChildFrames];
+    [self _updateInlineTextChildAnimations];
 
     // TODO(3065): Also update on view size changed
     if (_updateOnLayout) {
@@ -202,6 +204,23 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
                                       textLayout.textContainer,
                                       drawOrigin,
                                       childrenContainerView);
+}
+
+- (void)_updateInlineTextChildAnimations
+{
+    if (_labelMode != SCValdiTextModeValdiTextLayout || _textLayoutView == nil) {
+        return;
+    }
+    UIView *childrenContainerView = _valdiChildrenContainerView;
+    if (childrenContainerView == nil) {
+        return;
+    }
+    SCValdiTextLayoutView *textLayoutView = _textLayoutView;
+    SCValdiApplyInlineTextChildAnimations(_processedText,
+                                          childrenContainerView,
+                                          ^SCValdiTextAnimationPresentation *(NSRange range) {
+                                              return [textLayoutView animatedTextPresentationForRange:range];
+                                          });
 }
 
 #pragma mark - SCValdiContentViewProviding
@@ -829,6 +848,11 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
 - (id<SCValdiViewNodeProtocol>)valdiViewNodeForTextLayoutView:(SCValdiTextLayoutView *)textLayoutView
 {
     return self.valdiViewNode;
+}
+
+- (void)textLayoutViewDidInvalidateAnimatedTextProgress:(SCValdiTextLayoutView *)textLayoutView
+{
+    [self _updateInlineTextChildAnimations];
 }
 
 - (void)_clearAttributedText

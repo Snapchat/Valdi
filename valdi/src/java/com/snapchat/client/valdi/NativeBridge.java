@@ -167,6 +167,14 @@ public class NativeBridge {
 
     public static native void setValueForAttribute(long viewNodeHandle, String attribute, Object value, boolean keepAsOverride);
 
+    public static native void setInlineTextAnimationAttributesForViewNode(
+        long viewNodeHandle,
+        boolean hasOpacity,
+        double opacity,
+        boolean hasTransform,
+        double translationY,
+        double scale);
+
     public static native Object getValueForAttribute(long viewNodeHandle, String attribute);
 
     public static native void reapplyAttribute(long viewNodeHandle, String attribute);

@@ -220,14 +220,13 @@ class ValdiProcessedText private constructor(
                 val animationTransform = attributedText.getAnimationTransformAtIndex(index)
                 val animation = if (attributedTextAnimator != null &&
                     imageAttachment == null &&
-                    inlineViewAttachment == null &&
                     animationTransform != null
                 ) {
                     attributedTextAnimator.animationForPart(index, animationTransform, start, end)
                 } else {
                     null
                 }
-                val useAnimatedReplacementSpan = animation != null
+                val useAnimatedReplacementSpan = animation != null && inlineViewAttachment == null
                 val usesAttachmentReplacementSpan = inlineViewAttachment != null || (imageAttachment != null && !disableTextReplacement)
                 val disableAttributeTextReplacement = disableTextReplacement || useAnimatedReplacementSpan || usesAttachmentReplacementSpan
 
@@ -236,7 +235,7 @@ class ValdiProcessedText private constructor(
                 }
 
                 if (inlineViewAttachment != null) {
-                    val span = InlineViewAttachmentSpan(inlineViewAttachment, density)
+                    val span = InlineViewAttachmentSpan(inlineViewAttachment, density, animation)
                     spannable.setSpan(span, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                     spannable.append(THIN_SPACE_FOR_LINE_BREAK)
                     if (inlineViewAttachments == null) {
@@ -283,12 +282,14 @@ class ValdiProcessedText private constructor(
                 }
 
                 if (animation != null) {
-                    spannable.setSpan(
-                        AnimatedTextReplacementSpan(animation, attribute, fontManager, missingFontsTracker, density),
-                        start,
-                        end,
-                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                    )
+                    if (useAnimatedReplacementSpan) {
+                        spannable.setSpan(
+                            AnimatedTextReplacementSpan(animation, attribute, fontManager, missingFontsTracker, density),
+                            start,
+                            end,
+                            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                        )
+                    }
                     if (animationTransforms == null) {
                         animationTransforms = mutableListOf()
                     }

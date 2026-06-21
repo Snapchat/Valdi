@@ -7,6 +7,7 @@
 #import "valdi/ios/Text/SCValdiInlineTextChildLayout.h"
 #import "valdi/ios/Text/SCValdiInlineViewAttachmentInfo.h"
 #import "valdi/ios/Text/SCValdiProcessedText.h"
+#import "valdi/ios/Text/SCValdiTextAnimationPresentation.h"
 #import "valdi/ios/Text/SCValdiTextAnimationTransform.h"
 #import "valdi/ios/Views/SCValdiLabel.h"
 #import "valdi/ios/Views/SCValdiTextView.h"
@@ -149,6 +150,163 @@ static NSTextStorage *SCValdiConfigureLayoutManagerForProcessedText(SCValdiProce
 - (UITraitCollection *)defaultTraitCollection
 {
     return [UITraitCollection currentTraitCollection];
+}
+
+@end
+
+@interface SCValdiProcessedTextTestViewNode : NSObject <SCValdiViewNodeProtocol>
+
+@property (nonatomic, strong, readonly) NSMutableDictionary<NSString *, id> *attributeValues;
+@property (nonatomic, strong, readonly) NSMutableArray<NSString *> *removedAttributeNames;
+
+- (instancetype)initWithView:(UIView *)view;
+
+@end
+
+@implementation SCValdiProcessedTextTestViewNode {
+    UIView *_view;
+}
+
+- (instancetype)initWithView:(UIView *)view
+{
+    self = [super init];
+    if (self) {
+        _view = view;
+        _attributeValues = [NSMutableDictionary new];
+        _removedAttributeNames = [NSMutableArray new];
+    }
+    return self;
+}
+
+- (UIView *)view
+{
+    return _view;
+}
+
+- (CGRect)relativeFrame
+{
+    return CGRectZero;
+}
+
+- (BOOL)isLayoutDirectionHorizontal
+{
+    return NO;
+}
+
+- (BOOL)isRightToLeft
+{
+    return NO;
+}
+
+- (void)markLayoutDirty
+{
+}
+
+- (void)setRetainedObject:(id)object forKey:(NSString *)key
+{
+    (void)object;
+    (void)key;
+}
+
+- (void)didApplyLayoutWithAnimator:(id<SCValdiAnimatorProtocol>)animator
+{
+    (void)animator;
+}
+
+- (void)setValue:(id)value forValdiAttribute:(NSString *)attributeName
+{
+    if (value == nil) {
+        [self.attributeValues removeObjectForKey:attributeName];
+        [self.removedAttributeNames addObject:attributeName];
+        return;
+    }
+    self.attributeValues[attributeName] = value ?: [NSNull null];
+}
+
+- (id)valueForValdiAttribute:(NSString *)attributeName
+{
+    return self.attributeValues[attributeName];
+}
+
+- (void)removeValueForValdiAttribute:(NSString *)attributeName
+{
+    [self setValue:nil forValdiAttribute:attributeName];
+}
+
+- (id)preprocessedValueForValdiAttribute:(NSString *)attributeName
+{
+    return [self valueForValdiAttribute:attributeName];
+}
+
+- (void)setDidFinishLayoutBlock:(SCValdiContextDidFinishLayoutBlock)block forKey:(NSString *)key
+{
+    (void)block;
+    (void)key;
+}
+
+- (BOOL)hasDidFinishLayoutBlockForKey:(NSString *)key
+{
+    (void)key;
+    return NO;
+}
+
+- (NSArray<id<SCValdiViewNodeProtocol>> *)children
+{
+    return @[];
+}
+
+- (CGPoint)relativeDirectionAgnosticPointFromPoint:(CGPoint)point
+{
+    return point;
+}
+
+- (CGPoint)absoluteDirectionAgnosticPointFromPoint:(CGPoint)point
+{
+    return point;
+}
+
+- (CGFloat)resolveDeltaX:(CGFloat)deltaX directionAgnostic:(BOOL)directionAgnostic
+{
+    (void)directionAgnostic;
+    return deltaX;
+}
+
+- (void)notifyOnScrollWithContentOffset:(CGPoint)contentOffset
+                   updatedContentOffset:(inout CGPoint *)updatedContentOffset
+                               velocity:(CGPoint)velocity
+{
+    (void)velocity;
+    if (updatedContentOffset != NULL) {
+        *updatedContentOffset = contentOffset;
+    }
+}
+
+- (void)notifyOnScrollEndWithContentOffset:(CGPoint)contentOffset
+{
+    (void)contentOffset;
+}
+
+- (void)notifyOnDragStartWithContentOffset:(CGPoint)contentOffset velocity:(CGPoint)velocity
+{
+    (void)contentOffset;
+    (void)velocity;
+}
+
+- (void)notifyOnDragEndingWithContentOffset:(CGPoint)contentOffset
+                                   velocity:(CGPoint)velocity
+                       updatedContentOffset:(inout CGPoint *)updatedContentOffset
+{
+    (void)velocity;
+    if (updatedContentOffset != NULL) {
+        *updatedContentOffset = contentOffset;
+    }
+}
+
+- (BOOL)canScrollAtPoint:(CGPoint)point direction:(SCValdiScrollDirection)direction
+{
+    (void)point;
+    (void)direction;
+    return NO;
 }
 
 @end
@@ -608,8 +766,11 @@ static NSTextStorage *SCValdiConfigureLayoutManagerForProcessedText(SCValdiProce
     XCTAssertFalse([processedText hasInlineViewAttachmentForIndex:0]);
     XCTAssertTrue([processedText hasInlineViewAttachmentForIndex:1]);
     XCTAssertFalse([processedText hasInlineViewAttachmentForIndex:2]);
-    XCTAssertNil([processedText inlineViewAttachmentForViewIndex:0]);
-    XCTAssertEqual([processedText inlineViewAttachmentForViewIndex:1], inlineAttachment);
+    XCTAssertNil([processedText inlineViewAttachmentForViewIndex:0 effectiveRange:NULL]);
+    XCTAssertEqual([processedText inlineViewAttachmentForViewIndex:1 effectiveRange:NULL], inlineAttachment);
+    NSRange inlineAttachmentRange = NSMakeRange(NSNotFound, 0);
+    XCTAssertEqual([processedText inlineViewAttachmentForViewIndex:1 effectiveRange:&inlineAttachmentRange], inlineAttachment);
+    XCTAssertTrue(NSEqualRanges(inlineAttachmentRange, NSMakeRange(3, 1)));
 
     __block NSUInteger onLayoutCount = 0;
     [processedText enumerateOnLayoutCallbacksUsingBlock:^(id<SCValdiFunction> callback, NSRange callbackRange, BOOL *stop) {
@@ -671,6 +832,40 @@ static NSTextStorage *SCValdiConfigureLayoutManagerForProcessedText(SCValdiProce
     XCTAssertTrue(CGRectIsNull([processedText rectForInlineViewAttachment:inlineAttachment
                                                       layoutManager:nilLayoutManager
                                                       textContainer:textContainer]));
+}
+
+- (void)testTextAnimationLayoutManagerReportsCurrentPresentationForRange
+{
+    Valdi::TextAttributeValue::Parts parts;
+    auto &animatedStyle = SCValdiTestAppendTextPart(parts, STRING_LITERAL("fade"));
+    animatedStyle.animationTransform = Valdi::TextAnimationTransform{
+        std::nullopt,
+        8,
+        0.7,
+        0,
+        100,
+        0,
+        0,
+        0,
+    };
+
+    SCValdiProcessedText *processedText =
+        SCValdiProcessedTextWithParts(std::move(parts), @{ NSFontAttributeName: [UIFont systemFontOfSize:20] }, nil);
+    SCValdiTextViewEffectsLayoutManager *layoutManager = [SCValdiTextViewEffectsLayoutManager new];
+    NSTextContainer *textContainer = [[NSTextContainer alloc] initWithSize:CGSizeMake(400, CGFLOAT_MAX)];
+    __unused NSTextStorage *textStorage =
+        SCValdiConfigureLayoutManagerForProcessedText(processedText, layoutManager, textContainer);
+    layoutManager.processedText = processedText;
+
+    [layoutManager invalidateAnimatedTextProgress];
+
+    SCValdiTextAnimationPresentation *presentation =
+        [layoutManager presentationForAnimationRange:NSMakeRange(0, 4)];
+    XCTAssertLessThan(presentation.opacity, 0.5);
+    XCTAssertGreaterThan(presentation.translationY, 4.0);
+    XCTAssertLessThan(presentation.scale, 0.85);
+
+    XCTAssertNil([layoutManager presentationForAnimationRange:NSMakeRange(20, 1)]);
 }
 
 - (void)testEnumeratorsHonorStopWithMultipleItems
@@ -987,13 +1182,47 @@ static NSTextStorage *SCValdiConfigureLayoutManagerForProcessedText(SCValdiProce
     UIView *childZero = [UIView new];
     UIView *childOne = [UIView new];
     UIView *childTwo = [UIView new];
+    SCValdiProcessedTextTestViewNode *childZeroViewNode =
+        [[SCValdiProcessedTextTestViewNode alloc] initWithView:childZero];
+    SCValdiProcessedTextTestViewNode *childOneViewNode =
+        [[SCValdiProcessedTextTestViewNode alloc] initWithView:childOne];
+    SCValdiProcessedTextTestViewNode *childTwoViewNode =
+        [[SCValdiProcessedTextTestViewNode alloc] initWithView:childTwo];
+    childZero.valdiViewNode = childZeroViewNode;
+    childOne.valdiViewNode = childOneViewNode;
+    childTwo.valdiViewNode = childTwoViewNode;
     childOne.frame = CGRectMake(30, 40, 50, 60);
     [containerView addSubview:childZero];
     [containerView addSubview:childOne];
     [containerView addSubview:childTwo];
 
     CGPoint originOffset = CGPointMake(7, 11);
+    NSRange childZeroRange = NSMakeRange(NSNotFound, 0);
+    NSRange childTwoRange = NSMakeRange(NSNotFound, 0);
+    [processedText inlineViewAttachmentForViewIndex:0 effectiveRange:&childZeroRange];
+    [processedText inlineViewAttachmentForViewIndex:2 effectiveRange:&childTwoRange];
     SCValdiApplyInlineTextChildFrames(processedText, layoutManager, textContainer, originOffset, containerView);
+    XCTAssertNil(childZeroViewNode.attributeValues[@"opacity"]);
+    XCTAssertNil(childZeroViewNode.attributeValues[@"translationY"]);
+    XCTAssertNil(childZeroViewNode.attributeValues[@"scaleX"]);
+    XCTAssertNil(childZeroViewNode.attributeValues[@"scaleY"]);
+
+    SCValdiApplyInlineTextChildAnimations(
+        processedText,
+        containerView,
+        ^SCValdiTextAnimationPresentation *(NSRange range) {
+            if (NSEqualRanges(range, childZeroRange)) {
+                return [[SCValdiTextAnimationPresentation alloc] initWithTranslationY:6.0
+                                                                                scale:0.8
+                                                                              opacity:0.4];
+            }
+            if (NSEqualRanges(range, childTwoRange)) {
+                return [[SCValdiTextAnimationPresentation alloc] initWithTranslationY:0.0
+                                                                                scale:1.0
+                                                                              opacity:0.7];
+            }
+            return nil;
+        });
 
     CGRect expectedChildZeroFrame = [processedText rectForInlineViewAttachment:secondInlineAttachment
                                                                  layoutManager:layoutManager
@@ -1008,6 +1237,18 @@ static NSTextStorage *SCValdiConfigureLayoutManagerForProcessedText(SCValdiProce
     XCTAssertTrue(CGPointEqualToPoint(childZero.center, expectedChildZeroLayout.center));
     XCTAssertTrue(CGSizeEqualToSize(childZero.bounds.size, expectedChildZeroLayout.size));
     XCTAssertTrue(CGRectEqualToRect(childOne.frame, CGRectZero));
+    XCTAssertEqualWithAccuracy([childZeroViewNode.attributeValues[@"opacity"] doubleValue], 0.4, 0.001);
+    XCTAssertEqualWithAccuracy([childZeroViewNode.attributeValues[@"translationY"] doubleValue], 6.0, 0.001);
+    XCTAssertEqualWithAccuracy([childZeroViewNode.attributeValues[@"scaleX"] doubleValue], 0.8, 0.001);
+    XCTAssertEqualWithAccuracy([childZeroViewNode.attributeValues[@"scaleY"] doubleValue], 0.8, 0.001);
+    XCTAssertNil(childOneViewNode.attributeValues[@"opacity"]);
+    XCTAssertNil(childOneViewNode.attributeValues[@"translationY"]);
+    XCTAssertNil(childOneViewNode.attributeValues[@"scaleX"]);
+    XCTAssertNil(childOneViewNode.attributeValues[@"scaleY"]);
+    XCTAssertTrue([childOneViewNode.removedAttributeNames containsObject:@"opacity"]);
+    XCTAssertTrue([childOneViewNode.removedAttributeNames containsObject:@"translationY"]);
+    XCTAssertTrue([childOneViewNode.removedAttributeNames containsObject:@"scaleX"]);
+    XCTAssertTrue([childOneViewNode.removedAttributeNames containsObject:@"scaleY"]);
 
     CGRect expectedChildTwoFrame = [processedText rectForInlineViewAttachment:firstInlineAttachment
                                                                 layoutManager:layoutManager
@@ -1021,6 +1262,13 @@ static NSTextStorage *SCValdiConfigureLayoutManagerForProcessedText(SCValdiProce
                               expectedChildTwoFrame.size.height);
     XCTAssertTrue(CGPointEqualToPoint(childTwo.center, expectedChildTwoLayout.center));
     XCTAssertTrue(CGSizeEqualToSize(childTwo.bounds.size, expectedChildTwoLayout.size));
+    XCTAssertEqualWithAccuracy([childTwoViewNode.attributeValues[@"opacity"] doubleValue], 0.7, 0.001);
+    XCTAssertNil(childTwoViewNode.attributeValues[@"translationY"]);
+    XCTAssertNil(childTwoViewNode.attributeValues[@"scaleX"]);
+    XCTAssertNil(childTwoViewNode.attributeValues[@"scaleY"]);
+    XCTAssertTrue([childTwoViewNode.removedAttributeNames containsObject:@"translationY"]);
+    XCTAssertTrue([childTwoViewNode.removedAttributeNames containsObject:@"scaleX"]);
+    XCTAssertTrue([childTwoViewNode.removedAttributeNames containsObject:@"scaleY"]);
 
     SCValdiInlineViewAttachmentInfo *missingChildOneAttachment =
         [[SCValdiInlineViewAttachmentInfo alloc] initWithChildIndex:1
@@ -1037,10 +1285,24 @@ static NSTextStorage *SCValdiConfigureLayoutManagerForProcessedText(SCValdiProce
     SCValdiProcessedText *plainProcessedText =
         SCValdiProcessedTextWithParts(std::move(plainParts), @{ NSFontAttributeName: font }, nil);
     SCValdiApplyInlineTextChildFrames(plainProcessedText, layoutManager, textContainer, originOffset, containerView);
+    SCValdiApplyInlineTextChildAnimations(plainProcessedText,
+                                          containerView,
+                                          ^SCValdiTextAnimationPresentation *(NSRange range) {
+                                              (void)range;
+                                              return nil;
+                                          });
 
     XCTAssertTrue(CGRectEqualToRect(childZero.frame, CGRectZero));
     XCTAssertTrue(CGRectEqualToRect(childOne.frame, CGRectZero));
     XCTAssertTrue(CGRectEqualToRect(childTwo.frame, CGRectZero));
+    XCTAssertNil(childZeroViewNode.attributeValues[@"opacity"]);
+    XCTAssertNil(childZeroViewNode.attributeValues[@"translationY"]);
+    XCTAssertNil(childZeroViewNode.attributeValues[@"scaleX"]);
+    XCTAssertNil(childZeroViewNode.attributeValues[@"scaleY"]);
+    XCTAssertNil(childTwoViewNode.attributeValues[@"opacity"]);
+    XCTAssertNil(childTwoViewNode.attributeValues[@"translationY"]);
+    XCTAssertNil(childTwoViewNode.attributeValues[@"scaleX"]);
+    XCTAssertNil(childTwoViewNode.attributeValues[@"scaleY"]);
 }
 
 - (void)testTextViewsManageChildFramesAndProvideStableChildContainers

@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import com.snap.valdi.attributes.impl.fonts.FontManager
+import com.snap.valdi.attributes.impl.richtext.AttributedTextAnimation
 import com.snap.valdi.attributes.impl.richtext.FontAttributes
 import com.snap.valdi.attributes.impl.richtext.InlineViewAttachmentSpan
 import com.snap.valdi.attributes.impl.richtext.TextViewHelper
@@ -124,6 +125,7 @@ abstract class ValdiTextViewBase(
         textViewHelper?.onLayout(changed || inlineAttachmentsDidChange)
         inlineChildrenContainer?.layout(0, 0, width, height)
         updateInlineTextChildFrames()
+        updateInlineTextChildAnimations()
     }
 
     override fun dispatchDraw(canvas: Canvas) {
@@ -208,8 +210,45 @@ abstract class ValdiTextViewBase(
         }
     }
 
+    private fun updateInlineTextChildAnimations() {
+        val container = inlineChildrenContainer ?: return
+        val processedText = textViewHelper?.processedText
+
+        for (childIndex in 0 until container.childCount) {
+            val childView = container.getChildAt(childIndex)
+            val animation = processedText
+                ?.inlineViewAttachmentForViewIndex(childIndex)
+                ?.value
+                ?.animation
+            applyInlineTextAnimationAttributes(childView, animation)
+        }
+    }
+
     private fun clearInlineTextChildFrame(childView: View) {
         applyLayoutToChild(childView, 0, 0, 0, 0)
+    }
+
+    protected open fun applyInlineTextAnimationAttributes(childView: View, animation: AttributedTextAnimation?) {
+        val viewNode = ViewUtils.findViewNode(childView) ?: return
+        if (animation != null) {
+            val hasOpacity = animation.opacity != 1f
+            val hasTransform = animation.translationY != 0f || animation.scale != 1f
+            viewNode.setInlineTextAnimationAttributes(
+                hasOpacity,
+                animation.opacity.toDouble(),
+                hasTransform,
+                animation.translationY.toDouble(),
+                animation.scale.toDouble()
+            )
+        } else {
+            viewNode.setInlineTextAnimationAttributes(
+                false,
+                1.0,
+                false,
+                0.0,
+                1.0
+            )
+        }
     }
 
     private fun applyLayoutToChild(childView: View, left: Int, top: Int, right: Int, bottom: Int) {
@@ -234,6 +273,10 @@ abstract class ValdiTextViewBase(
 
     override fun setValdiSelection(start: Int, end: Int) {
         ValdiTextSelection.setSelectionClamped(backingTextView, start, end)
+    }
+
+    override fun refreshInlineTextAnimation() {
+        updateInlineTextChildAnimations()
     }
 
     override fun prepareForRecycling() {

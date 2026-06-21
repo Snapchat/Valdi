@@ -12,6 +12,7 @@ import com.snap.valdi.attributes.impl.fonts.MissingFontsTracker
 import com.snap.valdi.attributes.impl.fonts.TypefaceResLoader
 import com.snap.valdi.attributes.impl.richtext.AttributedText
 import com.snap.valdi.attributes.impl.richtext.AttributedTextAnimator
+import com.snap.valdi.attributes.impl.richtext.AnimatedTextReplacementSpan
 import com.snap.valdi.attributes.impl.richtext.FontAttributes
 import com.snap.valdi.attributes.impl.richtext.ImageAttachmentInfo
 import com.snap.valdi.attributes.impl.richtext.InlineViewAttachmentInfo
@@ -242,6 +243,57 @@ internal class ValdiProcessedTextTest {
         val animationTransforms = processedText.animationTransforms!!
         assertEquals(0, animationTransforms[0].start)
         assertEquals("animated".length, animationTransforms[0].end)
+    }
+
+    @Test
+    fun parseIndexesInlineViewAnimationTransformsWithoutAnimatedReplacementSpan() {
+        val inlineAttachment = InlineViewAttachmentInfo(
+            childIndex = 0,
+            verticalAlignment = InlineViewVerticalAlignment.Center,
+            width = 12f,
+            height = 8f
+        )
+        val animator = AttributedTextAnimator()
+        animator.beginSync()
+        val processedText = try {
+            ValdiProcessedText.parse(
+                createFontManager(getApplicationContext()),
+                FakeAttributedText(
+                    listOf(
+                        Part(
+                            "chip",
+                            inlineViewAttachment = inlineAttachment,
+                            animationTransform = TextAnimationTransform(
+                                key = "intro",
+                                translationY = 4f,
+                                scale = 0.5f,
+                                opacity = 0f,
+                                duration = 0.25,
+                                timeOffsetBetweenParts = 0.0,
+                                groupIndex = 0,
+                                partIndexInGroup = 0
+                            )
+                        )
+                    )
+                ),
+                FontAttributes.default,
+                NoopMissingFontsTracker(),
+                attributedTextAnimator = animator
+            )
+        } finally {
+            animator.endSync()
+        }
+
+        assertTrue(processedText.hasAnimationTransform)
+        assertEquals(1, processedText.animationTransformsCount)
+        val inlineSpan = processedText.inlineViewAttachments!![0].value
+        assertSame(processedText.animationTransforms!![0].value, inlineSpan.animation)
+        val replacementSpans = processedText.spannable.getSpans(
+            0,
+            "chip".length,
+            AnimatedTextReplacementSpan::class.java
+        )
+        assertEquals(0, replacementSpans.size)
     }
 
     @Test

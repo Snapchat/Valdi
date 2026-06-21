@@ -109,11 +109,7 @@ static UIAccessibilityTraits SCValdiAccessibilityCategoryToAccessibilityTrait(Va
 
 - (void)removeValueForValdiAttribute:(NSString *)attributeName
 {
-    [self _getViewNode:^(Valdi::ViewTransactionScope &viewTransactionScope, Valdi::ViewNode *viewNode) {
-        auto attributeId = SCValdiGetAttributeId(viewNode, attributeName);
-        viewNode->getAttributesApplier().removeAttribute(viewTransactionScope, attributeId, Valdi::AttributeOwner::getNativeOverridenAttributeOwner(), nullptr);
-        viewNode->getAttributesApplier().flush(viewTransactionScope);
-    }];
+    [self setValue:nil forValdiAttribute:attributeName];
 }
 
 - (id)valueForValdiAttribute:(NSString*)attributeName

@@ -11,6 +11,7 @@ import com.snap.valdi.attributes.impl.fonts.FontManager
 import com.snap.valdi.attributes.impl.fonts.TypefaceResLoader
 import com.snap.valdi.attributes.impl.gradients.ValdiGradient
 import com.snap.valdi.attributes.impl.richtext.AttributedText
+import com.snap.valdi.attributes.impl.richtext.AttributedTextAnimation
 import com.snap.valdi.attributes.impl.richtext.FontAttributes
 import com.snap.valdi.attributes.impl.richtext.ImageAttachmentInfo
 import com.snap.valdi.attributes.impl.richtext.InlineViewAttachmentInfo
@@ -22,6 +23,7 @@ import com.snap.valdi.callable.ValdiFunction
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -34,7 +36,8 @@ import org.robolectric.annotation.Config
 internal class ValdiTextViewTest {
     private class Part(
         val content: String,
-        val inlineViewAttachment: InlineViewAttachmentInfo? = null
+        val inlineViewAttachment: InlineViewAttachmentInfo? = null,
+        val animationTransform: TextAnimationTransform? = null
     )
 
     private class FakeAttributedText(private val parts: List<Part>) : AttributedText {
@@ -49,15 +52,26 @@ internal class ValdiTextViewTest {
         override fun getOutlineColorAtIndex(index: Int): Int? = null
         override fun getOutlineWidthAtIndex(index: Int): Float = 0f
         override fun hasOutline(): Boolean = false
-        override fun getAnimationTransformsSize(): Int = 0
+        override fun getAnimationTransformsSize(): Int = parts.count { it.animationTransform != null }
         override fun getImageAttachmentAtIndex(index: Int): ImageAttachmentInfo? = null
         override fun getInlineViewAttachmentAtIndex(index: Int): InlineViewAttachmentInfo? = parts[index].inlineViewAttachment
-        override fun getAnimationTransformAtIndex(index: Int): TextAnimationTransform? = null
+        override fun getAnimationTransformAtIndex(index: Int): TextAnimationTransform? = parts[index].animationTransform
     }
 
     private class TestValdiTextViewBase(context: Context) : ValdiTextViewBase(context, TextView(context)) {
+        data class InlineAnimationUpdate(
+            val childView: View,
+            val animation: AttributedTextAnimation?
+        )
+
+        val inlineAnimationUpdates = mutableListOf<InlineAnimationUpdate>()
+
         init {
             TextViewUtils.configure(backingTextView)
+        }
+
+        override fun applyInlineTextAnimationAttributes(childView: View, animation: AttributedTextAnimation?) {
+            inlineAnimationUpdates.add(InlineAnimationUpdate(childView, animation))
         }
     }
 
@@ -177,6 +191,62 @@ internal class ValdiTextViewTest {
             "Expected RTL inline child to stay inside the label instead of starting at the right caret edge",
             child.right <= textView.width
         )
+    }
+
+    @Test
+    fun labelInlineChildLayoutAppliesAnimatedAttributesAndResetsThem() {
+        val context = getApplicationContext<Context>()
+        val textView = TestValdiTextViewBase(context)
+        val child = View(context)
+        val animationTransform = TextAnimationTransform(
+            key = "inline-alpha",
+            translationY = 8f,
+            scale = 0.7f,
+            opacity = 0f,
+            duration = 100.0,
+            timeOffsetBetweenParts = 0.0,
+            groupIndex = 0,
+            partIndexInGroup = 0
+        )
+
+        textView.getOrCreateTextViewHelper(
+            createFontManager(context),
+            FontAttributes.default.copy(fontSize = 20f, numberOfLines = 0),
+            0
+        ).textValue = FakeAttributedText(
+            listOf(
+                Part("Before "),
+                Part(
+                    "\uFFFC",
+                    InlineViewAttachmentInfo(0, InlineViewVerticalAlignment.Center, 40f, 12f),
+                    animationTransform
+                ),
+                Part(" after")
+            )
+        )
+        textView.addValdiChildView(child, 0)
+
+        val widthSpec = View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY)
+        val heightSpec = View.MeasureSpec.makeMeasureSpec(80, View.MeasureSpec.EXACTLY)
+        textView.measure(widthSpec, heightSpec)
+        textView.layout(0, 0, textView.measuredWidth, textView.measuredHeight)
+
+        val animatedUpdate = textView.inlineAnimationUpdates.last {
+            it.childView === child && it.animation != null
+        }
+        val animation = animatedUpdate.animation!!
+        assertTrue("Expected animated inline child opacity to be below fully visible", animation.opacity < 1f)
+        assertTrue("Expected animated inline child translation to be active", animation.translationY > 0f)
+        assertTrue("Expected animated inline child scale to be active", animation.scale < 1f)
+
+        textView.textViewHelper?.textValue = FakeAttributedText(listOf(Part("plain text")))
+        textView.measure(widthSpec, heightSpec)
+        textView.layout(0, 0, textView.measuredWidth, textView.measuredHeight)
+
+        val resetUpdate = textView.inlineAnimationUpdates.last { it.childView === child }
+        assertNull(resetUpdate.animation)
+        assertEquals(0, child.width)
+        assertEquals(0, child.height)
     }
 
     @Test

@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.RectF
 import android.graphics.Rect
 import android.graphics.drawable.Drawable
-import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -63,6 +62,23 @@ class ValdiViewNode(nativeHandle: Long,
 
     override fun setAttribute(attributeName: String, attributeValue: Any?, keepAsOverride: Boolean) {
         NativeBridge.setValueForAttribute(nativeHandle, attributeName, attributeValue, keepAsOverride)
+    }
+
+    fun setInlineTextAnimationAttributes(
+        hasOpacity: Boolean,
+        opacity: Double,
+        hasTransform: Boolean,
+        translationY: Double,
+        scale: Double
+    ) {
+        NativeBridge.setInlineTextAnimationAttributesForViewNode(
+            nativeHandle,
+            hasOpacity,
+            opacity,
+            hasTransform,
+            translationY,
+            scale
+        )
     }
 
     override fun getAttribute(attributeName: String): Any? {

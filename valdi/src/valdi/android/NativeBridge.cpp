@@ -21,6 +21,7 @@
 #include "valdi/runtime/Interfaces/IDiskCache.hpp"
 #include "valdi/runtime/Resources/AssetLoaderCompletion.hpp"
 #include "valdi/runtime/Resources/AssetsManager.hpp"
+#include "valdi/runtime/Views/ViewTransactionScope.hpp"
 #include "valdi_core/jni/IndirectJavaGlobalRef.hpp"
 #include "valdi_core/jni/JavaCache.hpp"
 #include "valdi_core/jni/JavaClass.hpp"
@@ -1499,6 +1500,59 @@ void ValdiAndroid::NativeBridge::setValueForAttribute( // NOLINT
     }
 }
 
+void ValdiAndroid::NativeBridge::setInlineTextAnimationAttributesForViewNode( // NOLINT
+    fbjni::alias_ref<fbjni::JClass> /* clazz */,                              // NOLINT
+    jlong viewNodeHandle,
+    jboolean hasOpacity,
+    jdouble opacity,
+    jboolean hasTransform,
+    jdouble translationY,
+    jdouble scale) {
+    auto viewNode = getViewNode(viewNodeHandle);
+    if (viewNode == nullptr) {
+        return;
+    }
+
+    auto* viewNodeTree = viewNode->getViewNodeTree();
+    if (viewNodeTree == nullptr) {
+        return;
+    }
+
+    auto* attributeOwner = Valdi::AttributeOwner::getNativeOverridenAttributeOwner();
+    auto& attributeIds = viewNode->getAttributeIds();
+    auto opacityId = attributeIds.getIdForName("opacity");
+    auto translationYId = attributeIds.getIdForName("translationY");
+    auto scaleXId = attributeIds.getIdForName("scaleX");
+    auto scaleYId = attributeIds.getIdForName("scaleY");
+
+    viewNodeTree->withLock([&]() {
+        auto& viewTransactionScope = viewNodeTree->getCurrentViewTransactionScope();
+        if (static_cast<bool>(hasOpacity)) {
+            viewNode->setAttribute(viewTransactionScope, opacityId, attributeOwner, Valdi::Value(opacity), nullptr);
+        } else {
+            viewNode->setAttribute(
+                viewTransactionScope, opacityId, attributeOwner, Valdi::Value::undefined(), nullptr);
+        }
+
+        if (static_cast<bool>(hasTransform)) {
+            viewNode->setAttribute(
+                viewTransactionScope, translationYId, attributeOwner, Valdi::Value(translationY), nullptr);
+            viewNode->setAttribute(viewTransactionScope, scaleXId, attributeOwner, Valdi::Value(scale), nullptr);
+            viewNode->setAttribute(viewTransactionScope, scaleYId, attributeOwner, Valdi::Value(scale), nullptr);
+        } else {
+            viewNode->setAttribute(
+                viewTransactionScope, translationYId, attributeOwner, Valdi::Value::undefined(), nullptr);
+            viewNode->setAttribute(
+                viewTransactionScope, scaleXId, attributeOwner, Valdi::Value::undefined(), nullptr);
+            viewNode->setAttribute(
+                viewTransactionScope, scaleYId, attributeOwner, Valdi::Value::undefined(), nullptr);
+        }
+
+        viewNode->getAttributesApplier().flush(viewTransactionScope);
+        viewTransactionScope.flushNow(/* sync */ true);
+    });
+}
+
 void ValdiAndroid::NativeBridge::notifyApplyAttributeFailed(fbjni::alias_ref<fbjni::JClass> clazz, // NOLINT
                                                             jlong viewNodeHandle,
                                                             jint attributeId,
@@ -2425,6 +2479,8 @@ void ValdiAndroid::NativeBridge::registerNatives() {
         makeNativeMethod("setKeepViewAliveOnDestroy", ValdiAndroid::NativeBridge::setKeepViewAliveOnDestroy),
         makeNativeMethod("notifyScroll", ValdiAndroid::NativeBridge::notifyScroll),
         makeNativeMethod("setValueForAttribute", ValdiAndroid::NativeBridge::setValueForAttribute),
+        makeNativeMethod("setInlineTextAnimationAttributesForViewNode",
+                         ValdiAndroid::NativeBridge::setInlineTextAnimationAttributesForViewNode),
         makeNativeMethod("notifyApplyAttributeFailed", ValdiAndroid::NativeBridge::notifyApplyAttributeFailed),
         makeNativeMethod("setRuntimeAttachedObject", ValdiAndroid::NativeBridge::setRuntimeAttachedObject),
         makeNativeMethod("setRuntimeManagerRequestManager",

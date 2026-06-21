@@ -19,4 +19,6 @@ interface ValdiTextHolder {
 
     fun setValdiSelection(start: Int, end: Int)
 
+    fun refreshInlineTextAnimation()
+
 }

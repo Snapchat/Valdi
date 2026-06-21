@@ -646,7 +646,7 @@ static void SCValdiProcessedTextApplyConfiguration(
 
 - (BOOL)hasInlineViewAttachmentForIndex:(NSUInteger)childIndex
 {
-    return [self inlineViewAttachmentForViewIndex:childIndex] != nil;
+    return [self inlineViewAttachmentForViewIndex:childIndex effectiveRange:NULL] != nil;
 }
 
 - (BOOL)hasOnTap
@@ -714,13 +714,27 @@ static void SCValdiProcessedTextApplyConfiguration(
 }
 
 - (SCValdiInlineViewAttachmentInfo *)inlineViewAttachmentForViewIndex:(NSUInteger)childIndex
+                                                       effectiveRange:(NSRangePointer)range
 {
     if (childIndex >= _inlineAttachmentItemsOrderedByChildIndex.count) {
+        if (range != NULL) {
+            *range = NSMakeRange(NSNotFound, 0);
+        }
         return nil;
     }
 
     SCValdiProcessedTextRangeValue *item =
         ObjectAs(_inlineAttachmentItemsOrderedByChildIndex[childIndex], SCValdiProcessedTextRangeValue);
+    if (item == nil) {
+        if (range != NULL) {
+            *range = NSMakeRange(NSNotFound, 0);
+        }
+        return nil;
+    }
+
+    if (range != NULL) {
+        *range = item.range;
+    }
     return ObjectAs(item.value, SCValdiInlineViewAttachmentInfo);
 }
 

@@ -10,6 +10,7 @@
 #import "valdi/ios/Text/SCValdiProcessedText.h"
 #import "valdi/ios/Text/SCValdiTextAnimationCoordinator.h"
 #import "valdi/ios/Text/SCValdiTextAnimationGroupParticipant.h"
+#import "valdi/ios/Text/SCValdiTextAnimationPresentation.h"
 #import "valdi/ios/Text/SCValdiTextLayout.h"
 #import "valdi/ios/Views/SCValdiLabelSelection.h"
 #import "valdi/ios/Views/SCValdiTextAnimationGroup.h"
@@ -273,6 +274,7 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
 - (void)invalidateAnimatedTextProgress
 {
     [_textLayoutEffectsLayoutManager invalidateAnimatedTextProgress];
+    [_delegate textLayoutViewDidInvalidateAnimatedTextProgress:self];
     if (_textLayoutEffectsLayoutManager.textAnimationCoordinator == nil) {
         [self _startAnimatedTextDisplayLinkIfNeeded];
     } else {
@@ -300,7 +302,22 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
 {
     BOOL hasActiveAnimationRanges = [_textLayoutEffectsLayoutManager invalidateAnimatedTextProgress];
     [self setNeedsDisplay];
+    [_delegate textLayoutViewDidInvalidateAnimatedTextProgress:self];
     return hasActiveAnimationRanges;
+}
+
+- (CGFloat)animatedTextOpacityForRange:(NSRange)range
+{
+    SCValdiTextAnimationPresentation *presentation = [self animatedTextPresentationForRange:range];
+    return presentation != nil ? presentation.opacity : 1.0;
+}
+
+- (SCValdiTextAnimationPresentation *)animatedTextPresentationForRange:(NSRange)range
+{
+    if (_textLayoutEffectsLayoutManager == nil) {
+        return nil;
+    }
+    return [_textLayoutEffectsLayoutManager presentationForAnimationRange:range];
 }
 
 - (void)valdi_prepareGroupedTextAnimationFrame
@@ -444,6 +461,7 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
 {
     BOOL hasActiveAnimationRanges = [_textLayoutEffectsLayoutManager invalidateAnimatedTextProgress];
     [self setNeedsDisplay];
+    [_delegate textLayoutViewDidInvalidateAnimatedTextProgress:self];
 
     if (!hasActiveAnimationRanges) {
         [self stopAnimations];

@@ -82,7 +82,8 @@ typedef NS_ENUM(NSInteger, SCValdiProcessedTextCustomUnderlineMode) {
 - (nullable id<SCValdiFunction>)onLayoutAtIndex:(NSUInteger)index effectiveRange:(nullable NSRangePointer)range;
 - (nullable SCValdiInlineViewAttachmentInfo *)inlineViewAttachmentAtIndex:(NSUInteger)index
                                                            effectiveRange:(nullable NSRangePointer)range;
-- (nullable SCValdiInlineViewAttachmentInfo *)inlineViewAttachmentForViewIndex:(NSUInteger)childIndex;
+- (nullable SCValdiInlineViewAttachmentInfo *)inlineViewAttachmentForViewIndex:(NSUInteger)childIndex
+                                                                effectiveRange:(nullable NSRangePointer)range;
 - (BOOL)hasInlineViewAttachmentForIndex:(NSUInteger)childIndex;
 
 - (CGRect)rectForInlineViewAttachment:(SCValdiInlineViewAttachmentInfo *)inlineViewAttachment

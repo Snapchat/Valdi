@@ -23,7 +23,8 @@ class InlineViewAttachmentSize(
  */
 class InlineViewAttachmentSpan(
     attachmentInfo: InlineViewAttachmentInfo,
-    private val density: Float
+    private val density: Float,
+    val animation: AttributedTextAnimation?
 ) : ReplacementSpan() {
 
     var attachmentInfo: InlineViewAttachmentInfo = attachmentInfo

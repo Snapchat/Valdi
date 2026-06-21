@@ -274,6 +274,13 @@ public:
                                      jstring attribute,
                                      jobject value,
                                      jboolean keepAsOverride);
+    static void setInlineTextAnimationAttributesForViewNode(fbjni::alias_ref<fbjni::JClass> clazz,
+                                                            jlong viewNodeHandle,
+                                                            jboolean hasOpacity,
+                                                            jdouble opacity,
+                                                            jboolean hasTransform,
+                                                            jdouble translationY,
+                                                            jdouble scale);
 
     static void notifyApplyAttributeFailed(fbjni::alias_ref<fbjni::JClass> clazz,
                                            jlong viewNodeHandle,

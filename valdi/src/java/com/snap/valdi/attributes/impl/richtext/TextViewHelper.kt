@@ -162,7 +162,6 @@ class TextViewHelper(private val view: TextView,
     private var fontLoadDisposables: MutableMap<FontDescriptor, Disposable>? = null
 
     fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        updateTextAnimationGroupRegistration()
         updateTextAttributes()
         TextViewHelper.lastMeasuredText = view.text
         TextViewHelper.lastMeasuredFontAttributes = fontAttributes
@@ -394,6 +393,7 @@ class TextViewHelper(private val view: TextView,
         val animator = attributedTextAnimator ?: return false
         val spannable = view.text as? Spannable ?: return false
         val hasActiveAnimations = animator.update(spannable)
+        textHolder?.refreshInlineTextAnimation()
         if (hasActiveAnimations) {
             view.invalidate()
         }
@@ -431,6 +431,7 @@ class TextViewHelper(private val view: TextView,
             val attributedTextAnimator = attributedTextAnimator ?: return@Runnable
             val spannable = view.text as? Spannable ?: return@Runnable
             val hasActiveAnimations = attributedTextAnimator.update(spannable)
+            textHolder?.refreshInlineTextAnimation()
             if (hasActiveAnimations) {
                 postAnimationFrameCallback()
             }
@@ -503,6 +504,7 @@ class TextViewHelper(private val view: TextView,
         val activeSpannable = view.text as? Spannable ?: spannable
         if (attributedText != null) {
             attributedTextAnimator?.update(activeSpannable)
+            textHolder?.refreshInlineTextAnimation()
         }
         postInvalidateOnAnimationIfNeeded()
 

@@ -6,6 +6,7 @@ NS_ASSUME_NONNULL_BEGIN
 @class SCValdiCustomUnderlineStyle;
 @class SCValdiProcessedText;
 @class SCValdiTextAnimationCoordinator;
+@class SCValdiTextAnimationPresentation;
 
 FOUNDATION_EXPORT NSAttributedStringKey const kSCValdiTextViewCustomUnderlineColorAttribute;
 
@@ -36,6 +37,8 @@ FOUNDATION_EXPORT NSAttributedStringKey const kSCValdiTextViewCustomUnderlineCol
 
 - (void)prepareGroupedAnimatedTextProgress;
 - (BOOL)invalidateAnimatedTextProgress;
+- (CGFloat)opacityForAnimationRange:(NSRange)range;
+- (nullable SCValdiTextAnimationPresentation *)presentationForAnimationRange:(NSRange)range;
 
 @end
 

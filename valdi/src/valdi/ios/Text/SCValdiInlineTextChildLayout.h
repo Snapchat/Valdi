@@ -7,8 +7,11 @@
 #import <UIKit/UIKit.h>
 
 @class SCValdiProcessedText;
+@class SCValdiTextAnimationPresentation;
 
 NS_ASSUME_NONNULL_BEGIN
+
+typedef SCValdiTextAnimationPresentation *_Nullable (^SCValdiInlineTextChildPresentationProvider)(NSRange range);
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,6 +29,16 @@ void SCValdiApplyInlineTextChildFrames(SCValdiProcessedText *_Nullable processed
                                        NSTextContainer *_Nullable textContainer,
                                        CGPoint originOffset,
                                        UIView *containerView);
+
+/**
+ * Applies animated opacity and transform attributes to inline Valdi child UIViews.
+ *
+ * Children without an inline attachment, or whose attachment has no active presentation,
+ * have the temporary animation attributes removed through their Valdi view node.
+ */
+void SCValdiApplyInlineTextChildAnimations(SCValdiProcessedText *_Nullable processedText,
+                                           UIView *containerView,
+                                           SCValdiInlineTextChildPresentationProvider presentationProvider);
 
 #ifdef __cplusplus
 }

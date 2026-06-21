@@ -341,6 +341,7 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
     [self _updatePlaceholderInset];
     [self _updateOnLayoutIfNeeded];
     [self _updateInlineTextChildFrames];
+    [self _updateInlineTextChildAnimations];
 }
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView
@@ -506,6 +507,20 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
                                       childrenContainerView);
 }
 
+- (void)_updateInlineTextChildAnimations
+{
+    UIView *childrenContainerView = _valdiChildrenContainerView;
+    if (childrenContainerView == nil) {
+        return;
+    }
+    SCValdiTextViewEffectsLayoutManager *animatedLayoutManager = _animatedTextEffectsLayoutManager;
+    SCValdiApplyInlineTextChildAnimations(_processedText,
+                                          childrenContainerView,
+                                          ^SCValdiTextAnimationPresentation *(NSRange range) {
+                                              return [animatedLayoutManager presentationForAnimationRange:range];
+                                          });
+}
+
 #pragma mark - SCValdiContentViewProviding
 
 - (UIView *)contentViewForInsertingValdiChildren
@@ -572,6 +587,7 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
     SCValdiTextViewEffectsLayoutManager *layoutManager = [self _animatedTextEffectsLayoutManager];
     BOOL hasActiveAnimationRanges = [layoutManager invalidateAnimatedTextProgress];
     [_animatedTextView setNeedsDisplay];
+    [self _updateInlineTextChildAnimations];
 
     if (!hasActiveAnimationRanges) {
         [self _stopAnimatedTextDisplayLink];
@@ -604,6 +620,7 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
     _animatedTextView.attributedText = isEnabled ? attributedString : nil;
     if (isEnabled) {
         [[self _animatedTextEffectsLayoutManager] invalidateAnimatedTextProgress];
+        [self _updateInlineTextChildAnimations];
         if (_textAnimationGroup != nil) {
             [_textAnimationGroup startTextAnimationFrameLoopIfNeeded];
         } else {
@@ -973,6 +990,7 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
 {
     BOOL hasActiveAnimationRanges = [_animatedTextEffectsLayoutManager invalidateAnimatedTextProgress];
     [_animatedTextView setNeedsDisplay];
+    [self _updateInlineTextChildAnimations];
     return hasActiveAnimationRanges;
 }
 

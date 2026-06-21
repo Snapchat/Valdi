@@ -4,7 +4,6 @@ import android.text.Spannable
 import android.text.Spanned
 import android.view.animation.AnimationUtils
 import java.util.ArrayDeque
-import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -283,9 +282,9 @@ class AttributedTextAnimator {
     }
 
     private fun isNoOpStartTransform(transform: TextAnimationTransform): Boolean {
-        return abs(transform.translationY) <= 0.0001f &&
-                abs(transform.scale - 1f) <= 0.0001f &&
-                abs(transform.opacity - 1f) <= 0.0001f
+        return transform.translationY == 0f &&
+                transform.scale == 1f &&
+                transform.opacity == 1f
     }
 
     private fun currentAnimationTimeMillis(): Long {

@@ -11,6 +11,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @class SCValdiCustomUnderlineStyle;
 @class SCValdiTextAnimationCoordinator;
+@class SCValdiTextAnimationPresentation;
 @class SCValdiTextLayout;
 @class SCValdiTextLayoutView;
 @class SCValdiProcessedText;
@@ -23,6 +24,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)textLayoutViewIsRightToLeft:(SCValdiTextLayoutView *)textLayoutView;
 - (nullable id<SCValdiContextProtocol>)valdiContextForTextLayoutView:(SCValdiTextLayoutView *)textLayoutView;
 - (nullable id<SCValdiViewNodeProtocol>)valdiViewNodeForTextLayoutView:(SCValdiTextLayoutView *)textLayoutView;
+- (void)textLayoutViewDidInvalidateAnimatedTextProgress:(SCValdiTextLayoutView *)textLayoutView;
 
 @end
 
@@ -48,6 +50,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)prepareGroupedTextAnimationFrame;
 - (BOOL)invalidateGroupedTextAnimationFrame;
 - (void)invalidateAnimatedTextProgress;
+- (CGFloat)animatedTextOpacityForRange:(NSRange)range;
+- (nullable SCValdiTextAnimationPresentation *)animatedTextPresentationForRange:(NSRange)range;
 - (void)stopAnimations;
 
 - (void)setSelectable:(BOOL)selectable;

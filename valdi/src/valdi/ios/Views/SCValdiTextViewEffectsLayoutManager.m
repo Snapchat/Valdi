@@ -3,6 +3,7 @@
 #import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
 #import "valdi/ios/Text/SCValdiProcessedText.h"
 #import "valdi/ios/Text/SCValdiTextAnimationCoordinator.h"
+#import "valdi/ios/Text/SCValdiTextAnimationPresentation.h"
 #import "valdi/ios/Text/SCValdiTextAnimationTransform.h"
 #import <CoreText/CoreText.h>
 #import <QuartzCore/QuartzCore.h>
@@ -95,10 +96,10 @@ static double SCValdiAnimationStartDelay(SCValdiTextAnimationTransform *animatio
 
 static BOOL SCValdiAnimationShouldTrack(SCValdiTextAnimationTransform *animationTransform, double startDelay)
 {
-    BOOL hasVisibleStartTransform = fabs(animationTransform.translationY) > DBL_EPSILON ||
-                                    fabs(animationTransform.scale - 1.0) > DBL_EPSILON ||
-                                    fabs(animationTransform.opacity - 1.0) > DBL_EPSILON;
-    return hasVisibleStartTransform && (animationTransform.duration > DBL_EPSILON || startDelay > DBL_EPSILON);
+    BOOL hasVisibleStartTransform = animationTransform.translationY != 0.0 ||
+                                    animationTransform.scale != 1.0 ||
+                                    animationTransform.opacity != 1.0;
+    return hasVisibleStartTransform && (animationTransform.duration > 0.0 || startDelay > 0.0);
 }
 
 static SCValdiTextViewAnimationTimelineState *SCValdiAnimationTimelineStateForKey(
@@ -173,6 +174,29 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     [self _animationRanges];
     [self invalidateDisplayForCharacterRange:NSMakeRange(0, self.textStorage.length)];
     return self.hasActiveAnimationRanges;
+}
+
+- (CGFloat)opacityForAnimationRange:(NSRange)range
+{
+    SCValdiTextAnimationPresentation *presentation = [self presentationForAnimationRange:range];
+    return presentation != nil ? presentation.opacity : 1.0;
+}
+
+- (SCValdiTextAnimationPresentation *)presentationForAnimationRange:(NSRange)range
+{
+    if (range.length == 0) {
+        return nil;
+    }
+
+    for (SCValdiTextViewAnimationRange *animationRange in [self _animationRanges]) {
+        if (NSIntersectionRange(animationRange.range, range).length > 0) {
+            return [[SCValdiTextAnimationPresentation alloc] initWithTranslationY:animationRange.translationY
+                                                                           scale:animationRange.scale
+                                                                         opacity:animationRange.opacity];
+        }
+    }
+
+    return nil;
 }
 
 - (void)setProcessedText:(SCValdiProcessedText *)processedText
@@ -543,8 +567,8 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
                 self.animationStartTimes[key] = startTime;
             }
             CFTimeInterval delayedElapsedTime = currentTime - startTime.doubleValue - startDelay;
-            progress = duration > DBL_EPSILON ? MIN(MAX(delayedElapsedTime / duration, 0.0), 1.0)
-                                               : (delayedElapsedTime >= 0.0 ? 1.0 : 0.0);
+            progress = duration > 0.0 ? MIN(MAX(delayedElapsedTime / duration, 0.0), 1.0)
+                                      : (delayedElapsedTime >= 0.0 ? 1.0 : 0.0);
             if (progress < 1.0) {
                 hasActiveAnimationRanges = YES;
             }
