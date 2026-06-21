@@ -1,11 +1,17 @@
 import { UpdateAttributeDelegate } from '../ValdiWebRendererDelegate';
 import { WebValdiLayout } from './WebValdiLayout';
 import { convertColor } from '../styles/ValdiWebStyles';
+import { isAttributedText, ParsedAttributedText } from '../utils/parseAttributedText';
+import { applyFontString, cssLength, textShadowCssValue } from '../utils/textStyle';
 
 class ValdiInput extends HTMLElement {
   private input: HTMLInputElement;
-  private onEditEnd: (event: { text: string, selectionStart: number, selectionEnd: number, reason: string }) => void = () => {};
-  private onSelectionChange: (event: { value: string, selection: { start: number | null, end: number | null } }) => void = () => {};
+  private onEditEnd: (event: { text: string; selectionStart: number; selectionEnd: number; reason: string }) => void =
+    () => {};
+  private onSelectionChange: (event: {
+    value: string;
+    selection: { start: number | null; end: number | null };
+  }) => void = () => {};
   private attributeDelegate?: UpdateAttributeDelegate;
 
   constructor() {
@@ -50,7 +56,7 @@ class ValdiInput extends HTMLElement {
 
     const handleInput = this.debounce((_event: Event, reason: string) => {
       const text = this.input.value;
-      this.attributeDelegate?.updateAttribute(Number(this.input.getAttribute("id")), "value", text);
+      this.attributeDelegate?.updateAttribute(Number(this.input.getAttribute('id')), 'value', text);
       this.onEditEnd({
         text,
         selectionStart: this.input.selectionStart ?? 0,
@@ -59,7 +65,7 @@ class ValdiInput extends HTMLElement {
       });
     }, 300).bind(this);
 
-    this.input.addEventListener('blur', (event) => handleInput(event, 'blur'));
+    this.input.addEventListener('blur', event => handleInput(event, 'blur'));
     this.input.addEventListener('keydown', (event: KeyboardEvent) => {
       if (event.key === 'Enter') {
         handleInput(event, 'return');
@@ -69,9 +75,9 @@ class ValdiInput extends HTMLElement {
     // Stop propagation on interaction events to prevent parent onTap handlers
     // (e.g. scroll's closeKeyboard) from stealing focus.
     // This matches the pattern used by WebValdiTextView (textarea) which works correctly.
-    this.input.addEventListener('mousedown', (e) => e.stopPropagation());
-    this.input.addEventListener('touchstart', (e) => e.stopPropagation());
-    this.input.addEventListener('click', (e) => e.stopPropagation());
+    this.input.addEventListener('mousedown', e => e.stopPropagation());
+    this.input.addEventListener('touchstart', e => e.stopPropagation());
+    this.input.addEventListener('click', e => e.stopPropagation());
 
     shadow.appendChild(this.input);
   }
@@ -90,10 +96,10 @@ class ValdiInput extends HTMLElement {
 
   private _handleSelectionChange = () => {
     if (this.shadowRoot?.activeElement === this.input) {
-        this.onSelectionChange({
-            value: this.input.value,
-            selection: { start: this.input.selectionStart, end: this.input.selectionEnd }
-        });
+      this.onSelectionChange({
+        value: this.input.value,
+        selection: { start: this.input.selectionStart, end: this.input.selectionEnd },
+      });
     }
   };
   connectedCallback() {
@@ -101,7 +107,7 @@ class ValdiInput extends HTMLElement {
       this.forwardAttribute(name, value);
     }
 
-    let observer = new MutationObserver((mutations) => {
+    let observer = new MutationObserver(mutations => {
       for (const mutation of mutations) {
         if (mutation.type === 'attributes' && mutation.attributeName) {
           const name = mutation.attributeName;
@@ -109,9 +115,9 @@ class ValdiInput extends HTMLElement {
           this.forwardAttribute(name, value);
         }
       }
-    })
+    });
 
-    observer.observe(this, { attributes: true, childList: true, subtree: true});
+    observer.observe(this, { attributes: true, childList: true, subtree: true });
     document.addEventListener('selectionchange', this._handleSelectionChange);
   }
 
@@ -120,11 +126,13 @@ class ValdiInput extends HTMLElement {
   }
 
   // Can't be passed through the attribute system, it'll get turned into a string?
-  setOnEditEnd(value: (event: { text: string, selectionStart: number, selectionEnd: number, reason: string }) => void) {
+  setOnEditEnd(value: (event: { text: string; selectionStart: number; selectionEnd: number; reason: string }) => void) {
     this.onEditEnd = value;
   }
 
-  setOnSelectionChange(callback: (event: { value: string, selection: { start: number | null, end: number | null } }) => void) {
+  setOnSelectionChange(
+    callback: (event: { value: string; selection: { start: number | null; end: number | null } }) => void,
+  ) {
     this.onSelectionChange = callback;
   }
 
@@ -137,7 +145,7 @@ class ValdiInput extends HTMLElement {
       this.input.removeAttribute(name);
     } else {
       this.input.setAttribute(name, value);
-      this.attributeDelegate?.updateAttribute(Number(this.input.getAttribute("id")), name, value);
+      this.attributeDelegate?.updateAttribute(Number(this.input.getAttribute('id')), name, value);
     }
 
     // Try to also assign as property if it's valid
@@ -209,7 +217,7 @@ export function registerTextFieldElements(): void {
 
 export class WebValdiTextField extends WebValdiLayout {
   public type = 'textfield';
-  public declare htmlElement: ValdiInput;
+  declare public htmlElement: ValdiInput;
   private _callbackListeners: { key: string; eventType: string; handler: EventListener }[] = [];
 
   createHtmlElement() {
@@ -239,7 +247,10 @@ export class WebValdiTextField extends WebValdiLayout {
   private replaceListener(key: string, eventType: string, handler: EventListener | undefined) {
     const existing = this._callbackListeners.findIndex(l => l.key === key);
     if (existing >= 0) {
-      this.htmlElement.removeEventListener(this._callbackListeners[existing].eventType, this._callbackListeners[existing].handler);
+      this.htmlElement.removeEventListener(
+        this._callbackListeners[existing].eventType,
+        this._callbackListeners[existing].handler,
+      );
       this._callbackListeners.splice(existing, 1);
     }
     if (handler) {
@@ -252,44 +263,50 @@ export class WebValdiTextField extends WebValdiLayout {
     switch (attributeName) {
       case 'onWillChange': {
         const cb = attributeValue;
-        const handler = cb ? ((event: InputEvent) => {
-          const el = this.htmlElement;
-          const result = cb({
-            text: el.value,
-            selectionStart: el.selectionStart ?? 0,
-            selectionEnd: el.selectionEnd ?? 0,
-          });
-          if (result === false) {
-            event.preventDefault();
-          }
-        }) as EventListener : undefined;
+        const handler = cb
+          ? (((event: InputEvent) => {
+              const el = this.htmlElement;
+              const result = cb({
+                text: el.value,
+                selectionStart: el.selectionStart ?? 0,
+                selectionEnd: el.selectionEnd ?? 0,
+              });
+              if (result === false) {
+                event.preventDefault();
+              }
+            }) as EventListener)
+          : undefined;
         this.replaceListener('onWillChange', 'beforeinput', handler);
         return;
       }
       case 'onChange': {
         const cb = attributeValue;
-        const handler = cb ? (() => {
-          const el = this.htmlElement;
-          this.attributeDelegate?.updateAttribute(this.id, "value", el.value);
-          cb({
-            text: el.value,
-            selectionStart: el.selectionStart ?? 0,
-            selectionEnd: el.selectionEnd ?? 0,
-          });
-        }) as EventListener : undefined;
+        const handler = cb
+          ? ((() => {
+              const el = this.htmlElement;
+              this.attributeDelegate?.updateAttribute(this.id, 'value', el.value);
+              cb({
+                text: el.value,
+                selectionStart: el.selectionStart ?? 0,
+                selectionEnd: el.selectionEnd ?? 0,
+              });
+            }) as EventListener)
+          : undefined;
         this.replaceListener('onChange', 'input', handler);
         return;
       }
       case 'onEditBegin': {
         const cb = attributeValue;
-        const handler = cb ? (() => {
-          const el = this.htmlElement;
-          cb({
-            text: el.value,
-            selectionStart: el.selectionStart ?? 0,
-            selectionEnd: el.selectionEnd ?? 0,
-          });
-        }) as EventListener : undefined;
+        const handler = cb
+          ? ((() => {
+              const el = this.htmlElement;
+              cb({
+                text: el.value,
+                selectionStart: el.selectionStart ?? 0,
+                selectionEnd: el.selectionEnd ?? 0,
+              });
+            }) as EventListener)
+          : undefined;
         this.replaceListener('onEditBegin', 'focus', handler);
         return;
       }
@@ -298,31 +315,35 @@ export class WebValdiTextField extends WebValdiLayout {
         return;
       case 'onReturn': {
         const cb = attributeValue;
-        const handler = cb ? ((event: KeyboardEvent) => {
-            if (event.key === 'Enter') {
+        const handler = cb
+          ? (((event: KeyboardEvent) => {
+              if (event.key === 'Enter') {
                 const el = this.htmlElement;
                 cb({
                   text: el.value,
                   selectionStart: el.selectionStart ?? 0,
                   selectionEnd: el.selectionEnd ?? 0,
                 });
-            }
-        }) as EventListener : undefined;
+              }
+            }) as EventListener)
+          : undefined;
         this.replaceListener('onReturn', 'keydown', handler);
         return;
       }
       case 'onWillDelete': {
         const cb = attributeValue;
-        const handler = cb ? ((event: KeyboardEvent) => {
-            if (event.key === 'Backspace' || event.key === 'Delete') {
+        const handler = cb
+          ? (((event: KeyboardEvent) => {
+              if (event.key === 'Backspace' || event.key === 'Delete') {
                 const el = this.htmlElement;
                 cb({
                   text: el.value,
                   selectionStart: el.selectionStart ?? 0,
                   selectionEnd: el.selectionEnd ?? 0,
                 });
-            }
-        }) as EventListener : undefined;
+              }
+            }) as EventListener)
+          : undefined;
         this.replaceListener('onWillDelete', 'keydown', handler);
         return;
       }
@@ -331,7 +352,7 @@ export class WebValdiTextField extends WebValdiLayout {
         return;
 
       // Style & Appearance
-      case 'tintColor': 
+      case 'tintColor':
         this.htmlElement.style.caretColor = convertColor(attributeValue);
         return;
       case 'placeholderColor': {
@@ -352,18 +373,19 @@ export class WebValdiTextField extends WebValdiLayout {
         return;
       }
       case 'textAlign':
-        this.htmlElement.style.textAlign = attributeValue;
+        this.htmlElement.style.textAlign = attributeValue === 'justified' ? 'justify' : attributeValue;
         return;
-      case 'font': {
-        const parts = String(attributeValue).split(' ');
-        if (parts.length >= 2) {
-          // Format: 'font-family size ...'
-          // We'll assume size is in px for web.
-          this.htmlElement.style.fontFamily = parts[0];
-          this.htmlElement.style.fontSize = `${parts[1]}px`;
-        }
+      case 'font':
+        applyFontString(this.htmlElement, String(attributeValue));
         return;
-      }
+      case 'lineHeight':
+        this.htmlElement.style.lineHeight =
+          attributeValue === undefined || attributeValue === null ? '' : cssLength(attributeValue);
+        return;
+      case 'lineHeightMultiple':
+        this.htmlElement.style.lineHeight =
+          attributeValue === undefined || attributeValue === null ? '' : String(attributeValue);
+        return;
       case 'color':
         this.htmlElement.style.color = convertColor(attributeValue);
         return;
@@ -374,14 +396,7 @@ export class WebValdiTextField extends WebValdiLayout {
         this.htmlElement.style.color = 'transparent';
         return;
       case 'textShadow': {
-        // Format: '{color} {radius} {opacity} {offsetX} {offsetY}'
-        // CSS: text-shadow: offsetX offsetY blur-radius color
-        const match = String(attributeValue).match(/(.+?)\s+([0-9.-]+)\s+([0-9.-]+)\s+([0-9.-]+)\s+([0-9.-]+)$/);
-        if (match) {
-          const [, color, radius, opacity, offsetX, offsetY] = match;
-          const finalColor = applyOpacity(convertColor(color), opacity);
-          this.htmlElement.style.textShadow = `${offsetX}px ${offsetY}px ${radius}px ${finalColor}`;
-        }
+        this.htmlElement.style.textShadow = textShadowCssValue(attributeValue) ?? '';
         return;
       }
 
@@ -392,11 +407,13 @@ export class WebValdiTextField extends WebValdiLayout {
       case 'value':
         // Must set the .value property (not attribute) to update the current input value.
         // setAttribute('value') only sets the default/initial value for <input> elements.
-        this.htmlElement.value = attributeValue ?? '';
+        this.htmlElement.value = isAttributedText(attributeValue)
+          ? ParsedAttributedText.parse(attributeValue).toString()
+          : (attributeValue ?? '');
         return;
       case 'selection':
         if (Array.isArray(attributeValue) && attributeValue.length === 2) {
-            this.htmlElement.setSelectionRange(attributeValue[0], attributeValue[1]);
+          this.htmlElement.setSelectionRange(attributeValue[0], attributeValue[1]);
         }
         return;
 
@@ -418,12 +435,13 @@ export class WebValdiTextField extends WebValdiLayout {
         // Note: This event listener is not removed if the property is later set to false.
         return;
       case 'closesWhenReturnKeyPressed':
-        if (attributeValue !== false) { // default true
-            this.htmlElement.addEventListener('keydown', (event: KeyboardEvent) => {
-                if (event.key === 'Enter') {
-                    this.htmlElement.blur();
-                }
-            });
+        if (attributeValue !== false) {
+          // default true
+          this.htmlElement.addEventListener('keydown', (event: KeyboardEvent) => {
+            if (event.key === 'Enter') {
+              this.htmlElement.blur();
+            }
+          });
         }
         // Note: This event listener is not removed if the property is later set to false.
         return;
@@ -457,49 +475,11 @@ export class WebValdiTextField extends WebValdiLayout {
         this.htmlElement.setAttribute('autocomplete', attributeValue ? 'on' : 'off');
         return;
       default:
-        // Do nothing
+      // Do nothing
     }
 
     super.changeAttribute(attributeName, attributeValue);
   }
-}
-
-function applyOpacity(color: string, opacityValue: string): string {
-    const opacity = parseFloat(opacityValue);
-    // Opacity must be between 0 and 1.
-    if (isNaN(opacity) || opacity < 0 || opacity > 1) {
-        return color;
-    }
-
-    // If color already has alpha, we assume it's the one we want.
-    // This handles the 'rgba(0, 0, 0, 0.1) 1 1 1 1' case where opacity is 1 but we want 0.1.
-    if (color.startsWith('rgba') || color.startsWith('hsla')) {
-        return color;
-    }
-
-    if (color.startsWith('rgb')) { // rgb(r, g, b)
-        return color.replace('rgb', 'rgba').replace(')', `, ${opacity})`);
-    }
-
-    if (color.startsWith('#')) {
-        let r = 0, g = 0, b = 0;
-        if (color.length === 4) { // #RGB
-            r = parseInt(color[1] + color[1], 16);
-            g = parseInt(color[2] + color[2], 16);
-            b = parseInt(color[3] + color[3], 16);
-        } else if (color.length === 7) { // #RRGGBB
-            r = parseInt(color.slice(1, 3), 16);
-            g = parseInt(color.slice(3, 5), 16);
-            b = parseInt(color.slice(5, 7), 16);
-        } else {
-            return color; // Invalid hex format
-        }
-        if ([r,g,b].some(isNaN)) { return color; } // check for parsing errors
-        return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-    }
-
-    // For named colors (e.g. "red"), this is hard without a canvas.
-    return color;
 }
 
 function getContentType(type: string) {

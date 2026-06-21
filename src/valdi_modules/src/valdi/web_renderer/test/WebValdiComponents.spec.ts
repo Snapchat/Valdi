@@ -11,9 +11,15 @@ function installDomStubs() {
       const children: any[] = [];
       const classList = {
         _classes: new Set<string>(),
-        add(c: string) { this._classes.add(c); },
-        remove(c: string) { this._classes.delete(c); },
-        contains(c: string) { return this._classes.has(c); },
+        add(c: string) {
+          this._classes.add(c);
+        },
+        remove(c: string) {
+          this._classes.delete(c);
+        },
+        contains(c: string) {
+          return this._classes.has(c);
+        },
       };
       const el: any = {
         tagName: tag.toUpperCase(),
@@ -21,13 +27,31 @@ function installDomStubs() {
         children,
         childNodes: { item: (i: number) => children[i] },
         classList,
-        appendChild(child: any) { children.push(child); },
+        appendChild(child: any) {
+          children.push(child);
+        },
         insertBefore(child: any, ref: any) {
           const idx = ref ? children.indexOf(ref) : children.length;
           children.splice(idx >= 0 ? idx : children.length, 0, child);
         },
+        querySelectorAll(selector: string) {
+          const matches: any[] = [];
+          const visit = (node: any) => {
+            if (selector === 'span' && node.tagName === 'SPAN') {
+              matches.push(node);
+            }
+            for (const child of node.children ?? []) {
+              visit(child);
+            }
+          };
+          visit(el);
+          return matches;
+        },
         remove() {},
-        replaceChildren() { children.length = 0; },
+        replaceChildren(...newChildren: any[]) {
+          children.length = 0;
+          children.push(...newChildren);
+        },
         getAttribute: () => null,
         setAttribute: () => {},
         removeAttribute: () => {},
@@ -111,6 +135,45 @@ describe('WebValdiLabel – numberOfLines', () => {
     installDomStubs();
     const label = new WebValdiLabel(1);
     expect(() => label.changeAttribute('numberOfLines', undefined)).not.toThrow();
+  });
+});
+
+describe('WebValdiLabel – text rendering parity', () => {
+  afterEach(() => uninstallDomStubs());
+
+  it('applies explicit lineHeight over lineHeightMultiple', () => {
+    installDomStubs();
+    const label = new WebValdiLabel(1);
+
+    label.changeAttribute('lineHeightMultiple', 1.4);
+    expect((label.htmlElement.style as any).lineHeight).toBe('1.4');
+
+    label.changeAttribute('lineHeight', 23);
+    expect((label.htmlElement.style as any).lineHeight).toBe('23px');
+
+    label.changeAttribute('lineHeight', undefined);
+    expect((label.htmlElement.style as any).lineHeight).toBe('1.4');
+  });
+
+  it('maps textAlign and textDecoration values to CSS', () => {
+    installDomStubs();
+    const label = new WebValdiLabel(1);
+
+    label.changeAttribute('textAlign', 'justified');
+    expect((label.htmlElement.style as any).textAlign).toBe('justify');
+
+    label.changeAttribute('textDecoration', 'dotted-underline');
+    expect((label.htmlElement.style as any).textDecorationLine).toBe('underline');
+    expect((label.htmlElement.style as any).textDecorationStyle).toBe('dotted');
+  });
+
+  it('parses Valdi textShadow descriptors', () => {
+    installDomStubs();
+    const label = new WebValdiLabel(1);
+
+    label.changeAttribute('textShadow', '#000000 3 0.5 4 5');
+
+    expect((label.htmlElement.style as any).textShadow).toBe('4px 5px 3px rgba(0, 0, 0, 0.5)');
   });
 });
 

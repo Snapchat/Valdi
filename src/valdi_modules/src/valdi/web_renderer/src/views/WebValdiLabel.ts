@@ -1,8 +1,11 @@
 import { isAttributedText, renderAttributedText } from '../utils/parseAttributedText';
+import { applyFontString, applyTextDecoration, cssLength, textShadowCssValue } from '../utils/textStyle';
 import { WebValdiLayout } from './WebValdiLayout';
 
 export class WebValdiLabel extends WebValdiLayout {
   public type = 'label';
+  private _lineHeight?: string;
+  private _lineHeightMultiple?: number;
 
   createHtmlElement() {
     const element = document.createElement('span');
@@ -29,15 +32,50 @@ export class WebValdiLabel extends WebValdiLayout {
     return element;
   }
 
+  private updateLineHeight() {
+    if (this._lineHeight !== undefined) {
+      this.htmlElement.style.lineHeight = this._lineHeight;
+    } else if (this._lineHeightMultiple !== undefined) {
+      this.htmlElement.style.lineHeight = String(this._lineHeightMultiple);
+    } else {
+      this.htmlElement.style.lineHeight = '';
+    }
+  }
+
   changeAttribute(attributeName: string, attributeValue: any): void {
     switch (attributeName) {
       case 'value':
         if (isAttributedText(attributeValue)) {
-          this.htmlElement.textContent = '';
-          this.htmlElement.appendChild(renderAttributedText(attributeValue));
+          this.htmlElement.replaceChildren(
+            renderAttributedText(attributeValue, {
+              getInlineChild: index => this.children[index]?.htmlElement,
+            }),
+          );
         } else {
           this.htmlElement.textContent = attributeValue;
         }
+        return;
+      case 'font':
+        applyFontString(this.htmlElement, String(attributeValue));
+        return;
+      case 'lineHeight':
+        this._lineHeight =
+          attributeValue === undefined || attributeValue === null ? undefined : cssLength(attributeValue);
+        this.updateLineHeight();
+        return;
+      case 'lineHeightMultiple':
+        this._lineHeightMultiple =
+          attributeValue === undefined || attributeValue === null ? undefined : Number(attributeValue);
+        this.updateLineHeight();
+        return;
+      case 'textAlign':
+        this.htmlElement.style.textAlign = attributeValue === 'justified' ? 'justify' : attributeValue;
+        return;
+      case 'textDecoration':
+        applyTextDecoration(this.htmlElement, attributeValue);
+        return;
+      case 'textShadow':
+        this.htmlElement.style.textShadow = textShadowCssValue(attributeValue) ?? '';
         return;
       case 'numberOfLines':
         if (attributeValue && attributeValue > 0) {
