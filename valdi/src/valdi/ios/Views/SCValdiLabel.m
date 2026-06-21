@@ -14,6 +14,7 @@
 #import "valdi/ios/Text/SCValdiFontAttributes.h"
 #import "valdi/ios/Text/SCValdiFont.h"
 #import "valdi/ios/Text/SCValdiAttributedText.h"
+#import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
 #import "valdi/ios/Text/SCValdiTextLayout.h"
 #import "valdi/ios/Text/SCValdiOnTapAttribute.h"
 #import "valdi/ios/Text/SCValdiOnLayoutAttribute.h"
@@ -22,6 +23,7 @@
 
 #import "valdi_core/SCMacros.h"
 #import "valdi_core/SCValdiRectUtils.h"
+#import "valdi_core/SCValdiResult.h"
 
 static NSString *const kTextGradientLayoutKey = @"text_gradient";
 
@@ -41,6 +43,9 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
     UIColor *_textGradientColor;
     CAGradientLayer *_textGradientLayer;
     BOOL _updateOnLayout;
+    SCValdiCustomUnderlineStyle *_customUnderlineStyle;
+    NSAttributedString *_customUnderlineSourceAttributedString;
+    NSArray<NSValue *> *_customUnderlineCharacterRanges;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -126,6 +131,7 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
 {
     if (_textLayout) {
         [_textLayout drawInRect:rect];
+        [self _drawCustomUnderlinesInRect:rect];
     } else {
         [super drawTextInRect:rect];
     }
@@ -247,6 +253,134 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
     }
 }
 
+- (BOOL)_shouldUseCustomUnderlineForNativeUnderlineStyle:(id)value
+{
+    NSNumber *underlineStyleValue = ObjectAs(value, NSNumber);
+    if (!underlineStyleValue) {
+        return NO;
+    }
+
+    NSInteger underlineStyle = underlineStyleValue.integerValue;
+    return (underlineStyle & NSUnderlineStyleSingle) == NSUnderlineStyleSingle;
+}
+
+- (NSAttributedString *)_displayAttributedStringForAttributedString:(NSAttributedString *)attributedString
+{
+    _customUnderlineSourceAttributedString = nil;
+    _customUnderlineCharacterRanges = nil;
+    if (!_customUnderlineStyle || attributedString.length == 0) {
+        return attributedString;
+    }
+
+    __block NSMutableAttributedString *displayAttributedString;
+    __block NSMutableArray<NSValue *> *customUnderlineCharacterRanges;
+    [attributedString enumerateAttribute:NSUnderlineStyleAttributeName
+                                 inRange:NSMakeRange(0, attributedString.length)
+                                 options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
+                              usingBlock:^(id  _Nullable value, NSRange range, BOOL * _Nonnull stop) {
+        if (![self _shouldUseCustomUnderlineForNativeUnderlineStyle:value]) {
+            return;
+        }
+        if (!displayAttributedString) {
+            displayAttributedString = [attributedString mutableCopy];
+            customUnderlineCharacterRanges = [NSMutableArray array];
+        }
+        [displayAttributedString removeAttribute:NSUnderlineStyleAttributeName range:range];
+        [displayAttributedString removeAttribute:NSUnderlineColorAttributeName range:range];
+        [customUnderlineCharacterRanges addObject:[NSValue valueWithRange:range]];
+    }];
+
+    if (!displayAttributedString) {
+        return attributedString;
+    }
+
+    _customUnderlineSourceAttributedString = [attributedString copy];
+    _customUnderlineCharacterRanges = [customUnderlineCharacterRanges copy];
+    return displayAttributedString;
+}
+
+- (CGFloat)_customUnderlineLineWidth
+{
+    return _customUnderlineStyle.height;
+}
+
+- (CGFloat)_customUnderlineOffset
+{
+    return _customUnderlineStyle.offset;
+}
+
+- (void)_applyCustomUnderlineDashPatternInContext:(CGContextRef)context
+{
+    if (!_customUnderlineStyle.patterned) {
+        CGContextSetLineDash(context, 0, nil, 0);
+        return;
+    }
+
+    CGFloat lengths[] = {_customUnderlineStyle.onWidth, _customUnderlineStyle.offWidth};
+    CGContextSetLineDash(context, 0, lengths, 2);
+}
+
+- (UIColor *)_customUnderlineColorForRange:(NSRange)range
+{
+    UIColor *underlineColor = ObjectAs([_customUnderlineSourceAttributedString attribute:NSUnderlineColorAttributeName
+                                                                                atIndex:range.location
+                                                                         effectiveRange:nil], UIColor);
+    if (underlineColor) {
+        return underlineColor;
+    }
+
+    UIColor *foregroundColor = ObjectAs([_customUnderlineSourceAttributedString attribute:NSForegroundColorAttributeName
+                                                                                  atIndex:range.location
+                                                                           effectiveRange:nil], UIColor);
+    if (foregroundColor) {
+        return foregroundColor;
+    }
+
+    return self.textColor ?: [UIColor blackColor];
+}
+
+- (void)_drawCustomUnderlinesInRect:(CGRect)rect
+{
+    if (!_customUnderlineStyle
+        || !_customUnderlineSourceAttributedString
+        || _customUnderlineCharacterRanges.count == 0
+        || !_textLayout) {
+        return;
+    }
+
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    if (!context) {
+        return;
+    }
+
+    CGContextSaveGState(context);
+    CGFloat underlineLineWidth = [self _customUnderlineLineWidth];
+    CGContextSetLineWidth(context, underlineLineWidth);
+    [self _applyCustomUnderlineDashPatternInContext:context];
+
+    CGFloat underlineOffset = [self _customUnderlineOffset];
+    for (NSValue *rangeValue in _customUnderlineCharacterRanges) {
+        NSRange range = rangeValue.rangeValue;
+        [[self _customUnderlineColorForRange:range] setStroke];
+        for (NSValue *rectValue in [_textLayout underlineRectsForRange:range
+                                                          inDrawingRect:rect
+                                                              lineWidth:underlineLineWidth
+                                                        underlineOffset:underlineOffset]) {
+            CGRect underlineRect = rectValue.CGRectValue;
+            if (CGRectIsEmpty(underlineRect)) {
+                continue;
+            }
+
+            CGFloat y = CGRectGetMidY(underlineRect);
+            CGContextMoveToPoint(context, CGRectGetMinX(underlineRect), y);
+            CGContextAddLineToPoint(context, CGRectGetMaxX(underlineRect), y);
+            CGContextStrokePath(context);
+        }
+    }
+
+    CGContextRestoreGState(context);
+}
+
 - (void)_updateAttributedTextIfNeeded
 {
     if (_needAttributedTextUpdate) {
@@ -263,6 +397,7 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
                                                                                           isRightToLeft:isRightToLeft
                                                                                             fontManager:_fontManager
                                                                                         traitCollection:traitCollection];
+            NSAttributedString *displayAttributedString = [self _displayAttributedStringForAttributedString:attributedString];
 
             __block BOOL hasOnTapAttribute = NO;
             [attributedString enumerateAttribute:kSCValdiAttributedStringKeyOnTap
@@ -286,14 +421,15 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
                 }
             }];
 
-            if (hasOnTapAttribute || hasOnLayoutAttribute) {
+            BOOL hasCustomUnderlineAttribute = _customUnderlineSourceAttributedString != nil;
+            if (hasOnTapAttribute || hasOnLayoutAttribute || hasCustomUnderlineAttribute) {
                 [self updateLabelMode:SCValdiTextModeValdiTextLayout];
-                _textLayout.attributedString = attributedString;
+                _textLayout.attributedString = displayAttributedString;
                 [self setNeedsDisplay];
             } else {
                 [self updateLabelMode:SCValdiTextModeAttributedText];
 
-                self.attributedText = attributedString;
+                self.attributedText = displayAttributedString;
             }
 
             if (hasOnLayoutAttribute) {
@@ -309,6 +445,8 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
         } else {
             // Can set without attributed text
 
+            _customUnderlineSourceAttributedString = nil;
+            _customUnderlineCharacterRanges = nil;
             [self updateLabelMode:SCValdiTextModeText];
             [self _removeAttributedTextOnTapGestureRecognizer];
 
@@ -379,6 +517,14 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
     _textValue = textValue;
     _needAttributedTextUpdate = YES;
     [self setNeedsLayout];
+}
+
+- (void)valdi_setCustomUnderlineStyle:(SCValdiCustomUnderlineStyle *)customUnderlineStyle
+{
+    _customUnderlineStyle = customUnderlineStyle;
+    _needAttributedTextUpdate = YES;
+    [self setNeedsLayout];
+    [self setNeedsDisplay];
 }
 
 - (BOOL)valdi_setTextGradient:(NSArray *)attributeValue
@@ -491,6 +637,31 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
         return YES;
     } resetBlock:^(SCValdiLabel *view, id<SCValdiAnimatorProtocol> animator) {
         [view valdi_setText:nil];
+    }];
+
+    [attributesBinder bindAttribute:@"customUnderlineStyle"
+        invalidateLayoutOnChange:NO
+        withUntypedBlock:^BOOL(SCValdiLabel *view, id attributeValue, id<SCValdiAnimatorProtocol> animator) {
+            [view valdi_setCustomUnderlineStyle:ObjectAs(attributeValue, SCValdiCustomUnderlineStyle)];
+            return YES;
+        }
+        resetBlock:^(SCValdiLabel *view, id<SCValdiAnimatorProtocol> animator) {
+            [view valdi_setCustomUnderlineStyle:nil];
+        }];
+
+    [attributesBinder registerPreprocessorForAttribute:@"customUnderlineStyle" enableCache:YES withBlock:^id(id value) {
+        NSString *styleString = ObjectAs(value, NSString);
+        if (!styleString) {
+            return SCValdiResultFailure(@"customUnderlineStyle must be a string");
+        }
+
+        NSError *error = nil;
+        SCValdiCustomUnderlineStyle *style = [SCValdiCustomUnderlineStyle styleWithString:styleString error:&error];
+        if (!style) {
+            return SCValdiResultFailure(error.localizedDescription ?: @"Invalid customUnderlineStyle");
+        }
+
+        return SCValdiResultSuccessWithData(style);
     }];
 
     [attributesBinder registerPreprocessorForAttribute:@"font" enableCache:YES withBlock:^id(id value) {

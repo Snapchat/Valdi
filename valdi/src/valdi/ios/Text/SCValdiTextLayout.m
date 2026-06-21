@@ -121,6 +121,73 @@
                                      inTextContainer:_textContainer];
 }
 
+- (NSArray<NSValue *> *)underlineRectsForRange:(NSRange)range
+                                 inDrawingRect:(CGRect)rect
+                                     lineWidth:(CGFloat)lineWidth
+                               underlineOffset:(CGFloat)underlineOffset
+{
+    if (range.length == 0 || range.location == NSNotFound || range.location >= _textStorage.length) {
+        return @[];
+    }
+
+    [self ensureLayout];
+
+    NSRange clampedRange = NSIntersectionRange(range, NSMakeRange(0, _textStorage.length));
+    CGRect drawRect = [self _resolveDrawRectWithOrigin:rect.origin];
+    NSMutableArray<NSValue *> *rects = [NSMutableArray array];
+
+    [_textStorage enumerateAttribute:NSFontAttributeName
+                             inRange:clampedRange
+                             options:NSAttributedStringEnumerationLongestEffectiveRangeNotRequired
+                          usingBlock:^(id value, NSRange fontRange, BOOL *stop) {
+        (void)stop;
+
+        UIFont *font = [value isKindOfClass:[UIFont class]] ? value : nil;
+        NSRange characterRun = NSIntersectionRange(clampedRange, fontRange);
+        if (characterRun.length == 0) {
+            return;
+        }
+
+        NSRange glyphRun = [_layoutManager glyphRangeForCharacterRange:characterRun actualCharacterRange:nil];
+        if (glyphRun.length == 0) {
+            return;
+        }
+
+        [_layoutManager enumerateLineFragmentsForGlyphRange:glyphRun usingBlock:^(
+            CGRect lineRect,
+            CGRect usedRect,
+            NSTextContainer *textContainer,
+            NSRange lineGlyphRange,
+            BOOL *lineStop
+        ) {
+            (void)usedRect;
+            (void)lineStop;
+
+            NSRange runOnLine = NSIntersectionRange(glyphRun, lineGlyphRange);
+            if (runOnLine.length == 0) {
+                return;
+            }
+
+            CGRect boundingRect = [_layoutManager boundingRectForGlyphRange:runOnLine inTextContainer:textContainer];
+            if (CGRectIsEmpty(boundingRect)) {
+                return;
+            }
+
+            CGPoint glyphLocation = [_layoutManager locationForGlyphAtIndex:runOnLine.location];
+            CGFloat baselineY = CGRectGetMinY(lineRect) + glyphLocation.y;
+            CGFloat descentDistance = font ? -font.descender : 0;
+            CGFloat underlineCenterY = baselineY + descentDistance / 2.0 + underlineOffset;
+            CGRect underlineRect = CGRectMake(CGRectGetMinX(boundingRect) + drawRect.origin.x,
+                                              underlineCenterY - lineWidth / 2.0 + drawRect.origin.y,
+                                              CGRectGetWidth(boundingRect),
+                                              lineWidth);
+            [rects addObject:[NSValue valueWithCGRect:underlineRect]];
+        }];
+    }];
+
+    return rects;
+}
+
 + (CGRect)boundingRectWithAttributedString:(NSAttributedString *)attributedString
                                    maxSize:(CGSize)maxSize
                           maxNumberOfLines:(NSUInteger)maxNumberOfLines

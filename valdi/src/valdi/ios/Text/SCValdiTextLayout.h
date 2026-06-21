@@ -42,6 +42,15 @@ NS_ASSUME_NONNULL_BEGIN
 - (CGRect)boundingRectForRange:(NSRange)range;
 
 /**
+ Return the per-line underline rects for the given range of characters in the
+ same coordinate space used by drawInRect:.
+ */
+- (NSArray<NSValue *> *)underlineRectsForRange:(NSRange)range
+                                 inDrawingRect:(CGRect)rect
+                                     lineWidth:(CGFloat)lineWidth
+                               underlineOffset:(CGFloat)underlineOffset;
+
+/**
  Return the bounding rect for the given attributed string, constrained to the
  given maxSize and max number of lines.
  */

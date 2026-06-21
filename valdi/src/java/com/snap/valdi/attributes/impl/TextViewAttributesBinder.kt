@@ -9,6 +9,7 @@ import com.snap.valdi.attributes.AttributesBindingContext
 import com.snap.valdi.attributes.conversions.ColorConversions
 import com.snap.valdi.attributes.impl.animations.ValdiAnimator
 import com.snap.valdi.attributes.impl.gradients.ValdiGradient
+import com.snap.valdi.attributes.impl.richtext.CustomUnderlineStyle
 import com.snap.valdi.attributes.impl.richtext.RichTextConverter
 import com.snap.valdi.attributes.impl.richtext.FontAttributes
 import com.snap.valdi.attributes.impl.richtext.TextViewHelper
@@ -43,6 +44,7 @@ class TextViewAttributesBinder(
             CompositeAttributePart("letterSpacing", AttributeType.DOUBLE, true, true),
             CompositeAttributePart("adjustsFontSizeToFitWidth", AttributeType.BOOLEAN, true, false),
             CompositeAttributePart("minimumScaleFactor", AttributeType.DOUBLE, true, false),
+            CompositeAttributePart("customUnderlineStyle", AttributeType.STRING, true, false),
         )
     }
 
@@ -64,6 +66,11 @@ class TextViewAttributesBinder(
         val letterSpacing = valuesArray[7] as? Double
         val adjustsFontSizeToFitWidth = valuesArray[8] as? Boolean
         val minimumScaleFactor = valuesArray[9] as? Double
+        val customUnderlineStyle = when (val rawCustomUnderlineStyle = valuesArray[10]) {
+            is CustomUnderlineStyle -> rawCustomUnderlineStyle
+            is String -> CustomUnderlineStyle.parse(rawCustomUnderlineStyle)
+            else -> null
+        }
 
         val attributes = defaultAttributes.copy()
         if (color != null) {
@@ -88,8 +95,14 @@ class TextViewAttributesBinder(
         attributes.letterSpacing = letterSpacing?.toFloat()
         attributes.adjustsFontSizeToFitWidth = adjustsFontSizeToFitWidth
         attributes.minimumScaleFactor = minimumScaleFactor?.toFloat()
+        attributes.customUnderlineStyle = customUnderlineStyle
 
         return attributes
+    }
+
+    fun preprocessCustomUnderlineStyle(value: Any?): Any {
+        val styleString = value as? String ?: throw AttributeError("customUnderlineStyle must be a string")
+        return CustomUnderlineStyle.parse(styleString)
     }
 
     private fun getTextViewHelper(view: TextView): TextViewHelper {
@@ -191,6 +204,7 @@ class TextViewAttributesBinder(
 
     override fun bindAttributes(attributesBindingContext: AttributesBindingContext<TextView>) {
         attributesBindingContext.bindCompositeAttribute("fontAttributes", FONT_ATTRIBUTES_PARTS, this::applyFontAttributes, this::resetFontAttributes)
+        attributesBindingContext.registerPreprocessor("customUnderlineStyle", true, this::preprocessCustomUnderlineStyle)
         attributesBindingContext.registerPreprocessor("fontAttributes", true, this::preprocessFontAttributes)
 
         attributesBindingContext.bindTextAttribute("value", true, this::applyValue, this::resetValue)

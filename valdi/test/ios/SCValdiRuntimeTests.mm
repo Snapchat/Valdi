@@ -15,6 +15,7 @@
 #import "valdi/ios/Text/NSAttributedString+Valdi.h"
 #import "valdi/ios/Text/SCValdiFont.h"
 #import "valdi/ios/Text/SCValdiFontAttributes.h"
+#import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
 #import "valdi/ios/Gestures/SCValdiGestureRecognizers.h"
 #import "valdi/ios/Utils/SCValdiImageFilter.h"
 #import "valdi/runtime/Utils/AsyncGroup.hpp"
@@ -513,6 +514,65 @@
     [titleView layoutIfNeeded];
 
     XCTAssertEqualObjects(@"Welcome to Unit Test!", titleView.text);
+}
+
+- (void)testCustomUnderlineStyleParser
+{
+    NSError *error = nil;
+    SCValdiCustomUnderlineStyle *style = [SCValdiCustomUnderlineStyle styleWithString:@"1 1 1 -2" error:&error];
+
+    XCTAssertNotNil(style);
+    XCTAssertNil(error);
+    XCTAssertEqualWithAccuracy(1.0, style.height, 0.0001);
+    XCTAssertEqualWithAccuracy(1.0, style.onWidth, 0.0001);
+    XCTAssertEqualWithAccuracy(1.0, style.offWidth, 0.0001);
+    XCTAssertEqualWithAccuracy(-2.0, style.offset, 0.0001);
+    XCTAssertTrue(style.patterned);
+
+    style = [SCValdiCustomUnderlineStyle styleWithString:@"1 0 0 -2" error:&error];
+    XCTAssertNotNil(style);
+    XCTAssertFalse(style.patterned);
+
+    XCTAssertNil([SCValdiCustomUnderlineStyle styleWithString:@"1 1 1 -2 3" error:&error]);
+    XCTAssertNotNil(error);
+    XCTAssertNil([SCValdiCustomUnderlineStyle styleWithString:@"0 1 1 -2" error:&error]);
+    XCTAssertNotNil(error);
+    XCTAssertNil([SCValdiCustomUnderlineStyle styleWithString:@"1 0 1 -2" error:&error]);
+    XCTAssertNotNil(error);
+    XCTAssertNil([SCValdiCustomUnderlineStyle styleWithString:@"1 -1 1 -2" error:&error]);
+    XCTAssertNotNil(error);
+    XCTAssertNil([SCValdiCustomUnderlineStyle styleWithString:@"1 nope 1 -2" error:&error]);
+    XCTAssertNotNil(error);
+}
+
+- (void)testCanSetCustomUnderlineStyleThroughViewNode
+{
+    __block SCCValdiTestIntegrationTests *rootView;
+    [self getRuntimeWithBlock:^(id<SCValdiRuntimeProtocol> runtime) {
+        SCCValdiTestViewModel *viewModel = [[SCCValdiTestViewModel alloc] initWithHeaderTitle:@"Hello World!" scrollable:NO entries:@[]];
+        SCCValdiTestContext *componentContext = [[SCCValdiTestContext alloc] initWithListener:[SCCValdiTestListenerImpl new] onTap:^(double index) {}];
+        rootView = [[SCCValdiTestIntegrationTests alloc] initWithViewModel:viewModel componentContext:componentContext runtime:self.runtime];
+    }];
+
+    [rootView.valdiContext waitUntilRenderCompletedSyncWithFlush:YES];
+
+    rootView.frame = CGRectMake(0, 0, 400, 800);
+    [rootView layoutIfNeeded];
+
+    SCValdiLabel *titleView = [rootView.subviews firstObject];
+    XCTAssertNotNil(titleView);
+    XCTAssertEqual([SCValdiLabel class], [titleView class]);
+
+    [titleView.valdiViewNode setValue:@"1 1 1 -2" forValdiAttribute:@"customUnderlineStyle"];
+    [titleView layoutIfNeeded];
+
+    SCValdiCustomUnderlineStyle *style = [titleView valueForKey:@"customUnderlineStyle"];
+    XCTAssertNotNil(style);
+    XCTAssertEqual([SCValdiCustomUnderlineStyle class], [style class]);
+    XCTAssertEqualWithAccuracy(1.0, style.height, 0.0001);
+    XCTAssertEqualWithAccuracy(1.0, style.onWidth, 0.0001);
+    XCTAssertEqualWithAccuracy(1.0, style.offWidth, 0.0001);
+    XCTAssertEqualWithAccuracy(-2.0, style.offset, 0.0001);
 }
 
 - (void)testDestroysViewOnDealloc

@@ -88,6 +88,30 @@ enum TextLayoutDecorationStyle {
     TextLayoutDecorationStyleDotted,
 };
 
+struct TextCustomUnderlineStyle {
+    Scalar height = 0;
+    Scalar onWidth = 0;
+    Scalar offWidth = 0;
+    Scalar offset = 0;
+
+    constexpr TextCustomUnderlineStyle() = default;
+    constexpr TextCustomUnderlineStyle(Scalar height, Scalar onWidth, Scalar offWidth, Scalar offset)
+        : height(height), onWidth(onWidth), offWidth(offWidth), offset(offset) {}
+
+    constexpr bool isPatterned() const {
+        return onWidth > 0 && offWidth > 0;
+    }
+
+    constexpr bool operator==(const TextCustomUnderlineStyle& other) const {
+        return height == other.height && onWidth == other.onWidth && offWidth == other.offWidth &&
+               offset == other.offset;
+    }
+
+    constexpr bool operator!=(const TextCustomUnderlineStyle& other) const {
+        return !(*this == other);
+    }
+};
+
 enum TextLayoutVisualEntryKind {
     TextLayoutVisualEntryKindBackground,
     TextLayoutVisualEntryKindDecoration,
@@ -118,6 +142,7 @@ struct TextLayoutVisualEntry {
     TextLayoutVisualEntryKind kind = TextLayoutVisualEntryKindDecoration;
     TextLayoutDecorationStyle style = TextLayoutDecorationStyleSolid;
     BorderRadius borderRadius;
+    std::optional<TextCustomUnderlineStyle> customUnderlineStyle;
 
     TextLayoutVisualEntry() = default;
     TextLayoutVisualEntry(const Rect& bounds,
@@ -125,8 +150,15 @@ struct TextLayoutVisualEntry {
                           std::optional<Color> color,
                           TextLayoutVisualEntryKind kind,
                           TextLayoutDecorationStyle style,
-                          BorderRadius borderRadius = BorderRadius())
-        : bounds(bounds), predraw(predraw), color(color), kind(kind), style(style), borderRadius(borderRadius) {}
+                          BorderRadius borderRadius = BorderRadius(),
+                          std::optional<TextCustomUnderlineStyle> customUnderlineStyle = std::nullopt)
+        : bounds(bounds),
+          predraw(predraw),
+          color(color),
+          kind(kind),
+          style(style),
+          borderRadius(borderRadius),
+          customUnderlineStyle(customUnderlineStyle) {}
 
     TextLayoutVisualEntry(const Rect& bounds,
                           bool predraw,

@@ -50,6 +50,7 @@ struct TextLayoutSpecs {
     TextLayoutLineHeight lineHeight;
     Scalar letterSpacing;
     TextDecoration textDecoration;
+    std::optional<TextCustomUnderlineStyle> customUnderlineStyle;
     size_t colorIndex;
     std::optional<size_t> backgroundStyleIndex;
 
@@ -59,6 +60,7 @@ struct TextLayoutSpecs {
                            TextLayoutLineHeight lineHeight,
                            Scalar letterSpacing,
                            TextDecoration textDecoration,
+                           std::optional<TextCustomUnderlineStyle> customUnderlineStyle,
                            size_t colorIndex,
                            std::optional<size_t> backgroundStyleIndex)
         : font(font),
@@ -66,6 +68,7 @@ struct TextLayoutSpecs {
           lineHeight(lineHeight),
           letterSpacing(letterSpacing),
           textDecoration(textDecoration),
+          customUnderlineStyle(customUnderlineStyle),
           colorIndex(colorIndex),
           backgroundStyleIndex(backgroundStyleIndex) {}
 
@@ -102,6 +105,9 @@ struct TextLayoutBuilderSegment {
 
     // The decoration type to draw on top of the segment
     TextDecoration textDecoration;
+
+    // Optional custom underline geometry for underline decorations.
+    std::optional<TextCustomUnderlineStyle> customUnderlineStyle;
 
     // The resolved font of the segment
     Ref<Font> font;
@@ -206,7 +212,8 @@ public:
                   TextDecoration textDecoration,
                   Ref<Valdi::RefCountable> attachment = nullptr,
                   std::optional<Color> color = std::nullopt,
-                  std::optional<TextBackgroundStyle> backgroundStyle = std::nullopt);
+                  std::optional<TextBackgroundStyle> backgroundStyle = std::nullopt,
+                  std::optional<TextCustomUnderlineStyle> customUnderlineStyle = std::nullopt);
 
     void setIncludeSegments(bool includeSegments);
 

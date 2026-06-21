@@ -37,8 +37,19 @@ static Path makeTextDecorationPath(const Rect& bounds) {
 static void drawTextDecoration(DrawingContext& drawingContext,
                                Paint& paint,
                                TextLayoutDecorationStyle style,
+                               const std::optional<TextCustomUnderlineStyle>& customUnderlineStyle,
                                const Rect& bounds) {
-    if (style == TextLayoutDecorationStyleDashed) {
+    if (customUnderlineStyle) {
+        paint.setStroke(true);
+        paint.setStrokeWidth(customUnderlineStyle->height);
+        paint.setStrokeCap(PaintStrokeCapButt);
+        if (customUnderlineStyle->isPatterned()) {
+            paint.setStrokeDashPattern(customUnderlineStyle->onWidth, customUnderlineStyle->offWidth);
+        }
+
+        auto path = makeTextDecorationPath(bounds);
+        drawingContext.drawPaint(paint, path);
+    } else if (style == TextLayoutDecorationStyleDashed) {
         auto strokeWidth = std::max<Scalar>(bounds.height(), 1.0f);
         paint.setStroke(true);
         paint.setStrokeWidth(strokeWidth);
@@ -126,7 +137,7 @@ void TextLayer::drawTextVisualEntriesShadows(DrawingContext& drawingContext,
         bounds.offsetX(_textShadow.offsetX);
         bounds.offsetY(_textShadow.offsetY);
 
-        drawTextDecoration(drawingContext, resolvedPaint, visualEntry.style, bounds);
+        drawTextDecoration(drawingContext, resolvedPaint, visualEntry.style, visualEntry.customUnderlineStyle, bounds);
     }
 }
 
@@ -156,7 +167,8 @@ void TextLayer::drawTextVisualEntries(DrawingContext& drawingContext,
             resolvedPaint.setColor(visualEntry.color.value());
         }
 
-        drawTextDecoration(drawingContext, resolvedPaint, visualEntry.style, visualEntry.bounds);
+        drawTextDecoration(
+            drawingContext, resolvedPaint, visualEntry.style, visualEntry.customUnderlineStyle, visualEntry.bounds);
     }
 }
 
@@ -325,6 +337,17 @@ TextDecoration TextLayer::getTextDecoration() const {
     return _textDecoration;
 }
 
+void TextLayer::setCustomUnderlineStyle(std::optional<TextCustomUnderlineStyle> customUnderlineStyle) {
+    if (_customUnderlineStyle != customUnderlineStyle) {
+        _customUnderlineStyle = customUnderlineStyle;
+        setNeedsTextLayout();
+    }
+}
+
+const std::optional<TextCustomUnderlineStyle>& TextLayer::getCustomUnderlineStyle() const {
+    return _customUnderlineStyle;
+}
+
 void TextLayer::setTextOverflow(TextOverflow textOveflow) {
     if (_textOverflow != textOveflow) {
         _textOverflow = textOveflow;
@@ -488,7 +511,8 @@ TextLayout& TextLayer::getTextLayout(Size size, bool respectDynamicType, Scalar 
                                                 /* includeTextBlob*/ true,
                                                 displayScale,
                                                 dynamicTypeScale,
-                                                getResources()->getFontManager());
+                                                getResources()->getFontManager(),
+                                                _customUnderlineStyle);
 
         if (hasOnTapAttributeInTextLayout(*_textLayout)) {
             addOnTapGestureRecognizer();
@@ -547,7 +571,8 @@ Size TextLayer::measureText(Size maxSize,
                             bool respectDynamicType,
                             Scalar displayScale,
                             Scalar dynamicTypeScale,
-                            const Ref<FontManager>& fontManager) {
+                            const Ref<FontManager>& fontManager,
+                            std::optional<TextCustomUnderlineStyle> customUnderlineStyle) {
     auto textLayout = makeTextLayout(maxSize,
                                      text,
                                      attributedText,
@@ -565,7 +590,8 @@ Size TextLayer::measureText(Size maxSize,
                                      /* includeTextBlob*/ false,
                                      displayScale,
                                      dynamicTypeScale,
-                                     fontManager);
+                                     fontManager,
+                                     customUnderlineStyle);
 
     return textLayout->getBounds().size();
 }
@@ -587,7 +613,8 @@ Ref<TextLayout> TextLayer::makeTextLayout(Size maxSize,
                                           bool includeTextBlob,
                                           Scalar displayScale,
                                           Scalar dynamicTypeScale,
-                                          const Ref<FontManager>& fontManager) {
+                                          const Ref<FontManager>& fontManager,
+                                          std::optional<TextCustomUnderlineStyle> customUnderlineStyle) {
     if (!adjustsFontSizeToFitWidth || numberOfLines != 1) {
         return makeTextLayoutUnscaled(maxSize,
                                       text,
@@ -605,7 +632,8 @@ Ref<TextLayout> TextLayer::makeTextLayout(Size maxSize,
                                       includeTextBlob,
                                       displayScale,
                                       dynamicTypeScale,
-                                      fontManager);
+                                      fontManager,
+                                      customUnderlineStyle);
     }
 
     auto currentScale = 1.0;
@@ -628,7 +656,8 @@ Ref<TextLayout> TextLayer::makeTextLayout(Size maxSize,
                                              includeTextBlob,
                                              displayScale,
                                              dynamicTypeScale,
-                                             fontManager);
+                                             fontManager,
+                                             customUnderlineStyle);
 
         if (layout->fitsInMaxSize() || currentScale <= minimumScaleFactor) {
             return layout;
@@ -664,7 +693,8 @@ Ref<TextLayout> TextLayer::makeTextLayoutUnscaled(Size maxSize,
                                                   bool includeTextBlob,
                                                   Scalar displayScale,
                                                   Scalar dynamicTypeScale,
-                                                  const Ref<FontManager>& fontManager) {
+                                                  const Ref<FontManager>& fontManager,
+                                                  std::optional<TextCustomUnderlineStyle> customUnderlineStyle) {
     TextLayoutBuilder builder(
         textAlign, textOverflow, maxSize, numberOfLines, fontManager, isRightToLeft, displayScale, false);
     builder.setIncludeTextBlob(includeTextBlob);
@@ -703,7 +733,8 @@ Ref<TextLayout> TextLayer::makeTextLayoutUnscaled(Size maxSize,
                            resolvedTextDecoration,
                            style.onTap,
                            style.color,
-                           backgroundStyle);
+                           backgroundStyle,
+                           customUnderlineStyle);
         }
     } else if (!text.isEmpty() && textFont != nullptr) {
         auto resolvedFontScale =
@@ -714,7 +745,9 @@ Ref<TextLayout> TextLayer::makeTextLayoutUnscaled(Size maxSize,
                        letterSpacing,
                        textDecoration,
                        nullptr,
-                       std::nullopt);
+                       std::nullopt,
+                       std::nullopt,
+                       customUnderlineStyle);
     }
 
     return builder.build();

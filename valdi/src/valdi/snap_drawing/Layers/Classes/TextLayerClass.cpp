@@ -11,8 +11,72 @@
 #include "valdi/snap_drawing/Utils/AttributesBinderUtils.hpp"
 #include "valdi_core/cpp/Attributes/TextAttributeValue.hpp"
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
+#include "valdi_core/cpp/Utils/TextParser.hpp"
+#include "valdi_core/cpp/Utils/ValdiObject.hpp"
+
+#include <array>
+#include <cmath>
 
 namespace snap::drawing {
+
+class TextCustomUnderlineStyleValue : public Valdi::ValdiObject {
+public:
+    explicit TextCustomUnderlineStyleValue(TextCustomUnderlineStyle style) : style(style) {}
+
+    TextCustomUnderlineStyle style;
+
+    VALDI_CLASS_HEADER_IMPL(TextCustomUnderlineStyleValue)
+};
+
+static Valdi::Result<TextCustomUnderlineStyle> parseTextCustomUnderlineStyle(const Valdi::StringBox& styleString) {
+    Valdi::TextParser parser(styleString.toStringView());
+    auto height = parser.parseDouble();
+    if (!height) {
+        return parser.getError();
+    }
+
+    auto onWidth = parser.parseDouble();
+    if (!onWidth) {
+        return parser.getError();
+    }
+
+    auto offWidth = parser.parseDouble();
+    if (!offWidth) {
+        return parser.getError();
+    }
+
+    auto offset = parser.parseDouble();
+    if (!offset) {
+        return parser.getError();
+    }
+
+    parser.tryParseWhitespaces();
+    if (!parser.ensureIsAtEnd()) {
+        return parser.getError();
+    }
+
+    std::array<double, 4> values = {height.value(), onWidth.value(), offWidth.value(), offset.value()};
+    for (auto value : values) {
+        if (!std::isfinite(value)) {
+            return Valdi::Error("customUnderlineStyle values must be finite numbers");
+        }
+    }
+
+    if (values[0] <= 0) {
+        return Valdi::Error("customUnderlineStyle height must be positive");
+    }
+
+    auto solid = values[1] == 0 && values[2] == 0;
+    auto patterned = values[1] > 0 && values[2] > 0;
+    if (!solid && !patterned) {
+        return Valdi::Error("customUnderlineStyle onWidth and offWidth must both be positive, or both be 0");
+    }
+
+    return TextCustomUnderlineStyle(static_cast<Scalar>(values[0]),
+                                    static_cast<Scalar>(values[1]),
+                                    static_cast<Scalar>(values[2]),
+                                    static_cast<Scalar>(values[3]));
+}
 
 TextLayerClass::TextLayerClass(const Ref<Resources>& resources, const Ref<LayerClass>& parentClass)
     : ILayerClass(resources, "SCValdiLabel", "com.snap.valdi.views.ValdiTextView", parentClass, true) {}
@@ -87,7 +151,8 @@ Size TextLayerClass::onMeasure(const Valdi::Value& attributes, Size maxSize, boo
                                            respectDynamicType,
                                            displayScale,
                                            dynamicTypeScale,
-                                           fontManager);
+                                           fontManager,
+                                           std::nullopt);
 
     return Size::make(textSize.width / displayScale, textSize.height / displayScale);
 }
@@ -102,6 +167,7 @@ void TextLayerClass::bindAttributes(Valdi::AttributesBindingContext& binder) {
 
     BIND_STRING_ATTRIBUTE(TextLayer, textAlign, false);
     BIND_STRING_ATTRIBUTE(TextLayer, textDecoration, false);
+    BIND_UNTYPED_ATTRIBUTE(TextLayer, customUnderlineStyle, false);
     BIND_STRING_ATTRIBUTE(TextLayer, textOverflow, true);
 
     BIND_INT_ATTRIBUTE(TextLayer, numberOfLines, true);
@@ -119,6 +185,7 @@ void TextLayerClass::bindAttributes(Valdi::AttributesBindingContext& binder) {
     BIND_UNTYPED_ATTRIBUTE(TextLayer, textGradient, false);
 
     REGISTER_PREPROCESSOR(font, true);
+    REGISTER_PREPROCESSOR(customUnderlineStyle, true);
 }
 
 Valdi::Result<Valdi::Void> TextLayerClass::applyTextAttribute(TextLayer& textLayer, const Valdi::Value& value) {
@@ -201,6 +268,21 @@ Valdi::Result<Valdi::Void> TextLayerClass::applyTextDecorationAttribute(TextLaye
 
 void TextLayerClass::resetTextDecorationAttribute(TextLayer& textLayer) {
     textLayer.setTextDecoration(TextDecorationNone);
+}
+
+Valdi::Result<Valdi::Void> TextLayerClass::applyCustomUnderlineStyleAttribute(TextLayer& textLayer,
+                                                                              const Valdi::Value& value) {
+    auto styleValue = Valdi::castOrNull<TextCustomUnderlineStyleValue>(value.getValdiObject());
+    if (styleValue == nullptr) {
+        return Valdi::Error("Invalid customUnderlineStyle");
+    }
+
+    textLayer.setCustomUnderlineStyle(styleValue->style);
+    return Valdi::Void();
+}
+
+void TextLayerClass::resetCustomUnderlineStyleAttribute(TextLayer& textLayer) {
+    textLayer.setCustomUnderlineStyle(std::nullopt);
 }
 
 Valdi::Result<Valdi::Void> TextLayerClass::applyTextOverflowAttribute(TextLayer& textLayer, const String& value) {
@@ -350,6 +432,12 @@ IMPLEMENT_TEXT_ATTRIBUTE(TextLayer, value, { return applyTextAttribute(view, val
 
 IMPLEMENT_UNTYPED_ATTRIBUTE(TextLayer, font, { return applyFontAttribute(view, value); }, { resetFontAttribute(view); })
 
+IMPLEMENT_UNTYPED_ATTRIBUTE(
+    TextLayer,
+    customUnderlineStyle,
+    { return applyCustomUnderlineStyleAttribute(view, value); },
+    { resetCustomUnderlineStyleAttribute(view); })
+
 // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
 Valdi::Result<Valdi::Value> TextLayerClass::preprocess_font(const Valdi::Value& value) {
     auto displayScale = getResources()->getDisplayScale();
@@ -376,6 +464,20 @@ Valdi::Result<Valdi::Value> TextLayerClass::preprocess_font(const Valdi::Value& 
     }
 
     return Valdi::Value();
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+Valdi::Result<Valdi::Value> TextLayerClass::preprocess_customUnderlineStyle(const Valdi::Value& value) {
+    if (!value.isString()) {
+        return Valdi::Error("customUnderlineStyle must be a string");
+    }
+
+    auto style = parseTextCustomUnderlineStyle(value.toStringBox());
+    if (!style) {
+        return style.moveError();
+    }
+
+    return Valdi::Value(Valdi::makeShared<TextCustomUnderlineStyleValue>(style.moveValue()));
 }
 
 IMPLEMENT_COLOR_ATTRIBUTE(

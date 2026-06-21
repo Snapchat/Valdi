@@ -39,6 +39,9 @@ public:
     Valdi::Result<Valdi::Void> applyTextDecorationAttribute(TextLayer& textLayer, const String& value);
     void resetTextDecorationAttribute(TextLayer& textLayer);
 
+    Valdi::Result<Valdi::Void> applyCustomUnderlineStyleAttribute(TextLayer& textLayer, const Valdi::Value& value);
+    void resetCustomUnderlineStyleAttribute(TextLayer& textLayer);
+
     Valdi::Result<Valdi::Void> applyTextOverflowAttribute(TextLayer& textLayer, const String& value);
     void resetTextOverflowAttribute(TextLayer& textLayer);
 
@@ -78,6 +81,8 @@ public:
 
     DECLARE_STRING_ATTRIBUTE(TextLayer, textDecoration)
 
+    DECLARE_UNTYPED_ATTRIBUTE(TextLayer, customUnderlineStyle)
+
     DECLARE_STRING_ATTRIBUTE(TextLayer, textOverflow)
 
     DECLARE_BOOLEAN_ATTRIBUTE(TextLayer, adjustsFontSizeToFitWidth)
@@ -96,6 +101,9 @@ public:
 
     // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
     Valdi::Result<Valdi::Value> preprocess_font(const Valdi::Value& value);
+
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    Valdi::Result<Valdi::Value> preprocess_customUnderlineStyle(const Valdi::Value& value);
 };
 
 } // namespace snap::drawing

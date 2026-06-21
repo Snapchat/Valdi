@@ -526,6 +526,105 @@ TEST(TextLayout, canLayoutDottedUnderlineDecoration) {
                 0.0001f);
 }
 
+TEST(TextLayout, canLayoutCustomUnderlineDecoration) {
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(10000, 10000);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 1, testContainer.fontManager, false, 1.0f);
+    TextCustomUnderlineStyle style(1.0f, 1.0f, 1.0f, -2.0f);
+
+    builder.append("Hello",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationDottedUnderline,
+                   nullptr,
+                   std::nullopt,
+                   std::nullopt,
+                   style);
+
+    auto layout = builder.build();
+    const auto& visualEntries = layout->getVisualEntries();
+    const auto& metrics = testContainer.primaryFont->metrics();
+
+    ASSERT_EQ(static_cast<size_t>(1), visualEntries.size());
+    ASSERT_EQ(TextLayoutVisualEntryKindDecoration, visualEntries[0].kind);
+    ASSERT_TRUE(visualEntries[0].customUnderlineStyle.has_value());
+    ASSERT_EQ(style, visualEntries[0].customUnderlineStyle.value());
+    ASSERT_NEAR(1.0f, visualEntries[0].bounds.height(), 0.0001f);
+    ASSERT_NEAR(-metrics.ascent + metrics.descent / 2.0f - 2.0f,
+                visualEntries[0].bounds.y() + visualEntries[0].bounds.height() / 2.0f,
+                0.0001f);
+}
+
+TEST(TextLayout, customUnderlineHeightDoesNotMoveDecorationCenter) {
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(10000, 10000);
+    TextLayoutBuilder thinBuilder(TextAlignLeft, TextOverflowEllipsis, maxSize, 1, testContainer.fontManager, false, 1.0f);
+    TextLayoutBuilder thickBuilder(TextAlignLeft, TextOverflowEllipsis, maxSize, 1, testContainer.fontManager, false, 1.0f);
+    TextCustomUnderlineStyle thinStyle(1.0f, 0.0f, 0.0f, -2.0f);
+    TextCustomUnderlineStyle thickStyle(8.0f, 0.0f, 0.0f, -2.0f);
+
+    thinBuilder.append("Hello",
+                       testContainer.primaryFont,
+                       TextLayoutLineHeight::multiple(1.0),
+                       0.0,
+                       TextDecorationUnderline,
+                       nullptr,
+                       std::nullopt,
+                       std::nullopt,
+                       thinStyle);
+    thickBuilder.append("Hello",
+                        testContainer.primaryFont,
+                        TextLayoutLineHeight::multiple(1.0),
+                        0.0,
+                        TextDecorationUnderline,
+                        nullptr,
+                        std::nullopt,
+                        std::nullopt,
+                        thickStyle);
+
+    auto thinLayout = thinBuilder.build();
+    auto thickLayout = thickBuilder.build();
+    const auto& thinEntries = thinLayout->getVisualEntries();
+    const auto& thickEntries = thickLayout->getVisualEntries();
+
+    ASSERT_EQ(static_cast<size_t>(1), thinEntries.size());
+    ASSERT_EQ(static_cast<size_t>(1), thickEntries.size());
+    ASSERT_NEAR(1.0f, thinEntries[0].bounds.height(), 0.0001f);
+    ASSERT_NEAR(8.0f, thickEntries[0].bounds.height(), 0.0001f);
+    ASSERT_NEAR(thinEntries[0].bounds.y() + thinEntries[0].bounds.height() / 2.0f,
+                thickEntries[0].bounds.y() + thickEntries[0].bounds.height() / 2.0f,
+                0.0001f);
+}
+
+TEST(TextLayout, canLayoutCustomSolidUnderlineDecoration) {
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(10000, 10000);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 1, testContainer.fontManager, false, 1.0f);
+    TextCustomUnderlineStyle style(1.0f, 0.0f, 0.0f, -2.0f);
+
+    builder.append("Hello",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationUnderline,
+                   nullptr,
+                   std::nullopt,
+                   std::nullopt,
+                   style);
+
+    auto layout = builder.build();
+    const auto& visualEntries = layout->getVisualEntries();
+
+    ASSERT_EQ(static_cast<size_t>(1), visualEntries.size());
+    ASSERT_TRUE(visualEntries[0].customUnderlineStyle.has_value());
+    ASSERT_FALSE(visualEntries[0].customUnderlineStyle->isPatterned());
+    ASSERT_NEAR(1.0f, visualEntries[0].bounds.height(), 0.0001f);
+}
+
 TEST(TextLayout, canLayoutMultipleLinesWithExplicitNewLines) {
     TextLayoutTestContainer testContainer;
 

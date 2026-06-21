@@ -31,6 +31,7 @@ class CustomTypefaceSpan(val typeface: Typeface) : MetricAffectingSpan() {
 
 data class FontAttributes(
     var textDecoration: TextDecoration?,
+    var customUnderlineStyle: CustomUnderlineStyle?,
     var fontSize: Float,
     var fontName: String?,
     var lineHeightMultiple: Float?,
@@ -55,6 +56,7 @@ data class FontAttributes(
     companion object {
         val default = FontAttributes(
             null,
+            null,
             12f,
             null,
             null,
@@ -71,6 +73,7 @@ data class FontAttributes(
             0F,
             null)
         val buttonDefault = FontAttributes(
+            null,
             null,
             12f,
             null,
@@ -110,9 +113,9 @@ data class FontAttributes(
 
         if (textDecoration != null) {
             when (textDecoration!!) {
-                TextDecoration.UNDERLINE -> closure(UnderlineSpan())
-                TextDecoration.DASHED_UNDERLINE -> closure(DashedUnderlineSpan())
-                TextDecoration.DOTTED_UNDERLINE -> closure(DottedUnderlineSpan())
+                TextDecoration.UNDERLINE -> closure(customUnderlineStyle?.let { CustomUnderlineSpan(it) } ?: UnderlineSpan())
+                TextDecoration.DASHED_UNDERLINE -> closure(customUnderlineStyle?.let { CustomUnderlineSpan(it) } ?: DashedUnderlineSpan())
+                TextDecoration.DOTTED_UNDERLINE -> closure(customUnderlineStyle?.let { CustomUnderlineSpan(it) } ?: DottedUnderlineSpan())
                 TextDecoration.STRIKETHROUGH -> closure(StrikethroughSpan())
                 TextDecoration.NONE -> {}
             }

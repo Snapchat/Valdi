@@ -64,6 +64,9 @@ public:
     void setTextDecoration(TextDecoration textDecoration);
     TextDecoration getTextDecoration() const;
 
+    void setCustomUnderlineStyle(std::optional<TextCustomUnderlineStyle> customUnderlineStyle);
+    const std::optional<TextCustomUnderlineStyle>& getCustomUnderlineStyle() const;
+
     void setTextShadow(Color color, Scalar radius, float opacity, Scalar offsetX, Scalar offsetY);
     void resetTextShadow();
     TextShadow getTextShadow() const;
@@ -114,7 +117,8 @@ public:
                             bool respectDynamicType,
                             Scalar displayScale,
                             Scalar dynamicTypeScale,
-                            const Ref<FontManager>& fontManager);
+                            const Ref<FontManager>& fontManager,
+                            std::optional<TextCustomUnderlineStyle> customUnderlineStyle);
 
     static Ref<TextLayout> makeTextLayout(Size maxSize,
                                           const String& text,
@@ -133,7 +137,8 @@ public:
                                           bool includeTextBlob,
                                           Scalar displayScale,
                                           Scalar dynamicTypeScale,
-                                          const Ref<FontManager>& fontManager);
+                                          const Ref<FontManager>& fontManager,
+                                          std::optional<TextCustomUnderlineStyle> customUnderlineStyle);
 
     static Ref<TextLayout> makeTextLayoutUnscaled(Size maxSize,
                                                   const String& text,
@@ -151,7 +156,8 @@ public:
                                                   bool includeTextBlob,
                                                   Scalar displayScale,
                                                   Scalar dynamicTypeScale,
-                                                  const Ref<FontManager>& fontManager);
+                                                  const Ref<FontManager>& fontManager,
+                                                  std::optional<TextCustomUnderlineStyle> customUnderlineStyle);
 
 protected:
     void onDraw(DrawingContext& drawingContext) override;
@@ -165,6 +171,7 @@ private:
     Ref<AttributedTextOnTapGestureRecognizer> _attributedTextOnTapGestureRecognizer;
     TextAlign _textAlign = TextAlignLeft;
     TextDecoration _textDecoration = TextDecorationNone;
+    std::optional<TextCustomUnderlineStyle> _customUnderlineStyle;
     TextShadow _textShadow;
     TextOverflow _textOverflow = TextOverflowEllipsis;
     TextVerticalAlignment _textVerticalAlignment = TextVerticalAlignmentTop;

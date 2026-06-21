@@ -7,6 +7,7 @@ import android.graphics.PathEffect
 import android.text.Spanned
 import android.text.TextPaint
 import android.text.style.LineBackgroundSpan
+import android.text.style.MetricAffectingSpan
 
 abstract class PatternUnderlineSpan : LineBackgroundSpan {
     final override fun drawBackground(
@@ -29,8 +30,8 @@ abstract class PatternUnderlineSpan : LineBackgroundSpan {
             return
         }
 
-        val startX = left + paint.measureText(text.subSequence(start, spanStart).toString())
-        val endX = left + paint.measureText(text.subSequence(start, spanEnd).toString())
+        val startX = left + measureText(text, start, spanStart, paint)
+        val endX = left + measureText(text, start, spanEnd, paint)
         val density = resolveDensity(paint)
         val strokeWidth = resolveStrokeWidth(paint, density)
         val resolvedStartX = resolveStartX(startX, strokeWidth, density)
@@ -39,7 +40,7 @@ abstract class PatternUnderlineSpan : LineBackgroundSpan {
             return
         }
 
-        val underlineY = resolveUnderlineY(paint, baseline, strokeWidth, density)
+        val underlineY = resolveVisibleUnderlineY(paint, baseline, bottom, strokeWidth, density)
         val previousPathEffect = paint.pathEffect
         val previousStyle = paint.style
         val previousStrokeWidth = paint.strokeWidth
@@ -74,11 +75,47 @@ abstract class PatternUnderlineSpan : LineBackgroundSpan {
         return baseline + paint.fontMetrics.descent * 0.5f
     }
 
+    protected open fun resolveVisibleUnderlineY(
+        paint: Paint,
+        baseline: Int,
+        bottom: Int,
+        strokeWidth: Float,
+        density: Float
+    ): Float {
+        return resolveUnderlineY(paint, baseline, strokeWidth, density)
+            .coerceAtMost(bottom - strokeWidth / 2f)
+    }
+
     protected open fun resolvePaintStyle(): Paint.Style {
         return Paint.Style.STROKE
     }
 
-    protected abstract fun createPathEffect(strokeWidth: Float, density: Float): PathEffect
+    protected abstract fun createPathEffect(strokeWidth: Float, density: Float): PathEffect?
+
+    private fun measureText(
+        text: CharSequence,
+        start: Int,
+        end: Int,
+        paint: Paint
+    ): Float {
+        if (start >= end) {
+            return 0f
+        }
+
+        val spanned = text as? Spanned ?: return paint.measureText(text, start, end)
+        val basePaint = TextPaint(paint)
+        var measuredWidth = 0f
+        var currentStart = start
+        while (currentStart < end) {
+            val currentEnd = spanned.nextSpanTransition(currentStart, end, MetricAffectingSpan::class.java)
+            val runPaint = TextPaint(basePaint)
+            spanned.getSpans(currentStart, currentEnd, MetricAffectingSpan::class.java)
+                .forEach { span -> span.updateMeasureState(runPaint) }
+            measuredWidth += runPaint.measureText(text, currentStart, currentEnd)
+            currentStart = currentEnd
+        }
+        return measuredWidth
+    }
 
     private fun resolveDensity(paint: Paint): Float {
         val textPaintDensity = (paint as? TextPaint)?.density ?: 0f

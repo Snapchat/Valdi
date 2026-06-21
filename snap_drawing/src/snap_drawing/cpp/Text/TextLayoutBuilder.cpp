@@ -179,8 +179,14 @@ static size_t appendUniqueBackgroundStyle(std::vector<TextBackgroundStyle>& styl
 }
 
 TextLayoutSpecs TextLayoutSpecs::withFont(const Ref<Font>& newFont) const {
-    return TextLayoutSpecs(
-        newFont, attachment, lineHeight, letterSpacing, textDecoration, colorIndex, backgroundStyleIndex);
+    return TextLayoutSpecs(newFont,
+                           attachment,
+                           lineHeight,
+                           letterSpacing,
+                           textDecoration,
+                           customUnderlineStyle,
+                           colorIndex,
+                           backgroundStyleIndex);
 }
 
 LineMetrics TextLayoutLineHeight::getLineMetrics(const FontMetrics& fontMetrics) const {
@@ -229,6 +235,7 @@ void TextLayoutBuilder::appendSegment(
     segment.backgroundStyleIndex = specs.backgroundStyleIndex;
     segment.isRightToLeft = isRightToLeft;
     segment.textDecoration = specs.textDecoration;
+    segment.customUnderlineStyle = specs.customUnderlineStyle;
 }
 
 [[maybe_unused]] static void outputDebug(const ShapedGlyph* shapedGlyphs,
@@ -566,7 +573,8 @@ size_t TextLayoutBuilder::append(const std::string_view& text,
                                  TextDecoration textDecoration,
                                  Ref<Valdi::RefCountable> attachment,
                                  std::optional<Color> color,
-                                 std::optional<TextBackgroundStyle> backgroundStyle) {
+                                 std::optional<TextBackgroundStyle> backgroundStyle,
+                                 std::optional<TextCustomUnderlineStyle> customUnderlineStyle) {
     if (font == nullptr || text.empty()) {
         return 0;
     }
@@ -583,6 +591,7 @@ size_t TextLayoutBuilder::append(const std::string_view& text,
     entry.specs.lineHeight = lineHeight;
     entry.specs.letterSpacing = letterSpacing;
     entry.specs.textDecoration = textDecoration;
+    entry.specs.customUnderlineStyle = customUnderlineStyle;
     entry.specs.attachment = std::move(attachment);
     entry.specs.colorIndex = appendColor(color);
     entry.specs.backgroundStyleIndex = appendBackgroundStyle(backgroundStyle);
@@ -1251,18 +1260,28 @@ void TextLayoutBuilder::appendDecorationIfNeeded(std::vector<TextLayoutVisualEnt
         case TextDecorationDashedUnderline:
         case TextDecorationDottedUnderline: {
             const auto& metrics = segment.font->metrics();
-            const auto underlineThickness = segment.textDecoration == TextDecorationDottedUnderline
+            auto underlineThickness = segment.textDecoration == TextDecorationDottedUnderline
                 ? kDottedUnderlineStrokeWidth * _displayScale
                 : metrics.underlineThickness;
-            const auto underlinePosition = segment.textDecoration == TextDecorationDottedUnderline
+            auto underlinePosition = segment.textDecoration == TextDecorationDottedUnderline
                 ? underlineThickness + (kDottedUnderlineOffset * _displayScale) - (underlineThickness / 2.0f)
                 : metrics.underlinePosition;
+            auto customUnderlineStyle = segment.customUnderlineStyle;
+            if (customUnderlineStyle) {
+                customUnderlineStyle->height *= _displayScale;
+                customUnderlineStyle->onWidth *= _displayScale;
+                customUnderlineStyle->offWidth *= _displayScale;
+                customUnderlineStyle->offset *= _displayScale;
+                underlineThickness = customUnderlineStyle->height;
+                underlinePosition = (metrics.descent / 2.0f) + customUnderlineStyle->offset - (underlineThickness / 2.0f);
+            }
 
             auto& visualEntry = visualEntries.emplace_back();
             visualEntry.bounds =
                 Rect::makeXYWH(resolvedSegmentX, resolvedSegmentY + underlinePosition, segment.bounds.width(), underlineThickness);
             visualEntry.predraw = true;
             visualEntry.color = color;
+            visualEntry.customUnderlineStyle = customUnderlineStyle;
             if (segment.textDecoration == TextDecorationDashedUnderline) {
                 visualEntry.style = TextLayoutDecorationStyleDashed;
             } else if (segment.textDecoration == TextDecorationDottedUnderline) {

@@ -344,6 +344,8 @@ class TextViewHelper(private val view: TextView,
         }
 
         return when (attributes.textDecoration) {
+            // Plain underline can use TextView's native paint flag unless custom geometry requires a span.
+            TextDecoration.UNDERLINE -> attributes.customUnderlineStyle != null
             TextDecoration.DASHED_UNDERLINE,
             TextDecoration.DOTTED_UNDERLINE -> true
             else -> false
@@ -820,7 +822,8 @@ class TextViewHelper(private val view: TextView,
         val textDecoration = attributes.textDecoration
         if (textDecoration != null) {
             paintFlags = when (textDecoration) {
-                TextDecoration.UNDERLINE -> flagUnderline
+                // Custom underline geometry is drawn by CustomUnderlineSpan; keep the native flag off.
+                TextDecoration.UNDERLINE -> if (attributes.customUnderlineStyle == null) flagUnderline else 0
                 TextDecoration.STRIKETHROUGH -> flagStrike
                 TextDecoration.DASHED_UNDERLINE -> 0
                 TextDecoration.DOTTED_UNDERLINE -> 0
