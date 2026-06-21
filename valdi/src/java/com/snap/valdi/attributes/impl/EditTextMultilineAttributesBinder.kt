@@ -3,15 +3,10 @@ package com.snap.valdi.attributes.impl
 import android.content.Context
 import android.text.InputType
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
-import com.snap.valdi.actions.ValdiAction
 import com.snap.valdi.attributes.AttributesBinder
 import com.snap.valdi.attributes.AttributesBindingContext
 import com.snap.valdi.attributes.impl.animations.ValdiAnimator
-import com.snap.valdi.callable.ValdiFunction
-import com.snap.valdi.views.ValdiEditText
 import com.snap.valdi.views.ValdiEditTextMultiline
 
 /**
@@ -38,6 +33,12 @@ class EditTextMultilineAttributesBinder(
             false,
             this::applyTextGravity,
             this::resetTextGravity
+        )
+        attributesBindingContext.bindBooleanAttribute(
+            "selectable",
+            false,
+            this::applySelectable,
+            this::resetSelectable
         )
 
         attributesBindingContext.bindStringAttribute(
@@ -104,5 +105,13 @@ class EditTextMultilineAttributesBinder(
 
     private fun resetContentType(editText: ValdiEditTextMultiline, animator: ValdiAnimator?) {
         applyContentType(editText, "default", animator)
+    }
+
+    private fun applySelectable(editText: ValdiEditTextMultiline, value: Boolean, animator: ValdiAnimator?) {
+        editText.setValdiSelectable(value)
+    }
+
+    private fun resetSelectable(editText: ValdiEditTextMultiline, animator: ValdiAnimator?) {
+        editText.setValdiSelectable(true)
     }
 }

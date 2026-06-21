@@ -112,9 +112,34 @@
         return NSNotFound;
     }
 
-    NSUInteger location = [_layoutManager characterIndexForPoint:point inTextContainer:_textContainer fractionOfDistanceBetweenInsertionPoints:nil];
+    CGPoint textContainerPoint = CGPointMake(point.x - drawRect.origin.x, point.y - drawRect.origin.y);
+    NSUInteger location = [_layoutManager characterIndexForPoint:textContainerPoint
+                                                 inTextContainer:_textContainer
+                        fractionOfDistanceBetweenInsertionPoints:nil];
 
     return (NSInteger)location;
+}
+
+- (NSInteger)insertionIndexAtPoint:(CGPoint)point
+{
+    [self ensureLayout];
+
+    NSUInteger textLength = _textStorage.length;
+    if (textLength == 0) {
+        return 0;
+    }
+
+    CGRect drawRect = [self _resolveDrawRectWithOrigin:CGPointZero];
+    CGPoint textContainerPoint = CGPointMake(point.x - drawRect.origin.x, point.y - drawRect.origin.y);
+    CGFloat fraction = 0.0;
+    NSUInteger characterIndex = [_layoutManager characterIndexForPoint:textContainerPoint
+                                                       inTextContainer:_textContainer
+                              fractionOfDistanceBetweenInsertionPoints:&fraction];
+    if (fraction > 0.5 && characterIndex < textLength) {
+        characterIndex += 1;
+    }
+
+    return (NSInteger)MIN(characterIndex, textLength);
 }
 
 - (CGRect)boundingRectForRange:(NSRange)range
@@ -124,6 +149,103 @@
     NSUInteger end = [_layoutManager glyphIndexForCharacterAtIndex:range.location + range.length];
     return [_layoutManager boundingRectForGlyphRange:NSMakeRange(start, end - start)
                                      inTextContainer:_textContainer];
+}
+
+- (NSRange)_glyphRangeForCharacterRange:(NSRange)range
+{
+    [self ensureLayout];
+
+    NSUInteger textLength = _textStorage.length;
+    if (textLength == 0 || range.length == 0 || range.location >= textLength) {
+        return NSMakeRange(NSNotFound, 0);
+    }
+
+    NSUInteger startCharacterIndex = MIN(range.location, textLength - 1);
+    NSUInteger endCharacterIndex = MIN(NSMaxRange(range) - 1, textLength - 1);
+    NSUInteger startGlyphIndex = [_layoutManager glyphIndexForCharacterAtIndex:startCharacterIndex];
+    NSUInteger endGlyphIndex = [_layoutManager glyphIndexForCharacterAtIndex:endCharacterIndex];
+    if (endGlyphIndex < startGlyphIndex) {
+        return NSMakeRange(NSNotFound, 0);
+    }
+
+    return NSMakeRange(startGlyphIndex, endGlyphIndex - startGlyphIndex + 1);
+}
+
+- (NSArray<NSValue *> *)selectionRectsForRange:(NSRange)range
+                                 inDrawingRect:(CGRect)rect
+{
+    NSRange glyphRange = [self _glyphRangeForCharacterRange:range];
+    if (glyphRange.location == NSNotFound || glyphRange.length == 0) {
+        return @[];
+    }
+
+    CGRect drawRect = [self _resolveDrawRectWithOrigin:rect.origin];
+    NSMutableArray<NSValue *> *rects = [NSMutableArray new];
+    [_layoutManager enumerateLineFragmentsForGlyphRange:glyphRange
+                                             usingBlock:^(CGRect lineRect,
+                                                          CGRect usedRect,
+                                                          NSTextContainer *textContainer,
+                                                          NSRange lineGlyphRange,
+                                                          BOOL *stop) {
+        (void)lineRect;
+        (void)usedRect;
+        (void)stop;
+
+        NSRange glyphRangeOnLine = NSIntersectionRange(glyphRange, lineGlyphRange);
+        if (glyphRangeOnLine.length == 0) {
+            return;
+        }
+
+        CGRect lineSelectionRect = [self->_layoutManager boundingRectForGlyphRange:glyphRangeOnLine
+                                                                   inTextContainer:textContainer];
+        if (CGRectIsEmpty(lineSelectionRect)) {
+            return;
+        }
+
+        BOOL selectionStartsBeforeLine = glyphRange.location < lineGlyphRange.location;
+        BOOL selectionEndsAfterLine = NSMaxRange(glyphRange) > NSMaxRange(lineGlyphRange);
+        if (selectionStartsBeforeLine) {
+            CGFloat selectionMaxX = CGRectGetMaxX(lineSelectionRect);
+            lineSelectionRect.origin.x = lineRect.origin.x;
+            lineSelectionRect.size.width = selectionMaxX - lineSelectionRect.origin.x;
+        }
+        if (selectionEndsAfterLine) {
+            lineSelectionRect.size.width = CGRectGetMaxX(lineRect) - lineSelectionRect.origin.x;
+        }
+
+        lineSelectionRect.origin.x += drawRect.origin.x;
+        lineSelectionRect.origin.y += drawRect.origin.y;
+        [rects addObject:[NSValue valueWithCGRect:lineSelectionRect]];
+    }];
+    return rects;
+}
+
+- (CGRect)caretRectForCharacterIndex:(NSUInteger)characterIndex
+                       inDrawingRect:(CGRect)rect
+{
+    [self ensureLayout];
+
+    CGRect drawRect = [self _resolveDrawRectWithOrigin:rect.origin];
+    NSUInteger textLength = _textStorage.length;
+    CGRect usedRect = self.usedRect;
+
+    if (textLength == 0) {
+        return CGRectMake(drawRect.origin.x, drawRect.origin.y, 2.0, MAX(usedRect.size.height, 1.0));
+    }
+
+    NSUInteger clampedCharacterIndex = MIN(characterIndex, textLength);
+    NSUInteger glyphCharacterIndex = clampedCharacterIndex == textLength ? textLength - 1 : clampedCharacterIndex;
+    NSUInteger glyphIndex = [_layoutManager glyphIndexForCharacterAtIndex:glyphCharacterIndex];
+    CGRect glyphRect = [_layoutManager boundingRectForGlyphRange:NSMakeRange(glyphIndex, 1)
+                                                 inTextContainer:_textContainer];
+    CGRect lineRect = [_layoutManager lineFragmentRectForGlyphAtIndex:glyphIndex effectiveRange:nil];
+    CGFloat caretX = clampedCharacterIndex == textLength ? CGRectGetMaxX(glyphRect) : CGRectGetMinX(glyphRect);
+    CGFloat caretHeight = MAX(lineRect.size.height, 1.0);
+
+    return CGRectMake(drawRect.origin.x + caretX,
+                      drawRect.origin.y + lineRect.origin.y,
+                      2.0,
+                      caretHeight);
 }
 
 - (NSArray<NSValue *> *)underlineRectsForRange:(NSRange)range

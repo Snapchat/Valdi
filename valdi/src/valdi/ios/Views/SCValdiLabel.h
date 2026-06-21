@@ -15,6 +15,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface SCValdiLabel : UILabel <SCValdiTextHolder>
 
+- (void)valdi_setSelectable:(BOOL)selectable;
+
 + (CGSize)measureSizeWithMaxSize:(CGSize)maxSize
                   fontAttributes:(SCValdiFontAttributes*)fontAttributes
                      fontManager:(id<SCValdiFontManagerProtocol>)fontManager

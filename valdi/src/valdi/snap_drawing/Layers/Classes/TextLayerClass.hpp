@@ -99,6 +99,17 @@ public:
 
     DECLARE_UNTYPED_ATTRIBUTE(TextLayer, textGradient)
 
+    DECLARE_BOOLEAN_ATTRIBUTE(TextLayer, selectable)
+
+    DECLARE_UNTYPED_ATTRIBUTE(TextLayer, selection)
+
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    Valdi::Result<Valdi::Void> apply_onSelectionChange(TextLayer& textLayer,
+                                                       const Valdi::Ref<Valdi::ValueFunction>& value,
+                                                       const AttributeContext& context);
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    void reset_onSelectionChange(TextLayer& textLayer, const AttributeContext& context);
+
     // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
     Valdi::Result<Valdi::Value> preprocess_font(const Valdi::Value& value);
 

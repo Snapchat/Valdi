@@ -282,6 +282,7 @@ myTextFieldRef.setAttribute('focused', true);
   textDecoration="underline" // or "none", "strikethrough", "dashed-underline", "dotted-underline"
   lineHeight={24}         // explicit line height in points
   lineHeightMultiple={1.2} // ratio of font height
+  selectable={true}       // text selection
   closesWhenReturnKeyPressed={false}
   
   // Background effect

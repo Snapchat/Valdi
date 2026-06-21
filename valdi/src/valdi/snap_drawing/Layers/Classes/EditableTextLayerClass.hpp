@@ -71,6 +71,17 @@ public:
 
     DECLARE_COLOR_ATTRIBUTE(EditableTextLayer, placeholderColor)
 
+    DECLARE_BOOLEAN_ATTRIBUTE(EditableTextLayer, selectable)
+
+    DECLARE_UNTYPED_ATTRIBUTE(EditableTextLayer, selection)
+
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    Valdi::Result<Valdi::Void> apply_onSelectionChange(EditableTextLayer& editableTextLayer,
+                                                       const Valdi::Ref<Valdi::ValueFunction>& value,
+                                                       const AttributeContext& context);
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    void reset_onSelectionChange(EditableTextLayer& editableTextLayer, const AttributeContext& context);
+
     // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
     Valdi::Result<Valdi::Value> preprocess_font(const Valdi::Value& value);
 

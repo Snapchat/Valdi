@@ -249,6 +249,9 @@ export class WebValdiTextView extends WebValdiLayout {
         textarea.disabled = !attributeValue;
         textarea.style.pointerEvents = attributeValue ? 'auto' : 'none';
         return;
+      case 'selectable':
+        textarea.style.userSelect = attributeValue === false ? 'none' : '';
+        return;
       case 'selectTextOnFocus':
         this.selectTextOnFocus = !!attributeValue;
         return;

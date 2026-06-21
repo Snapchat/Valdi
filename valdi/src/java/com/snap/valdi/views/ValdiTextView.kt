@@ -5,18 +5,21 @@ import android.content.pm.ApplicationInfo
 import android.graphics.Canvas
 import android.text.TextDirectionHeuristic
 import android.text.Spannable
+import android.view.MotionEvent
 import android.widget.TextView
 import com.snap.valdi.attributes.impl.richtext.AttributedText
 import com.snap.valdi.attributes.impl.richtext.TextViewHelper
 import com.snap.valdi.attributes.impl.richtext.hasActiveAnimationTransform
+import com.snap.valdi.callable.ValdiFunction
 import com.snap.valdi.utils.trace
 
-class ValdiTextView(context: Context) : TextView(context), ValdiRecyclableView, ValdiTextHolder {
+class ValdiTextView(context: Context) : TextView(context), ValdiRecyclableView, ValdiTextHolder, ValdiTouchTarget {
     companion object {
         private const val IMAGE_ATTACHMENT_BREAK_CHAR = '\u2009'
     }
 
     override var textViewHelper: TextViewHelper? = null
+    override var onSelectionChangeFunction: ValdiFunction? = null
     private var attributedText: AttributedText? = null
     private var cachedRenderedContent: String? = null
     private var cachedRenderedPartLengths: IntArray? = null
@@ -137,5 +140,33 @@ class ValdiTextView(context: Context) : TextView(context), ValdiRecyclableView, 
             }
         }
         return offset == cachedContent.length
+    }
+
+    override fun setValdiSelectable(selectable: Boolean) {
+        setTextIsSelectable(selectable)
+    }
+
+    override fun setValdiSelection(start: Int, end: Int) {
+        ValdiTextSelection.setSelectionClamped(this, start, end)
+    }
+
+    override fun onSelectionChanged(selStart: Int, selEnd: Int) {
+        super.onSelectionChanged(selStart, selEnd)
+        ValdiTextSelection.notifySelectionChanged(this, selStart, selEnd)
+        ValdiTextSelection.callSelectionChangeCallback(onSelectionChangeFunction, text, selStart, selEnd)
+    }
+
+    override fun allowsSameViewGestureRecognizers(): Boolean = true
+
+    override fun processTouchEvent(event: MotionEvent): ValdiTouchEventResult {
+        if (!isTextSelectable) {
+            return ValdiTouchEventResult.IgnoreEvent
+        }
+
+        return if (dispatchTouchEvent(event)) {
+            ValdiTouchEventResult.ConsumeEventAndCancelOtherGestures
+        } else {
+            ValdiTouchEventResult.IgnoreEvent
+        }
     }
 }

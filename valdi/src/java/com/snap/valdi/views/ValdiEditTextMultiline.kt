@@ -45,14 +45,14 @@ class ValdiEditTextMultiline(context: Context) : ValdiEditText(context) {
         if (hasFiniteNumberOfLines()) {
             ellipsize = TextUtils.TruncateAt.END
             if (!isValdiEditable) {
-                setTextIsSelectable(false)
+                setTextIsSelectable(isValdiSelectable)
                 keyListener = null
                 isCursorVisible = false
             }
         } else {
             ellipsize = null
             if (!isValdiEditable) {
-                setTextIsSelectable(true)
+                setTextIsSelectable(isValdiSelectable)
                 keyListener = null
                 isCursorVisible = false
             }

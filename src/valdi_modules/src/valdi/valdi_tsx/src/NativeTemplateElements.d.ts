@@ -1048,6 +1048,19 @@ interface EditTextEndEvent extends EditTextEvent {
   reason: EditTextUnfocusReason;
 }
 
+interface TextSelectionMenuEvent extends EditTextEvent {
+  selectedText: string;
+}
+
+interface TextSelectionMenuAction {
+  id: string;
+  title: string;
+}
+
+interface TextSelectionMenuActionEvent extends TextSelectionMenuEvent {
+  id: string;
+}
+
 /**
  * Shared by textfield, textview
  */
@@ -1120,6 +1133,12 @@ export interface CommonEditTextInterface extends LeafView, CommonTextAttributes 
    * @default: true
    */
   enabled?: boolean;
+
+  /**
+   * Allows text selection when the text input is not editable.
+   * @default: true
+   */
+  selectable?: boolean;
 
   /**
    * Set the text alignment within typing box of the text input
@@ -1328,6 +1347,19 @@ export interface TextView extends _TextView, CommonEditTextInterface {
    * @default: undefined
    */
   customUnderlineStyle?: LabelCustomUnderlineStyle;
+
+  /**
+   * [iOS-Only]
+   * Builds custom edit menu actions for the current text selection.
+   * The system suggested edit menu actions, such as Copy, are appended by the native text view.
+   */
+  onTextSelectionMenu?: (event: TextSelectionMenuEvent) => TextSelectionMenuAction[];
+
+  /**
+   * [iOS-Only]
+   * Called when a custom edit menu action returned from onTextSelectionMenu is selected.
+   */
+  onTextSelectionMenuAction?: (event: TextSelectionMenuActionEvent) => void;
 
   /**
    * Set the color for the background effect of the text view
@@ -1650,6 +1682,39 @@ export interface CommonLabel extends CommonTextAttributes {
    * @default: 0
    */
   letterSpacing?: number;
+
+  /**
+   * Whether the label text can be selected and copied.
+   * @default: false
+   */
+  selectable?: boolean;
+
+  /**
+   * Selection for the label.
+   * - first index for start of selection
+   * - second index for end of selection
+   * - set both to the same to select at a single position
+   */
+  selection?: [number, number];
+
+  /**
+   * Callback called when the label selection is changed.
+   * The event parameter contains the current text value and the selected indexes.
+   */
+  onSelectionChange?: (event: EditTextEvent) => void;
+
+  /**
+   * [iOS-Only]
+   * Builds custom edit menu actions for the current label text selection.
+   * The system suggested edit menu actions, such as Copy, are appended by the native label.
+   */
+  onTextSelectionMenu?: (event: TextSelectionMenuEvent) => TextSelectionMenuAction[];
+
+  /**
+   * [iOS-Only]
+   * Called when a custom edit menu action returned from onTextSelectionMenu is selected.
+   */
+  onTextSelectionMenuAction?: (event: TextSelectionMenuActionEvent) => void;
 }
 
 // @NativeTemplateElement({ios: 'SCValdiLabel', android: 'android.widget.TextView', jsx: 'label'})

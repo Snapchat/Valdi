@@ -29,6 +29,7 @@
 #import "valdi_core/SCValdiTextInputUnfocusReason.h"
 #import "valdi/ios/Text/SCValdiOnLayoutAttribute.h"
 #import "valdi/ios/Gestures/SCValdiGestureRecognizers.h"
+#import "valdi/ios/Views/SCValdiLabelSelection.h"
 
 static NSString *const kTextGradientLayoutKey = @"text_gradient";
 
@@ -153,8 +154,11 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
     NSNumber *_characterLimit;
     /// YES if all text should be selected on begin editing
     BOOL _selectTextOnFocus;
+    /// YES if read-only text should allow selection
+    BOOL _selectable;
     /// YES if we discard any typed newline
     BOOL _ignoreNewlines;
+    BOOL _enabled;
     BOOL _updating;
     BOOL _updateOnLayout;
     /// The vertical gravity of the text
@@ -169,6 +173,8 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
     id<SCValdiFunction> _Nullable _onReturn;
     id<SCValdiFunction> _Nullable _onWillDelete;
     id<SCValdiFunction> _Nullable _onSelectionChange;
+    id<SCValdiFunction> _Nullable _onTextSelectionMenu;
+    id<SCValdiFunction> _Nullable _onTextSelectionMenuAction;
 
     SCValdiTextViewPlaceholder *_placeholder;
     SCValdiTextViewInternal *_textView;
@@ -260,6 +266,8 @@ static NSAttributedString *SCValdiBackgroundOnlyAttributedString(NSAttributedStr
         _needAttributedTextUpdate = YES;
         _textOverflowLineBreakMode = NSLineBreakByWordWrapping;
         _textValue = nil;
+        _enabled = YES;
+        _selectable = YES;
     }
 
     return self;
@@ -942,6 +950,13 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
     }
 }
 
+- (void)_updateTextViewInteractionMode
+{
+    _textView.editable = _enabled;
+    _textView.selectable = _selectable;
+    _textView.scrollEnabled = _enabled && !_hasTextOverflow;
+}
+
 - (BOOL)valdi_setAutocapitalization:(NSString *)autocapitalization
 {
     return SCValdiTextInputSetAutocapitalization(_textView, autocapitalization);
@@ -964,10 +979,17 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
 
 - (BOOL)valdi_setEnabled:(BOOL)enabled
 {
-    _textView.editable = enabled;
-    _textView.scrollEnabled = enabled && !_hasTextOverflow;
+    _enabled = enabled;
+    [self _updateTextViewInteractionMode];
     _needAttributedTextUpdate = YES;
     [self _updateAttributedTextIfNeeded];
+    return YES;
+}
+
+- (BOOL)valdi_setSelectable:(BOOL)selectable
+{
+    _selectable = selectable;
+    [self _updateTextViewInteractionMode];
     return YES;
 }
 
@@ -1049,6 +1071,17 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
 - (void)valdi_setOnSelectionChange:(id<SCValdiFunction>)onSelectionChange
 {
     _onSelectionChange = onSelectionChange;
+}
+
+- (void)valdi_setOnTextSelectionMenu:(id<SCValdiFunction>)onTextSelectionMenu
+{
+    _onTextSelectionMenu = onTextSelectionMenu;
+    [self _updateTextViewInteractionMode];
+}
+
+- (void)valdi_setOnTextSelectionMenuAction:(id<SCValdiFunction>)onTextSelectionMenuAction
+{
+    _onTextSelectionMenuAction = onTextSelectionMenuAction;
 }
 
 - (void)_applySelectionStart:(NSInteger)selectionStart selectionEnd:(NSInteger)selectionEnd
@@ -1311,6 +1344,15 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
             [textView valdi_setEnabled:YES];
         }];
 
+    [attributesBinder bindAttribute:@"selectable"
+        invalidateLayoutOnChange:NO
+        withBoolBlock:^BOOL(SCValdiTextView *textView, BOOL attributeValue, id<SCValdiAnimatorProtocol> animator) {
+            return [textView valdi_setSelectable:attributeValue];
+        }
+        resetBlock:^(SCValdiTextView *textView, id<SCValdiAnimatorProtocol> animator) {
+            [textView valdi_setSelectable:YES];
+        }];
+
     [attributesBinder bindAttribute:@"focused"
         invalidateLayoutOnChange:NO
         withBoolBlock:^BOOL(SCValdiTextView *textView, BOOL attributeValue, id<SCValdiAnimatorProtocol> animator) {
@@ -1497,6 +1539,22 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
         }
         resetBlock:^(SCValdiTextView *textView) {
             [textView valdi_setOnSelectionChange:nil];
+        }];
+
+    [attributesBinder bindAttribute:@"onTextSelectionMenu"
+        withFunctionBlock:^(SCValdiTextView *textView, id<SCValdiFunction> attributeValue) {
+            [textView valdi_setOnTextSelectionMenu:attributeValue];
+        }
+        resetBlock:^(SCValdiTextView *textView) {
+            [textView valdi_setOnTextSelectionMenu:nil];
+        }];
+
+    [attributesBinder bindAttribute:@"onTextSelectionMenuAction"
+        withFunctionBlock:^(SCValdiTextView *textView, id<SCValdiFunction> attributeValue) {
+            [textView valdi_setOnTextSelectionMenuAction:attributeValue];
+        }
+        resetBlock:^(SCValdiTextView *textView) {
+            [textView valdi_setOnTextSelectionMenuAction:nil];
         }];
 
     [attributesBinder bindAttribute:@"textShadow"
@@ -1704,6 +1762,71 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
 
     }
 }
+
+- (NSArray<UIMenuElement *> *)_customEditMenuActionsForTextRange:(NSRange)range
+{
+    NSDictionary<NSString *, id> *event = SCValdiTextSelectionMenuEventForText(_textView.text, range);
+    NSArray<NSDictionary<NSString *, NSString *> *> *menuActions =
+        SCValdiTextSelectionMenuActionsForProvider(_onTextSelectionMenu, event);
+
+    NSMutableArray<UIMenuElement *> *customActions = [NSMutableArray arrayWithCapacity:menuActions.count];
+    for (NSDictionary<NSString *, NSString *> *menuAction in menuActions) {
+        NSString *actionID = menuAction[SCValdiTextSelectionMenuActionIDKey];
+        NSString *title = menuAction[SCValdiTextSelectionMenuActionTitleKey];
+        __weak typeof(self) weakSelf = self;
+        UIAction *action = [UIAction actionWithTitle:title image:nil identifier:nil handler:^(__kindof UIAction *uiAction) {
+            [weakSelf _performTextSelectionMenuActionWithID:actionID range:range];
+        }];
+        [customActions addObject:action];
+    }
+    return customActions;
+}
+
+- (void)_performTextSelectionMenuActionWithID:(NSString *)actionID range:(NSRange)range
+{
+    NSDictionary<NSString *, id> *event = SCValdiTextSelectionMenuEventForText(_textView.text, range);
+    SCValdiPerformTextSelectionMenuAction(_onTextSelectionMenuAction, actionID, event);
+}
+
+- (nullable UIMenu *)_editMenuForTextRange:(NSRange)range suggestedActions:(NSArray<UIMenuElement *> *)suggestedActions
+{
+    NSArray<UIMenuElement *> *customActions = [self _customEditMenuActionsForTextRange:range];
+    if (customActions.count == 0) {
+        return nil;
+    }
+
+    NSMutableArray<UIMenuElement *> *children = [NSMutableArray arrayWithCapacity:customActions.count + suggestedActions.count];
+    [children addObjectsFromArray:customActions];
+    [children addObjectsFromArray:suggestedActions];
+    return [UIMenu menuWithTitle:@"" children:children];
+}
+
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 260000
+- (nullable UIMenu *)textView:(UITextView *)textView
+      editMenuForTextInRanges:(NSArray<NSValue *> *)ranges
+             suggestedActions:(NSArray<UIMenuElement *> *)suggestedActions
+{
+    if (ranges.count == 0) {
+        return nil;
+    }
+
+    NSRange selectedRange = ranges.firstObject.rangeValue;
+    for (NSValue *rangeValue in ranges) {
+        selectedRange = NSUnionRange(selectedRange, rangeValue.rangeValue);
+    }
+    return [self _editMenuForTextRange:selectedRange suggestedActions:suggestedActions];
+}
+#endif
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-implementations"
+- (nullable UIMenu *)textView:(UITextView *)textView
+      editMenuForTextInRange:(NSRange)range
+            suggestedActions:(NSArray<UIMenuElement *> *)suggestedActions
+{
+    return [self _editMenuForTextRange:range suggestedActions:suggestedActions];
+}
+#pragma clang diagnostic pop
 
 - (void)textViewDidChangeSelection:(UITextView *)textView
 {

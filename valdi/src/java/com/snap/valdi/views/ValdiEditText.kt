@@ -146,9 +146,13 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
 
     private var valdiEditable = true
     private var editableKeyListener: KeyListener? = null
+    private var valdiSelectable = true
 
     protected val isValdiEditable: Boolean
         get() = valdiEditable
+
+    protected val isValdiSelectable: Boolean
+        get() = valdiSelectable
 
     init {
         layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -189,6 +193,12 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
         textViewHelper?.applyCurrentNumberOfLines()
     }
 
+    override fun setValdiSelectable(selectable: Boolean) {
+        valdiSelectable = selectable
+        applyValdiEditableState()
+        textViewHelper?.applyCurrentNumberOfLines()
+    }
+
     private fun applyValdiEditableState() {
         if (valdiEditable) {
             setTextIsSelectable(false)
@@ -203,7 +213,7 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
             keyListener = null
             setShowSoftInputOnFocusCompat(false)
             isCursorVisible = false
-            setTextIsSelectable(true)
+            setTextIsSelectable(valdiSelectable)
             isFocusable = true
             isFocusableInTouchMode = true
         }
@@ -233,7 +243,7 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
     var onEditEndFunction: ValdiFunction? = null
     var onReturnFunction: ValdiFunction? = null
     var onWillDeleteFunction: ValdiFunction? = null
-    var onSelectionChangeFunction: ValdiFunction? = null
+    override var onSelectionChangeFunction: ValdiFunction? = null
 
     private var ignoreNewlines: Boolean = false
 
@@ -348,10 +358,8 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
 
     override fun onSelectionChanged(selStart: Int, selEnd: Int) {
         super.onSelectionChanged(selStart, selEnd)
-
-        ViewUtils.notifyAttributeChanged(this, selectionProperty, intArrayOf(selStart, selEnd))
-
-        callEventCallback(onSelectionChangeFunction)
+        ValdiTextSelection.notifySelectionChanged(this, selStart, selEnd)
+        ValdiTextSelection.callSelectionChangeCallback(onSelectionChangeFunction, text ?: "", selStart, selEnd)
     }
 
     override fun onKeyPreIme(keyCode: Int, keyEvent: KeyEvent): Boolean {
@@ -416,10 +424,11 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
     }
 
     fun setSelectionClamped(start: Int, end: Int) {
-        val lengthClamped = this.text?.length ?: 0
-        val startClamped = Math.max(0, Math.min(lengthClamped, start))
-        val endClamped = Math.max(startClamped, Math.min(lengthClamped, end))
-        setSelection(startClamped, endClamped)
+        ValdiTextSelection.setSelectionClamped(this, start, end)
+    }
+
+    override fun setValdiSelection(start: Int, end: Int) {
+        setSelectionClamped(start, end)
     }
 
     override fun setTextAccessibility(text: CharSequence?) {
@@ -674,11 +683,9 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
         private val focusedAttribute = InternedString.create("focused")
         private val valueProperty = InternedString.create("value")
         private val textProperty = InternedString.create("text")
-        private val selectionProperty = InternedString.create("selection")
         private val selectionStartProperty = InternedString.create("selectionStart")
         private val selectionEndProperty = InternedString.create("selectionEnd")
         private val reasonProperty = InternedString.create("reason")
 
-        const val EXPECTED_SELECTION_DATA_SIZE = 2
     }
 }

@@ -40,9 +40,28 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSInteger)characterIndexAtPoint:(CGPoint)point;
 
 /**
+ Return the closest insertion index at the given point.
+ */
+- (NSInteger)insertionIndexAtPoint:(CGPoint)point;
+
+/**
  Return the bounding rect for the given range of characters.
  */
 - (CGRect)boundingRectForRange:(NSRange)range;
+
+/**
+ Return the selection rects for the given range of characters in the same
+ coordinate space used by drawInRect:.
+ */
+- (NSArray<NSValue *> *)selectionRectsForRange:(NSRange)range
+                                 inDrawingRect:(CGRect)rect;
+
+/**
+ Return the caret rect for the given character index in the same coordinate
+ space used by drawInRect:.
+ */
+- (CGRect)caretRectForCharacterIndex:(NSUInteger)characterIndex
+                       inDrawingRect:(CGRect)rect;
 
 /**
  Return the per-line underline rects for the given range of characters in the

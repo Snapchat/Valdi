@@ -1001,6 +1001,21 @@ All properties from [Layout Attributes](#layout), plus:
 - Controls how hidden text overflow content is signaled to users.
 - Default: `'ellipsis'`
 
+#### Text Selection
+
+**`selectable`**: `boolean`
+- Enables text selection and copy support for the label.
+- Default: `false`
+
+**`selection`**: `[number, number]`
+- First index for start of selection.
+- Second index for end of selection.
+- Set both to the same value to place the selection at a single position.
+
+**`onSelectionChange`**: `(event: EditTextEvent) => void`
+- Callback called when the label selection is changed.
+- The event contains the current text value and selected indexes.
+
 #### Auto-sizing
 
 **`adjustsFontSizeToFitWidth`**: `boolean`
@@ -1108,6 +1123,10 @@ All text properties from [Label](#label) including `value`, `font`, `color`, `te
 - Default for textview elements: `false`
 
 #### Selection
+
+**`selectable`**: `boolean`
+- Allows users to select and copy text input text through the native text selection UI when the text input is not editable.
+- Default: `true`
 
 **`selection`**: `[number, number]`
 - Selection for the text field.
@@ -1222,6 +1241,12 @@ All properties from [TextField](#textfield), except `returnKeyText` is replaced 
 
 **`textGradient`**: `string`
 - Sets a gradient color for the text string.
+
+#### Text Selection
+
+**`selectable`**: `boolean`
+- Allows users to select and copy text view text through the native text selection UI.
+- Default: `true`
 
 #### Background Effect
 

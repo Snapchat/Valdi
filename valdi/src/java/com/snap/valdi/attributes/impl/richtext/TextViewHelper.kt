@@ -27,6 +27,7 @@ import com.snap.valdi.utils.runOnMainThreadIfNeeded
 import com.snap.valdi.views.ValdiEditText
 import com.snap.valdi.views.TextViewUtils
 import com.snap.valdi.views.ValdiEditTextMultiline
+import com.snap.valdi.views.ValdiTextHolder
 import com.snap.valdi.views.ValdiTextView
 import com.snap.valdi.views.touches.AttributedTextTapGestureRecognizer
 import kotlin.math.max
@@ -301,6 +302,11 @@ class TextViewHelper(private val view: TextView,
                 // instead of Android's default of moving it to the start. Only runs when a setText
                 // actually happened, so unrelated re-binds don't disturb the caret.
                 editText.setSelectionClamped(Int.MAX_VALUE, Int.MAX_VALUE)
+            }
+            selectionDirty = false
+        } else if (view is ValdiTextHolder && selectionDirty) {
+            selection?.let { (first, second) ->
+                view.setValdiSelection(first, second)
             }
             selectionDirty = false
         }

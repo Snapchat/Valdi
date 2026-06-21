@@ -18,8 +18,6 @@ import com.snap.valdi.exceptions.ValdiException
 import com.snap.valdi.views.ValdiEditText
 import com.snap.valdi.views.ValdiEditTextMultiline
 import com.snap.valdi.views.ValdiTextHolder
-import com.snap.valdi.exceptions.AttributeError
-import kotlin.math.roundToInt
 
 /**
  * Binds attributes for the EditText's view class
@@ -55,6 +53,12 @@ class EditTextAttributesBinder(
             false,
             this::applyEnabled,
             this::resetEnabled
+        )
+        attributesBindingContext.bindBooleanAttribute(
+            "selectable",
+            false,
+            this::applySelectable,
+            this::resetSelectable
         )
         attributesBindingContext.bindFunctionAttribute(
             "onWillChange",
@@ -162,18 +166,6 @@ class EditTextAttributesBinder(
             }
         })
 
-        attributesBindingContext.bindUntypedAttribute(
-            "selection",
-            false,
-            this::applySelection,
-            this::resetSelection
-        )
-        attributesBindingContext.bindFunctionAttribute(
-            "onSelectionChange",
-            this::applyOnSelectionChange,
-            this::resetOnSelectionChange
-        )
-
         attributesBindingContext.bindBooleanAttribute(
             "enableInlinePredictions",
             false,
@@ -241,6 +233,14 @@ class EditTextAttributesBinder(
 
     private fun resetHintTextColor(view: ValdiEditText, animator: ValdiAnimator?) {
         view.setHintTextColor(Color.GRAY)
+    }
+
+    private fun applySelectable(editText: ValdiEditText, value: Boolean, animator: ValdiAnimator?) {
+        editText.setValdiSelectable(value)
+    }
+
+    private fun resetSelectable(editText: ValdiEditText, animator: ValdiAnimator?) {
+        editText.setValdiSelectable(true)
     }
 
     private fun applyAutoCapitalization(editText: ValdiEditText, value: String, animator: ValdiAnimator?) {

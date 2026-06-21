@@ -133,6 +133,10 @@ void EditableTextLayerClass::bindAttributes(Valdi::AttributesBindingContext& bin
     BIND_STRING_ATTRIBUTE(EditableTextLayer, placeholder, true);
     BIND_COLOR_ATTRIBUTE(EditableTextLayer, placeholderColor, false);
 
+    BIND_BOOLEAN_ATTRIBUTE(EditableTextLayer, selectable, false);
+    BIND_UNTYPED_ATTRIBUTE(EditableTextLayer, selection, false);
+    BIND_FUNCTION_ATTRIBUTE(EditableTextLayer, onSelectionChange);
+
     REGISTER_PREPROCESSOR(font, true);
     REGISTER_PREPROCESSOR(customUnderlineStyle, true);
 }
@@ -270,5 +274,19 @@ IMPLEMENT_COLOR_ATTRIBUTE(
         return Valdi::Void();
     },
     { view.setPlaceholderColor(kDefaultPlaceholderColor); })
+
+IMPLEMENT_BOOLEAN_ATTRIBUTE(EditableTextLayer, selectable, { return Valdi::Void(); }, {})
+
+IMPLEMENT_UNTYPED_ATTRIBUTE(EditableTextLayer, selection, { return Valdi::Void(); }, {})
+
+Valdi::Result<Valdi::Void> EditableTextLayerClass::apply_onSelectionChange(
+    EditableTextLayer& /*editableTextLayer*/,
+    const Valdi::Ref<Valdi::ValueFunction>& /*value*/,
+    const AttributeContext& /*context*/) {
+    return Valdi::Void();
+}
+
+void EditableTextLayerClass::reset_onSelectionChange(EditableTextLayer& /*editableTextLayer*/,
+                                                     const AttributeContext& /*context*/) {}
 
 } // namespace snap::drawing

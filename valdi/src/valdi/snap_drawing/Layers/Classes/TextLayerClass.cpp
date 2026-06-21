@@ -184,6 +184,10 @@ void TextLayerClass::bindAttributes(Valdi::AttributesBindingContext& binder) {
 
     BIND_UNTYPED_ATTRIBUTE(TextLayer, textGradient, false);
 
+    BIND_BOOLEAN_ATTRIBUTE(TextLayer, selectable, false);
+    BIND_UNTYPED_ATTRIBUTE(TextLayer, selection, false);
+    BIND_FUNCTION_ATTRIBUTE(TextLayer, onSelectionChange);
+
     REGISTER_PREPROCESSOR(font, true);
     REGISTER_PREPROCESSOR(customUnderlineStyle, true);
 }
@@ -533,6 +537,19 @@ IMPLEMENT_UNTYPED_ATTRIBUTE(
 
 IMPLEMENT_UNTYPED_ATTRIBUTE(
     TextLayer, textGradient, { return applyTextGradientAttribute(view, value); }, { resetTextGradientAttribute(view); })
+
+IMPLEMENT_BOOLEAN_ATTRIBUTE(TextLayer, selectable, { return Valdi::Void(); }, {})
+
+IMPLEMENT_UNTYPED_ATTRIBUTE(TextLayer, selection, { return Valdi::Void(); }, {})
+
+Valdi::Result<Valdi::Void> TextLayerClass::apply_onSelectionChange(
+    TextLayer& /*textLayer*/,
+    const Valdi::Ref<Valdi::ValueFunction>& /*value*/,
+    const AttributeContext& /*context*/) {
+    return Valdi::Void();
+}
+
+void TextLayerClass::reset_onSelectionChange(TextLayer& /*textLayer*/, const AttributeContext& /*context*/) {}
 
 } // namespace snap::drawing
 

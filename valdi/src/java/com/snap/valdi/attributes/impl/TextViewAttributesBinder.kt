@@ -13,12 +13,15 @@ import com.snap.valdi.attributes.impl.richtext.CustomUnderlineStyle
 import com.snap.valdi.attributes.impl.richtext.RichTextConverter
 import com.snap.valdi.attributes.impl.richtext.FontAttributes
 import com.snap.valdi.attributes.impl.richtext.TextViewHelper
+import com.snap.valdi.callable.ValdiFunction
 import com.snap.valdi.exceptions.AttributeError
 import com.snap.valdi.exceptions.ValdiException
 import com.snap.valdi.utils.CoordinateResolver
 import com.snap.valdi.views.ValdiTextHolder
+import com.snap.valdi.views.ValdiTextSelection
 import com.snapchat.client.valdi_core.AttributeType
 import com.snapchat.client.valdi_core.CompositeAttributePart
+import kotlin.math.roundToInt
 
 /**
  * Binds attributes for the TextView's view class
@@ -202,6 +205,54 @@ class TextViewAttributesBinder(
         view.ellipsize = TextUtils.TruncateAt.END
     }
 
+    fun applySelectable(view: TextView, value: Boolean, animator: ValdiAnimator?) {
+        if (view is ValdiTextHolder) {
+            view.setValdiSelectable(value)
+        } else {
+            view.setTextIsSelectable(value)
+        }
+    }
+
+    fun resetSelectable(view: TextView, animator: ValdiAnimator?) {
+        applySelectable(view, false, animator)
+    }
+
+    fun applySelection(view: TextView, selection: Any?, animator: ValdiAnimator?) {
+        if (selection !is Array<*>) {
+            resetSelection(view, animator)
+            return
+        }
+
+        if (selection.size != ValdiTextSelection.EXPECTED_SELECTION_DATA_SIZE) {
+            throw AttributeError("Selection should have two values in the given array: start + end")
+        }
+
+        val start = (selection[0] as? Double)?.roundToInt() ?: 0
+        val end = (selection[1] as? Double)?.roundToInt() ?: 0
+        getTextViewHelper(view).selection = Pair(start, end)
+    }
+
+    fun resetSelection(view: TextView, animator: ValdiAnimator?) {
+        if (view is ValdiTextHolder) {
+            view.setValdiSelection(0, 0)
+        } else {
+            ValdiTextSelection.setSelectionClamped(view, 0, 0)
+        }
+    }
+
+    fun applyOnSelectionChange(view: TextView, action: ValdiFunction) {
+        if (view !is ValdiTextHolder) {
+            throw ValdiException("TextView class ${view.javaClass.name} does not implement ValdiTextHolder")
+        }
+        view.onSelectionChangeFunction = action
+    }
+
+    fun resetOnSelectionChange(view: TextView) {
+        if (view is ValdiTextHolder) {
+            view.onSelectionChangeFunction = null
+        }
+    }
+
     override fun bindAttributes(attributesBindingContext: AttributesBindingContext<TextView>) {
         attributesBindingContext.bindCompositeAttribute("fontAttributes", FONT_ATTRIBUTES_PARTS, this::applyFontAttributes, this::resetFontAttributes)
         attributesBindingContext.registerPreprocessor("customUnderlineStyle", true, this::preprocessCustomUnderlineStyle)
@@ -211,6 +262,9 @@ class TextViewAttributesBinder(
         attributesBindingContext.bindUntypedAttribute("textShadow", false, this::applyTextShadow, this::resetTextShadow)
         attributesBindingContext.bindStringAttribute("textOverflow", true, this::applyTextOverflow, this::resetTextOverflow)
         attributesBindingContext.bindArrayAttribute("textGradient", false, this::applyTextGradient, this::resetTextGradient)
+        attributesBindingContext.bindBooleanAttribute("selectable", false, this::applySelectable, this::resetSelectable)
+        attributesBindingContext.bindUntypedAttribute("selection", false, this::applySelection, this::resetSelection)
+        attributesBindingContext.bindFunctionAttribute("onSelectionChange", this::applyOnSelectionChange, this::resetOnSelectionChange)
 
         this.valueAttributeId = attributesBindingContext.getBoundAttributeId("value")
     }

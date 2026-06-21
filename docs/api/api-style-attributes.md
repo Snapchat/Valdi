@@ -656,7 +656,7 @@ const labelStyle = new Style<Label>({
   adjustsFontSizeToFitWidth: false,  // boolean
   minimumScaleFactor: 0.5,           // number
   
-  // Note: value cannot be used in styles (dynamic)
+  // Note: value, selection, callbacks cannot be used in styles (dynamic)
 });
 ```
 
@@ -667,6 +667,7 @@ const labelStyle = new Style<Label>({
 - ✅ Text Layout Attributes
 - ✅ Auto-sizing Attributes
 - ❌ `value` (dynamic content, use inline)
+- ❌ `selection` (dynamic state)
 - ❌ Callbacks (functions)
 
 ---
@@ -749,6 +750,7 @@ const textViewStyle = new Style<TextView>({
   lineHeight: 24,
   lineHeightMultiple: 1.2,
   customUnderlineStyle: '1 1 1 -2',
+  selectable: true,        // boolean
   closesWhenReturnKeyPressed: false,  // typically false for multiline
   
   // Background effect
@@ -763,6 +765,7 @@ const textViewStyle = new Style<TextView>({
 - ✅ Return Type Configuration
 - ✅ Text Gravity Attributes
 - ✅ Text Rendering Attributes
+- ✅ Text Selection Attributes
 - ✅ Background Effect Attributes
 - ❌ `value`, `placeholder` (dynamic, use inline)
 - ❌ `focused` (programmatic only)
@@ -1133,6 +1136,7 @@ These properties cannot be included in styles and must be used inline:
 ### Text (Label, TextField, TextView)
 - Font: `font`, `color`, `textGradient`, `textShadow`
 - Layout: `numberOfLines`, `textAlign`, `textDecoration`, `lineHeight`, `letterSpacing`, `textOverflow`
+- Selection: `selectable` (Label, TextField, TextView)
 - Auto-size: `adjustsFontSizeToFitWidth`, `minimumScaleFactor`
 - Input: `placeholderColor`, `tintColor`, `contentType`, `returnKeyText`, `autocapitalization`, `autocorrection`
 
