@@ -4,7 +4,7 @@ import { Style } from 'valdi_core/src/Style';
 import { systemBoldFont, systemFont } from 'valdi_core/src/SystemFont';
 import { AttributedTextBuilder } from 'valdi_core/src/utils/AttributedTextBuilder';
 import { AttributedTextInlineViewVerticalAlignment } from 'valdi_tsx/src/AttributedTextInlineViewAttachment';
-import { View } from 'valdi_tsx/src/NativeTemplateElements';
+import { Label, ScrollView, TextField, TextView, View } from 'valdi_tsx/src/NativeTemplateElements';
 
 const richTextValue = new AttributedTextBuilder()
   .append('Attributed ', { color: '#1D4ED8', font: 'system-bold 18' })
@@ -50,15 +50,8 @@ interface PillViewModel {
 
 class InlinePill extends Component<PillViewModel> {
   onRender(): void {
-    <view
-      alignItems="center"
-      backgroundColor={this.viewModel.color}
-      borderRadius={5}
-      height={18}
-      justifyContent="center"
-      width={58}
-    >
-      <label color="#FFFFFF" font={systemBoldFont(9)} textAlign="center" value={this.viewModel.title} width="100%" />
+    <view style={styles.inlinePill.extend({ backgroundColor: this.viewModel.color })}>
+      <label style={styles.inlinePillLabel} value={this.viewModel.title} />
     </view>;
   }
 }
@@ -76,32 +69,21 @@ export class App extends StatefulComponent<ViewModel, State> {
   };
 
   onRender(): void {
-    <view backgroundColor="#F8FAFC" height="100%" width="100%">
-      <scroll height="100%" width="100%">
-        <view padding={18} paddingTop={18 + Device.getDisplayTopInset()} width="100%">
-          <label color="#0F172A" font={systemBoldFont(27)} marginBottom={6} value="Text Attributes" width="100%" />
+    <view style={styles.screen}>
+      <scroll style={styles.screenScroll}>
+        <view style={styles.screenContent.extend({ paddingTop: 18 + Device.getDisplayTopInset() })}>
+          <label style={styles.appTitle} value="Text Attributes" />
           <label
-            color="#475569"
-            font={systemFont(15)}
-            lineHeightMultiple={1.25}
-            marginBottom={14}
-            numberOfLines={0}
+            style={styles.appSubtitle}
             value="A focused smoke app for label, textview, and textfield attributes. Toggle enabled state and edit fields to exercise callbacks."
-            width="100%"
           />
 
-          <view style={styles.buttonRow} marginBottom={12}>
+          <view style={styles.buttonRow}>
             <view style={styles.toggleButton} onTap={this.toggleEnabled}>
-              <label
-                color="#FFFFFF"
-                font={systemBoldFont(14)}
-                textAlign="center"
-                value={this.state.enabled ? 'Disable inputs' : 'Enable inputs'}
-                width="100%"
-              />
+              <label style={styles.toggleButtonLabel} value={this.state.enabled ? 'Disable inputs' : 'Enable inputs'} />
             </view>
             <view style={styles.resetButton} onTap={this.resetValues}>
-              <label color="#0F172A" font={systemBoldFont(14)} textAlign="center" value="Reset values" width="100%" />
+              <label style={styles.resetButtonLabel} value="Reset values" />
             </view>
           </view>
 
@@ -109,16 +91,9 @@ export class App extends StatefulComponent<ViewModel, State> {
           {this.renderTextViewSection()}
           {this.renderLabelSection()}
 
-          <view style={styles.card} marginBottom={24}>
+          <view style={styles.eventCard}>
             {this.renderSectionTitle('Event log')}
-            <label
-              color="#334155"
-              font={systemFont(14)}
-              lineHeightMultiple={1.25}
-              numberOfLines={0}
-              value={this.state.eventLog}
-              width="100%"
-            />
+            <label style={styles.eventLog} value={this.state.eventLog} />
           </view>
         </view>
       </scroll>
@@ -126,173 +101,60 @@ export class App extends StatefulComponent<ViewModel, State> {
   }
 
   private renderLabelSection(): void {
-    <view style={styles.card} marginBottom={14}>
+    <view style={styles.sectionCard}>
       {this.renderSectionTitle('Label')}
-      <label color="#1D4ED8" font="system-bold 24 unscaled 24" value="font + color" width="100%" />
+      <label style={styles.fontColorLabel} value="font + color" />
+      <label style={styles.letterSpacingLabel} value="letterSpacing expands this label" />
+      <label style={styles.dashedUnderlineLabel} value="dashed custom underline" />
+      <label style={styles.gradientLabel} value="gradient text" />
+      <label style={styles.shadowLabel} value="text shadow" />
       <label
-        color="#334155"
-        font={systemFont(17)}
-        letterSpacing={1.8}
-        marginTop={8}
-        value="letterSpacing expands this label"
-        width="100%"
-      />
-      <label
-        color="#0F172A"
-        customUnderlineStyle="1 3 2 -2"
-        font={systemFont(17)}
-        marginTop={8}
-        textDecoration="dashed-underline"
-        value="dashed custom underline"
-        width="100%"
-      />
-      <label
-        font={systemBoldFont(22)}
-        marginTop={8}
-        textGradient="linear-gradient(#DC2626, #7C3AED, #2563EB)"
-        value="gradient text"
-        width="100%"
-      />
-      <label
-        color="#78350F"
-        font={systemBoldFont(19)}
-        marginTop={8}
-        textShadow="rgba(120, 53, 15, 0.45) 2 0.75 0 2"
-        value="text shadow"
-        width="100%"
-      />
-      <label
-        color="#0F172A"
-        font={systemFont(17)}
-        lineHeight={26}
-        marginTop={8}
-        numberOfLines={0}
-        textAlign="justified"
+        style={styles.justifiedLabel}
         value="Justified multiline label uses explicit lineHeight. This sentence wraps to show paragraph alignment and line spacing."
-        width="100%"
       />
       <label
-        adjustsFontSizeToFitWidth={true}
-        color="#BE123C"
-        font={systemBoldFont(22)}
-        marginTop={8}
-        minimumScaleFactor={0.55}
-        numberOfLines={1}
-        textOverflow="ellipsis"
+        style={styles.autoshrinkLabel}
         value="autoshrink plus ellipsis for a deliberately long single line label"
-        width={260}
       />
       <label
-        color="#0F172A"
-        font={systemBoldFont(18)}
-        lineHeight={24}
-        marginTop={10}
-        numberOfLines={2}
-        textOverflow="ellipsis"
+        style={styles.twoLineEllipsisLabel}
         value="Two-line label ellipsis should render the truncation glyph at the end of the second line instead of clipping this deliberately long sentence."
-        width={260}
       />
       <label
-        color="#0F172A"
-        font={systemFont(18)}
-        lineHeightMultiple={1.35}
-        marginTop={8}
-        numberOfLines={0}
-        selectable={true}
-        selection={[0, 6]}
+        style={styles.richTextLabel}
         value={richTextValue}
-        width="100%"
         onSelectionChange={event => this.record(`label selection ${event.selectionStart}-${event.selectionEnd}`)}
       />
-      <label
-        color="#0F172A"
-        font={systemFont(18)}
-        lineHeightMultiple={1.35}
-        marginTop={8}
-        numberOfLines={0}
-        value={inlineTextValue}
-        width="100%"
-      >
+      <label style={styles.inlineTextLabel} value={inlineTextValue}>
         <InlinePill color="#0F766E" title="BASE" />
       </label>
     </view>;
   }
 
   private renderTextViewSection(): void {
-    <view style={styles.card} marginBottom={14}>
+    <view style={styles.sectionCard}>
       {this.renderSectionTitle('Textview')}
       <textview
-        backgroundColor="#FFFFFF"
-        backgroundEffectBorderRadius={8}
-        backgroundEffectColor="#DBEAFE"
-        backgroundEffectPadding={4}
-        color="#0F172A"
-        customUnderlineStyle="1 0 0 -2"
-        enabled={this.state.enabled}
-        font={systemFont(17)}
-        height={112}
-        lineHeight={25}
-        numberOfLines={0}
-        placeholder="Type multiline text"
-        placeholderColor="#94A3B8"
-        returnType="linereturn"
-        selectable={true}
-        selection={[0, 4]}
-        textAlign="left"
-        textDecoration="underline"
-        textGravity="top"
-        textOverflow="ellipsis"
+        style={styles.primaryTextView.extend({ enabled: this.state.enabled })}
         value={this.state.multilineValue}
-        width="100%"
         onChange={event => this.updateMultiline(event.text)}
         onEditBegin={event => this.record(`textview begin ${event.text.length}`)}
         onEditEnd={event => this.record(`textview end reason ${event.reason}`)}
         onReturn={event => this.record(`textview return ${event.text.length}`)}
         onSelectionChange={event => this.record(`textview selection ${event.selectionStart}-${event.selectionEnd}`)}
       />
-      <textview
-        backgroundColor="#FFFFFF"
-        color="#334155"
-        enabled={false}
-        font={systemFont(17)}
-        height={74}
-        lineHeightMultiple={1.3}
-        marginTop={10}
-        numberOfLines={0}
-        textGravity="center"
-        value={inlineTextValue}
-        width="100%"
-      >
+      <textview style={styles.inlineTextView} value={inlineTextValue}>
         <InlinePill color="#2563EB" title="BASE" />
       </textview>
     </view>;
   }
 
   private renderTextFieldSection(): void {
-    <view style={styles.card} marginBottom={14}>
+    <view style={styles.sectionCard}>
       {this.renderSectionTitle('Textfield')}
       <textfield
-        autocapitalization="words"
-        autocorrection="none"
-        characterLimit={24}
-        closesWhenReturnKeyPressed={true}
-        color="#0F172A"
-        contentType="email"
-        enabled={this.state.enabled}
-        enableInlinePredictions={true}
-        font={systemFont(17)}
-        height={44}
-        keyboardAppearance="dark"
-        placeholder="Email"
-        placeholderColor="#94A3B8"
-        returnKeyText="send"
-        selectTextOnFocus={true}
-        selectable={true}
-        selection={[0, 4]}
-        textAlign="left"
-        tintColor="#2563EB"
+        style={styles.primaryTextField.extend({ enabled: this.state.enabled })}
         value={this.state.fieldValue}
-        width="100%"
         onChange={event => this.updateField(event.text)}
         onEditBegin={event => this.record(`textfield begin ${event.text.length}`)}
         onEditEnd={event => this.record(`textfield end reason ${event.reason}`)}
@@ -304,49 +166,16 @@ export class App extends StatefulComponent<ViewModel, State> {
         }}
         onWillDelete={event => this.record(`textfield willDelete ${event.text.length}`)}
       />
-      <view flexDirection="row" marginTop={10} width="100%">
-        <textfield
-          color="#0F172A"
-          contentType="phoneNumber"
-          enabled={this.state.enabled}
-          font={systemFont(16)}
-          height={42}
-          marginRight={8}
-          placeholder="Phone"
-          returnKeyText="next"
-          textAlign="center"
-          value="+1 555 0100"
-          width="48%"
-        />
-        <textfield
-          color="#0F172A"
-          contentType="passwordVisible"
-          enabled={this.state.enabled}
-          font={systemFont(16)}
-          height={42}
-          placeholder="Password"
-          returnKeyText="go"
-          value="visible-secret"
-          width="48%"
-        />
+      <view style={styles.textFieldRow}>
+        <textfield style={styles.phoneTextField.extend({ enabled: this.state.enabled })} value="+1 555 0100" />
+        <textfield style={styles.passwordTextField.extend({ enabled: this.state.enabled })} value="visible-secret" />
       </view>
-      <textfield
-        color="#64748B"
-        contentType="numberDecimalSigned"
-        enabled={false}
-        font={systemFont(16)}
-        height={42}
-        marginTop={10}
-        selectable={true}
-        textAlign="right"
-        value="-123.45 disabled selectable"
-        width="100%"
-      />
+      <textfield style={styles.disabledTextField} value="-123.45 disabled selectable" />
     </view>;
   }
 
   private renderSectionTitle(title: string): void {
-    <label color="#334155" font={systemBoldFont(14)} marginBottom={10} value={title} width="100%" />;
+    <label style={styles.sectionTitle} value={title} />;
   }
 
   private toggleEnabled = () => {
@@ -384,16 +213,209 @@ export class App extends StatefulComponent<ViewModel, State> {
 }
 
 const styles = {
-  buttonRow: new Style<View>({
-    flexDirection: 'row',
+  appSubtitle: new Style<Label>({
+    color: '#475569',
+    font: systemFont(15),
+    lineHeightMultiple: 1.25,
+    marginBottom: 14,
+    numberOfLines: 0,
     width: '100%',
   }),
 
-  card: new Style<View>({
+  appTitle: new Style<Label>({
+    color: '#0F172A',
+    font: systemBoldFont(27),
+    marginBottom: 6,
+    width: '100%',
+  }),
+
+  autoshrinkLabel: new Style<Label>({
+    adjustsFontSizeToFitWidth: true,
+    color: '#BE123C',
+    font: systemBoldFont(22),
+    marginTop: 8,
+    minimumScaleFactor: 0.55,
+    numberOfLines: 1,
+    textOverflow: 'ellipsis',
+    width: 260,
+  }),
+
+  buttonRow: new Style<View>({
+    flexDirection: 'row',
+    marginBottom: 12,
+    width: '100%',
+  }),
+
+  dashedUnderlineLabel: new Style<Label>({
+    color: '#0F172A',
+    customUnderlineStyle: '1 3 2 -2',
+    font: systemFont(17),
+    marginTop: 8,
+    textDecoration: 'dashed-underline',
+    width: '100%',
+  }),
+
+  disabledTextField: new Style<TextField>({
+    color: '#64748B',
+    contentType: 'numberDecimalSigned',
+    enabled: false,
+    font: systemFont(16),
+    height: 42,
+    marginTop: 10,
+    selectable: true,
+    textAlign: 'right',
+    width: '100%',
+  }),
+
+  eventCard: new Style<View>({
     backgroundColor: '#FFFFFF',
     border: '1 solid #CBD5E1',
     borderRadius: 8,
+    marginBottom: 24,
     padding: 14,
+    width: '100%',
+  }),
+
+  eventLog: new Style<Label>({
+    color: '#334155',
+    font: systemFont(14),
+    lineHeightMultiple: 1.25,
+    numberOfLines: 0,
+    width: '100%',
+  }),
+
+  fontColorLabel: new Style<Label>({
+    color: '#1D4ED8',
+    font: 'system-bold 24 unscaled 24',
+    width: '100%',
+  }),
+
+  gradientLabel: new Style<Label>({
+    font: systemBoldFont(22),
+    marginTop: 8,
+    textGradient: 'linear-gradient(#DC2626, #7C3AED, #2563EB)',
+    width: '100%',
+  }),
+
+  inlinePill: new Style<View>({
+    alignItems: 'center',
+    borderRadius: 5,
+    height: 18,
+    justifyContent: 'center',
+    width: 58,
+  }),
+
+  inlinePillLabel: new Style<Label>({
+    color: '#FFFFFF',
+    font: systemBoldFont(9),
+    textAlign: 'center',
+    width: '100%',
+  }),
+
+  inlineTextLabel: new Style<Label>({
+    color: '#0F172A',
+    font: systemFont(18),
+    lineHeightMultiple: 1.35,
+    marginTop: 8,
+    numberOfLines: 0,
+    width: '100%',
+  }),
+
+  inlineTextView: new Style<TextView>({
+    backgroundColor: '#FFFFFF',
+    color: '#334155',
+    enabled: false,
+    font: systemFont(17),
+    height: 74,
+    lineHeightMultiple: 1.3,
+    marginTop: 10,
+    numberOfLines: 0,
+    textGravity: 'center',
+    width: '100%',
+  }),
+
+  justifiedLabel: new Style<Label>({
+    color: '#0F172A',
+    font: systemFont(17),
+    lineHeight: 26,
+    marginTop: 8,
+    numberOfLines: 0,
+    textAlign: 'justified',
+    width: '100%',
+  }),
+
+  letterSpacingLabel: new Style<Label>({
+    color: '#334155',
+    font: systemFont(17),
+    letterSpacing: 1.8,
+    marginTop: 8,
+    width: '100%',
+  }),
+
+  passwordTextField: new Style<TextField>({
+    color: '#0F172A',
+    contentType: 'passwordVisible',
+    font: systemFont(16),
+    height: 42,
+    placeholder: 'Password',
+    returnKeyText: 'go',
+    width: '48%',
+  }),
+
+  phoneTextField: new Style<TextField>({
+    color: '#0F172A',
+    contentType: 'phoneNumber',
+    font: systemFont(16),
+    height: 42,
+    marginRight: 8,
+    placeholder: 'Phone',
+    returnKeyText: 'next',
+    textAlign: 'center',
+    width: '48%',
+  }),
+
+  primaryTextField: new Style<TextField>({
+    autocapitalization: 'words',
+    autocorrection: 'none',
+    characterLimit: 24,
+    closesWhenReturnKeyPressed: true,
+    color: '#0F172A',
+    contentType: 'email',
+    enableInlinePredictions: true,
+    font: systemFont(17),
+    height: 44,
+    keyboardAppearance: 'dark',
+    placeholder: 'Email',
+    placeholderColor: '#94A3B8',
+    returnKeyText: 'send',
+    selectTextOnFocus: true,
+    selectable: true,
+    selection: [0, 4],
+    textAlign: 'left',
+    tintColor: '#2563EB',
+    width: '100%',
+  }),
+
+  primaryTextView: new Style<TextView>({
+    backgroundColor: '#FFFFFF',
+    backgroundEffectBorderRadius: 8,
+    backgroundEffectColor: '#DBEAFE',
+    backgroundEffectPadding: 4,
+    color: '#0F172A',
+    customUnderlineStyle: '1 0 0 -2',
+    font: systemFont(17),
+    height: 112,
+    lineHeight: 25,
+    numberOfLines: 0,
+    placeholder: 'Type multiline text',
+    placeholderColor: '#94A3B8',
+    returnType: 'linereturn',
+    selectable: true,
+    selection: [0, 4],
+    textAlign: 'left',
+    textDecoration: 'underline',
+    textGravity: 'top',
+    textOverflow: 'ellipsis',
     width: '100%',
   }),
 
@@ -407,6 +429,70 @@ const styles = {
     width: '48%',
   }),
 
+  resetButtonLabel: new Style<Label>({
+    color: '#0F172A',
+    font: systemBoldFont(14),
+    textAlign: 'center',
+    width: '100%',
+  }),
+
+  richTextLabel: new Style<Label>({
+    color: '#0F172A',
+    font: systemFont(18),
+    lineHeightMultiple: 1.35,
+    marginTop: 8,
+    numberOfLines: 0,
+    selectable: true,
+    selection: [0, 6],
+    width: '100%',
+  }),
+
+  screen: new Style<View>({
+    backgroundColor: '#F8FAFC',
+    height: '100%',
+    width: '100%',
+  }),
+
+  screenContent: new Style<View>({
+    padding: 18,
+    width: '100%',
+  }),
+
+  screenScroll: new Style<ScrollView>({
+    height: '100%',
+    width: '100%',
+  }),
+
+  sectionCard: new Style<View>({
+    backgroundColor: '#FFFFFF',
+    border: '1 solid #CBD5E1',
+    borderRadius: 8,
+    marginBottom: 14,
+    padding: 14,
+    width: '100%',
+  }),
+
+  sectionTitle: new Style<Label>({
+    color: '#334155',
+    font: systemBoldFont(14),
+    marginBottom: 10,
+    width: '100%',
+  }),
+
+  shadowLabel: new Style<Label>({
+    color: '#78350F',
+    font: systemBoldFont(19),
+    marginTop: 8,
+    textShadow: 'rgba(120, 53, 15, 0.45) 2 0.75 0 2',
+    width: '100%',
+  }),
+
+  textFieldRow: new Style<View>({
+    flexDirection: 'row',
+    marginTop: 10,
+    width: '100%',
+  }),
+
   toggleButton: new Style<View>({
     alignItems: 'center',
     backgroundColor: '#2563EB',
@@ -414,5 +500,22 @@ const styles = {
     justifyContent: 'center',
     padding: 12,
     width: '48%',
+  }),
+
+  toggleButtonLabel: new Style<Label>({
+    color: '#FFFFFF',
+    font: systemBoldFont(14),
+    textAlign: 'center',
+    width: '100%',
+  }),
+
+  twoLineEllipsisLabel: new Style<Label>({
+    color: '#0F172A',
+    font: systemBoldFont(18),
+    lineHeight: 24,
+    marginTop: 10,
+    numberOfLines: 2,
+    textOverflow: 'ellipsis',
+    width: 260,
   }),
 };
