@@ -48,10 +48,12 @@
 #include "valdi/android/AccessibilityBridge.hpp"
 #include "valdi/android/AndroidAssetLoader.hpp"
 #include "valdi/android/AndroidBitmap.hpp"
+#include "valdi/android/AndroidBitmapFactory.hpp"
 #include "valdi/android/AndroidViewHolder.hpp"
 #include "valdi/android/AttributesBindingContextWrapper.hpp"
 #include "valdi/android/DeferredViewOperations.hpp"
 #include "valdi/android/NativeBridge.hpp"
+#include "valdi/svg/SVGRenderer.hpp"
 
 #if SNAP_DRAWING_ENABLED
 #include "snap_drawing/cpp/Utils/LottieAnimatedImage.hpp"
@@ -2197,6 +2199,70 @@ jobject ValdiAndroid::NativeBridge::wrapAndroidBitmap(fbjni::alias_ref<fbjni::JC
     return newJavaObjectWrappingValue(JavaEnv(), Valdi::Value(androidBitmap)).releaseObject();
 }
 
+jobject ValdiAndroid::NativeBridge::rasterizeSVG(fbjni::alias_ref<fbjni::JClass> /*clazz*/, // NOLINT
+                                                 jbyteArray svgData,
+                                                 jint preferredWidth,
+                                                 jint preferredHeight,
+                                                 jfloat /*displayScale*/) {
+    auto* env = fbjni::Environment::current();
+    if (svgData == nullptr) {
+        ValdiAndroid::throwJavaValdiException(env, "SVG data cannot be null");
+        return nullptr;
+    }
+
+    auto bytes = ValdiAndroid::toByteArray(JavaEnv(), svgData);
+    auto bitmap = Valdi::SVGRenderer::rasterizeSVG(bytes,
+                                                   AndroidBitmapFactory::getSharedInstance(),
+                                                   static_cast<int32_t>(preferredWidth),
+                                                   static_cast<int32_t>(preferredHeight));
+    if (!bitmap) {
+        ValdiAndroid::throwJavaValdiException(env, bitmap.error());
+        return nullptr;
+    }
+
+    auto androidBitmap = Valdi::castOrNull<AndroidBitmap>(bitmap.value());
+    if (androidBitmap == nullptr) {
+        ValdiAndroid::throwJavaValdiException(env, "SVG rasterization did not return an Android bitmap");
+        return nullptr;
+    }
+
+    return androidBitmap->getJavaBitmap().releaseObject();
+}
+
+jobject ValdiAndroid::NativeBridge::rasterizeSVGFromFilePath(fbjni::alias_ref<fbjni::JClass> /*clazz*/, // NOLINT
+                                                             jstring filePath,
+                                                             jfloat /*displayScale*/) {
+    auto* env = fbjni::Environment::current();
+    if (filePath == nullptr) {
+        ValdiAndroid::throwJavaValdiException(env, "SVG file path cannot be null");
+        return nullptr;
+    }
+
+    auto pathString = ValdiAndroid::toStdString(JavaEnv(), filePath);
+    auto bytes = Valdi::DiskUtils::load(Valdi::DiskUtils::absolutePathFromString(pathString));
+    if (!bytes) {
+        ValdiAndroid::throwJavaValdiException(env, bytes.error());
+        return nullptr;
+    }
+
+    auto bitmap = Valdi::SVGRenderer::rasterizeSVG(bytes.value(),
+                                                   AndroidBitmapFactory::getSharedInstance(),
+                                                   0,
+                                                   0);
+    if (!bitmap) {
+        ValdiAndroid::throwJavaValdiException(env, bitmap.error());
+        return nullptr;
+    }
+
+    auto androidBitmap = Valdi::castOrNull<AndroidBitmap>(bitmap.value());
+    if (androidBitmap == nullptr) {
+        ValdiAndroid::throwJavaValdiException(env, "SVG rasterization did not return an Android bitmap");
+        return nullptr;
+    }
+
+    return androidBitmap->getJavaBitmap().releaseObject();
+}
+
 #ifdef SNAP_DRAWING_ENABLED
 
 static Valdi::Ref<ValdiAndroid::SnapDrawingLayerRootHost> getSnapDrawingRoot(jlong snapDrawingRootHandle) {
@@ -2551,6 +2617,8 @@ void ValdiAndroid::NativeBridge::registerNatives() {
         makeNativeMethod("startProfiling", ValdiAndroid::NativeBridge::startProfiling),
         makeNativeMethod("stopProfiling", ValdiAndroid::NativeBridge::stopProfiling),
         makeNativeMethod("wrapAndroidBitmap", ValdiAndroid::NativeBridge::wrapAndroidBitmap),
+        makeNativeMethod("rasterizeSVG", ValdiAndroid::NativeBridge::rasterizeSVG),
+        makeNativeMethod("rasterizeSVGFromFilePath", ValdiAndroid::NativeBridge::rasterizeSVGFromFilePath),
 #ifdef SNAP_DRAWING_ENABLED
         makeNativeMethod("getSnapDrawingRuntimeHandle", ValdiAndroid::NativeBridge::getSnapDrawingRuntimeHandle),
         makeNativeMethod("setSnapDrawingRootView", ValdiAndroid::NativeBridge::setSnapDrawingRootView),

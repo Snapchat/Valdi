@@ -345,6 +345,16 @@ public:
 
     static jobject wrapAndroidBitmap(fbjni::alias_ref<fbjni::JClass> clazz, jobject bitmap);
 
+    static jobject rasterizeSVG(fbjni::alias_ref<fbjni::JClass> clazz,
+                                jbyteArray svgData,
+                                jint preferredWidth,
+                                jint preferredHeight,
+                                jfloat displayScale);
+
+    static jobject rasterizeSVGFromFilePath(fbjni::alias_ref<fbjni::JClass> clazz,
+                                            jstring filePath,
+                                            jfloat displayScale);
+
     static jlong getSnapDrawingRuntimeHandle(fbjni::alias_ref<fbjni::JClass> clazz, jlong runtimeManagerHandle);
 
     static jboolean dispatchSnapDrawingTouchEvent(fbjni::alias_ref<fbjni::JClass> clazz,

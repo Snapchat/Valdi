@@ -12,6 +12,7 @@ import com.snap.valdi.utils.ValdiImageFactory
 import com.snap.valdi.utils.ValdiImageLoadCompletion
 import com.snap.valdi.utils.ValdiImageLoadOptions
 import com.snap.valdi.utils.ValdiImageLoader
+import com.snap.valdi.utils.ValdiSVGRasterizer
 import com.snap.valdi.utils.ValdiImageWithContent
 import com.snap.valdi.utils.DelegatedLoader
 import com.snap.valdi.utils.Disposable
@@ -28,33 +29,40 @@ import java.lang.ref.SoftReference
  */
 class DefaultValdiImageLoader(val context: Context,
                                  val postprocessor: ValdiImageLoaderPostprocessor,
-                                 val requestManager: HTTPRequestManager): ValdiImageLoader {
+                                 val requestManager: HTTPRequestManager,
+                                 private val svgRasterizer: ValdiSVGRasterizer): ValdiImageLoader {
 
-    data class CacheKey(val uri: Uri,
-                        val outputType: ValdiAssetLoadOutputType
+    private data class CacheKey(val uri: Uri,
+                                val outputType: ValdiAssetLoadOutputType
+    )
+
+    private data class LoadRequest(val cacheKey: CacheKey,
+                                   val requestedWidth: Int,
+                                   val requestedHeight: Int
     )
 
     private val cache = hashMapOf<CacheKey, SoftReference<ValdiImage>>()
 
-    private val loaderImpl = object: LoaderDelegate<CacheKey, ValdiImage> {
-        override fun load(key: CacheKey, completion: LoadCompletion<ValdiImage>) {
-            val cachedImage = getFromCache(key, 0, 0)
+    private val loaderImpl = object: LoaderDelegate<LoadRequest, ValdiImage> {
+        override fun load(request: LoadRequest, completion: LoadCompletion<ValdiImage>) {
+            val cacheKey = request.cacheKey
+            val cachedImage = getFromCache(cacheKey)
             if (cachedImage != null) {
                 completion.onSuccess(cachedImage)
                 return
             }
 
-            val uri = key.uri
+            val uri = cacheKey.uri
 
             if (LocalAssetLoader.isValdiAssetUrl(uri)) {
                 val resId = LocalAssetLoader.resIDFromValdiAssetUrl(uri)
-                loadImageResource(completion, key.outputType, resId)
+                loadImageResource(completion, cacheKey.outputType, resId)
             } else if (uri.scheme == "file") {
-                loadImageFromFilePath(completion, key.outputType, uri.path ?: "")
+                loadImageFromFilePath(completion, cacheKey.outputType, uri.path ?: "")
             } else if (uri.scheme == "data") {
-                loadImageFromDataScheme(completion, key.outputType, uri)
+                loadImageFromDataScheme(completion, cacheKey.outputType, uri, request.requestedWidth, request.requestedHeight)
             } else {
-                loadImageUri(completion, key.outputType, uri)
+                loadImageUri(completion, cacheKey.outputType, uri, request.requestedWidth, request.requestedHeight)
             }
         }
     }
@@ -74,7 +82,7 @@ class DefaultValdiImageLoader(val context: Context,
         when (outputType) {
             ValdiAssetLoadOutputType.BITMAP -> {
                 createValdiImage(completion) {
-                    ValdiImageFactory.fromResources(context.resources, resourceId)
+                    ValdiImageFactory.fromResources(context.resources, resourceId, svgRasterizer)
                 }
             }
             ValdiAssetLoadOutputType.RAW_CONTENT -> {
@@ -91,7 +99,7 @@ class DefaultValdiImageLoader(val context: Context,
         }
     }
 
-    private fun loadImageFromData(completion: LoadCompletion<ValdiImage>, outputType: ValdiAssetLoadOutputType, body: ByteArray?) {
+    private fun loadImageFromData(completion: LoadCompletion<ValdiImage>, outputType: ValdiAssetLoadOutputType, body: ByteArray?, requestedWidth: Int, requestedHeight: Int) {
         if (body == null) {
             completion.onFailure(ValdiException("Did not receive response body"))
             return
@@ -100,7 +108,7 @@ class DefaultValdiImageLoader(val context: Context,
         when (outputType) {
             ValdiAssetLoadOutputType.BITMAP -> {
                 createValdiImage(completion) {
-                    ValdiImageFactory.fromByteArray(body)
+                    ValdiImageFactory.fromByteArray(body, requestedWidth, requestedHeight)
                 }
             }
 
@@ -117,7 +125,7 @@ class DefaultValdiImageLoader(val context: Context,
         when (outputType) {
             ValdiAssetLoadOutputType.BITMAP -> {
                 createValdiImage(completion) {
-                    ValdiImageFactory.fromFilePath(filePath)
+                    ValdiImageFactory.fromFilePath(filePath, context.resources.displayMetrics.density)
                 }
             }
 
@@ -130,7 +138,7 @@ class DefaultValdiImageLoader(val context: Context,
         }
     }
 
-    private fun loadImageFromDataScheme(completion: LoadCompletion<ValdiImage>, outputType: ValdiAssetLoadOutputType, uri: Uri) {
+    private fun loadImageFromDataScheme(completion: LoadCompletion<ValdiImage>, outputType: ValdiAssetLoadOutputType, uri: Uri, requestedWidth: Int, requestedHeight: Int) {
         val str = uri.toString()
         val delimiter = "base64,"
         val index = str.indexOf(delimiter)
@@ -146,14 +154,14 @@ class DefaultValdiImageLoader(val context: Context,
             return
         }
 
-        loadImageFromData(completion, outputType, bytes)
+        loadImageFromData(completion, outputType, bytes, requestedWidth, requestedHeight)
     }
 
-    private fun loadImageUri(completion: LoadCompletion<ValdiImage>, outputType: ValdiAssetLoadOutputType, url: Uri) {
+    private fun loadImageUri(completion: LoadCompletion<ValdiImage>, outputType: ValdiAssetLoadOutputType, url: Uri, requestedWidth: Int, requestedHeight: Int) {
         requestManager.performRequest(HTTPRequest(url.toString(), "GET", null, null, 0), object: HTTPRequestManagerCompletion() {
 
             override fun onComplete(response: HTTPResponse) {
-                loadImageFromData(completion, outputType, response.body)
+                loadImageFromData(completion, outputType, response.body, requestedWidth, requestedHeight)
             }
 
             override fun onFail(error: String) {
@@ -162,13 +170,13 @@ class DefaultValdiImageLoader(val context: Context,
         })
     }
 
-    private fun getFromCache(url: CacheKey, requestedWidth: Int, requestedHeight: Int): ValdiImage? {
+    private fun getFromCache(url: CacheKey): ValdiImage? {
         return synchronized(cache) {
             cache[url]?.get()
         }
     }
 
-    private fun storeInCache(url: CacheKey, requestedWidth: Int, requestedHeight: Int, image: ValdiImage) {
+    private fun storeInCache(url: CacheKey, image: ValdiImage) {
         val previousValue = synchronized(cache) {
             val previousValue = cache[url]?.get()
             cache[url] = SoftReference(image)
@@ -198,17 +206,20 @@ class DefaultValdiImageLoader(val context: Context,
 
     override fun loadImage(requestPayload: Any, options: ValdiImageLoadOptions, completion: ValdiImageLoadCompletion): Disposable? {
         val url = requestPayload as Uri
-        val key = CacheKey(url, options.outputType)
-        val image = getFromCache(key, options.requestedWidth, options.requestedHeight)
+        val requestedWidth = if (options.outputType == ValdiAssetLoadOutputType.BITMAP) options.requestedWidth else 0
+        val requestedHeight = if (options.outputType == ValdiAssetLoadOutputType.BITMAP) options.requestedHeight else 0
+        val cacheKey = CacheKey(url, options.outputType)
+        val image = getFromCache(cacheKey)
         if (image != null) {
             onImageLoaded(image, options, completion)
             return null
         }
 
-        return loader.load(key, object: LoadCompletion<ValdiImage> {
+        val loadRequest = LoadRequest(cacheKey, requestedWidth, requestedHeight)
+        return loader.load(loadRequest, object: LoadCompletion<ValdiImage> {
 
             override fun onSuccess(item: ValdiImage) {
-                storeInCache(key, options.requestedWidth, options.requestedHeight, item)
+                storeInCache(cacheKey, item)
 
                 if (options.outputType == ValdiAssetLoadOutputType.BITMAP) {
                     onImageLoaded(item, options, completion)

@@ -252,6 +252,10 @@ public class NativeBridge {
 
     public static native Object wrapAndroidBitmap(Object androidBitmap);
 
+    public static native Object rasterizeSVG(byte[] svgData, int preferredWidth, int preferredHeight, float displayScale);
+
+    public static native Object rasterizeSVGFromFilePath(String filePath, float displayScale);
+
     public static native long getSnapDrawingRuntimeHandle(long runtimeManagerHandle);
     public static native long createSnapDrawingRoot(long snapDrawingRuntimeHandle, boolean disallowSynchronousDraw);
     public static native boolean dispatchSnapDrawingTouchEvent(long skiaRootHandle, int type, long eventTimeNanos, int x, int y, int dx, int dy, int pointerCount, int actionIndex, int[] pointerLocations, Object motionEvent);

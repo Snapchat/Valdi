@@ -139,45 +139,6 @@ public:
     }
 
     // NOLINTNEXTLINE
-    static jdouble nativeGetAnimationTranslationY(fbjni::alias_ref<fbjni::JClass> /* clazz */, jlong ptr, jint index) {
-        static constexpr jdouble kUnset = static_cast<jdouble>(std::numeric_limits<double>::quiet_NaN());
-
-        auto attributedText = getAttributedText(ptr);
-        const auto& style = attributedText->getStyleAtIndex(static_cast<size_t>(index));
-        if (!style.animationTransform) {
-            return kUnset;
-        }
-
-        return static_cast<jdouble>(style.animationTransform->translationY);
-    }
-
-    // NOLINTNEXTLINE
-    static jdouble nativeGetAnimationScale(fbjni::alias_ref<fbjni::JClass> /* clazz */, jlong ptr, jint index) {
-        static constexpr jdouble kUnset = static_cast<jdouble>(std::numeric_limits<double>::quiet_NaN());
-
-        auto attributedText = getAttributedText(ptr);
-        const auto& style = attributedText->getStyleAtIndex(static_cast<size_t>(index));
-        if (!style.animationTransform) {
-            return kUnset;
-        }
-
-        return static_cast<jdouble>(style.animationTransform->scale);
-    }
-
-    // NOLINTNEXTLINE
-    static jdouble nativeGetAnimationOpacity(fbjni::alias_ref<fbjni::JClass> /* clazz */, jlong ptr, jint index) {
-        static constexpr jdouble kUnset = static_cast<jdouble>(std::numeric_limits<double>::quiet_NaN());
-
-        auto attributedText = getAttributedText(ptr);
-        const auto& style = attributedText->getStyleAtIndex(static_cast<size_t>(index));
-        if (!style.animationTransform) {
-            return kUnset;
-        }
-
-        return static_cast<jdouble>(style.animationTransform->opacity);
-    }
-
-    // NOLINTNEXTLINE
     static jfloat nativeGetImageAttachmentWidth(fbjni::alias_ref<fbjni::JClass> /* clazz */, jlong ptr, jint index) {
         auto attributedText = getAttributedText(ptr);
         const auto& style = attributedText->getStyleAtIndex(static_cast<size_t>(index));
@@ -402,9 +363,6 @@ public:
             makeNativeMethod("nativeGetOnLayout", AttributedTextJNI::nativeGetOnLayout),
             makeNativeMethod("nativeGetOutlineColor", AttributedTextJNI::nativeGetOutlineColor),
             makeNativeMethod("nativeGetOutlineWidth", AttributedTextJNI::nativeGetOutlineWidth),
-            makeNativeMethod("nativeGetAnimationTranslationY", AttributedTextJNI::nativeGetAnimationTranslationY),
-            makeNativeMethod("nativeGetAnimationScale", AttributedTextJNI::nativeGetAnimationScale),
-            makeNativeMethod("nativeGetAnimationOpacity", AttributedTextJNI::nativeGetAnimationOpacity),
             makeNativeMethod("nativeGetImageAttachmentWidth", AttributedTextJNI::nativeGetImageAttachmentWidth),
             makeNativeMethod("nativeGetImageAttachmentHeight", AttributedTextJNI::nativeGetImageAttachmentHeight),
             makeNativeMethod("nativeGetImageAttachmentData", AttributedTextJNI::nativeGetImageAttachmentData),
