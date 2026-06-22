@@ -663,6 +663,23 @@
     XCTAssertTrue(CATransform3DIsIdentity(view.layer.transform));
 }
 
+- (void)testPrepareForPoolReusePreservesNormalAnimations
+{
+    // Normal active animations (visible in animationKeys) are left for
+    // willEnqueueViewToPool to handle via its dispatch_async deferral path.
+    UIView *view = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 200, 44)];
+    CABasicAnimation *anim = [CABasicAnimation animationWithKeyPath:@"transform"];
+    anim.toValue = [NSValue valueWithCATransform3D:CATransform3DMakeTranslation(-216, 0, 0)];
+    anim.duration = 5.0;
+    [view.layer addAnimation:anim forKey:@"transform"];
+    XCTAssertGreaterThan(view.layer.animationKeys.count, 0u);
+
+    [view valdi_prepareForPoolReuse];
+
+    XCTAssertGreaterThan(view.layer.animationKeys.count, 0u);
+    XCTAssertTrue(CATransform3DIsIdentity(view.layer.transform));
+}
+
 - (void)testLabelAllowsPoolReentry
 {
     SCValdiLabel *label = [[SCValdiLabel alloc] initWithFrame:CGRectMake(0, 0, 200, 44)];

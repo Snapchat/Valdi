@@ -47,12 +47,20 @@ static BOOL SCValdiLayerHasAnimation(CALayer *layer)
 
 - (void)valdi_prepareForPoolReuse
 {
-    // Reset the CALayer transform to identity. Valdi animations set the CALayer
-    // model value to the animation target before the CAAnimation starts visually.
-    // If the animation is cancelled mid-flight the animation key is removed and the
-    // layer snaps to that model value. By the time the pool enqueue fires the
-    // animation key is gone, so it cannot be detected via animationKeys — the
-    // transform must be reset unconditionally here.
+    // Reset the transform to identity. Valdi sets the CALayer model value to the
+    // animation target before the CAAnimation starts, so a mid-flight cancellation
+    // snaps the layer to a stale position.
+    // CoreAnimation can also keep an animation running internally after
+    // animationDidStop:finished:NO fires on an invisible layer — the key disappears
+    // from animationKeys but the animation keeps running, escaping the guard in
+    // willEnqueueViewToPool.
+    
+    // Remove animations only when animationKeys is already empty so that the
+    // dispatch_async deferral in willEnqueueViewToPool still fires for views with
+    // normal active animations.
+    if (self.layer.animationKeys.count == 0) {
+        [self.layer removeAllAnimations];
+    }
     self.layer.transform = CATransform3DIdentity;
 }
 
