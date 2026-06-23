@@ -1,27 +1,10 @@
 name: Comment Test Results
 
 on:
-  workflow_call:
-    inputs:
-      workflow_name:
-        description: 'Name of the calling workflow for the comment header'
-        required: true
-        type: string
-      success_message:
-        description: 'Message to show when all tests pass'
-        required: false
-        type: string
-        default: '**All tests passed!** ✨'
-      failure_message:
-        description: 'Message to show when tests fail'
-        required: false
-        type: string
-        default: '**Some tests failed.** Please check the workflow logs for details.'
-      additional_info:
-        description: 'Optional additional information to include in the comment'
-        required: false
-        type: string
-        default: ''
+  workflow_run:
+    workflows: ["Valdi CI"]
+    types:
+      - completed
 
 permissions:
   pull-requests: write
@@ -30,59 +13,102 @@ jobs:
   comment:
     name: Post Results Comment
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion != 'skipped'
+
     steps:
-      - name: Auto-detect jobs and comment on PR
+      - name: Find PR number
+        id: find-pr
         uses: actions/github-script@v7
         with:
           script: |
-            // Fetch all jobs for this workflow run
+            const run = context.payload.workflow_run;
+            const pulls = run.pull_requests;
+            if (pulls && pulls.length > 0) {
+              return pulls[0].number;
+            }
+            if (run.head_repository) {
+              const { data: prs } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                head: `${run.head_repository.owner.login}:${run.head_branch}`,
+              });
+              if (prs.length > 0) {
+                return prs[0].number;
+              }
+            }
+            core.setFailed('Could not find PR number');
+
+      - name: Comment on PR
+        if: steps.find-pr.outputs.result
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = ${{ steps.find-pr.outputs.result }};
+            const runId = context.payload.workflow_run.id;
+
             const jobs = await github.rest.actions.listJobsForWorkflowRun({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              run_id: context.runId,
+              run_id: runId,
             });
-            
-            // Build results table (exclude this comment job itself)
+
             let tableRows = [];
             let allPassed = true;
-            
+
             for (const job of jobs.data.jobs) {
-              // Skip the comment job itself
-              if (job.name === 'Post Results Comment' || job.name === 'Comment Test Results') {
+              if (job.name.includes('Comment Test Results') || job.name.includes('Post Results Comment')) {
                 continue;
               }
-              
+
               const icon = job.conclusion === 'success' ? '✅' : '❌';
               tableRows.push(`| ${job.name} | ${icon} ${job.conclusion} |`);
-              
+
               if (job.conclusion !== 'success') {
                 allPassed = false;
               }
             }
-            
+
+            if (tableRows.length === 0) {
+              return;
+            }
+
             const emoji = allPassed ? '🎉' : '⚠️';
-            const message = allPassed 
-              ? `${{ inputs.success_message }}`
-              : `${{ inputs.failure_message }}`;
-            
-            const additionalInfo = `${{ inputs.additional_info }}`;
-            
-            const body = `## ${emoji} ${{ inputs.workflow_name }}
-            
+            const message = allPassed
+              ? '**All Bazel configuration and CI tests passed!** ✨\n\nThe build system and core tooling are working correctly.'
+              : '**Some tests failed.** Please check the workflow logs for details.';
+
+            const body = `## ${emoji} Bazel & CI Test Results
+
             | Test Suite | Result |
             |------------|--------|
             ${tableRows.join('\n')}
-            
+
             ${message}
-            
-            ${additionalInfo ? additionalInfo + '\n\n' : ''}
-            <sub>Workflow: [${context.workflow}](${context.payload.repository.html_url}/actions/runs/${context.runId})</sub>`;
-            
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
+
+            🚀 _Bazel remote cache is now enabled - future builds will be faster!_
+
+            <sub>Workflow: [Valdi CI](${context.payload.repository.html_url}/actions/runs/${runId})</sub>`;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: body
+              issue_number: prNumber,
             });
+            const existing = comments.find(c => c.body && c.body.includes('Bazel & CI Test Results'));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: body,
+              });
+            }

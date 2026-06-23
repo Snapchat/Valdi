@@ -42,11 +42,6 @@ fi
 
 # Android SDK and NDK are downloaded hermetically by Bazel — no local install needed.
 
-# Optional: Internal CI dependency fetcher (not mirrored to external repos)
-if [ -f ./tools/repo-archiver.sh ]; then
-    ./tools/repo-archiver.sh pull
-fi
-
 popd
 
 pushd "$OPEN_SOURCE_DIR"
