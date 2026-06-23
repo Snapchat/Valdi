@@ -10,8 +10,13 @@ bazel_dep(name = "bazel_skylib", version = "1.4.2")
 bazel_dep(name = "rules_java", version = "6.4.0")
 bazel_dep(name = "rules_python", version = "0.23.1")
 bazel_dep(name = "rules_cc", version = "0.0.8")
+bazel_dep(name = "rules_android", version = "0.6.5")
+bazel_dep(name = "rules_shell", version = "0.1.2")
 
-rules_kotlin_extensions = use_extension("//src/main/starlark/core/repositories:bzlmod_setup.bzl", "rules_kotlin_extensions")
+rules_kotlin_extensions = use_extension(
+    "//src/main/starlark/core/repositories:bzlmod_setup.bzl",
+    "rules_kotlin_extensions",
+)
 use_repo(
     rules_kotlin_extensions,
     "buildkite_config",
@@ -19,7 +24,6 @@ use_repo(
     "com_github_jetbrains_kotlin",
     "com_github_pinterest_ktlint",
     "kt_java_stub_template",
-    "rules_android",
 )
 
 register_toolchains("//kotlin/internal:default_toolchain")
@@ -27,6 +31,10 @@ register_toolchains("//kotlin/internal:default_toolchain")
 # TODO(bencodes) We should be able to remove this once rules_android has rolled out official Bzlmod support
 remote_android_extensions = use_extension("@bazel_tools//tools/android:android_extensions.bzl", "remote_android_tools_extensions")
 use_repo(remote_android_extensions, "android_gmaven_r8", "android_tools")
+
+# Hermetic Android SDK — download the SDK so no local install is required
+hermetic_android_sdk = use_extension("//:bzl/hermetic_android_sdk.bzl", "hermetic_android_sdk_extension")
+use_repo(hermetic_android_sdk, "androidsdk")
 
 # Development dependencies
 # TODO(bencodes) A bunch of these dependencies need to be marked as dev_dependencies but before we can do that

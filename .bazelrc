@@ -61,7 +61,6 @@ build --tool_java_runtime_version=remotejdk_17
 build --flag_alias=snap_flavor=@snap_platforms//flavors:snap_flavor
 build --snap_flavor=client_development
 
-build --android_sdk=@androidsdk//:sdk
 build --define=android_dexmerger_tool=d8_dexmerger
 build --define=android_incremental_dexing_tool=d8_dexbuilder
 build --define=android_standalone_dexing_tool=d8_compat_dx

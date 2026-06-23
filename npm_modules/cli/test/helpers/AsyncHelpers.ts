@@ -46,10 +46,10 @@ export function timeoutOnIdle(ms = 30_000): [timeout: Promise<never>, touch: () 
  * Rejects if there are queries remaning after the
  */
 export function lookForOutput(
-  { stdout = [], stderr = [] }: { stdout?: (string | RegExp)[]; stderr?: (string | RegExp)[] },
+  { stdout = [], stderr = [], idleTimeoutMs }: { stdout?: (string | RegExp)[]; stderr?: (string | RegExp)[]; idleTimeoutMs?: number },
   subcommand: SubCommand,
 ): Promise<true> {
-  const [idleTimer, touch, complete] = timeoutOnIdle();
+  const [idleTimer, touch, complete] = timeoutOnIdle(idleTimeoutMs);
 
   const monitor = (requiredQueries: (string | RegExp)[]) => {
     let queries = requiredQueries.slice();

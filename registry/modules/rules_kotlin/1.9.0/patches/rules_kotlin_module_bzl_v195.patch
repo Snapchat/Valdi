@@ -1,29 +1,23 @@
---- MODULE.bazel	2026-06-23 10:29:47
-+++ MODULE.bazel	2026-06-23 10:47:52
-@@ -10,16 +10,18 @@
- bazel_dep(name = "rules_java", version = "6.4.0")
+--- MODULE.bazel	1999-12-31 16:00:00
++++ MODULE.bazel	2026-06-23 10:48:12
+@@ -10,6 +10,8 @@
+ bazel_dep(name = "rules_java", version = "7.2.0")
  bazel_dep(name = "rules_python", version = "0.23.1")
  bazel_dep(name = "rules_cc", version = "0.0.8")
 +bazel_dep(name = "rules_android", version = "0.6.5")
 +bazel_dep(name = "rules_shell", version = "0.1.2")
  
--rules_kotlin_extensions = use_extension("//src/main/starlark/core/repositories:bzlmod_setup.bzl", "rules_kotlin_extensions")
-+rules_kotlin_extensions = use_extension(
-+    "//src/main/starlark/core/repositories:bzlmod_setup.bzl",
-+    "rules_kotlin_extensions",
-+)
- use_repo(
-     rules_kotlin_extensions,
--    "buildkite_config",
+ rules_kotlin_extensions = use_extension(
+     "//src/main/starlark/core/repositories:bzlmod_setup.bzl",
+@@ -20,7 +22,6 @@
      "com_github_google_ksp",
      "com_github_jetbrains_kotlin",
      "com_github_pinterest_ktlint",
--    "kt_java_stub_template",
 -    "rules_android",
  )
  
  register_toolchains("//kotlin/internal:default_toolchain")
-@@ -28,6 +30,10 @@
+@@ -29,4 +30,8 @@
  remote_android_extensions = use_extension("@bazel_tools//tools/android:android_extensions.bzl", "remote_android_tools_extensions")
  use_repo(remote_android_extensions, "android_gmaven_r8", "android_tools")
  
@@ -31,6 +25,4 @@
 +hermetic_android_sdk = use_extension("//:bzl/hermetic_android_sdk.bzl", "hermetic_android_sdk_extension")
 +use_repo(hermetic_android_sdk, "androidsdk")
 +
- # Development dependencies
- # TODO(bencodes) A bunch of these dependencies need to be marked as dev_dependencies but before we can do that
- # we need to sort out a few cases around how these rules are consumed in various ways.
+ bazel_dep(name = "rules_proto", version = "5.3.0-21.7")

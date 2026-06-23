@@ -67,8 +67,9 @@ single_version_override(
     version = "1.9.5",
     patches = [
         "@valdi//registry/modules/rules_kotlin/1.9.0/patches:rules_kotlin.patch",
+        "@valdi//registry/modules/rules_kotlin/1.9.0/patches:rules_kotlin_hermetic_sdk.patch",
         "@valdi//registry/modules/rules_kotlin/1.9.0/patches:rules_kotlin_android_sdk.patch",
-        "@valdi//registry/modules/rules_kotlin/1.9.0/patches:rules_kotlin_module_bzl.patch",
+        "@valdi//registry/modules/rules_kotlin/1.9.0/patches:rules_kotlin_module_bzl_v195.patch",
     ],
 )
 bazel_dep(name = "rules_jvm_external", version = "6.2")
