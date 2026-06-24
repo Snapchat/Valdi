@@ -46,7 +46,7 @@ Make sure to load your changes via `source ~/.zshrc`.
 ## Brew install dependencies
 
 ```
-brew install npm bazelisk openjdk@17 temurin git-lfs watchman ios-webkit-debug-proxy
+brew install npm bazelisk openjdk@17 temurin watchman ios-webkit-debug-proxy
 ```
 
 ## Setup JDK path
@@ -55,14 +55,6 @@ brew install npm bazelisk openjdk@17 temurin git-lfs watchman ios-webkit-debug-p
 sudo ln -sfn /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-17.jdk
 echo 'export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"' >> ~/.zshrc
 echo 'export JAVA_HOME=`/usr/libexec/java_home -v 17`' >> ~/.zshrc
-```
-
-## Install git-lfs
-
-Git Large File Storage (LFS) manages the binaries that we need for Valdi.
-
-```
-git lfs install
 ```
 
 ## Android SDK and NDK

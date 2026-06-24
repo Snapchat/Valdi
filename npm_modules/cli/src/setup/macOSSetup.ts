@@ -87,7 +87,7 @@ export async function macOSSetup(): Promise<void> {
   }
 
   // Install dependencies, skipping already installed ones
-  const packages = ['npm', 'bazelisk', 'openjdk@17', 'temurin', 'git-lfs', 'watchman', 'ios-webkit-debug-proxy', 'android-platform-tools'];
+  const packages = ['npm', 'bazelisk', 'openjdk@17', 'temurin', 'watchman', 'ios-webkit-debug-proxy', 'android-platform-tools'];
   const packagesToInstall: string[] = [];
   
   for (const pkg of packages) {
@@ -111,8 +111,6 @@ export async function macOSSetup(): Promise<void> {
   } else {
     console.log('All Homebrew dependencies are already installed');
   }
-
-  await devSetup.setupGitLfs();
 
   await devSetup.setupShellAutoComplete();
 

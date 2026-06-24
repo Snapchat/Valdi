@@ -48,7 +48,6 @@ Different distributions use different package names for the same software. The C
 | Android Debug Bridge | `adb` | `android-tools` | `android-tools` | `android-tools` |
 | Fontconfig Dev | `libfontconfig1-dev` | `fontconfig-devel` | `fontconfig` | `fontconfig-devel` |
 | Zlib Dev | `zlib1g-dev` | `zlib-devel` | `zlib` | `zlib-devel` |
-| Git LFS | `git-lfs` | `git-lfs` | `git-lfs` | `git-lfs` |
 | Watchman | `watchman` | `watchman` | `watchman` | `watchman` |
 
 ## Commands
@@ -66,7 +65,6 @@ valdi dev_setup
 2. Installs the following dependencies:
    - Node.js/npm (if not installed)
    - Java 17 JDK
-   - Git LFS
    - Watchman (for hot reload)
    - Android Debug Bridge (adb)
    - Development libraries (fontconfig, zlib)
@@ -78,11 +76,9 @@ valdi dev_setup
 **Distribution-specific behavior:**
 
 - **Debian/Ubuntu**: 
-  - Sets up packagecloud repository for git-lfs
   - Installs `libtinfo5` for Android command-line tools compatibility
 
 - **Red Hat/Fedora**:
-  - Sets up packagecloud RPM repository for git-lfs
   - Installs `ncurses-compat-libs` for Android tools
   - Shows warning if EPEL repository is needed for watchman
 
@@ -157,7 +153,6 @@ If your distribution is not automatically detected, you'll see:
 Unable to detect Linux distribution.
 Please manually install the following dependencies and re-run this command:
   - git
-  - git-lfs
   - npm (Node.js)
   - openjdk-17-jdk (or equivalent Java 17 JDK)
   - watchman

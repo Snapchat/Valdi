@@ -254,9 +254,6 @@ export function getCommonPackageMappings(): { [key: string]: PackageNameMap } {
     git: {
       unknown: 'git',
     },
-    'git-lfs': {
-      unknown: 'git-lfs',
-    },
     npm: {
       unknown: 'npm',
     },
@@ -298,29 +295,3 @@ export function getCommonPackageMappings(): { [key: string]: PackageNameMap } {
   };
 }
 
-/**
- * Checks if git-lfs can be installed directly or needs repository setup
- */
-export function needsGitLfsRepoSetup(distro = detectLinuxDistro()): boolean {
-  // Only Debian/Ubuntu-based systems need the packagecloud repository setup
-  // Other distributions usually have git-lfs in their standard repos
-  return distro.type === LinuxDistroType.DEBIAN;
-}
-
-/**
- * Gets the shell command to setup git-lfs repository for the current distribution
- */
-export function getGitLfsRepoSetupCommand(distro = detectLinuxDistro()): string | null {
-  switch (distro.type) {
-    case LinuxDistroType.DEBIAN: {
-      return 'curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash';
-    }
-    case LinuxDistroType.REDHAT: {
-      return 'curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.rpm.sh | sudo bash';
-    }
-    default: {
-      // Most other distributions have git-lfs in their standard repositories
-      return null;
-    }
-  }
-}

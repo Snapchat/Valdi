@@ -137,28 +137,6 @@ If `uname -m` returns `x86_64` on an Apple Silicon Mac, your terminal is running
 arch -arm64 /bin/zsh
 ```
 
-### Git LFS: 429 rate limit or `Repository or object not found`
-
-Valdi distributes compiler binaries via Git LFS. If LFS quota is exceeded you will see errors like:
-
-```
-error: failed to fetch some objects from 'https://github.com/Snapchat/Valdi.git/info/lfs/objects/batch'
-LFS: Repository or object not found: ... Error 429
-```
-
-**Workarounds:**
-
-Option 1 — Skip LFS on clone and download only what you need:
-```sh
-GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/Snapchat/Valdi.git
-cd Valdi
-git lfs pull --include="compiler/**"
-```
-
-Option 2 — Download the compiler binary directly from the [GitHub Release assets](https://github.com/Snapchat/Valdi/releases) for your version, and place it at the path `valdi` expects (check `valdi --help` for the expected location).
-
-If none of the above work, ping us in the [Valdi Discord](https://discord.gg/uJyNEeYX2U) or [file a GitHub issue](https://github.com/Snapchat/Valdi/issues) and we can help get you unblocked.
-
 ### `valdi install android` fails: `JAVA_HOME` not set or wrong Java version
 
 `valdi install android` requires **Java 17**. Other versions (8, 11, 21) are not supported.
@@ -201,7 +179,7 @@ If the file is generated but TypeScript still can't find it, check that the `res
 
 ```sh
 # Fedora / RHEL
-sudo dnf install java-17-openjdk-devel android-tools watchman fontconfig-devel zlib-devel git-lfs npm
+sudo dnf install java-17-openjdk-devel android-tools watchman fontconfig-devel zlib-devel npm
 ```
 
 Then continue with the [Linux setup guide](../setup/linux_setup.md) for Bazel and Android SDK setup.

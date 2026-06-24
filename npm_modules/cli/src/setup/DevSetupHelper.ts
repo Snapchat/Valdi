@@ -122,10 +122,6 @@ export class DevSetupHelper {
     console.log('  4. Create your first project with `valdi bootstrap`');
   }
 
-  async setupGitLfs(): Promise<void> {
-    await this.runShell('Initializing git-lfs', ['git lfs install']);
-  }
-
   async setupShellAutoComplete(): Promise<void> {
     const rcFile = this.getRcFile();
     if (!rcFile) {

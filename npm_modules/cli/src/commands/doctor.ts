@@ -67,7 +67,7 @@ interface CommandParameters {
   fix: boolean;
   /** Output results in JSON format for machine processing */
   json: boolean;
-  /** Include framework development checks (git-lfs, temurin, etc.) */
+  /** Include framework development checks (temurin, etc.) */
   framework: boolean;
   /** Include project-specific checks (workspace structure, etc.) */
   project: boolean;
@@ -124,7 +124,7 @@ interface GroupedDiagnosticResult {
  * - Platform-specific development tools (Android SDK, Xcode)
  * - Required development dependencies (git, npm, watchman, ios-webkit-debug-proxy)
  * - Optional project-specific checks (workspace structure)
- * - Optional framework development tools (git-lfs, temurin)
+ * - Optional framework development tools (temurin)
  *
  * @class ValdiDoctor
  */
@@ -187,7 +187,7 @@ class ValdiDoctor {
    *
    * **Framework Development Mode (--framework flag):**
    * - All app development checks plus
-   * - Advanced development tools (git-lfs, temurin)
+   * - Advanced development tools (temurin)
    * - Detailed environment variable validation
    * - Platform-specific development packages
    *
@@ -231,9 +231,6 @@ class ValdiDoctor {
 
     // Core development dependencies
     await this.checkCoreDependencies();
-
-    // Git LFS initialization check
-    await this.checkGitLfsInitialization();
 
     // Shell autocomplete configuration
     this.checkShellAutoComplete();
@@ -923,74 +920,6 @@ class ValdiDoctor {
   }
 
   /**
-   * Validates Git LFS initialization status.
-   *
-   * Checks if git-lfs is installed and properly initialized.
-   * dev_setup runs `git lfs install` to configure Git LFS hooks.
-   *
-   * @returns Promise that resolves when Git LFS check is complete
-   * @private
-   */
-  private async checkGitLfsInitialization(): Promise<void> {
-    // First check if git-lfs command exists
-    if (!checkCommandExists('git-lfs')) {
-      const fixCommand = this.getFixCommandForDependency('git-lfs');
-      this.addResult({
-        name: 'Git LFS',
-        status: 'warn',
-        message: 'git-lfs not installed',
-        details: 'Required for working with large files in the repository',
-        fixable: true,
-        fixCommand,
-        category: 'Development tools',
-      });
-      return;
-    }
-
-    // Check if git lfs is initialized by checking the config
-    try {
-      const { stdout, returnCode } = await runCliCommand('git config --global --get filter.lfs.process');
-      
-      if (returnCode === 0 && stdout.trim()) {
-        this.addResult({
-          name: 'Git LFS initialization',
-          status: 'pass',
-          message: 'git-lfs is initialized',
-          category: 'Development tools',
-        });
-      } else {
-        this.addResult({
-          name: 'Git LFS initialization',
-          status: 'warn',
-          message: 'git-lfs is installed but not initialized',
-          details: 'Run git lfs install to configure Git LFS hooks',
-          fixable: true,
-          fixCommand: 'git lfs install',
-          category: 'Development tools',
-        });
-
-        if (this.autoFix) {
-          await this.attemptAutoFix('git-lfs', 'git lfs install');
-        }
-      }
-    } catch {
-      this.addResult({
-        name: 'Git LFS initialization',
-        status: 'warn',
-        message: 'git-lfs is installed but not initialized',
-        details: 'Run git lfs install to configure Git LFS hooks',
-        fixable: true,
-        fixCommand: 'git lfs install',
-        category: 'Development tools',
-      });
-
-      if (this.autoFix) {
-        await this.attemptAutoFix('git-lfs', 'git lfs install');
-      }
-    }
-  }
-
-  /**
    * Validates shell autocomplete configuration.
    *
    * Checks if shell autocomplete (compinit/bashcompinit) is configured.
@@ -1168,13 +1097,9 @@ class ValdiDoctor {
    * Additional tools needed for framework development:
    * - temurin: Alternative JDK (macOS)
    *
-   * Note: git-lfs is now checked in core dependencies with initialization verification
-   *
    * @private
    */
   private checkFrameworkDependencies(): void {
-    // git-lfs is now checked in core with initialization verification
-
     // Platform-specific framework dependencies
     if (os.platform() === 'darwin') {
       // Check for temurin package
@@ -1232,7 +1157,7 @@ class ValdiDoctor {
     let category: string;
     if (['git', 'npm', 'watchman', 'ios_webkit_debug_proxy'].includes(dep)) {
       category = 'Development tools';
-    } else if (['git-lfs', 'temurin'].includes(dep)) {
+    } else if (['temurin'].includes(dep)) {
       category = 'Framework tools';
     } else {
       category = 'Development tools';
@@ -1354,9 +1279,6 @@ class ValdiDoctor {
         case 'watchman': {
           return 'brew install watchman';
         }
-        case 'git-lfs': {
-          return 'brew install git-lfs';
-        }
         case 'bazelisk': {
           return 'brew install bazelisk';
         }
@@ -1391,9 +1313,6 @@ class ValdiDoctor {
             return `${cmd} (may require EPEL repository)`;
           }
           return cmd;
-        }
-        case 'git-lfs': {
-          return buildInstallCommand([getPackageName(packageMappings['git-lfs']!, this.linuxDistro)], this.linuxDistro);
         }
         case 'bazelisk': {
           return 'valdi dev_setup';
@@ -1631,7 +1550,7 @@ export const builder = (yargs: Argv<CommandParameters>): void => {
       alias: 'j',
     })
     .option('framework', {
-      describe: 'Include framework development checks (git-lfs, temurin, etc.)',
+      describe: 'Include framework development checks (temurin, etc.)',
       type: 'boolean',
       default: false,
       alias: 'F',

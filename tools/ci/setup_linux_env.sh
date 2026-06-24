@@ -58,7 +58,6 @@ echo "--- Installing system dependencies ---"
 sudo apt-get update -y
 sudo apt-get install -y \
     libboost-all-dev \
-    git-lfs \
     libfontconfig1-dev \
     zlib1g-dev
 
@@ -70,8 +69,6 @@ if ! sudo apt-get install -y libtinfo5 2>/dev/null; then
     sudo apt install -y ./libtinfo5_6.3-2ubuntu0.1_amd64.deb
     rm libtinfo5_6.3-2ubuntu0.1_amd64.deb
 fi
-
-git lfs install
 
 # ---------------------------------------------------------------------------
 # 3. Install Bazel / Bazelisk

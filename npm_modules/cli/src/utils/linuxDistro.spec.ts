@@ -4,9 +4,7 @@ import {
   LinuxDistroType,
   buildInstallCommand,
   getCommonPackageMappings,
-  getGitLfsRepoSetupCommand,
   getPackageName,
-  needsGitLfsRepoSetup,
 } from './linuxDistro';
 
 describe('linuxDistro', () => {
@@ -116,72 +114,11 @@ describe('linuxDistro', () => {
     });
   });
 
-  describe('needsGitLfsRepoSetup', () => {
-    it('returns true for Debian distributions', () => {
-      const distro: LinuxDistroInfo = {
-        type: LinuxDistroType.DEBIAN,
-        name: 'Ubuntu',
-        packageManager: { name: 'apt', installCommand: 'apt-get install', requiresSudo: true },
-      };
-
-      expect(needsGitLfsRepoSetup(distro)).toBe(true);
-    });
-
-    it('returns false for Arch distributions', () => {
-      const distro: LinuxDistroInfo = {
-        type: LinuxDistroType.ARCH,
-        name: 'Arch Linux',
-        packageManager: { name: 'pacman', installCommand: 'pacman -S', requiresSudo: true },
-      };
-
-      expect(needsGitLfsRepoSetup(distro)).toBe(false);
-    });
-  });
-
-  describe('getGitLfsRepoSetupCommand', () => {
-    it('returns Debian script for Debian distributions', () => {
-      const distro: LinuxDistroInfo = {
-        type: LinuxDistroType.DEBIAN,
-        name: 'Ubuntu',
-        packageManager: { name: 'apt', installCommand: 'apt-get install', requiresSudo: true },
-      };
-
-      const result = getGitLfsRepoSetupCommand(distro);
-
-      expect(result).toContain('script.deb.sh');
-    });
-
-    it('returns RPM script for RedHat distributions', () => {
-      const distro: LinuxDistroInfo = {
-        type: LinuxDistroType.REDHAT,
-        name: 'Fedora',
-        packageManager: { name: 'dnf', installCommand: 'dnf install', requiresSudo: true },
-      };
-
-      const result = getGitLfsRepoSetupCommand(distro);
-
-      expect(result).toContain('script.rpm.sh');
-    });
-
-    it('returns null for distributions with git-lfs in standard repos', () => {
-      const distro: LinuxDistroInfo = {
-        type: LinuxDistroType.ARCH,
-        name: 'Arch Linux',
-        packageManager: { name: 'pacman', installCommand: 'pacman -S', requiresSudo: true },
-      };
-
-      const result = getGitLfsRepoSetupCommand(distro);
-
-      expect(result).toBeNull();
-    });
-  });
-
   describe('getCommonPackageMappings', () => {
     it('returns package mappings for common dependencies', () => {
       const mappings = getCommonPackageMappings();
 
       expect(mappings['git']).toBeDefined();
-      expect(mappings['git-lfs']).toBeDefined();
       expect(mappings['npm']).toBeDefined();
       expect(mappings['openjdk-17']).toBeDefined();
       expect(mappings['watchman']).toBeDefined();

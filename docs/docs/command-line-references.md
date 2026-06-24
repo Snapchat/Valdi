@@ -195,7 +195,7 @@ Options:
 - `--verbose, -v`: Show detailed diagnostic information
 - `--fix, -f`: Attempt to automatically fix issues where possible
 - `--json, -j`: Output results in JSON format (useful for CI/CD)
-- `--framework, -F`: Include framework development checks (git-lfs, temurin, etc.)
+- `--framework, -F`: Include framework development checks (temurin, etc.)
 - `--project, -p`: Include project-specific checks (workspace structure, etc.)
 
 Example:

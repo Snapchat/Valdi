@@ -8,18 +8,12 @@ This guide documents the dependencies Valdi needs on Linux and how to install th
 
 This guide assumes you're using the default shell (bash). Setup is possible for other shells, but you'll need to adapt the configuration file paths.
 
-## Setup git-lfs deb
-
-```
-curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
-```
-
 ## apt-get install dependencies
 
 On Debian/Ubuntu, install the same dependencies that `valdi dev_setup` would use:
 
 ```
-apt-get install npm openjdk-17-jdk git-lfs watchman adb libfontconfig1-dev zlib1g-dev
+apt-get install npm openjdk-17-jdk watchman adb libfontconfig1-dev zlib1g-dev
 ```
 
 (On other distros, use the equivalent packages: e.g. RHEL/Fedora use `java-17-openjdk-devel`, `android-tools`, `fontconfig-devel`, `zlib-devel`. The CLI detects your distro and installs the right packages.)
@@ -33,14 +27,6 @@ For manual installation, follow the [Bazelisk installation guide](https://github
 
 ```bash
 npm install -g @bazel/bazelisk
-```
-
-## Install git-lfs
-
-Git Large File Storage (LFS) manages the binaries that we need for Valdi.
-
-```
-git lfs install
 ```
 
 # Android SDK and NDK

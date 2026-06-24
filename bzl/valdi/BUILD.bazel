@@ -345,7 +345,7 @@ config_setting(
 # still available as an out-of-band escape hatch.
 bool_flag(
     name = "use_local_compiler",
-    build_setting_default = False,
+    build_setting_default = True,  # use_local_compiler
     visibility = ["//visibility:public"],
 )
 

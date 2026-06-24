@@ -33,8 +33,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          lfs: true
 
       - name: Configure Bazel cache
         uses: ./.github/actions/bazel-cache
