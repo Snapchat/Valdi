@@ -57,9 +57,9 @@ const VALDI_GIT_URL = 'https://github.com/Snapchat/Valdi';
 const VALDI_WIDGETS_GIT_URL = 'https://github.com/Snapchat/Valdi_Widgets';
 
 /** Pinned Valdi release used by default for reproducible bootstraps. Bump when cutting a new Valdi release. */
-const DEFAULT_VALDI_RELEASE_TAG = 'beta-0.0.3';
+const DEFAULT_VALDI_RELEASE_TAG = 'beta-0.1.0';
 /** Pinned Valdi_Widgets release used by default. Should match the Valdi release cycle. */
-const DEFAULT_VALDI_WIDGETS_RELEASE_TAG = 'beta-0.0.3';
+const DEFAULT_VALDI_WIDGETS_RELEASE_TAG = 'beta-0.1.0';
 
 
 function isAlreadyInitialized(): boolean {
