@@ -1334,19 +1334,19 @@ export interface TextView extends _TextView, CommonEditTextInterface, ContainerT
   textOverflow?: 'ellipsis' | 'clip';
 
   /**
-   * Explicit rendering size of each line of the text view, in points.
-   * When both lineHeight and lineHeightMultiple are provided, lineHeight takes precedence.
-   * @default: undefined
+   * Rendering size of each line of the text view as a multiple of the font height.
+   * If the lineHeight value is above 1, spacing is added on top of each line of the text.
+   * @default: 1
+   * Example: A value of 2 will double the height of each line.
    */
   lineHeight?: number;
 
   /**
-   * Rendering size of each line of the text view as a multiple of the font height.
-   * If the lineHeightMultiple value is above 1, spacing is added on top of each line of the text.
-   * @default: 1
-   * Example: A value of 2 will double the height of each line.
+   * Explicit rendering size of each line of the text view, in points.
+   * When both lineHeight and lineHeightAbsolute are provided, lineHeightAbsolute takes precedence.
+   * @default: undefined
    */
-  lineHeightMultiple?: number;
+  lineHeightAbsolute?: number;
 
   /**
    * Overrides underline drawing geometry for underlined text ranges.
@@ -1677,19 +1677,19 @@ export interface CommonLabel extends CommonTextAttributes {
   customUnderlineStyle?: LabelCustomUnderlineStyle;
 
   /**
-   * Explicit rendering size of each line of the label, in points.
-   * When both lineHeight and lineHeightMultiple are provided, lineHeight takes precedence.
-   * @default: undefined
+   * Rendering size of each line of the label as a multiple of the font height.
+   * If the lineHeight value is above 1, spacing is added on top of each line of the text.
+   * @default: 1
+   * Example: A value of 2 will double the height of each line.
    */
   lineHeight?: number;
 
   /**
-   * Rendering size of each line of the label as a multiple of the font height.
-   * If the lineHeightMultiple value is above 1, spacing is added on top of each line of the text.
-   * @default: 1
-   * Example: A value of 2 will double the height of each line.
+   * Explicit rendering size of each line of the label, in points.
+   * When both lineHeight and lineHeightAbsolute are provided, lineHeightAbsolute takes precedence.
+   * @default: undefined
    */
-  lineHeightMultiple?: number;
+  lineHeightAbsolute?: number;
 
   /**
    * Extra spacing added at the end of each character, in points

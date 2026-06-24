@@ -56,11 +56,11 @@ public:
     Valdi::Result<Valdi::Void> applyMinimumScaleFactorAttribute(TextLayer& textLayer, double value);
     void resetMinimumScaleFactorAttribute(TextLayer& textLayer);
 
-    Valdi::Result<Valdi::Void> applyLineHeightMultipleAttribute(TextLayer& textLayer, double value);
-    void resetLineHeightMultipleAttribute(TextLayer& textLayer);
-
     Valdi::Result<Valdi::Void> applyLineHeightAttribute(TextLayer& textLayer, double value);
     void resetLineHeightAttribute(TextLayer& textLayer);
+
+    Valdi::Result<Valdi::Void> applyLineHeightAbsoluteAttribute(TextLayer& textLayer, double value);
+    void resetLineHeightAbsoluteAttribute(TextLayer& textLayer);
 
     Valdi::Result<Valdi::Void> applyLetterSpacingAttribute(TextLayer& textLayer, double value);
     void resetLetterSpacingAttribute(TextLayer& textLayer);
@@ -91,9 +91,9 @@ public:
 
     DECLARE_DOUBLE_ATTRIBUTE(TextLayer, minimumScaleFactor)
 
-    DECLARE_DOUBLE_ATTRIBUTE(TextLayer, lineHeightMultiple)
-
     DECLARE_DOUBLE_ATTRIBUTE(TextLayer, lineHeight)
+
+    DECLARE_DOUBLE_ATTRIBUTE(TextLayer, lineHeightAbsolute)
 
     DECLARE_DOUBLE_ATTRIBUTE(TextLayer, letterSpacing)
 

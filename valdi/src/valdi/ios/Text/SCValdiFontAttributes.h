@@ -12,7 +12,7 @@
 
 NSTextAlignment SCValdiFontAttributesResolveTextAlignment(NSTextAlignment textAlignment, BOOL isRightToLeft);
 FOUNDATION_EXPORT NSAttributedStringKey const SCValdiLineHeightAttributeName;
-FOUNDATION_EXPORT NSAttributedStringKey const SCValdiLineHeightMultipleAttributeName;
+FOUNDATION_EXPORT NSAttributedStringKey const SCValdiLineHeightAbsoluteAttributeName;
 
 @class SCNValdiCoreCompositeAttributePart;
 

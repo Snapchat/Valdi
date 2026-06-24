@@ -125,7 +125,7 @@ export class App extends Component<ViewModel> {
           <label
             color="#475569"
             font={systemFont(15)}
-            lineHeightMultiple={1.25}
+            lineHeight={1.25}
             marginBottom={18}
             numberOfLines={0}
             value="Labels and textviews can embed real Valdi child views. Yoga resolves child size; native text layout places each child inline."
@@ -137,7 +137,7 @@ export class App extends Component<ViewModel> {
             <label
               color="#0F172A"
               font={systemFont(20)}
-              lineHeightMultiple={1.45}
+              lineHeight={1.45}
               numberOfLines={0}
               value={alignmentText}
               width="100%"
@@ -157,7 +157,7 @@ export class App extends Component<ViewModel> {
               enabled={false}
               font={systemFont(19)}
               height={104}
-              lineHeightMultiple={1.45}
+              lineHeight={1.45}
               numberOfLines={0}
               value={alignmentText}
               width="100%"
@@ -174,7 +174,7 @@ export class App extends Component<ViewModel> {
             <label
               color="#64748B"
               font={systemFont(13)}
-              lineHeightMultiple={1.25}
+              lineHeight={1.25}
               marginBottom={10}
               numberOfLines={0}
               value="Both labels append the inline child after the text. The END pill should sit on the right in LTR and on the left in RTL."
@@ -193,7 +193,7 @@ export class App extends Component<ViewModel> {
                 <label
                   color="#0F172A"
                   font={systemFont(19)}
-                  lineHeightMultiple={1.45}
+                  lineHeight={1.45}
                   numberOfLines={0}
                   value={ltrEndInlineText}
                   width="100%"
@@ -215,7 +215,7 @@ export class App extends Component<ViewModel> {
                 <label
                   color="#0F172A"
                   font={systemFont(19)}
-                  lineHeightMultiple={1.45}
+                  lineHeight={1.45}
                   numberOfLines={0}
                   value={rtlEndInlineText}
                   width="100%"
@@ -231,7 +231,7 @@ export class App extends Component<ViewModel> {
             <label
               color="#0F172A"
               font={systemFont(19)}
-              lineHeightMultiple={1.45}
+              lineHeight={1.45}
               numberOfLines={0}
               value={labelInteractiveText}
               width="100%"
@@ -248,7 +248,7 @@ export class App extends Component<ViewModel> {
               enabled={false}
               font={systemFont(19)}
               height={124}
-              lineHeightMultiple={1.45}
+              lineHeight={1.45}
               numberOfLines={0}
               value={textViewInteractiveText}
               width="100%"

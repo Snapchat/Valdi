@@ -483,24 +483,28 @@ double TextLayer::getMinimumScaleFactor() const {
 }
 
 void TextLayer::setLineHeight(Scalar lineHeight) {
-    if (_usesExplicitLineHeight != true || _lineHeight != lineHeight) {
-        _usesExplicitLineHeight = true;
+    if (_lineHeight != lineHeight) {
         _lineHeight = lineHeight;
         setNeedsTextLayout();
     }
 }
 
-void TextLayer::resetLineHeight() {
-    if (_usesExplicitLineHeight) {
-        _usesExplicitLineHeight = false;
-        _lineHeight = 0.0f;
+Scalar TextLayer::getLineHeight() const {
+    return _lineHeight;
+}
+
+void TextLayer::setLineHeightAbsolute(Scalar lineHeightAbsolute) {
+    if (_usesLineHeightAbsolute != true || _lineHeightAbsolute != lineHeightAbsolute) {
+        _usesLineHeightAbsolute = true;
+        _lineHeightAbsolute = lineHeightAbsolute;
         setNeedsTextLayout();
     }
 }
 
-void TextLayer::setLineHeightMultiple(Scalar lineHeightMultiple) {
-    if (_lineHeightMultipleValue != lineHeightMultiple) {
-        _lineHeightMultipleValue = lineHeightMultiple;
+void TextLayer::resetLineHeightAbsolute() {
+    if (_usesLineHeightAbsolute) {
+        _usesLineHeightAbsolute = false;
+        _lineHeightAbsolute = 0.0f;
         setNeedsTextLayout();
     }
 }
@@ -514,10 +518,6 @@ void TextLayer::setLetterSpacing(Scalar letterSpacing) {
 
 Scalar TextLayer::getLetterSpacing() const {
     return _letterSpacing;
-}
-
-Scalar TextLayer::getLineHeightMultiple() const {
-    return _lineHeightMultipleValue;
 }
 
 void TextLayer::setNeedsTextLayout() {
@@ -608,11 +608,11 @@ TextLayout& TextLayer::getTextLayout(Size size, bool respectDynamicType, Scalar 
 }
 
 TextLayoutLineHeight TextLayer::resolveLineHeight(Scalar displayScale) const {
-    if (!_usesExplicitLineHeight) {
-        return TextLayoutLineHeight::multiple(_lineHeightMultipleValue);
+    if (!_usesLineHeightAbsolute) {
+        return TextLayoutLineHeight::multiple(_lineHeight);
     }
 
-    return TextLayoutLineHeight::absolute(_lineHeight * displayScale);
+    return TextLayoutLineHeight::absolute(_lineHeightAbsolute * displayScale);
 }
 
 void TextLayer::removeOnTapGestureRecognizer() {

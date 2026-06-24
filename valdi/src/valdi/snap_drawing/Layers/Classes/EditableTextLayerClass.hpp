@@ -60,9 +60,9 @@ public:
 
     DECLARE_DOUBLE_ATTRIBUTE(EditableTextLayer, minimumScaleFactor)
 
-    DECLARE_DOUBLE_ATTRIBUTE(EditableTextLayer, lineHeightMultiple)
-
     DECLARE_DOUBLE_ATTRIBUTE(EditableTextLayer, lineHeight)
+
+    DECLARE_DOUBLE_ATTRIBUTE(EditableTextLayer, lineHeightAbsolute)
 
     DECLARE_DOUBLE_ATTRIBUTE(EditableTextLayer, letterSpacing)
 

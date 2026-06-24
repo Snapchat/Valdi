@@ -193,11 +193,11 @@
     SCValdiLabel *label = [[SCValdiLabel alloc] initWithFrame:CGRectMake(0, 0, 120, 180)];
     [label valdi_setFontAttributes:[NSAttributedString fontAttributesWithFont:nil
                                                                         color:nil
-                                                                    textAlign:nil
-                                                                   lineHeight:nil
-                                                           lineHeightMultiple:nil
-                                                               textDecoration:nil
-                                                                letterSpacing:nil
+                                                                   textAlign:nil
+                                                                  lineHeight:nil
+                                                        lineHeightAbsolute:nil
+                                                              textDecoration:nil
+                                                               letterSpacing:nil
                                                                 numberOfLines:@0
                                                                  textOverflow:nil]];
     [label valdi_setText:@"Compare SCValdiLabel and SCValdiTextView selection. Long press and drag to select part of this paragraph."];

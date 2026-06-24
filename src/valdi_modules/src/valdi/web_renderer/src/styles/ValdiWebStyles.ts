@@ -61,10 +61,6 @@ export function generateStyles(attribute: string, value: any): Partial<CSSStyleD
     };
   }
 
-  if (attribute === 'lineHeightMultiple') {
-    return { lineHeight: value };
-  }
-
   if (attribute === 'boxShadow') {
     // Parse "x y blur color" - color may contain spaces (e.g. "rgba(0, 0, 0, 0.2)")
     const parts = value.trim().split(/\s+/);

@@ -80,7 +80,7 @@ const styles = {
   animatedLabel: new Style<Label>({
     color: '#1E293B',
     font: systemFont(18),
-    lineHeightMultiple: 1.2,
+    lineHeight: 1.2,
     numberOfLines: 0,
     width: '100%',
   }),
@@ -151,7 +151,7 @@ const styles = {
   subtitle: new Style<Label>({
     color: '#475569',
     font: systemFont(15),
-    lineHeightMultiple: 1.25,
+    lineHeight: 1.25,
     marginBottom: 20,
     numberOfLines: 0,
     width: '100%',

@@ -133,8 +133,8 @@ void EditableTextLayerClass::bindAttributes(Valdi::AttributesBindingContext& bin
 
     BIND_DOUBLE_ATTRIBUTE(EditableTextLayer, letterSpacing, true);
 
-    BIND_DOUBLE_ATTRIBUTE(EditableTextLayer, lineHeightMultiple, true);
     BIND_DOUBLE_ATTRIBUTE(EditableTextLayer, lineHeight, true);
+    BIND_DOUBLE_ATTRIBUTE(EditableTextLayer, lineHeightAbsolute, true);
 
     BIND_UNTYPED_ATTRIBUTE(EditableTextLayer, textShadow, true);
 
@@ -239,15 +239,15 @@ IMPLEMENT_DOUBLE_ATTRIBUTE(
 
 IMPLEMENT_DOUBLE_ATTRIBUTE(
     EditableTextLayer,
-    lineHeightMultiple,
-    { return _textLayerClass->applyLineHeightMultipleAttribute(view.getTextLayer(), value); },
-    { _textLayerClass->resetLineHeightMultipleAttribute(view.getTextLayer()); })
-
-IMPLEMENT_DOUBLE_ATTRIBUTE(
-    EditableTextLayer,
     lineHeight,
     { return _textLayerClass->applyLineHeightAttribute(view.getTextLayer(), value); },
     { _textLayerClass->resetLineHeightAttribute(view.getTextLayer()); })
+
+IMPLEMENT_DOUBLE_ATTRIBUTE(
+    EditableTextLayer,
+    lineHeightAbsolute,
+    { return _textLayerClass->applyLineHeightAbsoluteAttribute(view.getTextLayer(), value); },
+    { _textLayerClass->resetLineHeightAbsoluteAttribute(view.getTextLayer()); })
 
 IMPLEMENT_DOUBLE_ATTRIBUTE(
     EditableTextLayer,

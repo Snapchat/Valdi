@@ -48,8 +48,8 @@ class ValdiTextViewBaseAttributesBinder(
             CompositeAttributePart("textDecoration", AttributeType.STRING, true, false),
             CompositeAttributePart("textAlign", AttributeType.STRING, true, false),
             CompositeAttributePart("font", AttributeType.STRING, true, true),
-            CompositeAttributePart("lineHeightMultiple", AttributeType.DOUBLE, true, true),
             CompositeAttributePart("lineHeight", AttributeType.DOUBLE, true, true),
+            CompositeAttributePart("lineHeightAbsolute", AttributeType.DOUBLE, true, true),
             CompositeAttributePart("numberOfLines", AttributeType.DOUBLE, true, true),
             CompositeAttributePart("letterSpacing", AttributeType.DOUBLE, true, true),
             CompositeAttributePart("adjustsFontSizeToFitWidth", AttributeType.BOOLEAN, true, false),
@@ -65,8 +65,8 @@ class ValdiTextViewBaseAttributesBinder(
         val textDecoration = valuesArray[1] as? String
         val textAlign = valuesArray[2] as? String
         val font = valuesArray[3] as? String
-        val lineHeightMultiple = valuesArray[4] as? Double
-        val lineHeight = valuesArray[5] as? Double
+        val lineHeight = valuesArray[4] as? Double
+        val lineHeightAbsolute = valuesArray[5] as? Double
         val numberOfLines = valuesArray[6] as? Double
         val letterSpacing = valuesArray[7] as? Double
         val adjustsFontSizeToFitWidth = valuesArray[8] as? Boolean
@@ -91,8 +91,8 @@ class ValdiTextViewBaseAttributesBinder(
             attributes.applyFont(font)
         }
 
-        attributes.lineHeightMultiple = lineHeightMultiple?.toFloat()
         attributes.lineHeight = lineHeight?.toFloat()
+        attributes.lineHeightAbsolute = lineHeightAbsolute?.toFloat()
         attributes.numberOfLines = numberOfLines?.toInt()
         attributes.letterSpacing = letterSpacing?.toFloat()
         attributes.adjustsFontSizeToFitWidth = adjustsFontSizeToFitWidth

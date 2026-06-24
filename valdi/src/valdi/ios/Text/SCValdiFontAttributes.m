@@ -10,7 +10,7 @@
 #import "valdi_core/SCValdiLogger.h"
 
 NSAttributedStringKey const SCValdiLineHeightAttributeName = @"valdi_lineHeight";
-NSAttributedStringKey const SCValdiLineHeightMultipleAttributeName = @"valdi_lineHeightMultiple";
+NSAttributedStringKey const SCValdiLineHeightAbsoluteAttributeName = @"valdi_lineHeightAbsolute";
 static CGFloat const SCValdiBaselineOffsetEpsilon = 0.001;
 
 NSTextAlignment SCValdiFontAttributesResolveTextAlignment(NSTextAlignment textAlignment, BOOL isRightToLeft)
@@ -92,14 +92,14 @@ NSTextAlignment SCValdiFontAttributesResolveTextAlignment(NSTextAlignment textAl
 + (void)applyLineHeightInAttributes:(NSMutableDictionary<NSAttributedStringKey, id> *)attributes
                                 font:(UIFont *)font
 {
-    NSNumber *lineHeightValue = ObjectAs(attributes[SCValdiLineHeightAttributeName], NSNumber);
-    NSNumber *lineHeightMultiple = ObjectAs(attributes[SCValdiLineHeightMultipleAttributeName], NSNumber);
-    if ((!lineHeightValue && !lineHeightMultiple) || !font) {
+    NSNumber *lineHeight = ObjectAs(attributes[SCValdiLineHeightAttributeName], NSNumber);
+    NSNumber *lineHeightAbsolute = ObjectAs(attributes[SCValdiLineHeightAbsoluteAttributeName], NSNumber);
+    if ((!lineHeight && !lineHeightAbsolute) || !font) {
         return;
     }
 
-    CGFloat lineHeight = lineHeightValue ? lineHeightValue.doubleValue : font.pointSize * lineHeightMultiple.doubleValue;
-    if (lineHeight <= 0) {
+    CGFloat resolvedLineHeight = lineHeightAbsolute ? lineHeightAbsolute.doubleValue : font.pointSize * lineHeight.doubleValue;
+    if (resolvedLineHeight <= 0) {
         return;
     }
 
@@ -108,15 +108,15 @@ NSTextAlignment SCValdiFontAttributesResolveTextAlignment(NSTextAlignment textAl
         ? [paragraphStyle mutableCopy]
         : [[NSMutableParagraphStyle alloc] init];
     updatedParagraphStyle.lineHeightMultiple = 0;
-    updatedParagraphStyle.minimumLineHeight = lineHeight;
-    updatedParagraphStyle.maximumLineHeight = lineHeight;
+    updatedParagraphStyle.minimumLineHeight = resolvedLineHeight;
+    updatedParagraphStyle.maximumLineHeight = resolvedLineHeight;
     attributes[NSParagraphStyleAttributeName] = [updatedParagraphStyle copy];
 
     CGFloat baselineOffset;
-    if (lineHeightValue || lineHeight >= font.lineHeight) {
-        baselineOffset = (lineHeight - font.lineHeight) / 2.0;
+    if (lineHeightAbsolute || resolvedLineHeight >= font.lineHeight) {
+        baselineOffset = (resolvedLineHeight - font.lineHeight) / 2.0;
     } else {
-        baselineOffset = lineHeight - font.lineHeight;
+        baselineOffset = resolvedLineHeight - font.lineHeight;
     }
     if (fabs(baselineOffset) > SCValdiBaselineOffsetEpsilon) {
         attributes[NSBaselineOffsetAttributeName] = @(baselineOffset);

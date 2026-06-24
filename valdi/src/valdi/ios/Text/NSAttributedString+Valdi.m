@@ -21,7 +21,7 @@ static NSString *const kSCValdiFontShorthandAttribute = @"font";
 static NSString *const kSCValdiColorAttribute = @"color";
 static NSString *const kSCValdiTextAlignAttribute = @"textAlign";
 static NSString *const kSCValdiLineHeightAttribute = @"lineHeight";
-static NSString *const kSCValdiLineHeightMultipleAttribute = @"lineHeightMultiple";
+static NSString *const kSCValdiLineHeightAbsoluteAttribute = @"lineHeightAbsolute";
 static NSString *const kSCValdiTextDecorationAttribute = @"textDecoration";
 static NSString *const kSCValdiLetterSpacingAttribute = @"letterSpacing";
 static NSString *const kSCValdiNumberOfLinesAttribute = @"numberOfLines";
@@ -153,7 +153,7 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
                                                color:(NSNumber *)color
                                           textAlign:(NSString *)textAlign
                                          lineHeight:(NSNumber *)lineHeight
-                                 lineHeightMultiple:(NSNumber *)lineHeightMultiple
+                                lineHeightAbsolute:(NSNumber *)lineHeightAbsolute
                                       textDecoration:(NSString *)textDecoration
                                        letterSpacing:(NSNumber *)letterSpacing
                                        numberOfLines:(NSNumber *)numberOfLines
@@ -201,17 +201,17 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
 
     paragraphStyle.lineBreakMode = resolvedLineBreakMode;
 
-    if (lineHeight) {
+    if (lineHeightAbsolute) {
+        attributes[SCValdiLineHeightAbsoluteAttributeName] = lineHeightAbsolute;
+    } else if (lineHeight) {
         attributes[SCValdiLineHeightAttributeName] = lineHeight;
-    } else if (lineHeightMultiple) {
-        attributes[SCValdiLineHeightMultipleAttributeName] = lineHeightMultiple;
     }
 
     attributes[NSParagraphStyleAttributeName] = [paragraphStyle copy];
 
     _SCValdiAppendTextDecoration(attributes, SCValdiTextDecorationFromString(textDecoration));
 
-    BOOL needAttributedString = lineHeight || lineHeightMultiple || letterSpacing || textDecoration;
+    BOOL needAttributedString = lineHeight || lineHeightAbsolute || letterSpacing || textDecoration;
 
     return [[SCValdiFontAttributes alloc] initWithAttributes:[attributes copy]
                                                            font:font
@@ -235,8 +235,8 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
 
     NSNumber *color = ObjectAs(compositeValue[0], NSNumber);
     NSString *textAlign = ObjectAs(compositeValue[1], NSString);
-    NSNumber *lineHeightMultiple = ObjectAs(compositeValue[2], NSNumber);
-    NSNumber *lineHeight = ObjectAs(compositeValue[3], NSNumber);
+    NSNumber *lineHeight = ObjectAs(compositeValue[2], NSNumber);
+    NSNumber *lineHeightAbsolute = ObjectAs(compositeValue[3], NSNumber);
     NSString *textDecoration = ObjectAs(compositeValue[4], NSString);
     SCValdiFont *font = ObjectAs(compositeValue[5], SCValdiFont);
     NSNumber *letterSpacing = ObjectAs(compositeValue[6], NSNumber);
@@ -247,7 +247,7 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
                                   color:color
                              textAlign:textAlign
                              lineHeight:lineHeight
-                     lineHeightMultiple:lineHeightMultiple
+                    lineHeightAbsolute:lineHeightAbsolute
                          textDecoration:textDecoration
                           letterSpacing:letterSpacing
                           numberOfLines:numberOfLines
@@ -267,8 +267,8 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
 
     NSNumber *color = ObjectAs(compositeValue[0], NSNumber);
     NSString *textAlign = ObjectAs(compositeValue[1], NSString);
-    NSNumber *lineHeightMultiple = ObjectAs(compositeValue[2], NSNumber);
-    NSNumber *lineHeight = ObjectAs(compositeValue[3], NSNumber);
+    NSNumber *lineHeight = ObjectAs(compositeValue[2], NSNumber);
+    NSNumber *lineHeightAbsolute = ObjectAs(compositeValue[3], NSNumber);
     NSString *textDecoration = ObjectAs(compositeValue[4], NSString);
     SCValdiFont *font = ObjectAs(compositeValue[5], SCValdiFont);
     NSNumber *letterSpacing = ObjectAs(compositeValue[6], NSNumber);
@@ -279,7 +279,7 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
                                   color:color
                              textAlign:textAlign
                              lineHeight:lineHeight
-                     lineHeightMultiple:lineHeightMultiple
+                    lineHeightAbsolute:lineHeightAbsolute
                          textDecoration:textDecoration
                           letterSpacing:letterSpacing
                           numberOfLines:numberOfLines ?: @0
@@ -322,11 +322,11 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
                                                                  type:SCNValdiCoreAttributeTypeString
                                                              optional:YES
                                              invalidateLayoutOnChange:NO],
-            [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:kSCValdiLineHeightMultipleAttribute
+            [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:kSCValdiLineHeightAttribute
                                                                  type:SCNValdiCoreAttributeTypeDouble
                                                              optional:YES
                                              invalidateLayoutOnChange:YES],
-            [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:kSCValdiLineHeightAttribute
+            [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:kSCValdiLineHeightAbsoluteAttribute
                                                                  type:SCNValdiCoreAttributeTypeDouble
                                                              optional:YES
                                              invalidateLayoutOnChange:YES],

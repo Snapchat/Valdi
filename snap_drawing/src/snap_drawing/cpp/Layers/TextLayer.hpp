@@ -80,10 +80,10 @@ public:
     double getMinimumScaleFactor() const;
 
     void setLineHeight(Scalar lineHeight);
-    void resetLineHeight();
+    Scalar getLineHeight() const;
 
-    void setLineHeightMultiple(Scalar lineHeightMultiple);
-    Scalar getLineHeightMultiple() const;
+    void setLineHeightAbsolute(Scalar lineHeightAbsolute);
+    void resetLineHeightAbsolute();
 
     void setLetterSpacing(Scalar letterSpacing);
     Scalar getLetterSpacing() const;
@@ -186,9 +186,9 @@ private:
     int _numberOfLines = 1;
     bool _adjustsFontSizeToFitWidth = false;
     double _minimumScaleFactor = 0.0;
-    bool _usesExplicitLineHeight = false;
-    Scalar _lineHeight = 0.0f;
-    Scalar _lineHeightMultipleValue = 1.0f;
+    bool _usesLineHeightAbsolute = false;
+    Scalar _lineHeight = 1.0f;
+    Scalar _lineHeightAbsolute = 0.0f;
     Scalar _letterSpacing = 0.0f;
 
     Ref<TextLayout> _textLayout;

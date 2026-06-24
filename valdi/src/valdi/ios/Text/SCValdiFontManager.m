@@ -101,16 +101,19 @@
             UIFontDescriptor *descriptor = [[UIFont boldSystemFontOfSize:fontSize].fontDescriptor
                 fontDescriptorWithSymbolicTraits:UIFontDescriptorTraitBold | UIFontDescriptorTraitItalic];
             font = [UIFont fontWithDescriptor:descriptor size:fontSize] ?: [UIFont boldSystemFontOfSize:fontSize];
-        } else if (_fontLoader) {
-            if ([_fontLoader shouldBypassContextForLegibilityWeight]) {
-                font = [_fontLoader loadFontWithName:fontName fontSize:fontSize legibilityWeight:legibilityWeight];
-            } else {
-                font = [_fontLoader loadFontWithName:fontName fontSize:fontSize];
+        } else {
+            UIFont *fontForName = [UIFont fontWithName:fontName size:fontSize];
+            if (fontForName && _fontLoader) {
+                if ([_fontLoader shouldBypassContextForLegibilityWeight]) {
+                    font = [_fontLoader loadFontWithName:fontName fontSize:fontSize legibilityWeight:legibilityWeight];
+                } else {
+                    font = [_fontLoader loadFontWithName:fontName fontSize:fontSize];
+                }
             }
-        }
 
-        if (!font) {
-            font = [UIFont fontWithName:fontName size:fontSize];
+            if (!font) {
+                font = fontForName;
+            }
         }
 
         if (!font) {

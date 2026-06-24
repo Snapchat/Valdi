@@ -117,8 +117,8 @@
     SCValdiFontAttributes *fontAttributes = [NSAttributedString fontAttributesWithFont:valdiFont
                                                                                  color:nil
                                                                              textAlign:nil
-                                                                            lineHeight:nil
-                                                                    lineHeightMultiple:@(lineHeight / font.pointSize)
+                                                                            lineHeight:@(lineHeight / font.pointSize)
+                                                                  lineHeightAbsolute:nil
                                                                         textDecoration:nil
                                                                          letterSpacing:nil
                                                                          numberOfLines:@1
@@ -151,8 +151,8 @@
     SCValdiFontAttributes *fontAttributes = [NSAttributedString fontAttributesWithFont:valdiFont
                                                                                  color:nil
                                                                              textAlign:nil
-                                                                            lineHeight:nil
-                                                                    lineHeightMultiple:@(lineHeight / font.pointSize)
+                                                                            lineHeight:@(lineHeight / font.pointSize)
+                                                                  lineHeightAbsolute:nil
                                                                         textDecoration:nil
                                                                          letterSpacing:nil
                                                                          numberOfLines:@1
@@ -177,8 +177,8 @@
     SCValdiFontAttributes *fontAttributes = [NSAttributedString fontAttributesWithFont:valdiFont
                                                                                  color:nil
                                                                              textAlign:nil
-                                                                            lineHeight:@(lineHeight)
-                                                                    lineHeightMultiple:nil
+                                                                            lineHeight:nil
+                                                                  lineHeightAbsolute:@(lineHeight)
                                                                         textDecoration:nil
                                                                          letterSpacing:nil
                                                                          numberOfLines:@1
@@ -204,7 +204,7 @@
                                                                                  color:nil
                                                                              textAlign:@"right"
                                                                             lineHeight:nil
-                                                                    lineHeightMultiple:nil
+                                                                  lineHeightAbsolute:nil
                                                                         textDecoration:nil
                                                                          letterSpacing:nil
                                                                          numberOfLines:@1

@@ -97,8 +97,8 @@ Size TextLayerClass::onMeasure(const Valdi::Value& attributes,
     auto text = attributes.getMapValue("value");
     auto font = Valdi::castOrNull<Font>(attributes.getMapValue("font").getValdiObject());
     auto numberOfLines = attributes.getMapValue("numberOfLines");
-    auto lineHeightMultiple = attributes.getMapValue("lineHeightMultiple");
     auto lineHeight = attributes.getMapValue("lineHeight");
+    auto lineHeightAbsolute = attributes.getMapValue("lineHeightAbsolute");
     auto letterSpacing = attributes.getMapValue("letterSpacing");
     auto adjustsFontSizeToFitWidth = attributes.getMapValue("adjustsFontSizeToFitWidth");
     auto minimumScaleFactor = attributes.getMapValue("minimumScaleFactor");
@@ -126,11 +126,11 @@ Size TextLayerClass::onMeasure(const Valdi::Value& attributes,
     }
 
     auto resolvedNumberOfLines = numberOfLines.isNumber() ? numberOfLines.toInt() : 1;
-    auto resolvedLineHeight = lineHeightMultiple.isNumber()
-        ? TextLayoutLineHeight::multiple(static_cast<Scalar>(lineHeightMultiple.toDouble()))
+    auto resolvedLineHeight = lineHeight.isNumber()
+        ? TextLayoutLineHeight::multiple(static_cast<Scalar>(lineHeight.toDouble()))
         : TextLayoutLineHeight::multiple(1.0f);
-    if (lineHeight.isNumber()) {
-        resolvedLineHeight = TextLayoutLineHeight::absolute(static_cast<Scalar>(lineHeight.toDouble() * displayScale));
+    if (lineHeightAbsolute.isNumber()) {
+        resolvedLineHeight = TextLayoutLineHeight::absolute(static_cast<Scalar>(lineHeightAbsolute.toDouble() * displayScale));
     }
     auto resolvedLetterSpacing = letterSpacing.isNumber() ? letterSpacing.toDouble() : 0.0;
 
@@ -183,8 +183,8 @@ void TextLayerClass::bindAttributes(Valdi::AttributesBindingContext& binder) {
 
     BIND_DOUBLE_ATTRIBUTE(TextLayer, letterSpacing, true);
 
-    BIND_DOUBLE_ATTRIBUTE(TextLayer, lineHeightMultiple, true);
     BIND_DOUBLE_ATTRIBUTE(TextLayer, lineHeight, true);
+    BIND_DOUBLE_ATTRIBUTE(TextLayer, lineHeightAbsolute, true);
 
     BIND_UNTYPED_ATTRIBUTE(TextLayer, textShadow, true);
 
@@ -338,22 +338,22 @@ void TextLayerClass::resetMinimumScaleFactorAttribute(TextLayer& textLayer) {
     textLayer.setMinimumScaleFactor(0.0);
 }
 
-Valdi::Result<Valdi::Void> TextLayerClass::applyLineHeightMultipleAttribute(TextLayer& textLayer, double value) {
-    textLayer.setLineHeightMultiple(static_cast<Scalar>(value));
-    return Valdi::Void();
-}
-
-void TextLayerClass::resetLineHeightMultipleAttribute(TextLayer& textLayer) {
-    textLayer.setLineHeightMultiple(1.0f);
-}
-
 Valdi::Result<Valdi::Void> TextLayerClass::applyLineHeightAttribute(TextLayer& textLayer, double value) {
     textLayer.setLineHeight(static_cast<Scalar>(value));
     return Valdi::Void();
 }
 
 void TextLayerClass::resetLineHeightAttribute(TextLayer& textLayer) {
-    textLayer.resetLineHeight();
+    textLayer.setLineHeight(1.0f);
+}
+
+Valdi::Result<Valdi::Void> TextLayerClass::applyLineHeightAbsoluteAttribute(TextLayer& textLayer, double value) {
+    textLayer.setLineHeightAbsolute(static_cast<Scalar>(value));
+    return Valdi::Void();
+}
+
+void TextLayerClass::resetLineHeightAbsoluteAttribute(TextLayer& textLayer) {
+    textLayer.resetLineHeightAbsolute();
 }
 
 Valdi::Result<Valdi::Void> TextLayerClass::applyLetterSpacingAttribute(TextLayer& textLayer, double value) {
@@ -525,12 +525,15 @@ IMPLEMENT_DOUBLE_ATTRIBUTE(
 
 IMPLEMENT_DOUBLE_ATTRIBUTE(
     TextLayer,
-    lineHeightMultiple,
-    { return applyLineHeightMultipleAttribute(view, value); },
-    { resetLineHeightMultipleAttribute(view); })
+    lineHeight,
+    { return applyLineHeightAttribute(view, value); },
+    { resetLineHeightAttribute(view); })
 
 IMPLEMENT_DOUBLE_ATTRIBUTE(
-    TextLayer, lineHeight, { return applyLineHeightAttribute(view, value); }, { resetLineHeightAttribute(view); })
+    TextLayer,
+    lineHeightAbsolute,
+    { return applyLineHeightAbsoluteAttribute(view, value); },
+    { resetLineHeightAbsoluteAttribute(view); })
 
 IMPLEMENT_DOUBLE_ATTRIBUTE(
     TextLayer,

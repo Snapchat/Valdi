@@ -75,8 +75,8 @@
     SCValdiFontAttributes *fontAttributes = [NSAttributedString fontAttributesWithFont:_font
                                                                                     color:nil
                                                                                 textAlign:nil
-                                                                               lineHeight:nil
-                                                                       lineHeightMultiple:_lineHeight
+                                                                               lineHeight:_lineHeight
+                                                                     lineHeightAbsolute:nil
                                                                            textDecoration:nil
                                                                             letterSpacing:nil
                                                                             numberOfLines:maxLines

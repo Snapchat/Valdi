@@ -477,9 +477,9 @@ static NSTextStorage *SCValdiConfigureLayoutManagerForProcessedText(SCValdiProce
 
     SCValdiProcessedText *processedText =
         SCValdiProcessedTextWithParts(std::move(parts),
-                                      @{
-                                          NSFontAttributeName: font,
-                                          SCValdiLineHeightAttributeName: @(lineHeight),
+                                          @{
+                                              NSFontAttributeName: font,
+                                          SCValdiLineHeightAbsoluteAttributeName: @(lineHeight),
                                       },
                                       nil);
 
@@ -1395,7 +1395,7 @@ static NSTextStorage *SCValdiConfigureLayoutManagerForProcessedText(SCValdiProce
     UIFont *font = [UIFont systemFontOfSize:19];
     NSDictionary<NSAttributedStringKey, id> *attributes = @{
         NSFontAttributeName: font,
-        SCValdiLineHeightMultipleAttributeName: @1.45,
+        SCValdiLineHeightAttributeName: @1.45,
     };
     SCValdiProcessedText *processedText = SCValdiProcessedTextWithParts(std::move(parts), attributes, nil);
 

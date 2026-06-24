@@ -110,7 +110,7 @@ export class App extends StatefulComponent<ViewModel, State> {
       <label style={styles.shadowLabel} value="text shadow" />
       <label
         style={styles.justifiedLabel}
-        value="Justified multiline label uses explicit lineHeight. This sentence wraps to show paragraph alignment and line spacing."
+        value="Justified multiline label uses explicit lineHeightAbsolute. This sentence wraps to show paragraph alignment and line spacing."
       />
       <label
         style={styles.autoshrinkLabel}
@@ -216,7 +216,7 @@ const styles = {
   appSubtitle: new Style<Label>({
     color: '#475569',
     font: systemFont(15),
-    lineHeightMultiple: 1.25,
+    lineHeight: 1.25,
     marginBottom: 14,
     numberOfLines: 0,
     width: '100%',
@@ -279,7 +279,7 @@ const styles = {
   eventLog: new Style<Label>({
     color: '#334155',
     font: systemFont(14),
-    lineHeightMultiple: 1.25,
+    lineHeight: 1.25,
     numberOfLines: 0,
     width: '100%',
   }),
@@ -315,7 +315,7 @@ const styles = {
   inlineTextLabel: new Style<Label>({
     color: '#0F172A',
     font: systemFont(18),
-    lineHeightMultiple: 1.35,
+    lineHeight: 1.35,
     marginTop: 8,
     numberOfLines: 0,
     width: '100%',
@@ -327,7 +327,7 @@ const styles = {
     enabled: false,
     font: systemFont(17),
     height: 74,
-    lineHeightMultiple: 1.3,
+    lineHeight: 1.3,
     marginTop: 10,
     numberOfLines: 0,
     textGravity: 'center',
@@ -337,7 +337,7 @@ const styles = {
   justifiedLabel: new Style<Label>({
     color: '#0F172A',
     font: systemFont(17),
-    lineHeight: 26,
+    lineHeightAbsolute: 26,
     marginTop: 8,
     numberOfLines: 0,
     textAlign: 'justified',
@@ -405,7 +405,7 @@ const styles = {
     customUnderlineStyle: '1 0 0 -2',
     font: systemFont(17),
     height: 112,
-    lineHeight: 25,
+    lineHeightAbsolute: 25,
     numberOfLines: 0,
     placeholder: 'Type multiline text',
     placeholderColor: '#94A3B8',
@@ -439,7 +439,7 @@ const styles = {
   richTextLabel: new Style<Label>({
     color: '#0F172A',
     font: systemFont(18),
-    lineHeightMultiple: 1.35,
+    lineHeight: 1.35,
     marginTop: 8,
     numberOfLines: 0,
     selectable: true,
@@ -512,7 +512,7 @@ const styles = {
   twoLineEllipsisLabel: new Style<Label>({
     color: '#0F172A',
     font: systemBoldFont(18),
-    lineHeight: 24,
+    lineHeightAbsolute: 24,
     marginTop: 10,
     numberOfLines: 2,
     textOverflow: 'ellipsis',

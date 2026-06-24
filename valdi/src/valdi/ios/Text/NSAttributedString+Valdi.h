@@ -21,7 +21,7 @@
                                            color:(NSNumber*)color
                                        textAlign:(NSString*)textAlign
                                       lineHeight:(NSNumber*)lineHeight
-                              lineHeightMultiple:(NSNumber*)lineHeightMultiple
+                             lineHeightAbsolute:(NSNumber*)lineHeightAbsolute
                                   textDecoration:(NSString*)textDecoration
                                    letterSpacing:(NSNumber*)letterSpacing
                                    numberOfLines:(NSNumber*)numberOfLines

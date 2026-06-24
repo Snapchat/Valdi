@@ -732,10 +732,10 @@ class TextViewHelper(private val view: TextView,
 
     // Compute the line height after the view.textSize has been resolved
     private fun applyLineHeight(attributes: FontAttributes) {
-        val lineHeight = attributes.lineHeight
-        if (lineHeight != null) {
+        val lineHeightAbsolute = attributes.lineHeightAbsolute
+        if (lineHeightAbsolute != null) {
             view.paint.getFontMetrics(fontMetrics)
-            val resolvedLineHeight = coordinateResolver.toPixelF(lineHeight)
+            val resolvedLineHeight = coordinateResolver.toPixelF(lineHeightAbsolute)
             val fontLineHeight = fontMetrics.descent - fontMetrics.ascent
             val lineSpacingExtra = resolvedLineHeight - fontLineHeight
             view.setLineSpacing(lineSpacingExtra, 1.0f)
@@ -743,12 +743,12 @@ class TextViewHelper(private val view: TextView,
             return
         }
 
-        val lineHeightMultiple = attributes.lineHeightMultiple
-        if (lineHeightMultiple != null) {
+        val lineHeight = attributes.lineHeight
+        if (lineHeight != null) {
             view.paint.getFontMetrics(fontMetrics)
             val lineOverflow = (fontMetrics.bottom - fontMetrics.top) / (fontMetrics.descent - fontMetrics.ascent)
-            val lineHeightExtra = ((lineHeightMultiple - 1) * view.textSize * lineOverflow).toInt()
-            view.setLineSpacing(0.0f, lineHeightMultiple)
+            val lineHeightExtra = ((lineHeight - 1) * view.textSize * lineOverflow).toInt()
+            view.setLineSpacing(0.0f, lineHeight)
             view.setPadding(0, lineHeightExtra, 0, 0)
         } else {
             view.setLineSpacing(0.0f, 1.0f)

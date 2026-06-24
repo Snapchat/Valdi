@@ -68,7 +68,7 @@ const fixtures: Fixture[] = [
     category: 'label',
     title: 'Label styling',
     description:
-      'Shows system fonts, italic/bold descriptors, text gradients, shadows, custom dashed and dotted underlines, lineHeight, lineHeightMultiple, text overflow, and attributed text backgrounds.',
+      'Shows system fonts, italic/bold descriptors, text gradients, shadows, custom dashed and dotted underlines, lineHeight ratios, lineHeightAbsolute, text overflow, and attributed text backgrounds.',
   },
   {
     id: 'attributed-parts',
@@ -392,7 +392,7 @@ export class App extends StatefulComponent<ViewModel, State> {
       <label style={styles.labelShadow} value="shadowed text" />
       <label
         style={styles.labelJustified}
-        value="Justified multiline label uses explicit lineHeight. This wraps across several lines so spacing and paragraph alignment are visible."
+        value="Justified multiline label uses explicit lineHeightAbsolute. This wraps across several lines so spacing and paragraph alignment are visible."
       />
       <label style={styles.labelAutoshrink} value="autoshrink plus ellipsis for a deliberately long one-line label" />
       <label style={styles.richLabel} value={richAttributedText} />
@@ -784,7 +784,7 @@ const styles = {
   appSubtitle: new Style<Label>({
     color: '#475569',
     font: systemFont(15),
-    lineHeightMultiple: 1.25,
+    lineHeight: 1.25,
     marginBottom: 14,
     numberOfLines: 0,
     width: '100%',
@@ -800,7 +800,7 @@ const styles = {
   attributedIntro: new Style<Label>({
     color: '#334155',
     font: systemFont(14),
-    lineHeightMultiple: 1.25,
+    lineHeight: 1.25,
     marginBottom: 10,
     numberOfLines: 0,
     width: '100%',
@@ -809,7 +809,7 @@ const styles = {
   attributedLabel: new Style<Label>({
     color: '#0F172A',
     font: systemFont(18),
-    lineHeightMultiple: 1.35,
+    lineHeight: 1.35,
     numberOfLines: 0,
     width: '100%',
   }),
@@ -874,7 +874,7 @@ const styles = {
   characterRevealLabel: new Style<Label>({
     color: '#0F172A',
     font: systemBoldFont(24),
-    lineHeightMultiple: 1.25,
+    lineHeight: 1.25,
     numberOfLines: 0,
     width: '100%',
   }),
@@ -891,7 +891,7 @@ const styles = {
   detailDescription: new Style<Label>({
     color: '#475569',
     font: systemFont(14),
-    lineHeightMultiple: 1.25,
+    lineHeight: 1.25,
     marginBottom: 14,
     numberOfLines: 0,
     width: '100%',
@@ -922,7 +922,7 @@ const styles = {
     enabled: false,
     font: systemFont(17),
     height: 96,
-    lineHeightMultiple: 1.3,
+    lineHeight: 1.3,
     marginTop: 10,
     numberOfLines: 2,
     textGravity: 'bottom',
@@ -956,7 +956,7 @@ const styles = {
   eventText: new Style<Label>({
     color: '#475569',
     font: systemFont(13),
-    lineHeightMultiple: 1.25,
+    lineHeight: 1.25,
     numberOfLines: 0,
     width: '100%',
   }),
@@ -1029,7 +1029,7 @@ const styles = {
   fixtureDescription: new Style<Label>({
     color: '#64748B',
     font: systemFont(12),
-    lineHeightMultiple: 1.2,
+    lineHeight: 1.2,
     marginTop: 3,
     numberOfLines: 2,
     width: '100%',
@@ -1060,7 +1060,7 @@ const styles = {
   groupLabel: new Style<Label>({
     color: '#1E293B',
     font: systemFont(18),
-    lineHeightMultiple: 1.2,
+    lineHeight: 1.2,
     numberOfLines: 0,
     width: '100%',
   }),
@@ -1094,7 +1094,7 @@ const styles = {
   helperNote: new Style<Label>({
     color: '#64748B',
     font: systemFont(13),
-    lineHeightMultiple: 1.25,
+    lineHeight: 1.25,
     marginTop: 10,
     numberOfLines: 0,
     width: '100%',
@@ -1103,7 +1103,7 @@ const styles = {
   inlineImageLabel: new Style<Label>({
     color: '#0F172A',
     font: systemFont(18),
-    lineHeightMultiple: 1.35,
+    lineHeight: 1.35,
     marginTop: 10,
     numberOfLines: 0,
     width: '100%',
@@ -1112,7 +1112,7 @@ const styles = {
   inlineLabel: new Style<Label>({
     color: '#0F172A',
     font: systemFont(19),
-    lineHeightMultiple: 1.45,
+    lineHeight: 1.45,
     numberOfLines: 0,
     width: '100%',
   }),
@@ -1136,7 +1136,7 @@ const styles = {
     enabled: false,
     font: systemFont(18),
     height: 118,
-    lineHeightMultiple: 1.45,
+    lineHeight: 1.45,
     marginTop: 12,
     numberOfLines: 0,
     width: '100%',
@@ -1189,8 +1189,8 @@ const styles = {
   labelJustified: new Style<Label>({
     color: '#0F172A',
     font: systemFont(17),
-    lineHeight: 26,
-    lineHeightMultiple: 1.8,
+    lineHeight: 1.8,
+    lineHeightAbsolute: 26,
     marginTop: 10,
     numberOfLines: 0,
     textAlign: 'justified',
@@ -1283,7 +1283,7 @@ const styles = {
     enabled: true,
     font: systemFont(17),
     height: 124,
-    lineHeight: 25,
+    lineHeightAbsolute: 25,
     numberOfLines: 0,
     placeholder: 'Type multiline text',
     placeholderColor: '#94A3B8',
@@ -1317,7 +1317,7 @@ const styles = {
   richLabel: new Style<Label>({
     color: '#0F172A',
     font: systemFont(18),
-    lineHeightMultiple: 1.35,
+    lineHeight: 1.35,
     marginTop: 10,
     numberOfLines: 0,
     width: '100%',
@@ -1342,7 +1342,7 @@ const styles = {
   selectableLabel: new Style<Label>({
     color: '#0F172A',
     font: systemFont(18),
-    lineHeightMultiple: 1.3,
+    lineHeight: 1.3,
     numberOfLines: 0,
     selectable: true,
     selection: [0, 10],
@@ -1355,7 +1355,7 @@ const styles = {
     enabled: false,
     font: systemFont(17),
     height: 118,
-    lineHeightMultiple: 1.3,
+    lineHeight: 1.3,
     marginTop: 12,
     numberOfLines: 0,
     selectable: true,
@@ -1400,7 +1400,7 @@ const styles = {
     enabled: false,
     font: 'system 17',
     height: 86,
-    lineHeightMultiple: 1.3,
+    lineHeight: 1.3,
     numberOfLines: 0,
     width: '100%',
   }),
@@ -1408,7 +1408,7 @@ const styles = {
   snapSceneTitle: new Style<Label>({
     color: '#0F172A',
     font: 'system-bold 24',
-    lineHeight: 29,
+    lineHeightAbsolute: 29,
     marginBottom: 10,
     numberOfLines: 0,
     textDecoration: 'dashed-underline',
@@ -1431,7 +1431,7 @@ const styles = {
   textAnimationLabel: new Style<Label>({
     color: '#0F172A',
     font: systemFont(22),
-    lineHeightMultiple: 1.25,
+    lineHeight: 1.25,
     numberOfLines: 0,
     width: '100%',
   }),
@@ -1442,7 +1442,7 @@ const styles = {
     enabled: false,
     font: systemFont(18),
     height: 86,
-    lineHeightMultiple: 1.25,
+    lineHeight: 1.25,
     marginTop: 12,
     numberOfLines: 0,
     width: '100%',
