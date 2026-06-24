@@ -1,0 +1,109 @@
+name: 'Configure Bazel Cache'
+description: 'Set up GCS remote cache and optional disk cache for Bazel builds'
+
+inputs:
+  gcp_project_id:
+    description: 'GCP project ID'
+    required: true
+  workload_identity_provider:
+    description: 'Full workload identity provider resource name'
+    required: true
+  service_account:
+    description: 'GCP service account email'
+    required: true
+  cache_bucket:
+    description: 'GCS bucket name for remote cache'
+    required: true
+  cache_key:
+    description: 'Cache key prefix for disk cache via actions/cache. Omit to skip disk cache.'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Authenticate to Google Cloud
+      id: auth
+      continue-on-error: true
+      uses: google-github-actions/auth@v2
+      with:
+        project_id: ${{ inputs.gcp_project_id }}
+        workload_identity_provider: ${{ inputs.workload_identity_provider }}
+        service_account: ${{ inputs.service_account }}
+        token_format: 'access_token'
+
+    - name: Configure Bazel remote cache
+      shell: bash
+      env:
+        AUTH_OUTCOME: ${{ steps.auth.outcome }}
+        CACHE_BUCKET: ${{ inputs.cache_bucket }}
+        ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        EVENT_NAME: ${{ github.event_name }}
+      run: |
+        # Always write config=ci for non-remote flags (circuit breaker, etc.)
+        echo "build --config=ci" >> .bazelrc.local
+
+        # Write cache config to a job-specific file. Bootstrapped projects
+        # (e.g. /tmp/valdi_app) import this via try-import in ~/.bazelrc,
+        # avoiding races when concurrent jobs share a runner.
+        CACHE_RC="/tmp/bazelrc-cache-${GITHUB_RUN_ID}-${GITHUB_JOB}"
+        > "$CACHE_RC"
+        echo "BAZEL_CACHE_RC=$CACHE_RC" >> "$GITHUB_ENV"
+
+        if [ "$AUTH_OUTCOME" != "success" ]; then
+          echo "Auth skipped (expected for fork PRs). Building without remote cache."
+          exit 0
+        fi
+
+        # Checkout directory config
+        echo "build --remote_cache=https://storage.googleapis.com/$CACHE_BUCKET" >> .bazelrc.local
+        echo "build \"--remote_header=Authorization=Bearer $ACCESS_TOKEN\"" >> .bazelrc.local
+        # Only upload cache results on push (trusted) events, not pull requests
+        if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$EVENT_NAME" = "release" ]; then
+          echo "build --remote_upload_local_results=true" >> .bazelrc.local
+        else
+          echo "build --remote_upload_local_results=false" >> .bazelrc.local
+        fi
+
+        # Point ~/.bazelrc to the job-specific file via try-import.
+        # Single atomic write — no truncation window for concurrent jobs.
+        echo "try-import $CACHE_RC" > ~/.bazelrc
+
+        # Cache config for bootstrapped projects (discovered via try-import above)
+        echo "build --remote_cache=https://storage.googleapis.com/$CACHE_BUCKET" >> "$CACHE_RC"
+        echo "build \"--remote_header=Authorization=Bearer $ACCESS_TOKEN\"" >> "$CACHE_RC"
+        echo "build --experimental_circuit_breaker_strategy=failure" >> "$CACHE_RC"
+        if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$EVENT_NAME" = "release" ]; then
+          echo "build --remote_upload_local_results=true" >> "$CACHE_RC"
+        else
+          echo "build --remote_upload_local_results=false" >> "$CACHE_RC"
+        fi
+
+    - name: Prune and configure disk cache
+      if: inputs.cache_key != ''
+      shell: bash
+      run: |
+        # Prune old cache files to prevent unbounded growth on persistent runners
+        find "$HOME/.cache/bazel/disk" -type f -atime +7 -delete 2>/dev/null || true
+        find "$HOME/.cache/bazel/repo" -type f -atime +7 -delete 2>/dev/null || true
+
+        echo "build:ci --disk_cache=$HOME/.cache/bazel/disk" >> .bazelrc.local
+        echo "build:ci --repository_cache=$HOME/.cache/bazel/repo" >> .bazelrc.local
+        if [ -n "$BAZEL_CACHE_RC" ]; then
+          echo "build --disk_cache=$HOME/.cache/bazel/disk" >> "$BAZEL_CACHE_RC"
+          echo "build --repository_cache=$HOME/.cache/bazel/repo" >> "$BAZEL_CACHE_RC"
+        fi
+
+    - name: Mount Bazel cache
+      if: inputs.cache_key != '' && runner.environment == 'github-hosted'
+      uses: actions/cache@v4
+      continue-on-error: true
+      with:
+        path: |
+          ~/.cache/bazel/disk
+          ~/.cache/bazel/repo
+          ~/.cache/bazelisk
+        key: bazel-${{ runner.os }}-${{ inputs.cache_key }}-${{ hashFiles('MODULE.bazel', '**/*.bzl') }}-${{ github.run_id }}
+        restore-keys: |
+          bazel-${{ runner.os }}-${{ inputs.cache_key }}-${{ hashFiles('MODULE.bazel', '**/*.bzl') }}-
+          bazel-${{ runner.os }}-${{ inputs.cache_key }}-

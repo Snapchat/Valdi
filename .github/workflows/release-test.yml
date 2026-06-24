@@ -1,6 +1,5 @@
-# Run before cutting a release: bootstrap an app from bleeding edge (main) of
-# the public GitHub Valdi/Valdi_Widgets, build and test. Ensures "if we cut a
-# release now, things won't fail."
+# Release test: bootstrap an app using the CLI's default pinned versions,
+# build and test. Validates the exact user experience of `valdi bootstrap`.
 name: Release Test (Public GitHub)
 
 on:
@@ -18,9 +17,17 @@ on:
       - 'tools/ci/release_test.sh'
       - '.github/workflows/release-test.yml'
 
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release-test:
-    name: Bootstrap from main (bleeding edge), build & test
+    name: Bootstrap with default pinned versions, build & test
     runs-on: macos-latest
 
     steps:
@@ -28,6 +35,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           lfs: true
+
+      - name: Configure Bazel cache
+        uses: ./.github/actions/bazel-cache
+        with:
+          gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

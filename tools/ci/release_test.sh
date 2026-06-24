@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Release test: bootstrap an app from the bleeding edge (main) of the public
-# GitHub Valdi/Valdi_Widgets, build it, and run tests. Use this before cutting
-# a release to verify that if we cut a release now from main, things won't fail.
+# Release test: bootstrap an app using the CLI's default pinned versions,
+# build it, and run tests. Validates the exact flow a user would experience
+# when running `valdi bootstrap` after installing the published CLI.
 #
 # Usage: run from repo root (open_source). Requires Node, Bazel, and (on macOS) Xcode.
 #
@@ -40,8 +40,8 @@ npm ci
 npm run build
 cd "$OPEN_SOURCE_DIR"
 
-# Bootstrap app using bleeding edge (main) from public GitHub (no -l, so no local path)
-echo "Bootstrapping app (bleeding edge / main from public GitHub)..."
+# Bootstrap app using the CLI's default pinned versions (no version overrides)
+echo "Bootstrapping app (default pinned versions)..."
 mkdir -p "$APP_DIR"
 rm -rf "${APP_DIR:?}"/* "${APP_DIR:?}"/.[!.]* 2>/dev/null || true
 cd "$APP_DIR"
@@ -49,8 +49,6 @@ node "$CLI_DIR/dist/index.js" bootstrap \
   -y \
   "-n=$PROJECT_NAME" \
   -t=ui_application \
-  --valdiVersion=main \
-  --valdiWidgetsVersion=main \
   --with-cleanup
 
 # Verify the project references public GitHub (not local).
