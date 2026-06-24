@@ -226,16 +226,3 @@ jobs:
           name: snapshot-diffs
           path: /tmp/valdi-snapshots/diffs/
           retention-days: 5
-
-  comment-results:
-    name: Comment Test Results
-    needs: [smoke-test, linux-ci, snapshot-tests]
-    if: always()
-    uses: ./.github/workflows/comment-test-results.yml
-    permissions:
-      contents: read
-      pull-requests: write
-    with:
-      workflow_name: "Bazel & CI Test Results"
-      success_message: "**All Bazel configuration and CI tests passed!** ✨\n\nThe build system and core tooling are working correctly."
-      additional_info: "🚀 _Bazel remote cache is now enabled - future builds will be faster!_"

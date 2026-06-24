@@ -430,7 +430,12 @@ export class WebValdiTextField extends WebValdiLayout {
 
       // Keyboard & Input
       case 'contentType':
-        this.htmlElement.setAttribute(attributeName, getContentType(attributeValue));
+        // Map Valdi's contentType to HTML <input> attributes. Mirrors the
+        // native binders (iOS SCValdiTextInputSetContentTypeValues, Android
+        // EditTextAttributesBinder.applyContentType) which treat contentType
+        // as authoritative over keyboard, masking, and suggestion behavior —
+        // so this helper sets all the related attrs together.
+        applyContentType(this.htmlElement, attributeValue);
         return;
       case 'keyboardType':
         this.htmlElement.setAttribute('inputmode', attributeValue);
@@ -502,17 +507,52 @@ function applyOpacity(color: string, opacityValue: string): string {
     return color;
 }
 
-function getContentType(type: string) {
-  switch (type) {
-    case 'phoneNumber':
-      return 'tel';
-    case 'email':
-      return 'email';
-    case 'password':
-      return 'password';
-    case 'url':
-      return 'url';
-    default:
-      return 'text';
+type ContentTypeAttrs = {
+  type: string;
+  inputmode?: string;
+  pattern?: string;
+  autocomplete?: string;
+  autocorrect?: string;
+  spellcheck?: string;
+};
+
+// Mirrors the cross-platform contentType → input traits mapping used by the
+// iOS (SCValdiTextInputSetContentTypeValues) and Android
+// (EditTextAttributesBinder.applyContentType) binders. The native binders
+// rewrite the full set of related traits on every change; we follow suit so
+// stale state from a prior contentType can't leak through.
+const CONTENT_TYPE_ATTRS: Record<string, ContentTypeAttrs> = {
+  default: { type: 'text' },
+  phoneNumber: { type: 'tel' },
+  email: { type: 'email' },
+  password: { type: 'password' },
+  passwordNumber: { type: 'password', inputmode: 'numeric', pattern: '[0-9]*' },
+  passwordVisible: { type: 'text', autocomplete: 'off' },
+  url: { type: 'url' },
+  number: { type: 'text', inputmode: 'numeric', pattern: '[0-9]*' },
+  numberDecimal: { type: 'text', inputmode: 'decimal' },
+  // Mirrors iOS UIKeyboardTypeNumbersAndPunctuation — full keyboard so the
+  // minus key is reachable. inputmode=decimal hides minus on iOS.
+  numberDecimalSigned: { type: 'text', inputmode: 'text', pattern: '-?[0-9]*[.,]?[0-9]*' },
+  noSuggestions: { type: 'text', autocomplete: 'off', autocorrect: 'off', spellcheck: 'false' },
+};
+
+const CONTENT_TYPE_SECONDARY_ATTRS = ['inputmode', 'pattern', 'autocomplete', 'autocorrect', 'spellcheck'] as const;
+
+function setOrRemoveAttr(element: HTMLElement, name: string, value: string | undefined): void {
+  if (value === undefined) {
+    if (element.hasAttribute(name)) {
+      element.removeAttribute(name);
+    }
+  } else if (element.getAttribute(name) !== value) {
+    element.setAttribute(name, value);
+  }
+}
+
+function applyContentType(element: HTMLElement, type: string): void {
+  const attrs = CONTENT_TYPE_ATTRS[type] ?? CONTENT_TYPE_ATTRS.default;
+  setOrRemoveAttr(element, 'type', attrs.type);
+  for (const name of CONTENT_TYPE_SECONDARY_ATTRS) {
+    setOrRemoveAttr(element, name, attrs[name]);
   }
 }

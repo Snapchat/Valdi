@@ -12,7 +12,7 @@ The Valdi Protobuf generation script can take a `proto_config.yaml` and generate
 The proto config file lists all the proto files which should be included from one of the repositories declared in the `repositories` section, or from files that are in the `proto` directory.
 
 ### Generating message APIs
-Once the `proto_config.yaml` was setup in the module, we can generate the TypeScript bindings by running the `scripts/generate_protos.py` script (Pls. run  `tools/build_pre.sh` once from the client root directory to fetch all necessary prerequirements for `generate_protos` script). We provide it the Valdi module name where the `proto_config.yaml` is stored.
+Once the `proto_config.yaml` was setup in the module, we can generate the TypeScript bindings by running the `scripts/generate_protos.py` script. We provide it the Valdi module name where the `proto_config.yaml` is stored.
 ```bash
 # Typical Valdi development path
 cd ~/Path/to/repo/src/valdi_modules
