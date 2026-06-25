@@ -371,6 +371,7 @@ Valdi::StringBox SnapDrawingViewManager::getClassName(const ILayerClass& layerCl
         case Valdi::PlatformTypeIOS:
         case Valdi::PlatformTypeMacOS:
         case Valdi::PlatformTypeWeb:
+        case Valdi::PlatformTypeLinux:
             return STRING_LITERAL(layerClass.getIOSClassName());
     }
 }

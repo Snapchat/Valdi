@@ -116,6 +116,7 @@ alias(
         "//bzl/conditions:ios": ":valdi_ios",
         "//bzl/conditions:android_with_jni": ":valdi_android",
         "//bzl/conditions:macos": ":valdi_macos",
+        "//bzl/conditions:linux": ":valdi_linux",
         "//conditions:default": ":valdi_runtime",
     }),
     visibility = ["//visibility:public"],
@@ -868,6 +869,15 @@ valdi_test(
     ],
 )
 
+valdi_test(
+    name = "test_linux",
+    srcs = glob(["test/linux/**/*.cpp"]),
+    deps = [
+        ":valdi_standalone_runtime",
+        "//valdi_core",
+    ],
+)
+
 cc_test(
     name = "test",
     linkstatic = 1,
@@ -878,6 +888,18 @@ cc_test(
         ":test_runtime_lib",
         ":test_snap_drawing_lib",
         ":test_svg_lib",
+        "@gtest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "test_linux_bin",
+    linkstatic = 1,
+    tags = ["valdi_linux_test"],
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":test_linux_lib",
         "@gtest//:gtest_main",
     ],
 )
@@ -991,6 +1013,26 @@ objc_library(
         "QuartzCore",
         "MetalKit",
     ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_runtime_with_vm",
+        ":valdi_snap_drawing",
+        ":valdi_standalone_runtime",
+    ],
+)
+
+cc_library(
+    name = "valdi_linux",
+    srcs = glob([
+        "src/valdi/linux/**/*.c",
+        "src/valdi/linux/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/linux/**/*.h",
+        "src/valdi/linux/**/*.hpp",
+    ]),
+    strip_include_prefix = "src",
+    target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
     deps = [
         ":valdi_runtime_with_vm",

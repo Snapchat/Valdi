@@ -57,6 +57,7 @@ Shared<DebuggerService> createDebuggerService(bool enableDebuggerService,
                 break;
             case PlatformTypeMacOS:
             case PlatformTypeWeb:
+            case PlatformTypeLinux:
                 platform = snap::valdi_core::Platform::Ios;
                 break;
         }

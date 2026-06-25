@@ -131,32 +131,69 @@ const ClaudeCodeAdapter: SkillAdapter = {
   },
 };
 
-// CursorAdapter: installs to ~/.cursor/rules/valdi-<name>.mdc (global)
+// CursorAdapter: installs to ~/.cursor/skills/<name>/SKILL.md (global)
 const CursorAdapter: SkillAdapter = {
   name: 'cursor',
   detect() {
     const cursorDir = path.join(os.homedir(), '.cursor');
     return fs.existsSync(cursorDir);
   },
-  install(skillName: string, content: string, meta: SkillMeta) {
-    const rulesDir = path.join(os.homedir(), '.cursor', 'rules');
-    fs.mkdirSync(rulesDir, { recursive: true });
-    const frontmatter = `---\ndescription: ${meta.description}\nalwaysApply: false\n---\n\n`;
-    fs.writeFileSync(path.join(rulesDir, `valdi-${skillName}.mdc`), frontmatter + content, 'utf8');
+  install(skillName: string, content: string, meta: SkillMeta, resourceDir?: string) {
+    const skillDir = path.join(os.homedir(), '.cursor', 'skills', skillName);
+    fs.mkdirSync(skillDir, { recursive: true });
+    const frontmatter = `---\nname: ${meta.name}\ndescription: ${meta.description}\n---\n\n`;
+    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), frontmatter + content, 'utf8');
+
+    if (resourceDir) {
+      for (const entry of fs.readdirSync(resourceDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          copyDirSync(path.join(resourceDir, entry.name), path.join(skillDir, entry.name));
+        }
+      }
+    }
+
+    // Clean up deprecated .mdc file from ~/.cursor/rules/ if it exists
+    // (old adapter double-prefixed: valdi-${skillName}.mdc)
+    const legacyFile = path.join(os.homedir(), '.cursor', 'rules', `valdi-${skillName}.mdc`);
+    if (fs.existsSync(legacyFile)) {
+      fs.unlinkSync(legacyFile);
+    }
   },
   remove(skillName: string) {
-    const filePath = path.join(os.homedir(), '.cursor', 'rules', `valdi-${skillName}.mdc`);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    const skillDir = path.join(os.homedir(), '.cursor', 'skills', skillName);
+    if (fs.existsSync(skillDir)) {
+      fs.rmSync(skillDir, { recursive: true, force: true });
+    }
+    // Also clean up deprecated location (old adapter double-prefixed)
+    const legacyFile = path.join(os.homedir(), '.cursor', 'rules', `valdi-${skillName}.mdc`);
+    if (fs.existsSync(legacyFile)) {
+      fs.unlinkSync(legacyFile);
     }
   },
   listInstalled() {
+    const installed = new Set<string>();
+
+    const skillsDir = path.join(os.homedir(), '.cursor', 'skills');
+    if (fs.existsSync(skillsDir)) {
+      for (const entry of fs.readdirSync(skillsDir)) {
+        if (fs.existsSync(path.join(skillsDir, entry, 'SKILL.md'))) {
+          installed.add(entry);
+        }
+      }
+    }
+
+    // Legacy: old adapter wrote valdi-${skillName}.mdc (double-prefixed),
+    // so stripping one valdi- recovers the registry name.
     const rulesDir = path.join(os.homedir(), '.cursor', 'rules');
-    if (!fs.existsSync(rulesDir)) return [];
-    return fs
-      .readdirSync(rulesDir)
-      .filter((f) => f.startsWith('valdi-') && f.endsWith('.mdc'))
-      .map((f) => f.replace(/^valdi-/u, '').replace(/\.mdc$/u, ''));
+    if (fs.existsSync(rulesDir)) {
+      for (const f of fs.readdirSync(rulesDir)) {
+        if (f.startsWith('valdi-') && f.endsWith('.mdc')) {
+          installed.add(f.replace(/^valdi-/u, '').replace(/\.mdc$/u, ''));
+        }
+      }
+    }
+
+    return Array.from(installed);
   },
 };
 

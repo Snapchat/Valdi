@@ -9,9 +9,7 @@ import {
   buildInstallCommand,
   detectLinuxDistro,
   getCommonPackageMappings,
-  getGitLfsRepoSetupCommand,
   getPackageName,
-  needsGitLfsRepoSetup,
 } from '../utils/linuxDistro';
 import { wrapInColor } from '../utils/logUtils';
 import { DevSetupHelper, HOME_DIR } from './DevSetupHelper';
@@ -74,7 +72,6 @@ export async function linuxSetup(): Promise<void> {
       ),
     );
     console.log('  - git');
-    console.log('  - git-lfs');
     console.log('  - npm (Node.js)');
     console.log('  - openjdk-17-jdk (or equivalent Java 17 JDK)');
     console.log('  - watchman');
@@ -93,21 +90,6 @@ export async function linuxSetup(): Promise<void> {
 
   const packageMappings = getCommonPackageMappings();
 
-  // Setup git-lfs repository if needed (only for Debian/Ubuntu and RHEL-based)
-  const repoSetupCommand = getGitLfsRepoSetupCommand(distro);
-  if (repoSetupCommand && needsGitLfsRepoSetup(distro)) {
-    try {
-      await devSetup.runShell('Setting up git-lfs repository', [repoSetupCommand]);
-    } catch {
-      console.log(
-        wrapInColor(
-          `Warning: git-lfs repository setup failed. Will try to install git-lfs from standard repositories.`,
-          ANSI_COLORS.YELLOW_COLOR,
-        ),
-      );
-    }
-  }
-
   // Build list of packages to install
   const packagesToInstall: string[] = [];
 
@@ -117,9 +99,6 @@ export async function linuxSetup(): Promise<void> {
   }
   if (!checkCommandExists('java')) {
     packagesToInstall.push(getPackageName(packageMappings['openjdk-17']!, distro));
-  }
-  if (!checkCommandExists('git-lfs')) {
-    packagesToInstall.push(getPackageName(packageMappings['git-lfs']!, distro));
   }
   if (!checkCommandExists('watchman')) {
     packagesToInstall.push(getPackageName(packageMappings['watchman']!, distro));
@@ -159,8 +138,6 @@ export async function linuxSetup(): Promise<void> {
   } else {
     console.log(wrapInColor('All required packages are already installed.', ANSI_COLORS.GREEN_COLOR));
   }
-
-  await devSetup.setupGitLfs();
 
   await devSetup.setupShellAutoComplete();
 

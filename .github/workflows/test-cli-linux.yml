@@ -152,7 +152,6 @@ jobs:
             // Test all common packages have correct mappings
             const testPackages = [
               'git',
-              'git-lfs',
               'npm',
               'openjdk-17',
               'watchman',
@@ -231,54 +230,6 @@ jobs:
             console.log('');
             
             console.log('All install command generation tests passed! ✓');
-          "
-      
-      - name: Test git-lfs setup detection
-        run: |
-          echo ""
-          echo "============================================================"
-          echo "Testing Git-LFS Repository Setup Detection"
-          echo "============================================================"
-          echo ""
-          
-          node -e "
-            const distro = require('./npm_modules/cli/dist/utils/linuxDistro');
-            const detected = distro.detectLinuxDistro();
-            
-            const needsSetup = distro.needsGitLfsRepoSetup(detected);
-            const setupCmd = distro.getGitLfsRepoSetupCommand(detected);
-            
-            console.log('Distribution:', detected.name);
-            console.log('Needs git-lfs repo setup:', needsSetup);
-            console.log('Setup command:', setupCmd || 'N/A (uses standard repos)');
-            console.log('');
-            
-            // Verify logic is consistent
-            if (needsSetup && !setupCmd) {
-              throw new Error('If setup is needed, command should be provided');
-            }
-            
-            // Verify Debian/Ubuntu needs packagecloud setup
-            if (detected.type === 'debian' && !needsSetup) {
-              throw new Error('Debian/Ubuntu should need git-lfs repo setup');
-            }
-            
-            // Verify setup command format
-            if (setupCmd) {
-              if (!setupCmd.includes('packagecloud.io')) {
-                throw new Error('Setup command should use packagecloud.io');
-              }
-              
-              if (detected.type === 'debian' && !setupCmd.includes('script.deb.sh')) {
-                throw new Error('Debian setup should use .deb script');
-              }
-              
-              if (detected.type === 'redhat' && !setupCmd.includes('script.rpm.sh')) {
-                throw new Error('RedHat setup should use .rpm script');
-              }
-            }
-            
-            console.log('Git-LFS setup detection validated! ✓');
           "
       
       - name: Install CLI and test valdi doctor
@@ -368,7 +319,6 @@ jobs:
           echo "Distribution detection:     ✓"
           echo "Package mappings:           ✓"
           echo "Install command generation: ✓"
-          echo "Git-LFS setup detection:    ✓"
           echo "valdi doctor integration:   ✓"
           echo "Doctor fix commands:        ✓"
           echo ""

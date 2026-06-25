@@ -225,7 +225,7 @@ Skills cover TSX patterns, Bazel, iOS/Android integration, async lifecycle, perf
 
 ### Cursor
 
-Use `valdi skills install --for=cursor` to install skills to `~/.cursor/rules/`. Skills activate automatically based on file type when you work on Valdi projects.
+Use `valdi skills install --for=cursor` to install skills to `~/.cursor/skills/`. Skills activate automatically based on description when you work on Valdi projects.
 
 ### GitHub Copilot
 

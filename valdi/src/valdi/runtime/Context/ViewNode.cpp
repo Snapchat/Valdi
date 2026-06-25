@@ -1453,9 +1453,14 @@ void ViewNode::setViewClassNameForPlatform(ViewTransactionScope& viewTransaction
                                            PlatformType platformType) {
     auto currentPlatformType = _viewNodeTree->getViewManagerContext()->getViewManager().getPlatformType();
     if (currentPlatformType != platformType) {
-        // macOS falls through to iOS class names (iosClass is bound before macosClass,
-        // so macosClass will overwrite if explicitly set)
-        if (!(currentPlatformType == PlatformTypeMacOS && platformType == PlatformTypeIOS)) {
+        // macOS and Linux fall through to iOS class names as the base fallback.
+        // macosClass / linuxClass overwrite iosClass when explicitly set (bound later).
+        bool isFallthrough =
+            ((currentPlatformType == PlatformTypeMacOS || currentPlatformType == PlatformTypeLinux) &&
+             platformType == PlatformTypeIOS) ||
+            // Linux also accepts macosClass as a shared-desktop override.
+            (currentPlatformType == PlatformTypeLinux && platformType == PlatformTypeMacOS);
+        if (!isFallthrough) {
             return;
         }
     }

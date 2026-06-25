@@ -17,7 +17,7 @@ common --incompatible_java_common_parameters=false
 # Flags for compilation
 common --define enable_web=true
 
-build --tool_java_language_version=11
+build --tool_java_language_version=17
 build --java_language_version=11
 
 ## Disable sandboxing for macs, both laptops and in CI; the performance hit is much too high.

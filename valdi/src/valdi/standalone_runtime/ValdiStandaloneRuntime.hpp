@@ -9,6 +9,7 @@
 
 #include "valdi/runtime/IRuntimeListener.hpp"
 #include "valdi/runtime/Interfaces/IDiskCache.hpp"
+#include "valdi_core/cpp/Context/PlatformType.hpp"
 #include "valdi_core/cpp/Utils/Function.hpp"
 #include "valdi_core/cpp/Utils/Marshaller.hpp"
 #include "valdi_core/cpp/Utils/Shared.hpp"
@@ -66,7 +67,8 @@ public:
                                               const Ref<IDiskCache>& diskCache,
                                               const Shared<IRuntimeListener>& runtimeListener,
                                               const Shared<StandaloneResourceLoader>& resourceLoader,
-                                              const Shared<Valdi::ITweakValueProvider>& tweakValueProvider = nullptr);
+                                              const Shared<Valdi::ITweakValueProvider>& tweakValueProvider = nullptr,
+                                              PlatformType platformType = PlatformTypeIOS);
 
 private:
     Ref<RuntimeManager> _runtimeManager;

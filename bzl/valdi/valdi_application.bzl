@@ -13,6 +13,7 @@ load(
     "//bzl/valdi:valdi_ios_application_icons.bzl",
     _valdi_ios_application_icons = "valdi_ios_application_icons",
 )
+load("//bzl/valdi:valdi_linux_application.bzl", "valdi_linux_application")
 load("//bzl/valdi:valdi_macos_application.bzl", "valdi_macos_application")
 load(
     "//bzl/valdi:valdi_macos_application_icons.bzl",
@@ -120,6 +121,12 @@ def valdi_application(
         window_height = desktop_window_height,
         window_resizable = desktop_window_resizable,
         app_icons = macos_app_icons,
+        deps = get_suffixed_deps(deps, "_native"),
+    )
+
+    valdi_linux_application(
+        name = "{}_linux".format(name),
+        root_component_path = root_component_path,
         deps = get_suffixed_deps(deps, "_native"),
     )
 

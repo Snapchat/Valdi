@@ -18,7 +18,7 @@ namespace Valdi {
 
 class StandaloneViewManager : public IViewManager {
 public:
-    StandaloneViewManager();
+    explicit StandaloneViewManager(PlatformType platformType = PlatformTypeIOS);
 
     Valdi::Ref<Valdi::ViewFactory> createViewFactory(
         const Valdi::StringBox& className, const Valdi::Ref<Valdi::BoundAttributes>& boundAttributes) override;
@@ -59,6 +59,7 @@ public:
     Ref<IBitmapFactory> getViewRasterBitmapFactory() const override;
 
 private:
+    PlatformType _platformType;
     bool _registerCustomAttributes = false;
     bool _keepAttributesHistory = false;
     bool _allowViewPooling = false;

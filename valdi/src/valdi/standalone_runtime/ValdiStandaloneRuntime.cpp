@@ -58,8 +58,9 @@ private:
 
 #ifdef SNAP_DRAWING_ENABLED
 
-void registerSnapDrawingModuleFactoriesProvider(RuntimeManager& runtimeManager) {
-    auto lazy = makeShared<Lazy<Ref<snap::drawing::Runtime>>>([weakRuntimeManager = weakRef(&runtimeManager)]() {
+void registerSnapDrawingModuleFactoriesProvider(RuntimeManager& runtimeManager,
+                                                Valdi::PlatformType platformType) {
+    auto lazy = makeShared<Lazy<Ref<snap::drawing::Runtime>>>([weakRuntimeManager = weakRef(&runtimeManager), platformType]() {
         auto runtime = makeShared<snap::drawing::Runtime>(nullptr,
                                                           snap::drawing::GesturesConfiguration::getDefault(),
                                                           nullptr,
@@ -67,7 +68,7 @@ void registerSnapDrawingModuleFactoriesProvider(RuntimeManager& runtimeManager) 
                                                           ConsoleLogger::getLogger(),
                                                           nullptr,
                                                           0);
-        runtime->initializeViewManager(Valdi::PlatformTypeIOS);
+        runtime->initializeViewManager(platformType);
 
         auto runtimeManager = weakRuntimeManager.lock();
         if (runtimeManager != nullptr) {
@@ -387,8 +388,9 @@ Ref<ValdiStandaloneRuntime> ValdiStandaloneRuntime::create(
     const Ref<IDiskCache>& diskCache,
     const Shared<IRuntimeListener>& runtimeListener,
     const Shared<StandaloneResourceLoader>& resourceLoader,
-    const Shared<Valdi::ITweakValueProvider>& tweakValueProvider) {
-    auto viewManager = std::make_unique<StandaloneViewManager>();
+    const Shared<Valdi::ITweakValueProvider>& tweakValueProvider,
+    PlatformType platformType) {
+    auto viewManager = std::make_unique<StandaloneViewManager>(platformType);
     viewManager->setRegisterCustomAttributes(registerCustomAttributes);
     viewManager->setKeepAttributesHistory(keepAttributesHistory);
 
@@ -411,7 +413,7 @@ Ref<ValdiStandaloneRuntime> ValdiStandaloneRuntime::create(
     }
 
 #ifdef SNAP_DRAWING_ENABLED
-    registerSnapDrawingModuleFactoriesProvider(*runtimeManager);
+    registerSnapDrawingModuleFactoriesProvider(*runtimeManager, viewManager->getPlatformType());
 #endif
 
     if (diskCache != nullptr) {

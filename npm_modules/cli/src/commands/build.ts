@@ -47,6 +47,12 @@ async function valdiBuild(argv: ArgumentsResolver<CommandParameters>) {
       await bazel.buildTarget(buildInfo.application, buildInfo.bazelArgs);
       break;
     }
+    case PLATFORM.LINUX: {
+      logReproduceThisCommandIfNeeded(argv);
+      console.log('Building Linux application...');
+      await bazel.buildTarget(buildInfo.application, buildInfo.bazelArgs);
+      break;
+    }
     case PLATFORM.CLI: {
       logReproduceThisCommandIfNeeded(argv);
       console.log('Build CLI application...');

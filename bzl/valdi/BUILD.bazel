@@ -1,6 +1,7 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "string_flag")
 load("@valdi//bzl/conditions:selects.bzl", "selects")
 load("@valdi//bzl/valdi:valdi_toolchain.bzl", "valdi_toolchain")
+load("@valdi//bzl/valdi:valdi_toolchain_binary.bzl", "valdi_toolchain_binary")
 
 exports_files([
     "AndroidManifest.xml.tpl",
@@ -344,7 +345,7 @@ config_setting(
 # still available as an out-of-band escape hatch.
 bool_flag(
     name = "use_local_compiler",
-    build_setting_default = False,
+    build_setting_default = True,  # use_local_compiler
     visibility = ["//visibility:public"],
 )
 
@@ -383,14 +384,20 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+# Force the compiler binary to build under -c opt
+valdi_toolchain_binary(
+    name = "local_valdi_compiler_opt",
+    bin = "//compiler/compiler:local_valdi_compiler",
+)
+
 # Compiler: prebuilt from toolchain, or one of the local variants when
 # use_local_compiler=true is set. See the flag docstring above for the
 # per-OS routing rationale.
 alias(
     name = "compiler_source",
     actual = select({
-        ":use_local_compiler_on_macos": "//compiler/compiler:local_valdi_compiler",
-        ":use_local_compiler_on_linux": "//compiler/compiler:local_valdi_compiler",
+        ":use_local_compiler_on_macos": ":local_valdi_compiler_opt",
+        ":use_local_compiler_on_linux": ":local_valdi_compiler_opt",
         "//conditions:default": "@valdi_toolchain//:valdi_compiler",
     }),
     visibility = ["//visibility:private"],

@@ -678,6 +678,8 @@ JSValueRef JavaScriptRuntime::runtimeGetCurrentPlatform(JSFunctionNativeCallCont
             return callContext.getContext().newNumber(static_cast<int32_t>(3));
         case PlatformTypeWeb:
             return callContext.getContext().newNumber(static_cast<int32_t>(4));
+        case PlatformTypeLinux:
+            return callContext.getContext().newNumber(static_cast<int32_t>(5));
     }
 }
 
@@ -710,6 +712,7 @@ JSValueRef JavaScriptRuntime::runtimeGetBackendRenderingTypeForContextId(JSFunct
             case PlatformTypeIOS:
             case PlatformTypeMacOS:
             case PlatformTypeWeb:
+            case PlatformTypeLinux:
                 result = kBackendRenderingTypeIOS;
                 break;
         }

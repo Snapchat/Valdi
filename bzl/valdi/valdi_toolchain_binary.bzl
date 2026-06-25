@@ -5,6 +5,10 @@ def _transition_impl(settings, attr):
         "@valdi//bzl/runtime_flags:enable_logging": False,
         "@valdi//bzl/runtime_flags:enable_tracing": False,
         "@valdi//bzl/runtime_flags:enable_debug": False,
+
+        # Force binaries to build with -c opt to avoid using binaries
+        # built under the target compilation mode.
+        "//command_line_option:compilation_mode": "opt",
     }
 
 valdi_toolchain_transition = transition(
@@ -16,6 +20,7 @@ valdi_toolchain_transition = transition(
         "@valdi//bzl/runtime_flags:enable_logging",
         "@valdi//bzl/runtime_flags:enable_tracing",
         "@valdi//bzl/runtime_flags:enable_debug",
+        "//command_line_option:compilation_mode",
     ],
 )
 

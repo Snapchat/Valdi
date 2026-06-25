@@ -1,15 +1,1 @@
 third-party/** linguist-generated=true
-
-# Git LFS for open source
-bin/compiler/** filter=lfs diff=lfs merge=lfs -text
-bin/clientsql/** filter=lfs diff=lfs merge=lfs -text
-bin/compiler_companion/** filter=lfs diff=lfs merge=lfs -text
-bin/valdi_standalone filter=lfs diff=lfs merge=lfs -text
-bin/pngquant/** filter=lfs diff=lfs merge=lfs -text
-third-party/skia/libs/** filter=lfs diff=lfs merge=lfs -text
-third-party/jscore/libs/** filter=lfs diff=lfs merge=lfs -text
-third-party/v8/libs/** filter=lfs diff=lfs merge=lfs -text
-third-party/resvg/resvg_libs/libs/** filter=lfs diff=lfs merge=lfs -text
-
-# Ensure incompatible files are not tracked for git-lfs
-third-party/skia/libs/.gitattributes !filter !diff !merge text

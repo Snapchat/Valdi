@@ -9,6 +9,7 @@ on:
       - 'MODULE.bazel'
       - 'registry/**'
       - 'tools/ci/**'
+      - 'tools/api_surface/**'
       - 'npm_modules/cli/test/**'
       - '.github/workflows/bzl-changes.yml'
       - '**/*.cpp'
@@ -31,6 +32,7 @@ on:
       - 'MODULE.bazel'
       - 'registry/**'
       - 'tools/ci/**'
+      - 'tools/api_surface/**'
       - 'npm_modules/cli/test/**'
       - '.github/workflows/bzl-changes.yml'
       - '**/*.cpp'
@@ -63,8 +65,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          lfs: true
 
       - name: Configure Bazel cache
         uses: ./.github/actions/bazel-cache
@@ -134,8 +134,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          lfs: true
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -188,8 +186,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          lfs: true
 
       - name: Configure Bazel cache
         uses: ./.github/actions/bazel-cache
@@ -226,3 +222,19 @@ jobs:
           name: snapshot-diffs
           path: /tmp/valdi-snapshots/diffs/
           retention-days: 5
+
+  api-surface:
+    name: API Surface Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check API surface
+        run: ./tools/ci/api_surface_tests.sh

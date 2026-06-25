@@ -119,6 +119,16 @@ void DefaultAttributes::bind(AttributeHandlerById& attributes) {
         });
 
     binder.bind(
+        "linuxClass",
+        [](ViewTransactionScope& viewTransactionScope, auto& viewNode, const Value& value) -> Result<Void> {
+            viewNode.setViewClassNameForPlatform(viewTransactionScope, value.toStringBox(), PlatformTypeLinux);
+            return Void();
+        },
+        [](ViewTransactionScope& viewTransactionScope, auto& viewNode) {
+            viewNode.setViewClassNameForPlatform(viewTransactionScope, StringBox(), PlatformTypeLinux);
+        });
+
+    binder.bind(
         "viewFactory",
         [](ViewTransactionScope& viewTransactionScope, auto& viewNode, const Value& value) -> Result<Void> {
             auto viewFactory =

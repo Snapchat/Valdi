@@ -51,6 +51,12 @@ async function valdiInstall(argv: ArgumentsResolver<CommandParameters>) {
       await bazel.runTarget(buildInfo.application, buildInfo.bazelArgs);
       break;
     }
+    case PLATFORM.LINUX: {
+      logReproduceThisCommandIfNeeded(argv);
+      console.log('Running Linux application...');
+      await bazel.runTarget(buildInfo.application, buildInfo.bazelArgs);
+      break;
+    }
     case PLATFORM.CLI: {
       logReproduceThisCommandIfNeeded(argv);
       console.log('Running CLI application...');

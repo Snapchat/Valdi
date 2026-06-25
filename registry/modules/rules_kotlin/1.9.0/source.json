@@ -2,7 +2,10 @@
     "integrity": "sha256-V2bx5Zms9VGqVvSdq5q5EIJpsDxVdJbFSsr0H5jiuNY=",
     "url": "https://github.com/bazelbuild/rules_kotlin/releases/download/v1.9.0/rules_kotlin-v1.9.0.tar.gz",
     "patches": {
-        "rules_kotlin.patch": "sha256-Q10nhN2KuLJuNM8Y75eHX7Exn0pNXD+oM2wOrYP/nxE="
+        "rules_kotlin.patch": "sha256-Q10nhN2KuLJuNM8Y75eHX7Exn0pNXD+oM2wOrYP/nxE=",
+        "rules_kotlin_hermetic_sdk.patch": "sha256-DODrJycjFBexwGj82tuyDos5p1qnSZ+qu3+pcfbuLOM=",
+        "rules_kotlin_android_sdk.patch": "sha256-lrK5Dr9mODRk6AxWNfMTItB8CwTvgPtxPmERO5dJtlY=",
+        "rules_kotlin_module_bzl.patch": "sha256-7w/yL397RLRlceMjLlWspFAn4by2hXXXau29gjXRxXE="
     },
     "patch_strip": 0
 }

@@ -54,9 +54,9 @@ void describe('valdi ui app', () => {
       await lookForOutput({ stderr: [/Build completed successfully, \d+ total actions?/] }, task);
     });
 
-    void it('build android', { skip: true }, async () => {
+    void it('build android', async () => {
       const task = run('valdi', ['build', 'android']);
-      await lookForOutput({ stderr: [/Build completed successfully, \d+ total actions?/] }, task);
+      await lookForOutput({ stderr: [/Build completed successfully, \d+ total actions?/], idleTimeoutMs: 120_000 }, task);
     });
 
     void it('valdi doctor', async () => {

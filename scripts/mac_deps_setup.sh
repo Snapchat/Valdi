@@ -27,7 +27,6 @@ echo
 echo "********************************************************************************"
 echo "Installing/upgrading Homebrew dependencies..."
 install_or_upgrade "watchman"
-install_or_upgrade "git-lfs"
 install_or_upgrade "jq"
 install_or_upgrade "libimobiledevice"
 install_or_upgrade "libusbmuxd"

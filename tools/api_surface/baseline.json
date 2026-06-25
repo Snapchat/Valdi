@@ -1,0 +1,593 @@
+{
+  "classes": {
+    "Component": {
+      "methods": {
+        "animate": "(options: AnimationOptions, animations: () => void): void",
+        "animatePromise": "(options: AnimationOptions, animations: () => void): Promise<void>",
+        "context": "(readonly) Readonly<ComponentContext>",
+        "createAnimation": "(options: AnimationOptions, animations: () => void): CancellableAnimation",
+        "disallowNullViewModel": "(static) true",
+        "isDestroyed": "(): boolean",
+        "maybeRegisterDisposable": "(disposable: ComponentDisposable | undefined): void",
+        "onCreate": "(): void",
+        "onDestroy": "(): void",
+        "onRender": "(): void",
+        "onViewModelUpdate": "(previousViewModel?: Readonly<ViewModel>): void",
+        "registerDisposable": "(disposable: ComponentDisposable | undefined): boolean",
+        "registerDisposables": "(disposables: ComponentDisposable[]): void",
+        "renderer": "(readonly) IRenderer",
+        "scheduleRender": "(): void",
+        "setTimeoutDisposable": "(handler: () => void, timeout?: number): number",
+        "viewModel": "(readonly) Readonly<ViewModel>"
+      }
+    },
+    "StatefulComponent": {
+      "extends": "Component< ViewModel, ComponentContext >",
+      "methods": {
+        "setState": "(state: Readonly<Partial<State>>): void",
+        "setStateAnimated": "(state: Readonly<Partial<State>>, animationOptions: AnimationOptions): void",
+        "setStateAnimatedPromise": "(state: Readonly<Partial<State>>, animationOptions: AnimationOptions): Promise<void>"
+      }
+    }
+  },
+  "enums": {
+    "EditTextUnfocusReason": {
+      "DismissKeyPress": "2",
+      "ReturnKeyPress": "1",
+      "Unknown": "0"
+    },
+    "MeasureMode": {
+      "AtMost": "2",
+      "Exactly": "1",
+      "Unspecified": "0"
+    }
+  },
+  "interfaces": {
+    "AnimatedImage": {
+      "extends": [
+        "LeafView"
+      ],
+      "properties": {
+        "advanceRate": "number (optional)",
+        "animationEndTime": "number (optional)",
+        "animationStartTime": "number (optional)",
+        "currentTime": "number (optional)",
+        "fontProvider": "IFontProvider (optional)",
+        "loop": "boolean (optional)",
+        "objectFit": "ImageObjectFit (optional)",
+        "onAssetLoad": "ImageOnAssetLoadCallback (optional)",
+        "onImageDecoded": "ImageOnImageDecodedCallback (optional)",
+        "onProgress": "AnimatedImageOnProgressCallback (optional)",
+        "ref": "IRenderedElementHolder<this> (optional)",
+        "src": "string | Asset (optional)",
+        "style": "_Style<AnimatedImage | View | Layout> (optional)"
+      }
+    },
+    "AnimatedImageOnProgressEvent": {
+      "extends": [],
+      "properties": {
+        "duration": "number",
+        "time": "number"
+      }
+    },
+    "BlurView": {
+      "extends": [
+        "ContainerTemplateElement",
+        "LayoutAttributes",
+        "ViewAttributes",
+        "_BlurView"
+      ],
+      "properties": {
+        "blurStyle": "BlurStyle (optional)",
+        "ref": "IRenderedElementHolder<this> (optional)",
+        "style": "_Style<BlurView | View | Layout> (optional)"
+      }
+    },
+    "CommonEditTextInterface": {
+      "extends": [
+        "CommonTextAttributes",
+        "LeafView"
+      ],
+      "properties": {
+        "autocapitalization": "TextFieldAutocapitalization (optional)",
+        "autocorrection": "TextFieldAutocorrection (optional)",
+        "characterLimit": "number (optional)",
+        "closesWhenReturnKeyPressed": "boolean (optional)",
+        "enableInlinePredictions": "boolean (optional)",
+        "enabled": "boolean (optional)",
+        "keyboardAppearance": "TextFieldKeyboardAppearance (optional)",
+        "onChange": "(event: EditTextEvent) => void (optional)",
+        "onEditBegin": "(event: EditTextBeginEvent) => void (optional)",
+        "onEditEnd": "(event: EditTextEndEvent) => void (optional)",
+        "onReturn": "(event: EditTextEvent) => void (optional)",
+        "onSelectionChange": "(event: EditTextEvent) => void (optional)",
+        "onWillChange": "(event: EditTextEvent) => EditTextEvent | undefined (optional)",
+        "onWillDelete": "(event: EditTextEvent) => void (optional)",
+        "placeholder": "string (optional)",
+        "placeholderColor": "Color (optional)",
+        "selectTextOnFocus": "boolean (optional)",
+        "selection": "[number, number] (optional)",
+        "textAlign": "TextFieldTextAlign (optional)",
+        "textDirection": "TextFieldTextDirection (optional)",
+        "tintColor": "Color (optional)"
+      }
+    },
+    "CommonLabel": {
+      "extends": [
+        "CommonTextAttributes"
+      ],
+      "properties": {
+        "letterSpacing": "number (optional)",
+        "lineHeight": "number (optional)",
+        "numberOfLines": "number (optional)",
+        "textAlign": "LabelTextAlign (optional)",
+        "textDecoration": "LabelTextDecoration (optional)"
+      }
+    },
+    "CommonTextAttributes": {
+      "extends": [],
+      "properties": {
+        "color": "Color (optional)",
+        "font": "string (optional)",
+        "textGradient": "string (optional)",
+        "textShadow": "string (optional)",
+        "value": "LabelValue (optional)"
+      }
+    },
+    "CommonView": {
+      "extends": [
+        "LayoutAttributes",
+        "LayoutChildrenAttributes",
+        "TemplateElement",
+        "ViewAttributes"
+      ],
+      "properties": {}
+    },
+    "ContainerTemplateElement": {
+      "extends": [
+        "TemplateElement"
+      ],
+      "properties": {
+        "children": "unknown (optional)"
+      }
+    },
+    "EditTextBeginEvent": {
+      "extends": [
+        "EditTextEvent"
+      ],
+      "properties": {}
+    },
+    "EditTextEndEvent": {
+      "extends": [
+        "EditTextEvent"
+      ],
+      "properties": {
+        "reason": "EditTextUnfocusReason"
+      }
+    },
+    "EditTextEvent": {
+      "extends": [],
+      "properties": {
+        "selectionEnd": "number",
+        "selectionStart": "number",
+        "text": "string"
+      }
+    },
+    "IWebViewNativeController": {
+      "extends": [],
+      "properties": {}
+    },
+    "ImageView": {
+      "extends": [
+        "LeafView",
+        "_ImageView"
+      ],
+      "properties": {
+        "contentRotation": "number (optional)",
+        "contentScaleX": "number (optional)",
+        "contentScaleY": "number (optional)",
+        "filter": "ImageFilter (optional)",
+        "flipOnRtl": "boolean (optional)",
+        "objectFit": "ImageObjectFit (optional)",
+        "onAssetLoad": "ImageOnAssetLoadCallback (optional)",
+        "onImageDecoded": "ImageOnImageDecodedCallback (optional)",
+        "ref": "IRenderedElementHolder<this> (optional)",
+        "src": "string | Asset (optional)",
+        "style": "_Style<ImageView | View | Layout> (optional)",
+        "tint": "Color (optional)"
+      }
+    },
+    "Label": {
+      "extends": [
+        "CommonLabel",
+        "LeafView",
+        "_Label"
+      ],
+      "properties": {
+        "adjustsFontSizeToFitWidth": "boolean (optional)",
+        "minimumScaleFactor": "number (optional)",
+        "ref": "IRenderedElementHolder<this> (optional)",
+        "style": "_Style<Label | View | Layout> (optional)",
+        "textOverflow": "'ellipsis' | 'clip' (optional)"
+      }
+    },
+    "Layout": {
+      "extends": [
+        "ContainerTemplateElement",
+        "LayoutAttributes",
+        "LayoutChildrenAttributes",
+        "_Layout"
+      ],
+      "properties": {
+        "ref": "IRenderedElementHolder<this> (optional)",
+        "style": "_Style<Layout> (optional)"
+      }
+    },
+    "LayoutAttributes": {
+      "extends": [],
+      "properties": {
+        "accessibilityCategory": "LayoutAccessibilityCategory (optional)",
+        "accessibilityHint": "string (optional)",
+        "accessibilityLabel": "string (optional)",
+        "accessibilityNavigation": "LayoutAccessibilityNavigation (optional)",
+        "accessibilityPriority": "LayoutAccessibilityPriority (optional)",
+        "accessibilityStateDisabled": "boolean (optional)",
+        "accessibilityStateLiveRegion": "boolean (optional)",
+        "accessibilityStateSelected": "boolean (optional)",
+        "accessibilityValue": "string (optional)",
+        "alignSelf": "LayoutAlignSelfProperty (optional)",
+        "animationsEnabled": "boolean (optional)",
+        "aspectRatio": "number (optional)",
+        "bottom": "CSSValue (optional)",
+        "class": "string (optional)",
+        "display": "'flex' | 'none' (optional)",
+        "estimatedHeight": "number (optional)",
+        "estimatedWidth": "number (optional)",
+        "flexBasis": "LayoutFlexBasisProperty (optional)",
+        "flexGrow": "number (optional)",
+        "flexShrink": "number (optional)",
+        "flexWrap": "LayoutFlexWrapProperty (optional)",
+        "height": "CSSValue (optional)",
+        "id": "string (optional)",
+        "ignoreParentViewport": "boolean (optional)",
+        "key": "string (optional)",
+        "lazy": "boolean (optional)",
+        "lazyLayout": "boolean (optional)",
+        "left": "CSSValue (optional)",
+        "limitToViewport": "boolean (optional)",
+        "margin": "string | number (optional)",
+        "marginBottom": "CSSValue (optional)",
+        "marginLeft": "CSSValue (optional)",
+        "marginRight": "CSSValue (optional)",
+        "marginTop": "CSSValue (optional)",
+        "maxHeight": "CSSValue (optional)",
+        "maxWidth": "CSSValue (optional)",
+        "minHeight": "CSSValue (optional)",
+        "minWidth": "CSSValue (optional)",
+        "onLayout": "(frame: ElementFrame) => void (optional)",
+        "onLayoutComplete": "() => void (optional)",
+        "onMeasure": "OnMeasureFunc (optional)",
+        "onViewportChanged": "(viewport: ElementFrame, frame: ElementFrame, eventTime: EventTime) => void (optional)",
+        "onVisibilityChanged": "(isVisible: boolean, eventTime: EventTime) => void (optional)",
+        "overflow": "'visible' | 'scroll' (optional)",
+        "position": "'relative' | 'absolute' (optional)",
+        "right": "CSSValue (optional)",
+        "scrollAnchorPosition": "ScrollAnchorPosition (optional)",
+        "top": "CSSValue (optional)",
+        "width": "CSSValue (optional)",
+        "zIndex": "number (optional)"
+      }
+    },
+    "LayoutChildrenAttributes": {
+      "extends": [],
+      "properties": {
+        "alignContent": "LayoutAlignContentProperty (optional)",
+        "alignItems": "LayoutAlignItemsProperty (optional)",
+        "direction": "LayoutDirectionProperty (optional)",
+        "extendViewportWithChildren": "boolean (optional)",
+        "flexDirection": "LayoutFlexDirectionProperty (optional)",
+        "justifyContent": "LayoutJustifyContentProperty (optional)",
+        "padding": "string | number (optional)",
+        "paddingBottom": "CSSValue (optional)",
+        "paddingLeft": "CSSValue (optional)",
+        "paddingRight": "CSSValue (optional)",
+        "paddingTop": "CSSValue (optional)"
+      }
+    },
+    "LeafView": {
+      "extends": [
+        "LayoutAttributes",
+        "TemplateElement",
+        "ViewAttributes"
+      ],
+      "properties": {}
+    },
+    "ScrollView": {
+      "extends": [
+        "CommonView",
+        "ContainerTemplateElement",
+        "_ScrollView"
+      ],
+      "properties": {
+        "androidOnlyEnableExtendedFadingEdge": "boolean (optional)",
+        "bounces": "boolean (optional)",
+        "bouncesFromDragAtEnd": "boolean (optional)",
+        "bouncesFromDragAtStart": "boolean (optional)",
+        "bouncesHorizontalWithSmallContent": "boolean (optional)",
+        "bouncesVerticalWithSmallContent": "boolean (optional)",
+        "cancelsTouchesOnScroll": "boolean (optional)",
+        "circularRatio": "number (optional)",
+        "decelerationRate": "'normal' | 'fast' (optional)",
+        "dismissKeyboardOnDrag": "boolean (optional)",
+        "dismissKeyboardOnDragMode": "'immediate' | 'touch-exit-below' | 'touch-exit-above' (optional)",
+        "fadingEdgeEnd": "boolean (optional)",
+        "fadingEdgeLength": "number (optional)",
+        "fadingEdgeStart": "boolean (optional)",
+        "flexDirection": "never (optional)",
+        "horizontal": "boolean (optional)",
+        "onContentSizeChange": "(event: ContentSizeChangeEvent) => void (optional)",
+        "onDragEnd": "(event: ScrollDragEndEvent) => void (optional)",
+        "onDragEnding": "(event: ScrollDragEndingEvent) => ScrollOffset | undefined (optional)",
+        "onDragStart": "(event: ScrollEvent) => void (optional)",
+        "onScroll": "(event: ScrollEvent) => void (optional)",
+        "onScrollEnd": "(event: ScrollEndEvent) => void (optional)",
+        "pagingEnabled": "boolean (optional)",
+        "ref": "IRenderedElementHolder<this> (optional)",
+        "scrollEnabled": "boolean (optional)",
+        "scrollPerfLoggerBridge": "IScrollPerfLoggerBridge (optional)",
+        "showsHorizontalScrollIndicator": "boolean (optional)",
+        "showsVerticalScrollIndicator": "boolean (optional)",
+        "stopScrollingOnTouch": "boolean (optional)",
+        "style": "_Style<ScrollView | View | Layout> (optional)",
+        "viewportExtensionBottom": "number (optional)",
+        "viewportExtensionLeft": "number (optional)",
+        "viewportExtensionRight": "number (optional)",
+        "viewportExtensionTop": "number (optional)"
+      }
+    },
+    "ScrollViewInteractive": {
+      "extends": [
+        "ScrollView"
+      ],
+      "properties": {
+        "contentOffsetAnimated": "boolean (optional)",
+        "contentOffsetX": "number (optional)",
+        "contentOffsetY": "number (optional)",
+        "maintainScrollAnchor": "boolean (optional)",
+        "preserveScrollPosition": "boolean (optional)",
+        "staticContentHeight": "number (optional)",
+        "staticContentWidth": "number (optional)"
+      }
+    },
+    "ShapeView": {
+      "extends": [
+        "LeafView",
+        "_ShapeView"
+      ],
+      "properties": {
+        "fillColor": "Color (optional)",
+        "path": "GeometricPath (optional)",
+        "ref": "IRenderedElementHolder<this> (optional)",
+        "strokeCap": "ShapeStrokeCap (optional)",
+        "strokeColor": "Color (optional)",
+        "strokeEnd": "number (optional)",
+        "strokeJoin": "ShapeStrokeJoin (optional)",
+        "strokeStart": "number (optional)",
+        "strokeWidth": "number (optional)",
+        "style": "_Style<ShapeView | View | Layout> (optional)"
+      }
+    },
+    "Slot": {
+      "extends": [
+        "TemplateElement"
+      ],
+      "properties": {
+        "key": "string (optional)",
+        "name": "string (optional)",
+        "ref": "IRenderedElementHolder<unknown> (optional)"
+      }
+    },
+    "SpinnerView": {
+      "extends": [
+        "LeafView",
+        "_SpinnerView"
+      ],
+      "properties": {
+        "color": "Color (optional)",
+        "ref": "IRenderedElementHolder<this> (optional)",
+        "style": "_Style<SpinnerView | View | Layout> (optional)"
+      }
+    },
+    "TemplateElement": {
+      "extends": [],
+      "properties": {}
+    },
+    "TextField": {
+      "extends": [
+        "CommonEditTextInterface",
+        "_TextField"
+      ],
+      "properties": {
+        "contentType": "TextFieldContentType (optional)",
+        "ref": "IRenderedElementHolder<this> (optional)",
+        "returnKeyText": "TextFieldReturnKeyText (optional)",
+        "style": "_Style<TextField | View | Layout> (optional)"
+      }
+    },
+    "TextFieldInteractive": {
+      "extends": [
+        "TextField"
+      ],
+      "properties": {
+        "focused": "boolean (optional)"
+      }
+    },
+    "TextView": {
+      "extends": [
+        "CommonEditTextInterface",
+        "_TextView"
+      ],
+      "properties": {
+        "backgroundEffectBorderRadius": "number (optional)",
+        "backgroundEffectColor": "Color (optional)",
+        "backgroundEffectPadding": "number (optional)",
+        "contentType": "TextFieldContentType (optional)",
+        "ref": "IRenderedElementHolder<this> (optional)",
+        "returnType": "TextViewReturnType (optional)",
+        "style": "_Style<TextView | View | Layout> (optional)",
+        "textGravity": "TextViewTextGravity (optional)"
+      }
+    },
+    "TextViewInteractive": {
+      "extends": [
+        "TextView"
+      ],
+      "properties": {
+        "focused": "boolean (optional)"
+      }
+    },
+    "VideoView": {
+      "extends": [
+        "LeafView",
+        "_VideoView"
+      ],
+      "properties": {
+        "onBeginPlaying": "() => void (optional)",
+        "onCompleted": "() => void (optional)",
+        "onError": "(error: string) => void (optional)",
+        "onProgressUpdated": "(time: number, duration: number) => void (optional)",
+        "onVideoLoaded": "(duration: number) => void (optional)",
+        "playbackRate": "number (optional)",
+        "ref": "IRenderedElementHolder<this> (optional)",
+        "seekToTime": "number (optional)",
+        "src": "string | Asset (optional)",
+        "style": "_Style<ImageView | View | Layout> (optional)",
+        "volume": "number (optional)"
+      }
+    },
+    "View": {
+      "extends": [
+        "CommonView",
+        "ContainerTemplateElement",
+        "_View"
+      ],
+      "properties": {
+        "ref": "IRenderedElementHolder<this> (optional)",
+        "style": "_Style<View | Layout> (optional)"
+      }
+    },
+    "ViewAttributes": {
+      "extends": [],
+      "properties": {
+        "accessibilityId": "string (optional)",
+        "allowReuse": "boolean (optional)",
+        "background": "string (optional)",
+        "backgroundColor": "Color (optional)",
+        "border": "string (optional)",
+        "borderColor": "Color (optional)",
+        "borderRadius": "CSSValue (optional)",
+        "borderWidth": "CSSValue (optional)",
+        "boxShadow": "string (optional)",
+        "canAlwaysScrollHorizontal": "boolean (optional)",
+        "canAlwaysScrollVertical": "boolean (optional)",
+        "cursor": "string (optional)",
+        "filterTouchesWhenObscured": "boolean (optional)",
+        "hitTest": "(event: TouchEvent) => boolean (optional)",
+        "longPressDuration": "number (optional)",
+        "maskImage": "string (optional)",
+        "maskOpacity": "number (optional)",
+        "maskPath": "GeometricPath (optional)",
+        "onDoubleTap": "GestureHandler<TouchEvent> (optional)",
+        "onDoubleTapDisabled": "boolean (optional)",
+        "onDoubleTapPredicate": "GesturePredicate<TouchEvent> (optional)",
+        "onDrag": "GestureHandler<DragEvent> (optional)",
+        "onDragDisabled": "boolean (optional)",
+        "onDragPredicate": "GesturePredicate<DragEvent> (optional)",
+        "onLongPress": "GestureHandler<TouchEvent> (optional)",
+        "onLongPressDisabled": "boolean (optional)",
+        "onLongPressPredicate": "GesturePredicate<TouchEvent> (optional)",
+        "onPinch": "GestureHandler<PinchEvent> (optional)",
+        "onPinchDisabled": "boolean (optional)",
+        "onPinchPredicate": "GesturePredicate<PinchEvent> (optional)",
+        "onRotate": "GestureHandler<RotateEvent> (optional)",
+        "onRotateDisabled": "boolean (optional)",
+        "onRotatePredicate": "GesturePredicate<RotateEvent> (optional)",
+        "onTap": "GestureHandler<TouchEvent> (optional)",
+        "onTapDisabled": "boolean (optional)",
+        "onTapPredicate": "GesturePredicate<TouchEvent> (optional)",
+        "onTouch": "(event: TouchEvent) => void (optional)",
+        "onTouchDelayDuration": "number (optional)",
+        "onTouchEnd": "(event: TouchEvent) => void (optional)",
+        "onTouchStart": "(event: TouchEvent) => void (optional)",
+        "onViewChange": "(nativeView: NativeView | undefined) => void (optional)",
+        "onViewCreate": "() => void (optional)",
+        "onViewDestroy": "() => void (optional)",
+        "opacity": "number (optional)",
+        "rotation": "number (optional)",
+        "scaleX": "number (optional)",
+        "scaleY": "number (optional)",
+        "slowClipping": "boolean (optional)",
+        "touchAreaExtension": "number (optional)",
+        "touchAreaExtensionBottom": "number (optional)",
+        "touchAreaExtensionLeft": "number (optional)",
+        "touchAreaExtensionRight": "number (optional)",
+        "touchAreaExtensionTop": "number (optional)",
+        "touchEnabled": "boolean (optional)",
+        "translationX": "number (optional)",
+        "translationY": "number (optional)"
+      }
+    },
+    "WebViewElement": {
+      "extends": [
+        "LeafView"
+      ],
+      "properties": {
+        "controller": "IWebViewNativeController (optional)",
+        "ref": "IRenderedElementHolder<this> (optional)",
+        "style": "_Style<WebViewElement | View | Layout> (optional)"
+      }
+    }
+  },
+  "types": {
+    "AnimatedImageOnProgressCallback": "(event: AnimatedImageOnProgressEvent) => void",
+    "BlurStyle": "| 'light' | 'dark' | 'extraLight' | 'regular' | 'prominent' | 'systemUltraThinMaterial' | 'systemThinMaterial' | 'systemMaterial' | 'systemThickMaterial' | 'systemChromeMaterial' | 'systemUltraThinMaterialLight' | 'systemThinMaterialLight' | 'systemMaterialLight' | 'systemThickMaterialLight' | 'systemChromeMaterialLight' | 'systemUltraThinMaterialDark' | 'systemThinMaterialDark' | 'systemMaterialDark' | 'systemThickMaterialDark' | 'systemChromeMaterialDark'",
+    "CSSValue": "string | number",
+    "Color": "string",
+    "GestureHandler": "(event: Event) => void",
+    "GesturePredicate": "(event: Event) => boolean",
+    "ImageObjectFit": "'fill' | 'contain' | 'cover' | 'none'",
+    "ImageOnAssetLoadCallback": "(success: boolean, errorMessage?: string) => void",
+    "ImageOnImageDecodedCallback": "(width: number, height: number) => void",
+    "LabelFontStyle": "'normal' | 'italic'",
+    "LabelFontWeight": "'light' | 'normal' | 'medium' | 'demi-bold' | 'bold' | 'black'",
+    "LabelTextAlign": "'left' | 'right' | 'center' | 'justified'",
+    "LabelTextDecoration": "'none' | 'strikethrough' | 'underline'",
+    "LabelValue": "string | AttributedText",
+    "LayoutAccessibilityCategory": "| 'auto' | 'view' | 'text' | 'button' | 'image' | 'image-button' | 'input' | 'header' | 'link' | 'checkbox' | 'radio' | 'keyboard-key'",
+    "LayoutAccessibilityNavigation": "'auto' | 'passthrough' | 'leaf' | 'cover' | 'group' | 'ignored'",
+    "LayoutAccessibilityPriority": "number | AccessibilityPriority",
+    "LayoutAlignContentProperty": "LayoutAlignProperty",
+    "LayoutAlignItemsProperty": "LayoutAlignProperty",
+    "LayoutAlignProperty": "| 'auto' | 'flex-start' | 'center' | 'flex-end' | 'stretch' | 'baseline' | 'space-between' | 'space-around'",
+    "LayoutAlignSelfProperty": "LayoutAlignProperty",
+    "LayoutDirectionProperty": "'inherit' | 'ltr' | 'rtl'",
+    "LayoutFlexBasisProperty": "CSSValue",
+    "LayoutFlexDirectionProperty": "'column' | 'column-reverse' | 'row' | 'row-reverse'",
+    "LayoutFlexWrapProperty": "'no-wrap' | 'wrap' | 'wrap-reverse'",
+    "LayoutJustifyContentProperty": "| 'flex-start' | 'center' | 'flex-end' | 'space-between' | 'space-around' | 'space-evenly'",
+    "MeasuredSize": "[number, number]",
+    "OnMeasureFunc": "( width: number, widthMode: MeasureMode, height: number, heightMode: MeasureMode, ) => MeasuredSize",
+    "ScrollAnchorPosition": "'none' | 'top' | 'bottom'",
+    "ShapeStrokeCap": "'butt' | 'round' | 'square'",
+    "ShapeStrokeJoin": "'bevel' | 'miter' | 'round'",
+    "TextFieldAutocapitalization": "'sentences' | 'words' | 'characters' | 'none'",
+    "TextFieldAutocorrection": "'default' | 'none'",
+    "TextFieldContentType": "| 'default' | 'phoneNumber' | 'email' | 'password' | 'url' | 'number' | 'numberDecimal' | 'numberDecimalSigned' | 'passwordNumber' | 'passwordVisible' | 'noSuggestions'",
+    "TextFieldKeyboardAppearance": "'default' | 'dark' | 'light'",
+    "TextFieldReturnKeyText": "'done' | 'go' | 'join' | 'next' | 'search' | 'send' | 'continue'",
+    "TextFieldTextAlign": "'left' | 'center' | 'right'",
+    "TextFieldTextDirection": "'ltr' | 'rtl' | 'locale'",
+    "TextViewReturnType": "'linereturn' | TextFieldReturnKeyText",
+    "TextViewTextGravity": "'top' | 'center' | 'bottom'"
+  }
+}

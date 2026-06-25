@@ -73,7 +73,7 @@ protected:
     }
 };
 
-StandaloneViewManager::StandaloneViewManager() = default;
+StandaloneViewManager::StandaloneViewManager(PlatformType platformType) : _platformType(platformType) {}
 
 Valdi::Ref<Valdi::ViewFactory> StandaloneViewManager::createViewFactory(
     const Valdi::StringBox& className, const Valdi::Ref<Valdi::BoundAttributes>& boundAttributes) {
@@ -90,7 +90,7 @@ void StandaloneViewManager::callAction(ViewNodeTree* /*viewNodeTree*/,
                                        const Ref<ValueArray>& /*parameters*/) {}
 
 PlatformType StandaloneViewManager::getPlatformType() const {
-    return PlatformTypeIOS;
+    return _platformType;
 }
 
 RenderingBackendType StandaloneViewManager::getRenderingBackendType() const {

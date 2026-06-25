@@ -18,6 +18,7 @@ export enum PLATFORM {
   IOS = 'ios',
   ANDROID = 'android',
   MACOS = 'macos',
+  LINUX = 'linux',
   CLI = 'cli',
 }
 
@@ -45,7 +46,7 @@ export enum TEMPLATE_BASE_PATHS {
   AGENTS = 'AGENTS.md.template',
 }
 
-export const VALID_PLATFORMS: string[] = [PLATFORM.ANDROID, PLATFORM.IOS, PLATFORM.MACOS, PLATFORM.CLI];
+export const VALID_PLATFORMS: string[] = [PLATFORM.ANDROID, PLATFORM.IOS, PLATFORM.MACOS, PLATFORM.LINUX, PLATFORM.CLI];
 
 export interface UserConfig {
   logs_output_dir: string | undefined;
@@ -55,6 +56,7 @@ export interface UserConfig {
 export const IOS_BAZEL_APPLICATION_TAG = 'valdi_ios_application';
 export const ANDROID_BAZEL_APPLICATION_TAG = 'valdi_android_application';
 export const MACOS_BAZEL_APPLICATION_TAG = 'valdi_macos_application';
+export const LINUX_BAZEL_APPLICATION_TAG = 'valdi_linux_application';
 export const CLI_BAZEL_APPLICATION_TAG = 'valdi_cli_application';
 
 export const IOS_EXPORTED_LIBRARY_TAG = 'valdi_ios_exported_library';
@@ -93,5 +95,6 @@ export const IOS_BUILD_FLAGS = '--repo_env=VALDI_PLATFORM_DEPENDENCIES=ios';
 const INLINE_ASSETS_BUILD_FLAGS = ['--@valdi//bzl/valdi:assets_mode=inline'];
 
 export const MACOS_BUILD_FLAGS = [...INLINE_ASSETS_BUILD_FLAGS, '--repo_env=VALDI_PLATFORM_DEPENDENCIES=macos'];
+export const LINUX_BUILD_FLAGS = [...INLINE_ASSETS_BUILD_FLAGS, '--repo_env=VALDI_PLATFORM_DEPENDENCIES=linux'];
 export const CLI_BUILD_FLAGS = [...INLINE_ASSETS_BUILD_FLAGS, '--repo_env=VALDI_PLATFORM_DEPENDENCIES=cli'];
 export const TEST_BUILD_FLAGS = INLINE_ASSETS_BUILD_FLAGS;

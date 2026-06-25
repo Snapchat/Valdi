@@ -19,4 +19,4 @@ def bundle_js():
 def jscore_library():
     if INTERNAL_BUILD:
         return "@jscore_libs//:linux/x86_64/libjsc.so"
-    return "libs/linux/x86_64/libjsc.so"
+    return None
