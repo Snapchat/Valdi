@@ -1,0 +1,15 @@
+diff --git a/include/hermes/VM/HermesValue-inline.h b/include/hermes/VM/HermesValue-inline.h
+--- a/include/hermes/VM/HermesValue-inline.h
++++ b/include/hermes/VM/HermesValue-inline.h
+@@ -236,7 +236,10 @@ inline void unboxHV(
+           sizeof(GCHermesValue) == sizeof(HermesValue) &&
+           sizeof(HermesValue) == 8,
+       "memcpy between different layouts");
+-  std::memcpy(result, first, (last - first) * sizeof(PinnedHermesValue));
++  std::memcpy(
++      static_cast<void *>(result),
++      first,
++      (last - first) * sizeof(PinnedHermesValue));
+ }
+ 
+ } // namespace vm

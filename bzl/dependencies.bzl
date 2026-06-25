@@ -160,6 +160,8 @@ def setup_dependencies(workspace_root = None):
         integrity = "sha256-+GQiTtN6H8TQz/+YkVz73dHeYAZ86/9hAUwTlkISx48=",
         strip_prefix = "hermes-880b1645b5dca974f4329dc4108692d301abee0d",
         build_file = "@valdi//third-party/hermes:hermes.BUILD",
+        patch_args = ["-p1"],
+        patches = ["@valdi//third-party/hermes/patches:nontrivial_memcall.patch"],
     )
 
     http_archive(
