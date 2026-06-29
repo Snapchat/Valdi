@@ -123,10 +123,6 @@ Result<Ref<MmapBuffer>> MmapBuffer::openReadOnly(const Path& filePath) {
 }
 
 Result<Void> MmapBuffer::makeReadOnly() {
-    if (msync(_addr, _size, MS_ASYNC) != 0) {
-        return Error(STRING_FORMAT("msync failed: {}", strerror(errno)));
-    }
-
     if (mprotect(_addr, _size, PROT_READ) != 0) {
         return Error(STRING_FORMAT("mprotect failed: {}", strerror(errno)));
     }

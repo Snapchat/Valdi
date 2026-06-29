@@ -55,8 +55,9 @@ public:
     [[nodiscard]] static Result<Ref<MmapBuffer>> openReadOnly(const Path& filePath);
 
     /**
-     * Transition from writable to read-only after writing is complete.
-     * Calls msync(MS_ASYNC) to encourage OS flush, then mprotect(PROT_READ).
+     * Transition from writable to read-only after writing is complete via
+     * mprotect(PROT_READ). Does not force a flush: the pages stay dirty and the
+     * OS decides when to write them back and evict them under memory pressure.
      */
     [[nodiscard]] Result<Void> makeReadOnly();
 
