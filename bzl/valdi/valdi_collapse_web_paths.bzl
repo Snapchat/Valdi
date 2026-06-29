@@ -532,6 +532,10 @@ while IFS=$'\\t' read -r SRC DEST; do
   fi
 done < "$MAN"
 
+# Step 1's cp -R inherits read-only mode from bazel-out source dirs.
+# Step 1b writes .d.ts files into those same dirs, so widen mode first.
+[ -d "$OUT/src" ] && chmod -R u+w "$OUT/src" 2>/dev/null || true
+
 # ── Step 1b: Place source .d.ts alongside compiled .js using manifest ──
 # Must run BEFORE step 2 so these files get their imports rewritten too.
 # The .d.ts manifest maps source_path -> module_name (from ValdiModuleInfo).
