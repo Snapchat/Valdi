@@ -22,6 +22,13 @@ public:
     static jobject getJSRuntime(fbjni::alias_ref<fbjni::JClass> clazz, jlong runtimeHandle);
     static jstring getViewClassName(fbjni::alias_ref<fbjni::JClass> clazz, jlong viewNodeHandle);
     static jobject getValueForAttribute(fbjni::alias_ref<fbjni::JClass> clazz, jlong viewNodeHandle, jstring attribute);
+    static jobject getStoredObjectForViewNode(fbjni::alias_ref<fbjni::JClass> clazz,
+                                              jlong viewNodeHandle,
+                                              jlong key);
+    static void setStoredObjectForViewNode(fbjni::alias_ref<fbjni::JClass> clazz,
+                                           jlong viewNodeHandle,
+                                           jlong key,
+                                           jobject object);
     static jobject getViewInContextForId(fbjni::alias_ref<fbjni::JClass> clazz, jlong contextHandle, jstring viewId);
     static jlong getRetainedViewNodeInContext(fbjni::alias_ref<fbjni::JClass> clazz,
                                               jlong contextHandle,
@@ -274,6 +281,13 @@ public:
                                      jstring attribute,
                                      jobject value,
                                      jboolean keepAsOverride);
+    static void setInlineTextAnimationAttributesForViewNode(fbjni::alias_ref<fbjni::JClass> clazz,
+                                                            jlong viewNodeHandle,
+                                                            jboolean hasOpacity,
+                                                            jdouble opacity,
+                                                            jboolean hasTransform,
+                                                            jdouble translationY,
+                                                            jdouble scale);
 
     static void notifyApplyAttributeFailed(fbjni::alias_ref<fbjni::JClass> clazz,
                                            jlong viewNodeHandle,
@@ -330,6 +344,16 @@ public:
                               fbjni::alias_ref<JValdiFunction> completion);
 
     static jobject wrapAndroidBitmap(fbjni::alias_ref<fbjni::JClass> clazz, jobject bitmap);
+
+    static jobject rasterizeSVG(fbjni::alias_ref<fbjni::JClass> clazz,
+                                jbyteArray svgData,
+                                jint preferredWidth,
+                                jint preferredHeight,
+                                jfloat displayScale);
+
+    static jobject rasterizeSVGFromFilePath(fbjni::alias_ref<fbjni::JClass> clazz,
+                                            jstring filePath,
+                                            jfloat displayScale);
 
     static jlong getSnapDrawingRuntimeHandle(fbjni::alias_ref<fbjni::JClass> clazz, jlong runtimeManagerHandle);
 

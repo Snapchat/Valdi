@@ -16,6 +16,7 @@
 #include "snap_drawing/cpp/Utils/Geometry.hpp"
 
 #include "include/core/SkTextBlob.h"
+#include "valdi_core/cpp/Attributes/TextAttributeValue.hpp"
 
 #include <memory>
 #include <optional>
@@ -26,27 +27,57 @@ namespace snap::drawing {
 struct ShapedGlyph;
 class FontManager;
 
+struct TextBackgroundStyle {
+    std::optional<Color> color;
+    TextBackgroundPadding padding;
+    BorderRadius borderRadius;
+
+    constexpr bool hasBackground() const {
+        return color.has_value();
+    }
+
+    constexpr Scalar horizontalPadding() const {
+        return padding.left + padding.right;
+    }
+
+    bool operator==(const TextBackgroundStyle& other) const {
+        return color == other.color && padding == other.padding && borderRadius == other.borderRadius;
+    }
+};
+
 struct TextLayoutSpecs {
     Ref<Font> font;
     Ref<Valdi::RefCountable> attachment;
-    Scalar lineHeightMultiple;
+    std::optional<Size> replacementSize;
+    Valdi::InlineViewVerticalAlignment replacementVerticalAlignment = Valdi::InlineViewVerticalAlignment::Center;
+    TextLayoutLineHeight lineHeight;
     Scalar letterSpacing;
     TextDecoration textDecoration;
+    std::optional<TextCustomUnderlineStyle> customUnderlineStyle;
     size_t colorIndex;
+    std::optional<size_t> backgroundStyleIndex;
 
     TextLayoutSpecs() = default;
     inline TextLayoutSpecs(const Ref<Font>& font,
                            const Ref<Valdi::RefCountable>& attachment,
-                           Scalar lineHeightMultiple,
+                           std::optional<Size> replacementSize,
+                           Valdi::InlineViewVerticalAlignment replacementVerticalAlignment,
+                           TextLayoutLineHeight lineHeight,
                            Scalar letterSpacing,
                            TextDecoration textDecoration,
-                           size_t colorIndex)
+                           std::optional<TextCustomUnderlineStyle> customUnderlineStyle,
+                           size_t colorIndex,
+                           std::optional<size_t> backgroundStyleIndex)
         : font(font),
           attachment(attachment),
-          lineHeightMultiple(lineHeightMultiple),
+          replacementSize(replacementSize),
+          replacementVerticalAlignment(replacementVerticalAlignment),
+          lineHeight(lineHeight),
           letterSpacing(letterSpacing),
           textDecoration(textDecoration),
-          colorIndex(colorIndex) {}
+          customUnderlineStyle(customUnderlineStyle),
+          colorIndex(colorIndex),
+          backgroundStyleIndex(backgroundStyleIndex) {}
 
     TextLayoutSpecs withFont(const Ref<Font>& newFont) const;
 };
@@ -55,23 +86,6 @@ struct TextLayoutBuilderEntry {
     TextLayoutSpecs specs;
     size_t charactersStart;
     size_t charactersEnd;
-};
-
-struct LineMetrics {
-    Scalar ascent = 0;
-    Scalar descent = 0;
-
-    constexpr LineMetrics() = default;
-    constexpr LineMetrics(Scalar ascent, Scalar descent) : ascent(ascent), descent(descent) {}
-
-    constexpr Scalar height() const {
-        return descent - ascent;
-    }
-
-    void join(const LineMetrics& other) {
-        ascent = std::min(ascent, other.ascent);
-        descent = std::max(descent, other.descent);
-    }
 };
 
 struct TextLayoutBuilderSegment {
@@ -99,14 +113,27 @@ struct TextLayoutBuilderSegment {
     // The decoration type to draw on top of the segment
     TextDecoration textDecoration;
 
+    // Optional custom underline geometry for underline decorations.
+    std::optional<TextCustomUnderlineStyle> customUnderlineStyle;
+
     // The resolved font of the segment
     Ref<Font> font;
 
     // The attachment that was passed in through the append() call
     Ref<Valdi::RefCountable> attachment;
 
+    // Replacement segments reserve layout space but do not emit text glyphs.
+    bool isReplacement = false;
+
+    // The original replacement size requested by the caller, before it is
+    // resolved into line-relative attachment bounds.
+    std::optional<Size> replacementSize;
+
     // The color on which the segment should be drawn
     size_t colorIndex;
+
+    // The background style with which the segment should be drawn
+    std::optional<size_t> backgroundStyleIndex;
 
     bool isRightToLeft;
 };
@@ -184,6 +211,7 @@ public:
                       int maxLinesCount,
                       const Ref<FontManager>& fontManager,
                       bool isRightToLeft,
+                      Scalar displayScale,
                       bool prioritizeFewerFonts = false);
     ~TextLayoutBuilder();
 
@@ -193,11 +221,16 @@ public:
      */
     size_t append(const std::string_view& text,
                   const Ref<Font>& font,
-                  Scalar lineHeightMultiple,
+                  TextLayoutLineHeight lineHeight,
                   Scalar letterSpacing,
                   TextDecoration textDecoration,
                   Ref<Valdi::RefCountable> attachment = nullptr,
-                  std::optional<Color> color = std::nullopt);
+                  std::optional<Color> color = std::nullopt,
+                  std::optional<TextBackgroundStyle> backgroundStyle = std::nullopt,
+                  std::optional<TextCustomUnderlineStyle> customUnderlineStyle = std::nullopt,
+                  std::optional<Size> replacementSize = std::nullopt,
+                  Valdi::InlineViewVerticalAlignment replacementVerticalAlignment =
+                      Valdi::InlineViewVerticalAlignment::Center);
 
     void setIncludeSegments(bool includeSegments);
 
@@ -232,6 +265,7 @@ private:
     bool _includeTextBlob = false;
     bool _isRightToLeft;
     bool _prioritizeFewerFonts;
+    Scalar _displayScale;
 
     Ref<FontManager> _fontManager;
 
@@ -248,6 +282,7 @@ private:
     // There will be one entry per unique color, as each color
     // needs to be drawn individually.
     std::vector<std::optional<Color>> _colors;
+    std::vector<TextBackgroundStyle> _backgroundStyles;
     Ref<TextShaper> _shaper;
     LineBreakStrategy _lineBreakStrategy = LineBreakStrategy::ByWord;
 
@@ -259,7 +294,7 @@ private:
             : glyphsStart(glyphsStart), glyphsEnd(glyphsEnd) {}
     };
 
-    static Rect computeChunkBounds(const TextLayoutSpecs& specs, Scalar advance, const FontMetrics& fontMetrics);
+    Rect computeChunkBounds(const TextLayoutSpecs& specs, Scalar advance, const FontMetrics& fontMetrics) const;
 
     /**
      Compute the current line metrics into the given LineMetrics output.
@@ -268,6 +303,8 @@ private:
     bool computeLineMetrics(const TextLayoutSpecs& specs, const FontMetrics& fontMetrics, LineMetrics& output);
 
     size_t appendColor(const std::optional<Color>& color);
+    std::optional<size_t> appendBackgroundStyle(const std::optional<TextBackgroundStyle>& backgroundStyle);
+    const TextBackgroundStyle* getBackgroundStyle(std::optional<size_t> backgroundStyleIndex) const;
 
     void appendSegment(
         const TextLayoutSpecs& specs, size_t glyphsStart, size_t glyphsCount, const Rect& bounds, bool isRightToLeft);
@@ -306,11 +343,16 @@ private:
 
     void reverseSegmentsHorizontally(size_t fromIndex, size_t toIndex);
 
-    static void appendDecorationIfNeeded(std::vector<TextLayoutDecorationEntry>& decorations,
-                                         const TextLayoutBuilderSegment& segment,
-                                         const std::optional<Color>& color,
-                                         Scalar resolvedSegmentX,
-                                         Scalar resolvedSegmentY);
+    void appendBackgroundIfNeeded(std::vector<TextLayoutVisualEntry>& visualEntries,
+                                  const TextLayoutBuilderSegment& segment,
+                                  Scalar resolvedSegmentX,
+                                  Scalar resolvedSegmentY) const;
+
+    void appendDecorationIfNeeded(std::vector<TextLayoutVisualEntry>& visualEntries,
+                                  const TextLayoutBuilderSegment& segment,
+                                  const std::optional<Color>& color,
+                                  Scalar resolvedSegmentX,
+                                  Scalar resolvedSegmentY) const;
 
     void resolveShapeableSegmentsInSegmentParagraph(const TextParagraph& paragraph,
                                                     const TextSegmentProperties& paragraphSegment,

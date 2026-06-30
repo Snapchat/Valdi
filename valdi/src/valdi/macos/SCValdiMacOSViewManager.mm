@@ -306,10 +306,10 @@ public:
     ~MacOSMeasureDelegate() override = default;
 
     Valdi::Size measureView(const Valdi::Ref<Valdi::View> &view,
-                               float width,
-                               Valdi::MeasureMode widthMode,
-                               float height,
-                               Valdi::MeasureMode heightMode) final {
+                            float width,
+                            Valdi::MeasureMode widthMode,
+                            float height,
+                            Valdi::MeasureMode heightMode) final {
         Valdi::Size size;
         auto wrapper = Valdi::castOrNull<NSViewWrapper>(view);
         if (wrapper == nullptr) {

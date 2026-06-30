@@ -69,6 +69,8 @@ public:
                                                const std::vector<snap::valdi_core::CompositeAttributePart>& parts,
                                                const Ref<AttributeHandlerDelegate>& delegate) = 0;
 
+    virtual AttributeId bindTransformAttributes(const Ref<AttributeHandlerDelegate>& delegate) = 0;
+
     virtual void bindScrollAttributes() = 0;
 
     virtual void bindAssetAttributes(snap::valdi_core::AssetOutputType assetOutputType) = 0;

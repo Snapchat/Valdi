@@ -11,6 +11,11 @@
 
 #import "valdi/ios/SCValdiRuntimeManager.h"
 #import "valdi/ios/Views/SCValdiLabel.h"
+#import "valdi/ios/Views/SCValdiTextField.h"
+#import "valdi/ios/Text/NSAttributedString+Valdi.h"
+#import "valdi/ios/Text/SCValdiFont.h"
+#import "valdi/ios/Text/SCValdiFontAttributes.h"
+#import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
 #import "valdi/ios/Gestures/SCValdiGestureRecognizers.h"
 #import "valdi/ios/Utils/SCValdiImageFilter.h"
 #import "valdi/runtime/Utils/AsyncGroup.hpp"
@@ -46,6 +51,14 @@
         self.onRenderCallback();
     }
 }
+
+@end
+
+@interface SCValdiTextField (SCValdiRuntimeTests)
+
+- (void)valdi_setFontAttributes:(SCValdiFontAttributes *)fontAttributes;
+- (void)valdi_setValue:(id)textValue;
+- (BOOL)_updateAttributedTextIfNeeded;
 
 @end
 
@@ -91,6 +104,117 @@
 - (void)tearDown
 {
     self.runtimeManager = nil;
+}
+
+- (void)testFontAttributesResolveLineHeightFromFontMetrics
+{
+    UIFont *font = [UIFont systemFontOfSize:14];
+    CGFloat lineHeight = 18;
+    SCValdiFont *valdiFont = [[SCValdiFont alloc] initWithFont:font
+                                                     textStyle:nil
+                                                       maxSize:0
+                                                   fontManager:nil];
+    SCValdiFontAttributes *fontAttributes = [NSAttributedString fontAttributesWithFont:valdiFont
+                                                                                 color:nil
+                                                                             textAlign:nil
+                                                                            lineHeight:@(lineHeight / font.pointSize)
+                                                                  lineHeightAbsolute:nil
+                                                                        textDecoration:nil
+                                                                         letterSpacing:nil
+                                                                         numberOfLines:@1
+                                                                          textOverflow:nil];
+
+    NSDictionary<NSAttributedStringKey, id> *attributes = [fontAttributes resolveAttributesWithIsRightToLeft:NO
+                                                                                              traitCollection:nil];
+    NSParagraphStyle *paragraphStyle = attributes[NSParagraphStyleAttributeName];
+    NSNumber *baselineOffset = attributes[NSBaselineOffsetAttributeName];
+    NSAttributedString *attributedString = [[NSAttributedString alloc] initWithString:@"Detroit Pistons"
+                                                                           attributes:attributes];
+    CGRect boundingRect = [attributedString boundingRectWithSize:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX)
+                                                         options:NSStringDrawingUsesLineFragmentOrigin
+                                                         context:nil];
+
+    XCTAssertEqualWithAccuracy(paragraphStyle.minimumLineHeight, 18, 0.001);
+    XCTAssertEqualWithAccuracy(paragraphStyle.maximumLineHeight, 18, 0.001);
+    XCTAssertEqualWithAccuracy(baselineOffset.doubleValue, (lineHeight - font.lineHeight) / 2.0, 0.001);
+    XCTAssertEqualWithAccuracy(CGRectGetHeight(boundingRect), 18, 0.001);
+}
+
+- (void)testFontAttributesApplyNegativeBaselineOffsetForCompressedLineHeight
+{
+    UIFont *font = [UIFont systemFontOfSize:48 weight:UIFontWeightMedium];
+    CGFloat lineHeight = 48;
+    SCValdiFont *valdiFont = [[SCValdiFont alloc] initWithFont:font
+                                                     textStyle:nil
+                                                       maxSize:0
+                                                   fontManager:nil];
+    SCValdiFontAttributes *fontAttributes = [NSAttributedString fontAttributesWithFont:valdiFont
+                                                                                 color:nil
+                                                                             textAlign:nil
+                                                                            lineHeight:@(lineHeight / font.pointSize)
+                                                                  lineHeightAbsolute:nil
+                                                                        textDecoration:nil
+                                                                         letterSpacing:nil
+                                                                         numberOfLines:@1
+                                                                          textOverflow:nil];
+
+    NSDictionary<NSAttributedStringKey, id> *attributes = [fontAttributes resolveAttributesWithIsRightToLeft:NO
+                                                                                              traitCollection:nil];
+    NSNumber *baselineOffset = attributes[NSBaselineOffsetAttributeName];
+
+    XCTAssertEqualWithAccuracy(baselineOffset.doubleValue, lineHeight - font.lineHeight, 0.001);
+    XCTAssertLessThan(baselineOffset.doubleValue, 0);
+}
+
+- (void)testFontAttributesCenterExplicitCompressedLineHeight
+{
+    UIFont *font = [UIFont systemFontOfSize:48 weight:UIFontWeightMedium];
+    CGFloat lineHeight = 48;
+    SCValdiFont *valdiFont = [[SCValdiFont alloc] initWithFont:font
+                                                     textStyle:nil
+                                                       maxSize:0
+                                                   fontManager:nil];
+    SCValdiFontAttributes *fontAttributes = [NSAttributedString fontAttributesWithFont:valdiFont
+                                                                                 color:nil
+                                                                             textAlign:nil
+                                                                            lineHeight:nil
+                                                                  lineHeightAbsolute:@(lineHeight)
+                                                                        textDecoration:nil
+                                                                         letterSpacing:nil
+                                                                         numberOfLines:@1
+                                                                          textOverflow:nil];
+
+    NSDictionary<NSAttributedStringKey, id> *attributes = [fontAttributes resolveAttributesWithIsRightToLeft:NO
+                                                                                              traitCollection:nil];
+    NSNumber *baselineOffset = attributes[NSBaselineOffsetAttributeName];
+
+    XCTAssertEqualWithAccuracy(baselineOffset.doubleValue, (lineHeight - font.lineHeight) / 2.0, 0.001);
+    XCTAssertLessThan(baselineOffset.doubleValue, 0);
+}
+
+- (void)testTextFieldPreservesExplicitTextAlignment
+{
+    SCValdiTextField *textField = [SCValdiTextField new];
+    UIFont *font = [UIFont systemFontOfSize:48 weight:UIFontWeightMedium];
+    SCValdiFont *valdiFont = [[SCValdiFont alloc] initWithFont:font
+                                                     textStyle:nil
+                                                       maxSize:0
+                                                   fontManager:nil];
+    SCValdiFontAttributes *fontAttributes = [NSAttributedString fontAttributesWithFont:valdiFont
+                                                                                 color:nil
+                                                                             textAlign:@"right"
+                                                                            lineHeight:nil
+                                                                  lineHeightAbsolute:nil
+                                                                        textDecoration:nil
+                                                                         letterSpacing:nil
+                                                                         numberOfLines:@1
+                                                                          textOverflow:nil];
+
+    [textField valdi_setFontAttributes:fontAttributes];
+    [textField valdi_setValue:@"4"];
+    [textField _updateAttributedTextIfNeeded];
+
+    XCTAssertEqual(textField.textAlignment, NSTextAlignmentRight);
 }
 
 - (BOOL)_simulateTapOnView:(UIView *)view atLocation:(CGPoint)location
@@ -390,6 +514,65 @@
     [titleView layoutIfNeeded];
 
     XCTAssertEqualObjects(@"Welcome to Unit Test!", titleView.text);
+}
+
+- (void)testCustomUnderlineStyleParser
+{
+    NSError *error = nil;
+    SCValdiCustomUnderlineStyle *style = [SCValdiCustomUnderlineStyle styleWithString:@"1 1 1 -2" error:&error];
+
+    XCTAssertNotNil(style);
+    XCTAssertNil(error);
+    XCTAssertEqualWithAccuracy(1.0, style.height, 0.0001);
+    XCTAssertEqualWithAccuracy(1.0, style.onWidth, 0.0001);
+    XCTAssertEqualWithAccuracy(1.0, style.offWidth, 0.0001);
+    XCTAssertEqualWithAccuracy(-2.0, style.offset, 0.0001);
+    XCTAssertTrue(style.patterned);
+
+    style = [SCValdiCustomUnderlineStyle styleWithString:@"1 0 0 -2" error:&error];
+    XCTAssertNotNil(style);
+    XCTAssertFalse(style.patterned);
+
+    XCTAssertNil([SCValdiCustomUnderlineStyle styleWithString:@"1 1 1 -2 3" error:&error]);
+    XCTAssertNotNil(error);
+    XCTAssertNil([SCValdiCustomUnderlineStyle styleWithString:@"0 1 1 -2" error:&error]);
+    XCTAssertNotNil(error);
+    XCTAssertNil([SCValdiCustomUnderlineStyle styleWithString:@"1 0 1 -2" error:&error]);
+    XCTAssertNotNil(error);
+    XCTAssertNil([SCValdiCustomUnderlineStyle styleWithString:@"1 -1 1 -2" error:&error]);
+    XCTAssertNotNil(error);
+    XCTAssertNil([SCValdiCustomUnderlineStyle styleWithString:@"1 nope 1 -2" error:&error]);
+    XCTAssertNotNil(error);
+}
+
+- (void)testCanSetCustomUnderlineStyleThroughViewNode
+{
+    __block SCCValdiTestIntegrationTests *rootView;
+    [self getRuntimeWithBlock:^(id<SCValdiRuntimeProtocol> runtime) {
+        SCCValdiTestViewModel *viewModel = [[SCCValdiTestViewModel alloc] initWithHeaderTitle:@"Hello World!" scrollable:NO entries:@[]];
+        SCCValdiTestContext *componentContext = [[SCCValdiTestContext alloc] initWithListener:[SCCValdiTestListenerImpl new] onTap:^(double index) {}];
+        rootView = [[SCCValdiTestIntegrationTests alloc] initWithViewModel:viewModel componentContext:componentContext runtime:self.runtime];
+    }];
+
+    [rootView.valdiContext waitUntilRenderCompletedSyncWithFlush:YES];
+
+    rootView.frame = CGRectMake(0, 0, 400, 800);
+    [rootView layoutIfNeeded];
+
+    SCValdiLabel *titleView = [rootView.subviews firstObject];
+    XCTAssertNotNil(titleView);
+    XCTAssertEqual([SCValdiLabel class], [titleView class]);
+
+    [titleView.valdiViewNode setValue:@"1 1 1 -2" forValdiAttribute:@"customUnderlineStyle"];
+    [titleView layoutIfNeeded];
+
+    SCValdiCustomUnderlineStyle *style = [titleView valueForKey:@"customUnderlineStyle"];
+    XCTAssertNotNil(style);
+    XCTAssertEqual([SCValdiCustomUnderlineStyle class], [style class]);
+    XCTAssertEqualWithAccuracy(1.0, style.height, 0.0001);
+    XCTAssertEqualWithAccuracy(1.0, style.onWidth, 0.0001);
+    XCTAssertEqualWithAccuracy(1.0, style.offWidth, 0.0001);
+    XCTAssertEqualWithAccuracy(-2.0, style.offset, 0.0001);
 }
 
 - (void)testDestroysViewOnDealloc

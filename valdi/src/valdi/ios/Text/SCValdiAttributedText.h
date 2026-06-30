@@ -14,12 +14,16 @@ typedef NS_ENUM(NSUInteger, SCValdiTextDecoration) {
     SCValdiTextDecorationUnset,
     SCValdiTextDecorationNone,
     SCValdiTextDecorationUnderline,
-    SCValdiTextDecorationStrikethrough
+    SCValdiTextDecorationStrikethrough,
+    SCValdiTextDecorationDashedUnderline,
+    SCValdiTextDecorationDottedUnderline
 };
 
 @protocol SCValdiFunction;
 @class SCValdiWrappedValue;
 @class SCValdiImageAttachmentInfo;
+@class SCValdiInlineViewAttachmentInfo;
+@class SCValdiTextAnimationTransform;
 
 /**
  SCValdiAttributedText is the Objective-C counter part of
@@ -32,6 +36,11 @@ typedef NS_ENUM(NSUInteger, SCValdiTextDecoration) {
  Returns the number of parts within the AttributedText
  */
 @property (readonly, nonatomic) NSUInteger partsCount;
+
+/**
+ Returns the number of parts with animation transforms.
+ */
+@property (readonly, nonatomic) NSUInteger animationTransformsCount;
 
 - (instancetype)initWithCppInstance:(void*)cppInstance;
 
@@ -58,6 +67,12 @@ typedef NS_ENUM(NSUInteger, SCValdiTextDecoration) {
  or nil if unspecified.
  */
 - (nullable UIColor*)colorAtIndex:(NSUInteger)index;
+
+/**
+ Return the text background color for the part at the given index,
+ or nil if unspecified.
+ */
+- (nullable UIColor*)backgroundColorAtIndex:(NSUInteger)index;
 
 /**
  Return the onTap callback for the part the given index,
@@ -101,10 +116,16 @@ typedef NS_ENUM(NSUInteger, SCValdiTextDecoration) {
 - (nullable SCValdiImageAttachmentInfo*)imageAttachmentAtIndex:(NSUInteger)index;
 
 /**
+ Return the inline view attachment info for the part at the given index,
+ or nil if the part is not an inline view attachment.
+ */
+- (nullable SCValdiInlineViewAttachmentInfo*)inlineViewAttachmentAtIndex:(NSUInteger)index;
+
+/**
  Return the animation transform for the part at the given index,
  or nil if unspecified.
  */
-- (nullable NSDictionary<NSString*, NSNumber*>*)animationTransformAtIndex:(NSUInteger)index;
+- (nullable SCValdiTextAnimationTransform *)animationTransformAtIndex:(NSUInteger)index;
 
 @end
 

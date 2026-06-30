@@ -7,12 +7,9 @@
 
 #import "valdi/ios/Text/NSAttributedString+Valdi.h"
 
+#import "valdi/ios/Text/SCValdiAttributedText.h"
 #import "valdi/ios/Text/SCValdiFontAttributes.h"
 #import "valdi/ios/Text/SCValdiFont.h"
-#import "valdi/ios/Text/SCValdiOnTapAttribute.h"
-#import "valdi/ios/Text/SCValdiOnLayoutAttribute.h"
-#import "valdi/ios/Text/SCValdiAttributedText.h"
-#import "valdi/ios/Text/SCValdiImageAttachmentInfo.h"
 
 #import "valdi_core/SCNValdiCoreCompositeAttributePart.h"
 #import "valdi_core/UIColor+Valdi.h"
@@ -24,15 +21,11 @@ static NSString *const kSCValdiFontShorthandAttribute = @"font";
 static NSString *const kSCValdiColorAttribute = @"color";
 static NSString *const kSCValdiTextAlignAttribute = @"textAlign";
 static NSString *const kSCValdiLineHeightAttribute = @"lineHeight";
+static NSString *const kSCValdiLineHeightAbsoluteAttribute = @"lineHeightAbsolute";
 static NSString *const kSCValdiTextDecorationAttribute = @"textDecoration";
 static NSString *const kSCValdiLetterSpacingAttribute = @"letterSpacing";
 static NSString *const kSCValdiNumberOfLinesAttribute = @"numberOfLines";
 static NSString *const kSCValdiTextOverflowAttribute = @"textOverflow";
-NSString *const kSCValdiAttributedStringKeyOnTap = @"valdi_onTap";
-NSString *const kSCValdiAttributedStringKeyOnLayout = @"valdi_onLayout";
-NSString *const kSCValdiOuterOutlineColorAttribute = @"valdi_outerOutlineColor";
-NSString *const kSCValdiOuterOutlineWidthAttribute = @"valdi_outerOutlineWidth";
-NSString *const kSCValdiAttributedStringKeyAnimationTransform = @"valdi_animationTransform";
 
 /// Returns a boxed NSTextAlignment value, or nil
 static NSNumber *_SCValdiParseTextAlignment(NSString *value)
@@ -50,32 +43,8 @@ static NSNumber *_SCValdiParseTextAlignment(NSString *value)
     return textAlignmentMap[value];
 }
 
-@implementation NSAttributedString (Valdi)
-
-+ (NSAttributedString *)attributedStringWithValdiText:(id)textValue
-                                              attributes:(NSDictionary *)attributes
-                                           isRightToLeft:(BOOL)isRightToLeft
-                                             fontManager:(id<SCValdiFontManagerProtocol>)fontManager
-                                         traitCollection:(UITraitCollection*)traitCollection
-{
-    if (!textValue) {
-        return nil;
-    } else if ([textValue isKindOfClass:[NSAttributedString class]]) {
-        return [textValue copy];
-    } else if ([textValue isKindOfClass:[NSString class]]) {
-        return [[NSAttributedString alloc] initWithString:textValue attributes:attributes];
-    } else if ([textValue isKindOfClass:[SCValdiAttributedText class]]) {
-        return [NSAttributedString _attributedStringWithValdiText:textValue
-                                                    baseNSAttributes:attributes
-                                                       isRightToLeft:isRightToLeft
-                                                         fontManager:fontManager
-                                                     traitCollection:traitCollection];
-    } else {
-        return nil;
-    }
-}
-
-static void _SCValdiAppendTextDecoration(NSMutableDictionary<NSAttributedStringKey, id> *attributes, SCValdiTextDecoration textDecoration)
+static void _SCValdiAppendTextDecoration(NSMutableDictionary<NSAttributedStringKey, id> *attributes,
+                                         SCValdiTextDecoration textDecoration)
 {
     switch (textDecoration) {
         case SCValdiTextDecorationUnset:
@@ -88,12 +57,22 @@ static void _SCValdiAppendTextDecoration(NSMutableDictionary<NSAttributedStringK
             [attributes removeObjectForKey:NSStrikethroughStyleAttributeName];
             attributes[NSUnderlineStyleAttributeName] = @(NSUnderlineStyleSingle);
             break;
+        case SCValdiTextDecorationDashedUnderline:
+            [attributes removeObjectForKey:NSStrikethroughStyleAttributeName];
+            attributes[NSUnderlineStyleAttributeName] = @(NSUnderlineStyleSingle | NSUnderlinePatternDash);
+            break;
+        case SCValdiTextDecorationDottedUnderline:
+            [attributes removeObjectForKey:NSStrikethroughStyleAttributeName];
+            attributes[NSUnderlineStyleAttributeName] = @(NSUnderlineStyleSingle | NSUnderlinePatternDot);
+            break;
         case SCValdiTextDecorationStrikethrough:
             [attributes removeObjectForKey:NSUnderlineStyleAttributeName];
             attributes[NSStrikethroughStyleAttributeName] = @(NSUnderlineStyleSingle);
             break;
     }
 }
+
+@implementation NSAttributedString (Valdi)
 
 static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
     if (!str) {
@@ -103,102 +82,16 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
         return SCValdiTextDecorationNone;
     } else if ([str isEqualToString:@"underline"]) {
         return SCValdiTextDecorationUnderline;
+    } else if ([str isEqualToString:@"dashed-underline"]) {
+        return SCValdiTextDecorationDashedUnderline;
+    } else if ([str isEqualToString:@"dotted-underline"]) {
+        return SCValdiTextDecorationDottedUnderline;
     } else if ([str isEqualToString:@"strikethrough"]) {
         return SCValdiTextDecorationStrikethrough;
     } else {
         SCLogValdiError(@"Invalid TextDecoration '%@'", str);
         return SCValdiTextDecorationNone;
     }
-}
-
-+ (NSAttributedString *)_attributedStringWithValdiText:(SCValdiAttributedText *)valdiAttributedText
-                                         baseNSAttributes:(NSDictionary<NSAttributedStringKey, id> *)baseNSAttributes
-                                            isRightToLeft:(BOOL)isRightToLeft
-                                              fontManager:(id<SCValdiFontManagerProtocol>)fontManager
-                                          traitCollection:(UITraitCollection*)traitCollection
-{
-    NSMutableAttributedString *resultString = [[NSMutableAttributedString alloc] init];
-
-    NSUInteger count = valdiAttributedText.partsCount;
-    for (NSUInteger i = 0; i < count; i++) {
-        NSMutableDictionary<NSAttributedStringKey, id> *nsAttrs = [baseNSAttributes mutableCopy] ?: [NSMutableDictionary new];
-
-        NSString *content = [valdiAttributedText contentAtIndex:i];
-        NSString *fontString = [valdiAttributedText fontAtIndex:i];
-        UIColor *color = [valdiAttributedText colorAtIndex:i];
-        SCValdiTextDecoration textDecoration = [valdiAttributedText textDecorationAtIndex:i];
-        UIColor *outlineColor = [valdiAttributedText outlineColorAtIndex:i];
-        NSNumber *outlineWidth = [valdiAttributedText outlineWidthAtIndex:i];
-        UIColor *outerOutlineColor = [valdiAttributedText outerOutlineColorAtIndex:i];
-        NSNumber *outerOutlineWidth = [valdiAttributedText outerOutlineWidthAtIndex:i];
-        SCValdiImageAttachmentInfo *imageAttachment = [valdiAttributedText imageAttachmentAtIndex:i];
-        NSDictionary<NSString *, NSNumber *> *animationTransform = [valdiAttributedText animationTransformAtIndex:i];
-
-        if (color) {
-            nsAttrs[NSForegroundColorAttributeName] = color;
-        }
-        if (outlineWidth && outlineColor) {
-            nsAttrs[NSStrokeColorAttributeName] = outlineColor;
-            // requires negative stroke to have both stroke + fill
-            // https://developer.apple.com/documentation/foundation/nsattributedstring/key/1533909-strokewidth
-            nsAttrs[NSStrokeWidthAttributeName] = @(-outlineWidth.floatValue);
-        }
-        if (outerOutlineWidth && outerOutlineColor) {
-            nsAttrs[kSCValdiOuterOutlineColorAttribute] = outerOutlineColor;
-            nsAttrs[kSCValdiOuterOutlineWidthAttribute] = outerOutlineWidth;
-        }
-
-        if (fontString) {
-            SCValdiFont *font = [SCValdiFont fontFromValdiAttribute:fontString fontManager:fontManager];
-            nsAttrs[NSFontAttributeName] = [font resolveFontFromTraitCollection:traitCollection];
-        }
-
-        id<SCValdiFunction> onTapCallback = [valdiAttributedText onTapAtIndex:i];
-        if (onTapCallback) {
-            nsAttrs[kSCValdiAttributedStringKeyOnTap] = [[SCValdiOnTapAttribute alloc] initWithCallback:onTapCallback];
-        }
-
-        id<SCValdiFunction> onLayoutCallback = [valdiAttributedText onLayoutAtIndex:i];
-        if (onLayoutCallback) {
-            nsAttrs[kSCValdiAttributedStringKeyOnLayout] = [[SCValdiOnLayoutAttribute alloc] initWithCallback:onLayoutCallback];
-        }
-        if (animationTransform) {
-            nsAttrs[kSCValdiAttributedStringKeyAnimationTransform] = animationTransform;
-        }
-
-        _SCValdiAppendTextDecoration(nsAttrs, textDecoration);
-
-        NSAttributedString *partString;
-        if (imageAttachment) {
-            NSTextAttachment *attachment = [[NSTextAttachment alloc] init];
-            if (imageAttachment.imageData.length > 0) {
-                attachment.image = [UIImage imageWithData:imageAttachment.imageData
-                                                    scale:UIScreen.mainScreen.scale];
-            } else {
-                // Create transparent placeholder to avoid file replacement character icon
-                attachment.image = [[UIImage alloc] init];
-            }
-            // Calculate baseline offset to vertically center the image with the text.
-            UIFont *font = nsAttrs[NSFontAttributeName];
-            CGFloat baselineOffset = 0;
-            if (font) {
-                CGFloat textCenter = (font.ascender + font.descender) / 2.0;
-                baselineOffset = textCenter - imageAttachment.height / 2.0;
-            }
-            attachment.bounds = CGRectMake(0, baselineOffset, imageAttachment.width, imageAttachment.height);
-            partString = [NSAttributedString attributedStringWithAttachment:attachment];
-            [resultString appendAttributedString:partString];
-            // Append thin space after attachment to allow line breaks
-            [resultString appendAttributedString:[[NSAttributedString alloc] initWithString:@"\u2009" attributes:nsAttrs]];
-            continue;
-        } else {
-            partString = [[NSAttributedString alloc] initWithString:content attributes:nsAttrs];
-        }
-
-        [resultString appendAttributedString:partString];
-    }
-
-    return [resultString copy];
 }
 
 + (SCValdiFontAttributes *)defaultFontAttributes
@@ -235,10 +128,32 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
     return style;
 }
 
++ (NSAttributedString *)valdi_attributedStringWithAttachment:(NSTextAttachment *)attachment
+                                                  attributes:(NSMutableDictionary<NSAttributedStringKey, id> *)attributes
+{
+    if (@available(iOS 18.0, macOS 15.0, tvOS 18.0, watchOS 11.0, visionOS 2.0, *)) {
+        return [NSAttributedString attributedStringWithAttachment:attachment attributes:attributes];
+    }
+
+    id previousAttachment = attributes[NSAttachmentAttributeName];
+    attributes[NSAttachmentAttributeName] = attachment;
+    unichar attachmentCharacter = NSAttachmentCharacter;
+    NSString *attachmentString = [NSString stringWithCharacters:&attachmentCharacter length:1];
+    NSAttributedString *attributedString = [[NSAttributedString alloc] initWithString:attachmentString
+                                                                           attributes:attributes];
+    if (previousAttachment != nil) {
+        attributes[NSAttachmentAttributeName] = previousAttachment;
+    } else {
+        [attributes removeObjectForKey:NSAttachmentAttributeName];
+    }
+    return attributedString;
+}
+
 + (SCValdiFontAttributes *)fontAttributesWithFont:(SCValdiFont *)font
                                                color:(NSNumber *)color
-                                           textAlign:(NSString *)textAlign
-                                          lineHeight:(NSNumber *)lineHeight
+                                          textAlign:(NSString *)textAlign
+                                         lineHeight:(NSNumber *)lineHeight
+                                lineHeightAbsolute:(NSNumber *)lineHeightAbsolute
                                       textDecoration:(NSString *)textDecoration
                                        letterSpacing:(NSNumber *)letterSpacing
                                        numberOfLines:(NSNumber *)numberOfLines
@@ -286,15 +201,17 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
 
     paragraphStyle.lineBreakMode = resolvedLineBreakMode;
 
-    if (lineHeight) {
-        paragraphStyle.lineHeightMultiple = lineHeight.doubleValue;
+    if (lineHeightAbsolute) {
+        attributes[SCValdiLineHeightAbsoluteAttributeName] = lineHeightAbsolute;
+    } else if (lineHeight) {
+        attributes[SCValdiLineHeightAttributeName] = lineHeight;
     }
 
     attributes[NSParagraphStyleAttributeName] = [paragraphStyle copy];
 
     _SCValdiAppendTextDecoration(attributes, SCValdiTextDecorationFromString(textDecoration));
 
-    BOOL needAttributedString = lineHeight || letterSpacing || textDecoration;
+    BOOL needAttributedString = lineHeight || lineHeightAbsolute || letterSpacing || textDecoration;
 
     return [[SCValdiFontAttributes alloc] initWithAttributes:[attributes copy]
                                                            font:font
@@ -319,16 +236,18 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
     NSNumber *color = ObjectAs(compositeValue[0], NSNumber);
     NSString *textAlign = ObjectAs(compositeValue[1], NSString);
     NSNumber *lineHeight = ObjectAs(compositeValue[2], NSNumber);
-    NSString *textDecoration = ObjectAs(compositeValue[3], NSString);
-    SCValdiFont *font = ObjectAs(compositeValue[4], SCValdiFont);
-    NSNumber *letterSpacing = ObjectAs(compositeValue[5], NSNumber);
-    NSNumber *numberOfLines = ObjectAs(compositeValue[6], NSNumber);
-    NSString *textOverflow = ObjectAs(compositeValue[7], NSString);
+    NSNumber *lineHeightAbsolute = ObjectAs(compositeValue[3], NSNumber);
+    NSString *textDecoration = ObjectAs(compositeValue[4], NSString);
+    SCValdiFont *font = ObjectAs(compositeValue[5], SCValdiFont);
+    NSNumber *letterSpacing = ObjectAs(compositeValue[6], NSNumber);
+    NSNumber *numberOfLines = ObjectAs(compositeValue[7], NSNumber);
+    NSString *textOverflow = ObjectAs(compositeValue[8], NSString);
 
     return [self fontAttributesWithFont:font
                                   color:color
-                              textAlign:textAlign
+                             textAlign:textAlign
                              lineHeight:lineHeight
+                    lineHeightAbsolute:lineHeightAbsolute
                          textDecoration:textDecoration
                           letterSpacing:letterSpacing
                           numberOfLines:numberOfLines
@@ -349,18 +268,21 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
     NSNumber *color = ObjectAs(compositeValue[0], NSNumber);
     NSString *textAlign = ObjectAs(compositeValue[1], NSString);
     NSNumber *lineHeight = ObjectAs(compositeValue[2], NSNumber);
-    NSString *textDecoration = ObjectAs(compositeValue[3], NSString);
-    SCValdiFont *font = ObjectAs(compositeValue[4], SCValdiFont);
-    NSNumber *letterSpacing = ObjectAs(compositeValue[5], NSNumber);
+    NSNumber *lineHeightAbsolute = ObjectAs(compositeValue[3], NSNumber);
+    NSString *textDecoration = ObjectAs(compositeValue[4], NSString);
+    SCValdiFont *font = ObjectAs(compositeValue[5], SCValdiFont);
+    NSNumber *letterSpacing = ObjectAs(compositeValue[6], NSNumber);
+    NSNumber *numberOfLines = ObjectAs(compositeValue[7], NSNumber);
 
-    // forcefully set number of lines and textOverflow to allow for word wrapping + growing lines
+    // Force textOverflow to allow for word wrapping + growing lines.
     return [self fontAttributesWithFont:font
                                   color:color
-                              textAlign:textAlign
+                             textAlign:textAlign
                              lineHeight:lineHeight
+                    lineHeightAbsolute:lineHeightAbsolute
                          textDecoration:textDecoration
                           letterSpacing:letterSpacing
-                          numberOfLines:@0
+                          numberOfLines:numberOfLines ?: @0
                            textOverflow:nil];
 }
 
@@ -404,6 +326,10 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
                                                                  type:SCNValdiCoreAttributeTypeDouble
                                                              optional:YES
                                              invalidateLayoutOnChange:YES],
+            [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:kSCValdiLineHeightAbsoluteAttribute
+                                                                 type:SCNValdiCoreAttributeTypeDouble
+                                                             optional:YES
+                                             invalidateLayoutOnChange:YES],
             [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:kSCValdiTextDecorationAttribute
                                                                  type:SCNValdiCoreAttributeTypeString
                                                              optional:YES
@@ -414,6 +340,10 @@ static SCValdiTextDecoration SCValdiTextDecorationFromString(NSString *str) {
                                              invalidateLayoutOnChange:YES],
             [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:kSCValdiLetterSpacingAttribute
                                                                  type:SCNValdiCoreAttributeTypeDouble
+                                                             optional:YES
+                                             invalidateLayoutOnChange:YES],
+            [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:kSCValdiNumberOfLinesAttribute
+                                                                 type:SCNValdiCoreAttributeTypeInt
                                                              optional:YES
                                              invalidateLayoutOnChange:YES]
         ];

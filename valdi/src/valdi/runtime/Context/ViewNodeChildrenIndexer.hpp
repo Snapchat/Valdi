@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "valdi/runtime/Views/Frame.hpp"
+#include "valdi_core/cpp/Views/Frame.hpp"
 #include "valdi_core/cpp/Utils/FlatMap.hpp"
 #include "valdi_core/cpp/Utils/ObjectPool.hpp"
 #include "valdi_core/cpp/Utils/SmallVector.hpp"

@@ -13,6 +13,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface SCValdiTextView : SCValdiView <UITextViewDelegate, NSTextStorageDelegate, SCValdiTextAttributable>
 
++ (BOOL)valdi_managesChildFrames;
+
 @property (nonatomic, strong) id textValue;
 @property (nonatomic, strong) SCValdiFontAttributes* fontAttributes;
 @property (nonatomic) SCValdiTextMode textMode;

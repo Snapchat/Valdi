@@ -112,7 +112,8 @@ npm_link_all_packages(name = "node_modules")
 js_test(
     name = "valdi_protobuf_web_test",
     data = [
-        ":node_modules/jest",
+        "//bzl/valdi/npm:node_modules/@protobuf-ts/runtime",
+        "//bzl/valdi/npm:node_modules/jest",
         ":proto_files",
         ":valdi_protobuf_web_compiled",
     ],

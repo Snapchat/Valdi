@@ -74,7 +74,12 @@ class AttributesBindingContext<T : View>(val native: AttributesBindingContextNat
     ) {
         val delegate = object: ObjectAttributeHandlerDelegate() {
             override fun onApply(view: View, value: Any?, animator: ValdiAnimator?) {
-                apply(view as T, value, animator)
+                val attributedValue = if (value is CppObjectWrapper) {
+                    AttributedTextCpp(value)
+                } else {
+                    value
+                }
+                apply(view as T, attributedValue, animator)
             }
 
             override fun onReset(view: View, animator: ValdiAnimator?) {
@@ -83,14 +88,6 @@ class AttributesBindingContext<T : View>(val native: AttributesBindingContextNat
         }
 
         native.bindTextAttribute(attribute, invalidateLayoutOnChange, delegate)
-
-        registerPreprocessor(attribute, true) {
-            return@registerPreprocessor if (it is CppObjectWrapper) {
-                AttributedTextCpp(it)
-            } else {
-                it
-            }
-        }
     }
 
     inline fun bindStringAttribute(

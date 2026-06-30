@@ -1,0 +1,25 @@
+load("//bzl/valdi:valdi_application.bzl", "valdi_application")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "text_rendering_showcase",
+    srcs = glob([
+        "**/*.ts",
+        "**/*.tsx",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/drawing",
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)
+
+valdi_application(
+    name = "text_rendering_showcase_app",
+    ios_bundle_id = "com.snap.valdi.textrenderingshowcase",
+    root_component_path = "App@text_rendering_showcase/TextRenderingShowcase",
+    title = "Text Rendering Showcase",
+    version = "1.0.0",
+    deps = [":text_rendering_showcase"],
+)

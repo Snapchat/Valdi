@@ -8,7 +8,6 @@
 
 #import "valdi/ios/Categories/UIView+Valdi.h"
 
-#import "valdi_core/NSScanner+CGFloat.h"
 #import "valdi/ios/SCValdiContext.h"
 #import "valdi/ios/Gestures/SCValdiGestureRecognizers.h"
 #import "valdi_core/SCValdiLogger.h"
@@ -21,13 +20,35 @@
 #import "valdi_core/SCValdiGeometricPath.h"
 
 #import <objc/runtime.h>
-#import <yoga/UIView+Yoga.h>
 
 static NSString *const kBackgroundGradientLayoutKey = @"background_gradient";
 static NSString *const kShadowPathLayoutKey = @"shadow_path";
 static NSString *const kMaskLayerPath = @"mask_layer";
+static NSString *const kBorderLayerLayoutKey = @"border_layer";
+
+typedef NS_ENUM(NSUInteger, SCValdiBorderStyle) {
+    SCValdiBorderStyleSolid = 0,
+    SCValdiBorderStyleDashed,
+    SCValdiBorderStyleDotted,
+    SCValdiBorderStyleNone,
+    SCValdiBorderStyleHidden,
+};
+
+typedef struct {
+    CGFloat topLeft;
+    CGFloat topRight;
+    CGFloat bottomRight;
+    CGFloat bottomLeft;
+} SCValdiResolvedCornerRadii;
+
+static const void *kValdiBorderStyleKey = &kValdiBorderStyleKey;
+static const void *kValdiBorderLayerKey = &kValdiBorderLayerKey;
+static const void *kValdiBorderWidthKey = &kValdiBorderWidthKey;
+static const void *kValdiBorderColorKey = &kValdiBorderColorKey;
+static const void *kValdiBorderCornerRadiiKey = &kValdiBorderCornerRadiiKey;
 
 static CACornerMask kCornerMaskAll = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner | kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner;
+static __thread NSUInteger SCValdiViewHierarchySnapshotDrawingDepth = 0;
 
 static UIBezierPath *SCBezierPathWithRadii(CGFloat topLeftRadius, CGFloat topRightRadius, CGFloat bottomLeftRadius, CGFloat bottomRightRadius, CGSize size)
 {
@@ -68,13 +89,137 @@ static UIBezierPath *SCBezierPathWithRadii(CGFloat topLeftRadius, CGFloat topRig
     return path;
 }
 
+static SCValdiBorderStyle ValdiCurrentBorderStyle(UIView *view)
+{
+    NSNumber *styleNumber = objc_getAssociatedObject(view, kValdiBorderStyleKey);
+    if (styleNumber == nil) {
+        return SCValdiBorderStyleSolid;
+    }
+    return (SCValdiBorderStyle)styleNumber.unsignedIntegerValue;
+}
+
+static void ValdiSetBorderStyle(UIView *view, SCValdiBorderStyle style)
+{
+    objc_setAssociatedObject(view, kValdiBorderStyleKey, @(style), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static CGFloat ValdiStoredBorderWidth(UIView *view)
+{
+    NSNumber *widthNumber = objc_getAssociatedObject(view, kValdiBorderWidthKey);
+    if (widthNumber != nil) {
+        return (CGFloat)widthNumber.doubleValue;
+    }
+    return view.layer.borderWidth;
+}
+
+static void ValdiSetStoredBorderWidth(UIView *view, CGFloat width)
+{
+    objc_setAssociatedObject(view, kValdiBorderWidthKey, @(width), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static UIColor *ValdiStoredBorderColor(UIView *view)
+{
+    UIColor *color = objc_getAssociatedObject(view, kValdiBorderColorKey);
+    if (color != nil) {
+        return color;
+    }
+
+    if (view.layer.borderColor != nil) {
+        return [UIColor colorWithCGColor:view.layer.borderColor];
+    }
+
+    return [UIColor blackColor];
+}
+
+static void ValdiSetStoredBorderColor(UIView *view, UIColor *color)
+{
+    UIColor *resolvedColor = color ?: [UIColor clearColor];
+    objc_setAssociatedObject(view, kValdiBorderColorKey, resolvedColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static void ValdiSetResolvedCornerRadii(UIView *view, SCValdiResolvedCornerRadii radii)
+{
+    NSValue *value = [NSValue valueWithBytes:&radii objCType:@encode(SCValdiResolvedCornerRadii)];
+    objc_setAssociatedObject(view, kValdiBorderCornerRadiiKey, value, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static BOOL ValdiGetResolvedCornerRadii(UIView *view, SCValdiResolvedCornerRadii *outRadii)
+{
+    NSValue *value = objc_getAssociatedObject(view, kValdiBorderCornerRadiiKey);
+    if (value == nil) {
+        return NO;
+    }
+    if (outRadii != NULL) {
+        [value getValue:outRadii];
+    }
+    return YES;
+}
+
+static CAShapeLayer *ValdiGetBorderLayer(UIView *view)
+{
+    return objc_getAssociatedObject(view, kValdiBorderLayerKey);
+}
+
+static void ValdiSetBorderLayer(UIView *view, CAShapeLayer *layer)
+{
+    objc_setAssociatedObject(view, kValdiBorderLayerKey, layer, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static CAShapeLayer *ValdiEnsureBorderLayer(UIView *view)
+{
+    CAShapeLayer *borderLayer = ValdiGetBorderLayer(view);
+    if (borderLayer == nil) {
+        borderLayer = [CAShapeLayer layer];
+        borderLayer.fillColor = [UIColor clearColor].CGColor;
+        borderLayer.delegate = [SCValdiNoAnimationDelegate sharedInstance];
+        borderLayer.contentsScale = [UIScreen mainScreen].scale;
+        borderLayer.lineJoin = kCALineJoinMiter;
+        ValdiSetBorderLayer(view, borderLayer);
+        [view.layer addSublayer:borderLayer];
+    }
+    return borderLayer;
+}
+
+static void ValdiRemoveBorderLayer(UIView *view)
+{
+    CAShapeLayer *borderLayer = ValdiGetBorderLayer(view);
+    if (borderLayer != nil) {
+        [borderLayer removeFromSuperlayer];
+        ValdiSetBorderLayer(view, nil);
+    }
+}
+
+static SCValdiBorderStyle SCValdiBorderStyleFromString(NSString *styleString)
+{
+    if (styleString == nil) {
+        return SCValdiBorderStyleSolid;
+    }
+
+    if ([styleString isEqualToString:@"none"]) {
+        return SCValdiBorderStyleNone;
+    }
+    if ([styleString isEqualToString:@"hidden"]) {
+        return SCValdiBorderStyleHidden;
+    }
+    if ([styleString isEqualToString:@"solid"]) {
+        return SCValdiBorderStyleSolid;
+    }
+    if ([styleString isEqualToString:@"dashed"]) {
+        return SCValdiBorderStyleDashed;
+    }
+    if ([styleString isEqualToString:@"dotted"]) {
+        return SCValdiBorderStyleDotted;
+    }
+
+    return SCValdiBorderStyleSolid;
+}
+
 @interface SCValdiMaskLayer: CAShapeLayer
 
 @property (readonly, nonatomic) BOOL isEmpty;
 
 @property (strong, nonatomic) id maskPath;
 @property (assign, nonatomic) CGFloat maskOpacity;
-@property (strong, nonatomic) CAGradientLayer *maskImageGradientLayer;
 
 @end
 
@@ -104,7 +249,6 @@ static UIBezierPath *SCBezierPathWithRadii(CGFloat topLeftRadius, CGFloat topRig
     [super layoutSublayers];
 
     _innerMaskLayer.frame = self.bounds;
-    _maskImageGradientLayer.frame = self.bounds;
 
     [self _updatePath];
 }
@@ -157,7 +301,7 @@ static UIBezierPath *SCBezierPathWithRadii(CGFloat topLeftRadius, CGFloat topRig
 
 - (BOOL)isEmpty
 {
-    return ![self hasCornerRadius] && self.maskPath == nil && self.maskOpacity == 1.0f && self.maskImageGradientLayer == nil;
+    return ![self hasCornerRadius] && self.maskPath == nil && self.maskOpacity == 1.0f;
 }
 
 - (void)setTopLeftCornerRadius:(CGFloat)topLeftCornerRadius
@@ -198,16 +342,6 @@ static UIBezierPath *SCBezierPathWithRadii(CGFloat topLeftRadius, CGFloat topRig
     _innerMaskLayer.opacity = 1.0 - maskOpacity;
 }
 
-- (void)setMaskImageGradientLayer:(CAGradientLayer *)maskImageGradientLayer
-{
-    _maskImageGradientLayer = maskImageGradientLayer;
-    if (maskImageGradientLayer) {
-        maskImageGradientLayer.frame = self.bounds;
-    }
-    self.mask = maskImageGradientLayer;
-    [self _updatePath];
-}
-
 @end
 
 @protocol SCValdiHitTestSlop<NSObject>
@@ -226,6 +360,121 @@ static UIBezierPath *SCBezierPathWithRadii(CGFloat topLeftRadius, CGFloat topRig
 @end
 
 @implementation UIView (Valdi)
+
++ (BOOL)valdi_managesChildFrames
+{
+    return NO;
+}
+
++ (BOOL)valdi_isPerformingViewHierarchySnapshot
+{
+    return SCValdiViewHierarchySnapshotDrawingDepth > 0;
+}
+
+- (void)valdi_performViewHierarchySnapshotWithBlock:(void (^)(void))snapshotBlock
+{
+    SCValdiViewHierarchySnapshotDrawingDepth++;
+    @try {
+        [self valdi_willPerformViewHierarchySnapshot];
+        snapshotBlock();
+    } @finally {
+        SCValdiViewHierarchySnapshotDrawingDepth--;
+    }
+}
+
+- (void)valdi_willPerformViewHierarchySnapshot
+{
+    for (UIView *subview in self.subviews) {
+        [subview valdi_willPerformViewHierarchySnapshot];
+    }
+}
+
+- (void)valdi_scheduleBorderLayerLayoutForStyle:(SCValdiBorderStyle)style
+{
+    if (style == SCValdiBorderStyleSolid ||
+        style == SCValdiBorderStyleNone ||
+        style == SCValdiBorderStyleHidden) {
+        [self.valdiViewNode setDidFinishLayoutBlock:nil forKey:kBorderLayerLayoutKey];
+        return;
+    }
+
+    __weak typeof(self) weakSelf = self;
+    [self.valdiViewNode setDidFinishLayoutBlock:^(UIView *view, id<SCValdiAnimatorProtocol> animator) {
+        [weakSelf valdi_updateBorderLayer];
+    }
+                                          forKey:kBorderLayerLayoutKey];
+}
+
+- (void)valdi_updateBorderLayer
+{
+    SCValdiBorderStyle style = ValdiCurrentBorderStyle(self);
+    CGFloat storedWidth = ValdiStoredBorderWidth(self);
+    UIColor *storedColor = ValdiStoredBorderColor(self);
+
+    if (style == SCValdiBorderStyleSolid) {
+        ValdiRemoveBorderLayer(self);
+        self.layer.borderWidth = storedWidth;
+        CGColorRef resolvedColor = storedColor != nil ? storedColor.CGColor : [UIColor clearColor].CGColor;
+        self.layer.borderColor = resolvedColor;
+        [self valdi_scheduleBorderLayerLayoutForStyle:style];
+        return;
+    }
+
+    if (style == SCValdiBorderStyleNone || style == SCValdiBorderStyleHidden) {
+        ValdiRemoveBorderLayer(self);
+        self.layer.borderWidth = 0;
+        self.layer.borderColor = [UIColor clearColor].CGColor;
+        [self valdi_scheduleBorderLayerLayoutForStyle:style];
+        return;
+    }
+
+    self.layer.borderWidth = 0;
+    self.layer.borderColor = [UIColor clearColor].CGColor;
+
+    if (storedWidth <= 0 || storedColor == nil) {
+        ValdiRemoveBorderLayer(self);
+        [self valdi_scheduleBorderLayerLayoutForStyle:style];
+        return;
+    }
+
+    CAShapeLayer *borderLayer = ValdiEnsureBorderLayer(self);
+    borderLayer.frame = self.bounds;
+    borderLayer.fillColor = [UIColor clearColor].CGColor;
+    borderLayer.lineWidth = storedWidth;
+    borderLayer.strokeColor = storedColor.CGColor;
+
+    if (style == SCValdiBorderStyleDashed) {
+        CGFloat dash = MAX(storedWidth * 3.0, 1.0);
+        CGFloat gap = MAX(storedWidth * 2.0, 1.0);
+        borderLayer.lineDashPattern = @[ @(dash), @(gap) ];
+        borderLayer.lineCap = kCALineCapButt;
+    } else if (style == SCValdiBorderStyleDotted) {
+        CGFloat dot = MAX(storedWidth, 1.0);
+        CGFloat gap = MAX(storedWidth * 2.0, 1.0);
+        borderLayer.lineDashPattern = @[ @(dot), @(gap) ];
+        borderLayer.lineCap = kCALineCapRound;
+    } else {
+        borderLayer.lineDashPattern = nil;
+        borderLayer.lineCap = kCALineCapButt;
+    }
+
+    SCValdiResolvedCornerRadii radii;
+    if (!ValdiGetResolvedCornerRadii(self, &radii)) {
+        radii.topLeft = 0;
+        radii.topRight = 0;
+        radii.bottomRight = 0;
+        radii.bottomLeft = 0;
+    }
+
+    UIBezierPath *path = SCBezierPathWithRadii(radii.topLeft,
+                                               radii.topRight,
+                                               radii.bottomLeft,
+                                               radii.bottomRight,
+                                               self.bounds.size);
+    borderLayer.path = path.CGPath;
+
+    [self valdi_scheduleBorderLayerLayoutForStyle:style];
+}
 
 - (void)valdi_updateMaskLayerWithBlock:(void(^)(SCValdiMaskLayer *maskLayer))block
 {
@@ -359,12 +608,20 @@ static UIBezierPath *SCBezierPathWithRadii(CGFloat topLeftRadius, CGFloat topRig
 
 - (BOOL)valdi_setBorderColor:(UIColor *)borderColor animator:(id<SCValdiAnimatorProtocol> )animator
 {
-    borderColor = borderColor ?: [UIColor clearColor];
-    if (animator) {
-        [animator addAnimationOnLayer:self.layer forKeyPath:@"borderColor" value:(__bridge id)borderColor.CGColor];
-    } else {
-        self.layer.borderColor = borderColor.CGColor;
+    ValdiSetStoredBorderColor(self, borderColor);
+
+    if (ValdiCurrentBorderStyle(self) != SCValdiBorderStyleSolid) {
+        [self valdi_updateBorderLayer];
+        return YES;
     }
+
+    CGColorRef resolvedColor = borderColor != nil ? borderColor.CGColor : [UIColor clearColor].CGColor;
+    if (animator) {
+        [animator addAnimationOnLayer:self.layer forKeyPath:@"borderColor" value:(__bridge id)resolvedColor];
+    } else {
+        self.layer.borderColor = resolvedColor;
+    }
+    [self valdi_scheduleBorderLayerLayoutForStyle:ValdiCurrentBorderStyle(self)];
     return YES;
 }
 
@@ -374,13 +631,39 @@ static UIBezierPath *SCBezierPathWithRadii(CGFloat topLeftRadius, CGFloat topRig
         attributeValue = @[ @0, @([UIColor blackColor].valdiAttributeValue) ];
     }
 
-    [self valdi_setBorderWidth:[[attributeValue objectAtIndex:0] doubleValue] animator:animator];
+    BOOL styleProvided = NO;
+    double width = attributeValue.count > 0 ? [[attributeValue objectAtIndex:0] doubleValue] : 0.0;
+    [self valdi_setBorderWidth:width animator:animator];
 
-    if (attributeValue.count > 1) {
-        UIColor *color = UIColorFromValdiAttributeValue((int64_t)[[attributeValue objectAtIndex:1] integerValue]);
+    id secondEntry = attributeValue.count > 1 ? [attributeValue objectAtIndex:1] : nil;
+    id thirdEntry = attributeValue.count > 2 ? [attributeValue objectAtIndex:2] : nil;
+
+    if ([secondEntry isKindOfClass:[NSNumber class]]) {
+        UIColor *color = UIColorFromValdiAttributeValue((int64_t)[secondEntry integerValue]);
         [self valdi_setBorderColor:color animator:animator];
     }
 
+    if ([thirdEntry isKindOfClass:[NSString class]]) {
+        [self valdi_setBorderStyle:thirdEntry animator:animator];
+        styleProvided = YES;
+    }
+
+    if (!styleProvided) {
+        [self valdi_setBorderStyle:nil animator:animator];
+    }
+
+    return YES;
+}
+
+- (BOOL)valdi_setBorderStyle:(NSString *)style animator:(id<SCValdiAnimatorProtocol>)animator
+{
+    SCValdiBorderStyle resolvedStyle = SCValdiBorderStyleFromString(style);
+    if (ValdiCurrentBorderStyle(self) == resolvedStyle) {
+        return YES;
+    }
+
+    ValdiSetBorderStyle(self, resolvedStyle);
+    [self valdi_updateBorderLayer];
     return YES;
 }
 
@@ -426,35 +709,6 @@ static UIBezierPath *SCBezierPathWithRadii(CGFloat topLeftRadius, CGFloat topRig
 - (void)valdi_resetMaskOpacity:(id<SCValdiAnimatorProtocol>)animator
 {
     [self valdi_applyMaskOpacity:1 animator:animator];
-}
-
-- (BOOL)valdi_applyImageMask:(NSArray *)attributeValue animator:(id<SCValdiAnimatorProtocol>)animator
-{
-    NSArray *colors = attributeValue.firstObject;
-
-    if (colors.count < 2) {
-        [self valdi_updateMaskLayerWithBlock:^(SCValdiMaskLayer *maskLayer) {
-            maskLayer.maskImageGradientLayer = nil;
-        }];
-        return YES;
-    }
-
-    [self valdi_updateMaskLayerWithBlock:^(SCValdiMaskLayer *maskLayer) {
-        CAGradientLayer *gradientLayer = maskLayer.maskImageGradientLayer;
-        if (!gradientLayer) {
-            gradientLayer = [[CAGradientLayer alloc] init];
-            gradientLayer.delegate = [SCValdiNoAnimationDelegate sharedInstance];
-        }
-        gradientLayer = setUpGradientLayerForRawAttributes(attributeValue, gradientLayer);
-        maskLayer.maskImageGradientLayer = gradientLayer;
-    }];
-
-    return YES;
-}
-
-- (void)valdi_resetImageMaskWithAnimator:(id<SCValdiAnimatorProtocol>)animator
-{
-    [self valdi_applyImageMask:@[] animator:animator];
 }
 
 - (BOOL)valdi_setBackground:(NSArray *)attributeValue animator:(id<SCValdiAnimatorProtocol> )animator
@@ -705,6 +959,15 @@ static void SCValdiDetermineCornerRadiusMethod(CGFloat topLeftRadius, CGFloat to
     if (self.layer.shadowPath) {
         [self valdi_applyShadowPathWithAnimator:animator];
     }
+
+    SCValdiResolvedCornerRadii radii = {
+        .topLeft = topLeftRadius,
+        .topRight = topRightRadius,
+        .bottomRight = bottomRightRadius,
+        .bottomLeft = bottomLeftRadius,
+    };
+    ValdiSetResolvedCornerRadii(self, radii);
+    [self valdi_updateBorderLayer];
 }
 
 - (BOOL)valdi_setBorderRadius:(SCValdiCornerValues)attributeValue animator:(id<SCValdiAnimatorProtocol> )animator
@@ -722,11 +985,20 @@ static void SCValdiDetermineCornerRadiusMethod(CGFloat topLeftRadius, CGFloat to
 - (BOOL)valdi_setBorderWidth:(CGFloat)attributeValue animator:(id<SCValdiAnimatorProtocol> )animator
 {
     CGFloat normalizedValue = CGFloatNormalizeFloor(attributeValue);
+    ValdiSetStoredBorderWidth(self, normalizedValue);
+
+    if (ValdiCurrentBorderStyle(self) != SCValdiBorderStyleSolid) {
+        [self valdi_updateBorderLayer];
+        return YES;
+    }
+
     if (animator) {
         [animator addAnimationOnLayer:self.layer forKeyPath:@"borderWidth" value:@(normalizedValue)];
     } else {
         self.layer.borderWidth = normalizedValue;
     }
+
+    [self valdi_scheduleBorderLayerLayoutForStyle:ValdiCurrentBorderStyle(self)];
 
     return YES;
 }
@@ -944,6 +1216,14 @@ static void SCValdiDetermineCornerRadiusMethod(CGFloat topLeftRadius, CGFloat to
         resetBlock:^(__kindof UIView *view, id<SCValdiAnimatorProtocol> animator) {
             [view valdi_setBorderColor:nil animator:animator];
         }];
+    [attributesBinder bindAttribute:@"borderStyle"
+        invalidateLayoutOnChange:NO
+        withStringBlock:^BOOL(__kindof UIView *view, NSString *attributeValue, id<SCValdiAnimatorProtocol> animator) {
+            return [view valdi_setBorderStyle:attributeValue animator:animator];
+        }
+        resetBlock:^(__kindof UIView *view, id<SCValdiAnimatorProtocol> animator) {
+            [view valdi_setBorderStyle:nil animator:animator];
+        }];
     [attributesBinder bindAttribute:@"slowClipping"
         invalidateLayoutOnChange:NO
         withBoolBlock:^BOOL(__kindof UIView *view, BOOL attributeValue, id<SCValdiAnimatorProtocol> animator) {
@@ -965,15 +1245,6 @@ static void SCValdiDetermineCornerRadiusMethod(CGFloat topLeftRadius, CGFloat to
     } resetBlock:^(__kindof UIView *view, id<SCValdiAnimatorProtocol> animator) {
         [view valdi_resetMaskOpacity:animator];
     }];
-
-    [attributesBinder bindAttribute:@"maskImage"
-        invalidateLayoutOnChange:NO
-        withArrayBlock:^BOOL(__kindof UIView *view, NSArray *attributeValue, id<SCValdiAnimatorProtocol> animator) {
-            return [view valdi_applyImageMask:attributeValue animator:animator];
-        }
-        resetBlock:^(__kindof UIView *view, id<SCValdiAnimatorProtocol> animator) {
-            [view valdi_resetImageMaskWithAnimator:animator];
-        }];
 
     [attributesBinder bindAttribute:@"onTap"
         withFunctionAndPredicateBlock:^(__kindof UIView *view, id<SCValdiFunction> attributeValue, id<SCValdiFunction> predicate, id additionalValue) {
@@ -1042,30 +1313,26 @@ static void SCValdiDetermineCornerRadiusMethod(CGFloat topLeftRadius, CGFloat to
                                     [view valdi_resetOnTouchGestures];
                                  }];
 
-    [attributesBinder bindCompositeAttribute:@"transform"
-        parts:[self _valdiTransformComponents]
-        withUntypedBlock:^BOOL(__kindof UIView *view, id attributeValue, id<SCValdiAnimatorProtocol> animator) {
+    [attributesBinder bindTransformAttributesWithUntypedBlock:^BOOL(__kindof UIView *view, id attributeValue, id<SCValdiAnimatorProtocol> animator) {
             NSArray *attributeValueArray = ObjectAs(attributeValue, NSArray);
             if (attributeValueArray.count != 5) {
                 return NO;
             }
 
-            id<SCValdiViewNodeProtocol> viewNode = view.valdiViewNode;
-
-            CGFloat translationX = [viewNode resolveDeltaX:ObjectAs(attributeValueArray[0], NSNumber).doubleValue directionAgnostic:NO];
-            CGFloat translationY = ObjectAs(attributeValueArray[1], NSNumber).doubleValue;
+            CGFloat translationX = (ObjectAs(attributeValueArray[0], NSNumber) ?: @(0.0)).doubleValue;
+            CGFloat translationY = (ObjectAs(attributeValueArray[1], NSNumber) ?: @(0.0)).doubleValue;
 
             CGFloat scaleX = (ObjectAs(attributeValueArray[2], NSNumber) ?: @(1.0)).doubleValue;
             CGFloat scaleY = (ObjectAs(attributeValueArray[3], NSNumber) ?: @(1.0)).doubleValue;
 
-            CGFloat rotation = [viewNode resolveDeltaX:ObjectAs(attributeValueArray[4], NSNumber).doubleValue directionAgnostic:NO];
+            CGFloat rotation = (ObjectAs(attributeValueArray[4], NSNumber) ?: @(0.0)).doubleValue;
 
             return [view valdi_setTranslationX:translationX
-                                     translationY:translationY
-                                           scaleX:scaleX
-                                           scaleY:scaleY
-                                         rotation:rotation
-                                         animator:animator];
+                                  translationY:translationY
+                                        scaleX:scaleX
+                                        scaleY:scaleY
+                                      rotation:rotation
+                                      animator:animator];
         }
         resetBlock:^(__kindof UIView *view, id<SCValdiAnimatorProtocol> animator) {
             [view valdi_setTranslationX:0 translationY:0 scaleX:1.0 scaleY:1.0 rotation:0.0 animator:animator];
@@ -1087,32 +1354,6 @@ static void SCValdiDetermineCornerRadiusMethod(CGFloat topLeftRadius, CGFloat to
         resetBlock:^(__kindof UIView *view) {
             view.valdiHitTest = nil;
         }];
-}
-
-+ (NSArray<SCNValdiCoreCompositeAttributePart *> *)_valdiTransformComponents
-{
-    return @[
-        [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:@"translationX"
-                                                                type:SCNValdiCoreAttributeTypeDouble
-                                                            optional:YES
-                                            invalidateLayoutOnChange:NO],
-        [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:@"translationY"
-                                                                type:SCNValdiCoreAttributeTypeDouble
-                                                            optional:YES
-                                            invalidateLayoutOnChange:NO],
-        [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:@"scaleX"
-                                                                type:SCNValdiCoreAttributeTypeDouble
-                                                            optional:YES
-                                            invalidateLayoutOnChange:NO],
-        [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:@"scaleY"
-                                                                type:SCNValdiCoreAttributeTypeDouble
-                                                            optional:YES
-                                            invalidateLayoutOnChange:NO],
-        [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:@"rotation"
-                                                                type:SCNValdiCoreAttributeTypeDouble
-                                                            optional:YES
-                                            invalidateLayoutOnChange:NO],
-    ];
 }
 
 + (NSArray<SCNValdiCoreCompositeAttributePart *> *)_valdiTouchAreaExtensionComponents

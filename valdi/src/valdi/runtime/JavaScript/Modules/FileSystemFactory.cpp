@@ -21,6 +21,19 @@ Value FileSystemFactory::loadModule() {
     auto strongThis = shared_from_this();
 
     out.setMapValue(
+        "existsSync",
+        Value(makeShared<ValueFunctionWithCallable>([strongThis](const ValueFunctionCallContext& callContext) -> Value {
+            auto pathNameResult = callContext.getParameterAsString(0);
+
+            if (!callContext.getExceptionTracker()) {
+                return Value::undefined();
+            }
+
+            Path const path = Path(pathNameResult.toStringView());
+            return Value(DiskUtils::stat(path).exists());
+        })));
+
+    out.setMapValue(
         "removeSync",
         Value(makeShared<ValueFunctionWithCallable>([strongThis](const ValueFunctionCallContext& callContext) -> Value {
             auto pathNameResult = callContext.getParameterAsString(0);
@@ -57,6 +70,9 @@ Value FileSystemFactory::loadModule() {
             }
 
             Path const path = Path(pathName.toStringView());
+            if (DiskUtils::isDirectory(path)) {
+                return Value(true);
+            }
 
             bool const result = DiskUtils::makeDirectory(path, createIntermediates);
             if (!result) {

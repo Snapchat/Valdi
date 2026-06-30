@@ -1,0 +1,24 @@
+load("//bzl/valdi:valdi_application.bzl", "valdi_application")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "text_attributes_example",
+    srcs = glob([
+        "**/*.ts",
+        "**/*.tsx",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)
+
+valdi_application(
+    name = "text_attributes_example_app",
+    ios_bundle_id = "com.snap.valdi.textattributes",
+    root_component_path = "App@text_attributes_example/TextAttributesExample",
+    title = "Text Attributes",
+    version = "1.0.0",
+    deps = [":text_attributes_example"],
+)

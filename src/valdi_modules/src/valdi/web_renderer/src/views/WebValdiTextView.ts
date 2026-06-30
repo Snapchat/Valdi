@@ -1,6 +1,34 @@
 import { WebValdiLayout } from './WebValdiLayout';
 import { convertColor } from '../styles/ValdiWebStyles';
 
+function applyTextDecoration(element: HTMLElement, value: string | undefined) {
+  element.style.textDecorationLine = '';
+  element.style.textDecorationStyle = '';
+
+  switch (value) {
+    case 'underline':
+      element.style.textDecorationLine = 'underline';
+      return;
+    case 'dashed-underline':
+      element.style.textDecorationLine = 'underline';
+      element.style.textDecorationStyle = 'dashed';
+      return;
+    case 'dotted-underline':
+      element.style.textDecorationLine = 'underline';
+      element.style.textDecorationStyle = 'dotted';
+      return;
+    case 'strikethrough':
+      element.style.textDecorationLine = 'line-through';
+      return;
+    case 'none':
+    case undefined:
+    case '':
+    default:
+      element.style.textDecorationLine = 'none';
+      return;
+  }
+}
+
 export class WebValdiTextView extends WebValdiLayout {
   public type = 'textview';
   public declare htmlElement: HTMLTextAreaElement;
@@ -183,6 +211,9 @@ export class WebValdiTextView extends WebValdiLayout {
       case 'textAlign':
         textarea.style.textAlign = attributeValue;
         return;
+      case 'textDecoration':
+        applyTextDecoration(textarea, attributeValue);
+        return;
       case 'font': {
         const parts = String(attributeValue).split(' ');
         if (parts.length >= 2) {
@@ -217,6 +248,9 @@ export class WebValdiTextView extends WebValdiLayout {
       case 'enabled':
         textarea.disabled = !attributeValue;
         textarea.style.pointerEvents = attributeValue ? 'auto' : 'none';
+        return;
+      case 'selectable':
+        textarea.style.userSelect = attributeValue === false ? 'none' : '';
         return;
       case 'selectTextOnFocus':
         this.selectTextOnFocus = !!attributeValue;

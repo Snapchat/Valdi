@@ -25,13 +25,13 @@ TextLayoutEntry::~TextLayoutEntry() = default;
 
 TextLayout::TextLayout(Size maxSize,
                        std::vector<TextLayoutEntry>&& entries,
-                       std::vector<TextLayoutDecorationEntry>&& decorations,
+                       std::vector<TextLayoutVisualEntry>&& visualEntries,
                        std::vector<TextLayoutAttachment>&& attachments,
                        bool fitsInMaxSize)
     : _maxSize(maxSize),
       _fitsInMaxSize(fitsInMaxSize),
       _entries(std::move(entries)),
-      _decorations(std::move(decorations)),
+      _visualEntries(std::move(visualEntries)),
       _attachments(std::move(attachments)) {
     _bounds = Rect::makeEmpty();
 
@@ -46,8 +46,8 @@ const std::vector<TextLayoutEntry>& TextLayout::getEntries() const {
     return _entries;
 }
 
-const std::vector<TextLayoutDecorationEntry>& TextLayout::getDecorations() const {
-    return _decorations;
+const std::vector<TextLayoutVisualEntry>& TextLayout::getVisualEntries() const {
+    return _visualEntries;
 }
 
 const std::vector<TextLayoutAttachment>& TextLayout::getAttachments() const {
@@ -103,22 +103,33 @@ Valdi::Value TextLayout::toJSONValue() const {
 
     out.setMapValue("entries", Valdi::Value(entries));
 
-    auto decorations = Valdi::ValueArray::make(_decorations.size());
-    for (size_t i = 0; i < _decorations.size(); i++) {
-        const auto& decoration = _decorations[i];
+    auto visualEntries = Valdi::ValueArray::make(_visualEntries.size());
+    for (size_t i = 0; i < _visualEntries.size(); i++) {
+        const auto& visualEntry = _visualEntries[i];
 
-        Valdi::Value decorationJson;
-        decorationJson.setMapValue("bounds", snap::drawing::toJSONValue(decoration.bounds));
-        decorationJson.setMapValue("predraw", Valdi::Value(decoration.predraw));
-
-        if (decoration.color) {
-            decorationJson.setMapValue("color", Valdi::Value(decoration.color.value().toString()));
+        Valdi::Value visualEntryJson;
+        visualEntryJson.setMapValue("bounds", snap::drawing::toJSONValue(visualEntry.bounds));
+        visualEntryJson.setMapValue("predraw", Valdi::Value(visualEntry.predraw));
+        if (visualEntry.kind == TextLayoutVisualEntryKindBackground) {
+            visualEntryJson.setMapValue("kind", Valdi::Value("background"));
+        }
+        if (!visualEntry.borderRadius.isEmpty()) {
+            visualEntryJson.setMapValue("borderRadius", Valdi::Value(visualEntry.borderRadius.toString()));
+        }
+        if (visualEntry.style == TextLayoutDecorationStyleDashed) {
+            visualEntryJson.setMapValue("style", Valdi::Value("dashed"));
+        } else if (visualEntry.style == TextLayoutDecorationStyleDotted) {
+            visualEntryJson.setMapValue("style", Valdi::Value("dotted"));
         }
 
-        decorations->emplace(i, std::move(decorationJson));
+        if (visualEntry.color) {
+            visualEntryJson.setMapValue("color", Valdi::Value(visualEntry.color.value().toString()));
+        }
+
+        visualEntries->emplace(i, std::move(visualEntryJson));
     }
 
-    out.setMapValue("decorations", Valdi::Value(decorations));
+    out.setMapValue("visualEntries", Valdi::Value(visualEntries));
 
     return out;
 }

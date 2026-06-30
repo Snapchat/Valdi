@@ -40,9 +40,22 @@ static std::optional<TextDecoration> parseTextDecoration(const Valdi::TextDecora
             return {TextDecorationNone};
         case Valdi::TextDecoration::Underline:
             return {TextDecorationUnderline};
+        case Valdi::TextDecoration::DashedUnderline:
+            return {TextDecorationDashedUnderline};
+        case Valdi::TextDecoration::DottedUnderline:
+            return {TextDecorationDottedUnderline};
         case Valdi::TextDecoration::Strikethrough:
             return {TextDecorationStrikethrough};
     }
+}
+
+static TextBackgroundPadding snapDrawingPaddingFromValdiPadding(const Valdi::TextBackgroundPadding& padding) {
+    return TextBackgroundPadding{padding.left, padding.top, padding.right, padding.bottom};
+}
+
+static BorderRadius snapDrawingBorderRadiusFromValdiDimension(const Valdi::Dimension& dimension) {
+    return BorderRadius::makeOval(static_cast<Scalar>(dimension.value),
+                                  dimension.unit == Valdi::Dimension::Unit::Percent);
 }
 
 Valdi::Result<Valdi::Ref<AttributedText>> AttributedTextParser::parse(FontManager& fontManager,
@@ -76,11 +89,22 @@ Valdi::Result<Valdi::Ref<AttributedText>> AttributedTextParser::parse(FontManage
             part.style.color = {snapDrawingColorFromValdiColor(style.color.value().value)};
         }
 
+        if (style.background != nullptr) {
+            if (style.background->color) {
+                part.style.backgroundColor = {snapDrawingColorFromValdiColor(style.background->color.value().value)};
+            }
+            part.style.backgroundPadding = snapDrawingPaddingFromValdiPadding(style.background->padding);
+            part.style.backgroundBorderRadius =
+                snapDrawingBorderRadiusFromValdiDimension(style.background->borderRadius);
+        }
+
         if (style.onTap != nullptr) {
             part.style.onTap = Valdi::makeShared<AttributedTextOnTapAttributeWithValueFunction>(
                 LayerClass::makeTapGestureListener(style.onTap));
         }
 
+        part.style.inlineViewAttachment = style.inlineViewAttachment;
+        part.style.animationTransform = style.animationTransform;
         part.style.textDecoration = parseTextDecoration(style.textDecoration);
     }
 

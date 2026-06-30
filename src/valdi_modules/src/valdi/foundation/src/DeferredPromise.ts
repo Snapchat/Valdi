@@ -4,6 +4,7 @@
 export class DeferredPromiseTimeoutError extends Error {
   constructor(message: string) {
     super(message);
+    this.message = message;
     this.name = 'DeferredPromiseTimeoutError';
     Object.setPrototypeOf(this, DeferredPromiseTimeoutError.prototype);
   }

@@ -5,7 +5,7 @@
 //  Created by Simon Corsin on 4/26/21.
 //
 
-#include "valdi/runtime/Views/Measure.hpp"
+#include "valdi_core/cpp/Views/Measure.hpp"
 
 #include <algorithm>
 #include <cmath>

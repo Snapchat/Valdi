@@ -7,13 +7,16 @@
 
 #pragma once
 
+#include "valdi_core/cpp/Attributes/AttributeUtils.hpp"
 #include "valdi_core/cpp/Attributes/ColorPalette.hpp"
+#include "valdi_core/cpp/Attributes/TextInlineAttachment.hpp"
+#include "valdi_core/cpp/Utils/Bytes.hpp"
 #include "valdi_core/cpp/Utils/SmallVector.hpp"
 #include "valdi_core/cpp/Utils/ValdiObject.hpp"
 #include "valdi_core/cpp/Utils/Value.hpp"
 #include "valdi_core/cpp/Utils/ValueFunction.hpp"
 
-#include <vector>
+#include <cstdint>
 
 namespace Valdi {
 
@@ -46,6 +49,16 @@ public:
         return _parts[index].style;
     }
 
+    bool isContentEmpty() const {
+        for (const auto& part : _parts) {
+            if (!part.content.isEmpty()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
 private:
     Parts _parts;
 };
@@ -55,6 +68,8 @@ enum class TextDecoration {
     None,
     Strikethrough,
     Underline,
+    DashedUnderline,
+    DottedUnderline,
 };
 
 /**
@@ -69,19 +84,52 @@ struct ImageAttachment {
     /** Height of the image in logical pixels */
     float height = 0;
     /** PNG image data. Empty if placeholder. */
-    std::vector<uint8_t> imageData;
+    BytesView imageData;
 };
 
 struct TextAnimationTransform {
+    std::optional<StringBox> key;
     float translationY = 0;
     float scale = 1;
     float opacity = 1;
+    double duration = 0.35;
+    double timeOffsetBetweenParts = 0.0;
+    uint32_t groupIndex = 0;
+    uint32_t partIndexInGroup = 0;
+    StringBox partPattern;
+};
+
+struct TextBackgroundPadding {
+    float left = 0;
+    float top = 0;
+    float right = 0;
+    float bottom = 0;
+
+    constexpr bool operator==(const TextBackgroundPadding& other) const {
+        return left == other.left && top == other.top && right == other.right && bottom == other.bottom;
+    }
+
+    constexpr bool operator!=(const TextBackgroundPadding& other) const {
+        return !(*this == other);
+    }
+};
+
+class TextBackgroundAttributeStyle : public SimpleRefCountable {
+public:
+    TextBackgroundAttributeStyle() = default;
+    TextBackgroundAttributeStyle(const TextBackgroundAttributeStyle& other)
+        : color(other.color), padding(other.padding), borderRadius(other.borderRadius) {}
+
+    std::optional<Color> color;
+    TextBackgroundPadding padding;
+    Dimension borderRadius = Dimension(0, Dimension::Unit::None);
 };
 
 struct TextAttributeValueStyle {
     std::optional<StringBox> font;
     TextDecoration textDecoration = TextDecoration::Unset;
     std::optional<Color> color;
+    Ref<TextBackgroundAttributeStyle> background;
     Ref<ValueFunction> onTap;
     Ref<ValueFunction> onLayout;
     std::optional<Color> outlineColor;
@@ -89,6 +137,7 @@ struct TextAttributeValueStyle {
     std::optional<Color> outerOutlineColor;
     std::optional<float> outerOutlineWidth;
     std::optional<ImageAttachment> imageAttachment;
+    Ref<TextInlineAttachment> inlineViewAttachment;
     std::optional<TextAnimationTransform> animationTransform;
 };
 
@@ -107,7 +156,12 @@ public:
      */
     std::string toString() const;
 
+    size_t getAnimationTransformsSize() const;
+
     VALDI_CLASS_HEADER(TextAttributeValue)
+
+private:
+    size_t _animationTransformsSize = 0;
 };
 
 } // namespace Valdi

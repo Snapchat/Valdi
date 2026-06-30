@@ -3,23 +3,18 @@ package com.snap.valdi.attributes.impl
 import android.content.Context
 import android.text.InputType
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
-import com.snap.valdi.actions.ValdiAction
 import com.snap.valdi.attributes.AttributesBinder
 import com.snap.valdi.attributes.AttributesBindingContext
 import com.snap.valdi.attributes.impl.animations.ValdiAnimator
-import com.snap.valdi.callable.ValdiFunction
-import com.snap.valdi.views.ValdiEditText
 import com.snap.valdi.views.ValdiEditTextMultiline
 
 /**
  * Binds attributes for the EditTextMultiline's view class
  */
 class EditTextMultilineAttributesBinder(
-    private val context: Context,
-    private val editTextAttributesBinder: EditTextAttributesBinder
+    private val context: Context
 ) : AttributesBinder<ValdiEditTextMultiline> {
 
     override val viewClass: Class<ValdiEditTextMultiline>
@@ -39,14 +34,12 @@ class EditTextMultilineAttributesBinder(
             this::applyTextGravity,
             this::resetTextGravity
         )
-
         attributesBindingContext.bindStringAttribute(
             "contentType",
             false,
             this::applyContentType,
             this::resetContentType,
         )
-
         attributesBindingContext.setPlaceholderViewMeasureDelegate(lazy {
             ValdiEditTextMultiline(context).apply {
                 layoutParams = ViewGroup.LayoutParams(
@@ -59,11 +52,11 @@ class EditTextMultilineAttributesBinder(
 
     private fun applyReturnType(editText: ValdiEditTextMultiline, value: String, animator: ValdiAnimator?) {
         if (value == "linereturn") {
-            editText.allowLineReturns(true)
-            editTextAttributesBinder.applyReturnKeyText(editText, "done", animator)
+            editText.backingEditTextInput.allowLineReturns(true)
+            applyReturnKeyText(editText, "done")
         } else {
-            editText.allowLineReturns(false)
-            editTextAttributesBinder.applyReturnKeyText(editText, value, animator)
+            editText.backingEditTextInput.allowLineReturns(false)
+            applyReturnKeyText(editText, value)
         }
     }
 
@@ -72,7 +65,7 @@ class EditTextMultilineAttributesBinder(
     }
 
     private fun applyTextGravity(editText: ValdiEditTextMultiline, value: String, animator: ValdiAnimator?) {
-        editText.gravity = when (value) {
+        editText.backingEditTextInput.gravity = when (value) {
             "top" -> Gravity.TOP
             "center" -> Gravity.CENTER_VERTICAL
             "bottom" -> Gravity.BOTTOM
@@ -85,24 +78,34 @@ class EditTextMultilineAttributesBinder(
     }
 
     private fun applyContentType(editText: ValdiEditTextMultiline, value: String, animator: ValdiAnimator?) {
-        val cleared = editText.inputType and InputType.TYPE_MASK_VARIATION.inv() and InputType.TYPE_MASK_CLASS.inv()
-        editText.privateImeOptions = null
-        editText.disableMediaContent = false
-        when (value) {
-            "noSuggestions" -> {
-                editText.inputType = (cleared or
+        val inputType = editText.backingEditTextInput.valdiInputType
+        val clearedInputType = inputType and InputType.TYPE_MASK_VARIATION.inv() and InputType.TYPE_MASK_CLASS.inv()
+        editText.backingEditTextInput.setValdiInputType(
+            when (value) {
+                "noSuggestions" -> (clearedInputType or
                         InputType.TYPE_CLASS_TEXT or
                         InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
                         InputType.TYPE_TEXT_VARIATION_FILTER) and
                         InputType.TYPE_TEXT_FLAG_AUTO_CORRECT.inv()
-                editText.privateImeOptions = "disableSticker=true;disableGifKeyboard=true"
-                editText.disableMediaContent = true
+                else -> clearedInputType or InputType.TYPE_CLASS_TEXT
             }
-            else -> editText.inputType = cleared or InputType.TYPE_CLASS_TEXT
-        }
+        )
     }
 
     private fun resetContentType(editText: ValdiEditTextMultiline, animator: ValdiAnimator?) {
         applyContentType(editText, "default", animator)
     }
+
+    private fun applyReturnKeyText(editText: ValdiEditTextMultiline, value: String) {
+        editText.backingEditTextInput.imeOptions = when (value) {
+            "go" -> EditorInfo.IME_ACTION_GO
+            "join" -> EditorInfo.IME_ACTION_NEXT
+            "next" -> EditorInfo.IME_ACTION_NEXT
+            "search" -> EditorInfo.IME_ACTION_SEARCH
+            "send" -> EditorInfo.IME_ACTION_SEND
+            "continue" -> EditorInfo.IME_ACTION_NEXT
+            else -> EditorInfo.IME_ACTION_DONE
+        }
+    }
+
 }

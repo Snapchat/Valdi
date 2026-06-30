@@ -6,10 +6,14 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
+import android.widget.TextView
 import com.snap.valdi.attributes.impl.richtext.TextAlignment
-import com.snap.valdi.views.ValdiEditText
+import com.snap.valdi.views.ValdiTextHolder
 
-class ValdiTextViewBackgroundEffectsLayoutManager(private val textView: ValdiEditText) {
+class ValdiTextViewBackgroundEffectsLayoutManager(
+    private val textView: TextView,
+    private val textHolder: ValdiTextHolder
+) {
     private val backgroundPaint by lazy {
         Paint().apply {
             color = Color.TRANSPARENT
@@ -201,11 +205,11 @@ class ValdiTextViewBackgroundEffectsLayoutManager(private val textView: ValdiEdi
     }
 
     fun isRightAligned(): Boolean {
-        return textView.textViewHelper?.fontAttributes?.alignment == TextAlignment.RIGHT
+        return textHolder.textViewHelper?.fontAttributes?.alignment == TextAlignment.RIGHT
     }
 
     fun isLeftAligned(): Boolean {
-        return (textView.textViewHelper?.fontAttributes?.alignment
+        return (textHolder.textViewHelper?.fontAttributes?.alignment
             ?: TextAlignment.LEFT) == TextAlignment.LEFT
     }
 

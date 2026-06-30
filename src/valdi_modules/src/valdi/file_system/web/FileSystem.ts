@@ -1,4 +1,4 @@
-import { FileSystemModule, ReadFileOptions } from '../src/FileSystemModule';
+import { FileSystemModule, ReadFileOptions, WriteFileData } from '../src/FileSystemModule';
 
 const encUtf8 = new TextEncoder();
 const decUtf8 = new TextDecoder();
@@ -46,9 +46,20 @@ const dirs = new Set<string>([ROOT]);
 const files = new Map<string, Uint8Array>();
 let CWD = ROOT;
 
+function toBytes(data: WriteFileData): Uint8Array {
+  if (typeof data === "string") return encUtf8.encode(data);
+  if (data instanceof Uint8Array) return data.slice();
+  return new Uint8Array(data).slice();
+}
+
 /* -------- implementation -------- */
 
 const fsStub: FileSystemModule = {
+  existsSync(path: string): boolean {
+    const p = norm(path);
+    return files.has(p) || dirs.has(p);
+  },
+
   removeSync(path: string): boolean {
     const p = norm(path);
     if (files.delete(p)) return true;
@@ -106,16 +117,14 @@ const fsStub: FileSystemModule = {
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   },
 
-  writeFileSync(path: string, data: ArrayBuffer | string): void {
+  writeFileSync(path: string, data: WriteFileData): void {
     const p = norm(path);
     // ensure parent dir exists (be friendly in the stub)
     const parent = parentDir(p);
     if (!dirs.has(parent)) {
       this.createDirectorySync(parent, true);
     }
-    const bytes =
-      typeof data === "string" ? encUtf8.encode(data) : new Uint8Array(data);
-    files.set(p, bytes);
+    files.set(p, toBytes(data));
   },
 
   currentWorkingDirectory(): string {

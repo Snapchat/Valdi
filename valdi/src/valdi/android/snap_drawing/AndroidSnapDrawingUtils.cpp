@@ -1,7 +1,7 @@
 #include "valdi/android/snap_drawing/AndroidSnapDrawingUtils.hpp"
 #include "snap_drawing/cpp/Utils/Matrix.hpp"
 #include "snap_drawing/cpp/Utils/Path.hpp"
-#include "valdi/runtime/Views/Measure.hpp"
+#include "valdi_core/cpp/Views/Measure.hpp"
 #include "valdi_core/cpp/Utils/GeometricPath.hpp"
 #include "valdi_core/cpp/Utils/SmallVector.hpp"
 #include "valdi_core/jni/JavaUtils.hpp"

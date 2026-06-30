@@ -27,6 +27,8 @@ AndroidViewFactory::AndroidViewFactory(GlobalRefJavaObjectBase viewFactory,
       _viewManager(viewManager),
       _viewFactory(std::move(viewFactory)) {
     setIsUserSpecified(isUserSpecified);
+    setManagesChildFrames(
+        ValdiAndroid::JavaEnv::getCache().getViewFactoryManagesChildFramesMethod().call(_viewFactory.toObject()));
 }
 
 AndroidViewFactory::~AndroidViewFactory() = default;

@@ -9,6 +9,7 @@ COMPILER_FLAGS = COMMON_COMPILE_FLAGS + [
     "-Wno-ignored-qualifiers",
     "-Wno-shorten-64-to-32",
     "-Wno-bitwise-instead-of-logical",
+    "-Wno-deprecated-literal-operator",
     "-Wno-unknown-warning-option",
 ]
 

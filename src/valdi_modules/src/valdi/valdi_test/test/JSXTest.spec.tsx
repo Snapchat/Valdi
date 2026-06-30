@@ -54,12 +54,62 @@ describe('JSX', () => {
     }
 
     const component = createComponent(WebViewComponent);
-    const rootNode = await component.getRenderedNode();
-    const simplified = rootNode.simplify(['viewClass', 'attributes']);
-    const attributes = simplified.attributes!;
+    const componentNode = component.getComponent().renderer.getComponentVirtualNode(component.getComponent());
+    const webViewElement = componentNode.children[0].element!;
 
-    expect(simplified.viewClass).toEqual('SCValdiWebView');
-    expect(attributes.controller).toBeDefined();
+    expect(webViewElement.viewClass).toEqual('SCValdiWebView');
+    expect(webViewElement.getAttribute('controller')).toBeDefined();
+  });
+
+  it('can render a text animation group element', async () => {
+    class TextAnimationGroupComponent extends Component {
+      onRender() {
+        <view>
+          <textanimationgroup backgroundColor='blue'>
+            <view>
+              <label value='First' />
+            </view>
+            <textview value='Second' />
+          </textanimationgroup>
+        </view>;
+      }
+    }
+
+    const component = createComponent(TextAnimationGroupComponent);
+    const rootNode = await component.getRenderedNode();
+
+    expect(rootNode.simplify(['viewClass', 'attributes'])).toEqual({
+      viewClass: 'SCValdiView',
+      attributes: {},
+      children: [
+        {
+          viewClass: 'SCValdiTextAnimationGroup',
+          attributes: {
+            backgroundColor: 'blue',
+          },
+          children: [
+            {
+              viewClass: 'SCValdiView',
+              attributes: {},
+              children: [
+                {
+                  viewClass: 'SCValdiLabel',
+                  attributes: {
+                    value: 'First',
+                  },
+                },
+              ],
+            },
+            {
+              viewClass: 'SCValdiTextView',
+              attributes: {
+                value: 'Second',
+              },
+            },
+          ],
+        },
+      ],
+    });
   });
 
   it('can render a component with view model', async () => {

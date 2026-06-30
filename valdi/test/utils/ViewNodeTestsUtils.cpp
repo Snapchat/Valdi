@@ -87,6 +87,11 @@ StandaloneViewManager& ViewNodeTestsDependencies::getViewManager() {
     return _viewManager;
 }
 
+Ref<ViewFactory> ViewNodeTestsDependencies::getViewFactory(const char* viewClassName) {
+    auto className = StringCache::getGlobal().makeStringFromLiteral(viewClassName);
+    return _viewFactories->getViewFactory(className);
+}
+
 void ViewNodeTestsDependencies::setViewNodeAttribute(const Ref<ViewNode>& viewNode,
                                                      const char* attribute,
                                                      const Value& attributeValue) {

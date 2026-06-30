@@ -1,18 +1,87 @@
 import { LabelTextDecoration } from './NativeTemplateElements';
 import { AttributedTextInlineImageAttachment } from './AttributedTextInlineImageAttachment';
+import { AttributedTextInlineViewAttachment } from './AttributedTextInlineViewAttachment';
 
 export type AttributedTextOnTap = () => void;
 export type AttributedTextOnLayout = (x: number, y: number, width: number, height: number) => void;
 
 export interface AttributedTextAnimationTransform {
+  /**
+   * Stable animation identity for parts using this transform.
+   *
+   * When provided, native renderers use this key together with each part index
+   * to preserve animation progress in the owning ViewNode. This lets an
+   * animation continue from wall-clock elapsed time when the native label view
+   * is destroyed and later recreated from the view pool. When omitted, the
+   * animation is only identified by its part index within the currently
+   * committed text.
+   *
+   * Change the key when you intentionally want to start the animation again.
+   */
+  key?: string;
+
+  /**
+   * Initial vertical offset, in logical pixels, applied to each animated part.
+   *
+   * The part animates from this offset back to its normal text position.
+   */
   translationY?: number;
+
+  /**
+   * Initial scale applied to each animated part.
+   *
+   * The part animates from this scale back to 1.
+   */
   scale?: number;
+
+  /**
+   * Initial opacity applied to each animated part.
+   *
+   * The part animates from this opacity back to 1.
+   */
   opacity?: number;
+
+  /**
+   * Duration, in seconds, for each part to animate from the initial transform
+   * back to its normal text appearance.
+   */
+  duration?: number;
+
+  /**
+   * Delay, in seconds, between the start of each attributed text part in
+   * the same animation transaction.
+   *
+   * A value of 0 starts all parts at the same time. A value of 0.1 starts the
+   * first part immediately, the second after 0.1s, the third after 0.2s, and
+   * so on.
+   */
+  timeOffsetBetweenParts?: number;
+
+  /**
+   * Native regex whose non-overlapping matches become separate animated parts
+   * inside each attributed text part using this transform.
+   *
+   * Unmatched text is rendered normally and left unanimated. When omitted or
+   * empty, the whole attributed text part animates as one part.
+   */
+  partPattern?: string;
 }
+
+export interface AttributedTextBackgroundPadding {
+  left?: number;
+  top?: number;
+  right?: number;
+  bottom?: number;
+}
+
+export type AttributedTextBackgroundPaddingValue = number | AttributedTextBackgroundPadding;
 
 export interface AttributedTextAttributes {
   font?: string;
   color?: string;
+  backgroundColor?: string;
+  backgroundPadding?: AttributedTextBackgroundPaddingValue;
+  backgroundBorderRadius?: number | string;
   textDecoration?: LabelTextDecoration;
   onTap?: AttributedTextOnTap;
   // onLayout currently supports single line text only.
@@ -78,15 +147,31 @@ export const enum AttributedTextEntryType {
    */
   PushOuterOutlineWidth,
   /**
-   * Pushes an inline image attachment at the top of the style stack.
+   * Appends an inline image attachment.
    * The value should be an AttributedTextInlineImageAttachment object.
-   * Content should be the Unicode Object Replacement Character (U+FFFC).
    */
-  PushInlineImage,
+  InlineImage,
   /**
    * Pushes a per-part animation transform at the top of the style stack.
    */
   PushAnimationTransform,
+  /**
+   * Pushes a background color at the top of the style stack.
+   */
+  PushBackgroundColor,
+  /**
+   * Pushes background padding at the top of the style stack.
+   */
+  PushBackgroundPadding,
+  /**
+   * Pushes background border radius at the top of the style stack.
+   */
+  PushBackgroundBorderRadius,
+  /**
+   * Appends an inline view attachment.
+   * The value should be an AttributedTextInlineViewAttachment object.
+   */
+  InlineView,
 }
 
 export type AttributedTextChunk =
@@ -96,6 +181,8 @@ export type AttributedTextChunk =
   | AttributedTextOnTap
   | AttributedTextOnLayout
   | AttributedTextInlineImageAttachment
+  | AttributedTextInlineViewAttachment
+  | AttributedTextBackgroundPaddingValue
   | AttributedTextAnimationTransform;
 
 export type AttributedText = AttributedTextChunk[];

@@ -6,7 +6,7 @@
 //
 
 #include "valdi/runtime/Attributes/Yoga/Yoga.hpp"
-#include "valdi/runtime/Views/Frame.hpp"
+#include "valdi_core/cpp/Views/Frame.hpp"
 #include <yoga/YGNode.h>
 #include <yoga/YGNodePrint.h>
 

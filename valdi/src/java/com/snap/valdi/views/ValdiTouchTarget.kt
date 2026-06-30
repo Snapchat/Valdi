@@ -17,6 +17,10 @@ interface ValdiTouchTarget {
     // (If it wants the underlying view to receive the android event at all)
     fun processTouchEvent(event: MotionEvent): ValdiTouchEventResult
 
+    // Override this when Valdi gesture recognizers attached to the same view
+    // should receive the touch sequence alongside the touch target.
+    fun allowsSameViewGestureRecognizers(): Boolean = false
+
     // Override this method to perform a customized hit test of an event.
     // This can be used to pass an event to an underneath view.
     fun hitTest(event: MotionEvent): Boolean? = null

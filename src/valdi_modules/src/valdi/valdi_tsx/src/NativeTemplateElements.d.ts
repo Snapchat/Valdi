@@ -557,6 +557,7 @@ type _VideoView = { __nativeElementType?: 'VideoView' };
 type _Label = { __nativeElementType?: 'Label' };
 type _TextField = { __nativeElementType?: 'TextField' };
 type _TextView = { __nativeElementType?: 'TextView' };
+type _TextAnimationGroup = { __nativeElementType?: 'TextAnimationGroup' };
 type _BlurView = { __nativeElementType?: 'BlurView' };
 type _SpinnerView = { __nativeElementType?: 'SpinnerView' };
 type _ShapeView = { __nativeElementType?: 'ShapeView' };
@@ -1028,6 +1029,20 @@ export interface View extends _View, CommonView, ContainerTemplateElement {
   ref?: IRenderedElementHolder<this>;
 }
 
+// @NativeTemplateElement({ios: 'SCValdiTextAnimationGroup', android: 'com.snap.valdi.views.ValdiTextAnimationGroup', jsx: 'textanimationgroup'})
+export interface TextAnimationGroup extends _TextAnimationGroup, CommonView, ContainerTemplateElement {
+  /**
+   * Styling object allows to set multiple attribute at once
+   */
+  style?: _Style<TextAnimationGroup | View | Layout>;
+
+  /**
+   * Sets an element reference holder, which will keep track
+   * of the rendered elements.
+   */
+  ref?: IRenderedElementHolder<this>;
+}
+
 interface LeafView extends TemplateElement, ViewAttributes, LayoutAttributes {}
 
 export const enum EditTextUnfocusReason {
@@ -1046,6 +1061,19 @@ interface EditTextBeginEvent extends EditTextEvent {}
 
 interface EditTextEndEvent extends EditTextEvent {
   reason: EditTextUnfocusReason;
+}
+
+interface TextSelectionMenuEvent extends EditTextEvent {
+  selectedText: string;
+}
+
+interface TextSelectionMenuAction {
+  id: string;
+  title: string;
+}
+
+interface TextSelectionMenuActionEvent extends TextSelectionMenuEvent {
+  id: string;
 }
 
 /**
@@ -1120,6 +1148,12 @@ export interface CommonEditTextInterface extends LeafView, CommonTextAttributes 
    * @default: true
    */
   enabled?: boolean;
+
+  /**
+   * Allows text selection when the text input is not editable.
+   * @default: true
+   */
+  selectable?: boolean;
 
   /**
    * Set the text alignment within typing box of the text input
@@ -1245,7 +1279,7 @@ export interface TextFieldInteractive extends TextField {
 }
 
 // @NativeTemplateElement({ios: 'SCValdiTextView', android: 'com.snap.valdi.views.ValdiEditTextMultiline', jsx: 'textview'})
-export interface TextView extends _TextView, CommonEditTextInterface {
+export interface TextView extends _TextView, CommonEditTextInterface, ContainerTemplateElement {
   /**
    * The content type identifies what keyboard keys
    * and capabilities are available on the input and which ones appear by default.
@@ -1278,6 +1312,69 @@ export interface TextView extends _TextView, CommonEditTextInterface {
    * @default: "center"
    */
   textGravity?: TextViewTextGravity;
+
+  /**
+   * This property controls the maximum number of lines to use to fit the text view's text into its bounding rectangle.
+   * To remove any maximum limit, and use as many lines as needed, set the value to 0.
+   * @default: 0
+   */
+  numberOfLines?: number;
+
+  /**
+   * Optionally adds a visual decoration effect to the text view's text.
+   * @default: undefined
+   */
+  textDecoration?: LabelTextDecoration;
+
+  /**
+   * Controls how hidden text overflow content is signaled to users. It can be clipped or display
+   * an ellipsis.
+   * @default: undefined
+   */
+  textOverflow?: 'ellipsis' | 'clip';
+
+  /**
+   * Rendering size of each line of the text view as a multiple of the font height.
+   * If the lineHeight value is above 1, spacing is added on top of each line of the text.
+   * @default: 1
+   * Example: A value of 2 will double the height of each line.
+   */
+  lineHeight?: number;
+
+  /**
+   * Explicit rendering size of each line of the text view, in points.
+   * When both lineHeight and lineHeightAbsolute are provided, lineHeightAbsolute takes precedence.
+   * @default: undefined
+   */
+  lineHeightAbsolute?: number;
+
+  /**
+   * Overrides underline drawing geometry for underlined text ranges.
+   *
+   * Format: "height onWidth offWidth offset".
+   * Use "0 0" for onWidth/offWidth to draw a solid underline.
+   *
+   * @example
+   * ```
+   * customUnderlineStyle="1 1 1 -2"
+   * ```
+   *
+   * @default: undefined
+   */
+  customUnderlineStyle?: LabelCustomUnderlineStyle;
+
+  /**
+   * [iOS-Only]
+   * Builds custom edit menu actions for the current text selection.
+   * The system suggested edit menu actions, such as Copy, are appended by the native text view.
+   */
+  onTextSelectionMenu?: (event: TextSelectionMenuEvent) => TextSelectionMenuAction[];
+
+  /**
+   * [iOS-Only]
+   * Called when a custom edit menu action returned from onTextSelectionMenu is selected.
+   */
+  onTextSelectionMenuAction?: (event: TextSelectionMenuActionEvent) => void;
 
   /**
    * Set the color for the background effect of the text view
@@ -1565,12 +1662,34 @@ export interface CommonLabel extends CommonTextAttributes {
   textDecoration?: LabelTextDecoration;
 
   /**
-   * Rendering size of each line of the label, this value is a ratio of the font height.
-   * If the lineHeight ratio is above 1, spacing is added on top of each line of the text
+   * Overrides underline drawing geometry for underlined text ranges.
+   *
+   * Format: "height onWidth offWidth offset".
+   * Use "0 0" for onWidth/offWidth to draw a solid underline.
+   *
+   * @example
+   * ```
+   * customUnderlineStyle="1 1 1 -2"
+   * ```
+   *
+   * @default: undefined
+   */
+  customUnderlineStyle?: LabelCustomUnderlineStyle;
+
+  /**
+   * Rendering size of each line of the label as a multiple of the font height.
+   * If the lineHeight value is above 1, spacing is added on top of each line of the text.
    * @default: 1
-   * Example: A value of 2 will double the height of each line
+   * Example: A value of 2 will double the height of each line.
    */
   lineHeight?: number;
+
+  /**
+   * Explicit rendering size of each line of the label, in points.
+   * When both lineHeight and lineHeightAbsolute are provided, lineHeightAbsolute takes precedence.
+   * @default: undefined
+   */
+  lineHeightAbsolute?: number;
 
   /**
    * Extra spacing added at the end of each character, in points
@@ -1578,10 +1697,43 @@ export interface CommonLabel extends CommonTextAttributes {
    * @default: 0
    */
   letterSpacing?: number;
+
+  /**
+   * Whether the label text can be selected and copied.
+   * @default: false
+   */
+  selectable?: boolean;
+
+  /**
+   * Selection for the label.
+   * - first index for start of selection
+   * - second index for end of selection
+   * - set both to the same to select at a single position
+   */
+  selection?: [number, number];
+
+  /**
+   * Callback called when the label selection is changed.
+   * The event parameter contains the current text value and the selected indexes.
+   */
+  onSelectionChange?: (event: EditTextEvent) => void;
+
+  /**
+   * [iOS-Only]
+   * Builds custom edit menu actions for the current label text selection.
+   * The system suggested edit menu actions, such as Copy, are appended by the native label.
+   */
+  onTextSelectionMenu?: (event: TextSelectionMenuEvent) => TextSelectionMenuAction[];
+
+  /**
+   * [iOS-Only]
+   * Called when a custom edit menu action returned from onTextSelectionMenu is selected.
+   */
+  onTextSelectionMenuAction?: (event: TextSelectionMenuActionEvent) => void;
 }
 
-// @NativeTemplateElement({ios: 'SCValdiLabel', android: 'android.widget.TextView', jsx: 'label'})
-export interface Label extends _Label, LeafView, CommonLabel {
+// @NativeTemplateElement({ios: 'SCValdiLabel', android: 'com.snap.valdi.views.ValdiTextView', jsx: 'label'})
+export interface Label extends _Label, LeafView, ContainerTemplateElement, CommonLabel {
   /**
    * Styling object allows to set multiple attribute at once
    */
@@ -2203,7 +2355,8 @@ export type LayoutAccessibilityPriority = number | AccessibilityPriority;
 
 // Label attributes types
 export type LabelValue = string | AttributedText;
-export type LabelTextDecoration = 'none' | 'strikethrough' | 'underline';
+export type LabelTextDecoration = 'none' | 'strikethrough' | 'underline' | 'dashed-underline' | 'dotted-underline';
+export type LabelCustomUnderlineStyle = `${number} ${number} ${number} ${number}`;
 export type LabelTextAlign = 'left' | 'right' | 'center' | 'justified';
 export type LabelFontWeight = 'light' | 'normal' | 'medium' | 'demi-bold' | 'bold' | 'black';
 export type LabelFontStyle = 'normal' | 'italic';
