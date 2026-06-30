@@ -113,6 +113,7 @@ jobs:
             /tmp/valdi_app/config.yaml
             /tmp/valdi_app/WORKSPACE
             /tmp/valdi_app/.bazelrc
+            /tmp/bazel-cred-helper.log
           retention-days: 5
 
   # Note: Linux CLI distribution tests moved to dedicated workflow:

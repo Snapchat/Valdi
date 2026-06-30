@@ -37,7 +37,6 @@ runs:
       env:
         AUTH_OUTCOME: ${{ steps.auth.outcome }}
         CACHE_BUCKET: ${{ inputs.cache_bucket }}
-        ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
         EVENT_NAME: ${{ github.event_name }}
       run: |
         # Always write config=ci for non-remote flags (circuit breaker, etc.)
@@ -55,9 +54,16 @@ runs:
           exit 0
         fi
 
+        # Bazel credential helper for the GCS remote cache. Invoked per
+        # request (subject to its `expires` caching) so a single long-running
+        # `bazel build` can rotate tokens mid-build instead of being stuck
+        # with the bearer set at startup. Absolute path so the bootstrapped
+        # project at /tmp/valdi_app can find it too.
+        CRED_HELPER="$GITHUB_WORKSPACE/tools/ci/bazel_gcs_credential_helper.sh"
+
         # Checkout directory config
         echo "build --remote_cache=https://storage.googleapis.com/$CACHE_BUCKET" >> .bazelrc.local
-        echo "build \"--remote_header=Authorization=Bearer $ACCESS_TOKEN\"" >> .bazelrc.local
+        echo "build --credential_helper=storage.googleapis.com=$CRED_HELPER" >> .bazelrc.local
         # Only upload cache results on push (trusted) events, not pull requests
         if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$EVENT_NAME" = "release" ]; then
           echo "build --remote_upload_local_results=true" >> .bazelrc.local
@@ -71,13 +77,26 @@ runs:
 
         # Cache config for bootstrapped projects (discovered via try-import above)
         echo "build --remote_cache=https://storage.googleapis.com/$CACHE_BUCKET" >> "$CACHE_RC"
-        echo "build \"--remote_header=Authorization=Bearer $ACCESS_TOKEN\"" >> "$CACHE_RC"
+        echo "build --credential_helper=storage.googleapis.com=$CRED_HELPER" >> "$CACHE_RC"
         echo "build --experimental_circuit_breaker_strategy=failure" >> "$CACHE_RC"
         if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$EVENT_NAME" = "release" ]; then
           echo "build --remote_upload_local_results=true" >> "$CACHE_RC"
         else
           echo "build --remote_upload_local_results=false" >> "$CACHE_RC"
         fi
+
+        # Sanity-check: the helper must actually mint a Bearer token now that
+        # auth is set up. If it doesn't, fail fast with a readable error
+        # instead of letting the build go anonymous and 403 on every fetch.
+        HELPER_OUT="$("$CRED_HELPER" get <<< '{"uri":"https://storage.googleapis.com/"}')"
+        if ! printf '%s' "$HELPER_OUT" | jq -e '(.headers.Authorization[0] // "") | startswith("Bearer ")' >/dev/null; then
+          echo "::error::Bazel GCS credential helper did not return a Bearer token after auth succeeded."
+          echo "Helper output: $HELPER_OUT"
+          echo "Helper log (if any):"
+          cat /tmp/bazel-cred-helper.log 2>/dev/null || true
+          exit 1
+        fi
+        echo "Bazel GCS credential helper sanity check passed."
 
     - name: Prune and configure disk cache
       if: inputs.cache_key != ''
