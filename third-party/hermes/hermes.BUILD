@@ -20,6 +20,7 @@ COMPILER_FLAGS_COMPAT = [
     "-Wno-deprecated-pragma",
     "-Wno-unused-variable",
     "-Wno-implicit-fallthrough",
+    "-Wno-nontrivial-memcall",
     "-Wno-unknown-warning-option",
 ]
 
