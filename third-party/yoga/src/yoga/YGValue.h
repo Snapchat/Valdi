@@ -63,18 +63,18 @@ namespace facebook {
 namespace yoga {
 namespace literals {
 
-inline YGValue operator"" _pt(long double value) {
+inline YGValue operator""_pt(long double value) {
   return YGValue{static_cast<float>(value), YGUnitPoint};
 }
-inline YGValue operator"" _pt(unsigned long long value) {
-  return operator"" _pt(static_cast<long double>(value));
+inline YGValue operator""_pt(unsigned long long value) {
+  return operator""_pt(static_cast<long double>(value));
 }
 
-inline YGValue operator"" _percent(long double value) {
+inline YGValue operator""_percent(long double value) {
   return YGValue{static_cast<float>(value), YGUnitPercent};
 }
-inline YGValue operator"" _percent(unsigned long long value) {
-  return operator"" _percent(static_cast<long double>(value));
+inline YGValue operator""_percent(unsigned long long value) {
+  return operator""_percent(static_cast<long double>(value));
 }
 
 } // namespace literals
