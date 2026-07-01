@@ -228,6 +228,7 @@ cc_library(
     copts = COMPILER_FLAGS_COMPAT + COMMON_COMPILE_FLAGS + [
         "-Wno-deprecated-this-capture",
         "-Wno-vla-cxx-extension",
+        "-Wno-nontrivial-memcall",
     ],
     defines = ["VALDI_HAS_HERMES"],
     local_defines = select({
@@ -1105,3 +1106,4 @@ filegroup(
     ]),
     visibility = ["//visibility:public"],
 )
+
