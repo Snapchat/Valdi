@@ -62,12 +62,21 @@ sudo apt-get install -y \
     zlib1g-dev
 
 # libtinfo5 is not in the default repos on Ubuntu 24.04+ (used by newer GHA runners).
-# Fall back to the 22.04 archive package if apt can't find it.
+# Fall back to the 22.04 archive package if apt can't find it. Discover the deb
+# filename dynamically so a security-update revision bump (Ubuntu drops the old
+# file when it publishes the new one) doesn't 404 our pinned URL.
+ARCHIVE_URL="http://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses"
 if ! sudo apt-get install -y libtinfo5 2>/dev/null; then
-    echo "libtinfo5 not available in apt, downloading from Ubuntu 22.04 archive..."
-    wget -q http://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2ubuntu0.1_amd64.deb
-    sudo apt install -y ./libtinfo5_6.3-2ubuntu0.1_amd64.deb
-    rm libtinfo5_6.3-2ubuntu0.1_amd64.deb
+    echo "libtinfo5 not available in apt, downloading from Ubuntu archive..."
+    DEB=$(curl -fsSL "$ARCHIVE_URL/" | grep -oE 'libtinfo5_[^"]*_amd64\.deb' | sort -Vu | tail -n1)
+    if [ -z "$DEB" ]; then
+        echo "Could not locate a libtinfo5 deb under $ARCHIVE_URL/" >&2
+        exit 1
+    fi
+    echo "Fetching $DEB"
+    curl -fsSLO "$ARCHIVE_URL/$DEB"
+    sudo apt install -y "./$DEB"
+    rm "$DEB"
 fi
 
 # ---------------------------------------------------------------------------
