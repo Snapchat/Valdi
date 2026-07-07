@@ -200,6 +200,7 @@ void Runtime::postInit() {
 
     if (_javaScriptRuntime != nullptr) {
         _javaScriptRuntime->setListener(this);
+        _javaScriptRuntime->setModuleLoadDiagnosticsEnabled(enableModuleLoadDiagnostics());
     }
     _viewNodeManager.setRuntime(weakRef(this));
     _contextManager.setListener(this);
@@ -566,6 +567,15 @@ bool Runtime::disablePersistentStoreEncryption() {
     }
 
     return runtimeTweaks->disablePersistentStoreEncryption();
+}
+
+bool Runtime::enableModuleLoadDiagnostics() {
+    const auto& runtimeTweaks = getRuntimeTweaks();
+    if (runtimeTweaks == NULL) {
+        return false;
+    }
+
+    return runtimeTweaks->enableModuleLoadDiagnostics();
 }
 
 void Runtime::daemonClientConnected(const Shared<IDaemonClient>& daemonClient) {

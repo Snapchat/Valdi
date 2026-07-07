@@ -120,6 +120,46 @@ const ResourceId& symbolicatorResourceId() {
     return kSymbolicatorResourceId;
 }
 
+namespace {
+
+// Records the JS module being loaded so an unattributed ANR can name it. Saves and restores the
+// previous path on scope exit, so nested requires report the innermost and unwind to the parent.
+// No-op when diagnostics are off.
+class ScopedModuleLoadActivity {
+public:
+    ScopedModuleLoadActivity(bool enabled,
+                             Mutex& mutex,
+                             StringBox& currentPath,
+                             const StringBox& modulePath)
+        : _enabled(enabled), _mutex(mutex), _currentPath(currentPath) {
+        if (!_enabled) {
+            return;
+        }
+        std::lock_guard<Mutex> lock(_mutex);
+        _previousPath = _currentPath;
+        _currentPath = modulePath;
+    }
+
+    ~ScopedModuleLoadActivity() {
+        if (!_enabled) {
+            return;
+        }
+        std::lock_guard<Mutex> lock(_mutex);
+        _currentPath = _previousPath;
+    }
+
+    ScopedModuleLoadActivity(const ScopedModuleLoadActivity&) = delete;
+    ScopedModuleLoadActivity& operator=(const ScopedModuleLoadActivity&) = delete;
+
+private:
+    bool _enabled;
+    Mutex& _mutex;
+    StringBox& _currentPath;
+    StringBox _previousPath;
+};
+
+} // namespace
+
 static ContextId getParameterAsContextId(JSFunctionNativeCallContext& callContext, size_t index) {
     return static_cast<ContextId>(callContext.getParameterAsInt(index));
 }
@@ -1368,6 +1408,10 @@ JSValueRef JavaScriptRuntime::loadJsModule(IJavaScriptContext& jsContext,
                                            size_t parametersLength,
                                            JSExceptionTracker& exceptionTracker) {
     VALDI_TRACE_META("Valdi.loadJsModule", importPath);
+    ScopedModuleLoadActivity moduleLoadActivity(_moduleLoadDiagnosticsEnabled,
+                                                _moduleLoadActivityMutex,
+                                                _currentModuleLoadPath,
+                                                importPath);
     snap::utils::time::StopWatch sw;
     sw.start();
 
@@ -3709,6 +3753,19 @@ bool JavaScriptRuntime::isInJsThread() {
 
 Ref<Context> JavaScriptRuntime::getLastDispatchedContext() const {
     return _contextManager.getContext(_lastDispatchedContextId.load());
+}
+
+void JavaScriptRuntime::setModuleLoadDiagnosticsEnabled(bool enabled) {
+    _moduleLoadDiagnosticsEnabled = enabled;
+}
+
+std::string JavaScriptRuntime::getCurrentModuleLoadInfo() const {
+    StringBox currentModuleLoadPath;
+    {
+        std::lock_guard<Mutex> lock(_moduleLoadActivityMutex);
+        currentModuleLoadPath = _currentModuleLoadPath;
+    }
+    return currentModuleLoadPath.isEmpty() ? std::string() : currentModuleLoadPath.slowToString();
 }
 
 DispatchFunction JavaScriptRuntime::makeJsThreadDispatchFunction(Ref<Context>&& ownerContext,

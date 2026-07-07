@@ -185,6 +185,7 @@ public:
 
     void setListener(IJavaScriptRuntimeListener* listener);
     IJavaScriptRuntimeListener* getListener() const;
+    void setModuleLoadDiagnosticsEnabled(bool enabled);
 
     void fullTeardown();
     void partialTeardown();
@@ -236,6 +237,7 @@ public:
     void dispatchSynchronouslyOnJsThread(JavaScriptThreadTask&& function);
     bool isInJsThread() final;
     Ref<Context> getLastDispatchedContext() const final;
+    std::string getCurrentModuleLoadInfo() const final;
 
     void performGc();
     JavaScriptContextMemoryStatistics dumpMemoryStatistics();
@@ -361,6 +363,11 @@ private:
     Ref<DispatchQueue> _dispatchQueue;
     std::atomic<bool> _isDisposed;
     std::atomic<ContextId> _lastDispatchedContextId;
+    // Module-load attribution for ANRs, gated by VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS. The mutex guards
+    // the path: written on the JS thread around module eval, read by the ANR detector without running JS.
+    bool _moduleLoadDiagnosticsEnabled = false;
+    mutable Mutex _moduleLoadActivityMutex;
+    StringBox _currentModuleLoadPath;
     // A lock that will block the JS thread until postInit() is called and the initialization has completed
     AsyncGroup _initLock;
     bool _hasGcScheduled = false;

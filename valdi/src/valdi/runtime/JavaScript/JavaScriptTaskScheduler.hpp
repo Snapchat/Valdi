@@ -13,6 +13,7 @@
 #include "valdi_core/cpp/Utils/Function.hpp"
 #include "valdi_core/cpp/Utils/Shared.hpp"
 
+#include <string>
 #include <vector>
 
 namespace Valdi {
@@ -78,6 +79,12 @@ public:
      */
     virtual std::vector<JavaScriptCapturedStacktrace> captureStackTraces(
         std::chrono::steady_clock::duration timeout) = 0;
+
+    // The module being imported/evaluated on the JS thread, or empty if none or diagnostics are off.
+    // Readable from another thread without running JS, for attributing ANRs.
+    virtual std::string getCurrentModuleLoadInfo() const {
+        return {};
+    }
 };
 
 } // namespace Valdi

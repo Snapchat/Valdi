@@ -37,6 +37,7 @@ public:
     // True when VALDI_MAX_VIEW_OPERATIONS_PROCESSING_TIME > 0 (throttling enabled). Gates top-down move order in TS.
     bool useTopDownMoveOrder() const;
     bool enableMmapModuleArchives() const;
+    bool enableModuleLoadDiagnostics() const;
     bool enableFixFlexBasisFitContent() const;
 
 private:

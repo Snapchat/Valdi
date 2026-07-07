@@ -7,6 +7,9 @@
 #include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
 #include "valdi_core/cpp/Utils/Exception.hpp"
 
+#include <string>
+#include <utility>
+
 using namespace Valdi;
 
 namespace ValdiTest {
@@ -44,6 +47,10 @@ public:
             JavaScriptCapturedStacktrace::Status::RUNNING, STRING_LITERAL("A fake stacktrace"), nullptr)};
     }
 
+    std::string getCurrentModuleLoadInfo() const override {
+        return _moduleLoadInfo;
+    }
+
     int getLastTaskId() {
         return _taskIdSequence;
     }
@@ -52,9 +59,14 @@ public:
         _shouldSimulateANR = true;
     }
 
+    void setModuleLoadInfo(std::string moduleLoadInfo) {
+        _moduleLoadInfo = std::move(moduleLoadInfo);
+    }
+
 private:
     std::atomic_bool _shouldSimulateANR = false;
     std::atomic_int _taskIdSequence = 0;
+    std::string _moduleLoadInfo;
 };
 
 struct ANRDetectorTestHelper {
@@ -127,6 +139,27 @@ TEST(ANRDetector, detectsANRWhenTaskAreHanging) {
     ASSERT_EQ(static_cast<size_t>(1), anr->getCapturedStacktraces().size());
     ASSERT_EQ(STRING_LITERAL("A fake stacktrace"), anr->getCapturedStacktraces()[0].getStackTrace());
     ASSERT_EQ("Detected unattributed ANR after 1.0 ms", anr->getMessage());
+}
+
+TEST(ANRDetector, includesModuleLoadInfoInMessageWhenSet) {
+    ANRDetectorTestHelper helper;
+
+    helper.taskScheduler->setShouldSimulateANR();
+    helper.taskScheduler->setModuleLoadInfo("send_to_lists/SendToListPickerV2.js (4200ms)");
+
+    helper.anrDetector->onEnterForeground();
+    helper.anrDetector->start(std::chrono::milliseconds(1));
+
+    helper.waitForNextTick();
+    helper.waitForNextTick();
+    helper.waitForNextTick();
+
+    auto anr = helper.getLastANR();
+    ASSERT_TRUE(anr.has_value());
+
+    ASSERT_EQ(
+        "Detected unattributed ANR after 1.0 ms [module-load: send_to_lists/SendToListPickerV2.js (4200ms)]",
+        anr->getMessage());
 }
 
 } // namespace ValdiTest

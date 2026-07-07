@@ -157,6 +157,13 @@ bool JavaScriptANRDetector::onANR(JavaScriptTaskScheduler& taskScheduler,
         message += " but unable to capture stack traces.";
     }
 
+    // getCurrentModuleLoadInfo() reads saved native state, not JS, so it is safe to call while the
+    // ANR has the JS thread stuck.
+    auto moduleLoadInfo = taskScheduler.getCurrentModuleLoadInfo();
+    if (!moduleLoadInfo.empty()) {
+        message += " [module-load: " + moduleLoadInfo + "]";
+    }
+
     VALDI_ERROR(*_logger, "{}", message);
     for (const auto& stacktrace : stacktraces) {
         if (stacktrace.getStatus() == JavaScriptCapturedStacktrace::Status::RUNNING) {
