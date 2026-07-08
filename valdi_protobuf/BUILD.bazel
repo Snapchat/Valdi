@@ -1,3 +1,5 @@
+load("@protobuf_cpp//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@protobuf_cpp//bazel:proto_library.bzl", "proto_library")
 load("//bzl:valdi_library.bzl", "COMMON_COMPILE_FLAGS")
 
 COMPILER_FLAGS = COMMON_COMPILE_FLAGS + [
@@ -29,26 +31,39 @@ cc_library(
 
 cc_library(
     name = "index_proto",
-    srcs = ["src/valdi_protobuf/protos/DescriptorIndex.pb.cc"],
-    hdrs = ["src/valdi_protobuf/protos/DescriptorIndex.pb.h"],
-    copts = COMPILER_FLAGS,
-    strip_include_prefix = "src",
-    deps = [
-        "@protobuf_cpp//:protobuf",
-    ],
+    deps = [":descriptor_index_cc_proto"],
+)
+
+proto_library(
+    name = "descriptor_index_proto",
+    srcs = ["src/valdi_protobuf/protos/DescriptorIndex.proto"],
+    strip_import_prefix = "src",
+)
+
+cc_proto_library(
+    name = "descriptor_index_cc_proto",
+    deps = [":descriptor_index_proto"],
 )
 
 cc_library(
     name = "test_proto",
     testonly = 1,
-    srcs = glob(["test/protogen/**/*.cc"]),
-    hdrs = glob(["test/protogen/**/*.h"]),
-    copts = COMMON_COMPILE_FLAGS,
-    strip_include_prefix = "test",
+    deps = [":test_cc_proto"],
+)
+
+proto_library(
+    name = "test_proto_src",
+    testonly = 1,
+    srcs = ["test/proto/test.proto"],
+    import_prefix = "protogen",
+    strip_import_prefix = "test/proto",
+)
+
+cc_proto_library(
+    name = "test_cc_proto",
+    testonly = 1,
     visibility = ["//visibility:public"],
-    deps = [
-        "@protobuf_cpp//:protobuf",
-    ],
+    deps = [":test_proto_src"],
 )
 
 cc_test(

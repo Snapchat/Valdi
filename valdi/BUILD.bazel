@@ -449,23 +449,10 @@ cc_library(
     alwayslink = True,
 )
 
-cc_library(
+alias(
     name = "valdi_proto_cc",
-    srcs = glob([
-        "protogen-lite/valdi/**/*.h",
-        "protogen-lite/valdi/**/*.cc",
-    ]),
-    hdrs = glob(["protogen-lite/valdi/**/*.h"]),
-    copts = COMMON_COMPILE_FLAGS + [
-        "-Wno-deprecated-declarations",
-        "-Wno-gcc-compat",
-        "-Wno-zero-length-array",
-    ],
-    defines = ["GRPC_USE_PROTO_LITE"],
-    strip_include_prefix = "protogen-lite",
-    tags = ["exported"],
+    actual = "//compiler/compiler:valdi_proto_cc",
     visibility = ["//visibility:public"],
-    deps = ["@protobuf_cpp//:protobuf_lite"],
 )
 
 ANDROID_XML_RES = glob(["res/xml/**/*.xml"])

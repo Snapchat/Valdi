@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+option optimize_for = LITE_RUNTIME;
+
+package DescriptorIndex;
+
+message FileEntry {
+  string file_name = 1;
+  uint64 data_offset = 2;
+  uint32 length = 3;
+}
+
+message Symbol {
+  string full_name = 1;
+  uint32 file_index = 2;
+}
+
+message Package {
+  string full_name = 1;
+  repeated uint32 symbol_indexes = 2;
+  repeated uint32 nested_package_indexes = 3;
+}
+
+message DescriptorIndex {
+  repeated FileEntry files = 1;
+  repeated Symbol symbols = 2;
+  repeated Package packages = 3;
+}

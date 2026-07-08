@@ -1,5 +1,20 @@
 load("@bazel_skylib//rules:native_binary.bzl", "native_binary")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_binary")
+load("@protobuf_cpp//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@protobuf_cpp//bazel:proto_library.bzl", "proto_library")
+
+proto_library(
+    name = "valdi_proto",
+    srcs = ["valdi.proto"],
+    import_prefix = "valdi",
+    strip_import_prefix = "",
+)
+
+cc_proto_library(
+    name = "valdi_proto_cc",
+    visibility = ["//visibility:public"],
+    deps = [":valdi_proto"],
+)
 
 # Bazel-built Valdi compiler. rules_swift swift_binary built from source.
 # Usable directly with:
