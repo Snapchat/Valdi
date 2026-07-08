@@ -1,12 +1,12 @@
 server: https://app.fossa.com
 
-remote-dependencies: 
+remote-dependencies:
 - name: toolchains_llvm
   version: 1.3.0
   url: https://github.com/bazel-contrib/toolchains_llvm/releases/download/v1.3.0/toolchains_llvm-v1.3.0.tar.gz
 - name: com_google_protobuf
-  version: 27.0
-  url: https://github.com/protocolbuffers/protobuf/releases/download/v27.0/protobuf-27.0.tar.gz
+  version: 29.3
+  url: https://github.com/protocolbuffers/protobuf/releases/download/v29.3/protobuf-29.3.tar.gz
 - name: rules_cc
   version: 0.0.17
   url: https://github.com/bazelbuild/rules_cc/releases/download/0.0.17/rules_cc-0.0.17.tar.gz

@@ -33,8 +33,8 @@ def setup_dependencies(workspace_root = None):
     http_archive(
         name = "com_google_protobuf",
         #sha256 = "",
-        strip_prefix = "protobuf-27.0",
-        url = "https://github.com/protocolbuffers/protobuf/releases/download/v27.0/protobuf-27.0.tar.gz",
+        strip_prefix = "protobuf-29.3",
+        url = "https://github.com/protocolbuffers/protobuf/releases/download/v29.3/protobuf-29.3.tar.gz",
     )
 
     http_archive(
