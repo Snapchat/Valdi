@@ -571,6 +571,7 @@ type _Label = { __nativeElementType?: 'Label' };
 type _TextField = { __nativeElementType?: 'TextField' };
 type _TextView = { __nativeElementType?: 'TextView' };
 type _BlurView = { __nativeElementType?: 'BlurView' };
+type _GlassView = { __nativeElementType?: 'GlassView' };
 type _SpinnerView = { __nativeElementType?: 'SpinnerView' };
 type _ShapeView = { __nativeElementType?: 'ShapeView' };
 
@@ -2013,6 +2014,67 @@ export interface BlurView extends _BlurView, ViewAttributes, LayoutAttributes, C
    * Styling object allows to set multiple attribute at once
    */
   style?: _Style<BlurView | View | Layout>;
+
+  /**
+   * Sets an element reference holder, which will keep track
+   * of the rendered elements.
+   */
+  ref?: IRenderedElementHolder<this>;
+}
+
+/**
+ * The visual style of a `<glass>` element's Liquid Glass material.
+ *
+ * - `regular`: an adaptive, frosted material that adjusts to the content behind it.
+ * - `clear`: a more transparent material that shows more of the content behind it.
+ */
+export type GlassStyle = 'regular' | 'clear';
+
+/**
+ * `<glass>` renders an Apple "Liquid Glass" material (iOS 26+) behind its children.
+ *
+ * iOS ONLY. There is no Android equivalent for `UIGlassEffect`, so on Android
+ * `<glass>` falls through to a plain `ValdiView` (children render, no material,
+ * no crash) — mirroring `<blur>`. On iOS below 26 it degrades to a `UIBlurEffect`
+ * material so the surface still looks reasonable with no caller changes.
+ *
+ * Prefer `glassTintColor` over `backgroundColor` to tint the material:
+ * `backgroundColor` (and gradient `background`) paint an opaque layer that sits
+ * over the sampled backdrop and muddies the glass, exactly as on `<blur>`.
+ *
+ * If you need a bespoke Android/older-iOS appearance, branch in TS with
+ * `Device.isIOS()` / `Device.getSystemVersion()` and render a translucent
+ * `<view>` fallback.
+ */
+// @NativeTemplateElement({ios: 'SCValdiGlassView', android: 'com.snap.valdi.views.ValdiView', jsx: 'glass'})
+export interface GlassView
+  extends _GlassView,
+    ViewAttributes,
+    LayoutAttributes,
+    LayoutChildrenAttributes,
+    ContainerTemplateElement {
+  /**
+   * The Liquid Glass material style. Defaults to `regular`. iOS 26+ only;
+   * ignored on Android and older iOS.
+   */
+  glassStyle?: GlassStyle;
+
+  /**
+   * A color to tint the glass material with. iOS 26+ only; ignored on Android
+   * and older iOS. Use this instead of `backgroundColor` to tint the material.
+   */
+  glassTintColor?: Color;
+
+  /**
+   * When `true`, the glass reacts to touches with the interactive Liquid Glass
+   * animation. Defaults to `false`. iOS 26+ only; ignored on Android and older iOS.
+   */
+  interactive?: boolean;
+
+  /**
+   * Styling object allows to set multiple attribute at once
+   */
+  style?: _Style<GlassView | View | Layout>;
 
   /**
    * Sets an element reference holder, which will keep track

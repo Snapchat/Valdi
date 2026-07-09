@@ -10,4 +10,5 @@ export enum IRenderedElementViewClass {
   ScrollView = 'SCValdiScrollView',
   Shape = 'SCValdiShapeView',
   AnimatedImage = 'SCValdiAnimatedContentView',
+  Glass = 'SCValdiGlassView',
 }

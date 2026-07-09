@@ -62,6 +62,35 @@ describe('JSX', () => {
     expect(attributes.controller).toBeDefined();
   });
 
+  it('can render a glass element with children and passes glass attributes through', async () => {
+    class GlassComponent extends Component {
+      onRender() {
+        <glass glassStyle='clear' glassTintColor='red' interactive={true}>
+          <label value='Behind glass' />
+        </glass>;
+      }
+    }
+
+    const component = createComponent(GlassComponent);
+    const rootNode = await component.getRenderedNode();
+    expect(rootNode.simplify(['viewClass', 'attributes'])).toEqual({
+      viewClass: 'SCValdiGlassView',
+      attributes: {
+        glassStyle: 'clear',
+        glassTintColor: 'red',
+        interactive: true,
+      },
+      children: [
+        {
+          viewClass: 'SCValdiLabel',
+          attributes: {
+            value: 'Behind glass',
+          },
+        },
+      ],
+    });
+  });
+
   it('can render a component with view model', async () => {
     interface ViewModel {
       text: string;

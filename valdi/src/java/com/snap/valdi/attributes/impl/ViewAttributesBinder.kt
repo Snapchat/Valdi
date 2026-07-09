@@ -562,6 +562,37 @@ class ViewAttributesBinder(private val context: Context,
         // no-op on Android — no native BlurView implementation yet.
     }
 
+    // glassStyle / glassTintColor / interactive are iOS-only attributes on the
+    // `<glass>` element (Liquid Glass, mapped to SCValdiGlassView on iOS). There
+    // is no Android equivalent for UIGlassEffect, so `<glass>` falls through to
+    // ValdiView here (see the GlassView doc comment in
+    // valdi_tsx/src/NativeTemplateElements.d.ts). Register them as no-ops for the
+    // same reason as blurStyle above: so the C++ attribute applier finds a handler
+    // and does not log `Could not find attribute` for every mounted <glass>.
+    fun applyGlassStyle(view: View, value: String, animator: ValdiAnimator?) {
+        // no-op on Android — no native Liquid Glass implementation.
+    }
+
+    fun resetGlassStyle(view: View, animator: ValdiAnimator?) {
+        // no-op on Android — no native Liquid Glass implementation.
+    }
+
+    fun applyGlassTintColor(view: View, value: Int, animator: ValdiAnimator?) {
+        // no-op on Android — no native Liquid Glass implementation.
+    }
+
+    fun resetGlassTintColor(view: View, animator: ValdiAnimator?) {
+        // no-op on Android — no native Liquid Glass implementation.
+    }
+
+    fun applyGlassInteractive(view: View, value: Boolean, animator: ValdiAnimator?) {
+        // no-op on Android — no native Liquid Glass implementation.
+    }
+
+    fun resetGlassInteractive(view: View, animator: ValdiAnimator?) {
+        // no-op on Android — no native Liquid Glass implementation.
+    }
+
     override fun bindAttributes(attributesBindingContext: AttributesBindingContext<View>) {
         attributesBindingContext.bindArrayAttribute("background", false, this::applyBackground, this::resetBackground)
         attributesBindingContext.bindColorAttribute("backgroundColor", false, this::applyBackgroundColor, this::resetBackground)
@@ -616,5 +647,10 @@ class ViewAttributesBinder(private val context: Context,
 
         // iOS-only BlurView attribute; accepted as no-op on Android — see applyBlurStyle above.
         attributesBindingContext.bindStringAttribute("blurStyle", false, this::applyBlurStyle, this::resetBlurStyle)
+
+        // iOS-only Liquid Glass (`<glass>`) attributes; accepted as no-ops on Android — see applyGlassStyle above.
+        attributesBindingContext.bindStringAttribute("glassStyle", false, this::applyGlassStyle, this::resetGlassStyle)
+        attributesBindingContext.bindColorAttribute("glassTintColor", false, this::applyGlassTintColor, this::resetGlassTintColor)
+        attributesBindingContext.bindBooleanAttribute("interactive", false, this::applyGlassInteractive, this::resetGlassInteractive)
     }
 }

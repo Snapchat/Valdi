@@ -1,4 +1,4 @@
-import { AnimatedImage, ImageView, Label, Layout, ScrollView, ShapeView, SpinnerView, TextField, TextView, View, WebViewElement } from "valdi_tsx/src/NativeTemplateElements";
+import { AnimatedImage, GlassView, ImageView, Label, Layout, ScrollView, ShapeView, SpinnerView, TextField, TextView, View, WebViewElement } from "valdi_tsx/src/NativeTemplateElements";
 import { IRenderedElementViewClass } from "./IRenderedElementViewClass";
 
 type Mapping = {
@@ -13,6 +13,7 @@ type Mapping = {
     [IRenderedElementViewClass.ScrollView]: ScrollView;
     [IRenderedElementViewClass.Shape]: ShapeView;
     [IRenderedElementViewClass.AnimatedImage]: AnimatedImage;
+    [IRenderedElementViewClass.Glass]: GlassView;
 }
 
 export type ElementForViewClass<T extends IRenderedElementViewClass> = Mapping[T];

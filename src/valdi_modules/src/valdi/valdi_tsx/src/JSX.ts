@@ -4,6 +4,7 @@ import {
   AnimatedImage,
   BlurView,
   ContainerTemplateElement,
+  GlassView,
   ImageView,
   VideoView,
   WebViewElement,
@@ -48,6 +49,7 @@ declare global {
       textfield: TextField;
       textview: TextView;
       blur: BlurView;
+      glass: GlassView;
       slot: Slot;
       slotted: Slotted;
       spinner: SpinnerView;
