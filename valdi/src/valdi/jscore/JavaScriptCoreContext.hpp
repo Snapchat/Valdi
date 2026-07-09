@@ -159,6 +159,7 @@ public:
     void garbageCollect() override;
 
     Valdi::JavaScriptContextMemoryStatistics dumpMemoryStatistics() override;
+    static Valdi::JavaScriptContextMemoryStatistics (*s_dumpMemoryStatisticsOverride)(JSGlobalContextRef);
 
     void startDebugger(bool isWorker) override;
 

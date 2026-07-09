@@ -120,6 +120,9 @@ private:
     Valdi::ReferenceInfo _referenceInfo;
 };
 
+Valdi::JavaScriptContextMemoryStatistics (*JavaScriptCoreContext::s_dumpMemoryStatisticsOverride)(JSGlobalContextRef) =
+    nullptr;
+
 JavaScriptCoreContext::JavaScriptCoreContext(Valdi::JavaScriptTaskScheduler* taskScheduler,
                                              [[maybe_unused]] Valdi::ILogger& logger)
     : IJavaScriptContext(taskScheduler), _logger(logger) {
@@ -306,6 +309,10 @@ void JavaScriptCoreContext::garbageCollect() {
 }
 
 Valdi::JavaScriptContextMemoryStatistics JavaScriptCoreContext::dumpMemoryStatistics() {
+    if (s_dumpMemoryStatisticsOverride) {
+        return s_dumpMemoryStatisticsOverride(_globalContext);
+    }
+
     Valdi::JavaScriptContextMemoryStatistics out;
 
     if constexpr (!snap::kIsAppstoreBuild || !snap::isIos()) {
@@ -314,6 +321,10 @@ Valdi::JavaScriptContextMemoryStatistics JavaScriptCoreContext::dumpMemoryStatis
 
         if (JSGetMemoryUsageStatistics) {
             auto memoryUsageJs = JSGetMemoryUsageStatistics(_globalContext);
+
+            if (!memoryUsageJs) {
+                return out;
+            }
 
             Valdi::JSExceptionTracker exceptionTracker(*this);
             auto memoryUsage = Valdi::jsValueToValue(
