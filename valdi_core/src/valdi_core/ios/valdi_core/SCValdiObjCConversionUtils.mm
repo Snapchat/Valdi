@@ -349,6 +349,7 @@ id<SCValdiFunction> FunctionFromValueFunction(const Valdi::Ref<Valdi::ValueFunct
 
     Valdi::Value ValueFromNSDictionary(NSDictionary<NSString *, id> *dict) {
         auto map = Valdi::makeShared<Valdi::ValueMap>();
+        map->reserve(dict.count);
         for (NSString *key in dict) {
             id value = [dict objectForKey:key];
             auto weakValue = ValueFromNSObject(value);
