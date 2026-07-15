@@ -43,6 +43,7 @@
 #include "utils/time/StopWatch.hpp"
 
 #include "valdi_core/cpp/Utils/Function.hpp"
+#include <atomic>
 #include <future>
 #include <tuple>
 #include <utility>
@@ -183,8 +184,35 @@ public:
 
     void postInit();
 
-    void setListener(IJavaScriptRuntimeListener* listener);
-    IJavaScriptRuntimeListener* getListener() const;
+    /**
+     A listener reference that retains the listener's owner while held, so a caller can safely
+     invoke the listener even if the owning runtime is concurrently being torn down on another
+     thread (e.g. a worker's JS thread using the parent runtime's listener).
+     */
+    class RetainedListener {
+    public:
+        RetainedListener() = default;
+        RetainedListener(IJavaScriptRuntimeListener* listener, Shared<SharedPtrRefCountable> owner)
+            : _listener(listener), _owner(std::move(owner)) {}
+
+        explicit operator bool() const {
+            return _listener != nullptr;
+        }
+        IJavaScriptRuntimeListener* operator->() const {
+            return _listener;
+        }
+
+    private:
+        IJavaScriptRuntimeListener* _listener = nullptr;
+        Shared<SharedPtrRefCountable> _owner;
+    };
+
+    /**
+     `listenerOwner` must own (or be) the object implementing `listener`; getListener() resolves
+     the listener only while the owner is still alive and retains it for the handle's lifetime.
+     */
+    void setListener(IJavaScriptRuntimeListener* listener, const Weak<SharedPtrRefCountable>& listenerOwner);
+    RetainedListener getListener() const;
     void setModuleLoadDiagnosticsEnabled(bool enabled);
 
     void fullTeardown();
@@ -336,7 +364,13 @@ private:
     MainThreadManager& _mainThreadManager;
     AttributeIds& _attributeIds;
     [[maybe_unused]] Ref<ILogger> _logger;
+    // Guarded by _listenerMutex: written from the owning runtime's thread (setListener, teardown)
+    // but also from a parent runtime detaching its workers during teardown, while the worker's JS
+    // thread reads it. The weak owner lets getListener() retain the listener's implementor across
+    // a call, closing the race against the owner's destruction.
+    mutable Mutex _listenerMutex;
     IJavaScriptRuntimeListener* _listener;
+    Weak<SharedPtrRefCountable> _listenerOwner;
 
     FlatMap<ResourceId, Shared<JavaScriptModuleContainer>> _modules;
     Ref<JavaScriptComponentContextHandler> _contextHandler;

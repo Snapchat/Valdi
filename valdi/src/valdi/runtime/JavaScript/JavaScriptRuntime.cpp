@@ -127,10 +127,7 @@ namespace {
 // No-op when diagnostics are off.
 class ScopedModuleLoadActivity {
 public:
-    ScopedModuleLoadActivity(bool enabled,
-                             Mutex& mutex,
-                             StringBox& currentPath,
-                             const StringBox& modulePath)
+    ScopedModuleLoadActivity(bool enabled, Mutex& mutex, StringBox& currentPath, const StringBox& modulePath)
         : _enabled(enabled), _mutex(mutex), _currentPath(currentPath) {
         if (!_enabled) {
             return;
@@ -361,8 +358,8 @@ void JavaScriptRuntime::postInit() {
     _contextHandler = makeShared<JavaScriptComponentContextHandler>(*this, this, *_logger);
     _initLock.leaveIfNotCompleted();
 
-    if (_listener != nullptr) {
-        auto runtimeTweaks = _listener->getRuntimeTweaks();
+    if (auto listener = getListener()) {
+        auto runtimeTweaks = listener->getRuntimeTweaks();
         if (runtimeTweaks != nullptr) {
             _dispatchQueue->setDisableSyncCallsInCallingThread(runtimeTweaks->disableSyncCallsInCallingThread());
         }
@@ -417,13 +414,20 @@ void JavaScriptRuntime::teardown(bool destroyContext) {
     // Just in case postInit() was never called
     _initLock.leaveIfNotCompleted();
 
+    // Workers share this runtime's listener (see createWorker); detach them so a worker
+    // outliving this runtime does not keep a dangling reference. A worker task holding a
+    // RetainedListener keeps the listener's owner alive until the call completes.
+    for (const auto& jsWorker : getAllWorkers()) {
+        jsWorker->setListener(nullptr, {});
+    }
+
     if (destroyContext) {
         _dispatchQueue->sync([&]() {
             if (_anrDetector != nullptr) {
                 _anrDetector->removeTaskScheduler(this);
             }
             // Prevent further dispatches to run
-            _listener = nullptr;
+            setListener(nullptr, {});
             _dispatchQueue->fullTeardown();
 
             if (!destroyContext) {
@@ -459,7 +463,7 @@ void JavaScriptRuntime::teardown(bool destroyContext) {
             _anrDetector->removeTaskScheduler(this);
         }
         _dispatchQueue->fullTeardown();
-        _listener = nullptr;
+        setListener(nullptr, {});
     }
 }
 
@@ -467,12 +471,23 @@ void JavaScriptRuntime::setThreadQoS(ThreadQoSClass threadQoS) {
     _dispatchQueue->setQoSClass(threadQoS);
 }
 
-void JavaScriptRuntime::setListener(Valdi::IJavaScriptRuntimeListener* listener) {
+void JavaScriptRuntime::setListener(Valdi::IJavaScriptRuntimeListener* listener,
+                                    const Weak<SharedPtrRefCountable>& listenerOwner) {
+    std::lock_guard<Mutex> guard(_listenerMutex);
     _listener = listener;
+    _listenerOwner = listenerOwner;
 }
 
-IJavaScriptRuntimeListener* JavaScriptRuntime::getListener() const {
-    return _listener;
+JavaScriptRuntime::RetainedListener JavaScriptRuntime::getListener() const {
+    std::lock_guard<Mutex> guard(_listenerMutex);
+    if (_listener == nullptr) {
+        return {};
+    }
+    auto owner = _listenerOwner.lock();
+    if (owner == nullptr) {
+        return {};
+    }
+    return {_listener, std::move(owner)};
 }
 
 void JavaScriptRuntime::bindRuntimeFunction(IJavaScriptContext& jsContext,
@@ -502,8 +517,8 @@ void JavaScriptRuntime::bindRuntimeFunction(IJavaScriptContext& jsContext,
 Result<Void> JavaScriptRuntime::initializeContext() {
     VALDI_TRACE("Valdi.createJsContext");
     Ref<ValdiRuntimeTweaks> runtimeTweaks;
-    if (_listener != nullptr) {
-        runtimeTweaks = _listener->getRuntimeTweaks();
+    if (auto listener = getListener()) {
+        runtimeTweaks = listener->getRuntimeTweaks();
     }
 
     if (runtimeTweaks != nullptr) {
@@ -635,8 +650,8 @@ JSValueRef JavaScriptRuntime::runtimePostMessage(JSFunctionNativeCallContext& ca
 
         if (actionParameters.getArray() != nullptr) {
             dispatchOnMainThread([=]() {
-                if (_listener != nullptr) {
-                    _listener->receivedCallActionMessage(contextId, actionName, actionParameters.getArrayRef());
+                if (auto listener = getListener()) {
+                    listener->receivedCallActionMessage(contextId, actionName, actionParameters.getArrayRef());
                 }
             });
         } else {
@@ -646,8 +661,8 @@ JSValueRef JavaScriptRuntime::runtimePostMessage(JSFunctionNativeCallContext& ca
                                         Valdi::valueTypeToString(actionParameters.getType()))));
             }
             dispatchOnMainThread([=]() {
-                if (_listener != nullptr) {
-                    _listener->receivedCallActionMessage(contextId, actionName, nullptr);
+                if (auto listener = getListener()) {
+                    listener->receivedCallActionMessage(contextId, actionName, nullptr);
                 }
             });
         }
@@ -850,7 +865,12 @@ JSValueRef JavaScriptRuntime::runtimeSetLayoutSpecs(JSFunctionNativeCallContext&
     auto isRTL = callContext.getParameterAsBool(3);
     CHECK_CALL_CONTEXT(callContext);
 
-    _listener->resolveViewNodeTree(context, true, true, [=](const SharedViewNodeTree& viewNodeTree) {
+    auto listener = getListener();
+    if (!listener) {
+        return callContext.getContext().newUndefined();
+    }
+
+    listener->resolveViewNodeTree(context, true, true, [=](const SharedViewNodeTree& viewNodeTree) {
         if (viewNodeTree == nullptr) {
             return;
         }
@@ -896,9 +916,14 @@ JSValueRef JavaScriptRuntime::runtimeMeasureContext(JSFunctionNativeCallContext&
     auto isRTL = callContext.getParameterAsBool(5);
     CHECK_CALL_CONTEXT(callContext);
 
+    auto listener = getListener();
+    if (!listener) {
+        return callContext.getContext().newUndefined();
+    }
+
     Size measuredSize;
 
-    _listener->resolveViewNodeTree(context, false, false, [&](const SharedViewNodeTree& viewNodeTree) {
+    listener->resolveViewNodeTree(context, false, false, [&](const SharedViewNodeTree& viewNodeTree) {
         if (viewNodeTree == nullptr) {
             return;
         }
@@ -971,8 +996,9 @@ JSValueRef JavaScriptRuntime::runtimeSubmitRenderRequest(JSFunctionNativeCallCon
     }
 
     auto renderRequest = _runtimeDeserializers->deserializeRenderRequest(rawRequest, referenceInfo, exceptionTracker);
-    if (exceptionTracker && _listener != nullptr) {
-        _listener->receivedRenderRequest(renderRequest);
+    auto listener = getListener();
+    if (exceptionTracker && listener) {
+        listener->receivedRenderRequest(renderRequest);
     }
     if (callback != nullptr) {
         (*callback)();
@@ -1055,8 +1081,8 @@ JSValueRef JavaScriptRuntime::runtimeSubmitDebugMessage(JSFunctionNativeCallCont
     auto message = callContext.getParameterAsString(1);
     CHECK_CALL_CONTEXT(callContext);
 
-    if (_listener != nullptr) {
-        _listener->onDebugMessage(debugLevel, message);
+    if (auto listener = getListener()) {
+        listener->onDebugMessage(debugLevel, message);
     }
     return callContext.getContext().newUndefined();
 }
@@ -1128,9 +1154,14 @@ JSValueRef JavaScriptRuntime::runtimeGetNativeNodeForElementId(JSFunctionNativeC
         return callContext.getContext().newUndefined();
     }
 
+    auto listener = getListener();
+    if (!listener) {
+        return callContext.getContext().newUndefined();
+    }
+
     auto output = Value::undefined();
 
-    _listener->resolveViewNodeTree(context, false, false, [&](const SharedViewNodeTree& viewNodeTree) {
+    listener->resolveViewNodeTree(context, false, false, [&](const SharedViewNodeTree& viewNodeTree) {
         auto viewNode = viewNodeTree->getViewNode(nodeId);
         if (viewNode != nullptr) {
             output = viewNode->toPlaformRepresentation(false);
@@ -1209,7 +1240,13 @@ JSValueRef JavaScriptRuntime::handleViewNodeSpecificAction(
         return callContext.throwError(Valdi::Error(STRING_FORMAT("Could not resolve Context {}", contextId)));
     }
 
-    _listener->resolveViewNodeTree(
+    auto listener = getListener();
+    if (!listener) {
+        return callContext.throwError(
+            Valdi::Error(STRING_FORMAT("No runtime listener to resolve ViewNodeTree of Context {}", contextId)));
+    }
+
+    listener->resolveViewNodeTree(
         context,
         true,
         true,
@@ -1408,10 +1445,8 @@ JSValueRef JavaScriptRuntime::loadJsModule(IJavaScriptContext& jsContext,
                                            size_t parametersLength,
                                            JSExceptionTracker& exceptionTracker) {
     VALDI_TRACE_META("Valdi.loadJsModule", importPath);
-    ScopedModuleLoadActivity moduleLoadActivity(_moduleLoadDiagnosticsEnabled,
-                                                _moduleLoadActivityMutex,
-                                                _currentModuleLoadPath,
-                                                importPath);
+    ScopedModuleLoadActivity moduleLoadActivity(
+        _moduleLoadDiagnosticsEnabled, _moduleLoadActivityMutex, _currentModuleLoadPath, importPath);
     snap::utils::time::StopWatch sw;
     sw.start();
 
@@ -1909,8 +1944,10 @@ JSValueRef JavaScriptRuntime::runtimeSetColorPalette(JSFunctionNativeCallContext
 
         dispatchOnMainThread([weakSelf = weakRef(this), colorPaletteMap = std::move(colorPaletteMap)]() {
             auto self = weakSelf.lock();
-            if (self && self->_listener != nullptr) {
-                self->_listener->updateColorPalette(colorPaletteMap);
+            if (self != nullptr) {
+                if (auto listener = self->getListener()) {
+                    listener->updateColorPalette(colorPaletteMap);
+                }
             }
         });
     }
@@ -2162,6 +2199,13 @@ JSValueRef JavaScriptRuntime::runtimeCreateWorker(JSFunctionNativeCallContext& c
                                                        _anrDetector,
                                                        _logger,
                                                        true);
+    {
+        // Workers share the runtime listener so contexts created from a worker (e.g. managed
+        // context rendering) can resolve view node trees and submit render requests. Set before
+        // postInit so listener-backed runtime tweaks apply during initialization.
+        std::lock_guard<Mutex> guard(_listenerMutex);
+        workerRuntime->setListener(_listener, _listenerOwner);
+    }
     workerRuntime->postInit();
     for (const auto& moduleFactory : _moduleFactories) {
         workerRuntime->registerJavaScriptModuleFactory(moduleFactory);
@@ -2918,8 +2962,9 @@ void JavaScriptRuntime::doUnloadModulesAndDependentModules(const std::vector<Res
     }
 
     bool disableHotReloaderLazyDenylist = false;
-    if (isHotReloading && _listener != nullptr) {
-        auto runtimeTweaks = _listener->getRuntimeTweaks();
+    auto listener = getListener();
+    if (isHotReloading && listener) {
+        auto runtimeTweaks = listener->getRuntimeTweaks();
         if (runtimeTweaks != nullptr) {
             disableHotReloaderLazyDenylist = runtimeTweaks->disableHotReloaderLazyDenylist();
         }
@@ -3150,10 +3195,11 @@ Ref<JSStackTraceProvider> JavaScriptRuntime::captureCurrentStackTrace() {
     // Debugger and force flags always enable stack trace capture
     bool shouldCapture = _forceStackTraceCapture || _enableDebugger;
 
-    if (!shouldCapture && _listener != nullptr && isInJsThread()) {
+    auto listener = getListener();
+    if (!shouldCapture && listener && isInJsThread()) {
         auto currentContext = Context::currentRef();
         if (currentContext != nullptr && !currentContext->getScopeName().isEmpty()) {
-            auto runtimeTweaks = _listener->getRuntimeTweaks();
+            auto runtimeTweaks = listener->getRuntimeTweaks();
             shouldCapture = runtimeTweaks != nullptr && runtimeTweaks->enableScopedContextStackTraceCapture();
         }
     }
@@ -3378,6 +3424,13 @@ std::shared_ptr<snap::valdi_core::JSRuntime> JavaScriptRuntime::createWorker() {
                                                        _anrDetector,
                                                        _logger,
                                                        true);
+    {
+        // Workers share the runtime listener so contexts created from a worker (e.g. managed
+        // context rendering) can resolve view node trees and submit render requests. Set before
+        // postInit so listener-backed runtime tweaks apply during initialization.
+        std::lock_guard<Mutex> guard(_listenerMutex);
+        workerRuntime->setListener(_listener, _listenerOwner);
+    }
     workerRuntime->postInit();
     for (const auto& moduleFactory : _moduleFactories) {
         workerRuntime->registerJavaScriptModuleFactory(moduleFactory);
@@ -3733,6 +3786,11 @@ void JavaScriptRuntime::dispatchOnJsThread(Ref<Context> ownerContext,
     }
 
     if (scheduleType == JavaScriptTaskScheduleTypeAlwaysSync) {
+        // A worker's JS thread is allowed to block on the platform main thread (e.g. external
+        // surface rasterization), which stays deadlock-free only as long as the main thread
+        // never blocks on a worker's JS thread. Keep that edge out of the wait graph.
+        SC_ASSERT(!(_isWorker && _mainThreadManager.currentThreadIsMainThread()),
+                  "The main thread must never dispatch synchronously into a worker runtime");
         _dispatchQueue->sync(dispatchFunc);
     } else {
         _dispatchQueue->async(std::move(dispatchFunc));
@@ -3903,11 +3961,11 @@ void JavaScriptRuntime::handleUncaughtJsErrorNoHandler(const Ref<Context>& owner
 
     _logger->log(LogTypeError, errorMessageStr);
 
-    if (_listener != nullptr) {
+    if (auto listener = getListener()) {
         if (error.hasStack() || snap::kIsDevBuild) {
-            _listener->onDebugMessage(LogTypeError, errorMessage);
+            listener->onDebugMessage(LogTypeError, errorMessage);
         }
-        _listener->onUncaughtJsError(moduleName, error);
+        listener->onUncaughtJsError(moduleName, error);
     }
 
     if (shouldCrash) {

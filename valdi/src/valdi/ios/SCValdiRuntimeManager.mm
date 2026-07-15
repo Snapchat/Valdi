@@ -146,7 +146,11 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
 
         _runtimeCreatedCallbacks = [NSMutableArray array];
 
-        _workerExecutorCache = [NSMapTable strongToWeakObjectsMapTable];
+        // Strong values: nothing else retains the cached wrapper (borrowers typically hold
+        // scoped runtimes, which retain the underlying runtime but not this wrapper), so weak
+        // values made every lookup miss and each getWorkerOnExecutor call spawned a fresh
+        // worker runtime instead of sharing one.
+        _workerExecutorCache = [NSMapTable strongToStrongObjectsMapTable];
     }
 
     return self;
@@ -710,26 +714,41 @@ static SCValdiCapturedJSStacktrace *toObjCStacktrace(const Valdi::JavaScriptCapt
 
 - (void)getWorkerOnExecutor:(NSString*)executor block:(void (^)(id<SCValdiJSRuntime>))block
 {
-    id<SCValdiJSRuntime> existingWorker = nil;
-    @synchronized(_workerExecutorCache) {
-        existingWorker = [_workerExecutorCache objectForKey:executor];
-    }
-    if (existingWorker != nil) {
-        [existingWorker dispatchInJsThread:^() { block(existingWorker); }];
-    } else {
-        auto runtimeInstance = self.mainRuntime.cppInstance;
-        SC_ASSERT(runtimeInstance != nullptr);
-        auto runtime = runtimeInstance->getJavaScriptRuntime();
-        SC_ASSERT(runtime);
-        auto workerRuntime = djinni_generated_client::valdi_core::JSRuntime::fromCpp(runtime->createWorker());
-        SC_ASSERT(workerRuntime);
-        auto newWorker = [[SCValdiJSWorker alloc] initWithWorkerRuntime:workerRuntime];
-        SC_ASSERT(newWorker);
+    // Resolve the (possibly lazily-initialized) main runtime outside the cache lock to
+    // avoid nesting its initialization under it.
+    auto runtimeInstance = self.mainRuntime.cppInstance;
+    SC_ASSERT(runtimeInstance != nullptr);
+
+    // Lookup and create-and-insert must be atomic: with a non-atomic empty-slot check,
+    // concurrent callers each create a worker runtime (a full JS context) and the loser
+    // survives as an orphan owned by whichever caller received it.
+    id<SCValdiJSRuntime> worker = nil;
+    if (runtimeInstance != nullptr) {
         @synchronized(_workerExecutorCache) {
-            [_workerExecutorCache setObject:newWorker forKey:executor];
+            worker = [_workerExecutorCache objectForKey:executor];
+            if (worker == nil) {
+                auto runtime = runtimeInstance->getJavaScriptRuntime();
+                SC_ASSERT(runtime);
+                if (runtime != nullptr) {
+                    auto workerRuntime =
+                        djinni_generated_client::valdi_core::JSRuntime::fromCpp(runtime->createWorker());
+                    SC_ASSERT(workerRuntime);
+                    if (workerRuntime != nil) {
+                        worker = [[SCValdiJSWorker alloc] initWithWorkerRuntime:workerRuntime];
+                        [_workerExecutorCache setObject:worker forKey:executor];
+                    }
+                }
+            }
         }
-        [newWorker dispatchInJsThread:^() { block(newWorker); }];
     }
+
+    if (worker == nil) {
+        // Asserts compile out on prod builds; still honor the completion contract.
+        block(nil);
+        return;
+    }
+    id<SCValdiJSRuntime> resolvedWorker = worker;
+    [resolvedWorker dispatchInJsThread:^() { block(resolvedWorker); }];
 }
 
 + (NSArray<SCValdiRuntimeManager *> *)allRuntimeManagers

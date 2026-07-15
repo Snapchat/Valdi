@@ -199,7 +199,7 @@ void Runtime::postInit() {
     _didInit = true;
 
     if (_javaScriptRuntime != nullptr) {
-        _javaScriptRuntime->setListener(this);
+        _javaScriptRuntime->setListener(this, weakRef(this));
         _javaScriptRuntime->setModuleLoadDiagnosticsEnabled(enableModuleLoadDiagnostics());
     }
     _viewNodeManager.setRuntime(weakRef(this));
