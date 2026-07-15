@@ -83,6 +83,11 @@ final class ApplyTypeScriptAnnotationsProcessor: CompilationProcessor {
 
         nativeCodeGenerationManager.clear()
 
+        // Build the parent-interface lookup index before annotation processing so that
+        // `InterfaceFlattener` can resolve `extends` chains across files during
+        // `addNativeTypeToGenerate`.
+        nativeCodeGenerationManager.setInterfaceFlattenerIndex(buildInterfaceFlattenerIndex(items: items))
+
         let allAnnotations = typeScriptAnnotationsManager.listAllAnnotations()
         try throwIfDuplicateConflictingNativeExportAnnotations(allAnnotations)
         for (sourceURL, parsedAnnotation) in allAnnotations {
@@ -268,6 +273,23 @@ final class ApplyTypeScriptAnnotationsProcessor: CompilationProcessor {
         nativeCodeGenerationManager.createCompilationItems(existingItems: out)
 
         return out.allItems
+    }
+
+    /// Builds a `(strippedCompilationPath) -> InterfaceFlattenerSymbolEntry` index from all
+    /// TypeScript items whose symbols have been dumped this compilation. Consumed by
+    /// `InterfaceFlattener` to walk `extends` chains that may cross file boundaries.
+    private func buildInterfaceFlattenerIndex(items: [CompilationItem]) -> InterfaceFlattenerSymbolIndex {
+        var entriesByStrippedPath: [String: InterfaceFlattenerSymbolEntry] = [:]
+        for item in items {
+            guard case let .dumpedTypeScriptSymbols(result) = item.kind else { continue }
+            let src = result.typeScriptItemAndSymbols.typeScriptItem.src
+            let strippedPath = src.compilationPath.removing(suffixes: FileExtensions.typescriptFileExtensionsDotted)
+            let body = result.typeScriptItemAndSymbols.dumpedSymbols
+            entriesByStrippedPath[strippedPath] = InterfaceFlattenerSymbolEntry(
+                dumpedSymbols: body.dumpedSymbols,
+                references: body.references)
+        }
+        return InterfaceFlattenerSymbolIndex(entriesByStrippedPath: entriesByStrippedPath)
     }
 
     private func processComponent(sourceURL: URL, commentedFile: TypeScriptCommentedFile, annotation: ValdiTypeScriptAnnotation, symbol: TS.DumpedSymbolWithComments, document: inout ValdiRawDocument) throws {

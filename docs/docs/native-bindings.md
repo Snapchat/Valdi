@@ -366,6 +366,65 @@ matrix: number[][];  // ✅ 2D array
 cube: number[][][];  // ✅ 3D array
 ```
 
+### Interface Inheritance
+
+An `@ExportModel` / `@ExportProxy` interface can `extends` another TypeScript interface. Two modes control what shows up in the generated native class.
+
+**Flatten mode (default):** parent members are merged into the child's native class.
+
+```typescript
+/**
+ * @ExportModel({ios: 'SCTimestamped', android: 'com.example.Timestamped'})
+ */
+export interface Timestamped {
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * @ExportModel({ios: 'SCUser', android: 'com.example.User'})
+ */
+export interface User extends Timestamped {
+  id: string;
+  name: string;
+}
+// Generated native `User` exposes: createdAt, updatedAt, id, name.
+```
+
+The parent **must be exported, carry a Valdi annotation** (`@ExportModel`, `@ExportProxy`, `@NativeInterface`, etc.), and **live in the same module being compiled**. Requirements:
+
+- **Annotated:** plain `export interface Foo` with no annotation is filtered out of the TypeScript companion's dump; flatten will fail with a specific error naming the type and file.
+- **Same module:** each Valdi module is compiled in isolation, so the flattener's parent lookup index only contains files from the current compilation. Cross-module inheritance (e.g. `Child extends ParentFromDependency`) is a **v1 limitation** — use `ignoreInheritance: 'true'` for those cases until cross-module parent resolution lands (tracked separately).
+- **No annotated parent members:** if any inherited member itself carries a Valdi annotation (`@Untyped`, `@WorkerThread`, `@Injectable`, `@ConstructorOmitted`, `@SingleCall`, `@AllowSyncCall`, `@UntypedMap`), flatten rejects with a clear error. Those semantics can't be safely re-interpreted against the child's file offsets in v1. Use `ignoreInheritance: 'true'` or remove the annotation from the parent.
+
+Multi-level chains are walked depth-first — grandparent members come first, then parent, then child. Diamond inheritance (child extends B and C, both extend A) merges A's members exactly once.
+
+**TS-only mode (`ignoreInheritance: 'true'`):** parent is used purely for TypeScript typing; the native class emits from the child body only.
+
+```typescript
+/**
+ * @ExportModel({ignoreInheritance: 'true'})
+ */
+export interface GenerateThumbnailError extends StepErrorType<GenerateThumbnailErrorCode> {
+  code: GenerateThumbnailErrorCode;
+  message?: string;
+  nonFatal?: boolean;
+}
+// Generated native class: code, message?, nonFatal?. Parent generics ignored.
+```
+
+Reach for `ignoreInheritance: 'true'` when the parent is generic (`Parent<T>`), unannotated, lives in a `.d.ts` file, or when you want to own the native field list explicitly. The compiler skips all flatten guards in this mode.
+
+**❌ NOT SUPPORTED (flatten mode only — use `ignoreInheritance` if you need any of these):**
+
+```typescript
+interface Child extends Parent<T> {}   // Generic parents — v1 limitation.
+interface Child implements Foo {}      // `implements` clauses.
+interface A extends B {} interface B extends A {}  // Cycles → compiler error.
+```
+
+**Collision policy:** If the child re-declares an inherited member name under flatten, the compiler errors by default. The `inheritanceCollisionPolicy` annotation parameter is reserved for future override modes (`childWins`, `sameTypeOnly`); only `error` is honored today.
+
 ---
 
 ## Type Conversion Behavior

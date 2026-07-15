@@ -73,6 +73,14 @@ class NativeCodeGenerationManager {
     private var viewModelSymbolNameBySourceURL = Synchronized<[URL: String]>(data: [:])
     private var contextSymbolNameBySourceURL = Synchronized<[URL: String]>(data: [:])
 
+    /// Index used by `InterfaceFlattener` to resolve `@ExportModel` interface parents by (fileName, symbolName).
+    /// Populated once per compilation by `ApplyTypeScriptAnnotationsProcessor` before annotation processing.
+    private var interfaceFlattenerIndex: InterfaceFlattenerSymbolIndex?
+
+    func setInterfaceFlattenerIndex(_ index: InterfaceFlattenerSymbolIndex) {
+        interfaceFlattenerIndex = index
+    }
+
     init(logger: ILogger, globalIosImport: String?, rootURL: URL) {
         self.logger = logger
         self.globalIosImport = globalIosImport
@@ -251,6 +259,7 @@ class NativeCodeGenerationManager {
         viewModelSymbolNameBySourceURL.data { $0.removeAll() }
         contextSymbolNameBySourceURL.data { $0.removeAll() }
         viewClassesToGenerate.data { $0.removeAll() }
+        interfaceFlattenerIndex = nil
     }
 
     private func inferIOSClassName(symbolName: String, bundleInfo: CompilationItem.BundleInfo) -> String? {
@@ -628,7 +637,7 @@ class NativeCodeGenerationManager {
                                            kind: NativeTypeKind,
                                            isComponent: Bool) throws -> NativeClassToGenerate {
 
-        let symbol = annotatedSymbol.symbol
+        var symbol = annotatedSymbol.symbol
         // TODO: extract validation from this function?
         switch kind {
         case .class, .interface:
@@ -637,10 +646,42 @@ class NativeCodeGenerationManager {
                 try throwAnnotationError(annotation, commentedFile, message: "@ExportModel or @ExportProxy must be set on an interface or class")
             }
 
+            let hasSupertypes = (symbol.interface?.supertypes?.count ?? 0) > 0
             let ignoreInheritance = annotation.parameters?["ignoreInheritance"] == "true"
 
-            guard ignoreInheritance || isComponent || (symbol.interface?.supertypes?.count ?? 0) == 0 else {
-                try throwAnnotationError(annotation, commentedFile, message: "@ExportModel or @ExportProxy can only be used on types without inheritance")
+            if ignoreInheritance {
+                logger.warn("`ignoreInheritance` on @ExportModel / @ExportProxy is deprecated. Interface inheritance is now flattened automatically; remove the parameter (and `extends` if the parent's members should not appear in the generated native class).")
+            }
+
+            if hasSupertypes && !ignoreInheritance {
+                if symbol.kind == TS.SyntaxKind.interfaceDeclaration {
+                    // Interfaces get their `extends` chain flattened into a single member list.
+                    guard let index = interfaceFlattenerIndex else {
+                        try throwAnnotationError(annotation, commentedFile, message: "Interface flattener index is unavailable — this is a compiler bug (setInterfaceFlattenerIndex was not called before annotation processing).")
+                    }
+                    guard let originalInterface = symbol.interface else {
+                        try throwAnnotationError(annotation, commentedFile, message: "Interface data missing for '\(symbol.text)'.")
+                    }
+
+                    let collisionPolicy = InterfaceInheritanceCollisionPolicy.parse(annotationValue: annotation.parameters?["inheritanceCollisionPolicy"])
+
+                    do {
+                        let flattened = try InterfaceFlattener.flatten(
+                            interface: originalInterface,
+                            fileName: commentedFile.src.compilationPath,
+                            references: commentedFile.references,
+                            mergeReference: { ref in commentedFile.appendReferenceIfNeeded(ref) },
+                            index: index,
+                            collisionPolicy: collisionPolicy)
+                        symbol.interface = flattened
+                    } catch let error {
+                        try throwAnnotationError(annotation, commentedFile, message: "Failed to flatten inherited members for '\(symbol.text)': \(error.legibleLocalizedDescription)")
+                    }
+                } else if !isComponent {
+                    // Classes still can't be flattened (they carry runtime behavior, not just members).
+                    // Components are exempt because they legitimately extend `Component<VM, Ctx>`.
+                    try throwAnnotationError(annotation, commentedFile, message: "@ExportModel or @ExportProxy on a class cannot use inheritance (except when the class is a @Component).")
+                }
             }
 
         case .enum, .stringEnum:

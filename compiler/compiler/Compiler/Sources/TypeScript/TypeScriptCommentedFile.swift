@@ -16,6 +16,17 @@ class TypeScriptCommentedFile {
     let annotatedSymbols: [TypeScriptAnnotatedSymbol]
     private(set) var references: [TS.AST.TypeReference] = []
 
+    /// Appends `ref` to the file's reference table if it's not already present, returning its index.
+    /// Used by `InterfaceFlattener` to integrate parent-file type references into the child's table.
+    @discardableResult
+    func appendReferenceIfNeeded(_ ref: TS.AST.TypeReference) -> Int {
+        if let idx = references.firstIndex(where: { $0.name == ref.name && $0.fileName == ref.fileName }) {
+            return idx
+        }
+        references.append(ref)
+        return references.count - 1
+    }
+
     init(src: TypeScriptItemSrc, file: File, dumpedSymbolsResult: TS.DumpSymbolsWithCommentsResponseBody, typeScriptCompiler: TypeScriptCompiler) throws {
         self.src = src
         self.fileContent = try file.readString()
