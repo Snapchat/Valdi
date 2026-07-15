@@ -23,6 +23,7 @@
 
 #include "include/core/SkPicture.h"
 
+#include <optional>
 #include <vector>
 
 namespace snap::drawing {
@@ -47,6 +48,21 @@ public:
 
     Size getSize() const;
     TimePoint getFrameTime() const;
+
+    // Sub-rect of the content (in this display list's own coordinate space) that the destination
+    // surface actually covers. Set this when the surface is smaller than the full content -- e.g. a
+    // layer zoomed far larger than the visible viewport -- so the drawable is sized to the visible
+    // region and content is translated into it, instead of allocating a surface for the full (huge)
+    // content size.
+    //
+    // Three states, kept distinct on purpose:
+    //   * unset (default)     -> getViewport() returns the full content; existing callers unchanged.
+    //   * set to a non-empty  -> rasterize only that sub-rect (translated to the drawable origin).
+    //   * set to an empty rect -> nothing is visible (e.g. fully scrolled off screen); skip drawing.
+    // The empty case must NOT be confused with unset, which is why this is optional rather than a
+    // sentinel empty rect.
+    void setViewport(const Rect& viewport);
+    Rect getViewport() const;
 
     void pushContext(const Matrix& matrix, Scalar opacity, uint64_t layerId, bool hasUpdates);
     void popContext();
@@ -95,6 +111,7 @@ private:
     Valdi::SmallVector<DisplayListPlane, 1> _planes;
     DisplayListPlane* _currentPlane = nullptr;
     Size _size;
+    std::optional<Rect> _viewport;
     TimePoint _frameTime;
     bool _hasExternalSurfaces = false;
     bool _hasMask = false;

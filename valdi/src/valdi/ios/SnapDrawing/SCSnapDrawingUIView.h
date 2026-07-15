@@ -16,6 +16,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (instancetype)initWithRuntime:(id<SCSnapDrawingRuntime>)runtime;
 
+// Recomputes the on-screen visible region and clamps the drawable(s) to it. layoutSubviews only
+// fires on size changes, so a host must call this when the view's position on screen changes
+// (e.g. panning a zoomed layer) -- otherwise the clamp region goes stale and the clip edge shows.
+- (void)refreshRenderViewport;
+
 VALDI_NO_VIEW_INIT
 
 @end

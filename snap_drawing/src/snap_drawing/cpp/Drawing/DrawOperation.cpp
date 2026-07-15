@@ -46,6 +46,12 @@ Valdi::Result<snap::drawing::GraphicsContext*> DrawOperation::drawNext() {
         return nullptr;
     }
 
+    // A set-but-empty viewport means nothing is on screen (fully scrolled off); the drawable is
+    // zero-sized, so skip before preparing a canvas that would just fail every frame.
+    if (_displayList->getViewport().isEmpty()) {
+        return nullptr;
+    }
+
     VALDI_TRACE("SnapDrawing.drawSurface");
 
     auto canvasResult = drawableSurface->prepareCanvas();
@@ -54,9 +60,13 @@ Valdi::Result<snap::drawing::GraphicsContext*> DrawOperation::drawNext() {
         return canvasResult.error().rethrow("Failed to prepare canvas on GraphicsContext");
     }
 
-    auto displayListSize = _displayList->getSize();
-    auto scaleX = static_cast<Scalar>(canvasResult.value().getWidth()) / displayListSize.width;
-    auto scaleY = static_cast<Scalar>(canvasResult.value().getHeight()) / displayListSize.height;
+    // Scale against the viewport (the content sub-rect this drawable covers), not the full content
+    // size, so a drawable sized to just the visible region renders at native resolution and the
+    // translation applied in DisplayList::draw lines the region up. Equals the full-content scale
+    // when no viewport is set.
+    auto viewport = _displayList->getViewport();
+    auto scaleX = static_cast<Scalar>(canvasResult.value().getWidth()) / viewport.width();
+    auto scaleY = static_cast<Scalar>(canvasResult.value().getHeight()) / viewport.height();
 
     _displayList->draw(canvasResult.value(),
                        surfacePresenter.getDisplayListPlaneIndex(),

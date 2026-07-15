@@ -21,6 +21,7 @@
 
 #include "snap_drawing/cpp/Drawing/DisplayList/DisplayList.hpp"
 #include <cstdint>
+#include <optional>
 
 namespace snap::drawing {
 
@@ -78,6 +79,13 @@ public:
 
     void setSize(Size size, Scalar scale);
 
+    // The visible sub-rect of the content, in content coordinates. When the content is laid out
+    // much larger than what is actually on screen (e.g. a pinch-zoomed layer), the host sets this
+    // to the on-screen region so the drawable is sized to it instead of to the full content. Empty
+    // (default) renders the whole content. Only affects rasterization -- layout and touch handling
+    // continue to operate in full content coordinates.
+    void setRenderViewport(const Rect& viewport);
+
     void setListener(LayerRootListener* listener);
     LayerRootListener* getListener() const;
 
@@ -126,6 +134,9 @@ private:
     Valdi::Ref<Layer> _contentLayer;
     EventQueue _eventQueue;
     Size _size = Size::makeEmpty();
+    // Unset -> render the full content. Set (possibly empty) -> only that region is rasterized;
+    // an empty value means nothing is on screen. See DisplayList::setViewport.
+    std::optional<Rect> _renderViewport;
     Scalar _scale = 1;
     uint64_t _layerIdSequence = 0;
     bool _needsDisplay = false;

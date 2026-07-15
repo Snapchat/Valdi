@@ -12,6 +12,8 @@
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 #include "valdi_core/cpp/Utils/Trace.hpp"
 
+#include <algorithm>
+
 namespace snap::drawing {
 
 ExternalLayer::ExternalLayer(const Ref<Resources>& resources) : Layer(resources) {}
@@ -68,7 +70,25 @@ void ExternalLayer::onDraw(DrawingContext& drawingContext) {
         _externalSurface->setRelativeSize(frameSize);
 
         if (shouldRasterizeExternalSurface()) {
-            auto imageResult = rasterExternalSurface(frameSize.width, frameSize.height);
+            // Rasterize at min(frameSize, outputSize): a layer pinched/zoomed larger than the
+            // final output has no need for a raster buffer bigger than what will ever be shown.
+            // drawImage below stretches the (possibly smaller) result back to frameSize, which is
+            // information-equivalent for image content -- unlike vector content, there's no
+            // absolute-unit geometry (border width, radius, text) that a uniform scale would distort.
+            auto* root = getRoot();
+            auto outputSize = root != nullptr ? root->getOutputSize() : OutputSize{};
+            auto rasterWidth = (outputSize.width > 0) ? std::min(frameSize.width, outputSize.width) : frameSize.width;
+            auto rasterHeight =
+                (outputSize.height > 0) ? std::min(frameSize.height, outputSize.height) : frameSize.height;
+
+            // A degenerate (empty or sub-pixel) layer truncates to a zero-sized raster target,
+            // which createBitmap rejects. Nothing to draw here, so skip it rather than take the
+            // error path on every frame.
+            if (static_cast<int>(rasterWidth) <= 0 || static_cast<int>(rasterHeight) <= 0) {
+                return;
+            }
+
+            auto imageResult = rasterExternalSurface(static_cast<int>(rasterWidth), static_cast<int>(rasterHeight));
 
             if (imageResult) {
                 auto image = imageResult.moveValue();

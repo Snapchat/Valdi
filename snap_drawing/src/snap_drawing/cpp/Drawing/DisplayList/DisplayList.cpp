@@ -40,6 +40,16 @@ Size DisplayList::getSize() const {
     return _size;
 }
 
+void DisplayList::setViewport(const Rect& viewport) {
+    _viewport = viewport;
+}
+
+Rect DisplayList::getViewport() const {
+    // Unset -> the whole content is the viewport. A set-but-empty viewport is returned as-is
+    // (empty) so callers can distinguish "render everything" from "render nothing".
+    return _viewport.has_value() ? *_viewport : Rect::makeXYWH(0, 0, _size.width, _size.height);
+}
+
 TimePoint DisplayList::getFrameTime() const {
     return _frameTime;
 }
@@ -207,9 +217,39 @@ void DisplayList::draw(
     DrawableSurfaceCanvas& canvas, size_t planeIndex, Scalar scaleX, Scalar scaleY, bool shouldClearCanvas) const {
     auto* skiaCanvas = canvas.getSkiaCanvas();
 
+    // A set-but-empty viewport means nothing is visible (e.g. the layer is fully off screen);
+    // there is nothing to rasterize, so skip entirely rather than touch a zero-sized drawable.
+    auto viewport = getViewport();
+    if (viewport.isEmpty()) {
+        return;
+    }
+
     auto saveCount = skiaCanvas->save();
 
     prepareCanvas(skiaCanvas, scaleX, scaleY, shouldClearCanvas);
+
+    // When only a sub-region of the content is being rasterized, shift the origin so the viewport's
+    // top-left maps to the drawable's top-left. The caller sizes the drawable to the viewport, so
+    // everything outside it falls off the canvas edges and is never allocated for. This is a no-op
+    // when no viewport is set (getViewport() then returns the full content at origin 0,0).
+    skiaCanvas->translate(-viewport.left, -viewport.top);
+
+    // Clip to this display list's own bounds before replaying any operation.
+    //
+    // Invariant (why this is a visual no-op): the destination surface always represents exactly
+    // _size -- every caller derives scaleX/scaleY as surfaceSize / _size (or / viewport); see the
+    // 2-arg overload above, DrawOperation::drawNext and RasterContext. So [0, _size] maps to the
+    // full drawable, and anything a descendant records outside [0, _size] already falls outside the
+    // drawable and is discarded by the device clip. This clipRect removes nothing that was visible;
+    // it only makes that bound explicit in user space so Skia can tighten the intermediate buffers
+    // it allocates for saveLayer (opacity groups, masks) and blur/mask filters -- the actual win
+    // for a pinch-zoomed layer whose recorded cull rect is far larger than the output.
+    //
+    // Note it clips at the canvas (_size) edge, NOT at each layer's frame: a layer's decorative
+    // bleed (drop shadow, glow, outer blur) that extends past its own frame but stays within _size
+    // is unaffected. Recorded geometry is likewise untouched; any viewport clipping (rendering only
+    // a visible sub-region of oversized content) is applied via the translate above, in device space.
+    skiaCanvas->clipRect(Rect::makeXYWH(0, 0, _size.width, _size.height).getSkValue());
 
     if (_hasMask) {
         // We need a dedicated layer texture to implement masking
@@ -226,8 +266,16 @@ void DisplayList::draw(DrawableSurfaceCanvas& canvas, size_t planeIndex, bool sh
     auto canvasWidth = canvas.getWidth();
     auto canvasHeight = canvas.getHeight();
 
-    auto scaleX = static_cast<Scalar>(canvasWidth) / _size.width;
-    auto scaleY = static_cast<Scalar>(canvasHeight) / _size.height;
+    // Scale is relative to the viewport (the region the drawable covers), not the full content,
+    // so a partial-viewport surface still rasterizes its region at native resolution rather than
+    // downscaling the whole content into it. Equals full-content scale when no viewport is set.
+    auto viewport = getViewport();
+    if (viewport.isEmpty()) {
+        // Nothing visible -> skip (also avoids dividing by a zero viewport extent below).
+        return;
+    }
+    auto scaleX = static_cast<Scalar>(canvasWidth) / viewport.width();
+    auto scaleY = static_cast<Scalar>(canvasHeight) / viewport.height();
 
     draw(canvas, planeIndex, scaleX, scaleY, shouldClearCanvas);
 }

@@ -89,6 +89,13 @@ void LayerRoot::setSize(Size size, Scalar scale) {
     layoutIfNeeded();
 }
 
+void LayerRoot::setRenderViewport(const Rect& viewport) {
+    if (_renderViewport != viewport) {
+        _renderViewport = viewport;
+        setChildNeedsDisplay();
+    }
+}
+
 void LayerRoot::drawInCanvas(DrawableSurfaceCanvas& canvas) {
     if (_size.width == 0 || _size.height == 0) {
         return;
@@ -96,8 +103,15 @@ void LayerRoot::drawInCanvas(DrawableSurfaceCanvas& canvas) {
 
     auto displayList = draw();
 
-    auto scaleWidth = static_cast<Scalar>(canvas.getWidth()) / _size.width;
-    auto scaleHeight = static_cast<Scalar>(canvas.getHeight()) / _size.height;
+    // Scale against the viewport (the region the canvas covers), consistent with the DrawOperation
+    // path. Equals _size when no render viewport is set.
+    auto viewport = displayList->getViewport();
+    if (viewport.isEmpty()) {
+        // Nothing visible -> skip (also avoids dividing by a zero viewport extent below).
+        return;
+    }
+    auto scaleWidth = static_cast<Scalar>(canvas.getWidth()) / viewport.width();
+    auto scaleHeight = static_cast<Scalar>(canvas.getHeight()) / viewport.height();
 
     displayList->draw(canvas, kDisplayListAllPlaneIndexes, scaleWidth, scaleHeight, /* shouldClearCanvas */ true);
 }
@@ -138,7 +152,16 @@ Ref<DisplayList> LayerRoot::doDraw(DrawMetrics& metrics) {
     }
 
     Compositor compositor(_resources->getLogger());
-    return compositor.performComposition(*displayList, *_planeList);
+    auto composedDisplayList = compositor.performComposition(*displayList, *_planeList);
+
+    // Propagate the visible viewport so the drawable is rasterized for the on-screen region only.
+    // Only when the host has set one -- otherwise the display list stays unset (full content), so
+    // paths that never set a viewport (e.g. offscreen raster) are unchanged.
+    if (_renderViewport.has_value()) {
+        composedDisplayList->setViewport(*_renderViewport);
+    }
+
+    return composedDisplayList;
 }
 
 void LayerRoot::setChildNeedsDisplay() {

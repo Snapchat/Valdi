@@ -56,6 +56,17 @@ public:
         return !_useNewExternalSurfaceRasterMethod;
     }
 
+    // Set on every draw call (drawFrame and drawFrameSync) right before rootLayer->draw(), from
+    // the same frame size used to construct that draw's DisplayList. Must stay set at every draw
+    // entrypoint -- a stale value here would cap (or fail to cap) ExternalLayer rasterization
+    // using a different frame's size.
+    void setOutputSize(OutputSize size) {
+        _outputSize = size;
+    }
+    OutputSize getOutputSize() const final {
+        return _outputSize;
+    }
+
     void onInitialize() final {}
     void setChildNeedsDisplay() final {}
     void requestLayout(ILayer* layer) final {}
@@ -70,6 +81,7 @@ private:
     uint64_t _layerIdSequence = 0;
     EventQueue _eventQueue;
     TimePoint _currentTime{0.0};
+    OutputSize _outputSize;
 };
 
 class SnapDrawingValdiContext : public Valdi::ContextAutoDestroy {
@@ -433,6 +445,8 @@ Valdi::Value ManagedContextNativeModuleFactory::drawFrame(const Valdi::ValueFunc
         rootLayer->setFrame(Rect::makeLTRB(frame.getLeft(), frame.getTop(), frame.getRight(), frame.getBottom()));
         rootLayer->layoutIfNeeded();
 
+        snapDrawingValdiContext->getLayerRoot()->setOutputSize({frame.width, frame.height});
+
         auto displayList = Valdi::makeShared<DisplayList>(Size(frame.width, frame.height), TimePoint(0.0));
         DrawMetrics metrics;
         rootLayer->draw(*displayList, metrics);
@@ -479,6 +493,8 @@ Valdi::Value ManagedContextNativeModuleFactory::drawFrameSync(const Valdi::Value
 
     rootLayer->setFrame(Rect::makeLTRB(frame.getLeft(), frame.getTop(), frame.getRight(), frame.getBottom()));
     rootLayer->layoutIfNeeded();
+
+    snapDrawingValdiContext->getLayerRoot()->setOutputSize({frame.width, frame.height});
 
     auto displayList = Valdi::makeShared<DisplayList>(Size(frame.width, frame.height), TimePoint(0.0));
     DrawMetrics metrics;
