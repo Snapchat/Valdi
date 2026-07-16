@@ -70,6 +70,7 @@ import com.snap.valdi.snapdrawing.SnapDrawingRuntimeCPP
 import com.snap.valdi.snapdrawing.SnapDrawingThreadedFrameScheduler
 import com.snap.valdi.ValdiRuntimeManager
 import com.snap.valdi.views.AnimatedImageView
+import com.snap.valdi.views.ValdiRootView
 import com.snapchat.client.valdi_core.HTTPRequestManager
 import com.snapchat.client.valdi_core.JavaScriptEngineType;
 import com.snapchat.client.valdi_core.ModuleFactoriesProvider
@@ -211,6 +212,7 @@ class ValdiRuntimeManager(context: Context,
         }
         ValdiLeakTracker.enabled = tweaks?.enableLeakTracker == true
         ViewUtils.enableTextAlignmentForRTL = tweaks?.enableTextAlignmentForRTL ?: true
+        ValdiRootView.enableLayoutInvalidationRetry = tweaks?.enableLayoutInvalidationRetry ?: false
 
         viewManager = ValdiViewManager(context, logger,
             tweaks?.disableAnimations ?: false, viewRefSupport,

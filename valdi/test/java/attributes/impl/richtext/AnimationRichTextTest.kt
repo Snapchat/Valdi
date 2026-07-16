@@ -853,7 +853,7 @@ internal class AnimationRichTextTest {
         )
         editText.layout(0, 0, 80, 80)
 
-        assertTrue(editText.text.isEmpty())
+        assertTrue(editText.text.isNullOrEmpty())
         assertTrue(editText.textSize < maxTextSizePx)
     }
 
@@ -905,7 +905,8 @@ internal class AnimationRichTextTest {
         flushTextAttributes(helper)
 
         assertNotEquals(generationAfterRich, editText.setTextGeneration)
-        assertTrue(editText.text.getSpans(0, editText.text.length, CharacterStyle::class.java).isEmpty())
+        val text = requireNotNull(editText.text)
+        assertTrue(text.getSpans(0, text.length, CharacterStyle::class.java).isEmpty())
     }
 }
 
