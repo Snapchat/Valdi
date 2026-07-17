@@ -96,15 +96,11 @@ Value HTTPRequestManagerModuleFactory::loadModule() {
                     std::move(url), std::move(method), std::move(headers), std::move(convertedBody), priority),
                 requestCompletion);
 
-            Value out;
-            out.setMapValue("cancel",
-                            Value(makeShared<ValueFunctionWithCallable>(
-                                [cancellable](const ValueFunctionCallContext& /*callContext*/) -> Value {
-                                    cancellable->cancel();
-                                    return Value::undefined();
-                                })));
-
-            return out;
+            return Value(makeShared<ValueFunctionWithCallable>(
+                [cancellable](const ValueFunctionCallContext& /*callContext*/) -> Value {
+                    cancellable->cancel();
+                    return Value::undefined();
+                }));
         })));
 
     return out;

@@ -823,6 +823,7 @@ valdi_test(
     deps = [
         ":test_utils",
         ":valdi_runtime_with_vm",
+        "//src/valdi_modules/src/cpp/valdi_http:valdi_http_cpp",
         "//src/valdi_modules/src/valdi/persistence:persistence_native",
         "//src/valdi_modules/src/valdi/valdi_core:valdi_core_native",
         "//src/valdi_modules/src/valdi/valdi_protobuf:valdi_protobuf_native",
