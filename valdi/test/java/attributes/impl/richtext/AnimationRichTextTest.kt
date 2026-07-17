@@ -16,7 +16,6 @@ import android.text.TextPaint
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.style.CharacterStyle
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.widget.TextView
@@ -829,32 +828,6 @@ internal class AnimationRichTextTest {
 
         // With the flag off we never force the caret to the end; Android leaves it at the start.
         assertEquals(0, editText.selectionStart)
-    }
-
-    @Test
-    fun editTextAutofitMeasuresHintWhenTextIsEmpty() {
-        val (editText, helper) = newEditTextHelper(matchIosTextSetCaret = false)
-        val maxFontSize = 40f
-        val maxTextSizePx = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP,
-            maxFontSize,
-            editText.resources.displayMetrics,
-        )
-
-        editText.hint = "Long translated story name"
-        helper.fontAttributes = FontAttributes.default.copy(
-            fontSize = maxFontSize,
-            adjustsFontSizeToFitWidth = true,
-            minimumScaleFactor = 0.5f,
-        )
-        editText.measure(
-            View.MeasureSpec.makeMeasureSpec(80, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(80, View.MeasureSpec.EXACTLY),
-        )
-        editText.layout(0, 0, 80, 80)
-
-        assertTrue(editText.text.isNullOrEmpty())
-        assertTrue(editText.textSize < maxTextSizePx)
     }
 
     @Test

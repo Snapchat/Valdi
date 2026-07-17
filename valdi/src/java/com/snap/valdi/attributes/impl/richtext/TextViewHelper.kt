@@ -13,9 +13,7 @@ import android.text.Layout
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.Spanned
-import android.text.TextPaint
 import android.util.Size
-import android.util.TypedValue
 import android.widget.TextView
 import androidx.core.widget.TextViewCompat
 import com.snap.valdi.attributes.impl.fonts.FontDescriptor
@@ -288,13 +286,9 @@ class TextViewHelper(private val view: TextView,
     }
 
     private fun updateTextAutofit() {
-        val attrs = fontAttributes ?: defaultAttributes
-        // EditText auto-size is manual (system API is a no-op for EditText), so re-run on every
-        // layout so the size adjusts as the user types, not just when fontAttributes changes.
-        val needsEditTextAutofit = view is ValdiEditText && attrs.adjustsFontSizeToFitWidth == true
-        if (fontAutofitDirty || needsEditTextAutofit) {
+        if (fontAutofitDirty) {
             fontAutofitDirty = false
-            applyFontAutofit(attrs)
+            applyFontAutofit(fontAttributes ?: defaultAttributes)
         }
     }
 
@@ -795,47 +789,7 @@ class TextViewHelper(private val view: TextView,
         val minimumScaleFactor = attributes.minimumScaleFactor ?: 0f
         val minSize = Math.max((minimumScaleFactor * fontSizeValue).toInt(), 1)
         val maxSize = fontSizeValue.toInt()
-        if (view is ValdiEditText) {
-            // EditText.supportsAutoSizeText() returns false at the framework level, making
-            // TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration a silent no-op.
-            // Manually measure and set font size instead.
-            applyTextShrinkingEditText(fontSizeValue, fontSizeUnit, minimumScaleFactor)
-        } else {
-            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(view, minSize, maxSize, 1, fontSizeUnit)
-        }
-    }
-
-    private fun applyTextShrinkingEditText(maxFontSize: Float, fontSizeUnit: Int, minimumScaleFactor: Float) {
-        val dm = view.resources.displayMetrics
-        val maxPx = TypedValue.applyDimension(fontSizeUnit, maxFontSize, dm)
-        val minPx = maxOf(minimumScaleFactor * maxPx, 1f)
-        val availableWidth = (view.width - view.compoundPaddingLeft - view.compoundPaddingRight).toFloat()
-        if (availableWidth <= 0f) return
-        val textPaint = TextPaint(view.paint)
-        val text = textForAutofit()
-        textPaint.textSize = maxPx
-        if (Layout.getDesiredWidth(text, textPaint) <= availableWidth) {
-            view.setTextSize(TypedValue.COMPLEX_UNIT_PX, maxPx)
-            return
-        }
-        var lo = minPx
-        var hi = maxPx
-        while (hi - lo > 0.5f) {
-            val mid = (lo + hi) / 2f
-            textPaint.textSize = mid
-            if (Layout.getDesiredWidth(text, textPaint) <= availableWidth) lo = mid else hi = mid
-        }
-        // Preserve 1-px-step granularity of the original linear scan to avoid snapshot drift.
-        val snapped = maxOf(maxPx - kotlin.math.ceil((maxPx - lo).toDouble()).toFloat(), minPx)
-        view.setTextSize(TypedValue.COMPLEX_UNIT_PX, snapped)
-    }
-
-    private fun textForAutofit(): CharSequence {
-        val text = view.text ?: ""
-        if (view is ValdiEditText && text.isEmpty()) {
-            return view.hint ?: ""
-        }
-        return text
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(view, minSize, maxSize, 1, fontSizeUnit)
     }
 
     override fun onFontMissing(fontDescriptor: FontDescriptor) {
