@@ -195,6 +195,18 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
 
     private var lastFocusState = false
 
+    /** Override to false in multiline subclasses (e.g. [ValdiEditTextMultiline]) to opt out of single-line clamping. */
+    protected open val isValdiSingleLine: Boolean get() = true
+
+    // Blocks applySingleLine(false) side-effects from setInputType — prevents transient multiline input types from enabling text wrapping.
+    override fun setMaxLines(maxLines: Int) {
+        super.setMaxLines(if (isValdiSingleLine) 1 else maxLines)
+    }
+
+    override fun setHorizontallyScrolling(whether: Boolean) {
+        super.setHorizontallyScrolling(if (isValdiSingleLine) true else whether)
+    }
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         textViewHelper?.onMeasure(widthMeasureSpec, heightMeasureSpec)
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
@@ -566,6 +578,10 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
     override fun prepareForRecycling() {
         pendingAttributedTextRebind = null
         removeCallbacks(attributedTextRebindRunnable)
+        // The attributed fast-path cache lives on the (surviving) helper; clearing the buffer without
+        // invalidating it lets a stale matching signature take the light path on re-open and render
+        // the emptied field blank.
+        textViewHelper?.invalidateAttributedTextShapeSignature()
         setText("")
     }
 

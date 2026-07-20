@@ -8,6 +8,8 @@ import androidx.annotation.Keep
 @Keep
 class ValdiEditTextMultiline(context: Context) : ValdiEditText(context) {
 
+    override val isValdiSingleLine: Boolean get() = false
+
     // Declared before init so its default is set before the init block's allowLineReturns(true) runs;
     // otherwise the initializer would run afterwards and reset it, defeating idempotence.
     private var appliedLineReturns: Boolean? = null

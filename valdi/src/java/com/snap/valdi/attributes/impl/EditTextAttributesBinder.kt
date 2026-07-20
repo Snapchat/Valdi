@@ -9,15 +9,16 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import com.snap.valdi.attributes.AttributesBinder
 import com.snap.valdi.attributes.AttributesBindingContext
+import com.snap.valdi.attributes.conversions.ColorConversions
 import com.snap.valdi.attributes.impl.animations.ValdiAnimator
 import com.snap.valdi.attributes.impl.richtext.FontAttributes
 import com.snap.valdi.attributes.impl.richtext.RichTextConverter
 import com.snap.valdi.attributes.impl.richtext.TextViewHelper
 import com.snap.valdi.callable.ValdiFunction
+import com.snap.valdi.exceptions.AttributeError
 import com.snap.valdi.exceptions.ValdiException
 import com.snap.valdi.views.ValdiEditText
 import com.snap.valdi.views.ValdiTextHolder
-import com.snap.valdi.exceptions.AttributeError
 import kotlin.math.roundToInt
 
 /**
@@ -37,6 +38,9 @@ class EditTextAttributesBinder(
         get() = ValdiEditText::class.java
 
     override fun bindAttributes(attributesBindingContext: AttributesBindingContext<ValdiEditText>) {
+        attributesBindingContext.bindCompositeAttribute("fontAttributes", TextViewAttributesBinder.FONT_ATTRIBUTES_PARTS, this::applyFontAttributes, this::resetFontAttributes)
+        attributesBindingContext.registerPreprocessor("fontAttributes", true, this::preprocessFontAttributes)
+
         attributesBindingContext.bindStringAttribute(
             "placeholder",
             true,
@@ -343,8 +347,7 @@ class EditTextAttributesBinder(
     }
 
     private fun resetValue(editText: ValdiEditText, animator: ValdiAnimator?) {
-        editText.textViewHelper = null
-        editText.setText("")
+        getTextViewHelper(editText).textValue = null
     }
 
     private fun applyCharacterLimit(editText: ValdiEditText, value: Int?, animator: ValdiAnimator?) {
@@ -526,6 +529,49 @@ class EditTextAttributesBinder(
 
     private fun resetTextDirection(editText: ValdiEditText, animator: ValdiAnimator?) {
         editText.textDirection = View.TEXT_DIRECTION_LOCALE
+    }
+
+    private fun preprocessFontAttributes(values: Any?): Any {
+        val valuesArray = values as? Array<*> ?: throw AttributeError("Expecting array for spannable string")
+
+        val color = valuesArray[0] as? Long
+        val textDecoration = valuesArray[1] as? String
+        val textAlign = valuesArray[2] as? String
+        val font = valuesArray[3] as? String
+        val lineHeight = valuesArray[4] as? Double
+        val numberOfLines = valuesArray[5] as? Double
+        val letterSpacing = valuesArray[6] as? Double
+        val adjustsFontSizeToFitWidth = valuesArray[7] as? Boolean
+        val minimumScaleFactor = valuesArray[8] as? Double
+
+        val attributes = defaultAttributes.copy()
+        if (color != null) {
+            attributes.color = ColorConversions.fromRGBA(color)
+        }
+        if (textDecoration != null) {
+            attributes.applyTextDecoration(textDecoration)
+        }
+        if (textAlign != null) {
+            attributes.applyTextAlign(textAlign)
+        }
+        if (font != null) {
+            attributes.applyFont(font)
+        }
+        attributes.lineHeight = lineHeight?.toFloat()
+        attributes.numberOfLines = numberOfLines?.toInt()
+        attributes.letterSpacing = letterSpacing?.toFloat()
+        attributes.adjustsFontSizeToFitWidth = adjustsFontSizeToFitWidth
+        attributes.minimumScaleFactor = minimumScaleFactor?.toFloat()
+
+        return attributes
+    }
+
+    private fun applyFontAttributes(view: ValdiEditText, value: Any?, animator: ValdiAnimator?) {
+        getTextViewHelper(view).fontAttributes = value as? FontAttributes
+    }
+
+    private fun resetFontAttributes(view: ValdiEditText, animator: ValdiAnimator?) {
+        getTextViewHelper(view).fontAttributes = null
     }
 
     fun applyBackgroundEffectColor(view: ValdiEditText, value: Int, animator: ValdiAnimator?) {
