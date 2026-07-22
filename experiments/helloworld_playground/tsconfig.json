@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "target": "ES2016",
+    "module": "commonjs",
+    "lib": ["dom", "ES2019"],
+    "noImplicitReturns": true,
+    "noImplicitAny": true,
+    "importHelpers": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "jsx": "preserve"
+  }
+}

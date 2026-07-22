@@ -34,7 +34,7 @@ export class App extends Component<ViewModel, ComponentContext> {
     <view backgroundColor="white">
       <scroll style={styles.scroll} padding={16}>
         <layout marginTop={100} flexDirection="row" width="100%" minHeight={10}>
-          <image src={res.emoji} height="100%" tint="gray" marginRight={10} />
+          <image src={res.emoji} height="100%" tint="#808080" marginRight={10} />
           <label style={styles.title} value={`Welcome to ${APP_NAME}!`} font={systemFont(20)} />
         </layout>
       </scroll>

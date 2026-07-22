@@ -1,0 +1,33 @@
+load("@valdi_npm//:defs.bzl", "npm_link_all_packages")
+load("@valdi_npm//experiments/helloworld_playground:webpack/package_json.bzl", webpack_bin = "bin")
+load("//bzl/valdi:valdi_exported_library.bzl", "valdi_exported_library")
+load("//tools/valdi_web_devtools:valdi_web_playground.bzl", "valdi_web_playground")
+
+# Experimental Valdi web playground. Not shipped, not stable — demonstrates
+# how an open_source consumer wires valdi-web-devtools against a minimal
+# Valdi module using only @valdi_npm (no @composer_npm dependency).
+npm_link_all_packages(name = "node_modules")
+
+valdi_exported_library(
+    name = "hello_export",
+    ios_bundle_id = "com.snap.valdi.experiments.hello",
+    ios_bundle_name = "HelloExperiment",
+    web_package_name = "hello_experiment_npm",
+    deps = [
+        "//apps/helloworld/src/valdi/hello_world",
+        "//src/valdi_modules/src/valdi/web_renderer",
+    ],
+)
+
+valdi_web_playground(
+    srcs = glob([
+        "playground/**/*.ts",
+        "playground/**/*.tsx",
+        "playground/**/*.js",
+    ]) + ["tsconfig.json"],
+    hmr_config = "playground/webpack.hmr.config.js",
+    hmr_extra_data = [":node_modules/@types/node"],
+    npm_package = ":hello_experiment_npm",
+    test_srcs = glob(["tests/**"]),
+    webpack_bin = webpack_bin,
+)

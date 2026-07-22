@@ -1,4 +1,18 @@
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+ts_project(
+    name = "hello_world_web",
+    srcs = glob([
+        "web/**/*.ts",
+        "src/**/*.d.ts",
+    ]),
+    allow_js = True,
+    composite = True,
+    declaration = True,
+    transpiler = "tsc",
+    tsconfig = "web/tsconfig.json",
+)
 
 valdi_module(
     name = "hello_world",
@@ -27,6 +41,11 @@ valdi_module(
         "res/**/*.webp",
     ]),
     visibility = ["//visibility:public"],
+    web_deps = [":hello_world_web"],
+    web_register_native_module_id_overrides = {
+        "hello_world/web/CppModule.js": "hello_world/src/CppModule",
+        "hello_world/web/NativeModule.js": "hello_world/src/NativeModule",
+    },
     deps = [
         "//src/valdi_modules/src/valdi/valdi_core",
         "//src/valdi_modules/src/valdi/valdi_tsx",
