@@ -3,3 +3,4 @@ packages:
  - ../../../compiler/companion
  - ../../../compiler/companion/remotedebug-ios-webkit-adapter
  - ../../../src/valdi_modules/src/valdi/valdi_protobuf
+ - ../../../tools/valdi_web_devtools

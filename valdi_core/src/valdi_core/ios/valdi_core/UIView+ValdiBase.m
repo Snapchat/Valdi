@@ -124,7 +124,7 @@ static BOOL SCValdiLayerHasAnimation(CALayer *layer)
     // - child subviews can have an opportunity to recieve touch events
     // - the view with the highest zIndex has priority
     // - children views that return nil aren't considered
-    auto hitTestRet = SCValdiCallSyncActionWithUIEventAndView(customHitTest, point, event, self);
+    auto hitTestRet = SCValdiCallHitTestActionWithUIEventAndView(customHitTest, point, event, self);
     if (hitTestRet) {
         for (UIView *subview in [self.subviews reverseObjectEnumerator]) {
             CGPoint convertedPoint = [subview convertPoint:point fromView:self];

@@ -29,7 +29,7 @@ export class ProxyServer extends EventEmitter {
     private _android?: AndroidAdapter;
     private _hermes?: HermesAdapter;
     private _adapter?: UniversalAdapter;
-    private _targetFetcherInterval?: NodeJS.Timer;
+    private _targetFetcherInterval?: ReturnType<typeof setInterval>;
     private _simulatorSocketFinder = new IOSSimulatorSocketFinder();
 
     private _injectedTargets = new Array();

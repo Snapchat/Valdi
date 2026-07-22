@@ -19,12 +19,14 @@ DefaultAttributes::DefaultAttributes(YGConfig* yogaConfig, AttributeIds& attribu
     : _attributeIds(attributeIds),
       _yogaAttributes(Valdi::makeShared<YogaAttributes>(yogaConfig, attributeIds, pointScale)),
       _accessibilityAttributes(Valdi::makeShared<AccessibilityAttributes>(attributeIds)),
-      _scrollAnchorAttributes(Valdi::makeShared<ScrollAnchorAttributes>(attributeIds)) {}
+      _scrollAnchorAttributes(Valdi::makeShared<ScrollAnchorAttributes>(attributeIds)),
+      _stickyAttributes(Valdi::makeShared<StickyAttributes>(attributeIds)) {}
 
 void DefaultAttributes::bind(AttributeHandlerById& attributes) {
     _yogaAttributes->bind(attributes);
     _accessibilityAttributes->bind(attributes);
     _scrollAnchorAttributes->bind(attributes);
+    _stickyAttributes->bind(attributes);
 
     AttributesBinderHelper binder(_attributeIds, attributes);
 

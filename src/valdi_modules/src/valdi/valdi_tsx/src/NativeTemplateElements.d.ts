@@ -86,6 +86,19 @@ interface LayoutAttributes {
   scrollAnchorPosition?: ScrollAnchorPosition;
 
   /**
+   * @experimental This feature is experimental and may change in future releases.
+   *
+   * Tags this element as a sticky header within the nearest parent scroll view that has
+   * nativeStickyEnabled={true}. When the user scrolls past this element's parent, the
+   * element's translationY is adjusted in the native scroll frame so it sticks to the
+   * top of the viewport until its parent's bottom edge pushes it back up.
+   *
+   * Eliminates the JS round-trip that lags the JS-side sticky-header implementation.
+   * @default: 'none'
+   */
+  stickyPosition?: StickyPosition;
+
+  /**
    * If set, the node will be set as a lazyLayout, and the given measure callback
    * will be called whenever the node needs to be measured. The callback
    * should return a MeasuredSize tuple representing how big the node should be.
@@ -1962,6 +1975,40 @@ export interface ScrollViewInteractive extends ScrollView {
    * @default: false
    */
   preserveScrollPosition?: boolean;
+
+  /**
+   * @experimental This feature is experimental and may change in future releases.
+   *
+   * When enabled, descendants tagged with stickyPosition='top' are repositioned in the
+   * native scroll pass (same VSYNC as the scroll gesture), skipping the JS round-trip
+   * that lags the JS-side sticky-header implementation.
+   * @default: false
+   */
+  nativeStickyEnabled?: boolean;
+
+  /**
+   * @experimental This feature is experimental and may change in future releases.
+   *
+   * Pixels of visual overhang above sticky headers under this scroll. Extends the
+   * effective header height for the sticky clamp so consumers that render a bar
+   * above the header (e.g. SectionList with stickyCover) do not overlap the next
+   * section's header. Only applies when nativeStickyEnabled=true.
+   * @default: 0
+   */
+  nativeStickyCover?: number;
+
+  /**
+   * @experimental This feature is experimental and may change in future releases.
+   *
+   * Pixels below the scroll viewport top where sticky headers should pin. Matches
+   * CSS `position: sticky; top: N`. Use when a floating page header (e.g. Subscreen's
+   * SubscreenHeader) has a visual footprint (gradient, shadow, animated height)
+   * extending below its Yoga bounds; without this the sticky headers pin at Yoga-top
+   * of the scroll viewport and can end up clipped behind the floating header.
+   * Only applies when nativeStickyEnabled=true.
+   * @default: 0
+   */
+  nativeStickyOffset?: number;
 }
 
 // @NativeTemplateElement({ios: 'SCValdiSpinnerView', android: 'com.snap.valdi.views.ValiSpinnerView', jsx: 'spinner'})
@@ -2276,6 +2323,8 @@ type LayoutJustifyContentProperty =
 type LayoutFlexBasisProperty = CSSValue;
 
 export type ScrollAnchorPosition = 'none' | 'top' | 'bottom';
+
+export type StickyPosition = 'none' | 'top';
 
 export type LayoutAccessibilityCategory =
   | 'auto'

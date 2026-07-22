@@ -436,6 +436,46 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
         }
     }
 
+    /**
+     * Detached snapshot of the attributed buffer plus its selection, captured by
+     * [snapshotAttributedText] before an input-mode change and restored via [applyIgnoreNewlines].
+     */
+    protected class AttributedTextSnapshot(
+        val spannable: Spannable,
+        val selectionStart: Int,
+        val selectionEnd: Int,
+    )
+
+    /**
+     * Captures a detached copy of the current attributed buffer and selection. Callers about to mutate
+     * Android input state (e.g. [setInputType]) MUST snapshot *before* that mutation: copying the live
+     * buffer afterwards can read an inconsistent span array and crash. Returns null when the view is
+     * not rendering attributed text, in which case the plain path refreshes safely from the live String.
+     */
+    protected fun snapshotAttributedText(): AttributedTextSnapshot? {
+        if (!isAttributedText) {
+            return null
+        }
+        return AttributedTextSnapshot(detachSpannable(this.text), selectionStart, selectionEnd)
+    }
+
+    /**
+     * Sets [ignoreNewlines] and refreshes exactly once: from [snapshot] when attributed (restoring the
+     * detached copy without re-reading the live buffer), otherwise from the live plain String.
+     */
+    protected fun applyIgnoreNewlines(value: Boolean, snapshot: AttributedTextSnapshot?) {
+        ignoreNewlines = value
+        if (snapshot != null) {
+            setSpannableAndSelection(snapshot.spannable, snapshot.selectionStart, snapshot.selectionEnd, skipSetTextOptimization = true)
+        } else {
+            refreshTextAndSelection()
+        }
+    }
+
+    private fun detachSpannable(source: Spannable?): Spannable {
+        return safeSpannableStringBuilder(source ?: SpannableString(""))
+    }
+
     private fun setAttributedText(nextAttributedText: AttributedText, spannable: Spannable) {
         isAttributedText = true
         attributedText = nextAttributedText
@@ -445,30 +485,32 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
 
     private fun setSpannableAndSelection(spannable: Spannable, start: Int = selectionStart, end: Int = selectionEnd, skipSetTextOptimization: Boolean = false) {
         isAttributedText = true
-        val textClamped = clampProcessSpannableIfNeeded(spannable)
-        val lengthClamped = textClamped.length ?: 0
+        // Process into a detached buffer exactly once. Everything below reads `processed`, never the
+        // live buffer again: re-copying the live Spannable after an input-mode change is what throws
+        // in SpannableStringBuilder.getSpansRec.
+        val processed = clampProcessSpannableIfNeeded(spannable)
         val superText = super.getText()
 
         // Calling setText is expensive so we only call it if the text has changed.
         // If text has not changed then we apply the spans without calling setText.
         // See: https://developer.android.com/develop/ui/views/text-and-emoji/spans#change-internal-attributes
-        if (superText == null || superText.toString() != spannable.toString() || skipSetTextOptimization) {
-            setText(spannable, BufferType.SPANNABLE)
+        if (superText == null || superText.toString() != processed.toString() || skipSetTextOptimization) {
+            setText(processed, BufferType.SPANNABLE)
         } else {
-            val newSpans = spannable.getSpans(0, spannable.length, Object::class.java)
+            val newSpans = processed.getSpans(0, processed.length, Object::class.java)
 
             // When calling `setSpan` we first remove existing spans if their types are present.
             // We also remove onLayout spans as these can get out of sync when the text changes.
-            superText.getSpans(0, spannable.length, OnLayoutSpan::class.java).forEach { onLayoutSpan ->
+            superText.getSpans(0, processed.length, OnLayoutSpan::class.java).forEach { onLayoutSpan ->
                 superText.removeSpan(onLayoutSpan)
             }
-            superText.getSpans(0, spannable.length, InvisibleReplacementSpan::class.java).forEach { invisibleSpan ->
+            superText.getSpans(0, processed.length, InvisibleReplacementSpan::class.java).forEach { invisibleSpan ->
                 superText.removeSpan(invisibleSpan)
             }
-            superText.getSpans(0, spannable.length, InvisibleForegroundColorSpan::class.java).forEach { invisibleSpan ->
+            superText.getSpans(0, processed.length, InvisibleForegroundColorSpan::class.java).forEach { invisibleSpan ->
                 superText.removeSpan(invisibleSpan)
             }
-            superText.getSpans(0, spannable.length, Object::class.java).forEach { span ->
+            superText.getSpans(0, processed.length, Object::class.java).forEach { span ->
                 val isInNewSpans = newSpans.find { newSpan ->
                     newSpan::class == span::class
                 }
@@ -481,16 +523,17 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
             newSpans.forEach { span ->
                 superText.setSpan(
                     span,
-                    spannable.getSpanStart(span),
-                    spannable.getSpanEnd(span),
-                    spannable.getSpanFlags(span),
+                    processed.getSpanStart(span),
+                    processed.getSpanEnd(span),
+                    processed.getSpanFlags(span),
                 )
             }
         }
-        
-        val startClamped = Math.max(0, Math.min(lengthClamped, start))
-        val endClamped = Math.max(startClamped, Math.min(lengthClamped, end))
-        setSelection(startClamped, endClamped)
+
+        // Clamp against the actual post-setText buffer length, not the pre-setText length. setText can
+        // leave the buffer shorter than `processed` (e.g. empty), and applying a stale nonzero
+        // selection is what throws "setSpan ... ends beyond length 0".
+        setSelectionClamped(start, end)
     }
 
     private fun clampProcessTextIfNeeded(rawValue: String): String {
@@ -508,7 +551,7 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
 
 
     private fun clampProcessSpannableIfNeeded(rawValue: Spannable): Spannable {
-        val value = SpannableStringBuilder(rawValue)
+        val value = safeSpannableStringBuilder(rawValue)
         if (ignoreNewlines) {
             value.replace(Regex("\n"), "")
         }
@@ -520,9 +563,25 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
         return value
     }
 
+    private fun safeSpannableStringBuilder(rawValue: CharSequence): SpannableStringBuilder {
+        return try {
+            SpannableStringBuilder(rawValue)
+        } catch (e: IndexOutOfBoundsException) {
+            // The live buffer can expose an inconsistent span array (getSpansRec) mid input-mode
+            // change; degrade to span-less text rather than crash while copying it. Log the degrade
+            // so a prod occurrence is visible instead of silently shipping plain text for rich.
+            logger?.error("Failed to copy attributed spans; degrading to plain text: ${e.message}")
+            SpannableStringBuilder(rawValue.toString())
+        }
+    }
+
     override fun prepareForRecycling() {
         pendingAttributedTextRebind = null
         removeCallbacks(attributedTextRebindRunnable)
+        // The attributed fast-path cache lives on the (surviving) helper; clearing the buffer without
+        // invalidating it lets a stale matching signature take the light path on re-open and render
+        // the emptied field blank.
+        textViewHelper?.invalidateAttributedTextShapeSignature()
         setText("")
     }
 
@@ -532,8 +591,7 @@ open class ValdiEditText(context: Context) : AppCompatEditText(context), ValdiTo
     }
 
     fun setIgnoreNewlines(value: Boolean) {
-        ignoreNewlines = value;
-        refreshTextAndSelection()
+        applyIgnoreNewlines(value, snapshotAttributedText())
     }
 
     protected fun onPressedReturn() {

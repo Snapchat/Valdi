@@ -14,8 +14,9 @@ export function formatDurationMs(ms: number): string {
  * @returns A string showing the length of time represented by seconds in "HH:MM:SS" format
  */
 export function formatDurationSeconds(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.round(seconds % 60);
+  const totalSeconds = Math.max(0, Math.round(seconds));
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
   return [h, m > 9 ? m : h ? `0${m}` : m || '0', s > 9 ? s : `0${s}`].filter(Boolean).join(':');
 }

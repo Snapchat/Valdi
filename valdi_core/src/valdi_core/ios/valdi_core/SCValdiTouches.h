@@ -51,12 +51,17 @@ Valdi::Value SCValdiMakeTouchEvent(UIView* view,
 Valdi::TouchEvents::PointerLocations SCValdiGetPointerDataFromEvent(UIEvent* uiEvent);
 
 Valdi::TouchEvents::PointerLocations SCValdiGetPointerDataFromGestureRecognizer(UIGestureRecognizer* gestureRecognizer);
+
+BOOL SCValdiCallPredicateWithEvent(id<SCValdiFunction> predicate,
+                                   UIView* view,
+                                   const Valdi::Value& event,
+                                   const char* callContext);
 }
 #endif // __cplusplus
 
-BOOL SCValdiCallSyncActionWithUIEventAndView(id<SCValdiFunction> action,
-                                             CGPoint location,
-                                             UIEvent* uiEvent,
-                                             UIView* view);
+BOOL SCValdiCallHitTestActionWithUIEventAndView(id<SCValdiFunction> action,
+                                                CGPoint location,
+                                                UIEvent* uiEvent,
+                                                UIView* view);
 
 SC_EXTERN_C_END

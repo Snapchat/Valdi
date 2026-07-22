@@ -12,6 +12,7 @@
 #include "valdi/runtime/CSS/CSSAttributesManager.hpp"
 #include "valdi/runtime/Context/RawViewNodeId.hpp"
 #include "valdi/runtime/Context/ScrollAnchorPosition.hpp"
+#include "valdi/runtime/Context/StickyPosition.hpp"
 #include "valdi/runtime/Context/ViewNodeAccessibility.hpp"
 #include "valdi/runtime/Views/Frame.hpp"
 #include "valdi/runtime/Views/Measure.hpp"
@@ -476,6 +477,16 @@ public:
     // Preserve scroll position across content-size growth. See ViewNodeScrollState.
     void setPreserveScrollPosition(bool preserve);
 
+    // Sticky headers: when set on a child inside a scroll with nativeStickyEnabled,
+    // the child's translationY is repositioned in the native scroll pass so it sticks
+    // to the top of the viewport as its parent section scrolls under it. Eliminates the
+    // JS round-trip that lags the JS sticky-header path.
+    void setStickyPosition(int position);
+    int getStickyPosition() const;
+    void setNativeStickyEnabled(bool enabled);
+    void setNativeStickyCover(float cover);
+    void setNativeStickyOffset(float offset);
+
     /**
      * Accessibility attributes (checkout NativeTemplateElement.ts for more info)
      */
@@ -635,6 +646,12 @@ private:
     int _lastChildrenIndexerId = 0;
     RawViewNodeId _rawId = 0;
     int _scrollAnchorPosition = ScrollAnchorPositionNone;
+    int _stickyPosition = StickyPositionNone;
+    // Per-sticky-child measurement cache, refreshed from updateScrollState (layout pass) and
+    // read from handleOnScroll (per scroll frame). Avoids layout thrash while scrolling.
+    float _stickyCachedParentY = 0.0f;
+    float _stickyCachedParentH = 0.0f;
+    float _stickyCachedChildH = 0.0f;
 
     std::bitset<30> _flags;
 
@@ -712,6 +729,12 @@ private:
     void handleOnScroll(const Point& directionDependentContentOffset,
                         const Point& directionDependentUnclampedContentOffset,
                         const Point& directionDependentVelocity);
+
+    // Repositions sticky-tagged descendants for the current scroll offset.
+    // refreshCache=true recomputes each sticky child's cached parent Y / parent height /
+    // child height by walking Yoga positions (call from layout / content-size passes).
+    // refreshCache=false only reads the cache (call from per-frame scroll pass).
+    void updateStickyHeaders(bool refreshCache);
 
     void applyFrame(ViewTransactionScope& viewTransactionScope,
                     const Ref<Animator>& animator,

@@ -219,8 +219,9 @@ public:
                 return @(value.toBool());
             case Valdi::ValueType::Map:
             {
-                NSMutableDictionary *dictionary = [NSMutableDictionary dictionary];
-                for (const auto &it : *value.getMap()) {
+                const auto &valueMap = *value.getMap();
+                NSMutableDictionary *dictionary = [NSMutableDictionary dictionaryWithCapacity:valueMap.size()];
+                for (const auto &it : valueMap) {
                     dictionary[NSStringFromString(it.first)] = NSObjectFromValue(it.second);
                 }
 
@@ -244,7 +245,7 @@ public:
             case Valdi::ValueType::TypedObject:
             {
                 const auto &typedObject = *value.getTypedObject();
-                NSMutableDictionary *dictionary = [NSMutableDictionary dictionary];
+                NSMutableDictionary *dictionary = [NSMutableDictionary dictionaryWithCapacity:typedObject.getPropertiesSize()];
                 for (const auto &property: typedObject) {
                     dictionary[NSStringFromString(property.name)] = NSObjectFromValue(property.value);
                 }
@@ -348,6 +349,7 @@ id<SCValdiFunction> FunctionFromValueFunction(const Valdi::Ref<Valdi::ValueFunct
 
     Valdi::Value ValueFromNSDictionary(NSDictionary<NSString *, id> *dict) {
         auto map = Valdi::makeShared<Valdi::ValueMap>();
+        map->reserve(dict.count);
         for (NSString *key in dict) {
             id value = [dict objectForKey:key];
             auto weakValue = ValueFromNSObject(value);

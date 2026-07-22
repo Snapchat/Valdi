@@ -191,12 +191,41 @@ export class ModuleLoader implements IModuleLoader {
     this.doPreload(resolvedPath.absolutePath, 0, maxDepth, {});
   }
 
-  preloadBatch(paths: string[], maxDepth: number): void {
+  preloadBatch(paths: string[], maxDepth: number, chunkSize?: number): void {
     const visited: StringSet = {};
-    for (let i = 0; i < paths.length; i++) {
-      const resolvedPath = resolveAbsoluteImportFromPath(paths[i]);
-      this.doPreload(resolvedPath.absolutePath, 0, maxDepth, visited);
+
+    // chunkSize > 0 opts into cooperative yielding: evaluate up to `chunkSize` modules, then
+    // return control to the JS scheduler before the next chunk. Preloading a large batch
+    // (e.g. the capture-start SnapEditor list) otherwise runs as a single uninterrupted JS task
+    // that holds the runtime thread for its entire duration; on slow devices that can exceed the
+    // 5s Composer watchdog (JavaScriptANRDetector's ack task is queued on this same thread) and
+    // block queued input. Yielding between chunks lets the ack and input tasks interleave.
+    //
+    // chunkSize omitted / <= 0 keeps the original synchronous single-task behavior. The batch
+    // caller opts in via a platform config, so this stays off by default (e.g. on iOS).
+    if (chunkSize === undefined || chunkSize <= 0 || paths.length <= chunkSize) {
+      for (let i = 0; i < paths.length; i++) {
+        const resolvedPath = resolveAbsoluteImportFromPath(paths[i]);
+        this.doPreload(resolvedPath.absolutePath, 0, maxDepth, visited);
+      }
+      return;
     }
+
+    let index = 0;
+    const evaluateNextChunk = () => {
+      const end = Math.min(index + chunkSize, paths.length);
+      for (; index < end; index++) {
+        const resolvedPath = resolveAbsoluteImportFromPath(paths[index]);
+        this.doPreload(resolvedPath.absolutePath, 0, maxDepth, visited);
+      }
+      if (index < paths.length) {
+        // Reschedule the rest as a fresh work item so the JS dispatch queue drains other
+        // pending tasks (watchdog ack, input) between chunks. Interruptible: drop the
+        // remaining preload if the runtime is torn down.
+        runtime.scheduleWorkItem(evaluateNextChunk, 0, true);
+      }
+    };
+    evaluateNextChunk();
   }
 
   private doPreload(path: string, currentDepth: number, maxDepth: number, visitedModulePaths: StringSet) {

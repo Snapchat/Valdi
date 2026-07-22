@@ -37,6 +37,12 @@ import kotlin.math.min
 
 open class ValdiRootView: ValdiView, Disposable {
 
+    companion object {
+        /** Set from [ValdiTweaks.enableLayoutInvalidationRetry]. */
+        @JvmStatic
+        var enableLayoutInvalidationRetry: Boolean = false
+    }
+
     enum class ScrollDirection(val value: Int) {
         TopToBottom(0),
         BottomToTop(1),
@@ -489,7 +495,19 @@ open class ValdiRootView: ValdiView, Disposable {
     }
 
     fun onValdiLayoutInvalidated() {
-        super.requestLayout()
+        if (enableLayoutInvalidationRetry && (isLayoutRequested || isInLayout)) {
+            // A requestLayout during an in-flight traversal can be dropped by ViewRootImpl, leaving
+            // native's layout-specs latch stuck and pending view-tree updates unapplied. During the
+            // in-frame second layout pass the request is eaten before the force-layout flag is even
+            // set, so isInLayout must be checked too. Post a retry to guarantee a traversal.
+            post {
+                // Deliberately unguarded: after an eaten request isLayoutRequested reads false
+                // even though no traversal is coming.
+                super.requestLayout()
+            }
+        } else {
+            super.requestLayout()
+        }
     }
 
     internal fun enqueueOnNextDrawCallback(callbackHandle: Long) {
@@ -529,7 +547,14 @@ open class ValdiRootView: ValdiView, Disposable {
             // due to calling layout in the middle of RecyclerView’s
             // layout stage
             post {
-                requestLayout()
+                if (enableLayoutInvalidationRetry) {
+                    // Deliberately bypass the suppressing requestLayout() override: an update batch
+                    // active by now would silently drop this request and nothing re-schedules it.
+                    // Safe: this only schedules a traversal, it never lays out synchronously.
+                    onValdiLayoutInvalidated()
+                } else {
+                    requestLayout()
+                }
             }
         }
     }

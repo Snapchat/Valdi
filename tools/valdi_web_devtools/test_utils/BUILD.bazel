@@ -1,0 +1,19 @@
+load("@aspect_rules_js//js:defs.bzl", "js_library")
+
+package(default_visibility = ["//visibility:public"])
+
+js_library(
+    name = "static_server",
+    srcs = ["static_server.js"],
+)
+
+js_library(
+    name = "test_runner",
+    srcs = ["test_runner.js"],
+    deps = [":static_server"],
+)
+
+js_library(
+    name = "puppeteer_helpers",
+    srcs = ["puppeteer_helpers.js"],
+)

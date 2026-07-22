@@ -29,19 +29,29 @@ pushd "$OPEN_SOURCE_DIR" > /dev/null
 # ---------------------------------------------------------------------------
 # 1. Toolchain resolves for the compiler target
 #
-# The compiler (swift_binary) needs a Swift toolchain. On macOS, rules_swift's
-# xcode-based autoconfig provides one. On Linux, our hermetic toolchain repo
-# must be registered. If this cquery fails, the public CI Linux build will fail.
+# The compiler (swift_binary) needs a Swift toolchain and is
+# target_compatible_with @platforms//os:linux, so it is only meaningfully
+# analyzable on Linux (where our hermetic toolchain repo must be registered).
+#
+# `build --nobuild` runs the same loading/analysis and Swift toolchain
+# resolution as the real build below, without executing actions. A bare
+# `cquery ... 2>/dev/null` was unsound: on Linux it false-negatived — reporting
+# broken resolution while the actual build of the same target succeeded — and
+# on macOS it never exercised the compiler. Skip on non-Linux, where the target
+# is incompatible (matching the build check below).
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Compiler target resolves with use_local_compiler=true ---"
 
-if bzl cquery //compiler/compiler:local_valdi_compiler \
-    --//bzl/valdi:use_local_compiler=true \
-    --output=label 2>/dev/null; then
-    pass "local_valdi_compiler target analyzable"
+if [[ "$(uname)" == "Linux" ]]; then
+    if bzl build --nobuild //compiler/compiler:local_valdi_compiler \
+        --//bzl/valdi:use_local_compiler=true; then
+        pass "local_valdi_compiler analyzable"
+    else
+        fail "local_valdi_compiler CANNOT be analyzed with use_local_compiler=true — Swift toolchain resolution is broken"
+    fi
 else
-    fail "local_valdi_compiler CANNOT be analyzed with use_local_compiler=true — Swift toolchain resolution is broken"
+    pass "Skipping compiler analysis (compiler is Linux-only; running on $(uname))"
 fi
 
 # ---------------------------------------------------------------------------

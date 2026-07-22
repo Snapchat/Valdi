@@ -6,11 +6,13 @@
 //
 
 #include "valdi/runtime/Context/ViewNode.hpp"
+#include "valdi/runtime/Attributes/AttributeOwner.hpp"
 #include "valdi/runtime/Attributes/ViewNodeAttributesApplier.hpp"
 #include "valdi/runtime/Attributes/Yoga/Yoga.hpp"
 #include "valdi/runtime/CSS/CSSAttributesManager.hpp"
 #include "valdi/runtime/Context/IViewNodeAssetHandler.hpp"
 #include "valdi/runtime/Context/ScrollAnchorPosition.hpp"
+#include "valdi/runtime/Context/StickyPosition.hpp"
 #include "valdi/runtime/Context/ViewManagerContext.hpp"
 #include "valdi/runtime/Context/ViewNodeAccessibilityState.hpp"
 #include "valdi/runtime/Context/ViewNodeChildrenIndexer.hpp"
@@ -40,6 +42,7 @@
 #include "valdi_core/cpp/Utils/ContainerUtils.hpp"
 #include <cmath>
 #include <fmt/format.h>
+#include <limits>
 #include <sstream>
 #include <yoga/Yoga.h>
 #include <yoga/algorithm/CalculateLayout.h>
@@ -1027,6 +1030,10 @@ void ViewNode::handleOnScroll(const Point& directionDependentContentOffset,
             refreshPreserveAnchor(this, scrollState, directionAgnosticContentOffset.y, _calculatedFrame.height);
         }
 
+        // Sticky headers: apply cached-measurement clamp inside the scroll frame so the
+        // transform lands in the same VSYNC as the scroll gesture. No layout thrash.
+        updateStickyHeaders(/*refreshCache=*/false);
+
         setCalculatedViewportNeedsUpdate();
     });
 }
@@ -1420,11 +1427,10 @@ void ViewNode::setViewClassNameForPlatform(ViewTransactionScope& viewTransaction
     if (currentPlatformType != platformType) {
         // macOS and Linux fall through to iOS class names as the base fallback.
         // macosClass / linuxClass overwrite iosClass when explicitly set (bound later).
-        bool isFallthrough =
-            ((currentPlatformType == PlatformTypeMacOS || currentPlatformType == PlatformTypeLinux) &&
-             platformType == PlatformTypeIOS) ||
-            // Linux also accepts macosClass as a shared-desktop override.
-            (currentPlatformType == PlatformTypeLinux && platformType == PlatformTypeMacOS);
+        bool isFallthrough = ((currentPlatformType == PlatformTypeMacOS || currentPlatformType == PlatformTypeLinux) &&
+                              platformType == PlatformTypeIOS) ||
+                             // Linux also accepts macosClass as a shared-desktop override.
+                             (currentPlatformType == PlatformTypeLinux && platformType == PlatformTypeMacOS);
         if (!isFallthrough) {
             return;
         }
@@ -2445,6 +2451,139 @@ bool ViewNode::updateLazyLayout() {
     return updated;
 }
 
+void ViewNode::updateStickyHeaders(bool refreshCache) {
+    if (_scrollState == nullptr || !_scrollState->getNativeStickyEnabled()) {
+        return;
+    }
+    if (_viewNodeTree == nullptr) {
+        return;
+    }
+
+    float scrollY = _scrollState->getDirectionAgnosticContentOffset().y;
+    // Pixels of visual overhang above sticky headers. Extends the effective header
+    // height for the clamp so a header rendering a bar above its yoga bounds
+    // (SectionList.stickyCover) stops sliding before the next section arrives.
+    // Mirrors SectionList.tsx's `headerHeight = getHeaderHeight() + coverHeight`.
+    float stickyCover = _scrollState->getNativeStickyCover();
+    // Pixels below scroll viewport top where headers pin. Matches CSS `top: N`.
+    // Effectively shifts the pin position down so headers aren't clipped behind
+    // a floating page header with visual footprint past its Yoga bounds.
+    float stickyOffset = _scrollState->getNativeStickyOffset();
+
+    // We push translationY updates through the attribute-set path so both the C++ state
+    // and the platform-side transform binder fire in the same frame. withLock acquires
+    // the tree mutex (recursive -- safe if already held on the Android scroll path) and
+    // opens a ViewTransactionScope. Nested calls piggyback on the outer transaction; a
+    // top-level call submits at end-of-scope, pushing transforms in the same VSYNC as
+    // the scroll gesture.
+    _viewNodeTree->withLock([&]() {
+        auto& scope = _viewNodeTree->getCurrentViewTransactionScope();
+
+        // Bounded-depth subtree walk. Header nesting in SubscreenSections is deep:
+        // scroll -> PullToRefresh -> SubscreenContent -> paddingRight layout ->
+        // SectionList root -> SectionListItem root -> column-reverse layout -> header
+        // (~8 levels). 16 covers that plus any consumer wrapping without unbounded cost.
+        // Skip into nested scrolls: each scroll owns its own sticky pass.
+        static constexpr int kStickyMaxDepth = 16;
+        auto* owner = AttributeOwner::getNativeOverridenAttributeOwner();
+        std::function<void(ViewNode*, int)> walk = [&](ViewNode* node, int depth) {
+            if (depth <= 0) {
+                return;
+            }
+            for (auto* child : *node) {
+                if (child->getStickyPosition() == StickyPositionTop) {
+                    if (refreshCache) {
+                        auto* parent = child->getParent().get();
+                        // parent Y relative to this scroll node (sum yoga Top edges up the chain).
+                        float parentY = 0.0f;
+                        float parentH = 0.0f;
+                        if (parent == this) {
+                            // Direct child of the scroll: no parent section to clamp against.
+                            // Treat the sticky track as unbounded so the header stays pinned once
+                            // scrolled past its natural Y, matching CSS `position: sticky`
+                            // semantics for elements whose containing block is the scroll itself.
+                            parentH = std::numeric_limits<float>::max();
+                        } else if (parent != nullptr && parent->getYogaNode() != nullptr) {
+                            parentH = sanitizeYogaValue(resolveYogaNode(parent->getYogaNode())
+                                                            ->getLayout()
+                                                            .dimension(facebook::yoga::Dimension::Height));
+                            for (auto* p = parent; p != nullptr && p != this; p = p->getParent().get()) {
+                                // Skip logical grouping / lazy-layout wrappers that don't have a
+                                // Yoga node -- their child positions are still relative to the
+                                // enclosing laid-out ancestor. Matches preserveAnchorAbsoluteTop.
+                                if (p->getYogaNode() == nullptr) {
+                                    continue;
+                                }
+                                parentY += sanitizeYogaValue(resolveYogaNode(p->getYogaNode())
+                                                                 ->getLayout()
+                                                                 .position(facebook::yoga::PhysicalEdge::Top));
+                            }
+                        }
+                        float childH = 0.0f;
+                        float childTop = 0.0f;
+                        if (child->getYogaNode() != nullptr) {
+                            childTop = sanitizeYogaValue(resolveYogaNode(child->getYogaNode())
+                                                             ->getLayout()
+                                                             .position(facebook::yoga::PhysicalEdge::Top));
+                            childH = sanitizeYogaValue(resolveYogaNode(child->getYogaNode())
+                                                           ->getLayout()
+                                                           .dimension(facebook::yoga::Dimension::Height));
+                        }
+                        // Absorb child's Top offset within its parent so the sticky trigger
+                        // fires when the child (not the parent) reaches the pin position.
+                        // For SectionList headers childTop is 0 (via column-reverse), so
+                        // this is a no-op there; for any other sticky consumer whose child
+                        // isn't at Top=0 of its parent, this makes the clamp behave like
+                        // CSS `position: sticky` (per-element trigger) rather than parallax
+                        // from the parent's top.
+                        child->_stickyCachedParentY = parentY + childTop;
+                        child->_stickyCachedParentH =
+                            parentH == std::numeric_limits<float>::max() ? parentH : std::max(0.0f, parentH - childTop);
+                        child->_stickyCachedChildH = childH;
+                    }
+
+                    // displacement = clamp(scrollY - parentY + offset, 0, parentH - (childH + cover))
+                    // - `cover` matches JS's `headerHeight = getHeaderHeight() + coverHeight`
+                    //   so headers stop sliding before the next section's header arrives.
+                    // - `offset` matches CSS `position: sticky; top: N`. Not auto-wired by
+                    //   SectionList; consumers can set it directly if their scroll extends
+                    //   behind a transparent floating header.
+                    //
+                    // Behavior: full-overlap. Section N pins at max; Section N+1 rides up
+                    // from below at its natural position, arrives at viewport top, and
+                    // paints over Section N by later-sibling paint order + zIndex on the
+                    // header. User sees clean single-header handoff. Matches
+                    // UITableView / UICollectionView pinToVisibleBounds defaults.
+                    //
+                    // Alternative "push-out" mode (Section N slides above viewport as
+                    // Section N+1 arrives) is a v2 opt-in -- see valdi-docs/bcollins RFC.
+                    float maxDisplacement =
+                        std::max(0.0f, child->_stickyCachedParentH - child->_stickyCachedChildH - stickyCover);
+                    float distance = scrollY - child->_stickyCachedParentY + stickyOffset;
+                    float displacement = std::max(0.0f, std::min(distance, maxDisplacement));
+
+                    // setAttribute so processAttributeChange fires both the C++ setter
+                    // (updates _translationY) and the platform transform binder (Android
+                    // View.setTranslationY) in one call. On iOS translationY is a composite
+                    // part of transformComposite -- setAttribute only marks the composite
+                    // dirty; flush() drains it to apply layer.transform same-frame.
+                    child->setAttribute(
+                        scope, DefaultAttributeTranslationY, owner, Value(static_cast<double>(displacement)), nullptr);
+                    child->getAttributesApplier().flush(scope);
+                }
+                // Skip recursion into nested scrolls (each owns its own sticky pass), but
+                // only AFTER checking stickyPosition above -- so a scroll container tagged
+                // stickyPosition='top' (e.g. horizontal tab bar) can act as a sticky header.
+                if (child->_flags[kScrollAttributesBound]) {
+                    continue;
+                }
+                walk(child, depth - 1);
+            }
+        };
+        walk(this, kStickyMaxDepth);
+    });
+}
+
 void ViewNode::updateScrollState() {
     auto& scrollState = getOrCreateScrollState();
     scrollState.setInScrollMode(true);
@@ -2598,6 +2737,11 @@ void ViewNode::updateScrollState() {
         // 2) Refresh the anchor to the node at the current viewport center.
         refreshPreserveAnchor(this, scrollState, offsetY, viewportH);
     }
+
+    // Sticky headers: refresh per-child measurement cache from the current layout, then
+    // reposition. Called on every layout pass to survive content-size changes (section
+    // expand/collapse, rotation, keyboard, initial mount).
+    updateStickyHeaders(/*refreshCache=*/true);
 
     if (updateResult.changed) {
         setCalculatedViewportNeedsUpdate();
@@ -3267,6 +3411,102 @@ void ViewNode::setScrollAnchorPosition(int position) {
 
 int ViewNode::getScrollAnchorPosition() const {
     return _scrollAnchorPosition;
+}
+
+void ViewNode::setStickyPosition(int position) {
+    int previous = _stickyPosition;
+    _stickyPosition = position;
+    // When transitioning out of sticky mode, release our native-priority hold on
+    // translationY so JS writes (fade path, tests, or a later consumer) can regain
+    // control. Without this, the header freezes at its last native-set displacement.
+    if (previous == StickyPositionTop && position != StickyPositionTop && _viewNodeTree != nullptr) {
+        _viewNodeTree->withLock([&]() {
+            auto& scope = _viewNodeTree->getCurrentViewTransactionScope();
+            getAttributesApplier().removeAttribute(
+                scope, DefaultAttributeTranslationY, AttributeOwner::getNativeOverridenAttributeOwner(), nullptr);
+            getAttributesApplier().flush(scope);
+        });
+    } else if (previous != StickyPositionTop && position == StickyPositionTop && _viewNodeTree != nullptr) {
+        // Runtime toggle none -> top: walk up to the nearest scroll ancestor with
+        // nativeStickyEnabled=true and refresh its sticky cache. Without this, a header
+        // that becomes sticky after the enclosing scroll has already run its layout pass
+        // won't have parentY/parentH/childH populated and will read defaults on next scroll.
+        for (auto* p = getParent().get(); p != nullptr; p = p->getParent().get()) {
+            if (p->_flags[kScrollAttributesBound]) {
+                if (p->_scrollState != nullptr && p->_scrollState->getNativeStickyEnabled()) {
+                    p->updateStickyHeaders(/*refreshCache=*/true);
+                }
+                break;
+            }
+        }
+    }
+}
+
+int ViewNode::getStickyPosition() const {
+    return _stickyPosition;
+}
+
+void ViewNode::setNativeStickyEnabled(bool enabled) {
+    auto& scrollState = getOrCreateScrollState();
+    bool previous = scrollState.getNativeStickyEnabled();
+    scrollState.setNativeStickyEnabled(enabled);
+
+    // Runtime toggle false -> true: build the sticky measurement cache now so the
+    // next scroll frame doesn't read default 0.0f values and misposition headers.
+    // Layout-driven refresh (updateScrollState -> refreshCache=true) would eventually
+    // populate it on the next layout pass, but scroll can fire before that.
+    if (!previous && enabled) {
+        updateStickyHeaders(/*refreshCache=*/true);
+    }
+
+    // When turning off, walk sticky descendants and release the native-priority
+    // hold on translationY so JS (or the consumer's next render) can reclaim it.
+    // Without this the pinned headers freeze at their last native-set displacement.
+    if (previous && !enabled && _viewNodeTree != nullptr) {
+        _viewNodeTree->withLock([&]() {
+            auto& scope = _viewNodeTree->getCurrentViewTransactionScope();
+            auto* owner = AttributeOwner::getNativeOverridenAttributeOwner();
+            static constexpr int kStickyMaxDepth = 16;
+            std::function<void(ViewNode*, int)> walk = [&](ViewNode* node, int depth) {
+                if (depth <= 0) {
+                    return;
+                }
+                for (auto* child : *node) {
+                    if (child->getStickyPosition() == StickyPositionTop) {
+                        child->getAttributesApplier().removeAttribute(
+                            scope, DefaultAttributeTranslationY, owner, nullptr);
+                        child->getAttributesApplier().flush(scope);
+                    }
+                    // Skip recursion into nested scrolls (they own their own sticky pass),
+                    // but only AFTER releasing on the scroll itself if it happened to be
+                    // tagged sticky.
+                    if (child->_flags[kScrollAttributesBound]) {
+                        continue;
+                    }
+                    walk(child, depth - 1);
+                }
+            };
+            walk(this, kStickyMaxDepth);
+        });
+    }
+}
+
+void ViewNode::setNativeStickyCover(float cover) {
+    auto& scrollState = getOrCreateScrollState();
+    scrollState.setNativeStickyCover(cover);
+    // Reapply the clamp with the new cover using the current cache. No re-measure needed:
+    // cover affects the clamp math (maxDisplacement = parentH - childH - cover), not layout.
+    if (scrollState.getNativeStickyEnabled()) {
+        updateStickyHeaders(/*refreshCache=*/false);
+    }
+}
+
+void ViewNode::setNativeStickyOffset(float offset) {
+    auto& scrollState = getOrCreateScrollState();
+    scrollState.setNativeStickyOffset(offset);
+    if (scrollState.getNativeStickyEnabled()) {
+        updateStickyHeaders(/*refreshCache=*/false);
+    }
 }
 
 void ViewNode::setMaintainScrollAnchor(bool maintain) {

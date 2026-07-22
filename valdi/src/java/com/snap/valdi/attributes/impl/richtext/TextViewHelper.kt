@@ -576,6 +576,16 @@ class TextViewHelper(private val view: TextView,
         view.invalidate()
     }
 
+    /**
+     * Drops the attributed fast-path shape cache so the next apply takes the full-rebind path.
+     * Call this whenever the native buffer is cleared out from under the helper (e.g. recycling):
+     * a surviving matching signature would otherwise route the re-apply through the light path,
+     * which does not rewrite the emptied buffer and leaves the field blank.
+     */
+    fun invalidateAttributedTextShapeSignature() {
+        attributedTextShapeSignature = null
+    }
+
     internal fun clearOverlayLayoutCache() {
         overlayLayoutCache?.recycle()
         overlayLayoutCache = null

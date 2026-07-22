@@ -76,6 +76,9 @@ void ScrollAttributes::bind(AttributeHandlerById& attributes) {
 
     binder.bindViewNodeBoolean("maintainScrollAnchor", &ViewNode::setMaintainScrollAnchor);
     binder.bindViewNodeBoolean("preserveScrollPosition", &ViewNode::setPreserveScrollPosition);
+    binder.bindViewNodeBoolean("nativeStickyEnabled", &ViewNode::setNativeStickyEnabled);
+    binder.bindViewNodeFloat("nativeStickyCover", &ViewNode::setNativeStickyCover);
+    binder.bindViewNodeFloat("nativeStickyOffset", &ViewNode::setNativeStickyOffset);
 }
 
 } // namespace Valdi

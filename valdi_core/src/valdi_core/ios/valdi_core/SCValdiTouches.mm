@@ -144,16 +144,19 @@ Valdi::TouchEvents::PointerLocations SCValdiGetPointerDataFromEvent(UIEvent *uiE
 
 }
 
-BOOL SCValdiCallSyncActionWithUIEventAndView(id<SCValdiFunction> action, CGPoint location, UIEvent* uiEvent, UIView* view)
+BOOL SCValdiCallPredicateWithEvent(id<SCValdiFunction> predicate,
+                                   UIView *view,
+                                   const Valdi::Value &event,
+                                   const char *callContext)
 {
-    auto event = SCValdiMakeTouchEvent(view, location, UIGestureRecognizerStatePossible, SCValdiGetPointerDataFromEvent(uiEvent));
-
-    if ([action respondsToSelector:@selector(performWithMarshaller:flags:)]) {
+    if ([predicate respondsToSelector:@selector(performWithMarshaller:flags:)]) {
         // Use callSyncWithDeadline instead of dispatch_sync to prevent the main thread from
         // blocking indefinitely when the JS queue is busy. On timeout, returning NO safely
-        // drops the hit test. VALDI_DISABLE_HIT_TEST_SYNC_DEADLINE reverts to legacy path.
+        // drops the hit test or gesture begin. VALDI_DISABLE_HIT_TEST_SYNC_DEADLINE reverts
+        // to the legacy path.
         if (!view.valdiContext.disableHitTestSyncDeadline) {
-            const auto& fn = [(SCValdiFunctionWithCPPFunction *)action getFunction];
+            const auto& fn = [(SCValdiFunctionWithCPPFunction *)predicate getFunction];
+
             Valdi::Value params[] = { event };
             auto result = fn->callSyncWithDeadline(std::chrono::milliseconds(250), params, 1);
             return result.success() ? result.value().toBool() : NO;
@@ -161,5 +164,12 @@ BOOL SCValdiCallSyncActionWithUIEventAndView(id<SCValdiFunction> action, CGPoint
     }
 
     // Legacy path: non-C++ ValueFunction implementations, or when sync deadline is disabled.
-    return SCValdiCallActionWithEvent(action, event, Valdi::ValueFunctionFlagsCallSync);
+    return SCValdiCallActionWithEvent(predicate, event, Valdi::ValueFunctionFlagsCallSync);
+}
+
+BOOL SCValdiCallHitTestActionWithUIEventAndView(id<SCValdiFunction> action, CGPoint location, UIEvent* uiEvent, UIView* view)
+{
+    auto event = SCValdiMakeTouchEvent(view, location, UIGestureRecognizerStatePossible, SCValdiGetPointerDataFromEvent(uiEvent));
+
+    return SCValdiCallPredicateWithEvent(action, view, event, "hit_test");
 }

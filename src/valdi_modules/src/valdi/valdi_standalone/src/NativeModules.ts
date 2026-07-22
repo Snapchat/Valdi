@@ -39,6 +39,9 @@ export function mockNativeModules() {
     getFloat(key: string, fallback: number, callback: (v: number) => void): void {
       callback(fallback);
     },
+    getInt(key: string, fallback: number, callback: (v: number) => void): void {
+      callback(fallback);
+    },
     getStringSync(key: string, fallback: string): string {
       return fallback;
     },
@@ -46,6 +49,9 @@ export function mockNativeModules() {
       return fallback;
     },
     getFloatSync(key: string, fallback: number): number {
+      return fallback;
+    },
+    getIntSync(key: string, fallback: number): number {
       return fallback;
     },
   });

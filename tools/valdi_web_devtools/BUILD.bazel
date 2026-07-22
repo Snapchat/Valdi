@@ -1,0 +1,71 @@
+load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
+load("@aspect_rules_js//npm:defs.bzl", "npm_package")
+load("@valdi_npm//:defs.bzl", "npm_link_all_packages")
+
+# valdi-web-devtools is a workspace project of open_source's valdi_npm pnpm
+# workspace (open_source/bzl/valdi/npm/pnpm-workspace.yaml lists
+# ../../../tools/valdi_web_devtools). npm_link_all_packages materializes
+# valdi_npm-managed npm packages this library depends on into a sibling
+# node_modules/ under bazel-bin. Kept as peerDependencies so consumers own
+# the concrete webpack/ts-loader versions their playground bundles run
+# against — see package.json.
+npm_link_all_packages(name = "node_modules")
+
+# hmr-server.js is the entry_point for the :dev js_binary the
+# valdi_web_playground macro emits in consumer packages. aspect_rules_js
+# requires entry_point sources to come from a js_library in the same
+# package as the file, so wrap it explicitly.
+js_library(
+    name = "hmr-server",
+    srcs = ["hmr-server.js"],
+    visibility = ["//visibility:public"],
+)
+
+js_library(
+    name = "pkg",
+    srcs = [
+        "hmr.js",
+        "hmr-loader.js",
+        "hmr-server.js",
+        "index.js",
+        "package.json",
+        "setup.js",
+        "webpack.js",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# Publishable npm package. Cross-module consumers (outer client's
+# valdi_web/* playgrounds) reach this via
+# @valdi//tools/valdi_web_devtools:package and link it via npm_link_package
+# in the valdi_web_playground macro. Deps are peerDependencies (see
+# package.json) so consumers supply their own webpack/ts-loader instances
+# — avoids mixing two workspace's copies of webpack-cli in one node process.
+npm_package(
+    name = "package",
+    srcs = [
+        "hmr.js",
+        "hmr-loader.js",
+        "hmr-server.js",
+        "index.js",
+        "package.json",
+        "setup.js",
+        "webpack.js",
+        "//tools/valdi_web_devtools/test_utils:puppeteer_helpers",
+        "//tools/valdi_web_devtools/test_utils:static_server",
+        "//tools/valdi_web_devtools/test_utils:test_runner",
+    ],
+    package = "valdi-web-devtools",
+    root_paths = [package_name()],
+    visibility = ["//visibility:public"],
+)
+
+# Unit tests for the HMR runtime registry. Locks in the mount-only
+# self-accept policy so a future regression doesn't reintroduce
+# silent-swallow for child-module updates. Pure-node, uses node:test.
+js_test(
+    name = "hmr_test",
+    chdir = package_name(),
+    data = ["hmr.js"],
+    entry_point = "hmr.test.js",
+)

@@ -477,6 +477,30 @@ bool ViewNodeScrollState::getPreserveScrollPosition() const {
     return _preserveScrollPosition;
 }
 
+void ViewNodeScrollState::setNativeStickyEnabled(bool enabled) {
+    _nativeStickyEnabled = enabled;
+}
+
+bool ViewNodeScrollState::getNativeStickyEnabled() const {
+    return _nativeStickyEnabled;
+}
+
+void ViewNodeScrollState::setNativeStickyCover(float cover) {
+    _nativeStickyCover = cover;
+}
+
+float ViewNodeScrollState::getNativeStickyCover() const {
+    return _nativeStickyCover;
+}
+
+void ViewNodeScrollState::setNativeStickyOffset(float offset) {
+    _nativeStickyOffset = offset;
+}
+
+float ViewNodeScrollState::getNativeStickyOffset() const {
+    return _nativeStickyOffset;
+}
+
 bool ViewNodeScrollState::hasPreserveAnchor() const {
     return _hasPreserveAnchor;
 }
