@@ -8,7 +8,7 @@
 # Probably a good idea to write a better rule for this in the future.
 
 load("//bzl/android:ndk_tools.bzl", "ANDROID_NDK_TOOLS_TOOLCHAIN_TYPE")
-load("//bzl/android:platform_transition.bzl", "platform_transition")
+load("//bzl/android:platform_transition.bzl", "platform_transition", "reset_platform_to_host")
 
 # From developer.android.com/studio/projects/android-library#aar-contents.
 AAR_KNOWN_FILES = [
@@ -207,7 +207,11 @@ _package_aar_internal = rule(
     attrs = {
         "aar": attr.label(allow_single_file = True, mandatory = True),
         "platforms": attr.label_list(mandatory = True),
-        "classes_jar": attr.label(allow_single_file = True, mandatory = True),
+        "classes_jar": attr.label(
+            allow_single_file = True,
+            mandatory = True,
+            cfg = reset_platform_to_host,
+        ),
         "native_libs": attr.label_list(
             cfg = platform_transition,
             providers = [],
