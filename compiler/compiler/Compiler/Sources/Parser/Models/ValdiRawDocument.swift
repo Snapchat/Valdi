@@ -189,6 +189,7 @@ struct ValdiModelProperty {
     let comments: String?
     let omitConstructor: OmitConstructorParams?
     let injectableParams: InjectableParams
+    let declaredVersion: String?
 }
 
 struct ValdiTypeParameter {
@@ -206,6 +207,8 @@ struct ValdiModel {
     var usePublicFields = false
     var comments: String?
     var properties = [ValdiModelProperty]()
+    var declaredVersion: String?
+    var isNativeApi = false
 }
 
 struct ExportedModule {
@@ -221,6 +224,7 @@ struct EnumCase<T: EnumCaseValueType> {
     let name: String
     let value: T
     let comments: String?
+    let declaredVersion: String?
 }
 
 extension EnumCase: Encodable where T: Encodable {

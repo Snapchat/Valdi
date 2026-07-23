@@ -93,7 +93,8 @@ final class ObjCFunctionGenerator {
                                                                   type: .function(parameters: exportedFunction.parameters, returnType: exportedFunction.returnType, isSingleCall: false, shouldCallOnWorkerThread: false, allowSyncCall: exportedFunction.allowSyncCall),
                                                                   comments: nil,
                                                                   omitConstructor: nil,
-                                                                  injectableParams: .empty))
+                                                                  injectableParams: .empty,
+                                                                  declaredVersion: nil))
         let objectDescriptor = try classGenerator.writeObjectDescriptorGetter(resolvedProperties: [objcProperty],
                                                                               objcSelectors: [nil],
                                                                               typeParameters: nil,

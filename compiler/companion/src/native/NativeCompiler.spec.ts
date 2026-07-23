@@ -19,11 +19,17 @@ function compileAsIRString(
   setupWorkspace: ((workpace: Workspace) => void) | undefined,
   filterIR: (ir: NativeCompilerIR.Base) => boolean,
 ): string {
-  const workspace = new Workspace('/', false, undefined, {
-    target: ts.ScriptTarget.ESNext,
-    module: ts.ModuleKind.CommonJS,
-    lib: ['lib.es2015.d.ts'],
-  });
+  const workspace = new Workspace(
+    '/',
+    false,
+    undefined,
+    {
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.CommonJS,
+      lib: ['lib.es2015.d.ts'],
+    },
+    undefined,
+  );
 
   const filePath = 'file.ts';
   workspace.registerInMemoryFile(filePath, text);
@@ -43,11 +49,17 @@ function compileAsC(
   selectFunction: string | undefined,
   setupWorkspace: ((workpace: Workspace) => void) | undefined,
 ): string {
-  const workspace = new Workspace('/', false, undefined, {
-    target: ts.ScriptTarget.ESNext,
-    module: ts.ModuleKind.CommonJS,
-    lib: ['lib.es2015.d.ts'],
-  });
+  const workspace = new Workspace(
+    '/',
+    false,
+    undefined,
+    {
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.CommonJS,
+      lib: ['lib.es2015.d.ts'],
+    },
+    undefined,
+  );
 
   const filePath = 'file.ts';
   workspace.registerInMemoryFile(filePath, text);

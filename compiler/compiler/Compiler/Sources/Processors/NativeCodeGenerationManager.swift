@@ -236,6 +236,20 @@ class NativeCodeGenerationManager {
         nativeTypeResolver.registerTypeConverter(src: commentedFile.src, emittingBundleName: compilationItem.bundleInfo.name, tsTypeName: symbol.text, fromTypePath: typeReferenceFromType.fileName, tsFromTypeName: typeReferenceFromType.name, toTypePath: typeReferenceToType.fileName, tsToTypeName: typeReferenceToType.name)
     }
 
+    func nativeTypeDescription(annotatedSymbol: TypeScriptAnnotatedSymbol,
+                               nativeClass: TypeScriptNativeClass,
+                               compilationItem: CompilationItem) -> GeneratedTypeDescription {
+        let baseline = compilationItem.bundleInfo.projectConfig.nativeApiMinVersion.map(String.init)
+        let description = GeneratedNativeClassDescription(
+            nativeClass: nativeClass,
+            annotations: annotatedSymbol.annotations,
+            baseline: baseline
+        )
+        return nativeClass.kind == .interface
+            ? .interface(description)
+            : .class(description)
+    }
+
     func addViewModelSymbol(sourceURL: URL, symbol: String) {
         viewModelSymbolNameBySourceURL.data { $0[sourceURL] = symbol }
     }
@@ -516,7 +530,15 @@ class NativeCodeGenerationManager {
             let resolvedClassMapping = ResolvedClassMapping(localClassMapping: classMapping, projectClassMapping: ProjectClassMapping(allowMappingOverride: false), currentBundle: nativeModuleToGenerate.compilationItem.bundleInfo)
 
             let item = nativeModuleToGenerate.compilationItem.with(
-                newKind: .exportedType(.module(exportedModule), resolvedClassMapping, GeneratedSourceFilename(filename: nativeModuleToGenerate.compilationItem.relativeProjectPath, symbolName: nativeModuleToGenerate.tsTypeName))
+                newKind: .exportedType(
+                    .module(exportedModule),
+                    resolvedClassMapping,
+                    GeneratedSourceFilename(
+                        filename: nativeModuleToGenerate.compilationItem.relativeProjectPath,
+                        symbolName: nativeModuleToGenerate.tsTypeName,
+                        src: nativeModuleToGenerate.commentedFile.src
+                    )
+                )
             )
 
             items.append(item: item)
@@ -536,7 +558,11 @@ class NativeCodeGenerationManager {
 
         return nativeTypeExported.export().then { (nativeTypeToExport, classMapping) -> Void in
             let resolvedClassMapping = ResolvedClassMapping(localClassMapping: classMapping, projectClassMapping: ProjectClassMapping(allowMappingOverride: false), currentBundle: nativeClassToGenerate.compilationItem.bundleInfo)
-            let generatedSourceFilename = GeneratedSourceFilename(filename: nativeClassToGenerate.compilationItem.relativeProjectPath, symbolName: nativeClassToGenerate.nativeClass.tsTypeName)
+            let generatedSourceFilename = GeneratedSourceFilename(
+                filename: nativeClassToGenerate.compilationItem.relativeProjectPath,
+                symbolName: nativeClassToGenerate.nativeClass.tsTypeName,
+                src: nativeClassToGenerate.commentedFile.src
+            )
 
             switch nativeTypeToExport {
             case .valdiModel(let model):
@@ -618,7 +644,15 @@ class NativeCodeGenerationManager {
             let resolvedClassMapping = ResolvedClassMapping(localClassMapping: classMapping, projectClassMapping: ProjectClassMapping(allowMappingOverride: false), currentBundle: nativeFuncToGenerate.compilationItem.bundleInfo)
 
             let item = nativeFuncToGenerate.compilationItem.with(
-                newKind: .exportedType(.function(exportedFunction), resolvedClassMapping, GeneratedSourceFilename(filename: nativeFuncToGenerate.compilationItem.relativeProjectPath, symbolName: nativeFuncToGenerate.tsTypeName))
+                newKind: .exportedType(
+                    .function(exportedFunction),
+                    resolvedClassMapping,
+                    GeneratedSourceFilename(
+                        filename: nativeFuncToGenerate.compilationItem.relativeProjectPath,
+                        symbolName: nativeFuncToGenerate.tsTypeName,
+                        src: nativeFuncToGenerate.commentedFile.src
+                    )
+                )
             )
 
             items.append(item: item)
@@ -626,7 +660,7 @@ class NativeCodeGenerationManager {
                 let exporterError = CompilerError(type: "NativeFuncExporter error", message: "Failed to export native function '\(nativeFuncToGenerate.dumpedSymbol.text)': \(error.legibleLocalizedDescription)", range: nativeFuncToGenerate.annotation.range, inDocument: nativeFuncToGenerate.commentedFile.fileContent)
                 return Promise(error: exporterError)
         }
-    }    
+    }
 
     private func makeNativeClassToGenerate(commentedFile: TypeScriptCommentedFile,
                                            annotation: ValdiTypeScriptAnnotation,

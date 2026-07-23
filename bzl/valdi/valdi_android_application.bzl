@@ -7,6 +7,7 @@ load(
     "generate_valdi_android_application_icons",
     _valdi_android_application_icons = "valdi_android_application_icons",
 )
+load("//bzl/valdi:valdi_android_resource_deps.bzl", "valdi_android_resource_deps")
 load("//bzl/valdi/source_set:utils.bzl", "source_set_select")
 
 def valdi_android_application_icons(src, round_src = None):
@@ -34,10 +35,15 @@ def valdi_android_application(
         round_icon_name = None,
         activity_theme_name = None,
         deps = [],
+        resources = [],
         native_deps = []):
     src_target = "{}_src".format(name)
     src_activity_target = "{}_activitygen".format(name)
     aar_target = "{}_aar".format(name)
+    resource_deps = valdi_android_resource_deps(
+        name = "{}_resources".format(name),
+        resources = resources,
+    )
 
     generated_app_icons = generate_valdi_android_application_icons(
         name,
@@ -123,5 +129,5 @@ def valdi_android_application(
         deps = [
             ":{}".format(src_target),
             ":{}_import".format(aar_target),
-        ],
+        ] + resource_deps,
     )

@@ -54,7 +54,6 @@ final class TypeScriptNativeTypeResolver {
     private let lock = DispatchSemaphore.newLock()
 
     private var typesByPath = [String: [String: TypeScriptNativeType]]()
-
     init(rootURL: URL) {
         self.rootURL = rootURL
     }

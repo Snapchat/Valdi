@@ -2341,6 +2341,13 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
         return;
     }
 
+    auto jsApiVersion = context.newNumber(_resourceManager.getApiVersion());
+
+    context.setObjectProperty(runtimeObject.get(), "apiVersion", jsApiVersion.get(), exceptionTracker);
+    if (!exceptionTracker) {
+        return;
+    }
+
     auto jsEnableDebugger = context.newBool(_enableDebugger);
 
     context.setObjectProperty(runtimeObject.get(), "isDebugEnabled", jsEnableDebugger.get(), exceptionTracker);

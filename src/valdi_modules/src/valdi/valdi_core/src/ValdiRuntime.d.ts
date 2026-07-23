@@ -87,6 +87,8 @@ export interface LoadedAssetSkCodecMetadata {
 export type LoadedAssetMetadata = LoadedAssetImageMetadata | LoadedAssetLottieMetadata | LoadedAssetSkCodecMetadata;
 
 export interface ValdiRuntime extends RuntimeBase {
+  apiVersion: number;
+
   postMessage(contextId: string, command: string, params: any): void;
   getFrameForElementId(
     contextId: string,

@@ -230,5 +230,8 @@ valdi_projectsync = rule(
             allow_single_file = True,
             default = "valdi_config.yaml.tpl",
         ),
+        "_native_api_min_version": attr.label(
+            default = "@valdi//bzl/valdi:native_api_min_version",
+        ),
     },
 )

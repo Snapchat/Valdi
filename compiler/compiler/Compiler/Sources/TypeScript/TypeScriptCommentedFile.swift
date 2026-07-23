@@ -60,6 +60,22 @@ class TypeScriptCommentedFile {
                         annotatedSymbol.addMemberAnnotations(memberAnnotations, atIndex: idx)
                     }
                 }
+
+                if let enumDeclaration = annotatedSymbol.symbol.enum {
+                    for (idx, member) in enumDeclaration.members.enumerated() {
+                        guard let memberComments = member.leadingComments else {
+                            continue
+                        }
+                        let memberAnnotations = try ValdiTypeScriptAnnotation.extractAnnotations(
+                            comments: memberComments,
+                            fileContent: fileContent
+                        )
+                        guard !memberAnnotations.isEmpty else {
+                            continue
+                        }
+                        annotatedSymbol.addMemberAnnotations(memberAnnotations, atIndex: idx)
+                    }
+                }
             }
 
             return annotatedSymbol

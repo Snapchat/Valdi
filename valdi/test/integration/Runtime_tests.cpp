@@ -260,6 +260,16 @@ static Result<Value> callFunctionSync(RuntimeWrapper& wrapper,
     return callFunctionSync(wrapper, nullptr, moduleName, functionName, std::move(params));
 }
 
+TEST_P(RuntimeFixture, exposesDefaultApiVersion) {
+    std::string evalBody = "return runtime.apiVersion;";
+
+    auto evalResult = wrapper.runtime->getJavaScriptRuntime()->evaluateScript(
+        makeShared<ByteBuffer>(evalBody)->toBytesView(), STRING_LITERAL("eval.js"));
+
+    ASSERT_TRUE(evalResult) << evalResult.description();
+    ASSERT_EQ(0, evalResult.value().toInt());
+}
+
 TEST_P(RuntimeFixture, canLoadSimpleViewTree) {
     auto tree = wrapper.createViewNodeTreeAndContext("test", "BasicViewTree");
 

@@ -36,13 +36,17 @@
 #include "valdi_core/cpp/Interfaces/ILogger.hpp"
 #include "valdi_core/cpp/Utils/FlatSet.hpp"
 #include "valdi_core/cpp/Utils/Parser.hpp"
+#include "valdi_core/cpp/Utils/TextParser.hpp"
 #include "valdi_core/cpp/Utils/Trace.hpp"
 #include "valdi_core/cpp/Utils/ValueMap.hpp"
 #include "valdi_core/cpp/Utils/ValueUtils.hpp"
 
 #include <chrono>
+#include <cstdint>
 #include <fmt/format.h>
 #include <fmt/ostream.h>
+#include <limits>
+#include <string_view>
 
 namespace Valdi {
 
@@ -75,6 +79,37 @@ static StringBox resolveModuleArchiveFilePath(const StringBox& modulePath) {
 
 static StringBox resolveSourceMapFilePath(const StringBox& modulePath) {
     return modulePath.append(".map.json");
+}
+
+static int32_t parseApiVersion(const BytesView& bytes, ILogger& logger) {
+    TextParser parser(std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
+
+    parser.tryParseWhitespaces();
+    auto version = parser.parseUInt();
+    parser.tryParseWhitespaces();
+
+    if (!version.has_value() || !parser.isAtEnd() || version.value() > std::numeric_limits<int32_t>::max()) {
+        VALDI_WARN(logger, "Invalid valdi_api_version resource content. Expected a non-negative integer.");
+        return 0;
+    }
+
+    return static_cast<int32_t>(version.value());
+}
+
+int32_t ResourceManager::getApiVersion() {
+    std::lock_guard<Mutex> guard(_mutex);
+    if (_apiVersion.has_value()) {
+        return _apiVersion.value();
+    }
+
+    auto content = _resourceLoader->loadModuleContent(STRING_LITERAL("valdi_api_version"));
+    if (!content) {
+        _apiVersion = 0;
+        return _apiVersion.value();
+    }
+
+    _apiVersion = parseApiVersion(content.value(), _logger);
+    return _apiVersion.value();
 }
 
 Result<Ref<ValdiModuleArchive>> ResourceManager::getArchiveForModule(const StringBox& modulePath,

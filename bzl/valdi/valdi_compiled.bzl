@@ -12,6 +12,7 @@ load(
     "common.bzl",
     "ANDROID_RESOURCE_VARIANT_DIRECTORIES",
     "BUILD_DIR",
+    "COMPILATION_METADATA_FILENAME",
     "IOS_API_NAME_SUFFIX",
     "IOS_DEFAULT_MODULE_NAME_PREFIX",
     "IOS_OUTPUT_BASE",
@@ -373,6 +374,9 @@ valdi_compiled = rule(
             doc = "The template config.yaml file",
             allow_single_file = True,
             default = "valdi_config.yaml.tpl",
+        ),
+        "_native_api_min_version": attr.label(
+            default = "@valdi//bzl/valdi:native_api_min_version",
         ),
     },
 )
@@ -1438,7 +1442,7 @@ def _get_ios_image_resources_paths(module_name, resources_basenames):
     return [debug_images, release_images]
 
 def _get_dumped_compilation_metadata(module_name):
-    return paths.join(TYPESCRIPT_DUMPED_SYMBOLS_DIR, module_name, "compilation-metadata.json")
+    return paths.join(TYPESCRIPT_DUMPED_SYMBOLS_DIR, module_name, COMPILATION_METADATA_FILENAME)
 
 def _get_dependency_data_path(module_name):
     return base_relative_dir("ios", "metadata", "dependencyData.json")
@@ -1897,7 +1901,7 @@ def _extract_dts_files(srcs):
     return [f for f in srcs if f.basename.endswith(".d.ts")]
 
 def _extract_dumped_compilation_metadata(files):
-    return [f for f in files if f.basename.endswith("compilation-metadata.json")]
+    return [f for f in files if f.basename == COMPILATION_METADATA_FILENAME]
 
 def _extract_valdi_module_android(output_target, module_name, outputs):
     debug_path, release_path = _get_android_valdi_module_paths(module_name)
@@ -2318,6 +2322,9 @@ valdi_hotreload = rule(
             doc = "The template config.yaml file",
             allow_single_file = True,
             default = "valdi_config.yaml.tpl",
+        ),
+        "_native_api_min_version": attr.label(
+            default = "@valdi//bzl/valdi:native_api_min_version",
         ),
     },
 )

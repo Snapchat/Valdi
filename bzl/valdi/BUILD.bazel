@@ -1,4 +1,4 @@
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "string_flag")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "int_flag", "string_flag")
 load("@valdi//bzl/conditions:selects.bzl", "selects")
 load("@valdi//bzl/valdi:valdi_toolchain.bzl", "valdi_toolchain")
 load("@valdi//bzl/valdi:valdi_toolchain_binary.bzl", "valdi_toolchain_binary")
@@ -13,6 +13,7 @@ exports_files([
     "empty.swift",
     "empty.kt",
     "empty.js",
+    "empty_android_manifest.xml",
     "Empty.bundle/Info.plist",
     "Info.plist",
     "package.json.tmpl",
@@ -46,6 +47,24 @@ string_flag(
         "warn",
         "error",
     ],
+    visibility = ["//visibility:public"],
+)
+
+int_flag(
+    name = "native_api_min_version",
+    build_setting_default = -1,
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "empty_api_version_file",
+    srcs = [],
+    visibility = ["//visibility:public"],
+)
+
+label_flag(
+    name = "api_version_file",
+    build_setting_default = ":empty_api_version_file",
     visibility = ["//visibility:public"],
 )
 

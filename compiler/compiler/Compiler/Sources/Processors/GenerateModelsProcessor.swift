@@ -18,10 +18,12 @@ final class GenerateModelsProcessor: CompilationProcessor {
 
     private let logger: ILogger
     private let compilerConfig: CompilerConfig
+    private let generateNativeSources: Bool
 
-    init(logger: ILogger, compilerConfig: CompilerConfig) {
+    init(logger: ILogger, compilerConfig: CompilerConfig, generateNativeSources: Bool) {
         self.logger = logger
         self.compilerConfig = compilerConfig
+        self.generateNativeSources = generateNativeSources
     }
 
     var description: String {
@@ -61,65 +63,73 @@ final class GenerateModelsProcessor: CompilationProcessor {
         let classMapping: ResolvedClassMapping
     }
 
-    private func typeDescription(for exportedType: ExportedType) -> GeneratedTypeDescription? {
+    private func typeDescription(for exportedType: ExportedType, baseline: String?) -> GeneratedTypeDescription {
         switch exportedType {
         case let .valdiModel(model):
             if model.exportAsInterface {
-                return .interface(GeneratedNativeInterfaceDescription(model: model))
+                return .interface(GeneratedNativeInterfaceDescription(model: model, baseline: baseline))
             } else {
-                return .class(GeneratedNativeClassDescription(model: model))
+                return .class(GeneratedNativeClassDescription(model: model, baseline: baseline))
             }
         case let .enum(exportedEnum):
-            return .enum(GeneratedEnumDescription.from(exportedEnum: exportedEnum))
+            return .enum(GeneratedEnumDescription.from(exportedEnum: exportedEnum, baseline: baseline))
         case let .function(exportedFunction):
-            return .function(GeneratedFunctionDescription.from(exportedFunction: exportedFunction))
-        case .module:
-            return nil
+            return .function(GeneratedFunctionDescription.from(exportedFunction: exportedFunction, baseline: baseline))
+        case let .module(exportedModule):
+            return .module(GeneratedNativeInterfaceDescription(model: exportedModule.model, baseline: baseline))
         }
     }
 
     private func generate(selectedItem: SelectedItem<[IntermediateItem]>) -> [CompilationItem] {
         var out = [CompilationItem]()
         for item in selectedItem.data {
-            switch item.exportedType {
-            case .valdiModel(let valdiModel):
-                out += doGenerate(item: selectedItem.item,
-                                  intermediateItem: item,
-                                  iosType: valdiModel.iosType,
-                                  androidClassName: valdiModel.androidClassName,
-                                  cppType: valdiModel.cppType,
-                                  generationType: "model",
-                                  generator: ValdiModelGenerator(model: valdiModel))
-            case .enum(let exportedEnum):
-                out += doGenerate(item: selectedItem.item,
-                                  intermediateItem: item,
-                                   iosType: exportedEnum.iosType,
-                                   androidClassName: exportedEnum.androidTypeName,
-                                   cppType: exportedEnum.cppType,
-                                   generationType: "enum",
-                                   generator: ExportedEnumGenerator(exportedEnum: exportedEnum))
-            case .function(let exportedFunc):
-                out += doGenerate(item: selectedItem.item,
-                                  intermediateItem: item,
-                                  iosType: exportedFunc.containingIosType,
-                                  androidClassName: exportedFunc.containingAndroidTypeName,
-                                  cppType: exportedFunc.containingCppType,
-                                  generationType: "function",
-                                  generator: ExportedFunctionGenerator(exportedFunction: exportedFunc, modulePath: selectedItem.item.relativeBundleURL.deletingPathExtension().absoluteString))
-            case .module(let exportedModule):
-                out += doGenerate(item: selectedItem.item,
-                                  intermediateItem: item,
-                                  iosType: exportedModule.model.iosType,
-                                  androidClassName: exportedModule.model.androidClassName,
-                                  cppType: exportedModule.model.cppType,
-                                  generationType: "module",
-                                  generator: ExportedModuleGenerator(bundleInfo: selectedItem.item.bundleInfo, exportedModule: exportedModule))
+            if generateNativeSources {
+                switch item.exportedType {
+                case .valdiModel(let valdiModel):
+                    out += doGenerate(item: selectedItem.item,
+                                      intermediateItem: item,
+                                      iosType: valdiModel.iosType,
+                                      androidClassName: valdiModel.androidClassName,
+                                      cppType: valdiModel.cppType,
+                                      generationType: "model",
+                                      generator: ValdiModelGenerator(model: valdiModel))
+                case .enum(let exportedEnum):
+                    out += doGenerate(item: selectedItem.item,
+                                      intermediateItem: item,
+                                       iosType: exportedEnum.iosType,
+                                       androidClassName: exportedEnum.androidTypeName,
+                                       cppType: exportedEnum.cppType,
+                                       generationType: "enum",
+                                       generator: ExportedEnumGenerator(exportedEnum: exportedEnum))
+                case .function(let exportedFunc):
+                    out += doGenerate(item: selectedItem.item,
+                                      intermediateItem: item,
+                                      iosType: exportedFunc.containingIosType,
+                                      androidClassName: exportedFunc.containingAndroidTypeName,
+                                      cppType: exportedFunc.containingCppType,
+                                      generationType: "function",
+                                      generator: ExportedFunctionGenerator(exportedFunction: exportedFunc, modulePath: selectedItem.item.relativeBundleURL.deletingPathExtension().absoluteString))
+                case .module(let exportedModule):
+                    out += doGenerate(item: selectedItem.item,
+                                      intermediateItem: item,
+                                      iosType: exportedModule.model.iosType,
+                                      androidClassName: exportedModule.model.androidClassName,
+                                      cppType: exportedModule.model.cppType,
+                                      generationType: "module",
+                                      generator: ExportedModuleGenerator(bundleInfo: selectedItem.item.bundleInfo, exportedModule: exportedModule))
+                }
             }
 
-            if let description = typeDescription(for: item.exportedType) {
-                let newItem = selectedItem.item.with(newKind: .generatedTypeDescription(description), newPlatform: .none)
-                out.append(newItem)
-            }
+            let baseline = selectedItem.item.bundleInfo.projectConfig.nativeApiMinVersion.map(String.init)
+            let description = typeDescription(for: item.exportedType, baseline: baseline)
+            let newItem = selectedItem.item.with(
+                newKind: .generatedTypeDescription(
+                    description,
+                    src: item.sourceFilename.src
+                ),
+                newPlatform: .none
+            )
+            out.append(newItem)
         }
 
         if case .document = selectedItem.item.kind {
@@ -148,7 +158,14 @@ final class GenerateModelsProcessor: CompilationProcessor {
             }
 
             if case .document(let result) = item.kind, let viewModel = result.originalDocument.viewModel {
-                let generatedSourceFilename = GeneratedSourceFilename(filename: result.componentPath.fileName, symbolName: result.componentPath.exportedMember)
+                let generatedSourceFilename = GeneratedSourceFilename(
+                    filename: result.componentPath.fileName,
+                    symbolName: result.componentPath.exportedMember,
+                    src: TypeScriptItemSrc(
+                        compilationPath: item.relativeProjectPath,
+                        sourceURL: item.sourceURL
+                    )
+                )
                 var out = [IntermediateItem]()
                 out.append(IntermediateItem(sourceFilename: generatedSourceFilename,
                                             exportedType: .valdiModel(viewModel),
