@@ -144,7 +144,7 @@ Runtime::Runtime(AttributeIds& attributeIds,
                                                    deviceDensity,
                                                    debuggerServiceEnabled,
                                                    *logger)),
-      _contextManager(logger, this),
+      _contextManager(makeShared<ContextManager>(logger, this)),
       _viewNodeManager(*mainThreadManager, *logger),
       _mainThreadManager(mainThreadManager),
       _colorPalette(colorPalette),
@@ -186,7 +186,7 @@ void Runtime::fullTeardown() {
         VALDI_INFO(*_logger, "Tearing down Valdi Runtime");
     }
     _viewNodeManager.removeAllViewNodeTrees();
-    _contextManager.destroyAllContexts();
+    _contextManager->destroyAllContexts();
 
     if (_javaScriptRuntime != nullptr) {
         _javaScriptRuntime->fullTeardown();
@@ -204,7 +204,7 @@ void Runtime::postInit() {
         _javaScriptRuntime->setModuleLoadDiagnosticsEnabled(enableModuleLoadDiagnostics());
     }
     _viewNodeManager.setRuntime(weakRef(this));
-    _contextManager.setListener(this);
+    _contextManager->setListener(this);
 
     if (_javaScriptRuntime != nullptr) {
         _javaScriptRuntime->postInit();
@@ -258,13 +258,13 @@ SharedContext Runtime::createContext(const Ref<ViewManagerContext>& viewManagerC
         contextHandler = _javaScriptRuntime->getContextHandler();
     }
 
-    auto context = _contextManager.createContext(contextHandler,
-                                                 viewManagerContext,
-                                                 componentPath,
-                                                 initialViewModel,
-                                                 componentContext,
-                                                 _shouldProcessUpdatesSynchronously,
-                                                 deferRender);
+    auto context = _contextManager->createContext(contextHandler,
+                                                  viewManagerContext,
+                                                  componentPath,
+                                                  initialViewModel,
+                                                  componentContext,
+                                                  _shouldProcessUpdatesSynchronously,
+                                                  deferRender);
 
     _resourceManager->preloadForComponentPath(componentPath);
 
@@ -306,7 +306,7 @@ SharedViewNodeTree Runtime::getOrCreateViewNodeTreeForContextId(ContextId contex
         return tree;
     }
 
-    auto context = _contextManager.getContext(contextId);
+    auto context = _contextManager->getContext(contextId);
     if (context == nullptr) {
         return nullptr;
     }
@@ -334,7 +334,7 @@ void Runtime::doDestroyContext(const SharedContext& context) {
     ScopedMetrics metrics =
         Metrics::scopedDestroyContextLatency(getMetrics(), context->getPath().getResourceId().bundleName);
 
-    _contextManager.destroyContext(context);
+    _contextManager->destroyContext(context);
     auto viewNodeTree = _viewNodeManager.getViewNodeTreeForContextId(context->getContextId());
     if (viewNodeTree != nullptr) {
         destroyViewNodeTree(*viewNodeTree);
@@ -398,7 +398,7 @@ DumpedLogs Runtime::dumpContextsLogs() const {
 
     ValueArrayBuilder builder;
 
-    auto contexts = _contextManager.getAllContexts();
+    auto contexts = _contextManager->getAllContexts();
     std::sort(contexts.begin(), contexts.end(), [](const auto& left, const auto& right) -> bool {
         return left->getContextId() < right->getContextId();
     });
@@ -604,7 +604,7 @@ void Runtime::setAutoRenderDisabled(bool autoRenderDisabled) {
     auto oldValue = _autoRenderDisabled.exchange(autoRenderDisabled);
 
     if (!autoRenderDisabled && oldValue) {
-        for (const auto& context : _contextManager.getAllContexts()) {
+        for (const auto& context : _contextManager->getAllContexts()) {
             if (context->hasPendingRenderRequests()) {
                 getMainThreadManager().dispatch(context, [context]() { context->flushRenderRequests(); });
             }
@@ -613,7 +613,7 @@ void Runtime::setAutoRenderDisabled(bool autoRenderDisabled) {
 }
 
 void Runtime::receivedRenderRequest(const Ref<RenderRequest>& renderRequest) {
-    auto context = _contextManager.getContext(renderRequest->getContextId());
+    auto context = _contextManager->getContext(renderRequest->getContextId());
     if (context == nullptr) {
         return;
     }
@@ -708,7 +708,7 @@ void Runtime::processRenderRequest(const Ref<RenderRequest>& rawRenderRequest) {
 void Runtime::receivedCallActionMessage(const ContextId& contextId,
                                         const StringBox& actionName,
                                         const Ref<ValueArray>& parameters) {
-    auto context = _contextManager.getContext(contextId);
+    auto context = _contextManager->getContext(contextId);
     if (context == nullptr) {
         VALDI_WARN(*_logger, "Cannot call action: Context {} was already destroyed.", contextId);
         return;
@@ -834,7 +834,7 @@ void Runtime::onContextCreated(const SharedContext& context) {
 void Runtime::onContextDestroyed(Context& context) {
     if (_listener != nullptr) {
         _listener->onContextDestroyed(*this, context);
-        if (_contextManager.getContextsSize() == 0) {
+        if (_contextManager->getContextsSize() == 0) {
             _listener->onAllContextsDestroyed(*this);
         }
     }
@@ -861,11 +861,11 @@ MainThreadManager& Runtime::getMainThreadManager() {
 }
 
 const ContextManager& Runtime::getContextManager() const {
-    return _contextManager;
+    return *_contextManager;
 }
 
 ContextManager& Runtime::getContextManager() {
-    return _contextManager;
+    return *_contextManager;
 }
 
 const ViewNodeTreeManager& Runtime::getViewNodeTreeManager() const {
@@ -914,7 +914,7 @@ void Runtime::setRuntimeMessageHandler(const Shared<snap::valdi::RuntimeMessageH
 
 void Runtime::setShouldProcessUpdatesSynchronously(bool shouldProcessUpdatesSynchronously) {
     _shouldProcessUpdatesSynchronously = shouldProcessUpdatesSynchronously;
-    for (const auto& context : _contextManager.getAllContexts()) {
+    for (const auto& context : _contextManager->getAllContexts()) {
         context->setUpdateHandlerSynchronously(shouldProcessUpdatesSynchronously);
     }
 }

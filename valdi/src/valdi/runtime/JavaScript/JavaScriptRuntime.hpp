@@ -171,7 +171,7 @@ class JavaScriptRuntime : public JavaScriptTaskScheduler,
 public:
     JavaScriptRuntime(IJavaScriptBridge& jsBridge,
                       ResourceManager& resourceManager,
-                      ContextManager& contextManager,
+                      const Ref<ContextManager>& contextManager,
                       MainThreadManager& mainThreadManager,
                       AttributeIds& attributeIds,
                       PlatformType platformType,
@@ -362,7 +362,7 @@ private:
     IJavaScriptBridge& _javaScriptBridge;
     Ref<IJavaScriptContext> _javaScriptContext;
     ResourceManager& _resourceManager;
-    ContextManager& _contextManager;
+    Ref<ContextManager> _contextManager;
     MainThreadManager& _mainThreadManager;
     AttributeIds& _attributeIds;
     [[maybe_unused]] Ref<ILogger> _logger;

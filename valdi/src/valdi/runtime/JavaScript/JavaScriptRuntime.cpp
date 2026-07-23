@@ -301,7 +301,7 @@ std::optional<JavaScriptCapturedStacktrace> JavaScriptStacktraceCaptureSession::
 
 JavaScriptRuntime::JavaScriptRuntime(IJavaScriptBridge& jsBridge,
                                      ResourceManager& resourceManager,
-                                     ContextManager& contextManager,
+                                     const Ref<ContextManager>& contextManager,
                                      MainThreadManager& mainThreadManager,
                                      AttributeIds& attributeIds,
                                      PlatformType platformType,
@@ -346,7 +346,7 @@ JavaScriptRuntime::JavaScriptRuntime(IJavaScriptBridge& jsBridge,
         this->doInitialize();
     });
 
-    _globalContext = _contextManager.createContext(nullptr, nullptr, /* deferRender */ true);
+    _globalContext = _contextManager->createContext(nullptr, nullptr, /* deferRender */ true);
     // Keep a +1 disposable until we complete the teardown
     _globalContext->retainDisposables();
 }
@@ -485,7 +485,7 @@ void JavaScriptRuntime::teardownOnJsThread(bool destroyContext) {
     auto nonDeferredPool = Valdi::RefCountableAutoreleasePool::makeNonDeferred();
 
     _globalContext->releaseDisposables();
-    _contextManager.destroyContext(_globalContext);
+    _contextManager->destroyContext(_globalContext);
 
     _modules.clear();
     _daemonClients.clear();
@@ -844,7 +844,7 @@ JSValueRef JavaScriptRuntime::runtimeCreateContext(JSFunctionNativeCallContext& 
 
     Ref<Context> context;
     if (callContext.getContext().isValueUndefined(jsContextHandler)) {
-        context = _contextManager.createContext(nullptr, nullptr, /* deferRender */ true);
+        context = _contextManager->createContext(nullptr, nullptr, /* deferRender */ true);
     } else {
         if (_defaultViewManagerContext == nullptr) {
             return callContext.throwError(Error("Cannot create context without a default ViewManagerContext"));
@@ -859,7 +859,7 @@ JSValueRef JavaScriptRuntime::runtimeCreateContext(JSFunctionNativeCallContext& 
                                          true);
         handler->setJsContextHandler(globalRef);
 
-        context = _contextManager.createContext(handler, _defaultViewManagerContext, /* deferRender */ true);
+        context = _contextManager->createContext(handler, _defaultViewManagerContext, /* deferRender */ true);
     }
 
     context->onCreate();
@@ -887,12 +887,12 @@ JSValueRef JavaScriptRuntime::runtimeDestroyContext(JSFunctionNativeCallContext&
     auto contextId = getParameterAsContextId(callContext, 0);
     CHECK_CALL_CONTEXT(callContext);
 
-    auto context = _contextManager.getContext(contextId);
+    auto context = _contextManager->getContext(contextId);
     if (context == nullptr) {
         return callContext.getContext().newUndefined();
     }
 
-    _contextManager.destroyContext(context);
+    _contextManager->destroyContext(context);
     return callContext.getContext().newUndefined();
 }
 
@@ -900,7 +900,7 @@ JSValueRef JavaScriptRuntime::runtimeSetLayoutSpecs(JSFunctionNativeCallContext&
     auto contextId = getParameterAsContextId(callContext, 0);
     CHECK_CALL_CONTEXT(callContext);
 
-    auto context = _contextManager.getContext(contextId);
+    auto context = _contextManager->getContext(contextId);
     if (context == nullptr) {
         return callContext.getContext().newUndefined();
     }
@@ -947,7 +947,7 @@ JSValueRef JavaScriptRuntime::runtimeMeasureContext(JSFunctionNativeCallContext&
     auto contextId = getParameterAsContextId(callContext, 0);
     CHECK_CALL_CONTEXT(callContext);
 
-    auto context = _contextManager.getContext(contextId);
+    auto context = _contextManager->getContext(contextId);
     if (context == nullptr) {
         return callContext.getContext().newUndefined();
     }
@@ -1024,7 +1024,7 @@ JSValueRef JavaScriptRuntime::runtimeSubmitRenderRequest(JSFunctionNativeCallCon
         CHECK_CALL_CONTEXT(callContext);
         auto treeId = static_cast<ContextId>(jsContext.valueToInt(treeIdValue.get(), exceptionTracker));
         CHECK_CALL_CONTEXT(callContext);
-        auto treeContext = _contextManager.getContext(treeId);
+        auto treeContext = _contextManager->getContext(treeId);
         if (treeContext != nullptr && !treeContext->isDestroyed()) {
             VALDI_INFO(*_logger,
                        "Render request context fix: overriding destroyed context (current={}, root={}) with treeCtx={}",
@@ -1196,7 +1196,7 @@ JSValueRef JavaScriptRuntime::runtimeGetNativeNodeForElementId(JSFunctionNativeC
     auto nodeId = static_cast<RawViewNodeId>(callContext.getParameterAsInt(1));
     CHECK_CALL_CONTEXT(callContext);
 
-    auto context = _contextManager.getContext(contextId);
+    auto context = _contextManager->getContext(contextId);
     if (context == nullptr) {
         return callContext.getContext().newUndefined();
     }
@@ -1282,7 +1282,7 @@ JSValueRef JavaScriptRuntime::handleViewNodeSpecificAction(
         ReferenceInfoBuilder(callContext.getReferenceInfo()).withParameter(callbackParameterIndex),
         callContext.getExceptionTracker());
 
-    auto context = _contextManager.getContext(contextId);
+    auto context = _contextManager->getContext(contextId);
     if (context == nullptr) {
         return callContext.throwError(Valdi::Error(STRING_FORMAT("Could not resolve Context {}", contextId)));
     }
@@ -2670,7 +2670,7 @@ void JavaScriptRuntime::ensureValdiModuleIsLoaded(JavaScriptEntryParameters& jsE
 bool JavaScriptRuntime::callComponentFunction(ContextId contextId,
                                               const StringBox& functionName,
                                               const Ref<ValueArray>& additionalParameters) {
-    auto context = _contextManager.getContext(contextId);
+    auto context = _contextManager->getContext(contextId);
     if (context == nullptr) {
         return false;
     }
@@ -2936,7 +2936,7 @@ void JavaScriptRuntime::unloadUnusedModules(DispatchFunction completion) {
 
 FlatSet<ResourceId> JavaScriptRuntime::getAllUsedModules() const {
     FlatSet<ResourceId> allUsedModules;
-    for (const auto& context : _contextManager.getAllContexts()) {
+    for (const auto& context : _contextManager->getAllContexts()) {
         allUsedModules.insert(context->getPath().getResourceId());
     }
     for (const auto& it : _modules) {
@@ -3496,9 +3496,9 @@ void JavaScriptRuntime::warmUpValueMarshaller(const Value& value) {
 std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager> JavaScriptRuntime::createNativeObjectsManager(
     const std::string& scopeName) {
     auto scopeNameBox = scopeName.empty() ? StringBox() : StringCache::getGlobal().makeString(scopeName);
-    auto context = _contextManager.createContext(nullptr, nullptr, /* deferRender */ true, scopeNameBox);
+    auto context = _contextManager->createContext(nullptr, nullptr, /* deferRender */ true, scopeNameBox);
 
-    return makeShared<JSRuntimeNativeObjectsManagerImpl>(_contextManager, std::move(context));
+    return makeShared<JSRuntimeNativeObjectsManagerImpl>(*_contextManager, std::move(context));
 }
 
 void JavaScriptRuntime::destroyNativeObjectsManager(
@@ -3912,7 +3912,7 @@ bool JavaScriptRuntime::isInJsThread() {
 }
 
 Ref<Context> JavaScriptRuntime::getLastDispatchedContext() const {
-    return _contextManager.getContext(_lastDispatchedContextId.load());
+    return _contextManager->getContext(_lastDispatchedContextId.load());
 }
 
 void JavaScriptRuntime::setModuleLoadDiagnosticsEnabled(bool enabled) {
@@ -3964,6 +3964,10 @@ DispatchFunction JavaScriptRuntime::makeJsThreadDispatchFunction(Ref<Context>&& 
 
 void JavaScriptRuntime::onInitError(std::string_view failingAction, const Error& error) {
     _running = false;
+    if (_isDisposed || (_javaScriptContext != nullptr && _javaScriptContext->executionTerminationRequested())) {
+        return;
+    }
+
     handleUncaughtJsErrorNoHandler(
         nullptr,
         error.rethrow(STRING_FORMAT("Fatal init error with performing action '{}'", failingAction)),
@@ -4126,7 +4130,7 @@ Result<BytesView> JavaScriptRuntime::dumpHeap() {
 Result<Ref<Context>> JavaScriptRuntime::getContextForId(ContextId contextId) const {
     // We lookup in the ContextManager first, to handle both contexts that are created externally
     // and contexts that are created directly in JS (which happens when running tests)
-    Ref<Context> context = _contextManager.getContext(contextId);
+    Ref<Context> context = _contextManager->getContext(contextId);
     if (context == nullptr) {
         // Fallback on a lookup on our contextHandler, in case the context was destroyed outside of the js thread
         return _contextHandler->getContextForId(contextId);

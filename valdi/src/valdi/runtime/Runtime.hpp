@@ -311,7 +311,7 @@ private:
     PlatformType _platformType;
     Ref<ResourceManager> _resourceManager;
     ResourceReloaderThrottler _reloaderThrottler;
-    ContextManager _contextManager;
+    Ref<ContextManager> _contextManager;
     ViewNodeTreeManager _viewNodeManager;
     Ref<MainThreadManager> _mainThreadManager;
     Ref<ColorPalette> _colorPalette;

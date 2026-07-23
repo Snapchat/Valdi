@@ -179,8 +179,6 @@ public:
 
     const Valdi::JSPropertyName& getPrototypePropertyName() const;
 
-    const Valdi::JSPropertyName& getPrototypePropertyName() const;
-
 protected:
     Valdi::JSValueRef onNewBool(bool boolean) override;
 
