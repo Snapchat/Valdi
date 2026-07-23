@@ -6,6 +6,7 @@ import com.snap.valdi.attributes.AttributesBindingContext
 import com.snap.valdi.attributes.impl.animations.ValdiAnimator
 import com.snap.valdi.attributes.impl.animations.ValdiValueAnimation
 import com.snap.valdi.attributes.impl.animations.ViewAnimator
+import com.snap.valdi.attributes.impl.gradients.ValdiGradient
 import com.snap.valdi.exceptions.AttributeError
 import com.snap.valdi.extensions.ViewUtils
 import com.snap.valdi.utils.CoordinateResolver
@@ -50,6 +51,23 @@ class ShapeViewAttributesBinder : AttributesBinder<ShapeView> {
 
     private fun resetFillColor(view: ShapeView, animator: ValdiAnimator?) {
         view.resetFillColor()
+    }
+
+    private fun applyFillGradient(view: ShapeView, value: Array<Any>, animator: ValdiAnimator?) {
+        val valdiGradient = ValdiGradient.fromGradientData(value)
+
+        if (valdiGradient.colors.isEmpty()) {
+            view.resetFillGradient()
+        } else if (valdiGradient.colors.size == 1) {
+            view.resetFillGradient()
+            view.setFillColor(valdiGradient.colors[0])
+        } else {
+            view.setFillGradient(valdiGradient)
+        }
+    }
+
+    private fun resetFillGradient(view: ShapeView, animator: ValdiAnimator?) {
+        view.resetFillGradient()
     }
 
     private fun applyStrokeCap(view: ShapeView, value: String, animator: ValdiAnimator?) {
@@ -119,6 +137,7 @@ class ShapeViewAttributesBinder : AttributesBinder<ShapeView> {
         attributesBindingContext.bindFloatAttribute("strokeWidth", false, this::applyStrokeWidth, this::resetStrokeWidth)
         attributesBindingContext.bindColorAttribute("strokeColor", false, this::applyStrokeColor, this::resetStrokeColor)
         attributesBindingContext.bindColorAttribute("fillColor", false, this::applyFillColor, this::resetFillColor)
+        attributesBindingContext.bindArrayAttribute("fillGradient", false, this::applyFillGradient, this::resetFillGradient)
         attributesBindingContext.bindStringAttribute("strokeCap", false, this::applyStrokeCap, this::resetStrokeCap)
         attributesBindingContext.bindStringAttribute("strokeJoin", false, this::applyStrokeJoin, this::resetStrokeJoin)
         attributesBindingContext.bindFloatAttribute("strokeStart", false, this::applyStrokeStart, this::resetStrokeStart)

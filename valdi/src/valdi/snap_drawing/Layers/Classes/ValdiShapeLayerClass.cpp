@@ -9,7 +9,55 @@
 #include "valdi/snap_drawing/Animations/ValdiAnimator.hpp"
 #include "valdi/snap_drawing/Utils/AttributesBinderUtils.hpp"
 
+#include <vector>
+
 namespace snap::drawing {
+
+namespace {
+
+Valdi::Result<Valdi::Void> applyFillGradientAttribute(ShapeLayer& shapeLayer, const Valdi::Value& value) {
+    const auto* array = value.getArray();
+    if (array == nullptr || array->size() != 4) {
+        return Valdi::Error("Expecting 4 values from fillGradient");
+    }
+
+    const auto* colors = (*array)[0].getArray();
+    const auto* locations = (*array)[1].getArray();
+    auto orientation = static_cast<snap::drawing::LinearGradientOrientation>((*array)[2].toInt());
+    auto radial = (*array)[3].toBool();
+
+    if (colors == nullptr || locations == nullptr) {
+        return Valdi::Error("Expecting 2 arrays: colors and locations");
+    }
+
+    std::vector<Color> outColors;
+    outColors.reserve(colors->size());
+
+    for (const auto& color : *colors) {
+        outColors.emplace_back(snapDrawingColorFromValdiColor(color.toLong()));
+    }
+
+    std::vector<Scalar> outLocations;
+    outLocations.reserve(locations->size());
+
+    for (const auto& location : *locations) {
+        outLocations.emplace_back(static_cast<Scalar>(location.toDouble()));
+    }
+
+    if (radial) {
+        shapeLayer.setFillRadialGradient(std::move(outLocations), std::move(outColors));
+    } else {
+        shapeLayer.setFillLinearGradient(std::move(outLocations), std::move(outColors), orientation);
+    }
+
+    return Valdi::Void();
+}
+
+void resetFillGradientAttribute(ShapeLayer& shapeLayer) {
+    shapeLayer.resetFillGradient();
+}
+
+} // namespace
 
 ValdiShapeLayerClass::ValdiShapeLayerClass(const Ref<Resources>& resources, const Ref<LayerClass>& parentClass)
     : ILayerClass(resources, "SCValdiShapeView", "com.snap.valdi.views.ShapeView", parentClass, false) {}
@@ -25,6 +73,7 @@ void ValdiShapeLayerClass::bindAttributes(Valdi::AttributesBindingContext& binde
     BIND_DOUBLE_ATTRIBUTE(ValdiShapeLayer, strokeWidth, false);
     BIND_COLOR_ATTRIBUTE(ValdiShapeLayer, strokeColor, false);
     BIND_COLOR_ATTRIBUTE(ValdiShapeLayer, fillColor, false);
+    BIND_UNTYPED_ATTRIBUTE(ValdiShapeLayer, fillGradient, false);
     BIND_STRING_ATTRIBUTE(ValdiShapeLayer, strokeCap, false);
     BIND_STRING_ATTRIBUTE(ValdiShapeLayer, strokeJoin, false);
     BIND_DOUBLE_ATTRIBUTE(ValdiShapeLayer, strokeStart, false);
@@ -96,6 +145,12 @@ IMPLEMENT_COLOR_ATTRIBUTE(
                                        MIN_VISIBLE_CHANGE_COLOR,
                                        Color::transparent());
     })
+
+IMPLEMENT_UNTYPED_ATTRIBUTE(
+    ValdiShapeLayer,
+    fillGradient,
+    { return applyFillGradientAttribute(view, value); },
+    { resetFillGradientAttribute(view); })
 
 IMPLEMENT_STRING_ATTRIBUTE(
     ValdiShapeLayer,
