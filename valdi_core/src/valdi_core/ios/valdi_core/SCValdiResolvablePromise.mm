@@ -37,6 +37,7 @@
     auto callbacks = std::move(_callbacks);
     dispatch_block_t cancelBlock = _cancelBlock;
     _cancelBlock = nil;
+    auto peer = std::move(_peer);
 
     lock.unlock();
 
@@ -44,10 +45,9 @@
         SCValdiPromiseCallbackForwardSuccess(callback.getObject(), value);
     }
 
-    // Make sure we release the block with the mutex unlocked
+    // Make sure we release the block and the peer with the mutex unlocked
     (void)cancelBlock;
-
-    _peer = {};
+    (void)peer;
 }
 
 - (void)fulfillWithError:(NSError *)error
@@ -60,6 +60,7 @@
     auto callbacks = std::move(_callbacks);
     dispatch_block_t cancelBlock = _cancelBlock;
     _cancelBlock = nil;
+    auto peer = std::move(_peer);
 
     lock.unlock();
 
@@ -67,10 +68,9 @@
         SCValdiPromiseCallbackForwardFailure(callback.getObject(), error);
     }
 
-    // Make sure we release the block with the mutex unlocked
+    // Make sure we release the block and the peer with the mutex unlocked
     (void)cancelBlock;
-
-    _peer = {};
+    (void)peer;
 }
 
 - (void)_doOnCompleteWithCallbackUntyped:(__unsafe_unretained id)callbackUntyped
@@ -118,6 +118,7 @@
     _canceled = true;
     dispatch_block_t cancelBlock = _cancelBlock;
     _cancelBlock = nil;
+    auto peer = std::move(_peer);
 
     lock.unlock();
 
@@ -125,7 +126,8 @@
         cancelBlock();
     }
 
-    _peer = {};
+    // Make sure we release the peer with the mutex unlocked
+    (void)peer;
 }
 
 - (BOOL)isCancelable
@@ -160,12 +162,24 @@
 
 - (void)setPeer:(void*)peer
 {
+    std::lock_guard<Valdi::Mutex> lock(_mutex);
+    if (_completed || _canceled) {
+        // Only fulfill*/cancel clear _peer, and they already ran. Storing the peer now
+        // would create an unbreakable retain cycle with it (the peer strongly retains
+        // this promise). Skipping is safe: a fresh transient peer forwards immediately
+        // once the promise is resolved.
+        return;
+    }
     _peer = Valdi::unsafeBridge<Valdi::Promise>(peer);
 }
 
 - (void*)getPeer
 {
-    return unsafeBridgeCast(_peer.get());
+    std::lock_guard<Valdi::Mutex> lock(_mutex);
+    // Returned retained (+1): a concurrent fulfill*/cancel can drop the last
+    // reference to _peer right after we unlock, so an unretained pointer could
+    // dangle before the caller takes ownership.
+    return Valdi::unsafeBridgeRetain(_peer.get());
 }
 
 @end

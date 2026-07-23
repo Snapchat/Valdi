@@ -59,7 +59,9 @@ typedef void (^SCValdiPromiseCallbackBlock)(id _Nullable value, NSError* _Nullab
 - (void)setPeer:(void*)peer;
 
 /**
- Acquire a previously attached bridge promise
+ Acquire a previously attached bridge promise.
+ Returns a retained (+1) reference, or nil; the caller takes ownership
+ (e.g. by adopting it with Valdi::unsafeBridgeTransfer).
  */
 - (void*)getPeer;
 
@@ -128,7 +130,9 @@ typedef void (^SCValdiPromiseCallbackBlock)(id _Nullable value, NSError* _Nullab
 - (void)setPeer:(void*)peer;
 
 /**
- Acquire a previously attached bridge promise
+ Acquire a previously attached bridge promise.
+ Returns a retained (+1) reference, or nil; the caller takes ownership
+ (e.g. by adopting it with Valdi::unsafeBridgeTransfer).
  */
 - (void*)getPeer;
 
