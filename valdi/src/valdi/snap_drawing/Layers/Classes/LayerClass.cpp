@@ -137,11 +137,7 @@ void LayerClass::bindAttributes(Valdi::AttributesBindingContext& binder) {
     BIND_BORDER_ATTRIBUTE(Layer, borderRadius, false);
 
     BIND_DOUBLE_ATTRIBUTE(Layer, opacity, false);
-    BIND_DOUBLE_ATTRIBUTE(Layer, translationX, false);
-    BIND_DOUBLE_ATTRIBUTE(Layer, translationY, false);
-    BIND_DOUBLE_ATTRIBUTE(Layer, scaleX, false);
-    BIND_DOUBLE_ATTRIBUTE(Layer, scaleY, false);
-    BIND_DOUBLE_ATTRIBUTE(Layer, rotation, false);
+    BIND_TRANSFORM_ATTRIBUTES(Layer, transform);
     BIND_DOUBLE_ATTRIBUTE(Layer, borderWidth, false);
     BIND_DOUBLE_ATTRIBUTE(Layer, onTouchDelayDuration, false);
 
@@ -248,74 +244,97 @@ void LayerClass::reset_opacity(Layer& view, const AttributeContext& context) {
     context.setAnimatableAttribute(view, &Layer::getOpacity, &Layer::setOpacity, MIN_VISIBLE_CHANGE_COLOR, 1.0f);
 }
 
+namespace {
+
+template<typename T, typename V>
+void setAnimatableTransformAttribute(T& view,
+                                     const AttributeContext& context,
+                                     V (T::*getter)() const,
+                                     void (T::*setter)(V),
+                                     double minVisibleChange,
+                                     V value) {
+    context.setAnimatableAttribute(view, getter, setter, minVisibleChange, value);
+}
+
+void setTransformAttributes(Layer& view,
+                            const AttributeContext& context,
+                            Scalar translationX,
+                            Scalar translationY,
+                            Scalar scaleX,
+                            Scalar scaleY,
+                            Scalar rotation) {
+    static auto kTranslationXName = STRING_LITERAL("translationX");
+    static auto kTranslationYName = STRING_LITERAL("translationY");
+    static auto kScaleXName = STRING_LITERAL("scaleX");
+    static auto kScaleYName = STRING_LITERAL("scaleY");
+    static auto kRotationName = STRING_LITERAL("rotation");
+
+    setAnimatableTransformAttribute(view,
+                                    context.withAttributeName(kTranslationXName),
+                                    &Layer::getTranslationX,
+                                    &Layer::setTranslationX,
+                                    MIN_VISIBLE_CHANGE_PIXEL,
+                                    translationX);
+
+    setAnimatableTransformAttribute(view,
+                                    context.withAttributeName(kTranslationYName),
+                                    &Layer::getTranslationY,
+                                    &Layer::setTranslationY,
+                                    MIN_VISIBLE_CHANGE_PIXEL,
+                                    translationY);
+
+    setAnimatableTransformAttribute(view,
+                                    context.withAttributeName(kScaleXName),
+                                    &Layer::getScaleX,
+                                    &Layer::setScaleX,
+                                    MIN_VISIBLE_CHANGE_SCALE_RATIO,
+                                    scaleX);
+
+    setAnimatableTransformAttribute(view,
+                                    context.withAttributeName(kScaleYName),
+                                    &Layer::getScaleY,
+                                    &Layer::setScaleY,
+                                    MIN_VISIBLE_CHANGE_SCALE_RATIO,
+                                    scaleY);
+
+    setAnimatableTransformAttribute(view,
+                                    context.withAttributeName(kRotationName),
+                                    &Layer::getRotation,
+                                    &Layer::setRotation,
+                                    MIN_VISIBLE_CHANGE_ROTATION_DEGREES_ANGLE,
+                                    rotation);
+}
+
+} // namespace
+
 // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-Valdi::Result<Valdi::Void> LayerClass::apply_translationX(Layer& view, double value, const AttributeContext& context) {
-    auto translationX = resolveDeltaX(view, static_cast<Scalar>(value));
-    context.setAnimatableAttribute(
-        view, &Layer::getTranslationX, &Layer::setTranslationX, MIN_VISIBLE_CHANGE_PIXEL, translationX);
+Valdi::Result<Valdi::Void> LayerClass::apply_transform(Layer& view,
+                                                       const Valdi::Value& value,
+                                                       const AttributeContext& context) {
+    const auto* array = value.getArray();
+    if (array == nullptr || array->size() != 5) {
+        return Valdi::Error("Expected 5 transform components");
+    }
+
+    setTransformAttributes(view,
+                           context,
+                           static_cast<Scalar>((*array)[0].toDouble()),
+                           static_cast<Scalar>((*array)[1].toDouble()),
+                           static_cast<Scalar>((*array)[2].toDouble()),
+                           static_cast<Scalar>((*array)[3].toDouble()),
+                           static_cast<Scalar>((*array)[4].toDouble()));
     return Valdi::Void();
 }
 
 // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-void LayerClass::reset_translationX(Layer& view, const AttributeContext& context) {
-    context.setAnimatableAttribute(
-        view, &Layer::getTranslationX, &Layer::setTranslationX, MIN_VISIBLE_CHANGE_PIXEL, static_cast<Scalar>(0));
-}
-
-// NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-Valdi::Result<Valdi::Void> LayerClass::apply_translationY(Layer& view, double value, const AttributeContext& context) {
-    context.setAnimatableAttribute(
-        view, &Layer::getTranslationY, &Layer::setTranslationY, MIN_VISIBLE_CHANGE_PIXEL, static_cast<Scalar>(value));
-    return Valdi::Void();
-}
-
-// NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-void LayerClass::reset_translationY(Layer& view, const AttributeContext& context) {
-    context.setAnimatableAttribute(
-        view, &Layer::getTranslationY, &Layer::setTranslationY, MIN_VISIBLE_CHANGE_PIXEL, static_cast<Scalar>(0));
-}
-
-// NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-Valdi::Result<Valdi::Void> LayerClass::apply_scaleX(Layer& view, double value, const AttributeContext& context) {
-    context.setAnimatableAttribute(
-        view, &Layer::getScaleX, &Layer::setScaleX, MIN_VISIBLE_CHANGE_SCALE_RATIO, static_cast<Scalar>(value));
-    return Valdi::Void();
-}
-
-// NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-void LayerClass::reset_scaleX(Layer& view, const AttributeContext& context) {
-    context.setAnimatableAttribute(
-        view, &Layer::getScaleX, &Layer::setScaleX, MIN_VISIBLE_CHANGE_SCALE_RATIO, static_cast<Scalar>(1));
-}
-
-// NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-Valdi::Result<Valdi::Void> LayerClass::apply_scaleY(Layer& view, double value, const AttributeContext& context) {
-    context.setAnimatableAttribute(
-        view, &Layer::getScaleY, &Layer::setScaleY, MIN_VISIBLE_CHANGE_SCALE_RATIO, static_cast<Scalar>(value));
-    return Valdi::Void();
-}
-
-// NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-void LayerClass::reset_scaleY(Layer& view, const AttributeContext& context) {
-    context.setAnimatableAttribute(
-        view, &Layer::getScaleY, &Layer::setScaleY, MIN_VISIBLE_CHANGE_SCALE_RATIO, static_cast<Scalar>(1));
-}
-
-// NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-Valdi::Result<Valdi::Void> LayerClass::apply_rotation(Layer& view, double value, const AttributeContext& context) {
-    auto rotationAngle = resolveDeltaX(view, static_cast<Scalar>(value));
-    context.setAnimatableAttribute(
-        view, &Layer::getRotation, &Layer::setRotation, MIN_VISIBLE_CHANGE_ROTATION_DEGREES_ANGLE, rotationAngle);
-    return Valdi::Void();
-}
-
-// NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-void LayerClass::reset_rotation(Layer& view, const AttributeContext& context) {
-    context.setAnimatableAttribute(view,
-                                   &Layer::getRotation,
-                                   &Layer::setRotation,
-                                   MIN_VISIBLE_CHANGE_ROTATION_DEGREES_ANGLE,
-                                   static_cast<Scalar>(0));
+void LayerClass::reset_transform(Layer& view, const AttributeContext& context) {
+    setTransformAttributes(view,
+                           context,
+                           static_cast<Scalar>(0),
+                           static_cast<Scalar>(0),
+                           static_cast<Scalar>(1),
+                           static_cast<Scalar>(1),
+                           static_cast<Scalar>(0));
 }
 
 // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)

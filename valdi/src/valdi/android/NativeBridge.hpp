@@ -194,6 +194,9 @@ public:
                               jboolean invalidateLayoutOnChange,
                               jobject delegate,
                               jobject compositeParts);
+    static void bindTransformAttributes(fbjni::alias_ref<fbjni::JClass> clazz,
+                                        jlong bindingContextHandle,
+                                        jobject delegate);
     static void bindScrollAttributes(fbjni::alias_ref<fbjni::JClass> clazz, jlong bindingContextHandle);
     static void bindAssetAttributes(fbjni::alias_ref<fbjni::JClass> clazz, jlong bindingContextHandle, jint outputType);
     static void setMeasureDelegate(fbjni::alias_ref<fbjni::JClass> clazz,

@@ -112,7 +112,6 @@ public class NativeBridge {
     public static native void registerModuleFactoriesProvider(long runtimeManagerHandle, Object moduleFactoriesProvider);
     public static native long getViewNodePoint(long runtimeHandle, long viewNodeHandle, int x, int y, int mode, boolean fromBoundsOrigin);
     public static native long getViewNodeSize(long runtimeHandle, long viewNodeHandle, int mode);
-
     public static native boolean canViewNodeScroll(long runtimeHandle, long viewNodeHandler, int x, int y, int direction);
 
     public static native boolean isViewNodeScrollingOrAnimating(long viewNodeHandle);
@@ -199,6 +198,7 @@ public class NativeBridge {
                                            boolean invalidateLayoutOnChange,
                                            Object delegate,
                                            Object compositeParts);
+    public static native void bindTransformAttributes(long bindingContextHandle, Object delegate);
     public static native void bindScrollAttributes(long bindingContextHandle);
     public static native void bindAssetAttributes(long bindingContextHandle, int outputType);
     public static native void setMeasureDelegate(long bindingContextHandle, Object measureDelegate);

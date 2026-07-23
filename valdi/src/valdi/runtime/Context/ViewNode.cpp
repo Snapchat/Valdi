@@ -124,6 +124,13 @@ void LazyLayoutData::destroyNode() {
     }
 }
 
+float ViewNodeTranslation::getResolvedValue(float referenceLength, bool isPercent) const {
+    if (isPercent) {
+        return referenceLength * (value / 100.0f);
+    }
+    return value;
+}
+
 const SharedAnimator& nullAnimator() {
     static SharedAnimator nullAnimator;
     return nullAnimator;
@@ -158,6 +165,8 @@ constexpr size_t kHasChildWithAccessibilityId = 26;
 constexpr size_t kCanAlwaysScrollHorizontal = 27;
 constexpr size_t kCanAlwaysScrollVertical = 28;
 constexpr size_t kAccessibilityTreeNeedsUpdate = 29;
+constexpr size_t kTranslationXIsPercent = 30;
+constexpr size_t kTranslationYIsPercent = 31;
 
 ViewNode::ViewNode(YGConfig* yogaConfig, AttributeIds& attributeIds, ILogger& logger)
     : _yogaNode(yogaConfig != nullptr ? Yoga::createNode(yogaConfig) : nullptr),
@@ -1343,12 +1352,12 @@ Point ViewNode::convertSelfVisualToRootVisual(const Point& selfDirectionDependen
 Point ViewNode::getDirectionDependentTransform() const {
     auto directionDependentFrame = getCalculatedFrame();
     return Point(directionDependentFrame.x + getDirectionDependentTranslationX(),
-                 directionDependentFrame.y + _translationY);
+                 directionDependentFrame.y + getTranslationY());
 }
 
 Point ViewNode::getDirectionAgnosticTransform() const {
     auto directionAgnosticFrame = getDirectionAgnosticFrame();
-    return Point(directionAgnosticFrame.x + _translationX, directionAgnosticFrame.y + _translationY);
+    return Point(directionAgnosticFrame.x + getTranslationX(), directionAgnosticFrame.y + getTranslationY());
 }
 
 Point ViewNode::getBoundsOriginPoint() const {
@@ -1939,7 +1948,7 @@ void ViewNode::setHasParent(bool hasParent) {
 
 Frame ViewNode::calculateSelfViewport() const {
     auto tx = getDirectionDependentTranslationX();
-    auto ty = _translationY;
+    auto ty = getTranslationY();
     auto& f = _calculatedFrame;
     Frame bounds;
     if (VALDI_LIKELY(_scaleX == 1.0f && _scaleY == 1.0f)) {
@@ -2391,10 +2400,9 @@ bool ViewNode::updateCalculatedFrame(float viewOffsetX,
     auto hasNewLayout = resolveYogaNode(_yogaNode)->getHasNewLayout();
     auto hadLayout = _flags[kLayoutDidCompleteOnceFlag];
     auto layoutIsRightToLeft = isRightToLeft();
-
+    auto layoutDirectionDidChange = layoutIsRightToLeft != _flags[kLayoutIsRightToLeft];
     if (!hadLayout || _calculatedFrame != newFrame) {
-        *calculatedSizeDidChange =
-            _calculatedFrame.width != newFrame.width || _calculatedFrame.height != newFrame.height;
+        *calculatedSizeDidChange = _calculatedFrame.size() != newFrame.size();
         *calculatedFrameDidChange = true;
         _calculatedFrame = newFrame;
 
@@ -2402,7 +2410,7 @@ bool ViewNode::updateCalculatedFrame(float viewOffsetX,
         hasNewLayout = true;
     }
 
-    if (!hadLayout || _viewFrame != newViewFrame || layoutIsRightToLeft != _flags[kLayoutIsRightToLeft]) {
+    if (!hadLayout || _viewFrame != newViewFrame || layoutDirectionDidChange) {
         _previousViewFrame = _viewFrame;
         _viewFrame = newViewFrame;
         _flags[kLayoutIsRightToLeft] = layoutIsRightToLeft;
@@ -3799,27 +3807,28 @@ bool ViewNode::ignoreParentViewport() const {
 }
 
 float ViewNode::getTranslationX() const {
-    return _translationX;
+    return _translationX.getResolvedValue(_calculatedFrame.width, _flags[kTranslationXIsPercent]);
 }
 
-void ViewNode::setTranslationX(float translationX) {
-    updateTranslation(translationX, &_translationX);
+void ViewNode::setTranslationX(float translationX, bool isPercent) {
+    updateTranslation(translationX, isPercent, &_translationX, kTranslationXIsPercent);
 }
 
 float ViewNode::getDirectionDependentTranslationX() const {
+    auto translationX = getTranslationX();
     if (isRightToLeft()) {
-        return _translationX * -1;
+        return translationX * -1;
     } else {
-        return _translationX;
+        return translationX;
     }
 }
 
 float ViewNode::getTranslationY() const {
-    return _translationY;
+    return _translationY.getResolvedValue(_calculatedFrame.height, _flags[kTranslationYIsPercent]);
 }
 
-void ViewNode::setTranslationY(float translationY) {
-    updateTranslation(translationY, &_translationY);
+void ViewNode::setTranslationY(float translationY, bool isPercent) {
+    updateTranslation(translationY, isPercent, &_translationY, kTranslationYIsPercent);
 }
 
 void ViewNode::setScaleX(float scaleX) {
@@ -3844,9 +3853,13 @@ void ViewNode::setScaleY(float scaleY) {
     }
 }
 
-void ViewNode::updateTranslation(float translation, float* outValue) {
-    if (*outValue != translation) {
-        *outValue = translation;
+void ViewNode::updateTranslation(float translation,
+                                 bool isPercent,
+                                 ViewNodeTranslation* outTranslation,
+                                 size_t percentFlag) {
+    if (outTranslation->value != translation || _flags[percentFlag] != isPercent) {
+        outTranslation->value = translation;
+        _flags[percentFlag] = isPercent;
         setCalculatedViewportNeedsUpdate();
 
         auto parent = getParent();

@@ -552,6 +552,13 @@ withFunctionAndPredicateBlock:(SCValdiAttributeBindMethodFunctionAndPredicate)ac
                                             Valdi::makeShared<ValdiIOS::UntypedAttributeHandlerDelegate>(untypedBlock, resetBlock));
 }
 
+- (void)bindTransformAttributesWithUntypedBlock:(SCValdiAttributeBindMethodUntyped)untypedBlock
+                                     resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
+{
+    _bindingContext->bindTransformAttributes(
+        Valdi::makeShared<ValdiIOS::UntypedAttributeHandlerDelegate>(untypedBlock, resetBlock));
+}
+
 - (void)bindAttribute:(NSString *)attributeName
 invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
        deserializer:(SCValdiAttributeDeserializer)deserializer

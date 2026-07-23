@@ -1,4 +1,5 @@
 #include "valdi/runtime/Attributes/DefaultAttributeProcessors.hpp"
+#include "valdi/runtime/Attributes/TransformAttributes.hpp"
 #include "valdi/runtime/Attributes/ValueConverters.hpp"
 #include "valdi_core/cpp/Attributes/AttributeUtils.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
@@ -24,6 +25,61 @@ static Value makeGradientValue(std::vector<Color> colors, std::vector<double> lo
     }
 
     return Value(ValueArray::make({Value(outColors), Value(outLocations), Value(angle), Value(radial)}));
+}
+
+static Value makeTransformValue(const Value& translationX,
+                                const Value& translationY,
+                                const Value& scaleX,
+                                const Value& scaleY,
+                                const Value& rotation,
+                                const Value& transformOrigin) {
+    return Value(ValueArray::make({transformOrigin,
+                                   Value::undefinedRef(),
+                                   translationX,
+                                   translationY,
+                                   scaleX,
+                                   scaleY,
+                                   rotation}));
+}
+
+static Value makeTransformValue(double translationX,
+                                double translationY,
+                                double scaleX,
+                                double scaleY,
+                                double rotation,
+                                const Value& transformOrigin = Value::undefinedRef()) {
+    return makeTransformValue(Value(translationX),
+                              Value(translationY),
+                              Value(scaleX),
+                              Value(scaleY),
+                              Value(rotation),
+                              transformOrigin);
+}
+
+static Value makeTransformStringValue(const Value& transform, const Value& transformOrigin = Value::undefinedRef()) {
+    return Value(ValueArray::make({transformOrigin,
+                                   transform,
+                                   Value::undefinedRef(),
+                                   Value::undefinedRef(),
+                                   Value::undefinedRef(),
+                                   Value::undefinedRef(),
+                                   Value::undefinedRef()}));
+}
+
+static void expectTransformValues(const Value& value,
+                                  double translationX,
+                                  double translationY,
+                                  double scaleX,
+                                  double scaleY,
+                                  double rotation) {
+    const auto* values = value.getArray();
+    ASSERT_NE(values, nullptr);
+    ASSERT_EQ(values->size(), 5);
+    EXPECT_NEAR((*values)[0].toDouble(), translationX, 0.00001);
+    EXPECT_NEAR((*values)[1].toDouble(), translationY, 0.00001);
+    EXPECT_NEAR((*values)[2].toDouble(), scaleX, 0.00001);
+    EXPECT_NEAR((*values)[3].toDouble(), scaleY, 0.00001);
+    EXPECT_NEAR((*values)[4].toDouble(), rotation, 0.00001);
 }
 
 TEST(AttributeProcessor, canParseSimpleBackground) {
@@ -346,6 +402,157 @@ TEST(AttributeProcessor, flipsHorizontalBordersOnRTL) {
     ASSERT_EQ(borderRadius->getTopLeft(), rtlBorderRadius->getTopRight());
     ASSERT_EQ(borderRadius->getBottomLeft(), rtlBorderRadius->getBottomRight());
     ASSERT_EQ(borderRadius->getBottomRight(), rtlBorderRadius->getBottomLeft());
+}
+
+TEST(AttributeProcessor, transformAttributesPostprocessKeepsCenterOriginTransforms) {
+    auto result = TransformAttributes::postprocess(100, 80, false, makeTransformValue(10, 20, 2, 3, 0.5));
+    ASSERT_TRUE(result.success()) << result.description();
+
+    expectTransformValues(result.value(), 10, 20, 2, 3, 0.5);
+}
+
+TEST(AttributeProcessor, transformAttributesPostprocessResolvesKeywordOrigins) {
+    auto result =
+        TransformAttributes::postprocess(100,
+                                         80,
+                                         false,
+                                         makeTransformValue(0, 0, 2, 3, 0, Value(STRING_LITERAL("top left"))));
+    ASSERT_TRUE(result.success()) << result.description();
+    expectTransformValues(result.value(), 50, 80, 2, 3, 0);
+
+    result =
+        TransformAttributes::postprocess(100,
+                                         80,
+                                         false,
+                                         makeTransformValue(0, 0, 2, 2, 0, Value(STRING_LITERAL("right bottom"))));
+    ASSERT_TRUE(result.success()) << result.description();
+    expectTransformValues(result.value(), -50, -40, 2, 2, 0);
+}
+
+TEST(AttributeProcessor, transformAttributesPostprocessResolvesLengthAndPercentOrigins) {
+    auto result =
+        TransformAttributes::postprocess(100,
+                                         80,
+                                         false,
+                                         makeTransformValue(0, 0, 2, 2, 0, Value(STRING_LITERAL("50px 70px"))));
+    ASSERT_TRUE(result.success()) << result.description();
+    expectTransformValues(result.value(), 0, -30, 2, 2, 0);
+
+    result =
+        TransformAttributes::postprocess(100,
+                                         80,
+                                         false,
+                                         makeTransformValue(0, 0, 2, 2, 0, Value(STRING_LITERAL("25% 75%"))));
+    ASSERT_TRUE(result.success()) << result.description();
+    expectTransformValues(result.value(), 25, -20, 2, 2, 0);
+}
+
+TEST(AttributeProcessor, transformAttributesPostprocessResolvesPercentOriginAgainstFrame) {
+    auto result =
+        TransformAttributes::postprocess(200,
+                                         80,
+                                         false,
+                                         makeTransformValue(0, 0, 1.5, 0.5, 0, Value(STRING_LITERAL("10% 25%"))));
+    ASSERT_TRUE(result.success()) << result.description();
+
+    expectTransformValues(result.value(), 40, -10, 1.5, 0.5, 0);
+}
+
+TEST(AttributeProcessor, transformAttributesPostprocessResolvesTranslationPercentagesAgainstFrame) {
+    auto result = TransformAttributes::postprocess(100,
+                                                   80,
+                                                   false,
+                                                   makeTransformValue(Value(STRING_LITERAL("10%")),
+                                                                      Value(STRING_LITERAL("25%")),
+                                                                      Value(1.0),
+                                                                      Value(1.0),
+                                                                      Value(0.0),
+                                                                      Value::undefinedRef()));
+    ASSERT_TRUE(result.success()) << result.description();
+    expectTransformValues(result.value(), 10, 20, 1, 1, 0);
+}
+
+TEST(AttributeProcessor, transformAttributesPostprocessParsesWebTransformStrings) {
+    auto result = TransformAttributes::postprocess(
+        100,
+        80,
+        false,
+        makeTransformStringValue(Value(STRING_LITERAL("translate(50%, -25%) translateX(10px) translateY(5pt)"))));
+    ASSERT_TRUE(result.success()) << result.description();
+    expectTransformValues(result.value(), 60, -15, 1, 1, 0);
+
+    result = TransformAttributes::postprocess(
+        100,
+        80,
+        false,
+        makeTransformStringValue(Value(STRING_LITERAL("translate(10px, 20px) rotate(90deg) scale(2, 3)"))));
+    ASSERT_TRUE(result.success()) << result.description();
+    expectTransformValues(result.value(), 10, 20, 2, 3, M_PI_2);
+}
+
+TEST(AttributeProcessor, transformAttributesPostprocessAppliesOriginToWebTransformStrings) {
+    auto result = TransformAttributes::postprocess(
+        100,
+        100,
+        false,
+        makeTransformStringValue(Value(STRING_LITERAL("rotate(90deg)")), Value(STRING_LITERAL("top left"))));
+    ASSERT_TRUE(result.success()) << result.description();
+
+    expectTransformValues(result.value(), -100, 0, 1, 1, M_PI_2);
+}
+
+TEST(AttributeProcessor, transformAttributesPostprocessAppliesRtlToWebTransformStrings) {
+    auto result =
+        TransformAttributes::postprocess(
+            100, 80, true, makeTransformStringValue(Value(STRING_LITERAL("translateX(50%) rotate(90deg)"))));
+    ASSERT_TRUE(result.success()) << result.description();
+    expectTransformValues(result.value(), -50, 0, 1, 1, -M_PI_2);
+}
+
+TEST(AttributeProcessor, transformAttributesPostprocessRejectsInvalidWebTransformStrings) {
+    auto result = TransformAttributes::postprocess(
+        100, 80, false, makeTransformStringValue(Value(STRING_LITERAL("translateX(50%) nope(1)"))));
+    ASSERT_FALSE(result.success()) << result.description();
+
+    result = TransformAttributes::postprocess(
+        100, 80, false, makeTransformStringValue(Value(STRING_LITERAL("translateX(10px"))));
+    ASSERT_FALSE(result.success()) << result.description();
+}
+
+TEST(AttributeProcessor, transformAttributesPostprocessFoldsRotationAroundNonCenterOrigin) {
+    auto result = TransformAttributes::postprocess(
+        100, 100, false, makeTransformValue(0, 0, 1, 1, M_PI_2, Value(STRING_LITERAL("top left"))));
+    ASSERT_TRUE(result.success()) << result.description();
+
+    expectTransformValues(result.value(), -100, 0, 1, 1, M_PI_2);
+}
+
+TEST(AttributeProcessor, transformAttributesPostprocessPreservesExistingRtlBehavior) {
+    auto result = TransformAttributes::postprocess(100, 100, true, makeTransformValue(10, 20, 1, 1, M_PI_2));
+    ASSERT_TRUE(result.success()) << result.description();
+
+    expectTransformValues(result.value(), -10, 20, 1, 1, -M_PI_2);
+}
+
+TEST(AttributeProcessor, transformAttributesPostprocessRejectsInvalidOrigins) {
+    auto result =
+        TransformAttributes::postprocess(100,
+                                         100,
+                                         false,
+                                         makeTransformValue(0, 0, 1, 1, 0, Value(STRING_LITERAL("top bottom"))));
+    ASSERT_FALSE(result.success()) << result.description();
+
+    result = TransformAttributes::postprocess(100,
+                                              100,
+                                              false,
+                                              makeTransformValue(0, 0, 1, 1, 0, Value(STRING_LITERAL("10px 20px 0"))));
+    ASSERT_FALSE(result.success()) << result.description();
+
+    result = TransformAttributes::postprocess(100,
+                                              100,
+                                              false,
+                                              makeTransformValue(0, 0, 1, 1, 0, Value(STRING_LITERAL("10 20"))));
+    ASSERT_FALSE(result.success()) << result.description();
 }
 
 } // namespace ValdiTest

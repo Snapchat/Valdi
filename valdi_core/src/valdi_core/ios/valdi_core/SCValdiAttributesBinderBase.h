@@ -188,6 +188,9 @@ typedef NSDictionary<NSString*, SCValdiAttributeBindMethodUntyped> SCAttributeAp
                     resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
     NS_SWIFT_NAME(bindCompositeAttribute(_:parts:withUntypedBlock:resetBlock:));
 
+- (void)bindTransformAttributesWithUntypedBlock:(SCValdiAttributeBindMethodUntyped)untypedBlock
+                                     resetBlock:(SCValdiAttributeBindMethodReset)resetBlock;
+
 - (void)bindAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
                 deserializer:(SCValdiAttributeDeserializer)deserializer

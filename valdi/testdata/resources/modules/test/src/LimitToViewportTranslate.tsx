@@ -1,8 +1,8 @@
 import { Component } from 'valdi_core/src/Component';
 
 interface ViewModel {
-  translationX: number;
-  translationY: number;
+  translationX: number | string;
+  translationY: number | string;
 }
 
 export class TestComponent extends Component<ViewModel> {

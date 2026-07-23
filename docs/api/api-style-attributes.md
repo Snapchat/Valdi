@@ -372,8 +372,11 @@ new Style<View>({
   rotation: 0,                 // number (radians)
   
   // Translation
-  translationX: 0,             // number (points, flipped in RTL)
-  translationY: 0,             // number (points)
+  translationX: 0,             // number (points) or percent string of own width, flipped in RTL
+  translationY: 0,             // number (points) or percent string of own height
+
+  // Transform origin
+  transformOrigin: 'center',   // keywords, "50px 70px", or "25% 75%" (2D only)
 })
 ```
 

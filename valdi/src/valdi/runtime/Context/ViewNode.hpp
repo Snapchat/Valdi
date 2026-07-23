@@ -89,6 +89,12 @@ struct LazyLayoutData {
     void destroyNode();
 };
 
+struct ViewNodeTranslation {
+    float value = 0.0f;
+
+    float getResolvedValue(float referenceLength, bool isPercent) const;
+};
+
 struct ViewNodeUpdateViewTreeResult {
     int visitedNodes = 0;
     int reinsertedViews = 0;
@@ -549,7 +555,7 @@ public:
     void setIgnoreParentViewport(bool ignoreParentViewport);
 
     float getTranslationX() const;
-    void setTranslationX(float translationX);
+    void setTranslationX(float translationX, bool isPercent);
 
     /**
      * Returns the effective translation X that should be used for the backing view.
@@ -558,7 +564,7 @@ public:
     float getDirectionDependentTranslationX() const;
 
     float getTranslationY() const;
-    void setTranslationY(float translationY);
+    void setTranslationY(float translationY, bool isPercent);
 
     void setScaleX(float scaleX);
     void setScaleY(float scaleY);
@@ -628,8 +634,8 @@ private:
     Frame _calculatedFrame;
     Frame _viewFrame;
     Frame _previousViewFrame;
-    float _translationX = 0;
-    float _translationY = 0;
+    ViewNodeTranslation _translationX;
+    ViewNodeTranslation _translationY;
     float _scaleX = 1.0f;
     float _scaleY = 1.0f;
     std::unique_ptr<ViewNodeScrollState> _scrollState;
@@ -653,7 +659,7 @@ private:
     float _stickyCachedParentH = 0.0f;
     float _stickyCachedChildH = 0.0f;
 
-    std::bitset<30> _flags;
+    std::bitset<32> _flags;
 
     ViewNodeTree* _viewNodeTree = nullptr;
 
@@ -791,7 +797,7 @@ private:
     void onChildrenChanged();
     void setChildrenIndexerNeedsUpdate();
 
-    void updateTranslation(float translation, float* outValue);
+    void updateTranslation(float translation, bool isPercent, ViewNodeTranslation* outTranslation, size_t percentFlag);
 
     void setCalculatedViewportHasChildNeedsUpdate();
 
