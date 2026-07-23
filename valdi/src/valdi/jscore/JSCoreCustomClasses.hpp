@@ -17,7 +17,6 @@ namespace ValdiJSCore {
 
 JSClassRef getNativeFunctionClassRef();
 JSClassRef getWrappedObjectClassRef();
-JSClassRef getNativeClassConstructorFactoryClassRef();
 JSClassRef getNativeClassInstanceMemberClassRef();
 JSClassRef getNativeClassStaticMemberClassRef();
 
@@ -34,13 +33,6 @@ public:
 
 JSFunctionData* getAttachedJsFunctionData(JSObjectRef objectRef);
 Valdi::RefCountable* getAttachedWrappedObject(JSObjectRef objectRef);
-
-struct NativeClassData final : public Valdi::SimpleRefCountable {
-    NativeClassData(JavaScriptCoreContext& jsContext, const Valdi::Ref<Valdi::JSNativeClassData>& nativeClass);
-
-    JavaScriptCoreContext& jsContext;
-    Valdi::Ref<Valdi::JSNativeClassData> nativeClass;
-};
 
 struct NativeClassFunctionData final : public Valdi::SimpleRefCountable {
     NativeClassFunctionData(JavaScriptCoreContext& jsContext,

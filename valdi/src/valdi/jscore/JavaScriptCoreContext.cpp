@@ -155,9 +155,7 @@ JavaScriptCoreContext::~JavaScriptCoreContext() {
         JSValueUnprotect(_globalContext, microtask);
     }
 
-    _nativeClassFactory = Valdi::JSValueRef();
     _nativeClassDefineAccessor = Valdi::JSValueRef();
-    _nativeClassDataMap = Valdi::JSValueRef();
     _prototypePropertyName = Valdi::JSPropertyNameRef();
 
     prepareForTeardown();
@@ -249,23 +247,6 @@ void JavaScriptCoreContext::onInitialize(Valdi::JSExceptionTracker& exceptionTra
         }
     }
 
-    _nativeClassFactory = ensureRetainedValue(
-        evaluate("(function(name, factory) {"
-                 "  let cls;"
-                 "  cls = { [name]: class {"
-                 "    constructor(...args) {"
-                 "      if (new.target !== cls) throw new TypeError('Native class subclassing is not supported');"
-                 "      return factory(cls, ...args);"
-                 "    }"
-                 "  } }[name];"
-                 "  return cls;"
-                 "})",
-                 "ValdiNativeClassFactory.js",
-                 exceptionTracker));
-    if (!exceptionTracker) {
-        return;
-    }
-
     _nativeClassDefineAccessor =
         ensureRetainedValue(evaluate("(function(object, name, getter, setter, enumerable, configurable) {"
                                      "  const descriptor = { enumerable, configurable };"
@@ -278,8 +259,6 @@ void JavaScriptCoreContext::onInitialize(Valdi::JSExceptionTracker& exceptionTra
     if (!exceptionTracker) {
         return;
     }
-
-    _nativeClassDataMap = ensureRetainedValue(evaluate("new WeakMap()", "ValdiNativeClassData.js", exceptionTracker));
 }
 
 inline JSContextRef JavaScriptCoreContext::getJSGlobalContext() const {
@@ -289,6 +268,10 @@ inline JSContextRef JavaScriptCoreContext::getJSGlobalContext() const {
 Valdi::JSValueRef JavaScriptCoreContext::getGlobalObject(Valdi::JSExceptionTracker& exceptionTracker) {
     auto globalObject = JSContextGetGlobalObject(_globalContext);
     return returnJSValueRef(globalObject, kJSTypeObject);
+}
+
+const Valdi::JSPropertyName& JavaScriptCoreContext::getPrototypePropertyName() const {
+    return _prototypePropertyName.get();
 }
 
 Valdi::BytesView JavaScriptCoreContext::preCompile(const std::string_view& script,
@@ -586,45 +569,17 @@ Valdi::JSValueRef JavaScriptCoreContext::newNativeClass(const Valdi::Ref<Valdi::
 
     auto nativeClass = Valdi::makeShared<Valdi::JSNativeClassData>(
         classDefinition.getName(), classOpaque, classDefinition.getConstructor());
-    auto backendClass = Valdi::makeShared<NativeClassData>(*this, nativeClass);
-    auto factoryData = Valdi::makeShared<NativeClassFunctionData>(*this, nativeClass);
-    auto factory = newNativeClassFunction(
-        factoryData,
-        getNativeClassConstructorFactoryClassRef(),
+    auto constructorData = Valdi::makeShared<NativeClassFunctionData>(*this, nativeClass);
+    auto cls = newNativeClassFunction(
+        constructorData,
+        getNativeClassConstructorClassRef(),
         classDefinition.getName().toStringView(),
         exceptionTracker);
     if (!exceptionTracker) {
         return Valdi::JSValueRef();
     }
 
-    Valdi::JSValueRef factoryArguments[] = {
-        newStringUTF8(classDefinition.getName().toStringView(), exceptionTracker),
-        Valdi::JSValueRef::makeUnretained(*this, factory.get()),
-    };
-    if (!exceptionTracker) {
-        return Valdi::JSValueRef();
-    }
-    Valdi::JSFunctionCallContext factoryCallContext(*this, factoryArguments, 2, exceptionTracker);
-    auto cls = callObjectAsFunction(_nativeClassFactory.get(), factoryCallContext);
-    if (!exceptionTracker) {
-        return Valdi::JSValueRef();
-    }
-
-    auto backendValue = newWrappedObject(backendClass, exceptionTracker);
-    if (!exceptionTracker) {
-        return Valdi::JSValueRef();
-    }
-    Valdi::JSValueRef mapArguments[] = {
-        Valdi::JSValueRef::makeUnretained(*this, cls.get()),
-        Valdi::JSValueRef::makeUnretained(*this, backendValue.get()),
-    };
-    Valdi::JSFunctionCallContext mapCallContext(*this, mapArguments, 2, exceptionTracker);
-    callObjectProperty(_nativeClassDataMap.get(), "set", mapCallContext);
-    if (!exceptionTracker) {
-        return Valdi::JSValueRef();
-    }
-
-    auto prototype = getObjectProperty(cls.get(), _prototypePropertyName.get(), exceptionTracker);
+    auto prototype = newObject(exceptionTracker);
     if (!exceptionTracker) {
         return Valdi::JSValueRef();
     }
@@ -678,6 +633,11 @@ Valdi::JSValueRef JavaScriptCoreContext::newNativeClass(const Valdi::Ref<Valdi::
         callObjectAsFunction(_nativeClassDefineAccessor.get(), callContext);
         return static_cast<bool>(exceptionTracker);
     };
+
+    if (!defineDataProperty(classObject, "prototype", prototype.get(), false, false, false) ||
+        !defineDataProperty(prototypeObject, "constructor", cls.get(), true, false, true)) {
+        return Valdi::JSValueRef();
+    }
 
     for (const auto& entry : classDefinition.getEntries()) {
         auto object = entry.isClassMember() ? classObject : prototypeObject;
@@ -766,21 +726,13 @@ Valdi::JSValueRef JavaScriptCoreContext::newObjectFromNativeClass(const Valdi::R
         return Valdi::JSValueRef();
     }
 
-    Valdi::JSValueRef mapArgument = Valdi::JSValueRef::makeUnretained(*this, cls);
-    Valdi::JSFunctionCallContext mapCallContext(*this, &mapArgument, 1, exceptionTracker);
-    auto backendValue = callObjectProperty(_nativeClassDataMap.get(), "get", mapCallContext);
-    if (!exceptionTracker) {
-        return Valdi::JSValueRef();
-    }
-    auto backendClass =
-        Valdi::Ref(dynamic_cast<NativeClassData*>(valueToWrappedObject(backendValue.get(), exceptionTracker).get()));
-    if (backendClass == nullptr) {
-        exceptionTracker.onError("Value is not a native class");
-        return Valdi::JSValueRef();
-    }
-
     auto classObject = fromValdiJSValue(cls).asObjectRefOrThrow(*this, exceptionTracker);
     if (!exceptionTracker) {
+        return Valdi::JSValueRef();
+    }
+    auto constructorData = getAttachedNativeClassFunctionData(classObject);
+    if (constructorData == nullptr) {
+        exceptionTracker.onError("Value is not a native class");
         return Valdi::JSValueRef();
     }
     JSValueRef exception = nullptr;
@@ -795,8 +747,7 @@ Valdi::JSValueRef JavaScriptCoreContext::newObjectFromNativeClass(const Valdi::R
         storeException(exceptionTracker, exception);
         return Valdi::JSValueRef();
     }
-
-    auto instanceData = Valdi::makeShared<Valdi::JSNativeClassInstanceData>(backendClass->nativeClass, opaque);
+    auto instanceData = Valdi::makeShared<Valdi::JSNativeClassInstanceData>(constructorData->nativeClass, opaque);
     auto object =
         JSObjectMake(getJSGlobalContext(), getWrappedObjectClassRef(), Valdi::unsafeBridgeRetain(instanceData.get()));
     JSObjectSetPrototype(getJSGlobalContext(), object, prototypeObject);

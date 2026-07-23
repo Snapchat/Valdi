@@ -176,6 +176,8 @@ public:
     void willEnterVM() override;
     void willExitVM(Valdi::JSExceptionTracker& exceptionTracker) override;
 
+    const Valdi::JSPropertyName& getPrototypePropertyName() const;
+
 protected:
     Valdi::JSValueRef onNewBool(bool boolean) override;
 
@@ -199,9 +201,7 @@ private:
     JSObjectRef _emptyArrayBuffer = nullptr;
     JSObjectRef _weakRefConstructor = nullptr;
     JSObjectRef _weakRefDerefFunction = nullptr;
-    Valdi::JSValueRef _nativeClassFactory;
     Valdi::JSValueRef _nativeClassDefineAccessor;
-    Valdi::JSValueRef _nativeClassDataMap;
     bool _needGarbageCollect = false;
     bool _isGarbageCollecting = false;
     [[maybe_unused]] uint16_t _debuggerPort = 0;
@@ -224,6 +224,8 @@ private:
                                              JSClassRef classRef,
                                              std::string_view name,
                                              Valdi::JSExceptionTracker& exceptionTracker);
+
+    static JSClassRef getNativeClassConstructorClassRef();
 };
 
 } // namespace ValdiJSCore

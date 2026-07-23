@@ -22,7 +22,11 @@ public:
     explicit BinderTestObject(int32_t value) : _value(value) {}
 
     BinderTestObject(int32_t value, JSFunctionNativeCallContext& callContext)
-        : _value(value), _constructorContext(&callContext.getContext()) {}
+        : _value(value), _constructorContext(&callContext.getContext()) {
+        auto constructedValue = callContext.getContext().newNumber(value);
+        callContext.getContext().setObjectProperty(
+            callContext.getThisValue(), "constructedValue", constructedValue.get(), callContext.getExceptionTracker());
+    }
 
     int32_t add(int32_t amount, JSFunctionNativeCallContext& callContext) {
         _lastContext = &callContext.getContext();
@@ -263,7 +267,31 @@ TEST_P(JSNativeClassBinderTest, bindsConstructorAndInstanceMembers) {
     ASSERT_EQ(
         7,
         context.valueToInt(evaluateBinderExpression(jsEntry, "constructedBinderObject.value").get(), exceptionTracker));
+    ASSERT_EQ(7,
+              context.valueToInt(evaluateBinderExpression(jsEntry, "constructedBinderObject.constructedValue").get(),
+                                 exceptionTracker));
     ASSERT_EQ(&context, constructedOpaque->getConstructorContext());
+    ASSERT_TRUE(context.valueToBool(
+        evaluateBinderExpression(jsEntry, "constructedBinderObject instanceof BinderTestObject").get(),
+        exceptionTracker));
+    ASSERT_TRUE(context.valueToBool(
+        evaluateBinderExpression(jsEntry, "binderTestObject instanceof BinderTestObject").get(), exceptionTracker));
+    ASSERT_EQ(STRING_LITERAL("function"),
+              context.valueToString(evaluateBinderExpression(jsEntry, "typeof BinderTestObject").get(),
+                                    exceptionTracker));
+    ASSERT_EQ(STRING_LITERAL("BinderTestObject"),
+              context.valueToString(evaluateBinderExpression(jsEntry, "BinderTestObject.name").get(),
+                                    exceptionTracker));
+    ASSERT_TRUE(context.valueToBool(
+        evaluateBinderExpression(
+            jsEntry,
+            "(() => {"
+            "  try { BinderTestObject(1); }"
+            "  catch (error) { return error.message === 'Native class constructor must be called with new'; }"
+            "  return false;"
+            "})()")
+            .get(),
+        exceptionTracker));
 
     ASSERT_EQ(
         STRING_LITERAL("binder-instance"),

@@ -225,13 +225,10 @@ hermes::vm::CallResult<hermes::vm::HermesValue> callNativeClassConstructor(void*
 
     JSExceptionTracker exceptionTracker(jsContext);
     const auto& referenceInfo = classData->nativeClass->getConstructorReferenceInfo();
-    JSFunctionNativeCallContext callContext(jsContext,
-                                            argumentCount == 0 ? nullptr : arguments,
-                                            argumentCount,
-                                            exceptionTracker,
-                                            referenceInfo);
-    auto undefined = jsContext.newUndefined();
-    callContext.setThisValue(undefined.get());
+    JSFunctionNativeCallContext callContext(
+        jsContext, argumentCount == 0 ? nullptr : arguments, argumentCount, exceptionTracker, referenceInfo);
+    auto thisValue = jsContext.toJSValueRef(args.getThisArg());
+    callContext.setThisValue(thisValue.get());
 
     if (jsContext.interruptRequested()) {
         jsContext.onInterrupt();

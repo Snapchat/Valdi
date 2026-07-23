@@ -122,7 +122,17 @@ static JSValue callNativeClassConstructor(
     const auto& referenceInfo = nativeClass->getConstructorReferenceInfo();
     Valdi::JSFunctionNativeCallContext callContext(
         valdiJsContext, arguments, static_cast<size_t>(argc), exceptionTracker, referenceInfo);
-    callContext.setThisValue(valdiJsContext.newUndefined().get());
+
+    auto prototype = JS_GetPropertyStr(context, funcObject, "prototype");
+    if (JS_IsException(prototype)) {
+        return prototype;
+    }
+    auto object = JS_NewObjectProtoClass(context, prototype, getWrappedObjectClassDef()->classID);
+    JS_FreeValue(context, prototype);
+    if (JS_IsException(object)) {
+        return object;
+    }
+    callContext.setThisValue(toValdiJSValue(object));
 
     if (valdiJsContext.interruptRequested()) {
         valdiJsContext.onInterrupt();
@@ -134,15 +144,13 @@ static JSValue callNativeClassConstructor(
     }
 
     if (!exceptionTracker) {
+        JS_FreeValue(context, object);
         return onJsCallError(context, exceptionTracker);
     }
 
-    auto cls = toValdiJSValue(funcObject);
-    auto result = valdiJsContext.newObjectFromNativeClass(nativeOpaque, cls, exceptionTracker);
-    if (!exceptionTracker) {
-        return onJsCallError(context, exceptionTracker);
-    }
-    return JS_DupValue(context, fromValdiJSValue(result.get()));
+    auto instanceData = Valdi::makeShared<Valdi::JSNativeClassInstanceData>(nativeClass, nativeOpaque);
+    setObjectWrappedObject(object, instanceData);
+    return object;
 }
 
 JSValue jsCall(

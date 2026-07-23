@@ -14,6 +14,8 @@ namespace Valdi {
 
 class JSFunctionNativeCallContext;
 
+// The JavaScript instance being constructed is available through callContext.getThisValue().
+// The returned native object is attached to that instance after this callback completes.
 using JSClassConstructorCallback = Ref<RefCountable> (*)(RefCountable* classOpaque,
                                                          JSFunctionNativeCallContext&) noexcept;
 using JSClassCallback = JSValueRef (*)(RefCountable* opaque, JSFunctionNativeCallContext&) noexcept;

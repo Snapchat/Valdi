@@ -988,13 +988,16 @@ TEST_P(JSContextFixture, nativeClassRejectsInvalidUsage) {
             "catch (error) { return error instanceof Error; } })()")
             .get(),
         exceptionTracker));
-    ASSERT_TRUE(context.valueToBool(
-        evaluateNativeCounterExpression(
-            jsEntry,
-            "(() => { try { class Child extends NativeCounter {}; new Child(1); return false; } "
-            "catch (error) { return error instanceof Error; } })()")
-            .get(),
-        exceptionTracker));
+    // JavaScriptCore's native constructor callback does not expose new.target, so it cannot detect this case.
+    if (!isJSCore()) {
+        ASSERT_TRUE(context.valueToBool(
+            evaluateNativeCounterExpression(
+                jsEntry,
+                "(() => { try { class Child extends NativeCounter {}; new Child(1); return false; } "
+                "catch (error) { return error instanceof Error; } })()")
+                .get(),
+            exceptionTracker));
+    }
     ASSERT_TRUE(context.valueToBool(
         evaluateNativeCounterExpression(
             jsEntry,
