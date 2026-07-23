@@ -176,7 +176,7 @@ std::vector<std::pair<std::string_view, int64_t>> getDefaultColors() {
     };
 }
 
-ColorPalette::ColorPalette() {
+ColorPalette::ColorPalette(const StringBox& name) : _name(name) {
     for (const auto& it : getDefaultColors()) {
         setColorForName(StringCache::getGlobal().makeString(it.first), it.second);
     }
@@ -184,7 +184,11 @@ ColorPalette::ColorPalette() {
 
 ColorPalette::~ColorPalette() = default;
 
-void ColorPalette::updateColors(const FlatMap<StringBox, Color>& colors) {
+const StringBox& ColorPalette::getName() const {
+    return _name;
+}
+
+bool ColorPalette::updateColors(const FlatMap<StringBox, Color>& colors) {
     auto changed = false;
 
     for (const auto& it : colors) {
@@ -193,11 +197,7 @@ void ColorPalette::updateColors(const FlatMap<StringBox, Color>& colors) {
         }
     }
 
-    if (changed) {
-        if (_listener != nullptr) {
-            _listener->onColorPaletteUpdated(*this);
-        }
-    }
+    return changed;
 }
 
 bool ColorPalette::setColorForName(const StringBox& name, Color color) {
@@ -226,8 +226,58 @@ const FlatMap<StringBox, Color>& ColorPalette::getColors() const {
     return _colorByName;
 }
 
-void ColorPalette::setListener(ColorPaletteListener* listener) {
+ColorPaletteManager::ColorPaletteManager() : _activeColorPalette(makeShared<ColorPalette>(STRING_LITERAL("default"))) {
+    _colorPaletteByName[_activeColorPalette->getName()] = _activeColorPalette;
+}
+
+ColorPaletteManager::~ColorPaletteManager() = default;
+
+const Ref<ColorPalette>& ColorPaletteManager::getActiveColorPalette() const {
+    return _activeColorPalette;
+}
+
+const Ref<ColorPalette>& ColorPaletteManager::getColorPalette(const StringBox& name) {
+    return getOrCreateColorPalette(name);
+}
+
+const FlatMap<StringBox, Ref<ColorPalette>>& ColorPaletteManager::getColorPalettes() const {
+    return _colorPaletteByName;
+}
+
+void ColorPaletteManager::configureColorPalette(const StringBox& name, const FlatMap<StringBox, Color>& colors) {
+    const auto& colorPalette = getOrCreateColorPalette(name);
+    if (colorPalette->updateColors(colors)) {
+        notifyListener(*colorPalette, false);
+    }
+}
+
+void ColorPaletteManager::setActiveColorPalette(const StringBox& name) {
+    if (name == _activeColorPalette->getName()) {
+        return;
+    }
+
+    _activeColorPalette = getOrCreateColorPalette(name);
+    notifyListener(*_activeColorPalette, true);
+}
+
+void ColorPaletteManager::setListener(ColorPaletteManagerListener* listener) {
     _listener = listener;
+}
+
+const Ref<ColorPalette>& ColorPaletteManager::getOrCreateColorPalette(const StringBox& name) {
+    auto it = _colorPaletteByName.find(name);
+    if (it != _colorPaletteByName.end()) {
+        return it->second;
+    }
+
+    _colorPaletteByName[name] = makeShared<ColorPalette>(name);
+    return _colorPaletteByName[name];
+}
+
+void ColorPaletteManager::notifyListener(const ColorPalette& colorPalette, bool activeColorPaletteChanged) {
+    if (_listener != nullptr) {
+        _listener->onColorPaletteManagerUpdated(*this, colorPalette, activeColorPaletteChanged);
+    }
 }
 
 } // namespace Valdi

@@ -15,6 +15,7 @@
 
 #include "valdi/runtime/Context/ViewNode.hpp"
 #include <fmt/format.h>
+#include <optional>
 
 namespace Valdi {
 
@@ -23,7 +24,7 @@ static Error parseError(AttributeParser& parser, std::string_view name) {
     return parser.getError();
 }
 
-Result<Value> preprocessBorder(const Ref<ColorPalette>& colorPalette, const Value& in) {
+Result<Value> preprocessBorder(const Value& in) {
     auto stringBox = in.toStringBox();
 
     AttributeParser parser(stringBox.toStringView());
@@ -44,7 +45,7 @@ Result<Value> preprocessBorder(const Ref<ColorPalette>& colorPalette, const Valu
             return parseError(parser, "border style");
         }
 
-        auto color = parser.parseColor(*colorPalette);
+        auto color = parser.parseColorValue();
         if (!color) {
             return parseError(parser, "border color");
         }
@@ -55,7 +56,7 @@ Result<Value> preprocessBorder(const Ref<ColorPalette>& colorPalette, const Valu
             return parser.getError();
         }
 
-        border = ValueArray::make({Value(borderWidth.value().value), Value(color.value().value)});
+        border = ValueArray::make({Value(borderWidth.value().value), color.value()});
 
     } else {
         border = ValueArray::make({Value(borderWidth.value().value)});
@@ -64,7 +65,7 @@ Result<Value> preprocessBorder(const Ref<ColorPalette>& colorPalette, const Valu
     return Value(border);
 }
 
-Result<Value> preprocessBoxShadow(const Ref<ColorPalette>& colorPalette, const Value& in) {
+Result<Value> preprocessBoxShadow(const Value& in) {
     auto stringBox = in.toStringBox();
     static StringBox none = STRING_LITERAL("none");
     if (stringBox == none) {
@@ -90,7 +91,7 @@ Result<Value> preprocessBoxShadow(const Ref<ColorPalette>& colorPalette, const V
         return parseError(parser, "boxShadow blur");
     }
 
-    auto color = parser.parseColor(*colorPalette);
+    auto color = parser.parseColorValue();
     if (!color) {
         return parseError(parser, "boxShadow color");
     }
@@ -102,12 +103,12 @@ Result<Value> preprocessBoxShadow(const Ref<ColorPalette>& colorPalette, const V
                                        Value(hOffset.value().value),
                                        Value(vOffset.value().value),
                                        Value(blur.value().value),
-                                       Value(color.value().value)});
+                                       color.value()});
 
     return Value(boxShadow);
 }
 
-Result<Value> preprocessTextShadow(const Ref<ColorPalette>& colorPalette, const Value& in) {
+Result<Value> preprocessTextShadow(const Value& in) {
     auto stringBox = in.toStringBox();
     static StringBox none = STRING_LITERAL("none");
     if (stringBox == none) {
@@ -116,7 +117,7 @@ Result<Value> preprocessTextShadow(const Ref<ColorPalette>& colorPalette, const 
 
     AttributeParser parser(stringBox.toStringView());
 
-    auto color = parser.parseColor(*colorPalette);
+    auto color = parser.parseColorValue();
     if (!color) {
         return parseError(parser, "Failed to parse text shadow color: ");
     }
@@ -142,11 +143,8 @@ Result<Value> preprocessTextShadow(const Ref<ColorPalette>& colorPalette, const 
         return parser.getError();
     }
 
-    const auto textShadow = ValueArray::make({Value(color.value().value),
-                                              Value(radius.value()),
-                                              Value(opacity.value()),
-                                              Value(hOffset.value()),
-                                              Value(vOffset.value())});
+    const auto textShadow = ValueArray::make(
+        {color.value(), Value(radius.value()), Value(opacity.value()), Value(hOffset.value()), Value(vOffset.value())});
 
     return Value(textShadow);
 }
@@ -173,7 +171,7 @@ static LinearGradientAngle angleRadToAngleEnum(double angleRad) {
     return static_cast<LinearGradientAngle>(angleEnum);
 }
 
-Result<Value> preprocessGradient(const Ref<ColorPalette>& colorPalette, const Value& in) {
+Result<Value> preprocessGradient(const Value& in) {
     auto stringBox = in.toStringBox();
 
     Ref<ValueArray> colorArray;
@@ -211,12 +209,12 @@ Result<Value> preprocessGradient(const Ref<ColorPalette>& colorPalette, const Va
         if (shouldParseColorComponents) {
             while (!parser.isAtEnd()) {
                 parser.tryParseWhitespaces();
-                auto color = parser.parseColor(*colorPalette);
+                auto color = parser.parseColorValue();
                 if (!color) {
                     return parseError(parser, "gradient color");
                 }
 
-                colors.emplace(color.value().value);
+                colors.emplace(color.value());
 
                 parser.tryParseWhitespaces();
 
@@ -254,12 +252,12 @@ Result<Value> preprocessGradient(const Ref<ColorPalette>& colorPalette, const Va
     } else {
         parser.tryParseWhitespaces();
 
-        auto singleColor = parser.parseColor(*colorPalette);
+        auto singleColor = parser.parseColorValue();
         if (!singleColor) {
             return parser.getError();
         }
 
-        colorArray = ValueArray::make({Value(singleColor.value().value)});
+        colorArray = ValueArray::make({singleColor.value()});
 
         locationArray = ValueArray::make(0);
     }
@@ -274,7 +272,7 @@ Result<Value> preprocessGradient(const Ref<ColorPalette>& colorPalette, const Va
     return Value(gradient);
 }
 
-Result<Value> preprocessBorderRadius(const Ref<ColorPalette>& /*colorPalette*/, const Value& in) {
+Result<Value> preprocessBorderRadius(const Value& in) {
     auto borderRadius = ValueConverter::toBorderValues(in);
     if (!borderRadius) {
         return borderRadius.moveError();
@@ -283,8 +281,97 @@ Result<Value> preprocessBorderRadius(const Ref<ColorPalette>& /*colorPalette*/, 
     return Value(borderRadius.value());
 }
 
+static Result<Value> resolveColorValue(const ColorPalette& colorPalette, const Value& in) {
+    return ValueConverter::toColor(colorPalette, in);
+}
+
+static Result<Value> resolveColorValue(ViewNode& viewNode, const Value& in) {
+    if (!in.isString()) {
+        return in;
+    }
+
+    const auto& colorPalette = viewNode.getResolvedColorPalette();
+    if (colorPalette == nullptr) {
+        return Error("ViewNode has no resolved ColorPalette");
+    }
+    return resolveColorValue(*colorPalette, in);
+}
+
+static Result<Value> resolveColorAtIndex(ViewNode& viewNode, const Value& in, size_t colorIndex) {
+    if (!in.isArray()) {
+        return in;
+    }
+
+    const auto* array = in.getArray();
+    if (array->size() <= colorIndex || (*array)[colorIndex].isUndefined()) {
+        return in;
+    }
+
+    auto resolvedColor = resolveColorValue(viewNode, (*array)[colorIndex]);
+    if (!resolvedColor) {
+        return resolvedColor.moveError();
+    }
+
+    auto out = array->clone();
+    out->emplace(colorIndex, resolvedColor.moveValue());
+    return Value(out);
+}
+
+static Result<Ref<ValueArray>> resolveColorAtIndexInArray(ViewNode& viewNode, const Value& in, size_t colorIndex) {
+    const auto* array = in.getArray();
+    if (array == nullptr) {
+        return Error("Invalid array value");
+    }
+
+    auto out = array->clone();
+    if (out->size() > colorIndex && !(*out)[colorIndex].isUndefined()) {
+        auto resolvedColor = resolveColorValue(viewNode, (*out)[colorIndex]);
+        if (!resolvedColor) {
+            return resolvedColor.moveError();
+        }
+        out->emplace(colorIndex, resolvedColor.moveValue());
+    }
+
+    return out;
+}
+
+Result<Value> postprocessBorder(ViewNode& viewNode, const Value& in) {
+    constexpr size_t kBorderColorIndex = 1;
+    return resolveColorAtIndex(viewNode, in, kBorderColorIndex);
+}
+
+static Result<Value> postprocessBoxShadow(bool isRightToLeft, Ref<ValueArray> boxShadow) {
+    if (boxShadow->size() != 5) {
+        return Error("Invalid boxShadow value");
+    }
+
+    if (!isRightToLeft) {
+        return Value(boxShadow);
+    }
+
+    constexpr size_t kHOffsetIndex = 1;
+
+    auto hOffset = (*boxShadow)[kHOffsetIndex].toDouble();
+    if (hOffset != 0.0) {
+        boxShadow->emplace(kHOffsetIndex, Value(hOffset * -1));
+    }
+
+    return Value(boxShadow);
+}
+
 Result<Value> postprocessBoxShadow(ViewNode& viewNode, const Value& in) {
-    return postprocessBoxShadow(viewNode.isRightToLeft(), in);
+    constexpr size_t kBoxShadowColorIndex = 4;
+    auto resolvedBoxShadow = resolveColorAtIndexInArray(viewNode, in, kBoxShadowColorIndex);
+    if (!resolvedBoxShadow) {
+        return resolvedBoxShadow.moveError();
+    }
+
+    return postprocessBoxShadow(viewNode.isRightToLeft(), resolvedBoxShadow.moveValue());
+}
+
+Result<Value> postprocessTextShadow(ViewNode& viewNode, const Value& in) {
+    constexpr size_t kTextShadowColorIndex = 0;
+    return resolveColorAtIndex(viewNode, in, kTextShadowColorIndex);
 }
 
 Result<Value> postprocessBoxShadow(bool isRightToLeft, const Value& in) {
@@ -315,14 +402,106 @@ Result<Value> postprocessBoxShadow(bool isRightToLeft, const Value& in) {
 
 constexpr size_t kAngleIndex = 2;
 
-Result<Value> makeBackgroundWithAngle(const ValueArray* background, LinearGradientAngle angle) {
-    auto newBackground = background->clone();
-    newBackground->emplace(kAngleIndex, Value(angle));
-    return Value(newBackground);
+static std::optional<LinearGradientAngle> flippedGradientAngle(LinearGradientAngle angle) {
+    switch (angle) {
+        case LinearGradientAngleTopBottom:
+        case LinearGradientAngleBottomTop:
+            return std::nullopt;
+        case LinearGradientAngleTopRightBottomLeft:
+            return LinearGradientAngleTopLeftBottomRight;
+        case LinearGradientAngleRightLeft:
+            return LinearGradientAngleLeftRight;
+        case LinearGradientAngleBottomRightTopLeft:
+            return LinearGradientAngleBottomLeftTopRight;
+        case LinearGradientAngleBottomLeftTopRight:
+            return LinearGradientAngleBottomRightTopLeft;
+        case LinearGradientAngleLeftRight:
+            return LinearGradientAngleRightLeft;
+        case LinearGradientAngleTopLeftBottomRight:
+            return LinearGradientAngleTopRightBottomLeft;
+    }
+
+    return std::nullopt;
+}
+
+static Result<Value> postprocessGradient(bool isRightToLeft, Ref<ValueArray> background) {
+    if (background->size() != 4) {
+        return Error("Invalid background value");
+    }
+
+    if (!isRightToLeft) {
+        return Value(background);
+    }
+
+    auto angle = static_cast<LinearGradientAngle>((*background)[kAngleIndex].toInt());
+    auto flippedAngle = flippedGradientAngle(angle);
+    if (flippedAngle) {
+        background->emplace(kAngleIndex, Value(flippedAngle.value()));
+    }
+
+    return Value(background);
 }
 
 Result<Value> postprocessGradient(ViewNode& viewNode, const Value& in) {
-    return postprocessGradient(viewNode.isRightToLeft(), in);
+    if (!in.isArray()) {
+        return in;
+    }
+
+    const auto* background = in.getArray();
+    if (background->size() != 4) {
+        return Error("Invalid background value");
+    }
+
+    constexpr size_t kColorsIndex = 0;
+    const auto* colors = (*background)[kColorsIndex].getArray();
+    if (colors == nullptr) {
+        return Error("Invalid background colors value");
+    }
+
+    auto resolvedColors = colors->clone();
+    for (size_t i = 0; i < colors->size(); ++i) {
+        auto resolvedColor = resolveColorValue(viewNode, (*colors)[i]);
+        if (!resolvedColor) {
+            return resolvedColor.moveError();
+        }
+        resolvedColors->emplace(i, resolvedColor.moveValue());
+    }
+
+    auto resolvedBackground = background->clone();
+    resolvedBackground->emplace(kColorsIndex, Value(resolvedColors));
+
+    return postprocessGradient(viewNode.isRightToLeft(), std::move(resolvedBackground));
+}
+
+Result<Value> postprocessGradient(bool isRightToLeft, const ColorPalette& colorPalette, const Value& in) {
+    if (!in.isArray()) {
+        return in;
+    }
+
+    const auto* background = in.getArray();
+    if (background->size() != 4) {
+        return Error("Invalid background value");
+    }
+
+    constexpr size_t kColorsIndex = 0;
+    const auto* colors = (*background)[kColorsIndex].getArray();
+    if (colors == nullptr) {
+        return Error("Invalid background colors value");
+    }
+
+    auto resolvedColors = colors->clone();
+    for (size_t i = 0; i < colors->size(); ++i) {
+        auto resolvedColor = resolveColorValue(colorPalette, (*colors)[i]);
+        if (!resolvedColor) {
+            return resolvedColor.moveError();
+        }
+        resolvedColors->emplace(i, resolvedColor.moveValue());
+    }
+
+    auto resolvedBackground = background->clone();
+    resolvedBackground->emplace(kColorsIndex, Value(resolvedColors));
+
+    return postprocessGradient(isRightToLeft, std::move(resolvedBackground));
 }
 
 Result<Value> postprocessGradient(bool isRightToLeft, const Value& in) {
@@ -336,27 +515,14 @@ Result<Value> postprocessGradient(bool isRightToLeft, const Value& in) {
     }
 
     auto angle = static_cast<LinearGradientAngle>((*background)[kAngleIndex].toInt());
-
-    switch (angle) {
-        case LinearGradientAngleTopBottom:
-            return in;
-        case LinearGradientAngleTopRightBottomLeft:
-            return makeBackgroundWithAngle(background, LinearGradientAngleTopLeftBottomRight);
-        case LinearGradientAngleRightLeft:
-            return makeBackgroundWithAngle(background, LinearGradientAngleLeftRight);
-        case LinearGradientAngleBottomRightTopLeft:
-            return makeBackgroundWithAngle(background, LinearGradientAngleBottomLeftTopRight);
-        case LinearGradientAngleBottomTop:
-            return in;
-        case LinearGradientAngleBottomLeftTopRight:
-            return makeBackgroundWithAngle(background, LinearGradientAngleBottomRightTopLeft);
-        case LinearGradientAngleLeftRight:
-            return makeBackgroundWithAngle(background, LinearGradientAngleRightLeft);
-        case LinearGradientAngleTopLeftBottomRight:
-            return makeBackgroundWithAngle(background, LinearGradientAngleTopRightBottomLeft);
+    auto flippedAngle = flippedGradientAngle(angle);
+    if (!flippedAngle) {
+        return in;
     }
 
-    return in;
+    auto flippedBackground = background->clone();
+    flippedBackground->emplace(kAngleIndex, Value(flippedAngle.value()));
+    return Value(flippedBackground);
 }
 
 Result<Value> postprocessBorderRadius(ViewNode& viewNode, const Value& in) {
@@ -403,7 +569,9 @@ void registerDefaultProcessors(AttributesManager& attributesManager) {
     attributesManager.registerPreprocessor(textGradientAttributeId, &preprocessGradient);
     attributesManager.registerPreprocessor(maskImageAttributeId, &preprocessGradient);
 
+    attributesManager.registerPostprocessor(borderAttributeId, &postprocessBorder);
     attributesManager.registerPostprocessor(boxShadowAttributeId, &postprocessBoxShadow);
+    attributesManager.registerPostprocessor(textShadowAttributeId, &postprocessTextShadow);
     attributesManager.registerPostprocessor(backgroundAttributeId, &postprocessGradient);
     attributesManager.registerPostprocessor(borderRadiusAttributeId, &postprocessBorderRadius);
     attributesManager.registerPostprocessor(textGradientAttributeId, &postprocessGradient);

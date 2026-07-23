@@ -37,6 +37,7 @@ enum DefaultAttribute : AttributeId {
     DefaultAttributeAccessibilityId,
     DefaultAttributeScaleX,
     DefaultAttributeScaleY,
+    DefaultAttributeColorPaletteName,
 };
 
 class AttributeIds : public snap::NonCopyable {

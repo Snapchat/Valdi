@@ -553,6 +553,11 @@ void ViewNodeTree::setRootViewNode(Ref<ViewNode> rootViewNode, bool useDefaultVi
 
     if (_rootViewNode != nullptr) {
         _rootViewNode->removeFromParent(viewTransactionScope);
+        if (_viewManagerContext != nullptr) {
+            _rootViewNode->setInheritedColorPalette(
+                viewTransactionScope,
+                _viewManagerContext->getAttributesManager().getColorPaletteManager()->getActiveColorPalette());
+        }
         if (useDefaultViewFactory) {
             SC_ASSERT_NOTNULL(_viewManager);
             _rootViewNode->setViewFactory(viewTransactionScope,

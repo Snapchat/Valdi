@@ -46,6 +46,7 @@ void DefaultAttributes::bind(AttributeHandlerById& attributes) {
 
     binder.bindViewNodeFloat("estimatedWidth", &ViewNode::setEstimatedWidth);
     binder.bindViewNodeFloat("estimatedHeight", &ViewNode::setEstimatedHeight);
+    binder.bindViewNodeString("colorPaletteName", &ViewNode::setColorPaletteName);
 
     binder.bind(
         "limitToViewport",

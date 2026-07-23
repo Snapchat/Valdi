@@ -41,6 +41,7 @@ public:
                                       const Ref<Animator>& animator);
 
     void markDirty();
+    void markAppliedValueDirty();
 
     /**
      Prepare this attribute for an animation.
@@ -85,6 +86,7 @@ public:
      Returns whether this represents a composite attribute part.
      */
     bool isCompositePart() const;
+    bool shouldReevaluateOnColorChange() const;
 
     /**
      Whether this attribute can affect the layout calculation.
@@ -137,6 +139,7 @@ private:
     bool _handlerNeedsView = false;
     bool _handlerCanAffectLayout = false;
     bool _handlerIsCompositePart = false;
+    bool _handlerShouldReevaluateOnColorChange = false;
 
     bool _appliedValueDirty = false;
     bool _hasAppliedValue = false;

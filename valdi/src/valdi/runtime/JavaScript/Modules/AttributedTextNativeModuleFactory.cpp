@@ -5,9 +5,9 @@
 
 namespace Valdi {
 
-AttributedTextNativeModuleFactory::AttributedTextNativeModuleFactory(const Ref<ColorPalette>& colorPalette,
-                                                                     ILogger& logger)
-    : _colorPalette(colorPalette), _logger(logger) {}
+AttributedTextNativeModuleFactory::AttributedTextNativeModuleFactory(
+    const Ref<ColorPaletteManager>& colorPaletteManager, ILogger& logger)
+    : _colorPaletteManager(colorPaletteManager), _logger(logger) {}
 
 AttributedTextNativeModuleFactory::~AttributedTextNativeModuleFactory() = default;
 
@@ -25,7 +25,7 @@ Value AttributedTextNativeModuleFactory::loadModule() {
 
 Value AttributedTextNativeModuleFactory::makeNativeAttributedText(const ValueFunctionCallContext& callContext) const {
     auto value = callContext.getParameter(0);
-    auto result = TextAttributeValueParser::parse(*_colorPalette, value, _logger, true);
+    auto result = TextAttributeValueParser::parse(*_colorPaletteManager->getActiveColorPalette(), value, _logger, true);
     if (!result) {
         callContext.getExceptionTracker().onError(result.moveError());
         return Value::undefined();

@@ -53,6 +53,7 @@ public:
                                      const Ref<Animator>& animator) override;
 
     void reapplyAttribute(ViewTransactionScope& viewTransactionScope, AttributeId id) override;
+    void invalidateColorAttributes();
 
     void flush(ViewTransactionScope& viewTransactionScope) override;
     bool needsFlush() const override;
@@ -101,6 +102,7 @@ private:
     FlatMap<AttributeId, Ref<Animator>> _dirtyCompositeAttributes;
 
     bool _hasView = false;
+    bool _colorAttributesInvalidated = false;
 
     void updateCompositeAttribute(ViewTransactionScope& viewTransactionScope,
                                   AttributeId compositeId,
@@ -129,6 +131,7 @@ private:
     StringBox getAttributeName(AttributeId id) const;
 
     void updateAttributeHandlers();
+    void updateInvalidatedColorAttributes(ViewTransactionScope& viewTransactionScope);
 
     const AttributeHandler* getAttributeHandler(AttributeId id) const;
 };

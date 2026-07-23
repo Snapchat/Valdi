@@ -158,12 +158,17 @@ constexpr size_t kHasChildWithAccessibilityId = 26;
 constexpr size_t kCanAlwaysScrollHorizontal = 27;
 constexpr size_t kCanAlwaysScrollVertical = 28;
 constexpr size_t kAccessibilityTreeNeedsUpdate = 29;
+constexpr size_t kHasOveriddenColorPalette = 30;
 
-ViewNode::ViewNode(YGConfig* yogaConfig, AttributeIds& attributeIds, ILogger& logger)
+ViewNode::ViewNode(YGConfig* yogaConfig,
+                   AttributeIds& attributeIds,
+                   const Ref<ColorPalette>& colorPalette,
+                   ILogger& logger)
     : _yogaNode(yogaConfig != nullptr ? Yoga::createNode(yogaConfig) : nullptr),
       _attributeIds(attributeIds),
       _logger(logger),
-      _attributesApplier(this) {
+      _attributesApplier(this),
+      _colorPalette(colorPalette) {
     if (_yogaNode != nullptr) {
         setupYogaNode(_yogaNode, this);
     }
@@ -193,6 +198,49 @@ void ViewNode::setViewNodeTree(ViewNodeTree* viewNodeTree) {
 
 ViewNodeTree* ViewNode::getViewNodeTree() const {
     return _viewNodeTree;
+}
+
+void ViewNode::setColorPaletteName(ViewTransactionScope& viewTransactionScope, const StringBox& colorPaletteName) {
+    if (colorPaletteName.isEmpty() && !hasOveriddenColorPalette()) {
+        return;
+    }
+
+    Ref<ColorPalette> colorPalette;
+    if (colorPaletteName.isEmpty()) {
+        colorPalette = getParentResolvedColorPalette();
+        setHasOveriddenColorPalette(false);
+    } else {
+        SC_ASSERT(_viewNodeTree != nullptr, "Cannot resolve color palette without a ViewNodeTree");
+        colorPalette =
+            _viewNodeTree->getViewManagerContext()->getAttributesManager().getColorPaletteManager()->getColorPalette(
+                colorPaletteName);
+        setHasOveriddenColorPalette(true);
+    }
+
+    if (!setResolvedColorPalette(colorPalette)) {
+        return;
+    }
+
+    invalidateColorAttributes(viewTransactionScope, false);
+    propagateInheritedColorPalette(viewTransactionScope, _colorPalette);
+}
+
+void ViewNode::setInheritedColorPalette(ViewTransactionScope& viewTransactionScope,
+                                        const Ref<ColorPalette>& colorPalette) {
+    if (hasOveriddenColorPalette()) {
+        return;
+    }
+
+    if (!setResolvedColorPalette(colorPalette)) {
+        return;
+    }
+
+    invalidateColorAttributes(viewTransactionScope, true);
+    propagateInheritedColorPalette(viewTransactionScope, colorPalette);
+}
+
+const Ref<ColorPalette>& ViewNode::getResolvedColorPalette() const {
+    return _colorPalette;
 }
 
 const Ref<View>& ViewNode::getView() const {
@@ -1535,6 +1583,9 @@ void ViewNode::insertChildAt(ViewTransactionScope& viewTransactionScope, const R
     if (getChildCount() > kMaxChildrenBeforeIndexing && _childrenIndexer == nullptr) {
         _childrenIndexer = std::make_unique<ViewNodeChildrenIndexer>(this);
     }
+    if (_colorPalette != nullptr) {
+        child->setInheritedColorPalette(viewTransactionScope, _colorPalette);
+    }
 
     setCalculatedViewportHasChildNeedsUpdate();
 
@@ -1602,7 +1653,7 @@ Size ViewNode::onMeasure(float width, MeasureMode widthMode, float height, Measu
 
 Ref<ViewNode> ViewNode::makePlaceholderViewNode(ViewTransactionScope& viewTransactionScope,
                                                 const Ref<View>& placeholderView) {
-    auto viewNode = Valdi::makeShared<ViewNode>(nullptr, _attributeIds, _logger);
+    auto viewNode = Valdi::makeShared<ViewNode>(nullptr, _attributeIds, _colorPalette, _logger);
     viewNode->setViewNodeTree(_viewNodeTree);
     viewNode->setViewFactory(viewTransactionScope, _viewFactory);
     viewNode->_emittingViewNode = strongSmallRef(this);
@@ -3022,6 +3073,65 @@ void ViewNode::reapplyAttributesRecursive(ViewTransactionScope& viewTransactionS
 
     for (auto* child : *this) {
         child->reapplyAttributesRecursive(viewTransactionScope, attributes, invalidateMeasure);
+    }
+}
+
+bool ViewNode::hasOveriddenColorPalette() const {
+    return _flags[kHasOveriddenColorPalette];
+}
+
+void ViewNode::setHasOveriddenColorPalette(bool hasOveriddenColorPalette) {
+    _flags[kHasOveriddenColorPalette] = hasOveriddenColorPalette;
+}
+
+bool ViewNode::setResolvedColorPalette(const Ref<ColorPalette>& colorPalette) {
+    if (_colorPalette == colorPalette) {
+        return false;
+    }
+
+    _colorPalette = colorPalette;
+    return true;
+}
+
+Ref<ColorPalette> ViewNode::getParentResolvedColorPalette() const {
+    auto parent = getParent();
+    if (parent != nullptr) {
+        return parent->getResolvedColorPalette();
+    }
+
+    if (_viewNodeTree == nullptr) {
+        return nullptr;
+    }
+
+    const auto& viewManagerContext = _viewNodeTree->getViewManagerContext();
+    if (viewManagerContext == nullptr) {
+        return nullptr;
+    }
+
+    return viewManagerContext->getAttributesManager().getColorPaletteManager()->getActiveColorPalette();
+}
+
+void ViewNode::invalidateColorAttributes(ViewTransactionScope& viewTransactionScope, bool shouldApply) {
+    _attributesApplier.invalidateColorAttributes();
+    if (shouldApply && _colorPalette != nullptr) {
+        _attributesApplier.flush(viewTransactionScope);
+    }
+}
+
+void ViewNode::propagateInheritedColorPalette(ViewTransactionScope& viewTransactionScope,
+                                              const Ref<ColorPalette>& colorPalette) {
+    for (auto* child : *this) {
+        child->setInheritedColorPalette(viewTransactionScope, colorPalette);
+    }
+}
+
+void ViewNode::onColorPaletteMutated(ViewTransactionScope& viewTransactionScope, const ColorPalette& colorPalette) {
+    if (_colorPalette != nullptr && _colorPalette.get() == &colorPalette) {
+        invalidateColorAttributes(viewTransactionScope, true);
+    }
+
+    for (auto* child : *this) {
+        child->onColorPaletteMutated(viewTransactionScope, colorPalette);
     }
 }
 

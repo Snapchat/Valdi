@@ -50,10 +50,22 @@ static Result<Value> preprocessString(const Value& value) {
     return ValueConverter::toString(value).map<Value>();
 }
 
+static Result<Value> postprocessColor(ViewNode& viewNode, const Value& value) {
+    if (!value.isString()) {
+        return value;
+    }
+
+    const auto& colorPalette = viewNode.getResolvedColorPalette();
+    if (colorPalette == nullptr) {
+        return Error("ViewNode has no resolved ColorPalette");
+    }
+    return ValueConverter::toColor(*colorPalette, value);
+}
+
 AttributesBindingContextImpl::AttributesBindingContextImpl(AttributeIds& attributeIds,
-                                                           const Ref<ColorPalette>& colorPalette,
+                                                           const Ref<ColorPaletteManager>& colorPaletteManager,
                                                            ILogger& logger)
-    : _attributeIds(attributeIds), _colorPalette(colorPalette), _logger(logger) {}
+    : _attributeIds(attributeIds), _colorPaletteManager(colorPaletteManager), _logger(logger) {}
 
 AttributesBindingContextImpl::~AttributesBindingContextImpl() = default;
 
@@ -113,17 +125,19 @@ AttributeId AttributesBindingContextImpl::bindTextAttribute(const StringBox& att
                                                             bool invalidateLayoutOnChange,
                                                             const Ref<AttributeHandlerDelegate>& delegate) {
     auto& registeredHandler = registerHandler(attribute, invalidateLayoutOnChange, delegate);
-    registeredHandler.appendPreprocessor(
-        [colorPalette = _colorPalette, logger = &_logger](const Value& value) -> Result<Value> {
-            if (value.isString()) {
-                return value;
-            }
-            // strict parsing for non production build
-            auto strict = !snap::kIsAppstoreBuild;
-            return TextAttributeValueParser::parse(*colorPalette, value, *logger, strict);
-        },
-        false);
-    registeredHandler.setEnablePreprocessorCache(true);
+    registeredHandler.appendPostprocessor([logger = &_logger](ViewNode& viewNode, const Value& value) -> Result<Value> {
+        if (value.isString()) {
+            return value;
+        }
+        // strict parsing for non production build
+        auto strict = !snap::kIsAppstoreBuild;
+        const auto& colorPalette = viewNode.getResolvedColorPalette();
+        if (colorPalette == nullptr) {
+            return Error("ViewNode has no resolved ColorPalette");
+        }
+        return TextAttributeValueParser::parse(*colorPalette, value, *logger, strict);
+    });
+    registeredHandler.setShouldReevaluateOnColorPaletteChange(true);
 
     return registeredHandler.getId();
 }
@@ -261,16 +275,8 @@ const AttributeHandlerById& AttributesBindingContextImpl::getHandlers() const {
 }
 
 void AttributesBindingContextImpl::registerColorPreprocessor(AttributeHandler& handler) {
-    handler.appendPreprocessor(
-        [colorPalette = _colorPalette](const Value& value) -> Result<Value> {
-            auto color = ValueConverter::toColor(*colorPalette, value);
-            if (!color) {
-                return color.moveError();
-            }
-
-            return Value(color.value().value);
-        },
-        false);
+    handler.appendPreprocessor(&ValueConverter::toColorValue, false);
+    handler.appendPostprocessor(&postprocessColor);
     handler.setShouldReevaluateOnColorPaletteChange(true);
 }
 

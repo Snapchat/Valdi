@@ -15,7 +15,7 @@ using namespace Valdi;
 namespace ValdiTest {
 
 TEST(AttributeParser, canParseColor) {
-    ColorPalette colorPalette;
+    ColorPalette colorPalette(STRING_LITERAL("test"));
 
     AttributeParser parser("red rgba(0, 255, 0, 1.0) #0000ff #0000ff10 #f5a rgba(50, 25, 100, 0.5) rgba(25%, 10%, 5%, "
                            "0.1) rgba(255, 255, 255, 5%)");
@@ -86,7 +86,7 @@ TEST(AttributeParser, canParseColor) {
 }
 
 TEST(AttributeParser, failsToParseColorOnColorPaletteMismatch) {
-    ColorPalette colorPalette;
+    ColorPalette colorPalette(STRING_LITERAL("test"));
 
     AttributeParser parser("reddish");
 

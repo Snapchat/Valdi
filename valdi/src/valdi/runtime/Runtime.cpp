@@ -123,7 +123,7 @@ Runtime::Runtime(AttributeIds& attributeIds,
                  const Shared<IResourceLoader>& resourceLoader,
                  const Ref<AssetLoaderManager>& assetLoaderManager,
                  const Holder<Shared<snap::valdi_core::HTTPRequestManager>>& requestManager,
-                 const Ref<ColorPalette>& colorPalette,
+                 const Ref<ColorPaletteManager>& colorPaletteManager,
                  const Ref<IDiskCache>& diskCache,
                  const std::shared_ptr<YGConfig>& yogaConfig,
                  const Shared<snap::valdi::RuntimeMessageHandler>& runtimeMessageHandler,
@@ -146,7 +146,7 @@ Runtime::Runtime(AttributeIds& attributeIds,
       _contextManager(logger, this),
       _viewNodeManager(*mainThreadManager, *logger),
       _mainThreadManager(mainThreadManager),
-      _colorPalette(colorPalette),
+      _colorPaletteManager(colorPaletteManager),
       _diskCache(diskCache),
       _userSession(userSession),
       _requestManager(requestManager),
@@ -213,7 +213,8 @@ void Runtime::postInit() {
                 _diskCache, _workerQueue, _userSession, _keychain, *_logger, disablePersistentStoreEncryption()));
         }
         registerNativeModuleFactory(makeShared<FileSystemFactory>().toShared());
-        registerNativeModuleFactory(makeShared<AttributedTextNativeModuleFactory>(_colorPalette, *_logger).toShared());
+        registerNativeModuleFactory(
+            makeShared<AttributedTextNativeModuleFactory>(_colorPaletteManager, *_logger).toShared());
 
         registerJavaScriptModuleFactory(makeShared<ProtobufModuleFactory>(*_resourceManager, _workerQueue, *_logger));
         registerJavaScriptModuleFactory(makeShared<UnicodeModuleFactory>());
@@ -781,30 +782,24 @@ void Runtime::registerJavaScriptModuleFactory(const Ref<JavaScriptModuleFactory>
     _javaScriptRuntime->registerJavaScriptModuleFactory(moduleFactory);
 }
 
-void Runtime::updateColorPalette(const Value& colorPaletteMap) {
+void Runtime::configureColorPalette(const StringBox& name, const Value& colorPaletteMap) {
     if (colorPaletteMap.isMap()) {
         FlatMap<StringBox, Color> colors;
         for (const auto& it : *colorPaletteMap.getMap()) {
-            auto colorResult = ValueConverter::toColor(*_colorPalette, it.second);
-            if (!colorResult) {
-                VALDI_ERROR(*_logger, "Failed to parse color '{}': {}", it.first, colorResult.error());
+            auto colorValue = ValueConverter::toColorValue(it.second);
+            if (!colorValue) {
+                VALDI_ERROR(*_logger, "Failed to parse color '{}': {}", it.first, colorValue.error());
                 continue;
             }
-
-            colors[it.first] = colorResult.value();
+            colors[it.first] = Color(colorValue.value().toLong());
         }
 
-        _colorPalette->updateColors(colors);
+        _colorPaletteManager->configureColorPalette(name, colors);
     }
 }
 
-Value Runtime::getColorPalette() {
-    auto valueMap = Valdi::makeShared<Valdi::ValueMap>();
-    for (const auto& [name, color] : _colorPalette->getColors()) {
-        (*valueMap)[name] = Valdi::Value(color.value);
-    }
-
-    return Valdi::Value(std::move(valueMap));
+void Runtime::setActiveColorPalette(const StringBox& name) {
+    _colorPaletteManager->setActiveColorPalette(name);
 }
 
 void Runtime::onUncaughtJsError(const StringBox& moduleName, const Error& error) {

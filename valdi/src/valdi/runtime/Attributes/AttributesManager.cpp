@@ -20,21 +20,22 @@ namespace Valdi {
 
 AttributesManager::AttributesManager(IViewManager& viewManager,
                                      AttributeIds& attributeIds,
-                                     const Ref<ColorPalette>& colorPalette,
+                                     const Ref<ColorPaletteManager>& colorPaletteManager,
                                      ILogger& logger,
                                      std::shared_ptr<YGConfig> yogaConfig)
     : _viewManager(viewManager),
       _attributeIds(attributeIds),
       _logger(logger),
       _yogaConfig(std::move(yogaConfig)),
-      _colorPalette(colorPalette) {}
+      _colorPaletteManager(colorPaletteManager) {}
 
 void AttributesManager::registerPreprocessor(AttributeId attributeId,
-                                             Result<Value> (*preprocessor)(const Ref<ColorPalette>&, const Value&)) {
-    registerPreprocessor(attributeId,
-                         [colorPalette = _colorPalette, preprocessor](const Value& value) -> Result<Value> {
-                             return preprocessor(colorPalette, value);
-                         });
+                                             Result<Value> (*preprocessor)(const Ref<ColorPaletteManager>&,
+                                                                           const Value&)) {
+    registerPreprocessor(
+        attributeId, [colorPaletteManager = _colorPaletteManager, preprocessor](const Value& value) -> Result<Value> {
+            return preprocessor(colorPaletteManager, value);
+        });
 }
 
 void AttributesManager::registerPreprocessor(AttributeId attributeId,
@@ -88,7 +89,6 @@ SharedBoundAttributes AttributesManager::lockFreeGetAttributesForClass(const Str
                                                               scrollAttributesBound);
 
     _boundAttributesByClass[className] = boundAttributes;
-
     return boundAttributes;
 }
 
@@ -129,7 +129,7 @@ void AttributesManager::populateAttributeHandlerById(AttributeHandlerById& attri
     }
 
     if (!isLayoutClass) {
-        AttributesBindingContextImpl binder(_attributeIds, _colorPalette, _logger);
+        AttributesBindingContextImpl binder(_attributeIds, _colorPaletteManager, _logger);
         _viewManager.bindAttributes(className, binder);
 
         if (binder.getDefaultDelegate() != nullptr) {
@@ -196,8 +196,8 @@ AttributeIds& AttributesManager::getAttributeIds() const {
     return _attributeIds;
 }
 
-const Ref<ColorPalette>& AttributesManager::getColorPalette() const {
-    return _colorPalette;
+const Ref<ColorPaletteManager>& AttributesManager::getColorPaletteManager() const {
+    return _colorPaletteManager;
 }
 
 const StringBox& AttributesManager::getLayoutPlaceholderClassName() {

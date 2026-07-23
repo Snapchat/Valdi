@@ -5319,6 +5319,106 @@ TEST_P(RuntimeFixture, supportsPlatformSpecificAsset) {
     ASSERT_EQ(iOSAssetUrl, asset->getIdentifier());
 }
 
+TEST_P(RuntimeFixture, supportsThemableAsset) {
+    auto lightAssetUrl = STRING_LITERAL("file://light.png");
+    auto darkAssetUrl = STRING_LITERAL("file://dark.png");
+    wrapper.diskCache->store(Path(URL(lightAssetUrl).getPath()), BytesView()).ensureSuccess();
+    wrapper.diskCache->store(Path(URL(darkAssetUrl).getPath()), BytesView()).ensureSuccess();
+
+    auto viewModel = Value()
+                         .setMapValue("lightAsset", Value(lightAssetUrl))
+                         .setMapValue("darkAsset", Value(darkAssetUrl))
+                         .setMapValue("includeDarkAsset", Value(true));
+
+    auto tree =
+        wrapper.createViewNodeTreeAndContext(STRING_LITERAL("ThemableAsset@test/src/ThemableAsset"), viewModel, Value());
+
+    tree->setLayoutSpecs(Size(1.0f, 1.0f), LayoutDirectionLTR);
+
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    auto rootNode = tree->getRootViewNode();
+    ASSERT_TRUE(rootNode != nullptr);
+
+    auto rootAsset = getSrcAssetFromNode(*rootNode->getChildAt(0));
+    ASSERT_TRUE(rootAsset != nullptr);
+    ASSERT_EQ(lightAssetUrl, rootAsset->getIdentifier());
+
+    auto overriddenAsset = getSrcAssetFromNode(*rootNode->getChildAt(1)->getChildAt(0));
+    ASSERT_TRUE(overriddenAsset != nullptr);
+    ASSERT_EQ(darkAssetUrl, overriddenAsset->getIdentifier());
+
+    auto nestedAsset = getSrcAssetFromNode(*rootNode->getChildAt(2));
+    ASSERT_TRUE(nestedAsset != nullptr);
+    ASSERT_EQ(lightAssetUrl, nestedAsset->getIdentifier());
+}
+
+TEST_P(RuntimeFixture, canSwitchActiveColorPaletteForThemableAsset) {
+    auto lightAssetUrl = STRING_LITERAL("file://light.png");
+    auto darkAssetUrl = STRING_LITERAL("file://dark.png");
+    wrapper.diskCache->store(Path(URL(lightAssetUrl).getPath()), BytesView()).ensureSuccess();
+    wrapper.diskCache->store(Path(URL(darkAssetUrl).getPath()), BytesView()).ensureSuccess();
+
+    auto viewModel = Value()
+                         .setMapValue("lightAsset", Value(lightAssetUrl))
+                         .setMapValue("darkAsset", Value(darkAssetUrl))
+                         .setMapValue("includeDarkAsset", Value(true));
+
+    auto tree =
+        wrapper.createViewNodeTreeAndContext(STRING_LITERAL("ThemableAsset@test/src/ThemableAsset"), viewModel, Value());
+
+    tree->setLayoutSpecs(Size(1.0f, 1.0f), LayoutDirectionLTR);
+
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    wrapper.runtime->getJavaScriptRuntime()->callComponentFunction(tree->getContext(),
+                                                                   STRING_LITERAL("setDarkColorPalette"));
+
+    wrapper.flushQueues();
+
+    auto rootNode = tree->getRootViewNode();
+    ASSERT_TRUE(rootNode != nullptr);
+
+    auto asset = getSrcAssetFromNode(*rootNode->getChildAt(0));
+    ASSERT_TRUE(asset != nullptr);
+    ASSERT_EQ(darkAssetUrl, asset->getIdentifier());
+
+    auto nestedAsset = getSrcAssetFromNode(*rootNode->getChildAt(2));
+    ASSERT_TRUE(nestedAsset != nullptr);
+    ASSERT_EQ(darkAssetUrl, nestedAsset->getIdentifier());
+}
+
+TEST_P(RuntimeFixture, missingThemableAssetPaletteClearsAsset) {
+    auto lightAssetUrl = STRING_LITERAL("file://light.png");
+    auto darkAssetUrl = STRING_LITERAL("file://dark.png");
+    wrapper.diskCache->store(Path(URL(lightAssetUrl).getPath()), BytesView()).ensureSuccess();
+    wrapper.diskCache->store(Path(URL(darkAssetUrl).getPath()), BytesView()).ensureSuccess();
+
+    auto viewModel = Value()
+                         .setMapValue("lightAsset", Value(lightAssetUrl))
+                         .setMapValue("darkAsset", Value(darkAssetUrl))
+                         .setMapValue("includeDarkAsset", Value(false));
+
+    auto tree =
+        wrapper.createViewNodeTreeAndContext(STRING_LITERAL("ThemableAsset@test/src/ThemableAsset"), viewModel, Value());
+
+    tree->setLayoutSpecs(Size(1.0f, 1.0f), LayoutDirectionLTR);
+
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    wrapper.runtime->getJavaScriptRuntime()->callComponentFunction(tree->getContext(),
+                                                                   STRING_LITERAL("setDarkColorPalette"));
+
+    wrapper.flushQueues();
+
+    auto rootNode = tree->getRootViewNode();
+    ASSERT_TRUE(rootNode != nullptr);
+
+    ASSERT_EQ(nullptr, getSrcAssetFromNode(*rootNode->getChildAt(0)));
+    ASSERT_EQ(nullptr, getSrcAssetFromNode(*rootNode->getChildAt(1)->getChildAt(0)));
+    ASSERT_EQ(nullptr, getSrcAssetFromNode(*rootNode->getChildAt(2)));
+}
+
 TEST_P(RuntimeFixture, canHotReloadAsset) {
     auto assets = registerAssets(wrapper);
 
@@ -7549,6 +7649,19 @@ TEST_P(RuntimeFixture, supportsNotifyWithUncaughtErrorHandler) {
     ASSERT_TRUE(result.isError());
 }
 
+static DummyView makeColorPaletteTestView(int64_t borderColor, int64_t backgroundColor) {
+    return DummyView("SCValdiView")
+        .addAttribute("border", Value(ValueArray::make({Value(1.0), Value(borderColor)})))
+        .addChild(DummyView("SCValdiView")
+                      .addAttribute("background",
+                                    Value(ValueArray::make({
+                                        Value(ValueArray::make({Value(backgroundColor)})),
+                                        Value(ValueArray::make({})),
+                                        Value(static_cast<int32_t>(0)),
+                                        Value(false),
+                                    }))));
+}
+
 TEST_P(RuntimeFixture, supportsCustomColorPalette) {
     auto tree = wrapper.createViewNodeTreeAndContext(STRING_LITERAL("ColorPaletteTest@test/src/ColorPaletteTest"),
                                                      Value(makeShared<ValueMap>()),
@@ -7556,20 +7669,10 @@ TEST_P(RuntimeFixture, supportsCustomColorPalette) {
 
     wrapper.waitUntilAllUpdatesCompleted();
 
-    ASSERT_EQ(DummyView("SCValdiView")
-                  .addAttribute("border", Value(ValueArray::make({Value(1.0), Value(65535)})))
-                  .addChild(DummyView("SCValdiView")
-                                .addAttribute("background",
-                                              Value(ValueArray::make({
-                                                  Value(ValueArray::make({Value(8388863)})),
-                                                  Value(ValueArray::make({})),
-                                                  Value(static_cast<int32_t>(0)),
-                                                  Value(false),
-                                              })))),
-              getRootView(tree));
+    ASSERT_EQ(makeColorPaletteTestView(65535, 8388863), getRootView(tree));
 }
 
-TEST_P(RuntimeFixture, canUpdateCustomColorPalette) {
+TEST_P(RuntimeFixture, canSwitchActiveCustomColorPalette) {
     auto tree = wrapper.createViewNodeTreeAndContext(STRING_LITERAL("ColorPaletteTest@test/src/ColorPaletteTest"),
                                                      Value(makeShared<ValueMap>()),
                                                      Value::undefined());
@@ -7577,22 +7680,150 @@ TEST_P(RuntimeFixture, canUpdateCustomColorPalette) {
     wrapper.waitUntilAllUpdatesCompleted();
 
     wrapper.runtime->getJavaScriptRuntime()->callComponentFunction(tree->getContext(),
-                                                                   STRING_LITERAL("updateColorPalette"));
+                                                                   STRING_LITERAL("setDarkColorPalette"));
 
     wrapper.flushQueues();
 
-    ASSERT_EQ(
-        DummyView("SCValdiView")
-            .addAttribute("border", Value(ValueArray::make({Value(1.0), Value(static_cast<int64_t>(4278190335))})))
-            .addChild(DummyView("SCValdiView")
-                          .addAttribute("background",
-                                        Value(ValueArray::make({
-                                            Value(ValueArray::make({Value(static_cast<int64_t>(4294902015))})),
-                                            Value(ValueArray::make({})),
-                                            Value(static_cast<int32_t>(0)),
-                                            Value(false),
-                                        })))),
-        getRootView(tree));
+    ASSERT_EQ(makeColorPaletteTestView(4278190335, 4294902015), getRootView(tree));
+}
+
+TEST_P(RuntimeFixture, doesNotReapplyCustomColorPaletteWhenInactivePaletteChanges) {
+    auto tree = wrapper.createViewNodeTreeAndContext(STRING_LITERAL("ColorPaletteTest@test/src/ColorPaletteTest"),
+                                                     Value(makeShared<ValueMap>()),
+                                                     Value::undefined());
+
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    wrapper.runtime->getJavaScriptRuntime()->callComponentFunction(tree->getContext(),
+                                                                   STRING_LITERAL("updateDarkColorPalette"));
+
+    wrapper.flushQueues();
+
+    ASSERT_EQ(makeColorPaletteTestView(65535, 8388863), getRootView(tree));
+}
+
+TEST_P(RuntimeFixture, reappliesCustomColorPaletteWhenActivePaletteChanges) {
+    auto tree = wrapper.createViewNodeTreeAndContext(STRING_LITERAL("ColorPaletteTest@test/src/ColorPaletteTest"),
+                                                     Value(makeShared<ValueMap>()),
+                                                     Value::undefined());
+
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    wrapper.runtime->getJavaScriptRuntime()->callComponentFunction(tree->getContext(),
+                                                                   STRING_LITERAL("updateLightColorPalette"));
+
+    wrapper.flushQueues();
+
+    ASSERT_EQ(makeColorPaletteTestView(4278190335, 4294902015), getRootView(tree));
+}
+
+static DummyView makeColorPaletteOverrideTestView(int64_t rootBackgroundColor,
+                                                  int64_t overrideBackgroundColor,
+                                                  int64_t overrideChildBackgroundColor,
+                                                  int64_t siblingBackgroundColor) {
+    auto makeBackground = [](int64_t color) {
+        return Value(ValueArray::make({
+            Value(ValueArray::make({Value(color)})),
+            Value(ValueArray::make({})),
+            Value(static_cast<int32_t>(0)),
+            Value(false),
+        }));
+    };
+
+    return DummyView("SCValdiView")
+        .addAttribute("background", makeBackground(rootBackgroundColor))
+        .addChild(
+            DummyView("SCValdiView")
+                .addAttribute("background", makeBackground(overrideBackgroundColor))
+                .addChild(
+                    DummyView("SCValdiView").addAttribute("background", makeBackground(overrideChildBackgroundColor))))
+        .addChild(DummyView("SCValdiView").addAttribute("background", makeBackground(siblingBackgroundColor)));
+}
+
+TEST_P(RuntimeFixture, supportsPerViewNodeColorPaletteOverride) {
+    auto tree = wrapper.createViewNodeTreeAndContext(
+        STRING_LITERAL("ColorPaletteOverrideTest@test/src/ColorPaletteOverrideTest"),
+        Value(makeShared<ValueMap>()),
+        Value::undefined());
+
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    ASSERT_EQ(makeColorPaletteOverrideTestView(65535, 4278190335, 4294902015, 8388863), getRootView(tree));
+}
+
+TEST_P(RuntimeFixture, switchingActiveColorPaletteDoesNotChangeOverriddenSubtree) {
+    auto tree = wrapper.createViewNodeTreeAndContext(
+        STRING_LITERAL("ColorPaletteOverrideTest@test/src/ColorPaletteOverrideTest"),
+        Value(makeShared<ValueMap>()),
+        Value::undefined());
+
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    wrapper.runtime->getJavaScriptRuntime()->callComponentFunction(tree->getContext(),
+                                                                   STRING_LITERAL("setDarkActiveColorPalette"));
+
+    wrapper.flushQueues();
+
+    ASSERT_EQ(makeColorPaletteOverrideTestView(4278190335, 4278190335, 4294902015, 4294902015), getRootView(tree));
+}
+
+TEST_P(RuntimeFixture, clearingRootColorPaletteOverrideFallsBackToActivePalette) {
+    auto tree = wrapper.createViewNodeTreeAndContext(
+        STRING_LITERAL("ColorPaletteOverrideTest@test/src/ColorPaletteOverrideTest"),
+        Value(makeShared<ValueMap>()),
+        Value::undefined());
+
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    auto root = tree->getRootViewNode();
+    ASSERT_NE(nullptr, root);
+    ASSERT_EQ(STRING_LITERAL("light"), root->getResolvedColorPalette()->getName());
+
+    tree->scheduleExclusiveUpdate([&]() {
+        root->setColorPaletteName(tree->getCurrentViewTransactionScope(), STRING_LITERAL("dark"));
+    });
+    wrapper.flushQueues();
+    ASSERT_EQ(STRING_LITERAL("dark"), root->getResolvedColorPalette()->getName());
+
+    tree->scheduleExclusiveUpdate([&]() {
+        root->setColorPaletteName(tree->getCurrentViewTransactionScope(), StringBox());
+    });
+    wrapper.flushQueues();
+
+    ASSERT_NE(nullptr, root->getResolvedColorPalette());
+    ASSERT_EQ(STRING_LITERAL("light"), root->getResolvedColorPalette()->getName());
+}
+
+TEST_P(RuntimeFixture, mutatingOverriddenColorPaletteUpdatesOverriddenSubtree) {
+    auto tree = wrapper.createViewNodeTreeAndContext(
+        STRING_LITERAL("ColorPaletteOverrideTest@test/src/ColorPaletteOverrideTest"),
+        Value(makeShared<ValueMap>()),
+        Value::undefined());
+
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    wrapper.runtime->getJavaScriptRuntime()->callComponentFunction(tree->getContext(),
+                                                                   STRING_LITERAL("updateDarkColorPalette"));
+
+    wrapper.flushQueues();
+
+    ASSERT_EQ(makeColorPaletteOverrideTestView(65535, 255, 4294967295, 8388863), getRootView(tree));
+}
+
+TEST_P(RuntimeFixture, mutatingUnusedColorPaletteDoesNotChangeRenderedAttributes) {
+    auto tree = wrapper.createViewNodeTreeAndContext(
+        STRING_LITERAL("ColorPaletteOverrideTest@test/src/ColorPaletteOverrideTest"),
+        Value(makeShared<ValueMap>()),
+        Value::undefined());
+
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    wrapper.runtime->getJavaScriptRuntime()->callComponentFunction(tree->getContext(),
+                                                                   STRING_LITERAL("updateUnusedColorPalette"));
+
+    wrapper.flushQueues();
+
+    ASSERT_EQ(makeColorPaletteOverrideTestView(65535, 4278190335, 4294902015, 8388863), getRootView(tree));
 }
 
 static Result<Value> postprocessArrayValueToLength(ViewNode& viewNode, const Value& in) {
