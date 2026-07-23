@@ -28,7 +28,13 @@ void ShapeLayer::onInitialize() {
 
 void ShapeLayer::onDraw(DrawingContext& drawingContext) {
     const auto& path = getActivePath();
-    drawingContext.drawPaint(_fillPaint, path);
+    auto fillPaint = _fillPaint;
+    if (_fillGradientWrapper.hasGradient()) {
+        fillPaint.setColor(Color::black());
+        _fillGradientWrapper.update(path.getBounds().value_or(drawingContext.drawBounds()));
+        _fillGradientWrapper.applyToPaint(fillPaint);
+    }
+    drawingContext.drawPaint(fillPaint, path);
     drawingContext.drawPaint(_strokePaint, path);
 }
 
@@ -74,6 +80,51 @@ Color ShapeLayer::getFillColor() const {
 
 void ShapeLayer::setFillColor(Color fillColor) {
     _fillPaint.setColor(fillColor);
+    setNeedsDisplay();
+}
+
+void ShapeLayer::setFillLinearGradient(std::vector<Scalar>&& locations,
+                                       std::vector<Color>&& colors,
+                                       LinearGradientOrientation orientation) {
+    if (_fillGradientWrapper.clearIfNeeded(GradientWrapper::GradientType::RADIAL)) {
+        setNeedsDisplay();
+    }
+
+    if (colors.empty()) {
+        if (_fillGradientWrapper.clearIfNeeded(GradientWrapper::GradientType::LINEAR)) {
+            setNeedsDisplay();
+        }
+        return;
+    }
+
+    _fillGradientWrapper.setAsLinear(std::move(locations), std::move(colors), orientation);
+
+    if (_fillGradientWrapper.isDirty()) {
+        setNeedsDisplay();
+    }
+}
+
+void ShapeLayer::setFillRadialGradient(std::vector<Scalar>&& locations, std::vector<Color>&& colors) {
+    if (_fillGradientWrapper.clearIfNeeded(GradientWrapper::GradientType::LINEAR)) {
+        setNeedsDisplay();
+    }
+
+    if (colors.empty()) {
+        if (_fillGradientWrapper.clearIfNeeded(GradientWrapper::GradientType::RADIAL)) {
+            setNeedsDisplay();
+        }
+        return;
+    }
+
+    _fillGradientWrapper.setAsRadial(std::move(locations), std::move(colors));
+
+    if (_fillGradientWrapper.isDirty()) {
+        setNeedsDisplay();
+    }
+}
+
+void ShapeLayer::resetFillGradient() {
+    _fillGradientWrapper.clear();
     setNeedsDisplay();
 }
 

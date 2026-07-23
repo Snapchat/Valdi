@@ -2169,6 +2169,11 @@ export interface ShapeView extends _ShapeView, LeafView {
   fillColor?: Color;
 
   /**
+   * Gradient that the shape's enclosed area is filled with.
+   */
+  fillGradient?: string;
+
+  /**
    * The stroke cap specifies the shape of the endpoints of an open path when stroked.
    */
   strokeCap?: ShapeStrokeCap;

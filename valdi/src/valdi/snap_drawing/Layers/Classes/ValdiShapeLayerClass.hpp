@@ -26,6 +26,7 @@ public:
     DECLARE_DOUBLE_ATTRIBUTE(ValdiShapeLayer, strokeWidth)
     DECLARE_COLOR_ATTRIBUTE(ValdiShapeLayer, strokeColor)
     DECLARE_COLOR_ATTRIBUTE(ValdiShapeLayer, fillColor)
+    DECLARE_UNTYPED_ATTRIBUTE(ValdiShapeLayer, fillGradient)
     DECLARE_STRING_ATTRIBUTE(ValdiShapeLayer, strokeCap)
     DECLARE_STRING_ATTRIBUTE(ValdiShapeLayer, strokeJoin)
     DECLARE_DOUBLE_ATTRIBUTE(ValdiShapeLayer, strokeStart)
