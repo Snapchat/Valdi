@@ -79,7 +79,7 @@ constexpr double kMaxStackSizeRatio = 0.75;
 static int handleInterrupt(JSRuntime* rt, void* opaque) {
     auto& jsContext = *reinterpret_cast<QuickJSJavaScriptContext*>(opaque);
     if (jsContext.interruptRequested()) {
-        jsContext.onInterrupt();
+        return jsContext.onInterrupt() ? 1 : 0;
     }
     return 0;
 }
@@ -1462,6 +1462,10 @@ void QuickJSJavaScriptContext::willEnterVM() {
     }
 }
 
+void QuickJSJavaScriptContext::requestExecutionTermination() {
+    IJavaScriptContext::requestExecutionTermination();
+}
+
 struct StackLimits {
     void* startFrameAddress;
     size_t maxStackSize;
@@ -1534,6 +1538,10 @@ void QuickJSJavaScriptContext::willExitVM(Valdi::JSExceptionTracker& exceptionTr
     SC_ASSERT(_enterVmCount > 0);
     --_enterVmCount;
     if (_enterVmCount == 0) {
+        if (executionTerminationRequested()) {
+            return;
+        }
+
         JSContext* context = nullptr;
 
         for (;;) {

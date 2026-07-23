@@ -245,6 +245,10 @@ void GCDDispatchQueue::decrementPendingTaskCount() {
 void GCDDispatchQueue::fullTeardown() {
     teardown();
 
+    if (isCurrent()) {
+        return;
+    }
+
     // Try to acquire the execution lock with timeout to ensure no tasks are executing
     // If we can acquire it, all tasks have completed. If timeout, proceed anyway to
     // avoid indefinite hang (preserves COMPOSER-837 JSCore deadlock workaround).

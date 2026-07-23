@@ -21,6 +21,7 @@
 #include "valdi/runtime/JavaScript/JavaScriptContextEntryPoint.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptErrorStackTrace.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptFunctionCallContext.hpp"
+#include "valdi/runtime/JavaScript/JavaScriptMessagePort.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptModuleContainer.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptUtils.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptValueMarshaller.hpp"
@@ -405,6 +406,43 @@ void JavaScriptRuntime::partialTeardown() {
     teardown(false);
 }
 
+void JavaScriptRuntime::requestFullTeardown() {
+    auto wasDisposed = _isDisposed.exchange(true);
+    if (wasDisposed) {
+        return;
+    }
+
+    // Just in case postInit() was never called
+    _initLock.leaveIfNotCompleted();
+
+    _dispatchQueue->async([self = strongSmallRef(this)]() {
+        self->teardownOnJsThread(true);
+    });
+}
+
+void JavaScriptRuntime::requestExecutionTermination() {
+    Ref<IJavaScriptContext> jsContext;
+    {
+        std::lock_guard<Mutex> lock(_mutex);
+        if (_isDisposed) {
+            return;
+        }
+        jsContext = _javaScriptContext;
+    }
+
+    if (jsContext == nullptr) {
+        return;
+    }
+
+    jsContext->requestExecutionTermination();
+
+    if (!_dispatchQueue->isCurrent()) {
+        // Ensure the last reference obtained from another thread is released on
+        // the JavaScript queue before the teardown task destroys the context.
+        _dispatchQueue->async([jsContext = std::move(jsContext)]() {});
+    }
+}
+
 void JavaScriptRuntime::teardown(bool destroyContext) {
     auto wasDisposed = _isDisposed.exchange(true);
     if (wasDisposed) {
@@ -422,49 +460,55 @@ void JavaScriptRuntime::teardown(bool destroyContext) {
     }
 
     if (destroyContext) {
-        _dispatchQueue->sync([&]() {
-            if (_anrDetector != nullptr) {
-                _anrDetector->removeTaskScheduler(this);
-            }
-            // Prevent further dispatches to run
-            setListener(nullptr, {});
-            _dispatchQueue->fullTeardown();
-
-            if (!destroyContext) {
-                return;
-            }
-
-            // Bridged objects should be deallocated immediately
-            auto nonDeferredPool = Valdi::RefCountableAutoreleasePool::makeNonDeferred();
-
-            _globalContext->releaseDisposables();
-            _contextManager.destroyContext(_globalContext);
-
-            _modules.clear();
-            _daemonClients.clear();
-            _moduleLoader = JSValueRef();
-            _symbolicateFunction = Result<JSValueRef>();
-            _onDaemonClientEventFunction = Result<JSValueRef>();
-            _uncaughtExceptionHandler = nullptr;
-            _unhandledRejectionHandler = nullptr;
-            if (_contextHandler != nullptr) {
-                _contextHandler->clear();
-                _contextHandler = nullptr;
-            }
-            _runtimeDeserializers = nullptr;
-            _propertyNameIndex.setContext(nullptr);
-            auto weakJavaScriptContext = weakRef(_javaScriptContext.get());
-            _javaScriptContext = nullptr;
-
-            SC_ASSERT(weakJavaScriptContext.expired());
+        _dispatchQueue->safeSync([&]() {
+            teardownOnJsThread(true);
         });
     } else {
-        if (_anrDetector != nullptr) {
-            _anrDetector->removeTaskScheduler(this);
-        }
-        _dispatchQueue->fullTeardown();
-        setListener(nullptr, {});
+        teardownOnJsThread(false);
     }
+}
+
+void JavaScriptRuntime::teardownOnJsThread(bool destroyContext) {
+    if (_anrDetector != nullptr) {
+        _anrDetector->removeTaskScheduler(this);
+    }
+
+    _running = false;
+    setListener(nullptr, {});
+    _dispatchQueue->fullTeardown();
+
+    if (!destroyContext) {
+        return;
+    }
+
+    // Bridged objects should be deallocated immediately
+    auto nonDeferredPool = Valdi::RefCountableAutoreleasePool::makeNonDeferred();
+
+    _globalContext->releaseDisposables();
+    _contextManager.destroyContext(_globalContext);
+
+    _modules.clear();
+    _daemonClients.clear();
+    _moduleLoader = JSValueRef();
+    _symbolicateFunction = Result<JSValueRef>();
+    _onDaemonClientEventFunction = Result<JSValueRef>();
+    _uncaughtExceptionHandler = nullptr;
+    _unhandledRejectionHandler = nullptr;
+    if (_contextHandler != nullptr) {
+        _contextHandler->clear();
+        _contextHandler = nullptr;
+    }
+    _runtimeDeserializers = nullptr;
+    _propertyNameIndex.setContext(nullptr);
+
+    Weak<IJavaScriptContext> weakJavaScriptContext;
+    {
+        std::lock_guard<Mutex> lock(_mutex);
+        weakJavaScriptContext = weakRef(_javaScriptContext.get());
+        _javaScriptContext = nullptr;
+    }
+
+    SC_ASSERT(weakJavaScriptContext.expired());
 }
 
 void JavaScriptRuntime::setThreadQoS(ThreadQoSClass threadQoS) {
@@ -545,7 +589,10 @@ Result<Void> JavaScriptRuntime::initializeContext() {
     }
 
     if (exceptionTracker) {
-        _javaScriptContext = std::move(jsContext);
+        {
+            std::lock_guard<Mutex> lock(_mutex);
+            _javaScriptContext = std::move(jsContext);
+        }
         _runtimeDeserializers = std::move(runtimeDeserializers);
         _propertyNameIndex.setContext(_javaScriptContext.get());
         return Void();
@@ -2213,7 +2260,8 @@ JSValueRef JavaScriptRuntime::runtimeCreateWorker(JSFunctionNativeCallContext& c
     for (const auto& typeConverter : _typeConverters) {
         workerRuntime->registerTypeConverter(typeConverter.typeName, typeConverter.functionPath);
     }
-    auto worker = makeShared<JavaScriptWorker>(workerRuntime, callContext.getParameterAsString(0));
+    auto worker =
+        makeShared<JavaScriptWorker>(strongSmallRef(this), workerRuntime, callContext.getParameterAsString(0));
     worker->postInit();
     CHECK_CALL_CONTEXT(callContext);
     // worker->init(); // call outside of ctor so that shared_from_this() is available
@@ -2264,18 +2312,34 @@ Ref<T> thisFromCallContext(JSFunctionNativeCallContext& callContext) {
 JSValueRef JavaScriptRuntime::workerSetOnMessage(JSFunctionNativeCallContext& callContext) {
     auto worker = thisFromCallContext<JavaScriptWorker>(callContext);
     if (worker != nullptr) {
-        worker->setHostOnMessage(callContext.getParameterAsFunction(0));
+        auto callbackValue = callContext.getParameter(0);
+        if (!callContext.getContext().isValueFunction(callbackValue)) {
+            return callContext.throwError(Error("Expecting Worker onmessage function"));
+        }
+        auto callback =
+            JSValueRefHolder::makeRetainedCallback(callContext.getContext(),
+                                                   callbackValue,
+                                                   ReferenceInfoBuilder().withProperty(STRING_LITERAL("onmessage")),
+                                                   callContext.getExceptionTracker());
         CHECK_CALL_CONTEXT(callContext);
+        worker->setHostOnMessage(std::move(callback));
     }
     return callContext.getContext().newUndefined();
 }
 
-// worker.postMessage(any)
+// worker.postMessage(any, MessagePort[] | undefined)
 JSValueRef JavaScriptRuntime::workerPostMessage(JSFunctionNativeCallContext& callContext) {
     auto worker = thisFromCallContext<JavaScriptWorker>(callContext);
     if (worker != nullptr) {
-        worker->postMessage(callContext.getParameterAsValue(0));
+        auto data = callContext.getParameterAsValue(0);
         CHECK_CALL_CONTEXT(callContext);
+        auto transfer = callContext.getParameterSize() > 1 ? callContext.getParameterAsValue(1) : Value::undefined();
+        CHECK_CALL_CONTEXT(callContext);
+        auto message = JavaScriptMessage::make(data, transfer, worker->getWorkerRuntime(), nullptr);
+        if (!message) {
+            return callContext.throwError(message.moveError());
+        }
+        worker->postMessage(message.moveValue());
     }
     return callContext.getContext().newUndefined();
 }
@@ -2284,7 +2348,7 @@ JSValueRef JavaScriptRuntime::workerPostMessage(JSFunctionNativeCallContext& cal
 JSValueRef JavaScriptRuntime::workerTerminate(JSFunctionNativeCallContext& callContext) {
     auto worker = thisFromCallContext<JavaScriptWorker>(callContext);
     if (worker != nullptr) {
-        worker->close();
+        worker->terminate();
     }
     return callContext.getContext().newUndefined();
 }
@@ -2486,6 +2550,23 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
         return;
     }
 
+    auto messagePortClass = JavaScriptMessagePort::makeClass(context, exceptionTracker);
+    if (!exceptionTracker) {
+        return;
+    }
+    context.setObjectProperty(globalObject.get(), "MessagePort", messagePortClass.get(), exceptionTracker);
+    if (!exceptionTracker) {
+        return;
+    }
+    auto messageChannelClass = JavaScriptMessageChannel::makeClass(context, exceptionTracker);
+    if (!exceptionTracker) {
+        return;
+    }
+    context.setObjectProperty(globalObject.get(), "MessageChannel", messageChannelClass.get(), exceptionTracker);
+    if (!exceptionTracker) {
+        return;
+    }
+
     auto performanceObject = context.newObject(exceptionTracker);
     if (!exceptionTracker) {
         return;
@@ -2547,7 +2628,7 @@ std::vector<Ref<JavaScriptRuntime>> JavaScriptRuntime::getAllWorkers() {
     auto it = _jsWorkers.begin();
     while (it != _jsWorkers.end()) {
         auto jsWorker = it->lock();
-        if (jsWorker != nullptr) {
+        if (jsWorker != nullptr && !jsWorker->isDisposed()) {
             out.emplace_back(std::move(jsWorker));
             it++;
         } else {
@@ -3851,7 +3932,7 @@ DispatchFunction JavaScriptRuntime::makeJsThreadDispatchFunction(Ref<Context>&& 
                                                                  JavaScriptThreadTask&& jsTask) {
     SC_ASSERT(ownerContext != nullptr);
     return [this, retainedContext = RetainedContext(std::move(ownerContext)), jsTask = std::move(jsTask)]() {
-        if (_javaScriptContext == nullptr || !_running) {
+        if (_isDisposed || _javaScriptContext == nullptr || !_running) {
             return;
         }
 

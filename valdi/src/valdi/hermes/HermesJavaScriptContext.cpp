@@ -1393,10 +1393,19 @@ void HermesJavaScriptContext::willEnterVM() {
     _enterVMCount++;
 }
 
+void HermesJavaScriptContext::requestExecutionTermination() {
+    IJavaScriptContext::requestExecutionTermination();
+    _runtime->triggerTimeoutAsyncBreak();
+}
+
 void HermesJavaScriptContext::willExitVM(JSExceptionTracker& exceptionTracker) {
     SC_ASSERT(_enterVMCount > 0);
     --_enterVMCount;
     if (_enterVMCount == 0) {
+        if (executionTerminationRequested()) {
+            return;
+        }
+
         auto result = _runtime->drainJobs();
         checkException(result, exceptionTracker);
     }

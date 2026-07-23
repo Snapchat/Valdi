@@ -358,9 +358,11 @@ public:
     bool utf16Disabled() const;
 
     void requestInterrupt();
-    void onInterrupt();
+    virtual void requestExecutionTermination();
+    bool onInterrupt();
 
     bool interruptRequested() const;
+    bool executionTerminationRequested() const;
 
     virtual void willEnterVM();
 
@@ -440,6 +442,7 @@ private:
     JSPropertyNameRef _exportModePropertyName;
     bool _utf16Disabled = false;
     bool _interruptRequested = false;
+    bool _executionTerminationRequested = false;
     bool _tearingDown = false;
 
     std::unique_ptr<JavaScriptValueMarshaller> _valueMarshaller;

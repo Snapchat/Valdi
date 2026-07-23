@@ -199,6 +199,7 @@ public:
 
     void willEnterVM() override;
     void willExitVM(Valdi::JSExceptionTracker& exceptionTracker) override;
+    void requestExecutionTermination() override;
 
 protected:
     Valdi::JSValueRef onNewBool(bool boolean) override;

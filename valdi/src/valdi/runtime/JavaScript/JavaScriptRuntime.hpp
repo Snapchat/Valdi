@@ -217,6 +217,8 @@ public:
 
     void fullTeardown();
     void partialTeardown();
+    void requestFullTeardown();
+    void requestExecutionTermination();
 
     void setThreadQoS(ThreadQoSClass threadQoS);
 
@@ -546,6 +548,7 @@ private:
 
     // Worker methods
     // - new Worker(...)
+    // - new MessageChannel()
     // - worker.onmessage = ...
     // - worker.postMessage(...)
     // - worker.terminate()
@@ -645,6 +648,7 @@ private:
                                         bool shouldCrash);
 
     void teardown(bool destroyContext);
+    void teardownOnJsThread(bool destroyContext);
 
     Ref<JSStackTraceProvider> doCaptureCurrentStackTrace(IJavaScriptContext& jsContext);
 

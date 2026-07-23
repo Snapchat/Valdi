@@ -5,8 +5,10 @@
 #include "valdi/runtime/JavaScript/JSFunctionWithCallable.hpp"
 #include "valdi_core/cpp/Utils/ByteBuffer.hpp"
 #include "valdi_core/cpp/Utils/StaticString.hpp"
+#include <chrono>
 #include <future>
 #include <gtest/gtest.h>
+#include <thread>
 
 using namespace Valdi;
 using namespace snap::valdi_core;
@@ -960,6 +962,116 @@ TEST_P(JSContextFixture, nativeClassCallbacksDeliverInterrupts) {
     ASSERT_EQ(3, listener.interruptCount);
 
     context.setListener(nullptr);
+}
+
+TEST_P(JSContextFixture, executionTerminationIsStickyAndDoesNotNotifyTheDiagnosticListener) {
+    MAIN_THREAD_INIT();
+    auto wrapper = createWrapper();
+    auto jsEntry = wrapper.makeJsEntry();
+    auto& context = jsEntry.context;
+    MockJavaScriptContextListener listener;
+    context.setListener(&listener);
+
+    ASSERT_FALSE(context.interruptRequested());
+    ASSERT_FALSE(context.executionTerminationRequested());
+
+    context.requestInterrupt();
+    ASSERT_TRUE(context.interruptRequested());
+    ASSERT_FALSE(context.onInterrupt());
+    ASSERT_EQ(1, listener.interruptCount);
+    ASSERT_FALSE(context.interruptRequested());
+
+    context.requestExecutionTermination();
+    ASSERT_TRUE(context.interruptRequested());
+    ASSERT_TRUE(context.executionTerminationRequested());
+    ASSERT_TRUE(context.onInterrupt());
+    ASSERT_EQ(1, listener.interruptCount);
+
+    ASSERT_TRUE(context.interruptRequested());
+    ASSERT_TRUE(context.onInterrupt());
+    ASSERT_EQ(1, listener.interruptCount);
+
+    context.setListener(nullptr);
+}
+
+TEST_P(JSContextFixture, executionTerminationInterruptsRunningJavaScript) {
+    if (isJSCore()) {
+        GTEST_SKIP() << "JavaScriptCore has no public API for interrupting pure JavaScript execution";
+    }
+
+    MAIN_THREAD_INIT();
+    auto wrapper = createWrapper();
+    auto jsEntry = wrapper.makeJsEntry();
+    auto& context = jsEntry.context;
+    auto& exceptionTracker = jsEntry.exceptionTracker;
+
+    std::thread terminator([&context]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        context.requestExecutionTermination();
+    });
+
+    context.evaluate("while (true) {}", "execution-termination.js", exceptionTracker);
+    terminator.join();
+
+    ASSERT_FALSE(exceptionTracker);
+    exceptionTracker.clearError();
+}
+
+TEST_P(JSContextFixture, hermesExecutionTerminationInterruptsPrecompiledJavaScript) {
+    if (!isHermes()) {
+        GTEST_SKIP() << "This verifies Hermes serialized bytecode async-break checks";
+    }
+
+    MAIN_THREAD_INIT();
+    auto wrapper = createWrapper();
+    auto jsEntry = wrapper.makeJsEntry();
+    auto& context = jsEntry.context;
+    auto& exceptionTracker = jsEntry.exceptionTracker;
+    auto moduleData = context.preCompile("while (true) {}", "precompiled-execution-termination.js", exceptionTracker);
+    jsEntry.checkException();
+    auto bytecode = getPreCompiledJsModuleData(moduleData);
+    ASSERT_TRUE(bytecode);
+
+    auto precompiledFunction =
+        context.evaluatePreCompiled(bytecode.value(), "precompiled-execution-termination.js", exceptionTracker);
+    jsEntry.checkException();
+
+    std::thread terminator([&context]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        context.requestExecutionTermination();
+    });
+
+    JSFunctionCallContext callContext(context, nullptr, 0, exceptionTracker);
+    context.callObjectAsFunction(precompiledFunction.get(), callContext);
+    terminator.join();
+
+    ASSERT_FALSE(exceptionTracker);
+    exceptionTracker.clearError();
+}
+
+TEST_P(JSContextFixture, javaScriptCoreExecutionTerminationInterruptsAtNativeCallBoundary) {
+    if (!isJSCore()) {
+        GTEST_SKIP() << "This verifies JavaScriptCore's best-effort native-call checkpoint";
+    }
+
+    MAIN_THREAD_INIT();
+    auto wrapper = createWrapper();
+    auto jsEntry = wrapper.makeJsEntry();
+    auto& context = jsEntry.context;
+    auto& exceptionTracker = jsEntry.exceptionTracker;
+    setUpNativeCounterTest(jsEntry, &constructNativeCounter);
+
+    std::thread terminator([&context]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        context.requestExecutionTermination();
+    });
+
+    context.evaluate(
+        "while (true) { NativeCounter.twice(1); }", "native-boundary-execution-termination.js", exceptionTracker);
+    terminator.join();
+
+    ASSERT_FALSE(exceptionTracker);
+    exceptionTracker.clearError();
 }
 
 TEST_P(JSContextFixture, nativeClassRejectsInvalidUsage) {

@@ -1330,9 +1330,17 @@ void JavaScriptCoreContext::willEnterVM() {
     _enterVmCount++;
 }
 
+void JavaScriptCoreContext::requestExecutionTermination() {
+    IJavaScriptContext::requestExecutionTermination();
+}
+
 void JavaScriptCoreContext::willExitVM(Valdi::JSExceptionTracker& exceptionTracker) {
     auto enterVMCount = --_enterVmCount;
     if (enterVMCount == 0) {
+        if (executionTerminationRequested()) {
+            return;
+        }
+
         while (!_microtasks.empty()) {
             auto microtask = _microtasks.front();
             _microtasks.pop_front();
