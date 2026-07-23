@@ -1971,6 +1971,55 @@ TEST_P(JSContextFixture, supportsPromise) {
     ASSERT_EQ(Value().setMapValue("value", Value(2.0)), result);
 }
 
+TEST_P(JSContextFixture, drainsPromiseJobsWithoutReenteringPendingJobs) {
+    MAIN_THREAD_INIT();
+
+    auto wrapper = createWrapper();
+    {
+        auto jsEntry = wrapper.makeJsEntry();
+        auto& context = jsEntry.context;
+        auto& exceptionTracker = jsEntry.exceptionTracker;
+        auto globalObject = context.getGlobalObject(exceptionTracker);
+        jsEntry.checkException();
+
+        auto reenterVM = context.newFunction(
+            makeShared<JSFunctionWithCallable>(ReferenceInfoBuilder().withObject(STRING_LITERAL("reenterVM")),
+                                               [&wrapper](auto& callContext) -> JSValueRef {
+                                                   auto nestedEntry = wrapper.makeJsEntry();
+                                                   nestedEntry.checkException();
+                                                   return callContext.getContext().newUndefined();
+                                               }),
+            exceptionTracker);
+        jsEntry.checkException();
+        context.setObjectProperty(globalObject.get(), "reenterVM", reenterVM.get(), exceptionTracker);
+        jsEntry.checkException();
+
+        context.evaluate(R""""(
+            (() => {
+                globalThis.microtaskEvents = [];
+                Promise.resolve().then(() => {
+                    globalThis.microtaskEvents.push('first:start');
+                    reenterVM();
+                    globalThis.microtaskEvents.push('first:end');
+                });
+                Promise.resolve().then(() => {
+                    globalThis.microtaskEvents.push('second');
+                });
+            })()
+        )"""",
+                         "nested-promise-jobs.js",
+                         exceptionTracker);
+        jsEntry.checkException();
+    }
+
+    auto result = wrapper.evaluateScript("globalThis.microtaskEvents");
+    auto expected = ValueArrayBuilder();
+    expected.append(Value(STRING_LITERAL("first:start")));
+    expected.append(Value(STRING_LITERAL("first:end")));
+    expected.append(Value(STRING_LITERAL("second")));
+    ASSERT_EQ(Value(expected.build()), result);
+}
+
 TEST_P(JSContextFixture, callsUnhandledPromiseCallbackWhenExceptionIsThrown) {
     SKIP_IF_V8("Ticket: 2259");
     SKIP_IF_HERMES("Unhandled Promise Callback is not yet supported in Hermes");

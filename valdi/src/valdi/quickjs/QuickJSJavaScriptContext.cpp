@@ -15,6 +15,7 @@
 #include "valdi/quickjs/QuickJSUtils.hpp"
 #include "valdi_core/cpp/Constants.hpp"
 #include "valdi_core/cpp/Utils/ByteBuffer.hpp"
+#include "valdi_core/cpp/Utils/Defer.hpp"
 #include "valdi_core/cpp/Utils/Format.hpp"
 #include "valdi_core/cpp/Utils/StaticString.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
@@ -1536,26 +1537,29 @@ void QuickJSJavaScriptContext::notifyRejectedPromises() {
 void QuickJSJavaScriptContext::willExitVM(Valdi::JSExceptionTracker& exceptionTracker) {
     auto guard = _threadAccessChecker.guard();
     SC_ASSERT(_enterVmCount > 0);
-    --_enterVmCount;
-    if (_enterVmCount == 0) {
-        if (executionTerminationRequested()) {
-            return;
-        }
+    if (_enterVmCount > 1) {
+        --_enterVmCount;
+        return;
+    }
 
-        JSContext* context = nullptr;
+    Valdi::Defer exitVM([this]() { --_enterVmCount; });
+    if (executionTerminationRequested()) {
+        return;
+    }
 
-        for (;;) {
-            switch (JS_ExecutePendingJob(_runtime, &context)) {
-                case 0:
-                    notifyRejectedPromises();
-                    return;
-                case 1:
-                    continue;
-                case -1: {
-                    setExceptionToTracker(exceptionTracker);
-                    notifyRejectedPromises();
-                    return;
-                }
+    JSContext* context = nullptr;
+
+    for (;;) {
+        switch (JS_ExecutePendingJob(_runtime, &context)) {
+            case 0:
+                notifyRejectedPromises();
+                return;
+            case 1:
+                continue;
+            case -1: {
+                setExceptionToTracker(exceptionTracker);
+                notifyRejectedPromises();
+                return;
             }
         }
     }
