@@ -295,17 +295,7 @@ public:
         if (value.isInternedString()) {
             return this->_delegate->newStringUTF8(value.toStringBox().toStringView(), exceptionTracker);
         } else {
-            const auto* staticString = value.getStaticString();
-            switch (staticString->encoding()) {
-                case StaticString::Encoding::UTF8:
-                    return this->_delegate->newStringUTF8(staticString->utf8StringView(), exceptionTracker);
-                case StaticString::Encoding::UTF16:
-                    return this->_delegate->newStringUTF16(staticString->utf16StringView(), exceptionTracker);
-                case StaticString::Encoding::UTF32: {
-                    auto storage = staticString->utf8Storage();
-                    return this->_delegate->newStringUTF8(storage.toStringView(), exceptionTracker);
-                }
-            }
+            return this->_delegate->newString(*value.getStaticString(), exceptionTracker);
         }
     }
 

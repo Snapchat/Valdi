@@ -507,6 +507,20 @@ JSValueRef V8JavaScriptContext::newWrappedObject(const Ref<RefCountable>& wrappe
     return toRetainedJSValueRef(IndirectV8Persistent::make(_isolate, val));
 }
 
+JSValueRef V8JavaScriptContext::newNativeClass(const Ref<RefCountable>& /*classOpaque*/,
+                                               const JSClassDefinition& /*classDefinition*/,
+                                               JSExceptionTracker& exceptionTracker) {
+    exceptionTracker.onError("Native classes are not supported by V8");
+    return JSValueRef();
+}
+
+JSValueRef V8JavaScriptContext::newObjectFromNativeClass(const Ref<RefCountable>& /*opaque*/,
+                                                         const JSValue& /*cls*/,
+                                                         JSExceptionTracker& exceptionTracker) {
+    exceptionTracker.onError("Native classes are not supported by V8");
+    return JSValueRef();
+}
+
 JSValueRef V8JavaScriptContext::newWeakRef(const JSValue& object, JSExceptionTracker& exceptionTracker) {
     v8::HandleScope handleScope(_isolate);
     auto indirect = fromValdiJSValueToIndirect(object);

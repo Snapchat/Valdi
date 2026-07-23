@@ -4,6 +4,8 @@ export interface ReadFileOptions {
   encoding?: FileEncoding | undefined | null;
 }
 
+export type WriteFileData = ArrayBuffer | Uint8Array | string;
+
 /**
  * Valdi File System module
  * This FS API right now is only for internal usage due to some limitations.
@@ -17,7 +19,7 @@ export interface FileSystemModule {
 
   readFileSync(path: string, options?: ReadFileOptions): string | ArrayBuffer;
 
-  writeFileSync(path: string, data: ArrayBuffer | string): void;
+  writeFileSync(path: string, data: WriteFileData): void;
 
   currentWorkingDirectory(): string;
 }

@@ -855,6 +855,7 @@ valdi_test(
         "//src/valdi_modules/src/valdi/persistence:persistence_native",
         "//src/valdi_modules/src/valdi/valdi_core:valdi_core_native",
         "//src/valdi_modules/src/valdi/valdi_protobuf:valdi_protobuf_native",
+        "//src/valdi_modules/src/valdi/valdi_standalone:valdi_standalone_native",
         "//tsn",
         "//valdi/testdata/resources/modules/local:local_native",
         "//valdi/testdata/resources/modules/remote:remote_native",

@@ -9,12 +9,17 @@
 #pragma once
 
 #include "valdi/runtime/JavaScript/JavaScriptTypes.hpp"
+#include "valdi/runtime/JavaScript/JSNativeClassData.hpp"
+#include "valdi_core/cpp/Utils/ReferenceInfo.hpp"
 #include <JavaScriptCore/JavaScriptCore.h>
 
 namespace ValdiJSCore {
 
 JSClassRef getNativeFunctionClassRef();
 JSClassRef getWrappedObjectClassRef();
+JSClassRef getNativeClassConstructorFactoryClassRef();
+JSClassRef getNativeClassInstanceMemberClassRef();
+JSClassRef getNativeClassStaticMemberClassRef();
 
 class JavaScriptCoreContext;
 
@@ -29,5 +34,28 @@ public:
 
 JSFunctionData* getAttachedJsFunctionData(JSObjectRef objectRef);
 Valdi::RefCountable* getAttachedWrappedObject(JSObjectRef objectRef);
+
+struct NativeClassData final : public Valdi::SimpleRefCountable {
+    NativeClassData(JavaScriptCoreContext& jsContext, const Valdi::Ref<Valdi::JSNativeClassData>& nativeClass);
+
+    JavaScriptCoreContext& jsContext;
+    Valdi::Ref<Valdi::JSNativeClassData> nativeClass;
+};
+
+struct NativeClassFunctionData final : public Valdi::SimpleRefCountable {
+    NativeClassFunctionData(JavaScriptCoreContext& jsContext,
+                            const Valdi::Ref<Valdi::JSNativeClassData>& nativeClass);
+
+    NativeClassFunctionData(JavaScriptCoreContext& jsContext,
+                            const Valdi::Ref<Valdi::JSNativeClassData>& nativeClass,
+                            const Valdi::StringBox& name);
+
+    JavaScriptCoreContext& jsContext;
+    Valdi::Ref<Valdi::JSNativeClassData> nativeClass;
+    Valdi::ReferenceInfo referenceInfo;
+    Valdi::JSClassCallback callback = nullptr;
+};
+
+NativeClassFunctionData* getAttachedNativeClassFunctionData(JSObjectRef objectRef);
 
 } // namespace ValdiJSCore

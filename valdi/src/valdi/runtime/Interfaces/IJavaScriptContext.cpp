@@ -107,6 +107,19 @@ JSValueRef IJavaScriptContext::newUndefined() {
     return _undefinedValue.asUnretained();
 }
 
+JSValueRef IJavaScriptContext::newString(const StaticString& str, JSExceptionTracker& exceptionTracker) {
+    switch (str.encoding()) {
+        case StaticString::Encoding::UTF8:
+            return newStringUTF8(str.utf8StringView(), exceptionTracker);
+        case StaticString::Encoding::UTF16:
+            return newStringUTF16(str.utf16StringView(), exceptionTracker);
+        case StaticString::Encoding::UTF32: {
+            auto utf8 = str.utf8Storage();
+            return newStringUTF8(utf8.toStringView(), exceptionTracker);
+        }
+    }
+}
+
 JSValueRef IJavaScriptContext::newArrayWithValues(const JSValue* values,
                                                   size_t size,
                                                   JSExceptionTracker& exceptionTracker) {

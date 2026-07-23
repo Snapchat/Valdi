@@ -31,6 +31,7 @@
 #include "valdi_core/cpp/Context/ComponentPath.hpp"
 
 #include "valdi/runtime/JavaScript/Modules/AttributedTextNativeModuleFactory.hpp"
+#include "valdi/runtime/JavaScript/Modules/Base64ModuleFactory.hpp"
 #include "valdi/runtime/JavaScript/Modules/FileSystemFactory.hpp"
 #include "valdi/runtime/JavaScript/Modules/JavaScriptModuleFactoryBridge.hpp"
 #include "valdi/runtime/JavaScript/Modules/PersistentStoreModuleFactory.hpp"
@@ -217,6 +218,7 @@ void Runtime::postInit() {
 
         registerJavaScriptModuleFactory(makeShared<ProtobufModuleFactory>(*_resourceManager, _workerQueue, *_logger));
         registerJavaScriptModuleFactory(makeShared<UnicodeModuleFactory>());
+        registerJavaScriptModuleFactory(makeShared<Base64ModuleFactory>());
 
         if constexpr (kTCPSocketEnabled) {
             registerNativeModuleFactory(makeShared<TCPSocketModuleFactory>().toShared());

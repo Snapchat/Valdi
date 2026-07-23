@@ -221,21 +221,6 @@ JSValueRef proxyObjectToJSValue(IJavaScriptContext& jsContext,
     }
 }
 
-static JSValueRef staticStringTOJSValue(IJavaScriptContext& jsContext,
-                                        const StaticString& staticString,
-                                        JSExceptionTracker& exceptionTracker) {
-    switch (staticString.encoding()) {
-        case StaticString::Encoding::UTF8:
-            return jsContext.newStringUTF8(staticString.utf8StringView(), exceptionTracker);
-        case StaticString::Encoding::UTF16:
-            return jsContext.newStringUTF16(staticString.utf16StringView(), exceptionTracker);
-        case StaticString::Encoding::UTF32: {
-            auto storage = staticString.utf8Storage();
-            return jsContext.newStringUTF8(storage.toStringView(), exceptionTracker);
-        }
-    }
-}
-
 JSValueRef valueToJSValue(IJavaScriptContext& jsContext,
                           const Valdi::Value& value,
                           const ReferenceInfoBuilder& referenceInfoBuilder,
@@ -244,7 +229,7 @@ JSValueRef valueToJSValue(IJavaScriptContext& jsContext,
         case ValueType::InternedString:
             return jsContext.newStringUTF8(value.toStringBox().toStringView(), exceptionTracker);
         case ValueType::StaticString:
-            return staticStringTOJSValue(jsContext, *value.getStaticString(), exceptionTracker);
+            return jsContext.newString(*value.getStaticString(), exceptionTracker);
         case ValueType::Double:
             return jsContext.newNumber(value.toDouble());
         case ValueType::Int:

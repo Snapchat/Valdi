@@ -24,6 +24,127 @@ static JSValue onJsCallError(JSContext* context, Valdi::JSExceptionTracker& exce
     return JS_Throw(context, JS_DupValue(context, fromValdiJSValue(exception.get())));
 }
 
+NativeClassFunctionData::NativeClassFunctionData(const Valdi::Ref<Valdi::JSNativeClassData>& nativeClass,
+                                                 const Valdi::StringBox& name)
+    : nativeClass(nativeClass),
+      referenceInfo(nativeClass->makeMemberReferenceInfo(name)) {}
+
+static JSValue callNativeClassInstanceMember(JSContext* context,
+                                             JSValueConst funcObject,
+                                             JSValueConst thisValue,
+                                             int argc,
+                                             JSValueConst* argv,
+                                             int /*flags*/) {
+    auto& valdiJsContext = *getValdiJSContext(context);
+    auto* opaque = JS_GetOpaque(funcObject, getNativeClassInstanceMemberClassDef()->classID);
+    auto functionData = Valdi::unsafeBridge<NativeClassFunctionData>(opaque);
+
+    Valdi::JSValueRef arguments[argc];
+    for (int i = 0; i < argc; i++) {
+        arguments[i] = Valdi::JSValueRef::makeUnretained(valdiJsContext, toValdiJSValue(argv[i]));
+    }
+
+    Valdi::JSExceptionTracker exceptionTracker(valdiJsContext);
+    Valdi::JSFunctionNativeCallContext callContext(
+        valdiJsContext, arguments, static_cast<size_t>(argc), exceptionTracker, functionData->referenceInfo);
+    callContext.setThisValue(toValdiJSValue(thisValue));
+
+    auto wrappedObject = getObjectWrappedObject(thisValue);
+    auto* instanceData = dynamic_cast<Valdi::JSNativeClassInstanceData*>(wrappedObject.get());
+    if (instanceData == nullptr || instanceData->getNativeClass() != functionData->nativeClass) {
+        return JS_ThrowTypeError(context, "Native class member called with an incompatible receiver");
+    }
+
+    if (valdiJsContext.interruptRequested()) {
+        valdiJsContext.onInterrupt();
+    }
+
+    auto result = functionData->callback(instanceData->getOpaque().get(), callContext);
+    if (VALDI_LIKELY(exceptionTracker)) {
+        return JS_DupValue(context, fromValdiJSValue(result.get()));
+    }
+    return onJsCallError(context, exceptionTracker);
+}
+
+static JSValue callNativeClassStaticMember(JSContext* context,
+                                           JSValueConst funcObject,
+                                           JSValueConst thisValue,
+                                           int argc,
+                                           JSValueConst* argv,
+                                           int /*flags*/) {
+    auto& valdiJsContext = *getValdiJSContext(context);
+    auto* opaque = JS_GetOpaque(funcObject, getNativeClassStaticMemberClassDef()->classID);
+    auto functionData = Valdi::unsafeBridge<NativeClassFunctionData>(opaque);
+
+    Valdi::JSValueRef arguments[argc];
+    for (int i = 0; i < argc; i++) {
+        arguments[i] = Valdi::JSValueRef::makeUnretained(valdiJsContext, toValdiJSValue(argv[i]));
+    }
+
+    Valdi::JSExceptionTracker exceptionTracker(valdiJsContext);
+    Valdi::JSFunctionNativeCallContext callContext(
+        valdiJsContext, arguments, static_cast<size_t>(argc), exceptionTracker, functionData->referenceInfo);
+    callContext.setThisValue(toValdiJSValue(thisValue));
+
+    if (valdiJsContext.interruptRequested()) {
+        valdiJsContext.onInterrupt();
+    }
+
+    auto result = functionData->callback(functionData->nativeClass->getOpaque().get(), callContext);
+    if (VALDI_LIKELY(exceptionTracker)) {
+        return JS_DupValue(context, fromValdiJSValue(result.get()));
+    }
+    return onJsCallError(context, exceptionTracker);
+}
+
+static JSValue callNativeClassConstructor(
+    JSContext* context, JSValueConst funcObject, JSValueConst newTarget, int argc, JSValueConst* argv, int flags) {
+    if ((flags & JS_CALL_FLAG_CONSTRUCTOR) == 0) {
+        return JS_ThrowTypeError(context, "Native class constructor must be called with new");
+    }
+    if (JS_VALUE_GET_PTR(funcObject) != JS_VALUE_GET_PTR(newTarget)) {
+        return JS_ThrowTypeError(context, "Native class subclassing is not supported");
+    }
+
+    auto& valdiJsContext = *getValdiJSContext(context);
+    auto nativeClass = getNativeClassConstructorData(funcObject);
+    auto constructor = nativeClass->getConstructor();
+    if (constructor == nullptr) {
+        return JS_ThrowTypeError(context, "Native class cannot be constructed from JavaScript");
+    }
+
+    Valdi::JSValueRef arguments[argc];
+    for (int i = 0; i < argc; i++) {
+        arguments[i] = Valdi::JSValueRef::makeUnretained(valdiJsContext, toValdiJSValue(argv[i]));
+    }
+
+    Valdi::JSExceptionTracker exceptionTracker(valdiJsContext);
+    const auto& referenceInfo = nativeClass->getConstructorReferenceInfo();
+    Valdi::JSFunctionNativeCallContext callContext(
+        valdiJsContext, arguments, static_cast<size_t>(argc), exceptionTracker, referenceInfo);
+    callContext.setThisValue(valdiJsContext.newUndefined().get());
+
+    if (valdiJsContext.interruptRequested()) {
+        valdiJsContext.onInterrupt();
+    }
+
+    auto nativeOpaque = constructor(nativeClass->getOpaque().get(), callContext);
+    if (exceptionTracker && nativeOpaque == nullptr) {
+        exceptionTracker.onError("Native class constructor returned a null opaque object");
+    }
+
+    if (!exceptionTracker) {
+        return onJsCallError(context, exceptionTracker);
+    }
+
+    auto cls = toValdiJSValue(funcObject);
+    auto result = valdiJsContext.newObjectFromNativeClass(nativeOpaque, cls, exceptionTracker);
+    if (!exceptionTracker) {
+        return onJsCallError(context, exceptionTracker);
+    }
+    return JS_DupValue(context, fromValdiJSValue(result.get()));
+}
+
 JSValue jsCall(
     JSContext* context, JSValueConst funcObject, JSValueConst thisValue, int argc, JSValueConst* argv, int /*flags*/) {
     auto& valdiJsContext = *getValdiJSContext(context);
@@ -126,6 +247,56 @@ JSClassDefWithId* makeWeakRefFinalizerClassDef() {
     return classDefWithId;
 }
 
+void nativeClassConstructorFinalize(JSRuntime* /*rt*/, JSValue value) {
+    setNativeClassConstructorData(value, nullptr);
+}
+
+static void releaseNativeClassFunctionData(const JSValue& value, const JSClassDefWithId* classDef) {
+    auto* opaque = JS_GetOpaque(value, classDef->classID);
+    Valdi::RefCountableAutoreleasePool::release(opaque);
+}
+
+void nativeClassInstanceMemberFinalize(JSRuntime* /*rt*/, JSValue value) {
+    releaseNativeClassFunctionData(value, getNativeClassInstanceMemberClassDef());
+}
+
+void nativeClassStaticMemberFinalize(JSRuntime* /*rt*/, JSValue value) {
+    releaseNativeClassFunctionData(value, getNativeClassStaticMemberClassDef());
+}
+
+JSClassDefWithId* makeNativeClassConstructorClassDef() {
+    auto* classDefWithId = newClassDefWithId("NativeClassConstructor");
+    classDefWithId->classDef.call = &callNativeClassConstructor;
+    classDefWithId->classDef.finalizer = &nativeClassConstructorFinalize;
+    return classDefWithId;
+}
+
+const JSClassDefWithId* getNativeClassConstructorClassDef() {
+    static auto* kClassDef = makeNativeClassConstructorClassDef();
+    return kClassDef;
+}
+
+JSClassDefWithId* makeNativeClassFunctionClassDef(const char* name,
+                                                 JSClassCall* call,
+                                                 JSClassFinalizer* finalizer) {
+    auto* classDefWithId = newClassDefWithId(name);
+    classDefWithId->classDef.call = call;
+    classDefWithId->classDef.finalizer = finalizer;
+    return classDefWithId;
+}
+
+const JSClassDefWithId* getNativeClassInstanceMemberClassDef() {
+    static auto* kClassDef = makeNativeClassFunctionClassDef(
+        "NativeClassInstanceMember", &callNativeClassInstanceMember, &nativeClassInstanceMemberFinalize);
+    return kClassDef;
+}
+
+const JSClassDefWithId* getNativeClassStaticMemberClassDef() {
+    static auto* kClassDef = makeNativeClassFunctionClassDef(
+        "NativeClassStaticMember", &callNativeClassStaticMember, &nativeClassStaticMemberFinalize);
+    return kClassDef;
+}
+
 const JSClassDefWithId* getWeakRefFinalizerClassDef() {
     static auto* kClassDef = makeWeakRefFinalizerClassDef();
 
@@ -145,6 +316,23 @@ Valdi::Ref<Valdi::RefCountable> getObjectWrappedObject(const JSValue& value) {
     auto* opaque = JS_GetOpaque(value, getWrappedObjectClassDef()->classID);
 
     return Valdi::unsafeBridge<Valdi::RefCountable>(opaque);
+}
+
+void setNativeClassConstructorData(const JSValue& value, const Valdi::Ref<Valdi::JSNativeClassData>& nativeClass) {
+    auto* opaque = JS_GetOpaque(value, getNativeClassConstructorClassDef()->classID);
+    if (opaque != nullptr) {
+        Valdi::RefCountableAutoreleasePool::release(opaque);
+    }
+    JS_SetOpaque(value, Valdi::unsafeBridgeRetain(nativeClass.get()));
+}
+
+Valdi::Ref<Valdi::JSNativeClassData> getNativeClassConstructorData(const JSValue& value) {
+    auto* opaque = JS_GetOpaque(value, getNativeClassConstructorClassDef()->classID);
+    return Valdi::unsafeBridge<Valdi::JSNativeClassData>(opaque);
+}
+
+void setNativeClassFunctionData(const JSValue& value, const Valdi::Ref<NativeClassFunctionData>& functionData) {
+    JS_SetOpaque(value, Valdi::unsafeBridgeRetain(functionData.get()));
 }
 
 size_t weakReferenceIdFromJSWeakReferenceFinalizer(const JSValue& jsWeakReferenceFinalizer) {

@@ -24,10 +24,20 @@ public:
                           JSExceptionTracker& exceptionTracker) override;
 
 private:
-    static JSValueRef strToCodepoints(JSFunctionNativeCallContext& callContext);
-    static JSValueRef codepointsToStr(JSFunctionNativeCallContext& callContext);
-    static JSValueRef encodeString(JSFunctionNativeCallContext& callContext);
-    static JSValueRef decodeIntoString(JSFunctionNativeCallContext& callContext);
+    static JSValueRef strToCodepoints(const Ref<StaticString>& str,
+                                      bool normalize,
+                                      bool disableCategorization,
+                                      JSFunctionNativeCallContext& callContext);
+    static JSValueRef codepointsToStr(JSValue codepoints,
+                                      bool normalize,
+                                      bool disableCategorization,
+                                      JSFunctionNativeCallContext& callContext);
+    static JSValueRef encodeString(const Ref<StaticString>& str,
+                                   int32_t encoding,
+                                   JSFunctionNativeCallContext& callContext);
+    static JSValueRef decodeIntoString(const JSTypedArray& buffer,
+                                       int32_t encoding,
+                                       JSFunctionNativeCallContext& callContext);
 };
 
 } // namespace Valdi
