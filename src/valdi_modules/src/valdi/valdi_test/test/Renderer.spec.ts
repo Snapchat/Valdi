@@ -17,6 +17,8 @@ import { PropertyList } from 'valdi_tsx/src/PropertyList';
 import { StringMap } from 'coreutils/src/StringMap';
 import { RawRenderRequestEntryType, RendererTestDelegate } from './RendererTestDelegate';
 
+const createdRenderers: Renderer[] = [];
+
 function makeRenderer(
   delegate: IRendererDelegate,
   allowedRootElementTypes?: string[],
@@ -24,6 +26,7 @@ function makeRenderer(
   useTopDownMoveOrder?: boolean,
 ): Renderer {
   const renderer = new Renderer('', allowedRootElementTypes, delegate, useTopDownMoveOrder);
+  createdRenderers.push(renderer);
 
   // return renderer;
   if (disableProxy) {
@@ -50,6 +53,12 @@ function makeRenderer(
       return value;
     },
   });
+}
+
+function cleanupRendererAfterExpectedError(renderer: Renderer): void {
+  if (renderer.began) {
+    renderer.doEnd();
+  }
 }
 
 function sanitize(text: string): string {
@@ -111,6 +120,16 @@ class TestComponent implements IComponent {
 }
 
 describe('Renderer', () => {
+  // Renderer keeps the active renderer in module-level state. Some specs intentionally
+  // throw during a render before reaching renderer.end(), so clean up after every
+  // spec to keep randomized test order from leaking active renderer state.
+  afterEach(() => {
+    for (const renderer of createdRenderers) {
+      cleanupRendererAfterExpectedError(renderer);
+    }
+    createdRenderers.length = 0;
+  });
+
   it('doesnt render on empty body', () => {
     const output = new RendererTestDelegate();
     const renderer = makeRenderer(output);
@@ -3038,11 +3057,15 @@ describe('Renderer', () => {
 
     function render(renderSlot: () => void) {
       renderer.begin();
-      renderer.beginComponent(SlottedComponent, componentPrototype);
+      try {
+        renderer.beginComponent(SlottedComponent, componentPrototype);
 
-      renderSlot();
-      renderer.endComponent();
-      renderer.end();
+        renderSlot();
+        renderer.endComponent();
+        renderer.end();
+      } finally {
+        cleanupRendererAfterExpectedError(renderer);
+      }
     }
 
     render(() => {});
@@ -5327,7 +5350,7 @@ Begin render
   Begin RootComponent (key: __root)
     Begin ChildComponent (key: __child)
     End ChildComponent
-    Begin ChildComponent (key: __child2)
+    Begin ChildComponent (key: __child-2)
     End ChildComponent
   End RootComponent
 End render
@@ -5357,7 +5380,7 @@ Begin render
     Begin ChildComponent (key: __child)
       ViewModel property 'name' changed
     End ChildComponent
-    Begin ChildComponent (key: __child2)
+    Begin ChildComponent (key: __child-2)
       Bypass render
     End ChildComponent
   End RootComponent

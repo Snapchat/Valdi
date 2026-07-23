@@ -39,6 +39,7 @@ public:
     void disableUpdates();
 
     StandaloneViewManager& getViewManager();
+    Ref<ViewFactory> getViewFactory(const char* viewClassName);
 
     void setViewNodeAttribute(const Ref<ViewNode>& viewNode, const char* attribute, const Value& attributeValue);
 
