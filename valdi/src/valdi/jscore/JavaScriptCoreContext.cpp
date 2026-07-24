@@ -19,6 +19,7 @@
 #include "valdi_core/cpp/Utils/SmallVector.hpp"
 
 #include "valdi_core/cpp/Constants.hpp"
+#include "valdi_core/cpp/Utils/Defer.hpp"
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 #include "valdi_core/cpp/Utils/StaticString.hpp"
 #include "valdi_core/cpp/Utils/ValueTypedArray.hpp"
@@ -1330,22 +1331,33 @@ void JavaScriptCoreContext::willEnterVM() {
     _enterVmCount++;
 }
 
+void JavaScriptCoreContext::requestExecutionTermination() {
+    IJavaScriptContext::requestExecutionTermination();
+}
+
 void JavaScriptCoreContext::willExitVM(Valdi::JSExceptionTracker& exceptionTracker) {
-    auto enterVMCount = --_enterVmCount;
-    if (enterVMCount == 0) {
-        while (!_microtasks.empty()) {
-            auto microtask = _microtasks.front();
-            _microtasks.pop_front();
+    if (_enterVmCount > 1) {
+        --_enterVmCount;
+        return;
+    }
 
-            JSValueRef exception = nullptr;
-            JSObjectCallAsFunction(getJSGlobalContext(), microtask, nullptr, 0, nullptr, &exception);
+    Valdi::Defer exitVM([this]() { --_enterVmCount; });
+    if (executionTerminationRequested()) {
+        return;
+    }
 
-            JSValueUnprotect(_globalContext, microtask);
+    while (!_microtasks.empty()) {
+        auto microtask = _microtasks.front();
+        _microtasks.pop_front();
 
-            if (exception != nullptr) {
-                storeException(exceptionTracker, exception);
-                return;
-            }
+        JSValueRef exception = nullptr;
+        JSObjectCallAsFunction(getJSGlobalContext(), microtask, nullptr, 0, nullptr, &exception);
+
+        JSValueUnprotect(_globalContext, microtask);
+
+        if (exception != nullptr) {
+            storeException(exceptionTracker, exception);
+            return;
         }
     }
 }

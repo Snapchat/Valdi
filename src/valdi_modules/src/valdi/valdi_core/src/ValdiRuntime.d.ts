@@ -28,14 +28,22 @@ export interface ColorPalette {
   [key: string]: string;
 }
 
-interface MessageEvent<T = unknown> {
+export interface NativeMessageEvent<T = unknown> {
   readonly data: T;
+  readonly ports: readonly NativeMessagePort[];
 }
 
-export type OnMessageFunc<T> = (msg: MessageEvent<T>) => void;
+export type OnMessageFunc<T> = (msg: NativeMessageEvent<T>) => void;
+
+export interface NativeMessagePort {
+  onmessage: OnMessageFunc<unknown> | null;
+  postMessage<T>(data: T, transfer?: readonly NativeMessagePort[]): void;
+  start(): void;
+  close(): void;
+}
 
 export interface NativeWorker {
-  postMessage<T>(data: T): void;
+  postMessage<T>(data: T, transfer?: readonly NativeMessagePort[]): void;
   setOnMessage<T>(f: OnMessageFunc<T>): void;
   terminate(): void;
 }

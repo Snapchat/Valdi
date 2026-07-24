@@ -6174,6 +6174,54 @@ TEST_P(RuntimeFixture, FLAKY_workerWorks) {
     ASSERT_EQ(res.toString(), "works");
 }
 
+static Value callWorkerTestMethod(RuntimeWrapper& wrapper,
+                                  const Ref<Context>& context,
+                                  const StringBox& methodName) {
+    auto valuePromise = std::make_shared<std::promise<Value>>();
+    auto completed = std::make_shared<std::atomic_bool>(false);
+    auto valueFuture = valuePromise->get_future();
+    auto callback = makeShared<ValueFunctionWithCallable>([valuePromise, completed](const auto& callContext) {
+        if (!completed->exchange(true)) {
+            valuePromise->set_value(callContext.getParameter(0));
+        }
+        return Value::undefined();
+    });
+    wrapper.runtime->getJavaScriptRuntime()->callComponentFunction(
+        context, methodName, ValueArray::make({Value(callback)}));
+
+    auto status = valueFuture.wait_for(std::chrono::seconds(5));
+    EXPECT_EQ(std::future_status::ready, status);
+    if (status != std::future_status::ready) {
+        return Value::undefined();
+    }
+    return valueFuture.get();
+}
+
+TEST_P(RuntimeFixture, workerCanBeTerminatedBeforeInitialization) {
+    auto tree =
+        wrapper.createViewNodeTreeAndContext(STRING_LITERAL("WorkerTest@test/src/WorkerTest"), Value(), Value());
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    auto result =
+        callWorkerTestMethod(wrapper, tree->getContext(), STRING_LITERAL("terminateBeforeInitialization"));
+    ASSERT_TRUE(result.isString());
+    EXPECT_EQ("works", result.toString());
+}
+
+TEST_P(RuntimeFixture, busyWorkerCanBeTerminated) {
+    if (isJSCore()) {
+        GTEST_SKIP() << "JavaScriptCore cannot interrupt a pure JavaScript loop through its public API";
+    }
+
+    auto tree =
+        wrapper.createViewNodeTreeAndContext(STRING_LITERAL("WorkerTest@test/src/WorkerTest"), Value(), Value());
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    auto result = callWorkerTestMethod(wrapper, tree->getContext(), STRING_LITERAL("terminateBusyWorker"));
+    ASSERT_TRUE(result.isString());
+    EXPECT_EQ("works", result.toString());
+}
+
 TEST_P(RuntimeFixture, canLockAllJSContexts) {
     auto tree1 =
         wrapper.createViewNodeTreeAndContext(STRING_LITERAL("WorkerTest@test/src/WorkerTest"), Value(), Value());

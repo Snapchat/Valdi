@@ -175,6 +175,7 @@ public:
 
     void willEnterVM() override;
     void willExitVM(Valdi::JSExceptionTracker& exceptionTracker) override;
+    void requestExecutionTermination() override;
 
     const Valdi::JSPropertyName& getPrototypePropertyName() const;
 

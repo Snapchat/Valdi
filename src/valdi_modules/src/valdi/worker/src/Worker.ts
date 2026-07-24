@@ -1,4 +1,4 @@
-import { ValdiRuntime, NativeWorker, OnMessageFunc } from 'valdi_core/src/ValdiRuntime';
+import type { NativeMessagePort, NativeWorker, OnMessageFunc, ValdiRuntime } from 'valdi_core/src/ValdiRuntime';
 
 declare const runtime: ValdiRuntime;
 
@@ -13,15 +13,15 @@ export class Worker {
     this.nativeWorker = runtime.createWorker(url);
   }
 
-  public set onmessage(func: OnMessageFunc<unknown>) {
+  public set onmessage(func: (event: MessageEvent<unknown>) => void) {
     if (this.nativeWorker) {
-      this.nativeWorker.setOnMessage(func);
+      this.nativeWorker.setOnMessage(func as OnMessageFunc<unknown>);
     }
   }
 
-  public postMessage<T>(data: T): void {
+  public postMessage<T>(data: T, transfer?: readonly MessagePort[]): void {
     if (this.nativeWorker) {
-      this.nativeWorker.postMessage(data);
+      this.nativeWorker.postMessage(data, transfer as readonly NativeMessagePort[] | undefined);
     }
   }
 

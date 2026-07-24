@@ -153,6 +153,7 @@ public:
 
     void willEnterVM() final;
     void willExitVM(JSExceptionTracker& exceptionTracker) final;
+    void requestExecutionTermination() final;
 
     void startDebugger(bool isWorker) final;
     std::optional<IJavaScriptContextDebuggerInfo> getDebuggerInfo() const final;

@@ -16,6 +16,7 @@
 #include "valdi/runtime/JavaScript/JavaScriptUtils.hpp"
 
 #include "valdi_core/cpp/Text/UTF16Utils.hpp"
+#include "valdi_core/cpp/Utils/Defer.hpp"
 #include "valdi_core/cpp/Utils/ReferenceInfo.hpp"
 #include "valdi_core/cpp/Utils/StaticString.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
@@ -1393,13 +1394,25 @@ void HermesJavaScriptContext::willEnterVM() {
     _enterVMCount++;
 }
 
+void HermesJavaScriptContext::requestExecutionTermination() {
+    IJavaScriptContext::requestExecutionTermination();
+    _runtime->triggerTimeoutAsyncBreak();
+}
+
 void HermesJavaScriptContext::willExitVM(JSExceptionTracker& exceptionTracker) {
     SC_ASSERT(_enterVMCount > 0);
-    --_enterVMCount;
-    if (_enterVMCount == 0) {
-        auto result = _runtime->drainJobs();
-        checkException(result, exceptionTracker);
+    if (_enterVMCount > 1) {
+        --_enterVMCount;
+        return;
     }
+
+    Valdi::Defer exitVM([this]() { --_enterVMCount; });
+    if (executionTerminationRequested()) {
+        return;
+    }
+
+    auto result = _runtime->drainJobs();
+    checkException(result, exceptionTracker);
 }
 
 void HermesJavaScriptContext::startDebugger(bool isWorker) {
