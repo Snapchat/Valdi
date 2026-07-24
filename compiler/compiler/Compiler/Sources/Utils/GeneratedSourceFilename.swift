@@ -10,4 +10,5 @@ import Foundation
 struct GeneratedSourceFilename {
     let filename: String
     let symbolName: String
+    let src: TypeScriptItemSrc
 }

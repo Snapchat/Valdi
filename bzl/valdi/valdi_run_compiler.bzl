@@ -2,6 +2,7 @@ load(
     "common.bzl",
     "NODE_MODULES_BASE",
 )
+load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load(":valdi_toolchain_type.bzl", "VALDI_TOOLCHAIN_TYPE")
 
 # TODO: modify the compiler so that we don't need to pass in the config file and instead can just pass in all of these options as arguments
@@ -18,6 +19,11 @@ def generate_config(ctx):
     companion_path = toolchain.companion.files.to_list()[0].path
     minify_config_path = toolchain.minify_config.files.to_list()[0].path
     compiler_toolbox_path = toolchain.compiler_toolbox.files.to_list()[0].path
+    native_api_min_version = ctx.attr._native_api_min_version[BuildSettingInfo].value
+
+    native_api_min_version_config = ""
+    if native_api_min_version >= 0:
+        native_api_min_version_config = "native_api_min_version: {}".format(native_api_min_version)
 
     ctx.actions.expand_template(
         output = out,
@@ -29,6 +35,7 @@ def generate_config(ctx):
             "{MINIFY_CONFIG_PATH}": "$PWD/" + minify_config_path,
             "{COMPILER_TOOLBOX_PATH}": "$PWD/" + compiler_toolbox_path,
             "{NODE_MODULES_DIR}": NODE_MODULES_BASE,
+            "{NATIVE_API_MIN_VERSION_CONFIG}": native_api_min_version_config,
         },
     )
     return out

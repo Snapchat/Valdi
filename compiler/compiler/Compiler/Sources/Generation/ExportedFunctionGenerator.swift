@@ -17,6 +17,7 @@ struct ExportedFunction {
     let returnType: ValdiModelPropertyType
     let allowSyncCall: Bool
     let comments: String?
+    let declaredVersion: String?
 }
 
 final class ExportedFunctionGenerator: NativeSourceGenerator {

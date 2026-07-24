@@ -63,7 +63,11 @@ final class TypeScriptCompiler {
          emitDebug: Bool) {
         self.logger = logger
         self.companion = companion
-        self.driver = TypeScriptCompilerCompanionDriver(logger: logger, companion: companion)
+        self.driver = TypeScriptCompilerCompanionDriver(
+            logger: logger,
+            companion: companion,
+            nativeApiMinVersion: projectConfig.nativeApiMinVersion
+        )
         self.projectConfig = projectConfig
         self.fileManager = fileManager
         self.emitDebug = emitDebug

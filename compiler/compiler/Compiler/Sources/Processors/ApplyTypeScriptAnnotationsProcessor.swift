@@ -137,9 +137,33 @@ final class ApplyTypeScriptAnnotationsProcessor: CompilationProcessor {
                 case .nativeTypeConverter:
                     try nativeCodeGenerationManager.addNativeTypeConverter(commentedFile: commentedFile, annotation: annotation, sourceURL: sourceURL, annotatedSymbol: annotatedSymbol, compilationItem: compilationItem, linesIndexer: linesIndexer)
                 case .nativeClass:
-                    try nativeCodeGenerationManager.registerNativeClass(commentedFile: commentedFile, annotation: annotation, symbol: symbol, shouldGenerateIOS: compilationItem.shouldOutputToIOS, shouldGenerateAndroid: compilationItem.shouldOutputToAndroid, kind: .class, bundleInfo: compilationItem.bundleInfo, isGenerated: false)
+                    let nativeClass = try nativeCodeGenerationManager.registerNativeClass(commentedFile: commentedFile, annotation: annotation, symbol: symbol, shouldGenerateIOS: compilationItem.shouldOutputToIOS, shouldGenerateAndroid: compilationItem.shouldOutputToAndroid, kind: .class, bundleInfo: compilationItem.bundleInfo, isGenerated: false)
+                    let description = nativeCodeGenerationManager.nativeTypeDescription(
+                        annotatedSymbol: annotatedSymbol,
+                        nativeClass: nativeClass,
+                        compilationItem: compilationItem
+                    )
+                    out.append(item: compilationItem.with(
+                        newKind: .generatedTypeDescription(
+                            description,
+                            src: commentedFile.src
+                        ),
+                        newPlatform: .none
+                    ))
                 case .nativeInterface:
-                    try nativeCodeGenerationManager.registerNativeClass(commentedFile: commentedFile, annotation: annotation, symbol: symbol, shouldGenerateIOS: compilationItem.shouldOutputToIOS, shouldGenerateAndroid: compilationItem.shouldOutputToAndroid, kind: .interface, bundleInfo: compilationItem.bundleInfo, isGenerated: false)
+                    let nativeClass = try nativeCodeGenerationManager.registerNativeClass(commentedFile: commentedFile, annotation: annotation, symbol: symbol, shouldGenerateIOS: compilationItem.shouldOutputToIOS, shouldGenerateAndroid: compilationItem.shouldOutputToAndroid, kind: .interface, bundleInfo: compilationItem.bundleInfo, isGenerated: false)
+                    let description = nativeCodeGenerationManager.nativeTypeDescription(
+                        annotatedSymbol: annotatedSymbol,
+                        nativeClass: nativeClass,
+                        compilationItem: compilationItem
+                    )
+                    out.append(item: compilationItem.with(
+                        newKind: .generatedTypeDescription(
+                            description,
+                            src: commentedFile.src
+                        ),
+                        newPlatform: .none
+                    ))
                 case .component:
                     if isTSorTSX {
                         guard let symbolName = symbol.text.nonEmpty else {
@@ -219,6 +243,9 @@ final class ApplyTypeScriptAnnotationsProcessor: CompilationProcessor {
                     break
                 case .untypedMap:
                     // UntypedMap annotations get processed inside TypeScriptNativeTypeExporter
+                    break
+                case .version:
+                    // Version annotations are consumed by the companion's version validator.
                     break
                 }
 

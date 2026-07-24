@@ -32,7 +32,14 @@ class GenerateViewClassesProcessor: CompilationProcessor {
                 logger.debug("Not generating view class for \(item.sourceURL.path) because the root node doesn't have a custom class.")
                 return []
         }
-        let generatedSourceFilename = GeneratedSourceFilename(filename: item.relativeProjectPath, symbolName: compilationResult.componentPath.exportedMember)
+        let generatedSourceFilename = GeneratedSourceFilename(
+            filename: item.relativeProjectPath,
+            symbolName: compilationResult.componentPath.exportedMember,
+            src: TypeScriptItemSrc(
+                compilationPath: item.relativeProjectPath,
+                sourceURL: item.sourceURL
+            )
+        )
         let iosType = classMapping.iosType
         let androidClassName = classMapping.androidClassName
 
@@ -55,7 +62,13 @@ class GenerateViewClassesProcessor: CompilationProcessor {
             }
             let nativeSourceItems = result.nativeSources.map { item.with(newKind: .nativeSource($0.source), newPlatform: $0.platform) }
             let typeDescription = GeneratedTypeDescription.viewClass(result.description)
-            let descriptionItem = item.with(newKind: .generatedTypeDescription(typeDescription), newPlatform: .none)
+            let descriptionItem = item.with(
+                newKind: .generatedTypeDescription(
+                    typeDescription,
+                    src: generatedSourceFilename.src
+                ),
+                newPlatform: .none
+            )
             return nativeSourceItems + [descriptionItem]
         } catch let error {
             logger.error("Failed to generate View class for \(item.sourceURL.path): \(error.legibleLocalizedDescription)")
