@@ -12,14 +12,17 @@
 #include "valdi/hermes/HermesUtils.hpp"
 
 #include "valdi/runtime/JavaScript/JavaScriptFunctionCallContext.hpp"
+#include "valdi/runtime/JavaScript/JSNativeClassData.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptUtils.hpp"
-#include "valdi/runtime/Utils/RefCountableAutoreleasePool.hpp"
 
 #include "valdi_core/cpp/Text/UTF16Utils.hpp"
 #include "valdi_core/cpp/Utils/ReferenceInfo.hpp"
 #include "valdi_core/cpp/Utils/StaticString.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
 #include "valdi_core/cpp/Utils/ValueUtils.hpp"
+
+#include "hermes/VM/NativeState.h"
+#include "hermes/VM/PropertyAccessor.h"
 
 #ifdef HERMES_ENABLE_DEBUGGER
 #include "valdi/hermes/HermesDebuggerServer.hpp"
@@ -56,16 +59,6 @@ public:
         return callContext.getContext().newUndefined();
     }
 };
-
-static void freeNativeState(hermes::vm::GC& /*gc*/, hermes::vm::NativeState* ns) {
-    if (ns != nullptr) {
-        Valdi::RefCountableAutoreleasePool::release(ns->context());
-    }
-}
-
-static void freeContext(void* context) {
-    Valdi::RefCountableAutoreleasePool::release(context);
-}
 
 static hermes::vm::RuntimeConfig makeRuntimeConfig() {
     return hermes::vm::RuntimeConfig::Builder()
@@ -550,6 +543,224 @@ JSValueRef HermesJavaScriptContext::newWrappedObject(const Ref<RefCountable>& wr
     return toJSValueRefUncached(result.getHermesValue());
 }
 
+static hermes::vm::DefinePropertyFlags toHermesDataPropertyFlags(bool writable, bool enumerable, bool configurable) {
+    hermes::vm::DefinePropertyFlags flags;
+    flags.setEnumerable = 1;
+    flags.enumerable = enumerable;
+    flags.setWritable = 1;
+    flags.writable = writable;
+    flags.setConfigurable = 1;
+    flags.configurable = configurable;
+    flags.setValue = 1;
+    return flags;
+}
+
+static hermes::vm::DefinePropertyFlags toHermesAccessorPropertyFlags(bool hasGetter,
+                                                                     bool hasSetter,
+                                                                     bool enumerable,
+                                                                     bool configurable) {
+    hermes::vm::DefinePropertyFlags flags;
+    flags.setEnumerable = 1;
+    flags.enumerable = enumerable;
+    flags.setConfigurable = 1;
+    flags.configurable = configurable;
+    flags.setGetter = hasGetter;
+    flags.setSetter = hasSetter;
+    return flags;
+}
+
+JSValueRef HermesJavaScriptContext::newNativeClass(const Ref<RefCountable>& classOpaque,
+                                                   const JSClassDefinition& classDefinition,
+                                                   JSExceptionTracker& exceptionTracker) {
+    hermes::vm::GCScope gcScope(*_runtime);
+
+    auto nativeClass =
+        makeShared<JSNativeClassData>(classDefinition.getName(), classOpaque, classDefinition.getConstructor());
+    auto backendClass = makeShared<HermesNativeClassData>(*this, nativeClass);
+    auto prototype = _runtime->makeHandle(hermes::vm::JSObject::create(*_runtime));
+    auto constructor = _runtime->makeHandle(hermes::vm::NativeConstructor::create(
+        *_runtime,
+        hermes::vm::Handle<hermes::vm::JSObject>::vmcast(&_runtime->functionPrototype),
+        backendClass.get(),
+        &callNativeClassConstructor,
+        0,
+        &createNativeClassObject,
+        hermes::vm::CellKind::JSObjectKind));
+
+    auto className = newSymbolIDFromString(classDefinition.getName().toStringView());
+    auto defineConstructorStatus = hermes::vm::Callable::defineNameLengthAndPrototype(
+        constructor, *_runtime, className.get(), 0, prototype, hermes::vm::Callable::WritablePrototype::No, false);
+    if (!checkException(defineConstructorStatus, exceptionTracker)) {
+        return newUndefined();
+    }
+    if (!checkException(setNativeState(*_runtime, constructor, backendClass), exceptionTracker)) {
+        return newUndefined();
+    }
+
+    auto createFunction = [&](const Ref<HermesNativeClassFunctionData>& functionData,
+                              auto call,
+                              std::string_view name) -> hermes::vm::Handle<hermes::vm::Callable> {
+        auto functionName = newSymbolIDFromString(name);
+        auto result =
+            hermes::vm::FinalizableNativeFunction::createWithoutPrototype(*_runtime,
+                                                                          unsafeBridgeRetain(functionData.get()),
+                                                                          call,
+                                                                          &freeContext,
+                                                                          functionName.get(),
+                                                                          0);
+        if (!checkException(result.getStatus(), exceptionTracker)) {
+            return hermes::vm::Runtime::makeNullHandle<hermes::vm::Callable>();
+        }
+        return _runtime->makeHandle<hermes::vm::Callable>(result.getValue());
+    };
+
+    auto defineDataProperty = [&](hermes::vm::Handle<hermes::vm::JSObject> object,
+                                  std::string_view name,
+                                  hermes::vm::Handle<> value,
+                                  bool writable,
+                                  bool enumerable,
+                                  bool configurable) -> bool {
+        auto propertyName = newSymbolIDFromString(name);
+        auto result =
+            hermes::vm::JSObject::defineOwnProperty(object,
+                                                    *_runtime,
+                                                    propertyName.get(),
+                                                    toHermesDataPropertyFlags(writable, enumerable, configurable),
+                                                    value,
+                                                    hermes::vm::PropOpFlags().plusThrowOnError());
+        return checkException(result.getStatus(), exceptionTracker) && result.getValue();
+    };
+
+    auto defineAccessorProperty = [&](hermes::vm::Handle<hermes::vm::JSObject> object,
+                                      std::string_view name,
+                                      hermes::vm::Handle<hermes::vm::Callable> getter,
+                                      hermes::vm::Handle<hermes::vm::Callable> setter,
+                                      bool enumerable,
+                                      bool configurable) -> bool {
+        auto propertyName = newSymbolIDFromString(name);
+        auto accessor = _runtime->makeHandle<hermes::vm::PropertyAccessor>(
+            hermes::vm::PropertyAccessor::create(*_runtime, getter, setter));
+        auto result = hermes::vm::JSObject::defineOwnProperty(
+            object,
+            *_runtime,
+            propertyName.get(),
+            toHermesAccessorPropertyFlags(
+                static_cast<bool>(getter), static_cast<bool>(setter), enumerable, configurable),
+            accessor,
+            hermes::vm::PropOpFlags().plusThrowOnError());
+        return checkException(result.getStatus(), exceptionTracker) && result.getValue();
+    };
+
+    auto constructorObject = hermes::vm::Handle<hermes::vm::JSObject>::vmcast(constructor);
+    for (const auto& entry : classDefinition.getEntries()) {
+        auto object = entry.isClassMember() ? constructorObject : prototype;
+        auto memberCallback =
+            entry.isClassMember() ? &callNativeClassStaticMember : &callNativeClassInstanceMember;
+        switch (entry.getKind()) {
+            case JSClassEntryKind::Method: {
+                if (entry.getMethodCallback() == nullptr) {
+                    exceptionTracker.onError("Native class method callback cannot be null");
+                    return newUndefined();
+                }
+                const auto& propertyName = entry.getName();
+                auto functionData = makeShared<HermesNativeClassFunctionData>(*this, nativeClass, propertyName);
+                functionData->callback = entry.getMethodCallback();
+                auto function = createFunction(functionData, memberCallback, propertyName.toStringView());
+                if (!exceptionTracker || !defineDataProperty(object,
+                                                             propertyName.toStringView(),
+                                                             function,
+                                                             entry.isWritable(),
+                                                             entry.isEnumerable(),
+                                                             entry.isConfigurable())) {
+                    return newUndefined();
+                }
+                break;
+            }
+            case JSClassEntryKind::Constant:
+                if (!defineDataProperty(object,
+                                        entry.getName().toStringView(),
+                                        toHandle(entry.getValue().get()),
+                                        entry.isWritable(),
+                                        entry.isEnumerable(),
+                                        entry.isConfigurable())) {
+                    return newUndefined();
+                }
+                break;
+            case JSClassEntryKind::Accessor: {
+                if (entry.getGetterCallback() == nullptr && entry.getSetterCallback() == nullptr) {
+                    exceptionTracker.onError("Native class accessor must have a getter or setter");
+                    return newUndefined();
+                }
+                auto getter = hermes::vm::Runtime::makeNullHandle<hermes::vm::Callable>();
+                auto setter = hermes::vm::Runtime::makeNullHandle<hermes::vm::Callable>();
+                const auto& propertyName = entry.getName();
+                if (entry.getGetterCallback() != nullptr) {
+                    auto functionData = makeShared<HermesNativeClassFunctionData>(*this, nativeClass, propertyName);
+                    functionData->callback = entry.getGetterCallback();
+                    getter = createFunction(functionData, memberCallback, propertyName.toStringView());
+                }
+                if (exceptionTracker && entry.getSetterCallback() != nullptr) {
+                    auto functionData = makeShared<HermesNativeClassFunctionData>(*this, nativeClass, propertyName);
+                    functionData->callback = entry.getSetterCallback();
+                    setter = createFunction(functionData, memberCallback, propertyName.toStringView());
+                }
+                if (!exceptionTracker ||
+                    !defineAccessorProperty(object,
+                                            propertyName.toStringView(),
+                                            getter,
+                                            setter,
+                                            entry.isEnumerable(),
+                                            entry.isConfigurable())) {
+                    return newUndefined();
+                }
+                break;
+            }
+        }
+    }
+
+    return toJSValueRefUncached(constructor.getHermesValue());
+}
+
+JSValueRef HermesJavaScriptContext::newObjectFromNativeClass(const Ref<RefCountable>& opaque,
+                                                             const JSValue& cls,
+                                                             JSExceptionTracker& exceptionTracker) {
+    hermes::vm::GCScope gcScope(*_runtime);
+    auto clsObject = toJSObject(cls, exceptionTracker);
+    if (!exceptionTracker) {
+        return newUndefined();
+    }
+    auto backendClass = Ref(dynamic_cast<HermesNativeClassData*>(getOwnNativeStateContext(*_runtime, clsObject)));
+    if (backendClass == nullptr) {
+        exceptionTracker.onError("Value is not a native class");
+        return newUndefined();
+    }
+    if (opaque == nullptr) {
+        exceptionTracker.onError("Native class opaque object cannot be null");
+        return newUndefined();
+    }
+
+    auto prototypeResult = hermes::vm::JSObject::getNamedOrIndexed(
+        clsObject,
+        *_runtime,
+        hermes::vm::Predefined::getSymbolID(hermes::vm::Predefined::prototype));
+    if (!checkException(prototypeResult.getStatus(), exceptionTracker)) {
+        return newUndefined();
+    }
+    auto prototypeValue = prototypeResult.getValue().getHermesValue();
+    if (!prototypeValue.isObject()) {
+        exceptionTracker.onError("Native class prototype is not an object");
+        return newUndefined();
+    }
+    auto prototype = _runtime->makeHandle<hermes::vm::JSObject>(prototypeValue);
+
+    auto object = _runtime->makeHandle(hermes::vm::JSObject::create(*_runtime, prototype));
+    auto instanceData = makeShared<JSNativeClassInstanceData>(backendClass->nativeClass, opaque);
+    if (!checkException(setNativeState(*_runtime, object, instanceData), exceptionTracker)) {
+        return newUndefined();
+    }
+    return toJSValueRefUncached(object.getHermesValue());
+}
+
 JSValueRef HermesJavaScriptContext::getObjectProperty(const JSValue& object,
                                                       const JSPropertyName& propertyName,
                                                       JSExceptionTracker& exceptionTracker) {
@@ -923,7 +1134,7 @@ Ref<RefCountable> HermesJavaScriptContext::valueToWrappedObject(const JSValue& v
 
     auto* nativeState = hermes::vm::vmcast<hermes::vm::NativeState>(result.getValue().get());
 
-    return unsafeBridge<RefCountable>(nativeState->context());
+    return unwrapNativeClassInstanceData(unsafeBridge<RefCountable>(nativeState->context()));
 }
 
 Ref<JSFunction> HermesJavaScriptContext::valueToFunction(const JSValue& value, JSExceptionTracker& exceptionTracker) {
@@ -933,8 +1144,12 @@ Ref<JSFunction> HermesJavaScriptContext::valueToFunction(const JSValue& value, J
         return nullptr;
     }
 
-    auto* functionData = unsafeBridgeUnretained<JSFunctionData>(
+    auto* functionContext = unsafeBridgeUnretained<RefCountable>(
         hermes::vm::vmcast<hermes::vm::FinalizableNativeFunction>(*hermesValue)->getContext());
+    auto* functionData = dynamic_cast<JSFunctionData*>(functionContext);
+    if (functionData == nullptr) {
+        return nullptr;
+    }
 
     return functionData->function;
 }

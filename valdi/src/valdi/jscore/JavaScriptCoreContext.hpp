@@ -18,6 +18,8 @@ class ILogger;
 
 namespace ValdiJSCore {
 
+struct NativeClassFunctionData;
+
 class JavaScriptCoreContext : public Valdi::IJavaScriptContext {
 public:
     explicit JavaScriptCoreContext(Valdi::JavaScriptTaskScheduler* taskScheduler, Valdi::ILogger& logger);
@@ -65,6 +67,14 @@ public:
 
     Valdi::JSValueRef newWrappedObject(const Valdi::Ref<Valdi::RefCountable>& wrappedObject,
                                        Valdi::JSExceptionTracker& exceptionTracker) override;
+
+    Valdi::JSValueRef newNativeClass(const Valdi::Ref<Valdi::RefCountable>& classOpaque,
+                                     const Valdi::JSClassDefinition& classDefinition,
+                                     Valdi::JSExceptionTracker& exceptionTracker) override;
+
+    Valdi::JSValueRef newObjectFromNativeClass(const Valdi::Ref<Valdi::RefCountable>& opaque,
+                                               const Valdi::JSValue& cls,
+                                               Valdi::JSExceptionTracker& exceptionTracker) override;
 
     Valdi::JSValueRef newWeakRef(const Valdi::JSValue& object, Valdi::JSExceptionTracker& exceptionTracker) override;
 
@@ -166,6 +176,8 @@ public:
     void willEnterVM() override;
     void willExitVM(Valdi::JSExceptionTracker& exceptionTracker) override;
 
+    const Valdi::JSPropertyName& getPrototypePropertyName() const;
+
 protected:
     Valdi::JSValueRef onNewBool(bool boolean) override;
 
@@ -183,11 +195,13 @@ private:
     [[maybe_unused]] Valdi::ILogger& _logger;
     JSContextGroupRef _contextGroup;
     JSGlobalContextRef _globalContext;
+    Valdi::JSPropertyNameRef _prototypePropertyName;
     JSValueRef _functionPrototype = nullptr;
     JSObjectRef _errorConstructor = nullptr;
     JSObjectRef _emptyArrayBuffer = nullptr;
     JSObjectRef _weakRefConstructor = nullptr;
     JSObjectRef _weakRefDerefFunction = nullptr;
+    Valdi::JSValueRef _nativeClassDefineAccessor;
     bool _needGarbageCollect = false;
     bool _isGarbageCollecting = false;
     [[maybe_unused]] uint16_t _debuggerPort = 0;
@@ -205,6 +219,13 @@ private:
     Valdi::JSValueRef returnJSValueRef(const JSValueRef& value, JSType type);
 
     void storeException(Valdi::JSExceptionTracker& exceptionTracker, const JSValueRef& exception);
+
+    Valdi::JSValueRef newNativeClassFunction(const Valdi::Ref<NativeClassFunctionData>& functionData,
+                                             JSClassRef classRef,
+                                             std::string_view name,
+                                             Valdi::JSExceptionTracker& exceptionTracker);
+
+    static JSClassRef getNativeClassConstructorClassRef();
 };
 
 } // namespace ValdiJSCore

@@ -169,6 +169,18 @@ public:
         return JSValueRef();
     }
 
+    JSValueRef newNativeClass(const Ref<RefCountable>& classOpaque,
+                              const JSClassDefinition& classDefinition,
+                              JSExceptionTracker& exceptionTracker) override {
+        return JSValueRef();
+    }
+
+    JSValueRef newObjectFromNativeClass(const Ref<RefCountable>& opaque,
+                                        const JSValue& cls,
+                                        JSExceptionTracker& exceptionTracker) override {
+        return JSValueRef();
+    }
+
     JSValueRef newWeakRef(const JSValue& value, JSExceptionTracker& exceptionTracker) override {
         return JSValueRef();
     }

@@ -9,6 +9,7 @@
 
 #include "valdi/hermes/Hermes.hpp"
 #include "valdi/runtime/Interfaces/IJavaScriptContext.hpp"
+#include "valdi/runtime/JavaScript/JSNativeClassData.hpp"
 #include "valdi_core/cpp/Utils/ByteBuffer.hpp"
 
 namespace Valdi::Hermes {
@@ -86,9 +87,51 @@ public:
     ~JSFunctionData() override;
 };
 
+struct HermesNativeClassData final : public SimpleRefCountable {
+    HermesNativeClassData(HermesJavaScriptContext& jsContext, const Ref<JSNativeClassData>& nativeClass);
+    ~HermesNativeClassData() override;
+
+    HermesJavaScriptContext& jsContext;
+    Ref<JSNativeClassData> nativeClass;
+};
+
+struct HermesNativeClassFunctionData final : public SimpleRefCountable {
+    HermesNativeClassFunctionData(HermesJavaScriptContext& jsContext,
+                                  const Ref<JSNativeClassData>& nativeClass,
+                                  const StringBox& name);
+    ~HermesNativeClassFunctionData() override;
+
+    HermesJavaScriptContext& jsContext;
+    Ref<JSNativeClassData> nativeClass;
+    ReferenceInfo referenceInfo;
+    JSClassCallback callback = nullptr;
+};
+
+void freeNativeState(hermes::vm::GC& gc, hermes::vm::NativeState* nativeState);
+void freeContext(void* context);
+
+RefCountable* getOwnNativeStateContext(hermes::vm::Runtime& runtime,
+                                       hermes::vm::Handle<hermes::vm::JSObject> object);
+
+hermes::vm::ExecutionStatus setNativeState(hermes::vm::Runtime& runtime,
+                                           hermes::vm::Handle<hermes::vm::JSObject> object,
+                                           const Ref<RefCountable>& data);
+
 hermes::vm::CallResult<hermes::vm::HermesValue> callTrampoline(void* context,
                                                                hermes::vm::Runtime& runtime,
                                                                hermes::vm::NativeArgs args);
+
+hermes::vm::CallResult<hermes::vm::HermesValue> callNativeClassInstanceMember(
+    void* context, hermes::vm::Runtime& runtime, hermes::vm::NativeArgs args);
+
+hermes::vm::CallResult<hermes::vm::HermesValue> callNativeClassStaticMember(
+    void* context, hermes::vm::Runtime& runtime, hermes::vm::NativeArgs args);
+
+hermes::vm::CallResult<hermes::vm::HermesValue> callNativeClassConstructor(
+    void* context, hermes::vm::Runtime& runtime, hermes::vm::NativeArgs args);
+
+hermes::vm::CallResult<hermes::vm::PseudoHandle<hermes::vm::JSObject>> createNativeClassObject(
+    hermes::vm::Runtime& runtime, hermes::vm::Handle<hermes::vm::JSObject> prototype, void* context);
 
 class ByteBufferOStream : public llvh::raw_ostream {
     ByteBuffer& _output;

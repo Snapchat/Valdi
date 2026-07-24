@@ -11,6 +11,7 @@
 #include "utils/base/NonCopyable.hpp"
 #include "utils/platform/BuildOptions.hpp"
 #include "valdi/runtime/JavaScript/JSFunctionExportMode.hpp"
+#include "valdi/runtime/JavaScript/JSClassDefinition.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptLong.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptTypes.hpp"
 #include "valdi_core/cpp/Threading/DispatchQueue.hpp"
@@ -157,6 +158,8 @@ public:
     virtual JSValueRef newStringUTF8(const std::string_view& str, JSExceptionTracker& exceptionTracker) = 0;
     virtual JSValueRef newStringUTF16(const std::u16string_view& str, JSExceptionTracker& exceptionTracker) = 0;
 
+    JSValueRef newString(const StaticString& str, JSExceptionTracker& exceptionTracker);
+
     virtual JSValueRef newArray(size_t initialSize, JSExceptionTracker& exceptionTracker) = 0;
     virtual JSValueRef newArrayWithValues(const JSValue* values, size_t size, JSExceptionTracker& exceptionTracker);
 
@@ -170,6 +173,14 @@ public:
 
     virtual JSValueRef newWrappedObject(const Ref<RefCountable>& wrappedObject,
                                         JSExceptionTracker& exceptionTracker) = 0;
+
+    virtual JSValueRef newNativeClass(const Ref<RefCountable>& classOpaque,
+                                      const JSClassDefinition& classDefinition,
+                                      JSExceptionTracker& exceptionTracker) = 0;
+
+    virtual JSValueRef newObjectFromNativeClass(const Ref<RefCountable>& opaque,
+                                                const JSValue& cls,
+                                                JSExceptionTracker& exceptionTracker) = 0;
 
     virtual JSValueRef newWeakRef(const JSValue& object, JSExceptionTracker& exceptionTracker) = 0;
 

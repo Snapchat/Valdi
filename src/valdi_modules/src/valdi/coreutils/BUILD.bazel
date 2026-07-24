@@ -39,6 +39,7 @@ valdi_module(
     visibility = ["//visibility:public"],
     web_deps = [":coreutils_web"],
     web_register_native_module_id_overrides = {
+        "coreutils/web/Base64Native.js": "coreutils/src/Base64Native",
         "coreutils/web/UnicodeNative.js": "coreutils/src/UnicodeNative, coreutils/src/unicode/UnicodeNative",
     },
     deps = [

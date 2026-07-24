@@ -36,6 +36,7 @@ namespace ValdiTest {
 
 struct MockJavaScriptContextListener : public IJavaScriptContextListener {
     std::vector<Value> unhandledPromiseResults;
+    size_t interruptCount = 0;
 
     JSValueRef symbolicateError(const JSValueRef& jsError) override {
         return jsError;
@@ -57,7 +58,9 @@ struct MockJavaScriptContextListener : public IJavaScriptContextListener {
         exceptionTracker.clearError();
     }
 
-    void onInterrupt(IJavaScriptContext& jsContext) override {}
+    void onInterrupt(IJavaScriptContext& jsContext) override {
+        interruptCount++;
+    }
 };
 
 struct PropertyNamesVisitor : public IJavaScriptPropertyNamesVisitor {
@@ -281,6 +284,29 @@ TEST_P(JSContextFixture, canCreateUTF16String) {
     jsEntry.checkException();
 
     ASSERT_EQ(std::string("Hello World"), staticStringResult->toStdString());
+}
+
+TEST_P(JSContextFixture, canCreateStringFromStaticString) {
+    MAIN_THREAD_INIT();
+    auto wrapper = createWrapper();
+    auto jsEntry = wrapper.makeJsEntry();
+    auto& context = jsEntry.context;
+    auto& exceptionTracker = jsEntry.exceptionTracker;
+
+    auto utf8 = StaticString::makeUTF8("UTF8");
+    auto utf8Value = context.newString(*utf8, exceptionTracker);
+    ASSERT_EQ(STRING_LITERAL("UTF8"), context.valueToString(utf8Value.get(), exceptionTracker));
+
+    std::u16string utf16 = u"UTF16";
+    auto utf16Value =
+        context.newString(*StaticString::makeUTF16(utf16.data(), utf16.size()), exceptionTracker);
+    ASSERT_EQ(STRING_LITERAL("UTF16"), context.valueToString(utf16Value.get(), exceptionTracker));
+
+    std::u32string utf32 = U"UTF32";
+    auto utf32Value =
+        context.newString(*StaticString::makeUTF32(utf32.data(), utf32.size()), exceptionTracker);
+    ASSERT_EQ(STRING_LITERAL("UTF32"), context.valueToString(utf32Value.get(), exceptionTracker));
+    jsEntry.checkException();
 }
 
 TEST_P(JSContextFixture, canCreateBools) {
@@ -644,6 +670,350 @@ TEST_P(JSContextFixture, unwrapsJsTypedArray) {
 struct DummyObject : public Valdi::ValdiObject {
     VALDI_CLASS_HEADER_IMPL(DummyObject);
 };
+
+class NativeCounter final : public Valdi::SimpleRefCountable {
+public:
+    explicit NativeCounter(int32_t value) : value(value) {}
+
+    int32_t value;
+};
+
+class NativeCounterClass final : public Valdi::SimpleRefCountable {
+public:
+    int32_t constructorCalls = 0;
+    int32_t staticValue = 0;
+    int32_t multiplier = 2;
+};
+
+static Ref<RefCountable> constructNativeCounter(RefCountable* classOpaque,
+                                                JSFunctionNativeCallContext& callContext) noexcept {
+    auto value = callContext.getParameterAsInt(0);
+    if (!callContext.getExceptionTracker()) {
+        return nullptr;
+    }
+    static_cast<NativeCounterClass*>(classOpaque)->constructorCalls++;
+    return makeShared<NativeCounter>(value);
+}
+
+static JSValueRef addToNativeCounter(RefCountable* opaque, JSFunctionNativeCallContext& callContext) noexcept {
+    auto* counter = static_cast<NativeCounter*>(opaque);
+    counter->value += callContext.getParameterAsInt(0);
+    if (!callContext.getExceptionTracker()) {
+        return callContext.getContext().newUndefined();
+    }
+    return callContext.getContext().newNumber(counter->value);
+}
+
+static JSValueRef getNativeCounterValue(RefCountable* opaque, JSFunctionNativeCallContext& callContext) noexcept {
+    return callContext.getContext().newNumber(static_cast<NativeCounter*>(opaque)->value);
+}
+
+static JSValueRef setNativeCounterValue(RefCountable* opaque,
+                                        JSFunctionNativeCallContext& callContext) noexcept {
+    static_cast<NativeCounter*>(opaque)->value = callContext.getParameterAsInt(0);
+    return callContext.getContext().newUndefined();
+}
+
+static JSValueRef doubleNativeCounterValue(RefCountable* classOpaque,
+                                           JSFunctionNativeCallContext& callContext) noexcept {
+    auto value = callContext.getParameterAsInt(0);
+    if (!callContext.getExceptionTracker()) {
+        return callContext.getContext().newUndefined();
+    }
+    return callContext.getContext().newNumber(value * static_cast<NativeCounterClass*>(classOpaque)->multiplier);
+}
+
+static JSValueRef getNativeCounterStaticValue(RefCountable* classOpaque,
+                                              JSFunctionNativeCallContext& callContext) noexcept {
+    return callContext.getContext().newNumber(static_cast<NativeCounterClass*>(classOpaque)->staticValue);
+}
+
+static JSValueRef setNativeCounterStaticValue(RefCountable* classOpaque,
+                                              JSFunctionNativeCallContext& callContext) noexcept {
+    static_cast<NativeCounterClass*>(classOpaque)->staticValue = callContext.getParameterAsInt(0);
+    return callContext.getContext().newUndefined();
+}
+
+static JSClassDefinition makeNativeCounterClassDefinition(IJavaScriptContext& context,
+                                                          JSExceptionTracker& exceptionTracker,
+                                                          const StringBox& name,
+                                                          JSClassConstructorCallback constructor) {
+    JSClassDefinition definition(name, constructor);
+    definition
+        .appendInstanceEntry(JSClassEntry::method(STRING_LITERAL("add"), &addToNativeCounter))
+        .appendConstant(STRING_LITERAL("kind"), context.newStringUTF8("native-counter", exceptionTracker))
+        .appendAccessor(STRING_LITERAL("value"), &getNativeCounterValue, &setNativeCounterValue)
+        .appendClassEntry(JSClassEntry::method(STRING_LITERAL("twice"), &doubleNativeCounterValue))
+        .appendClassConstant(STRING_LITERAL("category"),
+                             context.newStringUTF8("counter-class", exceptionTracker))
+        .appendClassAccessor(
+            STRING_LITERAL("sharedValue"), &getNativeCounterStaticValue, &setNativeCounterStaticValue);
+    return definition;
+}
+
+struct NativeCounterTestValues {
+    Ref<NativeCounterClass> classOpaque;
+    Ref<NativeCounter> instanceOpaque;
+    JSValueRef cls;
+    JSValueRef instance;
+};
+
+static NativeCounterTestValues setUpNativeCounterTest(JSEntry& jsEntry,
+                                                      JSClassConstructorCallback constructor) {
+    auto& context = jsEntry.context;
+    auto& exceptionTracker = jsEntry.exceptionTracker;
+    auto classOpaque = makeShared<NativeCounterClass>();
+    auto classDefinition =
+        makeNativeCounterClassDefinition(context, exceptionTracker, STRING_LITERAL("NativeCounter"), constructor);
+    jsEntry.checkException();
+
+    auto cls = context.newNativeClass(classOpaque, classDefinition, exceptionTracker);
+    jsEntry.checkException();
+    auto instanceOpaque = makeShared<NativeCounter>(10);
+    auto instance = context.newObjectFromNativeClass(instanceOpaque, cls.get(), exceptionTracker);
+    jsEntry.checkException();
+
+    auto global = context.getGlobalObject(exceptionTracker);
+    context.setObjectProperty(global.get(), "NativeCounter", cls.get(), exceptionTracker);
+    context.setObjectProperty(global.get(), "nativeCounter", instance.get(), exceptionTracker);
+    jsEntry.checkException();
+
+    return NativeCounterTestValues{
+        std::move(classOpaque),
+        std::move(instanceOpaque),
+        std::move(cls),
+        std::move(instance),
+    };
+}
+
+static JSValueRef evaluateNativeCounterExpression(JSEntry& jsEntry, const char* source) {
+    auto value = jsEntry.context.evaluate(source, "NativeClassEntries.js", jsEntry.exceptionTracker);
+    jsEntry.checkException();
+    return value;
+}
+
+TEST_P(JSContextFixture, canCreateAndUseNativeClass) {
+    MAIN_THREAD_INIT();
+    auto wrapper = createWrapper();
+    auto jsEntry = wrapper.makeJsEntry();
+    auto& context = jsEntry.context;
+    auto& exceptionTracker = jsEntry.exceptionTracker;
+
+    auto values = setUpNativeCounterTest(jsEntry, &constructNativeCounter);
+    ASSERT_GT(values.classOpaque.use_count(), 1);
+    ASSERT_EQ(0, values.classOpaque->constructorCalls);
+    ASSERT_EQ(values.instanceOpaque,
+              castOrNull<NativeCounter>(context.valueToWrappedObject(values.instance.get(), exceptionTracker)));
+    jsEntry.checkException();
+
+    ASSERT_TRUE(context.valueToBool(
+        evaluateNativeCounterExpression(jsEntry, "nativeCounter instanceof NativeCounter").get(), exceptionTracker));
+    ASSERT_TRUE(context.valueToBool(
+        evaluateNativeCounterExpression(jsEntry, "nativeCounter.add === NativeCounter.prototype.add").get(),
+        exceptionTracker));
+    ASSERT_EQ(10,
+              context.valueToInt(
+                  evaluateNativeCounterExpression(jsEntry, "nativeCounter.value").get(), exceptionTracker));
+    ASSERT_EQ(15,
+              context.valueToInt(
+                  evaluateNativeCounterExpression(jsEntry, "nativeCounter.add(5)").get(), exceptionTracker));
+
+    evaluateNativeCounterExpression(jsEntry, "nativeCounter.value = 20");
+    ASSERT_EQ(20, values.instanceOpaque->value);
+    ASSERT_EQ(20,
+              context.valueToInt(
+                  evaluateNativeCounterExpression(jsEntry, "nativeCounter.value").get(), exceptionTracker));
+    ASSERT_EQ(STRING_LITERAL("native-counter"),
+              context.valueToString(
+                  evaluateNativeCounterExpression(jsEntry, "nativeCounter.kind").get(), exceptionTracker));
+
+    ASSERT_EQ(12,
+              context.valueToInt(
+                  evaluateNativeCounterExpression(jsEntry, "NativeCounter.twice(6)").get(), exceptionTracker));
+    ASSERT_EQ(STRING_LITERAL("counter-class"),
+              context.valueToString(
+                  evaluateNativeCounterExpression(jsEntry, "NativeCounter.category").get(), exceptionTracker));
+
+    evaluateNativeCounterExpression(jsEntry, "NativeCounter.sharedValue = 9");
+    ASSERT_EQ(9, values.classOpaque->staticValue);
+    ASSERT_EQ(9,
+              context.valueToInt(
+                  evaluateNativeCounterExpression(jsEntry, "NativeCounter.sharedValue").get(), exceptionTracker));
+
+    auto constructed =
+        context.evaluate("globalThis.constructedNativeCounter = new NativeCounter(4); constructedNativeCounter",
+                         "NativeClassConstructor.js",
+                         exceptionTracker);
+    jsEntry.checkException();
+    ASSERT_EQ(1, values.classOpaque->constructorCalls);
+    auto constructedCounter =
+        castOrNull<NativeCounter>(context.valueToWrappedObject(constructed.get(), exceptionTracker));
+    jsEntry.checkException();
+    ASSERT_NE(nullptr, constructedCounter);
+    ASSERT_EQ(4, constructedCounter->value);
+
+    RefCountableAutoreleasePool autoreleasePool;
+    auto lifetimeCounter = makeShared<NativeCounter>(1);
+    {
+        auto lifetimeObject = context.ensureRetainedValue(
+            context.newObjectFromNativeClass(lifetimeCounter, values.cls.get(), exceptionTracker));
+        jsEntry.checkException();
+        autoreleasePool.releaseAll();
+        ASSERT_EQ(2, lifetimeCounter.use_count());
+    }
+    context.garbageCollect();
+    autoreleasePool.releaseAll();
+    ASSERT_EQ(1, lifetimeCounter.use_count());
+}
+
+TEST_P(JSContextFixture, nativeClassEntriesHaveExpectedDescriptors) {
+    MAIN_THREAD_INIT();
+    auto wrapper = createWrapper();
+    auto jsEntry = wrapper.makeJsEntry();
+    auto& context = jsEntry.context;
+    auto& exceptionTracker = jsEntry.exceptionTracker;
+    setUpNativeCounterTest(jsEntry, nullptr);
+
+    ASSERT_FALSE(context.valueToBool(
+        evaluateNativeCounterExpression(
+            jsEntry, "Object.getOwnPropertyDescriptor(NativeCounter.prototype, 'add').enumerable")
+            .get(),
+        exceptionTracker));
+    ASSERT_TRUE(context.valueToBool(
+        evaluateNativeCounterExpression(
+            jsEntry, "Object.getOwnPropertyDescriptor(NativeCounter.prototype, 'add').writable")
+            .get(),
+        exceptionTracker));
+    ASSERT_TRUE(context.valueToBool(
+        evaluateNativeCounterExpression(
+            jsEntry, "Object.getOwnPropertyDescriptor(NativeCounter.prototype, 'add').configurable")
+            .get(),
+        exceptionTracker));
+    ASSERT_FALSE(context.valueToBool(
+        evaluateNativeCounterExpression(
+            jsEntry, "Object.getOwnPropertyDescriptor(NativeCounter.prototype, 'kind').writable")
+            .get(),
+        exceptionTracker));
+    ASSERT_FALSE(context.valueToBool(
+        evaluateNativeCounterExpression(
+            jsEntry, "Object.getOwnPropertyDescriptor(NativeCounter.prototype, 'kind').configurable")
+            .get(),
+        exceptionTracker));
+    ASSERT_FALSE(context.valueToBool(
+        evaluateNativeCounterExpression(
+            jsEntry, "Object.getOwnPropertyDescriptor(NativeCounter.prototype, 'value').enumerable")
+            .get(),
+        exceptionTracker));
+    ASSERT_TRUE(context.valueToBool(
+        evaluateNativeCounterExpression(
+            jsEntry, "Object.getOwnPropertyDescriptor(NativeCounter.prototype, 'value').configurable")
+            .get(),
+        exceptionTracker));
+    jsEntry.checkException();
+}
+
+TEST_P(JSContextFixture, nativeClassMethodsCannotBeExportedAsNativeFunctions) {
+    MAIN_THREAD_INIT();
+    auto wrapper = createWrapper();
+    auto jsEntry = wrapper.makeJsEntry();
+    auto& context = jsEntry.context;
+    auto& exceptionTracker = jsEntry.exceptionTracker;
+    setUpNativeCounterTest(jsEntry, nullptr);
+
+    auto method = evaluateNativeCounterExpression(jsEntry, "NativeCounter.prototype.add");
+    ASSERT_EQ(nullptr, context.valueToFunction(method.get(), exceptionTracker));
+    jsEntry.checkException();
+}
+
+TEST_P(JSContextFixture, nativeClassCallbacksDeliverInterrupts) {
+    MAIN_THREAD_INIT();
+    auto wrapper = createWrapper();
+    auto jsEntry = wrapper.makeJsEntry();
+    auto& context = jsEntry.context;
+    auto& exceptionTracker = jsEntry.exceptionTracker;
+    auto values = setUpNativeCounterTest(jsEntry, &constructNativeCounter);
+    MockJavaScriptContextListener listener;
+    context.setListener(&listener);
+
+    auto argument = context.newNumber(1);
+
+    auto instanceMethod = evaluateNativeCounterExpression(jsEntry, "NativeCounter.prototype.add");
+    JSFunctionCallContext instanceCallContext(context, &argument, 1, exceptionTracker);
+    instanceCallContext.setThisValue(values.instance.get());
+    context.requestInterrupt();
+    context.callObjectAsFunction(instanceMethod.get(), instanceCallContext);
+    jsEntry.checkException();
+    ASSERT_EQ(1, listener.interruptCount);
+
+    auto classMethod = evaluateNativeCounterExpression(jsEntry, "NativeCounter.twice");
+    JSFunctionCallContext classCallContext(context, &argument, 1, exceptionTracker);
+    classCallContext.setThisValue(values.cls.get());
+    context.requestInterrupt();
+    context.callObjectAsFunction(classMethod.get(), classCallContext);
+    jsEntry.checkException();
+    ASSERT_EQ(2, listener.interruptCount);
+
+    JSFunctionCallContext constructorCallContext(context, &argument, 1, exceptionTracker);
+    context.requestInterrupt();
+    context.callObjectAsConstructor(values.cls.get(), constructorCallContext);
+    jsEntry.checkException();
+    ASSERT_EQ(3, listener.interruptCount);
+
+    context.setListener(nullptr);
+}
+
+TEST_P(JSContextFixture, nativeClassRejectsInvalidUsage) {
+    MAIN_THREAD_INIT();
+    auto wrapper = createWrapper();
+    auto jsEntry = wrapper.makeJsEntry();
+    auto& context = jsEntry.context;
+    auto& exceptionTracker = jsEntry.exceptionTracker;
+    setUpNativeCounterTest(jsEntry, &constructNativeCounter);
+
+    auto otherDefinition = makeNativeCounterClassDefinition(
+        context, exceptionTracker, STRING_LITERAL("OtherNativeCounter"), nullptr);
+    auto otherClassOpaque = makeShared<NativeCounterClass>();
+    auto otherClass = context.newNativeClass(otherClassOpaque, otherDefinition, exceptionTracker);
+    auto otherCounter = makeShared<NativeCounter>(3);
+    auto otherObject = context.newObjectFromNativeClass(otherCounter, otherClass.get(), exceptionTracker);
+    auto global = context.getGlobalObject(exceptionTracker);
+    context.setObjectProperty(global.get(), "OtherNativeCounter", otherClass.get(), exceptionTracker);
+    context.setObjectProperty(global.get(), "otherNativeCounter", otherObject.get(), exceptionTracker);
+    jsEntry.checkException();
+
+    ASSERT_TRUE(context.valueToBool(
+        evaluateNativeCounterExpression(
+            jsEntry,
+            "(() => { try { NativeCounter(); return false; } "
+            "catch (error) { return error instanceof Error; } })()")
+            .get(),
+        exceptionTracker));
+    // JavaScriptCore's native constructor callback does not expose new.target, so it cannot detect this case.
+    if (!isJSCore()) {
+        ASSERT_TRUE(context.valueToBool(
+            evaluateNativeCounterExpression(
+                jsEntry,
+                "(() => { try { class Child extends NativeCounter {}; new Child(1); return false; } "
+                "catch (error) { return error instanceof Error; } })()")
+                .get(),
+            exceptionTracker));
+    }
+    ASSERT_TRUE(context.valueToBool(
+        evaluateNativeCounterExpression(
+            jsEntry,
+            "(() => { try { NativeCounter.prototype.add.call(otherNativeCounter, 1); return false; } "
+            "catch (error) { return error instanceof Error; } })()")
+            .get(),
+        exceptionTracker));
+    ASSERT_TRUE(context.valueToBool(
+        evaluateNativeCounterExpression(
+            jsEntry,
+            "(() => { try { new OtherNativeCounter(); return false; } "
+            "catch (error) { return error instanceof Error; } })()")
+            .get(),
+        exceptionTracker));
+    jsEntry.checkException();
+}
 
 TEST_P(JSContextFixture, canCreateWrappedObject) {
     SKIP_IF_V8("Ticket: 2255");

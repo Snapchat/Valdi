@@ -47,6 +47,21 @@ describe('File System Module', () => {
     expect(resultFromFileRemove).toBeTrue();
   });
 
+  it('should write Uint8Array content', () => {
+    const fileName = `${VALDI_MODULES_ROOT}/file_system/test/write_uint8_array_test_file.txt`;
+    const source = new Uint8Array([120, 116, 101, 115, 116, 32, 100, 97, 116, 97, 121]);
+    const fileContent = source.subarray(1, source.length - 1);
+
+    fs.writeFileSync(fileName, fileContent);
+    try {
+      const result = fs.readFileSync(fileName, { encoding: 'utf8' });
+
+      expect(result).toEqual('test data');
+    } finally {
+      fs.removeSync(fileName);
+    }
+  });
+
   it('should get current root directory for client repository', () => {
     expect(() => fs.currentWorkingDirectory()).not.toThrow();
   });

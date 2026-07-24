@@ -1,4 +1,6 @@
-import { symbolicate } from '../Symbolicator';
+import { lazyImport } from '../LazyImport';
+
+const Symbolicator = lazyImport<typeof import('../Symbolicator')>(require, '../Symbolicator');
 
 export function toCamelCase(snakeCaseString: string): string {
   const components = snakeCaseString.split('_');
@@ -109,7 +111,7 @@ function stringifyInner(
     return `<date ${object.toISOString()}/>`;
   }
   if (object instanceof Error) {
-    const symbolicatedError = symbolicate(object);
+    const symbolicatedError = Symbolicator.get.symbolicate(object);
     let errorString = `${symbolicatedError.name}:${symbolicatedError.message}`;
 
     if (symbolicatedError.stack) {

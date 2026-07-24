@@ -7,13 +7,12 @@
 
 #include "valdi/runtime/JavaScript/Modules/UnicodeModuleFactory.hpp"
 
-#include "valdi/runtime/JavaScript/JSFunctionWithMethod.hpp"
+#include "valdi/runtime/JavaScript/JSNativeClassBinder.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptFunctionCallContext.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptTypes.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptUtils.hpp"
 #include "valdi/runtime/Resources/ResourceManager.hpp"
 
-#include "valdi/runtime/JavaScript/JSFunctionWithCallable.hpp"
 #include "valdi/runtime/Text/Emoji.hpp"
 #include "valdi_core/cpp/Text/UTF16Utils.hpp"
 #include "valdi_core/cpp/Utils/ByteBuffer.hpp"
@@ -320,20 +319,14 @@ static ProcessedUnicodeString processUnicodeString(const uint32_t* data,
     return output;
 }
 
-JSValueRef UnicodeModuleFactory::strToCodepoints(JSFunctionNativeCallContext& callContext) {
-    auto str = callContext.getParameterAsStaticString(0);
-    CHECK_CALL_CONTEXT(callContext);
-
-    auto normalize = callContext.getParameterAsBool(1);
-    CHECK_CALL_CONTEXT(callContext);
-
-    auto includeCategorization = !callContext.getParameterAsBool(2);
-    CHECK_CALL_CONTEXT(callContext);
-
+JSValueRef UnicodeModuleFactory::strToCodepoints(const Ref<StaticString>& str,
+                                                 bool normalize,
+                                                 bool disableCategorization,
+                                                 JSFunctionNativeCallContext& callContext) {
     auto utf32Storage = str->utf32Storage();
 
     auto processedString = processUnicodeString(
-        reinterpret_cast<const uint32_t*>(utf32Storage.data), utf32Storage.length, normalize, includeCategorization);
+        reinterpret_cast<const uint32_t*>(utf32Storage.data), utf32Storage.length, normalize, !disableCategorization);
 
     auto bufferJs = callContext.getContext().newArrayBuffer(processedString.buffer->toBytesView(),
                                                             callContext.getExceptionTracker());
@@ -355,20 +348,14 @@ static JSValueRef newStringFromUtf32(JSFunctionNativeCallContext& callContext,
                                                    callContext.getExceptionTracker());
 }
 
-JSValueRef UnicodeModuleFactory::codepointsToStr(JSFunctionNativeCallContext& callContext) {
+JSValueRef UnicodeModuleFactory::codepointsToStr(JSValue codepoints,
+                                                 bool normalize,
+                                                 bool disableCategorization,
+                                                 JSFunctionNativeCallContext& callContext) {
     static auto kStr = STRING_LITERAL("str");
     static auto kBuffer = STRING_LITERAL("buffer");
 
-    auto codepointsJs = callContext.getParameter(0);
-    CHECK_CALL_CONTEXT(callContext);
-
-    auto arrayLength = jsArrayGetLength(callContext.getContext(), codepointsJs, callContext.getExceptionTracker());
-    CHECK_CALL_CONTEXT(callContext);
-
-    auto normalize = callContext.getParameterAsBool(1);
-    CHECK_CALL_CONTEXT(callContext);
-
-    auto includeCategorization = !callContext.getParameterAsBool(2);
+    auto arrayLength = jsArrayGetLength(callContext.getContext(), codepoints, callContext.getExceptionTracker());
     CHECK_CALL_CONTEXT(callContext);
 
     auto flagsJs = callContext.getContext().newArray(arrayLength, callContext.getExceptionTracker());
@@ -379,7 +366,7 @@ JSValueRef UnicodeModuleFactory::codepointsToStr(JSFunctionNativeCallContext& ca
 
     for (size_t i = 0; i < arrayLength; i++) {
         auto codepointJs =
-            callContext.getContext().getObjectPropertyForIndex(codepointsJs, i, callContext.getExceptionTracker());
+            callContext.getContext().getObjectPropertyForIndex(codepoints, i, callContext.getExceptionTracker());
         CHECK_CALL_CONTEXT(callContext);
 
         auto codepoint = callContext.getContext().valueToInt(codepointJs.get(), callContext.getExceptionTracker());
@@ -389,7 +376,7 @@ JSValueRef UnicodeModuleFactory::codepointsToStr(JSFunctionNativeCallContext& ca
     }
 
     auto processedString =
-        processUnicodeString(allCodepoints.data(), allCodepoints.size(), normalize, includeCategorization);
+        processUnicodeString(allCodepoints.data(), allCodepoints.size(), normalize, !disableCategorization);
 
     auto bufferJs = callContext.getContext().newArrayBuffer(processedString.buffer->toBytesView(),
                                                             callContext.getExceptionTracker());
@@ -420,13 +407,10 @@ static JSValueRef throwInvalidEncoding(JSFunctionNativeCallContext& callContext)
     return callContext.throwError(Error("Invalid encoding"));
 }
 
-JSValueRef UnicodeModuleFactory::encodeString(JSFunctionNativeCallContext& callContext) {
-    auto str = callContext.getParameterAsStaticString(0);
-    CHECK_CALL_CONTEXT(callContext);
-    auto encoding = static_cast<TextEncoding>(callContext.getParameterAsInt(1));
-    CHECK_CALL_CONTEXT(callContext);
-
-    switch (encoding) {
+JSValueRef UnicodeModuleFactory::encodeString(const Ref<StaticString>& str,
+                                              int32_t encoding,
+                                              JSFunctionNativeCallContext& callContext) {
+    switch (static_cast<TextEncoding>(encoding)) {
         case TextEncoding::UTF8: {
             auto storage = str->utf8Storage();
             return callContext.getContext().newArrayBufferCopy(
@@ -447,13 +431,10 @@ JSValueRef UnicodeModuleFactory::encodeString(JSFunctionNativeCallContext& callC
     }
 }
 
-JSValueRef UnicodeModuleFactory::decodeIntoString(JSFunctionNativeCallContext& callContext) {
-    auto buffer = callContext.getParameterAsTypedArray(0);
-    CHECK_CALL_CONTEXT(callContext);
-    auto encoding = static_cast<TextEncoding>(callContext.getParameterAsInt(1));
-    CHECK_CALL_CONTEXT(callContext);
-
-    switch (encoding) {
+JSValueRef UnicodeModuleFactory::decodeIntoString(const JSTypedArray& buffer,
+                                                  int32_t encoding,
+                                                  JSFunctionNativeCallContext& callContext) {
+    switch (static_cast<TextEncoding>(encoding)) {
         case TextEncoding::UTF8:
             return callContext.getContext().newStringUTF8(
                 std::string_view(reinterpret_cast<const char*>(buffer.data), buffer.length),
@@ -473,38 +454,17 @@ JSValueRef UnicodeModuleFactory::decodeIntoString(JSFunctionNativeCallContext& c
 }
 
 JSValueRef UnicodeModuleFactory::loadModule(IJavaScriptContext& jsContext,
-                                            const ReferenceInfoBuilder& referenceInfoBuilder,
+                                            const ReferenceInfoBuilder& /*referenceInfoBuilder*/,
                                             JSExceptionTracker& exceptionTracker) {
-    auto module = jsContext.newObject(exceptionTracker);
-    if (!exceptionTracker) {
-        return JSValueRef();
-    }
+    auto definition =
+        JSNativeClassBinder<UnicodeModuleFactory>("UnicodeNative")
+            .bindClassMethod<&UnicodeModuleFactory::strToCodepoints>("strToCodepoints", true, true, true)
+            .bindClassMethod<&UnicodeModuleFactory::codepointsToStr>("codepointsToStr", true, true, true)
+            .bindClassMethod<&UnicodeModuleFactory::encodeString>("encodeString", true, true, true)
+            .bindClassMethod<&UnicodeModuleFactory::decodeIntoString>("decodeIntoString", true, true, true)
+            .extractClassDefinition();
 
-    auto functions = std::vector({
-        std::make_pair("strToCodepoints", &UnicodeModuleFactory::strToCodepoints),
-        std::make_pair("codepointsToStr", &UnicodeModuleFactory::codepointsToStr),
-        std::make_pair("encodeString", &UnicodeModuleFactory::encodeString),
-        std::make_pair("decodeIntoString", &UnicodeModuleFactory::decodeIntoString),
-    });
-
-    for (const auto& function : functions) {
-        auto functionName = StringCache::getGlobal().makeString(std::string_view(function.first));
-
-        auto jsFunction = jsContext.newFunction(
-            makeShared<JSFunctionWithCallable>(ReferenceInfoBuilder().withProperty(functionName), function.second),
-            exceptionTracker);
-        if (!exceptionTracker) {
-            return JSValueRef();
-        }
-
-        jsContext.setObjectProperty(module.get(), std::string_view(function.first), jsFunction.get(), exceptionTracker);
-
-        if (!exceptionTracker) {
-            return JSValueRef();
-        }
-    }
-
-    return module;
+    return jsContext.newNativeClass(nullptr, definition, exceptionTracker);
 }
 
 } // namespace Valdi
