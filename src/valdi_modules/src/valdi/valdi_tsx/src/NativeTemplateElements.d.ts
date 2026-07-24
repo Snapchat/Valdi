@@ -977,19 +977,38 @@ interface ViewAttributes {
 
   /**
    * Specifies the horizontal translation component of the affine transformation to be applied to the view.
+   * Numeric values are points. Percent strings (for example, "50%") resolve against the view's own calculated width.
    *
-   * NOTE: When the device is in RTL mode, the applied translationX value will be flipped
+   * NOTE: When the device is in RTL mode, the resolved translationX value will be flipped.
    *
    * @see transform for the order in which the transformations are applied
    */
-  translationX?: number;
+  translationX?: number | string;
 
   /**
    * Specifies the vertical translation component of the affine transformation to be applied to the view.
+   * Numeric values are points. Percent strings (for example, "-50%") resolve against the view's own calculated height.
    *
    * @see transform for the order in which the transformations are applied
    */
-  translationY?: number;
+  translationY?: number | string;
+
+  /**
+   * Specifies the origin used for scale and rotation transforms.
+   * Supports CSS-like keywords (for example, "center" or "top left"), point values (for example, "50px 70px"),
+   * and percent values (for example, "25% 75%"). 3D transform origins are not supported.
+   */
+  transformOrigin?: string;
+
+  /**
+   * Specifies a CSS-like transform string.
+   * Supports translate(), translateX(), translateY(), scale(), scaleX(), scaleY(), rotate(), and rotateZ().
+   *
+   * When set, this value overrides the individual transform attributes (translationX, translationY, scaleX,
+   * scaleY, and rotation). It does not compose with those values. transformOrigin still applies to the resolved
+   * transform.
+   */
+  transform?: string;
 
   /**
    * Sets the view's accessibility identifier.

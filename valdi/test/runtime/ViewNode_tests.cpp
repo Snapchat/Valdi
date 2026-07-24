@@ -585,6 +585,89 @@ TEST(ViewNode, canCalculateViewportWithTranslateInRTL) {
     ASSERT_EQ(Frame(24, 0, 76, 77), child->getCalculatedViewport());
 }
 
+TEST(ViewNode, canResolvePercentTranslations) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createRootView();
+    auto child = utils.createView();
+
+    root->appendChild(utils.getViewTransactionScope(), child);
+
+    utils.setViewNodeFrame(child, 20, 20, 100, 80);
+    utils.setViewNodeAttribute(child, "translationX", Value(STRING_LITERAL("50%")));
+    utils.setViewNodeAttribute(child, "translationY", Value(STRING_LITERAL("-50%")));
+
+    root->performLayout(utils.getViewTransactionScope(), Size(100, 100), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_FLOAT_EQ(50.0f, child->getTranslationX());
+    ASSERT_FLOAT_EQ(50.0f, child->getDirectionDependentTranslationX());
+    ASSERT_FLOAT_EQ(-40.0f, child->getTranslationY());
+}
+
+TEST(ViewNode, flipsResolvedPercentTranslationXInRTL) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createRootView();
+    auto child = utils.createView();
+
+    root->appendChild(utils.getViewTransactionScope(), child);
+
+    utils.setViewNodeFrame(child, 20, 20, 100, 100);
+    utils.setViewNodeAttribute(child, "translationX", Value(STRING_LITERAL("50%")));
+
+    root->performLayout(utils.getViewTransactionScope(), Size(100, 100), LayoutDirectionRTL);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_FLOAT_EQ(50.0f, child->getTranslationX());
+    ASSERT_FLOAT_EQ(-50.0f, child->getDirectionDependentTranslationX());
+}
+
+TEST(ViewNode, canCalculateViewportWithPercentTranslate) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createRootView();
+    auto child = utils.createView();
+
+    root->appendChild(utils.getViewTransactionScope(), child);
+
+    utils.setViewNodeFrame(child, 20, 20, 100, 100);
+    utils.setViewNodeAttribute(child, "translationX", Value(STRING_LITERAL("50%")));
+    utils.setViewNodeAttribute(child, "translationY", Value(STRING_LITERAL("50%")));
+
+    root->performLayout(utils.getViewTransactionScope(), Size(100, 100), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(child->isVisibleInViewport());
+    ASSERT_EQ(Frame(0, 0, 30, 30), child->getCalculatedViewport());
+}
+
+TEST(ViewNode, updatesPercentTranslateWhenFrameSizeChanges) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createRootView();
+    auto child = utils.createView();
+
+    root->appendChild(utils.getViewTransactionScope(), child);
+
+    utils.setViewNodeFrame(child, 20, 20, 40, 40);
+    utils.setViewNodeAttribute(child, "translationX", Value(STRING_LITERAL("50%")));
+
+    root->performLayout(utils.getViewTransactionScope(), Size(100, 100), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_FLOAT_EQ(20.0f, child->getTranslationX());
+    ASSERT_EQ(Frame(0, 0, 40, 40), child->getCalculatedViewport());
+
+    utils.setViewNodeAttribute(child, "width", Value(120.0));
+
+    root->performLayout(utils.getViewTransactionScope(), Size(100, 100), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_FLOAT_EQ(60.0f, child->getTranslationX());
+    ASSERT_EQ(Frame(0, 0, 20, 40), child->getCalculatedViewport());
+}
+
 TEST(ViewNode, canUseUserDefinedViewport) {
     ViewNodeTestsDependencies utils;
 
@@ -651,8 +734,8 @@ TEST(ViewNode, canExtendViewportWithChildren) {
 
     utils.setViewNodeFrame(container, 0, 0, 100, 100);
     utils.setViewNodeFrame(child, 100, 100, 50, 50);
-    child->setTranslationX(10);
-    child->setTranslationY(20);
+    child->setTranslationX(10, false);
+    child->setTranslationY(20, false);
 
     root->appendChild(utils.getViewTransactionScope(), container);
     container->appendChild(utils.getViewTransactionScope(), child);
@@ -2222,6 +2305,43 @@ TEST(ViewNode, invalidateChildrenIndexerWhenTranslateChanges) {
     ASSERT_TRUE(root->getChildrenIndexer()->needsUpdate());
 }
 
+TEST(ViewNode, childrenIndexerUsesUpdatedPercentTranslateAfterFrameSizeChanges) {
+    ViewNodeTestsDependencies utils;
+
+    auto root = utils.createRootView();
+
+    std::vector<Ref<ViewNode>> children;
+    for (size_t i = 0; i < kMaxChildrenBeforeIndexing + 1; i++) {
+        auto newChild = utils.createView();
+        utils.setViewNodeFrame(newChild, 0, static_cast<double>(i) * 20, 20, 20);
+        root->appendChild(utils.getViewTransactionScope(), newChild);
+
+        // Put them in an array as we currently don't retain children automatically.
+        // The ViewNodeTree is responsible for retaining the nodes.
+        children.emplace_back(std::move(newChild));
+    }
+
+    auto translatedChild = children[6];
+    utils.setViewNodeAttribute(translatedChild, "translationY", Value(STRING_LITERAL("-50%")));
+
+    root->performLayout(utils.getViewTransactionScope(), Size(100, 100), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_TRUE(root->getChildrenIndexer() != nullptr);
+    ASSERT_FALSE(root->getChildrenIndexer()->needsUpdate());
+    ASSERT_FALSE(translatedChild->isVisibleInViewport());
+    ASSERT_FLOAT_EQ(-10.0f, translatedChild->getTranslationY());
+
+    utils.setViewNodeAttribute(translatedChild, "height", Value(60.0));
+
+    root->performLayout(utils.getViewTransactionScope(), Size(100, 100), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+
+    ASSERT_FALSE(root->getChildrenIndexer()->needsUpdate());
+    ASSERT_TRUE(translatedChild->isVisibleInViewport());
+    ASSERT_FLOAT_EQ(-30.0f, translatedChild->getTranslationY());
+}
+
 TEST(ViewNode, childrenAreUpdatedWhenTheyConsumeNoSpaceInChildrenIndexer) {
     ViewNodeTestsDependencies utils;
 
@@ -2525,8 +2645,8 @@ TEST(ViewNode, canResolveVisualPoints) {
     root->appendChild(utils.getViewTransactionScope(), mainContainer);
     mainContainer->appendChild(utils.getViewTransactionScope(), scrollContainer);
 
-    mainContainer->setTranslationX(5);
-    mainContainer->setTranslationY(3);
+    mainContainer->setTranslationX(5, false);
+    mainContainer->setTranslationY(3, false);
 
     std::vector<Ref<ViewNode>> items;
     std::vector<Ref<ViewNode>> nesteds;
@@ -2942,8 +3062,8 @@ TEST(ViewNode, handlesLimitToViewportDisabledOnInvisibleParentLayout) {
 
     view->setLimitToViewport(LimitToViewportDisabled);
 
-    scrollChild->setTranslationX(9999999);
-    scroll->setTranslationX(200);
+    scrollChild->setTranslationX(9999999, false);
+    scroll->setTranslationX(200, false);
 
     root->performLayout(utils.getViewTransactionScope(), Size(100, 100), LayoutDirectionLTR);
     root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
@@ -2959,7 +3079,7 @@ TEST(ViewNode, handlesLimitToViewportDisabledOnInvisibleParentLayout) {
     // The view should not have a parent, since there are no available parents before it
     ASSERT_FALSE(view->isIncludedInViewParent());
 
-    scroll->setTranslationX(0);
+    scroll->setTranslationX(0, false);
     root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
 
     ASSERT_TRUE(container->isVisibleInViewport());

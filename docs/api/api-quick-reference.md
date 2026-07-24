@@ -96,6 +96,7 @@ accessibilityCategory="button"
   rotation={0.5}  // radians
   translationX={10}
   translationY={10}
+  transformOrigin="top left"
 >
   {/* children */}
 </view>

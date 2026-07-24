@@ -57,6 +57,10 @@ struct AttributeContext;
                                   __parts__,                                                                           \
                                   __MAKE_SIMPLE_ATTRIBUTE__(__viewClass__, __attribute__, makeUntypedAttribute))
 
+#define BIND_TRANSFORM_ATTRIBUTES(__viewClass__, __attribute__)                                                        \
+    __MAKE_ATTRIBUTE_CONSTANT(__attribute__);                                                                          \
+    binder.bindTransformAttributes(__MAKE_SIMPLE_ATTRIBUTE__(__viewClass__, __attribute__, makeUntypedAttribute))
+
 #define BIND_BORDER_ATTRIBUTE(__viewClass__, __attribute__, invalidateLayoutOnChange)                                  \
     __BIND_ATTRIBUTE__(__viewClass__, __attribute__, invalidateLayoutOnChange, Border)
 

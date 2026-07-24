@@ -286,101 +286,56 @@ class ViewAttributesBinder(private val context: Context,
         }
     }
 
-    private fun reapplyTranslationXIfNeeded(view: View, value: Float) {
-        val translationX = ViewUtils.resolveDeltaX(view, value)
-        val valueAnimator = ViewUtils.getTransitionInfo(view)?.getValueAnimator(TRANSLATION_X_KEY)
-
-        if (valueAnimator == null) {
-            view.translationX = translationX
-        } else if (valueAnimator.valueAnimation.additionalData != translationX) {
-            ViewUtils.cancelAnimation(view, TRANSLATION_X_KEY)
-            view.translationX = translationX
+    fun applyTransform(view: View, value: Any?, animator: ValdiAnimator?) {
+        if (value !is Array<*> || value.size != 5) {
+            throw AttributeError("transform components should have 5 entries")
         }
-    }
 
-    fun applyTranslationX(view: View, value: Float, animator: ValdiAnimator?) {
-        val resolvedValue = coordinateResolver.toPixelF(value)
-        val resolvedTranslationX = ViewUtils.resolveDeltaX(view, resolvedValue)
-
-        if (value != 0.0f) {
-            ViewUtils.setDidFinishLayoutForKey(view, "translationX") {
-                reapplyTranslationXIfNeeded(it, resolvedValue)
-            }
-        } else {
-            ViewUtils.removeDidFinishLayoutForKey(view, "translationX")
-        }
+        val translationX = coordinateResolver.toPixelF((value[0] as? Number)?.toDouble() ?: 0.0)
+        val translationY = coordinateResolver.toPixelF((value[1] as? Number)?.toDouble() ?: 0.0)
+        val scaleX = (value[2] as? Number)?.toFloat() ?: 1.0f
+        val scaleY = (value[3] as? Number)?.toFloat() ?: 1.0f
+        val rotation = Math.toDegrees(((value[4] as? Number)?.toDouble() ?: 0.0)).toFloat()
 
         setTransformElement(view,
-                resolvedTranslationX,
+                translationX,
                 animator,
                 TRANSLATION_X_KEY,
                 { translationX },
-                { translationX = it },
+                { view.translationX = it },
                 ValdiValueAnimation.MinimumVisibleChange.PIXEL)
-    }
-
-    fun resetTranslationX(view: View, animator: ValdiAnimator?) {
-        applyTranslationX(view, 0.0f, animator)
-    }
-
-    fun applyTranslationY(view: View, value: Float, animator: ValdiAnimator?) {
-        val resolvedValue = coordinateResolver.toPixelF(value)
         setTransformElement(view,
-            resolvedValue,
-            animator,
-            TRANSLATION_Y_KEY,
-            { translationY },
-            { translationY = it },
-            ValdiValueAnimation.MinimumVisibleChange.PIXEL)
-    }
-
-    fun resetTranslationY(view: View, animator: ValdiAnimator?) {
-        applyTranslationY(view, 0.0f, animator)
-    }
-
-    fun applyScaleX(view: View, value: Float, animator: ValdiAnimator?) {
+                translationY,
+                animator,
+                TRANSLATION_Y_KEY,
+                { translationY },
+                { view.translationY = it },
+                ValdiValueAnimation.MinimumVisibleChange.PIXEL)
         setTransformElement(view,
-            value,
-            animator,
-            SCALE_X_KEY,
-            { scaleX },
-            { scaleX = it },
-            ValdiValueAnimation.MinimumVisibleChange.SCALE_RATIO)
-    }
-
-    fun resetScaleX(view: View, animator: ValdiAnimator?) {
-        applyScaleX(view, 1.0f, animator)
-    }
-
-    fun applyScaleY(view: View, value: Float, animator: ValdiAnimator?) {
+                scaleX,
+                animator,
+                SCALE_X_KEY,
+                { scaleX },
+                { view.scaleX = it },
+                ValdiValueAnimation.MinimumVisibleChange.SCALE_RATIO)
         setTransformElement(view,
-            value,
-            animator,
-            SCALE_Y_KEY,
-            { scaleY },
-            { scaleY = it },
-            ValdiValueAnimation.MinimumVisibleChange.SCALE_RATIO)
-    }
-
-    fun resetScaleY(view: View, animator: ValdiAnimator?) {
-        applyScaleY(view, 1.0f, animator)
-    }
-
-    fun applyRotation(view: View, value: Float, animator: ValdiAnimator?) {
-        val radianValue = ViewUtils.resolveDeltaX(view, value)
-        val resolvedValue = Math.toDegrees(radianValue.toDouble()).toFloat()
-
+                scaleY,
+                animator,
+                SCALE_Y_KEY,
+                { scaleY },
+                { view.scaleY = it },
+                ValdiValueAnimation.MinimumVisibleChange.SCALE_RATIO)
         setTransformElement(view,
-            resolvedValue,
-            animator,
-            ROTATION_KEY,
-            { rotation },
-            { rotation = it },
-            ValdiValueAnimation.MinimumVisibleChange.ROTATION_DEGREES_ANGLE)
+                rotation,
+                animator,
+                ROTATION_KEY,
+                { rotation },
+                { view.rotation = it },
+                ValdiValueAnimation.MinimumVisibleChange.ROTATION_DEGREES_ANGLE)
     }
 
-    fun resetRotation(view: View, animator: ValdiAnimator?) {
-        applyRotation(view, 0.0f, animator)
+    fun resetTransform(view: View, animator: ValdiAnimator?) {
+        applyTransform(view, arrayOf(0.0, 0.0, 1.0, 1.0, 0.0), animator)
     }
 
     private fun getResourceIdForGeneratedValdiId(value: String): Int {
@@ -610,11 +565,7 @@ class ViewAttributesBinder(private val context: Context,
                 CompositeAttributePart("borderColor", AttributeType.COLOR, true, false)
         ), this::applyBorderComposite, this::resetBorder)
 
-        attributesBindingContext.bindFloatAttribute("translationX", false, this::applyTranslationX, this::resetTranslationX)
-        attributesBindingContext.bindFloatAttribute("translationY", false, this::applyTranslationY, this::resetTranslationY)
-        attributesBindingContext.bindFloatAttribute("scaleX", false, this::applyScaleX, this::resetScaleX)
-        attributesBindingContext.bindFloatAttribute("scaleY", false, this::applyScaleY, this::resetScaleY)
-        attributesBindingContext.bindFloatAttribute("rotation", false, this::applyRotation, this::resetRotation)
+        attributesBindingContext.bindTransformAttributes(this::applyTransform, this::resetTransform)
 
         attributesBindingContext.bindUntypedAttribute("maskPath", false, this::applyMaskPath, this::resetMaskPath)
         attributesBindingContext.bindFloatAttribute("maskOpacity", false, this::applyMaskOpacity, this::resetMaskOpacity)

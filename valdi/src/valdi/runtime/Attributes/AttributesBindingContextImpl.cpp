@@ -17,6 +17,7 @@
 #include "valdi/runtime/Attributes/CompositeAttribute.hpp"
 #include "valdi/runtime/Attributes/ScrollAttributes.hpp"
 #include "valdi/runtime/Attributes/TextAttributeValueParser.hpp"
+#include "valdi/runtime/Attributes/TransformAttributes.hpp"
 #include "valdi/runtime/Attributes/ValueConverters.hpp"
 #include "valdi/runtime/Views/MeasureDelegate.hpp"
 
@@ -204,6 +205,21 @@ AttributeId AttributesBindingContextImpl::bindCompositeAttribute(
                                               true,
                                               compositeAttribute->shouldInvalidateLayoutOnChange());
 
+    return attributeId;
+}
+
+AttributeId AttributesBindingContextImpl::bindTransformAttributes(const Ref<AttributeHandlerDelegate>& delegate) {
+    std::vector<snap::valdi_core::CompositeAttributePart> parts;
+    parts.emplace_back(STRING_LITERAL("transformOrigin"), snap::valdi_core::AttributeType::String, true, false);
+    parts.emplace_back(STRING_LITERAL("transform"), snap::valdi_core::AttributeType::String, true, false);
+    parts.emplace_back(STRING_LITERAL("translationX"), snap::valdi_core::AttributeType::Untyped, true, false);
+    parts.emplace_back(STRING_LITERAL("translationY"), snap::valdi_core::AttributeType::Untyped, true, false);
+    parts.emplace_back(STRING_LITERAL("scaleX"), snap::valdi_core::AttributeType::Double, true, false);
+    parts.emplace_back(STRING_LITERAL("scaleY"), snap::valdi_core::AttributeType::Double, true, false);
+    parts.emplace_back(STRING_LITERAL("rotation"), snap::valdi_core::AttributeType::Double, true, false);
+
+    auto attributeId = bindCompositeAttribute(STRING_LITERAL("transformComposite"), parts, delegate);
+    _handlers[attributeId].appendPostprocessor(&TransformAttributes::postprocessViewNode);
     return attributeId;
 }
 

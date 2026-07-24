@@ -416,6 +416,10 @@ jint AttributesBindingContextWrapper::bindAttributes(
     return static_cast<jint>(attributeId);
 }
 
+void AttributesBindingContextWrapper::bindTransformAttributes(jobject delegate) {
+    _bindingContext.bindTransformAttributes(Valdi::makeShared<ObjectAttributeHandlerDelegate>(delegate));
+}
+
 void AttributesBindingContextWrapper::bindScrollAttributes() {
     _bindingContext.bindScrollAttributes();
 }

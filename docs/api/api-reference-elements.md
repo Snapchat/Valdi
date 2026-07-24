@@ -526,12 +526,19 @@ All properties from [Layout](#layout), plus:
 **`rotation`**: `number`
 - Specifies the rotation component in angle radians of the affine transformation to be applied to the view.
 
-**`translationX`**: `number`
+**`translationX`**: `number | string`
 - Specifies the horizontal translation component of the affine transformation to be applied to the view.
-- Note: When the device is in RTL mode, the applied translationX value will be flipped.
+- Numeric values are points. Percent strings such as `"50%"` resolve against the view's own calculated width.
+- Note: When the device is in RTL mode, the resolved translationX value will be flipped.
 
-**`translationY`**: `number`
+**`translationY`**: `number | string`
 - Specifies the vertical translation component of the affine transformation to be applied to the view.
+- Numeric values are points. Percent strings such as `"-50%"` resolve against the view's own calculated height.
+
+**`transformOrigin`**: `string`
+- Specifies the origin used for scale and rotation transforms.
+- Supports keywords such as `"center"` and `"top left"`, point pairs such as `"50px 70px"`, and percent pairs such as `"25% 75%"`.
+- 3D transform origins are not supported.
 
 #### Mask Properties
 

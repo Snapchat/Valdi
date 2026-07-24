@@ -16,7 +16,14 @@ AttributeContext::AttributeContext(const Valdi::Ref<Valdi::Animator>& animator, 
     : animator(Valdi::castOrNull<ValdiAnimator>(animator != nullptr ? animator->getNativeAnimator() : nullptr)),
       attributeName(attributeName) {}
 
+AttributeContext::AttributeContext(const Valdi::Shared<ValdiAnimator>& animator, const Valdi::StringBox& attributeName)
+    : animator(animator), attributeName(attributeName) {}
+
 AttributeContext::~AttributeContext() = default;
+
+AttributeContext AttributeContext::withAttributeName(const Valdi::StringBox& attributeName) const {
+    return AttributeContext(animator, attributeName);
+}
 
 class SnapDrawingAttributeHandlerDelegate : public Valdi::ViewAttributeHandlerDelegate {
 public:

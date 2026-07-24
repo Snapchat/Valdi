@@ -1041,30 +1041,26 @@ static void SCValdiDetermineCornerRadiusMethod(CGFloat topLeftRadius, CGFloat to
                                     [view valdi_resetOnTouchGestures];
                                  }];
 
-    [attributesBinder bindCompositeAttribute:@"transform"
-        parts:[self _valdiTransformComponents]
-        withUntypedBlock:^BOOL(__kindof UIView *view, id attributeValue, id<SCValdiAnimatorProtocol> animator) {
+    [attributesBinder bindTransformAttributesWithUntypedBlock:^BOOL(__kindof UIView *view, id attributeValue, id<SCValdiAnimatorProtocol> animator) {
             NSArray *attributeValueArray = ObjectAs(attributeValue, NSArray);
             if (attributeValueArray.count != 5) {
                 return NO;
             }
 
-            id<SCValdiViewNodeProtocol> viewNode = view.valdiViewNode;
-
-            CGFloat translationX = [viewNode resolveDeltaX:ObjectAs(attributeValueArray[0], NSNumber).doubleValue directionAgnostic:NO];
-            CGFloat translationY = ObjectAs(attributeValueArray[1], NSNumber).doubleValue;
+            CGFloat translationX = (ObjectAs(attributeValueArray[0], NSNumber) ?: @(0.0)).doubleValue;
+            CGFloat translationY = (ObjectAs(attributeValueArray[1], NSNumber) ?: @(0.0)).doubleValue;
 
             CGFloat scaleX = (ObjectAs(attributeValueArray[2], NSNumber) ?: @(1.0)).doubleValue;
             CGFloat scaleY = (ObjectAs(attributeValueArray[3], NSNumber) ?: @(1.0)).doubleValue;
 
-            CGFloat rotation = [viewNode resolveDeltaX:ObjectAs(attributeValueArray[4], NSNumber).doubleValue directionAgnostic:NO];
+            CGFloat rotation = (ObjectAs(attributeValueArray[4], NSNumber) ?: @(0.0)).doubleValue;
 
             return [view valdi_setTranslationX:translationX
-                                     translationY:translationY
-                                           scaleX:scaleX
-                                           scaleY:scaleY
-                                         rotation:rotation
-                                         animator:animator];
+                                  translationY:translationY
+                                        scaleX:scaleX
+                                        scaleY:scaleY
+                                      rotation:rotation
+                                      animator:animator];
         }
         resetBlock:^(__kindof UIView *view, id<SCValdiAnimatorProtocol> animator) {
             [view valdi_setTranslationX:0 translationY:0 scaleX:1.0 scaleY:1.0 rotation:0.0 animator:animator];
@@ -1086,32 +1082,6 @@ static void SCValdiDetermineCornerRadiusMethod(CGFloat topLeftRadius, CGFloat to
         resetBlock:^(__kindof UIView *view) {
             view.valdiHitTest = nil;
         }];
-}
-
-+ (NSArray<SCNValdiCoreCompositeAttributePart *> *)_valdiTransformComponents
-{
-    return @[
-        [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:@"translationX"
-                                                                type:SCNValdiCoreAttributeTypeDouble
-                                                            optional:YES
-                                            invalidateLayoutOnChange:NO],
-        [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:@"translationY"
-                                                                type:SCNValdiCoreAttributeTypeDouble
-                                                            optional:YES
-                                            invalidateLayoutOnChange:NO],
-        [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:@"scaleX"
-                                                                type:SCNValdiCoreAttributeTypeDouble
-                                                            optional:YES
-                                            invalidateLayoutOnChange:NO],
-        [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:@"scaleY"
-                                                                type:SCNValdiCoreAttributeTypeDouble
-                                                            optional:YES
-                                            invalidateLayoutOnChange:NO],
-        [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:@"rotation"
-                                                                type:SCNValdiCoreAttributeTypeDouble
-                                                            optional:YES
-                                            invalidateLayoutOnChange:NO],
-    ];
 }
 
 + (NSArray<SCNValdiCoreCompositeAttributePart *> *)_valdiTouchAreaExtensionComponents

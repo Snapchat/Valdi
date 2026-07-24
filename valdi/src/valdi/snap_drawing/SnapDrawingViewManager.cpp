@@ -253,6 +253,11 @@ public:
             attribute, parts, Valdi::makeShared<BridgeAttributeHandlerDelegate>(delegate, _hostViewManager));
     }
 
+    Valdi::AttributeId bindTransformAttributes(const Valdi::Ref<Valdi::AttributeHandlerDelegate>& delegate) override {
+        return _sourceBinder.bindTransformAttributes(
+            Valdi::makeShared<BridgeAttributeHandlerDelegate>(delegate, _hostViewManager));
+    }
+
     void setDefaultDelegate(const Valdi::Ref<Valdi::AttributeHandlerDelegate>& delegate) override {}
 
     void setMeasureDelegate(const Valdi::Ref<Valdi::MeasureDelegate>& measureDelegate) override {
