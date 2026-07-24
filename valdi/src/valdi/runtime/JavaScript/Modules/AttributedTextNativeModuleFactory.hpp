@@ -5,20 +5,20 @@
 
 namespace Valdi {
 
-class ColorPalette;
+class ColorPaletteManager;
 class ILogger;
 class ValueFunctionCallContext;
 
 class AttributedTextNativeModuleFactory : public Valdi::SharedPtrRefCountable, public snap::valdi_core::ModuleFactory {
 public:
-    AttributedTextNativeModuleFactory(const Ref<ColorPalette>& colorPalette, ILogger& logger);
+    AttributedTextNativeModuleFactory(const Ref<ColorPaletteManager>& colorPaletteManager, ILogger& logger);
     ~AttributedTextNativeModuleFactory() override;
 
     StringBox getModulePath() override;
     Value loadModule() override;
 
 private:
-    Ref<ColorPalette> _colorPalette;
+    Ref<ColorPaletteManager> _colorPaletteManager;
     ILogger& _logger;
 
     Value makeNativeAttributedText(const ValueFunctionCallContext& callContext) const;

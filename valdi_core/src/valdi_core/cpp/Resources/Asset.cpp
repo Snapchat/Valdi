@@ -13,6 +13,11 @@ Asset::Asset() = default;
 
 Asset::~Asset() = default;
 
+AssetConfiguration::AssetConfiguration(Ref<ColorPalette> colorPalette,
+                                       std::optional<PlatformType> platformType,
+                                       std::optional<bool> rightToLeft)
+    : colorPalette(std::move(colorPalette)), platformType(platformType), rightToLeft(rightToLeft) {}
+
 bool Asset::needResolve() const {
     return !getResolvedLocation().has_value();
 }
@@ -44,11 +49,7 @@ StringBox Asset::getResolvedURL() const {
     return resolvedLocation.value().getUrl();
 }
 
-Ref<Asset> Asset::withDirection(bool /*rightToLeft*/) {
-    return strongSmallRef(this);
-}
-
-Ref<Asset> Asset::withPlatform(PlatformType /*platformType*/) {
+Ref<Asset> Asset::withConfiguration(const AssetConfiguration& /*configuration*/) {
     return strongSmallRef(this);
 }
 

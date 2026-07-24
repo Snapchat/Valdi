@@ -1865,9 +1865,10 @@ jlong ValdiAndroid::NativeBridge::createViewFactory( // NOLINT
     auto attributes = viewManagerContext->getAttributesManager().getAttributesForClass(cppViewClassName);
 
     if (hasBindAttributes == JNI_TRUE) {
-        Valdi::AttributesBindingContextImpl bindingContext(viewManagerContext->getAttributesManager().getAttributeIds(),
-                                                           viewManagerContext->getAttributesManager().getColorPalette(),
-                                                           runtimeManagerWrapper->getRuntimeManager().getLogger());
+        Valdi::AttributesBindingContextImpl bindingContext(
+            viewManagerContext->getAttributesManager().getAttributeIds(),
+            viewManagerContext->getAttributesManager().getColorPaletteManager(),
+            runtimeManagerWrapper->getRuntimeManager().getLogger());
 
         auto wrapper = Valdi::makeShared<AttributesBindingContextWrapper>(androidViewManager, bindingContext);
         auto ptr = reinterpret_cast<int64_t>(Valdi::unsafeBridgeCast(wrapper.get()));

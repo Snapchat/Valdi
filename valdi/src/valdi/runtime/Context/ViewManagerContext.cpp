@@ -15,13 +15,13 @@ namespace Valdi {
 
 ViewManagerContext::ViewManagerContext(IViewManager& viewManager,
                                        AttributeIds& attributeIds,
-                                       const Ref<ColorPalette>& colorPalette,
+                                       const Ref<ColorPaletteManager>& colorPaletteManager,
                                        const Shared<YGConfig>& yogaConfig,
                                        bool enablePreloading,
                                        const Ref<MainThreadManager>& mainThreadManager,
                                        ILogger& logger)
     : _viewManager(viewManager),
-      _attributesManager(viewManager, attributeIds, colorPalette, logger, yogaConfig),
+      _attributesManager(viewManager, attributeIds, colorPaletteManager, logger, yogaConfig),
       _mainThreadManager(mainThreadManager) {
     Valdi::registerDefaultProcessors(_attributesManager);
 

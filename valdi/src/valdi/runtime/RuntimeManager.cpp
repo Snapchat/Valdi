@@ -127,7 +127,7 @@ RuntimeManager::RuntimeManager(const Ref<IMainThreadDispatcher>& mainThreadDispa
       _diskCache(diskCache),
       _keychain(std::move(keychain)),
       _runtimeMessageHandler(runtimeMessageHandler),
-      _colorPalette(makeShared<ColorPalette>()),
+      _colorPaletteManager(makeShared<ColorPaletteManager>()),
       _platformType(platformType),
       _jsThreadQoS(jsThreadQoS),
       _debuggerServiceEnabled(_debuggerService != nullptr) {
@@ -138,7 +138,7 @@ RuntimeManager::RuntimeManager(const Ref<IMainThreadDispatcher>& mainThreadDispa
         _anrDetector->setListener(makeShared<ANRDetectorListener>(runtimeMessageHandler));
     }
 
-    _colorPalette->setListener(this);
+    _colorPaletteManager->setListener(this);
 }
 
 RuntimeManager::~RuntimeManager() {
@@ -185,7 +185,7 @@ SharedRuntime RuntimeManager::createRuntime(const Shared<IResourceLoader>& resou
                                               resourceLoader,
                                               _assetLoaderManager,
                                               _requestManager,
-                                              _colorPalette,
+                                              _colorPaletteManager,
                                               _diskCache,
                                               _yogaConfig,
                                               _runtimeMessageHandler,
@@ -260,7 +260,7 @@ Ref<ViewManagerContext> RuntimeManager::createViewManagerContext(
     auto viewManagerContext = makeShared<ViewManagerContext>(
         viewManager,
         _attributeIds,
-        _colorPalette,
+        _colorPaletteManager,
         _yogaConfig,
         enablePreloading,
         mainThreadManagerOverride != nullptr ? mainThreadManagerOverride : _mainThreadManager,
@@ -459,60 +459,28 @@ void RuntimeManager::setApplicationId(const StringBox& applicationId) {
     }
 }
 
-void RuntimeManager::onColorPaletteUpdated(const ColorPalette& /*colorPalette*/) {
-    FlatSet<AttributeId> attributesToReapply;
-
-    // Clear the cache for all color attributes
-    for (const auto& viewManagerContext : _viewManagerContexts) {
-        for (const auto& it : viewManagerContext->getAttributesManager().getAllBoundAttributes()) {
-            for (const auto& handlerIt : it.second->getHandlers()) {
-                auto* handler = it.second->getAttributeHandlerForId(handlerIt.first);
-
-                if (handler->shouldReevaluateOnColorPaletteChange()) {
-                    handler->clearPreprocessorCache();
-                    attributesToReapply.insert(handlerIt.first);
-                }
-            }
-        }
-    }
-
-    // Reapply all the color attributes
-    auto allAttributes = makeShared<std::vector<AttributeId>>();
-    allAttributes->insert(allAttributes->end(), attributesToReapply.begin(), attributesToReapply.end());
-
+void RuntimeManager::onColorPaletteManagerUpdated(const ColorPaletteManager& colorPaletteManager,
+                                                  const ColorPalette& colorPalette,
+                                                  bool activeColorPaletteChanged) {
 #if VALDI_DEBUG_TREE_UPDATES
-    std::string applyTrigger = "apply_attributes";
-    if (!_viewManagerContexts.empty() && !attributesToReapply.empty()) {
-        const auto& attributeIds = _viewManagerContexts.front()->getAttributesManager().getAttributeIds();
-        std::string names;
-        size_t count = 0;
-        constexpr size_t kMaxNames = 12;
-        constexpr size_t kMaxLen = 80;
-        for (AttributeId id : attributesToReapply) {
-            if (count >= kMaxNames || (count > 0 && names.size() >= kMaxLen)) {
-                names += ",...";
-                break;
-            }
-            if (count != 0) {
-                names += ",";
-            }
-            names += attributeIds.getNameForId(id).slowToString();
-            ++count;
-        }
-        if (!names.empty()) {
-            applyTrigger += ":";
-            applyTrigger += names;
-        }
-    }
+    std::string applyTrigger = "apply_color_attributes";
 
     for (const auto& runtime : getAllRuntimes()) {
         for (const auto& tree : runtime->getViewNodeTreeManager().getAllRootViewNodeTrees()) {
             tree->scheduleExclusiveUpdate(
-                [treePtr = tree.get(), allAttributes]() {
+                [treePtr = tree.get(),
+                 colorPaletteRef = activeColorPaletteChanged ? colorPaletteManager.getActiveColorPalette() : nullptr,
+                 colorPalettePtr = &colorPalette,
+                 activeColorPaletteChanged]() {
                     auto rootViewNode = treePtr->getRootViewNode();
                     if (rootViewNode != nullptr) {
-                        rootViewNode->reapplyAttributesRecursive(
-                            treePtr->getCurrentViewTransactionScope(), *allAttributes, false);
+                        if (activeColorPaletteChanged) {
+                            rootViewNode->setInheritedColorPalette(treePtr->getCurrentViewTransactionScope(),
+                                                                   colorPaletteRef);
+                        } else {
+                            rootViewNode->onColorPaletteMutated(treePtr->getCurrentViewTransactionScope(),
+                                                                *colorPalettePtr);
+                        }
                     }
                 },
                 Valdi::DispatchFunction(),
@@ -523,11 +491,19 @@ void RuntimeManager::onColorPaletteUpdated(const ColorPalette& /*colorPalette*/)
     for (const auto& runtime : getAllRuntimes()) {
         for (const auto& tree : runtime->getViewNodeTreeManager().getAllRootViewNodeTrees()) {
             tree->scheduleExclusiveUpdate(
-                [treePtr = tree.get(), allAttributes]() {
+                [treePtr = tree.get(),
+                 colorPaletteRef = activeColorPaletteChanged ? colorPaletteManager.getActiveColorPalette() : nullptr,
+                 colorPalettePtr = &colorPalette,
+                 activeColorPaletteChanged]() {
                     auto rootViewNode = treePtr->getRootViewNode();
                     if (rootViewNode != nullptr) {
-                        rootViewNode->reapplyAttributesRecursive(
-                            treePtr->getCurrentViewTransactionScope(), *allAttributes, false);
+                        if (activeColorPaletteChanged) {
+                            rootViewNode->setInheritedColorPalette(treePtr->getCurrentViewTransactionScope(),
+                                                                   colorPaletteRef);
+                        } else {
+                            rootViewNode->onColorPaletteMutated(treePtr->getCurrentViewTransactionScope(),
+                                                                *colorPalettePtr);
+                        }
                     }
                 },
                 Valdi::DispatchFunction());

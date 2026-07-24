@@ -76,6 +76,11 @@ interface LayoutAttributes {
   lazyLayout?: boolean;
 
   /**
+   * Overrides the configured color palette for this element and descendants.
+   */
+  colorPaletteName?: string;
+
+  /**
    * @experimental This feature is experimental and may change in future releases.
    *
    * Scroll anchor position for this element within the nearest parent scroll view.

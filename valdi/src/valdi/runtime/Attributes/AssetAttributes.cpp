@@ -46,7 +46,10 @@ public:
             return Size();
         }
 
-        asset = asset->withDirection(isRightToLeft);
+        asset = asset->withConfiguration(AssetConfiguration(nullptr, std::nullopt, isRightToLeft));
+        if (asset == nullptr) {
+            return Size();
+        }
 
         double maxWidth = widthMode == MeasureMode::MeasureModeUnspecified ? -1 : static_cast<double>(width);
         double maxHeight = heightMode == MeasureMode::MeasureModeUnspecified ? -1 : static_cast<double>(height);
@@ -89,8 +92,8 @@ public:
                 if (!result) {
                     return result.moveError();
                 }
-                asset = result.value()->withPlatform(viewNode.getPlatformType());
-                asset = asset->withDirection(viewNode.isRightToLeft());
+                asset = result.value()->withConfiguration(AssetConfiguration(
+                    viewNode.getResolvedColorPalette(), viewNode.getPlatformType(), viewNode.isRightToLeft()));
             }
 
             setAsset(viewTransactionScope, viewNode, view, asset, callback, associatedData, flipOnRtl);
@@ -233,8 +236,12 @@ void AssetAttributes::bind(AttributeHandlerById& attributes, Ref<MeasureDelegate
                                   makeShared<AssetSrcAttributeHandlerDelegate>(_assetOutputType),
                                   true);
 
+    auto& srcOnLoadHandler = attributes[_attributeIds.getIdForName(srcOnLoad)];
+    srcOnLoadHandler.setShouldReevaluateOnColorPaletteChange(true);
+
     auto& srcHandler = attributes[srcAttributeId];
     srcHandler.appendPostprocessor(postprocessAsset);
+    srcHandler.setShouldReevaluateOnColorPaletteChange(true);
 
     if (_assetOutputType != snap::valdi_core::AssetOutputType::Lottie) {
         auto& filterHandler = attributes[filterAttributeId];

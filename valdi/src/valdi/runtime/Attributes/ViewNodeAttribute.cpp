@@ -21,7 +21,8 @@ ViewNodeAttribute::ViewNodeAttribute(const AttributeHandler* handler)
     : _handler(handler),
       _handlerNeedsView(handler->requiresView()),
       _handlerCanAffectLayout(handler->shouldInvalidateLayoutOnChange()),
-      _handlerIsCompositePart(handler->isCompositePart()) {}
+      _handlerIsCompositePart(handler->isCompositePart()),
+      _handlerShouldReevaluateOnColorChange(handler->shouldReevaluateOnColorPaletteChange()) {}
 
 ViewNodeAttribute::~ViewNodeAttribute() {
     if (_hasSingleAttribute) {
@@ -327,6 +328,10 @@ bool ViewNodeAttribute::isCompositePart() const {
     return _handlerIsCompositePart;
 }
 
+bool ViewNodeAttribute::shouldReevaluateOnColorChange() const {
+    return _handlerShouldReevaluateOnColorChange;
+}
+
 const CompositeAttribute* ViewNodeAttribute::getCompositeAttribute() const {
     return _handler->getCompositeAttribute().get();
 }
@@ -432,6 +437,10 @@ void ViewNodeAttribute::markDirty() {
     }
 }
 
+void ViewNodeAttribute::markAppliedValueDirty() {
+    _appliedValueDirty = true;
+}
+
 Ref<ViewNodeAttribute> ViewNodeAttribute::copy() {
     auto copy = makeShared<ViewNodeAttribute>(_handler);
 
@@ -452,6 +461,7 @@ void ViewNodeAttribute::setHandler(const AttributeHandler* handler) {
     _handlerNeedsView = handler->requiresView();
     _handlerCanAffectLayout = handler->shouldInvalidateLayoutOnChange();
     _handlerIsCompositePart = handler->isCompositePart();
+    _handlerShouldReevaluateOnColorChange = handler->shouldReevaluateOnColorPaletteChange();
 }
 
 } // namespace Valdi

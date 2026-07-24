@@ -21,7 +21,9 @@ class ILogger;
 
 class AttributesBindingContextImpl : public AttributesBindingContext {
 public:
-    AttributesBindingContextImpl(AttributeIds& attributeIds, const Ref<ColorPalette>& colorPalette, ILogger& logger);
+    AttributesBindingContextImpl(AttributeIds& attributeIds,
+                                 const Ref<ColorPaletteManager>& colorPaletteManager,
+                                 ILogger& logger);
     ~AttributesBindingContextImpl() override;
 
     void registerPreprocessor(const Valdi::StringBox& attribute,
@@ -83,7 +85,7 @@ public:
 
 private:
     AttributeIds& _attributeIds;
-    Ref<ColorPalette> _colorPalette;
+    Ref<ColorPaletteManager> _colorPaletteManager;
     ILogger& _logger;
     AttributeHandlerById _handlers;
     Ref<AttributeHandlerDelegate> _defaultDelegate;

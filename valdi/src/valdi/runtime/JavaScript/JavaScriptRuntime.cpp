@@ -28,6 +28,7 @@
 #include "valdi/runtime/JavaScript/ValueFunctionWithJSValue.hpp"
 #include "valdi/runtime/Resources/DirectionalAsset.hpp"
 #include "valdi/runtime/Resources/PlatformSpecificAsset.hpp"
+#include "valdi/runtime/Resources/ThemableAsset.hpp"
 #include "valdi/runtime/ValdiRuntimeTweaks.hpp"
 #include "valdi_core/JSRuntimeNativeObjectsManager.hpp"
 #include "valdi_core/cpp/Constants.hpp"
@@ -1813,6 +1814,31 @@ JSValueRef JavaScriptRuntime::runtimeMakePlatformSpecificAsset(JSFunctionNativeC
     return makeWrappedObject(callContext.getContext(), asset, callContext.getExceptionTracker(), false);
 }
 
+JSValueRef JavaScriptRuntime::runtimeMakeThemableAsset(JSFunctionNativeCallContext& callContext) {
+    auto assetsByColorPaletteValue = callContext.getParameterAsValue(0);
+    CHECK_CALL_CONTEXT(callContext);
+
+    auto assetsByColorPaletteMap = assetsByColorPaletteValue.getMapRef();
+    if (assetsByColorPaletteMap == nullptr || assetsByColorPaletteMap->empty()) {
+        return callContext.throwError(Error("Invalid themable assets object specified"));
+    }
+
+    FlatMap<StringBox, Ref<Asset>> assetsByColorPalette;
+    for (const auto& assetByColorPalette : *assetsByColorPaletteMap) {
+        auto asset = AssetResolver::resolve(_resourceManager, assetByColorPalette.second);
+        if (asset == nullptr) {
+            return callContext.throwError(
+                Error("Themable assets can only be created from URL or Valdi assets"));
+        }
+
+        assetsByColorPalette[assetByColorPalette.first] = asset;
+    }
+
+    auto asset = makeShared<ThemableAsset>(std::move(assetsByColorPalette));
+
+    return makeWrappedObject(callContext.getContext(), asset, callContext.getExceptionTracker(), false);
+}
+
 JSValueRef JavaScriptRuntime::runtimeGetLoadedAssetMetadata(JSFunctionNativeCallContext& callContext) {
     auto loadedAsset = castOrNull<LoadedAsset>(callContext.getParameterAsWrappedObject(0));
     CHECK_CALL_CONTEXT(callContext);
@@ -1937,16 +1963,35 @@ JSValueRef JavaScriptRuntime::runtimeGetAssets(JSFunctionNativeCallContext& call
     return assetsArray;
 }
 
-JSValueRef JavaScriptRuntime::runtimeSetColorPalette(JSFunctionNativeCallContext& callContext) {
+JSValueRef JavaScriptRuntime::runtimeConfigureColorPalette(JSFunctionNativeCallContext& callContext) {
     if (!_isWorker) {
-        auto colorPaletteMap = callContext.getParameterAsValue(0);
+        auto name = callContext.getParameterAsString(0);
+        CHECK_CALL_CONTEXT(callContext);
+        auto colorPaletteMap = callContext.getParameterAsValue(1);
         CHECK_CALL_CONTEXT(callContext);
 
-        dispatchOnMainThread([weakSelf = weakRef(this), colorPaletteMap = std::move(colorPaletteMap)]() {
+        dispatchOnMainThread([weakSelf = weakRef(this), name, colorPaletteMap = std::move(colorPaletteMap)]() {
             auto self = weakSelf.lock();
             if (self != nullptr) {
                 if (auto listener = self->getListener()) {
-                    listener->updateColorPalette(colorPaletteMap);
+                    listener->configureColorPalette(name, colorPaletteMap);
+                }
+            }
+        });
+    }
+    return callContext.getContext().newUndefined();
+}
+
+JSValueRef JavaScriptRuntime::runtimeSetActiveColorPalette(JSFunctionNativeCallContext& callContext) {
+    if (!_isWorker) {
+        auto name = callContext.getParameterAsString(0);
+        CHECK_CALL_CONTEXT(callContext);
+
+        dispatchOnMainThread([weakSelf = weakRef(this), name]() {
+            auto self = weakSelf.lock();
+            if (self != nullptr) {
+                if (auto listener = self->getListener()) {
+                    listener->setActiveColorPalette(name);
                 }
             }
         });
@@ -2425,8 +2470,10 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
 
     JS_BIND(context, exceptionTracker, runtimeObject, "makeDirectionalAsset", runtimeMakeDirectionalAsset);
     JS_BIND(context, exceptionTracker, runtimeObject, "makePlatformSpecificAsset", runtimeMakePlatformSpecificAsset);
+    JS_BIND(context, exceptionTracker, runtimeObject, "makeThemableAsset", runtimeMakeThemableAsset);
     JS_BIND(context, exceptionTracker, runtimeObject, "getLoadedAssetMetadata", runtimeGetLoadedAssetMetadata);
-    JS_BIND(context, exceptionTracker, runtimeObject, "setColorPalette", runtimeSetColorPalette);
+    JS_BIND(context, exceptionTracker, runtimeObject, "configureColorPalette", runtimeConfigureColorPalette);
+    JS_BIND(context, exceptionTracker, runtimeObject, "setActiveColorPalette", runtimeSetActiveColorPalette);
     JS_BIND(context, exceptionTracker, runtimeObject, "onMainThreadIdle", runtimeOnMainThreadIdle);
     JS_BIND(context, exceptionTracker, runtimeObject, "createWorker", runtimeCreateWorker);
 

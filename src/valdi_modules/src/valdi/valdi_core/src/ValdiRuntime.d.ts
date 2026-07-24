@@ -2,7 +2,7 @@ import { RuntimeBase } from 'coreutils/src/RuntimeBase';
 import { ElementFrame } from 'valdi_tsx/src/Geometry';
 import { NativeNode } from 'valdi_tsx/src/NativeNode';
 import { NativeView } from 'valdi_tsx/src/NativeView';
-import { Asset, PlatformAssetOverrides } from './Asset';
+import { Asset, PlatformAssetOverrides, ThemableAssetMap } from './Asset';
 import { ElementId } from './IRenderedElement';
 import { IRootComponentsManager } from './IRootComponentsManager';
 import { RenderRequest } from './RenderRequest';
@@ -163,6 +163,7 @@ export interface ValdiRuntime extends RuntimeBase {
   makeAssetFromBytes(bytes: ArrayBuffer | Uint8Array): Asset;
   makeDirectionalAsset(ltrAsset: string | Asset, rtlAsset: string | Asset): Asset;
   makePlatformSpecificAsset(defaultAsset: string | Asset, platformAssetOverrides: PlatformAssetOverrides): Asset;
+  makeThemableAsset(assetsByColorPalette: ThemableAssetMap): Asset;
   getAssets(catalogPath: string): AssetEntry[];
   addAssetLoadObserver(
     asset: string | Asset,
@@ -173,7 +174,8 @@ export interface ValdiRuntime extends RuntimeBase {
   ): () => void;
   getLoadedAssetMetadata(loadedAsset: LoadedAsset): LoadedAssetMetadata | undefined;
 
-  setColorPalette(colorPalette: ColorPalette): void;
+  configureColorPalette(name: string, colorPalette: ColorPalette): void;
+  setActiveColorPalette(name: string): void;
 
   outputLog(type: number, content: string): void;
 

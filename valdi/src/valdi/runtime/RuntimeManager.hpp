@@ -61,7 +61,7 @@ public:
     virtual void onRuntimeCreated(Runtime& runtime) = 0;
 };
 
-class RuntimeManager : public ValdiObject, protected ColorPaletteListener {
+class RuntimeManager : public ValdiObject, protected ColorPaletteManagerListener {
 public:
     RuntimeManager(const Ref<IMainThreadDispatcher>& mainThreadDispatcher,
                    IJavaScriptBridge* jsBridge,
@@ -163,7 +163,9 @@ public:
     VALDI_CLASS_HEADER(RuntimeManager)
 
 protected:
-    void onColorPaletteUpdated(const ColorPalette& colorPalette) override;
+    void onColorPaletteManagerUpdated(const ColorPaletteManager& colorPaletteManager,
+                                      const ColorPalette& colorPalette,
+                                      bool activeColorPaletteChanged) override;
 
 private:
     std::shared_ptr<MetricsStopWatch> _initStopWatch;
@@ -194,7 +196,7 @@ private:
     std::vector<RegisteredTypeConverter> _registeredTypeConverters;
     std::vector<Ref<IRuntimeManagerListener>> _listeners;
 
-    Ref<ColorPalette> _colorPalette;
+    Ref<ColorPaletteManager> _colorPaletteManager;
     Ref<AttributionResolver> _attributionResolver;
     Holder<Ref<UserSession>> _userSession;
     Ref<ValdiRuntimeTweaks> _runtimeTweaks;

@@ -8,11 +8,23 @@
 #pragma once
 
 #include "valdi_core/Asset.hpp"
+#include "valdi_core/cpp/Attributes/ColorPalette.hpp"
 #include "valdi_core/cpp/Context/PlatformType.hpp"
 #include "valdi_core/cpp/Resources/AssetLocation.hpp"
 #include "valdi_core/cpp/Utils/ValdiObject.hpp"
+#include <optional>
 
 namespace Valdi {
+
+struct AssetConfiguration {
+    AssetConfiguration(Ref<ColorPalette> colorPalette,
+                       std::optional<PlatformType> platformType,
+                       std::optional<bool> rightToLeft);
+
+    Ref<ColorPalette> colorPalette;
+    std::optional<PlatformType> platformType;
+    std::optional<bool> rightToLeft;
+};
 
 class Asset : public ValdiObject, public snap::valdi_core::Asset {
 public:
@@ -26,18 +38,7 @@ public:
 
     virtual bool canBeMeasured() const = 0;
 
-    /**
-     Return an LTR or RTL representation of the asset.
-     If the asset is not directional, this will return "this".
-     */
-    virtual Ref<Asset> withDirection(bool rightToLeft);
-
-    /**
-     Return a platform specific asset depending on
-     the platform it will be rendered upon.
-     If the asset is not platform specific, this will return "this".
-     */
-    virtual Ref<Asset> withPlatform(PlatformType platformType);
+    virtual Ref<Asset> withConfiguration(const AssetConfiguration& configuration);
 
     virtual double getWidth() const = 0;
     virtual double getHeight() const = 0;

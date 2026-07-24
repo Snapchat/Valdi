@@ -66,7 +66,7 @@ class RenderViewNodeRequest;
 using SharedRuntime = Ref<Runtime>;
 
 class ViewManagerContext;
-class ColorPalette;
+class ColorPaletteManager;
 class AssetLoaderManager;
 class ITweakValueProvider;
 class JavaScriptANRDetector;
@@ -89,7 +89,7 @@ public:
             const Shared<IResourceLoader>& resourceLoader,
             const Ref<AssetLoaderManager>& assetLoaderManager,
             const Holder<Shared<snap::valdi_core::HTTPRequestManager>>& requestManager,
-            const Ref<ColorPalette>& colorPalette,
+            const Ref<ColorPaletteManager>& colorPaletteManager,
             const Ref<IDiskCache>& diskCache,
             const std::shared_ptr<YGConfig>& yogaConfig,
             const Shared<snap::valdi::RuntimeMessageHandler>& runtimeMessageHandler,
@@ -266,8 +266,8 @@ public:
 
     void emitInitMetrics();
 
-    void updateColorPalette(const Value& colorPaletteMap) override;
-    Value getColorPalette();
+    void configureColorPalette(const StringBox& name, const Value& colorPaletteMap) override;
+    void setActiveColorPalette(const StringBox& name) override;
 
     const Ref<IDiskCache>& getDiskCache() const;
 
@@ -314,7 +314,7 @@ private:
     ContextManager _contextManager;
     ViewNodeTreeManager _viewNodeManager;
     Ref<MainThreadManager> _mainThreadManager;
-    Ref<ColorPalette> _colorPalette;
+    Ref<ColorPaletteManager> _colorPaletteManager;
     Ref<IDiskCache> _diskCache;
     SharedAtomicObject<UserSession> _userSession;
     const Holder<Shared<snap::valdi_core::HTTPRequestManager>> _requestManager;

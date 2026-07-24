@@ -100,7 +100,9 @@ public:
                                      bool createIfNeeded,
                                      Function<void(const Ref<ViewNodeTree>&)>&& function) = 0;
 
-    virtual void updateColorPalette(const Value& colorPaletteMap) = 0;
+    virtual void configureColorPalette(const StringBox& name, const Value& colorPaletteMap) = 0;
+
+    virtual void setActiveColorPalette(const StringBox& name) = 0;
 
     virtual void onUncaughtJsError(const StringBox& moduleName, const Error& error) = 0;
 
@@ -477,8 +479,10 @@ private:
     JSValueRef runtimeGetAssets(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeMakeDirectionalAsset(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeMakePlatformSpecificAsset(JSFunctionNativeCallContext& callContext);
+    JSValueRef runtimeMakeThemableAsset(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeGetLoadedAssetMetadata(JSFunctionNativeCallContext& callContext);
-    JSValueRef runtimeSetColorPalette(JSFunctionNativeCallContext& callContext);
+    JSValueRef runtimeConfigureColorPalette(JSFunctionNativeCallContext& callContext);
+    JSValueRef runtimeSetActiveColorPalette(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeTakeElementSnapshot(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeGetNativeNodeForElementId(JSFunctionNativeCallContext& callContext);
 

@@ -1,25 +1,26 @@
 //
-//  DirectionalAsset.hpp
+//  ThemableAsset.hpp
 //  valdi
-//
-//  Created by Simon Corsin on 5/1/23.
 //
 
 #pragma once
 
-#include "valdi/runtime/Resources/AssetKey.hpp"
 #include "valdi_core/cpp/Resources/Asset.hpp"
+#include "valdi_core/cpp/Utils/FlatMap.hpp"
+#include "valdi_core/cpp/Utils/StringBox.hpp"
 
 namespace Valdi {
 
+class ColorPalette;
+
 /**
- A DirectionalAsset holds an LTR and RTL asset and can use one asset or the
- other based on whether it's used in a LTR or RTL environment.
+ A ThemableAsset holds assets keyed by color palette name and resolves to the
+ asset matching the view node's resolved color palette.
  */
-class DirectionalAsset : public Asset {
+class ThemableAsset : public Asset {
 public:
-    DirectionalAsset(const Ref<Asset>& ltrAsset, const Ref<Asset>& rtlAsset);
-    ~DirectionalAsset() override;
+    explicit ThemableAsset(FlatMap<StringBox, Ref<Asset>> assetsByColorPalette);
+    ~ThemableAsset() override;
 
     bool canBeMeasured() const final;
 
@@ -45,8 +46,8 @@ public:
     std::optional<AssetLocation> getResolvedLocation() const final;
 
 private:
-    Ref<Asset> _ltrAsset;
-    Ref<Asset> _rtlAsset;
+    FlatMap<StringBox, Ref<Asset>> _assetsByColorPalette;
+    Ref<Asset> _representativeAsset;
 };
 
 } // namespace Valdi

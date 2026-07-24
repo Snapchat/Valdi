@@ -24,7 +24,9 @@ struct ValueConverter {
 
     [[nodiscard]] static Result<int32_t> toInt(const Value& value);
 
-    [[nodiscard]] static Result<Color> toColor(const ColorPalette& colorPalette, const Value& value);
+    [[nodiscard]] static Result<Value> toColor(const ColorPalette& colorPalette, const Value& value);
+
+    [[nodiscard]] static Result<Value> toColorValue(const Value& value);
 
     [[nodiscard]] static Result<double> toDouble(const Value& value);
 
