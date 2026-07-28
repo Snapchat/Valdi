@@ -76,6 +76,18 @@ TEST(ColorPaletteManager, notifiesWhenActivePaletteChangesOnly) {
     ASSERT_TRUE(listener.lastActiveColorPaletteChanged);
 }
 
+TEST(ColorPaletteManager, doesNotNotifyAfterListenerIsCleared) {
+    ColorPaletteManager manager;
+    TestColorPaletteManagerListener listener;
+    manager.setListener(&listener);
+    manager.setListener(nullptr);
+
+    manager.configureColorPalette(STRING_LITERAL("dark"), {{STRING_LITERAL("background"), Color::rgba(0, 0, 0, 1.0)}});
+    manager.setActiveColorPalette(STRING_LITERAL("dark"));
+
+    ASSERT_EQ(0, listener.updateCount);
+}
+
 TEST(ColorPaletteManager, createsDefaultInitializedPaletteWhenActivatingUnknownName) {
     ColorPaletteManager manager;
 
@@ -84,6 +96,18 @@ TEST(ColorPaletteManager, createsDefaultInitializedPaletteWhenActivatingUnknownN
     ASSERT_EQ(STRING_LITERAL("dark"), manager.getActiveColorPalette()->getName());
     ASSERT_EQ(Color::rgba(255, 0, 0, 1.0),
               manager.getActiveColorPalette()->getColorForName(STRING_LITERAL("red")).value());
+}
+
+TEST(ColorPaletteManager, returnsIndependentPaletteSnapshots) {
+    ColorPaletteManager manager;
+
+    auto palettes = manager.getColorPalettes();
+    auto darkPalette = manager.getColorPalette(STRING_LITERAL("dark"));
+
+    ASSERT_EQ(palettes.end(), palettes.find(STRING_LITERAL("dark")));
+
+    auto updatedPalettes = manager.getColorPalettes();
+    ASSERT_EQ(darkPalette, updatedPalettes.at(STRING_LITERAL("dark")));
 }
 
 } // namespace ValdiTest

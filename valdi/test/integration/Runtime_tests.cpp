@@ -7672,6 +7672,25 @@ TEST_P(RuntimeFixture, supportsCustomColorPalette) {
     ASSERT_EQ(makeColorPaletteTestView(65535, 8388863), getRootView(tree));
 }
 
+TEST_P(RuntimeFixture, colorPaletteManagerRemainsUsableAfterRuntimeManagerTeardown) {
+    Ref<ColorPaletteManager> colorPaletteManager;
+    {
+        RuntimeWrapper temporaryWrapper(getJsBridge(), getTSNMode());
+        colorPaletteManager = temporaryWrapper.standaloneRuntime->getViewManagerContext()
+                                  ->getAttributesManager()
+                                  .getColorPaletteManager();
+        temporaryWrapper.teardown();
+    }
+
+    colorPaletteManager->configureColorPalette(STRING_LITERAL("dark"),
+                                               {{STRING_LITERAL("background"), Color::rgba(255, 0, 0, 1.0)}});
+    colorPaletteManager->setActiveColorPalette(STRING_LITERAL("dark"));
+
+    ASSERT_EQ(STRING_LITERAL("dark"), colorPaletteManager->getActiveColorPalette()->getName());
+    ASSERT_EQ(Color::rgba(255, 0, 0, 1.0),
+              colorPaletteManager->getActiveColorPalette()->getColorForName(STRING_LITERAL("background")).value());
+}
+
 TEST_P(RuntimeFixture, canSwitchActiveCustomColorPalette) {
     auto tree = wrapper.createViewNodeTreeAndContext(STRING_LITERAL("ColorPaletteTest@test/src/ColorPaletteTest"),
                                                      Value(makeShared<ValueMap>()),

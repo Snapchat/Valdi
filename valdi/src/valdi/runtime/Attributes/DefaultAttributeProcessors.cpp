@@ -360,6 +360,10 @@ static Result<Value> postprocessBoxShadow(bool isRightToLeft, Ref<ValueArray> bo
 }
 
 Result<Value> postprocessBoxShadow(ViewNode& viewNode, const Value& in) {
+    if (!in.isArray()) {
+        return in;
+    }
+
     constexpr size_t kBoxShadowColorIndex = 4;
     auto resolvedBoxShadow = resolveColorAtIndexInArray(viewNode, in, kBoxShadowColorIndex);
     if (!resolvedBoxShadow) {

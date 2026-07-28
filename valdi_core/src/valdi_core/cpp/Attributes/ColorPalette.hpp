@@ -8,6 +8,7 @@
 #pragma once
 
 #include "valdi_core/cpp/Utils/FlatMap.hpp"
+#include "valdi_core/cpp/Utils/Mutex.hpp"
 #include "valdi_core/cpp/Utils/Shared.hpp"
 #include "valdi_core/cpp/Utils/StringBox.hpp"
 
@@ -96,9 +97,9 @@ public:
     ColorPaletteManager();
     ~ColorPaletteManager() override;
 
-    const Ref<ColorPalette>& getActiveColorPalette() const;
-    const Ref<ColorPalette>& getColorPalette(const StringBox& name);
-    const FlatMap<StringBox, Ref<ColorPalette>>& getColorPalettes() const;
+    Ref<ColorPalette> getActiveColorPalette() const;
+    Ref<ColorPalette> getColorPalette(const StringBox& name);
+    FlatMap<StringBox, Ref<ColorPalette>> getColorPalettes() const;
 
     void configureColorPalette(const StringBox& name, const FlatMap<StringBox, Color>& colors);
     void setActiveColorPalette(const StringBox& name);
@@ -106,11 +107,12 @@ public:
     void setListener(ColorPaletteManagerListener* listener);
 
 private:
+    mutable Mutex _mutex;
     FlatMap<StringBox, Ref<ColorPalette>> _colorPaletteByName;
     Ref<ColorPalette> _activeColorPalette;
     ColorPaletteManagerListener* _listener = nullptr;
 
-    const Ref<ColorPalette>& getOrCreateColorPalette(const StringBox& name);
+    Ref<ColorPalette> getOrCreateColorPalette(const StringBox& name);
     void notifyListener(const ColorPalette& colorPalette, bool activeColorPaletteChanged);
 };
 

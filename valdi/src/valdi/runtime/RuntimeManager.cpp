@@ -150,6 +150,8 @@ void RuntimeManager::postInit() {
 }
 
 void RuntimeManager::fullTeardown() {
+    _colorPaletteManager->setListener(nullptr);
+
     if (_anrDetector != nullptr) {
         _anrDetector->stop();
         _anrDetector = nullptr;

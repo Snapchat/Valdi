@@ -210,10 +210,13 @@ void ViewNode::setColorPaletteName(ViewTransactionScope& viewTransactionScope, c
         colorPalette = getParentResolvedColorPalette();
         setHasOveriddenColorPalette(false);
     } else {
-        SC_ASSERT(_viewNodeTree != nullptr, "Cannot resolve color palette without a ViewNodeTree");
-        colorPalette =
-            _viewNodeTree->getViewManagerContext()->getAttributesManager().getColorPaletteManager()->getColorPalette(
-                colorPaletteName);
+        if (_viewNodeTree != nullptr) {
+            const auto& viewManagerContext = _viewNodeTree->getViewManagerContext();
+            if (viewManagerContext != nullptr) {
+                colorPalette =
+                    viewManagerContext->getAttributesManager().getColorPaletteManager()->getColorPalette(colorPaletteName);
+            }
+        }
         setHasOveriddenColorPalette(true);
     }
 
@@ -1583,9 +1586,7 @@ void ViewNode::insertChildAt(ViewTransactionScope& viewTransactionScope, const R
     if (getChildCount() > kMaxChildrenBeforeIndexing && _childrenIndexer == nullptr) {
         _childrenIndexer = std::make_unique<ViewNodeChildrenIndexer>(this);
     }
-    if (_colorPalette != nullptr) {
-        child->setInheritedColorPalette(viewTransactionScope, _colorPalette);
-    }
+    child->setInheritedColorPalette(viewTransactionScope, _colorPalette);
 
     setCalculatedViewportHasChildNeedsUpdate();
 

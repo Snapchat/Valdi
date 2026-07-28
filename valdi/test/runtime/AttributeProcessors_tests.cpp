@@ -1,3 +1,4 @@
+#include "ViewNodeTestsUtils.hpp"
 #include "valdi/runtime/Attributes/DefaultAttributeProcessors.hpp"
 #include "valdi/runtime/Attributes/ValueConverters.hpp"
 #include "valdi_core/cpp/Attributes/ColorPalette.hpp"
@@ -53,6 +54,19 @@ static Ref<ColorPalette> makeTestColorPalette() {
         {STRING_LITERAL("secondary"), Color(0x55667788)},
     });
     return colorPalette;
+}
+
+TEST(AttributeProcessor, boxShadowNoneClearsShadow) {
+    ViewNodeTestsDependencies dependencies;
+    auto viewNode = dependencies.createView();
+
+    auto preprocessed = preprocessBoxShadow(Value(STRING_LITERAL("none")));
+    ASSERT_TRUE(preprocessed) << preprocessed.description();
+    ASSERT_TRUE(preprocessed.value().isUndefined());
+
+    auto postprocessed = postprocessBoxShadow(*viewNode, preprocessed.value());
+    ASSERT_TRUE(postprocessed) << postprocessed.description();
+    ASSERT_TRUE(postprocessed.value().isUndefined());
 }
 
 TEST(AttributeProcessor, canParseSimpleBackground) {
