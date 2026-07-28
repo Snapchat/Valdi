@@ -319,11 +319,11 @@ static ProcessedUnicodeString processUnicodeString(const uint32_t* data,
     return output;
 }
 
-JSValueRef UnicodeModuleFactory::strToCodepoints(const Ref<StaticString>& str,
+JSValueRef UnicodeModuleFactory::strToCodepoints(const StaticString& str,
                                                  bool normalize,
                                                  bool disableCategorization,
                                                  JSFunctionNativeCallContext& callContext) {
-    auto utf32Storage = str->utf32Storage();
+    auto utf32Storage = str.utf32Storage();
 
     auto processedString = processUnicodeString(
         reinterpret_cast<const uint32_t*>(utf32Storage.data), utf32Storage.length, normalize, !disableCategorization);
@@ -407,22 +407,22 @@ static JSValueRef throwInvalidEncoding(JSFunctionNativeCallContext& callContext)
     return callContext.throwError(Error("Invalid encoding"));
 }
 
-JSValueRef UnicodeModuleFactory::encodeString(const Ref<StaticString>& str,
+JSValueRef UnicodeModuleFactory::encodeString(const StaticString& str,
                                               int32_t encoding,
                                               JSFunctionNativeCallContext& callContext) {
     switch (static_cast<TextEncoding>(encoding)) {
         case TextEncoding::UTF8: {
-            auto storage = str->utf8Storage();
+            auto storage = str.utf8Storage();
             return callContext.getContext().newArrayBufferCopy(
                 reinterpret_cast<const Byte*>(storage.data), storage.length, callContext.getExceptionTracker());
         }
         case TextEncoding::UTF16: {
-            auto storage = str->utf16Storage();
+            auto storage = str.utf16Storage();
             return callContext.getContext().newArrayBufferCopy(
                 reinterpret_cast<const Byte*>(storage.data), storage.length * 2, callContext.getExceptionTracker());
         }
         case TextEncoding::UTF32: {
-            auto storage = str->utf32Storage();
+            auto storage = str.utf32Storage();
             return callContext.getContext().newArrayBufferCopy(
                 reinterpret_cast<const Byte*>(storage.data), storage.length * 4, callContext.getExceptionTracker());
         }

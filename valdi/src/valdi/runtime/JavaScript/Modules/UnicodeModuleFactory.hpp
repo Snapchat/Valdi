@@ -24,7 +24,7 @@ public:
                           JSExceptionTracker& exceptionTracker) override;
 
 private:
-    static JSValueRef strToCodepoints(const Ref<StaticString>& str,
+    static JSValueRef strToCodepoints(const StaticString& str,
                                       bool normalize,
                                       bool disableCategorization,
                                       JSFunctionNativeCallContext& callContext);
@@ -32,7 +32,7 @@ private:
                                       bool normalize,
                                       bool disableCategorization,
                                       JSFunctionNativeCallContext& callContext);
-    static JSValueRef encodeString(const Ref<StaticString>& str,
+    static JSValueRef encodeString(const StaticString& str,
                                    int32_t encoding,
                                    JSFunctionNativeCallContext& callContext);
     static JSValueRef decodeIntoString(const JSTypedArray& buffer,

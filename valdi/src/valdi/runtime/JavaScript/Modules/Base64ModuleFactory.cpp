@@ -30,9 +30,9 @@ JSValueRef Base64ModuleFactory::encodeToBase64(const JSTypedArray& bytes,
     return callContext.getContext().newStringUTF8(base64, callContext.getExceptionTracker());
 }
 
-JSValueRef Base64ModuleFactory::decodeFromBase64(const Ref<StaticString>& base64,
+JSValueRef Base64ModuleFactory::decodeFromBase64(const StaticString& base64,
                                                  JSFunctionNativeCallContext& callContext) {
-    auto storage = base64->utf8Storage();
+    auto storage = base64.utf8Storage();
     auto input = std::string_view(storage.data, storage.length);
 
     auto bytes = makeShared<Bytes>();
