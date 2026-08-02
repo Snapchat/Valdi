@@ -1,5 +1,5 @@
 import 'jasmine';
-import { firstElementId, findElementByKey } from './snapshot';
+import { findElementByKey, firstElementId } from '../../../src/commands/inspect_commands/snapshot';
 
 describe('snapshot tree helpers', () => {
   describe('firstElementId', () => {
