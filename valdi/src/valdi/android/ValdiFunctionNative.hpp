@@ -58,8 +58,8 @@ public:
             return static_cast<jboolean>(false);
         }
 
-        // Note: callSyncWithDeadline creates its own SimpleExceptionTracker and ignores the flags parameter.
-        // This means:
+        // Note: callSyncWithDeadline does not take the caller's exception tracker and ignores the flags
+        // parameter. This means:
         // 1. The FLAGS_PROPAGATES_ERROR flag (if set) is not honored - errors will not be propagated as exceptions
         // 2. We cannot check marshaller->getExceptionTracker() because it's not used by callSyncWithDeadline
         //

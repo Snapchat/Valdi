@@ -17,13 +17,16 @@
 #include "valdi/runtime/Attributes/CompositeAttribute.hpp"
 #include "valdi/runtime/Attributes/ScrollAttributes.hpp"
 #include "valdi/runtime/Attributes/TextAttributeValueParser.hpp"
+#include "valdi/runtime/Attributes/TransformAttributes.hpp"
 #include "valdi/runtime/Attributes/ValueConverters.hpp"
+#include "valdi/runtime/Attributes/ViewNodeTextInlineAttachment.hpp"
 #include "valdi/runtime/Views/MeasureDelegate.hpp"
 
 #include "valdi/runtime/Runtime.hpp"
 #include "valdi_core/cpp/Attributes/AttributeUtils.hpp"
 #include "valdi_core/cpp/Resources/Asset.hpp"
 #include "valdi_core/cpp/Utils/Format.hpp"
+#include "valdi_core/cpp/Utils/SmallVector.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
 #include "valdi_core/cpp/Utils/Trace.hpp"
 #include "valdi_core/cpp/Utils/ValueArray.hpp"
@@ -135,7 +138,21 @@ AttributeId AttributesBindingContextImpl::bindTextAttribute(const StringBox& att
         if (colorPalette == nullptr) {
             return Error("ViewNode has no resolved ColorPalette");
         }
-        return TextAttributeValueParser::parse(*colorPalette, value, *logger, strict);
+
+        auto* attachmentsViewNode = viewNode.getEmittingViewNode();
+        if (attachmentsViewNode == nullptr) {
+            attachmentsViewNode = &viewNode;
+        }
+
+        SmallVector<Ref<TextInlineAttachment>, 8> attachments;
+        auto childCount = attachmentsViewNode->getChildCount();
+        attachments.reserve(childCount);
+        for (size_t i = 0; i < childCount; i++) {
+            attachments.emplace_back(
+                makeShared<ViewNodeTextInlineAttachment>(i, strongSmallRef(attachmentsViewNode->getChildAt(i))));
+        }
+        return TextAttributeValueParser::parse(
+            *colorPalette, value, *logger, attachments.data(), attachments.size(), strict);
     });
     registeredHandler.setShouldReevaluateOnColorPaletteChange(true);
 
@@ -218,6 +235,21 @@ AttributeId AttributesBindingContextImpl::bindCompositeAttribute(
                                               true,
                                               compositeAttribute->shouldInvalidateLayoutOnChange());
 
+    return attributeId;
+}
+
+AttributeId AttributesBindingContextImpl::bindTransformAttributes(const Ref<AttributeHandlerDelegate>& delegate) {
+    std::vector<snap::valdi_core::CompositeAttributePart> parts;
+    parts.emplace_back(STRING_LITERAL("transformOrigin"), snap::valdi_core::AttributeType::String, true, false);
+    parts.emplace_back(STRING_LITERAL("transform"), snap::valdi_core::AttributeType::String, true, false);
+    parts.emplace_back(STRING_LITERAL("translationX"), snap::valdi_core::AttributeType::Untyped, true, false);
+    parts.emplace_back(STRING_LITERAL("translationY"), snap::valdi_core::AttributeType::Untyped, true, false);
+    parts.emplace_back(STRING_LITERAL("scaleX"), snap::valdi_core::AttributeType::Double, true, false);
+    parts.emplace_back(STRING_LITERAL("scaleY"), snap::valdi_core::AttributeType::Double, true, false);
+    parts.emplace_back(STRING_LITERAL("rotation"), snap::valdi_core::AttributeType::Double, true, false);
+
+    auto attributeId = bindCompositeAttribute(STRING_LITERAL("transformComposite"), parts, delegate);
+    _handlers[attributeId].appendPostprocessor(&TransformAttributes::postprocessViewNode);
     return attributeId;
 }
 

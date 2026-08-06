@@ -24,12 +24,15 @@
 #include "valdi_core/cpp/Utils/Value.hpp"
 #include "gtest/gtest.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <cstring>
 #include <dirent.h>
+#include <mutex>
 #include <stdlib.h>
 #include <string>
+#include <vector>
 
 using namespace Valdi;
 
@@ -38,6 +41,7 @@ namespace ValdiTest {
 namespace {
 
 constexpr auto kTweakKey = "VALDI_ENABLE_MMAP_MODULE_ARCHIVES";
+constexpr auto kDenylistTweakKey = "VALDI_MMAP_MODULE_ARCHIVES_DENYLIST";
 constexpr auto kModuleName = "test";
 
 // ---------------------------------------------------------------------------
@@ -51,6 +55,10 @@ class MmapTweakProvider : public SharedPtrRefCountable,
 public:
     void setEnabled(bool enabled) {
         _config.setMapValue(kTweakKey, Value(static_cast<bool>(enabled)));
+    }
+
+    void setDenylist(const char* denylist) {
+        _config.setMapValue(kDenylistTweakKey, Value(STRING_LITERAL(denylist)));
     }
 
     StringBox getModulePath() override {
@@ -90,14 +98,29 @@ public:
     std::atomic<int> decompressLatencyCalls{0};
     std::atomic<int> mmapPublishFail{0};
 
-    void emitModuleArchiveMmapSuccess(const StringBox&) override {
+    void emitModuleArchiveMmapSuccess(const StringBox& modulePath) override {
         ++mmapSuccess;
+        recordModule(_mmapModules, modulePath);
     }
-    void emitModuleArchiveMmapFallback(const StringBox&) override {
+    void emitModuleArchiveMmapFallback(const StringBox& modulePath) override {
         ++mmapFallback;
+        recordModule(_mmapModules, modulePath);
     }
-    void emitModuleArchiveHeap(const StringBox&) override {
+    void emitModuleArchiveHeap(const StringBox& modulePath) override {
         ++heap;
+        recordModule(_heapModules, modulePath);
+    }
+
+    // Per-module routing, for tests that pin some modules but not others. A
+    // module load can pull in dependency bundles, so counter totals alone
+    // can't tell which module took which path.
+    bool moduleTookHeapPath(const char* module) const {
+        std::lock_guard<std::mutex> lock(_modulesMutex);
+        return std::find(_heapModules.begin(), _heapModules.end(), module) != _heapModules.end();
+    }
+    bool moduleTookMmapPath(const char* module) const {
+        std::lock_guard<std::mutex> lock(_modulesMutex);
+        return std::find(_mmapModules.begin(), _mmapModules.end(), module) != _mmapModules.end();
     }
     void emitModuleDecompressLatency(const StringBox&, const MetricsDuration&) override {
         ++decompressLatencyCalls;
@@ -110,6 +133,17 @@ public:
         return mmapSuccess + mmapFallback + heap;
     }
 
+private:
+    void recordModule(std::vector<std::string>& modules, const StringBox& modulePath) {
+        std::lock_guard<std::mutex> lock(_modulesMutex);
+        modules.emplace_back(modulePath.slowToString());
+    }
+
+    mutable std::mutex _modulesMutex;
+    std::vector<std::string> _heapModules;
+    std::vector<std::string> _mmapModules;
+
+public:
     // ---- No-op overrides for the remaining pure-virtuals. -------------------
     void emitInitialRenderLatency(const StringBox&, const MetricsDuration&) override {}
     void emitOnViewModelUpdatedLatency(const StringBox&, const MetricsDuration&) override {}
@@ -257,6 +291,58 @@ TEST_F(MmapModuleArchiveFixture, DispatchesToMmapPathWhenCofOnAndCacheDirSet) {
     // Happy-path expectation: nothing should report a publish failure when
     // tmp file and cache dir live in the same writable filesystem.
     EXPECT_EQ(0, _metrics->mmapPublishFail.load());
+}
+
+// COF on + cache dir set, but the module matches a denylist prefix (with
+// surrounding whitespace, exercising trimming) → the heap path must be taken,
+// exactly as if the mmap COF were off for this module. This is the pinning
+// mechanism for surfaces whose refault latency outweighs their memory win.
+TEST_F(MmapModuleArchiveFixture, HeapPathWhenModuleDenylisted) {
+    TemporaryDirectory tmp;
+    _tweakProvider->setDenylist(" some_other_module , test ");
+    auto& wrapper = makeWrapper(/*enableCof=*/true);
+    wrapper.runtime->setMmapCacheDirectory(tmp.path());
+
+    auto result = wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources);
+    ASSERT_TRUE(result) << result.description();
+
+    // Dependency bundles may load alongside the requested module; only the
+    // denylisted module itself must be diverted to the heap path.
+    EXPECT_TRUE(_metrics->moduleTookHeapPath(kModuleName)) << "Denylisted module must take the heap path";
+    EXPECT_FALSE(_metrics->moduleTookMmapPath(kModuleName));
+    EXPECT_EQ(_metrics->totalPathCounters(), _metrics->decompressLatencyCalls.load());
+}
+
+// Denylist matches on path prefix (module "test" matches entry "te").
+TEST_F(MmapModuleArchiveFixture, HeapPathWhenModuleMatchesDenylistPrefix) {
+    TemporaryDirectory tmp;
+    _tweakProvider->setDenylist("te");
+    auto& wrapper = makeWrapper(/*enableCof=*/true);
+    wrapper.runtime->setMmapCacheDirectory(tmp.path());
+
+    auto result = wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources);
+    ASSERT_TRUE(result) << result.description();
+
+    EXPECT_TRUE(_metrics->moduleTookHeapPath(kModuleName))
+        << "Module matching a denylist prefix must take the heap path";
+    EXPECT_FALSE(_metrics->moduleTookMmapPath(kModuleName));
+}
+
+// A populated denylist that does NOT match the module leaves the mmap path
+// untouched — pinning one surface must not degrade the others.
+TEST_F(MmapModuleArchiveFixture, MmapPathWhenDenylistDoesNotMatch) {
+    TemporaryDirectory tmp;
+    _tweakProvider->setDenylist("search_v2,profile_identity");
+    auto& wrapper = makeWrapper(/*enableCof=*/true);
+    wrapper.runtime->setMmapCacheDirectory(tmp.path());
+
+    auto result = wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources);
+    ASSERT_TRUE(result) << result.description();
+
+    EXPECT_TRUE(_metrics->moduleTookMmapPath(kModuleName))
+        << "Non-matching denylist must not divert the module to the heap path";
+    EXPECT_FALSE(_metrics->moduleTookHeapPath(kModuleName));
+    EXPECT_EQ(0, _metrics->heap.load()) << "No module is denylisted, so nothing should take the heap path";
 }
 
 // COF on + cache dir set + mmap success → file backing must exist at the

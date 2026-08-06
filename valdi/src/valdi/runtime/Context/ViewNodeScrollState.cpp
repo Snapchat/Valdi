@@ -6,8 +6,8 @@
 //
 
 #include "valdi/runtime/Context/ViewNodeScrollState.hpp"
-#include "valdi/runtime/Views/Measure.hpp"
 #include "valdi_core/cpp/Events/TouchEvents.hpp"
+#include "valdi_core/cpp/Views/Measure.hpp"
 
 #include "valdi_core/cpp/Constants.hpp"
 #include "valdi_core/cpp/Utils/Marshaller.hpp"
@@ -383,8 +383,7 @@ Result<std::optional<Point>> ViewNodeScrollState::notifyOnDragEnding(
     auto scrollEvent = makeScrollEvent(
         directionAgnosticContentOffset, directionAgnosticUnclampedContentOffset, directionAgnosticVelocity);
 
-    constexpr auto kMaxOnDragEndingDuration = std::chrono::milliseconds(100);
-    auto result = _onDragEndingCallback->callSyncWithDeadline(kMaxOnDragEndingDuration, &scrollEvent, 1);
+    auto result = _onDragEndingCallback->callSyncWithDeadline(kInputSyncCallDeadline, &scrollEvent, 1);
     if (!result) {
         return result.moveError();
     }

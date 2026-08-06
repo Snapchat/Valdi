@@ -2,6 +2,7 @@ package com.snap.valdi.modules
 
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.os.Build
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -29,7 +30,24 @@ class DrawingModuleFontImpl(typeface: Typeface,
 
         val width = maxWidth?.let { coordinateResolver.toPixel(it) } ?: Int.MAX_VALUE
 
-        val layout = StaticLayout(text, paint, width, Layout.Alignment.ALIGN_NORMAL, lineSpacing, 0f, false)
+        val layout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
+                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                .setLineSpacing(0f, lineSpacing)
+                .setIncludePad(false)
+                .apply {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        // TextView renders with fallback line spacing by default on P+, so measure
+                        // with it too; otherwise text drawn with taller fallback fonts (e.g.
+                        // Arabic/Urdu) exceeds the measured height and gets clipped.
+                        setUseLineSpacingFromFallbacks(true)
+                    }
+                }
+                .build()
+        } else {
+            @Suppress("DEPRECATION")
+            StaticLayout(text, paint, width, Layout.Alignment.ALIGN_NORMAL, lineSpacing, 0f, false)
+        }
 
         val lineCount = maxLines?.let { min(layout.lineCount, it.toInt()) } ?: layout.lineCount
         var textWidth = 0f

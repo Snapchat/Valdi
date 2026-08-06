@@ -698,7 +698,6 @@ This is an open-source project. When contributing:
 
 ## Community & Support
 
-- **Discord**: Join the [Valdi Discord community](https://discord.gg/uJyNEeYX2U) for support and discussions
 - **Documentation**: Comprehensive docs in `/docs/` directory
 - **Examples**: Working examples in `/apps/` directory
 - **Issues**: Report bugs and request features via GitHub issues

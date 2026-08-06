@@ -31,6 +31,7 @@
 #include "valdi_core/cpp/Context/ComponentPath.hpp"
 
 #include "valdi/runtime/JavaScript/Modules/AttributedTextNativeModuleFactory.hpp"
+#include "valdi/runtime/JavaScript/Modules/Base64ModuleFactory.hpp"
 #include "valdi/runtime/JavaScript/Modules/FileSystemFactory.hpp"
 #include "valdi/runtime/JavaScript/Modules/JavaScriptModuleFactoryBridge.hpp"
 #include "valdi/runtime/JavaScript/Modules/PersistentStoreModuleFactory.hpp"
@@ -200,7 +201,7 @@ void Runtime::postInit() {
 
     if (_javaScriptRuntime != nullptr) {
         _javaScriptRuntime->setListener(this, weakRef(this));
-        _javaScriptRuntime->setModuleLoadDiagnosticsEnabled(enableModuleLoadDiagnostics());
+        _javaScriptRuntime->setANRDiagnosticsEnabled(enableANRDiagnostics());
     }
     _viewNodeManager.setRuntime(weakRef(this));
     _contextManager.setListener(this);
@@ -218,6 +219,7 @@ void Runtime::postInit() {
 
         registerJavaScriptModuleFactory(makeShared<ProtobufModuleFactory>(*_resourceManager, _workerQueue, *_logger));
         registerJavaScriptModuleFactory(makeShared<UnicodeModuleFactory>());
+        registerJavaScriptModuleFactory(makeShared<Base64ModuleFactory>());
 
         if constexpr (kTCPSocketEnabled) {
             registerNativeModuleFactory(makeShared<TCPSocketModuleFactory>().toShared());
@@ -570,13 +572,13 @@ bool Runtime::disablePersistentStoreEncryption() {
     return runtimeTweaks->disablePersistentStoreEncryption();
 }
 
-bool Runtime::enableModuleLoadDiagnostics() {
+bool Runtime::enableANRDiagnostics() {
     const auto& runtimeTweaks = getRuntimeTweaks();
     if (runtimeTweaks == NULL) {
         return false;
     }
 
-    return runtimeTweaks->enableModuleLoadDiagnostics();
+    return runtimeTweaks->enableANRDiagnostics();
 }
 
 void Runtime::daemonClientConnected(const Shared<IDaemonClient>& daemonClient) {

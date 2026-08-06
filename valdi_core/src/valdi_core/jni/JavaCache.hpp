@@ -166,6 +166,7 @@ public:
     DECLARE_JAVA_CLASS(ViewFactory)
     DECLARE_JAVA_METHOD(ViewFactory, CreateView, ViewType, JavaObject)
     DECLARE_JAVA_METHOD(ViewFactory, BindAttributes, VoidType, int64_t)
+    DECLARE_JAVA_METHOD(ViewFactory, ManagesChildFrames, bool)
 
     DECLARE_JAVA_CLASS(ViewRef)
     DECLARE_JAVA_METHOD(ViewRef, InvalidateLayout, VoidType)

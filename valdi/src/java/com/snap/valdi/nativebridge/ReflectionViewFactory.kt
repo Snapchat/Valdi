@@ -10,6 +10,7 @@ import com.snap.valdi.attributes.AttributesBindingContext
 import com.snap.valdi.attributes.AttributesBindingContextNative
 import com.snap.valdi.utils.ViewRefSupport
 import com.snap.valdi.utils.error
+import com.snap.valdi.views.ValdiChildFrameManagingView
 import com.snap.valdi.views.ValdiView
 import java.lang.reflect.Constructor
 
@@ -61,6 +62,10 @@ class ReflectionViewFactory(val context: Context, val viewRefSupport: ViewRefSup
         } catch (throwable: Throwable) {
             ValdiFatalException.handleFatal(throwable, "View factory of class '$cls' failed to bind attributes")
         }
+    }
+
+    override fun managesChildFrames(): Boolean {
+        return ValdiChildFrameManagingView::class.java.isAssignableFrom(cls)
     }
 
 }

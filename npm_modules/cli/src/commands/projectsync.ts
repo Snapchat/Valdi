@@ -7,6 +7,7 @@ import fs from 'fs/promises';
 import type { JSONPath } from 'jsonc-parser';
 import path from 'path';
 import type { Argv } from 'yargs';
+import { STABLE_EXEC_BAZELRC_BLOCK } from '../core/constants';
 import { CliError } from '../core/errors';
 import type { ArgumentsResolver } from '../utils/ArgumentsResolver';
 import { BazelClient, BazelLabel } from '../utils/BazelClient';
@@ -122,6 +123,24 @@ function bazelLabelToAbsolutePath(workspaceInfo: BazelWorkspaceInfo, label: Baze
   } else {
     return path.join(workspaceInfo.workspaceRoot, targetPath);
   }
+}
+
+// Backfills the `stable_exec` config into an existing project's .bazelrc.
+// BazelClient only passes --config=stable_exec once this block is present, so
+// projects created before that config existed gain it here (and keep building
+// unchanged until they do). See Valdi#137.
+async function ensureStableExecConfig(workspaceRoot: string): Promise<void> {
+  const bazelrcPath = path.join(workspaceRoot, '.bazelrc');
+  if (!fsSync.existsSync(bazelrcPath)) {
+    return;
+  }
+  const content = await fs.readFile(bazelrcPath, 'utf8');
+  if (/(^|\n)[^\n#]*:stable_exec\b/.test(content)) {
+    return;
+  }
+  const separator = content.endsWith('\n') ? '\n' : '\n\n';
+  await fs.writeFile(bazelrcPath, content + separator + STABLE_EXEC_BAZELRC_BLOCK);
+  console.log('Added the stable_exec config to .bazelrc so alternating builds and tests stop recompiling shared tools.');
 }
 
 async function buildProjectSyncs(bazel: BazelClient, workspaceRoot: string, projectSyncTargets: readonly string[]) {
@@ -434,6 +453,9 @@ export async function runProjectSync(
   console.log('Resolving dependencies of resolved Valdi targets...');
   const workspaceRoot = await bazel.getWorkspaceRoot();
   const executionRoot = await bazel.getExecutionRoot();
+
+  // Backfill before the first build so this run already benefits from it.
+  await ensureStableExecConfig(workspaceRoot);
 
   const allProjectSyncOutputs = await buildProjectSyncs(bazel, workspaceRoot, inputTargets);
 

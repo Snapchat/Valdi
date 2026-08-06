@@ -43,6 +43,10 @@ public:
         return registry->getSchemaForIdentifier(_identifier);
     }
 
+    Ref<ValueSchemaRegistry> getOwningRegistry() const final {
+        return strongRef(_registry);
+    }
+
 private:
     Weak<ValueSchemaRegistry> _registry;
     ValueSchemaRegistryKey _key;

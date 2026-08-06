@@ -3,8 +3,11 @@ load("@valdi//bzl/conditions:selects.bzl", "selects")
 load("@valdi//bzl/valdi:valdi_toolchain.bzl", "valdi_toolchain")
 load("@valdi//bzl/valdi:valdi_toolchain_binary.bzl", "valdi_toolchain_binary")
 load("//bzl/valdi:common_test.bzl", "common_test_suite")
+load("//bzl/valdi:valdi_android_library_test.bzl", "valdi_android_library_test_suite")
 
 common_test_suite(name = "common_test")
+
+valdi_android_library_test_suite(name = "valdi_android_library_test")
 
 exports_files([
     "AndroidManifest.xml.tpl",

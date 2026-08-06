@@ -142,6 +142,16 @@ def _output_declaration_file_path_for_legacy_source_file(f, module_name, module_
     return dts_output_path
 
 def get_sql_dts_paths(db_names, sql_srcs, module_name, module_directory):
+    return _get_sql_generated_paths(db_names, sql_srcs, module_name, module_directory, TYPESCRIPT_OUTPUT_DIR, ".d.ts")
+
+def get_sql_js_paths(db_names, sql_srcs, module_name, module_directory):
+    # Sibling .js outputs of the .sq generated .ts sources. The compiler already
+    # emits them next to the .d.ts (see ClientSqlProcessor + the Valdi ts→js
+    # pass), so declaring them here just surfaces them to Bazel so the web
+    # collapse pipeline can bundle them into composer_example_npm.
+    return _get_sql_generated_paths(db_names, sql_srcs, module_name, module_directory, "web/debug/assets", ".js")
+
+def _get_sql_generated_paths(db_names, sql_srcs, module_name, module_directory, base_output_dir, suffix):
     if not db_names:
         return []
     result = []
@@ -157,17 +167,17 @@ def get_sql_dts_paths(db_names, sql_srcs, module_name, module_directory):
         db_name = replace_prefix(sql_file_path, prefix_to_drop, "").split("/")[0]
 
         prefix_to_drop = paths.join(prefix_to_drop, db_name) + "/"
-        prefix_to_add = paths.join(TYPESCRIPT_OUTPUT_DIR, module_name, "src/sqlgen/")
+        prefix_to_add = paths.join(base_output_dir, module_name, "src/sqlgen/")
 
-        suffix = sql_file_path.removeprefix(prefix_to_drop).removesuffix(".sq")
-        output_location = paths.join(prefix_to_add, suffix)
+        rel_suffix = sql_file_path.removeprefix(prefix_to_drop).removesuffix(".sq")
+        output_location = paths.join(prefix_to_add, rel_suffix)
 
-        result.append(output_location + "Types.d.ts")
-        result.append(output_location + "Queries.d.ts")
+        result.append(output_location + "Types" + suffix)
+        result.append(output_location + "Queries" + suffix)
 
-    # Also add database dts files
+    # Also add per-database output files
     for db_name in db_names:
-        result.append(paths.join(TYPESCRIPT_OUTPUT_DIR, module_name, "src/sqlgen", db_name + ".d.ts"))
+        result.append(paths.join(base_output_dir, module_name, "src/sqlgen", db_name + suffix))
 
     return result
 

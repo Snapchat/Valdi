@@ -25,6 +25,7 @@ import {
   PLATFORM,
   RELEASE_BUILD_FLAGS,
   VALID_PLATFORMS,
+  androidPlatformsFlag,
 } from '../core/constants';
 import { CliError } from '../core/errors';
 import type { BazelClient } from './BazelClient';
@@ -282,6 +283,10 @@ export function resolveBazelBuildArgs(
 
     for (const architecture of architectures) {
       allArgs.push(...androidBuildFlagsForArchitecture(architecture));
+    }
+
+    if (architectures.length > 0) {
+      allArgs.push(androidPlatformsFlag(architectures));
     }
   }
 

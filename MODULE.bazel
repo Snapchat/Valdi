@@ -135,6 +135,8 @@ http_archive(
     integrity = "sha256-+GQiTtN6H8TQz/+YkVz73dHeYAZ86/9hAUwTlkISx48=",
     strip_prefix = "hermes-880b1645b5dca974f4329dc4108692d301abee0d",
     build_file = "@valdi//third-party/hermes:hermes.BUILD",
+    patch_args = ["-p1"],
+    patches = ["@valdi//third-party/hermes/patches:nontrivial_memcall.patch"],
 )
 
 bazel_dep(name = "boringssl", version = "0.20250415.0")
@@ -505,7 +507,7 @@ maven.install(
         "androidx.lifecycle:lifecycle-viewmodel:2.2.0",
         "androidx.recyclerview:recyclerview:1.2.1",
         "androidx.test:core:1.5.0",
-        "androidx.test.ext:junit:1.1.3",
+        "androidx.test.ext:junit:1.1.5",
         "androidx.test:monitor:1.5.0",
         "androidx.test:runner:1.5.0",
         "com.google.android.material:material:1.2.0",
@@ -542,6 +544,33 @@ maven.install(
 )
 
 use_repo(maven, "android_mvn")
+
+# Test-only artifacts, kept in a separate namespace from android_mvn so
+# testonly targets (e.g. valdi_android_test_support) don't leak test libraries
+# into production classpaths. In the internal linked build this repo is
+# overridden to Snap's @test_mvn (see android/snapchat/MODULE.bazel).
+maven.install(
+    name = "test_mvn",
+    artifacts = [
+        "androidx.test:core:1.5.0",
+        "androidx.test.espresso:espresso-core:3.5.1",
+        "androidx.test.ext:junit:1.1.5",
+        "androidx.test:monitor:1.6.0",
+        "androidx.test:runner:1.5.0",
+        "junit:junit:4.13.2",
+        "org.hamcrest:hamcrest-core:1.3",
+        "org.hamcrest:hamcrest-library:1.3",
+    ],
+    repositories = [
+        "https://repo1.maven.org/maven2",
+        "https://maven.google.com",
+    ],
+    aar_import_bzl_label = "@rules_android//rules:rules.bzl",
+    use_starlark_android_rules = True,
+    version_conflict_policy = "pinned",
+)
+
+use_repo(maven, "test_mvn")
 
 http_archive(
     name = "expat_config",

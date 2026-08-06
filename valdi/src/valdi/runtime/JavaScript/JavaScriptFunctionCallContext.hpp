@@ -78,6 +78,7 @@ public:
     Ref<StaticString> getParameterAsStaticString(size_t index);
     double getParameterAsDouble(size_t index);
     int32_t getParameterAsInt(size_t index);
+    int64_t getParameterAsLong(size_t index);
     bool getParameterAsBool(size_t index);
     Ref<ValueFunction> getParameterAsFunction(size_t index);
     JSTypedArray getParameterAsTypedArray(size_t index);

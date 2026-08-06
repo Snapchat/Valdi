@@ -7,6 +7,8 @@
 
 #import "valdi/ios/Text/SCValdiAttributedText.h"
 #import "valdi/ios/Text/SCValdiImageAttachmentInfo.h"
+#import "valdi/ios/Text/SCValdiInlineViewAttachmentInfo.h"
+#import "valdi/ios/Text/SCValdiTextAnimationTransform.h"
 #import "valdi_core/cpp/Attributes/TextAttributeValue.hpp"
 #import "valdi_core/SCValdiObjCConversionUtils.h"
 #import "valdi_core/UIColor+Valdi.h"
@@ -49,6 +51,11 @@
     return (NSUInteger)_cppInstance->getPartsSize();
 }
 
+- (NSUInteger)animationTransformsCount
+{
+    return (NSUInteger)_cppInstance->getAnimationTransformsSize();
+}
+
 - (NSString *)contentAtIndex:(NSUInteger)index
 {
     const auto &content = _cppInstance->getContentAtIndex(index);
@@ -76,6 +83,10 @@
             return SCValdiTextDecorationStrikethrough;
         case Valdi::TextDecoration::Underline:
             return SCValdiTextDecorationUnderline;
+        case Valdi::TextDecoration::DashedUnderline:
+            return SCValdiTextDecorationDashedUnderline;
+        case Valdi::TextDecoration::DottedUnderline:
+            return SCValdiTextDecorationDottedUnderline;
     }
 }
 
@@ -87,6 +98,16 @@
     }
 
     return UIColorFromValdiAttributeValue(style.color.value().value);
+}
+
+- (nullable UIColor *)backgroundColorAtIndex:(NSUInteger)index
+{
+    const auto &style = _cppInstance->getStyleAtIndex(index);
+    if (style.background == nullptr || !style.background->color) {
+        return nil;
+    }
+
+    return UIColorFromValdiAttributeValue(style.background->color.value().value);
 }
 
 - (nullable id<SCValdiFunction>)onTapAtIndex:(NSUInteger)index
@@ -165,8 +186,7 @@
 
     NSData *imageData = nil;
     if (!attachment.imageData.empty()) {
-        imageData = [NSData dataWithBytes:attachment.imageData.data()
-                                   length:attachment.imageData.size()];
+        imageData = ValdiIOS::NSDataFromBuffer(attachment.imageData);
     }
 
     return [[SCValdiImageAttachmentInfo alloc] initWithAttachmentId:attachmentId
@@ -175,7 +195,39 @@
                                                           imageData:imageData];
 }
 
-- (nullable NSDictionary<NSString *, NSNumber *> *)animationTransformAtIndex:(NSUInteger)index
+- (nullable SCValdiInlineViewAttachmentInfo *)inlineViewAttachmentAtIndex:(NSUInteger)index
+{
+    const auto &style = _cppInstance->getStyleAtIndex(index);
+    if (style.inlineViewAttachment == nullptr) {
+        return nil;
+    }
+
+    auto verticalAlignment = SCValdiInlineViewVerticalAlignmentCenter;
+    switch (style.inlineViewAttachment->getVerticalAlignment()) {
+        case Valdi::InlineViewVerticalAlignment::Top:
+            verticalAlignment = SCValdiInlineViewVerticalAlignmentTop;
+            break;
+        case Valdi::InlineViewVerticalAlignment::Bottom:
+            verticalAlignment = SCValdiInlineViewVerticalAlignmentBottom;
+            break;
+        case Valdi::InlineViewVerticalAlignment::Baseline:
+            verticalAlignment = SCValdiInlineViewVerticalAlignmentBaseline;
+            break;
+        case Valdi::InlineViewVerticalAlignment::Center:
+            verticalAlignment = SCValdiInlineViewVerticalAlignmentCenter;
+            break;
+    }
+    auto inlineViewAttachment = style.inlineViewAttachment;
+    return [[SCValdiInlineViewAttachmentInfo alloc]
+        initWithChildIndex:(NSInteger)inlineViewAttachment->getChildIndex()
+         verticalAlignment:verticalAlignment
+              sizeProvider:^CGSize{
+                  auto size = inlineViewAttachment->getSize();
+                  return CGSizeMake(size.width, size.height);
+              }];
+}
+
+- (nullable SCValdiTextAnimationTransform *)animationTransformAtIndex:(NSUInteger)index
 {
     const auto &style = _cppInstance->getStyleAtIndex(index);
     if (!style.animationTransform) {
@@ -183,11 +235,20 @@
     }
 
     const auto &animationTransform = style.animationTransform.value();
-    return @{
-        @"translationY": @(animationTransform.translationY),
-        @"scale": @(animationTransform.scale),
-        @"opacity": @(animationTransform.opacity),
-    };
+    NSString *key = animationTransform.key ? ValdiIOS::NSStringFromString(animationTransform.key.value()) : nil;
+    NSString *partPattern = animationTransform.partPattern.isEmpty()
+        ? nil
+        : ValdiIOS::NSStringFromString(animationTransform.partPattern);
+    return [[SCValdiTextAnimationTransform alloc] initWithKey:key
+                                                    partIndex:index
+                                                 translationY:animationTransform.translationY
+                                                        scale:animationTransform.scale
+                                                      opacity:animationTransform.opacity
+                                                     duration:animationTransform.duration
+                                       timeOffsetBetweenParts:animationTransform.timeOffsetBetweenParts
+                                                   groupIndex:animationTransform.groupIndex
+                                             partIndexInGroup:animationTransform.partIndexInGroup
+                                                  partPattern:partPattern];
 }
 
 @end

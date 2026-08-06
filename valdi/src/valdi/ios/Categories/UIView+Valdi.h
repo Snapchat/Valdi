@@ -24,6 +24,13 @@
  */
 + (void)bindAttributes:(id<SCValdiAttributesBinderProtocol>)attributesBinder;
 
++ (BOOL)valdi_managesChildFrames;
+
++ (BOOL)valdi_isPerformingViewHierarchySnapshot;
+
+- (void)valdi_performViewHierarchySnapshotWithBlock:(void (^)(void))snapshotBlock;
+- (void)valdi_willPerformViewHierarchySnapshot;
+
 - (BOOL)valdi_setBoxShadow:(NSArray<id>*)attributeValue animator:(id<SCValdiAnimatorProtocol>)animator;
 
 @end

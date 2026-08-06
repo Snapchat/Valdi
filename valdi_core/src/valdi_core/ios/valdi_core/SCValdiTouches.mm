@@ -7,6 +7,7 @@
 //
 
 #import "valdi_core/SCValdiTouches.h"
+#import "valdi_core/cpp/Constants.hpp"
 #import "valdi_core/cpp/Events/TouchEvents.hpp"
 #import "valdi_core/SCValdiFunctionWithCPPFunction+CPP.h"
 #import "valdi_core/SCValdiValueUtils.h"
@@ -90,13 +91,21 @@ SCValdiGestureLocation SCValdiGetGestureLocation(UIView *view, CGPoint gestureLo
     return location;
 }
 
-Valdi::ValueFunctionFlags SCValdiGetCallFlags(UIGestureRecognizerState gestureState)
+Valdi::ValueFunctionFlags SCValdiGetCallFlags(UIView *view, UIGestureRecognizerState gestureState)
 {
     if (gestureState == UIGestureRecognizerStateChanged) {
         return Valdi::ValueFunctionFlagsAllowThrottling;
-    } else {
+    }
+
+    // Began/ended/cancelled are not throttled, so a handler exported as a SyncWithMainThread
+    // callback blocks the main thread for as long as the JS queue is busy. Bound that wait; the
+    // handler still runs and no caller here reads the return value.
+    // VALDI_DISABLE_HIT_TEST_SYNC_DEADLINE reverts to the legacy unbounded behavior.
+    if (view.valdiContext.disableHitTestSyncDeadline) {
         return Valdi::ValueFunctionFlagsNone;
     }
+
+    return Valdi::ValueFunctionFlagsBoundedMainThreadSync;
 }
 
 Valdi::Value SCValdiMakeTouchEvent(UIView *view, CGPoint gestureLocation, UIGestureRecognizerState gestureState, Valdi::TouchEvents::PointerLocations pointerLocations)
@@ -158,7 +167,7 @@ BOOL SCValdiCallPredicateWithEvent(id<SCValdiFunction> predicate,
             const auto& fn = [(SCValdiFunctionWithCPPFunction *)predicate getFunction];
 
             Valdi::Value params[] = { event };
-            auto result = fn->callSyncWithDeadline(std::chrono::milliseconds(250), params, 1);
+            auto result = fn->callSyncWithDeadline(Valdi::kInputSyncCallDeadline, params, 1);
             return result.success() ? result.value().toBool() : NO;
         }
     }

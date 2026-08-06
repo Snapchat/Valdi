@@ -72,8 +72,14 @@ runs:
         # per-request timeout so one network blip doesn't kill a 2h+ job.
         echo "build --remote_retries=10" >> .bazelrc.local
         echo "build --remote_timeout=300s" >> .bazelrc.local
-        # Only upload cache results on push (trusted) events, not pull requests
-        if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$EVENT_NAME" = "release" ]; then
+        # macOS runners hit ENOBUFS ("No buffer space available") mid-bulk-transfer
+        # when Bazel opens its default 100 concurrent connections to the cache.
+        # Retries don't help: the host is out of socket buffers, not blipping.
+        echo "build --remote_max_connections=32" >> .bazelrc.local
+        # Only upload cache results on trusted events, not pull requests. Scheduled runs
+        # count: they always execute on the default branch, and without uploads a nightly
+        # job pays for a full cold build every time and leaves nothing behind for PRs.
+        if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$EVENT_NAME" = "release" ] || [ "$EVENT_NAME" = "schedule" ]; then
           echo "build --remote_upload_local_results=true" >> .bazelrc.local
         else
           echo "build --remote_upload_local_results=false" >> .bazelrc.local
@@ -89,8 +95,9 @@ runs:
         echo "build --credential_helper_timeout=30s" >> "$CACHE_RC"
         echo "build --remote_retries=10" >> "$CACHE_RC"
         echo "build --remote_timeout=300s" >> "$CACHE_RC"
+        echo "build --remote_max_connections=32" >> "$CACHE_RC"
         echo "build --experimental_circuit_breaker_strategy=failure" >> "$CACHE_RC"
-        if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$EVENT_NAME" = "release" ]; then
+        if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$EVENT_NAME" = "release" ] || [ "$EVENT_NAME" = "schedule" ]; then
           echo "build --remote_upload_local_results=true" >> "$CACHE_RC"
         else
           echo "build --remote_upload_local_results=false" >> "$CACHE_RC"

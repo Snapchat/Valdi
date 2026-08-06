@@ -21,7 +21,7 @@ load(
     "base_relative_dir",
 )
 load(":localizable_strings.bzl", "supported_langs_mapping")
-load(":valdi_paths.bzl", "get_ids_yaml_dts_path", "get_legacy_vue_srcs_dts_paths", "get_resources_dts_paths", "get_sql_dts_paths", "get_strings_dts_path", "infer_base_output_dir", "output_declaration_compiled_file_path_for_source_file", "output_declaration_file_path_for_source_file", "replace_prefix", "resolve_module_dir_and_name", "resolve_relative_project_path")
+load(":valdi_paths.bzl", "get_ids_yaml_dts_path", "get_legacy_vue_srcs_dts_paths", "get_resources_dts_paths", "get_sql_dts_paths", "get_sql_js_paths", "get_strings_dts_path", "infer_base_output_dir", "output_declaration_compiled_file_path_for_source_file", "output_declaration_file_path_for_source_file", "replace_prefix", "resolve_module_dir_and_name", "resolve_relative_project_path")
 load(":valdi_run_compiler.bzl", "generate_config", "resolve_compiler_executable", "run_valdi_compiler")
 load(":valdi_toolchain_type.bzl", "VALDI_TOOLCHAIN_TYPE")
 
@@ -230,7 +230,7 @@ valdi_compiled = rule(
         "srcs": attr.label_list(
             doc = "List of sources for this module",
             mandatory = True,
-            allow_files = [".js", ".ts", ".tsx", ".json"],
+            allow_files = [".js", ".ts", ".tsx", ".json", ".bin"],
         ),
         "legacy_vue_srcs": attr.label_list(
             doc = "List of legacy .vue sources for this module",
@@ -876,6 +876,7 @@ def _get_files_output_paths(ctx, module_name, module_directory, localization_mod
     if enable_web:
         outputs += _get_srcs_js_paths(filtered_srcs + ctx.files.protodecl_srcs, module_name, module_directory, bool(ctx.files.res), bool(ctx.file.ids_yaml), bool(ctx.attr.strings_dir))
         outputs += _get_srcs_vue_paths(ctx.files.legacy_vue_srcs, module_name, module_directory)
+        outputs += get_sql_js_paths(ctx.attr.sql_db_names, ctx.files.sql_srcs, module_name, module_directory)
 
     outputs += get_legacy_vue_srcs_dts_paths(ctx.files.legacy_vue_srcs, module_name, module_directory)
 
@@ -1385,22 +1386,30 @@ def _extract_image_resources_basenames(resources):
     return result
 
 def _extract_renamed_resources(resources):
-    result = []
+    result = {}
     for resource in resources:
         root, ext = paths.split_extension(resource.path)
         if not _is_image_ext(ext):
             continue
 
+        # Android density WebP assets are not emitted as web resources by the
+        # compiler, so declaring them here makes Bazel expect missing outputs.
+        if ext == ".webp":
+            continue
+
         basename = _clean_image_file_name(root)
 
-        web_ext = ext.replace("svg", "png")
-        web_name = "{}{}".format(basename, web_ext)
+        # The web compiler emits image resources as PNG files, including
+        # source SVG/WebP/JPEG assets.
+        web_name = "{}.png".format(basename)
 
         # This will break if there's a res/res/ folder
         subfolder = resource.path.split("res/", 1)[1] if "/res/" in resource.path else ""
+        output_subfolder = paths.dirname(subfolder)
+        web_path = paths.join(output_subfolder, web_name)
 
-        result.append(paths.join(paths.dirname(subfolder), web_name))
-    return result
+        result[web_path] = True
+    return sorted(result.keys())
 
 def _get_android_image_resources_paths(module_name, resources_basenames):
     debug_res_dir, release_res_dir = _get_android_res_dir("debug"), _get_android_res_dir("release")

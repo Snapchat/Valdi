@@ -14,6 +14,8 @@
 
 #include "valdi_core/cpp/Utils/PlatformResult.hpp"
 
+#include <vector>
+
 namespace snap::drawing {
 
 class FontManager;
@@ -37,6 +39,8 @@ struct TextShadow {
     }
 };
 
+enum TextVerticalAlignment { TextVerticalAlignmentTop, TextVerticalAlignmentCenter };
+
 class TextLayer : public Layer {
 public:
     explicit TextLayer(const Ref<Resources>& resources);
@@ -56,8 +60,14 @@ public:
     void setTextAlign(TextAlign textAlign);
     TextAlign getTextAlign() const;
 
+    void setTextVerticalAlignment(TextVerticalAlignment textVerticalAlignment);
+    TextVerticalAlignment getTextVerticalAlignment() const;
+
     void setTextDecoration(TextDecoration textDecoration);
     TextDecoration getTextDecoration() const;
+
+    void setCustomUnderlineStyle(std::optional<TextCustomUnderlineStyle> customUnderlineStyle);
+    const std::optional<TextCustomUnderlineStyle>& getCustomUnderlineStyle() const;
 
     void setTextShadow(Color color, Scalar radius, float opacity, Scalar offsetX, Scalar offsetY);
     void resetTextShadow();
@@ -69,8 +79,11 @@ public:
     void setMinimumScaleFactor(double minimumScaleFactor);
     double getMinimumScaleFactor() const;
 
-    void setLineHeightMultiple(Scalar lineHeightMultiple);
-    Scalar getLineHeightMultiple() const;
+    void setLineHeight(Scalar lineHeight);
+    Scalar getLineHeight() const;
+
+    void setLineHeightAbsolute(Scalar lineHeightAbsolute);
+    void resetLineHeightAbsolute();
 
     void setLetterSpacing(Scalar letterSpacing);
     Scalar getLetterSpacing() const;
@@ -98,7 +111,7 @@ public:
                             TextDecoration textDecoration,
                             TextOverflow textOverflow,
                             int numberOfLines,
-                            Scalar lineHeightMultiple,
+                            TextLayoutLineHeight lineHeight,
                             Scalar letterSpacing,
                             bool isRightToLeft,
                             bool adjustsFontSizeToFitWidth,
@@ -106,7 +119,8 @@ public:
                             bool respectDynamicType,
                             Scalar displayScale,
                             Scalar dynamicTypeScale,
-                            const Ref<FontManager>& fontManager);
+                            const Ref<FontManager>& fontManager,
+                            std::optional<TextCustomUnderlineStyle> customUnderlineStyle);
 
     static Ref<TextLayout> makeTextLayout(Size maxSize,
                                           const String& text,
@@ -116,7 +130,7 @@ public:
                                           TextDecoration textDecoration,
                                           TextOverflow textOverflow,
                                           int numberOfLines,
-                                          Scalar lineHeightMultiple,
+                                          TextLayoutLineHeight lineHeight,
                                           Scalar letterSpacing,
                                           bool isRightToLeft,
                                           bool adjustsFontSizeToFitWidth,
@@ -125,7 +139,8 @@ public:
                                           bool includeTextBlob,
                                           Scalar displayScale,
                                           Scalar dynamicTypeScale,
-                                          const Ref<FontManager>& fontManager);
+                                          const Ref<FontManager>& fontManager,
+                                          std::optional<TextCustomUnderlineStyle> customUnderlineStyle);
 
     static Ref<TextLayout> makeTextLayoutUnscaled(Size maxSize,
                                                   const String& text,
@@ -135,7 +150,7 @@ public:
                                                   TextDecoration textDecoration,
                                                   TextOverflow textOverflow,
                                                   int numberOfLines,
-                                                  Scalar lineHeightMultiple,
+                                                  TextLayoutLineHeight lineHeight,
                                                   Scalar letterSpacing,
                                                   bool isRightToLeft,
                                                   double fontScale,
@@ -143,10 +158,17 @@ public:
                                                   bool includeTextBlob,
                                                   Scalar displayScale,
                                                   Scalar dynamicTypeScale,
-                                                  const Ref<FontManager>& fontManager);
+                                                  const Ref<FontManager>& fontManager,
+                                                  std::optional<TextCustomUnderlineStyle> customUnderlineStyle);
+
+    void layoutInlineChildrenInLayer(Layer& childrenLayer);
 
 protected:
     void onDraw(DrawingContext& drawingContext) override;
+    void onBoundsChanged() override;
+    void onChildInserted(Layer* childLayer, size_t index) override;
+    void onChildRemoved(Layer* childLayer) override;
+    void onLayout() override;
     void onRightToLeftChanged() override;
 
 private:
@@ -157,30 +179,38 @@ private:
     Ref<AttributedTextOnTapGestureRecognizer> _attributedTextOnTapGestureRecognizer;
     TextAlign _textAlign = TextAlignLeft;
     TextDecoration _textDecoration = TextDecorationNone;
+    std::optional<TextCustomUnderlineStyle> _customUnderlineStyle;
     TextShadow _textShadow;
     TextOverflow _textOverflow = TextOverflowEllipsis;
+    TextVerticalAlignment _textVerticalAlignment = TextVerticalAlignmentTop;
     int _numberOfLines = 1;
     bool _adjustsFontSizeToFitWidth = false;
     double _minimumScaleFactor = 0.0;
-    Scalar _lineHeightMultiple = 1.0f;
+    bool _usesLineHeightAbsolute = false;
+    Scalar _lineHeight = 1.0f;
+    Scalar _lineHeightAbsolute = 0.0f;
     Scalar _letterSpacing = 0.0f;
 
     Ref<TextLayout> _textLayout;
     GradientWrapper _gradientWrapper;
 
+    TextLayout& getTextLayout(Size size, const Resources& resources);
     TextLayout& getTextLayout(Size size, bool respectDynamicType, Scalar displayScale, Scalar dynamicTypeScale);
+
+    Scalar getTextVerticalOffset(const Size& layerSize, const TextLayout& layout, Scalar displayScale) const;
+    TextLayoutLineHeight resolveLineHeight(Scalar displayScale) const;
 
     void setNeedsTextLayout();
 
     void removeOnTapGestureRecognizer();
     void addOnTapGestureRecognizer();
 
-    void drawTextDecorationsShadows(DrawingContext& drawingContext,
-                                    const std::vector<TextLayoutDecorationEntry>& textDecorations);
+    void drawTextVisualEntriesShadows(DrawingContext& drawingContext,
+                                      const std::vector<TextLayoutVisualEntry>& visualEntries);
 
-    void drawTextDecorations(DrawingContext& drawingContext,
-                             const std::vector<TextLayoutDecorationEntry>& textDecorations,
-                             bool predraw);
+    void drawTextVisualEntries(DrawingContext& drawingContext,
+                               const std::vector<TextLayoutVisualEntry>& visualEntries,
+                               bool predraw);
 
     void applyGradientToTextPaint(Paint& paint);
 

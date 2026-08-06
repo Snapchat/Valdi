@@ -129,16 +129,7 @@ static JSValueRef getProtobufNonRepeatedField(ProtobufArena& arena,
 
             const auto* string = field.getString();
             if (string != nullptr) {
-                switch (string->encoding()) {
-                    case StaticString::Encoding::UTF8:
-                        return jsContext.newStringUTF8(string->utf8StringView(), callContext.getExceptionTracker());
-                    case StaticString::Encoding::UTF16:
-                        return jsContext.newStringUTF16(string->utf16StringView(), callContext.getExceptionTracker());
-                    case StaticString::Encoding::UTF32: {
-                        auto storage = string->utf8Storage();
-                        return jsContext.newStringUTF8(storage.toStringView(), callContext.getExceptionTracker());
-                    }
-                }
+                return jsContext.newString(*string, callContext.getExceptionTracker());
             }
 
             return jsContext.newUndefined();

@@ -1,6 +1,7 @@
 import type { StdioOptions } from 'child_process';
+import * as fs from 'fs';
 import path from 'path';
-import { ANSI_COLORS, BAZEL_BIN_ENV, BAZEL_EXECUTABLES } from '../core/constants';
+import { ANSI_COLORS, BAZEL_BIN_ENV, BAZEL_EXECUTABLES, STABLE_EXEC_BUILD_FLAGS } from '../core/constants';
 import { CliError } from '../core/errors';
 import { Digraph } from './Digraph';
 import { LoadingIndicator } from './LoadingIndicator';
@@ -12,6 +13,33 @@ const BAZEL_QUIET_OPTIONS = '--noshow_progress --noshow_loading_progress --ui_ev
 const BAZEL_PREFIXED_OPTIONS = '--max_idle_secs=5';
 const BAZEL_POSTFIXED_OPTIONS = '--color=yes';
 const DEFAULT_STDIO_MODE: StdioOptions = ['pipe', 'pipe', 'inherit'];
+
+const WORKSPACE_MARKERS = ['MODULE.bazel', 'MODULE.bazel.bzlmod', 'WORKSPACE', 'WORKSPACE.bazel'];
+
+// True when the workspace's .bazelrc defines the `stable_exec` config. The CLI
+// injects `--config=stable_exec` (see STABLE_EXEC_BUILD_FLAGS) into every
+// build/test/run and its paired output query, but only when it is defined:
+// projects bootstrapped by an older CLI have no such block, and passing an
+// undefined --config hard-fails ("Config value 'stable_exec' is not defined").
+// projectsync backfills the block into existing projects. See Valdi#137.
+export function bazelrcDefinesStableExec(startDir: string = process.cwd()): boolean {
+  let dir = startDir;
+  for (;;) {
+    if (WORKSPACE_MARKERS.some(marker => fs.existsSync(path.join(dir, marker)))) {
+      const bazelrc = path.join(dir, '.bazelrc');
+      try {
+        return fs.existsSync(bazelrc) && /(^|\n)[^\n#]*:stable_exec\b/.test(fs.readFileSync(bazelrc, 'utf8'));
+      } catch {
+        return false;
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      return false;
+    }
+    dir = parent;
+  }
+}
 
 let cached_bazel_executable: string | undefined;
 
@@ -119,6 +147,7 @@ class BazelCommandCache {
 export class BazelClient {
   private workspaceRootCache: BazelCommandCache;
   private executionRootCache: BazelCommandCache;
+  private stableExecArgsCache: string | undefined;
 
   constructor() {
     this.workspaceRootCache = new BazelCommandCache(async () => {
@@ -181,7 +210,7 @@ export class BazelClient {
   }
 
   async queryBuildOutputs(targets: readonly string[], extraArgs: string = ''): Promise<string[]> {
-    const command = `cquery 'set(${targets.join(' ')})' --output files ${extraArgs}`;
+    const command = `cquery 'set(${targets.join(' ')})' --output files ${this.stableExecArgs()} ${extraArgs}`;
     const lines = await this.runCommandWithLinesOutput(command);
     return lines.sort();
   }
@@ -189,7 +218,7 @@ export class BazelClient {
   async buildTarget(target: string, extraArgs: string = ''): Promise<CommandResult> {
     // Use 'inherit' as the stdio mode by default as usually the output irrelevant
     // and only the success/failure matters
-    const commandBuildTarget = `build ${target} ${extraArgs}`;
+    const commandBuildTarget = `build ${target} ${this.stableExecArgs()} ${extraArgs}`;
 
     return await this.spawnCommand(commandBuildTarget, 'inherit').catch(() => {
       throw new CliError(`Failed to build target: ${target}`);
@@ -201,7 +230,7 @@ export class BazelClient {
     // and only the success/failure matters
 
     const allTargets = targets.join(' ');
-    const commandBuildTarget = `build ${allTargets} --show_result=${targets.length}`;
+    const commandBuildTarget = `build ${allTargets} ${this.stableExecArgs()} --show_result=${targets.length}`;
 
     return await this.spawnCommand(commandBuildTarget, 'inherit').catch(() => {
       throw new CliError(`Failed to build targets: ${targets.join(' ')}`);
@@ -209,7 +238,7 @@ export class BazelClient {
   }
 
   async runTarget(target: string, extraArgs: string = ''): Promise<CommandResult> {
-    const commandBuildTarget = `run ${target} ${extraArgs}`;
+    const commandBuildTarget = `run ${target} ${this.stableExecArgs()} ${extraArgs}`;
 
     return await this.spawnCommand(commandBuildTarget, 'inherit').catch(() => {
       throw new CliError(`Failed to run target: ${target}`);
@@ -238,7 +267,7 @@ export class BazelClient {
 
   async testTargets(targets: string[], extraArgs: string = ''): Promise<CommandResult> {
     const targetsString = targets.join(' ');
-    const commandTestTarget = `test ${targetsString} ${extraArgs}`;
+    const commandTestTarget = `test ${targetsString} ${this.stableExecArgs()} ${extraArgs}`;
 
     return await this.spawnCommand(commandTestTarget, 'inherit', extraArgs).catch(() => {
       throw new CliError(`Failed to test targets: ${targetsString}`);
@@ -254,6 +283,15 @@ export class BazelClient {
     } = await this.runCommand(commandBazelInfoVersion);
 
     return [returnCode, versionInfo.trim(), String(error)];
+  }
+
+  // Empty unless the workspace defines the `stable_exec` config. Memoized so a
+  // single command (e.g. agent-check's build-then-test) resolves it once.
+  private stableExecArgs(): string {
+    if (this.stableExecArgsCache === undefined) {
+      this.stableExecArgsCache = bazelrcDefinesStableExec() ? STABLE_EXEC_BUILD_FLAGS.join(' ') : '';
+    }
+    return this.stableExecArgsCache;
   }
 
   private async runCommandWithLinesOutput(command: string): Promise<string[]> {

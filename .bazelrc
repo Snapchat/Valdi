@@ -66,6 +66,15 @@ build:macos --copt=-fvisibility=hidden
 build --javacopt=-XepDisableAllChecks
 build --java_runtime_version=remotejdk_11
 build --tool_java_runtime_version=remotejdk_17
+## rules_java 8.13.0 emits the java launcher's JAVABIN with the pre-Bazel-8 external/ prefix
+## (JAVABIN=external/rules_java++toolchains+<jdk>/bin/java, resolved under $JAVA_RUNFILES/_main/)
+## while emitting the classpath with Bazel 8's layout, where external repos sit at the runfiles
+## root. The JDK is therefore never found and every java_test dies with exit 126 before running a
+## line. Restoring the legacy runfiles tree makes both spellings resolve.
+##
+## Stopgap: this flag is deprecated and will eventually be removed from Bazel. The durable fix is a
+## rules_java bump past 8.13.0, at which point this line should go.
+build --legacy_external_runfiles
 
 build --flag_alias=snap_flavor=@snap_platforms//flavors:snap_flavor
 build --snap_flavor=client_development

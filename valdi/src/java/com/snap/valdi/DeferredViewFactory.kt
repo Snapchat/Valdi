@@ -7,6 +7,7 @@ import com.snap.valdi.exceptions.ValdiFatalException
 import com.snap.valdi.attributes.AttributesBindingContext
 import com.snap.valdi.attributes.AttributesBindingContextNative
 import com.snap.valdi.utils.ViewRefSupport
+import com.snap.valdi.views.ValdiChildFrameManagingView
 
 class DeferredViewFactory<T: View>(val viewClass: Class<T>,
                                    val factory: (context: Context) -> T,
@@ -29,6 +30,10 @@ class DeferredViewFactory<T: View>(val viewClass: Class<T>,
         } catch (throwable: Throwable) {
             ValdiFatalException.handleFatal(throwable, "View factory of class '$viewClass' failed to bind attributes")
         }
+    }
+
+    override fun managesChildFrames(): Boolean {
+        return ValdiChildFrameManagingView::class.java.isAssignableFrom(viewClass)
     }
 
 }

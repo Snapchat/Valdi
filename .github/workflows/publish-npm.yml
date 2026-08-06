@@ -28,16 +28,27 @@ jobs:
       - name: Check which packages changed
         id: filter
         run: |
-          if git diff HEAD^ HEAD --name-only | grep -q "npm_modules/cli/package.json"; then
-            echo "cli=true" >> $GITHUB_OUTPUT
+          # Publish only when the package's version field actually changed.
+          # Any other edit to package.json (scripts, deps, metadata) would
+          # otherwise trigger a spurious publish of the already-live version.
+          version_changed() {
+            local pkg="$1"
+            local old new
+            old=$(git show "HEAD^:$pkg" 2>/dev/null | jq -r '.version' 2>/dev/null || true)
+            new=$(git show "HEAD:$pkg" 2>/dev/null | jq -r '.version' 2>/dev/null || true)
+            [ -n "$new" ] && [ "$new" != "null" ] && [ "$old" != "$new" ]
+          }
+
+          if version_changed "npm_modules/cli/package.json"; then
+            echo "cli=true" >> "$GITHUB_OUTPUT"
           else
-            echo "cli=false" >> $GITHUB_OUTPUT
+            echo "cli=false" >> "$GITHUB_OUTPUT"
           fi
-          
-          if git diff HEAD^ HEAD --name-only | grep -q "npm_modules/eslint-plugin-valdi/package.json"; then
-            echo "eslint-plugin=true" >> $GITHUB_OUTPUT
+
+          if version_changed "npm_modules/eslint-plugin-valdi/package.json"; then
+            echo "eslint-plugin=true" >> "$GITHUB_OUTPUT"
           else
-            echo "eslint-plugin=false" >> $GITHUB_OUTPUT
+            echo "eslint-plugin=false" >> "$GITHUB_OUTPUT"
           fi
 
   test-cli:

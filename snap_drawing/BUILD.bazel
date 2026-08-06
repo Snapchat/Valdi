@@ -140,6 +140,7 @@ cc_test(
     deps = [
         ":snap_drawing",
         ":test_utils",
+        "//valdi:valdi_snap_drawing",
         "@gtest//:gtest_main",
     ],
 )
@@ -229,7 +230,9 @@ objc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":snap_drawing_cc",
-        "//valdi_core:valdi_core_objc",
+        # The apple sources include only valdi_core/cpp/** headers — the ObjC Composer runtime
+        # was never referenced. Consumers that want valdi's ObjC runtime dep it themselves.
+        "//valdi_core:valdi_core_cc",
     ],
 )
 

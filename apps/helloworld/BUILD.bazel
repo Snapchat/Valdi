@@ -1,3 +1,5 @@
+load("@rules_android//rules:rules.bzl", "android_binary")
+load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 load(
     "//bzl/valdi:valdi_application.bzl",
     "valdi_application",
@@ -8,6 +10,9 @@ load("//bzl/valdi:valdi_exported_library.bzl", "valdi_exported_library")
 valdi_application(
     name = "hello_world",
     android_activity_theme_name = "Theme.MyApp.Launch",
+    # No checked-in mipmap-*/app_icon.png here: `icons` below generates those from
+    # app_assets/icon.png into this same resource root, and having both makes resource
+    # packaging fail with an ambiguous-priority conflict.
     android_resource_files = glob(["app_assets/android/**"]),
     icons = valdi_application_icons(src = "app_assets/icon.png"),
     ios_bundle_id = "com.snap.valdi.helloworld",
@@ -16,6 +21,49 @@ valdi_application(
     title = "Valdi Hello World",
     version = "1.0.0",
     deps = ["//apps/helloworld/src/valdi/hello_world"],
+)
+
+# Instrumented tests for the Android app, driven by the Valdi Espresso bindings
+# (//valdi:valdi_android_test_support) and the test runtime (//valdi:valdi_android_test_runtime).
+# Run them with tools/ci/android_instrumentation_tests.sh, which needs a connected
+# device or emulator.
+kt_android_library(
+    name = "hello_world_instrumentation_test_lib",
+    testonly = True,
+    srcs = glob(["androidTest/java/**/*.kt"]),
+    custom_package = "com.snap.valdi.hello_world.test",
+    manifest = "androidTest/AndroidManifest.xml",
+    deps = [
+        # Same pair the app binary is built from: the generated StartActivity (plus the
+        # app's Kotlin module deps) and the AAR holding libvaldi.so.
+        ":hello_world_android_aar_import",
+        ":hello_world_android_src",
+        "//valdi:valdi_android_test_runtime",
+        "//valdi:valdi_android_test_support",
+        "@test_mvn//:androidx_test_core",
+        "@test_mvn//:androidx_test_espresso_espresso_core",
+        "@test_mvn//:androidx_test_ext_junit",
+        # Espresso resolves androidx.test.platform.tracing.Tracing from monitor at runtime;
+        # without an explicit dep it is not packaged and every Espresso call dies with
+        # NoClassDefFoundError.
+        "@test_mvn//:androidx_test_monitor",
+        "@test_mvn//:junit_junit",
+        "@test_mvn//:org_hamcrest_hamcrest_core",
+    ],
+)
+
+# Self-instrumenting APK: app code and tests ship together so the tests can launch the
+# activities they need (see androidTest/AndroidManifest.xml).
+android_binary(
+    name = "hello_world_instrumentation_test",
+    testonly = True,
+    custom_package = "com.snap.valdi.hello_world.test",
+    manifest = "androidTest/AndroidManifest.xml",
+    multidex = "native",
+    deps = [
+        ":hello_world_instrumentation_test_lib",
+        "@test_mvn//:androidx_test_runner",
+    ],
 )
 
 valdi_exported_library(

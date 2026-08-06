@@ -2,12 +2,17 @@ import {
   AttributedText,
   AttributedTextAttributes,
   AttributedTextAnimationTransform,
+  AttributedTextBackgroundPaddingValue,
   AttributedTextChunk,
   AttributedTextEntryType,
   AttributedTextOnTap,
   AttributedTextOnLayout,
 } from 'valdi_tsx/src/AttributedText';
 import { AttributedTextInlineImageAttachment } from 'valdi_tsx/src/AttributedTextInlineImageAttachment';
+import {
+  AttributedTextInlineViewAttachment,
+  AttributedTextInlineViewVerticalAlignment,
+} from 'valdi_tsx/src/AttributedTextInlineViewAttachment';
 import { LabelTextDecoration } from 'valdi_tsx/src/NativeTemplateElements';
 import { AnyFunction } from './Callback';
 
@@ -93,6 +98,33 @@ export class AttributedTextBuilder {
   }
 
   /**
+   * Push a background color on the Style stack, which will make all subsequent added strings
+   * use this background color, until pop() is called
+   */
+  pushBackgroundColor(backgroundColor: string): AttributedTextBuilder {
+    this.components.push(AttributedTextEntryType.PushBackgroundColor, backgroundColor);
+    return this;
+  }
+
+  /**
+   * Push background padding on the Style stack, which will make all subsequent added strings
+   * use this background padding, until pop() is called.
+   */
+  pushBackgroundPadding(backgroundPadding: AttributedTextBackgroundPaddingValue): AttributedTextBuilder {
+    this.components.push(AttributedTextEntryType.PushBackgroundPadding, backgroundPadding);
+    return this;
+  }
+
+  /**
+   * Push a background border radius on the Style stack, which will make all subsequent added strings
+   * use this background border radius, until pop() is called.
+   */
+  pushBackgroundBorderRadius(backgroundBorderRadius: number | string): AttributedTextBuilder {
+    this.components.push(AttributedTextEntryType.PushBackgroundBorderRadius, backgroundBorderRadius);
+    return this;
+  }
+
+  /**
    * Push a TextDecoration on the Style stack, which will make all subsequent added strings
    * use this color, until pop() is called
    */
@@ -151,15 +183,6 @@ export class AttributedTextBuilder {
   }
 
   /**
-   * Push an inline image attachment on the Style stack.
-   * Used for embedding images (like rendered LaTeX) inline with text.
-   */
-  pushInlineImage(attachment: AttributedTextInlineImageAttachment): AttributedTextBuilder {
-    this.components.push(AttributedTextEntryType.PushInlineImage, attachment);
-    return this;
-  }
-
-  /**
    * Push a per-part animation transform on the Style stack.
    */
   pushAnimationTransform(animationTransform: AttributedTextAnimationTransform): AttributedTextBuilder {
@@ -171,14 +194,22 @@ export class AttributedTextBuilder {
    * Append an inline image as an attributed text attachment.
    * The image will be rendered inline with surrounding text using native text layout
    * (NSTextAttachment on iOS, ReplacementSpan on Android).
-   *
-   * @param attachment The image attachment configuration including dimensions and image data
-   * @param placeholderChar Character to use as placeholder in the text (default: U+FFFC Object Replacement Character)
    */
-  appendInlineImage(attachment: AttributedTextInlineImageAttachment, placeholderChar: string = '\uFFFC'): AttributedTextBuilder {
-    this.pushInlineImage(attachment);
-    this.appendText(placeholderChar);
-    this.pop();
+  appendInlineImage(attachment: AttributedTextInlineImageAttachment): AttributedTextBuilder {
+    this.components.push(AttributedTextEntryType.InlineImage, attachment);
+    return this;
+  }
+
+  /**
+   * Append an inline child view as an attributed text attachment.
+   * The child is sized by Yoga and positioned by native text layout.
+   */
+  appendInlineView(
+    childIndex: number,
+    verticalAlignment: AttributedTextInlineViewVerticalAlignment = AttributedTextInlineViewVerticalAlignment.Center,
+  ): AttributedTextBuilder {
+    const attachment: AttributedTextInlineViewAttachment = { childIndex, verticalAlignment };
+    this.components.push(AttributedTextEntryType.InlineView, attachment);
     return this;
   }
 
@@ -191,7 +222,10 @@ export class AttributedTextBuilder {
     return this;
   }
 
-  private appendEntry(type: AttributedTextEntryType, value: string | AnyFunction | number) {
+  private appendEntry(
+    type: AttributedTextEntryType,
+    value: string | AnyFunction | number | AttributedTextBackgroundPaddingValue,
+  ) {
     this.components.push(type, value);
   }
 
@@ -199,6 +233,21 @@ export class AttributedTextBuilder {
     let popCount = 0;
     if (attributes.color) {
       this.pushColor(attributes.color);
+      popCount++;
+    }
+
+    if (attributes.backgroundColor) {
+      this.pushBackgroundColor(attributes.backgroundColor);
+      popCount++;
+    }
+
+    if (attributes.backgroundPadding !== undefined) {
+      this.pushBackgroundPadding(attributes.backgroundPadding);
+      popCount++;
+    }
+
+    if (attributes.backgroundBorderRadius !== undefined) {
+      this.pushBackgroundBorderRadius(attributes.backgroundBorderRadius);
       popCount++;
     }
 

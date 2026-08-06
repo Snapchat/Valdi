@@ -8,7 +8,9 @@
 #pragma once
 
 #include "valdi/runtime/Interfaces/IJavaScriptContext.hpp"
+#include "valdi/runtime/JavaScript/JSNativeClassData.hpp"
 #include "valdi/runtime/Utils/RefCountableAutoreleasePool.hpp"
+#include "valdi_core/cpp/Utils/ReferenceInfo.hpp"
 #include "valdi_core/cpp/Utils/Result.hpp"
 
 #include <quickjs/quickjs.h>
@@ -27,6 +29,18 @@ struct JSClassDefWithId {
 const JSClassDefWithId* getBridgedFunctionClassDef();
 const JSClassDefWithId* getWrappedObjectClassDef();
 const JSClassDefWithId* getWeakRefFinalizerClassDef();
+const JSClassDefWithId* getNativeClassConstructorClassDef();
+const JSClassDefWithId* getNativeClassInstanceMemberClassDef();
+const JSClassDefWithId* getNativeClassStaticMemberClassDef();
+
+struct NativeClassFunctionData final : public Valdi::SimpleRefCountable {
+    NativeClassFunctionData(const Valdi::Ref<Valdi::JSNativeClassData>& nativeClass,
+                            const Valdi::StringBox& name);
+
+    Valdi::Ref<Valdi::JSNativeClassData> nativeClass;
+    Valdi::ReferenceInfo referenceInfo;
+    Valdi::JSClassCallback callback = nullptr;
+};
 
 inline Valdi::JSValue toValdiJSValue(const JSValue& value) {
     return Valdi::JSValue(value);
@@ -73,6 +87,11 @@ inline Valdi::JSFunction* getObjectCallable(const JSValue& value) {
 
 void setObjectWrappedObject(const JSValue& value, const Valdi::Ref<Valdi::RefCountable>& wrappedObject);
 Valdi::Ref<Valdi::RefCountable> getObjectWrappedObject(const JSValue& value);
+
+void setNativeClassConstructorData(const JSValue& value, const Valdi::Ref<Valdi::JSNativeClassData>& nativeClass);
+Valdi::Ref<Valdi::JSNativeClassData> getNativeClassConstructorData(const JSValue& value);
+
+void setNativeClassFunctionData(const JSValue& value, const Valdi::Ref<NativeClassFunctionData>& functionData);
 
 size_t weakReferenceIdFromJSWeakReferenceFinalizer(const JSValue& jsWeakReferenceFinalizer);
 void setWeakReferenceIdToJSWeakReferenceFinalizer(const JSValue& jsWeakReferenceFinalizer, size_t weakReferenceId);

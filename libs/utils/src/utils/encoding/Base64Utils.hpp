@@ -44,6 +44,13 @@ std::vector<uint8_t> base64ToBinary(std::string_view base64);
 bool base64ToBinary(std::string_view base64, std::vector<uint8_t>& decoded);
 
 /**
+ * @brief Base64-url decode the string and store the resulting bytes in the |decoded| vector.
+ * Newlines are stripped from the string before decoding. Missing padding is accepted.
+ * Returns false if failed to decode.
+ */
+bool base64UrlToBinary(std::string_view base64url, std::vector<uint8_t>& decoded);
+
+/**
  * @brief Base64 decode the string and store the first 8-bytes of the result in the
  * returned uint64_t. If the result is more than 8-bytes then it will be truncated.
  * If the result is less than 8-bytes then the remaining bytes in the uint64_t will
@@ -58,9 +65,21 @@ uint64_t base64ToUInt64(const std::string& base64);
 std::string base64UrlToBase64(const std::string& base64url);
 
 /**
+ * @brief Convert the Base64 URL string to standard Base64 in place.
+ * See RFC 4648 'Table 2: The "URL and Filename safe" Base 64 Alphabet'
+ */
+void base64UrlToBase64InPlace(std::string& base64url);
+
+/**
  * @brief Convert the Base64 string to a Base64 URL string.
  * See RFC 4648 'Table 2: The "URL and Filename safe" Base 64 Alphabet'
  */
 std::string base64ToBase64Url(const std::string& base64);
+
+/**
+ * @brief Convert the Base64 string to a Base64 URL string in place.
+ * See RFC 4648 'Table 2: The "URL and Filename safe" Base 64 Alphabet'
+ */
+void base64ToBase64UrlInPlace(std::string& base64);
 
 } // namespace snap::utils::encoding

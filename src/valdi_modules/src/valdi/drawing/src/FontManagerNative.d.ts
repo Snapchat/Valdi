@@ -20,6 +20,7 @@ export function registerFontFromData(
   weight: FontWeight,
   style: FontStyle,
   fontData: Uint8Array,
+  canUseAsFallback?: boolean,
 ): void;
 
 export function registerFontFromFilePath(
@@ -28,4 +29,5 @@ export function registerFontFromFilePath(
   weight: FontWeight,
   style: FontStyle,
   filePath: string,
+  canUseAsFallback?: boolean,
 ): void;

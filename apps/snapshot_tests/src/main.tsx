@@ -14,6 +14,22 @@ const boldData = new Uint8Array(fs.readFileSync('valdi/res/font/roboto_mono_bold
 fontManager.registerFontFromData(TEST_FONT, FontWeight.NORMAL, FontStyle.NORMAL, regularData);
 fontManager.registerFontFromData(TEST_FONT, FontWeight.BOLD, FontStyle.NORMAL, boldData);
 
+// Roboto Mono carries no emoji glyphs, so emoji can only render through per-character fallback.
+// Registered by path rather than by data to keep this 23MB font out of the JS heap, and with
+// canUseAsFallback so the fallback resolver will actually consider it — without that flag
+// getEmojiFont finds nothing and emoji render as missing-glyph boxes.
+//
+// Reusing snap_drawing's test font rather than vendoring another copy. The CLI runs with the
+// open_source root as its working directory, so this source-relative path resolves without a
+// Bazel data dep.
+fontManager.registerFontFromFilePath(
+  'Noto Color Emoji',
+  FontWeight.NORMAL,
+  FontStyle.NORMAL,
+  'snap_drawing/testdata/NotoColorEmoji-Regular.ttf',
+  /* canUseAsFallback */ true,
+);
+
 const standalone = getStandaloneRuntime();
 const args = standalone.arguments.slice();
 

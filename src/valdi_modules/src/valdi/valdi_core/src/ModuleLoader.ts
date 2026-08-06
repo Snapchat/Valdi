@@ -205,8 +205,7 @@ export class ModuleLoader implements IModuleLoader {
     // caller opts in via a platform config, so this stays off by default (e.g. on iOS).
     if (chunkSize === undefined || chunkSize <= 0 || paths.length <= chunkSize) {
       for (let i = 0; i < paths.length; i++) {
-        const resolvedPath = resolveAbsoluteImportFromPath(paths[i]);
-        this.doPreload(resolvedPath.absolutePath, 0, maxDepth, visited);
+        this.doPreloadIsolated(paths[i], maxDepth, visited);
       }
       return;
     }
@@ -215,8 +214,7 @@ export class ModuleLoader implements IModuleLoader {
     const evaluateNextChunk = () => {
       const end = Math.min(index + chunkSize, paths.length);
       for (; index < end; index++) {
-        const resolvedPath = resolveAbsoluteImportFromPath(paths[index]);
-        this.doPreload(resolvedPath.absolutePath, 0, maxDepth, visited);
+        this.doPreloadIsolated(paths[index], maxDepth, visited);
       }
       if (index < paths.length) {
         // Reschedule the rest as a fresh work item so the JS dispatch queue drains other
@@ -226,6 +224,17 @@ export class ModuleLoader implements IModuleLoader {
       }
     };
     evaluateNextChunk();
+  }
+
+  // Preloading is opportunistic: a module that throws at evaluation (or is missing from a
+  // stale path list) must not abort the rest of the batch.
+  private doPreloadIsolated(path: string, maxDepth: number, visited: StringSet) {
+    try {
+      const resolvedPath = resolveAbsoluteImportFromPath(path);
+      this.doPreload(resolvedPath.absolutePath, 0, maxDepth, visited);
+    } catch (err) {
+      console.log(`Could not preload module ${path}: ${(err as Error).message}`);
+    }
   }
 
   private doPreload(path: string, currentDepth: number, maxDepth: number, visitedModulePaths: StringSet) {

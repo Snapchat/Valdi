@@ -52,8 +52,8 @@ import {
 } from '../utils/linuxDistro';
 import { wrapInColor } from '../utils/logUtils';
 
-/** Discord support link for troubleshooting */
-const DISCORD_SUPPORT_URL = 'https://discord.gg/uJyNEeYX2U';
+/** GitHub Discussions link for troubleshooting help */
+const SUPPORT_URL = 'https://github.com/Snapchat/Valdi/discussions';
 
 /**
  * Command line parameters for the doctor command.
@@ -234,9 +234,6 @@ class ValdiDoctor {
 
     // Shell autocomplete configuration
     this.checkShellAutoComplete();
-
-    // VSCode/Cursor extensions check
-    await this.checkEditorExtensions();
 
     // Framework-specific checks (only if requested)
     if (this.frameworkMode) {
@@ -1010,88 +1007,6 @@ class ValdiDoctor {
   }
 
   /**
-   * Validates VSCode/Cursor extensions installation.
-   *
-   * Checks if Valdi extensions are installed in VSCode or Cursor:
-   * - valdi-vivaldi: Device logs and language support
-   * - valdi-debug: JavaScript debugger
-   *
-   * @returns Promise that resolves when extension checks are complete
-   * @private
-   */
-  private async checkEditorExtensions(): Promise<void> {
-    const hasCode = checkCommandExists('code');
-    const hasCursor = checkCommandExists('cursor');
-
-    if (!hasCode && !hasCursor) {
-      // No editor installed, skip check
-      return;
-    }
-
-    let extensionsInstalled = false;
-
-    // Check VSCode extensions
-    if (hasCode) {
-      try {
-        const { stdout } = await runCliCommand('code --list-extensions');
-        const installedExtensions = stdout.toLowerCase();
-        
-        const hasVivaldi = installedExtensions.includes('valdi-vivaldi');
-        const hasDebug = installedExtensions.includes('valdi-debug');
-
-        if (hasVivaldi && hasDebug) {
-          extensionsInstalled = true;
-          this.addResult({
-            name: 'VSCode Extensions',
-            status: 'pass',
-            message: 'Valdi extensions installed in VSCode',
-            category: 'Development tools',
-          });
-        }
-      } catch {
-        // Could not check VSCode extensions
-      }
-    }
-
-    // Check Cursor extensions
-    if (hasCursor) {
-      try {
-        const { stdout } = await runCliCommand('cursor --list-extensions');
-        const installedExtensions = stdout.toLowerCase();
-        
-        const hasVivaldi = installedExtensions.includes('valdi-vivaldi');
-        const hasDebug = installedExtensions.includes('valdi-debug');
-
-        if (hasVivaldi && hasDebug) {
-          extensionsInstalled = true;
-          this.addResult({
-            name: 'Cursor Extensions',
-            status: 'pass',
-            message: 'Valdi extensions installed in Cursor',
-            category: 'Development tools',
-          });
-        }
-      } catch {
-        // Could not check Cursor extensions
-      }
-    }
-
-    // If neither editor has extensions, show info
-    if (!extensionsInstalled && (hasCode || hasCursor)) {
-      const editor = hasCode ? 'VSCode' : 'Cursor';
-      this.addResult({
-        name: `${editor} Extensions`,
-        status: 'warn',
-        message: 'Valdi editor extensions not installed',
-        details: 'Extensions provide syntax highlighting, debugging, and device logs',
-        fixable: true,
-        fixCommand: 'See installation instructions: https://github.com/Snapchat/Valdi/blob/main/docs/INSTALL.md#vscodecursor-setup-optional-but-recommended',
-        category: 'Development tools',
-      });
-    }
-  }
-
-  /**
    * Validates framework development dependencies.
    *
    * Additional tools needed for framework development:
@@ -1456,8 +1371,8 @@ class ValdiDoctor {
       console.log();
       console.log(wrapInColor('Some issues need to be resolved before Valdi can work properly.', ANSI_COLORS.RED_COLOR));
       console.log();
-      console.log(wrapInColor('Still having trouble? Come get help on Discord:', ANSI_COLORS.BLUE_COLOR));
-      console.log(wrapInColor(DISCORD_SUPPORT_URL, ANSI_COLORS.BLUE_COLOR));
+      console.log(wrapInColor('Still having trouble? Ask for help in GitHub Discussions:', ANSI_COLORS.BLUE_COLOR));
+      console.log(wrapInColor(SUPPORT_URL, ANSI_COLORS.BLUE_COLOR));
       console.log(wrapInColor('Please paste the entire output of this command when asking for help.', ANSI_COLORS.YELLOW_COLOR));
     } else if (totalWarnCount > 0) {
       console.log();

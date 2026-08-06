@@ -29,6 +29,19 @@ static BOOL _SCValdiIsGlassEffectAvailable(void)
     return NO;
 }
 
+/// Maps the `glassAppearance` attribute onto an override style. Anything other than
+/// `light`/`dark` (including a nil value) means "follow the app appearance".
+static UIUserInterfaceStyle _SCValdiUserInterfaceStyleForGlassAppearance(NSString *_Nullable appearance)
+{
+    if ([appearance isEqualToString:@"dark"]) {
+        return UIUserInterfaceStyleDark;
+    }
+    if ([appearance isEqualToString:@"light"]) {
+        return UIUserInterfaceStyleLight;
+    }
+    return UIUserInterfaceStyleUnspecified;
+}
+
 @implementation SCValdiGlassView {
     BOOL _isClearStyle;
     BOOL _interactive;
@@ -168,6 +181,19 @@ static BOOL _SCValdiIsGlassEffectAvailable(void)
         resetBlock:^(SCValdiGlassView *view, id<SCValdiAnimatorProtocol> animator) {
             view->_interactive = NO;
             [view _applyEffectWithAnimator:animator];
+        }];
+
+    // `regular` glass follows the view's userInterfaceStyle and renders bright in a light appearance; setting
+    // this pins it to one variant. Unset means follow the app; reset restores `unspecified` since views are pooled.
+    [attributesBinder bindAttribute:@"glassAppearance"
+        invalidateLayoutOnChange:NO
+        withStringBlock:^BOOL(SCValdiGlassView *view, NSString *attributeValue,
+                              id<SCValdiAnimatorProtocol> animator) {
+            view.overrideUserInterfaceStyle = _SCValdiUserInterfaceStyleForGlassAppearance(attributeValue);
+            return YES;
+        }
+        resetBlock:^(SCValdiGlassView *view, id<SCValdiAnimatorProtocol> animator) {
+            view.overrideUserInterfaceStyle = UIUserInterfaceStyleUnspecified;
         }];
 
 #if defined(__IPHONE_26_0)

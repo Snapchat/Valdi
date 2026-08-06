@@ -248,6 +248,7 @@ IMPLEMENT_JAVA_METHOD(ValdiThread, UpdateQoS, "updateQoS", VoidType, int32_t)
 IMPLEMENT_JAVA_CLASS(ViewFactory, "com/snap/valdi/ViewFactoryPrivate")
 IMPLEMENT_JAVA_METHOD(ViewFactory, CreateView, "createView", ViewType, JavaObject)
 IMPLEMENT_JAVA_METHOD(ViewFactory, BindAttributes, "bindAttributes", VoidType, int64_t)
+IMPLEMENT_JAVA_METHOD(ViewFactory, ManagesChildFrames, "managesChildFrames", bool)
 
 IMPLEMENT_JAVA_CLASS(ViewRef, "com/snap/valdi/ViewRef")
 IMPLEMENT_JAVA_METHOD(ViewRef, InvalidateLayout, "invalidateLayout", VoidType)

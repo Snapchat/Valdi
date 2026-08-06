@@ -68,7 +68,7 @@ TEST(RuntimeTweaks, tsnPerModuleSetting) {
     ASSERT_FALSE(tweaks->enableTSNForModule(STRING_LITERAL("add_friends")));
 }
 
-TEST(RuntimeTweaks, moduleLoadDiagnosticsSetting) {
+TEST(RuntimeTweaks, anrDiagnosticsSetting) {
     auto provider = makeShared<TestTweakValueProvider>();
     auto tweaks = makeShared<ValdiRuntimeTweaks>(provider.toShared());
 
@@ -76,7 +76,7 @@ TEST(RuntimeTweaks, moduleLoadDiagnosticsSetting) {
     (*config)[STRING_LITERAL("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS")] = Value(true);
 
     provider->config = Value(config);
-    ASSERT_TRUE(tweaks->enableModuleLoadDiagnostics());
+    ASSERT_TRUE(tweaks->enableANRDiagnostics());
 }
 
 } // namespace ValdiTest
