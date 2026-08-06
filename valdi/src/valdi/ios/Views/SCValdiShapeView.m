@@ -17,6 +17,7 @@ static NSString *const kFillGradientLayoutKey = @"shape_fill_gradient";
 
 @implementation SCValdiShapeView {
     UIColor *_fillColor;
+    UIColor *_solidFillGradientColor;
     UIColor *_strokeColor;
     CAGradientLayer *_fillGradientLayer;
     CAShapeLayer *_fillGradientMaskLayer;
@@ -134,6 +135,7 @@ static NSString *const kFillGradientLayoutKey = @"shape_fill_gradient";
 
 - (void)_resetFillGradientWithAnimator:(id<SCValdiAnimatorProtocol>)animator
 {
+    _solidFillGradientColor = nil;
     [_fillGradientLayer removeFromSuperlayer];
     [_fillGradientStrokeLayer removeFromSuperlayer];
     _fillGradientLayer = nil;
@@ -149,13 +151,19 @@ static NSString *const kFillGradientLayoutKey = @"shape_fill_gradient";
 {
     NSArray *colors = attributeValue.firstObject;
     if (colors.count < 2) {
+        UIColor *solidFillGradientColor = nil;
         if (colors.count == 1) {
-            _fillColor = UIColorFromValdiAttributeValue((int64_t)[colors.firstObject integerValue]);
+            solidFillGradientColor = UIColorFromValdiAttributeValue((int64_t)[colors.firstObject integerValue]);
         }
         [self _resetFillGradientWithAnimator:animator];
+        if (solidFillGradientColor) {
+            _solidFillGradientColor = solidFillGradientColor;
+            [self _applyFillColor:solidFillGradientColor animator:animator];
+        }
         return YES;
     }
 
+    _solidFillGradientColor = nil;
     CAShapeLayer *shapeLayer = [self shapeLayer];
     if (!_fillGradientLayer) {
         _fillGradientLayer = [CAGradientLayer layer];
@@ -301,18 +309,23 @@ static NSString *const kFillGradientLayoutKey = @"shape_fill_gradient";
     return [CAShapeLayer class];
 }
 
-- (void)_setFillColor:(UIColor *)color animator:(id<SCValdiAnimatorProtocol> )animator
+- (void)_applyFillColor:(UIColor *)color animator:(id<SCValdiAnimatorProtocol>)animator
 {
-    _fillColor = color;
-    if (_fillGradientLayer) {
-        return;
-    }
-
     if (animator) {
         [animator addAnimationOnLayer:self.shapeLayer forKeyPath:NSStringFromSelector(@selector(fillColor)) value:(__bridge id)color.CGColor];
     } else {
         self.shapeLayer.fillColor = color.CGColor;
     }
+}
+
+- (void)_setFillColor:(UIColor *)color animator:(id<SCValdiAnimatorProtocol> )animator
+{
+    _fillColor = color;
+    if (_fillGradientLayer || _solidFillGradientColor) {
+        return;
+    }
+
+    [self _applyFillColor:color animator:animator];
 }
 
 - (void)_setStrokeColor:(UIColor *)color animator:(id<SCValdiAnimatorProtocol> )animator

@@ -128,6 +128,7 @@
 - (void)testSingleColorFillGradientFallsBackToSolidFill
 {
     SCValdiShapeView *view = [[SCValdiShapeView alloc] initWithFrame:CGRectMake(0, 0, 100, 100)];
+    [view _setFillColor:UIColor.greenColor animator:nil];
     [view valdi_setFillGradient:[self linearGradient] animator:nil];
 
     NSArray *singleColorGradient = @[@[@0x0000FFFF], @[], @0, @NO];
@@ -135,6 +136,12 @@
 
     XCTAssertNil([self gradientLayerForView:view]);
     XCTAssertTrue(CGColorEqualToColor(view.shapeLayer.fillColor, UIColor.blueColor.CGColor));
+
+    [view _setFillColor:UIColor.yellowColor animator:nil];
+    XCTAssertTrue(CGColorEqualToColor(view.shapeLayer.fillColor, UIColor.blueColor.CGColor));
+
+    [view _resetFillGradientWithAnimator:nil];
+    XCTAssertTrue(CGColorEqualToColor(view.shapeLayer.fillColor, UIColor.yellowColor.CGColor));
 }
 
 - (void)testFillGradientUpdatesWithPathStrokeAndBounds

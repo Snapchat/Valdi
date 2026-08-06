@@ -58,9 +58,6 @@ class ShapeViewAttributesBinder : AttributesBinder<ShapeView> {
 
         if (valdiGradient.colors.isEmpty()) {
             view.resetFillGradient()
-        } else if (valdiGradient.colors.size == 1) {
-            view.resetFillGradient()
-            view.setFillColor(valdiGradient.colors[0])
         } else {
             view.setFillGradient(valdiGradient)
         }

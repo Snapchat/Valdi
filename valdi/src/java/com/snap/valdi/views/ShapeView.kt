@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RadialGradient
@@ -17,7 +18,6 @@ import com.snap.valdi.extensions.ViewUtils
 import com.snap.valdi.utils.CoordinateResolver
 import com.snap.valdi.utils.GeometricPath
 import com.snap.valdi.utils.PathInterpolator
-import kotlin.math.min
 
 private val DEFAULT_STROKE_WIDTH = 1.0f
 private val DEFAULT_COLOR = Color.TRANSPARENT
@@ -154,9 +154,15 @@ class ShapeView(context: Context) : View(context), ValdiRecyclableView {
 
             val activePath = this.getActivePath()
 
-            if (fillGradient != null) {
-                fillPaint.color = Color.BLACK
-                updateFillGradientShader()
+            val activeFillGradient = fillGradient
+            if (activeFillGradient != null) {
+                if (activeFillGradient.colors.size == 1) {
+                    fillPaint.color = activeFillGradient.colors[0]
+                    fillPaint.shader = null
+                } else {
+                    fillPaint.color = Color.BLACK
+                    updateFillGradientShader()
+                }
             } else {
                 fillPaint.color = fillColor
                 fillPaint.shader = null
@@ -170,6 +176,11 @@ class ShapeView(context: Context) : View(context), ValdiRecyclableView {
     private fun updateFillGradientShader() {
         val gradient = fillGradient ?: return
         if (!fillGradientDirty && fillGradientWidth == width && fillGradientHeight == height) {
+            return
+        }
+
+        if (width <= 0 || height <= 0) {
+            fillPaint.shader = null
             return
         }
 
@@ -247,14 +258,19 @@ class ShapeView(context: Context) : View(context), ValdiRecyclableView {
                 )
             }
             GradientDrawable.RADIAL_GRADIENT -> {
-                fillPaint.shader = RadialGradient(
-                    fillGradientBounds.centerX(),
-                    fillGradientBounds.centerY(),
-                    min(fillGradientBounds.width(), fillGradientBounds.height()) / 2.0f,
+                val radialGradient = RadialGradient(
+                    0.0f,
+                    0.0f,
+                    1.0f,
                     gradient.colors,
                     gradient.locations,
                     Shader.TileMode.CLAMP,
                 )
+                val localMatrix = Matrix()
+                localMatrix.setScale(fillGradientBounds.width() / 2.0f, fillGradientBounds.height() / 2.0f)
+                localMatrix.postTranslate(fillGradientBounds.centerX(), fillGradientBounds.centerY())
+                radialGradient.setLocalMatrix(localMatrix)
+                fillPaint.shader = radialGradient
             }
             else -> {
                 fillPaint.shader = null

@@ -31,7 +31,7 @@ void ShapeLayer::onDraw(DrawingContext& drawingContext) {
     auto fillPaint = _fillPaint;
     if (_fillGradientWrapper.hasGradient()) {
         fillPaint.setColor(Color::black());
-        _fillGradientWrapper.update(path.getBounds().value_or(drawingContext.drawBounds()));
+        _fillGradientWrapper.update(drawingContext.drawBounds());
         _fillGradientWrapper.applyToPaint(fillPaint);
     }
     drawingContext.drawPaint(fillPaint, path);
