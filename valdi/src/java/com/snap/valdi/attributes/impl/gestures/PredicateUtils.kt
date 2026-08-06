@@ -11,6 +11,8 @@ import com.snap.valdi.views.touches.ValdiGestureRecognizerState
 
 object PredicateUtils {
 
+    // Keep in sync with Valdi::kInputSyncCallDeadline (valdi_core/cpp/Constants.hpp), which bounds
+    // the equivalent input sync calls on the native side.
     const val GESTURE_PREDICATE_TIMEOUT_MS = 250L
 
     inline fun shouldBegin(predicate: ValdiFunction?, gesture: ValdiGestureRecognizer, x: Int, y: Int, pointerCount: Int, pointerLocations: List<ValdiGesturePointer>, additionalParamsCount: Int, timeoutMs: Long? = null, crossinline prepareAdditionalParams: (ValdiMarshaller, Int) -> Unit): Boolean {

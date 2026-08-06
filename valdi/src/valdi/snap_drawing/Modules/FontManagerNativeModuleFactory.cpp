@@ -55,7 +55,8 @@ Valdi::Value FontManagerNativeModuleFactory::makeScopedFontManager(const Valdi::
 
 static Valdi::Value doRegisterFont(const Valdi::ValueFunctionCallContext& callContext,
                                    const Valdi::StringBox& fontName,
-                                   const Ref<snap::drawing::LoadableTypeface>& loadableTypeface) {
+                                   const Ref<snap::drawing::LoadableTypeface>& loadableTypeface,
+                                   bool canUseAsFallback) {
     auto fontManager = getFontManagerFromCallContext(callContext);
     if (fontManager != nullptr) {
         auto fontWeightStr = callContext.getParameter(2).checkedTo<Valdi::StringBox>(callContext.getExceptionTracker());
@@ -78,11 +79,26 @@ static Valdi::Value doRegisterFont(const Valdi::ValueFunctionCallContext& callCo
             return Valdi::Value();
         }
 
-        fontManager->registerTypeface(
-            fontName, FontStyle(FontWidthNormal, fontWeight.value(), fontSlant.value()), false, loadableTypeface);
+        fontManager->registerTypeface(fontName,
+                                      FontStyle(FontWidthNormal, fontWeight.value(), fontSlant.value()),
+                                      canUseAsFallback,
+                                      loadableTypeface);
     }
 
     return Valdi::Value::undefined();
+}
+
+// Optional trailing parameter, so callers that pass 5 arguments keep the previous behavior of
+// registering a non-fallback family. Guard on arity rather than converting the missing parameter:
+// getParameterAsBool runs a checked conversion, which would record a type error on `undefined`.
+static bool getCanUseAsFallback(const Valdi::ValueFunctionCallContext& callContext) {
+    constexpr size_t kCanUseAsFallbackIndex = 5;
+
+    if (callContext.getParametersSize() <= kCanUseAsFallbackIndex) {
+        return false;
+    }
+
+    return callContext.getParameterAsBool(kCanUseAsFallbackIndex);
 }
 
 Valdi::Value FontManagerNativeModuleFactory::registerFontFromData(const Valdi::ValueFunctionCallContext& callContext) {
@@ -97,13 +113,19 @@ Valdi::Value FontManagerNativeModuleFactory::registerFontFromData(const Valdi::V
         return Valdi::Value();
     }
 
-    return doRegisterFont(callContext, fontName, LoadableTypeface::fromBytes(fontName, fontData->getBuffer()));
+    return doRegisterFont(callContext,
+                          fontName,
+                          LoadableTypeface::fromBytes(fontName, fontData->getBuffer()),
+                          getCanUseAsFallback(callContext));
 }
 
 Valdi::Value FontManagerNativeModuleFactory::registerFontFromFilePath(
     const Valdi::ValueFunctionCallContext& callContext) {
+    // StringBox is not pointer-like: comparing it to nullptr picks operator==(std::string_view),
+    // which builds a string_view from a null char* and crashes in strlen. Check the exception
+    // tracker instead, as the fontName conversion below does.
     auto fontPath = callContext.getParameter(4).checkedTo<Valdi::StringBox>(callContext.getExceptionTracker());
-    if (fontPath == nullptr) {
+    if (!callContext.getExceptionTracker()) {
         return Valdi::Value();
     }
 
@@ -112,7 +134,11 @@ Valdi::Value FontManagerNativeModuleFactory::registerFontFromFilePath(
         return Valdi::Value();
     }
 
-    return doRegisterFont(callContext, fontName, LoadableTypeface::fromFile(fontName, fontName));
+    // fromFile takes (fontName, filePath). This passed fontName for both, so the typeface was
+    // loaded from a path named after the font family and registration silently produced nothing
+    // usable.
+    return doRegisterFont(
+        callContext, fontName, LoadableTypeface::fromFile(fontName, fontPath), getCanUseAsFallback(callContext));
 }
 
 } // namespace snap::drawing

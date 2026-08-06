@@ -124,10 +124,36 @@ export function postInit(): void {
 
   const moduleLoader = global.moduleLoader as ModuleLoader;
   moduleLoader.onModuleRegistered('coreutils/src/unicode/UnicodeNative', () => {
+    // Web runtimes ship native TextEncoder/TextDecoder. Overwriting them with
+    // the Valdi wrapper recurses: the wrapper's encode() calls encodeUtf8 in
+    // web/UnicodeNative.ts, which does `new TextEncoder()` and hits the wrapper
+    // again. Leave the native impls alone when they exist (browsers, Node) and
+    // only install the polyfill on runtimes without them (Hermes without Intl).
+    if (typeof global.TextEncoder !== 'undefined' && typeof global.TextDecoder !== 'undefined') {
+      return;
+    }
     const textCoding = moduleLoader.load('coreutils/src/unicode/TextCoding', true);
     global.TextDecoder = textCoding.TextDecoder;
     global.TextEncoder = textCoding.TextEncoder;
   });
+
+  // Provide the standard `WeakRef` global on engines without native support (e.g.
+  // QuickJS), backed by the runtime's engine-independent weak-reference machinery.
+  if (typeof global.WeakRef === 'undefined') {
+    class ValdiWeakRef {
+      private _handle: unknown;
+      constructor(target: object) {
+        if (target === null || (typeof target !== 'object' && typeof target !== 'function')) {
+          throw new TypeError('WeakRef: target must be an object');
+        }
+        this._handle = runtime.newWeakRef(target);
+      }
+      deref(): object | undefined {
+        return runtime.derefWeakRef(this._handle);
+      }
+    }
+    global.WeakRef = ValdiWeakRef;
+  }
 
   // Without this, parsing worker code that does something like:
   // onmessage = e => { /* blah */ };

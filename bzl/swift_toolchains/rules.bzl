@@ -19,6 +19,7 @@ def remote_swift_toolchain(
         sha256,
         strip_prefix,
         arch,
+        version,
         swift_relative_path = "usr/bin/swift"):
     """Dict-returning helper describing one Swift toolchain entry.
 
@@ -35,6 +36,8 @@ def remote_swift_toolchain(
         arch: Architecture string as used by rules_swift's swift_toolchain
             (e.g. "x86_64", "aarch64"). Matches the "{arch}" segment in
             the toolchain's `lib/swift/linux/{arch}` layout.
+        version: Swift release version (e.g. "5.10.1"). rules_swift 4.x gates
+            features on it; ignored on 3.x, which has no such attribute.
         swift_relative_path: Path to the swift binary inside the archive
             after `strip_prefix` is applied. Defaults to "usr/bin/swift",
             which is the layout swift.org ships.
@@ -48,6 +51,7 @@ def remote_swift_toolchain(
         sha256 = sha256,
         strip_prefix = strip_prefix,
         arch = arch,
+        version = version,
         swift_relative_path = swift_relative_path,
     )
 
@@ -67,5 +71,6 @@ def make_swift_toolchains(toolchains):
             sha256 = entry["sha256"],
             strip_prefix = entry["strip_prefix"],
             arch = entry["arch"],
+            version = entry["version"],
             swift_relative_path = entry["swift_relative_path"],
         )

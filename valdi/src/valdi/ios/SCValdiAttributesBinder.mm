@@ -552,6 +552,13 @@ withFunctionAndPredicateBlock:(SCValdiAttributeBindMethodFunctionAndPredicate)ac
                                             Valdi::makeShared<ValdiIOS::UntypedAttributeHandlerDelegate>(untypedBlock, resetBlock));
 }
 
+- (void)bindTransformAttributesWithUntypedBlock:(SCValdiAttributeBindMethodUntyped)untypedBlock
+                                     resetBlock:(SCValdiAttributeBindMethodReset)resetBlock
+{
+    _bindingContext->bindTransformAttributes(
+        Valdi::makeShared<ValdiIOS::UntypedAttributeHandlerDelegate>(untypedBlock, resetBlock));
+}
+
 - (void)bindAttribute:(NSString *)attributeName
 invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
        deserializer:(SCValdiAttributeDeserializer)deserializer
@@ -600,21 +607,7 @@ invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
     auto cppAttributeName = ValdiIOS::InternedStringFromNSString(attributeName);
     _bindingContext->bindTextAttribute(cppAttributeName,
                                        invalidateLayoutOnChange,
-                                       Valdi::makeShared<ValdiIOS::UntypedAttributeHandlerDelegate>(textBlock, resetBlock));
-    _bindingContext->registerPreprocessor(cppAttributeName, true, [](const Valdi::Value &value) -> Valdi::Result<Valdi::Value> {
-        if (value.isString()) {
-            return value;
-        }
-
-        auto attributedText = value.getTypedRef<Valdi::TextAttributeValue>();
-        if (attributedText == nullptr) {
-            return Valdi::Error("Expecting AttributedText");
-        }
-
-        SCValdiAttributedText *objcAttributedText = [[SCValdiAttributedText alloc] initWithCppInstance:Valdi::unsafeBridgeCast(attributedText.get())];
-
-        return Valdi::Value(ValdiIOS::ValdiObjectFromNSObject(objcAttributedText));
-    });
+                                       Valdi::makeShared<ValdiIOS::TextAttributeHandlerDelegate>(textBlock, resetBlock));
 }
 
 - (void)bindAssetAttributesForOutputType:(SCNValdiCoreAssetOutputType)outputType

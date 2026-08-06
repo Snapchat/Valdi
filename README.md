@@ -3,7 +3,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE.md)
 [![Platforms](https://img.shields.io/badge/platform-iOS%20%7C%20Android%20%7C%20macOS-lightgrey)](./docs/INSTALL.md)
 [![Status](https://img.shields.io/badge/status-beta-yellow)]()
-[![Discord](https://img.shields.io/discord/1285677307163574322?color=7289da&label=Discord&logo=discord&logoColor=white)](https://discord.gg/uJyNEeYX2U)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![Documentation](https://img.shields.io/badge/docs-available-brightgreen)](./docs/README.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
@@ -136,8 +135,8 @@ Valdi generates type-safe bindings between TypeScript and native platforms:
 
 ## Need Help?
 
-- **[GitHub Discussions](https://github.com/Snapchat/Valdi/discussions)** — ask questions, share what you're building, report issues
-- **[Discord](https://discord.gg/uJyNEeYX2U)** — real-time chat with the community
+- **[GitHub Discussions](https://github.com/Snapchat/Valdi/discussions)** — ask questions and share what you're building
+- **[GitHub Issues](https://github.com/Snapchat/Valdi/issues)** — report bugs and request features
 
 ## Contributing
 

@@ -120,43 +120,6 @@ const ResourceId& symbolicatorResourceId() {
     return kSymbolicatorResourceId;
 }
 
-namespace {
-
-// Records the JS module being loaded so an unattributed ANR can name it. Saves and restores the
-// previous path on scope exit, so nested requires report the innermost and unwind to the parent.
-// No-op when diagnostics are off.
-class ScopedModuleLoadActivity {
-public:
-    ScopedModuleLoadActivity(bool enabled, Mutex& mutex, StringBox& currentPath, const StringBox& modulePath)
-        : _enabled(enabled), _mutex(mutex), _currentPath(currentPath) {
-        if (!_enabled) {
-            return;
-        }
-        std::lock_guard<Mutex> lock(_mutex);
-        _previousPath = _currentPath;
-        _currentPath = modulePath;
-    }
-
-    ~ScopedModuleLoadActivity() {
-        if (!_enabled) {
-            return;
-        }
-        std::lock_guard<Mutex> lock(_mutex);
-        _currentPath = _previousPath;
-    }
-
-    ScopedModuleLoadActivity(const ScopedModuleLoadActivity&) = delete;
-    ScopedModuleLoadActivity& operator=(const ScopedModuleLoadActivity&) = delete;
-
-private:
-    bool _enabled;
-    Mutex& _mutex;
-    StringBox& _currentPath;
-    StringBox _previousPath;
-};
-
-} // namespace
-
 static ContextId getParameterAsContextId(JSFunctionNativeCallContext& callContext, size_t index) {
     return static_cast<ContextId>(callContext.getParameterAsInt(index));
 }
@@ -1445,8 +1408,6 @@ JSValueRef JavaScriptRuntime::loadJsModule(IJavaScriptContext& jsContext,
                                            size_t parametersLength,
                                            JSExceptionTracker& exceptionTracker) {
     VALDI_TRACE_META("Valdi.loadJsModule", importPath);
-    ScopedModuleLoadActivity moduleLoadActivity(
-        _moduleLoadDiagnosticsEnabled, _moduleLoadActivityMutex, _currentModuleLoadPath, importPath);
     snap::utils::time::StopWatch sw;
     sw.start();
 
@@ -2098,6 +2059,17 @@ JSValueRef JavaScriptRuntime::runtimePerformGC(JSFunctionNativeCallContext& call
     return callContext.getContext().newUndefined();
 }
 
+JSValueRef JavaScriptRuntime::runtimeNewWeakRef(JSFunctionNativeCallContext& callContext) {
+    // Engine-independent weak reference to a JS object (backs the standard WeakRef global
+    // installed by PostInit on engines without native support). Returns an opaque handle.
+    return callContext.getContext().newWeakRef(callContext.getParameter(0), callContext.getExceptionTracker());
+}
+
+JSValueRef JavaScriptRuntime::runtimeDerefWeakRef(JSFunctionNativeCallContext& callContext) {
+    // Returns the referenced object, or undefined once it has been collected.
+    return callContext.getContext().derefWeakRef(callContext.getParameter(0), callContext.getExceptionTracker());
+}
+
 JSValueRef JavaScriptRuntime::runtimeHeapDump(JSFunctionNativeCallContext& callContext) {
     auto dumpHeapResult = dumpHeap();
     CHECK_CALL_CONTEXT(callContext);
@@ -2478,6 +2450,8 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
 
     JS_BIND(context, exceptionTracker, runtimeObject, "dumpMemoryStatistics", runtimeDumpMemoryStatistics);
     JS_BIND(context, exceptionTracker, runtimeObject, "performGC", runtimePerformGC);
+    JS_BIND(context, exceptionTracker, runtimeObject, "newWeakRef", runtimeNewWeakRef);
+    JS_BIND(context, exceptionTracker, runtimeObject, "derefWeakRef", runtimeDerefWeakRef);
 
     JS_BIND(
         context, exceptionTracker, runtimeObject, "setUncaughtExceptionHandler", runtimeSetUncaughtExceptionHandler);
@@ -2583,6 +2557,12 @@ JavaScriptContextMemoryStatistics JavaScriptRuntime::dumpMemoryStatistics() {
     dispatchSynchronouslyOnJsThread(
         [=, &stats](JavaScriptEntryParameters& entry) { stats = this->dumpMemoryStatistics(entry.jsContext); });
     return stats;
+}
+
+void JavaScriptRuntime::dumpMemoryStatisticsAsync(Function<void(JavaScriptContextMemoryStatistics)> completion) {
+    dispatchOnJsThreadAsync(nullptr, [this, completion](JavaScriptEntryParameters& entry) {
+        completion(this->dumpMemoryStatistics(entry.jsContext));
+    });
 }
 
 Shared<JavaScriptModuleContainer> JavaScriptRuntime::getValdiModule(JavaScriptEntryParameters& jsEntry) {
@@ -3841,17 +3821,47 @@ Ref<Context> JavaScriptRuntime::getLastDispatchedContext() const {
     return _contextManager.getContext(_lastDispatchedContextId.load());
 }
 
-void JavaScriptRuntime::setModuleLoadDiagnosticsEnabled(bool enabled) {
-    _moduleLoadDiagnosticsEnabled = enabled;
+void JavaScriptRuntime::setANRDiagnosticsEnabled(bool enabled) {
+    _anrDiagnosticsEnabled = enabled;
 }
 
-std::string JavaScriptRuntime::getCurrentModuleLoadInfo() const {
-    StringBox currentModuleLoadPath;
-    {
-        std::lock_guard<Mutex> lock(_moduleLoadActivityMutex);
-        currentModuleLoadPath = _currentModuleLoadPath;
+bool JavaScriptRuntime::anrDiagnosticsActiveOnJsThread() {
+    return _anrDiagnosticsEnabled && isInJsThread();
+}
+
+StringBox JavaScriptRuntime::swapCurrentNativeCallName(StringBox name) {
+    std::lock_guard<Mutex> lock(_nativeCallActivityMutex);
+    std::swap(_currentNativeCallName, name);
+    return name;
+}
+
+std::string JavaScriptRuntime::getANRAttributionInfo() const {
+    if (!_anrDiagnosticsEnabled) {
+        return {};
     }
-    return currentModuleLoadPath.isEmpty() ? std::string() : currentModuleLoadPath.slowToString();
+
+    std::string info;
+
+    StringBox nativeCallName;
+    {
+        std::lock_guard<Mutex> lock(_nativeCallActivityMutex);
+        nativeCallName = _currentNativeCallName;
+    }
+    if (!nativeCallName.isEmpty()) {
+        info += " [stuck-in: " + nativeCallName.slowToString() + "]";
+    }
+
+    // The JS queue is serial, so the last dispatched context belongs to the task that is currently
+    // running (the stuck one when this is read during an ANR).
+    auto lastDispatchedContext = getLastDispatchedContext();
+    if (lastDispatchedContext != nullptr) {
+        const auto& module = lastDispatchedContext->getPath().getResourceId().bundleName;
+        if (!module.isEmpty()) {
+            info += " [module: " + module.slowToString() + "]";
+        }
+    }
+
+    return info;
 }
 
 DispatchFunction JavaScriptRuntime::makeJsThreadDispatchFunction(Ref<Context>&& ownerContext,

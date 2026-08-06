@@ -54,6 +54,7 @@ internal class ValdiFunctionNative(ptr: Long): ValdiCPPAction(ptr), ValdiFunctio
         const val FLAGS_NEVER_CALL_SYNC = 1 shl 1
         const val FLAGS_ALLOW_THROTTLING = 1 shl 2
         const val FLAGS_PROPAGATES_ERROR = 1 shl 3
+        const val FLAGS_BOUNDED_MAIN_THREAD_SYNC = 1 shl 4
 
         @JvmStatic
         private external fun nativePerform(ptr: Long, flags: Int, marshallerHandle: Long): Boolean

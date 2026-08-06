@@ -2,8 +2,8 @@
 
 ## Questions
 
-We have a [Discord](https://discord.gg/uJyNEeYX2U)
+Ask questions and discuss Valdi in [GitHub Discussions](https://github.com/Snapchat/Valdi/discussions).
 
 ## Bug Reports
 
-File 'em on in Github issues. (We will eventually need to set this up and build a guide)
+Report bugs and request features via [GitHub Issues](https://github.com/Snapchat/Valdi/issues).

@@ -154,20 +154,29 @@ iOS [accessibiltyId example](#todo-example-ios)
 
 #### Android example
 
-<!-- TODO: example for Android -->
+Valdi ships Espresso bindings that match on Valdi _elements_ (view nodes) rather than Android
+_views_, in `//valdi:valdi_android_test_support`. Match elements with `ValdiElementMatchers`,
+act on them with `ValdiElementActions`, and assert with `ValdiElementAssertions` — all entered
+through `ValdiEspresso.onValdiElement`:
 
-[`withAccessibilityId` example](#todo-example-android)
+```kotlin
+ValdiEspresso.waitUntil(ValdiElementMatchers.withAccessibilityId("welcome-label"))
+
+ValdiEspresso.onValdiElement(ValdiElementMatchers.withAccessibilityId("welcome-label"))
+    .check(ValdiElementAssertions.matches(ValdiElementMatchers.withText("Welcome to Valdi Android!")))
+
+ValdiEspresso.onValdiElement(ValdiElementMatchers.isScroll())
+    .perform(ValdiElementActions.swipeUp())
+```
+
+Matching on plain Android views still works where you need it — `ValdiViewMatchers.withValdiRootView()`
+returns an Espresso `Matcher<View>` for any inflated Valdi root view.
 
 The id itself can be imported using:
 
 ```java
 import com.snap.valdi.modules.<your_module>.R
 ```
-
-<!-- TODO: espresso matchers in open source -->
-
-> [!Note]
-> Use the Espresso matchers we've provided for working with Valdi _elements_ instead of Android _views_. They're implemented in [`//platform/valdi/test-support`](#todo-espresso-matchers)
 
 For automator performance tests on Android, only `accessibilityId` values that are set through an `ids.yaml` will work
 
@@ -176,4 +185,43 @@ For automator performance tests on Android, only `accessibilityId` values that a
 If you're writing a test that requires you to get a reference to a working `SCValdiRuntime`/`ValdiRuntime` to create a view:
 
 - on iOS you can use the `SCValdiServicesForTests()` test utility function available in the `//Features/Valdi/Utilities/SCValdiTestUtilities:SCValdiTestUtilities` module.
-- on Android you can use the [`ValdiViewTestRule`](#todo-android-valdiviewtestrule) test utility function
+- on Android you can use `ValdiTestRule` from `//valdi:valdi_android_test_runtime`, which boots a
+  runtime, mounts one view in a host activity, and tears it down after the test:
+
+```kotlin
+@RunWith(AndroidJUnit4::class)
+class MyComponentTest {
+
+    @get:Rule
+    val valdi = ValdiTestRule { runtime ->
+        ValdiRootView(runtime.context).also { rootView ->
+            runtime.inflateViewAsync(rootView, "App@my_module/src/MyComponent", null, null, null, null)
+        }
+    }
+
+    @Test
+    fun rendersTitle() {
+        // Inflation is asynchronous - wait for the first render before asserting.
+        valdi.waitForNextRender()
+
+        ValdiEspresso.onValdiElement(ValdiElementMatchers.withAccessibilityId("title"))
+            .check(ValdiElementAssertions.matches(ValdiElementMatchers.isDisplayed()))
+    }
+}
+```
+
+`ValdiTestRule` calls `System.loadLibrary("valdi")` by default; pass the `so_name` of your
+`valdi_exported_library` instead if the runtime lives in a differently named library.
+
+A working setup — Bazel targets, instrumentation manifest and both styles of test (whole app via
+its activity, and a single component via the rule) — lives in
+[`apps/helloworld/androidTest`](https://github.com/Snapchat/Valdi/tree/main/apps/helloworld/androidTest).
+Build and run it with:
+
+```sh
+./tools/ci/android_instrumentation_tests.sh
+```
+
+The script builds the test APK, then runs it if a device or emulator is attached (set
+`VALDI_START_EMULATOR=1` to have it boot a headless emulator itself, and
+`VALDI_ANDROID_ABI=x86_64` on an x86_64 host).

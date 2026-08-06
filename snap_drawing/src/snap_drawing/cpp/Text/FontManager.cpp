@@ -195,15 +195,41 @@ Valdi::Result<Valdi::Ref<Font>> FontManager::getFontWithFamilyNameAndStyle(std::
 
 Valdi::Result<Valdi::Ref<Typeface>> FontManager::getTypefaceWithName(const String& fontName) {
     static auto kSystemFontKey = STRING_LITERAL("system");
+    static auto kSystemFontMediumKey = STRING_LITERAL("system-medium");
+    static auto kSystemFontSemiBoldKey = STRING_LITERAL("system-semibold");
+    static auto kSystemFontDemiBoldKey = STRING_LITERAL("system-demi-bold");
     static auto kSystemFontBoldKey = STRING_LITERAL("system-bold");
+    static auto kSystemFontItalicKey = STRING_LITERAL("system-italic");
+    static auto kSystemFontMediumItalicKey = STRING_LITERAL("system-medium-italic");
+    static auto kSystemFontSemiBoldItalicKey = STRING_LITERAL("system-semibold-italic");
+    static auto kSystemFontDemiBoldItalicKey = STRING_LITERAL("system-demi-bold-italic");
+    static auto kSystemFontBoldItalicKey = STRING_LITERAL("system-bold-italic");
 
     auto guard = lock();
     if (fontName == kSystemFontKey) {
         return _typefaceRegistry.getTypefaceWithFamilyNameAndStyle(
             *_fontManager, _defaultFontFamilyName, _defaultFontStyle);
+    } else if (fontName == kSystemFontMediumKey) {
+        return _typefaceRegistry.getTypefaceWithFamilyNameAndStyle(
+            *_fontManager, _defaultFontFamilyName, FontStyle(FontWidthNormal, FontWeightMedium, FontSlantUpright));
+    } else if (fontName == kSystemFontSemiBoldKey || fontName == kSystemFontDemiBoldKey) {
+        return _typefaceRegistry.getTypefaceWithFamilyNameAndStyle(
+            *_fontManager, _defaultFontFamilyName, FontStyle(FontWidthNormal, FontWeightSemiBold, FontSlantUpright));
     } else if (fontName == kSystemFontBoldKey) {
         return _typefaceRegistry.getTypefaceWithFamilyNameAndStyle(
             *_fontManager, _defaultFontFamilyName, FontStyle(FontWidthNormal, FontWeightBold, FontSlantUpright));
+    } else if (fontName == kSystemFontItalicKey) {
+        return _typefaceRegistry.getTypefaceWithFamilyNameAndStyle(
+            *_fontManager, _defaultFontFamilyName, FontStyle(FontWidthNormal, FontWeightNormal, FontSlantItalic));
+    } else if (fontName == kSystemFontMediumItalicKey) {
+        return _typefaceRegistry.getTypefaceWithFamilyNameAndStyle(
+            *_fontManager, _defaultFontFamilyName, FontStyle(FontWidthNormal, FontWeightMedium, FontSlantItalic));
+    } else if (fontName == kSystemFontSemiBoldItalicKey || fontName == kSystemFontDemiBoldItalicKey) {
+        return _typefaceRegistry.getTypefaceWithFamilyNameAndStyle(
+            *_fontManager, _defaultFontFamilyName, FontStyle(FontWidthNormal, FontWeightSemiBold, FontSlantItalic));
+    } else if (fontName == kSystemFontBoldItalicKey) {
+        return _typefaceRegistry.getTypefaceWithFamilyNameAndStyle(
+            *_fontManager, _defaultFontFamilyName, FontStyle(FontWidthNormal, FontWeightBold, FontSlantItalic));
     }
     FontStyle fontStyle = _defaultFontStyle;
 

@@ -1,0 +1,24 @@
+load("//bzl/valdi:valdi_application.bzl", "valdi_application")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "transforms_playground",
+    srcs = glob([
+        "**/*.ts",
+        "**/*.tsx",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)
+
+valdi_application(
+    name = "transforms_playground_app",
+    ios_bundle_id = "com.snap.valdi.transformsplayground",
+    ios_families = ["iphone"],
+    root_component_path = "App@transforms_playground/TransformsPlaygroundApp",
+    title = "Valdi Transforms Playground",
+    deps = [":transforms_playground"],
+)

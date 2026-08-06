@@ -36,4 +36,4 @@ Valdi does not support Windows as a host OS for development.
 
 ## Questions?
 
-Open a [GitHub Discussion](https://github.com/Snapchat/Valdi/discussions) or reach us on [Discord](https://discord.gg/uJyNEeYX2U).
+Open a [GitHub Discussion](https://github.com/Snapchat/Valdi/discussions) or [file an issue](https://github.com/Snapchat/Valdi/issues).

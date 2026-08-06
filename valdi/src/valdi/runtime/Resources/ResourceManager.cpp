@@ -358,7 +358,11 @@ Ref<Bundle> ResourceManager::getBundle(const StringBox& bundleName) {
     // would invert the cleanup path's (_mutex -> Bundle mutex) order and can deadlock.
     bool useMmap = false;
     if (_runtimeTweaks != nullptr) {
-        useMmap = _runtimeTweaks->enableMmapModuleArchives() && !_mmapCacheDirectory.empty();
+        // Denylisted modules take the heap path — identical to mmap-off behavior, which on
+        // swapless iOS de-facto pins them. The per-module Module_Archive_Heap counter
+        // self-verifies the routing in production.
+        useMmap = _runtimeTweaks->enableMmapModuleArchives() && !_mmapCacheDirectory.empty() &&
+                  !_runtimeTweaks->isMmapModuleArchiveDenylisted(bundleName);
     }
     auto mmapCacheDir = _mmapCacheDirectory;
     auto metrics = _metrics;

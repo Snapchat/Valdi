@@ -45,6 +45,15 @@ enum ValueFunctionFlags : uint8_t {
      the error will always be propagated to the caller.
      */
     ValueFunctionFlagsPropagatesError = 1 << 3,
+    /**
+     Whether a call that would otherwise block the calling thread until the function
+     completes should instead give up after a short deadline. The function still runs
+     to completion on its own thread, but its return value is dropped once the deadline
+     is exceeded. Only meaningful for calls that would block the main thread; ignored
+     otherwise. Use for calls that must not wedge the main thread and whose return value
+     is optional, such as touch event delivery.
+     */
+    ValueFunctionFlagsBoundedMainThreadSync = 1 << 4,
 };
 
 class ValueFunctionCallContext {

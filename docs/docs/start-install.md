@@ -34,4 +34,4 @@ For detailed setup instructions, VSCode configuration, and troubleshooting, see 
 
 - Run `valdi doctor` to diagnose issues
 - Check the [Troubleshooting Guide](../TROUBLESHOOTING.md)
-- Reach out on [Discord](https://discord.gg/uJyNEeYX2U) if you get stuck
+- Ask in [GitHub Discussions](https://github.com/Snapchat/Valdi/discussions) if you get stuck

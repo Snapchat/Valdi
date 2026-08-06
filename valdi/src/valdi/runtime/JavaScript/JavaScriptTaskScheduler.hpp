@@ -80,9 +80,10 @@ public:
     virtual std::vector<JavaScriptCapturedStacktrace> captureStackTraces(
         std::chrono::steady_clock::duration timeout) = 0;
 
-    // The module being imported/evaluated on the JS thread, or empty if none or diagnostics are off.
-    // Readable from another thread without running JS, for attributing ANRs.
-    virtual std::string getCurrentModuleLoadInfo() const {
+    // Extra attribution for ANR messages (" [stuck-in: <native call>] [module: <module>]"), or empty
+    // if unavailable or ANR diagnostics are off. Reads saved native state without running JS, so it
+    // is safe to call while the JS thread is stuck.
+    virtual std::string getANRAttributionInfo() const {
         return {};
     }
 };

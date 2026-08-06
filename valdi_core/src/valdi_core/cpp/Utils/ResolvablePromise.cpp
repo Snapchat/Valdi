@@ -88,6 +88,11 @@ void ResolvablePromise::cancel() {
         return;
     }
     _canceled = true;
+    // Drop the callbacks without invoking them, matching onComplete, which never forwards
+    // once canceled. Holding on to them would leak: a callback can retain this promise, and
+    // after cancel nothing ever drains _callbacks. Released below with the mutex unlocked.
+    auto callbacks = std::move(_callbacks);
+    _callbacks = {}; // clear after move
     auto cancelCallback = std::move(_cancelCallback);
     _cancelCallback = {}; // clear after move
     lock.unlock();

@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include "valdi/runtime/Views/Measure.hpp"
 #include "valdi/runtime/Views/View.hpp"
+#include "valdi_core/cpp/Views/Measure.hpp"
 #include "valdi_core/jni/GlobalRefJavaObject.hpp"
 
 namespace Valdi {

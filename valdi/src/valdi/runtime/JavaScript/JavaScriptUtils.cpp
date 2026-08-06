@@ -30,11 +30,13 @@
 #include "valdi_core/cpp/Utils/StaticString.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
 #include "valdi_core/cpp/Utils/Trace.hpp"
+#include "valdi_core/cpp/Utils/Value.hpp"
 #include "valdi_core/cpp/Utils/ValueArray.hpp"
 #include "valdi_core/cpp/Utils/ValueFunction.hpp"
 #include "valdi_core/cpp/Utils/ValueTypedObject.hpp"
 #include "valdi_core/cpp/Utils/ValueTypedProxyObject.hpp"
 #include <atomic>
+#include <fmt/format.h>
 #include <sstream>
 
 namespace Valdi {
@@ -64,7 +66,15 @@ Error convertJSErrorToValdiError(IJavaScriptContext& jsContext, JSValueRef jsVal
     exceptionTracker.clearError();
 
     if (messageString.isEmpty()) {
-        messageString = STRING_LITERAL("Unable to build exception message");
+        // A masked message hides the real failure at crash-group scale (PREVIEW-31681 family).
+        // String(value) covers thrown primitives and objects whose 'message' getter throws.
+        messageString = jsContext.valueToString(jsValue.get(), exceptionTracker);
+        exceptionTracker.clearError();
+    }
+
+    if (messageString.isEmpty()) {
+        messageString = STRING_FORMAT("Unable to build exception message (thrown value type: {})",
+                                      valueTypeToString(jsContext.getValueType(jsValue.get())));
     }
 
     return Error(std::move(messageString), std::move(stackString), cause);
@@ -221,21 +231,6 @@ JSValueRef proxyObjectToJSValue(IJavaScriptContext& jsContext,
     }
 }
 
-static JSValueRef staticStringTOJSValue(IJavaScriptContext& jsContext,
-                                        const StaticString& staticString,
-                                        JSExceptionTracker& exceptionTracker) {
-    switch (staticString.encoding()) {
-        case StaticString::Encoding::UTF8:
-            return jsContext.newStringUTF8(staticString.utf8StringView(), exceptionTracker);
-        case StaticString::Encoding::UTF16:
-            return jsContext.newStringUTF16(staticString.utf16StringView(), exceptionTracker);
-        case StaticString::Encoding::UTF32: {
-            auto storage = staticString.utf8Storage();
-            return jsContext.newStringUTF8(storage.toStringView(), exceptionTracker);
-        }
-    }
-}
-
 JSValueRef valueToJSValue(IJavaScriptContext& jsContext,
                           const Valdi::Value& value,
                           const ReferenceInfoBuilder& referenceInfoBuilder,
@@ -244,7 +239,7 @@ JSValueRef valueToJSValue(IJavaScriptContext& jsContext,
         case ValueType::InternedString:
             return jsContext.newStringUTF8(value.toStringBox().toStringView(), exceptionTracker);
         case ValueType::StaticString:
-            return staticStringTOJSValue(jsContext, *value.getStaticString(), exceptionTracker);
+            return jsContext.newString(*value.getStaticString(), exceptionTracker);
         case ValueType::Double:
             return jsContext.newNumber(value.toDouble());
         case ValueType::Int:

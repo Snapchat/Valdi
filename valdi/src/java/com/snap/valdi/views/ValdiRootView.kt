@@ -717,8 +717,8 @@ open class ValdiRootView: ValdiView, Disposable {
      * synchronously on the main thread (ActivityThread.handleRequestAssistContextExtras ->
      * View.onProvideVirtualStructure). For large or pathologically duplicated Valdi trees this
      * recurses into tens of thousands of nodes and ANRs, predominantly on low-end Android 8
-     * devices (COMPOSER-5846). When the accessibility COF is enabled we skip exposing the Valdi
-     * virtual tree to these structure requests. TalkBack and other accessibility services use the
+     * devices (COMPOSER-5846). On Android 8/8.1, skip exposing the Valdi virtual tree to these
+     * structure requests. TalkBack and other accessibility services use the
      * AccessibilityNodeProvider path (getAccessibilityNodeProvider) and are unaffected.
      */
     override fun onProvideVirtualStructure(structure: ViewStructure?) {
@@ -737,7 +737,8 @@ open class ValdiRootView: ValdiView, Disposable {
     }
 
     private fun shouldSkipAssistAccessibilityStructure(): Boolean {
-        return valdiContext?.runtimeOrNull?.manager?.tweaks?.enableAccessibilityCustomViewVirtualIdFix == true
+        return Build.VERSION.SDK_INT == Build.VERSION_CODES.O ||
+            Build.VERSION.SDK_INT == Build.VERSION_CODES.O_MR1
     }
 
 }

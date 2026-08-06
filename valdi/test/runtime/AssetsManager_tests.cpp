@@ -1627,8 +1627,19 @@ TEST(AssetsManager, canOverrideResolvedAssetLocatioDuringLoading) {
     auto assetKey = wrapper.createAndRegisterRemoteAsset();
     wrapper.assetLoader->setAssetResponse(updatedUrl, Ref<Valdi::LoadedAsset>(assetToLoad));
 
-    wrapper.callbacks.emplace_back(
-        [&](const auto& asset) { ASSERT_EQ(AssetStateResolvingLocation, asset->getState()); });
+    // Location resolution runs on the worker thread, so without pausing it can finish
+    // before the main queue drains the first update. The updates then coalesce and the
+    // first callback observes Ready instead of ResolvingLocation.
+    wrapper.pauseWorkerQueue();
+
+    wrapper.callbacks.emplace_back([&](const auto& asset) {
+        // Resume before asserting: ASSERT_EQ returns from this lambda on failure, and the
+        // load below cannot complete until the worker is unblocked, so asserting first
+        // would deadlock until the test timeout instead of reporting the failure.
+        const auto state = asset->getState();
+        wrapper.resumeWorkerQueue();
+        ASSERT_EQ(AssetStateResolvingLocation, state);
+    });
 
     wrapper.callbacks.emplace_back([&](const auto& asset) {
         ASSERT_EQ(AssetStateReady, asset->getState());
@@ -1683,8 +1694,19 @@ TEST(AssetsManager, canOverrideResolvedAssetLocatioAfterLoading) {
     wrapper.assetLoader->setAssetResponse(STRING_LITERAL("file:///resources-module.dir/remote"),
                                           Ref<Valdi::LoadedAsset>(assetToLoad));
 
-    wrapper.callbacks.emplace_back(
-        [&](const auto& asset) { ASSERT_EQ(AssetStateResolvingLocation, asset->getState()); });
+    // Location resolution runs on the worker thread, so without pausing it can finish
+    // before the main queue drains the first update. The updates then coalesce and the
+    // first callback observes Ready instead of ResolvingLocation.
+    wrapper.pauseWorkerQueue();
+
+    wrapper.callbacks.emplace_back([&](const auto& asset) {
+        // Resume before asserting: ASSERT_EQ returns from this lambda on failure, and the
+        // load below cannot complete until the worker is unblocked, so asserting first
+        // would deadlock until the test timeout instead of reporting the failure.
+        const auto state = asset->getState();
+        wrapper.resumeWorkerQueue();
+        ASSERT_EQ(AssetStateResolvingLocation, state);
+    });
 
     wrapper.callbacks.emplace_back([&](const auto& asset) {
         ASSERT_EQ(AssetStateReady, asset->getState());

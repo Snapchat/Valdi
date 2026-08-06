@@ -12,6 +12,7 @@
 #include "valdi_core/cpp/Utils/ExceptionTracker.hpp"
 #include "valdi_core/cpp/Utils/Function.hpp"
 #include "valdi_core/cpp/Utils/Result.hpp"
+#include "valdi_core/cpp/Utils/StaticString.hpp"
 #include "valdi_core/cpp/Utils/Value.hpp"
 #include "valdi_core/cpp/Utils/ValueFunction.hpp"
 #include "valdi_core/cpp/Utils/ValueTypedArray.hpp"
@@ -278,6 +279,19 @@ public:
     virtual ValueType newStringUTF8(std::string_view str, ExceptionTracker& exceptionTracker) = 0;
 
     virtual ValueType newStringUTF16(std::u16string_view str, ExceptionTracker& exceptionTracker) = 0;
+
+    virtual ValueType newString(const StaticString& str, ExceptionTracker& exceptionTracker) {
+        switch (str.encoding()) {
+            case StaticString::Encoding::UTF8:
+                return newStringUTF8(str.utf8StringView(), exceptionTracker);
+            case StaticString::Encoding::UTF16:
+                return newStringUTF16(str.utf16StringView(), exceptionTracker);
+            case StaticString::Encoding::UTF32: {
+                auto utf8 = str.utf8Storage();
+                return newStringUTF8(utf8.toStringView(), exceptionTracker);
+            }
+        }
+    }
 
     virtual ValueType newByteArray(const BytesView& bytes, ExceptionTracker& exceptionTracker) = 0;
 

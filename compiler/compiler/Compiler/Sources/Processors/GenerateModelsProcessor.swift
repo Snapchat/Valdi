@@ -152,6 +152,25 @@ final class GenerateModelsProcessor: CompilationProcessor {
     }
 
     func process(items: CompilationItems) throws -> CompilationItems {
+        // A ViewModel shared by multiple Components (e.g. one used by both HelloCard and
+        // GoodbyeCard) gets attached to every consuming Component's document. We only
+        // want to emit the model once, so we dedupe. Dedup key is the concrete native
+        // class identity (iosType.name, androidClassName, cppType.declaration.name) —
+        // NOT the TS type name. Two unrelated ViewModels in one module can legitimately
+        // share a bare TS name (`interface ViewModel {}` in different files with
+        // distinct `@ExportModel` iosType/androidClassName), and keying on tsType would
+        // silently collapse those distinct native emissions into one. Scoped to the
+        // document-VM slot only; plain `.exportedType` emissions are untouched.
+        var emittedViewModelIdentities = Set<String>()
+
+        func viewModelIdentity(_ model: ValdiModel) -> String {
+            return [
+                model.iosType?.name ?? "",
+                model.androidClassName ?? "",
+                model.cppType?.declaration.name ?? "",
+            ].joined(separator: "|")
+        }
+
         let intermediateItems = items.select { (item) -> [IntermediateItem]? in
             guard shouldProcessItem(item: item) else {
                 return nil
@@ -167,9 +186,11 @@ final class GenerateModelsProcessor: CompilationProcessor {
                     )
                 )
                 var out = [IntermediateItem]()
-                out.append(IntermediateItem(sourceFilename: generatedSourceFilename,
-                                            exportedType: .valdiModel(viewModel),
-                                            classMapping: result.classMapping))
+                if emittedViewModelIdentities.insert(viewModelIdentity(viewModel)).inserted {
+                    out.append(IntermediateItem(sourceFilename: generatedSourceFilename,
+                                                exportedType: .valdiModel(viewModel),
+                                                classMapping: result.classMapping))
+                }
 
                 for childModel in result.originalDocument.additionalModels {
                     out.append(IntermediateItem(sourceFilename: generatedSourceFilename,

@@ -29,7 +29,6 @@ import com.snap.valdi.views.ValdiRootView
 import com.snapchat.client.valdi.NativeBridge
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.concurrent.ConcurrentHashMap
 
 class ValdiViewManagerOperationsManager(
     private val logger: Logger,
@@ -487,21 +486,11 @@ class ValdiViewManagerOperationsManager(
         @Volatile private var slowestInsertChildOp: String? = null
         @Volatile private var slowestInsertChildHierarchy: String? = null
 
-        /**
-         * Subsystems outside valdi can register a contributor whose return
-         * value is appended to [dumpDiagnostics] output as `name: value`.
-         * Used to surface subsystem-specific state in ANR crash reports without
-         * forcing valdi to depend on those subsystems.
-         */
-        private val additionalDiagnostics = ConcurrentHashMap<String, () -> String?>()
-
-        fun registerAdditionalDiagnostics(name: String, contributor: () -> String?) {
-            additionalDiagnostics[name] = contributor
-        }
-
         fun dumpDiagnostics(): String? {
             val current = currentMoveOp
             val slowestOp = slowestInsertChildOp
+            if (current == null && slowestOp == null) return null
+
             val sb = StringBuilder()
             if (current != null) {
                 val c = current.child.get()?.javaClass?.simpleName ?: "?"
@@ -520,14 +509,7 @@ class ValdiViewManagerOperationsManager(
                     sb.append("\n").append(h)
                 }
             }
-            for ((name, contributor) in additionalDiagnostics) {
-                val value = try { contributor() } catch (t: Throwable) { null }
-                if (!value.isNullOrEmpty()) {
-                    if (sb.isNotEmpty()) sb.append(" | ")
-                    sb.append(name).append(": ").append(value)
-                }
-            }
-            return sb.toString().takeIf { it.isNotEmpty() }
+            return sb.toString()
         }
 
         fun resetDiagnostics() {

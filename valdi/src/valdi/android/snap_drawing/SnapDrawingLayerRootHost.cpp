@@ -15,7 +15,7 @@
 #include "valdi/runtime/Context/ViewNodeTree.hpp"
 #include "valdi/runtime/Interfaces/IViewManager.hpp"
 #include "valdi/runtime/Interfaces/IViewTransaction.hpp"
-#include "valdi/runtime/Views/Measure.hpp"
+#include "valdi_core/cpp/Views/Measure.hpp"
 
 #include "snap_drawing/cpp/Drawing/GraphicsContext/BitmapGraphicsContext.hpp"
 #include "valdi/android/AndroidViewHolder.hpp"
@@ -76,9 +76,7 @@ SnapDrawingLayerRootHost::SnapDrawingLayerRootHost(
     const Valdi::Ref<snap::drawing::Resources>& resources,
     const Valdi::Ref<snap::drawing::ANativeWindowGraphicsContext>& graphicsContext,
     ViewManager& androidViewManager)
-    : _drawLooper(drawLooper),
-      _graphicsContext(graphicsContext),
-      _androidViewManager(androidViewManager) {
+    : _drawLooper(drawLooper), _graphicsContext(graphicsContext), _androidViewManager(androidViewManager) {
     _layerRoot = snap::drawing::makeLayer<snap::drawing::LayerRoot>(resources);
 }
 

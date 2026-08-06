@@ -41,7 +41,7 @@ Valdi::TouchEventState SCValdiMakeTouchState(UIGestureRecognizerState state);
 
 SCValdiGestureLocation SCValdiGetGestureLocation(UIView* view, CGPoint gestureLocation);
 
-Valdi::ValueFunctionFlags SCValdiGetCallFlags(UIGestureRecognizerState gestureState);
+Valdi::ValueFunctionFlags SCValdiGetCallFlags(UIView* view, UIGestureRecognizerState gestureState);
 
 Valdi::Value SCValdiMakeTouchEvent(UIView* view,
                                    CGPoint gestureLocation,

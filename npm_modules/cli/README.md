@@ -47,7 +47,7 @@ Now you can edit your TypeScript files and see changes instantly on your device!
 For complete documentation, see:
 - [Command Line Reference](https://github.com/Snapchat/Valdi/blob/main/docs/docs/command-line-references.md)
 - [Installation Guide](https://github.com/Snapchat/Valdi/blob/main/docs/INSTALL.md)
-- [Troubleshooting](https://github.com/Snapchat/Valdi/blob/main/docs/TROUBLESHOOTING.md) — run `valdi doctor` to diagnose issues, or ask on [Discord](https://discord.gg/uJyNEeYX2U)
+- [Troubleshooting](https://github.com/Snapchat/Valdi/blob/main/docs/TROUBLESHOOTING.md) — run `valdi doctor` to diagnose issues, or ask in [GitHub Discussions](https://github.com/Snapchat/Valdi/discussions)
 
 ### Key Commands
 

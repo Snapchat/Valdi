@@ -32,6 +32,8 @@
 #import "valdi_core/cpp/Utils/ByteBuffer.hpp"
 #import "valdi_core/cpp/Utils/TrackedLock.hpp"
 
+#include <algorithm>
+
 namespace ValdiIOS {
 
 UIViewHolder::UIViewHolder(SCValdiRef *viewRef): ObjCObject(viewRef) {}
@@ -50,6 +52,43 @@ SCValdiRef *UIViewHolder::getRef() const {
 
 UIView *UIViewHolder::getView() const {
     return [getRef() instance];
+}
+
+/// Applies `scale` as `contentsScale` down the whole layer tree. UIKit only propagates
+/// contentsScale when a view joins a window, and these raster views are detached, so it has to be
+/// walked explicitly.
+static void applyContentsScale(CALayer *layer, CGFloat scale)
+{
+    if (layer.contentsScale != scale) {
+        layer.contentsScale = scale;
+    }
+    for (CALayer *sublayer in layer.sublayers) {
+        applyContentsScale(sublayer, scale);
+    }
+}
+
+/// Matches the view's rasterization density to what the destination actually resolves.
+///
+/// UIKit gives a view's layer the screen's scale factor (2x/3x), but an offscreen raster target
+/// resolves `rasterScale` destination pixels per view point. Any density above that is rendered and
+/// then thrown away by the downsample, and the source bitmap is where the cost is -- so matching the
+/// two is free below the screen scale and only starts trading quality if the caller has additionally
+/// clamped `rasterScale` for an oversized surface. Layout is untouched either way, so this can never
+/// change shape.
+///
+/// Bounded by the screen scale rather than by the layer's current `contentsScale`: this function
+/// mutates that value, and raster views are pooled and reused across rasters (see
+/// `BridgeLayer::prepareForReuse`) and across the frames of a video transcode, so comparing against it
+/// would ratchet the density down to the lowest value the view had ever seen and never recover when the
+/// surface is zoomed back out.
+static void applyRasterContentsScale(UIView *view, float rasterScaleX, float rasterScaleY)
+{
+    CGFloat target =
+        std::min(static_cast<CGFloat>(std::max(rasterScaleX, rasterScaleY)), UIScreen.mainScreen.scale);
+    if (!(target > 0)) {
+        return;
+    }
+    applyContentsScale(view.layer, target);
 }
 
 static void applyLayoutToView(UIView *view, const Valdi::Frame& frame) {
@@ -85,6 +124,10 @@ Valdi::Result<Valdi::Void> UIViewHolder::rasterInto(const Valdi::Ref<Valdi::IBit
         if (view.superview == nil) {
             applyLayoutToView(view, frame);
         }
+
+        // Before layout/display, so the content is generated at the reduced density rather than
+        // generated at full size and then thrown away.
+        applyRasterContentsScale(view, rasterScaleX, rasterScaleY);
 
         [view layoutIfNeeded];
 

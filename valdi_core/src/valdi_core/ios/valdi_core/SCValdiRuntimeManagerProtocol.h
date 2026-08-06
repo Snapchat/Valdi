@@ -87,6 +87,15 @@ typedef void (^SCValdiRuntimeCreatedCallback)(id<SCValdiRuntimeProtocol>);
  */
 - (SCValdiMemoryStatistics)dumpMemoryStatistics;
 
+/**
+ Asynchronously aggregates memory statistics across all JS runtimes managed by this runtime
+ manager. Each runtime reports on its own JS thread; @c completion is invoked once with the
+ totals after the final runtime has reported. Unlike @c dumpMemoryStatistics, this never blocks
+ the calling thread waiting on the JS threads. @c completion may be invoked on an arbitrary
+ (JS) thread.
+ */
+- (void)dumpMemoryStatisticsAsyncWithCompletion:(void (^)(SCValdiMemoryStatistics))completion;
+
 @end
 
 NS_ASSUME_NONNULL_END

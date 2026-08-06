@@ -183,4 +183,130 @@ class AsyncValdiRuntimeTests: XCTestCase {
         XCTAssertEqual(factoryCallCounter.currentValue, 1)
         XCTAssertEqual(runtime.jsRuntimeRequestCount, 1)
     }
+
+    /// With inline delivery enabled and the runtime initialized, getRuntime must complete
+    /// inline on the calling thread instead of hopping through the ValdiActor queue.
+    func testWarmGetRuntimeCompletesInlineOnCallingThread() throws {
+        let asyncRuntime = AsyncValdiRuntimeProvider(
+            deliversWarmCompletionsInline: true,
+            factory: { () async -> SCValdiRuntimeProtocol in
+                MockValdiRuntime()
+            }
+        )
+
+        let coldCompletion = self.expectation(description: "Cold callback called")
+        asyncRuntime.getRuntime { _ in
+            coldCompletion.fulfill()
+        }
+        wait(for: [coldCompletion], timeout: 1.0)
+
+        var warmCompletedInline = false
+        asyncRuntime.getRuntime { _ in
+            warmCompletedInline = true
+        }
+        XCTAssertTrue(warmCompletedInline)
+    }
+
+    /// With inline delivery enabled, warm getJSRuntime must go straight to the runtime
+    /// without an actor-queue hop.
+    func testWarmGetJSRuntimeDoesNotHopThroughActor() throws {
+        let runtime = MockValdiRuntime()
+        let asyncRuntime = AsyncValdiRuntimeProvider(
+            deliversWarmCompletionsInline: true,
+            factory: { () async -> SCValdiRuntimeProtocol in
+                runtime
+            }
+        )
+
+        let coldCompletion = self.expectation(description: "Cold callback called")
+        asyncRuntime.getRuntime { _ in
+            coldCompletion.fulfill()
+        }
+        wait(for: [coldCompletion], timeout: 1.0)
+
+        // MockValdiRuntime invokes the JS-runtime block synchronously, so inline
+        // completion here proves the provider did not enqueue onto the actor.
+        var warmCompletedInline = false
+        asyncRuntime.getJSRuntime { _ in
+            warmCompletedInline = true
+        }
+        XCTAssertTrue(warmCompletedInline)
+    }
+
+    /// The Swift accessor must initialize the runtime once and return the cached
+    /// instance on subsequent calls.
+    func testRuntimeAccessorInitializesOnceAndCaches() async throws {
+        let runtime = MockValdiRuntime()
+        let factoryCallCounter = ThreadSafeCounter()
+        let asyncRuntime = AsyncValdiRuntimeProvider(
+            factory: { () async -> SCValdiRuntimeProtocol in
+                factoryCallCounter.increment()
+                return runtime
+            }
+        )
+
+        let first = await asyncRuntime.runtime()
+        let second = await asyncRuntime.runtime()
+
+        XCTAssertTrue(first as? MockValdiRuntime === runtime)
+        XCTAssertTrue(second as? MockValdiRuntime === runtime)
+        XCTAssertEqual(factoryCallCounter.currentValue, 1)
+    }
+
+    /// A warm call to the Swift accessor must not touch the ValdiActor: it completes
+    /// even while the actor's executor is blocked.
+    func testWarmRuntimeAccessorDoesNotRequireActor() async throws {
+        let asyncRuntime = AsyncValdiRuntimeProvider(
+            factory: { () async -> SCValdiRuntimeProtocol in
+                MockValdiRuntime()
+            }
+        )
+        _ = await asyncRuntime.runtime()
+
+        let actorBlocked = expectation(description: "Actor executor blocked")
+        let unblock = DispatchSemaphore(value: 0)
+        Task { @ValdiActor in
+            actorBlocked.fulfill()
+            unblock.wait()
+        }
+        await fulfillment(of: [actorBlocked], timeout: 1.0)
+
+        // Hangs here (and times the test out) if the warm path hops through the actor.
+        _ = await asyncRuntime.runtime()
+        unblock.signal()
+    }
+
+    /// Without opting into inline delivery, warm completions must keep the
+    /// asynchronous actor-queue delivery.
+    func testWarmGetRuntimeWithoutInlineDeliveryStaysAsynchronous() throws {
+        let asyncRuntime = AsyncValdiRuntimeProvider(
+            factory: { () async -> SCValdiRuntimeProtocol in
+                MockValdiRuntime()
+            }
+        )
+
+        let coldCompletion = self.expectation(description: "Cold callback called")
+        asyncRuntime.getRuntime { _ in
+            coldCompletion.fulfill()
+        }
+        wait(for: [coldCompletion], timeout: 1.0)
+
+        let warmCompletion = self.expectation(description: "Warm callback called")
+        let lock = NSLock()
+        var didComplete = false
+        asyncRuntime.getRuntime { _ in
+            lock.lock()
+            didComplete = true
+            lock.unlock()
+            warmCompletion.fulfill()
+        }
+
+        let completedInline: Bool = {
+            lock.lock()
+            defer { lock.unlock() }
+            return didComplete
+        }()
+        XCTAssertFalse(completedInline)
+        wait(for: [warmCompletion], timeout: 1.0)
+    }
 }

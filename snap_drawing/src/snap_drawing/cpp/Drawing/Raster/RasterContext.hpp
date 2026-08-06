@@ -124,7 +124,8 @@ private:
         ExternalSurfaceSnapshot* externalSurfaceSnapshot,
         const Rect& frame,
         const Matrix& transform,
-        const Valdi::BitmapInfo& bitmapInfo,
+        int bitmapWidth,
+        int bitmapHeight,
         Scalar rasterScaleX,
         Scalar rasterScaleY,
         size_t rasterId);

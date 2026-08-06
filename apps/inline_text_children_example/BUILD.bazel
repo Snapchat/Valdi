@@ -1,0 +1,24 @@
+load("//bzl/valdi:valdi_application.bzl", "valdi_application")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "inline_text_children_example",
+    srcs = glob([
+        "**/*.ts",
+        "**/*.tsx",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)
+
+valdi_application(
+    name = "inline_text_children_example_app",
+    ios_bundle_id = "com.snap.valdi.inlinetextchildren",
+    root_component_path = "App@inline_text_children_example/InlineTextChildrenExample",
+    title = "Inline Text Children",
+    version = "1.0.0",
+    deps = [":inline_text_children_example"],
+)

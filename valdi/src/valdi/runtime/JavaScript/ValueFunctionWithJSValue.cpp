@@ -12,6 +12,7 @@
 #include "valdi/runtime/JavaScript/JavaScriptTaskScheduler.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptUtils.hpp"
 #include "valdi/runtime/Utils/MainThreadManager.hpp"
+#include "valdi_core/cpp/Constants.hpp"
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 #include "valdi_core/cpp/Utils/ResolvablePromise.hpp"
 #include "valdi_core/cpp/Utils/SmallVector.hpp"
@@ -144,6 +145,29 @@ struct MainThreadThrottledCall : public SimpleRefCountable {
     ~MainThreadThrottledCall() override = default;
 };
 
+Result<Value> ValueFunctionWithJSValue::dispatchAndWaitOnJsThread(const Ref<JavaScriptTaskScheduler>& taskScheduler,
+                                                                  const std::chrono::steady_clock::time_point& deadline,
+                                                                  const Value* parameters,
+                                                                  size_t parametersSize) {
+    auto promise = std::make_shared<std::promise<Result<Value>>>();
+    auto future = promise->get_future();
+
+    taskScheduler->dispatchOnJsThreadAsync(
+        getContext(),
+        [self = strongSmallRef(this), parameters = captureParameters(parameters, parametersSize), promise](
+            auto& jsEntry) {
+            MainThreadBatchAllowScope mainThreadBatchAllowScope;
+            auto result = self->doJsCall(jsEntry, parameters.data(), parameters.size(), nullptr, false);
+            promise->set_value(Result(std::move(result)));
+        });
+
+    if (std::future_status::ready == future.wait_until(deadline)) {
+        return future.get();
+    }
+
+    return Error("JS function timeout");
+}
+
 Value ValueFunctionWithJSValue::callSync(ValueFunctionFlags flags,
                                          const Ref<JavaScriptTaskScheduler>& taskScheduler,
                                          const ValueFunctionCallContext& callContext) {
@@ -181,6 +205,19 @@ Value ValueFunctionWithJSValue::callSync(ValueFunctionFlags flags,
                     });
 
                 future.wait_for(std::chrono::milliseconds(kMaxMainThreadWaitTimeMs));
+            } else if ((flags & ValueFunctionFlagsBoundedMainThreadSync) != ValueFunctionFlagsNone) {
+                // The main thread must not be held for an unbounded time waiting on the JS queue.
+                // Unlike the throttled path above, the call is never coalesced away, so nothing is
+                // dropped, only the return value on timeout. Uses the longer shared input deadline
+                // rather than the throttled bound: a throttled call is fire-and-forget by design,
+                // whereas these carry side effects the caller wants to land.
+                auto result = dispatchAndWaitOnJsThread(taskScheduler,
+                                                        std::chrono::steady_clock::now() + kInputSyncCallDeadline,
+                                                        callContext.getParameters(),
+                                                        callContext.getParametersSize());
+                if (result.success()) {
+                    retValue = result.value();
+                }
             } else {
                 taskScheduler->dispatchOnJsThreadSync(getContext(), [&](auto& jsEntry) {
                     MainThreadBatchAllowScope mainThreadBatchAllowScope;
@@ -323,25 +360,23 @@ Result<Value> ValueFunctionWithJSValue::callSyncWithDeadline(const std::chrono::
     if (taskScheduler == nullptr) {
         return Value::undefined();
     }
-    auto promise = std::make_shared<std::promise<Result<Value>>>();
-    auto future = promise->get_future();
 
-    SimpleExceptionTracker exceptionTracker;
-    ValueFunctionCallContext callContext(
-        ValueFunctionFlags::ValueFunctionFlagsCallSync, parameters, size, exceptionTracker);
-
-    taskScheduler->dispatchOnJsThreadAsync(
-        getContext(),
-        [self = strongSmallRef(this), parameters = captureParameters(callContext), promise](auto& jsEntry) {
-            auto result = self->doJsCall(jsEntry, parameters.data(), parameters.size(), nullptr, false);
-            promise->set_value(Result(std::move(result)));
-        });
-
-    if (std::future_status::ready == future.wait_until(deadline)) {
-        return future.get();
-    } else {
-        return Error("JS function timeout");
+    // Batch the main thread work the JS call requests while we are parked on the future. Without a
+    // batch, a sync main thread hop from the JS thread (e.g. a placeholder view measure during
+    // layout) cannot be serviced until we give up at the deadline, turning every such call into a
+    // full-deadline stall.
+    auto shouldStartMainThreadBatch = _mainThreadManager != nullptr && _mainThreadManager->currentThreadIsMainThread();
+    if (shouldStartMainThreadBatch) {
+        _mainThreadManager->beginBatch();
     }
+
+    auto result = dispatchAndWaitOnJsThread(taskScheduler, deadline, parameters, size);
+
+    if (shouldStartMainThreadBatch) {
+        _mainThreadManager->endBatch();
+    }
+
+    return result;
 }
 
 UntypedValueFunctionWithJSValue::UntypedValueFunctionWithJSValue(IJavaScriptContext& context,

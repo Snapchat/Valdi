@@ -114,4 +114,31 @@ describe('ModuleLoader.preloadBatch', () => {
     // The duplicate 'a/src/M0' is visited once; each distinct module evaluated exactly once.
     expect(evalOrder).toEqual(['a/src/M0', 'a/src/M1', 'a/src/M2']);
   });
+
+  it('continues past a module that throws at evaluation', () => {
+    const paths = ['a/src/M0', 'a/src/Thrower', 'a/src/M2'];
+    register(['a/src/M0', 'a/src/M2']);
+    loader.registerModule('a/src/Thrower', () => {
+      evalOrder.push('a/src/Thrower');
+      throw new Error('boom');
+    });
+
+    loader.preloadBatch(paths, 0);
+
+    expect(evalOrder).toEqual(['a/src/M0', 'a/src/Thrower', 'a/src/M2']);
+  });
+
+  it('continues past a throwing module across chunks', () => {
+    const paths = ['a/src/M0', 'a/src/Thrower', 'a/src/M2', 'a/src/M3'];
+    register(['a/src/M0', 'a/src/M2', 'a/src/M3']);
+    loader.registerModule('a/src/Thrower', () => {
+      evalOrder.push('a/src/Thrower');
+      throw new Error('boom');
+    });
+
+    loader.preloadBatch(paths, 0, 1);
+    drainScheduler();
+
+    expect(evalOrder).toEqual(['a/src/M0', 'a/src/Thrower', 'a/src/M2', 'a/src/M3']);
+  });
 });

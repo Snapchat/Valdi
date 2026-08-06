@@ -19,6 +19,10 @@ if (!runfiles) {
 const possiblePaths = [
   path.join(runfiles, 'valdi/src/valdi_modules/src/valdi/valdi_protobuf/node_modules'), // Local valdi workspace
   path.join(runfiles, '+local_repos+valdi/src/valdi_modules/src/valdi/valdi_protobuf/node_modules'), // External workspace referencing valdi
+  path.join(runfiles, '_main/src/valdi_modules/src/valdi/valdi_protobuf/node_modules'), // Bzlmod main workspace
+  path.join(runfiles, 'valdi/bzl/valdi/npm/node_modules'), // Shared npm repository
+  path.join(runfiles, '+local_repos+valdi/bzl/valdi/npm/node_modules'), // Shared npm repository through local_repos
+  path.join(runfiles, '_main/bzl/valdi/npm/node_modules'), // Shared npm repository in the main workspace
 ];
 
 let nodeModulesPath = null;
@@ -45,12 +49,24 @@ if (!fs.existsSync(jestBin)) {
   process.exit(1);
 }
 
-// The compiled test files are in the dist output directory
-// Only test files from valdi_protobuf/web/test (out_dir is "web" so compiled files are at web/test)
-const testDir = path.join(runfiles, 'valdi/src/valdi_modules/src/valdi/valdi_protobuf/web/test');
+// The compiled test files are in the dist output directory.
+// Only test files from valdi_protobuf/web/test (out_dir is "web" so compiled files are at web/test).
+const possibleTestDirs = [
+  path.join(runfiles, 'valdi/src/valdi_modules/src/valdi/valdi_protobuf/web/test'),
+  path.join(runfiles, '+local_repos+valdi/src/valdi_modules/src/valdi/valdi_protobuf/web/test'),
+  path.join(runfiles, '_main/src/valdi_modules/src/valdi/valdi_protobuf/web/test'),
+];
 
-if (!fs.existsSync(testDir)) {
-  console.error(`Test directory not found: ${testDir}`);
+let testDir = null;
+for (const p of possibleTestDirs) {
+  if (fs.existsSync(p)) {
+    testDir = p;
+    break;
+  }
+}
+
+if (!testDir) {
+  console.error(`Test directory not found in any of: ${possibleTestDirs.join(', ')}`);
   process.exit(1);
 }
 

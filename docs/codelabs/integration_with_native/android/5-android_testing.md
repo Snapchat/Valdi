@@ -11,14 +11,14 @@ You don't have to worry about the implementation details though because Valdi ha
 
 ## Compspresso mappings
 
-**TODO**: Update links when source is moved to publicly available locations.
-
-The full libraries are available [here](#todo) but let's go through how the Espresso functions that you know and love map to the Valdi versions.
+The bindings live in [`valdi/src/android_test_support`](../../../../valdi/src/android_test_support/java/com/snap/valdi/test), built as `//valdi:valdi_android_test_support`. Here's how the Espresso functions you know and love map to the Valdi versions.
 
 | Espresso | Compspresso | Description |
 | --- | --- | --- |
-| `onView` | `onValdiElement` | Find a view so you can do things with it. |
-| `withId` | `withAccessibilityId` | Identify a view. |
+| `onView` | `onValdiElement` | Find an element so you can do things with it. |
+| `withId` | `withAccessibilityId` | Identify an element. |
+| `withText` | `withText` | Match a label's `value` attribute. |
+| `isDisplayed` | `isDisplayed` | Element is at least half visible. |
 
 That's it. The rest of it is going to behave as expected. 
 
@@ -47,8 +47,8 @@ In `HelloWorldTests.kt`, create a bare bones test.
 ```kotlin
 package com.snap.valdi.settings.core
 
-import androidx.test.runner.AndroidJUnit4
-import org.assertj.core.api.Assertions.assertThat
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Assert.assertEquals
 import org.junit.runner.RunWith
 import org.junit.Test
 
@@ -57,7 +57,7 @@ class HelloWorldTests {
 
     @Test
     fun dummy() {
-        assertThat("things").isEqualTo("things")
+        assertEquals("things", "things")
     }
 }
 ```
@@ -66,112 +66,99 @@ We also need a barebones `AndroidManifest.xml`
 
 ```xml
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.snap.valdi.sample.test"
+    package="com.snap.valdi.settings.core.test"
     >
 
-    <uses-sdk android:minSdkVersion="19"
-        android:targetSdkVersion="30"/>
+    <uses-sdk android:minSdkVersion="24"
+        android:targetSdkVersion="34"/>
 
     <instrumentation
-        android:name="com.snap.test.instrumentation.runner.SnapAndroidJUnitRunner"
-        android:targetPackage="com.snap.valdi.sample" />
+        android:name="androidx.test.runner.AndroidJUnitRunner"
+        android:targetPackage="com.snap.valdi.settings.core.test" />
 
 </manifest>
 ```
 
-The `BUILD` file is where it gets complicated.
+The `BUILD` file needs a test library and an APK to run it in.
 
 Add the imports at the top.
 
 ```bazel
-load(
-    "//bzl:sdk_variables.bzl",
-    "SAMPLE_MIN_SDK_VERSION",
-    "SAMPLE_TARGET_SDK_VERSION",
-)
-load("//bzl/instrumentation:build_instrumentation_test.bzl", "instrumentation_test_library")
-load("//bzl/instrumentation/spoon_instrumentation_rule:defs.bzl", "spoon_instrumentation_test")
+load("@rules_android//rules:rules.bzl", "android_binary")
+load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 ```
 
 Then we setup the test library.
 
 ```bazel
-instrumentation_test_library(
-    name = "valdi-playground-test-lib",
-    srcs = glob([
-        "java/**/*.java",
-        "java/**/*.kt",
-    ]),
+kt_android_library(
+    name = "hello-world-test-lib",
+    testonly = True,
+    srcs = glob(["java/**/*.kt"]),
+    custom_package = "com.snap.valdi.settings.core.test",
     manifest = "AndroidManifest.xml",
     deps = [
-        "//platform/valdi/core",
-        "//platform/valdi/test-support:lib",
-        "//platform/test-attribution:lib",
-        "//platform/test-instrumentation-support:lib",
-        "@valdi_modules//:hello_world",
+        # Your own code, plus whatever carries libvaldi.so into the APK.
+        "//components/valdi/settings/core",
+        "@valdi//valdi:valdi_android_test_runtime",
+        "@valdi//valdi:valdi_android_test_support",
+        "@test_mvn//:androidx_test_core",
         "@test_mvn//:androidx_test_espresso_espresso_core",
-        "@test_mvn//:androidx_test_runner",
+        "@test_mvn//:androidx_test_ext_junit",
+        "@test_mvn//:androidx_test_monitor",
         "@test_mvn//:junit_junit",
-        "@test_mvn//:org_assertj_assertj_core",
         "@test_mvn//:org_hamcrest_hamcrest_core",
-        "@test_mvn//:org_hamcrest_hamcrest_library",
     ],
 )
 ```
 
-This is where we pull in our test files and their dependencies.
+`valdi_android_test_support` is the matchers, actions and assertions. `valdi_android_test_runtime` is the `ValdiTestRule` that boots a runtime and mounts your component for them to work on.
 
 Then we build our lib into an Android test binary.
 
 ```bazel
 android_binary(
-    name = "valdi-playground-test-app",
+    name = "hello-world-test",
     testonly = True,
-    debug_key = "//scripts/keystore:andy-keystore",
-    instruments = "//platform/valdi/sample:valdi-sample-apk",
+    custom_package = "com.snap.valdi.settings.core.test",
     manifest = "AndroidManifest.xml",
-    manifest_values = {
-        "minSdkVersion": SAMPLE_MIN_SDK_VERSION,
-        "applicationId": "com.snap.valdi.sample.test",
-        "targetSdkVersion": SAMPLE_TARGET_SDK_VERSION,
-    },
-    tags = ["no-remote-cache"],
-    deps = [":valdi-playground-test-lib"],
+    multidex = "native",
+    deps = [
+        ":hello-world-test-lib",
+        "@test_mvn//:androidx_test_runner",
+    ],
 )
 ```
 
-Here we're piggybacking off of the `valdi-sample-apk` because we don't have a sample app specifically for the playground.
+Note there's no `instruments` attribute: the app code and the tests ship in one self-instrumenting APK. That's deliberate. A separate test APK can only start activities that the app under test declares in its own manifest, so the host activity `ValdiTestRule` uses wouldn't resolve.
 
-Only now can we setup the integration tests.
+Bazel has no rule that runs instrumentation tests on a device, so build the APK and drive it with `adb`.
 
-```bazel
-spoon_instrumentation_test(
-    name = "valdi-playground-instrumentation-test",
-    # Size must be medium to accommodate for 60s average test execution time
-    # (avoids risk of exceeding the limit by a hair)
-    size = "medium",
-    test_app = ":valdi-playground-test-app",
-)
+```sh
+bzl build //components/valdi/settings/core/src/androidTest:hello-world-test \
+    --define=client_repo_arm64=true --fat_apk_cpu=arm64-v8a
+adb install -r -g bazel-bin/components/valdi/settings/core/src/androidTest/hello-world-test.apk
+adb shell am instrument -w com.snap.valdi.settings.core.test/androidx.test.runner.AndroidJUnitRunner
 ```
+
+Match the ABI to your device: `client_repo_x86_64` and `--fat_apk_cpu=x86_64` for an emulator on an x86_64 host. `am instrument` exits 0 even when tests fail, so read the output for the JUnit verdict.
+
+[`tools/ci/android_instrumentation_tests.sh`](../../../../tools/ci/android_instrumentation_tests.sh) does all of this for the HelloWorld app, including booting a headless emulator, and is what CI runs. A full working setup lives in [`apps/helloworld/androidTest`](../../../../apps/helloworld/androidTest) if you'd rather copy from something that already passes.
 
 This is the bare minimum setup to run some tests on a Valdi UI.
 
-At this point, stop and make sure everything works.
-
-`./bazelw test //components/valdi/settings/core/src/androidTest:valdi-playground-instrumentation-test`
-
-You should see one passing test.
+At this point, stop and make sure everything works. You should see one passing test.
 
 ## Interlude: real world testing
 In this codelab, we're going to test an individual Component. It's unlikely that you'll do this in the real world but the concepts around accessing Valdi components and interacting with them will be valuable when testing UIs that contain both traditional and Valdi UI.
 
 ## Test setup
-We're going to use the ValdiViewTestRule to create our component and make sure it behaves the way we expect it to. 
+We're going to use the `ValdiTestRule` to create our component and make sure it behaves the way we expect it to. The rule launches its own host activity, loads `libvaldi.so`, boots a runtime, and hands that runtime to your lambda so you can build the view under test.
 
 ```kotlin
 @Rule
 @JvmField
-val viewTestRule = ValdiViewTestRule {
+val viewTestRule = ValdiTestRule {
     val context = HelloWorldContext(
         title = "Hello world",
         recommendFriendsCallback = {
@@ -217,7 +204,7 @@ Here we're using the Valdispresso `onValdiElement` to access the UI. Then we're 
 
 Run your tests and make sure they pass.
 
-`./bazelw test //components/valdi/settings/core/src/androidTest:valdi-playground-instrumentation-test`
+Re-run the build/install/instrument commands from the setup section.
 
 ## Updating the ViewModel
 This is something that we didn't do in our UI but we can still test the behavior any way.
@@ -271,7 +258,7 @@ Run your tests and make sure they pass.
 ## Test the `recommendFriendsCallback`
 Let's make sure that the UI responds correctly when you tap on the **Recommend friends** button.
 
-First lets return some friends from the callback in the `ValdiViewTestRule`.
+First lets return some friends from the callback in the `ValdiTestRule`.
 
 ```kotlin
 val context = HelloWorldContext(
@@ -297,8 +284,7 @@ fun recommendsFriends() {
 }
 ```
 
-**TODO**: Update link when source is publicy available.
-You can find the full set of interactions in [ValdiElementActions](#todo).
+You can find the full set of interactions in [ValdiElementActions](../../../../valdi/src/android_test_support/java/com/snap/valdi/test/ValdiElementActions.kt).
 
 Again, we're waiting for the next render so that the UI will update.
 
@@ -317,7 +303,7 @@ onValdiElement(withAccessibilityId(com.snap.valdi.modules.R.id.hello_world__reco
 
 Make sure your tests are all passing.
 
-`./bazelw test //components/valdi/settings/core/src/androidTest:valdi-playground-instrumentation-test`
+Re-run the build/install/instrument commands from the setup section.
 
 ## Full solution
 Here's the full test file if you need it.
@@ -325,8 +311,8 @@ Here's the full test file if you need it.
 ```kotlin
 package com.snap.valdi.settings.core
 
-import androidx.test.runner.AndroidJUnit4
-import com.snap.valdi.test.ValdiViewTestRule
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.snap.valdi.test.ValdiTestRule
 import com.snap.playground.HelloWorldContext
 import com.snap.playground.HelloWorldFriend
 import com.snap.valdi.test.ValdiElementActions.click
@@ -337,7 +323,7 @@ import com.snap.valdi.test.ValdiElementMatchers.withValdiAttribute
 import com.snap.valdi.test.ValdiEspresso.onValdiElement
 import com.snap.playground.HelloWorldView
 import com.snap.playground.HelloWorldViewModel
-import org.assertj.core.api.Assertions.assertThat
+import org.junit.Assert.assertEquals
 import org.junit.runner.RunWith
 import org.junit.Test
 import org.junit.Rule
@@ -350,7 +336,7 @@ class HelloWorldTests {
 
     @Rule
     @JvmField
-    val viewTestRule = ValdiViewTestRule {
+    val viewTestRule = ValdiTestRule {
         val context = HelloWorldContext(
             title = "Hello world test",
             recommendFriendsCallback = {
@@ -375,7 +361,7 @@ class HelloWorldTests {
 
     @Test
     fun dummy() {
-        assertThat("things").isEqualTo("things")
+        assertEquals("things", "things")
     }
 
     @Test

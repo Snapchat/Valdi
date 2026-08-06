@@ -10,6 +10,11 @@
 #include "snap_drawing/cpp/Drawing/Shader.hpp"
 
 #include "include/core/SkColorFilter.h"
+#include "include/core/SkPath.h"
+#include "include/core/SkPathEffect.h"
+#include "include/effects/Sk1DPathEffect.h"
+#include "include/effects/SkDashPathEffect.h"
+#include <utility>
 
 namespace snap::drawing {
 
@@ -83,6 +88,18 @@ void Paint::setShader(const Shader& shader) {
 
 void Paint::setMaskFilter(const MaskFilter& maskFilter) {
     getSkValue().setMaskFilter(maskFilter.getSkValue());
+}
+
+void Paint::setStrokeDashPattern(Scalar onLength, Scalar offLength) {
+    SkScalar intervals[] = {static_cast<SkScalar>(onLength), static_cast<SkScalar>(offLength)};
+    getSkValue().setPathEffect(SkDashPathEffect::Make(intervals, 2, 0));
+}
+
+void Paint::setStrokeDotPattern(Scalar radius, Scalar advance) {
+    SkPath dot;
+    dot.addCircle(0, 0, static_cast<SkScalar>(radius));
+    getSkValue().setPathEffect(
+        SkPath1DPathEffect::Make(dot, static_cast<SkScalar>(advance), 0, SkPath1DPathEffect::kTranslate_Style));
 }
 
 } // namespace snap::drawing

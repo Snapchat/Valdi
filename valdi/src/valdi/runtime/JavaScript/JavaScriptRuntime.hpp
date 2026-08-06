@@ -213,7 +213,16 @@ public:
      */
     void setListener(IJavaScriptRuntimeListener* listener, const Weak<SharedPtrRefCountable>& listenerOwner);
     RetainedListener getListener() const;
-    void setModuleLoadDiagnosticsEnabled(bool enabled);
+    void setANRDiagnosticsEnabled(bool enabled);
+
+    // True when ANR diagnostics are on and the caller is on this runtime's JS thread. Guards the
+    // native-call activity writes so worker threads never touch the JS thread's slot.
+    bool anrDiagnosticsActiveOnJsThread();
+
+    // Swaps the recorded in-flight JS->native call name and returns the previous one, so nested
+    // calls report the innermost and unwind to the parent. Written on the JS thread around bridge
+    // calls, read by the ANR detector.
+    StringBox swapCurrentNativeCallName(StringBox name);
 
     void fullTeardown();
     void partialTeardown();
@@ -265,10 +274,11 @@ public:
     void dispatchSynchronouslyOnJsThread(JavaScriptThreadTask&& function);
     bool isInJsThread() final;
     Ref<Context> getLastDispatchedContext() const final;
-    std::string getCurrentModuleLoadInfo() const final;
+    std::string getANRAttributionInfo() const final;
 
     void performGc();
     JavaScriptContextMemoryStatistics dumpMemoryStatistics();
+    void dumpMemoryStatisticsAsync(Function<void(JavaScriptContextMemoryStatistics)> completion);
 
     Result<Value> evaluateScript(const BytesView& script, const StringBox& sourceFilename);
 
@@ -397,11 +407,13 @@ private:
     Ref<DispatchQueue> _dispatchQueue;
     std::atomic<bool> _isDisposed;
     std::atomic<ContextId> _lastDispatchedContextId;
-    // Module-load attribution for ANRs, gated by VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS. The mutex guards
-    // the path: written on the JS thread around module eval, read by the ANR detector without running JS.
-    bool _moduleLoadDiagnosticsEnabled = false;
-    mutable Mutex _moduleLoadActivityMutex;
-    StringBox _currentModuleLoadPath;
+    // ANR attribution diagnostics, gated by the VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS COF key (key
+    // name kept from the earlier module-load diagnostics for config continuity). The mutex guards
+    // the in-flight native call name: written on the JS thread around JS->native bridge calls,
+    // read by the ANR detector without running JS.
+    bool _anrDiagnosticsEnabled = false;
+    mutable Mutex _nativeCallActivityMutex;
+    StringBox _currentNativeCallName;
     // A lock that will block the JS thread until postInit() is called and the initialization has completed
     AsyncGroup _initLock;
     bool _hasGcScheduled = false;
@@ -535,6 +547,8 @@ private:
 
     JSValueRef runtimeDumpMemoryStatistics(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimePerformGC(JSFunctionNativeCallContext& callContext);
+    JSValueRef runtimeNewWeakRef(JSFunctionNativeCallContext& callContext);
+    JSValueRef runtimeDerefWeakRef(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeHeapDump(JSFunctionNativeCallContext& callContext);
 
     JSValueRef runtimeSetUncaughtExceptionHandler(JSFunctionNativeCallContext& callContext);

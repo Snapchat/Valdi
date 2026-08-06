@@ -1,4 +1,5 @@
 load("@aspect_bazel_lib//lib:copy_to_bin.bzl", "copy_to_bin")
+load("@aspect_rules_js//js:defs.bzl", "js_test")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("//bzl/valdi:valdi_module.bzl", "valdi_module")
 
@@ -23,6 +24,17 @@ ts_project(
     tsconfig = "web/tsconfig.json",
 )
 
+# The web implementations need browser globals (atob/btoa), so they cannot run under
+# valdi_test's native standalone runtime. Run their specs on Node instead.
+js_test(
+    name = "coreutils_web_test",
+    data = [
+        ":coreutils_web",
+        "//bzl/valdi/npm:node_modules/jest",
+    ],
+    entry_point = "web/test/run_tests.js",
+)
+
 valdi_module(
     name = "coreutils",
     srcs = glob([
@@ -39,6 +51,7 @@ valdi_module(
     visibility = ["//visibility:public"],
     web_deps = [":coreutils_web"],
     web_register_native_module_id_overrides = {
+        "coreutils/web/Base64Native.js": "coreutils/src/Base64Native",
         "coreutils/web/UnicodeNative.js": "coreutils/src/UnicodeNative, coreutils/src/unicode/UnicodeNative",
     },
     deps = [
