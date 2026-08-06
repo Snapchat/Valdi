@@ -96,7 +96,10 @@ valdi hotreload
 
 ## VSCode/Cursor Setup (Optional but Recommended)
 
-Valdi provides editor extensions for syntax highlighting, debugging, and device logs during hot reload.
+Valdi apps are standard TypeScript/TSX projects, so no Valdi-specific editor extensions are required — syntax highlighting and type checking come from the workspace TypeScript version (configured below). Device logs and debugging are handled by the CLI and standard tooling:
+
+- **Device logs:** `valdi log`
+- **Debugging:** the JavaScript runtime is debuggable over the Chrome DevTools Protocol; no custom debugger extension is needed. CDP debugging requires the Hermes engine, which isn't the default. See the [Hermes Debugger guide](./docs/workflow-hermes-debugger.md) to switch to it and attach the debugger.
 
 ### 1. Install VSCode or Cursor
 
@@ -117,24 +120,7 @@ For **Cursor**:
 - Type `shell command` and select `> Install 'cursor' command in PATH`
 - Restart your terminal
 
-### 3. Install Valdi Extensions
-
-Download the extension files from the [latest release](https://github.com/Snapchat/Valdi/releases/latest):
-- `valdi-vivaldi.vsix` - Device logs and Valdi language support
-- `valdi-debug.vsix` - JavaScript debugger for Valdi apps
-
-**Install the extensions:**
-```bash
-# For VSCode
-code --install-extension /path/to/valdi-vivaldi.vsix
-code --install-extension /path/to/valdi-debug.vsix
-
-# For Cursor
-cursor --install-extension /path/to/valdi-vivaldi.vsix
-cursor --install-extension /path/to/valdi-debug.vsix
-```
-
-### 4. Configure TypeScript
+### 3. Configure TypeScript
 
 After creating your first Valdi project:
 - Open any TypeScript file (.tsx) in your project
@@ -178,7 +164,7 @@ If you encounter any issues during setup:
    - [Linux Setup Reference](./setup/linux_setup.md)
 
 4. **Get help:**
-   - Join our [Discord community](https://discord.gg/uJyNEeYX2U)
+   - Ask in [GitHub Discussions](https://github.com/Snapchat/Valdi/discussions)
    - Check [Troubleshooting Guide](./TROUBLESHOOTING.md)
 
 ## Next Steps

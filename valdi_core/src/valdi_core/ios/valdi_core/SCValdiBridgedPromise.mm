@@ -67,7 +67,8 @@ private:
 Valdi::Ref<Valdi::Promise> PromiseFromSCValdiPromise(id<SCValdiPromise> promise, const Valdi::Ref<Valdi::ValueMarshaller<ValdiIOS::ObjCValue>> &valueMarshaller) {
     auto peer = [promise getPeer];
     if (peer != nullptr) {
-        return Valdi::unsafeBridge<Valdi::Promise>(peer);
+        // getPeer returns a retained (+1) reference, adopt it
+        return Valdi::unsafeBridgeTransfer<Valdi::Promise>(peer);
     }
     auto newPeer = Valdi::makeShared<IOSPromise>(promise, valueMarshaller);
     [promise setPeer:newPeer.get()];
@@ -121,7 +122,7 @@ Valdi::Ref<Valdi::Promise> PromiseFromSCValdiPromise(id<SCValdiPromise> promise,
 
 - (void*)getPeer
 {
-    return unsafeBridgeCast(_promise.get());
+    return Valdi::unsafeBridgeRetain(_promise.get());
 }
 
 @end

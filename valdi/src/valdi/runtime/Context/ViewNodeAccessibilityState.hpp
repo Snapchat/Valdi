@@ -3,8 +3,8 @@
 #include "valdi/runtime/Attributes/AttributeIds.hpp"
 #include "valdi/runtime/Attributes/ViewNodeAttributesApplier.hpp"
 #include "valdi/runtime/Context/ViewNodeAccessibility.hpp"
-#include "valdi/runtime/Views/Frame.hpp"
 #include "valdi_core/cpp/Utils/ValueFunction.hpp"
+#include "valdi_core/cpp/Views/Frame.hpp"
 
 #include <optional>
 

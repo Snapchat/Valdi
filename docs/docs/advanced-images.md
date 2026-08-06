@@ -99,3 +99,83 @@ The loader must conform to [ValdiImageLoader](../../valdi/src/java/com/snap/vald
 ```
 
 The `getSupportedOutputTypes` method should return a list of [ValdiAssetLoadOutputTypes](../../valdi/src/java/com/snap/valdi/utils/ValdiAssetLoadOptions.kt#L3).
+
+## Byte-exact (raw) bitmap data
+
+Images added to a module's `res/` folder go through the image-asset pipeline: the
+compiler generates per-density variants and, on Android, re-encodes them into lossy,
+density-scaled WebP drawables (see [The `<image>`](./core-images.md)). That is the
+right behavior for decorative UI, but it is *lossy* — it will smear hard pixel edges
+into intermediate grays and may resize the source. If you need the **original,
+untouched bytes** of an image — for example a small bitmap used as literal per-pixel
+data — do **not** put it in `res/`.
+
+Instead, bundle the image as a **`.bin` file in the module's `srcs`** and read its
+bytes back verbatim at runtime. `.bin` files are bundled as retrievable *module
+entries* — the same mechanism the runtime uses for bundled data — with zero
+re-encoding, whereas `res/` files are re-encoded and are not retrievable this way.
+
+### 1. Bundle the image as a `.bin` file (not a `res/` image)
+
+Give the file a `.bin` extension so it opts out of the image pipeline, and keep the real
+format visible by naming it `<name>.<realext>.bin` (e.g. `checker_2x2.png.bin`). Place it
+under `src/`, add `src/**/*.bin` to the module's `srcs` glob, and enable `inline_assets`
+so the bytes are available at runtime:
+
+```bazel
+valdi_module(
+    name = "my_module",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.bin",  # byte-exact data files, bundled verbatim as retrievable entries
+    ]),
+    inline_assets = True,
+    deps = ["//src/valdi_modules/src/valdi/drawing", ...],
+    ...
+)
+```
+
+### 2. Retrieve the bytes byte-exact
+
+`getModuleFileEntryAsBytes` returns the file's exact bytes, on every platform. The path
+is relative to the module root and matches the file's location in `srcs`:
+
+```ts
+import { getModuleFileEntryAsBytes } from 'valdi_core/src/Valdi';
+
+const bytes = getModuleFileEntryAsBytes('my_module', 'src/patterns/checker_2x2.png.bin');
+```
+
+### 3. Turn the bytes into a bitmap — with no re-encoding
+
+Use [`drawing/src/BitmapFactory`](../../src/valdi_modules/src/valdi/drawing/src/BitmapFactory.ts):
+
+- **`decodeBitmap(bytes)`** decodes an encoded image (PNG/WebP) and accepts a
+  `Uint8Array` directly. A PNG source decodes losslessly, so the pixels are exactly what
+  you bundled. Best when your `.bin` holds an encoded image.
+- **`createBitmapWithBuffer(info, buffer)`** wraps a *raw* pixel buffer directly — no
+  codec at all. Use this when your `.bin` holds raw pixels (e.g. RGBA8888); you supply
+  the `width`/`height`/`rowBytes`.
+
+```ts
+import { decodeBitmap } from 'drawing/src/BitmapFactory';
+
+const bitmap = decodeBitmap(bytes);
+try {
+  // Read pixels back to confirm they are exactly what was bundled.
+  const firstPixel = bitmap.accessPixels((view) => [
+    view.getUint8(0),
+    view.getUint8(1),
+    view.getUint8(2),
+    view.getUint8(3),
+  ]);
+} finally {
+  // Dispose to release the native bitmap; skipping this leaks it.
+  bitmap.dispose();
+}
+```
+
+A complete, runnable version of this pattern lives in the Hello World example app
+(`apps/helloworld/.../hello_world/src/ByteExactImageExample.tsx`), which bundles a
+lossless 2×2 black/white PNG as `.bin` and renders the reconstructed pixels on screen.

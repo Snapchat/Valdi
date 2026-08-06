@@ -77,6 +77,18 @@ private:
                    const Ref<JavaScriptTaskScheduler>& taskScheduler,
                    const ValueFunctionCallContext& callContext);
 
+    /**
+     Dispatch the call on the JS thread and block the calling thread for its result until the
+     deadline. On timeout the JS call is left to complete on its own and its return value is
+     dropped, so the caller must treat the error as "no result" rather than "did not run".
+     Callers running on the main thread are expected to hold a MainThreadManager batch, so that
+     main thread work requested by the JS call is queued instead of dispatched while we wait.
+     */
+    Result<Value> dispatchAndWaitOnJsThread(const Ref<JavaScriptTaskScheduler>& taskScheduler,
+                                            const std::chrono::steady_clock::time_point& deadline,
+                                            const Value* parameters,
+                                            size_t parametersSize);
+
     const StringBox& getFunctionName();
 
     Value callPromise(const Ref<JavaScriptTaskScheduler>& taskScheduler, const ValueFunctionCallContext& callContext);

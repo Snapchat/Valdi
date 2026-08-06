@@ -14,7 +14,7 @@ We welcome contributions in various forms, including:
 - Documentation improvements
 - Tests and performance optimizations
 
-If you would like to add new features, please reach out to the Valdi team on [Discord](https://discord.gg/uJyNEeYX2U) to discuss. 
+If you would like to add new features, please start a [GitHub Discussion](https://github.com/Snapchat/Valdi/discussions) to discuss with the Valdi team first.
 
 To contribute, follow these steps:
 

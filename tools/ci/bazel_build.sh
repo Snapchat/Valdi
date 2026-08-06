@@ -53,6 +53,9 @@ pushd "$OPEN_SOURCE_DIR"
 # Test suite
 ./tools/ci/run_tests.sh
 
+# Catch changes that remove test coverage. A deleted test cannot fail, so nothing above notices it.
+./tools/ci/check_test_coverage_delta.sh
+
 # Reroute global because we can't sudo anything
 mkdir -p ~/.npm-global/lib
 npm config set prefix '~/.npm-global'

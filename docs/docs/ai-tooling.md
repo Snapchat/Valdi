@@ -279,7 +279,7 @@ If AI tools are consistently giving incorrect suggestions:
 1. **Install skills**: Run `valdi skills install` to give your AI tool Valdi context
 2. **Be explicit**: Mention "Valdi (not React)" in your prompts
 3. **Report issues**: [Open an issue](https://github.com/Snapchat/Valdi/issues) if patterns are consistently wrong
-4. **Join Discord**: [Ask the community](https://discord.gg/uJyNEeYX2U) for help
+4. **Ask the community**: Post in [GitHub Discussions](https://github.com/Snapchat/Valdi/discussions) for help
 
 ---
 

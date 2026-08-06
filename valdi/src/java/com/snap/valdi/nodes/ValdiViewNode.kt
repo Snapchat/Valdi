@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.RectF
 import android.graphics.Rect
 import android.graphics.drawable.Drawable
-import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -26,6 +25,8 @@ import com.snap.valdi.utils.NativeRef
 import com.snap.valdi.nodes.IValdiViewNode.AccessibilityNode
 import com.snap.valdi.nodes.IValdiViewNode.AccessibilityCategory
 import com.snap.valdi.utils.CanvasClipper
+import com.snap.valdi.utils.InternedString
+import com.snap.valdi.utils.InternedStringCPP
 import com.snap.valdi.utils.Ref
 import com.snap.valdi.utils.error
 import com.snap.valdi.views.ValdiRootView.ScrollDirection
@@ -65,8 +66,35 @@ class ValdiViewNode(nativeHandle: Long,
         NativeBridge.setValueForAttribute(nativeHandle, attributeName, attributeValue, keepAsOverride)
     }
 
+    fun setInlineTextAnimationAttributes(
+        hasOpacity: Boolean,
+        opacity: Double,
+        hasTransform: Boolean,
+        translationY: Double,
+        scale: Double
+    ) {
+        NativeBridge.setInlineTextAnimationAttributesForViewNode(
+            nativeHandle,
+            hasOpacity,
+            opacity,
+            hasTransform,
+            translationY,
+            scale
+        )
+    }
+
     override fun getAttribute(attributeName: String): Any? {
         return NativeBridge.getValueForAttribute(nativeHandle, attributeName)
+    }
+
+    override fun setStoredObject(key: InternedString, value: Any?) {
+        val nativeKey = (key as? InternedStringCPP)?.nativeHandle ?: return
+        NativeBridge.setStoredObjectForViewNode(nativeHandle, nativeKey, value)
+    }
+
+    override fun getStoredObject(key: InternedString): Any? {
+        val nativeKey = (key as? InternedStringCPP)?.nativeHandle ?: return null
+        return NativeBridge.getStoredObjectForViewNode(nativeHandle, nativeKey)
     }
 
     override fun reapplyAttribute(attributeName: String) {

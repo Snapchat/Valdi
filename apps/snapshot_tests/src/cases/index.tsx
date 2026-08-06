@@ -27,6 +27,11 @@ import { TextLetterSpacing } from './TextLetterSpacing';
 import { TextMultiline } from './TextMultiline';
 import { TextShadow } from './TextShadow';
 import { TextCombined } from './TextCombined';
+import { InlineImageLayout } from './InlineImageLayout';
+import { EmojiRendering } from './EmojiRendering';
+import { MaskImage } from './MaskImage';
+import { TextFieldRendering } from './TextFieldRendering';
+import { BorderStyles } from './BorderStyles';
 
 export const testCases: SnapshotTestCase[] = [
   { name: 'BasicLayout', width: 200, height: 150, render: () => { <BasicLayout />; } },
@@ -51,4 +56,9 @@ export const testCases: SnapshotTestCase[] = [
   { name: 'TextMultiline', width: 250, height: 380, render: () => { <TextMultiline />; } },
   { name: 'TextShadow', width: 250, height: 300, render: () => { <TextShadow />; } },
   { name: 'TextCombined', width: 280, height: 420, render: () => { <TextCombined />; } },
+  { name: 'InlineImageLayout', width: 280, height: 350, render: () => { <InlineImageLayout />; } },
+  { name: 'EmojiRendering', width: 280, height: 340, render: () => { <EmojiRendering />; } },
+  { name: 'MaskImage', width: 280, height: 360, render: () => { <MaskImage />; } },
+  { name: 'TextFieldRendering', width: 280, height: 320, render: () => { <TextFieldRendering />; } },
+  { name: 'BorderStyles', width: 220, height: 340, render: () => { <BorderStyles />; } },
 ];

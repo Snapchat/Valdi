@@ -29,6 +29,20 @@ echo "=== Valdi Linux CI Environment Setup ==="
 # ---------------------------------------------------------------------------
 echo "--- Freeing disk space ---"
 
+# A cold Valdi build wants roughly 25GB of output base (about half of it downloaded deps:
+# NDK, skia, v8, boost), and the runner has ~26GB free after the first eight entries here.
+# That is too tight: both "Linux: Build & Export" and the Android instrumentation job have
+# died mid-compile with "No space left on device", on main as well as on PRs. The rest of
+# the list is toolchains no Valdi job uses.
+#
+# Do not add these, they are load-bearing:
+#   /usr/local/lib/node_modules  - holds the runner's global npm, so removing it breaks
+#                                  install_cli.sh and bootstrap_app.sh ("Setup environment
+#                                  and install Valdi CLI" failed this way).
+#   /opt/hostedtoolcache/Java*   - where actions/setup-java puts the JDK.
+#   /opt/hostedtoolcache/Python  - actions/setup-python populates it in other jobs.
+#   anything under ANDROID_HOME   - rules_android resolves the SDK from there, and
+#                                  rules_android_ndk resolves the NDK from there.
 CLEANUP_PATHS=(
     /usr/share/dotnet
     /opt/ghc
@@ -38,6 +52,14 @@ CLEANUP_PATHS=(
     /usr/share/swift
     /usr/share/miniconda
     /opt/az
+    /opt/hostedtoolcache/PyPy
+    /opt/hostedtoolcache/Ruby
+    /opt/hostedtoolcache/go
+    /usr/local/.ghcup
+    /usr/local/lib/heroku
+    /usr/local/share/chromium
+    /usr/lib/google-cloud-sdk
+    /opt/microsoft
 )
 
 for path in "${CLEANUP_PATHS[@]}"; do
@@ -46,6 +68,13 @@ for path in "${CLEANUP_PATHS[@]}"; do
         sudo rm -rf "$path"
     fi
 done
+
+# Prebuilt images we never run, worth a couple of GB. GitHub-hosted runners only: this
+# script also runs on internal CI, where pruning images other steps rely on would just
+# force slow re-pulls.
+if [ "${GITHUB_ACTIONS:-}" = "true" ] && command -v docker &> /dev/null; then
+    docker system prune -af || true
+fi
 
 sudo apt-get clean || true
 df -h

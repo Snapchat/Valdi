@@ -47,8 +47,8 @@ public:
             JavaScriptCapturedStacktrace::Status::RUNNING, STRING_LITERAL("A fake stacktrace"), nullptr)};
     }
 
-    std::string getCurrentModuleLoadInfo() const override {
-        return _moduleLoadInfo;
+    std::string getANRAttributionInfo() const override {
+        return _anrAttributionInfo;
     }
 
     int getLastTaskId() {
@@ -59,14 +59,14 @@ public:
         _shouldSimulateANR = true;
     }
 
-    void setModuleLoadInfo(std::string moduleLoadInfo) {
-        _moduleLoadInfo = std::move(moduleLoadInfo);
+    void setANRAttributionInfo(std::string anrAttributionInfo) {
+        _anrAttributionInfo = std::move(anrAttributionInfo);
     }
 
 private:
     std::atomic_bool _shouldSimulateANR = false;
     std::atomic_int _taskIdSequence = 0;
-    std::string _moduleLoadInfo;
+    std::string _anrAttributionInfo;
 };
 
 struct ANRDetectorTestHelper {
@@ -141,11 +141,11 @@ TEST(ANRDetector, detectsANRWhenTaskAreHanging) {
     ASSERT_EQ("Detected unattributed ANR after 1.0 ms", anr->getMessage());
 }
 
-TEST(ANRDetector, includesModuleLoadInfoInMessageWhenSet) {
+TEST(ANRDetector, includesANRAttributionInfoInMessageWhenSet) {
     ANRDetectorTestHelper helper;
 
     helper.taskScheduler->setShouldSimulateANR();
-    helper.taskScheduler->setModuleLoadInfo("send_to_lists/SendToListPickerV2.js (4200ms)");
+    helper.taskScheduler->setANRAttributionInfo(" [stuck-in: Graphene.partitionMakeMetric] [module: search_v2]");
 
     helper.anrDetector->onEnterForeground();
     helper.anrDetector->start(std::chrono::milliseconds(1));
@@ -158,7 +158,7 @@ TEST(ANRDetector, includesModuleLoadInfoInMessageWhenSet) {
     ASSERT_TRUE(anr.has_value());
 
     ASSERT_EQ(
-        "Detected unattributed ANR after 1.0 ms [module-load: send_to_lists/SendToListPickerV2.js (4200ms)]",
+        "Detected unattributed ANR after 1.0 ms [stuck-in: Graphene.partitionMakeMetric] [module: search_v2]",
         anr->getMessage());
 }
 

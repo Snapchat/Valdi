@@ -34,6 +34,7 @@
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 
 #include <algorithm>
+#include <memory>
 
 namespace Valdi {
 
@@ -734,6 +735,40 @@ JavaScriptContextMemoryStatistics RuntimeManager::dumpMemoryStatistics() {
     }
 
     return stats;
+}
+
+void RuntimeManager::dumpMemoryStatisticsAsync(Function<void(JavaScriptContextMemoryStatistics)> completion) {
+    const auto runtimes = this->getAllRuntimes();
+    if (runtimes.empty()) {
+        completion(JavaScriptContextMemoryStatistics{});
+        return;
+    }
+
+    // Each runtime reports its stats asynchronously on its own JS thread; accumulate lock-free
+    // and invoke the caller's completion once the final runtime has reported. Using an
+    // acquire-release drop on `remaining` publishes every relaxed accumulation to the last thread.
+    struct AggregationState {
+        std::atomic<size_t> memoryUsageBytes{0};
+        std::atomic<size_t> objectsCount{0};
+        std::atomic<size_t> remaining;
+        Function<void(JavaScriptContextMemoryStatistics)> completion;
+    };
+    auto state = std::make_shared<AggregationState>();
+    state->remaining.store(runtimes.size(), std::memory_order_relaxed);
+    state->completion = std::move(completion);
+
+    for (const auto& runtime : runtimes) {
+        runtime->getJavaScriptRuntime()->dumpMemoryStatisticsAsync([state](JavaScriptContextMemoryStatistics stat) {
+            state->memoryUsageBytes.fetch_add(stat.memoryUsageBytes, std::memory_order_relaxed);
+            state->objectsCount.fetch_add(stat.objectsCount, std::memory_order_relaxed);
+            if (state->remaining.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+                JavaScriptContextMemoryStatistics stats;
+                stats.memoryUsageBytes = state->memoryUsageBytes.load(std::memory_order_relaxed);
+                stats.objectsCount = state->objectsCount.load(std::memory_order_relaxed);
+                state->completion(stats);
+            }
+        });
+    }
 }
 
 void RuntimeManager::emitMetrics(void (Metrics::*emitterFunc)(const MetricsDuration&)) {

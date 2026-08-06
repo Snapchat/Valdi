@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Discord Community
-    url: https://discord.gg/uJyNEeYX2U
+  - name: GitHub Discussions
+    url: https://github.com/Snapchat/Valdi/discussions
     about: Ask questions and discuss Valdi with the community
   - name: Documentation
     url: https://valdi.snap.com

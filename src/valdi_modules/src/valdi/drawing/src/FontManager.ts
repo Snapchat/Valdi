@@ -43,15 +43,33 @@ export class FontManager {
 
   /**
    * Registers a font into the font manager from bytes representing the font data
+   *
+   * Pass `canUseAsFallback` to also make the family eligible for per-character fallback, which is
+   * how glyphs missing from the primary font get resolved — an emoji font must be registered this
+   * way for emoji to render at all.
    */
-  registerFontFromData(fontName: string, weight: FontWeight, style: FontStyle, fontData: Uint8Array): void {
-    registerFontFromData(this.native, fontName, weight, style, fontData);
+  registerFontFromData(
+    fontName: string,
+    weight: FontWeight,
+    style: FontStyle,
+    fontData: Uint8Array,
+    canUseAsFallback = false,
+  ): void {
+    registerFontFromData(this.native, fontName, weight, style, fontData, canUseAsFallback);
   }
 
   /**
    * Registers a font into the font manager from bytes from a file path
+   *
+   * See [registerFontFromData] for `canUseAsFallback`.
    */
-  registerFontFromFilePath(fontName: string, weight: FontWeight, style: FontStyle, filePath: string): void {
-    registerFontFromFilePath(this.native, fontName, weight, style, filePath);
+  registerFontFromFilePath(
+    fontName: string,
+    weight: FontWeight,
+    style: FontStyle,
+    filePath: string,
+    canUseAsFallback = false,
+  ): void {
+    registerFontFromFilePath(this.native, fontName, weight, style, filePath, canUseAsFallback);
   }
 }

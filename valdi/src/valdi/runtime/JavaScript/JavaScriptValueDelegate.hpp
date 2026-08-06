@@ -82,6 +82,7 @@ public:
 
     JSValueRef newStringUTF8(std::string_view str, ExceptionTracker& exceptionTracker) final;
     JSValueRef newStringUTF16(std::u16string_view str, ExceptionTracker& exceptionTracker) final;
+    JSValueRef newString(const StaticString& str, ExceptionTracker& exceptionTracker) final;
 
     JSValueRef newByteArray(const BytesView& bytes, ExceptionTracker& exceptionTracker) final;
     JSValueRef newTypedArray(TypedArrayType arrayType,

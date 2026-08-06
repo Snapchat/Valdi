@@ -8,6 +8,7 @@
 #include "valdi_core/cpp/Schema/ValueSchema.hpp"
 #include "utils/debugging/Assert.hpp"
 #include "valdi_core/cpp/Schema/ValueSchemaParser.hpp"
+#include "valdi_core/cpp/Schema/ValueSchemaRegistry.hpp"
 #include "valdi_core/cpp/Utils/InlineContainerAllocator.hpp"
 #include <boost/functional/hash.hpp>
 #include <cstdlib>
@@ -594,6 +595,10 @@ const PromiseSchema* ValueSchema::getPromise() const {
 
 const ValueSchemaReference* ValueSchema::getSchemaReference() const {
     return dynamic_cast<const ValueSchemaReference*>(_ptr.get());
+}
+
+Ref<ValueSchemaRegistry> ValueSchemaReference::getOwningRegistry() const {
+    return nullptr;
 }
 
 ValueSchemaTypeReference ValueSchema::getTypeReference() const {

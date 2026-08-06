@@ -926,9 +926,13 @@ private:
 
 class TestValueMarshallerRegistry : public SimpleRefCountable, public ValueMarshallerRegistry<Value> {
 public:
+    // withResolverRegistry=false mirrors the JS-side ValueMarshallerRegistry, whose type
+    // resolver has no ValueSchemaRegistry and can only reach schemas through the
+    // ValueSchemaReferences embedded in the schemas it receives.
     TestValueMarshallerRegistry(const Ref<ValueSchemaRegistry>& schemaRegistry,
-                                const Ref<TestDispatchQueue>& testDispatchQueue = nullptr)
-        : ValueMarshallerRegistry<Value>(ValueSchemaTypeResolver(schemaRegistry.get()),
+                                const Ref<TestDispatchQueue>& testDispatchQueue = nullptr,
+                                bool withResolverRegistry = true)
+        : ValueMarshallerRegistry<Value>(ValueSchemaTypeResolver(withResolverRegistry ? schemaRegistry.get() : nullptr),
                                          makeShared<TestPlatformValueDelegate>(),
                                          testDispatchQueue,
                                          STRING_LITERAL("Test")),
@@ -2208,6 +2212,117 @@ TEST(ValueMarshallerRegistry, supportsMarshallingSet) {
 
     ASSERT_TRUE(aSetRef->entries[2].isString());
     ASSERT_EQ(STRING_LITERAL("blue"), aSetRef->entries[2].toStringBox());
+}
+
+// Regression test for PUSH-10349: a marshaller registry whose type resolver has no
+// ValueSchemaRegistry (the JS-side registry) receives schemas as ValueSchemaReferences into a
+// platform-owned registry. When the referenced entry still contains unresolved named type
+// references — which happens whenever the platform side has not walked the entry yet, e.g.
+// with lazy function return-marshalling — the entry must be resolved against the reference's
+// owning registry instead of failing with "Cannot resolve schema from type references without
+// a registry set".
+TEST(ValueMarshallerRegistry, resolvesSchemaReferenceEntryAgainstOwningRegistry) {
+    auto schemaRegistry = makeShared<ValueSchemaRegistry>();
+
+    auto payloadSchema = ValueSchema::parse("c 'Payload'{'x': d}");
+    ASSERT_TRUE(payloadSchema) << payloadSchema.description();
+    schemaRegistry->registerSchema(payloadSchema.value());
+
+    // The function parameter keeps an unresolved named reference inside the registered entry,
+    // mirroring the G71.onForceTweakFailed shape from the crash.
+    auto sessionSchema = ValueSchema::parse("c 'Session'{'onFail': f(r:'Payload'): v, 'name': s}");
+    ASSERT_TRUE(sessionSchema) << sessionSchema.description();
+    schemaRegistry->registerSchema(sessionSchema.value());
+
+    auto valueMarshallerRegistry =
+        makeShared<TestValueMarshallerRegistry>(schemaRegistry, nullptr, /*withResolverRegistry=*/false);
+
+    auto sessionKey =
+        ValueSchemaRegistryKey(ValueSchema::typeReference(ValueSchemaTypeReference::named(STRING_LITERAL("Session"))));
+    auto sessionReference = schemaRegistry->getSchemaReferenceForTypeKey(sessionKey);
+    ASSERT_TRUE(sessionReference != nullptr);
+
+    SimpleExceptionTracker exceptionTracker;
+    auto marshaller =
+        valueMarshallerRegistry->getValueMarshaller(ValueSchema::schemaReference(sessionReference), exceptionTracker);
+    ASSERT_TRUE(exceptionTracker) << exceptionTracker.extractError().toString();
+    ASSERT_TRUE(marshaller.valueMarshaller != nullptr);
+
+    auto onFail = makeShared<ValueFunctionWithCallable>(
+        [](const ValueFunctionCallContext& /*callContext*/) -> Value { return Value(); });
+    auto object = Value().setMapValue("onFail", Value(onFail)).setMapValue("name", Value(STRING_LITERAL("hello")));
+
+    auto result = marshaller.valueMarshaller->unmarshall(object, ReferenceInfoBuilder(), exceptionTracker);
+    ASSERT_TRUE(exceptionTracker) << exceptionTracker.extractError().toString();
+
+    auto session = result.getTypedRef<TestObject>();
+    ASSERT_TRUE(session != nullptr);
+    ASSERT_EQ(Value(STRING_LITERAL("hello")), session->getProperty(1));
+}
+
+// End-to-end shape of the PUSH-10349 crash: with lazy function return-marshalling enabled, a
+// JS-like registry (no registry on its type resolver) defers the return marshaller of
+// Tool.createSession(); the first call resolves the return type Session — whose entry still
+// contains a named reference to Payload — through the reference's owning registry.
+TEST(ValueMarshallerRegistry, lazyReturnMarshallerResolvesThroughOwningRegistry) {
+    lazyFunctionReturnMarshallerFlag().store(true);
+
+    auto schemaRegistry = makeShared<ValueSchemaRegistry>();
+
+    auto payloadSchema = ValueSchema::parse("c 'Payload'{'x': d}");
+    ASSERT_TRUE(payloadSchema) << payloadSchema.description();
+    schemaRegistry->registerSchema(payloadSchema.value());
+
+    auto sessionSchema = ValueSchema::parse("c 'Session'{'onFail': f(r:'Payload'): v, 'name': s}");
+    ASSERT_TRUE(sessionSchema) << sessionSchema.description();
+    schemaRegistry->registerSchema(sessionSchema.value());
+
+    auto toolSchema = ValueSchema::parse("c 'Tool'{'createSession': f(): r:'Session'}");
+    ASSERT_TRUE(toolSchema) << toolSchema.description();
+    schemaRegistry->registerSchema(toolSchema.value());
+
+    auto valueMarshallerRegistry =
+        makeShared<TestValueMarshallerRegistry>(schemaRegistry, nullptr, /*withResolverRegistry=*/false);
+
+    auto toolKey =
+        ValueSchemaRegistryKey(ValueSchema::typeReference(ValueSchemaTypeReference::named(STRING_LITERAL("Tool"))));
+    auto toolReference = schemaRegistry->getSchemaReferenceForTypeKey(toolKey);
+    ASSERT_TRUE(toolReference != nullptr);
+
+    SimpleExceptionTracker exceptionTracker;
+    auto marshaller =
+        valueMarshallerRegistry->getValueMarshaller(ValueSchema::schemaReference(toolReference), exceptionTracker);
+    ASSERT_TRUE(exceptionTracker) << exceptionTracker.extractError().toString();
+    ASSERT_TRUE(marshaller.valueMarshaller != nullptr);
+
+    auto createSession =
+        makeShared<ValueFunctionWithCallable>([](const ValueFunctionCallContext& /*callContext*/) -> Value {
+            auto onFail = makeShared<ValueFunctionWithCallable>(
+                [](const ValueFunctionCallContext& /*innerCallContext*/) -> Value { return Value(); });
+            return Value().setMapValue("onFail", Value(onFail)).setMapValue("name", Value(STRING_LITERAL("session-1")));
+        });
+    auto toolObject = Value().setMapValue("createSession", Value(createSession));
+
+    auto unmarshalledTool =
+        marshaller.valueMarshaller->unmarshall(toolObject, ReferenceInfoBuilder(), exceptionTracker);
+    ASSERT_TRUE(exceptionTracker) << exceptionTracker.extractError().toString();
+
+    auto tool = unmarshalledTool.getTypedRef<TestObject>();
+    ASSERT_TRUE(tool != nullptr);
+
+    auto createSessionFunction = tool->getProperty(0).getTypedRef<TestFunction>();
+    ASSERT_TRUE(createSessionFunction != nullptr);
+
+    // First call triggers the lazy return-marshaller resolution; pre-fix this failed with
+    // "Lazy ValueMarshaller failed to resolve return type ... without a registry set".
+    auto callResult = createSessionFunction->call(nullptr, 0);
+    ASSERT_TRUE(callResult) << callResult.description();
+
+    auto session = callResult.value().getTypedRef<TestObject>();
+    ASSERT_TRUE(session != nullptr);
+    ASSERT_EQ(Value(STRING_LITERAL("session-1")), session->getProperty(1));
+
+    lazyFunctionReturnMarshallerFlag().store(false);
 }
 
 } // namespace ValdiTest

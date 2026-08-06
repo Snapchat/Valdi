@@ -49,6 +49,7 @@
 
 #import "valdi/ios/SCValdiJSWorker.h"
 
+#include <atomic>
 #include <chrono>
 #import <memory>
 #import <utils/debugging/Assert.hpp>
@@ -126,6 +127,13 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
     NSMutableArray<SCValdiRuntimeCreatedCallback> *_runtimeCreatedCallbacks;
 
     NSMapTable<NSString*, id> *_workerExecutorCache;
+
+    // Publication flags for the write-once ivars below. Once set (release, inside
+    // @synchronized(self)), readers may access the corresponding ivar without the
+    // manager lock: _cppInstance and _mainRuntime are never reassigned until dealloc,
+    // which cannot run concurrently with method calls.
+    std::atomic<bool> _cppInstancePublished;
+    std::atomic<bool> _mainRuntimePublished;
 }
 
 - (instancetype)init
@@ -269,6 +277,19 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
         }
 
         _cppInstance->emitInitMetrics();
+
+        _cppInstancePublished.store(true, std::memory_order_release);
+    }
+}
+
+// Copyable without the manager lock once published; returns null if not yet initialized.
+- (Valdi::Ref<Valdi::RuntimeManager>)_cppInstanceIfInitialized
+{
+    if (_cppInstancePublished.load(std::memory_order_acquire)) {
+        return _cppInstance;
+    }
+    @synchronized (self) {
+        return _cppInstance;
     }
 }
 
@@ -448,6 +469,10 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
 
 - (SCValdiRuntime *)mainRuntime
 {
+    if (_mainRuntimePublished.load(std::memory_order_acquire)) {
+        return _mainRuntime;
+    }
+
     @synchronized (self) {
         if (!_mainRuntime) {
             SCValdiConfiguration *configuration = [self _getOrCreateConfiguration];
@@ -460,10 +485,15 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
             [_runtimeCreatedCallbacks removeAllObjects];
 
             [_mainRuntime emitInitMetrics];
-        }
-    }
 
-    return _mainRuntime;
+            // Creation returns nil while terminating/torn down; keep retrying in that case.
+            if (_mainRuntime) {
+                _mainRuntimePublished.store(true, std::memory_order_release);
+            }
+        }
+
+        return _mainRuntime;
+    }
 }
 
 - (id<SCValdiRuntimeProtocol>)provideMainRuntime
@@ -480,40 +510,45 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
 
 - (void)unloadAllJsModules
 {
-    @synchronized (self) {
-        if (_cppInstance == nullptr) {
-            return;
-        }
+    // getAllRuntimes() and the JS runtimes synchronize internally; running this outside the
+    // manager lock keeps slow JS work from stalling unrelated manager calls.
+    auto cppInstance = [self _cppInstanceIfInitialized];
+    if (cppInstance == nullptr) {
+        return;
+    }
 
-        for (auto &runtime : _cppInstance->getAllRuntimes()) {
-            runtime->getJavaScriptRuntime()->unloadAllModules();
-        }
+    for (auto &runtime : cppInstance->getAllRuntimes()) {
+        runtime->getJavaScriptRuntime()->unloadAllModules();
     }
 }
 
 - (nullable SCValdiRuntime *)createRuntimeWithCustomModuleProvider:(id<SCValdiCustomModuleProvider>)customModuleProvider
 {
-    if (_applicationIsTerminating || _forceTornDown) {
-        return nil;
+    // Public entry point: without the lock, a direct call racing lazy initialization can
+    // double-run _initializeIfNeeded and corrupt _cppInstance. Reentrant from mainRuntime.
+    @synchronized (self) {
+        if (_applicationIsTerminating || _forceTornDown) {
+            return nil;
+        }
+        [self _initializeIfNeeded];
+
+        // Custom module provider takes precedence over the one in the configuration
+        if (customModuleProvider == nil) {
+            customModuleProvider = [self _getOrCreateConfiguration].customModuleProvider;
+        }
+
+        auto runtime =
+        _cppInstance->createRuntime(Valdi::makeShared<ValdiIOS::ResourceLoader>(customModuleProvider), static_cast<double>(_viewManagerContext->getViewManager().getPointScale()));
+        _cppInstance->emitXpatCreateRuntimeMetrics();
+
+        SCValdiRuntime *objcRuntime = [[SCValdiRuntime alloc] initWithCppInstance:runtime viewManagerContext:_viewManagerContext runtimeManager:self fontManager:_fontManager];
+
+        _cppInstance->emitIosRuntimeCreateMetrics();
+
+        _cppInstance->attachHotReloader(runtime);
+
+        return objcRuntime;
     }
-    [self _initializeIfNeeded];
-
-    // Custom module provider takes precedence over the one in the configuration
-    if (customModuleProvider == nil) {
-        customModuleProvider = [self _getOrCreateConfiguration].customModuleProvider;
-    }
-
-    auto runtime =
-    _cppInstance->createRuntime(Valdi::makeShared<ValdiIOS::ResourceLoader>(customModuleProvider), static_cast<double>(_viewManagerContext->getViewManager().getPointScale()));
-    _cppInstance->emitXpatCreateRuntimeMetrics();
-
-    SCValdiRuntime *objcRuntime = [[SCValdiRuntime alloc] initWithCppInstance:runtime viewManagerContext:_viewManagerContext runtimeManager:self fontManager:_fontManager];
-
-    _cppInstance->emitIosRuntimeCreateMetrics();
-
-    _cppInstance->attachHotReloader(runtime);
-
-    return objcRuntime;
 }
 
 - (void)clearViewPools
@@ -677,13 +712,14 @@ static SCValdiCapturedJSStacktrace *toObjCStacktrace(const Valdi::JavaScriptCapt
 - (nullable NSArray<SCValdiCapturedJSStacktrace *> *)captureStackTracesWithTimeoutMs:(NSUInteger)timeoutMs
 {
     NSMutableArray<SCValdiCapturedJSStacktrace *> *capturedJSStacktraces = [NSMutableArray array];
-    @synchronized (self) {
-        if (_cppInstance != nullptr) {
-            for (auto &runtime : _cppInstance->getAllRuntimes()) {
-                auto capturedStacktraces = runtime->getJavaScriptRuntime()->captureStackTraces(std::chrono::milliseconds(timeoutMs));
-                for (const auto &stackTrace: capturedStacktraces) {
-                    [capturedJSStacktraces addObject:toObjCStacktrace(stackTrace)];
-                }
+    // Capture can block up to timeoutMs per runtime; holding the manager lock here would
+    // stall main-thread lifecycle handlers and mainRuntime callers for the whole capture.
+    auto cppInstance = [self _cppInstanceIfInitialized];
+    if (cppInstance != nullptr) {
+        for (auto &runtime : cppInstance->getAllRuntimes()) {
+            auto capturedStacktraces = runtime->getJavaScriptRuntime()->captureStackTraces(std::chrono::milliseconds(timeoutMs));
+            for (const auto &stackTrace: capturedStacktraces) {
+                [capturedJSStacktraces addObject:toObjCStacktrace(stackTrace)];
             }
         }
     }
@@ -694,22 +730,45 @@ static SCValdiCapturedJSStacktrace *toObjCStacktrace(const Valdi::JavaScriptCapt
 - (SCValdiMemoryStatistics)dumpMemoryStatistics
 {
     SCValdiMemoryStatistics result = {0, 0};
-    @synchronized (self) {
-        if (_cppInstance != nullptr) {
-            auto stats = _cppInstance->dumpMemoryStatistics();
-            result.memoryUsageBytes = static_cast<int64_t>(stats.memoryUsageBytes);
-            result.objectsCount = static_cast<int64_t>(stats.objectsCount);
-        }
+    auto cppInstance = [self _cppInstanceIfInitialized];
+    if (cppInstance != nullptr) {
+        auto stats = cppInstance->dumpMemoryStatistics();
+        result.memoryUsageBytes = static_cast<int64_t>(stats.memoryUsageBytes);
+        result.objectsCount = static_cast<int64_t>(stats.objectsCount);
     }
     return result;
 }
 
+- (void)dumpMemoryStatisticsAsyncWithCompletion:(void (^)(SCValdiMemoryStatistics))completion
+{
+    // Take a strong reference under the lock so the manager stays alive across the async dump,
+    // but drive the (potentially long) dispatch outside the lock so we never block teardown.
+    Valdi::Ref<Valdi::RuntimeManager> cppInstance;
+    @synchronized (self) {
+        cppInstance = _cppInstance;
+    }
+
+    if (cppInstance == nullptr) {
+        completion((SCValdiMemoryStatistics){0, 0});
+        return;
+    }
+
+    cppInstance->dumpMemoryStatisticsAsync([completion](Valdi::JavaScriptContextMemoryStatistics stats) {
+        SCValdiMemoryStatistics result;
+        result.memoryUsageBytes = static_cast<int64_t>(stats.memoryUsageBytes);
+        result.objectsCount = static_cast<int64_t>(stats.objectsCount);
+        completion(result);
+    });
+}
+
 - (void *)cppInstance
 {
-    @synchronized (self) {
-        [self _initializeIfNeeded];
-        return Valdi::unsafeBridgeCast(_cppInstance.get());
+    if (!_cppInstancePublished.load(std::memory_order_acquire)) {
+        @synchronized (self) {
+            [self _initializeIfNeeded];
+        }
     }
+    return Valdi::unsafeBridgeCast(_cppInstance.get());
 }
 
 - (void)getWorkerOnExecutor:(NSString*)executor block:(void (^)(id<SCValdiJSRuntime>))block

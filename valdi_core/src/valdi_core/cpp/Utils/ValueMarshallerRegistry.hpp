@@ -37,11 +37,18 @@ template<typename ValueType>
 struct PendingIndirectValueMarshaller {
     ValueSchemaRegistryKey schemaKey;
     ValueSchema schema;
+    // Registry owning the referenced entry; used to resolve named type references inside the
+    // entry when this marshaller registry's own type resolver has no registry (JS side).
+    Ref<ValueSchemaRegistry> owningRegistry;
     Ref<IndirectValueMarshaller<ValueType>> indirectValueMarshaller;
     PendingIndirectValueMarshaller(const ValueSchemaRegistryKey& schemaKey,
                                    const ValueSchema& schema,
+                                   const Ref<ValueSchemaRegistry>& owningRegistry,
                                    const Ref<IndirectValueMarshaller<ValueType>>& indirectValueMarshaller)
-        : schemaKey(schemaKey), schema(schema), indirectValueMarshaller(indirectValueMarshaller) {}
+        : schemaKey(schemaKey),
+          schema(schema),
+          owningRegistry(owningRegistry),
+          indirectValueMarshaller(indirectValueMarshaller) {}
 };
 
 class ValueMarshallerRegistryListener {
@@ -148,8 +155,15 @@ private:
             auto pendingIndirectValueMarshaller = std::move(_pendingIndirectValueMarshallers.front());
             _pendingIndirectValueMarshallers.pop_front();
 
-            auto resolvedValueMarshaller = getValueMarshallerForSchemaKey(
-                pendingIndirectValueMarshaller.schemaKey, pendingIndirectValueMarshaller.schema, exceptionTracker);
+            auto schema =
+                resolveReferencedSchemaAgainstOwningRegistry(pendingIndirectValueMarshaller, exceptionTracker);
+            if (!exceptionTracker) {
+                _pendingIndirectValueMarshallers.push_front(std::move(pendingIndirectValueMarshaller));
+                return;
+            }
+
+            auto resolvedValueMarshaller =
+                getValueMarshallerForSchemaKey(pendingIndirectValueMarshaller.schemaKey, schema, exceptionTracker);
             if (!exceptionTracker) {
                 _pendingIndirectValueMarshallers.push_front(std::move(pendingIndirectValueMarshaller));
                 return;
@@ -158,6 +172,42 @@ private:
             pendingIndirectValueMarshaller.indirectValueMarshaller->setInner(
                 resolvedValueMarshaller.valueMarshaller.get());
         }
+    }
+
+    // A registry whose type resolver has no ValueSchemaRegistry (the JS-side registry) cannot
+    // resolve named type references itself. That used to be safe because the platform-side
+    // registry eagerly resolved every referenced entry (and wrote the resolved schema back)
+    // before any schema crossed to the JS side; lazy function return-marshalling breaks that
+    // invariant — an entry can still contain unresolved named references when the JS side is
+    // the first to walk it (the JS->Value marshall of a return value runs before the platform
+    // side's unmarshall). Resolve such entries against the registry that owns the reference,
+    // and write the resolved schema back so every other consumer of the entry benefits, exactly
+    // as the eager platform-side path does. The owning registry's recursive lock serializes the
+    // resolve+write-back against platform-side registration and lazy resolution.
+    ValueSchema resolveReferencedSchemaAgainstOwningRegistry(const PendingIndirectValueMarshaller<ValueType>& pending,
+                                                             ExceptionTracker& exceptionTracker) {
+        if (_typeResolver.getRegistry() != nullptr || pending.owningRegistry == nullptr ||
+            _valueMarshallerBySchemaKey.find(pending.schemaKey) != _valueMarshallerBySchemaKey.end()) {
+            return pending.schema;
+        }
+
+        auto guard = pending.owningRegistry->lock();
+        ValueSchemaTypeResolver owningResolver(pending.owningRegistry.get());
+        bool didChange = false;
+        auto resolvedSchema =
+            owningResolver.resolveTypeReferences(pending.schema, ValueSchemaRegistryResolveType::Schema, &didChange);
+        if (!resolvedSchema) {
+            exceptionTracker.onError(resolvedSchema.error().rethrow(
+                STRING_FORMAT("Could not resolve type references of schema key '{}' against its owning registry",
+                              pending.schemaKey.getSchemaKey().toString())));
+            return pending.schema;
+        }
+
+        if (didChange) {
+            pending.owningRegistry->updateSchemaIfKeyExists(pending.schemaKey, resolvedSchema.value());
+        }
+
+        return resolvedSchema.value();
     }
 
     ValueMarshallerWithSchema<ValueType> getValueMarshallerForSchemaKey(const ValueSchemaRegistryKey& schemaKey,
@@ -316,7 +366,7 @@ private:
         }
 
         _pendingIndirectValueMarshallers.emplace_back(
-            registryKey, schemaReference.getSchema(), indirectValueMarshaller);
+            registryKey, schemaReference.getSchema(), schemaReference.getOwningRegistry(), indirectValueMarshaller);
         return indirectValueMarshaller;
     }
 

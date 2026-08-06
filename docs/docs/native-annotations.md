@@ -6,8 +6,15 @@ The Valdi compiler integrates tightly with the TypeScript compiler. It supports 
 
 The annotations are declared in comments, because TypeScript does not support compile time annotations.
 
-> [!Warning]
-> When composing multiple classes with `@Export*`, e.g. having an `@ExportModel` `Component` which exposes a `@ExportModel` on a `Context`, ensure that they are all in the same file. This restriction does not apply for pure TS/JS usages, only for when where generated native code need to depend on other generated native code.
+> [!Note]
+> `@Component`, `@ViewModel`, and `@Context` no longer need to live in the same file. When the Component's base class is `Component<VM, Ctx>` or `StatefulComponent<VM, State, Ctx>` and the VM/Ctx are declared in the same file, the compiler infers the binding from the `extends` type arguments — this is the default backward-compatible path. When they live in different files, add explicit params:
+>
+> ```ts
+> /** @Component({viewModel: 'MyVM', context: 'MyCtx'}) @ExportModel(...) */
+> class MyComp extends Component<MyVM, MyCtx> { ... }
+> ```
+>
+> Cross-module (VM/Ctx in a different Bazel module than the Component) is still a v1 limitation — parents/bindings across module boundaries need the cross-module symbol persistence follow-up.
 
 
 ## Example
@@ -160,8 +167,14 @@ These annotations mark component-related interfaces and classes.
  * Notifies that the class is the exported component class for the TSX file.
  * must be used: alongside @ExportModel
  * must be used: on a class extending Component<>
+ * optional params: viewModel: '<TsTypeName>', context: '<TsTypeName>'
+ *   Provide when the VM/Ctx live in a different file than the Component. The
+ *   named types must be imported into the Component's file. For same-file
+ *   Components using `Component<VM, Ctx>` or `StatefulComponent<VM, State,
+ *   Ctx>` as their base, the compiler auto-resolves VM/Ctx from the type
+ *   arguments and these params can be omitted.
  */
-@Component();
+@Component({ viewModel?: string, context?: string });
 
 /**
  * Can be set on a TypeScript interface
@@ -170,7 +183,8 @@ These annotations mark component-related interfaces and classes.
  * the viewModel parameter will be typed with this interface.
  * must be used: alongside @ExportModel
  * must be used: on an interface
- * must be used: in the same file as the matching @Component
+ * may live in a different file than the matching @Component when the Component
+ * uses the `viewModel: '<Name>'` annotation param to bind it explicitly.
  */
 @ViewModel();
 
@@ -181,7 +195,8 @@ These annotations mark component-related interfaces and classes.
  * the context parameter will be typed with this interface.
  * must be used: alongside @ExportModel
  * must be used: on an interface
- * must be used: in the same file as the matching @Component
+ * may live in a different file than the matching @Component when the Component
+ * uses the `context: '<Name>'` annotation param to bind it explicitly.
  */
 @Context();
 ```

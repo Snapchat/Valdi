@@ -19,7 +19,10 @@ public extension ValdiBridgeFunction {
     static func createBridgeFunction(jsRuntime: SCValdiJSRuntime) throws -> ValdiFunction {
         return try withMarshaller { marshaller in 
             ValdiMarshallableObjectRegistry.shared.setActiveSchemeOfClassInMarshaller(className: Self.className, marshaller: marshaller)
-            let index = jsRuntime.pushModuleAthPath(Self.modulePath(), in: OpaquePointer(marshaller.marshallerCpp))
+            // Must be the error-reporting variant: pushModuleAthPath(_:in:) raises an SCValdiError
+            // NSException, which Swift cannot catch.
+            let index = jsRuntime.pushModule(atPath: Self.modulePath(),
+                                             reportingErrorOn: OpaquePointer(marshaller.marshallerCpp))
             try marshaller.checkError()
             return try marshaller.getTypedObjectOrMapProperty(index, 0, Self.className) { try marshaller.getFunction($0) }
         }

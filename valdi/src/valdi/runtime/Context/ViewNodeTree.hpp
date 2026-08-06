@@ -13,7 +13,6 @@
 #include "valdi/runtime/Context/Context.hpp"
 #include "valdi/runtime/Context/RawViewNodeId.hpp"
 #include "valdi/runtime/Context/ViewNode.hpp"
-#include "valdi/runtime/Views/Measure.hpp"
 #include "valdi/runtime/Views/View.hpp"
 #include "valdi/runtime/Views/ViewFactory.hpp"
 #include "valdi/runtime/Views/ViewTransactionScope.hpp"
@@ -21,6 +20,7 @@
 #include "valdi_core/cpp/Utils/Mutex.hpp"
 #include "valdi_core/cpp/Utils/TrackedLock.hpp"
 #include "valdi_core/cpp/Utils/ValdiObject.hpp"
+#include "valdi_core/cpp/Views/Measure.hpp"
 #include <chrono>
 #include <deque>
 #include <optional>

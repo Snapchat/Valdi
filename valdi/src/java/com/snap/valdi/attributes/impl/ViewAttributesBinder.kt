@@ -517,7 +517,7 @@ class ViewAttributesBinder(private val context: Context,
         // no-op on Android — no native BlurView implementation yet.
     }
 
-    // glassStyle / glassTintColor / interactive are iOS-only attributes on the
+    // glassStyle / glassTintColor / interactive / glassAppearance are iOS-only attributes on the
     // `<glass>` element (Liquid Glass, mapped to SCValdiGlassView on iOS). There
     // is no Android equivalent for UIGlassEffect, so `<glass>` falls through to
     // ValdiView here (see the GlassView doc comment in
@@ -545,6 +545,14 @@ class ViewAttributesBinder(private val context: Context,
     }
 
     fun resetGlassInteractive(view: View, animator: ValdiAnimator?) {
+        // no-op on Android — no native Liquid Glass implementation.
+    }
+
+    fun applyGlassAppearance(view: View, value: String, animator: ValdiAnimator?) {
+        // no-op on Android — no native Liquid Glass implementation.
+    }
+
+    fun resetGlassAppearance(view: View, animator: ValdiAnimator?) {
         // no-op on Android — no native Liquid Glass implementation.
     }
 
@@ -603,5 +611,6 @@ class ViewAttributesBinder(private val context: Context,
         attributesBindingContext.bindStringAttribute("glassStyle", false, this::applyGlassStyle, this::resetGlassStyle)
         attributesBindingContext.bindColorAttribute("glassTintColor", false, this::applyGlassTintColor, this::resetGlassTintColor)
         attributesBindingContext.bindBooleanAttribute("interactive", false, this::applyGlassInteractive, this::resetGlassInteractive)
+        attributesBindingContext.bindStringAttribute("glassAppearance", false, this::applyGlassAppearance, this::resetGlassAppearance)
     }
 }

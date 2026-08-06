@@ -28,6 +28,7 @@ class WeakReference;
 
 class QuickJSJavaScriptContextEntry;
 struct JSClassDefWithId;
+struct NativeClassFunctionData;
 
 struct QuickJSRejectedPromise {
     JSValue promise;
@@ -85,6 +86,14 @@ public:
 
     Valdi::JSValueRef newWrappedObject(const Valdi::Ref<Valdi::RefCountable>& wrappedObject,
                                        Valdi::JSExceptionTracker& exceptionTracker) override;
+
+    Valdi::JSValueRef newNativeClass(const Valdi::Ref<Valdi::RefCountable>& classOpaque,
+                                     const Valdi::JSClassDefinition& classDefinition,
+                                     Valdi::JSExceptionTracker& exceptionTracker) override;
+
+    Valdi::JSValueRef newObjectFromNativeClass(const Valdi::Ref<Valdi::RefCountable>& opaque,
+                                               const Valdi::JSValue& cls,
+                                               Valdi::JSExceptionTracker& exceptionTracker) override;
 
     Valdi::JSValueRef newWeakRef(const Valdi::JSValue& object, Valdi::JSExceptionTracker& exceptionTracker) override;
 
@@ -229,6 +238,7 @@ private:
     JSClassID _functionClassID = 0;
     JSClassID _wrappedObjectClassID = 0;
     JSClassID _weakReferenceFinalizerClassID = 0;
+    JSClassID _nativeClassConstructorClassID = 0;
     size_t _enterVmCount = 0;
     size_t _weakReferenceSequence = 0;
     bool _needsGarbageCollect = false;
@@ -264,6 +274,11 @@ private:
     Valdi::JSValueRef newTypedArrayFromConstructor(const JSValue& ctor,
                                                    const Valdi::JSValue& arrayBuffer,
                                                    Valdi::JSExceptionTracker& exceptionTracker);
+
+    Valdi::JSValueRef newNativeClassFunction(const Valdi::Ref<NativeClassFunctionData>& functionData,
+                                             const JSClassDefWithId* classDef,
+                                             std::string_view name,
+                                             Valdi::JSExceptionTracker& exceptionTracker);
 };
 
 } // namespace ValdiQuickJS

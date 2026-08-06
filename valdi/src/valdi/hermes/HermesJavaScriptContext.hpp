@@ -65,6 +65,14 @@ public:
 
     JSValueRef newWrappedObject(const Ref<RefCountable>& wrappedObject, JSExceptionTracker& exceptionTracker) final;
 
+    JSValueRef newNativeClass(const Ref<RefCountable>& classOpaque,
+                              const JSClassDefinition& classDefinition,
+                              JSExceptionTracker& exceptionTracker) final;
+
+    JSValueRef newObjectFromNativeClass(const Ref<RefCountable>& opaque,
+                                        const JSValue& cls,
+                                        JSExceptionTracker& exceptionTracker) final;
+
     JSValueRef newWeakRef(const JSValue& object, JSExceptionTracker& exceptionTracker) final;
 
     JSValueRef getObjectProperty(const JSValue& object,

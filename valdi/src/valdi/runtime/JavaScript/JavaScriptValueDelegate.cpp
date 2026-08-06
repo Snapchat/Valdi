@@ -587,6 +587,10 @@ JSValueRef JavaScriptValueDelegate::newStringUTF16(std::u16string_view str, Exce
     return _jsContext->newStringUTF16(str, toJSExceptionTracker(exceptionTracker));
 }
 
+JSValueRef JavaScriptValueDelegate::newString(const StaticString& str, ExceptionTracker& exceptionTracker) {
+    return _jsContext->newString(str, toJSExceptionTracker(exceptionTracker));
+}
+
 JSValueRef JavaScriptValueDelegate::newByteArray(const BytesView& bytes, ExceptionTracker& exceptionTracker) {
     return newTypedArrayFromBytesView(
         *_jsContext, TypedArrayType::Uint8Array, bytes, toJSExceptionTracker(exceptionTracker));

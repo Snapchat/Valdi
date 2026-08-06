@@ -13,6 +13,7 @@
 #import <Foundation/Foundation.h>
 
 SC_EXTERN_C_BEGIN
+NS_ASSUME_NONNULL_BEGIN
 
 /**
  The Marshallable object registry handles marshalling and unmarshalling
@@ -125,4 +126,5 @@ SCValdiMarshallableObjectRegistry* _Nonnull SCValdiMarshallableObjectRegistryGet
  */
 void SCValdiMarshallerObjectRegistryRegisterProxyIfNeeded(id object, Protocol* proxyProtocol);
 
+NS_ASSUME_NONNULL_END
 SC_EXTERN_C_END

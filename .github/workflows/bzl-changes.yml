@@ -21,7 +21,11 @@ on:
       - 'src/**/*.tsx'
       - 'compiler/**'
       - 'apps/snapshot_tests/**'
+      - 'apps/helloworld/**'
+      - 'valdi/src/**'
       - 'snap_drawing/**'
+      - 'experiments/helloworld_playground/**'
+      - 'tools/valdi_web_devtools/**'
   push:
     branches:
       - main
@@ -44,7 +48,11 @@ on:
       - 'src/**/*.tsx'
       - 'compiler/**'
       - 'apps/snapshot_tests/**'
+      - 'apps/helloworld/**'
+      - 'valdi/src/**'
       - 'snap_drawing/**'
+      - 'experiments/helloworld_playground/**'
+      - 'tools/valdi_web_devtools/**'
 
 # Workflow-level permissions: id-token: write needed for GCP WIF auth on push events.
 # For fork PRs, GitHub automatically downgrades to read-only — the auth step
@@ -306,3 +314,40 @@ jobs:
 
       - name: Check API surface
         run: ./tools/ci/api_surface_tests.sh
+
+  web-integration-test:
+    name: valdi_web Integration Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Configure Bazel cache
+        uses: ./.github/actions/bazel-cache
+        with:
+          gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
+          cache_key: web-integration
+
+      - name: Setup Linux environment
+        run: source ./tools/ci/setup_linux_env.sh
+
+      # valdi_web Puppeteer integration test for the helloworld_playground
+      # experiment. Builds the exported web bundle (requires enable_web) then
+      # boots it in chrome-headless-shell, which @puppeteer/browsers downloads
+      # at runtime — hence the target's `requires-network` tag (exempts it from
+      # Bazel's test network isolation).
+      - name: Run valdi_web integration test
+        run: |
+          bazel test //experiments/helloworld_playground:integration_test \
+            --define enable_web=true \
+            --test_output=errors

@@ -17,6 +17,7 @@
 #include "valdi_core/cpp/Utils/ByteBuffer.hpp"
 #include "valdi_core/cpp/Utils/Format.hpp"
 #include "valdi_core/cpp/Utils/StaticString.hpp"
+#include "valdi_core/cpp/Utils/StringCache.hpp"
 
 #include "tsn/tsn.h"
 
@@ -190,6 +191,20 @@ void QuickJSJavaScriptContext::onInitialize(Valdi::JSExceptionTracker& exception
     }
 
     _weakReferenceFinalizerClassID = initializeClass(getWeakRefFinalizerClassDef(), exceptionTracker);
+    if (!exceptionTracker) {
+        return;
+    }
+
+    _nativeClassConstructorClassID = initializeClass(getNativeClassConstructorClassDef(), exceptionTracker);
+    if (!exceptionTracker) {
+        return;
+    }
+
+    initializeClass(getNativeClassInstanceMemberClassDef(), exceptionTracker);
+    if (!exceptionTracker) {
+        return;
+    }
+    initializeClass(getNativeClassStaticMemberClassDef(), exceptionTracker);
     if (!exceptionTracker) {
         return;
     }
@@ -601,6 +616,217 @@ Valdi::JSValueRef QuickJSJavaScriptContext::newWrappedObject(const Valdi::Ref<Va
     return jsWrappedObject;
 }
 
+static int toQuickJSPropertyFlags(bool writable, bool enumerable, bool configurable) {
+    int flags = JS_PROP_THROW;
+    if (writable) {
+        flags |= JS_PROP_WRITABLE;
+    }
+    if (enumerable) {
+        flags |= JS_PROP_ENUMERABLE;
+    }
+    if (configurable) {
+        flags |= JS_PROP_CONFIGURABLE;
+    }
+    return flags;
+}
+
+Valdi::JSValueRef QuickJSJavaScriptContext::newNativeClassFunction(
+    const Valdi::Ref<NativeClassFunctionData>& functionData,
+    const JSClassDefWithId* classDef,
+    std::string_view name,
+    Valdi::JSExceptionTracker& exceptionTracker) {
+    auto function = checkCallAndGetValue(
+        exceptionTracker, JS_NewObjectProtoClass(_context, _functionPrototype, classDef->classID));
+    if (!exceptionTracker) {
+        return Valdi::JSValueRef();
+    }
+
+    setNativeClassFunctionData(fromValdiJSValue(function.get()), functionData);
+    auto nameValue = newStringUTF8(name, exceptionTracker);
+    if (!exceptionTracker) {
+        return Valdi::JSValueRef();
+    }
+
+    checkCall(exceptionTracker,
+              JS_DefinePropertyValueStr(_context,
+                                        fromValdiJSValue(function.get()),
+                                        "name",
+                                        JS_DupValue(_context, fromValdiJSValue(nameValue.get())),
+                                        JS_PROP_CONFIGURABLE | JS_PROP_THROW));
+    return function;
+}
+
+Valdi::JSValueRef QuickJSJavaScriptContext::newNativeClass(const Valdi::Ref<Valdi::RefCountable>& classOpaque,
+                                                           const Valdi::JSClassDefinition& classDefinition,
+                                                           Valdi::JSExceptionTracker& exceptionTracker) {
+    auto guard = _threadAccessChecker.guard();
+    auto nativeClass = Valdi::makeShared<Valdi::JSNativeClassData>(
+        classDefinition.getName(), classOpaque, classDefinition.getConstructor());
+
+    auto prototype = checkCallAndGetValue(exceptionTracker, JS_NewObject(_context));
+    if (!exceptionTracker) {
+        return Valdi::JSValueRef();
+    }
+
+    auto constructor = checkCallAndGetValue(
+        exceptionTracker, JS_NewObjectProtoClass(_context, _functionPrototype, _nativeClassConstructorClassID));
+    if (!exceptionTracker) {
+        return Valdi::JSValueRef();
+    }
+    setNativeClassConstructorData(fromValdiJSValue(constructor.get()), nativeClass);
+    JS_SetConstructorBit(_context, fromValdiJSValue(constructor.get()), true);
+
+    auto className = newStringUTF8(classDefinition.getName().toStringView(), exceptionTracker);
+    if (!exceptionTracker) {
+        return Valdi::JSValueRef();
+    }
+    if (!checkCall(exceptionTracker,
+                   JS_DefinePropertyValueStr(_context,
+                                             fromValdiJSValue(constructor.get()),
+                                             "name",
+                                             JS_DupValue(_context, fromValdiJSValue(className.get())),
+                                             JS_PROP_CONFIGURABLE | JS_PROP_THROW))) {
+        return Valdi::JSValueRef();
+    }
+
+    JS_SetConstructor(_context, fromValdiJSValue(constructor.get()), fromValdiJSValue(prototype.get()));
+
+    auto defineDataProperty = [&](JSValueConst object,
+                                  std::string_view name,
+                                  JSValue value,
+                                  bool writable,
+                                  bool enumerable,
+                                  bool configurable) -> bool {
+        auto atom = JS_NewAtomLen(_context, name.data(), name.size());
+        auto result = JS_DefinePropertyValue(
+            _context, object, atom, value, toQuickJSPropertyFlags(writable, enumerable, configurable));
+        JS_FreeAtom(_context, atom);
+        return checkCall(exceptionTracker, result);
+    };
+
+    for (const auto& entry : classDefinition.getEntries()) {
+        auto object =
+            entry.isClassMember() ? fromValdiJSValue(constructor.get()) : fromValdiJSValue(prototype.get());
+        auto* memberClassDef =
+            entry.isClassMember() ? getNativeClassStaticMemberClassDef() : getNativeClassInstanceMemberClassDef();
+        switch (entry.getKind()) {
+            case Valdi::JSClassEntryKind::Method: {
+                if (entry.getMethodCallback() == nullptr) {
+                    exceptionTracker.onError("Native class method callback cannot be null");
+                    return Valdi::JSValueRef();
+                }
+                const auto& propertyName = entry.getName();
+                auto functionData = Valdi::makeShared<NativeClassFunctionData>(nativeClass, propertyName);
+                functionData->callback = entry.getMethodCallback();
+                auto function = newNativeClassFunction(
+                    functionData, memberClassDef, propertyName.toStringView(), exceptionTracker);
+                if (!exceptionTracker ||
+                    !defineDataProperty(object,
+                                        propertyName.toStringView(),
+                                        JS_DupValue(_context, fromValdiJSValue(function.get())),
+                                        entry.isWritable(),
+                                        entry.isEnumerable(),
+                                        entry.isConfigurable())) {
+                    return Valdi::JSValueRef();
+                }
+                break;
+            }
+            case Valdi::JSClassEntryKind::Constant:
+                if (!defineDataProperty(object,
+                                        entry.getName().toStringView(),
+                                        JS_DupValue(_context, fromValdiJSValue(entry.getValue().get())),
+                                        entry.isWritable(),
+                                        entry.isEnumerable(),
+                                        entry.isConfigurable())) {
+                    return Valdi::JSValueRef();
+                }
+                break;
+            case Valdi::JSClassEntryKind::Accessor: {
+                if (entry.getGetterCallback() == nullptr && entry.getSetterCallback() == nullptr) {
+                    exceptionTracker.onError("Native class accessor must have a getter or setter");
+                    return Valdi::JSValueRef();
+                }
+
+                Valdi::JSValueRef getter;
+                Valdi::JSValueRef setter;
+                const auto& propertyName = entry.getName();
+                if (entry.getGetterCallback() != nullptr) {
+                    auto functionData = Valdi::makeShared<NativeClassFunctionData>(nativeClass, propertyName);
+                    functionData->callback = entry.getGetterCallback();
+                    getter = newNativeClassFunction(functionData,
+                                                    memberClassDef,
+                                                    propertyName.toStringView(),
+                                                    exceptionTracker);
+                }
+                if (exceptionTracker && entry.getSetterCallback() != nullptr) {
+                    auto functionData = Valdi::makeShared<NativeClassFunctionData>(nativeClass, propertyName);
+                    functionData->callback = entry.getSetterCallback();
+                    setter = newNativeClassFunction(functionData,
+                                                    memberClassDef,
+                                                    propertyName.toStringView(),
+                                                    exceptionTracker);
+                }
+                if (!exceptionTracker) {
+                    return Valdi::JSValueRef();
+                }
+
+                auto getterValue =
+                    getter.empty() ? JS_UNDEFINED : JS_DupValue(_context, fromValdiJSValue(getter.get()));
+                auto setterValue =
+                    setter.empty() ? JS_UNDEFINED : JS_DupValue(_context, fromValdiJSValue(setter.get()));
+                auto propertyNameView = propertyName.toStringView();
+                auto atom = JS_NewAtomLen(_context, propertyNameView.data(), propertyNameView.size());
+                auto result =
+                    JS_DefinePropertyGetSet(_context,
+                                            object,
+                                            atom,
+                                            getterValue,
+                                            setterValue,
+                                            toQuickJSPropertyFlags(
+                                                false, entry.isEnumerable(), entry.isConfigurable()));
+                JS_FreeAtom(_context, atom);
+                if (!checkCall(exceptionTracker, result)) {
+                    return Valdi::JSValueRef();
+                }
+                break;
+            }
+        }
+    }
+
+    return constructor;
+}
+
+Valdi::JSValueRef QuickJSJavaScriptContext::newObjectFromNativeClass(const Valdi::Ref<Valdi::RefCountable>& opaque,
+                                                                     const Valdi::JSValue& cls,
+                                                                     Valdi::JSExceptionTracker& exceptionTracker) {
+    auto guard = _threadAccessChecker.guard();
+    auto clsValue = fromValdiJSValue(cls);
+    auto nativeClass = getNativeClassConstructorData(clsValue);
+    if (nativeClass == nullptr) {
+        exceptionTracker.onError("Value is not a native class");
+        return Valdi::JSValueRef();
+    }
+    if (opaque == nullptr) {
+        exceptionTracker.onError("Native class opaque object cannot be null");
+        return Valdi::JSValueRef();
+    }
+
+    auto prototype = checkCallAndGetValue(exceptionTracker, JS_GetPropertyStr(_context, clsValue, "prototype"));
+    if (!exceptionTracker) {
+        return Valdi::JSValueRef();
+    }
+
+    auto object = checkCallAndGetValue(
+        exceptionTracker, JS_NewObjectProtoClass(_context, fromValdiJSValue(prototype.get()), _wrappedObjectClassID));
+    if (!exceptionTracker) {
+        return Valdi::JSValueRef();
+    }
+
+    auto instanceData = Valdi::makeShared<Valdi::JSNativeClassInstanceData>(nativeClass, opaque);
+    setObjectWrappedObject(fromValdiJSValue(object.get()), instanceData);
+    return object;
+}
+
 Valdi::JSValueRef QuickJSJavaScriptContext::getObjectProperty(const Valdi::JSValue& object,
                                                               const std::string_view& propertyName,
                                                               Valdi::JSExceptionTracker& exceptionTracker) {
@@ -869,7 +1095,7 @@ int32_t QuickJSJavaScriptContext::valueToInt(const Valdi::JSValue& value, Valdi:
 Valdi::Ref<Valdi::RefCountable> QuickJSJavaScriptContext::valueToWrappedObject(
     const Valdi::JSValue& value, Valdi::JSExceptionTracker& /*exceptionTracker*/) {
     auto guard = _threadAccessChecker.guard();
-    return getObjectWrappedObject(fromValdiJSValue(value));
+    return Valdi::unwrapNativeClassInstanceData(getObjectWrappedObject(fromValdiJSValue(value)));
 }
 
 Valdi::Ref<Valdi::JSFunction> QuickJSJavaScriptContext::valueToFunction(

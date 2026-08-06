@@ -33,6 +33,16 @@ import { trace } from './utils/Trace';
 const EMPTY_OBJECT = Object.freeze({});
 const EMPTY_ARRAY = Object.freeze([]) as [];
 
+interface RememberSlot<T = unknown> {
+  value: T;
+  keys: unknown[];
+}
+
+interface RememberState {
+  slots: RememberSlot[];
+  slotIndex: number;
+}
+
 interface NodeChildren<T> {
   childByKey: { [key: string]: T };
   children: T[];
@@ -67,6 +77,8 @@ interface VirtualNode extends Node {
 
   // Bridge instance, will be set if the virtual node was requested externally.
   bridge?: VirtualNodeBridge;
+
+  rememberState?: RememberState;
 }
 
 interface RenderedElement {
@@ -412,6 +424,21 @@ function getNodeDescription(node: VirtualNode): string {
   }
 
   return 'unknown node';
+}
+
+function rememberKeysEqual(left: unknown[], right: unknown[]): boolean {
+  const length = left.length;
+  if (length !== right.length) {
+    return false;
+  }
+
+  for (let i = 0; i < length; i++) {
+    if (!Object.is(left[i], right[i])) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 interface RendererLogInfo {
@@ -921,7 +948,7 @@ export class Renderer implements IRenderer {
     const currentNode = this.getCurrentNode();
 
     const resolvedKey = key || nodePrototype.id;
-    const resolvedNode = this.resolveVirtualNode(currentNode, resolvedKey, undefined, undefined);
+    const resolvedNode = this.resolveVirtualNode(currentNode, resolvedKey, undefined, undefined, undefined);
 
     let justCreated = false;
 
@@ -1049,6 +1076,9 @@ export class Renderer implements IRenderer {
 
     if (node.children) {
       node.children.insertionIndex = 0;
+    }
+    if (node.rememberState) {
+      node.rememberState.slotIndex = 0;
     }
     node.lastRenderId = this.renderId;
 
@@ -1375,10 +1405,12 @@ export class Renderer implements IRenderer {
 
   private resolveVirtualNode(
     parent: VirtualNode,
-    resolvedKey: string,
+    key: string,
+    duplicateKeyIndex: number | undefined,
     componentConstructor: ComponentConstructor<IComponent> | undefined,
     componentPrototype: ComponentPrototype | undefined,
   ): VirtualNode {
+    const resolvedKey = duplicateKeyIndex !== undefined ? `${key}-${duplicateKeyIndex}` : key;
     let resolvedNode: VirtualNode | undefined;
     let children = parent.children;
     if (!children) {
@@ -1429,7 +1461,8 @@ export class Renderer implements IRenderer {
         const duplicateKeyIndex = children.insertionIndex - resolvedNode.parentIndex + 1;
         return this.resolveVirtualNode(
           parent,
-          resolvedKey + duplicateKeyIndex,
+          key,
+          duplicateKeyIndex,
           componentConstructor,
           componentPrototype,
         );
@@ -1457,6 +1490,9 @@ export class Renderer implements IRenderer {
 
   private destroyVirtualNode(node: VirtualNode, parentElementWasDestroyed: boolean) {
     node.parent = undefined;
+    if (node.rememberState) {
+      node.rememberState = undefined;
+    }
 
     if (node.element) {
       const element = node.element;
@@ -1609,6 +1645,36 @@ export class Renderer implements IRenderer {
     } else {
       this.delegate.onUncaughtError(message, error);
     }
+  }
+
+  remember<T>(factory: () => T, keys: unknown[]): T {
+    const currentNode = this.currentNode;
+    if (!currentNode) {
+      throw Error('Cannot call this outside of a onRender callback');
+    }
+
+    let rememberState = currentNode.rememberState;
+    if (!rememberState) {
+      rememberState = {
+        slots: [],
+        slotIndex: 0,
+      };
+      currentNode.rememberState = rememberState;
+    }
+
+    const slotIndex = rememberState.slotIndex++;
+    const slots = rememberState.slots;
+    const slot = slots[slotIndex] as RememberSlot<T> | undefined;
+    if (slot && rememberKeysEqual(slot.keys, keys)) {
+      return slot.value;
+    }
+
+    const value = factory();
+    slots[slotIndex] = {
+      value,
+      keys: keys.length ? keys : EMPTY_ARRAY,
+    };
+    return value;
   }
 
   hasInjectedAttribute(name: string): boolean {
@@ -1835,7 +1901,7 @@ export class Renderer implements IRenderer {
     const resolvedKey = key || prototype.id;
 
     const parent = this.getCurrentNode();
-    const resolvedNode = this.resolveVirtualNode(parent, resolvedKey, ctr, prototype);
+    const resolvedNode = this.resolveVirtualNode(parent, resolvedKey, undefined, ctr, prototype);
 
     let justCreated = false;
 
@@ -2161,7 +2227,7 @@ export class Renderer implements IRenderer {
 
   beginSlot<F extends AnyRenderFunction>(slotData: ComponentSlotData<F>) {
     const parentNode = this.getCurrentNode();
-    const node = this.resolveVirtualNode(parentNode, slotData.nodeKey, undefined, undefined);
+    const node = this.resolveVirtualNode(parentNode, slotData.nodeKey, undefined, undefined, undefined);
     slotData.node = node;
     node.slot = true;
     this.pushVirtualNode(node);

@@ -1,3 +1,4 @@
+load("@aspect_rules_js//js:defs.bzl", "js_test")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
 
@@ -15,6 +16,15 @@ ts_project(
     deps = [
         "//:valdi_tsx_link",
     ],
+)
+
+# The standalone TestsRunner (:test) exercises the native PersistentStore
+# binding, not this web implementation, so web durability (issue #119) is
+# covered here: run the compiled web impl under node with a fake localStorage.
+js_test(
+    name = "persistence_web_test",
+    data = [":persistence_web"],
+    entry_point = "web/test/PersistentStoreNativeWebTest.js",
 )
 
 valdi_module(

@@ -92,7 +92,7 @@ const binary = fs.readFileSync('image.png') as ArrayBuffer;
 const bytes = new Uint8Array(binary);
 ```
 
-#### `writeFileSync(path: string, data: ArrayBuffer | string): void`
+#### `writeFileSync(path: string, data: ArrayBuffer | Uint8Array | string): void`
 
 Synchronously writes data to a file, creating it if it doesn't exist or overwriting if it does.
 
@@ -106,7 +106,7 @@ fs.writeFileSync('output.txt', 'Hello, World!');
 
 // Write binary
 const imageData = new Uint8Array([...]); // image bytes
-fs.writeFileSync('output.png', imageData.buffer);
+fs.writeFileSync('output.png', imageData);
 
 // Write JSON
 const config = { setting1: true, setting2: 'value' };
@@ -352,4 +352,3 @@ const mockFs = {
     currentWorkingDirectory: jest.fn(() => '/mock/path')
 };
 ```
-

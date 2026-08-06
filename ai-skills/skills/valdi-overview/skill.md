@@ -63,4 +63,5 @@ valdi agent-check --module X --quick --json    # Quick check with machine-readab
 - **Comprehensive guide**: `/AGENTS.md`
 - **AI tooling**: `/docs/docs/ai-tooling.md`
 - **Support**: `/SUPPORT.md`
-- **Discord**: https://discord.gg/uJyNEeYX2U
+- **Discussions**: https://github.com/Snapchat/Valdi/discussions
+- **Issues**: https://github.com/Snapchat/Valdi/issues

@@ -53,11 +53,7 @@ struct TransformComponents {
 
     TransformComponents() = default;
     TransformComponents(double translationX, double translationY, double scaleX, double scaleY, double rotation)
-        : translationX(translationX),
-          translationY(translationY),
-          scaleX(scaleX),
-          scaleY(scaleY),
-          rotation(rotation) {}
+        : translationX(translationX), translationY(translationY), scaleX(scaleX), scaleY(scaleY), rotation(rotation) {}
 };
 
 struct TransformMatrix {
@@ -69,8 +65,7 @@ struct TransformMatrix {
     double f = 0.0;
 
     TransformMatrix() = default;
-    TransformMatrix(double a, double b, double c, double d, double e, double f)
-        : a(a), b(b), c(c), d(d), e(e), f(f) {}
+    TransformMatrix(double a, double b, double c, double d, double e, double f) : a(a), b(b), c(c), d(d), e(e), f(f) {}
 
     static TransformMatrix translate(double x, double y);
     static TransformMatrix scale(double x, double y);
@@ -122,20 +117,25 @@ TransformMatrix TransformMatrix::rotate(double radians) {
 }
 
 TransformMatrix TransformMatrix::concat(const TransformMatrix& other) const {
-    return TransformMatrix(
-        a * other.a + c * other.b,
-        b * other.a + d * other.b,
-        a * other.c + c * other.d,
-        b * other.c + d * other.d,
-        a * other.e + c * other.f + e,
-        b * other.e + d * other.f + f);
+    return TransformMatrix(a * other.a + c * other.b,
+                           b * other.a + d * other.b,
+                           a * other.c + c * other.d,
+                           b * other.c + d * other.d,
+                           a * other.e + c * other.f + e,
+                           b * other.e + d * other.f + f);
 }
 
 Result<TransformComponents> TransformMatrix::decompose() const {
     constexpr auto epsilon = 0.00001;
     auto resolvedScaleX = std::hypot(a, b);
     if (std::abs(resolvedScaleX) < epsilon) {
-        return Error("transform scaleX must not resolve to zero");
+        auto resolvedScaleY = std::hypot(c, d);
+        if (std::abs(resolvedScaleY) < epsilon) {
+            return TransformComponents(e, f, 0.0, 0.0, 0.0);
+        }
+
+        auto resolvedRotation = std::atan2(-c, d);
+        return TransformComponents(e, f, 0.0, resolvedScaleY, resolvedRotation);
     }
 
     auto shear = a * c + b * d;
@@ -462,8 +462,8 @@ Result<double> resolveTranslation(const Value& value, double referenceLength, bo
         return percent.moveError();
     }
 
-    auto resolvedValue = percent.value().isPercent ? referenceLength * percent.value().value / 100.0
-                                                   : percent.value().value;
+    auto resolvedValue =
+        percent.value().isPercent ? referenceLength * percent.value().value / 100.0 : percent.value().value;
     return flip ? -resolvedValue : resolvedValue;
 }
 
@@ -585,11 +585,8 @@ Value postprocessResolvedTransform(ResolvedTransform resolvedTransform,
     auto adjustedTranslationX = components.translationX + origin.x - centerX + transformedDeltaX;
     auto adjustedTranslationY = components.translationY + origin.y - centerY + transformedDeltaY;
 
-    return makeTransformValue(adjustedTranslationX,
-                              adjustedTranslationY,
-                              components.scaleX,
-                              components.scaleY,
-                              components.rotation);
+    return makeTransformValue(
+        adjustedTranslationX, adjustedTranslationY, components.scaleX, components.scaleY, components.rotation);
 }
 
 } // namespace
@@ -608,10 +605,11 @@ Result<Value> TransformAttributes::postprocess(float width, float height, bool i
         return origin.moveError();
     }
 
-    auto resolvedTransform = (*array)[kTransformPartTransform].isString()
-                                 ? resolveTransformFromString(
-                                       (*array)[kTransformPartTransform], origin.value(), resolvedWidth, resolvedHeight)
-                                 : resolveTransformFromAttributeParts(value, origin.value(), resolvedWidth, resolvedHeight);
+    auto resolvedTransform =
+        (*array)[kTransformPartTransform].isString() ?
+            resolveTransformFromString(
+                (*array)[kTransformPartTransform], origin.value(), resolvedWidth, resolvedHeight) :
+            resolveTransformFromAttributeParts(value, origin.value(), resolvedWidth, resolvedHeight);
 
     if (!resolvedTransform) {
         return resolvedTransform.moveError();

@@ -33,5 +33,6 @@ SWIFT_TOOLCHAINS = [
         sha256 = "",
         strip_prefix = "swift-{}-RELEASE-ubuntu22.04".format(_SWIFT_VERSION),
         arch = "x86_64",
+        version = _SWIFT_VERSION,
     ),
 ]

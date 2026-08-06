@@ -149,19 +149,15 @@ bool JavaScriptANRDetector::onANR(JavaScriptTaskScheduler& taskScheduler,
         snap::utils::time::Duration<std::chrono::steady_clock>(detectionThreshold).toString();
     if (moduleName.isEmpty()) {
         message = fmt::format("Detected unattributed ANR after {}", detectionThresholdString);
+        // getANRAttributionInfo() reads saved native state, not JS, so it is safe to call while the
+        // ANR has the JS thread stuck.
+        message += taskScheduler.getANRAttributionInfo();
     } else {
         message = fmt::format("Detected ANR in '{}' after {}", moduleName, detectionThresholdString);
     }
 
     if (stacktraces.empty()) {
         message += " but unable to capture stack traces.";
-    }
-
-    // getCurrentModuleLoadInfo() reads saved native state, not JS, so it is safe to call while the
-    // ANR has the JS thread stuck.
-    auto moduleLoadInfo = taskScheduler.getCurrentModuleLoadInfo();
-    if (!moduleLoadInfo.empty()) {
-        message += " [module-load: " + moduleLoadInfo + "]";
     }
 
     VALDI_ERROR(*_logger, "{}", message);

@@ -145,40 +145,69 @@ final class DaemonService {
         return platform == resource.finalFile.platform
     }
 
+    /// Buffering a packet costs the device 2-3x its size in contiguous allocations
+    /// (power-of-two growth plus a copy); a ~200 MB packet OOM'd in COMPOSER-6067.
+    /// Resources above this are skipped with an error instead of breaking the session.
+    private static let maxResourceBytesPerPacket = 384 * 1024 * 1024
+    /// Batch resources into multiple packets so devices never have to buffer a
+    /// whole resource store in one allocation (COMPOSER-6067).
+    private static let targetPacketBytes = 32 * 1024 * 1024
+
     private func send(resources: [Resource], to client: DaemonServiceConnectedClient) {
         guard !resources.isEmpty && !client.hotReloadDisabled else {
             return
         }
 
-        if client.wasConfigured {
+        guard client.wasConfigured else {
+            logger.error("Client \(client) was never configured, can't send the updated resources event!")
+            return
+        }
+
+        var batch: [DaemonResource] = []
+        var batchBytes = 0
+
+        func flushBatch() {
+            guard !batch.isEmpty else { return }
             var event = DaemonServerEvent()
-            event.updated_resources = DaemonUpdatedResourcesEvent(resources: [])
-            for resource in resources where shouldClientReceiveResource(client: client, resource: resource) {
+            event.updated_resources = DaemonUpdatedResourcesEvent(resources: batch)
+            let updatedResources = batch.map { "\($0.bundle_name):\($0.file_path_within_bundle)" }
+            logger.verbose("Sending updated resources event with \(String(describing: updatedResources)) to client \(client)")
+            client.protocolConnection.send(event: event)
+            batch = []
+            batchBytes = 0
+        }
 
-                var dataString: String?
-                var data: Data?
-                if let asString = String(data: resource.data, encoding: .utf8) {
-                    dataString = asString
-                    data = nil
-                } else {
-                    dataString = nil
-                    data = resource.data
-                }
+        for resource in resources where shouldClientReceiveResource(client: client, resource: resource) {
 
-                event.updated_resources?.resources.append(DaemonResource(bundle_name: resource.item.bundleInfo.name,
-                                                                         file_path_within_bundle: resource.filePathInBundle,
-                                                                         data_base64: data,
-                                                                         data_string: dataString))
+            var dataString: String?
+            var data: Data?
+            if let asString = String(data: resource.data, encoding: .utf8) {
+                dataString = asString
+                data = nil
+            } else {
+                dataString = nil
+                data = resource.data
             }
 
-            let updatedResources = event.updated_resources?.resources.map { "\($0.bundle_name):\($0.file_path_within_bundle)" }
-            logger.verbose("Sending updated resources event with \(String(describing: updatedResources)) to client \(client)")
+            // base64 inflates binary payloads by 4/3 on the wire
+            let encodedBytes = data.map { $0.count * 4 / 3 } ?? dataString!.utf8.count
+            if encodedBytes > Self.maxResourceBytesPerPacket {
+                logger.error("[Hot reloader] NOT sending resource \(resource.item.bundleInfo.name):\(resource.filePathInBundle) to \(client): \(encodedBytes / 1024 / 1024) MB encoded exceeds the \(Self.maxResourceBytesPerPacket / 1024 / 1024) MB per-packet limit; the device can't reliably buffer it. Rebuild and reinstall the app to update this resource, or shrink it to make it hot reloadable.")
+                continue
+            }
 
-            client.protocolConnection.send(event: event)
+            if batchBytes > 0 && batchBytes + encodedBytes > Self.targetPacketBytes {
+                flushBatch()
+            }
 
-        } else {
-            logger.error("Client \(client) was never configured, can't send the updated resources event!")
+            batch.append(DaemonResource(bundle_name: resource.item.bundleInfo.name,
+                                        file_path_within_bundle: resource.filePathInBundle,
+                                        data_base64: data,
+                                        data_string: dataString))
+            batchBytes += encodedBytes
         }
+
+        flushBatch()
     }
 
     private func addClient(_ client: DaemonServiceConnectedClient) {

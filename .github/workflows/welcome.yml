@@ -23,7 +23,7 @@ jobs:
             
             In the meantime, please make sure you've provided all the necessary information in the issue template.
             
-            If you have questions while waiting, feel free to join our [Discord community](https://discord.gg/uJyNEeYX2U).
+            If you have questions while waiting, feel free to ask in [GitHub Discussions](https://github.com/Snapchat/Valdi/discussions).
           pr-message: |
             🎉 Thanks for your first contribution to Valdi!
             
@@ -34,4 +34,4 @@ jobs:
             - ✅ You've added tests for your changes (if applicable)
             - ✅ You've updated documentation (if needed)
             
-            Join our [Discord community](https://discord.gg/uJyNEeYX2U) if you have questions!
+            Ask in [GitHub Discussions](https://github.com/Snapchat/Valdi/discussions) if you have questions!

@@ -21,6 +21,7 @@
 #include "valdi/runtime/Interfaces/IDiskCache.hpp"
 #include "valdi/runtime/Resources/AssetLoaderCompletion.hpp"
 #include "valdi/runtime/Resources/AssetsManager.hpp"
+#include "valdi/runtime/Views/ViewTransactionScope.hpp"
 #include "valdi_core/jni/IndirectJavaGlobalRef.hpp"
 #include "valdi_core/jni/JavaCache.hpp"
 #include "valdi_core/jni/JavaClass.hpp"
@@ -47,10 +48,12 @@
 #include "valdi/android/AccessibilityBridge.hpp"
 #include "valdi/android/AndroidAssetLoader.hpp"
 #include "valdi/android/AndroidBitmap.hpp"
+#include "valdi/android/AndroidBitmapFactory.hpp"
 #include "valdi/android/AndroidViewHolder.hpp"
 #include "valdi/android/AttributesBindingContextWrapper.hpp"
 #include "valdi/android/DeferredViewOperations.hpp"
 #include "valdi/android/NativeBridge.hpp"
+#include "valdi/svg/SVGRenderer.hpp"
 
 #if SNAP_DRAWING_ENABLED
 #include "snap_drawing/cpp/Utils/LottieAnimatedImage.hpp"
@@ -1499,6 +1502,102 @@ void ValdiAndroid::NativeBridge::setValueForAttribute( // NOLINT
     }
 }
 
+jobject ValdiAndroid::NativeBridge::getStoredObjectForViewNode( // NOLINT
+    fbjni::alias_ref<fbjni::JClass> /* clazz */,                // NOLINT
+    jlong viewNodeHandle,
+    jlong key) {
+    auto viewNode = getViewNode(viewNodeHandle);
+    if (viewNode == nullptr) {
+        return nullptr;
+    }
+
+    auto javaEnv = ValdiAndroid::JavaEnv();
+    auto storedKey = ValdiAndroid::unwrapInternedString(key);
+    auto* viewNodeTree = viewNode->getViewNodeTree();
+    if (viewNodeTree == nullptr) {
+        return nullptr;
+    }
+
+    Valdi::Value value = Valdi::Value::undefined();
+    viewNodeTree->withLock([&]() { value = viewNode->getStoredObject(storedKey); });
+    if (value.isNullOrUndefined()) {
+        return nullptr;
+    }
+
+    return ValdiAndroid::toJavaObject(javaEnv, value).releaseObject();
+}
+
+void ValdiAndroid::NativeBridge::setStoredObjectForViewNode( // NOLINT
+    fbjni::alias_ref<fbjni::JClass> /* clazz */,             // NOLINT
+    jlong viewNodeHandle,
+    jlong key,
+    jobject object) {
+    auto viewNode = getViewNode(viewNodeHandle);
+    if (viewNode == nullptr) {
+        return;
+    }
+
+    auto javaEnv = ValdiAndroid::JavaEnv();
+    auto storedKey = ValdiAndroid::unwrapInternedString(key);
+    auto storedValue = ValdiAndroid::toValue(javaEnv, ValdiAndroid::JavaEnv::newLocalRef(object));
+    auto* viewNodeTree = viewNode->getViewNodeTree();
+    if (viewNodeTree == nullptr) {
+        return;
+    }
+
+    viewNodeTree->withLock([&]() { viewNode->setStoredObject(storedKey, storedValue); });
+}
+
+void ValdiAndroid::NativeBridge::setInlineTextAnimationAttributesForViewNode( // NOLINT
+    fbjni::alias_ref<fbjni::JClass> /* clazz */,                              // NOLINT
+    jlong viewNodeHandle,
+    jboolean hasOpacity,
+    jdouble opacity,
+    jboolean hasTransform,
+    jdouble translationY,
+    jdouble scale) {
+    auto viewNode = getViewNode(viewNodeHandle);
+    if (viewNode == nullptr) {
+        return;
+    }
+
+    auto* viewNodeTree = viewNode->getViewNodeTree();
+    if (viewNodeTree == nullptr) {
+        return;
+    }
+
+    auto* attributeOwner = Valdi::AttributeOwner::getNativeOverridenAttributeOwner();
+    auto& attributeIds = viewNode->getAttributeIds();
+    auto opacityId = attributeIds.getIdForName("opacity");
+    auto translationYId = attributeIds.getIdForName("translationY");
+    auto scaleXId = attributeIds.getIdForName("scaleX");
+    auto scaleYId = attributeIds.getIdForName("scaleY");
+
+    viewNodeTree->withLock([&]() {
+        auto& viewTransactionScope = viewNodeTree->getCurrentViewTransactionScope();
+        if (static_cast<bool>(hasOpacity)) {
+            viewNode->setAttribute(viewTransactionScope, opacityId, attributeOwner, Valdi::Value(opacity), nullptr);
+        } else {
+            viewNode->setAttribute(viewTransactionScope, opacityId, attributeOwner, Valdi::Value::undefined(), nullptr);
+        }
+
+        if (static_cast<bool>(hasTransform)) {
+            viewNode->setAttribute(
+                viewTransactionScope, translationYId, attributeOwner, Valdi::Value(translationY), nullptr);
+            viewNode->setAttribute(viewTransactionScope, scaleXId, attributeOwner, Valdi::Value(scale), nullptr);
+            viewNode->setAttribute(viewTransactionScope, scaleYId, attributeOwner, Valdi::Value(scale), nullptr);
+        } else {
+            viewNode->setAttribute(
+                viewTransactionScope, translationYId, attributeOwner, Valdi::Value::undefined(), nullptr);
+            viewNode->setAttribute(viewTransactionScope, scaleXId, attributeOwner, Valdi::Value::undefined(), nullptr);
+            viewNode->setAttribute(viewTransactionScope, scaleYId, attributeOwner, Valdi::Value::undefined(), nullptr);
+        }
+
+        viewNode->getAttributesApplier().flush(viewTransactionScope);
+        viewTransactionScope.flushNow(/* sync */ true);
+    });
+}
+
 void ValdiAndroid::NativeBridge::notifyApplyAttributeFailed(fbjni::alias_ref<fbjni::JClass> clazz, // NOLINT
                                                             jlong viewNodeHandle,
                                                             jint attributeId,
@@ -1508,9 +1607,19 @@ void ValdiAndroid::NativeBridge::notifyApplyAttributeFailed(fbjni::alias_ref<fbj
         return;
     }
 
+    // Failures can be reported asynchronously (e.g. font load completions posted to the main
+    // thread). By then the node may be detached and its tree/logger already destroyed, so
+    // logging through the node would dereference freed memory.
+    auto* viewNodeTree = viewNode->getViewNodeTree();
+    if (viewNodeTree == nullptr) {
+        return;
+    }
+
     auto errorMessageCpp = ValdiAndroid::toInternedString(ValdiAndroid::JavaEnv(), errorMessage);
 
-    viewNode->notifyAttributeFailed(static_cast<Valdi::AttributeId>(attributeId), Valdi::Error(errorMessageCpp));
+    viewNodeTree->withLock([&]() {
+        viewNode->notifyAttributeFailed(static_cast<Valdi::AttributeId>(attributeId), Valdi::Error(errorMessageCpp));
+    });
 }
 
 jobject ValdiAndroid::NativeBridge::getValueForAttribute( // NOLINT
@@ -2104,6 +2213,67 @@ jobject ValdiAndroid::NativeBridge::wrapAndroidBitmap(fbjni::alias_ref<fbjni::JC
     return newJavaObjectWrappingValue(JavaEnv(), Valdi::Value(androidBitmap)).releaseObject();
 }
 
+jobject ValdiAndroid::NativeBridge::rasterizeSVG(fbjni::alias_ref<fbjni::JClass> /*clazz*/, // NOLINT
+                                                 jbyteArray svgData,
+                                                 jint preferredWidth,
+                                                 jint preferredHeight,
+                                                 jfloat /*displayScale*/) {
+    auto* env = fbjni::Environment::current();
+    if (svgData == nullptr) {
+        ValdiAndroid::throwJavaValdiException(env, "SVG data cannot be null");
+        return nullptr;
+    }
+
+    auto bytes = ValdiAndroid::toByteArray(JavaEnv(), svgData);
+    auto bitmap = Valdi::SVGRenderer::rasterizeSVG(bytes,
+                                                   AndroidBitmapFactory::getSharedInstance(),
+                                                   static_cast<int32_t>(preferredWidth),
+                                                   static_cast<int32_t>(preferredHeight));
+    if (!bitmap) {
+        ValdiAndroid::throwJavaValdiException(env, bitmap.error());
+        return nullptr;
+    }
+
+    auto androidBitmap = Valdi::castOrNull<AndroidBitmap>(bitmap.value());
+    if (androidBitmap == nullptr) {
+        ValdiAndroid::throwJavaValdiException(env, "SVG rasterization did not return an Android bitmap");
+        return nullptr;
+    }
+
+    return androidBitmap->getJavaBitmap().releaseObject();
+}
+
+jobject ValdiAndroid::NativeBridge::rasterizeSVGFromFilePath(fbjni::alias_ref<fbjni::JClass> /*clazz*/, // NOLINT
+                                                             jstring filePath,
+                                                             jfloat /*displayScale*/) {
+    auto* env = fbjni::Environment::current();
+    if (filePath == nullptr) {
+        ValdiAndroid::throwJavaValdiException(env, "SVG file path cannot be null");
+        return nullptr;
+    }
+
+    auto pathString = ValdiAndroid::toStdString(JavaEnv(), filePath);
+    auto bytes = Valdi::DiskUtils::load(Valdi::DiskUtils::absolutePathFromString(pathString));
+    if (!bytes) {
+        ValdiAndroid::throwJavaValdiException(env, bytes.error());
+        return nullptr;
+    }
+
+    auto bitmap = Valdi::SVGRenderer::rasterizeSVG(bytes.value(), AndroidBitmapFactory::getSharedInstance(), 0, 0);
+    if (!bitmap) {
+        ValdiAndroid::throwJavaValdiException(env, bitmap.error());
+        return nullptr;
+    }
+
+    auto androidBitmap = Valdi::castOrNull<AndroidBitmap>(bitmap.value());
+    if (androidBitmap == nullptr) {
+        ValdiAndroid::throwJavaValdiException(env, "SVG rasterization did not return an Android bitmap");
+        return nullptr;
+    }
+
+    return androidBitmap->getJavaBitmap().releaseObject();
+}
+
 #ifdef SNAP_DRAWING_ENABLED
 
 static Valdi::Ref<ValdiAndroid::SnapDrawingLayerRootHost> getSnapDrawingRoot(jlong snapDrawingRootHandle) {
@@ -2370,6 +2540,8 @@ void ValdiAndroid::NativeBridge::registerNatives() {
         makeNativeMethod("getNodeId", ValdiAndroid::NativeBridge::getNodeId),
         makeNativeMethod("getViewClassName", ValdiAndroid::NativeBridge::getViewClassName),
         makeNativeMethod("getViewNodeDebugDescription", ValdiAndroid::NativeBridge::getViewNodeDebugDescription),
+        makeNativeMethod("getStoredObjectForViewNode", ValdiAndroid::NativeBridge::getStoredObjectForViewNode),
+        makeNativeMethod("setStoredObjectForViewNode", ValdiAndroid::NativeBridge::setStoredObjectForViewNode),
         makeNativeMethod("invalidateLayout", ValdiAndroid::NativeBridge::invalidateLayout),
         makeNativeMethod("isViewNodeLayoutDirectionHorizontal",
                          ValdiAndroid::NativeBridge::isViewNodeLayoutDirectionHorizontal),
@@ -2433,6 +2605,8 @@ void ValdiAndroid::NativeBridge::registerNatives() {
         makeNativeMethod("setKeepViewAliveOnDestroy", ValdiAndroid::NativeBridge::setKeepViewAliveOnDestroy),
         makeNativeMethod("notifyScroll", ValdiAndroid::NativeBridge::notifyScroll),
         makeNativeMethod("setValueForAttribute", ValdiAndroid::NativeBridge::setValueForAttribute),
+        makeNativeMethod("setInlineTextAnimationAttributesForViewNode",
+                         ValdiAndroid::NativeBridge::setInlineTextAnimationAttributesForViewNode),
         makeNativeMethod("notifyApplyAttributeFailed", ValdiAndroid::NativeBridge::notifyApplyAttributeFailed),
         makeNativeMethod("setRuntimeAttachedObject", ValdiAndroid::NativeBridge::setRuntimeAttachedObject),
         makeNativeMethod("setRuntimeManagerRequestManager",
@@ -2455,6 +2629,8 @@ void ValdiAndroid::NativeBridge::registerNatives() {
         makeNativeMethod("startProfiling", ValdiAndroid::NativeBridge::startProfiling),
         makeNativeMethod("stopProfiling", ValdiAndroid::NativeBridge::stopProfiling),
         makeNativeMethod("wrapAndroidBitmap", ValdiAndroid::NativeBridge::wrapAndroidBitmap),
+        makeNativeMethod("rasterizeSVG", ValdiAndroid::NativeBridge::rasterizeSVG),
+        makeNativeMethod("rasterizeSVGFromFilePath", ValdiAndroid::NativeBridge::rasterizeSVGFromFilePath),
 #ifdef SNAP_DRAWING_ENABLED
         makeNativeMethod("getSnapDrawingRuntimeHandle", ValdiAndroid::NativeBridge::getSnapDrawingRuntimeHandle),
         makeNativeMethod("setSnapDrawingRootView", ValdiAndroid::NativeBridge::setSnapDrawingRootView),

@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.snap.valdi.test.runtime">
+    <uses-sdk android:minSdkVersion="19" />
+
+    <application>
+        <!-- Declared here rather than in each consumer's androidTest manifest: manifest
+             merging pulls it into any instrumentation APK that depends on this library,
+             so ValdiTestRule can launch it with no per-project setup. -->
+        <activity
+            android:name="com.snap.valdi.test.ValdiTestHostActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+    </application>
+</manifest>

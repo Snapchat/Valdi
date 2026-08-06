@@ -126,6 +126,13 @@ See the [LottieDemo app][] for examples of how to use `<animatedimage>`.
 
 If you need a different data format or additional functionality, you can do that with a [custom image loader](./advanced-images.md).
 
+## Byte-exact / raw bitmap data
+
+The `res/` pipeline is **lossy**: on Android it re-encodes images into density-scaled
+WebP drawables, which corrupts images used as literal per-pixel data. If you need the
+original, untouched bytes of a bundled image, do not use `res/` — see
+[Byte-exact (raw) bitmap data](./advanced-images.md#byte-exact-raw-bitmap-data).
+
 ## Preloading images
 
 The runtime will automatically take care of loading assets represented from the `src` attribute of a `<image>` or `<animatedimage>` element whenever the element is visible within the viewport. You can also trigger the load explicitly from the TypeScript code, which can be used to preload images or retrieve the bytes content of an asset:

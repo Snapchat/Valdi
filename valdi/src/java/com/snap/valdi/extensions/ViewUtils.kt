@@ -34,6 +34,7 @@ import com.snap.valdi.utils.InternedString
 import com.snap.valdi.utils.Ref
 import com.snap.valdi.views.ValdiClippableView
 import com.snap.valdi.views.ValdiForegroundHolder
+import com.snap.valdi.views.ValdiTextViewBase
 import com.snap.valdi.views.touches.ValdiGestureRecognizer
 import com.snap.valdi.views.touches.GestureRecognizers
 import com.snapchat.client.valdi.UndefinedValue
@@ -404,7 +405,12 @@ object ViewUtils {
         // Yoga already handles the layout positioning for all views.
         // 
         // TextView is the base class for EditText, AppCompatEditText, AppCompatTextView, etc.
-        if (view is android.widget.TextView) {
+        val textView = if (view is ValdiTextViewBase) {
+            view.backingTextView
+        } else {
+            view as? android.widget.TextView
+        }
+        if (textView != null) {
             val targetDirection = if (isRightToLeft) {
                 View.LAYOUT_DIRECTION_RTL
             } else {
@@ -412,8 +418,8 @@ object ViewUtils {
             }
             
             // Only set if changed to avoid potential invalidation overhead
-            if (view.layoutDirection != targetDirection) {
-                view.layoutDirection = targetDirection
+            if (textView.layoutDirection != targetDirection) {
+                textView.layoutDirection = targetDirection
             }
         }
     }

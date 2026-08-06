@@ -8,8 +8,8 @@
 #pragma once
 
 #include "valdi/runtime/Context/RawViewNodeId.hpp"
-#include "valdi/runtime/Views/Frame.hpp"
 #include "valdi_core/cpp/Utils/ValueFunction.hpp"
+#include "valdi_core/cpp/Views/Frame.hpp"
 
 #include <optional>
 
@@ -108,12 +108,7 @@ public:
     void setMaintainScrollAnchor(bool maintain);
     bool getMaintainScrollAnchor() const;
 
-    // Preserve scroll position: when enabled, updateScrollState anchors the first on-screen
-    // child and shifts contentOffset.y by exactly the content-height change that occurred
-    // ABOVE it, so on-screen content stays in place. Unlike the net content-size delta this
-    // replaced, it stays correct when content is added at one end and trimmed at the other in
-    // the same pass (windowed message lists). Intended for live-update scenarios where the user
-    // is scrolled away from the newest end and shouldn't be bumped when new content lands.
+    // Preserve scroll position across content-size growth. See ViewNodeScrollState.
     void setPreserveScrollPosition(bool preserve);
     bool getPreserveScrollPosition() const;
 

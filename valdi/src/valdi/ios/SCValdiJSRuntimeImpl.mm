@@ -62,9 +62,14 @@
     }
 }
 
+- (NSInteger)pushModuleAtPath:(NSString *)modulePath reportingErrorOnMarshaller:(SCValdiMarshallerRef)marshaller
+{
+    return [[self jsRuntime] pushModuleToMarshaller:_nativeObjectsManager path:modulePath marshallerHandle:(int64_t)marshaller];
+}
+
 - (NSInteger)pushModuleAthPath:(NSString *)modulePath inMarshaller:(SCValdiMarshallerRef)marshaller
 {
-    NSInteger objectIndex = [[self jsRuntime] pushModuleToMarshaller:_nativeObjectsManager path:modulePath marshallerHandle:(int64_t)marshaller];
+    NSInteger objectIndex = [self pushModuleAtPath:modulePath reportingErrorOnMarshaller:marshaller];
     SCValdiMarshallerCheck(marshaller);
     return objectIndex;
 }

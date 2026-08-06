@@ -50,6 +50,14 @@ public:
             outcomeCpp->result = RESULT::fromCpp(c.value());
         } else {
             outcomeCpp->error = ERROR::fromCpp(c.error());
+            if (outcomeCpp->error.isUndefined()) {
+                // An empty optional error (outcome<T, optional<E>>, e.g. a cache miss)
+                // marshals to undefined, which the outcome marshallers would misread as a
+                // *result* outcome (they discriminate on error.isUndefined()) and then fail
+                // to unmarshall the absent result. Store null so the outcome stays an
+                // error; Optional::toCpp maps null back to an empty optional.
+                outcomeCpp->error = Valdi::Value();
+            }
         }
         return Valdi::Value(outcomeCpp);
     }

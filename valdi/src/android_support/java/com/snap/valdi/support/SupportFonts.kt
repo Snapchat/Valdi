@@ -1,12 +1,27 @@
 package com.snap.valdi.support
 
 import android.graphics.Typeface
+import android.os.Build
 import com.snap.valdi.ValdiRuntimeManager
 import com.snap.valdi.attributes.impl.fonts.FontDescriptor
+import com.snap.valdi.attributes.impl.fonts.FontStyle
 import com.snap.valdi.attributes.impl.fonts.FontWeight
 import com.snap.valdi.support.R
 
 object SupportFonts {
+
+    private fun systemTypeface(weight: Int, italic: Boolean): Typeface {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            return Typeface.create(Typeface.DEFAULT, weight, italic)
+        }
+        if (weight >= 600) {
+            return Typeface.defaultFromStyle(if (italic) Typeface.BOLD_ITALIC else Typeface.BOLD)
+        }
+        if (weight >= 500) {
+            return Typeface.create("sans-serif-medium", if (italic) Typeface.ITALIC else Typeface.NORMAL)
+        }
+        return Typeface.defaultFromStyle(if (italic) Typeface.ITALIC else Typeface.NORMAL)
+    }
 
     @JvmStatic
     fun registerFonts(manager: ValdiRuntimeManager) {
@@ -44,6 +59,24 @@ object SupportFonts {
         fontManager.loadSyncAndRegister(monoBold, context, R.font.roboto_mono_bold)
 
         fontManager.register(FontDescriptor("system"), Typeface.DEFAULT)
+        fontManager.register(FontDescriptor("system-medium", weight = FontWeight.MEDIUM), systemTypeface(500, false))
+        fontManager.register(FontDescriptor("system-semibold", weight = FontWeight.DEMI_BOLD), systemTypeface(600, false))
+        fontManager.register(FontDescriptor("system-demi-bold", weight = FontWeight.DEMI_BOLD), systemTypeface(600, false))
         fontManager.register(FontDescriptor("system-bold"), Typeface.DEFAULT_BOLD)
+        fontManager.register(
+                FontDescriptor("system-italic", style = FontStyle.ITALIC),
+                Typeface.defaultFromStyle(Typeface.ITALIC))
+        fontManager.register(
+                FontDescriptor("system-medium-italic", weight = FontWeight.MEDIUM, style = FontStyle.ITALIC),
+                systemTypeface(500, true))
+        fontManager.register(
+                FontDescriptor("system-semibold-italic", weight = FontWeight.DEMI_BOLD, style = FontStyle.ITALIC),
+                systemTypeface(600, true))
+        fontManager.register(
+                FontDescriptor("system-demi-bold-italic", weight = FontWeight.DEMI_BOLD, style = FontStyle.ITALIC),
+                systemTypeface(600, true))
+        fontManager.register(
+                FontDescriptor("system-bold-italic", weight = FontWeight.BOLD, style = FontStyle.ITALIC),
+                Typeface.defaultFromStyle(Typeface.BOLD_ITALIC))
     }
 }
