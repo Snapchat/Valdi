@@ -782,6 +782,10 @@ void Runtime::registerJavaScriptModuleFactory(const Ref<JavaScriptModuleFactory>
     _javaScriptRuntime->registerJavaScriptModuleFactory(moduleFactory);
 }
 
+const Ref<ColorPaletteManager>& Runtime::getColorPaletteManager() const {
+    return _colorPaletteManager;
+}
+
 void Runtime::configureColorPalette(const StringBox& name, const Value& colorPaletteMap) {
     if (colorPaletteMap.isMap()) {
         FlatMap<StringBox, Color> colors;

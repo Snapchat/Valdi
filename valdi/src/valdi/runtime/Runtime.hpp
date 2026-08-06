@@ -266,6 +266,7 @@ public:
 
     void emitInitMetrics();
 
+    const Ref<ColorPaletteManager>& getColorPaletteManager() const;
     void configureColorPalette(const StringBox& name, const Value& colorPaletteMap) override;
     void setActiveColorPalette(const StringBox& name) override;
 
