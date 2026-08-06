@@ -534,6 +534,21 @@ TEST(AttributeProcessor, transformAttributesPostprocessPreservesExistingRtlBehav
     expectTransformValues(result.value(), -10, 20, 1, 1, -M_PI_2);
 }
 
+TEST(AttributeProcessor, transformAttributesPostprocessMirrorsNonCenterOriginsInRtl) {
+    auto result = TransformAttributes::postprocess(
+        100, 100, true, makeTransformValue(0, 0, 1, 1, M_PI_2, Value(STRING_LITERAL("top left"))));
+    ASSERT_TRUE(result.success()) << result.description();
+    expectTransformValues(result.value(), 100, 0, 1, 1, -M_PI_2);
+
+    result = TransformAttributes::postprocess(
+        100,
+        100,
+        true,
+        makeTransformStringValue(Value(STRING_LITERAL("rotate(90deg)")), Value(STRING_LITERAL("top left"))));
+    ASSERT_TRUE(result.success()) << result.description();
+    expectTransformValues(result.value(), 100, 0, 1, 1, -M_PI_2);
+}
+
 TEST(AttributeProcessor, transformAttributesPostprocessRejectsInvalidOrigins) {
     auto result =
         TransformAttributes::postprocess(100,
