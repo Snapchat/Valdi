@@ -2,7 +2,11 @@ import 'ts-jest';
 import * as ts from 'typescript';
 import { Workspace } from './Workspace';
 
-function createWorkspaceWithFile(contents: string, nativeApiMinVersion: number | undefined): Workspace {
+function createWorkspaceWithFile(
+  contents: string,
+  nativeApiMinVersion: number | undefined,
+  fileName: string,
+): Workspace {
   const workspace = new Workspace(
     '/',
     false,
@@ -12,17 +16,38 @@ function createWorkspaceWithFile(contents: string, nativeApiMinVersion: number |
       module: ts.ModuleKind.CommonJS,
       lib: ['lib.es2015.d.ts'],
       strict: true,
+      jsx: ts.JsxEmit.Preserve,
     },
     nativeApiMinVersion,
   );
 
-  workspace.registerInMemoryFile('/file.ts', contents);
-  workspace.addSourceFileAtPath('/file.ts');
+  workspace.registerInMemoryFile(fileName, contents);
+  workspace.addSourceFileAtPath(fileName);
   return workspace;
 }
 
 function getDiagnosticTexts(contents: string, nativeApiMinVersion?: number): string[] {
-  const workspace = createWorkspaceWithFile(contents, nativeApiMinVersion);
+  const workspace = createWorkspaceWithFile(contents, nativeApiMinVersion, '/file.ts');
+  const diagnostics = workspace.getDiagnosticsSync('/file.ts').diagnostics;
+  workspace.destroy();
+  return diagnostics.map((diagnostic) => diagnostic.text);
+}
+
+function getJsxDiagnosticTexts(contents: string): string[] {
+  const workspace = createWorkspaceWithFile(contents, undefined, '/file.tsx');
+  const diagnostics = workspace.getDiagnosticsSync('/file.tsx').diagnostics;
+  workspace.destroy();
+  return diagnostics.map((diagnostic) => diagnostic.text);
+}
+
+function getDiagnosticTextsWithImportedFile(
+  contents: string,
+  importedContents: string,
+  nativeApiMinVersion: number | undefined,
+): string[] {
+  const workspace = createWorkspaceWithFile(importedContents, nativeApiMinVersion, '/models.ts');
+  workspace.registerInMemoryFile('/file.ts', contents);
+  workspace.addSourceFileAtPath('/file.ts');
   const diagnostics = workspace.getDiagnosticsSync('/file.ts').diagnostics;
   workspace.destroy();
   return diagnostics.map((diagnostic) => diagnostic.text);
@@ -87,6 +112,339 @@ describe('VersioningValidator', () => {
     expect(diagnostics).toEqual([
       "Property 'subtitle' requires @Version(43) or an enclosing isVersionAtLeast(43) block",
     ]);
+  });
+
+  it('rejects destructuring versioned properties outside a sufficient version guard', () => {
+    const diagnostics = getDiagnosticTexts(`
+      interface MyModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      declare const model: MyModel;
+      const { subtitle } = model;
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'subtitle' requires @Version(43) or an enclosing isVersionAtLeast(43) block",
+    ]);
+  });
+
+  it('rejects renamed destructured properties with default values', () => {
+    const diagnostics = getDiagnosticTexts(`
+      interface MyModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      declare const model: MyModel;
+      const { subtitle: label = 'Default' } = model;
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'subtitle' requires @Version(43) or an enclosing isVersionAtLeast(43) block",
+    ]);
+  });
+
+  it('rejects nested destructured properties requiring a newer version', () => {
+    const diagnostics = getDiagnosticTexts(`
+      interface NestedModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      interface MyModel {
+        nested: NestedModel;
+      }
+
+      declare const model: MyModel;
+      const { nested: { subtitle } } = model;
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'subtitle' requires @Version(43) or an enclosing isVersionAtLeast(43) block",
+    ]);
+  });
+
+  it('rejects destructured properties referenced through computed literal names', () => {
+    const diagnostics = getDiagnosticTexts(`
+      interface MyModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      declare const model: MyModel;
+      const { ['subtitle']: label } = model;
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'subtitle' requires @Version(43) or an enclosing isVersionAtLeast(43) block",
+    ]);
+  });
+
+  it('allows destructuring versioned properties inside a sufficient version guard', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface MyModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      declare const model: MyModel;
+      if (isVersionAtLeast(43)) {
+        const { subtitle: label = 'Default' } = model;
+      }
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('rejects destructuring versioned properties inside an insufficient version guard', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface MyModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      declare const model: MyModel;
+      if (isVersionAtLeast(42)) {
+        const { subtitle } = model;
+      }
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'subtitle' requires @Version(43) or an enclosing isVersionAtLeast(43) block",
+    ]);
+  });
+
+  it('rejects destructuring versioned properties in unversioned function parameters', () => {
+    const diagnostics = getDiagnosticTexts(`
+      interface MyModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      function render({ subtitle }: MyModel): void {}
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'subtitle' requires @Version(43) or an enclosing isVersionAtLeast(43) block",
+    ]);
+  });
+
+  it('allows destructured parameters to inherit their containing function version', () => {
+    const diagnostics = getDiagnosticTexts(`
+      interface MyModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      // @Version(43)
+      function render({ subtitle }: MyModel): void {}
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('allows destructured method parameters to inherit their containing class version', () => {
+    const diagnostics = getDiagnosticTexts(`
+      interface MyModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      // @Version(43)
+      class Renderer {
+        render({ subtitle }: MyModel): void {}
+      }
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('allows rest destructuring because it does not require newer properties to exist', () => {
+    const diagnostics = getDiagnosticTexts(`
+      interface MyModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      declare const model: MyModel;
+      const { ...remaining } = model;
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('rejects versioned properties in destructuring assignments', () => {
+    const diagnostics = getDiagnosticTexts(`
+      interface MyModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      declare const model: MyModel;
+      let subtitle: string | undefined;
+      ({ subtitle } = model);
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'subtitle' requires @Version(43) or an enclosing isVersionAtLeast(43) block",
+    ]);
+  });
+
+  it('rejects renamed versioned properties with defaults in destructuring assignments', () => {
+    const diagnostics = getDiagnosticTexts(`
+      interface MyModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      declare const model: MyModel;
+      let label: string;
+      ({ subtitle: label = 'Default' } = model);
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'subtitle' requires @Version(43) or an enclosing isVersionAtLeast(43) block",
+    ]);
+  });
+
+  it('rejects nested versioned properties in destructuring assignments', () => {
+    const diagnostics = getDiagnosticTexts(`
+      interface NestedModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      interface MyModel {
+        nested: NestedModel;
+      }
+
+      declare const model: MyModel;
+      let label: string | undefined;
+      ({ nested: { subtitle: label } } = model);
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'subtitle' requires @Version(43) or an enclosing isVersionAtLeast(43) block",
+    ]);
+  });
+
+  it('allows destructuring assignments inside a sufficient version guard', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface MyModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      declare const model: MyModel;
+      let label: string | undefined;
+      if (isVersionAtLeast(43)) {
+        ({ subtitle: label } = model);
+      }
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('does not treat ordinary object literals as destructuring assignments', () => {
+    const diagnostics = getDiagnosticTexts(`
+      interface MyModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      const localModel: MyModel = { subtitle: 'Hello' };
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('requires interface members to inherit their containing version at use sites', () => {
+    const diagnostics = getDiagnosticTexts(`
+      // @Version(43)
+      interface Renderer {
+        title: string;
+        draw(): void;
+      }
+
+      declare const renderer: Renderer;
+      renderer.title;
+      renderer.draw();
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'title' requires @Version(43) or an enclosing isVersionAtLeast(43) block",
+      'Function call requires @Version(43) or an enclosing isVersionAtLeast(43) block',
+    ]);
+  });
+
+  it('requires class members to inherit their containing version at use sites', () => {
+    const diagnostics = getDiagnosticTexts(`
+      // @Version(43)
+      class Renderer {
+        title = 'title';
+        draw() {}
+      }
+
+      declare const renderer: Renderer;
+      renderer.title;
+      renderer.draw();
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'title' requires @Version(43) or an enclosing isVersionAtLeast(43) block",
+      'Function call requires @Version(43) or an enclosing isVersionAtLeast(43) block',
+    ]);
+  });
+
+  it('allows inherited container members inside a sufficient version guard', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      // @Version(43)
+      interface Renderer {
+        title: string;
+        draw(): void;
+      }
+
+      declare const renderer: Renderer;
+      if (isVersionAtLeast(43)) {
+        renderer.title;
+        renderer.draw();
+      }
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('requires the highest version across merged member declarations', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface Renderer {
+        // @Version(42)
+        title: string;
+      }
+
+      interface Renderer {
+        // @Version(43)
+        title: string;
+      }
+
+      declare const renderer: Renderer;
+      if (isVersionAtLeast(42)) {
+        renderer.title;
+      }
+    `);
+
+    expect(diagnostics).toEqual(["Property 'title' requires @Version(43) or an enclosing isVersionAtLeast(43) block"]);
   });
 
   it('rejects placeholder-versioned properties outside a version guard', () => {
@@ -208,6 +566,223 @@ describe('VersioningValidator', () => {
           return model.subtitle;
         }
         return undefined;
+      }
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('allows standalone short-circuit expressions after a sufficient version guard', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface MyModel {
+        // @Version(42)
+        subtitle?: string;
+      }
+
+      function render(model: MyModel) {
+        const subtitle = isVersionAtLeast(42) && model.subtitle;
+        return isVersionAtLeast(42) && model.subtitle;
+      }
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('keeps standalone short-circuit version guards order-sensitive', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface MyModel {
+        // @Version(42)
+        subtitle?: string;
+      }
+
+      function render(model: MyModel) {
+        return model.subtitle && isVersionAtLeast(42);
+      }
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'subtitle' requires @Version(42) or an enclosing isVersionAtLeast(42) block",
+    ]);
+  });
+
+  it('rejects standalone short-circuit expressions with an insufficient version guard', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface MyModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      function render(model: MyModel) {
+        return isVersionAtLeast(42) && model.subtitle;
+      }
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'subtitle' requires @Version(43) or an enclosing isVersionAtLeast(43) block",
+    ]);
+  });
+
+  it('applies short-circuit version guards inside JSX expressions', () => {
+    const diagnostics = getJsxDiagnosticTexts(`
+      declare namespace JSX {
+        interface Element {}
+        interface IntrinsicElements {
+          view: {};
+        }
+      }
+
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface MyModel {
+        // @Version(42)
+        subtitle?: string;
+      }
+
+      declare const model: MyModel;
+      <view>{isVersionAtLeast(42) && model.subtitle}</view>;
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('applies version guards to the true branch of ternary expressions', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface MyModel {
+        // @Version(42)
+        subtitle?: string;
+      }
+
+      function render(model: MyModel) {
+        return isVersionAtLeast(42) ? model.subtitle : undefined;
+      }
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('does not apply ternary version guards to the unguarded branch', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface MyModel {
+        // @Version(42)
+        subtitle?: string;
+      }
+
+      function render(model: MyModel) {
+        return isVersionAtLeast(42) ? undefined : model.subtitle;
+      }
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'subtitle' requires @Version(42) or an enclosing isVersionAtLeast(42) block",
+    ]);
+  });
+
+  it('applies negated version guards to the false branch of ternary expressions', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface MyModel {
+        // @Version(42)
+        subtitle?: string;
+      }
+
+      function render(model: MyModel) {
+        return !isVersionAtLeast(42) ? undefined : model.subtitle;
+      }
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('applies version guards after negated early returns', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface MyModel {
+        // @Version(42)
+        subtitle?: string;
+      }
+
+      function render(model: MyModel) {
+        if (!isVersionAtLeast(42)) {
+          return;
+        }
+
+        model.subtitle;
+      }
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('applies version guards after early throws', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface MyModel {
+        // @Version(42)
+        subtitle?: string;
+      }
+
+      function render(model: MyModel) {
+        if (!isVersionAtLeast(42)) {
+          throw new Error('Unsupported native API');
+        }
+
+        model.subtitle;
+      }
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('does not apply early-return guards when the guarded branch can continue', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+      declare function shouldReturn(): boolean;
+
+      interface MyModel {
+        // @Version(42)
+        subtitle?: string;
+      }
+
+      function render(model: MyModel) {
+        if (!isVersionAtLeast(42)) {
+          if (shouldReturn()) {
+            return;
+          }
+        }
+
+        model.subtitle;
+      }
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'subtitle' requires @Version(42) or an enclosing isVersionAtLeast(42) block",
+    ]);
+  });
+
+  it('applies version guards to the right side of negated short-circuit alternatives', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface MyModel {
+        // @Version(42)
+        subtitle?: string;
+      }
+
+      function render(model: MyModel) {
+        return !isVersionAtLeast(42) || model.subtitle;
       }
     `);
 
@@ -455,6 +1030,90 @@ describe('VersioningValidator', () => {
     expect(diagnostics).toEqual(['Function call requires @Version(42) or an enclosing isVersionAtLeast(42) block']);
   });
 
+  it('rejects construction of versioned classes outside a sufficient version guard', () => {
+    const diagnostics = getDiagnosticTexts(
+      `
+      // @Version(42)
+      class NewRenderer {}
+
+      function render(): void {
+        new NewRenderer();
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual(['Constructor call requires @Version(42) or an enclosing isVersionAtLeast(42) block']);
+  });
+
+  it('allows construction of versioned classes inside a sufficient version guard', () => {
+    const diagnostics = getDiagnosticTexts(
+      `
+      declare function isVersionAtLeast(version: number): boolean;
+
+      // @Version(42)
+      class NewRenderer {}
+
+      function render(): void {
+        if (isVersionAtLeast(42)) {
+          new NewRenderer();
+        }
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('rejects JSX usage of versioned components outside a sufficient version guard', () => {
+    const diagnostics = getJsxDiagnosticTexts(`
+      declare namespace JSX {
+        interface Element {}
+        interface ElementClass {
+          render(): Element;
+        }
+      }
+
+      // @Version(42)
+      class NewComponent {
+        render(): JSX.Element {
+          return {};
+        }
+      }
+
+      <NewComponent />;
+    `);
+
+    expect(diagnostics).toEqual([
+      "Component 'NewComponent' requires @Version(42) or an enclosing isVersionAtLeast(42) block",
+    ]);
+  });
+
+  it('allows JSX usage of versioned components inside a sufficient version guard', () => {
+    const diagnostics = getJsxDiagnosticTexts(`
+      declare namespace JSX {
+        interface Element {}
+        interface ElementClass {
+          render(): Element;
+        }
+      }
+
+      declare function isVersionAtLeast(version: number): boolean;
+
+      // @Version(42)
+      class NewComponent {
+        render(): JSX.Element {
+          return {};
+        }
+      }
+
+      isVersionAtLeast(42) && <NewComponent />;
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
   it('rejects calls to placeholder-versioned functions outside a version guard', () => {
     const diagnostics = getDiagnosticTexts(`
       // @Version(__PLACEHOLDER__)
@@ -499,6 +1158,82 @@ describe('VersioningValidator', () => {
     `);
 
     expect(diagnostics).toEqual(["Type 'NewModel' requires @Version(42) on the containing declaration"]);
+  });
+
+  it('requires declarations exposing imported versioned types to be versioned', () => {
+    const diagnostics = getDiagnosticTextsWithImportedFile(
+      `
+      import type { NewModel as ImportedModel } from './models';
+
+      function render(model: ImportedModel): void {}
+    `,
+      `
+      // @Version(42)
+      export interface NewModel {
+        value: string;
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual(["Type 'ImportedModel' requires @Version(42) on the containing declaration"]);
+  });
+
+  it('requires constructor parameters exposing versioned types to be versioned', () => {
+    const diagnostics = getDiagnosticTexts(
+      `
+      // @Version(42)
+      interface NewModel {
+        value: string;
+      }
+
+      class ExistingRenderer {
+        constructor(model: NewModel) {}
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual(["Type 'NewModel' requires @Version(42) on the containing declaration"]);
+  });
+
+  it('allows constructor parameters to inherit their containing class version', () => {
+    const diagnostics = getDiagnosticTexts(
+      `
+      // @Version(42)
+      interface NewModel {
+        value: string;
+      }
+
+      // @Version(42)
+      class NewRenderer {
+        constructor(model: NewModel) {}
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('allows sufficiently versioned declarations exposing imported versioned types', () => {
+    const diagnostics = getDiagnosticTextsWithImportedFile(
+      `
+      import type { NewModel as ImportedModel } from './models';
+
+      // @Version(42)
+      function render(model: ImportedModel): void {}
+    `,
+      `
+      // @Version(42)
+      export interface NewModel {
+        value: string;
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual([]);
   });
 
   it('requires declarations exposing placeholder-versioned types to be placeholder-versioned', () => {
@@ -575,7 +1310,7 @@ describe('VersioningValidator', () => {
     expect(diagnostics).toEqual(["Type 'NewModel' requires @Version(42) on the containing declaration"]);
   });
 
-  it('requires interfaces extending versioned types to be versioned', () => {
+  it('allows interfaces to extend versioned types because interface heritage is erased', () => {
     const diagnostics = getDiagnosticTexts(`
       // @Version(42)
       interface NewModel {
@@ -587,7 +1322,7 @@ describe('VersioningValidator', () => {
       }
     `);
 
-    expect(diagnostics).toEqual(["Type 'NewModel' requires @Version(42) on the containing declaration"]);
+    expect(diagnostics).toEqual([]);
   });
 
   it('allows interfaces extending older versioned types', () => {
@@ -604,6 +1339,32 @@ describe('VersioningValidator', () => {
     `);
 
     expect(diagnostics).toEqual([]);
+  });
+
+  it('allows classes to implement versioned interfaces because implements clauses are erased', () => {
+    const diagnostics = getDiagnosticTexts(`
+      // @Version(42)
+      interface Renderer {
+        render(): void;
+      }
+
+      class LocalRenderer implements Renderer {
+        render(): void {}
+      }
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('requires classes extending versioned classes to be versioned', () => {
+    const diagnostics = getDiagnosticTexts(`
+      // @Version(42)
+      class BaseRenderer {}
+
+      class LocalRenderer extends BaseRenderer {}
+    `);
+
+    expect(diagnostics).toEqual(["Type 'BaseRenderer' requires @Version(42) on the containing declaration"]);
   });
 
   it('requires interface methods exposing versioned types to be versioned', () => {
@@ -637,6 +1398,232 @@ describe('VersioningValidator', () => {
     expect(diagnostics).toEqual([]);
   });
 
+  it('allows class methods to inherit their containing version for signatures and bodies', () => {
+    const diagnostics = getDiagnosticTexts(`
+      // @Version(42)
+      interface NewModel {
+        value: string;
+      }
+
+      // @Version(42)
+      class Renderer {
+        render(model: NewModel): NewModel {
+          return model;
+        }
+      }
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('allows class field initializers to inherit their containing version', () => {
+    const diagnostics = getDiagnosticTexts(
+      `
+      // @Version(42)
+      interface NewModel {
+        value: string;
+      }
+
+      declare const model: NewModel;
+
+      // @Version(42)
+      class Renderer {
+        value = model.value;
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('allows class arrow-function properties and nested callbacks to inherit their containing version', () => {
+    const diagnostics = getDiagnosticTexts(
+      `
+      // @Version(42)
+      interface NewModel {
+        value: string;
+      }
+
+      // @Version(42)
+      class Renderer {
+        render = (model: NewModel): string => {
+          const readValue = () => model.value;
+          return readValue();
+        };
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('allows nested callback signatures to inherit their containing class version', () => {
+    const diagnostics = getDiagnosticTexts(
+      `
+      // @Version(42)
+      interface NewModel {
+        value: string;
+      }
+
+      // @Version(42)
+      class Renderer {
+        render(): void {
+          const callback = (model: NewModel): void => {};
+        }
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('allows nested callback signatures inside a sufficient version guard', () => {
+    const diagnostics = getDiagnosticTexts(
+      `
+      declare function isVersionAtLeast(version: number): boolean;
+
+      // @Version(42)
+      interface NewModel {
+        value: string;
+      }
+
+      if (isVersionAtLeast(42)) {
+        const callback = (model: NewModel): void => {};
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('still rejects class field initializers requiring a newer version than their containing class', () => {
+    const diagnostics = getDiagnosticTexts(
+      `
+      // @Version(43)
+      interface NewModel {
+        value: string;
+      }
+
+      declare const model: NewModel;
+
+      // @Version(42)
+      class Renderer {
+        value = model.value;
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual(["Property 'value' requires @Version(43) or an enclosing isVersionAtLeast(43) block"]);
+  });
+
+  it('does not apply a class version to eagerly evaluated static field initializers', () => {
+    const diagnostics = getDiagnosticTexts(
+      `
+      interface Model {
+        // @Version(42)
+        value: string;
+      }
+
+      declare const model: Model;
+
+      // @Version(42)
+      class Renderer {
+        static value = model.value;
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual(["Property 'value' requires @Version(42) or an enclosing isVersionAtLeast(42) block"]);
+  });
+
+  it('allows eagerly evaluated static fields to use sufficiently guarded APIs', () => {
+    const diagnostics = getDiagnosticTexts(
+      `
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface Model {
+        // @Version(42)
+        value: string;
+      }
+
+      declare const model: Model;
+
+      // @Version(42)
+      class Renderer {
+        static value = isVersionAtLeast(42) ? model.value : undefined;
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('does not apply a class version to eagerly evaluated static blocks', () => {
+    const diagnostics = getDiagnosticTexts(
+      `
+      interface Model {
+        // @Version(42)
+        value: string;
+      }
+
+      declare const model: Model;
+
+      // @Version(42)
+      class Renderer {
+        static {
+          model.value;
+        }
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual(["Property 'value' requires @Version(42) or an enclosing isVersionAtLeast(42) block"]);
+  });
+
+  it('allows class accessors to inherit their containing version for signatures and bodies', () => {
+    const diagnostics = getDiagnosticTexts(`
+      // @Version(42)
+      interface NewModel {
+        value: string;
+      }
+
+      // @Version(42)
+      class Renderer {
+        get model(): NewModel {
+          return { value: 'value' };
+        }
+
+        set model(value: NewModel) {}
+      }
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('requires a newer explicit class method version despite its containing version', () => {
+    const diagnostics = getDiagnosticTexts(`
+      // @Version(43)
+      interface NewModel {
+        value: string;
+      }
+
+      // @Version(42)
+      class Renderer {
+        render(model: NewModel): void {}
+      }
+    `);
+
+    expect(diagnostics).toEqual(["Type 'NewModel' requires @Version(43) on the containing declaration"]);
+  });
+
   it('allows versioned properties exposing compatible versioned types', () => {
     const diagnostics = getDiagnosticTexts(`
       // @Version(42)
@@ -651,6 +1638,61 @@ describe('VersioningValidator', () => {
     `);
 
     expect(diagnostics).toEqual([]);
+  });
+
+  it('allows existing interface properties to refer to newer versioned types', () => {
+    const diagnostics = getDiagnosticTexts(
+      `
+      // @Version(42)
+      interface NewModel {
+        value: string;
+      }
+
+      interface ExistingOptions {
+        model?: NewModel;
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('allows unversioned class fields to refer to newer versioned types', () => {
+    const diagnostics = getDiagnosticTexts(
+      `
+      // @Version(42)
+      interface NewModel {
+        value: string;
+      }
+
+      class ExistingController {
+        private model?: NewModel;
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('rejects explicitly versioned properties exposing newer types', () => {
+    const diagnostics = getDiagnosticTexts(
+      `
+      // @Version(43)
+      interface NewModel {
+        value: string;
+      }
+
+      interface ExistingOptions {
+        // @Version(42)
+        model?: NewModel;
+      }
+    `,
+      1,
+    );
+
+    expect(diagnostics).toEqual(["Type 'NewModel' requires @Version(43) on the containing declaration"]);
   });
 
   it('validates isVersionAtLeast rejects non-literal arguments', () => {
@@ -742,6 +1784,24 @@ describe('VersioningValidator', () => {
     expect(diagnostics).toEqual([
       "Property 'futureValue' requires @Version(3) or an enclosing isVersionAtLeast(3) block",
     ]);
+  });
+
+  it('does not let the workspace minimum mask a higher native-container version', () => {
+    const diagnostics = getDiagnosticTexts(
+      `
+        // @ExportModel
+        // @Version(5)
+        export interface NativeModel {
+          value: string;
+        }
+
+        declare const model: NativeModel;
+        model.value;
+      `,
+      2,
+    );
+
+    expect(diagnostics).toEqual(["Property 'value' requires @Version(5) or an enclosing isVersionAtLeast(5) block"]);
   });
 
   it('lets a placeholder member version override native-contract inheritance', () => {

@@ -148,19 +148,21 @@ export class VersioningValidator {
       return undefined;
     }
 
+    if ((symbol.flags & ts.SymbolFlags.Alias) !== 0) {
+      symbol = this.typeChecker.getAliasedSymbol(symbol);
+    }
+
     const declarations = symbol.getDeclarations();
     if (!declarations) {
       return undefined;
     }
 
+    let requiredVersion: number | undefined;
     for (const declaration of declarations) {
-      const version = this.getVersion(declaration);
-      if (version !== undefined) {
-        return version;
-      }
+      requiredVersion = this.mergeVersions(requiredVersion, this.getDeclarationVersion(declaration));
     }
 
-    return undefined;
+    return requiredVersion;
   }
 
   private isVersionSatisfied(currentVersion: number | undefined, requiredVersion: number): boolean {
@@ -198,6 +200,25 @@ export class VersioningValidator {
       return;
     }
 
+    if (
+      ts.isBinaryExpression(node) &&
+      (node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+        node.operatorToken.kind === ts.SyntaxKind.BarBarToken)
+    ) {
+      this.visitVersionCondition(node, currentVersion);
+      return;
+    }
+
+    if (ts.isConditionalExpression(node)) {
+      this.visitConditionalExpression(node, currentVersion);
+      return;
+    }
+
+    if (ts.isSourceFile(node) || ts.isBlock(node)) {
+      this.visitStatements(node.statements, currentVersion);
+      return;
+    }
+
     if (this.isFunctionLikeDeclaration(node)) {
       this.visitFunctionLikeDeclaration(node, currentVersion);
       return;
@@ -205,14 +226,47 @@ export class VersioningValidator {
 
     if (ts.isInterfaceDeclaration(node) || ts.isClassDeclaration(node)) {
       this.validateContainerDeclaration(node);
+      const containerVersion = this.mergeVersions(currentVersion, this.getDeclarationVersion(node));
+      ts.forEachChild(node, (child) => {
+        const isEagerStaticMember =
+          ts.isClassDeclaration(node) &&
+          (ts.isClassStaticBlockDeclaration(child) ||
+            (ts.isPropertyDeclaration(child) && (ts.getCombinedModifierFlags(child) & ts.ModifierFlags.Static) !== 0));
+        this.visit(child, isEagerStaticMember ? currentVersion : containerVersion);
+      });
+      return;
     }
 
     if (ts.isPropertyAccessExpression(node) && !this.isCalleePropertyAccess(node)) {
       this.validatePropertyAccess(node, currentVersion);
     }
 
+    if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
+      this.validateObjectBindingElement(node, currentVersion);
+    }
+
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isObjectLiteralExpression(node.left)
+    ) {
+      this.validateObjectDestructuringAssignment(
+        node.left,
+        this.typeChecker.getTypeAtLocation(node.right),
+        currentVersion,
+      );
+    }
+
     if (ts.isCallExpression(node)) {
       this.validateCallExpression(node, currentVersion);
+    }
+
+    if (ts.isNewExpression(node)) {
+      this.validateNewExpression(node, currentVersion);
+    }
+
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      this.validateJsxComponent(node, currentVersion);
     }
 
     ts.forEachChild(node, (child) => this.visit(child, currentVersion));
@@ -225,13 +279,75 @@ export class VersioningValidator {
     this.visit(node.thenStatement, thenVersion);
 
     if (node.elseStatement) {
-      this.visit(node.elseStatement, currentVersion);
+      const elseVersion = this.mergeVersions(currentVersion, this.getVersionWhenConditionIsFalse(node.expression));
+      this.visit(node.elseStatement, elseVersion);
     }
+  }
+
+  private visitConditionalExpression(node: ts.ConditionalExpression, currentVersion: number | undefined): void {
+    const conditionVersion = this.visitVersionCondition(node.condition, currentVersion);
+    const thenVersion = this.mergeVersions(currentVersion, conditionVersion);
+    const elseVersion = this.mergeVersions(currentVersion, this.getVersionWhenConditionIsFalse(node.condition));
+
+    this.visit(node.whenTrue, thenVersion);
+    this.visit(node.whenFalse, elseVersion);
+  }
+
+  private visitStatements(statements: ts.NodeArray<ts.Statement>, currentVersion: number | undefined): void {
+    let statementVersion = currentVersion;
+    for (const statement of statements) {
+      this.visit(statement, statementVersion);
+      statementVersion = this.getVersionAfterStatement(statement, statementVersion);
+    }
+  }
+
+  private getVersionAfterStatement(statement: ts.Statement, currentVersion: number | undefined): number | undefined {
+    if (!ts.isIfStatement(statement)) {
+      return currentVersion;
+    }
+
+    const thenTerminates = this.statementAlwaysTerminates(statement.thenStatement);
+    const elseTerminates =
+      statement.elseStatement !== undefined && this.statementAlwaysTerminates(statement.elseStatement);
+
+    if (thenTerminates && !elseTerminates) {
+      return this.mergeVersions(currentVersion, this.getVersionWhenConditionIsFalse(statement.expression));
+    }
+
+    if (elseTerminates && !thenTerminates) {
+      return this.mergeVersions(currentVersion, this.getVersionWhenConditionIsTrue(statement.expression));
+    }
+
+    return currentVersion;
+  }
+
+  private statementAlwaysTerminates(statement: ts.Statement): boolean {
+    if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) {
+      return true;
+    }
+
+    if (ts.isBlock(statement)) {
+      return statement.statements.some((child) => this.statementAlwaysTerminates(child));
+    }
+
+    if (ts.isIfStatement(statement) && statement.elseStatement) {
+      return (
+        this.statementAlwaysTerminates(statement.thenStatement) &&
+        this.statementAlwaysTerminates(statement.elseStatement)
+      );
+    }
+
+    return false;
   }
 
   private visitVersionCondition(node: ts.Expression, currentVersion: number | undefined): number | undefined {
     if (ts.isParenthesizedExpression(node)) {
       return this.visitVersionCondition(node.expression, currentVersion);
+    }
+
+    if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken) {
+      this.visitVersionCondition(node.operand, currentVersion);
+      return this.getVersionWhenConditionIsFalse(node.operand);
     }
 
     if (this.isVersionIntrinsicCall(node) && ts.isCallExpression(node)) {
@@ -245,7 +361,64 @@ export class VersioningValidator {
       return this.mergeVersions(leftVersion, rightVersion);
     }
 
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.BarBarToken) {
+      const leftVersion = this.visitVersionCondition(node.left, currentVersion);
+      const rightVersion = this.visitVersionCondition(
+        node.right,
+        this.mergeVersions(currentVersion, this.getVersionWhenConditionIsFalse(node.left)),
+      );
+      return leftVersion === undefined || rightVersion === undefined ? undefined : Math.min(leftVersion, rightVersion);
+    }
+
     this.visit(node, currentVersion);
+    return undefined;
+  }
+
+  private getVersionWhenConditionIsTrue(node: ts.Expression): number | undefined {
+    if (ts.isParenthesizedExpression(node)) {
+      return this.getVersionWhenConditionIsTrue(node.expression);
+    }
+
+    if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken) {
+      return this.getVersionWhenConditionIsFalse(node.operand);
+    }
+
+    if (this.isVersionIntrinsicCall(node)) {
+      return this.getVersionIntrinsicArgument(node);
+    }
+
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+      return this.mergeVersions(
+        this.getVersionWhenConditionIsTrue(node.left),
+        this.getVersionWhenConditionIsTrue(node.right),
+      );
+    }
+
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.BarBarToken) {
+      const leftVersion = this.getVersionWhenConditionIsTrue(node.left);
+      const rightVersion = this.getVersionWhenConditionIsTrue(node.right);
+      return leftVersion === undefined || rightVersion === undefined ? undefined : Math.min(leftVersion, rightVersion);
+    }
+
+    return undefined;
+  }
+
+  private getVersionWhenConditionIsFalse(node: ts.Expression): number | undefined {
+    if (ts.isParenthesizedExpression(node)) {
+      return this.getVersionWhenConditionIsFalse(node.expression);
+    }
+
+    if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken) {
+      return this.getVersionWhenConditionIsTrue(node.operand);
+    }
+
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.BarBarToken) {
+      return this.mergeVersions(
+        this.getVersionWhenConditionIsFalse(node.left),
+        this.getVersionWhenConditionIsFalse(node.right),
+      );
+    }
+
     return undefined;
   }
 
@@ -263,8 +436,14 @@ export class VersioningValidator {
 
   private visitFunctionLikeDeclaration(node: ts.FunctionLikeDeclaration, currentVersion: number | undefined): void {
     const declaredVersion = this.getDeclarationVersion(node);
-    const effectiveDeclarationVersion = this.mergeVersions(this.nativeApiMinVersion, declaredVersion);
+    const effectiveDeclarationVersion = this.mergeVersions(currentVersion, declaredVersion);
     this.validateSignature(node, effectiveDeclarationVersion);
+
+    for (const parameter of node.parameters) {
+      if (ts.isObjectBindingPattern(parameter.name) || ts.isArrayBindingPattern(parameter.name)) {
+        this.visit(parameter.name, effectiveDeclarationVersion);
+      }
+    }
 
     if (node.body) {
       const bodyVersion =
@@ -280,25 +459,23 @@ export class VersioningValidator {
       return undefined;
     }
 
-    if (ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node) || ts.isSetAccessorDeclaration(node)) {
-      return this.getVersion(node);
+    if (
+      (ts.isFunctionExpression(node) || ts.isArrowFunction(node)) &&
+      (ts.isVariableDeclaration(node.parent) || ts.isPropertyDeclaration(node.parent))
+    ) {
+      node = node.parent;
     }
 
-    if (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node) || ts.isInterfaceDeclaration(node)) {
-      return this.getVersion(node);
-    }
-
-    if ((ts.isFunctionExpression(node) || ts.isArrowFunction(node)) && ts.isVariableDeclaration(node.parent)) {
-      return this.getVersion(node.parent);
-    }
-
-    return this.getVersion(node);
+    const declaredVersion = this.getVersion(node);
+    const containingDeclaration = this.getContainingContractDeclaration(this.getAnnotationNode(node));
+    return this.mergeVersions(declaredVersion, this.getVersion(containingDeclaration));
   }
 
   private isFunctionLikeDeclaration(node: ts.Node): node is ts.FunctionLikeDeclaration {
     return (
       ts.isFunctionDeclaration(node) ||
       ts.isMethodDeclaration(node) ||
+      ts.isConstructorDeclaration(node) ||
       ts.isGetAccessorDeclaration(node) ||
       ts.isSetAccessorDeclaration(node) ||
       ts.isFunctionExpression(node) ||
@@ -309,8 +486,12 @@ export class VersioningValidator {
   private validateContainerDeclaration(node: ts.InterfaceDeclaration | ts.ClassDeclaration): void {
     const containerVersion = this.mergeVersions(this.nativeApiMinVersion, this.getVersion(node));
 
-    if (node.heritageClauses) {
+    if (ts.isClassDeclaration(node) && node.heritageClauses) {
       for (const heritageClause of node.heritageClauses) {
+        if (heritageClause.token !== ts.SyntaxKind.ExtendsKeyword) {
+          continue;
+        }
+
         for (const type of heritageClause.types) {
           this.validateTypeNode(type, containerVersion, type);
         }
@@ -322,17 +503,16 @@ export class VersioningValidator {
         continue;
       }
 
-      const declaredMemberVersion = this.getVersion(member);
-      const memberVersion =
-        this.nativeApiMinVersion === undefined
-          ? declaredMemberVersion ?? containerVersion
-          : this.mergeVersions(containerVersion, declaredMemberVersion);
+      const memberVersion = this.mergeVersions(containerVersion, this.getDeclarationVersion(member));
       if (this.isSignatureMember(member)) {
         this.validateSignature(member, memberVersion);
         continue;
       }
 
-      if (ts.isPropertySignature(member) || ts.isPropertyDeclaration(member)) {
+      if (
+        (ts.isPropertySignature(member) || ts.isPropertyDeclaration(member)) &&
+        this.parseVersion(member) !== undefined
+      ) {
         this.validateTypeNode(member.type, memberVersion, member.type ?? member);
       }
     }
@@ -411,26 +591,118 @@ export class VersioningValidator {
     }
   }
 
+  private validateObjectBindingElement(node: ts.BindingElement, currentVersion: number | undefined): void {
+    if (node.dotDotDotToken) {
+      return;
+    }
+
+    const propertyName = node.propertyName ?? node.name;
+    const propertyNameText = this.getDestructuredPropertyName(propertyName);
+    if (propertyNameText === undefined) {
+      return;
+    }
+
+    const sourceType = this.typeChecker.getTypeAtLocation(node.parent);
+    const symbol = this.typeChecker.getPropertyOfType(sourceType, propertyNameText);
+    const requiredVersion = this.getVersionFromSymbol(symbol);
+    if (requiredVersion !== undefined) {
+      this.validateVersionedUse(propertyName, currentVersion, requiredVersion, `Property '${propertyNameText}'`);
+    }
+  }
+
+  private validateObjectDestructuringAssignment(
+    pattern: ts.ObjectLiteralExpression,
+    sourceType: ts.Type,
+    currentVersion: number | undefined,
+  ): void {
+    for (const element of pattern.properties) {
+      if (!ts.isShorthandPropertyAssignment(element) && !ts.isPropertyAssignment(element)) {
+        continue;
+      }
+
+      const propertyNameText = this.getDestructuredPropertyName(element.name);
+      if (propertyNameText === undefined) {
+        continue;
+      }
+
+      const symbol = this.typeChecker.getPropertyOfType(sourceType, propertyNameText);
+      const requiredVersion = this.getVersionFromSymbol(symbol);
+      if (requiredVersion !== undefined) {
+        this.validateVersionedUse(element.name, currentVersion, requiredVersion, `Property '${propertyNameText}'`);
+      }
+
+      if (ts.isPropertyAssignment(element) && ts.isObjectLiteralExpression(element.initializer) && symbol) {
+        const propertyType = this.typeChecker.getTypeOfSymbolAtLocation(symbol, element.name);
+        this.validateObjectDestructuringAssignment(element.initializer, propertyType, currentVersion);
+      }
+    }
+  }
+
+  private getDestructuredPropertyName(node: ts.PropertyName | ts.BindingName): string | undefined {
+    if (ts.isIdentifier(node) || ts.isStringLiteralLike(node) || ts.isNumericLiteral(node)) {
+      return node.text;
+    }
+
+    if (!ts.isComputedPropertyName(node)) {
+      return undefined;
+    }
+
+    const computedType = this.typeChecker.getTypeAtLocation(node.expression);
+    if (computedType.isStringLiteral()) {
+      return computedType.value;
+    }
+    if (computedType.isNumberLiteral()) {
+      return String(computedType.value);
+    }
+
+    return undefined;
+  }
+
   private validateCallExpression(node: ts.CallExpression, currentVersion: number | undefined): void {
     if (this.isVersionIntrinsicCall(node)) {
       return;
     }
 
-    const requiredVersion = this.getRequiredVersionForCall(node);
+    const requiredVersion = this.getRequiredVersionForInvocation(node);
     if (requiredVersion !== undefined) {
       this.validateVersionedUse(node.expression, currentVersion, requiredVersion, 'Function call');
     }
   }
 
-  private isCalleePropertyAccess(node: ts.PropertyAccessExpression): boolean {
-    return ts.isCallExpression(node.parent) && node.parent.expression === node;
+  private validateNewExpression(node: ts.NewExpression, currentVersion: number | undefined): void {
+    const requiredVersion = this.getRequiredVersionForInvocation(node);
+    if (requiredVersion !== undefined) {
+      this.validateVersionedUse(node.expression, currentVersion, requiredVersion, 'Constructor call');
+    }
   }
 
-  private getRequiredVersionForCall(node: ts.CallExpression): number | undefined {
-    let requiredVersion = this.getVersionFromSymbol(this.typeChecker.getSymbolAtLocation(node.expression));
+  private validateJsxComponent(node: ts.JsxOpeningLikeElement, currentVersion: number | undefined): void {
+    const requiredVersion = this.getRequiredVersionForInvocation(node);
+    if (requiredVersion !== undefined) {
+      this.validateVersionedUse(
+        node.tagName,
+        currentVersion,
+        requiredVersion,
+        `Component '${node.tagName.getText(this.sourceFile)}'`,
+      );
+    }
+  }
+
+  private isCalleePropertyAccess(node: ts.PropertyAccessExpression): boolean {
+    return (
+      ((ts.isCallExpression(node.parent) || ts.isNewExpression(node.parent)) && node.parent.expression === node) ||
+      ((ts.isJsxOpeningElement(node.parent) || ts.isJsxSelfClosingElement(node.parent)) && node.parent.tagName === node)
+    );
+  }
+
+  private getRequiredVersionForInvocation(
+    node: ts.CallExpression | ts.NewExpression | ts.JsxOpeningLikeElement,
+  ): number | undefined {
+    const expression = ts.isJsxOpeningLikeElement(node) ? node.tagName : node.expression;
+    let requiredVersion = this.getVersionFromSymbol(this.typeChecker.getSymbolAtLocation(expression));
 
     const signature = this.typeChecker.getResolvedSignature(node);
-    if (!signature) {
+    if (!signature?.declaration || signature.declaration.pos < 0) {
       return requiredVersion;
     }
 
