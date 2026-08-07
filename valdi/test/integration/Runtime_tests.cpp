@@ -2840,15 +2840,27 @@ TEST_P(RuntimeFixture, handlesTranslationsInLimitToViewport) {
     ASSERT_EQ(0.0, childViewNode->getTranslationY());
     ASSERT_TRUE(childViewNode->isVisibleInViewport());
 
-    auto renderFunc = Function<void(double, double)>([&](double translationX, double translationY) {
+    auto renderFunc = [&](Value translationX, Value translationY) {
         auto viewModel = makeShared<ValueMap>();
-        (*viewModel)[STRING_LITERAL("translationX")] = Value(translationX);
-        (*viewModel)[STRING_LITERAL("translationY")] = Value(translationY);
+        (*viewModel)[STRING_LITERAL("translationX")] = std::move(translationX);
+        (*viewModel)[STRING_LITERAL("translationY")] = std::move(translationY);
         wrapper.setViewModel(tree->getContext(), Value(std::move(viewModel)));
         wrapper.waitUntilAllUpdatesCompleted();
-    });
+    };
 
-    renderFunc(50, 50);
+    renderFunc(Value(STRING_LITERAL("40%")), Value(25.0));
+
+    ASSERT_EQ(20.0, childViewNode->getTranslationX());
+    ASSERT_EQ(25.0, childViewNode->getTranslationY());
+    ASSERT_TRUE(childViewNode->isVisibleInViewport());
+
+    renderFunc(Value(25.0), Value(STRING_LITERAL("-40%")));
+
+    ASSERT_EQ(25.0, childViewNode->getTranslationX());
+    ASSERT_EQ(-20.0, childViewNode->getTranslationY());
+    ASSERT_TRUE(childViewNode->isVisibleInViewport());
+
+    renderFunc(Value(50.0), Value(50.0));
 
     ASSERT_EQ(50.0, childViewNode->getTranslationX());
     ASSERT_EQ(50.0, childViewNode->getTranslationY());
@@ -2859,7 +2871,7 @@ TEST_P(RuntimeFixture, handlesTranslationsInLimitToViewport) {
             .addChild(DummyView("SCValdiView").addAttribute("translationX", 50.0).addAttribute("translationY", 50.0)),
         getRootView(tree));
 
-    renderFunc(100, 100);
+    renderFunc(Value(100.0), Value(100.0));
 
     ASSERT_EQ(100.0, childViewNode->getTranslationX());
     ASSERT_EQ(100.0, childViewNode->getTranslationY());
@@ -2867,7 +2879,7 @@ TEST_P(RuntimeFixture, handlesTranslationsInLimitToViewport) {
 
     ASSERT_EQ(DummyView("SCValdiView"), getRootView(tree));
 
-    renderFunc(99, 99);
+    renderFunc(Value(99.0), Value(99.0));
 
     ASSERT_EQ(99.0, childViewNode->getTranslationX());
     ASSERT_EQ(99.0, childViewNode->getTranslationY());

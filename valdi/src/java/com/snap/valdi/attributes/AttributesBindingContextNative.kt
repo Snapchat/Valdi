@@ -85,6 +85,10 @@ class AttributesBindingContextNative(viewClass: Class<*>,
         doBindAttribute(ATTRIBUTE_TYPE_COMPOSITE, name, false, delegate, parts.toTypedArray())
     }
 
+    fun bindTransformAttributes(delegate: ObjectAttributeHandlerDelegate) {
+        NativeBridge.bindTransformAttributes(nativeHandle, delegate)
+    }
+
     fun registerPreprocessor(attributeName: String, enableCache: Boolean, preprocessor: AttributePreprocessor) {
         NativeBridge.registerAttributePreprocessor(nativeHandle, attributeName, enableCache, preprocessor)
     }

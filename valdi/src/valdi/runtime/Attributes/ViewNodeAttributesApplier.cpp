@@ -9,6 +9,7 @@
 #include "valdi/runtime/Attributes/AttributeHandler.hpp"
 #include "valdi/runtime/Attributes/AttributesManager.hpp"
 #include "valdi/runtime/Attributes/BoundAttributes.hpp"
+#include "valdi/runtime/Attributes/ValueConverters.hpp"
 #include "valdi/runtime/Attributes/ViewNodeAttribute.hpp"
 #include "valdi/runtime/Context/ViewNode.hpp"
 
@@ -181,9 +182,29 @@ void ViewNodeAttributesApplier::processAttributeChange(ViewTransactionScope& vie
     }
 
     if (id == DefaultAttributeTranslationX) {
-        _viewNode->setTranslationX(attribute.getResolvedValue().toFloat());
+        auto value = attribute.getResolvedValue();
+        if (value.isNullOrUndefined()) {
+            _viewNode->setTranslationX(0, false);
+        } else {
+            auto translation = ValueConverter::toPercent(value);
+            if (!translation) {
+                onApplyAttributeFailed(id, translation.error());
+                return;
+            }
+            _viewNode->setTranslationX(static_cast<float>(translation.value().value), translation.value().isPercent);
+        }
     } else if (id == DefaultAttributeTranslationY) {
-        _viewNode->setTranslationY(attribute.getResolvedValue().toFloat());
+        auto value = attribute.getResolvedValue();
+        if (value.isNullOrUndefined()) {
+            _viewNode->setTranslationY(0, false);
+        } else {
+            auto translation = ValueConverter::toPercent(value);
+            if (!translation) {
+                onApplyAttributeFailed(id, translation.error());
+                return;
+            }
+            _viewNode->setTranslationY(static_cast<float>(translation.value().value), translation.value().isPercent);
+        }
     } else if (id == DefaultAttributeScaleX) {
         auto value = attribute.getResolvedValue();
         _viewNode->setScaleX(value.isNullOrUndefined() ? 1.0f : value.toFloat());

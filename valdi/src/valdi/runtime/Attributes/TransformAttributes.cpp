@@ -562,6 +562,7 @@ Value postprocessResolvedTransform(ResolvedTransform resolvedTransform,
     if (isRightToLeft) {
         components.translationX *= -1.0;
         components.rotation *= -1.0;
+        origin.x = width - origin.x;
     }
 
     if (origin.isCenter) {

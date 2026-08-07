@@ -1866,6 +1866,13 @@ jint ValdiAndroid::NativeBridge::bindAttribute(fbjni::alias_ref<fbjni::JClass> c
     return wrapper->bindAttributes(type, name, invalidateLayoutOnChange, delegate, compositeParts);
 }
 
+void ValdiAndroid::NativeBridge::bindTransformAttributes(fbjni::alias_ref<fbjni::JClass> clazz, // NOLINT
+                                                        jlong bindingContextHandle,
+                                                        jobject delegate) {
+    auto wrapper = getBindingContextWrapper(bindingContextHandle);
+    wrapper->bindTransformAttributes(delegate);
+}
+
 void ValdiAndroid::NativeBridge::bindScrollAttributes(fbjni::alias_ref<fbjni::JClass> clazz, // NOLINT
                                                       jlong bindingContextHandle) {
     auto wrapper = getBindingContextWrapper(bindingContextHandle);
@@ -2569,6 +2576,7 @@ void ValdiAndroid::NativeBridge::registerNatives() {
         makeNativeMethod("destroyContext", ValdiAndroid::NativeBridge::destroyContext),
         makeNativeMethod("forceBindAttributes", ValdiAndroid::NativeBridge::forceBindAttributes),
         makeNativeMethod("bindAttribute", ValdiAndroid::NativeBridge::bindAttribute),
+        makeNativeMethod("bindTransformAttributes", ValdiAndroid::NativeBridge::bindTransformAttributes),
         makeNativeMethod("bindScrollAttributes", ValdiAndroid::NativeBridge::bindScrollAttributes),
         makeNativeMethod("bindAssetAttributes", ValdiAndroid::NativeBridge::bindAssetAttributes),
         makeNativeMethod("setPlaceholderViewMeasureDelegate",

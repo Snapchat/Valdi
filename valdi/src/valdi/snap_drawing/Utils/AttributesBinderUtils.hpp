@@ -37,6 +37,8 @@ public:
     AttributeContext(const Valdi::Ref<Valdi::Animator>& animator, const Valdi::StringBox& attributeName);
     ~AttributeContext();
 
+    AttributeContext withAttributeName(const Valdi::StringBox& attributeName) const;
+
     template<typename T, typename V, typename Interpolator>
     void setAnimatableAttribute(T& view,
                                 V (T::*getter)() const,
@@ -75,6 +77,9 @@ public:
                                    return interpolateValue(from, to, ratio);
                                });
     }
+
+private:
+    AttributeContext(const Valdi::Shared<ValdiAnimator>& animator, const Valdi::StringBox& attributeName);
 };
 
 template<typename T>

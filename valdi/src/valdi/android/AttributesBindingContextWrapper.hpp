@@ -24,6 +24,8 @@ public:
 
     jint bindAttributes(jint type, jstring name, jboolean invalidateLayoutOnChange, jobject delegate, jobject parts);
 
+    void bindTransformAttributes(jobject delegate);
+
     void bindScrollAttributes();
 
     void bindAssetAttributes(snap::valdi_core::AssetOutputType assetOutputType);

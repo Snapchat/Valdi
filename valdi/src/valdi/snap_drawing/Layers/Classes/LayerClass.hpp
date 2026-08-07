@@ -48,29 +48,11 @@ public:
     void reset_opacity(Layer& view, const AttributeContext& context);
 
     // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-    Valdi::Result<Valdi::Void> apply_translationX(Layer& view, double value, const AttributeContext& context);
+    Valdi::Result<Valdi::Void> apply_transform(Layer& view,
+                                               const Valdi::Value& value,
+                                               const AttributeContext& context);
     // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-    void reset_translationX(Layer& view, const AttributeContext& context);
-
-    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-    Valdi::Result<Valdi::Void> apply_translationY(Layer& view, double value, const AttributeContext& context);
-    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-    void reset_translationY(Layer& view, const AttributeContext& context);
-
-    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-    Valdi::Result<Valdi::Void> apply_scaleX(Layer& view, double value, const AttributeContext& context);
-    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-    void reset_scaleX(Layer& view, const AttributeContext& context);
-
-    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-    Valdi::Result<Valdi::Void> apply_scaleY(Layer& view, double value, const AttributeContext& context);
-    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-    void reset_scaleY(Layer& view, const AttributeContext& context);
-
-    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-    Valdi::Result<Valdi::Void> apply_rotation(Layer& view, double value, const AttributeContext& context);
-    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
-    void reset_rotation(Layer& view, const AttributeContext& context);
+    void reset_transform(Layer& view, const AttributeContext& context);
 
     // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
     Valdi::Result<Valdi::Void> apply_slowClipping(Layer& view, bool value, const AttributeContext& context);
