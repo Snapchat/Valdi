@@ -26,6 +26,7 @@ import com.snap.valdi.utils.BitmapHandler
 import com.snap.valdi.views.ValdiAssetReceiver
 import com.snap.valdi.utils.ValdiMarshaller
 import com.snap.valdi.views.ValdiRecyclableView
+import com.snap.valdi.views.ValdiContextMovedListener
 import com.snap.valdi.views.ValdiRootView
 import com.snap.valdi.views.ValdiScrollableView
 import com.snap.valdi.views.ValdiTouchEventResult
@@ -44,8 +45,8 @@ class ViewRef(view: View, strong: Boolean, val support: ViewRefSupport): TypedRe
         ViewUtils.setValdiContext(view, valdiContext)
         ViewUtils.setViewNodeId(view, viewNodeId)
 
-        if (view is ValdiView) {
-            view.movedToValdiContext(valdiContext)
+        if (view is ValdiContextMovedListener) {
+            view.onMovedToValdiContext(valdiContext)
         }
     }
 
@@ -210,11 +211,11 @@ class ViewRef(view: View, strong: Boolean, val support: ViewRefSupport): TypedRe
     fun willEnqueueToPool() {
         val view = get() ?: return
 
-        ViewUtils.willEnqueueViewToPool(view)
-
         if (view is ValdiRecyclableView) {
             view.prepareForRecycling()
         }
+
+        ViewUtils.willEnqueueViewToPool(view)
     }
 
     private fun drawViewInCanvas(canvas: Canvas, bitmap: Bitmap, view: View, transform: Matrix?, shouldScale: Boolean) {

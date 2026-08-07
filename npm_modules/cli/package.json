@@ -22,7 +22,7 @@
   ],
   "scripts": {
     "prepare": "npm run build",
-    "prebuild": "node scripts/bundle-skills.js",
+    "prebuild": "node scripts/clean-dist.js && node scripts/bundle-skills.js",
     "build": "npm exec --package=typescript@5.9.2 tsc -- --project ./tsconfig.dist.json",
     "test": "tsx node_modules/jasmine/bin/jasmine",
     "watch": "tsc --watch",

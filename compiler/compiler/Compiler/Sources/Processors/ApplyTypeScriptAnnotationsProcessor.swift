@@ -179,11 +179,15 @@ final class ApplyTypeScriptAnnotationsProcessor: CompilationProcessor {
                     guard symbol.kind == TS.SyntaxKind.interfaceDeclaration else {
                         try throwAnnotationError(annotation, commentedFile, message: "@ViewModel must be on a TypeScript interface")
                     }
-                    if nativeCodeGenerationManager.hasViewModelSymbol(for: sourceURL) {
-                        try throwAnnotationError(annotation, commentedFile, message: "@ViewModel can only be placed once per file")
-                    }
-
-                    nativeCodeGenerationManager.addViewModelSymbol(sourceURL: sourceURL, symbol: symbol.text)
+                    // Prior versions rejected a second @ViewModel in a file to prevent silent
+                    // overwrite in the URL-keyed storage. Storage is now TypeKey-keyed, so
+                    // multiple @ViewModel interfaces in one file are fine as long as they're
+                    // bound to different Components (or none). The "one VM per Component"
+                    // invariant is enforced by `componentBinding` in NativeCodeGenerationManager.
+                    nativeCodeGenerationManager.addViewModelSymbol(
+                        sourceURL: sourceURL,
+                        compilationPath: commentedFile.src.compilationPath,
+                        symbol: symbol.text)
                 case .context:
                     guard isTSorTSX || documentAndIndex != nil else {
                         try throwAnnotationError(annotation, commentedFile, message: "@Context must be set in a .vue, .ts, or .tsx file")
@@ -191,11 +195,10 @@ final class ApplyTypeScriptAnnotationsProcessor: CompilationProcessor {
                     guard symbol.kind == TS.SyntaxKind.interfaceDeclaration else {
                         try throwAnnotationError(annotation, commentedFile, message: "@Context must be on a TypeScript interface")
                     }
-                    if nativeCodeGenerationManager.hasContextSymbol(for: sourceURL) {
-                        try throwAnnotationError(annotation, commentedFile, message: "@Context can only be placed once per vue file")
-                    }
-
-                    nativeCodeGenerationManager.addContextSymbol(sourceURL: sourceURL, symbol: symbol.text)
+                    nativeCodeGenerationManager.addContextSymbol(
+                        sourceURL: sourceURL,
+                        compilationPath: commentedFile.src.compilationPath,
+                        symbol: symbol.text)
                 case .constructorOmitted:
                     // ConstructorOmitted annotations get processed as part of @GenerateNativeClass
                     break
@@ -303,6 +306,87 @@ final class ApplyTypeScriptAnnotationsProcessor: CompilationProcessor {
         }
 
         document.template?.jsComponentClass = symbol.text
+
+        // Register the Component ⇄ VM/Ctx binding so that VM/Ctx nativeClass generation
+        // can attach models to this Component's document, even when they live in
+        // different files. Two sources feed this:
+        //   1. Explicit `viewModel:` / `context:` annotation params (cross-file support).
+        //   2. Sugar fallback: for canonical Component / StatefulComponent base classes,
+        //      read the type arguments of `extends Component<VM, Ctx>` directly.
+        //      Preserves zero-TS-change behavior for existing same-file Components.
+        let vmKey = try resolveComponentBoundKey(paramName: "viewModel",
+                                                  commentedFile: commentedFile,
+                                                  annotation: annotation,
+                                                  symbol: symbol,
+                                                  slotFor: { $0.vmSlot })
+        let ctxKey = try resolveComponentBoundKey(paramName: "context",
+                                                   commentedFile: commentedFile,
+                                                   annotation: annotation,
+                                                   symbol: symbol,
+                                                   slotFor: { $0.ctxSlot })
+
+        nativeCodeGenerationManager.registerComponentBinding(ComponentBindingInfo(
+            componentSourceURL: sourceURL,
+            componentSymbolName: symbol.text,
+            viewModelKey: vmKey,
+            contextKey: ctxKey))
+    }
+
+    /// Resolves either the ViewModel or Context binding for a `@Component` class.
+    ///
+    /// Preference order:
+    ///   1. If the annotation carries an explicit param (`viewModel: 'X'` /
+    ///      `context: 'X'`), resolve the identifier via `commentedFile.references`.
+    ///      Errors loudly if the identifier isn't visible in the file.
+    ///   2. Otherwise, if the Component's base class is in `ComponentBaseRegistry.slots`,
+    ///      pick the type argument at the appropriate slot. Skipped silently when the
+    ///      slot doesn't exist (e.g. Context on a `Component<VM>` without a second arg).
+    ///
+    /// Returns nil when neither path produces a binding — leaving the Component with
+    /// no VM/Ctx of that kind (a legitimate configuration for context-less Components).
+    private func resolveComponentBoundKey(paramName: String,
+                                          commentedFile: TypeScriptCommentedFile,
+                                          annotation: ValdiTypeScriptAnnotation,
+                                          symbol: TS.DumpedSymbolWithComments,
+                                          slotFor: (ComponentBaseSlots) -> Int?) throws -> TSSymbolKey? {
+        // Explicit param wins. Two resolution paths: (1) the identifier is imported or
+        // otherwise referenced as a type in the file — it lands in commentedFile.references
+        // and we can take the target file straight from there; (2) the identifier is a
+        // local declaration in the same file that isn't referenced as a type elsewhere
+        // (rare with the current codegen surface, but possible with a custom Component
+        // base class), which the companion dumps in annotatedSymbols but not in references.
+        if let identifier = annotation.parameters?[paramName]?.nonEmpty {
+            if let ref = commentedFile.references.first(where: { $0.name == identifier }) {
+                return TSSymbolKey.make(fileName: ref.fileName, symbolName: ref.name)
+            }
+            if commentedFile.annotatedSymbols.contains(where: { $0.symbol.text == identifier }) {
+                return TSSymbolKey.make(fileName: commentedFile.src.compilationPath, symbolName: identifier)
+            }
+            try throwAnnotationError(annotation, commentedFile, message: "@Component \(paramName): '\(identifier)' — '\(identifier)' is not visible in this file. Import '\(identifier)' from another module, or declare it in this file with the appropriate annotation.")
+        }
+
+        // Sugar fallback via base class type arguments.
+        guard let interface = symbol.interface else { return nil }
+        guard let baseSupertype = interface.supertypes?.first else { return nil }
+        guard let baseTypeRefIndex = baseSupertype.type.typeReferenceIndex,
+              baseTypeRefIndex >= 0, baseTypeRefIndex < commentedFile.references.count else {
+            return nil
+        }
+        let baseName = commentedFile.references[baseTypeRefIndex].name
+        guard let baseSlots = ComponentBaseRegistry.slots[baseName] else { return nil }
+        guard let slotIndex = slotFor(baseSlots) else { return nil }
+
+        let typeArgs = baseSupertype.type.typeArguments ?? []
+        guard slotIndex >= 0, slotIndex < typeArgs.count else { return nil }
+        let arg = typeArgs[slotIndex].type
+        guard let refIndex = arg.typeReferenceIndex,
+              refIndex >= 0, refIndex < commentedFile.references.count else {
+            // Inline type literal or unknown shape — silently skip; explicit params
+            // remain the way out for callers with unusual type args.
+            return nil
+        }
+        let ref = commentedFile.references[refIndex]
+        return TSSymbolKey.make(fileName: ref.fileName, symbolName: ref.name)
     }
 
     private func processAction(commentedFile: TypeScriptCommentedFile, annotation: ValdiTypeScriptAnnotation, actionDeclaration: TS.AST.PropertyLikeDeclaration, actions: inout [ValdiAction]) throws {

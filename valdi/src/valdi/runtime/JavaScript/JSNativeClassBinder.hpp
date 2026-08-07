@@ -49,10 +49,18 @@ template<typename T>
 inline constexpr bool kIsRequiredPrimitive = kIsOptionalPrimitive<T> || std::is_same_v<T, int64_t>;
 
 template<typename T>
+inline constexpr bool kIsRequiredObjectType = std::is_same_v<T, StaticString> || std::is_same_v<T, RefCountable>;
+
+template<typename T>
+inline constexpr bool kIsRequiredObjectReference =
+    std::is_lvalue_reference_v<T> && kIsRequiredObjectType<RemoveCVRef<T>>;
+
+template<typename T>
 inline constexpr bool kIsSupportedParameter =
     std::is_same_v<T, Value> || std::is_same_v<T, StringBox> || std::is_same_v<T, Ref<StaticString>> ||
     kIsRequiredPrimitive<T> || std::is_same_v<T, JSTypedArray> || std::is_same_v<T, BytesView> ||
-    std::is_same_v<T, Ref<RefCountable>> || std::is_same_v<T, JSValue> || kIsSupportedOptional<T>;
+    std::is_same_v<T, Ref<RefCountable>> || std::is_same_v<T, JSValue> || kIsSupportedOptional<T> ||
+    kIsRequiredObjectType<T>;
 
 template<typename T>
 inline constexpr bool kIsSupportedResult =
@@ -62,7 +70,18 @@ inline constexpr bool kIsSupportedResult =
 
 template<typename T>
 inline constexpr bool kIsSupportedParameterForm =
-    !std::is_rvalue_reference_v<T> && (!std::is_lvalue_reference_v<T> || std::is_const_v<std::remove_reference_t<T>>);
+    !std::is_rvalue_reference_v<T> &&
+    (!std::is_lvalue_reference_v<T> || std::is_const_v<std::remove_reference_t<T>> || kIsRequiredObjectReference<T>);
+
+template<typename T, bool isRequiredObjectReference = kIsRequiredObjectReference<T>>
+struct ParsedArgument {
+    using Type = RemoveCVRef<T>;
+};
+
+template<typename T>
+struct ParsedArgument<T, true> {
+    using Type = Ref<RemoveCVRef<T>>;
+};
 
 template<typename T>
 struct MemberFunctionTraits {
@@ -133,13 +152,15 @@ struct ParsedTuple;
 
 template<typename... Arguments>
 struct ParsedTuple<std::tuple<Arguments...>> {
-    using Type = std::tuple<RemoveCVRef<Arguments>...>;
+    using Type = std::tuple<typename ParsedArgument<Arguments>::Type...>;
 };
 
 template<typename Tuple, size_t... indices>
 constexpr bool hasSupportedParameters(std::index_sequence<indices...> /*unused*/) {
     return (kIsSupportedParameter<RemoveCVRef<std::tuple_element_t<indices, Tuple>>> && ...) &&
-           (kIsSupportedParameterForm<std::tuple_element_t<indices, Tuple>> && ...);
+           (kIsSupportedParameterForm<std::tuple_element_t<indices, Tuple>> && ...) &&
+           ((!kIsRequiredObjectType<RemoveCVRef<std::tuple_element_t<indices, Tuple>>> ||
+             kIsRequiredObjectReference<std::tuple_element_t<indices, Tuple>>) && ...);
 }
 
 template<typename Traits>
@@ -186,13 +207,31 @@ inline T parsePrimitive(JSFunctionNativeCallContext& callContext, size_t index) 
 }
 
 template<typename Argument>
-inline RemoveCVRef<Argument> parseArgument(JSFunctionNativeCallContext& callContext, size_t index) {
+inline typename ParsedArgument<Argument>::Type parseArgument(JSFunctionNativeCallContext& callContext, size_t index) {
     using T = RemoveCVRef<Argument>;
+    using Parsed = typename ParsedArgument<Argument>::Type;
     static_assert(kIsSupportedParameter<T>, "Unsupported native class parameter type");
     static_assert(kIsSupportedParameterForm<Argument>,
-                  "Native class parameters must be passed by value or const reference");
+                  "Native class parameters must be passed by value, const reference, or required object reference");
 
-    if constexpr (kIsRequiredPrimitive<T>) {
+    if constexpr (kIsRequiredObjectReference<Argument>) {
+        if (isParameterNullOrUndefined(callContext, index)) {
+            callContext.getExceptionTracker().onError("Native class reference argument cannot be null or undefined");
+            return Parsed();
+        }
+
+        Parsed parsed;
+        if constexpr (std::is_same_v<T, StaticString>) {
+            parsed = callContext.getParameterAsStaticString(index);
+        } else {
+            parsed = callContext.getParameterAsWrappedObject(index);
+        }
+
+        if (parsed == nullptr && callContext.getExceptionTracker()) {
+            callContext.getExceptionTracker().onError("Native class reference argument is invalid");
+        }
+        return parsed;
+    } else if constexpr (kIsRequiredPrimitive<T>) {
         if (isParameterNullOrUndefined(callContext, index)) {
             callContext.getExceptionTracker().onError("Native class primitive argument cannot be null or undefined");
             return T();
@@ -208,6 +247,12 @@ inline RemoveCVRef<Argument> parseArgument(JSFunctionNativeCallContext& callCont
         return callContext.getParameterAsValue(index);
     } else if constexpr (std::is_same_v<T, JSValue>) {
         return callContext.getParameter(index);
+    } else if constexpr (std::is_same_v<T, JSTypedArray>) {
+        if (isParameterNullOrUndefined(callContext, index)) {
+            callContext.getExceptionTracker().onError("Native class typed array argument cannot be null or undefined");
+            return T();
+        }
+        return callContext.getParameterAsTypedArray(index);
     } else {
         if (isParameterNullOrUndefined(callContext, index)) {
             return T();
@@ -217,8 +262,6 @@ inline RemoveCVRef<Argument> parseArgument(JSFunctionNativeCallContext& callCont
             return callContext.getParameterAsString(index);
         } else if constexpr (std::is_same_v<T, Ref<StaticString>>) {
             return callContext.getParameterAsStaticString(index);
-        } else if constexpr (std::is_same_v<T, JSTypedArray>) {
-            return callContext.getParameterAsTypedArray(index);
         } else if constexpr (std::is_same_v<T, BytesView>) {
             return callContext.getParameterAsBytesView(index);
         } else if constexpr (std::is_same_v<T, Ref<RefCountable>>) {
@@ -245,7 +288,9 @@ inline bool parseArguments(JSFunctionNativeCallContext& callContext, ParsedArgum
 
 template<typename Argument, typename Parsed>
 inline decltype(auto) forwardArgument(Parsed& parsed) {
-    if constexpr (std::is_lvalue_reference_v<Argument>) {
+    if constexpr (kIsRequiredObjectReference<Argument>) {
+        return static_cast<Argument>(*parsed);
+    } else if constexpr (std::is_lvalue_reference_v<Argument>) {
         return static_cast<Argument>(parsed);
     } else {
         return static_cast<RemoveCVRef<Argument>&&>(parsed);

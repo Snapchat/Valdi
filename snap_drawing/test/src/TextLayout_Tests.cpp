@@ -1,14 +1,23 @@
 #include <gtest/gtest.h>
 
+#include "snap_drawing/cpp/Layers/EditableTextLayer.hpp"
+#include "snap_drawing/cpp/Layers/TextLayer.hpp"
+#include "snap_drawing/cpp/Resources.hpp"
+#include "snap_drawing/cpp/Text/AttributedText.hpp"
 #include "snap_drawing/cpp/Text/FontManager.hpp"
 #include "snap_drawing/cpp/Text/TextLayout.hpp"
 #include "snap_drawing/cpp/Text/TextLayoutBuilder.hpp"
 #include "snap_drawing/cpp/Text/TextShaper.hpp"
 #include "snap_drawing/cpp/Utils/JSONUtils.hpp"
 #include "snap_drawing/cpp/Utils/UTFUtils.hpp"
+#include "valdi/snap_drawing/Layers/Classes/EditableTextLayerClass.hpp"
+#include "valdi/snap_drawing/Layers/Classes/LayerClass.hpp"
+#include "valdi/snap_drawing/Layers/Classes/TextLayerClass.hpp"
+#include "valdi_core/cpp/Attributes/TextInlineAttachment.hpp"
 #include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
 
 #include "TestDataUtils.hpp"
+#include "TestFontUtils.hpp"
 #include "hb.h"
 
 using namespace Valdi;
@@ -18,34 +27,25 @@ namespace snap::drawing {
 struct TextLayoutTestContainer {
     Ref<FontManager> fontManager;
 
-    Ref<Font> avenirNext;
+    Ref<Font> primaryFont;
     Ref<Font> arabicFont;
 
     TextLayoutTestContainer() {
         fontManager = makeShared<FontManager>(ConsoleLogger::getLogger());
         fontManager->load();
 
-        avenirNext = registerFont("Montserrat",
-                                  FontStyle(FontWidthNormal, FontWeightNormal, FontSlantUpright),
-                                  "Montserrat-Regular",
-                                  "montserrat_regular",
-                                  false);
+        primaryFont = loadTestFont(fontManager,
+                                   "Test Sans",
+                                   FontStyle(FontWidthNormal, FontWeightNormal, FontSlantUpright),
+                                   "NotoSans-Regular.ttf");
 
         auto arabicText = utf8ToUnicode("ر");
         SC_ASSERT(arabicText.size() == 1);
 
-        auto arabicFont = fontManager->getCompatibleFont(avenirNext, nullptr, 0, arabicText[0]);
+        auto arabicFont = fontManager->getCompatibleFont(primaryFont, nullptr, 0, arabicText[0]);
         SC_ASSERT(arabicFont.success(), arabicFont.description());
         this->arabicFont = arabicFont.moveValue();
-        SC_ASSERT(this->avenirNext->getDescription() != this->arabicFont->getDescription());
-    }
-
-    Ref<Font> getFontWithName(std::string_view fontName) {
-        auto font =
-            fontManager->getFontWithNameAndSize(Valdi::StringCache::getGlobal().makeString(fontName), 17, 1.0, true);
-        SC_ASSERT(font.success(), font.description());
-
-        return font.moveValue();
+        SC_ASSERT(this->primaryFont->getDescription() != this->arabicFont->getDescription());
     }
 
     Ref<Font> registerFont(std::string_view fontFamilyName,
@@ -59,28 +59,57 @@ struct TextLayoutTestContainer {
         fontManager->registerTypeface(
             Valdi::StringCache::getGlobal().makeString(fontFamilyName), fontStyle, canUseAsFallback, testData.value());
 
-        return getFontWithName(fontName);
+        auto font =
+            fontManager->getFontWithNameAndSize(Valdi::StringCache::getGlobal().makeString(fontName), 17, 1.0, true);
+        SC_ASSERT(font.success(), font.description());
+        return font.moveValue();
     }
 
     Ref<Font> getAppleEmojiFont() {
-        return getFontWithName("Apple Color Emoji");
+        auto font = fontManager->getFontWithNameAndSize(
+            Valdi::StringCache::getGlobal().makeString(std::string_view("Apple Color Emoji")), 17, 1.0, true);
+        SC_ASSERT(font.success(), font.description());
+        return font.moveValue();
     }
 
     Ref<Font> getDevanagariFont() {
-        return getFontWithName("Kohinoor Devanagari");
+        auto font = fontManager->getFontWithNameAndSize(
+            Valdi::StringCache::getGlobal().makeString(std::string_view("Kohinoor Devanagari")), 17, 1.0, true);
+        SC_ASSERT(font.success(), font.description());
+        return font.moveValue();
     }
 
     Ref<Font> getSinhalaFont() {
-        return getFontWithName("Sinhala Sangam MN");
+        auto font = fontManager->getFontWithNameAndSize(
+            Valdi::StringCache::getGlobal().makeString(std::string_view("Sinhala Sangam MN")), 17, 1.0, true);
+        SC_ASSERT(font.success(), font.description());
+        return font.moveValue();
     }
+};
+
+class MutableInlineAttachment final : public TextInlineAttachment {
+public:
+    MutableInlineAttachment(size_t childIndex, const Valdi::Size& size)
+        : TextInlineAttachment(childIndex), _size(size) {}
+
+    Valdi::Size getSize() const override {
+        return _size;
+    }
+
+    void setSize(const Valdi::Size& size) {
+        _size = size;
+    }
+
+private:
+    Valdi::Size _size;
 };
 
 Valdi::Value makeTextLayoutJSON(Size maxSize,
                                 std::initializer_list<TextLayoutEntry> entries,
-                                std::initializer_list<TextLayoutDecorationEntry> decorations = {}) {
+                                std::initializer_list<TextLayoutVisualEntry> visualEntries = {}) {
     return TextLayout(maxSize,
                       std::vector<TextLayoutEntry>(entries),
-                      std::vector<TextLayoutDecorationEntry>(decorations),
+                      std::vector<TextLayoutVisualEntry>(visualEntries),
                       {},
                       true)
         .toJSONValue();
@@ -398,10 +427,10 @@ TEST(TextLayout, canBeConvertedToJSON) {
                       Value()
                           .setMapValue("bounds", toJSONValue(segmentsBounds))
                           .setMapValue("characters", Value("Hello world"))
-                          .setMapValue("font", Value("Montserrat 17 x1")));
+                          .setMapValue("font", Value(testContainer.primaryFont->getDescription())));
 
-    auto decorations = ValueArray::make(1);
-    decorations->emplace(
+    auto visualEntries = ValueArray::make(1);
+    visualEntries->emplace(
         0, Value().setMapValue("bounds", toJSONValue(decorationBounds)).setMapValue("predraw", Value(true)));
 
     auto entries = ValueArray::make(1);
@@ -411,23 +440,23 @@ TEST(TextLayout, canBeConvertedToJSON) {
     auto expectedJSON = Value()
                             .setMapValue("maxSize", toJSONValue(size))
                             .setMapValue("entries", Value(entries))
-                            .setMapValue("decorations", Value(decorations));
+                            .setMapValue("visualEntries", Value(visualEntries));
 
     ASSERT_EQ(expectedJSON,
               makeTextLayoutJSON(
                   size,
                   {TextLayoutEntry(bounds,
                                    std::nullopt,
-                                   {TextLayoutEntrySegment(segmentsBounds, testContainer.avenirNext, "Hello world")})},
-                  {TextLayoutDecorationEntry(decorationBounds, true, std::nullopt)}));
+                                   {TextLayoutEntrySegment(segmentsBounds, testContainer.primaryFont, "Hello world")})},
+                  {TextLayoutVisualEntry(decorationBounds, true, std::nullopt, TextLayoutDecorationStyleSolid)}));
 
     ASSERT_NE(
         expectedJSON,
         makeTextLayoutJSON(
             size,
             {TextLayoutEntry(
-                bounds, std::nullopt, {TextLayoutEntrySegment(segmentsBounds, testContainer.avenirNext, "Not good")})},
-            {TextLayoutDecorationEntry(decorationBounds, true, std::nullopt)}));
+                bounds, std::nullopt, {TextLayoutEntrySegment(segmentsBounds, testContainer.primaryFont, "Not good")})},
+            {TextLayoutVisualEntry(decorationBounds, true, std::nullopt, TextLayoutDecorationStyleSolid)}));
 
     ASSERT_NE(
         expectedJSON,
@@ -435,7 +464,7 @@ TEST(TextLayout, canBeConvertedToJSON) {
             size,
             {TextLayoutEntry(bounds,
                              std::nullopt,
-                             {TextLayoutEntrySegment(segmentsBounds, testContainer.avenirNext, "Hello world")})}));
+                             {TextLayoutEntrySegment(segmentsBounds, testContainer.primaryFont, "Hello world")})}));
 
     ASSERT_NE(
         expectedJSON,
@@ -443,54 +472,203 @@ TEST(TextLayout, canBeConvertedToJSON) {
             size,
             {TextLayoutEntry(bounds,
                              std::nullopt,
-                             {TextLayoutEntrySegment(segmentsBounds, testContainer.avenirNext, "Hello world")})}));
+                             {TextLayoutEntrySegment(segmentsBounds, testContainer.primaryFont, "Hello world")})}));
 
     ASSERT_NE(expectedJSON,
-              makeTextLayoutJSON(size,
-                                 {TextLayoutEntry(bounds, std::nullopt, {})},
-                                 {TextLayoutDecorationEntry(decorationBounds, true, std::nullopt)}));
+              makeTextLayoutJSON(
+                  size,
+                  {TextLayoutEntry(bounds, std::nullopt, {})},
+                  {TextLayoutVisualEntry(decorationBounds, true, std::nullopt, TextLayoutDecorationStyleSolid)}));
 
     ASSERT_NE(expectedJSON,
               makeTextLayoutJSON(
                   size,
                   {TextLayoutEntry(Rect::makeXYWH(0, 0, 0, 0),
                                    std::nullopt,
-                                   {TextLayoutEntrySegment(segmentsBounds, testContainer.avenirNext, "Hello world")})},
-                  {TextLayoutDecorationEntry(decorationBounds, true, std::nullopt)}));
+                                   {TextLayoutEntrySegment(segmentsBounds, testContainer.primaryFont, "Hello world")})},
+                  {TextLayoutVisualEntry(decorationBounds, true, std::nullopt, TextLayoutDecorationStyleSolid)}));
 }
 
 TEST(TextLayout, canLayoutSingleLine) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(10000, 10000);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 1, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 1, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("Hello World!", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
+    builder.append(
+        "Hello World!", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationNone);
 
     auto layout = builder.build();
 
     ASSERT_TRUE(layout->fitsInMaxSize());
 
-    auto expectedBounds = Rect::makeXYWH(0, 0, 97.0, 23.222000);
+    auto expectedBounds = Rect::makeXYWH(0, 0, 97.0, 23.154000);
     auto segmentBounds = expectedBounds;
 
-    ASSERT_EQ(makeTextLayoutJSON(
-                  maxSize,
-                  {TextLayoutEntry(expectedBounds,
-                                   std::nullopt,
-                                   {TextLayoutEntrySegment(segmentBounds, testContainer.avenirNext, "Hello World!")})}),
-              layout->toJSONValue());
+    ASSERT_EQ(
+        makeTextLayoutJSON(
+            maxSize,
+            {TextLayoutEntry(expectedBounds,
+                             std::nullopt,
+                             {TextLayoutEntrySegment(segmentBounds, testContainer.primaryFont, "Hello World!")})}),
+        layout->toJSONValue());
+}
+
+TEST(TextLayout, canLayoutDashedUnderlineDecoration) {
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(10000, 10000);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 1, testContainer.fontManager, false, 1.0f);
+
+    builder.append(
+        "Hello", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationDashedUnderline);
+
+    auto layout = builder.build();
+    const auto& visualEntries = layout->getVisualEntries();
+
+    ASSERT_EQ(static_cast<size_t>(1), visualEntries.size());
+    ASSERT_EQ(TextLayoutVisualEntryKindDecoration, visualEntries[0].kind);
+    ASSERT_EQ(TextLayoutDecorationStyleDashed, visualEntries[0].style);
+    ASSERT_TRUE(visualEntries[0].predraw);
+    ASSERT_NEAR(testContainer.primaryFont->metrics().underlineThickness, visualEntries[0].bounds.height(), 0.0001f);
+}
+
+TEST(TextLayout, canLayoutDottedUnderlineDecoration) {
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(10000, 10000);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 1, testContainer.fontManager, false, 1.0f);
+
+    builder.append(
+        "Hello", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationDottedUnderline);
+
+    auto layout = builder.build();
+    const auto& visualEntries = layout->getVisualEntries();
+
+    ASSERT_EQ(static_cast<size_t>(1), visualEntries.size());
+    ASSERT_EQ(TextLayoutVisualEntryKindDecoration, visualEntries[0].kind);
+    ASSERT_EQ(TextLayoutDecorationStyleDotted, visualEntries[0].style);
+    ASSERT_TRUE(visualEntries[0].predraw);
+    ASSERT_NEAR(2.0f, visualEntries[0].bounds.height(), 0.0001f);
+    ASSERT_NEAR(-testContainer.primaryFont->metrics().ascent + 2.5f,
+                visualEntries[0].bounds.y() + visualEntries[0].bounds.height() / 2.0f,
+                0.0001f);
+}
+
+TEST(TextLayout, canLayoutCustomUnderlineDecoration) {
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(10000, 10000);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 1, testContainer.fontManager, false, 1.0f);
+    TextCustomUnderlineStyle style(1.0f, 1.0f, 1.0f, -2.0f);
+
+    builder.append("Hello",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationDottedUnderline,
+                   nullptr,
+                   std::nullopt,
+                   std::nullopt,
+                   style);
+
+    auto layout = builder.build();
+    const auto& visualEntries = layout->getVisualEntries();
+    const auto& metrics = testContainer.primaryFont->metrics();
+
+    ASSERT_EQ(static_cast<size_t>(1), visualEntries.size());
+    ASSERT_EQ(TextLayoutVisualEntryKindDecoration, visualEntries[0].kind);
+    ASSERT_TRUE(visualEntries[0].customUnderlineStyle.has_value());
+    ASSERT_EQ(style, visualEntries[0].customUnderlineStyle.value());
+    ASSERT_NEAR(1.0f, visualEntries[0].bounds.height(), 0.0001f);
+    ASSERT_NEAR(-metrics.ascent + metrics.descent / 2.0f - 2.0f,
+                visualEntries[0].bounds.y() + visualEntries[0].bounds.height() / 2.0f,
+                0.0001f);
+}
+
+TEST(TextLayout, customUnderlineHeightDoesNotMoveDecorationCenter) {
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(10000, 10000);
+    TextLayoutBuilder thinBuilder(
+        TextAlignLeft, TextOverflowEllipsis, maxSize, 1, testContainer.fontManager, false, 1.0f);
+    TextLayoutBuilder thickBuilder(
+        TextAlignLeft, TextOverflowEllipsis, maxSize, 1, testContainer.fontManager, false, 1.0f);
+    TextCustomUnderlineStyle thinStyle(1.0f, 0.0f, 0.0f, -2.0f);
+    TextCustomUnderlineStyle thickStyle(8.0f, 0.0f, 0.0f, -2.0f);
+
+    thinBuilder.append("Hello",
+                       testContainer.primaryFont,
+                       TextLayoutLineHeight::multiple(1.0),
+                       0.0,
+                       TextDecorationUnderline,
+                       nullptr,
+                       std::nullopt,
+                       std::nullopt,
+                       thinStyle);
+    thickBuilder.append("Hello",
+                        testContainer.primaryFont,
+                        TextLayoutLineHeight::multiple(1.0),
+                        0.0,
+                        TextDecorationUnderline,
+                        nullptr,
+                        std::nullopt,
+                        std::nullopt,
+                        thickStyle);
+
+    auto thinLayout = thinBuilder.build();
+    auto thickLayout = thickBuilder.build();
+    const auto& thinEntries = thinLayout->getVisualEntries();
+    const auto& thickEntries = thickLayout->getVisualEntries();
+
+    ASSERT_EQ(static_cast<size_t>(1), thinEntries.size());
+    ASSERT_EQ(static_cast<size_t>(1), thickEntries.size());
+    ASSERT_NEAR(1.0f, thinEntries[0].bounds.height(), 0.0001f);
+    ASSERT_NEAR(8.0f, thickEntries[0].bounds.height(), 0.0001f);
+    ASSERT_NEAR(thinEntries[0].bounds.y() + thinEntries[0].bounds.height() / 2.0f,
+                thickEntries[0].bounds.y() + thickEntries[0].bounds.height() / 2.0f,
+                0.0001f);
+}
+
+TEST(TextLayout, canLayoutCustomSolidUnderlineDecoration) {
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(10000, 10000);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 1, testContainer.fontManager, false, 1.0f);
+    TextCustomUnderlineStyle style(1.0f, 0.0f, 0.0f, -2.0f);
+
+    builder.append("Hello",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationUnderline,
+                   nullptr,
+                   std::nullopt,
+                   std::nullopt,
+                   style);
+
+    auto layout = builder.build();
+    const auto& visualEntries = layout->getVisualEntries();
+
+    ASSERT_EQ(static_cast<size_t>(1), visualEntries.size());
+    ASSERT_TRUE(visualEntries[0].customUnderlineStyle.has_value());
+    ASSERT_FALSE(visualEntries[0].customUnderlineStyle->isPatterned());
+    ASSERT_NEAR(1.0f, visualEntries[0].bounds.height(), 0.0001f);
 }
 
 TEST(TextLayout, canLayoutMultipleLinesWithExplicitNewLines) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(10000, 10000);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("Hello world\nand welcome!", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
+    builder.append("Hello world\nand welcome!",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone);
 
     auto layout = builder.build();
 
@@ -500,13 +678,13 @@ TEST(TextLayout, canLayoutMultipleLinesWithExplicitNewLines) {
         makeTextLayoutJSON(
             maxSize,
             {TextLayoutEntry(
-                Rect::makeXYWH(0, 0, 111.000000, 46.444000),
+                Rect::makeXYWH(0, 0, 111.000000, 46.308000),
                 std::nullopt,
                 {
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(0, 0.0, 88.000000, 23.222), testContainer.avenirNext, "Hello world"),
+                        Rect::makeXYWH(0, 0.0, 89.000000, 23.154000), testContainer.primaryFont, "Hello world"),
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(0, 23.222000, 111.000000, 23.222), testContainer.avenirNext, "and welcome!"),
+                        Rect::makeXYWH(0, 23.154000, 111.000000, 23.154000), testContainer.primaryFont, "and welcome!"),
                 })}),
         layout->toJSONValue());
 }
@@ -515,34 +693,40 @@ TEST(TextLayout, canLayoutWithExplicitTrailingNewLines) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(10000, 10000);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("Hello world\n\n\n", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
+    builder.append(
+        "Hello world\n\n\n", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationNone);
 
     auto layout = builder.build();
 
     ASSERT_TRUE(layout->fitsInMaxSize());
 
-    ASSERT_EQ(makeTextLayoutJSON(maxSize,
-                                 {TextLayoutEntry(Rect::makeXYWH(0, 0, 88.000000, 92.888000),
-                                                  std::nullopt,
-                                                  {
-                                                      TextLayoutEntrySegment(Rect::makeXYWH(0, 0.0, 88.000000, 23.222),
-                                                                             testContainer.avenirNext,
-                                                                             "Hello world"),
-                                                  })}),
-              layout->toJSONValue());
+    ASSERT_EQ(
+        makeTextLayoutJSON(maxSize,
+                           {TextLayoutEntry(Rect::makeXYWH(0, 0, 89.000000, 92.616000),
+                                            std::nullopt,
+                                            {
+                                                TextLayoutEntrySegment(Rect::makeXYWH(0, 0.0, 89.000000, 23.154000),
+                                                                       testContainer.primaryFont,
+                                                                       "Hello world"),
+                                            })}),
+        layout->toJSONValue());
 }
 
 TEST(TextLayout, canLayoutMultipleLinesByWordBreak) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(120, 10000);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("Hello world and welcome!", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
+    builder.append("Hello world and welcome!",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone);
 
     auto layout = builder.build();
 
@@ -552,13 +736,13 @@ TEST(TextLayout, canLayoutMultipleLinesByWordBreak) {
         makeTextLayoutJSON(
             maxSize,
             {TextLayoutEntry(
-                Rect::makeXYWH(0, 0.000000, 111.000000, 46.444000),
+                Rect::makeXYWH(0, 0.000000, 111.000000, 46.308000),
                 std::nullopt,
                 {
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(0, 0.0, 88.000000, 23.222), testContainer.avenirNext, "Hello world"),
+                        Rect::makeXYWH(0, 0.0, 89.000000, 23.154000), testContainer.primaryFont, "Hello world"),
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(0, 23.222000, 111.000000, 23.222), testContainer.avenirNext, "and welcome!"),
+                        Rect::makeXYWH(0, 23.154000, 111.000000, 23.154000), testContainer.primaryFont, "and welcome!"),
                 })}),
         layout->toJSONValue());
 }
@@ -567,11 +751,14 @@ TEST(TextLayout, canLayoutMultipleLinesByCharacterBreak) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(120, 10000);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append(
-        "Thisisaverylongtextthatcannotfitinasingleline", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
+    builder.append("Thisisaverylongtextthatcannotfitinasingleline",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone);
 
     builder.setLineBreakStrategy(LineBreakStrategy::ByCharacter);
 
@@ -583,17 +770,19 @@ TEST(TextLayout, canLayoutMultipleLinesByCharacterBreak) {
         makeTextLayoutJSON(
             maxSize,
             {TextLayoutEntry(
-                Rect::makeXYWH(0, 0.000000, 120.0, 69.666000),
+                Rect::makeXYWH(0, 0.000000, 114.0, 92.616000),
                 std::nullopt,
                 {
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(0, 0.0, 120, 23.222000), testContainer.avenirNext, "Thisisaverylong"),
+                        Rect::makeXYWH(0, 0.0, 114.000000, 23.154000), testContainer.primaryFont, "Thisisaverylon"),
+                    TextLayoutEntrySegment(Rect::makeXYWH(0, 23.154000, 114.000000, 23.154000),
+                                           testContainer.primaryFont,
+                                           "gtextthatcann"),
+                    TextLayoutEntrySegment(Rect::makeXYWH(0, 46.308000, 112.000000, 23.154000),
+                                           testContainer.primaryFont,
+                                           "otftinasingleli"),
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(0, 23.222, 119, 23.222),
-                        testContainer.avenirNext,
-                        "textthatcannotf"), /* Note: the 'i' after the 'f' should have been merged as fi */
-                    TextLayoutEntrySegment(
-                        Rect::makeXYWH(0, 46.444000, 103.000000, 23.222), testContainer.avenirNext, "tinasingleline"),
+                        Rect::makeXYWH(0, 69.462000, 21.000000, 23.154000), testContainer.primaryFont, "ne"),
                 })}),
         layout->toJSONValue());
 }
@@ -602,67 +791,107 @@ TEST(TextLayout, addsEllipsisWhenDoesntFit) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(80, 10000);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 1, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 1, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("This text will not fit", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
+    builder.append("This text will not fit",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone);
 
     auto layout = builder.build();
 
     ASSERT_FALSE(layout->fitsInMaxSize());
 
-    ASSERT_EQ(
-        makeTextLayoutJSON(
-            maxSize,
-            {TextLayoutEntry(
-                Rect::makeXYWH(0, 0.000000, 76.000, 23.222),
-                std::nullopt,
-                {
-                    TextLayoutEntrySegment(
-                        Rect::makeXYWH(0, 0.0, 59.000, 23.222), testContainer.avenirNext, "This tex"),
-                    TextLayoutEntrySegment(Rect::makeXYWH(59.000, 0.0, 17.0, 23.222), testContainer.avenirNext, "…"),
-                })}),
-        layout->toJSONValue());
+    ASSERT_EQ(makeTextLayoutJSON(
+                  maxSize,
+                  {TextLayoutEntry(
+                      Rect::makeXYWH(0, 0.000000, 80.000000, 23.154000),
+                      std::nullopt,
+                      {
+                          TextLayoutEntrySegment(
+                              Rect::makeXYWH(0, 0.0, 67.000000, 23.154000), testContainer.primaryFont, "This text"),
+                          TextLayoutEntrySegment(
+                              Rect::makeXYWH(67.000000, 0.0, 13.000000, 23.154000), testContainer.primaryFont, "…"),
+                      })}),
+              layout->toJSONValue());
 }
 
 TEST(TextLayout, breaksWordByCharacterWhenDoesntFit) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(80, 10000);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 1, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 1, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append(
-        "Thisisaverylongtextthatcannotfitinasingleline", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
+    builder.append("Thisisaverylongtextthatcannotfitinasingleline",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone);
 
     auto layout = builder.build();
 
     ASSERT_FALSE(layout->fitsInMaxSize());
 
-    ASSERT_EQ(
-        makeTextLayoutJSON(
-            maxSize,
-            {TextLayoutEntry(
-                Rect::makeXYWH(0, 0.000000, 78.000, 23.222),
-                std::nullopt,
-                {
-                    TextLayoutEntrySegment(
-                        Rect::makeXYWH(0, 0.0, 61.000, 23.222), testContainer.avenirNext, "Thisisav"),
-                    TextLayoutEntrySegment(Rect::makeXYWH(61.000, 0.0, 17.0, 23.222), testContainer.avenirNext, "…"),
-                })}),
-        layout->toJSONValue());
+    ASSERT_EQ(makeTextLayoutJSON(
+                  maxSize,
+                  {TextLayoutEntry(
+                      Rect::makeXYWH(0, 0.000000, 76.000000, 23.154000),
+                      std::nullopt,
+                      {
+                          TextLayoutEntrySegment(
+                              Rect::makeXYWH(0, 0.0, 63.000000, 23.154000), testContainer.primaryFont, "Thisisav"),
+                          TextLayoutEntrySegment(
+                              Rect::makeXYWH(63.000000, 0.0, 13.000000, 23.154000), testContainer.primaryFont, "…"),
+                      })}),
+              layout->toJSONValue());
 }
 
 TEST(TextLayout, supportsMultipleAppendWithDifferentFonts) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(10000, 10000);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    auto scaledFont = testContainer.avenirNext->withScale(0.5);
-    builder.append("Hello ", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
-    builder.append("World", scaledFont, 1.0, 0.0, TextDecorationNone);
+    auto scaledFont = testContainer.primaryFont->withScale(0.5);
+    builder.append("Hello ", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationNone);
+    builder.append("World", scaledFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationNone);
+
+    auto layout = builder.build();
+
+    ASSERT_TRUE(layout->fitsInMaxSize());
+
+    ASSERT_EQ(makeTextLayoutJSON(
+                  maxSize,
+                  {
+                      TextLayoutEntry(
+                          Rect::makeXYWH(0, 0.000000, 69.000000, 23.154000),
+                          std::nullopt,
+                          {
+                              TextLayoutEntrySegment(
+                                  Rect::makeXYWH(0, 0.0, 45.000000, 23.154000), testContainer.primaryFont, "Hello "),
+                              TextLayoutEntrySegment(
+                                  Rect::makeXYWH(45.000000, 0.0, 24.000000, 11.577000), scaledFont, "World"),
+                          }),
+                  }),
+              layout->toJSONValue());
+}
+
+TEST(TextLayout, supportsRightTextAlignment) {
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(120, 10000);
+    TextLayoutBuilder builder(TextAlignRight, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
+    builder.setIncludeSegments(true);
+
+    builder.append("Hello world and welcome!",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone);
 
     auto layout = builder.build();
 
@@ -671,83 +900,66 @@ TEST(TextLayout, supportsMultipleAppendWithDifferentFonts) {
     ASSERT_EQ(
         makeTextLayoutJSON(
             maxSize,
-            {
-                TextLayoutEntry(
-                    Rect::makeXYWH(0, 0.000000, 67.000, 23.222),
-                    std::nullopt,
-                    {
-                        TextLayoutEntrySegment(
-                            Rect::makeXYWH(0, 0.0, 44.000000, 23.222000), testContainer.avenirNext, "Hello "),
-                        TextLayoutEntrySegment(Rect::makeXYWH(44.000000, 0.0, 23.000, 11.611000), scaledFont, "World"),
-                    }),
-            }),
+            {TextLayoutEntry(Rect::makeXYWH(9.000000, 0.000000, 111.000000, 46.308000),
+                             std::nullopt,
+                             {
+                                 TextLayoutEntrySegment(Rect::makeXYWH(31.000000, 0.000000, 89.000000, 23.154000),
+                                                        testContainer.primaryFont,
+                                                        "Hello world"),
+                                 TextLayoutEntrySegment(Rect::makeXYWH(9.000000, 23.154000, 111.000000, 23.154000),
+                                                        testContainer.primaryFont,
+                                                        "and welcome!"),
+                             })}),
         layout->toJSONValue());
-}
-
-TEST(TextLayout, supportsRightTextAlignment) {
-    TextLayoutTestContainer testContainer;
-
-    auto maxSize = Size::make(120, 10000);
-    TextLayoutBuilder builder(TextAlignRight, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
-    builder.setIncludeSegments(true);
-
-    builder.append("Hello world and welcome!", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
-
-    auto layout = builder.build();
-
-    ASSERT_TRUE(layout->fitsInMaxSize());
-
-    ASSERT_EQ(makeTextLayoutJSON(
-                  maxSize,
-                  {TextLayoutEntry(Rect::makeXYWH(9.000000, 0.000000, 111.000000, 46.444000),
-                                   std::nullopt,
-                                   {
-                                       TextLayoutEntrySegment(Rect::makeXYWH(32.000000, 0.000000, 88.000000, 23.222),
-                                                              testContainer.avenirNext,
-                                                              "Hello world"),
-                                       TextLayoutEntrySegment(Rect::makeXYWH(9.000000, 23.222000, 111.000000, 23.222),
-                                                              testContainer.avenirNext,
-                                                              "and welcome!"),
-                                   })}),
-              layout->toJSONValue());
 }
 
 TEST(TextLayout, supportsCenteredTextAlignment) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(120, 10000);
-    TextLayoutBuilder builder(TextAlignCenter, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(
+        TextAlignCenter, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("Hello world and welcome!", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
+    builder.append("Hello world and welcome!",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone);
 
     auto layout = builder.build();
 
     ASSERT_TRUE(layout->fitsInMaxSize());
 
-    ASSERT_EQ(makeTextLayoutJSON(
-                  maxSize,
-                  {TextLayoutEntry(Rect::makeXYWH(4.500000, 0.000000, 111.000000, 46.444000),
-                                   std::nullopt,
-                                   {
-                                       TextLayoutEntrySegment(Rect::makeXYWH(16.000000, 0.000000, 88.000000, 23.222),
-                                                              testContainer.avenirNext,
-                                                              "Hello world"),
-                                       TextLayoutEntrySegment(Rect::makeXYWH(4.500000, 23.222, 111.0000, 23.222),
-                                                              testContainer.avenirNext,
-                                                              "and welcome!"),
-                                   })}),
-              layout->toJSONValue());
+    ASSERT_EQ(
+        makeTextLayoutJSON(
+            maxSize,
+            {TextLayoutEntry(Rect::makeXYWH(4.500000, 0.000000, 111.000000, 46.308000),
+                             std::nullopt,
+                             {
+                                 TextLayoutEntrySegment(Rect::makeXYWH(15.500000, 0.000000, 89.000000, 23.154000),
+                                                        testContainer.primaryFont,
+                                                        "Hello world"),
+                                 TextLayoutEntrySegment(Rect::makeXYWH(4.500000, 23.154000, 111.000000, 23.154000),
+                                                        testContainer.primaryFont,
+                                                        "and welcome!"),
+                             })}),
+        layout->toJSONValue());
 }
 
 TEST(TextLayout, supportsJustifiedTextAlignment) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(120, 10000);
-    TextLayoutBuilder builder(TextAlignJustify, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(
+        TextAlignJustify, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("Hello world and welcome!", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
+    builder.append("Hello world and welcome!",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone);
 
     auto layout = builder.build();
 
@@ -757,17 +969,18 @@ TEST(TextLayout, supportsJustifiedTextAlignment) {
         makeTextLayoutJSON(
             maxSize,
             {TextLayoutEntry(
-                Rect::makeXYWH(0.000000, 0.000000, 120.000000, 46.444000),
+                Rect::makeXYWH(0.000000, 0.000000, 120.000000, 46.308000),
                 std::nullopt,
                 {
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(0.000000, 0.000000, 40.00000, 23.222), testContainer.avenirNext, "Hello"),
+                        Rect::makeXYWH(0.000000, 0.000000, 41.000000, 23.154000), testContainer.primaryFont, "Hello"),
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(76.000000, 0.000000, 44.000000, 23.222), testContainer.avenirNext, "world"),
+                        Rect::makeXYWH(76.000000, 0.000000, 44.000000, 23.154000), testContainer.primaryFont, "world"),
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(0.00000, 23.222, 30.0000, 23.222), testContainer.avenirNext, "and"),
-                    TextLayoutEntrySegment(
-                        Rect::makeXYWH(43.000000, 23.222, 77.0000, 23.222), testContainer.avenirNext, "welcome!"),
+                        Rect::makeXYWH(0.000000, 23.154000, 31.000000, 23.154000), testContainer.primaryFont, "and"),
+                    TextLayoutEntrySegment(Rect::makeXYWH(44.000000, 23.154000, 76.000000, 23.154000),
+                                           testContainer.primaryFont,
+                                           "welcome!"),
                 })}),
         layout->toJSONValue());
 }
@@ -776,10 +989,47 @@ TEST(TextLayout, supportsLineHeightMultiple) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(120, 10000);
-    TextLayoutBuilder builder(TextAlignCenter, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(
+        TextAlignCenter, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("Hello world and welcome!", testContainer.avenirNext, 1.5, 0.0, TextDecorationNone);
+    builder.append("Hello world and welcome!",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.5),
+                   0.0,
+                   TextDecorationNone);
+
+    auto layout = builder.build();
+
+    ASSERT_TRUE(layout->fitsInMaxSize());
+
+    ASSERT_EQ(
+        makeTextLayoutJSON(
+            maxSize,
+            {TextLayoutEntry(Rect::makeXYWH(4.500000, 0.0, 111.000000, 69.462000),
+                             std::nullopt,
+                             {
+                                 TextLayoutEntrySegment(Rect::makeXYWH(15.500000, 0.000000, 89.000000, 34.731000),
+                                                        testContainer.primaryFont,
+                                                        "Hello world"),
+                                 TextLayoutEntrySegment(Rect::makeXYWH(4.500000, 34.731000, 111.000000, 34.731000),
+                                                        testContainer.primaryFont,
+                                                        "and welcome!"),
+                             })}),
+        layout->toJSONValue());
+}
+
+TEST(TextLayout, supportsExplicitLineHeightWithDifferentFontScales) {
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(10000, 10000);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
+    builder.setIncludeSegments(true);
+
+    auto scaledFont = testContainer.primaryFont->withScale(0.5);
+    auto lineHeight = TextLayoutLineHeight::absolute(24.0f);
+    builder.append("Hello ", testContainer.primaryFont, lineHeight, 0.0, TextDecorationNone);
+    builder.append("World", scaledFont, lineHeight, 0.0, TextDecorationNone);
 
     auto layout = builder.build();
 
@@ -789,13 +1039,12 @@ TEST(TextLayout, supportsLineHeightMultiple) {
         makeTextLayoutJSON(
             maxSize,
             {TextLayoutEntry(
-                Rect::makeXYWH(4.500000, 0.0, 111.000000, 69.666),
+                Rect::makeXYWH(0, 0.000000, 69.000000, 24.000000),
                 std::nullopt,
                 {
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(16.000000, 0, 88.000000, 34.8333), testContainer.avenirNext, "Hello world"),
-                    TextLayoutEntrySegment(
-                        Rect::makeXYWH(4.500000, 34.8333, 111.000, 34.8333), testContainer.avenirNext, "and welcome!"),
+                        Rect::makeXYWH(0, 0.0, 45.000000, 24.000000), testContainer.primaryFont, "Hello "),
+                    TextLayoutEntrySegment(Rect::makeXYWH(45.000000, 0.0, 24.000000, 24.000000), scaledFont, "World"),
                 })}),
         layout->toJSONValue());
 }
@@ -804,25 +1053,30 @@ TEST(TextLayout, supportsMaxHeight) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(120, 50);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("Hello world and welcome!", testContainer.avenirNext, 1.5, 0.0, TextDecorationNone);
+    builder.append("Hello world and welcome!",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.5),
+                   0.0,
+                   TextDecorationNone);
     auto layout = builder.build();
 
     ASSERT_FALSE(layout->fitsInMaxSize());
 
     ASSERT_EQ(makeTextLayoutJSON(
                   maxSize,
-                  {TextLayoutEntry(
-                      Rect::makeXYWH(0.000000, 0.0, 105.000000, 34.833000),
-                      std::nullopt,
-                      {
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(0.000000, 0, 88.000000, 34.8333), testContainer.avenirNext, "Hello world"),
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(88.000000, 0, 17.000, 34.8333), testContainer.avenirNext, "…"),
-                      })}),
+                  {TextLayoutEntry(Rect::makeXYWH(0.000000, 0.0, 102.000000, 34.731000),
+                                   std::nullopt,
+                                   {
+                                       TextLayoutEntrySegment(Rect::makeXYWH(0.000000, 0.000000, 89.000000, 34.731000),
+                                                              testContainer.primaryFont,
+                                                              "Hello world"),
+                                       TextLayoutEntrySegment(Rect::makeXYWH(89.000000, 0.000000, 13.000000, 34.731000),
+                                                              testContainer.primaryFont,
+                                                              "…"),
+                                   })}),
               layout->toJSONValue());
 }
 
@@ -830,10 +1084,11 @@ TEST(TextLayout, supportsFontFallback) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(120, 10000);
-    TextLayoutBuilder builder(TextAlignCenter, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(
+        TextAlignCenter, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("مصر", testContainer.avenirNext, 1.5, 0.0, TextDecorationNone);
+    builder.append("مصر", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.5), 0.0, TextDecorationNone);
 
     auto layout = builder.build();
 
@@ -860,10 +1115,11 @@ TEST(TextLayout, supportsFontFallbackFromRegisteredFont) {
 
     Ref<TextLayout> layout;
     {
-        TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+        TextLayoutBuilder builder(
+            TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
         builder.setIncludeSegments(true);
 
-        builder.append("😊", testContainer.avenirNext, 1.5, 0.0, TextDecorationNone);
+        builder.append("😊", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.5), 0.0, TextDecorationNone);
 
         layout = builder.build();
     }
@@ -889,10 +1145,11 @@ TEST(TextLayout, supportsFontFallbackFromRegisteredFont) {
                                                        /* canUseAsFallback */ true);
 
     {
-        TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+        TextLayoutBuilder builder(
+            TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
         builder.setIncludeSegments(true);
 
-        builder.append("😊", testContainer.avenirNext, 1.5, 0.0, TextDecorationNone);
+        builder.append("😊", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.5), 0.0, TextDecorationNone);
 
         layout = builder.build();
     }
@@ -922,12 +1179,12 @@ TEST(TextLayout, DISABLED_supportsZeroWidthJoiner) {
     auto sinhalaFont = testContainer.getSinhalaFont();
 
     auto maxSize = Size::make(2000, 10000);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
     builder.append("🏳️‍🌈👨‍🌾👨‍🦰 क्‍ष ශ්‍ර",
-                   testContainer.avenirNext,
-                   1.5,
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.5),
                    0.0,
                    TextDecorationNone);
 
@@ -945,7 +1202,7 @@ TEST(TextLayout, DISABLED_supportsZeroWidthJoiner) {
                     TextLayoutEntrySegment(
                         Rect::makeXYWH(0.000, 0.00, 63.000000, 40.359000), appleColorEmojiFont, "🏳🏳👨👨👨👨"),
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(63.000000, 0.00, 4.000000, 34.833), testContainer.avenirNext, " "),
+                        Rect::makeXYWH(63.000000, 0.00, 4.000000, 34.833), testContainer.primaryFont, " "),
                     TextLayoutEntrySegment(Rect::makeXYWH(67.000000, 0.00, 25.000000, 35.700), devanagariFont, "ककष "),
                     TextLayoutEntrySegment(Rect::makeXYWH(92.000000, 0.00, 12.000000, 34.216000), sinhalaFont, "ශ"),
                 })}),
@@ -958,10 +1215,11 @@ TEST(TextLayout, useProvidedFontForSpacesBetweenEmojis) {
     auto appleColorEmojiFont = testContainer.getAppleEmojiFont();
 
     auto maxSize = Size::make(2000, 10000);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("🦊 🦊 🦊 3 foxes ", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
+    builder.append(
+        "🦊 🦊 🦊 3 foxes ", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationNone);
 
     auto layout = builder.build();
 
@@ -970,18 +1228,21 @@ TEST(TextLayout, useProvidedFontForSpacesBetweenEmojis) {
     ASSERT_EQ(
         makeTextLayoutJSON(
             maxSize,
-            {TextLayoutEntry(
-                Rect::makeXYWH(0.000, 0.0, 134.000, 26.906),
-                std::nullopt,
-                {TextLayoutEntrySegment(Rect::makeXYWH(0.000, 0.00, 21.000000, 26.906), appleColorEmojiFont, "🦊"),
-                 TextLayoutEntrySegment(
-                     Rect::makeXYWH(21.000000, 0.00, 4.000000, 23.222), testContainer.avenirNext, " "),
-                 TextLayoutEntrySegment(Rect::makeXYWH(25.000, 0.00, 21.000000, 26.906), appleColorEmojiFont, "🦊"),
-                 TextLayoutEntrySegment(
-                     Rect::makeXYWH(46.000000, 0.00, 4.000000, 23.222), testContainer.avenirNext, " "),
-                 TextLayoutEntrySegment(Rect::makeXYWH(50.000, 0.00, 21.000000, 26.906), appleColorEmojiFont, "🦊"),
-                 TextLayoutEntrySegment(
-                     Rect::makeXYWH(71.000000, 0.00, 63.000000, 23.222), testContainer.avenirNext, " 3 foxes ")})}),
+            {TextLayoutEntry(Rect::makeXYWH(0.000000, 0.0, 136.000000, 26.906000),
+                             std::nullopt,
+                             {TextLayoutEntrySegment(
+                                  Rect::makeXYWH(0.000000, 0.00, 21.000000, 26.906000), appleColorEmojiFont, "🦊"),
+                              TextLayoutEntrySegment(
+                                  Rect::makeXYWH(21.000000, 0.00, 4.000000, 23.154000), testContainer.primaryFont, " "),
+                              TextLayoutEntrySegment(
+                                  Rect::makeXYWH(25.000000, 0.00, 21.000000, 26.906000), appleColorEmojiFont, "🦊"),
+                              TextLayoutEntrySegment(
+                                  Rect::makeXYWH(46.000000, 0.00, 4.000000, 23.154000), testContainer.primaryFont, " "),
+                              TextLayoutEntrySegment(
+                                  Rect::makeXYWH(50.000000, 0.00, 21.000000, 26.906000), appleColorEmojiFont, "🦊"),
+                              TextLayoutEntrySegment(Rect::makeXYWH(71.000000, 0.00, 65.000000, 23.154000),
+                                                     testContainer.primaryFont,
+                                                     " 3 foxes ")})}),
         layout->toJSONValue());
 }
 
@@ -989,10 +1250,11 @@ TEST(TextLayout, supportsZeroWidthNonJoiner) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(2000, 10000);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("می‌خواهم", testContainer.avenirNext, 1.5, 0.0, TextDecorationNone);
+    builder.append(
+        "می‌خواهم", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.5), 0.0, TextDecorationNone);
 
     auto layout = builder.build();
 
@@ -1014,10 +1276,11 @@ TEST(TextLayout, supportsLineBreakingInRightToLeft) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(80, 10000);
-    TextLayoutBuilder builder(TextAlignRight, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignRight, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("مرحبا كيف حالك", testContainer.avenirNext, 1.5, 0.0, TextDecorationNone);
+    builder.append(
+        "مرحبا كيف حالك", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.5), 0.0, TextDecorationNone);
 
     auto layout = builder.build();
 
@@ -1042,138 +1305,166 @@ TEST(TextLayout, supportsBidirectionalTextWithLeftToRightBaseDirection) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(200, 10000);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("bahrain مصر kuwait", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
+    builder.append(
+        "bahrain مصر kuwait", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationNone);
 
     auto layout = builder.build();
 
     ASSERT_TRUE(layout->fitsInMaxSize());
 
-    ASSERT_EQ(makeTextLayoutJSON(
-                  maxSize,
-                  {TextLayoutEntry(
-                      Rect::makeXYWH(0.0, 0.0, 147.000, 23.222000),
-                      std::nullopt,
-                      {
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(0.0, 0.00, 63.000, 23.222000), testContainer.avenirNext, "bahrain "),
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(63.000, 0.0, 30.000000, 20.842000), testContainer.arabicFont, "مصر"),
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(93.000, 0.00, 54.000, 23.222000), testContainer.avenirNext, " kuwait"),
-                      })}),
-              layout->toJSONValue());
+    ASSERT_EQ(
+        makeTextLayoutJSON(
+            maxSize,
+            {TextLayoutEntry(
+                Rect::makeXYWH(0.0, 0.0, 154.000000, 23.799000),
+                std::nullopt,
+                {
+                    TextLayoutEntrySegment(
+                        Rect::makeXYWH(0.0, 0.00, 67.000000, 23.154000), testContainer.primaryFont, "bahrain "),
+                    TextLayoutEntrySegment(
+                        Rect::makeXYWH(67.000000, 0.0, 30.000000, 20.842000), testContainer.arabicFont, "مصر"),
+                    TextLayoutEntrySegment(
+                        Rect::makeXYWH(97.000000, 0.00, 57.000000, 23.154000), testContainer.primaryFont, " kuwait"),
+                })}),
+        layout->toJSONValue());
 }
 
 TEST(TextLayout, supportsBidirectionalTextWithRightToLeftBaseDirection) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(200, 10000);
-    TextLayoutBuilder builder(TextAlignRight, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, true);
+    TextLayoutBuilder builder(TextAlignRight, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, true, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("bahrain مصر kuwait", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
+    builder.append(
+        "bahrain مصر kuwait", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationNone);
 
     auto layout = builder.build();
 
     ASSERT_TRUE(layout->fitsInMaxSize());
 
-    ASSERT_EQ(makeTextLayoutJSON(
-                  maxSize,
-                  {TextLayoutEntry(
-                      Rect::makeXYWH(53.000, 0.0, 147.000, 23.222000),
-                      std::nullopt,
-                      {
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(53.000, 0.00, 63.000, 23.222000), testContainer.avenirNext, "bahrain "),
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(116.000, 0.0, 30.000000, 20.842000), testContainer.arabicFont, "مصر"),
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(146.000, 0.00, 54.000, 23.222000), testContainer.avenirNext, " kuwait"),
-                      })}),
-              layout->toJSONValue());
+    ASSERT_EQ(
+        makeTextLayoutJSON(
+            maxSize,
+            {TextLayoutEntry(
+                Rect::makeXYWH(46.000000, 0.0, 154.000000, 23.799000),
+                std::nullopt,
+                {
+                    TextLayoutEntrySegment(
+                        Rect::makeXYWH(46.000000, 0.00, 67.000000, 23.154000), testContainer.primaryFont, "bahrain "),
+                    TextLayoutEntrySegment(
+                        Rect::makeXYWH(113.000000, 0.0, 30.000000, 20.842000), testContainer.arabicFont, "مصر"),
+                    TextLayoutEntrySegment(
+                        Rect::makeXYWH(143.000000, 0.00, 57.000000, 23.154000), testContainer.primaryFont, " kuwait"),
+                })}),
+        layout->toJSONValue());
 }
 
 TEST(TextLayout, supportsBidirectionalLineBreakingWithLeftToRightBaseDirection) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(120, 10000);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("قرأ Wikipedia™ طوال اليوم.", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
+    builder.append("قرأ Wikipedia™ طوال اليوم.",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone);
 
     auto layout = builder.build();
 
     ASSERT_TRUE(layout->fitsInMaxSize());
 
-    ASSERT_EQ(makeTextLayoutJSON(
-                  maxSize,
-                  {TextLayoutEntry(
-                      Rect::makeXYWH(0.0, 0.0, 102.000, 46.444000),
-                      std::nullopt,
-                      {
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(0.000, 0.0, 4.000000, 23.222000), testContainer.avenirNext, "."),
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(4.0, 0.0, 63.000, 20.842000), testContainer.arabicFont, "طوال اليوم"),
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(67.000, 0.00, 21.000000, 23.222000), testContainer.avenirNext, "™ "),
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(0.0, 23.222, 23.000, 20.842000), testContainer.arabicFont, "قرأ "),
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(23.000, 23.222, 79.000, 23.222000), testContainer.avenirNext, "Wikipedia"),
-                      })}),
-              layout->toJSONValue());
+    ASSERT_EQ(
+        makeTextLayoutJSON(
+            maxSize,
+            {TextLayoutEntry(
+                Rect::makeXYWH(0.0, 0.0, 100.000000, 47.597000),
+                std::nullopt,
+                {
+                    TextLayoutEntrySegment(
+                        Rect::makeXYWH(0.000000, 0.0, 5.000000, 23.154000), testContainer.primaryFont, "."),
+                    TextLayoutEntrySegment(
+                        Rect::makeXYWH(5.000000, 0.0, 63.000000, 20.842000), testContainer.arabicFont, "طوال اليوم"),
+                    TextLayoutEntrySegment(
+                        Rect::makeXYWH(68.000000, 0.00, 17.000000, 23.154000), testContainer.primaryFont, "™ "),
+                    TextLayoutEntrySegment(
+                        Rect::makeXYWH(0.000000, 23.799000, 23.000000, 20.842000), testContainer.arabicFont, "قرأ "),
+                    TextLayoutEntrySegment(Rect::makeXYWH(23.000000, 23.799000, 77.000000, 23.154000),
+                                           testContainer.primaryFont,
+                                           "Wikipedia"),
+                })}),
+        layout->toJSONValue());
 }
 
 TEST(TextLayout, supportsBidirectionalLineBreakingWithRightToLeftBaseDirection) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(120, 10000);
-    TextLayoutBuilder builder(TextAlignRight, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, true);
+    TextLayoutBuilder builder(TextAlignRight, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, true, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("قرأ Wikipedia™ طوال اليوم.", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
+    builder.append("قرأ Wikipedia™ طوال اليوم.",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone);
 
     auto layout = builder.build();
 
     ASSERT_TRUE(layout->fitsInMaxSize());
 
-    ASSERT_EQ(makeTextLayoutJSON(
-                  maxSize,
-                  {TextLayoutEntry(
-                      Rect::makeXYWH(18.0, 0.0, 102.000, 46.444000),
-                      std::nullopt,
-                      {
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(32.000, 0.0, 4.000000, 23.222000), testContainer.avenirNext, "."),
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(36.0, 0.0, 63.000, 20.842000), testContainer.arabicFont, "طوال اليوم"),
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(99.000, 0.00, 21.000000, 23.222000), testContainer.avenirNext, "™ "),
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(18.0, 23.222, 23.000, 20.842000), testContainer.arabicFont, "قرأ "),
-                          TextLayoutEntrySegment(
-                              Rect::makeXYWH(41.000, 23.222, 79.000, 23.222000), testContainer.avenirNext, "Wikipedia"),
-                      })}),
-              layout->toJSONValue());
+    ASSERT_EQ(
+        makeTextLayoutJSON(
+            maxSize,
+            {TextLayoutEntry(
+                Rect::makeXYWH(20.000000, 0.0, 100.000000, 47.597000),
+                std::nullopt,
+                {
+                    TextLayoutEntrySegment(
+                        Rect::makeXYWH(35.000000, 0.0, 5.000000, 23.154000), testContainer.primaryFont, "."),
+                    TextLayoutEntrySegment(
+                        Rect::makeXYWH(40.000000, 0.0, 63.000000, 20.842000), testContainer.arabicFont, "طوال اليوم"),
+                    TextLayoutEntrySegment(
+                        Rect::makeXYWH(103.000000, 0.00, 17.000000, 23.154000), testContainer.primaryFont, "™ "),
+                    TextLayoutEntrySegment(
+                        Rect::makeXYWH(20.000000, 23.799000, 23.000000, 20.842000), testContainer.arabicFont, "قرأ "),
+                    TextLayoutEntrySegment(Rect::makeXYWH(43.000000, 23.799000, 77.000000, 23.154000),
+                                           testContainer.primaryFont,
+                                           "Wikipedia"),
+                })}),
+        layout->toJSONValue());
 }
 
 TEST(TextLayout, emitsSeparateEntriesForEachColor) {
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(500, 10000);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
 
-    builder.append("Hello ", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
-    builder.append("world", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone, nullptr, {Color::red()});
-    builder.append(" and ", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
-    builder.append("welcome", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone, nullptr, {Color::blue()});
-    builder.append("!", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
+    builder.append("Hello ", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationNone);
+    builder.append("world",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone,
+                   nullptr,
+                   {Color::red()});
+    builder.append(" and ", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationNone);
+    builder.append("welcome",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone,
+                   nullptr,
+                   {Color::blue()});
+    builder.append("!", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationNone);
 
     auto layout = builder.build();
 
@@ -1184,32 +1475,195 @@ TEST(TextLayout, emitsSeparateEntriesForEachColor) {
             maxSize,
             {
                 TextLayoutEntry(
-                    Rect::makeXYWH(0.0, 0.0, 203.000000, 23.222000),
+                    Rect::makeXYWH(0.0, 0.0, 204.000000, 23.154000),
                     std::nullopt,
                     {
                         TextLayoutEntrySegment(
-                            Rect::makeXYWH(0.000000, 0, 44.000000, 23.222000), testContainer.avenirNext, "Hello "),
+                            Rect::makeXYWH(0.000000, 0, 45.000000, 23.154000), testContainer.primaryFont, "Hello "),
                         TextLayoutEntrySegment(
-                            Rect::makeXYWH(88.000000, 0.0, 38.000000, 23.222000), testContainer.avenirNext, " and "),
+                            Rect::makeXYWH(89.000000, 0.0, 39.000000, 23.154000), testContainer.primaryFont, " and "),
                         TextLayoutEntrySegment(
-                            Rect::makeXYWH(197.000000, 0, 6.000000, 23.222000), testContainer.avenirNext, "!"),
+                            Rect::makeXYWH(199.000000, 0, 5.000000, 23.154000), testContainer.primaryFont, "!"),
                     }),
-                TextLayoutEntry(Rect::makeXYWH(44.000000, 0.0, 44.000000, 23.222000),
+                TextLayoutEntry(Rect::makeXYWH(45.000000, 0.0, 44.000000, 23.154000),
                                 Color::red(),
                                 {
-                                    TextLayoutEntrySegment(Rect::makeXYWH(44.000000, 0, 44.000000, 23.222000),
-                                                           testContainer.avenirNext,
+                                    TextLayoutEntrySegment(Rect::makeXYWH(45.000000, 0, 44.000000, 23.154000),
+                                                           testContainer.primaryFont,
                                                            "world"),
                                 }),
-                TextLayoutEntry(Rect::makeXYWH(126.000000, 0.0, 71.000000, 23.222000),
+                TextLayoutEntry(Rect::makeXYWH(128.000000, 0.0, 71.000000, 23.154000),
                                 Color::blue(),
                                 {
-                                    TextLayoutEntrySegment(Rect::makeXYWH(126.000000, 0, 71.000000, 23.222000),
-                                                           testContainer.avenirNext,
+                                    TextLayoutEntrySegment(Rect::makeXYWH(128.000000, 0, 71.000000, 23.154000),
+                                                           testContainer.primaryFont,
                                                            "welcome"),
                                 }),
             }),
         layout->toJSONValue());
+}
+
+TEST(TextLayout, supportsBackgroundColor) {
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(500, 10000);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
+    builder.setIncludeSegments(true);
+
+    auto backgroundColor = Color::red();
+    builder.append("Hello",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone,
+                   nullptr,
+                   std::nullopt,
+                   TextBackgroundStyle{backgroundColor});
+
+    auto layout = builder.build();
+    const auto& visualEntries = layout->getVisualEntries();
+    const auto& segment = layout->getEntries()[0].segments[0];
+
+    ASSERT_EQ(static_cast<size_t>(1), visualEntries.size());
+    ASSERT_EQ(TextLayoutVisualEntryKindBackground, visualEntries[0].kind);
+    ASSERT_EQ(std::make_optional(backgroundColor), visualEntries[0].color);
+    ASSERT_TRUE(visualEntries[0].predraw);
+    ASSERT_EQ(segment.bounds, visualEntries[0].bounds);
+}
+
+TEST(TextLayout, supportsBackgroundColorAcrossLines) {
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(90, 10000);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
+    builder.setIncludeSegments(true);
+
+    builder.append("Hello world and welcome",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone,
+                   nullptr,
+                   std::nullopt,
+                   TextBackgroundStyle{Color::blue()});
+
+    auto layout = builder.build();
+    const auto& visualEntries = layout->getVisualEntries();
+    const auto& segments = layout->getEntries()[0].segments;
+
+    ASSERT_GT(visualEntries.size(), static_cast<size_t>(1));
+    ASSERT_EQ(segments.size(), visualEntries.size());
+    for (size_t i = 0; i < visualEntries.size(); i++) {
+        ASSERT_EQ(TextLayoutVisualEntryKindBackground, visualEntries[i].kind);
+        ASSERT_EQ(std::make_optional(Color::blue()), visualEntries[i].color);
+        ASSERT_TRUE(visualEntries[i].predraw);
+        ASSERT_EQ(segments[i].bounds, visualEntries[i].bounds);
+    }
+}
+
+TEST(TextLayout, supportsLayoutAffectingBackgroundPaddingAndRadius) {
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(500, 10000);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
+    builder.setIncludeSegments(true);
+
+    TextBackgroundPadding padding;
+    padding.left = 4;
+    padding.top = 2;
+    padding.right = 6;
+    padding.bottom = 3;
+
+    builder.append("Hello ", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationNone);
+    builder.append("World",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone,
+                   nullptr,
+                   std::nullopt,
+                   TextBackgroundStyle{Color::red(), padding, BorderRadius::makeOval(5, false)});
+    builder.append("!", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationNone);
+
+    auto layout = builder.build();
+    const auto& segments = layout->getEntries()[0].segments;
+    const auto& visualEntries = layout->getVisualEntries();
+
+    ASSERT_EQ(static_cast<size_t>(3), segments.size());
+    ASSERT_EQ(static_cast<size_t>(1), visualEntries.size());
+
+    const auto& helloSegment = segments[0];
+    const auto& worldSegment = segments[1];
+    const auto& bangSegment = segments[2];
+    const auto& backgroundEntry = visualEntries[0];
+
+    ASSERT_EQ(helloSegment.bounds.right, worldSegment.bounds.left);
+    ASSERT_EQ(worldSegment.bounds.right, bangSegment.bounds.left);
+    ASSERT_EQ(static_cast<Scalar>(47 + padding.left + padding.right), worldSegment.bounds.width());
+    ASSERT_NEAR(static_cast<Scalar>(23.154 + padding.top + padding.bottom), worldSegment.bounds.height(), 0.0001f);
+    ASSERT_EQ(TextLayoutVisualEntryKindBackground, backgroundEntry.kind);
+    ASSERT_EQ(std::make_optional(Color::red()), backgroundEntry.color);
+    ASSERT_EQ(BorderRadius::makeOval(5, false), backgroundEntry.borderRadius);
+    ASSERT_EQ(worldSegment.bounds, backgroundEntry.bounds);
+}
+
+TEST(TextLayout, supportsBackgroundPaddingAcrossLines) {
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(90, 10000);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
+    builder.setIncludeSegments(true);
+
+    TextBackgroundPadding padding;
+    padding.left = 3;
+    padding.right = 5;
+
+    builder.append("Hello world and welcome",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone,
+                   nullptr,
+                   std::nullopt,
+                   TextBackgroundStyle{Color::blue(), padding, BorderRadius::makeOval(4, false)});
+
+    auto layout = builder.build();
+    const auto& segments = layout->getEntries()[0].segments;
+    const auto& visualEntries = layout->getVisualEntries();
+
+    ASSERT_GT(segments.size(), static_cast<size_t>(1));
+    ASSERT_EQ(segments.size(), visualEntries.size());
+    for (size_t i = 0; i < segments.size(); i++) {
+        ASSERT_EQ(TextLayoutVisualEntryKindBackground, visualEntries[i].kind);
+        ASSERT_EQ(std::make_optional(Color::blue()), visualEntries[i].color);
+        ASSERT_EQ(BorderRadius::makeOval(4, false), visualEntries[i].borderRadius);
+        ASSERT_EQ(segments[i].bounds, visualEntries[i].bounds);
+        ASSERT_GE(segments[i].bounds.width(), padding.left + padding.right);
+    }
+}
+
+TEST(TextLayout, supportsPercentBackgroundBorderRadius) {
+    TextLayoutTestContainer testContainer;
+
+    TextLayoutBuilder builder(
+        TextAlignLeft, TextOverflowEllipsis, Size::make(500, 100), 0, testContainer.fontManager, false, 1.0f);
+    builder.setIncludeSegments(true);
+
+    builder.append("code",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone,
+                   nullptr,
+                   std::nullopt,
+                   TextBackgroundStyle{Color::blue(), {}, BorderRadius::makeOval(50, true)});
+
+    auto layout = builder.build();
+    const auto& visualEntries = layout->getVisualEntries();
+
+    ASSERT_EQ(static_cast<size_t>(1), visualEntries.size());
+    ASSERT_EQ(TextLayoutVisualEntryKindBackground, visualEntries[0].kind);
+    ASSERT_EQ(BorderRadius::makeOval(50, true), visualEntries[0].borderRadius);
 }
 
 TEST(TextLayout, dontPrioritizeFewerFonts) {
@@ -1221,9 +1675,10 @@ TEST(TextLayout, dontPrioritizeFewerFonts) {
                               0,
                               testContainer.fontManager,
                               false /*isRightToLeft*/,
+                              1.0f,
                               false /*prioritizeLowerFontCount*/);
     builder.setIncludeSegments(true);
-    builder.append(" مصر", testContainer.avenirNext, 1.5, 0.0, TextDecorationNone);
+    builder.append(" مصر", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.5), 0.0, TextDecorationNone);
     auto layout = builder.build();
 
     ASSERT_TRUE(layout->fitsInMaxSize());
@@ -1248,9 +1703,10 @@ TEST(TextLayout, prioritizeFewerFontsTwoSegmentsMerging) {
                               0,
                               testContainer.fontManager,
                               true /*isRightToLeft*/,
+                              1.0f,
                               true /*prioritizeLowerFontCount*/);
     builder.setIncludeSegments(true);
-    builder.append(" مصر", testContainer.avenirNext, 1.5, 0.0, TextDecorationNone);
+    builder.append(" مصر", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.5), 0.0, TextDecorationNone);
     auto layout = builder.build();
 
     ASSERT_TRUE(layout->fitsInMaxSize());
@@ -1275,9 +1731,11 @@ TEST(TextLayout, prioritizeFewerFontsFiveSegmentsDifferentParagraphs) {
                               0,
                               testContainer.fontManager,
                               false /*isRightToLeft*/,
+                              1.0f,
                               true /*prioritizeLowerFontCount*/);
     builder.setIncludeSegments(true);
-    builder.append(" مصر \n سيريا", testContainer.avenirNext, 1.5, 0.0, TextDecorationNone);
+    builder.append(
+        " مصر \n سيريا", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.5), 0.0, TextDecorationNone);
     auto layout = builder.build();
 
     ASSERT_TRUE(layout->fitsInMaxSize());
@@ -1298,11 +1756,11 @@ TEST(TextLayout, prioritizeFewerFontsFiveSegmentsDifferentParagraphs) {
 TEST(TextLayout, supportsBidiMarker) {
     TextLayoutTestContainer testContainer;
     auto maxSize = Size::make(10000, 10000);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
     builder.append("the title is \"\u2067مقدمة إلى \u2066C++\u2069\u2069\" in Arabic.",
-                   testContainer.avenirNext,
-                   1.0,
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
                    0.0,
                    TextDecorationNone);
 
@@ -1314,78 +1772,212 @@ TEST(TextLayout, supportsBidiMarker) {
         makeTextLayoutJSON(
             maxSize,
             {TextLayoutEntry(
-                Rect::makeXYWH(0.000000, 0.0, 264.00000, 23.222),
+                Rect::makeXYWH(0.000000, 0.0, 266.000000, 23.799000),
                 std::nullopt,
                 {
+                    TextLayoutEntrySegment(Rect::makeXYWH(0.000000, 0.00, 88.000000, 23.154000),
+                                           testContainer.primaryFont,
+                                           "the title is \""),
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(0.000000, 0.00, 84.0, 23.222000), testContainer.avenirNext, "the title is \""),
+                        Rect::makeXYWH(88.000000, 0.00, 31.000000, 23.154000), testContainer.primaryFont, "C++"),
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(84.000000, 0.00, 34.000000, 23.222), testContainer.avenirNext, "C++"),
-                    TextLayoutEntrySegment(
-                        Rect::makeXYWH(118.000000, 0.00, 62.000000, 20.842), testContainer.arabicFont, "مقدمة إلى "),
-                    TextLayoutEntrySegment(
-                        Rect::makeXYWH(180.000000, 0.00, 84.000000, 23.222), testContainer.avenirNext, "\" in Arabic."),
+                        Rect::makeXYWH(119.000000, 0.00, 62.000000, 20.842000), testContainer.arabicFont, "مقدمة إلى "),
+                    TextLayoutEntrySegment(Rect::makeXYWH(181.000000, 0.00, 85.000000, 23.154000),
+                                           testContainer.primaryFont,
+                                           "\" in Arabic."),
                 })}),
         layout->toJSONValue());
 }
 
 struct Attachment : public SimpleRefCountable {};
 
-TEST(TextLayut, supportsAttachments) {
+TEST(TextLayout, supportsAttachments) {
     auto attachment1 = Valdi::makeShared<Attachment>();
     auto attachment2 = Valdi::makeShared<Attachment>();
 
     TextLayoutTestContainer testContainer;
 
     auto maxSize = Size::make(300, 10000);
-    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
     builder.setIncludeSegments(true);
-    builder.append("the URL is ", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
-    builder.append("https://www.snapchat.com", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone, attachment1);
-    builder.append(" and you can also search on ", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
-    builder.append("https://google.com", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone, attachment2);
+    builder.append(
+        "the URL is ", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationNone);
+    builder.append("https://www.snapchat.com",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone,
+                   attachment1);
+    builder.append(" and you can also search on ",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone);
+    builder.append("https://google.com",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone,
+                   attachment2);
 
-    builder.append(" if you so wish.", testContainer.avenirNext, 1.0, 0.0, TextDecorationNone);
+    builder.append(
+        " if you so wish.", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationNone);
 
     auto layout = builder.build();
 
     ASSERT_TRUE(layout->fitsInMaxSize());
 
-    ASSERT_EQ(makeTextLayoutJSON(
-                  maxSize,
-                  {TextLayoutEntry(Rect::makeXYWH(0.000000, 0.0, 287.00000, 69.666),
-                                   std::nullopt,
-                                   {
-                                       TextLayoutEntrySegment(Rect::makeXYWH(0.000000, 0.00, 80.0, 23.222000),
-                                                              testContainer.avenirNext,
-                                                              "the URL is "),
-                                       TextLayoutEntrySegment(Rect::makeXYWH(80.000000, 0.00, 207.000000, 23.222),
-                                                              testContainer.avenirNext,
-                                                              "https://www.snapchat.com"),
-                                       TextLayoutEntrySegment(Rect::makeXYWH(0.000000, 23.222, 213.000000, 23.222),
-                                                              testContainer.avenirNext,
-                                                              "and you can also search on "),
-                                       TextLayoutEntrySegment(Rect::makeXYWH(0.00000, 46.444, 150.000000, 23.222),
-                                                              testContainer.avenirNext,
-                                                              "https://google.com"),
-                                       TextLayoutEntrySegment(Rect::makeXYWH(150.00000, 46.444, 110.000000, 23.222),
-                                                              testContainer.avenirNext,
-                                                              " if you so wish."),
-                                   })}),
-              layout->toJSONValue());
+    ASSERT_EQ(
+        makeTextLayoutJSON(
+            maxSize,
+            {TextLayoutEntry(Rect::makeXYWH(0.000000, 0.0, 297.000000, 69.462000),
+                             std::nullopt,
+                             {
+                                 TextLayoutEntrySegment(Rect::makeXYWH(0.000000, 0.00, 83.000000, 23.154000),
+                                                        testContainer.primaryFont,
+                                                        "the URL is "),
+                                 TextLayoutEntrySegment(Rect::makeXYWH(83.000000, 0.00, 214.000000, 23.154000),
+                                                        testContainer.primaryFont,
+                                                        "https://www.snapchat.com"),
+                                 TextLayoutEntrySegment(Rect::makeXYWH(0.000000, 23.154000, 221.000000, 23.154000),
+                                                        testContainer.primaryFont,
+                                                        "and you can also search on "),
+                                 TextLayoutEntrySegment(Rect::makeXYWH(0.000000, 46.308000, 151.000000, 23.154000),
+                                                        testContainer.primaryFont,
+                                                        "https://google.com"),
+                                 TextLayoutEntrySegment(Rect::makeXYWH(151.000000, 46.308000, 115.000000, 23.154000),
+                                                        testContainer.primaryFont,
+                                                        " if you so wish."),
+                             })}),
+        layout->toJSONValue());
 
     ASSERT_EQ(static_cast<size_t>(2), layout->getAttachments().size());
 
-    ASSERT_EQ(toJSONValue(Rect::makeXYWH(80.000000, 0.00, 207.000000, 23.222)),
+    ASSERT_EQ(toJSONValue(Rect::makeXYWH(83.000000, 0.00, 214.000000, 23.154000)),
               toJSONValue(layout->getAttachments()[0].bounds));
     ASSERT_EQ(attachment1, layout->getAttachments()[0].attachment);
 
-    ASSERT_EQ(toJSONValue(Rect::makeXYWH(0.00000, 46.444, 150.000000, 23.222)),
+    ASSERT_EQ(toJSONValue(Rect::makeXYWH(0.000000, 46.308000, 151.000000, 23.154000)),
               toJSONValue(layout->getAttachments()[1].bounds));
     ASSERT_EQ(attachment2, layout->getAttachments()[1].attachment);
 }
 
-TEST(TextLayut, canQueryAttachmentByPoint) {
+TEST(TextLayout, baselineAlignedReplacementAttachmentBottomMatchesBaseline) {
+    auto attachment = Valdi::makeShared<Attachment>();
+
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(300, 10000);
+    TextLayoutBuilder builder(TextAlignLeft, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, false, 1.0f);
+    builder.setIncludeSegments(true);
+    builder.append("x",
+                   testContainer.primaryFont,
+                   TextLayoutLineHeight::multiple(1.0),
+                   0.0,
+                   TextDecorationNone,
+                   attachment,
+                   std::nullopt,
+                   std::nullopt,
+                   std::nullopt,
+                   Size::make(18, 40),
+                   InlineViewVerticalAlignment::Baseline);
+
+    auto layout = builder.build();
+    ASSERT_EQ(static_cast<size_t>(1), layout->getAttachments().size());
+
+    const auto& layoutEntry = layout->getEntries()[0];
+    const auto& attachmentBounds = layout->getAttachments()[0].bounds;
+    ASSERT_NEAR(layoutEntry.bounds.y(), attachmentBounds.y(), 0.0001f);
+    ASSERT_NEAR(layoutEntry.bounds.y() + layoutEntry.bounds.height() - testContainer.primaryFont->metrics().descent,
+                attachmentBounds.y() + attachmentBounds.height(),
+                0.0001f);
+}
+
+TEST(TextLayout, textLayerRebuildsCachedLayoutWhenInlineAttachmentSizeChanges) {
+    auto attachment = Valdi::makeShared<MutableInlineAttachment>(0, Valdi::Size(10, 20));
+
+    TextLayoutTestContainer testContainer;
+    auto resources = makeShared<Resources>(testContainer.fontManager, 1.0f, ConsoleLogger::getLogger());
+    TextLayer textLayer(resources);
+
+    AttributedText::Parts parts;
+    auto& part = parts.emplace_back();
+    part.content = StringCache::getGlobal().makeString(std::string_view("x"));
+    part.style.font = testContainer.primaryFont;
+    part.style.inlineViewAttachment = attachment;
+    textLayer.setAttributedText(makeShared<AttributedText>(std::move(parts)));
+
+    auto maxSize = Size::make(300, 10000);
+    auto initialSize = textLayer.sizeThatFits(maxSize);
+    ASSERT_NEAR(10.0f, initialSize.width, 0.0001f);
+
+    attachment->setSize(Valdi::Size(42, 20));
+
+    auto updatedSize = textLayer.sizeThatFits(maxSize);
+    ASSERT_NEAR(42.0f, updatedSize.width, 0.0001f);
+}
+
+TEST(TextLayout, textLayerClearsPreviouslyLaidOutInlineChildrenThatAreNoLongerReferenced) {
+    auto attachment = Valdi::makeShared<MutableInlineAttachment>(0, Valdi::Size(10, 20));
+
+    TextLayoutTestContainer testContainer;
+    auto resources = makeShared<Resources>(testContainer.fontManager, 1.0f, ConsoleLogger::getLogger());
+    TextLayer textLayer(resources);
+    auto childLayer = makeLayer<Layer>(resources);
+    textLayer.addChild(childLayer);
+    textLayer.setFrame(Rect::makeXYWH(0, 0, 300, 100));
+
+    AttributedText::Parts inlineParts;
+    auto& inlinePart = inlineParts.emplace_back();
+    inlinePart.content = StringCache::getGlobal().makeString(std::string_view("x"));
+    inlinePart.style.font = testContainer.primaryFont;
+    inlinePart.style.inlineViewAttachment = attachment;
+    textLayer.setAttributedText(makeShared<AttributedText>(std::move(inlineParts)));
+    textLayer.layoutInlineChildrenInLayer(textLayer);
+
+    ASSERT_NEAR(10.0f, childLayer->getFrame().width(), 0.0001f);
+    ASSERT_NEAR(20.0f, childLayer->getFrame().height(), 0.0001f);
+
+    AttributedText::Parts plainParts;
+    auto& plainPart = plainParts.emplace_back();
+    plainPart.content = StringCache::getGlobal().makeString(std::string_view("plain"));
+    plainPart.style.font = testContainer.primaryFont;
+    textLayer.setAttributedText(makeShared<AttributedText>(std::move(plainParts)));
+    textLayer.layoutInlineChildrenInLayer(textLayer);
+
+    ASSERT_EQ(Rect::makeXYWH(0, 0, 0, 0), childLayer->getFrame());
+}
+
+TEST(TextLayout, editableTextLayerReportsTextLayerAsContentLayerForInlineChildren) {
+    auto attachment = Valdi::makeShared<MutableInlineAttachment>(0, Valdi::Size(10, 20));
+
+    TextLayoutTestContainer testContainer;
+    auto resources = makeShared<Resources>(testContainer.fontManager, 1.0f, ConsoleLogger::getLogger());
+    auto editableTextLayer = makeLayer<EditableTextLayer>(resources);
+    auto inlineChildLayer = makeLayer<Layer>(resources);
+    auto unreferencedChildLayer = makeLayer<Layer>(resources);
+    auto& contentLayer = editableTextLayer->getChildInsertionLayer();
+    contentLayer.addChild(inlineChildLayer);
+    contentLayer.addChild(unreferencedChildLayer);
+    unreferencedChildLayer->setFrame(Rect::makeXYWH(5, 6, 7, 8));
+    editableTextLayer->setFrame(Rect::makeXYWH(0, 0, 300, 100));
+
+    AttributedText::Parts inlineParts;
+    auto& inlinePart = inlineParts.emplace_back();
+    inlinePart.content = StringCache::getGlobal().makeString(std::string_view("x"));
+    inlinePart.style.font = testContainer.primaryFont;
+    inlinePart.style.inlineViewAttachment = attachment;
+    editableTextLayer->setAttributedText(makeShared<AttributedText>(std::move(inlineParts)));
+    editableTextLayer->layoutIfNeeded();
+
+    ASSERT_EQ(Rect::makeXYWH(0, 0, 300, 100), editableTextLayer->getTextLayer().getFrame());
+    ASSERT_EQ(&editableTextLayer->getTextLayer(), &contentLayer);
+    ASSERT_NEAR(10.0f, inlineChildLayer->getFrame().width(), 0.0001f);
+    ASSERT_NEAR(20.0f, inlineChildLayer->getFrame().height(), 0.0001f);
+    ASSERT_EQ(Rect::makeXYWH(0, 0, 0, 0), unreferencedChildLayer->getFrame());
+}
+
+TEST(TextLayout, canQueryAttachmentByPoint) {
     auto attachment1 = Valdi::makeShared<Attachment>();
     auto attachment2 = Valdi::makeShared<Attachment>();
 
@@ -1393,8 +1985,8 @@ TEST(TextLayut, canQueryAttachmentByPoint) {
     auto bounds2 = Rect::makeXYWH(0.00000, 46.444, 150.000000, 23.222);
 
     std::vector<TextLayoutAttachment> attachments;
-    attachments.emplace_back(bounds1, attachment1);
-    attachments.emplace_back(bounds2, attachment2);
+    attachments.emplace_back(bounds1, attachment1, std::nullopt);
+    attachments.emplace_back(bounds2, attachment2, std::nullopt);
 
     auto maxSize = Size::make(300, 10000);
     TextLayout textLayout(maxSize, {}, {}, std::move(attachments), true);
@@ -1439,7 +2031,7 @@ TEST(TextLayut, canQueryAttachmentByPoint) {
     ASSERT_EQ(nullptr, attachment);
 }
 
-TEST(TextLayut, canQueryAttachmentByPointWithTolerance) {
+TEST(TextLayout, canQueryAttachmentByPointWithTolerance) {
     auto attachment1 = Valdi::makeShared<Attachment>();
     auto attachment2 = Valdi::makeShared<Attachment>();
 
@@ -1447,8 +2039,8 @@ TEST(TextLayut, canQueryAttachmentByPointWithTolerance) {
     auto bounds2 = Rect::makeXYWH(0.00000, 46.444, 150.000000, 23.222);
 
     std::vector<TextLayoutAttachment> attachments;
-    attachments.emplace_back(bounds1, attachment1);
-    attachments.emplace_back(bounds2, attachment2);
+    attachments.emplace_back(bounds1, attachment1, std::nullopt);
+    attachments.emplace_back(bounds2, attachment2, std::nullopt);
 
     auto maxSize = Size::make(300, 10000);
     TextLayout textLayout(maxSize, {}, {}, std::move(attachments), true);
@@ -1464,6 +2056,22 @@ TEST(TextLayut, canQueryAttachmentByPointWithTolerance) {
 
     attachment = textLayout.getAttachmentAtPoint(Point::make(0.0f, 45.0f), 2.0f);
     ASSERT_EQ(attachment2, attachment);
+}
+
+TEST(EditableTextLayerClassTest, onMeasure_withPlaceholder_doesNotMutateOriginalAttributes) {
+    TextLayoutTestContainer testContainer;
+    auto resources = makeShared<Resources>(testContainer.fontManager, 1.0f, ConsoleLogger::getLogger());
+    auto layerClass = makeShared<LayerClass>(resources);
+    auto textLayerClass = makeShared<TextLayerClass>(resources, layerClass);
+    auto editableClass = EditableTextLayerClass::makeForTextField(resources, textLayerClass);
+
+    Value attributes;
+    attributes.setMapValue(STRING_LITERAL("placeholder"), Value(std::string_view("hint text")));
+    ASSERT_TRUE(attributes.getMapValue("value").isUndefined());
+
+    editableClass->onMeasure(attributes, Size::make(200, 1000), false);
+
+    ASSERT_TRUE(attributes.getMapValue("value").isUndefined());
 }
 
 } // namespace snap::drawing

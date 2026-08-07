@@ -65,6 +65,17 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "test_cc",
+    srcs = glob(["test/cpp/**/*.cpp"]),
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_core_cc",
+        "@gtest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "valdi_core_bindings_cc",
     hdrs = glob([

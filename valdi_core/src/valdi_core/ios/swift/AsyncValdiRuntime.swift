@@ -4,11 +4,34 @@ import valdi_core
 public class AsyncValdiRuntimeProvider: NSObject, AsyncValdiRuntimeProviding, SCAsyncValdiRuntimeProviding {
 
     private let factory: @Sendable () async -> SCValdiRuntimeProtocol
+    private let deliversWarmCompletionsInline: Bool
 
-    @ValdiActor private var cachedRuntime: SCValdiRuntimeProtocol?
     @ValdiActor private var initializationTask: Task<SCValdiRuntimeProtocol, Never>?
 
-    public init(factory: @escaping @Sendable () async -> SCValdiRuntimeProtocol) {
+    private let cachedRuntimeLock = NSLock()
+    private var _cachedRuntime: SCValdiRuntimeProtocol?
+
+    private var cachedRuntime: SCValdiRuntimeProtocol? {
+        get {
+            cachedRuntimeLock.lock()
+            defer { cachedRuntimeLock.unlock() }
+            return _cachedRuntime
+        }
+        set {
+            cachedRuntimeLock.lock()
+            defer { cachedRuntimeLock.unlock() }
+            _cachedRuntime = newValue
+        }
+    }
+
+    /// - Parameter deliversWarmCompletionsInline: when true and the runtime is already initialized,
+    ///   `getRuntime`/`getJSRuntime` invoke their completions synchronously on the calling thread
+    ///   instead of dispatching through the ValdiActor.
+    public init(
+        deliversWarmCompletionsInline: Bool = false,
+        factory: @escaping @Sendable () async -> SCValdiRuntimeProtocol
+    ) {
+        self.deliversWarmCompletionsInline = deliversWarmCompletionsInline
         self.factory = factory
         super.init()
     }
@@ -17,15 +40,25 @@ public class AsyncValdiRuntimeProvider: NSObject, AsyncValdiRuntimeProviding, SC
 
     @objc(getRuntime:)
     public func getRuntime(completion: @escaping (SCValdiRuntimeProtocol) -> Void) {
+        if deliversWarmCompletionsInline, let cachedRuntime {
+            completion(cachedRuntime)
+            return
+        }
         Task { @ValdiActor in
-            completion(await self.runtime)
+            completion(await self.actorRuntime)
         }
     }
 
     @objc(getJSRuntime:)
     public func getJSRuntime(completion: @escaping (SCValdiJSRuntime?) -> Void) {
+        if deliversWarmCompletionsInline, let cachedRuntime {
+            cachedRuntime.getJSRuntime { jsRuntime in
+                completion(jsRuntime)
+            }
+            return
+        }
         Task { @ValdiActor in
-            let runtime = await self.runtime
+            let runtime = await self.actorRuntime
             runtime.getJSRuntime { jsRuntime in
                 completion(jsRuntime)
             }
@@ -34,7 +67,20 @@ public class AsyncValdiRuntimeProvider: NSObject, AsyncValdiRuntimeProviding, SC
 
     // MARK: - Swift Async API
 
-    @ValdiActor public var runtime: SCValdiRuntimeProtocol {
+    nonisolated(nonsending)
+    public func runtime() async -> SCValdiRuntimeProtocol {
+        if let cachedRuntime {
+            return cachedRuntime
+        }
+        return await actorRuntime
+    }
+
+    nonisolated(nonsending)
+    public func jsRuntime() async -> SCValdiJSRuntime? {
+        await runtime().jsRuntime()
+    }
+
+    @ValdiActor private var actorRuntime: SCValdiRuntimeProtocol {
         get async {
             if let cachedRuntime {
                 return cachedRuntime
@@ -54,13 +100,6 @@ public class AsyncValdiRuntimeProvider: NSObject, AsyncValdiRuntimeProviding, SC
             self.cachedRuntime = runtime
             self.initializationTask = nil
             return runtime
-        }
-    }
-
-    @ValdiActor public var jsRuntime: SCValdiJSRuntime? {
-        get async {
-            let runtime = await self.runtime
-            return await runtime.jsRuntime()
         }
     }
 }

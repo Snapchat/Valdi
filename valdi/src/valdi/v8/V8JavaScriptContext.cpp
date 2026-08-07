@@ -510,6 +510,7 @@ JSValueRef V8JavaScriptContext::newWrappedObject(const Ref<RefCountable>& wrappe
 JSValueRef V8JavaScriptContext::newNativeClass(const Ref<RefCountable>& /*classOpaque*/,
                                                const JSClassDefinition& /*classDefinition*/,
                                                JSExceptionTracker& exceptionTracker) {
+    // TODO: Implement native-class support or Base64/Unicode module fallbacks before enabling V8.
     exceptionTracker.onError("Native classes are not supported by V8");
     return JSValueRef();
 }

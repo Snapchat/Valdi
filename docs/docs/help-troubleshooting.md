@@ -184,7 +184,7 @@ sudo dnf install java-17-openjdk-devel android-tools watchman fontconfig-devel z
 
 Then continue with the [Linux setup guide](../setup/linux_setup.md) for Bazel and Android SDK setup.
 
-If you're still stuck, ping us in the [Valdi Discord](https://discord.gg/uJyNEeYX2U) or [file a GitHub issue](https://github.com/Snapchat/Valdi/issues).
+If you're still stuck, [start a GitHub Discussion](https://github.com/Snapchat/Valdi/discussions) or [file a GitHub issue](https://github.com/Snapchat/Valdi/issues).
 
 ## Valdi tooling development issues
 

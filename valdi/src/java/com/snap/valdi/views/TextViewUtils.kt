@@ -55,6 +55,14 @@ object TextViewUtils {
      */
     fun resolveHeightMeasureSpec(textView: TextView, heightMeasureSpec: Int): Int {
         return if (textView.text.isNullOrEmpty() && View.MeasureSpec.getMode(heightMeasureSpec) != View.MeasureSpec.EXACTLY) {
+            resolveEmptyTextHeightMeasureSpec(heightMeasureSpec)
+        } else {
+            heightMeasureSpec
+        }
+    }
+
+    fun resolveEmptyTextHeightMeasureSpec(heightMeasureSpec: Int): Int {
+        return if (View.MeasureSpec.getMode(heightMeasureSpec) != View.MeasureSpec.EXACTLY) {
             // iOS like behavior: When text is empty, label height should be zero.
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.EXACTLY)
         } else {

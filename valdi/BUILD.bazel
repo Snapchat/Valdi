@@ -518,6 +518,66 @@ kt_android_library(
     visibility = ["//visibility:public"],
     deps = [
         ":valdi_java",
+        # AppBootstrapActivity extends AppCompatActivity. This comes in transitively via
+        # :valdi_java in a standalone build, but not in Snap's linked build where
+        # @android_mvn points at a maven namespace that does not re-export it.
+        "@android_mvn//:androidx_appcompat_appcompat",
+    ],
+)
+
+# Plain Espresso/Hamcrest test bindings over Valdi's element/view-node API
+# (com.snap.valdi.test.*). Lets instrumented tests locate and assert on Valdi
+# elements mounted in a ValdiRootView. Only depends on the public Valdi Java API
+# plus Espresso/Hamcrest/JUnit - no Snap-internal runtime glue.
+kt_android_library(
+    name = "valdi_android_test_support",
+    testonly = True,
+    srcs = glob([
+        "src/android_test_support/java/**/*.kt",
+    ]),
+    custom_package = "com.snap.valdi.test",
+    kotlinc_opts = ":kotlinc_opts",
+    manifest = "src/valdi/android/AndroidManifest.xml",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_java",
+        "@android_mvn//:androidx_annotation_annotation",
+        "@test_mvn//:androidx_test_core",
+        "@test_mvn//:androidx_test_espresso_espresso_core",
+        "@test_mvn//:androidx_test_monitor",
+        "@test_mvn//:junit_junit",
+        "@test_mvn//:org_hamcrest_hamcrest_core",
+        "@test_mvn//:org_hamcrest_hamcrest_library",
+    ],
+)
+
+# Boots a Valdi runtime for instrumented tests and mounts a single view in a host
+# activity, so the bindings in :valdi_android_test_support have something to point at.
+# Built only on the open-source runtime (:valdi_android_support) - Snap's internal
+# equivalent is //platform/composer/test-support:runtime-bootstrap, which wires the
+# same rule up to Snap's app-specific runtime factory and schedulers instead.
+kt_android_library(
+    name = "valdi_android_test_runtime",
+    testonly = True,
+    srcs = glob([
+        "src/android_test_runtime/java/**/*.kt",
+    ]),
+    custom_package = "com.snap.valdi.test.runtime",
+    # Merges ValdiTestHostActivity into the consuming instrumentation APK's manifest, so
+    # tests can launch it without declaring it themselves. Must be an int, not True:
+    # Snap's rules_kotlin fork declares this attribute as attr.int().
+    exports_manifest = 1,
+    kotlinc_opts = ":kotlinc_opts",
+    manifest = "src/android_test_runtime/AndroidManifest.xml",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_android_support",
+        ":valdi_android_test_support",
+        ":valdi_java",
+        "@android_mvn//:androidx_appcompat_appcompat",
+        "@test_mvn//:androidx_test_core",
+        "@test_mvn//:androidx_test_monitor",
+        "@test_mvn//:junit_junit",
     ],
 )
 
@@ -538,6 +598,7 @@ kt_jvm_test(
         "@android_mvn//:org_junit_vintage_junit_vintage_engine",
     ],
     deps = [
+        ":valdi_android_test_support",
         ":valdi_java",
         "//src/valdi_modules/src/valdi/valdi_test:valdi_test_kt",
         "@android_mvn//:androidx_test_core",
@@ -548,6 +609,7 @@ kt_jvm_test(
         "@android_mvn//:org_robolectric_android_all",
         "@android_mvn//:org_robolectric_annotations",
         "@android_mvn//:org_robolectric_robolectric",
+        "@test_mvn//:androidx_test_espresso_espresso_core",
     ],
 )
 
@@ -695,6 +757,30 @@ objc_library(
         ":valdi_ios",
         "//src/valdi_modules/src/valdi/valdi_test:valdi_test_objc",
         "@ocmock",
+    ],
+)
+
+ios_unit_test(
+    name = "valdi_ios_perf_test",
+    minimum_os_version = "13.0",
+    runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",
+    deps = [":objc_perf_tests_lib"],
+)
+
+# Deliberately depends on :valdi_ios only (no valdi_test fixtures) so the
+# lock-contention coverage stays runnable independently of the heavier test deps.
+objc_library(
+    name = "objc_perf_tests_lib",
+    testonly = True,
+    srcs = glob([
+        "test/ios_perf/**/*.mm",
+    ]),
+    copts = ["-I."],
+    includes = ["src"],
+    module_name = "ValdiIosObjcPerfTests",
+    target_compatible_with = ["@platforms//os:ios"],
+    deps = [
+        ":valdi_ios",
     ],
 )
 

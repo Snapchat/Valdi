@@ -213,6 +213,15 @@ export interface ValdiRuntime extends RuntimeBase {
 
   performGC(): void;
 
+  /**
+   * Engine-independent weak references, backing the standard `WeakRef` global that
+   * PostInit installs on engines without native support (e.g. QuickJS). newWeakRef
+   * returns an opaque handle; derefWeakRef returns the target, or undefined once it
+   * has been collected.
+   */
+  newWeakRef(target: object): unknown;
+  derefWeakRef(handle: unknown): object | undefined;
+
   dumpHeap?(): ArrayBuffer;
 
   isDebugEnabled: boolean;

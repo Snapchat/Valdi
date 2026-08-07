@@ -13,6 +13,7 @@
 #include "valdi/runtime/JavaScript/JavaScriptFunctionCallContext.hpp"
 #include "valdi/runtime/Utils/RefCountableAutoreleasePool.hpp"
 #include "valdi_core/cpp/Constants.hpp"
+#include "valdi_core/cpp/Utils/SmallVector.hpp"
 
 namespace ValdiJSCore {
 
@@ -97,10 +98,13 @@ static JSObjectRef callNativeClassConstructor(JSContextRef ctx,
     auto& jsContext = functionData->jsContext;
     Valdi::JSExceptionTracker exceptionTracker(jsContext);
 
-    Valdi::JSValueRef outArguments[argumentCount];
+    // Heap-allocate past the inline capacity: argumentCount is script-controlled and JSCore
+    // permits up to 65536 arguments, which would overflow the stack as a VLA.
+    Valdi::SmallVector<Valdi::JSValueRef, 8> outArguments;
+    outArguments.reserve(argumentCount);
     for (size_t i = 0; i < argumentCount; i++) {
-        outArguments[i] = Valdi::JSValueRef::makeUnretained(
-            jsContext, toValdiJSValue(JSCoreRef(arguments[i], JSValueGetType(ctx, arguments[i]))));
+        outArguments.emplace_back(Valdi::JSValueRef::makeUnretained(
+            jsContext, toValdiJSValue(JSCoreRef(arguments[i], JSValueGetType(ctx, arguments[i])))));
     }
 
     JSValueRef jsException = nullptr;
@@ -122,7 +126,7 @@ static JSObjectRef callNativeClassConstructor(JSContextRef ctx,
     JSObjectSetPrototype(ctx, object, prototypeObject);
 
     Valdi::JSFunctionNativeCallContext callContext(jsContext,
-                                                   argumentCount == 0 ? nullptr : outArguments,
+                                                   argumentCount == 0 ? nullptr : outArguments.data(),
                                                    argumentCount,
                                                    exceptionTracker,
                                                    functionData->referenceInfo);
@@ -170,10 +174,7 @@ static bool nativeClassHasInstance(JSContextRef ctx,
 
     auto functionData = Valdi::Ref(getAttachedNativeClassFunctionData(constructorObject));
     auto prototype = JSObjectGetProperty(
-        ctx,
-        constructorObject,
-        fromValdiJSPropertyName(functionData->jsContext.getPrototypePropertyName()),
-        exception);
+        ctx, constructorObject, fromValdiJSPropertyName(functionData->jsContext.getPrototypePropertyName()), exception);
     if (*exception != nullptr) {
         return false;
     }
@@ -207,15 +208,18 @@ static JSValueRef callNativeClassInstanceMember(JSContextRef ctx,
     auto functionData = Valdi::Ref(getAttachedNativeClassFunctionData(function));
     auto& jsContext = functionData->jsContext;
 
-    Valdi::JSValueRef outArguments[argumentCount];
+    // Heap-allocate past the inline capacity: argumentCount is script-controlled and JSCore
+    // permits up to 65536 arguments, which would overflow the stack as a VLA.
+    Valdi::SmallVector<Valdi::JSValueRef, 8> outArguments;
+    outArguments.reserve(argumentCount);
     for (size_t i = 0; i < argumentCount; i++) {
-        outArguments[i] = Valdi::JSValueRef::makeUnretained(
-            jsContext, toValdiJSValue(JSCoreRef(arguments[i], JSValueGetType(ctx, arguments[i]))));
+        outArguments.emplace_back(Valdi::JSValueRef::makeUnretained(
+            jsContext, toValdiJSValue(JSCoreRef(arguments[i], JSValueGetType(ctx, arguments[i])))));
     }
 
     Valdi::JSExceptionTracker exceptionTracker(jsContext);
     Valdi::JSFunctionNativeCallContext callContext(jsContext,
-                                                   argumentCount == 0 ? nullptr : outArguments,
+                                                   argumentCount == 0 ? nullptr : outArguments.data(),
                                                    argumentCount,
                                                    exceptionTracker,
                                                    functionData->referenceInfo);
@@ -252,15 +256,18 @@ static JSValueRef callNativeClassStaticMember(JSContextRef ctx,
     auto functionData = Valdi::Ref(getAttachedNativeClassFunctionData(function));
     auto& jsContext = functionData->jsContext;
 
-    Valdi::JSValueRef outArguments[argumentCount];
+    // Heap-allocate past the inline capacity: argumentCount is script-controlled and JSCore
+    // permits up to 65536 arguments, which would overflow the stack as a VLA.
+    Valdi::SmallVector<Valdi::JSValueRef, 8> outArguments;
+    outArguments.reserve(argumentCount);
     for (size_t i = 0; i < argumentCount; i++) {
-        outArguments[i] = Valdi::JSValueRef::makeUnretained(
-            jsContext, toValdiJSValue(JSCoreRef(arguments[i], JSValueGetType(ctx, arguments[i]))));
+        outArguments.emplace_back(Valdi::JSValueRef::makeUnretained(
+            jsContext, toValdiJSValue(JSCoreRef(arguments[i], JSValueGetType(ctx, arguments[i])))));
     }
 
     Valdi::JSExceptionTracker exceptionTracker(jsContext);
     Valdi::JSFunctionNativeCallContext callContext(jsContext,
-                                                   argumentCount == 0 ? nullptr : outArguments,
+                                                   argumentCount == 0 ? nullptr : outArguments.data(),
                                                    argumentCount,
                                                    exceptionTracker,
                                                    functionData->referenceInfo);
@@ -345,16 +352,12 @@ JSFunctionData::~JSFunctionData() = default;
 
 NativeClassFunctionData::NativeClassFunctionData(JavaScriptCoreContext& jsContext,
                                                  const Valdi::Ref<Valdi::JSNativeClassData>& nativeClass)
-    : jsContext(jsContext),
-      nativeClass(nativeClass),
-      referenceInfo(nativeClass->getConstructorReferenceInfo()) {}
+    : jsContext(jsContext), nativeClass(nativeClass), referenceInfo(nativeClass->getConstructorReferenceInfo()) {}
 
 NativeClassFunctionData::NativeClassFunctionData(JavaScriptCoreContext& jsContext,
                                                  const Valdi::Ref<Valdi::JSNativeClassData>& nativeClass,
                                                  const Valdi::StringBox& name)
-    : jsContext(jsContext),
-      nativeClass(nativeClass),
-      referenceInfo(nativeClass->makeMemberReferenceInfo(name)) {}
+    : jsContext(jsContext), nativeClass(nativeClass), referenceInfo(nativeClass->makeMemberReferenceInfo(name)) {}
 
 inline Valdi::RefCountable* getAttachedRefCountable(JSObjectRef objectRef) {
     return reinterpret_cast<Valdi::RefCountable*>(JSObjectGetPrivate(objectRef));

@@ -6,10 +6,11 @@ import { NativeView } from 'valdi_tsx/src/NativeView';
 import {
   changeAttributeOnElement,
   createElement,
+  createNodesRef,
   destroyElement,
   makeElementRoot,
   moveElement,
-  nodesRef,
+  NodesRef,
   registerElements,
   setAllElementsAttributeDelegate,
 } from './HTMLRenderer';
@@ -23,6 +24,9 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
   private frameObserver?: FrameObserver;
   private resizeObserver?: ResizeObserver;
   private elementIdByHtmlElement = new WeakMap<Element, number>();
+  // Owned per delegate (i.e. per renderer/page) so element ids can't collide
+  // with another page's (github.com/Snapchat/Valdi#115).
+  private nodesRef: NodesRef = createNodesRef();
 
   constructor(private htmlRoot: HTMLElement | ShadowRoot) {
     registerElements();
@@ -30,56 +34,56 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
   setAttributeDelegate(delegate: UpdateAttributeDelegate) {
     this.attributeDelegate = delegate;
 
-    setAllElementsAttributeDelegate(this.attributeDelegate);
+    setAllElementsAttributeDelegate(this.nodesRef, this.attributeDelegate);
   }
 
   onElementBecameRoot(id: number): void {
-    makeElementRoot(id, this.htmlRoot);
+    makeElementRoot(this.nodesRef, id, this.htmlRoot);
   }
   onElementMoved(id: number, parentId: number, parentIndex: number): void {
-    moveElement(id, parentId, parentIndex);
+    moveElement(this.nodesRef, id, parentId, parentIndex);
   }
   onElementCreated(id: number, viewClass: string): void {
-    createElement(id, viewClass, this.attributeDelegate);
-    const element = nodesRef.get(id);
+    createElement(this.nodesRef, id, viewClass, this.attributeDelegate);
+    const element = this.nodesRef.get(id);
     if (element?.htmlElement) {
       this.elementIdByHtmlElement.set(element.htmlElement, id);
       this.resizeObserver?.observe(element.htmlElement);
     }
   }
   onElementDestroyed(id: number): void {
-    const element = nodesRef.get(id);
+    const element = this.nodesRef.get(id);
     if (element?.htmlElement) {
       this.resizeObserver?.unobserve(element.htmlElement);
     }
-    destroyElement(id);
+    destroyElement(this.nodesRef, id);
   }
   onElementAttributeChangeAny(id: number, attributeName: string, attributeValue: any): void {
-    changeAttributeOnElement(id, attributeName, attributeValue);
+    changeAttributeOnElement(this.nodesRef, id, attributeName, attributeValue);
   }
   onElementAttributeChangeNumber(id: number, attributeName: string, attributeValue: number): void {
-    changeAttributeOnElement(id, attributeName, attributeValue);
+    changeAttributeOnElement(this.nodesRef, id, attributeName, attributeValue);
   }
   onElementAttributeChangeString(id: number, attributeName: string, attributeValue: string): void {
-    changeAttributeOnElement(id, attributeName, attributeValue);
+    changeAttributeOnElement(this.nodesRef, id, attributeName, attributeValue);
   }
   onElementAttributeChangeTrue(id: number, attributeName: string): void {
-    changeAttributeOnElement(id, attributeName, undefined);
+    changeAttributeOnElement(this.nodesRef, id, attributeName, undefined);
   }
   onElementAttributeChangeFalse(id: number, attributeName: string): void {
-    changeAttributeOnElement(id, attributeName, undefined);
+    changeAttributeOnElement(this.nodesRef, id, attributeName, undefined);
   }
   onElementAttributeChangeUndefined(id: number, attributeName: string): void {
-    changeAttributeOnElement(id, attributeName, undefined);
+    changeAttributeOnElement(this.nodesRef, id, attributeName, undefined);
   }
   onElementAttributeChangeStyle(id: number, attributeName: string, style: Style<any>): void {
     const attributes = style.attributes ?? {};
     Object.keys(attributes).forEach(key => {
-      changeAttributeOnElement(id, key, attributes[key]);
+      changeAttributeOnElement(this.nodesRef, id, key, attributes[key]);
     });
   }
   onElementAttributeChangeFunction(id: number, attributeName: string, fn: () => void): void {
-    changeAttributeOnElement(id, attributeName, fn);
+    changeAttributeOnElement(this.nodesRef, id, attributeName, fn);
   }
   onNextLayoutComplete(callback: () => void): void {}
   onNextDraw(callback: (hookTimeMs: number) => void): void {}

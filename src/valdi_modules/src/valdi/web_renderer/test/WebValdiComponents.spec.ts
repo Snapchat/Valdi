@@ -3,9 +3,16 @@ import { Style } from 'valdi_core/src/Style';
 import { WebValdiLabel } from '../src/views/WebValdiLabel';
 import { WebValdiLayout } from '../src/views/WebValdiLayout';
 import { WebValdiScroll } from '../src/views/WebValdiScroll';
+import { ValdiWebRendererDelegate } from '../src/ValdiWebRendererDelegate';
 
 function installDomStubs() {
   const elements: HTMLElement[] = [];
+
+  // WebValdiTextField defines `class ValdiInput extends HTMLElement` at module
+  // scope, evaluated lazily on first import (e.g. via ValdiWebRendererDelegate ->
+  // registerElements), so these must exist before that.
+  (globalThis as any).HTMLElement = class {};
+  (globalThis as any).customElements = { get: () => undefined, define: () => {} };
 
   (globalThis as any).document = {
     createElement: (tag: string) => {
@@ -75,6 +82,8 @@ function installDomStubs() {
 }
 
 function uninstallDomStubs() {
+  delete (globalThis as any).HTMLElement;
+  delete (globalThis as any).customElements;
   delete (globalThis as any).document;
   delete (globalThis as any).window;
   delete (globalThis as any).IntersectionObserver;
@@ -215,5 +224,29 @@ describe('WebValdiLabel – single-line default', () => {
 
     label.changeAttribute('numberOfLines', undefined);
     expect((label.htmlElement.style as any).whiteSpace).toBe('nowrap');
+  });
+});
+
+describe('web renderer – cross-page node id isolation (Valdi#115)', () => {
+  afterEach(() => uninstallDomStubs());
+
+  it('keeps each page\'s views separate when element ids collide across renderers', () => {
+    installDomStubs();
+    const doc = (globalThis as any).document;
+
+    // Page A: its own renderer/delegate. Its first element gets id 1 (per-renderer
+    // id counters all start at 1), a label.
+    const pageA = new ValdiWebRendererDelegate(doc.createElement('div'));
+    pageA.onElementCreated(1, 'label');
+
+    // Page B is pushed on top: a separate renderer/delegate whose id counter also
+    // starts at 1, so its first element (a layout) reuses id 1.
+    const pageB = new ValdiWebRendererDelegate(doc.createElement('div'));
+    pageB.onElementCreated(1, 'layout');
+
+    // Back on Page A, a re-render sets a label-only attribute on its id-1 view.
+    // Bug #115: id 1 resolves to Page B's WebValdiLayout in the shared global map,
+    // which has no `value` case and throws "Attribute value is not valid".
+    expect(() => pageA.onElementAttributeChangeString(1, 'value', 'hello')).not.toThrow();
   });
 });

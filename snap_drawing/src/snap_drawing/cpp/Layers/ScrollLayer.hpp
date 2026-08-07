@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "snap_drawing/cpp/Layers/Interfaces/IChildInsertionLayerProvider.hpp"
 #include "snap_drawing/cpp/Layers/Layer.hpp"
 #include "snap_drawing/cpp/Layers/Mask/ScrollLayerFadingEdgesMaskLayer.hpp"
 #include "snap_drawing/cpp/Touches/ScrollGestureRecognizer.hpp"
@@ -47,7 +48,7 @@ public:
 
 class BaseScrollLayerAnimation;
 
-class ScrollLayer : public Layer {
+class ScrollLayer : public Layer, public IChildInsertionLayerProvider {
 public:
     explicit ScrollLayer(const Ref<Resources>& resources);
     ~ScrollLayer() override;
@@ -58,6 +59,7 @@ public:
     void setContentSize(Size size);
 
     const Ref<Layer>& getContentLayer() const;
+    Layer& getChildInsertionLayer() override;
 
     bool prepareForReuse() override;
 

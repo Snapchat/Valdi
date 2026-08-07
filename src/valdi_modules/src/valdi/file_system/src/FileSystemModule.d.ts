@@ -13,6 +13,8 @@ export type WriteFileData = ArrayBuffer | Uint8Array | string;
  * If you have any questions about the usage this module please ask in the support channel
  */
 export interface FileSystemModule {
+  existsSync(path: string): boolean;
+
   removeSync(path: string): boolean;
 
   createDirectorySync(path: string, createIntermediates: boolean): boolean;

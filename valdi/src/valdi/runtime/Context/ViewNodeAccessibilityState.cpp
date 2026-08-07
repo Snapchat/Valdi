@@ -1,7 +1,7 @@
 #include "valdi/runtime/Context/ViewNodeAccessibilityState.hpp"
 #include "valdi/runtime/Attributes/TextAttributeValueParser.hpp"
-#include "valdi/runtime/Views/Measure.hpp"
 #include "valdi_core/cpp/Events/TouchEvents.hpp"
+#include "valdi_core/cpp/Views/Measure.hpp"
 
 #include "valdi_core/cpp/Constants.hpp"
 #include "valdi_core/cpp/Utils/Marshaller.hpp"

@@ -7,12 +7,12 @@
 
 #pragma once
 
-#include "valdi/runtime/Views/Frame.hpp"
 #include "valdi/runtime/Views/View.hpp"
 #include "valdi_core/cpp/Utils/FlatMap.hpp"
 #include "valdi_core/cpp/Utils/Shared.hpp"
 #include "valdi_core/cpp/Utils/ValdiObject.hpp"
 #include "valdi_core/cpp/Utils/Value.hpp"
+#include "valdi_core/cpp/Views/Frame.hpp"
 
 #include <sstream>
 

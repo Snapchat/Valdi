@@ -1,6 +1,8 @@
 #include "TestDataUtils.hpp"
 #include "valdi_core/cpp/Utils/DiskUtils.hpp"
-#include <initializer_list>
+#include <cstdlib>
+#include <optional>
+#include <string_view>
 #include <unistd.h>
 
 using namespace Valdi;
@@ -9,7 +11,7 @@ namespace snap::drawing {
 
 namespace {
 
-constexpr const char* kTestDataSubDir = "snap_drawing/testdata";
+constexpr const char* testDataSubDir = "snap_drawing/testdata";
 
 Path resolveRunfilesTestPath(std::initializer_list<const char*> subDirsToCheck) {
     char cwdBuffer[PATH_MAX];
@@ -21,7 +23,7 @@ Path resolveRunfilesTestPath(std::initializer_list<const char*> subDirsToCheck) 
     for (const auto& subDir : subDirsToCheck) {
         basePath = cwdPath;
         basePath.append(subDir);
-        basePath.append(kTestDataSubDir);
+        basePath.append(testDataSubDir);
         basePath.normalize();
 
         if (DiskUtils::isDirectory(basePath)) {

@@ -88,11 +88,24 @@ public:
         return value;
     }
 
+    StringBox requiredStaticString(const StaticString& value, JSFunctionNativeCallContext& /*callContext*/) {
+        _requiredReferenceCallCount++;
+        auto storage = value.utf8Storage();
+        return StringBox::fromString(std::string_view(storage.data, storage.length));
+    }
+
+    StringBox requiredMutableStaticString(StaticString& value, JSFunctionNativeCallContext& /*callContext*/) {
+        _requiredReferenceCallCount++;
+        auto storage = value.utf8Storage();
+        return StringBox::fromString(std::string_view(storage.data, storage.length));
+    }
+
     Value echoValue(Value value, JSFunctionNativeCallContext& /*callContext*/) {
         return value;
     }
 
     int32_t typedArrayLength(const JSTypedArray& value, JSFunctionNativeCallContext& /*callContext*/) {
+        _typedArrayCallCount++;
         return static_cast<int32_t>(value.length);
     }
 
@@ -102,6 +115,16 @@ public:
 
     Ref<RefCountable> echoWrappedObject(const Ref<RefCountable>& value, JSFunctionNativeCallContext& /*callContext*/) {
         return value;
+    }
+
+    bool requiredWrappedObject(const RefCountable& value, JSFunctionNativeCallContext& /*callContext*/) {
+        _requiredReferenceCallCount++;
+        return &value == this;
+    }
+
+    bool requiredMutableWrappedObject(RefCountable& value, JSFunctionNativeCallContext& /*callContext*/) {
+        _requiredReferenceCallCount++;
+        return &value == this;
     }
 
     JSValueRef echoJSValue(JSValue value, JSFunctionNativeCallContext& callContext) {
@@ -132,6 +155,14 @@ public:
         return _requiredCallCount;
     }
 
+    int32_t getRequiredReferenceCallCount() const {
+        return _requiredReferenceCallCount;
+    }
+
+    int32_t getTypedArrayCallCount() const {
+        return _typedArrayCallCount;
+    }
+
     IJavaScriptContext* getConstructorContext() const {
         return _constructorContext;
     }
@@ -147,6 +178,8 @@ public:
 private:
     int32_t _value;
     int32_t _requiredCallCount = 0;
+    int32_t _requiredReferenceCallCount = 0;
+    int32_t _typedArrayCallCount = 0;
     IJavaScriptContext* _constructorContext = nullptr;
     IJavaScriptContext* _lastContext = nullptr;
     static int32_t _sharedValue;
@@ -188,10 +221,14 @@ static BinderTestValues setUpBinderTest(JSEntry& jsEntry) {
             .bindMethod<&BinderTestObject::optionalBool>("optionalBool")
             .bindMethod<&BinderTestObject::echoString>("echoString")
             .bindMethod<&BinderTestObject::echoStaticString>("echoStaticString")
+            .bindMethod<&BinderTestObject::requiredStaticString>("requiredStaticString")
+            .bindMethod<&BinderTestObject::requiredMutableStaticString>("requiredMutableStaticString")
             .bindMethod<&BinderTestObject::echoValue>("echoValue")
             .bindMethod<&BinderTestObject::typedArrayLength>("typedArrayLength")
             .bindMethod<&BinderTestObject::echoBytes>("echoBytes")
             .bindMethod<&BinderTestObject::echoWrappedObject>("echoWrappedObject")
+            .bindMethod<&BinderTestObject::requiredWrappedObject>("requiredWrappedObject")
+            .bindMethod<&BinderTestObject::requiredMutableWrappedObject>("requiredMutableWrappedObject")
             .bindMethod<&BinderTestObject::echoJSValue>("echoJSValue")
             .bindAccessor<&BinderTestObject::getValue, &BinderTestObject::setValue>("value")
             .bindGetter<&BinderTestObject::getReadOnly>("readOnly")
@@ -276,12 +313,12 @@ TEST_P(JSNativeClassBinderTest, bindsConstructorAndInstanceMembers) {
         exceptionTracker));
     ASSERT_TRUE(context.valueToBool(
         evaluateBinderExpression(jsEntry, "binderTestObject instanceof BinderTestObject").get(), exceptionTracker));
-    ASSERT_EQ(STRING_LITERAL("function"),
-              context.valueToString(evaluateBinderExpression(jsEntry, "typeof BinderTestObject").get(),
-                                    exceptionTracker));
-    ASSERT_EQ(STRING_LITERAL("BinderTestObject"),
-              context.valueToString(evaluateBinderExpression(jsEntry, "BinderTestObject.name").get(),
-                                    exceptionTracker));
+    ASSERT_EQ(
+        STRING_LITERAL("function"),
+        context.valueToString(evaluateBinderExpression(jsEntry, "typeof BinderTestObject").get(), exceptionTracker));
+    ASSERT_EQ(
+        STRING_LITERAL("BinderTestObject"),
+        context.valueToString(evaluateBinderExpression(jsEntry, "BinderTestObject.name").get(), exceptionTracker));
     ASSERT_TRUE(context.valueToBool(
         evaluateBinderExpression(
             jsEntry,
@@ -432,6 +469,126 @@ TEST_P(JSNativeClassBinderTest, convertsObjectLikeValues) {
                                                      "binderTestObject.echoJSValue(rawBinderValue) === rawBinderValue")
                                 .get(),
                             exceptionTracker));
+    jsEntry.checkException();
+}
+
+TEST_P(JSNativeClassBinderTest, convertsNullableAndRequiredReferences) {
+    MAIN_THREAD_INIT();
+    auto wrapper = createWrapper();
+    auto jsEntry = wrapper.makeJsEntry();
+    auto& context = jsEntry.context;
+    auto& exceptionTracker = jsEntry.exceptionTracker;
+    auto values = setUpBinderTest(jsEntry);
+
+    ASSERT_TRUE(
+        context.isValueUndefined(evaluateBinderExpression(jsEntry, "binderTestObject.echoStaticString(null)").get()));
+    ASSERT_TRUE(
+        context.isValueUndefined(evaluateBinderExpression(jsEntry, "binderTestObject.echoStaticString()").get()));
+    ASSERT_TRUE(
+        context.isValueUndefined(evaluateBinderExpression(jsEntry, "binderTestObject.echoWrappedObject(null)").get()));
+    ASSERT_TRUE(
+        context.isValueUndefined(evaluateBinderExpression(jsEntry, "binderTestObject.echoWrappedObject()").get()));
+
+    ASSERT_EQ(STRING_LITERAL("required"),
+              context.valueToString(
+                  evaluateBinderExpression(jsEntry, "binderTestObject.requiredStaticString('required')").get(),
+                  exceptionTracker));
+    ASSERT_EQ(STRING_LITERAL("mutable"),
+              context.valueToString(
+                  evaluateBinderExpression(jsEntry, "binderTestObject.requiredMutableStaticString('mutable')").get(),
+                  exceptionTracker));
+    ASSERT_TRUE(context.valueToBool(
+        evaluateBinderExpression(jsEntry, "binderTestObject.requiredWrappedObject(binderTestObject)").get(),
+        exceptionTracker));
+    ASSERT_TRUE(context.valueToBool(
+        evaluateBinderExpression(jsEntry, "binderTestObject.requiredMutableWrappedObject(binderTestObject)").get(),
+        exceptionTracker));
+
+    auto expectReferenceError = [&](const char* invocation) {
+        auto source = std::string("(() => { try { ") + invocation +
+                      "; return false; } catch (error) { return error.message === "
+                      "'Native class reference argument cannot be null or undefined'; } })()";
+        ASSERT_TRUE(context.valueToBool(evaluateBinderExpression(jsEntry, source.c_str()).get(), exceptionTracker));
+    };
+
+    expectReferenceError("binderTestObject.requiredStaticString(null)");
+    expectReferenceError("binderTestObject.requiredStaticString(undefined)");
+    expectReferenceError("binderTestObject.requiredStaticString()");
+    expectReferenceError("binderTestObject.requiredMutableStaticString(null)");
+    expectReferenceError("binderTestObject.requiredWrappedObject(null)");
+    expectReferenceError("binderTestObject.requiredWrappedObject(undefined)");
+    expectReferenceError("binderTestObject.requiredWrappedObject()");
+    expectReferenceError("binderTestObject.requiredMutableWrappedObject(null)");
+
+    ASSERT_TRUE(
+        context.valueToBool(evaluateBinderExpression(jsEntry,
+                                                     "(() => { try { binderTestObject.requiredWrappedObject({}); "
+                                                     "return false; } catch (error) { return true; } })()")
+                                .get(),
+                            exceptionTracker));
+    ASSERT_EQ(4, values.instanceOpaque->getRequiredReferenceCallCount());
+    jsEntry.checkException();
+}
+
+TEST_P(JSNativeClassBinderTest, rejectsNullTypedArrayArguments) {
+    MAIN_THREAD_INIT();
+    auto wrapper = createWrapper();
+    auto jsEntry = wrapper.makeJsEntry();
+    auto& context = jsEntry.context;
+    auto& exceptionTracker = jsEntry.exceptionTracker;
+    auto values = setUpBinderTest(jsEntry);
+
+    ASSERT_EQ(0,
+              context.valueToInt(
+                  evaluateBinderExpression(jsEntry, "binderTestObject.typedArrayLength(new Uint8Array())").get(),
+                  exceptionTracker));
+
+    auto expectTypedArrayError = [&](const char* invocation) {
+        auto source = std::string("(() => { try { ") + invocation +
+                      "; return false; } catch (error) { return error.message === "
+                      "'Native class typed array argument cannot be null or undefined'; } })()";
+        ASSERT_TRUE(context.valueToBool(evaluateBinderExpression(jsEntry, source.c_str()).get(), exceptionTracker));
+    };
+
+    expectTypedArrayError("binderTestObject.typedArrayLength(null)");
+    expectTypedArrayError("binderTestObject.typedArrayLength(undefined)");
+    expectTypedArrayError("binderTestObject.typedArrayLength()");
+    ASSERT_EQ(1, values.instanceOpaque->getTypedArrayCallCount());
+    jsEntry.checkException();
+}
+
+TEST_P(JSNativeClassBinderTest, marshalsLargeArgumentCounts) {
+    MAIN_THREAD_INIT();
+    auto wrapper = createWrapper();
+    auto jsEntry = wrapper.makeJsEntry();
+    auto& context = jsEntry.context;
+    auto& exceptionTracker = jsEntry.exceptionTracker;
+    auto values = setUpBinderTest(jsEntry);
+    ASSERT_NE(nullptr, values.instanceOpaque.get());
+
+    // argumentCount is script-controlled, so the argument array spills to the heap once it grows
+    // past a small inline capacity. Call every entry point (instance member, class member,
+    // constructor) with far more arguments than that capacity and check the declared parameter
+    // still arrives intact.
+    ASSERT_EQ(15,
+              context.valueToInt(evaluateBinderExpression(
+                                     jsEntry, "binderTestObject.add.apply(binderTestObject, new Array(4096).fill(5))")
+                                     .get(),
+                                 exceptionTracker));
+    ASSERT_EQ(12,
+              context.valueToInt(evaluateBinderExpression(
+                                     jsEntry, "BinderTestObject.twice.apply(BinderTestObject, new Array(4096).fill(6))")
+                                     .get(),
+                                 exceptionTracker));
+    ASSERT_EQ(7,
+              context.valueToInt(
+                  evaluateBinderExpression(jsEntry, "new BinderTestObject(...new Array(4096).fill(7)).value").get(),
+                  exceptionTracker));
+
+    // Zero arguments must still work: the array is empty and must never be dereferenced.
+    ASSERT_TRUE(context.isValueUndefined(evaluateBinderExpression(jsEntry, "binderTestObject.reset()").get()));
+    ASSERT_EQ(0,
+              context.valueToInt(evaluateBinderExpression(jsEntry, "binderTestObject.value").get(), exceptionTracker));
     jsEntry.checkException();
 }
 

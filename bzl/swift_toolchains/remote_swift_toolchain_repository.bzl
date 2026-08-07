@@ -34,7 +34,7 @@ swift_toolchain(
     arch = "{arch}",
     features = [{features}],
     os = "linux",
-    root = "{root}",
+{parsed_version_attr}    root = "{root}",
     version_file = ":swift_version",
 )
 
@@ -123,6 +123,18 @@ def _remote_swift_toolchain_repository_impl(ctx):
         for f in _LINUX_SWIFT_FEATURES
     ])
 
+    # rules_swift 4.x made `parsed_version` a mandatory attr on swift_toolchain;
+    # 3.x has no such attr and rejects it outright. This repo is generated once
+    # per root module and the roots may resolve different rules_swift major
+    # versions, so probe the rule for the attr rather than committing to either
+    # shape. Capability check, not a version comparison, so it needs no
+    # follow-up when the remaining roots move to 4.x.
+    swift_toolchain_bzl = Label("@build_bazel_rules_swift//swift/toolchains:swift_toolchain.bzl")
+    if "\"parsed_version\"" in ctx.read(swift_toolchain_bzl):
+        parsed_version_attr = "    parsed_version = \"{}\",\n".format(ctx.attr.version)
+    else:
+        parsed_version_attr = ""
+
     ctx.file(
         "BUILD.bazel",
         _BUILD_FILE_TEMPLATE.format(
@@ -131,6 +143,7 @@ def _remote_swift_toolchain_repository_impl(ctx):
             root = root_abs,
             features = features_str,
             exec_compatible_with = exec_compatible_with,
+            parsed_version_attr = parsed_version_attr,
         ),
         executable = False,
     )
@@ -147,6 +160,10 @@ remote_swift_toolchain_repository = repository_rule(
         ),
         "strip_prefix": attr.string(
             doc = "Top-level directory inside the archive to strip.",
+        ),
+        "version": attr.string(
+            mandatory = True,
+            doc = "Swift release version, e.g. '5.10.1'. Emitted as rules_swift 4.x's parsed_version; ignored on 3.x.",
         ),
         "arch": attr.string(
             mandatory = True,

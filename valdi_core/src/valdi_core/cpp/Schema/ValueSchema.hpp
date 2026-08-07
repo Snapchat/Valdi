@@ -37,6 +37,7 @@ class ES6SetSchema;
 class OutcomeSchema;
 class ProtoSchema;
 class ValueFunctionSchemaAttributes;
+class ValueSchemaRegistry;
 struct EnumCaseSchema;
 
 enum class ValueSchemaPrintFormat {
@@ -408,6 +409,13 @@ class ValueSchemaReference : public SimpleRefCountable {
 public:
     virtual ValueSchema getKey() const = 0;
     virtual ValueSchema getSchema() const = 0;
+    /**
+     The ValueSchemaRegistry that owns the referenced entry, or null if the reference is not
+     backed by a registry. Named type references inside the referenced schema are only
+     resolvable against this registry, so consumers whose own type resolver has no registry
+     (e.g. the JS-side ValueMarshallerRegistry) must resolve through it.
+     */
+    virtual Ref<ValueSchemaRegistry> getOwningRegistry() const;
 };
 
 class ArraySchema : public SimpleRefCountable {

@@ -1,5 +1,9 @@
 # How to get help
 
-## Valdi on Discord
+## GitHub Discussions
 
-Join the [Valdi Discord Server](https://discord.gg/uJyNEeYX2U) to get help.
+Ask questions and get help in [GitHub Discussions](https://github.com/Snapchat/Valdi/discussions).
+
+## GitHub Issues
+
+Found a bug or want to request a feature? [File an issue](https://github.com/Snapchat/Valdi/issues).

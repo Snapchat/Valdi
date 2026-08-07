@@ -99,7 +99,9 @@ def valdi_android_application(
         manifest = "@valdi//bzl/valdi/app_templates:AndroidLibManifest.xml",
         deps = [
             "@valdi//valdi:valdi_android_support",
-            "@android_mvn//:androidx_appcompat_appcompat",
+            # Label() so android_mvn resolves against Valdi's repo mapping, not
+            # the consumer's — see COMMON_ANDROIDX_DEPS in valdi_module_android_common.bzl.
+            Label("@android_mvn//:androidx_appcompat_appcompat"),
         ] + deps,
     )
 

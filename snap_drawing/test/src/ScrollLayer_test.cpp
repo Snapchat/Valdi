@@ -141,6 +141,15 @@ protected:
     TimeInterval _currentTime = 0.0;
 };
 
+TEST(ScrollLayer, reportsContentLayerAsChildInsertionLayer) {
+    auto resources = makeShared<Resources>(nullptr, 1.0f, ConsoleLogger::getLogger());
+    auto scrollLayer = makeLayer<ScrollLayer>(resources);
+
+    auto* childInsertionLayerProvider = dynamic_cast<IChildInsertionLayerProvider*>(scrollLayer.get());
+    ASSERT_NE(nullptr, childInsertionLayerProvider);
+    ASSERT_EQ(scrollLayer->getContentLayer().get(), &childInsertionLayerProvider->getChildInsertionLayer());
+}
+
 TEST_P(ScrollLayerFixture, testScrollDownStopsAtMaxOffset) {
     setAtTop();
     scrollAndFlushAnimations(GestureRecognizerStateBegan, Point(200, 600), Size(0, 0), Vector(0, 0));

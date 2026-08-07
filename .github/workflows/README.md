@@ -209,3 +209,17 @@ Check the failed run’s logs in the Actions tab to see which step failed and th
 
 **"No space left on device"**: The Ubuntu runner has limited disk. The workflow runs a **Free disk space** step right after checkout (removing .NET, GHC, CodeQL, pre-installed Android, Docker images, apt cache) so there is room for the Android SDK, NDK, and Bazel build. If you still hit out-of-disk errors, consider reducing what gets built or cached, or splitting the job.
 
+### valdi_web Integration Test
+
+The `bzl-changes.yml` workflow includes a dedicated **`web-integration-test`** job (Ubuntu) that runs the `valdi_web` Puppeteer integration test for the `helloworld_playground` experiment. It exercises the full open-source web path: compile a minimal Valdi module, bundle it with webpack via `valdi_web_playground`, boot the bundle in headless Chrome, and assert it renders without JS errors.
+
+The job checks out, sets up Java 17, configures the Bazel cache, runs `./tools/ci/setup_linux_env.sh`, then:
+
+```bash
+bazel test //experiments/helloworld_playground:integration_test --define enable_web=true --test_output=errors
+```
+
+The target is a `js_test` (`experiments/helloworld_playground/tests/run_tests.js`) that builds the exported web bundle, starts a static server, and drives it with Puppeteer. `--define enable_web=true` is required — without it the exported library emits only `.d.ts` and the webpack bundle fails to resolve. The test downloads `chrome-headless-shell` at runtime, so the target is tagged `requires-network` (exempting it from Bazel's test network isolation). The workflow-level path filter includes `experiments/helloworld_playground/**` and `tools/valdi_web_devtools/**` so web-only (`.tsx`/`.js`) changes trigger the workflow. Note GitHub path filters are workflow-level, not per-job — those paths (like any others in the list) start the whole Valdi CI suite, not just this job.
+
+Run locally from the repo root (open_source) with Java 17 + Bazel; on Linux run `./tools/ci/setup_linux_env.sh` first for system deps.
+

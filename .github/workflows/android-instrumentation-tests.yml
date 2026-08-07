@@ -1,0 +1,108 @@
+name: Android Instrumentation Tests
+
+# Deliberately not run on pull requests. The job needs a cold x86_64 Valdi build
+# (~25 GB of output base, 40+ minutes) plus an emulator, and PR runs never populate
+# the Bazel remote cache (the bazel-cache action only uploads on push, schedule,
+# workflow_dispatch and release), so every PR would pay the full cost. Running on
+# main plus nightly still catches regressions, and PRs keep the cheap build gate that
+# internal CI runs via client_validate_valdi_open_source.sh.
+#
+# Use the manual trigger to exercise this on a branch before merging.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/helloworld/**'
+      - 'valdi/src/android_test_support/**'
+      - 'valdi/src/android_test_runtime/**'
+      - 'valdi/BUILD.bazel'
+      - 'MODULE.bazel'
+      - 'tools/ci/android_instrumentation_tests.sh'
+      - 'tools/ci/setup_linux_env.sh'
+      - '.github/workflows/android-instrumentation-tests.yml'
+  schedule:
+    - cron: '0 9 * * *'  # 09:00 UTC, ~2am PT
+  workflow_dispatch:
+    inputs:
+      abi:
+        description: 'ABI to build and test'
+        required: false
+        default: 'x86_64'
+        type: choice
+        options:
+          - x86_64
+          - arm64-v8a
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-instrumentation-tests:
+    name: Android Instrumentation Tests
+    # x86_64, not arm64: GitHub's arm64 Linux runners do not expose /dev/kvm, so an
+    # emulator there would have no hardware acceleration.
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Configure Bazel cache
+        uses: ./.github/actions/bazel-cache
+        with:
+          gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
+          cache_key: android-instrumentation-tests
+
+      # Also does the disk reclaiming. A cold build needs ~25 GB and the runner starts
+      # with ~26 GB free, so this is not optional here.
+      - name: Setup Linux environment
+        run: source ./tools/ci/setup_linux_env.sh
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # The build and the emulator do not fit on the same runner: a cold build takes the
+      # ~26GB the reclaim above frees up, and the emulator then needs another ~7.4GB for its
+      # userdata partition. The script drops the Bazel output base in between.
+      - name: Run instrumented tests on an emulator
+        run: ./tools/ci/android_instrumentation_tests.sh
+        env:
+          VALDI_ANDROID_ABI: ${{ inputs.abi || 'x86_64' }}
+          VALDI_START_EMULATOR: '1'
+          VALDI_RECLAIM_BUILD_SPACE: '1'
+
+      - name: Report disk usage
+        if: always()
+        run: df -h /
+
+      - name: Upload logcat
+        if: failure()
+        run: adb logcat -d > /tmp/logcat.txt || true
+
+      - name: Upload logcat artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: instrumentation-logcat
+          path: /tmp/logcat.txt
+          retention-days: 5

@@ -252,11 +252,13 @@ void ViewNodeAttributesApplier::updateAttribute(ViewTransactionScope& viewTransa
 }
 
 void ViewNodeAttributesApplier::onApplyAttributeFailed(AttributeId id, const Error& error) {
+    // Asynchronously reported failures can arrive after the view factory was reset,
+    // leaving _boundAttributes null.
     VALDI_ERROR(_viewNode->getLogger(),
                 "{}, Could not apply attribute '{}' in class {}: {}",
                 _viewNode->getLoggerFormatPrefix(),
                 getAttributeName(id),
-                _boundAttributes->getClassName(),
+                _boundAttributes != nullptr ? _boundAttributes->getClassName() : StringBox::emptyString(),
                 error);
 }
 
@@ -487,6 +489,16 @@ void ViewNodeAttributesApplier::updateAttributeHandlers() {
                 container.erase(it);
             }
         });
+    }
+
+    auto dirtyIt = _dirtyCompositeAttributes.begin();
+    while (dirtyIt != _dirtyCompositeAttributes.end()) {
+        const auto* handler = _boundAttributes->getAttributeHandlerForId(dirtyIt->first);
+        if (handler == nullptr || handler->getCompositeAttribute() == nullptr) {
+            dirtyIt = _dirtyCompositeAttributes.erase(dirtyIt);
+        } else {
+            ++dirtyIt;
+        }
     }
 }
 

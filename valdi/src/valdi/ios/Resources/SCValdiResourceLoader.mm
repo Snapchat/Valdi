@@ -6,6 +6,7 @@
 //
 
 #import <Foundation/Foundation.h>
+#import <sys/stat.h>
 #import "valdi_core/SCValdiObjCConversionUtils.h"
 #import "valdi/ios/Resources/SCValdiResourceLoader.h"
 #import "valdi_core/cpp/Utils/DiskUtils.hpp"
@@ -16,32 +17,41 @@
 
 namespace ValdiIOS {
 
-// Resolves resourceName under resourceRoot and returns it only if a regular file exists AND stays
-// within resourceRoot. Containment is checked on the standardized *filesystem path string* (not a
-// URL): resourceName is treated as literal path text, so percent sequences like %2F stay literal
-// instead of decoding into a separator, and any ".." is collapsed by stringByStandardizingPath
-// before the prefix check — so "../../Documents/x", encoded or not, cannot escape the bundle.
-// (Standardizing a URL happens before percent-decoding, which misses ".." hidden behind %2F.)
-// -[NSBundle URLForResource:] never traversed out of the bundle; this preserves that guarantee.
+// Resolves resourceName under resourceRoot and returns it only if a regular file exists AND the
+// name cannot escape resourceRoot. Module resource names are flat leaf filenames, never paths:
+// every one is <bundleName> plus a literal extension (".valdimodule" in getArchiveForModule,
+// ".map.json" in populateSourceMap), and bundleName is a single normalized path component by
+// construction — JavaScriptPathResolver's pathToResourceId assigns it getFirstComponent() of the
+// normalized import path. So containment is guaranteed by rejecting any name containing a path
+// separator or ".." up front — pure in-memory string checks. resourceName is treated as literal
+// path text (never percent-decoded), so sequences like %2F stay literal. This
+// deliberately avoids stringByStandardizingPath: it resolves symlinks against the live filesystem
+// (the app bundle sits under symlinked /private/var container paths), and two such calls per
+// module lookup on the cold-render module-load path cost ~8.7ms P50 of AddFriends cold render
+// (PREVIEW-31440). Rejecting ".." anywhere in the name is stricter than strictly required; real
+// module names never contain it. -[NSBundle URLForResource:] never traversed out of the bundle;
+// this preserves that guarantee.
 static NSURL *containedResourceUrl(NSURL *resourceRoot, NSString *resourceName) {
-    NSString *rootPath = resourceRoot.path.stringByStandardizingPath;
+    if ([resourceName containsString:@"/"] || [resourceName containsString:@".."]) {
+        return nil;
+    }
+    NSString *rootPath = resourceRoot.path;
     if (rootPath.length == 0) {
         return nil;
     }
-    NSString *candidatePath = [rootPath stringByAppendingPathComponent:resourceName].stringByStandardizingPath;
-    if (![candidatePath isEqualToString:rootPath] &&
-        ![candidatePath hasPrefix:[rootPath stringByAppendingString:@"/"]]) {
+    NSString *candidatePath = [rootPath stringByAppendingPathComponent:resourceName];
+    // Require a regular file: a directory whose name matches a module would pass a plain existence
+    // check and then fail confusingly later in DiskUtils::load. URLForResource: only returns files,
+    // so this keeps parity. stat() rather than -[NSFileManager fileExistsAtPath:isDirectory:] to
+    // reach the same syscall without the NSFileManager layer above it, and S_ISREG rather than
+    // !S_ISDIR so sockets and fifos are rejected too.
+    struct stat candidateStat;
+    if (stat(candidatePath.fileSystemRepresentation, &candidateStat) != 0 || !S_ISREG(candidateStat.st_mode)) {
         return nil;
     }
-    // Require a regular file, not a directory: a directory whose name matches a module would pass a
-    // plain existence check and then fail confusingly later in DiskUtils::load. URLForResource: only
-    // returns files, so this keeps parity.
-    BOOL isDirectory = NO;
-    if ([[NSFileManager defaultManager] fileExistsAtPath:candidatePath isDirectory:&isDirectory] &&
-        !isDirectory) {
-        return [NSURL fileURLWithPath:candidatePath];
-    }
-    return nil;
+    // isDirectory:NO is not just a hint: +[NSURL fileURLWithPath:] without it stats the path again to
+    // decide the URL's trailing-slash form, which the S_ISREG check above already settled.
+    return [NSURL fileURLWithPath:candidatePath isDirectory:NO];
 }
 
 // Direct filesystem lookup of a resource relative to a bundle's resource directory. Unlike

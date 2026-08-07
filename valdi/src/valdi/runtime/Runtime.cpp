@@ -201,7 +201,7 @@ void Runtime::postInit() {
 
     if (_javaScriptRuntime != nullptr) {
         _javaScriptRuntime->setListener(this, weakRef(this));
-        _javaScriptRuntime->setModuleLoadDiagnosticsEnabled(enableModuleLoadDiagnostics());
+        _javaScriptRuntime->setANRDiagnosticsEnabled(enableANRDiagnostics());
     }
     _viewNodeManager.setRuntime(weakRef(this));
     _contextManager->setListener(this);
@@ -571,13 +571,13 @@ bool Runtime::disablePersistentStoreEncryption() {
     return runtimeTweaks->disablePersistentStoreEncryption();
 }
 
-bool Runtime::enableModuleLoadDiagnostics() {
+bool Runtime::enableANRDiagnostics() {
     const auto& runtimeTweaks = getRuntimeTweaks();
     if (runtimeTweaks == NULL) {
         return false;
     }
 
-    return runtimeTweaks->enableModuleLoadDiagnostics();
+    return runtimeTweaks->enableANRDiagnostics();
 }
 
 void Runtime::daemonClientConnected(const Shared<IDaemonClient>& daemonClient) {

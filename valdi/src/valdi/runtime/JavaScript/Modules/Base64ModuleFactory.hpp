@@ -21,7 +21,7 @@ public:
 
 private:
     static JSValueRef encodeToBase64(const JSTypedArray& bytes, bool urlSafe, JSFunctionNativeCallContext& callContext);
-    static JSValueRef decodeFromBase64(const Ref<StaticString>& base64, JSFunctionNativeCallContext& callContext);
+    static JSValueRef decodeFromBase64(const StaticString& base64, JSFunctionNativeCallContext& callContext);
 };
 
 } // namespace Valdi

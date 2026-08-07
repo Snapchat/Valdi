@@ -79,7 +79,14 @@ build:linux --sandbox_writable_path=/var/tmp
 build --disk_cache=""
 
 # common build configuration
-build --experimental_generate_json_trace_profile
+build --generate_json_trace_profile
+
+# Alternating a Valdi test target and a web/npm target trims test-only options
+# differently, so their exec tool configs collide under one output path and
+# recompile thousands of shared tool actions. Opt-in config that the `valdi`
+# CLI passes to its build/test flows so they converge; raw `bazel` keeps the
+# default. Changing test flags (e.g. --test_output) repopulates it once.
+build:stable_exec --notrim_test_configuration
 # enable grpc log
 build --remote_grpc_log=/tmp/snap_client_grpc.log
 build --experimental_reuse_sandbox_directories

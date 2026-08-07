@@ -1,6 +1,8 @@
 package com.snap.valdi.modules
 
 import android.content.Context
+import com.snap.valdi.logger.LogLevel
+import com.snap.valdi.logger.Logger
 import com.snap.valdi.utils.ValdiMarshaller
 import java.text.DecimalFormat
 import java.text.NumberFormat
@@ -10,7 +12,10 @@ import java.util.Currency
  * Duktape does not support Javascript number formatting. This native module can be used to format numbers using
  * Android's built-in number formatter.
  */
-class ValdiNumberFormattingModule(private val context: Context) : ValdiBridgeModule() {
+class ValdiNumberFormattingModule(
+    private val context: Context,
+    private val logger: Logger,
+) : ValdiBridgeModule() {
 
     override fun getModulePath(): String {
         return "NumberFormatting"
@@ -54,8 +59,11 @@ class ValdiNumberFormattingModule(private val context: Context) : ValdiBridgeMod
             maxFractionDigits?.let { format.maximumFractionDigits = it }
             marshaller.pushString(format.format(value))
         }
-        catch (e: NumberFormatException) {
-            // If the currency code is invalid, don't crash, just output the number
+        catch (e: IllegalArgumentException) {
+            // Currency.getInstance throws IllegalArgumentException (not NumberFormatException) for
+            // invalid or unsupported codes. If the currency code is invalid, don't crash, just
+            // output the number.
+            logger.log(LogLevel.WARN, e, "formatNumberWithCurrency: invalid currency code '$currencyCode', falling back to plain number")
             marshaller.pushString("${value.toString()} ${currencyCode.toString()}")
         }
     }

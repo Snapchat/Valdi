@@ -1,0 +1,23 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.snap.valdi.hello_world.test">
+
+    <uses-sdk android:minSdkVersion="24"
+        android:targetSdkVersion="34"/>
+
+    <!-- Self-instrumenting: the app under test and the tests ship in one APK. A separate
+         test APK could not launch StartActivity or ValdiTestHostActivity, because an
+         activity can only be started in the package whose manifest declares it. -->
+    <instrumentation
+        android:name="androidx.test.runner.AndroidJUnitRunner"
+        android:targetPackage="com.snap.valdi.hello_world.test" />
+
+    <application android:debuggable="true">
+        <!-- ValdiTestHostActivity is contributed by //valdi:valdi_android_test_runtime
+             through manifest merging. -->
+        <activity
+            android:name="com.snap.valdi.hello_world.StartActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+    </application>
+
+</manifest>

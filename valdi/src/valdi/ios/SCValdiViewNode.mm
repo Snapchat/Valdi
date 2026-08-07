@@ -16,6 +16,7 @@
 #import "valdi/runtime/Attributes/AttributesApplier.hpp"
 #import "valdi/runtime/Attributes/AttributesManager.hpp"
 #import "valdi_core/SCValdiObjCConversionUtils.h"
+#import "valdi_core/SCValdiInternedString+CPP.h"
 #import "valdi_core/SCValdiValueUtils.h"
 #import "valdi_core/SCValdiMarshallableObject.h"
 
@@ -75,6 +76,15 @@ static UIAccessibilityTraits SCValdiAccessibilityCategoryToAccessibilityTrait(Va
     return ValdiIOS::UIViewHolder::uiViewFromRef(_viewNode->getViewAndDisablePooling());
 }
 
+- (CGRect)relativeFrame
+{
+    auto frame = _viewNode->getDirectionAgnosticFrame();
+    return CGRectMake(CGFloatNormalize(frame.x),
+                      CGFloatNormalize(frame.y),
+                      CGFloatNormalize(frame.width),
+                      CGFloatNormalize(frame.height));
+}
+
 - (void)_getViewNode:(void(^)(Valdi::ViewTransactionScope &viewTransactionScope, Valdi::ViewNode *))block
 {
     auto* viewNodeTree = _viewNode->getViewNodeTree();
@@ -100,11 +110,7 @@ static UIAccessibilityTraits SCValdiAccessibilityCategoryToAccessibilityTrait(Va
 
 - (void)removeValueForValdiAttribute:(NSString *)attributeName
 {
-    [self _getViewNode:^(Valdi::ViewTransactionScope &viewTransactionScope, Valdi::ViewNode *viewNode) {
-        auto attributeId = SCValdiGetAttributeId(viewNode, attributeName);
-        viewNode->getAttributesApplier().removeAttribute(viewTransactionScope, attributeId, Valdi::AttributeOwner::getNativeOverridenAttributeOwner(), nullptr);
-        viewNode->getAttributesApplier().flush(viewTransactionScope);
-    }];
+    [self setValue:nil forValdiAttribute:attributeName];
 }
 
 - (id)valueForValdiAttribute:(NSString*)attributeName
@@ -149,6 +155,29 @@ static UIAccessibilityTraits SCValdiAccessibilityCategoryToAccessibilityTrait(Va
     } else {
         [_retainedObjects removeObjectForKey:key];
     }
+}
+
+- (void)setStoredObject:(id)object forKey:(SCValdiInternedStringRef)key
+{
+    [self _getViewNode:^(Valdi::ViewTransactionScope &viewTransactionScope, Valdi::ViewNode *viewNode) {
+        (void)viewTransactionScope;
+        viewNode->setStoredObject(*SCValdiInternedStringUnwrap(key), ValdiIOS::ValueFromNSObject(object));
+    }];
+}
+
+- (id)storedObjectForKey:(SCValdiInternedStringRef)key
+{
+    __block id outValue = nil;
+
+    [self _getViewNode:^(Valdi::ViewTransactionScope &viewTransactionScope, Valdi::ViewNode *viewNode) {
+        (void)viewTransactionScope;
+        auto value = viewNode->getStoredObject(*SCValdiInternedStringUnwrap(key));
+        if (!value.isNullOrUndefined()) {
+            outValue = ValdiIOS::NSObjectFromValue(value);
+        }
+    }];
+
+    return outValue;
 }
 
 - (void)setDidFinishLayoutBlock:(SCValdiContextDidFinishLayoutBlock)block forKey:(NSString *)key

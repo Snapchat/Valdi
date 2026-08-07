@@ -131,7 +131,38 @@ bool ValdiRuntimeTweaks::enableMmapModuleArchives() const {
     return getConfigKey("VALDI_ENABLE_MMAP_MODULE_ARCHIVES");
 }
 
-bool ValdiRuntimeTweaks::enableModuleLoadDiagnostics() const {
+bool ValdiRuntimeTweaks::isMmapModuleArchiveDenylisted(const StringBox& modulePath) const {
+    static const StringBox kKey = StringCache::getGlobal().makeStringFromLiteral("VALDI_MMAP_MODULE_ARCHIVES_DENYLIST");
+    auto denylist = _tweakValueProvider->getString(kKey, StringBox());
+    if (denylist.isEmpty()) {
+        return false;
+    }
+
+    auto moduleView = modulePath.toStringView();
+    auto listView = denylist.toStringView();
+    size_t start = 0;
+    while (start <= listView.size()) {
+        auto end = listView.find(',', start);
+        if (end == std::string_view::npos) {
+            end = listView.size();
+        }
+        auto prefix = listView.substr(start, end - start);
+        while (!prefix.empty() && prefix.front() == ' ') {
+            prefix.remove_prefix(1);
+        }
+        while (!prefix.empty() && prefix.back() == ' ') {
+            prefix.remove_suffix(1);
+        }
+        if (!prefix.empty() && moduleView.substr(0, prefix.size()) == prefix) {
+            return true;
+        }
+        start = end + 1;
+    }
+    return false;
+}
+
+bool ValdiRuntimeTweaks::enableANRDiagnostics() const {
+    // Key name kept from the earlier module-load diagnostics so the existing COF config carries over.
     return getConfigKey("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS");
 }
 
