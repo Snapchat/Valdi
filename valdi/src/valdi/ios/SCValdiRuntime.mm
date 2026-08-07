@@ -454,7 +454,7 @@ static SCNValdiCoreAsset *getAssetWithKey(Valdi::Runtime &runtime, const Valdi::
     auto attributes = attributesManager.getAttributesForClass(viewClassName);
 
     if (attributesBinder) {
-        Valdi::AttributesBindingContextImpl bindingContext(attributesManager.getAttributeIds(), attributesManager.getColorPalette(), _runtime->getLogger());
+        Valdi::AttributesBindingContextImpl bindingContext(attributesManager.getAttributeIds(), attributesManager.getColorPaletteManager(), _runtime->getLogger());
 
         SCValdiAttributesBinder *wrapper =
             [[SCValdiAttributesBinder alloc] initWithNativeAttributesBindingContext:(SCValdiAttributesBinderNative *)&bindingContext fontManager:_fontManager];

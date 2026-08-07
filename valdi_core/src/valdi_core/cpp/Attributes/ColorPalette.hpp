@@ -8,6 +8,7 @@
 #pragma once
 
 #include "valdi_core/cpp/Utils/FlatMap.hpp"
+#include "valdi_core/cpp/Utils/Mutex.hpp"
 #include "valdi_core/cpp/Utils/Shared.hpp"
 #include "valdi_core/cpp/Utils/StringBox.hpp"
 
@@ -63,29 +64,56 @@ std::ostream& operator<<(std::ostream& os, const Color& value);
 
 class ColorPalette;
 
-class ColorPaletteListener {
+class ColorPaletteManager;
+
+class ColorPaletteManagerListener {
 public:
-    virtual ~ColorPaletteListener() = default;
-    virtual void onColorPaletteUpdated(const ColorPalette& colorPalette) = 0;
+    virtual ~ColorPaletteManagerListener() = default;
+    virtual void onColorPaletteManagerUpdated(const ColorPaletteManager& colorPaletteManager,
+                                              const ColorPalette& colorPalette,
+                                              bool activeColorPaletteChanged) = 0;
 };
 
-class ColorPalette : public SharedPtrRefCountable {
+class ColorPalette : public SimpleRefCountable {
 public:
-    ColorPalette();
+    explicit ColorPalette(const StringBox& name);
     ~ColorPalette() override;
 
+    const StringBox& getName() const;
     std::optional<Color> getColorForName(const StringBox& name) const;
     const FlatMap<StringBox, Color>& getColors() const;
 
-    void updateColors(const FlatMap<StringBox, Color>& colors);
-
-    void setListener(ColorPaletteListener* listener);
+    bool updateColors(const FlatMap<StringBox, Color>& colors);
 
 private:
+    StringBox _name;
     FlatMap<StringBox, Color> _colorByName;
-    ColorPaletteListener* _listener = nullptr;
 
     bool setColorForName(const StringBox& name, Color color);
+};
+
+class ColorPaletteManager : public SharedPtrRefCountable {
+public:
+    ColorPaletteManager();
+    ~ColorPaletteManager() override;
+
+    Ref<ColorPalette> getActiveColorPalette() const;
+    Ref<ColorPalette> getColorPalette(const StringBox& name);
+    FlatMap<StringBox, Ref<ColorPalette>> getColorPalettes() const;
+
+    void configureColorPalette(const StringBox& name, const FlatMap<StringBox, Color>& colors);
+    void setActiveColorPalette(const StringBox& name);
+
+    void setListener(ColorPaletteManagerListener* listener);
+
+private:
+    mutable Mutex _mutex;
+    FlatMap<StringBox, Ref<ColorPalette>> _colorPaletteByName;
+    Ref<ColorPalette> _activeColorPalette;
+    ColorPaletteManagerListener* _listener = nullptr;
+
+    Ref<ColorPalette> getOrCreateColorPalette(const StringBox& name);
+    void notifyListener(const ColorPalette& colorPalette, bool activeColorPaletteChanged);
 };
 
 } // namespace Valdi

@@ -61,6 +61,7 @@ class BoundAttributes;
 class AttributeOwner;
 class ViewNodesFrameObserver;
 class Metrics;
+class ColorPalette;
 
 class ViewNode;
 class ViewNodeIterator {
@@ -153,7 +154,7 @@ enum SimplifiedScrollDirection {
 
 class ViewNode : public SharedPtrRefCountable {
 public:
-    ViewNode(YGConfig* yogaConfig, AttributeIds& attributeIds, ILogger& logger);
+    ViewNode(YGConfig* yogaConfig, AttributeIds& attributeIds, const Ref<ColorPalette>& colorPalette, ILogger& logger);
 
     ~ViewNode() override;
 
@@ -333,6 +334,11 @@ public:
     void reapplyAttributesRecursive(ViewTransactionScope& viewTransactionScope,
                                     const std::vector<AttributeId>& attributes,
                                     bool invalidateMeasure);
+    void onColorPaletteMutated(ViewTransactionScope& viewTransactionScope, const ColorPalette& colorPalette);
+
+    void setColorPaletteName(ViewTransactionScope& viewTransactionScope, const StringBox& colorPaletteName);
+    void setInheritedColorPalette(ViewTransactionScope& viewTransactionScope, const Ref<ColorPalette>& colorPalette);
+    const Ref<ColorPalette>& getResolvedColorPalette() const;
 
     void notifyAttributeFailed(AttributeId attributeId, const Error& error);
 
@@ -669,13 +675,14 @@ private:
     float _stickyCachedParentH = 0.0f;
     float _stickyCachedChildH = 0.0f;
 
-    std::bitset<34> _flags;
+    std::bitset<35> _flags;
 
     ViewNodeTree* _viewNodeTree = nullptr;
 
     Ref<View> _view;
     Ref<ViewFactory> _viewFactory;
     Ref<IViewNodeAssetHandler> _assetHandler;
+    Ref<ColorPalette> _colorPalette;
     Ref<ValueMap> _storedObjects;
 
     Ref<ValueFunction> _onViewCreatedCallback;
@@ -778,6 +785,14 @@ private:
     ReusableArray<ViewNode*> sortChildrenByZIndex() const;
 
     const Ref<Animator>& resolveAnimator(const Ref<Animator>& parentAnimator) const;
+
+    bool hasOveriddenColorPalette() const;
+    void setHasOveriddenColorPalette(bool hasOveriddenColorPalette);
+    bool setResolvedColorPalette(const Ref<ColorPalette>& colorPalette);
+    Ref<ColorPalette> getParentResolvedColorPalette() const;
+    void invalidateColorAttributes(ViewTransactionScope& viewTransactionScope, bool shouldApply);
+    void propagateInheritedColorPalette(ViewTransactionScope& viewTransactionScope,
+                                        const Ref<ColorPalette>& colorPalette);
 
     ViewNodeScrollState& getOrCreateScrollState();
     ViewNodeAccessibilityState& getOrCreateAccessibilityState();

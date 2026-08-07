@@ -176,7 +176,7 @@ std::vector<std::pair<std::string_view, int64_t>> getDefaultColors() {
     };
 }
 
-ColorPalette::ColorPalette() {
+ColorPalette::ColorPalette(const StringBox& name) : _name(name) {
     for (const auto& it : getDefaultColors()) {
         setColorForName(StringCache::getGlobal().makeString(it.first), it.second);
     }
@@ -184,7 +184,11 @@ ColorPalette::ColorPalette() {
 
 ColorPalette::~ColorPalette() = default;
 
-void ColorPalette::updateColors(const FlatMap<StringBox, Color>& colors) {
+const StringBox& ColorPalette::getName() const {
+    return _name;
+}
+
+bool ColorPalette::updateColors(const FlatMap<StringBox, Color>& colors) {
     auto changed = false;
 
     for (const auto& it : colors) {
@@ -193,11 +197,7 @@ void ColorPalette::updateColors(const FlatMap<StringBox, Color>& colors) {
         }
     }
 
-    if (changed) {
-        if (_listener != nullptr) {
-            _listener->onColorPaletteUpdated(*this);
-        }
-    }
+    return changed;
 }
 
 bool ColorPalette::setColorForName(const StringBox& name, Color color) {
@@ -226,8 +226,81 @@ const FlatMap<StringBox, Color>& ColorPalette::getColors() const {
     return _colorByName;
 }
 
-void ColorPalette::setListener(ColorPaletteListener* listener) {
+ColorPaletteManager::ColorPaletteManager() : _activeColorPalette(makeShared<ColorPalette>(STRING_LITERAL("default"))) {
+    _colorPaletteByName[_activeColorPalette->getName()] = _activeColorPalette;
+}
+
+ColorPaletteManager::~ColorPaletteManager() = default;
+
+Ref<ColorPalette> ColorPaletteManager::getActiveColorPalette() const {
+    std::lock_guard<Mutex> guard(_mutex);
+    return _activeColorPalette;
+}
+
+Ref<ColorPalette> ColorPaletteManager::getColorPalette(const StringBox& name) {
+    std::lock_guard<Mutex> guard(_mutex);
+    return getOrCreateColorPalette(name);
+}
+
+FlatMap<StringBox, Ref<ColorPalette>> ColorPaletteManager::getColorPalettes() const {
+    std::lock_guard<Mutex> guard(_mutex);
+    return _colorPaletteByName;
+}
+
+void ColorPaletteManager::configureColorPalette(const StringBox& name, const FlatMap<StringBox, Color>& colors) {
+    Ref<ColorPalette> colorPalette;
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        colorPalette = getOrCreateColorPalette(name);
+        if (!colorPalette->updateColors(colors)) {
+            return;
+        }
+    }
+
+    notifyListener(*colorPalette, false);
+}
+
+void ColorPaletteManager::setActiveColorPalette(const StringBox& name) {
+    Ref<ColorPalette> colorPalette;
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        if (name == _activeColorPalette->getName()) {
+            return;
+        }
+
+        colorPalette = getOrCreateColorPalette(name);
+        _activeColorPalette = colorPalette;
+    }
+
+    notifyListener(*colorPalette, true);
+}
+
+void ColorPaletteManager::setListener(ColorPaletteManagerListener* listener) {
+    std::lock_guard<Mutex> guard(_mutex);
     _listener = listener;
+}
+
+Ref<ColorPalette> ColorPaletteManager::getOrCreateColorPalette(const StringBox& name) {
+    auto it = _colorPaletteByName.find(name);
+    if (it != _colorPaletteByName.end()) {
+        return it->second;
+    }
+
+    auto colorPalette = makeShared<ColorPalette>(name);
+    _colorPaletteByName[name] = colorPalette;
+    return colorPalette;
+}
+
+void ColorPaletteManager::notifyListener(const ColorPalette& colorPalette, bool activeColorPaletteChanged) {
+    ColorPaletteManagerListener* listener;
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        listener = _listener;
+    }
+
+    if (listener != nullptr) {
+        listener->onColorPaletteManagerUpdated(*this, colorPalette, activeColorPaletteChanged);
+    }
 }
 
 } // namespace Valdi

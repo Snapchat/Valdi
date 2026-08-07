@@ -47,6 +47,24 @@ std::optional<int64_t> AttributeParser::parseColorComponent(bool isAlpha) {
 }
 
 std::optional<Color> AttributeParser::parseColor(const ColorPalette& colorPalette) {
+    auto colorValue = parseColorValue();
+    if (!colorValue) {
+        return std::nullopt;
+    }
+
+    if (colorValue->isNumber()) {
+        return Color(colorValue->toLong());
+    }
+
+    auto colorName = colorValue->toStringBox();
+    auto color = colorPalette.getColorForName(colorName);
+    if (!color) {
+        setErrorAtCurrentPosition(Error(STRING_FORMAT("Invalid color name '{}'", colorName)));
+    }
+    return color;
+}
+
+std::optional<Value> AttributeParser::parseColorValue() {
     tryParseWhitespaces();
 
     if (tryParse("rgba(")) {
@@ -87,7 +105,7 @@ std::optional<Color> AttributeParser::parseColor(const ColorPalette& colorPalett
             return std::nullopt;
         }
 
-        return Color(r.value(), g.value(), b.value(), a.value());
+        return Value(Color(r.value(), g.value(), b.value(), a.value()).value);
     } else {
         if (tryParse('#')) {
             auto currentPosition = position();
@@ -111,19 +129,14 @@ std::optional<Color> AttributeParser::parseColor(const ColorPalette& colorPalett
                 color = 0xFF | color << 8;
             }
 
-            return Color(color);
+            return Value(color);
         } else {
-            // Skip until the end of non-whitespace and then check if this is a color keyword
             tryParseWhitespaces();
             auto keyword = parseIdentifier();
             if (!keyword || keyword.value().empty()) {
                 return std::nullopt;
             }
-            auto color = colorPalette.getColorForName(StringCache::getGlobal().makeString(keyword.value()));
-            if (!color) {
-                setErrorAtCurrentPosition(Error(STRING_FORMAT("Invalid color name '{}'", keyword.value())));
-            }
-            return color;
+            return Value(StringCache::getGlobal().makeString(keyword.value()));
         }
     }
 }

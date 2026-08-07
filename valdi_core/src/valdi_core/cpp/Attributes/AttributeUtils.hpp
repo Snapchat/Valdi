@@ -12,6 +12,7 @@
 #include "valdi_core/cpp/Utils/Result.hpp"
 #include "valdi_core/cpp/Utils/StringBox.hpp"
 #include "valdi_core/cpp/Utils/TextParser.hpp"
+#include "valdi_core/cpp/Utils/Value.hpp"
 #include <string>
 
 namespace Valdi {
@@ -48,6 +49,7 @@ public:
     explicit AttributeParser(std::string_view str);
 
     std::optional<Color> parseColor(const ColorPalette& colorPalette);
+    std::optional<Value> parseColorValue();
     std::optional<double> parseAngle();
     std::optional<Dimension> parseDimension();
 

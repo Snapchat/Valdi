@@ -13,8 +13,11 @@ static Ref<MainThreadManager> makeMainThreadManager(const Ref<IMainThreadDispatc
 ViewNodeTestsDependencies::ViewNodeTestsDependencies()
     : _mainQueue(makeShared<StandaloneMainQueue>()),
       _mainThreadManager(makeMainThreadManager(_mainQueue->createMainThreadDispatcher())),
-      _attributesManager(
-          _viewManager, _attributeIds, makeShared<ColorPalette>(), ConsoleLogger::getLogger(), Yoga::createConfig(0)),
+      _attributesManager(_viewManager,
+                         _attributeIds,
+                         makeShared<ColorPaletteManager>(),
+                         ConsoleLogger::getLogger(),
+                         Yoga::createConfig(0)),
       _viewTransactionScope(makeShared<ViewTransactionScope>(&_viewManager, nullptr, false)) {
     _mainThreadManager->markCurrentThreadIsMainThread();
 
@@ -49,8 +52,10 @@ ViewTransactionScope& ViewNodeTestsDependencies::getViewTransactionScope() {
 }
 
 Ref<ViewNode> ViewNodeTestsDependencies::createNode(const char* viewClassName) {
-    auto viewNode = Valdi::makeShared<ViewNode>(
-        _attributesManager.getYogaConfig(), _attributesManager.getAttributeIds(), _attributesManager.getLogger());
+    auto viewNode = Valdi::makeShared<ViewNode>(_attributesManager.getYogaConfig(),
+                                                _attributesManager.getAttributeIds(),
+                                                _attributesManager.getColorPaletteManager()->getActiveColorPalette(),
+                                                _attributesManager.getLogger());
     viewNode->setViewNodeTree(_tree.get());
     viewNode->setViewFactory(*_viewTransactionScope, _viewFactories->getViewFactory(STRING_LITERAL(viewClassName)));
 

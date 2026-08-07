@@ -23,7 +23,7 @@ struct Dependencies {
     Dependencies() : mainQueue(), mainThreadManager(mainQueue), viewManager(), attributeIds() {
         viewManagerContext = makeShared<ViewManagerContext>(viewManager,
                                                             attributeIds,
-                                                            makeShared<ColorPalette>(),
+                                                            makeShared<ColorPaletteManager>(),
                                                             Yoga::createConfig(0),
                                                             true,
                                                             mainThreadManager,
