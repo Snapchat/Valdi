@@ -23,11 +23,24 @@ export class WorkspaceStore {
     readonly shouldDebounceOpenFile: boolean,
   ) {}
 
-  createWorkspace(): CreateWorkspaceResult {
-    const uncachedWorkspace = new Workspace('/', this.shouldDebounceOpenFile, this.logger, undefined);
+  createWorkspace(nativeApiMinVersion: number | undefined): CreateWorkspaceResult {
+    if (
+      nativeApiMinVersion !== undefined &&
+      (!Number.isInteger(nativeApiMinVersion) || nativeApiMinVersion < 0 || nativeApiMinVersion > 2147483647)
+    ) {
+      throw new Error('nativeApiMinVersion must be an integer between 0 and 2147483647');
+    }
+
+    const uncachedWorkspace = new Workspace(
+      '/',
+      this.shouldDebounceOpenFile,
+      this.logger,
+      undefined,
+      nativeApiMinVersion,
+    );
     let workspace: IWorkspace;
     if (this.cacheDir) {
-      workspace = createCachingWorkspace(this.cacheDir, uncachedWorkspace, this.logger);
+      workspace = createCachingWorkspace(this.cacheDir, uncachedWorkspace, this.logger, nativeApiMinVersion);
     } else {
       workspace = uncachedWorkspace;
     }

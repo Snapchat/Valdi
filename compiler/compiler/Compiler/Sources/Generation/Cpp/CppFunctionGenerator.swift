@@ -56,7 +56,8 @@ final class CppFunctionGenerator {
                                           type: .function(parameters: exportedFunction.parameters, returnType: exportedFunction.returnType, isSingleCall: false, shouldCallOnWorkerThread: false, allowSyncCall: exportedFunction.allowSyncCall),
                                           comments: exportedFunction.comments,
                                           omitConstructor: nil,
-                                          injectableParams: .empty)
+                                          injectableParams: .empty,
+                                          declaredVersion: nil)
 
         let nameAllocator = PropertyNameAllocator.forCpp()
 

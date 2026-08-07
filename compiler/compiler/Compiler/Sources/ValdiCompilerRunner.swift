@@ -423,11 +423,6 @@ class ValdiCompilerRunner {
                                                                               typeScriptCompilerManager: typeScriptCompilerManager,
                                                                               typeScriptAnnotationsManager: typeScriptAnnotationsManager,
                                                                               nativeCodeGenerationManager: nativeCodeGenerationManager))
-                builder.append(processor: DumpCompilationMetadataProcessor(projectConfig: configs.projectConfig,
-                                                                           compilerConfig: configs.compilerConfig,
-                                                                           projectClassMappingManager: projectClassMappingManager,
-                                                                           typeScriptCompilationManager: typeScriptCompilerManager,
-                                                                           typeScriptNativeTypeResolver: nativeCodeGenerationManager.nativeTypeResolver))
 
                 if !codeGenOnly {
                     builder.append(processor: CompileTypeScriptProcessor(typeScriptCompilerManager: typeScriptCompilerManager, compilerConfig: configs.compilerConfig))
@@ -465,12 +460,28 @@ class ValdiCompilerRunner {
         if !configs.compilerConfig.generateTSResFiles {
             if !hotReloadingEnabled && !regenerateValdiModulesBuildFilesOnly {
                 builder.append(postprocessor: GenerateViewClassesProcessor(logger: logger, compilerConfig: configs.compilerConfig))
-                builder.append(postprocessor: GenerateModelsProcessor(logger: logger, compilerConfig: configs.compilerConfig))
+                builder.append(postprocessor: GenerateModelsProcessor(logger: logger,
+                                                                      compilerConfig: configs.compilerConfig,
+                                                                      generateNativeSources: true))
+                builder.append(postprocessor: DumpCompilationMetadataProcessor(projectConfig: configs.projectConfig,
+                                                                               compilerConfig: configs.compilerConfig,
+                                                                               projectClassMappingManager: projectClassMappingManager,
+                                                                               typeScriptCompilationManager: typeScriptCompilerManager,
+                                                                               typeScriptNativeTypeResolver: nativeCodeGenerationManager.nativeTypeResolver))
                 // GenerateDependencyInjectionDataProcessor must run BEFORE CombineNativeSourcesProcessor
                 // so that Factory classes are included in the combined output for single_file_codegen modules
                 builder.append(postprocessor: GenerateDependencyInjectionDataProcessor(logger: logger, onlyFocusProcessingForModules: configs.compilerConfig.onlyFocusProcessingForModules))
                 builder.append(postprocessor: CombineNativeSourcesProcessor(logger: logger, compilerConfig: configs.compilerConfig, projectConfig: configs.projectConfig, bundleManager: bundleManager))
                 builder.append(postprocessor: GeneratedTypesVerificationProcessor(logger: logger, projectConfig: configs.projectConfig))
+            } else {
+                builder.append(postprocessor: GenerateModelsProcessor(logger: logger,
+                                                                      compilerConfig: configs.compilerConfig,
+                                                                      generateNativeSources: false))
+                builder.append(postprocessor: DumpCompilationMetadataProcessor(projectConfig: configs.projectConfig,
+                                                                               compilerConfig: configs.compilerConfig,
+                                                                               projectClassMappingManager: projectClassMappingManager,
+                                                                               typeScriptCompilationManager: typeScriptCompilerManager,
+                                                                               typeScriptNativeTypeResolver: nativeCodeGenerationManager.nativeTypeResolver))
             }
 
             if !codeGenOnly && !regenerateValdiModulesBuildFilesOnly {

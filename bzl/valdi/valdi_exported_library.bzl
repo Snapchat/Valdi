@@ -4,6 +4,7 @@ load("//bzl:expand_template.bzl", "expand_template")
 load("//bzl/android:collect_android_assets.bzl", "collect_android_assets")
 load("//bzl/valdi:rewrite_hdrs.bzl", "rewrite_hdrs")
 load("//bzl/valdi:suffixed_deps.bzl", "get_suffixed_deps")
+load("//bzl/valdi:valdi_android_resource_deps.bzl", "valdi_android_resource_deps")
 load("//bzl/valdi:valdi_collapse_web_paths.bzl", "collapse_native_paths", "collapse_web_paths", "generate_native_module_map", "generate_register_native_modules")
 load("//bzl/valdi:valdi_protodecl_to_js.bzl", "collapse_protodecl_paths", "protodecl_to_js_dir")
 load("//bzl/valdi/source_set:utils.bzl", "source_set_select")
@@ -37,7 +38,8 @@ def valdi_exported_library(
         web_package_name = None,
         npm_scope = "",
         npm_version = "1.0.0",
-        web_exclude_jsx_global_declaration = False):
+        web_exclude_jsx_global_declaration = False,
+        resources = []):
     """Exports Valdi modules as platform-specific libraries (xcframework, aar, npm).
 
     Args:
@@ -48,8 +50,14 @@ def valdi_exported_library(
             Only needed for multi-module exports with cross-module Swift imports.
             ValdiCoreSwift is always included automatically.
     """
+    resources = resources + [Label("//bzl/valdi:api_version_file")]
     if not web_package_name:
         web_package_name = "{}_npm".format(name)
+
+    android_resource_deps = valdi_android_resource_deps(
+        name = "{}_resources_android".format(name),
+        resources = resources,
+    )
 
     ios_public_hdrs_name = "{}_ios_hdrs".format(name)
     rewrite_hdrs(
@@ -113,6 +121,7 @@ done | sed '/^import ValdiCoreSwift$$/d' > $@
     apple_xcframework(
         name = "{}_ios".format(name),
         bundle_name = ios_bundle_name,
+        data = resources,
         deps = xcframework_deps,
         infoplists = [
             "@valdi//bzl/valdi:Info.plist",
@@ -135,7 +144,7 @@ done | sed '/^import ValdiCoreSwift$$/d' > $@
         public_hdrs = [":{}".format(ios_public_hdrs_name)],
     )
 
-    java_deps = java_deps + get_suffixed_deps(deps, "_kt")
+    java_deps = java_deps + get_suffixed_deps(deps, "_kt") + android_resource_deps
 
     collect_android_assets(
         name = "{}_android_assets".format(name),

@@ -28,6 +28,7 @@ import { IWorkspace, OpenFileImportPath, OpenFileResult } from './IWorkspace';
 import * as _path from 'path';
 import { ImportPathResolver } from './utils/ImportPathResolver';
 import { debounce } from 'lodash';
+import { VersioningValidator } from './VersioningValidator';
 
 export interface OpenedFile {
   sourceFile: ts.SourceFile;
@@ -120,6 +121,7 @@ export class Workspace implements IWorkspace {
     shouldDebounceOpenFile: boolean,
     readonly logger: ILogger | undefined,
     readonly compilerOptions: ts.CompilerOptions | undefined,
+    readonly nativeApiMinVersion: number | undefined,
   ) {
     this.workspaceRoot = workspaceRoot;
     const project = new Project(workspaceRoot, compilerOptions, logger ? new ProjectListener(logger) : undefined);
@@ -373,6 +375,18 @@ export class Workspace implements IWorkspace {
     return success;
   }
 
+  private validateVersioning(openedFile: OpenedFile, output: Diagnostic[]): boolean {
+    const validator = new VersioningValidator(
+      openedFile.sourceFile,
+      openedFile.workspaceProject.typeChecker,
+      (sourceFile, node, text) => this.makeDiagnostic(sourceFile, node, text),
+      this.nativeApiMinVersion,
+    );
+    const diagnostics = validator.validate();
+    output.push(...diagnostics);
+    return diagnostics.length === 0;
+  }
+
   async getDiagnostics(fileName: string): Promise<GetDiagnosticsResult> {
     return this.getDiagnosticsSync(fileName);
   }
@@ -402,6 +416,15 @@ export class Workspace implements IWorkspace {
 
     if (!fileName.endsWith('.js')) {
       if (!this.doGetDiagnostics(openedFile, false, diagnostics)) {
+        return {
+          diagnostics,
+          fileContent: openedFile.sourceFile.text,
+          hasError: true,
+          timeTakenMs: sw.elapsedMilliseconds,
+        };
+      }
+
+      if (!this.validateVersioning(openedFile, diagnostics)) {
         return {
           diagnostics,
           fileContent: openedFile.sourceFile.text,

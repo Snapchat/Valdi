@@ -61,7 +61,9 @@ export interface BatchMinifyJSRequestBody {
   options: string;
 }
 
-export interface CreateWorkspaceRequestBody {}
+export interface CreateWorkspaceRequestBody {
+  nativeApiMinVersion?: number;
+}
 
 export interface DestroyWorkspaceRequestBody {
   workspaceId: number;

@@ -102,7 +102,7 @@ export class CompilerCompanion extends CompanionServiceBase {
     });
 
     this.addEndpoint<CreateWorkspaceRequestBody, CreateWorkspaceResponseBody>(Command.createWorkspace, async (body) => {
-      const workspaceId = this.workspaceStore.createWorkspace().workspaceId;
+      const workspaceId = this.workspaceStore.createWorkspace(body.nativeApiMinVersion).workspaceId;
       return { workspaceId };
     });
 
@@ -270,7 +270,7 @@ export class CompilerCompanion extends CompanionServiceBase {
     this.addEndpoint<CompileNativeRequestBody, CompileNativeResponseBody>(Command.compileNative, async (body) => {
       let workspaceId: number;
       if (!body.workspaceId && body.registerInputFiles) {
-        workspaceId = this.workspaceStore.createWorkspace().workspaceId;
+        workspaceId = this.workspaceStore.createWorkspace(undefined).workspaceId;
       } else {
         workspaceId = body.workspaceId;
       }

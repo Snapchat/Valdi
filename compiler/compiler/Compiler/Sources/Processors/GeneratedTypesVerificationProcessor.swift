@@ -23,7 +23,7 @@ class GeneratedTypesVerificationProcessor: CompilationProcessor {
 
     func process(items: CompilationItems) throws -> CompilationItems {
         try items.select { item -> GeneratedTypeDescription? in
-            guard case let .generatedTypeDescription(generatedTypeDescription) = item.kind else {
+            guard case let .generatedTypeDescription(generatedTypeDescription, _) = item.kind else {
                 return nil
             }
             return generatedTypeDescription
