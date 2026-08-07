@@ -1,10 +1,12 @@
+import type { NativeMessageEvent, NativeMessagePort } from 'valdi_core/src/ValdiRuntime';
+
 interface WorkerPortMessage {
   readonly type: string;
-  readonly port: MessagePort;
+  readonly port: NativeMessagePort;
 }
 
 onmessage = workerEvent => {
-  const event = workerEvent as unknown as MessageEvent<unknown>;
+  const event = workerEvent as unknown as NativeMessageEvent<unknown>;
   if (event.data === 'transfer from worker') {
     const channel = new MessageChannel();
     const postWorkerMessage = postMessage as (data: unknown, transfer?: readonly MessagePort[]) => void;

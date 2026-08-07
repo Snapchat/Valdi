@@ -1,5 +1,6 @@
 #include "valdi/runtime/JavaScript/JavaScriptMessagePort.hpp"
 
+#include "valdi/runtime/Context/ContextAttachedValdiObject.hpp"
 #include "valdi/runtime/JavaScript/JSNativeClassBinder.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptFunctionCallContext.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptRuntime.hpp"
@@ -9,6 +10,17 @@
 #include <unordered_set>
 
 namespace Valdi {
+
+class ContextAttachedMessagePort final : public ContextAttachedValdiObject {
+public:
+    ContextAttachedMessagePort(Ref<Context>&& context, const Ref<JavaScriptMessagePort>& handle)
+        : ContextAttachedValdiObject(std::move(context), handle) {}
+
+    bool dispose(std::unique_lock<Mutex>& disposablesLock) final {
+        auto self = strongSmallRef(this);
+        return ContextAttachedValdiObject::dispose(disposablesLock);
+    }
+};
 
 JavaScriptMessage::JavaScriptMessage(Value data,
                                      std::vector<Ref<ValdiObject>> transferredPortSources,
@@ -56,14 +68,35 @@ Result<Void> JavaScriptMessagePortEndpoint::validateTransfer(const JavaScriptMes
 
 void JavaScriptMessagePortEndpoint::transfer(const JavaScriptMessagePort& handle,
                                              const Ref<JavaScriptRuntime>& runtime) {
-    std::lock_guard<Mutex> lock(_mutex);
-    auto currentHandle = _handle.lock();
-    SC_ASSERT(!_closed && currentHandle != nullptr && currentHandle.get() == &handle);
-    _generation++;
-    _scheduledGeneration.reset();
-    _started = false;
-    _handle.reset();
-    _ownerRuntime = runtime;
+    Ref<RefCountable> retainedHandle;
+    {
+        std::lock_guard<Mutex> lock(_mutex);
+        auto currentHandle = _handle.lock();
+        SC_ASSERT(!_closed && currentHandle != nullptr && currentHandle.get() == &handle);
+        _generation++;
+        _scheduledGeneration.reset();
+        _started = false;
+        _handle.reset();
+        retainedHandle = std::move(_retainedHandle);
+        _ownerRuntime = runtime;
+    }
+}
+
+void JavaScriptMessagePortEndpoint::updateRetainedHandle(const JavaScriptMessagePort& handle,
+                                                         const Ref<Context>& listenerContext) {
+    Ref<RefCountable> previousHandle;
+    {
+        std::lock_guard<Mutex> lock(_mutex);
+        auto currentHandle = Ref<JavaScriptMessagePort>(_handle.lock());
+        if (_closed || currentHandle == nullptr || currentHandle.get() != &handle) {
+            return;
+        }
+
+        previousHandle = std::move(_retainedHandle);
+        if (listenerContext != nullptr) {
+            _retainedHandle = makeShared<ContextAttachedMessagePort>(Ref(listenerContext), currentHandle);
+        }
+    }
 }
 
 Ref<JavaScriptRuntime> JavaScriptMessagePortEndpoint::getOwnerRuntime() const {
@@ -87,17 +120,21 @@ void JavaScriptMessagePortEndpoint::start(const JavaScriptMessagePort& handle) {
 }
 
 void JavaScriptMessagePortEndpoint::close(const JavaScriptMessagePort& handle) {
-    std::lock_guard<Mutex> lock(_mutex);
-    auto currentHandle = _handle.lock();
-    if (_closed || currentHandle == nullptr || currentHandle.get() != &handle) {
-        return;
+    Ref<RefCountable> retainedHandle;
+    {
+        std::lock_guard<Mutex> lock(_mutex);
+        auto currentHandle = _handle.lock();
+        if (_closed || currentHandle == nullptr || currentHandle.get() != &handle) {
+            return;
+        }
+        _closed = true;
+        _generation++;
+        _scheduledGeneration.reset();
+        _handle.reset();
+        retainedHandle = std::move(_retainedHandle);
+        _ownerRuntime.reset();
+        _messages.clear();
     }
-    _closed = true;
-    _generation++;
-    _scheduledGeneration.reset();
-    _handle.reset();
-    _ownerRuntime.reset();
-    _messages.clear();
 }
 
 void JavaScriptMessagePortEndpoint::enqueue(const Ref<JavaScriptMessage>& message) {
@@ -230,6 +267,10 @@ void JavaScriptMessagePort::close() {
 
 void JavaScriptMessagePort::setOnMessage(Shared<JSValueRefHolder> callback) {
     const auto shouldStart = callback != nullptr;
+    Ref<Context> listenerContext;
+    if (shouldStart) {
+        listenerContext = callback->getContext();
+    }
     {
         std::lock_guard<Mutex> lock(_mutex);
         if (!_active) {
@@ -237,6 +278,7 @@ void JavaScriptMessagePort::setOnMessage(Shared<JSValueRefHolder> callback) {
         }
         _onMessage = std::move(callback);
     }
+    _endpoint->updateRetainedHandle(*this, listenerContext);
     if (shouldStart) {
         _endpoint->start(*this);
     }
@@ -470,8 +512,17 @@ static JSValueRef makeJavaScriptMessageEvent(JavaScriptEntryParameters& entry, c
     }
 
     auto event = entry.jsContext.newObject(entry.exceptionTracker);
+    if (!entry.exceptionTracker) {
+        return entry.jsContext.newUndefined();
+    }
     entry.jsContext.setObjectProperty(event.get(), "data", data.get(), entry.exceptionTracker);
+    if (!entry.exceptionTracker) {
+        return entry.jsContext.newUndefined();
+    }
     entry.jsContext.setObjectProperty(event.get(), "ports", ports.get(), entry.exceptionTracker);
+    if (!entry.exceptionTracker) {
+        return entry.jsContext.newUndefined();
+    }
     return event;
 }
 

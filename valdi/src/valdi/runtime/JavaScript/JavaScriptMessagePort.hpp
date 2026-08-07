@@ -20,6 +20,7 @@ class JavaScriptMessagePortEndpoint;
 
 class JavaScriptMessage final : public SharedPtrRefCountable {
 public:
+    // Transfer validation and mutation must run without yielding on the source runtime's JavaScript thread.
     static Result<Ref<JavaScriptMessage>> make(const Value& data,
                                                const Value& transfer,
                                                const Ref<JavaScriptRuntime>& targetRuntime,
@@ -48,7 +49,9 @@ public:
 
     void attach(const Ref<JavaScriptMessagePort>& handle, const Ref<JavaScriptRuntime>& runtime);
     Result<Void> validateTransfer(const JavaScriptMessagePort& handle) const;
+    // Called immediately after validateTransfer() during the same source-runtime JavaScript turn.
     void transfer(const JavaScriptMessagePort& handle, const Ref<JavaScriptRuntime>& runtime);
+    void updateRetainedHandle(const JavaScriptMessagePort& handle, const Ref<Context>& listenerContext);
 
     Ref<JavaScriptRuntime> getOwnerRuntime() const;
     Ref<JavaScriptMessagePortEndpoint> getPeer() const;
@@ -62,6 +65,7 @@ private:
     Weak<JavaScriptMessagePortEndpoint> _peer;
     Weak<JavaScriptRuntime> _ownerRuntime;
     Weak<JavaScriptMessagePort> _handle;
+    Ref<RefCountable> _retainedHandle;
     std::deque<Ref<JavaScriptMessage>> _messages;
     std::optional<uint64_t> _scheduledGeneration;
     uint64_t _generation = 0;

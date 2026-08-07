@@ -1,16 +1,18 @@
 import 'jasmine/src/jasmine';
+import type { NativeMessageEvent, NativeMessagePort } from 'valdi_core/src/ValdiRuntime';
 
 interface NestedTransferredPortData {
-  readonly ports: readonly MessagePort[];
+  readonly ports: readonly NativeMessagePort[];
 }
 
 interface TransferredPortData {
   readonly nested: NestedTransferredPortData;
 }
 
-function receiveNext<T>(port: MessagePort): Promise<MessageEvent<T>> {
+function receiveNext<T>(port: MessagePort | NativeMessagePort): Promise<NativeMessageEvent<T>> {
   return new Promise(resolve => {
-    port.onmessage = event => resolve(event as MessageEvent<T>);
+    const nativePort = port as NativeMessagePort;
+    nativePort.onmessage = event => resolve(event as NativeMessageEvent<T>);
   });
 }
 

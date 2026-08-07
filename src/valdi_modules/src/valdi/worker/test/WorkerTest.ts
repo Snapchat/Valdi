@@ -1,9 +1,10 @@
 import 'jasmine/src/jasmine';
+import type { NativeMessageEvent, NativeMessagePort } from 'valdi_core/src/ValdiRuntime';
 import { Worker, inWorker } from 'worker/src/Worker';
 
 interface WorkerPortMessage {
   readonly type: string;
-  readonly port: MessagePort;
+  readonly port: NativeMessagePort;
 }
 
 function timeout(ms: number): Promise<void> {
@@ -11,9 +12,10 @@ function timeout(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms, 'timeout'));
 }
 
-function receiveNext<T>(port: MessagePort): Promise<MessageEvent<T>> {
+function receiveNext<T>(port: MessagePort | NativeMessagePort): Promise<NativeMessageEvent<T>> {
   return new Promise(resolve => {
-    port.onmessage = event => resolve(event as MessageEvent<T>);
+    const nativePort = port as NativeMessagePort;
+    nativePort.onmessage = event => resolve(event as NativeMessageEvent<T>);
   });
 }
 
@@ -62,10 +64,10 @@ describe('worker', () => {
   it('communicates both ways over a channel transferred to a worker', async () => {
     const worker = new Worker('worker/test_workers/MessageChannelWorker');
     const channel = new MessageChannel();
-    const replyEvents: MessageEvent<unknown>[] = [];
+    const replyEvents: NativeMessageEvent<unknown>[] = [];
     const replies = new Promise<void>(resolve => {
       channel.port1.onmessage = event => {
-        replyEvents.push(event);
+        replyEvents.push(event as unknown as NativeMessageEvent<unknown>);
         if (replyEvents.length === 3) {
           resolve();
         }
@@ -92,7 +94,7 @@ describe('worker', () => {
 
   it('communicates both ways over a channel transferred from a worker', async () => {
     const worker = new Worker('worker/test_workers/MessageChannelWorker');
-    const transferred = new Promise<MessageEvent<unknown>>(resolve => {
+    const transferred = new Promise<NativeMessageEvent<unknown>>(resolve => {
       worker.onmessage = event => resolve(event);
     });
 
