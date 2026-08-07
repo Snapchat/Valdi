@@ -103,6 +103,30 @@ TEST(AttributeProcessor, canParseLinearGradientWithLocations) {
     ASSERT_EQ(result.value(), rtlResult.value());
 }
 
+TEST(AttributeProcessor, canParseLinearGradientWithTransparentRgbaStop) {
+    auto result = preprocessGradient(kColorPalette, Value(STRING_LITERAL("linear-gradient(red 0, rgba(0,0,0,0) 1)")));
+
+    ASSERT_TRUE(result.success()) << result.description();
+
+    ASSERT_EQ(makeGradientValue(
+                  {
+                      Color::rgba(255, 0, 0, 1.0),
+                      Color::rgba(0, 0, 0, 0.0),
+                  },
+                  {
+                      0.0,
+                      1.0,
+                  },
+                  0,
+                  false),
+              result.value());
+
+    auto postprocessed = postprocessGradient(false, result.value());
+    ASSERT_TRUE(postprocessed) << postprocessed.description();
+    ASSERT_EQ(makeGradientValue({Color::rgba(255, 0, 0, 1.0), Color::rgba(0, 0, 0, 0.0)}, {0.0, 1.0}, 0, false),
+              postprocessed.value());
+}
+
 TEST(AttributeProcessor, failsWhenLinearGradientWithLocationsIsNotBalanced) {
     auto result = preprocessGradient(kColorPalette, Value(STRING_LITERAL("linear-gradient(blue 0, white 0.25, red)")));
 
