@@ -24,6 +24,15 @@ static JSValue onJsCallError(JSContext* context, Valdi::JSExceptionTracker& exce
     return JS_Throw(context, JS_DupValue(context, fromValdiJSValue(exception.get())));
 }
 
+static inline bool handleInterrupt(Valdi::IJavaScriptContext& jsContext,
+                                   Valdi::JSExceptionTracker& exceptionTracker) {
+    if (VALDI_UNLIKELY(jsContext.interruptRequested()) && jsContext.onInterrupt()) {
+        exceptionTracker.onError("JavaScript execution terminated");
+        return true;
+    }
+    return false;
+}
+
 NativeClassFunctionData::NativeClassFunctionData(const Valdi::Ref<Valdi::JSNativeClassData>& nativeClass,
                                                  const Valdi::StringBox& name)
     : nativeClass(nativeClass),
@@ -55,8 +64,8 @@ static JSValue callNativeClassInstanceMember(JSContext* context,
         return JS_ThrowTypeError(context, "Native class member called with an incompatible receiver");
     }
 
-    if (valdiJsContext.interruptRequested()) {
-        valdiJsContext.onInterrupt();
+    if (handleInterrupt(valdiJsContext, exceptionTracker)) {
+        return onJsCallError(context, exceptionTracker);
     }
 
     auto result = functionData->callback(instanceData->getOpaque().get(), callContext);
@@ -86,8 +95,8 @@ static JSValue callNativeClassStaticMember(JSContext* context,
         valdiJsContext, arguments, static_cast<size_t>(argc), exceptionTracker, functionData->referenceInfo);
     callContext.setThisValue(toValdiJSValue(thisValue));
 
-    if (valdiJsContext.interruptRequested()) {
-        valdiJsContext.onInterrupt();
+    if (handleInterrupt(valdiJsContext, exceptionTracker)) {
+        return onJsCallError(context, exceptionTracker);
     }
 
     auto result = functionData->callback(functionData->nativeClass->getOpaque().get(), callContext);
@@ -134,8 +143,9 @@ static JSValue callNativeClassConstructor(
     }
     callContext.setThisValue(toValdiJSValue(object));
 
-    if (valdiJsContext.interruptRequested()) {
-        valdiJsContext.onInterrupt();
+    if (handleInterrupt(valdiJsContext, exceptionTracker)) {
+        JS_FreeValue(context, object);
+        return onJsCallError(context, exceptionTracker);
     }
 
     auto nativeOpaque = constructor(nativeClass->getOpaque().get(), callContext);
@@ -170,8 +180,8 @@ JSValue jsCall(
         valdiJsContext, arguments, static_cast<size_t>(argc), exceptionTracker, function->getReferenceInfo());
     callContext.setThisValue(toValdiJSValue(thisValue));
 
-    if (valdiJsContext.interruptRequested()) {
-        valdiJsContext.onInterrupt();
+    if (handleInterrupt(valdiJsContext, exceptionTracker)) {
+        return onJsCallError(context, exceptionTracker);
     }
 
     auto result = (*function)(callContext);

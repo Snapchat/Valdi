@@ -18,6 +18,13 @@ namespace Valdi {
 
 class ValueFunctionWithJSValue;
 
+class JSValueForNativeObjectResolver {
+public:
+    virtual ~JSValueForNativeObjectResolver() = default;
+
+    virtual std::optional<JSValue> getJSValueForNativeObject(RefCountable* object) = 0;
+};
+
 Error convertJSErrorToValdiError(IJavaScriptContext& jsContext, JSValueRef jsValue, const Error* cause);
 
 JSValueRef convertValdiErrorToJSError(IJavaScriptContext& jsContext,
@@ -40,6 +47,12 @@ JSValueRef makeOpaque(IJavaScriptContext& jsContext,
 std::string formatJsModule(const std::string_view& jsModule);
 std::optional<BytesView> getPreCompiledJsModuleData(const BytesView& jsModule);
 BytesView makePreCompiledJsModule(const Byte* byteCode, size_t length);
+
+[[nodiscard]] JSValueRef valueToJSValue(IJavaScriptContext& jsContext,
+                                        const Valdi::Value& value,
+                                        JSValueForNativeObjectResolver* nativeObjectResolver,
+                                        const ReferenceInfoBuilder& referenceInfoBuilder,
+                                        JSExceptionTracker& exceptionTracker);
 
 [[nodiscard]] JSValueRef valueToJSValue(IJavaScriptContext& jsContext,
                                         const Valdi::Value& value,

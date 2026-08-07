@@ -15,6 +15,7 @@
 #include "valdi/quickjs/QuickJSUtils.hpp"
 #include "valdi_core/cpp/Constants.hpp"
 #include "valdi_core/cpp/Utils/ByteBuffer.hpp"
+#include "valdi_core/cpp/Utils/Defer.hpp"
 #include "valdi_core/cpp/Utils/Format.hpp"
 #include "valdi_core/cpp/Utils/StaticString.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
@@ -79,7 +80,7 @@ constexpr double kMaxStackSizeRatio = 0.75;
 static int handleInterrupt(JSRuntime* rt, void* opaque) {
     auto& jsContext = *reinterpret_cast<QuickJSJavaScriptContext*>(opaque);
     if (jsContext.interruptRequested()) {
-        jsContext.onInterrupt();
+        return jsContext.onInterrupt() ? 1 : 0;
     }
     return 0;
 }
@@ -1462,6 +1463,10 @@ void QuickJSJavaScriptContext::willEnterVM() {
     }
 }
 
+void QuickJSJavaScriptContext::requestExecutionTermination() {
+    IJavaScriptContext::requestExecutionTermination();
+}
+
 struct StackLimits {
     void* startFrameAddress;
     size_t maxStackSize;
@@ -1532,22 +1537,29 @@ void QuickJSJavaScriptContext::notifyRejectedPromises() {
 void QuickJSJavaScriptContext::willExitVM(Valdi::JSExceptionTracker& exceptionTracker) {
     auto guard = _threadAccessChecker.guard();
     SC_ASSERT(_enterVmCount > 0);
-    --_enterVmCount;
-    if (_enterVmCount == 0) {
-        JSContext* context = nullptr;
+    if (_enterVmCount > 1) {
+        --_enterVmCount;
+        return;
+    }
 
-        for (;;) {
-            switch (JS_ExecutePendingJob(_runtime, &context)) {
-                case 0:
-                    notifyRejectedPromises();
-                    return;
-                case 1:
-                    continue;
-                case -1: {
-                    setExceptionToTracker(exceptionTracker);
-                    notifyRejectedPromises();
-                    return;
-                }
+    Valdi::Defer exitVM([this]() { --_enterVmCount; });
+    if (executionTerminationRequested()) {
+        return;
+    }
+
+    JSContext* context = nullptr;
+
+    for (;;) {
+        switch (JS_ExecutePendingJob(_runtime, &context)) {
+            case 0:
+                notifyRejectedPromises();
+                return;
+            case 1:
+                continue;
+            case -1: {
+                setExceptionToTracker(exceptionTracker);
+                notifyRejectedPromises();
+                return;
             }
         }
     }

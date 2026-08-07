@@ -423,21 +423,36 @@ bool IJavaScriptContext::utf16Disabled() const {
     return _utf16Disabled;
 }
 
-// We don't care about pure thread safety correctness of the
-// interrupt boolean, it needs to be as low overhead as possible
+// We don't care about pure thread safety correctness of the interrupt booleans.
+// They need to be as low overhead as possible because they are polled from hot
+// native call and VM interrupt paths.
 __attribute__((no_sanitize("thread"))) void IJavaScriptContext::requestInterrupt() {
     _interruptRequested = true;
 }
 
-__attribute__((no_sanitize("thread"))) void IJavaScriptContext::onInterrupt() {
-    if (_listener != nullptr) {
-        _listener->onInterrupt(*this);
+__attribute__((no_sanitize("thread"))) void IJavaScriptContext::requestExecutionTermination() {
+    // Unlike the diagnostic interrupt, this is monotonic for the lifetime of
+    // the context. Keeping it sticky also makes native-call checkpoints useful
+    // for engines which cannot interrupt pure JavaScript execution.
+    _executionTerminationRequested = true;
+}
+
+__attribute__((no_sanitize("thread"))) bool IJavaScriptContext::onInterrupt() {
+    if (_interruptRequested) {
+        _interruptRequested = false;
+        if (_listener != nullptr) {
+            _listener->onInterrupt(*this);
+        }
     }
-    _interruptRequested = false;
+    return _executionTerminationRequested;
 }
 
 __attribute__((no_sanitize("thread"))) bool IJavaScriptContext::interruptRequested() const {
-    return _interruptRequested;
+    return _interruptRequested || _executionTerminationRequested;
+}
+
+__attribute__((no_sanitize("thread"))) bool IJavaScriptContext::executionTerminationRequested() const {
+    return _executionTerminationRequested;
 }
 
 JSValueID IJavaScriptContext::stashJSValue(JSValueRef&& valueRef) {

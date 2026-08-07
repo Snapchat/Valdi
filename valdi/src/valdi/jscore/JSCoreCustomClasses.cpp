@@ -31,6 +31,15 @@ static JSObjectRef onJsConstructorError(Valdi::JSExceptionTracker& exceptionTrac
     return nullptr;
 }
 
+static inline bool handleInterrupt(Valdi::IJavaScriptContext& jsContext,
+                                   Valdi::JSExceptionTracker& exceptionTracker) {
+    if (VALDI_UNLIKELY(jsContext.interruptRequested()) && jsContext.onInterrupt()) {
+        exceptionTracker.onError("JavaScript execution terminated");
+        return true;
+    }
+    return false;
+}
+
 JSValueRef callAsFunction(JSContextRef ctx,
                           JSObjectRef function,
                           JSObjectRef thisObject,
@@ -54,8 +63,8 @@ JSValueRef callAsFunction(JSContextRef ctx,
                                                    attachedJsFunctionData->function->getReferenceInfo());
     callContext.setThisValue(toValdiJSValue(JSCoreRef(thisObject, kJSTypeObject)));
 
-    if (attachedJsFunctionData->jsContext.interruptRequested()) {
-        attachedJsFunctionData->jsContext.onInterrupt();
+    if (handleInterrupt(attachedJsFunctionData->jsContext, exceptionTracker)) {
+        return onJsCallError(ctx, exceptionTracker, exception);
     }
 
     auto result = (*attachedJsFunctionData->function)(callContext);
@@ -132,8 +141,8 @@ static JSObjectRef callNativeClassConstructor(JSContextRef ctx,
         }
         return onJsConstructorError(exceptionTracker, exception);
     }
-    if (jsContext.interruptRequested()) {
-        jsContext.onInterrupt();
+    if (handleInterrupt(jsContext, exceptionTracker)) {
+        return onJsConstructorError(exceptionTracker, exception);
     }
 
     auto nativeOpaque = constructor(functionData->nativeClass->getOpaque().get(), callContext);
@@ -227,8 +236,8 @@ static JSValueRef callNativeClassInstanceMember(JSContextRef ctx,
         return onJsCallError(ctx, exceptionTracker, exception);
     }
 
-    if (jsContext.interruptRequested()) {
-        jsContext.onInterrupt();
+    if (handleInterrupt(jsContext, exceptionTracker)) {
+        return onJsCallError(ctx, exceptionTracker, exception);
     }
 
     auto result = functionData->callback(instanceData->getOpaque().get(), callContext);
@@ -264,8 +273,8 @@ static JSValueRef callNativeClassStaticMember(JSContextRef ctx,
                                                    functionData->referenceInfo);
     callContext.setThisValue(toValdiJSValue(JSCoreRef(thisObject, kJSTypeObject)));
 
-    if (jsContext.interruptRequested()) {
-        jsContext.onInterrupt();
+    if (handleInterrupt(jsContext, exceptionTracker)) {
+        return onJsCallError(ctx, exceptionTracker, exception);
     }
 
     auto result = functionData->callback(functionData->nativeClass->getOpaque().get(), callContext);

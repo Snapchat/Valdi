@@ -96,6 +96,7 @@ static hermes::hbc::CompileFlags getCompileFlags(hermes::OutputFormatKind output
     compileFlags.enableBlockScoping = true;
     compileFlags.enableES6Classes = true;
     compileFlags.debug = debug;
+    compileFlags.emitAsyncBreakCheck = true;
 
     return compileFlags;
 }

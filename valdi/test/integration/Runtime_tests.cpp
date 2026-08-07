@@ -8,6 +8,7 @@
 #include "valdi/runtime/Context/ViewNodeScrollState.hpp"
 #include "valdi/runtime/Interfaces/ITweakValueProvider.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptANRDetector.hpp"
+#include "valdi/runtime/JavaScript/JavaScriptMessagePort.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptUtils.hpp"
 #include "valdi/runtime/JavaScript/ValueFunctionWithJSValue.hpp"
 #include "valdi/runtime/JavaScript/WrappedJSValueRef.hpp"
@@ -1518,6 +1519,59 @@ TEST_P(RuntimeFixture, canGCSelfReferencingMainThreadCallback) {
     wrapper.flushQueues();
 
     ASSERT_EQ(1, receiver.use_count());
+}
+
+TEST_P(RuntimeFixture, messagePortListenerKeepsReceivingPortAliveUntilClosed) {
+    auto* javaScriptRuntime = wrapper.runtime->getJavaScriptRuntime();
+    Weak<JavaScriptMessagePort> receivingPort;
+
+    javaScriptRuntime->dispatchSynchronouslyOnJsThread([&](auto& jsEntry) {
+        auto portValue = jsEntry.jsContext.evaluate(R"""(
+            (() => {
+                const channel = new MessageChannel();
+                globalThis.messagePortSender = channel.port1;
+                globalThis.receivedPortMessages = [];
+                channel.port2.onmessage = event => globalThis.receivedPortMessages.push(event.data);
+                return channel.port2;
+            })()
+        )""",
+                                                    "message-port-lifetime.js",
+                                                    jsEntry.exceptionTracker);
+        ASSERT_TRUE(jsEntry.exceptionTracker);
+
+        auto port = castOrNull<JavaScriptMessagePort>(
+            jsEntry.jsContext.valueToWrappedObject(portValue.get(), jsEntry.exceptionTracker));
+        ASSERT_TRUE(jsEntry.exceptionTracker);
+        ASSERT_NE(nullptr, port);
+        receivingPort = weakRef(port.get());
+    });
+
+    javaScriptRuntime->dispatchSynchronouslyOnJsThread(
+        [](auto& jsEntry) { jsEntry.jsContext.garbageCollect(); });
+    ASSERT_NE(nullptr, receivingPort.lock());
+
+    javaScriptRuntime->dispatchSynchronouslyOnJsThread([&](auto& jsEntry) {
+        jsEntry.jsContext.evaluate(
+            "globalThis.messagePortSender.postMessage('still alive')", "message-port-send.js", jsEntry.exceptionTracker);
+        ASSERT_TRUE(jsEntry.exceptionTracker);
+    });
+    wrapper.flushQueues();
+
+    javaScriptRuntime->dispatchSynchronouslyOnJsThread([&](auto& jsEntry) {
+        auto message = jsEntry.jsContext.evaluate(
+            "globalThis.receivedPortMessages[0]", "message-port-receive.js", jsEntry.exceptionTracker);
+        ASSERT_TRUE(jsEntry.exceptionTracker);
+        EXPECT_EQ(STRING_LITERAL("still alive"), jsEntry.jsContext.valueToString(message.get(), jsEntry.exceptionTracker));
+        ASSERT_TRUE(jsEntry.exceptionTracker);
+
+        auto port = Ref<JavaScriptMessagePort>(receivingPort.lock());
+        ASSERT_NE(nullptr, port);
+        port->close();
+    });
+
+    javaScriptRuntime->dispatchSynchronouslyOnJsThread(
+        [](auto& jsEntry) { jsEntry.jsContext.garbageCollect(); });
+    EXPECT_EQ(nullptr, receivingPort.lock());
 }
 
 TEST_P(RuntimeFixture, canHandleDynamicChildDocument) {
@@ -6482,6 +6536,54 @@ TEST_P(RuntimeFixture, FLAKY_workerWorks) {
     auto res = valueFuture.get();
     ASSERT_TRUE(res.isString());
     ASSERT_EQ(res.toString(), "works");
+}
+
+static Value callWorkerTestMethod(RuntimeWrapper& wrapper,
+                                  const Ref<Context>& context,
+                                  const StringBox& methodName) {
+    auto valuePromise = std::make_shared<std::promise<Value>>();
+    auto completed = std::make_shared<std::atomic_bool>(false);
+    auto valueFuture = valuePromise->get_future();
+    auto callback = makeShared<ValueFunctionWithCallable>([valuePromise, completed](const auto& callContext) {
+        if (!completed->exchange(true)) {
+            valuePromise->set_value(callContext.getParameter(0));
+        }
+        return Value::undefined();
+    });
+    wrapper.runtime->getJavaScriptRuntime()->callComponentFunction(
+        context, methodName, ValueArray::make({Value(callback)}));
+
+    auto status = valueFuture.wait_for(std::chrono::seconds(5));
+    EXPECT_EQ(std::future_status::ready, status);
+    if (status != std::future_status::ready) {
+        return Value::undefined();
+    }
+    return valueFuture.get();
+}
+
+TEST_P(RuntimeFixture, workerCanBeTerminatedBeforeInitialization) {
+    auto tree =
+        wrapper.createViewNodeTreeAndContext(STRING_LITERAL("WorkerTest@test/src/WorkerTest"), Value(), Value());
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    auto result =
+        callWorkerTestMethod(wrapper, tree->getContext(), STRING_LITERAL("terminateBeforeInitialization"));
+    ASSERT_TRUE(result.isString());
+    EXPECT_EQ("works", result.toString());
+}
+
+TEST_P(RuntimeFixture, busyWorkerCanBeTerminated) {
+    if (isJSCore()) {
+        GTEST_SKIP() << "JavaScriptCore cannot interrupt a pure JavaScript loop through its public API";
+    }
+
+    auto tree =
+        wrapper.createViewNodeTreeAndContext(STRING_LITERAL("WorkerTest@test/src/WorkerTest"), Value(), Value());
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    auto result = callWorkerTestMethod(wrapper, tree->getContext(), STRING_LITERAL("terminateBusyWorker"));
+    ASSERT_TRUE(result.isString());
+    EXPECT_EQ("works", result.toString());
 }
 
 TEST_P(RuntimeFixture, canLockAllJSContexts) {

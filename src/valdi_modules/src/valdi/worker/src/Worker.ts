@@ -1,4 +1,4 @@
-import { ValdiRuntime, NativeWorker, OnMessageFunc } from 'valdi_core/src/ValdiRuntime';
+import type { NativeMessageEvent, NativeMessagePort, NativeWorker, ValdiRuntime } from 'valdi_core/src/ValdiRuntime';
 
 declare const runtime: ValdiRuntime;
 
@@ -13,18 +13,23 @@ export class Worker {
     this.nativeWorker = runtime.createWorker(url);
   }
 
-  public set onmessage(func: OnMessageFunc<unknown>) {
+  public set onmessage(func: (event: NativeMessageEvent<unknown>) => void) {
     if (this.nativeWorker) {
       this.nativeWorker.setOnMessage(func);
     }
   }
 
-  public postMessage<T>(data: T): void {
+  public postMessage<T>(data: T, transfer?: readonly MessagePort[]): void {
     if (this.nativeWorker) {
-      this.nativeWorker.postMessage(data);
+      this.nativeWorker.postMessage(data, transfer as readonly NativeMessagePort[] | undefined);
     }
   }
 
+  /**
+   * Requests worker termination. Hermes and QuickJS can interrupt running
+   * JavaScript; JavaScriptCore observes termination only at native-call
+   * boundaries and cannot interrupt a pure JavaScript loop.
+   */
   public terminate(): void {
     if (this.nativeWorker) {
       this.nativeWorker.terminate();

@@ -6,69 +6,77 @@ namespace Valdi {
 
 VALDI_CLASS_IMPL(JavaScriptWorker);
 
-JavaScriptWorker::JavaScriptWorker(Ref<JavaScriptRuntime> runtime, const StringBox& url)
-    : _runtime(std::move(runtime)), _url(url) {
-    VALDI_INFO(_runtime->getLogger(), "Created JS Worker with URL: {}", url);
+JavaScriptWorker::JavaScriptWorker(Ref<JavaScriptRuntime> hostRuntime,
+                                   Ref<JavaScriptRuntime> workerRuntime,
+                                   const StringBox& url)
+    : _hostRuntime(hostRuntime), _workerRuntime(std::move(workerRuntime)), _url(url) {
+    VALDI_INFO(_workerRuntime->getLogger(), "Created JS Worker with URL: {}", url);
 }
 
 JavaScriptWorker::~JavaScriptWorker() {
-    VALDI_INFO(_runtime->getLogger(), "Destroying JS Worker with URL: {}", _url);
-    _runtime->fullTeardown();
+    VALDI_INFO(_workerRuntime->getLogger(), "Destroying JS Worker with URL: {}", _url);
+    _workerRuntime->requestExecutionTermination();
+    _workerRuntime->requestFullTeardown();
 }
 
-// Retrieve the onmessage function set by the script
-static Ref<ValueFunction> getGlobalOnMessage(JavaScriptEntryParameters& entry) {
+Ref<JavaScriptRuntime> JavaScriptWorker::getWorkerRuntime() const {
+    return _workerRuntime;
+}
+
+static JSValueRef getGlobalOnMessage(JavaScriptEntryParameters& entry) {
     auto globalObj = entry.jsContext.getGlobalObject(entry.exceptionTracker);
     auto onMessageKey = STRING_LITERAL("onmessage");
     auto onmessage =
         entry.jsContext.getObjectProperty(globalObj.get(), onMessageKey.toStringView(), entry.exceptionTracker);
-    if (entry.jsContext.isValueFunction(onmessage.get())) {
-        return jsValueToFunction(
-            entry.jsContext, onmessage.get(), ReferenceInfoBuilder().withObject(onMessageKey), entry.exceptionTracker);
-    } else {
-        return nullptr;
-    }
-}
-
-// Call the onmessage function with data
-static void dispatchMessage(const Ref<ValueFunction>& func, const Value& data) {
-    if (func == nullptr) {
-        return;
-    }
-
-    auto e = makeShared<ValueMap>();
-    (*e)[STRING_LITERAL("data")] = data;
-    (*func)({Value(e)});
+    return entry.jsContext.isValueFunction(onmessage.get()) ? std::move(onmessage) : entry.jsContext.newUndefined();
 }
 
 void JavaScriptWorker::postInit() {
-    _runtime->dispatchOnJsThread(
+    _workerRuntime->dispatchOnJsThread(
         nullptr, JavaScriptTaskScheduleTypeDefault, 0, [self = strongSmallRef(this)](JavaScriptEntryParameters& entry) {
-            self->doPostInit();
+            if (self->isRunning()) {
+                self->doPostInit();
+            }
         });
 }
 
-void JavaScriptWorker::setHostOnMessage(const Ref<ValueFunction>& func) {
-    _runtime->dispatchOnJsThread(
-        nullptr,
-        JavaScriptTaskScheduleTypeDefault,
-        0,
-        [self = strongSmallRef(this), func](JavaScriptEntryParameters& entry) { self->doSetHostOnMessage(func); });
+void JavaScriptWorker::setHostOnMessage(Shared<JSValueRefHolder> func) {
+    std::lock_guard<Mutex> lock(_mutex);
+    if (_state == State::Running) {
+        _hostOnMessage = std::move(func);
+    }
 }
 
-void JavaScriptWorker::postMessage(const Value& value) {
-    _runtime->dispatchOnJsThread(
-        nullptr,
-        JavaScriptTaskScheduleTypeDefault,
-        0,
-        [self = strongSmallRef(this), value](JavaScriptEntryParameters& entry) { self->doPostMessage(entry, value); });
+Shared<JSValueRefHolder> JavaScriptWorker::getHostOnMessage() const {
+    std::lock_guard<Mutex> lock(_mutex);
+    return _hostOnMessage;
+}
+
+void JavaScriptWorker::postMessage(const Ref<JavaScriptMessage>& message) {
+    _workerRuntime->dispatchOnJsThread(nullptr,
+                                       JavaScriptTaskScheduleTypeDefault,
+                                       0,
+                                       [self = strongSmallRef(this), message](JavaScriptEntryParameters& entry) {
+                                           self->doPostMessage(entry, message);
+                                       });
 }
 
 void JavaScriptWorker::close() {
-    _runtime->dispatchOnJsThread(nullptr,
-                                 JavaScriptTaskScheduleTypeDefault,
-                                 0,
-                                 [self = strongSmallRef(this)](JavaScriptEntryParameters& entry) { self->doClose(); });
+    doClose();
+}
+
+void JavaScriptWorker::terminate() {
+    {
+        std::lock_guard<Mutex> lock(_mutex);
+        if (_state != State::Running) {
+            return;
+        }
+        _state = State::Terminated;
+        _hostOnMessage = nullptr;
+    }
+
+    _workerRuntime->requestExecutionTermination();
+    _workerRuntime->requestFullTeardown();
 }
 
 void JavaScriptWorker::doPostInit() {
@@ -78,16 +86,29 @@ void JavaScriptWorker::doPostInit() {
     // - postMessage
     // - close
     // - location, https://developer.mozilla.org/en-US/docs/Web/API/WorkerLocation, only href and search are populated
-    _runtime->setValueToGlobalObject(STRING_LITERAL("onmessage"), Value::undefined());
+    _workerRuntime->setValueToGlobalObject(STRING_LITERAL("onmessage"), Value::undefined());
     auto postMessageFunc = [weakSelf](const ValueFunctionCallContext& callContext) -> Value {
         auto self = weakSelf.lock();
-        if (self && !self->_closed) {
-            dispatchMessage(self->_hostOnMessage, callContext.getParameter(0));
+        if (self && self->isRunning()) {
+            auto hostRuntime = Ref<JavaScriptRuntime>(self->_hostRuntime.lock());
+            if (hostRuntime == nullptr) {
+                return Value::undefined();
+            }
+            auto transfer = callContext.getParametersSize() > 1 ? callContext.getParameter(1) : Value::undefinedRef();
+            auto message = JavaScriptMessage::make(callContext.getParameter(0), transfer, hostRuntime, nullptr);
+            if (!message) {
+                callContext.getExceptionTracker().onError(message.moveError());
+                return Value::undefined();
+            }
+            message.value()->dispatchHandler(self->getHostOnMessage(), [weakSelf]() {
+                auto self = weakSelf.lock();
+                return self != nullptr && self->canDeliverPendingMessage();
+            });
         }
         return Value::undefined();
     };
-    _runtime->setValueToGlobalObject(STRING_LITERAL("postMessage"),
-                                     Value(makeShared<ValueFunctionWithCallable>(postMessageFunc)));
+    _workerRuntime->setValueToGlobalObject(STRING_LITERAL("postMessage"),
+                                           Value(makeShared<ValueFunctionWithCallable>(postMessageFunc)));
     auto closeFunc = [weakSelf](const ValueFunctionCallContext& callContext) -> Value {
         auto self = weakSelf.lock();
         if (self) {
@@ -96,7 +117,8 @@ void JavaScriptWorker::doPostInit() {
         return Value::undefined();
     };
 
-    _runtime->setValueToGlobalObject(STRING_LITERAL("close"), Value(makeShared<ValueFunctionWithCallable>(closeFunc)));
+    _workerRuntime->setValueToGlobalObject(STRING_LITERAL("close"),
+                                           Value(makeShared<ValueFunctionWithCallable>(closeFunc)));
 
     auto queryStartIndex = _url.indexOf('?');
     auto scriptUrl = queryStartIndex.has_value() ? _url.substring(0, queryStartIndex.value()) : _url;
@@ -104,25 +126,41 @@ void JavaScriptWorker::doPostInit() {
     (*location)[STRING_LITERAL("href")] = Value(_url);
     (*location)[STRING_LITERAL("search")] =
         Value(queryStartIndex.has_value() ? _url.substring(queryStartIndex.value()) : STRING_LITERAL(""));
-    _runtime->setValueToGlobalObject(STRING_LITERAL("location"), Value(location));
+    _workerRuntime->setValueToGlobalObject(STRING_LITERAL("location"), Value(location));
 
     // Evaluate the worker script
-    auto result = _runtime->evalModuleSync(scriptUrl, false);
+    auto result = _workerRuntime->evalModuleSync(scriptUrl, false);
 }
 
-void JavaScriptWorker::doSetHostOnMessage(const Ref<ValueFunction>& func) {
-    _hostOnMessage = func;
-}
-
-void JavaScriptWorker::doPostMessage(JavaScriptEntryParameters& entry, const Value& value) const {
-    if (!_closed) {
-        auto onMessageFunc = getGlobalOnMessage(entry);
-        dispatchMessage(onMessageFunc, value);
+void JavaScriptWorker::doPostMessage(JavaScriptEntryParameters& entry, const Ref<JavaScriptMessage>& message) const {
+    if (isRunning()) {
+        auto onMessage = getGlobalOnMessage(entry);
+        if (entry.jsContext.isValueFunction(onMessage.get())) {
+            message->callHandler(entry, onMessage.get());
+        }
     }
 }
 
 void JavaScriptWorker::doClose() {
-    _closed = true;
+    {
+        std::lock_guard<Mutex> lock(_mutex);
+        if (_state != State::Running) {
+            return;
+        }
+        _state = State::Closed;
+        _hostOnMessage = nullptr;
+    }
+    _workerRuntime->requestFullTeardown();
+}
+
+bool JavaScriptWorker::isRunning() const {
+    std::lock_guard<Mutex> lock(_mutex);
+    return _state == State::Running;
+}
+
+bool JavaScriptWorker::canDeliverPendingMessage() const {
+    std::lock_guard<Mutex> lock(_mutex);
+    return _state != State::Terminated;
 }
 
 } // namespace Valdi
