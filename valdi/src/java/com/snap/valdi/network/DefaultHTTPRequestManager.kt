@@ -163,7 +163,7 @@ class DefaultHTTPRequestManager(
 
     private val threadCount = AtomicInteger(0)
 
-    private var executors: ExecutorService = ThreadPoolExecutor(
+    private val executors: ExecutorService = ThreadPoolExecutor(
         MAX_CONCURRENT_REQUESTS,
         MAX_CONCURRENT_REQUESTS,
         60L,
