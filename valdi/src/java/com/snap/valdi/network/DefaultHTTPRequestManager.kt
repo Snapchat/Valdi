@@ -34,8 +34,11 @@ class DefaultHTTPRequestManager(
 
             // Closing from another thread makes the worker's blocked read throw, which is
             // how the thread gets reclaimed. Do it outside the lock so a slow close cannot stall
-            // the task binding its connection.
-            connectionToClose?.disconnect()
+            // the task binding its connection. Swallow like the worker's own teardown does: this
+            // races that teardown, and native is the only caller left to hand a throw to.
+            try {
+                connectionToClose?.disconnect()
+            } catch (exc: Exception) {}
         }
 
         private fun isCancelled(): Boolean = synchronized(this) { cancelled }
