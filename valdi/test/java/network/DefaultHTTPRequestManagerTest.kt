@@ -86,15 +86,6 @@ private class FakeServer(respondImmediately: Boolean) : Closeable {
 
     fun awaitHungUp(count: Int, timeoutMs: Long): Boolean = await(timeoutMs) { hungUp.get() >= count }
 
-    /** Block until the accept count has stopped moving. */
-    fun settleAcceptedCount(settleMs: Long) {
-        var previous = -1
-        while (accepted.get() != previous) {
-            previous = accepted.get()
-            Thread.sleep(settleMs)
-        }
-    }
-
     fun startResponding() {
         respond = true
     }
@@ -245,6 +236,8 @@ private class RecordingCompletion : HTTPRequestManagerCompletion() {
 
     fun awaitSettled(timeoutMs: Long): Boolean = latch.await(timeoutMs, TimeUnit.MILLISECONDS)
 
+    fun hasSettled(): Boolean = latch.count == 0L
+
     fun describeOutcome(): String = response?.let { "onComplete(${it.statusCode})" } ?: "onFail($error)"
 }
 
@@ -257,9 +250,6 @@ class DefaultHTTPRequestManagerTest {
 
     @Before
     fun setUp() {
-        // Keep-alive would let a later request reuse an earlier socket, which breaks the
-        // accepted-connection counting these tests rely on.
-        System.setProperty("http.keepAlive", "false")
         manager = DefaultHTTPRequestManager(ApplicationProvider.getApplicationContext<Context>())
     }
 
@@ -319,23 +309,38 @@ class DefaultHTTPRequestManagerTest {
     }
 
     @Test(timeout = 30_000)
-    fun cancelWhileQueuedNeverOpensAConnection() {
+    fun cancelWhileQueuedNeitherConnectsNorCompletes() {
         val server = holdingServer()
 
-        // Saturate the pool so the next request has to queue.
+        // Saturate the pool so the next request has to queue. Waiting for every worker to be
+        // awaiting a response, rather than just for connections to be accepted, is what makes the
+        // next request certain to still be queued when it is cancelled.
         repeat(DefaultHTTPRequestManager.MAX_CONCURRENT_REQUESTS) { perform(server.url("/hold")) }
-        assertTrue(server.awaitAccepted(1, 5_000))
+        assertTrue(
+            "the pool never filled",
+            server.awaitRequestsRead(DefaultHTTPRequestManager.MAX_CONCURRENT_REQUESTS, 5_000),
+        )
 
-        perform(server.url("/queued")).cancel()
+        val queued = RecordingCompletion()
+        manager.performRequest(getRequest(server.url("/queued")), queued).cancel()
 
         // Drain the queue: unblock the workers and stop holding new connections.
         server.startResponding()
         server.releaseAll()
-        server.settleAcceptedCount(500)
+
+        // The queue is FIFO, so a probe submitted after the cancelled request cannot reach a
+        // worker before it. A settled probe means the cancelled request has had its turn.
+        val probe = RecordingCompletion()
+        manager.performRequest(getRequest(respondingServer().url("/probe")), probe)
+        assertTrue("the pool never drained", probe.awaitSettled(5_000))
 
         assertFalse(
             "a request cancelled while queued still opened a connection",
             server.sawRequestFor("/queued"),
+        )
+        assertFalse(
+            "a request cancelled while queued reported ${queued.describeOutcome()}",
+            queued.hasSettled(),
         )
     }
 
@@ -360,25 +365,13 @@ class DefaultHTTPRequestManagerTest {
         val completion = RecordingCompletion()
         val cancelable = manager.performRequest(getRequest(server.url("/hold")), completion)
 
-        assertTrue(server.awaitAccepted(1, 5_000))
+        assertTrue("the server never read the request", server.awaitRequestsRead(1, 5_000))
 
         cancelable.cancel()
 
         val settled = completion.awaitSettled(1_500)
 
         assertFalse("a cancelled request reported ${completion.describeOutcome()}", settled)
-    }
-
-    @Test(timeout = 30_000)
-    fun cancelBeforeConnectionOpens() {
-        val server = holdingServer()
-        val completion = RecordingCompletion()
-
-        manager.performRequest(getRequest(server.url("/hold")), completion).cancel()
-
-        val settled = completion.awaitSettled(1_500)
-
-        assertFalse("a request cancelled before it ran reported ${completion.describeOutcome()}", settled)
     }
 
     @Test(timeout = 30_000)
