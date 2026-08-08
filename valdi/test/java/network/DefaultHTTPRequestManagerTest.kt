@@ -9,6 +9,7 @@ import com.snapchat.client.valdi_core.HTTPResponse
 import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -176,7 +177,10 @@ private class FakeServer(respondImmediately: Boolean) : Closeable {
  * but before anything has touched the network. That is the window a cancel has to be caught in,
  * because [HttpURLConnection.disconnect] cannot tear down a connection that has not connected yet.
  */
-private class ParkingConnection(url: URL) : HttpURLConnection(url) {
+private class ParkingConnection(
+    url: URL,
+    private val failDisconnect: Boolean = false,
+) : HttpURLConnection(url) {
 
     val reachedHeaders = CountDownLatch(1)
     val release = CountDownLatch(1)
@@ -211,6 +215,9 @@ private class ParkingConnection(url: URL) : HttpURLConnection(url) {
 
     override fun disconnect() {
         disconnects.incrementAndGet()
+        if (failDisconnect) {
+            throw IllegalStateException("disconnect failed")
+        }
     }
 
     override fun usingProxy(): Boolean = false
@@ -405,6 +412,36 @@ class DefaultHTTPRequestManagerTest {
             "a POST cancelled before it connected still wrote its body",
             connection.openedOutputStream,
         )
+    }
+
+    @Test(timeout = 30_000)
+    fun cancelSurvivesAThrowingDisconnect() {
+        val url = "http://example.invalid/throwing"
+        val connection = ParkingConnection(URL(url), failDisconnect = true)
+        val throwingManager = DefaultHTTPRequestManager(
+            ApplicationProvider.getApplicationContext<Context>(),
+        ) { connection }
+
+        val request = HTTPRequest(url, "GET", hashMapOf("Accept" to "*/*"), null, 0)
+        val cancelable = throwingManager.performRequest(request, RecordingCompletion())
+
+        assertTrue(
+            "the worker never reached header setup",
+            connection.reachedHeaders.await(5, TimeUnit.SECONDS),
+        )
+
+        // cancel() is reached from native through the djinni Cancelable bridge, so anything it
+        // throws escapes into JNI rather than into a caller that can handle it.
+        try {
+            cancelable.cancel()
+        } catch (exception: Exception) {
+            connection.release.countDown()
+            fail("cancel() let $exception escape to its caller")
+        }
+
+        connection.release.countDown()
+
+        assertTrue("the worker never unwound", connection.awaitUnwound(5_000))
     }
 
     private fun holdingServer(): FakeServer = FakeServer(respondImmediately = false).also { servers.add(it) }
