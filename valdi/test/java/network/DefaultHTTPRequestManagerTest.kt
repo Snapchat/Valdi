@@ -14,11 +14,16 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.InputStream
+import java.io.OutputStream
+import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.URL
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -164,6 +169,51 @@ private class FakeServer(respondImmediately: Boolean) : Closeable {
         }
         return head.lineSequence().firstOrNull()
     }
+}
+
+/**
+ * Parks the worker inside the header loop: past the point where the task has bound its connection,
+ * but before anything has touched the network. That is the window a cancel has to be caught in,
+ * because [HttpURLConnection.disconnect] cannot tear down a connection that has not connected yet.
+ */
+private class ParkingConnection(url: URL) : HttpURLConnection(url) {
+
+    val reachedHeaders = CountDownLatch(1)
+    val release = CountDownLatch(1)
+
+    private val disconnects = AtomicInteger(0)
+    private val sentBody = ByteArrayOutputStream()
+
+    @Volatile var openedOutputStream = false
+        private set
+
+    /** cancel() and the worker's finally block both disconnect, so two means the worker unwound. */
+    fun awaitUnwound(timeoutMs: Long): Boolean = await(timeoutMs) { disconnects.get() >= 2 }
+
+    override fun setRequestProperty(key: String, value: String) {
+        reachedHeaders.countDown()
+        release.await()
+        super.setRequestProperty(key, value)
+    }
+
+    override fun getOutputStream(): OutputStream {
+        openedOutputStream = true
+        return sentBody
+    }
+
+    override fun getInputStream(): InputStream = ByteArrayInputStream(ByteArray(0))
+
+    override fun getResponseCode(): Int = 200
+
+    override fun getHeaderFields(): Map<String, List<String>> = emptyMap()
+
+    override fun connect() = Unit
+
+    override fun disconnect() {
+        disconnects.incrementAndGet()
+    }
+
+    override fun usingProxy(): Boolean = false
 }
 
 private class RecordingCompletion : HTTPRequestManagerCompletion() {
@@ -322,6 +372,39 @@ class DefaultHTTPRequestManagerTest {
         val settled = completion.awaitSettled(1_500)
 
         assertFalse("a request cancelled before it ran reported ${completion.describeOutcome()}", settled)
+    }
+
+    @Test(timeout = 30_000)
+    fun cancelledPostNeverWritesItsBody() {
+        val url = "http://example.invalid/post"
+        val connection = ParkingConnection(URL(url))
+        val postManager = DefaultHTTPRequestManager(
+            ApplicationProvider.getApplicationContext<Context>(),
+        ) { connection }
+
+        val request = HTTPRequest(
+            url,
+            "POST",
+            hashMapOf("Content-Type" to "application/json"),
+            """{"cancelled":true}""".toByteArray(),
+            0,
+        )
+
+        val cancelable = postManager.performRequest(request, RecordingCompletion())
+
+        assertTrue(
+            "the worker never reached header setup",
+            connection.reachedHeaders.await(5, TimeUnit.SECONDS),
+        )
+
+        cancelable.cancel()
+        connection.release.countDown()
+
+        assertTrue("the worker never unwound", connection.awaitUnwound(5_000))
+        assertFalse(
+            "a POST cancelled before it connected still wrote its body",
+            connection.openedOutputStream,
+        )
     }
 
     private fun holdingServer(): FakeServer = FakeServer(respondImmediately = false).also { servers.add(it) }

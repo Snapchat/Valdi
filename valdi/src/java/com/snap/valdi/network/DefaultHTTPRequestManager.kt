@@ -5,6 +5,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLConnection
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
@@ -13,9 +14,12 @@ import java.util.concurrent.atomic.AtomicInteger
 import com.snapchat.client.valdi.*
 import com.snapchat.client.valdi_core.*
 
-class DefaultHTTPRequestManager(context: Context): HTTPRequestManager() {
+class DefaultHTTPRequestManager(
+    context: Context,
+    private val openConnection: (URL) -> URLConnection = { it.openConnection() },
+): HTTPRequestManager() {
 
-    private class RequestTask(val url: URL, val method: String, val body: ByteArray?, val headers: Map<String, String>, completion: HTTPRequestManagerCompletion): HTTPRequestTask(completion), Runnable {
+    private class RequestTask(val url: URL, val method: String, val body: ByteArray?, val headers: Map<String, String>, val openConnection: (URL) -> URLConnection, completion: HTTPRequestManagerCompletion): HTTPRequestTask(completion), Runnable {
 
         private var connection: HttpURLConnection? = null
         private var cancelled = false
@@ -28,7 +32,7 @@ class DefaultHTTPRequestManager(context: Context): HTTPRequestManager() {
                 connection
             }
 
-            // Closing from another thread is what makes the worker's blocked read throw, which is
+            // Closing from another thread makes the worker's blocked read throw, which is
             // how the thread gets reclaimed. Do it outside the lock so a slow close cannot stall
             // the task binding its connection.
             connectionToClose?.disconnect()
@@ -61,17 +65,18 @@ class DefaultHTTPRequestManager(context: Context): HTTPRequestManager() {
 
                 urlConnection.doInput = true
 
+                // Nothing above this point touches the network. Writing the body connects, and so
+                // does reading responseCode when there is no body, and disconnect() cannot tear
+                // down a connection that has not connected yet -- so this is the last point a
+                // cancel that arrived during setup can be honoured.
+                if (isCancelled()) {
+                    throw IOException("Request was cancelled")
+                }
+
                 if (body != null) {
                     urlConnection.doOutput = true
                     urlConnection.outputStream.write(body)
                     urlConnection.outputStream.close()
-                }
-
-                // Reading responseCode is what opens the socket, and disconnect() cannot tear down
-                // a connection that has not connected yet. Checking here keeps a cancel that
-                // arrived during setup from starting a request nobody is waiting for.
-                if (isCancelled()) {
-                    throw IOException("Request was cancelled")
                 }
 
                 val responseCode = urlConnection.responseCode
@@ -96,7 +101,7 @@ class DefaultHTTPRequestManager(context: Context): HTTPRequestManager() {
         }
 
         private fun performRequest(): HTTPResponse {
-            val urlConnection = url.openConnection()
+            val urlConnection = openConnection(url)
 
             if (urlConnection is HttpURLConnection) {
                 if (!bindConnection(urlConnection)) {
@@ -131,7 +136,7 @@ class DefaultHTTPRequestManager(context: Context): HTTPRequestManager() {
 
         companion object {
 
-            fun from(request: HTTPRequest, completion: HTTPRequestManagerCompletion): RequestTask {
+            fun from(request: HTTPRequest, openConnection: (URL) -> URLConnection, completion: HTTPRequestManagerCompletion): RequestTask {
                 val url = URL(request.url)
                 val method = request.method
                 val body = request.body
@@ -148,7 +153,7 @@ class DefaultHTTPRequestManager(context: Context): HTTPRequestManager() {
                     }
                 }
 
-                return RequestTask(url, method, body, headers, completion)
+                return RequestTask(url, method, body, headers, openConnection, completion)
             }
         }
     }
@@ -176,7 +181,7 @@ class DefaultHTTPRequestManager(context: Context): HTTPRequestManager() {
     override fun performRequest(request: HTTPRequest, completion: HTTPRequestManagerCompletion): Cancelable {
         val task: RequestTask
         try {
-            task = RequestTask.from(request, completion)
+            task = RequestTask.from(request, openConnection, completion)
         } catch (exception: Exception) {
             completion.onFail("Failed to build request: ${exception.message}")
 
@@ -192,9 +197,6 @@ class DefaultHTTPRequestManager(context: Context): HTTPRequestManager() {
     }
 
     companion object {
-        // Matches NSURLSession.HTTPMaximumConnectionsPerHost, which the iOS and macOS default
-        // request managers inherit. That limit is per host and this one is total, so it is the
-        // conservative reading of the same number.
         const val MAX_CONCURRENT_REQUESTS = 4
     }
 
