@@ -1,17 +1,53 @@
 package com.snap.valdi.network
 
 import android.content.Context
-import com.snap.valdi.utils.ExecutorsUtil
+import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.concurrent.Executors
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import com.snapchat.client.valdi.*
 import com.snapchat.client.valdi_core.*
 
 class DefaultHTTPRequestManager(context: Context): HTTPRequestManager() {
 
     private class RequestTask(val url: URL, val method: String, val body: ByteArray?, val headers: Map<String, String>, completion: HTTPRequestManagerCompletion): HTTPRequestTask(completion), Runnable {
+
+        private var connection: HttpURLConnection? = null
+        private var cancelled = false
+
+        override fun cancel() {
+            super.cancel()
+
+            val connectionToClose = synchronized(this) {
+                cancelled = true
+                connection
+            }
+
+            // Closing from another thread is what makes the worker's blocked read throw, which is
+            // how the thread gets reclaimed. Do it outside the lock so a slow close cannot stall
+            // the task binding its connection.
+            connectionToClose?.disconnect()
+        }
+
+        private fun isCancelled(): Boolean = synchronized(this) { cancelled }
+
+        /**
+         * Hands the connection to [cancel] so it can be torn down. Returns false when the request
+         * was already cancelled, in which case the caller must not go on to perform it.
+         */
+        private fun bindConnection(urlConnection: HttpURLConnection): Boolean = synchronized(this) {
+            if (cancelled) {
+                false
+            } else {
+                connection = urlConnection
+                true
+            }
+        }
 
         private fun doPerformRequestWithURLConnection(urlConnection: HttpURLConnection): HTTPResponse {
             urlConnection.instanceFollowRedirects = true
@@ -29,6 +65,13 @@ class DefaultHTTPRequestManager(context: Context): HTTPRequestManager() {
                     urlConnection.doOutput = true
                     urlConnection.outputStream.write(body)
                     urlConnection.outputStream.close()
+                }
+
+                // Reading responseCode is what opens the socket, and disconnect() cannot tear down
+                // a connection that has not connected yet. Checking here keeps a cancel that
+                // arrived during setup from starting a request nobody is waiting for.
+                if (isCancelled()) {
+                    throw IOException("Request was cancelled")
                 }
 
                 val responseCode = urlConnection.responseCode
@@ -56,6 +99,11 @@ class DefaultHTTPRequestManager(context: Context): HTTPRequestManager() {
             val urlConnection = url.openConnection()
 
             if (urlConnection is HttpURLConnection) {
+                if (!bindConnection(urlConnection)) {
+                    urlConnection.disconnect()
+                    throw IOException("Request was cancelled")
+                }
+
                 return doPerformRequestWithURLConnection(urlConnection)
             } else {
                 urlConnection.doInput = true
@@ -66,10 +114,17 @@ class DefaultHTTPRequestManager(context: Context): HTTPRequestManager() {
         }
 
         override fun run() {
+            // Cancelled while queued: opening the connection at all would be wasted work.
+            if (isCancelled()) {
+                return
+            }
+
             try {
                 val response = performRequest()
                 notifySuccess(response)
             } catch (error: Exception) {
+                // Once cancelled the completion is already gone, so a teardown IOException lands
+                // here and goes nowhere -- matching how iOS swallows NSURLErrorCancelled.
                 notifyFailure("HTTP Request failed: ${error.message}")
             }
         }
@@ -98,11 +153,24 @@ class DefaultHTTPRequestManager(context: Context): HTTPRequestManager() {
         }
     }
 
-    private var executors = ExecutorsUtil.newSingleThreadCachedExecutor { r ->
+    private val threadCount = AtomicInteger(0)
+
+    private var executors: ExecutorService = ThreadPoolExecutor(
+        MAX_CONCURRENT_REQUESTS,
+        MAX_CONCURRENT_REQUESTS,
+        60L,
+        TimeUnit.SECONDS,
+        LinkedBlockingQueue(),
+    ) { r ->
         Thread(r).apply {
-            name = "Valdi Network Thread"
+            name = "Valdi Network Thread ${threadCount.incrementAndGet()}"
             priority = Thread.NORM_PRIORITY
         }
+    }.apply {
+        // An unbounded queue never rejects, so a pool only ever grows to its core size and
+        // maximumPoolSize is inert. Concurrency has to come from the core size, and this restores
+        // the idle reaping that the previous core size of zero provided.
+        allowCoreThreadTimeOut(true)
     }
 
     override fun performRequest(request: HTTPRequest, completion: HTTPRequestManagerCompletion): Cancelable {
@@ -121,6 +189,13 @@ class DefaultHTTPRequestManager(context: Context): HTTPRequestManager() {
         executors.submit(task)
 
         return task
+    }
+
+    companion object {
+        // Matches NSURLSession.HTTPMaximumConnectionsPerHost, which the iOS and macOS default
+        // request managers inherit. That limit is per host and this one is total, so it is the
+        // conservative reading of the same number.
+        const val MAX_CONCURRENT_REQUESTS = 4
     }
 
 }
