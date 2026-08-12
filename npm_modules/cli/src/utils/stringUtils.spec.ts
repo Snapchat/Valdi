@@ -1,5 +1,5 @@
 import 'jasmine';
-import { sanitizeProjectName, toPascalCase, toSnakeCase, validateProjectName } from './stringUtils';
+import { isValidBazelModuleName, sanitizeProjectName, toPascalCase, toSnakeCase, validateProjectName } from './stringUtils';
 
 describe('stringUtils', () => {
     it('converts strings to pascal case', () => {
@@ -50,6 +50,24 @@ describe('stringUtils', () => {
       });
     });
 
+    describe('isValidBazelModuleName', () => {
+      it('accepts names Bazel accepts', () => {
+        expect(isValidBazelModuleName('myproject')).toBe(true);
+        expect(isValidBazelModuleName('my_project')).toBe(true);
+        expect(isValidBazelModuleName('my.cool-project123')).toBe(true);
+        expect(isValidBazelModuleName('a')).toBe(true);
+      });
+
+      it('rejects names Bazel rejects', () => {
+        expect(isValidBazelModuleName('MyProject')).toBe(false);
+        expect(isValidBazelModuleName('MY_PROJECT')).toBe(false);
+        expect(isValidBazelModuleName('_my_project')).toBe(false);
+        expect(isValidBazelModuleName('123project')).toBe(false);
+        expect(isValidBazelModuleName('my_project_')).toBe(false);
+        expect(isValidBazelModuleName('')).toBe(false);
+      });
+    });
+
     describe('validateProjectName', () => {
       it('rejects empty names', () => {
         expect(validateProjectName('')).toBeTruthy();
@@ -66,13 +84,11 @@ describe('stringUtils', () => {
         expect(validateProjectName('package')).toContain('reserved word');
       });
 
-      it('accepts valid names with mixed case', () => {
+      it('accepts valid names', () => {
         expect(validateProjectName('my_project')).toBeNull();
         expect(validateProjectName('myproject')).toBeNull();
         expect(validateProjectName('my_cool_app')).toBeNull();
         expect(validateProjectName('project123')).toBeNull();
-        expect(validateProjectName('MyProject')).toBeNull();
-        expect(validateProjectName('testNewModule')).toBeNull();
       });
 
       it('accepts names with dashes (they will be sanitized)', () => {
@@ -86,10 +102,23 @@ describe('stringUtils', () => {
         expect(validateProjectName('@#$')).toBeTruthy();
       });
 
-      it('handles names that start with numbers', () => {
-        // Names starting with numbers get prefixed with underscore during sanitization,
-        // so validateProjectName returns a warning about the change
-        expect(validateProjectName('123project')).toContain('sanitized');
+      it('rejects names that are not valid Bazel module names', () => {
+        // Regression: these used to pass validation and only fail once Bazel read the
+        // generated MODULE.bazel, i.e. after the project files had been written.
+        expect(validateProjectName('MyProject')).toContain('not a valid Bazel module name');
+        expect(validateProjectName('testNewModule')).toContain('not a valid Bazel module name');
+        expect(validateProjectName('MY_PROJECT')).toContain('not a valid Bazel module name');
+        expect(validateProjectName('_')).toContain('not a valid Bazel module name');
+      });
+
+      it('suggests a valid name when one can be derived', () => {
+        expect(validateProjectName('MyProject')).toContain('Did you mean "myproject"?');
+        expect(validateProjectName('My-Project')).toContain('Did you mean "my_project"?');
+      });
+
+      it('rejects names that start with numbers', () => {
+        // Bazel module names must begin with a lowercase letter
+        expect(validateProjectName('123project')).toContain('not a valid Bazel module name');
       });
     });
 });
