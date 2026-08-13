@@ -181,6 +181,7 @@ class ShapeView(context: Context) : View(context), ValdiRecyclableView {
 
         if (width <= 0 || height <= 0) {
             fillPaint.shader = null
+            fillGradientDirty = true
             return
         }
 

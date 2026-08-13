@@ -63,6 +63,14 @@ class ShapeViewTest {
             view.layout(0, 0, 100, 100)
             updateFillGradientShader(view)
             assertTrue(fillPaint(view).shader is RadialGradient)
+
+            view.layout(0, 0, width, height)
+            updateFillGradientShader(view)
+            assertNull(fillPaint(view).shader)
+
+            view.layout(0, 0, 100, 100)
+            updateFillGradientShader(view)
+            assertTrue(fillPaint(view).shader is RadialGradient)
         }
     }
 
