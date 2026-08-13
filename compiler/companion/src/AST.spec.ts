@@ -75,6 +75,55 @@ describe('AST', () => {
     expect(firstMemberOfComponent.leadingComments?.text).toContain('@Action');
   });
 
+  // `dumpRootNodes` decides whether a file is an @ExportModule module by inspecting only
+  // rootNodes[0] (the first top-level node). So the same @ExportModule annotation changes the
+  // dumped output depending on where in the file it appears — a whole-file scan would not.
+  // This pins that first-node-only behavior.
+  it('only treats @ExportModule as file-wide when it leads the first root node', () => {
+    const interfaceNames = (nodes: ReturnType<typeof dumpRootNodes>): string[] =>
+      nodes.map((node) => node.interface?.name).filter((name): name is string => !!name);
+
+    // @ExportModule leads the first root node -> the whole file is an export module, so the plain
+    // exported interface (no annotation of its own) is dumped alongside the annotated one.
+    const onFirst = compile(
+      `
+      /** @ExportModule */
+      export interface Annotated {
+        a: string;
+      }
+
+      export interface Plain {
+        b: string;
+      }
+    `,
+    );
+    const namesOnFirst = interfaceNames(
+      dumpRootNodes(onFirst.sourceFile, { typeChecker: onFirst.typeChecker, references: [] }),
+    );
+    expect(namesOnFirst).toContain('Annotated');
+    expect(namesOnFirst).toContain('Plain');
+
+    // Same declarations, but @ExportModule now leads the second root node. dumpRootNodes only
+    // checks rootNodes[0], so it no longer treats the file as an export module and the plain
+    // exported interface is dropped — purely because of where the annotation appears.
+    const onSecond = compile(
+      `
+      export interface Plain {
+        b: string;
+      }
+
+      /** @ExportModule */
+      export interface Annotated {
+        a: string;
+      }
+    `,
+    );
+    const namesOnSecond = interfaceNames(
+      dumpRootNodes(onSecond.sourceFile, { typeChecker: onSecond.typeChecker, references: [] }),
+    );
+    expect(namesOnSecond).not.toContain('Plain');
+  });
+
   it('can dump enums', () => {
     const result = compile(
       `
