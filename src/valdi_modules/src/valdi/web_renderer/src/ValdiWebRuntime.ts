@@ -1,86 +1,207 @@
-// Declare webpack require.context
+import type { ColorPalette, ColorPaletteManager } from './core/Palette';
+import {
+  beginValdiWebTrace,
+  endValdiWebTrace,
+  instantValdiWebTrace,
+  makeValdiWebTraceProxy,
+} from './tracing/ValdiWebTracing';
+import { createValdiWebWorker } from './ValdiWebWorker';
+
 declare const require: {
   (id: string): any;
-  // 'mode' param enables webpack 'weak' context (lookup-only, no bundling)
-  context(directory: string, useSubdirectories: boolean, regExp: RegExp, mode?: string): any;
 };
 
-// Declare global for Node-like environment
-declare const global: any;
-
-// Declare global timing functions
-declare global {
-  var __originalTimingFunctions__: {
-    setTimeout: typeof setTimeout;
-    clearTimeout: typeof clearTimeout;
-    setInterval: typeof setInterval;
-    clearInterval: typeof clearInterval;
-  };
-}
-
 const path = require('path-browserify');
+let cachedColorPaletteManager: ColorPaletteManager | undefined;
+let cachedRuntimeCustomRequire: ((moduleId: string) => any) | undefined;
+let cachedResolveAssetSourceUrl: ((source: unknown) => string | undefined) | undefined;
+let cachedBase64FromByteArray: ((bytes: Uint8Array) => string) | undefined;
+let cachedDetectImageMimeType: ((bytes: Uint8Array) => string) | undefined;
 
-// Valdi runtime assumes global instead of globalThis
-(globalThis as any).global = globalThis;
+const valdiGlobalThis = globalThis as any;
+
+// globalThis is the canonical web global. Keep `global` as a compatibility
+// alias for older generated code and third-party modules that still read the
+// Node spelling.
+valdiGlobalThis.global = valdiGlobalThis;
 
 // To make tests happy
-(globalThis as any).describe = function(name: string, func: Function) {};
+valdiGlobalThis.describe = function (name: string, func: Function) {};
 
-// Eager context removed — modules are now resolved lazily via:
+// Eager JS module context removed. Compiled modules now resolve lazily through:
 // 1. __valdiBootstrapModules (statically imported essentials)
-// 2. moduleLoader factories (registerModule'd native modules)
+// 2. moduleLoader factories (registered native module shims)
+// 3. generated navigation and worker registries.
+
+function getRuntimeCustomRequire(): (moduleId: string) => any {
+  if (cachedRuntimeCustomRequire) {
+    return cachedRuntimeCustomRequire;
+  }
+
+  const moduleLoader = valdiGlobalThis.moduleLoader;
+  if (!moduleLoader) {
+    throw new Error('Valdi moduleLoader is not available before runtime initialization');
+  }
+
+  const customRequire = moduleLoader.resolveRequire('web_renderer/src/ValdiWebRuntime.ts');
+  cachedRuntimeCustomRequire = customRequire;
+  return customRequire;
+}
+
+function getColorPaletteManager(): ColorPaletteManager {
+  if (cachedColorPaletteManager) {
+    return cachedColorPaletteManager;
+  }
+
+  const customRequire = getRuntimeCustomRequire();
+  cachedColorPaletteManager = customRequire('./core/Palette').COLOR_PALETTE_MANAGER as ColorPaletteManager;
+  return cachedColorPaletteManager;
+}
+
+function stringToUtf8Bytes(value: string): Uint8Array {
+  return new TextEncoder().encode(value);
+}
+
+function utf8BytesToString(value: Uint8Array): string {
+  return new TextDecoder().decode(value);
+}
+
+function unwrapWebpackDefault(resourceModule: unknown): unknown {
+  const source = resourceModule as { default?: unknown };
+  return source && typeof source === 'object' && 'default' in source ? source.default : resourceModule;
+}
+
+function resourceModuleToByteArray(resourceModule: unknown): Uint8Array | undefined {
+  const value = unwrapWebpackDefault(resourceModule);
+  if (value instanceof Uint8Array) {
+    return value;
+  }
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  return undefined;
+}
+
+// Runtime bootstrap executes before moduleLoader exists, so dependencies are loaded lazily.
+function resolveRuntimeAssetSourceUrl(source: unknown): string | undefined {
+  if (!cachedResolveAssetSourceUrl) {
+    cachedResolveAssetSourceUrl = getRuntimeCustomRequire()('./utils/assetSource').resolveAssetSourceUrl as (
+      source: unknown,
+    ) => string | undefined;
+  }
+  return cachedResolveAssetSourceUrl(source);
+}
+
+function runtimeBytesToBase64(bytes: Uint8Array): string {
+  if (!cachedBase64FromByteArray) {
+    cachedBase64FromByteArray = getRuntimeCustomRequire()('coreutils/src/Base64').Base64.fromByteArray as (
+      bytes: Uint8Array,
+    ) => string;
+  }
+  return cachedBase64FromByteArray(bytes);
+}
+
+function runtimeImageMimeType(bytes: Uint8Array): string {
+  if (!cachedDetectImageMimeType) {
+    cachedDetectImageMimeType = getRuntimeCustomRequire()('./utils/imageSource').detectImageMimeType as (
+      bytes: Uint8Array,
+    ) => string;
+  }
+  return cachedDetectImageMimeType(bytes);
+}
+
+function resourceModuleToString(resourceModule: unknown): string {
+  const resolved = resolveRuntimeAssetSourceUrl(resourceModule);
+  if (resolved) {
+    return resolved;
+  }
+  const bytes = resourceModuleToByteArray(resourceModule);
+  if (bytes) {
+    return utf8BytesToString(bytes);
+  }
+  const value = unwrapWebpackDefault(resourceModule);
+  return typeof value === 'string' ? value : JSON.stringify(value);
+}
+
+function resourceModuleToBytes(resourceModule: unknown): Uint8Array {
+  return resourceModuleToByteArray(resourceModule) ?? stringToUtf8Bytes(resourceModuleToString(resourceModule));
+}
+
+function getRegisteredModuleEntry(module: string, pathStr: string): unknown | undefined {
+  const registry = valdiGlobalThis.__valdiModuleEntryRegistry;
+  const factory = registry?.[module]?.[pathStr];
+  if (factory) {
+    return factory();
+  }
+
+  const context = valdiGlobalThis.__valdiModuleEntryContext;
+  if (context) {
+    const filePath = './' + module + '/' + pathStr;
+    return context(filePath);
+  }
+
+  return undefined;
+}
 
 class Runtime {
   componentPaths = new Map();
   isDebugEnabled = true;
-  // ConsoleLogTransformer guards use runtime.isLoggingEnabled
+  // ConsoleLogTransformer guards use isLoggingEnabled.
   isLoggingEnabled = true;
-  buildType = "debug";
+  buildType = 'debug';
+  apiVersion = 0;
   // Map of task IDs to timeout IDs for scheduleWorkItem
   private _taskIdCounter = 1;
   private _scheduledTasks = new Map<number, number>();
 
   // jsEvaluator for the ModuleLoader. Called when a compiled module's lazy
-  // Proxy is first accessed. Resolves via bootstrap modules (Init.js deps)
-  // then moduleLoader factories (native module shims registered at startup).
-  // Most modules are loaded by webpack's own require — loadJsModule only
-  // handles modules requested via valdiRequire / moduleLoader.load().
+  // Proxy is first accessed. Resolves via bootstrap modules (Init.js deps),
+  // moduleLoader factories (native module shims registered at startup), and
+  // generated registries for dynamic module categories.
   loadJsModule(relativePath: string, requireFunc: any, module: any, exports: any) {
     relativePath = path.normalize(relativePath);
     module.path = relativePath;
 
     // 1. Bootstrap modules — statically imported so webpack always includes
     //    them, but lazily evaluated (the cache stores factories, not exports)
-    //    so evaluation order respects Init.js's global setup (e.g. PostInit
-    //    needs global.Long which Init.js installs partway through).
-    const bootstrap = (globalThis as any).__valdiBootstrapModules;
+    //    so evaluation order respects Init.js's globalThis setup (e.g. PostInit
+    //    needs Long which Init.js installs partway through).
+    const bootstrap = valdiGlobalThis.__valdiBootstrapModules;
     if (bootstrap?.[relativePath]) {
       module.exports = bootstrap[relativePath]();
       return;
     }
 
     // 2. moduleLoader factories — native modules registered via shims or setup.ts
-    const ml = (global as any).moduleLoader;
+    const ml = valdiGlobalThis.moduleLoader;
     if (ml?.hasModuleFactory?.(relativePath)) {
       module.exports = ml.load(relativePath, true);
       return;
     }
 
-    // 3. Dynamic-module registries — build-time generated maps for modules
+    // 3. Generated module registry — explicit webpack-visible map for compiled
+    //    Valdi modules still reached through customRequire/moduleLoader.load().
+    const modules = valdiGlobalThis.__valdiModuleRegistry;
+    if (modules?.[relativePath]) {
+      module.exports = modules[relativePath]();
+      return;
+    }
+
+    // 4. Dynamic-module registries — build-time generated maps for modules
     //    that are targets of dynamic require(variable) calls. Each registry
     //    covers one category: NavigationPage components, worker entry points.
-    const navPages = (globalThis as any).__valdiNavigationPages;
+    const navPages = valdiGlobalThis.__valdiNavigationPages;
     if (navPages?.[relativePath]) {
       module.exports = navPages[relativePath]();
       return;
     }
-    const workers = (globalThis as any).__valdiWorkerModules;
+    const workers = valdiGlobalThis.__valdiWorkerModules;
     if (workers?.[relativePath]) {
       module.exports = workers[relativePath]();
       return;
     }
 
-    if ((globalThis as any).runtime?.isLoggingEnabled) {
+    if (valdiGlobalThis.runtime?.isLoggingEnabled) {
       console.warn(`[ValdiWebRuntime] Module not found: ${relativePath}`);
     }
   }
@@ -98,7 +219,7 @@ class Runtime {
       const symbolName = componentName.substring(0, atIdx);
       const filePath = componentName.substring(atIdx + 1);
 
-      const pages = (globalThis as any).__valdiNavigationPages;
+      const pages = valdiGlobalThis.__valdiNavigationPages;
       if (pages?.[filePath]) {
         try {
           const mod = pages[filePath]();
@@ -112,7 +233,7 @@ class Runtime {
       }
 
       // Fallback: try moduleLoader (for native module components)
-      const ml = (global as any).moduleLoader;
+      const ml = valdiGlobalThis.moduleLoader;
       if (ml?.hasModuleFactory?.(filePath)) {
         const mod = ml.load(filePath, true);
         if (mod && mod[symbolName]) {
@@ -122,17 +243,21 @@ class Runtime {
       }
     }
 
-    if ((globalThis as any).runtime?.isLoggingEnabled) {
-      console.error("could not find", componentName);
+    if (valdiGlobalThis.runtime?.isLoggingEnabled) {
+      console.error('could not find', componentName);
     }
   }
 
-  setColorPalette(palette: any) {
-    (global as any).currentPalette = palette;
+  configureColorPalette(name: string, palette: ColorPalette) {
+    getColorPaletteManager().configureColorPalette(name, palette);
   }
 
-  getColorPalette() {
-    return (global as any).currentPalette;
+  getColorPalette(name?: string) {
+    return getColorPaletteManager().getColorPalette(name);
+  }
+
+  setActiveColorPalette(name: string) {
+    getColorPaletteManager().setActiveColorPalette(name);
   }
 
   getCurrentPlatform() {
@@ -146,7 +271,7 @@ class Runtime {
 
   createContext(manager: any) {
     // console.log("createContext", manager);
-    return "contextId";
+    return 'contextId';
   }
 
   setLayoutSpecs(contextId: string, width: number, height: number, rtl: boolean) {
@@ -164,37 +289,38 @@ class Runtime {
   //
   // Resolution tiers (first hit wins):
   //   1. __valdiImageRegistry[catalogPath] — build-time map emitted by
-  //      collapse_web_paths, populated when consumers `require` the
-  //      module's _image_registry.js.
+  //      collapse_web_paths.
   //   2. __valdiImageContext — back-compat path for consumers that wire
   //      a webpack require.context directly (pre-PR4 behavior).
   getAssets(catalogPath: string) {
-    const registry = (globalThis as any).__valdiImageRegistry?.[catalogPath];
+    const registry = valdiGlobalThis.__valdiImageRegistry?.[catalogPath];
     if (registry) {
       return Object.entries(registry).map(([k, v]: [string, any]) => ({
         path: k,
         src: v?.default ?? v,
       }));
     }
-    const imgCtx = (globalThis as any).__valdiImageContext;
-    if (!imgCtx) {
-      return [];
+
+    const imgCtx = valdiGlobalThis.__valdiImageContext;
+    if (imgCtx) {
+      const prefix = `./${catalogPath}/`;
+      const allKeys = imgCtx.keys();
+      const filteredImages = allKeys.filter((key: string) => key.startsWith(prefix));
+      return filteredImages.map((key: string) => ({
+        path: path.basename(key).split('.').slice(0, -1).join('.'),
+        src: imgCtx(key).default || imgCtx(key),
+      }));
     }
-    const prefix = `./${catalogPath}/`;
-    const allKeys = imgCtx.keys();
-    const filteredImages = allKeys.filter((key: string) => key.startsWith(prefix));
-    return filteredImages.map((key: string) => ({
-      path: path.basename(key).split('.').slice(0, -1).join('.'),
-      src: imgCtx(key).default || imgCtx(key),
-    }));
+
+    return [];
   }
 
   makeAssetFromUrl(url: string) {
     return {
       path: url,
-      src: url,
       width: 100,
       height: 100,
+      src: url,
     };
   }
 
@@ -239,16 +365,19 @@ class Runtime {
   }
 
   createWorker(url: string) {
-    return {
-      postMessage(data: any) {},
-      setOnMessage(f: Function) {},
-      terminate() {},
-    };
+    return createValdiWebWorker(url);
   }
 
   destroyContext(contextId: string) {}
 
-  measureContext(contextId: string, maxWidth: number, widthMode: number, maxHeight: number, heightMode: number, rtl: boolean): [number, number] {
+  measureContext(
+    contextId: string,
+    maxWidth: number,
+    widthMode: number,
+    maxHeight: number,
+    heightMode: number,
+    rtl: boolean,
+  ): [number, number] {
     return [0, 0];
   }
 
@@ -288,23 +417,32 @@ class Runtime {
     if (completion) completion();
   }
 
-  // Stubbed — was using jsonContext (removed). Localized strings now use
-  // _strings_preload.js generated by collapse_web_paths instead.
   getModuleEntry(module: string, pathStr: string, asString: boolean) {
-    return '{}';
+    const resourceModule = getRegisteredModuleEntry(module, pathStr);
+    if (resourceModule === undefined) {
+      throw new Error(`Valdi module entry not found: ${module}/${pathStr}`);
+    }
+    return asString ? resourceModuleToString(resourceModule) : resourceModuleToBytes(resourceModule);
   }
 
   getModuleJsPaths(module: string) {
-    return [""];
+    return [''];
   }
 
-  trace(tag: string, callback: Function) {
-    return callback();
+  beginTrace(tag: string) {
+    beginValdiWebTrace(tag);
+  }
+
+  endTrace() {
+    endValdiWebTrace();
+  }
+
+  instantTrace(tag: string, args?: readonly unknown[]) {
+    instantValdiWebTrace(tag, args);
   }
 
   makeTraceProxy(tag: string, callback: Function) {
-    // Return callback directly to avoid adding stack frames
-    return callback;
+    return makeValdiWebTraceProxy(tag, callback);
   }
 
   startTraceRecording() {
@@ -312,7 +450,10 @@ class Runtime {
   }
 
   stopTraceRecording(id: number) {
-    return [];
+    return {
+      traceData: new Uint8Array(),
+      traceEventCount: 0,
+    };
   }
 
   callOnMainThread(method: Function, parameters: any) {
@@ -320,54 +461,50 @@ class Runtime {
   }
 
   onMainThreadIdle(cb: Function) {
-    requestIdleCallback(() => {
-      cb();
-    });
+    if (typeof globalThis.requestIdleCallback === 'function') {
+      globalThis.requestIdleCallback(() => {
+        cb();
+      });
+    } else {
+      globalThis.setTimeout(() => {
+        cb();
+      }, 0);
+    }
   }
 
-  makeAssetFromBytes(bytes: ArrayBuffer) {
+  makeAssetFromBytes(bytes: ArrayBuffer | Uint8Array) {
     const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-    let binary = '';
-    for (let i = 0; i < view.length; i++) {
-      binary += String.fromCharCode(view[i]);
-    }
-    const src = 'data:image/png;base64,' + btoa(binary);
     return {
-      path: "",
-      src,
+      path: '',
+      width: 100,
+      height: 100,
+      src: `data:${runtimeImageMimeType(view)};base64,${runtimeBytesToBase64(view)}`,
+    };
+  }
+
+  makeDirectionalAsset(ltrAsset: any, rtlAsset: any) {
+    return {
+      path: '',
       width: 100,
       height: 100,
     };
   }
 
-  makeDirectionalAsset(ltrAsset: any, rtlAsset: any) {
-    const isRtl = typeof document !== 'undefined' && document.dir === 'rtl';
-    const asset = isRtl ? rtlAsset : ltrAsset;
-    if (typeof asset === 'string') {
-      return { path: asset, src: asset, width: 100, height: 100 };
-    }
-    return {
-      path: asset?.path ?? "",
-      src: asset?.src ?? asset?.path ?? "",
-      width: asset?.width ?? 100,
-      height: asset?.height ?? 100,
-    };
-  }
-
   makePlatformSpecificAsset(defaultAsset: any, platformAssetOverrides: any) {
-    const asset = defaultAsset;
-    if (typeof asset === 'string') {
-      return { path: asset, src: asset, width: 100, height: 100 };
-    }
     return {
-      path: asset?.path ?? "",
-      src: asset?.src ?? asset?.path ?? "",
-      width: asset?.width ?? 100,
-      height: asset?.height ?? 100,
+      path: '',
+      width: 100,
+      height: 100,
     };
   }
 
-  addAssetLoadObserver(asset: any, onLoad: Function, outputType: any, preferredWidth?: number, preferredHeight?: number) {
+  addAssetLoadObserver(
+    asset: any,
+    onLoad: Function,
+    outputType: any,
+    preferredWidth?: number,
+    preferredHeight?: number,
+  ) {
     return () => {};
   }
 
@@ -378,11 +515,7 @@ class Runtime {
   scheduleWorkItem(cb: Function, delayMs: number, interruptible: boolean) {
     const taskId = this._taskIdCounter++;
     const delay = delayMs || 0;
-    const timing = (globalThis as any).__originalTimingFunctions__;
-    // Use the same native setTimeout/clearTimeout pair so cancellation always works
-    // (window.setTimeout may be monkey-patched by Zone.js or others, returning IDs
-    // that native clearTimeout would not recognize)
-    const timeoutId = timing.setTimeout(() => {
+    const timeoutId = globalThis.setTimeout(() => {
       this._scheduledTasks.delete(taskId);
       try {
         cb();
@@ -397,13 +530,13 @@ class Runtime {
   unscheduleWorkItem(taskId: number) {
     const timeoutId = this._scheduledTasks.get(taskId);
     if (timeoutId !== undefined) {
-      (globalThis as any).__originalTimingFunctions__.clearTimeout(timeoutId);
+      globalThis.clearTimeout(timeoutId);
       this._scheduledTasks.delete(taskId);
     }
   }
 
   getCurrentContext() {
-    return "";
+    return '';
   }
 
   saveCurrentContext() {
@@ -413,7 +546,9 @@ class Runtime {
   restoreCurrentContext(contextId: number) {}
 
   onUncaughtError(message: string, error: any) {
-    if ((globalThis as any).runtime?.isLoggingEnabled) console.log("uncaught error", message, error);
+    if (valdiGlobalThis.runtime?.isLoggingEnabled) {
+      console.log('uncaught error', message, error);
+    }
   }
 
   setUncaughtExceptionHandler(cb: Function) {}
@@ -444,68 +579,59 @@ class Runtime {
   submitDebugMessage(level: string, message: string) {
     // Unused, should go through console.log
   }
-};
+}
 
-const globalAny = globalThis as any;
-globalAny.runtime = new Runtime();
+valdiGlobalThis.runtime = new Runtime();
 
-// Capture original console before Init overwrites it
-globalAny.__originalConsole__ = {
-  log: console.log.bind(console),
-  warn: console.warn.bind(console),
-  error: console.error.bind(console),
-  info: console.info.bind(console),
-  debug: console.debug.bind(console),
-  dir: console.dir.bind(console),
-  trace: console.trace.bind(console),
-  assert: console.assert.bind(console),
-};
-Object.freeze(globalAny.__originalConsole__);
+// Collapsed web packages generate these files for explicit webpack-visible
+// runtime lookup. Non-collapsed test environments may omit them.
+try {
+  require('../../_image_registry');
+} catch (error) {}
 
-/** Log to the real browser console even when Init has replaced global.console (e.g. during startup). */
-globalAny.__valdiLogToConsole__ = function (...args: unknown[]) {
-  const c = globalAny.__originalConsole__ || globalAny.console;
-  if (c?.log) c.log.apply(c, args);
-};
+try {
+  require('./_module_registry');
+} catch (error) {}
 
-// Capture native browser setTimeout/clearTimeout before Valdi replaces them (like we do for console)
-// Bind to window so they can be called without a receiver (e.g. timing.setTimeout(...)) without
-// throwing "Illegal invocation" on native functions that require window as `this`.
-(globalThis as any).__originalTimingFunctions__ = {
-  setTimeout: window.setTimeout.bind(window),
-  clearTimeout: window.clearTimeout.bind(window),
-  setInterval: window.setInterval.bind(window),
-  clearInterval: window.clearInterval.bind(window),
-};
-Object.freeze((globalThis as any).__originalTimingFunctions__);
+try {
+  require('./_module_entry_registry');
+} catch (error) {}
 
 // Bootstrap modules Init.js needs via loadJsModule. Statically required
 // so webpack includes them, but wrapped in factories so evaluation is
-// deferred until first access. Order matters: PostInit references the
-// global `Long` that Init.js installs after loading the Long module, so
-// PostInit MUST NOT evaluate at bundle-load time.
+// deferred until first access. Order matters: PostInit references the `Long`
+// that Init.js installs after loading the Long module, so PostInit MUST NOT
+// evaluate at bundle-load time.
 const _bootstrapModules: Record<string, () => unknown> = {
   'valdi_core/src/ModuleLoader': () => require('valdi_core/src/ModuleLoader'),
   'valdi_core/src/Long': () => require('valdi_core/src/Long'),
   'valdi_core/src/tslib': () => require('valdi_core/src/tslib'),
   'valdi_core/src/PostInit': () => require('valdi_core/src/PostInit'),
-  // PostInit overwrites global.TextEncoder/TextDecoder when UnicodeNative registers.
+  'valdi_core/src/Console': () => require('valdi_core/src/Console'),
+  'valdi_core/src/PromisePolyfill': () => require('valdi_core/src/PromisePolyfill'),
+  'valdi_core/src/TsnHelper': () => require('valdi_core/src/TsnHelper'),
+  // PostInit overwrites globalThis.TextEncoder/TextDecoder when UnicodeNative registers.
   // It loads TextCoding via moduleLoader.load() — must be resolvable here.
   'coreutils/src/unicode/TextCoding': () => require('coreutils/src/unicode/TextCoding'),
 };
-(globalThis as any).__valdiBootstrapModules = _bootstrapModules;
+valdiGlobalThis.__valdiBootstrapModules = _bootstrapModules;
 
 // Init.js creates moduleLoader and runs PostInit (which gates browser-specific
 // globals internally). Uses standard module path — webpack resolves via
 // resolve.modules config.
-const initModule = require("valdi_core/src/Init");
+require('valdi_core/src/Init');
+
+// Collapsed web packages generate native-module registration next to the
+// runtime. Loading it here keeps registration internal to runtime bootstrap so
+// host apps can import Valdi components/renderers without explicit setup.
+require('../../RegisterNativeModules');
 
 // Patch moduleLoader.onHotReload to handle undefined paths gracefully.
 // Webpack's module objects don't have .path, so modules that call
 // onHotReload(module, module.path, callback) would fail on web.
-if (globalAny.moduleLoader) {
-  const originalOnHotReload = globalAny.moduleLoader.onHotReload.bind(globalAny.moduleLoader);
-  globalAny.moduleLoader.onHotReload = function(module: any, modulePath: string, callback: () => void) {
+if (valdiGlobalThis.moduleLoader) {
+  const originalOnHotReload = valdiGlobalThis.moduleLoader.onHotReload.bind(valdiGlobalThis.moduleLoader);
+  valdiGlobalThis.moduleLoader.onHotReload = function (module: any, modulePath: string, callback: () => void) {
     if (!modulePath) {
       return () => {};
     }
@@ -514,7 +640,7 @@ if (globalAny.moduleLoader) {
 }
 
 // Console/timing restoration removed — PostInit now gates console and
-// timing overwrites internally (isBrowser check), so they're never
+// timing overwrites internally (isWeb check), so they're never
 // overwritten on web in the first place.
 
 export {};

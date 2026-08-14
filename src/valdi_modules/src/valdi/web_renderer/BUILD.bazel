@@ -32,9 +32,9 @@ valdi_module(
     ]),
     visibility = ["//visibility:public"],
     deps = [
-        "@valdi//src/valdi_modules/src/valdi/jasmine",
+        "@valdi//src/valdi_modules/src/valdi/coreutils",
         "@valdi//src/valdi_modules/src/valdi/valdi_core",
-        "@valdi//src/valdi_modules/src/valdi/valdi_navigation",
         "@valdi//src/valdi_modules/src/valdi/valdi_tsx",
     ],
+    test_deps = ["@valdi//src/valdi_modules/src/valdi/jasmine"],
 )
