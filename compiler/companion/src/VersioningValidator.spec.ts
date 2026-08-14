@@ -893,6 +893,26 @@ describe('VersioningValidator', () => {
     ]);
   });
 
+  it('preserves stronger surrounding version guards inside explicitly versioned function bodies', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface MyModel {
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      if (isVersionAtLeast(43)) {
+        // @Version(42)
+        function render(model: MyModel) {
+          model.subtitle;
+        }
+      }
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
   it('allows nested lambdas created inside a far outer version guard to use versioned properties', () => {
     const diagnostics = getDiagnosticTexts(`
       declare function isVersionAtLeast(version: number): boolean;

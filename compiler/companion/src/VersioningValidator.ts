@@ -79,9 +79,9 @@ export class VersioningValidator {
       return cached;
     }
 
-    const hasAnnotation = sourceFile.statements.some((statement) =>
-      hasExportModuleAnnotation(getNodeComments(statement)?.text ?? ''),
-    );
+    const firstStatement = sourceFile.statements[0];
+    const hasAnnotation =
+      firstStatement !== undefined && hasExportModuleAnnotation(getNodeComments(firstStatement)?.text ?? '');
     this.exportModuleCache.set(sourceFile, hasAnnotation);
     return hasAnnotation;
   }
@@ -446,10 +446,7 @@ export class VersioningValidator {
     }
 
     if (node.body) {
-      const bodyVersion =
-        this.nativeApiMinVersion === undefined
-          ? declaredVersion ?? currentVersion
-          : this.mergeVersions(currentVersion, declaredVersion);
+      const bodyVersion = this.mergeVersions(currentVersion, declaredVersion);
       this.visit(node.body, bodyVersion);
     }
   }
