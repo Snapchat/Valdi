@@ -20,7 +20,7 @@ class GlobalViewFactories;
 class DispatchQueue;
 class ViewPreloader;
 class MainThreadManager;
-class ColorPalette;
+class ColorPaletteManager;
 
 using ViewPoolsStats = FlatMap<StringBox, size_t>;
 
@@ -28,7 +28,7 @@ class ViewManagerContext : public SimpleRefCountable {
 public:
     ViewManagerContext(IViewManager& viewManager,
                        AttributeIds& attributeIds,
-                       const Ref<ColorPalette>& colorPalette,
+                       const Ref<ColorPaletteManager>& colorPaletteManager,
                        const Shared<YGConfig>& yogaConfig,
                        bool enablePreloading,
                        const Ref<MainThreadManager>& mainThreadManager,

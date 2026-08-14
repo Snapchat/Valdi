@@ -29,8 +29,15 @@ double DirectionalAsset::getHeight() const {
     return _ltrAsset->getHeight();
 }
 
-Ref<Asset> DirectionalAsset::withDirection(bool rightToLeft) {
-    return rightToLeft ? _rtlAsset : _ltrAsset;
+Ref<Asset> DirectionalAsset::withConfiguration(const AssetConfiguration& configuration) {
+    if (!configuration.rightToLeft.has_value()) {
+        return strongSmallRef(this);
+    }
+
+    auto asset = configuration.rightToLeft.value() ? _rtlAsset : _ltrAsset;
+    auto remainingConfiguration = configuration;
+    remainingConfiguration.rightToLeft = std::nullopt;
+    return asset->withConfiguration(remainingConfiguration);
 }
 
 void DirectionalAsset::addLoadObserver(const std::shared_ptr<snap::valdi_core::AssetLoadObserver>& observer,

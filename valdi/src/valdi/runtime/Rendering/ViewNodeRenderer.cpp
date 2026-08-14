@@ -54,8 +54,10 @@ void ViewNodeRenderer::visit(RenderRequestEntries::CreateElement& entry) {
         return;
     }
 
-    auto viewNode =
-        Valdi::makeShared<ViewNode>(_attributesManager.getYogaConfig(), _attributesManager.getAttributeIds(), _logger);
+    auto viewNode = Valdi::makeShared<ViewNode>(_attributesManager.getYogaConfig(),
+                                                _attributesManager.getAttributeIds(),
+                                                _attributesManager.getColorPaletteManager()->getActiveColorPalette(),
+                                                _logger);
     viewNode->setViewFactory(_viewTransactionScope, _viewNodeTree.getOrCreateViewFactory(entry.getViewClassName()));
     viewNode->setRawId(entry.getElementId());
 

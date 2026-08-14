@@ -64,13 +64,26 @@ std::optional<T> ensureParserAtEnd(AttributeParser& parser, std::optional<T>&& r
     return std::move(result);
 }
 
-Result<Color> ValueConverter::toColor(const ColorPalette& colorPalette, const Value& value) {
+Result<Value> ValueConverter::toColor(const ColorPalette& colorPalette, const Value& value) {
+    if (value.isString()) {
+        auto colorName = value.toStringBox();
+        auto color = colorPalette.getColorForName(colorName);
+        if (!color) {
+            return Error(STRING_FORMAT("Invalid color name '{}'", colorName));
+        }
+        return Value(color.value().value);
+    }
+
+    return value;
+}
+
+Result<Value> ValueConverter::toColorValue(const Value& value) {
     if (value.isNumber()) {
-        return Color(value.toInt());
+        return Value(value.toLong());
     } else if (value.isString()) {
         auto strBox = value.toStringBox();
         AttributeParser parser(strBox.toStringView());
-        auto color = ensureParserAtEnd(parser, parser.parseColor(colorPalette));
+        auto color = ensureParserAtEnd(parser, parser.parseColorValue());
         if (!color) {
             return parser.getError();
         }

@@ -36,24 +36,38 @@ double PlatformSpecificAsset::getHeight() const {
     return _defaultAsset->getHeight();
 }
 
-Ref<Asset> PlatformSpecificAsset::withPlatform(PlatformType platformType) {
-    switch (platformType) {
+Ref<Asset> PlatformSpecificAsset::withConfiguration(const AssetConfiguration& configuration) {
+    if (!configuration.platformType.has_value()) {
+        return strongSmallRef(this);
+    }
+
+    Ref<Asset> asset;
+    switch (configuration.platformType.value()) {
         case PlatformTypeAndroid:
             if (_androidAsset == nullptr) {
-                return _defaultAsset;
+                asset = _defaultAsset;
+            } else {
+                asset = _androidAsset;
             }
-            return _androidAsset;
+            break;
         case PlatformTypeIOS:
         case PlatformTypeMacOS:
         case PlatformTypeWeb:
         case PlatformTypeLinux:
             if (_iOSAsset == nullptr) {
-                return _defaultAsset;
+                asset = _defaultAsset;
+            } else {
+                asset = _iOSAsset;
             }
-            return _iOSAsset;
+            break;
         default:
-            return _defaultAsset;
+            asset = _defaultAsset;
+            break;
     }
+
+    auto remainingConfiguration = configuration;
+    remainingConfiguration.platformType = std::nullopt;
+    return asset->withConfiguration(remainingConfiguration);
 }
 
 void PlatformSpecificAsset::addLoadObserver(const std::shared_ptr<snap::valdi_core::AssetLoadObserver>& observer,
@@ -64,7 +78,7 @@ void PlatformSpecificAsset::addLoadObserver(const std::shared_ptr<snap::valdi_co
     // No op. If this method is called it is a mistake.
     // addLoadObserver is called during rendering,
     // but a PlatformSpecificAsset should never be rendered.
-    // Rather it should be resolved (via `withPlatform`) prior to rendering,
+    // Rather it should be resolved (via `withConfiguration`) prior to rendering,
     // back to a normal asset.
 }
 
@@ -72,7 +86,7 @@ void PlatformSpecificAsset::removeLoadObserver(const std::shared_ptr<snap::valdi
     // No op. If this method is called it is a mistake.
     // removeLoadObserver is called during rendering,
     // but a PlatformSpecificAsset should never be rendered.
-    // Rather it should be resolved (via `withPlatform`) prior to rendering,
+    // Rather it should be resolved (via `withConfiguration`) prior to rendering,
     // back to a normal asset.
 }
 
@@ -83,7 +97,7 @@ void PlatformSpecificAsset::updateLoadObserverPreferredSize(
     // No op. If this method is called it is a mistake.
     // updateLoadObserverPreferredSize is called during rendering,
     // but a PlatformSpecificAsset should never be rendered.
-    // Rather it should be resolved (via `withPlatform`) prior to rendering,
+    // Rather it should be resolved (via `withConfiguration`) prior to rendering,
     // back to a normal asset.
 }
 

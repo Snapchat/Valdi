@@ -30,25 +30,24 @@ class AttributesManager {
 public:
     AttributesManager(IViewManager& viewManager,
                       AttributeIds& attributeIds,
-                      const Ref<ColorPalette>& colorPalette,
+                      const Ref<ColorPaletteManager>& colorPaletteManager,
                       ILogger& logger,
                       std::shared_ptr<YGConfig> yogaConfig);
 
     void registerPreprocessor(AttributeId attributeId, const AttributePreprocessor& preprocessor);
     void registerPreprocessor(AttributeId attributeId,
-                              Result<Value> (*preprocessor)(const Ref<ColorPalette>&, const Value&));
+                              Result<Value> (*preprocessor)(const Ref<ColorPaletteManager>&, const Value&));
     void registerPostprocessor(AttributeId attributeId,
                                Result<Value> (*postprocessor)(ViewNode& viewNode, const Value& value));
 
     SharedBoundAttributes getAttributesForClass(const StringBox& className) noexcept;
     FlatMap<StringBox, SharedBoundAttributes> getAllBoundAttributes() const;
-
     IViewManager& getViewManager() const;
     ILogger& getLogger() const;
     YGConfig* getYogaConfig() const;
 
     AttributeIds& getAttributeIds() const;
-    const Ref<ColorPalette>& getColorPalette() const;
+    const Ref<ColorPaletteManager>& getColorPaletteManager() const;
 
     static const StringBox& getLayoutPlaceholderClassName();
     static const StringBox& getDeferredClassName();
@@ -61,7 +60,7 @@ private:
     FlatMap<StringBox, SharedBoundAttributes> _boundAttributesByClass;
     FlatMap<AttributeId, std::vector<AttributePreprocessor>> _preprocessors;
     FlatMap<AttributeId, std::vector<AttributePostprocessor>> _postprocessors;
-    Ref<ColorPalette> _colorPalette;
+    Ref<ColorPaletteManager> _colorPaletteManager;
     mutable std::mutex _mutex;
 
     SharedBoundAttributes lockFreeGetAttributesForClass(const StringBox& className) noexcept;

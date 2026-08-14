@@ -108,6 +108,10 @@ void ViewNodeAttributesApplier::reapplyAttribute(ViewTransactionScope& viewTrans
     }
 }
 
+void ViewNodeAttributesApplier::invalidateColorAttributes() {
+    _colorAttributesInvalidated = true;
+}
+
 bool ViewNodeAttributesApplier::removeAllAttributesForOwner(ViewTransactionScope& viewTransactionScope,
                                                             const AttributeOwner* owner,
                                                             const Ref<Animator>& animator) {
@@ -288,6 +292,11 @@ void ViewNodeAttributesApplier::flush(ViewTransactionScope& viewTransactionScope
         return;
     }
 
+    if (_colorAttributesInvalidated) {
+        _colorAttributesInvalidated = false;
+        updateInvalidatedColorAttributes(viewTransactionScope);
+    }
+
     while (!_dirtyCompositeAttributes.empty()) {
         auto dirtyCompositeAttribute = *_dirtyCompositeAttributes.begin();
         _dirtyCompositeAttributes.erase(_dirtyCompositeAttributes.begin());
@@ -297,7 +306,25 @@ void ViewNodeAttributesApplier::flush(ViewTransactionScope& viewTransactionScope
 }
 
 bool ViewNodeAttributesApplier::needsFlush() const {
-    return !_dirtyCompositeAttributes.empty();
+    return _colorAttributesInvalidated || !_dirtyCompositeAttributes.empty();
+}
+
+void ViewNodeAttributesApplier::updateInvalidatedColorAttributes(ViewTransactionScope& viewTransactionScope) {
+    for (const auto& it : _attributes) {
+        if (!it.second->shouldReevaluateOnColorChange()) {
+            continue;
+        }
+
+        auto id = it.first;
+        auto attribute = it.second;
+        attribute->markAppliedValueDirty();
+
+        if (attribute->isCompositePart()) {
+            _dirtyCompositeAttributes[attribute->getCompositeAttribute()->getAttributeId()] = nullptr;
+        } else {
+            updateAttribute(viewTransactionScope, id, *attribute, nullptr, /* justAddedView */ false);
+        }
+    }
 }
 
 void ViewNodeAttributesApplier::updateCompositeAttribute(ViewTransactionScope& viewTransactionScope,
@@ -476,6 +503,7 @@ void ViewNodeAttributesApplier::setBoundAttributes(Ref<BoundAttributes> boundAtt
     if (_boundAttributes == nullptr) {
         // Clear state so flush() / emplaceAttribute() are never called with null _boundAttributes.
         _dirtyCompositeAttributes.clear();
+        _colorAttributesInvalidated = false;
         _attributes.clear();
     } else if (VALDI_UNLIKELY(hadAttributes)) {
         updateAttributeHandlers();
@@ -526,6 +554,7 @@ void ViewNodeAttributesApplier::updateAttributeHandlers() {
 void ViewNodeAttributesApplier::destroy() {
     _viewNode = nullptr;
     _dirtyCompositeAttributes.clear();
+    _colorAttributesInvalidated = false;
     _attributes.clear();
 }
 

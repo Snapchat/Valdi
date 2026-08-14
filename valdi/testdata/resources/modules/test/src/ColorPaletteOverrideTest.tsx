@@ -3,7 +3,7 @@ import { ValdiRuntime } from 'valdi_core/src/ValdiRuntime';
 
 declare const runtime: ValdiRuntime;
 
-export class ColorPaletteTest extends Component {
+export class ColorPaletteOverrideTest extends Component {
   onCreate() {
     runtime.configureColorPalette('light', {
       background: 'rgba(0, 0, 255, 1)',
@@ -13,16 +13,23 @@ export class ColorPaletteTest extends Component {
       background: 'rgba(255, 0, 0, 1)',
       foreground: 'rgba(255, 255, 0, 1)',
     });
+    runtime.configureColorPalette('unused', {
+      background: 'rgba(0, 0, 0, 1)',
+      foreground: 'rgba(255, 255, 255, 1)',
+    });
     runtime.setActiveColorPalette('light');
   }
 
   onRender() {
-    <view border='1 solid background'>
+    <view background='background'>
+      <view colorPaletteName='dark' background='background'>
+        <view background='foreground' />
+      </view>
       <view background='foreground' />
     </view>;
   }
 
-  setDarkColorPalette() {
+  setDarkActiveColorPalette() {
     runtime.setActiveColorPalette('dark');
   }
 
@@ -33,10 +40,10 @@ export class ColorPaletteTest extends Component {
     });
   }
 
-  updateLightColorPalette() {
-    runtime.configureColorPalette('light', {
-      background: 'rgba(255, 0, 0, 1)',
-      foreground: 'rgba(255, 255, 0, 1)',
+  updateUnusedColorPalette() {
+    runtime.configureColorPalette('unused', {
+      background: 'rgba(255, 255, 255, 1)',
+      foreground: 'rgba(0, 0, 0, 1)',
     });
   }
 }

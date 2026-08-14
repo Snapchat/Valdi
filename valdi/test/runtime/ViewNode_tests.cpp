@@ -18,6 +18,44 @@ void assertAllFlagsAreUpToDate(ViewNode* viewNode) {
     }
 }
 
+TEST(ViewNode, settingColorPaletteOnDetachedNodeClearsResolvedPalette) {
+    ViewNodeTestsDependencies utils;
+    auto viewNode = utils.createView();
+    viewNode->setViewNodeTree(nullptr);
+
+    viewNode->setColorPaletteName(utils.getViewTransactionScope(), STRING_LITERAL("dark"));
+
+    ASSERT_EQ(nullptr, viewNode->getResolvedColorPalette());
+}
+
+TEST(ViewNode, settingColorPaletteWithoutViewManagerContextClearsResolvedPalette) {
+    ViewNodeTestsDependencies utils;
+    auto viewNode = utils.createView();
+
+    ASSERT_EQ(nullptr, viewNode->getViewNodeTree()->getViewManagerContext());
+
+    viewNode->setColorPaletteName(utils.getViewTransactionScope(), STRING_LITERAL("dark"));
+
+    ASSERT_EQ(nullptr, viewNode->getResolvedColorPalette());
+}
+
+TEST(ViewNode, reparentingToNodeWithoutPaletteClearsInheritedPalette) {
+    ViewNodeTestsDependencies utils;
+    auto oldParent = utils.createLayout();
+    auto newParent = utils.createLayout();
+    auto child = utils.createLayout();
+
+    oldParent->appendChild(utils.getViewTransactionScope(), child);
+    ASSERT_NE(nullptr, child->getResolvedColorPalette());
+
+    newParent->setInheritedColorPalette(utils.getViewTransactionScope(), nullptr);
+    ASSERT_EQ(nullptr, newParent->getResolvedColorPalette());
+
+    newParent->appendChild(utils.getViewTransactionScope(), child);
+
+    ASSERT_EQ(nullptr, child->getResolvedColorPalette());
+}
+
 static Ref<ViewNode> createManagedChildFrameNode(ViewNodeTestsDependencies& utils) {
     auto viewNode = utils.createNode("ManagedChildFrameView");
     auto viewFactory = viewNode->getViewFactory();

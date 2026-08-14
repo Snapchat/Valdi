@@ -221,6 +221,7 @@ AttributeHandler AttributeHandler::withDelegate(const Ref<AttributeHandlerDelega
     }
 
     handler._preprocessors = _preprocessors;
+    handler._postprocessors = _postprocessors;
     if (!_preprocessingTrivial) {
         handler._preprocessingTrivial = false;
     }
