@@ -18,6 +18,7 @@ struct ExportedEnum {
     }
     let cases: Cases
     let comments: String?
+    let declaredVersion: String?
 }
 
 final class ExportedEnumGenerator: NativeSourceGenerator {

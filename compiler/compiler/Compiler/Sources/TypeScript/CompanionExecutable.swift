@@ -52,6 +52,7 @@ private struct CreateWorkspace: Command {
     static let type: CommandType = .createWorkspace
 
     struct Request: RequestBody {
+        let nativeApiMinVersion: Int?
     }
 
     struct Response: ResponseBody {
@@ -594,8 +595,8 @@ class CompanionExecutable {
         return processRequest(BatchMinifyJS.self, request).then { return $0.results }
     }
 
-    func createWorkspace() -> Promise<Int> {
-        let request = CreateWorkspace.Request()
+    func createWorkspace(nativeApiMinVersion: Int?) -> Promise<Int> {
+        let request = CreateWorkspace.Request(nativeApiMinVersion: nativeApiMinVersion)
         return processRequest(CreateWorkspace.self, request).then { response in response.workspaceId }
     }
 

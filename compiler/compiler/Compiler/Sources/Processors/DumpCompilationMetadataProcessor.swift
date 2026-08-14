@@ -1,7 +1,6 @@
 import Foundation
 
 class DumpCompilationMetadataProcessor: CompilationProcessor {
-
     let projectConfig: ValdiProjectConfig
     let compilerConfig: CompilerConfig
     let projectClassMappingManager: ProjectClassMappingManager
@@ -21,9 +20,28 @@ class DumpCompilationMetadataProcessor: CompilationProcessor {
         self.typeScriptNativeTypeResolver = typeScriptNativeTypeResolver
     }
 
+    private func generatedTypes(items: CompilationItems) -> [GeneratedTypesSummary] {
+        return items.select { item -> (GeneratedTypeDescription, TypeScriptItemSrc)? in
+            if case let .generatedTypeDescription(description, src) = item.kind,
+               description.isNativeApi {
+                return (description, src)
+            }
+            return nil
+        }.groupBy { selectedItem in
+            selectedItem.data.1.compilationPath.removing(suffixes: FileExtensions.typescriptFileExtensionsDotted)
+        }.selectedItems.map { groupedItems in
+            let descriptions = groupedItems.items.map(\.data.0)
+            return GeneratedTypesSummary(
+                sourceFilePath: groupedItems.key,
+                generatedTypes: descriptions.sorted { $0.valueToSortBy < $1.valueToSortBy }
+            )
+        }.sorted { $0.sourceFilePath < $1.sourceFilePath }
+    }
+
     func process(items: CompilationItems) throws -> CompilationItems {
         let resolvedMappings = projectClassMappingManager.copyProjectClassMapping().copyMappings()
-        let nativeTypes =  typeScriptNativeTypeResolver.serialize()
+        let nativeTypes = typeScriptNativeTypeResolver.serialize()
+        let generatedTypes = generatedTypes(items: items)
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
@@ -48,7 +66,11 @@ class DumpCompilationMetadataProcessor: CompilationProcessor {
         let transformed = try selectedItems.transformEach { selectedItem in
             let item = selectedItem.item
             let (resolvedMappingsFromModule, resolvedTypeResolverForModule) = selectedItem.data
-            let compilationMetadata = CompilationMetadata(classMappings: resolvedMappingsFromModule, nativeTypes: resolvedTypeResolverForModule)
+            let nativeApiMinVersion = projectConfig.nativeApiMinVersion.map(String.init)
+            let compilationMetadata = CompilationMetadata(classMappings: resolvedMappingsFromModule,
+                                                          nativeTypes: resolvedTypeResolverForModule,
+                                                          nativeApiMinVersion: nativeApiMinVersion,
+                                                          generatedTypes: generatedTypes)
 
             let encoded = try encoder.encode(compilationMetadata)
             let file = File.data(encoded)

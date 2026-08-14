@@ -23,16 +23,21 @@ struct ValdiTypeScriptAnnotation {
     let name: String
     let range: NSRange
     let parameters: [String: String]?
+    let positionalPayload: String?
     let content: String
 
-    init(name: String, parameters: [String: String]?, range: NSRange, content: String) {
+    init(name: String, parameters: [String: String]?, positionalPayload: String?, range: NSRange, content: String) {
         self.name = name
         self.parameters = parameters
+        self.positionalPayload = positionalPayload
         self.range = range
         self.content = content
     }
 
-    private static let annotationRegex = try! NSRegularExpression(pattern: "@([A-z-]+) *(?:\\((?:\\{(.*?)\\})\\))?", options: [.dotMatchesLineSeparators])
+    private static let annotationRegex = try! NSRegularExpression(
+        pattern: "@([A-z-]+) *(?:\\((?:\\{(.*?)\\}|\\s*(\\d+|__PLACEHOLDER__)\\s*)\\))?",
+        options: [.dotMatchesLineSeparators]
+    )
 
     static func extractAnnotations(comments: TS.AST.Comments, fileContent: String) throws -> [ValdiTypeScriptAnnotation] {
         let joinedComments = comments.text
@@ -76,7 +81,30 @@ struct ValdiTypeScriptAnnotation {
                 parameters = foundParameters
             }
 
-            annotations.append(ValdiTypeScriptAnnotation(name: annotationName, parameters: parameters, range: totalRange, content: annotationContent))
+            let positionalPayloadRange = match.range(at: 3)
+            let positionalPayload: String?
+            if positionalPayloadRange.location != NSNotFound && annotationName != ValdiAnnotationType.version.rawValue {
+                let rangeInFile = NSRange(
+                    location: commentsRange.location + positionalPayloadRange.location,
+                    length: positionalPayloadRange.length
+                )
+                try throwAnnotationError(
+                    message: "Only @Version supports a positional annotation payload",
+                    range: rangeInFile,
+                    inDocument: fileContent
+                )
+            }
+            if positionalPayloadRange.location != NSNotFound {
+                positionalPayload = nsString.substring(with: positionalPayloadRange)
+            } else {
+                positionalPayload = nil
+            }
+
+            annotations.append(ValdiTypeScriptAnnotation(name: annotationName,
+                                                          parameters: parameters,
+                                                          positionalPayload: positionalPayload,
+                                                          range: totalRange,
+                                                          content: annotationContent))
         }
 
         return annotations

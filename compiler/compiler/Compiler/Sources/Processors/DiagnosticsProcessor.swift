@@ -30,16 +30,16 @@ class DiagnosticsProcessor: CompilationProcessor {
             return items
         }
 
-        return items.select { (item) -> GeneratedTypeDescription? in
-            if case let .generatedTypeDescription(generatedTypeDescription) = item.kind {
-                return generatedTypeDescription
+        return items.select { (item) -> (GeneratedTypeDescription, TypeScriptItemSrc)? in
+            if case let .generatedTypeDescription(generatedTypeDescription, src) = item.kind {
+                return (generatedTypeDescription, src)
             }
             return nil
             }.groupBy { selectedItem -> String in
-                selectedItem.item.relativeProjectPath
+                selectedItem.data.1.compilationPath
             }.transformEachConcurrently { groupedItems -> CompilationItem in
                 let relativeSourceFilePath = groupedItems.key
-                let descriptions = groupedItems.items.map { $0.data }.sorted { $0.valueToSortBy < $1.valueToSortBy }
+                let descriptions = groupedItems.items.map { $0.data.0 }.sorted { $0.valueToSortBy < $1.valueToSortBy }
                 let summary = GeneratedTypesSummary(sourceFilePath: relativeSourceFilePath,
                                                     generatedTypes: descriptions)
                 let anyItem = groupedItems.items[0]

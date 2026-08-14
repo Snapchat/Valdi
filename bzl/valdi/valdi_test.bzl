@@ -32,7 +32,8 @@ def _valdi_test_impl(ctx):
     # Always include standalone module runfiles
     valdimodules = _collect_target_runfiles(ctx.attr.target)
     valdimodules += _collect_target_runfiles(ctx.attr._valdi_standalone)
-    module_paths = ["--module_path {}".format(f.short_path) for f in valdimodules]
+    runtime_files = valdimodules + ctx.files._api_version_file
+    module_paths = ["--module_path {}".format(f.short_path) for f in runtime_files]
 
     test_script = ctx.actions.declare_file("test_wrapper.sh")
     if has_tests:
@@ -64,10 +65,10 @@ def _valdi_test_impl(ctx):
     )
 
     runfiles = ctx.runfiles(
-        files = [standalone_binary] + valdimodules,
+        files = [standalone_binary] + runtime_files,
     )
 
-    return [DefaultInfo(executable = test_script, files = depset([standalone_binary] + valdimodules), runfiles = runfiles)]
+    return [DefaultInfo(executable = test_script, files = depset([standalone_binary] + runtime_files), runfiles = runfiles)]
 
 valdi_test = rule(
     implementation = _valdi_test_impl,
@@ -98,6 +99,11 @@ valdi_test = rule(
         "code_coverage": attr.label(
             default = Label("@valdi//bzl/valdi:code_coverage_enabled"),
             doc = "Enable code coverage collection during tests",
+        ),
+        "_api_version_file": attr.label(
+            default = Label("//bzl/valdi:api_version_file"),
+            allow_files = True,
+            doc = "Optional repository API-version resource exposed to the standalone test runtime",
         ),
         "_valdi_standalone": attr.label(
             default = Label("@valdi//src/valdi_modules/src/valdi/valdi_standalone"),

@@ -81,7 +81,7 @@ struct CompilationItem {
         /**
          Diagnostics structure describing an exported type (class, interface, enum, function, view class).
          */
-        case generatedTypeDescription(GeneratedTypeDescription)
+        case generatedTypeDescription(GeneratedTypeDescription, src: TypeScriptItemSrc)
 
         /**
          A diagnostics file to be emitted when we finish processing

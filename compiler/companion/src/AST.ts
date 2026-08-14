@@ -455,6 +455,22 @@ export interface DumpedRootNode {
   exportedTypeAlias?: string;
 }
 
+const GENERATE_OR_EXPORT_ANNOTATION_REGEX = /@Generate|@Export/;
+const NATIVE_ANNOTATION_REGEX = /@Native/;
+const EXPORT_MODULE_ANNOTATION_REGEX = /@ExportModule/;
+
+export function hasGenerateOrExportAnnotation(comments: string): boolean {
+  return GENERATE_OR_EXPORT_ANNOTATION_REGEX.test(comments);
+}
+
+export function hasNativeExportAnnotation(comments: string): boolean {
+  return hasGenerateOrExportAnnotation(comments) || NATIVE_ANNOTATION_REGEX.test(comments);
+}
+
+export function hasExportModuleAnnotation(comments: string): boolean {
+  return EXPORT_MODULE_ANNOTATION_REGEX.test(comments);
+}
+
 function isExportedSymbolOrHasAnnotation(nodeToDump: NodeToDump, shouldDumpAllExportedSymbols: boolean): boolean {
   if (shouldDumpAllExportedSymbols && isNodeExported(nodeToDump.node)) {
     return true;
@@ -465,17 +481,9 @@ function isExportedSymbolOrHasAnnotation(nodeToDump: NodeToDump, shouldDumpAllEx
     return false;
   }
   const comments = nodeToDump.leadingComments.text;
-  const hasMatch = !!comments.match(/@Generate|@Export|@Component|@ViewModel|@Context|@Native/g);
+  const hasMatch = hasNativeExportAnnotation(comments) || !!comments.match(/@Component|@ViewModel|@Context/g);
 
   return hasMatch;
-}
-
-function hasExportModuleAnnotation(nodeToDump: NodeToDump): boolean {
-  if (!nodeToDump.leadingComments) {
-    return false;
-  }
-
-  return !!nodeToDump.leadingComments.text.match(/@ExportModule/g);
 }
 
 function shouldDumpNodeMember(nodeToDump: NodeToDump, memberNode: ts.TypeElement | ts.ClassElement): boolean {
@@ -488,7 +496,7 @@ function shouldDumpNodeMember(nodeToDump: NodeToDump, memberNode: ts.TypeElement
     return false;
   } else if (nodeComments.match(/@Component/)) {
     return !!(getNodeComments(memberNode)?.text ?? '').match(/@Action|@ConstructorOmitted/g);
-  } else if (nodeComments.match(/@Generate|@Export/)) {
+  } else if (hasGenerateOrExportAnnotation(nodeComments)) {
     return true;
   } else {
     return false;
@@ -602,7 +610,8 @@ export function dumpRootNodes(sourceFile: ts.SourceFile, astReferences: AST.Type
     // Need to dump all exported symbols for .vue user scripts, or for modules
     // annotated with @ExportModule
     const shouldDumpAllExportedSymbols =
-      !!sourceFile.fileName.match(/\.vue\.ts(x)?$/g) || hasExportModuleAnnotation(rootNodes[0]);
+      !!sourceFile.fileName.match(/\.vue\.ts(x)?$/g) ||
+      hasExportModuleAnnotation(rootNodes[0].leadingComments?.text ?? '');
     for (const rootNode of rootNodes) {
       if (isExportedSymbolOrHasAnnotation(rootNode, shouldDumpAllExportedSymbols)) {
         nodesToDump.push(rootNode);

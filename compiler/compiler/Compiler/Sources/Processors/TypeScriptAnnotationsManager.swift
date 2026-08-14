@@ -42,6 +42,7 @@ enum ValdiAnnotationType: String, CaseIterable {
     case allowSyncCall = "AllowSyncCall"
     case untypedMap = "UntypedMap"
     case untyped = "Untyped"
+    case version = "Version"
     
     /// Returns true if this annotation type can have ios/android parameters that indicate native exports.
     /// Used for detecting native exports in Vue files and validating annotation parameters.
@@ -71,7 +72,8 @@ enum ValdiAnnotationType: String, CaseIterable {
              .workerThread,
              .allowSyncCall,
              .untypedMap,
-             .untyped:
+             .untyped,
+             .version:
             return false
         }
     }
