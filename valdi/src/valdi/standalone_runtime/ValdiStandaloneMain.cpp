@@ -80,6 +80,10 @@ Ref<ValdiStandaloneRuntime> createValdiStandaloneRuntime(const StandaloneArgumen
         runtime->getRuntimeManager().registerModuleFactoriesProvider(moduleFactoriesProvider);
     }
 
+    if (arguments.requestManager != nullptr) {
+        runtime->getRuntimeManager().setRequestManager(arguments.requestManager);
+    }
+
     return runtime;
 }
 

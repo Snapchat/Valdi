@@ -13,6 +13,7 @@
 #include <vector>
 
 namespace snap::valdi_core {
+class HTTPRequestManager;
 class ModuleFactoriesProvider;
 }
 
@@ -30,6 +31,7 @@ struct StandaloneArguments {
     LogType logLevel = LogTypeInfo;
     IJavaScriptBridge* jsBridge = nullptr;
     std::vector<std::shared_ptr<snap::valdi_core::ModuleFactoriesProvider>> moduleFactoriesProviders;
+    std::shared_ptr<snap::valdi_core::HTTPRequestManager> requestManager = nullptr;
     bool enableDebuggerService = false;
     bool enableHotReloader = false;
     bool enableTSN = false;
