@@ -1,6 +1,7 @@
 package com.snap.valdi.network
 
 import android.content.Context
+import androidx.annotation.VisibleForTesting
 import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
@@ -15,10 +16,12 @@ import java.util.concurrent.atomic.AtomicInteger
 import com.snapchat.client.valdi.*
 import com.snapchat.client.valdi_core.*
 
-class DefaultHTTPRequestManager(
+class DefaultHTTPRequestManager @VisibleForTesting constructor(
     context: Context,
-    private val openConnection: (URL) -> URLConnection = { it.openConnection() },
+    private val openConnection: (URL) -> URLConnection,
 ): HTTPRequestManager() {
+
+    constructor(context: Context): this(context, { it.openConnection() })
 
     private class RequestTask(val url: URL, val method: String, val body: ByteArray?, val headers: Map<String, String>, val openConnection: (URL) -> URLConnection, completion: HTTPRequestManagerCompletion): HTTPRequestTask(completion), Runnable {
 
