@@ -67,6 +67,13 @@ private class FakeServer(respondImmediately: Boolean) : Closeable {
     fun url(path: String): String =
         "http://${serverSocket.inetAddress.hostAddress}:${serverSocket.localPort}$path"
 
+    /**
+     * The same socket, reached under a different hostname. The connection pool is keyed on host,
+     * so this is how a test addresses one server as if it were two.
+     */
+    fun urlForHost(host: String, path: String): String =
+        "http://$host:${serverSocket.localPort}$path"
+
     fun acceptedCount(): Int = accepted.get()
 
     fun sawRequestFor(path: String): Boolean =
@@ -276,7 +283,7 @@ class DefaultHTTPRequestManagerTest {
     @Test(timeout = 30_000)
     fun cancelReturnsCapacityToThePool() {
         val holding = holdingServer()
-        val inFlight = (0 until DefaultHTTPRequestManager.MAX_CONCURRENT_REQUESTS).map {
+        val inFlight = (0 until DefaultHTTPRequestManager.MAX_CONCURRENT_REQUESTS_PER_HOST).map {
             perform(holding.url("/hold"))
         }
 
@@ -285,12 +292,12 @@ class DefaultHTTPRequestManagerTest {
         // disconnect() is a no-op until it has.
         assertTrue(
             "the pool never filled",
-            holding.awaitRequestsRead(DefaultHTTPRequestManager.MAX_CONCURRENT_REQUESTS, 5_000),
+            holding.awaitRequestsRead(DefaultHTTPRequestManager.MAX_CONCURRENT_REQUESTS_PER_HOST, 5_000),
         )
 
         inFlight.forEach { it.cancel() }
 
-        val expected = DefaultHTTPRequestManager.MAX_CONCURRENT_REQUESTS
+        val expected = DefaultHTTPRequestManager.MAX_CONCURRENT_REQUESTS_PER_HOST
         val allHungUp = holding.awaitHungUp(expected, 5_000)
         assertTrue(
             "cancel() tore down only ${holding.hungUpCount()} of $expected connections",
@@ -315,10 +322,10 @@ class DefaultHTTPRequestManagerTest {
         // Saturate the pool so the next request has to queue. Waiting for every worker to be
         // awaiting a response, rather than just for connections to be accepted, is what makes the
         // next request certain to still be queued when it is cancelled.
-        repeat(DefaultHTTPRequestManager.MAX_CONCURRENT_REQUESTS) { perform(server.url("/hold")) }
+        repeat(DefaultHTTPRequestManager.MAX_CONCURRENT_REQUESTS_PER_HOST) { perform(server.url("/hold")) }
         assertTrue(
             "the pool never filled",
-            server.awaitRequestsRead(DefaultHTTPRequestManager.MAX_CONCURRENT_REQUESTS, 5_000),
+            server.awaitRequestsRead(DefaultHTTPRequestManager.MAX_CONCURRENT_REQUESTS_PER_HOST, 5_000),
         )
 
         val queued = RecordingCompletion()
@@ -347,7 +354,7 @@ class DefaultHTTPRequestManagerTest {
     @Test(timeout = 30_000)
     fun concurrentRequestsAreNotSerialised() {
         val server = holdingServer()
-        val expected = DefaultHTTPRequestManager.MAX_CONCURRENT_REQUESTS
+        val expected = DefaultHTTPRequestManager.MAX_CONCURRENT_REQUESTS_PER_HOST
 
         repeat(expected) { perform(server.url("/hold")) }
 
@@ -356,6 +363,29 @@ class DefaultHTTPRequestManagerTest {
         assertTrue(
             "expected $expected connections in flight, saw ${server.acceptedCount()}",
             reachedAll,
+        )
+    }
+
+    @Test(timeout = 30_000)
+    fun aStalledHostDoesNotBlockOtherHosts() {
+        val perHost = DefaultHTTPRequestManager.MAX_CONCURRENT_REQUESTS_PER_HOST
+        val stalled = holdingServer()
+
+        repeat(perHost) { perform(stalled.url("/hold")) }
+
+        // Every worker for that host has to be blocked in its read before the probe is sent.
+        // Otherwise a shared pool could still have spare capacity, and the probe would settle
+        // whether or not the pools are split by host.
+        assertTrue("the pool never filled", stalled.awaitRequestsRead(perHost, 5_000))
+
+        // The stalled server is addressed as 127.0.0.1, so reaching this one as localhost makes it
+        // a different host, and therefore a different pool.
+        val probe = RecordingCompletion()
+        manager.performRequest(getRequest(respondingServer().urlForHost("localhost", "/probe")), probe)
+
+        assertTrue(
+            "a request to another host queued behind a stalled host",
+            probe.awaitSettled(5_000),
         )
     }
 

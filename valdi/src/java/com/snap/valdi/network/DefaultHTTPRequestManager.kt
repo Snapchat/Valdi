@@ -6,6 +6,7 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLConnection
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
@@ -163,23 +164,30 @@ class DefaultHTTPRequestManager(
 
     private val threadCount = AtomicInteger(0)
 
-    private val executors: ExecutorService = ThreadPoolExecutor(
-        MAX_CONCURRENT_REQUESTS,
-        MAX_CONCURRENT_REQUESTS,
-        60L,
-        TimeUnit.SECONDS,
-        LinkedBlockingQueue(),
-    ) { r ->
-        Thread(r).apply {
-            name = "Valdi Network Thread ${threadCount.incrementAndGet()}"
-            priority = Thread.NORM_PRIORITY
+    // One pool per host, matching NSURLSession.httpMaximumConnectionsPerHost, so a stalled host
+    // cannot starve requests to other hosts.
+    private val executors = ConcurrentHashMap<String, ExecutorService>()
+
+    private fun executorForHost(url: URL): ExecutorService =
+        executors.computeIfAbsent(url.host.orEmpty().lowercase()) {
+            ThreadPoolExecutor(
+                MAX_CONCURRENT_REQUESTS_PER_HOST,
+                MAX_CONCURRENT_REQUESTS_PER_HOST,
+                60L,
+                TimeUnit.SECONDS,
+                LinkedBlockingQueue(),
+            ) { r ->
+                Thread(r).apply {
+                    name = "Valdi Network Thread ${threadCount.incrementAndGet()}"
+                    priority = Thread.NORM_PRIORITY
+                }
+            }.apply {
+                // An unbounded queue never rejects, so a pool only ever grows to its core size and
+                // maximumPoolSize is inert. Concurrency has to come from the core size, and this
+                // restores the idle reaping that the previous core size of zero provided.
+                allowCoreThreadTimeOut(true)
+            }
         }
-    }.apply {
-        // An unbounded queue never rejects, so a pool only ever grows to its core size and
-        // maximumPoolSize is inert. Concurrency has to come from the core size, and this restores
-        // the idle reaping that the previous core size of zero provided.
-        allowCoreThreadTimeOut(true)
-    }
 
     override fun performRequest(request: HTTPRequest, completion: HTTPRequestManagerCompletion): Cancelable {
         val task: RequestTask
@@ -194,13 +202,13 @@ class DefaultHTTPRequestManager(
             }
         }
 
-        executors.submit(task)
+        executorForHost(task.url).submit(task)
 
         return task
     }
 
     companion object {
-        const val MAX_CONCURRENT_REQUESTS = 4
+        const val MAX_CONCURRENT_REQUESTS_PER_HOST = 4
     }
 
 }
