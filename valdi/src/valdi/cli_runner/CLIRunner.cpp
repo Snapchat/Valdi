@@ -7,12 +7,16 @@
 
 namespace Valdi {
 
-int valdiCLIRun(const char* scriptPath, int argc, const char** argv) {
+int valdiCLIRun(const char* scriptPath,
+                int argc,
+                const char** argv,
+                const std::shared_ptr<snap::valdi_core::HTTPRequestManager>& requestManager) {
     SignalHandler::install();
 
     StandaloneArguments standaloneArguments;
     standaloneArguments.scriptPath = StringBox::fromCString(scriptPath);
     standaloneArguments.enableHotReloader = false;
+    standaloneArguments.requestManager = requestManager;
 
     if constexpr (snap::kIsDevBuild) {
         standaloneArguments.enableDebuggerService = true;
