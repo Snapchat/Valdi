@@ -152,6 +152,10 @@ http_archive(
 
 bazel_dep(name = "boringssl", version = "0.20250415.0")
 
+# HTTP transport for the standalone runtime. Defaults to the BoringSSL above as its TLS
+# backend, and to http_only, so no other protocol is compiled in.
+bazel_dep(name = "curl", version = "8.12.0")
+
 # TODO(simon): See if we can use upstream
 http_archive(
     name = "boost",
