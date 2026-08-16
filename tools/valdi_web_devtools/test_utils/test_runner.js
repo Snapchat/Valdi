@@ -56,6 +56,9 @@ function run(config) {
         '--testMatch', '**/tests/**/*.integration.test.js',
         '--runInBand',
         '--verbose',
+        '--watchman=false',
+        '--haste',
+        '{"enableSymlinks":true}',
       ], {
         cwd: process.cwd(),
         env: { ...process.env, PUPPETEER_EXECUTABLE_PATH: chromePath, BASE_URL: `http://localhost:${port}` },
