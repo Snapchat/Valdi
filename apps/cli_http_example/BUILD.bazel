@@ -17,5 +17,6 @@ valdi_module(
 valdi_cli_application(
     name = "cli_http_example_app",
     script_path = "cli_http_example/index",
+    enable_http = True,
     deps = [":cli_http_example"],
 )
