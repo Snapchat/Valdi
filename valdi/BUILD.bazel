@@ -409,6 +409,7 @@ cc_library(
     deps = [
         ":valdi_quickjs",
         ":valdi_standalone_runtime",
+        "//libs/utils:utils_oss_cc",
     ],
 )
 
