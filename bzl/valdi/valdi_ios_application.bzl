@@ -28,6 +28,7 @@ def valdi_ios_application(
         minimum_os_version = None,
         provisioning_profile = None,
         app_icons = None,
+        resources = [],
         version = None,
         deps = []):
     main_target = "{}_maingen".format(name)
@@ -96,6 +97,7 @@ def valdi_ios_application(
         minimum_os_version = minimum_os_version,
         provisioning_profile = provisioning_profile,
         app_icons = generate_valdi_ios_application_icons(name, app_icons),
+        resources = resources,
         version = resolved_version,
         tags = ["valdi_ios_application"],
         visibility = ["//visibility:public"],

@@ -1,6 +1,6 @@
 import { lazyImport } from '../LazyImport';
 
-const Symbolicator = lazyImport<typeof import('../Symbolicator')>(require, '../Symbolicator');
+const Symbolicator = lazyImport<typeof import('../Symbolicator')>(() => require('../Symbolicator', true));
 
 export function toCamelCase(snakeCaseString: string): string {
   const components = snakeCaseString.split('_');

@@ -8,7 +8,9 @@
 
 #pragma once
 
+#include <cstdint>
 #include <mutex>
+#include <optional>
 #include <string>
 
 #include "valdi/runtime/Resources/Bundle.hpp"
@@ -107,6 +109,8 @@ public:
 
     void warmUpBundles(const std::vector<StringBox>& modulePaths);
 
+    int32_t getApiVersion();
+
     bool enableAccessibility() const;
     bool enableDeferredGC() const;
     bool isLazyModulePreloadingEnabled() const;
@@ -132,6 +136,7 @@ private:
     bool _enableTSN = true;
     bool _inlineAssetsEnabled = true;
     bool _hotReloaderEnabled;
+    std::optional<int32_t> _apiVersion;
     std::atomic_bool _lazyModulePreloadingEnabled = true;
     Path _mmapCacheDirectory;
 

@@ -73,6 +73,7 @@ BUILD_DIR = ".valdi_build/compile"
 TYPESCRIPT_OUTPUT_DIR = paths.join(BUILD_DIR, "typescript/output")
 TYPESCRIPT_GENERATED_TS_DIR = paths.join(BUILD_DIR, "generated_ts")
 TYPESCRIPT_DUMPED_SYMBOLS_DIR = paths.join(BUILD_DIR, "typescript/dumped_symbols")
+COMPILATION_METADATA_FILENAME = "compilation-metadata.json"
 
 def base_relative_dir(platform, output_target, relative_dir):
     """Helper function for constructing paths relative to the _BASE_DIR.

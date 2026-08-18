@@ -36,12 +36,17 @@ valdi_module(
     visibility = ["//visibility:public"],
     web_deps = [":drawing_web"],
     web_register_native_module_id_overrides = {
+        "drawing/web/BitmapNative.js": "drawing/src/BitmapNative",
         # drawing/src/Drawing.ts does require('Drawing') to get the native provider
-        "drawing/web/DrawingModuleProvider.js": "drawing/src/Drawing,Drawing",
+        "drawing/web/DrawingModuleProvider.js": "Drawing",
+        "drawing/web/FontManagerNative.js": "drawing/src/FontManagerNative",
+        "drawing/web/ManagedContextNative.js": "drawing/src/ManagedContextNative",
     },
     deps = [
-        "@valdi//src/valdi_modules/src/valdi/jasmine",
         "@valdi//src/valdi_modules/src/valdi/valdi_core",
+    ],
+    test_deps = [
+        "@valdi//src/valdi_modules/src/valdi/jasmine",
         "@valdi//src/valdi_modules/src/valdi/valdi_test",
     ],
 )

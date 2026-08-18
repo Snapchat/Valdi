@@ -1,6 +1,6 @@
 import { ComponentPath } from 'valdi_core/src/ComponentPath';
 import { ComponentContext, LegacyVueComponent } from 'valdi_core/src/Valdi';
-import { ValdiRuntime } from 'valdi_core/src/ValdiRuntime';
+import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 import { makeEntryPointRenderFunction } from 'valdi_core/src/EntryPointComponent';
 import { EntryPointRenderFunction } from 'valdi_core/src/EntryPointRenderFunction';
 import { ComponentConstructor, IComponent } from 'valdi_core/src/IComponent';
@@ -12,7 +12,7 @@ import { DaemonClientManager } from 'valdi_core/src/debugging/DaemonClientManage
 import { SubmitDebugMessageFunc } from 'valdi_core/src/debugging/DebugMessage';
 import { StringMap } from 'coreutils/src/StringMap';
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
 
 export interface Rectangle {
   x: number;

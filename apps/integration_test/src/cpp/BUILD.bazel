@@ -1,0 +1,27 @@
+cc_library(
+    name = "integration_test_host_cpp",
+    srcs = ["IntegrationTestHost.cpp"],
+    hdrs = [],
+    includes = [],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//apps/integration_test/src/valdi/integration_test_app:integration_test_app_cpp",
+        "@valdi//valdi_core",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "integration_test_cli_cpp",
+    srcs = ["ImageDiffNative.cpp"],
+    copts = ["-Os"],
+    hdrs = [],
+    includes = [],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//apps/integration_test/src/valdi/integration_test_cli:integration_test_cli_cpp",
+        "//snap_drawing",
+        "@valdi//valdi_core",
+    ],
+    alwayslink = 1,
+)

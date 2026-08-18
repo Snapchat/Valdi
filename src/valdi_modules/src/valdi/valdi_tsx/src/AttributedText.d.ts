@@ -21,6 +21,13 @@ export interface AttributedTextAnimationTransform {
   key?: string;
 
   /**
+   * Initial horizontal offset, in logical pixels, applied to each animated part.
+   *
+   * The part animates from this offset back to its normal text position.
+   */
+  translationX?: number;
+
+  /**
    * Initial vertical offset, in logical pixels, applied to each animated part.
    *
    * The part animates from this offset back to its normal text position.

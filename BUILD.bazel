@@ -12,3 +12,9 @@ npm_link_package(
     src = "@valdi//src/valdi_modules/src/valdi/valdi_core:valdi_core_dts",
     visibility = ["//visibility:public"],
 )
+
+npm_link_package(
+    name = "web_renderer_link",
+    src = "@valdi//src/valdi_modules/src/valdi/web_renderer:web_renderer_dts",
+    visibility = ["//visibility:public"],
+)

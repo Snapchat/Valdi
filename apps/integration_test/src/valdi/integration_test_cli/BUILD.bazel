@@ -1,0 +1,19 @@
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "integration_test_cli",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.d.ts",
+    ]),
+    native_deps = ["//apps/integration_test/src/cpp:integration_test_cli_cpp"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/coreutils",
+        "//src/valdi_modules/src/valdi/drawing",
+        "//src/valdi_modules/src/valdi/file_system",
+        "//src/valdi_modules/src/valdi/valdi_http",
+        "//src/valdi_modules/src/valdi/valdi_cli",
+        "//src/valdi_modules/src/valdi/valdi_core",
+    ],
+)

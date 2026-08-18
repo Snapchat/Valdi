@@ -1,0 +1,4 @@
+dependencies:
+  - coreutils
+
+output_target: release

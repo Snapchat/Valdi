@@ -1,4 +1,4 @@
-import { ValdiRuntime } from 'valdi_core/src/ValdiRuntime';
+import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 import { IBenchmarkContext, randomInt, randomString } from './BenchmarkUtils';
 
 interface KeyValue<T> {
@@ -100,7 +100,7 @@ function testObjectIntVsStringKeys(context: IBenchmarkContext) {
   });
 }
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
 
 const CALL_PER_BENCH = 1000;
 

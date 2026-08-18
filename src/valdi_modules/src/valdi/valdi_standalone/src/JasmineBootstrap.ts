@@ -9,7 +9,16 @@ import { CodeCoverageManager } from './CodeCoverage';
 import { FailedTestRetryReporter } from './FailedTestRetryReporter';
 import { ValdiGlobalTestSuiteDoneHandler } from 'valdi_core/src/utils/TestUtils';
 
-declare const global: any;
+const jasmineBootstrapGlobal = globalThis as typeof globalThis &
+  ValdiGlobalTestSuiteDoneHandler & {
+    __jasmineTestRunner__?: JasmineTestsRunnerImpl;
+  };
+
+type MutableJasmineBootstrapGlobal = {
+  describe?: (description: string, specDefinitions: () => void) => void;
+  xdescribe?: (description: string, specDefinitions: () => void) => void;
+  jasmine?: any;
+};
 
 type TestLoadCallback = (onStartLoadingNewImportPath: (importPath: string) => void) => void;
 
@@ -117,8 +126,8 @@ class JasmineTestsRunnerImpl implements JasmineTestsRunner, jasmine.CustomReport
 
       this.junitReporter?.specDone?.(syntheticSpec); // Log to results.xml via junit reporter
     }
-    if ((global as ValdiGlobalTestSuiteDoneHandler).__onValdiTestSuiteDone) {
-      global.__onValdiTestSuiteDone();
+    if (jasmineBootstrapGlobal.__onValdiTestSuiteDone) {
+      jasmineBootstrapGlobal.__onValdiTestSuiteDone();
     }
   }
 
@@ -240,9 +249,10 @@ class JasmineTestsRunnerImpl implements JasmineTestsRunner, jasmine.CustomReport
       currentImportPath = importPath;
     };
 
-    const jasmineDescribeFns = ['describe', 'xdescribe'];
+    const jasmineDescribeFns = ['describe', 'xdescribe'] as const;
+    const mutableJasmineBootstrapGlobal = globalThis as MutableJasmineBootstrapGlobal;
     for (const jasmineDescribeFn of jasmineDescribeFns) {
-      global[jasmineDescribeFn] = (description: string, specDefinitions: () => void) => {
+      mutableJasmineBootstrapGlobal[jasmineDescribeFn] = (description: string, specDefinitions: () => void) => {
         if (!currentImportPath) {
           throw new Error('Unknown current import path!');
         }
@@ -263,11 +273,14 @@ class JasmineTestsRunnerImpl implements JasmineTestsRunner, jasmine.CustomReport
               });
               specDefinitions();
             };
-            global[jasmineDescribeFn].apply(undefined, [description, wrappedSpecDefinitions]);
+            mutableJasmineBootstrapGlobal[jasmineDescribeFn]!.apply(undefined, [
+              description,
+              wrappedSpecDefinitions,
+            ]);
           },
         });
       };
-      global['jasmine'] = new Proxy(
+      mutableJasmineBootstrapGlobal['jasmine'] = new Proxy(
         {},
         {
           get(target, property) {
@@ -286,9 +299,9 @@ class JasmineTestsRunnerImpl implements JasmineTestsRunner, jasmine.CustomReport
       this.logTestLoadFailure(error);
     } finally {
       for (const jasmineDescribeFn of jasmineDescribeFns) {
-        global[jasmineDescribeFn] = undefined;
+        mutableJasmineBootstrapGlobal[jasmineDescribeFn] = undefined;
       }
-      global['jasmine'] = undefined;
+      mutableJasmineBootstrapGlobal['jasmine'] = undefined;
     }
 
     return jasmineSpecs;
@@ -404,10 +417,10 @@ export function prepareTests(config: JasmineTestsRunnerConfig, cb: TestLoadCallb
   }
   // Jasmine uses globals under the hood, so we have to workaround it and ensure
   // we don't set it up while tests are running
-  let testsRunner = global.__jasmineTestRunner__ as JasmineTestsRunnerImpl;
+  let testsRunner = jasmineBootstrapGlobal.__jasmineTestRunner__;
   if (!testsRunner) {
     testsRunner = new JasmineTestsRunnerImpl(config, codeCoverageManager);
-    global.__jasmineTestRunner__ = testsRunner;
+    jasmineBootstrapGlobal.__jasmineTestRunner__ = testsRunner;
   }
 
   testsRunner.scheduleTests({

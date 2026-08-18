@@ -19,6 +19,33 @@ protocol DaemonServiceAutoConnector {
     func createTunnel(logger: ILogger, fromLocalPort: Int, toDeviceId: String, devicePort: Int) throws -> TCPTunnel?
 }
 
+struct DaemonServiceConnectorPlan: Equatable {
+    let usbMuxEnabled: Bool
+    let adbEnabled: Bool
+    let simulatorPorts: [Int]
+    let tcpAcceptorPort: Int?
+
+    init(reloadOverUSB: Bool, port: Int?) {
+        if reloadOverUSB {
+            if let port = port {
+                usbMuxEnabled = false
+                adbEnabled = false
+                simulatorPorts = [port]
+            } else {
+                usbMuxEnabled = true
+                adbEnabled = true
+                simulatorPorts = [Ports.reloaderOverUSB, Ports.reloaderStandalone]
+            }
+            tcpAcceptorPort = nil
+        } else {
+            usbMuxEnabled = false
+            adbEnabled = false
+            simulatorPorts = []
+            tcpAcceptorPort = port ?? 0
+        }
+    }
+}
+
 final class DaemonService {
 
     private let logger: ILogger
@@ -40,6 +67,7 @@ final class DaemonService {
     private let adbAutoConnector: DaemonServiceADBAutoConnector?
     private var idSequence = 0
     private let companion: CompanionExecutable
+    private let lifecycleReporter: HotReloadLifecycleReporter?
 
     init(logger: ILogger,
          fileManager: ValdiFileManager,
@@ -47,7 +75,9 @@ final class DaemonService {
          projectConfig: ValdiProjectConfig,
          compilerConfig: CompilerConfig,
          companion: CompanionExecutable,
-         reloadOverUSB: Bool) throws {
+         reloadOverUSB: Bool,
+         port: Int?,
+         lifecycleReporter: HotReloadLifecycleReporter?) throws {
         self.logger = logger
         self.fileManager = fileManager
         let deviceWhitelist = ReloaderDeviceWhitelist(deviceIds: Set(userConfig.deviceIds.map({ $0.uppercased() })),
@@ -58,6 +88,7 @@ final class DaemonService {
         self.deviceStorageURL = userConfig.deviceStorageDir ?? URL.deviceStorageDirectoryURL
 
         self.companion = companion
+        self.lifecycleReporter = lifecycleReporter
         self.resourceStore = ResourceStore()
 
         let logsCleaner = LogsCleaner(logger: logger, logsDirectoryURL: logsOutputDirURL)
@@ -74,42 +105,46 @@ final class DaemonService {
             }
         }
 
-        if reloadOverUSB {
-            let usbMuxAutoConnector = DaemonServiceUSBMuxAutoConnector(logger: logger)
-            self.usbMuxAutoConnector = usbMuxAutoConnector
-
-            self.simulatorAutoConnectors = [
-                DaemonServiceSimulatorAutoConnector(logger: logger, port: Ports.reloaderOverUSB),
-                DaemonServiceSimulatorAutoConnector(logger: logger, port: Ports.reloaderStandalone)
-            ]
-            let adbAutoConnector = DaemonServiceADBAutoConnector(logger: logger, companion: companion)
-            self.adbAutoConnector = adbAutoConnector
-
-            self.connectionAcceptor = nil
-            self.serviceAnnouncer = nil
-
-            usbMuxAutoConnector.delegate = self
-            usbMuxAutoConnector.start()
-
-            for simulatorAutoConnector in simulatorAutoConnectors {
-                simulatorAutoConnector.delegate = self
-                simulatorAutoConnector.start()
-            }
-
-            adbAutoConnector.delegate = self
-            adbAutoConnector.start()
-        } else {
+        let connectorPlan = DaemonServiceConnectorPlan(reloadOverUSB: reloadOverUSB, port: port)
+        if let tcpAcceptorPort = connectorPlan.tcpAcceptorPort {
             self.usbMuxAutoConnector = nil
             self.simulatorAutoConnectors = []
             adbAutoConnector = nil
 
-            let connectionAcceptor = try DaemonTCPConnectionAcceptor(logger: logger)
+            let connectionAcceptor = try DaemonTCPConnectionAcceptor(logger: logger, port: tcpAcceptorPort)
             self.connectionAcceptor = connectionAcceptor
             let serviceAnnouncer = try ReloaderServiceAnnouncer(logger: logger, deviceWhitelist: deviceWhitelist, projectConfig: projectConfig, servicePort: connectionAcceptor.listeningPort)
             self.serviceAnnouncer = serviceAnnouncer
 
             connectionAcceptor.delegate = self
             connectionAcceptor.startAccepting()
+        } else {
+            let usbMuxAutoConnector = connectorPlan.usbMuxEnabled ? DaemonServiceUSBMuxAutoConnector(logger: logger) : nil
+            self.usbMuxAutoConnector = usbMuxAutoConnector
+
+            self.simulatorAutoConnectors = connectorPlan.simulatorPorts.map {
+                DaemonServiceSimulatorAutoConnector(logger: logger, port: $0)
+            }
+            let adbAutoConnector = connectorPlan.adbEnabled ? DaemonServiceADBAutoConnector(logger: logger, companion: companion) : nil
+            self.adbAutoConnector = adbAutoConnector
+
+            self.connectionAcceptor = nil
+            self.serviceAnnouncer = nil
+
+            if let usbMuxAutoConnector = usbMuxAutoConnector {
+                usbMuxAutoConnector.delegate = self
+                usbMuxAutoConnector.start()
+            }
+
+            for simulatorAutoConnector in simulatorAutoConnectors {
+                simulatorAutoConnector.delegate = self
+                simulatorAutoConnector.start()
+            }
+
+            if let adbAutoConnector = adbAutoConnector {
+                adbAutoConnector.delegate = self
+                adbAutoConnector.start()
+            }
         }
     }
 
@@ -165,6 +200,7 @@ final class DaemonService {
 
         var batch: [DaemonResource] = []
         var batchBytes = 0
+        var resourceCount = 0
 
         func flushBatch() {
             guard !batch.isEmpty else { return }
@@ -205,9 +241,16 @@ final class DaemonService {
                                         data_base64: data,
                                         data_string: dataString))
             batchBytes += encodedBytes
+            resourceCount += 1
         }
 
         flushBatch()
+        if resourceCount > 0 {
+            lifecycleReporter?.resourcesSent(clientId: client.id,
+                                             applicationId: client.applicationId,
+                                             platform: client.platform?.rawValue,
+                                             resourceCount: resourceCount)
+        }
     }
 
     private func addClient(_ client: DaemonServiceConnectedClient) {
@@ -334,6 +377,9 @@ final class DaemonService {
             response.resolve(data: serverResponse)
 
             if !wasConfigured {
+                lifecycleReporter?.targetConnected(clientId: client.id,
+                                                   applicationId: client.applicationId,
+                                                   platform: platform)
                 self.sendAllResourcesToNewlyConnected(client: client)
             }
         }

@@ -14,16 +14,21 @@ import {
   resolveBazelBuildArgs,
   selectBazelTarget,
 } from '../utils/applicationUtils';
+import { syncDirectoryContents } from '../utils/directorySync';
 import { logReproduceThisCommandIfNeeded, makeCommandHandler } from '../utils/errorUtils';
 import { removeFileOrDirAtPath } from '../utils/fileUtils';
 import { wrapInColor } from '../utils/logUtils';
 import { withTempDir } from '../utils/tempDir';
-import { decompressTo } from '../utils/zipUtils';
+import { compressDirectoryContentsTo, decompressTo } from '../utils/zipUtils';
+
+const OUTPUT_FORMATS = ['archive', 'directory'] as const;
+type OutputFormat = (typeof OUTPUT_FORMATS)[number];
 
 interface CommandParameters extends SharedCommandParameters {
   library: string | undefined;
   target_output_path: string | undefined;
   output_path: string;
+  output_format: OutputFormat;
 }
 
 async function decompressAndMoveXCFrameworkIntoDestination(
@@ -47,6 +52,26 @@ async function decompressAndMoveXCFrameworkIntoDestination(
   });
 }
 
+function getExportOutputExtension(platform: PLATFORM): string {
+  return exportedLibraryExtensionForPlatform(platform);
+}
+
+async function getTargetToExport(
+  argv: ArgumentsResolver<CommandParameters>,
+  bazel: BazelClient,
+  platform: PLATFORM,
+): Promise<string> {
+  return await argv.getArgumentOrResolve('library', () => {
+    console.log('No library specified querying available targets...');
+    return selectBazelTarget(
+      bazel,
+      getExportedLibraryTargetTagForPlatform(platform),
+      'valdi_exported_library',
+      'Please select a library to export:',
+    );
+  });
+}
+
 async function valdiExport(argv: ArgumentsResolver<CommandParameters>): Promise<void> {
   const bazel = new BazelClient();
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
@@ -62,43 +87,52 @@ async function valdiExport(argv: ArgumentsResolver<CommandParameters>): Promise<
   );
 
   const resolvedOutputPath = path.resolve(argv.getArgument('output_path'));
-  const expectedExtension = exportedLibraryExtensionForPlatform(platform);
-  if (!resolvedOutputPath.endsWith(expectedExtension)) {
+  const outputFormat = argv.getArgument('output_format');
+  const expectedExtension = getExportOutputExtension(platform);
+  if (outputFormat === 'directory' && platform !== PLATFORM.WEB) {
+    throw new CliError("The 'directory' output format is only supported for web exports");
+  }
+  if (outputFormat === 'archive' && !resolvedOutputPath.endsWith(expectedExtension)) {
     throw new CliError(`Output path for platform '${platform}' must have ${expectedExtension} file extension`);
   }
 
-  removeFileOrDirAtPath(resolvedOutputPath);
+  if (outputFormat === 'archive') {
+    removeFileOrDirAtPath(resolvedOutputPath);
+  }
   const directoryPath = path.dirname(resolvedOutputPath);
   if (!fs.existsSync(directoryPath)) {
     fs.mkdirSync(directoryPath, { recursive: true });
   }
 
-  const library = await argv.getArgumentOrResolve('library', () => {
-    console.log('No library specified querying available targets...');
-    return selectBazelTarget(
-      bazel,
-      getExportedLibraryTargetTagForPlatform(platform),
-      'valdi_exported_library',
-      'Please select a library to export:',
-    );
-  });
+  const targetToExport = await getTargetToExport(argv, bazel, platform);
 
-  console.log('Resolving output paths...');
-
-  const bazelOutputExtension = platform === PLATFORM.IOS ? '.zip' : expectedExtension;
+  const bazelOutputExtension = platform === PLATFORM.IOS ? '.zip' : platform === PLATFORM.WEB ? '' : expectedExtension;
   const bazelOutputFilePath = await argv.getArgumentOrResolve('target_output_path', () => {
     console.log('Resolving output paths...');
-    return getOutputFilePath(bazel, bazelOutputExtension, library, bazelArgs);
+    return getOutputFilePath(bazel, bazelOutputExtension, targetToExport, bazelArgs);
   });
 
-  console.log(`Building: ${wrapInColor(library, ANSI_COLORS.GREEN_COLOR)}`);
+  console.log(`Building: ${wrapInColor(targetToExport, ANSI_COLORS.GREEN_COLOR)}`);
 
-  await bazel.buildTarget(library, bazelArgs);
+  await bazel.buildTarget(targetToExport, bazelArgs);
 
-  console.log(`Copying built target to ${resolvedOutputPath}...`);
-  if (platform === PLATFORM.IOS) {
+  if (platform === PLATFORM.WEB) {
+    if (outputFormat === 'directory') {
+      console.log(`Synchronizing built target to ${resolvedOutputPath}...`);
+      const syncResult = await syncDirectoryContents(bazelOutputFilePath, resolvedOutputPath);
+      console.log(
+        `Directory export: ${syncResult.added} added, ${syncResult.updated} updated, ` +
+          `${syncResult.removed} removed, ${syncResult.unchanged} unchanged`,
+      );
+    } else {
+      console.log(`Copying built target to ${resolvedOutputPath}...`);
+      await compressDirectoryContentsTo(bazelOutputFilePath, resolvedOutputPath);
+    }
+  } else if (platform === PLATFORM.IOS) {
+    console.log(`Copying built target to ${resolvedOutputPath}...`);
     await decompressAndMoveXCFrameworkIntoDestination(bazelOutputFilePath, resolvedOutputPath);
   } else {
+    console.log(`Copying built target to ${resolvedOutputPath}...`);
     await fs.promises.copyFile(bazelOutputFilePath, resolvedOutputPath);
   }
 
@@ -112,7 +146,7 @@ export const describe = 'Build and export a Valdi library';
 export const builder = makeArgsBuilder((yargs: Argv<CommandParameters>) => {
   yargs
     .option('library', {
-      describe: 'Name of the library to build',
+      describe: 'Name of the library to export',
       type: 'string',
       requiresArg: true,
     })
@@ -122,9 +156,14 @@ export const builder = makeArgsBuilder((yargs: Argv<CommandParameters>) => {
       requiresArg: true,
     })
     .option('output_path', {
-      describe: 'The path where to store the built application package',
+      describe: 'The path where to store the exported library artifact or directory',
       type: 'string',
       requiresArg: true,
+    })
+    .option('output_format', {
+      choices: OUTPUT_FORMATS,
+      default: 'archive' as const,
+      describe: 'Export web output as an archive or a content-synchronized directory',
     })
     .demandOption('output_path');
 });

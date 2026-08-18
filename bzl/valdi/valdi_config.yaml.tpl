@@ -58,3 +58,4 @@ node_modules_target: {NODE_MODULES_TARGET}
 node_modules_workspace: {NODE_MODULES_WORKSPACE}
 external_modules_target: {EXTERNAL_MODULES_TARGET}
 external_modules_workspace: {EXTERNAL_MODULES_WORKSPACE}
+{NATIVE_API_MIN_VERSION_CONFIG}

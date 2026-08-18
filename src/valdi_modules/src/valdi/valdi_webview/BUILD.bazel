@@ -1,5 +1,18 @@
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("//bzl/valdi:valdi_android_library.bzl", "valdi_android_library")
 load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+ts_project(
+    name = "valdi_webview_web",
+    srcs = glob([
+        "web/**/*.ts",
+        "src/**/*.d.ts",
+    ]),
+    allow_js = True,
+    composite = True,
+    transpiler = "tsc",
+    tsconfig = "web/tsconfig.json",
+)
 
 objc_library(
     name = "valdi_webview_ios_impl",
@@ -63,6 +76,10 @@ valdi_module(
     ios_output_target = "release",
     macos_deps = [":valdi_webview_macos_impl"],
     visibility = ["//visibility:public"],
+    web_deps = [":valdi_webview_web"],
+    web_register_native_module_id_overrides = {
+        "valdi_webview/web/WebViewNative.js": "valdi_webview/src/WebViewNative",
+    },
     deps = [
         "//src/valdi_modules/src/valdi/valdi_core",
         "//src/valdi_modules/src/valdi/valdi_tsx",

@@ -12,6 +12,7 @@ load(
     "common.bzl",
     "ANDROID_RESOURCE_VARIANT_DIRECTORIES",
     "BUILD_DIR",
+    "COMPILATION_METADATA_FILENAME",
     "IOS_API_NAME_SUFFIX",
     "IOS_DEFAULT_MODULE_NAME_PREFIX",
     "IOS_OUTPUT_BASE",
@@ -24,6 +25,7 @@ load(":localizable_strings.bzl", "supported_langs_mapping")
 load(":valdi_paths.bzl", "get_ids_yaml_dts_path", "get_legacy_vue_srcs_dts_paths", "get_resources_dts_paths", "get_sql_dts_paths", "get_sql_js_paths", "get_strings_dts_path", "infer_base_output_dir", "output_declaration_compiled_file_path_for_source_file", "output_declaration_file_path_for_source_file", "replace_prefix", "resolve_module_dir_and_name", "resolve_relative_project_path")
 load(":valdi_run_compiler.bzl", "generate_config", "resolve_compiler_executable", "run_valdi_compiler")
 load(":valdi_toolchain_type.bzl", "VALDI_TOOLCHAIN_TYPE")
+load(":valdi_web_workers.bzl", "validate_web_workers")
 
 # These paths let us find/declare the expected output locations
 
@@ -98,15 +100,16 @@ ValdiModuleInfo = provider(
         "intermediates": "The intermediates files that should be used to compile another module that depends on this module",
         "base_path": "The base path to the module",
         "module_definition": "The generated content of the module definition.",
-        "web_debug_sources": "A tree artifact containing all the generated web sources",
-        "web_release_sources": "A tree artifact containing all the generated web sources",
-        "web_debug_resource_files": "Web resource files",
-        "web_release_resource_files": "Web resource files",
-        "web_debug_strings": "Web debug strings",
-        "web_release_strings": "Web release strings",
+        "web_sources": "A tree artifact containing all the generated web sources",
+        "web_resource_files": "Web resource files",
+        "web_no_inline_images": "Whether web bundlers should emit this module's images as separate assets.",
+        "web_module_file_entries": "Module file entries from source files copied to web module entry paths",
+        "web_strings": "Web strings",
         "web_deps": "Web ts/js dependencies",
-        "web_dts_files": "TypeScript declaration files (.d.ts) for web",
-        "web_register_native_module_id_overrides": "Optional dict: native dest path (e.g. 'valdi_core/web/DeviceBridge.js') -> runtime module ID (e.g. 'DeviceBridge'). Declared by the module that owns the web stub.",
+        "web_input_dts_files": "Input TypeScript declaration files (.d.ts) for web",
+        "web_output_dts_files": "Compiler-generated TypeScript declaration files (.d.ts) for web",
+        "web_register_native_module_id_overrides": "Optional dict: native implementation output path -> comma-separated module IDs. Declared by the module that owns the web implementation.",
+        "web_workers": "Browser worker entry module paths.",
         "strings_dir": "The strings directory for this module (e.g. 'strings', 'src/strings', 'lib/strings'). Empty string if no strings.",
     },
 )
@@ -122,6 +125,8 @@ def _valdi_compiled_impl(ctx):
             DefaultInfo provider with all outputs
             ValdiModuleInfo provider
     """
+    validate_web_workers(ctx.attr.web_workers, str(ctx.label))
+
     module_name = ctx.attr.module
 
     directory_name = paths.basename(ctx.label.package)
@@ -257,7 +262,11 @@ valdi_compiled = rule(
         ),
         "web_register_native_module_id_overrides": attr.string_dict(
             default = {},
-            doc = "Map of native dest path (e.g. 'valdi_core/web/DeviceBridge.js') to runtime module ID. Declared by the module that owns the web stub.",
+            doc = "Map of native implementation output path to comma-separated module IDs. Declared by the module that owns the web implementation.",
+        ),
+        "web_workers": attr.string_list(
+            default = [],
+            doc = "Browser worker entry module paths.",
         ),
         "disable_annotation_processing": attr.bool(
             doc = "When set to true, will not expect any Valdi annotation processing to occur for this module.",
@@ -290,6 +299,10 @@ valdi_compiled = rule(
         ),
         "inline_assets": attr.bool(
             doc = "Sets whether assets should be bundled inline within the .valdimodule",
+            default = False,
+        ),
+        "web_no_inline_images": attr.bool(
+            doc = "Whether web bundlers should emit module images as separate assets instead of inlining them",
             default = False,
         ),
         "log_level": attr.label(
@@ -373,6 +386,9 @@ valdi_compiled = rule(
             doc = "The template config.yaml file",
             allow_single_file = True,
             default = "valdi_config.yaml.tpl",
+        ),
+        "_native_api_min_version": attr.label(
+            default = "@valdi//bzl/valdi:native_api_min_version",
         ),
     },
 )
@@ -484,7 +500,7 @@ def _invoke_valdi_compiler(ctx, module_name, module_yaml, enable_android = True,
         )
         explicit_image_asset_manifest_file = manifest_with_sizes_file
 
-    args = _prepare_arguments(ctx.actions.args(), ctx.attr.log_level[BuildSettingInfo].value, localization_mode, js_bytecode_format, config_yaml_file, explicit_input_list_file, explicit_image_asset_manifest_file, module_name, base_output_dir, disable_downloadable_assets, ctx.configuration.default_shell_env, prepared_upload_artifact_file, ctx.attr.inline_assets, valdi_copts, enable_web, disable_minify_web, code_coverage, enable_android, enable_ios, emit_debug, emit_release, compiler_output_target)
+    args = _prepare_arguments(ctx.actions.args(), ctx.attr.log_level[BuildSettingInfo].value, localization_mode, js_bytecode_format, config_yaml_file, explicit_input_list_file, explicit_image_asset_manifest_file, module_name, base_output_dir, disable_downloadable_assets, ctx.configuration.default_shell_env, prepared_upload_artifact_file, ctx.attr.inline_assets, valdi_copts, enable_web, ctx.attr.web_register_native_module_id_overrides, disable_minify_web, code_coverage, enable_android, enable_ios, emit_debug, emit_release, compiler_output_target)
 
     compile_inputs = all_inputs + [config_yaml_file, explicit_input_list_file] + ([explicit_image_asset_manifest_file] if explicit_image_asset_manifest_file else [])
     if declared_processed_image_files:
@@ -869,12 +885,22 @@ def _declare_compiler_outputs(ctx, module_name, module_directory, localization_m
 
     return (infer_base_output_dir(files_output_paths + directories_output_paths, outputs), outputs)
 
+def _get_web_output_target(attr, force_debug):
+    if force_debug or attr.android_output_target != "release" or attr.ios_output_target != "release":
+        return "debug"
+    return "release"
+
+def _supports_web_release(ctx, code_coverage):
+    return _get_web_output_target(ctx.attr, code_coverage or ctx.attr.output_flavor[BuildSettingInfo].value == "debug") == "release"
+
 def _get_files_output_paths(ctx, module_name, module_directory, localization_mode, enable_web, code_coverage, enable_android = True, enable_ios = True, emit_debug = True, emit_release = True):
     filtered_srcs = _get_compiled_srcs(ctx)
     outputs = _get_srcs_dts_paths(filtered_srcs, module_name, module_directory)
 
-    if enable_web:
+    web_release_enabled = enable_web and _supports_web_release(ctx, code_coverage)
+    if web_release_enabled:
         outputs += _get_srcs_js_paths(filtered_srcs + ctx.files.protodecl_srcs, module_name, module_directory, bool(ctx.files.res), bool(ctx.file.ids_yaml), bool(ctx.attr.strings_dir))
+        outputs += _get_web_native_module_package_file_paths(ctx.attr.web_register_native_module_id_overrides)
         outputs += _get_srcs_vue_paths(ctx.files.legacy_vue_srcs, module_name, module_directory)
         outputs += get_sql_js_paths(ctx.attr.sql_db_names, ctx.files.sql_srcs, module_name, module_directory)
 
@@ -919,9 +945,8 @@ def _get_files_output_paths(ctx, module_name, module_directory, localization_mod
     strings_json_srcs = ctx.files.strings_json_srcs
     outputs += get_strings_dts_path(TYPESCRIPT_GENERATED_TS_DIR, module_name, strings_json_srcs)
 
-    if enable_web:
-        # Just debug for now
-        outputs = _append_debug_and_maybe_release(outputs, "debug", _get_web_string_resource_paths(module_name, strings_json_srcs, ctx.attr.strings_dir))
+    if web_release_enabled:
+        outputs += _get_web_string_resource_paths(module_name, strings_json_srcs, ctx.attr.strings_dir)[1]
 
     if localization_mode == "external":
         # Android strings-xx.xml
@@ -942,10 +967,9 @@ def _get_files_output_paths(ctx, module_name, module_directory, localization_mod
             outputs = _append_debug_and_maybe_release(outputs, android_output_target, _get_android_image_resources_paths(module_name, basenames), emit_debug, emit_release)
         if enable_ios:
             outputs = _append_debug_and_maybe_release(outputs, ios_output_target, _get_ios_image_resources_paths(module_name, basenames), emit_debug, emit_release)
-        if enable_web:
-            # Just debug for now
+        if web_release_enabled:
             renamed_resources = _extract_renamed_resources(ctx.files.res)
-            outputs += _get_web_resource_paths(module_name, renamed_resources)[0]
+            outputs += _get_web_resource_paths(module_name, renamed_resources)[1]
             outputs += _get_web_generated_resource_paths(module_name, outputs)
 
     outputs.append(_get_dumped_compilation_metadata(module_name))
@@ -1015,11 +1039,99 @@ def _will_generate_valdimodule(ctx):
     valid_extensions = ["tsx", "ts", "js", "vue", "sql", "sq", "sqm"]
     potential_sources = ctx.files.srcs + ctx.files.legacy_vue_srcs + ctx.files.sql_srcs
     matching_files = [f for f in potential_sources if f.extension in valid_extensions and not f.basename.endswith(".d.ts")]
+    module_file_entries = [
+        f
+        for f in ctx.files.srcs
+        if (
+            f.extension == "bin" or
+            (f.extension == "json" and not _is_compiler_special_json_file(f))
+        )
+    ] + ctx.files.protodecl_srcs
 
-    return len(matching_files) != 0
+    return len(matching_files) != 0 or len(module_file_entries) != 0
 
 def _get_compiled_srcs(ctx):
     return [src for src in ctx.files.srcs if src.basename != "tsconfig.json"]
+
+def _is_compiler_special_json_file(src):
+    return (
+        src.basename == "tsconfig.json" or
+        src.basename == "compilation-metadata.json" or
+        (src.basename.startswith("strings-") and src.basename.endswith(".json"))
+    )
+
+def _module_relative_path(ctx, src):
+    rel = src.short_path
+    package_prefix = ctx.label.package + "/" if ctx.label.package else ""
+    if package_prefix and rel.startswith(package_prefix):
+        return rel[len(package_prefix):]
+    elif package_prefix:
+        marker = "/" + package_prefix
+        marker_index = rel.find(marker)
+        if marker_index >= 0:
+            return rel[marker_index + len(marker):]
+        else:
+            return src.basename
+    else:
+        return src.basename
+
+def _collect_web_module_file_entries(ctx, module_name):
+    entries = []
+    inputs = []
+
+    for src in ctx.files.srcs:
+        if src.extension == "json" and not _is_compiler_special_json_file(src):
+            entries.append((src, _module_relative_path(ctx, src)))
+            inputs.append(src)
+        elif src.extension == "bin":
+            entries.append((src, _module_relative_path(ctx, src)))
+            inputs.append(src)
+
+    for src in ctx.files.protodecl_srcs:
+        entries.append((src, src.basename))
+        inputs.append(src)
+
+    if not entries:
+        return None
+
+    outdir = ctx.actions.declare_directory("{}_web_module_file_entries".format(ctx.label.name))
+    manifest = ctx.actions.declare_file("{}_web_module_file_entries.manifest".format(ctx.label.name))
+    lines = []
+
+    for src, rel in entries:
+        lines.append("{}\tsrc/{}/{}".format(src.path, module_name, rel))
+
+    ctx.actions.write(manifest, "\n".join(lines) + "\n")
+
+    sh = ctx.actions.declare_file("{}_web_module_file_entries.sh".format(ctx.label.name))
+    ctx.actions.write(
+        output = sh,
+        is_executable = True,
+        content = """#!/usr/bin/env bash
+        set -euo pipefail
+        OUT="$1"; MAN="$2"
+        rm -rf "$OUT"; mkdir -p "$OUT"
+
+        while IFS=$'\\t' read -r SRC DEST; do
+        [ -z "$SRC" ] && continue
+
+        D="$OUT/$(dirname "$DEST")"
+        mkdir -p "$D"
+        cp -f "$SRC" "$OUT/$DEST"
+        done < "$MAN"
+        """,
+    )
+
+    ctx.actions.run(
+        inputs = [manifest] + inputs,
+        outputs = [outdir],
+        tools = [sh],
+        executable = sh,
+        arguments = [outdir.path, manifest.path],
+        progress_message = "Collecting web module file entries into {}".format(outdir.path),
+    )
+
+    return outdir
 
 def _get_srcs_dts_paths(srcs, module_name, module_directory):
     return [
@@ -1030,26 +1142,45 @@ def _get_srcs_dts_paths(srcs, module_name, module_directory):
 
 def _get_srcs_js_paths(srcs, module_name, module_directory, has_resources, has_ids, has_strings):
     out = []
+    output_target = "release"
 
     for f in srcs:
+        if _is_test_file(f):
+            continue
         if f.extension in ["tsx", "ts", "js"] and not f.basename.endswith(".d.ts") and not ".spec." in f.basename:
-            out.append(output_declaration_compiled_file_path_for_source_file(f, module_name, module_directory))
+            out.append(output_declaration_compiled_file_path_for_source_file(f, module_name, module_directory, output_target = output_target))
 
     # Generated by the compiler but only if there are resources
     if has_resources:
-        out.append(paths.join("web/debug/assets/", module_name, "res.js"))
+        out.append(paths.join(base_relative_dir("web", output_target, "assets"), module_name, "res.js"))
 
     if has_ids:
-        out.append(paths.join("web/debug/assets/", module_name, "ids.js"))
+        out.append(paths.join(base_relative_dir("web", output_target, "assets"), module_name, "ids.js"))
+
+    return out
+
+def _get_web_native_module_package_file_paths(web_register_native_module_id_overrides):
+    output_dir = base_relative_dir("web", "release", "assets")
+    out = []
+
+    for implementation_path in web_register_native_module_id_overrides:
+        for raw_module_id in web_register_native_module_id_overrides[implementation_path].split(","):
+            module_id = raw_module_id.strip()
+            if not module_id:
+                fail("Invalid web_register_native_module_id_overrides entry for {}: module id list contains an empty value".format(implementation_path))
+            out.append(paths.join(output_dir, module_id + ".js"))
 
     return out
 
 def _get_srcs_vue_paths(srcs, module_name, module_directory):
     out = []
+    output_target = "release"
 
     for f in srcs:
+        if _is_test_file(f):
+            continue
         if f.extension in ["vue"] and not f.basename.endswith(".d.ts"):
-            out.append(output_declaration_compiled_file_path_for_source_file(f, module_name, module_directory, replacement_suffix = ".vue.js"))
+            out.append(output_declaration_compiled_file_path_for_source_file(f, module_name, module_directory, replacement_suffix = ".vue.js", output_target = output_target))
 
     return out
 
@@ -1349,8 +1480,6 @@ def _get_web_string_resource_paths(module_name, strings_srcs, strings_dir):
     debug_strings, release_strings = [], []
     strings_jsons_names = [paths.basename(s.path) for s in strings_srcs]
     for strings_json in strings_jsons_names:
-        (ios_values_dir, _) = supported_langs_mapping[strings_json]
-
         debug_strings.append(paths.join("web", "debug", "assets", module_name, strings_dir, strings_json))
         release_strings.append(paths.join("web", "release", "assets", module_name, strings_dir, strings_json))
 
@@ -1447,7 +1576,7 @@ def _get_ios_image_resources_paths(module_name, resources_basenames):
     return [debug_images, release_images]
 
 def _get_dumped_compilation_metadata(module_name):
-    return paths.join(TYPESCRIPT_DUMPED_SYMBOLS_DIR, module_name, "compilation-metadata.json")
+    return paths.join(TYPESCRIPT_DUMPED_SYMBOLS_DIR, module_name, COMPILATION_METADATA_FILENAME)
 
 def _get_dependency_data_path(module_name):
     return base_relative_dir("ios", "metadata", "dependencyData.json")
@@ -1458,7 +1587,7 @@ def _declare_files(ctx, paths):
 def _declare_directories(ctx, paths):
     return [ctx.actions.declare_directory(path) for path in paths]
 
-def _prepare_arguments(args, log_level, localization_mode, js_bytecode_format, config_yaml_file, explicit_input_list_file, explicit_image_asset_manifest_file, module_name, base_output_dir, disable_downloadable_assets, shell_env, prepared_upload_artifact_file, inline_assets, additional_copts, enable_web, disable_minify_web, code_coverage, enable_android = True, enable_ios = True, emit_debug = True, emit_release = True, compiler_output_target = "all"):
+def _prepare_arguments(args, log_level, localization_mode, js_bytecode_format, config_yaml_file, explicit_input_list_file, explicit_image_asset_manifest_file, module_name, base_output_dir, disable_downloadable_assets, shell_env, prepared_upload_artifact_file, inline_assets, additional_copts, enable_web, web_register_native_module_id_overrides, disable_minify_web, code_coverage, enable_android = True, enable_ios = True, emit_debug = True, emit_release = True, compiler_output_target = "all"):
     """ Prepare arguments for the Valdi compiler invocation. """
 
     args.use_param_file("@%s", use_always = True)
@@ -1506,6 +1635,9 @@ def _prepare_arguments(args, log_level, localization_mode, js_bytecode_format, c
 
     if enable_web:
         args.add("--web")
+        for implementation_path in web_register_native_module_id_overrides:
+            override_raw = web_register_native_module_id_overrides[implementation_path]
+            args.add("--web-register-native-module-id-override", "{}={}".format(implementation_path, override_raw))
 
         # Always disable minification for web — webpack handles its own minification.
         # This preserves @valdi-require comment annotations for the Python transform.
@@ -1654,6 +1786,7 @@ def _generate_module_definition(ctx, name):
     force_debug_yaml = code_coverage or ctx.attr.output_flavor[BuildSettingInfo].value == "debug"
     android_output_target = "debug" if force_debug_yaml else attr.android_output_target
     ios_output_target = "debug" if force_debug_yaml else attr.ios_output_target
+    web_output_target = _get_web_output_target(attr, force_debug_yaml)
 
     ios_language_str = ",".join(attr.ios_language)
 
@@ -1672,7 +1805,7 @@ android:
   export_strings: {android_export_strings}
 
 web:
-  output_target: release
+  output_target: {web_output_target}
 
 single_file_codegen: {single_file_codegen}
 
@@ -1695,6 +1828,7 @@ compilation_mode: {compilation_mode}
         ios_module_name = attr.ios_module_name,
         ios_language = ios_language_str,
         android_output_target = android_output_target,
+        web_output_target = web_output_target,
         android_export_strings = "true" if attr.android_export_strings else "false",
         compilation_mode = attr.compilation_mode,
         single_file_codegen = "true" if attr.single_file_codegen else "false",
@@ -1777,6 +1911,13 @@ def _create_valdi_module_info(ctx, module_name, module_yaml, module_definition, 
     base_path = paths.join(ctx.label.workspace_root, ctx.label.package)
     single_file_codegen = ctx.attr.single_file_codegen
 
+    web_release_enabled = _supports_web_release(ctx, code_coverage)
+    web_input_dts_files = _extract_web_dts_files(in_declarations) if web_release_enabled else []
+    web_output_dts_files = _extract_web_dts_files(out_declarations) if web_release_enabled else []
+    web_resource_files = _extract_web_resources("release", outputs) if web_release_enabled else []
+    if web_release_enabled and ctx.attr.inline_assets:
+        web_resource_files += ctx.files.res
+
     return ValdiModuleInfo(
         # Depsets to enable other modules compilation
         name = module_name,
@@ -1838,15 +1979,16 @@ def _create_valdi_module_info(ctx, module_name, module_yaml, module_definition, 
 
         # web outputs
         protodecl_srcs = ctx.files.protodecl_srcs,
-        web_debug_sources = _extract_js_files(module_name, "debug", outputs),
-        web_release_sources = _extract_js_files(module_name, "release", outputs),
-        web_debug_resource_files = _extract_web_resources("debug", outputs),
-        web_release_resource_files = _extract_web_resources("release", outputs),
-        web_debug_strings = _extract_web_strings("debug", outputs),
-        web_release_strings = _extract_web_strings("release", outputs),
+        web_sources = _extract_js_files(module_name, "release", outputs) if web_release_enabled else [],
+        web_resource_files = web_resource_files,
+        web_no_inline_images = ctx.attr.web_no_inline_images,
+        web_module_file_entries = _collect_web_module_file_entries(ctx, module_name),
+        web_strings = _extract_web_strings("release", outputs) if web_release_enabled else [],
         web_deps = _extract_npm_package_files(ctx.attr.web_deps),
-        web_dts_files = in_declarations + out_declarations,
+        web_input_dts_files = web_input_dts_files,
+        web_output_dts_files = web_output_dts_files,
         web_register_native_module_id_overrides = ctx.attr.web_register_native_module_id_overrides,
+        web_workers = ctx.attr.web_workers,
         strings_dir = ctx.attr.strings_dir or "",
     )
 
@@ -1868,6 +2010,9 @@ def _extract_npm_package_files(pkgs):
                 out.extend(groups.types.to_list())
     return out
 
+def _extract_web_dts_files(files):
+    return [f for f in files if not _is_test_file(f)]
+
 def _is_test_file(file_obj):
     """Check if a file is a test file that should be excluded from npm packages.
 
@@ -1887,18 +2032,20 @@ def _is_test_file(file_obj):
     return False
 
 def _extract_js_files(module_name, output_target, outputs):
-    """Extract JavaScript files from compiler outputs, excluding test files."""
+    """Extract JavaScript files from compiler outputs for the requested web output target."""
+    assets_dir = base_relative_dir("web", output_target, "assets")
     return [
         f
         for f in outputs
-        if f.basename.endswith(".js") and not _is_test_file(f)
+        if f.basename.endswith(".js") and assets_dir in f.path and not _is_test_file(f)
     ]
 
 def _extract_web_strings(output_target, outputs):
+    assets_dir = base_relative_dir("web", output_target, "assets")
     return [
         f
         for f in outputs
-        if "strings/" in f.path and f.basename.endswith(".json") or f.basename.endswith("Strings.js")
+        if assets_dir in f.path and (("strings/" in f.path and f.basename.endswith(".json")) or f.basename.endswith("Strings.js"))
     ]
 
 def _extract_dts_files(srcs):
@@ -1906,7 +2053,7 @@ def _extract_dts_files(srcs):
     return [f for f in srcs if f.basename.endswith(".d.ts")]
 
 def _extract_dumped_compilation_metadata(files):
-    return [f for f in files if f.basename.endswith("compilation-metadata.json")]
+    return [f for f in files if f.basename == COMPILATION_METADATA_FILENAME]
 
 def _extract_valdi_module_android(output_target, module_name, outputs):
     debug_path, release_path = _get_android_valdi_module_paths(module_name)
@@ -2284,7 +2431,7 @@ def _invoke_valdi_hotreloader(ctx):
     cmd = """
 echo 'export BAZEL_BINDIR={bin_dir}' > {script_path}
 echo "export BAZEL_EXECROOT=$PWD" >> {script_path}
-echo '{executable} {args}' >> {script_path}
+echo '{executable} {args} "$@"' >> {script_path}
     """.format(bin_dir = ctx.bin_dir.path, executable = executable.path, args = args, script_path = run_hotreloader.path)
 
     ctx.actions.run_shell(
@@ -2327,6 +2474,9 @@ valdi_hotreload = rule(
             doc = "The template config.yaml file",
             allow_single_file = True,
             default = "valdi_config.yaml.tpl",
+        ),
+        "_native_api_min_version": attr.label(
+            default = "@valdi//bzl/valdi:native_api_min_version",
         ),
     },
 )

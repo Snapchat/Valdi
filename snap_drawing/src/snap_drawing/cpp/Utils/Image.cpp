@@ -23,6 +23,7 @@
 #include "include/codec/SkPngDecoder.h"
 #include "include/codec/SkWebpDecoder.h"
 #include "include/core/SkCanvas.h"
+#include "include/core/SkColorSpace.h"
 #include "include/core/SkStream.h"
 #include "include/core/SkSurface.h"
 #include "include/encode/SkJpegEncoder.h"
@@ -31,6 +32,7 @@
 #include "modules/svg/include/SkSVGDOM.h"
 #include "src/image/SkImage_Base.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace snap::drawing {
@@ -142,7 +144,8 @@ Valdi::Result<Valdi::BytesView> Image::encode(EncodedImageFormat format, double 
 Ref<Image> Image::resized(int width, int height) const {
     SkBitmap bitmap;
 
-    SkImageInfo imageInfo = SkImageInfo::Make(width, height, _skImage->colorType(), _skImage->alphaType());
+    SkImageInfo imageInfo =
+        SkImageInfo::Make(width, height, _skImage->colorType(), _skImage->alphaType(), _skImage->refColorSpace());
     bitmap.allocPixels(imageInfo, imageInfo.minRowBytes());
 
     _skImage->scalePixels(bitmap.pixmap(), SkSamplingOptions(SkCubicResampler::Mitchell()));
@@ -242,6 +245,24 @@ Valdi::Ref<Valdi::IBitmap> Image::getBitmap() {
     bitmap.allocPixels(_skImage->imageInfo(), imageInfo.minRowBytes());
     auto pixmap = bitmap.pixmap();
     _skImage->readPixels(imageInfo, pixmap.writable_addr(), imageInfo.minRowBytes(), 0, 0);
+
+    return Valdi::makeShared<snap::drawing::Bitmap>(std::move(bitmap));
+}
+
+Valdi::Ref<Valdi::IBitmap> Image::toConvertedBitmap(const Valdi::BitmapInfo& bitmapInfo) {
+    if (bitmapInfo.width < 0 || bitmapInfo.height < 0 || _skImage->colorType() == kUnknown_SkColorType) {
+        return nullptr;
+    }
+
+    auto imageInfo = toSkiaImageInfo(bitmapInfo).makeColorSpace(SkColorSpace::MakeSRGB());
+    SkBitmap bitmap;
+    if (!bitmap.tryAllocPixels(imageInfo, std::max(bitmapInfo.rowBytes, imageInfo.minRowBytes()))) {
+        return nullptr;
+    }
+
+    if (!_skImage->scalePixels(bitmap.pixmap(), SkSamplingOptions(SkCubicResampler::Mitchell()))) {
+        return nullptr;
+    }
 
     return Valdi::makeShared<snap::drawing::Bitmap>(std::move(bitmap));
 }

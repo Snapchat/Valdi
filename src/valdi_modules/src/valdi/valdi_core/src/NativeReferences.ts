@@ -1,7 +1,7 @@
-import { ValdiRuntime } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { IComponent } from './IComponent';
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
 
 /**
  * By default, bridged objects from native are disposed after onDestroy()

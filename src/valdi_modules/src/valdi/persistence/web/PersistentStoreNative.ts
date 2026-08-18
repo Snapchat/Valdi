@@ -1,326 +1,593 @@
-import { PropertyList } from 'valdi_tsx/src/PropertyList';
-import { PersistentStoreNative } from '../src/PersistentStoreNative';
+import type { PropertyList } from 'valdi_tsx/src/PropertyList';
+import type { PersistentStoreNative } from '../src/PersistentStoreNative';
 
-const enc = new TextEncoder();
-const dec = new TextDecoder();
+const STORAGE_PREFIX = 'valdi.persistence.v1:';
+const STORAGE_PROBE_KEY = `${STORAGE_PREFIX}__availability_probe__`;
 
-const microtask = (fn: () => void) => { void Promise.resolve().then(fn); };
+enum StoredValueEncoding {
+  String = 0,
+  Binary = 1,
+}
 
-type Entry = {
-  value: ArrayBuffer | string;
-  weight?: number;
-  /** epoch seconds at which this entry expires (exclusive). undefined = no expiry */
-  expiresAt?: number;
-};
+interface StoredEntry {
+  readonly accessedAt: number;
+  readonly encoding: StoredValueEncoding;
+  readonly expiresAt?: number;
+  readonly value: string;
+  readonly weight: number;
+}
 
-const memoryStores = new Map<string, Map<string, Entry>>();
-// Store names whose in-memory Map has already been hydrated from localStorage.
-const hydratedStores = new Set<string>();
-let nowOverrideSec: number | undefined;
-
-const nowSec = () => (nowOverrideSec ?? Math.floor(Date.now() / 1000));
-const cloneBuf = (b: ArrayBuffer) => b.slice(0);
-const toBuf = (s: string) => enc.encode(s).buffer;
-const toStr = (b: ArrayBuffer) => dec.decode(new Uint8Array(b));
-
-const storageKey = (_storeName: string, key: string) => key;
-
-const isExpired = (e: Entry) => e.expiresAt !== undefined && nowSec() >= e.expiresAt;
-
-// --- Durable backing -------------------------------------------------------
-// The in-memory Map above is only a per-page-load cache, so on web every value
-// was lost on reload. We mirror each store into localStorage so it survives.
-// One localStorage entry holds the whole store as JSON (binary base64-encoded),
-// which is simple and fine for the small key/value data this is meant for
-// (preferences, tokens). Large or binary-heavy stores should use IndexedDB; if
-// a write exceeds quota (or localStorage is absent/throws) we silently fall
-// back to memory-only, keeping the pre-existing behavior.
-
-const LS_PREFIX = 'valdi.PersistentStore.';
-
-interface LocalStorageLike {
+interface StorageBackend {
   getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
+  key(index: number): string | null;
+  readonly length: number;
   removeItem(key: string): void;
+  setItem(key: string, value: string): void;
 }
 
-const getLocalStorage = (): LocalStorageLike | undefined => {
-  try {
-    const ls = (globalThis as any).localStorage;
-    if (ls && typeof ls.getItem === 'function' && typeof ls.setItem === 'function') {
-      return ls as LocalStorageLike;
-    }
-  } catch {
-    // Accessing localStorage can throw in sandboxed contexts (e.g. some iframes).
-  }
-  return undefined;
+interface WeightedCacheState {
+  readonly backend: StorageBackend;
+  readonly entries: Map<string, StoredEntry>;
+  totalWeight: number;
+}
+
+interface PendingWrite {
+  readonly completions: ((error?: string) => void)[];
+  readonly run: () => void;
+}
+
+export interface WebPersistentStoreDiagnostics {
+  readonly batchedFlushes: number;
+  readonly coalescedWrites: number;
+  readonly durableStores: number;
+  readonly evictions: number;
+  readonly fallbackStores: number;
+  readonly invalidEntries: number;
+  readonly reads: number;
+  readonly storageWrites: number;
+}
+
+const diagnostics = {
+  batchedFlushes: 0,
+  coalescedWrites: 0,
+  durableStores: 0,
+  evictions: 0,
+  fallbackStores: 0,
+  invalidEntries: 0,
+  reads: 0,
+  storageWrites: 0,
 };
 
-const B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+class MemoryStorageBackend implements StorageBackend {
+  private readonly entries = new Map<string, string>();
+  private readonly orderedKeys: string[] = [];
 
-function bytesToBase64(bytes: Uint8Array): string {
-  let out = '';
-  for (let i = 0; i < bytes.length; i += 3) {
-    const b0 = bytes[i];
-    const b1 = i + 1 < bytes.length ? bytes[i + 1] : 0;
-    const b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
-    out += B64_CHARS[b0 >> 2];
-    out += B64_CHARS[((b0 & 0x03) << 4) | (b1 >> 4)];
-    out += i + 1 < bytes.length ? B64_CHARS[((b1 & 0x0f) << 2) | (b2 >> 6)] : '=';
-    out += i + 2 < bytes.length ? B64_CHARS[b2 & 0x3f] : '=';
+  get length(): number {
+    return this.orderedKeys.length;
   }
-  return out;
-}
 
-function base64ToBytes(b64: string): Uint8Array {
-  const clean = b64.replace(/[^A-Za-z0-9+/]/g, '');
-  const bytes = new Uint8Array(Math.floor((clean.length * 6) / 8));
-  let bitBuf = 0;
-  let bitCount = 0;
-  let o = 0;
-  for (let i = 0; i < clean.length; i++) {
-    bitBuf = (bitBuf << 6) | B64_CHARS.indexOf(clean[i]);
-    bitCount += 6;
-    if (bitCount >= 8) {
-      bitCount -= 8;
-      bytes[o++] = (bitBuf >> bitCount) & 0xff;
-    }
+  getItem(key: string): string | null {
+    return this.entries.get(key) ?? null;
   }
-  return bytes;
-}
 
-/** On-disk shape of an entry. `s`=string value, `b`=base64 binary, `w`=weight, `e`=expiresAt. */
-type PersistedEntry = { s?: string; b?: string; w?: number; e?: number };
+  key(index: number): string | null {
+    return this.orderedKeys[index] ?? null;
+  }
 
-const persistStore = (storeName: string, store: Map<string, Entry>): void => {
-  const ls = getLocalStorage();
-  if (!ls) {
-    return;
-  }
-  // Object.create(null): a plain {} would treat a "__proto__" key as a prototype
-  // assignment, which JSON.stringify then drops - silently losing that entry.
-  const obj: Record<string, PersistedEntry> = Object.create(null);
-  store.forEach((e, k) => {
-    const pe: PersistedEntry = typeof e.value === 'string' ? { s: e.value } : { b: bytesToBase64(new Uint8Array(e.value)) };
-    if (e.weight !== undefined) {
-      pe.w = e.weight;
-    }
-    if (e.expiresAt !== undefined) {
-      pe.e = e.expiresAt;
-    }
-    obj[k] = pe;
-  });
-  try {
-    ls.setItem(LS_PREFIX + storeName, JSON.stringify(obj));
-  } catch {
-    // Quota exceeded / storage disabled: keep memory-only, silently.
-  }
-};
-
-const hydrateStore = (storeName: string, store: Map<string, Entry>): void => {
-  const ls = getLocalStorage();
-  if (!ls) {
-    return;
-  }
-  // localStorage is shared across the origin, so treat its contents as
-  // untrusted: guard every shape and keep the whole parse+load in one try so a
-  // corrupt or tampered blob is discarded rather than thrown out of a microtask
-  // that has no catch (which would drop the completion and hang the caller).
-  try {
-    const raw = ls.getItem(LS_PREFIX + storeName);
-    if (!raw) {
+  removeItem(key: string): void {
+    if (!this.entries.delete(key)) {
       return;
     }
-    const obj = JSON.parse(raw);
-    for (const k of Object.keys(obj ?? {})) {
-      const pe: PersistedEntry = obj[k] ?? {};
-      const value: ArrayBuffer | string =
-        typeof pe.b === 'string' ? base64ToBytes(pe.b).buffer : typeof pe.s === 'string' ? pe.s : '';
-      const entry: Entry = {
-        value,
-        weight: typeof pe.w === 'number' ? pe.w : undefined,
-        expiresAt: typeof pe.e === 'number' ? pe.e : undefined,
-      };
-      if (!isExpired(entry)) {
-        store.set(k, entry);
+    const index = this.orderedKeys.indexOf(key);
+    if (index !== -1) {
+      this.orderedKeys.splice(index, 1);
+    }
+  }
+
+  setItem(key: string, value: string): void {
+    if (!this.entries.has(key)) {
+      this.orderedKeys.push(key);
+    }
+    this.entries.set(key, value);
+  }
+}
+
+const fallbackStorage = new MemoryStorageBackend();
+const resolvedStorageBackends = new WeakMap<StorageBackend, StorageBackend>();
+const weightedCacheStates = new Map<string, WeightedCacheState>();
+const pendingWrites = new Map<string, PendingWrite>();
+let accessSequence = 0;
+let storeSequence = 0;
+let batchScheduled = false;
+let warnedAboutUnavailableStorage = false;
+
+function resolveStorageBackend(): StorageBackend {
+  try {
+    if (typeof globalThis.localStorage === 'undefined') {
+      warnAboutUnavailableStorage('localStorage is unavailable');
+      return fallbackStorage;
+    }
+
+    const browserStorage = globalThis.localStorage;
+    const resolvedStorage = resolvedStorageBackends.get(browserStorage);
+    if (resolvedStorage !== undefined) {
+      return resolvedStorage;
+    }
+
+    try {
+      const previousProbeValue = browserStorage.getItem(STORAGE_PROBE_KEY);
+      browserStorage.setItem(STORAGE_PROBE_KEY, '1');
+      if (previousProbeValue === null) {
+        browserStorage.removeItem(STORAGE_PROBE_KEY);
+      } else {
+        browserStorage.setItem(STORAGE_PROBE_KEY, previousProbeValue);
+      }
+      resolvedStorageBackends.set(browserStorage, browserStorage);
+      return browserStorage;
+    } catch (error) {
+      warnAboutUnavailableStorage(error);
+      resolvedStorageBackends.set(browserStorage, fallbackStorage);
+      return fallbackStorage;
+    }
+  } catch (error) {
+    warnAboutUnavailableStorage(error);
+    return fallbackStorage;
+  }
+}
+
+function warnAboutUnavailableStorage(reason: unknown): void {
+  if (warnedAboutUnavailableStorage) {
+    return;
+  }
+  warnedAboutUnavailableStorage = true;
+  console.warn(
+    `Valdi PersistentStore is using non-persistent memory because browser storage is unavailable: ${String(reason)}`,
+  );
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function schedule(callback: () => void): void {
+  void Promise.resolve().then(callback);
+}
+
+function scheduleBatchedWrite(token: string, run: () => void, completion: (error?: string) => void): void {
+  const previousWrite = pendingWrites.get(token);
+  const completions = previousWrite === undefined ? [completion] : [...previousWrite.completions, completion];
+  if (previousWrite !== undefined) {
+    diagnostics.coalescedWrites++;
+    pendingWrites.delete(token);
+  }
+  pendingWrites.set(token, { completions, run });
+
+  if (batchScheduled) {
+    return;
+  }
+  batchScheduled = true;
+  schedule(() => {
+    batchScheduled = false;
+    diagnostics.batchedFlushes++;
+    const writes: PendingWrite[] = [];
+    pendingWrites.forEach(write => writes.push(write));
+    pendingWrites.clear();
+    for (const write of writes) {
+      let error: string | undefined;
+      try {
+        write.run();
+      } catch (caughtError) {
+        error = errorMessage(caughtError);
+      }
+      for (const callback of write.completions) {
+        callback(error);
       }
     }
-  } catch {
-    // Corrupt or externally-tampered data: discard and start from an empty store.
-  }
-};
+  });
+}
 
-const removePersistedStore = (storeName: string): void => {
-  const ls = getLocalStorage();
-  if (ls) {
-    try {
-      ls.removeItem(LS_PREFIX + storeName);
-    } catch {
-      // Nothing durable to clean up.
+function nextAccessedAt(): number {
+  accessSequence = Math.max(accessSequence + 1, Date.now());
+  return accessSequence;
+}
+
+function encodeBinary(value: ArrayBuffer): string {
+  const bytes = new Uint8Array(value);
+  const chunks: string[] = [];
+  let chunk = '';
+  for (let index = 0; index < bytes.length; index++) {
+    chunk += String.fromCharCode(bytes[index]);
+    if (chunk.length === 8192) {
+      chunks.push(chunk);
+      chunk = '';
     }
   }
-};
-
-const getMemoryStore = (storeName: string): Map<string, Entry> => {
-  let store = memoryStores.get(storeName);
-  if (!store) {
-    store = new Map<string, Entry>();
-    memoryStores.set(storeName, store);
+  if (chunk !== '') {
+    chunks.push(chunk);
   }
-  // Hydrate the first time this store name is touched in this JS context (i.e.
-  // after a page load) so previously-persisted values are available.
-  if (!hydratedStores.has(storeName)) {
-    hydratedStores.add(storeName);
-    hydrateStore(storeName, store);
-  }
-  return store;
-};
+  return btoa(chunks.join(''));
+}
 
-const createStore = (storeName: string): PersistentStoreNative => ({
+function decodeBinary(value: string): ArrayBuffer {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes.buffer;
+}
+
+function isStoredEntry(value: unknown): value is StoredEntry {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const entry = value as Partial<StoredEntry>;
+  return (
+    typeof entry.accessedAt === 'number' &&
+    Number.isFinite(entry.accessedAt) &&
+    (entry.encoding === StoredValueEncoding.String || entry.encoding === StoredValueEncoding.Binary) &&
+    (entry.expiresAt === undefined || (typeof entry.expiresAt === 'number' && Number.isFinite(entry.expiresAt))) &&
+    typeof entry.value === 'string' &&
+    typeof entry.weight === 'number' &&
+    Number.isFinite(entry.weight) &&
+    entry.weight >= 0
+  );
+}
+
+class WebPersistentStoreNative implements PersistentStoreNative {
+  private readonly backend: StorageBackend;
+  private readonly namespace: string;
+  private readonly storeId = ++storeSequence;
+  private currentTimeSeconds: number | undefined;
+
+  constructor(
+    name: string,
+    private readonly disableBatchWrites: boolean,
+    userScoped: boolean,
+    private readonly maxWeight: number,
+    mockedTime: number | undefined,
+    userId: string | undefined,
+    enableEncryption: boolean | undefined,
+  ) {
+    if (enableEncryption === true) {
+      throw new Error('Encrypted PersistentStore is unavailable on web; provide a secure native host implementation.');
+    }
+
+    if (userScoped && (userId === undefined || userId.trim() === '')) {
+      throw new Error(
+        'User-scoped PersistentStore requires an authenticated userId on web; provide userId or set deviceGlobal: true.',
+      );
+    }
+
+    const scope = userScoped ? `user:${encodeURIComponent(userId as string)}` : 'device';
+    this.namespace = `${STORAGE_PREFIX}${scope}:${encodeURIComponent(name)}:`;
+    this.backend = resolveStorageBackend();
+    this.currentTimeSeconds = mockedTime;
+    if (this.backend === fallbackStorage) {
+      diagnostics.fallbackStores++;
+    } else {
+      diagnostics.durableStores++;
+    }
+
+  }
+
   store(
     key: string,
     value: ArrayBuffer | string,
     ttlSeconds: number | undefined,
     weight: number | undefined,
     completion: (error?: string) => void,
-  ) {
-    microtask(() => {
-      try {
-        const entry: Entry = {
-          value: typeof value === 'string' ? value : cloneBuf(value),
-          weight,
-          expiresAt:
-            ttlSeconds === undefined ? undefined :
-            ttlSeconds <= 0 ? nowSec() : nowSec() + Math.floor(ttlSeconds),
+  ): void {
+    this.scheduleWrite(
+      key,
+      () => {
+        const state = this.maxWeight > 0 ? this.ensureWeightedCacheState() : this.currentWeightedCacheState();
+        const isString = typeof value === 'string';
+        const entry: StoredEntry = {
+          accessedAt: nextAccessedAt(),
+          encoding: isString ? StoredValueEncoding.String : StoredValueEncoding.Binary,
+          expiresAt: ttlSeconds === undefined ? undefined : this.now() + Math.max(0, Math.floor(ttlSeconds)),
+          value: isString ? value : encodeBinary(value),
+          weight: Math.max(0, weight ?? 0),
         };
-        const store = getMemoryStore(storeName);
-        store.set(storageKey(storeName, key), entry);
-        persistStore(storeName, store);
-        completion();
-      } catch (e: unknown) {
-        completion(String(e instanceof Error ? e.message : e ?? 'store failed'));
-      }
-    });
-  },
-
-  fetch(
-    key: string,
-    completion: (value?: ArrayBuffer | string, error?: string) => void,
-    asString: boolean,
-  ) {
-    microtask(() => {
-      const fullKey = storageKey(storeName, key);
-      const store = getMemoryStore(storeName);
-      sweepIfExpired(store, fullKey);
-      const e = store.get(fullKey);
-      if (!e) {
-        completion(undefined, 'not found');
-        return;
-      }
-      let v: ArrayBuffer | string = e.value;
-      if (asString && v instanceof ArrayBuffer) {
-        v = toStr(v);
-      } else if (!asString && typeof v === 'string') {
-        v = toBuf(v);
-      }
-      completion(v, undefined);
-    });
-  },
-
-  fetchAll(completion: (value: PropertyList) => void) {
-    microtask(() => {
-      const out: PropertyList = {};
-      const store = getMemoryStore(storeName);
-      store.forEach((e, k) => {
-        if (!isExpired(e)) {
-          out[k] = e.value;
+        this.writeEntry(key, entry);
+        if (state !== undefined) {
+          this.rememberEntry(state, key, entry);
         }
-      });
-      completion(out);
-    });
-  },
+        if (this.maxWeight > 0 && state !== undefined) {
+          this.evictIfNeeded(state);
+        }
+      },
+      completion,
+    );
+  }
 
-  setCurrentTime(timeSeconds: number) {
-    nowOverrideSec = Math.floor(timeSeconds);
-    memoryStores.forEach(store => {
-      const keys: string[] = [];
-      store.forEach((_e, k) => keys.push(k));
-      for (let i = 0; i < keys.length; i++) {
-        sweepIfExpired(store, keys[i]);
-      }
-    });
-  },
-
-  exists(key: string, completion: (exists: boolean) => void) {
-    microtask(() => {
-      const fullKey = storageKey(storeName, key);
-      const store = getMemoryStore(storeName);
-      sweepIfExpired(store, fullKey);
-      completion(store.has(fullKey));
-    });
-  },
-
-  remove(key: string, completion: (error?: string) => void) {
-    microtask(() => {
+  fetch(key: string, completion: (value?: ArrayBuffer | string, error?: string) => void, asString: boolean): void {
+    schedule(() => {
       try {
-        const store = getMemoryStore(storeName);
-        store.delete(storageKey(storeName, key));
-        persistStore(storeName, store);
-        completion();
-      } catch (e: unknown) {
-        completion(String(e instanceof Error ? e.message : e ?? 'remove failed'));
+        const state = this.maxWeight > 0 ? this.ensureWeightedCacheState() : this.currentWeightedCacheState();
+        const entry = this.readEntry(key);
+        if (entry === undefined) {
+          completion(undefined, 'not found');
+          return;
+        }
+
+        if (state !== undefined) {
+          const accessedEntry: StoredEntry = { ...entry, accessedAt: nextAccessedAt() };
+          this.writeEntry(key, accessedEntry);
+          this.rememberEntry(state, key, accessedEntry);
+        }
+
+        const value = this.decodeValue(entry);
+        if (asString) {
+          completion(typeof value === 'string' ? value : new TextDecoder().decode(value));
+        } else {
+          completion(typeof value === 'string' ? new TextEncoder().encode(value).buffer : value);
+        }
+      } catch (error) {
+        completion(undefined, errorMessage(error));
       }
     });
-  },
+  }
 
-  removeAll(completion: (error?: string) => void) {
-    microtask(() => {
+  fetchAll(completion: (value: PropertyList) => void): void {
+    schedule(() => {
+      const result: PropertyList = [];
       try {
-        memoryStores.delete(storeName);
-        hydratedStores.delete(storeName);
-        removePersistedStore(storeName);
-        completion();
-      } catch (e: unknown) {
-        completion(String(e instanceof Error ? e.message : e ?? 'removeAll failed'));
+        for (const key of this.keys()) {
+          const entry = this.readEntry(key);
+          if (entry !== undefined) {
+            result.push(key, this.decodeValue(entry));
+          }
+        }
+      } catch (error) {
+        console.warn(`Valdi PersistentStore could not enumerate a browser store: ${errorMessage(error)}`);
+      }
+      completion(result);
+    });
+  }
+
+  exists(key: string, completion: (exists: boolean) => void): void {
+    schedule(() => {
+      try {
+        completion(this.readEntry(key) !== undefined);
+      } catch (error) {
+        console.warn(`Valdi PersistentStore could not inspect a browser entry: ${errorMessage(error)}`);
+        completion(false);
       }
     });
-  },
-});
+  }
 
-function sweepIfExpired(store: Map<string, Entry>, key: string): void {
-  const e = store.get(key);
-  if (e && isExpired(e)) {
-    store.delete(key);
+  remove(key: string, completion: (error?: string) => void): void {
+    this.scheduleWrite(
+      key,
+      () => {
+        this.backend.removeItem(this.storageKey(key));
+        this.forgetEntry(key);
+        diagnostics.storageWrites++;
+      },
+      completion,
+    );
+  }
+
+  removeAll(completion: (error?: string) => void): void {
+    this.scheduleWrite(
+      '__remove_all__',
+      () => {
+        for (const key of this.keys()) {
+          this.backend.removeItem(this.storageKey(key));
+          this.forgetEntry(key);
+          diagnostics.storageWrites++;
+        }
+      },
+      completion,
+    );
+  }
+
+  setCurrentTime(timeSeconds: number): void {
+    this.currentTimeSeconds = Math.floor(timeSeconds);
+    for (const key of this.keys()) {
+      this.readEntry(key);
+    }
+  }
+
+  private scheduleWrite(key: string, operation: () => void, completion: (error?: string) => void): void {
+    if (!this.disableBatchWrites) {
+      scheduleBatchedWrite(`${this.storeId}:${key}`, operation, completion);
+      return;
+    }
+    schedule(() => {
+      try {
+        operation();
+        completion();
+      } catch (error) {
+        completion(errorMessage(error));
+      }
+    });
+  }
+
+  private now(): number {
+    return this.currentTimeSeconds ?? Math.floor(Date.now() / 1000);
+  }
+
+  private storageKey(key: string): string {
+    return `${this.namespace}${encodeURIComponent(key)}`;
+  }
+
+  private keys(): string[] {
+    const result: string[] = [];
+    for (let index = 0; index < this.backend.length; index++) {
+      const storageKey = this.backend.key(index);
+      if (storageKey?.startsWith(this.namespace)) {
+        result.push(decodeURIComponent(storageKey.substring(this.namespace.length)));
+      }
+    }
+    return result;
+  }
+
+  private readEntry(key: string): StoredEntry | undefined {
+    diagnostics.reads++;
+    const storageKey = this.storageKey(key);
+    const serialized = this.backend.getItem(storageKey);
+    if (serialized === null) {
+      this.forgetEntry(key);
+      return undefined;
+    }
+
+    let entry: unknown;
+    try {
+      entry = JSON.parse(serialized);
+    } catch (error) {
+      diagnostics.invalidEntries++;
+      console.warn(`Valdi PersistentStore removed an invalid browser entry: ${errorMessage(error)}`);
+      this.backend.removeItem(storageKey);
+      this.forgetEntry(key);
+      return undefined;
+    }
+
+    if (!isStoredEntry(entry)) {
+      diagnostics.invalidEntries++;
+      console.warn('Valdi PersistentStore removed a browser entry with unsupported persistence metadata.');
+      this.backend.removeItem(storageKey);
+      this.forgetEntry(key);
+      return undefined;
+    }
+
+    if (entry.expiresAt !== undefined && this.now() >= entry.expiresAt) {
+      this.backend.removeItem(storageKey);
+      this.forgetEntry(key);
+      return undefined;
+    }
+    return entry;
+  }
+
+  private decodeValue(entry: StoredEntry): ArrayBuffer | string {
+    return entry.encoding === StoredValueEncoding.Binary ? decodeBinary(entry.value) : entry.value;
+  }
+
+  private writeEntry(key: string, entry: StoredEntry): void {
+    this.backend.setItem(this.storageKey(key), JSON.stringify(entry));
+    diagnostics.storageWrites++;
+  }
+
+  private currentWeightedCacheState(): WeightedCacheState | undefined {
+    const state = weightedCacheStates.get(this.namespace);
+    return state?.backend === this.backend ? state : undefined;
+  }
+
+  private ensureWeightedCacheState(): WeightedCacheState {
+    const existingState = this.currentWeightedCacheState();
+    if (existingState !== undefined) {
+      return existingState;
+    }
+
+    const state: WeightedCacheState = {
+      backend: this.backend,
+      entries: new Map<string, StoredEntry>(),
+      totalWeight: 0,
+    };
+    weightedCacheStates.set(this.namespace, state);
+
+    const entries: { key: string; entry: StoredEntry }[] = [];
+    for (const key of this.keys()) {
+      const entry = this.readEntry(key);
+      if (entry !== undefined) {
+        entries.push({ key, entry });
+        accessSequence = Math.max(accessSequence, entry.accessedAt);
+      }
+    }
+    entries.sort((left, right) => left.entry.accessedAt - right.entry.accessedAt);
+    for (const storedEntry of entries) {
+      state.entries.set(storedEntry.key, storedEntry.entry);
+      state.totalWeight += storedEntry.entry.weight;
+    }
+    return state;
+  }
+
+  private rememberEntry(state: WeightedCacheState, key: string, entry: StoredEntry): void {
+    const previousEntry = state.entries.get(key);
+    if (previousEntry !== undefined) {
+      state.totalWeight -= previousEntry.weight;
+      state.entries.delete(key);
+    }
+    state.entries.set(key, entry);
+    state.totalWeight += entry.weight;
+  }
+
+  private forgetEntry(key: string): void {
+    const state = this.currentWeightedCacheState();
+    const previousEntry = state?.entries.get(key);
+    if (state === undefined || previousEntry === undefined) {
+      return;
+    }
+    state.entries.delete(key);
+    state.totalWeight -= previousEntry.weight;
+  }
+
+  private evictIfNeeded(state: WeightedCacheState): void {
+    if (state.totalWeight <= this.maxWeight) {
+      return;
+    }
+    const entries = state.entries.keys();
+    while (state.totalWeight > this.maxWeight) {
+      const nextEntry = entries.next();
+      if (nextEntry.done) {
+        break;
+      }
+      const key = nextEntry.value;
+      const entry = state.entries.get(key);
+      if (entry === undefined) {
+        continue;
+      }
+      if (entry.weight === 0) {
+        continue;
+      }
+      this.backend.removeItem(this.storageKey(key));
+      state.entries.delete(key);
+      state.totalWeight -= entry.weight;
+      diagnostics.evictions++;
+      diagnostics.storageWrites++;
+    }
   }
 }
 
+/** Return aggregate, value-free browser persistence counters. */
+export function getPersistentStoreDiagnostics(): WebPersistentStoreDiagnostics {
+  return { ...diagnostics };
+}
+
+/** Browser implementation of the native factory consumed by PersistentStore.ts. */
 export function newPersistentStore(
   name: string,
-  _disableBatchWrites: boolean,
-  _userScoped: boolean,
-  _maxWeight: number,
+  disableBatchWrites: boolean,
+  userScoped: boolean,
+  maxWeight: number,
   mockedTime: number | undefined,
-  _mockedUserId: string | undefined,
-  _enableEncryption: boolean | undefined,
+  userId: string | undefined,
+  enableEncryption: boolean | undefined,
 ): PersistentStoreNative {
-  if (mockedTime !== undefined) {
-    nowOverrideSec = Math.floor(mockedTime);
-  }
-  return createStore(name);
+  return new WebPersistentStoreNative(
+    name,
+    disableBatchWrites,
+    userScoped,
+    maxWeight,
+    mockedTime,
+    userId,
+    enableEncryption,
+  );
 }
 
-/** Exported instance + setter so you can swap in a real native binding later. */
-export let persistentStoreNative: PersistentStoreNative = createStore('default');
-export function setPersistentStoreNative(newImpl: PersistentStoreNative): void {
-  persistentStoreNative = newImpl;
-}
+/** Retain the legacy injectable binding for existing browser hosts. */
+export let persistentStoreNative: PersistentStoreNative = newPersistentStore(
+  'legacy',
+  false,
+  false,
+  0,
+  undefined,
+  undefined,
+  false,
+);
 
-/**
- * Test-only: drops all in-memory state so the next access re-hydrates from
- * localStorage, letting tests simulate a page reload. Not part of the
- * PersistentStoreNative contract.
- */
-export function __resetInMemoryForTest(): void {
-  memoryStores.clear();
-  hydratedStores.clear();
+export function setPersistentStoreNative(newImplementation: PersistentStoreNative): void {
+  persistentStoreNative = newImplementation;
 }

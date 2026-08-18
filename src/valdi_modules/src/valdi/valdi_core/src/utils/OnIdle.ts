@@ -1,8 +1,8 @@
-import { ValdiRuntime } from '../ValdiRuntime';
+import { getValdiRuntime } from '../ValdiRuntimeProvider';
 import { setTimeoutInterruptible } from '../SetTimeout';
 import { makeInterruptibleCallback } from './FunctionUtils';
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
 
 /**
  * Call the given function when the main thread and the js thread

@@ -186,14 +186,21 @@ class ValdiCompilerRunner {
             }
 
             var daemonService: DaemonService?
+            var hotReloadLifecycleReporter: HotReloadLifecycleReporter?
             if hotReloadingEnabled {
+                hotReloadLifecycleReporter = HotReloadLifecycleReporter.standardOutput(
+                    enabled: self.arguments.hotreloadJsonEvents,
+                    target: self.arguments.hotreloadTarget ?? "",
+                    port: self.arguments.port)
                 daemonService = try DaemonService(logger: logger,
                                                   fileManager: fileManager,
                                                   userConfig: configs.userConfig,
                                                   projectConfig: configs.projectConfig,
                                                   compilerConfig: configs.compilerConfig,
                                                   companion: compilerCompanion,
-                                                  reloadOverUSB: self.arguments.usb)
+                                                  reloadOverUSB: self.arguments.usb,
+                                                  port: self.arguments.port,
+                                                  lifecycleReporter: hotReloadLifecycleReporter)
             }
 
             let dumpComponentURLs = self.arguments.dumpComponents.map { baseUrl.resolving(path: $0) }
@@ -235,7 +242,10 @@ class ValdiCompilerRunner {
                                                     filesFinder: filesFinder,
                                                     bundleManager: bundleManager,
                                                     fileDependenciesManager: fileDependenciesManager,
-                                                    errorDumper: self.errorDumper)
+                                                    errorDumper: self.errorDumper,
+                                                    onRecompilationSucceeded: { changedFileCount in
+                                                        hotReloadLifecycleReporter?.recompilationSucceeded(changedFileCount: changedFileCount)
+                                                    })
 
                 if let explicitInputList = configs.compilerConfig.explicitInputList {
                     try compiler.addFiles(fromInputList: explicitInputList, baseUrl: baseUrl)
@@ -423,11 +433,6 @@ class ValdiCompilerRunner {
                                                                               typeScriptCompilerManager: typeScriptCompilerManager,
                                                                               typeScriptAnnotationsManager: typeScriptAnnotationsManager,
                                                                               nativeCodeGenerationManager: nativeCodeGenerationManager))
-                builder.append(processor: DumpCompilationMetadataProcessor(projectConfig: configs.projectConfig,
-                                                                           compilerConfig: configs.compilerConfig,
-                                                                           projectClassMappingManager: projectClassMappingManager,
-                                                                           typeScriptCompilationManager: typeScriptCompilerManager,
-                                                                           typeScriptNativeTypeResolver: nativeCodeGenerationManager.nativeTypeResolver))
 
                 if !codeGenOnly {
                     builder.append(processor: CompileTypeScriptProcessor(typeScriptCompilerManager: typeScriptCompilerManager, compilerConfig: configs.compilerConfig))
@@ -465,12 +470,28 @@ class ValdiCompilerRunner {
         if !configs.compilerConfig.generateTSResFiles {
             if !hotReloadingEnabled && !regenerateValdiModulesBuildFilesOnly {
                 builder.append(postprocessor: GenerateViewClassesProcessor(logger: logger, compilerConfig: configs.compilerConfig))
-                builder.append(postprocessor: GenerateModelsProcessor(logger: logger, compilerConfig: configs.compilerConfig))
+                builder.append(postprocessor: GenerateModelsProcessor(logger: logger,
+                                                                      compilerConfig: configs.compilerConfig,
+                                                                      generateNativeSources: true))
+                builder.append(postprocessor: DumpCompilationMetadataProcessor(projectConfig: configs.projectConfig,
+                                                                               compilerConfig: configs.compilerConfig,
+                                                                               projectClassMappingManager: projectClassMappingManager,
+                                                                               typeScriptCompilationManager: typeScriptCompilerManager,
+                                                                               typeScriptNativeTypeResolver: nativeCodeGenerationManager.nativeTypeResolver))
                 // GenerateDependencyInjectionDataProcessor must run BEFORE CombineNativeSourcesProcessor
                 // so that Factory classes are included in the combined output for single_file_codegen modules
                 builder.append(postprocessor: GenerateDependencyInjectionDataProcessor(logger: logger, onlyFocusProcessingForModules: configs.compilerConfig.onlyFocusProcessingForModules))
                 builder.append(postprocessor: CombineNativeSourcesProcessor(logger: logger, compilerConfig: configs.compilerConfig, projectConfig: configs.projectConfig, bundleManager: bundleManager))
                 builder.append(postprocessor: GeneratedTypesVerificationProcessor(logger: logger, projectConfig: configs.projectConfig))
+            } else {
+                builder.append(postprocessor: GenerateModelsProcessor(logger: logger,
+                                                                      compilerConfig: configs.compilerConfig,
+                                                                      generateNativeSources: false))
+                builder.append(postprocessor: DumpCompilationMetadataProcessor(projectConfig: configs.projectConfig,
+                                                                               compilerConfig: configs.compilerConfig,
+                                                                               projectClassMappingManager: projectClassMappingManager,
+                                                                               typeScriptCompilationManager: typeScriptCompilerManager,
+                                                                               typeScriptNativeTypeResolver: nativeCodeGenerationManager.nativeTypeResolver))
             }
 
             if !codeGenOnly && !regenerateValdiModulesBuildFilesOnly {
@@ -494,6 +515,7 @@ class ValdiCompilerRunner {
             
             if (configs.projectConfig.webEnabled) {
                 builder.append(postprocessor: PrependWebJSProcessor(logger: logger))
+                builder.append(postprocessor: GenerateWebNativeModulePackageFilesProcessor(compilerConfig: configs.compilerConfig, bundleManager: bundleManager))
             }
 
             let bundleResourceOutputMode: BundleResourcesProcessor.OutputMode

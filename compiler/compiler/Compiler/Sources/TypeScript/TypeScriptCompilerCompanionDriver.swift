@@ -11,13 +11,15 @@ class TypeScriptCompilerCompanionDriver: TypeScriptCompilerDriver {
 
     private let logger: ILogger
     private let companion: CompanionExecutable
+    private let nativeApiMinVersion: Int?
     private var workspaceId: Int?
     private var lock = DispatchSemaphore.newLock()
     private var currentCreateWorkspacePromise: Promise<Int>?
 
-    init(logger: ILogger, companion: CompanionExecutable) {
+    init(logger: ILogger, companion: CompanionExecutable, nativeApiMinVersion: Int?) {
         self.logger = logger
         self.companion = companion
+        self.nativeApiMinVersion = nativeApiMinVersion
     }
 
     func destroyWorkspace() -> Promise<Void> {
@@ -51,7 +53,7 @@ class TypeScriptCompilerCompanionDriver: TypeScriptCompilerDriver {
         lock.lock {
             if self.workspaceId == nil && self.currentCreateWorkspacePromise == nil {
                 logger.trace("Creating TypeScript Workspace project")
-                self.currentCreateWorkspacePromise = companion.createWorkspace()
+                self.currentCreateWorkspacePromise = companion.createWorkspace(nativeApiMinVersion: nativeApiMinVersion)
                 needsOnWorkspaceCreatedCallback = true
             }
 

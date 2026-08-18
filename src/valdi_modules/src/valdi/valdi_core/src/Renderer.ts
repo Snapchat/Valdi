@@ -21,6 +21,7 @@ import { ComponentDisposable, IRenderer, RendererObserver } from './IRenderer';
 import { IRendererDelegate } from './IRendererDelegate';
 import { IRendererEventListener } from './IRendererEventListener';
 import { NodePrototype } from './NodePrototype';
+import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
 import { Style } from './Style';
 import { MergeType } from './utility_types/MergeType';
 import { tryReuseCallback } from './utils/CallbackInternal';
@@ -28,7 +29,7 @@ import { classNames } from './utils/ClassNames';
 import { enumeratePropertyList, PropertyList, propertyListToObject } from './utils/PropertyList';
 import { computeUniqueId } from './utils/RenderedVirtualNodeUtils';
 import { RendererError } from './utils/RendererError';
-import { trace } from './utils/Trace';
+import { beginTrace, endTrace, instantTrace, isTracingSupported, trace } from './utils/Trace';
 
 const EMPTY_OBJECT = Object.freeze({});
 const EMPTY_ARRAY = Object.freeze([]) as [];
@@ -95,8 +96,6 @@ interface RenderedElement {
   childrenHead: RenderedElement | undefined;
   // Whether children are dirty and need to be resolved
   childrenDirty: boolean;
-  // The last resolved frame
-  frame: ElementFrame | undefined;
 
   // Siblings
   next: RenderedElement | undefined;
@@ -196,6 +195,10 @@ function getVirtualNodeBridgeChildren(renderer: Renderer, node: VirtualNode, chi
       children.push(getVirtualNodeBridge(renderer, child));
     }
   }
+}
+
+function getCachedElementFrameOrDefault(renderer: Renderer, elementId: number): ElementFrame {
+  return renderer.delegate.getCachedElementFrame(elementId) || { x: 0, y: 0, width: 0, height: 0 };
 }
 
 class VirtualNodeBridge implements IRenderedVirtualNode {
@@ -321,7 +324,7 @@ class RenderedElementBridge implements IRenderedElement, ConsoleRepresentable {
   }
 
   get frame(): ElementFrame {
-    return this.element.frame || { x: 0, y: 0, width: 0, height: 0 };
+    return getCachedElementFrameOrDefault(this.renderer, this.element.id);
   }
 
   invalidateChildren() {
@@ -474,7 +477,7 @@ function doCaptureVirtualNode(
       tag: nodePrototype.tag,
       viewClass: nodePrototype.viewClass,
       attributes: { ...node.element.attributes },
-      frame: node.element.frame || { x: 0, y: 0, width: 0, height: 0 },
+      frame: getCachedElementFrameOrDefault(renderer, node.element.id),
     };
   }
 
@@ -571,12 +574,14 @@ export class Renderer implements IRenderer {
   private elementById: { [id: number]: RenderedElement } = {};
   private pendingRenders: (() => void)[] = [];
   private completions: (() => void)[] | undefined;
+  private collectingRenderCompleteCallbacks = false;
   private componentRerendersCount = 0;
   private rootRendersCount = 0;
   private beginCount = 0;
   private observers: RendererObserver[] = [];
   private nextAnimationCancelToken: CancelToken = 0;
   private eventListener: IRendererEventListener | undefined = undefined;
+  private rendererTracingEnabled = false;
   private allowedRootElementTypes?: StringSet;
 
   /** Moves buffered during render; flushed in top-down order at end to avoid bottom-up attach (ANR). */
@@ -598,11 +603,16 @@ export class Renderer implements IRenderer {
     contextId: string,
     allowedRootElementTypes: string[] | undefined,
     delegate: IRendererDelegate,
-    useTopDownMoveOrder?: boolean,
+    useTopDownMoveOrder: boolean | undefined,
+    rendererTracingEnabled: boolean,
   ) {
     this.contextId = contextId;
     this.delegate = delegate;
+    this.delegate.setRenderCompleteScheduler(callback => {
+      this.onRenderComplete(callback);
+    });
     this._useTopDownMoveOrder = useTopDownMoveOrder ?? false;
+    this.rendererTracingEnabled = rendererTracingEnabled && isTracingSupported();
     if (allowedRootElementTypes) {
       this.allowedRootElementTypes = {};
       for (const allowedRootElementType of allowedRootElementTypes) {
@@ -627,12 +637,15 @@ export class Renderer implements IRenderer {
       childrenHead: undefined,
       childrenDirty: true,
       nodePrototype: undefined,
-      frame: undefined,
       next: undefined,
       prev: undefined,
       parentIndex: undefined,
     };
     this.nodeTree.element = this.elementTree;
+  }
+
+  onDestroy(): void {
+    this.delegate.onDestroyed();
   }
 
   batchUpdates(block: () => void) {
@@ -717,7 +730,6 @@ export class Renderer implements IRenderer {
       if (!this.hasObservers) {
         this.hasObservers = true;
         this.delegate.registerVisibilityObserver(this.elementsVisibilityChanged.bind(this));
-        this.delegate.registerFrameObserver(this.processFrameUpdates.bind(this));
       }
     }
   }
@@ -808,9 +820,14 @@ export class Renderer implements IRenderer {
       currentRenderer = this.parent;
       this.parent = undefined;
 
-      this.delegate.onRenderEnd();
-      if (this.eventListener) {
-        this.eventListener.onRenderEnd();
+      this.collectingRenderCompleteCallbacks = true;
+      try {
+        this.delegate.onRenderEnd();
+        if (this.eventListener) {
+          this.eventListener.onRenderEnd();
+        }
+      } finally {
+        this.collectingRenderCompleteCallbacks = false;
       }
 
       if (this.completions) {
@@ -962,7 +979,6 @@ export class Renderer implements IRenderer {
         childrenHead: undefined,
         childrenDirty: true,
         virtualNode: resolvedNode,
-        frame: undefined,
         next: undefined,
         prev: undefined,
         parentIndex: undefined,
@@ -984,6 +1000,64 @@ export class Renderer implements IRenderer {
         this.setAttributeOnElement(resolvedNode.element!, name, value);
       });
     }
+  }
+
+  beginElementWithViewFactory(nodePrototype: NodePrototype, viewFactory: ViewFactory, key: string | undefined): void {
+    const currentNode = this.getCurrentNode();
+    const resolvedKey = key || nodePrototype.id;
+    const resolvedNode = this.resolveVirtualNode(currentNode, resolvedKey, undefined, undefined, undefined);
+
+    let justCreated = false;
+
+    if (!resolvedNode.element) {
+      const id = ++this.nodeIdSequence;
+      const element: RenderedElement = {
+        id,
+        attributes: { viewFactory },
+        nodePrototype,
+        childrenHead: undefined,
+        childrenDirty: true,
+        virtualNode: resolvedNode,
+        next: undefined,
+        prev: undefined,
+        parentIndex: undefined,
+      };
+
+      resolvedNode.element = element;
+      this.delegate.onCustomElementCreated(id, viewFactory);
+      this.elementById[id] = element;
+      justCreated = true;
+    } else if (resolvedNode.element.attributes.viewFactory !== viewFactory) {
+      throw new Error('The view factory cannot change for an existing custom-view element');
+    }
+
+    this.pushVirtualNode(resolvedNode);
+
+    if (justCreated && nodePrototype.attributes) {
+      enumeratePropertyList(nodePrototype.attributes, (name, value) => {
+        this.setAttributeOnElement(resolvedNode.element!, name, value);
+      });
+    }
+  }
+
+  beginElementWithViewFactoryIfNeeded(node: NodePrototype, viewFactory: ViewFactory, key: string | undefined): boolean {
+    this.beginElementWithViewFactory(node, viewFactory, key);
+
+    const renderedNode = this.getCurrentNode();
+    const element = renderedNode.element!;
+    if (element.wasVisibleOnce) {
+      return true;
+    }
+
+    if (!this.hasAttribute('onVisibilityChanged')) {
+      this.setAttribute('onVisibilityChanged', () => {
+        this.rerenderLazyComponentIfNeeded(element);
+      });
+    }
+
+    this.endElement();
+
+    return false;
   }
 
   endElement() {
@@ -1037,7 +1111,7 @@ export class Renderer implements IRenderer {
         eventTime: EventTime,
       ) => void;
       if (viewportChanged) {
-        viewportChanged({ x, y, width, height }, element.frame!, eventTime);
+        viewportChanged({ x, y, width, height }, getCachedElementFrameOrDefault(this, elementId), eventTime);
       }
     }
   }
@@ -1512,6 +1586,8 @@ export class Renderer implements IRenderer {
       if (!parentElementWasDestroyed) {
         parentElementWasDestroyed = true;
         this.delegate.onElementDestroyed(element.id);
+      } else {
+        this.delegate.onElementDestroyedFromParent(element.id);
       }
 
       element.attributes = EMPTY_OBJECT;
@@ -1772,12 +1848,6 @@ export class Renderer implements IRenderer {
       if (newValue) {
         this.setAttributeBool('observeVisibility', true);
       }
-    } else if (name === 'onLayout') {
-      if (element.frame && newValue) {
-        this.onRenderComplete(() => {
-          newValue(element.frame);
-        });
-      }
     } else {
       if (newValue) {
         this.delegate.onElementAttributeChangeFunction(element.id, name, newValue);
@@ -1878,12 +1948,6 @@ export class Renderer implements IRenderer {
     } else if (name === 'onVisibilityChanged' || name == 'onViewportChanged') {
       if (value) {
         this.setAttributeOnElement(renderedNode, 'observeVisibility', true);
-      }
-    } else if (name === 'onLayout' || name === '$onLayout') {
-      if (renderedNode.frame && value) {
-        this.onRenderComplete(() => {
-          value(renderedNode.frame);
-        });
       }
     } else {
       this.delegate.onElementAttributeChangeAny(renderedNode.id, name, value);
@@ -2133,7 +2197,16 @@ export class Renderer implements IRenderer {
       // this.log('Rendering component ', currentComponent.ctr.name);
 
       try {
-        componentInstance.onRender();
+        if (this.rendererTracingEnabled) {
+          beginTrace(`Renderer.onRender.${currentComponent.ctr.name}`);
+          try {
+            componentInstance.onRender();
+          } finally {
+            endTrace();
+          }
+        } else {
+          componentInstance.onRender();
+        }
       } catch (err: any) {
         this.popToVirtualNode(currentComponent.virtualNode);
         this.onUncaughtError(`Failed to render component '${currentComponent.ctr.name}'`, err);
@@ -2218,6 +2291,9 @@ export class Renderer implements IRenderer {
 
           if (this.eventListener) {
             this.eventListener.onComponentViewModelPropertyChange(name);
+          }
+          if (this.rendererTracingEnabled) {
+            instantTrace(`Renderer.viewModelChange.${currentComponent.ctr.name}.${name}`);
           }
           // this.log('View model property ', name, ' changed for component ', currentComponent.ctr.name);
         }
@@ -2649,7 +2725,7 @@ export class Renderer implements IRenderer {
   }
 
   onRenderComplete(callback: () => void): void {
-    if (this.began) {
+    if (this.began || this.collectingRenderCompleteCallbacks) {
       if (!this.completions) {
         this.completions = [];
       }
@@ -2713,6 +2789,14 @@ export class Renderer implements IRenderer {
     return this.eventListener;
   }
 
+  setTracingEnabled(enabled: boolean): void {
+    this.rendererTracingEnabled = enabled && isTracingSupported();
+  }
+
+  isTracingEnabled(): boolean {
+    return this.rendererTracingEnabled;
+  }
+
   private collectElements(node: VirtualNode, output: IRenderedElement[]) {
     if (node.element) {
       output.push(getRenderedElementBridge(this, node.element));
@@ -2744,55 +2828,6 @@ export class Renderer implements IRenderer {
 
   private getElementById(elementId: number): RenderedElement | undefined {
     return this.elementById[elementId];
-  }
-
-  private processFrameUpdates(updates: Float64Array) {
-    const elementById = this.elementById;
-    let elementsWithCallback: RenderedElement[] | undefined;
-
-    trace('processFrameUpdates', () => {
-      let i = 0;
-      while (i < updates.length) {
-        const elementId = updates[i++];
-        const x = updates[i++];
-        const y = updates[i++];
-        const width = updates[i++];
-        const height = updates[i++];
-
-        const element = elementById[elementId];
-        if (element) {
-          element.frame = { x, y, width, height };
-
-          if (element.attributes.onLayout || element.attributes.$onLayout) {
-            if (!elementsWithCallback) {
-              elementsWithCallback = [];
-            }
-            elementsWithCallback.push(element);
-          }
-        }
-      }
-    });
-
-    if (elementsWithCallback) {
-      for (const element of elementsWithCallback) {
-        let onLayout = element.attributes.onLayout;
-        if (onLayout) {
-          try {
-            onLayout(element.frame);
-          } catch (err: any) {
-            this.onUncaughtError('Failed to call onLayout', err);
-          }
-        }
-        onLayout = element.attributes.$onLayout;
-        if (onLayout) {
-          try {
-            onLayout(element.frame);
-          } catch (err: any) {
-            this.onUncaughtError('Failed to call onLayout', err);
-          }
-        }
-      }
-    }
   }
 
   /**

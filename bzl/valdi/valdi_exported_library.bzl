@@ -1,11 +1,10 @@
 load("@build_bazel_rules_apple//apple:apple.bzl", "apple_xcframework")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
-load("//bzl:expand_template.bzl", "expand_template")
 load("//bzl/android:collect_android_assets.bzl", "collect_android_assets")
 load("//bzl/valdi:rewrite_hdrs.bzl", "rewrite_hdrs")
 load("//bzl/valdi:suffixed_deps.bzl", "get_suffixed_deps")
-load("//bzl/valdi:valdi_collapse_web_paths.bzl", "collapse_native_paths", "collapse_web_paths", "generate_native_module_map", "generate_register_native_modules")
-load("//bzl/valdi:valdi_protodecl_to_js.bzl", "collapse_protodecl_paths", "protodecl_to_js_dir")
+load("//bzl/valdi:valdi_android_resource_deps.bzl", "valdi_android_resource_deps")
+load("//bzl/valdi:valdi_web_package.bzl", "valdi_web_package")
 load("//bzl/valdi/source_set:utils.bzl", "source_set_select")
 load("//valdi:valdi.bzl", "valdi_android_aar")
 
@@ -37,7 +36,8 @@ def valdi_exported_library(
         web_package_name = None,
         npm_scope = "",
         npm_version = "1.0.0",
-        web_exclude_jsx_global_declaration = False):
+        web_exclude_jsx_global_declaration = False,
+        resources = []):
     """Exports Valdi modules as platform-specific libraries (xcframework, aar, npm).
 
     Args:
@@ -48,8 +48,14 @@ def valdi_exported_library(
             Only needed for multi-module exports with cross-module Swift imports.
             ValdiCoreSwift is always included automatically.
     """
+    resources = resources + [Label("//bzl/valdi:api_version_file")]
     if not web_package_name:
         web_package_name = "{}_npm".format(name)
+
+    android_resource_deps = valdi_android_resource_deps(
+        name = "{}_resources_android".format(name),
+        resources = resources,
+    )
 
     ios_public_hdrs_name = "{}_ios_hdrs".format(name)
     rewrite_hdrs(
@@ -113,6 +119,7 @@ done | sed '/^import ValdiCoreSwift$$/d' > $@
     apple_xcframework(
         name = "{}_ios".format(name),
         bundle_name = ios_bundle_name,
+        data = resources,
         deps = xcframework_deps,
         infoplists = [
             "@valdi//bzl/valdi:Info.plist",
@@ -135,7 +142,7 @@ done | sed '/^import ValdiCoreSwift$$/d' > $@
         public_hdrs = [":{}".format(ios_public_hdrs_name)],
     )
 
-    java_deps = java_deps + get_suffixed_deps(deps, "_kt")
+    java_deps = java_deps + get_suffixed_deps(deps, "_kt") + android_resource_deps
 
     collect_android_assets(
         name = "{}_android_assets".format(name),
@@ -159,64 +166,12 @@ done | sed '/^import ValdiCoreSwift$$/d' > $@
         tags = ["valdi_android_exported_library"],
     )
 
-    package_name = web_package_name
-    if npm_scope:
-        package_name = npm_scope + "/" + package_name
-
-    generate_package_json_name = "{}_generate_package_json".format(name)
-    expand_template(
-        name = generate_package_json_name,
-        src = "@valdi//bzl/valdi:package.json.tmpl",
-        output = "{}_package.json".format(name),
-        substitutions = {
-            "${name}": package_name,
-            "${version}": npm_version,
-        },
-    )
-
-    protodecl_to_js_dir(
-        name = "{}_protodecl_js".format(web_package_name),
-        srcs = get_suffixed_deps(deps, "_web_protodecl"),
-    )
-
-    collapse_protodecl_paths(
-        name = "{}_protodecl_collapsed".format(web_package_name),
-        srcs = [":{}_protodecl_js".format(web_package_name)],
-    )
-
-    collapse_native_paths(
-        name = "{}_web_native".format(web_package_name),
-        srcs = get_suffixed_deps(deps, "_all_web_deps"),
-    )
-
-    generate_register_native_modules(
-        name = "{}_register_native_modules".format(web_package_name),
-        srcs = get_suffixed_deps(deps, "_all_web_deps"),
-        package_name = package_name,
-        modules = deps,
-    )
-
-    generate_native_module_map(
-        name = "{}_native_module_map".format(web_package_name),
-        srcs = get_suffixed_deps(deps, "_all_web_deps"),
-        modules = deps,
-    )
-
-    native.filegroup(
-        name = "{}_glob".format(web_package_name),
-        srcs = get_suffixed_deps(deps, "_web_srcs_filegroup") + [
-            ":{}_protodecl_collapsed".format(web_package_name),
-            ":{}_web_native".format(web_package_name),
-            ":{}_register_native_modules".format(web_package_name),
-            ":{}".format(generate_package_json_name),  # package.json to root
-        ],
-    )
-
-    collapse_web_paths(
+    valdi_web_package(
         name = web_package_name,
-        srcs = [":{}_glob".format(web_package_name)],
-        package_name = package_name,
+        deps = deps,
+        package_name = web_package_name,
+        npm_scope = npm_scope,
+        npm_version = npm_version,
         exclude_jsx_global_declaration = web_exclude_jsx_global_declaration,
-        native_module_map = ":{}_native_module_map".format(web_package_name),
         modules = deps,
     )

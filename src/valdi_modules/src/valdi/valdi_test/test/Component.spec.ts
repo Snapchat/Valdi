@@ -98,6 +98,11 @@ class TestRenderer implements IRenderer {
   getEventListener(): IRendererEventListener | undefined {
     return undefined;
   }
+
+  setTracingEnabled(enabled: boolean): void {}
+  isTracingEnabled(): boolean {
+    return false;
+  }
 }
 
 class TestComponent extends LegacyVueComponent<TestViewModel, TestViewState> {

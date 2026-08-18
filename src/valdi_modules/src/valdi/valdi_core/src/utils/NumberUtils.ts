@@ -1,19 +1,13 @@
-import { getModuleLoader } from '../ModuleLoaderGlobal';
-
 // We rely on a native number formatter to be set in Android to get around `toLocaleString()` being unavailable in quickjs.
 let nativeNumberFormatter: ((value: number, fractionalDigits: number) => string) | undefined = undefined;
-
-try {
-  nativeNumberFormatter = getModuleLoader().load('NumberFormatting').formatNumber;
-} catch (e: any) {
-  // no-op; this module is only present on Android
-}
 
 // We rely on a native currency formatter to be set in Android to get around `Intl.NumberFormat` being unavailable in quickjs.
 let nativeNumberWithCurrencyFormatter: ((value: number, currencyCode: string, minimumFractionDigits?: number, maximumFractionDigits?: number, localeIdentifier?: string) => string) | undefined = undefined;
 
 try {
-  nativeNumberWithCurrencyFormatter = getModuleLoader().load('NumberFormatting').formatNumberWithCurrency;
+  const numberFormatting = require('NumberFormatting');
+  nativeNumberFormatter = numberFormatting.formatNumber;
+  nativeNumberWithCurrencyFormatter = numberFormatting.formatNumberWithCurrency;
 } catch (e: any) {
   // no-op; this module is only present on Android
 }

@@ -30,6 +30,14 @@
 #include "valdi_core/cpp/Utils/ValueArrayBuilder.hpp"
 #include "valdi_core/cpp/Utils/ValueFunctionWithCallable.hpp"
 
+#include <cstring>
+
+#if defined(__APPLE__)
+#include <crt_externs.h>
+#else
+extern char** environ;
+#endif
+
 #ifdef SNAP_DRAWING_ENABLED
 
 #include "valdi/snap_drawing/Modules/SnapDrawingModuleFactoriesProvider.hpp"
@@ -43,6 +51,35 @@
 #endif
 
 namespace Valdi {
+namespace {
+
+static char** getEnvironment() {
+#if defined(__APPLE__)
+    return *_NSGetEnviron();
+#else
+    return environ;
+#endif
+}
+
+static Value resolveEnvObject() {
+    static Value envObject = []() -> Value {
+        auto envMap = makeShared<ValueMap>();
+        for (char** entry = getEnvironment(); entry != nullptr && *entry != nullptr; entry++) {
+            const char* separator = std::strchr(*entry, '=');
+            if (separator == nullptr || separator == *entry) {
+                continue;
+            }
+
+            auto key = StringBox::fromString(std::string_view(*entry, static_cast<size_t>(separator - *entry)));
+            auto value = StringBox::fromCString(separator + 1);
+            (*envMap)[key] = Value(value);
+        }
+        return Value(envMap);
+    }();
+    return envObject;
+}
+
+} // namespace
 
 class ModuleFactory : public snap::valdi_core::ModuleFactory {
 public:
@@ -233,6 +270,7 @@ void ValdiStandaloneRuntime::setupJsRuntime(const std::vector<StringBox>& jsArgu
 
     auto process = makeShared<ValueMap>();
     (*process)[STRING_LITERAL("argv")] = Value(processArguments.build());
+    (*process)[STRING_LITERAL("env")] = resolveEnvObject();
     (*process)[STRING_LITERAL("exit")] = Value(exitFunction);
     (*process)[STRING_LITERAL("stdout")] = Value(stdoutObject);
     _runtime->getJavaScriptRuntime()->setValueToGlobalObject(STRING_LITERAL("process"), Value(process));

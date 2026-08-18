@@ -347,9 +347,10 @@ Web custom views use a factory registration pattern. Register a factory function
 
 interface AttributeHandler {
   changeAttribute(name: string, value: unknown): void;
+  destroy?(): void;
 }
 
-type ViewFactory = (container: HTMLElement) => AttributeHandler;
+type ViewFactory = (container: HTMLElement) => AttributeHandler | void;
 
 function createSliderFactory(): ViewFactory {
   return (container: HTMLElement): AttributeHandler => {
@@ -363,6 +364,9 @@ function createSliderFactory(): ViewFactory {
           slider.value = String(value * 100);
         }
       },
+      destroy(): void {
+        slider.remove();
+      },
     };
   };
 }
@@ -373,7 +377,7 @@ export const webPolyglotViews: Record<string, ViewFactory> = {
 };
 ```
 
-The factory function receives a container DOM element and returns an object with a `changeAttribute(name, value)` method to receive attribute updates from the Valdi renderer.
+The factory function receives a container DOM element and can return an attribute handler. The handler receives updates through `changeAttribute(name, value)`. When the handler defines `destroy()`, Valdi calls it exactly once when the custom view is removed. Use `destroy()` to unmount framework roots, remove listeners, and release other resources owned by the custom view.
 
 To register web factories, create a `ts_project` (never a `filegroup`) and add it as `web_deps` in your `BUILD.bazel`. The `ts_project` requires `transpiler = "tsc"` and a dedicated `web/tsconfig.json`:
 

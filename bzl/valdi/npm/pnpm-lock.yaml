@@ -25,6 +25,9 @@ importers:
       '@types/node':
         specifier: ^20.14.10
         version: 20.19.29
+      html-to-image:
+        specifier: ^1.11.13
+        version: 1.11.13
       jest:
         specifier: ^29.7.0
         version: 29.7.0(@babel/preset-typescript@7.28.5(@babel/core@7.28.5))(@types/node@20.19.29)(ts-node@10.9.2(@types/node@20.19.29)(typescript@5.3.3))
@@ -2519,6 +2522,9 @@ packages:
 
   html-escaper@2.0.2:
     resolution: {integrity: sha512-H2iMtd0I4Mt5eYiapRdIDjp+XzelXQ0tFE4JS7YFwFevXXMmOp9myNrUvCg0D6ws8iqkRPBfKHgbwig1SmlLfg==}
+
+  html-to-image@1.11.13:
+    resolution: {integrity: sha512-cuOPoI7WApyhBElTTb9oqsawRvZ0rHhaHwghRLlTuffoD1B2aDemlCruLeZrUIIdvG7gs9xeELEPm6PhuASqrg==}
 
   http-deceiver@1.2.7:
     resolution: {integrity: sha512-LmpOGxTfbpgtGVxJrj5k7asXHCgNZp5nLfp+hWc8QQRqtb7fUy6kRY3BO1h9ddF6yIPYUARgxGOwB42DnxIaNw==}
@@ -7584,6 +7590,8 @@ snapshots:
   html-entities@2.6.0: {}
 
   html-escaper@2.0.2: {}
+
+  html-to-image@1.11.13: {}
 
   http-deceiver@1.2.7: {}
 

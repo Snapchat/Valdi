@@ -18,6 +18,7 @@ def valdi_macos_application(
         window_height,
         window_resizable,
         app_icons = None,
+        resources = [],
         deps = []):
     main_target = "{}_maingen".format(name)
     plist_target = "{}_plist".format(name)
@@ -61,6 +62,7 @@ def valdi_macos_application(
         deps = [":{}".format(src_target)],
         minimum_os_version = "15.0",
         app_icons = generate_valdi_macos_application_icons(name, app_icons),
+        resources = resources,
         tags = ["valdi_macos_application"],
         visibility = ["//visibility:public"],
     )

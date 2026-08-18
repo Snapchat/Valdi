@@ -94,6 +94,51 @@ final class ValdiAnnotationTests: XCTestCase {
         XCTAssertEqual(result.first?.parameters, ["ios": "blah"])
     }
 
+    func testVersionAnnotationWithNumericPayload() throws {
+        let content = """
+/**
+ * Native model docs.
+ * @Version( 42 )
+ * @ExportModel
+ */
+"""
+        let annotations = try extractAnnotations(content)
+
+        XCTAssertEqual(annotations.map(\.name), ["Version", "ExportModel"])
+        XCTAssertEqual(annotations.first?.content, "@Version( 42 )")
+        XCTAssertEqual(annotations.first?.positionalPayload, "42")
+        XCTAssertEqual(nativeApiDeclaredVersion(annotations: annotations), "42")
+        XCTAssertEqual(
+            TypeScriptAnnotatedSymbol.mergedCommentsWithoutAnnotations(
+                fullComments: content,
+                annotations: annotations
+            ),
+            "Native model docs."
+        )
+    }
+
+    func testVersionAnnotationWithPlaceholderPayload() throws {
+        let content = """
+/**
+ * @Version(__PLACEHOLDER__)
+ * @NativeClass
+ */
+"""
+        let annotations = try extractAnnotations(content)
+
+        XCTAssertEqual(annotations.map(\.name), ["Version", "NativeClass"])
+        XCTAssertEqual(annotations.first?.content, "@Version(__PLACEHOLDER__)")
+        XCTAssertEqual(annotations.first?.positionalPayload, "__PLACEHOLDER__")
+        XCTAssertEqual(nativeApiDeclaredVersion(annotations: annotations), "__PLACEHOLDER__")
+        XCTAssertEqual(
+            TypeScriptAnnotatedSymbol.mergedCommentsWithoutAnnotations(
+                fullComments: content,
+                annotations: annotations
+            ),
+            ""
+        )
+    }
+
     func testBadCases() throws {
         var content: String = ""
 

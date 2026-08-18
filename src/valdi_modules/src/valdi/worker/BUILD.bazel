@@ -19,6 +19,6 @@ valdi_module(
     deps = [
         "@valdi//src/valdi_modules/src/valdi/coreutils",
         "@valdi//src/valdi_modules/src/valdi/valdi_core",
-        "@valdi//src/valdi_modules/src/valdi/valdi_standalone",
     ],
+    test_deps = ["@valdi//src/valdi_modules/src/valdi/valdi_standalone"],
 )

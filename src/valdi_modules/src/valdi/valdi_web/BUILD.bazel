@@ -36,11 +36,11 @@ valdi_module(
         "@valdi//src/valdi_modules/src/valdi/valdi_core",
         "@valdi//src/valdi_modules/src/valdi/valdi_http",
         "@valdi//src/valdi_modules/src/valdi/valdi_protobuf",
-        "@valdi//src/valdi_modules/src/valdi/valdi_test",
         "@valdi//src/valdi_modules/src/valdi/valdi_tsx",
         # For now this dependency needs to be part of the module, not sure why
         "@valdi//src/valdi_modules/src/valdi/web_renderer",
     ],
+    test_deps = ["@valdi//src/valdi_modules/src/valdi/valdi_test"],
 )
 
 valdi_exported_library(

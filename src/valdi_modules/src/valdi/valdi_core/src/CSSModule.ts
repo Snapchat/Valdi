@@ -1,8 +1,9 @@
 import { StringMap } from 'coreutils/src/StringMap';
-import { ValdiRuntime, CSSModuleNative } from './ValdiRuntime';
+import { CSSModuleNative } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { setObjectId } from './utils/IdentifyableObject';
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
 
 export interface CSSRule {}
 

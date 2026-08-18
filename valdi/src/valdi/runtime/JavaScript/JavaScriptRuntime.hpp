@@ -524,6 +524,7 @@ private:
     JSValueRef runtimeDestroyContext(JSFunctionNativeCallContext& callContext);
 
     JSValueRef runtimeSetLayoutSpecs(JSFunctionNativeCallContext& callContext);
+    JSValueRef runtimeSetViewNodeAssetTracker(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeMeasureContext(JSFunctionNativeCallContext& callContext);
 
     void callViewNodeActionCallback(const Shared<JSValueRefHolder>& callbackRef, const Value& result);

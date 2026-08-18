@@ -1,156 +1,159 @@
 import { AnimationOptions } from 'valdi_core/src/AnimationOptions';
-import { FrameObserver, IRendererDelegate, VisibilityObserver } from 'valdi_core/src/IRendererDelegate';
+import { IRendererDelegate, VisibilityObserver } from 'valdi_core/src/IRendererDelegate';
 import { Style } from 'valdi_core/src/Style';
+import { ElementFrame } from 'valdi_tsx/src/Geometry';
 import { NativeNode } from 'valdi_tsx/src/NativeNode';
 import { NativeView } from 'valdi_tsx/src/NativeView';
-import {
-  changeAttributeOnElement,
-  createElement,
-  createNodesRef,
-  destroyElement,
-  makeElementRoot,
-  moveElement,
-  NodesRef,
-  registerElements,
-  setAllElementsAttributeDelegate,
-} from './HTMLRenderer';
-
-export interface UpdateAttributeDelegate {
-  updateAttribute(elementId: number, attributeName: string, attributeValue: any): void;
-}
+import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
+import type { AttributeUpdatedExternallyDelegate } from './core/ElementClass';
+import { ViewNodeTree } from './core/ViewNodeTree';
+import { WebViewFactory } from './ViewFactory';
 
 export class ValdiWebRendererDelegate implements IRendererDelegate {
-  private attributeDelegate?: UpdateAttributeDelegate;
-  private frameObserver?: FrameObserver;
-  private resizeObserver?: ResizeObserver;
-  private elementIdByHtmlElement = new WeakMap<Element, number>();
-  // Owned per delegate (i.e. per renderer/page) so element ids can't collide
-  // with another page's (github.com/Snapchat/Valdi#115).
-  private nodesRef: NodesRef = createNodesRef();
+  private attributeUpdatedExternallyDelegate?: AttributeUpdatedExternallyDelegate;
 
-  constructor(private htmlRoot: HTMLElement | ShadowRoot) {
-    registerElements();
+  constructor(
+    private htmlRoot: HTMLElement | ShadowRoot,
+    private readonly viewNodeTree: ViewNodeTree,
+  ) {}
+
+  setRenderCompleteScheduler(schedule: (callback: () => void) => void): void {
+    this.viewNodeTree.setRenderCompleteScheduler(schedule);
   }
-  setAttributeDelegate(delegate: UpdateAttributeDelegate) {
-    this.attributeDelegate = delegate;
 
-    setAllElementsAttributeDelegate(this.nodesRef, this.attributeDelegate);
+  setAttributeUpdatedExternallyDelegate(delegate: AttributeUpdatedExternallyDelegate): void {
+    this.attributeUpdatedExternallyDelegate = delegate;
   }
 
   onElementBecameRoot(id: number): void {
-    makeElementRoot(this.nodesRef, id, this.htmlRoot);
+    this.viewNodeTree.makeElementRoot(id, this.htmlRoot);
+    this.viewNodeTree.scheduleVisibilityRefresh(false);
   }
   onElementMoved(id: number, parentId: number, parentIndex: number): void {
-    moveElement(this.nodesRef, id, parentId, parentIndex);
+    this.viewNodeTree.moveElement(id, parentId, parentIndex);
+    this.viewNodeTree.scheduleVisibilityRefresh(false);
   }
   onElementCreated(id: number, viewClass: string): void {
-    createElement(this.nodesRef, id, viewClass, this.attributeDelegate);
-    const element = this.nodesRef.get(id);
-    if (element?.htmlElement) {
-      this.elementIdByHtmlElement.set(element.htmlElement, id);
-      this.resizeObserver?.observe(element.htmlElement);
+    this.viewNodeTree.createElement(id, viewClass, this.attributeUpdatedExternallyDelegate);
+  }
+  onCustomElementCreated(id: number, viewFactory: ViewFactory): void {
+    if (!(viewFactory instanceof WebViewFactory)) {
+      throw new Error('Expected a web view factory when creating a custom element');
     }
+    this.viewNodeTree.createElementWithClass(
+      id,
+      'custom-view',
+      viewFactory.elementClass,
+      this.attributeUpdatedExternallyDelegate,
+    );
   }
   onElementDestroyed(id: number): void {
-    const element = this.nodesRef.get(id);
-    if (element?.htmlElement) {
-      this.resizeObserver?.unobserve(element.htmlElement);
-    }
-    destroyElement(this.nodesRef, id);
+    this.viewNodeTree.destroyElement(id);
   }
+  onElementDestroyedFromParent(id: number): void {}
   onElementAttributeChangeAny(id: number, attributeName: string, attributeValue: any): void {
-    changeAttributeOnElement(this.nodesRef, id, attributeName, attributeValue);
+    this.viewNodeTree.setAttributeOnElement(id, attributeName, attributeValue);
   }
   onElementAttributeChangeNumber(id: number, attributeName: string, attributeValue: number): void {
-    changeAttributeOnElement(this.nodesRef, id, attributeName, attributeValue);
+    this.viewNodeTree.setAttributeOnElement(id, attributeName, attributeValue);
   }
   onElementAttributeChangeString(id: number, attributeName: string, attributeValue: string): void {
-    changeAttributeOnElement(this.nodesRef, id, attributeName, attributeValue);
+    this.viewNodeTree.setAttributeOnElement(id, attributeName, attributeValue);
   }
   onElementAttributeChangeTrue(id: number, attributeName: string): void {
-    changeAttributeOnElement(this.nodesRef, id, attributeName, undefined);
+    this.viewNodeTree.setAttributeOnElement(id, attributeName, true);
   }
   onElementAttributeChangeFalse(id: number, attributeName: string): void {
-    changeAttributeOnElement(this.nodesRef, id, attributeName, undefined);
+    this.viewNodeTree.setAttributeOnElement(id, attributeName, false);
   }
   onElementAttributeChangeUndefined(id: number, attributeName: string): void {
-    changeAttributeOnElement(this.nodesRef, id, attributeName, undefined);
+    this.viewNodeTree.setAttributeOnElement(id, attributeName, undefined);
   }
   onElementAttributeChangeStyle(id: number, attributeName: string, style: Style<any>): void {
-    const attributes = style.attributes ?? {};
-    Object.keys(attributes).forEach(key => {
-      changeAttributeOnElement(this.nodesRef, id, key, attributes[key]);
-    });
+    this.viewNodeTree.setStyleAttributeOnElement(id, attributeName, style);
   }
   onElementAttributeChangeFunction(id: number, attributeName: string, fn: () => void): void {
-    changeAttributeOnElement(this.nodesRef, id, attributeName, fn);
+    this.viewNodeTree.setAttributeOnElement(id, attributeName, fn);
   }
-  onNextLayoutComplete(callback: () => void): void {}
-  onNextDraw(callback: (hookTimeMs: number) => void): void {}
+  onNextLayoutComplete(callback: () => void): void {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      Promise.resolve().then(() => {
+        this.drainScheduledLayoutObservers(true);
+        Promise.resolve().then(() => {
+          this.drainScheduledLayoutObservers(true);
+          callback();
+        });
+      });
+      return;
+    }
+    requestAnimationFrame(() => {
+      this.drainScheduledLayoutObservers(false);
+      requestAnimationFrame(() => {
+        this.drainScheduledLayoutObservers(false);
+        callback();
+      });
+    });
+  }
+  onNextDraw(callback: (hookTimeMs: number) => void): void {
+    requestAnimationFrame(hookTimeMs => callback(hookTimeMs));
+  }
   onRenderStart(): void {
-    // TODO(mgharmalkar)
-    // console.log('onRenderStart');
+    this.viewNodeTree.beginRender();
   }
   onRenderEnd(): void {
-    // TODO(mgharmalkar)
-    // console.log('onRenderEnd');
+    this.viewNodeTree.endRender();
+    this.viewNodeTree.scheduleVisibilityRefresh(false);
   }
   onAnimationStart(options: AnimationOptions, token: number): void {
-    // TODO: no animation support on web yet, so just call completion with cancelled = false.
-    options.completion?.(false);
+    this.viewNodeTree.beginAnimation(options, token);
   }
-  onAnimationEnd(): void {}
-  onAnimationCancel(token: number): void {}
+  onAnimationEnd(): void {
+    this.viewNodeTree.endAnimation();
+  }
+  onAnimationCancel(token: number): void {
+    this.viewNodeTree.cancelAnimation(token);
+  }
   registerVisibilityObserver(observer: VisibilityObserver): void {
-    // TODO(mgharmalkar)
-    // console.log('registerVisibilityObserver');
-  }
-  registerFrameObserver(observer: FrameObserver): void {
-    this.frameObserver = observer;
-
-    this.resizeObserver = new ResizeObserver((entries) => {
-      if (!this.frameObserver) return;
-
-      const updates: number[] = [];
-      for (const entry of entries) {
-        const elementId = this.elementIdByHtmlElement.get(entry.target);
-        if (elementId === undefined) continue;
-
-        const htmlElement = entry.target as HTMLElement;
-        const rect = htmlElement.getBoundingClientRect();
-        const offsetParent = htmlElement.offsetParent as HTMLElement | null;
-
-        let x: number;
-        let y: number;
-        if (offsetParent) {
-          const parentRect = offsetParent.getBoundingClientRect();
-          const cs = getComputedStyle(offsetParent);
-          x = rect.left - parentRect.left + offsetParent.scrollLeft - (parseFloat(cs.borderLeftWidth) || 0);
-          y = rect.top - parentRect.top + offsetParent.scrollTop - (parseFloat(cs.borderTopWidth) || 0);
-        } else {
-          x = rect.left;
-          y = rect.top;
-        }
-
-        updates.push(elementId, x, y, rect.width, rect.height);
-      }
-
-      if (updates.length > 0) {
-        this.frameObserver(new Float64Array(updates));
-      }
-    });
+    this.viewNodeTree.registerVisibilityObserver(observer);
   }
   getNativeView(id: number, callback: (instance: NativeView | undefined) => void): void {}
   getNativeNode(id: number): NativeNode | undefined {
-    throw new Error('Method not implemented.');
+    return this.viewNodeTree.getNode(id)?.htmlElement as unknown as NativeNode | undefined;
   }
-  getElementFrame(id: number, callback: (instance: any) => void): void {}
-  takeElementSnapshot(id: number, callback: (snapshotBase64: string | undefined) => void): void {}
+  getCachedElementFrame(id: number): ElementFrame | undefined {
+    return this.viewNodeTree.getElementFrame(id);
+  }
+  getElementFrame(id: number, callback: (instance: ElementFrame | undefined) => void): void {
+    callback(this.viewNodeTree.getElementFrame(id));
+  }
+  takeElementSnapshot(id: number, callback: (snapshotBase64: string | undefined) => void): void {
+    const element = this.viewNodeTree.getNode(id)?.htmlElement;
+    const takeSnapshot = (
+      globalThis as unknown as {
+        __valdiTakeElementSnapshot?: (element: HTMLElement) => Promise<string | undefined>;
+      }
+    ).__valdiTakeElementSnapshot;
+    if (!element || !takeSnapshot) {
+      callback(undefined);
+      return;
+    }
+
+    takeSnapshot(element)
+      .then(snapshot => callback(snapshot))
+      .catch(error => {
+        console.error('Failed to capture Valdi web element snapshot', error);
+        callback(undefined);
+      });
+  }
   onUncaughtError(message: string, error: Error): void {
     console.error(message, error);
   }
   onDestroyed(): void {
-    this.frameObserver = undefined;
-    this.resizeObserver?.disconnect();
+    this.viewNodeTree.destroy();
+  }
+
+  private drainScheduledLayoutObservers(forceVisibility: boolean): void {
+    this.viewNodeTree.drainScheduledLayoutObserverRefresh();
+    this.viewNodeTree.drainScheduledVisibilityRefresh(forceVisibility);
   }
 }

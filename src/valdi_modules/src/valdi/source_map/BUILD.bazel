@@ -16,6 +16,6 @@ valdi_module(
     visibility = ["//visibility:public"],
     deps = [
         "//src/valdi_modules/src/valdi/coreutils",
-        "//src/valdi_modules/src/valdi/jasmine",
     ],
+    test_deps = ["//src/valdi_modules/src/valdi/jasmine"],
 )

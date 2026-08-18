@@ -1,0 +1,18 @@
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "valdi_ssr",
+    srcs = glob([
+        "src/**/*.ts",
+        "test/**/*.ts",
+    ]) + [
+        "tsconfig.json",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_http",
+        "//src/valdi_modules/src/valdi/web_renderer",
+    ],
+    test_deps = ["//src/valdi_modules/src/valdi/jasmine"],
+)
