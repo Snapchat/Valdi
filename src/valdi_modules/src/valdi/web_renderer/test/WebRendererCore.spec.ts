@@ -3767,36 +3767,16 @@ describe('web renderer core', () => {
     expect(element.style.overflow).toBe('visible');
   });
 
-  it('adds CSS units to Valdi layout shorthand and grid track numbers', () => {
+  it('adds CSS units to Valdi layout shorthand numbers', () => {
     const id = createRootTestElement('view');
     const element = getNode(id).htmlElement;
 
     tree.setAttributeOnElement(id, 'padding', '8 18 14 28');
     tree.setAttributeOnElement(id, 'gap', '10 14');
-    tree.setAttributeOnElement(id, 'gridTemplateColumns', 'repeat(2, minmax(40, 1fr) 20)');
-    tree.setAttributeOnElement(id, 'gridAutoRows', '42');
     tree.flush();
 
     expect(element.style.padding).toBe('8px 18px 14px 28px');
     expect(element.style.gap).toBe('10px 14px');
-    expect(element.style.gridTemplateColumns).toBe('repeat(2, minmax(40px, 1fr) 20px)');
-    expect(element.style.gridAutoRows).toBe('42px');
-  });
-
-  it('adjusts repeated grid columns when a child spans the trailing flexible tracks', async () => {
-    const parent = createRootTestElement('view');
-    const child = createTestElement('view');
-    const element = getNode(parent).htmlElement;
-
-    tree.setAttributeOnElement(parent, 'display', 'grid');
-    tree.setAttributeOnElement(parent, 'gridTemplateColumns', 'repeat(2, minmax(40, 1fr) 20)');
-    tree.setAttributeOnElement(child, 'gridColumnStart', 3);
-    tree.setAttributeOnElement(child, 'gridColumnEnd', 5);
-    tree.moveElement(child, parent, 0);
-    tree.flush();
-    await Promise.resolve();
-
-    expect(element.style.gridTemplateColumns).toBe('50px 20px minmax(0, 1fr) 20px');
   });
 
   it('applies maskPath using CSS mask styles', () => {
@@ -4136,7 +4116,7 @@ describe('web renderer core', () => {
     );
   });
 
-  it('prevents browser focus outlines on multiline text views without changing text fields', () => {
+  it('prevents browser focus outlines on single-line and multiline text inputs', () => {
     const textViewId = createRootTestElement('textview');
     const textView = getNode(textViewId).htmlElement as unknown as FakeElement;
 
@@ -4152,7 +4132,7 @@ describe('web renderer core', () => {
 
     const textFieldId = createRootTestElement('textfield');
     const textField = getNode(textFieldId).htmlElement as unknown as FakeElement;
-    expect(textField.style.outline).toBeUndefined();
+    expect(textField.style.outline).toBe('none');
   });
 
   it('renders accessible, independently styled textview placeholders', () => {

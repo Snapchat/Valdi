@@ -113,7 +113,7 @@ describe('AttributesBinder', () => {
     const context = createContext();
     binder.bindEnumAttribute(
       'display',
-      ['flex', 'grid'] as const,
+      ['flex'] as const,
       (target, value) => {
         target.style.display = value;
       },
@@ -122,8 +122,7 @@ describe('AttributesBinder', () => {
       },
     );
 
-    binder.attributeAppliers.display.apply(element, 'grid', 'display', context);
-    expect(element.style.display).toBe('grid');
+    expect(() => binder.attributeAppliers.display.apply(element, 'grid', 'display', context)).toThrow();
     expect(() => binder.attributeAppliers.display.apply(element, 'block', 'display', context)).toThrow();
   });
 

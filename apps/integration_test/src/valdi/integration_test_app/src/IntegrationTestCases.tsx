@@ -1416,6 +1416,20 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
     },
   },
   {
+    id: 'view-border-styles',
+    name: 'View border syntaxes and styles',
+    description:
+      'Renders dashed and dotted border shorthands plus an asymmetric borderRadius.',
+    element: 'view',
+    render: (ctx: IntegrationTestRenderContext) => {
+      <view key={ctx.caseId} ref={ctx.rootRef} width={WIDTH} height={HEIGHT} backgroundColor={CARD} padding={18}>
+        <view backgroundColor="#DBEAFE" border="4 dashed #1D4ED8" height={100} marginBottom={18} width="100%" />
+        <view backgroundColor="#DCFCE7" border="5 dotted #047857" height={100} marginBottom={18} width="100%" />
+        <view backgroundColor="#FDE68A" border="3 solid #92400E" borderRadius="28 4 28 4" height={100} width="100%" />
+      </view>;
+    },
+  },
+  {
     id: 'view-opacity',
     name: 'View opacity',
     description: 'Renders one semi-transparent child view over colored stripes so opacity blending is easy to inspect.',
@@ -3546,6 +3560,25 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
     },
   },
   {
+    id: 'shape-fill-gradient',
+    name: 'Shape fill gradient',
+    description: 'Renders a closed shape with fillGradient and a contrasting stroke.',
+    element: 'shape',
+    render: (ctx: IntegrationTestRenderContext) => {
+      <view key={ctx.caseId} ref={ctx.rootRef} width={WIDTH} height={HEIGHT} backgroundColor={CARD} padding={18}>
+        <shape
+          fillGradient="linear-gradient(#F97316, #FDE68A)"
+          path={trianglePath}
+          strokeColor="#7C2D12"
+          strokeJoin="bevel"
+          strokeWidth={8}
+          width={180}
+          height={180}
+        />
+      </view>;
+    },
+  },
+  {
     id: 'animatedimage-object-fit',
     name: 'AnimatedImage object fit variants',
     description:
@@ -3745,14 +3778,13 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
         />
         <view
           backgroundColor="#DCFCE7"
-          borderColor="#047857"
-          borderWidth={4}
+          border="4 dashed #047857"
           borderRadius="50%"
           height={110}
           marginBottom={14}
           width={160}
         />
-        <view backgroundColor="#FEF3C7" border="4 solid #92400E" borderRadius="0 28 48 8" height={96} width="100%" />
+        <view backgroundColor="#FEF3C7" border="4 dotted #92400E" borderRadius="0 28 48 8" height={96} width="100%" />
       </view>;
     },
   },
@@ -4676,11 +4708,12 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
     },
   },
   {
-    id: 'shape-empty-path',
-    name: 'Shape empty path',
-    description: 'Renders an empty shape beside a solid-filled shape to cover empty-path behavior.',
+    id: 'shape-empty-and-precedence',
+    name: 'Shape empty path and fill precedence',
+    description:
+      'Renders an empty shape beside a shape with both fillColor and fillGradient to cover empty and precedence behavior.',
     element: 'shape',
-    coverage: coverage('visual', ['path', 'fillColor', 'strokeColor', 'strokeWidth']),
+    coverage: coverage('visual', ['path', 'fillColor', 'fillGradient', 'strokeColor', 'strokeWidth']),
     render: (ctx: IntegrationTestRenderContext) => {
       <view key={ctx.caseId} ref={ctx.rootRef} width={WIDTH} height={HEIGHT} backgroundColor={CARD} padding={18}>
         <layout flexDirection="row" gap={20}>
@@ -4689,6 +4722,7 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
             style={styleShapeSample}
             path={trianglePath}
             fillColor="#FEE2E2"
+            fillGradient="linear-gradient(#0EA5E9, #22C55E)"
             strokeColor="#14532D"
             strokeWidth={6}
           />
@@ -5089,6 +5123,7 @@ export const INTEGRATION_ATTRIBUTE_COVERAGE_LEDGER: readonly IntegrationAttribut
       'view-background-color',
       'view-background-gradient',
       'view-background-solid-and-gradient-stops',
+      'view-border-styles',
       'view-border-radius-edge-cases',
       'view-opacity',
       'view-shadow-radius-clipping',
@@ -5504,6 +5539,7 @@ export const INTEGRATION_ATTRIBUTE_COVERAGE_LEDGER: readonly IntegrationAttribut
       'strokeWidth',
       'strokeColor',
       'fillColor',
+      'fillGradient',
       'strokeCap',
       'strokeJoin',
       'strokeStart',
@@ -5515,7 +5551,8 @@ export const INTEGRATION_ATTRIBUTE_COVERAGE_LEDGER: readonly IntegrationAttribut
       'shape-stroke-caps',
       'shape-stroke-joins',
       'shape-stroke-range',
-      'shape-empty-path',
+      'shape-fill-gradient',
+      'shape-empty-and-precedence',
     ],
   },
   {

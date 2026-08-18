@@ -150,12 +150,16 @@ valdi export web --library //:hello_world_web --output_path ./output/hello_world
 ```
 <br></br>
 
-`valdi hotreload [--module module_name] [--target target_name]`\
+`valdi hotreload [--module module_name] [--target target_name] [--port port] [--json-events]`\
 Starts the Valdi [hotreloader](./start-about.md#prototype-quickly-with-hot-reload) for the application target.
 
 - When `--module` and `--target` is omitted, it will attempt to run the application target of the current workspace. If there is more than one defined application, the specific target will need to be specified.
 - The `--target` option should be a valid Bazel target (ex: `//:hello_world_hotreload`).
-- The `--module` option will query and run targets in the current workspace which match the module_name.<br></br>
+- The `--module` option will query and run targets in the current workspace which match the module_name.
+- The `--port` option scopes the hotreload service and cleanup to a specific port.
+- The `--json-events` option emits JSON lifecycle records for target resolution, build completion, hotreload startup,
+  target connection, resource delivery, successful recompilation, and shutdown while retaining normal compiler and runtime output.
+- `resources_sent` means that the compiler handed a resource batch to a connected target; it is not a render-completion guarantee.<br></br>
 
 `valdi test [--module module_name] [--target target_name]`\
 Executes the test(s) for the provided targets. Note that multiple modules OR targets can be provided to execute all tests simultaneously. If no modules or targets are provided, ALL tests within the current workspace will be ran.<br></br>

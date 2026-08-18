@@ -245,6 +245,7 @@ describe('WebNavigator', () => {
     expect(dialog?.open).toBeTrue();
     expect(dialog?.attributes['aria-modal']).toBe('true');
     expect(dialog?.className).toBe('valdi-web-navigation-dialog');
+    expect(dialog?.style.outline).toBe('none');
     expect(root.style.display).toBe('');
     expect(root.attributes['aria-hidden']).toBe('true');
     expect(renderers[0].context?.source).toBe('Dialog');
@@ -265,7 +266,9 @@ describe('WebNavigator', () => {
 
     const dialog = overlayRoot.children.find(child => child.tagName === 'dialog');
     expect(dialog?.className).toBe('valdi-web-navigation-dialog valdi-web-navigation-sheet');
-    expect(dialog?.style.height).toBe('min(292px, calc(100vh - 48px))');
+    expect(dialog?.style.height).toBe('fit-content');
+    expect(dialog?.style.maxHeight).toBe('calc(100vh - 48px)');
+    expect(dialog?.style.outline).toBe('none');
     expect(dialog?.animate).toHaveBeenCalled();
     expect(overlayRoot.children.some(child => child.tagName === 'style')).toBeTrue();
   });

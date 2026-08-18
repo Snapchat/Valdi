@@ -29,13 +29,14 @@ const DIALOG_STYLES: Record<string, string> = {
   margin: 'auto',
   maxHeight: 'calc(100vh - 48px)',
   maxWidth: 'calc(100vw - 32px)',
+  outline: 'none',
   overflow: 'hidden',
   padding: '0',
   width: 'min(520px, calc(100vw - 32px))',
 };
 
 const SHEET_STYLES: Record<string, string> = {
-  height: 'min(292px, calc(100vh - 48px))',
+  height: 'fit-content',
   margin: 'auto auto 24px',
   width: 'min(480px, calc(100vw - 32px))',
 };

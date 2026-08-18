@@ -1,5 +1,5 @@
 import { parseCssFunction } from '../utils/cssFunction';
-import { consumeCssNumber, isAsciiAlphaCode, isAsciiDigitCode, isCssWhitespaceCode } from '../utils/cssScanner';
+import { consumeCssNumber, isAsciiAlphaCode, isAsciiDigitCode } from '../utils/cssScanner';
 
 const CHAR_HASH = 35;
 const CHAR_PERCENT = 37;
@@ -53,33 +53,17 @@ export function parseString(value: unknown, attributeName: string): string {
   return value;
 }
 
-function isRepeatFunctionCount(value: string, numberStart: number): boolean {
-  let index = numberStart - 1;
-  while (index >= 0 && isCssWhitespaceCode(value.charCodeAt(index))) {
-    index--;
-  }
-  if (index < 6 || value.charCodeAt(index) !== 40) {
-    return false;
-  }
-  return value.slice(index - 6, index) === 'repeat';
-}
-
-function shouldAppendPxToCssNumber(
-  value: string,
-  numberStart: number,
-  numberEnd: number,
-  skipRepeatCount: boolean,
-): boolean {
+function shouldAppendPxToCssNumber(value: string, numberStart: number, numberEnd: number): boolean {
   if (numberStart > 0 && blocksUnitlessNumberPrefix(value.charCodeAt(numberStart - 1))) {
     return false;
   }
   if (numberEnd < value.length && blocksUnitlessNumberSuffix(value.charCodeAt(numberEnd))) {
     return false;
   }
-  return !skipRepeatCount || !isRepeatFunctionCount(value, numberStart);
+  return true;
 }
 
-function appendPxToUnitlessCssNumbers(value: string, skipRepeatCount: boolean): string {
+function appendPxToUnitlessCssNumbers(value: string): string {
   let output = '';
   let copiedUntil = 0;
   let index = 0;
@@ -90,7 +74,7 @@ function appendPxToUnitlessCssNumbers(value: string, skipRepeatCount: boolean): 
       continue;
     }
 
-    if (shouldAppendPxToCssNumber(value, index, end, skipRepeatCount)) {
+    if (shouldAppendPxToCssNumber(value, index, end)) {
       output += value.slice(copiedUntil, end);
       output += 'px';
       copiedUntil = end;
@@ -109,22 +93,9 @@ export function parseCssLength(value: unknown, attributeName: string): string {
     return `${value}px`;
   }
   if (typeof value === 'string') {
-    return appendPxToUnitlessCssNumbers(value, false);
+    return appendPxToUnitlessCssNumbers(value);
   }
   throw new Error(`Expected '${attributeName}' to be a number or string CSS length`);
-}
-
-export function parseCssTrackList(value: unknown, attributeName: string): string {
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) {
-      throw new Error(`Expected '${attributeName}' to be a finite CSS track size`);
-    }
-    return `${value}px`;
-  }
-  if (typeof value === 'string') {
-    return appendPxToUnitlessCssNumbers(value, true);
-  }
-  throw new Error(`Expected '${attributeName}' to be a number or string CSS track list`);
 }
 
 export function parseOptionalCssLength(value: unknown, attributeName: string): string | undefined {

@@ -189,14 +189,18 @@ class ValdiCompilerRunner {
             var hotReloadLifecycleReporter: HotReloadLifecycleReporter?
             if hotReloadingEnabled {
                 hotReloadLifecycleReporter = HotReloadLifecycleReporter.standardOutput(
-                    enabled: self.arguments.hotreloadJsonEvents)
+                    enabled: self.arguments.hotreloadJsonEvents,
+                    target: self.arguments.hotreloadTarget ?? "",
+                    port: self.arguments.port)
                 daemonService = try DaemonService(logger: logger,
                                                   fileManager: fileManager,
                                                   userConfig: configs.userConfig,
                                                   projectConfig: configs.projectConfig,
                                                   compilerConfig: configs.compilerConfig,
                                                   companion: compilerCompanion,
-                                                  reloadOverUSB: self.arguments.usb)
+                                                  reloadOverUSB: self.arguments.usb,
+                                                  port: self.arguments.port,
+                                                  lifecycleReporter: hotReloadLifecycleReporter)
             }
 
             let dumpComponentURLs = self.arguments.dumpComponents.map { baseUrl.resolving(path: $0) }

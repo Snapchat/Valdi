@@ -36,8 +36,14 @@ struct ValdiCompilerArguments: ParsableCommand {
     @Flag(help: "connect to the device over usb/localhost instead of the local network")
     var usb = false
 
-    @Flag(help: "emit a machine-readable event after a successful hot reload compilation pass")
+    @Option(help: "port for the hot reloader/debugger service")
+    var port: Int?
+
+    @Flag(help: "emit machine-readable hot reload lifecycle events")
     var hotreloadJsonEvents = false
+
+    @Option(help: "Bazel target used to start this hot reload process")
+    var hotreloadTarget: String?
 
     @Option(help: "output directory")
     var out: String?
@@ -255,6 +261,14 @@ struct ValdiCompilerArguments: ParsableCommand {
 
         if self.failOnErrors && !self.compile {
             throw ValidationError("--fail-on-errors requires --compile")
+        }
+
+        if let port = self.port, port <= 0 || port > 65535 {
+            throw ValidationError("Unsupported --port '\(port)', must be between 1 and 65535")
+        }
+
+        if self.hotreloadJsonEvents && (self.hotreloadTarget?.isEmpty ?? true) {
+            throw ValidationError("--hotreload-json-events requires --hotreload-target")
         }
         
         if !self.uploadModule.isEmpty && self.uploadBaseUrl == nil {

@@ -16,13 +16,65 @@ import {
 interface CommandParameters {
   module: string | undefined;
   target: string | undefined;
+  port: number | undefined;
+  jsonEvents: boolean;
 }
 
-function killExistingHotreloaders(): void {
-  const commands = [
-    'pkill -f valdi_companion',
-    'pkill -f run_hotreloader',
-  ];
+export interface HotreloadCompilerOptions {
+  jsonEvents: boolean;
+  port: number | undefined;
+  target: string;
+}
+
+export type HotreloadLifecycleEventName =
+  | 'target_resolved'
+  | 'build_started'
+  | 'build_failed'
+  | 'build_succeeded'
+  | 'hotreload_starting'
+  | 'target_connected'
+  | 'resources_sent'
+  | 'recompilation_succeeded'
+  | 'hotreload_stopped';
+
+export interface HotreloadLifecycleEvent {
+  event: HotreloadLifecycleEventName;
+  target: string;
+  port: number | null;
+  time: string;
+  clientId?: number;
+  applicationId?: string;
+  platform?: string;
+  resourceCount?: number;
+  changedFileCount?: number;
+  returnCode?: number;
+}
+
+type HotreloadLifecycleReporter = (event: HotreloadLifecycleEventName, returnCode?: number) => void;
+
+const MIN_PORT = 1;
+const MAX_PORT = 65_535;
+
+export function validateHotreloadPort(port: number | undefined): number | undefined {
+  if (port === undefined) {
+    return undefined;
+  }
+  if (!Number.isInteger(port) || port < MIN_PORT || port > MAX_PORT) {
+    throw new CliError(`Invalid hotreload port: ${port}. Expected an integer between ${MIN_PORT} and ${MAX_PORT}.`);
+  }
+  return port;
+}
+
+export function hotreloadCleanupCommands(port: number | undefined): string[] {
+  if (port === undefined) {
+    return ['pkill -f valdi_companion', 'pkill -f run_hotreloader', `pkill -f 'valdi.*--monitor'`];
+  }
+
+  return [`pkill -f 'run_hotreloader.*--port ${port}($| )'`, `pkill -f 'valdi.*--monitor.*--port ${port}($| )'`];
+}
+
+export function killExistingHotreloaders(port: number | undefined): void {
+  const commands = hotreloadCleanupCommands(port);
   for (const cmd of commands) {
     try {
       execSync(cmd, { stdio: 'ignore' });
@@ -36,12 +88,42 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
-export function buildHotreloadCommand(hotreloadCommand: string, emitRecompilationEvents: boolean): string {
-  if (!emitRecompilationEvents) {
+export function buildHotreloadCommand(hotreloadCommand: string, options: HotreloadCompilerOptions): string {
+  const args: string[] = [];
+  if (options.port !== undefined) {
+    args.push(`--port ${options.port}`);
+  }
+  if (options.jsonEvents) {
+    args.push('--hotreload-json-events', `--hotreload-target ${shellQuote(options.target)}`);
+  }
+
+  if (args.length === 0) {
     return hotreloadCommand;
   }
 
-  return `${shellQuote(hotreloadCommand)} --hotreload-json-events`;
+  return `${shellQuote(hotreloadCommand)} ${args.join(' ')}`;
+}
+
+export function formatHotreloadLifecycleEvent(event: HotreloadLifecycleEvent): string {
+  return JSON.stringify({ source: 'valdi_hotreload', ...event });
+}
+
+function lifecycleReporter(enabled: boolean, target: string, port: number | undefined): HotreloadLifecycleReporter {
+  return (event, returnCode) => {
+    if (!enabled) {
+      return;
+    }
+    const payload: HotreloadLifecycleEvent = {
+      event,
+      target,
+      port: port ?? null,
+      time: new Date().toISOString(),
+    };
+    if (returnCode !== undefined) {
+      payload.returnCode = returnCode;
+    }
+    console.log(formatHotreloadLifecycleEvent(payload));
+  };
 }
 
 export function isCompilerRecompilationSucceededEvent(line: string): boolean {
@@ -66,6 +148,7 @@ function runHotreloadWithCompilerEvents(
   command: string,
   cwd: string,
   onRecompilationSucceeded: () => void,
+  relayCompilerEvents: boolean,
 ): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, {
@@ -84,7 +167,7 @@ function runHotreloadWithCompilerEvents(
         if (compilerEvent?.event === 'recompilation_succeeded') {
           onRecompilationSucceeded();
         }
-        if (compilerEvent === undefined) {
+        if (compilerEvent === undefined || relayCompilerEvents) {
           process.stdout.write(`${line}\n`);
         }
       }
@@ -94,7 +177,7 @@ function runHotreloadWithCompilerEvents(
       if (compilerEvent?.event === 'recompilation_succeeded') {
         onRecompilationSucceeded();
       }
-      if (pendingLine !== '' && compilerEvent === undefined) {
+      if (pendingLine !== '' && (compilerEvent === undefined || relayCompilerEvents)) {
         process.stdout.write(pendingLine);
       }
       resolve({ returnCode: code ?? 0, stderr: '', stdout: '' });
@@ -182,10 +265,20 @@ function createWebPublicationScheduler(
 async function hotreloadResolvedTarget(
   client: BazelClient,
   resolvedTarget: string,
+  port: number | undefined,
+  jsonEvents: boolean,
+  report: HotreloadLifecycleReporter,
   webSessions: readonly WebHotReloadSessionDescriptor[],
 ) {
-  killExistingHotreloaders();
-  await client.buildTarget(resolvedTarget);
+  killExistingHotreloaders(port);
+  report('build_started');
+  try {
+    await client.buildTarget(resolvedTarget);
+  } catch (error) {
+    report('build_failed');
+    throw error;
+  }
+  report('build_succeeded');
   const workspaceRoot = await client.getWorkspaceRoot();
   const buildOutputs = await client.queryBuildOutputs([resolvedTarget]);
 
@@ -195,18 +288,38 @@ async function hotreloadResolvedTarget(
 
   const hotreloadCommand = buildOutputs[0] ?? '';
 
+  report('hotreload_starting');
+  let result: CommandResult;
   if (webSessions.length === 0) {
-    await spawnCliCommand(buildHotreloadCommand(hotreloadCommand, false), workspaceRoot, 'inherit', true, false);
+    result = await spawnCliCommand(
+      buildHotreloadCommand(hotreloadCommand, {
+        jsonEvents,
+        port,
+        target: resolvedTarget,
+      }),
+      workspaceRoot,
+      'inherit',
+      true,
+      false,
+    );
   } else {
     console.log(
       `Connected hot reload to ${webSessions.length} running web host${webSessions.length === 1 ? '' : 's'}.`,
     );
     const scheduler = createWebPublicationScheduler(client, webSessions);
-    await runHotreloadWithCompilerEvents(buildHotreloadCommand(hotreloadCommand, true), workspaceRoot, () =>
-      scheduler.schedule(),
+    result = await runHotreloadWithCompilerEvents(
+      buildHotreloadCommand(hotreloadCommand, {
+        jsonEvents: true,
+        port,
+        target: resolvedTarget,
+      }),
+      workspaceRoot,
+      () => scheduler.schedule(),
+      jsonEvents,
     );
     await scheduler.drain();
   }
+  report('hotreload_stopped', result.returnCode);
 }
 
 async function getHotreloadTargetByModuleName(client: BazelClient, moduleName: string): Promise<string> {
@@ -236,6 +349,8 @@ async function resolveHotreloadTarget(client: BazelClient, target: string): Prom
 
 async function valdiHotreload(argv: ArgumentsResolver<CommandParameters>) {
   const client = new BazelClient();
+  const port = validateHotreloadPort(argv.getArgument('port'));
+  const jsonEvents = argv.getArgument('jsonEvents');
   const workspaceRoot = await client.getWorkspaceRoot();
   const activeWebSessions = findWebHotReloadSessions(workspaceRoot);
 
@@ -287,10 +402,12 @@ async function valdiHotreload(argv: ArgumentsResolver<CommandParameters>) {
 
   const resolvedTarget = await resolveHotreloadTarget(client, target);
   const webSessions = activeWebSessions.filter(session => session.hotreloadTarget === resolvedTarget);
-  await hotreloadResolvedTarget(client, resolvedTarget, webSessions);
+  const report = lifecycleReporter(jsonEvents, resolvedTarget, port);
+  report('target_resolved');
+  await hotreloadResolvedTarget(client, resolvedTarget, port, jsonEvents, report, webSessions);
 }
 
-export const command = 'hotreload [--module module_name] [--target target_name]';
+export const command = 'hotreload [--module module_name] [--target target_name] [--port port] [--json-events]';
 export const describe = 'Starts the hotreloader for the application';
 export const builder = (yargs: Argv<CommandParameters>) => {
   yargs
@@ -303,6 +420,16 @@ export const builder = (yargs: Argv<CommandParameters>) => {
       describe: 'Bazel target path to hotreload',
       type: 'string',
       requiresArg: true,
+    })
+    .option('port', {
+      describe: 'Port of the running app Valdi debugger/hotreload service',
+      type: 'number',
+      requiresArg: true,
+    })
+    .option('json-events', {
+      describe: 'Emit machine-readable lifecycle events while retaining normal build and runtime output',
+      type: 'boolean',
+      default: false,
     });
 };
 

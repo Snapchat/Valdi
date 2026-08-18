@@ -2,7 +2,6 @@ import { AttributeApplier, AttributeApplierContext } from '../core/ElementClass'
 import {
   parseBoolean,
   parseCssLength,
-  parseCssTrackList,
   parseNumber,
   parseString,
   resolveValdiGradientAngles,
@@ -202,18 +201,6 @@ export class AttributesBinder<TElement extends HTMLElement> {
       layoutDependent,
       apply(element, value, attributeName) {
         element.style[styleName] = parseCssLength(value, attributeName);
-      },
-      reset(element) {
-        element.style[styleName] = '';
-      },
-    });
-  }
-
-  bindCssTrackListStyleAttribute(name: string, styleName: StyleStringName, layoutDependent?: boolean): void {
-    this.bindAttribute(name, {
-      layoutDependent,
-      apply(element, value, attributeName) {
-        element.style[styleName] = parseCssTrackList(value, attributeName);
       },
       reset(element) {
         element.style[styleName] = '';

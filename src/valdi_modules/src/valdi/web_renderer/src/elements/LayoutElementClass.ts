@@ -1,5 +1,4 @@
 import { AttributesBinder } from '../attributes/AttributesBinder';
-import { parseCssTrackList } from '../attributes/AttributeApplierHelpers';
 import type { ElementFrame } from 'valdi_tsx/src/Geometry';
 import {
   AttributeApplier,
@@ -8,7 +7,6 @@ import {
   ElementClass,
   ElementLayoutObserver,
 } from '../core/ElementClass';
-import { isPlainCssNumber, parseCssFunctionCall, readCssNumber, skipCssWhitespace } from '../utils/cssScanner';
 import { AttributeApplierMap, createBaseElement, replaceEventListener } from './ElementClassSupport';
 import { getViewPresentationState } from './ViewElementState';
 
@@ -25,17 +23,10 @@ function mapViewOverflow(value: string): string {
 }
 
 const VIEW_LAZY_SIZE_STATE = '__viewElementClassLazySizeState';
-const VIEW_GRID_COMPAT_STATE = '__viewElementClassGridCompatState';
 
 interface ViewLazySizeState {
   estimatedWidthStyle?: string;
   estimatedHeightStyle?: string;
-}
-
-interface ViewGridCompatState {
-  gridTemplateColumnsCss?: string;
-  gridTemplateColumnsSource?: string;
-  updateScheduled: boolean;
 }
 
 function getViewLazySizeState(context: AttributeApplierContext): ViewLazySizeState {
@@ -46,88 +37,6 @@ function getViewLazySizeState(context: AttributeApplierContext): ViewLazySizeSta
   const state: ViewLazySizeState = {};
   context.setState(VIEW_LAZY_SIZE_STATE, state);
   return state;
-}
-
-function getViewGridCompatState(context: AttributeApplierContext): ViewGridCompatState {
-  const existing = context.getState<ViewGridCompatState>(VIEW_GRID_COMPAT_STATE);
-  if (existing) {
-    return existing;
-  }
-  const state: ViewGridCompatState = { updateScheduled: false };
-  context.setState(VIEW_GRID_COMPAT_STATE, state);
-  return state;
-}
-
-function skipOptionalLengthUnit(value: string, index: number): number {
-  if (value.startsWith('px', index) || value.startsWith('pt', index)) {
-    return index + 2;
-  }
-  return index;
-}
-
-function readCssNumberWithOptionalLengthUnit(
-  value: string,
-  index: number,
-): { value: number; nextIndex: number } | undefined {
-  const number = readCssNumber(value, index);
-  if (!number) {
-    return undefined;
-  }
-  return { value: number.value, nextIndex: skipOptionalLengthUnit(value, number.nextIndex) };
-}
-
-function parseMinmaxOneFlexibleTrack(
-  value: string,
-  index: number,
-): { minTrack: number; nextIndex: number } | undefined {
-  const parsed = parseCssFunctionCall(value, index);
-  if (!parsed || parsed.name !== 'minmax' || parsed.parameters.length !== 2) {
-    return undefined;
-  }
-
-  const minTrack = readCssNumberWithOptionalLengthUnit(
-    parsed.parameters[0],
-    skipCssWhitespace(parsed.parameters[0], 0),
-  );
-  if (!minTrack || skipCssWhitespace(parsed.parameters[0], minTrack.nextIndex) !== parsed.parameters[0].length) {
-    return undefined;
-  }
-  if (parsed.parameters[1].trim() !== '1fr') {
-    return undefined;
-  }
-  return { minTrack: minTrack.value, nextIndex: parsed.nextIndex };
-}
-
-function parseRepeatTwoMinmaxFrFixed(value: string): { minTrack: number; fixedTrack: number } | undefined {
-  const repeat = parseCssFunctionCall(value, 0);
-  if (
-    !repeat ||
-    repeat.name !== 'repeat' ||
-    repeat.parameters.length !== 2 ||
-    repeat.parameters[0].trim() !== '2' ||
-    skipCssWhitespace(value, repeat.nextIndex) !== value.length
-  ) {
-    return undefined;
-  }
-
-  const repeatedTrack = repeat.parameters[1];
-  const minmax = parseMinmaxOneFlexibleTrack(repeatedTrack, 0);
-  if (!minmax) {
-    return undefined;
-  }
-  const fixedTrackStartIndex = skipCssWhitespace(repeatedTrack, minmax.nextIndex);
-  if (fixedTrackStartIndex === minmax.nextIndex) {
-    return undefined;
-  }
-  const fixedTrack = readCssNumberWithOptionalLengthUnit(repeatedTrack, fixedTrackStartIndex);
-  if (!fixedTrack) {
-    return undefined;
-  }
-  if (skipCssWhitespace(repeatedTrack, fixedTrack.nextIndex) !== repeatedTrack.length) {
-    return undefined;
-  }
-
-  return { minTrack: minmax.minTrack, fixedTrack: fixedTrack.value };
 }
 
 function applyMeasuredSize(element: HTMLElement, result: unknown, widthMode: number, heightMode: number): boolean {
@@ -158,77 +67,6 @@ function applyMeasuredSize(element: HTMLElement, result: unknown, widthMode: num
     }
   }
   return changed;
-}
-
-function getChildElement(element: HTMLElement, index: number): HTMLElement | undefined {
-  const child = element.children?.item(index) ?? element.childNodes.item(index);
-  return child && typeof child === 'object' && 'style' in child ? (child as HTMLElement) : undefined;
-}
-
-function childSpansRepeatedFlexibleTrackEnd(element: HTMLElement): boolean {
-  for (let index = 0; ; index++) {
-    const child = getChildElement(element, index);
-    if (!child) {
-      return false;
-    }
-    if (
-      child.style.gridColumnStart === '3' &&
-      (child.style.gridColumnEnd === '5' || child.style.gridColumnEnd === 'span 2')
-    ) {
-      return true;
-    }
-  }
-}
-
-function yogaCompatibleGridTemplateColumns(element: HTMLElement, state: ViewGridCompatState): string | undefined {
-  const source = state.gridTemplateColumnsSource;
-  const css = state.gridTemplateColumnsCss;
-  if (!source || !css || !childSpansRepeatedFlexibleTrackEnd(element)) {
-    return css;
-  }
-  const repeatTracks = parseRepeatTwoMinmaxFrFixed(source);
-  if (!repeatTracks) {
-    return css;
-  }
-  const { minTrack, fixedTrack } = repeatTracks;
-  return `${minTrack + fixedTrack / 2}px ${fixedTrack}px minmax(0, 1fr) ${fixedTrack}px`;
-}
-
-function updateGridTemplateColumnsForYogaCompatibility(element: HTMLElement, state: ViewGridCompatState): void {
-  const value = yogaCompatibleGridTemplateColumns(element, state);
-  if (value !== undefined && element.style.gridTemplateColumns !== value) {
-    element.style.gridTemplateColumns = value;
-  }
-}
-
-function scheduleGridTemplateColumnsCompatibilityUpdate(element: HTMLElement, state: ViewGridCompatState): void {
-  if (state.updateScheduled) {
-    return;
-  }
-  state.updateScheduled = true;
-  Promise.resolve().then(() => {
-    state.updateScheduled = false;
-    updateGridTemplateColumnsForYogaCompatibility(element, state);
-  });
-}
-
-function gridTemplateColumnsAttributeApplier(): AttributeApplier {
-  return {
-    layoutDependent: true,
-    apply(element, value, attributeName, context) {
-      const state = getViewGridCompatState(context);
-      state.gridTemplateColumnsSource = parseCssTrackList(value, attributeName);
-      state.gridTemplateColumnsCss = state.gridTemplateColumnsSource;
-      element.style.gridTemplateColumns = state.gridTemplateColumnsCss;
-      scheduleGridTemplateColumnsCompatibilityUpdate(element, state);
-    },
-    reset(element, _attributeName, context) {
-      const state = getViewGridCompatState(context);
-      state.gridTemplateColumnsSource = undefined;
-      state.gridTemplateColumnsCss = undefined;
-      element.style.gridTemplateColumns = '';
-    },
-  };
 }
 
 class OnMeasureLayoutObserver implements ElementLayoutObserver {
@@ -337,14 +175,6 @@ function buildLayoutAttributeAppliers(): AttributeApplierMap {
   binder.bindCssLengthStyleAttribute('rowGap', 'rowGap', LAYOUT_DEPENDENT);
   binder.bindCssLengthStyleAttribute('columnGap', 'columnGap', LAYOUT_DEPENDENT);
   binder.bindCssLengthStyleAttribute('flexBasis', 'flexBasis', LAYOUT_DEPENDENT);
-  binder.bindAttribute('gridTemplateColumns', gridTemplateColumnsAttributeApplier());
-  binder.bindCssTrackListStyleAttribute('gridTemplateRows', 'gridTemplateRows', LAYOUT_DEPENDENT);
-  binder.bindCssTrackListStyleAttribute('gridAutoColumns', 'gridAutoColumns', LAYOUT_DEPENDENT);
-  binder.bindCssTrackListStyleAttribute('gridAutoRows', 'gridAutoRows', LAYOUT_DEPENDENT);
-  binder.bindStyleValueAttribute('gridColumnStart', 'gridColumnStart', LAYOUT_DEPENDENT);
-  binder.bindStyleValueAttribute('gridColumnEnd', 'gridColumnEnd', LAYOUT_DEPENDENT);
-  binder.bindStyleValueAttribute('gridRowStart', 'gridRowStart', LAYOUT_DEPENDENT);
-  binder.bindStyleValueAttribute('gridRowEnd', 'gridRowEnd', LAYOUT_DEPENDENT);
   binder.bindNumberAttribute(
     'aspectRatio',
     (element, value) => {
@@ -368,7 +198,7 @@ function buildLayoutAttributeAppliers(): AttributeApplierMap {
   );
   binder.bindEnumAttribute(
     'display',
-    ['flex', 'grid', 'none'] as const,
+    ['flex', 'none'] as const,
     (element, value) => {
       element.style.display = value;
     },

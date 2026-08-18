@@ -405,6 +405,7 @@ export class TextFieldElementClass extends ElementClass<TextInputElement> {
       border: '0',
       fontFamily: SYSTEM_FONT_FAMILY,
       margin: 0,
+      outline: 'none',
       padding: 0,
     });
     return element;
