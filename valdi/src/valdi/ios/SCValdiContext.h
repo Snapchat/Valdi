@@ -42,6 +42,8 @@
 
 @property (strong, nonatomic) UITraitCollection* traitCollection;
 
+@property (readonly, nonatomic) CGFloat dynamicTypeScale;
+
 @property (readonly, nonatomic) UIView* rootValdiView;
 
 @property (readonly, nonatomic) uint32_t objectID;

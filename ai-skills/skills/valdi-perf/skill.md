@@ -204,18 +204,21 @@ How it relates to the other primitives here:
 
 ## Style Objects at Module Level
 
-`new Style<T>({...})` interns style objects — the same property values always produce
-the same cached object. This interning only works at module initialization time.
-Inside `onRender()` the cache is bypassed and a new allocation happens every render.
+Create each `Style<T>` **once at module level and reuse the instance**. A `Style` is
+not value-interned — two `new Style({...})` calls with identical properties are still
+two distinct objects. What a `Style` caches is its own native serialization:
+`toNative()` is memoized per instance. So a module-level `Style` pays that marshalling
+cost once and reuses it, while a `Style` constructed inside `onRender()` re-allocates
+and re-serializes on every render.
 
 ```typescript
-// ❌ Defeats interning — new allocation every render
+// ❌ New allocation + re-serialization every render
 onRender(): void {
   const s = new Style<View>({ backgroundColor: '#fff', borderRadius: 8 });
   <view style={s} />;
 }
 
-// ✅ Interned at module level
+// ✅ Constructed once at module level; native serialization cached on the instance
 import { View } from 'valdi_tsx/src/NativeTemplateElements';
 
 const styles = {

@@ -202,6 +202,13 @@ class ValdiDeviceModule(
         marshaller.pushDouble(displayScale)
     }
 
+    private fun getDynamicTypeScale(marshaller: ValdiMarshaller) {
+        val metrics = context.resources.displayMetrics
+        val density = metrics.density
+        val scale = if (density > 0f) metrics.scaledDensity.toDouble() / density.toDouble() else 1.0
+        marshaller.pushDouble(scale)
+    }
+
     private fun getDisplayLeftInset(marshaller: ValdiMarshaller) {
         marshaller.pushDouble(0.0)
     }
@@ -300,6 +307,7 @@ class ValdiDeviceModule(
                 "getDisplayWidth" to makeBridgeMethod(this::getDisplayWidth),
                 "getDisplayHeight" to makeBridgeMethod(this::getDisplayHeight),
                 "getDisplayScale" to makeBridgeMethod(this::getDisplayScale),
+                "getDynamicTypeScale" to makeBridgeMethod(this::getDynamicTypeScale),
                 "getWindowWidth" to makeBridgeMethod(this::getWindowWidth),
                 "getWindowHeight" to makeBridgeMethod(this::getWindowHeight),
                 "getDisplayLeftInset" to makeBridgeMethod(this::getDisplayLeftInset),

@@ -153,7 +153,6 @@ class Runtime {
   // Map of task IDs to timeout IDs for scheduleWorkItem
   private _taskIdCounter = 1;
   private _scheduledTasks = new Map<number, number>();
-
   // jsEvaluator for the ModuleLoader. Called when a compiled module's lazy
   // Proxy is first accessed. Resolves via bootstrap modules (Init.js deps),
   // moduleLoader factories (native module shims registered at startup), and

@@ -30,7 +30,8 @@ enum class LogContext {
     S2REvent,
     Atlas,
     NeoPlayer,
-    MediaStrategyCenter
+    MediaStrategyCenter,
+    FriendsFeedTimeline
 };
 
 /**
@@ -118,6 +119,8 @@ constexpr std::string_view toString(LogContext context) {
             return "NeoPlayer";
         case LogContext::MediaStrategyCenter:
             return "MediaStrategyCenter";
+        case LogContext::FriendsFeedTimeline:
+            return "FriendsFeedTimeline";
     }
     return "?";
 }

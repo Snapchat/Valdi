@@ -32,6 +32,14 @@ import { EmojiRendering } from './EmojiRendering';
 import { MaskImage } from './MaskImage';
 import { TextFieldRendering } from './TextFieldRendering';
 import { BorderStyles } from './BorderStyles';
+import { TransformTranslate } from './TransformTranslate';
+import { TransformScale } from './TransformScale';
+import { TransformRotate } from './TransformRotate';
+import { TransformComposed } from './TransformComposed';
+import { TransformOrigin } from './TransformOrigin';
+import { LayoutDirectionRtl } from './LayoutDirectionRtl';
+import { TransformDirectionTranslate } from './TransformDirectionTranslate';
+import { ColorPaletteThemes, ColorPaletteNestedOverride } from './ColorPalette';
 
 export const testCases: SnapshotTestCase[] = [
   { name: 'BasicLayout', width: 200, height: 150, render: () => { <BasicLayout />; } },
@@ -61,4 +69,13 @@ export const testCases: SnapshotTestCase[] = [
   { name: 'MaskImage', width: 280, height: 360, render: () => { <MaskImage />; } },
   { name: 'TextFieldRendering', width: 280, height: 320, render: () => { <TextFieldRendering />; } },
   { name: 'BorderStyles', width: 220, height: 340, render: () => { <BorderStyles />; } },
+  { name: 'TransformTranslate', width: 200, height: 200, render: () => { <TransformTranslate />; } },
+  { name: 'TransformScale', width: 220, height: 200, render: () => { <TransformScale />; } },
+  { name: 'TransformRotate', width: 200, height: 220, render: () => { <TransformRotate />; } },
+  { name: 'TransformComposed', width: 200, height: 200, render: () => { <TransformComposed />; } },
+  { name: 'TransformOrigin', width: 200, height: 240, render: () => { <TransformOrigin />; } },
+  { name: 'LayoutDirectionRtl', width: 200, height: 140, render: () => { <LayoutDirectionRtl />; } },
+  { name: 'TransformDirectionTranslate', width: 200, height: 260, render: () => { <TransformDirectionTranslate />; } },
+  { name: 'ColorPaletteThemes', width: 320, height: 164, render: () => { <ColorPaletteThemes />; } },
+  { name: 'ColorPaletteNestedOverride', width: 220, height: 220, render: () => { <ColorPaletteNestedOverride />; } },
 ];

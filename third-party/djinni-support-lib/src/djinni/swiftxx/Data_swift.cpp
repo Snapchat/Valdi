@@ -103,6 +103,11 @@ private:
     }
 };
 
+// Builds that link BOTH the Swift and ObjC backends must define DJINNI_DISABLE_SWIFT_DATAREF_CTORS:
+// DataRef_objc.mm defines these same constructors, so defining them here too collides at link, and
+// whichever backend loses the link-order race fails its Impl downcast at runtime. Pure-Swift builds
+// leave it unset and get the DataRefSwift constructors.
+#if !defined(DJINNI_DISABLE_SWIFT_DATAREF_CTORS)
 DataRef::DataRef(size_t len) {
     _impl = std::make_shared<DataRefSwift>(len);
 }
@@ -125,6 +130,7 @@ DataRef::DataRef(CFMutableDataRef platformObj) {
 DataRef::DataRef(CFDataRef platformObj) {
     _impl = std::make_shared<DataRefSwift>(platformObj);
 }
+#endif
 
 }
 
@@ -150,9 +156,30 @@ DataRef DataRefAdaptor::toCpp(const AnyValue& s) {
 }
 
 AnyValue DataRefAdaptor::fromCpp(const DataRef& c) {
-    auto impl = std::dynamic_pointer_cast<DataRefSwift>(c.impl());
-    auto cfdata = impl->platformObj();
-    CFRetain(cfdata);
+    if (auto impl = std::dynamic_pointer_cast<DataRefSwift>(c.impl())) {
+        auto cfdata = impl->platformObj();
+        CFRetain(cfdata);
+        return RangeValue{reinterpret_cast<const uint8_t*>(cfdata), 0};
+    }
+    // The DataRef was constructed by another backend (the ObjC one, when both are linked). Its concrete
+    // Impl is not visible here, so wrap its buffer in a CFData whose deallocator keeps the Impl alive.
+    if (c.len() == 0) {
+        // Empty CFData holds a NULL byte pointer, and deallocating NULL skips the custom deallocator
+        // (leaking the holder below), so don't tie the Impl's lifetime to it — nothing to keep alive.
+        CFDataRef cfdata = CFDataCreate(kCFAllocatorDefault, nullptr, 0);
+        return RangeValue{reinterpret_cast<const uint8_t*>(cfdata), 0};
+    }
+    auto* holder = new std::shared_ptr<DataRef::Impl>(c.impl());
+    CFAllocatorContext context = {};
+    context.info = holder;
+    context.deallocate = [](void* /*ptr*/, void* info) {
+        delete reinterpret_cast<std::shared_ptr<DataRef::Impl>*>(info);
+    };
+    CFAllocatorRef deallocator = CFAllocatorCreate(kCFAllocatorDefault, &context);
+    assert(deallocator != nullptr);
+    CFDataRef cfdata = CFDataCreateWithBytesNoCopy(nullptr, c.buf(), c.len(), deallocator);
+    assert(cfdata != nullptr);
+    CFRelease(deallocator); // CFDataCreateWithBytesNoCopy retains the allocator, so release here
     return RangeValue{reinterpret_cast<const uint8_t*>(cfdata), 0};
 }
 

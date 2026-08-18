@@ -74,6 +74,9 @@ JavaScriptANRDetector::~JavaScriptANRDetector() {
 
 void JavaScriptANRDetector::start(std::chrono::steady_clock::duration detectionThreshold) {
     std::lock_guard<Mutex> lock(_mutex);
+    if (!_started) {
+        rearmPendingSyns();
+    }
     _started = true;
     _detectionThreshold = detectionThreshold;
     scheduleNextTick();
@@ -93,8 +96,25 @@ void JavaScriptANRDetector::onEnterBackground() {
 
 void JavaScriptANRDetector::onEnterForeground() {
     std::lock_guard<Mutex> lock(_mutex);
+    if (!_isInForeground) {
+        rearmPendingSyns();
+    }
     _isInForeground = true;
     scheduleNextTick();
+}
+
+// Must be called with _mutex held. A syn probe that was in flight when monitoring paused is
+// measured against a clock that keeps advancing while the process is suspended (steady_clock does
+// not stop with the app), so evaluating it on the first tick after resume would report time the
+// app never spent running as a spurious unattributed ANR. Slide the probe's deadline so it gets a
+// full detection budget measured from re-entry, mirroring the not-ready slide in checkForANRs().
+void JavaScriptANRDetector::rearmPendingSyns() {
+    auto timepoint = std::chrono::steady_clock::now();
+    for (const auto& entry : _entries) {
+        if (entry->synScheduledTime && !entry->ack) {
+            entry->synScheduledTime = timepoint;
+        }
+    }
 }
 
 void JavaScriptANRDetector::cancelNextTick() {

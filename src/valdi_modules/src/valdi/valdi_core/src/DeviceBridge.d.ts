@@ -20,6 +20,7 @@ export function getModel(): string;
 export function getDisplayWidth(): number;
 export function getDisplayHeight(): number;
 export function getDisplayScale(): number;
+export function getDynamicTypeScale(): number;
 export function getWindowWidth(): number;
 export function getWindowHeight(): number;
 export function getDisplayLeftInset(): number;

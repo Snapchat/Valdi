@@ -1,3 +1,4 @@
+import DjinniSupport
 import DjinniSupportCxx
 import SwiftProtobuf
 import Foundation
@@ -8,7 +9,7 @@ public enum ProtobufMarshaller<T: SwiftProtobuf.Message>: Marshaller {
         let range = djinni.swift.getBinaryRange(v)
         if (range.size > 0) {
             let bin = Data(bytesNoCopy:UnsafeMutableRawPointer(mutating: range.bytes), count:range.size, deallocator:.none)
-            return try! T(serializedBytes: bin)
+            return try! T(serializedData: bin)
         } else {
             return T()
         }

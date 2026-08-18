@@ -30,6 +30,27 @@ final class GenerateModelsProcessor: CompilationProcessor {
         return "Generating Native Models"
     }
 
+    /// Picks a deterministic attribution representative per shared-VM native identity.
+    /// A VM bound by multiple Components is attached to each consuming Component's
+    /// document (each with its own `componentPath`); the single emitted model must be
+    /// attributed to the same document across runs regardless of input order. Winner =
+    /// lexicographically smallest `(fileName, exportedMember)`.
+    static func attributionRepresentatives(
+        identityAndPaths: [(identity: String, path: ComponentPath)]
+    ) -> [String: ComponentPath] {
+        var chosen = [String: ComponentPath]()
+        for (identity, path) in identityAndPaths {
+            guard let existing = chosen[identity] else {
+                chosen[identity] = path
+                continue
+            }
+            if (path.fileName, path.exportedMember) < (existing.fileName, existing.exportedMember) {
+                chosen[identity] = path
+            }
+        }
+        return chosen
+    }
+
     private func doGenerate<T: NativeSourceGenerator>(item: CompilationItem,
                                                       intermediateItem: IntermediateItem,
                                                       iosType: IOSType?,
@@ -171,6 +192,22 @@ final class GenerateModelsProcessor: CompilationProcessor {
             ].joined(separator: "|")
         }
 
+        // A shared VM is attached to every consuming Component's document, each carrying
+        // its own componentPath, and `items.allItems` order is not deterministic across
+        // clean builds (produced by a concurrent attach/append fan-out upstream). Choosing
+        // the emitting/attribution document by first-wins iteration order therefore made
+        // the "Generated from type ..." header attribution flip between runs and broke
+        // build hermeticity (COMPOSER-6163). Pick the representative deterministically.
+        let identityAndPaths: [(identity: String, path: ComponentPath)] = items.allItems.compactMap { item in
+            guard shouldProcessItem(item: item),
+                  case .document(let result) = item.kind,
+                  let viewModel = result.originalDocument.viewModel else {
+                return nil
+            }
+            return (viewModelIdentity(viewModel), result.componentPath)
+        }
+        let attributionRepresentatives = Self.attributionRepresentatives(identityAndPaths: identityAndPaths)
+
         let intermediateItems = items.select { (item) -> [IntermediateItem]? in
             guard shouldProcessItem(item: item) else {
                 return nil
@@ -186,7 +223,12 @@ final class GenerateModelsProcessor: CompilationProcessor {
                     )
                 )
                 var out = [IntermediateItem]()
-                if emittedViewModelIdentities.insert(viewModelIdentity(viewModel)).inserted {
+                let identity = viewModelIdentity(viewModel)
+                // Emit only from the deterministically-chosen representative document; the
+                // set is a secondary guard against double-emit if two items ever share an
+                // identical componentPath.
+                if attributionRepresentatives[identity] == result.componentPath,
+                   emittedViewModelIdentities.insert(identity).inserted {
                     out.append(IntermediateItem(sourceFilename: generatedSourceFilename,
                                                 exportedType: .valdiModel(viewModel),
                                                 classMapping: result.classMapping))

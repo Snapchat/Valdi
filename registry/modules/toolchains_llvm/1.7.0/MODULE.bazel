@@ -14,14 +14,29 @@
 
 module(
     name = "toolchains_llvm",
-    version = "1.3.0",
+    version = "1.7.0",
     bazel_compatibility = [">=7.0.0"],
     compatibility_level = 0,
 )
 
-bazel_dep(name = "bazel_skylib", version = "1.5.0")
-bazel_dep(name = "rules_cc", version = "0.0.17")
-bazel_dep(name = "platforms", version = "0.0.8")
+bazel_dep(name = "bazel_features", version = "1.38.0")
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
+bazel_dep(name = "aspect_bazel_lib", version = "2.19.3")
+bazel_dep(name = "rules_cc", version = "0.2.17")
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "helly25_bzl", version = "0.3.1")
+
+bazel_dep(name = "tar.bzl", version = "0.6.0")
+tar_toolchains = use_extension("@tar.bzl//tar:extensions.bzl", "toolchains")
+use_repo(
+    tar_toolchains,
+    "bsd_tar_toolchains_darwin_amd64",
+    "bsd_tar_toolchains_darwin_arm64",
+    "bsd_tar_toolchains_linux_amd64",
+    "bsd_tar_toolchains_linux_arm64",
+    "bsd_tar_toolchains_windows_amd64",
+    "bsd_tar_toolchains_windows_arm64",
+)
 
 # TODO: Remove when protobuf is released with a version of rules_python that supports 8.x
 bazel_dep(name = "rules_python", version = "1.0.0", dev_dependency = True)

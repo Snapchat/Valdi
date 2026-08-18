@@ -12,9 +12,9 @@ bzl test //valdi:test_layout --test_output=all --test_arg=--gtest_print_time=1
 
 # test_svg passes but was not gated. Safe on Linux: it only deps :valdi_svg and
 # //snap_drawing:test_utils, so it avoids the runtime link that keeps test_runtime macOS-only
-# (see the block below). //valdi:test and //valdi:test_integration are deliberately absent: they
-# abort on a pre-existing assertion in JavaScriptRuntime.cpp ("The main thread must never dispatch
-# synchronously into a worker runtime") that reproduces on clean master.
+# (see the block below). The full //valdi:test (incl. test_integration) runs on both platforms
+# at the bottom of this script; the old "main thread dispatch" abort is gone (its trigger,
+# canLockAllJSContexts, is DISABLED, so the suite runs green).
 bzl test //valdi:test_svg --test_output=errors
 
 # The hot-reload smoke runs as its own parallel job on external GitHub Actions
@@ -44,8 +44,6 @@ if [[ $(uname) != Linux ]] ; then
     # macOS-only: on Linux `bzl test` trips a pre-existing static-destructor segfault in
     # gtest's XML writer when linked against valdi_standalone_runtime (all tests pass; only
     # teardown crashes under bzl test). Internal CI works around it by running the binary directly.
-    # //valdi:test_integration is intentionally NOT wired — separate pre-existing framework
-    # failures (RuntimeFixture async-dispatch assert, remote-component mock fixtures).
     bzl test //valdi:test_runtime --test_output=errors
 
     # The compiler's Swift unit suite runs as its own parallel job on external
@@ -57,5 +55,17 @@ if [[ $(uname) != Linux ]] ; then
         ./tools/ci/compiler_tests.sh
     fi
 fi
+
+# Full Valdi C++ suite: test_integration + runtime + snap_drawing + svg + hermes libs, run as one
+# binary across all engines (QuickJS/QuickJSWithTSN/JSCore/Hermes) — ~1866 tests. This is the whole
+# //valdi:test target the internal suite runs, now gated externally too. The old "main thread must
+# never dispatch synchronously into a worker runtime" abort no longer fires (its only trigger,
+# canLockAllJSContexts, is DISABLED), so the suite is green on macOS.
+#
+# Raise the console stdout/stderr cap: //valdi:test is a single binary and its whole-suite output
+# (~1.1MB) exceeds bazel's 1MB default (--experimental_ui_max_stdouterr_bytes), so on failure bazel
+# SKIPS the output entirely and the failing test is invisible in CI logs. Bump to 32MB so failures
+# actually surface.
+bzl test //valdi:test --test_output=errors --experimental_ui_max_stdouterr_bytes=33554432
 
 )

@@ -13,7 +13,7 @@ Valdi uses Bazel as its build system. Bazel provides reproducible, incremental b
 bazel build //...
 
 # Build specific target
-bazel build //apps/helloworld:helloworld
+bazel build //apps/helloworld:hello_world
 
 # Run tests
 bazel test //...
@@ -103,10 +103,6 @@ valdi install ios
 
 # Build and install Android app
 valdi install android
-
-# Or use bazel directly with configs
-bazel build //apps/helloworld:hello_world --config=ios
-bazel build //apps/helloworld:hello_world --config=android
 ```
 
 ## Configuration
@@ -137,5 +133,5 @@ bazel coverage //...
 ## More Information
 
 - Bazel docs: https://bazel.build
-- Valdi build rules: `/bzl/valdi/README.md`
+- Valdi build rules: `bzl/valdi/npm/README.md`
 - Framework docs: `/AGENTS.md`

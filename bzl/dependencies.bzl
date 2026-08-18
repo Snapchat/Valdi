@@ -24,10 +24,10 @@ def setup_dependencies(workspace_root = None):
 
     http_archive(
         name = "toolchains_llvm",
-        canonical_id = "v1.3.0",
-        sha256 = "d3c255b2ceec9eaebb6b5a44c904a48429b8dcb71e630de2f103e7b4aab9f073",
-        strip_prefix = "toolchains_llvm-v1.3.0",
-        url = "https://github.com/bazel-contrib/toolchains_llvm/releases/download/v1.3.0/toolchains_llvm-v1.3.0.tar.gz",
+        canonical_id = "v1.7.0",
+        sha256 = "85c341e957ba58482892a8088e4a34391d15bd98917f0993ecb62f008d6986d6",
+        strip_prefix = "toolchains_llvm-v1.7.0",
+        url = "https://github.com/bazel-contrib/toolchains_llvm/releases/download/v1.7.0/toolchains_llvm-v1.7.0.tar.gz",
     )
 
     http_archive(
@@ -79,9 +79,8 @@ def setup_dependencies(workspace_root = None):
 
     http_archive(
         name = "rules_kotlin",
-        url = "https://github.com/bazelbuild/rules_kotlin/releases/download/v1.9.0/rules_kotlin-v1.9.0.tar.gz",
-        sha256 = "5766f1e599acf551aa56f49dab9ab9108269b03c557496c54acaf41f98e2b8d6",
-        patches = ["@valdi//registry/modules/rules_kotlin/1.9.0/patches:rules_kotlin.patch"],
+        url = "https://github.com/bazel-contrib/rules_kotlin/releases/download/v2.3.10/rules_kotlin-v2.3.10.tar.gz",
+        sha256 = "c8fda2b1518018f26d7ca914cd9adb0e9f1799d0db7c4b510de67ed500060dae",
     )
 
     http_archive(

@@ -133,12 +133,9 @@ valdi hotreload
 ```
 
 Run from your module directory. The CLI watches for file changes, recompiles, and
-pushes the updated module to a connected simulator or device over USB (or network
-with `--network`).
-
-```bash
-valdi hotreload --network   # Discover device over Wi-Fi instead of USB
-```
+pushes the updated module to a connected simulator or device. It takes optional
+`--module` and `--target` flags to disambiguate when the module or app target
+can't be inferred.
 
 If hot reload stops reflecting changes, stop with `Ctrl+C` and restart — the CLI
 will clean stale build artifacts automatically.

@@ -109,6 +109,11 @@ export function getDisplayScale(): number {
   return DPR;
 }
 
+export function getDynamicTypeScale(): number {
+  // Web has no Valdi dynamic-type scaling; treat as unscaled.
+  return 1;
+}
+
 export function getWindowWidth(): number {
   if (!isBrowser) return 0;
   return Math.max(0, Math.floor(window.innerWidth));

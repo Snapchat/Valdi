@@ -15,6 +15,16 @@ constexpr auto kMinAllowedLogLevel = []() constexpr {
         return LogLevel::None;
     }
 
+    // The on-device Specs lens keeps logging compiled in (see sc_build_flag_logging), but
+    // only from Info up: noisier levels stay out to bound log volume and the binary size cost
+    // of retained format strings. Dev builds keep everything.
+    if constexpr (isSnapOsNdk()) {
+        if constexpr (isSystemDebug()) {
+            return LogLevel::Verbose;
+        }
+        return LogLevel::Info;
+    }
+
     if constexpr (isWasm()) {
         if constexpr (kIsDevBuild) {
             // Verbose logs can be very noisy, let's try debug for now.

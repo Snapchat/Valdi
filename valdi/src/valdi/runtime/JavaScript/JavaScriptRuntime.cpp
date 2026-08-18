@@ -1827,8 +1827,7 @@ JSValueRef JavaScriptRuntime::runtimeMakeThemableAsset(JSFunctionNativeCallConte
     for (const auto& assetByColorPalette : *assetsByColorPaletteMap) {
         auto asset = AssetResolver::resolve(_resourceManager, assetByColorPalette.second);
         if (asset == nullptr) {
-            return callContext.throwError(
-                Error("Themable assets can only be created from URL or Valdi assets"));
+            return callContext.throwError(Error("Themable assets can only be created from URL or Valdi assets"));
         }
 
         assetsByColorPalette[assetByColorPalette.first] = asset;
@@ -2410,13 +2409,6 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
     auto jsValdiVersion = context.newNumber(static_cast<int32_t>(valdiVersion));
 
     context.setObjectProperty(runtimeObject.get(), "version", jsValdiVersion.get(), exceptionTracker);
-    if (!exceptionTracker) {
-        return;
-    }
-
-    auto jsApiVersion = context.newNumber(_resourceManager.getApiVersion());
-
-    context.setObjectProperty(runtimeObject.get(), "apiVersion", jsApiVersion.get(), exceptionTracker);
     if (!exceptionTracker) {
         return;
     }

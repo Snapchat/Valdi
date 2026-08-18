@@ -168,13 +168,13 @@ constexpr size_t kHasChildWithAccessibilityId = 26;
 constexpr size_t kCanAlwaysScrollHorizontal = 27;
 constexpr size_t kCanAlwaysScrollVertical = 28;
 constexpr size_t kAccessibilityTreeNeedsUpdate = 29;
-constexpr size_t kHasOveriddenColorPalette = 30;
-constexpr size_t kParentManagesChildFrames = 31;
-constexpr size_t kManagesChildFrames = 32;
-constexpr size_t kIsMeasuring = 33;
-constexpr size_t kManagedChildrenLayoutNeedsCommit = 34;
-constexpr size_t kTranslationXIsPercent = 35;
-constexpr size_t kTranslationYIsPercent = 36;
+constexpr size_t kParentManagesChildFrames = 30;
+constexpr size_t kManagesChildFrames = 31;
+constexpr size_t kIsMeasuring = 32;
+constexpr size_t kManagedChildrenLayoutNeedsCommit = 33;
+constexpr size_t kTranslationXIsPercent = 34;
+constexpr size_t kTranslationYIsPercent = 35;
+constexpr size_t kHasOveriddenColorPalette = 36;
 
 ViewNode::ViewNode(YGConfig* yogaConfig,
                    AttributeIds& attributeIds,
@@ -229,8 +229,8 @@ void ViewNode::setColorPaletteName(ViewTransactionScope& viewTransactionScope, c
         if (_viewNodeTree != nullptr) {
             const auto& viewManagerContext = _viewNodeTree->getViewManagerContext();
             if (viewManagerContext != nullptr) {
-                colorPalette =
-                    viewManagerContext->getAttributesManager().getColorPaletteManager()->getColorPalette(colorPaletteName);
+                colorPalette = viewManagerContext->getAttributesManager().getColorPaletteManager()->getColorPalette(
+                    colorPaletteName);
             }
         }
         setHasOveriddenColorPalette(true);

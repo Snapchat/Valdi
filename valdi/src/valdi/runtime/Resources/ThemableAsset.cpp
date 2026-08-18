@@ -56,8 +56,7 @@ void ThemableAsset::addLoadObserver(const std::shared_ptr<snap::valdi_core::Asse
     // No op. ThemableAsset should be resolved through withConfiguration before rendering.
 }
 
-void ThemableAsset::removeLoadObserver(
-    const std::shared_ptr<snap::valdi_core::AssetLoadObserver>& /*observer*/) {
+void ThemableAsset::removeLoadObserver(const std::shared_ptr<snap::valdi_core::AssetLoadObserver>& /*observer*/) {
     // No op. ThemableAsset should be resolved through withConfiguration before rendering.
 }
 

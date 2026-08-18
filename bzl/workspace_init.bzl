@@ -162,7 +162,7 @@ def valdi_initialize_workspace(target_platform = ""):
     rules_cc_dependencies()
     llvm_toolchain(
         name = "llvm_toolchain",
-        llvm_version = "16.0.0",
+        llvm_version = "19.1.7",
     )
 
     # Required for the objc_library targets. Roughly, the dependency chain is:

@@ -564,6 +564,7 @@ void registerDefaultProcessors(AttributesManager& attributesManager) {
     auto borderRadiusAttributeId = attributesManager.getAttributeIds().getIdForName("borderRadius");
     auto textGradientAttributeId = attributesManager.getAttributeIds().getIdForName("textGradient");
     auto maskImageAttributeId = attributesManager.getAttributeIds().getIdForName("maskImage");
+    auto fillGradientAttributeId = attributesManager.getAttributeIds().getIdForName("fillGradient");
 
     attributesManager.registerPreprocessor(borderAttributeId, &preprocessBorder);
     attributesManager.registerPreprocessor(boxShadowAttributeId, &preprocessBoxShadow);
@@ -572,6 +573,7 @@ void registerDefaultProcessors(AttributesManager& attributesManager) {
     attributesManager.registerPreprocessor(borderRadiusAttributeId, &preprocessBorderRadius);
     attributesManager.registerPreprocessor(textGradientAttributeId, &preprocessGradient);
     attributesManager.registerPreprocessor(maskImageAttributeId, &preprocessGradient);
+    attributesManager.registerPreprocessor(fillGradientAttributeId, &preprocessGradient);
 
     attributesManager.registerPostprocessor(borderAttributeId, &postprocessBorder);
     attributesManager.registerPostprocessor(boxShadowAttributeId, &postprocessBoxShadow);
@@ -580,6 +582,7 @@ void registerDefaultProcessors(AttributesManager& attributesManager) {
     attributesManager.registerPostprocessor(borderRadiusAttributeId, &postprocessBorderRadius);
     attributesManager.registerPostprocessor(textGradientAttributeId, &postprocessGradient);
     attributesManager.registerPostprocessor(maskImageAttributeId, &postprocessGradient);
+    attributesManager.registerPostprocessor(fillGradientAttributeId, &postprocessGradient);
 }
 
 } // namespace Valdi

@@ -1,0 +1,33 @@
+module(
+    name = "rules_kotlin",
+    version = "2.3.10",
+    compatibility_level = 1,
+    repo_name = "rules_kotlin",
+)
+
+bazel_dep(name = "platforms", version = "0.0.11")
+bazel_dep(name = "bazel_skylib", version = "1.7.1")
+bazel_dep(name = "rules_java", version = "8.9.0")
+bazel_dep(name = "rules_android", version = "0.7.1")
+bazel_dep(name = "bazel_features", version = "1.39.0")
+bazel_dep(name = "bazel_lib", version = "3.1.0")
+
+rules_java_toolchains = use_extension("@rules_java//java:extensions.bzl", "toolchains")
+use_repo(rules_java_toolchains, "remote_java_tools")
+
+rules_kotlin_extensions = use_extension(
+    "//src/main/starlark/core/repositories:bzlmod_setup.bzl",
+    "rules_kotlin_extensions",
+)
+use_repo(
+    rules_kotlin_extensions,
+    "com_github_google_ksp",
+    "com_github_jetbrains_kotlin",
+    "com_github_pinterest_ktlint",
+    "kotlinx_serialization_core_jvm",
+    "kotlinx_serialization_json",
+    "kotlinx_serialization_json_jvm",
+    "kotlin_build_tools_impl",
+)
+
+register_toolchains("//kotlin/internal:default_toolchain")

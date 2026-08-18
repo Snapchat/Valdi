@@ -92,12 +92,17 @@ abstract class AppBootstrapActivity: AppCompatActivity() {
 
     override fun onBackPressed() {
         val listener = this.valdiRootView?.onBackButtonListener
-        if (listener != null) {
-            listener.onBackButtonPressed()
-        } else {
-            navigationView?.pop(true) {
-                (it as? Disposable)?.dispose()
-            }
+        if (listener != null && listener.onBackButtonPressed()) {
+            return
+        }
+
+        val popped = navigationView?.pop(true) {
+            (it as? Disposable)?.dispose()
+        } ?: false
+
+        if (!popped) {
+            // Nothing handled the back press, let the platform close the activity
+            super.onBackPressed()
         }
     }
 }

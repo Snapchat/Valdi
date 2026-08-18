@@ -9,8 +9,11 @@
 
 #include "snap_drawing/cpp/Drawing/Paint.hpp"
 #include "snap_drawing/cpp/Layers/Layer.hpp"
+#include "snap_drawing/cpp/Utils/GradientWrapper.hpp"
 #include "snap_drawing/cpp/Utils/Path.hpp"
 #include "snap_drawing/cpp/Utils/PathInterpolator.hpp"
+
+#include <vector>
 
 namespace snap::drawing {
 
@@ -34,6 +37,12 @@ public:
     void setFillColor(Color fillColor);
     Color getFillColor() const;
 
+    void setFillLinearGradient(std::vector<Scalar>&& locations,
+                               std::vector<Color>&& colors,
+                               LinearGradientOrientation orientation);
+    void setFillRadialGradient(std::vector<Scalar>&& locations, std::vector<Color>&& colors);
+    void resetFillGradient();
+
     void setStrokeCap(PaintStrokeCap strokeCap);
     void setStrokeJoin(PaintStrokeJoin strokeJoin);
 
@@ -52,6 +61,7 @@ private:
     Path _path;
     Paint _strokePaint;
     Paint _fillPaint;
+    GradientWrapper _fillGradientWrapper;
     Scalar _strokeStart = 0.0f;
     Scalar _strokeEnd = 1.0f;
     std::optional<PathInterpolator> _pathInterpolator;

@@ -1,7 +1,6 @@
 --- a/toolchain/extensions/llvm.bzl
 +++ b/toolchain/extensions/llvm.bzl
-@@ -50,8 +50,8 @@
-
+@@ -52,7 +52,7 @@
  def _llvm_impl_(module_ctx):
      for mod in module_ctx.modules:
          if not mod.is_root:

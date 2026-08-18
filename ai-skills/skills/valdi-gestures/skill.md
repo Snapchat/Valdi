@@ -10,7 +10,7 @@ When handling user touch interactions beyond basic `onTap` — drag-to-reorder, 
 
 Valdi gesture handling is **attribute-based on `<view>` elements**. Each gesture type has three attributes:
 - `on<Gesture>` — the callback
-- `<gesture>Enabled` — boolean to enable/disable (default: true when callback is set)
+- `on<Gesture>Disabled` — boolean to disable the gesture (the gesture is enabled by default once a callback is set; there is no `<gesture>Enabled` attribute)
 - `on<Gesture>Predicate` — function returning boolean, controls whether the gesture should fire
 
 The topmost visible element with a matching gesture wins. Conflicting gestures on parent elements are suppressed.
@@ -60,7 +60,7 @@ private handleTap = (event: TouchEvent) => {
 // ✅ Long press with custom duration
 <view
   onLongPress={this.handleLongPress}
-  longPressDuration={500}  // milliseconds before trigger
+  longPressDuration={0.5}  // seconds before trigger
 >
   <label value="Hold me" />
 </view>
@@ -143,7 +143,7 @@ Inside a `<scroll>`, touches are delayed to avoid conflicts with scrolling:
 // ✅ Delay touch recognition inside scrollable content
 <view
   onTouch={this.handleTouch}
-  onTouchDelayDuration={150}  // ms before onTouch fires during scroll
+  onTouchDelayDuration={0.15}  // seconds before onTouch fires during scroll
 />
 ```
 

@@ -37,7 +37,7 @@ onCreate() {
 // ❌ WRONG — Raw promise with no lifecycle safety
 onCreate() {
   this.fetchData().then(data => {
-    this.setState({ data });  // Crashes if component is destroyed
+    this.setState({ data });  // Logs a console.error and no-ops if destroyed
   });
 }
 ```

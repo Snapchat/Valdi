@@ -20,8 +20,8 @@ remote-dependencies:
   version: 0.0.0
   url: https://github.com/bazelbuild/rules_android/archive/5e74650496dff30e97b8eee5a8b12968de3bdec3.zip
 - name: rules_kotlin
-  version: 1.9.0
-  url: https://github.com/bazelbuild/rules_kotlin/releases/download/v1.9.0/rules_kotlin-v1.9.0.tar.gz
+  version: 2.3.10
+  url: https://github.com/bazel-contrib/rules_kotlin/releases/download/v2.3.10/rules_kotlin-v2.3.10.tar.gz
 - name: rules_java
   version: 8.14.0
   url: https://github.com/bazelbuild/rules_java/releases/download/8.14.0/rules_java-8.14.0.tar.gz

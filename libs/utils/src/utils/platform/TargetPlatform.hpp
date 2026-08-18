@@ -9,6 +9,8 @@
  * SC_DESKTOP_LINUX for desktop/server linux
  * SC_DESKTOP_MACOS for desktop macos
  * SC_WASM for wasm
+ * SC_SNAPOS_NDK for the SnapOS NDK (Spectacles lens); these builds also target linux, so
+ *   SC_DESKTOP_LINUX is set too and they classify as desktop-linux
  */
 
 #if defined(__APPLE__)
@@ -91,6 +93,18 @@ constexpr bool isWasm() {
 
 constexpr bool isDesktop() {
     return isMacOs() || isDesktopLinux();
+}
+
+// True for the on-device Spectacles lens native library, built against the SnapOS NDK.
+// This is a narrower classification within isDesktop(): the SnapOS NDK targets linux, so
+// these builds also satisfy isDesktopLinux()/isDesktop(). Driven by the SC_SNAPOS_NDK build
+// define; kPlatform stays DesktopLinux so nothing that keys off isDesktopLinux() changes.
+constexpr bool isSnapOsNdk() {
+#if defined(SC_SNAPOS_NDK)
+    return true;
+#else
+    return false;
+#endif
 }
 
 // Based off of the C standard library definition of NDEBUG (not debug).

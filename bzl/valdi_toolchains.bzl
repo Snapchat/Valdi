@@ -62,6 +62,6 @@ _apple_cc_autoconf = repository_rule(
 def _valdi_toolchains_impl(_module_ctx):
     _apple_cc_autoconf_toolchains(name = "local_config_apple_cc_toolchains")
     _apple_cc_autoconf(name = "local_config_apple_cc")
-    llvm_toolchain(name = "llvm_toolchain", llvm_version = "16.0.0")
+    llvm_toolchain(name = "llvm_toolchain", llvm_version = "19.1.7")
 
 valdi_toolchains = module_extension(implementation = _valdi_toolchains_impl)

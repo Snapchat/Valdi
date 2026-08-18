@@ -8,6 +8,7 @@ import {
   getDisplayLeftInset,
   getDisplayRightInset,
   getDisplayScale,
+  getDynamicTypeScale as nativeGetDynamicTypeScale,
   getDisplayTopInset,
   getDisplayWidth,
   getLocaleUsesMetricSystem,
@@ -210,6 +211,16 @@ export namespace Device {
    */
   export function getDisplayScale(): number {
     return cacheDisplayScale.get();
+  }
+
+  /**
+   * The effective dynamic-type (font) scale for the current rendering context. 1.0 means no
+   * scaling. Android: the app-wide system font scale (scaledDensity / density). iOS: the current
+   * surface's eligibility-resolved scale (1.0 when the page isn't dynamic-type-eligible). Read
+   * fresh per call, since it depends on the current context and the system setting.
+   */
+  export function getDynamicTypeScale(): number {
+    return nativeGetDynamicTypeScale();
   }
 
   /**

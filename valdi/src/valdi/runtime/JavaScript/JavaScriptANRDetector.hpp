@@ -97,6 +97,7 @@ private:
     void checkForANRs();
     void cancelNextTick();
     void scheduleNextTick();
+    void rearmPendingSyns();
 
     bool onANR(JavaScriptTaskScheduler& taskScheduler,
                std::chrono::steady_clock::duration detectionThreshold,

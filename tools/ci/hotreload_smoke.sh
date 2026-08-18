@@ -28,6 +28,14 @@ BUILD_FLAGS="${HOTRELOAD_BUILD_FLAGS:-}"
 
 log() { echo "[hotreload-smoke] $*"; }
 
+# macOS only. The reloader only reaches a ready state on macOS; on Linux the
+# standalone runtime hard-disables it (see header), so it never signals ready
+# and the wait below always times out. Skip rather than fail there.
+if [ "$(uname -s)" != "Darwin" ]; then
+  log "SKIP: hotreload smoke is macOS-only (Linux standalone runtime disables the reloader)."
+  exit 0
+fi
+
 if ! command -v watchman >/dev/null 2>&1; then
   log "FAILED: watchman not on PATH (required by the compiler's file watcher)"
   exit 1
@@ -49,8 +57,16 @@ else
 fi
 
 log "Building $TARGET"
+# run_hotreloader.sh execs the compiler (and its companion/toolbox) by their
+# bazel-out paths, but those are inputs to the script-generating action, not
+# outputs of this target. Under the runners' default --remote_download_minimal a
+# cache-hit compiler stays remote and the script dies with "No such file"
+# (surfaces on any compiler-source change, which re-keys the action). Force all
+# build outputs local so the referenced binaries are materialized.
+# Placed after $BUILD_FLAGS so this download setting wins if a caller's flags
+# also set --remote_download_* (Bazel takes the last value).
 # shellcheck disable=SC2086
-"$BAZEL" build $BUILD_FLAGS "$TARGET" || { log "FAILED: could not build $TARGET"; exit 1; }
+"$BAZEL" build $BUILD_FLAGS --remote_download_outputs=all "$TARGET" || { log "FAILED: could not build $TARGET"; exit 1; }
 
 # shellcheck disable=SC2086
 SCRIPT="$("$BAZEL" cquery --output=files $BUILD_FLAGS "$TARGET" 2>/dev/null | head -n1)"

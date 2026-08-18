@@ -59,7 +59,7 @@ valdi_module(
         "//src/valdi_modules/src/valdi/valdi_core",
         "//src/valdi_modules/src/valdi/valdi_tsx",
         "//src/valdi_modules/src/valdi/valdi_test",
-        "//src/valdi_modules/src/valdi/foundation/test/util",
+        "//src/valdi_modules/src/valdi/foundation",
     ],
 )
 ```

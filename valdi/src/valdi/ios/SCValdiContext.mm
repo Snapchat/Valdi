@@ -35,6 +35,7 @@
 #import "valdi/ios/SCValdiViewNode+CPP.h"
 #import "valdi/ios/Utils/ContextUtils.h"
 
+#import <atomic>
 #import <limits>
 
 @interface SCValdiContext ()
@@ -59,6 +60,8 @@
     NSString *_componentPath;
 
     UITraitCollection *_traitCollection;
+    // Atomic: written on the main thread (setTraitCollection:), read on the JS thread by the bridge.
+    std::atomic<double> _dynamicTypeScale;
 }
 
 @synthesize gestureListener;
@@ -78,6 +81,7 @@ static Valdi::SharedRuntime getRuntimeFromContext(const Valdi::SharedContext &co
 
     if (self) {
         _context = std::move(context);
+        _dynamicTypeScale.store(1.0, std::memory_order_relaxed);
 
         if (enableReferenceTracking) {
             auto strongRefTable = Valdi::makeShared<Valdi::IOS::ObjCStrongReferenceTable>();
@@ -344,12 +348,22 @@ static Valdi::LayoutDirection SCValdiLayoutDirectionToCpp(SCValdiLayoutDirection
     return _traitCollection;
 }
 
+- (CGFloat)dynamicTypeScale
+{
+    return _dynamicTypeScale.load(std::memory_order_relaxed);
+}
+
 - (void)setTraitCollection:(UITraitCollection *)traitCollection
 {
     UITraitCollection *prevTraitCollection = _traitCollection;
     UITraitCollection *nextTraitCollection = traitCollection;
 
     _traitCollection = traitCollection;
+
+    UIFontMetrics *bodyMetrics = [UIFontMetrics metricsForTextStyle:UIFontTextStyleBody];
+    _dynamicTypeScale.store(
+        traitCollection != nil ? [bodyMetrics scaledValueForValue:1.0 compatibleWithTraitCollection:traitCollection] : 1.0,
+        std::memory_order_relaxed);
 
     bool changedContentSizeCategory = [prevTraitCollection preferredContentSizeCategory] != [nextTraitCollection preferredContentSizeCategory];
     bool changedLegibilityWeight = NO;

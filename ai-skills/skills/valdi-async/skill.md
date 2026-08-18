@@ -1,8 +1,9 @@
 # Valdi Async & Lifecycle Safety
 
 Async operations that complete after a component is destroyed will call `setState()`
-on a dead component — the framework throws an error. The fix is always to cancel or
-guard before the callback fires.
+on a dead component — Valdi logs a `console.error` and drops the update (a silent
+no-op, not a thrown error). The fix is always to cancel or guard before the callback
+fires.
 
 ## HTTPClient: Store, Cancel, Repeat
 

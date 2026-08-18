@@ -29,9 +29,11 @@ Hermes debug socket not found on port 13595.
 The app must be **running on a connected device or emulator**, and the **hot-reloader must be running from the project directory**:
 
 ```
-valdi hotreload android
-valdi hotreload ios
+valdi hotreload
 ```
+
+`hotreload` auto-resolves the app target for the running platform (it prompts if
+several exist); pass `--target` to pick one explicitly.
 
 The hot-reloader creates the `port 13595` tunnel to the Hermes debug server (which starts on a random port inside the app). Without it, port 13595 is not reachable.
 
@@ -72,7 +74,7 @@ The `.cpuprofile` file is standard Chrome DevTools CPU profile format.
 
 ### "Profile a slow render"
 
-1. Start the app and run `valdi hotreload android` (or `ios`)
+1. Start the app and run `valdi hotreload`
 2. Navigate to the screen in the app
 3. Run: `valdi profile capture --duration 5`
 4. Trigger the slow interaction during the 5-second window

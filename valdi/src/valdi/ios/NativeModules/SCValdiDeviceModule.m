@@ -11,6 +11,7 @@
 
 #import "valdi_core/SCValdiLogger.h"
 #import "valdi_core/SCValdiRootView.h"
+#import "valdi/ios/SCValdiContext.h"
 
 #import <UIKit/UIKit.h>
 #import <libkern/OSAtomic.h>
@@ -344,6 +345,12 @@
     SCValdiMarshallerPushDouble(marshaller, _displayScale);
 }
 
+- (void)dynamicTypeScale:(SCValdiMarshaller *)marshaller
+{
+    SCValdiContext *context = [SCValdiContext currentContext];
+    SCValdiMarshallerPushDouble(marshaller, context != nil ? context.dynamicTypeScale : 1.0);
+}
+
 - (void)displayLeftInset:(SCValdiMarshaller *)marshaller
 {
     SCValdiMarshallerPushDouble(marshaller, _insets.left);
@@ -426,6 +433,7 @@
         @"getDisplayWidth" : BRIDGE_METHOD(displayWidth),
         @"getDisplayHeight" : BRIDGE_METHOD(displayHeight),
         @"getDisplayScale" : BRIDGE_METHOD(displayScale),
+        @"getDynamicTypeScale" : BRIDGE_METHOD(dynamicTypeScale),
         @"getWindowWidth" : BRIDGE_METHOD(displayWidth),
         @"getWindowHeight" : BRIDGE_METHOD(displayHeight),
         @"getDisplayLeftInset" : BRIDGE_METHOD(displayLeftInset),

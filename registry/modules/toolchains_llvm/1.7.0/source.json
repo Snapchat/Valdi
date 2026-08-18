@@ -1,0 +1,9 @@
+{
+    "integrity": "sha256-hcNB6Ve6WEgokqgIjko0OR0VvZiRfwmT7LYvAI1phtY=",
+    "strip_prefix": "toolchains_llvm-v1.7.0",
+    "url": "https://github.com/bazel-contrib/toolchains_llvm/releases/download/v1.7.0/toolchains_llvm-v1.7.0.tar.gz",
+    "patches": {
+        "toolchains_llvm.patch": "sha256-F5V78io+t8mpFxkMHXnxv88AE5iNhZAlryGOjnsfrtQ="
+    },
+    "patch_strip": 1
+}

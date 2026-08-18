@@ -34,6 +34,36 @@ static Value makeGradientValueImpl(const ColorsT& colors,
     return Value(ValueArray::make({Value(outColors), Value(outLocations), Value(angle), Value(radial)}));
 }
 
+static Value makeGradientValue(std::initializer_list<StringBox> colors,
+                               std::initializer_list<double> locations,
+                               int32_t angle,
+                               bool radial) {
+    return makeGradientValueImpl(colors, locations, angle, radial);
+}
+
+static Value makeGradientValue(std::initializer_list<int64_t> colors,
+                               std::initializer_list<double> locations,
+                               int32_t angle,
+                               bool radial) {
+    return makeGradientValueImpl(colors, locations, angle, radial);
+}
+
+static Value makeGradientValue(std::initializer_list<Value> colors,
+                               std::initializer_list<double> locations,
+                               int32_t angle,
+                               bool radial) {
+    return makeGradientValueImpl(colors, locations, angle, radial);
+}
+
+static Ref<ColorPalette> makeTestColorPalette() {
+    auto colorPalette = makeShared<ColorPalette>(STRING_LITERAL("default"));
+    colorPalette->updateColors({
+        {STRING_LITERAL("primary"), Color(0x11223344)},
+        {STRING_LITERAL("secondary"), Color(0x55667788)},
+    });
+    return colorPalette;
+}
+
 static Value makeTransformValue(const Value& translationX,
                                 const Value& translationY,
                                 const Value& scaleX,
@@ -74,29 +104,6 @@ static void expectTransformValues(
     EXPECT_NEAR((*values)[2].toDouble(), scaleX, 0.00001);
     EXPECT_NEAR((*values)[3].toDouble(), scaleY, 0.00001);
     EXPECT_NEAR((*values)[4].toDouble(), rotation, 0.00001);
-}
-
-static Value makeGradientValue(std::initializer_list<StringBox> colors,
-                               std::initializer_list<double> locations,
-                               int32_t angle,
-                               bool radial) {
-    return makeGradientValueImpl(colors, locations, angle, radial);
-}
-
-static Value makeGradientValue(std::initializer_list<int64_t> colors,
-                               std::initializer_list<double> locations,
-                               int32_t angle,
-                               bool radial) {
-    return makeGradientValueImpl(colors, locations, angle, radial);
-}
-
-static Ref<ColorPalette> makeTestColorPalette() {
-    auto colorPalette = makeShared<ColorPalette>(STRING_LITERAL("default"));
-    colorPalette->updateColors({
-        {STRING_LITERAL("primary"), Color(0x11223344)},
-        {STRING_LITERAL("secondary"), Color(0x55667788)},
-    });
-    return colorPalette;
 }
 
 TEST(AttributeProcessor, boxShadowNoneClearsShadow) {
@@ -181,6 +188,31 @@ TEST(AttributeProcessor, canParseLinearGradientWithLocations) {
     ASSERT_TRUE(postprocessed) << postprocessed.description();
     ASSERT_EQ(makeGradientValue({0x0000FFFF, 0xFFFFFFFF, 0xFF0000FF}, {0.0, 0.25, 0.75}, 0, false),
               postprocessed.value());
+}
+
+TEST(AttributeProcessor, canParseLinearGradientWithTransparentRgbaStop) {
+    auto colorPalette = makeTestColorPalette();
+
+    auto result = preprocessGradient(Value(STRING_LITERAL("linear-gradient(red 0, rgba(0,0,0,0) 1)")));
+
+    ASSERT_TRUE(result.success()) << result.description();
+
+    ASSERT_EQ(makeGradientValue(
+                  {
+                      Value(STRING_LITERAL("red")),
+                      Value(static_cast<int64_t>(0x00000000)),
+                  },
+                  {
+                      0.0,
+                      1.0,
+                  },
+                  0,
+                  false),
+              result.value());
+
+    auto postprocessed = postprocessGradient(false, *colorPalette, result.value());
+    ASSERT_TRUE(postprocessed) << postprocessed.description();
+    ASSERT_EQ(makeGradientValue({0xFF0000FF, 0x00000000}, {0.0, 1.0}, 0, false), postprocessed.value());
 }
 
 TEST(AttributeProcessor, failsWhenLinearGradientWithLocationsIsNotBalanced) {
@@ -401,6 +433,21 @@ TEST(AttributeProcessor, flipsHorizontalBordersOnRTL) {
     ASSERT_EQ(borderRadius->getBottomRight(), rtlBorderRadius->getBottomLeft());
 }
 
+TEST(AttributeProcessor, postprocessGradientResolvesColors) {
+    auto colorPalette = makeTestColorPalette();
+
+    auto result = preprocessGradient(Value(STRING_LITERAL("linear-gradient(45deg, primary, secondary)")));
+    ASSERT_TRUE(result.success()) << result.description();
+
+    ASSERT_EQ(makeGradientValue({STRING_LITERAL("primary"), STRING_LITERAL("secondary")}, {}, 1, false),
+              result.value());
+
+    auto postprocessed = postprocessGradient(false, *colorPalette, result.value());
+    ASSERT_TRUE(postprocessed.success()) << postprocessed.description();
+
+    ASSERT_EQ(makeGradientValue({0x11223344, 0x55667788}, {}, 1, false), postprocessed.value());
+}
+
 TEST(AttributeProcessor, transformAttributesPostprocessKeepsCenterOriginTransforms) {
     auto result = TransformAttributes::postprocess(100, 80, false, makeTransformValue(10, 20, 2, 3, 0.5));
     ASSERT_TRUE(result.success()) << result.description();
@@ -542,21 +589,6 @@ TEST(AttributeProcessor, transformAttributesPostprocessRejectsInvalidOrigins) {
     result = TransformAttributes::postprocess(
         100, 100, false, makeTransformValue(0, 0, 1, 1, 0, Value(STRING_LITERAL("10 20"))));
     ASSERT_FALSE(result.success()) << result.description();
-}
-
-TEST(AttributeProcessor, postprocessGradientResolvesColors) {
-    auto colorPalette = makeTestColorPalette();
-
-    auto result = preprocessGradient(Value(STRING_LITERAL("linear-gradient(45deg, primary, secondary)")));
-    ASSERT_TRUE(result.success()) << result.description();
-
-    ASSERT_EQ(makeGradientValue({STRING_LITERAL("primary"), STRING_LITERAL("secondary")}, {}, 1, false),
-              result.value());
-
-    auto postprocessed = postprocessGradient(false, *colorPalette, result.value());
-    ASSERT_TRUE(postprocessed.success()) << postprocessed.description();
-
-    ASSERT_EQ(makeGradientValue({0x11223344, 0x55667788}, {}, 1, false), postprocessed.value());
 }
 
 } // namespace ValdiTest

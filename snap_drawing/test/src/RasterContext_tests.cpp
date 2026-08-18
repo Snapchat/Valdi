@@ -9,6 +9,7 @@
 #include "snap_drawing/cpp/Layers/ExternalLayer.hpp"
 #include "snap_drawing/cpp/Layers/Interfaces/ILayerRoot.hpp"
 #include "snap_drawing/cpp/Layers/Layer.hpp"
+#include "snap_drawing/cpp/Layers/ShapeLayer.hpp"
 #include "snap_drawing/cpp/Utils/Bitmap.hpp"
 #include "valdi_core/cpp/Interfaces/IBitmapFactory.hpp"
 #include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
@@ -173,6 +174,25 @@ TEST_F(RasterContextTests, canRasterSimpleScene) {
               }));
 
     ASSERT_EQ(0, _bitmapFactory->createdBitmapCount);
+}
+
+TEST_F(RasterContextTests, shapeFillGradientUsesLayerBoundsWhenPathIsSmaller) {
+    _contentLayer->setFrame(Rect::makeXYWH(0, 0, 4, 4));
+
+    auto shapeLayer = makeLayer<ShapeLayer>(_resources);
+    shapeLayer->setFrame(Rect::makeXYWH(0, 0, 4, 4));
+
+    Path path;
+    path.addRect(Rect::makeXYWH(0, 0, 4, 2), true);
+    shapeLayer->setPath(std::move(path));
+    shapeLayer->setFillLinearGradient({0.0f, 1.0f}, {Color::red(), Color::blue()}, LinearGradientOrientationTopBottom);
+    _contentLayer->addChild(shapeLayer);
+
+    auto result = raster();
+    ASSERT_TRUE(result) << result.description();
+
+    auto pixel = result.value()->getPixel(1, 1);
+    ASSERT_GT(pixel.getRed(), pixel.getBlue());
 }
 
 TEST_F(RasterContextTests, scalesSceneToBitmap) {

@@ -171,17 +171,47 @@ cc_library(
     ],
 )
 
+SWIFT_CXX_INTEROP_COPTS = [
+    "-cxx-interoperability-mode=default",
+    "-Xcc",
+    "-std=c++20",
+]
+
+# C++/Swift interop can't precompile the swiftxx clang module under explicit modules (no libc++ `std`
+# module in system_sdks); build these targets' C modules implicitly so libc++ resolves.
+SWIFT_CXX_INTEROP_FEATURES = [
+    "-swift.use_c_modules",
+    "-swift.emit_c_module",
+]
+
 swift_library(
     name = "djinni_support_lib_swift",
-    srcs = glob(["src/djinni/swift/*.swift"]),
-    copts = [
-        "-cxx-interoperability-mode=default",
-        "-Xcc",
-        "-std=c++20",
-    ],
+    # ProtobufMarshaller lives in :djinni_support_lib_swift_protobuf so the core support lib doesn't
+    # force a SwiftProtobuf copy into every app link (iOS apps carry their own).
+    srcs = glob(
+        ["src/djinni/swift/*.swift"],
+        exclude = ["src/djinni/swift/DJProtobuf.swift"],
+    ),
+    copts = SWIFT_CXX_INTEROP_COPTS,
+    features = SWIFT_CXX_INTEROP_FEATURES,
     module_name = "DjinniSupport",
     visibility = ["//visibility:public"],
     deps = [
+        ":djinni_support_lib_swiftxx",
+    ],
+)
+
+# Optional protobuf marshalling support (`ProtobufMarshaller`). Modules whose IDL uses protobuf types
+# add this dep (and `import DjinniSupportProtobuf`) explicitly.
+swift_library(
+    name = "djinni_support_lib_swift_protobuf",
+    srcs = ["src/djinni/swift/DJProtobuf.swift"],
+    copts = SWIFT_CXX_INTEROP_COPTS,
+    features = SWIFT_CXX_INTEROP_FEATURES,
+    module_name = "DjinniSupportProtobuf",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":djinni_support_lib_swift",
         ":djinni_support_lib_swiftxx",
         "@swift_protobuf//:SwiftProtobuf",
     ],
@@ -192,7 +222,11 @@ cc_library(
     srcs = glob(["src/djinni/swiftxx/*.cpp"]),
     hdrs = glob(["src/djinni/swiftxx/*.hpp"]),
     aspect_hints = [":djinni_support_lib_swift_interop"],
+    features = SWIFT_CXX_INTEROP_FEATURES,
     includes = ["swiftxx"],
+    # :djinni_support_lib links the ObjC backend on Apple platforms, which owns the DataRef
+    # constructors; the Swift backend must not define them too (see Data_swift.cpp).
+    local_defines = ["DJINNI_DISABLE_SWIFT_DATAREF_CTORS=1"],
     visibility = ["//visibility:public"],
     deps = [":djinni_support_lib"],
 )
