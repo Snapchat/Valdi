@@ -43,7 +43,10 @@ describe('ModuleLoader.preloadBatch', () => {
       false,
     );
     originalScheduleWorkItem = runtime.scheduleWorkItem;
-    runtime.scheduleWorkItem = (cb: () => void) => {
+    runtime.scheduleWorkItem = (cb: () => void, delayMs?: number, interruptible?: boolean) => {
+      if (!interruptible) {
+        return originalScheduleWorkItem(cb, delayMs, interruptible);
+      }
       scheduled.push(cb);
       return scheduled.length;
     };

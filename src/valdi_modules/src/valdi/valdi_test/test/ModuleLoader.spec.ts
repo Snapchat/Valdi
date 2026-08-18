@@ -454,4 +454,18 @@ describe('ModuleLoader', () => {
     expect(sourceMapCalls).toEqual(['module_a/src/FileA', 'module_a/src/FileB', 'module_a/src/FileC']);
     expect(sourceMapContentCalls).toEqual(['hello', 'world']);
   });
+
+  it('propagates import failures while resolving SourceMap', () => {
+    const loader = new ModuleLoader(
+      makeEvaluator(path => {
+        throw new Error(`Could not import ${path}`);
+      }),
+      undefined,
+      undefined,
+    );
+
+    expect(() => loader.getOrCreateSourceMap('module_a/src/FileA', () => undefined)).toThrowError(
+      'Could not import module_a/src/FileA',
+    );
+  });
 });

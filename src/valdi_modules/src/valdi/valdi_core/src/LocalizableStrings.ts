@@ -6,10 +6,10 @@ import {
   GetCurrentLocalesFn,
   InlineUnparsedLocalizableStringResolver,
 } from './localization/InlineUnparsedLocalizableStringResolver';
-import { ValdiRuntime } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { getCurrentLocales } from './localization/LocaleResolver';
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
 
 export function overrideLocales(exports: any, getCurrentLocales: GetCurrentLocalesFn): void {
   const module = LocalizableStringsModule.fromExports(exports);

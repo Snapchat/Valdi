@@ -51,6 +51,7 @@ def valdi_module(
         res = [],
         protodecl_srcs = [],
         deps = [],
+        test_deps = [],
         strings_dir = None,
         disable_annotation_processing = False,
         async_strict_mode = False,
@@ -83,10 +84,13 @@ def valdi_module(
         macos_deps = [],
         web_deps = [],
         web_register_native_module_id_overrides = None,
+        web_workers = [],
         exclude_patterns = None,
         exclude_globs = None,
         # DEPRECATED: module_yaml is no longer used for builds and will be deleted in the future.
         module_yaml = None,
+        # Keep new optional arguments at the end to preserve existing positional call sites.
+        web_no_inline_images = False,
         **kwargs):
     """ A convenient macro to wrap valdi_compiled rule. Use this macro instead of direct valdi_compiled rule invocation.
 
@@ -114,6 +118,7 @@ def valdi_module(
         res: The resource files for the valdi module.
         protodecl_srcs: The proto declaration source files.
         deps: The dependencies of the valdi module.
+        test_deps: Dependencies required by the module's tests.
         strings_dir: The directory containing the strings files.
         disable_annotation_processing: Flag to disable annotation processing.
         async_strict_mode: When true, raise exceptions for sync calls made by native code.
@@ -134,6 +139,8 @@ def valdi_module(
         ios_language: The language of the iOS target: "objc", "swift" or "objc, swift".
         native_deps: C++ deps for the module's _desktop native target (SnapDrawing path; macOS and Linux).
         macos_deps: Obj-C/C++ deps for the module's _desktop native target on macOS only (e.g. NSOpenPanel). Ignored on Linux.
+        web_workers: Browser worker entry module paths.
+        web_no_inline_images: Whether web bundlers should emit module images as separate assets.
         exclude_patterns: file patterns to exclude from the module
         exclude_globs: glob patterns to exclude from the module
         **kwargs: Additional keyword arguments.
@@ -163,9 +170,13 @@ def valdi_module(
         android_output_target = android_output_target,
         android_export_strings = android_export_strings,
         module = name,
-        deps = [_valdi_compiled_target_for_target(dep) for dep in deps],
+        # Keep test dependencies in the compiled module graph so valdi_test can
+        # collect their .valdimodule outputs.
+        deps = [_valdi_compiled_target_for_target(dep) for dep in deps + test_deps],
         web_deps = web_deps,
         web_register_native_module_id_overrides = web_register_native_module_id_overrides or {},
+        web_workers = web_workers,
+        web_no_inline_images = web_no_inline_images,
         srcs = srcs,
         res = res,
         protodecl_srcs = protodecl_srcs,
@@ -234,7 +245,7 @@ def valdi_module(
     _setup_cpp_target(name, all_valdi_module_deps, compiled_module_target, visibility, single_file_codegen)
 
     #### 6. Setup Web target
-    _setup_web_target(name, all_valdi_module_deps, compiled_module_target, visibility, compilation_mode, web_deps)
+    _setup_web_target(name, all_valdi_module_deps, compiled_module_target, res, visibility, web_deps)
 
     ### 7. Setup the native targets named {name}_native
     _setup_native_target(name, all_valdi_module_deps, native_deps, macos_deps, compiled_module_target, visibility)
@@ -832,70 +843,41 @@ def _setup_ios_target(name, module_deps, ios_deps, compiled_module_target, ios_m
         visibility = visibility,
     )
 
-def _setup_web_target(name, deps, compiled_module_target, visibility, compilation_mode, web_deps):
-    is_release = compilation_mode == "release"
-
-    # All transitive dependencies for a monolithic npm
+def _setup_web_target(name, deps, compiled_module_target, res, visibility, web_deps):
+    # All transitive dependencies for a monolithic npm package. Web only supports release output.
     extract_transitive_valdi_module_output(
-        name = "web.debug.srcs.all",
+        name = "web.srcs.all",
         modules = [compiled_module_target],
-        output_name = "web_debug_sources",
+        output_name = "web_sources",
         visibility = visibility,
     )
 
+    web_srcs_all = [":web.srcs.all"]
+
     extract_transitive_valdi_module_output(
-        name = "web.release.srcs.all",
+        name = "web.resource_files.all",
         modules = [compiled_module_target],
-        output_name = "web_release_sources",
+        output_name = "web_resource_files",
         visibility = visibility,
     )
 
-    web_srcs_all = _valdi_source_set_select(
-        debug = [":web.debug.srcs.all"],
-        release = [":web.release.srcs.all"],
-        is_release_output_target = is_release,
-    )
-
-    # All transitive dependencies for a monolithic npm
-    extract_transitive_valdi_module_output(
-        name = "web.debug.resource_files.all",
-        modules = [compiled_module_target],
-        output_name = "web_debug_resource_files",
-        visibility = visibility,
-    )
-
-    extract_transitive_valdi_module_output(
-        name = "web.release.resource_files.all",
-        modules = [compiled_module_target],
-        output_name = "web_release_resource_files",
-        visibility = visibility,
-    )
-
-    web_resource_files_all = _valdi_source_set_select(
-        debug = [":web.debug.resource_files.all"],
-        release = [":web.release.resource_files.all"],
-        is_release_output_target = is_release,
-    )
+    web_resource_files_all = [":web.resource_files.all"]
 
     # All transitive strings for a monolithic npm
     extract_transitive_valdi_module_output(
-        name = "web.debug.strings.all",
+        name = "web.strings.all",
         modules = [compiled_module_target],
-        output_name = "web_debug_strings",
+        output_name = "web_strings",
         visibility = visibility,
     )
+
+    web_strings_all = [":web.strings.all"]
 
     extract_transitive_valdi_module_output(
-        name = "web.release.strings.all",
+        name = "web.module_file_entries.all",
         modules = [compiled_module_target],
-        output_name = "web_release_strings",
+        output_name = "web_module_file_entries",
         visibility = visibility,
-    )
-
-    web_strings_all = _valdi_source_set_select(
-        debug = [":web.debug.strings.all"],
-        release = [":web.release.strings.all"],
-        is_release_output_target = is_release,
     )
 
     # All transitive protodecl for a monolithic npm
@@ -914,11 +896,19 @@ def _setup_web_target(name, deps, compiled_module_target, visibility, compilatio
         visibility = visibility,
     )
 
-    # All TypeScript declaration files
+    # All input TypeScript declaration files
     extract_transitive_valdi_module_output(
-        name = "web.dts.all",
+        name = "web.dts.input.all",
         modules = [compiled_module_target],
-        output_name = "web_dts_files",
+        output_name = "web_input_dts_files",
+        visibility = visibility,
+    )
+
+    # All compiler-generated TypeScript declaration files
+    extract_transitive_valdi_module_output(
+        name = "web.dts.output.all",
+        modules = [compiled_module_target],
+        output_name = "web_output_dts_files",
         visibility = visibility,
     )
 
@@ -936,7 +926,7 @@ def _setup_web_target(name, deps, compiled_module_target, visibility, compilatio
 
     native.filegroup(
         name = "{}_web_srcs_filegroup".format(name),
-        srcs = web_srcs_all + web_resource_files_all + web_strings_all + [":web.protodecl.all", ":web.deps.all", ":web.dts.all"],
+        srcs = web_srcs_all + web_resource_files_all + res + web_strings_all + [":web.module_file_entries.all", ":web.protodecl.all", ":web.deps.all", ":web.dts.input.all", ":web.dts.output.all"],
         visibility = visibility,
     )
 

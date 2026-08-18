@@ -168,6 +168,8 @@ function getImageElement(element: HTMLElement, context: AttributeApplierContext)
   }
   const imageElement = new ImageElement(
     element,
+    context.id,
+    context.getAssetTracker(),
     callback => context.enqueuePostLayoutCallback(callback),
     () => context.requestLayoutPass(),
   );

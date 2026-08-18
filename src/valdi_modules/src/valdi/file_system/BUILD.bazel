@@ -24,9 +24,7 @@ valdi_module(
     ]) + [
         "tsconfig.json",
     ],
-    android_output_target = "debug",
     ios_module_name = "SCCFileSystem",
-    ios_output_target = "debug",
     visibility = ["//visibility:public"],
     web_deps = [":file_system_web"],
     web_register_native_module_id_overrides = {

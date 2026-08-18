@@ -1,10 +1,6 @@
 import React from "react";
 
-// Must be the first Valdi import, does a bunch of setup
 import { ValdiWebRenderer } from 'valdi_gpt_npm/src/web_renderer/src/ValdiWebRenderer';
-
-// Register native modules so they'll be available to the runtime
-require('./RegisterNativeModules');
 
 import { ValdiGptApp } from 'valdi_gpt_npm/src/valdi_gpt/src/ValdiGptApp';
 

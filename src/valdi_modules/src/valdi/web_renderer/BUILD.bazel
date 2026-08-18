@@ -9,7 +9,16 @@
 # Step 3: Render the component in your `onRender()` function:
 #         `<NewModuleComponent title={'Valdi'}/>`
 
+load("@aspect_rules_js//npm:defs.bzl", "npm_package")
 load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+npm_package(
+    name = "web_renderer_dts",
+    srcs = [":web.dts.output.all"],
+    package = "web_renderer",
+    root_paths = ["src/valdi_modules/src/valdi/web_renderer/.valdi_build/compile/typescript/output/web_renderer"],
+    visibility = ["//visibility:public"],
+)
 
 valdi_module(
     name = "web_renderer",
@@ -34,6 +43,7 @@ valdi_module(
     deps = [
         "@valdi//src/valdi_modules/src/valdi/coreutils",
         "@valdi//src/valdi_modules/src/valdi/valdi_core",
+        "@valdi//src/valdi_modules/src/valdi/valdi_navigation",
         "@valdi//src/valdi_modules/src/valdi/valdi_tsx",
     ],
     test_deps = ["@valdi//src/valdi_modules/src/valdi/jasmine"],

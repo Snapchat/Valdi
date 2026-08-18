@@ -1,10 +1,11 @@
 import { StringSet } from 'coreutils/src/StringSet';
 import { ISourceMap } from 'source_map/src/ISourceMap';
 import { IModuleLoader, OnHotReloadCallback, OnModuleRegisteredCallback, RequireFunc } from './IModuleLoader';
-import { ValdiRuntime } from './ValdiRuntime';
 export { RequireFunc } from './IModuleLoader';
 
-declare const runtime: ValdiRuntime;
+declare const runtime: {
+  scheduleWorkItem(callback: () => void, delayMs?: number, interruptible?: boolean): number;
+};
 
 type JsEvalRetryableError = string;
 export type JSEvalResult = JsEvalRetryableError | undefined;
@@ -16,6 +17,7 @@ export type SourceMapFactory = (
   sourceMapLineOffset: number | undefined,
 ) => ISourceMap | undefined;
 
+const IS_WEB = typeof window !== 'undefined' && typeof window.document !== 'undefined';
 interface ResolvedPath {
   absolutePath: string;
   directoryPaths: string[];
@@ -32,7 +34,7 @@ function normalizePath(pathEntries: string[]): string[] {
         // Keep the '..' we went outside our root
         out.push(pathEntry);
       }
-    } else if (pathEntry === '.' && runtime.getCurrentPlatform() !== 4) {
+    } else if (pathEntry === '.' && !IS_WEB) {
       // Omit '.' from the path on Android (1), iOS (2), MacOS (3). On Web (4) keep '.' in the path.
       continue;
     } else {
@@ -233,7 +235,10 @@ export class ModuleLoader implements IModuleLoader {
       const resolvedPath = resolveAbsoluteImportFromPath(path);
       this.doPreload(resolvedPath.absolutePath, 0, maxDepth, visited);
     } catch (err) {
-      console.log(`Could not preload module ${path}: ${(err as Error).message}`);
+      // ModuleLoader also runs during bootstrap, before Valdi's console
+      // wrapper can be imported.
+      const globalConsole = globalThis.console;
+      globalConsole.log(`Could not preload module ${path}: ${(err as Error).message}`);
     }
   }
 
@@ -435,11 +440,7 @@ export class ModuleLoader implements IModuleLoader {
     let module = this.modules[resolvedPath.absolutePath];
     if (!module || !module.sourceMap) {
       // Attempt to load the module automatically if it's not in the map
-      try {
-        this.doImport(resolvedPath, undefined, true, true);
-      } catch (err: any) {
-        console.log(`Could not load module ${path}: ${err.message}`);
-      }
+      this.doImport(resolvedPath, undefined, true, true);
 
       module = this.modules[resolvedPath.absolutePath];
 

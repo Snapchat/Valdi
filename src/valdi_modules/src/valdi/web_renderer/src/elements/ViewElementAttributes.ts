@@ -8,6 +8,7 @@ import { parseCssLength, parseNumber, resolveValdiGradientAngles } from '../attr
 import { createBorderRadiusAttributeApplier } from '../attributes/BorderRadiusAttribute';
 import type { AttributeApplier, AttributeApplierContext, CompositeAttribute } from '../core/ElementClass';
 import { TouchEventState } from 'valdi_tsx/src/GestureEvents';
+import type { DragEvent as ValdiDragEvent, TouchEvent as ValdiTouchEvent } from 'valdi_tsx/src/GestureEvents';
 import { geometricPathToSvgPath, isGeometricPathValue, SvgGeometricPath } from '../utils/geometricPath';
 import { isPlainCssNumber, readWhitespaceSeparatedToken, skipCssWhitespace } from '../utils/cssScanner';
 import { injectTouchAreaStyles } from '../styles/touchAreaExtension';
@@ -20,6 +21,8 @@ const VIEW_MASK_STATE = '__viewElementClassMaskState';
 const VIEW_BORDER_STYLE_STATE = '__viewElementClassBorderStyle';
 
 interface ViewInteractionState {
+  documentDragCleanup?: () => void;
+  dragSession?: BrowserDragSession;
   longPressDuration: number;
   onTapDisabled: boolean;
   onDoubleTapDisabled: boolean;
@@ -35,7 +38,17 @@ interface ViewInteractionState {
   onDragPredicate?: (event: unknown) => boolean;
   longPressTimer?: number;
   gestureListenersInstalled?: boolean;
+  suppressNextTap?: boolean;
   touchAreaExtension?: { top: number; right: number; bottom: number; left: number };
+}
+
+interface BrowserDragSession {
+  readonly originX: number;
+  readonly originY: number;
+  previousTime: number;
+  previousX: number;
+  previousY: number;
+  lastEvent?: MouseEvent | TouchEvent;
 }
 
 interface ViewMaskState {
@@ -114,7 +127,7 @@ function updateMask(element: HTMLElement, context: AttributeApplierContext): voi
   element.style.setProperty('-webkit-mask-source-type', 'luminance');
 }
 
-function createTouchEvent(event: MouseEvent | TouchEvent, state: TouchEventState): unknown {
+function createTouchEvent(event: MouseEvent | TouchEvent, state: TouchEventState): ValdiTouchEvent {
   const touch = 'touches' in event ? event.touches[0] || event.changedTouches[0] : event;
   return {
     state,
@@ -125,6 +138,35 @@ function createTouchEvent(event: MouseEvent | TouchEvent, state: TouchEventState
     pointerCount: 'touches' in event ? event.touches.length : 1,
     pointerLocations: [],
   };
+}
+
+function runDragCallback(
+  callback: ((event: unknown) => void) | undefined,
+  predicate: ((event: unknown) => boolean) | undefined,
+  event: MouseEvent | TouchEvent,
+  state: TouchEventState,
+  session: BrowserDragSession,
+): void {
+  if (!callback) {
+    return;
+  }
+
+  const touchEvent = createTouchEvent(event, state);
+  const time = Number.isFinite(event.timeStamp) ? event.timeStamp : Date.now();
+  const elapsedSeconds = Math.max((time - session.previousTime) / 1000, 0.001);
+  const dragEvent: ValdiDragEvent = {
+    ...touchEvent,
+    deltaX: touchEvent.x - session.originX,
+    deltaY: touchEvent.y - session.originY,
+    velocityX: state === TouchEventState.Started ? 0 : (touchEvent.x - session.previousX) / elapsedSeconds,
+    velocityY: state === TouchEventState.Started ? 0 : (touchEvent.y - session.previousY) / elapsedSeconds,
+  };
+  session.previousTime = time;
+  session.previousX = touchEvent.x;
+  session.previousY = touchEvent.y;
+  if (!predicate || predicate(dragEvent)) {
+    callback(dragEvent);
+  }
 }
 
 function runTouchCallback(
@@ -149,6 +191,11 @@ function ensureGestureListeners(element: HTMLElement, context: AttributeApplierC
   }
   state.gestureListenersInstalled = true;
   const clickListener = (event: MouseEvent) => {
+    if (state.suppressNextTap === true) {
+      state.suppressNextTap = false;
+      event.preventDefault();
+      return;
+    }
     if (!state.onTapDisabled) {
       runTouchCallback(state.onTap, state.onTapPredicate, event, TouchEventState.Ended);
     }
@@ -172,37 +219,92 @@ function ensureGestureListeners(element: HTMLElement, context: AttributeApplierC
       state.longPressTimer = undefined;
     }
   };
-  const dragListener = (event: MouseEvent | TouchEvent) => {
-    if (event instanceof MouseEvent && event.buttons !== 1) {
+  const startGesture = (event: MouseEvent | TouchEvent) => {
+    startLongPress(event);
+    if (state.onDragDisabled || !state.onDrag) {
       return;
     }
-    if (!state.onDragDisabled) {
-      runTouchCallback(state.onDrag, state.onDragPredicate, event, TouchEventState.Changed);
+    event.preventDefault();
+    state.documentDragCleanup?.();
+    state.suppressNextTap = false;
+    const touchEvent = createTouchEvent(event, TouchEventState.Started);
+    state.dragSession = {
+      originX: touchEvent.x,
+      originY: touchEvent.y,
+      previousTime: Number.isFinite(event.timeStamp) ? event.timeStamp : Date.now(),
+      previousX: touchEvent.x,
+      previousY: touchEvent.y,
+    };
+    runDragCallback(state.onDrag, state.onDragPredicate, event, TouchEventState.Started, state.dragSession);
+    const document = element.ownerDocument;
+    if (typeof document?.addEventListener === 'function' && typeof document.removeEventListener === 'function') {
+      document.addEventListener('mousemove', dragListener);
+      document.addEventListener('mouseup', endGesture);
+      document.addEventListener('touchmove', dragListener);
+      document.addEventListener('touchend', endGesture);
+      document.addEventListener('touchcancel', endGesture);
+      state.documentDragCleanup = () => {
+        document.removeEventListener('mousemove', dragListener);
+        document.removeEventListener('mouseup', endGesture);
+        document.removeEventListener('touchmove', dragListener);
+        document.removeEventListener('touchend', endGesture);
+        document.removeEventListener('touchcancel', endGesture);
+        state.documentDragCleanup = undefined;
+      };
+    }
+  };
+  const endGesture = (event: MouseEvent | TouchEvent) => {
+    cancelLongPress();
+    const session = state.dragSession;
+    state.dragSession = undefined;
+    state.documentDragCleanup?.();
+    if (!state.onDragDisabled && session !== undefined) {
+      runDragCallback(state.onDrag, state.onDragPredicate, event, TouchEventState.Ended, session);
+    }
+  };
+  const dragListener = (event: MouseEvent | TouchEvent) => {
+    if ('buttons' in event && event.buttons !== 1) {
+      return;
+    }
+    const session = state.dragSession;
+    if (!state.onDragDisabled && session !== undefined) {
+      if (session.lastEvent === event) {
+        return;
+      }
+      session.lastEvent = event;
+      event.preventDefault();
+      const current = createTouchEvent(event, TouchEventState.Changed);
+      if (Math.abs(current.x - session.originX) > 3 || Math.abs(current.y - session.originY) > 3) {
+        state.suppressNextTap = true;
+      }
+      runDragCallback(state.onDrag, state.onDragPredicate, event, TouchEventState.Changed, session);
     }
   };
   element.addEventListener('click', clickListener);
   element.addEventListener('dblclick', doubleClickListener);
-  element.addEventListener('mousedown', startLongPress);
-  element.addEventListener('touchstart', startLongPress);
-  element.addEventListener('mouseup', cancelLongPress);
+  element.addEventListener('mousedown', startGesture);
+  element.addEventListener('touchstart', startGesture);
+  element.addEventListener('mouseup', endGesture);
   element.addEventListener('mouseleave', cancelLongPress);
-  element.addEventListener('touchend', cancelLongPress);
-  element.addEventListener('touchcancel', cancelLongPress);
+  element.addEventListener('touchend', endGesture);
+  element.addEventListener('touchcancel', endGesture);
   element.addEventListener('touchmove', cancelLongPress);
   element.addEventListener('mousemove', dragListener);
   element.addEventListener('touchmove', dragListener);
   context.addCleanup(() => {
     element.removeEventListener('click', clickListener);
     element.removeEventListener('dblclick', doubleClickListener);
-    element.removeEventListener('mousedown', startLongPress);
-    element.removeEventListener('touchstart', startLongPress);
-    element.removeEventListener('mouseup', cancelLongPress);
+    element.removeEventListener('mousedown', startGesture);
+    element.removeEventListener('touchstart', startGesture);
+    element.removeEventListener('mouseup', endGesture);
     element.removeEventListener('mouseleave', cancelLongPress);
-    element.removeEventListener('touchend', cancelLongPress);
-    element.removeEventListener('touchcancel', cancelLongPress);
+    element.removeEventListener('touchend', endGesture);
+    element.removeEventListener('touchcancel', endGesture);
     element.removeEventListener('touchmove', cancelLongPress);
     element.removeEventListener('mousemove', dragListener);
     element.removeEventListener('touchmove', dragListener);
+    state.dragSession = undefined;
+    state.documentDragCleanup?.();
     cancelLongPress();
   });
 }

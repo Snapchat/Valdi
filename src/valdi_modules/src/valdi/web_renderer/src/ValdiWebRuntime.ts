@@ -1,24 +1,36 @@
 import type { ColorPalette, ColorPaletteManager } from './core/Palette';
+import type { ViewNodeTree } from './core/ViewNodeTree';
+import {
+  type IViewNodeAssetTracker,
+  type ViewNodeAssetTrackerCallback,
+  ViewNodeAssetTrackerEventType,
+} from 'valdi_core/src/IViewNodeAssetTracker';
 import {
   beginValdiWebTrace,
   endValdiWebTrace,
   instantValdiWebTrace,
   makeValdiWebTraceProxy,
 } from './tracing/ValdiWebTracing';
+import { setWebRendererLayoutDirection } from './WebRendererRoot';
 import { createValdiWebWorker } from './ValdiWebWorker';
 
 declare const require: {
   (id: string): any;
 };
+declare const __VALDI_API_VERSION__: number;
 
 const path = require('path-browserify');
 let cachedColorPaletteManager: ColorPaletteManager | undefined;
-let cachedRuntimeCustomRequire: ((moduleId: string) => any) | undefined;
 let cachedResolveAssetSourceUrl: ((source: unknown) => string | undefined) | undefined;
 let cachedBase64FromByteArray: ((bytes: Uint8Array) => string) | undefined;
 let cachedDetectImageMimeType: ((bytes: Uint8Array) => string) | undefined;
+let cachedGetViewNodeTreeForContextId: ((contextId: string) => ViewNodeTree | undefined) | undefined;
 
 const valdiGlobalThis = globalThis as any;
+const originalTimingFunctions = {
+  setTimeout: globalThis.setTimeout.bind(globalThis),
+  clearTimeout: globalThis.clearTimeout.bind(globalThis),
+};
 
 // globalThis is the canonical web global. Keep `global` as a compatibility
 // alias for older generated code and third-party modules that still read the
@@ -33,28 +45,12 @@ valdiGlobalThis.describe = function (name: string, func: Function) {};
 // 2. moduleLoader factories (registered native module shims)
 // 3. generated navigation and worker registries.
 
-function getRuntimeCustomRequire(): (moduleId: string) => any {
-  if (cachedRuntimeCustomRequire) {
-    return cachedRuntimeCustomRequire;
-  }
-
-  const moduleLoader = valdiGlobalThis.moduleLoader;
-  if (!moduleLoader) {
-    throw new Error('Valdi moduleLoader is not available before runtime initialization');
-  }
-
-  const customRequire = moduleLoader.resolveRequire('web_renderer/src/ValdiWebRuntime.ts');
-  cachedRuntimeCustomRequire = customRequire;
-  return customRequire;
-}
-
 function getColorPaletteManager(): ColorPaletteManager {
   if (cachedColorPaletteManager) {
     return cachedColorPaletteManager;
   }
 
-  const customRequire = getRuntimeCustomRequire();
-  cachedColorPaletteManager = customRequire('./core/Palette').COLOR_PALETTE_MANAGER as ColorPaletteManager;
+  cachedColorPaletteManager = require('./core/Palette').COLOR_PALETTE_MANAGER as ColorPaletteManager;
   return cachedColorPaletteManager;
 }
 
@@ -85,7 +81,7 @@ function resourceModuleToByteArray(resourceModule: unknown): Uint8Array | undefi
 // Runtime bootstrap executes before moduleLoader exists, so dependencies are loaded lazily.
 function resolveRuntimeAssetSourceUrl(source: unknown): string | undefined {
   if (!cachedResolveAssetSourceUrl) {
-    cachedResolveAssetSourceUrl = getRuntimeCustomRequire()('./utils/assetSource').resolveAssetSourceUrl as (
+    cachedResolveAssetSourceUrl = require('./utils/assetSource').resolveAssetSourceUrl as (
       source: unknown,
     ) => string | undefined;
   }
@@ -94,20 +90,25 @@ function resolveRuntimeAssetSourceUrl(source: unknown): string | undefined {
 
 function runtimeBytesToBase64(bytes: Uint8Array): string {
   if (!cachedBase64FromByteArray) {
-    cachedBase64FromByteArray = getRuntimeCustomRequire()('coreutils/src/Base64').Base64.fromByteArray as (
-      bytes: Uint8Array,
-    ) => string;
+    cachedBase64FromByteArray = require('coreutils/src/Base64').Base64.fromByteArray as (bytes: Uint8Array) => string;
   }
   return cachedBase64FromByteArray(bytes);
 }
 
 function runtimeImageMimeType(bytes: Uint8Array): string {
   if (!cachedDetectImageMimeType) {
-    cachedDetectImageMimeType = getRuntimeCustomRequire()('./utils/imageSource').detectImageMimeType as (
-      bytes: Uint8Array,
-    ) => string;
+    cachedDetectImageMimeType = require('./utils/imageSource').detectImageMimeType as (bytes: Uint8Array) => string;
   }
   return cachedDetectImageMimeType(bytes);
+}
+
+function getViewNodeTreeForContextId(contextId: string): ViewNodeTree | undefined {
+  if (!cachedGetViewNodeTreeForContextId) {
+    cachedGetViewNodeTreeForContextId = require('./core/ViewNodeTree').ViewNodeTree.getForContextId as (
+      contextId: string,
+    ) => ViewNodeTree | undefined;
+  }
+  return cachedGetViewNodeTreeForContextId(contextId);
 }
 
 function resourceModuleToString(resourceModule: unknown): string {
@@ -148,8 +149,12 @@ class Runtime {
   isDebugEnabled = true;
   // ConsoleLogTransformer guards use isLoggingEnabled.
   isLoggingEnabled = true;
-  buildType = 'debug';
-  apiVersion = 0;
+  buildType = 'dev';
+  // Standalone applications inject the version; npm packages carry the same build metadata.
+  apiVersion =
+    typeof __VALDI_API_VERSION__ === 'number'
+      ? __VALDI_API_VERSION__
+      : (require('../../valdi_api_version.json') as number);
   // Map of task IDs to timeout IDs for scheduleWorkItem
   private _taskIdCounter = 1;
   private _scheduledTasks = new Map<number, number>();
@@ -178,15 +183,7 @@ class Runtime {
       return;
     }
 
-    // 3. Generated module registry — explicit webpack-visible map for compiled
-    //    Valdi modules still reached through customRequire/moduleLoader.load().
-    const modules = valdiGlobalThis.__valdiModuleRegistry;
-    if (modules?.[relativePath]) {
-      module.exports = modules[relativePath]();
-      return;
-    }
-
-    // 4. Dynamic-module registries — build-time generated maps for modules
+    // 3. Dynamic-module registries — build-time generated maps for modules
     //    that are targets of dynamic require(variable) calls. Each registry
     //    covers one category: NavigationPage components, worker entry points.
     const navPages = valdiGlobalThis.__valdiNavigationPages;
@@ -273,8 +270,33 @@ class Runtime {
     return 'contextId';
   }
 
-  setLayoutSpecs(contextId: string, width: number, height: number, rtl: boolean) {
-    // console.log("setLayoutSpecs", contextId, width, height, rtl);
+  setLayoutSpecs(contextId: string, _width: number, _height: number, rtl: boolean): void {
+    setWebRendererLayoutDirection(contextId, rtl);
+  }
+
+  setViewNodeAssetTracker(contextId: string, callback: ViewNodeAssetTrackerCallback | undefined): void {
+    const viewNodeTree = getViewNodeTreeForContextId(contextId);
+    if (!viewNodeTree) {
+      return;
+    }
+
+    const assetTracker: IViewNodeAssetTracker | undefined = callback
+      ? {
+          onAssetEvent(eventType, nodeId, error): void {
+            callback(eventType, nodeId, error);
+          },
+          onBeganRequestingLoadedAsset(nodeId): void {
+            callback(ViewNodeAssetTrackerEventType.beganRequestingLoadedAsset, nodeId, undefined);
+          },
+          onEndRequestingLoadedAsset(nodeId): void {
+            callback(ViewNodeAssetTrackerEventType.endRequestingLoadedAsset, nodeId, undefined);
+          },
+          onLoadedAssetChanged(nodeId, error): void {
+            callback(ViewNodeAssetTrackerEventType.loadedAssetChange, nodeId, error);
+          },
+        }
+      : undefined;
+    viewNodeTree.setAssetTracker(assetTracker);
   }
 
   postMessage(contextId: string, command: string, params: any) {
@@ -449,10 +471,7 @@ class Runtime {
   }
 
   stopTraceRecording(id: number) {
-    return {
-      traceData: new Uint8Array(),
-      traceEventCount: 0,
-    };
+    return [];
   }
 
   callOnMainThread(method: Function, parameters: any) {
@@ -482,18 +501,29 @@ class Runtime {
   }
 
   makeDirectionalAsset(ltrAsset: any, rtlAsset: any) {
+    const isRtl = typeof document !== 'undefined' && document.dir === 'rtl';
+    const asset = isRtl ? rtlAsset : ltrAsset;
+    if (typeof asset === 'string') {
+      return { path: asset, src: asset, width: 100, height: 100 };
+    }
     return {
-      path: '',
-      width: 100,
-      height: 100,
+      path: asset?.path ?? '',
+      src: asset?.src ?? asset?.path ?? '',
+      width: asset?.width ?? 100,
+      height: asset?.height ?? 100,
     };
   }
 
   makePlatformSpecificAsset(defaultAsset: any, platformAssetOverrides: any) {
+    const asset = defaultAsset;
+    if (typeof asset === 'string') {
+      return { path: asset, src: asset, width: 100, height: 100 };
+    }
     return {
-      path: '',
-      width: 100,
-      height: 100,
+      path: asset?.path ?? '',
+      src: asset?.src ?? asset?.path ?? '',
+      width: asset?.width ?? 100,
+      height: asset?.height ?? 100,
     };
   }
 
@@ -514,7 +544,7 @@ class Runtime {
   scheduleWorkItem(cb: Function, delayMs: number, interruptible: boolean) {
     const taskId = this._taskIdCounter++;
     const delay = delayMs || 0;
-    const timeoutId = globalThis.setTimeout(() => {
+    const timeoutId = originalTimingFunctions.setTimeout(() => {
       this._scheduledTasks.delete(taskId);
       try {
         cb();
@@ -529,7 +559,7 @@ class Runtime {
   unscheduleWorkItem(taskId: number) {
     const timeoutId = this._scheduledTasks.get(taskId);
     if (timeoutId !== undefined) {
-      globalThis.clearTimeout(timeoutId);
+      originalTimingFunctions.clearTimeout(timeoutId);
       this._scheduledTasks.delete(taskId);
     }
   }
@@ -589,10 +619,6 @@ try {
 } catch (error) {}
 
 try {
-  require('./_module_registry');
-} catch (error) {}
-
-try {
   require('./_module_entry_registry');
 } catch (error) {}
 
@@ -641,5 +667,3 @@ if (valdiGlobalThis.moduleLoader) {
 // Console/timing restoration removed — PostInit now gates console and
 // timing overwrites internally (isWeb check), so they're never
 // overwritten on web in the first place.
-
-export {};

@@ -1,5 +1,9 @@
 import 'jasmine/src/jasmine';
-import { createIsolatedWebRendererRoot } from '../src/WebRendererRoot';
+import {
+  createIsolatedWebRendererRoot,
+  registerWebRendererLayoutRoot,
+  setWebRendererLayoutDirection,
+} from '../src/WebRendererRoot';
 
 class FakeShadowRoot {
   children: FakeElement[] = [];
@@ -50,11 +54,14 @@ describe('WebRendererRoot', () => {
     expect(attachedMode).toBe('open');
     expect(shadowRoot.children.length).toBe(2);
     expect(shadowRoot.children[0].textContent).toContain('box-sizing: border-box');
+    expect(shadowRoot.children[0].textContent).toContain('content: attr(placeholder)');
     expect(shadowRoot.children[1]).toBe(root);
     expect(root.style.all).toBe('initial');
     expect(root.style.direction).toBeUndefined();
     expect(root.style.display).toBe('block');
-    expect(root.style.fontFamily).toBeUndefined();
+    expect(root.style.fontFamily).toBe('inherit');
+    expect(root.style.MozOsxFontSmoothing).toBe('inherit');
+    expect(root.style.webkitFontSmoothing).toBe('inherit');
     expect(root.style.height).toBe('100%');
     expect(root.style.width).toBe('100%');
   });
@@ -65,5 +72,20 @@ describe('WebRendererRoot', () => {
     const root = createIsolatedWebRendererRoot(shadowRoot as unknown as ShadowRoot) as unknown as FakeElement;
 
     expect(shadowRoot.children[1]).toBe(root);
+  });
+
+  it('applies runtime layout direction only to its matching renderer context', () => {
+    const firstRoot = makeFakeElement();
+    const secondRoot = makeFakeElement();
+    const firstRegistration = registerWebRendererLayoutRoot('first', firstRoot as unknown as HTMLElement);
+    const secondRegistration = registerWebRendererLayoutRoot('second', secondRoot as unknown as HTMLElement);
+
+    setWebRendererLayoutDirection('first', true);
+
+    expect(firstRoot.style.direction).toBe('rtl');
+    expect(secondRoot.style.direction).toBeUndefined();
+
+    firstRegistration.dispose();
+    secondRegistration.dispose();
   });
 });

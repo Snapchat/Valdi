@@ -5,15 +5,17 @@ import { StringMap } from 'coreutils/src/StringMap';
 import { ElementFrame } from 'valdi_tsx/src/Geometry';
 import { NativeNode } from 'valdi_tsx/src/NativeNode';
 import { NativeView } from 'valdi_tsx/src/NativeView';
+import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
 import { AnimationCurve, AnimationOptions } from './AnimationOptions';
 import { CancelToken } from './CancellableAnimation';
-import { ValdiRuntime } from './ValdiRuntime';
-import { FrameObserver, IRendererDelegate, VisibilityObserver } from './IRendererDelegate';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
+import { IRendererDelegate, VisibilityObserver } from './IRendererDelegate';
 import { NativeFrameObserver, NativeVisibilityObserver } from './RenderRequest';
 import { Style } from './Style';
 import { Buffer } from './utils/Buffer';
+import { trace } from './utils/Trace';
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
 
 const enum RenderRequestEntryType {
   CREATE_ELEMENT = 1,
@@ -38,6 +40,15 @@ const enum RenderRequestEntryType {
 
 const bufferPool = [new Buffer(512)];
 
+type OnLayoutCallback = (frame: ElementFrame) => void;
+type RenderCompleteScheduler = (callback: () => void) => void;
+
+interface FrameState {
+  frame?: ElementFrame;
+  onLayout?: OnLayoutCallback;
+  injectedOnLayout?: OnLayoutCallback;
+}
+
 export class JSXRendererDelegate implements IRendererDelegate {
   private treeId: string;
   private destroyed: boolean;
@@ -52,6 +63,8 @@ export class JSXRendererDelegate implements IRendererDelegate {
   private renderStartTime?: number;
   private pendingVisibilityObserver?: NativeVisibilityObserver;
   private pendingFrameObserver?: NativeFrameObserver;
+  private renderCompleteScheduler?: RenderCompleteScheduler;
+  private frameStateByElementId: { [id: number]: FrameState | undefined };
 
   constructor(
     treeId: string,
@@ -68,18 +81,35 @@ export class JSXRendererDelegate implements IRendererDelegate {
     this.attachedValues = [];
     this.attachedValueIndexByString = {};
     this.attachedValueIndexByObjectId = {};
+    this.frameStateByElementId = {};
+    this.pendingFrameObserver = this.processFrameUpdates.bind(this);
+  }
+
+  setRenderCompleteScheduler(schedule: RenderCompleteScheduler): void {
+    this.renderCompleteScheduler = schedule;
   }
 
   onDestroyed() {
     this.destroyed = true;
+    this.frameStateByElementId = {};
   }
 
   onElementCreated(id: number, viewClass: string): void {
     this.buffer.putUint32_2(RenderRequestEntryType.CREATE_ELEMENT | (id << 8), this.stringCache.get(viewClass));
   }
 
+  onCustomElementCreated(id: number, viewFactory: ViewFactory): void {
+    this.onElementCreated(id, 'Deferred');
+    this.onElementAttributeChangeAny(id, 'viewFactory', viewFactory);
+  }
+
   onElementDestroyed(id: number): void {
+    delete this.frameStateByElementId[id];
     this.buffer.putUint32(RenderRequestEntryType.DESTROY_ELEMENT | (id << 8));
+  }
+
+  onElementDestroyedFromParent(id: number): void {
+    delete this.frameStateByElementId[id];
   }
 
   onElementBecameRoot(id: number): void {
@@ -206,6 +236,13 @@ export class JSXRendererDelegate implements IRendererDelegate {
   }
 
   onElementAttributeChangeUndefined(id: number, attributeName: string): void {
+    if (attributeName === 'onLayout') {
+      this.updateOnLayoutCallback(id, undefined);
+      return;
+    } else if (attributeName === '$onLayout') {
+      this.updateInjectedOnLayoutCallback(id, undefined);
+      return;
+    }
     const attributeNameParam = this.attributeCache.get(attributeName);
     this.buffer.putUint32_2(RenderRequestEntryType.SET_ATTRIBUTE_UNDEFINED | (id << 8), attributeNameParam);
   }
@@ -218,6 +255,13 @@ export class JSXRendererDelegate implements IRendererDelegate {
   }
 
   onElementAttributeChangeFunction(id: number, attributeName: string, fn: () => void): void {
+    if (attributeName === 'onLayout') {
+      this.updateOnLayoutCallback(id, fn);
+      return;
+    } else if (attributeName === '$onLayout') {
+      this.updateInjectedOnLayoutCallback(id, fn);
+      return;
+    }
     const attributeNameParam = this.attributeCache.get(attributeName);
     const attachedValues = this.attachedValues;
     const attachedValuesIndex = attachedValues.length;
@@ -231,6 +275,14 @@ export class JSXRendererDelegate implements IRendererDelegate {
   }
 
   onElementAttributeChangeAny(id: number, attributeName: string, attributeValue: any): void {
+    if (attributeName === 'onLayout') {
+      this.updateOnLayoutCallback(id, attributeValue);
+      return;
+    } else if (attributeName === '$onLayout') {
+      this.updateInjectedOnLayoutCallback(id, attributeValue);
+      return;
+    }
+
     let attributeNameParam: number;
 
     if (attributeName[0] === '$') {
@@ -374,10 +426,6 @@ export class JSXRendererDelegate implements IRendererDelegate {
     };
   }
 
-  registerFrameObserver(observer: FrameObserver) {
-    this.pendingFrameObserver = observer;
-  }
-
   getNativeView(id: number, callback: (view: NativeView | undefined) => void) {
     runtime.getNativeViewForElementId(this.treeId, id, view => {
       if (view) {
@@ -392,6 +440,10 @@ export class JSXRendererDelegate implements IRendererDelegate {
     return runtime.getNativeNodeForElementId(this.treeId, id);
   }
 
+  getCachedElementFrame(id: number): ElementFrame | undefined {
+    return this.frameStateByElementId[id]?.frame;
+  }
+
   getElementFrame(id: number, callback: (frame: ElementFrame | undefined) => void) {
     runtime.getFrameForElementId(this.treeId, id, callback);
   }
@@ -402,5 +454,76 @@ export class JSXRendererDelegate implements IRendererDelegate {
 
   onUncaughtError(message: string, error: Error) {
     runtime.onUncaughtError(message, error);
+  }
+
+  private getFrameState(id: number): FrameState {
+    let state = this.frameStateByElementId[id];
+    if (!state) {
+      state = {};
+      this.frameStateByElementId[id] = state;
+    }
+    return state;
+  }
+
+  private updateOnLayoutCallback(id: number, callback: OnLayoutCallback | undefined): void {
+    this.getFrameState(id).onLayout = callback;
+  }
+
+  private updateInjectedOnLayoutCallback(id: number, callback: OnLayoutCallback | undefined): void {
+    this.getFrameState(id).injectedOnLayout = callback;
+  }
+
+  private processFrameUpdates(updates: Float64Array): void {
+    let elementsWithCallback: number[] | undefined;
+    trace('processFrameUpdates', () => {
+      let i = 0;
+      while (i < updates.length) {
+        const elementId = updates[i++];
+        const x = updates[i++];
+        const y = updates[i++];
+        const width = updates[i++];
+        const height = updates[i++];
+
+        const state = this.getFrameState(elementId);
+        state.frame = { x, y, width, height };
+        if (state.onLayout || state.injectedOnLayout) {
+          (elementsWithCallback ??= []).push(elementId);
+        }
+      }
+    });
+
+    if (elementsWithCallback) {
+      this.renderCompleteScheduler!(() => {
+        for (const elementId of elementsWithCallback!) {
+          this.flushOnLayoutCallback(elementId);
+        }
+      });
+    }
+  }
+
+  private flushOnLayoutCallback(elementId: number): void {
+    const state = this.frameStateByElementId[elementId];
+    const frame = state?.frame;
+    if (!frame) {
+      return;
+    }
+
+    const onLayout = state.onLayout;
+    if (onLayout) {
+      try {
+        onLayout(frame);
+      } catch (err: any) {
+        this.onUncaughtError('Failed to call onLayout', err);
+      }
+    }
+
+    const injectedOnLayout = state.injectedOnLayout;
+    if (injectedOnLayout) {
+      try {
+        injectedOnLayout(frame);
+      } catch (err: any) {
+        this.onUncaughtError('Failed to call onLayout', err);
+      }
+    }
   }
 }

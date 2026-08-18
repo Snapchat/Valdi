@@ -145,6 +145,32 @@ describe('Symbolicator', () => {
     ]);
   });
 
+  it('continues symbolicating stack frames when SourceMap lookup throws', () => {
+    const stack = `
+    at missingSourceMap (source_map/test/Missing:5)
+    at doSomething (source_map/test/SourceMapExample:5)
+    `;
+
+    const stackFrames = parseStackFrames(stack);
+    const consoleErrorSpy = spyOn(console, 'error');
+    const getOrCreateSourceMapFunc: GetOrCreateSourceMapFunc = file => {
+      if (file === 'source_map/test/Missing') {
+        throw new Error('Could not load module');
+      }
+      return SourceMap.parseFromBase64(sourceMapContent);
+    };
+
+    const symbolicatedStackFrames = symbolicateStackFrames(stackFrames, getOrCreateSourceMapFunc);
+
+    expect(symbolicatedStackFrames).toEqual([
+      { line: 5, column: undefined, name: 'missingSourceMap', fileName: 'source_map/test/Missing' },
+      { line: 10, column: 3, name: 'doSomething', fileName: 'source_map/test/SourceMapExample.ts' },
+    ]);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Failed to symbolicate stack frame source_map/test/Missing: Could not load module',
+    );
+  });
+
   // Disabling this test for now as it doesn't currently work with QuickJS and minification on.
   // QuickJS doesn't provide the column number on thrown exceptions which prevents to resolve
   // the symbols on minified files since those files are all laid out on a single line.

@@ -298,6 +298,19 @@ describe('PersistentStore', () => {
     await expectAsync(store.fetch('item')).toBeRejected();
   });
 
+  it('isolates authenticated users through the public options contract', async () => {
+    const storeID = makePersistentStoreId(false);
+    const firstUser = new PersistentStore(storeID, { userId: 'alice' });
+
+    await firstUser.storeString('private-value', 'alice only');
+
+    const secondUser = new PersistentStore(storeID, { userId: 'bob' });
+    await expectAsync(secondUser.fetchString('private-value')).toBeRejected();
+    await expectAsync(new PersistentStore(storeID, { userId: 'alice' }).fetchString('private-value')).toBeResolvedTo(
+      'alice only',
+    );
+  });
+
   it('can fetchAll', async () => {
     const store = new PersistentStore(makePersistentStoreId(false), {
       deviceGlobal: true,

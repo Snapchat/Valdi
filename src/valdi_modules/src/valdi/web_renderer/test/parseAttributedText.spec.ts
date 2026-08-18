@@ -56,18 +56,6 @@ describe('parseAttributedText', () => {
     );
   });
 
-  it('preserves text-bottom inline view attachment alignment', () => {
-    const attributedText = new AttributedTextBuilder()
-      .appendInlineView(0, AttributedTextInlineViewVerticalAlignment.TextBottom)
-      .build();
-
-    const parsed = ParsedAttributedText.parse(attributedText);
-
-    expect(parsed.parts[0].style.inlineView?.verticalAlignment).toBe(
-      AttributedTextInlineViewVerticalAlignment.TextBottom,
-    );
-  });
-
   it('preserves normalized animation transform metadata on styled parts', () => {
     const attributedText = new AttributedTextBuilder()
       .append('animated', {

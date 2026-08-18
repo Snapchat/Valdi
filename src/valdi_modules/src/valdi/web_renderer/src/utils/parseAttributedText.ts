@@ -430,8 +430,6 @@ function verticalAlignForInlineView(attachment: AttributedTextInlineViewAttachme
       return 'bottom';
     case AttributedTextInlineViewVerticalAlignment.Baseline:
       return 'baseline';
-    case AttributedTextInlineViewVerticalAlignment.TextBottom:
-      return 'text-bottom';
     case AttributedTextInlineViewVerticalAlignment.Center:
     default:
       return 'middle';

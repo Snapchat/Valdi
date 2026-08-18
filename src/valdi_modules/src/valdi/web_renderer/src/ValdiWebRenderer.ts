@@ -1,14 +1,32 @@
 import type { RequireFunc } from 'valdi_core/src/IModuleLoader';
 import type { ComponentConstructor, IComponent } from 'valdi_core/src/IComponent';
 import type { ComponentPrototype } from 'valdi_core/src/ComponentPrototype';
-import type { Renderer as RendererType } from 'valdi_core/src/Renderer';
 import type { AttributeUpdatedExternallyDelegate } from './core/ElementClass';
+import { resolveComponentConstructor } from 'valdi_core/src/ComponentPath';
 import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
+import { Renderer } from 'valdi_core/src/Renderer';
+import { ValdiWebRendererDelegate } from './ValdiWebRendererDelegate';
+import { COLOR_PALETTE_MANAGER } from './core/Palette';
+import { ViewNodeTree } from './core/ViewNodeTree';
+import { WebDebuggerBridge } from './debug/WebDebuggerBridge';
+import { WebNavigationHost } from './navigation/WebNavigator';
 import { isValdiWebTracingEnabled } from './tracing/ValdiWebTracing';
+import { createIsolatedWebRendererRoot, registerWebRendererLayoutRoot } from './WebRendererRoot';
+import type { WebRendererLayoutRegistration } from './WebRendererRoot';
+
+export { createViewFactory } from './ViewFactory';
 
 declare const require: RequireFunc;
 
 getValdiRuntime();
+
+// Collapsed web packages generate narrow registries for runtime-only lookups.
+try {
+  require('../../_navigation_registry');
+  require('../../_worker_registry');
+} catch {
+  // Non-collapsed test environments do not provide generated registries.
+}
 
 // Collapsed web packages generate browser worker factories at this path.
 // Keep this host-only: worker entries import ValdiWebRuntime, and loading the
@@ -16,22 +34,6 @@ getValdiRuntime();
 try {
   require('../../_web_worker_factories');
 } catch {}
-
-declare const moduleLoader: any;
-
-const customRequire = moduleLoader.resolveRequire('web_renderer/src/ValdiWebRenderer.ts');
-
-const { Renderer } = customRequire('valdi_core/src/Renderer') as { Renderer: typeof RendererType };
-const rendererDelegate = customRequire('./ValdiWebRendererDelegate') as typeof import('./ValdiWebRendererDelegate');
-const rendererCore = customRequire('./core/ViewNodeTree') as typeof import('./core/ViewNodeTree');
-const paletteCore = customRequire('./core/Palette') as typeof import('./core/Palette');
-const debuggerCore = customRequire('./debug/WebDebuggerBridge') as typeof import('./debug/WebDebuggerBridge');
-const rootCore = customRequire('./WebRendererRoot') as typeof import('./WebRendererRoot');
-const ValdiWebRendererDelegate = rendererDelegate.ValdiWebRendererDelegate;
-const ViewNodeTree = rendererCore.ViewNodeTree;
-const COLOR_PALETTE_MANAGER = paletteCore.COLOR_PALETTE_MANAGER;
-const WebDebuggerBridge = debuggerCore.WebDebuggerBridge;
-const createIsolatedWebRendererRoot = rootCore.createIsolatedWebRendererRoot;
 
 let CONTEXT_ID_SEQUENCE = 0;
 
@@ -43,6 +45,9 @@ function makeContextId(contextIdentifierPrefix: string | undefined): string {
 export class ValdiWebRenderer extends Renderer implements AttributeUpdatedExternallyDelegate {
   delegate: InstanceType<typeof ValdiWebRendererDelegate>;
   private readonly debuggerBridge: InstanceType<typeof WebDebuggerBridge>;
+  private readonly isolatedRoot: HTMLElement;
+  private readonly layoutRegistration: WebRendererLayoutRegistration;
+  private navigationHost?: WebNavigationHost;
 
   constructor(htmlRoot: HTMLElement | ShadowRoot, contextIdentifierPrefix?: string) {
     const isolatedRoot = createIsolatedWebRendererRoot(htmlRoot);
@@ -73,6 +78,9 @@ export class ValdiWebRenderer extends Renderer implements AttributeUpdatedExtern
     );
     delegate.setAttributeUpdatedExternallyDelegate(this);
     this.delegate = delegate;
+    this.isolatedRoot = isolatedRoot;
+    this.layoutRegistration = registerWebRendererLayoutRoot(this.contextId, isolatedRoot);
+    ViewNodeTree.register(this.contextId, viewNodeTree);
     this.debuggerBridge = new WebDebuggerBridge(isolatedRoot, viewNodeTree);
   }
 
@@ -80,13 +88,12 @@ export class ValdiWebRenderer extends Renderer implements AttributeUpdatedExtern
     super.attributeUpdatedExternally(elementId, attributeName, attributeValue);
   }
 
-  setComponentContext(context: any): void {
-    super.setComponentContext(context);
-    super.setViewModelProperty('context', context);
-  }
-
   override onDestroy(): void {
+    this.navigationHost?.destroy();
+    this.navigationHost = undefined;
     this.debuggerBridge.destroy();
+    ViewNodeTree.unregister(this.contextId);
+    this.layoutRegistration.dispose();
     super.onDestroy();
   }
 
@@ -96,6 +103,21 @@ export class ValdiWebRenderer extends Renderer implements AttributeUpdatedExtern
     viewModel: ViewModel,
     context: Context,
   ): void {
-    super.renderRootComponent(ctr, prototype, viewModel, context);
+    const sourceContext = context && typeof context === 'object' ? context : {};
+    const existingNavigator = (sourceContext as { navigator?: unknown }).navigator;
+    if (existingNavigator !== undefined) {
+      super.renderRootComponent(ctr, prototype, viewModel, context);
+      return;
+    }
+
+    if (!this.navigationHost) {
+      this.navigationHost = new WebNavigationHost({
+        createRenderer: (root, contextIdentifierPrefix) => new ValdiWebRenderer(root, contextIdentifierPrefix),
+        resolveComponent: componentPath => resolveComponentConstructor(require, componentPath),
+        root: this.isolatedRoot,
+      });
+    }
+    const componentContext = { ...sourceContext, navigator: this.navigationHost.rootNavigator } as Context;
+    super.renderRootComponent(ctr, prototype, viewModel, componentContext);
   }
 }

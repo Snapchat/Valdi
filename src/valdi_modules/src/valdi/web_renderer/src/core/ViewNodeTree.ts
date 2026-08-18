@@ -1,5 +1,8 @@
+/// <reference lib="es2021.weakref" />
+
 import type { VisibilityObserver } from 'valdi_core/src/IRendererDelegate';
 import type { AnimationOptions } from 'valdi_core/src/AnimationOptions';
+import type { IViewNodeAssetTracker } from 'valdi_core/src/IViewNodeAssetTracker';
 import { Style } from 'valdi_core/src/Style';
 import type { ElementFrame } from 'valdi_tsx/src/Geometry';
 import { LayoutObserverController, measureElementFrame } from '../LayoutObserverController';
@@ -13,7 +16,7 @@ import {
   type LayoutSnapshot,
 } from '../animations/LayoutAnimation';
 import { getElementClassForViewClass } from '../elements/ElementClassRegistry';
-import type { AttributeUpdatedExternallyDelegate, ElementLayoutObserver } from './ElementClass';
+import type { AnyElementClass, AttributeUpdatedExternallyDelegate, ElementLayoutObserver } from './ElementClass';
 import { ColorPaletteManager, COLOR_PALETTE_MANAGER } from './Palette';
 import { ViewNode, type ViewNodeDebugSnapshot } from './ViewNode';
 
@@ -36,11 +39,31 @@ type RenderCompleteScheduler = (callback: () => void) => void;
 const LAYOUT_COMMIT_PREPARATION_KEY = 'layout';
 
 export class ViewNodeTree implements AnimatorDelegate {
+  private static readonly treesByContextId = new Map<string, WeakRef<ViewNodeTree>>();
+
+  static register(contextId: string, viewNodeTree: ViewNodeTree): void {
+    ViewNodeTree.treesByContextId.set(contextId, new WeakRef(viewNodeTree));
+  }
+
+  static unregister(contextId: string): void {
+    ViewNodeTree.treesByContextId.delete(contextId);
+  }
+
+  static getForContextId(contextId: string): ViewNodeTree | undefined {
+    const reference = ViewNodeTree.treesByContextId.get(contextId);
+    const viewNodeTree = reference?.deref();
+    if (!viewNodeTree && reference) {
+      ViewNodeTree.treesByContextId.delete(contextId);
+    }
+    return viewNodeTree;
+  }
+
   private readonly nodesById = new Map<number, ViewNode>();
   private readonly nodeIdByHtmlElement = new WeakMap<Element, number>();
   private readonly colorPaletteManager: ColorPaletteManager;
   private readonly visibilityObserverController: VisibilityObserverController;
   private readonly layoutObserverController: LayoutObserverController;
+  private assetTracker: IViewNodeAssetTracker | undefined;
   private rootNode: ViewNode | null = null;
   private pendingLifecycleCallbacks?: PendingLifecycleCallback[];
   private nextLifecycleCallbackSequence = 0;
@@ -73,6 +96,14 @@ export class ViewNodeTree implements AnimatorDelegate {
     this.layoutObserverController.setPostLayoutScheduler(scheduler);
   }
 
+  setAssetTracker(assetTracker: IViewNodeAssetTracker | undefined): void {
+    this.assetTracker = assetTracker;
+  }
+
+  getAssetTracker(): IViewNodeAssetTracker | undefined {
+    return this.assetTracker;
+  }
+
   createElement(
     id: number,
     viewClass: string,
@@ -82,6 +113,15 @@ export class ViewNodeTree implements AnimatorDelegate {
     if (!elementClass) {
       throw new Error(`Unknown viewClass: ${viewClass}`);
     }
+    return this.createElementWithClass(id, viewClass, elementClass, attributeUpdatedExternallyDelegate);
+  }
+
+  createElementWithClass(
+    id: number,
+    viewClass: string,
+    elementClass: AnyElementClass,
+    attributeUpdatedExternallyDelegate: AttributeUpdatedExternallyDelegate | undefined,
+  ): ViewNode {
     const node = new ViewNode(
       id,
       viewClass,

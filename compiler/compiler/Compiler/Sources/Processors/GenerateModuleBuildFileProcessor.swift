@@ -20,6 +20,7 @@ private struct ModuleBuildTargetConfig {
 
     let declarationTSSourceDirs: SourceDirTracking
     let nonDeclarationTSSourceDirs: SourceDirTracking
+    let binarySourceDirs: SourceDirTracking
     let jsonSourceDirs: SourceDirTracking
     let jsSourceDirs: SourceDirTracking
     let legacyVueSourceDirs: SourceDirTracking
@@ -53,6 +54,7 @@ private struct ModuleBuildTargetConfig {
 
     // Dependencies array
     let deps: [CompilationItem.BundleInfo]
+    let testDeps: [CompilationItem.BundleInfo]
 }
 
 private struct GlobPatterns {
@@ -140,10 +142,13 @@ private struct ModuleBuildFile {
         if !config.jsSourceDirs.sourceDirs.isEmpty {
             srcsPatterns.append(FileExtensions.javascript)
         }
+        if !config.binarySourceDirs.sourceDirs.isEmpty {
+            srcsPatterns.append(FileExtensions.bin)
+        }
         if !config.jsonSourceDirs.sourceDirs.isEmpty {
             srcsPatterns.append(FileExtensions.json)
         }
-        let allSourceDirsToCheck = [config.nonDeclarationTSSourceDirs, config.declarationTSSourceDirs, config.jsSourceDirs, config.jsonSourceDirs]
+        let allSourceDirsToCheck = [config.nonDeclarationTSSourceDirs, config.declarationTSSourceDirs, config.jsSourceDirs, config.binarySourceDirs, config.jsonSourceDirs]
         var srcsSourceDirectories = Set<String>()
         allSourceDirsToCheck.forEach { srcsSourceDirectories.formUnion($0.sourceDirs) }
         var files = Set<String>()
@@ -226,6 +231,15 @@ private struct ModuleBuildFile {
         }
 
         maybeAppendDepsSequence(combinedDeps.sorted(), attributeName: "deps")
+
+        var combinedTestDeps: [String] = []
+
+        for dep in config.testDeps {
+            let bazelTarget = try dep.toBazelTarget(projectConfig: self.config.projectConfig, currentWorkspace: "snap_client")
+            combinedTestDeps.append("\"\(bazelTarget)\"")
+        }
+
+        maybeAppendDepsSequence(combinedTestDeps.sorted(), attributeName: "test_deps")
 
         func maybeAppendAttributeGlobPatternsSequence(fileExtensions: [String], filenames: [String] = [], sourceDirs: SourceDirTracking, attributeName: String) {
             guard !sourceDirs.isEmpty else {
@@ -460,6 +474,7 @@ final class GenerateModuleBuildFileProcessor: CompilationProcessor {
         let supportedSrcDirectories = ["src", "test"]
         var declarationTSSourceDirs = SourceDirTracking(logger: logger, supportedSrcDirectories)
         var nonDeclarationTSSourceDirs = SourceDirTracking(logger: logger, supportedSrcDirectories)
+        var binarySourceDirs = SourceDirTracking(logger: logger, supportedSrcDirectories)
         var jsonSourceDirs = SourceDirTracking(logger: logger, supportedSrcDirectories)
         var jsSourceDirs = SourceDirTracking(logger: logger, supportedSrcDirectories)
         var legacyVueSourceDirs = SourceDirTracking(logger: logger, supportedSrcDirectories)
@@ -498,6 +513,9 @@ final class GenerateModuleBuildFileProcessor: CompilationProcessor {
             if item.sourceURL.pathExtension == FileExtensions.javascript {
                 jsSourceDirs.append(item)
             }
+            if item.sourceURL.pathExtension == FileExtensions.bin {
+                binarySourceDirs.append(item)
+            }
             if FileExtensions.images.contains(item.sourceURL.pathExtension) {
                 resourceSourceDirs.append(item)
             }
@@ -531,6 +549,7 @@ final class GenerateModuleBuildFileProcessor: CompilationProcessor {
             // intentionally excluding declarationTSSourceDirs, since those do not produce output
             nonDeclarationTSSourceDirs,
             jsSourceDirs,
+            binarySourceDirs,
             legacyVueSourceDirs,
             legacyStyleSourceDirs,
             legacyModuleStyleSourceDirs,
@@ -563,7 +582,12 @@ final class GenerateModuleBuildFileProcessor: CompilationProcessor {
             sqlDatabaseNames = nil
         }
 
+        let testDeps = Set(bundleInfo.allowedDebugDependencies)
+        let sortedTestDeps = testDeps
+            .filter { !$0.isRoot }
+            .sorted(by: { $0.resolvedBundleName() < $1.resolvedBundleName() })
         let sortedDeps = Set(bundleInfo.dependencies)
+            .subtracting(testDeps)
             .filter { !$0.isRoot }
             .sorted(by: { $0.resolvedBundleName() < $1.resolvedBundleName() })
 
@@ -600,6 +624,7 @@ final class GenerateModuleBuildFileProcessor: CompilationProcessor {
                                              androidOutputTarget: androidOutputTarget,
                                              declarationTSSourceDirs: declarationTSSourceDirs,
                                              nonDeclarationTSSourceDirs: nonDeclarationTSSourceDirs,
+                                             binarySourceDirs: binarySourceDirs,
                                              jsonSourceDirs: jsonSourceDirs,
                                              jsSourceDirs: jsSourceDirs,
                                              legacyVueSourceDirs: legacyVueSourceDirs,
@@ -626,7 +651,8 @@ final class GenerateModuleBuildFileProcessor: CompilationProcessor {
                                              iosDeps: iosDeps,
                                              excludePatterns: bundleInfo.inclusionConfig.excludePatterns,
                                              excludeGlobs: bundleInfo.excludeGlobs,
-                                             deps: sortedDeps)
+                                             deps: sortedDeps,
+                                             testDeps: sortedTestDeps)
         let moduleBuildFile = ModuleBuildFile(config: config)
         return moduleBuildFile
     }

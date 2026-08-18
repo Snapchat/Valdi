@@ -31,6 +31,7 @@ interface ScrollOffsetRequest {
 }
 
 const SCROLL_STATE = '__scrollElementClassState';
+const MOUSE_DRAG_SCROLL_THRESHOLD = 4;
 
 function getScrollState(context: AttributeApplierContext): ScrollState {
   const existing = context.getState<ScrollState>(SCROLL_STATE);
@@ -301,6 +302,86 @@ function updateScrollIndicators(element: HTMLElement, context: AttributeApplierC
   element.style.setProperty('scrollbar-width', hideHorizontal && hideVertical ? 'none' : 'auto');
 }
 
+function isNonSelectableScrollTarget(container: HTMLElement, target: EventTarget | null): boolean {
+  let current = target as HTMLElement | null;
+  while (current !== null && current !== container) {
+    if (current.style?.userSelect === 'none') {
+      return true;
+    }
+    current = current.parentElement;
+  }
+  return false;
+}
+
+function installMouseDragScrolling(element: HTMLElement, context: AttributeApplierContext): void {
+  let startX: number | undefined;
+  let startY = 0;
+  let startScrollLeft = 0;
+  let startScrollTop = 0;
+  let suppressClick = false;
+
+  const handleMouseDown = (event: MouseEvent): void => {
+    suppressClick = false;
+    if (event.button !== 0 || !isNonSelectableScrollTarget(element, event.target)) {
+      startX = undefined;
+      return;
+    }
+    startX = event.clientX;
+    startY = event.clientY;
+    startScrollLeft = element.scrollLeft;
+    startScrollTop = element.scrollTop;
+  };
+
+  const handleMouseMove = (event: MouseEvent): void => {
+    if (startX === undefined || event.buttons !== 1) {
+      return;
+    }
+
+    const deltaX = event.clientX - startX;
+    const deltaY = event.clientY - startY;
+    if (Math.abs(deltaX) < MOUSE_DRAG_SCROLL_THRESHOLD && Math.abs(deltaY) < MOUSE_DRAG_SCROLL_THRESHOLD) {
+      return;
+    }
+
+    const maxScrollLeft = Math.max(0, element.scrollWidth - element.clientWidth);
+    const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+    if (maxScrollLeft === 0 && maxScrollTop === 0) {
+      return;
+    }
+
+    element.scrollLeft = Math.max(0, Math.min(maxScrollLeft, startScrollLeft - deltaX));
+    element.scrollTop = Math.max(0, Math.min(maxScrollTop, startScrollTop - deltaY));
+    suppressClick = true;
+    event.preventDefault();
+  };
+
+  const handleMouseEnd = (): void => {
+    startX = undefined;
+  };
+
+  const handleClick = (event: MouseEvent): void => {
+    if (!suppressClick) {
+      return;
+    }
+    suppressClick = false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  element.addEventListener('mousedown', handleMouseDown);
+  element.addEventListener('mousemove', handleMouseMove);
+  element.addEventListener('mouseup', handleMouseEnd);
+  element.addEventListener('mouseleave', handleMouseEnd);
+  element.addEventListener('click', handleClick, true);
+  setApplierCleanup(context, 'scroll:mouseDragScrolling', () => {
+    element.removeEventListener('mousedown', handleMouseDown);
+    element.removeEventListener('mousemove', handleMouseMove);
+    element.removeEventListener('mouseup', handleMouseEnd);
+    element.removeEventListener('mouseleave', handleMouseEnd);
+    element.removeEventListener('click', handleClick, true);
+  });
+}
+
 function buildScrollAttributeAppliers(viewElementClass: ViewElementClass): AttributeApplierMap {
   const binder = new AttributesBinder<HTMLElement>();
   binder.bindFunctionAttribute(
@@ -415,7 +496,19 @@ function buildScrollAttributeAppliers(viewElementClass: ViewElementClass): Attri
   binder.bindNoOpAttribute('bouncesFromDragAtEnd');
   binder.bindNoOpAttribute('bouncesVerticalWithSmallContent');
   binder.bindNoOpAttribute('bouncesHorizontalWithSmallContent');
-  binder.bindNoOpAttribute('cancelsTouchesOnScroll');
+  binder.bindBooleanAttribute(
+    'cancelsTouchesOnScroll',
+    (element, enabled, context) => {
+      if (enabled) {
+        installMouseDragScrolling(element, context);
+      } else {
+        setApplierCleanup(context, 'scroll:mouseDragScrolling', undefined);
+      }
+    },
+    (_element, context) => {
+      setApplierCleanup(context, 'scroll:mouseDragScrolling', undefined);
+    },
+  );
   binder.bindBooleanAttribute(
     'dismissKeyboardOnDrag',
     (element, value, context) => {

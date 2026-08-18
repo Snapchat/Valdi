@@ -1,0 +1,59 @@
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+ts_project(
+    name = "integration_test_app_web",
+    srcs = glob([
+        "web/**/*.ts",
+        "src/**/*.d.ts",
+    ]),
+    allow_js = True,
+    composite = True,
+    transpiler = "tsc",
+    tsconfig = "web/tsconfig.json",
+    deps = [
+        "//:valdi_core_link",
+        "//:valdi_tsx_link",
+        "//:web_renderer_link",
+    ],
+)
+
+valdi_module(
+    name = "integration_test_app",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+    ]),
+    android_class_path = "com.snap.valdi.modules.integration_test_app",
+    android_deps = ["//apps/integration_test/src/android:integration_test_host_android"],
+    android_output_target = "release",
+    ios_deps = ["//apps/integration_test/src/ios:integration_test_host_ios"],
+    ios_module_name = "SCCIntegrationTestApp",
+    ios_output_target = "release",
+    inline_assets = True,
+    macos_deps = ["//apps/integration_test/src/cpp:integration_test_host_cpp"],
+    res = glob([
+        "res/**/*.json",
+        "res/**/*.svg",
+    ]),
+    visibility = ["//visibility:public"],
+    web_deps = [":integration_test_app_web"],
+    # Exercise external Web asset emission in the integration harness. Other
+    # examples, including Hello World, retain the default inline policy.
+    web_no_inline_images = True,
+    web_register_native_module_id_overrides = {
+        "integration_test_app/web/FactoryIntegrationHost.js": "integration_test_app/src/FactoryIntegrationHost",
+        "integration_test_app/web/IntegrationTestHost.js": "integration_test_app/src/IntegrationTestHost",
+    },
+    web_workers = ["integration_test_app/src/WebWorkerProbe"],
+    deps = [
+        "//src/valdi_modules/src/valdi/coreutils",
+        "//src/valdi_modules/src/valdi/drawing",
+        "//src/valdi_modules/src/valdi/file_system",
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+        "//src/valdi_modules/src/valdi/valdi_webview",
+        "//src/valdi_modules/src/valdi/web_renderer",
+        "//src/valdi_modules/src/valdi/worker",
+    ],
+)

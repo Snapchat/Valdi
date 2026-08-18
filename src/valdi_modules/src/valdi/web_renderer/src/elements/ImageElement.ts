@@ -1,6 +1,7 @@
 import { ParsedCssColor } from '../utils/cssColor';
 import { ImageFilterOperation } from '../utils/imageFilterOperations';
 import type { ElementLayoutObserver } from '../core/ElementClass';
+import type { IViewNodeAssetTracker } from 'valdi_core/src/IViewNodeAssetTracker';
 import { assignStyles } from './ElementClassSupport';
 import {
   calculateObjectFitDrawSize,
@@ -74,6 +75,8 @@ interface LayoutAnimationSize {
 
 export class ImageElement implements ElementLayoutObserver {
   private readonly element: HTMLElement;
+  private readonly nodeId: number;
+  private readonly assetTracker: IViewNodeAssetTracker | undefined;
   private readonly enqueuePostLayoutCallback: (callback: () => void) => void;
   private readonly requestLayoutPass: () => void;
   private canvas: HTMLCanvasElement | undefined;
@@ -81,6 +84,7 @@ export class ImageElement implements ElementLayoutObserver {
   private source: string | undefined;
   private imageLoaded = false;
   private imageCanvasSafe = false;
+  private observingAsset = false;
   private loadVersion = 0;
   private loadResult: ImageLoadResult | undefined;
   private onAssetLoad: ImageAssetLoadCallback | undefined;
@@ -104,16 +108,21 @@ export class ImageElement implements ElementLayoutObserver {
 
   constructor(
     element: HTMLElement,
+    nodeId: number,
+    assetTracker: IViewNodeAssetTracker | undefined,
     enqueuePostLayoutCallback: (callback: () => void) => void,
     requestLayoutPass: () => void,
   ) {
     this.element = element;
+    this.nodeId = nodeId;
+    this.assetTracker = assetTracker;
     this.enqueuePostLayoutCallback = enqueuePostLayoutCallback;
     this.requestLayoutPass = requestLayoutPass;
   }
 
   destroy(): void {
     this.loadVersion++;
+    this.endAssetRequest();
     this.releaseImage();
   }
 
@@ -145,6 +154,7 @@ export class ImageElement implements ElementLayoutObserver {
     this.tint = configuration.tint;
     if (sourceChanged) {
       if (configuration.source) {
+        this.endAssetRequest();
         this.source = configuration.source;
         this.startLoad(this.requiresCanvas(), true);
       } else {
@@ -158,6 +168,7 @@ export class ImageElement implements ElementLayoutObserver {
 
   private clearSource(): void {
     this.loadVersion++;
+    this.endAssetRequest();
     this.releaseImage();
     this.source = undefined;
     this.image = undefined;
@@ -188,6 +199,10 @@ export class ImageElement implements ElementLayoutObserver {
     if (!source) {
       return;
     }
+    if (this.assetTracker && (!this.observingAsset || this.imageLoaded)) {
+      this.assetTracker.onBeganRequestingLoadedAsset(this.nodeId);
+      this.observingAsset = true;
+    }
     const loadVersion = ++this.loadVersion;
     this.releaseImage();
     const image = new Image();
@@ -216,6 +231,7 @@ export class ImageElement implements ElementLayoutObserver {
       this.updateIntrinsicSize(image);
       this.renderCurrentLayout();
       this.requestLayoutPass();
+      this.assetTracker?.onLoadedAssetChanged(this.nodeId, undefined);
       this.scheduleLoadCallbackReplay();
     };
     image.onerror = () => {
@@ -247,7 +263,16 @@ export class ImageElement implements ElementLayoutObserver {
     this.notifiedOnImageDecoded = undefined;
     this.renderCurrentLayout();
     this.requestLayoutPass();
+    this.assetTracker?.onLoadedAssetChanged(this.nodeId, errorMessage);
     this.scheduleLoadCallbackReplay();
+  }
+
+  private endAssetRequest(): void {
+    if (!this.observingAsset) {
+      return;
+    }
+    this.observingAsset = false;
+    this.assetTracker?.onEndRequestingLoadedAsset(this.nodeId);
   }
 
   private scheduleLoadCallbackReplay(): void {

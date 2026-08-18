@@ -29,8 +29,8 @@ const TEXT_CONTENT_ELEMENT_STATE = '__labelElementClassTextContentElementState';
 const LAYOUT_DEPENDENT = true;
 
 interface TextLineHeightState {
-  lineHeight?: string;
-  lineHeightMultiple?: number;
+  lineHeight?: number;
+  lineHeightAbsolute?: string;
 }
 
 function getTextContentElement(element: HTMLElement, context: AttributeApplierContext): HTMLElement {
@@ -48,13 +48,29 @@ function getTextLineHeightState(context: AttributeApplierContext): TextLineHeigh
 
 function updateTextLineHeight(element: HTMLElement, context: AttributeApplierContext): void {
   const state = getTextLineHeightState(context);
-  if (state.lineHeight !== undefined) {
-    element.style.lineHeight = state.lineHeight;
-  } else if (state.lineHeightMultiple !== undefined) {
-    element.style.lineHeight = String(state.lineHeightMultiple);
+  if (state.lineHeightAbsolute !== undefined) {
+    element.style.lineHeight = state.lineHeightAbsolute;
+  } else if (state.lineHeight !== undefined) {
+    element.style.lineHeight = String(state.lineHeight);
   } else {
     element.style.lineHeight = '';
   }
+}
+
+function lineHeightAbsoluteAttributeApplier(): AttributeApplier {
+  return {
+    layoutDependent: true,
+    apply(element, value, attributeName, context) {
+      const state = getTextLineHeightState(context);
+      state.lineHeightAbsolute = parseCssLength(value, attributeName);
+      updateTextLineHeight(element, context);
+    },
+    reset(element, _attributeName, context) {
+      const state = getTextLineHeightState(context);
+      state.lineHeightAbsolute = undefined;
+      updateTextLineHeight(element, context);
+    },
+  };
 }
 
 function lineHeightAttributeApplier(): AttributeApplier {
@@ -62,28 +78,12 @@ function lineHeightAttributeApplier(): AttributeApplier {
     layoutDependent: true,
     apply(element, value, attributeName, context) {
       const state = getTextLineHeightState(context);
-      state.lineHeight = parseCssLength(value, attributeName);
+      state.lineHeight = parseNumber(value, attributeName);
       updateTextLineHeight(element, context);
     },
     reset(element, _attributeName, context) {
       const state = getTextLineHeightState(context);
       state.lineHeight = undefined;
-      updateTextLineHeight(element, context);
-    },
-  };
-}
-
-function lineHeightMultipleAttributeApplier(): AttributeApplier {
-  return {
-    layoutDependent: true,
-    apply(element, value, attributeName, context) {
-      const state = getTextLineHeightState(context);
-      state.lineHeightMultiple = parseNumber(value, attributeName);
-      updateTextLineHeight(element, context);
-    },
-    reset(element, _attributeName, context) {
-      const state = getTextLineHeightState(context);
-      state.lineHeightMultiple = undefined;
       updateTextLineHeight(element, context);
     },
   };
@@ -173,6 +173,15 @@ function buildTextAttributeAppliers(viewElementClass: ViewElementClass): Attribu
   const binder = new AttributesBinder<HTMLElement>();
   binder.bindAttribute('value', labelValueAttributeApplier());
   binder.bindAttribute('font', setFont());
+  binder.bindBooleanAttribute(
+    'selectable',
+    (element, selectable) => {
+      element.style.userSelect = selectable ? 'text' : 'none';
+    },
+    element => {
+      element.style.userSelect = 'none';
+    },
+  );
   binder.bindAttribute('textAlign', textAlignAttributeApplier());
   binder.bindAttribute('textDecoration', textDecorationAttributeApplier());
   binder.bindStringAttribute(
@@ -185,7 +194,19 @@ function buildTextAttributeAppliers(viewElementClass: ViewElementClass): Attribu
     },
   );
   binder.bindAttribute('lineHeight', lineHeightAttributeApplier());
-  binder.bindAttribute('lineHeightMultiple', lineHeightMultipleAttributeApplier());
+  binder.bindAttribute('lineHeightAbsolute', lineHeightAbsoluteAttributeApplier());
+  binder.bindStringAttribute(
+    'textOverflow',
+    (element, value) => {
+      if (value !== 'ellipsis' && value !== 'clip') {
+        throw new Error(`Unsupported textOverflow value '${value}'`);
+      }
+      element.style.textOverflow = value;
+    },
+    element => {
+      element.style.textOverflow = '';
+    },
+  );
   binder.bindCssLengthStyleAttribute('letterSpacing', 'letterSpacing', LAYOUT_DEPENDENT);
   binder.bindNumberAttribute(
     'numberOfLines',
@@ -240,6 +261,7 @@ export class LabelElementClass extends ElementClass {
       wordWrap: 'break-word',
       fontFamily: SYSTEM_FONT_FAMILY,
       color: 'black',
+      userSelect: 'none',
     });
     return element;
   }

@@ -8,6 +8,9 @@ function createContext(): AttributeApplierContext {
   const viewAttributeElement = createElement();
   return {
     id: 1,
+    getAssetTracker(): undefined {
+      return undefined;
+    },
     getState<T>(key: string): T | undefined {
       return state.get(key) as T | undefined;
     },
@@ -227,5 +230,41 @@ describe('AttributesApplier', () => {
 
     expect(applier.setAttribute('width', 10)).toBe(AttributeSetResult.ChangedAndInvalidatesLayout);
     expect(applier.setAttribute('style', { attributes: { width: 20 } })).toBe(AttributeSetResult.Unchanged);
+  });
+
+  it('synchronizes external values without applying them back to the element', () => {
+    const appliedValues: unknown[] = [];
+    const binder = new AttributesBinder<HTMLElement>();
+    binder.bindStringAttribute(
+      'value',
+      (_element, value) => {
+        appliedValues.push(value);
+      },
+      () => {},
+    );
+    class ExternalValueElementClass extends ElementClass {
+      constructor() {
+        super('external-value', binder.attributeAppliers);
+      }
+
+      protected onCreateElement(): HTMLElement {
+        return createElement();
+      }
+    }
+    const applier = new AttributesApplier(1, new ExternalValueElementClass());
+    const element = createElement();
+    const context = createContext();
+
+    applier.setAttribute('value', 'rendered');
+    applier.flush(element, context, undefined);
+    applier.updateAttributeWithoutApply('value', 'edited in the DOM');
+    applier.flush(element, context, undefined);
+
+    expect(applier.getAttribute('value')).toBe('edited in the DOM');
+    expect(appliedValues).toEqual(['rendered']);
+
+    expect(applier.setAttribute('value', 'cleared by the renderer')).toBe(AttributeSetResult.Changed);
+    applier.flush(element, context, undefined);
+    expect(appliedValues).toEqual(['rendered', 'cleared by the renderer']);
   });
 });

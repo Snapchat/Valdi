@@ -2,11 +2,12 @@ import { StringCache } from 'valdi_core/src/StringCache';
 import { StringMap } from 'coreutils/src/StringMap';
 import { IRenderedComponentHolder } from 'valdi_tsx/src/IRenderedComponentHolder';
 import { IRenderedElementHolder } from 'valdi_tsx/src/IRenderedElementHolder';
+import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
 import { AnyRenderFunction } from './AnyRenderFunction';
 import { isDevBuild } from './BuildType';
 import { resolveComponentConstructor } from './ComponentPath';
 import { ComponentPrototype } from './ComponentPrototype';
-import { ValdiRuntime } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { ComponentConstructor, IComponent } from './IComponent';
 import { RequireFunc } from './IModuleLoader';
 import { IRenderedElement } from './IRenderedElement';
@@ -32,7 +33,7 @@ import { PropertyList, removeProperty } from './utils/PropertyList';
  * TypeScript to Native interactions
  */
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
 
 class DummyComponent implements IComponent {
   viewModel: any;
@@ -98,8 +99,20 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
     getRenderer().beginElement(prototype, key);
   }
 
+  beginRenderWithViewFactory(prototype: NodePrototype, viewFactory: ViewFactory, key: string | undefined): void {
+    getRenderer().beginElementWithViewFactory(prototype, viewFactory, key);
+  }
+
   beginRenderIfNeeded(prototype: NodePrototype, key?: string): boolean {
     return getRenderer().beginElementIfNeeded(prototype, key);
+  }
+
+  beginRenderWithViewFactoryIfNeeded(
+    prototype: NodePrototype,
+    viewFactory: ViewFactory,
+    key: string | undefined,
+  ): boolean {
+    return getRenderer().beginElementWithViewFactoryIfNeeded(prototype, viewFactory, key);
   }
 
   endRender() {
@@ -268,7 +281,7 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
         androidClass = removeProperty(attributes, 'androidClass');
         iosClass = removeProperty(attributes, 'iosClass');
         macosClass = removeProperty(attributes, 'macosClass');
-        // webClass is left in attributes so WebValdiCustomView receives it via changeAttribute
+        // webClass is left in attributes so the web renderer can resolve the custom-view factory.
       }
 
       // 1 = Android, 2 = iOS, 3 = MacOS, 4 = Web
@@ -325,6 +338,7 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
       allowedRootElementTypes,
       new JSXRendererDelegate(treeId, this.stringCache, this.attributeCache, this.injectedAttributeCache),
       useTopDownMoveOrder,
+      false,
     );
   }
 

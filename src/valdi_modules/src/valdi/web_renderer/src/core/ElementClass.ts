@@ -1,5 +1,6 @@
 import type { ElementFrame } from 'valdi_tsx/src/Geometry';
 import type { AnimationInterpolator } from '../attributes/AttributeAnimation';
+import type { IViewNodeAssetTracker } from 'valdi_core/src/IViewNodeAssetTracker';
 
 export type MakeAnimationInterpolator<TElement extends HTMLElement = HTMLElement> = (
   element: TElement,
@@ -20,6 +21,7 @@ export interface AttributeUpdatedExternallyDelegate {
 
 export interface AttributeApplierContext {
   readonly id: number;
+  getAssetTracker(): IViewNodeAssetTracker | undefined;
   getState<T>(key: string): T | undefined;
   setState(key: string, value: unknown): void;
   getViewAttributeElement(): HTMLElement;

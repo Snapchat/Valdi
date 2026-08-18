@@ -19,6 +19,7 @@ load(
     "//bzl/valdi:valdi_macos_application_icons.bzl",
     _valdi_macos_application_icons = "valdi_macos_application_icons",
 )
+load("//bzl/valdi:valdi_web_application.bzl", "valdi_web_application")
 load("//bzl/valdi:valdi_module.bzl", "valdi_hotreload")
 
 def valdi_application_icons(src, round_src = None):
@@ -55,6 +56,7 @@ def valdi_application(
         android_round_app_icon_name = None,
         android_activity_theme_name = None,
         macos_app_icons = None,
+        web_package_name = None,
         desktop_window_width = 600,
         desktop_window_height = 800,
         desktop_window_resizable = True,
@@ -133,6 +135,14 @@ def valdi_application(
         name = "{}_linux".format(name),
         root_component_path = root_component_path,
         deps = get_suffixed_deps(deps, "_native"),
+    )
+
+    valdi_web_application(
+        name = "{}_web".format(name),
+        title = title,
+        root_component_path = root_component_path,
+        web_package_name = web_package_name if web_package_name != None else "{}_web_application_npm".format(name),
+        deps = deps,
     )
 
     valdi_hotreload(

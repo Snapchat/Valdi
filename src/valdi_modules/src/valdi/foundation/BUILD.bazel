@@ -1,16 +1,5 @@
 load("@aspect_rules_js//npm:defs.bzl", "npm_package")
-load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("//bzl/valdi:valdi_module.bzl", "valdi_module")
-
-ts_project(
-    name = "foundation_web",
-    srcs = glob(["web/**/*.ts"]),
-    allow_js = True,
-    composite = True,
-    declaration = True,
-    transpiler = "tsc",
-    tsconfig = "web/tsconfig.json",
-)
 
 npm_package(
     name = "foundation_dts",
@@ -39,14 +28,12 @@ valdi_module(
     ios_output_target = "release",
     single_file_codegen = True,
     visibility = ["//visibility:public"],
-    web_deps = [":foundation_web"],
-    web_register_native_module_id_overrides = {
-        "foundation/web/ReproducibleGenerator.js": "foundation/test/util/ReproducibleGenerator",
-    },
     deps = [
-        "//src/valdi_modules/src/valdi/jasmine",
         "//src/valdi_modules/src/valdi/valdi_core",
-        "//src/valdi_modules/src/valdi/valdi_test",
         "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+    test_deps = [
+        "//src/valdi_modules/src/valdi/jasmine",
+        "//src/valdi_modules/src/valdi/valdi_test",
     ],
 )

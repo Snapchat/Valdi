@@ -59,6 +59,15 @@ TEST(PathUtils, appendPathAcceptance) {
     ASSERT_EQ(Path("test/dir").append("../path").normalize().toString(), "test/path");
 }
 
+TEST(PathUtils, relativeToAcceptance) {
+    ASSERT_EQ(Path("module/src/File.js").relativeTo(Path("module/src")).toString(), "File.js");
+    ASSERT_EQ(Path("module/src").relativeTo(Path("module/src/nested")).toString(), "..");
+    ASSERT_EQ(Path("core/src/File.js").relativeTo(Path("module/src")).toString(), "../../core/src/File.js");
+    ASSERT_EQ(Path("/root/core/src/File.js").relativeTo(Path("/root/module/src")).toString(), "../../core/src/File.js");
+    ASSERT_EQ(Path("module/other/../src/File.js").relativeTo(Path("module/src")).toString(), "File.js");
+    ASSERT_EQ(Path("module/src").relativeTo(Path("module/src")).toString(), "");
+}
+
 TEST(PathUtils, removeFileExtensionAcceptance) {
     ASSERT_EQ(Path("").removeFileExtension().toString(), "");
     ASSERT_EQ(Path("/").removeFileExtension().toString(), "/");

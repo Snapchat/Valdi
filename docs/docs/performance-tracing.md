@@ -44,6 +44,50 @@ function fn() {
 }
 ```
 
+#### instantTrace()
+
+This function records an instant event at the current time. Use it for point-in-time causes such as "this property scheduled a component render", where there is no duration to measure.
+Example:
+
+```ts
+function updateTitle() {
+  instantTrace('TitleChanged');
+}
+```
+
+### Tracing on Valdi Web
+
+Tracing is disabled by default on Valdi Web. Configure a tracing implementation before creating the
+`ValdiWebRenderer` to include the renderer's detailed trace events.
+
+To show Valdi events on a dedicated track in the Chrome DevTools Performance panel:
+
+```ts
+import { ChromeDevToolsTracing } from 'web_renderer/src/tracing/ChromeDevToolsTracing';
+import { setValdiWebTracing } from 'web_renderer/src/tracing/ValdiWebTracing';
+
+setValdiWebTracing(new ChromeDevToolsTracing());
+```
+
+Enable **Show custom tracks** in the Chrome DevTools Performance panel capture settings before recording.
+This implementation uses Chrome's extended `console.timeStamp()` API and does not retain entries when the
+Performance panel is not recording.
+
+For standard browser Performance Timeline entries, use `PerformanceTimelineTracing` instead:
+
+```ts
+import { PerformanceTimelineTracing } from 'web_renderer/src/tracing/PerformanceTimelineTracing';
+import { setValdiWebTracing } from 'web_renderer/src/tracing/ValdiWebTracing';
+
+setValdiWebTracing(new PerformanceTimelineTracing());
+```
+
+Performance Timeline entries are retained until they are explicitly cleared or the page is unloaded. Disable
+future Valdi Web traces by calling `setValdiWebTracing(undefined)`.
+
+You can provide your own implementation by implementing the `ValdiWebTracing` interface and passing it to
+`setValdiWebTracing()`.
+
 #### `@Trace` annotation
 
 This annotation can be put on a TypeScript class, and will make all its methods automatically traced. Traced methods using the annotation have lower overhead than the `trace()` function, and they can be thus put on hot code paths.

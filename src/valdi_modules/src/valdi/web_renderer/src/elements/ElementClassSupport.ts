@@ -46,7 +46,7 @@ export function createBaseLayoutItemElement<K extends keyof HTMLElementTagNameMa
   return element;
 }
 
-export const SYSTEM_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+export const SYSTEM_FONT_FAMILY = 'var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif)';
 
 function applyFontDescriptor(element: HTMLElement, descriptor: string): void {
   element.style.fontWeight = '';
@@ -54,8 +54,10 @@ function applyFontDescriptor(element: HTMLElement, descriptor: string): void {
 
   if (descriptor === 'system' || descriptor === 'title' || descriptor.startsWith('system-')) {
     element.style.fontFamily = SYSTEM_FONT_FAMILY;
-    if (descriptor.includes('bold') || descriptor === 'title') {
-      element.style.fontWeight = '700';
+    if (descriptor.includes('medium')) {
+      element.style.fontWeight = '500';
+    } else if (descriptor.includes('bold') || descriptor === 'title') {
+      element.style.fontWeight = '600';
     }
     if (descriptor.includes('italic')) {
       element.style.fontStyle = 'italic';
@@ -65,7 +67,7 @@ function applyFontDescriptor(element: HTMLElement, descriptor: string): void {
 
   if (descriptor === 'bold') {
     element.style.fontFamily = SYSTEM_FONT_FAMILY;
-    element.style.fontWeight = '700';
+    element.style.fontWeight = '600';
     return;
   }
 

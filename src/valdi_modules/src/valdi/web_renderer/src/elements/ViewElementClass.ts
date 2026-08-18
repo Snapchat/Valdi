@@ -1,9 +1,10 @@
 import type {
   AttributeApplierContext,
+  CompositeAttribute,
   LayoutAnimationSizeApplier,
   LayoutAnimationTranslationCorrection,
 } from '../core/ElementClass';
-import { assignStyles } from './ElementClassSupport';
+import { assignStyles, type AttributeApplierMap } from './ElementClassSupport';
 import { LayoutElementClass } from './LayoutElementClass';
 import { buildViewAttributeAppliers, viewCompositeAttributes } from './ViewElementAttributes';
 import { getViewPaintElement, setViewPaintElement } from './ViewElementState';
@@ -34,8 +35,16 @@ class PaintElementLayoutAnimationSizeApplier implements LayoutAnimationSizeAppli
 export class ViewElementClass extends LayoutElementClass {
   private paintElementTemplate: HTMLElement | undefined;
 
-  constructor() {
-    super('view', buildViewAttributeAppliers(), viewCompositeAttributes);
+  constructor(
+    className: string,
+    additionalAttributeAppliers: AttributeApplierMap,
+    additionalCompositeAttributes: Readonly<Record<string, CompositeAttribute>>,
+  ) {
+    super(
+      className,
+      { ...buildViewAttributeAppliers(), ...additionalAttributeAppliers },
+      { ...viewCompositeAttributes, ...additionalCompositeAttributes },
+    );
   }
 
   override getViewAttributeElement(element: HTMLElement, context: AttributeApplierContext): HTMLElement {

@@ -1,5 +1,6 @@
 import type { AnimationAppearanceAttributes } from 'valdi_core/src/AnimationOptions';
 import type { ElementFrame } from 'valdi_tsx/src/Geometry';
+import type { IViewNodeAssetTracker } from 'valdi_core/src/IViewNodeAssetTracker';
 import { KeyAnimation } from '../animations/KeyAnimation';
 import type { LayoutAnimation, LayoutFrame } from '../animations/LayoutAnimation';
 import { AttributesApplier, AttributeSetResult } from '../attributes/AttributesApplier';
@@ -224,6 +225,10 @@ export class ViewNode implements AttributeApplierContext {
     return this.state?.[key] as T | undefined;
   }
 
+  getAssetTracker(): IViewNodeAssetTracker | undefined {
+    return this.tree.getAssetTracker();
+  }
+
   setState(key: string, value: unknown): void {
     if (value === undefined && !this.state) {
       return;
@@ -311,7 +316,7 @@ export class ViewNode implements AttributeApplierContext {
       const childColorPaletteDirty = (childColorPaletteUpdateFlags & CHILD_COLOR_PALETTE_DIRTY) !== 0;
       const childForceColorPaletteUpdate = (childColorPaletteUpdateFlags & CHILD_COLOR_PALETTE_FORCE_UPDATE) !== 0;
       const childAnimator = suppressDescendantAnimations ? undefined : resolvedAnimator;
-      for (let index = 0; index < this.children.length; ) {
+      for (let index = 0; index < this.children.length;) {
         const child = this.children[index];
         child.update(
           this.resolvedColorPaletteName,
@@ -655,6 +660,7 @@ export class ViewNode implements AttributeApplierContext {
   }
 
   onAttributeUpdatedExternally(attributeName: string, attributeValue: unknown): void {
+    this.attributesApplier.updateAttributeWithoutApply(attributeName, attributeValue);
     this.attributeUpdatedExternallyDelegate?.onAttributeUpdatedExternally(this.id, attributeName, attributeValue);
   }
 
@@ -726,7 +732,7 @@ export class ViewNode implements AttributeApplierContext {
     if (this.destroyed) {
       return;
     }
-    for (let index = 0; index < this.children.length; ) {
+    for (let index = 0; index < this.children.length;) {
       const child = this.children[index];
       child.completeAnimationsInSubtree();
       if (this.children[index] === child) {

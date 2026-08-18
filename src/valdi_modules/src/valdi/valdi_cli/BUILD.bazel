@@ -1,0 +1,37 @@
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+ts_project(
+    name = "valdi_cli_web",
+    srcs = glob([
+        "web/**/*.ts",
+        "src/**/*.d.ts",
+    ]),
+    allow_js = True,
+    composite = True,
+    transpiler = "tsc",
+    tsconfig = "web/tsconfig.json",
+)
+
+valdi_module(
+    name = "valdi_cli",
+    srcs = glob([
+        "native_specs/**/*.ts",
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.d.ts",
+    ]) + [
+        "tsconfig.json",
+    ],
+    native_deps = ["//src/valdi_modules/src/cpp/valdi_cli:valdi_cli_cpp"],
+    visibility = ["//visibility:public"],
+    web_deps = [":valdi_cli_web"],
+    web_register_native_module_id_overrides = {
+        "valdi_cli/web/ChildProcessNative.js": "valdi_cli/src/ChildProcessNative",
+    },
+    deps = [
+        "//src/valdi_modules/src/valdi/coreutils",
+        "//src/valdi_modules/src/valdi/file_system",
+    ],
+    test_deps = ["//src/valdi_modules/src/valdi/jasmine"],
+)

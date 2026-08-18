@@ -7,5 +7,6 @@
     "composite": true,
     "allowJs": true,
     "declaration": true
-  }
+  },
+  "exclude": ["debug/**", "release/**"]
 }

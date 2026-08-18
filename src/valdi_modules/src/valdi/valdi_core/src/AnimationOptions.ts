@@ -7,6 +7,87 @@ export enum AnimationCurve {
 
 export type AnimationOptions = SpringAnimationOptions | PresetCurveAnimationOptions | CustomCurveAnimationOptions;
 
+export interface AnimationAppearanceAttributes {
+  /**
+   * The horizontal point that scale is applied from, normalized relative to the final width. Defaults to the center.
+   */
+  originX?: number;
+
+  /**
+   * The vertical point that scale is applied from, normalized relative to the final height. Defaults to the center.
+   */
+  originY?: number;
+
+  /**
+   * Initial horizontal translation as a ratio of the final width.
+   */
+  translationX?: number;
+
+  /**
+   * Initial vertical translation as a ratio of the final height.
+   */
+  translationY?: number;
+
+  /**
+   * Initial horizontal scale. Defaults to 1.
+   */
+  scaleX?: number;
+
+  /**
+   * Initial vertical scale. Defaults to 1.
+   */
+  scaleY?: number;
+
+  /**
+   * For enter animations, the opacity created elements should animate from. For exit animations, the opacity destroyed
+   * elements should animate to.
+   */
+  opacity?: number;
+}
+
+export interface AnimationAppearanceBehavior {
+  /**
+   * How created elements should animate in.
+   */
+  enterAttributes?: AnimationAppearanceAttributes;
+
+  /**
+   * How destroyed elements should animate out.
+   */
+  exitAttributes?: AnimationAppearanceAttributes;
+}
+
+export namespace AnimationAppearance {
+  /**
+   * Slides created elements in from the left. Use this for enterAttributes.
+   */
+  export const SLIDE_IN: AnimationAppearanceAttributes = {
+    translationX: -1,
+  };
+
+  /**
+   * Slides destroyed elements out to the right. Use this for exitAttributes.
+   */
+  export const SLIDE_OUT: AnimationAppearanceAttributes = {
+    translationX: 1,
+  };
+
+  /**
+   * Fades created elements in from transparent, or destroyed elements out to transparent.
+   */
+  export const FADE: AnimationAppearanceAttributes = {
+    opacity: 0,
+  };
+
+  /**
+   * Scales created elements up from the center, or destroyed elements down into the center.
+   */
+  export const SCALE_FROM_CENTER: AnimationAppearanceAttributes = {
+    scaleX: 0,
+    scaleY: 0,
+  };
+}
+
 export interface BasicAnimationOptions {
   /**
    * The duration of the animation in seconds.
@@ -29,6 +110,11 @@ export interface BasicAnimationOptions {
    * A completion to call when the transition has completed
    */
   completion?: (wasCancelled: boolean) => void;
+
+  /**
+   * Controls how elements that are created or destroyed inside this animation are animated.
+   */
+  appearanceBehavior?: AnimationAppearanceBehavior;
 }
 
 export interface PresetCurveAnimationOptions extends BasicAnimationOptions {
@@ -76,6 +162,11 @@ export interface SpringAnimationOptions {
    * A completion to call when the transition has completed
    */
   completion?: (wasCanceled: boolean) => void;
+
+  /**
+   * Controls how elements that are created or destroyed inside this animation are animated.
+   */
+  appearanceBehavior?: AnimationAppearanceBehavior;
 }
 
 // (Taken from Principle.app)

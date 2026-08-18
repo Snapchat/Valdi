@@ -1,5 +1,5 @@
 import { StatefulComponent } from '../Component';
-import { ValdiRuntime } from '../ValdiRuntime';
+import { getValdiRuntime } from '../ValdiRuntimeProvider';
 import { withLazyPromise } from '../WithLazyPromise';
 import { lazyPromise } from '../utils/LazyPromise';
 import { RendererError } from '../utils/RendererError';
@@ -9,7 +9,7 @@ interface State {
   error?: Error;
 }
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
 
 /**
  * A component which catches errors and display an error screen

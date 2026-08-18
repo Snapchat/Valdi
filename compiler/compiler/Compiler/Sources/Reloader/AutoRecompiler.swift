@@ -16,16 +16,18 @@ final class AutoRecompiler {
     private let bundleManager: BundleManager
     private let fileDependenciesManager: FileDependenciesManager
     private let errorDumper: CompilationPipelineErrorDumper
+    private let onRecompilationSucceeded: ((Int) -> Void)?
 
     private let queue = DispatchQueue(label: "com.snap.valdi.reloader")
 
-    init(logger: ILogger, compiler: ValdiCompiler, filesFinder: ValdiFilesFinder, bundleManager: BundleManager, fileDependenciesManager: FileDependenciesManager, errorDumper: CompilationPipelineErrorDumper) {
+    init(logger: ILogger, compiler: ValdiCompiler, filesFinder: ValdiFilesFinder, bundleManager: BundleManager, fileDependenciesManager: FileDependenciesManager, errorDumper: CompilationPipelineErrorDumper, onRecompilationSucceeded: ((Int) -> Void)?) {
         self.logger = logger
         self.compiler = compiler
         self.filesFinder = filesFinder
         self.bundleManager = bundleManager
         self.fileDependenciesManager = fileDependenciesManager
         self.errorDumper = errorDumper
+        self.onRecompilationSucceeded = onRecompilationSucceeded
     }
 
     private func filesDidChange(urls: [URL]) {
@@ -43,6 +45,8 @@ final class AutoRecompiler {
             do {
                 self.logger.info("--- Files changed - starting recompilation pass")
                 try self.compiler.compile()
+                self.logger.flush()
+                self.onRecompilationSucceeded?(urls.count)
                 self.logger.info("Recompilation pass finished, waiting for file changes...")
                 self.logger.info("--------------------------------------------------------")
             } catch let error {

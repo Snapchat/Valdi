@@ -2,12 +2,17 @@ import 'jasmine/src/jasmine';
 import { AnimationCurve, type AnimationOptions } from 'valdi_core/src/AnimationOptions';
 import { GeometricPathBuilder, GeometricPathScaleType } from 'valdi_core/src/GeometricPath';
 import { Style } from 'valdi_core/src/Style';
+import { ViewNodeAssetTracker } from 'valdi_core/src/ViewNodeAssetTracker';
 import { AttributedTextBuilder } from 'valdi_core/src/utils/AttributedTextBuilder';
+import { AttributesBinder } from '../src/attributes/AttributesBinder';
 import { AttributeApplier, ElementClass } from '../src/core/ElementClass';
 import { registerElementClassAlias } from '../src/elements/ElementClassRegistry';
 import { ColorPaletteManager } from '../src/core/Palette';
 import { ViewNode } from '../src/core/ViewNode';
 import { ViewNodeTree } from '../src/core/ViewNodeTree';
+import { ViewElementClass } from '../src/elements/ViewElementClass';
+import { ValdiWebRendererDelegate } from '../src/ValdiWebRendererDelegate';
+import { WebViewFactory } from '../src/ViewFactory';
 import { registerWebViewClass, type WebViewClassFactory } from '../src/WebViewClassRegistry';
 import {
   dispatchAttributedTextLayouts,
@@ -41,9 +46,17 @@ type FakeCanvasContext = {
 type FakeDomEvent = {
   type: string;
   defaultPrevented?: boolean;
+  inputType?: string;
   key?: string;
   preventDefault(): void;
 };
+
+interface FakeMouseDragEvent extends FakeDomEvent {
+  readonly buttons: number;
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly timeStamp: number;
+}
 
 type FakeEventListener = ((event: FakeDomEvent) => void) | { handleEvent(event: FakeDomEvent): void };
 
@@ -56,6 +69,7 @@ type FakeElement = {
   parentElement: FakeElement | null;
   ownerDocument: Record<string, unknown>;
   textContent: string;
+  contentEditable?: string;
   value: string;
   className: string;
   classList: { add(...names: string[]): void; contains(name: string): boolean; remove(...names: string[]): void };
@@ -166,7 +180,7 @@ function makeFakeElement(tagName: string): FakeElement {
       },
     },
     parentElement: null,
-    ownerDocument: {},
+    ownerDocument: (globalThis as unknown as { document?: Record<string, unknown> }).document ?? {},
     textContent: '',
     value: '',
     className: '',
@@ -408,6 +422,7 @@ function installDomStubs(): () => void {
   const previousResizeObserver = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
   const animationFrameCallbacks = new Map<number, (time: number) => void>();
   const windowListeners = new Map<string, Array<() => void>>();
+  const documentListeners = new Map<string, FakeEventListener[]>();
   let animationFrameTime = 0;
   let animationFrameRequestCount = 0;
   let nextAnimationFrameHandle = 1;
@@ -430,8 +445,32 @@ function installDomStubs(): () => void {
     appendChild(child: FakeElement): void {
       head.appendChild(child);
     },
-    addEventListener(_name: string, _listener: unknown): void {},
-    removeEventListener(_name: string, _listener: unknown): void {},
+    addEventListener(name: string, listener: unknown): void {
+      const listeners = documentListeners.get(name) ?? [];
+      listeners.push(listener as FakeEventListener);
+      documentListeners.set(name, listeners);
+    },
+    removeEventListener(name: string, listener: unknown): void {
+      const listeners = documentListeners.get(name);
+      if (listeners === undefined) {
+        return;
+      }
+      const index = listeners.indexOf(listener as FakeEventListener);
+      if (index !== -1) {
+        listeners.splice(index, 1);
+      }
+    },
+    dispatchEvent(event: FakeDomEvent): boolean {
+      const listeners = [...(documentListeners.get(event.type) ?? [])];
+      listeners.forEach(listener => {
+        if (typeof listener === 'function') {
+          listener(event);
+        } else {
+          listener.handleEvent(event);
+        }
+      });
+      return event.defaultPrevented !== true;
+    },
   };
   (globalThis as { Image?: unknown }).Image = function () {
     imageConstructionCount++;
@@ -734,6 +773,18 @@ describe('web renderer core', () => {
   function dispatchWindowResize(): void {
     (window as unknown as { dispatchEvent(event: { type: string }): void }).dispatchEvent({ type: 'resize' });
   }
+
+  it('registers and unregisters view-node trees by context ID', () => {
+    const contextId = 'web-renderer-core-test';
+
+    expect(ViewNodeTree.getForContextId(contextId)).toBeUndefined();
+
+    ViewNodeTree.register(contextId, tree);
+    expect(ViewNodeTree.getForContextId(contextId)).toBe(tree);
+
+    ViewNodeTree.unregister(contextId);
+    expect(ViewNodeTree.getForContextId(contextId)).toBeUndefined();
+  });
 
   it('resolves style attributes below direct attributes and falls back after direct removal', () => {
     const id = createRootTestElement('view');
@@ -2522,6 +2573,21 @@ describe('web renderer core', () => {
     expect(element.style.clipPath).toBe('inset(0 round 20px)');
   });
 
+  it('applies pixel units and clipping to both glass corner-radius attributes', () => {
+    const id = createRootTestElement('glass');
+    const element = getNode(id).htmlElement;
+
+    tree.setAttributeOnElement(id, 'borderRadius', 22);
+    tree.flush();
+    expect(element.style.borderRadius).toBe('22px');
+    expect(element.style.clipPath).toBe('inset(0 round 22px)');
+
+    tree.setAttributeOnElement(id, 'glassCornerRadius', 14);
+    tree.flush();
+    expect(element.style.borderRadius).toBe('14px');
+    expect(element.style.clipPath).toBe('inset(0 round 14px)');
+  });
+
   it('applies unsupported border radius expressions immediately', () => {
     const id = createRootTestElement('view');
     let completion: boolean | undefined;
@@ -2818,6 +2884,81 @@ describe('web renderer core', () => {
     ]);
   });
 
+  it('preserves an explicit minimum height when attaching a custom web view', () => {
+    const webClass = registerTestWebViewClass(() => ({
+      changeAttribute(): void {},
+    }));
+    const id = createRootTestElement('custom-view');
+
+    tree.setAttributeOnElement(id, 'minHeight', 32);
+    tree.setAttributeOnElement(id, 'webClass', webClass);
+    tree.flush();
+
+    expect(getNode(id).htmlElement.style.minHeight).toBe('32px');
+  });
+
+  it('creates custom views from an element-class view factory and applies normal attributes', () => {
+    const changes: Array<[string, unknown]> = [];
+    const destroy = jasmine.createSpy('destroy');
+    const binder = new AttributesBinder<HTMLElement>();
+    binder.bindNumberAttribute(
+      'contentReferenceIndex',
+      (_element, value) => changes.push(['contentReferenceIndex', value]),
+      () => changes.push(['contentReferenceIndex', undefined]),
+    );
+    binder.bindStringAttribute(
+      'name',
+      (_element, value) => changes.push(['name', value]),
+      () => changes.push(['name', undefined]),
+    );
+    class TestFactoryElementClass extends ViewElementClass {
+      constructor() {
+        super('test-factory-element', binder.attributeAppliers, {});
+      }
+
+      protected onCreateElement(): HTMLElement {
+        return document.createElement('span');
+      }
+
+      override destroy(element: HTMLElement): void {
+        destroy(element);
+      }
+    }
+    const viewFactory = new WebViewFactory(new TestFactoryElementClass());
+    const root = makeFakeElement('root') as unknown as HTMLElement;
+    const delegate = new ValdiWebRendererDelegate(root, tree);
+    const id = nextId++;
+    delegate.onCustomElementCreated(id, viewFactory);
+    tree.makeElementRoot(id, root);
+
+    tree.setAttributeOnElement(id, 'width', 120);
+    tree.setAttributeOnElement(id, 'contentReferenceIndex', 1);
+    tree.setAttributeOnElement(id, 'name', 'code_block');
+    tree.flush();
+
+    const customElement = getNode(id).htmlElement as unknown as FakeElement;
+    expect(customElement.tagName).toBe('SPAN');
+    expect(customElement.style.width).toBe('120px');
+    expect(customElement.childNodes.length).toBe(0);
+    expect(changes).toEqual([
+      ['name', 'code_block'],
+      ['contentReferenceIndex', 1],
+    ]);
+
+    tree.setAttributeOnElement(id, 'contentReferenceIndex', 2);
+    tree.flush();
+    expect(changes).toEqual([
+      ['name', 'code_block'],
+      ['contentReferenceIndex', 1],
+      ['contentReferenceIndex', 2],
+    ]);
+
+    tree.destroyElement(id);
+    tree.destroy();
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(destroy).toHaveBeenCalledWith(customElement);
+  });
+
   it('destroys a custom-view attribute handler exactly once when its node is removed', () => {
     const destroy = jasmine.createSpy('destroy');
     const webClass = registerTestWebViewClass(() => ({
@@ -2996,10 +3137,52 @@ describe('web renderer core', () => {
     expect(getNode(id).htmlElement.tagName).toBe('DIV');
   });
 
-  it('renders text selection groups as plain views', () => {
-    const id = createTestElement('SCValdiTextSelectionGroup');
+  it('isolates embedded WebViews and cleans up their browser controller bindings', () => {
+    const id = createRootTestElement('webview');
+    const host = getNode(id).htmlElement as unknown as FakeElement;
+    const frame = host.querySelector('iframe');
+    const firstController = {
+      attachWebView: jasmine.createSpy('attachFirstWebView'),
+      detachWebView: jasmine.createSpy('detachFirstWebView'),
+    };
+    const secondController = {
+      attachWebView: jasmine.createSpy('attachSecondWebView'),
+      detachWebView: jasmine.createSpy('detachSecondWebView'),
+    };
 
-    expect(getNode(id).htmlElement.tagName).toBe('DIV');
+    expect(frame?.getAttribute('sandbox')).toBe('allow-scripts allow-forms');
+    expect(frame?.getAttribute('sandbox')).not.toContain('allow-same-origin');
+
+    tree.setAttributeOnElement(id, 'controller', firstController);
+    tree.flush();
+    expect(firstController.attachWebView).toHaveBeenCalledOnceWith(frame);
+
+    tree.setAttributeOnElement(id, 'controller', secondController);
+    tree.flush();
+    expect(firstController.detachWebView).toHaveBeenCalledOnceWith(frame);
+    expect(secondController.attachWebView).toHaveBeenCalledOnceWith(frame);
+
+    tree.destroyElement(id);
+    expect(secondController.detachWebView).toHaveBeenCalledOnceWith(frame);
+  });
+
+  it('maps native label selectability to browser text-selection behavior', () => {
+    const id = createRootTestElement('label');
+    const label = getNode(id).htmlElement;
+
+    expect(label.style.userSelect).toBe('none');
+
+    tree.setAttributeOnElement(id, 'selectable', false);
+    tree.flush();
+    expect(label.style.userSelect).toBe('none');
+
+    tree.setAttributeOnElement(id, 'selectable', true);
+    tree.flush();
+    expect(label.style.userSelect).toBe('text');
+
+    tree.setAttributeOnElement(id, 'selectable', undefined);
+    tree.flush();
+    expect(label.style.userSelect).toBe('none');
   });
 
   it('replaces the root container children when making an element root', () => {
@@ -3691,6 +3874,152 @@ describe('web renderer core', () => {
     expect(element.classList.contains('hide-h-scrollbar')).toBeTrue();
   });
 
+  it('reports native-shaped drag lifecycle, movement, and velocity', () => {
+    const id = createRootTestElement('view');
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+    const events: Array<{ deltaX: number; deltaY: number; state: number; velocityY: number }> = [];
+    const mouseEvent = (
+      type: string,
+      clientX: number,
+      clientY: number,
+      buttons: number,
+      timeStamp: number,
+    ): FakeMouseDragEvent => ({
+      buttons,
+      clientX,
+      clientY,
+      preventDefault(): void {},
+      timeStamp,
+      type,
+    });
+
+    tree.setAttributeOnElement(
+      id,
+      'onDrag',
+      (event: { deltaX: number; deltaY: number; state: number; velocityY: number }) => {
+        events.push(event);
+      },
+    );
+    tree.flush();
+
+    element.dispatchEvent(mouseEvent('mousedown', 40, 100, 1, 0));
+    element.dispatchEvent(mouseEvent('mousemove', 48, 65, 1, 50));
+    element.dispatchEvent(mouseEvent('mouseup', 52, 20, 0, 100));
+
+    expect(events.map(event => event.state)).toEqual([0, 1, 2]);
+    expect(events.map(event => [event.deltaX, event.deltaY])).toEqual([
+      [0, 0],
+      [8, -35],
+      [12, -80],
+    ]);
+    expect(events[1].velocityY).toBe(-700);
+    expect(events[2].velocityY).toBe(-900);
+  });
+
+  it('does not recognize a disabled drag interaction', () => {
+    const id = createRootTestElement('view');
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+    const onDrag = jasmine.createSpy('onDrag');
+    tree.setAttributeOnElement(id, 'onDrag', onDrag);
+    tree.setAttributeOnElement(id, 'onDragDisabled', true);
+    tree.flush();
+
+    const event: FakeMouseDragEvent = {
+      buttons: 1,
+      clientX: 20,
+      clientY: 50,
+      preventDefault(): void {},
+      timeStamp: 0,
+      type: 'mousedown',
+    };
+    const moved: FakeMouseDragEvent = { ...event, clientY: 10, timeStamp: 50, type: 'mousemove' };
+    const ended: FakeMouseDragEvent = { ...event, buttons: 0, clientY: 10, timeStamp: 100, type: 'mouseup' };
+    element.dispatchEvent(event);
+    element.dispatchEvent(moved);
+    element.dispatchEvent(ended);
+
+    expect(onDrag).not.toHaveBeenCalled();
+  });
+
+  it('continues an active drag on the owner document after the pointer leaves its moving view', () => {
+    const id = createRootTestElement('view');
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+    const events: Array<{ deltaX: number; deltaY: number; state: number }> = [];
+    const document = element.ownerDocument as unknown as FakeElement;
+    const createEvent = (type: string, clientX: number, clientY: number, buttons: number): FakeMouseDragEvent => ({
+      buttons,
+      clientX,
+      clientY,
+      preventDefault: jasmine.createSpy('preventDefault'),
+      timeStamp: 1,
+      type,
+    });
+
+    tree.setAttributeOnElement(id, 'onDrag', (event: { deltaX: number; deltaY: number; state: number }) => {
+      events.push(event);
+    });
+    tree.flush();
+
+    element.dispatchEvent(createEvent('mousedown', 20, 30, 1));
+    document.dispatchEvent(createEvent('mousemove', 145, 90, 1));
+    document.dispatchEvent(createEvent('mouseup', 145, 90, 0));
+    document.dispatchEvent(createEvent('mousemove', 200, 140, 1));
+
+    expect(events.map(event => event.state)).toEqual([0, 1, 2]);
+    expect(events[1].deltaX).toBe(125);
+    expect(events[1].deltaY).toBe(60);
+  });
+
+  it('scrolls nonselectable content when dragged with the primary mouse button', () => {
+    const id = createRootTestElement('scroll');
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+    const label = makeFakeElement('span');
+    element.clientHeight = 100;
+    element.scrollHeight = 500;
+    element.appendChild(label);
+
+    tree.setAttributeOnElement(id, 'cancelsTouchesOnScroll', true);
+    tree.flush();
+
+    const mouseEvent = (type: string, clientY: number, buttons: number): FakeDomEvent => {
+      return {
+        type,
+        button: 0,
+        buttons,
+        clientX: 20,
+        clientY,
+        target: label,
+        preventDefault(): void {
+          this.defaultPrevented = true;
+        },
+        stopImmediatePropagation(): void {},
+      } as FakeDomEvent;
+    };
+
+    element.dispatchEvent(mouseEvent('mousedown', 90, 1));
+    element.dispatchEvent(mouseEvent('mousemove', 40, 1));
+    expect(element.scrollTop).toBe(0);
+
+    label.style.userSelect = 'none';
+    element.dispatchEvent(mouseEvent('mousedown', 90, 1));
+    const drag = mouseEvent('mousemove', 40, 1);
+    element.dispatchEvent(drag);
+    expect(element.scrollTop).toBe(50);
+    expect(drag.defaultPrevented).toBeTrue();
+
+    element.dispatchEvent(mouseEvent('mouseup', 40, 0));
+    const click = mouseEvent('click', 40, 0);
+    element.dispatchEvent(click);
+    expect(click.defaultPrevented).toBeTrue();
+
+    tree.setAttributeOnElement(id, 'cancelsTouchesOnScroll', false);
+    tree.flush();
+    element.scrollTop = 0;
+    element.dispatchEvent(mouseEvent('mousedown', 90, 1));
+    element.dispatchEvent(mouseEvent('mousemove', 40, 1));
+    expect(element.scrollTop).toBe(0);
+  });
+
   it('reports changed scroll content size when the observed element size changes', () => {
     const sizes: Array<{ width: number; height: number }> = [];
     const id = createRootTestElement('scroll');
@@ -3807,6 +4136,172 @@ describe('web renderer core', () => {
     );
   });
 
+  it('prevents browser focus outlines on multiline text views without changing text fields', () => {
+    const textViewId = createRootTestElement('textview');
+    const textView = getNode(textViewId).htmlElement as unknown as FakeElement;
+
+    tree.setAttributeOnElement(textViewId, 'enabled', true);
+    tree.setAttributeOnElement(textViewId, 'placeholder', 'Write a message');
+    tree.setAttributeOnElement(textViewId, 'accessibilityLabel', 'Write a message');
+    tree.flush();
+
+    expect(textView.style.outline).toBe('none');
+    expect(textView.getAttribute('aria-placeholder')).toBe('Write a message');
+    expect(textView.getAttribute('aria-disabled')).toBe('false');
+    expect(textView.contentEditable).toBe('plaintext-only');
+
+    const textFieldId = createRootTestElement('textfield');
+    const textField = getNode(textFieldId).htmlElement as unknown as FakeElement;
+    expect(textField.style.outline).toBeUndefined();
+  });
+
+  it('renders accessible, independently styled textview placeholders', () => {
+    const id = createRootTestElement('textview');
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+
+    tree.setAttributeOnElement(id, 'placeholder', 'Write a message');
+    tree.setAttributeOnElement(id, 'placeholderColor', '#7f7f7f');
+    tree.flush();
+
+    expect(element.getAttribute('aria-placeholder')).toBe('Write a message');
+    expect(element.getAttribute('placeholder')).toBe('Write a message');
+    expect(element.getAttribute('data-valdi-empty')).toBe('true');
+    expect(element.style.getPropertyValue('--valdi-textview-placeholder-color')).toBe('#7f7f7f');
+  });
+
+  it('hides and restores textview placeholders as their controlled value changes', () => {
+    const id = createRootTestElement('textview');
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+
+    tree.setAttributeOnElement(id, 'placeholder', 'Describe your work');
+    tree.flush();
+    expect(element.getAttribute('data-valdi-empty')).toBe('true');
+
+    tree.setAttributeOnElement(id, 'value', 'Start a launch plan');
+    tree.flush();
+    expect(element.getAttribute('data-valdi-empty')).toBeNull();
+
+    tree.setAttributeOnElement(id, 'value', '');
+    tree.flush();
+    expect(element.getAttribute('data-valdi-empty')).toBe('true');
+  });
+
+  it('updates and removes textview placeholder attributes', () => {
+    const id = createRootTestElement('textview');
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+
+    tree.setAttributeOnElement(id, 'placeholder', 'Initial placeholder');
+    tree.flush();
+
+    tree.setAttributeOnElement(id, 'placeholder', 'Updated placeholder');
+    tree.flush();
+    expect(element.getAttribute('aria-placeholder')).toBe('Updated placeholder');
+    expect(element.getAttribute('placeholder')).toBe('Updated placeholder');
+
+    tree.setAttributeOnElement(id, 'placeholder', undefined);
+    tree.setAttributeOnElement(id, 'placeholderColor', undefined);
+    tree.flush();
+    expect(element.getAttribute('aria-placeholder')).toBeNull();
+    expect(element.getAttribute('data-valdi-empty')).toBeNull();
+    expect(element.getAttribute('placeholder')).toBeNull();
+    expect(element.style.getPropertyValue('--valdi-textview-placeholder-color')).toBe('');
+  });
+
+  it('submits textview send actions without inserting a browser line break', () => {
+    const id = createRootTestElement('textview');
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+    const submissions: string[] = [];
+
+    tree.setAttributeOnElement(id, 'value', 'Ready to send');
+    tree.setAttributeOnElement(id, 'returnType', 'send');
+    tree.setAttributeOnElement(id, 'onReturn', (event: { text: string }) => {
+      submissions.push(event.text);
+    });
+    tree.flush();
+
+    const event = makeFakeEvent('keydown', 'Enter');
+    element.dispatchEvent(event);
+
+    expect(element.getAttribute('enterkeyhint')).toBe('send');
+    expect(event.defaultPrevented).toBeTrue();
+    expect(submissions).toEqual(['Ready to send']);
+  });
+
+  it('preserves normal multiline Return behavior for textview line returns', () => {
+    const id = createRootTestElement('textview');
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+    const submissions: string[] = [];
+
+    tree.setAttributeOnElement(id, 'value', 'Keep editing');
+    tree.setAttributeOnElement(id, 'returnType', 'linereturn');
+    tree.setAttributeOnElement(id, 'onReturn', (event: { text: string }) => {
+      submissions.push(event.text);
+    });
+    tree.flush();
+
+    const event = makeFakeEvent('keydown', 'Enter');
+    element.dispatchEvent(event);
+
+    expect(element.getAttribute('enterkeyhint')).toBeNull();
+    expect(event.defaultPrevented).toBeFalse();
+    expect(submissions).toEqual(['Keep editing']);
+  });
+
+  it('updates and resets browser return-key hints for editable text views', () => {
+    const id = createRootTestElement('textview');
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+
+    tree.setAttributeOnElement(id, 'returnType', 'search');
+    tree.flush();
+    expect(element.getAttribute('enterkeyhint')).toBe('search');
+
+    tree.setAttributeOnElement(id, 'returnType', 'continue');
+    tree.flush();
+    expect(element.getAttribute('enterkeyhint')).toBe('enter');
+
+    tree.setAttributeOnElement(id, 'returnType', undefined);
+    tree.flush();
+    expect(element.getAttribute('enterkeyhint')).toBeNull();
+  });
+
+  it('clears controlled textview values after a real contenteditable edit', () => {
+    const id = createRootTestElement('textview');
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+
+    tree.setAttributeOnElement(id, 'placeholder', 'Write a message');
+    tree.setAttributeOnElement(id, 'value', '');
+    tree.setAttributeOnElement(id, 'onChange', () => {});
+    tree.flush();
+
+    element.textContent = 'A real controlled draft';
+    element.dispatchEvent(makeFakeEvent('input'));
+    expect(element.getAttribute('data-valdi-empty')).toBeNull();
+
+    tree.setAttributeOnElement(id, 'value', '');
+    tree.flush();
+
+    expect(element.textContent).toBe('');
+    expect(element.value).toBe('');
+    expect(element.getAttribute('data-valdi-empty')).toBe('true');
+  });
+
+  it('clears controlled textfield values after a real browser input edit', () => {
+    const id = createRootTestElement('textfield');
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+
+    tree.setAttributeOnElement(id, 'value', '');
+    tree.setAttributeOnElement(id, 'onChange', () => {});
+    tree.flush();
+
+    element.value = 'A real controlled draft';
+    element.dispatchEvent(makeFakeEvent('input'));
+
+    tree.setAttributeOnElement(id, 'value', '');
+    tree.flush();
+
+    expect(element.value).toBe('');
+  });
+
   it('reports textview contenteditable changes from DOM text content', () => {
     const externalUpdates: Array<{ id: number; attributeName: string; attributeValue: unknown }> = [];
     const changeEvents: Array<{ text: string; selectionStart: number; selectionEnd: number }> = [];
@@ -3820,6 +4315,7 @@ describe('web renderer core', () => {
     tree.makeElementRoot(id, makeFakeElement('root') as unknown as HTMLElement);
 
     tree.setAttributeOnElement(id, 'value', 'initial');
+    tree.setAttributeOnElement(id, 'placeholder', 'Start typing');
     tree.setAttributeOnElement(
       id,
       'onChange',
@@ -3835,6 +4331,92 @@ describe('web renderer core', () => {
 
     expect(changeEvents).toEqual([{ text: 'edited', selectionStart: 0, selectionEnd: 0 }]);
     expect(externalUpdates).toEqual([{ id, attributeName: 'value', attributeValue: 'edited' }]);
+    expect(element.getAttribute('data-valdi-empty')).toBeNull();
+
+    element.textContent = '';
+    element.dispatchEvent(makeFakeEvent('input'));
+
+    expect(element.getAttribute('data-valdi-empty')).toBe('true');
+  });
+
+  it('collapses Chromium line-break padding without consuming intentional consecutive newlines', () => {
+    const externalUpdates: string[] = [];
+    const changeEvents: string[] = [];
+    const id = nextId++;
+    tree.createElement(id, 'textview', {
+      onAttributeUpdatedExternally(_elementId, attributeName, attributeValue) {
+        if (attributeName === 'value') {
+          externalUpdates.push(String(attributeValue));
+        }
+      },
+    });
+    tree.makeElementRoot(id, makeFakeElement('root') as unknown as HTMLElement);
+    const original = 'First line\nSecond line\nThird line\nFourth line';
+    tree.setAttributeOnElement(id, 'value', original);
+    tree.setAttributeOnElement(id, 'returnType', 'linereturn');
+    tree.setAttributeOnElement(id, 'onChange', (event: { text: string }) => {
+      changeEvents.push(event.text);
+    });
+    tree.flush();
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+
+    element.textContent = `${original}\n\n`;
+    const firstReturn = makeFakeEvent('input');
+    firstReturn.inputType = 'insertLineBreak';
+    element.dispatchEvent(firstReturn);
+
+    expect(changeEvents).toEqual([`${original}\n`]);
+    expect(externalUpdates).toEqual([`${original}\n`]);
+    expect(element.textContent).toBe(`${original}\n`);
+    expect(element.value).toBe(`${original}\n`);
+
+    element.textContent = `${original}\n\n\n`;
+    const secondReturn = makeFakeEvent('input');
+    secondReturn.inputType = 'insertLineBreak';
+    element.dispatchEvent(secondReturn);
+
+    expect(changeEvents).toEqual([`${original}\n`, `${original}\n\n`]);
+    expect(externalUpdates).toEqual([`${original}\n`, `${original}\n\n`]);
+    expect(element.textContent).toBe(`${original}\n\n`);
+    expect(element.value).toBe(`${original}\n\n`);
+  });
+
+  it('preserves real multiline paste, ordinary input, and middle-of-text line breaks unchanged', () => {
+    const changes: string[] = [];
+    const id = createRootTestElement('textview');
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+    tree.setAttributeOnElement(id, 'value', 'First line');
+    tree.setAttributeOnElement(id, 'returnType', 'linereturn');
+    tree.setAttributeOnElement(id, 'onChange', (event: { text: string }) => {
+      changes.push(event.text);
+    });
+    tree.flush();
+
+    element.textContent = 'First line\n\n';
+    const pasted = makeFakeEvent('input');
+    pasted.inputType = 'insertFromPaste';
+    element.dispatchEvent(pasted);
+    expect(changes).toEqual(['First line\n\n']);
+    expect(element.textContent).toBe('First line\n\n');
+
+    tree.setAttributeOnElement(id, 'value', 'First line');
+    tree.flush();
+    element.textContent = 'First line\n\n';
+    const typed = makeFakeEvent('input');
+    typed.inputType = 'insertText';
+    element.dispatchEvent(typed);
+    expect(changes).toEqual(['First line\n\n', 'First line\n\n']);
+    expect(element.textContent).toBe('First line\n\n');
+
+    tree.setAttributeOnElement(id, 'value', 'First line');
+    tree.flush();
+    element.textContent = 'First\n line';
+    const middleReturn = makeFakeEvent('input');
+    middleReturn.inputType = 'insertLineBreak';
+    element.dispatchEvent(middleReturn);
+    expect(changes).toEqual(['First line\n\n', 'First line\n\n', 'First\n line']);
+    expect(element.textContent).toBe('First\n line');
+    expect(element.value).toBe('First\n line');
   });
 
   it('renders textview background effects while preserving font attributes', () => {
@@ -3851,7 +4433,7 @@ describe('web renderer core', () => {
     const wrapper = element.childNodes.item(0)!;
     const span = wrapper.childNodes.item(0)!;
     expect(element.style.fontFamily).toContain('-apple-system');
-    expect(element.style.fontWeight).toBe('700');
+    expect(element.style.fontWeight).toBe('600');
     expect(wrapper.style.padding).toBe('4px 8px');
     expect(span.style.backgroundColor).toBe('rgba(251, 191, 36, 0.45)');
     expect(span.style['box-decoration-break']).toBe('clone');
@@ -3869,6 +4451,99 @@ describe('web renderer core', () => {
     expect(getNode(labelId).htmlElement.style.fontFamily).toContain('-apple-system');
     expect(getNode(textFieldId).htmlElement.style.fontFamily).toContain('-apple-system');
     expect(getNode(textViewId).htmlElement.style.fontFamily).toContain('-apple-system');
+  });
+
+  it('prefers the host application font stack for system text controls', () => {
+    for (const viewClass of ['label', 'textfield', 'textview']) {
+      const id = createRootTestElement(viewClass);
+      const element = getNode(id).htmlElement;
+
+      expect(element.style.fontFamily).withContext(viewClass).toContain('var(--font-sans,');
+
+      tree.setAttributeOnElement(id, 'font', 'system-semibold 18');
+      tree.flush();
+
+      expect(element.style.fontFamily).withContext(viewClass).toContain('var(--font-sans,');
+    }
+  });
+
+  it('maps system font weights to their visually equivalent browser weights', () => {
+    const id = createRootTestElement('label');
+    const element = getNode(id).htmlElement;
+
+    for (const [font, weight] of [
+      ['system 18', ''],
+      ['system-medium 18', '500'],
+      ['system-medium-italic 18', '500'],
+      ['system-semibold 18', '600'],
+      ['system-demi-bold 18', '600'],
+      ['system-demi-bold-italic 18', '600'],
+      ['system-bold 18', '600'],
+      ['system-bold-italic 18', '600'],
+      ['bold 18', '600'],
+      ['title 18', '600'],
+    ]) {
+      tree.setAttributeOnElement(id, 'font', font);
+      tree.flush();
+      expect(element.style.fontWeight).withContext(font).toBe(weight);
+    }
+  });
+
+  it('maps text input autocorrection modes to the browser attribute', () => {
+    const id = createRootTestElement('textfield');
+    const element = getNode(id).htmlElement;
+
+    tree.setAttributeOnElement(id, 'autocorrection', 'none');
+    tree.flush();
+    expect(element.getAttribute('autocorrect')).toBe('off');
+
+    tree.setAttributeOnElement(id, 'autocorrection', 'default');
+    tree.flush();
+    expect(element.getAttribute('autocorrect')).toBeNull();
+
+    tree.setAttributeOnElement(id, 'autocorrection', 'none');
+    tree.flush();
+    tree.setAttributeOnElement(id, 'autocorrection', undefined);
+    tree.flush();
+    expect(element.getAttribute('autocorrect')).toBeNull();
+  });
+
+  it('maps label overflow modes to CSS and resets them', () => {
+    const id = createRootTestElement('label');
+    const element = getNode(id).htmlElement;
+
+    tree.setAttributeOnElement(id, 'textOverflow', 'ellipsis');
+    tree.flush();
+    expect(element.style.textOverflow).toBe('ellipsis');
+
+    tree.setAttributeOnElement(id, 'textOverflow', 'clip');
+    tree.flush();
+    expect(element.style.textOverflow).toBe('clip');
+
+    tree.setAttributeOnElement(id, 'textOverflow', undefined);
+    tree.flush();
+    expect(element.style.textOverflow).toBe('');
+  });
+
+  it('maps relative and absolute line heights using the current text attribute contract', () => {
+    const id = createRootTestElement('label');
+    const element = getNode(id).htmlElement;
+
+    tree.setAttributeOnElement(id, 'lineHeight', 1.5);
+    tree.flush();
+    expect(element.style.lineHeight).toBe('1.5');
+
+    tree.setAttributeOnElement(id, 'lineHeightAbsolute', 24);
+    tree.flush();
+    expect(element.style.lineHeight).toBe('24px');
+
+    tree.setAttributeOnElement(id, 'lineHeightAbsolute', undefined);
+    tree.flush();
+    expect(element.style.lineHeight).toBe('1.5');
+
+    tree.setAttributeOnElement(id, 'lineHeight', undefined);
+    tree.flush();
+    expect(element.style.lineHeight).toBe('');
   });
 
   it('parses Valdi textShadow values with colors that contain spaces', () => {
@@ -4450,6 +5125,80 @@ describe('web renderer core', () => {
       expect(decodedHeight).toBe(150);
       done();
     }, 0);
+  });
+
+  it('tracks image requests on the view-node tree until they finish loading', () => {
+    const assetTracker = new ViewNodeAssetTracker();
+    tree.setAssetTracker(assetTracker);
+    const id = createRootTestElement('image');
+    let allAssetsLoaded = false;
+
+    tree.setAttributeOnElement(id, 'src', 'test.png');
+    tree.flush();
+    assetTracker.onAllAssetsLoaded(() => {
+      allAssetsLoaded = true;
+    });
+
+    expect(assetTracker.assetsCount).toBe(1);
+    expect(allAssetsLoaded).toBeFalse();
+
+    triggerImageLoad(300, 150);
+
+    expect(allAssetsLoaded).toBeTrue();
+    expect(assetTracker.collectErrors()).toBeUndefined();
+  });
+
+  it('settles failed and canceled tree-level image requests', () => {
+    const assetTracker = new ViewNodeAssetTracker();
+    tree.setAssetTracker(assetTracker);
+    const id = createRootTestElement('image');
+
+    tree.setAttributeOnElement(id, 'src', 'missing.png');
+    tree.flush();
+    triggerImageError();
+
+    expect(assetTracker.collectErrors()).toEqual(['Failed to load image']);
+
+    tree.setAttributeOnElement(id, 'src', 'replacement.png');
+    tree.flush();
+
+    let allAssetsLoaded = false;
+    assetTracker.onAllAssetsLoaded(() => {
+      allAssetsLoaded = true;
+    });
+    expect(allAssetsLoaded).toBeFalse();
+
+    tree.destroyElement(id);
+
+    expect(allAssetsLoaded).toBeTrue();
+    expect(assetTracker.assetsCount).toBe(0);
+  });
+
+  it('tracks a replacement image request when pixel effects require a CORS-safe reload', () => {
+    const assetTracker = new ViewNodeAssetTracker();
+    tree.setAssetTracker(assetTracker);
+    const id = createRootTestElement('image');
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+    element.rectWidth = 100;
+    element.rectHeight = 50;
+
+    tree.setAttributeOnElement(id, 'src', 'https://example.test/image.png');
+    tree.flush();
+    triggerImageLoad(300, 150);
+
+    tree.setAttributeOnElement(id, 'tint', '#ff0000');
+    tree.flush();
+
+    let allAssetsLoaded = false;
+    assetTracker.onAllAssetsLoaded(() => {
+      allAssetsLoaded = true;
+    });
+    expect(allAssetsLoaded).toBeFalse();
+
+    triggerImageLoad(300, 150);
+
+    expect(allAssetsLoaded).toBeTrue();
+    expect(assetTracker.assetsCount).toBe(1);
   });
 
   it('reports image load failures asynchronously', (done: DoneFn) => {

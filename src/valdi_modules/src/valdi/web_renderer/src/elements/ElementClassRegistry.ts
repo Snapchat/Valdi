@@ -2,6 +2,7 @@ import { AnyElementClass } from '../core/ElementClass';
 import { BlurElementClass } from './BlurElementClass';
 import { CustomViewElementClass } from './CustomViewElementClass';
 import { DatePickerElementClass } from './DatePickerElementClass';
+import { GlassElementClass } from './GlassElementClass';
 import { ImageElementClass } from './ImageElementClass';
 import { LabelElementClass } from './LabelElementClass';
 import { LayoutElementClass } from './LayoutElementClass';
@@ -16,7 +17,7 @@ import { ViewElementClass } from './ViewElementClass';
 import { WebViewElementClass } from './WebViewElementClass';
 
 const layoutClass = new LayoutElementClass('layout', {}, {});
-const viewClass = new ViewElementClass();
+const viewClass = new ViewElementClass('view', {}, {});
 const labelClass = new LabelElementClass(viewClass);
 const scrollClass = new ScrollElementClass(viewClass);
 const imageClass = new ImageElementClass(viewClass);
@@ -28,23 +29,24 @@ const textAnimationGroupClass = new TextAnimationGroupElementClass(layoutClass);
 const customViewClass = new CustomViewElementClass(viewClass);
 const shapeClass = new ShapeElementClass(viewClass);
 const blurClass = new BlurElementClass(viewClass);
+const glassClass = new GlassElementClass(viewClass);
 const webViewClass = new WebViewElementClass(viewClass);
 const datePickerClass = new DatePickerElementClass(viewClass);
 
 const elementClassesByName = new Map<string, AnyElementClass>([
   ['layout', layoutClass],
+  ['Layout', layoutClass],
   ['view', viewClass],
   ['SCValdiView', viewClass],
   ['textanimationgroup', textAnimationGroupClass],
   ['SCValdiTextAnimationGroup', textAnimationGroupClass],
-  ['textselectiongroup', viewClass],
-  ['SCValdiTextSelectionGroup', viewClass],
   ['label', labelClass],
   ['SCValdiLabel', labelClass],
   ['scroll', scrollClass],
   ['SCValdiScrollView', scrollClass],
   ['image', imageClass],
   ['animatedimage', imageClass],
+  ['SCValdiAnimatedContentView', imageClass],
   ['SCValdiImageView', imageClass],
   ['textfield', textFieldClass],
   ['SCValdiTextField', textFieldClass],
@@ -53,11 +55,16 @@ const elementClassesByName = new Map<string, AnyElementClass>([
   ['video', videoClass],
   ['SCValdiVideoView', videoClass],
   ['spinner', spinnerClass],
+  ['SCValdiSpinnerView', spinnerClass],
   ['custom-view', customViewClass],
   ['shape', shapeClass],
   ['SCValdiShapeView', shapeClass],
   ['blur', blurClass],
+  ['SCValdiBlurView', blurClass],
+  ['glass', glassClass],
+  ['SCValdiGlassView', glassClass],
   ['webview', webViewClass],
+  ['SCValdiWebView', webViewClass],
   ['SCValdiDatePicker', datePickerClass],
 ]);
 

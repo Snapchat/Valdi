@@ -30,6 +30,7 @@ type OwnerValue = {
 const DIRECT_OWNER: AttributeOwner = { priority: 2, source: 'direct' };
 const STYLE_OWNER: AttributeOwner = { priority: 4, source: 'style' };
 const COMPOSITE_OWNER: AttributeOwner = { priority: 2, source: 'composite' };
+const PLACEHOLDER_OWNER: AttributeOwner = { priority: 1000, source: 'placeholder' };
 
 class StoredAttribute {
   constructor(
@@ -107,6 +108,20 @@ class StoredAttribute {
     return oldResolvedValue !== this.getResolvedValue();
   }
 
+  replaceValue(value: unknown): void {
+    if (this.values) {
+      for (let i = 0; i < this.values.length; i++) {
+        this.values[i].value = value;
+      }
+    } else if (this.singleOwner) {
+      this.singleValue = value;
+    } else {
+      this.singleOwner = PLACEHOLDER_OWNER;
+      this.singleValue = value;
+    }
+    this.lastAppliedValue = value;
+  }
+
   empty(): boolean {
     return !this.singleOwner && (!this.values || this.values.length === 0);
   }
@@ -170,6 +185,17 @@ export class AttributesApplier {
       return AttributeSetResult.ChangedAndInvalidatesLayout;
     }
     return AttributeSetResult.Changed;
+  }
+
+  updateAttributeWithoutApply(attributeName: string, value: unknown): void {
+    const actualAttributeName = attributeName.startsWith('$') ? attributeName.substring(1) : attributeName;
+    let attribute = this.attributes.get(actualAttributeName);
+    if (!attribute) {
+      attribute = this.createStoredAttribute(actualAttributeName);
+      this.attributes.set(actualAttributeName, attribute);
+    }
+    attribute.replaceValue(value);
+    this.dirtyAttributes.remove(actualAttributeName);
   }
 
   flush(element: HTMLElement, context: AttributeApplierContext, animator: Animator | undefined): void {

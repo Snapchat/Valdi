@@ -325,10 +325,20 @@ function buildEditTextAttributeAppliers(labelElementClass: LabelElementClass): A
       element.removeAttribute('autocapitalize');
     },
   );
-  binder.bindBooleanAttribute(
+  binder.bindStringAttribute(
     'autocorrection',
     (element, value) => {
-      element.setAttribute('autocorrect', value ? 'on' : 'off');
+      // HTML also accepts "on", but Valdi exposes only "default" and "none".
+      // Preserve the user agent's default behavior by omitting the attribute.
+      if (value === 'default') {
+        element.removeAttribute('autocorrect');
+        return;
+      }
+      if (value === 'none') {
+        element.setAttribute('autocorrect', 'off');
+        return;
+      }
+      throw new Error(`Unsupported autocorrection value '${value}'`);
     },
     element => {
       element.removeAttribute('autocorrect');

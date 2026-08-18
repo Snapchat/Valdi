@@ -1,6 +1,7 @@
-import type { NativeMessageEvent, NativeMessagePort, NativeWorker, ValdiRuntime } from 'valdi_core/src/ValdiRuntime';
+import type { NativeMessageEvent, NativeMessagePort, NativeWorker } from 'valdi_core/src/ValdiRuntime';
+import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
 
 /** This Web Workers API interface represents a background task that can be
  * easily created and can send messages back to its creator. Creating a worker
@@ -41,7 +42,5 @@ export class Worker {
 export default Worker;
 
 export function inWorker(): boolean {
-  // 'location' is a global variable that is set up in a worker but not in the
-  // host runtime.
-  return typeof location !== 'undefined';
+  return typeof document === 'undefined' && typeof location !== 'undefined';
 }

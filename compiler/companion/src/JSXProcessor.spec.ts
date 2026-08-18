@@ -1605,4 +1605,32 @@ function onRender(viewModel: ViewModel) {
     expect(result).toContain("__Renderer.setAttributeString('macosClass', MC)");
     expect(result).toContain("__Renderer.setAttributeString('webClass', WC)");
   });
+
+  it('creates a factory-backed custom view before applying its attributes', () => {
+    const result = compile(`
+    const factory = makeFactory();
+    const attrs = { width: '100%' };
+    <custom-view {...attrs} key="host-widget" name="code_block" viewFactory={factory}/>
+    `);
+
+    expect(result).toContain('__Renderer.beginRenderWithViewFactory(__nodeCustomview1, factory, "host-widget")');
+    expect(result).toContain('__Renderer.setAttributes(attrs)');
+    expect(result).toContain('__Renderer.setAttribute(\'name\', "code_block")');
+    expect(result).not.toContain("setAttribute('viewFactory'");
+  });
+
+  it('preserves lazy rendering for factory-backed custom views', () => {
+    const result = compile(`<custom-view lazy viewFactory={factory}/>`);
+
+    expect(result).toContain('__Renderer.beginRenderWithViewFactoryIfNeeded(__nodeCustomview1, factory, undefined)');
+    expect(result).not.toContain("setAttribute('viewFactory'");
+  });
+
+  for (const platformClass of ['iosClass', 'androidClass', 'macosClass', 'webClass']) {
+    it(`rejects a factory-backed custom view with ${platformClass}`, () => {
+      expect(() => compile(`<custom-view ${platformClass}="HostView" viewFactory={factory}/>`)).toThrow(
+        'custom-view cannot specify both viewFactory and platform view classes',
+      );
+    });
+  }
 });

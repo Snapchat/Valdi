@@ -67,7 +67,12 @@ def _extract_transitive_valdi_module_output_impl(ctx):
     for dep in deps:
         value = getattr(dep[ValdiModuleInfo], ctx.attr.output_name)
         if value:
-            values.extend(value)
+            if type(value) == "depset":
+                values.extend(value.to_list())
+            elif type(value) == "list":
+                values.extend(value)
+            else:
+                values.append(value)
 
     if values:
         return DefaultInfo(files = depset(values))

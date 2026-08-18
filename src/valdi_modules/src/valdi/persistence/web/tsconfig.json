@@ -8,5 +8,5 @@
     "allowJs": true,
     "declaration": true
   },
-  "exclude": ["debug", "release"]
+  "exclude": ["debug/**", "release/**", "test/**"]
 }

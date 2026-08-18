@@ -37,6 +37,10 @@ class FakeAttributeApplierContext implements AttributeApplierContext {
     this.id = id;
   }
 
+  getAssetTracker(): undefined {
+    return undefined;
+  }
+
   getState<T>(key: string): T | undefined {
     return this.state.get(key) as T | undefined;
   }

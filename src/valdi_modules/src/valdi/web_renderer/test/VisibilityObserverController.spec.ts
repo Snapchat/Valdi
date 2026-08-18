@@ -108,4 +108,30 @@ describe('VisibilityObserverController', () => {
     controller.destroy();
     expect(FakeIntersectionObserver.lastInstance!.observedElements).toEqual([]);
   });
+
+  it('refreshes visible elements on hidden browser pages whose browser suppresses intersection callbacks', async () => {
+    const previousDocument = (globalThis as { document?: Document }).document;
+    (globalThis as { document?: Document }).document = { visibilityState: 'hidden' } as Document;
+
+    try {
+      const root = makeElement({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100 });
+      const element = makeElement({ left: 10, top: 20, width: 50, height: 40, right: 60, bottom: 60 });
+      const appearing: number[] = [];
+      const controller = new VisibilityObserverController();
+
+      controller.setRoot(root);
+      controller.registerObserver(elementIds => appearing.push(...elementIds));
+      controller.observeElement(17, element);
+      await Promise.resolve();
+
+      expect(appearing).toEqual([17]);
+      controller.destroy();
+    } finally {
+      if (previousDocument === undefined) {
+        delete (globalThis as { document?: Document }).document;
+      } else {
+        (globalThis as { document?: Document }).document = previousDocument;
+      }
+    }
+  });
 });

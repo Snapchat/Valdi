@@ -4,8 +4,10 @@ import { Style } from 'valdi_core/src/Style';
 import { ElementFrame } from 'valdi_tsx/src/Geometry';
 import { NativeNode } from 'valdi_tsx/src/NativeNode';
 import { NativeView } from 'valdi_tsx/src/NativeView';
+import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
 import type { AttributeUpdatedExternallyDelegate } from './core/ElementClass';
 import { ViewNodeTree } from './core/ViewNodeTree';
+import { WebViewFactory } from './ViewFactory';
 
 export class ValdiWebRendererDelegate implements IRendererDelegate {
   private attributeUpdatedExternallyDelegate?: AttributeUpdatedExternallyDelegate;
@@ -33,6 +35,17 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
   }
   onElementCreated(id: number, viewClass: string): void {
     this.viewNodeTree.createElement(id, viewClass, this.attributeUpdatedExternallyDelegate);
+  }
+  onCustomElementCreated(id: number, viewFactory: ViewFactory): void {
+    if (!(viewFactory instanceof WebViewFactory)) {
+      throw new Error('Expected a web view factory when creating a custom element');
+    }
+    this.viewNodeTree.createElementWithClass(
+      id,
+      'custom-view',
+      viewFactory.elementClass,
+      this.attributeUpdatedExternallyDelegate,
+    );
   }
   onElementDestroyed(id: number): void {
     this.viewNodeTree.destroyElement(id);
@@ -63,6 +76,16 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
     this.viewNodeTree.setAttributeOnElement(id, attributeName, fn);
   }
   onNextLayoutComplete(callback: () => void): void {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      Promise.resolve().then(() => {
+        this.drainScheduledLayoutObservers(true);
+        Promise.resolve().then(() => {
+          this.drainScheduledLayoutObservers(true);
+          callback();
+        });
+      });
+      return;
+    }
     requestAnimationFrame(() => {
       this.drainScheduledLayoutObservers(false);
       requestAnimationFrame(() => {

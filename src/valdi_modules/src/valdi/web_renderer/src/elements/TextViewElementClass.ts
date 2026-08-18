@@ -36,6 +36,7 @@ interface TextViewState {
   backgroundEffectColor?: string;
   backgroundEffectPadding?: string;
   backgroundEffectPaddingPx?: number;
+  returnType: string;
   selectionEnd: number;
   selectionStart: number;
   value: unknown;
@@ -45,6 +46,7 @@ function getTextViewState(element: TextViewElement, context: AttributeApplierCon
   let state = context.getState<TextViewState>(TEXT_VIEW_STATE);
   if (!state) {
     state = {
+      returnType: 'linereturn',
       selectionEnd: 0,
       selectionStart: 0,
       value: element.value ?? '',
@@ -168,8 +170,79 @@ function syncTextViewValueFromDom(element: TextViewElement, context: AttributeAp
   const state = getTextViewState(element, context);
   state.value = text;
   element.value = text;
+  updateTextViewPlaceholderVisibility(element, text);
   syncTextViewSelectionFromDom(element, context);
   return text;
+}
+
+function normalizeTextViewLineBreakInput(
+  element: TextViewElement,
+  context: AttributeApplierContext,
+  inputEvent: InputEvent,
+): void {
+  if (inputEvent.inputType !== 'insertLineBreak') {
+    return;
+  }
+
+  const state = getTextViewState(element, context);
+  const previousText = plainTextValue(state.value);
+  if (element.textContent !== `${previousText}\n\n`) {
+    return;
+  }
+
+  const selection = typeof document.getSelection === 'function' ? document.getSelection() : null;
+  const preserveSelection =
+    selection !== null &&
+    selection.anchorNode !== null &&
+    selection.focusNode !== null &&
+    element.contains(selection.anchorNode) &&
+    element.contains(selection.focusNode);
+  if (preserveSelection) {
+    syncTextViewSelectionFromDom(element, context);
+  }
+  const selectionStart = state.selectionStart;
+  const selectionEnd = state.selectionEnd;
+  const trailingNode = element.childNodes.item(element.childNodes.length - 1);
+
+  if (trailingNode?.nodeType === 3 && trailingNode.textContent === '\n') {
+    element.insertBefore(document.createElement('br'), trailingNode);
+    element.removeChild(trailingNode);
+  } else {
+    element.textContent = `${previousText}\n`;
+  }
+
+  if (preserveSelection) {
+    const textLength = previousText.length + 1;
+    applyTextViewSelection(element, Math.min(selectionStart, textLength), Math.min(selectionEnd, textLength));
+  }
+}
+
+function updateTextViewPlaceholderVisibility(element: TextViewElement, text: string): void {
+  if (element.getAttribute('placeholder') === null) {
+    return;
+  }
+  if (text.length === 0) {
+    element.setAttribute('data-valdi-empty', 'true');
+    return;
+  }
+  element.removeAttribute('data-valdi-empty');
+}
+
+function setTextViewPlaceholder(
+  element: TextViewElement,
+  context: AttributeApplierContext,
+  placeholder: string | undefined,
+): void {
+  if (!placeholder) {
+    element.removeAttribute('aria-placeholder');
+    element.removeAttribute('data-valdi-empty');
+    element.removeAttribute('placeholder');
+    return;
+  }
+
+  element.setAttribute('aria-placeholder', placeholder);
+  element.setAttribute('placeholder', placeholder);
+  updateTextViewPlaceholderVisibility(element, plainTextValue(getTextViewState(element, context).value));
 }
 
 function textViewEditEvent(
@@ -237,6 +310,7 @@ function renderTextViewContent(
   const parsedAttributedText = isAttributedText(state.value) ? ParsedAttributedText.parse(state.value) : undefined;
   const text = parsedAttributedText ? parsedAttributedText.toString() : plainTextValue(state.value);
   element.value = text;
+  updateTextViewPlaceholderVisibility(element, text);
   element.replaceChildren();
 
   if (parsedAttributedText) {
@@ -451,7 +525,8 @@ function bindTextViewEventAttributes(binder: AttributesBinder<TextViewElement>):
   binder.bindFunctionAttribute(
     'onChange',
     (element, callback, context) => {
-      replaceEventListener(element, context, 'textview:onChange', 'input', () => {
+      replaceEventListener(element, context, 'textview:onChange', 'input', (inputEvent: InputEvent) => {
+        normalizeTextViewLineBreakInput(element, context, inputEvent);
         const event = textViewEditEvent(element, context);
         context.onAttributeUpdatedExternally('value', event.text);
         callback(event);
@@ -482,6 +557,9 @@ function bindTextViewEventAttributes(binder: AttributesBinder<TextViewElement>):
     (element, callback, context) => {
       replaceEventListener(element, context, 'textview:onReturn', 'keydown', event => {
         if (event.key === 'Enter') {
+          if (getTextViewState(element, context).returnType !== 'linereturn') {
+            event.preventDefault();
+          }
           callback(textViewEditEvent(element, context));
         }
       });
@@ -541,11 +619,34 @@ function buildTextViewAttributeAppliers(
   binder.bindNoOpAttribute('keyboardType');
   binder.bindAttribute('numberOfLines', numberOfLinesAttributeApplier());
   binder.bindAttribute('onSelectionChange', onSelectionChangeAttributeApplier());
-  binder.bindNoOpAttribute('placeholder');
-  binder.bindNoOpAttribute('placeholderColor');
+  binder.bindStringAttribute(
+    'placeholder',
+    (element, value, context) => setTextViewPlaceholder(element, context, value),
+    (element, context) => setTextViewPlaceholder(element, context, undefined),
+    LAYOUT_DEPENDENT,
+  );
+  binder.bindColorAttribute(
+    'placeholderColor',
+    (element, value) => element.style.setProperty('--valdi-textview-placeholder-color', value),
+    element => element.style.removeProperty('--valdi-textview-placeholder-color'),
+  );
   binder.bindNoOpAttribute('returnKeyText');
   binder.bindNoOpAttribute('returnKeyType');
-  binder.bindNoOpAttribute('returnType');
+  binder.bindStringAttribute(
+    'returnType',
+    (element, value, context) => {
+      getTextViewState(element, context).returnType = value;
+      if (value === 'linereturn') {
+        element.removeAttribute('enterkeyhint');
+      } else {
+        element.setAttribute('enterkeyhint', value === 'continue' || value === 'join' ? 'enter' : value);
+      }
+    },
+    (element, context) => {
+      getTextViewState(element, context).returnType = 'linereturn';
+      element.removeAttribute('enterkeyhint');
+    },
+  );
   binder.bindAttribute('selectable', selectableAttributeApplier());
   binder.bindAttribute('selectTextOnFocus', selectTextOnFocusAttributeApplier());
   binder.bindAttribute('selection', selectionAttributeApplier());
@@ -572,6 +673,7 @@ export class TextViewElementClass extends ElementClass<TextViewElement> {
     const element = document.createElement('div') as TextViewElement;
     assignStyles(element, {
       fontFamily: SYSTEM_FONT_FAMILY,
+      outline: 'none',
       overflow: 'hidden',
       whiteSpace: 'pre-wrap',
       wordBreak: 'normal',

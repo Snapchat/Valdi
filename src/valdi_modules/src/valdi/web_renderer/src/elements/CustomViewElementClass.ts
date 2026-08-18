@@ -105,7 +105,7 @@ function buildCustomViewAttributeAppliers(viewElementClass: ViewElementClass): R
       } else {
         appendPlaceholder(element, value);
       }
-      if (!element.style.height) {
+      if (!element.style.height && !element.style.minHeight) {
         element.style.minHeight = '80px';
       }
     },

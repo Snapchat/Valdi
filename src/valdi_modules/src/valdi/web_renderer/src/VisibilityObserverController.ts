@@ -55,6 +55,13 @@ export class VisibilityObserverController {
     this.elementIdsByHtmlElement.set(element, id);
     if (this.intersectionObserver) {
       this.intersectionObserver.observe(element);
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        Promise.resolve().then(() => {
+          if (this.observedElementsById.get(id)?.element === element) {
+            this.scheduleRefresh(true);
+          }
+        });
+      }
     } else {
       this.scheduleRefresh(false);
     }
@@ -74,12 +81,18 @@ export class VisibilityObserverController {
     this.observedElementsById.delete(id);
   }
 
-  scheduleRefresh(_force: boolean): void {
+  scheduleRefresh(force: boolean): void {
     this.processPendingIntersectionEntries();
+    if (force && typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      this.processHiddenPageIntersections();
+    }
   }
 
-  drainScheduledRefresh(_force: boolean): void {
+  drainScheduledRefresh(force: boolean): void {
     this.processPendingIntersectionEntries();
+    if (force && typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      this.processHiddenPageIntersections();
+    }
   }
 
   destroy(): void {
@@ -116,6 +129,40 @@ export class VisibilityObserverController {
     if (entries?.length) {
       this.processIntersectionEntries(entries);
     }
+  }
+
+  /** Hidden browser pages may suppress IntersectionObserver callbacks even while their layouts remain measurable. */
+  private processHiddenPageIntersections(): void {
+    const root = this.htmlRoot;
+    if (this.observer === undefined || root === undefined) {
+      return;
+    }
+
+    const rootRect =
+      typeof ShadowRoot !== 'undefined' && root instanceof ShadowRoot
+        ? { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight }
+        : (root as HTMLElement).getBoundingClientRect();
+    const entries: IntersectionObserverEntry[] = [];
+    this.observedElementsById.forEach(observed => {
+      const bounds = observed.element.getBoundingClientRect();
+      const left = Math.max(bounds.left, rootRect.left);
+      const top = Math.max(bounds.top, rootRect.top);
+      const right = Math.min(bounds.right, rootRect.right);
+      const bottom = Math.min(bounds.bottom, rootRect.bottom);
+      const width = Math.max(0, right - left);
+      const height = Math.max(0, bottom - top);
+      entries.push({
+        boundingClientRect: bounds,
+        intersectionRatio:
+          bounds.width > 0 && bounds.height > 0 ? (width * height) / (bounds.width * bounds.height) : 0,
+        intersectionRect: { bottom, height, left, right, top, width, x: left, y: top } as DOMRectReadOnly,
+        isIntersecting: width > 0 && height > 0,
+        rootBounds: rootRect as DOMRectReadOnly,
+        target: observed.element,
+        time: performance.now(),
+      } as IntersectionObserverEntry);
+    });
+    this.processIntersectionEntries(entries);
   }
 
   private processIntersectionEntries(entries: IntersectionObserverEntry[]): void {
