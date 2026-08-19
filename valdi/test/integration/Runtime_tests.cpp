@@ -279,6 +279,16 @@ TEST_P(RuntimeFixture, traceProxyRetainsCallbackAcrossGC) {
     // threw "Value is not a function". The proxy must retain the callback for its own lifetime.
     auto javaScriptRuntime = wrapper.runtime->getJavaScriptRuntime();
 
+    // makeTraceProxy is only bound when tracing is compiled in (kTracingEnabled); skip otherwise.
+    auto probe = javaScriptRuntime->evaluateScript(
+        makeShared<ByteBuffer>(std::string("return typeof runtime.makeTraceProxy === 'function' ? 1 : 0;"))
+            ->toBytesView(),
+        STRING_LITERAL("eval.js"));
+    ASSERT_TRUE(probe) << probe.description();
+    if (probe.value().toInt() != 1) {
+        GTEST_SKIP() << "tracing disabled in this build (runtime.makeTraceProxy not bound)";
+    }
+
     // The closure has no JS reference other than the trace proxy itself.
     std::string setupBody = "globalThis.__traceProxy = runtime.makeTraceProxy('regressionTag', () => 42); return 0;";
     auto setupResult =
