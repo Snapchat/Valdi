@@ -176,7 +176,7 @@ public:
                                         const JSValue& callback)
         : _traceName(traceName),
           _referenceInfo(ReferenceInfoBuilder().withObject(nameFromJSFunction(jsContext, callback)).build()),
-          _callback(callback) {}
+          _callback(JSValueRef::makeRetained(jsContext, callback)) {}
 
     ~JavaScriptRuntimeTraceProxyCallable() override = default;
 
@@ -186,13 +186,13 @@ public:
 
     JSValueRef operator()(JSFunctionNativeCallContext& callContext) noexcept override {
         VALDI_TRACE(_traceName);
-        return callContext.getContext().callObjectAsFunction(_callback, callContext);
+        return callContext.getContext().callObjectAsFunction(_callback.get(), callContext);
     }
 
 private:
     StringBox _traceName;
     ReferenceInfo _referenceInfo;
-    JSValue _callback;
+    JSValueRef _callback;
 };
 
 class JSRuntimeNativeObjectsManagerImpl : public snap::valdi_core::JSRuntimeNativeObjectsManager {
