@@ -85,11 +85,11 @@ Value HTTPRequestManagerModuleFactory::loadModule() {
                         parameters[1] = Value::undefined();
                     } else {
                         parameters[0] = Value::undefined();
-                        // Stringified, not Value(Error): converting a Value holding an Error raises it
-                        // into the exception tracker rather than marshalling an argument
-                        // (JavaScriptUtils.cpp:337), so the callback would never be invoked and the
-                        // promise behind it would stay pending forever. Matches
-                        // PersistentStoreModuleFactory.
+                        // Pass the text, not the Error itself. Converting a Value holding an Error
+                        // raises it into the exception tracker instead of marshalling an argument
+                        // (JavaScriptUtils.cpp:337), so the callback would never run at all and the
+                        // promise behind it would stay pending. PersistentStoreModuleFactory does
+                        // the same.
                         parameters[1] = Value(result.error().toString());
                     }
 

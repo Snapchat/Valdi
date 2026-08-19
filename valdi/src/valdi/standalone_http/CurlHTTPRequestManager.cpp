@@ -30,23 +30,21 @@ namespace {
 
 constexpr long kMaxRedirects = 10;
 constexpr long kConnectTimeoutSeconds = 30;
-// An upper bound, not an interval: curl_multi_poll waits for the shorter of this and the multi
-// handle's own next timer, so an active transfer still gets serviced on curl's schedule. It only
-// governs how long an idle thread sits before rechecking, and new work and shutdown both wake
-// the poll explicitly, so there is nothing for a short value to catch.
+// curl_multi_poll waits for the shorter of this and the multi handle's own next timer, so an
+// active transfer is still serviced on curl's schedule. This only bounds how long an idle thread
+// sits before rechecking. New work and shutdown both wake the poll, so a short value buys nothing.
 constexpr int kPollTimeoutMs = 10000;
 
-// Read by the curl command line tool, not by libcurl, so they have to be honoured here for
-// a caller to be able to point at a trust store of their own.
+// The curl command line tool reads these, libcurl does not, so we honour them here to let a
+// caller point at their own trust store.
 const char* const kCaBundleVariables[] = {
     "CURL_CA_BUNDLE",
     "SSL_CERT_FILE",
 };
 
-// Only distributions the @curl build defaults miss. The macOS and Debian-family paths are
-// deliberately absent: @curl compiles CURL_CA_BUNDLE with exactly those two strings
-// (curl+/BUILD.bazel:341-346), so libcurl already applies them, and probing for them here would
-// also silently override a deliberate --@curl//:ca_bundle.
+// Only distributions the @curl build defaults miss. @curl already compiles CURL_CA_BUNDLE with
+// the macOS and Debian-family paths (curl+/BUILD.bazel:341-346), so libcurl applies those itself,
+// and probing for them here would override a deliberate --@curl//:ca_bundle.
 const char* const kCaBundleCandidates[] = {
     "/etc/pki/tls/certs/ca-bundle.crt",        // RHEL, Fedora
     "/etc/ssl/ca-bundle.pem",                  // openSUSE
@@ -87,10 +85,10 @@ public:
         dropCompletion();
     }
 
-    // Used at shutdown as well as for cancellation. Completions reach JavaScript directly, with no
-    // thread hop, so firing one from the curl thread while the thread destroying the manager is
-    // blocked in join() would enter the engine from two threads at once. Neither platform manager
-    // guarantees a completion at teardown either, so there is nothing to report.
+    // Shutdown uses this too. Completions reach JavaScript directly with no thread hop, so firing
+    // one from the curl thread while another thread sits in join() destroying the manager would
+    // enter the engine twice over. Neither platform manager promises a completion at teardown, so
+    // there is nothing to report.
     void dropCompletion() {
         std::lock_guard<std::mutex> guard(_mutex);
         _completion = nullptr;
@@ -117,9 +115,9 @@ public:
     snap::valdi_core::HTTPRequest request;
     std::atomic_bool cancelled{false};
 
-    // Filled by the write callback and handed straight to the response, so the payload is never
-    // copied. ByteBuffer grows to the next power of two, so appending stays amortised constant time
-    // without reserving up front — which would mean sizing an allocation from a Content-Length the
+    // The write callback fills this and the response takes it directly, so the payload is never
+    // copied. ByteBuffer grows to the next power of two, so appending stays amortised constant
+    // time with no reserve up front. Reserving would size an allocation from a Content-Length the
     // server chose.
     Ref<ByteBuffer> responseBody = makeShared<ByteBuffer>();
     Value responseHeaders;
@@ -141,10 +139,10 @@ size_t writeHeaderCallback(char* data, size_t size, size_t count, void* userData
 
     std::string line(data, size * count);
 
-    // Tested before looking for a colon, because a reason phrase is free-form text and may contain
-    // one. Reading a status line as a header would also skip this reset, and with
-    // CURLOPT_FOLLOWLOCATION the callback sees every response in the chain, so the redirect's
-    // headers would be left to leak into the final result.
+    // Check this before looking for a colon, because a reason phrase is free-form text and may
+    // contain one. Misreading a status line as a header also skips the reset below, and with
+    // CURLOPT_FOLLOWLOCATION the callback sees every response in the chain, so a redirect's
+    // headers would leak into the final result.
     if (line.rfind("HTTP/", 0) == 0) {
         task->responseHeaders = Value();
         return size * count;
@@ -166,9 +164,9 @@ size_t writeHeaderCallback(char* data, size_t size, size_t count, void* userData
         value.pop_back();
     }
 
-    // Joined rather than replaced, matching what NSURLResponse hands back for a repeated header.
-    // The response header map is string to string, so there is nowhere else for the earlier
-    // values to go, and dropping them loses whole Set-Cookie lines.
+    // Join repeated headers, matching what NSURLResponse hands back. The response header map is
+    // string to string, so earlier values have nowhere else to go, and dropping them loses whole
+    // Set-Cookie lines.
     auto existing = task->responseHeaders.getMapValue(std::string_view(name));
     if (!existing.isNullOrUndefined()) {
         value = std::string(existing.toStringBox().toStringView()) + ", " + value;
@@ -189,9 +187,8 @@ public:
     CurlHTTPRequestManager(std::string caBundle, int32_t idleTimeoutSeconds, CURLcode globalInit)
         : _caBundle(std::move(caBundle)), _idleTimeoutSeconds(idleTimeoutSeconds), _globalInit(globalInit) {
         if (_globalInit != CURLE_OK) {
-            // Going on regardless would leave curl_easy_init handing back handles whose TLS backend
-            // was never set up, so every HTTPS request would fail with something that looks
-            // unrelated.
+            // Carrying on would leave curl_easy_init handing back handles whose TLS backend was
+            // never set up, so every HTTPS request would fail with an unrelated-looking error.
             return;
         }
 
@@ -219,7 +216,7 @@ public:
         const std::shared_ptr<snap::valdi_core::HTTPRequestManagerCompletion>& completion) override {
         auto task = std::make_shared<CurlTask>(request, completion);
 
-        // Checked before the multi handle, so the reported cause is the one that actually failed.
+        // Check this before the multi handle, so the reported cause is the one that actually failed.
         if (_globalInit != CURLE_OK) {
             task->complete(Error(StringBox::fromString(std::string("Failed to initialise libcurl: ") +
                                                        curl_easy_strerror(_globalInit))));
@@ -240,9 +237,9 @@ public:
             }
         }
 
-        // Failed outside the lock, because a completion is free to queue another request and
-        // _mutex is not recursive. Queueing here instead would strand the task: run() has
-        // already drained _pending for the last time, and nothing will service it again.
+        // Fail outside the lock, because a completion is free to queue another request and _mutex
+        // is not recursive. Queueing the task instead would strand it: run() has already drained
+        // _pending for the last time and nothing will service it again.
         if (stopping) {
             task->complete(Error(STRING_LITERAL("Request manager shutting down")));
             return task;
@@ -272,16 +269,16 @@ private:
             int running = 0;
             curl_multi_perform(_multi, &running);
 
-            // Before the poll, not after: perform is what queues CURLMSG_DONE, and once nothing
-            // is running curl has no timeout to report, so the poll would sleep out its whole
-            // timeout before a finished transfer was ever reported.
+            // This has to run before the poll. perform is what queues CURLMSG_DONE, and once
+            // nothing is running curl has no timeout to report, so the poll would sleep out its
+            // full timeout before a finished transfer got reported.
             drainMessages();
 
             int numfds = 0;
             curl_multi_poll(_multi, nullptr, 0, kPollTimeoutMs, &numfds);
         }
 
-        // Outstanding work is dropped rather than failed; see CurlTask::dropCompletion.
+        // Drop outstanding work instead of failing it; see CurlTask::dropCompletion.
         for (auto& entry : _active) {
             entry.second->dropCompletion();
             curl_multi_remove_handle(_multi, entry.first);
@@ -363,15 +360,15 @@ private:
         curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, kConnectTimeoutSeconds);
         curl_easy_setopt(easy, CURLOPT_NOSIGNAL, 1L);
 
-        // Abandoning a name lookup otherwise means joining the resolver thread, and getaddrinfo
-        // cannot be interrupted — so cancelling or shutting down mid-lookup blocks this thread until
-        // the resolver gives up, taking every other request with it. This makes curl detach that
-        // thread instead; it frees its own state once the lookup returns.
+        // Without this, abandoning a name lookup joins the resolver thread, and getaddrinfo cannot
+        // be interrupted. Cancelling or shutting down mid-lookup would block this thread until the
+        // resolver gave up, taking every other request with it. curl detaches the thread instead,
+        // and it frees its own state once the lookup returns.
         curl_easy_setopt(easy, CURLOPT_QUICK_EXIT, 1L);
 
         if (_idleTimeoutSeconds > 0) {
-            // An inactivity timeout, not an overall one: below one byte a second for this long
-            // counts as stalled. A slow but progressing download is left alone.
+            // An inactivity timeout rather than an overall cap: below one byte a second for this
+            // long counts as stalled, so a slow but progressing download is left alone.
             curl_easy_setopt(easy, CURLOPT_LOW_SPEED_LIMIT, 1L);
             curl_easy_setopt(easy, CURLOPT_LOW_SPEED_TIME, static_cast<long>(_idleTimeoutSeconds));
         }

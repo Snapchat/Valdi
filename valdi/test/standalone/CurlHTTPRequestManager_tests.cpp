@@ -88,8 +88,8 @@ private:
 
 // A peer that hangs up mid-response raises SIGPIPE on the serving thread, and its default
 // disposition takes down the whole binary, every unrelated test with it. Neither per-socket guard
-// is portable — SO_NOSIGPIPE is BSD-only and MSG_NOSIGNAL is Linux-only — whereas ignoring the
-// signal works everywhere, and a test binary has no use for it in the first place.
+// is portable, since SO_NOSIGPIPE is BSD-only and MSG_NOSIGNAL is Linux-only. Ignoring the signal
+// works everywhere, and a test binary has no use for it anyway.
 void ignoreSigPipe() {
     [[maybe_unused]] static const auto previous = ::signal(SIGPIPE, SIG_IGN);
 }
@@ -117,8 +117,8 @@ uint16_t bindToLoopback(int socketFd) {
     return ntohs(address.sin_port);
 }
 
-// Releases a serving thread blocked in accept(). Closing the listener is not portable for this —
-// on Linux it leaves accept() blocked — and shutdown() is a no-op on a listening socket, so the
+// Releases a serving thread blocked in accept(). Closing the listener does not do it portably,
+// because on Linux accept() stays blocked, and shutdown() is a no-op on a listening socket. The
 // only reliable release is a connection the thread can actually accept.
 void wakeAccept(uint16_t port) {
     int socketFd = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -183,8 +183,8 @@ public:
         return _condition.wait_for(lock, timeout, [this]() { return _connection >= 0; });
     }
 
-    // Nothing is ever written back, so the peer going away is the only thing this server can
-    // observe — which makes it the one visible effect of a transfer being aborted.
+    // Nothing is ever written back, so the peer going away is all this server can observe. That
+    // makes it the one visible effect of a transfer being aborted.
     bool waitForDisconnect(std::chrono::milliseconds timeout) {
         std::unique_lock<std::mutex> lock(_mutex);
         return _condition.wait_for(lock, timeout, [this]() { return _disconnected; });
@@ -447,9 +447,9 @@ TEST(CurlHTTPRequestManagerTests, keepsOnlyTheFinalResponsesHeaders) {
 }
 
 TEST(CurlHTTPRequestManagerTests, resetsHeadersOnAStatusLineWhoseReasonPhraseHasAColon) {
-    // A colon in the reason phrase is legal — RFC 7230 makes it free-form text — and it makes the
-    // final status line parse as a header if the colon is looked for before the HTTP/ prefix, which
-    // skips the reset that discards the redirect's headers.
+    // A colon in the reason phrase is legal, since RFC 7230 makes it free-form text. It also makes
+    // the final status line parse as a header if the colon is looked for before the HTTP/ prefix,
+    // which skips the reset that discards the redirect's headers.
     ScriptedServer server({"HTTP/1.1 301 Moved Permanently\r\n"
                            "Location: /final\r\n"
                            "X-From-Redirect: yes\r\n"
@@ -652,8 +652,8 @@ TEST(CurlHTTPRequestManagerTests, failsATransferThatStopsMakingProgress) {
 
 TEST(CurlHTTPRequestManagerTests, leavesASlowButProgressingTransferAlone) {
     std::string body(400, 'x');
-    // Ten pieces 200 ms apart, so about two seconds in total — well past the idle timeout below,
-    // but never a whole second without data. An overall CURLOPT_TIMEOUT would cut this off.
+    // Ten pieces 200 ms apart, so about two seconds in total. That is well past the idle timeout
+    // below, but never a whole second without data. An overall CURLOPT_TIMEOUT would cut it off.
     DribblingServer server("HTTP/1.1 200 OK\r\n"
                            "Content-Length: 400\r\n"
                            "Connection: close\r\n"
@@ -687,10 +687,10 @@ TEST(CurlHTTPRequestManagerTests, scriptedServerShutsDownWithAResponseUnclaimed)
 
     std::thread([destroyed = std::move(destroyed)]() mutable {
         {
-            // Primed with two responses but given one request. That is exactly the state
-            // followsASeeOtherWithGet is left in when a redirect is not followed — the regression it
-            // exists to catch — and it leaves the serving thread blocked in accept() for a second
-            // connection that never comes.
+            // Two responses primed, one request given. That is exactly the state
+            // followsASeeOtherWithGet is left in when a redirect is not followed, which is the
+            // regression it exists to catch, and it leaves the serving thread blocked in accept()
+            // waiting for a second connection that never comes.
             ScriptedServer server({kResponse, kResponse});
 
             auto manager = makeCurlHTTPRequestManager();
@@ -755,8 +755,8 @@ TEST(CurlHTTPRequestManagerTests, doesNotHoldTheResponseBodyTwice) {
     ASSERT_EQ(completion->statusCode(), 200);
     ASSERT_EQ(completion->bodySize(), kBodySize) << "the large body did not arrive intact";
 
-    // Measured at 1.03x holding the payload once and 2.03x holding it twice, so the threshold sits
-    // midway rather than just under the failing value.
+    // Holding the payload once measured 1.03x and holding it twice measured 2.03x, so the threshold
+    // sits midway instead of just under the failing value.
     auto growth = peakResidentBytes() - before;
     EXPECT_LT(growth, kBodySize + kBodySize / 2)
         << "peak memory grew by " << growth / (1024 * 1024) << " MiB to receive a "
@@ -778,9 +778,8 @@ TEST(CurlHTTPRequestManagerTests, cancellingARequestDropsItsCompletion) {
     cancelable->cancel();
 
     // curl hanging up means the abort has been through drainMessages, which is where a completion
-    // that was merely detached from curl rather than dropped would have fired. The manager is left
-    // alive on purpose, so that this proves cancel() dropped the completion rather than shutdown
-    // doing it.
+    // that was merely detached from curl would have fired if it had not been dropped. The manager
+    // is left alive on purpose, so this pins the drop on cancel() and not on shutdown.
     ASSERT_TRUE(server.waitForDisconnect(std::chrono::seconds(30)))
         << "curl never hung up, so the cancelled transfer was never aborted";
 
