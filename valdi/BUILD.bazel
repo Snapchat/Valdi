@@ -982,19 +982,20 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        ":valdi_runtime",
+        "//valdi_core:valdi_core_cc",
         "@curl",
     ],
 )
 
 valdi_test(
     name = "test_standalone",
-    srcs = [
-        "test/integration/CurlHTTPRequestManager_tests.cpp",
+    srcs = glob(["test/standalone/**/*.cpp"]) + [
         "test/integration/JSBridgeTestFixture.cpp",
-        "test/integration/StandaloneRequestManager_tests.cpp",
     ],
-    hdrs = glob(["test/integration/**/*.hpp"]),
+    hdrs = glob([
+        "test/integration/**/*.hpp",
+        "test/standalone/**/*.hpp",
+    ]),
     deps = [
         ":test_utils",
         ":valdi_runtime_with_vm",
