@@ -1001,8 +1001,8 @@ valdi_test(
         ":valdi_runtime_with_vm",
         ":valdi_standalone_http",
         "//src/valdi_modules/src/cpp/valdi_http:valdi_http_cpp",
-        # The JavaScript side of valdi_http, so tests can drive HTTPClient and assert on the promise
-        # it hands back, not just the native performRequest binding.
+        # The JavaScript side of valdi_http. Tests need this to drive HTTPClient and assert on the
+        # promise it hands back, rather than only the native performRequest binding.
         "//src/valdi_modules/src/valdi/valdi_http:valdi_http_native",
         "//src/valdi_modules/src/valdi/valdi_core:valdi_core_native",
     ],

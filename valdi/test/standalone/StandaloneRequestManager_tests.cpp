@@ -13,8 +13,8 @@ using namespace Valdi;
 
 namespace ValdiTest {
 
-// A CLI app reaches valdi_http through createValdiStandaloneRuntime, which had no way to install a
-// request manager, so performRequest always failed with "No RequestManager set".
+// A CLI app reaches valdi_http through createValdiStandaloneRuntime, so the request manager it is
+// given has to arrive that way. Without one, performRequest fails with "No RequestManager set".
 class StandaloneRequestManagerFixture : public JSBridgeTestFixture {
 protected:
     StandaloneArguments makeArguments() {
@@ -42,7 +42,7 @@ TEST_P(StandaloneRequestManagerFixture, reachesTheRuntimeWhenSupplied) {
     ASSERT_EQ(standaloneRuntime->getRuntime().getRequestManager(), requestManager);
 }
 
-// The end-to-end shape a CLI app exercises: performRequest resolves instead of throwing.
+// The shape a CLI app exercises end to end: performRequest resolves instead of throwing.
 TEST_P(StandaloneRequestManagerFixture, performRequestSucceedsFromJavaScript) {
     auto requestManager = Valdi::makeShared<RequestManagerMock>(ConsoleLogger::getLogger());
     requestManager->addMockedResponse(STRING_LITERAL("http://localhost/"), STRING_LITERAL("GET"), BytesView());
@@ -95,7 +95,7 @@ TEST_P(StandaloneRequestManagerFixture, performRequestReportsSuccessToJavaScript
 
     auto outcome = evaluate("return global.__outcome;");
     ASSERT_TRUE(outcome) << outcome.description();
-    // The counterpart to the failure test below: nothing else asserts that a successful response
+    // The counterpart to the failure test below. Nothing else asserts that a successful response
     // actually reaches the callback, so stringifying the wrong parameter would go unnoticed.
     EXPECT_EQ("status 200", outcome.value().toString()) << "a successful response must reach the JavaScript callback";
 }
@@ -125,7 +125,7 @@ TEST_P(StandaloneRequestManagerFixture, performRequestReportsFailureToJavaScript
     ASSERT_TRUE(started) << started.description();
     ASSERT_EQ("started", started.value().toString());
 
-    // Drains the mock's queue, so the completion — and with it the JavaScript callback — has run.
+    // Drains the mock's queue, so the completion has run and with it the JavaScript callback.
     requestManager->getAllPerformedTasks();
 
     auto outcome = evaluate("return global.__outcome;");
@@ -136,8 +136,8 @@ TEST_P(StandaloneRequestManagerFixture, performRequestReportsFailureToJavaScript
            "callback is never invoked at all and the promise behind it stays pending forever";
 }
 
-// The contract callers actually depend on, and the one that hung: a failed request must settle the
-// promise HTTPClient hands back, not abandon it.
+// The contract callers actually depend on, and the one that hung. A failed request has to settle
+// the promise HTTPClient hands back instead of abandoning it.
 TEST_P(StandaloneRequestManagerFixture, httpClientRejectsItsPromiseOnFailure) {
     auto requestManager = Valdi::makeShared<RequestManagerMock>(ConsoleLogger::getLogger());
     // Deliberately no mocked response, so the mock fails the request.
