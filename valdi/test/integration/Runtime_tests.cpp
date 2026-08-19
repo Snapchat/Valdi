@@ -272,6 +272,30 @@ TEST_P(RuntimeFixture, exposesDefaultApiVersion) {
     ASSERT_EQ(0, evalResult.value().toInt());
 }
 
+TEST_P(RuntimeFixture, traceProxyRetainsCallbackAcrossGC) {
+    // Regression: JavaScriptRuntimeTraceProxyCallable used to hold its wrapped callback as a bare,
+    // non-owning JSValue. Under Hermes the callback's pooled value could be collected and its slot
+    // recycled while the proxy still referenced it, so invoking the proxy hit a dangling handle and
+    // threw "Value is not a function". The proxy must retain the callback for its own lifetime.
+    auto javaScriptRuntime = wrapper.runtime->getJavaScriptRuntime();
+
+    // The closure has no JS reference other than the trace proxy itself.
+    std::string setupBody = "globalThis.__traceProxy = runtime.makeTraceProxy('regressionTag', () => 42); return 0;";
+    auto setupResult =
+        javaScriptRuntime->evaluateScript(makeShared<ByteBuffer>(setupBody)->toBytesView(), STRING_LITERAL("eval.js"));
+    ASSERT_TRUE(setupResult) << setupResult.description();
+
+    // Force GC: pre-fix the unrooted closure is collected and its slot recycled.
+    javaScriptRuntime->dispatchSynchronouslyOnJsThread([](auto& jsEntry) { jsEntry.jsContext.garbageCollect(); });
+
+    // Invoke through the proxy: it must still resolve to the original callback.
+    std::string callBody = "return __traceProxy();";
+    auto callResult =
+        javaScriptRuntime->evaluateScript(makeShared<ByteBuffer>(callBody)->toBytesView(), STRING_LITERAL("eval.js"));
+    ASSERT_TRUE(callResult) << callResult.description();
+    ASSERT_EQ(42, callResult.value().toInt());
+}
+
 TEST_P(RuntimeFixture, canLoadSimpleViewTree) {
     auto tree = wrapper.createViewNodeTreeAndContext("test", "BasicViewTree");
 
