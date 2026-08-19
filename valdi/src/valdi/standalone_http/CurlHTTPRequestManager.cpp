@@ -15,6 +15,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdlib>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -29,11 +30,24 @@ namespace {
 
 constexpr long kMaxRedirects = 10;
 constexpr long kConnectTimeoutSeconds = 30;
-constexpr int kPollTimeoutMs = 200;
+// An upper bound, not an interval: curl_multi_poll waits for the shorter of this and the multi
+// handle's own next timer, so an active transfer still gets serviced on curl's schedule. It only
+// governs how long an idle thread sits before rechecking, and new work and shutdown both wake
+// the poll explicitly, so there is nothing for a short value to catch.
+constexpr int kPollTimeoutMs = 10000;
 
+// Read by the curl command line tool, not by libcurl, so they have to be honoured here for
+// a caller to be able to point at a trust store of their own.
+const char* const kCaBundleVariables[] = {
+    "CURL_CA_BUNDLE",
+    "SSL_CERT_FILE",
+};
+
+// Only distributions the @curl build defaults miss. The macOS and Debian-family paths are
+// deliberately absent: @curl compiles CURL_CA_BUNDLE with exactly those two strings
+// (curl+/BUILD.bazel:341-346), so libcurl already applies them, and probing for them here would
+// also silently override a deliberate --@curl//:ca_bundle.
 const char* const kCaBundleCandidates[] = {
-    "/etc/ssl/cert.pem",                       // macOS, Alpine
-    "/etc/ssl/certs/ca-certificates.crt",      // Debian, Ubuntu
     "/etc/pki/tls/certs/ca-bundle.crt",        // RHEL, Fedora
     "/etc/ssl/ca-bundle.pem",                  // openSUSE
 };
@@ -41,6 +55,13 @@ const char* const kCaBundleCandidates[] = {
 std::string resolveCaBundle(const StringBox& configured) {
     if (!configured.isEmpty()) {
         return std::string(configured.toStringView());
+    }
+
+    for (const char* variable : kCaBundleVariables) {
+        const char* value = std::getenv(variable);
+        if (value != nullptr && *value != '\0') {
+            return value;
+        }
     }
 
     for (const char* candidate : kCaBundleCandidates) {
@@ -61,6 +82,18 @@ public:
 
     void cancel() override {
         cancelled.store(true);
+
+        // A cancelled request reports nothing back, matching the iOS and Android managers.
+        dropCompletion();
+    }
+
+    // Used at shutdown as well as for cancellation. Completions reach JavaScript directly, with no
+    // thread hop, so firing one from the curl thread while the thread destroying the manager is
+    // blocked in join() would enter the engine from two threads at once. Neither platform manager
+    // guarantees a completion at teardown either, so there is nothing to report.
+    void dropCompletion() {
+        std::lock_guard<std::mutex> guard(_mutex);
+        _completion = nullptr;
     }
 
     void complete(const Result<snap::valdi_core::HTTPResponse>& result) {
@@ -84,7 +117,11 @@ public:
     snap::valdi_core::HTTPRequest request;
     std::atomic_bool cancelled{false};
 
-    std::string responseBody;
+    // Filled by the write callback and handed straight to the response, so the payload is never
+    // copied. ByteBuffer grows to the next power of two, so appending stays amortised constant time
+    // without reserving up front — which would mean sizing an allocation from a Content-Length the
+    // server chose.
+    Ref<ByteBuffer> responseBody = makeShared<ByteBuffer>();
     Value responseHeaders;
     curl_slist* requestHeaders = nullptr;
 
@@ -95,7 +132,7 @@ private:
 
 size_t writeBodyCallback(char* data, size_t size, size_t count, void* userData) {
     auto* task = static_cast<CurlTask*>(userData);
-    task->responseBody.append(data, size * count);
+    task->responseBody->append(data, data + size * count);
     return size * count;
 }
 
@@ -103,21 +140,41 @@ size_t writeHeaderCallback(char* data, size_t size, size_t count, void* userData
     auto* task = static_cast<CurlTask*>(userData);
 
     std::string line(data, size * count);
-    auto separator = line.find(':');
-    if (separator != std::string::npos) {
-        auto name = line.substr(0, separator);
-        auto value = line.substr(separator + 1);
 
-        auto isTrimmable = [](char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; };
-        while (!value.empty() && isTrimmable(value.front())) {
-            value.erase(value.begin());
-        }
-        while (!value.empty() && isTrimmable(value.back())) {
-            value.pop_back();
-        }
-
-        task->responseHeaders.setMapValue(std::string_view(name), Value(StringBox::fromString(value)));
+    // Tested before looking for a colon, because a reason phrase is free-form text and may contain
+    // one. Reading a status line as a header would also skip this reset, and with
+    // CURLOPT_FOLLOWLOCATION the callback sees every response in the chain, so the redirect's
+    // headers would be left to leak into the final result.
+    if (line.rfind("HTTP/", 0) == 0) {
+        task->responseHeaders = Value();
+        return size * count;
     }
+
+    auto separator = line.find(':');
+    if (separator == std::string::npos) {
+        return size * count;
+    }
+
+    auto name = line.substr(0, separator);
+    auto value = line.substr(separator + 1);
+
+    auto isTrimmable = [](char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; };
+    while (!value.empty() && isTrimmable(value.front())) {
+        value.erase(value.begin());
+    }
+    while (!value.empty() && isTrimmable(value.back())) {
+        value.pop_back();
+    }
+
+    // Joined rather than replaced, matching what NSURLResponse hands back for a repeated header.
+    // The response header map is string to string, so there is nowhere else for the earlier
+    // values to go, and dropping them loses whole Set-Cookie lines.
+    auto existing = task->responseHeaders.getMapValue(std::string_view(name));
+    if (!existing.isNullOrUndefined()) {
+        value = std::string(existing.toStringBox().toStringView()) + ", " + value;
+    }
+
+    task->responseHeaders.setMapValue(std::string_view(name), Value(StringBox::fromString(value)));
 
     return size * count;
 }
@@ -129,8 +186,19 @@ int progressCallback(void* userData, curl_off_t, curl_off_t, curl_off_t, curl_of
 
 class CurlHTTPRequestManager : public snap::valdi_core::HTTPRequestManager {
 public:
-    explicit CurlHTTPRequestManager(std::string caBundle) : _caBundle(std::move(caBundle)) {
+    CurlHTTPRequestManager(std::string caBundle, int32_t idleTimeoutSeconds, CURLcode globalInit)
+        : _caBundle(std::move(caBundle)), _idleTimeoutSeconds(idleTimeoutSeconds), _globalInit(globalInit) {
+        if (_globalInit != CURLE_OK) {
+            // Going on regardless would leave curl_easy_init handing back handles whose TLS backend
+            // was never set up, so every HTTPS request would fail with something that looks
+            // unrelated.
+            return;
+        }
+
         _multi = curl_multi_init();
+        if (_multi == nullptr) {
+            return;
+        }
         _thread = std::thread([this]() { run(); });
     }
 
@@ -151,10 +219,35 @@ public:
         const std::shared_ptr<snap::valdi_core::HTTPRequestManagerCompletion>& completion) override {
         auto task = std::make_shared<CurlTask>(request, completion);
 
+        // Checked before the multi handle, so the reported cause is the one that actually failed.
+        if (_globalInit != CURLE_OK) {
+            task->complete(Error(StringBox::fromString(std::string("Failed to initialise libcurl: ") +
+                                                       curl_easy_strerror(_globalInit))));
+            return task;
+        }
+
+        if (_multi == nullptr) {
+            task->complete(Error(STRING_LITERAL("Failed to create a curl multi handle")));
+            return task;
+        }
+
+        bool stopping = false;
         {
             std::lock_guard<std::mutex> guard(_mutex);
-            _pending.push_back(task);
+            stopping = _stopping;
+            if (!stopping) {
+                _pending.push_back(task);
+            }
         }
+
+        // Failed outside the lock, because a completion is free to queue another request and
+        // _mutex is not recursive. Queueing here instead would strand the task: run() has
+        // already drained _pending for the last time, and nothing will service it again.
+        if (stopping) {
+            task->complete(Error(STRING_LITERAL("Request manager shutting down")));
+            return task;
+        }
+
         curl_multi_wakeup(_multi);
 
         return task;
@@ -166,7 +259,7 @@ private:
             std::vector<std::shared_ptr<CurlTask>> pending;
             {
                 std::lock_guard<std::mutex> guard(_mutex);
-                if (_stopping && _active.empty() && _pending.empty()) {
+                if (_stopping) {
                     break;
                 }
                 pending.swap(_pending);
@@ -179,17 +272,31 @@ private:
             int running = 0;
             curl_multi_perform(_multi, &running);
 
+            // Before the poll, not after: perform is what queues CURLMSG_DONE, and once nothing
+            // is running curl has no timeout to report, so the poll would sleep out its whole
+            // timeout before a finished transfer was ever reported.
+            drainMessages();
+
             int numfds = 0;
             curl_multi_poll(_multi, nullptr, 0, kPollTimeoutMs, &numfds);
-
-            drainMessages();
         }
 
+        // Outstanding work is dropped rather than failed; see CurlTask::dropCompletion.
         for (auto& entry : _active) {
+            entry.second->dropCompletion();
             curl_multi_remove_handle(_multi, entry.first);
-            finish(entry.first, entry.second, Error(STRING_LITERAL("Request manager shutting down")));
+            releaseHandle(entry.first, entry.second);
         }
         _active.clear();
+
+        std::vector<std::shared_ptr<CurlTask>> pending;
+        {
+            std::lock_guard<std::mutex> guard(_mutex);
+            pending.swap(_pending);
+        }
+        for (const auto& task : pending) {
+            task->dropCompletion();
+        }
     }
 
     void addTask(const std::shared_ptr<CurlTask>& task) {
@@ -203,17 +310,35 @@ private:
 
         curl_easy_setopt(easy, CURLOPT_URL, std::string(request.url.toStringView()).c_str());
 
-        auto method = std::string(request.method.toStringView());
-        if (method == "HEAD") {
-            curl_easy_setopt(easy, CURLOPT_NOBODY, 1L);
-        } else if (!method.empty() && method != "GET") {
-            curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, method.c_str());
-        }
-
         if (request.body) {
             const auto& body = request.body.value();
             curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(body.size()));
             curl_easy_setopt(easy, CURLOPT_COPYPOSTFIELDS, reinterpret_cast<const char*>(body.data()));
+        }
+
+        // Methods curl models itself are set through their own options so that its redirect
+        // handling knows what the request is. CURLOPT_CUSTOMREQUEST only rewrites the request
+        // line and leaves behaviour alone, which is why it is reserved for the verbs curl has no
+        // option for.
+        auto method = std::string(request.method.toStringView());
+        if (method == "HEAD") {
+            curl_easy_setopt(easy, CURLOPT_NOBODY, 1L);
+        } else if (method == "POST") {
+            curl_easy_setopt(easy, CURLOPT_POST, 1L);
+            if (!request.body) {
+                // Without fields curl reads the body from the read callback, which is stdin.
+                curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(0));
+                curl_easy_setopt(easy, CURLOPT_COPYPOSTFIELDS, "");
+            }
+        } else if (method.empty() || method == "GET") {
+            if (request.body) {
+                // The fields above turned this into a POST; name GET to keep the request line.
+                curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, "GET");
+            } else {
+                curl_easy_setopt(easy, CURLOPT_HTTPGET, 1L);
+            }
+        } else {
+            curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, method.c_str());
         }
 
         for (const auto& key : request.headers.sortedMapKeys()) {
@@ -238,12 +363,29 @@ private:
         curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, kConnectTimeoutSeconds);
         curl_easy_setopt(easy, CURLOPT_NOSIGNAL, 1L);
 
+        // Abandoning a name lookup otherwise means joining the resolver thread, and getaddrinfo
+        // cannot be interrupted — so cancelling or shutting down mid-lookup blocks this thread until
+        // the resolver gives up, taking every other request with it. This makes curl detach that
+        // thread instead; it frees its own state once the lookup returns.
+        curl_easy_setopt(easy, CURLOPT_QUICK_EXIT, 1L);
+
+        if (_idleTimeoutSeconds > 0) {
+            // An inactivity timeout, not an overall one: below one byte a second for this long
+            // counts as stalled. A slow but progressing download is left alone.
+            curl_easy_setopt(easy, CURLOPT_LOW_SPEED_LIMIT, 1L);
+            curl_easy_setopt(easy, CURLOPT_LOW_SPEED_TIME, static_cast<long>(_idleTimeoutSeconds));
+        }
+
         if (!_caBundle.empty()) {
             curl_easy_setopt(easy, CURLOPT_CAINFO, _caBundle.c_str());
         }
 
+        auto added = curl_multi_add_handle(_multi, easy);
+        if (added != CURLM_OK) {
+            finish(easy, task, Error(StringBox::fromCString(curl_multi_strerror(added))));
+            return;
+        }
         _active.emplace(easy, task);
-        curl_multi_add_handle(_multi, easy);
     }
 
     void drainMessages() {
@@ -271,7 +413,7 @@ private:
 
                 snap::valdi_core::HTTPResponse response(static_cast<int32_t>(statusCode),
                                                         task->responseHeaders,
-                                                        {makeShared<ByteBuffer>(task->responseBody)->toBytesView()});
+                                                        {task->responseBody->toBytesView()});
                 finishHandle(easy, task, Result<snap::valdi_core::HTTPResponse>(response));
             } else if (message->data.result == CURLE_ABORTED_BY_CALLBACK) {
                 finish(easy, task, Error(STRING_LITERAL("Request was cancelled")));
@@ -289,7 +431,10 @@ private:
                       const std::shared_ptr<CurlTask>& task,
                       const Result<snap::valdi_core::HTTPResponse>& result) {
         task->complete(result);
+        releaseHandle(easy, task);
+    }
 
+    void releaseHandle(CURL* easy, const std::shared_ptr<CurlTask>& task) {
         if (task->requestHeaders != nullptr) {
             curl_slist_free_all(task->requestHeaders);
             task->requestHeaders = nullptr;
@@ -298,6 +443,8 @@ private:
     }
 
     std::string _caBundle;
+    int32_t _idleTimeoutSeconds = 0;
+    CURLcode _globalInit = CURLE_OK;
     CURLM* _multi = nullptr;
     std::thread _thread;
     std::mutex _mutex;
@@ -308,11 +455,14 @@ private:
 
 } // namespace
 
-Shared<snap::valdi_core::HTTPRequestManager> makeCurlHTTPRequestManager(const StringBox& caBundlePath) {
+Shared<snap::valdi_core::HTTPRequestManager> makeCurlHTTPRequestManager(const StringBox& caBundlePath,
+                                                                       int32_t idleTimeoutSeconds) {
+    static CURLcode globalInitResult = CURLE_OK;
     static std::once_flag globalInit;
-    std::call_once(globalInit, []() { curl_global_init(CURL_GLOBAL_DEFAULT); });
+    std::call_once(globalInit, []() { globalInitResult = curl_global_init(CURL_GLOBAL_DEFAULT); });
 
-    return std::make_shared<CurlHTTPRequestManager>(resolveCaBundle(caBundlePath));
+    return std::make_shared<CurlHTTPRequestManager>(
+        resolveCaBundle(caBundlePath), idleTimeoutSeconds, globalInitResult);
 }
 
 } // namespace Valdi

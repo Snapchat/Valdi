@@ -10,13 +10,7 @@ const DEFAULT_URL = "https://example.com";
 
 const standalone = getStandaloneRuntime();
 
-const programArguments = standalone.arguments.slice();
-programArguments.shift();
-
-const parser = new ArgumentsParser("cli_http_example", [
-	"_",
-	...programArguments,
-]);
+const parser = new ArgumentsParser("cli_http_example", standalone.arguments);
 const urlArgument = parser.addString(
 	"--url",
 	`URL to fetch (default ${DEFAULT_URL})`,

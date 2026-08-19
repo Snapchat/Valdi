@@ -5,7 +5,8 @@
 #include "valdi_core/cpp/Utils/ByteBuffer.hpp"
 #include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
 
-#include "JSBridgeTestFixture.hpp"
+#include "valdi/test/integration/JSBridgeTestFixture.hpp"
+
 #include "gtest/gtest.h"
 
 using namespace Valdi;
