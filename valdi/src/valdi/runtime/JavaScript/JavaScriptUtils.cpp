@@ -335,6 +335,12 @@ JSValueRef valueToJSValue(IJavaScriptContext& jsContext,
                 jsContext, typedArray.getType(), typedArray.getBuffer(), exceptionTracker);
         }
         case ValueType::Error: {
+            // Raises rather than converting, so an Error reaching here as a *return* value throws in
+            // JavaScript. That makes it unusable for a callback *argument*: the raise happens while
+            // the arguments are being marshalled, so the callback is never invoked and any promise
+            // waiting on it stays pending. Pass error text instead, as
+            // HTTPRequestManagerModuleFactory and PersistentStoreModuleFactory do. Note the ObjC
+            // conversion differs and does produce a value (SCValdiError).
             exceptionTracker.onError(value.getError());
             return JSValueRef();
         }
