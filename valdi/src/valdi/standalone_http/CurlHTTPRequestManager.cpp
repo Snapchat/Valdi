@@ -10,15 +10,17 @@
 #include "valdi_core/cpp/Utils/Result.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
 #include "valdi_core/cpp/Utils/Value.hpp"
+#include "valdi_core/cpp/Utils/ValueMap.hpp"
 
 #include <curl/curl.h>
 
 #include <atomic>
-#include <condition_variable>
 #include <cstdlib>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
+#include <strings.h>
 #include <sys/stat.h>
 #include <thread>
 #include <unordered_map>
@@ -30,9 +32,8 @@ namespace {
 
 constexpr int kMaxRedirects = 10;
 constexpr long kConnectTimeoutSeconds = 30;
-// curl_multi_poll waits for the shorter of this and the multi handle's own next timer, so an
-// active transfer is still serviced on curl's schedule. This only bounds how long an idle thread
-// sits before rechecking. New work and shutdown both wake the poll, so a short value buys nothing.
+// Only bounds how long an idle thread sits: curl_multi_poll returns at the sooner of this and the
+// multi handle's own next timer, and new work, cancellation and shutdown all wake it early.
 constexpr int kPollTimeoutMs = 10000;
 
 // The curl command line tool reads these, libcurl does not, so we honour them here to let a
@@ -42,9 +43,8 @@ const char* const kCaBundleVariables[] = {
     "SSL_CERT_FILE",
 };
 
-// Only distributions the @curl build defaults miss. @curl already compiles CURL_CA_BUNDLE with
-// the macOS and Debian-family paths (curl+/BUILD.bazel:341-346), so libcurl applies those itself,
-// and probing for them here would override a deliberate --@curl//:ca_bundle.
+// Only the distributions @curl's own compiled-in CURL_CA_BUNDLE misses, since libcurl applies that
+// itself and probing for the same paths here would override a deliberate --@curl//:ca_bundle.
 const char* const kCaBundleCandidates[] = {
     "/etc/pki/tls/certs/ca-bundle.crt",        // RHEL, Fedora
     "/etc/ssl/ca-bundle.pem",                  // openSUSE
@@ -72,23 +72,67 @@ std::string resolveCaBundle(const StringBox& configured) {
     return {};
 }
 
+// Always a map, never null: HTTPTypes.d.ts declares headers as StringMap<string>, and iOS, Android
+// and web all hand back {} when a response carried none.
+Value emptyHeaderMap() {
+    return Value(makeShared<ValueMap>());
+}
+
+// A cancelable can outlive the manager, since JavaScript may hold one and cancel after teardown.
+// Tasks reach the multi handle through this rather than a back-pointer: the manager clears it once
+// its thread has joined and before curl_multi_cleanup, so a late cancel finds nothing to poke.
+class PollWaker {
+public:
+    explicit PollWaker(CURLM* multi) : _multi(multi) {}
+
+    void wake() {
+        std::lock_guard<std::mutex> guard(_mutex);
+        if (_multi != nullptr) {
+            curl_multi_wakeup(_multi);
+        }
+    }
+
+    void detach() {
+        std::lock_guard<std::mutex> guard(_mutex);
+        _multi = nullptr;
+    }
+
+private:
+    std::mutex _mutex;
+    CURLM* _multi;
+};
+
 class CurlTask : public snap::valdi_core::Cancelable {
 public:
     CurlTask(snap::valdi_core::HTTPRequest request,
-             std::shared_ptr<snap::valdi_core::HTTPRequestManagerCompletion> completion)
-        : request(std::move(request)), _completion(std::move(completion)) {}
-
-    void cancel() override {
-        cancelled.store(true);
-
-        // A cancelled request reports nothing back, matching the iOS and Android managers.
-        dropCompletion();
+             std::shared_ptr<snap::valdi_core::HTTPRequestManagerCompletion> completion,
+             std::shared_ptr<PollWaker> waker)
+        : request(std::move(request)), _completion(std::move(completion)), _waker(std::move(waker)) {
+        // The caller's body views a live JavaScript ArrayBuffer, so it is copied here, on the thread
+        // that called performRequest. Reading it from the curl thread would race whatever
+        // JavaScript writes next. The view is then dropped so nothing downstream can reach for it.
+        if (this->request.body) {
+            const auto& body = this->request.body.value();
+            requestBody = makeShared<ByteBuffer>(body.begin(), body.end());
+            this->request.body.reset();
+        }
     }
 
-    // Shutdown uses this too. Completions reach JavaScript directly with no thread hop, so firing
-    // one from the curl thread while another thread sits in join() destroying the manager would
-    // enter the engine twice over. Neither platform manager promises a completion at teardown, so
-    // there is nothing to report.
+    void cancel() override {
+        // Dropped before the flag goes up, because the curl thread turns an aborted transfer into a
+        // "Request was cancelled" failure and must not find a completion still attached.
+        dropCompletion();
+
+        cancelled.store(true);
+
+        // Nothing reads that flag until curl next runs the progress callback, and an idle transfer
+        // leaves the poll parked for up to kPollTimeoutMs. Waking it frees the socket now.
+        _waker->wake();
+    }
+
+    // Used by cancel() and by shutdown. Neither the iOS nor the Android manager promises a
+    // completion for a cancelled or torn-down request, so there is nothing to report. Dropping is
+    // the contract, not a thread-safety measure: a JS backed completion dispatches to the JS thread.
     void dropCompletion() {
         std::lock_guard<std::mutex> guard(_mutex);
         _completion = nullptr;
@@ -118,17 +162,21 @@ public:
     int redirects = 0;
     std::atomic_bool cancelled{false};
 
+    // Null when the request has no body. This owns the payload for the life of the task, which
+    // outlives every easy handle made from it, so curl can read it in place.
+    Ref<ByteBuffer> requestBody;
+
     // The write callback fills this and the response takes it directly, so the payload is never
-    // copied. ByteBuffer grows to the next power of two, so appending stays amortised constant
-    // time with no reserve up front. Reserving would size an allocation from a Content-Length the
-    // server chose.
+    // copied. No reserve up front: that would size an allocation from a Content-Length the server
+    // chose.
     Ref<ByteBuffer> responseBody = makeShared<ByteBuffer>();
-    Value responseHeaders;
+    Value responseHeaders = emptyHeaderMap();
     curl_slist* requestHeaders = nullptr;
 
 private:
     std::mutex _mutex;
     std::shared_ptr<snap::valdi_core::HTTPRequestManagerCompletion> _completion;
+    std::shared_ptr<PollWaker> _waker;
 };
 
 size_t writeBodyCallback(char* data, size_t size, size_t count, void* userData) {
@@ -146,7 +194,7 @@ size_t writeHeaderCallback(char* data, size_t size, size_t count, void* userData
     // contain one. The reset discards anything an informational response carried, since curl hands
     // a 1xx header block to this callback too and a 103 Early Hints brings real headers with it.
     if (line.rfind("HTTP/", 0) == 0) {
-        task->responseHeaders = Value();
+        task->responseHeaders = emptyHeaderMap();
         return size * count;
     }
 
@@ -166,9 +214,8 @@ size_t writeHeaderCallback(char* data, size_t size, size_t count, void* userData
         value.pop_back();
     }
 
-    // Join repeated headers, matching what NSURLResponse hands back. The response header map is
-    // string to string, so earlier values have nowhere else to go, and dropping them loses whole
-    // Set-Cookie lines.
+    // Join repeated headers as NSURLResponse does. The map is string to string, so dropping earlier
+    // values would lose whole Set-Cookie lines.
     auto existing = task->responseHeaders.getMapValue(std::string_view(name));
     if (!existing.isNullOrUndefined()) {
         value = std::string(existing.toStringBox().toStringView()) + ", " + value;
@@ -177,6 +224,63 @@ size_t writeHeaderCallback(char* data, size_t size, size_t count, void* userData
     task->responseHeaders.setMapValue(std::string_view(name), Value(StringBox::fromString(value)));
 
     return size * count;
+}
+
+// curl writes custom headers and a custom request line out verbatim, and curl_slist_append takes a
+// const char*, so a CR or LF injects a header or a whole second request, and a NUL truncates
+// silently. Rejected rather than stripped, so a request never quietly means something else.
+bool hasRequestControlCharacters(std::string_view text) {
+    return text.find_first_of(std::string_view("\r\n\0", 3)) != std::string_view::npos;
+}
+
+// The message to fail with, or nullopt when every field is safe to serialize.
+std::optional<std::string> findUnserializableField(const snap::valdi_core::HTTPRequest& request) {
+    if (hasRequestControlCharacters(request.method.toStringView())) {
+        return "The request method contains a carriage return, newline or NUL";
+    }
+
+    for (const auto& key : request.headers.sortedMapKeys()) {
+        // Deliberately not naming it: the name is the thing carrying the newline.
+        if (hasRequestControlCharacters(key.toStringView())) {
+            return "A request header name contains a carriage return, newline or NUL";
+        }
+
+        if (hasRequestControlCharacters(request.headers.getMapValue(key).toStringBox().toStringView())) {
+            return "The value of request header " + std::string(key.toStringView()) +
+                   " contains a carriage return, newline or NUL";
+        }
+    }
+
+    return std::nullopt;
+}
+
+bool equalsIgnoringCase(std::string_view value, std::string_view lowercase) {
+    return value.size() == lowercase.size() && strncasecmp(value.data(), lowercase.data(), value.size()) == 0;
+}
+
+// This build has no compression codecs, so curl neither asks for an encoded response nor checks
+// whether it got one: it only parses Content-Encoding when CURLOPT_ACCEPT_ENCODING is set. Matched
+// case-insensitively, since the casing is the origin's and nothing here canonicalizes it.
+std::optional<std::string> undecodableContentEncoding(const Value& headers) {
+    if (!headers.isMap()) {
+        return std::nullopt;
+    }
+
+    for (const auto& entry : *headers.getMap()) {
+        if (!equalsIgnoringCase(entry.first.toStringView(), "content-encoding")) {
+            continue;
+        }
+
+        auto encoding = std::string(entry.second.toStringBox().toStringView());
+
+        // identity is a no-op, and the only codec this build has.
+        if (encoding.empty() || equalsIgnoringCase(encoding, "identity")) {
+            return std::nullopt;
+        }
+        return encoding;
+    }
+
+    return std::nullopt;
 }
 
 int progressCallback(void* userData, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
@@ -198,6 +302,7 @@ public:
         if (_multi == nullptr) {
             return;
         }
+        _waker = std::make_shared<PollWaker>(_multi);
         _thread = std::thread([this]() { run(); });
     }
 
@@ -210,13 +315,16 @@ public:
         if (_thread.joinable()) {
             _thread.join();
         }
+        // After the join, so the run loop still has a handle to poll, and before the cleanup, so a
+        // cancel arriving from JavaScript from here on finds nothing rather than a freed handle.
+        _waker->detach();
         curl_multi_cleanup(_multi);
     }
 
     std::shared_ptr<snap::valdi_core::Cancelable> performRequest(
         const snap::valdi_core::HTTPRequest& request,
         const std::shared_ptr<snap::valdi_core::HTTPRequestManagerCompletion>& completion) override {
-        auto task = std::make_shared<CurlTask>(request, completion);
+        auto task = std::make_shared<CurlTask>(request, completion, _waker);
 
         // Check this before the multi handle, so the reported cause is the one that actually failed.
         if (_globalInit != CURLE_OK) {
@@ -299,38 +407,45 @@ private:
     }
 
     void addTask(const std::shared_ptr<CurlTask>& task) {
+        const auto& request = task->request;
+
+        // Checked before a handle exists, so a rejected request leaves nothing to clean up.
+        if (auto rejection = findUnserializableField(request)) {
+            task->complete(Error(StringBox::fromString(*rejection)));
+            return;
+        }
+
         auto* easy = curl_easy_init();
         if (easy == nullptr) {
             task->complete(Error(STRING_LITERAL("Failed to create a curl handle")));
             return;
         }
 
-        const auto& request = task->request;
-
         curl_easy_setopt(easy, CURLOPT_URL, std::string(request.url.toStringView()).c_str());
 
-        if (request.body) {
-            const auto& body = request.body.value();
-            curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(body.size()));
-            curl_easy_setopt(easy, CURLOPT_COPYPOSTFIELDS, reinterpret_cast<const char*>(body.data()));
+        if (task->requestBody != nullptr) {
+            curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(task->requestBody->size()));
+            // Not COPYPOSTFIELDS: the task already owns this buffer for longer than the handle
+            // lives, so letting curl copy it again would hold the payload twice.
+            curl_easy_setopt(easy, CURLOPT_POSTFIELDS, reinterpret_cast<const char*>(task->requestBody->data()));
         }
 
-        // Methods curl models itself are set through their own options so that its redirect
-        // handling knows what the request is. CURLOPT_CUSTOMREQUEST only rewrites the request
-        // line and leaves behaviour alone, which is why it is reserved for the verbs curl has no
-        // option for.
+        // Methods curl models itself go through their own options, so it sets the transfer up to
+        // match: CURLOPT_POST arranges a body reader, CURLOPT_NOBODY suppresses reading one.
+        // CUSTOMREQUEST only rewrites the request line, so it is left for verbs curl has no option
+        // for.
         auto method = std::string(request.method.toStringView());
         if (method == "HEAD") {
             curl_easy_setopt(easy, CURLOPT_NOBODY, 1L);
         } else if (method == "POST") {
             curl_easy_setopt(easy, CURLOPT_POST, 1L);
-            if (!request.body) {
+            if (task->requestBody == nullptr) {
                 // Without fields curl reads the body from the read callback, which is stdin.
                 curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(0));
                 curl_easy_setopt(easy, CURLOPT_COPYPOSTFIELDS, "");
             }
         } else if (method.empty() || method == "GET") {
-            if (request.body) {
+            if (task->requestBody != nullptr) {
                 // The fields above turned this into a POST; name GET to keep the request line.
                 curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, "GET");
             } else {
@@ -341,8 +456,15 @@ private:
         }
 
         for (const auto& key : request.headers.sortedMapKeys()) {
-            auto header = std::string(key.toStringView()) + ": " +
-                          std::string(request.headers.getMapValue(key).toStringBox().toStringView());
+            auto value = std::string(request.headers.getMapValue(key).toStringBox().toStringView());
+
+            // curl steps over the whitespace after a colon and then drops an empty valued header
+            // entirely. Its "name;" form is the documented way to send one, and iOS and web both
+            // do. The blank set mirrors curl's ISSPACE, so this catches exactly what it would drop.
+            auto blank = value.find_first_not_of(" \t\n\v\f\r") == std::string::npos;
+            auto header = blank ? std::string(key.toStringView()) + ";"
+                                : std::string(key.toStringView()) + ": " + value;
+
             task->requestHeaders = curl_slist_append(task->requestHeaders, header.c_str());
         }
         if (task->requestHeaders != nullptr) {
@@ -361,9 +483,8 @@ private:
         curl_easy_setopt(easy, CURLOPT_NOSIGNAL, 1L);
 
         // Without this, abandoning a name lookup joins the resolver thread, and getaddrinfo cannot
-        // be interrupted. Cancelling or shutting down mid-lookup would block this thread until the
-        // resolver gave up, taking every other request with it. curl detaches the thread instead,
-        // and it frees its own state once the lookup returns.
+        // be interrupted, so a cancel or shutdown mid-lookup would block this thread and every
+        // other request with it. curl detaches the thread instead and it frees its own state.
         curl_easy_setopt(easy, CURLOPT_QUICK_EXIT, 1L);
 
         if (_idleTimeoutSeconds > 0) {
@@ -385,11 +506,11 @@ private:
         _active.emplace(easy, task);
     }
 
-    // Redirects are followed here rather than by CURLOPT_FOLLOWLOCATION, because that option keeps
-    // CURLOPT_CUSTOMREQUEST for the whole chain: Curl_http_method takes the request line from it
-    // unconditionally, and the redirect handlers only ever touch curl's own idea of the method. A
-    // DELETE would stay a DELETE across a 303 that has to become a GET, and a PUT would keep its
-    // verb while curl dropped the body out from under it. The rewriting below is RFC 9110 15.4.
+    // Followed here rather than by CURLOPT_FOLLOWLOCATION, which keeps CURLOPT_CUSTOMREQUEST for
+    // the whole chain: Curl_http_method takes the request line from it unconditionally while the
+    // redirect handlers only touch curl's own idea of the method, so a DELETE would stay a DELETE
+    // across a 303 and a PUT would keep its verb while curl dropped the body. Rewriting per RFC
+    // 9110 15.4.
     static void retarget(CurlTask& task, long statusCode, const char* location) {
         task.request.url = StringBox::fromCString(location);
 
@@ -398,13 +519,13 @@ private:
                                       : ((statusCode == 301 || statusCode == 302) && method == "POST");
         if (toGet) {
             task.request.method = STRING_LITERAL("GET");
-            task.request.body.reset();
+            task.requestBody = nullptr;
         }
 
         // curl only withholds a redirect's body from the write callback when it is following the
         // redirect itself, so this hop's is ours to discard.
         task.responseBody->clear();
-        task.responseHeaders = Value();
+        task.responseHeaders = emptyHeaderMap();
         task.redirects++;
     }
 
@@ -448,6 +569,20 @@ private:
                     continue;
                 }
 
+                // Nothing to decode if nothing arrived, which is also what keeps a HEAD or a 204
+                // against a compressing origin from being reported as a failure.
+                if (!task->responseBody->empty()) {
+                    if (auto encoding = undecodableContentEncoding(task->responseHeaders)) {
+                        finish(easy,
+                               task,
+                               Error(StringBox::fromString(
+                                   "Cannot decode a response sent with Content-Encoding: " + *encoding +
+                                   ". This build has no decompression support, so an Accept-Encoding request "
+                                   "header must not be set.")));
+                        continue;
+                    }
+                }
+
                 snap::valdi_core::HTTPResponse response(static_cast<int32_t>(statusCode),
                                                         task->responseHeaders,
                                                         {task->responseBody->toBytesView()});
@@ -483,6 +618,8 @@ private:
     int32_t _idleTimeoutSeconds = 0;
     CURLcode _globalInit = CURLE_OK;
     CURLM* _multi = nullptr;
+    // Never null, so that a cancel is safe whether or not the run loop ever came up.
+    std::shared_ptr<PollWaker> _waker = std::make_shared<PollWaker>(nullptr);
     std::thread _thread;
     std::mutex _mutex;
     bool _stopping = false;
