@@ -208,6 +208,45 @@ TEST(CollapseWebPaths, appliesImageInliningPolicyPerModule) {
               "};\n");
 }
 
+// Transitive-dependency res is staged under a nested `release/res/<module>/res`
+// path, but generateImageRegistry only scans the immediate children of `src/`.
+// The transitive module's images are copied into the package yet never added to
+// _image_registry.js, so getAssets() cannot resolve them at runtime (icons render
+// blank). The registry must cover every module's res, including transitive deps.
+TEST(CollapseWebPaths, registersTransitiveDependencyResources) {
+    CollapseTemporaryDirectory directory;
+    auto directIcon = directory.write("inputs/direct_icon.png", "png\n");
+    auto transitiveIcon = directory.write("inputs/transitive_icon.png", "png\n");
+    auto manifest = directory.write("manifest.tsv",
+                                    fmt::format("{}\tsrc/lead/res/direct_icon.png\n"
+                                                "{}\tsrc/release/res/shared/res/transitive_icon.png\n",
+                                                directIcon,
+                                                transitiveIcon));
+    auto stringsManifest = directory.write("strings.tsv", "");
+    auto declarationsManifest = directory.write("declarations.tsv", "");
+    auto webWorkersManifest = directory.write("web-workers.tsv", "");
+    auto imagePolicyManifest = directory.write("image-policy.tsv", "");
+    auto output = directory.path().appending("output");
+
+    auto result = collapseWebPaths(output.toStringBox(),
+                                   manifest.toStringBox(),
+                                   StringCache::getGlobal().makeString(std::string_view("@scope/package")),
+                                   stringsManifest.toStringBox(),
+                                   declarationsManifest.toStringBox(),
+                                   webWorkersManifest.toStringBox(),
+                                   imagePolicyManifest.toStringBox());
+
+    ASSERT_TRUE(result) << result.description();
+    auto registry = directory.read("output/src/_image_registry.js");
+    // Direct dependency is registered today.
+    EXPECT_NE(registry.find("__r['lead/res']"), std::string::npos) << registry;
+    // Transitive dependency (staged under release/res/<module>/res) must also be
+    // registered. This fails on the current renderer: its icons are bundled but
+    // absent from the registry.
+    EXPECT_NE(registry.find("__r['shared/res']"), std::string::npos) << registry;
+    EXPECT_NE(registry.find("transitive_icon.png"), std::string::npos) << registry;
+}
+
 } // namespace
 
 } // namespace Valdi
