@@ -28,7 +28,7 @@ namespace Valdi {
 
 namespace {
 
-constexpr long kMaxRedirects = 10;
+constexpr int kMaxRedirects = 10;
 constexpr long kConnectTimeoutSeconds = 30;
 // curl_multi_poll waits for the shorter of this and the multi handle's own next timer, so an
 // active transfer is still serviced on curl's schedule. This only bounds how long an idle thread
@@ -112,7 +112,10 @@ public:
         }
     }
 
+    // Rewritten in place as redirects are followed, so that each hop is issued from the same
+    // record the first one was.
     snap::valdi_core::HTTPRequest request;
+    int redirects = 0;
     std::atomic_bool cancelled{false};
 
     // The write callback fills this and the response takes it directly, so the payload is never
@@ -140,9 +143,8 @@ size_t writeHeaderCallback(char* data, size_t size, size_t count, void* userData
     std::string line(data, size * count);
 
     // Check this before looking for a colon, because a reason phrase is free-form text and may
-    // contain one. Misreading a status line as a header also skips the reset below, and with
-    // CURLOPT_FOLLOWLOCATION the callback sees every response in the chain, so a redirect's
-    // headers would leak into the final result.
+    // contain one. The reset discards anything an informational response carried, since curl hands
+    // a 1xx header block to this callback too and a 103 Early Hints brings real headers with it.
     if (line.rfind("HTTP/", 0) == 0) {
         task->responseHeaders = Value();
         return size * count;
@@ -355,8 +357,6 @@ private:
         curl_easy_setopt(easy, CURLOPT_XFERINFODATA, task.get());
         curl_easy_setopt(easy, CURLOPT_NOPROGRESS, 0L);
 
-        curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
-        curl_easy_setopt(easy, CURLOPT_MAXREDIRS, kMaxRedirects);
         curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, kConnectTimeoutSeconds);
         curl_easy_setopt(easy, CURLOPT_NOSIGNAL, 1L);
 
@@ -385,6 +385,29 @@ private:
         _active.emplace(easy, task);
     }
 
+    // Redirects are followed here rather than by CURLOPT_FOLLOWLOCATION, because that option keeps
+    // CURLOPT_CUSTOMREQUEST for the whole chain: Curl_http_method takes the request line from it
+    // unconditionally, and the redirect handlers only ever touch curl's own idea of the method. A
+    // DELETE would stay a DELETE across a 303 that has to become a GET, and a PUT would keep its
+    // verb while curl dropped the body out from under it. The rewriting below is RFC 9110 15.4.
+    static void retarget(CurlTask& task, long statusCode, const char* location) {
+        task.request.url = StringBox::fromCString(location);
+
+        auto method = std::string(task.request.method.toStringView());
+        bool toGet = statusCode == 303 ? (method != "GET" && method != "HEAD")
+                                      : ((statusCode == 301 || statusCode == 302) && method == "POST");
+        if (toGet) {
+            task.request.method = STRING_LITERAL("GET");
+            task.request.body.reset();
+        }
+
+        // curl only withholds a redirect's body from the write callback when it is following the
+        // redirect itself, so this hop's is ours to discard.
+        task.responseBody->clear();
+        task.responseHeaders = Value();
+        task.redirects++;
+    }
+
     void drainMessages() {
         int remaining = 0;
         while (auto* message = curl_multi_info_read(_multi, &remaining)) {
@@ -407,6 +430,23 @@ private:
             if (message->data.result == CURLE_OK) {
                 long statusCode = 0;
                 curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &statusCode);
+
+                // Only set for a 3xx carrying a Location, and curl has already resolved it against
+                // the request URL, so a relative target arrives absolute.
+                char* location = nullptr;
+                curl_easy_getinfo(easy, CURLINFO_REDIRECT_URL, &location);
+                if (location != nullptr) {
+                    if (task->redirects >= kMaxRedirects) {
+                        finish(easy, task, Error(STRING_LITERAL("Maximum number of redirects followed")));
+                        continue;
+                    }
+                    retarget(*task, statusCode, location);
+                    releaseHandle(easy, task);
+                    // curl_multi_add_handle asks for this handle to run immediately, so the next hop
+                    // is serviced on the following pass rather than after a poll timeout.
+                    addTask(task);
+                    continue;
+                }
 
                 snap::valdi_core::HTTPResponse response(static_cast<int32_t>(statusCode),
                                                         task->responseHeaders,
