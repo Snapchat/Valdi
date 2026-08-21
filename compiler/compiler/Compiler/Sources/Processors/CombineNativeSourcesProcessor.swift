@@ -56,16 +56,40 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
         return allItems
     }
 
-    private func mergeAnySources(files: [FileAndContent]) -> File {
+    private func mergeAnySources(files: [FileAndContent], outputFilename: String) -> File {
         var data = ""
 
         for file in files {
             data +=  "//\n// \(file.filename)\n//\n\n"
-            data += file.content
+            data += Self.filterSelfImports(from: file.content, outputFilename: outputFilename)
             data += "\n"
         }
 
         return .string(data)
+    }
+
+    /// Each generated ObjC source header imports the module's own consolidated
+    /// header by its canonical name (see `IOSType.importHeaderStatement`). After
+    /// merging into that very file the import refers to itself. It is a no-op
+    /// under normal (hmap-based) compilation, but it breaks clang module builds
+    /// for Swift interop (Swift module compilation receives no header maps), so
+    /// drop those import lines here.
+    static func filterSelfImports(from content: String, outputFilename: String) -> String {
+        let stem = (outputFilename as NSString).deletingPathExtension
+        let selfImports: Set<String> = [
+            "#import <\(outputFilename)>",
+            "#import \"\(outputFilename)\"",
+            "#import <\(stem)/\(outputFilename)>",
+        ]
+        var data = ""
+
+        for line in content.split(separator: "\n", omittingEmptySubsequences: false) {
+            if selfImports.contains(line.trimmingCharacters(in: .whitespaces)) { continue }
+            data += line
+            data += "\n"
+        }
+
+        return data
     }
 
     // Merges .m files and deduplicates static trampoline functions
@@ -362,7 +386,7 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
             let file = mergeObjcSources(files: fileAndContentArray)
             generatedNativeSource = NativeSource(relativePath: relativePath, filename: filename, file: file, groupingIdentifier: filename, groupingPriority: 0)
         } else {
-            let file = mergeAnySources(files: fileAndContentArray)
+            let file = mergeAnySources(files: fileAndContentArray, outputFilename: filename)
             generatedNativeSource = NativeSource(relativePath: relativePath, filename: filename, file: file, groupingIdentifier: filename, groupingPriority: 0)
         }
 
