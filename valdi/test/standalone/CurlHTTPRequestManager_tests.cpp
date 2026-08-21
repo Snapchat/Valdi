@@ -378,11 +378,22 @@ public:
     }
 
 private:
-    // Drained so that closing the connection does not reset it before curl reads back.
+    // Drained so that closing the connection does not reset it before curl reads back. A declared
+    // body is drained too, so that asserting on what was sent does not depend on the body having
+    // arrived in the same packet as the headers.
     static std::string readRequest(int connection) {
         std::string request;
         char buffer[512];
         while (request.find("\r\n\r\n") == std::string::npos) {
+            auto received = ::recv(connection, buffer, sizeof(buffer), 0);
+            if (received <= 0) {
+                return request;
+            }
+            request.append(buffer, static_cast<size_t>(received));
+        }
+
+        auto expected = request.find("\r\n\r\n") + 4 + declaredBodySize(request);
+        while (request.size() < expected) {
             auto received = ::recv(connection, buffer, sizeof(buffer), 0);
             if (received <= 0) {
                 break;
@@ -390,6 +401,16 @@ private:
             request.append(buffer, static_cast<size_t>(received));
         }
         return request;
+    }
+
+    static size_t declaredBodySize(const std::string& request) {
+        static const std::string kField = "\r\nContent-Length: ";
+
+        auto at = request.find(kField);
+        if (at == std::string::npos) {
+            return 0;
+        }
+        return static_cast<size_t>(std::stoul(request.substr(at + kField.size())));
     }
 
     int _listener = -1;
@@ -401,8 +422,13 @@ private:
     std::thread _thread;
 };
 
+snap::valdi_core::HTTPRequest makeRequest(const char* method, const char* url) {
+    return snap::valdi_core::HTTPRequest(
+        StringBox::fromCString(url), StringBox::fromCString(method), Value(), std::nullopt, 0);
+}
+
 snap::valdi_core::HTTPRequest makeGet(const char* url) {
-    return snap::valdi_core::HTTPRequest(StringBox::fromCString(url), STRING_LITERAL("GET"), Value(), std::nullopt, 0);
+    return makeRequest("GET", url);
 }
 
 snap::valdi_core::HTTPRequest makeRequestWithBody(const char* method, const char* url, const char* body) {
@@ -573,6 +599,152 @@ TEST(CurlHTTPRequestManagerTests, followsASeeOtherWithGet) {
     ASSERT_EQ(requests.size(), 2u);
     EXPECT_EQ(requests[0], "POST /submit HTTP/1.1");
     EXPECT_EQ(requests[1], "GET /final HTTP/1.1") << "a 303 must be followed with GET, not the original verb";
+}
+
+TEST(CurlHTTPRequestManagerTests, followsASeeOtherFromACustomVerbWithGet) {
+    ScriptedServer server({"HTTP/1.1 303 See Other\r\n"
+                           "Location: /final\r\n"
+                           "Content-Length: 0\r\n"
+                           "Connection: close\r\n"
+                           "\r\n",
+                           "HTTP/1.1 200 OK\r\n"
+                           "Content-Length: 2\r\n"
+                           "Connection: close\r\n"
+                           "\r\n"
+                           "ok"});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+
+    auto start = std::chrono::steady_clock::now();
+    manager->performRequest(makeRequest("DELETE", server.url("/thing").c_str()), completion);
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(30)));
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
+
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto requests = server.requestLines();
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_EQ(requests[0], "DELETE /thing HTTP/1.1");
+    EXPECT_EQ(requests[1], "GET /final HTTP/1.1")
+        << "a 303 must be followed with GET, including for a verb curl only knows as a custom "
+           "request line";
+
+    EXPECT_LT(elapsed.count(), 500) << "a two hop redirect took " << elapsed.count()
+                                    << " ms, so a hop is not picked up until the poll has slept out "
+                                       "its whole timeout";
+}
+
+TEST(CurlHTTPRequestManagerTests, dropsThePutBodyFollowingASeeOtherWithGet) {
+    ScriptedServer server({"HTTP/1.1 303 See Other\r\n"
+                           "Location: /final\r\n"
+                           "Content-Length: 0\r\n"
+                           "Connection: close\r\n"
+                           "\r\n",
+                           "HTTP/1.1 200 OK\r\n"
+                           "Content-Length: 2\r\n"
+                           "Connection: close\r\n"
+                           "\r\n"
+                           "ok"});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeRequestWithBody("PUT", server.url("/thing").c_str(), "a=1"), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(30)));
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_EQ(requests[0].substr(0, requests[0].find("\r\n")), "PUT /thing HTTP/1.1");
+    EXPECT_EQ(requests[1].substr(0, requests[1].find("\r\n")), "GET /final HTTP/1.1")
+        << "a 303 must be followed with GET. Request was:\n"
+        << requests[1];
+    EXPECT_EQ(requests[1].find("Content-Length"), std::string::npos)
+        << "the verb became GET but the body came along with it. Request was:\n"
+        << requests[1];
+}
+
+TEST(CurlHTTPRequestManagerTests, keepsThePutBodyAcrossAMovedPermanently) {
+    ScriptedServer server({"HTTP/1.1 301 Moved Permanently\r\n"
+                           "Location: /final\r\n"
+                           "Content-Length: 0\r\n"
+                           "Connection: close\r\n"
+                           "\r\n",
+                           "HTTP/1.1 200 OK\r\n"
+                           "Content-Length: 2\r\n"
+                           "Connection: close\r\n"
+                           "\r\n"
+                           "ok"});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeRequestWithBody("PUT", server.url("/thing").c_str(), "a=1"), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(30)));
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_EQ(requests[1].substr(0, requests[1].find("\r\n")), "PUT /final HTTP/1.1")
+        << "only POST turns into GET on a 301. Request was:\n"
+        << requests[1];
+    EXPECT_NE(requests[1].find("Content-Length: 3\r\n"), std::string::npos)
+        << "the redirected PUT was sent with no body at all. Request was:\n"
+        << requests[1];
+    EXPECT_NE(requests[1].find("\r\n\r\na=1"), std::string::npos)
+        << "the redirected PUT declared a body but did not send it. Request was:\n"
+        << requests[1];
+}
+
+TEST(CurlHTTPRequestManagerTests, keepsThePostBodyAcrossATemporaryRedirect) {
+    ScriptedServer server({"HTTP/1.1 307 Temporary Redirect\r\n"
+                           "Location: /final\r\n"
+                           "Content-Length: 0\r\n"
+                           "Connection: close\r\n"
+                           "\r\n",
+                           "HTTP/1.1 200 OK\r\n"
+                           "Content-Length: 2\r\n"
+                           "Connection: close\r\n"
+                           "\r\n"
+                           "ok"});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeRequestWithBody("POST", server.url("/submit").c_str(), "a=1"), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(30)));
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_EQ(requests[1].substr(0, requests[1].find("\r\n")), "POST /final HTTP/1.1")
+        << "a 307 must be repeated with the original verb. Request was:\n"
+        << requests[1];
+    EXPECT_NE(requests[1].find("\r\n\r\na=1"), std::string::npos)
+        << "a 307 must be repeated with the original body. Request was:\n"
+        << requests[1];
+}
+
+TEST(CurlHTTPRequestManagerTests, failsARedirectChainThatNeverEnds) {
+    // One response more than kMaxRedirects permits follows, so the last has to be refused rather
+    // than followed. This pins the follow count, which the manager now keeps itself instead of
+    // leaving to CURLOPT_MAXREDIRS.
+    ScriptedServer server(std::vector<std::string>(11,
+                                                   "HTTP/1.1 302 Found\r\n"
+                                                   "Location: /loop\r\n"
+                                                   "Content-Length: 0\r\n"
+                                                   "Connection: close\r\n"
+                                                   "\r\n"));
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeGet(server.url("/loop").c_str()), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(30)));
+    EXPECT_TRUE(completion->error().has_value()) << "an endless redirect chain was reported as a response";
+    EXPECT_EQ(server.requestLines().size(), 11u)
+        << "the original request plus ten follows is what kMaxRedirects allows";
 }
 
 TEST(CurlHTTPRequestManagerTests, reportsALoopbackResponseWithoutWaitingOutThePollTimeout) {
