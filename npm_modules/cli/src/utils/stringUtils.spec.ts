@@ -110,8 +110,8 @@ describe('stringUtils', () => {
         expect(validateProjectName('123project')).toContain('sanitized');
       });
 
-      describe('with bazelModule option', () => {
-        const opts = { bazelModule: true };
+      describe('with requireBazelModuleName option', () => {
+        const opts = { requireBazelModuleName: true };
 
         it('accepts valid Bazel module names', () => {
           expect(validateProjectName('my_project', opts)).toBeNull();

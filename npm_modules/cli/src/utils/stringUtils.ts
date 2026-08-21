@@ -80,7 +80,7 @@ export interface ValidateProjectNameOptions {
    * `valdi bootstrap`). Module and target names created by `valdi new_module`
    * are case-sensitive directory/BUILD target names and do not need this.
    */
-  bazelModule?: boolean;
+  requireBazelModuleName?: boolean;
 }
 
 /**
@@ -104,7 +104,7 @@ export function validateProjectName(name: string, options: ValidateProjectNameOp
 
   // When the name is used as the Bazel module name in MODULE.bazel, reject anything
   // Bazel would refuse before any files are written.
-  if (options.bazelModule && !isValidBazelModuleName(sanitized)) {
+  if (options.requireBazelModuleName && !isValidBazelModuleName(sanitized)) {
     const suggestion = sanitized.toLowerCase().replace(/^[^a-z]+/, '').replace(/[^\da-z]+$/, '');
     return (
       `Project name "${name}" is not a valid Bazel module name. ` +
