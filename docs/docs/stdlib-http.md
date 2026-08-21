@@ -368,6 +368,7 @@ The `valdi_http` module works on:
 - ✅ iOS
 - ✅ Android
 - ✅ Web (via polyfill)
+- ✅ CLI (requires `enable_http = True`, see [Building a CLI application](./workflow-cli-application.md#making-network-requests))
 
 Network requests are always performed asynchronously and will not block the JavaScript thread.
 

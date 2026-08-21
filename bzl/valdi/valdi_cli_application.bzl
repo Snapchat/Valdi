@@ -11,6 +11,18 @@ def valdi_cli_application(
         visibility = ["//visibility:public"],
         enable_http = False,
         deps = []):
+    """ Builds a Valdi CLI application into a single self contained binary.
+
+    Args:
+        name: The name of the generated binary.
+        script_path: The entry point script, as <module_name>/<path_without_extension>.
+        visibility: The visibility of the Bazel target.
+        enable_http: Links a libcurl backed HTTP client into the binary, which valdi_http needs at
+            runtime. Off by default because it pulls in curl and BoringSSL, which an application
+            making no network requests should not have to carry. Left off, requests reject with
+            "No RequestManager set".
+        deps: The Valdi modules to include in the build.
+    """
     main_target = "{}_main".format(name)
 
     expand_template(
