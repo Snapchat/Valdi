@@ -16,6 +16,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
+#include <cstring>
 #include <future>
 #include <mutex>
 #include <netinet/in.h>
@@ -431,6 +432,18 @@ snap::valdi_core::HTTPRequest makeGet(const char* url) {
     return makeRequest("GET", url);
 }
 
+Value makeHeaders(std::initializer_list<std::pair<const char*, const char*>> entries) {
+    Value headers;
+    for (const auto& entry : entries) {
+        headers.setMapValue(std::string_view(entry.first), Value(StringBox::fromCString(entry.second)));
+    }
+    return headers;
+}
+
+snap::valdi_core::HTTPRequest makeGetWithHeaders(const char* url, const Value& headers) {
+    return snap::valdi_core::HTTPRequest(StringBox::fromCString(url), STRING_LITERAL("GET"), headers, std::nullopt, 0);
+}
+
 snap::valdi_core::HTTPRequest makeRequestWithBody(const char* method, const char* url, const char* body) {
     return snap::valdi_core::HTTPRequest(StringBox::fromCString(url),
                                         StringBox::fromCString(method),
@@ -574,6 +587,409 @@ TEST(CurlHTTPRequestManagerTests, sendsAnEmptyButPresentBodyAsAnEmptyPost) {
     EXPECT_NE(requests[0].find("Content-Length: 0\r\n"), std::string::npos)
         << "an empty body must still declare a zero length. Request was:\n"
         << requests[0];
+}
+
+// A canned 200 for tests that only care about what went out on the request.
+std::string okResponse() {
+    return "HTTP/1.1 200 OK\r\n"
+           "Content-Length: 2\r\n"
+           "Connection: close\r\n"
+           "\r\n"
+           "ok";
+}
+
+TEST(CurlHTTPRequestManagerTests, reportsAnEmptyMapForAResponseWithNoHeaders) {
+    // No colon anywhere but the status line, which is the only way the header map is never promoted
+    // from null. 204 so that curl needs no Content-Length, since any header added to help would
+    // itself carry a colon and defeat the test. RFC 9110 makes Date a MUST for an origin with a
+    // clock, so this shape comes from hand rolled and embedded servers rather than mainstream ones.
+    ScriptedServer server({"HTTP/1.1 204 No Content\r\n\r\n"});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeGet(server.url("/").c_str()), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    ASSERT_EQ(completion->statusCode(), 204);
+
+    auto headers = completion->headers();
+    EXPECT_FALSE(headers.isNullOrUndefined())
+        << "headers reached JavaScript as null, but HTTPTypes.d.ts declares them as a "
+           "StringMap<string> and iOS, Android and web all hand back {}";
+    EXPECT_TRUE(headers.isMap()) << "headers must always be a map, even for a response that carried none";
+}
+
+TEST(CurlHTTPRequestManagerTests, sendsARequestHeader) {
+    ScriptedServer server({okResponse()});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeGetWithHeaders(server.url("/").c_str(), makeHeaders({{"X-Test", "value"}})),
+                            completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 1u);
+    EXPECT_NE(requests[0].find("X-Test: value\r\n"), std::string::npos)
+        << "a caller header never reached the wire, or was not formatted as \"name: value\". Request was:\n"
+        << requests[0];
+}
+
+TEST(CurlHTTPRequestManagerTests, sendsHeadersInAnOrderThatDoesNotDependOnInsertion) {
+    ScriptedServer server({okResponse()});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    // Inserted in an order that is neither alphabetical nor reverse alphabetical, so agreeing with
+    // the map's own iteration order by chance is unlikely across five keys.
+    manager->performRequest(makeGetWithHeaders(server.url("/").c_str(),
+                                              makeHeaders({{"X-Delta", "4"},
+                                                           {"X-Alpha", "1"},
+                                                           {"X-Echo", "5"},
+                                                           {"X-Bravo", "2"},
+                                                           {"X-Charlie", "3"}})),
+                            completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 1u);
+
+    std::vector<size_t> positions;
+    for (const auto* header : {"X-Alpha: 1\r\n", "X-Bravo: 2\r\n", "X-Charlie: 3\r\n", "X-Delta: 4\r\n", "X-Echo: 5\r\n"}) {
+        auto at = requests[0].find(header);
+        EXPECT_NE(at, std::string::npos) << header << " never reached the wire. Request was:\n" << requests[0];
+        positions.push_back(at);
+    }
+
+    // sortedMapKeys imposes this. The guarantee worth having is that the bytes do not depend on the
+    // order the caller happened to build the map in, and sorting is how that is achieved.
+    EXPECT_TRUE(std::is_sorted(positions.begin(), positions.end()))
+        << "headers were not sent in sorted order, so the request bytes depend on map iteration "
+           "order. Request was:\n"
+        << requests[0];
+}
+
+TEST(CurlHTTPRequestManagerTests, overridesACurlDefaultHeader) {
+    ScriptedServer server({okResponse()});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(
+        makeGetWithHeaders(server.url("/").c_str(), makeHeaders({{"Accept", "application/json"}})), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 1u);
+    EXPECT_NE(requests[0].find("Accept: application/json\r\n"), std::string::npos)
+        << "the caller's Accept did not reach the wire. Request was:\n"
+        << requests[0];
+    EXPECT_EQ(requests[0].find("Accept: */*"), std::string::npos)
+        << "curl's own Accept was sent alongside the caller's, so the server sees two. Request was:\n"
+        << requests[0];
+}
+
+TEST(CurlHTTPRequestManagerTests, coercesNonStringHeaderValues) {
+    ScriptedServer server({okResponse()});
+
+    // JavaScript is not held to HTTPTypes.d.ts, so a number or a boolean can arrive here. The loop
+    // runs every value through toStringBox, and this pins what that produces.
+    Value headers;
+    headers.setMapValue(std::string_view("X-Count"), Value(42));
+    headers.setMapValue(std::string_view("X-Flag"), Value(true));
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeGetWithHeaders(server.url("/").c_str(), headers), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 1u);
+    EXPECT_NE(requests[0].find("X-Count: 42\r\n"), std::string::npos)
+        << "a numeric header value was not coerced to its digits. Request was:\n"
+        << requests[0];
+    EXPECT_NE(requests[0].find("X-Flag: true\r\n"), std::string::npos)
+        << "a boolean header value was not coerced to true/false. Request was:\n"
+        << requests[0];
+}
+
+// curl writes custom headers and a custom request line verbatim, so a CR or LF in caller-supplied
+// text ends one header and starts another. With two of them it ends the whole request and starts a
+// second one on the same connection. A NUL truncates instead, since curl_slist_append takes a
+// const char*. None of it must reach the wire.
+TEST(CurlHTTPRequestManagerTests, rejectsAHeaderValueContainingCrlf) {
+    ScriptedServer server({okResponse()});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(
+        makeGetWithHeaders(server.url("/").c_str(), makeHeaders({{"X-Test", "a\r\nX-Evil: 1"}})), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    EXPECT_TRUE(completion->error().has_value()) << "a header value carrying CRLF was accepted";
+    EXPECT_TRUE(server.requestLines().empty())
+        << "the request went out anyway, so a caller-supplied string injected a header";
+}
+
+TEST(CurlHTTPRequestManagerTests, rejectsAHeaderValueThatWouldSplitTheRequest) {
+    ScriptedServer server({okResponse()});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(
+        makeGetWithHeaders(server.url("/").c_str(),
+                           makeHeaders({{"X-Test", "a\r\n\r\nGET /smuggled HTTP/1.1\r\nHost: evil\r\n"}})),
+        completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    EXPECT_TRUE(completion->error().has_value()) << "a header value that ends the request was accepted";
+    EXPECT_TRUE(server.requestLines().empty())
+        << "a second request was written onto the connection from a header value";
+}
+
+TEST(CurlHTTPRequestManagerTests, rejectsAHeaderValueContainingANul) {
+    ScriptedServer server({okResponse()});
+
+    Value headers;
+    headers.setMapValue(std::string_view("X-Test"), Value(StringBox::fromString(std::string("a\0b", 3))));
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeGetWithHeaders(server.url("/").c_str(), headers), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    EXPECT_TRUE(completion->error().has_value())
+        << "a NUL in a header value truncates it at the C string boundary, which must not pass silently";
+    EXPECT_TRUE(server.requestLines().empty()) << "a truncated header value was sent";
+}
+
+TEST(CurlHTTPRequestManagerTests, rejectsAHeaderNameContainingCrlf) {
+    ScriptedServer server({okResponse()});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(
+        makeGetWithHeaders(server.url("/").c_str(), makeHeaders({{"X-Test\r\nX-Evil", "1"}})), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    EXPECT_TRUE(completion->error().has_value()) << "a header name carrying CRLF was accepted";
+    EXPECT_TRUE(server.requestLines().empty()) << "the request went out anyway";
+}
+
+TEST(CurlHTTPRequestManagerTests, rejectsAMethodContainingCrlf) {
+    ScriptedServer server({okResponse()});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeRequest("PURGE\r\nX-Evil: 1", server.url("/").c_str()), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    EXPECT_TRUE(completion->error().has_value()) << "a method carrying CRLF was accepted";
+    EXPECT_TRUE(server.requestLines().empty()) << "the request line was split across two lines on the wire";
+}
+
+TEST(CurlHTTPRequestManagerTests, rejectsAUrlContainingCrlf) {
+    // curl parses the URL itself, so this is a guard on curl keeping that promise rather than on
+    // anything this manager does. Pointed at a server that would otherwise answer, so passing on a
+    // connection failure instead of a rejected URL is not possible.
+    ScriptedServer server({okResponse()});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeGet((server.url("/") + "\r\nX-Evil: 1").c_str()), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    EXPECT_TRUE(completion->error().has_value()) << "a URL carrying CRLF was accepted";
+    EXPECT_TRUE(server.requestLines().empty()) << "the request reached the wire with CRLF in its target";
+}
+
+TEST(CurlHTTPRequestManagerTests, sendsAnEmptyValuedRequestHeader) {
+    ScriptedServer server({okResponse()});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeGetWithHeaders(server.url("/").c_str(), makeHeaders({{"X-Trace", ""}})), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 1u);
+    EXPECT_NE(requests[0].find("X-Trace:\r\n"), std::string::npos)
+        << "an empty valued header was dropped, so the same JavaScript sends different bytes here "
+           "than it does on iOS and web. Request was:\n"
+        << requests[0];
+}
+
+TEST(CurlHTTPRequestManagerTests, sendsAWhitespaceOnlyRequestHeaderAsEmpty) {
+    ScriptedServer server({okResponse()});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeGetWithHeaders(server.url("/").c_str(), makeHeaders({{"X-Trace", "   "}})),
+                            completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 1u);
+    EXPECT_NE(requests[0].find("X-Trace:\r\n"), std::string::npos)
+        << "curl drops a whitespace only value just as it drops an empty one, since it steps over "
+           "the whitespace before testing. Request was:\n"
+        << requests[0];
+}
+
+TEST(CurlHTTPRequestManagerTests, sendsAnEmptyValuedOverrideOfACurlDefault) {
+    ScriptedServer server({okResponse()});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeGetWithHeaders(server.url("/").c_str(), makeHeaders({{"Accept", ""}})), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 1u);
+    EXPECT_EQ(requests[0].find("Accept: */*"), std::string::npos)
+        << "curl's own default was sent even though the caller overrode Accept. Request was:\n"
+        << requests[0];
+    EXPECT_NE(requests[0].find("Accept:\r\n"), std::string::npos)
+        << "overriding a header curl generates itself with an empty value loses it twice over: "
+           "curl suppresses its default because a custom one exists, then drops the custom one. "
+           "Request was:\n"
+        << requests[0];
+}
+
+TEST(CurlHTTPRequestManagerTests, failsAResponseItCannotDecode) {
+    ScriptedServer server({"HTTP/1.1 200 OK\r\n"
+                           "Content-Encoding: gzip\r\n"
+                           "Content-Length: 3\r\n"
+                           "Connection: close\r\n"
+                           "\r\n"
+                           "\x1f\x8b\x08"});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeGet(server.url("/").c_str()), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    ASSERT_TRUE(completion->error().has_value())
+        << "a body this build cannot decode was handed back as a successful response";
+    EXPECT_NE(completion->error().value().find("gzip"), std::string::npos)
+        << "the failure should name the encoding it could not decode, but said: " << completion->error().value();
+}
+
+TEST(CurlHTTPRequestManagerTests, failsAResponseItCannotDecodeWhateverTheHeaderCasing) {
+    // Casing is the origin's choice and nothing here canonicalizes it, so the check has to be
+    // insensitive on the header name and on its value.
+    ScriptedServer server({"HTTP/1.1 200 OK\r\n"
+                           "content-encoding: GZIP\r\n"
+                           "Content-Length: 3\r\n"
+                           "Connection: close\r\n"
+                           "\r\n"
+                           "\x1f\x8b\x08"});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeGet(server.url("/").c_str()), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    ASSERT_TRUE(completion->error().has_value())
+        << "a lowercase Content-Encoding went unnoticed, so the response was handed back undecoded";
+    EXPECT_NE(completion->error().value().find("GZIP"), std::string::npos)
+        << "failed, but not over the encoding, so this passes for the wrong reason: "
+        << completion->error().value();
+}
+
+TEST(CurlHTTPRequestManagerTests, acceptsAnIdentityContentEncoding) {
+    ScriptedServer server({"HTTP/1.1 200 OK\r\n"
+                           "Content-Encoding: identity\r\n"
+                           "Content-Length: 2\r\n"
+                           "Connection: close\r\n"
+                           "\r\n"
+                           "ok"});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeGet(server.url("/").c_str()), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    EXPECT_FALSE(completion->error().has_value())
+        << "identity means the body is unencoded, so there is nothing to reject: "
+        << completion->error().value_or("");
+    EXPECT_EQ(completion->statusCode(), 200);
+    EXPECT_EQ(completion->bodySize(), 2u);
+}
+
+TEST(CurlHTTPRequestManagerTests, ignoresContentEncodingOnABodilessResponse) {
+    // A HEAD against an origin that compresses still advertises the encoding the body would have
+    // had. There is no body to decode, so it must not be treated as a failure.
+    ScriptedServer server({"HTTP/1.1 200 OK\r\n"
+                           "Content-Encoding: gzip\r\n"
+                           "Content-Length: 569\r\n"
+                           "Connection: close\r\n"
+                           "\r\n"});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeRequest("HEAD", server.url("/").c_str()), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    EXPECT_FALSE(completion->error().has_value())
+        << "a HEAD carries no body, so its advertised encoding is nothing to reject: "
+        << completion->error().value_or("");
+    EXPECT_EQ(completion->statusCode(), 200);
+}
+
+TEST(CurlHTTPRequestManagerTests, sendsTheBodyAsItWasWhenTheRequestWasMade) {
+    // Big enough to span several socket writes, so a body streamed out of the caller's memory shows
+    // the overwrite partway through rather than not at all, and under curl's 1 MiB Expect:
+    // 100-continue threshold, which a ScriptedServer would never answer.
+    constexpr size_t kBodySize = 512 * 1024;
+
+    ScriptedServer server({"HTTP/1.1 200 OK\r\n"
+                           "Content-Length: 2\r\n"
+                           "Connection: close\r\n"
+                           "\r\n"
+                           "ok"});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+
+    // The body a caller hands over is a view over a live JavaScript ArrayBuffer, and JavaScript is
+    // free to write to that array the moment performRequest returns. Overwriting it here stands in
+    // for that, so what reaches the wire has to be what the request was made with.
+    auto source = makeShared<ByteBuffer>(std::string(kBodySize, 'a'));
+    manager->performRequest(snap::valdi_core::HTTPRequest(StringBox::fromCString(server.url("/submit").c_str()),
+                                                          STRING_LITERAL("POST"),
+                                                          Value(),
+                                                          source->toBytesView(),
+                                                          0),
+                            completion);
+    std::memset(source->data(), 'b', source->size());
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(30)));
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 1u);
+
+    auto body = requests[0].substr(requests[0].find("\r\n\r\n") + 4);
+    ASSERT_EQ(body.size(), kBodySize) << "the whole body did not arrive, so there is nothing to judge";
+
+    auto unchanged = static_cast<size_t>(std::count(body.begin(), body.end(), 'a'));
+    EXPECT_EQ(unchanged, kBodySize) << unchanged << " of " << kBodySize
+                                    << " body bytes were the ones the request was made with; the rest were read "
+                                       "on the curl thread, after performRequest had already returned to its caller";
 }
 
 TEST(CurlHTTPRequestManagerTests, followsASeeOtherWithGet) {
@@ -962,12 +1378,22 @@ TEST(CurlHTTPRequestManagerTests, cancellingARequestDropsItsCompletion) {
 TEST(CurlHTTPRequestManagerTests, abortsACancelledTransferWithoutWaitingOutThePollTimeout) {
     StallServer server;
 
-    auto manager = makeCurlHTTPRequestManager();
+    // The idle timeout off, so curl arms no timer of its own and the poll really does sit for
+    // kPollTimeoutMs. Under the sixty second default, CURLOPT_LOW_SPEED_TIME has curl re-arm a one
+    // second timer that caps the poll, which hides all but a second of the wait and makes this a
+    // coin toss rather than a measurement.
+    auto manager = makeCurlHTTPRequestManager(StringBox(), 0);
     auto completion = std::make_shared<RecordingCompletion>();
     auto cancelable = manager->performRequest(makeGet(server.url().c_str()), completion);
 
     ASSERT_TRUE(server.waitForConnection(std::chrono::seconds(5)))
         << "curl never connected, so there is no live transfer to cancel";
+
+    // waitForConnection returns at accept(), which is the same event that makes curl's socket
+    // writable and ends its poll. Cancelling straight away is therefore observed by a
+    // curl_multi_perform pass that was going to run anyway. Settling first is what puts the curl
+    // thread back inside curl_multi_poll, which is the state this test is about.
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
     auto start = std::chrono::steady_clock::now();
     cancelable->cancel();
@@ -1044,9 +1470,8 @@ TEST(CurlHTTPRequestManagerTests, shutdownCancelsRequestsInFlight) {
     EXPECT_EQ(finished.wait_for(std::chrono::seconds(5)), std::future_status::ready)
         << "~CurlHTTPRequestManager waited for the in-flight transfer instead of cancelling it";
     EXPECT_FALSE(completion->waitForCompletion(std::chrono::seconds(1)))
-        << "shutdown reported an in-flight request. Completions reach JavaScript with no thread "
-           "hop, so firing one from the curl thread while the destroying thread is inside join() "
-           "enters the engine from two threads at once";
+        << "shutdown reported an in-flight request. Neither the iOS nor the Android manager promises "
+           "a completion at teardown, so it should be dropped, the same as a cancellation";
 }
 
 } // namespace ValdiTest
