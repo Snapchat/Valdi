@@ -112,7 +112,7 @@ async function getProjectName(argv: ArgumentsResolver<CommandParameters>): Promi
       ]);
 
       projectName = result.projectName;
-      const validationError = validateProjectName(projectName);
+      const validationError = validateProjectName(projectName, { bazelModule: true });
 
       if (validationError) {
         console.log(wrapInColor(`\n❌ ${validationError}\n`, ANSI_COLORS.RED_COLOR));
@@ -306,7 +306,7 @@ async function valdiBootstrap(argv: ArgumentsResolver<CommandParameters>) {
   
   // Validate project name if provided via command line argument
   if (argv.getArgument('projectName')) {
-    const validationError = validateProjectName(projectName);
+    const validationError = validateProjectName(projectName, { bazelModule: true });
     if (validationError) {
       throw new CliError(validationError);
     }
