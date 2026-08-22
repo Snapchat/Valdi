@@ -32,6 +32,10 @@ import java.util.concurrent.atomic.AtomicInteger
 
 private const val OK_RESPONSE = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
 
+private const val SHORT_KEEP_ALIVE_MS = 50L
+
+private const val DORMANT_HOSTS = 12
+
 private fun await(timeoutMs: Long, condition: () -> Boolean): Boolean {
     val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
     while (System.nanoTime() < deadline) {
@@ -217,6 +221,22 @@ private class ParkingConnection(
             throw IllegalStateException("disconnect failed")
         }
     }
+
+    override fun usingProxy(): Boolean = false
+}
+
+/** Settles at once, leaving its pool free to go dormant as soon as the keep-alive elapses. */
+private class ImmediateConnection(url: URL) : HttpURLConnection(url) {
+
+    override fun getInputStream(): InputStream = ByteArrayInputStream(ByteArray(0))
+
+    override fun getResponseCode(): Int = 200
+
+    override fun getHeaderFields(): Map<String, List<String>> = emptyMap()
+
+    override fun connect() = Unit
+
+    override fun disconnect() = Unit
 
     override fun usingProxy(): Boolean = false
 }
@@ -465,6 +485,100 @@ class DefaultHTTPRequestManagerTest {
         connection.release.countDown()
 
         assertTrue("the worker never unwound", connection.awaitUnwound(5_000))
+    }
+
+    @Test(timeout = 30_000)
+    fun dormantHostPoolsAreEvicted() {
+        val evictingManager = evictingManager()
+
+        repeat(DORMANT_HOSTS) { settle(evictingManager, "http://host-$it.invalid/probe") }
+
+        // Only a request sweeps, and only once the keep-alive has left the pools threadless, so
+        // this has to keep making them until that window has passed.
+        val swept = await(5_000) {
+            settle(evictingManager, "http://sweeper.invalid/probe")
+            evictingManager.hostPools().none { it.startsWith("host-") }
+        }
+
+        assertTrue("dormant pools were never evicted: ${evictingManager.hostPools()}", swept)
+    }
+
+    @Test(timeout = 30_000)
+    fun anActiveHostPoolIsNotEvicted() {
+        val parked = ParkingConnection(URL("http://parked.invalid/hold"))
+        val evictingManager = DefaultHTTPRequestManager(
+            ApplicationProvider.getApplicationContext<Context>(),
+            SHORT_KEEP_ALIVE_MS,
+        ) { url -> if (url.host == "parked.invalid") parked else ImmediateConnection(url) }
+
+        val completion = RecordingCompletion()
+        val request = HTTPRequest("http://parked.invalid/hold", "GET", hashMapOf("Accept" to "*/*"), null, 0)
+        evictingManager.performRequest(request, completion)
+
+        assertTrue(
+            "the worker never reached header setup",
+            parked.reachedHeaders.await(5, TimeUnit.SECONDS),
+        )
+
+        repeat(DORMANT_HOSTS) { settle(evictingManager, "http://host-$it.invalid/probe") }
+
+        val swept = await(5_000) {
+            settle(evictingManager, "http://sweeper.invalid/probe")
+            evictingManager.hostPools().none { it.startsWith("host-") }
+        }
+
+        assertTrue("dormant pools were never evicted: ${evictingManager.hostPools()}", swept)
+
+        assertTrue(
+            "the sweep evicted a pool with a request still in flight",
+            evictingManager.hostPools().contains("parked.invalid"),
+        )
+
+        parked.release.countDown()
+
+        assertTrue(
+            "the request on the surviving pool never settled",
+            completion.awaitSettled(5_000),
+        )
+    }
+
+    @Test(timeout = 30_000)
+    fun aRequestToAnEvictedHostStillSucceeds() {
+        val evictingManager = evictingManager()
+        val evicted = "http://evicted.invalid/probe"
+
+        settle(evictingManager, evicted)
+        repeat(DORMANT_HOSTS) { settle(evictingManager, "http://host-$it.invalid/probe") }
+
+        val evictedThisHost = await(5_000) {
+            settle(evictingManager, "http://sweeper.invalid/probe")
+            !evictingManager.hostPools().contains("evicted.invalid")
+        }
+
+        assertTrue("the dormant pool for the host was never evicted", evictedThisHost)
+
+        // Eviction shuts the pool down, so reusing it here would reject the task and hang the
+        // completion rather than fail outright.
+        val completion = RecordingCompletion()
+        evictingManager.performRequest(getRequest(evicted), completion)
+
+        assertTrue(
+            "a request to an evicted host reported ${completion.describeOutcome()}",
+            completion.awaitSettled(5_000),
+        )
+    }
+
+    /** Reaps pools in milliseconds rather than the production minute, so a sweep is observable. */
+    private fun evictingManager(): DefaultHTTPRequestManager =
+        DefaultHTTPRequestManager(
+            ApplicationProvider.getApplicationContext<Context>(),
+            SHORT_KEEP_ALIVE_MS,
+        ) { ImmediateConnection(it) }
+
+    private fun settle(manager: DefaultHTTPRequestManager, url: String) {
+        val completion = RecordingCompletion()
+        manager.performRequest(getRequest(url), completion)
+        assertTrue("the request to $url never settled", completion.awaitSettled(5_000))
     }
 
     private fun holdingServer(): FakeServer = FakeServer(respondImmediately = false).also { servers.add(it) }

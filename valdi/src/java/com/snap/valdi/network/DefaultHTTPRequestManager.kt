@@ -8,7 +8,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLConnection
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ExecutorService
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -18,10 +17,11 @@ import com.snapchat.client.valdi_core.*
 
 class DefaultHTTPRequestManager @VisibleForTesting constructor(
     context: Context,
+    private val keepAliveMs: Long = DEFAULT_KEEP_ALIVE_MS,
     private val openConnection: (URL) -> URLConnection,
 ): HTTPRequestManager() {
 
-    constructor(context: Context): this(context, { it.openConnection() })
+    constructor(context: Context): this(context, openConnection = { it.openConnection() })
 
     private class RequestTask(val url: URL, val method: String, val body: ByteArray?, val headers: Map<String, String>, val openConnection: (URL) -> URLConnection, completion: HTTPRequestManagerCompletion): HTTPRequestTask(completion), Runnable {
 
@@ -134,9 +134,11 @@ class DefaultHTTPRequestManager @VisibleForTesting constructor(
             try {
                 val response = performRequest()
                 notifySuccess(response)
-            } catch (error: Exception) {
+            } catch (error: Throwable) {
                 // Once cancelled the completion is already gone, so a teardown IOException lands
                 // here and goes nowhere -- matching how iOS swallows NSURLErrorCancelled.
+                // Catches Throwable so that reading an oversized body into memory fails the
+                // request rather than leaving the completion unsettled.
                 notifyFailure("HTTP Request failed: ${error.message}")
             }
         }
@@ -169,49 +171,84 @@ class DefaultHTTPRequestManager @VisibleForTesting constructor(
 
     // One pool per host, matching NSURLSession.httpMaximumConnectionsPerHost, so a stalled host
     // cannot starve requests to other hosts.
-    private val executors = ConcurrentHashMap<String, ExecutorService>()
+    private val executors = ConcurrentHashMap<String, ThreadPoolExecutor>()
 
-    private fun executorForHost(url: URL): ExecutorService =
-        executors.computeIfAbsent(url.host.orEmpty().lowercase()) {
-            ThreadPoolExecutor(
-                MAX_CONCURRENT_REQUESTS_PER_HOST,
-                MAX_CONCURRENT_REQUESTS_PER_HOST,
-                60L,
-                TimeUnit.SECONDS,
-                LinkedBlockingQueue(),
-            ) { r ->
-                Thread(r).apply {
-                    name = "Valdi Network Thread ${threadCount.incrementAndGet()}"
-                    priority = Thread.NORM_PRIORITY
-                }
-            }.apply {
-                // An unbounded queue never rejects, so a pool only ever grows to its core size and
-                // maximumPoolSize is inert. Concurrency has to come from the core size, and this
-                // restores the idle reaping that the previous core size of zero provided.
-                allowCoreThreadTimeOut(true)
+    private fun newHostPool(): ThreadPoolExecutor =
+        ThreadPoolExecutor(
+            MAX_CONCURRENT_REQUESTS_PER_HOST,
+            MAX_CONCURRENT_REQUESTS_PER_HOST,
+            keepAliveMs,
+            TimeUnit.MILLISECONDS,
+            LinkedBlockingQueue(),
+        ) { r ->
+            Thread(r).apply {
+                name = "Valdi Network Thread ${threadCount.incrementAndGet()}"
+                priority = Thread.NORM_PRIORITY
             }
+        }.apply {
+            // An unbounded queue never rejects, so a pool only ever grows to its core size and
+            // maximumPoolSize is inert. Concurrency has to come from the core size, and this
+            // restores the idle reaping that the previous core size of zero provided.
+            allowCoreThreadTimeOut(true)
         }
 
+    // Picking the pool and submitting to it as two steps would let a sweep shut it down in between,
+    // so compute() does both under the bin lock for the host.
+    private fun submitToHostPool(task: RequestTask) {
+        executors.compute(task.url.host.orEmpty().lowercase()) { _, pool ->
+            (pool ?: newHostPool()).also { it.execute(task) }
+        }
+    }
+
+    /**
+     * A pool with no threads has had none for a full keep-alive window, and [ThreadPoolExecutor]
+     * adds a worker back whenever the queue is non-empty, so no threads also means nothing queued.
+     *
+     * Runs after a request has been submitted rather than on a timer: [HTTPRequestManager] has no
+     * dispose hook, so there would be nowhere to stop a scheduler thread. Sweeping after the submit
+     * rather than before it keeps the pool this request just used out of the sweep.
+     */
+    private fun evictDormantHostPools() {
+        for (host in executors.keys) {
+            executors.computeIfPresent(host) { _, pool ->
+                if (pool.poolSize == 0) {
+                    pool.shutdown()
+                    null
+                } else {
+                    pool
+                }
+            }
+        }
+    }
+
+    @VisibleForTesting
+    fun hostPools(): Set<String> = executors.keys.toSet()
+
     override fun performRequest(request: HTTPRequest, completion: HTTPRequestManagerCompletion): Cancelable {
-        val task: RequestTask
         try {
-            task = RequestTask.from(request, openConnection, completion)
-        } catch (exception: Exception) {
-            completion.onFail("Failed to build request: ${exception.message}")
+            val task = RequestTask.from(request, openConnection, completion)
+
+            submitToHostPool(task)
+            evictDormantHostPools()
+
+            return task
+        } catch (throwable: Throwable) {
+            // Anything escaping to JNI leaves the completion unsettled, which hangs the native
+            // request instead of failing it. Catches Throwable because starting a pool thread
+            // fails with OutOfMemoryError, not an Exception.
+            completion.onFail("Failed to perform request: ${throwable.message}")
 
             return object: Cancelable() {
                 override fun cancel() {
                 }
             }
         }
-
-        executorForHost(task.url).submit(task)
-
-        return task
     }
 
     companion object {
         const val MAX_CONCURRENT_REQUESTS_PER_HOST = 4
+
+        private const val DEFAULT_KEEP_ALIVE_MS = 60_000L
     }
 
 }
