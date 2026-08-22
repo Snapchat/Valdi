@@ -81,15 +81,10 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
             "#import \"\(outputFilename)\"",
             "#import <\(stem)/\(outputFilename)>",
         ]
-        var data = ""
-
-        for line in content.split(separator: "\n", omittingEmptySubsequences: false) {
-            if selfImports.contains(line.trimmingCharacters(in: .whitespaces)) { continue }
-            data += line
-            data += "\n"
-        }
-
-        return data
+        return content
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !selfImports.contains($0.trimmingCharacters(in: .whitespaces)) }
+            .joined(separator: "\n")
     }
 
     // Merges .m files and deduplicates static trampoline functions

@@ -49,7 +49,7 @@ final class CombineNativeSourcesProcessorTests: XCTestCase {
 
         let filtered = CombineNativeSourcesProcessor.filterSelfImports(from: content, outputFilename: "TestTypes.h")
 
-        XCTAssertEqual("@interface Foo : NSObject\n@end\n\n", filtered)
+        XCTAssertEqual("@interface Foo : NSObject\n@end\n", filtered)
     }
 
     func testFilterSelfImportsPreservesContentWithoutSelfImports() {
@@ -57,6 +57,6 @@ final class CombineNativeSourcesProcessorTests: XCTestCase {
 
         let filtered = CombineNativeSourcesProcessor.filterSelfImports(from: content, outputFilename: "TestTypes.h")
 
-        XCTAssertEqual("#import <Foundation/Foundation.h>\n\n@interface Foo : NSObject\n@end\n\n", filtered)
+        XCTAssertEqual("#import <Foundation/Foundation.h>\n\n@interface Foo : NSObject\n@end\n", filtered)
     }
 }
