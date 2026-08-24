@@ -68,7 +68,8 @@ class TypeScriptCommentedFile {
                         }
                         let memberAnnotations = try ValdiTypeScriptAnnotation.extractAnnotations(
                             comments: memberComments,
-                            fileContent: fileContent
+                            fileContent: fileContent,
+                            dropUnrecognized: true
                         )
                         guard !memberAnnotations.isEmpty else {
                             continue

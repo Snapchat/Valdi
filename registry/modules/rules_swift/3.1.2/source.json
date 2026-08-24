@@ -3,7 +3,7 @@
     "strip_prefix": "",
     "url": "https://github.com/bazelbuild/rules_swift/releases/download/3.1.2/rules_swift.3.1.2.tar.gz",
     "patches": {
-        "rules_swift.patch": "sha256-1ifPNl22A82Gcsqec99Nc9tk3WVoL/L5dBeCl/WCf7s="
+        "rules_swift.patch": "sha256-4iXZbI8FKYSK++UOlKQ11Bbadpz6CsikBWvYCNd+zhQ="
     },
     "patch_strip": 1
 }

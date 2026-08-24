@@ -35,8 +35,27 @@ final class ExplicitImageAssetGenerator {
     /// dimensions embedded in each input entry so that `ValdiCompile` can skip the
     /// toolbox subprocess entirely when reading image info.
     func process(manifest: ExplicitImageAssetManifest, baseURL: URL) throws -> ExplicitImageAssetManifest {
-        let updatedAssets = try manifest.assets.map { try processAsset(asset: $0, baseURL: baseURL) }
-        return ExplicitImageAssetManifest(assets: updatedAssets)
+        // Assets are independent and each conversion is a blocking toolbox
+        // subprocess, so process them concurrently: the wall time of this
+        // action is otherwise a serial chain of short subprocess launches.
+        let assets = manifest.assets
+        var updatedAssets = [ExplicitImageAssetManifestAsset?](repeating: nil, count: assets.count)
+        var errors = [Error?](repeating: nil, count: assets.count)
+        updatedAssets.withUnsafeMutableBufferPointer { updatedAssetsBuffer in
+            errors.withUnsafeMutableBufferPointer { errorsBuffer in
+                DispatchQueue.concurrentPerform(iterations: assets.count) { index in
+                    do {
+                        updatedAssetsBuffer[index] = try self.processAsset(asset: assets[index], baseURL: baseURL)
+                    } catch {
+                        errorsBuffer[index] = error
+                    }
+                }
+            }
+        }
+        if let error = errors.compactMap({ $0 }).first {
+            throw error
+        }
+        return ExplicitImageAssetManifest(assets: updatedAssets.compactMap { $0 })
     }
 
     private func processAsset(asset: ExplicitImageAssetManifestAsset, baseURL: URL) throws -> ExplicitImageAssetManifestAsset {

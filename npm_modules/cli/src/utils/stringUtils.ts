@@ -62,9 +62,31 @@ export function sanitizeProjectName(name: string): string {
 }
 
 /**
+ * The project name is used as the Bazel module name in `module(name = ...)` in
+ * MODULE.bazel, which Bazel requires to 1) only contain lowercase letters (a-z),
+ * digits (0-9), dots (.), hyphens (-) and underscores (_), 2) begin with a
+ * lowercase letter and 3) end with a lowercase letter or digit.
+ */
+const BAZEL_MODULE_NAME_REGEX = /^[a-z]([\d._a-z-]*[\da-z])?$/;
+
+export function isValidBazelModuleName(name: string): boolean {
+  return BAZEL_MODULE_NAME_REGEX.test(name);
+}
+
+export interface ValidateProjectNameOptions {
+  /**
+   * Also require the sanitized name to be a valid Bazel module name. Only needed
+   * when the name becomes the `module(name = ...)` of a new MODULE.bazel (i.e.
+   * `valdi bootstrap`). Module and target names created by `valdi new_module`
+   * are case-sensitive directory/BUILD target names and do not need this.
+   */
+  requireBazelModuleName?: boolean;
+}
+
+/**
  * Validates a project name and returns an error message if invalid, or null if valid.
  */
-export function validateProjectName(name: string): string | null {
+export function validateProjectName(name: string, options: ValidateProjectNameOptions = {}): string | null {
   if (!name || name.trim().length === 0) {
     return 'Project name cannot be empty.';
   }
@@ -79,7 +101,19 @@ export function validateProjectName(name: string): string | null {
   if (RESERVED_PROJECT_NAMES.has(sanitized.toLowerCase())) {
     return `Project name "${name}" (sanitized to "${sanitized}") is a reserved word and cannot be used. Please choose a different name.`;
   }
-  
+
+  // When the name is used as the Bazel module name in MODULE.bazel, reject anything
+  // Bazel would refuse before any files are written.
+  if (options.requireBazelModuleName && !isValidBazelModuleName(sanitized)) {
+    const suggestion = sanitized.toLowerCase().replace(/^[^a-z]+/, '').replace(/[^\da-z]+$/, '');
+    return (
+      `Project name "${name}" is not a valid Bazel module name. ` +
+      `It must only contain lowercase letters (a-z), digits (0-9), dots (.), hyphens (-) and underscores (_), ` +
+      `begin with a lowercase letter and end with a lowercase letter or digit.` +
+      (suggestion ? ` Did you mean "${suggestion}"?` : '')
+    );
+  }
+
   // Warn if the name was significantly changed during sanitization
   if (sanitized !== name.replace(/-/g, '_')) {
     return `Project name "${name}" contains invalid characters. It will be sanitized to "${sanitized}". Please use only letters, numbers, underscores, and dashes.`;

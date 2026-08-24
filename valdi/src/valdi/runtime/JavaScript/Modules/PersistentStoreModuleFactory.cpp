@@ -22,14 +22,12 @@ PersistentStoreModuleFactory::PersistentStoreModuleFactory(const Ref<IDiskCache>
                                                            const Ref<DispatchQueue>& dispatchQueue,
                                                            const SharedAtomicObject<UserSession>& userSession,
                                                            const Shared<snap::valdi::Keychain>& keychain,
-                                                           ILogger& logger,
-                                                           bool disableDecryptionByDefault)
+                                                           ILogger& logger)
     : _diskCache(diskCache),
       _dispatchQueue(dispatchQueue),
       _userSession(userSession),
       _keychain(keychain),
-      _logger(logger),
-      _disableEncryptionByDefault(disableDecryptionByDefault) {}
+      _logger(logger) {}
 
 static void bindPersistentStoreMethod(const char* methodName,
                                       const Ref<ValueMap>& persistentStoreObject,
@@ -75,16 +73,16 @@ Valdi::Ref<PersistentStore> PersistentStoreModuleFactory::getOrCreatePersistentS
     return persistentStore;
 }
 
-// Use the COF value only if a non-null bool is provided
+// Encryption is disabled by default; consumers opt in by passing enableEncryption: true.
 bool PersistentStoreModuleFactory::shouldEncrypt(std::optional<bool> enableEncryption) {
-    return enableEncryption.value_or(!_disableEncryptionByDefault);
+    return enableEncryption.value_or(false);
 }
 
 StringBox PersistentStoreModuleFactory::getEffectiveStorePath(const StringBox& basePath,
                                                               std::optional<bool> enableEncryption) {
-    // We are AB'ing a change to the persistent store encryption behavior.
-    // Appending a suffix to the store path will prevent reading old encrypted data.
-    if (_disableEncryptionByDefault && !enableEncryption.has_value()) {
+    // Stores that don't opt into encryption use a "_V2" suffix so they never attempt to
+    // read data written under the earlier encrypted-by-default behavior with a missing key.
+    if (!enableEncryption.has_value()) {
         return STRING_FORMAT("{}_V2", basePath);
     }
     return basePath;

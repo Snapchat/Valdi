@@ -16,6 +16,14 @@
 # use_local_compiler, which Copybara flips on for the public repo).
 set -uo pipefail
 
+# Run from the open_source workspace root so `//apps/helloworld:...` resolves and
+# the reloader's workspace-relative paths (see the run_hotreloader note below)
+# line up, regardless of the caller's cwd. Every sibling tools/ci script does
+# this; hotreload_smoke.sh previously relied on the caller, which broke the
+# internal macOS leg (it invoked from client/, where //apps/helloworld is not a
+# package). Matches compiler_tests.sh et al.
+cd "$(dirname "$0")/../.."
+
 TARGET="${HOTRELOAD_TARGET:-//apps/helloworld:hello_world_hotreload}"
 EDIT_FILE="${HOTRELOAD_EDIT_FILE:-apps/helloworld/src/valdi/hello_world/src/HelloWorldApp.tsx}"
 UP_TIMEOUT="${HOTRELOAD_UP_TIMEOUT:-360}"
@@ -38,6 +46,32 @@ fi
 
 if ! command -v watchman >/dev/null 2>&1; then
   log "FAILED: watchman not on PATH (required by the compiler's file watcher)"
+  exit 1
+fi
+
+# The reloader talks to watchman through a plain `watchman get-sockname`, which
+# auto-spawns a daemon at watchman's default socket. On the internal SnapCI macOS
+# VM two things break that: (1) the default socket lives under a per-user state
+# dir the VM never creates, and (2) macOS watchman auto-spawns via the launchd
+# "site spawner", which a headless CI VM has no user session for -- so the spawn
+# fails ("unable to talk to your watchman ... No such file or directory") and the
+# reloader never comes up. Point watchman at a private, writable state dir and
+# spawn the daemon ourselves with --no-site-spawner (a direct fork, no launchd);
+# the reloader -- same binary, inherited env -- then finds this running daemon
+# instead of trying to spawn its own. Setting both XDG_STATE_HOME (newer watchman)
+# and WATCHMAN_SOCK (older) covers both socket-resolution schemes. This is
+# deterministic on the internal macOS runner, the external GitHub runner, and dev
+# boxes, and never touches a shared daemon (so tearing it down in cleanup is safe).
+WM_PRIVATE_STATE="$(mktemp -d)"
+export XDG_STATE_HOME="$WM_PRIVATE_STATE"
+export WATCHMAN_SOCK="$WM_PRIVATE_STATE/sock"
+if ! watchman --no-site-spawner \
+      --logfile="$WM_PRIVATE_STATE/log" \
+      --pidfile="$WM_PRIVATE_STATE/pid" \
+      get-sockname > "$WM_PRIVATE_STATE/start.out" 2>&1; then
+  log "FAILED: watchman on PATH but no daemon could be started (state dir $WM_PRIVATE_STATE)"
+  echo "--- watchman get-sockname output ---"; cat "$WM_PRIVATE_STATE/start.out" 2>/dev/null
+  echo "--- watchman daemon log ---"; tail -40 "$WM_PRIVATE_STATE/log" 2>/dev/null
   exit 1
 fi
 
@@ -97,9 +131,14 @@ cleanup() {
   kill "$HRPID" 2>/dev/null || true
   pkill -f local_valdi_compiler 2>/dev/null || true
   pkill -f run_hotreloader 2>/dev/null || true
-  # No global watchman teardown: watch-del-all / shutdown-server would wipe every
-  # other project's watches and kill a shared daemon when this runs on a dev box.
-  # Killing the reloader above is enough; a leftover watch on the workspace is benign.
+  # Shut down the private watchman daemon started above. Safe because it has its
+  # own state dir (XDG_STATE_HOME/WATCHMAN_SOCK point into WM_PRIVATE_STATE), so
+  # this is not the shared daemon a dev box may run for other projects -- unlike
+  # a bare shutdown-server, it cannot wipe their watches.
+  if [ -n "${WM_PRIVATE_STATE:-}" ]; then
+    watchman shutdown-server >/dev/null 2>&1 || true
+    rm -rf "$WM_PRIVATE_STATE"
+  fi
   if [ -s "$BACKUP" ]; then
     cp "$BACKUP" "$EDIT_FILE" 2>/dev/null || true
   fi

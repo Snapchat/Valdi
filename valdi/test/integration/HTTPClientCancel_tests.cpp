@@ -13,6 +13,10 @@ namespace ValdiTest {
 class HTTPClientCancelFixture : public JSBridgeTestFixture {
 protected:
     void SetUp() override {
+        JSBridgeTestFixture::SetUp();
+        if (IsSkipped()) {
+            return;
+        }
         wrapper = RuntimeWrapper(getJsBridge(), TSNMode::Disabled);
     }
 

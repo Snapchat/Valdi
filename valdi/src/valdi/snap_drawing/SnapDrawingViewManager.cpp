@@ -8,6 +8,7 @@
 #include "valdi/snap_drawing/SnapDrawingViewManager.hpp"
 
 #include "valdi/runtime/Attributes/BoundAttributes.hpp"
+#include "valdi/runtime/Context/ViewNodeTree.hpp"
 #include "valdi/runtime/Utils/MainThreadManager.hpp"
 #include "valdi/runtime/Views/DeferredViewTransaction.hpp"
 #include "valdi/runtime/Views/PlaceholderViewMeasureDelegate.hpp"
@@ -64,9 +65,10 @@ static Valdi::Ref<Valdi::View> getBridgeView(const Valdi::Ref<Valdi::View>& view
 
 static Valdi::Ref<Valdi::View> makeBridgeLayer(const Valdi::Ref<Resources>& resources,
                                                const Valdi::Ref<Valdi::View>& sourceView,
-                                               Valdi::IViewManager& viewManager) {
+                                               Valdi::IViewManager& viewManager,
+                                               const Valdi::Ref<Valdi::MainThreadManager>& mainThreadManager) {
     auto snapDrawingView = snap::drawing::makeLayer<BridgeLayer>(resources);
-    snapDrawingView->setBridgedView(Valdi::makeShared<BridgedView>(sourceView, viewManager));
+    snapDrawingView->setBridgedView(Valdi::makeShared<BridgedView>(sourceView, viewManager, mainThreadManager));
     return layerToValdiView(snapDrawingView, true);
 }
 
@@ -143,7 +145,8 @@ public:
 
     Valdi::Ref<Valdi::View> createPlaceholderView() override {
         auto sourceView = _sourceMeasureDelegate->createPlaceholderView();
-        return makeBridgeLayer(_resources, sourceView, _hostViewManager);
+        // Placeholders exist only to be measured, never rasterized, so no fence is needed.
+        return makeBridgeLayer(_resources, sourceView, _hostViewManager, nullptr);
     }
 
 private:
@@ -331,7 +334,12 @@ public:
 protected:
     Valdi::Ref<Valdi::View> doCreateView(Valdi::ViewNodeTree* viewNodeTree, Valdi::ViewNode* viewNode) override {
         auto view = _viewFactory->createView(viewNodeTree, viewNode, false);
-        return makeBridgeLayer(_resources, view, _hostViewManager);
+        // The tree is null for preloaded views (ViewPreloader::preloadNext); BridgeLayer
+        // backfills their manager in setAttachedData once a node adopts them.
+        return makeBridgeLayer(_resources,
+                               view,
+                               _hostViewManager,
+                               viewNodeTree != nullptr ? viewNodeTree->getMainThreadManager() : nullptr);
     }
 
 private:

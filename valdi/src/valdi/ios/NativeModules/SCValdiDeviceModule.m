@@ -390,11 +390,6 @@
         NSString *timeZoneName = SCValdiMarshallerGetString(marshaller, 0);
         timeZone = [NSTimeZone timeZoneWithName:timeZoneName];
     } else {
-        // Once we drop iOS 10 we can cache a reference to [NSTimeZone local] and
-        // keep that around since it returns a proxy object that always reflects the
-        // device's current time zone.
-        //
-        // For now - just query the system every time.
         timeZone = [NSTimeZone localTimeZone];
     }
     return timeZone;

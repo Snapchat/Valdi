@@ -80,6 +80,39 @@ static Valdi::IJavaScriptBridge* getAuto() {
 #endif
 }
 
+bool JavaScriptBridge::isAvailable(JavaScriptEngineType type) {
+    switch (type) {
+        case JavaScriptEngineType::Auto:
+            return true;
+        case JavaScriptEngineType::JSCore:
+#if VALDI_HAS_JSCORE
+            return true;
+#else
+            return false;
+#endif
+        case JavaScriptEngineType::QuickJS:
+#if VALDI_HAS_QUICKJS
+            return true;
+#else
+            return false;
+#endif
+        case JavaScriptEngineType::V8:
+#if VALDI_HAS_V8
+            return true;
+#else
+            return false;
+#endif
+        case JavaScriptEngineType::Hermes:
+#if VALDI_HAS_HERMES
+            return true;
+#else
+            return false;
+#endif
+        default:
+            return false;
+    }
+}
+
 Valdi::IJavaScriptBridge* JavaScriptBridge::get(JavaScriptEngineType type) {
     switch (type) {
         case JavaScriptEngineType::Auto: {

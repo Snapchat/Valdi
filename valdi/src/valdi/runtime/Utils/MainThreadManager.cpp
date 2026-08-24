@@ -104,6 +104,36 @@ bool MainThreadManager::runNextTaskWithId(size_t flushId) {
     return runNextTaskWithId(flushId, lock);
 }
 
+void MainThreadManager::flushUpToNow() {
+    size_t flushId;
+    {
+        std::lock_guard<std::mutex> lockGuard(_mutex);
+        // Increase the flush id sequence for the same reason endBatch() does: a dispatch that
+        // happens while we are flushing would otherwise be stamped with the id we are flushing
+        // (the batch branch of doDispatch reuses _flushIdSequence as-is), so a task that
+        // re-enqueues itself would keep this pump alive forever.
+        flushId = _flushIdSequence++;
+    }
+    flushTasksWithId(flushId);
+}
+
+bool MainThreadManager::waitUntilQuiescent(std::chrono::milliseconds timeout) {
+    std::unique_lock<std::mutex> lock(_mutex);
+    return _quiescenceCondition.wait_for(lock, timeout, [this]() {
+        return _tornDown || (_batchCount == 0 && _executingTaskCount == 0 && _pendingTasks.empty());
+    });
+}
+
+std::atomic<bool> MainThreadManager::s_preRasterFenceDisabled{false};
+
+bool MainThreadManager::isPreRasterFenceDisabled() {
+    return s_preRasterFenceDisabled.load(std::memory_order_relaxed);
+}
+
+void MainThreadManager::setPreRasterFenceDisabled(bool disabled) {
+    s_preRasterFenceDisabled.store(disabled, std::memory_order_relaxed);
+}
+
 bool MainThreadManager::runNextTaskWithId(size_t flushId, std::unique_lock<std::mutex>& lock) {
     if (_pendingTasks.empty() || _pendingTasks.front().flushId > flushId) {
         return false;
@@ -112,18 +142,28 @@ bool MainThreadManager::runNextTaskWithId(size_t flushId, std::unique_lock<std::
     auto task = std::move(_pendingTasks.front());
     _pendingTasks.pop_front();
     _tasksSequence++;
+    // Executing tasks count against quiescence too: the queue is already empty while the
+    // task function runs, and it may still be mutating views.
+    _executingTaskCount++;
     lock.unlock();
 
+    bool ran = false;
     if (!_tornDown) {
         if (task.context != nullptr) {
             task.context->withAttribution(task.function);
         } else {
             task.function();
         }
-        return true;
+        ran = true;
     }
 
-    return false;
+    lock.lock();
+    _executingTaskCount--;
+    if (_executingTaskCount == 0 && _pendingTasks.empty()) {
+        _quiescenceCondition.notify_all();
+    }
+
+    return ran;
 }
 
 void MainThreadManager::clearAndTeardown() {
@@ -131,6 +171,7 @@ void MainThreadManager::clearAndTeardown() {
         _tornDown = true;
         std::lock_guard<std::mutex> lockGuard(_mutex);
         _pendingTasks.clear();
+        _quiescenceCondition.notify_all();
     }
 }
 
@@ -172,6 +213,7 @@ void MainThreadManager::endBatch() {
     std::lock_guard<std::mutex> lockGuard(_mutex);
     SC_ASSERT(_batchCount == 1, "Unbalanced beginBatch() endBatch() call");
     _batchCount = 0;
+    _quiescenceCondition.notify_all();
 
     if (flushId != _batchFlushId) {
         // Our batch flush id changed, which means that a main thread batch task

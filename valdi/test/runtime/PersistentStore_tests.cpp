@@ -30,14 +30,12 @@ struct PersistentStoreDependencies {
     Ref<InMemoryDiskCache> diskCache;
     Shared<InMemoryKeychain> keyChain;
     ILogger& logger;
-    bool disableDecryptionByDefault;
 
     PersistentStoreDependencies()
         : dispatchQueue(DispatchQueue::create(STRING_LITERAL("PersistentStore"), ThreadQoSClassMax)),
           diskCache(Valdi::makeShared<InMemoryDiskCache>()),
           keyChain(Valdi::makeShared<InMemoryKeychain>()),
-          logger(ConsoleLogger::getLogger()),
-          disableDecryptionByDefault(false) {}
+          logger(ConsoleLogger::getLogger()) {}
 
     ~PersistentStoreDependencies() {
         dispatchQueue->fullTeardown();

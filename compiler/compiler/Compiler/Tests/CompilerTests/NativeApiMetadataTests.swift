@@ -145,4 +145,29 @@ final class NativeApiMetadataTests: XCTestCase {
         XCTAssertFalse(json.contains("not metadata"))
         XCTAssertFalse(json.contains("sourcePosition"))
     }
+
+    func testReferenceNativeTypesAreNotGenerated() {
+        // @NativeInterface/@NativeClass bind to a pre-existing native type (isGenerated: false).
+        // The collision verifier keys off isGenerated, so two modules can reference the same class.
+        let reference = TypeScriptNativeClass(
+            tsTypeName: "INavigator",
+            iosType: nil,
+            androidClass: "com.snap.valdi.navigation.INavigator",
+            cppType: nil,
+            kind: .interface,
+            isGenerated: false,
+            marshallAsUntyped: false,
+            marshallAsUntypedMap: false,
+            convertedFromFunctionPath: nil
+        )
+        let referenceDescription = GeneratedTypeDescription.interface(
+            GeneratedNativeInterfaceDescription(nativeClass: reference, annotations: [], baseline: nil)
+        )
+        XCTAssertFalse(referenceDescription.isGenerated)
+
+        let generatedDescription = GeneratedTypeDescription.class(
+            GeneratedNativeClassDescription(model: ValdiModel(), baseline: nil)
+        )
+        XCTAssertTrue(generatedDescription.isGenerated)
+    }
 }

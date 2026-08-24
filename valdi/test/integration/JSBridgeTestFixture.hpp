@@ -14,6 +14,11 @@ struct PrintJavaScriptEngineType {
 
 class JSBridgeTestFixture : public ::testing::TestWithParam<JavaScriptEngineTestCase> {
 public:
+    // Skips the test when the parameterized JS engine isn't compiled into this build
+    // type (e.g. JSCore is absent on external Linux builds, which use Hermes/QuickJS).
+    // Requesting an unavailable engine otherwise aborts in JavaScriptBridge.
+    void SetUp() override;
+
     Valdi::IJavaScriptBridge* getJsBridge() const;
 
     bool isHermes() const;

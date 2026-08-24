@@ -123,6 +123,8 @@ public:
 
     void lock() VALDI_ACQUIRE();
 
+    bool try_lock() VALDI_TRY_ACQUIRE(true);
+
     void unlock() VALDI_RELEASE();
 
     void assertIsLocked();

@@ -23,6 +23,11 @@ public:
     //     QuickJS: enabled
     static IJavaScriptBridge* get(
         snap::valdi_core::JavaScriptEngineType type = snap::valdi_core::JavaScriptEngineType::Auto);
+
+    // Whether the given engine is compiled into this build. Calling get() with an
+    // unavailable engine aborts, so callers that accept a caller-chosen engine (e.g.
+    // engine-parameterized tests on external builds without JSCore) should check first.
+    static bool isAvailable(snap::valdi_core::JavaScriptEngineType type);
 };
 
 }; // namespace Valdi

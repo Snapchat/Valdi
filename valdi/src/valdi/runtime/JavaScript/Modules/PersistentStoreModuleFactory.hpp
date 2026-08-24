@@ -30,8 +30,7 @@ public:
                                  const Ref<DispatchQueue>& dispatchQueue,
                                  const SharedAtomicObject<UserSession>& userSession,
                                  const Shared<snap::valdi::Keychain>& keychain,
-                                 ILogger& logger,
-                                 bool disableDecryptionByDefault);
+                                 ILogger& logger);
 
     StringBox getModulePath() override;
     Value loadModule() override;
@@ -51,7 +50,6 @@ private:
     ILogger& _logger;
     FlatMap<StringBox, Weak<PersistentStore>> _existingStores;
     Valdi::Mutex _existingStoreMutex;
-    bool _disableEncryptionByDefault;
     bool shouldEncrypt(std::optional<bool> enableEncryption);
     StringBox getEffectiveStorePath(const StringBox& basePath, std::optional<bool> enableEncryption);
 };

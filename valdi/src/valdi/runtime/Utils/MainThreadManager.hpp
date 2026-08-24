@@ -15,6 +15,8 @@
 
 #include "utils/base/NonCopyable.hpp"
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <deque>
 #include <mutex>
 #include <thread>
@@ -89,18 +91,46 @@ public:
 
     bool runNextTask();
 
+    /**
+     Run every task dispatched before this call, including tasks parked by an open
+     batch. Tasks enqueued while flushing are left for their scheduled flush -- even
+     when a batch is open, which otherwise stamps them with the id being flushed --
+     so a task that re-enqueues itself cannot starve the calling thread.
+     */
+    void flushUpToNow();
+
+    /**
+     Block until no batch is open, no dispatched task is pending, and no task is
+     executing, or until the timeout elapses. Returns true if the manager became
+     quiescent, false on timeout. Must not be called from the main thread, which is
+     responsible for making the manager quiescent.
+     */
+    bool waitUntilQuiescent(std::chrono::milliseconds timeout);
+
+    /**
+     Process-wide killswitch (VALDI_DISABLE_PRE_RASTER_FENCE) for the fence BridgedView
+     runs before rasterizing. When disabled, rasters snapshot the view without waiting
+     for this manager to settle, reverting to the pre-fence behavior.
+     */
+    static bool isPreRasterFenceDisabled();
+    static void setPreRasterFenceDisabled(bool disabled);
+
 private:
     Ref<IMainThreadDispatcher> _mainThreadDispatcher;
     std::atomic<std::thread::id> _mainThreadId;
     std::atomic_bool _tornDown;
     mutable std::mutex _mutex;
+    std::condition_variable _quiescenceCondition;
     std::deque<MainThreadTask> _pendingTasks;
     std::deque<Ref<ValueFunction>> _onIdleCallbacks;
     int _batchCount = 0;
+    int _executingTaskCount = 0;
     size_t _flushIdSequence = 0;
     size_t _tasksSequence = 0;
     size_t _batchFlushId = 0;
     bool _idleFlushScheduled = false;
+
+    static std::atomic<bool> s_preRasterFenceDisabled;
 
     static bool shouldAllowBatchFromCurrentThread();
 

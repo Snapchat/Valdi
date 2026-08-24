@@ -2,10 +2,11 @@ import XCTest
 import Foundation
 @testable import Compiler
 
-func extractAnnotations(_ content: String) throws -> [ValdiTypeScriptAnnotation] {
+func extractAnnotations(_ content: String, dropUnrecognized: Bool = false) throws -> [ValdiTypeScriptAnnotation] {
     let comments = TS.AST.Comments(text: content, start: 0, end: content.nsrange.length)
     let extracted = try ValdiTypeScriptAnnotation.extractAnnotations(comments: comments,
-                                                                        fileContent: content)
+                                                                        fileContent: content,
+                                                                        dropUnrecognized: dropUnrecognized)
     return extracted
 }
 
@@ -139,6 +140,9 @@ final class ValdiAnnotationTests: XCTestCase {
         )
     }
 
+    // XCTExpectFailure is only in Apple's XCTest, not swift-corelibs-xctest on Linux, so this
+    // expected-failure test builds and runs on macOS only.
+    #if !os(Linux)
     func testBadCases() throws {
         var content: String = ""
 
@@ -170,6 +174,7 @@ final class ValdiAnnotationTests: XCTestCase {
             _ = try extractAnnotations(content)
         }
     }
+    #endif
 
     func testiOSTypeNameValidation() throws {
         XCTAssertTrue(ObjCValidation.isValidIOSTypeName(iosTypeName: "SCCSomeType"))
@@ -226,5 +231,34 @@ final class ValdiAnnotationTests: XCTestCase {
             return
         }
         XCTAssertTrue(reconstructedAllowSyncCall, "allowSyncCall must be preserved when reconstructing a function type for @WorkerThread")
+    }
+
+    func testDropUnrecognizedSkipsStrayTokens() throws {
+        // Freeform prose on an enum case must not become annotations when dropUnrecognized is set.
+        XCTAssertTrue(try extractAnnotations("// @Deprecated", dropUnrecognized: true).isEmpty)
+        XCTAssertTrue(try extractAnnotations("// TODO @handle2 Cleanup those UI state", dropUnrecognized: true).isEmpty)
+    }
+
+    func testDropUnrecognizedSkipsStrayTokensWithPayloads() throws {
+        // Payload-shaped stray tokens must be skipped before payload parsing, which would
+        // otherwise throw ("Only @Version supports a positional annotation payload" / brace parse).
+        XCTAssertTrue(try extractAnnotations("// @issue(1234)", dropUnrecognized: true).isEmpty)
+        XCTAssertTrue(try extractAnnotations("// @TODO({foo})", dropUnrecognized: true).isEmpty)
+    }
+
+    func testDropUnrecognizedKeepsKnownAnnotations() throws {
+        XCTAssertEqual(try extractAnnotations("// @Version(3)", dropUnrecognized: true).map { $0.name }, ["Version"])
+
+        // Mixed: known survives, stray is dropped.
+        let mixed = try extractAnnotations("""
+// @Deprecated
+// @Version(3)
+""", dropUnrecognized: true)
+        XCTAssertEqual(mixed.map { $0.name }, ["Version"])
+    }
+
+    func testStrayPayloadTokensStillThrowWithoutDropFlag() throws {
+        // Strict path (interface/class members, top-level symbols) is unchanged.
+        XCTAssertThrowsError(try extractAnnotations("// @issue(1234)"))
     }
 }

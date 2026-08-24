@@ -103,6 +103,9 @@ void BridgeLayer::setAttachedData(const Ref<Valdi::RefCountable>& attachedData) 
         if (bridgedView != nullptr) {
             bridgedView->getViewTransaction(viewNode->getViewNodeTree())
                 .moveViewToTree(bridgedView->getView(), viewNode->getViewNodeTree(), viewNode.get());
+            // Views created without a tree (preloaded, pooled) get their manager here, so the
+            // pre-raster fence applies once a node adopts them.
+            bridgedView->setMainThreadManager(viewNode->getViewNodeTree()->getMainThreadManager());
         }
     }
 }

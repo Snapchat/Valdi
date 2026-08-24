@@ -437,8 +437,35 @@ valdi_toolchain(
     sqldelight_compiler = "@valdi_toolchain//:sqldelight_compiler",
 )
 
+# Cross-compilation setups whose first execution platform is a remote linux worker set this
+# flag toswap in the macOS-constrained toolchain below, keeping every Valdi action the local mac.
+bool_flag(
+    name = "mac_only_execution",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "mac_only_execution_enabled",
+    flag_values = {":mac_only_execution": "true"},
+)
+
+config_setting(
+    name = "mac_only_execution_disabled",
+    flag_values = {":mac_only_execution": "false"},
+)
+
 toolchain(
     name = "valdi_toolchain",
+    target_settings = [":mac_only_execution_disabled"],
+    toolchain = ":valdi",
+    toolchain_type = ":toolchain_type",
+)
+
+toolchain(
+    name = "valdi_toolchain_mac_exec",
+    exec_compatible_with = ["@platforms//os:macos"],
+    target_settings = [":mac_only_execution_enabled"],
     toolchain = ":valdi",
     toolchain_type = ":toolchain_type",
 )

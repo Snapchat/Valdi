@@ -325,8 +325,10 @@ void ViewNodeScrollState::notifyOnDragStart(const Point& directionAgnosticConten
 
     if (_onDragStartCallback != nullptr) {
         VALDI_TRACE("Valdi.notifyOnDragStart")
+        // BoundedMainThreadSync: a SyncWithMainThread handler must not hold the main thread
+        // beyond kInputSyncCallDeadline (COMPOSER-5961); no caller reads the result.
         submitScrollEvent(_onDragStartCallback,
-                          ValueFunctionFlagsNone,
+                          ValueFunctionFlagsBoundedMainThreadSync,
                           directionAgnosticContentOffset,
                           directionAgnosticUnclampedContentOffset,
                           directionAgnosticVelocity);
@@ -340,7 +342,7 @@ void ViewNodeScrollState::notifyOnScrollEnd(const Point& directionAgnosticConten
         VALDI_TRACE("Valdi.notifyOnScrollEnd")
         static Point velocity = Point(0, 0);
         submitScrollEndEvent(_onScrollEndCallback,
-                             ValueFunctionFlagsNone,
+                             ValueFunctionFlagsBoundedMainThreadSync,
                              directionAgnosticContentOffset,
                              directionAgnosticUnclampedContentOffset,
                              velocity);
@@ -368,7 +370,7 @@ void ViewNodeScrollState::notifyOnDragEnd(const Point& directionAgnosticContentO
     VALDI_TRACE("Valdi.notifyOnDragEnd");
     auto scrollEvent = makeScrollEvent(
         directionAgnosticContentOffset, directionAgnosticUnclampedContentOffset, directionAgnosticVelocity);
-    _onDragEndCallback->call(ValueFunctionFlagsNone, &scrollEvent, 1);
+    _onDragEndCallback->call(ValueFunctionFlagsBoundedMainThreadSync, &scrollEvent, 1);
 }
 
 Result<std::optional<Point>> ViewNodeScrollState::notifyOnDragEnding(

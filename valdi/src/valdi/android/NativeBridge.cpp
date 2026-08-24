@@ -10,6 +10,7 @@
 #include "valdi/android/RuntimeManagerWrapper.hpp"
 #include "valdi/android/RuntimeWrapper.hpp"
 #include "valdi/runtime/Attributes/Yoga/Yoga.hpp"
+#include "valdi_core/cpp/Constants.hpp"
 #include "valdi_core/jni/JNIMethodUtils.hpp"
 #include "valdi_core/jni/JavaUtils.hpp"
 
@@ -1288,61 +1289,75 @@ jlong ValdiAndroid::NativeBridge::notifyScroll(  // NOLINT
         return 0;
     }
 
-    viewNodeTree->withLock([&]() {
-        auto pointScale = runtimeWrapper->getPointScale();
+    // Point conversions only need the point scale, not tree state; keep them out of the
+    // critical section.
+    auto pointScale = runtimeWrapper->getPointScale();
 
-        auto pointDirectionDependentContentOffset =
-            Valdi::Point::fromPixels(static_cast<int32_t>(pixelDirectionDependentContentOffsetX),
-                                     static_cast<int32_t>(pixelDirectionDependentContentOffsetY),
-                                     pointScale);
+    auto pointDirectionDependentContentOffset =
+        Valdi::Point::fromPixels(static_cast<int32_t>(pixelDirectionDependentContentOffsetX),
+                                 static_cast<int32_t>(pixelDirectionDependentContentOffsetY),
+                                 pointScale);
 
-        auto pointDirectionDependentUnclampedContentOffset =
-            Valdi::Point::fromPixels(static_cast<int32_t>(pixelDirectionDependentUnclampedContentOffsetX),
-                                     static_cast<int32_t>(pixelDirectionDependentUnclampedContentOffsetY),
-                                     pointScale);
+    auto pointDirectionDependentUnclampedContentOffset =
+        Valdi::Point::fromPixels(static_cast<int32_t>(pixelDirectionDependentUnclampedContentOffsetX),
+                                 static_cast<int32_t>(pixelDirectionDependentUnclampedContentOffsetY),
+                                 pointScale);
 
-        auto pointDirectionDependentVelocityX =
-            -Valdi::pixelsToPoints(static_cast<float>(pixelDirectionDependentInvertedVelocityX), pointScale);
-        auto pointDirectionDependentVelocityY =
-            -Valdi::pixelsToPoints(static_cast<float>(pixelDirectionDependentInvertedVelocityY), pointScale);
-        auto pointDirectionDependentVelocity =
-            Valdi::Point(pointDirectionDependentVelocityX, pointDirectionDependentVelocityY);
+    auto pointDirectionDependentVelocityX =
+        -Valdi::pixelsToPoints(static_cast<float>(pixelDirectionDependentInvertedVelocityX), pointScale);
+    auto pointDirectionDependentVelocityY =
+        -Valdi::pixelsToPoints(static_cast<float>(pixelDirectionDependentInvertedVelocityY), pointScale);
+    auto pointDirectionDependentVelocity =
+        Valdi::Point(pointDirectionDependentVelocityX, pointDirectionDependentVelocityY);
 
-        switch (static_cast<ScrollEventType>(eventType)) {
-            case ScrollEventTypeOnScroll: {
-                auto adjustedDirectionDependentContentOffset =
-                    viewNode->onScroll(pointDirectionDependentContentOffset,
-                                       pointDirectionDependentUnclampedContentOffset,
-                                       pointDirectionDependentVelocity);
+    // This runs on the main thread for every scroll event, so never park on the tree lock
+    // indefinitely (COMPOSER-5961). Per-frame ON_SCROLL events are skip-tolerant (the next frame
+    // supersedes them): attempt the lock exactly once. Lifecycle events get the shared input
+    // deadline; if it expires the event is dropped and `out` stays at the no-override sentinel.
+    auto lockDeadline = static_cast<ScrollEventType>(eventType) == ScrollEventTypeOnScroll ?
+                            std::chrono::steady_clock::now() :
+                            std::chrono::steady_clock::now() + Valdi::kInputSyncCallDeadline;
 
-                if (adjustedDirectionDependentContentOffset) {
-                    out = convertPointToPackedPixels(adjustedDirectionDependentContentOffset.value(), pointScale);
-                }
-            } break;
-
-            case ScrollEventTypeOnScrollEnd:
-                viewNode->onScrollEnd(pointDirectionDependentContentOffset,
-                                      pointDirectionDependentUnclampedContentOffset);
-                break;
-            case ScrollEventTypeOnDragStart:
-                viewNode->onDragStart(pointDirectionDependentContentOffset,
-                                      pointDirectionDependentUnclampedContentOffset,
-                                      pointDirectionDependentVelocity);
-                break;
-            case ScrollEventTypeOnDragEnding: {
-                auto adjustedPointDirectionDependentContentOffset =
-                    viewNode->onDragEnding(pointDirectionDependentContentOffset,
+    viewNodeTree->tryWithLock(
+        [&]() {
+            switch (static_cast<ScrollEventType>(eventType)) {
+                case ScrollEventTypeOnScroll: {
+                    auto adjustedDirectionDependentContentOffset =
+                        viewNode->onScroll(pointDirectionDependentContentOffset,
                                            pointDirectionDependentUnclampedContentOffset,
                                            pointDirectionDependentVelocity);
-                if (adjustedPointDirectionDependentContentOffset) {
-                    out = convertPointToPackedPixels(adjustedPointDirectionDependentContentOffset.value(), pointScale);
-                }
-            } break;
-            default:
-                ValdiAndroid::JavaEnv::getUnsafeEnv()->ThrowNew(
-                    ValdiAndroid::JavaEnv::getCache().getValdiExceptionClass().getClass(), "Invalid scroll event type");
-        }
-    });
+
+                    if (adjustedDirectionDependentContentOffset) {
+                        out = convertPointToPackedPixels(adjustedDirectionDependentContentOffset.value(), pointScale);
+                    }
+                } break;
+
+                case ScrollEventTypeOnScrollEnd:
+                    viewNode->onScrollEnd(pointDirectionDependentContentOffset,
+                                          pointDirectionDependentUnclampedContentOffset);
+                    break;
+                case ScrollEventTypeOnDragStart:
+                    viewNode->onDragStart(pointDirectionDependentContentOffset,
+                                          pointDirectionDependentUnclampedContentOffset,
+                                          pointDirectionDependentVelocity);
+                    break;
+                case ScrollEventTypeOnDragEnding: {
+                    auto adjustedPointDirectionDependentContentOffset =
+                        viewNode->onDragEnding(pointDirectionDependentContentOffset,
+                                               pointDirectionDependentUnclampedContentOffset,
+                                               pointDirectionDependentVelocity);
+                    if (adjustedPointDirectionDependentContentOffset) {
+                        out = convertPointToPackedPixels(adjustedPointDirectionDependentContentOffset.value(),
+                                                         pointScale);
+                    }
+                } break;
+                default:
+                    ValdiAndroid::JavaEnv::getUnsafeEnv()->ThrowNew(
+                        ValdiAndroid::JavaEnv::getCache().getValdiExceptionClass().getClass(),
+                        "Invalid scroll event type");
+            }
+        },
+        lockDeadline);
 
     return out;
 }

@@ -83,6 +83,13 @@ NS_ASSUME_NONNULL_BEGIN
                             text:(nullable id)text
                  traitCollection:(nullable UITraitCollection*)traitCollection;
 
+/**
+ Whether measureSizeWithMaxSize: includes each line's font `leading`, keeping measurement in
+ agreement with the TextKit stack every Valdi text view renders with.
+ */
++ (BOOL)fontLeadingInMeasureEnabled;
++ (void)setFontLeadingInMeasureEnabled:(BOOL)enabled;
+
 @end
 
 NS_ASSUME_NONNULL_END

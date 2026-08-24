@@ -1,8 +1,8 @@
+load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load(
     "common.bzl",
     "NODE_MODULES_BASE",
 )
-load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load(":valdi_toolchain_type.bzl", "VALDI_TOOLCHAIN_TYPE")
 
 # TODO: modify the compiler so that we don't need to pass in the config file and instead can just pass in all of these options as arguments

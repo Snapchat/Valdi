@@ -354,7 +354,6 @@ private:
     void doDestroyContext(const SharedContext& context);
 
     void runWithExclusiveJsThreadLock(DispatchFunction&& cb);
-    bool disablePersistentStoreEncryption();
     bool enableANRDiagnostics();
 };
 

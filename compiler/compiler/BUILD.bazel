@@ -1,5 +1,5 @@
 load("@bazel_skylib//rules:native_binary.bzl", "native_binary")
-load("@build_bazel_rules_swift//swift:swift.bzl", "swift_binary")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_binary", "swift_library", "swift_test")
 load("@protobuf_cpp//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@protobuf_cpp//bazel:proto_library.bzl", "proto_library")
 
@@ -106,6 +106,103 @@ swift_binary(
         "@swxmlhash//:SWXMLHash",
         "@yams//:Yams",
         "@zip_lib//:Zip",
+    ],
+)
+
+# Module deps shared by the compiler library below. Kept in sync with the deps on
+# local_valdi_compiler above (that target is intentionally left untouched).
+_COMPILER_MODULE_DEPS = [
+    "//compiler/compiler/Compiler/Vendors/BlueSocket",
+    "//compiler/compiler/Compiler/Vendors/Clibsass",
+    "//compiler/compiler/Compiler/Vendors/SwiftCSSParser",
+    "//compiler/compiler/Compiler/Vendors/Zstd",
+    "@chalk//:Chalk",
+    "@legible_error//:LegibleError",
+    "@swift_argument_parser//:ArgumentParser",
+    "@swift_backtrace//:Backtrace",
+    "@swift_collections//:Collections",
+    "@swift_crypto//:Crypto",
+    "@swift_protobuf//:SwiftProtobuf",
+    "@swiftsoup//:SwiftSoup",
+    "@swxmlhash//:SWXMLHash",
+    "@yams//:Yams",
+    "@zip_lib//:Zip",
+]
+
+# Linux static-runtime link support, mirrored from local_valdi_compiler; needed when
+# linking the XCTest executable on Linux (see the notes on that target above).
+_LINUX_LINK_DEPS = [
+    ":linux_static_link_shims",
+    "@libxml2",
+    "@swift_toolchain_linux_x86_64//:swift_static_search_path",
+]
+
+_LINUX_STATIC_LINKOPTS = [
+    "-Wl,-export-dynamic",
+    "-Wl,--exclude-libs,ALL",
+    "-l:libicui18nswift.a",
+    "-l:libicuucswift.a",
+    "-l:libicudataswift.a",
+    # The test binary links libXCTest.so dynamically (unlike the shipping
+    # compiler, which static-links the whole Swift runtime). libXCTest.so in
+    # turn needs libFoundation.so, and both live in the toolchain's
+    # usr/lib/swift/linux, which the binary already has on its rpath. But the
+    # linker defaults to DT_RUNPATH, which the loader does NOT consult for a
+    # dependency's own dependencies -- so libXCTest.so's libFoundation.so goes
+    # unresolved at runtime. Emit the old DT_RPATH instead (transitive), so the
+    # rpath resolves libFoundation.so too.
+    "-Wl,--disable-new-dtags",
+]
+
+# The compiler's source compiled as a library (main.swift excluded — a library can't
+# carry top-level executable code) so the XCTest target can `@testable import Compiler`.
+# Built with -enable-testing for that. testonly: it exists only for the test below, not
+# the shipping compiler, which keeps its own swift_binary above. defines=["DEBUG"] keeps
+# Sentry compiled out, matching that binary.
+swift_library(
+    name = "CompilerLib",
+    testonly = True,
+    srcs = glob(
+        ["Compiler/Sources/**/*.swift"],
+        exclude = ["Compiler/Sources/main.swift"],
+    ),
+    copts = [
+        "-DSWIFT_PACKAGE",
+        "-g",
+        "-Xcc",
+        "-Wno-nullability",
+        # Allow `@testable import Compiler` from CompilerTests.
+        "-enable-testing",
+    ],
+    defines = ["DEBUG"],
+    module_name = "Compiler",
+    deps = _COMPILER_MODULE_DEPS,
+)
+
+# The compiler's own XCTest suite (formerly run via SPM `swift test` in
+# tools/ci/compiler_tests.sh). Running it through rules_swift means it uses the same
+# hermetic Swift toolchain the rest of the build does — so it runs on both Linux and
+# macOS CI instead of depending on a system `swift` (which the Linux runner lacks).
+swift_test(
+    name = "CompilerTests",
+    srcs = glob(["Compiler/Tests/CompilerTests/**/*.swift"]),
+    copts = [
+        "-DSWIFT_PACKAGE",
+        "-Xcc",
+        "-Wno-nullability",
+    ],
+    defines = ["DEBUG"],
+    linkopts = select({
+        "@platforms//os:linux": _LINUX_STATIC_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = select({
+        "@platforms//os:linux": _LINUX_LINK_DEPS,
+        "//conditions:default": [],
+    }) + [
+        ":CompilerLib",
+        "//compiler/compiler/Compiler/Vendors/Zstd",
+        "@swiftsoup//:SwiftSoup",
     ],
 )
 

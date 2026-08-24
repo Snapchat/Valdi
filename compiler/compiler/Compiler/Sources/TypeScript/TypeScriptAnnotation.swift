@@ -39,7 +39,11 @@ struct ValdiTypeScriptAnnotation {
         options: [.dotMatchesLineSeparators]
     )
 
-    static func extractAnnotations(comments: TS.AST.Comments, fileContent: String) throws -> [ValdiTypeScriptAnnotation] {
+    /// - Parameter dropUnrecognized: when true, `@`-tokens whose name is not a known
+    ///   `ValdiAnnotationType` are skipped before their payload is parsed. Enum-case leading
+    ///   comments are freeform prose ("// @Deprecated", "// TODO @handle2 cleanup", "// @issue(12)"),
+    ///   so their stray tokens must not fail compilation as unrecognized/malformed annotations.
+    static func extractAnnotations(comments: TS.AST.Comments, fileContent: String, dropUnrecognized: Bool = false) throws -> [ValdiTypeScriptAnnotation] {
         let joinedComments = comments.text
         let matches = Self.annotationRegex.matches(in: joinedComments, options: [], range: joinedComments.nsrange)
 
@@ -57,6 +61,10 @@ struct ValdiTypeScriptAnnotation {
             let annotationName = nsString.substring(with: annotationNameRange)
             // Make sure we aren't parsing jsDocs tags as annotations.
             if JSDocs.allSymbols.contains(annotationName) {
+                continue
+            }
+
+            if dropUnrecognized && ValdiAnnotationType(rawValue: annotationName) == nil {
                 continue
             }
 

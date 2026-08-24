@@ -56,6 +56,13 @@ bool JSBridgeTestFixture::isWithTSN() const {
     return ValdiTest::isWithTSN(GetParam());
 }
 
+void JSBridgeTestFixture::SetUp() {
+    auto engineType = toJSEngineType(GetParam());
+    if (!Valdi::JavaScriptBridge::isAvailable(engineType)) {
+        GTEST_SKIP() << snap::valdi_core::to_string(engineType) << " is not compiled into this build type";
+    }
+}
+
 Valdi::IJavaScriptBridge* JSBridgeTestFixture::getJsBridge() const {
     return Valdi::JavaScriptBridge::get(toJSEngineType(GetParam()));
 }

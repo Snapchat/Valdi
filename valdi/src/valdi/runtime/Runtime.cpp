@@ -211,7 +211,7 @@ void Runtime::postInit() {
 
         if (_diskCache != nullptr) {
             registerNativeModuleFactory(Valdi::makeShared<PersistentStoreModuleFactory>(
-                _diskCache, _workerQueue, _userSession, _keychain, *_logger, disablePersistentStoreEncryption()));
+                _diskCache, _workerQueue, _userSession, _keychain, *_logger));
         }
         registerNativeModuleFactory(makeShared<FileSystemFactory>().toShared());
         registerNativeModuleFactory(
@@ -561,15 +561,6 @@ void Runtime::runWithExclusiveJsThreadLock(DispatchFunction&& cb) {
     } else {
         _mainThreadManager->dispatch(nullptr, std::move(cb));
     }
-}
-
-bool Runtime::disablePersistentStoreEncryption() {
-    const auto& runtimeTweaks = getRuntimeTweaks();
-    if (runtimeTweaks == NULL) {
-        return false;
-    }
-
-    return runtimeTweaks->disablePersistentStoreEncryption();
 }
 
 bool Runtime::enableANRDiagnostics() {

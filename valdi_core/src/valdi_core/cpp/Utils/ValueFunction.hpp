@@ -161,6 +161,20 @@ public:
     virtual bool prefersSyncCalls() const;
 
     /**
+     Returns whether the runtime or context that owns this function is being torn down
+     (disposed) or has requested execution termination.
+
+     When true, a synchronous call that yields 'undefined' means the call was skipped
+     during teardown rather than the function returning bad data, so a typed non-Promise
+     return boundary may degrade gracefully instead of raising a fatal unmarshalling error.
+     Defaults to false; JS-backed functions override it. Gated on teardown so it never
+     masks a genuine undefined-return bug from a live context.
+     */
+    virtual bool ownerIsTearingDown() const {
+        return false;
+    }
+
+    /**
      Call the function with the given parameters and return the return value.
      If the given call flags is not ValueFunctionFlagsCallSync, the return value
      might be undefined if the underlying ValueFunction implementation had to dispatch

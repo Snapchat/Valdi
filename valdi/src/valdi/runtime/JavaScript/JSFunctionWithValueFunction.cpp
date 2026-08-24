@@ -27,32 +27,6 @@ JavaScriptRuntime* javaScriptRuntimeOf(const Ref<Context>& context) {
     return runtime != nullptr ? runtime->getJavaScriptRuntime() : nullptr;
 }
 
-// Records the JS->native call the JS thread is inside so an ANR whose stack capture times out can
-// name it. Saves and restores the previous name, so nested calls report the innermost and unwind
-// to the parent. No-op when ANR diagnostics are off or off the runtime's JS thread.
-class ScopedNativeCallActivity {
-public:
-    ScopedNativeCallActivity(JavaScriptRuntime* runtime, const StringBox& functionName) {
-        if (runtime != nullptr && runtime->anrDiagnosticsActiveOnJsThread()) {
-            _runtime = runtime;
-            _previousName = runtime->swapCurrentNativeCallName(functionName);
-        }
-    }
-
-    ~ScopedNativeCallActivity() {
-        if (_runtime != nullptr) {
-            _runtime->swapCurrentNativeCallName(std::move(_previousName));
-        }
-    }
-
-    ScopedNativeCallActivity(const ScopedNativeCallActivity&) = delete;
-    ScopedNativeCallActivity& operator=(const ScopedNativeCallActivity&) = delete;
-
-private:
-    JavaScriptRuntime* _runtime = nullptr;
-    StringBox _previousName;
-};
-
 } // namespace
 
 JSFunctionWithValueFunction::JSFunctionWithValueFunction(Ref<ValueFunction>&& function,

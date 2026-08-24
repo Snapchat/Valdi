@@ -28,29 +28,45 @@ TraceDuration RecordedTrace::duration() const {
     return TraceDuration(end - start);
 }
 
-ScopedTrace::ScopedTrace(const StringBox& trace) : _trace(trace.toStringView()), _snapTrace(_trace) {
-    begin();
-
-    if (Tracer::shared().isRecording()) {
-        _startTime = {std::chrono::steady_clock::now()};
-    }
+ScopedTrace::ScopedTrace(const StringBox& trace)
+    : _ownedTrace(trace.toStringView()), _trace(_ownedTrace), _snapTrace(_trace) {
+    start();
 }
 
-ScopedTrace::ScopedTrace(std::string&& trace) : _trace(std::move(trace)), _snapTrace(_trace) {
-    begin();
-
-    if (Tracer::shared().isRecording()) {
-        _startTime = {std::chrono::steady_clock::now()};
-    }
+ScopedTrace::ScopedTrace(std::string&& trace) : _ownedTrace(std::move(trace)), _trace(_ownedTrace), _snapTrace(_trace) {
+    start();
 }
 
 ScopedTrace::~ScopedTrace() {
+    std::optional<TraceTimePoint> endTime;
     if (_startTime) {
-        auto endTime = std::chrono::steady_clock::now();
-        Tracer::shared().append(std::move(_trace), _startTime.value(), endTime);
+        endTime = std::chrono::steady_clock::now();
     }
 
+    // Runs before the name is handed to the Tracer, which may move _ownedTrace out from under
+    // _trace.
     end();
+
+    if (_startTime) {
+        std::string trace;
+        if (_ownedTrace.empty()) {
+            // Literal name: only worth materializing now that we know a recorder wants it.
+            trace = std::string(_trace);
+        } else {
+            // _trace views _ownedTrace, so this must not read _trace afterwards.
+            trace = std::move(_ownedTrace);
+        }
+
+        Tracer::shared().append(std::move(trace), _startTime.value(), endTime.value());
+    }
+}
+
+void ScopedTrace::start() {
+    begin();
+
+    if (Tracer::shared().isRecording()) {
+        _startTime = {std::chrono::steady_clock::now()};
+    }
 }
 
 void ScopedTrace::begin() {

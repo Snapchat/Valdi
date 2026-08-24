@@ -30,6 +30,7 @@
 #include "valdi/runtime/Resources/DirectionalAsset.hpp"
 #include "valdi/runtime/Resources/PlatformSpecificAsset.hpp"
 #include "valdi/runtime/Resources/ThemableAsset.hpp"
+#include "valdi/runtime/Utils/MainThreadManager.hpp"
 #include "valdi/runtime/ValdiRuntimeTweaks.hpp"
 #include "valdi_core/JSRuntimeNativeObjectsManager.hpp"
 #include "valdi_core/cpp/Constants.hpp"
@@ -165,9 +166,25 @@ STRING_CONST(callActionParameterParametersKey, "parameters")
 
 class JavaScriptRuntimeCallable : public JSFunctionWithMethod<JavaScriptRuntime> {
 public:
-    using JSFunctionWithMethod<JavaScriptRuntime>::JSFunctionWithMethod;
+    JavaScriptRuntimeCallable(JavaScriptRuntime& self,
+                              JSValueRef (JavaScriptRuntime::*function)(JSFunctionNativeCallContext&),
+                              const ReferenceInfo& referenceInfo)
+        : JSFunctionWithMethod<JavaScriptRuntime>(self, function, referenceInfo),
+          _runtime(self),
+          _functionName(referenceInfo.toFunctionIdentifier()) {}
 
     ~JavaScriptRuntimeCallable() override = default;
+
+    JSValueRef operator()(JSFunctionNativeCallContext& callContext) noexcept override {
+        // Runtime builtins run native work on the JS thread without going through
+        // JSFunctionWithValueFunction, so record them for ANR attribution here.
+        ScopedNativeCallActivity nativeCallActivity(&_runtime, _functionName);
+        return JSFunctionWithMethod<JavaScriptRuntime>::operator()(callContext);
+    }
+
+private:
+    JavaScriptRuntime& _runtime;
+    StringBox _functionName;
 };
 
 class JavaScriptRuntimeTraceProxyCallable : public JSFunction {
@@ -177,7 +194,7 @@ public:
                                         const JSValue& callback)
         : _traceName(traceName),
           _referenceInfo(ReferenceInfoBuilder().withObject(nameFromJSFunction(jsContext, callback)).build()),
-          _callback(callback) {}
+          _callback(JSValueRef::makeRetained(jsContext, callback)) {}
 
     ~JavaScriptRuntimeTraceProxyCallable() override = default;
 
@@ -187,13 +204,13 @@ public:
 
     JSValueRef operator()(JSFunctionNativeCallContext& callContext) noexcept override {
         VALDI_TRACE(_traceName);
-        return callContext.getContext().callObjectAsFunction(_callback, callContext);
+        return callContext.getContext().callObjectAsFunction(_callback.get(), callContext);
     }
 
 private:
     StringBox _traceName;
     ReferenceInfo _referenceInfo;
-    JSValue _callback;
+    JSValueRef _callback;
 };
 
 class JSRuntimeNativeObjectsManagerImpl : public snap::valdi_core::JSRuntimeNativeObjectsManager {
@@ -524,6 +541,7 @@ Result<Void> JavaScriptRuntime::initializeContext() {
 
     if (runtimeTweaks != nullptr) {
         Context::setDestroyedContextFixEnabled(runtimeTweaks->enableRenderRequestContextFix());
+        MainThreadManager::setPreRasterFenceDisabled(runtimeTweaks->disablePreRasterFence());
     }
 
     VALDI_INFO(*_logger, "Creating JSContext from engine '{}'", _javaScriptBridge.getName());
@@ -1480,6 +1498,15 @@ JSValueRef JavaScriptRuntime::loadJsModule(IJavaScriptContext& jsContext,
     VALDI_TRACE_META("Valdi.loadJsModule", importPath);
     snap::utils::time::StopWatch sw;
     sw.start();
+
+    StringBox nativeCallName;
+    if (anrDiagnosticsActiveOnJsThread()) {
+        nativeCallName =
+            StringCache::getGlobal().makeString(fmt::format("runtime.loadJsModule({})", importPath.toStringView()));
+    }
+    // Nested inside the generic builtin activity so a stall during module evaluation names the
+    // module being loaded rather than just "runtime.loadJsModule".
+    ScopedNativeCallActivity moduleLoadActivity(this, nativeCallName);
 
     auto resourceIdResult = JavaScriptPathResolver::resolveResourceId(importPath);
     if (!resourceIdResult) {
@@ -2447,6 +2474,13 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
         return;
     }
 
+    auto jsApiVersion = context.newNumber(_resourceManager.getApiVersion());
+
+    context.setObjectProperty(runtimeObject.get(), "apiVersion", jsApiVersion.get(), exceptionTracker);
+    if (!exceptionTracker) {
+        return;
+    }
+
     auto jsEnableDebugger = context.newBool(_enableDebugger);
 
     context.setObjectProperty(runtimeObject.get(), "isDebugEnabled", jsEnableDebugger.get(), exceptionTracker);
@@ -2463,15 +2497,8 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
         return;
     }
 
-    // Expose isLoggingEnabled to JS.
-    // In appstore builds this is controlled by VALDI_DISABLE_JS_LOGGING:
-    // COF false (default/control) = logging enabled, COF true (treatment) = logging disabled.
-    // In non-appstore builds this is always true.
-    bool isLoggingEnabled = true;
-    if constexpr (snap::kIsAppstoreBuild) {
-        // Defaults to true (logging enabled) when no tweaks provider is available (e.g., unit tests).
-        isLoggingEnabled = tweaks != nullptr ? !tweaks->disableJsLogging() : true;
-    }
+    // Expose isLoggingEnabled to JS. Disabled in appstore builds, always enabled otherwise.
+    bool isLoggingEnabled = !snap::kIsAppstoreBuild;
     auto jsIsLoggingEnabled = context.newBool(isLoggingEnabled);
     context.setObjectProperty(runtimeObject.get(), "isLoggingEnabled", jsIsLoggingEnabled.get(), exceptionTracker);
     if (!exceptionTracker) {

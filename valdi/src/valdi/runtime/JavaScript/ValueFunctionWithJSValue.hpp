@@ -34,6 +34,7 @@ public:
     Value operator()(const ValueFunctionCallContext& callContext) noexcept final;
     std::string_view getFunctionType() const final;
     bool prefersSyncCalls() const final;
+    bool ownerIsTearingDown() const final;
 
     bool isSingleCall() const;
     void setSingleCall(bool singleCall);

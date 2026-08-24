@@ -8,12 +8,35 @@ PR size, title, or structure.
 When flagging, use a `snake_case` category: `regression` for ungated changes,
 `thread_safety` for JS↔native boundary races, `performance` for hot-path or
 allocation cost, `resource_leak` for missing cleanup, and `platform_parity` for
-one-sided native changes.
+one-sided native changes. Use `lint` and `format` for pre-gate tooling failures
+(see below).
 
 ## When to use
 
 Reviewing a Valdi PR that touches the runtime, renderer, native backends, or
 framework modules. Complements correctness review, it doesn't replace it.
+
+## Lint and formatting pre-gate
+
+Before applying the review lens below, run the project's configured linter and
+formatter on the changed files and surface any failures as findings — agents routinely
+miss these and only discover them when CI rejects the PR.
+
+- **Discover the commands from the repo; do not assume a tool.** Check `AGENTS.md`,
+  `README`, `package.json` scripts, `.pre-commit-config.yaml`, and the CI config for
+  the linter and formatter this project runs, then run them against the changed files.
+  These are often a **single command** (e.g. ESLint running Prettier via a plugin), not
+  two separate tools — run whatever the repo defines rather than assuming a standalone
+  `prettier`.
+- Report a failing formatter as a `format` finding and a failing linter as a `lint`
+  finding, quoting the rule and file. These block like a correctness issue would — a
+  clean local build with lint failures still fails CI.
+- Scan the diff for newly added suppressions (`eslint-disable`, `// prettier-ignore`,
+  `nolint`, and equivalents) and flag any not justified by a comment.
+
+This pre-gate runs the tools; it is **not** the "style, naming, or organization pass"
+the review lens deliberately avoids (see Material secondary checks). Keep the two
+separate — run lint here, review for regression risk below.
 
 ## Gating: does the change run for existing consumers?
 

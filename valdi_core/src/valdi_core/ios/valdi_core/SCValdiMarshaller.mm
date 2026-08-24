@@ -8,6 +8,7 @@
 #include "SCValdiMarshaller.h"
 #import "valdi_core/SCValdiMarshaller+CPP.h"
 #include <Foundation/Foundation.h>
+#import "valdi_core/cpp/Utils/InterfaceMarshallDiagnostics.hpp"
 #import "valdi_core/cpp/Utils/Marshaller.hpp"
 #import "valdi_core/cpp/Utils/ValueTypedObject.hpp"
 #import "valdi_core/cpp/Utils/ValueFunction.hpp"
@@ -439,6 +440,16 @@ FOUNDATION_EXPORT BOOL SCValdiMarshallerIsMap(SCValdiMarshallerRef marshaller, N
 FOUNDATION_EXPORT BOOL SCValdiMarshallerIsError(SCValdiMarshallerRef marshaller, NSInteger index)
 {
     return SCValdiMarshallerGetValueOrUndefined(marshaller, index).isError();
+}
+
+FOUNDATION_EXPORT int32_t SCValdiMarshallerGetAndResetLastInterfaceMarshallOutcome(void)
+{
+    return Valdi::getAndResetLastInterfaceMarshallOutcome();
+}
+
+FOUNDATION_EXPORT void SCValdiMarshallerSetInterfaceMarshallDiagnosticsEnabled(BOOL enabled)
+{
+    Valdi::setInterfaceMarshallDiagnosticsEnabled(enabled);
 }
 
 FOUNDATION_EXPORT void SCValdiMarshallerPop(SCValdiMarshallerRef marshaller)

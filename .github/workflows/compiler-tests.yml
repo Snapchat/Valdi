@@ -1,15 +1,13 @@
 name: Compiler Unit Tests
 
-# The Valdi compiler's own unit suite (compiler/compiler/Compiler/Tests) is a
-# Swift Package Manager testTarget, invisible to Bazel (the SPM .build dir is
-# .bazelignore'd), so it runs in none of the bzl-changes.yml jobs. Those jobs
+# The Valdi compiler's own unit suite (compiler/compiler/Compiler/Tests) runs as
+# the Bazel swift_test //compiler/compiler:CompilerTests. The bzl-changes.yml jobs
 # only exercise the compiler end-to-end (test_layout et al. codegen the testdata
 # modules); they never test compiler internals like annotation parsing,
 # interface flattening, or component binding. This workflow closes that gap.
 #
-# macOS-only: `swift test` needs a standalone Swift toolchain, which the macOS
-# runners already ship via Xcode. Path-filtered to compiler/** so the ~10x
-# macOS runner cost is only paid when compiler source actually changes.
+# macOS-only, path-filtered to compiler/** so the ~10x macOS runner cost is only
+# paid when compiler source actually changes.
 
 on:
   pull_request:
@@ -23,6 +21,13 @@ on:
       - 'compiler/**'
       - '.github/workflows/compiler-tests.yml'
   workflow_dispatch:
+
+# Workflow-level permissions: id-token: write needed for GCP WIF auth on the
+# bazel-cache action. The auth step has continue-on-error, so fork PRs (which
+# GitHub downgrades to read-only) still build, just without the remote cache.
+permissions:
+  contents: read
+  id-token: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -39,6 +44,29 @@ jobs:
 
       - name: Pin Xcode
         uses: ./.github/actions/pin-xcode
+
+      - name: Configure Bazel cache
+        uses: ./.github/actions/bazel-cache
+        with:
+          gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
+          cache_key: macos-compiler-tests
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install Bazel
+        run: |
+          brew install bazelisk
+          bazel --version
+          # compiler_tests.sh invokes `bzl`; on Linux setup_linux_env.sh creates
+          # this symlink, but the macOS runner only ships `bazel` from bazelisk.
+          sudo ln -sf "$(command -v bazel)" /usr/local/bin/bzl
 
       # Same script internal cool runs (via run_tests.sh), so the suite is gated
       # identically on both sides.

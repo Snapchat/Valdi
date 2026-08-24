@@ -112,7 +112,7 @@ async function getProjectName(argv: ArgumentsResolver<CommandParameters>): Promi
       ]);
 
       projectName = result.projectName;
-      const validationError = validateProjectName(projectName);
+      const validationError = validateProjectName(projectName, { requireBazelModuleName: true });
 
       if (validationError) {
         console.log(wrapInColor(`\n❌ ${validationError}\n`, ANSI_COLORS.RED_COLOR));
@@ -181,6 +181,8 @@ function initializeConfigFiles(
     TemplateFile.init(TEMPLATE_BASE_PATHS.WATCHMAN_CONFIG),
     TemplateFile.init(TEMPLATE_BASE_PATHS.EDITOR_CONFIG),
     TemplateFile.init(TEMPLATE_BASE_PATHS.AGENTS).withReplacements({ MODULE_NAME: projectName }),
+    TemplateFile.init(TEMPLATE_BASE_PATHS.RULES_PYTHON_PATCH_BUILD),
+    TemplateFile.init(TEMPLATE_BASE_PATHS.RULES_PYTHON_PATCH),
   ];
 
   TEMPLATE_FILES.forEach(templateFile => {
@@ -306,7 +308,7 @@ async function valdiBootstrap(argv: ArgumentsResolver<CommandParameters>) {
   
   // Validate project name if provided via command line argument
   if (argv.getArgument('projectName')) {
-    const validationError = validateProjectName(projectName);
+    const validationError = validateProjectName(projectName, { requireBazelModuleName: true });
     if (validationError) {
       throw new CliError(validationError);
     }

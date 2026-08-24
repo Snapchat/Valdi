@@ -17,3 +17,39 @@ index 8ccb1bd..afc7a51 100644
  """,
              mandatory = False,
          ),
+diff --git a/tools/test_observer/LinuxXCTestRunner.swift b/tools/test_observer/LinuxXCTestRunner.swift
+--- a/tools/test_observer/LinuxXCTestRunner.swift
++++ b/tools/test_observer/LinuxXCTestRunner.swift
+@@ -58,7 +58,8 @@
+     public static func run(_ testCaseEntries: [XCTestCaseEntry]) throws {
+       XCTestObservationCenter.shared.addTestObserver(BazelXMLTestObserver.default)
+-      // The preferred overload normally chosen by the compiler is one that calls `exit`, which we
+-      // don't want because we have post-work to do, so force the one that returns an exit code
+-      // instead (which we ignore).
+-      let _: CInt = XCTMain(try shard(testCaseEntries))
++      // Swift 5.10.1's swift-corelibs-xctest only provides the `-> Never` overload of XCTMain (no
++      // exit-code-returning overload to bind to a CInt), so call it directly. It exits with the
++      // test result code, and BazelXMLTestObserver has already written the results on
++      // `testBundleDidFinish` before that exit.
++      XCTMain(try shard(testCaseEntries))
+     }
+diff --git a/swift/swift_test.bzl b/swift/swift_test.bzl
+--- a/swift/swift_test.bzl
++++ b/swift/swift_test.bzl
+@@ -418,7 +418,15 @@
+             ctx = ctx,
+             # The generated test runner uses `@main`.
+             additional_copts = ["-parse-as-library"],
+-            cc_infos = test_runner_deps_cc_infos,
++            # The runner `@testable import`s the test module, which re-imports
++            # (and therefore rebuilds) the transitive Clang modules of the test
++            # target's own `deps`. Module maps for those reach us via SwiftInfo,
++            # but the header search paths (-isystem/-I from each cc_library's
++            # compilation context) live in CcInfo -- so pass the deps' CcInfos
++            # here too, exactly as the owner-srcs compile above does. Without
++            # them a C module whose headers use angled includes (e.g. Clibsass's
++            # `#include <sass/base.h>`) fails to build under sandboxed execution.
++            cc_infos = deps_cc_infos + test_runner_deps_cc_infos,
+             feature_configuration = feature_configuration,
+             include_dev_srch_paths = include_dev_srch_paths,
+             module_name = module_name + "__GeneratedTestDiscoveryRunner",

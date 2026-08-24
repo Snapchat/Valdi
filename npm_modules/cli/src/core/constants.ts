@@ -45,6 +45,12 @@ export enum TEMPLATE_BASE_PATHS {
   GIT_IGNORE = '.gitignore.template',
   EDITOR_CONFIG = '.editorconfig.template',
   AGENTS = 'AGENTS.md.template',
+  // Vendored into the generated app so its root MODULE.bazel can apply the
+  // rules_python setuptools-spaces patch via a root-local `//bzl/patches/...`
+  // label. It cannot come from `@valdi` (bzlmod only honors the patch override
+  // from the root module, and the pinned public Valdi release may not ship it).
+  RULES_PYTHON_PATCH = 'bzl/patches/rules_python/1.9.0/remove_setuptools_spaces.patch.template',
+  RULES_PYTHON_PATCH_BUILD = 'bzl/patches/rules_python/1.9.0/BUILD.bazel.template',
 }
 
 export const VALID_PLATFORMS: string[] = [

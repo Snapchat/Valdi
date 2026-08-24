@@ -127,6 +127,21 @@ BOOL SCValdiMarshallerIsMap(SCValdiMarshallerRef marshaller, NSInteger index);
 BOOL SCValdiMarshallerIsNullOrUndefined(SCValdiMarshallerRef marshaller, NSInteger index);
 BOOL SCValdiMarshallerIsError(SCValdiMarshallerRef marshaller, NSInteger index);
 
+/**
+ Returns the outcome code of the most recent interface (proxy) marshall on the
+ current thread and resets it to 0. Positive codes are successes, negative codes
+ identify the failure path; see InterfaceMarshallDiagnostics.hpp for the values.
+ Intended for diagnosing null results after pushing an interface object.
+ */
+int32_t SCValdiMarshallerGetAndResetLastInterfaceMarshallOutcome(void);
+
+/**
+ Enables or disables interface-marshall outcome recording process-wide.
+ Disabled by default; while disabled, marshalls perform no outcome writes and
+ SCValdiMarshallerGetAndResetLastInterfaceMarshallOutcome always returns 0.
+ */
+void SCValdiMarshallerSetInterfaceMarshallDiagnosticsEnabled(BOOL enabled);
+
 BOOL SCValdiMarshallerGetBool(SCValdiMarshallerRef marshaller, NSInteger index);
 NSNumber* _Nullable SCValdiMarshallerGetOptionalBool(SCValdiMarshallerRef marshaller, NSInteger index);
 

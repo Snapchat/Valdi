@@ -22,14 +22,12 @@ struct PersistentStoreDependencies {
     Ref<InMemoryDiskCache> diskCache;
     Shared<InMemoryKeychain> keyChain;
     ILogger& logger;
-    bool disableDecryptionByDefault;
 
     PersistentStoreDependencies()
         : dispatchQueue(DispatchQueue::create(STRING_LITERAL("PersistentStore"), ThreadQoSClassMax)),
           diskCache(Valdi::makeShared<InMemoryDiskCache>()),
           keyChain(Valdi::makeShared<InMemoryKeychain>()),
-          logger(ConsoleLogger::getLogger()),
-          disableDecryptionByDefault(false) {}
+          logger(ConsoleLogger::getLogger()) {}
 
     ~PersistentStoreDependencies() {
         dispatchQueue->fullTeardown();
@@ -47,8 +45,7 @@ TEST(PersistentStoreModuleFactory, createsNewStoreIfDeallocate) {
                                                                         dependencies.dispatchQueue,
                                                                         sharedUserSession,
                                                                         dependencies.keyChain,
-                                                                        dependencies.logger,
-                                                                        dependencies.disableDecryptionByDefault);
+                                                                        dependencies.logger);
 
     Path rootPath("wut");
 
@@ -79,8 +76,7 @@ TEST(PersistentStoreModuleFactory, reusesStoreWithSamePath) {
                                                                         dependencies.dispatchQueue,
                                                                         sharedUserSession,
                                                                         dependencies.keyChain,
-                                                                        dependencies.logger,
-                                                                        dependencies.disableDecryptionByDefault);
+                                                                        dependencies.logger);
 
     Path rootPath("wut");
 
@@ -105,8 +101,7 @@ TEST(PersistentStoreModuleFactory, passesUpdatedConfigurationWhenReusingStore) {
                                                                         dependencies.dispatchQueue,
                                                                         sharedUserSession,
                                                                         dependencies.keyChain,
-                                                                        dependencies.logger,
-                                                                        dependencies.disableDecryptionByDefault);
+                                                                        dependencies.logger);
 
     auto userSession1 = Valdi::makeShared<UserSession>(STRING_LITERAL("4242"));
     auto userSession2 = Valdi::makeShared<UserSession>(STRING_LITERAL("4343"));

@@ -236,8 +236,7 @@ export interface ValdiRuntime extends RuntimeBase {
 
   /**
    * Whether JS logging (console.log/warn/error/info/debug) is enabled.
-   * In non-appstore builds this is always true.
-   * In appstore builds this is controlled by the VALDI_DISABLE_JS_LOGGING COF key.
+   * In non-appstore builds this is always true. In appstore builds this is false.
    */
   isLoggingEnabled: boolean;
 

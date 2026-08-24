@@ -24,10 +24,18 @@
 set -uo pipefail
 
 BASE_REF="${1:-origin/master}"
-# Repo-relative path to the tree this guards.
-TREE="client/src/open_source"
+
+# The tree this guards is two levels up from this script. Capture it before cd'ing to the repo root.
+TREE_ABS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 cd "$(git rev-parse --show-toplevel)" || exit 0
+
+# Express the guarded tree relative to the repo root, so it works whether that tree is nested inside
+# a larger repo or is the repo root itself (relative path "."). A wrong path would grep nothing,
+# count zero tests, and pass while checking nothing -- the exact failure this script exists to catch.
+TREE="$(git -C "$TREE_ABS" rev-parse --show-prefix 2>/dev/null)"
+TREE="${TREE%/}"
+[[ -z "$TREE" ]] && TREE="."
 
 if ! git rev-parse --verify --quiet "$BASE_REF" > /dev/null; then
     echo "WARNING: base ref '$BASE_REF' not available, skipping the test-coverage delta check."

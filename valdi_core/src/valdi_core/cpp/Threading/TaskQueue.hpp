@@ -62,11 +62,15 @@ private:
         DispatchFunction function;
         std::chrono::steady_clock::time_point executeTime;
         bool isBarrier;
+        // Connects the task's execution slice to its submit site (snap::profiling task
+        // tracing; 0 when tracing is idle).
+        uint64_t parentSpanId;
 
         Task(task_id_t id,
              DispatchFunction function,
              std::chrono::steady_clock::time_point executeTime,
-             bool isBarrier);
+             bool isBarrier,
+             uint64_t parentSpanId);
     };
 
     std::atomic_bool _disposed;
@@ -80,11 +84,12 @@ private:
     size_t _maxConcurrentTasks = 1;
     Shared<IQueueListener> _listener;
 
-    DispatchFunction nextTask(std::chrono::steady_clock::time_point maxTime, bool* shouldRun);
+    DispatchFunction nextTask(std::chrono::steady_clock::time_point maxTime, bool* shouldRun, uint64_t* parentSpanId);
 
     task_id_t insertTask(DispatchFunction&& function,
                          std::chrono::steady_clock::time_point executeTime,
-                         bool isBarrier);
+                         bool isBarrier,
+                         uint64_t parentSpanId);
 
     DispatchFunction lockFreeRemoveTask(task_id_t taskId);
 };

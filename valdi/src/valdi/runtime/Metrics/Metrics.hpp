@@ -88,6 +88,15 @@ public:
     // counter exists so the A/B can observe and alert on the publish failure.
     virtual void emitModuleArchiveMmapPublishFail(const StringBox& module) {};
 
+    // Wall time of one synchronous view-tree inflation pass (ViewNode::updateViewTree),
+    // with the node/view counts the pass already computes. The counts let a slow pass be
+    // attributed to one expensive platform view (low createdViews) vs a wide inflation
+    // (high createdViews) vs a deep no-op traversal (high visitedNodes, low createdViews).
+    virtual void emitUpdateViewTreeLatency(const StringBox& module,
+                                           const MetricsDuration& duration,
+                                           int64_t visitedNodes,
+                                           int64_t createdViews) {};
+
     static ScopedMetrics scopedOnScrollLatency(const Ref<Metrics>& metrics,
                                                const StringBox& module,
                                                const StringBox& backend);

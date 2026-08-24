@@ -142,6 +142,48 @@ static CGFloat SCValdiTextViewContentHeightFromContentSize(UITextView *textView,
     return MAX(0.0, strippedContentHeight) + baseTopInset + baseBottomInset;
 }
 
+// Number of line fragments TextKit laid out for `glyphRange`.
+static NSUInteger SCValdiTextViewLaidOutLineCount(NSLayoutManager *layoutManager, NSRange glyphRange)
+{
+    NSUInteger lineCount = 0;
+    NSUInteger glyphIndex = glyphRange.location;
+    NSUInteger glyphEnd = NSMaxRange(glyphRange);
+    while (glyphIndex < glyphEnd) {
+        NSRange lineRange = NSMakeRange(0, 0);
+        [layoutManager lineFragmentRectForGlyphAtIndex:glyphIndex effectiveRange:&lineRange];
+        if (lineRange.length == 0) {
+            break;
+        }
+        glyphIndex = NSMaxRange(lineRange);
+        lineCount++;
+    }
+    return lineCount;
+}
+
+// YES when the container was too short for the rest of the text: TextKit drops a line fragment
+// whole rather than clipping it. maximumNumberOfLines truncates by design and still wants centering.
+static BOOL SCValdiTextViewLayoutIsHeightTruncated(UITextView *textView)
+{
+    if (textView.scrollEnabled) {
+        // A scrolling text view gets an unbounded container, so its height never cuts the text off.
+        return NO;
+    }
+
+    NSLayoutManager *layoutManager = textView.layoutManager;
+    NSTextContainer *textContainer = textView.textContainer;
+    NSRange laidOutGlyphs = [layoutManager glyphRangeForTextContainer:textContainer];
+    NSRange laidOutCharacters = [layoutManager characterRangeForGlyphRange:laidOutGlyphs actualGlyphRange:NULL];
+    if (NSMaxRange(laidOutCharacters) >= textView.textStorage.length) {
+        return NO;
+    }
+
+    NSUInteger maximumNumberOfLines = textContainer.maximumNumberOfLines;
+    if (maximumNumberOfLines == 0) {
+        return YES;
+    }
+    return SCValdiTextViewLaidOutLineCount(layoutManager, laidOutGlyphs) < maximumNumberOfLines;
+}
+
 static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
                                                       CGFloat baseTopInset,
                                                       CGFloat baseBottomInset)
@@ -241,6 +283,16 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
     __weak SCValdiTextAnimationGroup *_textAnimationGroup;
     NSUInteger _textAnimationPartCount;
 
+    // Deferred-initialization state. _animatedTextView (the per-glyph animation overlay) and
+    // _placeholder are built lazily on first use, so a plain text view or label constructs a single
+    // UITextView/TextKit-1 stack instead of three. These ivars stash configuration that can arrive
+    // before the lazily-created subview exists so -_ensureAnimatedTextView / -_ensurePlaceholder can
+    // replay it at creation time. _textAnimationCoordinator mirrors the overlay layout manager's own
+    // weak ownership (see SCValdiTextViewEffectsLayoutManager).
+    UIColor *_pendingPlaceholderColor;
+    NSArray *_textShadow;
+    __weak SCValdiTextAnimationCoordinator *_textAnimationCoordinator;
+    NSUInteger _textAnimationBasePartIndex;
 }
 
 + (BOOL)valdi_managesChildFrames
@@ -276,34 +328,10 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
             _textView.inlinePredictionType = UITextInlinePredictionTypeNo;
         }
 
-        _animatedTextEffectsLayoutManager = [SCValdiTextViewEffectsLayoutManager new];
-        _animatedTextView = [[SCValdiTextViewInternal alloc] initWithFrame:frame
-                                                             layoutManager:_animatedTextEffectsLayoutManager];
-        _animatedTextView.backgroundColor = [UIColor clearColor];
-        _animatedTextView.userInteractionEnabled = NO;
-        _animatedTextView.isAccessibilityElement = NO;
-        _animatedTextView.accessibilityElementsHidden = YES;
-        _animatedTextView.editable = NO;
-        _animatedTextView.scrollEnabled = YES;
-        _animatedTextView.textContainerInset = UIEdgeInsetsZero;
-        _animatedTextView.textContainer.lineFragmentPadding = 0;
-        _animatedTextView.showsHorizontalScrollIndicator = NO;
-        _animatedTextView.adjustsFontForContentSizeCategory = NO;
-        _animatedTextView.hidden = YES;
-
+        // _animatedTextView (per-glyph animation overlay) and _placeholder are created lazily; see
+        // -_ensureAnimatedTextView / -_ensurePlaceholder. Most text views never animate or show a
+        // placeholder, so this avoids building two extra UITextView/TextKit stacks up front.
         [self addSubview:_textView];
-        [self addSubview:_animatedTextView];
-
-        _placeholder = [[SCValdiTextViewPlaceholder alloc] initWithFrame:frame];
-        _placeholder.textColor = [UIColor lightGrayColor];
-        _placeholder.userInteractionEnabled = NO;
-        _placeholder.backgroundColor = [UIColor clearColor];
-        _placeholder.textContainerInset = UIEdgeInsetsZero;
-        _placeholder.textContainer.lineFragmentPadding = 0;
-        _placeholder.showsHorizontalScrollIndicator = NO;
-        _placeholder.adjustsFontForContentSizeCategory = NO;
-
-        [self addSubview:_placeholder];
 
         [_textView addObserver:self
                     forKeyPath:kSCValdiTextViewContentSizeKey
@@ -331,6 +359,95 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
     }
 
     return self;
+}
+
+// Builds the per-glyph animation overlay on first enable. Everywhere else a nil _animatedTextView is
+// harmless (ObjC messaging to nil is a no-op), so callers don't need to guard. Replays the state an
+// eagerly-created overlay would already hold: view node, processed text, animation coordinator, and
+// text shadow. Per-use geometry (insets, line-break mode, max lines, attributed text) is (re)applied
+// by -_updateAnimatedTextOverlayWithAttributedString:isEnabled: immediately after this returns.
+- (SCValdiTextViewInternal *)_ensureAnimatedTextView
+{
+    if (_animatedTextView != nil) {
+        return _animatedTextView;
+    }
+
+    _animatedTextEffectsLayoutManager = [SCValdiTextViewEffectsLayoutManager new];
+    _animatedTextEffectsLayoutManager.valdiViewNode = self.valdiViewNode;
+    SCValdiTextViewInternal *animatedTextView =
+        [[SCValdiTextViewInternal alloc] initWithFrame:self.bounds
+                                         layoutManager:_animatedTextEffectsLayoutManager];
+    animatedTextView.backgroundColor = [UIColor clearColor];
+    animatedTextView.userInteractionEnabled = NO;
+    animatedTextView.isAccessibilityElement = NO;
+    animatedTextView.accessibilityElementsHidden = YES;
+    animatedTextView.editable = NO;
+    animatedTextView.textContainerInset = UIEdgeInsetsZero;
+    animatedTextView.textContainer.lineFragmentPadding = 0;
+    animatedTextView.showsHorizontalScrollIndicator = NO;
+    animatedTextView.adjustsFontForContentSizeCategory = NO;
+    animatedTextView.hidden = YES;
+    _animatedTextView = animatedTextView;
+    // Original z-order: the overlay sits above the base text view. The caller brings it further
+    // forward while an animation is active.
+    [self insertSubview:animatedTextView aboveSubview:_textView];
+
+    // The overlay only paints transformed glyphs, so it never carries background effects or the
+    // custom underline style (matching -_updateEffectsLayoutManager).
+    _animatedTextEffectsLayoutManager.effects = nil;
+    _animatedTextEffectsLayoutManager.customUnderlineStyle = nil;
+    _animatedTextEffectsLayoutManager.processedText = _processedText;
+    _animatedTextEffectsLayoutManager.textAnimationCoordinator = _textAnimationCoordinator;
+    _animatedTextEffectsLayoutManager.textAnimationBasePartIndex = _textAnimationBasePartIndex;
+    if (_textShadow != nil) {
+        SCValdiSetTextHolderTextShadow(animatedTextView, _textShadow);
+    }
+    // Catch up on text-overflow state that arrived before the overlay existed (scrollEnabled and
+    // lineBreakMode, via -_applyTextOverflowAttributes as -_ensurePlaceholder does). The scroll
+    // offset can't be seeded here: the overlay has no content yet, so the geometry writes that follow
+    // would make UIScrollView clamp it straight back to zero. -_syncAnimatedTextOverlayContentOffset
+    // mirrors it once those writes are done.
+    [self _applyTextOverflowAttributes];
+    return animatedTextView;
+}
+
+// Builds the placeholder text view the first time a non-empty placeholder string is applied; a color
+// that arrives first is stashed in _pendingPlaceholderColor and replayed here. Replays the
+// font/overflow/line/inset/shadow configuration the eager placeholder would have accumulated so it
+// renders identically.
+- (SCValdiTextViewPlaceholder *)_ensurePlaceholder
+{
+    if (_placeholder != nil) {
+        return _placeholder;
+    }
+
+    SCValdiTextViewPlaceholder *placeholder = [[SCValdiTextViewPlaceholder alloc] initWithFrame:self.bounds];
+    placeholder.textColor = _pendingPlaceholderColor ?: [UIColor lightGrayColor];
+    placeholder.userInteractionEnabled = NO;
+    placeholder.backgroundColor = [UIColor clearColor];
+    placeholder.textContainerInset = UIEdgeInsetsZero;
+    placeholder.textContainer.lineFragmentPadding = 0;
+    placeholder.showsHorizontalScrollIndicator = NO;
+    placeholder.adjustsFontForContentSizeCategory = NO;
+    // Hidden whenever there is real content, since the placeholder can be created after the value is
+    // bound (attribute application order is not guaranteed).
+    placeholder.hidden = _textView.attributedText.length > 0;
+    _placeholder = placeholder;
+    _pendingPlaceholderColor = nil;
+    // Original z-order: base text view, animation overlay, placeholder on top. Anchoring to the
+    // overlay when it already exists keeps that order regardless of which subview materializes first.
+    [self insertSubview:placeholder aboveSubview:(_animatedTextView ?: _textView)];
+
+    BOOL isRightToLeft = self.valdiViewNode.isRightToLeft;
+    UITraitCollection *traitCollection = self.valdiContext.traitCollection;
+    SCValdiSetTextHolderAttributes(placeholder, [self fontAttributes], traitCollection, isRightToLeft, nil);
+    [self _applyNumberOfLinesAttributes];
+    [self _applyTextOverflowAttributes];
+    [self _updatePlaceholderInset];
+    if (_textShadow != nil) {
+        SCValdiSetTextHolderTextShadow(placeholder, _textShadow);
+    }
+    return placeholder;
 }
 
 - (void)dealloc
@@ -451,7 +568,23 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView
 {
     if (scrollView == _textView) {
-        _animatedTextView.contentOffset = scrollView.contentOffset;
+        [self _syncAnimatedTextOverlayContentOffset];
+    }
+}
+
+// The overlay renders the same text as _textView, so it has to scroll with it. UIScrollView re-clamps
+// contentOffset against contentSize whenever the frame or the text container inset changes, which
+// zeroes the mirror while the overlay is still empty (it is created with no attributedText and only
+// receives content once an animation enables). Re-mirroring after those writes keeps an overlay that
+// materializes over already-scrolled text aligned, instead of waiting for the next user scroll.
+- (void)_syncAnimatedTextOverlayContentOffset
+{
+    if (_animatedTextView == nil) {
+        return;
+    }
+    CGPoint contentOffset = _textView.contentOffset;
+    if (!CGPointEqualToPoint(_animatedTextView.contentOffset, contentOffset)) {
+        _animatedTextView.contentOffset = contentOffset;
     }
 }
 
@@ -494,7 +627,16 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
     CGFloat baseTopInset = textContainerInset.bottom;
     CGFloat baseBottomInset = textContainerInset.bottom;
     CGFloat boundsHeight = textView.bounds.size.height;
+
+    if (textContainerInset.top != baseTopInset && SCValdiTextViewLayoutIsHeightTruncated(textView)) {
+        textContainerInset.top = baseTopInset;
+        textView.textContainerInset = textContainerInset;
+    }
+
     CGFloat contentSizeHeight = SCValdiTextViewContentHeightForGravity(textView, baseTopInset, baseBottomInset);
+    if (SCValdiTextViewLayoutIsHeightTruncated(textView)) {
+        contentSizeHeight = MAX(contentSizeHeight, boundsHeight);
+    }
     CGFloat topCorrection;
 
     switch (_textGravity) {
@@ -511,6 +653,8 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
     }
 
     topCorrection = (topCorrection < 0.0 ? 0.0 : topCorrection);
+    CGFloat onePixel = 1.0 / MAX(1.0, textView.traitCollection.displayScale);
+    topCorrection = MIN(topCorrection, MAX(0.0, boundsHeight - contentSizeHeight - onePixel));
 
     textContainerInset.top = baseTopInset + topCorrection;
     textContainerInset.bottom = baseBottomInset;
@@ -530,6 +674,7 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
     _updatingContentInset = YES;
     [self _updateTextViewInset:(_textView)];
     [self _updateTextViewInset:(_animatedTextView)];
+    [self _syncAnimatedTextOverlayContentOffset];
     _updatingContentInset = NO;
 }
 
@@ -703,6 +848,11 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
 - (void)_updateAnimatedTextOverlayWithAttributedString:(NSAttributedString *)attributedString
                                              isEnabled:(BOOL)isEnabled
 {
+    // When the overlay stays disabled (the common case) _animatedTextView remains nil and every
+    // assignment below is a no-op; only materialize it when an animation actually needs it.
+    if (isEnabled) {
+        [self _ensureAnimatedTextView];
+    }
     _animatedTextVerticalOverflowPadding =
         isEnabled && attributedString != nil ? SCValdiAnimatedTextVerticalOverflowPadding(_processedText, attributedString) : 0.0;
     _animatedTextView.hidden = !isEnabled;
@@ -725,6 +875,14 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
     [self _updateFrame];
     _animatedTextView.attributedText = isEnabled ? attributedString : nil;
     if (isEnabled) {
+        // The overlay just took on content, so mirror the offset here rather than waiting for a layout
+        // pass: enabling an animation does not have to resize the view, and this runs from attribute
+        // setters as well as -layoutSubviews. If UIScrollView clamped the write against a contentSize
+        // it has not recomputed yet, schedule the pass that lets -_updateContentInset finish the job.
+        [self _syncAnimatedTextOverlayContentOffset];
+        if (!CGPointEqualToPoint(_animatedTextView.contentOffset, _textView.contentOffset)) {
+            [self setNeedsLayout];
+        }
         [[self _animatedTextEffectsLayoutManager] invalidateAnimatedTextProgress];
         [self _updateInlineTextChildAnimations];
         if (_textAnimationGroup != nil) {
@@ -1015,7 +1173,11 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
             _placeholder.hidden = value.length > 0;
         }
 
-        SCValdiSetTextHolderAttributes(_placeholder, fontAttributes, traitCollection, isRightToLeft, nil);
+        // Skipped while the placeholder is still deferred; -_ensurePlaceholder applies the current
+        // font attributes when it later builds the view.
+        if (_placeholder != nil) {
+            SCValdiSetTextHolderAttributes(_placeholder, fontAttributes, traitCollection, isRightToLeft, nil);
+        }
         [self invalidateLayout];
     }
     _updating = NO;
@@ -1074,6 +1236,10 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
 - (void)valdi_applyTextAnimationCoordinator:(SCValdiTextAnimationCoordinator *)coordinator
                               basePartIndex:(NSUInteger)basePartIndex
 {
+    // Stash so a lazily-created overlay picks these up in -_ensureAnimatedTextView; the direct
+    // assignments below are no-ops until the overlay exists.
+    _textAnimationCoordinator = coordinator;
+    _textAnimationBasePartIndex = basePartIndex;
     _animatedTextEffectsLayoutManager.textAnimationCoordinator = coordinator;
     _animatedTextEffectsLayoutManager.textAnimationBasePartIndex = basePartIndex;
     if (coordinator != nil) {
@@ -1128,12 +1294,17 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
     return fontAttributes;
 }
 
+// Attribute setters mark the text dirty and defer the rebuild to the next layout pass
+// (layoutSubviews/sizeThatFits both flush it) so a render pass that applies several
+// attributes pays for one SCValdiProcessedText build instead of one per setter. The
+// full rebuild is expensive for animated/styled captions and runs on the main thread;
+// it dominated PERF_STUCK_DETECTED hangs on the caption editor.
 - (void)valdi_setFontAttributes:(SCValdiFontAttributes *)fontAttributes
 {
     _fontAttributes = fontAttributes;
     _needAttributedTextUpdate = YES;
     [self _applyNumberOfLinesAttributes];
-    [self _updateAttributedTextIfNeeded];
+    [self setNeedsLayout];
 }
 
 - (void)valdi_setCustomUnderlineStyle:(SCValdiCustomUnderlineStyle *)customUnderlineStyle
@@ -1143,7 +1314,7 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
     if (_effectsLayoutManager) {
         [self _updateEffectsLayoutManager];
     }
-    [self _updateAttributedTextIfNeeded];
+    [self setNeedsLayout];
     [_textView setNeedsDisplay];
 }
 
@@ -1171,6 +1342,16 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
 
 - (void)valdi_setValue:(id)textValue
 {
+    // Rebinding an identical plain string is a no-op; skip the synchronous rebuild.
+    // Restricted to the case where the displayed text already matches (and no marked
+    // IME text is pending), because JS can re-set the previous value to reject an edit
+    // and the rebuild is what clobbers the rejected characters back out of the view.
+    if ([textValue isKindOfClass:[NSString class]] && _textView.markedTextRange == nil &&
+        [ObjectAs(_textValue, NSString) isEqualToString:textValue] &&
+        [_textView.text isEqualToString:textValue]) {
+        return;
+    }
+
     NSString *oldTextValue = _textView.text;
     _textValue = textValue;
     _needAttributedTextUpdate = YES;
@@ -1187,7 +1368,7 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
 {
     _characterLimit = characterLimit;
     _needAttributedTextUpdate = YES;
-    [self _updateAttributedTextIfNeeded];
+    [self setNeedsLayout];
     return YES;
 }
 
@@ -1257,7 +1438,7 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
     _enabled = enabled;
     [self _updateTextViewInteractionMode];
     _needAttributedTextUpdate = YES;
-    [self _updateAttributedTextIfNeeded];
+    [self setNeedsLayout];
     return YES;
 }
 
@@ -1311,12 +1492,21 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
 
 - (BOOL)valdi_setPlaceholder:(nullable NSString *)placeholder
 {
-    _placeholder.text = placeholder;
+    // Nothing to show and no placeholder view yet: stay deferred.
+    if (_placeholder == nil && placeholder.length == 0) {
+        return YES;
+    }
+    [self _ensurePlaceholder].text = placeholder;
     return YES;
 }
 
 - (BOOL)valdi_setPlaceholderColor:(nullable UIColor *)color
 {
+    // A color can arrive before the placeholder string; stash it until the view is built.
+    if (_placeholder == nil) {
+        _pendingPlaceholderColor = color;
+        return YES;
+    }
     _placeholder.textColor = color;
     return YES;
 }
@@ -1409,15 +1599,31 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
 
 - (BOOL)valdi_setTextShadow:(NSArray *)textShadow
 {
-    SCValdiSetTextHolderTextShadow(_placeholder, textShadow);
-    SCValdiSetTextHolderTextShadow(_textView, textShadow);
-    return SCValdiSetTextHolderTextShadow(_animatedTextView, textShadow);
+    // Malformed options leave every text holder's layer untouched, so keep any previously stashed
+    // value: it is what _textView is still rendering, and what a subview built later must replay.
+    if (!SCValdiSetTextHolderTextShadow(_textView, textShadow)) {
+        return NO;
+    }
+    // Stash so a placeholder / animation overlay built later replays the same shadow.
+    _textShadow = textShadow;
+    if (_placeholder != nil) {
+        SCValdiSetTextHolderTextShadow(_placeholder, textShadow);
+    }
+    if (_animatedTextView != nil) {
+        SCValdiSetTextHolderTextShadow(_animatedTextView, textShadow);
+    }
+    return YES;
 }
 
 - (void) valdi_resetTextShadow
 {
-    SCValdiResetTextHolderTextShadow(_placeholder);
-    SCValdiResetTextHolderTextShadow(_animatedTextView);
+    _textShadow = nil;
+    if (_placeholder != nil) {
+        SCValdiResetTextHolderTextShadow(_placeholder);
+    }
+    if (_animatedTextView != nil) {
+        SCValdiResetTextHolderTextShadow(_animatedTextView);
+    }
     SCValdiResetTextHolderTextShadow(_textView);
 }
 

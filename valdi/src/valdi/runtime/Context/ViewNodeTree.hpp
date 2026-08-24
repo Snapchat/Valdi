@@ -203,6 +203,13 @@ public:
 
     void withLock(const DispatchFunction& fn);
 
+    /**
+     Like withLock, but gives up if the tree lock cannot be acquired by the deadline, so the
+     calling thread never parks on the lock indefinitely. A deadline in the past attempts the
+     lock exactly once. Returns whether fn ran.
+     */
+    bool tryWithLock(const DispatchFunction& fn, const std::chrono::steady_clock::time_point& deadline);
+
     bool inExclusiveUpdate() const;
 
     bool isLayoutSpecsDirty() const;

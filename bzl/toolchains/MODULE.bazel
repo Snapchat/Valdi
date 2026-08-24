@@ -6,7 +6,13 @@ bazel_dep(name = "bazel_skylib", version = "1.2.0")
 bazel_dep(name = "rules_kotlin", version = "2.3.10", repo_name = "rules_kotlin")
 bazel_dep(name = "rules_android_ndk", version = "0.1.3")
 
-android_ndk_repository_extension = use_extension("@rules_android_ndk//:extension.bzl", "android_ndk_repository_extension")
-use_repo(android_ndk_repository_extension, "androidndk")
+# Use Valdi's hermetic NDK (downloads NDK r28) instead of rules_android_ndk's
+# ANDROID_NDK_HOME-based extension, which is unset on bare CI runners and fails
+# at analysis. Valdi's @androidndk uses the same patched rules_android_ndk
+# template, so :strip / :strip_libs (referenced below) exist. Plain
+# use_extension/use_repo, so this is valid when snap_client_toolchains is a
+# dependency of a non-root consumer (e.g. the registry validation).
+hermetic_ndk_extension = use_extension("@valdi//bzl:hermetic_ndk.bzl", "hermetic_ndk_extension")
+use_repo(hermetic_ndk_extension, "androidndk")
 
 register_toolchains("//:android_ndk_tools_llvm_ndk_28_0_13004108_toolchain")

@@ -218,3 +218,28 @@ Install the `valdi` command locally:
 ```sh
 npm run cli:install
 ```
+
+### Bootstrap pins and patches
+
+The bootstrap template (`.metadata/MODULE.bazel.template`) is what `valdi
+bootstrap` uses to wire up a user's app. The generated app is the **root**
+bzlmod module, and it pins the Valdi framework to a *published* release
+(`DEFAULT_VALDI_RELEASE_TAG`); it fetches `@valdi` from public GitHub, **not**
+from this checkout.
+
+Two rules follow from that:
+
+1. **A patch the generated app must apply belongs *in the app*, referenced with
+   a root-local `//` label — never `@valdi//`.** bzlmod only honors a
+   `single_version_*override`/patch from the **root** module, so the app (not
+   `@valdi`) has to carry it; and `@valdi` resolves to the pinned public
+   release, which may not contain internal-only files. Vendor the patch as a
+   `.metadata` template asset (see `RULES_PYTHON_PATCH*` and the
+   `bzl/patches/...` block in the template). A `@valdi//bzl/patches/...`
+   reference fails at bootstrap time with `BUILD file not found in @@valdi~` and
+   breaks the `release_test` CI gate.
+
+2. **Only bump the template's framework pins (`DEFAULT_VALDI_RELEASE_TAG` and
+   any `@valdi`-sourced overrides) when you are cutting the release that ships
+   the matching files.** Pointing the template at a release that doesn't exist
+   yet produces an app that can't build.

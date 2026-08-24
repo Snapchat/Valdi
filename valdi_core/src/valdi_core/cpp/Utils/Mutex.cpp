@@ -87,6 +87,14 @@ void RecursiveMutex::lock() {
     _threadChecker.onLockRefCounted();
 }
 
+bool RecursiveMutex::try_lock() {
+    if (!_innerMutex.try_lock()) {
+        return false;
+    }
+    _threadChecker.onLockRefCounted();
+    return true;
+}
+
 void RecursiveMutex::unlock() {
     _threadChecker.onUnlockRefCounted();
     _innerMutex.unlock();

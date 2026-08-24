@@ -21,6 +21,7 @@
 #import "valdi_core/cpp/Constants.hpp"
 
 #import "valdi/ios/Text/SCValdiFontManager.h"
+#import "valdi/ios/Text/SCValdiTextLayout.h"
 #import "valdi/ios/Text/NSAttributedString+Valdi.h"
 
 #import "valdi_core/SCValdiView.h"
@@ -351,6 +352,7 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
         useScreenUserInterfaceStyleForDarkMode:useScreenUserInterfaceStyleForDarkMode];
     [_mainRuntime setIsIntegrationTestEnvironment:configuration.isTestEnvironment];
     _mainRuntime.disableLegacyMeasureBehaviorByDefault = configuration.disableLegacyMeasureBehaviorByDefault;
+    [SCValdiTextLayout setFontLeadingInMeasureEnabled:!configuration.disableFontLeadingInTextMeasure];
     [_mainRuntime setPerformHapticFeedbackFunctionBlock:configuration.performHapticFeedbackBlock];
 
     _viewManagerBridge->setDebugMessageDisplayer(configuration.debugMessageDisplayer);

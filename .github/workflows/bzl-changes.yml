@@ -116,9 +116,7 @@ jobs:
           watchman --version
 
       - name: Install Valdi CLI
-        run: |
-          cd npm_modules/cli
-          npm run cli:install
+        run: ./tools/ci/install_cli.sh
 
       - name: Run smoke tests
         run: ./tools/ci/bootstrap_app.sh
@@ -184,7 +182,9 @@ jobs:
 
   linux-ci:
     name: "Linux: ${{ matrix.name }}"
-    runs-on: ubuntu-latest
+    # Pin the major image (mirrors the macos-26 pin above) so a GitHub
+    # ubuntu-latest roll can't silently change the toolchain under CI.
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -232,9 +232,7 @@ jobs:
           npm config set prefix '~/.npm-global'
           npm install -g npm@11
           export PATH=~/.npm-global/bin:$PATH
-          cd npm_modules/cli
-          npm run cli:install
-          valdi --help
+          ./tools/ci/install_cli.sh
 
       - name: "Validate: External build graph"
         if: matrix.task == 'test-cpp'
@@ -246,7 +244,7 @@ jobs:
 
       - name: "Run: Build Compiler"
         if: matrix.task == 'build-compiler'
-        run: bazel build //compiler/compiler:local_valdi_compiler --//bzl/valdi:use_local_compiler=true
+        run: ./tools/ci/build_compiler.sh
 
       - name: "Run: Build & Export"
         if: matrix.task == 'build-export'
@@ -261,7 +259,7 @@ jobs:
 
       - name: "Run: Module Tests"
         if: matrix.task == 'test-modules'
-        run: bazel test //modules/... --test_output=errors
+        run: ./tools/ci/test_modules.sh
 
       - name: "Run: Registry Validation"
         if: matrix.task == 'validate-registry'
@@ -320,7 +318,7 @@ jobs:
 
   api-surface:
     name: API Surface Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
@@ -336,7 +334,7 @@ jobs:
 
   web-integration-test:
     name: valdi_web Integration Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
@@ -366,7 +364,22 @@ jobs:
       # at runtime — hence the target's `requires-network` tag (exempts it from
       # Bazel's test network isolation).
       - name: Run valdi_web integration test
+        run: ./tools/ci/web_integration_test.sh
+
+  test-coverage-delta:
+    name: Test Coverage Delta
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Full history so the check can diff HEAD against the merge base with main.
+          fetch-depth: 0
+
+      # Catch changes that remove test coverage. A deleted test cannot fail, so nothing else
+      # notices it.
+      - name: Check for removed test coverage
         run: |
-          bazel test //experiments/helloworld_playground:integration_test \
-            --define enable_web=true \
-            --test_output=errors
+          git fetch --no-tags --quiet origin main
+          ./tools/ci/check_test_coverage_delta.sh origin/main

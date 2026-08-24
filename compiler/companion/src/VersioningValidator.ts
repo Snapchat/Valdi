@@ -79,9 +79,9 @@ export class VersioningValidator {
       return cached;
     }
 
-    const firstStatement = sourceFile.statements[0];
-    const hasAnnotation =
-      firstStatement !== undefined && hasExportModuleAnnotation(getNodeComments(firstStatement)?.text ?? '');
+    const hasAnnotation = sourceFile.statements.some((statement) =>
+      hasExportModuleAnnotation(getNodeComments(statement)?.text ?? ''),
+    );
     this.exportModuleCache.set(sourceFile, hasAnnotation);
     return hasAnnotation;
   }
@@ -239,6 +239,10 @@ export class VersioningValidator {
 
     if (ts.isPropertyAccessExpression(node) && !this.isCalleePropertyAccess(node)) {
       this.validatePropertyAccess(node, currentVersion);
+    }
+
+    if (ts.isElementAccessExpression(node) && !this.isCalleeElementAccess(node)) {
+      this.validateElementAccess(node, currentVersion);
     }
 
     if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
@@ -446,7 +450,10 @@ export class VersioningValidator {
     }
 
     if (node.body) {
-      const bodyVersion = this.mergeVersions(currentVersion, declaredVersion);
+      const bodyVersion =
+        this.nativeApiMinVersion === undefined
+          ? declaredVersion ?? currentVersion
+          : this.mergeVersions(currentVersion, declaredVersion);
       this.visit(node.body, bodyVersion);
     }
   }
@@ -588,6 +595,23 @@ export class VersioningValidator {
     }
   }
 
+  // Bracket access with a string literal (`model['subtitle']`) reaches the same property as dot
+  // access, so it must be version-checked too. Only constant string keys can be resolved to a
+  // property here; dynamic keys are left alone.
+  private validateElementAccess(node: ts.ElementAccessExpression, currentVersion: number | undefined): void {
+    const argument = node.argumentExpression;
+    if (!ts.isStringLiteralLike(argument)) {
+      return;
+    }
+
+    const objectType = this.typeChecker.getTypeAtLocation(node.expression);
+    const symbol = this.typeChecker.getPropertyOfType(objectType, argument.text);
+    const requiredVersion = this.getVersionFromSymbol(symbol);
+    if (requiredVersion !== undefined) {
+      this.validateVersionedUse(argument, currentVersion, requiredVersion, `Property '${argument.text}'`);
+    }
+  }
+
   private validateObjectBindingElement(node: ts.BindingElement, currentVersion: number | undefined): void {
     if (node.dotDotDotToken) {
       return;
@@ -689,6 +713,12 @@ export class VersioningValidator {
     return (
       ((ts.isCallExpression(node.parent) || ts.isNewExpression(node.parent)) && node.parent.expression === node) ||
       ((ts.isJsxOpeningElement(node.parent) || ts.isJsxSelfClosingElement(node.parent)) && node.parent.tagName === node)
+    );
+  }
+
+  private isCalleeElementAccess(node: ts.ElementAccessExpression): boolean {
+    return (
+      (ts.isCallExpression(node.parent) || ts.isNewExpression(node.parent)) && node.parent.expression === node
     );
   }
 

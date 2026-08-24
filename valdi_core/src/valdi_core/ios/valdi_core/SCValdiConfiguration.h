@@ -43,6 +43,15 @@ typedef void (^SCValdiPerformHapticFeedbackBlock)(NSString* type);
 @property (assign, nonatomic) BOOL disableLegacyMeasureBehaviorByDefault;
 
 /**
+ Killswitch for including each line's font `leading` when measuring text
+ (SCValdiTextLayout measureSizeWithMaxSize:), which keeps measurement in agreement with the
+ TextKit stack the views render with. Defaults to NO (leading included). Set to YES to restore
+ the legacy NSStringDrawing measurement that excludes it, which under-measures fonts with
+ nonzero leading and can bottom-clip container-sized text.
+ */
+@property (assign, nonatomic) BOOL disableFontLeadingInTextMeasure;
+
+/**
  By default, the Garbage Collector of the JavaScriptCore JS engine detects whether
  JS objects are used by looking at the native stack of each thread, and mark any
  JS pointers within the stack as reachable. If this detection does not work properly,

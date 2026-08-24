@@ -12,6 +12,10 @@
 #include "valdi_core/cpp/Utils/TrackedLock.hpp"
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
+#include <thread>
+
 using namespace Valdi;
 
 namespace ValdiTest {
@@ -110,6 +114,54 @@ TEST(TrackedLock, canDropTrackedLocks) {
     ASSERT_TRUE(lock1.owns());
     ASSERT_FALSE(lock2.owns());
     ASSERT_TRUE(lock3.owns());
+}
+
+TEST(TrackedLock, resumesLocksInAcquisitionOrder) {
+    // Regression test: ~DropAllTrackedLocks must reacquire outermost-first. If it resumed
+    // innermost-first, this thread would grab `inner` and then block on `outer` (held by the
+    // helper thread below) while keeping `inner` locked -- the helper's try_lock of `inner`
+    // observes exactly that inversion.
+    auto outerMutex = makeShared<RecursiveMutex>();
+    auto innerMutex = makeShared<RecursiveMutex>();
+
+    TrackedLock outer(*outerMutex);
+    TrackedLock inner(*innerMutex);
+
+    std::atomic_bool helperHoldsOuter(false);
+    std::atomic_bool innerWasFree(false);
+    std::atomic_bool helperDone(false);
+
+    std::thread helper;
+    {
+        DropAllTrackedLocks dropAllTrackedLocks;
+        ASSERT_FALSE(outer.owns());
+        ASSERT_FALSE(inner.owns());
+
+        helper = std::thread([&]() {
+            outerMutex->lock();
+            helperHoldsOuter = true;
+            // Give the main thread time to reach the resume path and block on `outer`.
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            // Outermost-first resume means `inner` must still be free at this point.
+            if (innerMutex->try_lock()) {
+                innerWasFree = true;
+                innerMutex->unlock();
+            }
+            outerMutex->unlock();
+            helperDone = true;
+        });
+
+        while (!helperHoldsOuter) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        // Destructor resumes the locks here, blocking on `outer` until the helper releases it.
+    }
+
+    helper.join();
+    ASSERT_TRUE(helperDone);
+    ASSERT_TRUE(innerWasFree);
+    ASSERT_TRUE(outer.owns());
+    ASSERT_TRUE(inner.owns());
 }
 
 } // namespace ValdiTest

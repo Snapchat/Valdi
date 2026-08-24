@@ -10,6 +10,10 @@ namespace ValdiTest {
 class LayoutRegressionFixture : public JSBridgeTestFixture {
 protected:
     void SetUp() override {
+        JSBridgeTestFixture::SetUp();
+        if (IsSkipped()) {
+            return;
+        }
         auto* jsBridge = getJsBridge();
         wrapper = RuntimeWrapper(jsBridge, isWithTSN() ? TSNMode::Enabled : TSNMode::Disabled);
         wrapper.runtimeListener->layoutTreeAutomatically = false;

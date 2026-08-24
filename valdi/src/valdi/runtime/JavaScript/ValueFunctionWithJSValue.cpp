@@ -17,6 +17,7 @@
 #include "valdi_core/cpp/Utils/ResolvablePromise.hpp"
 #include "valdi_core/cpp/Utils/SmallVector.hpp"
 #include "valdi_core/cpp/Utils/Trace.hpp"
+#include "valdi_core/cpp/Utils/TrackedLock.hpp"
 #include "valdi_core/cpp/Utils/Value.hpp"
 
 #include "utils/debugging/Assert.hpp"
@@ -51,6 +52,30 @@ const StringBox& ValueFunctionWithJSValue::getFunctionName() {
 
 bool ValueFunctionWithJSValue::prefersSyncCalls() const {
     return _shouldBlockMainThread;
+}
+
+bool ValueFunctionWithJSValue::ownerIsTearingDown() const {
+    // A sync call yields 'undefined' with a clean tracker exactly when operator() would skip it,
+    // so this must mirror operator()'s skip conditions. Two families: (1) the JS runtime is
+    // disposed - expired() covers a gone task scheduler and _isDisposed set from any thread during
+    // teardown / aggressive worker termination (the makeJsThreadDispatchFunction early-return);
+    // (2) the owning Valdi context is destroyed, but only when _ignoreIfValdiContextIsDestroyed is
+    // set, and an expired _creationContext weak pointer counts as destroyed. Gated so a live
+    // context that legitimately returns 'undefined' still surfaces as an error downstream.
+    if (expired()) {
+        return true;
+    }
+    if (_ignoreIfValdiContextIsDestroyed) {
+        if (Context::isDestroyedContextFixEnabled()) {
+            auto creationContext = _creationContext.lock();
+            if (creationContext == nullptr || creationContext->isDestroyed()) {
+                return true;
+            }
+        } else if (getContext()->isDestroyed()) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void ValueFunctionWithJSValue::setShouldBlockMainThread(bool shouldBlockMainThread) {
@@ -151,6 +176,12 @@ Result<Value> ValueFunctionWithJSValue::dispatchAndWaitOnJsThread(const Ref<Java
                                                                   size_t parametersSize) {
     auto promise = std::make_shared<std::promise<Result<Value>>>();
     auto future = promise->get_future();
+
+    // The JS callback may need locks this thread holds (e.g. the ViewNodeTree lock when the call
+    // originates from the scroll path); suspend them while parked so the JS thread can make
+    // progress instead of stalling until the deadline. Same pattern as
+    // DeferredViewTransaction::flush before dispatchSync.
+    DropAllTrackedLocks dropAllTrackedLocks;
 
     taskScheduler->dispatchOnJsThreadAsync(
         getContext(),

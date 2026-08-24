@@ -727,6 +727,13 @@ ViewNodeUpdateViewTreeResult ViewNode::updateViewTree(ViewTransactionScope& view
                    updateResult.reinsertedViews);
     }
 
+    if (updateResult.visitedNodes > 0) {
+        if (const auto metrics = getMetrics(); metrics != nullptr) {
+            metrics->emitUpdateViewTreeLatency(
+                getModuleName(), sw.elapsed(), updateResult.visitedNodes, updateResult.createdViews);
+        }
+    }
+
     return updateResult;
 }
 

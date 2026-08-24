@@ -11,6 +11,7 @@
 #include "valdi_core/cpp/Utils/InlineContainerAllocator.hpp"
 #include "valdi_core/cpp/Utils/PlatformValueDelegate.hpp"
 #include "valdi_core/cpp/Utils/ReferenceInfo.hpp"
+#include "valdi_core/cpp/Utils/ResolvablePromise.hpp"
 #include "valdi_core/cpp/Utils/Trace.hpp"
 #include "valdi_core/cpp/Utils/ValueFunction.hpp"
 #include "valdi_core/cpp/Utils/ValueMarshaller.hpp"
@@ -91,6 +92,38 @@ public:
         auto unconvertedReturnValue = (*valueFunction)(callContext);
         if (!exceptionTracker) {
             return std::nullopt;
+        }
+
+        if (_isPromiseReturnType && unconvertedReturnValue.isUndefined()) {
+            // A Promise-returning function can only yield 'undefined' when the JS call was
+            // skipped or failed without the error reaching this tracker: the runtime was
+            // torn down (dead task scheduler / disposed JS value) or the JS-side error was
+            // swallowed because Promise calls don't set PropagatesError. Unmarshalling
+            // 'undefined' would raise a fatal platform exception at the call site, so
+            // deliver the failure as a rejected promise instead — the same outcome
+            // callPromise() produces for these failures when called off the JS thread.
+            auto rejectedPromise = makeShared<ResolvablePromise>();
+            auto errorMessage = fmt::format("Function {} returned no value because the call was skipped or failed "
+                                            "(runtime destroyed or JS error swallowed)",
+                                            referenceInfoBuilder.build().toString());
+            rejectedPromise->fulfill(Result<Value>(Error(std::string_view(errorMessage))));
+            unconvertedReturnValue = Value(rejectedPromise);
+        }
+
+        if (!_isPromiseReturnType && unconvertedReturnValue.isUndefined() && valueFunction->ownerIsTearingDown()) {
+            // The sync counterpart of the Promise guard above. A non-Promise typed function can
+            // only yield 'undefined' with a clean tracker when its JS body was skipped during
+            // teardown: the owning runtime/context was disposed or requested execution termination
+            // between dispatch and execution (see JavaScriptRuntime::makeJsThreadDispatchFunction's
+            // _isDisposed early-return), so nothing ran and nothing threw. Unmarshalling 'undefined'
+            // into the declared return type would raise a fatal, uncatchable platform exception
+            // (SCValdiError) at the call site. Gated on ownerIsTearingDown() so a genuine
+            // undefined-return bug from a live context still surfaces below. Deliver a type-safe
+            // default instead (platform null for object/optional returns, a typed zero/void/first
+            // enum case for non-nullable primitive returns), matching the skipped-call outcome;
+            // an object-typed null for a primitive return would itself crash the platform
+            // trampoline (std::abort on iOS / NPE on Android).
+            return std::make_optional<ValueType>(_returnValueMarshaller->makeDefaultReturnValue(exceptionTracker));
         }
 
         VALDI_TRACE(_cppToPlatformTraceName);

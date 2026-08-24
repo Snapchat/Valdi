@@ -180,6 +180,19 @@ enum GeneratedTypeDescription: Encodable {
             return false
         }
     }
+
+    /// False for reference bindings to a pre-existing native type (@NativeClass/@NativeInterface
+    /// with `isGenerated: false`). Everything else describes a type the compiler generates.
+    var isGenerated: Bool {
+        switch self {
+        case let .class(description),
+             let .interface(description),
+             let .module(description):
+            return description.isGenerated
+        case .enum, .function, .viewClass:
+            return true
+        }
+    }
 }
 
 struct GeneratedNativeClassDescription: Encodable {
@@ -190,6 +203,10 @@ struct GeneratedNativeClassDescription: Encodable {
     let declaredVersion: String?
     let effectiveVersion: String?
     let isNativeApi: Bool
+    // False for @NativeClass/@NativeInterface reference bindings to a pre-existing native type.
+    // These don't generate the type, so several TS modules may legitimately reference the same one;
+    // the collision verifier must skip them (not encoded — metadata output is unaffected).
+    let isGenerated: Bool
 
     enum CodingKeys: CodingKey {
         case iosTypeName
@@ -206,6 +223,7 @@ struct GeneratedNativeClassDescription: Encodable {
         cppTypeName = model.cppType?.declaration.fullTypeName
         declaredVersion = model.declaredVersion
         isNativeApi = model.isNativeApi
+        isGenerated = true
         let effectiveVersion = model.declaredVersion ?? (model.isNativeApi ? baseline : nil)
         self.effectiveVersion = effectiveVersion
         properties = model.properties.map { property in
@@ -231,6 +249,7 @@ struct GeneratedNativeClassDescription: Encodable {
         declaredVersion = nativeApiDeclaredVersion(annotations: annotations)
         effectiveVersion = declaredVersion ?? baseline
         isNativeApi = true
+        isGenerated = nativeClass.isGenerated
     }
 
     func encode(to encoder: Encoder) throws {

@@ -31,6 +31,23 @@ public:
                                   const ReferenceInfoBuilder& referenceInfoBuilder,
                                   ExceptionTracker& exceptionTracker) = 0;
 
+    /**
+     Returns a type-safe default value for this marshaller's return type. Lets a caller
+     synthesize a graceful return without unmarshalling — e.g. when a synchronous call was
+     skipped during runtime teardown and unmarshalling its 'undefined' into the declared type
+     would raise a fatal exception.
+
+     The base returns the platform null, which is correct for every object/optional/nullable
+     type. Marshallers whose platform return type is a non-nullable primitive (bool/int/long/
+     double), void, or a non-boxed enum override this to synthesize a typed default (0 / false /
+     void / the first enum case); handing an object-typed null back for those would crash the
+     receiving platform trampoline instead (std::abort on iOS via assertFieldType, or an
+     unboxing NullPointerException on Android). Wrapper marshallers forward to their inner.
+     */
+    virtual ValueType makeDefaultReturnValue(ExceptionTracker& /*exceptionTracker*/) {
+        return _delegate->newNull();
+    }
+
 protected:
     Ref<PlatformValueDelegate<ValueType>> _delegate;
 

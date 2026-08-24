@@ -15,6 +15,13 @@
 set -e
 set -x
 
+# This script calls `bazel` directly. Some environments expose only the `bzl` wrapper and no bare
+# `bazel`; fall back to it.
+if ! command -v bazel > /dev/null 2>&1 && command -v bzl > /dev/null 2>&1; then
+    bazel() { bzl "$@"; }
+    export -f bazel
+fi
+
 OPEN_SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APP_DIR="${APP_DIR:-/tmp/valdi_release_test}"
 PROJECT_NAME="release_test"
@@ -38,6 +45,9 @@ echo "Building Valdi CLI..."
 cd "$CLI_DIR"
 npm ci
 npm run build
+# dist/index.js's execute bit (which install_cli.sh's global npm-link relies on,
+# and which tsc drops to 0644 on rebuild) is restored by the package's own
+# `postbuild` chmod hook, so no explicit chmod is needed here.
 cd "$OPEN_SOURCE_DIR"
 
 # Bootstrap app using the CLI's default pinned versions (no version overrides)

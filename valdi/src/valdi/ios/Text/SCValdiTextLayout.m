@@ -6,6 +6,8 @@
 //
 
 
+#import <stdatomic.h>
+
 #import "valdi/ios/Text/SCValdiTextLayout.h"
 #import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
 #import "valdi/ios/Text/NSAttributedString+Valdi.h"
@@ -14,6 +16,8 @@
 #import "valdi_core/SCValdiLogger.h"
 #import "valdi_core/SCMacros.h"
 #import "valdi_core/SCValdiRectUtils.h"
+
+static atomic_bool sFontLeadingInMeasureEnabled = true;
 
 @implementation SCValdiTextLayout {
     NSTextStorage *_textStorage;
@@ -310,9 +314,15 @@
     [context setValue:@(fontAttributes.numberOfLines) forKey:@"maximumNumberOfLines"];
 
     NSStringDrawingOptions options = NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingTruncatesLastVisibleLine;
+    if (atomic_load(&sFontLeadingInMeasureEnabled)) {
+        options |= NSStringDrawingUsesFontLeading;
+    }
 
     CGRect boundingRect;
     if (textValue) {
+        if (textValue.length == 0) {
+            return CGSizeZero;
+        }
         boundingRect = [textValue boundingRectWithSize:maxSize options:options attributes:attributes context:context];
     } else {
         SCValdiProcessedText *processedText =
@@ -322,6 +332,9 @@
                                                      fontManager:fontManager
                                                  traitCollection:traitCollection
                                                    configuration:nil];
+        if (processedText.attributedString.length == 0) {
+            return CGSizeZero;
+        }
         boundingRect = [processedText.attributedString boundingRectWithSize:maxSize options:options context:context];
     }
 
@@ -329,6 +342,16 @@
     outSize.width = CGFloatNormalizeCeil(outSize.width);
     outSize.height = CGFloatNormalizeCeil(outSize.height);
     return outSize;
+}
+
++ (BOOL)fontLeadingInMeasureEnabled
+{
+    return atomic_load(&sFontLeadingInMeasureEnabled);
+}
+
++ (void)setFontLeadingInMeasureEnabled:(BOOL)enabled
+{
+    atomic_store(&sFontLeadingInMeasureEnabled, enabled);
 }
 
 @end

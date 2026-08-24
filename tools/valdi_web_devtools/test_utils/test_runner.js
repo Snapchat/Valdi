@@ -56,6 +56,14 @@ function run(config) {
         '--testMatch', '**/tests/**/*.integration.test.js',
         '--runInBand',
         '--verbose',
+        // Bazel runfiles present `tests/` as a symlinked dir. jest-haste-map's
+        // node crawler skips symlinks by default and finds 0 tests; watchman
+        // would follow them, so discovery silently depended on watchman being
+        // on the runner. Pin the behavior: disable watchman and tell haste to
+        // follow symlinks, so discovery is identical regardless of the image.
+        '--watchman=false',
+        '--haste',
+        '{"enableSymlinks":true}',
       ], {
         cwd: process.cwd(),
         env: { ...process.env, PUPPETEER_EXECUTABLE_PATH: chromePath, BASE_URL: `http://localhost:${port}` },

@@ -16,6 +16,7 @@
 #include <atomic>
 #include <mutex>
 #include <optional>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -72,20 +73,45 @@ private:
 
 class ScopedTrace {
 public:
+    /// Names that are string literals are carried as a view, so no owning string is built. Matching
+    /// a fixed-size char array keeps this off dynamic strings, which need to be owned.
+    template<size_t kSize>
+    explicit ScopedTrace(const char (&trace)[kSize]) : _trace(trace, kSize - 1), _snapTrace(_trace) {
+        start();
+    }
+
+    /// A mutable buffer can be reassigned or freed while the span is open, so it has to go through
+    /// the owning overload instead.
+    template<size_t kSize>
+    explicit ScopedTrace(char (&trace)[kSize]) = delete;
+
     explicit ScopedTrace(const StringBox& trace);
     explicit ScopedTrace(std::string&& trace);
     ~ScopedTrace();
 
 protected:
-    std::string _trace;
+    /// Empty unless the name had to be copied, in which case _trace views into it.
+    std::string _ownedTrace;
+    std::string_view _trace;
     std::optional<TraceTimePoint> _startTime;
     snap::utils::debugging::ScopedTrace _snapTrace;
     snap::profiling::OsTraceEmitter _osEmitter;
 
 private:
+    void start();
     void begin();
     void end();
 };
+
+/// True while a span can still reach a consumer: an installed TraceSDK sink, an active Valdi
+/// recording, or a dev build, where the OS trace emitters are compiled in. Short-circuits to a
+/// constant on dev builds, so only production evaluates the two atomic loads.
+inline bool isTracingActive() {
+    return snap::kIsDevBuild ||
+           std::atomic_load_explicit(&snap::profiling::scopedTraceSupportInstance, std::memory_order_relaxed) !=
+               nullptr ||
+           Tracer::shared().isRecording();
+}
 
 } // namespace Valdi
 
@@ -96,9 +122,18 @@ private:
 
 #else
 
-#define VALDI_TRACE(name) Valdi::ScopedTrace ___scopedTrace(name);
+// The `meta` expression is only evaluated when something is listening, so callers can pass a name
+// that costs real work to build (see JSFunctionWithValueFunction::getFunctionName).
+#define VALDI_TRACE(name)                                                                                              \
+    std::optional<Valdi::ScopedTrace> ___scopedTrace;                                                                  \
+    if (Valdi::isTracingActive()) {                                                                                    \
+        ___scopedTrace.emplace(name);                                                                                  \
+    }
 #define VALDI_TRACE_META(name, meta)                                                                                   \
-    Valdi::ScopedTrace ___scopedTrace(Valdi::kTracingEnabled ? Valdi::getTraceName(name, meta) : "");
+    std::optional<Valdi::ScopedTrace> ___scopedTrace;                                                                  \
+    if (Valdi::isTracingActive()) {                                                                                    \
+        ___scopedTrace.emplace(Valdi::getTraceName(name, meta));                                                       \
+    }
 
 #endif
 

@@ -2,7 +2,7 @@
     "integrity": "sha256-yP2isVGAGPJtfKkUzZrbDp8XmdDbfEtRDeZ+1QAGDa4=",
     "url": "https://github.com/bazel-contrib/rules_kotlin/releases/download/v2.3.10/rules_kotlin-v2.3.10.tar.gz",
     "patches": {
-        "module_dot_bazel_version.patch": "sha256-S+jj+9OmYXB1yB0pBcdjpbYRVrsgyN0jnTSMX7T3nBY="
+        "module_dot_bazel_version.patch": "sha256-WxqtftDwoPKV9QFkBCJz5sQCyPa5ExiqdHJ+aSxSmPc="
     },
     "patch_strip": 1
 }

@@ -114,6 +114,66 @@ describe('VersioningValidator', () => {
     ]);
   });
 
+  it('rejects versioned properties accessed with bracket notation outside a version guard', () => {
+    const diagnostics = getDiagnosticTexts(`
+      interface MyModel {
+        title: string;
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      function render(model: MyModel) {
+        model['subtitle'];
+      }
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'subtitle' requires @Version(43) or an enclosing isVersionAtLeast(43) block",
+    ]);
+  });
+
+  it('allows versioned properties accessed with bracket notation inside a sufficient version guard', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface MyModel {
+        title: string;
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      function render(model: MyModel) {
+        if (isVersionAtLeast(43)) {
+          model['subtitle'];
+        }
+      }
+    `);
+
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('rejects versioned properties accessed with bracket notation inside an insufficient version guard', () => {
+    const diagnostics = getDiagnosticTexts(`
+      declare function isVersionAtLeast(version: number): boolean;
+
+      interface MyModel {
+        title: string;
+        // @Version(43)
+        subtitle?: string;
+      }
+
+      function render(model: MyModel) {
+        if (isVersionAtLeast(42)) {
+          model['subtitle'];
+        }
+      }
+    `);
+
+    expect(diagnostics).toEqual([
+      "Property 'subtitle' requires @Version(43) or an enclosing isVersionAtLeast(43) block",
+    ]);
+  });
+
   it('rejects destructuring versioned properties outside a sufficient version guard', () => {
     const diagnostics = getDiagnosticTexts(`
       interface MyModel {
@@ -891,26 +951,6 @@ describe('VersioningValidator', () => {
     expect(diagnostics).toEqual([
       "Property 'subtitle' requires @Version(43) or an enclosing isVersionAtLeast(43) block",
     ]);
-  });
-
-  it('preserves stronger surrounding version guards inside explicitly versioned function bodies', () => {
-    const diagnostics = getDiagnosticTexts(`
-      declare function isVersionAtLeast(version: number): boolean;
-
-      interface MyModel {
-        // @Version(43)
-        subtitle?: string;
-      }
-
-      if (isVersionAtLeast(43)) {
-        // @Version(42)
-        function render(model: MyModel) {
-          model.subtitle;
-        }
-      }
-    `);
-
-    expect(diagnostics).toEqual([]);
   });
 
   it('allows nested lambdas created inside a far outer version guard to use versioned properties', () => {

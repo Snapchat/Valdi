@@ -738,6 +738,20 @@ void ViewNodeTree::withLock(const DispatchFunction& fn) {
     });
 }
 
+bool ViewNodeTree::tryWithLock(const DispatchFunction& fn, const std::chrono::steady_clock::time_point& deadline) {
+    TrackedLock guard(_mutex, deadline);
+    if (!guard.owns()) {
+        return false;
+    }
+    ContextEntry contextEntry(_context);
+    _context->withAttribution([&]() {
+        auto viewTransationScope = beginViewTransaction();
+        fn();
+        endViewTransaction(viewTransationScope, /* layoutDidBecomeDirty */ false);
+    });
+    return true;
+}
+
 void ViewNodeTree::runUpdates() {
     if (_updateFunctions.empty()) {
         return;

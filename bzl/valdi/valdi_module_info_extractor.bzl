@@ -1,5 +1,6 @@
 load(":valdi_compiled.bzl", "ValdiModuleInfo")
 load(":valdi_extract_output_rule_helper.bzl", "extract_valdi_output_rule")
+load(":valdi_toolchain_type.bzl", "VALDI_TOOLCHAIN_TYPE")
 
 def empty_bundle_directory(name, src, visibility = ["//visibility:private"]):
     """Valid empty .bundle for apple_bundle_import when a valdi module has no bundle resources. Creates a filegroup."""
@@ -119,4 +120,7 @@ extract_transitive_valdi_module_output = rule(
             allow_single_file = True,
         ),
     },
+    # See extract_valdi_output_rule: steers the exec transition above to a
+    # platform where the valdi toolchain can run.
+    toolchains = [VALDI_TOOLCHAIN_TYPE],
 )

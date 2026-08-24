@@ -1,3 +1,4 @@
 module(name = "android_macros")
 
 bazel_dep(name = "rules_android", version = "0.5.1")
+bazel_dep(name = "rules_python", version = "1.9.0")

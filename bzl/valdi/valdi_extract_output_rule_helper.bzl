@@ -1,4 +1,5 @@
 load(":valdi_compiled.bzl", "ValdiModuleInfo")
+load(":valdi_toolchain_type.bzl", "VALDI_TOOLCHAIN_TYPE")
 
 def extract_valdi_output_rule(implementation, attrs):
     # TODO(simon): We use cfg = "exec" to avoid compiling multiple
@@ -14,4 +15,13 @@ def extract_valdi_output_rule(implementation, attrs):
         providers = [ValdiModuleInfo],
     )
 
-    return rule(implementation = implementation, attrs = attrs)
+    return rule(
+        implementation = implementation,
+        attrs = attrs,
+        # Not used by the implementations: requiring the type makes this
+        # rule's exec platform (which the cfg = "exec" above transitions to)
+        # follow valdi toolchain availability, so compiled_module lands in an
+        # exec configuration whose valdi toolchain is actually runnable there
+        # (see //bzl/valdi:mac_only_execution).
+        toolchains = [VALDI_TOOLCHAIN_TYPE],
+    )

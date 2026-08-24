@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# This script calls `bazel` directly. Some environments expose only the `bzl` wrapper and no bare
+# `bazel`; fall back to it (mirror of the shim in bazel_build.sh, which goes the other direction).
+if ! command -v bazel > /dev/null 2>&1 && command -v bzl > /dev/null 2>&1; then
+    bazel() { bzl "$@"; }
+    export -f bazel
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TESTDATA_DIR="$REPO_ROOT/apps/snapshot_tests/testdata"

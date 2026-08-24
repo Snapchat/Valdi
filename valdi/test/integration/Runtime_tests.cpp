@@ -68,6 +68,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 using namespace Valdi;
@@ -141,6 +142,10 @@ public:
 class RuntimeFixture : public JSBridgeTestFixture {
 protected:
     void SetUp() override {
+        JSBridgeTestFixture::SetUp();
+        if (IsSkipped()) {
+            return;
+        }
         auto* jsBridge = getJsBridge();
         wrapper = RuntimeWrapper(jsBridge, getTSNMode());
     }
@@ -281,6 +286,40 @@ TEST_P(RuntimeFixture, exposesGlobalThis) {
 
     ASSERT_TRUE(evalResult) << evalResult.description();
     ASSERT_TRUE(evalResult.value().toBool());
+}
+
+TEST_P(RuntimeFixture, traceProxyRetainsCallbackAcrossGC) {
+    // Regression: JavaScriptRuntimeTraceProxyCallable used to hold its wrapped callback as a bare,
+    // non-owning JSValue. Under Hermes the callback's pooled value could be collected and its slot
+    // recycled while the proxy still referenced it, so invoking the proxy hit a dangling handle and
+    // threw "Value is not a function". The proxy must retain the callback for its own lifetime.
+    auto javaScriptRuntime = wrapper.runtime->getJavaScriptRuntime();
+
+    // makeTraceProxy is only bound when tracing is compiled in (kTracingEnabled); skip otherwise.
+    auto probe = javaScriptRuntime->evaluateScript(
+        makeShared<ByteBuffer>(std::string("return typeof runtime.makeTraceProxy === 'function' ? 1 : 0;"))
+            ->toBytesView(),
+        STRING_LITERAL("eval.js"));
+    ASSERT_TRUE(probe) << probe.description();
+    if (probe.value().toInt() != 1) {
+        GTEST_SKIP() << "tracing disabled in this build (runtime.makeTraceProxy not bound)";
+    }
+
+    // The closure has no JS reference other than the trace proxy itself.
+    std::string setupBody = "globalThis.__traceProxy = runtime.makeTraceProxy('regressionTag', () => 42); return 0;";
+    auto setupResult =
+        javaScriptRuntime->evaluateScript(makeShared<ByteBuffer>(setupBody)->toBytesView(), STRING_LITERAL("eval.js"));
+    ASSERT_TRUE(setupResult) << setupResult.description();
+
+    // Force GC: pre-fix the unrooted closure is collected and its slot recycled.
+    javaScriptRuntime->dispatchSynchronouslyOnJsThread([](auto& jsEntry) { jsEntry.jsContext.garbageCollect(); });
+
+    // Invoke through the proxy: it must still resolve to the original callback.
+    std::string callBody = "return __traceProxy();";
+    auto callResult =
+        javaScriptRuntime->evaluateScript(makeShared<ByteBuffer>(callBody)->toBytesView(), STRING_LITERAL("eval.js"));
+    ASSERT_TRUE(callResult) << callResult.description();
+    ASSERT_EQ(42, callResult.value().toInt());
 }
 
 TEST_P(RuntimeFixture, canLoadSimpleViewTree) {
@@ -6995,6 +7034,35 @@ TEST_P(RuntimeFixture, supportsNativeModule) {
     ASSERT_EQ(50.0, result.value().toDouble());
 }
 
+// Integration coverage for the sync-teardown guard against a live JS engine, complementing the
+// ValueMarshallerRegistry unit tests that pin forwardCall()'s graceful-null behavior. Reproduces
+// the two facts the guard relies on: once the owning JS runtime is disposed (e.g. by worker
+// termination), a JS-backed function (1) reports ownerIsTearingDown() == true, and (2) a
+// synchronous call is skipped and yields 'undefined' rather than running. Before the guard,
+// unmarshalling that 'undefined' into compute()'s number return raised an uncatchable error at
+// the call site.
+TEST_P(RuntimeFixture, jsFunctionReportsOwnerTearingDownAndSkipsSyncCallAfterRuntimeDisposed) {
+    auto fnResult = getJsModulePropertyAsUntypedFunction(wrapper.runtime, nullptr, "test/src/NativeModule", "compute");
+    ASSERT_TRUE(fnResult) << fnResult.description();
+    auto function = fnResult.value();
+
+    // While the runtime is live: not tearing down, and a sync call runs and returns a real number.
+    ASSERT_FALSE(function->ownerIsTearingDown());
+    auto liveResult = function->call(ValueFunctionFlagsCallSync, nullptr, 0);
+    ASSERT_TRUE(liveResult) << liveResult.description();
+    ASSERT_TRUE(liveResult.value().isNumber());
+
+    // Dispose the JS runtime (logout / aggressive worker termination equivalent).
+    wrapper.teardown();
+
+    // The owner now reports tearing-down, and the sync call is skipped -> undefined. This is the
+    // exact state that crashed forwardCall() before the guard; here we assert the JS layer's half.
+    ASSERT_TRUE(function->ownerIsTearingDown());
+    auto skippedResult = function->call(ValueFunctionFlagsCallSync, nullptr, 0);
+    ASSERT_TRUE(skippedResult) << skippedResult.description();
+    ASSERT_TRUE(skippedResult.value().isUndefined());
+}
+
 // Verifies that a sync JS call from the main thread triggers the assertion when the module has
 // async_strict_mode and the function is not annotated with @AllowSyncCall. Uses a dedicated
 // test_async_strict module (async_strict_mode=True) so the main test module can stay non-strict.
@@ -9437,6 +9505,54 @@ TEST_P(RuntimeFixture, supportsCommonJsStyleModuleLoading) {
     ASSERT_TRUE(scopedJsResult) << scopedJsResult.value();
 
     ASSERT_EQ(Value(STRING_LITERAL("number")), scopedJsResult.value());
+}
+
+TEST_P(RuntimeFixture, recordsRuntimeBuiltinWithModulePathForANRAttribution) {
+    wrapper.teardown();
+
+    auto tweakModule = makeShared<TestTweakValueProvider>().toShared();
+    tweakModule->config.setMapValue("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS", Valdi::Value(static_cast<bool>(true)));
+
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, tweakModule);
+
+    auto* jsRuntime = wrapper.runtime->getJavaScriptRuntime();
+
+    // Spins on a builtin whose load always fails until the gate bundle exists, keeping the JS
+    // thread inside runtime.loadJsModule long enough for the observer below to catch the
+    // recorded name mid-call. The gate is flipped off the JS thread (worker queue), which is
+    // the only way to release the loop while the JS thread never yields.
+    std::string evalBody = "while (!runtime.isModuleLoaded('anr_attribution_gate')) {"
+                           "  try { runtime.loadJsModule('test/src/AnrAttributionMissing'); } catch (e) {}"
+                           "}"
+                           "return 0;";
+
+    Result<Value> evalResult;
+    std::thread evalThread([&] {
+        evalResult = jsRuntime->evaluateScript(makeShared<ByteBuffer>(evalBody)->toBytesView(),
+                                               STRING_LITERAL("anr_attribution_eval.js"));
+    });
+
+    const std::string expected = "[stuck-in: runtime.loadJsModule(test/src/AnrAttributionMissing)]";
+    std::string observed;
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto info = jsRuntime->getANRAttributionInfo();
+        if (info.find(expected) != std::string::npos) {
+            observed = info;
+            break;
+        }
+        std::this_thread::yield();
+    }
+
+    // Registering the gate bundle makes isModuleLoaded return true, releasing the JS loop.
+    wrapper.loadModule(STRING_LITERAL("anr_attribution_gate"), ResourceManagerLoadModuleType::Sources);
+    evalThread.join();
+
+    ASSERT_TRUE(evalResult) << evalResult.description();
+    EXPECT_NE(std::string::npos, observed.find(expected)) << "observed: '" << observed << "'";
+    // The [module:] suffix may legitimately remain (last dispatched context), but the in-flight
+    // native call must have unwound.
+    EXPECT_EQ(std::string::npos, jsRuntime->getANRAttributionInfo().find("[stuck-in:"));
 }
 
 TEST_P(RuntimeFixture, canGetFileEntry) {
