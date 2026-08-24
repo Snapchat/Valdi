@@ -24,6 +24,13 @@ Valdi Inspector is a desktop application, written in Valdi itself, which can be 
     ```
     valdi hotreload
     ```
+* To launch the browser-based debugger:
+    ```
+    valdi debugger
+    ```
+    Open the printed `VALDI_DEBUGGER_URL` to inspect running Valdi targets. The
+    command auto-selects a free local port when `8765` is already in use, and
+    `--json` prints startup details for automation.
 * To just launch the inspector: 
     ```
     ./scripts/start_inspector.sh
@@ -60,7 +67,6 @@ The hot reloader establishes a TCP connection between the device/simulator and t
     * Implementing the Linux shell around Skia will take some work (sorry Robert)
 * Inaccurate attribute inspection from CSS documents on .vue components
 * Of course, since the Component preview runs outside of iOS/android, any custom native view will not actually render anything
-
 
 
 

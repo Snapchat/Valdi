@@ -46,7 +46,7 @@ async function inspectTree(argv: ArgumentsResolver<CommandParameters>) {
     await conn.configure();
     const clientId = await resolveClientId(conn, clientOverride);
     const contextId = await resolveContextId(conn, clientId, contextIdArg);
-    let tree = await conn.getContextTree(clientId, contextId);
+    let tree = await conn.getContextTree(clientId, contextId, false);
 
     if (maxDepth !== undefined) {
       tree = trimDepth(tree, maxDepth);

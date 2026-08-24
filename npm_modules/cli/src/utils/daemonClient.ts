@@ -42,6 +42,7 @@ export const DEFAULT_PORT = MOBILE_PORT;
 // ─── Messages.ts protocol (inlined so CLI stays self-contained in open_source) ─
 
 export const enum DaemonMsgType {
+  ERROR_RESPONSE = -1,
   LIST_CONTEXTS_REQUEST = 2,
   LIST_CONTEXTS_RESPONSE = -2,
   GET_CONTEXT_TREE_REQUEST = 3,
@@ -102,6 +103,9 @@ function encodePacket(json: object): Buffer {
 
 // In the direct-to-device protocol we are "client 1" (non-zero required by device JS check).
 const DIRECT_CLIENT_ID = 1;
+const ADB_FORWARD_REFRESH_INTERVAL_MS = 5000;
+const adbForwardedAtByPort = new Map<number, number>();
+const adbForwardRefreshByPort = new Map<number, Promise<void>>();
 
 interface PendingRequest {
   resolve: (value: Record<string, unknown>) => void;
@@ -126,7 +130,7 @@ export class DaemonConnection {
     this.socket = socket;
     socket.on('data', (data: Buffer) => this.onData(data));
     socket.on('close', () => this.rejectAllPending(new Error('Connection closed unexpectedly')));
-    socket.on('error', (err) => this.rejectAllPending(err));
+    socket.on('error', err => this.rejectAllPending(err));
   }
 
   private rejectAllPending(err: Error): void {
@@ -187,7 +191,7 @@ export class DaemonConnection {
       // routed back via forward_client_payload).  Auto-respond to all of them.
       const req = msg['request'] as Record<string, unknown>;
       const reqId = req['request_id'] as string;
-      const respKey = Object.keys(req).find((k) => k !== 'request_id');
+      const respKey = Object.keys(req).find(k => k !== 'request_id');
       if (respKey) {
         this.socket.write(encodePacket({ response: { [respKey]: {}, request_id: reqId } }));
         if (respKey === 'configure') {
@@ -232,25 +236,30 @@ export class DaemonConnection {
     // Note: events from the device (js_debugger_info, new_logs, etc.) are ignored.
   }
 
-  private sendRequest(
-    payload: Record<string, unknown>,
-    timeoutMs = 5_000,
-  ): Promise<Record<string, unknown>> {
+  private sendRequest(payload: Record<string, unknown>, timeoutMs = 5_000): Promise<Record<string, unknown>> {
     const reqId = String(++this.reqCounter);
     const envelope = { request: { ...payload, request_id: reqId } };
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingRequests.delete(reqId);
-        reject(new CliError(
-          `Valdi daemon did not respond (port ${(this.socket.remotePort ?? '?')}).\n` +
-          `Is the hot-reloader actually running and connected?`,
-        ));
+        reject(
+          new CliError(
+            `Valdi daemon did not respond (port ${this.socket.remotePort ?? '?'}).\n` +
+              `Is the hot-reloader actually running and connected?`,
+          ),
+        );
       }, timeoutMs);
       this.pendingRequests.set(reqId, {
-        resolve: (v) => { clearTimeout(timer); resolve(v); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
+        resolve: v => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        reject: e => {
+          clearTimeout(timer);
+          reject(e);
+        },
       });
-      this.socket.write(encodePacket(envelope), (err) => {
+      this.socket.write(encodePacket(envelope), err => {
         if (err) {
           clearTimeout(timer);
           this.pendingRequests.delete(reqId);
@@ -275,14 +284,22 @@ export class DaemonConnection {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.configureReady = null;
-        reject(new CliError(
-          `Valdi daemon did not respond (port ${this.socket.remotePort ?? '?'}).\n` +
-          `Is the hot-reloader actually running and connected?`,
-        ));
+        reject(
+          new CliError(
+            `Valdi daemon did not respond (port ${this.socket.remotePort ?? '?'}).\n` +
+              `Is the hot-reloader actually running and connected?`,
+          ),
+        );
       }, 5_000);
       this.configureReady = {
-        resolve: () => { clearTimeout(timer); resolve(); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
+        resolve: () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        reject: e => {
+          clearTimeout(timer);
+          reject(e);
+        },
       };
     });
   }
@@ -318,31 +335,49 @@ export class DaemonConnection {
         reject(new Error('Timeout waiting for device response. Is the app running?'));
       }, timeoutMs);
       this.payloadListeners.set(msgId, {
-        resolve: (v) => { clearTimeout(timer); resolve(v); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
+        resolve: v => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        reject: e => {
+          clearTimeout(timer);
+          reject(e);
+        },
       });
     });
 
     // Send as an event — the device processes payload_from_client events directly.
     // It routes responses back as forward_client_payload requests (handled in dispatchMessage).
-    this.socket.write(encodePacket({
-      event: {
-        payload_from_client: {
-          sender_client_id: DIRECT_CLIENT_ID,
-          payload_string: payloadString,
+    this.socket.write(
+      encodePacket({
+        event: {
+          payload_from_client: {
+            sender_client_id: DIRECT_CLIENT_ID,
+            payload_string: payloadString,
+          },
         },
-      },
-    }), (err) => {
-      if (err) {
-        const listener = this.payloadListeners.get(msgId);
-        if (listener) {
-          this.payloadListeners.delete(msgId);
-          listener.reject(err);
+      }),
+      err => {
+        if (err) {
+          const listener = this.payloadListeners.get(msgId);
+          if (listener) {
+            this.payloadListeners.delete(msgId);
+            listener.reject(err);
+          }
         }
-      }
-    });
+      },
+    );
 
-    return resultPromise;
+    const response = await resultPromise;
+    if (response['type'] === DaemonMsgType.ERROR_RESPONSE) {
+      const body = response['body'];
+      const message =
+        body !== null && typeof body === 'object' && !Array.isArray(body)
+          ? (body as Record<string, unknown>)['message']
+          : undefined;
+      throw new Error(message === undefined ? 'The Valdi runtime rejected the debugger request.' : String(message));
+    }
+    return response;
   }
 
   async listContexts(clientId: string): Promise<RemoteContext[]> {
@@ -350,8 +385,11 @@ export class DaemonConnection {
     return (resp['body'] ?? []) as RemoteContext[];
   }
 
-  async getContextTree(clientId: string, contextId: string): Promise<unknown> {
-    const resp = await this.forwardAndWait(clientId, DaemonMsgType.GET_CONTEXT_TREE_REQUEST, { id: contextId });
+  async getContextTree(clientId: string, contextId: string, includeComponentData: boolean): Promise<unknown> {
+    const resp = await this.forwardAndWait(clientId, DaemonMsgType.GET_CONTEXT_TREE_REQUEST, {
+      id: contextId,
+      includeComponentData,
+    });
     return resp['body'];
   }
 
@@ -376,10 +414,30 @@ export class DaemonConnection {
 // ─── Factory ─────────────────────────────────────────────────────────────────
 
 async function tryAdbForward(port: number): Promise<void> {
+  const lastForwardedAt = adbForwardedAtByPort.get(port);
+  if (lastForwardedAt !== undefined && Date.now() - lastForwardedAt < ADB_FORWARD_REFRESH_INTERVAL_MS) return;
+
+  const pendingRefresh = adbForwardRefreshByPort.get(port);
+  if (pendingRefresh) {
+    await pendingRefresh;
+    return;
+  }
+
+  const refresh = refreshAdbForward(port);
+  adbForwardRefreshByPort.set(port, refresh);
+  try {
+    await refresh;
+  } finally {
+    if (adbForwardRefreshByPort.get(port) === refresh) adbForwardRefreshByPort.delete(port);
+  }
+}
+
+async function refreshAdbForward(port: number): Promise<void> {
   try {
     await runCliCommand(`adb forward tcp:${port} tcp:${port}`);
+    adbForwardedAtByPort.set(port, Date.now());
   } catch {
-    // adb may not be installed or no Android devices attached — non-fatal
+    // ADB is optional for standalone targets; retry the next time a mobile connection is requested.
   }
 }
 
@@ -405,10 +463,12 @@ export async function connectToDaemon(port: number = DEFAULT_PORT): Promise<Daem
     socket.once('error', (err: NodeJS.ErrnoException) => {
       clearTimeout(timer);
       if (err.code === 'ECONNREFUSED') {
-        reject(new CliError(
-          `Valdi daemon not running on port ${port}.\n` +
-          `Start the hot-reloader (valdi hotreload) or pass --port to use a different port.`,
-        ));
+        reject(
+          new CliError(
+            `Valdi daemon not running on port ${port}.\n` +
+              `Start the hot-reloader (valdi hotreload) or pass --port to use a different port.`,
+          ),
+        );
       } else {
         reject(err);
       }
@@ -434,7 +494,7 @@ export async function resolveContextId(
   }
 
   if (contextIdOverride) {
-    if (!contexts.some((c) => c.id === contextIdOverride)) {
+    if (!contexts.some(c => c.id === contextIdOverride)) {
       throw new CliError(
         `Context "${contextIdOverride}" not found. Run "valdi inspect contexts" to see available contexts.`,
       );
@@ -448,7 +508,7 @@ export async function resolveContextId(
 
   // Multiple contexts — prompt
   return getUserChoice(
-    contexts.map((c) => ({
+    contexts.map(c => ({
       name: `${c.rootComponentName}  [${c.id}]`,
       value: c.id,
     })),
@@ -460,21 +520,18 @@ export async function resolveContextId(
  * Resolve which connected client to target.
  * Priority: explicit --client flag → saved config → auto (single device) → prompt.
  */
-export async function resolveClientId(
-  conn: DaemonConnection,
-  clientIdOverride?: string,
-): Promise<string> {
+export async function resolveClientId(conn: DaemonConnection, clientIdOverride?: string): Promise<string> {
   const clients = await conn.listConnectedClients();
 
   if (clients.length === 0) {
     throw new CliError(
       'No devices connected to the Valdi daemon.\n' +
-      'Make sure the Valdi app is running and connected to the hot-reloader.',
+        'Make sure the Valdi app is running and connected to the hot-reloader.',
     );
   }
 
   if (clientIdOverride) {
-    if (!clients.some((c) => c.client_id === clientIdOverride)) {
+    if (!clients.some(c => c.client_id === clientIdOverride)) {
       throw new CliError(
         `Client "${clientIdOverride}" not found. Run "valdi inspect devices" to see connected clients.`,
       );
@@ -483,7 +540,7 @@ export async function resolveClientId(
   }
 
   const config = loadInspectConfig();
-  if (config.selectedClientId && clients.some((c) => c.client_id === config.selectedClientId)) {
+  if (config.selectedClientId && clients.some(c => c.client_id === config.selectedClientId)) {
     return config.selectedClientId;
   }
 
@@ -493,7 +550,7 @@ export async function resolveClientId(
 
   // Multiple devices — prompt
   return getUserChoice(
-    clients.map((c) => ({
+    clients.map(c => ({
       name: `${c.application_id} (${c.platform})  [${c.client_id}]`,
       value: c.client_id,
     })),

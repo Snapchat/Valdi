@@ -16,6 +16,7 @@
   },
   "files": [
     "dist",
+    "debugger",
     "bundled-skills",
     ".metadata",
     ".bootstrap"

@@ -40,6 +40,7 @@ Commands:
   valdi export <platform>                                      Build and export a Valdi library
   valdi hotreload [--module module_name] [--target             Starts the hotreloader for the application
   target_name]
+  valdi debugger                                               Starts the Valdi debugger web interface
   valdi test [--module module_name] [--target target_name]     Runs tests for given module(s) or target(s). Runs all
                                                                tests if no module or target is specified.
   valdi lint <command>                                         Checks and formats the code
@@ -150,6 +151,20 @@ Starts the Valdi [hotreloader](./start-about.md#prototype-quickly-with-hot-reloa
 - When `--module` and `--target` is omitted, it will attempt to run the application target of the current workspace. If there is more than one defined application, the specific target will need to be specified.
 - The `--target` option should be a valid Bazel target (ex: `//:hello_world_hotreload`).
 - The `--module` option will query and run targets in the current workspace which match the module_name.<br></br>
+
+`valdi debugger [--host host] [--port port] [--strict-port] [--json]`\
+Starts a local browser-based Valdi debugger web interface. The debugger attaches
+to running Valdi daemon targets and exposes live view hierarchy, preview,
+inspector data, element snapshots, heap dumps, and runtime logs. CPU profiling
+uses a separate Hermes debugger connection.
+
+- The default host is `127.0.0.1`; the debugger rejects non-loopback bind
+  addresses because snapshots can contain application data.
+- The preferred port is `8765`; if it is busy, the command selects the next
+  available port so multiple local debugger sessions can run at once.
+- Use `--strict-port` to fail instead of auto-selecting another port.
+- Use `--json` to print one machine-readable startup object with the selected
+  `url`, `port`, `requestedPort`, and `portWasAutoSelected` fields.<br></br>
 
 `valdi test [--module module_name] [--target target_name]`\
 Executes the test(s) for the provided targets. Note that multiple modules OR targets can be provided to execute all tests simultaneously. If no modules or targets are provided, ALL tests within the current workspace will be ran.<br></br>

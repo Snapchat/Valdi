@@ -82,6 +82,14 @@ For complete documentation, see:
 - Enables instant hot reload during development
 - Watches for file changes and updates app in milliseconds
 
+**`valdi debugger`** - Local debugger web interface
+- Starts the browser-based Valdi debugger at `127.0.0.1`
+- Uses live daemon data from running Valdi targets for view hierarchy, preview, inspector state, snapshots, heap, and runtime logs
+- Captures CPU profiles through a separate Hermes debugger connection
+- Restricts the server to loopback addresses because debugger snapshots can contain application data
+- Prefers port `8765` and automatically selects the next available port so multiple local sessions can run at once
+- Supports `--json` for automation-friendly startup output
+
 **`valdi skills`** - AI assistant skills
 - Installs Valdi context files into Claude Code, Cursor, or GitHub Copilot so AI tools generate correct Valdi code instead of React patterns
 - `valdi skills install` — auto-detects installed AI tools and installs all skills

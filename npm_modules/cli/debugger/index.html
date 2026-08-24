@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en" data-theme="sunset">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Valdi Debugger</title>
+    <link rel="stylesheet" href="./debugger.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="title-row">
+          <div class="brand-mark">V</div>
+          <div class="title-copy">
+            <h1>Valdi Debugger</h1>
+            <div class="subtitle" id="sessionSubtitle">No session selected</div>
+          </div>
+        </div>
+        <div class="toolbar">
+          <span class="status-pill"
+            ><span class="dot good" id="reloaderDot"></span><span id="reloaderState">Hot reloader online</span></span
+          >
+          <span class="status-pill"
+            ><span class="dot warn" id="proxyDot"></span><span id="proxyState">Proxy 9010 idle</span></span
+          >
+          <details class="connection-drawer">
+            <summary class="connection-summary">
+              <span class="connection-summary-text">Targets / Daemon</span>
+              <span class="connection-summary-hint">Details</span>
+            </summary>
+            <div class="connection-content">
+              <section class="connection-section">
+                <div class="connection-section-header">
+                  <h2 class="panel-title">Targets</h2>
+                  <button class="icon" id="refreshTargets" title="Refresh targets">R</button>
+                </div>
+                <div class="target-list" id="targetList"></div>
+              </section>
+              <section class="connection-section">
+                <h2 class="panel-title">Daemon Status</h2>
+                <div class="daemon-status" id="daemonStatus"></div>
+              </section>
+            </div>
+          </details>
+          <select id="portSelect" title="Preview renderer or Valdi daemon target">
+            <option value="13591">SnapDrawing / standalone :13591</option>
+            <option value="13592">mobile :13592</option>
+          </select>
+          <button id="attachButton" class="primary">Attach</button>
+          <button id="reloadButton" title="Fetch the latest Valdi tree and preview snapshot">Refresh</button>
+          <label title="Track live host tree, scroll offsets, and preview snapshot"
+            ><input id="autoRefreshToggle" type="checkbox" />Auto</label
+          >
+        </div>
+      </header>
+
+      <main class="debugger-shell">
+        <nav class="section-rail" aria-label="Debugger sections">
+          <button class="section-button active" data-section-button="ui">
+            <strong>UI</strong>
+            <span>Preview, hierarchy, inspector</span>
+          </button>
+          <button class="section-button" data-section-button="performance">
+            <strong>Performance</strong>
+            <span>Hermes CPU profiles</span>
+          </button>
+          <button class="section-button" data-section-button="logs">
+            <strong>Logs</strong>
+            <span>Runtime logs, commands</span>
+          </button>
+        </nav>
+
+        <section class="section-panel active" data-section-panel="ui">
+          <div class="workspace">
+            <section class="main">
+              <div class="export-panel" id="exportPanel">
+                <div class="export-header">
+                  <div class="export-title" id="exportTitle">Export</div>
+                  <div class="export-actions">
+                    <a id="exportOpenLink" target="_blank" rel="noopener">Open JSON</a>
+                    <button id="copyExportButton">Copy JSON</button>
+                    <button id="closeExportButton">Close</button>
+                  </div>
+                </div>
+                <textarea id="exportText" spellcheck="false" readonly></textarea>
+              </div>
+
+              <div class="main-toolbar">
+                <div class="main-title">
+                  <h2 class="panel-title">Live Preview / View Hierarchy</h2>
+                  <span id="hierarchySource" class="source-pill">Empty</span>
+                </div>
+                <div class="main-toolbar-actions">
+                  <div class="segmented" aria-label="Preview mode">
+                    <button id="modeLive" class="active">Live</button>
+                    <button id="modeIssues">Issues</button>
+                  </div>
+                  <button
+                    id="copyPreviewButton"
+                    title="Copy the live preview image, or snapshot JSON if no image is available"
+                  >
+                    Copy
+                  </button>
+                  <div class="status-pill">
+                    <span class="dot good"></span><span id="selectedSummary">No node selected</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="stage" id="previewStage">
+                <div class="device" id="deviceFrame">
+                  <div class="screen" id="screen">
+                    <div class="app-preview" id="appPreview">
+                      <div id="htmlPreviewRoot" class="html-preview-root" aria-label="Live Valdi HTML preview"></div>
+                      <img id="rootSnapshotImage" class="root-snapshot" alt="" hidden />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="hierarchy-dock" aria-label="View hierarchy">
+                <div class="tree-controls">
+                  <input id="treeSearch" type="search" placeholder="Filter tags, ids, attributes" />
+                </div>
+                <div class="tree" id="tree"></div>
+              </div>
+            </section>
+
+            <aside class="panel inspector">
+              <div class="panel-header">
+                <h2 class="panel-title">Inspector</h2>
+                <div>
+                  <button class="icon" id="snapshotButton" title="Capture selected element snapshot">S</button>
+                  <button class="icon" id="copyPathButton" title="Copy selected path">C</button>
+                </div>
+              </div>
+              <div class="tabs">
+                <button data-tab="overview" class="active">Overview</button>
+                <button data-tab="props">Props</button>
+                <button data-tab="state">State</button>
+                <button data-tab="issues">Issues</button>
+                <button data-tab="raw">Raw</button>
+              </div>
+              <div class="inspector-content" id="inspector"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section
+          class="section-panel performance-panel"
+          data-section-panel="performance"
+          aria-label="Performance tools"
+        >
+          <div class="section-heading">
+            <h2>Performance</h2>
+            <p>Capture Hermes CPU profiles for a connected Valdi JavaScript context.</p>
+          </div>
+          <div class="performance-grid">
+            <details class="performance-card" open>
+              <summary class="performance-card-header">
+                <div class="performance-title">CPU</div>
+                <span class="source-pill" id="profileStatusPill">Idle</span>
+              </summary>
+              <div class="performance-controls">
+                <select id="profileContextSelect" title="Hermes profile context">
+                  <option value="">Auto context</option>
+                </select>
+                <button id="profileRefreshButton" title="Refresh Hermes contexts">Contexts</button>
+                <label
+                  ><input id="profileDurationInput" type="number" min="0.1" max="60" step="0.5" value="5" />s</label
+                >
+                <button id="profileStartButton">Start</button>
+                <button id="profileStopButton">Stop</button>
+                <button id="profileCaptureButton" class="primary">Capture</button>
+                <button id="profileExportButton">Export</button>
+              </div>
+              <div class="performance-summary" id="profileSummary">No CPU profile captured.</div>
+            </details>
+          </div>
+        </section>
+
+        <section class="section-panel" data-section-panel="logs">
+          <div class="console">
+            <div class="console-top">
+              <div class="console-title">Runtime Logs</div>
+              <div class="log-filter">
+                <input id="logSearch" type="search" placeholder="Filter logs" />
+              </div>
+              <button id="clearLogsButton" class="console-action" title="Clear logs shown in this debugger session">
+                Clear logs
+              </button>
+            </div>
+            <div class="log-list" id="logs"></div>
+            <form class="console-prompt" id="commandForm">
+              <span class="prompt-glyph">&gt;</span>
+              <input
+                id="commandInput"
+                autocomplete="off"
+                placeholder="Try: help, status, refresh, select <node-id>, clear"
+              />
+              <button type="submit" class="primary">Run</button>
+            </form>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./debugger-state.js"></script>
+    <script src="./debugger-api.js"></script>
+    <script src="./debugger-model.js"></script>
+    <script src="./debugger-preview-html.js"></script>
+    <script src="./debugger-render.js"></script>
+    <script src="./debugger-runtime.js"></script>
+    <script src="./debugger-performance.js"></script>
+    <script src="./debugger-actions.js"></script>
+    <script src="./debugger-session.js"></script>
+    <script src="./debugger-bootstrap.js"></script>
+  </body>
+</html>

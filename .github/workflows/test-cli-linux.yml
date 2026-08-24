@@ -5,6 +5,7 @@ on:
     paths:
       - 'npm_modules/cli/src/**'
       - 'npm_modules/cli/test/**'
+      - 'npm_modules/cli/debugger/**'
       - 'npm_modules/cli/package.json'
       - '.github/workflows/test-cli-linux.yml'
   push:
@@ -13,6 +14,7 @@ on:
     paths:
       - 'npm_modules/cli/src/**'
       - 'npm_modules/cli/test/**'
+      - 'npm_modules/cli/debugger/**'
       - 'npm_modules/cli/package.json'
       - '.github/workflows/test-cli-linux.yml'
   workflow_dispatch:

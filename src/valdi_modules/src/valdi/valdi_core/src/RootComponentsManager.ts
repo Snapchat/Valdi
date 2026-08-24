@@ -8,7 +8,7 @@ import { EntryPointRenderFunction } from './EntryPointRenderFunction';
 import { IComponent } from './IComponent';
 import { IEntryPointComponent } from './IEntryPointComponent';
 import { RequireFunc } from './IModuleLoader';
-import { fromRenderedVirtualNode } from './IRenderedVirtualNodeData';
+import { fromRenderedVirtualNodeWithOptions } from './IRenderedVirtualNodeData';
 import { IRootComponentsManager } from './IRootComponentsManager';
 import { getModuleLoader } from './ModuleLoaderGlobal';
 import { withLocalNativeRefs } from './NativeReferences';
@@ -366,7 +366,11 @@ export class RootComponentsManager implements IRootComponentsManager, IDaemonCli
         return;
       }
 
-      const rootNodeData = fromRenderedVirtualNode(rootNode, true);
+      const rootNodeData = fromRenderedVirtualNodeWithOptions(rootNode, {
+        includeAttributes: true,
+        includeComponentData: message.message.body.includeComponentData === true,
+        onCreate: undefined,
+      });
       message.respond(requestId => Messages.getContextTreeResponse(requestId, rootNodeData));
     } else if (message.message.type === DaemonClientMessageType.TAKE_ELEMENT_SNAPSHOT_REQUEST) {
       const contextId = message.message.body.contextId;

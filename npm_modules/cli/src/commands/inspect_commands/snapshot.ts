@@ -77,7 +77,7 @@ async function inspectSnapshot(argv: ArgumentsResolver<CommandParameters>) {
 
     let elementId = elementIdArg;
     if (keyOverride) {
-      const tree = await conn.getContextTree(clientId, contextId);
+      const tree = await conn.getContextTree(clientId, contextId, false);
       const found = findElementByKey(tree, keyOverride);
       if (!found) {
         throw new Error(`No element found with key "${keyOverride}". Use "valdi inspect tree" to see available keys.`);

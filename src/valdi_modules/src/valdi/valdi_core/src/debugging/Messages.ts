@@ -33,6 +33,7 @@ export interface RemoteValdiContext {
 
 export interface GetContextTreeBody {
   id: string;
+  includeComponentData?: boolean;
 }
 
 export interface TakeElementSnapshotBody {
