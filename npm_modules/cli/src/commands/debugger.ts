@@ -1,5 +1,5 @@
 import type { Argv } from 'yargs';
-import { startDebuggerServer } from '../debugger/server';
+import { resolveDebuggerUiPort, startDebuggerServer } from '../debugger/server';
 import type { ArgumentsResolver } from '../utils/ArgumentsResolver';
 import { makeCommandHandler } from '../utils/errorUtils';
 
@@ -42,6 +42,8 @@ async function valdiDebugger(argv: ArgumentsResolver<CommandParameters>): Promis
     console.log(
       JSON.stringify({
         url: debuggerServer.url,
+        apiToken: debuggerServer.apiToken,
+        apiTokenHeader: debuggerServer.apiTokenHeader,
         host: debuggerServer.host,
         port: debuggerServer.port,
         requestedPort: debuggerServer.requestedPort,
@@ -72,7 +74,7 @@ export const builder = (yargs: Argv<CommandParameters>) => {
     .option('port', {
       describe: 'Preferred debugger web server port',
       type: 'number',
-      default: Number.parseInt(process.env['VALDI_DEBUGGER_PORT'] || '8765', 10),
+      default: resolveDebuggerUiPort(),
     })
     .option('strict-port', {
       describe: 'Fail instead of selecting the next available port when the preferred port is busy',

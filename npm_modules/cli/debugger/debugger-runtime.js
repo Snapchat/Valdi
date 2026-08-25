@@ -82,7 +82,7 @@ function startRuntimeLogStream(options = {}) {
   if (state.runtimeLogStream && state.runtimeLogStreamKey === key) return;
 
   stopRuntimeLogStream();
-  const source = new EventSource(`/api/runtime-logs/stream?${key}`);
+  const source = new EventSource(debuggerEventSourceUrl(`/api/runtime-logs/stream?${key}`));
   state.runtimeLogStream = source;
   state.runtimeLogStreamKey = key;
 

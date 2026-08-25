@@ -51,7 +51,25 @@ serialization. That data can be sensitive, is bounded by a per-field and
 whole-tree character budget, and is never included in ordinary `valdi inspect
 tree` requests. Auto-refresh starts disabled so serialization remains a
 deliberate local debugging action. The server rejects non-loopback Host,
-Origin, and cross-site browser API requests.
+Origin, and cross-site browser API requests. It also generates a fresh
+high-entropy API token for every server instance and rejects every `/api/*`
+GET, POST, and event stream that does not present it. Browser and DevTools
+pages receive the token in the served HTML bootstrap, use the
+`X-Valdi-Debugger-Token` header for fetches, and add it only to same-origin
+EventSource URLs (whose document has `Referrer-Policy: no-referrer`). The
+ordinary CLI log and `VALDI_DEBUGGER_URL` never contain the token. Agents must
+start the command with `--json`, treat the returned `apiToken` as a secret, and
+send it using the returned `apiTokenHeader` name.
+
+The UI listener and CLI target discovery use separate environment variables:
+
+- `VALDI_DEBUGGER_UI_PORT` selects the browser HTTP port (default `8765`).
+- `VALDI_DEBUGGER_SERVICE_PORT` tells target discovery which Valdi runtime
+  debugger service port to probe. Without it, discovery probes
+  the standalone and mobile defaults (`13591` and `13592`).
+
+Both values must be decimal integers in the range 1–65535. The legacy
+`VALDI_DEBUGGER_PORT` name is intentionally not used by the UI or service.
 
 ## Development Loop
 

@@ -4,14 +4,22 @@ import * as http from 'node:http';
 import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import type { CpuProfile } from '../utils/hermesClient';
 import type { DebuggerServerInfo } from './server';
-import { startDebuggerServer } from './server';
+import {
+  createInterruptibleOperation,
+  resolveDebuggerServicePort,
+  resolveDebuggerUiPort,
+  startDebuggerServer,
+  summarizeCpuProfile,
+} from './server';
 
 interface HttpResult {
   body: string;
   contentSecurityPolicy: string;
   contentType: string;
   statusCode: number;
+  referrerPolicy: string;
   xFrameOptions: string;
 }
 
@@ -81,6 +89,7 @@ async function request(url: string, options: HttpRequestOptions): Promise<HttpRe
             contentSecurityPolicy: String(response.headers['content-security-policy'] ?? ''),
             contentType: String(response.headers['content-type'] ?? ''),
             statusCode: response.statusCode ?? 0,
+            referrerPolicy: String(response.headers['referrer-policy'] ?? ''),
             xFrameOptions: String(response.headers['x-frame-options'] ?? ''),
           });
         });
@@ -113,6 +122,7 @@ function startStreamingRequest(
           contentSecurityPolicy: String(response.headers['content-security-policy'] ?? ''),
           contentType: String(response.headers['content-type'] ?? ''),
           statusCode: response.statusCode ?? 0,
+          referrerPolicy: String(response.headers['referrer-policy'] ?? ''),
           xFrameOptions: String(response.headers['x-frame-options'] ?? ''),
         });
       });
@@ -120,6 +130,26 @@ function startStreamingRequest(
     outgoingRequest.once('error', reject);
   });
   return { request: outgoingRequest, result };
+}
+
+function authenticatedOptions(server: DebuggerServerInfo, options: HttpRequestOptions): HttpRequestOptions {
+  return {
+    ...options,
+    headers: {
+      ...options.headers,
+      [server.apiTokenHeader]: server.apiToken,
+    },
+  };
+}
+
+async function requestApi(server: DebuggerServerInfo, route: string, options: HttpRequestOptions): Promise<HttpResult> {
+  return await request(new URL(route, server.url).toString(), authenticatedOptions(server, options));
+}
+
+function eventSourceUrl(server: DebuggerServerInfo, route: string): string {
+  const url = new URL(route, server.url);
+  url.searchParams.set('valdiDebuggerToken', server.apiToken);
+  return url.toString();
 }
 
 async function readSseEvents(
@@ -140,7 +170,7 @@ async function readSseEvents(
         while (separatorIndex !== -1) {
           const eventBlock = pending.slice(0, separatorIndex);
           pending = pending.slice(separatorIndex + 2);
-          const lines = eventBlock.split('\n');
+          const lines = eventBlock.trimStart().split('\n');
           if (lines[0] !== `event: ${eventName}`) {
             separatorIndex = pending.indexOf('\n\n');
             continue;
@@ -173,9 +203,15 @@ describe('debugger server', () => {
   let debuggerServer: DebuggerServerInfo | undefined;
   let occupiedPortServer: net.Server | undefined;
   let originalHome: string | undefined;
+  let originalServicePort: string | undefined;
+  let originalUiPort: string | undefined;
 
   beforeEach(() => {
     originalHome = process.env['HOME'];
+    originalServicePort = process.env['VALDI_DEBUGGER_SERVICE_PORT'];
+    originalUiPort = process.env['VALDI_DEBUGGER_UI_PORT'];
+    delete process.env['VALDI_DEBUGGER_SERVICE_PORT'];
+    delete process.env['VALDI_DEBUGGER_UI_PORT'];
     assetRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valdi-debugger-assets-'));
     fs.writeFileSync(path.join(assetRoot, 'index.html'), '<!doctype html><title>Valdi Debugger</title>', 'utf8');
   });
@@ -194,6 +230,16 @@ describe('debugger server', () => {
     } else {
       process.env['HOME'] = originalHome;
     }
+    if (originalServicePort === undefined) {
+      delete process.env['VALDI_DEBUGGER_SERVICE_PORT'];
+    } else {
+      process.env['VALDI_DEBUGGER_SERVICE_PORT'] = originalServicePort;
+    }
+    if (originalUiPort === undefined) {
+      delete process.env['VALDI_DEBUGGER_UI_PORT'];
+    } else {
+      process.env['VALDI_DEBUGGER_UI_PORT'] = originalUiPort;
+    }
     fs.rmSync(assetRoot, { recursive: true, force: true });
   });
 
@@ -210,8 +256,12 @@ describe('debugger server', () => {
     expect(result.statusCode).toBe(200);
     expect(result.contentType).toBe('text/html; charset=utf-8');
     expect(result.body).toContain('Valdi Debugger');
+    expect(debuggerServer.apiToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(debuggerServer.url).not.toContain(debuggerServer.apiToken);
+    expect(result.body).toContain(`name="valdi-debugger-api-token" content="${debuggerServer.apiToken}"`);
     expect(result.contentSecurityPolicy).toContain("script-src 'self'");
     expect(result.contentSecurityPolicy).toContain("frame-ancestors 'none'");
+    expect(result.referrerPolicy).toBe('no-referrer');
     expect(result.xFrameOptions).toBe('DENY');
   });
 
@@ -225,7 +275,7 @@ describe('debugger server', () => {
     debuggerServer = serverToClose;
 
     const response = await new Promise<http.IncomingMessage>((resolve, reject) => {
-      const outgoingRequest = http.get(new URL('/api/debugger/events', serverToClose.url).toString(), resolve);
+      const outgoingRequest = http.get(eventSourceUrl(serverToClose, '/api/debugger/events'), resolve);
       outgoingRequest.once('error', reject);
     });
     response.resume();
@@ -286,6 +336,174 @@ describe('debugger server', () => {
         strictPort: true,
       }),
     ).toBeRejectedWithError(/between 1 and 65535/);
+  });
+
+  it('validates the distinct UI and runtime service port environments', async () => {
+    process.env['VALDI_DEBUGGER_UI_PORT'] = '9100';
+    process.env['VALDI_DEBUGGER_SERVICE_PORT'] = '14000';
+    expect(resolveDebuggerUiPort()).toBe(9100);
+    expect(resolveDebuggerServicePort()).toBe(14000);
+
+    process.env['VALDI_DEBUGGER_UI_PORT'] = '9100suffix';
+    expect(() => resolveDebuggerUiPort()).toThrowError(/VALDI_DEBUGGER_UI_PORT must be an integer/);
+    process.env['VALDI_DEBUGGER_UI_PORT'] = '9100';
+    process.env['VALDI_DEBUGGER_SERVICE_PORT'] = '0';
+    expect(() => resolveDebuggerServicePort()).toThrowError(/VALDI_DEBUGGER_SERVICE_PORT must be an integer/);
+
+    process.env['VALDI_DEBUGGER_SERVICE_PORT'] = 'invalid';
+    await expectAsync(
+      startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+      }),
+    ).toBeRejectedWithError(/VALDI_DEBUGGER_SERVICE_PORT must be an integer/);
+    delete process.env['VALDI_DEBUGGER_SERVICE_PORT'];
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+  });
+
+  it('uses the configured runtime service port for target discovery', async () => {
+    const servicePort = await getFreePort();
+    process.env['VALDI_DEBUGGER_SERVICE_PORT'] = String(servicePort);
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+
+    const result = await requestApi(debuggerServer, '/api/status', GET_REQUEST_OPTIONS);
+    const responseBody = JSON.parse(result.body) as { defaultPort: number; ports: Array<{ port: number }> };
+
+    expect(result.statusCode).toBe(200);
+    expect(responseBody.defaultPort).toBe(servicePort);
+    expect(responseBody.ports.map(status => status.port)).toEqual([servicePort]);
+  });
+
+  it('allows only one debugger server per process and resets the guard after close', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+
+    await expectAsync(
+      startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+      }),
+    ).toBeRejectedWithError(/already starting or running/);
+    expect((await request(debuggerServer.url, GET_REQUEST_OPTIONS)).statusCode).toBe(200);
+
+    await debuggerServer.close();
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+    expect((await request(debuggerServer.url, GET_REQUEST_OPTIONS)).statusCode).toBe(200);
+  });
+
+  it('requires the per-server token for API GET, POST, and event streams', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+
+    const missingGet = await request(new URL('/api/status', debuggerServer.url).toString(), GET_REQUEST_OPTIONS);
+    const wrongGet = await request(new URL('/api/status', debuggerServer.url).toString(), {
+      ...GET_REQUEST_OPTIONS,
+      headers: { [debuggerServer.apiTokenHeader]: 'wrong-token' },
+    });
+    const queryOnNonStream = new URL('/api/status', debuggerServer.url);
+    queryOnNonStream.searchParams.set('valdiDebuggerToken', debuggerServer.apiToken);
+    const queryGet = await request(queryOnNonStream.toString(), GET_REQUEST_OPTIONS);
+    const missingPost = await request(new URL('/api/debugger/actions', debuggerServer.url).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'setAutoRefresh', params: { enabled: true } }),
+    });
+    const missingStream = await request(
+      new URL('/api/debugger/events', debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const wrongStream = new URL('/api/debugger/events', debuggerServer.url);
+    wrongStream.searchParams.set('valdiDebuggerToken', 'wrong-token');
+    const wrongStreamResult = await request(wrongStream.toString(), GET_REQUEST_OPTIONS);
+
+    expect(missingGet.statusCode).toBe(401);
+    expect(wrongGet.statusCode).toBe(401);
+    expect(queryGet.statusCode).toBe(401);
+    expect(missingPost.statusCode).toBe(401);
+    expect(missingStream.statusCode).toBe(401);
+    expect(wrongStreamResult.statusCode).toBe(401);
+    expect(missingGet.body).not.toContain(debuggerServer.apiToken);
+
+    const validPost = await requestApi(debuggerServer, '/api/debugger/actions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'setAutoRefresh', params: { enabled: true } }),
+    });
+    const readyEvents = await readSseEvents(
+      eventSourceUrl(debuggerServer, '/api/debugger/events'),
+      'ready',
+      1,
+      () => undefined,
+    );
+    expect(validPost.statusCode).toBe(200);
+    expect(readyEvents).toHaveSize(1);
+  });
+
+  it('lets an explicit stop interrupt a timed operation and shares one completion', async () => {
+    let completionCount = 0;
+    const operation = createInterruptibleOperation(60_000, async () => {
+      completionCount += 1;
+      return 'stopped';
+    });
+
+    const [stopResult, timedResult] = await Promise.all([operation.stop(), operation.result]);
+
+    expect(stopResult).toBe('stopped');
+    expect(timedResult).toBe('stopped');
+    expect(completionCount).toBe(1);
+  });
+
+  it('redacts source URLs from CPU profile summaries without changing the raw profile', () => {
+    const profile: CpuProfile = {
+      nodes: [
+        {
+          id: 1,
+          callFrame: {
+            functionName: 'renderSecret',
+            scriptId: '1',
+            url: 'file:///Users/example/private/app.ts',
+            lineNumber: 42,
+            columnNumber: 1,
+          },
+          hitCount: 1,
+        },
+      ],
+      startTime: 1_000,
+      endTime: 2_000,
+      samples: [1],
+    };
+
+    const summary = summarizeCpuProfile(profile) as { topFunctions: Array<Record<string, unknown>> };
+
+    expect(summary.topFunctions[0]).toEqual({ name: 'renderSecret', lineNumber: 42, sampleCount: 1 });
+    expect(profile.nodes[0]?.callFrame.url).toBe('file:///Users/example/private/app.ts');
   });
 
   it('rejects non-loopback Host headers', async () => {
@@ -375,6 +593,7 @@ describe('debugger server', () => {
       headers: {
         'Content-Type': 'application/json',
         Origin: new URL(debuggerServer.url).origin,
+        [debuggerServer.apiTokenHeader]: debuggerServer.apiToken,
       },
       body: JSON.stringify({ action: 'setAutoRefresh', params: { enabled: true } }),
     });
@@ -395,12 +614,18 @@ describe('debugger server', () => {
 
     const unknown = await request(actionsUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        [debuggerServer.apiTokenHeader]: debuggerServer.apiToken,
+      },
       body: JSON.stringify({ action: 'typoAction', params: {} }),
     });
     const invalidPort = await request(actionsUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        [debuggerServer.apiTokenHeader]: debuggerServer.apiToken,
+      },
       body: JSON.stringify({ action: 'setPort', params: { port: 70_000 } }),
     });
 
@@ -423,6 +648,7 @@ describe('debugger server', () => {
     expect(characterOffset).toBeGreaterThan(0);
     const streaming = startStreamingRequest(new URL('/api/debugger/actions', debuggerServer.url).toString(), 'POST', {
       'Content-Type': 'application/json',
+      [debuggerServer.apiTokenHeader]: debuggerServer.apiToken,
     });
 
     streaming.request.write(body.subarray(0, characterOffset + 1));
@@ -442,13 +668,19 @@ describe('debugger server', () => {
       strictPort: true,
     });
     const profileUrl = new URL('/api/performance/profile/start', debuggerServer.url).toString();
-    const first = startStreamingRequest(profileUrl, 'POST', { 'Content-Type': 'application/json' });
+    const first = startStreamingRequest(profileUrl, 'POST', {
+      'Content-Type': 'application/json',
+      [debuggerServer.apiTokenHeader]: debuggerServer.apiToken,
+    });
     first.request.write('{');
     await new Promise<void>(resolve => setTimeout(resolve, 20));
 
     const second = await request(profileUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        [debuggerServer.apiTokenHeader]: debuggerServer.apiToken,
+      },
       body: '{}',
     });
     first.request.end('invalid');
@@ -480,7 +712,7 @@ describe('debugger server', () => {
       strictPort: true,
     });
 
-    const result = await request(new URL('/api/unknown', debuggerServer.url).toString(), GET_REQUEST_OPTIONS);
+    const result = await requestApi(debuggerServer, '/api/unknown', GET_REQUEST_OPTIONS);
 
     expect(result.statusCode).toBe(404);
     expect(result.contentType).toBe('application/json; charset=utf-8');
@@ -510,8 +742,9 @@ describe('debugger server', () => {
       strictPort: true,
     });
 
-    const result = await request(
-      new URL('/api/runtime-logs?applicationId=example&platform=ios', debuggerServer.url).toString(),
+    const result = await requestApi(
+      debuggerServer,
+      '/api/runtime-logs?applicationId=example&platform=ios',
       GET_REQUEST_OPTIONS,
     );
     const responseBody = JSON.parse(result.body) as {
@@ -522,6 +755,26 @@ describe('debugger server', () => {
     expect(result.statusCode).toBe(200);
     expect(responseBody.logFile).toBe('ios-example.log');
     expect(responseBody.logs.map(log => log.message)).toEqual(['exact application']);
+  });
+
+  it('does not expose absolute log paths in filesystem error responses', async () => {
+    const logsDirectory = path.join(assetRoot, 'missing', 'logs');
+    const consoleWarn = spyOn(console, 'warn');
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      logsDirectory,
+      port: await getFreePort(),
+      strictPort: true,
+    });
+
+    const result = await requestApi(debuggerServer, '/api/runtime-logs', GET_REQUEST_OPTIONS);
+    const responseBody = JSON.parse(result.body) as { error: string };
+
+    expect(result.statusCode).toBe(500);
+    expect(responseBody.error).toBe('A local filesystem operation failed. See the debugger server output for details.');
+    expect(result.body).not.toContain(logsDirectory);
+    expect(consoleWarn).toHaveBeenCalledWith(jasmine.stringContaining(logsDirectory));
   });
 
   it('reads the logs directory through the shared YAML config parser', async () => {
@@ -547,8 +800,9 @@ describe('debugger server', () => {
       strictPort: true,
     });
 
-    const result = await request(
-      new URL('/api/runtime-logs?applicationId=configured&platform=ios', debuggerServer.url).toString(),
+    const result = await requestApi(
+      debuggerServer,
+      '/api/runtime-logs?applicationId=configured&platform=ios',
       GET_REQUEST_OPTIONS,
     );
     const responseBody = JSON.parse(result.body) as { logFile: string; logs: Array<{ message: string }> };
@@ -573,7 +827,7 @@ describe('debugger server', () => {
     });
 
     const payloads = await readSseEvents(
-      new URL('/api/runtime-logs/stream?applicationId=example&platform=ios&limit=2', debuggerServer.url).toString(),
+      eventSourceUrl(debuggerServer, '/api/runtime-logs/stream?applicationId=example&platform=ios&limit=2'),
       'logs',
       2,
       (_payload, index) => {

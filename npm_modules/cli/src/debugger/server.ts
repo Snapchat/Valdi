@@ -1,6 +1,7 @@
 import { watch as watchFileSystem } from 'node:fs';
 import type { FSWatcher, Stats } from 'node:fs';
 import fs from 'node:fs/promises';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import http from 'node:http';
 import net from 'node:net';
@@ -17,10 +18,13 @@ import { getUserConfig, resolveFilePath } from '../utils/fileUtils';
 import { type CpuProfile, HERMES_PORT, HermesConnection, listHermesDevices } from '../utils/hermesClient';
 
 const DEFAULT_HOST = process.env['VALDI_DEBUGGER_HOST'] || '127.0.0.1';
-const DEFAULT_PORT = Number.parseInt(process.env['VALDI_DEBUGGER_PORT'] || '8765', 10);
+const DEFAULT_UI_PORT = 8765;
 const HOT_RELOAD_PROXY_PORT = Number.parseInt(process.env['VALDI_HOT_RELOAD_PROXY_PORT'] || '9010', 10);
 const PORT_SEARCH_LIMIT = 50;
 const MAX_RUNTIME_LOG_READ_BYTES = 1024 * 1024;
+const API_TOKEN_HEADER = 'X-Valdi-Debugger-Token';
+const API_TOKEN_QUERY_PARAMETER = 'valdiDebuggerToken';
+const API_TOKEN_META_NAME = 'valdi-debugger-api-token';
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -68,6 +72,11 @@ interface ActiveProfileSession {
   startedAtEpochMs: number;
 }
 
+export interface InterruptibleOperation<T> {
+  result: Promise<T>;
+  stop: () => Promise<T>;
+}
+
 interface DebuggerActionRecord {
   action: string;
   params: Record<string, unknown>;
@@ -112,6 +121,8 @@ export interface DebuggerServerInfo {
   host: string;
   port: number;
   url: string;
+  apiToken: string;
+  apiTokenHeader: string;
   requestedPort: number;
   portWasAutoSelected: boolean;
 }
@@ -146,14 +157,47 @@ let devReloadTimer: NodeJS.Timeout | null = null;
 let activeHost = DEFAULT_HOST;
 let assetRoot = getDefaultAssetRoot();
 let activeLogsDirectory: string | null = null;
+let activeServicePort: number | undefined;
 let activeProfileSession: ActiveProfileSession | null = null;
+let activeProfileCapture: InterruptibleOperation<Record<string, unknown>> | null = null;
 let profileTransitionInProgress = false;
-const debuggerUiState = createDebuggerUiState();
+let debuggerServerLifecycleActive = false;
+let debuggerServerClosing = false;
+let debuggerUiState = createDebuggerUiState(STANDALONE_PORT);
 
 function getDefaultAssetRoot(): string {
   // The published CLI is emitted as CommonJS, so __dirname is the reliable package-relative anchor.
   // eslint-disable-next-line unicorn/prefer-module
   return path.resolve(__dirname, '..', '..', 'debugger');
+}
+
+function readEnvironmentPort(name: string): number | undefined {
+  const value = process.env[name];
+  if (value === undefined || value === '') return undefined;
+  if (!/^\d+$/.test(value)) {
+    throw new Error(`${name} must be an integer between 1 and 65535.`);
+  }
+  const port = Number(value);
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
+    throw new Error(`${name} must be an integer between 1 and 65535.`);
+  }
+  return port;
+}
+
+export function resolveDebuggerUiPort(): number {
+  return readEnvironmentPort('VALDI_DEBUGGER_UI_PORT') ?? DEFAULT_UI_PORT;
+}
+
+export function resolveDebuggerServicePort(): number | undefined {
+  return readEnvironmentPort('VALDI_DEBUGGER_SERVICE_PORT');
+}
+
+function defaultServicePort(): number {
+  return activeServicePort ?? STANDALONE_PORT;
+}
+
+function discoveryServicePorts(): number[] {
+  return activeServicePort === undefined ? [STANDALONE_PORT, MOBILE_PORT] : [activeServicePort];
 }
 
 function normalizedHostname(hostname: string): string {
@@ -222,6 +266,27 @@ function isAllowedApiFetchSite(fetchSiteHeader: string | undefined): boolean {
   return fetchSiteHeader === undefined || fetchSiteHeader === 'same-origin' || fetchSiteHeader === 'none';
 }
 
+function isEventStreamPath(pathname: string): boolean {
+  return (
+    pathname === '/api/dev-events' || pathname === '/api/debugger/events' || pathname === '/api/runtime-logs/stream'
+  );
+}
+
+function tokenMatches(expectedToken: string, suppliedToken: string | undefined): boolean {
+  if (suppliedToken === undefined) return false;
+  const expected = Buffer.from(expectedToken);
+  const supplied = Buffer.from(suppliedToken);
+  return expected.length === supplied.length && timingSafeEqual(expected, supplied);
+}
+
+function hasValidApiToken(request: IncomingMessage, url: URL, apiToken: string): boolean {
+  const header = request.headers[API_TOKEN_HEADER.toLowerCase()];
+  const suppliedHeader = Array.isArray(header) ? undefined : header;
+  if (tokenMatches(apiToken, suppliedHeader)) return true;
+  if (!isEventStreamPath(url.pathname)) return false;
+  return tokenMatches(apiToken, url.searchParams.get(API_TOKEN_QUERY_PARAMETER) ?? undefined);
+}
+
 function probeTcpPort(port: number, timeoutMs: number): Promise<boolean> {
   return new Promise(resolve => {
     const socket = connectToTcpPort(port);
@@ -252,6 +317,22 @@ function errorPayload(error: unknown): { error: string } {
   return {
     error: error instanceof Error ? error.message : String(error),
   };
+}
+
+function isFileSystemError(error: unknown): error is NodeJS.ErrnoException {
+  if (!(error instanceof Error)) return false;
+  const fileSystemError = error as NodeJS.ErrnoException;
+  return (
+    typeof fileSystemError.code === 'string' &&
+    typeof fileSystemError.path === 'string' &&
+    typeof fileSystemError.syscall === 'string'
+  );
+}
+
+function clientErrorPayload(error: unknown): { error: string } {
+  if (!isFileSystemError(error)) return errorPayload(error);
+  console.warn(`Debugger filesystem error: ${errorPayload(error).error}`);
+  return { error: 'A local filesystem operation failed. See the debugger server output for details.' };
 }
 
 function isValidSnapshotBase64(value: string): boolean {
@@ -359,13 +440,29 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function delay(durationMs: number): Promise<void> {
-  return new Promise(resolve => {
-    setTimeout(resolve, durationMs);
+export function createInterruptibleOperation<T>(
+  durationMs: number,
+  complete: () => Promise<T>,
+): InterruptibleOperation<T> {
+  let signalCompletion: (() => void) | undefined;
+  const signal = new Promise<void>(resolve => {
+    signalCompletion = resolve;
   });
+  const timer = setTimeout(() => signalCompletion?.(), durationMs);
+  let completion: Promise<T> | undefined;
+  const stop = () => {
+    clearTimeout(timer);
+    signalCompletion?.();
+    completion ??= Promise.resolve().then(complete);
+    return completion;
+  };
+  return {
+    result: signal.then(stop),
+    stop,
+  };
 }
 
-function createDebuggerUiState(): DebuggerUiState {
+function createDebuggerUiState(port: number): DebuggerUiState {
   return {
     revision: 0,
     selectedNodeId: null,
@@ -375,7 +472,7 @@ function createDebuggerUiState(): DebuggerUiState {
     overlayMode: 'live',
     autoRefresh: false,
     followLatestTarget: true,
-    port: STANDALONE_PORT,
+    port,
     updatedAt: new Date().toISOString(),
     lastAction: null,
   };
@@ -841,7 +938,7 @@ async function streamRuntimeLogs(
 
       if (nextLogs.length > 0) sendSse(response, 'logs', { logs: nextLogs });
     } catch (error) {
-      sendSse(response, 'stream-error', errorPayload(error));
+      sendSse(response, 'stream-error', clientErrorPayload(error));
     }
   }
 
@@ -899,7 +996,7 @@ async function collectClientContexts(
       try {
         contexts = await conn.listContexts(client.client_id);
       } catch (error) {
-        contextError = errorPayload(error).error;
+        contextError = clientErrorPayload(error).error;
       }
     }
 
@@ -938,14 +1035,14 @@ async function inspectPort(port: number): Promise<{
       portName: portName(port),
       connected: false,
       clients: [],
-      error: errorPayload(error).error,
+      error: clientErrorPayload(error).error,
     };
   }
 }
 
 async function inspectStatus(searchParams: URLSearchParams): Promise<Record<string, unknown>> {
   const explicitPort = searchParams.get('port');
-  const ports = explicitPort ? [readNumber(searchParams, 'port', MOBILE_PORT)] : [STANDALONE_PORT, MOBILE_PORT];
+  const ports = explicitPort ? [readNumber(searchParams, 'port', defaultServicePort())] : discoveryServicePorts();
 
   const results: Array<Awaited<ReturnType<typeof inspectPort>>> = [];
   for (const port of ports) {
@@ -958,7 +1055,7 @@ async function inspectStatus(searchParams: URLSearchParams): Promise<Record<stri
       port: HOT_RELOAD_PROXY_PORT,
       connected: await probeTcpPort(HOT_RELOAD_PROXY_PORT, 750),
     },
-    defaultPort: STANDALONE_PORT,
+    defaultPort: defaultServicePort(),
   };
 }
 
@@ -1039,7 +1136,7 @@ function flattenTargets(
 }
 
 async function inspectSnapshot(searchParams: URLSearchParams): Promise<Record<string, unknown>> {
-  const port = readNumber(searchParams, 'port', STANDALONE_PORT);
+  const port = readNumber(searchParams, 'port', defaultServicePort());
   return await withConnection(port, async conn => {
     const { clients, client, contexts, context } = await resolveTarget(searchParams, conn);
     const tree = await conn.getContextTree(client.client_id, context.id, true);
@@ -1076,7 +1173,7 @@ async function inspectSnapshot(searchParams: URLSearchParams): Promise<Record<st
 }
 
 async function inspectElementSnapshot(searchParams: URLSearchParams): Promise<Record<string, unknown>> {
-  const port = readNumber(searchParams, 'port', STANDALONE_PORT);
+  const port = readNumber(searchParams, 'port', defaultServicePort());
   const elementId = searchParams.get('elementId');
   if (!elementId) {
     throw new Error('Missing required elementId query parameter.');
@@ -1104,7 +1201,7 @@ async function inspectHeap(request: IncomingMessage, searchParams: URLSearchPara
   }
 
   const body = await readJsonBody(request);
-  const port = readNumber(searchParams, 'port', STANDALONE_PORT);
+  const port = readNumber(searchParams, 'port', defaultServicePort());
   const performGC = body['performGC'] === true;
   return await withConnection(port, async conn => {
     const { client } = await resolveTarget(searchParams, conn);
@@ -1134,6 +1231,7 @@ async function startCpuProfile(
   if (request.method !== 'POST') {
     throw new Error('CPU profile start requires POST.');
   }
+  assertNoActiveProfile();
   return await runProfileTransition(async () => {
     assertNoActiveProfile();
     const body = await readJsonBody(request);
@@ -1147,6 +1245,8 @@ async function stopCpuProfile(request: IncomingMessage): Promise<Record<string, 
     throw new Error('CPU profile stop requires POST.');
   }
 
+  const capture = activeProfileCapture;
+  if (capture) return await capture.stop();
   return await runProfileTransition(stopActiveProfileSession);
 }
 
@@ -1157,14 +1257,30 @@ async function captureCpuProfile(
   if (request.method !== 'POST') {
     throw new Error('CPU profile capture requires POST.');
   }
-  return await runProfileTransition(async () => {
+  assertNoActiveProfile();
+  const durationMs = await runProfileTransition(async () => {
     assertNoActiveProfile();
     const body = await readJsonBody(request);
-    const durationMs = clampNumber(readBodyNumber(body, 'durationMs', 5000), 100, 60_000);
+    const requestedDurationMs = clampNumber(readBodyNumber(body, 'durationMs', 5000), 100, 60_000);
     activeProfileSession = await createProfileSession(searchParams, body);
-    await delay(durationMs);
-    return await stopActiveProfileSession();
+    return requestedDurationMs;
   });
+
+  let capture: InterruptibleOperation<Record<string, unknown>>;
+  capture = createInterruptibleOperation(durationMs, async () => {
+    try {
+      return await runProfileTransition(stopActiveProfileSession);
+    } finally {
+      if (activeProfileCapture === capture) activeProfileCapture = null;
+    }
+  });
+  activeProfileCapture = capture;
+  if (debuggerServerClosing) void capture.stop();
+  try {
+    return await capture.result;
+  } finally {
+    if (activeProfileCapture === capture) activeProfileCapture = null;
+  }
 }
 
 async function runProfileTransition<T>(transition: () => Promise<T>): Promise<T> {
@@ -1266,7 +1382,7 @@ function profileStatusPayload(): Record<string, unknown> {
   };
 }
 
-function summarizeCpuProfile(profile: CpuProfile): Record<string, unknown> {
+export function summarizeCpuProfile(profile: CpuProfile): Record<string, unknown> {
   const samples = profile.samples ?? [];
   const sampleCountByNodeId = new Map<number, number>();
   for (const sample of samples) {
@@ -1276,7 +1392,6 @@ function summarizeCpuProfile(profile: CpuProfile): Record<string, unknown> {
   const topFunctions = profile.nodes
     .map(node => ({
       name: node.callFrame.functionName || '(anonymous)',
-      url: node.callFrame.url,
       lineNumber: node.callFrame.lineNumber,
       sampleCount: sampleCountByNodeId.get(node.id) ?? node.hitCount ?? 0,
     }))
@@ -1375,11 +1490,24 @@ async function handleApi(request: IncomingMessage, response: ServerResponse, url
 
     sendJson(response, 404, { error: `Unknown API route ${url.pathname}` });
   } catch (error) {
-    sendJson(response, error instanceof ApiRequestError ? error.statusCode : 500, errorPayload(error));
+    sendJson(response, error instanceof ApiRequestError ? error.statusCode : 500, clientErrorPayload(error));
   }
 }
 
-async function serveStatic(_request: IncomingMessage, response: ServerResponse, url: URL): Promise<void> {
+function injectApiTokenBootstrap(html: string, apiToken: string): string {
+  const bootstrap = `<meta name="${API_TOKEN_META_NAME}" content="${apiToken}">`;
+  const headEnd = html.indexOf('</head>');
+  if (headEnd !== -1) return `${html.slice(0, headEnd)}${bootstrap}${html.slice(headEnd)}`;
+  const doctypeEnd = html.toLowerCase().startsWith('<!doctype html>') ? html.indexOf('>') + 1 : 0;
+  return `${html.slice(0, doctypeEnd)}${bootstrap}${html.slice(doctypeEnd)}`;
+}
+
+async function serveStatic(
+  _request: IncomingMessage,
+  response: ServerResponse,
+  url: URL,
+  apiToken: string,
+): Promise<void> {
   let requestedPath: string;
   try {
     requestedPath = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname);
@@ -1400,6 +1528,7 @@ async function serveStatic(_request: IncomingMessage, response: ServerResponse, 
   try {
     const data = await fs.readFile(resolvedPath);
     const ext = path.extname(resolvedPath);
+    const responseData = ext === '.html' ? injectApiTokenBootstrap(data.toString('utf8'), apiToken) : data;
     response.writeHead(200, {
       'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream',
       'Cache-Control': 'no-store',
@@ -1407,15 +1536,16 @@ async function serveStatic(_request: IncomingMessage, response: ServerResponse, 
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'DENY',
+      'Referrer-Policy': 'no-referrer',
     });
-    response.end(data);
+    response.end(responseData);
   } catch {
     response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     response.end(`Not found: ${url.pathname}`);
   }
 }
 
-function createDebuggerHttpServer(host: string, port: number): Server {
+function createDebuggerHttpServer(host: string, port: number, apiToken: string): Server {
   return http.createServer(async (request, response) => {
     const url = new URL(request.url || '/', `http://${hostForUrl(host)}:${port}`);
     const apiFetchSiteAllowed =
@@ -1431,11 +1561,15 @@ function createDebuggerHttpServer(host: string, port: number): Server {
     }
 
     if (url.pathname.startsWith('/api/')) {
+      if (!hasValidApiToken(request, url, apiToken)) {
+        sendJson(response, 401, { error: 'Debugger API authentication is required.' });
+        return;
+      }
       await handleApi(request, response, url);
       return;
     }
 
-    await serveStatic(request, response, url);
+    await serveStatic(request, response, url, apiToken);
   });
 }
 
@@ -1497,69 +1631,115 @@ async function closeHttpServer(server: Server): Promise<void> {
 }
 
 async function closeDebuggerServer(server: Server): Promise<void> {
-  for (const closeStream of Array.from(eventStreamClosers)) {
-    closeStream();
-  }
-  closeAssetWatchers();
-  if (devReloadTimer) {
-    clearTimeout(devReloadTimer);
-    devReloadTimer = null;
-  }
-  // Wait for in-flight profile setup/capture requests before inspecting the
-  // active session so shutdown cannot orphan a session created late.
-  await closeHttpServer(server);
-  if (activeProfileSession) {
-    try {
-      await stopActiveProfileSession();
-    } catch (error) {
-      console.warn(`Could not stop the active Hermes profile during shutdown: ${errorPayload(error).error}`);
+  debuggerServerClosing = true;
+  try {
+    for (const closeStream of Array.from(eventStreamClosers)) {
+      closeStream();
     }
+    closeAssetWatchers();
+    if (devReloadTimer) {
+      clearTimeout(devReloadTimer);
+      devReloadTimer = null;
+    }
+    if (activeProfileCapture) {
+      try {
+        await activeProfileCapture.stop();
+      } catch (error) {
+        console.warn(`Could not stop the active Hermes capture during shutdown: ${errorPayload(error).error}`);
+      }
+    }
+    // Wait for in-flight profile setup requests before inspecting the active
+    // session so shutdown cannot orphan a session created late.
+    await closeHttpServer(server);
+    if (activeProfileSession) {
+      try {
+        await stopActiveProfileSession();
+      } catch (error) {
+        console.warn(`Could not stop the active Hermes profile during shutdown: ${errorPayload(error).error}`);
+      }
+    }
+  } finally {
+    activeHost = DEFAULT_HOST;
+    assetRoot = getDefaultAssetRoot();
+    activeLogsDirectory = null;
+    activeServicePort = undefined;
+    activeProfileSession = null;
+    activeProfileCapture = null;
+    profileTransitionInProgress = false;
+    devEventClients.clear();
+    debuggerEventClients.clear();
+    eventStreamClosers.clear();
+    devRevision = 0;
+    debuggerEventRevision = 0;
+    debuggerUiState = createDebuggerUiState(STANDALONE_PORT);
+    debuggerServerClosing = false;
+    debuggerServerLifecycleActive = false;
   }
 }
 
 export async function startDebuggerServer(options: DebuggerServerOptions): Promise<DebuggerServerInfo> {
-  activeHost = options.host ?? DEFAULT_HOST;
-  if (!isLoopbackHost(activeHost)) {
-    throw new Error(`The debugger server only binds to loopback hosts; received '${activeHost}'.`);
+  if (debuggerServerLifecycleActive) {
+    throw new Error('A debugger server is already starting or running in this process.');
   }
+  debuggerServerLifecycleActive = true;
 
-  assetRoot = options.assetRoot ?? getDefaultAssetRoot();
-  activeLogsDirectory = options.logsDirectory ?? null;
-  const preferredPort = options.port ?? DEFAULT_PORT;
-  if (!Number.isInteger(preferredPort) || preferredPort < 1 || preferredPort > 65_535) {
-    throw new Error(`Debugger port must be an integer between 1 and 65535; received '${String(preferredPort)}'.`);
-  }
-  const strictPort = Boolean(options.strictPort);
-  const maxAttempts = strictPort ? 1 : PORT_SEARCH_LIMIT;
+  try {
+    const host = options.host ?? DEFAULT_HOST;
+    if (!isLoopbackHost(host)) {
+      throw new Error(`The debugger server only binds to loopback hosts; received '${host}'.`);
+    }
 
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const port = preferredPort + attempt;
-    const server = createDebuggerHttpServer(activeHost, port);
-    try {
-      await listen(server, activeHost, port);
-      closeAssetWatchers();
-      await watchDebuggerAssets(assetRoot);
-      let closePromise: Promise<void> | undefined;
-      return {
-        server,
-        close: () => {
-          closePromise ??= closeDebuggerServer(server);
-          return closePromise;
-        },
-        host: activeHost,
-        port,
-        url: `http://${hostForUrl(activeHost)}:${port}/`,
-        requestedPort: preferredPort,
-        portWasAutoSelected: port !== preferredPort,
-      };
-    } catch (error) {
-      server.close();
-      const err = error as NodeJS.ErrnoException;
-      if (strictPort || err.code !== 'EADDRINUSE') {
-        throw error;
+    const preferredPort = options.port ?? resolveDebuggerUiPort();
+    if (!Number.isInteger(preferredPort) || preferredPort < 1 || preferredPort > 65_535) {
+      throw new Error(`Debugger port must be an integer between 1 and 65535; received '${String(preferredPort)}'.`);
+    }
+    const servicePort = resolveDebuggerServicePort();
+    const strictPort = Boolean(options.strictPort);
+    const maxAttempts = strictPort ? 1 : PORT_SEARCH_LIMIT;
+    const apiToken = randomBytes(32).toString('base64url');
+
+    activeHost = host;
+    assetRoot = options.assetRoot ?? getDefaultAssetRoot();
+    activeLogsDirectory = options.logsDirectory ?? null;
+    activeServicePort = servicePort;
+    debuggerUiState = createDebuggerUiState(defaultServicePort());
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const port = preferredPort + attempt;
+      const server = createDebuggerHttpServer(activeHost, port, apiToken);
+      try {
+        await listen(server, activeHost, port);
+        closeAssetWatchers();
+        await watchDebuggerAssets(assetRoot);
+        let closePromise: Promise<void> | undefined;
+        return {
+          server,
+          close: () => {
+            closePromise ??= closeDebuggerServer(server);
+            return closePromise;
+          },
+          host: activeHost,
+          port,
+          url: `http://${hostForUrl(activeHost)}:${port}/`,
+          apiToken,
+          apiTokenHeader: API_TOKEN_HEADER,
+          requestedPort: preferredPort,
+          portWasAutoSelected: port !== preferredPort,
+        };
+      } catch (error) {
+        server.close();
+        const err = error as NodeJS.ErrnoException;
+        if (strictPort || err.code !== 'EADDRINUSE') {
+          throw error;
+        }
       }
     }
-  }
 
-  throw new Error(`No available port found in ${preferredPort}-${preferredPort + maxAttempts - 1}.`);
+    throw new Error(`No available port found in ${preferredPort}-${preferredPort + maxAttempts - 1}.`);
+  } catch (error) {
+    closeAssetWatchers();
+    debuggerServerClosing = false;
+    debuggerServerLifecycleActive = false;
+    throw error;
+  }
 }

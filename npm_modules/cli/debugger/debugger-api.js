@@ -1,4 +1,21 @@
 // HTTP helpers and the external debugger action/event bridge.
+const DEBUGGER_API_TOKEN_HEADER = 'X-Valdi-Debugger-Token';
+const DEBUGGER_API_TOKEN_QUERY_PARAMETER = 'valdiDebuggerToken';
+const debuggerApiToken = document.querySelector('meta[name="valdi-debugger-api-token"]')?.content || '';
+
+function debuggerApiHeaders(headers) {
+  return {
+    ...headers,
+    [DEBUGGER_API_TOKEN_HEADER]: debuggerApiToken,
+  };
+}
+
+function debuggerEventSourceUrl(path) {
+  const url = new URL(path, window.location.origin);
+  url.searchParams.set(DEBUGGER_API_TOKEN_QUERY_PARAMETER, debuggerApiToken);
+  return url.toString();
+}
+
 async function apiGet(path, params = {}, options = {}) {
   const url = new URL(path, window.location.origin);
   for (const [key, value] of Object.entries(params)) {
@@ -10,7 +27,11 @@ async function apiGet(path, params = {}, options = {}) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), options.timeoutMs || 8000);
   try {
-    const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
+    const response = await fetch(url, {
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: debuggerApiHeaders({}),
+    });
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.error || `Request failed: ${response.status}`);
@@ -41,7 +62,7 @@ async function apiPost(path, params = {}, body = {}, options = {}) {
       method: 'POST',
       cache: 'no-store',
       signal: controller.signal,
-      headers: { 'Content-Type': 'application/json' },
+      headers: debuggerApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
     });
     const data = await response.json();
@@ -61,7 +82,7 @@ async function apiPost(path, params = {}, body = {}, options = {}) {
 
 function startDebuggerDevReload() {
   if (!window.EventSource || window.location.search.includes('noDevReload=1')) return;
-  const source = new EventSource('/api/dev-events');
+  const source = new EventSource(debuggerEventSourceUrl('/api/dev-events'));
   let loadedRevision = null;
 
   source.addEventListener('ready', event => {
@@ -84,7 +105,7 @@ function startDebuggerDevReload() {
 
 function startDebuggerActionStream() {
   if (!window.EventSource) return;
-  const source = new EventSource('/api/debugger/events');
+  const source = new EventSource(debuggerEventSourceUrl('/api/debugger/events'));
   state.debuggerEventStream = source;
 
   source.addEventListener('ready', event => {
