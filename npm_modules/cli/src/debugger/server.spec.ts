@@ -524,6 +524,26 @@ describe('debugger server', () => {
     expect(responseBody.logs.map(log => log.message)).toEqual(['exact application']);
   });
 
+  it('does not expose absolute log paths in filesystem error responses', async () => {
+    const logsDirectory = path.join(assetRoot, 'missing', 'logs');
+    const consoleWarn = spyOn(console, 'warn');
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      logsDirectory,
+      port: await getFreePort(),
+      strictPort: true,
+    });
+
+    const result = await request(new URL('/api/runtime-logs', debuggerServer.url).toString(), GET_REQUEST_OPTIONS);
+    const responseBody = JSON.parse(result.body) as { error: string };
+
+    expect(result.statusCode).toBe(500);
+    expect(responseBody.error).toBe('A local filesystem operation failed. See the debugger server output for details.');
+    expect(result.body).not.toContain(logsDirectory);
+    expect(consoleWarn).toHaveBeenCalledWith(jasmine.stringContaining(logsDirectory));
+  });
+
   it('reads the logs directory through the shared YAML config parser', async () => {
     const testHome = path.join(assetRoot, 'home');
     const logsDirectory = path.join(testHome, 'logs#debug');

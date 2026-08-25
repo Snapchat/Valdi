@@ -190,6 +190,39 @@ describe('IRenderedVirtualNodeData', () => {
     expect(data.component?.viewModel).toContain('Set(');
   });
 
+  it('replaces values at the maximum component debug depth with an omission marker', () => {
+    const data = createDetailedData(
+      createComponentNode(
+        {
+          level1: { level2: { level3: { level4: 'too-deep' } } },
+          sibling: 'visible',
+        },
+        {},
+      ),
+    );
+
+    expect(data.component?.viewModel).toContain('level4: ...');
+    expect(data.component?.viewModel).not.toContain('too-deep');
+    expect(data.component?.viewModel).toContain('sibling: "visible"');
+  });
+
+  it('limits arrays and objects to 50 serialized items with omission markers', () => {
+    const items = Array.from({ length: 52 }, (_value, index) => `item-${index}`);
+    const properties: Record<string, number> = {};
+    for (let index = 0; index < 52; index++) {
+      properties[`property${index}`] = index;
+    }
+
+    const data = createDetailedData(createComponentNode({ items, properties }, {}));
+
+    expect(data.component?.viewModel).toContain('"item-49"');
+    expect(data.component?.viewModel).not.toContain('"item-50"');
+    expect(data.component?.viewModel).toContain('... 2 more item(s) ...');
+    expect(data.component?.viewModel).toContain('property49: 49');
+    expect(data.component?.viewModel).not.toContain('property50: 50');
+    expect(data.component?.viewModel).toContain('... more properties ...');
+  });
+
   it('truncates one serialized component field to its character cap', () => {
     const data = createDetailedData(createComponentNode('x'.repeat(70_000), {}));
 

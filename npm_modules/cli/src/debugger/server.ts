@@ -254,6 +254,22 @@ function errorPayload(error: unknown): { error: string } {
   };
 }
 
+function isFileSystemError(error: unknown): error is NodeJS.ErrnoException {
+  if (!(error instanceof Error)) return false;
+  const fileSystemError = error as NodeJS.ErrnoException;
+  return (
+    typeof fileSystemError.code === 'string' &&
+    typeof fileSystemError.path === 'string' &&
+    typeof fileSystemError.syscall === 'string'
+  );
+}
+
+function clientErrorPayload(error: unknown): { error: string } {
+  if (!isFileSystemError(error)) return errorPayload(error);
+  console.warn(`Debugger filesystem error: ${errorPayload(error).error}`);
+  return { error: 'A local filesystem operation failed. See the debugger server output for details.' };
+}
+
 function isValidSnapshotBase64(value: string): boolean {
   if (!value || value.length % 4 === 1) return false;
   const firstPaddingIndex = value.indexOf('=');
@@ -841,7 +857,7 @@ async function streamRuntimeLogs(
 
       if (nextLogs.length > 0) sendSse(response, 'logs', { logs: nextLogs });
     } catch (error) {
-      sendSse(response, 'stream-error', errorPayload(error));
+      sendSse(response, 'stream-error', clientErrorPayload(error));
     }
   }
 
@@ -899,7 +915,7 @@ async function collectClientContexts(
       try {
         contexts = await conn.listContexts(client.client_id);
       } catch (error) {
-        contextError = errorPayload(error).error;
+        contextError = clientErrorPayload(error).error;
       }
     }
 
@@ -938,7 +954,7 @@ async function inspectPort(port: number): Promise<{
       portName: portName(port),
       connected: false,
       clients: [],
-      error: errorPayload(error).error,
+      error: clientErrorPayload(error).error,
     };
   }
 }
@@ -1375,7 +1391,7 @@ async function handleApi(request: IncomingMessage, response: ServerResponse, url
 
     sendJson(response, 404, { error: `Unknown API route ${url.pathname}` });
   } catch (error) {
-    sendJson(response, error instanceof ApiRequestError ? error.statusCode : 500, errorPayload(error));
+    sendJson(response, error instanceof ApiRequestError ? error.statusCode : 500, clientErrorPayload(error));
   }
 }
 
