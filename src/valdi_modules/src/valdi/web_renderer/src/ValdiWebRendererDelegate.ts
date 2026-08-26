@@ -42,6 +42,7 @@ export interface WebRendererDebugNodeSnapshot {
     name: string;
     properties?: Record<string, unknown>;
     propertyEdits?: Record<string, WebRendererDebugPropertyEditMetadata>;
+    state?: string;
   };
   element?: {
     id: number;
@@ -83,6 +84,7 @@ export interface WebRendererDebugComponentSnapshot extends WebRendererDebugNodeS
     name: string;
     properties?: Record<string, unknown>;
     propertyEdits?: Record<string, WebRendererDebugPropertyEditMetadata>;
+    state?: string;
   };
 }
 
@@ -248,7 +250,7 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
   registerFrameObserver(observer: FrameObserver): void {
     this.frameObserver = observer;
 
-    this.resizeObserver = new ResizeObserver((entries) => {
+    this.resizeObserver = new ResizeObserver(entries => {
       if (!this.frameObserver) return;
 
       const updates: number[] = [];
@@ -348,8 +350,23 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
     if (JSON.stringify(componentSnapshot).length <= snapshotCharacterLimit) {
       return componentSnapshot;
     }
+    stripComponentState(componentTree);
+    if (JSON.stringify(componentSnapshot).length <= snapshotCharacterLimit) {
+      return componentSnapshot;
+    }
     stripComponentProperties(componentTree);
     return JSON.stringify(componentSnapshot).length <= snapshotCharacterLimit ? componentSnapshot : elementSnapshot;
+  }
+}
+
+function stripComponentState(root: WebRendererDebugNodeSnapshot): void {
+  const pending = [root];
+  while (pending.length > 0) {
+    const node = pending.pop()!;
+    if (node.component !== undefined) {
+      delete node.component.state;
+    }
+    pending.push(...node.children);
   }
 }
 
@@ -561,11 +578,7 @@ function captureDebugElementSnapshot(
   return snapshot;
 }
 
-function isLiveDebugNode(
-  node: WebValdiLayout,
-  expectedParent: WebValdiLayout | null,
-  nodesRef: NodesRef,
-): boolean {
+function isLiveDebugNode(node: WebValdiLayout, expectedParent: WebValdiLayout | null, nodesRef: NodesRef): boolean {
   return node.parent === expectedParent && nodesRef.get(node.id) === node;
 }
 
@@ -702,20 +715,13 @@ function toDebugValue(
   }
 }
 
-function captureDebugString(
-  value: string,
-  budget: DebugSerializationBudget,
-  reservedCharacters: number,
-): string {
+function captureDebugString(value: string, budget: DebugSerializationBudget, reservedCharacters: number): string {
   const availableCharacters = Math.min(
     budget.remainingCharacters,
     Math.max(2, budget.remainingCharacters - reservedCharacters),
   );
   const valueCharacterLimit = Math.min(value.length, MAX_DEBUG_STRING_CHARACTERS);
-  if (
-    value.length <= MAX_DEBUG_STRING_CHARACTERS &&
-    getJsonStringCharacterLength(value) <= availableCharacters
-  ) {
+  if (value.length <= MAX_DEBUG_STRING_CHARACTERS && getJsonStringCharacterLength(value) <= availableCharacters) {
     consumeDebugBudget(budget, getJsonStringCharacterLength(value));
     return value;
   }

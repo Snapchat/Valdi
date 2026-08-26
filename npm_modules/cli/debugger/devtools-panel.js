@@ -10,10 +10,23 @@ const MAX_CONSOLE_HISTORY_ENTRIES = 100;
 const MAX_PERFORMANCE_SAMPLES = 120;
 const MAX_PERFORMANCE_TIMELINE_ROWS = 120;
 const MAX_PERFORMANCE_SUMMARY_ROWS = 12;
+const MAX_RUNTIME_STATE_CHARACTERS = 65_536;
+const MAX_RUNTIME_STATE_COMPONENT_ROWS = 500;
+const MAX_RUNTIME_STATE_CONTAINER_ENTRIES = 100;
+const MAX_RUNTIME_STATE_DEPTH = 12;
+const MAX_RUNTIME_STATE_KEY_CHARACTERS = 1_024;
+const MAX_RUNTIME_STATE_TOKENS = 2_000;
+const MAX_RUNTIME_STATE_VALUE_ROWS = 1_000;
+const RUNTIME_STATE_SOURCE_NATIVE = 'native';
+const RUNTIME_STATE_SOURCE_WEB = 'web';
 const COMPONENT_PROPERTY_TOKEN_PATTERN = /^[0-9a-f]{32}$/;
 const COMPONENT_PROPERTY_EDIT_ERROR = 'The component property edit is stale or invalid.';
+const SNAPSHOT_REFRESH_APPLIED = 'applied';
+const SNAPSHOT_REFRESH_RUNTIME_STATE_DEFERRED = 'runtime-state-deferred';
+const SNAPSHOT_REFRESH_SKIPPED = 'skipped';
 const FORBIDDEN_COMPONENT_PROPERTY_NAMES = new Set(['__proto__', 'children', 'constructor', 'prototype']);
 const componentPropertyEditorBindings = new WeakMap();
+const runtimeStateInspectBindings = new WeakMap();
 const MANUAL_WEB_CAPABILITIES = new Set([
   'component-properties',
   'components',
@@ -123,6 +136,14 @@ const state = {
     operationGeneration: 0,
     pending: false,
   },
+  runtimeState: {
+    expandedComponents: new Set(),
+    expandedInspectorValues: new Set(),
+    expandedMainValues: new Set(),
+    inspectGeneration: 0,
+    inspectorNodeId: null,
+    search: '',
+  },
   error: null,
 };
 
@@ -154,6 +175,10 @@ const elements = {
   consoleForm: document.getElementById('consoleForm'),
   consoleInput: document.getElementById('consoleInput'),
   performanceContent: document.getElementById('performanceContent'),
+  stateContent: document.getElementById('stateContent'),
+  stateFilter: document.getElementById('stateFilter'),
+  stateSection: document.getElementById('stateSection'),
+  stateSummary: document.getElementById('stateSummary'),
 };
 
 function escapeHtml(value) {
@@ -327,11 +352,11 @@ function isSelectableDirectTarget(target) {
   const capabilities = targetCapabilities(target);
   return Boolean(
     target.attachable &&
-    target.state !== 'waiting' &&
-    target.identityMode === 'target-id' &&
-    target.transport === 'valdi-daemon' &&
-    capabilities.has('components') &&
-    capabilities.has('snapshot'),
+      target.state !== 'waiting' &&
+      target.identityMode === 'target-id' &&
+      target.transport === 'valdi-daemon' &&
+      capabilities.has('components') &&
+      capabilities.has('snapshot'),
   );
 }
 
@@ -515,6 +540,7 @@ function performanceBlocksTargetSwitch() {
 
 function sectionIsAvailable(section) {
   if (section === 'elements') return true;
+  if (section === 'state') return targetSupports('components') && targetSupports('snapshot');
   if (section === 'console') return targetSupports('console');
   if (section === 'performance') return targetSupports('performance') || Boolean(state.performance.ownerIdentity);
   return false;
@@ -568,6 +594,26 @@ function resetComponentPropertyEditForTargetChange() {
   state.componentPropertyEdit.error = null;
 }
 
+function resetRuntimeStateForTargetChange() {
+  const runtimeState = state.runtimeState;
+  runtimeState.inspectGeneration++;
+  runtimeState.inspectorNodeId = null;
+  runtimeState.search = '';
+  runtimeState.expandedComponents.clear();
+  runtimeState.expandedInspectorValues.clear();
+  runtimeState.expandedMainValues.clear();
+  if (elements.stateFilter) elements.stateFilter.value = '';
+  if (elements.stateSummary) elements.stateSummary.textContent = '';
+  if (elements.stateContent) elements.stateContent.innerHTML = '';
+}
+
+function resetRuntimeStateForSelectionChange(selectedNodeId) {
+  if (state.runtimeState.inspectorNodeId === selectedNodeId) return;
+  state.runtimeState.inspectGeneration++;
+  state.runtimeState.inspectorNodeId = selectedNodeId;
+  state.runtimeState.expandedInspectorValues.clear();
+}
+
 function clearTargetPresentation(message) {
   state.snapshotRequestGeneration++;
   state.refreshPending = false;
@@ -580,6 +626,7 @@ function clearTargetPresentation(message) {
   resetHighlightForTargetChange();
   resetConsoleForTargetChange();
   resetComponentPropertyEditForTargetChange();
+  resetRuntimeStateForTargetChange();
   preparePerformanceForTargetChange();
   elements.treeEmpty.textContent = message;
   render();
@@ -842,6 +889,7 @@ async function connectToInspectedPage() {
       enqueueExactHighlightClear(state.target);
       resetConsoleForTargetChange();
       resetComponentPropertyEditForTargetChange();
+      resetRuntimeStateForTargetChange();
       preparePerformanceForTargetChange();
       state.snapshotRequestGeneration++;
       state.refreshPending = false;
@@ -898,6 +946,13 @@ async function refreshSnapshot() {
   await refreshSnapshotInternal(null);
 }
 
+function runtimeStatePresentationHasFocus() {
+  const activeElement = document.activeElement;
+  if (!activeElement) return false;
+  if (elements.stateSection?.contains(activeElement)) return true;
+  return state.activeDetail === 'state' && elements.inspector?.contains(activeElement);
+}
+
 async function refreshSnapshotInternal(componentPropertyEditOperationGeneration) {
   const componentPropertyEditOwnsRefresh = () =>
     componentPropertyEditOperationGeneration !== null &&
@@ -908,13 +963,20 @@ async function refreshSnapshotInternal(componentPropertyEditOperationGeneration)
     targetSupports('components') &&
     targetSupports('snapshot') &&
     ((!state.componentPropertyEdit.focused && !state.componentPropertyEdit.pending) ||
-      componentPropertyEditOwnsRefresh());
-  if (!refreshIsAllowed()) return;
+      componentPropertyEditOwnsRefresh()) &&
+    !runtimeStatePresentationHasFocus();
+  if (!refreshIsAllowed()) {
+    return runtimeStatePresentationHasFocus() ? SNAPSHOT_REFRESH_RUNTIME_STATE_DEFERRED : SNAPSHOT_REFRESH_SKIPPED;
+  }
   if (state.refreshPending) {
     const activeRequestCompletion = state.snapshotRequestCompletion;
-    if (!componentPropertyEditOwnsRefresh() || activeRequestCompletion === null) return;
+    if (!componentPropertyEditOwnsRefresh() || activeRequestCompletion === null) {
+      return SNAPSHOT_REFRESH_SKIPPED;
+    }
     await activeRequestCompletion;
-    if (!refreshIsAllowed() || state.refreshPending) return;
+    if (!refreshIsAllowed() || state.refreshPending) {
+      return runtimeStatePresentationHasFocus() ? SNAPSHOT_REFRESH_RUNTIME_STATE_DEFERRED : SNAPSHOT_REFRESH_SKIPPED;
+    }
   }
   state.refreshPending = true;
   let resolveRequestCompletion;
@@ -931,12 +993,14 @@ async function refreshSnapshotInternal(componentPropertyEditOperationGeneration)
     state.snapshotRequestGeneration === requestGeneration;
   try {
     const snapshot = await requestJson('/api/devtools/snapshot', targetIdentityParameters(requestTarget), {});
+    if (!requestIsCurrent()) return SNAPSHOT_REFRESH_SKIPPED;
+    if (runtimeStatePresentationHasFocus()) return SNAPSHOT_REFRESH_RUNTIME_STATE_DEFERRED;
     if (
-      !requestIsCurrent() ||
-      ((state.componentPropertyEdit.focused || state.componentPropertyEdit.pending) &&
-        !componentPropertyEditOwnsRefresh())
-    )
-      return;
+      (state.componentPropertyEdit.focused || state.componentPropertyEdit.pending) &&
+      !componentPropertyEditOwnsRefresh()
+    ) {
+      return SNAPSHOT_REFRESH_SKIPPED;
+    }
     if (
       snapshot.target?.id === requestTarget.id &&
       Array.isArray(snapshot.target.capabilities) &&
@@ -948,8 +1012,10 @@ async function refreshSnapshotInternal(componentPropertyEditOperationGeneration)
     }
     snapshot.tree = valdiDebuggerTreeModel.restoreTree(snapshot.tree);
     const wasEmpty = !state.snapshot?.tree;
+    const previousSelectedNodeId = state.selectedNodeId;
     const shouldClearHighlight = state.hoveredNodeId !== null || state.highlightMayBeActive;
     state.snapshot = snapshot;
+    state.runtimeState.inspectGeneration++;
     state.componentPropertyEdit.error = null;
     state.snapshotGeneration++;
     if (state.highlightTimer) window.clearTimeout(state.highlightTimer);
@@ -975,9 +1041,14 @@ async function refreshSnapshotInternal(componentPropertyEditOperationGeneration)
       state.selectedNodeId = nodeId(chooseInitialNode(snapshot.tree));
       revealPath(state.selectedNodeId);
     }
+    if (state.selectedNodeId !== previousSelectedNodeId) {
+      resetRuntimeStateForSelectionChange(state.selectedNodeId);
+    }
     render();
+    return SNAPSHOT_REFRESH_APPLIED;
   } catch (error) {
     if (requestIsCurrent()) reportError(error);
+    return SNAPSHOT_REFRESH_SKIPPED;
   } finally {
     if (state.snapshotRequestCompletion === requestCompletion) {
       state.snapshotRequestCompletion = null;
@@ -994,7 +1065,8 @@ function startRefreshTimer() {
     if (isDirectMode()) void refreshTargetRegistry();
     if (!state.autoRefresh) return;
     if (state.componentPropertyEdit.focused || state.componentPropertyEdit.pending) return;
-    if (state.activeSection === 'elements') void refreshSnapshot();
+    if (runtimeStatePresentationHasFocus()) return;
+    if (state.activeSection === 'elements' || state.activeSection === 'state') void refreshSnapshot();
     if (state.activeSection === 'performance') void refreshPerformance({ silent: true });
   }, 1200);
 }
@@ -1098,6 +1170,621 @@ function propertyRows(attributes, options) {
         `<div class="property-row"><span class="property-name">${escapeHtml(key)}</span>: ${renderValue(value)}${options.css ? ';' : ''}</div>`,
     )
     .join('');
+}
+
+function runtimeStateParseError(message) {
+  return new Error(`Runtime state ${message}.`);
+}
+
+function runtimeStateKeywordAt(source, offset, keyword) {
+  return source.startsWith(keyword, offset) && !/[A-Za-z0-9_$]/.test(source[offset + keyword.length] || '');
+}
+
+function readRuntimeStateToken(source, parser) {
+  while (parser.offset < source.length && /[\t\n\r ]/.test(source[parser.offset])) parser.offset++;
+  if (parser.offset >= source.length) return { type: 'end' };
+  parser.tokens++;
+  if (parser.tokens > MAX_RUNTIME_STATE_TOKENS) throw runtimeStateParseError('exceeds the token limit');
+  if (parser.sourceType !== RUNTIME_STATE_SOURCE_WEB) {
+    throw runtimeStateParseError('cannot structurally parse a native snapshot');
+  }
+
+  const character = source[parser.offset];
+  if ('{}[]:,'.includes(character)) {
+    parser.offset++;
+    return { type: 'punctuation', value: character };
+  }
+  if (character === '"') {
+    const start = parser.offset;
+    parser.offset++;
+    let closed = false;
+    while (parser.offset < source.length) {
+      const code = source.charCodeAt(parser.offset);
+      if (code < 0x20) throw runtimeStateParseError('contains an invalid string');
+      if (source[parser.offset] === '"') {
+        parser.offset++;
+        closed = true;
+        break;
+      }
+      if (source[parser.offset] !== '\\') {
+        parser.offset++;
+        continue;
+      }
+      parser.offset++;
+      const escape = source[parser.offset];
+      if ('"\\/bfnrt'.includes(escape)) {
+        parser.offset++;
+        continue;
+      }
+      if (escape !== 'u' || !/^[0-9a-fA-F]{4}$/.test(source.slice(parser.offset + 1, parser.offset + 5))) {
+        throw runtimeStateParseError('contains an invalid string escape');
+      }
+      parser.offset += 5;
+    }
+    if (!closed) throw runtimeStateParseError('contains an unterminated string');
+    let value;
+    try {
+      value = JSON.parse(source.slice(start, parser.offset));
+    } catch (_error) {
+      throw runtimeStateParseError('contains an invalid string');
+    }
+    return { type: 'string', value };
+  }
+  if (runtimeStateKeywordAt(source, parser.offset, 'true')) {
+    parser.offset += 4;
+    return { type: 'value', value: true };
+  }
+  if (runtimeStateKeywordAt(source, parser.offset, 'false')) {
+    parser.offset += 5;
+    return { type: 'value', value: false };
+  }
+  if (runtimeStateKeywordAt(source, parser.offset, 'null')) {
+    parser.offset += 4;
+    return { type: 'value', value: null };
+  }
+
+  const start = parser.offset;
+  if (source[parser.offset] === '-') parser.offset++;
+  if (source[parser.offset] === '0') {
+    parser.offset++;
+    if (/\d/.test(source[parser.offset] || '')) throw runtimeStateParseError('contains an invalid number');
+  } else if (/[1-9]/.test(source[parser.offset] || '')) {
+    while (/\d/.test(source[parser.offset] || '')) parser.offset++;
+  } else {
+    throw runtimeStateParseError('contains an unsupported token');
+  }
+  if (source[parser.offset] === '.') {
+    parser.offset++;
+    if (!/\d/.test(source[parser.offset] || '')) throw runtimeStateParseError('contains an invalid number');
+    while (/\d/.test(source[parser.offset] || '')) parser.offset++;
+  }
+  if (source[parser.offset] === 'e' || source[parser.offset] === 'E') {
+    parser.offset++;
+    if (source[parser.offset] === '+' || source[parser.offset] === '-') parser.offset++;
+    if (!/\d/.test(source[parser.offset] || '')) throw runtimeStateParseError('contains an invalid number');
+    while (/\d/.test(source[parser.offset] || '')) parser.offset++;
+  }
+  const value = Number(source.slice(start, parser.offset));
+  if (!Number.isFinite(value)) throw runtimeStateParseError('contains a non-finite number');
+  return { type: 'value', value };
+}
+
+function parseRuntimeState(source, sourceType) {
+  if (typeof source !== 'string') {
+    return { error: 'Runtime state is not a serialized document.', parsed: false, value: null };
+  }
+  if (source.length === 0 || source.length > MAX_RUNTIME_STATE_CHARACTERS) {
+    return {
+      error: `Runtime state must contain between 1 and ${MAX_RUNTIME_STATE_CHARACTERS} characters.`,
+      parsed: false,
+      value: null,
+    };
+  }
+  if (sourceType !== RUNTIME_STATE_SOURCE_NATIVE && sourceType !== RUNTIME_STATE_SOURCE_WEB) {
+    return { error: 'Runtime state has an unknown snapshot source.', parsed: false, value: null };
+  }
+  if (sourceType === RUNTIME_STATE_SOURCE_NATIVE) {
+    return {
+      error: 'Native runtime state is displayed as escaped raw text.',
+      parsed: false,
+      value: null,
+    };
+  }
+
+  const parser = { offset: 0, sourceType, tokens: 0 };
+  const stack = [];
+  let root;
+  let rootSet = false;
+
+  const setValue = value => {
+    if (stack.length === 0) {
+      if (rootSet) throw runtimeStateParseError('contains trailing data');
+      root = value;
+      rootSet = true;
+      return;
+    }
+    const frame = stack[stack.length - 1];
+    if (frame.type === 'array') {
+      if (frame.stage !== 'initialOrEnd' && frame.stage !== 'value') {
+        throw runtimeStateParseError('contains an unexpected array value');
+      }
+      if (frame.entries >= MAX_RUNTIME_STATE_CONTAINER_ENTRIES) {
+        throw runtimeStateParseError('exceeds the per-container entry limit');
+      }
+      frame.values.push(value);
+      frame.entries++;
+      frame.stage = 'commaOrEnd';
+      return;
+    }
+    if (frame.stage !== 'value' || frame.key === null) {
+      throw runtimeStateParseError('contains an unexpected object value');
+    }
+    if (frame.entries >= MAX_RUNTIME_STATE_CONTAINER_ENTRIES) {
+      throw runtimeStateParseError('exceeds the per-container entry limit');
+    }
+    if (Object.prototype.hasOwnProperty.call(frame.target, frame.key)) {
+      throw runtimeStateParseError('contains a duplicate object key');
+    }
+    Object.defineProperty(frame.target, frame.key, {
+      configurable: true,
+      enumerable: true,
+      value,
+      writable: true,
+    });
+    frame.entries++;
+    frame.key = null;
+    frame.stage = 'commaOrEnd';
+  };
+
+  const beginContainer = type => {
+    if (stack.length >= MAX_RUNTIME_STATE_DEPTH) throw runtimeStateParseError('exceeds the depth limit');
+    const target = type === 'array' ? [] : Object.create(null);
+    setValue(target);
+    stack.push({ entries: 0, key: null, stage: 'initialOrEnd', target, type, values: target });
+  };
+
+  const acceptValueToken = token => {
+    if (token.type === 'value' || token.type === 'string') {
+      setValue(token.value);
+      return true;
+    }
+    if (token.type === 'punctuation' && token.value === '{') {
+      beginContainer('object');
+      return true;
+    }
+    if (token.type === 'punctuation' && token.value === '[') {
+      beginContainer('array');
+      return true;
+    }
+    return false;
+  };
+
+  try {
+    while (true) {
+      const token = readRuntimeStateToken(source, parser);
+      if (token.type === 'end') {
+        if (!rootSet) throw runtimeStateParseError('is empty');
+        if (stack.length > 0) throw runtimeStateParseError('contains an unterminated container');
+        return { error: null, parsed: true, value: root };
+      }
+      if (stack.length === 0) {
+        if (rootSet || !acceptValueToken(token)) throw runtimeStateParseError('contains trailing data');
+        continue;
+      }
+
+      const frame = stack[stack.length - 1];
+      if (frame.type === 'object') {
+        if (frame.stage === 'initialOrEnd' || frame.stage === 'key') {
+          if (token.type === 'punctuation' && token.value === '}' && frame.stage === 'initialOrEnd') {
+            stack.pop();
+            continue;
+          }
+          if (token.type !== 'string') {
+            throw runtimeStateParseError('contains an invalid object key');
+          }
+          if (token.value.length > MAX_RUNTIME_STATE_KEY_CHARACTERS) {
+            throw runtimeStateParseError('contains an overlong object key');
+          }
+          frame.key = token.value;
+          frame.stage = 'colon';
+          continue;
+        }
+        if (frame.stage === 'colon') {
+          if (token.type !== 'punctuation' || token.value !== ':') {
+            throw runtimeStateParseError('is missing an object value separator');
+          }
+          frame.stage = 'value';
+          continue;
+        }
+        if (frame.stage === 'value') {
+          if (!acceptValueToken(token)) throw runtimeStateParseError('contains an invalid object value');
+          continue;
+        }
+        if (token.type === 'punctuation' && token.value === ',') {
+          frame.stage = 'key';
+          continue;
+        }
+        if (token.type === 'punctuation' && token.value === '}') {
+          stack.pop();
+          continue;
+        }
+        throw runtimeStateParseError('contains an invalid object separator');
+      }
+
+      if (frame.stage === 'initialOrEnd') {
+        if (token.type === 'punctuation' && token.value === ']') {
+          stack.pop();
+          continue;
+        }
+        if (!acceptValueToken(token)) throw runtimeStateParseError('contains an invalid array value');
+        continue;
+      }
+      if (frame.stage === 'value') {
+        if (!acceptValueToken(token)) throw runtimeStateParseError('contains an invalid array value');
+        continue;
+      }
+      if (token.type === 'punctuation' && token.value === ',') {
+        frame.stage = 'value';
+        continue;
+      }
+      if (token.type === 'punctuation' && token.value === ']') {
+        stack.pop();
+        continue;
+      }
+      throw runtimeStateParseError('contains an invalid array separator');
+    }
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : 'Runtime state could not be parsed.',
+      parsed: false,
+      value: null,
+    };
+  }
+}
+
+function runtimeStateOwnDataValue(source, propertyName) {
+  if (typeof source !== 'object' || source === null) return null;
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(source, propertyName);
+    if (descriptor?.enumerable !== true || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+      return null;
+    }
+    return { value: descriptor.value };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function runtimeStateExactNodeId(value) {
+  if (typeof value === 'string' && value.length > 0) return value;
+  if (Number.isSafeInteger(value) && value >= 0) return String(value);
+  return null;
+}
+
+function runtimeStateSelectableNodeId(node) {
+  if (typeof node !== 'object' || node === null) return null;
+  try {
+    const nodeIdDescriptor = Object.getOwnPropertyDescriptor(node, 'id');
+    if (nodeIdDescriptor !== undefined) {
+      if (nodeIdDescriptor.enumerable !== true || !Object.prototype.hasOwnProperty.call(nodeIdDescriptor, 'value')) {
+        return null;
+      }
+      return runtimeStateExactNodeId(nodeIdDescriptor.value);
+    }
+  } catch (_error) {
+    return null;
+  }
+  const elementValue = runtimeStateOwnDataValue(node, 'element')?.value;
+  return runtimeStateExactNodeId(runtimeStateOwnDataValue(elementValue, 'id')?.value);
+}
+
+function runtimeStateSourceType() {
+  return launchIdentity.mode === 'inspected-page' ? RUNTIME_STATE_SOURCE_WEB : RUNTIME_STATE_SOURCE_NATIVE;
+}
+
+function runtimeStateComponentRecord(node, structuralId) {
+  const componentValue = runtimeStateOwnDataValue(node, 'component')?.value;
+  const stateValue = runtimeStateOwnDataValue(componentValue, 'state')?.value;
+  if (typeof stateValue !== 'string' || stateValue.length === 0 || stateValue.length > MAX_RUNTIME_STATE_CHARACTERS) {
+    return null;
+  }
+  const sourceType = runtimeStateSourceType();
+  const nameValue = runtimeStateOwnDataValue(componentValue, 'name')?.value;
+  const componentKeyValue = runtimeStateOwnDataValue(componentValue, 'key')?.value;
+  const nodeKeyValue = runtimeStateOwnDataValue(node, 'key')?.value;
+  const keyValue = sourceType === RUNTIME_STATE_SOURCE_WEB ? componentKeyValue : nodeKeyValue;
+  const tagValue = runtimeStateOwnDataValue(node, 'tag')?.value;
+  return {
+    key: typeof keyValue === 'string' ? keyValue : '',
+    name:
+      typeof nameValue === 'string' && nameValue.length > 0
+        ? nameValue
+        : typeof tagValue === 'string' && tagValue.length > 0
+          ? tagValue
+          : 'Component',
+    node,
+    selectableNodeId: runtimeStateSelectableNodeId(node),
+    source: stateValue,
+    sourceType,
+    structuralId,
+  };
+}
+
+function collectRuntimeStateComponents(root) {
+  const exactSelectableNodes = new Map();
+  const records = [];
+  const structuralPaths = new WeakMap();
+  let truncated = false;
+  walk(root, (node, ancestors, _depth, sourceChildIndex) => {
+    let structuralPath;
+    if (ancestors.length === 0) {
+      structuralPath = [];
+    } else {
+      const parentPath = structuralPaths.get(ancestors[ancestors.length - 1]);
+      if (!Array.isArray(parentPath) || !Number.isSafeInteger(sourceChildIndex) || sourceChildIndex < 0) {
+        return false;
+      }
+      structuralPath = [...parentPath, sourceChildIndex];
+    }
+    structuralPaths.set(node, structuralPath);
+    const selectableNodeId = runtimeStateSelectableNodeId(node);
+    if (selectableNodeId !== null) {
+      if (exactSelectableNodes.has(selectableNodeId)) exactSelectableNodes.set(selectableNodeId, null);
+      else exactSelectableNodes.set(selectableNodeId, node);
+    }
+    const record = runtimeStateComponentRecord(node, JSON.stringify(structuralPath));
+    if (record === null) return true;
+    if (records.length >= MAX_RUNTIME_STATE_COMPONENT_ROWS) {
+      truncated = true;
+      return true;
+    }
+    records.push(record);
+    return true;
+  });
+  for (const record of records) {
+    if (record.selectableNodeId !== null && exactSelectableNodes.get(record.selectableNodeId) !== record.node) {
+      record.selectableNodeId = null;
+    }
+  }
+  return { records, truncated };
+}
+
+function findRuntimeStateRecordByStructuralId(structuralId) {
+  return (
+    collectRuntimeStateComponents(state.snapshot?.tree).records.find(record => record.structuralId === structuralId) ||
+    null
+  );
+}
+
+function runtimeStateContainerEntries(value) {
+  if (Array.isArray(value)) return value.map((entry, index) => [String(index), entry]);
+  if (typeof value !== 'object' || value === null) return [];
+  return Object.keys(value).map(key => [key, Object.getOwnPropertyDescriptor(value, key)?.value]);
+}
+
+function runtimeStateDescription(value) {
+  if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`;
+  if (typeof value === 'object' && value !== null) {
+    const count = Object.keys(value).length;
+    return `${count} field${count === 1 ? '' : 's'}`;
+  }
+  return typeof value;
+}
+
+function renderRuntimeStatePrimitive(value) {
+  if (value === null) return '<span class="runtime-state-value-null">null</span>';
+  const type = typeof value;
+  const serialized = type === 'string' ? JSON.stringify(value) : String(value);
+  return `<span class="runtime-state-value-${escapeHtml(type)}">${escapeHtml(serialized)}</span>`;
+}
+
+function runtimeStateValuePath(scope, componentId, segments) {
+  return JSON.stringify([scope, componentId, ...segments]);
+}
+
+function renderRuntimeStateEntries(value, context, segments) {
+  const entries = runtimeStateContainerEntries(value);
+  if (entries.length === 0) return '<div class="empty-state">This state container is empty.</div>';
+  const rows = [];
+  for (const [key, entryValue] of entries) {
+    if (context.rows >= MAX_RUNTIME_STATE_VALUE_ROWS) {
+      context.truncated = true;
+      break;
+    }
+    context.rows++;
+    const entrySegments = [...segments, key];
+    const keyLabel = Array.isArray(value) ? `[${key}]` : key;
+    if (typeof entryValue !== 'object' || entryValue === null) {
+      rows.push(
+        `<div class="runtime-state-value-row"><span class="runtime-state-value-key">${escapeHtml(keyLabel)}</span>: ${renderRuntimeStatePrimitive(entryValue)}</div>`,
+      );
+      continue;
+    }
+    const path = runtimeStateValuePath(context.scope, context.componentId, entrySegments);
+    const expanded = context.expandedPaths.has(path);
+    rows.push(`
+      <details class="runtime-state-value-details" data-runtime-state-value-path="${escapeHtml(path)}" data-runtime-state-value-scope="${escapeHtml(context.scope)}"${expanded ? ' open' : ''}>
+        <summary class="runtime-state-value-summary"><span class="runtime-state-disclosure">›</span><span class="runtime-state-value-key">${escapeHtml(keyLabel)}</span>: <span class="runtime-state-value-description">${escapeHtml(runtimeStateDescription(entryValue))}</span></summary>
+        ${expanded ? `<div class="runtime-state-value-children">${renderRuntimeStateEntries(entryValue, context, entrySegments)}</div>` : ''}
+      </details>
+    `);
+  }
+  if (context.truncated && !context.limitRendered) {
+    context.limitRendered = true;
+    rows.push('<div class="runtime-state-limit">Additional state rows were omitted.</div>');
+  }
+  return rows.join('');
+}
+
+function renderRuntimeStateDocument(record, parsed, context) {
+  if (!parsed.parsed || typeof parsed.value !== 'object' || parsed.value === null) {
+    return `<div class="runtime-state-limit">${escapeHtml(parsed.error || 'Runtime state is not an object document.')}</div><pre class="runtime-state-raw">${escapeHtml(record.source)}</pre>`;
+  }
+  return renderRuntimeStateEntries(parsed.value, context, []);
+}
+
+function hydrateRuntimeStateInspectButtons(models) {
+  const buttons = elements.stateContent?.querySelectorAll?.('[data-runtime-state-inspect-slot]') || [];
+  for (const button of buttons) {
+    const index = Number(button.dataset.runtimeStateInspectSlot);
+    const model = Number.isSafeInteger(index) && index >= 0 ? models[index] : undefined;
+    if (!model) continue;
+    delete button.dataset.runtimeStateInspectSlot;
+    button.dataset.runtimeStateInspect = '';
+    runtimeStateInspectBindings.set(button, model);
+  }
+}
+
+function renderRuntimeStateSection() {
+  if (!elements.stateContent || !elements.stateSummary) return;
+  const renderGeneration = ++state.runtimeState.inspectGeneration;
+  const snapshotGeneration = state.snapshotGeneration;
+  const collected = collectRuntimeStateComponents(state.snapshot?.tree);
+  const normalizedSearch = state.runtimeState.search.trim().toLowerCase();
+  const records = normalizedSearch
+    ? collected.records.filter(record =>
+        `${record.name} ${record.key} ${record.source}`.toLowerCase().includes(normalizedSearch),
+      )
+    : collected.records;
+  elements.stateSummary.textContent = `${records.length}${normalizedSearch ? ` of ${collected.records.length}` : ''} component${collected.records.length === 1 ? '' : 's'}${collected.truncated ? ' · first 500' : ''}`;
+  if (!state.snapshot?.tree) {
+    elements.stateContent.innerHTML = '<div class="empty-state">Waiting for the inspected component hierarchy…</div>';
+    return;
+  }
+  if (records.length === 0) {
+    elements.stateContent.innerHTML = `<div class="empty-state">${normalizedSearch ? 'No component state matches this filter.' : 'No mounted component has published bounded runtime state.'}</div>`;
+    return;
+  }
+
+  const inspectModels = [];
+  const renderContext = {
+    componentId: '',
+    expandedPaths: state.runtimeState.expandedMainValues,
+    rows: 0,
+    limitRendered: false,
+    scope: 'main',
+    truncated: false,
+  };
+  const markup = records
+    .map(record => {
+      const expanded = state.runtimeState.expandedComponents.has(record.structuralId);
+      const parsed = parseRuntimeState(record.source, record.sourceType);
+      let inspectButton = '';
+      if (record.selectableNodeId !== null) {
+        const inspectIndex =
+          inspectModels.push({
+            generation: renderGeneration,
+            node: record.node,
+            selectableNodeId: record.selectableNodeId,
+            snapshotGeneration,
+            source: record.source,
+            structuralId: record.structuralId,
+          }) - 1;
+        inspectButton = `<button type="button" class="runtime-state-inspect" data-runtime-state-inspect-slot="${inspectIndex}" aria-label="${escapeHtml(`Inspect ${record.name}${record.key ? ` ${record.key}` : ''} state, component ${record.selectableNodeId}`)}">Inspect</button>`;
+      }
+      renderContext.componentId = record.structuralId;
+      const description = parsed.parsed ? runtimeStateDescription(parsed.value) : 'bounded raw snapshot';
+      const body = expanded
+        ? `<div class="runtime-state-component-body">${renderRuntimeStateDocument(record, parsed, renderContext)}</div>`
+        : '';
+      return `
+        <div class="runtime-state-component">
+          <details class="runtime-state-component-details" data-runtime-state-component-id="${escapeHtml(record.structuralId)}"${expanded ? ' open' : ''}>
+            <summary class="runtime-state-component-summary"><span class="runtime-state-disclosure">›</span><span class="runtime-state-component-name">${escapeHtml(record.name)}</span>${record.key ? `<span class="runtime-state-component-key">${escapeHtml(record.key)}</span>` : ''}<span class="runtime-state-component-description">${escapeHtml(description)}</span></summary>
+            ${body}
+          </details>
+          ${inspectButton}
+        </div>
+      `;
+    })
+    .join('');
+  elements.stateContent.innerHTML = markup;
+  hydrateRuntimeStateInspectButtons(inspectModels);
+}
+
+function renderSelectedRuntimeState(node) {
+  resetRuntimeStateForSelectionChange(nodeId(node));
+  const record = runtimeStateComponentRecord(node, JSON.stringify(['selected']));
+  if (record === null) {
+    return '<div class="empty-state">This selected component has no bounded runtime state snapshot.</div>';
+  }
+  const parsed = parseRuntimeState(record.source, record.sourceType);
+  const context = {
+    componentId: record.structuralId,
+    expandedPaths: state.runtimeState.expandedInspectorValues,
+    rows: 0,
+    limitRendered: false,
+    scope: 'inspector',
+    truncated: false,
+  };
+  return `<section class="runtime-state-inspector"><div class="rule-header">Component state <span class="rule-origin">${escapeHtml(record.name)}</span></div>${renderRuntimeStateDocument(record, parsed, context)}</section>`;
+}
+
+function inspectRuntimeStateBinding(binding) {
+  if (
+    binding?.generation !== state.runtimeState.inspectGeneration ||
+    binding.snapshotGeneration !== state.snapshotGeneration
+  ) {
+    return false;
+  }
+  const currentRecord = findRuntimeStateRecordByStructuralId(binding.structuralId);
+  if (
+    currentRecord?.node !== binding.node ||
+    currentRecord.selectableNodeId !== binding.selectableNodeId ||
+    currentRecord.source !== binding.source
+  ) {
+    return false;
+  }
+  setActiveSection('elements');
+  selectNode(binding.selectableNodeId);
+  setActiveDetail('state');
+  elements.detailTabs.find(tab => tab.dataset.detail === 'state')?.focus?.({ preventScroll: true });
+  return true;
+}
+
+function restoreRuntimeStateDisclosureFocus(scope, componentId, valuePath) {
+  const container = scope === 'inspector' ? elements.inspector : elements.stateContent;
+  const detailsElements = container?.querySelectorAll?.('details') || [];
+  for (const candidate of detailsElements) {
+    if (
+      (componentId !== null && candidate.dataset.runtimeStateComponentId === componentId) ||
+      (valuePath !== null && candidate.dataset.runtimeStateValuePath === valuePath)
+    ) {
+      candidate.querySelector?.('summary')?.focus?.({ preventScroll: true });
+      return;
+    }
+  }
+}
+
+function updateRuntimeStateDisclosure(details) {
+  if (!details?.dataset) return;
+  const valuePath = details.dataset.runtimeStateValuePath;
+  if (valuePath) {
+    const summary = details.querySelector?.('summary');
+    const restoreFocus = summary !== null && summary !== undefined && summary === document.activeElement;
+    const scope = details.dataset.runtimeStateValueScope === 'inspector' ? 'inspector' : 'main';
+    const expandedPaths =
+      scope === 'inspector' ? state.runtimeState.expandedInspectorValues : state.runtimeState.expandedMainValues;
+    if (details.open === expandedPaths.has(valuePath)) return;
+    if (details.open) expandedPaths.add(valuePath);
+    else expandedPaths.delete(valuePath);
+    if (scope === 'inspector') renderInspector();
+    else renderRuntimeStateSection();
+    if (restoreFocus) restoreRuntimeStateDisclosureFocus(scope, null, valuePath);
+    return;
+  }
+  const structuralId = details.dataset.runtimeStateComponentId;
+  if (!structuralId) return;
+  const summary = details.querySelector?.('summary');
+  const restoreFocus = summary !== null && summary !== undefined && summary === document.activeElement;
+  const expanded = state.runtimeState.expandedComponents.has(structuralId);
+  if (details.open === expanded) return;
+  const record = findRuntimeStateRecordByStructuralId(structuralId);
+  if (details.open && record === null) return;
+  if (details.open) state.runtimeState.expandedComponents.add(structuralId);
+  else state.runtimeState.expandedComponents.delete(structuralId);
+  renderRuntimeStateSection();
+  if (restoreFocus) restoreRuntimeStateDisclosureFocus('main', structuralId, null);
 }
 
 function componentPropertyEditMetadata(node, propertyName, value) {
@@ -1279,6 +1966,7 @@ async function submitComponentPropertyEdit(componentId, propertyName, componentT
   renderInspector();
   let updated = false;
   let refreshed = false;
+  let refreshDeferredForRuntimeState = false;
   try {
     const result = await requestJson(
       '/api/devtools/component-property',
@@ -1297,9 +1985,9 @@ async function submitComponentPropertyEdit(componentId, propertyName, componentT
     if (requestIsCurrent()) {
       updated = result.updated === true;
       if (updated) {
-        const previousSnapshotGeneration = state.snapshotGeneration;
-        await refreshSnapshotInternal(operationGeneration);
-        refreshed = state.snapshotGeneration !== previousSnapshotGeneration;
+        const refreshOutcome = await refreshSnapshotInternal(operationGeneration);
+        refreshed = refreshOutcome === SNAPSHOT_REFRESH_APPLIED;
+        refreshDeferredForRuntimeState = refreshOutcome === SNAPSHOT_REFRESH_RUNTIME_STATE_DEFERRED;
       }
     }
   } catch (error) {
@@ -1310,10 +1998,10 @@ async function submitComponentPropertyEdit(componentId, propertyName, componentT
     if (operationIsCurrent()) {
       state.componentPropertyEdit.pending = false;
       state.componentPropertyEdit.focused = false;
-      if (updated && !refreshed && state.componentPropertyEdit.error === null) {
+      if (updated && !refreshed && !refreshDeferredForRuntimeState && state.componentPropertyEdit.error === null) {
         state.componentPropertyEdit.error = COMPONENT_PROPERTY_EDIT_ERROR;
       }
-      renderInspector();
+      if (!runtimeStatePresentationHasFocus()) renderInspector();
     }
   }
 }
@@ -1437,11 +2125,15 @@ function renderInspector() {
 
   const renderedNode = inspectedNode(node);
   const componentPropertyEditorModels = [];
-  const componentProperties = renderComponentProperties(node, componentPropertyEditorModels);
   const renderMarkup = markup => {
     elements.inspector.innerHTML = markup;
     hydrateComponentPropertyEditors(componentPropertyEditorModels);
   };
+  if (state.activeDetail === 'state') {
+    renderMarkup(renderSelectedRuntimeState(node));
+    return;
+  }
+  const componentProperties = renderComponentProperties(node, componentPropertyEditorModels);
   if (node.component && renderedNode === node) {
     renderMarkup(
       `<div class="rule-header">Valdi component <span class="rule-origin">${escapeHtml(node.tag)}</span></div>${propertyRows(componentMetadata(node), { css: false })}${componentProperties}<div class="empty-state">This component does not currently render a backing element.</div>`,
@@ -1481,12 +2173,15 @@ function render() {
   renderTree();
   renderInspector();
   renderBreadcrumbs();
+  if (state.activeSection === 'state') renderRuntimeStateSection();
 }
 
 function selectNode(id) {
   const node = findNode(id);
   if (!node) return;
-  state.selectedNodeId = nodeId(node);
+  const selectedNodeId = nodeId(node);
+  resetRuntimeStateForSelectionChange(selectedNodeId);
+  state.selectedNodeId = selectedNodeId;
   revealPath(state.selectedNodeId);
   render();
 }
@@ -2200,6 +2895,10 @@ function setActiveSection(section) {
   }
   if (activeSection === 'console') elements.consoleInput.focus();
   if (activeSection === 'elements') void refreshSnapshot();
+  if (activeSection === 'state') {
+    renderRuntimeStateSection();
+    void refreshSnapshot();
+  }
   if (activeSection === 'performance') {
     renderPerformance();
     void refreshPerformance();
@@ -2229,8 +2928,27 @@ function setActiveDetail(detail) {
     const selected = tab.dataset.detail === detail;
     tab.classList.toggle('selected', selected);
     tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    if (selected && tab.id) elements.inspector.setAttribute('aria-labelledby', tab.id);
   }
   renderInspector();
+}
+
+function handleDetailTabNavigation(event) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  const tabs = elements.detailTabs.filter(tab => !tab.disabled);
+  if (!tabs.length) return;
+  event.preventDefault();
+  const currentIndex = Math.max(0, tabs.indexOf(event.currentTarget));
+  const nextIndex =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? tabs.length - 1
+        : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+  const nextTab = tabs[nextIndex];
+  setActiveDetail(nextTab.dataset.detail);
+  nextTab.focus();
 }
 
 function stopConsoleStream() {
@@ -2384,6 +3102,7 @@ function wireEvents() {
   }
   for (const tab of elements.detailTabs) {
     tab.addEventListener('click', () => setActiveDetail(tab.dataset.detail));
+    tab.addEventListener('keydown', handleDetailTabNavigation);
   }
   elements.targetSelect.addEventListener('change', () => {
     if (!isDirectMode()) return;
@@ -2456,6 +3175,18 @@ function wireEvents() {
     state.search = elements.treeFilter.value;
     renderTree();
   });
+  elements.stateFilter.addEventListener('input', () => {
+    state.runtimeState.search = elements.stateFilter.value;
+    renderRuntimeStateSection();
+  });
+  elements.stateContent.addEventListener('click', event => {
+    const button = event.target.closest?.('[data-runtime-state-inspect]');
+    if (!button) return;
+    event.preventDefault();
+    event.stopPropagation();
+    inspectRuntimeStateBinding(runtimeStateInspectBindings.get(button));
+  });
+  elements.stateContent.addEventListener('toggle', event => updateRuntimeStateDisclosure(event.target), true);
   elements.expandButton.addEventListener('click', () => {
     expandUsefulNodes(state.snapshot?.tree);
     if (state.selectedNodeId) revealPath(state.selectedNodeId);
@@ -2525,6 +3256,7 @@ function wireEvents() {
       value,
     );
   });
+  elements.inspector.addEventListener('toggle', event => updateRuntimeStateDisclosure(event.target), true);
   elements.breadcrumbs.addEventListener('click', event => {
     const button = event.target.closest('[data-breadcrumb-id]');
     if (button) selectNode(button.dataset.breadcrumbId);
@@ -2571,7 +3303,9 @@ function wireEvents() {
   });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && isDirectMode()) void refreshTargetRegistry();
-    if (!document.hidden && state.activeSection === 'elements') void refreshSnapshot();
+    if (!document.hidden && (state.activeSection === 'elements' || state.activeSection === 'state')) {
+      void refreshSnapshot();
+    }
     if (!document.hidden && state.activeSection === 'performance') void refreshPerformance({ silent: true });
   });
 }

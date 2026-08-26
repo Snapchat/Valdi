@@ -12,6 +12,7 @@ interface DevToolsTreeNode {
     name: string;
     properties?: Record<string, unknown>;
     propertyEdits?: Record<string, { componentToken: string; snapshotRevision: number }>;
+    state?: string;
   };
   element?: {
     attributes: Record<string, unknown>;
@@ -145,7 +146,7 @@ interface PickerStubElement {
   addEventListener(type: string, listener: (event: PickerStubEvent) => void): void;
   append(child: PickerStubElement): void;
   closest(selector: string): PickerStubElement | null;
-  contains(): boolean;
+  contains(element?: PickerStubElement): boolean;
   dispatch(type: string, properties?: Partial<PickerStubEvent>): void;
   focus(): void;
   getAttribute(name: string): string | null;
@@ -161,6 +162,7 @@ interface PickerStubElement {
 
 interface PickerPanel {
   state: {
+    activeDetail: string;
     activeSection: string;
     consoleEntries: Array<{ kind: string; value: string }>;
     consoleEntryKeys: Set<string>;
@@ -473,12 +475,12 @@ function createPickerHarness(search: string): PickerHarness {
     return element;
   }
 
-  const mainTabs = ['elements', 'performance', 'console'].map(section => {
+  const mainTabs = ['elements', 'state', 'performance', 'console'].map(section => {
     const tab = elementForId(`${section}Tab`);
     tab.dataset['section'] = section;
     return tab;
   });
-  const sections = ['elements', 'performance', 'console'].map(section => {
+  const sections = ['elements', 'state', 'performance', 'console'].map(section => {
     const panelElement = elementForId(`${section}Section`);
     panelElement.dataset['panel'] = section;
     return panelElement;
@@ -1507,6 +1509,70 @@ describe('integrated DevTools capability-aware target picker', () => {
     });
   });
 
+  it('defers an edit-owned snapshot while either State surface owns focus', async () => {
+    for (const focusScope of ['main', 'inspector'] as const) {
+      const harness = createPickerHarness(
+        '?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3FvaldiDevTools%3D1&targetNonce=panel-target-nonce-123456',
+      );
+      harness.panel.state.target = pickerTarget('owl:web-preview', {
+        capabilities: ['components', 'component-properties', 'component-property-edit', 'snapshot'],
+        identityMode: 'inspected-page',
+        platform: 'web',
+        sessionId: 'web-preview',
+        state: 'attached',
+        transport: 'web-preview',
+      });
+      harness.panel.state.snapshot = { tree: editableComponentTree(true, 'a'.repeat(32), 7) };
+      harness.panel.state.snapshotGeneration = 7;
+      harness.panel.state.selectedNodeId = 'component:["7","nested"]';
+      const editResponse = harness.queueDeferred('/api/devtools/component-property');
+      const edit = harness.panel.submitComponentPropertyEdit(
+        'component:["7","nested"]',
+        'enabled',
+        'a'.repeat(32),
+        7,
+        false,
+      );
+      await flushPickerPromises();
+      expect(harness.panel.state.componentPropertyEdit.pending).withContext(focusScope).toBeTrue();
+
+      const focusedControl = createPickerStubElement(`${focusScope}-state-control`);
+      const stateSection = requiredPickerElement(harness, 'stateSection');
+      const inspector = requiredPickerElement(harness, 'inspector');
+      stateSection.contains = () => focusScope === 'main';
+      inspector.contains = () => focusScope === 'inspector';
+      harness.panel.state.activeDetail = focusScope === 'inspector' ? 'state' : 'styles';
+      harness.setActiveElement(focusedControl);
+      const focusedMarkup = `focused-${focusScope}-state`;
+      inspector.innerHTML = focusedMarkup;
+
+      editResponse.resolve({ updated: true });
+      await edit;
+
+      expect(harness.fetchRequests.filter(request => new URL(request.url).pathname === '/api/devtools/snapshot').length)
+        .withContext(focusScope)
+        .toBe(0);
+      expect(harness.panel.state.componentPropertyEdit.pending).withContext(focusScope).toBeFalse();
+      expect(harness.panel.state.componentPropertyEdit.error).withContext(focusScope).toBeNull();
+      expect(harness.panel.state.snapshotGeneration).withContext(focusScope).toBe(7);
+      expect(inspector.innerHTML).withContext(focusScope).toBe(focusedMarkup);
+
+      harness.setActiveElement(null);
+      harness.queueResponse('/api/devtools/snapshot', {
+        tree: editableComponentTree(false, 'b'.repeat(32), 8),
+      });
+      await harness.panel.refreshSnapshot();
+
+      expect(harness.panel.state.snapshotGeneration).withContext(focusScope).toBe(8);
+      expect(
+        harness.panel.state.snapshot?.tree.children[0]?.children[0]?.component?.propertyEdits?.['enabled']
+          ?.snapshotRevision,
+      )
+        .withContext(focusScope)
+        .toBe(8);
+    }
+  });
+
   it('rejects an empty numeric editor value through the form submit path', () => {
     const harness = createPickerHarness(
       '?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3FvaldiDevTools%3D1&targetNonce=panel-target-nonce-123456',
@@ -2080,19 +2146,22 @@ describe('integrated DevTools capability-aware target picker', () => {
     await flushPickerPromises();
     harness.panel.setActiveSection('elements');
     const elementsTab = requiredPickerElement(harness, 'elementsTab');
+    const stateTab = requiredPickerElement(harness, 'stateTab');
     const performanceTab = requiredPickerElement(harness, 'performanceTab');
     const consoleTab = requiredPickerElement(harness, 'consoleTab');
 
     elementsTab.dispatch('keydown', { key: 'ArrowRight' });
 
     expect(performanceTab.disabled).toBeTrue();
-    expect(harness.panel.state.activeSection).toBe('console');
+    expect(harness.panel.state.activeSection).toBe('state');
     expect(elementsTab.tabIndex).toBe(-1);
-    expect(consoleTab.tabIndex).toBe(0);
-    expect(consoleTab.getAttribute('aria-selected')).toBe('true');
+    expect(stateTab.tabIndex).toBe(0);
+    expect(stateTab.getAttribute('aria-selected')).toBe('true');
     expect(requiredPickerElement(harness, 'elementsSection').hidden).toBeTrue();
-    expect(requiredPickerElement(harness, 'consoleSection').hidden).toBeFalse();
+    expect(requiredPickerElement(harness, 'stateSection').hidden).toBeFalse();
 
+    stateTab.dispatch('keydown', { key: 'ArrowRight' });
+    expect(harness.panel.state.activeSection).toBe('console');
     consoleTab.dispatch('keydown', { key: 'ArrowRight' });
     expect(harness.panel.state.activeSection).toBe('elements');
   });
@@ -2748,7 +2817,8 @@ describe('integrated DevTools performance panel', () => {
 
   it('invalidates an old snapshot without wedging polling when the target changes', async () => {
     let resolveSnapshot:
-      ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void) | undefined;
+      | ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void)
+      | undefined;
     nextFetchResponse = new Promise(resolve => {
       resolveSnapshot = resolve;
     });
@@ -2772,7 +2842,8 @@ describe('integrated DevTools performance panel', () => {
   it('does not let a delayed pre-start status response overwrite a successful Start', async () => {
     panel.state.performance.data = snapshot;
     let resolveSnapshot:
-      ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void) | undefined;
+      | ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void)
+      | undefined;
     nextFetchResponse = new Promise(resolve => {
       resolveSnapshot = resolve;
     });
@@ -2791,7 +2862,8 @@ describe('integrated DevTools performance panel', () => {
   it('cleans up a stale successful start without overwriting the replacement target', async () => {
     panel.state.performance.data = snapshot;
     let resolveStart:
-      ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void) | undefined;
+      | ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void)
+      | undefined;
     nextFetchResponse = new Promise(resolve => {
       resolveStart = resolve;
     });
@@ -2822,7 +2894,8 @@ describe('integrated DevTools performance panel', () => {
   it('retains and surfaces a stale Start owner when exact cleanup fails', async () => {
     panel.state.performance.data = snapshot;
     let resolveStart:
-      ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void) | undefined;
+      | ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void)
+      | undefined;
     nextFetchResponse = new Promise(resolve => {
       resolveStart = resolve;
     });
@@ -2855,7 +2928,8 @@ describe('integrated DevTools performance panel', () => {
   it('does not replace a newer owner when stale Start cleanup fails', async () => {
     panel.state.performance.data = snapshot;
     let resolveStart:
-      ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void) | undefined;
+      | ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void)
+      | undefined;
     nextFetchResponse = new Promise(resolve => {
       resolveStart = resolve;
     });
@@ -2894,7 +2968,8 @@ describe('integrated DevTools performance panel', () => {
   it('keeps an in-flight Capture owned for exact recovery after a target change', async () => {
     panel.state.performance.data = snapshot;
     let resolveCapture:
-      ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void) | undefined;
+      | ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void)
+      | undefined;
     nextFetchResponse = new Promise(resolve => {
       resolveCapture = resolve;
     });

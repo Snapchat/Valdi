@@ -6,12 +6,24 @@ export interface DebuggerValueSnapshotLimits {
 }
 
 export interface DebuggerValueSnapshotCapture<T> {
+  readonly reflectionOperations: number;
   readonly serializedBytes: number;
+  readonly unmeasurable: boolean;
   readonly value: T;
 }
 
 interface DebuggerValueSnapshotBudget {
+  reflectionOperations: number;
+  remainingReflectionOperations: number | undefined;
   remainingBytes: number;
+  unmeasurable: boolean;
+}
+
+interface DebuggerValueSnapshotCaptureOptions {
+  readonly limits: DebuggerValueSnapshotLimits;
+  readonly maximumReflectionOperations: number | undefined;
+  readonly maximumSerializedBytes: number;
+  readonly source: unknown;
 }
 
 const DEBUG_ACCESSOR_OMISSION_MARKER = 'accessors or unsupported fields omitted';
@@ -31,11 +43,50 @@ export function captureDebuggerPropertiesSnapshot(
   maximumSerializedBytes: number,
   limits: DebuggerValueSnapshotLimits,
 ): DebuggerValueSnapshotCapture<Record<string, unknown>> | undefined {
+  return captureDebuggerPropertiesSnapshotInternal({
+    limits,
+    maximumReflectionOperations: undefined,
+    maximumSerializedBytes,
+    source,
+  });
+}
+
+/**
+ * State-only variant that bounds descriptor reflection after each unavoidable
+ * own-name materialization. Ordinary property snapshots intentionally retain
+ * their existing unlimited reflection behavior.
+ */
+export function captureDebuggerPropertiesSnapshotWithReflectionLimit(
+  source: unknown,
+  maximumSerializedBytes: number,
+  maximumReflectionOperations: number,
+  limits: DebuggerValueSnapshotLimits,
+): DebuggerValueSnapshotCapture<Record<string, unknown>> | undefined {
+  if (!validMaximum(maximumReflectionOperations)) {
+    return undefined;
+  }
+  return captureDebuggerPropertiesSnapshotInternal({
+    limits,
+    maximumReflectionOperations,
+    maximumSerializedBytes,
+    source,
+  });
+}
+
+function captureDebuggerPropertiesSnapshotInternal(
+  options: DebuggerValueSnapshotCaptureOptions,
+): DebuggerValueSnapshotCapture<Record<string, unknown>> | undefined {
+  const { limits, maximumReflectionOperations, maximumSerializedBytes, source } = options;
   if (typeof source !== 'object' || source === null || !validMaximum(maximumSerializedBytes) || !validLimits(limits)) {
     return undefined;
   }
 
-  const budget: DebuggerValueSnapshotBudget = { remainingBytes: maximumSerializedBytes };
+  const budget: DebuggerValueSnapshotBudget = {
+    reflectionOperations: 0,
+    remainingReflectionOperations: maximumReflectionOperations,
+    remainingBytes: maximumSerializedBytes,
+    unmeasurable: false,
+  };
   try {
     if (Array.isArray(source)) {
       return undefined;
@@ -44,7 +95,14 @@ export function captureDebuggerPropertiesSnapshot(
     const value = captureObject(source, 0, activePath, budget, limits);
     const serialized = JSON.stringify(value);
     const serializedBytes = utf8ByteLength(serialized);
-    return serializedBytes <= maximumSerializedBytes ? { serializedBytes, value } : undefined;
+    return serializedBytes <= maximumSerializedBytes
+      ? {
+          reflectionOperations: budget.reflectionOperations,
+          serializedBytes,
+          unmeasurable: budget.unmeasurable,
+          value,
+        }
+      : undefined;
   } catch (_error) {
     // Throwing or revoked Proxy reflection is an expected trust-boundary
     // outcome. The caller treats undefined as a properties-only omission.
@@ -118,6 +176,7 @@ function captureValue(
   } catch (_error) {
     // A nested throwing Proxy is represented without discarding safe sibling
     // fields; its enclosing top-level capture remains detached and bounded.
+    markReflectionUnmeasurable(budget);
     return captureString(DEBUG_UNAVAILABLE_MARKER, budget, limits.maximumStringBytes);
   } finally {
     activePath.delete(value);
@@ -135,6 +194,9 @@ function captureArray(
   if (!tryConsumeBudget(budget, 2)) {
     return output;
   }
+  if (!consumeReflectionOperations(budget, 1)) {
+    return output;
+  }
   const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
   const length =
     typeof lengthDescriptor?.value === 'number' && Number.isSafeInteger(lengthDescriptor.value)
@@ -144,6 +206,9 @@ function captureArray(
   let inspectedItemCount = 0;
   for (; inspectedItemCount < itemCount; inspectedItemCount++) {
     if (!tryConsumeArrayItemPrefix(output, budget, 2)) {
+      break;
+    }
+    if (!consumeReflectionOperations(budget, 1)) {
       break;
     }
     const descriptor = Object.getOwnPropertyDescriptor(value, String(inspectedItemCount));
@@ -178,13 +243,24 @@ function captureObject(
   if (!tryConsumeBudget(budget, 2)) {
     return output;
   }
+  if (reflectionBudgetIsExhausted(budget)) {
+    markReflectionUnmeasurable(budget);
+    return output;
+  }
   let inspectedEntryCount = 0;
   let omitted = false;
   // JavaScript has no resumable own-key iterator. This may materialize a
   // Proxy's complete own-key result, but it never traverses the prototype.
   // Property values are still read only from data descriptors.
   const propertyNames = Object.getOwnPropertyNames(value);
+  if (!consumeReflectionOperations(budget, propertyNames.length)) {
+    return output;
+  }
   for (const propertyName of propertyNames) {
+    if (!consumeObjectDescriptorReflection(budget)) {
+      omitted = true;
+      break;
+    }
     const descriptor = Object.getOwnPropertyDescriptor(value, propertyName);
     if (descriptor === undefined || !descriptor.enumerable) {
       continue;
@@ -211,6 +287,42 @@ function captureObject(
     addTruncationProperty(output, DEBUG_ACCESSOR_OMISSION_MARKER, budget, limits);
   }
   return output;
+}
+
+function consumeObjectDescriptorReflection(budget: DebuggerValueSnapshotBudget): boolean {
+  if (budget.remainingReflectionOperations === undefined) {
+    return true;
+  }
+  return consumeReflectionOperations(budget, 1);
+}
+
+function consumeReflectionOperations(budget: DebuggerValueSnapshotBudget, count: number): boolean {
+  if (!Number.isSafeInteger(count) || count < 0 || budget.reflectionOperations > Number.MAX_SAFE_INTEGER - count) {
+    budget.reflectionOperations = Number.MAX_SAFE_INTEGER;
+    markReflectionUnmeasurable(budget);
+    return false;
+  }
+  budget.reflectionOperations += count;
+  if (budget.remainingReflectionOperations === undefined) {
+    return true;
+  }
+  if (count > budget.remainingReflectionOperations) {
+    markReflectionUnmeasurable(budget);
+    return false;
+  }
+  budget.remainingReflectionOperations -= count;
+  return true;
+}
+
+function markReflectionUnmeasurable(budget: DebuggerValueSnapshotBudget): void {
+  budget.unmeasurable = true;
+  if (budget.remainingReflectionOperations !== undefined) {
+    budget.remainingReflectionOperations = 0;
+  }
+}
+
+function reflectionBudgetIsExhausted(budget: DebuggerValueSnapshotBudget): boolean {
+  return budget.remainingReflectionOperations !== undefined && budget.remainingReflectionOperations <= 0;
 }
 
 function addTruncationProperty(

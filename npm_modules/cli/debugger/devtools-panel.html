@@ -23,6 +23,18 @@
             Elements
           </button>
           <button
+            id="stateTab"
+            type="button"
+            class="main-tab"
+            data-section="state"
+            role="tab"
+            aria-controls="stateSection"
+            aria-selected="false"
+            tabindex="-1"
+          >
+            State
+          </button>
+          <button
             id="performanceTab"
             type="button"
             class="main-tab"
@@ -115,22 +127,90 @@
           <section class="inspector-pane" aria-label="Selected element inspector">
             <div class="inspector-toolbar">
               <nav class="detail-tabs" aria-label="Element inspection" role="tablist">
-                <button class="detail-tab selected" data-detail="styles" role="tab" aria-selected="true">Styles</button>
-                <button class="detail-tab" data-detail="computed" role="tab" aria-selected="false">Computed</button>
-                <button class="detail-tab" data-detail="dom" role="tab" aria-selected="false">DOM</button>
+                <button
+                  id="stylesDetailTab"
+                  type="button"
+                  class="detail-tab selected"
+                  data-detail="styles"
+                  role="tab"
+                  aria-controls="inspector"
+                  aria-selected="true"
+                  tabindex="0"
+                >
+                  Styles
+                </button>
+                <button
+                  id="computedDetailTab"
+                  type="button"
+                  class="detail-tab"
+                  data-detail="computed"
+                  role="tab"
+                  aria-controls="inspector"
+                  aria-selected="false"
+                  tabindex="-1"
+                >
+                  Computed
+                </button>
+                <button
+                  id="stateDetailTab"
+                  type="button"
+                  class="detail-tab"
+                  data-detail="state"
+                  role="tab"
+                  aria-controls="inspector"
+                  aria-selected="false"
+                  tabindex="-1"
+                >
+                  State
+                </button>
+                <button
+                  id="domDetailTab"
+                  type="button"
+                  class="detail-tab"
+                  data-detail="dom"
+                  role="tab"
+                  aria-controls="inspector"
+                  aria-selected="false"
+                  tabindex="-1"
+                >
+                  DOM
+                </button>
               </nav>
               <div class="toolbar-spacer"></div>
               <button id="copyNodeButton" class="icon-button" title="Copy selected node JSON" aria-label="Copy node">
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 6h9v10H7zM4 13V4h9" /></svg>
               </button>
             </div>
-            <div id="inspector" class="inspector"></div>
+            <div id="inspector" class="inspector" role="tabpanel" aria-labelledby="stylesDetailTab"></div>
           </section>
 
           <footer class="breadcrumb-bar">
             <div id="breadcrumbs" class="breadcrumbs"></div>
             <span id="nodeSummary" class="node-summary"></span>
           </footer>
+        </section>
+
+        <section
+          id="stateSection"
+          class="section utility-section"
+          data-panel="state"
+          role="tabpanel"
+          aria-labelledby="stateTab"
+          hidden
+        >
+          <div class="section-header runtime-state-toolbar">
+            <span>Component state</span>
+            <span id="stateSummary" class="runtime-state-summary" role="status" aria-live="polite"></span>
+            <input
+              id="stateFilter"
+              class="runtime-state-filter"
+              type="search"
+              placeholder="Filter components, keys, or values"
+              aria-label="Filter component state"
+              autocomplete="off"
+            />
+          </div>
+          <div id="stateContent" class="utility-content runtime-state-content"></div>
         </section>
 
         <section

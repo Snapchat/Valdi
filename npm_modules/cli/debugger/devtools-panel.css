@@ -616,6 +616,189 @@ button {
   word-break: break-word;
 }
 
+.runtime-state-toolbar {
+  justify-content: flex-start;
+  gap: 9px;
+}
+
+.runtime-state-summary {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.runtime-state-filter {
+  width: min(320px, 48vw);
+  min-width: 120px;
+  height: 23px;
+  margin-left: auto;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  outline: none;
+  background: var(--background);
+  color: var(--text);
+  font-size: 11px;
+}
+
+.runtime-state-filter:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.runtime-state-content {
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.runtime-state-component {
+  position: relative;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.runtime-state-component-details {
+  min-width: 0;
+}
+
+.runtime-state-component-summary,
+.runtime-state-value-summary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  list-style: none;
+  cursor: pointer;
+}
+
+.runtime-state-component-summary {
+  min-height: 34px;
+  padding: 4px 68px 4px 9px;
+  gap: 7px;
+}
+
+.runtime-state-component-summary::-webkit-details-marker,
+.runtime-state-value-summary::-webkit-details-marker {
+  display: none;
+}
+
+.runtime-state-component-summary:hover,
+.runtime-state-value-summary:hover,
+.runtime-state-inspect:hover,
+.runtime-state-inspect:focus-visible {
+  background: var(--surface-hover);
+}
+
+.runtime-state-disclosure {
+  width: 10px;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.runtime-state-component-details[open] > .runtime-state-component-summary > .runtime-state-disclosure,
+details[open] > .runtime-state-value-summary > .runtime-state-disclosure {
+  transform: rotate(90deg);
+}
+
+.runtime-state-component-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--tag);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-state-component-key,
+.runtime-state-component-description,
+.runtime-state-limit {
+  color: var(--muted);
+}
+
+.runtime-state-component-key,
+.runtime-state-component-description {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-state-component-description {
+  margin-left: auto;
+}
+
+.runtime-state-inspect {
+  position: absolute;
+  top: 5px;
+  right: 8px;
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--accent);
+}
+
+.runtime-state-component-body {
+  padding: 4px 10px 9px 25px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.runtime-state-value-row {
+  min-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.runtime-state-value-details {
+  margin-left: 10px;
+}
+
+.runtime-state-value-summary {
+  min-height: 20px;
+  gap: 4px;
+}
+
+.runtime-state-value-children {
+  margin-left: 10px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-soft);
+}
+
+.runtime-state-value-key {
+  color: var(--attribute);
+}
+
+.runtime-state-value-string {
+  color: var(--string);
+}
+
+.runtime-state-value-number,
+.runtime-state-value-boolean,
+.runtime-state-value-null {
+  color: var(--number);
+}
+
+.runtime-state-value-description {
+  color: var(--muted);
+}
+
+.runtime-state-raw {
+  max-height: 260px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.runtime-state-inspector {
+  margin-bottom: 12px;
+}
+
+.runtime-state-limit {
+  padding: 7px 0;
+  font-style: italic;
+}
+
 .breadcrumb-bar {
   padding: 0 8px;
   border-top: 1px solid var(--border);

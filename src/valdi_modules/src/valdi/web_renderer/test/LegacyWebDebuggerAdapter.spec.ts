@@ -3,10 +3,7 @@ import type { IComponent } from 'valdi_core/src/IComponent';
 import type { IRenderedElement } from 'valdi_core/src/IRenderedElement';
 import type { IRenderedVirtualNode } from 'valdi_core/src/IRenderedVirtualNode';
 import type { IRenderer } from 'valdi_core/src/IRenderer';
-import {
-  MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
-  ValdiWebRendererDelegate,
-} from '../src/ValdiWebRendererDelegate';
+import { MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS, ValdiWebRendererDelegate } from '../src/ValdiWebRendererDelegate';
 import type { WebValdiLayout } from '../src/views/WebValdiLayout';
 
 interface InstalledDom {
@@ -173,11 +170,7 @@ function installDom(): InstalledDom {
   };
 }
 
-function makeRenderedElement(
-  id: number,
-  tag: string,
-  attributes: Record<string, unknown>,
-): IRenderedElement {
+function makeRenderedElement(id: number, tag: string, attributes: Record<string, unknown>): IRenderedElement {
   return {
     id,
     tag,
@@ -247,10 +240,7 @@ function makeHierarchyRenderer(
   });
 }
 
-function captureSnapshot(
-  delegate: ValdiWebRendererDelegate,
-  elements: IRenderedElement[],
-) {
+function captureSnapshot(delegate: ValdiWebRendererDelegate, elements: IRenderedElement[]) {
   return delegate.getDebugSnapshot(makeRenderer(elements), MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
 }
 
@@ -274,10 +264,7 @@ function makeMutationMetadata(mutation: () => void): Record<string, unknown> {
   );
 }
 
-function observeIndexedChildReads(
-  children: WebValdiLayout[],
-  onIndexedRead: () => void,
-): WebValdiLayout[] {
+function observeIndexedChildReads(children: WebValdiLayout[], onIndexedRead: () => void): WebValdiLayout[] {
   return new Proxy(children, {
     get: (target, property, receiver) => {
       if (typeof property === 'string' && /^(0|[1-9]\d*)$/.test(property)) {
@@ -511,6 +498,299 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     expect(snapshot.tree?.component?.name).toBe('SafeComponent');
     expect(snapshot.tree?.component?.properties?.visible).toBe('safe');
     expect(Object.prototype.hasOwnProperty.call(snapshot.tree?.component?.properties ?? {}, 'secret')).toBeFalse();
+  });
+
+  it('captures only the component instance own enumerable state data descriptor', () => {
+    class StatefulExampleComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    const componentInstance = new StatefulExampleComponent() as unknown as IComponent;
+    const stateIdentity = { count: 4, nested: { ready: true } };
+    Object.defineProperty(componentInstance, 'state', {
+      configurable: true,
+      enumerable: true,
+      value: stateIdentity,
+      writable: true,
+    });
+    const component = makeVirtualNode('stateful', { component: componentInstance });
+    component.componentViewModel = { state: { count: 99 }, title: 'ViewModel data remains independent' };
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(component, [elementNode]);
+
+    const snapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], component),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+    );
+
+    expect(JSON.parse(snapshot.tree?.component?.state ?? 'null')).toEqual(stateIdentity);
+    expect(snapshot.tree?.component?.properties?.state).toEqual({ count: 99 });
+  });
+
+  it('omits inherited, accessor, non-enumerable, scalar, and null component state without invoking getters', () => {
+    class RestrictedStateComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    const componentInstance = new RestrictedStateComponent() as unknown as IComponent;
+    const component = makeVirtualNode('restricted-state', { component: componentInstance });
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(component, [elementNode]);
+    const renderer = makeHierarchyRenderer([element], component);
+    const getter = jasmine.createSpy('stateGetter').and.throwError('must not execute');
+
+    Object.defineProperty(componentInstance, 'state', { configurable: true, enumerable: true, get: getter });
+    expect(
+      delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS).tree?.component?.state,
+    ).toBeUndefined();
+    expect(getter).not.toHaveBeenCalled();
+
+    Object.defineProperty(componentInstance, 'state', {
+      configurable: true,
+      enumerable: false,
+      value: { hidden: true },
+    });
+    expect(
+      delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS).tree?.component?.state,
+    ).toBeUndefined();
+
+    for (const value of [null, 3, 'text', true]) {
+      Object.defineProperty(componentInstance, 'state', { configurable: true, enumerable: true, value });
+      expect(
+        delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS).tree?.component?.state,
+      ).toBeUndefined();
+    }
+
+    delete (componentInstance as unknown as Record<string, unknown>)['state'];
+    Object.defineProperty(Object.getPrototypeOf(componentInstance), 'state', {
+      configurable: true,
+      enumerable: true,
+      value: { inherited: true },
+    });
+    try {
+      expect(
+        delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS).tree?.component?.state,
+      ).toBeUndefined();
+    } finally {
+      delete (Object.getPrototypeOf(componentInstance) as Record<string, unknown>)['state'];
+    }
+
+    const revokedState = Proxy.revocable({ visible: true }, {});
+    Object.defineProperty(componentInstance, 'state', {
+      configurable: true,
+      enumerable: true,
+      value: revokedState.proxy,
+    });
+    revokedState.revoke();
+    const revokedSnapshot = delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+    expect(revokedSnapshot.tree?.component?.state).toBeUndefined();
+    expect(revokedSnapshot.tree?.children[0].id).toBe('1');
+  });
+
+  it('charges the escaped runtime-state wire string against the shared component budget', () => {
+    class EscapedStateComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    const componentInstance = new EscapedStateComponent() as unknown as IComponent;
+    Object.defineProperty(componentInstance, 'state', {
+      configurable: true,
+      enumerable: true,
+      value: { payload: '"\\'.repeat(12_000) },
+    });
+    const component = makeVirtualNode('escaped-state', { component: componentInstance });
+    component.componentViewModel = { retained: 'property' };
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(component, [elementNode]);
+
+    const snapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], component),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+    );
+
+    expect(snapshot.tree?.component?.properties).toEqual({ retained: 'property' });
+    expect(snapshot.tree?.component?.state).toBeUndefined();
+    expect(snapshot.tree?.children[0].id).toBe('1');
+  });
+
+  it('admits escaped state only when its exact transported wrapper fits 64 KiB', () => {
+    class EscapedStateComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    const componentInstance = new EscapedStateComponent() as unknown as IComponent;
+    Object.defineProperty(componentInstance, 'state', {
+      configurable: true,
+      enumerable: true,
+      value: { payload: '"\\'.repeat(4_000) },
+    });
+    const component = makeVirtualNode('escaped-state-small', { component: componentInstance });
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(component, [elementNode]);
+
+    const snapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], component),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+    );
+    const serializedState = snapshot.tree?.component?.state;
+
+    expect(serializedState).toBeDefined();
+    expect(new TextEncoder().encode(JSON.stringify({ state: serializedState })).length).toBeLessThanOrEqual(65_536);
+    expect(JSON.parse(serializedState ?? 'null')).toEqual({ payload: '"\\'.repeat(4_000) });
+  });
+
+  it('bounds aggregate state capture work across a hierarchy without consuming the property budget', () => {
+    class WorkBoundedStateComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    let escapedStateOwnKeyReads = 0;
+    let oversizedStateOwnKeyReads = 0;
+    let laterStateOwnKeyReads = 0;
+    const escapedState = new Proxy(
+      { payload: '"\\'.repeat(12_000) },
+      {
+        ownKeys: target => {
+          escapedStateOwnKeyReads++;
+          return Reflect.ownKeys(target);
+        },
+      },
+    );
+    const oversizedState = new Proxy(
+      { payload: 'x'.repeat(100_000) },
+      {
+        ownKeys: target => {
+          oversizedStateOwnKeyReads++;
+          return Reflect.ownKeys(target);
+        },
+      },
+    );
+    const laterState = new Proxy(
+      { retained: true },
+      {
+        ownKeys: target => {
+          laterStateOwnKeyReads++;
+          return Reflect.ownKeys(target);
+        },
+      },
+    );
+    const makeComponentNode = (key: string, state: object, retained: number): MutableVirtualNode => {
+      const instance = new WorkBoundedStateComponent() as unknown as IComponent;
+      Object.defineProperty(instance, 'state', { enumerable: true, value: state });
+      const node = makeVirtualNode(key, { component: instance });
+      node.componentViewModel = { retained };
+      return node;
+    };
+    const childComponents = Array.from({ length: 998 }, (_value, index) =>
+      makeComponentNode(`work-${index}`, index === 0 ? escapedState : index === 1 ? oversizedState : laterState, index),
+    );
+    const rootInstance = new WorkBoundedStateComponent() as unknown as IComponent;
+    Object.defineProperty(rootInstance, 'state', { enumerable: true, value: laterState });
+    const rootComponent = makeVirtualNode('work-root', { component: rootInstance });
+    rootComponent.componentViewModel = { payload: 'p'.repeat(40_000) };
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(rootComponent, [...childComponents, elementNode]);
+
+    const snapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], rootComponent),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+    );
+
+    expect(escapedStateOwnKeyReads).toBeGreaterThan(0);
+    expect(oversizedStateOwnKeyReads).toBeGreaterThan(0);
+    expect(laterStateOwnKeyReads).toBe(0);
+    expect(snapshot.tree?.children.length).toBe(999);
+    expect(snapshot.tree?.children[0].component?.properties?.retained).toBe(0);
+    expect(snapshot.tree?.children[0].component?.state).toBeUndefined();
+    expect(snapshot.tree?.children[997].component?.properties?.retained).toBe(997);
+    expect(snapshot.tree?.children[997].component?.state).toBeUndefined();
+    expect(String(snapshot.tree?.component?.properties?.payload).length).toBe(40_000);
+    expect(snapshot.tree?.component?.state).toBeUndefined();
+    expect(snapshot.tree?.children[998].id).toBe('1');
+  });
+
+  it('fails closed on excessive or unmeasurable nested state reflection work', () => {
+    class ReflectedStateComponent {}
+
+    const expensiveStates: object[] = [];
+    const propertyNames = Array.from({ length: 16_385 }, (_value, index) => `hidden-${index}`);
+    let excessiveStateDescriptorReads = 0;
+    expensiveStates.push(
+      new Proxy(
+        {},
+        {
+          getOwnPropertyDescriptor: () => {
+            excessiveStateDescriptorReads++;
+            return { configurable: true, enumerable: false, value: true };
+          },
+          ownKeys: () => propertyNames,
+        },
+      ),
+    );
+    expensiveStates.push({
+      nested: new Proxy(
+        { value: true },
+        {
+          getOwnPropertyDescriptor: () => {
+            throw new Error('unavailable');
+          },
+        },
+      ),
+    });
+
+    for (const expensiveState of expensiveStates) {
+      const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+      delegate.onElementCreated(1, 'layout');
+      delegate.onElementBecameRoot(1);
+      const element = makeRenderedElement(1, 'layout', {});
+      let laterStateOwnKeyReads = 0;
+      const laterState = new Proxy(
+        { safe: true },
+        {
+          ownKeys: target => {
+            laterStateOwnKeyReads++;
+            return Reflect.ownKeys(target);
+          },
+        },
+      );
+      const makeComponentNode = (key: string, state: object): MutableVirtualNode => {
+        const instance = new ReflectedStateComponent() as unknown as IComponent;
+        Object.defineProperty(instance, 'state', { enumerable: true, value: state });
+        const node = makeVirtualNode(key, { component: instance });
+        node.componentViewModel = { retained: key };
+        return node;
+      };
+      const expensiveComponent = makeComponentNode('expensive', expensiveState);
+      const laterComponent = makeComponentNode('later', laterState);
+      const rootComponent = makeComponentNode('root', laterState);
+      const elementNode = makeVirtualNode('layout', { element });
+      setVirtualChildren(rootComponent, [expensiveComponent, laterComponent, elementNode]);
+
+      const snapshot = delegate.getDebugSnapshot(
+        makeHierarchyRenderer([element], rootComponent),
+        MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+      );
+
+      expect(laterStateOwnKeyReads).toBe(0);
+      expect(snapshot.tree?.children[0].component?.state).toBeUndefined();
+      expect(snapshot.tree?.children[0].component?.properties?.retained).toBe('expensive');
+      expect(snapshot.tree?.children[1].component?.state).toBeUndefined();
+      expect(snapshot.tree?.children[1].component?.properties?.retained).toBe('later');
+      expect(snapshot.tree?.component?.state).toBeUndefined();
+      expect(snapshot.tree?.component?.properties?.retained).toBe('root');
+      expect(snapshot.tree?.children[2].id).toBe('1');
+    }
+    expect(excessiveStateDescriptorReads).toBe(0);
   });
 
   it('registers only exact captured own scalar data descriptors for component edits', () => {
@@ -771,6 +1051,11 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     const component = makeVirtualNode('replaced-view-model', {
       component: new ReplacedViewModelComponent() as unknown as IComponent,
     });
+    Object.defineProperty(component.component, 'state', {
+      configurable: true,
+      enumerable: true,
+      value: { retained: true },
+    });
     const elementNode = makeVirtualNode('layout', { element });
     setVirtualChildren(component, [elementNode]);
     const baseRenderer = makeHierarchyRenderer([element], component);
@@ -801,7 +1086,81 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     expect(componentSnapshotReads).toBe(2);
     expect(snapshot.tree?.component?.name).toBe('ReplacedViewModelComponent');
     expect(snapshot.tree?.component?.properties).toBeUndefined();
+    expect(JSON.parse(snapshot.tree?.component?.state ?? 'null')).toEqual({ retained: true });
     expect(snapshot.tree?.children[0].id).toBe('1');
+  });
+
+  it('drops only runtime state when its exact component identity changes during capture', () => {
+    class ReplacedStateComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    const componentInstance = new ReplacedStateComponent() as unknown as IComponent;
+    Object.defineProperty(componentInstance, 'state', {
+      configurable: true,
+      enumerable: true,
+      value: { value: 'stale' },
+      writable: true,
+    });
+    const component = makeVirtualNode('replaced-state', { component: componentInstance });
+    component.componentViewModel = { retained: 'property' };
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(component, [elementNode]);
+    const baseRenderer = makeHierarchyRenderer([element], component);
+    const readSnapshot = baseRenderer.getDebugVirtualNodeSnapshot!;
+    let componentSnapshotReads = 0;
+    const renderer = Object.assign(baseRenderer, {
+      getDebugVirtualNodeSnapshot: (
+        node: IRenderedVirtualNode,
+        maximumChildLinks: number,
+        maximumTraversalLinks: number,
+      ) => {
+        const snapshot = readSnapshot.call(baseRenderer, node, maximumChildLinks, maximumTraversalLinks);
+        if (snapshot !== undefined && node === (component as unknown as IRenderedVirtualNode)) {
+          componentSnapshotReads++;
+          if (componentSnapshotReads === 2) {
+            (componentInstance as unknown as Record<string, unknown>)['state'] = { value: 'fresh' };
+          }
+        }
+        return snapshot;
+      },
+    });
+
+    const snapshot = delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+
+    expect(componentSnapshotReads).toBe(2);
+    expect(snapshot.tree?.component?.state).toBeUndefined();
+    expect(snapshot.tree?.component?.properties).toEqual({ retained: 'property' });
+    expect(snapshot.tree?.children[0].id).toBe('1');
+  });
+
+  it('uses properties first and omits runtime state when the shared 64 KiB budget is exhausted', () => {
+    class BudgetedStateComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    const componentInstance = new BudgetedStateComponent() as unknown as IComponent;
+    Object.defineProperty(componentInstance, 'state', {
+      configurable: true,
+      enumerable: true,
+      value: { payload: 's'.repeat(30_000) },
+    });
+    const component = makeVirtualNode('budgeted-state', { component: componentInstance });
+    component.componentViewModel = { payload: 'p'.repeat(40_000) };
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(component, [elementNode]);
+
+    const snapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], component),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+    );
+
+    expect(String(snapshot.tree?.component?.properties?.payload).length).toBe(40_000);
+    expect(snapshot.tree?.component?.state).toBeUndefined();
   });
 
   it('strips component properties before the complete hierarchy envelope overflows', () => {
@@ -831,6 +1190,45 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     expect(snapshot.tree?.id).toBe('component:[null,"property-heavy"]');
     expect(snapshot.tree?.component?.name).toBe('PropertyHeavyComponent');
     expect(snapshot.tree?.component?.properties).toBeUndefined();
+    expect(snapshot.tree?.children[0].id).toBe('1');
+    expect(JSON.stringify(snapshot).length).toBeLessThanOrEqual(MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+  });
+
+  it('strips runtime state before properties when the complete hierarchy envelope overflows', () => {
+    class StateHeavyComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {
+      first: 'a'.repeat(50_000),
+      fourth: 'd'.repeat(50_000),
+      second: 'b'.repeat(50_000),
+      third: 'c'.repeat(50_000),
+    });
+    const componentInstance = new StateHeavyComponent() as unknown as IComponent;
+    Object.defineProperty(componentInstance, 'state', {
+      configurable: true,
+      enumerable: true,
+      value: { payload: 's'.repeat(40_900) },
+    });
+    const component = makeVirtualNode('state-heavy', { component: componentInstance });
+    component.componentViewModel = { payload: 'p'.repeat(23_000) };
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(component, [elementNode]);
+
+    const snapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], component),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+      () => ({ componentToken: 'a'.repeat(32), snapshotRevision: 3 }),
+    );
+
+    expect(snapshot.tree?.component?.state).toBeUndefined();
+    expect(String(snapshot.tree?.component?.properties?.payload).length).toBe(23_000);
+    expect(snapshot.tree?.component?.propertyEdits?.payload).toEqual({
+      componentToken: 'a'.repeat(32),
+      snapshotRevision: 3,
+    });
     expect(snapshot.tree?.children[0].id).toBe('1');
     expect(JSON.stringify(snapshot).length).toBeLessThanOrEqual(MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
   });
@@ -1112,9 +1510,9 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     delegate.onElementDestroyed(2);
     rootNode.children.push(staleChild);
     staleChild.parent = rootNode;
-    const getElementForId = jasmine.createSpy('getElementForId').and.callFake((id: number) =>
-      makeRenderedElement(id, id === 1 ? 'layout' : 'label', {}),
-    );
+    const getElementForId = jasmine
+      .createSpy('getElementForId')
+      .and.callFake((id: number) => makeRenderedElement(id, id === 1 ? 'layout' : 'label', {}));
     const renderer = { getElementForId } as unknown as IRenderer;
 
     const snapshot = delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
@@ -1211,9 +1609,9 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
       new Array<WebValdiLayout>(20_000).fill(staleNode),
       () => indexedReads++,
     );
-    const getElementForId = jasmine.createSpy('getElementForId').and.callFake((id: number) =>
-      makeRenderedElement(id, 'layout', {}),
-    );
+    const getElementForId = jasmine
+      .createSpy('getElementForId')
+      .and.callFake((id: number) => makeRenderedElement(id, 'layout', {}));
 
     const snapshot = delegate.getDebugSnapshot(
       { getElementForId } as unknown as IRenderer,
@@ -1239,10 +1637,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     const staleNode = getBackingNode(delegate, 3)!;
     delegate.onElementDestroyed(3);
     staleNode.parent = rootNode;
-    const renderer = makeRenderer([
-      makeRenderedElement(1, 'layout', {}),
-      makeRenderedElement(2, 'layout', {}),
-    ]);
+    const renderer = makeRenderer([makeRenderedElement(1, 'layout', {}), makeRenderedElement(2, 'layout', {})]);
     let atCapReads = 0;
     rootNode.children = observeIndexedChildReads(
       [...new Array<WebValdiLayout>(999).fill(staleNode), liveNode],
@@ -1322,16 +1717,11 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
       },
     });
 
-    const snapshot = captureSnapshot(delegate, [
-      makeRenderedElement(1, 'layout', { items: inspectedArray }),
-    ]);
+    const snapshot = captureSnapshot(delegate, [makeRenderedElement(1, 'layout', { items: inspectedArray })]);
     const debugItems = snapshot.tree?.element?.attributes.items as unknown[];
 
     expect(getterCalls).toBe(0);
-    expect(inspectedProperties).toEqual([
-      'length',
-      ...Array.from({ length: 50 }, (_value, index) => String(index)),
-    ]);
+    expect(inspectedProperties).toEqual(['length', ...Array.from({ length: 50 }, (_value, index) => String(index))]);
     expect(inspectedProperties).not.toContain('50');
     expect(debugItems[0]).toBe('<accessor/>');
     expect(debugItems[49]).toBe('<accessor/>');
@@ -1382,9 +1772,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
-    const renderer = makeRenderer([
-      makeRenderedElement(1, 'layout', { payload: 'x'.repeat(100_000) }),
-    ]);
+    const renderer = makeRenderer([makeRenderedElement(1, 'layout', { payload: 'x'.repeat(100_000) })]);
 
     const snapshot = delegate.getDebugSnapshot(renderer, 8_192);
 
@@ -1462,9 +1850,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
       },
     };
 
-    const snapshot = captureSnapshot(delegate, [
-      makeRenderedElement(1, 'layout', { nested, properties }),
-    ]);
+    const snapshot = captureSnapshot(delegate, [makeRenderedElement(1, 'layout', { nested, properties })]);
     const debugAttributes = snapshot.tree?.element?.attributes ?? {};
     const debugProperties = debugAttributes.properties as Record<string, unknown>;
 
@@ -1508,9 +1894,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
       },
     });
     const getElementForId = jasmine.createSpy('getElementForId').and.returnValue(renderedElement);
-    const getRootVirtualNode = jasmine
-      .createSpy('getRootVirtualNode')
-      .and.returnValue(adversarialRootVirtualNode);
+    const getRootVirtualNode = jasmine.createSpy('getRootVirtualNode').and.returnValue(adversarialRootVirtualNode);
     const renderer = { getElementForId, getRootVirtualNode } as unknown as IRenderer;
 
     delegate.onElementCreated(1, 'layout');

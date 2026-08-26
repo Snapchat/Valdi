@@ -21,7 +21,7 @@ the CLI package.
 - `debugger-actions.js`: UI actions, command prompt handling, auto-refresh, and externally driven debugger actions.
 - `debugger-session.js`: `sessionStorage` restore/persist for reload-friendly debugger state.
 - `debugger-bootstrap.js`: DOM event wiring and boot sequence.
-- `devtools-panel.html`, `devtools-panel.css`, and `devtools-panel.js`: the focused Chromium Elements, Console, and bounded Performance panel embedded by the generated extension.
+- `devtools-panel.html`, `devtools-panel.css`, and `devtools-panel.js`: the focused Chromium Elements, State, Console, and bounded Performance panel embedded by the generated extension.
 
 Scripts are loaded as classic browser scripts in the order listed in
 `index.html`. There is no module loader or bundler for this frontend; shared
@@ -60,6 +60,45 @@ materialize their complete key result before the cap is applied. A throwing or
 revoked Proxy therefore causes that component's properties to be omitted while
 preserving the hierarchy. Prototype traversal is not used, and property values
 are never read through normal property access.
+
+The same web hierarchy snapshot may include read-only component runtime state
+without adding a route, capability, or renderer API. This is taken from the
+exact component instance, not its ViewModel, and only from an own, enumerable
+data descriptor named `state` whose value is a non-null object. Getters,
+inherited fields, scalar state, and throwing reflection are omitted. The state
+object is detached under the existing descriptor-only snapshot rules, encoded
+as JSON, and admitted only when the exact escaped `component.state` wire string
+fits the component snapshot's remaining 64 KiB UTF-8 budget after properties.
+Detached and escaped-wire projection work is also bounded across the complete
+hierarchy by separate byte, reflection, and attempt counters; indeterminate
+nested reflection exhausts that State-only work budget without affecting
+component properties or hierarchy capture. Own-key enumeration itself is not
+resumable, so a Proxy may still materialize one complete key list. State checks
+that list against its remaining reflection allowance before performing any
+per-name descriptor lookup, and checks the allowance again before every nested
+object or array descriptor lookup.
+The pre-existing property-edit metadata is not debited from that counter and
+remains bounded by the complete snapshot envelope. Topology revalidation binds
+the same virtual node and component instance; an ineligible descriptor or
+changed raw state identity removes only `component.state`, while ViewModel
+replacement continues to remove only properties and edit metadata. If the
+final hierarchy envelope is too large, runtime state is stripped and retried
+before existing component properties and edit metadata are stripped.
+
+Native detailed snapshots retain their existing human-readable
+`IRenderedVirtualNodeData.state` string and are not changed by this web capture.
+The State panel determines the serialization format from the target identity.
+Inspected Chromium web snapshots accept strict JSON only. Native debug strings
+do not escape keys, quoted contents, function names, error text, or marker text,
+so every direct native snapshot is displayed as escaped raw text rather than
+interpreted structurally. Raw display remains searchable. Input is capped at
+65,536 characters; parsed web input is additionally capped at depth 12, tokens 2,000,
+entries per container at 100, and keys at 1,024 characters. Parsed records have
+null prototypes and are populated with data descriptors. Rendering is further
+capped at 500 stateful components and 1,000 value rows. Main-panel search and
+disclosures are independent from selected-component State details, and every
+Inspect action is bound to the exact current snapshot node and render
+generation.
 
 An accepted web snapshot may additionally promote the separate
 `component-property-edit` capability when both the renderer's dedicated

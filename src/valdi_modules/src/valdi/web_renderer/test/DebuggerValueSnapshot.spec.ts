@@ -1,6 +1,7 @@
 import 'jasmine/src/jasmine';
 import {
   captureDebuggerPropertiesSnapshot,
+  captureDebuggerPropertiesSnapshotWithReflectionLimit,
   type DebuggerValueSnapshotLimits,
 } from '../src/debug/DebuggerValueSnapshot';
 
@@ -109,6 +110,115 @@ describe('DebuggerValueSnapshot', () => {
     const revocable = Proxy.revocable({ visible: 'value' }, {});
     revocable.revoke();
     expect(captureDebuggerPropertiesSnapshot(revocable.proxy, 65_536, LIMITS)).toBeUndefined();
+  });
+
+  it('reports all materialized own names and array descriptor inspections as reflection work', () => {
+    const source: Record<string, unknown> = {};
+    for (let index = 0; index < 100; index++) {
+      Object.defineProperty(source, `hidden-${index}`, { enumerable: false, value: index });
+    }
+    source.visible = [1, 2];
+
+    const captured = captureDebuggerPropertiesSnapshot(source, 65_536, LIMITS);
+
+    expect(captured?.reflectionOperations).toBe(104);
+    expect(captured?.unmeasurable).toBeFalse();
+  });
+
+  it('bounds descriptor reflection immediately after own-name materialization', () => {
+    const propertyNames = Array.from({ length: 16_385 }, (_value, index) => `hidden-${index}`);
+    let descriptorReads = 0;
+    const state = new Proxy(
+      {},
+      {
+        getOwnPropertyDescriptor: () => {
+          descriptorReads++;
+          return { configurable: true, enumerable: false, value: true };
+        },
+        ownKeys: () => propertyNames,
+      },
+    );
+
+    const captured = captureDebuggerPropertiesSnapshotWithReflectionLimit({ state }, 65_536, 16_384, LIMITS);
+
+    expect(descriptorReads).toBe(0);
+    expect(captured?.unmeasurable).toBeTrue();
+    expect(captured?.reflectionOperations).toBeGreaterThan(16_384);
+  });
+
+  it('checks the bounded allowance before each object descriptor lookup', () => {
+    const descriptorNames: string[] = [];
+    const source = new Proxy(
+      { first: 1, second: 2, third: 3 },
+      {
+        getOwnPropertyDescriptor: (target, propertyName) => {
+          descriptorNames.push(String(propertyName));
+          return Reflect.getOwnPropertyDescriptor(target, propertyName);
+        },
+      },
+    );
+
+    const captured = captureDebuggerPropertiesSnapshotWithReflectionLimit(source, 65_536, 4, LIMITS);
+
+    expect(descriptorNames).toEqual(['first']);
+    expect(captured?.unmeasurable).toBeTrue();
+  });
+
+  it('checks the bounded allowance before each array descriptor lookup', () => {
+    const descriptorNames: string[] = [];
+    const values = new Proxy([1, 2, 3], {
+      getOwnPropertyDescriptor: (target, propertyName) => {
+        descriptorNames.push(String(propertyName));
+        return Reflect.getOwnPropertyDescriptor(target, propertyName);
+      },
+    });
+
+    const captured = captureDebuggerPropertiesSnapshotWithReflectionLimit({ values }, 65_536, 4, LIMITS);
+
+    expect(descriptorNames).toEqual(['length', '0']);
+    expect(captured?.unmeasurable).toBeTrue();
+  });
+
+  it('accepts a document that uses the exact bounded reflection allowance', () => {
+    const captured = captureDebuggerPropertiesSnapshotWithReflectionLimit({ value: true }, 65_536, 2, LIMITS);
+
+    expect(captured?.value.value).toBeTrue();
+    expect(captured?.reflectionOperations).toBe(2);
+    expect(captured?.unmeasurable).toBeFalse();
+  });
+
+  it('accepts an array that uses the exact bounded reflection allowance', () => {
+    const descriptorNames: string[] = [];
+    const values = new Proxy([1], {
+      getOwnPropertyDescriptor: (target, propertyName) => {
+        descriptorNames.push(String(propertyName));
+        return Reflect.getOwnPropertyDescriptor(target, propertyName);
+      },
+    });
+
+    const captured = captureDebuggerPropertiesSnapshotWithReflectionLimit({ values }, 65_536, 4, LIMITS);
+
+    expect(descriptorNames).toEqual(['length', '0']);
+    expect(captured?.value.values).toEqual([1]);
+    expect(captured?.reflectionOperations).toBe(4);
+    expect(captured?.unmeasurable).toBeFalse();
+  });
+
+  it('marks nested reflection recovery as unmeasurable', () => {
+    const nested = new Proxy(
+      { value: true },
+      {
+        getOwnPropertyDescriptor: () => {
+          throw new Error('unavailable');
+        },
+      },
+    );
+
+    const captured = captureDebuggerPropertiesSnapshot({ nested, safe: true }, 65_536, LIMITS);
+
+    expect(captured?.value.nested).toBe('<unavailable/>');
+    expect(captured?.value.safe).toBeTrue();
+    expect(captured?.unmeasurable).toBeTrue();
   });
 
   it('does not traverse Proxy prototypes while capturing own fields', () => {
