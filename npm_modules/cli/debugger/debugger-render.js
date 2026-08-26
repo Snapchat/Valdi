@@ -9,6 +9,8 @@ function render() {
   renderInspector();
   renderLogs();
   renderPerformance();
+  renderDebuggerProviders();
+  renderDebugSettings();
 }
 
 function renderPreview() {

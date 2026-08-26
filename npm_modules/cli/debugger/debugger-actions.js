@@ -30,6 +30,7 @@ function setActiveSection(section) {
   if (normalized === UI_SECTION && state.autoRefresh && state.source === 'daemon' && isDebuggerAttached()) {
     window.setTimeout(() => refreshLiveSnapshot(), 0);
   }
+  maybeRefreshDebuggerTools(normalized);
 }
 
 function shouldAutoRefresh() {
@@ -154,6 +155,7 @@ function detachDebuggerView() {
   state.manualDetach = true;
   state.rootSnapshotImage = null;
   state.rootSnapshotRequestId++;
+  resetDebuggerToolsForTarget();
   stopRuntimeLogStream();
   addLog('warn', 'proxy', 'Detached debugger view from live daemon data.');
   render();
@@ -173,6 +175,7 @@ async function setTargetPort(port, nextTarget) {
   state.followLatestTarget = true;
   state.rootSnapshotImage = null;
   state.rootSnapshotRequestId++;
+  resetDebuggerToolsForTarget();
   stopRuntimeLogStream();
   render();
 }
@@ -182,7 +185,7 @@ function clearDebuggerLogs() {
   renderLogs();
 }
 
-function applyDebuggerAction(action, params = {}) {
+function applyDebuggerAction(action, params = {}, result) {
   if (action === 'selectNode') {
     const nodeId = actionString(params, 'id', 'nodeId');
     if (nodeId) selectNode(nodeId);
@@ -291,6 +294,24 @@ function applyDebuggerAction(action, params = {}) {
     return;
   }
 
+  if (action === 'refreshDebuggerProviders') {
+    if (result) applyDebuggerProvidersResult(result, params);
+    else void refreshDebuggerProviders();
+    return;
+  }
+
+  if (action === 'refreshDebugSettings') {
+    if (result) applyDebugSettingsResult(result, params);
+    else void refreshDebugSettings();
+    return;
+  }
+
+  if (action === 'setDebugSetting' || action === 'resetDebugSetting') {
+    if (result) applyDebugSettingsResult(result, params);
+    else void refreshDebugSettings({ silent: true });
+    return;
+  }
+
   addLog('warn', 'debugger', `Unknown debugger action: ${action}.`);
 }
 
@@ -303,10 +324,16 @@ function runCommand(rawCommand) {
     addLog(
       'info',
       'console',
-      'Commands: help, section <ui|performance|logs>, path, issues, select <id>, connect, refresh, reload, status, snapshot, heap, trace, profile, auto on, auto off, clear.',
+      'Commands: help, section <ui|performance|data|settings|logs>, data, settings, path, issues, select <id>, connect, refresh, reload, status, snapshot, heap, trace, profile, auto on, auto off, clear.',
     );
   } else if (command.startsWith('section ')) {
     void requestDebuggerAction('setActiveSection', { section: command.slice('section '.length).trim() });
+  } else if (command === 'data') {
+    void requestDebuggerAction('setActiveSection', { section: 'data' });
+    void requestDebuggerAction('refreshDebuggerProviders', getSelectedTargetParams());
+  } else if (command === 'settings') {
+    void requestDebuggerAction('setActiveSection', { section: 'settings' });
+    void requestDebuggerAction('refreshDebugSettings', getSelectedTargetParams());
   } else if (command === 'path') {
     const path = getPathToNode(state.selectedNodeId)
       .map(node => `${node.tag}#${getNodeId(node)}`)

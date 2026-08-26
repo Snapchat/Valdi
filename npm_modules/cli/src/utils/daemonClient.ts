@@ -126,6 +126,18 @@ export interface DaemonPerformanceTraceStopBody extends DaemonPerformanceTraceSt
   timedOut: boolean;
 }
 
+export interface CustomRequestResponse {
+  data?: Record<string, unknown>;
+  handled: boolean;
+}
+
+export class DaemonProtocolError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DaemonProtocolError';
+  }
+}
+
 // ─── Packet encoding ─────────────────────────────────────────────────────────
 
 const MAGIC = Buffer.from([0x33, 0xc6, 0x00, 0x01]);
@@ -306,16 +318,6 @@ export class DaemonConnection {
     socket.on('data', (data: Buffer) => this.onData(data));
     socket.on('close', () => this.rejectAllPending(new Error('Connection closed unexpectedly')));
     socket.on('error', err => this.rejectAllPending(err));
-  }
-
-  async customRequest(
-    clientId: string,
-    identifier: string,
-    data: Record<string, unknown>,
-    timeoutMs: number,
-  ): Promise<Record<string, unknown>> {
-    const resp = await this.forwardAndWait(clientId, DaemonMsgType.CUSTOM_REQUEST, { identifier, data }, timeoutMs);
-    return (resp['body'] ?? {}) as Record<string, unknown>;
   }
 
   private rejectAllPending(err: Error): void {
@@ -615,9 +617,11 @@ export class DaemonConnection {
       throw new Error(message === undefined ? 'The Valdi runtime rejected the debugger request.' : String(message));
     }
     if (response['type'] !== -msgType) {
-      throw new Error(
-        `The Valdi runtime returned debugger response type ${String(response['type'])}; expected ${-msgType}.`,
-      );
+      const message = `The Valdi runtime returned debugger response type ${String(response['type'])}; expected ${-msgType}.`;
+      if (msgType === DaemonMsgType.CUSTOM_REQUEST) {
+        throw new DaemonProtocolError(message);
+      }
+      throw new Error(message);
     }
     return response;
   }
@@ -673,6 +677,73 @@ export class DaemonConnection {
   ): Promise<DaemonPerformanceTraceStopBody> {
     const resp = await this.forwardAndWait(clientId, DaemonMsgType.PERFORMANCE_TRACE_STOP_REQUEST, body, timeoutMs);
     return validatePerformanceTraceStopBody(resp['body']);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- follows the existing public daemon operation grouping
+  async customRequest(
+    clientId: string,
+    identifier: string,
+    data: Record<string, unknown>,
+    timeoutMs = 15_000,
+  ): Promise<CustomRequestResponse> {
+    if (typeof identifier !== 'string' || identifier.trim().length === 0 || identifier.length > 128) {
+      throw new DaemonProtocolError('Custom debugger request identifiers must contain 1 to 128 characters.');
+    }
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+      throw new DaemonProtocolError('Custom debugger request data must be an object.');
+    }
+    let serializedData: string;
+    try {
+      serializedData = JSON.stringify(data);
+    } catch {
+      throw new DaemonProtocolError('Custom debugger request data must be JSON serializable.');
+    }
+    if (typeof serializedData !== 'string') {
+      throw new DaemonProtocolError('Custom debugger request data must be JSON serializable.');
+    }
+    if (Buffer.byteLength(serializedData, 'utf8') > 128 * 1024) {
+      throw new DaemonProtocolError('Custom debugger request data exceeds 128 KiB.');
+    }
+    const resp = await this.forwardAndWait(clientId, DaemonMsgType.CUSTOM_REQUEST, { identifier, data }, timeoutMs);
+    const body = resp['body'];
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      throw new DaemonProtocolError('The Valdi runtime returned a non-object custom debugger response body.');
+    }
+    const response = body as Record<string, unknown>;
+    if (typeof response['handled'] !== 'boolean') {
+      throw new DaemonProtocolError('The Valdi runtime custom debugger response requires a boolean handled field.');
+    }
+    const responseData = response['data'];
+    if (
+      response['handled'] === true &&
+      (typeof responseData !== 'object' || responseData === null || Array.isArray(responseData))
+    ) {
+      throw new DaemonProtocolError('Handled custom debugger responses require object data.');
+    }
+    if (
+      responseData !== undefined &&
+      (typeof responseData !== 'object' || responseData === null || Array.isArray(responseData))
+    ) {
+      throw new DaemonProtocolError('Custom debugger response data must be an object when present.');
+    }
+    if (responseData !== undefined) {
+      let serializedResponseData: string;
+      try {
+        serializedResponseData = JSON.stringify(responseData);
+      } catch {
+        throw new DaemonProtocolError('Custom debugger response data must be JSON serializable.');
+      }
+      if (typeof serializedResponseData !== 'string') {
+        throw new DaemonProtocolError('Custom debugger response data must be JSON serializable.');
+      }
+      if (Buffer.byteLength(serializedResponseData, 'utf8') > 128 * 1024) {
+        throw new DaemonProtocolError('Custom debugger response data exceeds 128 KiB.');
+      }
+    }
+    return {
+      handled: response['handled'],
+      ...(responseData === undefined ? {} : { data: responseData as Record<string, unknown> }),
+    };
   }
 
   close(): void {

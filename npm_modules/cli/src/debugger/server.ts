@@ -9,6 +9,7 @@ import { TextDecoder } from 'node:util';
 import {
   type DaemonConnectedClient,
   type DaemonConnection,
+  DaemonProtocolError,
   MOBILE_PORT,
   type RemoteContext,
   STANDALONE_PORT,
@@ -59,6 +60,8 @@ const TRACE_CAPTURE_TARGET_STRING_KEYS = [
   'contextId',
   'applicationId',
 ] as const;
+const DEBUGGER_PROVIDERS_IDENTIFIER = 'ValdiDebuggerProviders';
+const DEBUG_SETTINGS_IDENTIFIER = 'ValdiDebuggerSettings';
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -212,6 +215,16 @@ interface WebPreviewDebuggerTarget {
   sessionId: string;
 }
 
+interface TargetCustomRequestResult {
+  handled: boolean;
+  identifier: string;
+  status: 'handled' | 'protocol-error' | 'unavailable' | 'unsupported';
+  target: Record<string, unknown> | null;
+  data: Record<string, unknown>;
+  error: string | null;
+  message: string | null;
+}
+
 class ApiRequestError extends Error {
   readonly statusCode: number;
 
@@ -257,6 +270,10 @@ const debuggerActions = [
   'startCpuProfile',
   'stopCpuProfile',
   'captureCpuProfile',
+  'refreshDebuggerProviders',
+  'refreshDebugSettings',
+  'setDebugSetting',
+  'resetDebugSetting',
 ];
 let devRevision = 0;
 let debuggerEventRevision = 0;
@@ -951,7 +968,7 @@ async function readJsonBody(request: IncomingMessage): Promise<Record<string, un
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
     byteLength += buffer.length;
     if (byteLength > 1024 * 1024) {
-      throw new ApiRequestError(400, 'Request body is too large.');
+      throw new ApiRequestError(413, 'Request body is too large.');
     }
     chunks.push(buffer);
   }
@@ -1013,23 +1030,99 @@ function readBodyString(body: Record<string, unknown>, key: string): string | un
   return String(value);
 }
 
-function readBodyRecord(body: Record<string, unknown>, key: string): Record<string, unknown> {
-  const value = body[key];
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  return value as Record<string, unknown>;
-}
-
 function readRecordString(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key];
   if (value === undefined || value === null || value === '') return undefined;
   return String(value);
 }
 
-function readRecordNumber(record: Record<string, unknown>, key: string): number | undefined {
+function readDebuggerExactString(record: Record<string, unknown>, key: string, maximumLength: number): string;
+function readDebuggerExactString(
+  record: Record<string, unknown>,
+  key: string,
+  maximumLength: number,
+  required: true,
+): string;
+function readDebuggerExactString(
+  record: Record<string, unknown>,
+  key: string,
+  maximumLength: number,
+  required: false,
+): string | undefined;
+function readDebuggerExactString(
+  record: Record<string, unknown>,
+  key: string,
+  maximumLength: number,
+  required = true,
+): string | undefined {
   const value = record[key];
-  if (value === undefined || value === null || value === '') return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
+  if (value === undefined && !required) return undefined;
+  if (typeof value !== 'string' || value.trim().length === 0 || value.length > maximumLength) {
+    throw new ApiRequestError(
+      400,
+      `${key} must be a non-empty string of at most ${maximumLength.toString()} characters.`,
+    );
+  }
+  return value;
+}
+
+function readDebuggerBoundedRecord(
+  record: Record<string, unknown>,
+  key: string,
+  maximumKeys: number,
+  maximumBytes: number,
+): Record<string, unknown> {
+  const value = record[key];
+  if (value === undefined) return {};
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ApiRequestError(400, `${key} must be an object.`);
+  }
+  const output = value as Record<string, unknown>;
+  if (Object.keys(output).length > maximumKeys || Buffer.byteLength(JSON.stringify(output), 'utf8') > maximumBytes) {
+    throw new ApiRequestError(400, `${key} exceeds debugger request bounds.`);
+  }
+  return output;
+}
+
+function readDebuggerPort(value: unknown, key = 'port'): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 65_535) {
+    throw new ApiRequestError(400, `${key} must be an integer between 1 and 65535.`);
+  }
+  return value;
+}
+
+function readDebuggerTargetSearchParams(record: Record<string, unknown>): URLSearchParams {
+  const searchParams = new URLSearchParams();
+  searchParams.set('port', readDebuggerPort(record['port']).toString());
+  searchParams.set('clientId', readDebuggerExactString(record, 'clientId', 256));
+  searchParams.set('contextId', readDebuggerExactString(record, 'contextId', 256));
+  return searchParams;
+}
+
+function validateDebuggerSearchParams(searchParams: URLSearchParams): URLSearchParams {
+  const rawPort = searchParams.get('port');
+  if (rawPort === null || !/^\d{1,5}$/.test(rawPort)) {
+    throw new ApiRequestError(400, 'port must be an integer between 1 and 65535.');
+  }
+  const record: Record<string, unknown> = {
+    port: Number(rawPort),
+    clientId: searchParams.get('clientId'),
+    contextId: searchParams.get('contextId'),
+  };
+  return readDebuggerTargetSearchParams(record);
+}
+
+function readDebuggerSettingValue(value: unknown): boolean | number | string {
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new ApiRequestError(400, 'Debug setting numbers must be finite.');
+    return value;
+  }
+  if (typeof value === 'string') {
+    if (value.length > 4096) throw new ApiRequestError(400, 'Debug setting strings cannot exceed 4096 characters.');
+    return value;
+  }
+  if (typeof value === 'boolean') return value;
+  throw new ApiRequestError(400, 'Debug setting values must be boolean, number, or string primitives.');
 }
 
 function readRecordBoolean(record: Record<string, unknown>, key: string): boolean | undefined {
@@ -1599,10 +1692,7 @@ function applyDebuggerUiAction(action: string, params: Record<string, unknown>, 
       break;
     }
     case 'setPort': {
-      const port = readRecordNumber(nextParams, 'port');
-      if (port === undefined || !Number.isInteger(port) || port < 1 || port > 65_535) {
-        throw new ApiRequestError(400, 'setPort requires an integer port between 1 and 65535.');
-      }
+      const port = readDebuggerPort(nextParams['port'], 'setPort port');
       debuggerUiState.port = port;
 
       break;
@@ -1635,18 +1725,21 @@ function applyDebuggerUiAction(action: string, params: Record<string, unknown>, 
 
 async function handleDebuggerAction(request: IncomingMessage): Promise<Record<string, unknown>> {
   const body = await readJsonBody(request);
-  const action = readBodyString(body, 'action') ?? readBodyString(body, 'type');
-  if (!action) {
+  const action =
+    readDebuggerExactString(body, 'action', 128, false) ?? readDebuggerExactString(body, 'type', 128, false);
+  if (action === undefined) {
     throw new ApiRequestError(400, 'Debugger action requests require an action.');
   }
   if (!debuggerActions.includes(action)) {
     throw new ApiRequestError(400, `Unknown debugger action '${action}'.`);
   }
-  const params = readBodyRecord(body, 'params');
-  const source = readBodyString(body, 'source') ?? 'agent';
+  const params = readDebuggerBoundedRecord(body, 'params', 64, 128 * 1024);
+  const source = readDebuggerExactString(body, 'source', 128, false) ?? 'agent';
+  const result = await executeDebuggerRuntimeAction(action, params);
   const record = applyDebuggerUiAction(action, params, source);
   const payload = {
     ...record,
+    ...(result === undefined ? {} : { result }),
     state: cloneDebuggerUiState(),
   };
   broadcastDebuggerEvent('debugger-action', payload);
@@ -1655,6 +1748,30 @@ async function handleDebuggerAction(request: IncomingMessage): Promise<Record<st
     ok: true,
     ...payload,
   };
+}
+
+async function executeDebuggerRuntimeAction(
+  action: string,
+  params: Record<string, unknown>,
+): Promise<TargetCustomRequestResult | undefined> {
+  if (action === 'refreshDebuggerProviders') {
+    return await inspectDebuggerProviders(readDebuggerTargetSearchParams(params));
+  }
+  if (action === 'refreshDebugSettings') {
+    return await inspectDebugSettings(readDebuggerTargetSearchParams(params), { action: 'list' });
+  }
+  if (action === 'setDebugSetting' || action === 'resetDebugSetting') {
+    const searchParams = readDebuggerTargetSearchParams(params);
+    const groupId = readDebuggerExactString(params, 'groupId', 128);
+    const settingId = readDebuggerExactString(params, 'settingId', 128);
+    return await inspectDebugSettings(searchParams, {
+      action: action === 'setDebugSetting' ? 'set' : 'reset',
+      groupId,
+      settingId,
+      ...(action === 'setDebugSetting' ? { value: readDebuggerSettingValue(params['value']) } : {}),
+    });
+  }
+  return undefined;
 }
 
 async function streamRuntimeLogs(
@@ -1917,11 +2034,108 @@ function createDaemonTargetPayload(
     platform: client.platform || portName(port),
     transport: `daemon:${port}`,
     state: 'attached',
+    proxyPort: port,
     port,
     clientId: client.client_id,
     contextId: context.id,
     applicationId: client.application_id,
   };
+}
+
+async function sendTargetCustomRequest(
+  searchParams: URLSearchParams,
+  identifier: string,
+  data: Record<string, unknown>,
+  timeoutMs: number,
+): Promise<TargetCustomRequestResult> {
+  const validatedSearchParams = validateDebuggerSearchParams(searchParams);
+  const port = Number(validatedSearchParams.get('port'));
+  try {
+    return await withConnection(port, async conn => {
+      const { client, context } = await resolveTarget(validatedSearchParams, conn);
+      const target = createDaemonTargetPayload(port, client, context);
+      const customBody = await conn.customRequest(
+        client.client_id,
+        identifier,
+        { ...data, contextId: context.id },
+        timeoutMs,
+      );
+      const handled = customBody.handled;
+      return {
+        handled,
+        identifier,
+        status: handled ? 'handled' : 'unsupported',
+        target,
+        data: customBody.data ?? {},
+        error: null,
+        message: handled ? null : `The target runtime did not handle ${identifier}.`,
+      };
+    });
+  } catch (error) {
+    const payload = clientErrorPayload(error);
+    return {
+      handled: false,
+      identifier,
+      status: error instanceof DaemonProtocolError ? 'protocol-error' : 'unavailable',
+      target: null,
+      data: {},
+      error: payload.error,
+      message: payload.error,
+    };
+  }
+}
+
+async function inspectDebuggerProviders(searchParams: URLSearchParams): Promise<TargetCustomRequestResult> {
+  return await sendTargetCustomRequest(searchParams, DEBUGGER_PROVIDERS_IDENTIFIER, { action: 'list' }, 5000);
+}
+
+async function requestDebuggerProvider(
+  request: IncomingMessage,
+  searchParams: URLSearchParams,
+): Promise<TargetCustomRequestResult> {
+  if (request.method !== 'POST') throw new ApiRequestError(405, 'Debugger provider requests require POST.');
+  const body = await readJsonBody(request);
+  const providerId = readDebuggerExactString(body, 'providerId', 128);
+  const action = readDebuggerExactString(body, 'action', 128);
+  const params = readDebuggerBoundedRecord(body, 'params', 32, 64 * 1024);
+  return await sendTargetCustomRequest(
+    searchParams,
+    DEBUGGER_PROVIDERS_IDENTIFIER,
+    {
+      action: 'request',
+      providerId,
+      request: { ...params, action },
+    },
+    10_000,
+  );
+}
+
+async function inspectDebugSettings(
+  searchParams: URLSearchParams,
+  data: Record<string, unknown>,
+): Promise<TargetCustomRequestResult> {
+  return await sendTargetCustomRequest(searchParams, DEBUG_SETTINGS_IDENTIFIER, data, 5000);
+}
+
+async function handleDebugSettings(
+  request: IncomingMessage,
+  searchParams: URLSearchParams,
+): Promise<TargetCustomRequestResult> {
+  if (request.method === 'GET') return await inspectDebugSettings(searchParams, { action: 'list' });
+  if (request.method !== 'POST') throw new ApiRequestError(405, 'Debug settings support GET and POST only.');
+  const body = await readJsonBody(request);
+  const action = readDebuggerExactString(body, 'action', 16);
+  if (action !== 'set' && action !== 'reset') {
+    throw new ApiRequestError(400, "Debug settings action must be 'set' or 'reset'.");
+  }
+  const groupId = readDebuggerExactString(body, 'groupId', 128);
+  const settingId = readDebuggerExactString(body, 'settingId', 128);
+  return await inspectDebugSettings(searchParams, {
+    action,
+    groupId,
+    settingId,
+    ...(action === 'set' ? { value: readDebuggerSettingValue(body['value']) } : {}),
+  });
 }
 
 function flattenTargets(
@@ -2767,6 +2981,22 @@ async function handleApi(request: IncomingMessage, response: ServerResponse, url
 
     if (url.pathname === '/api/performance/trace/capture') {
       sendTraceJson(response, 200, await capturePerformanceTrace(request, url.searchParams));
+      return;
+    }
+
+    if (url.pathname === '/api/debugger/providers') {
+      if (request.method !== 'GET') throw new ApiRequestError(405, 'Debugger provider discovery requires GET.');
+      sendJson(response, 200, await inspectDebuggerProviders(url.searchParams));
+      return;
+    }
+
+    if (url.pathname === '/api/debugger/providers/request') {
+      sendJson(response, 200, await requestDebuggerProvider(request, url.searchParams));
+      return;
+    }
+
+    if (url.pathname === '/api/debugger/settings') {
+      sendJson(response, 200, await handleDebugSettings(request, url.searchParams));
       return;
     }
 

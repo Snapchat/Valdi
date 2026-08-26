@@ -42,6 +42,8 @@ function debuggerSessionPayload() {
     traceStateUnknown: state.performance.traceStateUnknown,
     profileDuration: elements.profileDurationInput.value,
     profileContextId: elements.profileContextSelect.value,
+    providerTab: state.providers.activeTab,
+    settingsGroupId: state.settings.selectedGroupId,
   };
 }
 
@@ -151,6 +153,10 @@ function restoreDebuggerSessionState() {
   state.performance.traceStateUnknown = state.performance.activeTraceTarget !== null || persistedTraceMayBeActive;
   if (saved.profileDuration !== undefined) elements.profileDurationInput.value = String(saved.profileDuration);
   if (saved.profileContextId !== undefined) elements.profileContextSelect.value = String(saved.profileContextId);
+  if (saved.providerTab === 'storage' || saved.providerTab === 'sql') state.providers.activeTab = saved.providerTab;
+  if (saved.settingsGroupId !== undefined && saved.settingsGroupId !== null) {
+    state.settings.selectedGroupId = String(saved.settingsGroupId);
+  }
 
   return true;
 }

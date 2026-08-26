@@ -68,6 +68,30 @@ const state = {
     lastProfile: null,
     profileContexts: [],
   },
+  providers: {
+    activeTab: 'storage',
+    error: null,
+    generation: 0,
+    loading: false,
+    registry: null,
+    selectedDatabaseId: null,
+    selectedTable: null,
+    sql: null,
+    sqlLimit: 50,
+    sqlLoading: false,
+    sqlOffset: 0,
+    sqlTable: null,
+    storage: null,
+    targetKey: null,
+  },
+  settings: {
+    error: null,
+    generation: 0,
+    loading: false,
+    selectedGroupId: null,
+    snapshot: null,
+    targetKey: null,
+  },
 };
 
 const elements = {
@@ -122,6 +146,13 @@ const elements = {
   profileExportButton: document.getElementById('profileExportButton'),
   profileStatusPill: document.getElementById('profileStatusPill'),
   profileSummary: document.getElementById('profileSummary'),
+  providerContent: document.getElementById('providerContent'),
+  providerRefreshButton: document.getElementById('providerRefreshButton'),
+  providerStatusPill: document.getElementById('providerStatusPill'),
+  settingsContent: document.getElementById('settingsContent'),
+  settingsGroupSelect: document.getElementById('settingsGroupSelect'),
+  settingsRefreshButton: document.getElementById('settingsRefreshButton'),
+  settingsStatusPill: document.getElementById('settingsStatusPill'),
 };
 
 function hasSnapshotTree(snapshot = state.snapshot) {

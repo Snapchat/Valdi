@@ -64,6 +64,14 @@
             <strong>Performance</strong>
             <span>Renderer traces, CPU profiles</span>
           </button>
+          <button class="section-button" data-section-button="data">
+            <strong>Data</strong>
+            <span>Storage, SQL</span>
+          </button>
+          <button class="section-button" data-section-button="settings">
+            <strong>Settings</strong>
+            <span>Application-published controls</span>
+          </button>
           <button class="section-button" data-section-button="logs">
             <strong>Logs</strong>
             <span>Runtime logs, commands</span>
@@ -195,6 +203,39 @@
           </div>
         </section>
 
+        <section class="section-panel tool-panel" data-section-panel="data" aria-label="Data inspectors">
+          <div class="section-heading with-actions">
+            <div>
+              <h2>Data</h2>
+              <p>Inspect read-only data providers published by the attached Valdi target.</p>
+            </div>
+            <div class="tool-actions">
+              <span class="source-pill" id="providerStatusPill">Idle</span>
+              <button id="providerRefreshButton">Refresh providers</button>
+            </div>
+          </div>
+          <div class="provider-tabs" role="tablist" aria-label="Data providers">
+            <button class="active" data-provider-tab="storage">Storage</button>
+            <button data-provider-tab="sql">SQL</button>
+          </div>
+          <div class="tool-content" id="providerContent"></div>
+        </section>
+
+        <section class="section-panel tool-panel" data-section-panel="settings" aria-label="Debug settings">
+          <div class="section-heading with-actions">
+            <div>
+              <h2>Settings</h2>
+              <p>Change controls explicitly published by this debug application.</p>
+            </div>
+            <div class="tool-actions">
+              <select id="settingsGroupSelect" aria-label="Settings group"></select>
+              <span class="source-pill" id="settingsStatusPill">Idle</span>
+              <button id="settingsRefreshButton">Refresh settings</button>
+            </div>
+          </div>
+          <div class="tool-content" id="settingsContent"></div>
+        </section>
+
         <section class="section-panel" data-section-panel="logs">
           <div class="console">
             <div class="console-top">
@@ -229,6 +270,8 @@
     <script src="./debugger-render.js"></script>
     <script src="./debugger-runtime.js"></script>
     <script src="./debugger-performance.js"></script>
+    <script src="./debugger-providers.js"></script>
+    <script src="./debugger-settings.js"></script>
     <script src="./debugger-actions.js"></script>
     <script src="./debugger-session.js"></script>
     <script src="./debugger-bootstrap.js"></script>

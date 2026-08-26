@@ -220,12 +220,14 @@ async function loadRealSnapshot(target, options = {}) {
     ? { port: target.port || target.proxyPort, clientId: target.clientId, contextId: target.contextId }
     : getSelectedTargetParams();
   const previousSelectedNodeId = state.selectedNodeId;
+  const previousTargetKey = debuggerTargetKey();
   const previousLogs = state.source === 'daemon' ? state.snapshot.logs : [];
 
   try {
     if (!options.silent) addLog('info', 'daemon', `Fetching Valdi tree from port ${params.port}.`);
     const snapshot = await apiGet('/api/snapshot', params);
     state.snapshot = decorateSnapshot(snapshot);
+    if (debuggerTargetKey() !== previousTargetKey) resetDebuggerToolsForTarget();
     state.snapshot.logs = [...previousLogs, ...(state.snapshot.logs || [])];
     trimRuntimeLogs();
     state.selectedNodeId =
@@ -241,6 +243,7 @@ async function loadRealSnapshot(target, options = {}) {
     state.lastUpdated = new Date().toLocaleTimeString();
     elements.portSelect.value = String(state.snapshot.target.proxyPort || params.port);
     render();
+    maybeRefreshDebuggerTools(state.activeSection);
     if (!options.silent || !state.rootSnapshotImage) {
       void captureRootSnapshot(params, options);
     }

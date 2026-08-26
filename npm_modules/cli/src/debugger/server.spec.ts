@@ -41,6 +41,117 @@ interface StreamingHttpRequest {
   result: Promise<HttpResult>;
 }
 
+interface MockDaemon {
+  close: () => Promise<void>;
+  port: number;
+  requests: Array<Record<string, unknown>>;
+}
+
+const TEST_PACKET_MAGIC = Buffer.from([0x33, 0xc6, 0x00, 0x01]);
+
+function encodeDaemonPacket(payload: object): Buffer {
+  const body = Buffer.from(JSON.stringify(payload), 'utf8');
+  const header = Buffer.alloc(8);
+  TEST_PACKET_MAGIC.copy(header, 0);
+  header.writeUInt32LE(body.length, 4);
+  return Buffer.concat([header, body]);
+}
+
+async function startMockDaemon(customResponseBody?: unknown): Promise<MockDaemon> {
+  const sockets = new Set<net.Socket>();
+  const requests: Array<Record<string, unknown>> = [];
+  let responseId = 0;
+  const server = net.createServer(socket => {
+    sockets.add(socket);
+    socket.once('close', () => sockets.delete(socket));
+    let buffered = Buffer.alloc(0);
+    socket.on('data', chunk => {
+      buffered = Buffer.concat([buffered, chunk]);
+      while (buffered.length >= 8) {
+        const bodyLength = buffered.readUInt32LE(4);
+        if (buffered.length < bodyLength + 8) return;
+        const packet = JSON.parse(buffered.subarray(8, bodyLength + 8).toString('utf8')) as Record<string, unknown>;
+        buffered = buffered.subarray(bodyLength + 8);
+        const event = packet['event'] as Record<string, unknown> | undefined;
+        const payload = event?.['payload_from_client'] as Record<string, unknown> | undefined;
+        if (!payload) continue;
+        const requestBody = JSON.parse(String(payload['payload_string'])) as Record<string, unknown>;
+        requests.push(requestBody);
+        const type = requestBody['type'];
+        let body: unknown;
+        let responseType: number;
+        if (type === 2) {
+          responseType = -2;
+          body = [{ id: 'mock-context', rootComponentName: 'Mock App' }];
+        } else {
+          responseType = -1000;
+          const custom = requestBody['body'] as Record<string, unknown>;
+          const data = custom['data'] as Record<string, unknown>;
+          if (customResponseBody !== undefined) {
+            body = customResponseBody;
+          } else if (data['action'] === 'list') {
+            body = {
+              handled: true,
+              data: {
+                contractVersion: 1,
+                providers: [{ available: true, id: 'independent', kind: 'storage', label: 'Independent' }],
+                revision: 1,
+              },
+            };
+          } else {
+            body = {
+              handled: true,
+              data: {
+                contractVersion: 1,
+                data: { request: data['request'] },
+                registrationToken: 7,
+                revision: 1,
+              },
+            };
+          }
+        }
+        socket.write(
+          encodeDaemonPacket({
+            request: {
+              forward_client_payload: {
+                client_id: 1,
+                payload_string: JSON.stringify({
+                  body,
+                  requestId: requestBody['requestId'],
+                  type: responseType,
+                }),
+              },
+              request_id: `mock-${(++responseId).toString()}`,
+            },
+          }),
+        );
+      }
+    });
+    socket.write(
+      encodeDaemonPacket({
+        request: {
+          configure: { application_id: 'mock.app', platform: 'test' },
+          request_id: 'configure-1',
+        },
+      }),
+    );
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  if (typeof address !== 'object' || address === null) throw new Error('Mock daemon did not bind a TCP port.');
+  return {
+    close: async () => {
+      sockets.forEach(socket => socket.destroy());
+      await closeServer(server);
+    },
+    port: address.port,
+    requests,
+  };
+}
+
 const GET_REQUEST_OPTIONS: HttpRequestOptions = {
   method: 'GET',
   headers: {},
@@ -188,6 +299,7 @@ describe('debugger server', () => {
   let assetRoot: string;
   let debuggerServer: DebuggerServerInfo | undefined;
   let occupiedPortServer: net.Server | undefined;
+  let mockDaemon: MockDaemon | undefined;
   let originalHome: string | undefined;
 
   beforeEach(() => {
@@ -204,6 +316,10 @@ describe('debugger server', () => {
     if (occupiedPortServer) {
       await closeServer(occupiedPortServer);
       occupiedPortServer = undefined;
+    }
+    if (mockDaemon) {
+      await mockDaemon.close();
+      mockDaemon = undefined;
     }
     if (originalHome === undefined) {
       delete process.env['HOME'];
@@ -745,6 +861,268 @@ describe('debugger server', () => {
     expect(responseBody.state.autoRefresh).toBeTrue();
   });
 
+  it('advertises debugger provider and published settings actions', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+
+    const result = await request(new URL('/api/debugger/state', debuggerServer.url).toString(), GET_REQUEST_OPTIONS);
+    const responseBody = JSON.parse(result.body) as { capabilities: { actions: string[] } };
+
+    expect(result.statusCode).toBe(200);
+    expect(responseBody.capabilities.actions).toContain('refreshDebuggerProviders');
+    expect(responseBody.capabilities.actions).toContain('refreshDebugSettings');
+    expect(responseBody.capabilities.actions).toContain('setDebugSetting');
+    expect(responseBody.capabilities.actions).toContain('resetDebugSetting');
+  });
+
+  it('reports debugger providers and settings as unavailable when no target backend exists', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+    const unavailableTargetPort = await getFreePort();
+
+    const providers = await request(
+      new URL(
+        `/api/debugger/providers?port=${unavailableTargetPort}&clientId=1&contextId=test`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const settings = await request(
+      new URL(
+        `/api/debugger/settings?port=${unavailableTargetPort}&clientId=1&contextId=test`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const providersBody = JSON.parse(providers.body) as {
+      handled: boolean;
+      identifier: string;
+      target: unknown;
+      data: Record<string, unknown>;
+      error: string | null;
+      status: string;
+    };
+    const settingsBody = JSON.parse(settings.body) as typeof providersBody;
+
+    expect(providers.statusCode).toBe(200);
+    expect(providersBody.handled).toBeFalse();
+    expect(providersBody.identifier).toBe('ValdiDebuggerProviders');
+    expect(providersBody.target).toBeNull();
+    expect(providersBody.data).toEqual({});
+    expect(providersBody.error).not.toBeNull();
+    expect(providersBody.status).toBe('unavailable');
+    expect(settings.statusCode).toBe(200);
+    expect(settingsBody.handled).toBeFalse();
+    expect(settingsBody.identifier).toBe('ValdiDebuggerSettings');
+    expect(settingsBody.target).toBeNull();
+    expect(settingsBody.data).toEqual({});
+    expect(settingsBody.error).not.toBeNull();
+    expect(settingsBody.status).toBe('unavailable');
+  });
+
+  it('lists and dispatches an independently registered generic provider through the daemon wire contract', async () => {
+    mockDaemon = await startMockDaemon();
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+    const targetQuery = `port=${mockDaemon.port.toString()}&clientId=1&contextId=mock-context`;
+
+    const list = await request(
+      new URL(`/api/debugger/providers?${targetQuery}`, debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const dispatch = await request(
+      new URL(`/api/debugger/providers/request?${targetQuery}`, debuggerServer.url).toString(),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'snapshot',
+          params: { action: 'cannot-override', limit: 25 },
+          providerId: 'independent',
+        }),
+      },
+    );
+    const listBody = JSON.parse(list.body) as {
+      data: { providers: Array<{ id: string }> };
+      status: string;
+    };
+    const dispatchBody = JSON.parse(dispatch.body) as {
+      data: { data: { request: { action: string; limit: number } } };
+      status: string;
+    };
+
+    expect(list.statusCode).toBe(200);
+    expect(listBody.status).toBe('handled');
+    expect(listBody.data.providers).toEqual([jasmine.objectContaining({ id: 'independent' })]);
+    expect(dispatch.statusCode).toBe(200);
+    expect(dispatchBody.status).toBe('handled');
+    expect(dispatchBody.data.data.request).toEqual({ action: 'snapshot', limit: 25 });
+    expect(mockDaemon.requests.filter(item => item['type'] === 1000).length).toBe(2);
+  });
+
+  it('rejects unbounded or ambiguous generic provider request fields before daemon dispatch', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+    const targetQuery = 'port=13591&clientId=1&contextId=mock-context';
+    const oversizedAction = await request(
+      new URL(`/api/debugger/providers/request?${targetQuery}`, debuggerServer.url).toString(),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'x'.repeat(129), params: {}, providerId: 'independent' }),
+      },
+    );
+    const tooManyParams = await request(
+      new URL(`/api/debugger/providers/request?${targetQuery}`, debuggerServer.url).toString(),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'snapshot',
+          params: Object.fromEntries(Array.from({ length: 33 }, (_, index) => [`key${index.toString()}`, index])),
+          providerId: 'independent',
+        }),
+      },
+    );
+    const invalidTarget = await request(
+      new URL('/api/debugger/providers?port=65536&clientId=1&contextId=mock-context', debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+
+    expect(oversizedAction.statusCode).toBe(400);
+    expect(tooManyParams.statusCode).toBe(400);
+    expect(invalidTarget.statusCode).toBe(400);
+  });
+
+  it('distinguishes a malformed custom response from an unavailable target', async () => {
+    mockDaemon = await startMockDaemon({ handled: 'yes', data: {} });
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+    const result = await request(
+      new URL(
+        `/api/debugger/providers?port=${mockDaemon.port.toString()}&clientId=1&contextId=mock-context`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const body = JSON.parse(result.body) as { error: string; handled: boolean; status: string };
+
+    expect(result.statusCode).toBe(200);
+    expect(body.handled).toBeFalse();
+    expect(body.status).toBe('protocol-error');
+    expect(body.error).toContain('boolean handled field');
+  });
+
+  it('reports a truthful unsupported status when the target declines the generic contract', async () => {
+    mockDaemon = await startMockDaemon({ handled: false });
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+    const result = await request(
+      new URL(
+        `/api/debugger/providers?port=${mockDaemon.port.toString()}&clientId=1&contextId=mock-context`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const body = JSON.parse(result.body) as {
+      data: Record<string, unknown>;
+      handled: boolean;
+      status: string;
+      target: Record<string, unknown>;
+    };
+
+    expect(result.statusCode).toBe(200);
+    expect(body.handled).toBeFalse();
+    expect(body.status).toBe('unsupported');
+    expect(body.data).toEqual({});
+    expect(body.target).toEqual(jasmine.objectContaining({ clientId: '1', contextId: 'mock-context' }));
+  });
+
+  it('rejects malformed debugger provider and published settings requests', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+
+    const providerRequest = await request(new URL('/api/debugger/providers/request', debuggerServer.url).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ providerId: 'storage' }),
+    });
+    const settingsRequest = await request(new URL('/api/debugger/settings', debuggerServer.url).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'writeArbitraryData' }),
+    });
+
+    expect(providerRequest.statusCode).toBe(400);
+    expect((JSON.parse(providerRequest.body) as { error: string }).error).toContain('action must be');
+    expect(settingsRequest.statusCode).toBe(400);
+    expect((JSON.parse(settingsRequest.body) as { error: string }).error).toContain('at most 16 characters');
+  });
+
+  it('enforces provider HTTP methods and shared JSON body status codes', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+    const targetQuery = 'port=13591&clientId=1&contextId=test';
+    const listPost = await request(new URL(`/api/debugger/providers?${targetQuery}`, debuggerServer.url).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const malformed = await request(
+      new URL(`/api/debugger/providers/request?${targetQuery}`, debuggerServer.url).toString(),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{not-json}' },
+    );
+    const nonObject = await request(
+      new URL(`/api/debugger/providers/request?${targetQuery}`, debuggerServer.url).toString(),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '[]' },
+    );
+    const oversized = await request(
+      new URL(`/api/debugger/providers/request?${targetQuery}`, debuggerServer.url).toString(),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: `{"value":"${'x'.repeat(1024 * 1024)}"}`,
+      },
+    );
+
+    expect(listPost.statusCode).toBe(405);
+    expect(malformed.statusCode).toBe(400);
+    expect(nonObject.statusCode).toBe(400);
+    expect(oversized.statusCode).toBe(413);
+  });
+
   it('rejects unknown debugger actions and invalid ports', async () => {
     debuggerServer = await startDebuggerServer({
       assetRoot,
@@ -764,11 +1142,23 @@ describe('debugger server', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'setPort', params: { port: 70_000 } }),
     });
+    const coercedPort = await request(actionsUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'setPort', params: { port: '13591' } }),
+    });
+    const invalidParams = await request(actionsUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'refreshSnapshot', params: [] }),
+    });
 
     expect(unknown.statusCode).toBe(400);
     expect((JSON.parse(unknown.body) as { error: string }).error).toContain('Unknown debugger action');
     expect(invalidPort.statusCode).toBe(400);
     expect((JSON.parse(invalidPort.body) as { error: string }).error).toContain('between 1 and 65535');
+    expect(coercedPort.statusCode).toBe(400);
+    expect(invalidParams.statusCode).toBe(400);
   });
 
   it('rejects non-integer input element identifiers before connecting to a daemon', async () => {
@@ -877,7 +1267,7 @@ describe('debugger server', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ padding: 'a'.repeat(1024 * 1024) }),
     });
-    expect(oversizedBody.statusCode).toBe(400);
+    expect(oversizedBody.statusCode).toBe(413);
     expect((JSON.parse(oversizedBody.body) as { error: string }).error).toBe('Request body is too large.');
   });
 

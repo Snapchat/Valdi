@@ -142,19 +142,25 @@ function applyDebuggerActionPayload(payload) {
   const revision = Number(payload?.state?.revision) || 0;
   if (revision && revision <= state.lastDebuggerRevision) return;
   if (payload?.action) {
-    applyDebuggerAction(payload.action, payload.params || {});
+    applyDebuggerAction(payload.action, payload.params || {}, payload.result);
   }
   if (revision) state.lastDebuggerRevision = revision;
 }
 
 async function requestDebuggerAction(action, params = {}) {
-  const shouldApplyLocally = !state.debuggerEventsConnected;
+  const runtimeActions = new Set([
+    'refreshDebuggerProviders',
+    'refreshDebugSettings',
+    'setDebugSetting',
+    'resetDebugSetting',
+  ]);
+  const shouldApplyLocally = !state.debuggerEventsConnected && !runtimeActions.has(action);
   if (shouldApplyLocally) {
     applyDebuggerAction(action, params);
   }
 
   try {
-    await apiPost(
+    const response = await apiPost(
       '/api/debugger/actions',
       {},
       {
@@ -164,11 +170,18 @@ async function requestDebuggerAction(action, params = {}) {
       },
       { timeoutMs: 5000 },
     );
+    const revision = Number(response?.state?.revision) || 0;
+    if (response?.result && (!revision || revision > state.lastDebuggerRevision)) {
+      applyDebuggerAction(action, params, response.result);
+      if (revision) state.lastDebuggerRevision = revision;
+    }
+    return response;
   } catch (error) {
     if (!shouldApplyLocally) {
       applyDebuggerAction(action, params);
     }
     addLog('warn', 'debugger', `Debugger action bus unavailable; applied ${action} locally. ${error.message}`);
+    return null;
   }
 }
 

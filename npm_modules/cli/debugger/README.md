@@ -16,6 +16,8 @@ the CLI package.
 - `debugger-render.js`: header, target list, tree, preview overlay, inspector, and export rendering.
 - `debugger-runtime.js`: target discovery, snapshots, runtime log streaming, heap, and copy/export helpers.
 - `debugger-performance.js`: renderer trace and Hermes CPU profile controls.
+- `debugger-providers.js`: provider discovery plus read-only Storage and SQL inspector rendering.
+- `debugger-settings.js`: published debug-setting discovery, rendering, validation, and mutation requests.
 - `debugger-actions.js`: UI actions, command prompt handling, auto-refresh, and externally driven debugger actions.
 - `debugger-session.js`: `sessionStorage` restore/persist for reload-friendly debugger state.
 - `debugger-bootstrap.js`: DOM event wiring and boot sequence.
@@ -36,7 +38,10 @@ Important routes:
 - `/api/snapshot`: fetches the selected target's view tree and preview data.
 - `/api/runtime-logs` and `/api/runtime-logs/stream`: read and stream target logs.
 - `/api/debugger/state`, `/api/debugger/events`, and `/api/debugger/actions`: keep the browser UI and external agents in sync.
+- `/api/input`: validates and forwards bounded input requests to the selected Valdi target.
 - `/api/performance/trace/*`: start, stop, capture, and export native renderer traces.
+- `/api/debugger/providers` and `/api/debugger/providers/request`: discover and query target-owned debugger providers.
+- `/api/debugger/settings`: discover and update target-published debug settings.
 - `/api/performance/profile/*`: list Hermes contexts and capture CPU profiles.
 - `/api/devtools/target`: matches the inspected Chromium page to the exact configured preview origin and path.
 - `/api/devtools/snapshot`, `/api/devtools/highlight`, and `/api/devtools/evaluate`: proxy the explicit web debugger bridge contract through loopback CDP.
@@ -48,14 +53,44 @@ One-shot captures are limited to 15 seconds so the debugger handler can retain
 the result before the native recorder's independent safety timeout, and
 exported JSON can be opened in Perfetto. Native bounds report dropped event
 counts, and retained timeout/retry results expire after one minute.
-Hermes CPU profiling uses the existing inspector transport. Target input
-forwarding and data/network provider tabs should likewise land
-with their runtime-side contracts and end-to-end tests rather than as inactive
-browser-only surfaces.
-Web-renderer inspection depends on the target page explicitly exposing
+Hermes CPU profiling uses the existing inspector transport.
+
+The native and synthetic previews forward capability, query, tap, focus, text,
+key, and scroll requests through the selected target's bounded input contract.
+Web-renderer inspection uses the first-party bridge exposed as
 `window.__VALDI_WEB_DEBUGGER__` with `getSnapshot()`, `highlightNode()`, and
-`clearHighlight()`. The renderer-side adapter is intentionally outside this
-CLI/DevTools core.
+`clearHighlight()`. The DevTools panel proxies inspection through the exact
+configured loopback Chromium target.
+
+The Data section discovers target-owned providers through a generic custom
+message contract. This slice includes read-only Storage and SQL presentation,
+but it does not register either backend. A later thin registration layer can
+adapt a bounded Storage snapshot callback or an existing SQL API without
+changing this contract. Until then, the UI reports both surfaces as unavailable
+instead of synthesizing sample data. Network and key-value integrations are not
+part of this slice and remain unavailable unless a future runtime provider is
+registered.
+
+Runtime adapters cross the provider boundary with an already serialized JSON
+object document, not an arbitrary object graph. They should call
+`createDebuggerProviderOwner(module, 'stable/adapter/module/key')`, register
+their provider through that owner, and return
+`createDebuggerProviderResult(JSON.stringify(snapshot))` from `handleRequest`.
+Core caps action documents at 48 KiB of UTF-8, validates their depth,
+collection sizes, strings, and total value count, and then enforces 128 KiB on
+the complete serialized custom-response body including metadata. Owners bind
+to the creating module object's hot-reload callback automatically, including
+webpack modules where `module.path` is absent. Adapters call
+`owner.dispose()` only when stopping before a reload. A newer registration for
+an existing provider ID permanently invalidates the older registration. This
+is the integration point for the later thin Storage/SQL registration layer.
+On native runtimes the owner observes `module.path`; the explicit stable key is
+replacement identity only. Web runtimes fall back to observing that stable key
+because webpack does not provide `module.path`.
+
+Published settings are application-owned controls registered only in debug
+runtimes. Values are limited to declared toggle, select, text, and number
+settings; the server does not expose arbitrary runtime property mutation.
 
 Detailed debugger snapshots explicitly opt in to component ViewModel and state
 serialization. That data can be sensitive, is bounded by a per-field and
@@ -110,7 +145,8 @@ If you add a new static asset type, update the server MIME map and watcher.
 Session state is persisted in `sessionStorage` under
 `valdi.debugger.session.v1`, so normal debugger refreshes should preserve the
 active section, selected target/node, filters, expanded tree nodes, and capture
-settings.
+settings, plus the active provider and published-settings group. Provider and
+settings payloads are cleared when the selected target changes.
 
 ## Validation
 

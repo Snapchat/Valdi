@@ -4,6 +4,7 @@ import type { Socket } from 'node:net';
 import {
   DaemonConnection,
   DaemonMsgType,
+  DaemonProtocolError,
   MAX_DAEMON_INNER_PAYLOAD_BYTES,
   MAX_DAEMON_PACKET_PAYLOAD_BYTES,
   MAX_DAEMON_TRACE_PAYLOAD_BYTES,
@@ -21,8 +22,16 @@ function encodeTestPacket(payload: object): Buffer {
 
 // net.Socket uses EventEmitter semantics, which this protocol test mirrors.
 // eslint-disable-next-line unicorn/prefer-event-target
-class ErrorResponseSocket extends EventEmitter {
+class TestResponseSocket extends EventEmitter {
   readonly remotePort = 13_591;
+  readonly requests: Array<Record<string, unknown>> = [];
+
+  constructor(
+    private readonly responseType: number,
+    private readonly responseBody: unknown,
+  ) {
+    super();
+  }
 
   write(data: Buffer, callback?: (error?: Error) => void): boolean {
     const packet = JSON.parse(data.subarray(8).toString('utf8')) as Record<string, unknown>;
@@ -30,14 +39,15 @@ class ErrorResponseSocket extends EventEmitter {
     const payloadFromClient = event?.['payload_from_client'] as Record<string, unknown> | undefined;
     if (payloadFromClient) {
       const request = JSON.parse(String(payloadFromClient['payload_string'])) as Record<string, unknown>;
+      this.requests.push(request);
       const errorResponse = {
         request: {
           forward_client_payload: {
             client_id: 1,
             payload_string: JSON.stringify({
-              type: -1,
+              type: this.responseType,
               requestId: request['requestId'],
-              body: { message: 'Heap dump failed.' },
+              body: this.responseBody,
             }),
           },
           request_id: 'device-response-1',
@@ -198,7 +208,7 @@ function makeTraceStopResponse(trace: Record<string, unknown>): (messageType: nu
 
 describe('DaemonConnection', () => {
   it('surfaces runtime error responses from debugger requests', async () => {
-    const socket = new ErrorResponseSocket();
+    const socket = new TestResponseSocket(-1, { message: 'Heap dump failed.' });
     const connection = new DaemonConnection(socket as unknown as Socket);
 
     try {
@@ -230,6 +240,21 @@ describe('DaemonConnection', () => {
     }
   });
 
+  it('accepts only well-formed handled custom responses', async () => {
+    const socket = new TestResponseSocket(-1000, { handled: true, data: { providers: [] } });
+    const connection = new DaemonConnection(socket as unknown as Socket);
+
+    try {
+      await expectAsync(connection.customRequest('1', 'ValdiDebuggerProviders', { action: 'list' })).toBeResolvedTo({
+        handled: true,
+        data: { providers: [] },
+      });
+      expect(socket.requests[0]?.['type']).toBe(1000);
+    } finally {
+      connection.close();
+    }
+  });
+
   it('routes renderer trace status, start, and stop through the runtime protocol', async () => {
     const socket = new TraceResponseSocket();
     const connection = new DaemonConnection(socket as unknown as Socket);
@@ -254,6 +279,18 @@ describe('DaemonConnection', () => {
       expect(stop['recording']).toBeFalse();
       expect(stop['contextId']).toBe('root');
       expect(stop.traces).toEqual([]);
+    } finally {
+      connection.close();
+    }
+  });
+
+  it('accepts a well-formed unhandled custom response without fabricated data', async () => {
+    const socket = new TestResponseSocket(-1000, { handled: false });
+    const connection = new DaemonConnection(socket as unknown as Socket);
+    try {
+      await expectAsync(connection.customRequest('1', 'ValdiDebuggerProviders', { action: 'list' })).toBeResolvedTo({
+        handled: false,
+      });
     } finally {
       connection.close();
     }
@@ -341,6 +378,44 @@ describe('DaemonConnection', () => {
       await expectAsync(connection.performanceTraceStatus('1', { contextId: 'root' }, 1000)).toBeRejectedWithError(
         /invalid contextId/,
       );
+    } finally {
+      connection.close();
+    }
+  });
+
+  [
+    { body: { handled: true, data: {} }, label: 'response type', type: -2 },
+    { body: null, label: 'response body', type: -1000 },
+    { body: { handled: 'yes', data: {} }, label: 'handled field', type: -1000 },
+    { body: { handled: true, data: [] }, label: 'handled response data', type: -1000 },
+    { body: { handled: false, data: 'invalid' }, label: 'optional response data', type: -1000 },
+    { body: { handled: true, data: { value: 'x'.repeat(128 * 1024) } }, label: 'oversized response data', type: -1000 },
+  ].forEach(testCase => {
+    it(`rejects malformed custom ${testCase.label}`, async () => {
+      const socket = new TestResponseSocket(testCase.type, testCase.body);
+      const connection = new DaemonConnection(socket as unknown as Socket);
+      try {
+        await expectAsync(
+          connection.customRequest('1', 'ValdiDebuggerProviders', { action: 'list' }),
+        ).toBeRejectedWithError(DaemonProtocolError);
+      } finally {
+        connection.close();
+      }
+    });
+  });
+
+  it('rejects unbounded identifiers and request data before transport', async () => {
+    const socket = new TestResponseSocket(-1000, { handled: true, data: {} });
+    const connection = new DaemonConnection(socket as unknown as Socket);
+    try {
+      await expectAsync(connection.customRequest('1', 'x'.repeat(129), {})).toBeRejectedWithError(
+        DaemonProtocolError,
+        /1 to 128/,
+      );
+      await expectAsync(
+        connection.customRequest('1', 'bounded', { value: 'x'.repeat(128 * 1024) }),
+      ).toBeRejectedWithError(DaemonProtocolError, /exceeds 128 KiB/);
+      expect(socket.requests).toEqual([]);
     } finally {
       connection.close();
     }
