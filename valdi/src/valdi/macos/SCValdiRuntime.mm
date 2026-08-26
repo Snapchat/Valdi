@@ -117,7 +117,8 @@ public:
                                                                                Valdi::strongSmallRef(&Valdi::ConsoleLogger::getLogger()),
                                                                                /* enableDebuggerService */ true,
                                                                                /* disableHotReloader */ false,
-                                                                               /* isStandalone */ true);
+                                                                               /* isStandalone */ true,
+                                                                               std::nullopt);
         _runtimeManager->postInit();
         _runtimeManager->applicationDidResume();
         _runtimeManager->registerBytesAssetLoader(cachesImageCache);

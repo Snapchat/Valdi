@@ -9,4 +9,13 @@
 
 @implementation SCValdiConfiguration
 
+- (instancetype)init
+{
+    self = [super init];
+    if (self) {
+        self.enableDebuggerService = YES;
+    }
+    return self;
+}
+
 @end

@@ -18,11 +18,14 @@
 #import "valdi/ios/Text/SCValdiCustomUnderlineStyle.h"
 #import "valdi/ios/Gestures/SCValdiGestureRecognizers.h"
 #import "valdi/ios/Utils/SCValdiImageFilter.h"
+#import "valdi/runtime/Debugger/DebuggerService.hpp"
+#import "valdi/runtime/RuntimeManager.hpp"
 #import "valdi/runtime/Utils/AsyncGroup.hpp"
 #import "valdi_core/cpp/Threading/DispatchQueue.hpp"
 #import "valdi_core/cpp/Threading/GCDDispatchQueue.hpp"
 #import "valdi_core/SCValdiScrollView.h"
 #import "valdi_core/SCValdiRootView.h"
+#import "valdi_core/SCValdiSharedLogger.h"
 #import "valdi_core/UIView+ValdiBase.h"
 
 #import <SCCValdiTest/SCCValdiTest.h>
@@ -49,6 +52,56 @@
 {
     if (self.onRenderCallback) {
         self.onRenderCallback();
+    }
+}
+
+@end
+
+@interface SCValdiCapturingLogger: NSObject<SCValdiLogger>
+
+- (void)reset;
+- (NSArray<NSString *> *)capturedMessages;
+
+@end
+
+@implementation SCValdiCapturingLogger {
+    NSMutableArray<NSString *> *_messages;
+}
+
+- (instancetype)init
+{
+    self = [super init];
+    if (self) {
+        _messages = [NSMutableArray array];
+    }
+    return self;
+}
+
+- (BOOL)isLogEnabledForLevel:(SCValdiLoggerLevel)level
+{
+    (void)level;
+    return YES;
+}
+
+- (void)outputLog:(NSString *)log forLevel:(SCValdiLoggerLevel)level
+{
+    (void)level;
+    @synchronized (self) {
+        [_messages addObject:log];
+    }
+}
+
+- (void)reset
+{
+    @synchronized (self) {
+        [_messages removeAllObjects];
+    }
+}
+
+- (NSArray<NSString *> *)capturedMessages
+{
+    @synchronized (self) {
+        return [_messages copy];
     }
 }
 
@@ -104,6 +157,86 @@
 - (void)tearDown
 {
     self.runtimeManager = nil;
+}
+
+- (Valdi::RuntimeManager *)_cppRuntimeManagerForRuntimeManager:(SCValdiRuntimeManager *)runtimeManager
+{
+    (void)runtimeManager.mainRuntime;
+    return static_cast<Valdi::RuntimeManager *>(runtimeManager.cppInstance);
+}
+
+- (void)testDirectRuntimeManagerPreservesDebuggerServiceDefault
+{
+    Valdi::RuntimeManager *runtimeManagerCpp = [self _cppRuntimeManagerForRuntimeManager:self.runtimeManager];
+
+    XCTAssertNotEqual(nullptr, runtimeManagerCpp);
+    XCTAssertEqual(Valdi::kDebuggerServiceEnabled, runtimeManagerCpp->debuggerServiceEnabled());
+}
+
+- (void)testDirectRuntimeManagerCanExplicitlyDisableDebuggerService
+{
+    SCValdiRuntimeManager *runtimeManager = [SCValdiRuntimeManager new];
+    [runtimeManager updateConfiguration:^(SCValdiConfiguration *configuration) {
+        configuration.enableDebuggerService = NO;
+    }];
+
+    Valdi::RuntimeManager *runtimeManagerCpp = [self _cppRuntimeManagerForRuntimeManager:runtimeManager];
+
+    XCTAssertNotEqual(nullptr, runtimeManagerCpp);
+    XCTAssertFalse(runtimeManagerCpp->debuggerServiceEnabled());
+}
+
+- (void)testDirectRuntimeManagerAcceptsExplicitDebuggerServicePort
+{
+    SCValdiRuntimeManager *runtimeManager = [SCValdiRuntimeManager new];
+    [runtimeManager updateConfiguration:^(SCValdiConfiguration *configuration) {
+        configuration.debuggerServicePort = 13702;
+    }];
+
+    Valdi::RuntimeManager *runtimeManagerCpp = [self _cppRuntimeManagerForRuntimeManager:runtimeManager];
+
+    XCTAssertNotEqual(nullptr, runtimeManagerCpp);
+    XCTAssertEqual(Valdi::kDebuggerServiceEnabled, runtimeManagerCpp->debuggerServiceEnabled());
+    std::optional<uint32_t> configuredPort = runtimeManagerCpp->getDebuggerServicePort();
+    if (Valdi::kDebuggerServiceEnabled) {
+        XCTAssertTrue(configuredPort.has_value());
+        XCTAssertEqual((uint32_t)13702, configuredPort.value_or(0));
+    } else {
+        XCTAssertFalse(configuredPort.has_value());
+    }
+}
+
+- (void)testInvalidExplicitDebuggerServicePortWarningIsValueRedacted
+{
+    id<SCValdiLogger> previousLogger = SCValdiGetSharedLogger();
+    SCValdiCapturingLogger *logger = [SCValdiCapturingLogger new];
+    SCValdiSetSharedLogger(logger);
+
+    @try {
+        for (NSNumber *invalidPort in @[@(-1), @(65536)]) {
+            [logger reset];
+            @autoreleasepool {
+                SCValdiRuntimeManager *runtimeManager = [SCValdiRuntimeManager new];
+                [runtimeManager updateConfiguration:^(SCValdiConfiguration *configuration) {
+                    configuration.debuggerServicePort = invalidPort.integerValue;
+                }];
+                (void)runtimeManager.mainRuntime;
+            }
+
+            NSString *warning = nil;
+            for (NSString *message in [logger capturedMessages]) {
+                if ([message containsString:@"Ignoring invalid Valdi debugger service port"]) {
+                    warning = message;
+                    break;
+                }
+            }
+            XCTAssertNotNil(warning);
+            XCTAssertTrue([warning containsString:@"<redacted>"]);
+            XCTAssertFalse([warning containsString:invalidPort.stringValue]);
+        }
+    } @finally {
+        SCValdiSetSharedLogger(previousLogger);
+    }
 }
 
 - (void)testRelativeLineHeightScalesNaturalLineHeightViaMultiple

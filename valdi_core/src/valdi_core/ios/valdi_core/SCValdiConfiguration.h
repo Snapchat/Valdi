@@ -70,6 +70,31 @@ typedef void (^SCValdiPerformHapticFeedbackBlock)(NSString* type);
 @property (assign, nonatomic) BOOL enableReferenceTracking;
 
 /**
+ * Local-development-only debugger and hot-reload settings.
+ *
+ * These values are read when SCValdiRuntimeManager initializes its underlying
+ * RuntimeManager. Configure them through -[SCValdiRuntimeManager updateConfiguration:]
+ * before first accessing APIs that initialize the runtime, such as mainRuntime.
+ * The runtime still applies its existing compile-time debugger-service gate,
+ * so setting enableDebuggerService does not broaden release-build availability.
+ * Debugger service requests are enabled by default for compatibility with direct
+ * development hosts; hosts can set enableDebuggerService to NO to opt out.
+ */
+@property (assign, nonatomic) BOOL enableDebuggerService;
+@property (assign, nonatomic) BOOL disableHotReloader;
+
+/**
+ * Optional port for the debugger / hot-reload service.
+ *
+ * Leave this as 0 to use VALDI_DEBUGGER_PORT when present, or Valdi's platform
+ * default when it is not. Valid explicit ports are in the range 1...65535.
+ *
+ * `valdi hotreload --port` currently targets simulator / localhost reloads.
+ * Physical-device USB auto-connectors still use Valdi's default mobile port.
+ */
+@property (assign, nonatomic) NSInteger debuggerServicePort;
+
+/**
  * The currently selected JavaScript engine type.
  * In production, iOS uses the JavaScriptCore engine and Android uses QuickJS.
  * In non-production builds, this is controlled by a tweak

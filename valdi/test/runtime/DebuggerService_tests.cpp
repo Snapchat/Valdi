@@ -22,6 +22,7 @@
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 #include "valdi_core/cpp/Utils/Mutex.hpp"
 
+#include <cstdlib>
 #include <gtest/gtest.h>
 
 using namespace Valdi;
@@ -153,6 +154,36 @@ struct MockTCPClientListener : public ITCPClientListener, public MockListener<TC
     }
 };
 
+class ScopedEnvironmentVariable {
+public:
+    explicit ScopedEnvironmentVariable(const char* key) : _key(key) {
+        const char* existingValue = std::getenv(_key);
+        if (existingValue != nullptr) {
+            _existingValue = existingValue;
+        }
+    }
+
+    ~ScopedEnvironmentVariable() {
+        if (_existingValue.has_value()) {
+            setenv(_key, _existingValue->c_str(), 1);
+        } else {
+            unsetenv(_key);
+        }
+    }
+
+    void set(const char* value) {
+        setenv(_key, value, 1);
+    }
+
+    void unset() {
+        unsetenv(_key);
+    }
+
+private:
+    const char* _key;
+    std::optional<std::string> _existingValue;
+};
+
 struct DebuggerServiceWrapper {
     Ref<MockDebuggerServiceListener> listener;
     Shared<DebuggerService> service;
@@ -221,6 +252,118 @@ TEST(DebuggerService, canConnectAndDisconnect) {
     ASSERT_EQ(DebuggerServiceEventTypeDaemonClientDisconnected, daemonClientDisconnected.type);
 
     client->disconnect();
+}
+
+TEST(DebuggerService, resolveDebuggerPortUsesPlatformDefaults) {
+    ScopedEnvironmentVariable debuggerPortEnv("VALDI_DEBUGGER_PORT");
+    debuggerPortEnv.unset();
+
+    auto mobileResolution = DebuggerService::resolveDebuggerPortWithDiagnostics(false, std::nullopt);
+    auto standaloneResolution = DebuggerService::resolveDebuggerPortWithDiagnostics(true, std::nullopt);
+
+    ASSERT_EQ(static_cast<uint32_t>(13592), mobileResolution.port);
+    ASSERT_FALSE(mobileResolution.rejectedRequestedPort.has_value());
+    ASSERT_FALSE(mobileResolution.environmentError.has_value());
+    ASSERT_EQ(static_cast<uint32_t>(13591), standaloneResolution.port);
+    ASSERT_FALSE(standaloneResolution.rejectedRequestedPort.has_value());
+    ASSERT_FALSE(standaloneResolution.environmentError.has_value());
+}
+
+TEST(DebuggerService, legacyResolveDebuggerPortRemainsCallableAndUsesPlatformDefaults) {
+    ScopedEnvironmentVariable debuggerPortEnv("VALDI_DEBUGGER_PORT");
+    debuggerPortEnv.set("14000");
+
+    uint32_t (*legacyResolver)(bool) = &DebuggerService::resolveDebuggerPort;
+
+    ASSERT_EQ(static_cast<uint32_t>(13592), legacyResolver(false));
+    ASSERT_EQ(static_cast<uint32_t>(13591), legacyResolver(true));
+}
+
+TEST(DebuggerService, resolveDebuggerPortUsesEnvironmentFallback) {
+    ScopedEnvironmentVariable debuggerPortEnv("VALDI_DEBUGGER_PORT");
+    debuggerPortEnv.set("14000");
+
+    auto resolution = DebuggerService::resolveDebuggerPortWithDiagnostics(false, std::nullopt);
+
+    ASSERT_EQ(static_cast<uint32_t>(14000), resolution.port);
+    ASSERT_FALSE(resolution.rejectedRequestedPort.has_value());
+    ASSERT_FALSE(resolution.environmentError.has_value());
+}
+
+TEST(DebuggerService, resolveDebuggerPortPrefersValidRequestedPort) {
+    ScopedEnvironmentVariable debuggerPortEnv("VALDI_DEBUGGER_PORT");
+    debuggerPortEnv.set("not-a-port");
+
+    auto requestedResolution = DebuggerService::resolveDebuggerPortWithDiagnostics(false, 13702);
+    auto minimumResolution = DebuggerService::resolveDebuggerPortWithDiagnostics(false, 1);
+    auto maximumResolution = DebuggerService::resolveDebuggerPortWithDiagnostics(true, 65535);
+
+    ASSERT_EQ(static_cast<uint32_t>(13702), requestedResolution.port);
+    ASSERT_FALSE(requestedResolution.rejectedRequestedPort.has_value());
+    ASSERT_FALSE(requestedResolution.environmentError.has_value());
+    ASSERT_EQ(static_cast<uint32_t>(1), minimumResolution.port);
+    ASSERT_EQ(static_cast<uint32_t>(65535), maximumResolution.port);
+}
+
+TEST(DebuggerService, resolveDebuggerPortReportsInvalidRequestedPortBeforeEnvironmentFallback) {
+    ScopedEnvironmentVariable debuggerPortEnv("VALDI_DEBUGGER_PORT");
+    debuggerPortEnv.set("14000");
+
+    auto zeroResolution = DebuggerService::resolveDebuggerPortWithDiagnostics(false, 0);
+    auto outOfRangeResolution = DebuggerService::resolveDebuggerPortWithDiagnostics(true, 65536);
+
+    ASSERT_EQ(static_cast<uint32_t>(14000), zeroResolution.port);
+    ASSERT_EQ(std::optional<uint32_t>(0), zeroResolution.rejectedRequestedPort);
+    ASSERT_FALSE(zeroResolution.environmentError.has_value());
+    ASSERT_EQ(static_cast<uint32_t>(14000), outOfRangeResolution.port);
+    ASSERT_EQ(std::optional<uint32_t>(65536), outOfRangeResolution.rejectedRequestedPort);
+    ASSERT_FALSE(outOfRangeResolution.environmentError.has_value());
+}
+
+TEST(DebuggerService, resolveDebuggerPortReportsAllInvalidSourcesBeforePlatformFallback) {
+    ScopedEnvironmentVariable debuggerPortEnv("VALDI_DEBUGGER_PORT");
+    debuggerPortEnv.set("not-a-port");
+
+    auto resolution = DebuggerService::resolveDebuggerPortWithDiagnostics(false, 0);
+
+    ASSERT_EQ(static_cast<uint32_t>(13592), resolution.port);
+    ASSERT_EQ(std::optional<uint32_t>(0), resolution.rejectedRequestedPort);
+    ASSERT_EQ(std::optional<DebuggerPortEnvironmentError>(DebuggerPortEnvironmentError::Malformed),
+              resolution.environmentError);
+}
+
+TEST(DebuggerService, resolveDebuggerPortRejectsInvalidEnvironmentValues) {
+    ScopedEnvironmentVariable debuggerPortEnv("VALDI_DEBUGGER_PORT");
+    struct InvalidEnvironmentPort {
+        const char* value;
+        DebuggerPortEnvironmentError expectedError;
+    };
+    const std::vector<InvalidEnvironmentPort> invalidPorts = {
+        {"", DebuggerPortEnvironmentError::Malformed},
+        {"-1", DebuggerPortEnvironmentError::Malformed},
+        {"13702junk", DebuggerPortEnvironmentError::Malformed},
+        {" 13702", DebuggerPortEnvironmentError::Malformed},
+        {"13702 ", DebuggerPortEnvironmentError::Malformed},
+        {"0", DebuggerPortEnvironmentError::OutOfRange},
+        {"65536", DebuggerPortEnvironmentError::OutOfRange},
+        {"4294967296", DebuggerPortEnvironmentError::OutOfRange},
+    };
+
+    for (const auto& invalidPort : invalidPorts) {
+        debuggerPortEnv.set(invalidPort.value);
+        auto mobileResolution = DebuggerService::resolveDebuggerPortWithDiagnostics(false, std::nullopt);
+        auto standaloneResolution = DebuggerService::resolveDebuggerPortWithDiagnostics(true, std::nullopt);
+
+        ASSERT_EQ(static_cast<uint32_t>(13592), mobileResolution.port) << invalidPort.value;
+        ASSERT_FALSE(mobileResolution.rejectedRequestedPort.has_value()) << invalidPort.value;
+        ASSERT_EQ(std::optional<DebuggerPortEnvironmentError>(invalidPort.expectedError),
+                  mobileResolution.environmentError)
+            << invalidPort.value;
+        ASSERT_EQ(static_cast<uint32_t>(13591), standaloneResolution.port) << invalidPort.value;
+        ASSERT_EQ(std::optional<DebuggerPortEnvironmentError>(invalidPort.expectedError),
+                  standaloneResolution.environmentError)
+            << invalidPort.value;
+    }
 }
 
 TEST(DebuggerService, canReceiveUpdatedResources) {

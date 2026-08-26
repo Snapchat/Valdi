@@ -43,6 +43,7 @@ namespace Valdi {
 Shared<DebuggerService> createDebuggerService(bool enableDebuggerService,
                                               bool disableHotReloader,
                                               bool isStandalone,
+                                              std::optional<uint32_t> debuggerPort,
                                               PlatformType platformType,
                                               const Shared<snap::valdi::RuntimeMessageHandler>& runtimeMessageHandler,
                                               const Ref<ILogger>& logger) {
@@ -65,10 +66,25 @@ Shared<DebuggerService> createDebuggerService(bool enableDebuggerService,
                 platform = snap::valdi_core::Platform::Ios;
                 break;
         }
-        auto debuggerPort = DebuggerService::resolveDebuggerPort(isStandalone);
+        auto debuggerPortResolution =
+            DebuggerService::resolveDebuggerPortWithDiagnostics(isStandalone, debuggerPort);
+        if (debuggerPortResolution.rejectedRequestedPort.has_value()) {
+            VALDI_WARN(*logger,
+                       "Ignoring invalid debugger port from requestedPort: <redacted> (expected 1...65535); "
+                       "trying VALDI_DEBUGGER_PORT, then the platform default.");
+        }
+        if (debuggerPortResolution.environmentError.has_value()) {
+            VALDI_WARN(*logger,
+                       "Ignoring invalid debugger port from VALDI_DEBUGGER_PORT: <redacted {} value> (expected "
+                       "1...65535); using platform default {}.",
+                       debuggerPortResolution.environmentError.value() == DebuggerPortEnvironmentError::OutOfRange
+                           ? "out-of-range"
+                           : "malformed",
+                       debuggerPortResolution.port);
+        }
 
         auto debuggerService = Valdi::makeShared<DebuggerService>(
-            runtimeMessageHandler, platform, debuggerPort, disableHotReloader, logger);
+            runtimeMessageHandler, platform, debuggerPortResolution.port, disableHotReloader, logger);
         debuggerService->postInit();
         return debuggerService.toShared();
     } else {
@@ -117,10 +133,41 @@ RuntimeManager::RuntimeManager(const Ref<IMainThreadDispatcher>& mainThreadDispa
                                bool enableDebuggerService,
                                bool disableHotReloader,
                                bool isStandalone)
+    : RuntimeManager(mainThreadDispatcher,
+                     jsBridge,
+                     diskCache,
+                     std::move(keychain),
+                     runtimeMessageHandler,
+                     platformType,
+                     jsThreadQoS,
+                     logger,
+                     enableDebuggerService,
+                     disableHotReloader,
+                     isStandalone,
+                     std::nullopt) {}
+
+RuntimeManager::RuntimeManager(const Ref<IMainThreadDispatcher>& mainThreadDispatcher,
+                               IJavaScriptBridge* jsBridge,
+                               const Ref<IDiskCache>& diskCache,
+                               Shared<snap::valdi::Keychain> keychain,
+                               const Shared<snap::valdi::RuntimeMessageHandler>& runtimeMessageHandler,
+                               PlatformType platformType,
+                               ThreadQoSClass jsThreadQoS,
+                               const Ref<ILogger>& logger,
+                               bool enableDebuggerService,
+                               bool disableHotReloader,
+                               bool isStandalone,
+                               std::optional<uint32_t> debuggerPort)
     : _initStopWatch(std::make_shared<MetricsStopWatch>()),
       _yogaConfig(Valdi::Yoga::createConfig(0)),
       _debuggerService(createDebuggerService(
-          enableDebuggerService, disableHotReloader, isStandalone, platformType, runtimeMessageHandler, logger)),
+          enableDebuggerService,
+          disableHotReloader,
+          isStandalone,
+          debuggerPort,
+          platformType,
+          runtimeMessageHandler,
+          logger)),
       _deferredGCTask(DispatchQueue::TaskIDNull),
       _mainThreadManager(makeShared<MainThreadManager>(mainThreadDispatcher)),
       _assetLoaderManager(makeShared<AssetLoaderManager>()),
@@ -455,6 +502,13 @@ void RuntimeManager::setRequestManager(const Shared<snap::valdi_core::HTTPReques
 
 bool RuntimeManager::debuggerServiceEnabled() const {
     return _debuggerService != nullptr;
+}
+
+std::optional<uint32_t> RuntimeManager::getDebuggerServicePort() const {
+    if (_debuggerService == nullptr) {
+        return std::nullopt;
+    }
+    return _debuggerService->getConfiguredPort();
 }
 
 void RuntimeManager::setUserSession(const StringBox& userId) {

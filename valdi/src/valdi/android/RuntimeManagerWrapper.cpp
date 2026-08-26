@@ -104,7 +104,8 @@ RuntimeManagerWrapper::RuntimeManagerWrapper(JavaEnv env,
                                                                    _logger,
                                                                    /* enableDebuggerService */ true,
                                                                    /* disableHotReloader */ false,
-                                                                   /* isStandalone */ false);
+                                                                   /* isStandalone */ false,
+                                                                   std::nullopt);
         _runtimeManager->postInit();
         _runtimeManager->setKeepDebuggerServiceOnPause(static_cast<bool>(keepDebuggerServiceOnPause));
         _runtimeManager->setApplicationId(_applicationId);

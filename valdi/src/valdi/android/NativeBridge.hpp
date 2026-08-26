@@ -16,6 +16,7 @@ public:
     static constexpr auto kJavaDescriptor = "Lcom/snapchat/client/valdi/NativeBridge;";
 
     static jint getBuildOptions(fbjni::alias_ref<fbjni::JClass> clazz);
+    static void setDebuggerPortEnvironment(fbjni::alias_ref<fbjni::JClass> clazz, jint debuggerPort);
 
     static jobject getAllRuntimeAttachedObjects(fbjni::alias_ref<fbjni::JClass> clazz, jlong runtimeManagerHandle);
 

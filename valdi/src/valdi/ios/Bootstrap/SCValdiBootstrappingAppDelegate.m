@@ -14,10 +14,12 @@
 
 - (BOOL)application:(UIApplication*)application didFinishLaunchingWithOptions:(NSDictionary*)launchOptions
 {
-    _runtimeManager = [[SCValdiRuntimeManager alloc] init];
+    _runtimeManager = [SCValdiRuntimeManager new];
 
     [_runtimeManager updateConfiguration:^(SCValdiConfiguration* configuration) {
         configuration.allowDarkMode = YES;
+        // Bootstrap apps are local-development hosts, so keep their previous hot-reload behavior explicit.
+        configuration.enableDebuggerService = YES;
     }];
 
     id<SCValdiRuntimeProtocol> runtime = _runtimeManager.mainRuntime;

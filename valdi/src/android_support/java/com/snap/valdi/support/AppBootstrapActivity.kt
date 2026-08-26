@@ -1,6 +1,9 @@
 package com.snap.valdi.support
 
+import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 
@@ -12,6 +15,12 @@ import com.snap.valdi.ValdiRuntimeManager
 import com.snap.valdi.ValdiRuntime
 import com.snap.valdi.utils.Disposable
 import com.snap.valdi.support.DefaultNavigator
+import com.snapchat.client.valdi.NativeBridge
+
+/** Intent extra used to select the Valdi debugger port for a debuggable application. */
+const val VALDI_DEBUGGER_PORT_INTENT_EXTRA = "com.snap.valdi.DEBUGGER_PORT"
+
+private const val VALDI_LOG_TAG = "Valdi"
 
 /**
   This class implements an Android activity where the root view
@@ -53,8 +62,29 @@ abstract class AppBootstrapActivity: AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        System.loadLibrary(getNativeLibName())
+        val debuggerPort = requestedValdiDebuggerPort(
+            intent,
+            applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
+        )
+        loadNativeLibrary()
+        if (debuggerPort != null) {
+            // This process-wide override intentionally persists for this debug host process. When the intent
+            // omits the extra, this block is skipped so externally configured environment state remains unchanged.
+            setDebuggerPortEnvironment(debuggerPort)
+        }
 
+        bootstrapValdiRuntime()
+    }
+
+    protected open fun loadNativeLibrary() {
+        System.loadLibrary(getNativeLibName())
+    }
+
+    protected open fun setDebuggerPortEnvironment(debuggerPort: Int) {
+        NativeBridge.setDebuggerPortEnvironment(debuggerPort)
+    }
+
+    protected open fun bootstrapValdiRuntime() {
         createRuntimeManager()
         this.rootView = createAppRootView()
         setContentView(this.rootView)
@@ -105,4 +135,22 @@ abstract class AppBootstrapActivity: AppCompatActivity() {
             super.onBackPressed()
         }
     }
+}
+
+internal fun requestedValdiDebuggerPort(intent: Intent?, debuggable: Boolean): Int? {
+    if (!debuggable || intent == null || !intent.hasExtra(VALDI_DEBUGGER_PORT_INTENT_EXTRA)) {
+        return null
+    }
+
+    val port = intent.extras?.get(VALDI_DEBUGGER_PORT_INTENT_EXTRA) as? Int
+    if (port == null || port !in 1..65535) {
+        Log.w(
+            VALDI_LOG_TAG,
+            "Ignoring invalid Valdi debugger port from intent extra " +
+                "$VALDI_DEBUGGER_PORT_INTENT_EXTRA: <redacted> (expected an integer in 1...65535)",
+        )
+        return null
+    }
+
+    return port
 }
