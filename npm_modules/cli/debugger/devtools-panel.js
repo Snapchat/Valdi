@@ -74,6 +74,7 @@ const elements = {
   nodeSummary: document.getElementById('nodeSummary'),
   elementsSection: document.getElementById('elementsSection'),
   splitHandle: document.getElementById('splitHandle'),
+  clearConsoleButton: document.getElementById('clearConsoleButton'),
   consoleMessages: document.getElementById('consoleMessages'),
   consoleForm: document.getElementById('consoleForm'),
   consoleInput: document.getElementById('consoleInput'),
@@ -340,9 +341,7 @@ async function connectToInspectedApplication() {
     const nextTargetKey = `${payload.target.id}:${payload.target.sessionId}:${inspectedTargetNonce}`;
     if (previousTargetKey !== null && previousTargetKey !== nextTargetKey) {
       stopConsoleStream();
-      state.consoleEntries = [];
-      state.consoleEntryKeys.clear();
-      elements.consoleMessages.innerHTML = '';
+      clearConsole();
       preparePerformanceForTargetChange();
     }
     state.target = payload.target;
@@ -1410,6 +1409,12 @@ function addConsoleEntry(kind, value, timestamp, source) {
   elements.consoleMessages.scrollTop = elements.consoleMessages.scrollHeight;
 }
 
+function clearConsole() {
+  state.consoleEntries = [];
+  state.consoleEntryKeys.clear();
+  elements.consoleMessages.innerHTML = '';
+}
+
 async function evaluateConsoleExpression(expression) {
   addConsoleEntry('input', expression);
   try {
@@ -1546,6 +1551,7 @@ function wireEvents() {
     if (json) await navigator.clipboard.writeText(json);
   });
   elements.splitHandle.addEventListener('pointerdown', startSplitResize);
+  elements.clearConsoleButton.addEventListener('click', clearConsole);
   elements.consoleForm.addEventListener('submit', event => {
     event.preventDefault();
     const expression = elements.consoleInput.value.trim();

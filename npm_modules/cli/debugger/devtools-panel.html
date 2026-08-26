@@ -137,6 +137,19 @@
           role="tabpanel"
           aria-labelledby="consoleTab"
         >
+          <div class="section-header">
+            <span>Console output</span>
+            <button
+              id="clearConsoleButton"
+              class="text-button"
+              type="button"
+              title="Clear console output"
+              aria-label="Clear console"
+              aria-controls="consoleMessages"
+            >
+              Clear
+            </button>
+          </div>
           <div id="consoleMessages" class="console-messages"></div>
           <form id="consoleForm" class="console-prompt">
             <span class="console-chevron">›</span>

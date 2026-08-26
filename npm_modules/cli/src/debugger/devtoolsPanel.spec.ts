@@ -61,6 +61,7 @@ interface StubElement {
   scrollHeight: number;
   scrollTop: number;
   textContent: string;
+  value: string;
   addEventListener(type: string, listener: (event: unknown) => void): void;
   dispatch(type: string): void;
 }
@@ -74,12 +75,22 @@ interface MockConsoleEventSource {
 }
 
 interface DevToolsConsolePanel {
+  clearButton: StubElement;
+  consoleInput: StubElement;
   consoleMessages: StubElement;
   liveToggle: StubElement;
   state: {
     autoRefresh: boolean;
     consoleEntries: Array<{ kind: string; value: string }>;
+    consoleHistory: string[];
+    consoleHistoryIndex: number;
     consoleStream: MockConsoleEventSource | null;
+    consoleStreamTargetKey: string | null;
+    performance: {
+      lastTrace: Record<string, unknown> | null;
+      ownerIdentity: Record<string, string> | null;
+      traceActive: boolean;
+    };
     target: { id: string; sessionId: string } | null;
   };
   evaluateConsoleExpression(expression: string): Promise<void>;
@@ -424,6 +435,7 @@ describe('integrated DevTools console panel', () => {
             scrollHeight: 100,
             scrollTop: 0,
             textContent: '',
+            value: '',
             addEventListener(type: string, listener: (event: unknown) => void): void {
               listeners.set(type, listener);
             },
@@ -473,7 +485,7 @@ describe('integrated DevTools console panel', () => {
     }
 
     panel = new Script(
-      `${source}\n({ consoleMessages: elements.consoleMessages, dispatchWindowEvent: type => windowListeners.get(type)?.(), evaluateConsoleExpression, liveToggle: elements.autoRefreshToggle, startConsoleStream, state, stopConsoleStream })`,
+      `${source}\n({ clearButton: elements.clearConsoleButton, consoleInput: elements.consoleInput, consoleMessages: elements.consoleMessages, dispatchWindowEvent: type => windowListeners.get(type)?.(), evaluateConsoleExpression, liveToggle: elements.autoRefreshToggle, startConsoleStream, state, stopConsoleStream })`,
     ).runInNewContext({
       EventSource: MockEventSource,
       URL,
@@ -536,6 +548,66 @@ describe('integrated DevTools console panel', () => {
     expect(panel.consoleMessages.innerHTML).toContain('Synthetic &lt;renderer&gt; warning');
     expect(panel.consoleMessages.innerHTML).not.toContain('<renderer>');
     expect(panel.consoleMessages.innerHTML).not.toContain('Wrong target');
+  });
+
+  it('exposes an accessible local clear action that is distinct from Performance controls', () => {
+    const markup = fs.readFileSync(path.resolve(process.cwd(), 'debugger', 'devtools-panel.html'), 'utf8');
+    const clearButton = markup.match(/<button(?=[^>]*id="clearConsoleButton")[\S\s]*?<\/button>/)?.[0];
+
+    expect(clearButton).toBeDefined();
+    expect(clearButton).toContain('type="button"');
+    expect(clearButton).toContain('aria-label="Clear console"');
+    expect(clearButton).toContain('aria-controls="consoleMessages"');
+    expect(clearButton).not.toContain('data-performance-action');
+  });
+
+  it('clears only local console output while preserving the stream, target, prompt, history, and Performance', () => {
+    panel.startConsoleStream();
+    const stream = eventSources[0];
+    if (!stream) throw new Error('Expected the Chromium console stream to connect.');
+    const target = panel.state.target;
+    const streamTargetKey = panel.state.consoleStreamTargetKey;
+    const performanceOwner = {
+      inspectedUrl: 'http://127.0.0.1:54321/index.html?valdiDevTools=1',
+      sessionId: 'web-preview',
+      targetNonce: 'panel-target-nonce-123456',
+    };
+    const lastTrace = { traceCount: 4 };
+    panel.state.consoleHistory.push('first()', 'second()');
+    panel.state.consoleHistoryIndex = 1;
+    panel.consoleInput.value = 'draft expression';
+    panel.state.performance.ownerIdentity = performanceOwner;
+    panel.state.performance.lastTrace = lastTrace;
+    panel.state.performance.traceActive = true;
+    const entry = {
+      level: 'info',
+      message: 'Renderer output',
+      sessionId: 'web-preview',
+      source: 'console',
+      targetId: 'owl:web-preview',
+      timestamp: 42,
+    };
+    stream.emit('console', entry);
+
+    panel.clearButton.dispatch('click');
+
+    expect(panel.state.consoleEntries).toEqual([]);
+    expect(panel.consoleMessages.innerHTML).toBe('');
+    expect(panel.state.consoleStream).toBe(stream);
+    expect(stream.closed).toBeFalse();
+    expect(panel.state.target).toBe(target);
+    expect(panel.state.consoleStreamTargetKey).toBe(streamTargetKey);
+    expect(panel.consoleInput.value).toBe('draft expression');
+    expect(panel.state.consoleHistory).toEqual(['first()', 'second()']);
+    expect(panel.state.consoleHistoryIndex).toBe(1);
+    expect(panel.state.performance.ownerIdentity).toBe(performanceOwner);
+    expect(panel.state.performance.lastTrace).toBe(lastTrace);
+    expect(panel.state.performance.traceActive).toBeTrue();
+
+    stream.emit('console', entry);
+
+    expect(panel.state.consoleEntries).toEqual([jasmine.objectContaining({ kind: 'info', value: 'Renderer output' })]);
+    expect(panel.consoleMessages.innerHTML).toContain('Renderer output');
   });
 
   it('isolates reconnects, honors the Live toggle, and tears down on pagehide', () => {

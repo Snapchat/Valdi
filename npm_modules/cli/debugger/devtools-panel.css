@@ -954,7 +954,7 @@ button {
 
 .console-section {
   min-height: 0;
-  grid-template-rows: minmax(0, 1fr) 32px;
+  grid-template-rows: 32px minmax(0, 1fr) 32px;
 }
 
 .console-messages {
