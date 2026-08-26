@@ -87,6 +87,7 @@ interface RenderedElement {
   id: number;
   nodePrototype: NodePrototype | undefined;
   attributes: StringMap<any>;
+  directionWasSetDuringRender?: boolean;
 
   wasVisibleOnce?: boolean;
   // Bridge instance, will be set if the element was requested externally.
@@ -561,6 +562,7 @@ export class Renderer implements IRenderer {
 
   private currentNode: VirtualNode | undefined;
   private nodeStack: VirtualNode[] = [];
+  private rootElementEndingRender: RenderedElement | undefined;
 
   readonly nodeTree: VirtualNode;
   private readonly elementTree: RenderedElement;
@@ -978,6 +980,9 @@ export class Renderer implements IRenderer {
     }
 
     this.pushVirtualNode(resolvedNode);
+    if (resolvedNode.parentElement === this.elementTree) {
+      resolvedNode.element!.directionWasSetDuringRender = false;
+    }
 
     if (justCreated && nodePrototype.attributes) {
       enumeratePropertyList(nodePrototype.attributes, (name, value) => {
@@ -989,10 +994,15 @@ export class Renderer implements IRenderer {
   endElement() {
     const currentNode = this.currentNode;
     if (currentNode && currentNode.parentElement === this.elementTree) {
-      for (const observer of this.observers) {
-        if (observer.onRootElementWillEndRender) {
-          observer.onRootElementWillEndRender();
+      this.rootElementEndingRender = currentNode.element;
+      try {
+        for (const observer of this.observers) {
+          if (observer.onRootElementWillEndRender) {
+            observer.onRootElementWillEndRender();
+          }
         }
+      } finally {
+        this.rootElementEndingRender = undefined;
       }
     }
 
@@ -1459,13 +1469,7 @@ export class Renderer implements IRenderer {
         // We need to render it with a new key
 
         const duplicateKeyIndex = children.insertionIndex - resolvedNode.parentIndex + 1;
-        return this.resolveVirtualNode(
-          parent,
-          key,
-          duplicateKeyIndex,
-          componentConstructor,
-          componentPrototype,
-        );
+        return this.resolveVirtualNode(parent, key, duplicateKeyIndex, componentConstructor, componentPrototype);
       }
     }
 
@@ -1742,6 +1746,7 @@ export class Renderer implements IRenderer {
 
   setAttributeString(name: string, value: string | undefined): boolean {
     const element = this.getCurrentElement();
+    this.recordElementDirectionFromCurrentRender(element, name);
     const attributes = element.attributes;
     if (attributes[name] === value) {
       return false;
@@ -1838,6 +1843,7 @@ export class Renderer implements IRenderer {
   }
 
   setAttributeOnElement(element: RenderedElement, name: string, value: any): boolean {
+    this.recordElementDirectionFromCurrentRender(element, name);
     if (typeof value !== 'string' && (name === 'class' || name === '$class')) {
       value = classNames(value);
     }
@@ -2570,14 +2576,29 @@ export class Renderer implements IRenderer {
     return nodes;
   }
 
-  getRootElement(): IRenderedElement | undefined {
+  /** Return every top-level rendered element in render order. */
+  getRootElements(): IRenderedElement[] {
     const out: IRenderedElement[] = [];
     if (this.nodeTree.children) {
       for (const node of this.nodeTree.children.children) {
         this.collectElements(node, out);
       }
     }
-    return out[0];
+    return out;
+  }
+
+  /** Reports a declarative direction write for the root currently notifying render observers. */
+  wasElementDirectionSetDuringCurrentRender(element: IRenderedElement): boolean {
+    const renderedElement = this.getElementById(element.id);
+    return (
+      renderedElement !== undefined &&
+      renderedElement === this.rootElementEndingRender &&
+      renderedElement.directionWasSetDuringRender === true
+    );
+  }
+
+  getRootElement(): IRenderedElement | undefined {
+    return this.getRootElements()[0];
   }
 
   getComponentKey(component: IComponent): string {
@@ -2744,6 +2765,17 @@ export class Renderer implements IRenderer {
 
   private getElementById(elementId: number): RenderedElement | undefined {
     return this.elementById[elementId];
+  }
+
+  private recordElementDirectionFromCurrentRender(element: RenderedElement, attributeName: string): void {
+    if (
+      attributeName !== 'direction' ||
+      this.rootElementEndingRender !== undefined ||
+      this.currentNode?.element !== element
+    ) {
+      return;
+    }
+    element.directionWasSetDuringRender = true;
   }
 
   private processFrameUpdates(updates: Float64Array) {

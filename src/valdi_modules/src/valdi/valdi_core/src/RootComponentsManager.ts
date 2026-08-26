@@ -21,6 +21,7 @@ import {
 } from './debugging/DaemonClientManager';
 import { DebugLevel, SubmitDebugMessageFunc } from './debugging/DebugMessage';
 import { DaemonClientMessageType, Messages, RemoteValdiContext } from './debugging/Messages';
+import { NativeAppearanceDebugSettings } from './debugging/NativeAppearanceDebugSettings';
 import { trace } from './utils/Trace';
 
 interface StashedRootComponentHandle {
@@ -51,6 +52,7 @@ export class RootComponentsManager implements IRootComponentsManager, IDaemonCli
   readonly rootComponents: StringMap<RootComponentHandle> = {};
 
   private reloadedContextIds?: string[];
+  private nativeAppearanceDebugSettings?: NativeAppearanceDebugSettings;
 
   constructor(
     readonly rendererFactory: RendererFactory,
@@ -59,6 +61,7 @@ export class RootComponentsManager implements IRootComponentsManager, IDaemonCli
   ) {
     if (daemonClientManager) {
       daemonClientManager.addListener(this);
+      this.nativeAppearanceDebugSettings = new NativeAppearanceDebugSettings();
     }
   }
 
@@ -89,6 +92,8 @@ export class RootComponentsManager implements IRootComponentsManager, IDaemonCli
     if (this.daemonClientManager) {
       this.daemonClientManager.removeListener(this);
     }
+    this.nativeAppearanceDebugSettings?.dispose();
+    this.nativeAppearanceDebugSettings = undefined;
 
     return handles;
   }
@@ -130,6 +135,7 @@ export class RootComponentsManager implements IRootComponentsManager, IDaemonCli
     componentContext: any,
   ): RootComponentHandle {
     const renderer = this.rendererFactory.makeRenderer(contextId);
+    const removeAppearanceObserver = this.nativeAppearanceDebugSettings?.addRenderer(renderer);
 
     const observerDisposer = registerLogMetadataProvider('Valdi Runtime', renderer.dumpLogMetadata.bind(renderer));
 
@@ -137,6 +143,7 @@ export class RootComponentsManager implements IRootComponentsManager, IDaemonCli
       if (onHotReloadSubscription) {
         onHotReloadSubscription();
       }
+      removeAppearanceObserver?.();
       observerDisposer();
       renderer.delegate.onDestroyed();
     };
