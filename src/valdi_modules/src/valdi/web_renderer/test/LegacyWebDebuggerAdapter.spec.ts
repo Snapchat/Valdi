@@ -1,5 +1,7 @@
 import 'jasmine/src/jasmine';
+import type { IComponent } from 'valdi_core/src/IComponent';
 import type { IRenderedElement } from 'valdi_core/src/IRenderedElement';
+import type { IRenderedVirtualNode } from 'valdi_core/src/IRenderedVirtualNode';
 import type { IRenderer } from 'valdi_core/src/IRenderer';
 import {
   MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
@@ -191,6 +193,58 @@ function makeRenderer(elements: IRenderedElement[]): IRenderer {
   } as IRenderer;
 }
 
+interface MutableVirtualNode {
+  children: MutableVirtualNode[];
+  component?: IComponent;
+  element?: IRenderedElement;
+  key: string;
+  parent?: MutableVirtualNode;
+}
+
+function makeVirtualNode(
+  key: string,
+  value: { component?: IComponent; element?: IRenderedElement },
+): MutableVirtualNode {
+  return { children: [], key, ...value };
+}
+
+function setVirtualChildren(parent: MutableVirtualNode, children: MutableVirtualNode[]): void {
+  parent.children = children;
+  for (const child of children) {
+    child.parent = parent;
+  }
+}
+
+function makeHierarchyRenderer(
+  elements: IRenderedElement[],
+  rootVirtualNode: MutableVirtualNode | undefined,
+): IRenderer {
+  const renderer = makeRenderer(elements);
+  return Object.assign(renderer, {
+    getDebugVirtualNodeSnapshot: (
+      node: IRenderedVirtualNode,
+      maximumChildLinks: number,
+      maximumTraversalLinks: number,
+    ) => {
+      const mutableNode = node as unknown as MutableVirtualNode;
+      const children = mutableNode.children;
+      const traversedLinkCount = children.length + (mutableNode.parent === undefined ? 0 : 1);
+      if (children.length > maximumChildLinks || traversedLinkCount > maximumTraversalLinks) {
+        return undefined;
+      }
+      return {
+        children: children.slice(),
+        component: mutableNode.component,
+        element: mutableNode.element,
+        key: mutableNode.key,
+        parent: mutableNode.parent as unknown as IRenderedVirtualNode | undefined,
+        traversedLinkCount,
+      };
+    },
+    getRootVirtualNode: () => rootVirtualNode as unknown as IRenderedVirtualNode | undefined,
+  });
+}
+
 function captureSnapshot(
   delegate: ValdiWebRendererDelegate,
   elements: IRenderedElement[],
@@ -316,6 +370,297 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
         }),
       }),
     );
+  });
+
+  it('transactionally interleaves component boundaries with every physical element in render order', () => {
+    class RootExampleComponent {}
+    class NestedExampleComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementCreated(2, 'label');
+    delegate.onElementCreated(3, 'label');
+    delegate.onElementBecameRoot(1);
+    delegate.onElementMoved(2, 1, 0);
+    delegate.onElementMoved(3, 1, 1);
+    (delegate.getDebugNode(1)!.htmlElement as unknown as { rect: object }).rect = {
+      left: 4,
+      top: 8,
+      width: 220,
+      height: 80,
+    };
+    (delegate.getDebugNode(2)!.htmlElement as unknown as { rect: object }).rect = {
+      left: 12,
+      top: 24,
+      width: 140,
+      height: 20,
+    };
+
+    const rootElement = makeRenderedElement(1, 'layout', { accessibilityId: 'sample.root' });
+    const nestedElement = makeRenderedElement(2, 'label', { accessibilityLabel: 'Continue' });
+    const siblingElement = makeRenderedElement(3, 'label', { value: 'Later' });
+    const rootComponent = makeVirtualNode('root', {
+      component: new RootExampleComponent() as unknown as IComponent,
+    });
+    const rootElementNode = makeVirtualNode('layout', { element: rootElement });
+    const nestedComponent = makeVirtualNode('nested', {
+      component: new NestedExampleComponent() as unknown as IComponent,
+    });
+    const nestedElementNode = makeVirtualNode('continue', { element: nestedElement });
+    const siblingElementNode = makeVirtualNode('later', { element: siblingElement });
+    setVirtualChildren(rootComponent, [rootElementNode]);
+    setVirtualChildren(rootElementNode, [nestedComponent, siblingElementNode]);
+    setVirtualChildren(nestedComponent, [nestedElementNode]);
+
+    const snapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([rootElement, nestedElement, siblingElement], rootComponent),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+    );
+
+    expect(snapshot.tree).toEqual({
+      bounds: { x: 4, y: 8, width: 220, height: 80 },
+      children: [
+        jasmine.objectContaining({
+          id: '1',
+          children: [
+            {
+              bounds: { x: 12, y: 24, width: 140, height: 20 },
+              children: [jasmine.objectContaining({ id: '2', tag: 'label' })],
+              component: { elementId: '2', key: 'nested', name: 'NestedExampleComponent' },
+              id: 'component:["1","nested"]',
+              tag: 'NestedExampleComponent',
+            },
+            jasmine.objectContaining({ id: '3', tag: 'label' }),
+          ],
+        }),
+      ],
+      component: { elementId: '1', key: 'root', name: 'RootExampleComponent' },
+      id: 'component:[null,"root"]',
+      tag: 'RootExampleComponent',
+    });
+    expect(JSON.stringify(snapshot).length).toBeLessThanOrEqual(MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+  });
+
+  it('keeps stable component ids across fresh snapshots and captures updated physical values', () => {
+    class StableComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'label');
+    delegate.onElementBecameRoot(1);
+    const attributes = { value: 'first' };
+    const element = makeRenderedElement(1, 'label', attributes);
+    const component = makeVirtualNode('stable-key', {
+      component: new StableComponent() as unknown as IComponent,
+    });
+    const elementNode = makeVirtualNode('label', { element });
+    setVirtualChildren(component, [elementNode]);
+    const renderer = makeHierarchyRenderer([element], component);
+
+    const first = delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+    attributes.value = 'second';
+    const second = delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+
+    expect(first.tree?.id).toBe('component:[null,"stable-key"]');
+    expect(second.tree?.id).toBe(first.tree?.id);
+    expect(second.tree?.children[0].element?.attributes.value).toBe('second');
+  });
+
+  it('does not inspect component fields or invoke an instance constructor accessor', () => {
+    class SafeComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    const componentInstance = new SafeComponent() as unknown as IComponent;
+    let getterCalls = 0;
+    Object.defineProperty(componentInstance, 'constructor', {
+      configurable: true,
+      get: () => {
+        getterCalls++;
+        throw new Error('Component fields are not debugger protocol data.');
+      },
+    });
+    Object.defineProperty(componentInstance, 'viewModel', {
+      get: () => {
+        getterCalls++;
+        throw new Error('Component view models belong to a later debugger layer.');
+      },
+    });
+    const component = makeVirtualNode('safe', { component: componentInstance });
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(component, [elementNode]);
+
+    const snapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], component),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+    );
+
+    expect(getterCalls).toBe(0);
+    expect(snapshot.tree?.component?.name).toBe('SafeComponent');
+  });
+
+  it('falls back atomically for shared, cyclic, partial, and over-deep virtual trees', () => {
+    class BoundaryComponent {}
+
+    const captureWithRoot = (rootVirtualNode: MutableVirtualNode) => {
+      const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+      delegate.onElementCreated(1, 'layout');
+      delegate.onElementBecameRoot(1);
+      const element = makeRenderedElement(1, 'layout', {});
+      const pendingNodes = [rootVirtualNode];
+      const visitedNodes = new Set<MutableVirtualNode>();
+      while (pendingNodes.length > 0) {
+        const node = pendingNodes.pop()!;
+        if (visitedNodes.has(node)) continue;
+        visitedNodes.add(node);
+        if (node.element !== undefined) node.element = element;
+        pendingNodes.push(...node.children);
+      }
+      return delegate.getDebugSnapshot(
+        makeHierarchyRenderer([element], rootVirtualNode),
+        MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+      );
+    };
+
+    const sharedElement = makeVirtualNode('layout', { element: makeRenderedElement(99, 'layout', {}) });
+    const sharedRoot = makeVirtualNode('shared', {
+      component: new BoundaryComponent() as unknown as IComponent,
+    });
+    setVirtualChildren(sharedRoot, [sharedElement, sharedElement]);
+
+    const cyclicRoot = makeVirtualNode('cycle', {
+      component: new BoundaryComponent() as unknown as IComponent,
+    });
+    cyclicRoot.children = [cyclicRoot];
+    cyclicRoot.parent = cyclicRoot;
+
+    const partialRoot = makeVirtualNode('partial', {
+      component: new BoundaryComponent() as unknown as IComponent,
+    });
+
+    const deepElement = makeVirtualNode('layout', { element: makeRenderedElement(99, 'layout', {}) });
+    let deepRoot = deepElement;
+    for (let depth = 0; depth < 65; depth++) {
+      const parent = makeVirtualNode(`depth-${depth}`, {
+        component: new BoundaryComponent() as unknown as IComponent,
+      });
+      setVirtualChildren(parent, [deepRoot]);
+      deepRoot = parent;
+    }
+
+    for (const snapshot of [
+      captureWithRoot(sharedRoot),
+      captureWithRoot(cyclicRoot),
+      captureWithRoot(partialRoot),
+      captureWithRoot(deepRoot),
+    ]) {
+      expect(snapshot.tree?.id).toBe('1');
+      expect(snapshot.tree?.component).toBeUndefined();
+      expect(snapshot.tree?.children).toEqual([]);
+    }
+  });
+
+  it('bounds virtual child arrays before indexing and falls back without partial component data', () => {
+    class WideComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    const root = makeVirtualNode('wide', {
+      component: new WideComponent() as unknown as IComponent,
+    });
+    let indexedReads = 0;
+    const children = new Array<MutableVirtualNode>(1_001);
+    Object.defineProperty(children, '0', {
+      get: () => {
+        indexedReads++;
+        throw new Error('An over-cap child must not be inspected.');
+      },
+    });
+    root.children = children;
+
+    const snapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], root),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+    );
+
+    expect(indexedReads).toBe(0);
+    expect(snapshot.tree?.id).toBe('1');
+    expect(snapshot.tree?.component).toBeUndefined();
+  });
+
+  it('falls back to the element tree when complete component metadata exceeds the envelope budget', () => {
+    class LongNameComponent {}
+    Object.defineProperty(LongNameComponent, 'name', { value: 'C'.repeat(256) });
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    const root = makeVirtualNode('layout', { element });
+    const components = Array.from({ length: 999 }, (_value, index) =>
+      makeVirtualNode(`${index}:`.padEnd(256, 'k'), {
+        component: new LongNameComponent() as unknown as IComponent,
+      }),
+    );
+    setVirtualChildren(root, components);
+
+    const snapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], root),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+    );
+
+    expect(snapshot.tree?.id).toBe('1');
+    expect(snapshot.tree?.children).toEqual([]);
+    expect(snapshot.tree?.component).toBeUndefined();
+    expect(JSON.stringify(snapshot).length).toBeLessThanOrEqual(MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+  });
+
+  it('falls back to the captured element tree when hierarchy access reparents a backing node', () => {
+    class MutatingComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    for (const id of [1, 2, 3]) {
+      delegate.onElementCreated(id, 'layout');
+    }
+    delegate.onElementBecameRoot(1);
+    delegate.onElementMoved(2, 1, 0);
+    delegate.onElementMoved(3, 1, 1);
+    const elements = [
+      makeRenderedElement(1, 'layout', {}),
+      makeRenderedElement(2, 'layout', {}),
+      makeRenderedElement(3, 'layout', {}),
+    ];
+    const rootElement = makeVirtualNode('root-layout', { element: elements[0] });
+    const firstChild = makeVirtualNode('first', { element: elements[1] });
+    const secondChild = makeVirtualNode('second', { element: elements[2] });
+    setVirtualChildren(rootElement, [firstChild, secondChild]);
+    const mutatingComponent = makeVirtualNode('mutating', {
+      component: new MutatingComponent() as unknown as IComponent,
+    });
+    setVirtualChildren(mutatingComponent, [rootElement]);
+    let mutated = false;
+    Object.defineProperty(mutatingComponent, 'key', {
+      configurable: true,
+      get: () => {
+        if (!mutated) {
+          mutated = true;
+          delegate.onElementMoved(2, 3, 0);
+        }
+        return 'mutating';
+      },
+    });
+
+    const snapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer(elements, mutatingComponent),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+    );
+
+    expect(snapshot.tree?.id).toBe('1');
+    expect(snapshot.tree?.component).toBeUndefined();
+    expect(snapshot.tree?.children.map(child => child.id)).toEqual(['2', '3']);
   });
 
   it('keeps debugger lookup scoped to this renderer and removes destroyed nodes', () => {
@@ -580,7 +925,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     Object.defineProperty(metadata, '__proto__', { enumerable: true, value: 'own property' });
 
     const snapshot = captureSnapshot(delegate, [makeRenderedElement(1, 'layout', { metadata })]);
-    const debugMetadata = snapshot.tree?.element.attributes.metadata as Record<string, unknown>;
+    const debugMetadata = snapshot.tree?.element?.attributes.metadata as Record<string, unknown>;
 
     expect(getterCalls).toBe(0);
     expect(debugMetadata.dangerous).toEqual({ secret: '<accessor/>' });
@@ -618,7 +963,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     const snapshot = captureSnapshot(delegate, [
       makeRenderedElement(1, 'layout', { items: inspectedArray }),
     ]);
-    const debugItems = snapshot.tree?.element.attributes.items as unknown[];
+    const debugItems = snapshot.tree?.element?.attributes.items as unknown[];
 
     expect(getterCalls).toBe(0);
     expect(inspectedProperties).toEqual([
@@ -641,7 +986,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     }
 
     const snapshot = captureSnapshot(delegate, [makeRenderedElement(1, 'layout', attributes)]);
-    const debugAttributes = snapshot.tree?.element.attributes ?? {};
+    const debugAttributes = snapshot.tree?.element?.attributes ?? {};
 
     expect(String(debugAttributes.value0).length).toBeLessThanOrEqual(65_536);
     expect(String(debugAttributes.value0)).toContain('<truncated>');
@@ -662,12 +1007,12 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
         value: unicodeBoundaryValue,
       }),
     ]);
-    const attributes = snapshot.tree!.element.attributes;
+    const attributes = snapshot.tree!.element!.attributes;
     const nested = attributes.metadata as Record<string, unknown>;
 
     expectUnicodeSafeTruncation(attributes.value);
     expectUnicodeSafeTruncation(nested.nested);
-    expectUnicodeSafeTruncation(snapshot.tree!.element.dom.attributes['data-emoji']);
+    expectUnicodeSafeTruncation(snapshot.tree!.element!.dom.attributes['data-emoji']);
     expect(JSON.stringify(snapshot).length).toBeLessThanOrEqual(MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
   });
 
@@ -682,7 +1027,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     const snapshot = delegate.getDebugSnapshot(renderer, 8_192);
 
     expect(JSON.stringify(snapshot).length).toBeLessThanOrEqual(8_192);
-    expect(String(snapshot.tree?.element.attributes.payload)).toContain('<truncated>');
+    expect(String(snapshot.tree?.element?.attributes.payload)).toContain('<truncated>');
   });
 
   it('bounds the complete serialized snapshot and omits over-budget property names before insertion', () => {
@@ -714,14 +1059,14 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
 
     const snapshot = captureSnapshot(delegate, [element]);
     const serializedSnapshot = JSON.stringify(snapshot);
-    const debugAttributes = snapshot.tree?.element.attributes ?? {};
+    const debugAttributes = snapshot.tree?.element?.attributes ?? {};
 
     expect(serializedSnapshot.length).toBeLessThanOrEqual(MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
     expect(String(debugAttributes.hugeValue).length).toBeLessThanOrEqual(65_536);
     expect(String(debugAttributes.hugeValue)).toContain('<truncated>');
     expect((debugAttributes.metadata as Record<string, unknown>).__truncated__).toBeDefined();
     expect(Object.prototype.hasOwnProperty.call(debugAttributes, hugeKey)).toBeFalse();
-    expect(Object.prototype.hasOwnProperty.call(snapshot.tree?.element.dom.attributes ?? {}, hugeKey)).toBeFalse();
+    expect(Object.prototype.hasOwnProperty.call(snapshot.tree?.element?.dom.attributes ?? {}, hugeKey)).toBeFalse();
     expect(attributeReads).not.toContain(hugeKey);
     expect(getterCalls).toBe(0);
   });
@@ -758,7 +1103,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     const snapshot = captureSnapshot(delegate, [
       makeRenderedElement(1, 'layout', { nested, properties }),
     ]);
-    const debugAttributes = snapshot.tree?.element.attributes ?? {};
+    const debugAttributes = snapshot.tree?.element?.attributes ?? {};
     const debugProperties = debugAttributes.properties as Record<string, unknown>;
 
     expect(debugProperties.property49).toBe(49);

@@ -18,6 +18,20 @@ interface Unsubscribable {
 
 export type ComponentDisposable = (() => void) | Unsubscribable;
 
+/**
+ * A bounded, immutable view of one live virtual node for debugger consumers.
+ * `traversedLinkCount` includes both flattened slot-child links and parent
+ * links inspected while producing the snapshot.
+ */
+export interface RendererDebugVirtualNodeSnapshot {
+  readonly children: readonly IRenderedVirtualNode[];
+  readonly component: IComponent | undefined;
+  readonly element: IRenderedElement | undefined;
+  readonly key: string;
+  readonly parent: IRenderedVirtualNode | undefined;
+  readonly traversedLinkCount: number;
+}
+
 export interface IRenderer {
   contextId: string;
   renderComponent(component: IComponent, properties: any | undefined): void;
@@ -31,6 +45,11 @@ export interface IRenderer {
   getComponentVirtualNode(component: IComponent): IRenderedVirtualNode;
   getElementForId(elementId: number): IRenderedElement | undefined;
   getRootVirtualNode(): IRenderedVirtualNode | undefined;
+  getDebugVirtualNodeSnapshot?(
+    node: IRenderedVirtualNode,
+    maximumChildLinks: number,
+    maximumTraversalLinks: number,
+  ): RendererDebugVirtualNodeSnapshot | undefined;
 
   /**
    * Registers a function which will be called right after the component is destroyed.

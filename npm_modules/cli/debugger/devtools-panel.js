@@ -17,8 +17,14 @@ const state = {
   autoRefresh: true,
   refreshTimer: null,
   refreshPending: false,
+  snapshotGeneration: 0,
+  snapshotRequestGeneration: 0,
   hoveredNodeId: null,
+  hoveredSnapshotGeneration: 0,
   highlightTimer: null,
+  highlightIntentGeneration: 0,
+  highlightMayBeActive: false,
+  highlightRequestTail: Promise.resolve(),
   consoleEntries: [],
   consoleEntryKeys: new Set(),
   consoleHistory: [],
@@ -105,6 +111,19 @@ function nodeAttributes(node) {
 
 function nodeId(node) {
   return valdiDebuggerTreeModel.id(node);
+}
+
+function inspectedNodeId(node) {
+  if (!node) return null;
+  if (node.component) {
+    return node.component.elementId === undefined ? null : String(node.component.elementId);
+  }
+  return nodeId(node);
+}
+
+function inspectedNode(node) {
+  const id = inspectedNodeId(node);
+  return id === null ? node : findNode(id) || node;
 }
 
 function treeRowId(id) {
@@ -238,15 +257,25 @@ async function connectToInspectedApplication() {
 async function refreshSnapshot() {
   if (!state.target || state.refreshPending) return;
   state.refreshPending = true;
+  const requestTarget = state.target;
+  const requestGeneration = ++state.snapshotRequestGeneration;
   try {
     const snapshot = await requestJson(
       '/api/devtools/snapshot',
-      { inspectedUrl, sessionId: state.target.sessionId, targetNonce: inspectedTargetNonce },
+      { inspectedUrl, sessionId: requestTarget.sessionId, targetNonce: inspectedTargetNonce },
       {},
     );
+    if (state.target !== requestTarget || state.snapshotRequestGeneration !== requestGeneration) return;
     snapshot.tree = valdiDebuggerTreeModel.restoreTree(snapshot.tree);
     const wasEmpty = !state.snapshot?.tree;
+    const shouldClearHighlight = state.hoveredNodeId !== null || state.highlightMayBeActive;
     state.snapshot = snapshot;
+    state.snapshotGeneration++;
+    if (state.highlightTimer) window.clearTimeout(state.highlightTimer);
+    state.highlightTimer = null;
+    state.hoveredNodeId = null;
+    state.hoveredSnapshotGeneration = state.snapshotGeneration - 1;
+    if (shouldClearHighlight) queueHighlight(null);
     state.error = null;
     setConnected(true);
 
@@ -340,7 +369,7 @@ function renderTree() {
       matches++;
     }
     rows.push(`
-      <div id="${escapeHtml(treeRowId(id))}" class="tree-row${selected ? ' selected' : ''}" data-node-id="${escapeHtml(id)}" role="treeitem" aria-level="${depth + 1}" aria-selected="${selected}"${hasChildren ? ` aria-expanded="${expanded}"` : ''} style="padding-left:${depth * 13 + 2}px">
+      <div id="${escapeHtml(treeRowId(id))}" class="tree-row${node.component ? ' component-row' : ''}${selected ? ' selected' : ''}" data-node-id="${escapeHtml(id)}" role="treeitem" aria-level="${depth + 1}" aria-selected="${selected}"${hasChildren ? ` aria-expanded="${expanded}"` : ''} style="padding-left:${depth * 13 + 2}px">
         <button class="disclosure${hasChildren ? '' : ' empty'}" data-toggle-id="${escapeHtml(id)}" tabindex="-1" aria-label="${expanded ? 'Collapse' : 'Expand'}">${expanded ? '▾' : '▸'}</button>
         <span class="tag-bracket">&lt;</span><span class="tag-name">${escapeHtml(node.tag || 'view')}</span>
         ${attribute ? `<span class="attribute-name">${escapeHtml(attribute[0])}</span>=<span class="attribute-value">"${escapeHtml(attribute[1])}"</span>` : ''}<span class="tag-bracket">&gt;</span>
@@ -460,15 +489,24 @@ function renderInspector() {
     return;
   }
 
+  const renderedNode = inspectedNode(node);
+  if (node.component && renderedNode === node) {
+    elements.inspector.innerHTML = `<div class="rule-header">Valdi component <span class="rule-origin">${escapeHtml(node.tag)}</span></div>${propertyRows(node.component, { css: false })}<div class="empty-state">This component does not currently render a backing element.</div>`;
+    return;
+  }
+
   if (state.activeDetail === 'styles') {
-    elements.inspector.innerHTML = renderStyles(node);
+    elements.inspector.innerHTML = renderStyles(renderedNode);
   } else if (state.activeDetail === 'computed') {
-    elements.inspector.innerHTML = renderComputed(node);
+    elements.inspector.innerHTML = renderComputed(renderedNode);
   } else {
-    const textContent = node.element?.dom?.textContent
-      ? valdiDebuggerTreeModel.formatValue(node.element.dom.textContent, 0)
+    const textContent = renderedNode.element?.dom?.textContent
+      ? valdiDebuggerTreeModel.formatValue(renderedNode.element.dom.textContent, 0)
       : '';
-    elements.inspector.innerHTML = `<div class="rule-header">Rendered &lt;${escapeHtml(valdiDebuggerTreeModel.formatValue(node.element?.dom?.tagName || 'div', 0))}&gt;</div>${propertyRows(node.element?.dom?.attributes, { css: false })}${textContent ? `<div class="rule-header">Text content</div><pre class="json-view">${escapeHtml(textContent)}</pre>` : ''}`;
+    const componentDetails = node.component
+      ? `<div class="rule-header">Valdi component <span class="rule-origin">${escapeHtml(node.tag)}</span></div>${propertyRows(node.component, { css: false })}`
+      : '';
+    elements.inspector.innerHTML = `${componentDetails}<div class="rule-header">Rendered &lt;${escapeHtml(valdiDebuggerTreeModel.formatValue(renderedNode.element?.dom?.tagName || 'div', 0))}&gt;</div>${propertyRows(renderedNode.element?.dom?.attributes, { css: false })}${textContent ? `<div class="rule-header">Text content</div><pre class="json-view">${escapeHtml(textContent)}</pre>` : ''}`;
   }
 }
 
@@ -550,24 +588,62 @@ function handleTreeNavigation(event) {
   scrollSelectedTreeRowIntoView();
 }
 
-function queueHighlight(nodeIdValue) {
-  if (!state.target || state.hoveredNodeId === nodeIdValue) return;
-  state.hoveredNodeId = nodeIdValue;
-  if (state.highlightTimer) window.clearTimeout(state.highlightTimer);
-  state.highlightTimer = window.setTimeout(
-    () => {
-      void requestJson(
+function enqueueHighlightRequest(intentGeneration, target, targetSessionId, snapshotGeneration, nodeIdValue) {
+  const request = state.highlightRequestTail.then(async () => {
+    if (
+      intentGeneration !== state.highlightIntentGeneration ||
+      state.target !== target ||
+      target.sessionId !== targetSessionId ||
+      state.snapshotGeneration !== snapshotGeneration
+    ) {
+      return;
+    }
+    try {
+      await requestJson(
         '/api/devtools/highlight',
         {},
         {
           body: {
             inspectedUrl,
-            sessionId: state.target.sessionId,
+            sessionId: targetSessionId,
             targetNonce: inspectedTargetNonce,
             ...(nodeIdValue ? { nodeId: nodeIdValue } : {}),
           },
         },
-      ).catch(error => console.warn('Unable to update the inspected Valdi highlight.', error));
+      );
+      if (nodeIdValue === null && intentGeneration === state.highlightIntentGeneration) {
+        state.highlightMayBeActive = false;
+      }
+    } catch (error) {
+      console.warn('Unable to update the inspected Valdi highlight.', error);
+    }
+  });
+  state.highlightRequestTail = request.catch(error => {
+    console.warn('Unable to order the inspected Valdi highlight request.', error);
+  });
+}
+
+function queueHighlight(nodeIdValue) {
+  if (
+    !state.target ||
+    (state.hoveredNodeId === nodeIdValue &&
+      state.hoveredSnapshotGeneration === state.snapshotGeneration &&
+      !(nodeIdValue === null && state.highlightMayBeActive))
+  )
+    return;
+  const target = state.target;
+  const targetSessionId = target.sessionId;
+  const snapshotGeneration = state.snapshotGeneration;
+  const intentGeneration = ++state.highlightIntentGeneration;
+  state.hoveredNodeId = nodeIdValue;
+  state.hoveredSnapshotGeneration = snapshotGeneration;
+  if (state.highlightTimer) window.clearTimeout(state.highlightTimer);
+  state.highlightTimer = window.setTimeout(
+    () => {
+      state.highlightTimer = null;
+      if (state.target !== target || state.snapshotGeneration !== snapshotGeneration) return;
+      if (nodeIdValue !== null) state.highlightMayBeActive = true;
+      enqueueHighlightRequest(intentGeneration, target, targetSessionId, snapshotGeneration, nodeIdValue);
     },
     nodeIdValue ? 80 : 20,
   );
@@ -787,7 +863,7 @@ function wireEvents() {
   });
   elements.tree.addEventListener('pointerover', event => {
     const row = event.target.closest('[data-node-id]');
-    if (row) queueHighlight(row.dataset.nodeId);
+    if (row) queueHighlight(inspectedNodeId(findNode(row.dataset.nodeId)));
   });
   elements.tree.addEventListener('pointerleave', () => queueHighlight(null));
   elements.breadcrumbs.addEventListener('click', event => {

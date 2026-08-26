@@ -17,7 +17,7 @@ import { ConsoleRepresentable } from './ConsoleRepresentable';
 import { ComponentConstructor, IComponent } from './IComponent';
 import { IRenderedElement } from './IRenderedElement';
 import { IRenderedVirtualNode } from './IRenderedVirtualNode';
-import { ComponentDisposable, IRenderer, RendererObserver } from './IRenderer';
+import { ComponentDisposable, IRenderer, RendererDebugVirtualNodeSnapshot, RendererObserver } from './IRenderer';
 import { IRendererDelegate } from './IRendererDelegate';
 import { IRendererEventListener } from './IRendererEventListener';
 import { NodePrototype } from './NodePrototype';
@@ -249,6 +249,87 @@ class VirtualNodeBridge implements IRenderedVirtualNode {
     getVirtualNodeBridgeChildren(this.renderer, this.node, out);
 
     return out;
+  }
+
+  getDebugSnapshot(
+    maximumChildLinks: number,
+    maximumTraversalLinks: number,
+  ): RendererDebugVirtualNodeSnapshot | undefined {
+    if (
+      !Number.isSafeInteger(maximumChildLinks) ||
+      maximumChildLinks < 0 ||
+      !Number.isSafeInteger(maximumTraversalLinks) ||
+      maximumTraversalLinks <= 0
+    ) {
+      return undefined;
+    }
+
+    let traversedLinkCount = 0;
+    let parent = this.node.parent;
+    const visitedParentSlots = new Set<VirtualNode>();
+    while (parent?.slot === true) {
+      if (visitedParentSlots.has(parent)) {
+        return undefined;
+      }
+      visitedParentSlots.add(parent);
+      traversedLinkCount++;
+      if (traversedLinkCount > maximumTraversalLinks) {
+        return undefined;
+      }
+      parent = parent.parent;
+    }
+    if (parent !== undefined) {
+      traversedLinkCount++;
+      if (traversedLinkCount > maximumTraversalLinks) {
+        return undefined;
+      }
+    }
+
+    const children: IRenderedVirtualNode[] = [];
+    const visitedSlots = new Set<VirtualNode>();
+    const childFrames: Array<{ children: VirtualNode[]; index: number }> = [];
+    if (this.node.children !== undefined) {
+      childFrames.push({ children: this.node.children.children, index: 0 });
+    }
+    while (childFrames.length > 0) {
+      const frame = childFrames[childFrames.length - 1];
+      if (frame.index >= frame.children.length) {
+        childFrames.pop();
+        continue;
+      }
+      const child = frame.children[frame.index];
+      frame.index++;
+      traversedLinkCount++;
+      if (traversedLinkCount > maximumTraversalLinks) {
+        return undefined;
+      }
+      if (child.slot === true) {
+        if (visitedSlots.has(child)) {
+          return undefined;
+        }
+        visitedSlots.add(child);
+        if (child.children !== undefined) {
+          childFrames.push({ children: child.children.children, index: 0 });
+        }
+      } else {
+        if (children.length >= maximumChildLinks) {
+          return undefined;
+        }
+        children.push(getVirtualNodeBridge(this.renderer, child));
+      }
+    }
+
+    return {
+      children,
+      component: this.node.component?.instance,
+      element: this.node.element === undefined ? undefined : getRenderedElementBridge(this.renderer, this.node.element),
+      key: this.node.key,
+      parent:
+        parent === undefined || parent === this.renderer.nodeTree
+          ? undefined
+          : getVirtualNodeBridge(this.renderer, parent),
+      traversedLinkCount,
+    };
   }
 
   get parentIndex(): number {
@@ -2661,6 +2742,17 @@ export class Renderer implements IRenderer {
     }
 
     return undefined;
+  }
+
+  getDebugVirtualNodeSnapshot(
+    node: IRenderedVirtualNode,
+    maximumChildLinks: number,
+    maximumTraversalLinks: number,
+  ): RendererDebugVirtualNodeSnapshot | undefined {
+    if (!(node instanceof VirtualNodeBridge) || node.renderer !== this) {
+      return undefined;
+    }
+    return node.getDebugSnapshot(maximumChildLinks, maximumTraversalLinks);
   }
 
   getComponentVirtualNode(component: IComponent): IRenderedVirtualNode {

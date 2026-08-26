@@ -92,6 +92,31 @@ describe('npm package contents', () => {
     }
     expect(orderedBundle).toContain('dispatchDebuggerInput');
     expect(orderedBundle).toContain("apiPost('/api/input'");
+
+    const devToolsPanelAssets = [
+      'devtools-panel.css',
+      'devtools-panel.html',
+      'devtools-panel.js',
+      'debugger-tree-model.js',
+    ];
+    for (const assetPath of devToolsPanelAssets) {
+      expect(packedFiles).toContain(`debugger/${assetPath}`);
+    }
+    const devToolsPanelHtml = fs.readFileSync(path.join(debuggerRoot, 'devtools-panel.html'), 'utf8');
+    const treeModelScriptIndex = devToolsPanelHtml.indexOf('debugger-tree-model.js');
+    const panelScriptIndex = devToolsPanelHtml.indexOf('devtools-panel.js');
+    expect(treeModelScriptIndex).toBeGreaterThan(-1);
+    expect(panelScriptIndex).toBeGreaterThan(treeModelScriptIndex);
+    expect(
+      () =>
+        new vm.Script(
+          [
+            fs.readFileSync(path.join(debuggerRoot, 'debugger-tree-model.js'), 'utf8'),
+            fs.readFileSync(path.join(debuggerRoot, 'devtools-panel.js'), 'utf8'),
+          ].join('\n'),
+          { filename: 'valdi-devtools-panel.js' },
+        ),
+    ).not.toThrow();
   });
 
   it('does not let projected trees auto-load remote media', () => {

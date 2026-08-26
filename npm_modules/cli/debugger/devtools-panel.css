@@ -356,6 +356,11 @@ button {
   color: var(--tag);
 }
 
+.component-row .tag-name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .attribute-name {
   padding-left: 5px;
   color: var(--attribute);

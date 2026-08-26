@@ -2319,6 +2319,51 @@ describe('Renderer', () => {
         ],
       },
     ]);
+
+    const rootVirtualNode = renderer.getRootVirtualNode()!;
+    const rootDebugSnapshot = renderer.getDebugVirtualNodeSnapshot(rootVirtualNode, 10, 20)!;
+    const componentVirtualNode = rootDebugSnapshot.children[0];
+    const componentDebugSnapshot = renderer.getDebugVirtualNodeSnapshot(componentVirtualNode, 10, 20)!;
+    const headerContainerVirtualNode = componentDebugSnapshot.children[0];
+    const headerContainerDebugSnapshot = renderer.getDebugVirtualNodeSnapshot(headerContainerVirtualNode, 10, 20)!;
+
+    expect(headerContainerDebugSnapshot.children.map(child => child.element?.tag)).toEqual(['header']);
+    expect(renderer.getDebugVirtualNodeSnapshot(headerContainerVirtualNode, 10, 2)).toBeUndefined();
+  });
+
+  it('bounds wide, deep, and cyclic internal slot traversal', () => {
+    interface DebugRawVirtualNode {
+      children?: { children: DebugRawVirtualNode[] };
+      key: string;
+      slot?: boolean;
+    }
+
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    const root = makeNodeProtoype('root');
+    renderer.begin();
+    renderer.beginElement(root);
+    renderer.endElement();
+    renderer.end();
+
+    const rootVirtualNode = renderer.getRootVirtualNode()!;
+    const rawRoot = (rootVirtualNode as unknown as { node: DebugRawVirtualNode }).node;
+    const leaf: DebugRawVirtualNode = { key: 'leaf' };
+
+    rawRoot.children = { children: new Array<DebugRawVirtualNode>(10_000).fill(leaf) };
+    expect(renderer.getDebugVirtualNodeSnapshot(rootVirtualNode, 10, 100)).toBeUndefined();
+
+    let nestedSlotChild = leaf;
+    for (let depth = 0; depth < 10_000; depth++) {
+      nestedSlotChild = { children: { children: [nestedSlotChild] }, key: `slot-${depth}`, slot: true };
+    }
+    rawRoot.children = { children: [nestedSlotChild] };
+    expect(renderer.getDebugVirtualNodeSnapshot(rootVirtualNode, 10, 100)).toBeUndefined();
+
+    const cyclicSlot: DebugRawVirtualNode = { key: 'cycle', slot: true };
+    cyclicSlot.children = { children: [cyclicSlot] };
+    rawRoot.children = { children: [cyclicSlot] };
+    expect(renderer.getDebugVirtualNodeSnapshot(rootVirtualNode, 10, 100)).toBeUndefined();
   });
 
   it('can avoid re-render slotted components', () => {

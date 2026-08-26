@@ -15,15 +15,47 @@ import {
   registerElements,
   setAllElementsAttributeDelegate,
 } from './HTMLRenderer';
+import { captureComponentHierarchySnapshot } from './debug/ComponentHierarchySnapshot';
 import type { WebValdiLayout } from './views/WebValdiLayout';
 
 export interface UpdateAttributeDelegate {
   updateAttribute(elementId: number, attributeName: string, attributeValue: any): void;
 }
 
-export interface WebRendererDebugElementSnapshot {
+export interface WebRendererDebugNodeSnapshot {
   id: string;
   tag: string;
+  bounds?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  children: WebRendererDebugNodeSnapshot[];
+  childrenTruncated?: boolean;
+  component?: {
+    elementId?: string;
+    key: string;
+    name: string;
+  };
+  element?: {
+    id: number;
+    attributes: Record<string, unknown>;
+    dom: {
+      attributes: Record<string, string>;
+      tagName: string;
+    };
+  };
+}
+
+export interface WebRendererDebugElementSnapshot extends WebRendererDebugNodeSnapshot {
+  bounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  children: WebRendererDebugElementSnapshot[];
   element: {
     id: number;
     attributes: Record<string, unknown>;
@@ -32,18 +64,18 @@ export interface WebRendererDebugElementSnapshot {
       tagName: string;
     };
   };
-  bounds: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
+}
+
+export interface WebRendererDebugComponentSnapshot extends WebRendererDebugNodeSnapshot {
+  component: {
+    elementId?: string;
+    key: string;
+    name: string;
   };
-  children: WebRendererDebugElementSnapshot[];
-  childrenTruncated?: boolean;
 }
 
 export interface WebRendererDebugSnapshot {
-  tree: WebRendererDebugElementSnapshot | null;
+  tree: WebRendererDebugNodeSnapshot | null;
   viewport: {
     width: number;
     height: number;
@@ -81,6 +113,7 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
   private frameObserver?: FrameObserver;
   private resizeObserver?: ResizeObserver;
   private elementIdByHtmlElement = new WeakMap<Element, number>();
+  private debugTopologyRevision = 0;
   // Owned per delegate (i.e. per renderer/page) so element ids can't collide
   // with another page's (github.com/Snapchat/Valdi#115).
   private nodesRef: NodesRef = createNodesRef();
@@ -98,12 +131,15 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
   onElementBecameRoot(id: number): void {
     makeElementRoot(this.nodesRef, id, this.htmlRoot);
     this.rootElementId = id;
+    this.debugTopologyRevision++;
   }
   onElementMoved(id: number, parentId: number, parentIndex: number): void {
     moveElement(this.nodesRef, id, parentId, parentIndex);
+    this.debugTopologyRevision++;
   }
   onElementCreated(id: number, viewClass: string): void {
     createElement(this.nodesRef, id, viewClass, this.attributeDelegate);
+    this.debugTopologyRevision++;
     const element = this.nodesRef.get(id);
     if (element?.htmlElement) {
       this.elementIdByHtmlElement.set(element.htmlElement, id);
@@ -148,6 +184,7 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
         this.rootElementId = undefined;
       }
     }
+    this.debugTopologyRevision++;
   }
   onElementAttributeChangeAny(id: number, attributeName: string, attributeValue: any): void {
     changeAttributeOnElement(this.nodesRef, id, attributeName, attributeValue);
@@ -269,18 +306,30 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
       },
     };
     const rootNode = this.rootElementId === undefined ? undefined : this.nodesRef.get(this.rootElementId);
-    const snapshot: WebRendererDebugSnapshot = {
-      tree:
-        rootNode === undefined
-          ? null
-          : (captureDebugElementSnapshot(rootNode, null, this.nodesRef, renderer, budget, 0, false) ?? null),
+    const elementTree =
+      rootNode === undefined
+        ? null
+        : (captureDebugElementSnapshot(rootNode, null, this.nodesRef, renderer, budget, 0, false) ?? null);
+    const elementSnapshot: WebRendererDebugSnapshot = {
+      tree: elementTree,
       viewport,
     };
     // The snapshot only contains fresh data objects and primitives, so this final
     // serialization check cannot invoke getters from renderer-owned values.
-    return JSON.stringify(snapshot).length <= snapshotCharacterLimit
-      ? snapshot
-      : { tree: null, viewport };
+    if (JSON.stringify(elementSnapshot).length > snapshotCharacterLimit) {
+      return { tree: null, viewport };
+    }
+    if (elementTree === null) {
+      return elementSnapshot;
+    }
+
+    const topologyRevision = this.debugTopologyRevision;
+    const componentTree = captureComponentHierarchySnapshot(elementTree, renderer);
+    if (componentTree === undefined || topologyRevision !== this.debugTopologyRevision) {
+      return elementSnapshot;
+    }
+    const componentSnapshot: WebRendererDebugSnapshot = { tree: componentTree, viewport };
+    return JSON.stringify(componentSnapshot).length <= snapshotCharacterLimit ? componentSnapshot : elementSnapshot;
   }
 }
 
