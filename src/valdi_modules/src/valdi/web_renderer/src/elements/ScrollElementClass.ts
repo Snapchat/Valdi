@@ -660,6 +660,7 @@ export class ScrollElementClass extends ElementClass {
     assignStyles(element, {
       overflowX: 'hidden',
       overflowY: 'auto',
+      pointerEvents: 'auto',
       scrollbarWidth: 'none',
     });
     return element;

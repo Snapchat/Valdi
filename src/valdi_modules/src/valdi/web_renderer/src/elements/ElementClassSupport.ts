@@ -11,6 +11,7 @@ const BASE_LAYOUT_ITEM_STYLES: Record<string, string | number> = {
   flexShrink: 0,
   minHeight: 0,
   minWidth: 0,
+  pointerEvents: 'none',
   position: 'relative',
 };
 

@@ -1,7 +1,7 @@
 import { AttributesBinder } from '../attributes/AttributesBinder';
 import { AttributeApplier, AttributeApplierContext, ElementClass, UnknownAttributeApplier } from '../core/ElementClass';
 import { getWebViewClassFactory, WebViewClassAttributeHandler } from '../WebViewClassRegistry';
-import { createBaseElement } from './ElementClassSupport';
+import { assignStyles, createBaseElement } from './ElementClassSupport';
 import { ViewElementClass } from './ViewElementClass';
 
 interface CustomViewState {
@@ -126,6 +126,8 @@ export class CustomViewElementClass extends ElementClass {
   }
 
   protected onCreateElement(): HTMLElement {
-    return createBaseElement('div');
+    const element = createBaseElement('div');
+    assignStyles(element, { pointerEvents: 'auto' });
+    return element;
   }
 }

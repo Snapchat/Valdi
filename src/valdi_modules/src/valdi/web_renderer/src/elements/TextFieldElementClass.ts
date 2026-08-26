@@ -407,6 +407,7 @@ export class TextFieldElementClass extends ElementClass<TextInputElement> {
       margin: 0,
       outline: 'none',
       padding: 0,
+      pointerEvents: 'auto',
     });
     return element;
   }

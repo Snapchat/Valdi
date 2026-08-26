@@ -500,6 +500,7 @@ function createStyledSpan(
 
   if (style.onTap) {
     span.style.cursor = 'pointer';
+    span.style.pointerEvents = 'auto';
     const onTap = style.onTap;
     span.onclick = e => {
       e.stopPropagation();

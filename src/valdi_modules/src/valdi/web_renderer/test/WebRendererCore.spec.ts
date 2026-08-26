@@ -58,6 +58,10 @@ interface FakeMouseDragEvent extends FakeDomEvent {
   readonly timeStamp: number;
 }
 
+interface FakePointerDragEvent extends FakeMouseDragEvent {
+  readonly pointerId: number;
+}
+
 type FakeEventListener = ((event: FakeDomEvent) => void) | { handleEvent(event: FakeDomEvent): void };
 
 type FakeElement = {
@@ -2804,6 +2808,20 @@ describe('web renderer core', () => {
     expect(getNode(id).htmlElement.style.pointerEvents).toBe('auto');
   });
 
+  it('keeps layout views pointer-transparent while browser controls remain interactive', () => {
+    const layoutId = createTestElement('layout');
+    const viewId = createTestElement('view');
+    const scrollId = createTestElement('scroll');
+    const textFieldId = createTestElement('textfield');
+    const textViewId = createTestElement('textview');
+
+    expect(getNode(layoutId).htmlElement.style.pointerEvents).toBe('none');
+    expect(getNode(viewId).htmlElement.style.pointerEvents).toBe('none');
+    expect(getNode(scrollId).htmlElement.style.pointerEvents).toBe('auto');
+    expect(getNode(textFieldId).htmlElement.style.pointerEvents).toBe('auto');
+    expect(getNode(textViewId).htmlElement.style.pointerEvents).toBe('auto');
+  });
+
   it('exports a serializable debug snapshot for the rooted tree', () => {
     const root = createRootTestElement('view');
     const child = createTestElement('label');
@@ -3896,6 +3914,58 @@ describe('web renderer core', () => {
     expect(events[2].velocityY).toBe(-900);
   });
 
+  it('reports pointer-driven onTouch events in element-relative coordinates', () => {
+    const id = createRootTestElement('view');
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+    element.rectLeft = 100;
+    element.rectTop = 40;
+    const events: Array<{
+      absoluteX: number;
+      absoluteY: number;
+      pointerCount: number;
+      state: number;
+      x: number;
+      y: number;
+    }> = [];
+    const pointerEvent = (type: string, clientX: number, clientY: number, buttons: number): FakePointerDragEvent => ({
+      buttons,
+      clientX,
+      clientY,
+      pointerId: 7,
+      preventDefault(): void {},
+      timeStamp: 0,
+      type,
+    });
+
+    tree.setAttributeOnElement(id, 'onTouch', (event: (typeof events)[number]) => events.push(event));
+    tree.flush();
+
+    expect(element.style.pointerEvents).toBe('auto');
+    element.dispatchEvent(pointerEvent('pointermove', 110, 50, 0));
+    element.dispatchEvent(pointerEvent('pointerdown', 125, 65, 1));
+    element.dispatchEvent(pointerEvent('pointermove', 150, 85, 1));
+    element.dispatchEvent(pointerEvent('pointerup', 160, 95, 0));
+
+    expect(events.map(event => event.state)).toEqual([0, 1, 2]);
+    expect(events.map(event => [event.x, event.y])).toEqual([
+      [25, 25],
+      [50, 45],
+      [60, 55],
+    ]);
+    expect(events.map(event => [event.absoluteX, event.absoluteY])).toEqual([
+      [125, 65],
+      [150, 85],
+      [160, 95],
+    ]);
+    expect(events.map(event => event.pointerCount)).toEqual([1, 1, 0]);
+
+    tree.setAttributeOnElement(id, 'onTouch', undefined);
+    tree.flush();
+    expect(element.style.pointerEvents).toBe('none');
+    element.dispatchEvent(pointerEvent('pointerdown', 125, 65, 1));
+    expect(events.length).toBe(3);
+  });
+
   it('does not recognize a disabled drag interaction', () => {
     const id = createRootTestElement('view');
     const element = getNode(id).htmlElement as unknown as FakeElement;
@@ -4133,6 +4203,23 @@ describe('web renderer core', () => {
     const textFieldId = createRootTestElement('textfield');
     const textField = getNode(textFieldId).htmlElement as unknown as FakeElement;
     expect(textField.style.outline).toBe('none');
+  });
+
+  it('keeps multiline text editable unless it is explicitly disabled', () => {
+    const id = createRootTestElement('textview');
+    const textView = getNode(id).htmlElement as unknown as FakeElement;
+
+    expect(textView.contentEditable).toBe('plaintext-only');
+
+    tree.setAttributeOnElement(id, 'enabled', false);
+    tree.flush();
+    expect(textView.contentEditable).toBe('false');
+    expect(textView.getAttribute('aria-disabled')).toBe('true');
+
+    tree.setAttributeOnElement(id, 'enabled', undefined);
+    tree.flush();
+    expect(textView.contentEditable).toBe('plaintext-only');
+    expect(textView.getAttribute('aria-disabled')).toBeNull();
   });
 
   it('renders accessible, independently styled textview placeholders', () => {
@@ -4561,6 +4648,13 @@ describe('web renderer core', () => {
     dispatchAttributedTextLayouts(parsedAttributedText, container as unknown as HTMLElement);
 
     expect(reported).toEqual({ x: 0, y: 0, width: 57, height: 21 });
+  });
+
+  it('keeps tappable attributed text interactive inside pointer-transparent labels', () => {
+    const attributedText = new AttributedTextBuilder().append('tap', { onTap: () => {} }).build();
+    const container = renderAttributedText(ParsedAttributedText.parse(attributedText)) as unknown as FakeElement;
+
+    expect(container.childNodes.item(0)!.style.pointerEvents).toBe('auto');
   });
 
   it('reports attributed text layout after the post-layout scheduler when measurement is drained early', () => {

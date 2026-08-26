@@ -391,7 +391,7 @@ function enabledAttributeApplier(): AttributeApplier<TextViewElement> {
     element => {
       element.disabled = false;
       element.removeAttribute('aria-disabled');
-      element.contentEditable = 'false';
+      element.contentEditable = 'plaintext-only';
     },
   );
   return binder.attributeAppliers.enabled;
@@ -675,12 +675,13 @@ export class TextViewElementClass extends ElementClass<TextViewElement> {
       fontFamily: SYSTEM_FONT_FAMILY,
       outline: 'none',
       overflow: 'hidden',
+      pointerEvents: 'auto',
       whiteSpace: 'pre-wrap',
       wordBreak: 'normal',
       wordWrap: 'break-word',
     });
     element.tabIndex = -1;
-    element.contentEditable = 'false';
+    element.contentEditable = 'plaintext-only';
     element.value = '';
     element.selectionStart = 0;
     element.selectionEnd = 0;

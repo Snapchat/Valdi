@@ -21,13 +21,18 @@ const VIEW_MASK_STATE = '__viewElementClassMaskState';
 const VIEW_BORDER_STYLE_STATE = '__viewElementClassBorderStyle';
 
 interface ViewInteractionState {
+  defaultPointerEvents?: string;
   documentDragCleanup?: () => void;
   dragSession?: BrowserDragSession;
+  hitTest?: boolean;
   longPressDuration: number;
   onTapDisabled: boolean;
   onDoubleTapDisabled: boolean;
   onLongPressDisabled: boolean;
   onDragDisabled: boolean;
+  onTouchActive?: boolean;
+  onTouchStartActive?: boolean;
+  onTouchEndActive?: boolean;
   onTap?: (event: unknown) => void;
   onTapPredicate?: (event: unknown) => boolean;
   onDoubleTap?: (event: unknown) => void;
@@ -39,6 +44,7 @@ interface ViewInteractionState {
   longPressTimer?: number;
   gestureListenersInstalled?: boolean;
   suppressNextTap?: boolean;
+  touchEnabled?: boolean;
   touchAreaExtension?: { top: number; right: number; bottom: number; left: number };
 }
 
@@ -49,6 +55,11 @@ interface BrowserDragSession {
   previousX: number;
   previousY: number;
   lastEvent?: MouseEvent | TouchEvent;
+}
+
+interface BrowserPointerPosition {
+  readonly clientX: number;
+  readonly clientY: number;
 }
 
 interface ViewMaskState {
@@ -80,6 +91,27 @@ function getViewMaskState(context: AttributeApplierContext): ViewMaskState {
   const state: ViewMaskState = { maskOpacity: 1 };
   context.setState(VIEW_MASK_STATE, state);
   return state;
+}
+
+function updateViewPointerEvents(element: HTMLElement, state: ViewInteractionState): void {
+  if (state.defaultPointerEvents === undefined) {
+    state.defaultPointerEvents = element.style.pointerEvents || 'none';
+  }
+  if (state.touchEnabled === false || state.hitTest === false) {
+    element.style.pointerEvents = 'none';
+    return;
+  }
+  const hasInteraction =
+    state.touchEnabled === true ||
+    state.hitTest === true ||
+    state.onTouchActive === true ||
+    state.onTouchStartActive === true ||
+    state.onTouchEndActive === true ||
+    state.onTap !== undefined ||
+    state.onDoubleTap !== undefined ||
+    state.onLongPress !== undefined ||
+    state.onDrag !== undefined;
+  element.style.pointerEvents = hasInteraction ? 'auto' : state.defaultPointerEvents;
 }
 
 function escapeSvgAttribute(value: string): string {
@@ -127,20 +159,40 @@ function updateMask(element: HTMLElement, context: AttributeApplierContext): voi
   element.style.setProperty('-webkit-mask-source-type', 'luminance');
 }
 
-function createTouchEvent(event: MouseEvent | TouchEvent, state: TouchEventState): ValdiTouchEvent {
+function createTouchEvent(
+  element: HTMLElement,
+  event: MouseEvent | TouchEvent,
+  state: TouchEventState,
+  activePointers?: ReadonlyMap<number, BrowserPointerPosition>,
+): ValdiTouchEvent {
   const touch = 'touches' in event ? event.touches[0] || event.changedTouches[0] : event;
+  const rect = element.getBoundingClientRect();
+  const pointerLocations = activePointers
+    ? Array.from(activePointers, ([pointerId, pointer]) => ({
+        pointerId,
+        x: pointer.clientX - rect.left,
+        y: pointer.clientY - rect.top,
+      }))
+    : 'touches' in event
+      ? Array.from(event.touches, pointer => ({
+          pointerId: pointer.identifier,
+          x: pointer.clientX - rect.left,
+          y: pointer.clientY - rect.top,
+        }))
+      : [];
   return {
     state,
-    x: touch.clientX,
-    y: touch.clientY,
+    x: touch.clientX - rect.left,
+    y: touch.clientY - rect.top,
     absoluteX: touch.clientX,
     absoluteY: touch.clientY,
-    pointerCount: 'touches' in event ? event.touches.length : 1,
-    pointerLocations: [],
+    pointerCount: activePointers ? activePointers.size : 'touches' in event ? event.touches.length : 1,
+    pointerLocations,
   };
 }
 
 function runDragCallback(
+  element: HTMLElement,
   callback: ((event: unknown) => void) | undefined,
   predicate: ((event: unknown) => boolean) | undefined,
   event: MouseEvent | TouchEvent,
@@ -151,7 +203,7 @@ function runDragCallback(
     return;
   }
 
-  const touchEvent = createTouchEvent(event, state);
+  const touchEvent = createTouchEvent(element, event, state);
   const time = Number.isFinite(event.timeStamp) ? event.timeStamp : Date.now();
   const elapsedSeconds = Math.max((time - session.previousTime) / 1000, 0.001);
   const dragEvent: ValdiDragEvent = {
@@ -170,6 +222,7 @@ function runDragCallback(
 }
 
 function runTouchCallback(
+  element: HTMLElement,
   callback: ((event: unknown) => void) | undefined,
   predicate: ((event: unknown) => boolean) | undefined,
   event: MouseEvent | TouchEvent,
@@ -178,7 +231,7 @@ function runTouchCallback(
   if (!callback) {
     return;
   }
-  const touchEvent = createTouchEvent(event, state);
+  const touchEvent = createTouchEvent(element, event, state);
   if (!predicate || predicate(touchEvent)) {
     callback(touchEvent);
   }
@@ -197,12 +250,12 @@ function ensureGestureListeners(element: HTMLElement, context: AttributeApplierC
       return;
     }
     if (!state.onTapDisabled) {
-      runTouchCallback(state.onTap, state.onTapPredicate, event, TouchEventState.Ended);
+      runTouchCallback(element, state.onTap, state.onTapPredicate, event, TouchEventState.Ended);
     }
   };
   const doubleClickListener = (event: MouseEvent) => {
     if (!state.onDoubleTapDisabled) {
-      runTouchCallback(state.onDoubleTap, state.onDoubleTapPredicate, event, TouchEventState.Ended);
+      runTouchCallback(element, state.onDoubleTap, state.onDoubleTapPredicate, event, TouchEventState.Ended);
     }
   };
   const startLongPress = (event: MouseEvent | TouchEvent) => {
@@ -210,7 +263,7 @@ function ensureGestureListeners(element: HTMLElement, context: AttributeApplierC
       return;
     }
     state.longPressTimer = window.setTimeout(() => {
-      runTouchCallback(state.onLongPress, state.onLongPressPredicate, event, TouchEventState.Started);
+      runTouchCallback(element, state.onLongPress, state.onLongPressPredicate, event, TouchEventState.Started);
     }, state.longPressDuration);
   };
   const cancelLongPress = () => {
@@ -227,7 +280,7 @@ function ensureGestureListeners(element: HTMLElement, context: AttributeApplierC
     event.preventDefault();
     state.documentDragCleanup?.();
     state.suppressNextTap = false;
-    const touchEvent = createTouchEvent(event, TouchEventState.Started);
+    const touchEvent = createTouchEvent(element, event, TouchEventState.Started);
     state.dragSession = {
       originX: touchEvent.x,
       originY: touchEvent.y,
@@ -235,7 +288,7 @@ function ensureGestureListeners(element: HTMLElement, context: AttributeApplierC
       previousX: touchEvent.x,
       previousY: touchEvent.y,
     };
-    runDragCallback(state.onDrag, state.onDragPredicate, event, TouchEventState.Started, state.dragSession);
+    runDragCallback(element, state.onDrag, state.onDragPredicate, event, TouchEventState.Started, state.dragSession);
     const document = element.ownerDocument;
     if (typeof document?.addEventListener === 'function' && typeof document.removeEventListener === 'function') {
       document.addEventListener('mousemove', dragListener);
@@ -259,7 +312,7 @@ function ensureGestureListeners(element: HTMLElement, context: AttributeApplierC
     state.dragSession = undefined;
     state.documentDragCleanup?.();
     if (!state.onDragDisabled && session !== undefined) {
-      runDragCallback(state.onDrag, state.onDragPredicate, event, TouchEventState.Ended, session);
+      runDragCallback(element, state.onDrag, state.onDragPredicate, event, TouchEventState.Ended, session);
     }
   };
   const dragListener = (event: MouseEvent | TouchEvent) => {
@@ -273,11 +326,11 @@ function ensureGestureListeners(element: HTMLElement, context: AttributeApplierC
       }
       session.lastEvent = event;
       event.preventDefault();
-      const current = createTouchEvent(event, TouchEventState.Changed);
+      const current = createTouchEvent(element, event, TouchEventState.Changed);
       if (Math.abs(current.x - session.originX) > 3 || Math.abs(current.y - session.originY) > 3) {
         state.suppressNextTap = true;
       }
-      runDragCallback(state.onDrag, state.onDragPredicate, event, TouchEventState.Changed, session);
+      runDragCallback(element, state.onDrag, state.onDragPredicate, event, TouchEventState.Changed, session);
     }
   };
   element.addEventListener('click', clickListener);
@@ -715,11 +768,15 @@ export function buildViewAttributeAppliers(): AttributeApplierMap {
   binder.bindStyleValueAttribute('cursor', 'cursor');
   binder.bindBooleanAttribute(
     'touchEnabled',
-    (element, enabled) => {
-      element.style.pointerEvents = enabled ? 'auto' : 'none';
+    (element, enabled, context) => {
+      const state = getViewInteractionState(context);
+      state.touchEnabled = enabled;
+      updateViewPointerEvents(element, state);
     },
-    element => {
-      element.style.pointerEvents = 'auto';
+    (element, context) => {
+      const state = getViewInteractionState(context);
+      state.touchEnabled = undefined;
+      updateViewPointerEvents(element, state);
     },
   );
   binder.bindBooleanAttribute(
@@ -737,56 +794,93 @@ export function buildViewAttributeAppliers(): AttributeApplierMap {
   );
   binder.bindBooleanAttribute(
     'hitTest',
-    (element, enabled) => {
-      element.style.pointerEvents = enabled ? 'auto' : 'none';
+    (element, enabled, context) => {
+      const state = getViewInteractionState(context);
+      state.hitTest = enabled;
+      updateViewPointerEvents(element, state);
     },
-    element => {
-      element.style.pointerEvents = 'auto';
+    (element, context) => {
+      const state = getViewInteractionState(context);
+      state.hitTest = undefined;
+      updateViewPointerEvents(element, state);
     },
   );
   binder.bindFunctionAttribute(
     'onTouch',
     (element, callback, context) => {
-      replaceEventListener(element, context, 'view:onTouchStart', 'touchstart', event =>
-        callback(createTouchEvent(event, TouchEventState.Started)),
-      );
-      replaceEventListener(element, context, 'view:onTouchMove', 'touchmove', event =>
-        callback(createTouchEvent(event, TouchEventState.Changed)),
-      );
-      replaceEventListener(element, context, 'view:onTouchEnd', 'touchend', event =>
-        callback(createTouchEvent(event, TouchEventState.Ended)),
-      );
-      replaceEventListener(element, context, 'view:onTouchCancel', 'touchcancel', event =>
-        callback(createTouchEvent(event, TouchEventState.Ended)),
-      );
+      const state = getViewInteractionState(context);
+      const activePointers = new Map<number, BrowserPointerPosition>();
+      const updatePointer = (event: PointerEvent) => {
+        activePointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+      };
+      const endPointer = (event: PointerEvent) => {
+        if (!activePointers.has(event.pointerId)) {
+          return;
+        }
+        activePointers.delete(event.pointerId);
+        callback(createTouchEvent(element, event, TouchEventState.Ended, activePointers));
+      };
+      replaceEventListener(element, context, 'view:onTouchStart', 'pointerdown', (event: PointerEvent) => {
+        updatePointer(event);
+        if (typeof element.setPointerCapture === 'function') {
+          element.setPointerCapture(event.pointerId);
+        }
+        callback(createTouchEvent(element, event, TouchEventState.Started, activePointers));
+      });
+      replaceEventListener(element, context, 'view:onTouchMove', 'pointermove', (event: PointerEvent) => {
+        if (!activePointers.has(event.pointerId)) {
+          return;
+        }
+        updatePointer(event);
+        callback(createTouchEvent(element, event, TouchEventState.Changed, activePointers));
+      });
+      replaceEventListener(element, context, 'view:onTouchEnd', 'pointerup', endPointer);
+      replaceEventListener(element, context, 'view:onTouchCancel', 'pointercancel', endPointer);
+      state.onTouchActive = true;
+      updateViewPointerEvents(element, state);
     },
     (element, context) => {
-      replaceEventListener(element, context, 'view:onTouchStart', 'touchstart', undefined);
-      replaceEventListener(element, context, 'view:onTouchMove', 'touchmove', undefined);
-      replaceEventListener(element, context, 'view:onTouchEnd', 'touchend', undefined);
-      replaceEventListener(element, context, 'view:onTouchCancel', 'touchcancel', undefined);
+      replaceEventListener(element, context, 'view:onTouchStart', 'pointerdown', undefined);
+      replaceEventListener(element, context, 'view:onTouchMove', 'pointermove', undefined);
+      replaceEventListener(element, context, 'view:onTouchEnd', 'pointerup', undefined);
+      replaceEventListener(element, context, 'view:onTouchCancel', 'pointercancel', undefined);
+      const state = getViewInteractionState(context);
+      state.onTouchActive = false;
+      updateViewPointerEvents(element, state);
     },
   );
   binder.bindFunctionAttribute(
     'onTouchStart',
     (element, callback, context) => {
-      replaceEventListener(element, context, 'view:onTouchStartOnly', 'touchstart', event =>
-        callback(createTouchEvent(event, TouchEventState.Started)),
+      replaceEventListener(element, context, 'view:onTouchStartOnly', 'pointerdown', event =>
+        callback(createTouchEvent(element, event, TouchEventState.Started)),
       );
+      const state = getViewInteractionState(context);
+      state.onTouchStartActive = true;
+      updateViewPointerEvents(element, state);
     },
     (element, context) => {
-      replaceEventListener(element, context, 'view:onTouchStartOnly', 'touchstart', undefined);
+      replaceEventListener(element, context, 'view:onTouchStartOnly', 'pointerdown', undefined);
+      const state = getViewInteractionState(context);
+      state.onTouchStartActive = false;
+      updateViewPointerEvents(element, state);
     },
   );
   binder.bindFunctionAttribute(
     'onTouchEnd',
     (element, callback, context) => {
-      replaceEventListener(element, context, 'view:onTouchEndOnly', 'touchend', event =>
-        callback(createTouchEvent(event, TouchEventState.Ended)),
+      replaceEventListener(element, context, 'view:onTouchEndOnly', 'pointerup', event =>
+        callback(createTouchEvent(element, event, TouchEventState.Ended)),
       );
+      const state = getViewInteractionState(context);
+      state.onTouchEndActive = true;
+      updateViewPointerEvents(element, state);
     },
     (element, context) => {
-      replaceEventListener(element, context, 'view:onTouchEndOnly', 'touchend', undefined);
+      replaceEventListener(element, context, 'view:onTouchEndOnly', 'pointerup', undefined);
+      const state = getViewInteractionState(context);
+      state.onTouchEndActive = false;
+      updateViewPointerEvents(element, state);
     },
   );
   binder.bindNumberAttribute(
@@ -813,12 +907,14 @@ export function buildViewAttributeAppliers(): AttributeApplierMap {
     (element, callback, context) => {
       const state = getViewInteractionState(context);
       state.onTap = callback as (event: unknown) => void;
-      element.style.pointerEvents = 'auto';
+      updateViewPointerEvents(element, state);
       element.style.cursor = 'pointer';
       ensureGestureListeners(element, context);
     },
     (element, context) => {
-      getViewInteractionState(context).onTap = undefined;
+      const state = getViewInteractionState(context);
+      state.onTap = undefined;
+      updateViewPointerEvents(element, state);
       element.style.cursor = '';
     },
   );
@@ -845,11 +941,15 @@ export function buildViewAttributeAppliers(): AttributeApplierMap {
   binder.bindFunctionAttribute(
     'onDoubleTap',
     (element, callback, context) => {
-      getViewInteractionState(context).onDoubleTap = callback as (event: unknown) => void;
+      const state = getViewInteractionState(context);
+      state.onDoubleTap = callback as (event: unknown) => void;
+      updateViewPointerEvents(element, state);
       ensureGestureListeners(element, context);
     },
-    (_element, context) => {
-      getViewInteractionState(context).onDoubleTap = undefined;
+    (element, context) => {
+      const state = getViewInteractionState(context);
+      state.onDoubleTap = undefined;
+      updateViewPointerEvents(element, state);
     },
   );
   binder.bindFunctionAttribute(
@@ -885,11 +985,15 @@ export function buildViewAttributeAppliers(): AttributeApplierMap {
   binder.bindFunctionAttribute(
     'onLongPress',
     (element, callback, context) => {
-      getViewInteractionState(context).onLongPress = callback as (event: unknown) => void;
+      const state = getViewInteractionState(context);
+      state.onLongPress = callback as (event: unknown) => void;
+      updateViewPointerEvents(element, state);
       ensureGestureListeners(element, context);
     },
-    (_element, context) => {
-      getViewInteractionState(context).onLongPress = undefined;
+    (element, context) => {
+      const state = getViewInteractionState(context);
+      state.onLongPress = undefined;
+      updateViewPointerEvents(element, state);
     },
   );
   binder.bindFunctionAttribute(
@@ -915,11 +1019,15 @@ export function buildViewAttributeAppliers(): AttributeApplierMap {
   binder.bindFunctionAttribute(
     'onDrag',
     (element, callback, context) => {
-      getViewInteractionState(context).onDrag = callback as (event: unknown) => void;
+      const state = getViewInteractionState(context);
+      state.onDrag = callback as (event: unknown) => void;
+      updateViewPointerEvents(element, state);
       ensureGestureListeners(element, context);
     },
-    (_element, context) => {
-      getViewInteractionState(context).onDrag = undefined;
+    (element, context) => {
+      const state = getViewInteractionState(context);
+      state.onDrag = undefined;
+      updateViewPointerEvents(element, state);
     },
   );
   binder.bindFunctionAttribute(

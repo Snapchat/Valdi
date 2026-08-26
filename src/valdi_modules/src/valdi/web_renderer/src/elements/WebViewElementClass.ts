@@ -43,6 +43,7 @@ export class WebViewElementClass extends ElementClass {
 
   protected onCreateElement(): HTMLElement {
     const container = createBaseElement('div');
+    container.style.pointerEvents = 'auto';
     const frame = document.createElement('iframe');
     frame.title = 'Valdi embedded application';
     frame.setAttribute('sandbox', 'allow-scripts allow-forms');
