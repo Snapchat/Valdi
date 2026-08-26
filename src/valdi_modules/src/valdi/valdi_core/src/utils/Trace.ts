@@ -1,12 +1,49 @@
-import { ValdiRuntime } from 'valdi_core/src/ValdiRuntime';
+import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
+
+export const enum RecordedTraceType {
+  Duration = 0,
+  Instant = 1,
+}
 
 export interface RecordedTrace {
   trace: string;
   startMicros: number;
   endMicros: number;
   threadId: number;
+  type: RecordedTraceType;
+  args?: Record<string, TraceArgumentValue>;
+}
+
+export type TraceArgumentValue = unknown;
+export type TraceArgumentsFor<Args extends readonly unknown[]> = Args extends readonly []
+  ? readonly []
+  : Args extends readonly [infer Key, infer Value, ...infer Rest]
+    ? Key extends string
+      ? readonly [Key, Value, ...TraceArgumentsFor<Rest>]
+      : never
+    : never;
+
+function traceArgumentsToRecord(args: unknown): Record<string, TraceArgumentValue> | undefined {
+  if (!Array.isArray(args) || !args.length) {
+    return undefined;
+  }
+
+  const out: Record<string, TraceArgumentValue> = {};
+  let hasValue = false;
+  for (let i = 0; i < args.length; i += 2) {
+    const key = args[i];
+    const value = args[i + 1];
+    if (typeof key !== 'string') {
+      continue;
+    }
+
+    out[key] = value;
+    hasValue = true;
+  }
+
+  return hasValue ? out : undefined;
 }
 
 /**
@@ -27,7 +64,6 @@ export function startTraceRecording(): number {
  */
 export function stopTraceRecording(id: number): RecordedTrace[] {
   const result = runtime.stopTraceRecording(id);
-
   const out: RecordedTrace[] = [];
 
   for (let i = 0; i < result.length; ) {
@@ -35,11 +71,58 @@ export function stopTraceRecording(id: number): RecordedTrace[] {
     const startMicros = result[i++];
     const endMicros = result[i++];
     const threadId = result[i++];
+    const type = result[i++];
+    const args = traceArgumentsToRecord(result[i++]);
 
-    out.push({ trace, startMicros, endMicros, threadId });
+    const recordedTrace: RecordedTrace = {
+      trace,
+      startMicros,
+      endMicros,
+      threadId,
+      type,
+    };
+    if (args) {
+      recordedTrace.args = args;
+    }
+    out.push(recordedTrace);
   }
 
   return out;
+}
+
+export function isTracingSupported(): boolean {
+  return !!runtime.beginTrace && !!runtime.endTrace;
+}
+
+export function beginTrace(tag: string): void {
+  const begin = runtime.beginTrace;
+  if (begin) {
+    begin(tag);
+  }
+}
+
+export function endTrace(): void {
+  const end = runtime.endTrace;
+  if (end) {
+    end();
+  }
+}
+
+export function instantTrace(tag: string): void {
+  const instant = runtime.instantTrace;
+  if (instant) {
+    instant(tag);
+  }
+}
+
+export function instantTraceWithArgs<Args extends readonly unknown[]>(
+  tag: string,
+  args: Args & TraceArgumentsFor<Args>,
+): void {
+  const instant = runtime.instantTrace as ((tag: string, args: readonly TraceArgumentValue[]) => void) | undefined;
+  if (instant) {
+    instant(tag, args);
+  }
 }
 
 /**
@@ -48,17 +131,29 @@ export function stopTraceRecording(id: number): RecordedTrace[] {
  * @param func to function to evaluate
  */
 export function trace<T>(tag: string, func: () => T): T {
-  if (!runtime.trace) {
+  const begin = runtime.beginTrace;
+  const end = runtime.endTrace;
+  if (!begin || !end) {
     return func();
-  } else {
-    return runtime.trace(tag, func);
+  }
+
+  begin(tag);
+  try {
+    return func();
+  } finally {
+    end();
   }
 }
 
 const TRACE_PROXY_KEY = '$trace-proxy-target';
 
 function makeProxyFunction(tag: string, fn: (...params: any[]) => any): (...params: any[]) => any {
-  const proxyFunction = runtime.makeTraceProxy(tag, fn);
+  const makeTraceProxy = runtime.makeTraceProxy;
+  if (!makeTraceProxy) {
+    return fn;
+  }
+
+  const proxyFunction = makeTraceProxy(tag, fn);
   Object.defineProperty(proxyFunction, 'name', { value: fn.name });
   (proxyFunction as any)[TRACE_PROXY_KEY] = fn;
   return proxyFunction;

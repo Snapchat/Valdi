@@ -1048,6 +1048,44 @@ describe('AST', () => {
     });
   });
 
+  it('only treats ExportModule as file-wide when it annotates the first root node', () => {
+    const interfaceNames = (source: string): string[] => {
+      const result = compile(source);
+      const dumpedNodes = dumpRootNodes(result.sourceFile, {
+        typeChecker: result.typeChecker,
+        references: [],
+      });
+
+      return dumpedNodes.flatMap((node) => (node.interface ? [node.interface.name] : []));
+    };
+
+    expect(
+      interfaceNames(`
+        /** @ExportModule */
+        export interface Annotated {
+          value: string;
+        }
+
+        export interface Plain {
+          value: string;
+        }
+      `),
+    ).toEqual(['Annotated', 'Plain']);
+
+    expect(
+      interfaceNames(`
+        export interface Plain {
+          value: string;
+        }
+
+        /** @ExportModule */
+        export interface Annotated {
+          value: string;
+        }
+      `),
+    ).toEqual(['Annotated']);
+  });
+
   it('can dump interface with complex type references', () => {
     const result = compile(
       `

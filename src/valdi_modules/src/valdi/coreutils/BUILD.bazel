@@ -54,7 +54,5 @@ valdi_module(
         "coreutils/web/Base64Native.js": "coreutils/src/Base64Native",
         "coreutils/web/UnicodeNative.js": "coreutils/src/UnicodeNative, coreutils/src/unicode/UnicodeNative",
     },
-    deps = [
-        "//src/valdi_modules/src/valdi/jasmine",
-    ],
+    test_deps = ["//src/valdi_modules/src/valdi/jasmine"],
 )

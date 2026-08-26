@@ -1,0 +1,31 @@
+load("//bzl/valdi:valdi_application.bzl", "valdi_application")
+load("//bzl/valdi:valdi_cli_application.bzl", "valdi_cli_application")
+load("//bzl/valdi:valdi_exported_library.bzl", "valdi_exported_library")
+
+valdi_application(
+    name = "integration_test",
+    android_package = "com.snap.valdi.integrationtest",
+    desktop_window_height = 720,
+    desktop_window_resizable = False,
+    desktop_window_width = 420,
+    ios_bundle_id = "com.snap.valdi.integrationtest",
+    ios_families = ["iphone"],
+    root_component_path = "IntegrationTestApp@integration_test_app/src/IntegrationTestApp",
+    title = "Valdi Integration Test",
+    version = "1.0.0",
+    deps = ["//apps/integration_test/src/valdi/integration_test_app"],
+)
+
+valdi_cli_application(
+    name = "integration_test_cli",
+    script_path = "integration_test_cli/src/main",
+    deps = ["//apps/integration_test/src/valdi/integration_test_cli"],
+)
+
+valdi_exported_library(
+    name = "integration_test_export",
+    ios_bundle_id = "com.snap.valdi.integrationtest.lib",
+    ios_bundle_name = "ValdiIntegrationTest",
+    web_package_name = "integration_test_web_npm",
+    deps = ["//apps/integration_test/src/valdi/integration_test_app"],
+)

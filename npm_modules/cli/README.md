@@ -75,8 +75,9 @@ For complete documentation, see:
 - Options: `-y` (skip confirmation), `-n` (project name), `-t` (application type), `-l` (local Valdi path), `-c` (clean directory first). Run `valdi bootstrap --help` for all options.
 
 **`valdi install <platform>`** - Build and install
-- Builds and installs app to connected device/simulator
-- Platforms: `ios`, `android`, `macos`
+- Builds and installs app to connected device/simulator, or serves web apps locally
+- Platforms: `ios`, `android`, `macos`, `web`
+- Web opens the default browser unless `--no-open` is passed
 
 **`valdi hotreload`** - Development server
 - Enables instant hot reload during development
@@ -89,7 +90,7 @@ For complete documentation, see:
 - `valdi skills update` — re-install already-installed skills from the bundled package
 - `valdi skills create` — scaffold a new skill (run from within the Valdi repo)
 
-**Other commands:** `valdi build <platform>` (build without installing), `valdi package <platform>` (create distributable app), `valdi export <platform>` (export library for native apps), `valdi test` (run tests), `valdi lint check` / `valdi lint format` (lint and format code), `valdi log` (stream device logs), `valdi projectsync` (sync VS Code project and native bindings), `valdi completion` (shell autocomplete setup). Use `valdi <command> --help` for options.
+**Other commands:** `valdi build <platform>` (build without installing), `valdi package <platform>` (create distributable app), `valdi export <platform>` (export a library artifact), `valdi test` (run tests), `valdi lint check` / `valdi lint format` (lint and format code), `valdi log` (stream device logs), `valdi projectsync` (sync VS Code project and native bindings), `valdi completion` (shell autocomplete setup). Use `valdi <command> --help` for options.
 
 For complete command documentation, see [Command Line Reference](https://github.com/Snapchat/Valdi/blob/main/docs/docs/command-line-references.md).
 

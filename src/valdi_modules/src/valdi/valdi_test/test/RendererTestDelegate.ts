@@ -1,9 +1,10 @@
 import { AnimationOptions } from 'valdi_core/src/AnimationOptions';
-import { FrameObserver, IRendererDelegate, VisibilityObserver } from 'valdi_core/src/IRendererDelegate';
+import { IRendererDelegate, VisibilityObserver } from 'valdi_core/src/IRendererDelegate';
 import { Style } from 'valdi_core/src/Style';
 import { ElementFrame } from 'valdi_tsx/src/Geometry';
 import { NativeNode } from 'valdi_tsx/src/NativeNode';
 import { NativeView } from 'valdi_tsx/src/NativeView';
+import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
 
 export enum RawRenderRequestEntryType {
   createElement = 'CreateElement',
@@ -36,19 +37,29 @@ export class RendererTestDelegate implements IRendererDelegate {
   requests: RenderRequest[] = [];
   nextLayoutCompleteCallbacks: Array<() => void> = [];
   nextDrawCallbacks: Array<(hookTimeMs: number) => void> = [];
+  destroyedFromParentElementIds: number[] = [];
+  onRenderEndCallback?: () => void;
   private entries: RawRenderRequestEntry[];
   private observer: VisibilityObserver | undefined;
   private error: Error | undefined;
+  private renderCompleteScheduler: (callback: () => void) => void = callback => callback();
+  private cachedElementFrames: { [id: number]: ElementFrame | undefined } = {};
 
   constructor() {
     this.requests = [];
     this.entries = [];
   }
 
+  setRenderCompleteScheduler(schedule: (callback: () => void) => void): void {
+    this.renderCompleteScheduler = schedule;
+  }
+
   clear() {
     this.requests = [];
     this.nextLayoutCompleteCallbacks = [];
     this.nextDrawCallbacks = [];
+    this.destroyedFromParentElementIds = [];
+    this.onRenderEndCallback = undefined;
   }
 
   onElementBecameRoot(id: number): void {
@@ -75,11 +86,20 @@ export class RendererTestDelegate implements IRendererDelegate {
     });
   }
 
+  onCustomElementCreated(id: number, viewFactory: ViewFactory): void {
+    this.onElementCreated(id, 'Deferred');
+    this.onElementAttributeChangeAny(id, 'viewFactory', viewFactory);
+  }
+
   onElementDestroyed(id: number): void {
     this.entries.push({
       type: RawRenderRequestEntryType.destroyElement,
       id,
     });
+  }
+
+  onElementDestroyedFromParent(id: number): void {
+    this.destroyedFromParentElementIds.push(id);
   }
 
   onElementAttributeChangeAny(id: number, attributeName: string, attributeValue: any): void {
@@ -157,6 +177,7 @@ export class RendererTestDelegate implements IRendererDelegate {
       });
       this.entries = [];
     }
+    this.onRenderEndCallback?.();
     if (this.error) {
       throw this.error;
     }
@@ -172,11 +193,15 @@ export class RendererTestDelegate implements IRendererDelegate {
     }
   }
 
+  notifyElementViewportChanged(elementId: number, viewport: ElementFrame, eventTime: number) {
+    if (this.observer) {
+      this.observer([], [], [elementId, viewport.x, viewport.y, viewport.width, viewport.height], eventTime);
+    }
+  }
+
   registerVisibilityObserver(observer: VisibilityObserver) {
     this.observer = observer;
   }
-
-  registerFrameObserver(observer: FrameObserver) {}
 
   getNativeView(id: number, callback: (view: NativeView | undefined) => void) {
     callback(undefined);
@@ -186,8 +211,20 @@ export class RendererTestDelegate implements IRendererDelegate {
     return undefined;
   }
 
+  getCachedElementFrame(id: number): ElementFrame | undefined {
+    return this.cachedElementFrames[id];
+  }
+
   getElementFrame(id: number, callback: (frame: ElementFrame | undefined) => void) {
-    callback({ x: 0, y: 0, width: 0, height: 0 });
+    callback(this.getCachedElementFrame(id));
+  }
+
+  setElementFrame(id: number, frame: ElementFrame | undefined) {
+    this.cachedElementFrames[id] = frame;
+  }
+
+  scheduleRenderCompleteCallback(callback: () => void): void {
+    this.renderCompleteScheduler(callback);
   }
 
   takeElementSnapshot(id: number, callback: (base64String: string | undefined) => void) {

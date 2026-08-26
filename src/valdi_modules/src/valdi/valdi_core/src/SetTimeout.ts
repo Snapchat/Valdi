@@ -1,6 +1,6 @@
-import { ValdiRuntime } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
 
 /**
  * setTimeout implementation that guarantees that the given callback

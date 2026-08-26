@@ -95,14 +95,14 @@ valdi_module(
     visibility = ["//visibility:public"],
     web_deps = [":valdi_protobuf_web"],
     web_register_native_module_id_overrides = {
-        # Runtime looks up by valdi_core path when loaded from protodecl; ValdiProtobufModule also require('ValdiProtobuf')
-        "valdi_protobuf/web/ValdiProtobuf.js": "valdi_core/src/ValdiProtobuf,ValdiProtobuf",
+        # ValdiProtobufModule does require('ValdiProtobuf') to get the web provider
+        "valdi_protobuf/web/ValdiProtobuf.js": "ValdiProtobuf",
     },
     deps = [
         "//src/valdi_modules/src/valdi/coreutils",
         "//src/valdi_modules/src/valdi/valdi_core",
-        "//src/valdi_modules/src/valdi/valdi_standalone",
     ],
+    test_deps = ["//src/valdi_modules/src/valdi/valdi_standalone"],
 )
 
 # Link npm packages for web build and tests

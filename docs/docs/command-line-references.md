@@ -103,21 +103,22 @@ valdi new_module my_module --skip-checks
 `valdi build <platform> [--application] [--bazel_args]`\
 Build the application without installing it to a device. Useful for CI/CD pipelines or when you just want to verify the build succeeds.
 
-- Supported platforms: `android`, `ios`, `macos`, `cli`
+- Supported platforms: `android`, `ios`, `macos`, `cli`, `web`
 - If no `--application` is specified, command will query for valid targets in the current workspace.
 - Additional Bazel arguments can be passed in via `--bazel_args` option.<br></br>
 
 `valdi install <platform> [--application] [--bazel_args]`\
-Build and install a Valdi application on the given platform to a connected device or emulator.
+Build and install a Valdi application on the given platform to a connected device or emulator, or serve a web app locally.
 
-- Supported platforms: `android`, `ios`, `macos`
+- Supported platforms: `android`, `ios`, `macos`, `web`
 - If no `--application` is specified, command will query for valid targets in the current workspace.
-- Additional Bazel arguments can be passed in via `--bazel_args` option.<br></br>
+- Additional Bazel arguments can be passed in via `--bazel_args` option.
+- Web options: `--host`, `--port`, and `--no-open` to prevent opening the default browser. `--port` defaults to `0`, which lets the operating system select an available port.<br></br>
 
 `valdi package <platform> [--application] --output_path <path>`\
 Build and package a Valdi application into a distributable format.
 
-- Supported platforms: `android`, `ios`, `macos`
+- Supported platforms: `android`, `ios`, `macos`, `web`
 - `--output_path` (required): The path where to store the built application package
 - `--application`: Name of the application to build
 
@@ -128,28 +129,37 @@ valdi package ios --output_path ./dist/app.ipa
 ```
 <br></br>
 
-`valdi export <platform> [--library] --output_path <path>`\
-Build and export a Valdi library for integration into native applications. Creates platform-specific library packages.
+`valdi export <platform> [--library] --output_path <path> [--output_format archive|directory]`\
+Build and export a Valdi library for integration into native applications, or a runnable static web app zip.
 
-- Supported platforms: `android`, `ios`
+- Supported platforms: `android`, `ios`, `web`
 - `--output_path` (required): The path where to store the exported library
   - iOS: Must end with `.xcframework`
   - Android: Must end with `.aar`
-- `--library`: Name of the library to export (will query if not specified)
+  - Web archive: Must end with `.zip`
+  - Web directory: Directory synchronized with the built package
+- `--output_format`: `archive` (default) or `directory`. Directory output is supported for web exports and leaves unchanged files untouched.
+- `--library`: Name of the library to export. If omitted, the CLI queries available export targets.
 
 Example:
 ```sh
 valdi export ios --output_path ./output/MyLibrary.xcframework
 valdi export android --output_path ./output/mylibrary.aar
+valdi export web --library //:hello_world_web --output_path ./output/hello_world_web.zip
+valdi export web --library //:hello_world_web --output_path ./output/hello_world_web --output_format directory
 ```
 <br></br>
 
-`valdi hotreload [--module module_name] [--target target_name]`\
+`valdi hotreload [--module module_name] [--target target_name] [--port port] [--json-events]`\
 Starts the Valdi [hotreloader](./start-about.md#prototype-quickly-with-hot-reload) for the application target.
 
 - When `--module` and `--target` is omitted, it will attempt to run the application target of the current workspace. If there is more than one defined application, the specific target will need to be specified.
 - The `--target` option should be a valid Bazel target (ex: `//:hello_world_hotreload`).
-- The `--module` option will query and run targets in the current workspace which match the module_name.<br></br>
+- The `--module` option will query and run targets in the current workspace which match the module_name.
+- The `--port` option scopes the hotreload service and cleanup to a specific port.
+- The `--json-events` option emits JSON lifecycle records for target resolution, build completion, hotreload startup,
+  target connection, resource delivery, successful recompilation, and shutdown while retaining normal compiler and runtime output.
+- `resources_sent` means that the compiler handed a resource batch to a connected target; it is not a render-completion guarantee.<br></br>
 
 `valdi test [--module module_name] [--target target_name]`\
 Executes the test(s) for the provided targets. Note that multiple modules OR targets can be provided to execute all tests simultaneously. If no modules or targets are provided, ALL tests within the current workspace will be ran.<br></br>

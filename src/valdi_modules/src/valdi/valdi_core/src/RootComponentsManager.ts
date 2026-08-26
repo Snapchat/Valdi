@@ -138,7 +138,7 @@ export class RootComponentsManager implements IRootComponentsManager, IDaemonCli
         onHotReloadSubscription();
       }
       observerDisposer();
-      renderer.delegate.onDestroyed();
+      renderer.onDestroy();
     };
 
     const rootRef = new ComponentRef<IEntryPointComponent>();

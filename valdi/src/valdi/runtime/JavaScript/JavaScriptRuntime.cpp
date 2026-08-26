@@ -67,6 +67,7 @@
 
 #include "valdi/runtime/Context/ContextAttachedValdiObject.hpp"
 #include "valdi/runtime/Context/ContextManager.hpp"
+#include "valdi/runtime/Context/ViewNodesAssetTrackerCallbackBridge.hpp"
 #include "valdi/runtime/Context/ViewManagerContext.hpp"
 #include "valdi/runtime/Context/ViewNodePath.hpp"
 #include "valdi/runtime/Context/ViewNodeTree.hpp"
@@ -899,6 +900,35 @@ JSValueRef JavaScriptRuntime::runtimeSetLayoutSpecs(JSFunctionNativeCallContext&
         viewNodeTree->setLayoutSpecs(Size(static_cast<float>(width), static_cast<float>(height)),
                                      isRTL ? LayoutDirectionRTL : LayoutDirectionLTR);
     });
+
+    return callContext.getContext().newUndefined();
+}
+
+JSValueRef JavaScriptRuntime::runtimeSetViewNodeAssetTracker(JSFunctionNativeCallContext& callContext) {
+    auto contextId = getParameterAsContextId(callContext, 0);
+    CHECK_CALL_CONTEXT(callContext);
+
+    auto context = _contextManager->getContext(contextId);
+    if (context == nullptr) {
+        return callContext.getContext().newUndefined();
+    }
+
+    Ref<IViewNodesAssetTracker> assetTracker;
+    const auto callbackValue = callContext.getParameter(1);
+    if (!callContext.getContext().isValueUndefined(callbackValue)) {
+        auto callback = callContext.getParameterAsFunction(1);
+        CHECK_CALL_CONTEXT(callContext);
+        assetTracker = makeShared<ViewNodesAssetTrackerCallbackBridge>(std::move(callback));
+    }
+
+    _listener->resolveViewNodeTree(context,
+                                   false,
+                                   true,
+                                   [assetTracker = std::move(assetTracker)](const SharedViewNodeTree& viewNodeTree) {
+                                       if (viewNodeTree != nullptr) {
+                                           viewNodeTree->setAssetTracker(assetTracker);
+                                       }
+                                   });
 
     return callContext.getContext().newUndefined();
 }
@@ -2026,6 +2056,24 @@ JSValueRef JavaScriptRuntime::runtimeConfigureColorPalette(JSFunctionNativeCallC
     return callContext.getContext().newUndefined();
 }
 
+JSValueRef JavaScriptRuntime::runtimeSetColorPalette(JSFunctionNativeCallContext& callContext) {
+    if (!_isWorker) {
+        auto colorPaletteMap = callContext.getParameterAsValue(0);
+        CHECK_CALL_CONTEXT(callContext);
+
+        dispatchOnMainThread([weakSelf = weakRef(this), colorPaletteMap = std::move(colorPaletteMap)]() {
+            auto self = weakSelf.lock();
+            if (self != nullptr) {
+                if (auto listener = self->getListener()) {
+                    listener->configureColorPalette(STRING_LITERAL("default"), colorPaletteMap);
+                    listener->setActiveColorPalette(STRING_LITERAL("default"));
+                }
+            }
+        });
+    }
+    return callContext.getContext().newUndefined();
+}
+
 JSValueRef JavaScriptRuntime::runtimeSetActiveColorPalette(JSFunctionNativeCallContext& callContext) {
     if (!_isWorker) {
         auto name = callContext.getParameterAsString(0);
@@ -2443,6 +2491,10 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
     if (!exceptionTracker) {
         return;
     }
+    context.setObjectProperty(globalObject.get(), "globalThis", globalObject.get(), exceptionTracker);
+    if (!exceptionTracker) {
+        return;
+    }
 
     auto runtimeObject = context.newObject(exceptionTracker);
     if (!exceptionTracker) {
@@ -2544,6 +2596,7 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
     JS_BIND(context, exceptionTracker, runtimeObject, "makePlatformSpecificAsset", runtimeMakePlatformSpecificAsset);
     JS_BIND(context, exceptionTracker, runtimeObject, "makeThemableAsset", runtimeMakeThemableAsset);
     JS_BIND(context, exceptionTracker, runtimeObject, "getLoadedAssetMetadata", runtimeGetLoadedAssetMetadata);
+    JS_BIND(context, exceptionTracker, runtimeObject, "setColorPalette", runtimeSetColorPalette);
     JS_BIND(context, exceptionTracker, runtimeObject, "configureColorPalette", runtimeConfigureColorPalette);
     JS_BIND(context, exceptionTracker, runtimeObject, "setActiveColorPalette", runtimeSetActiveColorPalette);
     JS_BIND(context, exceptionTracker, runtimeObject, "onMainThreadIdle", runtimeOnMainThreadIdle);
@@ -2571,6 +2624,7 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
     JS_BIND(context, exceptionTracker, runtimeObject, "destroyContext", runtimeDestroyContext);
 
     JS_BIND(context, exceptionTracker, runtimeObject, "setLayoutSpecs", runtimeSetLayoutSpecs);
+    JS_BIND(context, exceptionTracker, runtimeObject, "setViewNodeAssetTracker", runtimeSetViewNodeAssetTracker);
     JS_BIND(context, exceptionTracker, runtimeObject, "measureContext", runtimeMeasureContext);
 
     // Debugging

@@ -1,5 +1,6 @@
 import { Asset } from 'valdi_tsx/src/Asset';
-import { BackendRenderingType, LoadedAsset, LoadedAssetMetadata, ValdiRuntime } from './ValdiRuntime';
+import { BackendRenderingType, LoadedAsset, LoadedAssetMetadata } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { Device } from './Device';
 
 export { Asset };
@@ -34,7 +35,7 @@ export const enum AssetType {
   DUMMY,
 }
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
 
 /**
  * Make an Asset (to be set on <image/>) from an arbitrary URL

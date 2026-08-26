@@ -82,6 +82,8 @@ public:
 
     static Result<Void> store(const Path& path, std::string_view bytes);
 
+    static Result<Void> copy(const Path& source, const Path& destination);
+
     static bool remove(const Path& path);
 
     static bool makeDirectory(const Path& path, bool createIntermediates);

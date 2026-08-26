@@ -510,6 +510,7 @@ private:
     JSValueRef runtimeMakePlatformSpecificAsset(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeMakeThemableAsset(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeGetLoadedAssetMetadata(JSFunctionNativeCallContext& callContext);
+    JSValueRef runtimeSetColorPalette(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeConfigureColorPalette(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeSetActiveColorPalette(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeTakeElementSnapshot(JSFunctionNativeCallContext& callContext);
@@ -535,6 +536,7 @@ private:
     JSValueRef runtimeDestroyContext(JSFunctionNativeCallContext& callContext);
 
     JSValueRef runtimeSetLayoutSpecs(JSFunctionNativeCallContext& callContext);
+    JSValueRef runtimeSetViewNodeAssetTracker(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeMeasureContext(JSFunctionNativeCallContext& callContext);
 
     void callViewNodeActionCallback(const Shared<JSValueRefHolder>& callbackRef, const Value& result);

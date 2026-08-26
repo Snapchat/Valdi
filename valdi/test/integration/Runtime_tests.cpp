@@ -6,6 +6,7 @@
 #include "valdi/runtime/Context/IViewNodesAssetTracker.hpp"
 #include "valdi/runtime/Context/ViewNodeAssetHandler.hpp"
 #include "valdi/runtime/Context/ViewNodeScrollState.hpp"
+#include "valdi/runtime/Context/ViewNodesAssetTrackerCallbackBridge.hpp"
 #include "valdi/runtime/Interfaces/ITweakValueProvider.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptANRDetector.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptMessagePort.hpp"
@@ -275,6 +276,16 @@ TEST_P(RuntimeFixture, exposesDefaultApiVersion) {
 
     ASSERT_TRUE(evalResult) << evalResult.description();
     ASSERT_EQ(0, evalResult.value().toInt());
+}
+
+TEST_P(RuntimeFixture, exposesGlobalThis) {
+    std::string evalBody = "return typeof globalThis !== 'undefined' && globalThis === global;";
+
+    auto evalResult = wrapper.runtime->getJavaScriptRuntime()->evaluateScript(
+        makeShared<ByteBuffer>(evalBody)->toBytesView(), STRING_LITERAL("eval.js"));
+
+    ASSERT_TRUE(evalResult) << evalResult.description();
+    ASSERT_TRUE(evalResult.value().toBool());
 }
 
 TEST_P(RuntimeFixture, traceProxyRetainsCallbackAcrossGC) {
@@ -5744,6 +5755,88 @@ TEST_P(RuntimeFixture, canTrackAssets) {
     ASSERT_EQ(1, assetTracker->changedCount);
 }
 
+TEST_P(RuntimeFixture, canTrackBundledAssetThroughJavaScriptRenderer) {
+    std::atomic_int beganRequestCount = 0;
+    std::atomic_int endRequestCount = 0;
+    std::atomic_int changedCount = 0;
+    std::atomic_int allAssetsLoadedCount = 0;
+    std::atomic_int trackedNodeId = 0;
+    std::atomic_bool loadedWithoutError = false;
+
+    auto onAssetEvent = makeShared<ValueFunctionWithCallable>([&](const auto& callContext) {
+        const auto eventType = callContext.getParameter(0).toInt();
+        trackedNodeId = callContext.getParameter(1).toInt();
+
+        switch (eventType) {
+            case ViewNodesAssetTrackerCallbackBridge::kEventTypeBeganRequesting:
+                beganRequestCount++;
+                break;
+            case ViewNodesAssetTrackerCallbackBridge::kEventTypeEndRequesting:
+                endRequestCount++;
+                break;
+            case ViewNodesAssetTrackerCallbackBridge::kEventTypeLoadedAssetChanged:
+                loadedWithoutError = callContext.getParameter(2).isUndefined();
+                changedCount++;
+                break;
+        }
+
+        return Value::undefined();
+    });
+    auto onAllAssetsLoaded = makeShared<ValueFunctionWithCallable>([&](const auto& /* callContext */) {
+        allAssetsLoadedCount++;
+        return Value::undefined();
+    });
+    auto viewModel = makeShared<ValueMap>();
+    (*viewModel)[STRING_LITERAL("showImage")] = Value(true);
+    (*viewModel)[STRING_LITERAL("onAssetEvent")] = Value(onAssetEvent);
+    (*viewModel)[STRING_LITERAL("onAllAssetsLoaded")] = Value(onAllAssetsLoaded);
+
+    auto tree = wrapper.createViewNodeTreeAndContext(
+        STRING_LITERAL("TrackedBundledAsset@test/src/TrackedBundledAsset"), Value(viewModel), Value());
+    wrapper.flushJsQueue();
+
+    ASSERT_NE(nullptr, tree->getAssetTracker());
+    ASSERT_EQ(0, beganRequestCount);
+    ASSERT_EQ(0, endRequestCount);
+    ASSERT_EQ(0, changedCount);
+    ASSERT_EQ(0, allAssetsLoadedCount);
+
+    ASSERT_TRUE(wrapper.mainQueue->runNextTask());
+    wrapper.flushJsQueue();
+
+    ASSERT_EQ(1, beganRequestCount);
+    ASSERT_EQ(0, endRequestCount);
+    ASSERT_EQ(0, changedCount);
+    ASSERT_EQ(0, allAssetsLoadedCount);
+    ASSERT_NE(0, trackedNodeId);
+
+    wrapper.runtime->getWorkerQueue()->sync([]() {});
+    ASSERT_TRUE(wrapper.mainQueue->runNextTask());
+    wrapper.flushJsQueue();
+
+    ASSERT_EQ(1, beganRequestCount);
+    ASSERT_EQ(0, endRequestCount);
+    ASSERT_EQ(1, changedCount);
+    ASSERT_EQ(1, allAssetsLoadedCount);
+    ASSERT_TRUE(loadedWithoutError);
+
+    (*viewModel)[STRING_LITERAL("showImage")] = Value(false);
+    wrapper.setViewModel(tree->getContext(), Value(viewModel));
+    wrapper.waitUntilAllUpdatesCompleted();
+    wrapper.flushJsQueue();
+
+    ASSERT_EQ(1, beganRequestCount);
+    ASSERT_EQ(1, endRequestCount);
+    ASSERT_EQ(1, changedCount);
+    ASSERT_EQ(1, allAssetsLoadedCount);
+
+    wrapper.runtime->getJavaScriptRuntime()->callComponentFunction(tree->getContext(),
+                                                                   STRING_LITERAL("clearAssetTracker"));
+    wrapper.flushJsQueue();
+
+    ASSERT_EQ(nullptr, tree->getAssetTracker());
+}
+
 TEST_P(RuntimeFixture, canLoadBundledAsset) {
     configureWrapperWithRemoteSupport(wrapper);
 
@@ -5764,7 +5857,7 @@ TEST_P(RuntimeFixture, canLoadBundledAsset) {
 
     ASSERT_TRUE(loadedAsset != nullptr);
 
-    ASSERT_EQ(static_cast<size_t>(1742), loadedAsset->getBytes().size());
+    ASSERT_EQ(static_cast<size_t>(2206), loadedAsset->getBytes().size());
 }
 
 void loadRemoteBundle(RuntimeWrapper& wrapper) {
@@ -6011,7 +6104,7 @@ TEST_P(RuntimeFixture, canLoadRemoteAsset) {
 
     ASSERT_TRUE(loadedAsset != nullptr);
 
-    ASSERT_EQ(static_cast<size_t>(1070), loadedAsset->getBytes().size());
+    ASSERT_EQ(static_cast<size_t>(1534), loadedAsset->getBytes().size());
 }
 
 TEST_P(RuntimeFixture, canResolveRemoteAssetWithKebabCaseFromRemoteComponent) {
@@ -8447,6 +8540,21 @@ TEST_P(RuntimeFixture, canSwitchActiveCustomColorPalette) {
     wrapper.flushQueues();
 
     ASSERT_EQ(makeColorPaletteTestView(4278190335, 4294902015), getRootView(tree));
+}
+
+TEST_P(RuntimeFixture, supportsDeprecatedSetColorPalette) {
+    auto tree = wrapper.createViewNodeTreeAndContext(STRING_LITERAL("ColorPaletteTest@test/src/ColorPaletteTest"),
+                                                     Value(makeShared<ValueMap>()),
+                                                     Value::undefined());
+
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    wrapper.runtime->getJavaScriptRuntime()->callComponentFunction(tree->getContext(),
+                                                                   STRING_LITERAL("setLegacyColorPalette"));
+
+    wrapper.flushQueues();
+
+    ASSERT_EQ(makeColorPaletteTestView(255, 4294967295), getRootView(tree));
 }
 
 TEST_P(RuntimeFixture, doesNotReapplyCustomColorPaletteWhenInactivePaletteChanges) {

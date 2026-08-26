@@ -14,6 +14,7 @@ import { getNodeTag, toXML } from 'valdi_core/src/utils/RenderedVirtualNodeUtils
 import { RendererError } from 'valdi_core/src/utils/RendererError';
 import 'jasmine/src/jasmine';
 import { PropertyList } from 'valdi_tsx/src/PropertyList';
+import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
 import { StringMap } from 'coreutils/src/StringMap';
 import { RawRenderRequestEntryType, RendererTestDelegate } from './RendererTestDelegate';
 
@@ -25,7 +26,7 @@ function makeRenderer(
   disableProxy?: boolean,
   useTopDownMoveOrder?: boolean,
 ): Renderer {
-  const renderer = new Renderer('', allowedRootElementTypes, delegate, useTopDownMoveOrder);
+  const renderer = new Renderer('', allowedRootElementTypes, delegate, useTopDownMoveOrder, false);
   createdRenderers.push(renderer);
 
   // return renderer;
@@ -200,6 +201,63 @@ describe('Renderer', () => {
         ],
       },
     ]);
+  });
+
+  it('creates factory-backed custom elements through the deferred native protocol', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    const viewFactory: ViewFactory = { __tag: 'ViewFactory' };
+    const node = new NodePrototype('custom-view', 'custom-view');
+
+    renderer.begin();
+    renderer.beginElementWithViewFactory(node, viewFactory, undefined);
+    renderer.endElement();
+    renderer.end();
+
+    expect(renderer.getElementForId(1)?.getAttribute('viewFactory')).toBe(viewFactory);
+    expect(output.requests).toEqual([
+      {
+        entries: [
+          {
+            type: RawRenderRequestEntryType.createElement,
+            id: 1,
+            className: 'Deferred',
+          },
+          {
+            type: RawRenderRequestEntryType.setElementAttribute,
+            id: 1,
+            name: 'viewFactory',
+            value: viewFactory,
+          },
+          {
+            type: RawRenderRequestEntryType.setRootElement,
+            id: 1,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('rejects changing the view factory of an existing custom element', () => {
+    const renderer = makeRenderer(new RendererTestDelegate());
+    const firstViewFactory: ViewFactory = { __tag: 'ViewFactory' };
+    const secondViewFactory: ViewFactory = { __tag: 'ViewFactory' };
+    const node = new NodePrototype('custom-view', 'custom-view');
+
+    renderer.begin();
+    renderer.beginElementWithViewFactory(node, firstViewFactory, undefined);
+    renderer.endElement();
+    renderer.end();
+
+    renderer.begin();
+    renderer.beginElementWithViewFactory(node, firstViewFactory, undefined);
+    renderer.endElement();
+    renderer.end();
+
+    renderer.begin();
+    expect(() => renderer.beginElementWithViewFactory(node, secondViewFactory, undefined)).toThrowError(
+      'The view factory cannot change for an existing custom-view element',
+    );
   });
 
   it('with useTopDownMoveOrder emits setRootElement first then moves in top-down order', () => {

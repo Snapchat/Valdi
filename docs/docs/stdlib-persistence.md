@@ -435,4 +435,3 @@ The `persistence` module works on:
 - **Encryption has overhead** - only use for sensitive data
 - **LRU caching helps** - use maxWeight to limit storage usage
 - **TTL prevents bloat** - set reasonable expiration times
-

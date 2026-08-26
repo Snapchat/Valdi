@@ -73,6 +73,9 @@ struct CompilerConfig {
     /// Whether we should process the outputs for Web
     let outputForWeb: Bool
 
+    /// Native module web implementations exposed as generated package files.
+    let webNativeModuleIdOverrides: [WebNativeModuleIdOverride]
+
     /// Whether we should process the outputs for C++
     let outputForCpp: Bool
 
@@ -142,6 +145,7 @@ struct CompilerConfig {
             outputForIOS: args.ios,
             outputForAndroid: args.android,
             outputForWeb: args.web,
+            webNativeModuleIdOverrides: try args.webRegisterNativeModuleIdOverride.map(WebNativeModuleIdOverride.parse),
             outputForCpp: args.cpp,
             outputTarget: args.outputTarget ?? OutputTarget.all
         )

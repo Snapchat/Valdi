@@ -23,4 +23,20 @@ TEST(ImageBitmap, testBitmapFullConversion) {
 
     ASSERT_EQ(BytesView(nullptr, bitmapData, pixelDataSize), BytesView(nullptr, returnedBitmapData, pixelDataSize));
 }
+
+TEST(ImageBitmap, testConvertedBitmapResize) {
+    auto bitmap = createTestBitmap();
+    auto imageResult = Image::makeFromBitmap(bitmap, true);
+    ASSERT_FALSE(imageResult.failure()) << imageResult.error().getMessage();
+
+    auto resizedBitmap = imageResult.value()->toConvertedBitmap(
+        Valdi::BitmapInfo(1, 1, Valdi::ColorTypeRGBA8888, Valdi::AlphaTypeUnpremul, 4));
+    ASSERT_NE(resizedBitmap, nullptr);
+
+    auto resizedInfo = resizedBitmap->getInfo();
+    ASSERT_EQ(resizedInfo.width, 1);
+    ASSERT_EQ(resizedInfo.height, 1);
+    ASSERT_EQ(resizedInfo.colorType, ColorTypeRGBA8888);
+    ASSERT_EQ(resizedInfo.rowBytes, 4u);
+}
 } // namespace snap::drawing

@@ -17,11 +17,19 @@ final class ValdiCompiler {
         let content: String?
     }
 
+    private struct ExplicitInputFileMapping {
+        let bundleInfo: CompilationItem.BundleInfo
+        let relativeProjectPath: String
+    }
+
     private let logger: ILogger
     private let pipeline: CompilationPipeline
     private let projectConfig: ValdiProjectConfig
 
     private var newFiles = [URL: NewFileData]()
+    // Watchman reports physical URLs. Preserve Bazel's explicit mapping so a changed
+    // input is re-added at the same virtual project path used by the initial build.
+    private var explicitInputFileMappingByURL = [URL: ExplicitInputFileMapping]()
 
     private let bundleManager: BundleManager
     private var currentSequence = 0
@@ -43,21 +51,40 @@ final class ValdiCompiler {
             let bundleInfo = try bundleManager.getBundleInfo(forName: entry.moduleName)
             for file in entry.files {
                 let fileURL = baseUrl.resolving(path: file.file).standardizedFileURL.absoluteURL
-                addFile(file: fileURL, bundleInfo: bundleInfo, relativeProjectPath: file.relativeProjectPath, content: file.content)
+                let mapping = ExplicitInputFileMapping(bundleInfo: bundleInfo,
+                                                       relativeProjectPath: file.relativeProjectPath)
+                explicitInputFileMappingByURL[fileURL] = mapping
+                addFile(file: fileURL,
+                        newFileData: NewFileData(bundleInfo: mapping.bundleInfo,
+                                                 relativeProjectPath: mapping.relativeProjectPath,
+                                                 content: file.content))
             }
 
             if let autoDiscover = entry.autoDiscover, autoDiscover {
                 let finder = ValdiFilesFinder(url: baseUrl.resolving(path: entry.modulePath))
 
                 for fileURL in try finder.allFiles() {
-                    addFile(file: try fileURL.resolvingSymlink(), bundleInfo: bundleInfo)
+                    addFile(file: try fileURL.resolvingSymlink(),
+                            newFileData: NewFileData(bundleInfo: bundleInfo,
+                                                     relativeProjectPath: nil,
+                                                     content: nil))
                 }
             }
         }
     }
 
-    func addFile(file: URL, bundleInfo: CompilationItem.BundleInfo? = nil, relativeProjectPath: String? = nil, content: String? = nil) {
-        addFile(file: file, newFileData: NewFileData(bundleInfo: bundleInfo, relativeProjectPath: relativeProjectPath, content: content))
+    func addFile(file: URL) {
+        if let mapping = explicitInputFileMappingByURL[file] {
+            addFile(file: file,
+                    newFileData: NewFileData(bundleInfo: mapping.bundleInfo,
+                                             relativeProjectPath: mapping.relativeProjectPath,
+                                             content: nil))
+        } else {
+            addFile(file: file,
+                    newFileData: NewFileData(bundleInfo: nil,
+                                             relativeProjectPath: nil,
+                                             content: nil))
+        }
     }
 
     private func addFile(file: URL, newFileData: NewFileData) {

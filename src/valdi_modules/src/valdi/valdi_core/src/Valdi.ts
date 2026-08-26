@@ -5,7 +5,8 @@ import { NativeView } from 'valdi_tsx/src/NativeView';
 import { AnimationOptions } from './AnimationOptions';
 import { ComponentKey } from './ComponentKey';
 import { parseComponentPath } from './ComponentPath';
-import { ValdiRuntime, NativeViewNodeInfo } from './ValdiRuntime';
+import { NativeViewNodeInfo } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { ElementRef } from './ElementRef';
 import { ComponentConstructor, IComponent } from './IComponent';
 import { RequireFunc } from './IModuleLoader';
@@ -49,7 +50,7 @@ export function formatParameterizedString(format: string, ...formatArgs: any[]):
   });
 }
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
 
 export interface ActionCaller {
   callAction(actionName: string, parameters: any[]): void;

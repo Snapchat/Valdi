@@ -1,6 +1,7 @@
 import { StringMap } from 'coreutils/src/StringMap';
 import { Asset } from './Asset';
-import { AssetEntry, ValdiRuntime } from './ValdiRuntime';
+import { AssetEntry } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { toCamelCase } from './utils/StringUtils';
 
 export type GetFuncFn = (size: number) => string;
@@ -8,7 +9,7 @@ export type GetFuncFn = (size: number) => string;
 export type AssetCatalogEntry = Asset | GetFuncFn;
 export type AssetCatalog = StringMap<AssetCatalogEntry>;
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
 
 function makeGetFuncFn(fontName: string): GetFuncFn {
   return (size: number) => {

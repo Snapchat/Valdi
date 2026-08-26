@@ -244,7 +244,7 @@ function createWebpackConfig({ npmPackageName, playgroundDir, entry, npmScope, r
           loader: require.resolve('url-loader'),
           options: { limit: false, fallback: require.resolve('file-loader') },
         },
-        { test: /\.protodecl$/, type: 'asset/resource' },
+        { test: /\.(bin|protodecl)$/i, type: 'asset/bytes' },
         { test: /\.js$/, type: 'javascript/auto' },
       ],
     },

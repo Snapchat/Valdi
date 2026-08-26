@@ -9,7 +9,7 @@ interface ServiceWorkerExecutorGetters {
   $serviceWorkerExecutors: { [key: string]: ManagedWorker };
 }
 
-declare const global: ServiceWorkerExecutorGetters;
+const serviceWorkerExecutorGlobals = globalThis as typeof globalThis & ServiceWorkerExecutorGetters;
 const WORKER_SERVICE_EXECUTOR_KEEP_ALIVE_MS = 30_000;
 
 function throwNotAnnotated<T, A extends unknown[], Service extends WorkerServiceEntryPoint<T, A>>(
@@ -48,10 +48,10 @@ export function startWorkerService<T, A extends unknown[], Service extends Worke
     throwNotAnnotated(workerEntryPoint);
   }
 
-  let serviceWorkerExecutors = global.$serviceWorkerExecutors;
+  let serviceWorkerExecutors = serviceWorkerExecutorGlobals.$serviceWorkerExecutors;
   if (!serviceWorkerExecutors) {
     serviceWorkerExecutors = {};
-    global.$serviceWorkerExecutors = serviceWorkerExecutors;
+    serviceWorkerExecutorGlobals.$serviceWorkerExecutors = serviceWorkerExecutors;
   }
 
   let serviceWorkerExecutor = serviceWorkerExecutors[executorId];

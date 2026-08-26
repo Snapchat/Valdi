@@ -4,6 +4,7 @@
 #include "valdi/standalone_runtime/ValdiStandaloneRuntime.hpp"
 
 #include "image_toolbox/ImageToolbox.hpp"
+#include "valdi/compiler_toolbox/CollapseWebPaths.hpp"
 #include "valdi/compiler_toolbox/CompilerToolbox.hpp"
 #include "valdi/compiler_toolbox/PNGQuant.hpp"
 #include "valdi/compiler_toolbox/RewriteHeader.hpp"
@@ -23,6 +24,8 @@ static int printHelp(const std::string& errorMessage) {
 Valdi Compiler Toolbox
 
 Available commands:
+  collapse_paths  Copies a path manifest into an output directory
+  collapse_web_paths  Builds a collapsed web package from manifests
   precompile      Precompile a JavaScript file into JS ByteCode
   image_info      Retrieves the info of an image
   image_convert   Convert an image into a different format and or size
@@ -183,6 +186,51 @@ static int rewriteHeader(Arguments& arguments) {
     return EXIT_SUCCESS;
 }
 
+static int collapsePaths(Arguments& arguments) {
+    ArgumentsParser parser;
+    auto output = parser.addArgument("-o")->setDescription("The output directory")->setRequired();
+    auto manifest = parser.addArgument("-m")->setDescription("The source-to-destination manifest")->setRequired();
+
+    auto result = parser.parse(arguments);
+    if (!result) {
+        return printErrorAndUsage(result.error(), parser, "collapse_paths");
+    }
+
+    auto collapseResult = Valdi::collapsePaths(output->value(), manifest->value());
+    if (!collapseResult) {
+        return onError(collapseResult.error());
+    }
+    return EXIT_SUCCESS;
+}
+
+static int collapseWebPaths(Arguments& arguments) {
+    ArgumentsParser parser;
+    auto output = parser.addArgument("-o")->setDescription("The output directory")->setRequired();
+    auto manifest = parser.addArgument("-m")->setDescription("The source-to-destination manifest")->setRequired();
+    auto packageName = parser.addArgument("-p")->setDescription("The NPM package name")->setRequired();
+    auto stringsManifest = parser.addArgument("-s")->setDescription("The strings manifest")->setRequired();
+    auto declarationsManifest = parser.addArgument("-d")->setDescription("The declarations manifest")->setRequired();
+    auto webWorkersManifest = parser.addArgument("-w")->setDescription("The web workers manifest")->setRequired();
+    auto imagePolicyManifest = parser.addArgument("-i")->setDescription("The image policy manifest")->setRequired();
+
+    auto result = parser.parse(arguments);
+    if (!result) {
+        return printErrorAndUsage(result.error(), parser, "collapse_web_paths");
+    }
+
+    auto collapseResult = Valdi::collapseWebPaths(output->value(),
+                                                  manifest->value(),
+                                                  packageName->value(),
+                                                  stringsManifest->value(),
+                                                  declarationsManifest->value(),
+                                                  webWorkersManifest->value(),
+                                                  imagePolicyManifest->value());
+    if (!collapseResult) {
+        return onError(collapseResult.error());
+    }
+    return EXIT_SUCCESS;
+}
+
 static int version(Arguments& /*arguments*/) {
     std::cout << Valdi::getToolboxVersion() << std::endl;
     return EXIT_SUCCESS;
@@ -198,7 +246,11 @@ int runCompilerToolbox(int argc, const char** argv) {
 
     auto command = arguments.next();
 
-    if (command == "precompile") {
+    if (command == "collapse_paths") {
+        return collapsePaths(arguments);
+    } else if (command == "collapse_web_paths") {
+        return collapseWebPaths(arguments);
+    } else if (command == "precompile") {
         return precompile(arguments);
     } else if (command == "image_info") {
         return imageInfo(arguments);

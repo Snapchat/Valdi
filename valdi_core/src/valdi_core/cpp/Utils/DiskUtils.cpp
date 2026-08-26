@@ -10,6 +10,7 @@
 
 #include "valdi_core/cpp/Utils/Format.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
+#include <array>
 #include <cstdio>
 #include <dirent.h>
 #include <fstream>
@@ -188,6 +189,41 @@ Result<Void> DiskUtils::store(const Path& path, std::string_view bytes) {
         return Error(STRING_FORMAT("Unable to write file at {}", pathStr));
     }
 
+    return Void();
+}
+
+Result<Void> DiskUtils::copy(const Path& source, const Path& destination) {
+    auto sourcePath = source.toString();
+    std::ifstream input(sourcePath, std::ios::binary);
+    if (!input.is_open()) {
+        return Error(fmt::format("Unable to open file for reading at {}", sourcePath));
+    }
+
+    auto destinationPath = destination.toString();
+    std::ofstream output(destinationPath, std::ios::trunc | std::ios::binary);
+    if (!output.is_open()) {
+        return Error(fmt::format("Unable to open file for writing at {}", destinationPath));
+    }
+
+    std::array<char, 64 * 1024> buffer;
+    while (input.good()) {
+        input.read(buffer.data(), buffer.size());
+        auto bytesRead = input.gcount();
+        if (bytesRead > 0) {
+            output.write(buffer.data(), bytesRead);
+            if (!output.good()) {
+                return Error(fmt::format("Unable to write file at {}", destinationPath));
+            }
+        }
+    }
+    if (!input.eof()) {
+        return Error(fmt::format("Unable to read file at {}", sourcePath));
+    }
+
+    output.close();
+    if (output.fail()) {
+        return Error(fmt::format("Unable to write file at {}", destinationPath));
+    }
     return Void();
 }
 

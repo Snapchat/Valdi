@@ -1,15 +1,4 @@
-load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("//bzl/valdi:valdi_module.bzl", "valdi_module")
-
-ts_project(
-    name = "valdi_test_web",
-    srcs = glob(["web/**/*.ts"]),
-    allow_js = True,
-    composite = True,
-    declaration = True,
-    transpiler = "tsc",
-    tsconfig = "web/tsconfig.json",
-)
 
 valdi_module(
     name = "valdi_test",
@@ -27,15 +16,13 @@ valdi_module(
     ios_output_target = "debug",
     strings_dir = "strings",
     visibility = ["//visibility:public"],
-    web_deps = [":valdi_test_web"],
-    web_register_native_module_id_overrides = {
-        "valdi_test/web/JSXTestUtils.js": "valdi_test/test/JSXTestUtils",
-    },
     deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+    test_deps = [
         "//src/valdi_modules/src/valdi/jasmine",
         "//src/valdi_modules/src/valdi/source_map",
-        "//src/valdi_modules/src/valdi/valdi_core",
         "//src/valdi_modules/src/valdi/valdi_standalone",
-        "//src/valdi_modules/src/valdi/valdi_tsx",
     ],
 )

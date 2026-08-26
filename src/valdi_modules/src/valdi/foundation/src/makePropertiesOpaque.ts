@@ -1,6 +1,6 @@
-import { ValdiRuntime } from 'valdi_core/src/ValdiRuntime';
+import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
 
 export interface WithOpaqueProperties<T> {}
 

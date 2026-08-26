@@ -1,7 +1,7 @@
-import { ValdiRuntime } from '../ValdiRuntime';
+import { getValdiRuntime } from '../ValdiRuntimeProvider';
 import { AnyFunction } from './Callback';
 
-declare const runtime: ValdiRuntime;
+const runtime = getValdiRuntime();
 
 export const enum CallbackOptions {
   /**

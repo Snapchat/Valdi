@@ -44,3 +44,14 @@ valdi_toolchain_binary(
     bin = ":valdi_compiler_toolbox_cc_bin",
     visibility = ["//visibility:public"],
 )
+
+cc_test(
+    name = "test",
+    srcs = glob([
+        "test/**/*.cpp",
+    ]),
+    deps = [
+        ":lib",
+        "@gtest//:gtest_main",
+    ],
+)

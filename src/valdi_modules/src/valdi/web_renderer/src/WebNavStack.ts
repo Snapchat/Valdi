@@ -246,7 +246,7 @@ export class WebNavStack {
 
     const cleanup = (): void => {
       for (const entry of entriesToRemove) {
-        entry.renderer?.destroy();
+        this.destroyRenderer(entry.renderer);
         entry.pageDiv.remove();
       }
     };
@@ -354,7 +354,7 @@ export class WebNavStack {
   destroy(): void {
     window.removeEventListener('popstate', this.boundOnPopState);
     for (const entry of this.stack) {
-      entry.renderer?.destroy();
+      this.destroyRenderer(entry.renderer);
       entry.pageDiv.remove();
     }
     this.stack = [];
@@ -448,6 +448,16 @@ export class WebNavStack {
   }
 
   // -- Internal helpers -----------------------------------------------------
+
+  private destroyRenderer(renderer: ValdiWebRenderer | undefined): void {
+    if (!renderer) {
+      return;
+    }
+    // Renderer.onDestroy only releases its delegate. Render an empty root first
+    // so presented components receive their normal onDestroy lifecycle hooks.
+    renderer.renderRoot(() => {});
+    renderer.onDestroy();
+  }
 
   private updateVisibility(): void {
     for (let i = 0; i < this.stack.length; i++) {

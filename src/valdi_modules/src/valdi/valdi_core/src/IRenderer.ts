@@ -97,6 +97,17 @@ export interface IRenderer {
    */
   getEventListener(): IRendererEventListener | undefined;
 
+  /**
+   * Enables native trace events for Renderer-level scheduling and component render work.
+   * When disabled, the Renderer avoids trace label construction and trace runtime calls.
+   */
+  setTracingEnabled(enabled: boolean): void;
+
+  /**
+   * Returns whether Renderer tracing is currently active.
+   */
+  isTracingEnabled(): boolean;
+
   addObserver(observer: RendererObserver): void;
 
   removeObserver(observer: RendererObserver): void;
