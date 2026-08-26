@@ -30,12 +30,6 @@ export interface PersistentStoreOptions {
   deviceGlobal?: boolean;
 
   /**
-   * Authenticated user identity for a user-scoped store. Browser hosts
-   * must provide this explicitly because they do not have a native user session.
-   */
-  userId?: string;
-
-  /**
    * If set, the store will act like an LRU cache where items are
    * removed as needed to ensure the accumulated weight of all
    * items stay below this value. If you set this value to something else
@@ -67,7 +61,7 @@ export class PersistentStore {
     const disableBatchWrites = options?.disableBatchWrites;
     const deviceGlobal = options?.deviceGlobal === true;
     const mockedTime = (options as any)?.mockedTime;
-    const userId = options?.userId ?? (options as any)?.mockedUserId;
+    const mockedUserId = (options as any)?.mockedUserId;
 
     const userScoped = deviceGlobal === false;
     this.native = nativeCreate(
@@ -76,7 +70,7 @@ export class PersistentStore {
       userScoped,
       options?.maxWeight ?? 0,
       mockedTime,
-      userId,
+      mockedUserId,
       options?.enableEncryption,
     );
   }

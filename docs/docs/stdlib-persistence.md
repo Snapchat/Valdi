@@ -14,33 +14,6 @@ The `persistence` module provides a simple key-value store that persists data ac
 - LRU cache behavior with maximum weight limits
 - Batch writes for performance
 
-### Web storage
-
-On web, `PersistentStore` uses the current browser origin's
-`localStorage`. Each named store, device-global scope, and authenticated user
-scope has its own namespace. Browser user-scoped stores require an explicit
-`userId`; anonymous or intentionally shared data must opt into
-`deviceGlobal: true`. Binary values, expiration times, and weighted LRU metadata
-survive page reloads, and clearing one store never deletes another store's
-entries.
-
-Browser storage is not encrypted. Requesting `enableEncryption: true` throws
-instead of silently writing sensitive values in plaintext; use a secure native
-host capability for credentials or secrets. Storage is probed before use: if a
-restricted browser exposes `localStorage` but rejects reads or writes, the store
-falls back to process-local memory and emits one actionable warning.
-Browser DevTools can inspect the underlying namespaced JSON entries;
-`getPersistentStoreDiagnostics()` is available for aggregate, value-free
-counters.
-
-```typescript
-// Private, authenticated data stays isolated when users switch.
-const accountStore = new PersistentStore('account-settings', { userId: currentUser.id });
-
-// Anonymous or intentionally shared device data opts in explicitly.
-const deviceStore = new PersistentStore('appearance', { deviceGlobal: true });
-```
-
 ## Installation
 
 Add the `persistence` module to your `BUILD.bazel` dependencies:
@@ -209,7 +182,6 @@ Configuration options for creating a persistent store.
 interface PersistentStoreOptions {
     disableBatchWrites?: boolean;
     deviceGlobal?: boolean;
-    userId?: string;
     maxWeight?: number;
     enableEncryption?: boolean;
 }
@@ -217,9 +189,7 @@ interface PersistentStoreOptions {
 
 #### `disableBatchWrites?: boolean`
 
-By default, save operations are batched within the same event-loop turn and
-repeated writes to the same key are coalesced. Set to `true` when every
-`store()` or `remove()` call must issue its own storage write.
+By default, save operations are batched to minimize disk I/O. Set to `true` to write immediately on every `store()` or `remove()` call.
 
 ```typescript
 const store = new PersistentStore('immediate_writes', {
@@ -244,19 +214,6 @@ const userStore = new PersistentStore('user_preferences');
 ```
 
 **Default:** `false` (user-scoped)
-
-#### `userId?: string`
-
-Authenticated identity for a user-scoped store. Web hosts must provide
-this value explicitly; native hosts can continue resolving their active user
-session automatically. Different identities always receive isolated storage
-namespaces. User-scoped browser stores reject missing or blank identities.
-
-```typescript
-const accountStore = new PersistentStore('messages', {
-    userId: signedInUser.id
-});
-```
 
 #### `maxWeight?: number`
 
@@ -463,7 +420,7 @@ export class SettingsComponent extends Component {
 The `persistence` module works on:
 - ✅ iOS (uses file system storage)
 - ✅ Android (uses file system storage)
-- ✅ Web (origin-scoped `localStorage`; explicit identity for private data)
+- ⚠️ Web (requires polyfill or alternative implementation)
 
 ## See Also
 
@@ -474,10 +431,7 @@ The `persistence` module works on:
 
 ## Performance Considerations
 
-- **Batch writes are enabled by default** and repeated same-turn writes coalesce
-- **Weighted LRU uses an in-memory index** instead of rescanning storage on every write
-- **Unweighted reads do not rewrite browser storage**
+- **Batch writes are enabled by default** for better performance
 - **Encryption has overhead** - only use for sensitive data
 - **LRU caching helps** - use maxWeight to limit storage usage
 - **TTL prevents bloat** - set reasonable expiration times
-

@@ -4,13 +4,10 @@ load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
 
 ts_project(
     name = "persistence_web",
-    srcs = glob(
-        [
-            "web/**/*.ts",
-            "src/**/*.d.ts",
-        ],
-        exclude = ["web/test/**"],
-    ),
+    srcs = glob([
+        "web/**/*.ts",
+        "src/**/*.d.ts",
+    ]),
     allow_js = True,
     composite = True,
     declaration = True,
@@ -22,12 +19,12 @@ ts_project(
 )
 
 # The standalone TestsRunner (:test) exercises the native PersistentStore
-# binding. This target runs the Web implementation under Node with a fake
-# localStorage and covers browser durability and the accumulated regressions.
+# binding, not this web implementation, so web durability (issue #119) is
+# covered here: run the compiled web impl under node with a fake localStorage.
 js_test(
     name = "persistence_web_test",
     data = [":persistence_web"],
-    entry_point = "test/WebPersistentStoreNativeTest.js",
+    entry_point = "web/test/PersistentStoreNativeWebTest.js",
 )
 
 valdi_module(
@@ -52,6 +49,6 @@ valdi_module(
     deps = [
         "@valdi//src/valdi_modules/src/valdi/coreutils",
         "@valdi//src/valdi_modules/src/valdi/valdi_core",
+        "@valdi//src/valdi_modules/src/valdi/valdi_standalone",
     ],
-    test_deps = ["@valdi//src/valdi_modules/src/valdi/valdi_standalone"],
 )
