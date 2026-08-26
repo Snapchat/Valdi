@@ -34,6 +34,19 @@ export interface RendererDebugVirtualNodeSnapshot {
   readonly traversedLinkCount: number;
 }
 
+export type RendererDebugEditableScalar = boolean | number | string;
+
+/** Internal, web-debugger-only request for replacing one exact ViewModel value. */
+export interface RendererDebugComponentPropertyEdit {
+  readonly component: IComponent;
+  readonly expectedDescriptor: PropertyDescriptor;
+  readonly expectedViewModel: object;
+  readonly expectedViewModelExtensible: boolean;
+  readonly newValue: RendererDebugEditableScalar;
+  readonly node: IRenderedVirtualNode;
+  readonly propertyName: string;
+}
+
 export interface IRenderer {
   contextId: string;
   renderComponent(component: IComponent, properties: any | undefined): void;
@@ -52,6 +65,7 @@ export interface IRenderer {
     maximumChildLinks: number,
     maximumTraversalLinks: number,
   ): RendererDebugVirtualNodeSnapshot | undefined;
+  editDebugComponentProperty?(request: RendererDebugComponentPropertyEdit): boolean;
 
   /**
    * Registers a function which will be called right after the component is destroyed.

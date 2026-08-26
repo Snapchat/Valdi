@@ -17,7 +17,14 @@ import { ConsoleRepresentable } from './ConsoleRepresentable';
 import { ComponentConstructor, IComponent } from './IComponent';
 import { IRenderedElement } from './IRenderedElement';
 import { IRenderedVirtualNode } from './IRenderedVirtualNode';
-import { ComponentDisposable, IRenderer, RendererDebugVirtualNodeSnapshot, RendererObserver } from './IRenderer';
+import {
+  ComponentDisposable,
+  IRenderer,
+  RendererDebugComponentPropertyEdit,
+  RendererDebugEditableScalar,
+  RendererDebugVirtualNodeSnapshot,
+  RendererObserver,
+} from './IRenderer';
 import { IRendererDelegate } from './IRendererDelegate';
 import { IRendererEventListener } from './IRendererEventListener';
 import { NodePrototype } from './NodePrototype';
@@ -32,6 +39,224 @@ import { isTracingSupported, trace } from './utils/Trace';
 
 const EMPTY_OBJECT = Object.freeze({});
 const EMPTY_ARRAY = Object.freeze([]) as [];
+const DEBUG_FORBIDDEN_VIEW_MODEL_PROPERTIES = new Set(['__proto__', 'children', 'constructor', 'prototype']);
+const DEBUG_VIEW_MODEL_MAX_OWN_KEYS = 1_000;
+const DEBUG_PROPERTY_DESCRIPTOR_FIELDS: Array<keyof PropertyDescriptor> = [
+  'configurable',
+  'enumerable',
+  'get',
+  'set',
+  'value',
+  'writable',
+];
+
+interface DebugViewModelShape {
+  readonly descriptors: ReadonlyMap<string | symbol, PropertyDescriptor>;
+  readonly extensible: boolean;
+  readonly keys: readonly (string | symbol)[];
+  readonly prototype: object | null;
+}
+
+interface DebugViewModelOverlayState {
+  readonly overrides: ReadonlyMap<string, RendererDebugEditableScalar>;
+  readonly shape: DebugViewModelShape;
+  readonly sourceViewModel: object;
+}
+
+const DEBUG_VIEW_MODEL_OVERLAYS = new WeakMap<object, DebugViewModelOverlayState>();
+
+function isDebugEditableScalar(value: unknown): value is RendererDebugEditableScalar {
+  return (
+    typeof value === 'string' ||
+    typeof value === 'boolean' ||
+    (typeof value === 'number' && Number.isFinite(value) && !Object.is(value, -0))
+  );
+}
+
+function sameDebugPropertyDescriptor(left: PropertyDescriptor, right: PropertyDescriptor): boolean {
+  for (const field of DEBUG_PROPERTY_DESCRIPTOR_FIELDS) {
+    const leftField = Object.getOwnPropertyDescriptor(left, field);
+    const rightField = Object.getOwnPropertyDescriptor(right, field);
+    if (leftField === undefined || rightField === undefined) {
+      if (leftField !== rightField) return false;
+      continue;
+    }
+    if (
+      !Object.prototype.hasOwnProperty.call(leftField, 'value') ||
+      !Object.prototype.hasOwnProperty.call(rightField, 'value') ||
+      !Object.is(leftField.value, rightField.value)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isDebugDataDescriptor(descriptor: PropertyDescriptor): boolean {
+  const value = Object.getOwnPropertyDescriptor(descriptor, 'value');
+  return value !== undefined && Object.prototype.hasOwnProperty.call(value, 'value');
+}
+
+function sameDebugDataDescriptor(left: PropertyDescriptor, right: PropertyDescriptor): boolean {
+  return isDebugDataDescriptor(left) && isDebugDataDescriptor(right) && sameDebugPropertyDescriptor(left, right);
+}
+
+function captureDebugViewModelShape(viewModel: object): DebugViewModelShape | undefined {
+  const keys = Reflect.ownKeys(viewModel);
+  if (keys.length > DEBUG_VIEW_MODEL_MAX_OWN_KEYS) return undefined;
+  const descriptors = new Map<string | symbol, PropertyDescriptor>();
+  for (const key of keys) {
+    const descriptor = Reflect.getOwnPropertyDescriptor(viewModel, key);
+    if (descriptor === undefined) return undefined;
+    if (!isDebugDataDescriptor(descriptor) || typeof descriptor.value === 'function') return undefined;
+    descriptors.set(key, descriptor);
+  }
+  const prototype = Reflect.getPrototypeOf(viewModel);
+  if (prototype !== Object.prototype && prototype !== null) return undefined;
+  return {
+    descriptors,
+    extensible: Reflect.isExtensible(viewModel),
+    keys,
+    prototype,
+  };
+}
+
+function sameDebugViewModelShape(left: DebugViewModelShape, right: DebugViewModelShape): boolean {
+  if (
+    left.prototype !== right.prototype ||
+    left.extensible !== right.extensible ||
+    left.keys.length !== right.keys.length
+  ) {
+    return false;
+  }
+  for (let index = 0; index < left.keys.length; index++) {
+    const leftKey = left.keys[index];
+    const rightKey = right.keys[index];
+    const leftDescriptor = left.descriptors.get(leftKey);
+    const rightDescriptor = right.descriptors.get(rightKey);
+    if (
+      leftKey !== rightKey ||
+      leftDescriptor === undefined ||
+      rightDescriptor === undefined ||
+      !sameDebugPropertyDescriptor(leftDescriptor, rightDescriptor)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function captureStableDebugViewModelShape(viewModel: object): DebugViewModelShape | undefined {
+  const captured = captureDebugViewModelShape(viewModel);
+  const verified = captureDebugViewModelShape(viewModel);
+  return captured !== undefined && verified !== undefined && sameDebugViewModelShape(captured, verified)
+    ? verified
+    : undefined;
+}
+
+function debugViewModelShapeMatchesOverlay(captured: DebugViewModelShape, state: DebugViewModelOverlayState): boolean {
+  if (
+    captured.prototype !== state.shape.prototype ||
+    captured.extensible !== state.shape.extensible ||
+    captured.keys.length !== state.shape.keys.length
+  ) {
+    return false;
+  }
+  for (let index = 0; index < captured.keys.length; index++) {
+    const capturedKey = captured.keys[index];
+    const shapeKey = state.shape.keys[index];
+    const capturedDescriptor = captured.descriptors.get(capturedKey);
+    const shapeDescriptor = state.shape.descriptors.get(shapeKey);
+    if (capturedKey !== shapeKey || capturedDescriptor === undefined || shapeDescriptor === undefined) {
+      return false;
+    }
+    const override = typeof shapeKey === 'string' ? state.overrides.get(shapeKey) : undefined;
+    const expectedDescriptor = override === undefined ? shapeDescriptor : { ...shapeDescriptor, value: override };
+    if (!sameDebugPropertyDescriptor(capturedDescriptor, expectedDescriptor)) return false;
+  }
+  return true;
+}
+
+function prepareDebugViewModelOverlay(
+  viewModel: object,
+  capturedShape: DebugViewModelShape,
+  propertyName: string,
+  newValue: RendererDebugEditableScalar,
+): DebugViewModelOverlayState | undefined {
+  const priorState = DEBUG_VIEW_MODEL_OVERLAYS.get(viewModel);
+  if (priorState !== undefined && !debugViewModelShapeMatchesOverlay(capturedShape, priorState)) return undefined;
+  const overrides = new Map(priorState?.overrides ?? []);
+  const currentDescriptor = capturedShape.descriptors.get(propertyName);
+  if (currentDescriptor === undefined || !isDebugDataDescriptor(currentDescriptor)) return undefined;
+  overrides.set(propertyName, newValue);
+  return {
+    overrides,
+    shape: priorState?.shape ?? capturedShape,
+    sourceViewModel: priorState?.sourceViewModel ?? viewModel,
+  };
+}
+
+function createDebugViewModelOverlay(state: DebugViewModelOverlayState): object | undefined {
+  const shadow = Object.create(state.shape.prototype) as object;
+  for (const key of state.shape.keys) {
+    const baseDescriptor = state.shape.descriptors.get(key);
+    if (baseDescriptor === undefined) return undefined;
+    const override = typeof key === 'string' ? state.overrides.get(key) : undefined;
+    const descriptor = override === undefined ? baseDescriptor : { ...baseDescriptor, value: override };
+    if (!Reflect.defineProperty(shadow, key, descriptor)) return undefined;
+  }
+  if (!state.shape.extensible && !Reflect.preventExtensions(shadow)) return undefined;
+  const boundFallbacks = new Map<string | symbol, { boundValue: unknown; sourceValue: object }>();
+
+  const overlay = new Proxy(shadow, {
+    defineProperty() {
+      return false;
+    },
+    deleteProperty() {
+      return false;
+    },
+    get(target, key, receiver) {
+      const override = typeof key === 'string' ? state.overrides.get(key) : undefined;
+      if (override !== undefined) return override;
+      if (
+        !state.shape.descriptors.has(key) &&
+        state.shape.prototype !== null &&
+        Reflect.getOwnPropertyDescriptor(state.shape.prototype, key) !== undefined
+      ) {
+        boundFallbacks.delete(key);
+        return Reflect.get(target, key, receiver);
+      }
+      const sourceValue = Reflect.get(state.sourceViewModel, key, state.sourceViewModel) as unknown;
+      if (typeof sourceValue !== 'function') {
+        boundFallbacks.delete(key);
+        return sourceValue;
+      }
+      const existing = boundFallbacks.get(key);
+      if (existing?.sourceValue === sourceValue) return existing.boundValue;
+      const boundValue = Function.prototype.bind.call(sourceValue, state.sourceViewModel) as unknown;
+      boundFallbacks.set(key, { boundValue, sourceValue });
+      return boundValue;
+    },
+    has(target, key) {
+      const sourceHasKey = Reflect.has(state.sourceViewModel, key);
+      return Reflect.getOwnPropertyDescriptor(target, key) !== undefined || sourceHasKey;
+    },
+    ownKeys() {
+      return [...state.shape.keys];
+    },
+    preventExtensions() {
+      return false;
+    },
+    set() {
+      return false;
+    },
+    setPrototypeOf() {
+      return false;
+    },
+  });
+  DEBUG_VIEW_MODEL_OVERLAYS.set(overlay, state);
+  return overlay;
+}
 
 interface RememberSlot<T = unknown> {
   value: T;
@@ -134,6 +359,11 @@ interface RenderedComponent<T extends IComponent = IComponent> {
   onDestroyObserver?: (instance: any) => void;
 
   componentRef: IRenderedComponentHolder<T, IRenderedVirtualNode> | undefined;
+}
+
+interface DebugComponentPropertyViewModelUpdate {
+  readonly renderedComponent: RenderedComponent;
+  readonly viewModel: object;
 }
 
 interface ComponentSlotData<F extends AnyRenderFunction = AnyRenderFunction> {
@@ -662,6 +892,7 @@ export class Renderer implements IRenderer {
   private componentRerendersCount = 0;
   private rootRendersCount = 0;
   private beginCount = 0;
+  private uncaughtErrorGeneration = 0;
   private observers: RendererObserver[] = [];
   private nextAnimationCancelToken: CancelToken = 0;
   private eventListener: IRendererEventListener | undefined = undefined;
@@ -1713,6 +1944,7 @@ export class Renderer implements IRenderer {
   }
 
   onUncaughtError(message: string, error: Error, sourceComponent?: IComponent) {
+    this.uncaughtErrorGeneration++;
     let lastRenderedNode: IRenderedVirtualNode | undefined;
     let componentCatchingError: IComponent | undefined;
 
@@ -2758,6 +2990,135 @@ export class Renderer implements IRenderer {
       return undefined;
     }
     return node.getDebugSnapshot(maximumChildLinks, maximumTraversalLinks);
+  }
+
+  editDebugComponentProperty(request: RendererDebugComponentPropertyEdit): boolean {
+    if (
+      !(request.node instanceof VirtualNodeBridge) ||
+      request.node.renderer !== this ||
+      DEBUG_FORBIDDEN_VIEW_MODEL_PROPERTIES.has(request.propertyName) ||
+      !isDebugEditableScalar(request.newValue) ||
+      !this.isDebugComponentPropertyDescriptorCurrent(request) ||
+      this.resolveDebugComponentPropertyTarget(request) === undefined
+    ) {
+      return false;
+    }
+
+    return this.renderDebugComponentWithFullViewModel(request);
+  }
+
+  private resolveDebugComponentPropertyTarget(
+    request: RendererDebugComponentPropertyEdit,
+  ): RenderedComponent | undefined {
+    if (this.currentNode !== undefined) return undefined;
+    try {
+      const renderedComponent = this.resolveRenderedComponent(request.component);
+      return getVirtualNodeBridge(this, renderedComponent.virtualNode) === request.node &&
+        renderedComponent.instance === request.component &&
+        renderedComponent.viewModel === request.expectedViewModel
+        ? renderedComponent
+        : undefined;
+    } catch (_error) {
+      return undefined;
+    }
+  }
+
+  private isDebugComponentPropertyDescriptorCurrent(request: RendererDebugComponentPropertyEdit): boolean {
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(request.expectedViewModel, request.propertyName);
+      return (
+        descriptor !== undefined &&
+        descriptor.enumerable === true &&
+        sameDebugDataDescriptor(descriptor, request.expectedDescriptor) &&
+        isDebugEditableScalar(descriptor.value) &&
+        typeof descriptor.value === typeof request.newValue &&
+        Object.isExtensible(request.expectedViewModel) === request.expectedViewModelExtensible
+      );
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  private createDebugComponentPropertyViewModelUpdate(
+    request: RendererDebugComponentPropertyEdit,
+  ): DebugComponentPropertyViewModelUpdate | undefined {
+    try {
+      const capturedShape = captureStableDebugViewModelShape(request.expectedViewModel);
+      const currentDescriptor =
+        capturedShape === undefined ? undefined : capturedShape.descriptors.get(request.propertyName);
+      if (
+        capturedShape === undefined ||
+        currentDescriptor === undefined ||
+        currentDescriptor.enumerable !== true ||
+        !sameDebugDataDescriptor(currentDescriptor, request.expectedDescriptor) ||
+        !isDebugEditableScalar(currentDescriptor.value) ||
+        typeof currentDescriptor.value !== typeof request.newValue ||
+        capturedShape.extensible !== request.expectedViewModelExtensible
+      ) {
+        return undefined;
+      }
+      const verifiedShape = captureStableDebugViewModelShape(request.expectedViewModel);
+      if (verifiedShape === undefined || !sameDebugViewModelShape(verifiedShape, capturedShape)) {
+        return undefined;
+      }
+      const overlayState = prepareDebugViewModelOverlay(
+        request.expectedViewModel,
+        capturedShape,
+        request.propertyName,
+        request.newValue,
+      );
+      if (overlayState === undefined) return undefined;
+      const currentShape = captureStableDebugViewModelShape(request.expectedViewModel);
+      const renderedComponent = this.resolveDebugComponentPropertyTarget(request);
+      if (
+        currentShape === undefined ||
+        !sameDebugViewModelShape(currentShape, capturedShape) ||
+        renderedComponent === undefined
+      ) {
+        return undefined;
+      }
+      const viewModel = createDebugViewModelOverlay(overlayState);
+      if (viewModel === undefined) return undefined;
+      return {
+        renderedComponent,
+        viewModel,
+      };
+    } catch (_error) {
+      return undefined;
+    }
+  }
+
+  private renderDebugComponentWithFullViewModel(request: RendererDebugComponentPropertyEdit): boolean {
+    let renderedComponent = this.resolveDebugComponentPropertyTarget(request);
+    if (renderedComponent === undefined) return false;
+    let rendered = true;
+    const errorGeneration = this.uncaughtErrorGeneration;
+
+    this.doBegin();
+    try {
+      trace(`renderComponent.${renderedComponent.ctr.name}`, () => {
+        for (const observer of this.observers) {
+          observer.onComponentWillRerender?.(request.component);
+        }
+        const update = this.createDebugComponentPropertyViewModelUpdate(request);
+        if (update === undefined) {
+          rendered = false;
+          return;
+        }
+        renderedComponent = update.renderedComponent;
+        this.componentRerendersCount++;
+        renderedComponent.needRendering = true;
+        this.pushVirtualNode(renderedComponent.virtualNode);
+        this.setViewModelFull(update.viewModel as PropertyList);
+        this.endComponent();
+      });
+    } catch (error) {
+      rendered = false;
+      console.warn('Valdi debugger could not apply a component property edit.', error);
+    } finally {
+      this.doEnd();
+    }
+    return rendered && this.uncaughtErrorGeneration === errorGeneration;
   }
 
   getComponentVirtualNode(component: IComponent): IRenderedVirtualNode {

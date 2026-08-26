@@ -53,6 +53,7 @@ interface MockDaemon {
 interface MockChromiumConsoleServer {
   close: () => Promise<void>;
   debuggerSockets: Set<net.Socket>;
+  expressions: string[];
   methods: string[];
   port: number;
   runtimeEnableReceived: Promise<void>;
@@ -63,10 +64,13 @@ interface MockChromiumConsoleServer {
 
 interface MockChromiumConsoleServerOptions {
   closeOnTracingEnd?: boolean;
+  componentPropertyValue?: string;
   dropTracingStartResponse?: boolean;
   holdRuntimeEnable: boolean;
   rejectIdentityAfterTracingStart?: boolean;
   rejectTracingStart?: boolean;
+  componentPropertyEditingAvailable?: boolean;
+  componentPropertyEditResult?: boolean;
 }
 
 function encodeChromiumServerMessage(payload: Record<string, unknown>): Buffer {
@@ -119,6 +123,7 @@ async function startMockChromiumConsoleServer(
   const debuggerSockets = new Set<net.Socket>();
   const pendingRuntimeEnableResponses: Array<() => void> = [];
   const methods: string[] = [];
+  const expressions: string[] = [];
   let currentInspectedUrl = `${applicationUrl}${applicationUrl.includes('?') ? '&' : '?'}valdiDevTools=1`;
   let currentTargetNonce = targetNonce;
   let resolveRuntimeEnableReceived: (() => void) | null = null;
@@ -180,6 +185,7 @@ async function startMockChromiumConsoleServer(
         switch (method) {
           case 'Runtime.evaluate': {
             const expression = typeof params?.['expression'] === 'string' ? params['expression'] : '';
+            expressions.push(expression);
             const guarded = expression.includes('__valdiDevToolsTargetMatched');
             const matched =
               guarded &&
@@ -188,17 +194,36 @@ async function startMockChromiumConsoleServer(
               !(options.rejectIdentityAfterTracingStart === true && tracingStarted);
             let value: unknown;
             if (guarded) {
+              const componentPropertyValue = options.componentPropertyValue;
               const guardedValue = expression.includes('__VALDI_WEB_DEBUGGER__?.getSnapshot()')
                 ? {
                     channel: 'valdi-web-debugger',
+                    componentPropertyEditingAvailable: options.componentPropertyEditingAvailable !== false,
                     selectedNodeId: 'web-root',
                     snapshot: {
-                      tree: { children: [], id: 'web-root', tag: 'WebRoot' },
+                      tree:
+                        componentPropertyValue === undefined
+                          ? { children: [], id: 'web-root', tag: 'WebRoot' }
+                          : {
+                              children: [],
+                              component: {
+                                key: 'root',
+                                name: 'WebRoot',
+                                properties: { title: componentPropertyValue },
+                                propertyEdits: {
+                                  title: { componentToken: 'a'.repeat(32), snapshotRevision: 3 },
+                                },
+                              },
+                              id: 'component:[null,"root"]',
+                              tag: 'WebRoot',
+                            },
                       viewport: { height: 800, width: 1200 },
                     },
                     type: 'snapshot',
                   }
-                : true;
+                : expression.includes('__VALDI_WEB_DEBUGGER__?.editComponentProperty?.')
+                  ? options.componentPropertyEditResult !== false
+                  : true;
               value = { __valdiDevToolsTargetMatched: matched, ...(matched ? { value: guardedValue } : {}) };
             } else if (expression === 'String(globalThis.location.href)') {
               value = currentInspectedUrl;
@@ -349,6 +374,7 @@ async function startMockChromiumConsoleServer(
       await closeServer(server);
     },
     debuggerSockets,
+    expressions,
     methods,
     port: address.port,
     releaseRuntimeEnable(): void {
@@ -736,7 +762,7 @@ describe('debugger server', () => {
       children: sparseChildren,
       id: 'root',
       metadata: sparseMetadata,
-      oversized: 'x'.repeat(60_000),
+      oversized: 'x'.repeat(70_000),
       tag: 'root',
     };
 
@@ -755,7 +781,7 @@ describe('debugger server', () => {
     expect(projection.nodes[1]?.sourceChildIndex).toBe(10_000_000);
     expect(metadata.$length).toBe(10_000_001);
     expect(metadata.$truncated).toBe('sparse-array');
-    expect((projection.nodes[0]?.data['oversized'] as string).length).toBe(50_000);
+    expect((projection.nodes[0]?.data['oversized'] as string).length).toBe(65_536);
     expect(metadata.$entries).toContain(jasmine.objectContaining({ $index: 10_000_000, value: 'far-value' }));
     expect(metadata.$entries).toContain(
       jasmine.objectContaining({
@@ -1337,9 +1363,257 @@ describe('debugger server', () => {
           transport: 'chromium-cdp',
         }),
       );
+      expect((JSON.parse(target.body) as { target: { capabilities: string[] } }).target.capabilities).not.toContain(
+        'component-property-edit',
+      );
       expect(snapshot.statusCode).withContext(snapshot.body).toBe(200);
       expect(snapshotBody.target['identityMode']).toBe('inspected-page');
+      expect(snapshotBody.target['capabilities']).toContain('component-property-edit');
       expect(snapshotBody.tree.nodes[0]?.data['id']).toBe('web-root');
+    } finally {
+      await chromium.close();
+    }
+  });
+
+  it('downgrades snapshot capabilities when the web bridge cannot issue secure edit tokens', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html';
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      componentPropertyEditingAvailable: false,
+      holdRuntimeEnable: false,
+    });
+    try {
+      debuggerServer = await startDebuggerServer({
+        assetRoot,
+        chromiumDebuggingPort: chromium.port,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: applicationUrl,
+      });
+      const snapshotUrl = new URL('/api/devtools/snapshot', debuggerServer.url);
+      snapshotUrl.searchParams.set('inspectedUrl', `${applicationUrl}?valdiDevTools=1`);
+      snapshotUrl.searchParams.set('sessionId', 'web-preview');
+      snapshotUrl.searchParams.set('targetNonce', WEB_PREVIEW_NONCE);
+
+      const snapshot = await request(snapshotUrl.toString(), GET_REQUEST_OPTIONS);
+      const target = (JSON.parse(snapshot.body) as { target: { capabilities: string[] } }).target;
+
+      expect(snapshot.statusCode).toBe(200);
+      expect(target.capabilities).toContain('component-properties');
+      expect(target.capabilities).not.toContain('component-property-edit');
+    } finally {
+      await chromium.close();
+    }
+  });
+
+  it('preserves an editable scalar exactly through projection before a no-op update', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html';
+    const inspectedUrl = `${applicationUrl}?valdiDevTools=1`;
+    const originalValue = 'x'.repeat(60_000);
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      componentPropertyValue: originalValue,
+      holdRuntimeEnable: false,
+    });
+    try {
+      debuggerServer = await startDebuggerServer({
+        assetRoot,
+        chromiumDebuggingPort: chromium.port,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: applicationUrl,
+      });
+      const snapshotUrl = new URL('/api/devtools/snapshot', debuggerServer.url);
+      snapshotUrl.searchParams.set('inspectedUrl', inspectedUrl);
+      snapshotUrl.searchParams.set('sessionId', 'web-preview');
+      snapshotUrl.searchParams.set('targetNonce', WEB_PREVIEW_NONCE);
+
+      const snapshot = await request(snapshotUrl.toString(), GET_REQUEST_OPTIONS);
+      const snapshotBody = JSON.parse(snapshot.body) as {
+        tree: {
+          nodes: Array<{
+            data: {
+              component?: {
+                properties?: { title?: unknown };
+                propertyEdits?: {
+                  title?: { componentToken: unknown; snapshotRevision: unknown };
+                };
+              };
+            };
+          }>;
+        };
+      };
+      const component = snapshotBody.tree.nodes[0]?.data.component;
+      const projectedValue = component?.properties?.title;
+      const metadata = component?.propertyEdits?.title;
+      if (
+        typeof projectedValue !== 'string' ||
+        typeof metadata?.componentToken !== 'string' ||
+        typeof metadata.snapshotRevision !== 'number'
+      ) {
+        throw new TypeError('Expected exact projected edit metadata.');
+      }
+
+      expect(snapshot.statusCode).withContext(snapshot.body).toBe(200);
+      expect(projectedValue).toBe(originalValue);
+      const editBody = {
+        componentId: 'component:[null,"root"]',
+        componentToken: metadata.componentToken,
+        inspectedUrl,
+        propertyName: 'title',
+        sessionId: 'web-preview',
+        snapshotRevision: metadata.snapshotRevision,
+        targetNonce: WEB_PREVIEW_NONCE,
+        value: projectedValue,
+      };
+      const edit = await request(new URL('/api/devtools/component-property', debuggerServer.url).toString(), {
+        body: JSON.stringify(editBody),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+      const editExpression = chromium.expressions.find(expression => expression.includes('editComponentProperty'));
+
+      expect(edit.statusCode).withContext(edit.body).toBe(200);
+      expect(editExpression).toContain(
+        `globalThis.__VALDI_WEB_DEBUGGER__?.editComponentProperty?.(${JSON.stringify({
+          componentId: editBody.componentId,
+          componentToken: editBody.componentToken,
+          propertyName: editBody.propertyName,
+          snapshotRevision: editBody.snapshotRevision,
+          value: originalValue,
+        })})`,
+      );
+      expect(editExpression).not.toContain('…[truncated]');
+    } finally {
+      await chromium.close();
+    }
+  });
+
+  it('accepts only the exact web-preview component-property edit tuple', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html';
+    const inspectedUrl = `${applicationUrl}?valdiDevTools=1`;
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      holdRuntimeEnable: false,
+    });
+    try {
+      debuggerServer = await startDebuggerServer({
+        assetRoot,
+        chromiumDebuggingPort: chromium.port,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: applicationUrl,
+      });
+      const exactBody = {
+        componentId: 'component:[null,"root"]',
+        componentToken: 'a'.repeat(32),
+        inspectedUrl,
+        propertyName: 'title',
+        sessionId: 'web-preview',
+        snapshotRevision: 3,
+        targetNonce: WEB_PREVIEW_NONCE,
+        value: 'updated',
+      };
+      const post = (body: unknown, contentType = 'application/json') =>
+        request(new URL('/api/devtools/component-property', debuggerServer?.url).toString(), {
+          body: JSON.stringify(body),
+          headers: { 'Content-Type': contentType },
+          method: 'POST',
+        });
+
+      const success = await post(exactBody);
+      expect(success.statusCode).withContext(success.body).toBe(200);
+      expect(JSON.parse(success.body)).toEqual({ updated: true });
+      const editExpression = chromium.expressions.find(expression => expression.includes('editComponentProperty'));
+      expect(editExpression).toContain(
+        `globalThis.__VALDI_WEB_DEBUGGER__?.editComponentProperty?.(${JSON.stringify({
+          componentId: exactBody.componentId,
+          componentToken: exactBody.componentToken,
+          propertyName: exactBody.propertyName,
+          snapshotRevision: exactBody.snapshotRevision,
+          value: exactBody.value,
+        })})`,
+      );
+
+      for (const body of [
+        { ...exactBody, extra: true },
+        Object.fromEntries(Object.entries(exactBody).filter(([key]) => key !== 'componentToken')),
+        { ...exactBody, componentToken: 'A'.repeat(32) },
+        { ...exactBody, snapshotRevision: 0 },
+        { ...exactBody, propertyName: '   ' },
+        { ...exactBody, propertyName: 'children' },
+        { ...exactBody, value: Number.POSITIVE_INFINITY },
+        { ...exactBody, targetId: 'native-target' },
+      ]) {
+        const result = await post(body);
+        expect(result.statusCode).withContext(JSON.stringify(body)).toBe(400);
+      }
+      const negativeZeroBody = JSON.stringify({ ...exactBody, value: 'NEGATIVE_ZERO' }).replace(
+        '"NEGATIVE_ZERO"',
+        '-0',
+      );
+      const negativeZero = await request(new URL('/api/devtools/component-property', debuggerServer.url).toString(), {
+        body: negativeZeroBody,
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+      const wrongMethod = await request(
+        new URL('/api/devtools/component-property', debuggerServer.url).toString(),
+        GET_REQUEST_OPTIONS,
+      );
+      const wrongContentType = await post(exactBody, 'text/plain');
+      const queryIdentityUrl = new URL('/api/devtools/component-property', debuggerServer.url);
+      queryIdentityUrl.searchParams.set('targetId', 'native-target');
+      const queryIdentity = await request(queryIdentityUrl.toString(), {
+        body: JSON.stringify(exactBody),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+      expect(wrongMethod.statusCode).toBe(405);
+      expect(wrongContentType.statusCode).toBe(415);
+      expect(negativeZero.statusCode).toBe(400);
+      expect(queryIdentity.statusCode).toBe(400);
+    } finally {
+      await chromium.close();
+    }
+  });
+
+  it('returns only a generic conflict when the exact bridge mutation is rejected', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html';
+    const inspectedUrl = `${applicationUrl}?valdiDevTools=1`;
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      componentPropertyEditResult: false,
+      holdRuntimeEnable: false,
+    });
+    try {
+      debuggerServer = await startDebuggerServer({
+        assetRoot,
+        chromiumDebuggingPort: chromium.port,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: applicationUrl,
+      });
+
+      const response = await request(new URL('/api/devtools/component-property', debuggerServer.url).toString(), {
+        body: JSON.stringify({
+          componentId: 'component:[null,"root"]',
+          componentToken: 'a'.repeat(32),
+          inspectedUrl,
+          propertyName: 'title',
+          sessionId: 'web-preview',
+          snapshotRevision: 3,
+          targetNonce: WEB_PREVIEW_NONCE,
+          value: 'updated',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(JSON.parse(response.body)).toEqual({
+        error: 'The component property edit is stale or invalid.',
+      });
     } finally {
       await chromium.close();
     }

@@ -56,10 +56,19 @@ const PORT_SEARCH_LIMIT = 50;
 const MAX_RUNTIME_LOG_READ_BYTES = 1024 * 1024;
 const FATAL_JSON_UTF8_DECODER = new TextDecoder('utf8', { fatal: true });
 const WEB_PREVIEW_NONCE_PATTERN = /^[\w-]{16,128}$/;
+const COMPONENT_PROPERTY_TOKEN_PATTERN = /^[\da-f]{32}$/;
+const COMPONENT_PROPERTY_EDIT_ERROR = 'The component property edit is stale or invalid.';
+const MAX_COMPONENT_PROPERTY_NAME_CHARACTERS = 256;
+const MAX_COMPONENT_PROPERTY_STRING_BYTES = 65_536;
+const MAX_COMPONENT_ID_CHARACTERS = 4096;
+const FORBIDDEN_COMPONENT_PROPERTY_NAMES = new Set(['__proto__', 'children', 'constructor', 'prototype']);
 const MAX_DEBUGGER_TREE_NODES = 25_000;
 const MAX_DEBUGGER_PROJECTION_VALUES = 250_000;
 const MAX_DEBUGGER_PROJECTION_DEPTH = 64;
-const MAX_DEBUGGER_PROJECTION_STRING_LENGTH = 50_000;
+// An editable UTF-8 string cannot contain more characters than bytes. Keeping
+// this projection limit aligned with the edit boundary prevents the server
+// from presenting a shortened value alongside a token for the exact original.
+const MAX_DEBUGGER_PROJECTION_STRING_LENGTH = MAX_COMPONENT_PROPERTY_STRING_BYTES;
 const DEFAULT_TRACE_CAPTURE_DURATION_MS = 5000;
 const MIN_TRACE_CAPTURE_DURATION_MS = 100;
 const MAX_TRACE_CAPTURE_DURATION_MS = 15_000;
@@ -1542,16 +1551,128 @@ async function inspectWebPreviewSnapshot(searchParams: URLSearchParams): Promise
   if (typeof tree !== 'object' || tree === null || Array.isArray(tree)) {
     throw new Error('The running web preview has not mounted a Valdi renderer.');
   }
+  let snapshotTarget = webPreviewTargetPayload(target);
+  if (bridgePayload['componentPropertyEditingAvailable'] === true) {
+    snapshotTarget = {
+      ...snapshotTarget,
+      capabilities: snapshotTarget.capabilities.flatMap(capability =>
+        capability === DebuggerTargetCapability.ComponentProperties
+          ? [capability, DebuggerTargetCapability.ComponentPropertyEdit]
+          : [capability],
+      ),
+    };
+  }
   return {
     issues: [],
     logs: [],
     selectedNodeId: bridgePayload['selectedNodeId'],
     source: 'owl',
-    target: { ...webPreviewTargetPayload(target), state: 'attached' },
-    targets: [webPreviewTargetPayload(target)],
+    target: { ...snapshotTarget, state: 'attached' },
+    targets: [snapshotTarget],
     tree: projectDebuggerTreeForJson(tree),
     viewport: snapshot['viewport'],
   };
+}
+
+interface ComponentPropertyEditRequest {
+  readonly componentId: string;
+  readonly componentToken: string;
+  readonly inspectedUrl: string;
+  readonly propertyName: string;
+  readonly sessionId: string;
+  readonly snapshotRevision: number;
+  readonly targetNonce: string;
+  readonly value: boolean | number | string;
+}
+
+function readComponentPropertyEditRequest(body: Record<string, unknown>): ComponentPropertyEditRequest {
+  const expectedKeys = [
+    'componentId',
+    'componentToken',
+    'inspectedUrl',
+    'propertyName',
+    'sessionId',
+    'snapshotRevision',
+    'targetNonce',
+    'value',
+  ];
+  const keys = Object.keys(body).sort();
+  if (keys.length !== expectedKeys.length || keys.some((key, index) => key !== expectedKeys[index])) {
+    throw new ApiRequestError(400, 'Component property edits require the exact debugger identity and edit tuple.');
+  }
+  const componentId = readDebuggerExactString(body, 'componentId', MAX_COMPONENT_ID_CHARACTERS);
+  const componentToken = readDebuggerExactString(body, 'componentToken', 32);
+  const inspectedUrl = readDebuggerExactString(body, 'inspectedUrl', MAX_WEB_PREVIEW_URL_BYTES);
+  const propertyName = readDebuggerExactString(body, 'propertyName', MAX_COMPONENT_PROPERTY_NAME_CHARACTERS);
+  const sessionId = readDebuggerExactString(body, 'sessionId', 256);
+  const targetNonce = readDebuggerExactString(body, 'targetNonce', 128);
+  const snapshotRevision = body['snapshotRevision'];
+  const value = body['value'];
+  if (!COMPONENT_PROPERTY_TOKEN_PATTERN.test(componentToken)) {
+    throw new ApiRequestError(400, 'componentToken must be a 128-bit lowercase hexadecimal token.');
+  }
+  if (!Number.isSafeInteger(snapshotRevision) || (snapshotRevision as number) <= 0) {
+    throw new ApiRequestError(400, 'snapshotRevision must be a positive safe integer.');
+  }
+  if (FORBIDDEN_COMPONENT_PROPERTY_NAMES.has(propertyName)) {
+    throw new ApiRequestError(400, 'propertyName is not editable.');
+  }
+  if (
+    !(
+      typeof value === 'boolean' ||
+      (typeof value === 'string' && Buffer.byteLength(value, 'utf8') <= MAX_COMPONENT_PROPERTY_STRING_BYTES) ||
+      (typeof value === 'number' && Number.isFinite(value) && !Object.is(value, -0))
+    )
+  ) {
+    throw new ApiRequestError(400, 'value must be a bounded string, boolean, or finite non-negative-zero number.');
+  }
+  return {
+    componentId,
+    componentToken,
+    inspectedUrl,
+    propertyName,
+    sessionId,
+    snapshotRevision: snapshotRevision as number,
+    targetNonce,
+    value,
+  };
+}
+
+async function editWebPreviewComponentProperty(
+  request: IncomingMessage,
+  searchParams: URLSearchParams,
+): Promise<Record<string, unknown>> {
+  if (request.method !== 'POST') {
+    throw new ApiRequestError(405, 'Component property edits require POST.');
+  }
+  if (Array.from(searchParams).length > 0) {
+    throw new ApiRequestError(400, 'Component property edits accept identity only in the exact request body.');
+  }
+  const editRequest = readComponentPropertyEditRequest(await readJsonBody(request));
+  const target = resolveWebPreviewDebuggerTarget(editRequest.sessionId);
+  if (editRequest.sessionId !== target.sessionId) {
+    throw new ApiRequestError(404, 'The inspected web preview session is no longer available.');
+  }
+  const context = resolveInspectedWebPreviewContext(target, editRequest.inspectedUrl, editRequest.targetNonce);
+  const bridgeRequest = {
+    componentId: editRequest.componentId,
+    componentToken: editRequest.componentToken,
+    propertyName: editRequest.propertyName,
+    snapshotRevision: editRequest.snapshotRevision,
+    value: editRequest.value,
+  };
+  try {
+    const updated = await evaluateOwlApplicationExpression(
+      target.debuggingPort,
+      target.applicationUrl,
+      context.targetNonce,
+      `globalThis.__VALDI_WEB_DEBUGGER__?.editComponentProperty?.(${JSON.stringify(bridgeRequest)})`,
+    );
+    if (updated !== true) throw new Error(COMPONENT_PROPERTY_EDIT_ERROR);
+  } catch {
+    throw new ApiRequestError(409, COMPONENT_PROPERTY_EDIT_ERROR);
+  }
+  return { updated: true };
 }
 
 async function evaluateWebPreviewConsole(params: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -3858,6 +3979,11 @@ async function handleApi(request: IncomingMessage, response: ServerResponse, url
         return;
       }
       await streamWebPreviewConsole(request, response, url.searchParams);
+      return;
+    }
+
+    if (url.pathname === '/api/devtools/component-property') {
+      sendJson(response, 200, await editWebPreviewComponentProperty(request, url.searchParams));
       return;
     }
 

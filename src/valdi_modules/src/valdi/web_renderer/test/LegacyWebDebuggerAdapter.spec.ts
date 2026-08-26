@@ -513,6 +513,220 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     expect(Object.prototype.hasOwnProperty.call(snapshot.tree?.component?.properties ?? {}, 'secret')).toBeFalse();
   });
 
+  it('registers only exact captured own scalar data descriptors for component edits', () => {
+    class EditableComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    const componentInstance = new EditableComponent() as unknown as IComponent;
+    const viewModel = Object.create(null) as Record<string, unknown>;
+    const unusualPropertyName = 'line\r\n\u0000\ud800"[]';
+    Object.defineProperties(viewModel, {
+      '   ': { configurable: true, enumerable: true, value: 'blank name', writable: true },
+      children: { enumerable: true, value: 'blocked' },
+      complex: { enumerable: true, value: { nested: true } },
+      count: { configurable: false, enumerable: true, value: 4, writable: false },
+      enabled: { configurable: true, enumerable: true, value: true, writable: true },
+      infinite: { enumerable: true, value: Number.POSITIVE_INFINITY },
+      title: { configurable: true, enumerable: true, value: 'safe', writable: true },
+      [unusualPropertyName]: { configurable: true, enumerable: true, value: 'unusual', writable: true },
+      zero: { enumerable: true, value: -0 },
+    });
+    const component = makeVirtualNode('editable', { component: componentInstance });
+    component.componentViewModel = viewModel;
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(component, [elementNode]);
+    const candidates: Array<Record<string, unknown>> = [];
+
+    const snapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], component),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+      candidate => {
+        candidates.push(candidate as unknown as Record<string, unknown>);
+        return { componentToken: candidates.length.toString(16).padStart(32, '0'), snapshotRevision: 7 };
+      },
+    );
+
+    expect(candidates.map(candidate => candidate['propertyName']).sort()).toEqual([
+      'count',
+      'enabled',
+      unusualPropertyName,
+      'title',
+    ]);
+    expect(candidates[0]?.['component'] === componentInstance).toBeTrue();
+    expect(candidates[0]?.['componentId']).toBe('component:[null,"editable"]');
+    expect(candidates[0]?.['node'] === (component as unknown as IRenderedVirtualNode)).toBeTrue();
+    expect(candidates[0]?.['viewModel'] === viewModel).toBeTrue();
+    expect(candidates.every(candidate => candidate['viewModelExtensible'] === true)).toBeTrue();
+    expect(snapshot.tree?.component?.propertyEdits).toEqual({
+      count: { componentToken: '0'.repeat(31) + '1', snapshotRevision: 7 },
+      enabled: { componentToken: '0'.repeat(31) + '2', snapshotRevision: 7 },
+      title: { componentToken: '0'.repeat(31) + '3', snapshotRevision: 7 },
+      [unusualPropertyName]: { componentToken: '0'.repeat(31) + '4', snapshotRevision: 7 },
+    });
+  });
+
+  it('keeps custom-prototype, accessor-, method-, and oversized ViewModels read only', () => {
+    class ProxyComponent {}
+    class CustomViewModel {
+      title = 'custom';
+    }
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    const component = makeVirtualNode('restricted', {
+      component: new ProxyComponent() as unknown as IComponent,
+    });
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(component, [elementNode]);
+    const registrar = jasmine.createSpy('registrar').and.returnValue({
+      componentToken: 'a'.repeat(32),
+      snapshotRevision: 1,
+    });
+
+    component.componentViewModel = new CustomViewModel();
+    const customPrototypeSnapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], component),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+      registrar,
+    );
+    expect(customPrototypeSnapshot.tree?.component?.properties).toEqual({ title: 'custom' });
+    expect(customPrototypeSnapshot.tree?.component?.propertyEdits).toBeUndefined();
+
+    const accessorGetter = jasmine.createSpy('accessorGetter').and.throwError('must not execute');
+    const accessorViewModel = Object.create(null) as Record<string, unknown>;
+    Object.defineProperties(accessorViewModel, {
+      readSecret: { configurable: true, enumerable: false, get: accessorGetter },
+      title: { configurable: true, enumerable: true, value: 'accessor-backed', writable: true },
+    });
+    component.componentViewModel = accessorViewModel;
+    const accessorSnapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], component),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+      registrar,
+    );
+    expect(accessorSnapshot.tree?.component?.properties).toEqual({ title: 'accessor-backed' });
+    expect(accessorSnapshot.tree?.component?.propertyEdits).toBeUndefined();
+    expect(accessorGetter).not.toHaveBeenCalled();
+
+    const methodViewModel = { title: 'method-backed' };
+    Object.defineProperty(methodViewModel, 'readSecret', {
+      configurable: true,
+      enumerable: false,
+      value() {
+        return 'secret';
+      },
+      writable: true,
+    });
+    component.componentViewModel = methodViewModel;
+    const methodSnapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], component),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+      registrar,
+    );
+    expect(methodSnapshot.tree?.component?.properties).toEqual({ title: 'method-backed' });
+    expect(methodSnapshot.tree?.component?.propertyEdits).toBeUndefined();
+
+    const oversizedViewModel = Object.fromEntries(
+      Array.from({ length: 1_001 }, (_value, index) => [`property${index}`, index]),
+    );
+    component.componentViewModel = oversizedViewModel;
+    const oversizedSnapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], component),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+      registrar,
+    );
+    expect(oversizedSnapshot.tree?.component?.properties?.['property0']).toBe(0);
+    expect(oversizedSnapshot.tree?.component?.propertyEdits).toBeUndefined();
+    expect(registrar).not.toHaveBeenCalled();
+  });
+
+  it('retains read-only properties when a Proxy blocks edit-descriptor reflection', () => {
+    class ProxyComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    let ownKeyReads = 0;
+    const viewModel = new Proxy(
+      { title: 'safe' },
+      {
+        ownKeys: target => {
+          ownKeyReads++;
+          if (ownKeyReads > 1) throw new Error('edit reflection unavailable');
+          return Reflect.ownKeys(target);
+        },
+      },
+    );
+    const component = makeVirtualNode('proxy', { component: new ProxyComponent() as unknown as IComponent });
+    component.componentViewModel = viewModel;
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(component, [elementNode]);
+    const registrar = jasmine.createSpy('registrar');
+
+    const snapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], component),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+      registrar,
+    );
+
+    expect(snapshot.tree?.component?.properties).toEqual({ title: 'safe' });
+    expect(snapshot.tree?.component?.propertyEdits).toBeUndefined();
+    expect(registrar).not.toHaveBeenCalled();
+  });
+
+  it('does not register a property deleted during Proxy reflection through a polluted descriptor-map prototype', () => {
+    class ProxyComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    const target: { pollutedScalar?: string } = { pollutedScalar: 'safe' };
+    let ownKeyReads = 0;
+    const viewModel = new Proxy(target, {
+      ownKeys: currentTarget => {
+        ownKeyReads++;
+        if (ownKeyReads === 2) delete currentTarget.pollutedScalar;
+        return Reflect.ownKeys(currentTarget);
+      },
+    });
+    const component = makeVirtualNode('proxy-polluted', {
+      component: new ProxyComponent() as unknown as IComponent,
+    });
+    component.componentViewModel = viewModel;
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(component, [elementNode]);
+    const registrar = jasmine.createSpy('registrar').and.returnValue({
+      componentToken: 'a'.repeat(32),
+      snapshotRevision: 1,
+    });
+    Object.defineProperty(Object.prototype, 'pollutedScalar', {
+      configurable: true,
+      enumerable: false,
+      value: { configurable: true, enumerable: true, value: 'safe', writable: true },
+      writable: true,
+    });
+    try {
+      const snapshot = delegate.getDebugSnapshot(
+        makeHierarchyRenderer([element], component),
+        MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+        registrar,
+      );
+
+      expect(snapshot.tree?.component?.properties).toEqual({ pollutedScalar: 'safe' });
+      expect(snapshot.tree?.component?.propertyEdits).toBeUndefined();
+      expect(registrar).not.toHaveBeenCalled();
+    } finally {
+      delete (Object.prototype as Record<string, unknown>)['pollutedScalar'];
+    }
+  });
+
   it('shares the component property budget without discarding over-budget component hierarchy', () => {
     class ParentBudgetComponent {}
     class ChildBudgetComponent {}

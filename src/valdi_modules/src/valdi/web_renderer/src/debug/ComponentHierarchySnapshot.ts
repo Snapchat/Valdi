@@ -6,6 +6,7 @@ import type {
   WebRendererDebugComponentSnapshot,
   WebRendererDebugElementSnapshot,
   WebRendererDebugNodeSnapshot,
+  WebRendererDebugPropertyEditMetadata,
 } from '../ValdiWebRendererDelegate';
 import { captureDebuggerPropertiesSnapshot, type DebuggerValueSnapshotLimits } from './DebuggerValueSnapshot';
 
@@ -18,12 +19,36 @@ const MAX_COMPONENT_NAME_CHARACTERS = 256;
 const MAX_COMPONENT_KEY_CHARACTERS = 256;
 const MAX_COMPONENT_PROTOTYPE_DEPTH = 16;
 const MAX_COMPONENT_PROPERTY_BYTES = 65_536;
+const MAX_EDITABLE_VIEW_MODEL_OWN_KEYS = 1_000;
+const EDITABLE_PROPERTY_DESCRIPTOR_FIELDS: Array<keyof PropertyDescriptor> = [
+  'configurable',
+  'enumerable',
+  'get',
+  'set',
+  'value',
+  'writable',
+];
 const COMPONENT_PROPERTY_LIMITS: DebuggerValueSnapshotLimits = {
   maximumDepth: 4,
   maximumEntries: 50,
   maximumPropertyNameCharacters: 256,
   maximumStringBytes: 65_536,
 };
+const FORBIDDEN_EDITABLE_PROPERTY_NAMES = new Set(['__proto__', 'children', 'constructor', 'prototype']);
+
+export interface ComponentPropertyEditCandidate {
+  readonly component: IComponent;
+  readonly componentId: string;
+  readonly descriptor: PropertyDescriptor;
+  readonly node: IRenderedVirtualNode;
+  readonly propertyName: string;
+  readonly viewModel: object;
+  readonly viewModelExtensible: boolean;
+}
+
+export type ComponentPropertyEditRegistrar = (
+  candidate: ComponentPropertyEditCandidate,
+) => WebRendererDebugPropertyEditMetadata | undefined;
 
 interface IndexedElementTree {
   readonly childIdsByParentId: Map<string | null, string[]>;
@@ -43,6 +68,13 @@ interface CapturedVirtualNode extends RendererDebugVirtualNodeSnapshot {
 
 interface ComponentPropertyBudget {
   remainingBytes: number;
+}
+
+interface EditableViewModelShape {
+  readonly descriptors: ReadonlyMap<string | symbol, PropertyDescriptor>;
+  readonly extensible: boolean;
+  readonly keys: readonly (string | symbol)[];
+  readonly prototype: object | null;
 }
 
 interface VirtualTraversalFrame {
@@ -66,6 +98,7 @@ type DebugVirtualNodeSnapshotReader = NonNullable<IRenderer['getDebugVirtualNode
 export function captureComponentHierarchySnapshot(
   elementTree: WebRendererDebugElementSnapshot,
   renderer: IRenderer,
+  componentPropertyEditRegistrar?: ComponentPropertyEditRegistrar,
 ): WebRendererDebugNodeSnapshot | undefined {
   const indexedElements = indexCompleteElementTree(elementTree);
   if (indexedElements === undefined) {
@@ -195,6 +228,7 @@ export function captureComponentHierarchySnapshot(
         componentIds,
         consumedChildCountByParentId,
         componentPropertyBudget,
+        componentPropertyEditRegistrar,
         usedElementIds,
       );
       if (result === undefined) {
@@ -231,6 +265,7 @@ function captureCompletedFrame(
   componentIds: Set<string>,
   consumedChildCountByParentId: Map<string | null, number>,
   componentPropertyBudget: ComponentPropertyBudget,
+  componentPropertyEditRegistrar: ComponentPropertyEditRegistrar | undefined,
   usedElementIds: Set<string>,
 ): CapturedHierarchyNode | undefined {
   const captured = frame.captured;
@@ -273,7 +308,16 @@ function captureCompletedFrame(
   componentIds.add(componentId);
   const firstElementId = frame.capturedChildren.find(child => child.firstElementId !== undefined)?.firstElementId;
   const backingElement = firstElementId === undefined ? undefined : indexedElements.elementsById.get(firstElementId);
-  const properties = captureComponentProperties(captured.componentViewModel, componentPropertyBudget);
+  const propertyCapture = captureComponentProperties(
+    captured.componentViewModel,
+    componentPropertyBudget,
+    componentPropertyEditRegistrar,
+    {
+      component,
+      componentId,
+      node: captured.node,
+    },
+  );
   const node: WebRendererDebugComponentSnapshot = {
     ...(backingElement === undefined ? {} : { bounds: backingElement.bounds }),
     children: frame.capturedChildren.map(child => child.node),
@@ -281,7 +325,8 @@ function captureCompletedFrame(
       ...(firstElementId === undefined ? {} : { elementId: firstElementId }),
       key: captured.key,
       name: componentName,
-      ...(properties === undefined ? {} : { properties }),
+      ...(propertyCapture === undefined ? {} : { properties: propertyCapture.properties }),
+      ...(propertyCapture?.propertyEdits === undefined ? {} : { propertyEdits: propertyCapture.propertyEdits }),
     },
     id: componentId,
     tag: componentName,
@@ -399,6 +444,7 @@ function isCapturedVirtualTopologyCurrent(
     }
     if (current.componentViewModel !== captured.componentViewModel && captured.componentOutput !== undefined) {
       delete captured.componentOutput.component.properties;
+      delete captured.componentOutput.component.propertyEdits;
     }
     remainingChildLinks -= children.length;
     remainingTraversalLinks -= current.traversedLinkCount;
@@ -414,10 +460,23 @@ function isCapturedVirtualTopologyCurrent(
   return true;
 }
 
+interface ComponentPropertyCaptureIdentity {
+  readonly component: IComponent;
+  readonly componentId: string;
+  readonly node: IRenderedVirtualNode;
+}
+
+interface ComponentPropertyCapture {
+  readonly properties: Record<string, unknown>;
+  readonly propertyEdits?: Record<string, WebRendererDebugPropertyEditMetadata>;
+}
+
 function captureComponentProperties(
   viewModel: unknown,
   budget: ComponentPropertyBudget,
-): Record<string, unknown> | undefined {
+  componentPropertyEditRegistrar: ComponentPropertyEditRegistrar | undefined,
+  identity: ComponentPropertyCaptureIdentity,
+): ComponentPropertyCapture | undefined {
   if (budget.remainingBytes <= 0) {
     return undefined;
   }
@@ -434,7 +493,153 @@ function captureComponentProperties(
     return undefined;
   }
   budget.remainingBytes -= captured.serializedBytes;
-  return captured.value;
+  const propertyEdits = captureComponentPropertyEdits(
+    viewModel,
+    captured.value,
+    componentPropertyEditRegistrar,
+    identity,
+  );
+  return {
+    properties: captured.value,
+    ...(propertyEdits === undefined ? {} : { propertyEdits }),
+  };
+}
+
+function captureComponentPropertyEdits(
+  viewModel: unknown,
+  capturedProperties: Record<string, unknown>,
+  registrar: ComponentPropertyEditRegistrar | undefined,
+  identity: ComponentPropertyCaptureIdentity,
+): Record<string, WebRendererDebugPropertyEditMetadata> | undefined {
+  if (registrar === undefined || typeof viewModel !== 'object' || viewModel === null) {
+    return undefined;
+  }
+  try {
+    const shape = captureStableEditableViewModelShape(viewModel);
+    if (shape === undefined) return undefined;
+    const propertyEdits = Object.create(null) as Record<string, WebRendererDebugPropertyEditMetadata>;
+    for (const propertyName of Object.keys(capturedProperties)) {
+      if (propertyName.trim().length === 0 || FORBIDDEN_EDITABLE_PROPERTY_NAMES.has(propertyName)) continue;
+      const descriptor = shape.descriptors.get(propertyName);
+      const capturedDescriptor = Object.getOwnPropertyDescriptor(capturedProperties, propertyName);
+      if (
+        descriptor === undefined ||
+        descriptor.enumerable !== true ||
+        !Object.prototype.hasOwnProperty.call(descriptor, 'value') ||
+        capturedDescriptor === undefined ||
+        !Object.prototype.hasOwnProperty.call(capturedDescriptor, 'value') ||
+        !isEditableScalar(descriptor.value) ||
+        !Object.is(capturedDescriptor.value, descriptor.value)
+      ) {
+        continue;
+      }
+      const metadata = registrar({
+        component: identity.component,
+        componentId: identity.componentId,
+        descriptor: { ...descriptor },
+        node: identity.node,
+        propertyName,
+        viewModel,
+        viewModelExtensible: shape.extensible,
+      });
+      if (metadata !== undefined) {
+        Object.defineProperty(propertyEdits, propertyName, {
+          configurable: true,
+          enumerable: true,
+          value: metadata,
+          writable: true,
+        });
+      }
+    }
+    return Object.keys(propertyEdits).length === 0 ? undefined : propertyEdits;
+  } catch (_error) {
+    return undefined;
+  }
+}
+
+function captureEditableViewModelShape(viewModel: object): EditableViewModelShape | undefined {
+  const keys = Reflect.ownKeys(viewModel);
+  if (keys.length > MAX_EDITABLE_VIEW_MODEL_OWN_KEYS) return undefined;
+  const descriptors = new Map<string | symbol, PropertyDescriptor>();
+  for (const key of keys) {
+    const descriptor = Reflect.getOwnPropertyDescriptor(viewModel, key);
+    if (descriptor === undefined) return undefined;
+    if (!isEditableViewModelDataDescriptor(descriptor)) return undefined;
+    descriptors.set(key, descriptor);
+  }
+  const prototype = Reflect.getPrototypeOf(viewModel);
+  if (prototype !== Object.prototype && prototype !== null) return undefined;
+  return {
+    descriptors,
+    extensible: Reflect.isExtensible(viewModel),
+    keys,
+    prototype,
+  };
+}
+
+function captureStableEditableViewModelShape(viewModel: object): EditableViewModelShape | undefined {
+  const captured = captureEditableViewModelShape(viewModel);
+  const verified = captureEditableViewModelShape(viewModel);
+  if (
+    captured === undefined ||
+    verified === undefined ||
+    captured.prototype !== verified.prototype ||
+    captured.extensible !== verified.extensible ||
+    captured.keys.length !== verified.keys.length
+  ) {
+    return undefined;
+  }
+  for (let index = 0; index < captured.keys.length; index++) {
+    const capturedKey = captured.keys[index];
+    const verifiedKey = verified.keys[index];
+    const capturedDescriptor = captured.descriptors.get(capturedKey);
+    const verifiedDescriptor = verified.descriptors.get(verifiedKey);
+    if (
+      capturedKey !== verifiedKey ||
+      capturedDescriptor === undefined ||
+      verifiedDescriptor === undefined ||
+      !sameEditablePropertyDescriptor(capturedDescriptor, verifiedDescriptor)
+    ) {
+      return undefined;
+    }
+  }
+  return verified;
+}
+
+function sameEditablePropertyDescriptor(left: PropertyDescriptor, right: PropertyDescriptor): boolean {
+  for (const field of EDITABLE_PROPERTY_DESCRIPTOR_FIELDS) {
+    const leftField = Object.getOwnPropertyDescriptor(left, field);
+    const rightField = Object.getOwnPropertyDescriptor(right, field);
+    if (leftField === undefined || rightField === undefined) {
+      if (leftField !== rightField) return false;
+      continue;
+    }
+    if (
+      !Object.prototype.hasOwnProperty.call(leftField, 'value') ||
+      !Object.prototype.hasOwnProperty.call(rightField, 'value') ||
+      !Object.is(leftField.value, rightField.value)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isEditableViewModelDataDescriptor(descriptor: PropertyDescriptor): boolean {
+  const valueField = Object.getOwnPropertyDescriptor(descriptor, 'value');
+  return (
+    valueField !== undefined &&
+    Object.prototype.hasOwnProperty.call(valueField, 'value') &&
+    typeof valueField.value !== 'function'
+  );
+}
+
+function isEditableScalar(value: unknown): value is boolean | number | string {
+  return (
+    typeof value === 'string' ||
+    typeof value === 'boolean' ||
+    (typeof value === 'number' && Number.isFinite(value) && !Object.is(value, -0))
+  );
 }
 
 function readElementId(element: IRenderedElement): string | undefined {

@@ -15,7 +15,10 @@ import {
   registerElements,
   setAllElementsAttributeDelegate,
 } from './HTMLRenderer';
-import { captureComponentHierarchySnapshot } from './debug/ComponentHierarchySnapshot';
+import {
+  captureComponentHierarchySnapshot,
+  type ComponentPropertyEditRegistrar,
+} from './debug/ComponentHierarchySnapshot';
 import type { WebValdiLayout } from './views/WebValdiLayout';
 
 export interface UpdateAttributeDelegate {
@@ -38,6 +41,7 @@ export interface WebRendererDebugNodeSnapshot {
     key: string;
     name: string;
     properties?: Record<string, unknown>;
+    propertyEdits?: Record<string, WebRendererDebugPropertyEditMetadata>;
   };
   element?: {
     id: number;
@@ -47,6 +51,11 @@ export interface WebRendererDebugNodeSnapshot {
       tagName: string;
     };
   };
+}
+
+export interface WebRendererDebugPropertyEditMetadata {
+  componentToken: string;
+  snapshotRevision: number;
 }
 
 export interface WebRendererDebugElementSnapshot extends WebRendererDebugNodeSnapshot {
@@ -73,6 +82,7 @@ export interface WebRendererDebugComponentSnapshot extends WebRendererDebugNodeS
     key: string;
     name: string;
     properties?: Record<string, unknown>;
+    propertyEdits?: Record<string, WebRendererDebugPropertyEditMetadata>;
   };
 }
 
@@ -289,7 +299,11 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
     return node === undefined ? undefined : { htmlElement: node.htmlElement, type: node.type };
   }
 
-  getDebugSnapshot(renderer: IRenderer, maximumSerializedCharacters: number): WebRendererDebugSnapshot {
+  getDebugSnapshot(
+    renderer: IRenderer,
+    maximumSerializedCharacters: number,
+    componentPropertyEditRegistrar?: ComponentPropertyEditRegistrar,
+  ): WebRendererDebugSnapshot {
     const viewport = {
       width: typeof window === 'undefined' ? 0 : window.innerWidth,
       height: typeof window === 'undefined' ? 0 : window.innerHeight,
@@ -326,7 +340,7 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
     }
 
     const topologyRevision = this.debugTopologyRevision;
-    const componentTree = captureComponentHierarchySnapshot(elementTree, renderer);
+    const componentTree = captureComponentHierarchySnapshot(elementTree, renderer, componentPropertyEditRegistrar);
     if (componentTree === undefined || topologyRevision !== this.debugTopologyRevision) {
       return elementSnapshot;
     }
@@ -345,6 +359,7 @@ function stripComponentProperties(root: WebRendererDebugNodeSnapshot): void {
     const node = pending.pop()!;
     if (node.component !== undefined) {
       delete node.component.properties;
+      delete node.component.propertyEdits;
     }
     pending.push(...node.children);
   }

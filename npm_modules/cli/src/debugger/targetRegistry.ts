@@ -23,6 +23,7 @@ export enum DebuggerTargetTransport {
 
 /** Capability names are serialized so frontends can hide unsupported tools. */
 export enum DebuggerTargetCapability {
+  ComponentPropertyEdit = 'component-property-edit',
   ComponentProperties = 'component-properties',
   Components = 'components',
   Console = 'console',
