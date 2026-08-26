@@ -46,10 +46,11 @@ Important routes:
 - `/api/devtools/targets`: returns a fresh, bounded registry of native Valdi, explicit web-preview, and JavaScript-proxy targets.
 - `/api/devtools/target`: resolves either one opaque native target ID or the exact configured inspected Chromium page identity.
 - `/api/devtools/snapshot`, `/api/devtools/highlight`, and `/api/devtools/evaluate`: proxy the explicit web debugger bridge contract through loopback CDP.
+- `/api/devtools/component-property`: applies one exact web-only scalar ViewModel property edit from a strict body-only identity and token tuple.
 - `/api/devtools/performance/snapshot` and `/api/devtools/performance/trace/*`: sample the exact web preview and record one bounded global Chromium trace without changing the daemon/Hermes `/api/performance/*` routes.
 
-Web preview targets advertise the `component-properties` capability. Their
-Elements snapshots may include a read-only `Valdi props` projection captured
+Web preview targets advertise the independent `component-properties`
+capability. Their Elements snapshots may include a `Valdi props` projection captured
 from own enumerable data descriptors only; accessors, inherited fields, and
 symbol keys are omitted. Component properties share a 64 KiB UTF-8 budget and
 are discarded before the hierarchy if the complete snapshot reaches its
@@ -58,8 +59,51 @@ reflecting a Proxy can execute its `ownKeys` and descriptor traps and may
 materialize their complete key result before the cap is applied. A throwing or
 revoked Proxy therefore causes that component's properties to be omitted while
 preserving the hierarchy. Prototype traversal is not used, and property values
-are never read through normal property access. Native targets do not advertise
-or emit this data.
+are never read through normal property access.
+
+An accepted web snapshot may additionally promote the separate
+`component-property-edit` capability when both the renderer's dedicated
+full-ViewModel mutation API and secure browser randomness are available. Static
+target and registry responses do not claim this capability before the bridge
+proves it. Editable strings, booleans, and finite numbers receive a 128-bit
+lowercase hexadecimal token and a positive snapshot revision. Tokens bind the
+exact component, virtual node, raw ViewModel identity, property name, data
+descriptor, scalar type, and prior value. Tokens are single-use and expire
+after 120 seconds. Each published snapshot replaces the current registry while
+retaining only the immediately previous published revision, capped at 1,000
+tokens per revision and 2,000 total, so a panel may safely discard one
+already-requested poll without invalidating the snapshot it still displays.
+Publishing another revision drops the older retained map; destruction,
+secure-randomness failure, and expiry clear the associated object graphs.
+Missing crypto, reflection failures, stale identity, invalid values, and
+mutation failures fall back to the read-only property presentation with a
+generic error. `children`, `prototype`,
+`constructor`, and `__proto__` are never editable. ViewModels with a custom
+prototype, more than 1,000 own keys, any accessor descriptor, or an own
+function-valued data property remain read only. Plain and null-prototype
+ViewModels may edit frozen scalar descriptors without mutating the source.
+
+The renderer installs a read-only overlay Proxy over a stable shadow target
+rather than using or mutating the exact prior ViewModel as the Proxy target. The
+shadow snapshots the original prototype, complete descriptor set, own-key order, and
+extensibility. Non-edited reads retain the exact source ViewModel as their
+receiver, while repeated debugger edits flatten onto the same source without
+depending on its later structural state. User Proxy `get` and `has` behavior
+remains observable during fallback reads. If a Proxy `get` trap returns a
+callable despite its data descriptor, the overlay returns a stable per-key
+binding to the exact source ViewModel so method calls preserve receiver-private
+state without invoking the trap during authorization. Inherited
+`Object.prototype` members instead resolve against the shadow with the overlay
+receiver, preserving their identity while routing legacy property mutators
+through the overlay's rejection traps. Custom `ownKeys` behavior is captured
+transactionally and served from the stable shadow after construction rather
+than consulting the live source again.
+Debugger writes, definitions, deletions, prototype changes, and
+`preventExtensions` calls are rejected, while the dedicated full-ViewModel
+rerender path receives the overlay. Native targets never advertise
+`component-property-edit`, and the route cannot be reached through `targetId`,
+the daemon protocol, the generic action bus, console evaluation, storage, or
+telemetry.
 
 Renderer tracing uses the runtime debugger protocol and the existing native
 trace recorder. Captures are process-wide: the selected context is the capture
@@ -73,9 +117,20 @@ Hermes CPU profiling uses the existing inspector transport.
 The native and synthetic previews forward capability, query, tap, focus, text,
 key, and scroll requests through the selected target's bounded input contract.
 Web-renderer inspection uses the first-party bridge exposed as
-`window.__VALDI_WEB_DEBUGGER__` with `getSnapshot()`, `highlightNode()`, and
-`clearHighlight()`. The DevTools panel proxies inspection through the exact
-configured loopback Chromium target.
+`window.__VALDI_WEB_DEBUGGER__` with `getSnapshot()`, `highlightNode()`,
+`clearHighlight()`, and the synchronous exact `editComponentProperty()` path.
+The DevTools panel proxies inspection through the exact configured loopback
+Chromium target. Scalar controls remain read only unless the current snapshot
+advertises both property capabilities and supplies valid edit metadata. While
+an editor is focused or an edit owns its replacement snapshot refresh,
+automatic refresh is paused; target, snapshot, selection, and operation
+generations prevent stale completions from changing newer presentation.
+Editable controls are hydrated with DOM APIs. Authorization tokens, component
+identity, revisions, and the actionable binding stay out of serialized markup
+in a private binding; the display property name is assigned only as safe DOM
+text and an accessible name. String controls use a strict JSON string literal so
+carriage returns, line feeds, NULs, quotes, unpaired surrogates, and unusual
+nonblank property names round-trip exactly.
 
 Web-preview performance requests require the exact `sessionId`, `inspectedUrl`,
 and per-tab `targetNonce`; incomplete, stale, or cross-tab identities fail

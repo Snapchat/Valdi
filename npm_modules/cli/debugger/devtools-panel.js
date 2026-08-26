@@ -10,7 +10,19 @@ const MAX_CONSOLE_HISTORY_ENTRIES = 100;
 const MAX_PERFORMANCE_SAMPLES = 120;
 const MAX_PERFORMANCE_TIMELINE_ROWS = 120;
 const MAX_PERFORMANCE_SUMMARY_ROWS = 12;
-const MANUAL_WEB_CAPABILITIES = new Set(['components', 'console', 'highlight', 'performance', 'snapshot', 'storage']);
+const COMPONENT_PROPERTY_TOKEN_PATTERN = /^[0-9a-f]{32}$/;
+const COMPONENT_PROPERTY_EDIT_ERROR = 'The component property edit is stale or invalid.';
+const FORBIDDEN_COMPONENT_PROPERTY_NAMES = new Set(['__proto__', 'children', 'constructor', 'prototype']);
+const componentPropertyEditorBindings = new WeakMap();
+const MANUAL_WEB_CAPABILITIES = new Set([
+  'component-properties',
+  'components',
+  'console',
+  'highlight',
+  'performance',
+  'snapshot',
+  'storage',
+]);
 
 function parseLaunchIdentity(searchParams) {
   const targetIds = searchParams.getAll('targetId');
@@ -73,6 +85,7 @@ const state = {
   autoRefresh: true,
   refreshTimer: null,
   refreshPending: false,
+  snapshotRequestCompletion: null,
   snapshotGeneration: 0,
   snapshotRequestGeneration: 0,
   hoveredNodeId: null,
@@ -103,6 +116,12 @@ const state = {
     traceActive: false,
     traceScope: 'valdi',
     traceSearch: '',
+  },
+  componentPropertyEdit: {
+    error: null,
+    focused: false,
+    operationGeneration: 0,
+    pending: false,
   },
   error: null,
 };
@@ -542,9 +561,17 @@ function resetConsoleForTargetChange() {
   elements.consoleInput.value = '';
 }
 
+function resetComponentPropertyEditForTargetChange() {
+  state.componentPropertyEdit.operationGeneration++;
+  state.componentPropertyEdit.pending = false;
+  state.componentPropertyEdit.focused = false;
+  state.componentPropertyEdit.error = null;
+}
+
 function clearTargetPresentation(message) {
   state.snapshotRequestGeneration++;
   state.refreshPending = false;
+  state.snapshotRequestCompletion = null;
   state.snapshot = null;
   state.snapshotGeneration++;
   state.selectedNodeId = null;
@@ -552,6 +579,7 @@ function clearTargetPresentation(message) {
   state.expandedNodeIds.clear();
   resetHighlightForTargetChange();
   resetConsoleForTargetChange();
+  resetComponentPropertyEditForTargetChange();
   preparePerformanceForTargetChange();
   elements.treeEmpty.textContent = message;
   render();
@@ -813,9 +841,11 @@ async function connectToInspectedPage() {
       stopConsoleStream();
       enqueueExactHighlightClear(state.target);
       resetConsoleForTargetChange();
+      resetComponentPropertyEditForTargetChange();
       preparePerformanceForTargetChange();
       state.snapshotRequestGeneration++;
       state.refreshPending = false;
+      state.snapshotRequestCompletion = null;
       state.snapshot = null;
       state.snapshotGeneration++;
       state.selectedNodeId = null;
@@ -865,8 +895,33 @@ async function connectToInspectedApplication() {
 }
 
 async function refreshSnapshot() {
-  if (!state.target || !targetSupports('components') || !targetSupports('snapshot') || state.refreshPending) return;
+  await refreshSnapshotInternal(null);
+}
+
+async function refreshSnapshotInternal(componentPropertyEditOperationGeneration) {
+  const componentPropertyEditOwnsRefresh = () =>
+    componentPropertyEditOperationGeneration !== null &&
+    state.componentPropertyEdit.operationGeneration === componentPropertyEditOperationGeneration &&
+    state.componentPropertyEdit.pending;
+  const refreshIsAllowed = () =>
+    state.target &&
+    targetSupports('components') &&
+    targetSupports('snapshot') &&
+    ((!state.componentPropertyEdit.focused && !state.componentPropertyEdit.pending) ||
+      componentPropertyEditOwnsRefresh());
+  if (!refreshIsAllowed()) return;
+  if (state.refreshPending) {
+    const activeRequestCompletion = state.snapshotRequestCompletion;
+    if (!componentPropertyEditOwnsRefresh() || activeRequestCompletion === null) return;
+    await activeRequestCompletion;
+    if (!refreshIsAllowed() || state.refreshPending) return;
+  }
   state.refreshPending = true;
+  let resolveRequestCompletion;
+  const requestCompletion = new Promise(resolve => {
+    resolveRequestCompletion = resolve;
+  });
+  state.snapshotRequestCompletion = requestCompletion;
   const requestTarget = state.target;
   const requestTargetGeneration = state.targetGeneration;
   const requestGeneration = ++state.snapshotRequestGeneration;
@@ -876,11 +931,26 @@ async function refreshSnapshot() {
     state.snapshotRequestGeneration === requestGeneration;
   try {
     const snapshot = await requestJson('/api/devtools/snapshot', targetIdentityParameters(requestTarget), {});
-    if (!requestIsCurrent()) return;
+    if (
+      !requestIsCurrent() ||
+      ((state.componentPropertyEdit.focused || state.componentPropertyEdit.pending) &&
+        !componentPropertyEditOwnsRefresh())
+    )
+      return;
+    if (
+      snapshot.target?.id === requestTarget.id &&
+      Array.isArray(snapshot.target.capabilities) &&
+      snapshot.target.capabilities.length <= MAX_REGISTRY_CAPABILITIES &&
+      snapshot.target.capabilities.every(capability => typeof capability === 'string' && capability.length <= 64)
+    ) {
+      state.target = { ...requestTarget, capabilities: [...snapshot.target.capabilities] };
+      updateCapabilityUi();
+    }
     snapshot.tree = valdiDebuggerTreeModel.restoreTree(snapshot.tree);
     const wasEmpty = !state.snapshot?.tree;
     const shouldClearHighlight = state.hoveredNodeId !== null || state.highlightMayBeActive;
     state.snapshot = snapshot;
+    state.componentPropertyEdit.error = null;
     state.snapshotGeneration++;
     if (state.highlightTimer) window.clearTimeout(state.highlightTimer);
     state.highlightTimer = null;
@@ -909,7 +979,11 @@ async function refreshSnapshot() {
   } catch (error) {
     if (requestIsCurrent()) reportError(error);
   } finally {
-    if (requestIsCurrent()) state.refreshPending = false;
+    if (state.snapshotRequestCompletion === requestCompletion) {
+      state.snapshotRequestCompletion = null;
+      state.refreshPending = false;
+    }
+    resolveRequestCompletion();
   }
 }
 
@@ -919,6 +993,7 @@ function startRefreshTimer() {
     if (document.hidden) return;
     if (isDirectMode()) void refreshTargetRegistry();
     if (!state.autoRefresh) return;
+    if (state.componentPropertyEdit.focused || state.componentPropertyEdit.pending) return;
     if (state.activeSection === 'elements') void refreshSnapshot();
     if (state.activeSection === 'performance') void refreshPerformance({ silent: true });
   }, 1200);
@@ -1025,6 +1100,241 @@ function propertyRows(attributes, options) {
     .join('');
 }
 
+function componentPropertyEditMetadata(node, propertyName, value) {
+  if (
+    launchIdentity.mode !== 'inspected-page' ||
+    state.componentPropertyEdit.error !== null ||
+    !targetSupports('component-properties') ||
+    !targetSupports('component-property-edit') ||
+    !node.component ||
+    typeof node.component.propertyEdits !== 'object' ||
+    node.component.propertyEdits === null ||
+    propertyName.trim().length === 0 ||
+    FORBIDDEN_COMPONENT_PROPERTY_NAMES.has(propertyName) ||
+    !['boolean', 'number', 'string'].includes(typeof value) ||
+    (typeof value === 'number' && (!Number.isFinite(value) || Object.is(value, -0)))
+  ) {
+    return null;
+  }
+  let metadataDescriptor;
+  try {
+    metadataDescriptor = Object.getOwnPropertyDescriptor(node.component.propertyEdits, propertyName);
+  } catch (_error) {
+    return null;
+  }
+  const metadata = metadataDescriptor?.value;
+  if (
+    metadataDescriptor?.enumerable !== true ||
+    metadataDescriptor.get !== undefined ||
+    metadataDescriptor.set !== undefined ||
+    typeof metadata !== 'object' ||
+    metadata === null ||
+    Array.isArray(metadata)
+  ) {
+    return null;
+  }
+  let componentTokenDescriptor;
+  let snapshotRevisionDescriptor;
+  try {
+    componentTokenDescriptor = Object.getOwnPropertyDescriptor(metadata, 'componentToken');
+    snapshotRevisionDescriptor = Object.getOwnPropertyDescriptor(metadata, 'snapshotRevision');
+  } catch (_error) {
+    return null;
+  }
+  const componentToken = componentTokenDescriptor?.value;
+  const snapshotRevision = snapshotRevisionDescriptor?.value;
+  if (
+    componentTokenDescriptor?.enumerable !== true ||
+    componentTokenDescriptor.get !== undefined ||
+    componentTokenDescriptor.set !== undefined ||
+    snapshotRevisionDescriptor?.enumerable !== true ||
+    snapshotRevisionDescriptor.get !== undefined ||
+    snapshotRevisionDescriptor.set !== undefined ||
+    typeof componentToken !== 'string' ||
+    !COMPONENT_PROPERTY_TOKEN_PATTERN.test(componentToken) ||
+    !Number.isSafeInteger(snapshotRevision) ||
+    snapshotRevision <= 0
+  ) {
+    return null;
+  }
+  return { componentToken, snapshotRevision };
+}
+
+function createComponentPropertyEditor(node, propertyName, value, metadata) {
+  const valueType = typeof value;
+  const form = document.createElement('form');
+  form.className = 'component-property-editor';
+  form.dataset.componentPropertyEditor = '';
+  const label = document.createElement('label');
+  label.className = 'component-property-label';
+  const propertyNameLabel = document.createElement('span');
+  propertyNameLabel.className = 'property-name';
+  propertyNameLabel.textContent = propertyName;
+  const separator = document.createElement('span');
+  separator.setAttribute('aria-hidden', 'true');
+  separator.textContent = ':';
+  let editor;
+  if (valueType === 'string') {
+    editor = document.createElement('textarea');
+    editor.className = 'component-property-input component-property-string-input';
+    editor.setAttribute('aria-label', `Edit Valdi prop ${propertyName} as a JSON string literal`);
+    editor.setAttribute('rows', '1');
+    editor.setAttribute('spellcheck', 'false');
+    editor.value = JSON.stringify(value);
+  } else {
+    editor = document.createElement('input');
+    editor.className = 'component-property-input';
+    editor.setAttribute('aria-label', `Edit Valdi prop ${propertyName}`);
+    editor.setAttribute('type', valueType === 'boolean' ? 'checkbox' : 'number');
+    if (valueType === 'boolean') editor.checked = value;
+    else {
+      editor.setAttribute('step', 'any');
+      editor.value = String(value);
+    }
+  }
+  editor.dataset.componentPropertyInput = '';
+  const applyButton = document.createElement('button');
+  applyButton.className = 'component-property-apply';
+  applyButton.setAttribute('aria-label', `Apply Valdi prop ${propertyName}`);
+  applyButton.setAttribute('type', 'submit');
+  applyButton.disabled = state.componentPropertyEdit.pending;
+  applyButton.textContent = 'Apply';
+  label.append(propertyNameLabel);
+  label.append(separator);
+  label.append(editor);
+  form.append(label);
+  form.append(applyButton);
+  componentPropertyEditorBindings.set(form, {
+    componentId: node.id,
+    componentToken: metadata.componentToken,
+    propertyName,
+    snapshotRevision: metadata.snapshotRevision,
+    valueType,
+  });
+  return form;
+}
+
+function componentPropertyRows(node, editorModels) {
+  const entries = Object.entries(node.component?.properties || {}).sort(([first], [second]) =>
+    first.localeCompare(second),
+  );
+  if (!entries.length) return '<div class="empty-state">No properties available.</div>';
+  return entries
+    .map(([propertyName, value]) => {
+      const metadata = componentPropertyEditMetadata(node, propertyName, value);
+      if (metadata) {
+        const editorIndex = editorModels.push({ metadata, node, propertyName, value }) - 1;
+        return `<div class="component-property-editor-slot" data-component-property-editor-slot="${editorIndex}"></div>`;
+      }
+      return `<div class="property-row"><span class="property-name">${escapeHtml(propertyName)}</span>: ${renderValue(value)}</div>`;
+    })
+    .join('');
+}
+
+function hydrateComponentPropertyEditors(editorModels) {
+  const slots = elements.inspector.querySelectorAll?.('[data-component-property-editor-slot]') || [];
+  for (const slot of slots) {
+    const editorIndex = Number(slot.dataset.componentPropertyEditorSlot);
+    const model = Number.isSafeInteger(editorIndex) && editorIndex >= 0 ? editorModels[editorIndex] : undefined;
+    if (model) {
+      slot.replaceChildren(createComponentPropertyEditor(model.node, model.propertyName, model.value, model.metadata));
+    }
+  }
+}
+
+async function submitComponentPropertyEdit(componentId, propertyName, componentToken, snapshotRevision, value) {
+  if (!state.target || state.componentPropertyEdit.pending) return;
+  const node = findNode(componentId);
+  let currentValue;
+  try {
+    currentValue = Object.getOwnPropertyDescriptor(node?.component?.properties, propertyName)?.value;
+  } catch (_error) {
+    return;
+  }
+  const metadata = node ? componentPropertyEditMetadata(node, propertyName, currentValue) : null;
+  if (
+    !node?.component ||
+    metadata === null ||
+    metadata.componentToken !== componentToken ||
+    metadata.snapshotRevision !== snapshotRevision
+  ) {
+    return;
+  }
+  const requestTarget = state.target;
+  const targetGeneration = state.targetGeneration;
+  const snapshotGeneration = state.snapshotGeneration;
+  const selectedNodeId = state.selectedNodeId;
+  const operationGeneration = ++state.componentPropertyEdit.operationGeneration;
+  const operationIsCurrent = () => state.componentPropertyEdit.operationGeneration === operationGeneration;
+  const requestIsCurrent = () =>
+    operationIsCurrent() &&
+    state.targetGeneration === targetGeneration &&
+    state.target?.id === requestTarget.id &&
+    state.snapshotGeneration === snapshotGeneration &&
+    state.selectedNodeId === selectedNodeId;
+  state.componentPropertyEdit.focused = false;
+  state.componentPropertyEdit.pending = true;
+  state.componentPropertyEdit.error = null;
+  state.snapshotRequestGeneration++;
+  renderInspector();
+  let updated = false;
+  let refreshed = false;
+  try {
+    const result = await requestJson(
+      '/api/devtools/component-property',
+      {},
+      {
+        body: {
+          ...targetIdentityParameters(requestTarget),
+          componentId,
+          componentToken,
+          propertyName,
+          snapshotRevision,
+          value,
+        },
+      },
+    );
+    if (requestIsCurrent()) {
+      updated = result.updated === true;
+      if (updated) {
+        const previousSnapshotGeneration = state.snapshotGeneration;
+        await refreshSnapshotInternal(operationGeneration);
+        refreshed = state.snapshotGeneration !== previousSnapshotGeneration;
+      }
+    }
+  } catch (error) {
+    if (requestIsCurrent()) {
+      state.componentPropertyEdit.error = error instanceof Error ? error.message : String(error);
+    }
+  } finally {
+    if (operationIsCurrent()) {
+      state.componentPropertyEdit.pending = false;
+      state.componentPropertyEdit.focused = false;
+      if (updated && !refreshed && state.componentPropertyEdit.error === null) {
+        state.componentPropertyEdit.error = COMPONENT_PROPERTY_EDIT_ERROR;
+      }
+      renderInspector();
+    }
+  }
+}
+
+function readComponentPropertyEditorValue(editor, valueType) {
+  if (valueType === 'boolean') return Boolean(editor.checked);
+  if (valueType === 'number') {
+    const input = editor.value.trim();
+    if (!input) return undefined;
+    const value = Number(input);
+    return Number.isFinite(value) && !Object.is(value, -0) ? value : undefined;
+  }
+  if (valueType !== 'string') return undefined;
+  try {
+    const value = JSON.parse(editor.value);
+    return typeof value === 'string' ? value : undefined;
+  } catch (_error) {
+    return undefined;
+  }
+}
+
 function componentMetadata(node) {
   if (!node.component) return {};
   return {
@@ -1034,12 +1344,14 @@ function componentMetadata(node) {
   };
 }
 
-function renderComponentProperties(node) {
+function renderComponentProperties(node, editorModels) {
   if (node.component?.properties === undefined || !targetSupports('component-properties')) return '';
+  const editable = targetSupports('component-property-edit') && state.componentPropertyEdit.error === null;
   return `
     <section class="component-properties" aria-label="Valdi props">
-      <div class="rule-header">Valdi props <span class="rule-origin">read only</span></div>
-      <div class="property-list">${propertyRows(node.component.properties, { css: false })}</div>
+      <div class="rule-header">Valdi props <span class="rule-origin">${editable ? 'editable scalars' : 'read only'}</span></div>
+      ${state.componentPropertyEdit.error ? `<div class="component-property-error" role="alert">${escapeHtml(state.componentPropertyEdit.error)}</div>` : ''}
+      <div class="property-list">${componentPropertyRows(node, editorModels)}</div>
     </section>
   `;
 }
@@ -1124,16 +1436,23 @@ function renderInspector() {
   }
 
   const renderedNode = inspectedNode(node);
-  const componentProperties = renderComponentProperties(node);
+  const componentPropertyEditorModels = [];
+  const componentProperties = renderComponentProperties(node, componentPropertyEditorModels);
+  const renderMarkup = markup => {
+    elements.inspector.innerHTML = markup;
+    hydrateComponentPropertyEditors(componentPropertyEditorModels);
+  };
   if (node.component && renderedNode === node) {
-    elements.inspector.innerHTML = `<div class="rule-header">Valdi component <span class="rule-origin">${escapeHtml(node.tag)}</span></div>${propertyRows(componentMetadata(node), { css: false })}${componentProperties}<div class="empty-state">This component does not currently render a backing element.</div>`;
+    renderMarkup(
+      `<div class="rule-header">Valdi component <span class="rule-origin">${escapeHtml(node.tag)}</span></div>${propertyRows(componentMetadata(node), { css: false })}${componentProperties}<div class="empty-state">This component does not currently render a backing element.</div>`,
+    );
     return;
   }
 
   if (state.activeDetail === 'styles') {
-    elements.inspector.innerHTML = `${componentProperties}${renderStyles(renderedNode)}`;
+    renderMarkup(`${componentProperties}${renderStyles(renderedNode)}`);
   } else if (state.activeDetail === 'computed') {
-    elements.inspector.innerHTML = `${componentProperties}${renderComputed(renderedNode)}`;
+    renderMarkup(`${componentProperties}${renderComputed(renderedNode)}`);
   } else {
     const textContent = renderedNode.element?.dom?.textContent
       ? valdiDebuggerTreeModel.formatValue(renderedNode.element.dom.textContent, 0)
@@ -1141,7 +1460,9 @@ function renderInspector() {
     const componentDetails = node.component
       ? `<div class="rule-header">Valdi component <span class="rule-origin">${escapeHtml(node.tag)}</span></div>${propertyRows(componentMetadata(node), { css: false })}`
       : '';
-    elements.inspector.innerHTML = `${componentDetails}${componentProperties}<div class="rule-header">Rendered &lt;${escapeHtml(valdiDebuggerTreeModel.formatValue(renderedNode.element?.dom?.tagName || 'div', 0))}&gt;</div>${propertyRows(renderedNode.element?.dom?.attributes, { css: false })}${textContent ? `<div class="rule-header">Text content</div><pre class="json-view">${escapeHtml(textContent)}</pre>` : ''}`;
+    renderMarkup(
+      `${componentDetails}${componentProperties}<div class="rule-header">Rendered &lt;${escapeHtml(valdiDebuggerTreeModel.formatValue(renderedNode.element?.dom?.tagName || 'div', 0))}&gt;</div>${propertyRows(renderedNode.element?.dom?.attributes, { css: false })}${textContent ? `<div class="rule-header">Text content</div><pre class="json-view">${escapeHtml(textContent)}</pre>` : ''}`,
+    );
   }
 }
 
@@ -2165,6 +2486,45 @@ function wireEvents() {
     if (row) queueHighlight(inspectedNodeId(findNode(row.dataset.nodeId)));
   });
   elements.tree.addEventListener('pointerleave', () => queueHighlight(null));
+  elements.inspector.addEventListener('focusin', event => {
+    if (event.target.closest?.('[data-component-property-editor]')) {
+      state.componentPropertyEdit.focused = true;
+    }
+  });
+  elements.inspector.addEventListener('focusout', () => {
+    window.setTimeout(() => {
+      state.componentPropertyEdit.focused = Boolean(
+        document.activeElement?.closest?.('[data-component-property-editor]'),
+      );
+    }, 0);
+  });
+  elements.inspector.addEventListener('submit', event => {
+    const form = event.target.closest?.('[data-component-property-editor]');
+    if (!form) return;
+    event.preventDefault();
+    const binding = componentPropertyEditorBindings.get(form);
+    const editor = form.querySelector('[data-component-property-input]');
+    const value = editor && binding ? readComponentPropertyEditorValue(editor, binding.valueType) : undefined;
+    if (
+      !binding ||
+      value === undefined ||
+      !Number.isSafeInteger(binding.snapshotRevision) ||
+      binding.snapshotRevision <= 0 ||
+      !COMPONENT_PROPERTY_TOKEN_PATTERN.test(binding.componentToken)
+    ) {
+      state.componentPropertyEdit.error = 'Enter a valid scalar value before applying this property.';
+      state.componentPropertyEdit.focused = false;
+      renderInspector();
+      return;
+    }
+    void submitComponentPropertyEdit(
+      binding.componentId,
+      binding.propertyName,
+      binding.componentToken,
+      binding.snapshotRevision,
+      value,
+    );
+  });
   elements.breadcrumbs.addEventListener('click', event => {
     const button = event.target.closest('[data-breadcrumb-id]');
     if (button) selectNode(button.dataset.breadcrumbId);

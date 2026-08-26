@@ -6,7 +6,13 @@ import { Script } from 'node:vm';
 interface DevToolsTreeNode {
   bounds?: { height: number; width: number; x: number; y: number };
   children: DevToolsTreeNode[];
-  component?: { elementId?: string; key: string; name: string; properties?: Record<string, unknown> };
+  component?: {
+    elementId?: string;
+    key: string;
+    name: string;
+    properties?: Record<string, unknown>;
+    propertyEdits?: Record<string, { componentToken: string; snapshotRevision: number }>;
+  };
   element?: {
     attributes: Record<string, unknown>;
     dom: { attributes: Record<string, string>; tagName: string; textContent?: string };
@@ -34,10 +40,19 @@ interface DevToolsHierarchyPanel {
   inspectorContent: TreeStubElement;
   state: {
     activeDetail: string;
+    componentPropertyEdit: {
+      error: string | null;
+      focused: boolean;
+      operationGeneration: number;
+      pending: boolean;
+    };
+    autoRefresh: boolean;
     expandedNodeIds: Set<string>;
     highlightMayBeActive: boolean;
     highlightRequestTail: Promise<void>;
     highlightTimer: number | null;
+    refreshPending: boolean;
+    refreshTimer: number | null;
     search: string;
     selectedNodeId: string | null;
     snapshot: { tree: DevToolsTreeNode } | null;
@@ -54,6 +69,14 @@ interface DevToolsHierarchyPanel {
   renderInspector(): void;
   renderTree(): void;
   selectNode(id: string): void;
+  startRefreshTimer(): void;
+  submitComponentPropertyEdit(
+    componentId: string,
+    propertyName: string,
+    componentToken: string,
+    snapshotRevision: number,
+    value: boolean | number | string,
+  ): Promise<void>;
 }
 
 interface StubElement {
@@ -84,6 +107,7 @@ interface PickerTarget {
   name: string;
   platform: string;
   port?: number;
+  sessionId?: string;
   state: 'attached' | 'available' | 'waiting';
   transport: string;
 }
@@ -120,16 +144,16 @@ interface PickerStubElement {
   value: string;
   addEventListener(type: string, listener: (event: PickerStubEvent) => void): void;
   append(child: PickerStubElement): void;
-  closest(): PickerStubElement | null;
+  closest(selector: string): PickerStubElement | null;
   contains(): boolean;
   dispatch(type: string, properties?: Partial<PickerStubEvent>): void;
   focus(): void;
   getAttribute(name: string): string | null;
   getBoundingClientRect(): { bottom: number; height: number; left: number; right: number; top: number; width: number };
-  querySelector(): PickerStubElement | null;
-  querySelectorAll(): PickerStubElement[];
+  querySelector(selector: string): PickerStubElement | null;
+  querySelectorAll(selector: string): PickerStubElement[];
   removeAttribute(name: string): void;
-  replaceChildren(): void;
+  replaceChildren(...children: PickerStubElement[]): void;
   scrollIntoView(): void;
   setAttribute(name: string, value: string): void;
   setSelectionRange(): void;
@@ -142,6 +166,12 @@ interface PickerPanel {
     consoleEntryKeys: Set<string>;
     consoleHistory: string[];
     error: string | null;
+    componentPropertyEdit: {
+      error: string | null;
+      focused: boolean;
+      operationGeneration: number;
+      pending: boolean;
+    };
     expandedNodeIds: Set<string>;
     highlightMayBeActive: boolean;
     highlightRequestTail: Promise<void>;
@@ -162,6 +192,7 @@ interface PickerPanel {
     registryTargets: PickerTarget[];
     selectedNodeId: string | null;
     snapshot: { tree: DevToolsTreeNode } | null;
+    snapshotGeneration: number;
     target: PickerTarget | null;
     targetGeneration: number;
     targetSwitchMessage: string | null;
@@ -169,6 +200,12 @@ interface PickerPanel {
   };
   applyDirectTargetSelection(target: PickerTarget | null, options?: Record<string, unknown>): boolean;
   connectToInspectedApplication(): Promise<void>;
+  createComponentPropertyEditor(
+    node: DevToolsTreeNode,
+    propertyName: string,
+    value: boolean | number | string,
+    metadata: { componentToken: string; snapshotRevision: number },
+  ): PickerStubElement;
   evaluateConsoleExpression(expression: string): Promise<void>;
   parseTargetRegistry(payload: unknown): PickerTarget[];
   queueHighlight(nodeId: string | null): void;
@@ -178,6 +215,14 @@ interface PickerPanel {
   runPerformanceAction(action: string): Promise<void>;
   setActiveSection(section: string): void;
   startConsoleStream(): void;
+  startRefreshTimer(): void;
+  submitComponentPropertyEdit(
+    componentId: string,
+    propertyName: string,
+    componentToken: string,
+    snapshotRevision: number,
+    value: boolean | number | string,
+  ): Promise<void>;
 }
 
 interface DevToolsConsolePanel {
@@ -252,6 +297,19 @@ function componentTree(): DevToolsTreeNode {
   };
 }
 
+function editableComponentTree(
+  value: boolean | number | string,
+  componentToken = 'a'.repeat(32),
+  snapshotRevision = 1,
+): DevToolsTreeNode {
+  const tree = componentTree();
+  const nestedComponent = tree.children[0]?.children[0]?.component;
+  if (!nestedComponent) throw new Error('Expected the nested component fixture.');
+  nestedComponent.properties = { ...nestedComponent.properties, enabled: value };
+  nestedComponent.propertyEdits = { enabled: { componentToken, snapshotRevision } };
+  return tree;
+}
+
 function pickerTarget(id: string, overrides: Partial<PickerTarget> = {}): PickerTarget {
   return {
     attachable: true,
@@ -321,13 +379,28 @@ function createPickerStubElement(id: string): PickerStubElement {
     focus() {},
     getAttribute: name => attributes.get(name) ?? null,
     getBoundingClientRect: () => ({ bottom: 500, height: 500, left: 0, right: 500, top: 0, width: 500 }),
-    querySelector: () => null,
-    querySelectorAll: () => [],
+    querySelector(selector) {
+      return element.querySelectorAll(selector)[0] ?? null;
+    },
+    querySelectorAll(selector) {
+      const attributeName = /^\[data-([a-z-]+)]$/.exec(selector)?.[1];
+      if (!attributeName) return [];
+      const datasetKey = attributeName.replaceAll(/-([a-z])/g, (_match, character: string) => character.toUpperCase());
+      const matches: PickerStubElement[] = [];
+      const pending = [...element.children];
+      while (pending.length > 0) {
+        const child = pending.shift();
+        if (!child) continue;
+        if (Object.prototype.hasOwnProperty.call(child.dataset, datasetKey)) matches.push(child);
+        pending.push(...child.children);
+      }
+      return matches;
+    },
     removeAttribute(name) {
       attributes.delete(name);
     },
-    replaceChildren() {
-      element.children = [];
+    replaceChildren(...children) {
+      element.children = children;
       element.value = '';
     },
     scrollIntoView() {},
@@ -365,6 +438,7 @@ interface PickerHarness {
   queueDeferred(pathname: string): PickerDeferredResponse;
   queueResponse(pathname: string, payload: Record<string, unknown>, ok?: boolean, status?: number): void;
   runTimer(timerId: number): void;
+  setActiveElement(element: PickerStubElement | null): void;
 }
 
 interface PickerPanelReference {
@@ -486,7 +560,11 @@ function createPickerHarness(search: string): PickerHarness {
     location: { origin: 'http://127.0.0.1:18768', search },
     parent: {},
     removeEventListener() {},
-    setInterval: () => nextTimerId++,
+    setInterval(callback: () => void): number {
+      const timerId = nextTimerId++;
+      timers.set(timerId, callback);
+      return timerId;
+    },
     setTimeout(callback: () => void): number {
       const timerId = nextTimerId++;
       timers.set(timerId, callback);
@@ -495,7 +573,7 @@ function createPickerHarness(search: string): PickerHarness {
   };
 
   const panel = new Script(
-    `${treeModelSource}\n${panelSource}\n({ applyDirectTargetSelection, connectToInspectedApplication, evaluateConsoleExpression, parseTargetRegistry, queueHighlight, refreshSnapshot, refreshTargetRegistry, renderTargetPicker, runPerformanceAction, setActiveSection, startConsoleStream, state })`,
+    `${treeModelSource}\n${panelSource}\n({ applyDirectTargetSelection, connectToInspectedApplication, createComponentPropertyEditor, evaluateConsoleExpression, parseTargetRegistry, queueHighlight, refreshSnapshot, refreshTargetRegistry, renderTargetPicker, runPerformanceAction, setActiveSection, startConsoleStream, startRefreshTimer, state, submitComponentPropertyEdit })`,
   ).runInNewContext({
     Blob,
     EventSource: PickerEventSource,
@@ -553,6 +631,9 @@ function createPickerHarness(search: string): PickerHarness {
       if (!callback) throw new Error(`Unknown timer ${timerId}.`);
       timers.delete(timerId);
       callback();
+    },
+    setActiveElement(element) {
+      activeElement = element;
     },
   };
 }
@@ -613,7 +694,9 @@ describe('integrated DevTools component hierarchy', () => {
     };
     const window = {
       addEventListener() {},
-      clearInterval() {},
+      clearInterval(timerId: number) {
+        timers.delete(timerId);
+      },
       clearTimeout(timerId: number) {
         timers.delete(timerId);
       },
@@ -623,7 +706,11 @@ describe('integrated DevTools component hierarchy', () => {
           '?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3FvaldiDevTools%3D1&targetNonce=panel-target-nonce-123456',
       },
       parent: {},
-      setInterval: () => 1,
+      setInterval(callback: () => void): number {
+        const timerId = nextTimerId++;
+        timers.set(timerId, callback);
+        return timerId;
+      },
       setTimeout(callback: () => void): number {
         const timerId = nextTimerId++;
         timers.set(timerId, callback);
@@ -632,7 +719,7 @@ describe('integrated DevTools component hierarchy', () => {
     };
 
     panel = new Script(
-      `${treeModelSource}\n${panelSource}\n({ clearTargetPresentation, findNode, inspectedNodeId, inspectorContent: elements.inspector, queueHighlight, refreshSnapshot, renderInspector, renderTree, selectNode, state, treeContent: elements.tree })`,
+      `${treeModelSource}\n${panelSource}\n({ clearTargetPresentation, findNode, inspectedNodeId, inspectorContent: elements.inspector, queueHighlight, refreshSnapshot, renderInspector, renderTree, selectNode, startRefreshTimer, state, submitComponentPropertyEdit, treeContent: elements.tree })`,
     ).runInNewContext({
       URL,
       URLSearchParams,
@@ -704,6 +791,318 @@ describe('integrated DevTools component hierarchy', () => {
     panel.renderInspector();
 
     expect(panel.inspectorContent.innerHTML).not.toContain('aria-label="Valdi props"');
+  });
+
+  it('renders accessible escaped scalar editors only with both capabilities and valid metadata', () => {
+    const tree = editableComponentTree(true);
+    const nestedComponent = tree.children[0]?.children[0]?.component;
+    if (!nestedComponent) throw new Error('Expected the nested component fixture.');
+    const unsafePropertyName = 'caption" onfocus="alert(1)';
+    nestedComponent.properties = {
+      ...nestedComponent.properties,
+      [unsafePropertyName]: '<svg onload=alert(1)>',
+      coercion: 'read only',
+      invalid: 42,
+    };
+    nestedComponent.propertyEdits = {
+      ...nestedComponent.propertyEdits,
+      [unsafePropertyName]: { componentToken: 'b'.repeat(32), snapshotRevision: 1 },
+      coercion: {
+        componentToken: {
+          toString: () => {
+            throw new Error('Malformed metadata must not be coerced.');
+          },
+        } as unknown as string,
+        snapshotRevision: 1,
+      },
+      invalid: { componentToken: 'INVALID', snapshotRevision: 1 },
+    };
+    panel.state.snapshot = { tree };
+    panel.state.target = {
+      capabilities: ['components', 'component-properties', 'component-property-edit', 'snapshot'],
+      id: 'owl:web-preview',
+      sessionId: 'web-preview',
+    };
+
+    panel.selectNode('component:["7","nested"]');
+
+    expect(panel.inspectorContent.innerHTML).toContain('aria-label="Valdi props"');
+    expect(panel.inspectorContent.innerHTML).toContain('editable scalars');
+    expect(panel.inspectorContent.innerHTML).toContain('data-component-property-editor-slot');
+    expect(panel.inspectorContent.innerHTML).not.toContain('data-component-token');
+    expect(panel.inspectorContent.innerHTML).not.toContain('data-property-name');
+    expect(panel.inspectorContent.innerHTML).not.toContain('data-snapshot-revision');
+    expect(panel.inspectorContent.innerHTML).not.toContain('b'.repeat(32));
+    expect(panel.inspectorContent.innerHTML).not.toContain(unsafePropertyName);
+    expect(panel.inspectorContent.innerHTML).not.toContain('<svg onload=alert(1)>');
+    expect(panel.inspectorContent.innerHTML).not.toContain('&lt;svg onload=alert(1)&gt;');
+    expect(panel.inspectorContent.innerHTML).toContain(
+      '<div class="property-row"><span class="property-name">invalid</span>:',
+    );
+    expect(panel.inspectorContent.innerHTML).toContain(
+      '<div class="property-row"><span class="property-name">coercion</span>:',
+    );
+
+    panel.state.target.capabilities = ['components', 'component-properties', 'snapshot'];
+    panel.renderInspector();
+
+    expect(panel.inspectorContent.innerHTML).not.toContain('data-component-property-editor-slot');
+    expect(panel.inspectorContent.innerHTML).toContain('read only');
+    expect(panel.inspectorContent.innerHTML).toContain('caption&quot; onfocus=&quot;alert(1)');
+    expect(panel.inspectorContent.innerHTML).toContain('&lt;svg onload=alert(1)&gt;');
+  });
+
+  it('pauses automatic snapshot refresh while a property editor is focused or a mutation is pending', async () => {
+    panel.state.componentPropertyEdit.focused = true;
+    panel.startRefreshTimer();
+    const focusedTimerId = panel.state.refreshTimer;
+    if (focusedTimerId === null) throw new Error('Expected the focused refresh timer.');
+    const focusedTimer = timers.get(focusedTimerId);
+    if (!focusedTimer) throw new Error('Expected the focused refresh callback.');
+    focusedTimer();
+    await Promise.resolve();
+    expect(fetchRequests).toEqual([]);
+
+    panel.state.componentPropertyEdit.focused = false;
+    panel.state.componentPropertyEdit.pending = true;
+    panel.startRefreshTimer();
+    const pendingTimerId = panel.state.refreshTimer;
+    if (pendingTimerId === null) throw new Error('Expected the pending refresh timer.');
+    const pendingTimer = timers.get(pendingTimerId);
+    if (!pendingTimer) throw new Error('Expected the pending refresh callback.');
+    pendingTimer();
+    await Promise.resolve();
+    expect(fetchRequests).toEqual([]);
+
+    panel.state.componentPropertyEdit.pending = false;
+    fetchResponse = { tree: componentTree() };
+    panel.startRefreshTimer();
+    const activeTimerId = panel.state.refreshTimer;
+    if (activeTimerId === null) throw new Error('Expected the active refresh timer.');
+    const activeTimer = timers.get(activeTimerId);
+    if (!activeTimer) throw new Error('Expected the active refresh callback.');
+    activeTimer();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fetchRequests.filter(request => new URL(request.url).pathname === '/api/devtools/snapshot').length).toBe(1);
+  });
+
+  it('posts the exact captured identity and refreshes after a successful scalar edit', async () => {
+    panel.state.snapshot = { tree: editableComponentTree(true, 'a'.repeat(32), 7) };
+    panel.state.target = {
+      capabilities: ['components', 'component-properties', 'component-property-edit', 'snapshot'],
+      id: 'owl:web-preview',
+      sessionId: 'web-preview',
+    };
+    panel.selectNode('component:["7","nested"]');
+    queuedFetchResponses.push(
+      Promise.resolve({ json: () => Promise.resolve({ updated: true }), ok: true }),
+      Promise.resolve({
+        json: () => Promise.resolve({ tree: editableComponentTree(false, 'b'.repeat(32), 8) }),
+        ok: true,
+      }),
+    );
+
+    await panel.submitComponentPropertyEdit('component:["7","nested"]', 'enabled', 'a'.repeat(32), 7, false);
+
+    expect(fetchRequests.length).toBe(2);
+    const editRequest = fetchRequests[0];
+    if (!editRequest?.body) throw new Error('Expected the serialized property edit request.');
+    expect(editRequest.url).toBe('http://127.0.0.1:18768/api/devtools/component-property');
+    expect(JSON.parse(editRequest.body)).toEqual({
+      componentId: 'component:["7","nested"]',
+      componentToken: 'a'.repeat(32),
+      inspectedUrl: 'http://127.0.0.1:54321/index.html?valdiDevTools=1',
+      propertyName: 'enabled',
+      sessionId: 'web-preview',
+      snapshotRevision: 7,
+      targetNonce: 'panel-target-nonce-123456',
+      value: false,
+    });
+    expect(new URL(fetchRequests[1]?.url ?? '').pathname).toBe('/api/devtools/snapshot');
+    expect(panel.state.componentPropertyEdit.pending).toBeFalse();
+    const refreshedComponent = panel.state.snapshot?.tree.children[0]?.children[0]?.component;
+    expect(refreshedComponent?.propertyEdits?.['enabled']?.snapshotRevision).toBe(8);
+  });
+
+  it('keeps properties read only after an edit failure', async () => {
+    panel.state.snapshot = { tree: editableComponentTree(true, 'a'.repeat(32), 7) };
+    panel.state.target = {
+      capabilities: ['components', 'component-properties', 'component-property-edit', 'snapshot'],
+      id: 'owl:web-preview',
+      sessionId: 'web-preview',
+    };
+    panel.selectNode('component:["7","nested"]');
+    queuedFetchResponses.push(
+      Promise.resolve({
+        json: () => Promise.resolve({ error: 'The component property edit is stale or invalid.' }),
+        ok: false,
+      }),
+    );
+
+    await panel.submitComponentPropertyEdit('component:["7","nested"]', 'enabled', 'a'.repeat(32), 7, false);
+
+    expect(panel.state.componentPropertyEdit.error).toBe('The component property edit is stale or invalid.');
+    expect(panel.inspectorContent.innerHTML).toContain('role="alert"');
+    expect(panel.inspectorContent.innerHTML).toContain('The component property edit is stale or invalid.');
+    expect(panel.inspectorContent.innerHTML).not.toContain('data-component-property-editor-slot');
+    expect(panel.inspectorContent.innerHTML).toContain('read only');
+    expect(panel.inspectorContent.innerHTML).toContain('<span class="property-name">enabled</span>:');
+  });
+
+  it('clears pending state without refreshing when selection changes before an edit completes', async () => {
+    panel.state.snapshot = { tree: editableComponentTree(true, 'a'.repeat(32), 7) };
+    panel.state.target = {
+      capabilities: ['components', 'component-properties', 'component-property-edit', 'snapshot'],
+      id: 'owl:web-preview',
+      sessionId: 'web-preview',
+    };
+    panel.selectNode('component:["7","nested"]');
+    let resolveEdit: ((response: { ok: boolean; json(): Promise<Record<string, unknown>> }) => void) | undefined;
+    queuedFetchResponses.push(
+      new Promise(resolve => {
+        resolveEdit = resolve;
+      }),
+    );
+
+    const staleEdit = panel.submitComponentPropertyEdit(
+      'component:["7","nested"]',
+      'enabled',
+      'a'.repeat(32),
+      7,
+      false,
+    );
+    await Promise.resolve();
+    panel.selectNode('component:[null,"root"]');
+    const replacementSelectionMarkup = panel.inspectorContent.innerHTML;
+    expect(panel.state.componentPropertyEdit.pending).toBeTrue();
+
+    if (!resolveEdit) throw new Error('Expected the deferred property edit response.');
+    resolveEdit({ json: () => Promise.resolve({ updated: true }), ok: true });
+    await staleEdit;
+
+    expect(panel.state.selectedNodeId).toBe('component:[null,"root"]');
+    expect(panel.state.componentPropertyEdit.pending).toBeFalse();
+    expect(fetchRequests.length).toBe(1);
+    expect(panel.inspectorContent.innerHTML).toBe(replacementSelectionMarkup);
+  });
+
+  it('drops in-flight snapshots that resolve after an editor becomes focused or pending', async () => {
+    panel.state.snapshot = { tree: editableComponentTree(true, 'a'.repeat(32), 7) };
+    panel.state.target = {
+      capabilities: ['components', 'component-properties', 'component-property-edit', 'snapshot'],
+      id: 'owl:web-preview',
+      sessionId: 'web-preview',
+    };
+    panel.selectNode('component:["7","nested"]');
+    let resolveFocusedSnapshot:
+      | ((response: { ok: boolean; json(): Promise<Record<string, unknown>> }) => void)
+      | undefined;
+    queuedFetchResponses.push(
+      new Promise(resolve => {
+        resolveFocusedSnapshot = resolve;
+      }),
+    );
+    const focusedRefresh = panel.refreshSnapshot();
+    await Promise.resolve();
+    panel.state.componentPropertyEdit.focused = true;
+    if (!resolveFocusedSnapshot) throw new Error('Expected the focused snapshot response.');
+    resolveFocusedSnapshot({
+      json: () => Promise.resolve({ tree: editableComponentTree(false, 'b'.repeat(32), 8) }),
+      ok: true,
+    });
+    await focusedRefresh;
+
+    expect(panel.state.refreshPending).toBeFalse();
+    expect(
+      panel.state.snapshot?.tree.children[0]?.children[0]?.component?.propertyEdits?.['enabled']?.snapshotRevision,
+    ).toBe(7);
+
+    panel.state.componentPropertyEdit.focused = false;
+    let resolvePendingSnapshot:
+      | ((response: { ok: boolean; json(): Promise<Record<string, unknown>> }) => void)
+      | undefined;
+    let resolveEdit: ((response: { ok: boolean; json(): Promise<Record<string, unknown>> }) => void) | undefined;
+    queuedFetchResponses.push(
+      new Promise(resolve => {
+        resolvePendingSnapshot = resolve;
+      }),
+      new Promise(resolve => {
+        resolveEdit = resolve;
+      }),
+    );
+    const pendingRefresh = panel.refreshSnapshot();
+    await Promise.resolve();
+    const edit = panel.submitComponentPropertyEdit('component:["7","nested"]', 'enabled', 'a'.repeat(32), 7, false);
+    await Promise.resolve();
+    expect(panel.state.componentPropertyEdit.pending).toBeTrue();
+    if (!resolvePendingSnapshot) throw new Error('Expected the pending snapshot response.');
+    resolvePendingSnapshot({
+      json: () => Promise.resolve({ tree: editableComponentTree(false, 'b'.repeat(32), 8) }),
+      ok: true,
+    });
+    await pendingRefresh;
+
+    expect(panel.state.refreshPending).toBeFalse();
+    expect(
+      panel.state.snapshot?.tree.children[0]?.children[0]?.component?.propertyEdits?.['enabled']?.snapshotRevision,
+    ).toBe(7);
+    if (!resolveEdit) throw new Error('Expected the deferred property edit response.');
+    resolveEdit({ json: () => Promise.resolve({ updated: false }), ok: true });
+    await edit;
+    expect(panel.state.componentPropertyEdit.pending).toBeFalse();
+    expect(fetchRequests.length).toBe(3);
+  });
+
+  it('does not let a stale edit completion render or refresh a replacement target snapshot', async () => {
+    panel.state.snapshot = { tree: editableComponentTree(true, 'a'.repeat(32), 7) };
+    panel.state.target = {
+      capabilities: ['components', 'component-properties', 'component-property-edit', 'snapshot'],
+      id: 'owl:web-preview',
+      sessionId: 'web-preview',
+    };
+    panel.selectNode('component:["7","nested"]');
+    let resolveEdit: ((response: { ok: boolean; json(): Promise<Record<string, unknown>> }) => void) | undefined;
+    queuedFetchResponses.push(
+      new Promise(resolve => {
+        resolveEdit = resolve;
+      }),
+    );
+
+    const staleEdit = panel.submitComponentPropertyEdit(
+      'component:["7","nested"]',
+      'enabled',
+      'a'.repeat(32),
+      7,
+      false,
+    );
+    await Promise.resolve();
+    expect(panel.state.componentPropertyEdit.pending).toBeTrue();
+
+    panel.state.targetGeneration++;
+    panel.clearTargetPresentation('Loading the replacement target…');
+    const replacementTree = editableComponentTree('replacement', 'c'.repeat(32), 12);
+    panel.state.target = {
+      capabilities: ['components', 'component-properties', 'component-property-edit', 'snapshot'],
+      id: 'replacement-target',
+      sessionId: 'replacement-session',
+    };
+    panel.state.snapshot = { tree: replacementTree };
+    panel.selectNode('component:["7","nested"]');
+    const replacementMarkup = panel.inspectorContent.innerHTML;
+
+    if (!resolveEdit) throw new Error('Expected the deferred property edit response.');
+    resolveEdit({ json: () => Promise.resolve({ updated: true }), ok: true });
+    await staleEdit;
+
+    expect(fetchRequests.length).toBe(1);
+    expect(panel.state.target.id).toBe('replacement-target');
+    expect(panel.state.componentPropertyEdit.pending).toBeFalse();
+    expect(panel.inspectorContent.innerHTML).toBe(replacementMarkup);
+    const replacementComponent = panel.state.snapshot?.tree.children[0]?.children[0]?.component;
+    expect(replacementComponent?.properties?.['enabled']).toBe('replacement');
+    expect(replacementComponent?.propertyEdits?.['enabled']?.snapshotRevision).toBe(12);
+    expect(panel.inspectorContent.innerHTML).not.toContain('data-component-token');
   });
 
   it('distinguishes omitted properties from a captured empty ViewModel', () => {
@@ -914,6 +1313,222 @@ describe('integrated DevTools capability-aware target picker', () => {
     expect(html).toMatch(/id="performanceSection"[\S\s]*?role="tabpanel"[\S\s]*?hidden/);
     expect(css).toMatch(/@media \(max-width: 480px\)[\S\s]*?\.target-picker-status\s*{[^}]*clip-path: inset\(50%\)/);
     expect(css).not.toMatch(/\.target-picker-status\s*{[^}]*display:\s*none/);
+  });
+
+  it('tracks real property-editor focus events for refresh suppression', () => {
+    const harness = createPickerHarness(
+      '?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3FvaldiDevTools%3D1&targetNonce=panel-target-nonce-123456',
+    );
+    const inspector = requiredPickerElement(harness, 'inspector');
+    const editor = createPickerStubElement('property-editor');
+    editor.closest = () => editor;
+
+    inspector.dispatch('focusin', { target: editor });
+
+    expect(harness.panel.state.componentPropertyEdit.focused).toBeTrue();
+    inspector.dispatch('focusout', { target: editor });
+    harness.runTimer(1);
+    expect(harness.panel.state.componentPropertyEdit.focused).toBeFalse();
+  });
+
+  it('keeps refresh suppressed when keyboard focus moves from an input to its Apply button', () => {
+    const harness = createPickerHarness(
+      '?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3FvaldiDevTools%3D1&targetNonce=panel-target-nonce-123456',
+    );
+    const inspector = requiredPickerElement(harness, 'inspector');
+    const form = createPickerStubElement('property-form');
+    const input = createPickerStubElement('property-input');
+    const applyButton = createPickerStubElement('property-apply');
+    input.closest = selector =>
+      selector === '[data-component-property-editor]'
+        ? form
+        : selector === '[data-component-property-input]'
+          ? input
+          : null;
+    applyButton.closest = selector => (selector === '[data-component-property-editor]' ? form : null);
+
+    harness.setActiveElement(input);
+    inspector.dispatch('focusin', { target: input });
+    harness.setActiveElement(applyButton);
+    inspector.dispatch('focusout', { target: input });
+    inspector.dispatch('focusin', { target: applyButton });
+    harness.runTimer(1);
+
+    expect(harness.panel.state.componentPropertyEdit.focused).toBeTrue();
+  });
+
+  it('round-trips exact string scalars with accessible DOM controls and private authorization', async () => {
+    const harness = createPickerHarness(
+      '?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3FvaldiDevTools%3D1&targetNonce=panel-target-nonce-123456',
+    );
+    const inspector = requiredPickerElement(harness, 'inspector');
+    const propertyName = ' line\r\n\0\uD800"[] ';
+    const value = 'first\r\nsecond\0\uD800"\\last';
+    const componentToken = 'd'.repeat(32);
+    const tree = componentTree();
+    const node = tree.children[0]?.children[0];
+    if (!node?.component) throw new Error('Expected the nested component fixture.');
+    node.component.properties = { [propertyName]: value };
+    node.component.propertyEdits = {
+      [propertyName]: { componentToken, snapshotRevision: 11 },
+    };
+    harness.panel.state.target = pickerTarget('owl:web-preview', {
+      capabilities: ['components', 'component-properties', 'component-property-edit', 'snapshot'],
+      identityMode: 'inspected-page',
+      platform: 'web',
+      sessionId: 'web-preview',
+      state: 'attached',
+      transport: 'web-preview',
+    });
+    harness.panel.state.snapshot = { tree };
+    harness.panel.state.snapshotGeneration = 11;
+    harness.panel.state.selectedNodeId = node.id;
+
+    const form = harness.panel.createComponentPropertyEditor(node, propertyName, value, {
+      componentToken,
+      snapshotRevision: 11,
+    });
+    form.closest = selector => (selector === '[data-component-property-editor]' ? form : null);
+    const editor = form.querySelector('[data-component-property-input]');
+    if (!editor) throw new Error('Expected the hydrated string property editor.');
+    const label = form.children[0];
+    const applyButton = form.children[1];
+    expect(form.innerHTML).toBe('');
+    expect(form.dataset).toEqual({ componentPropertyEditor: '' });
+    expect(editor.dataset).toEqual({ componentPropertyInput: '' });
+    expect(editor.value).toBe(JSON.stringify(value));
+    expect(editor.getAttribute('aria-label')).toBe(`Edit Valdi prop ${propertyName} as a JSON string literal`);
+    expect(label?.children[0]?.textContent).toBe(propertyName);
+    expect(applyButton?.getAttribute('aria-label')).toBe(`Apply Valdi prop ${propertyName}`);
+    expect(JSON.stringify(form)).not.toContain(componentToken);
+    expect(form.dataset['componentToken']).toBeUndefined();
+    expect(form.dataset['propertyName']).toBeUndefined();
+    expect(form.dataset['snapshotRevision']).toBeUndefined();
+
+    harness.queueResponse('/api/devtools/component-property', { updated: false });
+    inspector.dispatch('submit', { target: form });
+    await flushPickerPromises();
+
+    const request = harness.fetchRequests.find(
+      entry => new URL(entry.url).pathname === '/api/devtools/component-property',
+    );
+    if (!request?.body) throw new Error('Expected the exact string edit request.');
+    expect(JSON.parse(request.body)).toEqual({
+      componentId: node.id,
+      componentToken,
+      inspectedUrl: 'http://127.0.0.1:54321/index.html?valdiDevTools=1',
+      propertyName,
+      sessionId: 'web-preview',
+      snapshotRevision: 11,
+      targetNonce: 'panel-target-nonce-123456',
+      value,
+    });
+  });
+
+  it('serializes an invalidated poll and the edit-owned replacement without rotating the displayed token away', async () => {
+    const harness = createPickerHarness(
+      '?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3FvaldiDevTools%3D1&targetNonce=panel-target-nonce-123456',
+    );
+    harness.panel.state.target = pickerTarget('owl:web-preview', {
+      capabilities: ['components', 'component-properties', 'component-property-edit', 'snapshot'],
+      identityMode: 'inspected-page',
+      platform: 'web',
+      sessionId: 'web-preview',
+      state: 'attached',
+      transport: 'web-preview',
+    });
+    harness.panel.state.snapshot = { tree: editableComponentTree(true, 'a'.repeat(32), 7) };
+    harness.panel.state.snapshotGeneration = 7;
+    harness.panel.state.selectedNodeId = 'component:["7","nested"]';
+
+    const invalidatedPoll = harness.queueDeferred('/api/devtools/snapshot');
+    const invalidatedPollRequest = harness.panel.refreshSnapshot();
+    await flushPickerPromises();
+    expect(harness.panel.state.refreshPending).toBeTrue();
+    expect(harness.fetchRequests.filter(request => request.url.includes('/api/devtools/snapshot')).length).toBe(1);
+
+    const editResponse = harness.queueDeferred('/api/devtools/component-property');
+    const ownedReplacement = harness.queueDeferred('/api/devtools/snapshot');
+    harness.panel.state.componentPropertyEdit.focused = true;
+    const edit = harness.panel.submitComponentPropertyEdit(
+      'component:["7","nested"]',
+      'enabled',
+      'a'.repeat(32),
+      7,
+      false,
+    );
+    await flushPickerPromises();
+    const editRequest = harness.fetchRequests.find(request => request.url.includes('/api/devtools/component-property'));
+    if (!editRequest?.body) throw new Error('Expected the serialized component property edit.');
+    const editBody = JSON.parse(editRequest.body) as { componentToken?: unknown };
+    expect(editBody.componentToken).toBe('a'.repeat(32));
+    expect(harness.panel.state.refreshPending).toBeTrue();
+
+    editResponse.resolve({ updated: true });
+    await flushPickerPromises();
+    expect(harness.fetchRequests.filter(request => request.url.includes('/api/devtools/snapshot')).length).toBe(1);
+    expect(harness.panel.state.componentPropertyEdit.pending).toBeTrue();
+
+    invalidatedPoll.resolve({ tree: editableComponentTree(false, 'b'.repeat(32), 8) });
+    await invalidatedPollRequest;
+    await flushPickerPromises();
+    expect(
+      harness.panel.state.snapshot?.tree.children[0]?.children[0]?.component?.propertyEdits?.['enabled']
+        ?.snapshotRevision,
+    ).toBe(7);
+    expect(harness.fetchRequests.filter(request => request.url.includes('/api/devtools/snapshot')).length).toBe(2);
+    expect(harness.panel.state.refreshPending).toBeTrue();
+
+    harness.panel.state.componentPropertyEdit.focused = true;
+    void harness.panel.refreshSnapshot();
+    await flushPickerPromises();
+    expect(harness.fetchRequests.filter(request => request.url.includes('/api/devtools/snapshot')).length).toBe(2);
+
+    ownedReplacement.resolve({ tree: editableComponentTree(false, 'c'.repeat(32), 9) });
+    await edit;
+    expect(harness.panel.state.componentPropertyEdit.pending).toBeFalse();
+    expect(harness.panel.state.componentPropertyEdit.focused).toBeFalse();
+    expect(harness.panel.state.refreshPending).toBeFalse();
+    expect(harness.panel.state.snapshot?.tree.children[0]?.children[0]?.component?.propertyEdits?.['enabled']).toEqual({
+      componentToken: 'c'.repeat(32),
+      snapshotRevision: 9,
+    });
+    expect(harness.fetchRequests.filter(request => request.url.includes('/api/devtools/snapshot')).length).toBe(2);
+
+    const ordinaryPoll = harness.queueDeferred('/api/devtools/snapshot');
+    const ordinaryPollRequest = harness.panel.refreshSnapshot();
+    await flushPickerPromises();
+    expect(harness.fetchRequests.filter(request => request.url.includes('/api/devtools/snapshot')).length).toBe(3);
+    ordinaryPoll.resolve({ tree: editableComponentTree(false, 'd'.repeat(32), 10) });
+    await ordinaryPollRequest;
+    expect(harness.panel.state.snapshot?.tree.children[0]?.children[0]?.component?.propertyEdits?.['enabled']).toEqual({
+      componentToken: 'd'.repeat(32),
+      snapshotRevision: 10,
+    });
+  });
+
+  it('rejects an empty numeric editor value through the form submit path', () => {
+    const harness = createPickerHarness(
+      '?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3FvaldiDevTools%3D1&targetNonce=panel-target-nonce-123456',
+    );
+    const inspector = requiredPickerElement(harness, 'inspector');
+    const node = componentTree().children[0]?.children[0];
+    if (!node?.component) throw new Error('Expected the nested component fixture.');
+    const form = harness.panel.createComponentPropertyEditor(node, 'count', 1, {
+      componentToken: 'a'.repeat(32),
+      snapshotRevision: 1,
+    });
+    form.closest = selector => (selector === '[data-component-property-editor]' ? form : null);
+    const editor = form.querySelector('[data-component-property-input]');
+    if (!editor) throw new Error('Expected the numeric property editor.');
+    editor.value = '   ';
+
+    inspector.dispatch('submit', { target: form });
+
+    expect(harness.panel.state.componentPropertyEdit.error).toBe(
+      'Enter a valid scalar value before applying this property.',
+    );
+    expect(harness.fetchRequests).toEqual([]);
   });
 
   it('rejects mixed, partial, empty, and duplicated launch identities without making a request', async () => {

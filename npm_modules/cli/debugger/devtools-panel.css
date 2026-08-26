@@ -476,6 +476,54 @@ button {
   border-bottom: 1px solid var(--border);
 }
 
+.component-property-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  margin: 2px 0;
+}
+
+.component-property-label {
+  display: flex;
+  min-width: 0;
+  gap: 4px;
+  align-items: center;
+}
+
+.component-property-input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.component-property-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.component-property-string-input {
+  resize: vertical;
+  white-space: pre;
+}
+
+.component-property-apply {
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--surface-hover);
+  color: var(--text);
+  font: inherit;
+}
+
+.component-property-error {
+  margin-bottom: 6px;
+  color: var(--error);
+  overflow-wrap: anywhere;
+}
+
 .rule-origin {
   float: right;
   color: var(--muted);
