@@ -157,34 +157,40 @@ function renderDaemonStatus() {
 function nodeMatchesSearch(node, search) {
   if (!search) return true;
   const id = getNodeId(node);
-  const attributes = JSON.stringify(getNodeAttributes(node)).toLowerCase();
-  const viewModel = JSON.stringify(node.viewModel || {}).toLowerCase();
-  const component = JSON.stringify(node.component || {}).toLowerCase();
-  const componentState = JSON.stringify(node.state || {}).toLowerCase();
+  const attributes = valdiDebuggerTreeModel.stringifyValue(getNodeAttributes(node), 0).toLowerCase();
+  const viewModel = valdiDebuggerTreeModel.stringifyValue(node.viewModel || {}, 0).toLowerCase();
+  const component = valdiDebuggerTreeModel.stringifyValue(node.component || {}, 0).toLowerCase();
+  const componentState = valdiDebuggerTreeModel.stringifyValue(node.state || {}, 0).toLowerCase();
   const haystack = `${node.tag} ${id} #${id} ${attributes} ${viewModel} ${component} ${componentState}`.toLowerCase();
   return haystack.includes(search);
 }
 
 function collectSearchVisibleNodeIds(root, search) {
   const visibleNodeIds = new Set();
-
-  function visit(node, ancestorMatched = false) {
-    const id = getNodeId(node);
-    const selfMatched = nodeMatchesSearch(node, search);
-    let descendantMatched = false;
-    for (const child of node.children || []) {
-      if (visit(child, ancestorMatched || selfMatched)) {
-        descendantMatched = true;
+  const matchedLineage = new Set();
+  const records = [];
+  valdiDebuggerTreeModel.walk(
+    root,
+    (node, ancestors) => {
+      const parent = ancestors.at(-1);
+      const ancestorMatched = parent ? matchedLineage.has(parent) : false;
+      const selfMatched = nodeMatchesSearch(node, search);
+      records.push({ node, parent, selfMatched });
+      if (ancestorMatched || selfMatched || getNodeId(node) === state.selectedNodeId) {
+        visibleNodeIds.add(getNodeId(node));
       }
-    }
-
-    if (ancestorMatched || selfMatched || descendantMatched || id === state.selectedNodeId) {
-      visibleNodeIds.add(id);
-    }
-    return selfMatched || descendantMatched;
+      if (ancestorMatched || selfMatched) matchedLineage.add(node);
+    },
+    [],
+    0,
+  );
+  const matchedSubtrees = new Set();
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const record = records[index];
+    if (!record.selfMatched && !matchedSubtrees.has(record.node)) continue;
+    visibleNodeIds.add(getNodeId(record.node));
+    if (record.parent) matchedSubtrees.add(record.parent);
   }
-
-  visit(root);
   return visibleNodeIds;
 }
 
@@ -212,7 +218,7 @@ function renderTree() {
     const selected = isSelected ? ' selected' : '';
     const hidden = searchVisibleNodeIds && !searchVisibleNodeIds.has(id) ? ' filtered-out' : '';
     const kind = getNodeKind(node);
-    const hasChildren = (node.children || []).length > 0;
+    const hasChildren = valdiDebuggerTreeModel.hasChildren(node);
     const expanded = search || exactSearchRoot ? hasChildren : state.expandedNodeIds.has(id);
     const toggleClass = hasChildren ? '' : ' empty';
     const toggleLabel = hasChildren ? (expanded ? '-' : '+') : '';
@@ -331,12 +337,7 @@ function getNodeStatePayload(node) {
 }
 
 function payloadToDisplayString(payload) {
-  if (typeof payload === 'string') return payload;
-  try {
-    return JSON.stringify(payload, null, 2);
-  } catch {
-    return String(payload);
-  }
+  return valdiDebuggerTreeModel.formatValue(payload, 2);
 }
 
 function renderPayload(payload) {
@@ -354,9 +355,28 @@ function renderDataSection(title, body) {
 
 function renderAttributesTable(attributes) {
   const rows = Object.entries(attributes)
-    .map(([key, value]) => `<div>${escapeHtml(key)}</div><div>${escapeHtml(value)}</div>`)
+    .map(
+      ([key, value]) =>
+        `<div>${escapeHtml(key)}</div><div>${escapeHtml(valdiDebuggerTreeModel.formatValue(value, 0))}</div>`,
+    )
     .join('');
   return rows ? `<div class="kv">${rows}</div>` : '';
+}
+
+function serializeRawInspectorNode(node, geometry, target) {
+  const projectedGeometry = valdiDebuggerTreeModel.projectValue(geometry);
+  const projectedNode = valdiDebuggerTreeModel.projectTree(node);
+  const projectedTarget = valdiDebuggerTreeModel.projectValue(target);
+  return JSON.stringify(
+    {
+      geometry: projectedGeometry.value,
+      node: projectedNode,
+      projectionComplete: projectedGeometry.complete && projectedNode.complete && projectedTarget.complete,
+      target: projectedTarget.value,
+    },
+    null,
+    2,
+  );
 }
 
 async function captureRootSnapshot(params, options = {}) {
@@ -414,7 +434,7 @@ function renderInspector() {
               <div>Kind</div><div>${escapeHtml(kind)}</div>
               <div>Node id</div><div>${escapeHtml(id)}</div>
               <div>Key</div><div>${escapeHtml(node.key || 'n/a')}</div>
-              <div>Children</div><div>${(node.children || []).length}</div>
+              <div>Children</div><div>${valdiDebuggerTreeModel.children(node).length}</div>
               <div>Local bounds</div><div>${renderBounds(geometry?.local || node.bounds)}</div>
               <div>Absolute bounds</div><div>${renderBounds(geometry?.absolute)}</div>
               ${hasScrollState(node) ? `<div>Host scroll offset</div><div>x ${scrollOffset.x}, y ${scrollOffset.y}</div>` : ''}
@@ -463,12 +483,8 @@ function renderInspector() {
   }
 
   if (tab === 'raw') {
-    const payload = {
-      node,
-      geometry,
-      target: state.snapshot.target,
-    };
-    elements.inspector.innerHTML = `<pre class="codebox">${escapeHtml(JSON.stringify(payload, null, 2))}</pre>`;
+    const payload = serializeRawInspectorNode(node, geometry, state.snapshot.target);
+    elements.inspector.innerHTML = `<pre class="codebox">${escapeHtml(payload)}</pre>`;
     return;
   }
 

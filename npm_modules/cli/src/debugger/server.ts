@@ -5,6 +5,7 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import http from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
+import { TextDecoder } from 'node:util';
 import {
   type DaemonConnectedClient,
   type DaemonConnection,
@@ -15,13 +16,26 @@ import {
 } from '../utils/daemonClient';
 import { getUserConfig, resolveFilePath } from '../utils/fileUtils';
 import { type CpuProfile, HERMES_PORT, HermesConnection, listHermesDevices } from '../utils/hermesClient';
+import { isLoopbackHost, normalizedHostname } from '../utils/loopbackHost';
+import {
+  evaluateOwlApplicationExpression,
+  matchesOwlApplicationUrl,
+  readOwlDebuggerSnapshot,
+} from '../utils/owlCdpClient';
 import { DebuggerInputType, sendDebuggerInput, validateDebuggerInputRequest } from './inputClient';
 
 const DEFAULT_HOST = process.env['VALDI_DEBUGGER_HOST'] || '127.0.0.1';
 const DEFAULT_PORT = Number.parseInt(process.env['VALDI_DEBUGGER_PORT'] || '8765', 10);
+const DEFAULT_CHROMIUM_DEBUGGING_PORT = Number.parseInt(process.env['VALDI_CHROMIUM_DEBUGGING_PORT'] || '9222', 10);
 const HOT_RELOAD_PROXY_PORT = Number.parseInt(process.env['VALDI_HOT_RELOAD_PROXY_PORT'] || '9010', 10);
 const PORT_SEARCH_LIMIT = 50;
 const MAX_RUNTIME_LOG_READ_BYTES = 1024 * 1024;
+const FATAL_JSON_UTF8_DECODER = new TextDecoder('utf8', { fatal: true });
+const WEB_PREVIEW_NONCE_PATTERN = /^[\w-]{16,128}$/;
+const MAX_DEBUGGER_TREE_NODES = 25_000;
+const MAX_DEBUGGER_PROJECTION_VALUES = 250_000;
+const MAX_DEBUGGER_PROJECTION_DEPTH = 64;
+const MAX_DEBUGGER_PROJECTION_STRING_LENGTH = 50_000;
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -96,6 +110,15 @@ interface DebuggerServerOptions {
   strictPort?: boolean;
   assetRoot?: string;
   logsDirectory?: string;
+  webPreviewUrl?: string;
+  chromiumDebuggingPort?: number;
+}
+
+interface WebPreviewDebuggerTarget {
+  applicationUrl: string;
+  debuggingPort: number;
+  id: string;
+  sessionId: string;
 }
 
 class ApiRequestError extends Error {
@@ -147,6 +170,7 @@ let devReloadTimer: NodeJS.Timeout | null = null;
 let activeHost = DEFAULT_HOST;
 let assetRoot = getDefaultAssetRoot();
 let activeLogsDirectory: string | null = null;
+let activeWebPreviewTarget: WebPreviewDebuggerTarget | null = null;
 let activeProfileSession: ActiveProfileSession | null = null;
 let profileTransitionInProgress = false;
 const debuggerUiState = createDebuggerUiState();
@@ -155,19 +179,6 @@ function getDefaultAssetRoot(): string {
   // The published CLI is emitted as CommonJS, so __dirname is the reliable package-relative anchor.
   // eslint-disable-next-line unicorn/prefer-module
   return path.resolve(__dirname, '..', '..', 'debugger');
-}
-
-function normalizedHostname(hostname: string): string {
-  return hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
-}
-
-function isLoopbackHost(host: string): boolean {
-  const normalizedHost = normalizedHostname(host);
-  return (
-    normalizedHost === 'localhost' ||
-    normalizedHost === '::1' ||
-    (net.isIP(normalizedHost) === 4 && normalizedHost.startsWith('127.'))
-  );
 }
 
 function hostForUrl(host: string): string {
@@ -294,6 +305,510 @@ function isValidSnapshotBase64(value: string): boolean {
   return true;
 }
 
+interface DebuggerProjectionState {
+  complete: boolean;
+  seen: Map<object, string>;
+  valueCount: number;
+}
+
+interface DebuggerTreeProjectionNode {
+  childIndexes: number[];
+  data: Record<string, unknown>;
+  depth: number;
+  index: number;
+  parentIndex: number | null;
+  sourceChildIndex: number | null;
+}
+
+interface DebuggerTreeProjection {
+  complete: boolean;
+  format: 'valdi-debugger-tree-v1';
+  nodeCount: number;
+  nodes: DebuggerTreeProjectionNode[];
+  rootIndex: number;
+  truncations: Array<Record<string, string>>;
+}
+
+type DebuggerProjectionContainer = Record<string, unknown> | unknown[];
+
+interface DebuggerProjectionEntry {
+  accessor: boolean;
+  childPath: string;
+  key: string;
+  value: unknown;
+}
+
+interface DebuggerProjectionFrame {
+  depth: number;
+  entries: DebuggerProjectionEntry[];
+  index: number;
+  path: string;
+  sparse: boolean;
+  target: DebuggerProjectionContainer;
+}
+
+function createDebuggerJsonRecord<Value>(): Record<string, Value> {
+  return Object.create(null) as Record<string, Value>;
+}
+
+function setDebuggerJsonProperty<Value>(target: Record<string, Value>, key: string, value: Value): void {
+  Object.defineProperty(target, key, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
+}
+
+function debuggerProjectionTruncation(reason: string, path: string): Record<string, string> {
+  const marker = createDebuggerJsonRecord<string>();
+  setDebuggerJsonProperty(marker, '$at', path);
+  setDebuggerJsonProperty(marker, '$truncated', reason);
+  return marker;
+}
+
+function markDebuggerProjectionTruncated(target: DebuggerProjectionContainer, reason: string, path: string): void {
+  const marker = debuggerProjectionTruncation(reason, path);
+  if (Array.isArray(target)) {
+    target.push(marker);
+  } else if (target['$type'] === 'array' && Array.isArray(target['$entries'])) {
+    target['$entries'].push(marker);
+  } else {
+    setDebuggerJsonProperty(target, '$at', marker['$at']);
+    setDebuggerJsonProperty(target, '$truncated', marker['$truncated']);
+  }
+}
+
+function isDebuggerArrayIndex(key: string): boolean {
+  const index = Number(key);
+  return Number.isInteger(index) && index >= 0 && index < 4_294_967_295 && String(index) === key;
+}
+
+function debuggerPrimitiveProjection(value: unknown, state: DebuggerProjectionState): unknown {
+  if (typeof value === 'string') {
+    if (value.length <= MAX_DEBUGGER_PROJECTION_STRING_LENGTH) return value;
+    state.complete = false;
+    const suffix = '…[truncated]';
+    return `${value.slice(0, MAX_DEBUGGER_PROJECTION_STRING_LENGTH - suffix.length)}${suffix}`;
+  }
+  if (value === null || typeof value === 'boolean') return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : String(value);
+  if (typeof value === 'bigint') return `${value}n`;
+  if (value === undefined) return '[undefined]';
+  if (typeof value === 'function') return `[Function ${value.name || 'anonymous'}]`;
+  if (typeof value === 'symbol') return String(value);
+  return undefined;
+}
+
+function debuggerOwnEntries(
+  source: object,
+  path: string,
+  state: DebuggerProjectionState,
+): {
+  descriptors?: PropertyDescriptorMap;
+  entries: DebuggerProjectionEntry[];
+  inspectionError: Record<string, string> | null;
+} {
+  let descriptors: PropertyDescriptorMap;
+  try {
+    descriptors = Object.getOwnPropertyDescriptors(source);
+  } catch {
+    state.complete = false;
+    return { entries: [], inspectionError: debuggerProjectionTruncation('unavailable-properties', path) };
+  }
+
+  const entries: DebuggerProjectionEntry[] = [];
+  for (const key of Object.keys(descriptors)) {
+    const descriptor = descriptors[key];
+    if (!descriptor?.enumerable) continue;
+    if (entries.length >= MAX_DEBUGGER_PROJECTION_VALUES) {
+      state.complete = false;
+      break;
+    }
+    const childPath = isDebuggerArrayIndex(key) ? `${path}[${key}]` : `${path}.${key}`;
+    if (!Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+      state.complete = false;
+      entries.push({
+        accessor: true,
+        childPath,
+        key,
+        value: debuggerProjectionTruncation('accessor', childPath),
+      });
+      continue;
+    }
+    entries.push({ accessor: false, childPath, key, value: descriptor.value });
+  }
+  return { descriptors, entries, inspectionError: null };
+}
+
+function debuggerProjectionFrame(
+  source: object,
+  targetPath: string,
+  state: DebuggerProjectionState,
+): Omit<DebuggerProjectionFrame, 'depth' | 'index' | 'path'> {
+  const inspection = debuggerOwnEntries(source, targetPath, state);
+  if (inspection.inspectionError) {
+    return { entries: [], sparse: false, target: inspection.inspectionError };
+  }
+  if (!Array.isArray(source)) {
+    return { entries: inspection.entries, sparse: false, target: createDebuggerJsonRecord<unknown>() };
+  }
+
+  const lengthDescriptor = inspection.descriptors?.['length'];
+  const length =
+    lengthDescriptor && Object.prototype.hasOwnProperty.call(lengthDescriptor, 'value')
+      ? Number(lengthDescriptor.value)
+      : 0;
+  let expectedIndex = 0;
+  let dense = Number.isSafeInteger(length) && length >= 0;
+  for (const key of Object.keys(inspection.descriptors ?? {})) {
+    const descriptor = inspection.descriptors?.[key];
+    if (!descriptor?.enumerable) continue;
+    if (
+      !Object.prototype.hasOwnProperty.call(descriptor, 'value') ||
+      !isDebuggerArrayIndex(key) ||
+      Number(key) !== expectedIndex
+    ) {
+      dense = false;
+      break;
+    }
+    expectedIndex += 1;
+  }
+  if (expectedIndex !== length) dense = false;
+  if (dense) return { entries: inspection.entries, sparse: false, target: [] };
+
+  state.complete = false;
+  const target = createDebuggerJsonRecord<unknown>();
+  setDebuggerJsonProperty(target, '$at', targetPath);
+  setDebuggerJsonProperty(target, '$entries', []);
+  setDebuggerJsonProperty(target, '$length', Number.isSafeInteger(length) && length >= 0 ? length : '[unavailable]');
+  setDebuggerJsonProperty(target, '$truncated', 'sparse-array');
+  setDebuggerJsonProperty(target, '$type', 'array');
+  return {
+    entries: inspection.entries,
+    sparse: true,
+    target,
+  };
+}
+
+function setDebuggerProjectionEntry(
+  frame: DebuggerProjectionFrame,
+  entry: DebuggerProjectionEntry,
+  value: unknown,
+): void {
+  if (frame.sparse && !Array.isArray(frame.target)) {
+    const entries = frame.target['$entries'];
+    if (Array.isArray(entries)) {
+      const projectedEntry = createDebuggerJsonRecord<unknown>();
+      setDebuggerJsonProperty(
+        projectedEntry,
+        isDebuggerArrayIndex(entry.key) ? '$index' : '$key',
+        isDebuggerArrayIndex(entry.key) ? Number(entry.key) : entry.key,
+      );
+      setDebuggerJsonProperty(projectedEntry, 'value', value);
+      entries.push(projectedEntry);
+    }
+  } else if (Array.isArray(frame.target)) {
+    const index = Number(entry.key);
+    if (Number.isInteger(index) && index >= 0) frame.target[index] = value;
+  } else {
+    setDebuggerJsonProperty(frame.target, entry.key, value);
+  }
+}
+
+function projectDebuggerValue(value: unknown, state: DebuggerProjectionState, path: string): unknown {
+  if (value === null || typeof value !== 'object') {
+    if (state.valueCount >= MAX_DEBUGGER_PROJECTION_VALUES) {
+      state.complete = false;
+      return debuggerProjectionTruncation('value-limit', path);
+    }
+    state.valueCount += 1;
+    return debuggerPrimitiveProjection(value, state);
+  }
+  const knownPath = state.seen.get(value);
+  if (knownPath !== undefined) {
+    if (state.valueCount >= MAX_DEBUGGER_PROJECTION_VALUES) {
+      state.complete = false;
+      return debuggerProjectionTruncation('value-limit', path);
+    }
+    state.valueCount += 1;
+    const reference = createDebuggerJsonRecord<unknown>();
+    setDebuggerJsonProperty(reference, '$ref', knownPath);
+    return reference;
+  }
+  if (state.valueCount >= MAX_DEBUGGER_PROJECTION_VALUES) {
+    state.complete = false;
+    return debuggerProjectionTruncation('value-limit', path);
+  }
+
+  const rootFrame = debuggerProjectionFrame(value, path, state);
+  const root = rootFrame.target;
+  state.seen.set(value, path);
+  state.valueCount += 1;
+  const stack: DebuggerProjectionFrame[] = [{ ...rootFrame, depth: 0, index: 0, path }];
+  while (stack.length > 0) {
+    const frame = stack.at(-1);
+    if (!frame) break;
+    if (frame.index >= frame.entries.length) {
+      stack.pop();
+      continue;
+    }
+    if (state.valueCount >= MAX_DEBUGGER_PROJECTION_VALUES) {
+      state.complete = false;
+      markDebuggerProjectionTruncated(frame.target, 'value-limit', frame.path);
+      stack.pop();
+      continue;
+    }
+
+    const entry = frame.entries[frame.index];
+    if (!entry) {
+      stack.pop();
+      continue;
+    }
+    frame.index += 1;
+    const childValue = entry.value;
+    if (entry.accessor || childValue === null || typeof childValue !== 'object') {
+      setDebuggerProjectionEntry(
+        frame,
+        entry,
+        entry.accessor ? childValue : debuggerPrimitiveProjection(childValue, state),
+      );
+      state.valueCount += 1;
+      continue;
+    }
+    const childKnownPath = state.seen.get(childValue);
+    if (childKnownPath !== undefined) {
+      const reference = createDebuggerJsonRecord<unknown>();
+      setDebuggerJsonProperty(reference, '$ref', childKnownPath);
+      setDebuggerProjectionEntry(frame, entry, reference);
+      state.valueCount += 1;
+      continue;
+    }
+    if (frame.depth + 1 >= MAX_DEBUGGER_PROJECTION_DEPTH) {
+      state.complete = false;
+      setDebuggerProjectionEntry(frame, entry, debuggerProjectionTruncation('depth-limit', entry.childPath));
+      state.valueCount += 1;
+      continue;
+    }
+
+    const childFrame = debuggerProjectionFrame(childValue, entry.childPath, state);
+    setDebuggerProjectionEntry(frame, entry, childFrame.target);
+    state.seen.set(childValue, entry.childPath);
+    state.valueCount += 1;
+    stack.push({ ...childFrame, depth: frame.depth + 1, index: 0, path: entry.childPath });
+  }
+  return root;
+}
+
+function debuggerTreeRecord(value: unknown): {
+  record: Record<string, unknown> | null;
+  unavailable: boolean;
+} {
+  if (typeof value !== 'object' || value === null) return { record: null, unavailable: false };
+  try {
+    return Array.isArray(value)
+      ? { record: null, unavailable: false }
+      : { record: value as Record<string, unknown>, unavailable: false };
+  } catch {
+    return { record: null, unavailable: true };
+  }
+}
+
+function debuggerTreeChildren(
+  node: Record<string, unknown>,
+  path: string,
+): {
+  complete: boolean;
+  entries: Array<{ index: number; node: Record<string, unknown> }>;
+  truncations: Array<Record<string, string>>;
+} {
+  let childrenDescriptor: PropertyDescriptor | undefined;
+  try {
+    childrenDescriptor = Object.getOwnPropertyDescriptor(node, 'children');
+  } catch {
+    return {
+      complete: false,
+      entries: [],
+      truncations: [debuggerProjectionTruncation('unavailable-children', path)],
+    };
+  }
+  if (!childrenDescriptor) return { complete: true, entries: [], truncations: [] };
+  if (!Object.prototype.hasOwnProperty.call(childrenDescriptor, 'value')) {
+    return {
+      complete: false,
+      entries: [],
+      truncations: [debuggerProjectionTruncation('accessor', path)],
+    };
+  }
+  const children = childrenDescriptor.value as unknown;
+  try {
+    if (!Array.isArray(children)) return { complete: true, entries: [], truncations: [] };
+  } catch {
+    return {
+      complete: false,
+      entries: [],
+      truncations: [debuggerProjectionTruncation('unavailable-children', path)],
+    };
+  }
+
+  let descriptors: PropertyDescriptorMap;
+  try {
+    descriptors = Object.getOwnPropertyDescriptors(children) as unknown as PropertyDescriptorMap;
+  } catch {
+    return {
+      complete: false,
+      entries: [],
+      truncations: [debuggerProjectionTruncation('unavailable-children', path)],
+    };
+  }
+  const lengthDescriptor = descriptors['length'];
+  const length =
+    lengthDescriptor && Object.prototype.hasOwnProperty.call(lengthDescriptor, 'value')
+      ? Number(lengthDescriptor.value)
+      : 0;
+  const entries: Array<{ index: number; node: Record<string, unknown> }> = [];
+  const truncations: Array<Record<string, string>> = [];
+  let complete = true;
+  let numericProperties = 0;
+  for (const key of Object.keys(descriptors)) {
+    if (!isDebuggerArrayIndex(key)) continue;
+    numericProperties += 1;
+    const descriptor = descriptors[key];
+    if (!descriptor?.enumerable || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+      complete = false;
+      truncations.push(debuggerProjectionTruncation('unavailable-child', `${path}[${key}]`));
+      continue;
+    }
+    if (entries.length >= MAX_DEBUGGER_TREE_NODES) {
+      complete = false;
+      truncations.push(debuggerProjectionTruncation('tree-node-limit', path));
+      break;
+    }
+    const child = debuggerTreeRecord(descriptor.value);
+    if (child.record) {
+      entries.push({ index: Number(key), node: child.record });
+    } else if (child.unavailable) {
+      complete = false;
+      truncations.push(debuggerProjectionTruncation('unavailable-child', `${path}[${key}]`));
+    }
+  }
+  if (!Number.isSafeInteger(length) || length < 0 || numericProperties !== length) {
+    complete = false;
+    truncations.push(debuggerProjectionTruncation('sparse-children', path));
+  }
+  return { complete, entries, truncations };
+}
+
+export function projectDebuggerTreeForJson(rootValue: unknown): DebuggerTreeProjection {
+  const root = debuggerTreeRecord(rootValue).record;
+  if (!root) throw new Error('The debugger snapshot tree must be a non-null object.');
+  const nodes: DebuggerTreeProjectionNode[] = [];
+  const truncations: Array<Record<string, string>> = [];
+  const visited = new Set<object>();
+  const projectionState: DebuggerProjectionState = { complete: true, seen: new Map(), valueCount: 0 };
+  const stack: Array<{
+    childEntries: Array<{ index: number; node: Record<string, unknown> }> | null;
+    childIndex: number;
+    depth: number;
+    entered: boolean;
+    index: number | null;
+    node: Record<string, unknown>;
+    parentIndex: number | null;
+    sourceChildIndex: number | null;
+  }> = [
+    {
+      childEntries: null,
+      childIndex: 0,
+      depth: 0,
+      entered: false,
+      index: null,
+      node: root,
+      parentIndex: null,
+      sourceChildIndex: null,
+    },
+  ];
+  while (stack.length > 0) {
+    const frame = stack.at(-1);
+    if (!frame) break;
+    if (!frame.entered) {
+      if (visited.has(frame.node)) {
+        stack.pop();
+        continue;
+      }
+      if (nodes.length >= MAX_DEBUGGER_TREE_NODES) {
+        projectionState.complete = false;
+        truncations.push(debuggerProjectionTruncation('tree-node-limit', '$.nodes'));
+        break;
+      }
+      visited.add(frame.node);
+      frame.entered = true;
+      frame.index = nodes.length;
+      const data = createDebuggerJsonRecord<unknown>();
+      projectionState.seen.set(frame.node, `$.nodes[${frame.index}].data`);
+      const inspection = debuggerOwnEntries(frame.node, `$.nodes[${frame.index}].data`, projectionState);
+      if (inspection.inspectionError) {
+        markDebuggerProjectionTruncated(data, 'unavailable-properties', `$.nodes[${frame.index}].data`);
+      }
+      for (const entry of inspection.entries) {
+        if (entry.key === 'children') continue;
+        if (projectionState.valueCount >= MAX_DEBUGGER_PROJECTION_VALUES) {
+          projectionState.complete = false;
+          markDebuggerProjectionTruncated(data, 'value-limit', `$.nodes[${frame.index}].data`);
+          break;
+        }
+        setDebuggerJsonProperty(
+          data,
+          entry.key,
+          entry.accessor ? entry.value : projectDebuggerValue(entry.value, projectionState, entry.childPath),
+        );
+      }
+      nodes.push({
+        childIndexes: [],
+        data,
+        depth: frame.depth,
+        index: frame.index,
+        parentIndex: frame.parentIndex,
+        sourceChildIndex: frame.sourceChildIndex,
+      });
+      if (frame.parentIndex !== null) nodes[frame.parentIndex]?.childIndexes.push(frame.index);
+      const children = debuggerTreeChildren(frame.node, `$.nodes[${frame.index}].children`);
+      if (!children.complete) projectionState.complete = false;
+      truncations.push(...children.truncations);
+      frame.childEntries = children.entries;
+      continue;
+    }
+
+    let child: { index: number; node: Record<string, unknown> } | null = null;
+    while (frame.childEntries && frame.childIndex < frame.childEntries.length && !child) {
+      const candidate = frame.childEntries[frame.childIndex];
+      frame.childIndex += 1;
+      if (candidate && !visited.has(candidate.node)) child = candidate;
+    }
+    if (child) {
+      stack.push({
+        childEntries: null,
+        childIndex: 0,
+        depth: frame.depth + 1,
+        entered: false,
+        index: null,
+        node: child.node,
+        parentIndex: frame.index,
+        sourceChildIndex: child.index,
+      });
+      continue;
+    }
+    stack.pop();
+  }
+  return {
+    complete: projectionState.complete,
+    format: 'valdi-debugger-tree-v1',
+    nodeCount: nodes.length,
+    nodes,
+    rootIndex: 0,
+    truncations,
+  };
+}
+
 function sendJson(response: ServerResponse, status: number, payload: unknown): void {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -314,7 +829,12 @@ async function readJsonBody(request: IncomingMessage): Promise<Record<string, un
     chunks.push(buffer);
   }
 
-  const raw = Buffer.concat(chunks, byteLength).toString('utf8');
+  let raw: string;
+  try {
+    raw = FATAL_JSON_UTF8_DECODER.decode(Buffer.concat(chunks, byteLength));
+  } catch {
+    throw new ApiRequestError(400, 'Request body must contain valid UTF-8.');
+  }
   if (!raw.trim()) return {};
   let parsed: unknown;
   try {
@@ -385,6 +905,204 @@ function delay(durationMs: number): Promise<void> {
   return new Promise(resolve => {
     setTimeout(resolve, durationMs);
   });
+}
+
+function createWebPreviewDebuggerTarget(
+  webPreviewUrl: string | undefined,
+  debuggingPort: number,
+): WebPreviewDebuggerTarget | null {
+  const rawUrl = webPreviewUrl?.trim();
+  if (!rawUrl) return null;
+  if (!Number.isInteger(debuggingPort) || debuggingPort < 1 || debuggingPort > 65_535) {
+    throw new Error(
+      `Chromium debugging port must be an integer between 1 and 65535; received '${String(debuggingPort)}'.`,
+    );
+  }
+
+  let applicationUrl: URL;
+  try {
+    applicationUrl = new URL(rawUrl);
+  } catch {
+    throw new Error(`Invalid web preview URL: ${rawUrl}`);
+  }
+  if (
+    applicationUrl.protocol !== 'http:' ||
+    !isLoopbackHost(applicationUrl.hostname) ||
+    applicationUrl.username ||
+    applicationUrl.password
+  ) {
+    throw new Error('The integrated DevTools web preview must use an unauthenticated loopback HTTP URL.');
+  }
+
+  return {
+    applicationUrl: applicationUrl.toString(),
+    debuggingPort,
+    id: 'owl:web-preview',
+    sessionId: 'web-preview',
+  };
+}
+
+function webPreviewTargetPayload(target: WebPreviewDebuggerTarget): Record<string, unknown> {
+  const applicationUrl = new URL(target.applicationUrl);
+  const pathName = applicationUrl.pathname.split('/').filter(Boolean).at(-1) ?? applicationUrl.hostname;
+  return {
+    applicationId: target.applicationUrl,
+    applicationUrl: target.applicationUrl,
+    debuggingPort: target.debuggingPort,
+    id: target.id,
+    name: pathName,
+    owlTarget: true,
+    platform: 'web',
+    sessionId: target.sessionId,
+    state: 'available',
+    transport: 'chromium-cdp',
+  };
+}
+
+function resolveWebPreviewDebuggerTarget(sessionId: string | undefined): WebPreviewDebuggerTarget {
+  if (
+    !activeWebPreviewTarget ||
+    !sessionId ||
+    ![activeWebPreviewTarget.id, activeWebPreviewTarget.sessionId].includes(sessionId)
+  ) {
+    throw new ApiRequestError(404, 'The configured web preview debugger target is not available.');
+  }
+  return activeWebPreviewTarget;
+}
+
+interface InspectedWebPreviewContext {
+  inspectedUrl: string;
+  targetNonce: string;
+}
+
+function resolveInspectedWebPreviewContext(
+  target: WebPreviewDebuggerTarget,
+  inspectedUrl: string | undefined,
+  targetNonce: string | undefined,
+): InspectedWebPreviewContext {
+  if (!inspectedUrl) {
+    throw new ApiRequestError(400, 'DevTools target discovery requires the inspected page URL.');
+  }
+  if (!targetNonce || !WEB_PREVIEW_NONCE_PATTERN.test(targetNonce)) {
+    throw new ApiRequestError(400, 'DevTools target discovery requires a valid inspected-tab nonce.');
+  }
+
+  let inspected: URL;
+  try {
+    inspected = new URL(inspectedUrl);
+  } catch {
+    throw new ApiRequestError(400, 'The inspected web preview URL is invalid.');
+  }
+  if (
+    inspected.protocol !== 'http:' ||
+    !isLoopbackHost(inspected.hostname) ||
+    inspected.username ||
+    inspected.password
+  ) {
+    throw new ApiRequestError(400, 'Valdi DevTools only attaches to an unauthenticated loopback application page.');
+  }
+  if (!matchesOwlApplicationUrl(inspected.toString(), target.applicationUrl)) {
+    throw new ApiRequestError(404, 'The inspected page does not match the configured Valdi web preview target.');
+  }
+  return { inspectedUrl: inspected.toString(), targetNonce };
+}
+
+function resolveInspectedWebPreviewTarget(searchParams: URLSearchParams): Record<string, unknown> {
+  if (!activeWebPreviewTarget) {
+    throw new ApiRequestError(404, 'Start valdi debugger with --web-preview-url before opening the DevTools panel.');
+  }
+  resolveInspectedWebPreviewContext(
+    activeWebPreviewTarget,
+    searchParams.get('inspectedUrl') ?? undefined,
+    searchParams.get('targetNonce') ?? undefined,
+  );
+  return { target: webPreviewTargetPayload(activeWebPreviewTarget) };
+}
+
+function readUnknownRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+async function inspectWebPreviewSnapshot(searchParams: URLSearchParams): Promise<Record<string, unknown>> {
+  const target = resolveWebPreviewDebuggerTarget(searchParams.get('sessionId') ?? undefined);
+  const context = resolveInspectedWebPreviewContext(
+    target,
+    searchParams.get('inspectedUrl') ?? undefined,
+    searchParams.get('targetNonce') ?? undefined,
+  );
+  const bridgePayload = await readOwlDebuggerSnapshot(target.debuggingPort, target.applicationUrl, context.targetNonce);
+  if (bridgePayload['channel'] !== 'valdi-web-debugger' || bridgePayload['type'] !== 'snapshot') {
+    throw new Error('The running web preview returned an invalid Valdi debugger bridge payload.');
+  }
+  const snapshot = readUnknownRecord(bridgePayload['snapshot']);
+  const tree = snapshot['tree'];
+  if (typeof tree !== 'object' || tree === null || Array.isArray(tree)) {
+    throw new Error('The running web preview has not mounted a Valdi renderer.');
+  }
+  return {
+    issues: [],
+    logs: [],
+    selectedNodeId: bridgePayload['selectedNodeId'],
+    source: 'owl',
+    target: { ...webPreviewTargetPayload(target), state: 'attached' },
+    targets: [webPreviewTargetPayload(target)],
+    tree: projectDebuggerTreeForJson(tree),
+    viewport: snapshot['viewport'],
+  };
+}
+
+async function evaluateWebPreviewConsole(params: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const target = resolveWebPreviewDebuggerTarget(readRecordString(params, 'sessionId'));
+  const context = resolveInspectedWebPreviewContext(
+    target,
+    readRecordString(params, 'inspectedUrl'),
+    readRecordString(params, 'targetNonce'),
+  );
+  const expression = readRecordString(params, 'expression')?.trim();
+  if (!expression) {
+    throw new ApiRequestError(400, 'Web preview console evaluation requires a JavaScript expression.');
+  }
+  if (expression.length > 10_000) {
+    throw new ApiRequestError(400, 'Web preview console expressions cannot exceed 10,000 characters.');
+  }
+  const wrapped =
+    `Promise.resolve().then(() => (0, eval)(${JSON.stringify(expression)})).then(value => ({ ` +
+    "type: value === null ? 'null' : typeof value, value: value === undefined ? null : value }))";
+  const result = await evaluateOwlApplicationExpression(
+    target.debuggingPort,
+    target.applicationUrl,
+    context.targetNonce,
+    wrapped,
+  );
+  if (typeof result !== 'object' || result === null || Array.isArray(result)) {
+    throw new Error('The web preview console returned an invalid evaluation result.');
+  }
+  return { ...(result as Record<string, unknown>), sessionId: target.sessionId };
+}
+
+async function highlightWebPreviewNode(params: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const target = resolveWebPreviewDebuggerTarget(readRecordString(params, 'sessionId'));
+  const context = resolveInspectedWebPreviewContext(
+    target,
+    readRecordString(params, 'inspectedUrl'),
+    readRecordString(params, 'targetNonce'),
+  );
+  const nodeId = readRecordString(params, 'nodeId');
+  const expression =
+    nodeId === undefined
+      ? 'Boolean(globalThis.__VALDI_WEB_DEBUGGER__?.clearHighlight?.())'
+      : `Boolean(globalThis.__VALDI_WEB_DEBUGGER__?.highlightNode?.(${JSON.stringify(nodeId)}))`;
+  const highlighted = await evaluateOwlApplicationExpression(
+    target.debuggingPort,
+    target.applicationUrl,
+    context.targetNonce,
+    expression,
+  );
+  return {
+    highlighted: highlighted === true,
+    ...(nodeId === undefined ? {} : { nodeId }),
+    sessionId: target.sessionId,
+  };
 }
 
 function createDebuggerUiState(): DebuggerUiState {
@@ -981,6 +1699,7 @@ async function inspectStatus(searchParams: URLSearchParams): Promise<Record<stri
       connected: await probeTcpPort(HOT_RELOAD_PROXY_PORT, 750),
     },
     defaultPort: STANDALONE_PORT,
+    webPreviewTarget: activeWebPreviewTarget ? webPreviewTargetPayload(activeWebPreviewTarget) : null,
   };
 }
 
@@ -1091,7 +1810,7 @@ async function inspectSnapshot(searchParams: URLSearchParams): Promise<Record<st
       },
       targets,
       contexts: targets,
-      tree,
+      tree: projectDebuggerTreeForJson(tree),
       issues: [],
       logs: [
         {
@@ -1409,6 +2128,37 @@ async function handleApi(request: IncomingMessage, response: ServerResponse, url
       return;
     }
 
+    if (url.pathname === '/api/devtools/target') {
+      if (request.method !== 'GET') {
+        sendJson(response, 405, { error: 'Valdi DevTools target discovery requires GET.' });
+        return;
+      }
+      sendJson(response, 200, resolveInspectedWebPreviewTarget(url.searchParams));
+      return;
+    }
+
+    if (url.pathname === '/api/devtools/snapshot') {
+      if (request.method !== 'GET') {
+        sendJson(response, 405, { error: 'Valdi DevTools snapshots require GET.' });
+        return;
+      }
+      sendJson(response, 200, await inspectWebPreviewSnapshot(url.searchParams));
+      return;
+    }
+
+    if (url.pathname === '/api/devtools/evaluate' || url.pathname === '/api/devtools/highlight') {
+      if (request.method !== 'POST') {
+        sendJson(response, 405, { error: 'Valdi DevTools runtime actions require POST.' });
+        return;
+      }
+      const body = await readJsonBody(request);
+      const result = url.pathname.endsWith('/evaluate')
+        ? await evaluateWebPreviewConsole(body)
+        : await highlightWebPreviewNode(body);
+      sendJson(response, 200, result);
+      return;
+    }
+
     if (url.pathname === '/api/snapshot') {
       sendJson(response, 200, await inspectSnapshot(url.searchParams));
       return;
@@ -1486,14 +2236,15 @@ async function serveStatic(_request: IncomingMessage, response: ServerResponse, 
   try {
     const data = await fs.readFile(resolvedPath);
     const ext = path.extname(resolvedPath);
-    response.writeHead(200, {
+    const isDevToolsPanel = requestedPath === '/devtools-panel.html';
+    const headers: Record<string, string> = {
       'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream',
       'Cache-Control': 'no-store',
-      'Content-Security-Policy':
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+      'Content-Security-Policy': `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors ${isDevToolsPanel ? 'chrome-extension://*' : "'none'"}`,
       'X-Content-Type-Options': 'nosniff',
-      'X-Frame-Options': 'DENY',
-    });
+    };
+    if (!isDevToolsPanel) headers['X-Frame-Options'] = 'DENY';
+    response.writeHead(200, headers);
     response.end(data);
   } catch {
     response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -1517,6 +2268,13 @@ function createDebuggerHttpServer(host: string, port: number): Server {
     }
 
     if (url.pathname.startsWith('/api/')) {
+      if (url.pathname.startsWith('/api/devtools/') && request.method === 'POST') {
+        const contentType = request.headers['content-type']?.split(';')[0]?.trim().toLowerCase();
+        if (contentType !== 'application/json') {
+          sendJson(response, 415, { error: 'Valdi DevTools actions require an application/json request.' });
+          return;
+        }
+      }
       await handleApi(request, response, url);
       return;
     }
@@ -1601,6 +2359,7 @@ async function closeDebuggerServer(server: Server): Promise<void> {
       console.warn(`Could not stop the active Hermes profile during shutdown: ${errorPayload(error).error}`);
     }
   }
+  activeWebPreviewTarget = null;
 }
 
 export async function startDebuggerServer(options: DebuggerServerOptions): Promise<DebuggerServerInfo> {
@@ -1615,37 +2374,47 @@ export async function startDebuggerServer(options: DebuggerServerOptions): Promi
   if (!Number.isInteger(preferredPort) || preferredPort < 1 || preferredPort > 65_535) {
     throw new Error(`Debugger port must be an integer between 1 and 65535; received '${String(preferredPort)}'.`);
   }
+  const previousWebPreviewTarget = activeWebPreviewTarget;
+  activeWebPreviewTarget = createWebPreviewDebuggerTarget(
+    options.webPreviewUrl,
+    options.chromiumDebuggingPort ?? DEFAULT_CHROMIUM_DEBUGGING_PORT,
+  );
   const strictPort = Boolean(options.strictPort);
   const maxAttempts = strictPort ? 1 : PORT_SEARCH_LIMIT;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const port = preferredPort + attempt;
-    const server = createDebuggerHttpServer(activeHost, port);
-    try {
-      await listen(server, activeHost, port);
-      closeAssetWatchers();
-      await watchDebuggerAssets(assetRoot);
-      let closePromise: Promise<void> | undefined;
-      return {
-        server,
-        close: () => {
-          closePromise ??= closeDebuggerServer(server);
-          return closePromise;
-        },
-        host: activeHost,
-        port,
-        url: `http://${hostForUrl(activeHost)}:${port}/`,
-        requestedPort: preferredPort,
-        portWasAutoSelected: port !== preferredPort,
-      };
-    } catch (error) {
-      server.close();
-      const err = error as NodeJS.ErrnoException;
-      if (strictPort || err.code !== 'EADDRINUSE') {
-        throw error;
+  try {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const port = preferredPort + attempt;
+      const server = createDebuggerHttpServer(activeHost, port);
+      try {
+        await listen(server, activeHost, port);
+        closeAssetWatchers();
+        await watchDebuggerAssets(assetRoot);
+        let closePromise: Promise<void> | undefined;
+        return {
+          server,
+          close: () => {
+            closePromise ??= closeDebuggerServer(server);
+            return closePromise;
+          },
+          host: activeHost,
+          port,
+          url: `http://${hostForUrl(activeHost)}:${port}/`,
+          requestedPort: preferredPort,
+          portWasAutoSelected: port !== preferredPort,
+        };
+      } catch (error) {
+        server.close();
+        const err = error as NodeJS.ErrnoException;
+        if (strictPort || err.code !== 'EADDRINUSE') {
+          throw error;
+        }
       }
     }
-  }
 
-  throw new Error(`No available port found in ${preferredPort}-${preferredPort + maxAttempts - 1}.`);
+    throw new Error(`No available port found in ${preferredPort}-${preferredPort + maxAttempts - 1}.`);
+  } catch (error) {
+    activeWebPreviewTarget = previousWebPreviewTarget;
+    throw error;
+  }
 }

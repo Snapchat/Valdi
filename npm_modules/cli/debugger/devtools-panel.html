@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Valdi DevTools</title>
+    <link rel="stylesheet" href="./devtools-panel.css" />
+  </head>
+  <body>
+    <div class="devtools-app">
+      <header class="main-toolbar">
+        <nav class="main-tabs" aria-label="Valdi development tools" role="tablist">
+          <button class="main-tab selected" data-section="elements" role="tab" aria-selected="true">Elements</button>
+          <button class="main-tab" data-section="console" role="tab" aria-selected="false">Console</button>
+        </nav>
+        <div class="toolbar-spacer"></div>
+        <button id="refreshButton" class="icon-button" title="Refresh inspected application" aria-label="Refresh">
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M16.3 8A6.5 6.5 0 1 0 16 13M16.3 8V4.8M16.3 8H13" />
+          </svg>
+        </button>
+      </header>
+
+      <div class="target-toolbar">
+        <span id="targetStatusDot" class="status-dot connecting"></span>
+        <span id="targetName" class="target-name">Connecting to inspected Valdi application…</span>
+        <span id="targetMetadata" class="target-metadata"></span>
+        <label class="live-toggle" title="Keep the inspected hierarchy current">
+          <input id="autoRefreshToggle" type="checkbox" checked /> Live
+        </label>
+      </div>
+
+      <main class="main-content">
+        <section id="elementsSection" class="section selected" data-panel="elements">
+          <div class="tree-pane">
+            <div class="filter-toolbar">
+              <svg class="filter-icon" viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M3 4h14l-5.4 6v5l-3.2 1v-6z" />
+              </svg>
+              <input id="treeFilter" type="search" placeholder="Filter nodes, text, attributes" autocomplete="off" />
+              <span id="filterSummary" class="filter-summary"></span>
+              <button id="expandButton" class="icon-button" title="Expand useful nodes" aria-label="Expand useful nodes">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h12M4 10h8M4 14h5M14 12v5M11.5 14.5h5" /></svg>
+              </button>
+            </div>
+            <div
+              id="tree"
+              class="tree"
+              role="tree"
+              tabindex="0"
+              aria-label="Valdi element hierarchy"
+              aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Home End"
+            ></div>
+            <div id="treeEmpty" class="empty-state">Waiting for the inspected Valdi renderer…</div>
+          </div>
+
+          <div id="splitHandle" class="split-handle" role="separator" aria-label="Resize inspector" aria-orientation="horizontal"></div>
+
+          <section class="inspector-pane" aria-label="Selected element inspector">
+            <div class="inspector-toolbar">
+              <nav class="detail-tabs" aria-label="Element inspection" role="tablist">
+                <button class="detail-tab selected" data-detail="styles" role="tab" aria-selected="true">Styles</button>
+                <button class="detail-tab" data-detail="computed" role="tab" aria-selected="false">Computed</button>
+                <button class="detail-tab" data-detail="dom" role="tab" aria-selected="false">DOM</button>
+              </nav>
+              <div class="toolbar-spacer"></div>
+              <button id="copyNodeButton" class="icon-button" title="Copy selected node JSON" aria-label="Copy node">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 6h9v10H7zM4 13V4h9" /></svg>
+              </button>
+            </div>
+            <div id="inspector" class="inspector"></div>
+          </section>
+
+          <footer class="breadcrumb-bar">
+            <div id="breadcrumbs" class="breadcrumbs"></div>
+            <span id="nodeSummary" class="node-summary"></span>
+          </footer>
+        </section>
+
+        <section id="consoleSection" class="section console-section" data-panel="console">
+          <div id="consoleMessages" class="console-messages"></div>
+          <form id="consoleForm" class="console-prompt">
+            <span class="console-chevron">›</span>
+            <input
+              id="consoleInput"
+              type="text"
+              autocomplete="off"
+              maxlength="10000"
+              spellcheck="false"
+              placeholder="Evaluate JavaScript in the inspected application"
+            />
+          </form>
+        </section>
+      </main>
+    </div>
+    <script src="./debugger-tree-model.js"></script>
+    <script src="./devtools-panel.js"></script>
+  </body>
+</html>

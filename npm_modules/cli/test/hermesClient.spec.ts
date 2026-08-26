@@ -1,12 +1,12 @@
-import * as net from 'net';
-import * as http from 'http';
 import * as crypto from 'crypto';
+import * as http from 'http';
+import * as net from 'net';
 import {
-  listHermesDevices,
+  type CpuProfile,
   HermesConnection,
   NotHermesError,
+  listHermesDevices,
   normalizeHermesProfile,
-  type CpuProfile,
 } from '../src/utils/hermesClient';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -77,19 +77,19 @@ describe('normalizeHermesProfile', () => {
     const raw: CpuProfile = {
       nodes,
       startTime: 0,
-      endTime: 877385746707,
+      endTime: 877_385_746_707,
       samples: [1, 1, 2, 1],
-      timeDeltas: [0, 877380769876, 13673, 26294],
+      timeDeltas: [0, 877_380_769_876, 13_673, 26_294],
     };
     const norm = normalizeHermesProfile(raw);
 
     // startTime should be the absolute time of sample[1] (the real origin)
-    expect(norm.startTime).toBe(877380769876);
+    expect(norm.startTime).toBe(877_380_769_876);
     // First delta from real origin should be 0
     expect(norm.timeDeltas![0]).toBe(0);
     // Remaining deltas are unchanged
-    expect(norm.timeDeltas![1]).toBe(13673);
-    expect(norm.timeDeltas![2]).toBe(26294);
+    expect(norm.timeDeltas![1]).toBe(13_673);
+    expect(norm.timeDeltas![2]).toBe(26_294);
     // First sample is dropped
     expect(norm.samples).toEqual([1, 2, 1]);
     // Nodes unchanged
@@ -100,13 +100,13 @@ describe('normalizeHermesProfile', () => {
     const raw: CpuProfile = {
       nodes,
       startTime: 0,
-      endTime: 877385746707,
+      endTime: 877_385_746_707,
       samples: [1, 1, 2, 1],
-      timeDeltas: [0, 877380769876, 13673, 26294],
+      timeDeltas: [0, 877_380_769_876, 13_673, 26_294],
     };
     const norm = normalizeHermesProfile(raw);
     const duration = norm.timeDeltas!.reduce((a, b) => a + b, 0);
-    expect(duration).toBe(13673 + 26294); // microseconds, not days
+    expect(duration).toBe(13_673 + 26_294); // microseconds, not days
   });
 
   it('returns the profile unchanged when samples.length < 2', () => {
@@ -131,15 +131,61 @@ describe('listHermesDevices', () => {
 
   it('returns parsed device list from HTTP /json', async () => {
     const devices = [{ id: '1', title: 'Valdi Hermes', webSocketDebuggerUrl: 'ws://localhost:13595/1' }];
-    server = http.createServer((_req, res) => {
+    const runningServer = http.createServer((_req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(devices));
     });
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-    port = (server.address() as net.AddressInfo).port;
+    server = runningServer;
+    await new Promise<void>((resolve) => runningServer.listen(0, '127.0.0.1', resolve));
+    port = (runningServer.address() as net.AddressInfo).port;
 
     const result = await listHermesDevices(port);
     expect(result).toEqual(devices);
+  });
+
+  it('decodes a multibyte UTF-8 device response split between raw chunks', async () => {
+    const devices = [{ id: '1', title: 'Valdi 🦉 Hermes', webSocketDebuggerUrl: 'ws://localhost:13595/1' }];
+    const payload = Buffer.from(JSON.stringify(devices), 'utf8');
+    const multibyteStart = payload.indexOf(Buffer.from('🦉', 'utf8'));
+    const runningServer = http.createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.write(payload.subarray(0, multibyteStart + 1));
+      setImmediate(() => res.end(payload.subarray(multibyteStart + 1)));
+    });
+    server = runningServer;
+    await new Promise<void>((resolve) => runningServer.listen(0, '127.0.0.1', resolve));
+    port = (runningServer.address() as net.AddressInfo).port;
+
+    expect(await listHermesDevices(port)).toEqual(devices);
+  });
+
+  it('rejects malformed UTF-8 before parsing the Hermes response', async () => {
+    const malformed = Buffer.concat([
+      Buffer.from('[{"id":"1","title":"', 'utf8'),
+      Buffer.from([0xc3, 0x28]),
+      Buffer.from('","webSocketDebuggerUrl":"ws://localhost:13595/1"}]', 'utf8'),
+    ]);
+    const runningServer = http.createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(malformed);
+    });
+    server = runningServer;
+    await new Promise<void>((resolve) => runningServer.listen(0, '127.0.0.1', resolve));
+    port = (runningServer.address() as net.AddressInfo).port;
+
+    await expectAsync(listHermesDevices(port)).toBeRejectedWithError(/malformed UTF-8/);
+  });
+
+  it('rejects Hermes discovery bodies larger than the raw-byte limit', async () => {
+    const runningServer = http.createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(Buffer.alloc(1024 * 1024 + 1, 0x20));
+    });
+    server = runningServer;
+    await new Promise<void>((resolve) => runningServer.listen(0, '127.0.0.1', resolve));
+    port = (runningServer.address() as net.AddressInfo).port;
+
+    await expectAsync(listHermesDevices(port)).toBeRejectedWithError(/1048576 byte response limit/);
   });
 
   it('throws NotHermesError on ECONNREFUSED', async () => {
@@ -148,9 +194,10 @@ describe('listHermesDevices', () => {
   });
 
   it('throws NotHermesError on timeout when server accepts but never responds', async () => {
-    server = http.createServer((_req, _res) => { /* never respond */ });
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-    port = (server.address() as net.AddressInfo).port;
+    const runningServer = http.createServer((_req, _res) => { /* never respond */ });
+    server = runningServer;
+    await new Promise<void>((resolve) => runningServer.listen(0, '127.0.0.1', resolve));
+    port = (runningServer.address() as net.AddressInfo).port;
 
     await expectAsync(listHermesDevices(port)).toBeRejectedWith(jasmine.any(NotHermesError));
   }, 5000);
@@ -184,6 +231,23 @@ describe('HermesConnection', () => {
     conn.close();
   });
 
+  it('percent-encodes the original device id as one WebSocket path segment', async () => {
+    let requestLine = '';
+    const result = await createMockHermesServer((socket, request) => {
+      requestLine = request.split('\r\n')[0] ?? '';
+      const key = /Sec-WebSocket-Key: (.+)\r\n/.exec(request)?.[1] ?? '';
+      socket.write(makeWsHandshakeResponse(key));
+    });
+    tcpServer = result.server;
+    port = result.port;
+    const deviceId = 'device/one ?#%';
+
+    const conn = await HermesConnection.connect(port, deviceId);
+
+    expect(requestLine).toBe(`GET /${encodeURIComponent(deviceId)} HTTP/1.1`);
+    conn.close();
+  });
+
   it('sends Profiler.start and receives a result', async () => {
     await startMockServer((socket) => {
       socket.on('data', (chunk: Buffer) => {
@@ -212,9 +276,9 @@ describe('HermesConnection', () => {
     const rawProfile: CpuProfile = {
       nodes: [{ id: 1, callFrame: { functionName: '[root]', scriptId: '0', url: '[root]', lineNumber: 0, columnNumber: 0 } }],
       startTime: 0,
-      endTime: 877385746707,
+      endTime: 877_385_746_707,
       samples: [1, 1, 1],
-      timeDeltas: [0, 877380769876, 13673],
+      timeDeltas: [0, 877_380_769_876, 13_673],
     };
 
     await startMockServer((socket) => {
@@ -237,15 +301,20 @@ describe('HermesConnection', () => {
     const profile = await conn.stopProfiling();
 
     // startTime should be normalised (not 0)
-    expect(profile.startTime).toBe(877380769876);
+    expect(profile.startTime).toBe(877_380_769_876);
     // One leading sample stripped
     expect(profile.samples!.length).toBe(2);
     conn.close();
   });
 
   it('does not stall when server sends a ping frame before the CDP response', async () => {
+    let resolvePong: (() => void) | undefined;
+    const receivedPong = new Promise<void>(resolve => {
+      resolvePong = resolve;
+    });
     await startMockServer((socket) => {
       socket.on('data', (chunk: Buffer) => {
+        const opcode = chunk[0]! & 0x0f;
         const masked = chunk[1]! & 0x80;
         const payloadLen = chunk[1]! & 0x7f;
         const maskOffset = 2;
@@ -255,6 +324,12 @@ describe('HermesConnection', () => {
         const payload = mask
           ? Buffer.from(rawPayload.map((b, i) => b ^ mask[i % 4]!))
           : rawPayload;
+        if (opcode === 0x0a) {
+          expect(Boolean(masked)).toBeTrue();
+          expect(payload.length).toBe(0);
+          resolvePong?.();
+          return;
+        }
         const msg = JSON.parse(payload.toString('utf8')) as { id: number };
         // Send a ping before the real reply
         socket.write(encodePingFrame());
@@ -264,6 +339,7 @@ describe('HermesConnection', () => {
 
     const conn = await HermesConnection.connect(port, '1');
     await expectAsync(conn.startProfiling()).toBeResolved();
+    await receivedPong;
     conn.close();
   });
 

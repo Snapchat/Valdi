@@ -50,6 +50,10 @@ describe('npm package contents', () => {
     expect(packedFiles).toContain('dist/');
   });
 
+  it('does not publish compiled Jasmine specifications', () => {
+    expect(packedFiles).not.toMatch(/dist\/.*\.spec\.js/);
+  });
+
   it('includes bundled-skills', () => {
     expect(packedFiles).toContain('bundled-skills/');
   });
@@ -92,9 +96,10 @@ describe('npm package contents', () => {
   });
 
   it('does not let projected trees auto-load remote media', () => {
+    const treeModelSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-tree-model.js'), 'utf8');
     const previewSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-preview-html.js'), 'utf8');
     const policyResult = new vm.Script(
-      `${previewSource}\n[
+      `${treeModelSource}\n${previewSource}\n[
         previewSafeMediaSource('https://example.com/image.png'),
         previewSafeMediaSource('http://127.0.0.1:8080/private'),
         previewSafeMediaSource('data:image/png;base64,AA=='),
@@ -108,9 +113,10 @@ describe('npm package contents', () => {
   });
 
   it('projects effective ancestor, accessibility, and touch-disabled state', () => {
+    const treeModelSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-tree-model.js'), 'utf8');
     const previewSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-preview-html.js'), 'utf8');
     const disabledStates = new vm.Script(
-      `${previewSource}
+      `${treeModelSource}\n${previewSource}
       [
         isHtmlPreviewEffectivelyDisabled({ attributes: {} }, true),
         isHtmlPreviewEffectivelyDisabled({ attributes: { enabled: false } }, false),
@@ -127,6 +133,7 @@ describe('npm package contents', () => {
   });
 
   it('orders editable HTML preview focus and blur around text and key input', async () => {
+    const treeModelSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-tree-model.js'), 'utf8');
     const previewSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-preview-html.js'), 'utf8');
     const bootstrapSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-bootstrap.js'), 'utf8');
     const dispatchedInputs: Array<{
@@ -160,7 +167,7 @@ describe('npm package contents', () => {
       return Promise.resolve({ handled: true });
     };
     const operation = new vm.Script(
-      `${previewSource}
+      `${treeModelSource}\n${previewSource}
       (async () => {
         const target = Object.freeze({ port: 13_591, clientId: 'client-a', contextId: 'context-a' });
         associateHtmlPreviewElement(editableTarget, target);
@@ -219,6 +226,7 @@ describe('npm package contents', () => {
   });
 
   it('keeps the runtime key path authoritative for projected textarea Return', async () => {
+    const treeModelSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-tree-model.js'), 'utf8');
     const previewSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-preview-html.js'), 'utf8');
     const dispatchedInputs: Array<Record<string, unknown>> = [];
     class FakeInputElement {}
@@ -242,7 +250,7 @@ describe('npm package contents', () => {
     }
     const textarea = new FakeTextAreaElement();
     const operation = new vm.Script(
-      `${previewSource}
+      `${treeModelSource}\n${previewSource}
       (async () => {
         const target = Object.freeze({ port: 13_591, clientId: 'client-a', contextId: 'context-a' });
         associateHtmlPreviewElement(textarea, target);
@@ -338,6 +346,7 @@ describe('npm package contents', () => {
   });
 
   it('rejects delayed input reconciliation after ABA edits and refocus', async () => {
+    const treeModelSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-tree-model.js'), 'utf8');
     const previewSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-preview-html.js'), 'utf8');
     const keyResponse = createDeferred<Record<string, unknown>>();
     const dispatchedTypes: string[] = [];
@@ -367,7 +376,7 @@ describe('npm package contents', () => {
     }
     const textarea = new FakeTextAreaElement();
     const operation = new vm.Script(
-      `${previewSource}
+      `${treeModelSource}\n${previewSource}
       (async () => {
         const target = Object.freeze({ port: 13_591, clientId: 'client-a', contextId: 'context-a' });
         associateHtmlPreviewElement(textarea, target);
@@ -447,6 +456,7 @@ describe('npm package contents', () => {
   });
 
   it('cancels pending projected input when the preview incarnation changes', async () => {
+    const treeModelSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-tree-model.js'), 'utf8');
     const previewSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-preview-html.js'), 'utf8');
     const cancelledReservations: number[] = [];
     const dispatchedInputs: Array<{ payload: Record<string, unknown>; reservationId: number }> = [];
@@ -494,7 +504,7 @@ describe('npm package contents', () => {
     };
     const target = Object.freeze({ port: 13_591, clientId: 'client-a', contextId: 'context-a' });
     const operation = new vm.Script(
-      `${previewSource}
+      `${treeModelSource}\n${previewSource}
       (async () => {
         associateHtmlPreviewElement(oldInput, target);
         associateHtmlPreviewElement(oldScroll, target);
@@ -609,6 +619,7 @@ describe('npm package contents', () => {
   });
 
   it('invalidates released text and wheel input still queued when the preview incarnation changes', async () => {
+    const treeModelSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-tree-model.js'), 'utf8');
     const modelSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-model.js'), 'utf8');
     const previewSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-preview-html.js'), 'utf8');
     const firstResponse = createDeferred<{ input: { handled: boolean } }>();
@@ -728,7 +739,7 @@ describe('npm package contents', () => {
       },
     });
     new vm.Script(
-      `${modelSource}
+      `${treeModelSource}\n${modelSource}
       findNode = nodeId => nodes[nodeId] || null;
       findNodeAtPoint = (_point, predicate) => predicate(activeScrollNode.current) ? activeScrollNode.current : null;
       getElementIdForNode = node => node?.elementId ?? null;
@@ -791,6 +802,7 @@ describe('npm package contents', () => {
   });
 
   it('reserves debounced HTML input in event order across different timer deadlines and targets', async () => {
+    const treeModelSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-tree-model.js'), 'utf8');
     const modelSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-model.js'), 'utf8');
     const previewSource = fs.readFileSync(path.join(cliRoot, 'debugger', 'debugger-preview-html.js'), 'utf8');
     interface FakeNode {
@@ -904,7 +916,7 @@ describe('npm package contents', () => {
       },
     };
     const setup = new vm.Script(
-      `${modelSource}
+      `${treeModelSource}\n${modelSource}
       findNode = testFindNode;
       findNodeAtPoint = testFindNodeAtPoint;
       getElementIdForNode = node => node?.elementId ?? null;

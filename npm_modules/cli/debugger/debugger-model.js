@@ -48,6 +48,7 @@ function markSelectedTarget(targets, selectedTarget) {
 }
 
 function decorateSnapshot(snapshot) {
+  snapshot.tree = valdiDebuggerTreeModel.restoreTree(snapshot.tree);
   if (!snapshot.tree) {
     snapshot.target = snapshot.target || { ...emptyTarget };
     snapshot.targets = snapshot.targets || [];
@@ -66,30 +67,46 @@ function decorateSnapshot(snapshot) {
 }
 
 function decorateNode(node, path = '0') {
-  if (node.element && node.element.frame) {
-    node.bounds = normalizeBounds(node.element.frame);
-  }
+  const records = [];
+  const childrenByNode = new Map();
+  const paths = new Map();
+  valdiDebuggerTreeModel.walk(
+    node,
+    (current, ancestors, _depth, sourceChildIndex) => {
+      const parent = ancestors.at(-1);
+      const parentPath = parent ? paths.get(parent) : null;
+      const childIndex = parent ? Math.max(0, sourceChildIndex ?? 0) : 0;
+      const currentPath = parentPath === null || parentPath === undefined ? path : `${parentPath}.${childIndex}`;
+      paths.set(current, currentPath);
+      if (parent) {
+        const children = childrenByNode.get(parent) || [];
+        children.push(current);
+        childrenByNode.set(parent, children);
+      }
+      childrenByNode.set(current, childrenByNode.get(current) || []);
 
-  if (!node.id) {
-    if (node.element && node.element.id !== undefined) {
-      node.id = String(node.element.id);
-    } else if (node.key !== undefined) {
-      node.id = `${node.tag}:${node.key}:${path}`;
-    } else {
-      node.id = `${node.tag}:${path}`;
-    }
-  }
-
-  (node.children || []).forEach((child, index) => decorateNode(child, `${path}.${index}`));
-
-  if (!node.bounds && node.children && node.children.length) {
-    const childBounds = node.children.map(child => child.bounds).filter(Boolean);
-    if (childBounds.length) {
-      const minX = Math.min(...childBounds.map(bounds => bounds.x));
-      const minY = Math.min(...childBounds.map(bounds => bounds.y));
-      const maxX = Math.max(...childBounds.map(bounds => bounds.x + bounds.width));
-      const maxY = Math.max(...childBounds.map(bounds => bounds.y + bounds.height));
-      node.bounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+      if (current.element && current.element.frame) {
+        current.bounds = normalizeBounds(current.element.frame);
+      }
+      if (!current.id) {
+        if (current.element && current.element.id !== undefined) {
+          current.id = String(current.element.id);
+        } else if (current.key !== undefined) {
+          current.id = `${current.tag}:${current.key}:${currentPath}`;
+        } else {
+          current.id = `${current.tag}:${currentPath}`;
+        }
+      }
+      records.push(current);
+    },
+    [],
+    0,
+  );
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const current = records[index];
+    if (!current.bounds) {
+      const childBounds = (childrenByNode.get(current) || []).map(child => child.bounds).filter(Boolean);
+      if (childBounds.length) current.bounds = unionBounds(childBounds);
     }
   }
 }
@@ -104,10 +121,7 @@ function normalizeBounds(bounds) {
 }
 
 function getNodeId(node) {
-  if (node.id !== undefined) return String(node.id);
-  if (node.element && node.element.id !== undefined) return String(node.element.id);
-  if (node.key !== undefined) return `${node.tag}:${node.key}`;
-  return node.tag;
+  return valdiDebuggerTreeModel.id(node);
 }
 
 function getNodeKind(node) {
@@ -116,16 +130,7 @@ function getNodeKind(node) {
 
 function normalizeLabelValue(value) {
   if (value === undefined || value === null || value === '') return '';
-  if (typeof value === 'string') return value.replace(/^"|"$/g, '').trim();
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (Array.isArray(value)) {
-    return value.map(normalizeLabelValue).filter(isReadableLabelToken).join(' ').trim();
-  }
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
+  return valdiDebuggerTreeModel.formatValue(value, 0).replace(/^"|"$/g, '').trim();
 }
 
 function isReadableLabelToken(value) {
@@ -191,7 +196,7 @@ function describeOverlayNode(node) {
 }
 
 function getNodeAttributes(node) {
-  return (node.element && node.element.attributes) || {};
+  return valdiDebuggerTreeModel.attributes(node);
 }
 
 function getNumericAttribute(node, name) {
@@ -223,7 +228,9 @@ function hasScrollState(node) {
 function hasAnyRenderableBounds(root) {
   let found = false;
   walk(root, node => {
-    if (node.bounds || (node.element && node.element.frame)) found = true;
+    if (!node.bounds && !(node.element && node.element.frame)) return true;
+    found = true;
+    return false;
   });
   return found;
 }
@@ -231,7 +238,9 @@ function hasAnyRenderableBounds(root) {
 function hasLocalFrames(root) {
   let found = false;
   walk(root, node => {
-    if (node.element && node.element.frame) found = true;
+    if (!node.element || !node.element.frame) return true;
+    found = true;
+    return false;
   });
   return found;
 }
@@ -249,10 +258,14 @@ function unionBounds(boundsList) {
 function firstElementWithFrame(root) {
   let result = null;
   walk(root, node => {
-    if (!result && node.element && node.element.frame) {
+    if (node.element && node.element.frame) {
       const bounds = normalizeBounds(node.element.frame);
-      if (bounds.width > 0 && bounds.height > 0) result = node;
+      if (bounds.width > 0 && bounds.height > 0) {
+        result = node;
+        return false;
+      }
     }
+    return true;
   });
   return result;
 }
@@ -260,45 +273,64 @@ function firstElementWithFrame(root) {
 function computeGeometry(root) {
   const localFrames = hasLocalFrames(root);
   const map = new Map();
-
-  function visit(node, offset) {
-    const frame = node.element && node.element.frame ? normalizeBounds(node.element.frame) : null;
-    const absoluteCandidate = !localFrames && node.bounds ? normalizeBounds(node.bounds) : null;
-    let absolute = null;
-    let childOffset = offset;
-
-    if (frame) {
-      absolute = {
-        x: offset.x + frame.x,
-        y: offset.y + frame.y,
-        width: frame.width,
-        height: frame.height,
-      };
-      const scrollOffset = getScrollOffset(node);
-      const translation = getTranslation(node);
-      childOffset = {
-        x: absolute.x - scrollOffset.x + translation.x,
-        y: absolute.y - scrollOffset.y + translation.y,
-      };
-    } else if (absoluteCandidate) {
-      absolute = absoluteCandidate;
-    }
-
-    const childBounds = (node.children || []).map(child => visit(child, childOffset)).filter(Boolean);
-    if (!absolute || node.component) {
-      absolute = unionBounds(childBounds) || absolute;
-    }
-
+  const absoluteByNode = new Map();
+  const records = [];
+  const childrenByNode = new Map();
+  const childOffsets = new Map();
+  valdiDebuggerTreeModel.walk(
+    root,
+    (node, ancestors) => {
+      const parent = ancestors.at(-1);
+      const offset = parent ? childOffsets.get(parent) || { x: 0, y: 0 } : { x: 0, y: 0 };
+      if (parent) {
+        const children = childrenByNode.get(parent) || [];
+        children.push(node);
+        childrenByNode.set(parent, children);
+      }
+      childrenByNode.set(node, childrenByNode.get(node) || []);
+      const frame = node.element && node.element.frame ? normalizeBounds(node.element.frame) : null;
+      const absoluteCandidate = !localFrames && node.bounds ? normalizeBounds(node.bounds) : null;
+      let absolute = null;
+      let childOffset = offset;
+      if (frame) {
+        absolute = {
+          x: offset.x + frame.x,
+          y: offset.y + frame.y,
+          width: frame.width,
+          height: frame.height,
+        };
+        const scrollOffset = getScrollOffset(node);
+        const translation = getTranslation(node);
+        childOffset = {
+          x: absolute.x - scrollOffset.x + translation.x,
+          y: absolute.y - scrollOffset.y + translation.y,
+        };
+      } else if (absoluteCandidate) {
+        absolute = absoluteCandidate;
+      }
+      childOffsets.set(node, childOffset);
+      records.push({ absolute, frame, node });
+    },
+    [],
+    0,
+  );
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const item = records[index];
+    let absolute = item.absolute;
+    const childBounds = (childrenByNode.get(item.node) || [])
+      .map(child => absoluteByNode.get(child))
+      .filter(Boolean);
+    if (!absolute || item.node.component) absolute = unionBounds(childBounds) || absolute;
     if (absolute) {
-      map.set(getNodeId(node), {
-        local: node.bounds ? normalizeBounds(node.bounds) : frame,
+      absoluteByNode.set(item.node, absolute);
+      map.set(getNodeId(item.node), {
+        local: item.node.bounds ? normalizeBounds(item.node.bounds) : item.frame,
         absolute,
       });
     }
-    return absolute;
   }
 
-  const rootBounds = visit(root, { x: 0, y: 0 });
+  const rootBounds = absoluteByNode.get(root) || null;
   const viewportNode = localFrames ? firstElementWithFrame(root) : root;
   const viewportGeometry = viewportNode ? map.get(getNodeId(viewportNode)) : null;
   const viewport = viewportGeometry?.absolute || rootBounds || { x: 0, y: 0, width: 390, height: 760 };
@@ -647,26 +679,31 @@ function mergeIssues(existing, generated) {
 }
 
 function walk(node, visitor, parent = null, depth = 0) {
-  visitor(node, parent, depth);
-  for (const child of node.children || []) {
-    walk(child, visitor, node, depth + 1);
-  }
+  return valdiDebuggerTreeModel.walk(
+    node,
+    (current, ancestors, currentDepth) => {
+      return visitor(current, ancestors.at(-1) ?? parent, depth + currentDepth);
+    },
+    [],
+    0,
+  );
 }
 
 function walkVisible(node, visitor, parent = null, depth = 0) {
-  visitor(node, parent, depth);
-  if (!state.expandedNodeIds.has(getNodeId(node))) return;
-  for (const child of node.children || []) {
-    walkVisible(child, visitor, node, depth + 1);
-  }
+  if (!node) return true;
+  return valdiDebuggerTreeModel.walkVisible(
+    node,
+    (current, ancestors, currentDepth) => {
+      return visitor(current, ancestors.at(-1) ?? parent, depth + currentDepth);
+    },
+    current => state.expandedNodeIds.has(getNodeId(current)),
+    [],
+    0,
+  );
 }
 
 function findNodeInTree(root, id) {
-  let result = null;
-  walk(root, node => {
-    if (getNodeId(node) === String(id)) result = node;
-  });
-  return result;
+  return valdiDebuggerTreeModel.findNode(root, id);
 }
 
 function findNode(id) {
@@ -674,24 +711,8 @@ function findNode(id) {
   return findNodeInTree(state.snapshot.tree, id);
 }
 
-function getParentMap() {
-  const parents = new Map();
-  if (!hasSnapshotTree()) return parents;
-  walk(state.snapshot.tree, (node, parent) => {
-    if (parent) parents.set(getNodeId(node), parent);
-  });
-  return parents;
-}
-
 function getPathToNode(id) {
-  const parents = getParentMap();
-  const path = [];
-  let current = findNode(id);
-  while (current) {
-    path.unshift(current);
-    current = parents.get(getNodeId(current));
-  }
-  return path;
+  return hasSnapshotTree() ? valdiDebuggerTreeModel.pathToNode(state.snapshot.tree, id) : [];
 }
 
 function expandPathToNode(id) {
@@ -713,7 +734,7 @@ function collapseTreeNode(node) {
 
 function toggleTreeNode(id) {
   const node = findNode(id);
-  if (!node || !(node.children || []).length) return;
+  if (!node || !valdiDebuggerTreeModel.hasChildren(node)) return;
   if (state.expandedNodeIds.has(id)) {
     collapseTreeNode(node);
   } else {
@@ -723,15 +744,24 @@ function toggleTreeNode(id) {
 }
 
 function ensureBounds(node, depth = 0, index = 0) {
-  if (!node.bounds) {
-    node.bounds = {
-      x: 12 + depth * 16,
-      y: 24 + index * 54 + depth * 14,
-      width: Math.max(80, 360 - depth * 28),
-      height: node.children && node.children.length ? 110 : 42,
-    };
-  }
-  (node.children || []).forEach((child, childIndex) => ensureBounds(child, depth + 1, childIndex));
+  if (!node) return;
+  valdiDebuggerTreeModel.walk(
+    node,
+    (current, _ancestors, currentDepth, sourceChildIndex) => {
+      const currentIndex = sourceChildIndex === null ? index : sourceChildIndex;
+      const hasChildren = valdiDebuggerTreeModel.hasChildren(current);
+      if (!current.bounds) {
+        current.bounds = {
+          x: 12 + (depth + currentDepth) * 16,
+          y: 24 + currentIndex * 54 + (depth + currentDepth) * 14,
+          width: Math.max(80, 360 - (depth + currentDepth) * 28),
+          height: hasChildren ? 110 : 42,
+        };
+      }
+    },
+    [],
+    0,
+  );
 }
 
 function escapeHtml(value) {

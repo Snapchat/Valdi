@@ -152,7 +152,7 @@ Starts the Valdi [hotreloader](./start-about.md#prototype-quickly-with-hot-reloa
 - The `--target` option should be a valid Bazel target (ex: `//:hello_world_hotreload`).
 - The `--module` option will query and run targets in the current workspace which match the module_name.<br></br>
 
-`valdi debugger [--host host] [--port port] [--strict-port] [--json]`\
+`valdi debugger [--host host] [--port port] [--strict-port] [--json] [--web-preview-url url] [--chromium-debugging-port port]`\
 Starts a local browser-based Valdi debugger web interface. The debugger attaches
 to running Valdi daemon targets and exposes live view hierarchy, preview,
 inspector data, element snapshots, heap dumps, input dispatch, and runtime logs. CPU profiling
@@ -164,7 +164,14 @@ uses a separate Hermes debugger connection.
   available port so multiple local debugger sessions can run at once.
 - Use `--strict-port` to fail instead of auto-selecting another port.
 - Use `--json` to print one machine-readable startup object with the selected
-  `url`, `port`, `requestedPort`, and `portWasAutoSelected` fields.<br></br>
+  `url`, `port`, `requestedPort`, and `portWasAutoSelected` fields.
+- Use `--web-preview-url` to attach the integrated Elements and Console panel
+  to one exact loopback web/Owl page. The command prints a temporary unpacked
+  extension directory, adds the explicit Valdi debugger query parameters to
+  the preview URL, and defaults Chromium CDP discovery to port `9222`.
+- Use `--chromium-debugging-port` when Owl/Chromium was launched with a
+  different loopback `--remote-debugging-port`. The target page must provide
+  the opt-in `window.__VALDI_WEB_DEBUGGER__` snapshot/highlight contract.<br></br>
 
 `valdi inspect input <capabilities|query|tap|focus|text|key|scroll> [contextId]`\
 Queries or controls a running debug `valdi_application` through the default,

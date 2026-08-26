@@ -270,12 +270,18 @@ async function loadRealSnapshot(target, options = {}) {
 
 function firstElementDescendant(node) {
   if (!node) return null;
-  if (node.element && node.element.id !== undefined) return node;
-  for (const child of node.children || []) {
-    const match = firstElementDescendant(child);
-    if (match) return match;
-  }
-  return null;
+  let found = null;
+  valdiDebuggerTreeModel.walk(
+    node,
+    current => {
+      if (!current.element || current.element.id === undefined) return true;
+      found = current;
+      return false;
+    },
+    [],
+    0,
+  );
+  return found;
 }
 
 async function captureSelectedElementSnapshot() {
@@ -363,9 +369,13 @@ async function copyPreview() {
   }
 
   try {
-    await navigator.clipboard.writeText(JSON.stringify(state.snapshot, null, 2));
+    await navigator.clipboard.writeText(previewSnapshotProjectionJson());
     addLog('info', 'preview', 'Copied current snapshot JSON.');
   } catch (error) {
     addLog('error', 'preview', `Copy failed: ${error.message}`);
   }
+}
+
+function previewSnapshotProjectionJson() {
+  return JSON.stringify(valdiDebuggerTreeModel.projectSnapshot(state.snapshot), null, 2);
 }

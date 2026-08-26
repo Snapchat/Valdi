@@ -4,8 +4,10 @@ import * as http from 'node:http';
 import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { valdiDebugger } from '../commands/debugger';
+import { ArgumentsResolver } from '../utils/ArgumentsResolver';
 import type { DebuggerServerInfo } from './server';
-import { startDebuggerServer } from './server';
+import { projectDebuggerTreeForJson, startDebuggerServer } from './server';
 
 interface HttpResult {
   body: string;
@@ -31,6 +33,7 @@ const GET_REQUEST_OPTIONS: HttpRequestOptions = {
   headers: {},
   body: undefined,
 };
+const WEB_PREVIEW_NONCE = 'server-devtools-nonce-123456';
 
 async function getFreePort(): Promise<number> {
   return await new Promise((resolve, reject) => {
@@ -197,6 +200,146 @@ describe('debugger server', () => {
     fs.rmSync(assetRoot, { recursive: true, force: true });
   });
 
+  it('projects deep cyclic daemon and Owl hierarchies before the HTTP JSON boundary', () => {
+    const root: Record<string, unknown> = { id: 0, tag: 'root' };
+    let current = root;
+    for (let index = 1; index <= 20_000; index += 1) {
+      const child: Record<string, unknown> = { id: index, tag: 'node' };
+      current['children'] = [child];
+      current = child;
+    }
+    const cyclicMetadata: Record<string, unknown> = { title: 'cyclic' };
+    cyclicMetadata['self'] = cyclicMetadata;
+    current['metadata'] = cyclicMetadata;
+    current['children'] = [root];
+
+    const projection = projectDebuggerTreeForJson(root);
+
+    expect(projection.nodeCount).toBe(20_001);
+    expect(projection.complete).toBeTrue();
+    expect(() => JSON.stringify({ tree: projection })).not.toThrow();
+  });
+
+  it('assigns shared hierarchy ownership to the first node reached in preorder and caps output', () => {
+    const shared = { id: 'shared', tag: 'shared' };
+    const first = { children: [shared], id: 'first', tag: 'first' };
+    const root: Record<string, unknown> = { children: [first, shared], id: 'root', tag: 'root' };
+
+    const projection = projectDebuggerTreeForJson(root);
+
+    expect(projection.nodes.map(node => node.data['id'])).toEqual(['root', 'first', 'shared']);
+    expect(projection.nodes[0]?.childIndexes).toEqual([1]);
+    expect(projection.nodes[1]?.childIndexes).toEqual([2]);
+    expect(projection.nodes[2]).toEqual(jasmine.objectContaining({ depth: 2, parentIndex: 1 }));
+
+    root['children'] = Array.from({ length: 26_000 }, (_, index) => ({ id: index, tag: 'node' }));
+    const capped = projectDebuggerTreeForJson(root);
+    expect(capped.nodeCount).toBe(25_000);
+    expect(capped.complete).toBeFalse();
+    expect(() => JSON.stringify({ tree: capped })).not.toThrow();
+  });
+
+  it('bounds sparse metadata and child arrays without invoking accessors at the HTTP boundary', () => {
+    const sparseMetadata: unknown[] = [];
+    sparseMetadata[10_000_000] = 'far-value';
+    let getterCalls = 0;
+    Object.defineProperty(sparseMetadata, 'accessor', {
+      enumerable: true,
+      get: () => {
+        getterCalls += 1;
+        return 'unsafe';
+      },
+    });
+    const sparseChildren: Array<Record<string, unknown>> = [];
+    sparseChildren[10_000_000] = { id: 'distant', tag: 'child' };
+    const root: Record<string, unknown> = {
+      children: sparseChildren,
+      id: 'root',
+      metadata: sparseMetadata,
+      oversized: 'x'.repeat(60_000),
+      tag: 'root',
+    };
+
+    const startedAt = performance.now();
+    const projection = projectDebuggerTreeForJson(root);
+    const elapsedMilliseconds = performance.now() - startedAt;
+    const metadata = projection.nodes[0]?.data['metadata'] as {
+      $entries: Array<Record<string, unknown>>;
+      $length: number;
+      $truncated: string;
+    };
+    const serializedMetadata = JSON.stringify(metadata);
+
+    expect(projection.complete).toBeFalse();
+    expect(projection.nodeCount).toBe(2);
+    expect(projection.nodes[1]?.sourceChildIndex).toBe(10_000_000);
+    expect(metadata.$length).toBe(10_000_001);
+    expect(metadata.$truncated).toBe('sparse-array');
+    expect((projection.nodes[0]?.data['oversized'] as string).length).toBe(50_000);
+    expect(metadata.$entries).toContain(jasmine.objectContaining({ $index: 10_000_000, value: 'far-value' }));
+    expect(metadata.$entries).toContain(
+      jasmine.objectContaining({
+        $key: 'accessor',
+        value: jasmine.objectContaining({ $truncated: 'accessor' }),
+      }),
+    );
+    expect(getterCalls).toBe(0);
+    expect(serializedMetadata.length).toBeLessThan(1500);
+    expect(elapsedMilliseconds).toBeLessThan(1000);
+  });
+
+  it('preserves own prototype-named keys in projected values and tree-node data', () => {
+    const metadata = JSON.parse('{"__proto__":{"metadataPolluted":true},"safe":1}') as Record<string, unknown>;
+    Object.setPrototypeOf(metadata, { inheritedSentinel: 'must-not-project' });
+    const root = JSON.parse('{"id":"prototype-node","tag":"view","__proto__":{"treePolluted":true}}') as Record<
+      string,
+      unknown
+    >;
+    Object.setPrototypeOf(root, { inheritedSentinel: 'must-not-project' });
+    root['metadata'] = metadata;
+
+    const projection = projectDebuggerTreeForJson(root);
+    const data = projection.nodes[0]?.data;
+    const projectedMetadata = data?.['metadata'] as Record<string, unknown>;
+    const serialized = JSON.parse(JSON.stringify(projection)) as {
+      nodes: Array<{ data: Record<string, unknown> }>;
+    };
+
+    expect(projection.complete).toBeTrue();
+    expect(Object.getPrototypeOf(data)).toBeNull();
+    expect(Object.getPrototypeOf(projectedMetadata)).toBeNull();
+    expect(Object.prototype.hasOwnProperty.call(data, '__proto__')).toBeTrue();
+    expect(Object.prototype.hasOwnProperty.call(projectedMetadata, '__proto__')).toBeTrue();
+    expect(data?.['inheritedSentinel']).toBeUndefined();
+    expect(projectedMetadata['inheritedSentinel']).toBeUndefined();
+    expect(serialized.nodes[0]?.data['__proto__']).toEqual({ treePolluted: true });
+    expect((serialized.nodes[0]?.data['metadata'] as Record<string, unknown>)['__proto__']).toEqual({
+      metadataPolluted: true,
+    });
+  });
+
+  it('marks a revoked proxy child incomplete without throwing or invoking its traps', () => {
+    const revokedChild = Proxy.revocable({ id: 'revoked', tag: 'view' }, {});
+    revokedChild.revoke();
+    const root: Record<string, unknown> = {
+      children: [revokedChild.proxy],
+      id: 'root',
+      tag: 'view',
+    };
+
+    const projection = projectDebuggerTreeForJson(root);
+
+    expect(projection.complete).toBeFalse();
+    expect(projection.nodeCount).toBe(1);
+    expect(projection.truncations).toContain(
+      jasmine.objectContaining({
+        $at: '$.nodes[0].children[0]',
+        $truncated: 'unavailable-child',
+      }),
+    );
+    expect(() => JSON.stringify(projection)).not.toThrow();
+  });
+
   it('serves the packaged debugger application', async () => {
     debuggerServer = await startDebuggerServer({
       assetRoot,
@@ -213,6 +356,211 @@ describe('debugger server', () => {
     expect(result.contentSecurityPolicy).toContain("script-src 'self'");
     expect(result.contentSecurityPolicy).toContain("frame-ancestors 'none'");
     expect(result.xFrameOptions).toBe('DENY');
+  });
+
+  it('allows extension framing only for the dedicated DevTools panel route', async () => {
+    fs.writeFileSync(path.join(assetRoot, 'devtools-panel.html'), '<!doctype html><title>Valdi DevTools</title>');
+    fs.writeFileSync(path.join(assetRoot, 'devtools-panel.js'), 'void 0;');
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+
+    const panel = await request(new URL('/devtools-panel.html', debuggerServer.url).toString(), GET_REQUEST_OPTIONS);
+    const standalone = await request(debuggerServer.url, GET_REQUEST_OPTIONS);
+    const panelScript = await request(
+      new URL('/devtools-panel.js', debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+
+    expect(panel.statusCode).toBe(200);
+    expect(panel.contentSecurityPolicy).toContain('frame-ancestors chrome-extension://*');
+    expect(panel.contentSecurityPolicy).not.toContain("frame-ancestors 'none'");
+    expect(panel.xFrameOptions).toBe('');
+    expect(standalone.contentSecurityPolicy).toContain("frame-ancestors 'none'");
+    expect(standalone.xFrameOptions).toBe('DENY');
+    expect(panelScript.contentSecurityPolicy).toContain("frame-ancestors 'none'");
+    expect(panelScript.xFrameOptions).toBe('DENY');
+  });
+
+  it('resolves only the exact configured web preview page for integrated DevTools', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+      webPreviewUrl: 'http://127.0.0.1:54321/index.html?tenant=alpha&mode=dev',
+      chromiumDebuggingPort: 9333,
+    });
+
+    const matching = await request(
+      new URL(
+        `/api/devtools/target?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3FvaldiDebugger%3D1%26mode%3Ddev%26valdiDevTools%3D1%26tenant%3Dalpha&targetNonce=${WEB_PREVIEW_NONCE}`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const differentPath = await request(
+      new URL(
+        `/api/devtools/target?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Fother.html&targetNonce=${WEB_PREVIEW_NONCE}`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const differentQuery = await request(
+      new URL(
+        `/api/devtools/target?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3Fmode%3Ddev%26tenant%3Dbeta%26valdiDebugger%3D1%26valdiDevTools%3D1&targetNonce=${WEB_PREVIEW_NONCE}`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+
+    expect(matching.statusCode).toBe(200);
+    expect(JSON.parse(matching.body)).toEqual({
+      target: jasmine.objectContaining({
+        applicationUrl: 'http://127.0.0.1:54321/index.html?tenant=alpha&mode=dev',
+        debuggingPort: 9333,
+        id: 'owl:web-preview',
+        sessionId: 'web-preview',
+      }),
+    });
+    expect(differentPath.statusCode).toBe(404);
+    expect(JSON.parse(differentPath.body)).toEqual({
+      error: 'The inspected page does not match the configured Valdi web preview target.',
+    });
+    expect(differentQuery.statusCode).toBe(404);
+    expect(JSON.parse(differentQuery.body)).toEqual({
+      error: 'The inspected page does not match the configured Valdi web preview target.',
+    });
+  });
+
+  it('requires an inspected-tab nonce when resolving the integrated DevTools target', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+      webPreviewUrl: 'http://127.0.0.1:54321/index.html',
+    });
+
+    const result = await request(
+      new URL(
+        '/api/devtools/target?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html',
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toEqual({
+      error: 'DevTools target discovery requires a valid inspected-tab nonce.',
+    });
+  });
+
+  it('requires JSON for executable integrated DevTools routes', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+      webPreviewUrl: 'http://127.0.0.1:54321/index.html',
+    });
+
+    const plainText = await request(new URL('/api/devtools/evaluate', debuggerServer.url).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: '{"sessionId":"web-preview","expression":"1 + 1"}',
+    });
+    const json = await request(new URL('/api/devtools/evaluate', debuggerServer.url).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"sessionId":"missing","expression":"1 + 1"}',
+    });
+
+    expect(plainText.statusCode).toBe(415);
+    expect(JSON.parse(plainText.body)).toEqual({
+      error: 'Valdi DevTools actions require an application/json request.',
+    });
+    expect(json.statusCode).toBe(404);
+    expect(JSON.parse(json.body)).toEqual({
+      error: 'The configured web preview debugger target is not available.',
+    });
+  });
+
+  it('does not accept mutations on read-only integrated DevTools routes', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+      webPreviewUrl: 'http://127.0.0.1:54321/index.html',
+    });
+
+    const result = await request(new URL('/api/devtools/target', debuggerServer.url).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+
+    expect(result.statusCode).toBe(405);
+    expect(JSON.parse(result.body)).toEqual({ error: 'Valdi DevTools target discovery requires GET.' });
+  });
+
+  it('rejects remote web previews and invalid Chromium debugging ports', async () => {
+    await expectAsync(
+      startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: 'https://example.com/index.html',
+      }),
+    ).toBeRejectedWithError(/unauthenticated loopback HTTP URL/);
+    await expectAsync(
+      startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: 'http://127.0.0.1:54321/index.html',
+        chromiumDebuggingPort: 0,
+      }),
+    ).toBeRejectedWithError(/Chromium debugging port must be an integer between 1 and 65535/);
+  });
+
+  it('restores the active web preview target when a configured server cannot bind', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+    const occupiedPort = await getFreePort();
+    occupiedPortServer = await listenOnPort(occupiedPort);
+
+    await expectAsync(
+      startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: occupiedPort,
+        strictPort: true,
+        webPreviewUrl: 'http://127.0.0.1:54321/index.html',
+      }),
+    ).toBeRejected();
+
+    const result = await request(
+      new URL(
+        '/api/devtools/target?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html',
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    expect(result.statusCode).toBe(404);
+    expect(JSON.parse(result.body)).toEqual({
+      error: 'Start valdi debugger with --web-preview-url before opening the DevTools panel.',
+    });
   });
 
   it('closes cleanly while an event stream is open', async () => {
@@ -544,6 +892,26 @@ describe('debugger server', () => {
     expect((JSON.parse(result.body) as { source: string }).source).toBe('café');
   });
 
+  it('rejects malformed UTF-8 split across executable JSON request chunks', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+    const streaming = startStreamingRequest(new URL('/api/debugger/actions', debuggerServer.url).toString(), 'POST', {
+      'Content-Type': 'application/json',
+    });
+    streaming.request.write(Buffer.from('{"action":"refreshSnapshot","source":"', 'utf8'));
+    streaming.request.write(Buffer.from([0xc3]));
+    await new Promise<void>(resolve => setImmediate(resolve));
+    streaming.request.end(Buffer.concat([Buffer.from([0x28]), Buffer.from('"}', 'utf8')]));
+    const result = await streaming.result;
+
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toEqual({ error: 'Request body must contain valid UTF-8.' });
+  });
+
   it('serializes concurrent CPU profile transitions before reading their bodies', async () => {
     debuggerServer = await startDebuggerServer({
       assetRoot,
@@ -715,5 +1083,70 @@ describe('debugger server', () => {
 
     expect(initialLogs.map(log => log.message)).toEqual(['repeated', 'repeated']);
     expect(appendedLogs.map(log => log.message)).toEqual(['repeated']);
+  });
+
+  it('rejects blank and invalid command preview URLs before allocating server or extension resources', async () => {
+    const extensionDirectoryPrefix = 'valdi-devtools-extension-';
+    const extensionDirectoriesBefore = fs
+      .readdirSync(os.tmpdir())
+      .filter(name => name.startsWith(extensionDirectoryPrefix))
+      .sort();
+    const invalidValues = [
+      { error: /must not be blank/, value: '   \t  ' },
+      { error: /Invalid web preview URL/, value: 'not a URL' },
+    ];
+
+    for (const invalidValue of invalidValues) {
+      const port = await getFreePort();
+      await expectAsync(
+        valdiDebugger(
+          new ArgumentsResolver({
+            chromiumDebuggingPort: 9222,
+            host: '127.0.0.1',
+            json: true,
+            port,
+            strictPort: true,
+            webPreviewUrl: invalidValue.value,
+          }),
+        ),
+      ).toBeRejectedWithError(invalidValue.error);
+      const availableServer = await listenOnPort(port);
+      await closeServer(availableServer);
+    }
+
+    expect(
+      fs
+        .readdirSync(os.tmpdir())
+        .filter(name => name.startsWith(extensionDirectoryPrefix))
+        .sort(),
+    ).toEqual(extensionDirectoriesBefore);
+  });
+
+  it('closes the debugger and removes its temporary extension on SIGHUP', async () => {
+    const consoleLog = spyOn(console, 'log');
+    const port = await getFreePort();
+    const previousSignalListeners = new Set(process.listeners('SIGHUP'));
+    const operation = valdiDebugger(
+      new ArgumentsResolver({
+        chromiumDebuggingPort: 9222,
+        host: '127.0.0.1',
+        json: true,
+        port,
+        strictPort: true,
+        webPreviewUrl: 'http://127.0.0.1:54321/index.html',
+      }),
+    );
+    while (consoleLog.calls.count() === 0) await new Promise<void>(resolve => setImmediate(resolve));
+    const startup = JSON.parse(String(consoleLog.calls.mostRecent().args[0])) as { extensionDirectory: string };
+    expect(fs.existsSync(startup.extensionDirectory)).toBeTrue();
+
+    const shutdownListener = process.listeners('SIGHUP').find(listener => !previousSignalListeners.has(listener));
+    if (!shutdownListener) throw new Error('Expected the debugger command to install a SIGHUP listener.');
+    shutdownListener('SIGHUP');
+    await operation;
+
+    expect(fs.existsSync(startup.extensionDirectory)).toBeFalse();
+    const availableServer = await listenOnPort(port);
+    await closeServer(availableServer);
   });
 });

@@ -62,23 +62,27 @@ function beginHtmlPreviewIncarnation() {
 }
 
 function previewClassName(value) {
-  return String(value || 'unknown')
+  return valdiDebuggerTreeModel
+    .formatValue(value || 'unknown', 0)
     .replace(/[^a-z0-9_-]+/gi, '-')
     .toLowerCase();
 }
 
 function previewValue(value) {
   if (value === undefined || value === null) return '';
-  if (typeof value === 'string') return value.replace(/^"|"$/g, '');
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (typeof value === 'object' && value.path) return String(value.path);
-  return normalizeLabelValue(value);
+  if (typeof value === 'object') {
+    const pathDescriptor = Object.getOwnPropertyDescriptor(value, 'path');
+    if (pathDescriptor && Object.prototype.hasOwnProperty.call(pathDescriptor, 'value')) {
+      return valdiDebuggerTreeModel.formatValue(pathDescriptor.value, 0).replace(/^"|"$/g, '');
+    }
+  }
+  return valdiDebuggerTreeModel.formatValue(value, 0).replace(/^"|"$/g, '');
 }
 
 function previewBoolean(value, fallback = false) {
   if (value === undefined || value === null || value === '') return fallback;
   if (typeof value === 'boolean') return value;
-  const normalized = String(value).toLowerCase();
+  const normalized = valdiDebuggerTreeModel.formatValue(value, 0).toLowerCase();
   if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
   if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
   return fallback;
@@ -86,14 +90,14 @@ function previewBoolean(value, fallback = false) {
 
 function previewNumber(value, fallback = 0) {
   if (value === undefined || value === null || value === '') return fallback;
-  const parsed = Number.parseFloat(String(value).replace(/^"|"$/g, ''));
+  const parsed = Number.parseFloat(valdiDebuggerTreeModel.formatValue(value, 0).replace(/^"|"$/g, ''));
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function previewCssLength(value) {
   if (value === undefined || value === null || value === '') return '';
   if (typeof value === 'number') return `${value}px`;
-  const normalized = String(value).replace(/^"|"$/g, '').trim();
+  const normalized = valdiDebuggerTreeModel.formatValue(value, 0).replace(/^"|"$/g, '').trim();
   if (!normalized) return '';
   if (/^-?\d+(\.\d+)?$/.test(normalized)) return `${normalized}px`;
   return normalized;
@@ -118,7 +122,7 @@ function previewText(node, attrs) {
 function previewImageSource(attrs) {
   const source = attrs.src || attrs.source || attrs.url;
   if (!source) return '';
-  if (typeof source === 'string') return source.replace(/^"|"$/g, '');
+  if (typeof source === 'string') return previewValue(source);
   if (typeof source === 'object') {
     return previewValue(source.src || source.url || source.path || source.default || '');
   }
@@ -126,7 +130,7 @@ function previewImageSource(attrs) {
 }
 
 function previewSafeMediaSource(source) {
-  const normalized = String(source || '').trim();
+  const normalized = valdiDebuggerTreeModel.formatValue(source || '', 0).trim();
   return /^(data|blob):/i.test(normalized) ? normalized : '';
 }
 
@@ -210,7 +214,7 @@ function applyPreviewTextStyles(element, attrs) {
 }
 
 function createPreviewElement(node, effectivelyDisabled) {
-  const tag = String(node.tag || 'view').toLowerCase();
+  const tag = valdiDebuggerTreeModel.formatValue(node.tag || 'view', 0).toLowerCase();
   const attrs = getNodeAttributes(node);
   if (tag === 'textfield') {
     const input = document.createElement('input');
@@ -266,7 +270,7 @@ function createPreviewElement(node, effectivelyDisabled) {
 
 function finishPreviewElement(element, node, target, effectivelyDisabled) {
   const attrs = getNodeAttributes(node);
-  const tag = String(node.tag || 'view').toLowerCase();
+  const tag = valdiDebuggerTreeModel.formatValue(node.tag || 'view', 0).toLowerCase();
   const nodeId = getNodeId(node);
   const elementId = getElementIdForNode(node);
   element.classList.add('valdi-html-node', `valdi-html-${previewClassName(tag)}`);
@@ -274,7 +278,7 @@ function finishPreviewElement(element, node, target, effectivelyDisabled) {
     element.classList.add('preview-interactive');
   }
   element.dataset.previewNodeId = nodeId;
-  if (elementId !== null) element.dataset.previewElementId = String(elementId);
+  if (elementId !== null) element.dataset.previewElementId = valdiDebuggerTreeModel.formatValue(elementId, 0);
   associateHtmlPreviewElement(element, target);
   if (effectivelyDisabled) {
     element.classList.add('preview-disabled');
@@ -314,16 +318,29 @@ function isHtmlPreviewEffectivelyDisabled(node, ancestorDisabled) {
 
 function appendPreviewNode(node, parent, target, ancestorDisabled) {
   if (!node) return;
-  if (node.element) {
-    const effectivelyDisabled = isHtmlPreviewEffectivelyDisabled(node, ancestorDisabled);
-    const element = createPreviewElement(node, effectivelyDisabled);
-    finishPreviewElement(element, node, target, effectivelyDisabled);
-    parent.appendChild(element);
-    const childParent = canHostPreviewChildren(element) ? element : parent;
-    for (const child of node.children || []) appendPreviewNode(child, childParent, target, effectivelyDisabled);
-    return;
-  }
-  for (const child of node.children || []) appendPreviewNode(child, parent, target, ancestorDisabled);
+  const childParents = new Map();
+  const disabledStates = new Map();
+  valdiDebuggerTreeModel.walk(
+    node,
+    (current, ancestors) => {
+      const directParent = ancestors.at(-1);
+      const currentParent = directParent ? childParents.get(directParent) || parent : parent;
+      const parentDisabled = directParent ? disabledStates.get(directParent) || false : ancestorDisabled;
+      if (!current.element) {
+        childParents.set(current, currentParent);
+        disabledStates.set(current, parentDisabled);
+        return;
+      }
+      const effectivelyDisabled = isHtmlPreviewEffectivelyDisabled(current, parentDisabled);
+      const element = createPreviewElement(current, effectivelyDisabled);
+      finishPreviewElement(element, current, target, effectivelyDisabled);
+      currentParent.appendChild(element);
+      childParents.set(current, canHostPreviewChildren(element) ? element : currentParent);
+      disabledStates.set(current, effectivelyDisabled);
+    },
+    [],
+    0,
+  );
 }
 
 function canHostPreviewChildren(element) {

@@ -17,14 +17,16 @@
  * the adb port forward to the Hermes debug socket is established.
  */
 
-import * as net from 'net';
-import * as crypto from 'crypto';
 import * as http from 'http';
+import { TextDecoder } from 'node:util';
 import { CliError } from '../core/errors';
+import { ChromiumDevToolsConnection } from './chromiumDevToolsClient';
 
 // ─── Ports ───────────────────────────────────────────────────────────────────
 
-export const HERMES_PORT = 13595;
+export const HERMES_PORT = 13_595;
+const MAX_HERMES_DISCOVERY_BYTES = 1024 * 1024;
+const FATAL_UTF8_DECODER = new TextDecoder('utf8', { fatal: true });
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -84,20 +86,53 @@ export async function listHermesDevices(port: number): Promise<HermesDebuggableD
   // Do NOT run adb forward here — the Companion manages the port-13595 tunnel.
   // Running adb forward would overwrite the Companion's mapping to the random Hermes port.
   return new Promise((resolve, reject) => {
+    let settled = false;
+    function fail(error: Error): void {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    }
+
     const timer = setTimeout(() => {
       req.destroy();
-      reject(new NotHermesError(port));
-    }, 3_000);
+      fail(new NotHermesError(port));
+    }, 3000);
 
     const req = http.get(`http://127.0.0.1:${port}/json`, (res) => {
-      let body = '';
-      res.on('data', (chunk: string) => { body += chunk; });
-      res.on('end', () => {
+      const chunks: Buffer[] = [];
+      let bodyBytes = 0;
+      res.on('data', (chunk: Buffer) => {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        if (buffer.length > MAX_HERMES_DISCOVERY_BYTES - bodyBytes) {
+          clearTimeout(timer);
+          fail(new CliError(`Hermes discovery exceeded the ${MAX_HERMES_DISCOVERY_BYTES} byte response limit.`));
+          res.destroy();
+          req.destroy();
+          return;
+        }
+        bodyBytes += buffer.length;
+        chunks.push(buffer);
+      });
+      res.once('error', error => {
         clearTimeout(timer);
+        fail(error);
+      });
+      res.once('end', () => {
+        if (settled) return;
+        clearTimeout(timer);
+        let body: string;
         try {
-          resolve(JSON.parse(body) as HermesDebuggableDevice[]);
+          body = FATAL_UTF8_DECODER.decode(Buffer.concat(chunks, bodyBytes));
         } catch {
-          reject(new CliError(`Invalid response from Hermes debug server on port ${port}`));
+          fail(new CliError(`Hermes debug server on port ${port} returned malformed UTF-8`));
+          return;
+        }
+        try {
+          const devices = JSON.parse(body) as HermesDebuggableDevice[];
+          settled = true;
+          resolve(devices);
+        } catch {
+          fail(new CliError(`Invalid response from Hermes debug server on port ${port}`));
         }
       });
     });
@@ -105,39 +140,12 @@ export async function listHermesDevices(port: number): Promise<HermesDebuggableD
     req.on('error', (err: NodeJS.ErrnoException) => {
       clearTimeout(timer);
       if (err.code === 'ECONNREFUSED') {
-        reject(new NotHermesError(port));
+        fail(new NotHermesError(port));
       } else {
-        reject(err);
+        fail(err);
       }
     });
   });
-}
-
-// ─── Minimal WebSocket framing ────────────────────────────────────────────────
-
-function encodeWsFrame(text: string): Buffer {
-  const payload = Buffer.from(text, 'utf8');
-  const mask = crypto.randomBytes(4);
-  const masked = Buffer.alloc(payload.length);
-  for (let i = 0; i < payload.length; i++) {
-    masked[i] = payload[i]! ^ mask[i % 4]!;
-  }
-
-  const len = payload.length;
-  let header: Buffer;
-  if (len < 126) {
-    header = Buffer.alloc(6);
-    header[0] = 0x81; // FIN + text opcode
-    header[1] = 0x80 | len; // MASK bit + length
-    mask.copy(header, 2);
-  } else {
-    header = Buffer.alloc(8);
-    header[0] = 0x81;
-    header[1] = 0x80 | 126;
-    header.writeUInt16BE(len, 2);
-    mask.copy(header, 4);
-  }
-  return Buffer.concat([header, masked]);
 }
 
 // ─── Profile normalisation ────────────────────────────────────────────────────
@@ -180,102 +188,52 @@ export function normalizeHermesProfile(profile: CpuProfile): CpuProfile {
   return { nodes, startTime: realStart, endTime, samples: realSamples, timeDeltas: newDeltas };
 }
 
-// ─── PendingCall ─────────────────────────────────────────────────────────────
-
-interface PendingCall {
-  resolve: (result: unknown) => void;
-  reject: (err: Error) => void;
-}
-
 // ─── HermesConnection ────────────────────────────────────────────────────────
 
 export class HermesConnection {
-  private socket: net.Socket;
-  private recvBuf: Buffer = Buffer.alloc(0);
-  private callId = 0;
-  private pending = new Map<number, PendingCall>();
+  private constructor(private readonly connection: ChromiumDevToolsConnection) {}
 
-  private constructor(socket: net.Socket) {
-    this.socket = socket;
-    socket.on('data', (chunk: Buffer) => this.onData(chunk));
-    socket.on('close', () => {
-      this.rejectAll(new Error('Hermes debug WebSocket closed unexpectedly'));
-    });
-    socket.on('error', (err) => this.rejectAll(err));
+  private static encodeDeviceId(deviceId: string): string {
+    if (!deviceId || deviceId === '.' || deviceId === '..') {
+      throw new CliError('The Hermes debugger device id must be a non-empty WebSocket path segment.');
+    }
+    try {
+      return encodeURIComponent(deviceId);
+    } catch {
+      throw new CliError('The Hermes debugger device id contains invalid Unicode.');
+    }
   }
 
   /**
    * Connect to the Hermes debug WebSocket for the given device context ID.
    * The path on the WebSocket server is `/<deviceId>`.
    */
-  static connect(port: number, deviceId: string): Promise<HermesConnection> {
-    return new Promise((resolve, reject) => {
-      const socket = net.createConnection({ port, host: '127.0.0.1' });
-
-      const timer = setTimeout(() => {
-        socket.destroy();
-        reject(new CliError(
-          `Timeout connecting to Hermes debug socket on port ${port}.\n` +
-          `Make sure the Valdi app is running and the hot-reloader is active.`,
-        ));
-      }, 5_000);
-
-      socket.once('error', (err: NodeJS.ErrnoException) => {
-        clearTimeout(timer);
-        if (err.code === 'ECONNREFUSED') {
-          reject(new NotHermesError(port));
-        } else {
-          reject(err);
-        }
-      });
-
-      socket.once('connect', () => {
-        // Perform WebSocket upgrade handshake
-        const key = crypto.randomBytes(16).toString('base64');
-        const handshake =
-          `GET /${deviceId} HTTP/1.1\r\n` +
-          `Host: localhost:${port}\r\n` +
-          `Upgrade: websocket\r\n` +
-          `Connection: Upgrade\r\n` +
-          `Sec-WebSocket-Key: ${key}\r\n` +
-          `Sec-WebSocket-Version: 13\r\n` +
-          `\r\n`;
-        socket.write(handshake);
-
-        let handshakeBuf = '';
-        const onHandshakeData = (chunk: Buffer) => {
-          handshakeBuf += chunk.toString('utf8');
-          if (handshakeBuf.includes('\r\n\r\n')) {
-            socket.removeListener('data', onHandshakeData);
-            clearTimeout(timer);
-            if (!handshakeBuf.includes('101 Switching Protocols')) {
-              socket.destroy();
-              reject(new CliError(`Hermes WebSocket handshake failed: ${handshakeBuf.slice(0, 100)}`));
-              return;
-            }
-            resolve(new HermesConnection(socket));
-          }
-        };
-        socket.on('data', onHandshakeData);
-      });
-    });
+  static async connect(port: number, deviceId: string): Promise<HermesConnection> {
+    const encodedDeviceId = HermesConnection.encodeDeviceId(deviceId);
+    try {
+      const connection = await ChromiumDevToolsConnection.connect(
+        `ws://127.0.0.1:${port}/${encodedDeviceId}`,
+        5000,
+      );
+      return new HermesConnection(connection);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
+        throw new NotHermesError(port);
+      }
+      if (error instanceof Error && error.message === 'Timed out connecting to the Chromium DevTools target.') {
+        throw new CliError(
+          `Timeout connecting to Hermes debug socket on port ${port}. ` +
+          'Make sure the Valdi app is running and the hot-reloader is active.',
+        );
+      }
+      throw error;
+    }
   }
 
   // ── Raw CDP call ──────────────────────────────────────────────────────────
 
   call(method: string, params: object = {}, timeoutMs = 10_000): Promise<unknown> {
-    const id = ++this.callId;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`Timeout waiting for response to ${method}`));
-      }, timeoutMs);
-      this.pending.set(id, {
-        resolve: (v) => { clearTimeout(timer); resolve(v); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
-      });
-      this.socket.write(encodeWsFrame(JSON.stringify({ id, method, params })));
-    });
+    return this.connection.call(method, params as Record<string, unknown>, timeoutMs);
   }
 
   // ── Profiler ──────────────────────────────────────────────────────────────
@@ -285,95 +243,13 @@ export class HermesConnection {
   }
 
   async stopProfiling(): Promise<CpuProfile> {
-    const result = await this.call('Profiler.stop', {}, 60_000) as { profile: CpuProfile };
+    const result = (await this.call('Profiler.stop', {}, 60_000)) as { profile: CpuProfile };
     return normalizeHermesProfile(result.profile);
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   close(): void {
-    this.socket.destroy();
-  }
-
-  // ── Internal ─────────────────────────────────────────────────────────────
-
-  private rejectAll(err: Error): void {
-    for (const pending of this.pending.values()) pending.reject(err);
-    this.pending.clear();
-  }
-
-  private onData(chunk: Buffer): void {
-    this.recvBuf = Buffer.concat([this.recvBuf, chunk]);
-    this.drainBuffer();
-  }
-
-  private drainBuffer(): void {
-    for (;;) {
-      if (this.recvBuf.length < 2) break;
-
-      const firstByte = this.recvBuf[0]!;
-      const secondByte = this.recvBuf[1]!;
-      const opcode = firstByte & 0x0f;
-
-      if (opcode === 0x08) {
-        // Connection close frame
-        this.rejectAll(new Error('Hermes debug WebSocket closed by server'));
-        return;
-      }
-
-      const isMasked = (secondByte & 0x80) !== 0;
-      let payloadLen = secondByte & 0x7f;
-      let offset = 2;
-
-      if (payloadLen === 126) {
-        if (this.recvBuf.length < 4) break;
-        payloadLen = this.recvBuf.readUInt16BE(2);
-        offset = 4;
-      } else if (payloadLen === 127) {
-        if (this.recvBuf.length < 10) break;
-        payloadLen = this.recvBuf.readUInt32BE(6); // lower 32 bits
-        offset = 10;
-      }
-
-      const maskLen = isMasked ? 4 : 0;
-      const totalLen = offset + maskLen + payloadLen;
-      if (this.recvBuf.length < totalLen) break;
-
-      // Skip non-text/binary frames (ping=0x09, pong=0x0A, continuation=0x00)
-      if (opcode !== 0x01 && opcode !== 0x02) {
-        this.recvBuf = this.recvBuf.subarray(totalLen);
-        continue;
-      }
-
-      let payload = this.recvBuf.subarray(offset + maskLen, totalLen);
-      if (isMasked) {
-        const mask = this.recvBuf.subarray(offset, offset + 4);
-        payload = Buffer.from(payload.map((b, i) => b ^ mask[i % 4]!));
-      }
-
-      this.recvBuf = this.recvBuf.subarray(totalLen);
-
-      try {
-        this.dispatchMessage(JSON.parse(payload.toString('utf8')) as Record<string, unknown>);
-      } catch {
-        // ignore malformed messages
-      }
-    }
-  }
-
-  private dispatchMessage(msg: Record<string, unknown>): void {
-    if (typeof msg['id'] !== 'number') return; // ignore events
-
-    const pending = this.pending.get(msg['id'] as number);
-    if (!pending) return;
-    this.pending.delete(msg['id'] as number);
-
-    if (msg['error']) {
-      const err = msg['error'] as Record<string, unknown>;
-      pending.reject(new Error(String(err['message'] ?? 'Unknown CDP error')));
-    } else {
-      pending.resolve(msg['result']);
-    }
+    this.connection.close();
   }
 }
-
