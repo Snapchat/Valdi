@@ -63,13 +63,11 @@ Web-renderer inspection uses the first-party bridge exposed as
 configured loopback Chromium target.
 
 The Data section discovers target-owned providers through a generic custom
-message contract. This slice includes read-only Storage and SQL presentation,
-but it does not register either backend. A later thin registration layer can
-adapt a bounded Storage snapshot callback or an existing SQL API without
-changing this contract. Until then, the UI reports both surfaces as unavailable
-instead of synthesizing sample data. Network and key-value integrations are not
-part of this slice and remain unavailable unless a future runtime provider is
-registered.
+message contract. The persistence module registers its bounded web snapshot as
+the `persistent-store` Storage provider and reports it unavailable on platforms
+whose native binding does not expose that inspector. SQL, Network, and
+key-value integrations remain unavailable unless a runtime provider registers
+them; the UI never synthesizes sample data.
 
 Runtime adapters cross the provider boundary with an already serialized JSON
 object document, not an arbitrary object graph. They should call
@@ -82,11 +80,12 @@ the complete serialized custom-response body including metadata. Owners bind
 to the creating module object's hot-reload callback automatically, including
 webpack modules where `module.path` is absent. Adapters call
 `owner.dispose()` only when stopping before a reload. A newer registration for
-an existing provider ID permanently invalidates the older registration. This
-is the integration point for the later thin Storage/SQL registration layer.
-On native runtimes the owner observes `module.path`; the explicit stable key is
-replacement identity only. Web runtimes fall back to observing that stable key
-because webpack does not provide `module.path`.
+an existing provider ID permanently invalidates the older registration. The
+PersistentStore adapter projects known data properties into a deterministic
+43 KiB document before calling this helper. On native runtimes the owner
+observes `module.path`; the explicit stable key is replacement identity only.
+Web runtimes fall back to observing that stable key because webpack does not
+provide `module.path`.
 
 Published settings are application-owned controls registered only in debug
 runtimes. Values are limited to declared toggle, select, text, and number

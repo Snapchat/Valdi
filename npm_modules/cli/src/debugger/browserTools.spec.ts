@@ -214,4 +214,70 @@ describe('debugger browser provider and settings tools', () => {
       'SQL support is not registered by this target runtime.',
     );
   });
+
+  it('renders bounded PersistentStore diagnostics without losing numeric string encoding', () => {
+    const harness = createHarness();
+    const state = harness.context['state'] as {
+      providers: { registry: Record<string, unknown>; storage: Record<string, unknown> };
+    };
+    state.providers.registry = {
+      providers: [{ available: true, id: 'persistent-store', kind: 'storage', label: 'PersistentStore' }],
+    };
+    state.providers.storage = {
+      storageError: 'Storage access was denied.',
+      storageInspectionTruncated: true,
+      stores: [
+        {
+          backend: 'memory',
+          entries: [{ encoding: 0, key: 'theme', value: 'dark' }],
+          inspectionTruncated: true,
+          name: 'preferences',
+        },
+      ],
+    };
+
+    const html = call<string>(harness.context, 'renderStoragePanel');
+    expect(html).toContain('Storage access was denied.');
+    expect(html).toContain('Persistent browser-storage discovery was truncated');
+    expect(html).toContain('memory · 1 entry');
+    expect(html).toContain('0</span>');
+    expect(html).toContain('Entry inspection stopped at the debugger scan limit.');
+    expect(html).not.toContain('unknown · 1 entry');
+  });
+
+  it('surfaces provider projection omissions globally and on the affected store', () => {
+    const harness = createHarness();
+    const state = harness.context['state'] as {
+      providers: { registry: Record<string, unknown>; storage: Record<string, unknown> };
+    };
+    state.providers.registry = {
+      providers: [{ available: true, id: 'persistent-store', kind: 'storage', label: 'PersistentStore' }],
+    };
+    state.providers.storage = {
+      projection: {
+        entriesOmitted: 60,
+        invalidFields: 0,
+        sourceEntries: 100,
+        sourceStores: 2,
+        storesOmitted: 1,
+        truncated: true,
+        truncatedFields: 1,
+      },
+      stores: [
+        {
+          backend: 'memory',
+          entries: [{ encoding: 0, key: 'first', value: 'value' }],
+          entriesTruncated: true,
+          name: 'bounded',
+        },
+      ],
+    };
+
+    const html = call<string>(harness.context, 'renderStoragePanel');
+    expect(html).toContain('Storage transport projection was truncated');
+    expect(html).toContain('1 store omitted');
+    expect(html).toContain('60 entries omitted');
+    expect(html).toContain('1 field truncated');
+    expect(html).toContain('Additional entries were omitted by the debugger snapshot budget.');
+  });
 });

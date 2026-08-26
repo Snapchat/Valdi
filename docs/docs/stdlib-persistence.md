@@ -23,6 +23,11 @@ removing them. Store names, entry keys, values, serialized records, store and
 entry counts, browser-key scans, and the aggregate UTF-16/UTF-8 payload are all
 bounded. Truncation and corruption are reported as snapshot metadata so an
 inspector cannot wedge application persistence or perform unbounded work.
+When `PersistentStore` is loaded in a debug runtime, this snapshot is published
+to the generic debugger Data panel as the read-only `persistent-store`
+provider. The adapter applies a smaller 43 KiB transport projection and reports
+the exact known store and entry omissions. Native bindings that do not expose
+the snapshot callback advertise the provider as unavailable.
 
 ## Installation
 
@@ -445,4 +450,3 @@ The `persistence` module works on:
 - **Encryption has overhead** - only use for sensitive data
 - **LRU caching helps** - use maxWeight to limit storage usage
 - **TTL prevents bloat** - set reasonable expiration times
-

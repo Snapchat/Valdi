@@ -248,10 +248,27 @@ function renderProviderStatus(provider, unavailableMessage) {
 
 function renderStorageEntry(entry) {
   const truncated = entry.valueTruncated || entry.keyTruncated;
-  const metadata = [entry.encoding || 'unknown'];
+  const metadata = [entry.encoding ?? 'unknown'];
   if (entry.byteLength !== undefined) metadata.push(`${entry.byteLength} bytes`);
   if (truncated) metadata.push('truncated');
   return `<details class="data-entry"><summary><code>${escapeHtml(entry.key || '')}</code><span>${escapeHtml(metadata.join(' · '))}</span></summary><pre class="codebox">${escapeHtml(entry.value ?? '')}</pre></details>`;
+}
+
+function renderStorageProjectionNote(storage) {
+  const projection = storage?.projection;
+  if (projection?.truncated !== true) return '';
+  const details = [];
+  const storesOmitted = Number(projection.storesOmitted);
+  const entriesOmitted = Number(projection.entriesOmitted);
+  const truncatedFields = Number(projection.truncatedFields);
+  const invalidFields = Number(projection.invalidFields);
+  if (Number.isInteger(storesOmitted) && storesOmitted > 0) details.push(`${storesOmitted} ${storesOmitted === 1 ? 'store' : 'stores'} omitted`);
+  if (Number.isInteger(entriesOmitted) && entriesOmitted > 0) details.push(`${entriesOmitted} ${entriesOmitted === 1 ? 'entry' : 'entries'} omitted`);
+  if (projection.sourceEntryCountIncomplete === true) details.push('source entry total incomplete');
+  if (Number.isInteger(truncatedFields) && truncatedFields > 0) details.push(`${truncatedFields} ${truncatedFields === 1 ? 'field' : 'fields'} truncated`);
+  if (Number.isInteger(invalidFields) && invalidFields > 0) details.push(`${invalidFields} invalid ${invalidFields === 1 ? 'field' : 'fields'} omitted`);
+  const detail = details.length ? `: ${details.join(', ')}` : '';
+  return `<div class="provider-note">The Storage transport projection was truncated${escapeHtml(detail)}.</div>`;
 }
 
 function renderStoragePanel() {
@@ -261,10 +278,11 @@ function renderStoragePanel() {
     return `${renderProviderStatus(provider, unavailable)}<div class="empty">${escapeHtml(unavailable)}</div>`;
   }
   const stores = Array.isArray(state.providers.storage.stores) ? state.providers.storage.stores : [];
-  if (!stores.length) return `${renderProviderStatus(provider, unavailable)}<div class="empty">The registered Storage provider returned no stores.</div>`;
-  return `${renderProviderStatus(provider, unavailable)}<div class="storage-grid">${stores.map(store => {
+  const storageIssues = `${state.providers.storage.storageError ? `<div class="issue warn"><div class="issue-message">${escapeHtml(state.providers.storage.storageError)}</div></div>` : ''}${state.providers.storage.storageInspectionTruncated ? '<div class="provider-note">Persistent browser-storage discovery was truncated by the inspection budget.</div>' : ''}${renderStorageProjectionNote(state.providers.storage)}`;
+  if (!stores.length) return `${renderProviderStatus(provider, unavailable)}${storageIssues}<div class="empty">The registered Storage provider returned no stores.</div>`;
+  return `${renderProviderStatus(provider, unavailable)}${storageIssues}<div class="storage-grid">${stores.map(store => {
     const entries = Array.isArray(store.entries) ? store.entries : [];
-    return `<details class="storage-card" open><summary><strong>${escapeHtml(store.name || 'Storage')}</strong><span>${escapeHtml(store.scope || 'unknown')} · ${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}</span></summary>${store.error ? `<div class="issue warn"><div class="issue-message">${escapeHtml(store.error)}</div></div>` : ''}${entries.length ? entries.map(renderStorageEntry).join('') : '<div class="empty">This store is empty.</div>'}${store.entriesTruncated ? '<div class="provider-note">Additional entries were omitted by the debugger snapshot budget.</div>' : ''}</details>`;
+    return `<details class="storage-card" open><summary><strong>${escapeHtml(store.name || 'Storage')}</strong><span>${escapeHtml(store.backend ?? 'unknown')} · ${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}</span></summary>${store.error ? `<div class="issue warn"><div class="issue-message">${escapeHtml(store.error)}</div></div>` : ''}${entries.length ? entries.map(renderStorageEntry).join('') : '<div class="empty">This store is empty.</div>'}${store.entriesTruncated ? '<div class="provider-note">Additional entries were omitted by the debugger snapshot budget.</div>' : ''}${store.inspectionTruncated ? '<div class="provider-note">Entry inspection stopped at the debugger scan limit.</div>' : ''}</details>`;
   }).join('')}</div>`;
 }
 

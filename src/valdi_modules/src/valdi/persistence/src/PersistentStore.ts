@@ -2,6 +2,7 @@ import { toError } from 'valdi_core/src/utils/ErrorUtils';
 import { makeSingleCallInterruptibleCallback } from 'valdi_core/src/utils/FunctionUtils';
 import { PropertyList } from 'valdi_core/src/utils/PropertyList';
 import { PersistentStoreNative } from './PersistentStoreNative';
+import './PersistentStoreDebuggerProvider';
 
 declare function require(path: string): any;
 const nativeCreate: (
