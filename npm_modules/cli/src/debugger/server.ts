@@ -36,6 +36,29 @@ const MAX_DEBUGGER_TREE_NODES = 25_000;
 const MAX_DEBUGGER_PROJECTION_VALUES = 250_000;
 const MAX_DEBUGGER_PROJECTION_DEPTH = 64;
 const MAX_DEBUGGER_PROJECTION_STRING_LENGTH = 50_000;
+const DEFAULT_TRACE_CAPTURE_DURATION_MS = 5000;
+const MIN_TRACE_CAPTURE_DURATION_MS = 100;
+const MAX_TRACE_CAPTURE_DURATION_MS = 15_000;
+export const MAX_TRACE_EVENT_COUNT = 10_000;
+const MAX_TRACE_NAME_BYTES = 2048;
+const MAX_TRACE_THREAD_METADATA_COUNT = 256;
+export const MAX_TRACE_HTTP_RESPONSE_BYTES = 4 * 1024 * 1024;
+const MAX_TRACE_HTTP_STRING_BYTES = 64 * 1024;
+const TRACE_DAEMON_TIMEOUT_MS = 30_000;
+const PERFETTO_PROCESS_ID = 1;
+const PERFETTO_PROCESS_NAME = 'Valdi';
+const PERFETTO_TRACE_CATEGORY = 'valdi';
+const PROCESS_WIDE_CAPTURE_SCOPE = 'process-wide';
+const TRACE_CAPTURE_TARGET_STRING_KEYS = [
+  'id',
+  'name',
+  'platform',
+  'transport',
+  'state',
+  'clientId',
+  'contextId',
+  'applicationId',
+] as const;
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -72,6 +95,74 @@ interface RuntimeLogTail {
 interface ClientWithContexts extends DaemonConnectedClient {
   contexts: RemoteContext[];
   contextError: string | null;
+}
+
+export interface RecordedTrace {
+  trace: string;
+  startMicros: number;
+  endMicros: number;
+  threadId: number;
+}
+
+export interface PerfettoCaptureMetadata {
+  captureScope: string;
+  captureTargetContextId: unknown;
+  captureTargetName: unknown;
+  droppedTraceEventCount: number;
+}
+
+export interface PerfettoTraceEvent {
+  name: string;
+  cat?: string;
+  ph: string;
+  pid: number;
+  tid?: number;
+  ts?: number;
+  dur?: number;
+  s?: string;
+  args?: Record<string, unknown>;
+}
+
+export interface TraceComponentSummary {
+  name: string;
+  count: number;
+  durationMs: number;
+}
+
+export interface TraceViewModelTriggerSummary {
+  name: string;
+  count: number;
+}
+
+export interface RendererTraceSummary {
+  captureScope: string;
+  traceCount: number;
+  durationTraceCount: number;
+  instantTraceCount: number;
+  topComponents: TraceComponentSummary[];
+  topViewModelTriggers: TraceViewModelTriggerSummary[];
+}
+
+export interface PerfettoTracePayload {
+  displayTimeUnit: string;
+  metadata: PerfettoCaptureMetadata;
+  traceEvents: PerfettoTraceEvent[];
+}
+
+export enum PerformanceTraceAction {
+  Status,
+  Start,
+  Stop,
+}
+
+export interface PerformanceTraceCaptureOptions {
+  durationMs: number;
+  rendererTracing: boolean;
+}
+
+export interface PerformanceTraceCaptureDependencies {
+  send(action: PerformanceTraceAction, data: Record<string, unknown>): Promise<Record<string, unknown>>;
+  wait(durationMs: number): Promise<void>;
 }
 
 interface ActiveProfileSession {
@@ -159,6 +250,9 @@ const debuggerActions = [
   'clearLogs',
   'captureElementSnapshot',
   'dumpHeap',
+  'startRendererTrace',
+  'stopRendererTrace',
+  'captureRendererTrace',
   'refreshHermesContexts',
   'startCpuProfile',
   'stopCpuProfile',
@@ -173,6 +267,7 @@ let activeLogsDirectory: string | null = null;
 let activeWebPreviewTarget: WebPreviewDebuggerTarget | null = null;
 let activeProfileSession: ActiveProfileSession | null = null;
 let profileTransitionInProgress = false;
+let traceTransitionInProgress = false;
 const debuggerUiState = createDebuggerUiState();
 
 function getDefaultAssetRoot(): string {
@@ -260,9 +355,28 @@ function portName(port: number): string {
   return 'custom';
 }
 
+function truncateStringForJson(value: string, maximumBytes: number): string {
+  if (Buffer.byteLength(JSON.stringify(value), 'utf8') <= maximumBytes) return value;
+  const suffix = '…';
+  let minimumLength = 0;
+  let maximumLength = value.length;
+  let truncated = suffix;
+  while (minimumLength <= maximumLength) {
+    const candidateLength = Math.floor((minimumLength + maximumLength) / 2);
+    const candidate = `${value.slice(0, candidateLength)}${suffix}`;
+    if (Buffer.byteLength(JSON.stringify(candidate), 'utf8') <= maximumBytes) {
+      truncated = candidate;
+      minimumLength = candidateLength + 1;
+    } else {
+      maximumLength = candidateLength - 1;
+    }
+  }
+  return truncated;
+}
+
 function errorPayload(error: unknown): { error: string } {
   return {
-    error: error instanceof Error ? error.message : String(error),
+    error: truncateStringForJson(error instanceof Error ? error.message : String(error), MAX_TRACE_HTTP_STRING_BYTES),
   };
 }
 
@@ -817,6 +931,19 @@ function sendJson(response: ServerResponse, status: number, payload: unknown): v
   response.end(JSON.stringify(payload));
 }
 
+function sendTraceJson(response: ServerResponse, status: number, payload: unknown): void {
+  const serialized = JSON.stringify(payload);
+  if (Buffer.byteLength(serialized, 'utf8') > MAX_TRACE_HTTP_RESPONSE_BYTES) {
+    sendJson(response, 500, { error: 'Valdi performance trace response exceeded the HTTP size limit.' });
+    return;
+  }
+  response.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+  });
+  response.end(serialized);
+}
+
 async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   let byteLength = 0;
@@ -860,6 +987,24 @@ function readBodyNumber(body: Record<string, unknown>, key: string, fallback: nu
   if (value === undefined) return fallback;
   const parsed = Number.parseInt(String(value), 10);
   return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+function readRendererTracing(body: Record<string, unknown>): boolean {
+  const value = body['rendererTracing'];
+  if (value === undefined) return true;
+  if (typeof value !== 'boolean') {
+    throw new ApiRequestError(400, 'rendererTracing must be a boolean when provided.');
+  }
+  return value;
+}
+
+export function normalizeTraceCaptureDurationMs(body: Record<string, unknown>): number {
+  const value = body['durationMs'];
+  if (value === undefined) return DEFAULT_TRACE_CAPTURE_DURATION_MS;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new ApiRequestError(400, 'durationMs must be a finite number when provided.');
+  }
+  return clampNumber(Math.round(value), MIN_TRACE_CAPTURE_DURATION_MS, MAX_TRACE_CAPTURE_DURATION_MS);
 }
 
 function readBodyString(body: Record<string, unknown>, key: string): string | undefined {
@@ -1761,6 +1906,24 @@ async function resolveClient(
   return { clients, client };
 }
 
+function createDaemonTargetPayload(
+  port: number,
+  client: DaemonConnectedClient,
+  context: RemoteContext,
+): Record<string, unknown> {
+  return {
+    id: `${port}:${client.client_id}:${context.id}`,
+    name: context.rootComponentName || client.application_id || `Client ${client.client_id}`,
+    platform: client.platform || portName(port),
+    transport: `daemon:${port}`,
+    state: 'attached',
+    port,
+    clientId: client.client_id,
+    contextId: context.id,
+    applicationId: client.application_id,
+  };
+}
+
 function flattenTargets(
   port: number,
   clients: ClientWithContexts[],
@@ -1864,6 +2027,414 @@ async function inspectHeap(request: IncomingMessage, searchParams: URLSearchPara
       heap,
     };
   });
+}
+
+async function sendPerformanceTraceMessage(
+  searchParams: URLSearchParams,
+  action: PerformanceTraceAction,
+  data: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const port = readNumber(searchParams, 'port', STANDALONE_PORT);
+  return await withConnection(port, async conn => {
+    const { client, context } = await resolveTarget(searchParams, conn);
+
+    let result: Record<string, unknown>;
+    if (action === PerformanceTraceAction.Status) {
+      result = await conn.performanceTraceStatus(client.client_id, { contextId: context.id }, TRACE_DAEMON_TIMEOUT_MS);
+    } else if (action === PerformanceTraceAction.Start) {
+      const rendererTracing = data['rendererTracing'];
+      if (typeof rendererTracing !== 'boolean') {
+        throw new TypeError('Performance trace start requires a rendererTracing boolean.');
+      }
+      result = await conn.performanceTraceStart(
+        client.client_id,
+        {
+          contextId: context.id,
+          rendererTracing,
+        },
+        TRACE_DAEMON_TIMEOUT_MS,
+      );
+    } else {
+      result = await conn.performanceTraceStop(client.client_id, { contextId: context.id }, TRACE_DAEMON_TIMEOUT_MS);
+    }
+
+    assertPerformanceTraceContext(action, result, context.id);
+
+    return decorateTraceResult(result, createDaemonTargetPayload(port, client, context));
+  });
+}
+
+export function assertPerformanceTraceContext(
+  action: PerformanceTraceAction,
+  result: Record<string, unknown>,
+  expectedContextId: string,
+): void {
+  if (action !== PerformanceTraceAction.Status && result['contextId'] !== expectedContextId) {
+    throw new Error(
+      `The Valdi runtime returned trace data for context ${String(result['contextId'])}, expected ${expectedContextId}.`,
+    );
+  }
+}
+
+async function inspectPerformanceTraceStatus(
+  request: IncomingMessage,
+  searchParams: URLSearchParams,
+): Promise<Record<string, unknown>> {
+  if (request.method !== 'GET') {
+    throw new Error('Performance trace status requires GET.');
+  }
+  return await sendPerformanceTraceMessage(searchParams, PerformanceTraceAction.Status, {});
+}
+
+async function startPerformanceTrace(
+  request: IncomingMessage,
+  searchParams: URLSearchParams,
+): Promise<Record<string, unknown>> {
+  if (request.method !== 'POST') {
+    throw new Error('Performance trace start requires POST.');
+  }
+  return await runTraceTransition(async () => {
+    const body = await readJsonBody(request);
+    return await sendPerformanceTraceMessage(searchParams, PerformanceTraceAction.Start, {
+      rendererTracing: readRendererTracing(body),
+    });
+  });
+}
+
+async function stopPerformanceTrace(
+  request: IncomingMessage,
+  searchParams: URLSearchParams,
+): Promise<Record<string, unknown>> {
+  if (request.method !== 'POST') {
+    throw new Error('Performance trace stop requires POST.');
+  }
+  return await runTraceTransition(
+    async () => await sendPerformanceTraceMessage(searchParams, PerformanceTraceAction.Stop, {}),
+  );
+}
+
+async function capturePerformanceTrace(
+  request: IncomingMessage,
+  searchParams: URLSearchParams,
+): Promise<Record<string, unknown>> {
+  if (request.method !== 'POST') {
+    throw new Error('Performance trace capture requires POST.');
+  }
+  return await runTraceTransition(async () => {
+    const body = await readJsonBody(request);
+    const options: PerformanceTraceCaptureOptions = {
+      durationMs: normalizeTraceCaptureDurationMs(body),
+      rendererTracing: readRendererTracing(body),
+    };
+    return await runPerformanceTraceCapture(options, {
+      send: async (action, data) => await sendPerformanceTraceMessage(searchParams, action, data),
+      wait: delay,
+    });
+  });
+}
+
+export async function runPerformanceTraceCapture(
+  options: PerformanceTraceCaptureOptions,
+  dependencies: PerformanceTraceCaptureDependencies,
+): Promise<Record<string, unknown>> {
+  const status = await dependencies.send(PerformanceTraceAction.Status, {});
+  if (status['tracingSupported'] !== true) {
+    throw new Error('This Valdi runtime does not support renderer trace capture.');
+  }
+  if (status['recording'] || status['completedRecordingAvailable']) {
+    const contextId = status['contextId'] ?? status['completedContextId'];
+    const contextSuffix = typeof contextId === 'string' ? ` for context ${contextId}` : '';
+    throw new Error(
+      `A renderer trace recording is already active or waiting to be retrieved${contextSuffix}. Stop it before one-shot capture.`,
+    );
+  }
+
+  await dependencies.send(PerformanceTraceAction.Start, { rendererTracing: options.rendererTracing });
+  try {
+    await dependencies.wait(options.durationMs);
+  } catch (waitError) {
+    try {
+      await dependencies.send(PerformanceTraceAction.Stop, {});
+    } catch (cleanupError) {
+      throw new Error(
+        `${errorPayload(waitError).error} Best-effort renderer trace cleanup also failed: ${errorPayload(cleanupError).error}`,
+      );
+    }
+    throw waitError;
+  }
+
+  try {
+    return await dependencies.send(PerformanceTraceAction.Stop, {});
+  } catch (stopError) {
+    try {
+      return await dependencies.send(PerformanceTraceAction.Stop, {});
+    } catch (cleanupError) {
+      throw new Error(
+        `${errorPayload(stopError).error} Best-effort renderer trace cleanup also failed: ${errorPayload(cleanupError).error}`,
+      );
+    }
+  }
+}
+
+async function runTraceTransition<T>(transition: () => Promise<T>): Promise<T> {
+  if (traceTransitionInProgress) {
+    throw new Error('Another renderer trace transition is already in progress.');
+  }
+
+  traceTransitionInProgress = true;
+  try {
+    return await transition();
+  } finally {
+    traceTransitionInProgress = false;
+  }
+}
+
+export function decorateTraceResult(
+  result: Record<string, unknown>,
+  captureTarget: Record<string, unknown>,
+): Record<string, unknown> {
+  const traces = readRecordedTraces(result['traces']);
+  const receivedTraceCount = Array.isArray(result['traces']) ? result['traces'].length : 0;
+  const runtimeDroppedTraceCount =
+    typeof result['droppedTraceEventCount'] === 'number' &&
+    Number.isSafeInteger(result['droppedTraceEventCount']) &&
+    result['droppedTraceEventCount'] >= 0
+      ? Math.max(0, result['droppedTraceEventCount'])
+      : 0;
+  const localDroppedTraceCount = Math.max(0, receivedTraceCount - traces.length);
+  const initialDroppedTraceEventCount = saturatingAdd(runtimeDroppedTraceCount, localDroppedTraceCount);
+  const boundedCaptureTarget: Record<string, unknown> = {};
+  for (const key of TRACE_CAPTURE_TARGET_STRING_KEYS) {
+    const value = captureTarget[key];
+    if (typeof value === 'string') {
+      boundedCaptureTarget[key] = truncateStringForJson(value, MAX_TRACE_HTTP_STRING_BYTES);
+    }
+  }
+  if (typeof captureTarget['port'] === 'number' && Number.isFinite(captureTarget['port'])) {
+    boundedCaptureTarget['port'] = captureTarget['port'];
+  }
+  const boundedContextId =
+    typeof result['contextId'] === 'string'
+      ? truncateStringForJson(result['contextId'], MAX_TRACE_HTTP_STRING_BYTES)
+      : undefined;
+  const boundedCompletedContextId =
+    typeof result['completedContextId'] === 'string'
+      ? truncateStringForJson(result['completedContextId'], MAX_TRACE_HTTP_STRING_BYTES)
+      : undefined;
+  const boundedCompletionError =
+    typeof result['completionError'] === 'string'
+      ? truncateStringForJson(result['completionError'], MAX_TRACE_HTTP_STRING_BYTES)
+      : undefined;
+
+  const buildResult = (includedTraceCount: number): Record<string, unknown> => {
+    const includedTraces = traces.slice(0, includedTraceCount);
+    const droppedTraceEventCount = saturatingAdd(initialDroppedTraceEventCount, traces.length - includedTraceCount);
+    const perfettoMetadata = buildPerfettoCaptureMetadata(boundedCaptureTarget, droppedTraceEventCount);
+    return {
+      recording: result['recording'] === true,
+      contextId: boundedContextId,
+      completedRecordingAvailable: result['completedRecordingAvailable'] === true,
+      completedContextId: boundedCompletedContextId,
+      completionError: boundedCompletionError,
+      rendererTracingEnabled: result['rendererTracingEnabled'] === true,
+      tracingSupported: result['tracingSupported'] === true,
+      startedAtEpochMs: typeof result['startedAtEpochMs'] === 'number' ? result['startedAtEpochMs'] : undefined,
+      elapsedMs: typeof result['elapsedMs'] === 'number' ? result['elapsedMs'] : undefined,
+      timedOut: result['timedOut'] === true,
+      traces: includedTraces,
+      captureScope: PROCESS_WIDE_CAPTURE_SCOPE,
+      captureTarget: boundedCaptureTarget,
+      traceCount: includedTraces.length,
+      droppedTraceEventCount,
+      traceEventLimitReached: droppedTraceEventCount > 0,
+      summary: summarizeTraces(includedTraces),
+      perfettoMetadata,
+    };
+  };
+
+  let minimumTraceCount = 0;
+  let maximumTraceCount = traces.length;
+  let boundedResult = buildResult(0);
+  if (Buffer.byteLength(JSON.stringify(boundedResult), 'utf8') > MAX_TRACE_HTTP_RESPONSE_BYTES) {
+    throw new Error('Valdi performance trace response metadata exceeds the HTTP size limit.');
+  }
+  while (minimumTraceCount <= maximumTraceCount) {
+    const candidateTraceCount = Math.floor((minimumTraceCount + maximumTraceCount) / 2);
+    const candidate = buildResult(candidateTraceCount);
+    if (Buffer.byteLength(JSON.stringify(candidate), 'utf8') <= MAX_TRACE_HTTP_RESPONSE_BYTES) {
+      boundedResult = candidate;
+      minimumTraceCount = candidateTraceCount + 1;
+    } else {
+      maximumTraceCount = candidateTraceCount - 1;
+    }
+  }
+  return boundedResult;
+}
+
+function saturatingAdd(left: number, right: number): number {
+  return left >= Number.MAX_SAFE_INTEGER - right ? Number.MAX_SAFE_INTEGER : left + right;
+}
+
+export function readRecordedTraces(value: unknown): RecordedTrace[] {
+  if (!Array.isArray(value)) return [];
+  const values = value as unknown[];
+  const traces: RecordedTrace[] = [];
+  const inputCount = Math.min(values.length, MAX_TRACE_EVENT_COUNT);
+  for (let index = 0; index < inputCount; index++) {
+    const item = values[index];
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) continue;
+    const candidate = item as Record<string, unknown>;
+    const trace = candidate['trace'];
+    const startMicros = candidate['startMicros'];
+    const endMicros = candidate['endMicros'];
+    const threadId = candidate['threadId'];
+    if (
+      typeof trace !== 'string' ||
+      trace.length === 0 ||
+      Buffer.byteLength(trace, 'utf8') > MAX_TRACE_NAME_BYTES ||
+      typeof startMicros !== 'number' ||
+      !Number.isSafeInteger(startMicros) ||
+      startMicros < 0 ||
+      typeof endMicros !== 'number' ||
+      !Number.isSafeInteger(endMicros) ||
+      endMicros < startMicros ||
+      typeof threadId !== 'number' ||
+      !Number.isSafeInteger(threadId) ||
+      threadId < 0
+    ) {
+      continue;
+    }
+    const recordedTrace: RecordedTrace = {
+      trace,
+      startMicros,
+      endMicros,
+      threadId,
+    };
+    traces.push(recordedTrace);
+  }
+  return traces;
+}
+
+export function summarizeTraces(traces: readonly RecordedTrace[]): RendererTraceSummary {
+  let durationTraceCount = 0;
+  let instantTraceCount = 0;
+  const componentDurations = new Map<string, { count: number; durationMicros: number }>();
+  const viewModelTriggers = new Map<string, number>();
+
+  for (const trace of traces) {
+    if (isRendererViewModelChangeTrace(trace.trace)) {
+      instantTraceCount += 1;
+    } else {
+      durationTraceCount += 1;
+    }
+
+    const durationMicros = Math.max(0, trace.endMicros - trace.startMicros);
+    const renderMatch = trace.trace.match(/(?:^|\.)Renderer\.onRender\.([^.]+)$/);
+    if (renderMatch?.[1]) {
+      const componentName = renderMatch[1];
+      const componentSummary = componentDurations.get(componentName) ?? { count: 0, durationMicros: 0 };
+      componentSummary.count += 1;
+      componentSummary.durationMicros += durationMicros;
+      componentDurations.set(componentName, componentSummary);
+    }
+
+    const triggerMatch = trace.trace.match(/(?:^|\.)Renderer\.viewModelChange\.([^.]+)\.(.+)$/);
+    if (triggerMatch?.[1] && triggerMatch[2]) {
+      const trigger = `${triggerMatch[1]}.${triggerMatch[2]}`;
+      viewModelTriggers.set(trigger, (viewModelTriggers.get(trigger) ?? 0) + 1);
+    }
+  }
+
+  return {
+    captureScope: PROCESS_WIDE_CAPTURE_SCOPE,
+    traceCount: traces.length,
+    durationTraceCount,
+    instantTraceCount,
+    topComponents: Array.from(componentDurations.entries())
+      .map(([name, value]) => ({
+        name,
+        count: value.count,
+        durationMs: value.durationMicros / 1000,
+      }))
+      .sort((left, right) => right.durationMs - left.durationMs)
+      .slice(0, 12),
+    topViewModelTriggers: Array.from(viewModelTriggers.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((left, right) => right.count - left.count)
+      .slice(0, 12),
+  };
+}
+
+export function isRendererViewModelChangeTrace(traceName: string): boolean {
+  return /(?:^|\.)Renderer\.viewModelChange\.[^.]+\..+$/.test(traceName);
+}
+
+export function buildPerfettoTracePayload(
+  traces: readonly RecordedTrace[],
+  captureTarget: Record<string, unknown>,
+  droppedTraceEventCount: number,
+): PerfettoTracePayload {
+  const minStartMicros = traces.reduce(
+    (minimum, trace) => Math.min(minimum, trace.startMicros),
+    traces[0]?.startMicros ?? 0,
+  );
+  const threadIds = Array.from(new Set(traces.map(trace => trace.threadId)))
+    .sort((left, right) => left - right)
+    .slice(0, MAX_TRACE_THREAD_METADATA_COUNT);
+  const traceEvents: PerfettoTraceEvent[] = [
+    {
+      name: 'process_name',
+      ph: 'M',
+      pid: PERFETTO_PROCESS_ID,
+      args: { name: PERFETTO_PROCESS_NAME },
+    },
+  ];
+
+  for (const threadId of threadIds) {
+    traceEvents.push({
+      name: 'thread_name',
+      ph: 'M',
+      pid: PERFETTO_PROCESS_ID,
+      tid: threadId,
+      args: { name: `Valdi thread ${threadId}` },
+    });
+  }
+
+  for (const trace of traces) {
+    const isInstant = isRendererViewModelChangeTrace(trace.trace);
+    const event: PerfettoTraceEvent = {
+      name: trace.trace,
+      cat: PERFETTO_TRACE_CATEGORY,
+      ph: isInstant ? 'i' : 'X',
+      pid: PERFETTO_PROCESS_ID,
+      tid: trace.threadId,
+      ts: trace.startMicros - minStartMicros,
+    };
+    if (isInstant) {
+      event.s = 't';
+    } else {
+      event.dur = Math.max(0, trace.endMicros - trace.startMicros);
+    }
+    traceEvents.push(event);
+  }
+
+  return {
+    displayTimeUnit: 'ms',
+    metadata: buildPerfettoCaptureMetadata(captureTarget, droppedTraceEventCount),
+    traceEvents,
+  };
+}
+
+function buildPerfettoCaptureMetadata(
+  captureTarget: Record<string, unknown>,
+  droppedTraceEventCount: number,
+): PerfettoCaptureMetadata {
+  return {
+    captureScope: PROCESS_WIDE_CAPTURE_SCOPE,
+    captureTargetContextId: captureTarget['contextId'],
+    captureTargetName: captureTarget['name'],
+    droppedTraceEventCount,
+  };
 }
 
 async function dispatchInput(
@@ -2179,6 +2750,26 @@ async function handleApi(request: IncomingMessage, response: ServerResponse, url
       return;
     }
 
+    if (url.pathname === '/api/performance/trace/status') {
+      sendTraceJson(response, 200, await inspectPerformanceTraceStatus(request, url.searchParams));
+      return;
+    }
+
+    if (url.pathname === '/api/performance/trace/start') {
+      sendTraceJson(response, 200, await startPerformanceTrace(request, url.searchParams));
+      return;
+    }
+
+    if (url.pathname === '/api/performance/trace/stop') {
+      sendTraceJson(response, 200, await stopPerformanceTrace(request, url.searchParams));
+      return;
+    }
+
+    if (url.pathname === '/api/performance/trace/capture') {
+      sendTraceJson(response, 200, await capturePerformanceTrace(request, url.searchParams));
+      return;
+    }
+
     if (url.pathname === '/api/performance/profile/status') {
       sendJson(response, 200, profileStatusPayload());
       return;
@@ -2211,7 +2802,13 @@ async function handleApi(request: IncomingMessage, response: ServerResponse, url
 
     sendJson(response, 404, { error: `Unknown API route ${url.pathname}` });
   } catch (error) {
-    sendJson(response, error instanceof ApiRequestError ? error.statusCode : 500, clientErrorPayload(error));
+    const status = error instanceof ApiRequestError ? error.statusCode : 500;
+    const payload = clientErrorPayload(error);
+    if (url.pathname.startsWith('/api/performance/trace/')) {
+      sendTraceJson(response, status, payload);
+    } else {
+      sendJson(response, status, payload);
+    }
   }
 }
 

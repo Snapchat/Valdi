@@ -62,7 +62,7 @@
           </button>
           <button class="section-button" data-section-button="performance">
             <strong>Performance</strong>
-            <span>Hermes CPU profiles</span>
+            <span>Renderer traces, CPU profiles</span>
           </button>
           <button class="section-button" data-section-button="logs">
             <strong>Logs</strong>
@@ -153,9 +153,25 @@
         >
           <div class="section-heading">
             <h2>Performance</h2>
-            <p>Capture Hermes CPU profiles for a connected Valdi JavaScript context.</p>
+            <p>Capture renderer activity and Hermes CPU profiles for the attached Valdi target.</p>
           </div>
           <div class="performance-grid">
+            <details class="performance-card" open>
+              <summary class="performance-card-header">
+                <div class="performance-title">UI Performance</div>
+                <span class="source-pill" id="traceStatusPill">Idle</span>
+              </summary>
+              <div class="performance-controls">
+                <label><input id="rendererTracingToggle" type="checkbox" checked />Renderer events</label>
+                <label><input id="traceDurationInput" type="number" min="0.1" max="15" step="0.5" value="5" />s</label>
+                <button id="traceStartButton">Start</button>
+                <button id="traceStopButton">Stop</button>
+                <button id="traceCaptureButton" class="primary">Capture</button>
+                <button id="traceExportButton">Export</button>
+              </div>
+              <div class="performance-summary" id="traceSummary">No renderer trace captured.</div>
+              <div class="trace-events" id="traceEvents"></div>
+            </details>
             <details class="performance-card" open>
               <summary class="performance-card-header">
                 <div class="performance-title">CPU</div>

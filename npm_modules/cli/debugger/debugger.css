@@ -40,6 +40,7 @@
   --device-shell: #10110e;
   --screen-bg: #fffefb;
   --overlay-label-bg: #10110e;
+  --trace-detail-bg: #fffdf7;
   --console-bg: #11110d;
   --console-surface: #1e1d17;
   --console-surface-2: #29271f;
@@ -81,6 +82,7 @@
   --device-shell: #120c16;
   --screen-bg: #fff8ef;
   --overlay-label-bg: #120c16;
+  --trace-detail-bg: #fff7ed;
   --console-bg: #130d18;
   --console-surface: #211629;
   --console-surface-2: #2f1d34;
@@ -1105,6 +1107,84 @@ video.valdi-html-node {
 
 .performance-summary strong {
   color: var(--text);
+}
+
+.trace-events {
+  display: grid;
+  gap: 4px;
+  max-height: 190px;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.trace-events:empty {
+  display: none;
+}
+
+.trace-events-header,
+.trace-event-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 72px;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.trace-events-header {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.trace-event-row {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  font-size: 11px;
+}
+
+.trace-event-summary {
+  padding: 5px 6px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.trace-event-summary::-webkit-details-marker {
+  display: none;
+}
+
+.trace-event-name::before {
+  content: '>';
+  display: inline-block;
+  width: 12px;
+  color: var(--muted);
+}
+
+.trace-event-row[open] .trace-event-name::before {
+  content: 'v';
+}
+
+.trace-event-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-event-meta {
+  color: var(--muted);
+  text-align: right;
+}
+
+.trace-event-details {
+  margin: 0;
+  border-top: 1px solid var(--line);
+  padding: 7px 8px 8px;
+  background: var(--trace-detail-bg);
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .tabs {

@@ -8,7 +8,63 @@
 #include "valdi_core/cpp/Utils/Trace.hpp"
 #include "valdi_core/cpp/Utils/StringBox.hpp"
 
+#include <memory>
+#include <unordered_map>
+
 namespace Valdi {
+
+namespace {
+
+struct DroppedTraceEventCount {
+    size_t recordingSequence;
+    size_t count;
+};
+
+struct TracerRecordingState {
+    size_t pendingTraceNameBytes = 0;
+    std::vector<DroppedTraceEventCount> pendingDroppedTraceEventCounts;
+};
+
+struct TracerRecordingStateRegistry {
+    std::mutex mutex;
+    std::unordered_map<const Tracer*, std::unique_ptr<TracerRecordingState>> states;
+};
+
+TracerRecordingStateRegistry& getTracerRecordingStateRegistry() {
+    // Tracer::shared() intentionally outlives process teardown. Keeping its auxiliary registry on
+    // the same lifetime avoids static-destruction ordering hazards while preserving Tracer's public
+    // object layout for existing native clients.
+    static auto* registry = new TracerRecordingStateRegistry();
+    return *registry;
+}
+
+void registerTracerRecordingState(const Tracer* tracer) {
+    auto& registry = getTracerRecordingStateRegistry();
+    std::lock_guard<std::mutex> lock(registry.mutex);
+    auto [it, inserted] = registry.states.emplace(tracer, std::make_unique<TracerRecordingState>());
+    if (!inserted) {
+        it->second = std::make_unique<TracerRecordingState>();
+    }
+}
+
+TracerRecordingState* getTracerRecordingState(const Tracer* tracer) {
+    auto& registry = getTracerRecordingStateRegistry();
+    std::lock_guard<std::mutex> lock(registry.mutex);
+    auto it = registry.states.find(tracer);
+    if (it == registry.states.end()) {
+        auto insertedIt = registry.states.emplace(tracer, std::make_unique<TracerRecordingState>()).first;
+        return insertedIt->second.get();
+    }
+    return it->second.get();
+}
+
+void unregisterTracerRecordingState(const Tracer* tracer) {
+    auto& registry = getTracerRecordingStateRegistry();
+    std::lock_guard<std::mutex> lock(registry.mutex);
+    registry.states.erase(tracer);
+}
+
+} // namespace
 
 std::string getTraceName(std::string_view prefix, const StringBox& suffix) {
     return getTraceName(prefix, suffix.toStringView());
@@ -83,8 +139,13 @@ void ScopedTrace::end() {
     _osEmitter.end(traceEnd);
 }
 
-Tracer::Tracer() = default;
-Tracer::~Tracer() = default;
+Tracer::Tracer() {
+    registerTracerRecordingState(this);
+}
+
+Tracer::~Tracer() {
+    unregisterTracerRecordingState(this);
+}
 
 Tracer& Tracer::shared() {
     static auto* kInstance = new Tracer();
@@ -97,7 +158,21 @@ void Tracer::append(std::string&& trace, const TraceTimePoint& start, const Trac
         return;
     }
 
+    auto* recordingState = getTracerRecordingState(this);
+    const auto traceNameBytes = trace.size();
+    if (traceNameBytes > kMaxRecordedTraceNameLengthBytes || _pendingTraces.size() >= kMaxRecordedTraceCount ||
+        traceNameBytes > kMaxRecordedTraceNameBytes - recordingState->pendingTraceNameBytes) {
+        if (recordingState->pendingDroppedTraceEventCounts.empty() ||
+            recordingState->pendingDroppedTraceEventCounts.back().recordingSequence != _recordingSequence) {
+            recordingState->pendingDroppedTraceEventCounts.push_back({_recordingSequence, 1});
+        } else {
+            recordingState->pendingDroppedTraceEventCounts.back().count++;
+        }
+        return;
+    }
+
     _pendingTraces.emplace_back(std::move(trace), start, end, getCurrentThreadId(), _recordingSequence);
+    recordingState->pendingTraceNameBytes += traceNameBytes;
 }
 
 size_t Tracer::startRecording() {
@@ -111,6 +186,10 @@ size_t Tracer::startRecording() {
 }
 
 std::vector<RecordedTrace> Tracer::stopRecording(size_t recordingIdentifier) {
+    return stopRecordingWithStats(recordingIdentifier).traces;
+}
+
+TraceRecordingResult Tracer::stopRecordingWithStats(size_t recordingIdentifier) {
     std::lock_guard<std::mutex> lock(_mutex);
 
     auto it = std::find(_recorders.begin(), _recorders.end(), recordingIdentifier);
@@ -123,17 +202,34 @@ std::vector<RecordedTrace> Tracer::stopRecording(size_t recordingIdentifier) {
     // Simple case, we only have one recorder we can return all the recorded traces
     if (_recorders.empty()) {
         _recording = false;
-        return std::move(_pendingTraces);
+        auto* recordingState = getTracerRecordingState(this);
+        recordingState->pendingTraceNameBytes = 0;
+        TraceRecordingResult result;
+        result.traces = std::move(_pendingTraces);
+        for (const auto& droppedTraceEventCount : recordingState->pendingDroppedTraceEventCounts) {
+            if (droppedTraceEventCount.recordingSequence >= recordingIdentifier) {
+                result.droppedTraceEventCount += droppedTraceEventCount.count;
+            }
+        }
+        _pendingTraces.clear();
+        recordingState->pendingDroppedTraceEventCounts.clear();
+        return result;
     }
 
     // We still have one active recorder. We collect the traces that ocurreded with or after
     // this identifier
 
-    std::vector<RecordedTrace> outTraces;
+    TraceRecordingResult result;
 
     for (const auto& trace : _pendingTraces) {
         if (trace.recordingSequence >= recordingIdentifier) {
-            outTraces.emplace_back(trace);
+            result.traces.emplace_back(trace);
+        }
+    }
+    auto* recordingState = getTracerRecordingState(this);
+    for (const auto& droppedTraceEventCount : recordingState->pendingDroppedTraceEventCounts) {
+        if (droppedTraceEventCount.recordingSequence >= recordingIdentifier) {
+            result.droppedTraceEventCount += droppedTraceEventCount.count;
         }
     }
 
@@ -146,10 +242,21 @@ std::vector<RecordedTrace> Tracer::stopRecording(size_t recordingIdentifier) {
         while (newStartIt != _pendingTraces.end() && newStartIt->recordingSequence < lowestRecordingIdentifier) {
             newStartIt++;
         }
+        for (auto it = _pendingTraces.begin(); it != newStartIt; ++it) {
+            recordingState->pendingTraceNameBytes -= it->trace.size();
+        }
         _pendingTraces.erase(_pendingTraces.begin(), newStartIt);
+
+        auto newDroppedStartIt = recordingState->pendingDroppedTraceEventCounts.begin();
+        while (newDroppedStartIt != recordingState->pendingDroppedTraceEventCounts.end() &&
+               newDroppedStartIt->recordingSequence < lowestRecordingIdentifier) {
+            newDroppedStartIt++;
+        }
+        recordingState->pendingDroppedTraceEventCounts.erase(recordingState->pendingDroppedTraceEventCounts.begin(),
+                                                              newDroppedStartIt);
     }
 
-    return outTraces;
+    return result;
 }
 
 } // namespace Valdi

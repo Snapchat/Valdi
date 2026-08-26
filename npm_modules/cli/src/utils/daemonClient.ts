@@ -51,6 +51,12 @@ export const enum DaemonMsgType {
   TAKE_ELEMENT_SNAPSHOT_RESPONSE = -4,
   DUMP_HEAP_REQUEST = 5,
   DUMP_HEAP_RESPONSE = -5,
+  PERFORMANCE_TRACE_STATUS_REQUEST = 6,
+  PERFORMANCE_TRACE_STATUS_RESPONSE = -6,
+  PERFORMANCE_TRACE_START_REQUEST = 7,
+  PERFORMANCE_TRACE_START_RESPONSE = -7,
+  PERFORMANCE_TRACE_STOP_REQUEST = 8,
+  PERFORMANCE_TRACE_STOP_RESPONSE = -8,
   CUSTOM_REQUEST = 1000,
   CUSTOM_RESPONSE = -1000,
 }
@@ -88,13 +94,56 @@ export interface RemoteContext {
   rootComponentName: string;
 }
 
+export interface PerformanceTraceStatusRequestBody extends Record<string, unknown> {
+  contextId?: string;
+}
+
+export interface PerformanceTraceStartRequestBody extends Record<string, unknown> {
+  contextId: string;
+  rendererTracing?: boolean;
+}
+
+export interface PerformanceTraceStopRequestBody extends Record<string, unknown> {
+  contextId: string;
+}
+
+export interface DaemonPerformanceTraceStatusBody extends Record<string, unknown> {
+  recording: boolean;
+  contextId?: string;
+  completedRecordingAvailable: boolean;
+  completedContextId?: string;
+  completionError?: string;
+  rendererTracingEnabled: boolean;
+  tracingSupported: boolean;
+  startedAtEpochMs?: number;
+  elapsedMs?: number;
+}
+
+export interface DaemonPerformanceTraceStopBody extends DaemonPerformanceTraceStatusBody {
+  traces: Array<Record<string, unknown>>;
+  traceEventCount: number;
+  droppedTraceEventCount: number;
+  timedOut: boolean;
+}
+
 // ─── Packet encoding ─────────────────────────────────────────────────────────
 
 const MAGIC = Buffer.from([0x33, 0xc6, 0x00, 0x01]);
 const HEADER_SIZE = 8; // 4 magic + 4 uint32LE length
+// Heap dumps and element snapshots legitimately exceed trace-sized payloads. Keep generic
+// framing bounded while applying the tighter trace limit once the inner request is identified.
+export const MAX_DAEMON_INNER_PAYLOAD_BYTES = 64 * 1024 * 1024;
+export const MAX_DAEMON_PACKET_PAYLOAD_BYTES = 128 * 1024 * 1024;
+export const MAX_DAEMON_TRACE_PAYLOAD_BYTES = 4 * 1024 * 1024;
+const MAX_DAEMON_BUFFERED_BYTES = HEADER_SIZE + MAX_DAEMON_PACKET_PAYLOAD_BYTES;
 
 function encodePacket(json: object): Buffer {
-  const payload = Buffer.from(JSON.stringify(json), 'utf8');
+  const serialized = JSON.stringify(json);
+  const payloadLength = Buffer.byteLength(serialized, 'utf8');
+  if (payloadLength > MAX_DAEMON_PACKET_PAYLOAD_BYTES) {
+    throw new Error(`ValdiPacket payload exceeds the ${MAX_DAEMON_PACKET_PAYLOAD_BYTES}-byte limit.`);
+  }
+  const payload = Buffer.from(serialized, 'utf8');
   const header = Buffer.alloc(8);
   MAGIC.copy(header, 0);
   header.writeUInt32LE(payload.length, 4);
@@ -114,15 +163,139 @@ interface PendingRequest {
   reject: (err: Error) => void;
 }
 
+interface PendingPayloadRequest extends PendingRequest {
+  maxPayloadBytes: number;
+}
+
+const MAX_DAEMON_TRACE_EVENT_COUNT = 10_000;
+const MAX_DAEMON_TRACE_NAME_BYTES = 2048;
+const MAX_DAEMON_TRACE_CONTEXT_ID_BYTES = 4096;
+const MAX_DAEMON_TRACE_ERROR_BYTES = 64 * 1024;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isPerformanceTraceMessageType(value: unknown): boolean {
+  return (
+    value === DaemonMsgType.PERFORMANCE_TRACE_STATUS_REQUEST ||
+    value === DaemonMsgType.PERFORMANCE_TRACE_STATUS_RESPONSE ||
+    value === DaemonMsgType.PERFORMANCE_TRACE_START_REQUEST ||
+    value === DaemonMsgType.PERFORMANCE_TRACE_START_RESPONSE ||
+    value === DaemonMsgType.PERFORMANCE_TRACE_STOP_REQUEST ||
+    value === DaemonMsgType.PERFORMANCE_TRACE_STOP_RESPONSE
+  );
+}
+
+function isPerformanceTraceRequestType(value: DaemonMsgType): boolean {
+  return (
+    value === DaemonMsgType.PERFORMANCE_TRACE_STATUS_REQUEST ||
+    value === DaemonMsgType.PERFORMANCE_TRACE_START_REQUEST ||
+    value === DaemonMsgType.PERFORMANCE_TRACE_STOP_REQUEST
+  );
+}
+
+function assertOptionalFiniteNumber(body: Record<string, unknown>, key: string): void {
+  const value = body[key];
+  if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value))) {
+    throw new TypeError(`Valdi runtime trace response has an invalid ${key}.`);
+  }
+}
+
+function assertOptionalBoundedString(
+  body: Record<string, unknown>,
+  key: string,
+  maximumBytes: number,
+  allowEmpty: boolean,
+): void {
+  const value = body[key];
+  if (
+    value !== undefined &&
+    (typeof value !== 'string' ||
+      (!allowEmpty && value.length === 0) ||
+      Buffer.byteLength(value, 'utf8') > maximumBytes)
+  ) {
+    throw new TypeError(`Valdi runtime trace response has an invalid ${key}.`);
+  }
+}
+
+function validatePerformanceTraceStatusBody(value: unknown): DaemonPerformanceTraceStatusBody {
+  if (!isRecord(value)) {
+    throw new TypeError('Valdi runtime trace response body must be an object.');
+  }
+  for (const key of ['recording', 'completedRecordingAvailable', 'rendererTracingEnabled', 'tracingSupported']) {
+    if (typeof value[key] !== 'boolean') {
+      throw new TypeError(`Valdi runtime trace response has an invalid ${key}.`);
+    }
+  }
+  assertOptionalBoundedString(value, 'contextId', MAX_DAEMON_TRACE_CONTEXT_ID_BYTES, false);
+  assertOptionalBoundedString(value, 'completedContextId', MAX_DAEMON_TRACE_CONTEXT_ID_BYTES, false);
+  assertOptionalBoundedString(value, 'completionError', MAX_DAEMON_TRACE_ERROR_BYTES, true);
+  assertOptionalFiniteNumber(value, 'startedAtEpochMs');
+  assertOptionalFiniteNumber(value, 'elapsedMs');
+  if (value['recording'] && (typeof value['contextId'] !== 'string' || value['contextId'].length === 0)) {
+    throw new Error('Valdi runtime trace response is recording without a contextId.');
+  }
+  if (
+    value['completedRecordingAvailable'] &&
+    (typeof value['completedContextId'] !== 'string' || value['completedContextId'].length === 0)
+  ) {
+    throw new Error('Valdi runtime trace response has a completed recording without a completedContextId.');
+  }
+  return value as unknown as DaemonPerformanceTraceStatusBody;
+}
+
+function validatePerformanceTraceStopBody(value: unknown): DaemonPerformanceTraceStopBody {
+  const status = validatePerformanceTraceStatusBody(value);
+  const body = status as unknown as Record<string, unknown>;
+  const traces = body['traces'];
+  if (!Array.isArray(traces) || traces.length > MAX_DAEMON_TRACE_EVENT_COUNT) {
+    throw new TypeError('Valdi runtime trace stop response has an invalid traces array.');
+  }
+  for (const trace of traces) {
+    if (
+      !isRecord(trace) ||
+      typeof trace['trace'] !== 'string' ||
+      trace['trace'].length === 0 ||
+      Buffer.byteLength(trace['trace'], 'utf8') > MAX_DAEMON_TRACE_NAME_BYTES ||
+      typeof trace['startMicros'] !== 'number' ||
+      !Number.isSafeInteger(trace['startMicros']) ||
+      trace['startMicros'] < 0 ||
+      typeof trace['endMicros'] !== 'number' ||
+      !Number.isSafeInteger(trace['endMicros']) ||
+      trace['endMicros'] < trace['startMicros'] ||
+      typeof trace['threadId'] !== 'number' ||
+      !Number.isSafeInteger(trace['threadId']) ||
+      trace['threadId'] < 0
+    ) {
+      throw new TypeError('Valdi runtime trace stop response contains a malformed trace event.');
+    }
+  }
+  if (
+    typeof body['traceEventCount'] !== 'number' ||
+    !Number.isSafeInteger(body['traceEventCount']) ||
+    body['traceEventCount'] < 0 ||
+    body['traceEventCount'] !== traces.length ||
+    typeof body['droppedTraceEventCount'] !== 'number' ||
+    !Number.isSafeInteger(body['droppedTraceEventCount']) ||
+    body['droppedTraceEventCount'] < 0 ||
+    typeof body['timedOut'] !== 'boolean'
+  ) {
+    throw new TypeError('Valdi runtime trace stop response has invalid completion metadata.');
+  }
+  if (typeof body['contextId'] !== 'string' || body['contextId'].length === 0) {
+    throw new TypeError('Valdi runtime trace stop response has an invalid contextId.');
+  }
+  return value as DaemonPerformanceTraceStopBody;
+}
+
 export class DaemonConnection {
   private socket: net.Socket;
   private recvBuf: Buffer = Buffer.alloc(0);
-  private recvChunks: Buffer[] = [];
-  private recvLen = 0;
   private reqCounter = 0;
   private msgCounter = 0;
   private pendingRequests = new Map<string, PendingRequest>();
-  private payloadListeners = new Map<string, PendingRequest>();
+  private payloadListeners = new Map<string, PendingPayloadRequest>();
   // Resolved when the device sends its initial configure request (session ready)
   private configureReady: PendingRequest | null = null;
   // Saved from the device's configure handshake
@@ -155,20 +328,18 @@ export class DaemonConnection {
   }
 
   private onData(chunk: Buffer): void {
-    this.recvChunks.push(chunk);
-    this.recvLen += chunk.length;
+    const bufferedLength = this.recvBuf.length + chunk.length;
+    if (bufferedLength > MAX_DAEMON_BUFFERED_BYTES) {
+      this.failProtocol(`ValdiPacket buffered data exceeds the ${MAX_DAEMON_BUFFERED_BYTES}-byte limit.`);
+      return;
+    }
+    this.recvBuf = this.recvBuf.length === 0 ? chunk : Buffer.concat([this.recvBuf, chunk], bufferedLength);
     this.drainBuffer();
   }
 
   private drainBuffer(): void {
     for (;;) {
-      if (this.recvLen < HEADER_SIZE) break;
-
-      // Materialise the flat buffer only when we actually have enough data to inspect.
-      if (this.recvBuf.length < this.recvLen) {
-        this.recvBuf = Buffer.concat(this.recvChunks, this.recvLen);
-        this.recvChunks = [this.recvBuf];
-      }
+      if (this.recvBuf.length < HEADER_SIZE) break;
 
       if (
         this.recvBuf[0] !== 0x33 ||
@@ -176,25 +347,39 @@ export class DaemonConnection {
         this.recvBuf[2] !== 0x00 ||
         this.recvBuf[3] !== 0x01
       ) {
-        this.socket.destroy(new Error('ValdiPacket: bad magic'));
+        this.failProtocol('ValdiPacket: bad magic');
         break;
       }
 
       const payloadLen = this.recvBuf.readUInt32LE(4);
-      if (this.recvLen < HEADER_SIZE + payloadLen) break;
+      if (payloadLen > MAX_DAEMON_PACKET_PAYLOAD_BYTES) {
+        this.failProtocol(`ValdiPacket payload exceeds the ${MAX_DAEMON_PACKET_PAYLOAD_BYTES}-byte limit.`);
+        break;
+      }
+      if (this.recvBuf.length < HEADER_SIZE + payloadLen) break;
 
       const raw = this.recvBuf.subarray(HEADER_SIZE, HEADER_SIZE + payloadLen).toString('utf8');
       const consumed = HEADER_SIZE + payloadLen;
       this.recvBuf = this.recvBuf.subarray(consumed);
-      this.recvLen -= consumed;
-      this.recvChunks = this.recvLen > 0 ? [this.recvBuf] : [];
 
       try {
-        this.dispatchMessage(JSON.parse(raw) as Record<string, unknown>);
+        const parsed = JSON.parse(raw) as unknown;
+        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          throw new Error('ValdiPacket payload must be a JSON object.');
+        }
+        this.dispatchMessage(parsed as Record<string, unknown>);
       } catch {
-        // ignore malformed packets
+        this.failProtocol('ValdiPacket payload contains malformed JSON.');
+        break;
       }
     }
+  }
+
+  private failProtocol(message: string): void {
+    const error = new Error(message);
+    this.recvBuf = Buffer.alloc(0);
+    this.rejectAllPending(error);
+    this.socket.destroy(error);
   }
 
   private dispatchMessage(msg: Record<string, unknown>): void {
@@ -218,15 +403,45 @@ export class DaemonConnection {
           const fcp = req['forward_client_payload'] as Record<string, unknown> | undefined;
           if (fcp) {
             try {
-              const inner = JSON.parse(fcp['payload_string'] as string) as Record<string, unknown>;
-              const msgId = String(inner['requestId']);
+              const payloadString = fcp['payload_string'];
+              if (typeof payloadString !== 'string') {
+                throw new TypeError('Valdi debugger inner payload must be a string.');
+              }
+              const payloadBytes = Buffer.byteLength(payloadString, 'utf8');
+              if (payloadBytes > MAX_DAEMON_INNER_PAYLOAD_BYTES) {
+                this.failProtocol(
+                  `Valdi debugger inner payload exceeds the ${MAX_DAEMON_INNER_PAYLOAD_BYTES}-byte limit.`,
+                );
+                return;
+              }
+              const parsed = JSON.parse(payloadString) as unknown;
+              if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                throw new Error('Valdi debugger inner payload must be a JSON object.');
+              }
+              const inner = parsed as Record<string, unknown>;
+              const requestId = inner['requestId'];
+              if (typeof requestId !== 'string' || requestId.length === 0) {
+                throw new TypeError('Valdi debugger inner payload must have a requestId.');
+              }
+              const msgId = requestId;
               const listener = this.payloadListeners.get(msgId);
+              const payloadLimit = listener?.maxPayloadBytes ?? MAX_DAEMON_INNER_PAYLOAD_BYTES;
+              if (
+                payloadBytes > payloadLimit ||
+                (isPerformanceTraceMessageType(inner['type']) && payloadBytes > MAX_DAEMON_TRACE_PAYLOAD_BYTES)
+              ) {
+                this.failProtocol(
+                  `Valdi debugger performance trace payload exceeds the ${MAX_DAEMON_TRACE_PAYLOAD_BYTES}-byte limit.`,
+                );
+                return;
+              }
               if (listener) {
                 this.payloadListeners.delete(msgId);
                 listener.resolve(inner);
               }
             } catch {
-              // ignore malformed inner payload
+              this.failProtocol('Valdi debugger inner payload is malformed.');
+              return;
             }
           }
         }
@@ -340,6 +555,12 @@ export class DaemonConnection {
   ): Promise<Record<string, unknown>> {
     const msgId = this.nextMsgId();
     const payloadString = JSON.stringify({ type: msgType, requestId: msgId, body });
+    const maxPayloadBytes = isPerformanceTraceRequestType(msgType)
+      ? MAX_DAEMON_TRACE_PAYLOAD_BYTES
+      : MAX_DAEMON_INNER_PAYLOAD_BYTES;
+    if (Buffer.byteLength(payloadString, 'utf8') > maxPayloadBytes) {
+      throw new Error(`Valdi debugger request payload exceeds the ${maxPayloadBytes}-byte limit.`);
+    }
 
     const resultPromise = new Promise<Record<string, unknown>>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -347,6 +568,7 @@ export class DaemonConnection {
         reject(new Error('Timeout waiting for device response. Is the app running?'));
       }, timeoutMs);
       this.payloadListeners.set(msgId, {
+        maxPayloadBytes,
         resolve: v => {
           clearTimeout(timer);
           resolve(v);
@@ -381,6 +603,9 @@ export class DaemonConnection {
     );
 
     const response = await resultPromise;
+    if (response['requestId'] !== msgId) {
+      throw new Error('The Valdi runtime returned a debugger response with a mismatched requestId.');
+    }
     if (response['type'] === DaemonMsgType.ERROR_RESPONSE) {
       const body = response['body'];
       const message =
@@ -388,6 +613,11 @@ export class DaemonConnection {
           ? (body as Record<string, unknown>)['message']
           : undefined;
       throw new Error(message === undefined ? 'The Valdi runtime rejected the debugger request.' : String(message));
+    }
+    if (response['type'] !== -msgType) {
+      throw new Error(
+        `The Valdi runtime returned debugger response type ${String(response['type'])}; expected ${-msgType}.`,
+      );
     }
     return response;
   }
@@ -416,6 +646,33 @@ export class DaemonConnection {
   async dumpHeap(clientId: string, performGC = false): Promise<unknown> {
     const resp = await this.forwardAndWait(clientId, DaemonMsgType.DUMP_HEAP_REQUEST, { performGC }, 60_000);
     return resp['body'];
+  }
+
+  async performanceTraceStatus(
+    clientId: string,
+    body: PerformanceTraceStatusRequestBody,
+    timeoutMs: number,
+  ): Promise<DaemonPerformanceTraceStatusBody> {
+    const resp = await this.forwardAndWait(clientId, DaemonMsgType.PERFORMANCE_TRACE_STATUS_REQUEST, body, timeoutMs);
+    return validatePerformanceTraceStatusBody(resp['body']);
+  }
+
+  async performanceTraceStart(
+    clientId: string,
+    body: PerformanceTraceStartRequestBody,
+    timeoutMs: number,
+  ): Promise<DaemonPerformanceTraceStatusBody> {
+    const resp = await this.forwardAndWait(clientId, DaemonMsgType.PERFORMANCE_TRACE_START_REQUEST, body, timeoutMs);
+    return validatePerformanceTraceStatusBody(resp['body']);
+  }
+
+  async performanceTraceStop(
+    clientId: string,
+    body: PerformanceTraceStopRequestBody,
+    timeoutMs: number,
+  ): Promise<DaemonPerformanceTraceStopBody> {
+    const resp = await this.forwardAndWait(clientId, DaemonMsgType.PERFORMANCE_TRACE_STOP_REQUEST, body, timeoutMs);
+    return validatePerformanceTraceStopBody(resp['body']);
   }
 
   close(): void {

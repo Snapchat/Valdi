@@ -7,7 +7,20 @@ import * as path from 'node:path';
 import { valdiDebugger } from '../commands/debugger';
 import { ArgumentsResolver } from '../utils/ArgumentsResolver';
 import type { DebuggerServerInfo } from './server';
-import { projectDebuggerTreeForJson, startDebuggerServer } from './server';
+import {
+  MAX_TRACE_EVENT_COUNT,
+  MAX_TRACE_HTTP_RESPONSE_BYTES,
+  PerformanceTraceAction,
+  assertPerformanceTraceContext,
+  buildPerfettoTracePayload,
+  decorateTraceResult,
+  normalizeTraceCaptureDurationMs,
+  projectDebuggerTreeForJson,
+  readRecordedTraces,
+  runPerformanceTraceCapture,
+  startDebuggerServer,
+  summarizeTraces,
+} from './server';
 
 interface HttpResult {
   body: string;
@@ -934,6 +947,340 @@ describe('debugger server', () => {
 
     expect(second.statusCode).toBe(500);
     expect((JSON.parse(second.body) as { error: string }).error).toContain('transition is already in progress');
+  });
+
+  it('serializes concurrent renderer trace transitions before reading their bodies', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+    const traceUrl = new URL('/api/performance/trace/start', debuggerServer.url).toString();
+    const first = startStreamingRequest(traceUrl, 'POST', { 'Content-Type': 'application/json' });
+    first.request.write('{');
+    await new Promise<void>(resolve => setTimeout(resolve, 20));
+
+    const second = await request(traceUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    first.request.end('invalid');
+    await first.result;
+
+    expect(second.statusCode).toBe(500);
+    expect((JSON.parse(second.body) as { error: string }).error).toContain(
+      'renderer trace transition is already in progress',
+    );
+  });
+
+  it('enforces HTTP methods for renderer trace routes before contacting a target', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+
+    const status = await request(new URL('/api/performance/trace/status', debuggerServer.url).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const start = await request(
+      new URL('/api/performance/trace/start', debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+
+    expect(status.statusCode).toBe(500);
+    expect((JSON.parse(status.body) as { error: string }).error).toBe('Performance trace status requires GET.');
+    expect(start.statusCode).toBe(500);
+    expect((JSON.parse(start.body) as { error: string }).error).toBe('Performance trace start requires POST.');
+  });
+
+  it('validates renderer trace options before contacting a target', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+
+    const result = await request(new URL('/api/performance/trace/start', debuggerServer.url).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rendererTracing: 'true' }),
+    });
+
+    expect(result.statusCode).toBe(400);
+    expect((JSON.parse(result.body) as { error: string }).error).toBe(
+      'rendererTracing must be a boolean when provided.',
+    );
+  });
+
+  it('converts bounded renderer traces into summaries and Perfetto events', () => {
+    const traces = readRecordedTraces([
+      { trace: 'Renderer.onRender.App', startMicros: 1000, endMicros: 4000, threadId: 7 },
+      {
+        trace: 'Renderer.viewModelChange.App.title',
+        startMicros: 4000,
+        endMicros: 4000,
+        threadId: 7,
+      },
+    ]);
+    const summary = summarizeTraces(traces);
+    const perfetto = buildPerfettoTracePayload(traces, { name: 'Example', contextId: 'root' }, 0);
+    const renderEvent = perfetto.traceEvents.find(event => event.name === 'Renderer.onRender.App');
+    const triggerEvent = perfetto.traceEvents.find(event => event.name === 'Renderer.viewModelChange.App.title');
+
+    expect(summary.traceCount).toBe(2);
+    expect(summary.captureScope).toBe('process-wide');
+    expect(summary.durationTraceCount).toBe(1);
+    expect(summary.instantTraceCount).toBe(1);
+    expect(summary.topComponents).toEqual([{ name: 'App', count: 1, durationMs: 3 }]);
+    expect(summary.topViewModelTriggers).toEqual([{ name: 'App.title', count: 1 }]);
+    expect(renderEvent).toEqual(jasmine.objectContaining({ ph: 'X', ts: 0, dur: 3000, tid: 7 }));
+    expect(renderEvent?.args).toBeUndefined();
+    expect(triggerEvent).toEqual(jasmine.objectContaining({ ph: 'i', ts: 3000, s: 't', tid: 7 }));
+    expect(perfetto.metadata).toEqual({
+      captureScope: 'process-wide',
+      captureTargetContextId: 'root',
+      captureTargetName: 'Example',
+      droppedTraceEventCount: 0,
+    });
+
+    const fabricatedInstant = buildPerfettoTracePayload(
+      readRecordedTraces([{ trace: 'Unrelated.trace', startMicros: 1, endMicros: 2, threadId: 1, type: 1 }]),
+      {},
+      0,
+    ).traceEvents.find(event => event.name === 'Unrelated.trace');
+    expect(fabricatedInstant).toEqual(jasmine.objectContaining({ ph: 'X', dur: 1 }));
+  });
+
+  it('drops malformed renderer trace events and caps conversion work', () => {
+    const malformed = readRecordedTraces([
+      { trace: 'valid', startMicros: 1, endMicros: 2, threadId: 1 },
+      { trace: '', startMicros: 1, endMicros: 2, threadId: 1 },
+      { trace: 'negative', startMicros: -1, endMicros: 2, threadId: 1 },
+      { trace: 'backwards', startMicros: 2, endMicros: 1, threadId: 1 },
+      { trace: 'unsafe', startMicros: 1, endMicros: 2, threadId: Number.MAX_SAFE_INTEGER + 1 },
+      { trace: 'x'.repeat(2049), startMicros: 1, endMicros: 2, threadId: 1 },
+      { trace: 'é'.repeat(1025), startMicros: 1, endMicros: 2, threadId: 1 },
+      null,
+    ]);
+    const manyEvents = Array.from({ length: MAX_TRACE_EVENT_COUNT + 1 }, (_, index) => ({
+      trace: `event-${index}`,
+      startMicros: index,
+      endMicros: index,
+      threadId: 1,
+    }));
+
+    expect(malformed).toEqual([{ trace: 'valid', startMicros: 1, endMicros: 2, threadId: 1 }]);
+    expect(readRecordedTraces(manyEvents).length).toBe(MAX_TRACE_EVENT_COUNT);
+    expect(readRecordedTraces([{ trace: 'é'.repeat(1024), startMicros: 1, endMicros: 2, threadId: 1 }]).length).toBe(1);
+  });
+
+  it('derives trace truncation from dropped counts rather than an exactly-full result', () => {
+    const trace = { trace: 'valid', startMicros: 1, endMicros: 2, threadId: 1 };
+    const exactlyFull = decorateTraceResult(
+      {
+        traces: Array.from({ length: MAX_TRACE_EVENT_COUNT }, () => trace),
+        droppedTraceEventCount: 0,
+      },
+      {},
+    );
+    const truncated = decorateTraceResult({ traces: [trace], droppedTraceEventCount: 2 }, {});
+    const truncatedPerfettoMetadata = truncated['perfettoMetadata'] as { droppedTraceEventCount: number };
+
+    expect(exactlyFull['droppedTraceEventCount']).toBe(0);
+    expect(exactlyFull['traceEventLimitReached']).toBeFalse();
+    expect(truncated['droppedTraceEventCount']).toBe(2);
+    expect(truncated['traceEventLimitReached']).toBeTrue();
+    expect(truncatedPerfettoMetadata.droppedTraceEventCount).toBe(2);
+  });
+
+  it('bounds the complete HTTP trace result without duplicating Perfetto events', () => {
+    const escapedTraceName = '\0'.repeat(2048);
+    const result = decorateTraceResult(
+      {
+        recording: false,
+        contextId: '\0'.repeat(100_000),
+        completedRecordingAvailable: false,
+        completionError: '\0'.repeat(100_000),
+        rendererTracingEnabled: false,
+        tracingSupported: true,
+        traces: Array.from({ length: 512 }, (_, index) => ({
+          trace: escapedTraceName,
+          startMicros: index,
+          endMicros: index + 1,
+          threadId: 1,
+        })),
+        droppedTraceEventCount: 0,
+        timedOut: false,
+      },
+      { contextId: '\0'.repeat(100_000), name: '\0'.repeat(100_000), port: 13_591 },
+    );
+    const serialized = JSON.stringify(result);
+
+    expect(Buffer.byteLength(serialized, 'utf8')).toBeLessThanOrEqual(MAX_TRACE_HTTP_RESPONSE_BYTES);
+    expect(result['perfetto']).toBeUndefined();
+    expect(Array.isArray(result['traces'])).toBeTrue();
+    expect(result['traceCount'] as number).toBeLessThan(512);
+    expect(result['traceEventLimitReached']).toBeTrue();
+    expect((result['perfettoMetadata'] as { droppedTraceEventCount: number }).droppedTraceEventCount).toBe(
+      result['droppedTraceEventCount'] as number,
+    );
+  });
+
+  it('saturates local trace drops at Number.MAX_SAFE_INTEGER', () => {
+    const result = decorateTraceResult(
+      {
+        traces: [
+          { trace: 'valid', startMicros: 1, endMicros: 2, threadId: 1 },
+          { trace: '', startMicros: 1, endMicros: 2, threadId: 1 },
+        ],
+        droppedTraceEventCount: Number.MAX_SAFE_INTEGER,
+      },
+      {},
+    );
+
+    expect(result['droppedTraceEventCount']).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it('clamps renderer trace capture duration and rejects invalid values', () => {
+    expect(normalizeTraceCaptureDurationMs({})).toBe(5000);
+    expect(normalizeTraceCaptureDurationMs({ durationMs: -1 })).toBe(100);
+    expect(normalizeTraceCaptureDurationMs({ durationMs: 40_000 })).toBe(15_000);
+    expect(normalizeTraceCaptureDurationMs({ durationMs: 123.6 })).toBe(124);
+    expect(() => normalizeTraceCaptureDurationMs({ durationMs: '5000' })).toThrowError(
+      Error,
+      'durationMs must be a finite number when provided.',
+    );
+  });
+
+  it('rejects one-shot capture without stopping an existing manual trace', async () => {
+    const actions: PerformanceTraceAction[] = [];
+    let waitCalled = false;
+
+    await expectAsync(
+      runPerformanceTraceCapture(
+        { durationMs: 100, rendererTracing: true },
+        {
+          send: action => {
+            actions.push(action);
+            return Promise.resolve({
+              recording: true,
+              contextId: 'root',
+              completedRecordingAvailable: false,
+              tracingSupported: true,
+            });
+          },
+          wait: () => {
+            waitCalled = true;
+            return Promise.resolve();
+          },
+        },
+      ),
+    ).toBeRejectedWithError(
+      Error,
+      'A renderer trace recording is already active or waiting to be retrieved for context root. Stop it before one-shot capture.',
+    );
+
+    expect(actions).toEqual([PerformanceTraceAction.Status]);
+    expect(waitCalled).toBeFalse();
+  });
+
+  it('best-effort stops a one-shot trace when waiting fails', async () => {
+    const actions: PerformanceTraceAction[] = [];
+
+    await expectAsync(
+      runPerformanceTraceCapture(
+        { durationMs: 100, rendererTracing: true },
+        {
+          send: action => {
+            actions.push(action);
+            if (action === PerformanceTraceAction.Status) {
+              return Promise.resolve({
+                recording: false,
+                completedRecordingAvailable: false,
+                tracingSupported: true,
+              });
+            }
+            return Promise.resolve({ recording: action === PerformanceTraceAction.Start });
+          },
+          wait: () => Promise.reject(new Error('wait failed')),
+        },
+      ),
+    ).toBeRejectedWithError(Error, 'wait failed');
+
+    expect(actions).toEqual([PerformanceTraceAction.Status, PerformanceTraceAction.Start, PerformanceTraceAction.Stop]);
+  });
+
+  it('retries a failed stop so a handler-retained timed-out result can be recovered', async () => {
+    const actions: PerformanceTraceAction[] = [];
+    let stopCount = 0;
+
+    const result = await runPerformanceTraceCapture(
+      { durationMs: 100, rendererTracing: true },
+      {
+        send: action => {
+          actions.push(action);
+          if (action === PerformanceTraceAction.Status) {
+            return Promise.resolve({
+              recording: false,
+              completedRecordingAvailable: false,
+              tracingSupported: true,
+            });
+          }
+          if (action === PerformanceTraceAction.Stop && ++stopCount === 1) {
+            return Promise.reject(new Error('transient stop failure'));
+          }
+          return Promise.resolve({ recording: action === PerformanceTraceAction.Start, traces: [] });
+        },
+        wait: () => Promise.resolve(),
+      },
+    );
+
+    expect(result['traces']).toEqual([]);
+    expect(actions).toEqual([
+      PerformanceTraceAction.Status,
+      PerformanceTraceAction.Start,
+      PerformanceTraceAction.Stop,
+      PerformanceTraceAction.Stop,
+    ]);
+  });
+
+  it('does not start one-shot capture when runtime tracing support is absent', async () => {
+    const actions: PerformanceTraceAction[] = [];
+
+    await expectAsync(
+      runPerformanceTraceCapture(
+        { durationMs: 100, rendererTracing: true },
+        {
+          send: action => {
+            actions.push(action);
+            return Promise.resolve({
+              recording: false,
+              completedRecordingAvailable: false,
+              tracingSupported: false,
+            });
+          },
+          wait: () => Promise.resolve(),
+        },
+      ),
+    ).toBeRejectedWithError(Error, 'This Valdi runtime does not support renderer trace capture.');
+
+    expect(actions).toEqual([PerformanceTraceAction.Status]);
+  });
+
+  it('rejects trace output that does not match the selected context', () => {
+    expect(() =>
+      assertPerformanceTraceContext(PerformanceTraceAction.Stop, { contextId: 'context-a' }, 'context-b'),
+    ).toThrowError(Error, 'The Valdi runtime returned trace data for context context-a, expected context-b.');
+    expect(() =>
+      assertPerformanceTraceContext(PerformanceTraceAction.Status, { contextId: 'context-a' }, 'context-b'),
+    ).not.toThrow();
   });
 
   it('does not serve paths outside the debugger asset root', async () => {

@@ -41,11 +41,12 @@ document.addEventListener('keydown', event => {
   actionable.click();
 });
 
-function selectTarget(id) {
+async function selectTarget(id) {
   const target = debuggerTargets().find(candidate => candidate.id === id);
   if (!target) return;
+  if (!(await preparePerformanceTraceTargetSwitch(target))) return;
   if (target.daemonPort && target.port) {
-    setTargetPort(target.port);
+    await setTargetPort(target.port, target);
     state.snapshot.target = {
       ...state.snapshot.target,
       ...target,
@@ -166,6 +167,10 @@ elements.autoRefreshToggle.addEventListener(
   'change',
   () => void requestDebuggerAction('setAutoRefresh', { enabled: elements.autoRefreshToggle.checked }),
 );
+elements.traceStartButton.addEventListener('click', () => void requestDebuggerAction('startRendererTrace'));
+elements.traceStopButton.addEventListener('click', () => void requestDebuggerAction('stopRendererTrace'));
+elements.traceCaptureButton.addEventListener('click', () => void requestDebuggerAction('captureRendererTrace'));
+elements.traceExportButton.addEventListener('click', exportPerformanceTrace);
 elements.profileRefreshButton.addEventListener('click', () => void requestDebuggerAction('refreshHermesContexts'));
 elements.profileStartButton.addEventListener('click', () => void requestDebuggerAction('startCpuProfile'));
 elements.profileStopButton.addEventListener('click', () => void requestDebuggerAction('stopCpuProfile'));
@@ -210,4 +215,7 @@ applyDebuggerSessionDomState();
 setAutoRefresh(state.autoRefresh, { silent: true });
 installDebuggerSessionPersistence();
 void refreshProfileContexts({ silent: true });
-refreshTargets({ silent: restoredDebuggerSession, autoAttach: !state.manualDetach });
+void (async () => {
+  await recoverPerformanceTraceState();
+  await refreshTargets({ silent: restoredDebuggerSession, autoAttach: !state.manualDetach });
+})();

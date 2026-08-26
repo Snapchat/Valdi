@@ -22,6 +22,8 @@ import {
 import { DebugLevel, SubmitDebugMessageFunc } from './debugging/DebugMessage';
 import { DaemonClientMessageType, Messages, RemoteValdiContext } from './debugging/Messages';
 import { NativeAppearanceDebugSettings } from './debugging/NativeAppearanceDebugSettings';
+import { PerformanceTraceMessageHandler } from './debugging/PerformanceTraceMessageHandler';
+import { toError } from './utils/ErrorUtils';
 import { trace } from './utils/Trace';
 
 interface StashedRootComponentHandle {
@@ -53,6 +55,9 @@ export class RootComponentsManager implements IRootComponentsManager, IDaemonCli
 
   private reloadedContextIds?: string[];
   private nativeAppearanceDebugSettings?: NativeAppearanceDebugSettings;
+  private readonly performanceTraceMessageHandler = PerformanceTraceMessageHandler.create(
+    contextId => this.rootComponents[contextId]?.renderer,
+  );
 
   constructor(
     readonly rendererFactory: RendererFactory,
@@ -66,6 +71,7 @@ export class RootComponentsManager implements IRootComponentsManager, IDaemonCli
   }
 
   stashData(): any {
+    this.abortPerformanceTrace();
     const handles: StashedRootComponentHandle[] = [];
     for (const contextId in this.rootComponents) {
       const rootComponentHandle = this.rootComponents[contextId]!;
@@ -230,6 +236,8 @@ export class RootComponentsManager implements IRootComponentsManager, IDaemonCli
       return;
     }
 
+    this.abortPerformanceTraceForContext(contextId);
+
     withLocalNativeRefs(contextId, () => {
       // Render once empty, so that we can destroy the whole tree
       handle.renderer.renderRoot(() => {});
@@ -308,12 +316,30 @@ export class RootComponentsManager implements IRootComponentsManager, IDaemonCli
       return;
     }
 
+    this.abortPerformanceTraceForContext(contextId);
+
     trace(`destroyRoot.${handle.componentPath.symbolName}`, () => {
       delete this.rootComponents[contextId];
       handle.disposeFunction();
 
       handle.renderer.renderRoot(() => {});
     });
+  }
+
+  private abortPerformanceTrace(): void {
+    try {
+      this.performanceTraceMessageHandler.abortRecording();
+    } catch (error) {
+      console.warn('Failed to stop an active performance trace while disposing root components.', error);
+    }
+  }
+
+  private abortPerformanceTraceForContext(contextId: string): void {
+    try {
+      this.performanceTraceMessageHandler.abortRecordingForContext(contextId);
+    } catch (error) {
+      console.warn(`Failed to stop the active performance trace for context ${contextId}.`, error);
+    }
   }
 
   attributeChanged(contextId: string, nodeId: number, attributeName: string, attributeValue: any): void {
@@ -344,7 +370,24 @@ export class RootComponentsManager implements IRootComponentsManager, IDaemonCli
   }
 
   onMessage(message: ReceivedDaemonClientMessage): void {
-    if (message.message.type === DaemonClientMessageType.LIST_CONTEXTS_REQUEST) {
+    if (message.message.type === DaemonClientMessageType.PERFORMANCE_TRACE_STATUS_REQUEST) {
+      const status = this.performanceTraceMessageHandler.getStatus();
+      message.respond(requestId => Messages.performanceTraceStatusResponse(requestId, status));
+    } else if (message.message.type === DaemonClientMessageType.PERFORMANCE_TRACE_START_REQUEST) {
+      try {
+        const status = this.performanceTraceMessageHandler.startRecording(message.message.body);
+        message.respond(requestId => Messages.performanceTraceStartResponse(requestId, status));
+      } catch (error) {
+        message.respond(requestId => Messages.errorResponse(requestId, toError(error)));
+      }
+    } else if (message.message.type === DaemonClientMessageType.PERFORMANCE_TRACE_STOP_REQUEST) {
+      try {
+        const result = this.performanceTraceMessageHandler.stopRecording(message.message.body);
+        message.respond(requestId => Messages.performanceTraceStopResponse(requestId, result));
+      } catch (error) {
+        message.respond(requestId => Messages.errorResponse(requestId, toError(error)));
+      }
+    } else if (message.message.type === DaemonClientMessageType.LIST_CONTEXTS_REQUEST) {
       const contexts: RemoteValdiContext[] = [];
 
       for (const treeId in this.rootComponents) {

@@ -15,7 +15,7 @@ the CLI package.
 - `debugger-preview-html.js`: inert HTML projection of the hot-reloaded snapshot tree.
 - `debugger-render.js`: header, target list, tree, preview overlay, inspector, and export rendering.
 - `debugger-runtime.js`: target discovery, snapshots, runtime log streaming, heap, and copy/export helpers.
-- `debugger-performance.js`: Hermes CPU profile controls.
+- `debugger-performance.js`: renderer trace and Hermes CPU profile controls.
 - `debugger-actions.js`: UI actions, command prompt handling, auto-refresh, and externally driven debugger actions.
 - `debugger-session.js`: `sessionStorage` restore/persist for reload-friendly debugger state.
 - `debugger-bootstrap.js`: DOM event wiring and boot sequence.
@@ -36,15 +36,20 @@ Important routes:
 - `/api/snapshot`: fetches the selected target's view tree and preview data.
 - `/api/runtime-logs` and `/api/runtime-logs/stream`: read and stream target logs.
 - `/api/debugger/state`, `/api/debugger/events`, and `/api/debugger/actions`: keep the browser UI and external agents in sync.
+- `/api/performance/trace/*`: start, stop, capture, and export native renderer traces.
 - `/api/performance/profile/*`: list Hermes contexts and capture CPU profiles.
 - `/api/devtools/target`: matches the inspected Chromium page to the exact configured preview origin and path.
 - `/api/devtools/snapshot`, `/api/devtools/highlight`, and `/api/devtools/evaluate`: proxy the explicit web debugger bridge contract through loopback CDP.
 
-Renderer tracing is intentionally not part of this foundation. It requires the
-separate runtime and native renderer-instrumentation stack; land that stack
-before adding renderer trace routes or controls to this debugger. Hermes CPU
-profiling uses the existing inspector transport and has no such prerequisite.
-Target input forwarding and data/network provider tabs should likewise land
+Renderer tracing uses the runtime debugger protocol and the existing native
+trace recorder. Captures are process-wide: the selected context is the capture
+target used to reach the runtime, not the origin assigned to every event.
+One-shot captures are limited to 15 seconds so the debugger handler can retain
+the result before the native recorder's independent safety timeout, and
+exported JSON can be opened in Perfetto. Native bounds report dropped event
+counts, and retained timeout/retry results expire after one minute.
+Hermes CPU profiling uses the existing inspector transport. Target input
+forwarding and data/network provider tabs should likewise land
 with their runtime-side contracts and end-to-end tests rather than as inactive
 browser-only surfaces.
 Web-renderer inspection depends on the target page explicitly exposing

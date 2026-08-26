@@ -28,7 +28,7 @@ import { classNames } from './utils/ClassNames';
 import { enumeratePropertyList, PropertyList, propertyListToObject } from './utils/PropertyList';
 import { computeUniqueId } from './utils/RenderedVirtualNodeUtils';
 import { RendererError } from './utils/RendererError';
-import { trace } from './utils/Trace';
+import { isTracingSupported, trace } from './utils/Trace';
 
 const EMPTY_OBJECT = Object.freeze({});
 const EMPTY_ARRAY = Object.freeze([]) as [];
@@ -579,6 +579,7 @@ export class Renderer implements IRenderer {
   private observers: RendererObserver[] = [];
   private nextAnimationCancelToken: CancelToken = 0;
   private eventListener: IRendererEventListener | undefined = undefined;
+  private rendererTracingEnabled = false;
   private allowedRootElementTypes?: StringSet;
 
   /** Moves buffered during render; flushed in top-down order at end to avoid bottom-up attach (ANR). */
@@ -2137,9 +2138,14 @@ export class Renderer implements IRenderer {
       currentComponent.rendering = true;
 
       // this.log('Rendering component ', currentComponent.ctr.name);
+      const componentToRender = componentInstance;
 
       try {
-        componentInstance.onRender();
+        if (this.rendererTracingEnabled) {
+          trace(`Renderer.onRender.${currentComponent.ctr.name}`, () => componentToRender.onRender());
+        } else {
+          componentToRender.onRender();
+        }
       } catch (err: any) {
         this.popToVirtualNode(currentComponent.virtualNode);
         this.onUncaughtError(`Failed to render component '${currentComponent.ctr.name}'`, err);
@@ -2224,6 +2230,9 @@ export class Renderer implements IRenderer {
 
           if (this.eventListener) {
             this.eventListener.onComponentViewModelPropertyChange(name);
+          }
+          if (this.rendererTracingEnabled) {
+            trace(`Renderer.viewModelChange.${currentComponent.ctr.name}.${name}`, () => {});
           }
           // this.log('View model property ', name, ' changed for component ', currentComponent.ctr.name);
         }
@@ -2732,6 +2741,14 @@ export class Renderer implements IRenderer {
 
   getEventListener(): IRendererEventListener | undefined {
     return this.eventListener;
+  }
+
+  setTracingEnabled(enabled: boolean): void {
+    this.rendererTracingEnabled = enabled && isTracingSupported();
+  }
+
+  isTracingEnabled(): boolean {
+    return this.rendererTracingEnabled;
   }
 
   private collectElements(node: VirtualNode, output: IRenderedElement[]) {

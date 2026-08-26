@@ -33,7 +33,14 @@ function setActiveSection(section) {
 }
 
 function shouldAutoRefresh() {
-  return !document.hidden && !state.performance.profileActive;
+  return (
+    !document.hidden &&
+    !state.performance.traceActive &&
+    !state.performance.traceCapturePending &&
+    !state.performance.traceResultPending &&
+    !state.performance.traceStateUnknown &&
+    !state.performance.profileActive
+  );
 }
 
 function shouldAutoRefreshLiveSnapshot() {
@@ -152,7 +159,8 @@ function detachDebuggerView() {
   render();
 }
 
-function setTargetPort(port) {
+async function setTargetPort(port, nextTarget) {
+  if (!(await preparePerformanceTraceTargetSwitch(nextTarget))) return;
   elements.portSelect.value = String(port);
   state.snapshot.target = {
     ...state.snapshot.target,
@@ -160,6 +168,7 @@ function setTargetPort(port) {
     port,
   };
   state.attached = false;
+  state.performance.traceSupported = true;
   state.manualDetach = false;
   state.followLatestTarget = true;
   state.rootSnapshotImage = null;
@@ -208,7 +217,7 @@ function applyDebuggerAction(action, params = {}) {
 
   if (action === 'setPort') {
     const port = actionNumber(params, 'port');
-    if (port !== null) setTargetPort(port);
+    if (port !== null) void setTargetPort(port, { port });
     return;
   }
 
@@ -247,6 +256,21 @@ function applyDebuggerAction(action, params = {}) {
     return;
   }
 
+  if (action === 'startRendererTrace') {
+    void startPerformanceTrace();
+    return;
+  }
+
+  if (action === 'stopRendererTrace') {
+    void stopPerformanceTrace({});
+    return;
+  }
+
+  if (action === 'captureRendererTrace') {
+    void capturePerformanceTrace();
+    return;
+  }
+
   if (action === 'refreshHermesContexts') {
     void refreshProfileContexts({ silent: false });
     return;
@@ -279,7 +303,7 @@ function runCommand(rawCommand) {
     addLog(
       'info',
       'console',
-      'Commands: help, section <ui|performance|logs>, path, issues, select <id>, connect, refresh, reload, status, snapshot, heap, profile, auto on, auto off, clear.',
+      'Commands: help, section <ui|performance|logs>, path, issues, select <id>, connect, refresh, reload, status, snapshot, heap, trace, profile, auto on, auto off, clear.',
     );
   } else if (command.startsWith('section ')) {
     void requestDebuggerAction('setActiveSection', { section: command.slice('section '.length).trim() });
@@ -306,6 +330,8 @@ function runCommand(rawCommand) {
     void requestDebuggerAction('captureElementSnapshot');
   } else if (command === 'heap') {
     void requestDebuggerAction('dumpHeap');
+  } else if (command === 'trace') {
+    void requestDebuggerAction('captureRendererTrace');
   } else if (command === 'profile') {
     void requestDebuggerAction('captureCpuProfile');
   } else if (command === 'auto on') {

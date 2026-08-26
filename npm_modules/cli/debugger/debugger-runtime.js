@@ -147,6 +147,9 @@ async function refreshTargets(options = {}) {
       const previousTargetId = state.snapshot.target?.id || null;
       const selectedTarget = chooseLiveTarget(targets);
       const targetChanged = selectedTarget.id !== previousTargetId;
+      if (targetChanged && !(await preparePerformanceTraceTargetSwitch(selectedTarget))) {
+        return;
+      }
       state.snapshot.targets = markSelectedTarget(targets, selectedTarget);
       state.snapshot.target = {
         ...state.snapshot.target,
