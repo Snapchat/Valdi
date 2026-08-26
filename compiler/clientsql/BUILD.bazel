@@ -1,0 +1,50 @@
+load("@aspect_rules_js//js:defs.bzl", "js_binary")
+load("@rules_python//python:defs.bzl", "py_test")
+
+py_library(
+    name = "clientsql_lib",
+    srcs = glob(["src/clientsql/*.py"]),
+    imports = ["src"],
+    visibility = ["//visibility:private"],
+)
+
+py_binary(
+    name = "clientsql",
+    srcs = ["src/clientsql_main.py"],
+    main = "src/clientsql_main.py",
+    visibility = ["//visibility:public"],
+    deps = [":clientsql_lib"],
+)
+
+py_binary(
+    name = "package_clientsql",
+    srcs = ["package_clientsql.py"],
+    data = glob(["src/clientsql/*.py"]),
+    main = "package_clientsql.py",
+    visibility = ["//visibility:private"],
+)
+
+js_binary(
+    name = "clientsql_test_javascript_runner",
+    entry_point = "run_generated_javascript.js",
+    testonly = True,
+)
+
+py_test(
+    name = "test_clientsql",
+    srcs = ["test_clientsql.py"],
+    data = [
+        ":clientsql",
+        ":clientsql_test_javascript_runner",
+        ":package_clientsql",
+        "@npm_typescript//:tsc",
+    ],
+    env = {
+        "BAZEL_BINDIR": ".",
+        "CLIENTSQL_TEST_GENERATOR": "$(rootpath :clientsql)",
+        "CLIENTSQL_TEST_JAVASCRIPT_RUNNER": "$(rootpath :clientsql_test_javascript_runner)",
+        "CLIENTSQL_TEST_TYPESCRIPT_COMPILER": "$(rootpath @npm_typescript//:tsc)",
+    },
+    size = "medium",
+    deps = [":clientsql_lib"],
+)

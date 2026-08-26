@@ -95,11 +95,15 @@ final class ClientSqlProcessor: CompilationProcessor {
         ["-tm", Files.sqlTypesYaml] : []
 
         // Locate the input files and expected output file path
-        let outputDirectory = projectConfig.generatedTsDirectoryURL
+        let unresolvedOutputDirectory = projectConfig.generatedTsDirectoryURL
             .appendingPathComponent("\(bundleInfo.name)")
             .appendingPathComponent(outdir)
-            .resolvingSymlinksInPath()
-        try fileManager.createDirectory(at: outputDirectory)
+        try fileManager.createDirectory(at: unresolvedOutputDirectory)
+
+        // The generated directory may sit below Bazel's output symlink. Resolve
+        // it only after creation so emitted files and their base directory use
+        // the same canonical path on the first compilation pass.
+        let outputDirectory = unresolvedOutputDirectory.resolvingSymlinksInPath()
 
         // All input files sorted by path and put together as the key to locate the DiskCache entry
         let sortedSourcePaths = sourceMap.keys.sorted()
