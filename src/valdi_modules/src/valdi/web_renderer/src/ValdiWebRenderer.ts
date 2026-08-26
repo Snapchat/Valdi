@@ -2,7 +2,6 @@ import type { RequireFunc } from 'valdi_core/src/IModuleLoader';
 import type { ComponentConstructor, IComponent } from 'valdi_core/src/IComponent';
 import type { ComponentPrototype } from 'valdi_core/src/ComponentPrototype';
 import type { AttributeUpdatedExternallyDelegate } from './core/ElementClass';
-import { resolveComponentConstructor } from 'valdi_core/src/ComponentPath';
 import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 import { Renderer } from 'valdi_core/src/Renderer';
 import { ValdiWebRendererDelegate } from './ValdiWebRendererDelegate';
@@ -18,7 +17,17 @@ export { createViewFactory } from './ViewFactory';
 
 declare const require: RequireFunc;
 
-getValdiRuntime();
+const webRuntime = getValdiRuntime() as unknown as {
+  requireByComponent(componentPath: string): ComponentConstructor<IComponent> | undefined;
+};
+
+function resolveRegisteredComponent(componentPath: string): ComponentConstructor<IComponent> {
+  const constructor = webRuntime.requireByComponent(componentPath);
+  if (!constructor) {
+    throw new Error(`Could not resolve component ${componentPath}`);
+  }
+  return constructor;
+}
 
 // Collapsed web packages generate narrow registries for runtime-only lookups.
 try {
@@ -113,7 +122,7 @@ export class ValdiWebRenderer extends Renderer implements AttributeUpdatedExtern
     if (!this.navigationHost) {
       this.navigationHost = new WebNavigationHost({
         createRenderer: (root, contextIdentifierPrefix) => new ValdiWebRenderer(root, contextIdentifierPrefix),
-        resolveComponent: componentPath => resolveComponentConstructor(require, componentPath),
+        resolveComponent: resolveRegisteredComponent,
         root: this.isolatedRoot,
       });
     }
