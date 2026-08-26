@@ -19,10 +19,13 @@ import { getUserConfig, resolveFilePath } from '../utils/fileUtils';
 import { type CpuProfile, HERMES_PORT, HermesConnection, listHermesDevices } from '../utils/hermesClient';
 import { isLoopbackHost, normalizedHostname } from '../utils/loopbackHost';
 import {
+  type OwlChromiumConnection,
+  connectToOwlApplication,
   evaluateOwlApplicationExpression,
   matchesOwlApplicationUrl,
   readOwlDebuggerSnapshot,
 } from '../utils/owlCdpClient';
+import { type ChromiumConsoleEntry, formatChromiumConsoleEvent } from './chromiumConsole';
 import { DebuggerInputType, sendDebuggerInput, validateDebuggerInputRequest } from './inputClient';
 
 const DEFAULT_HOST = process.env['VALDI_DEBUGGER_HOST'] || '127.0.0.1';
@@ -46,6 +49,12 @@ const MAX_TRACE_THREAD_METADATA_COUNT = 256;
 export const MAX_TRACE_HTTP_RESPONSE_BYTES = 4 * 1024 * 1024;
 const MAX_TRACE_HTTP_STRING_BYTES = 64 * 1024;
 const TRACE_DAEMON_TIMEOUT_MS = 30_000;
+const CHROMIUM_CONSOLE_COMMAND_TIMEOUT_MS = 8000;
+const CHROMIUM_CONSOLE_IDENTITY_INTERVAL_MS = 15_000;
+const CHROMIUM_CONSOLE_DEDUPLICATION_WINDOW_MS = 500;
+const MAX_PENDING_CHROMIUM_CONSOLE_ENTRIES = 128;
+export const MAX_CONSOLE_SSE_BUFFERED_BYTES = 512 * 1024;
+export const MAX_CONSOLE_SSE_BUFFERED_EVENTS = 128;
 const PERFETTO_PROCESS_ID = 1;
 const PERFETTO_PROCESS_NAME = 'Valdi';
 const PERFETTO_TRACE_CATEGORY = 'valdi';
@@ -62,6 +71,7 @@ const TRACE_CAPTURE_TARGET_STRING_KEYS = [
 ] as const;
 const DEBUGGER_PROVIDERS_IDENTIFIER = 'ValdiDebuggerProviders';
 const DEBUG_SETTINGS_IDENTIFIER = 'ValdiDebuggerSettings';
+const NOOP = (): void => {};
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -1504,17 +1514,119 @@ async function selectRuntimeLogFile(searchParams: URLSearchParams): Promise<{
   return { logsDirectory, latest: latest ?? null };
 }
 
+export class ConsoleSseWriter {
+  private backpressured = false;
+  private bufferedBytes = 0;
+  private readonly bufferedFrames: string[] = [];
+  private closed = false;
+
+  constructor(
+    private readonly response: ServerResponse,
+    private readonly onFailure: (error: Error) => void,
+  ) {}
+
+  send(event: string, payload: unknown): boolean {
+    if (this.closed) return false;
+    let data: string | undefined;
+    try {
+      data = JSON.stringify(payload);
+    } catch {
+      this.fail(new Error('Could not serialize a Chromium console event.'));
+      return false;
+    }
+    if (data === undefined || !/^[a-z][a-z-]{0,63}$/.test(event)) {
+      this.fail(new Error('Could not encode a Chromium console event.'));
+      return false;
+    }
+    const frame = `event: ${event}\ndata: ${data}\n\n`;
+    if (this.backpressured) return this.buffer(frame);
+    return this.write(frame);
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.response.off('drain', this.flush);
+    this.bufferedFrames.length = 0;
+    this.bufferedBytes = 0;
+  }
+
+  private buffer(frame: string): boolean {
+    const frameBytes = Buffer.byteLength(frame);
+    if (
+      this.bufferedFrames.length >= MAX_CONSOLE_SSE_BUFFERED_EVENTS ||
+      frameBytes > MAX_CONSOLE_SSE_BUFFERED_BYTES - this.bufferedBytes
+    ) {
+      this.fail(
+        new Error(
+          `Chromium console stream exceeded its ${MAX_CONSOLE_SSE_BUFFERED_EVENTS} event or ${MAX_CONSOLE_SSE_BUFFERED_BYTES} byte backpressure limit.`,
+        ),
+      );
+      return false;
+    }
+    this.bufferedFrames.push(frame);
+    this.bufferedBytes += frameBytes;
+    return true;
+  }
+
+  private readonly flush = (): void => {
+    if (this.closed) return;
+    this.backpressured = false;
+    while (this.bufferedFrames.length > 0) {
+      const frame = this.bufferedFrames.shift();
+      if (frame === undefined) return;
+      this.bufferedBytes -= Buffer.byteLength(frame);
+      if (!this.write(frame)) return;
+    }
+  };
+
+  private write(frame: string): boolean {
+    try {
+      if (!this.response.write(frame)) {
+        this.backpressured = true;
+        this.response.once('drain', this.flush);
+      }
+      return true;
+    } catch (error) {
+      this.fail(error instanceof Error ? error : new Error('Could not write a Chromium console event.'));
+      return false;
+    }
+  }
+
+  private fail(error: Error): void {
+    if (this.closed) return;
+    this.close();
+    this.onFailure(error);
+  }
+}
+
 function sendSse(response: ServerResponse, event: string, payload: unknown): void {
   response.write(`event: ${event}\n`);
   response.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-function registerEventStream(request: IncomingMessage, response: ServerResponse, onClose: () => void): () => void {
-  let closed = false;
-  const close = () => {
-    if (closed) return;
-    closed = true;
+interface EventStreamLifetime {
+  close: () => void;
+  detach: () => void;
+}
+
+function registerEventStreamLifetime(
+  request: IncomingMessage,
+  response: ServerResponse,
+  onClose: () => void,
+): EventStreamLifetime {
+  let active = true;
+  const detach = () => {
+    if (!active) return;
+    active = false;
     eventStreamClosers.delete(close);
+    request.off('aborted', close);
+    response.off('close', close);
+    response.off('finish', close);
+  };
+  const close = () => {
+    if (!active) return;
+    detach();
     onClose();
     if (!response.writableEnded) response.end();
   };
@@ -1522,7 +1634,216 @@ function registerEventStream(request: IncomingMessage, response: ServerResponse,
   request.once('aborted', close);
   response.once('close', close);
   response.once('finish', close);
-  return close;
+  return { close, detach };
+}
+
+function registerEventStream(request: IncomingMessage, response: ServerResponse, onClose: () => void): () => void {
+  return registerEventStreamLifetime(request, response, onClose).close;
+}
+
+function isTerminalChromiumConsoleEvent(method: string): boolean {
+  return (
+    method === 'Inspector.detached' ||
+    method === 'Runtime.executionContextsCleared' ||
+    method === 'Target.detachedFromTarget'
+  );
+}
+
+async function streamWebPreviewConsole(
+  request: IncomingMessage,
+  response: ServerResponse,
+  searchParams: URLSearchParams,
+): Promise<void> {
+  const target = resolveWebPreviewDebuggerTarget(searchParams.get('sessionId') ?? undefined);
+  const context = resolveInspectedWebPreviewContext(
+    target,
+    searchParams.get('inspectedUrl') ?? undefined,
+    searchParams.get('targetNonce') ?? undefined,
+  );
+  const recentEntries = new Map<string, ChromiumConsoleEntry>();
+  const pendingEntries: Array<ChromiumConsoleEntry & { sequence: number }> = [];
+  let connection: OwlChromiumConnection | null = null;
+  let pendingDroppedEntryCount = 0;
+  let sequence = 0;
+  let setupFailure: Error | null = null;
+  let writer: ConsoleSseWriter | null = null;
+  let closeStream = NOOP;
+  let removeEventListener = NOOP;
+  let removeConnectionClose = NOOP;
+  let identityTimer: NodeJS.Timeout | null = null;
+  let identityCheckInFlight = false;
+  let closing = false;
+
+  const closeWithError = (error: Error): void => {
+    if (closing) return;
+    if (!writer) {
+      setupFailure ??= error;
+      return;
+    }
+    writer.send('stream-error', {
+      error: error.message,
+      sessionId: target.sessionId,
+      targetId: target.id,
+    });
+    closeStream();
+  };
+
+  const cleanup = (): void => {
+    if (closing) return;
+    closing = true;
+    if (identityTimer) clearInterval(identityTimer);
+    identityTimer = null;
+    removeEventListener();
+    removeConnectionClose();
+    writer?.close();
+    connection?.close();
+  };
+
+  const streamLifetime = registerEventStreamLifetime(request, response, cleanup);
+  closeStream = streamLifetime.close;
+  if (request.aborted || request.destroyed || response.destroyed || response.writableEnded) {
+    closeStream();
+    return;
+  }
+
+  const sendEntry = (entry: ChromiumConsoleEntry): void => {
+    const key = `${entry.level}:${entry.message}`;
+    const previous = recentEntries.get(key);
+    if (
+      previous !== undefined &&
+      previous.source !== entry.source &&
+      Math.abs(previous.timestamp - entry.timestamp) < CHROMIUM_CONSOLE_DEDUPLICATION_WINDOW_MS
+    ) {
+      return;
+    }
+    recentEntries.delete(key);
+    recentEntries.set(key, entry);
+    if (recentEntries.size > MAX_PENDING_CHROMIUM_CONSOLE_ENTRIES) {
+      const oldest = recentEntries.keys().next().value;
+      if (oldest !== undefined) recentEntries.delete(oldest);
+    }
+
+    const payload = { ...entry, sequence: ++sequence };
+    if (writer) {
+      writer.send('console', {
+        ...payload,
+        sessionId: target.sessionId,
+        targetId: target.id,
+      });
+      return;
+    }
+    if (pendingEntries.length >= MAX_PENDING_CHROMIUM_CONSOLE_ENTRIES) {
+      pendingEntries.shift();
+      pendingDroppedEntryCount += 1;
+    }
+    pendingEntries.push(payload);
+  };
+
+  try {
+    const connected = await connectToOwlApplication(target.debuggingPort, target.applicationUrl, context.targetNonce);
+    connection = connected;
+    if (closing) {
+      connected.close();
+      return;
+    }
+
+    removeConnectionClose = connected.onClose(error => closeWithError(error));
+    if (setupFailure) throw setupFailure;
+    removeEventListener = connected.onEvent(event => {
+      if (isTerminalChromiumConsoleEvent(event.method)) {
+        closeWithError(new Error('The inspected Chromium target changed or detached.'));
+        return;
+      }
+      const entry = formatChromiumConsoleEvent(event);
+      if (entry) sendEntry(entry);
+    });
+
+    await connected.call('Runtime.enable', {}, CHROMIUM_CONSOLE_COMMAND_TIMEOUT_MS);
+    if (setupFailure) throw setupFailure;
+    await connected.call('Log.enable', {}, CHROMIUM_CONSOLE_COMMAND_TIMEOUT_MS);
+    if (setupFailure) throw setupFailure;
+    if (!(await connected.matchesTarget(target.applicationUrl, context.targetNonce))) {
+      throw new Error('The inspected Chromium target changed while the console stream was connecting.');
+    }
+  } catch (error) {
+    if (closing) return;
+    streamLifetime.detach();
+    cleanup();
+    throw setupFailure ?? error;
+  }
+
+  if (request.aborted || request.destroyed || response.destroyed || response.writableEnded) {
+    closeStream();
+    return;
+  }
+  const activeConnection = connection;
+  if (!activeConnection) {
+    closeStream();
+    return;
+  }
+
+  response.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-store, no-transform',
+    Connection: 'keep-alive',
+  });
+
+  writer = new ConsoleSseWriter(response, error => closeWithError(error));
+
+  if (setupFailure) {
+    closeWithError(setupFailure);
+    return;
+  }
+
+  writer.send('ready', {
+    sessionId: target.sessionId,
+    targetId: target.id,
+    time: new Date().toISOString(),
+  });
+  if (pendingDroppedEntryCount > 0) {
+    writer.send('stream-warning', {
+      droppedEntryCount: pendingDroppedEntryCount,
+      message: 'Some buffered Chromium console entries were omitted while the stream connected.',
+      sessionId: target.sessionId,
+      targetId: target.id,
+    });
+  }
+  for (const entry of pendingEntries) {
+    writer.send('console', {
+      ...entry,
+      sessionId: target.sessionId,
+      targetId: target.id,
+    });
+  }
+
+  if (closing) return;
+
+  identityTimer = setInterval(() => {
+    if (closing || identityCheckInFlight) return;
+    identityCheckInFlight = true;
+    void activeConnection
+      .matchesTarget(target.applicationUrl, context.targetNonce)
+      .then(matched => {
+        if (!matched) {
+          closeWithError(new Error('The inspected Chromium target identity changed.'));
+          return;
+        }
+        writer?.send('heartbeat', {
+          sessionId: target.sessionId,
+          targetId: target.id,
+          time: new Date().toISOString(),
+        });
+      })
+      .catch(error =>
+        closeWithError(
+          error instanceof Error ? error : new Error('Could not revalidate the inspected Chromium target.'),
+        ),
+      )
+      .finally(() => {
+        identityCheckInFlight = false;
+      });
+  }, CHROMIUM_CONSOLE_IDENTITY_INTERVAL_MS);
+  identityTimer.unref();
 }
 
 function broadcastDevEvent(event: string, payload: unknown): void {
@@ -2928,6 +3249,15 @@ async function handleApi(request: IncomingMessage, response: ServerResponse, url
         return;
       }
       sendJson(response, 200, await inspectWebPreviewSnapshot(url.searchParams));
+      return;
+    }
+
+    if (url.pathname === '/api/devtools/console/stream') {
+      if (request.method !== 'GET') {
+        sendJson(response, 405, { error: 'Valdi DevTools console streaming requires GET.' });
+        return;
+      }
+      await streamWebPreviewConsole(request, response, url.searchParams);
       return;
     }
 

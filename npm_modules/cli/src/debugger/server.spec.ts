@@ -1,4 +1,5 @@
 import 'jasmine';
+import crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as net from 'node:net';
@@ -45,6 +46,205 @@ interface MockDaemon {
   close: () => Promise<void>;
   port: number;
   requests: Array<Record<string, unknown>>;
+}
+
+interface MockChromiumConsoleServer {
+  close: () => Promise<void>;
+  debuggerSockets: Set<net.Socket>;
+  methods: string[];
+  port: number;
+  runtimeEnableReceived: Promise<void>;
+  releaseRuntimeEnable(): void;
+}
+
+interface MockChromiumConsoleServerOptions {
+  holdRuntimeEnable: boolean;
+}
+
+function encodeChromiumServerMessage(payload: Record<string, unknown>): Buffer {
+  const body = Buffer.from(JSON.stringify(payload), 'utf8');
+  const header = body.length < 126 ? Buffer.alloc(2) : body.length <= 0xff_ff ? Buffer.alloc(4) : Buffer.alloc(10);
+  header[0] = 0x81;
+  if (body.length < 126) {
+    header[1] = body.length;
+  } else if (body.length <= 0xff_ff) {
+    header[1] = 126;
+    header.writeUInt16BE(body.length, 2);
+  } else {
+    header[1] = 127;
+    header.writeBigUInt64BE(BigInt(body.length), 2);
+  }
+  return Buffer.concat([header, body]);
+}
+
+function readChromiumClientFrame(buffer: Buffer): { consumed: number; payload: Record<string, unknown> } | null {
+  if (buffer.length < 2) return null;
+  let offset = 2;
+  const secondByte = buffer.readUInt8(1);
+  let payloadLength = secondByte & 0x7f;
+  if (payloadLength === 126) {
+    if (buffer.length < 4) return null;
+    payloadLength = buffer.readUInt16BE(2);
+    offset = 4;
+  } else if (payloadLength === 127) {
+    if (buffer.length < 10) return null;
+    payloadLength = Number(buffer.readBigUInt64BE(2));
+    offset = 10;
+  }
+  const masked = (secondByte & 0x80) !== 0;
+  if (!masked || buffer.length < offset + 4 + payloadLength) return null;
+  const mask = buffer.subarray(offset, offset + 4);
+  offset += 4;
+  const encoded = buffer.subarray(offset, offset + payloadLength);
+  const decoded = Buffer.from(encoded.map((value, index) => value ^ (mask[index % mask.length] ?? 0)));
+  return {
+    consumed: offset + payloadLength,
+    payload: JSON.parse(decoded.toString('utf8')) as Record<string, unknown>,
+  };
+}
+
+async function startMockChromiumConsoleServer(
+  applicationUrl: string,
+  targetNonce: string,
+  options: MockChromiumConsoleServerOptions,
+): Promise<MockChromiumConsoleServer> {
+  const debuggerSockets = new Set<net.Socket>();
+  const pendingRuntimeEnableResponses: Array<() => void> = [];
+  const methods: string[] = [];
+  let resolveRuntimeEnableReceived: (() => void) | null = null;
+  const runtimeEnableReceived = new Promise<void>(resolve => {
+    resolveRuntimeEnableReceived = resolve;
+  });
+  const server = http.createServer((request, response) => {
+    if (request.url !== '/json/list') {
+      response.writeHead(404).end();
+      return;
+    }
+    const address = server.address();
+    if (typeof address !== 'object' || address === null) {
+      response.writeHead(500).end();
+      return;
+    }
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(
+      JSON.stringify([
+        {
+          id: 'selected-page',
+          title: 'Selected Valdi page',
+          type: 'page',
+          url: `${applicationUrl}${applicationUrl.includes('?') ? '&' : '?'}valdiDevTools=1`,
+          webSocketDebuggerUrl: `ws://127.0.0.1:${address.port}/devtools/page/selected-page`,
+        },
+      ]),
+    );
+  });
+  server.on('upgrade', (request, socket: net.Socket) => {
+    const key = request.headers['sec-websocket-key'];
+    if (request.url !== '/devtools/page/selected-page' || typeof key !== 'string') {
+      socket.destroy();
+      return;
+    }
+    const accept = crypto.createHash('sha1').update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64');
+    socket.write(
+      `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`,
+    );
+    debuggerSockets.add(socket);
+    socket.once('end', () => socket.destroy());
+    socket.once('close', () => debuggerSockets.delete(socket));
+    let buffered = Buffer.alloc(0);
+    socket.on('data', chunk => {
+      buffered = Buffer.concat([buffered, chunk]);
+      let frame = readChromiumClientFrame(buffered);
+      while (frame) {
+        buffered = buffered.subarray(frame.consumed);
+        const id = frame.payload['id'];
+        const method = frame.payload['method'];
+        const params = frame.payload['params'] as Record<string, unknown> | undefined;
+        if (typeof id !== 'number' || typeof method !== 'string') {
+          socket.destroy();
+          return;
+        }
+        methods.push(method);
+        if (method === 'Runtime.evaluate') {
+          const expression = typeof params?.['expression'] === 'string' ? params['expression'] : '';
+          const matched = expression.includes(applicationUrl) && expression.includes(targetNonce);
+          socket.write(
+            encodeChromiumServerMessage({
+              id,
+              result: {
+                result: {
+                  type: 'object',
+                  value: { __valdiDevToolsTargetMatched: matched, ...(matched ? { value: true } : {}) },
+                },
+              },
+            }),
+          );
+        } else {
+          const sendResponse = () => {
+            if (socket.destroyed) return;
+            socket.write(encodeChromiumServerMessage({ id, result: {} }));
+            if (method === 'Runtime.enable') {
+              socket.write(
+                encodeChromiumServerMessage({
+                  method: 'Runtime.consoleAPICalled',
+                  params: {
+                    args: [{ type: 'string', value: 'Synthetic <renderer> output' }],
+                    timestamp: 101,
+                    type: 'warning',
+                  },
+                }),
+              );
+            }
+            if (method === 'Log.enable') {
+              socket.write(
+                encodeChromiumServerMessage({
+                  method: 'Log.entryAdded',
+                  params: {
+                    entry: {
+                      level: 'error',
+                      text: 'authorization: Bearer synthetic-private-token',
+                      timestamp: 102,
+                    },
+                  },
+                }),
+              );
+            }
+          };
+          if (method === 'Runtime.enable') {
+            resolveRuntimeEnableReceived?.();
+            if (options.holdRuntimeEnable) {
+              pendingRuntimeEnableResponses.push(sendResponse);
+            } else {
+              sendResponse();
+            }
+          } else {
+            sendResponse();
+          }
+        }
+        frame = readChromiumClientFrame(buffered);
+      }
+    });
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  if (typeof address !== 'object' || address === null) throw new Error('Mock Chromium server did not bind.');
+  return {
+    close: async () => {
+      for (const socket of debuggerSockets) socket.destroy();
+      await closeServer(server);
+    },
+    debuggerSockets,
+    methods,
+    port: address.port,
+    releaseRuntimeEnable(): void {
+      for (const sendResponse of pendingRuntimeEnableResponses.splice(0)) sendResponse();
+    },
+    runtimeEnableReceived,
+  };
 }
 
 const TEST_PACKET_MAGIC = Buffer.from([0x33, 0xc6, 0x00, 0x01]);
@@ -279,6 +479,7 @@ async function readSseEvents(
             onEvent(payload, payloads.length - 1);
             if (payloads.length === count) {
               settled = true;
+              response.socket.destroy();
               response.destroy();
               outgoingRequest.destroy();
               resolve(payloads);
@@ -586,6 +787,215 @@ describe('debugger server', () => {
     expect(JSON.parse(result.body)).toEqual({
       error: 'DevTools target discovery requires a valid inspected-tab nonce.',
     });
+  });
+
+  it('rejects console streams that do not carry the exact selected target tuple', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+      webPreviewUrl: 'http://127.0.0.1:54321/index.html?tenant=alpha',
+      chromiumDebuggingPort: 9333,
+    });
+
+    const missingSession = await request(
+      new URL(
+        `/api/devtools/console/stream?sessionId=missing&inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3Ftenant%3Dalpha&targetNonce=${WEB_PREVIEW_NONCE}`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const wrongPage = await request(
+      new URL(
+        `/api/devtools/console/stream?sessionId=web-preview&inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Fother.html&targetNonce=${WEB_PREVIEW_NONCE}`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const missingNonce = await request(
+      new URL(
+        '/api/devtools/console/stream?sessionId=web-preview&inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3Ftenant%3Dalpha',
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+
+    expect(missingSession.statusCode).toBe(404);
+    expect(JSON.parse(missingSession.body)).toEqual({
+      error: 'The configured web preview debugger target is not available.',
+    });
+    expect(wrongPage.statusCode).toBe(404);
+    expect(JSON.parse(wrongPage.body)).toEqual({
+      error: 'The inspected page does not match the configured Valdi web preview target.',
+    });
+    expect(missingNonce.statusCode).toBe(400);
+    expect(JSON.parse(missingNonce.body)).toEqual({
+      error: 'DevTools target discovery requires a valid inspected-tab nonce.',
+    });
+  });
+
+  it('streams bounded selected-target output and releases Chromium when the SSE client disconnects', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html?tenant=alpha';
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      holdRuntimeEnable: false,
+    });
+    try {
+      debuggerServer = await startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: applicationUrl,
+        chromiumDebuggingPort: chromium.port,
+      });
+      const streamUrl = new URL('/api/devtools/console/stream', debuggerServer.url);
+      streamUrl.searchParams.set('inspectedUrl', `${applicationUrl}&valdiDevTools=1`);
+      streamUrl.searchParams.set('sessionId', 'web-preview');
+      streamUrl.searchParams.set('targetNonce', WEB_PREVIEW_NONCE);
+
+      const entries = await readSseEvents(streamUrl.toString(), 'console', 2, () => {});
+
+      expect(entries).toEqual([
+        jasmine.objectContaining({
+          level: 'warn',
+          message: 'Synthetic <renderer> output',
+          sessionId: 'web-preview',
+          source: 'console',
+          targetId: 'owl:web-preview',
+        }),
+        jasmine.objectContaining({
+          level: 'error',
+          message: 'authorization: [REDACTED]',
+          sessionId: 'web-preview',
+          source: 'browser',
+          targetId: 'owl:web-preview',
+        }),
+      ]);
+      expect(JSON.stringify(entries)).not.toContain('synthetic-private-token');
+      expect(chromium.methods.slice(0, 4)).toEqual([
+        'Runtime.evaluate',
+        'Runtime.enable',
+        'Log.enable',
+        'Runtime.evaluate',
+      ]);
+
+      const deadline = Date.now() + 1000;
+      while (chromium.debuggerSockets.size > 0 && Date.now() < deadline) {
+        await new Promise<void>(resolve => setTimeout(resolve, 10));
+      }
+      expect(chromium.debuggerSockets.size).toBe(0);
+    } finally {
+      await chromium.close();
+    }
+  });
+
+  it('releases Chromium when the SSE client aborts while Runtime.enable is pending', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html?tenant=abort-during-enable';
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      holdRuntimeEnable: true,
+    });
+    try {
+      debuggerServer = await startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: applicationUrl,
+        chromiumDebuggingPort: chromium.port,
+      });
+      const streamUrl = new URL('/api/devtools/console/stream', debuggerServer.url);
+      streamUrl.searchParams.set('inspectedUrl', `${applicationUrl}&valdiDevTools=1`);
+      streamUrl.searchParams.set('sessionId', 'web-preview');
+      streamUrl.searchParams.set('targetNonce', WEB_PREVIEW_NONCE);
+      const stream = startStreamingRequest(streamUrl.toString(), 'GET');
+      const streamResult = stream.result.catch(() => null);
+      stream.request.end();
+
+      await chromium.runtimeEnableReceived;
+      expect(chromium.debuggerSockets.size).toBe(1);
+      stream.request.destroy();
+      await streamResult;
+
+      const deadline = Date.now() + 1000;
+      while (chromium.debuggerSockets.size > 0 && Date.now() < deadline) {
+        await new Promise<void>(resolve => setTimeout(resolve, 10));
+      }
+      expect(chromium.debuggerSockets.size).toBe(0);
+    } finally {
+      chromium.releaseRuntimeEnable();
+      await chromium.close();
+    }
+  });
+
+  it('closes promptly when debugger shutdown starts while Runtime.enable is pending', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html?tenant=shutdown-during-enable';
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      holdRuntimeEnable: true,
+    });
+    let chromiumClosed = false;
+    try {
+      const serverToClose = await startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: applicationUrl,
+        chromiumDebuggingPort: chromium.port,
+      });
+      debuggerServer = serverToClose;
+      const streamUrl = new URL('/api/devtools/console/stream', serverToClose.url);
+      streamUrl.searchParams.set('inspectedUrl', `${applicationUrl}&valdiDevTools=1`);
+      streamUrl.searchParams.set('sessionId', 'web-preview');
+      streamUrl.searchParams.set('targetNonce', WEB_PREVIEW_NONCE);
+      const stream = startStreamingRequest(streamUrl.toString(), 'GET');
+      const streamResult = stream.result.catch(() => null);
+      stream.request.end();
+
+      await chromium.runtimeEnableReceived;
+      let shutdownComplete = false;
+      debuggerServer = undefined;
+      const shutdown = serverToClose.close().then(() => {
+        shutdownComplete = true;
+      });
+      const deadline = Date.now() + 1000;
+      while (!shutdownComplete && Date.now() < deadline) {
+        await new Promise<void>(resolve => setTimeout(resolve, 10));
+      }
+      const shutdownCompletedDuringEnable = shutdownComplete;
+      const chromiumReleasedDuringEnable = chromium.debuggerSockets.size === 0;
+
+      stream.request.destroy();
+      chromium.releaseRuntimeEnable();
+      await chromium.close();
+      chromiumClosed = true;
+      await shutdown;
+      await streamResult;
+
+      expect(shutdownCompletedDuringEnable).toBeTrue();
+      expect(chromiumReleasedDuringEnable).toBeTrue();
+    } finally {
+      if (!chromiumClosed) await chromium.close();
+    }
+  });
+
+  it('requires GET for the integrated Chromium console stream', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+      webPreviewUrl: 'http://127.0.0.1:54321/index.html',
+    });
+
+    const result = await request(new URL('/api/devtools/console/stream', debuggerServer.url).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+
+    expect(result.statusCode).toBe(405);
+    expect(JSON.parse(result.body)).toEqual({ error: 'Valdi DevTools console streaming requires GET.' });
   });
 
   it('requires JSON for executable integrated DevTools routes', async () => {

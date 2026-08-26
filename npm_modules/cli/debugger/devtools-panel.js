@@ -20,8 +20,11 @@ const state = {
   hoveredNodeId: null,
   highlightTimer: null,
   consoleEntries: [],
+  consoleEntryKeys: new Set(),
   consoleHistory: [],
   consoleHistoryIndex: 0,
+  consoleStream: null,
+  consoleStreamTargetKey: null,
   error: null,
 };
 
@@ -124,13 +127,7 @@ function walk(node, callback) {
 }
 
 function walkVisible(node, callback) {
-  valdiDebuggerTreeModel.walkVisible(
-    node,
-    callback,
-    current => state.expandedNodeIds.has(nodeId(current)),
-    [],
-    0,
-  );
+  valdiDebuggerTreeModel.walkVisible(node, callback, current => state.expandedNodeIds.has(nodeId(current)), [], 0);
 }
 
 function nodeCount() {
@@ -210,17 +207,26 @@ async function connectToInspectedApplication() {
   }
 
   try {
-    const payload = await requestJson(
-      '/api/devtools/target',
-      { inspectedUrl, targetNonce: inspectedTargetNonce },
-      {},
-    );
+    const payload = await requestJson('/api/devtools/target', { inspectedUrl, targetNonce: inspectedTargetNonce }, {});
+    const previousTargetKey = state.target
+      ? `${state.target.id}:${state.target.sessionId}:${inspectedTargetNonce}`
+      : null;
+    const nextTargetKey = `${payload.target.id}:${payload.target.sessionId}:${inspectedTargetNonce}`;
+    if (previousTargetKey !== null && previousTargetKey !== nextTargetKey) {
+      stopConsoleStream();
+      state.consoleEntries = [];
+      state.consoleEntryKeys.clear();
+      elements.consoleMessages.innerHTML = '';
+    }
     state.target = payload.target;
     elements.targetName.textContent = state.target.name || 'Valdi application';
     elements.targetName.title = state.target.applicationUrl || inspectedUrl;
     elements.targetMetadata.textContent = `Chromium · :${state.target.debuggingPort}`;
     setConnected(true);
-    addConsoleEntry('info', `Connected to ${state.target.applicationUrl}`);
+    if (previousTargetKey !== nextTargetKey) {
+      addConsoleEntry('info', `Connected to ${state.target.applicationUrl}`);
+    }
+    startConsoleStream();
     await refreshSnapshot();
     startRefreshTimer();
   } catch (error) {
@@ -591,20 +597,106 @@ function setActiveDetail(detail) {
   renderInspector();
 }
 
-function addConsoleEntry(kind, value) {
+function stopConsoleStream() {
+  if (!state.consoleStream) return;
+  state.consoleStream.close();
+  state.consoleStream = null;
+  state.consoleStreamTargetKey = null;
+}
+
+function startConsoleStream() {
+  if (!state.target || !state.autoRefresh || !inspectedUrl || !inspectedTargetNonce) {
+    stopConsoleStream();
+    return;
+  }
+  const targetKey = `${state.target.id}:${state.target.sessionId}:${inspectedTargetNonce}`;
+  if (state.consoleStream && state.consoleStreamTargetKey === targetKey) return;
+  stopConsoleStream();
+
+  const url = new URL('/api/devtools/console/stream', window.location.origin);
+  url.searchParams.set('inspectedUrl', inspectedUrl);
+  url.searchParams.set('sessionId', state.target.sessionId);
+  url.searchParams.set('targetNonce', inspectedTargetNonce);
+  const stream = new EventSource(url.toString());
+  state.consoleStream = stream;
+  state.consoleStreamTargetKey = targetKey;
+
+  stream.addEventListener('console', event => {
+    if (state.consoleStream !== stream || !state.target) return;
+    let entry;
+    try {
+      entry = JSON.parse(event.data);
+    } catch (error) {
+      console.warn('[Valdi DevTools] Ignoring a malformed Chromium console event.', error);
+      return;
+    }
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return;
+    if (
+      entry.sessionId !== state.target.sessionId ||
+      entry.targetId !== state.target.id ||
+      typeof entry.message !== 'string'
+    ) {
+      return;
+    }
+    addConsoleEntry(entry.level, entry.message, entry.timestamp, entry.source);
+  });
+
+  stream.addEventListener('stream-error', event => {
+    if (state.consoleStream !== stream || !state.target) return;
+    try {
+      const payload = JSON.parse(event.data);
+      if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return;
+      if (
+        payload.sessionId === state.target.sessionId &&
+        payload.targetId === state.target.id &&
+        typeof payload.error === 'string'
+      ) {
+        addConsoleEntry('error', payload.error);
+      }
+    } catch (error) {
+      console.warn('[Valdi DevTools] Ignoring a malformed Chromium console stream error.', error);
+    }
+  });
+
+  stream.addEventListener('stream-warning', event => {
+    if (state.consoleStream !== stream || !state.target) return;
+    try {
+      const payload = JSON.parse(event.data);
+      if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return;
+      if (
+        payload.sessionId === state.target.sessionId &&
+        payload.targetId === state.target.id &&
+        typeof payload.message === 'string'
+      ) {
+        addConsoleEntry('warn', payload.message);
+      }
+    } catch (error) {
+      console.warn('[Valdi DevTools] Ignoring a malformed Chromium console stream warning.', error);
+    }
+  });
+}
+
+function addConsoleEntry(kind, value, timestamp, source) {
+  const normalizedKind = ['debug', 'error', 'info', 'input', 'log', 'result', 'warn'].includes(kind) ? kind : 'log';
   const text = String(value);
   const boundedValue =
-    text.length > MAX_CONSOLE_ENTRY_CHARACTERS
-      ? `${text.slice(0, MAX_CONSOLE_ENTRY_CHARACTERS - 1)}…`
-      : text;
-  state.consoleEntries.push({ kind, value: boundedValue });
+    text.length > MAX_CONSOLE_ENTRY_CHARACTERS ? `${text.slice(0, MAX_CONSOLE_ENTRY_CHARACTERS - 1)}…` : text;
+  const key = timestamp === undefined ? null : `${timestamp}:${normalizedKind}:${String(source ?? '')}:${boundedValue}`;
+  if (key !== null) {
+    if (state.consoleEntryKeys.has(key)) return;
+    state.consoleEntryKeys.add(key);
+  }
+  state.consoleEntries.push({ key, kind: normalizedKind, value: boundedValue });
   if (state.consoleEntries.length > MAX_CONSOLE_ENTRIES) {
-    state.consoleEntries.splice(0, state.consoleEntries.length - MAX_CONSOLE_ENTRIES);
+    const discarded = state.consoleEntries.splice(0, state.consoleEntries.length - MAX_CONSOLE_ENTRIES);
+    for (const entry of discarded) {
+      if (entry.key !== null) state.consoleEntryKeys.delete(entry.key);
+    }
   }
   elements.consoleMessages.innerHTML = state.consoleEntries
     .map(
       entry =>
-        `<div class="console-entry ${escapeHtml(entry.kind)}"><span class="console-chevron">${entry.kind === 'input' ? '›' : entry.kind === 'error' ? '×' : '‹'}</span><pre>${escapeHtml(entry.value)}</pre></div>`,
+        `<div class="console-entry ${escapeHtml(entry.kind)}"><span class="console-chevron">${entry.kind === 'input' ? '›' : entry.kind === 'error' ? '×' : entry.kind === 'warn' ? '!' : '‹'}</span><pre>${escapeHtml(entry.value)}</pre></div>`,
     )
     .join('');
   elements.consoleMessages.scrollTop = elements.consoleMessages.scrollHeight;
@@ -658,6 +750,11 @@ function wireEvents() {
   elements.refreshButton.addEventListener('click', () => void refreshSnapshot());
   elements.autoRefreshToggle.addEventListener('change', () => {
     state.autoRefresh = elements.autoRefreshToggle.checked;
+    if (state.autoRefresh) {
+      startConsoleStream();
+    } else {
+      stopConsoleStream();
+    }
   });
   elements.treeFilter.addEventListener('input', () => {
     state.search = elements.treeFilter.value;
@@ -732,6 +829,7 @@ function wireEvents() {
       applyTheme(event.data.theme);
     }
   });
+  window.addEventListener('pagehide', stopConsoleStream);
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && state.activeSection === 'elements') void refreshSnapshot();
   });

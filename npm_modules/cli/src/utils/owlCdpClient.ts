@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { TextDecoder } from 'node:util';
-import { ChromiumDevToolsConnection } from './chromiumDevToolsClient';
+import { ChromiumDevToolsConnection, type ChromiumDevToolsEvent } from './chromiumDevToolsClient';
 import { isLoopbackHost } from './loopbackHost';
 
 const CHROMIUM_DISCOVERY_TIMEOUT_MS = 3000;
@@ -240,17 +240,33 @@ export class OwlChromiumConnection {
     return result.result?.value;
   }
 
+  async call(method: string, params: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
+    return await this.connection.call(method, params, timeoutMs);
+  }
+
+  async matchesTarget(applicationUrl: string, targetNonce: string): Promise<boolean> {
+    const evaluation = await evaluateGuardedOwlExpression(this, applicationUrl, targetNonce, 'true');
+    return evaluation.matched;
+  }
+
+  onClose(listener: (error: Error) => void): () => void {
+    return this.connection.onClose(listener);
+  }
+
+  onEvent(listener: (event: ChromiumDevToolsEvent) => void): () => void {
+    return this.connection.onEvent(listener);
+  }
+
   close(): void {
     this.connection.close();
   }
 }
 
-async function evaluateOnOwlApplication(
+export async function connectToOwlApplication(
   port: number,
   applicationUrl: string,
   targetNonce: string,
-  expression: string,
-): Promise<unknown> {
+): Promise<OwlChromiumConnection> {
   const targets = await listOwlChromiumTargets(port);
   const candidates = targets.filter(
     candidate => candidate.type === 'page' && matchesOwlApplicationUrl(candidate.url, applicationUrl),
@@ -262,25 +278,38 @@ async function evaluateOnOwlApplication(
   let lastProbeError: Error | null = null;
   for (const candidate of candidates) {
     let connection: OwlChromiumConnection | null = null;
-    let probeMatched = false;
+    let matched = false;
     try {
       connection = await OwlChromiumConnection.connect(candidate.webSocketDebuggerUrl);
       const probe = await evaluateGuardedOwlExpression(connection, applicationUrl, targetNonce, 'true');
       if (!probe.matched) continue;
-      probeMatched = true;
-      const evaluation = await evaluateGuardedOwlExpression(connection, applicationUrl, targetNonce, expression);
-      if (evaluation.matched) return evaluation.value;
+      matched = true;
+      return connection;
     } catch (error) {
-      const evaluationError = chromiumError(error, 'Could not inspect the candidate Owl Chromium page.');
-      if (probeMatched) throw evaluationError;
-      lastProbeError = evaluationError;
+      lastProbeError = chromiumError(error, 'Could not inspect the candidate Owl Chromium page.');
     } finally {
-      connection?.close();
+      if (connection && !matched) connection.close();
     }
   }
 
   if (candidates.length === 1 && lastProbeError) throw lastProbeError;
   throw new Error('No running Owl Chromium page matches the exact inspected DevTools tab.');
+}
+
+async function evaluateOnOwlApplication(
+  port: number,
+  applicationUrl: string,
+  targetNonce: string,
+  expression: string,
+): Promise<unknown> {
+  const connection = await connectToOwlApplication(port, applicationUrl, targetNonce);
+  try {
+    const evaluation = await evaluateGuardedOwlExpression(connection, applicationUrl, targetNonce, expression);
+    if (evaluation.matched) return evaluation.value;
+    throw new Error('The inspected Owl page changed while the debugger request was running.');
+  } finally {
+    connection.close();
+  }
 }
 
 export async function readOwlDebuggerSnapshot(

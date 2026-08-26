@@ -571,6 +571,15 @@ button {
   color: var(--error);
 }
 
+.console-entry.warn {
+  background: color-mix(in srgb, var(--warning) 8%, var(--background));
+  color: var(--warning);
+}
+
+.console-entry.debug {
+  color: var(--muted);
+}
+
 .console-entry.result .console-chevron,
 .console-entry.input .console-chevron {
   color: var(--accent);

@@ -6,6 +6,7 @@ import { Script } from 'node:vm';
 import {
   OWL_DEVTOOLS_TARGET_NONCE_PROPERTY,
   OwlChromiumConnection,
+  connectToOwlApplication,
   evaluateOwlApplicationExpression,
   listOwlChromiumTargets,
   readOwlDebuggerSnapshot,
@@ -15,6 +16,7 @@ interface ChromiumDiscoveryServer {
   closedTargetIds: string[];
   events: string[];
   expressions: string[];
+  emitEvent(event: Record<string, unknown>): void;
   port: number;
   server: http.Server;
   setDiscoveryBody(body: string): void;
@@ -82,20 +84,26 @@ function decodeWebSocketFrame(frame: Buffer): DecodedWebSocketFrame {
   const mask = masked ? frame.subarray(offset, offset + 4) : null;
   if (mask) offset += mask.length;
   const rawPayload = frame.subarray(offset, offset + payloadLength);
-  const payload = mask
-    ? Buffer.from(rawPayload.map((value, index) => value ^ mask[index % mask.length]!))
-    : rawPayload;
+  const payload = mask ? Buffer.from(rawPayload.map((value, index) => value ^ mask[index % mask.length]!)) : rawPayload;
   return { masked, opcode, payload };
 }
 
-function decodeWebSocketCommand(frame: DecodedWebSocketFrame): { id: number; params: { expression: string } } {
+function decodeWebSocketCommand(frame: DecodedWebSocketFrame): {
+  id: number;
+  method: string;
+  params: { expression?: string };
+} {
   if (frame.opcode !== 0x01) throw new Error(`Expected a text command frame, received opcode ${frame.opcode}.`);
-  return JSON.parse(frame.payload.toString('utf8')) as { id: number; params: { expression: string } };
+  return JSON.parse(frame.payload.toString('utf8')) as {
+    id: number;
+    method: string;
+    params: { expression?: string };
+  };
 }
 
 function evaluateCommandInPage(socket: Socket, frame: DecodedWebSocketFrame, page: Record<string, unknown>): void {
   const command = decodeWebSocketCommand(frame);
-  const result = new Script(command.params.expression).runInNewContext(page) as unknown;
+  const result = new Script(command.params.expression ?? '').runInNewContext(page) as unknown;
   void Promise.resolve(result).then(value => {
     socket.write(
       encodeWebSocketResponse({
@@ -120,6 +128,7 @@ async function createChromiumDiscoveryServer(): Promise<ChromiumDiscoveryServer>
   const closedTargetIds: string[] = [];
   const closedTargets = new Set<string>();
   const events: string[] = [];
+  const debuggerSockets = new Set<Socket>();
   const sockets = new Set<Socket>();
   let discoveryBody: string | null = null;
   let discoveryChunkDelayMs = 0;
@@ -133,22 +142,24 @@ async function createChromiumDiscoveryServer(): Promise<ChromiumDiscoveryServer>
     }
     const address = server.address() as AddressInfo;
     response.writeHead(discoveryStatus, { 'content-type': 'application/json' });
-    const body = discoveryBody ?? JSON.stringify([
-      {
-        id: 'owl-page',
-        title: 'Valdi Owl',
-        type: 'page',
-        url: 'http://127.0.0.1:54321/index.html?valdiDebugger=1&valdiDevTools=1',
-        webSocketDebuggerUrl: `ws://127.0.0.1:${address.port}/devtools/page/owl-page`,
-      },
-      {
-        id: 'redirected-page',
-        title: 'Untrusted loopback redirect',
-        type: 'page',
-        url: 'http://127.0.0.1:54321/index.html',
-        webSocketDebuggerUrl: 'ws://127.0.0.1:1/devtools/page/redirected-page',
-      },
-    ]);
+    const body =
+      discoveryBody ??
+      JSON.stringify([
+        {
+          id: 'owl-page',
+          title: 'Valdi Owl',
+          type: 'page',
+          url: 'http://127.0.0.1:54321/index.html?valdiDebugger=1&valdiDevTools=1',
+          webSocketDebuggerUrl: `ws://127.0.0.1:${address.port}/devtools/page/owl-page`,
+        },
+        {
+          id: 'redirected-page',
+          title: 'Untrusted loopback redirect',
+          type: 'page',
+          url: 'http://127.0.0.1:54321/index.html',
+          webSocketDebuggerUrl: 'ws://127.0.0.1:1/devtools/page/redirected-page',
+        },
+      ]);
     if (!discoveryChunks) {
       response.end(body);
       return;
@@ -176,6 +187,8 @@ async function createChromiumDiscoveryServer(): Promise<ChromiumDiscoveryServer>
       return;
     }
     const targetId = targetMatch[1]!;
+    debuggerSockets.add(socket);
+    socket.once('close', () => debuggerSockets.delete(socket));
     events.push(`open:${targetId}`);
     const markTargetClosed = () => {
       if (closedTargets.has(targetId)) return;
@@ -194,15 +207,15 @@ async function createChromiumDiscoveryServer(): Promise<ChromiumDiscoveryServer>
       const decodedFrame = decodeWebSocketFrame(frame);
       if (decodedFrame.opcode === 0x01) {
         const command = decodeWebSocketCommand(decodedFrame);
-        expressions.push(command.params.expression);
-        events.push(`evaluate:${targetId}`);
+        if (command.params.expression !== undefined) expressions.push(command.params.expression);
+        events.push(`${command.method}:${targetId}`);
       }
       if (webSocketResponder) {
         webSocketResponder(socket, decodedFrame, targetId);
         return;
       }
       const command = decodeWebSocketCommand(decodedFrame);
-      const value = command.params.expression.includes('__VALDI_WEB_DEBUGGER__') ? debuggerSnapshotValue() : true;
+      const value = command.params.expression?.includes('__VALDI_WEB_DEBUGGER__') ? debuggerSnapshotValue() : true;
       socket.write(
         encodeWebSocketResponse({
           id: command.id,
@@ -228,6 +241,9 @@ async function createChromiumDiscoveryServer(): Promise<ChromiumDiscoveryServer>
       }
       resolve({
         closedTargetIds,
+        emitEvent(event: Record<string, unknown>): void {
+          for (const socket of debuggerSockets) socket.write(encodeWebSocketResponse(event));
+        },
         events,
         expressions,
         port: address.port,
@@ -331,17 +347,11 @@ describe('owlCdpClient', () => {
       ),
     );
 
-    await expectAsync(listOwlChromiumTargets(discovery.port)).toBeRejectedWithError(
-      /more than 256 targets/,
-    );
+    await expectAsync(listOwlChromiumTargets(discovery.port)).toBeRejectedWithError(/more than 256 targets/);
   });
 
   it('reads the exact real Owl page without launching a second web renderer', async () => {
-    const result = await readOwlDebuggerSnapshot(
-      discovery.port,
-      'http://127.0.0.1:54321/index.html',
-      TARGET_NONCE,
-    );
+    const result = await readOwlDebuggerSnapshot(discovery.port, 'http://127.0.0.1:54321/index.html', TARGET_NONCE);
 
     expect(result['channel']).toBe('valdi-web-debugger');
     expect(result['snapshot']).toEqual(
@@ -349,7 +359,9 @@ describe('owlCdpClient', () => {
     );
     expect(discovery.expressions).toHaveSize(2);
     expect(discovery.expressions.every(expression => expression.includes(TARGET_NONCE))).toBeTrue();
-    expect(discovery.expressions.every(expression => expression.includes('http://127.0.0.1:54321/index.html'))).toBeTrue();
+    expect(
+      discovery.expressions.every(expression => expression.includes('http://127.0.0.1:54321/index.html')),
+    ).toBeTrue();
     expect(discovery.expressions[1]).toContain('globalThis.__VALDI_WEB_DEBUGGER__?.getSnapshot()');
   });
 
@@ -381,6 +393,54 @@ describe('owlCdpClient', () => {
     expect(discovery.expressions[1]).toContain(expression);
   });
 
+  it('keeps an exact nonce-bound connection open for events and reports teardown', async () => {
+    const page: Record<string, unknown> = {
+      URL,
+      location: { href: 'http://127.0.0.1:54321/index.html?valdiDebugger=1&valdiDevTools=1' },
+      [OWL_DEVTOOLS_TARGET_NONCE_PROPERTY]: TARGET_NONCE,
+    };
+    discovery.setWebSocketResponder((socket, frame) => {
+      const command = decodeWebSocketCommand(frame);
+      if (command.method === 'Runtime.evaluate') {
+        evaluateCommandInPage(socket, frame, page);
+        return;
+      }
+      socket.write(encodeWebSocketResponse({ id: command.id, result: {} }));
+    });
+    const connection = await connectToOwlApplication(discovery.port, 'http://127.0.0.1:54321/index.html', TARGET_NONCE);
+    const events: Array<{ method: string; params: Record<string, unknown> }> = [];
+    const closeErrors: Error[] = [];
+    let resolveEvent: (() => void) | null = null;
+    const receivedEvent = new Promise<void>(resolve => {
+      resolveEvent = resolve;
+    });
+    const removeEvent = connection.onEvent(event => {
+      events.push(event);
+      resolveEvent?.();
+    });
+    connection.onClose(error => closeErrors.push(error));
+
+    await expectAsync(connection.call('Runtime.enable', {}, 1000)).toBeResolvedTo({});
+    discovery.emitEvent({
+      method: 'Runtime.consoleAPICalled',
+      params: { args: [{ type: 'string', value: 'Synthetic renderer message' }], type: 'log' },
+    });
+    await receivedEvent;
+
+    expect(events).toEqual([
+      {
+        method: 'Runtime.consoleAPICalled',
+        params: { args: [{ type: 'string', value: 'Synthetic renderer message' }], type: 'log' },
+      },
+    ]);
+    expect(await connection.matchesTarget('http://127.0.0.1:54321/index.html', TARGET_NONCE)).toBeTrue();
+
+    removeEvent();
+    connection.close();
+    expect(closeErrors).toHaveSize(1);
+    expect(closeErrors[0]?.message).toContain('closed');
+  });
+
   it('refuses to attach to a Chromium page for a different application path', async () => {
     await expectAsync(
       readOwlDebuggerSnapshot(discovery.port, 'http://127.0.0.1:54321/other.html', TARGET_NONCE),
@@ -401,18 +461,10 @@ describe('owlCdpClient', () => {
     );
 
     await expectAsync(
-      readOwlDebuggerSnapshot(
-        discovery.port,
-        'http://127.0.0.1:54321/index.html?tenant=alpha&mode=dev',
-        TARGET_NONCE,
-      ),
+      readOwlDebuggerSnapshot(discovery.port, 'http://127.0.0.1:54321/index.html?tenant=alpha&mode=dev', TARGET_NONCE),
     ).toBeResolved();
     await expectAsync(
-      readOwlDebuggerSnapshot(
-        discovery.port,
-        'http://127.0.0.1:54321/index.html?tenant=beta&mode=dev',
-        TARGET_NONCE,
-      ),
+      readOwlDebuggerSnapshot(discovery.port, 'http://127.0.0.1:54321/index.html?tenant=beta&mode=dev', TARGET_NONCE),
     ).toBeRejectedWithError(/No running Owl Chromium page matches/);
   });
 
@@ -481,11 +533,7 @@ describe('owlCdpClient', () => {
       evaluateCommandInPage(socket, frame, pages[targetId]!);
     });
 
-    const snapshot = await readOwlDebuggerSnapshot(
-      discovery.port,
-      'http://127.0.0.1:54321/index.html',
-      TARGET_NONCE,
-    );
+    const snapshot = await readOwlDebuggerSnapshot(discovery.port, 'http://127.0.0.1:54321/index.html', TARGET_NONCE);
     await new Promise<void>(resolve => setTimeout(resolve, 50));
 
     expect(snapshot['channel']).toBe('valdi-web-debugger');
@@ -601,7 +649,7 @@ describe('owlCdpClient', () => {
       if (frame.opcode === 0x01) {
         const command = decodeWebSocketCommand(frame);
         commandId = command.id;
-        commandExpression = command.params.expression;
+        commandExpression = command.params.expression ?? '';
         socket.write(encodeWebSocketServerFrame(0x09, Buffer.from('owl-ping'), false, true));
         return;
       }
@@ -658,5 +706,4 @@ describe('owlCdpClient', () => {
       OwlChromiumConnection.connect('ws://person:secret@127.0.0.1/devtools/page/owl'),
     ).toBeRejectedWithError(/only allows unauthenticated loopback/);
   });
-
 });

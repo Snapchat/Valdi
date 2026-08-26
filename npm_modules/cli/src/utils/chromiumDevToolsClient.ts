@@ -20,7 +20,14 @@ interface DevToolsCommandResponse {
     message?: string;
   };
   id?: number;
+  method?: string;
+  params?: Record<string, unknown>;
   result?: unknown;
+}
+
+export interface ChromiumDevToolsEvent {
+  method: string;
+  params: Record<string, unknown>;
 }
 
 function encodeWebSocketFrame(opcode: number, payload: Buffer): Buffer {
@@ -58,6 +65,8 @@ function encodeWebSocketTextFrame(text: string): Buffer {
 
 /** Shared, dependency-free Chromium DevTools transport for Owl and Hermes. */
 export class ChromiumDevToolsConnection {
+  private readonly closeListeners = new Set<(error: Error) => void>();
+  private readonly eventListeners = new Set<(event: ChromiumDevToolsEvent) => void>();
   private readonly pending = new Map<number, PendingDevToolsCommand>();
   private closedError: Error | null = null;
   private nextCommandId = 0;
@@ -156,6 +165,25 @@ export class ChromiumDevToolsConnection {
         reject(error instanceof Error ? error : new Error(`Could not send the Chromium DevTools ${method} request.`));
       }
     });
+  }
+
+  onClose(listener: (error: Error) => void): () => void {
+    if (this.closedError) {
+      listener(this.closedError);
+      return () => {};
+    }
+    this.closeListeners.add(listener);
+    return () => {
+      this.closeListeners.delete(listener);
+    };
+  }
+
+  onEvent(listener: (event: ChromiumDevToolsEvent) => void): () => void {
+    if (this.closedError) throw this.closedError;
+    this.eventListeners.add(listener);
+    return () => {
+      this.eventListeners.delete(listener);
+    };
   }
 
   close(): void {
@@ -281,7 +309,29 @@ export class ChromiumDevToolsConnection {
       return;
     }
     const response = parsed as DevToolsCommandResponse;
-    if (response.id === undefined) return;
+    if (response.id === undefined) {
+      if (typeof response.method !== 'string' || response.method.length === 0 || response.method.length > 256) {
+        this.failConnection(new Error('Chromium DevTools returned a malformed protocol event.'));
+        return;
+      }
+      const params = response.params;
+      if (params !== undefined && (typeof params !== 'object' || params === null || Array.isArray(params))) {
+        this.failConnection(new Error('Chromium DevTools returned an event with invalid parameters.'));
+        return;
+      }
+      const event: ChromiumDevToolsEvent = {
+        method: response.method,
+        params: params ?? {},
+      };
+      for (const listener of Array.from(this.eventListeners)) {
+        try {
+          listener(event);
+        } catch (error) {
+          console.warn(`[Valdi DevTools] A Chromium ${response.method} event listener failed.`, error);
+        }
+      }
+      return;
+    }
     if (!Number.isInteger(response.id)) {
       this.failConnection(new Error('Chromium DevTools returned a response with a non-numeric command id.'));
       return;
@@ -311,6 +361,15 @@ export class ChromiumDevToolsConnection {
     this.closedError = error;
     this.receiveBuffer = Buffer.alloc(0);
     this.rejectPending(error);
+    this.eventListeners.clear();
+    for (const listener of Array.from(this.closeListeners)) {
+      try {
+        listener(error);
+      } catch (listenerError) {
+        console.warn('[Valdi DevTools] A Chromium close listener failed.', listenerError);
+      }
+    }
+    this.closeListeners.clear();
     if (!this.socket.destroyed) this.socket.destroy();
   }
 
