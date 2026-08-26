@@ -1787,6 +1787,40 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
     },
   },
   {
+    id: 'label-flex-shrink-defaults',
+    name: 'Label flex shrink and line defaults',
+    description:
+      'Constrains labels beside fixed-width siblings so the default label truncates to one line and numberOfLines=0 wraps.',
+    element: 'label',
+    coverage: coverage('visual', ['numberOfLines', 'flexShrink']),
+    render: (ctx: IntegrationTestRenderContext) => {
+      const value = 'This long label must stay inside the row instead of widening the page.';
+      <view key={ctx.caseId} ref={ctx.rootRef} width={WIDTH} height={HEIGHT} backgroundColor={CARD} padding={18}>
+        <view backgroundColor="#FFFFFF" border="2 solid #CBD5E1" borderRadius={10} padding={10} width="100%">
+          <label color="#475569" font="system-bold 13" marginBottom={8} value="Default: one line" width="100%" />
+          <view alignItems="center" flexDirection="row" width="100%">
+            <view backgroundColor="#2563EB" borderRadius={6} flexShrink={0} height={32} marginRight={8} width={42} />
+            <label color="#1E3A8A" font="system 17" value={value} />
+          </view>
+        </view>
+        <view
+          backgroundColor="#FFFFFF"
+          border="2 solid #CBD5E1"
+          borderRadius={10}
+          marginTop={18}
+          padding={10}
+          width="100%"
+        >
+          <label color="#475569" font="system-bold 13" marginBottom={8} value="numberOfLines=0: wraps" width="100%" />
+          <view alignItems="flex-start" flexDirection="row" width="100%">
+            <view backgroundColor="#059669" borderRadius={6} flexShrink={0} height={32} marginRight={8} width={42} />
+            <label color="#065F46" font="system 17" numberOfLines={0} value={value} />
+          </view>
+        </view>
+      </view>;
+    },
+  },
+  {
     id: 'label-uniform-color',
     name: 'Label uniform text color',
     description: 'Renders a single label using value, font, and a uniform color, without gradient or shadow.',
@@ -5269,6 +5303,7 @@ export const INTEGRATION_ATTRIBUTE_COVERAGE_LEDGER: readonly IntegrationAttribut
     kind: 'visual',
     caseIds: [
       'label-single-line-alignments',
+      'label-flex-shrink-defaults',
       'label-multiline-lineheight',
       'label-lineheight-multiple',
       'label-decoration-styles',

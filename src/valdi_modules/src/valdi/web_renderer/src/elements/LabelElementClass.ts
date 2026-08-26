@@ -93,6 +93,20 @@ function applyTextShadow(element: HTMLElement, value: string, context: Attribute
   element.style.textShadow = textShadowCssValue(value, context) ?? '';
 }
 
+function applyNumberOfLines(element: HTMLElement, numberOfLines: number): void {
+  if (numberOfLines <= 0) {
+    element.style.removeProperty('-webkit-line-clamp');
+    element.style.removeProperty('-webkit-box-orient');
+    element.style.display = 'inline';
+    element.style.overflow = '';
+    return;
+  }
+  element.style.display = '-webkit-box';
+  element.style.overflow = 'hidden';
+  element.style.setProperty('-webkit-line-clamp', String(numberOfLines));
+  element.style.setProperty('-webkit-box-orient', 'vertical');
+}
+
 function labelValueAttributeApplier(): AttributeApplier {
   return {
     colorDependent: true,
@@ -211,21 +225,10 @@ function buildTextAttributeAppliers(viewElementClass: ViewElementClass): Attribu
   binder.bindNumberAttribute(
     'numberOfLines',
     (element, value) => {
-      if (value <= 0) {
-        element.style.removeProperty('-webkit-line-clamp');
-        element.style.overflow = '';
-        return;
-      }
-      element.style.display = '-webkit-box';
-      element.style.overflow = 'hidden';
-      element.style.setProperty('-webkit-line-clamp', String(value));
-      element.style.setProperty('-webkit-box-orient', 'vertical');
+      applyNumberOfLines(element, value);
     },
     element => {
-      element.style.removeProperty('-webkit-line-clamp');
-      element.style.removeProperty('-webkit-box-orient');
-      element.style.display = 'inline';
-      element.style.overflow = '';
+      applyNumberOfLines(element, 1);
     },
     LAYOUT_DEPENDENT,
   );
@@ -256,13 +259,14 @@ export class LabelElementClass extends ElementClass {
   protected onCreateElement(): HTMLElement {
     const element = createBaseLayoutItemElement('span');
     assignStyles(element, {
-      display: 'inline',
+      flexShrink: 1,
       whiteSpace: 'pre-wrap',
       wordWrap: 'break-word',
       fontFamily: SYSTEM_FONT_FAMILY,
       color: 'black',
       userSelect: 'none',
     });
+    applyNumberOfLines(element, 1);
     return element;
   }
 

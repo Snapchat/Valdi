@@ -998,6 +998,38 @@ describe('web renderer core', () => {
     expect(paintElement.style.scale).toBeUndefined();
   });
 
+  it('shrinks labels within flex rows while preserving native numberOfLines defaults', () => {
+    const id = createRootTestElement('label');
+    const element = getNode(id).htmlElement as unknown as FakeElement;
+
+    expect(String(element.style.flexShrink)).toBe('1');
+    expect(element.style.display).toBe('-webkit-box');
+    expect(element.style.overflow).toBe('hidden');
+    expect(element.style.getPropertyValue('-webkit-line-clamp')).toBe('1');
+    expect(element.style.getPropertyValue('-webkit-box-orient')).toBe('vertical');
+
+    tree.setAttributeOnElement(id, 'numberOfLines', 0);
+    tree.flush();
+    expect(element.style.display).toBe('inline');
+    expect(element.style.overflow).toBe('');
+    expect(element.style.getPropertyValue('-webkit-line-clamp')).toBe('');
+    expect(element.style.getPropertyValue('-webkit-box-orient')).toBe('');
+
+    tree.setAttributeOnElement(id, 'numberOfLines', 2);
+    tree.flush();
+    expect(element.style.display).toBe('-webkit-box');
+    expect(element.style.overflow).toBe('hidden');
+    expect(element.style.getPropertyValue('-webkit-line-clamp')).toBe('2');
+    expect(element.style.getPropertyValue('-webkit-box-orient')).toBe('vertical');
+
+    tree.setAttributeOnElement(id, 'numberOfLines', undefined);
+    tree.flush();
+    expect(element.style.display).toBe('-webkit-box');
+    expect(element.style.overflow).toBe('hidden');
+    expect(element.style.getPropertyValue('-webkit-line-clamp')).toBe('1');
+    expect(element.style.getPropertyValue('-webkit-box-orient')).toBe('vertical');
+  });
+
   it('keeps the paint element outside logical child ordering', () => {
     const root = createRootTestElement('view');
     tree.setAttributeOnElement(root, 'backgroundColor', 'red');
