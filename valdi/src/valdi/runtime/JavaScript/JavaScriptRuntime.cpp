@@ -2038,6 +2038,24 @@ JSValueRef JavaScriptRuntime::runtimeConfigureColorPalette(JSFunctionNativeCallC
     return callContext.getContext().newUndefined();
 }
 
+JSValueRef JavaScriptRuntime::runtimeSetColorPalette(JSFunctionNativeCallContext& callContext) {
+    if (!_isWorker) {
+        auto colorPaletteMap = callContext.getParameterAsValue(0);
+        CHECK_CALL_CONTEXT(callContext);
+
+        dispatchOnMainThread([weakSelf = weakRef(this), colorPaletteMap = std::move(colorPaletteMap)]() {
+            auto self = weakSelf.lock();
+            if (self != nullptr) {
+                if (auto listener = self->getListener()) {
+                    listener->configureColorPalette(STRING_LITERAL("default"), colorPaletteMap);
+                    listener->setActiveColorPalette(STRING_LITERAL("default"));
+                }
+            }
+        });
+    }
+    return callContext.getContext().newUndefined();
+}
+
 JSValueRef JavaScriptRuntime::runtimeSetActiveColorPalette(JSFunctionNativeCallContext& callContext) {
     if (!_isWorker) {
         auto name = callContext.getParameterAsString(0);
@@ -2560,6 +2578,7 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
     JS_BIND(context, exceptionTracker, runtimeObject, "makePlatformSpecificAsset", runtimeMakePlatformSpecificAsset);
     JS_BIND(context, exceptionTracker, runtimeObject, "makeThemableAsset", runtimeMakeThemableAsset);
     JS_BIND(context, exceptionTracker, runtimeObject, "getLoadedAssetMetadata", runtimeGetLoadedAssetMetadata);
+    JS_BIND(context, exceptionTracker, runtimeObject, "setColorPalette", runtimeSetColorPalette);
     JS_BIND(context, exceptionTracker, runtimeObject, "configureColorPalette", runtimeConfigureColorPalette);
     JS_BIND(context, exceptionTracker, runtimeObject, "setActiveColorPalette", runtimeSetActiveColorPalette);
     JS_BIND(context, exceptionTracker, runtimeObject, "onMainThreadIdle", runtimeOnMainThreadIdle);

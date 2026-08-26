@@ -8521,6 +8521,21 @@ TEST_P(RuntimeFixture, canSwitchActiveCustomColorPalette) {
     ASSERT_EQ(makeColorPaletteTestView(4278190335, 4294902015), getRootView(tree));
 }
 
+TEST_P(RuntimeFixture, supportsDeprecatedSetColorPalette) {
+    auto tree = wrapper.createViewNodeTreeAndContext(STRING_LITERAL("ColorPaletteTest@test/src/ColorPaletteTest"),
+                                                     Value(makeShared<ValueMap>()),
+                                                     Value::undefined());
+
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    wrapper.runtime->getJavaScriptRuntime()->callComponentFunction(tree->getContext(),
+                                                                   STRING_LITERAL("setLegacyColorPalette"));
+
+    wrapper.flushQueues();
+
+    ASSERT_EQ(makeColorPaletteTestView(255, 4294967295), getRootView(tree));
+}
+
 TEST_P(RuntimeFixture, doesNotReapplyCustomColorPaletteWhenInactivePaletteChanges) {
     auto tree = wrapper.createViewNodeTreeAndContext(STRING_LITERAL("ColorPaletteTest@test/src/ColorPaletteTest"),
                                                      Value(makeShared<ValueMap>()),

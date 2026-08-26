@@ -68,6 +68,12 @@ function coverage(
 }
 
 function configureIntegrationColorPalettes(): void {
+  // Exercise the deprecated single-palette API before configuring the named palettes used by this case.
+  runtime.setColorPalette({
+    background: '#000000',
+    foreground: '#FFFFFF',
+    accent: '#808080',
+  });
   runtime.configureColorPalette('integration-light', {
     background: '#DBEAFE',
     foreground: '#1D4ED8',

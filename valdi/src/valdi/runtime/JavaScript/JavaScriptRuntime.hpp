@@ -499,6 +499,7 @@ private:
     JSValueRef runtimeMakePlatformSpecificAsset(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeMakeThemableAsset(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeGetLoadedAssetMetadata(JSFunctionNativeCallContext& callContext);
+    JSValueRef runtimeSetColorPalette(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeConfigureColorPalette(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeSetActiveColorPalette(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeTakeElementSnapshot(JSFunctionNativeCallContext& callContext);

@@ -188,6 +188,8 @@ export interface ValdiRuntime extends RuntimeBase {
   ): () => void;
   getLoadedAssetMetadata(loadedAsset: LoadedAsset): LoadedAssetMetadata | undefined;
 
+  /** @deprecated Use configureColorPalette() and setActiveColorPalette() instead. */
+  setColorPalette(colorPalette: ColorPalette): void;
   configureColorPalette(name: string, colorPalette: ColorPalette): void;
   setActiveColorPalette(name: string): void;
 

@@ -248,6 +248,12 @@ class Runtime {
     getColorPaletteManager().configureColorPalette(name, palette);
   }
 
+  /** @deprecated Use configureColorPalette() and setActiveColorPalette() instead. */
+  setColorPalette(palette: ColorPalette) {
+    this.configureColorPalette('default', palette);
+    this.setActiveColorPalette('default');
+  }
+
   getColorPalette(name?: string) {
     return getColorPaletteManager().getColorPalette(name);
   }
