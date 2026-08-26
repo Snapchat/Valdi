@@ -196,6 +196,7 @@ function makeRenderer(elements: IRenderedElement[]): IRenderer {
 interface MutableVirtualNode {
   children: MutableVirtualNode[];
   component?: IComponent;
+  componentViewModel?: unknown;
   element?: IRenderedElement;
   key: string;
   parent?: MutableVirtualNode;
@@ -235,6 +236,7 @@ function makeHierarchyRenderer(
       return {
         children: children.slice(),
         component: mutableNode.component,
+        componentViewModel: mutableNode.componentViewModel,
         element: mutableNode.element,
         key: mutableNode.key,
         parent: mutableNode.parent as unknown as IRenderedVirtualNode | undefined,
@@ -465,7 +467,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     expect(second.tree?.children[0].element?.attributes.value).toBe('second');
   });
 
-  it('does not inspect component fields or invoke an instance constructor accessor', () => {
+  it('captures the renderer-owned ViewModel without inspecting component instance accessors', () => {
     class SafeComponent {}
 
     const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
@@ -487,7 +489,16 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
         throw new Error('Component view models belong to a later debugger layer.');
       },
     });
+    const viewModel: Record<string, unknown> = { visible: 'safe' };
+    Object.defineProperty(viewModel, 'secret', {
+      enumerable: true,
+      get: () => {
+        getterCalls++;
+        throw new Error('ViewModel accessors must not be invoked.');
+      },
+    });
     const component = makeVirtualNode('safe', { component: componentInstance });
+    component.componentViewModel = viewModel;
     const elementNode = makeVirtualNode('layout', { element });
     setVirtualChildren(component, [elementNode]);
 
@@ -498,6 +509,143 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
 
     expect(getterCalls).toBe(0);
     expect(snapshot.tree?.component?.name).toBe('SafeComponent');
+    expect(snapshot.tree?.component?.properties?.visible).toBe('safe');
+    expect(Object.prototype.hasOwnProperty.call(snapshot.tree?.component?.properties ?? {}, 'secret')).toBeFalse();
+  });
+
+  it('shares the component property budget without discarding over-budget component hierarchy', () => {
+    class ParentBudgetComponent {}
+    class ChildBudgetComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    const parentComponent = makeVirtualNode('parent-budget', {
+      component: new ParentBudgetComponent() as unknown as IComponent,
+    });
+    parentComponent.componentViewModel = { payload: 'p'.repeat(40_000) };
+    const childComponent = makeVirtualNode('child-budget', {
+      component: new ChildBudgetComponent() as unknown as IComponent,
+    });
+    childComponent.componentViewModel = { payload: 'c'.repeat(40_000) };
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(childComponent, [elementNode]);
+    setVirtualChildren(parentComponent, [childComponent]);
+
+    const snapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], parentComponent),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+    );
+    const childSnapshot = snapshot.tree?.children[0];
+
+    expect(snapshot.tree?.component?.name).toBe('ParentBudgetComponent');
+    expect(snapshot.tree?.component?.properties).toBeUndefined();
+    expect(childSnapshot?.component?.name).toBe('ChildBudgetComponent');
+    expect(String(childSnapshot?.component?.properties?.payload).length).toBe(40_000);
+    expect(JSON.stringify(childSnapshot?.component?.properties).length).toBeLessThanOrEqual(65_536);
+    expect(childSnapshot?.children[0].id).toBe('1');
+  });
+
+  it('drops stale properties but keeps hierarchy when the ViewModel identity changes during capture', () => {
+    class ReplacedViewModelComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    const component = makeVirtualNode('replaced-view-model', {
+      component: new ReplacedViewModelComponent() as unknown as IComponent,
+    });
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(component, [elementNode]);
+    const baseRenderer = makeHierarchyRenderer([element], component);
+    const readSnapshot = baseRenderer.getDebugVirtualNodeSnapshot!;
+    const initialViewModel = { value: 'stale' };
+    const replacementViewModel = { value: 'fresh' };
+    let componentSnapshotReads = 0;
+    const renderer = Object.assign(baseRenderer, {
+      getDebugVirtualNodeSnapshot: (
+        node: IRenderedVirtualNode,
+        maximumChildLinks: number,
+        maximumTraversalLinks: number,
+      ) => {
+        const snapshot = readSnapshot.call(baseRenderer, node, maximumChildLinks, maximumTraversalLinks);
+        if (snapshot === undefined || node !== (component as unknown as IRenderedVirtualNode)) {
+          return snapshot;
+        }
+        componentSnapshotReads++;
+        return {
+          ...snapshot,
+          componentViewModel: componentSnapshotReads === 1 ? initialViewModel : replacementViewModel,
+        };
+      },
+    });
+
+    const snapshot = delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+
+    expect(componentSnapshotReads).toBe(2);
+    expect(snapshot.tree?.component?.name).toBe('ReplacedViewModelComponent');
+    expect(snapshot.tree?.component?.properties).toBeUndefined();
+    expect(snapshot.tree?.children[0].id).toBe('1');
+  });
+
+  it('strips component properties before the complete hierarchy envelope overflows', () => {
+    class PropertyHeavyComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {
+      first: 'a'.repeat(50_000),
+      fourth: 'd'.repeat(50_000),
+      second: 'b'.repeat(50_000),
+      third: 'c'.repeat(50_000),
+    });
+    const component = makeVirtualNode('property-heavy', {
+      component: new PropertyHeavyComponent() as unknown as IComponent,
+    });
+    component.componentViewModel = { payload: 'x'.repeat(65_536) };
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(component, [elementNode]);
+
+    const snapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], component),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+    );
+
+    expect(snapshot.tree?.id).toBe('component:[null,"property-heavy"]');
+    expect(snapshot.tree?.component?.name).toBe('PropertyHeavyComponent');
+    expect(snapshot.tree?.component?.properties).toBeUndefined();
+    expect(snapshot.tree?.children[0].id).toBe('1');
+    expect(JSON.stringify(snapshot).length).toBeLessThanOrEqual(MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+  });
+
+  it('omits properties from a revoked Proxy without discarding the hierarchy', () => {
+    class ProxyBackedComponent {}
+
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const element = makeRenderedElement(1, 'layout', {});
+    const component = makeVirtualNode('proxy-backed', {
+      component: new ProxyBackedComponent() as unknown as IComponent,
+    });
+    const revocableViewModel = Proxy.revocable({ visible: 'value' }, {});
+    component.componentViewModel = revocableViewModel.proxy;
+    revocableViewModel.revoke();
+    const elementNode = makeVirtualNode('layout', { element });
+    setVirtualChildren(component, [elementNode]);
+
+    const snapshot = delegate.getDebugSnapshot(
+      makeHierarchyRenderer([element], component),
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+    );
+
+    expect(snapshot.tree?.id).toBe('component:[null,"proxy-backed"]');
+    expect(snapshot.tree?.component?.name).toBe('ProxyBackedComponent');
+    expect(snapshot.tree?.component?.properties).toBeUndefined();
+    expect(snapshot.tree?.children[0].id).toBe('1');
   });
 
   it('falls back atomically for shared, cyclic, partial, and over-deep virtual trees', () => {

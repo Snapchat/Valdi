@@ -1263,6 +1263,7 @@ function webPreviewTargetPayload(target: WebPreviewDebuggerTarget): DebuggerTarg
     attachable: true,
     capabilities: [
       DebuggerTargetCapability.Components,
+      DebuggerTargetCapability.ComponentProperties,
       DebuggerTargetCapability.Snapshot,
       DebuggerTargetCapability.Highlight,
       DebuggerTargetCapability.Console,

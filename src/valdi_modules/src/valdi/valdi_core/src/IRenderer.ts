@@ -26,6 +26,8 @@ export type ComponentDisposable = (() => void) | Unsubscribable;
 export interface RendererDebugVirtualNodeSnapshot {
   readonly children: readonly IRenderedVirtualNode[];
   readonly component: IComponent | undefined;
+  /** Internal debugger input. Consumers must serialize a detached snapshot before exposing it. */
+  readonly componentViewModel?: unknown;
   readonly element: IRenderedElement | undefined;
   readonly key: string;
   readonly parent: IRenderedVirtualNode | undefined;

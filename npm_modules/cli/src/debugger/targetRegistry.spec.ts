@@ -50,6 +50,7 @@ function webPreviewTarget(): DebuggerTargetDescriptor {
     attachable: true,
     capabilities: [
       DebuggerTargetCapability.Components,
+      DebuggerTargetCapability.ComponentProperties,
       DebuggerTargetCapability.Snapshot,
       DebuggerTargetCapability.Console,
     ],
@@ -130,9 +131,11 @@ describe('debugger target registry', () => {
     expect(second.find(target => target.transport === DebuggerTargetTransport.ValdiDaemon)?.id).toBe(native.id);
     expect(replacement.id).not.toBe(native.id);
     expect(native.capabilities).toEqual([DebuggerTargetCapability.Components, DebuggerTargetCapability.Snapshot]);
+    expect(native.capabilities).not.toContain(DebuggerTargetCapability.ComponentProperties);
     expect(native.identityMode).toBe(DebuggerTargetIdentityMode.TargetId);
     expect(first).toContain(
       jasmine.objectContaining({
+        capabilities: jasmine.arrayContaining([DebuggerTargetCapability.ComponentProperties]),
         id: 'owl:web-preview',
         identityMode: DebuggerTargetIdentityMode.InspectedPage,
       }),

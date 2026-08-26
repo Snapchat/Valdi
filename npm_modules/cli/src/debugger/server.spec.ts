@@ -901,7 +901,7 @@ describe('debugger server', () => {
     expect(JSON.parse(matching.body)).toEqual({
       target: jasmine.objectContaining({
         applicationUrl: 'http://127.0.0.1:54321/index.html?tenant=alpha&mode=dev',
-        capabilities: ['components', 'snapshot', 'highlight', 'console', 'performance'],
+        capabilities: ['components', 'component-properties', 'snapshot', 'highlight', 'console', 'performance'],
         debuggingPort: 9333,
         id: 'owl:web-preview',
         identityMode: 'inspected-page',
@@ -1022,7 +1022,14 @@ describe('debugger server', () => {
     expect(second['capabilities']).toEqual(['components', 'snapshot']);
     expect(second['identityMode']).toBe('target-id');
     expect(webTargets[0]?.['identityMode']).toBe('inspected-page');
-    expect(webTargets[0]?.['capabilities']).toEqual(['components', 'snapshot', 'highlight', 'console', 'performance']);
+    expect(webTargets[0]?.['capabilities']).toEqual([
+      'components',
+      'component-properties',
+      'snapshot',
+      'highlight',
+      'console',
+      'performance',
+    ]);
 
     const resolved = await request(
       new URL(`/api/devtools/target?targetId=${encodeURIComponent(targetId)}`, debuggerServer.url).toString(),

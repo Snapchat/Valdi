@@ -6,7 +6,7 @@ import { Script } from 'node:vm';
 interface DevToolsTreeNode {
   bounds?: { height: number; width: number; x: number; y: number };
   children: DevToolsTreeNode[];
-  component?: { elementId?: string; key: string; name: string };
+  component?: { elementId?: string; key: string; name: string; properties?: Record<string, unknown> };
   element?: {
     attributes: Record<string, unknown>;
     dom: { attributes: Record<string, string>; tagName: string; textContent?: string };
@@ -42,9 +42,11 @@ interface DevToolsHierarchyPanel {
     selectedNodeId: string | null;
     snapshot: { tree: DevToolsTreeNode } | null;
     snapshotGeneration: number;
-    target: { id: string; sessionId: string } | null;
+    target: { capabilities?: string[]; id: string; sessionId: string } | null;
+    targetGeneration: number;
   };
   treeContent: TreeStubElement;
+  clearTargetPresentation(message: string): void;
   findNode(id: string): DevToolsTreeNode | null;
   inspectedNodeId(node: DevToolsTreeNode | null): string | null;
   queueHighlight(nodeId: string | null): void;
@@ -225,7 +227,12 @@ function componentTree(): DevToolsTreeNode {
                 tag: 'label',
               },
             ],
-            component: { elementId: '8', key: 'nested', name: 'NestedExampleComponent' },
+            component: {
+              elementId: '8',
+              key: 'nested',
+              name: 'NestedExampleComponent',
+              properties: { enabled: true, title: '<img src=x onerror=alert(1)>' },
+            },
             id: 'component:["7","nested"]',
             tag: 'NestedExampleComponent',
           },
@@ -625,7 +632,7 @@ describe('integrated DevTools component hierarchy', () => {
     };
 
     panel = new Script(
-      `${treeModelSource}\n${panelSource}\n({ findNode, inspectedNodeId, inspectorContent: elements.inspector, queueHighlight, refreshSnapshot, renderInspector, renderTree, selectNode, state, treeContent: elements.tree })`,
+      `${treeModelSource}\n${panelSource}\n({ clearTargetPresentation, findNode, inspectedNodeId, inspectorContent: elements.inspector, queueHighlight, refreshSnapshot, renderInspector, renderTree, selectNode, state, treeContent: elements.tree })`,
     ).runInNewContext({
       URL,
       URLSearchParams,
@@ -640,7 +647,11 @@ describe('integrated DevTools component hierarchy', () => {
       navigator: { clipboard: { writeText: () => Promise.resolve() } },
       window,
     }) as DevToolsHierarchyPanel;
-    panel.state.target = { id: 'owl:web-preview', sessionId: 'web-preview' };
+    panel.state.target = {
+      capabilities: ['components', 'component-properties', 'snapshot', 'highlight', 'console', 'performance'],
+      id: 'owl:web-preview',
+      sessionId: 'web-preview',
+    };
     panel.state.snapshot = { tree: componentTree() };
     panel.state.snapshotGeneration = 1;
   });
@@ -679,6 +690,65 @@ describe('integrated DevTools component hierarchy', () => {
     expect(panel.inspectorContent.innerHTML).toContain('<span class="property-name">elementId</span>');
     expect(panel.inspectorContent.innerHTML).toContain('Rendered &lt;span&gt;');
     expect(panel.inspectorContent.innerHTML).toContain('Text content');
+  });
+
+  it('renders escaped read-only Valdi props only when the target advertises the capability', () => {
+    panel.selectNode('component:["7","nested"]');
+
+    expect(panel.inspectorContent.innerHTML).toContain('aria-label="Valdi props"');
+    expect(panel.inspectorContent.innerHTML).toContain('read only');
+    expect(panel.inspectorContent.innerHTML).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(panel.inspectorContent.innerHTML).not.toContain('<img src=x');
+
+    panel.state.target = { capabilities: [], id: 'native-target', sessionId: 'native-session' };
+    panel.renderInspector();
+
+    expect(panel.inspectorContent.innerHTML).not.toContain('aria-label="Valdi props"');
+  });
+
+  it('distinguishes omitted properties from a captured empty ViewModel', () => {
+    const node = panel.findNode('component:["7","nested"]');
+    if (!node?.component) throw new Error('Expected the nested component fixture.');
+    delete node.component.properties;
+    panel.selectNode(node.id);
+
+    expect(panel.inspectorContent.innerHTML).not.toContain('aria-label="Valdi props"');
+
+    node.component.properties = {};
+    panel.renderInspector();
+
+    expect(panel.inspectorContent.innerHTML).toContain('aria-label="Valdi props"');
+    expect(panel.inspectorContent.innerHTML).toContain('No properties available.');
+  });
+
+  it('clears properties on target change and drops a stale snapshot response', async () => {
+    let resolveSnapshot: ((response: { ok: boolean; json(): Promise<Record<string, unknown>> }) => void) | undefined;
+    queuedFetchResponses.push(
+      new Promise(resolve => {
+        resolveSnapshot = resolve;
+      }),
+    );
+    panel.selectNode('component:["7","nested"]');
+    const staleRefresh = panel.refreshSnapshot();
+    await Promise.resolve();
+
+    panel.state.targetGeneration++;
+    panel.clearTargetPresentation('Loading the replacement target…');
+    panel.state.target = {
+      capabilities: ['components', 'component-properties', 'snapshot', 'highlight', 'console', 'performance'],
+      id: 'replacement-target',
+      sessionId: 'replacement-session',
+    };
+    panel.renderInspector();
+    expect(panel.state.snapshot).toBeNull();
+    expect(panel.inspectorContent.innerHTML).not.toContain('onerror');
+
+    if (resolveSnapshot === undefined) throw new Error('Expected a deferred hierarchy snapshot.');
+    resolveSnapshot({ json: () => Promise.resolve({ tree: componentTree() }), ok: true });
+    await staleRefresh;
+
+    expect(panel.state.snapshot).toBeNull();
+    expect(panel.inspectorContent.innerHTML).not.toContain('onerror');
   });
 
   it('preserves keyed component selection across updates and safely falls back when it disappears', async () => {

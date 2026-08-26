@@ -7,6 +7,7 @@ import type {
   WebRendererDebugElementSnapshot,
   WebRendererDebugNodeSnapshot,
 } from '../ValdiWebRendererDelegate';
+import { captureDebuggerPropertiesSnapshot, type DebuggerValueSnapshotLimits } from './DebuggerValueSnapshot';
 
 const MAX_COMPONENT_HIERARCHY_CHILD_LINKS = 1_000;
 const MAX_COMPONENT_HIERARCHY_DEPTH = 64;
@@ -16,6 +17,13 @@ const MAX_COMPONENT_HIERARCHY_TRAVERSAL_LINKS = 4_096;
 const MAX_COMPONENT_NAME_CHARACTERS = 256;
 const MAX_COMPONENT_KEY_CHARACTERS = 256;
 const MAX_COMPONENT_PROTOTYPE_DEPTH = 16;
+const MAX_COMPONENT_PROPERTY_BYTES = 65_536;
+const COMPONENT_PROPERTY_LIMITS: DebuggerValueSnapshotLimits = {
+  maximumDepth: 4,
+  maximumEntries: 50,
+  maximumPropertyNameCharacters: 256,
+  maximumStringBytes: 65_536,
+};
 
 interface IndexedElementTree {
   readonly childIdsByParentId: Map<string | null, string[]>;
@@ -30,6 +38,11 @@ interface CapturedHierarchyNode {
 
 interface CapturedVirtualNode extends RendererDebugVirtualNodeSnapshot {
   readonly node: IRenderedVirtualNode;
+  componentOutput?: WebRendererDebugComponentSnapshot;
+}
+
+interface ComponentPropertyBudget {
+  remainingBytes: number;
 }
 
 interface VirtualTraversalFrame {
@@ -80,6 +93,7 @@ export function captureComponentHierarchySnapshot(
   }
 
   const capturedNodes: CapturedVirtualNode[] = [];
+  const componentPropertyBudget: ComponentPropertyBudget = { remainingBytes: MAX_COMPONENT_PROPERTY_BYTES };
   const componentIds = new Set<string>();
   const consumedChildCountByParentId = new Map<string | null, number>();
   const usedElementIds = new Set<string>();
@@ -138,6 +152,7 @@ export function captureComponentHierarchySnapshot(
         frame.captured = {
           children: debugSnapshot.children,
           component: debugSnapshot.component,
+          componentViewModel: debugSnapshot.componentViewModel,
           element: debugSnapshot.element,
           key: debugSnapshot.key,
           node: frame.node,
@@ -179,6 +194,7 @@ export function captureComponentHierarchySnapshot(
         indexedElements,
         componentIds,
         consumedChildCountByParentId,
+        componentPropertyBudget,
         usedElementIds,
       );
       if (result === undefined) {
@@ -214,6 +230,7 @@ function captureCompletedFrame(
   indexedElements: IndexedElementTree,
   componentIds: Set<string>,
   consumedChildCountByParentId: Map<string | null, number>,
+  componentPropertyBudget: ComponentPropertyBudget,
   usedElementIds: Set<string>,
 ): CapturedHierarchyNode | undefined {
   const captured = frame.captured;
@@ -256,6 +273,7 @@ function captureCompletedFrame(
   componentIds.add(componentId);
   const firstElementId = frame.capturedChildren.find(child => child.firstElementId !== undefined)?.firstElementId;
   const backingElement = firstElementId === undefined ? undefined : indexedElements.elementsById.get(firstElementId);
+  const properties = captureComponentProperties(captured.componentViewModel, componentPropertyBudget);
   const node: WebRendererDebugComponentSnapshot = {
     ...(backingElement === undefined ? {} : { bounds: backingElement.bounds }),
     children: frame.capturedChildren.map(child => child.node),
@@ -263,10 +281,12 @@ function captureCompletedFrame(
       ...(firstElementId === undefined ? {} : { elementId: firstElementId }),
       key: captured.key,
       name: componentName,
+      ...(properties === undefined ? {} : { properties }),
     },
     id: componentId,
     tag: componentName,
   };
+  captured.componentOutput = node;
   return {
     ...(firstElementId === undefined ? {} : { firstElementId }),
     node,
@@ -377,6 +397,9 @@ function isCapturedVirtualTopologyCurrent(
     ) {
       return false;
     }
+    if (current.componentViewModel !== captured.componentViewModel && captured.componentOutput !== undefined) {
+      delete captured.componentOutput.component.properties;
+    }
     remainingChildLinks -= children.length;
     remainingTraversalLinks -= current.traversedLinkCount;
     if (children.length !== captured.children.length) {
@@ -389,6 +412,29 @@ function isCapturedVirtualTopologyCurrent(
     }
   }
   return true;
+}
+
+function captureComponentProperties(
+  viewModel: unknown,
+  budget: ComponentPropertyBudget,
+): Record<string, unknown> | undefined {
+  if (budget.remainingBytes <= 0) {
+    return undefined;
+  }
+  const captured = captureDebuggerPropertiesSnapshot(
+    viewModel,
+    MAX_COMPONENT_PROPERTY_BYTES,
+    COMPONENT_PROPERTY_LIMITS,
+  );
+  if (captured === undefined) {
+    return undefined;
+  }
+  if (captured.serializedBytes > budget.remainingBytes) {
+    budget.remainingBytes = 0;
+    return undefined;
+  }
+  budget.remainingBytes -= captured.serializedBytes;
+  return captured.value;
 }
 
 function readElementId(element: IRenderedElement): string | undefined {

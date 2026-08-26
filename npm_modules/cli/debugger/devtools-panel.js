@@ -826,6 +826,7 @@ async function connectToInspectedPage() {
     }
     if (previousTargetKey !== nextTargetKey) state.targetGeneration++;
     state.target = payload.target;
+    if (previousTargetKey !== null && previousTargetKey !== nextTargetKey) render();
     elements.targetName.textContent = state.target.name || 'Valdi application';
     elements.targetName.title = state.target.applicationUrl || inspectedUrl;
     elements.targetMetadata.textContent = `Chromium · :${state.target.debuggingPort}`;
@@ -1024,6 +1025,25 @@ function propertyRows(attributes, options) {
     .join('');
 }
 
+function componentMetadata(node) {
+  if (!node.component) return {};
+  return {
+    ...(node.component.elementId === undefined ? {} : { elementId: node.component.elementId }),
+    key: node.component.key,
+    name: node.component.name,
+  };
+}
+
+function renderComponentProperties(node) {
+  if (node.component?.properties === undefined || !targetSupports('component-properties')) return '';
+  return `
+    <section class="component-properties" aria-label="Valdi props">
+      <div class="rule-header">Valdi props <span class="rule-origin">read only</span></div>
+      <div class="property-list">${propertyRows(node.component.properties, { css: false })}</div>
+    </section>
+  `;
+}
+
 function renderStyles(node) {
   const attributes = nodeAttributes(node);
   const domStyle = node.element?.dom?.attributes?.style
@@ -1104,23 +1124,24 @@ function renderInspector() {
   }
 
   const renderedNode = inspectedNode(node);
+  const componentProperties = renderComponentProperties(node);
   if (node.component && renderedNode === node) {
-    elements.inspector.innerHTML = `<div class="rule-header">Valdi component <span class="rule-origin">${escapeHtml(node.tag)}</span></div>${propertyRows(node.component, { css: false })}<div class="empty-state">This component does not currently render a backing element.</div>`;
+    elements.inspector.innerHTML = `<div class="rule-header">Valdi component <span class="rule-origin">${escapeHtml(node.tag)}</span></div>${propertyRows(componentMetadata(node), { css: false })}${componentProperties}<div class="empty-state">This component does not currently render a backing element.</div>`;
     return;
   }
 
   if (state.activeDetail === 'styles') {
-    elements.inspector.innerHTML = renderStyles(renderedNode);
+    elements.inspector.innerHTML = `${componentProperties}${renderStyles(renderedNode)}`;
   } else if (state.activeDetail === 'computed') {
-    elements.inspector.innerHTML = renderComputed(renderedNode);
+    elements.inspector.innerHTML = `${componentProperties}${renderComputed(renderedNode)}`;
   } else {
     const textContent = renderedNode.element?.dom?.textContent
       ? valdiDebuggerTreeModel.formatValue(renderedNode.element.dom.textContent, 0)
       : '';
     const componentDetails = node.component
-      ? `<div class="rule-header">Valdi component <span class="rule-origin">${escapeHtml(node.tag)}</span></div>${propertyRows(node.component, { css: false })}`
+      ? `<div class="rule-header">Valdi component <span class="rule-origin">${escapeHtml(node.tag)}</span></div>${propertyRows(componentMetadata(node), { css: false })}`
       : '';
-    elements.inspector.innerHTML = `${componentDetails}<div class="rule-header">Rendered &lt;${escapeHtml(valdiDebuggerTreeModel.formatValue(renderedNode.element?.dom?.tagName || 'div', 0))}&gt;</div>${propertyRows(renderedNode.element?.dom?.attributes, { css: false })}${textContent ? `<div class="rule-header">Text content</div><pre class="json-view">${escapeHtml(textContent)}</pre>` : ''}`;
+    elements.inspector.innerHTML = `${componentDetails}${componentProperties}<div class="rule-header">Rendered &lt;${escapeHtml(valdiDebuggerTreeModel.formatValue(renderedNode.element?.dom?.tagName || 'div', 0))}&gt;</div>${propertyRows(renderedNode.element?.dom?.attributes, { css: false })}${textContent ? `<div class="rule-header">Text content</div><pre class="json-view">${escapeHtml(textContent)}</pre>` : ''}`;
   }
 }
 

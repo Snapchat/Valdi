@@ -319,7 +319,7 @@ class VirtualNodeBridge implements IRenderedVirtualNode {
       }
     }
 
-    return {
+    const snapshot: RendererDebugVirtualNodeSnapshot = {
       children,
       component: this.node.component?.instance,
       element: this.node.element === undefined ? undefined : getRenderedElementBridge(this.renderer, this.node.element),
@@ -330,6 +330,11 @@ class VirtualNodeBridge implements IRenderedVirtualNode {
           : getVirtualNodeBridge(this.renderer, parent),
       traversedLinkCount,
     };
+    Object.defineProperty(snapshot, 'componentViewModel', {
+      enumerable: false,
+      value: this.node.component?.viewModel,
+    });
+    return snapshot;
   }
 
   get parentIndex(): number {

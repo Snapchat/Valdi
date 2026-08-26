@@ -37,6 +37,7 @@ export interface WebRendererDebugNodeSnapshot {
     elementId?: string;
     key: string;
     name: string;
+    properties?: Record<string, unknown>;
   };
   element?: {
     id: number;
@@ -71,6 +72,7 @@ export interface WebRendererDebugComponentSnapshot extends WebRendererDebugNodeS
     elementId?: string;
     key: string;
     name: string;
+    properties?: Record<string, unknown>;
   };
 }
 
@@ -329,7 +331,22 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
       return elementSnapshot;
     }
     const componentSnapshot: WebRendererDebugSnapshot = { tree: componentTree, viewport };
+    if (JSON.stringify(componentSnapshot).length <= snapshotCharacterLimit) {
+      return componentSnapshot;
+    }
+    stripComponentProperties(componentTree);
     return JSON.stringify(componentSnapshot).length <= snapshotCharacterLimit ? componentSnapshot : elementSnapshot;
+  }
+}
+
+function stripComponentProperties(root: WebRendererDebugNodeSnapshot): void {
+  const pending = [root];
+  while (pending.length > 0) {
+    const node = pending.pop()!;
+    if (node.component !== undefined) {
+      delete node.component.properties;
+    }
+    pending.push(...node.children);
   }
 }
 

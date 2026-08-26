@@ -471,6 +471,11 @@ button {
   font-weight: 500;
 }
 
+.component-properties {
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
 .rule-origin {
   float: right;
   color: var(--muted);

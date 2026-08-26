@@ -2327,6 +2327,9 @@ describe('Renderer', () => {
     const headerContainerVirtualNode = componentDebugSnapshot.children[0];
     const headerContainerDebugSnapshot = renderer.getDebugVirtualNodeSnapshot(headerContainerVirtualNode, 10, 20)!;
 
+    expect(componentDebugSnapshot.componentViewModel).toBe(componentDebugSnapshot.component?.viewModel);
+    expect(Object.getOwnPropertyDescriptor(componentDebugSnapshot, 'componentViewModel')?.enumerable).toBeFalse();
+    expect(Object.keys(componentDebugSnapshot)).not.toContain('componentViewModel');
     expect(headerContainerDebugSnapshot.children.map(child => child.element?.tag)).toEqual(['header']);
     expect(renderer.getDebugVirtualNodeSnapshot(headerContainerVirtualNode, 10, 2)).toBeUndefined();
   });

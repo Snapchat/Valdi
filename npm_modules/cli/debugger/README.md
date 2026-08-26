@@ -48,6 +48,19 @@ Important routes:
 - `/api/devtools/snapshot`, `/api/devtools/highlight`, and `/api/devtools/evaluate`: proxy the explicit web debugger bridge contract through loopback CDP.
 - `/api/devtools/performance/snapshot` and `/api/devtools/performance/trace/*`: sample the exact web preview and record one bounded global Chromium trace without changing the daemon/Hermes `/api/performance/*` routes.
 
+Web preview targets advertise the `component-properties` capability. Their
+Elements snapshots may include a read-only `Valdi props` projection captured
+from own enumerable data descriptors only; accessors, inherited fields, and
+symbol keys are omitted. Component properties share a 64 KiB UTF-8 budget and
+are discarded before the hierarchy if the complete snapshot reaches its
+existing envelope limit. JavaScript has no resumable own-key iterator, so
+reflecting a Proxy can execute its `ownKeys` and descriptor traps and may
+materialize their complete key result before the cap is applied. A throwing or
+revoked Proxy therefore causes that component's properties to be omitted while
+preserving the hierarchy. Prototype traversal is not used, and property values
+are never read through normal property access. Native targets do not advertise
+or emit this data.
+
 Renderer tracing uses the runtime debugger protocol and the existing native
 trace recorder. Captures are process-wide: the selected context is the capture
 target used to reach the runtime, not the origin assigned to every event.
