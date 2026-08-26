@@ -100,7 +100,7 @@ describe('owlDevToolsExtension', () => {
     let clearedHighlights = 0;
     const secondPage: Record<string, unknown> = {
       __VALDI_WEB_DEBUGGER__: { clearHighlight: () => (clearedHighlights += 1) },
-      location: { href: 'http://127.0.0.1:54321/after-navigation.html?valdiDebugger=1' },
+      location: { href: 'http://127.0.0.1:54321/after-navigation.html?valdiDebugger=1&valdiTrace=chrome' },
     };
     let inspectedPage = firstPage;
     let navigationListener: (() => void) | null = null;
@@ -152,7 +152,7 @@ describe('owlDevToolsExtension', () => {
     navigationListener!();
     expect(secondPage[OWL_DEVTOOLS_TARGET_NONCE_PROPERTY]).toBe(nonce);
     expect(new URL(frame.src).searchParams.get('inspectedUrl')).toBe(
-      'http://127.0.0.1:54321/after-navigation.html?valdiDebugger=1',
+      'http://127.0.0.1:54321/after-navigation.html?valdiDebugger=1&valdiTrace=chrome',
     );
 
     unloadListener!();

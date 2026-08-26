@@ -1,3 +1,5 @@
+import { beginValdiWebTrace, endValdiWebTrace, makeValdiWebTraceProxy } from './tracing/ValdiWebTracing';
+
 // Declare webpack require.context
 declare const require: {
   (id: string): any;
@@ -309,12 +311,16 @@ class Runtime {
   }
 
   trace(tag: string, callback: Function) {
-    return callback();
+    const handle = beginValdiWebTrace(tag);
+    try {
+      return callback();
+    } finally {
+      endValdiWebTrace(handle);
+    }
   }
 
   makeTraceProxy(tag: string, callback: Function) {
-    // Return callback directly to avoid adding stack frames
-    return callback;
+    return makeValdiWebTraceProxy(tag, callback);
   }
 
   startTraceRecording() {

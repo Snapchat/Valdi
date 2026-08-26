@@ -727,7 +727,7 @@ describe('debugger server', () => {
 
     const matching = await request(
       new URL(
-        `/api/devtools/target?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3FvaldiDebugger%3D1%26mode%3Ddev%26valdiDevTools%3D1%26tenant%3Dalpha&targetNonce=${WEB_PREVIEW_NONCE}`,
+        `/api/devtools/target?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3FvaldiDebugger%3D1%26mode%3Ddev%26valdiDevTools%3D1%26tenant%3Dalpha%26valdiTrace%3Dchrome&targetNonce=${WEB_PREVIEW_NONCE}`,
         debuggerServer.url,
       ).toString(),
       GET_REQUEST_OPTIONS,

@@ -447,14 +447,14 @@ describe('owlCdpClient', () => {
     ).toBeRejectedWithError(/No running Owl Chromium page matches/);
   });
 
-  it('removes only injected Valdi parameters while matching the remaining query exactly', async () => {
+  it('removes only injected Valdi parameters, including tracing, while matching the remaining query exactly', async () => {
     discovery.setDiscoveryBody(
       JSON.stringify([
         {
           id: 'owl-page',
           title: 'Valdi Owl',
           type: 'page',
-          url: 'http://127.0.0.1:54321/index.html?valdiDevTools=1&mode=dev&tenant=alpha&valdiDebugger=1',
+          url: 'http://127.0.0.1:54321/index.html?valdiDevTools=1&mode=dev&tenant=alpha&valdiDebugger=1&valdiTrace=chrome',
           webSocketDebuggerUrl: `ws://127.0.0.1:${discovery.port}/devtools/page/owl-page`,
         },
       ]),

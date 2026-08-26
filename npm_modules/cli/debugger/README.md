@@ -129,9 +129,10 @@ node dist/index.js debugger \
 
 Start Owl/Chromium with the printed `--remote-debugging-port` and
 `--load-extension` values, then open the exact opted-in preview URL printed by
-the command. Target matching removes only the injected `valdiDebugger` and
-`valdiDevTools` parameters, then requires the same origin, pathname, and
-remaining query parameters.
+the command. Target matching ignores the reserved development parameters
+`valdiDebugger`, `valdiDevTools`, and the optional, explicitly requested
+`valdiTrace` parameter, then requires the same origin, pathname, and remaining
+query parameters. The debugger command does not enable tracing by default.
 
 The synthetic native-tree preview never auto-loads projected HTTP(S) image,
 video, CSS background, or WebView resources. Only `data:` and `blob:` media are
