@@ -68,6 +68,8 @@ struct ValdiProjectConfig {
     let minifyConfigURL: URL?
 
     let clientSqlURL: URL?
+
+    let clientSqlValidatorURL: URL?
     
     let sqlExportPathTemplate: String?
 
@@ -291,6 +293,16 @@ struct ValdiProjectConfig {
                 .map { try $0.resolvingVariables(environment) }
                 .flatMap { configDirectoryUrl.resolving(path: $0, isDirectory: false) }
         }
+
+        var clientSqlValidatorURL: URL?
+        if let path = args.directClientSqlValidatorPath {
+            logger.info("Using direct clientsql SQLite validator: \(path)")
+            clientSqlValidatorURL = currentDirectoryUrl.resolving(path: path)
+        } else {
+            clientSqlValidatorURL = try config["clientsql_sqlite_validator_path"]?.string
+                .map { try $0.resolvingVariables(environment) }
+                .flatMap { configDirectoryUrl.resolving(path: $0, isDirectory: false) }
+        }
         
         let sqlExportPathTemplate = config["sql_export_path_template"]?.string
         
@@ -357,6 +369,7 @@ struct ValdiProjectConfig {
                                                   compilerToolboxURL: compilerToolboxURL,
                                                   minifyConfigURL: minifyConfigURL,
                                                   clientSqlURL: clientSqlURL,
+                                                  clientSqlValidatorURL: clientSqlValidatorURL,
                                                   sqlExportPathTemplate: sqlExportPathTemplate,
                                                   androidDefaultClassPath: androidDefaultClassPath,
                                                   cppDefaultClassPrefix: cppDefaultClassPrefix,

@@ -8,6 +8,7 @@ ValdiCompilerInfo = provider(
         "companion",
         "minify_config",
         "sqldelight_compiler",
+        "clientsql_sqlite_validator",
     ],
 )
 
@@ -19,6 +20,7 @@ def _valdi_toolchain_impl(ctx):
             companion = ctx.attr.compiler_companion,
             minify_config = ctx.attr.minify_config,
             sqldelight_compiler = ctx.attr.sqldelight_compiler,
+            clientsql_sqlite_validator = ctx.attr.clientsql_sqlite_validator,
         ),
     )
     return [info]
@@ -49,8 +51,14 @@ valdi_toolchain = rule(
             default = "//modules:minify_config",
         ),
         "sqldelight_compiler": attr.label(
+            executable = True,
             cfg = "exec",
-            doc = "The sqldelight compiler to use.",
+            doc = "The ClientSQL generator executable to use.",
+        ),
+        "clientsql_sqlite_validator": attr.label(
+            executable = True,
+            cfg = "exec",
+            doc = "The hermetic SQLite 3.16 validator used by the ClientSQL generator.",
         ),
     },
 )

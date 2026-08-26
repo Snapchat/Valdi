@@ -434,7 +434,11 @@ valdi_toolchain(
     compiler = ":compiler_source",
     compiler_companion = ":compiler_companion_source",
     compiler_toolbox = "@valdi_toolchain//:valdi_compiler_toolbox",
-    sqldelight_compiler = "@valdi_toolchain//:sqldelight_compiler",
+    # ClientSQL is built from the reviewed generator sources in this repository.
+    # Keeping it in the exec configuration gives local and remote actions the
+    # same hermetic executable and runfiles rather than an unpublished prebuilt.
+    sqldelight_compiler = "//compiler/clientsql:clientsql",
+    clientsql_sqlite_validator = "//compiler/clientsql:sqlite_316_validator",
 )
 
 # Cross-compilation setups whose first execution platform is a remote linux worker set this
@@ -468,4 +472,15 @@ toolchain(
     target_settings = [":mac_only_execution_enabled"],
     toolchain = ":valdi",
     toolchain_type = ":toolchain_type",
+)
+
+filegroup(
+    name = "clientsql_generator_test_data",
+    srcs = [
+        "BUILD.bazel",
+        "valdi_run_compiler.bzl",
+        "valdi_toolchain.bzl",
+    ],
+    testonly = True,
+    visibility = ["//compiler/clientsql:__pkg__"],
 )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -62,8 +63,12 @@ def render_queries(sql_file: SqlFile, declare: bool) -> str:
         "export type ClientSQLQueryListener<T> = (value: T) => void;",
         "",
         "export interface ClientSQLDatabase {",
-        "  execute(sql: string, parameters?: ClientSQLValue[], changedTables?: string[]): Promise<void>;",
-        "  query<T>(sql: string, parameters?: ClientSQLValue[]): Promise<T[]>;",
+        "  execute(",
+        "    sql: string,",
+        "    parameters: ClientSQLValue[] | undefined,",
+        "    changedTables: string[] | undefined,",
+        "  ): Promise<void>;",
+        "  query<T>(sql: string, parameters: ClientSQLValue[] | undefined): Promise<T[]>;",
         "  watchQuery<T>(",
         "    tables: string[],",
         "    load: () => Promise<T>,",
@@ -72,12 +77,32 @@ def render_queries(sql_file: SqlFile, declare: bool) -> str:
         "}",
         "",
     ])
+    if any(boolean_result_fields(query) for query in sql_file.queries):
+        lines.extend([
+            "function decodeClientSQLBoolean(value: ClientSQLValue | undefined, field: string): boolean {",
+            "  if (value === true || value === 1) {",
+            "    return true;",
+            "  }",
+            "  if (value === false || value === 0) {",
+            "    return false;",
+            "  }",
+            "  throw new Error(`ClientSQL boolean field '${field}' returned invalid value '${String(value)}'`);",
+            "}",
+            "",
+            "function decodeNullableClientSQLBoolean(",
+            "  value: ClientSQLValue | undefined,",
+            "  field: string,",
+            "): boolean | null {",
+            "  return value === null ? null : decodeClientSQLBoolean(value, field);",
+            "}",
+            "",
+        ])
 
     if declare:
         lines.append(f"export declare class {class_name} {{")
         lines.append("  constructor(db: ClientSQLDatabase);")
         for query in sql_file.queries:
-            lines.append(f"  {query.name}({method_signature_params(query)}): {method_return_type(query)};")
+            lines.append(f"  {sanitize_identifier(query.name)}({method_signature_params(query)}): {method_return_type(query)};")
             if query.returns_rows:
                 lines.append(f"  {watch_method_name(query)}({watch_method_signature_params(query)}): ClientSQLSubscription;")
         lines.append("}")
@@ -99,14 +124,26 @@ def render_query_method(query: Query) -> List[str]:
     sql_literal = json.dumps(query.runtime_sql)
     param_array = ", ".join(sanitize_identifier(name) for name in query.param_order)
     lines = [
-        f"  {query.name}({method_signature_params(query)}): {method_return_type(query)} {{",
+        f"  {sanitize_identifier(query.name)}({method_signature_params(query)}): {method_return_type(query)} {{",
     ]
     if query.returns_rows:
-        lines.append(f"    return this.db.query<{query.result_type}>({sql_literal}, [{param_array}]);")
+        boolean_fields = boolean_result_fields(query)
+        if boolean_fields:
+            lines.append(
+                f"    return this.db.query<Record<string, ClientSQLValue>>({sql_literal}, [{param_array}]).then(rows => rows.map(row => ({{"
+            )
+            lines.append("      ...row,")
+            for field in boolean_fields:
+                decoder = "decodeNullableClientSQLBoolean" if field.nullable else "decodeClientSQLBoolean"
+                field_name = json.dumps(field.name)
+                lines.append(f"      {render_property_name(field.name)}: {decoder}(row[{field_name}], {field_name}),")
+            lines.append(f"    }}) as unknown as {query.result_type}));")
+        else:
+            lines.append(f"    return this.db.query<{query.result_type}>({sql_literal}, [{param_array}]);")
     elif query.changed_tables:
         lines.append(f"    return this.db.execute({sql_literal}, [{param_array}], {json.dumps(query.changed_tables)});")
     else:
-        lines.append(f"    return this.db.execute({sql_literal}, [{param_array}]);")
+        lines.append(f"    return this.db.execute({sql_literal}, [{param_array}], undefined);")
     lines.append("  }")
     return lines
 
@@ -114,7 +151,8 @@ def render_query_method(query: Query) -> List[str]:
 def render_query_watch_method(query: Query) -> List[str]:
     tables_literal = json.dumps(query.read_tables)
     param_values = ", ".join(param.name for param in query.params)
-    invocation = f"this.{query.name}({param_values})" if param_values else f"this.{query.name}()"
+    method_name = sanitize_identifier(query.name)
+    invocation = f"this.{method_name}({param_values})" if param_values else f"this.{method_name}()"
     return [
         f"  {watch_method_name(query)}({watch_method_signature_params(query)}): ClientSQLSubscription {{",
         f"    return this.db.watchQuery({tables_literal}, () => {invocation}, listener);",
@@ -126,22 +164,36 @@ def write_database_file(
     output_dir: Path,
     class_name: str,
     db_name: str,
+    module_name: str,
     sql_files: List[SqlFile],
     create_statements: List[str],
     migrations: List[Tuple[int, List[str]]],
 ) -> None:
     path = output_dir / f"{class_name}.ts"
-    path.write_text(render_database(class_name, db_name, sql_files, create_statements, migrations, declare=False), encoding="utf-8")
+    path.write_text(
+        render_database(
+            class_name,
+            db_name,
+            module_name,
+            sql_files,
+            create_statements,
+            migrations,
+            declare=False,
+        ),
+        encoding="utf-8",
+    )
 
 
 def render_database(
     class_name: str,
     db_name: str,
+    module_name: str,
     sql_files: List[SqlFile],
     create_statements: List[str],
     migrations: List[Tuple[int, List[str]]],
     declare: bool,
 ) -> str:
+    namespace_digest = hashlib.sha256(module_name.encode("utf-8")).hexdigest()[:24]
     query_classes = [(query_class_name(sql_file), import_path_from_db(sql_file, "Queries")) for sql_file in sql_files if sql_file.queries]
     all_tables = sorted({
         table
@@ -220,8 +272,12 @@ def render_database(
         property_name = lower_first(klass.removesuffix("Queries")) + "Queries"
         lines.append(f"  readonly {property_name}: {klass};")
     lines.extend([
-        "  execute(sql: string, parameters?: ClientSQLValue[], changedTables?: string[]): Promise<void>;",
-        "  query<T>(sql: string, parameters?: ClientSQLValue[]): Promise<T[]>;",
+        "  execute(",
+        "    sql: string,",
+        "    parameters: ClientSQLValue[] | undefined,",
+        "    changedTables: string[] | undefined,",
+        "  ): Promise<void>;",
+        "  query<T>(sql: string, parameters: ClientSQLValue[] | undefined): Promise<T[]>;",
         f"  transaction<T>(body: (transaction: {class_name}Transaction) => Promise<T>): Promise<T>;",
         "}",
         "",
@@ -234,9 +290,13 @@ def render_database(
         for klass, _ in query_classes:
             property_name = lower_first(klass.removesuffix("Queries")) + "Queries"
             lines.append(f"  readonly {property_name}: {klass};")
-        lines.append("  static open(name?: string): " + class_name + ";")
-        lines.append("  execute(sql: string, parameters?: ClientSQLValue[], changedTables?: string[]): Promise<void>;")
-        lines.append("  query<T>(sql: string, parameters?: ClientSQLValue[]): Promise<T[]>;")
+        lines.append("  static open(name: string | undefined): " + class_name + ";")
+        lines.append("  execute(")
+        lines.append("    sql: string,")
+        lines.append("    parameters: ClientSQLValue[] | undefined,")
+        lines.append("    changedTables: string[] | undefined,")
+        lines.append("  ): Promise<void>;")
+        lines.append("  query<T>(sql: string, parameters: ClientSQLValue[] | undefined): Promise<T[]>;")
         lines.append("  watchQuery<T>(")
         lines.append("    tables: string[],")
         lines.append("    load: () => Promise<T>,")
@@ -252,6 +312,7 @@ def render_database(
     schema_version = max([version for version, _ in migrations], default=1)
     lines.extend([
         f"const DEFAULT_DATABASE_NAME = {json.dumps(db_name)};",
+        f"const DATABASE_NAMESPACE = {json.dumps(namespace_digest)};",
         f"const SCHEMA_VERSION = {schema_version};",
         f"const CREATE_STATEMENTS: string[] = {json.dumps(create_statements, indent=2)};",
         f"const MIGRATIONS: ClientSQLMigration[] = {json.dumps([{'version': version, 'statements': statements} for version, statements in migrations], indent=2)};",
@@ -274,6 +335,21 @@ def render_database(
         "",
         "function getClientSQLNative(): ClientSQLNativeModule {",
         "  return clientSQLNativeForTests ?? (require('client_sql/src/ClientSQLNative') as ClientSQLNativeModule);",
+        "}",
+        "",
+        "function databaseIdentity(name: string): string {",
+        "  if (!name || name.length > 48) {",
+        "    throw new Error('ClientSQL database names must contain from 1 through 48 UTF-16 code units');",
+        "  }",
+        "  let encodedName = '';",
+        "  for (let index = 0; index < name.length; index += 1) {",
+        "    const codeUnit = name.charCodeAt(index);",
+        "    if (codeUnit < 0x20 || (codeUnit >= 0x7f && codeUnit <= 0x9f)) {",
+        "      throw new Error('ClientSQL database names cannot contain control characters');",
+        "    }",
+        "    encodedName += codeUnit.toString(16).padStart(4, '0');",
+        "  }",
+        "  return `clientsql_${DATABASE_NAMESPACE}_${encodedName}.sqlite`;",
         "}",
         "",
         "function entriesForDatabase(name: string): ClientSQLWatchEntry[] {",
@@ -376,6 +452,7 @@ def render_database(
         "",
         "  private constructor(",
         "    private readonly databaseName: string,",
+        "    private readonly databaseIdentity: string,",
         "    private readonly connection: ClientSQLNativeConnection,",
         "  ) {",
     ])
@@ -383,15 +460,17 @@ def render_database(
         property_name = lower_first(klass.removesuffix("Queries")) + "Queries"
         lines.append(f"    this.{property_name} = new {klass}(this);")
     lines.extend([
-        "    this.debugDatabase = {",
+        "    const debugDatabase: ClientSQLDebugDatabase = {",
+        "      id: this.databaseIdentity,",
         "      name: this.databaseName,",
         "      schemaVersion: SCHEMA_VERSION,",
         "      createStatements: CREATE_STATEMENTS,",
         "      migrations: MIGRATIONS,",
-        "      query: <T>(sql: string, parameters: ClientSQLValue[] = []): Promise<T[]> => this.query<T>(sql, parameters),",
+        "      query: <T>(sql: string, parameters: ClientSQLValue[] | undefined): Promise<T[]> => this.query<T>(sql, parameters),",
         "      debugInfo: (): Promise<Record<string, unknown>> => this.debugInfo(),",
         "    };",
-        "    registerClientSQLDebugDatabase(this.debugDatabase);",
+        "    this.debugDatabase = debugDatabase;",
+        "    registerClientSQLDebugDatabase(debugDatabase);",
     ])
     lines.append("  }")
     lines.append("")
@@ -401,24 +480,36 @@ def render_database(
     if query_classes:
         lines.append("")
     lines.extend([
-        f"  static open(name: string = DEFAULT_DATABASE_NAME): {class_name} {{",
-        "    const connection = getClientSQLNative().openDatabase(name, SCHEMA_VERSION, CREATE_STATEMENTS, MIGRATIONS);",
-        f"    return new {class_name}(name, connection);",
+        f"  static open(name: string | undefined): {class_name} {{",
+        "    const databaseName = name ?? DEFAULT_DATABASE_NAME;",
+        "    const identity = databaseIdentity(databaseName);",
+        "    const connection = getClientSQLNative().openDatabase(identity, SCHEMA_VERSION, CREATE_STATEMENTS, MIGRATIONS);",
+        f"    return new {class_name}(databaseName, identity, connection);",
         "  }",
         "",
-        "  async execute(sql: string, parameters: ClientSQLValue[] = [], changedTables?: string[]): Promise<void> {",
+        "  async execute(",
+        "    sql: string,",
+        "    parameters: ClientSQLValue[] | undefined,",
+        "    changedTables: string[] | undefined,",
+        "  ): Promise<void> {",
         "    if (this.closed) {",
         "      throw new Error(`ClientSQL database '${this.databaseName}' is closed`);",
         "    }",
-        "    return enqueueDatabaseWrite(this.databaseName, async () => {",
+        "    if (this.activeTransactionCount > 0) {",
+        "      throw new Error(`ClientSQL database '${this.databaseName}' cannot execute through its parent handle inside a transaction body`);",
+        "    }",
+        "    return enqueueDatabaseWrite(this.databaseIdentity, async () => {",
         "      await nativePromise<void>(callback => this.connection.execute(sql, parameters, callback));",
         "      this.notifyTablesChanged(changedTables ?? ALL_TABLES);",
         "    });",
         "  }",
         "",
-        "  async query<T>(sql: string, parameters: ClientSQLValue[] = []): Promise<T[]> {",
+        "  async query<T>(sql: string, parameters: ClientSQLValue[] | undefined): Promise<T[]> {",
         "    if (this.closed) {",
         "      throw new Error(`ClientSQL database '${this.databaseName}' is closed`);",
+        "    }",
+        "    if (this.activeTransactionCount > 0) {",
+        "      throw new Error(`ClientSQL database '${this.databaseName}' cannot query through its parent handle inside a transaction body`);",
         "    }",
         "    return nativePromise<T[]>(callback => this.connection.query<T>(sql, parameters, callback));",
         "  }",
@@ -454,14 +545,14 @@ def render_database(
         "        return;",
         "      }",
         "      active = false;",
-        "      const entries = watchEntriesByDatabaseName[this.databaseName];",
+        "      const entries = watchEntriesByDatabaseName[this.databaseIdentity];",
         "      if (entries) {",
         "        removeWatchEntry(entries, entry);",
         "      }",
         "      removeWatchEntry(this.localWatchEntries, entry);",
         "    };",
         "    const entry: ClientSQLWatchEntry = { tables, emit, unsubscribe };",
-        "    entriesForDatabase(this.databaseName).push(entry);",
+        "    entriesForDatabase(this.databaseIdentity).push(entry);",
         "    this.localWatchEntries.push(entry);",
         "    emit();",
         "",
@@ -474,12 +565,16 @@ def render_database(
         "    if (this.closed) {",
         "      throw new Error(`ClientSQL database '${this.databaseName}' is closed`);",
         "    }",
-        "    return enqueueDatabaseWrite(this.databaseName, () => this.runTransaction(body));",
+        "    if (this.activeTransactionCount > 0) {",
+        "      throw new Error(`ClientSQL database '${this.databaseName}' cannot start a parent transaction inside a transaction body`);",
+        "    }",
+        "    return enqueueDatabaseWrite(this.databaseIdentity, () => this.runTransaction(body));",
         "  }",
         "",
         f"  private async runTransaction<T>(body: (transaction: {class_name}Transaction) => Promise<T>): Promise<T> {{",
         "    let result!: T;",
         "    const changedTables: string[] = [];",
+        "    let committed = false;",
         "    const transactionDebugId = this.nextTransactionDebugId++;",
         "    const transactionStartedAtMs = Date.now();",
         "    this.activeTransactionCount += 1;",
@@ -518,7 +613,7 @@ def render_database(
         "        changedTables: changedTables.slice(),",
         "        changedTableCount: changedTables.length,",
         "      });",
-        "      this.emitChangedTables(changedTables);",
+        "      committed = true;",
         "      return result;",
         "    } catch (error) {",
         "      const transactionCompletedAtMs = Date.now();",
@@ -532,17 +627,24 @@ def render_database(
         "        changedTableCount: changedTables.length,",
         "        error: errorMessage(error),",
         "      });",
-        "      notifyClientSQLDebugChanged(this.databaseName);",
+        "      notifyClientSQLDebugChanged(this.databaseIdentity);",
         "      throw error;",
         "    } finally {",
         "      this.activeTransactionChangedTables = undefined;",
         "      this.activeTransactionCount -= 1;",
+        "      if (committed) {",
+        "        this.emitChangedTables(changedTables);",
+        "      }",
         "    }",
         "  }",
         "",
         f"  private createTransactionScope(nativeTransaction: ClientSQLNativeTransaction, changedTables: string[]): {class_name}Transaction {{",
         "    const transactionDatabase = {",
-        "      execute: async (sql: string, parameters: ClientSQLValue[] = [], tables?: string[]): Promise<void> => {",
+        "      execute: async (",
+        "        sql: string,",
+        "        parameters: ClientSQLValue[] | undefined,",
+        "        tables: string[] | undefined,",
+        "      ): Promise<void> => {",
         "        await nativePromise<void>(callback => nativeTransaction.execute(sql, parameters, callback));",
         "        const invalidatedTables = tables ?? ALL_TABLES;",
         "        invalidatedTables.forEach(table => {",
@@ -551,7 +653,7 @@ def render_database(
         "          }",
         "        });",
         "      },",
-        "      query: <T>(sql: string, parameters: ClientSQLValue[] = []): Promise<T[]> =>",
+        "      query: <T>(sql: string, parameters: ClientSQLValue[] | undefined): Promise<T[]> =>",
         "        nativePromise<T[]>(callback => nativeTransaction.query<T>(sql, parameters, callback)),",
         "      watchQuery: <T>(",
         "        _tables: string[],",
@@ -579,13 +681,16 @@ def render_database(
         "    if (this.closed) {",
         "      return;",
         "    }",
+        "    if (this.activeTransactionCount > 0) {",
+        "      throw new Error(`ClientSQL database '${this.databaseName}' cannot close through its parent handle inside a transaction body`);",
+        "    }",
         "    this.closed = true;",
         "    this.localWatchEntries.slice().forEach(entry => {",
         "      if (typeof entry.unsubscribe === 'function') {",
         "        entry.unsubscribe();",
         "        return;",
         "      }",
-        "      const entries = watchEntriesByDatabaseName[this.databaseName];",
+        "      const entries = watchEntriesByDatabaseName[this.databaseIdentity];",
         "      if (entries) {",
         "        removeWatchEntry(entries, entry);",
         "      }",
@@ -595,7 +700,7 @@ def render_database(
         "      unregisterClientSQLDebugDatabase(this.debugDatabase);",
         "      this.debugDatabase = undefined;",
         "    }",
-        "    await enqueueDatabaseWrite(this.databaseName, () => nativePromise<void>(callback => this.connection.close(callback)));",
+        "    await enqueueDatabaseWrite(this.databaseIdentity, () => nativePromise<void>(callback => this.connection.close(callback)));",
         "  }",
         "",
         "  private async debugInfo(): Promise<Record<string, unknown>> {",
@@ -613,9 +718,9 @@ def render_database(
         "      pendingChangedTableCount: this.activeTransactionChangedTables?.length ?? 0,",
         "      transactionHistoryCount: this.transactionHistory.length,",
         "      transactions: this.transactionHistory.slice().reverse(),",
-        "      watcherCount: (watchEntriesByDatabaseName[this.databaseName] || []).length,",
+        "      watcherCount: (watchEntriesByDatabaseName[this.databaseIdentity] || []).length,",
         "      localWatcherCount: this.localWatchEntries.length,",
-        "      queuedWrite: writeChainsByDatabaseName[this.databaseName] !== undefined,",
+        "      queuedWrite: writeChainsByDatabaseName[this.databaseIdentity] !== undefined,",
         "    };",
         "  }",
         "",
@@ -633,8 +738,8 @@ def render_database(
         "  }",
         "",
         "  private emitChangedTables(changedTables: string[]): void {",
-        "    notifyClientSQLDebugChanged(this.databaseName);",
-        "    const entries = watchEntriesByDatabaseName[this.databaseName];",
+        "    notifyClientSQLDebugChanged(this.databaseIdentity);",
+        "    const entries = watchEntriesByDatabaseName[this.databaseIdentity];",
         "    if (!entries) {",
         "      return;",
         "    }",
@@ -665,6 +770,14 @@ def types_imported_by_queries(queries: List[Query]) -> List[str]:
         if query.returns_rows:
             imports.add(query.result_type)
     return sorted(imports)
+
+
+def boolean_result_fields(query: Query) -> List[object]:
+    return [
+        field
+        for field in query.result_fields
+        if re.search(r"(?:^|\|\s*)boolean(?:\s*\||$)", field.ts_type)
+    ]
 
 
 def render_interface(name: str, fields: Sequence[object], declare_export: bool) -> List[str]:

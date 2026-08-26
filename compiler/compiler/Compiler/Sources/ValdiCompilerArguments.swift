@@ -193,6 +193,9 @@ struct ValdiCompilerArguments: ParsableCommand {
     @Option(help: "path to the clientsql app")
     var directClientSqlPath: String?
 
+    @Option(help: "path to the ClientSQL SQLite 3.16 validator")
+    var directClientSqlValidatorPath: String?
+
     @Option(help: "path to the file with the list of input files")
     var explicitInputListFile: String?
 

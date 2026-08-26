@@ -1,6 +1,13 @@
 load("@aspect_rules_js//js:defs.bzl", "js_binary")
 load("@rules_python//python:defs.bzl", "py_test")
 
+cc_binary(
+    name = "sqlite_316_validator",
+    srcs = ["sqlite_316_validator.cpp"],
+    visibility = ["//visibility:public"],
+    deps = ["@sqlite_316//:sqlite"],
+)
+
 py_library(
     name = "clientsql_lib",
     srcs = glob(["src/clientsql/*.py"]),
@@ -37,12 +44,24 @@ py_test(
         ":clientsql",
         ":clientsql_test_javascript_runner",
         ":package_clientsql",
+        ":sqlite_316_validator",
+        "sqlite_316_validator.cpp",
         "@npm_typescript//:tsc",
+        "//:clientsql_generator_test_data",
+        "//bin:clientsql_generator_test_data",
+        "//bzl:clientsql_generator_test_data",
+        "//bzl/valdi:clientsql_generator_test_data",
+        "//compiler/compiler:clientsql_generator_test_data",
+        "//src/valdi_modules/src/valdi/client_sql:clientsql_generator_test_data",
+        "//third-party/sqlite:clientsql_generator_test_data",
+        "//valdi:clientsql_generator_test_data",
+        "//valdi/testdata/resources/modules/client_sql_smoke:clientsql_generator_test_data",
     ],
     env = {
         "BAZEL_BINDIR": ".",
         "CLIENTSQL_TEST_GENERATOR": "$(rootpath :clientsql)",
         "CLIENTSQL_TEST_JAVASCRIPT_RUNNER": "$(rootpath :clientsql_test_javascript_runner)",
+        "CLIENTSQL_TEST_SQLITE_VALIDATOR": "$(rootpath :sqlite_316_validator)",
         "CLIENTSQL_TEST_TYPESCRIPT_COMPILER": "$(rootpath @npm_typescript//:tsc)",
     },
     size = "medium",

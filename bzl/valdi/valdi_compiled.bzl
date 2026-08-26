@@ -2200,6 +2200,7 @@ def _prepare_hotreload_arguments(module_names, config_yaml_file, explicit_input_
     compiler_toolbox = toolchain.compiler_toolbox.files.to_list()[0]
     minify_config = toolchain.minify_config.files.to_list()[0]
     client_sql = toolchain.sqldelight_compiler.files.to_list()
+    client_sql_validator = toolchain.clientsql_sqlite_validator.files.to_list()
 
     args = []
 
@@ -2220,6 +2221,9 @@ def _prepare_hotreload_arguments(module_names, config_yaml_file, explicit_input_
     if client_sql:
         args.append("--direct-client-sql-path")
         args.append(client_sql[0].path)
+    if client_sql_validator:
+        args.append("--direct-client-sql-validator-path")
+        args.append(client_sql_validator[0].path)
 
     args.append("--module")
     args.append(_VALDI_BASE_MODULE_NAME)

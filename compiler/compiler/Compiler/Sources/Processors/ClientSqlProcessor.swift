@@ -23,6 +23,21 @@ final class ClientSqlProcessor: CompilationProcessor {
     private var bundleToSourceMap: Synchronized<[String: [RelativePath: String]]> = Synchronized(data: [:])
     private let diskCache: DiskCache?
 
+    static func compilerArguments(sqlDirectory: String,
+                                  package: String,
+                                  moduleName: String,
+                                  outputDirectory: String,
+                                  sqliteValidatorPath: String,
+                                  typeMapping: [String]) -> [String] {
+        return ["--sqlite-validator", sqliteValidatorPath,
+                "-s", sqlDirectory,
+                "-p", package,
+                "-c", package,
+                "-m", moduleName,
+                "-o", outputDirectory,
+                "-l", "typescript"] + typeMapping
+    }
+
     init(logger: ILogger, 
          fileManager: ValdiFileManager,
          diskCacheProvider: DiskCacheProvider,
@@ -35,9 +50,14 @@ final class ClientSqlProcessor: CompilationProcessor {
         self.rootBundle = rootBundle
 
         if let clientSqlCompilerPath = projectConfig.clientSqlURL?.path, diskCacheProvider.isEnabled() {
-            logger.debug("Resolving SQL version")
-            let output = try SyncProcessHandle.run(logger: logger, command: clientSqlCompilerPath, arguments: ["-version"]).trimmed
-            diskCache = diskCacheProvider.newCache(cacheName: "clientsql", outputExtension: "ts", metadata: ["version": output])
+            logger.debug("Resolving ClientSQL generator artifact identity")
+            let sqliteValidatorPath = try projectConfig.ensureClientSqlValidator()
+            let output = try SyncProcessHandle.run(
+                logger: logger,
+                command: clientSqlCompilerPath,
+                arguments: ["--sqlite-validator", sqliteValidatorPath, "-version"]
+            ).trimmed
+            diskCache = diskCacheProvider.newCache(cacheName: "clientsql", outputExtension: "ts", metadata: ["artifact": output])
         } else {
             diskCache = nil
         }
@@ -132,6 +152,7 @@ final class ClientSqlProcessor: CompilationProcessor {
 
         // Run the external compiler
         let compilerPath = try projectConfig.ensureClientSqlCompiler()
+        let sqliteValidatorPath = try projectConfig.ensureClientSqlValidator()
 
         // Clear any stale files from prior runs so the post-compile enumerator
         // only picks up files emitted by this invocation. The directory path is
@@ -143,12 +164,12 @@ final class ClientSqlProcessor: CompilationProcessor {
             }
         }
 
-        let args = ["-s", sqlDir,
-                    "-p", pkg,
-                    "-c", clazz,
-                    "-m", clazz,
-                    "-o", outputDirectory.path,
-                    "-l", "typescript"] + typemapping
+        let args = Self.compilerArguments(sqlDirectory: sqlDir,
+                                          package: clazz,
+                                          moduleName: bundleInfo.name,
+                                          outputDirectory: outputDirectory.path,
+                                          sqliteValidatorPath: sqliteValidatorPath,
+                                          typeMapping: typemapping)
         let output = try SyncProcessHandle.run(logger: logger, command: compilerPath, arguments: args)
 
         logger.verbose("-- CLIENTSQL compiler:")
@@ -204,6 +225,14 @@ extension ValdiProjectConfig {
     func ensureClientSqlCompiler() throws -> String {
         guard let path = clientSqlURL?.path else {
             throw CompilerError("ClientSQL binary path is not defined")
+        }
+
+        return path
+    }
+
+    func ensureClientSqlValidator() throws -> String {
+        guard let path = clientSqlValidatorURL?.path else {
+            throw CompilerError("ClientSQL SQLite 3.16 validator path is not defined")
         }
 
         return path

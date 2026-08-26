@@ -48,6 +48,7 @@ def resolve_compiler_executable(ctx, toolchain, include_tools):
         * companion tool (see //src/valdi_internal/compiler/companion:bin_wrapper)
         * minify config file
         * sqldelight compiler binary
+        * ClientSQL SQLite 3.16 validator binary
 
     Args:
         ctx: The context of the current rule invocation
@@ -69,8 +70,10 @@ def resolve_compiler_executable(ctx, toolchain, include_tools):
         inputs_depsets.append(toolchain.compiler_toolbox.files)
         inputs_depsets.append(toolchain.minify_config.files)
         inputs_depsets.append(toolchain.sqldelight_compiler.files)
+        inputs_depsets.append(toolchain.clientsql_sqlite_validator.files)
 
         tools.append(toolchain.sqldelight_compiler[DefaultInfo].files_to_run)
+        tools.append(toolchain.clientsql_sqlite_validator[DefaultInfo].files_to_run)
 
     return (toolchain.compiler.files.to_list()[0], depset(transitive = inputs_depsets), tools)
 
@@ -86,6 +89,7 @@ def run_valdi_compiler(ctx, args, outputs, inputs, mnemonic, progress_message, u
     compiler_toolbox = toolchain.compiler_toolbox.files.to_list()[0]
     minify_config = toolchain.minify_config.files.to_list()[0]
     client_sql = toolchain.sqldelight_compiler.files.to_list()
+    client_sql_validator = toolchain.clientsql_sqlite_validator.files.to_list()
 
     args.add("--bazel")
     args.add("--direct-companion-path", companion_bin_wrapper)
@@ -94,6 +98,8 @@ def run_valdi_compiler(ctx, args, outputs, inputs, mnemonic, progress_message, u
 
     if client_sql:
         args.add("--direct-client-sql-path", client_sql[0])
+    if client_sql_validator:
+        args.add("--direct-client-sql-validator-path", client_sql_validator[0])
 
     env = {
         # required for the companion app execution under Bazel

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import sqlite3
 import sys
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -10,7 +9,15 @@ from .model import Column, ParamOccurrence, Parameter, Query, SqlFile, Table, Cl
 
 
 SQL_IDENTIFIER_PATTERN = r"[`\"\[]?[A-Za-z_][A-Za-z0-9_]*[`\"\]]?"
-
+MAX_INT32 = 2_147_483_647
+TYPESCRIPT_RESERVED_IDENTIFIERS = {
+    "break", "case", "catch", "class", "const", "constructor", "continue", "debugger",
+    "default", "delete", "do", "else", "enum", "export", "extends", "false", "finally",
+    "for", "function", "if", "implements", "import", "in", "instanceof", "interface",
+    "let", "new", "null", "package", "private", "protected", "public", "return", "static",
+    "super", "switch", "this", "throw", "true", "try", "typeof", "undefined", "var", "void",
+    "while", "with", "yield",
+}
 
 def load_type_mapping(sql_dir: Path, type_mapping: Optional[str]) -> Dict[str, str]:
     if not type_mapping:
@@ -95,6 +102,10 @@ def collect_migrations(sql_dir: Path) -> List[Tuple[int, List[str]]]:
         if version_match is None:
             raise ClientSqlError(f"Migration filename must start with a version number: {path}")
         version = int(version_match.group(1))
+        if version < 2 or version > MAX_INT32:
+            raise ClientSqlError(
+                f"Migration version must be an integer from 2 through {MAX_INT32}: {path}"
+            )
         if version in seen_versions:
             raise ClientSqlError(f"Duplicate migration version {version}: {path}")
         seen_versions.add(version)
@@ -111,27 +122,92 @@ def collect_migrations(sql_dir: Path) -> List[Tuple[int, List[str]]]:
     return migrations
 
 
-def validate_schema_and_queries(create_statements: Sequence[str], sql_files: Sequence[SqlFile]) -> None:
-    database = sqlite3.connect(":memory:")
-    try:
-        database.execute("PRAGMA foreign_keys = ON")
-        for statement in create_statements:
-            try:
-                database.execute(statement)
-            except sqlite3.Error as exc:
-                raise ClientSqlError(f"Invalid schema statement: {exc}\n{statement}") from exc
+def validate_generated_identifiers(sql_files: Sequence[SqlFile], tables: Dict[str, Table]) -> None:
+    query_class_names: Dict[str, Path] = {}
+    query_property_names: Dict[str, Path] = {}
+    for sql_file in sql_files:
+        class_name = f"{sanitize_type_name(sql_file.stem_path.name)}Queries"
+        property_name = class_name.removesuffix("Queries")
+        property_name = property_name[:1].lower() + property_name[1:] + "Queries"
+        for generated_name, owner_map, kind in (
+            (class_name, query_class_names, "query class"),
+            (property_name, query_property_names, "database query property"),
+        ):
+            previous = owner_map.get(generated_name)
+            if previous is not None:
+                raise ClientSqlError(
+                    f"Generated {kind} identifier '{generated_name}' collides between "
+                    f"{previous} and {sql_file.rel_to_package}"
+                )
+            owner_map[generated_name] = sql_file.rel_to_package
 
-        for sql_file in sql_files:
-            for query in sql_file.queries:
-                try:
-                    database.execute(f"EXPLAIN {query.runtime_sql}", [None] * len(query.param_order))
-                except sqlite3.Error as exc:
+        generated_methods: Dict[str, str] = {}
+        emitted_symbols: Dict[str, str] = {}
+        for table in tables.values():
+            generated_name = sanitize_type_name(table.name)
+            owner = f"table '{table.name}'"
+            previous = emitted_symbols.get(generated_name)
+            if previous is not None and previous != owner:
+                raise ClientSqlError(
+                    f"Generated type identifier '{generated_name}' collides between {previous} and {owner} "
+                    f"in {sql_file.rel_to_package}"
+                )
+            emitted_symbols[generated_name] = owner
+        for query in sql_file.queries:
+            generated_parameters: Dict[str, str] = {}
+            for parameter_name in query.param_order:
+                generated_parameter = sanitize_identifier(parameter_name)
+                previous_parameter = generated_parameters.get(generated_parameter)
+                if previous_parameter is not None and previous_parameter != parameter_name:
                     raise ClientSqlError(
-                        f"Invalid query {sql_file.rel_to_package}:{query.name}: {exc}"
-                    ) from exc
-    finally:
-        database.close()
+                        f"Generated query parameter identifier '{generated_parameter}' collides between "
+                        f"'{previous_parameter}' and '{parameter_name}' in query '{query.name}' "
+                        f"in {sql_file.rel_to_package}"
+                    )
+                generated_parameters[generated_parameter] = parameter_name
 
+            method_name = sanitize_identifier(query.name)
+            method_names = [method_name]
+            if query.returns_rows:
+                method_names.append(f"watch{sanitize_type_name(query.name)}")
+            for generated_name in method_names:
+                previous = generated_methods.get(generated_name)
+                if previous is not None:
+                    raise ClientSqlError(
+                        f"Generated query method identifier '{generated_name}' collides between "
+                        f"'{previous}' and '{query.name}' in {sql_file.rel_to_package}"
+                    )
+                generated_methods[generated_name] = query.name
+
+            for generated_name in (
+                f"{sanitize_type_name(query.name)}Params" if query.params else "",
+                query.result_type
+                if query.returns_rows and query.result_type == f"{sanitize_type_name(query.name)}Row"
+                else "",
+            ):
+                if not generated_name:
+                    continue
+                owner = (
+                    f"query parameters for '{query.name}'"
+                    if generated_name.endswith("Params")
+                    else f"query row for '{query.name}'"
+                )
+                previous = emitted_symbols.get(generated_name)
+                if previous is not None and previous != owner:
+                    raise ClientSqlError(
+                        f"Generated type identifier '{generated_name}' collides between "
+                        f"{previous} and {owner} in {sql_file.rel_to_package}"
+                    )
+                emitted_symbols[generated_name] = owner
+
+            field_names: set[str] = set()
+            for field in query.result_fields:
+                if field.name in field_names:
+                    raise ClientSqlError(
+                        f"Duplicate result field '{field.name}' in query '{query.name}' "
+                        f"in {sql_file.rel_to_package}"
+                    )
+                field_names.add(field.name)
 
 def migration_sort_key(path: Path) -> Tuple[int, str]:
     match = re.match(r"(\d+)", path.stem)
@@ -238,45 +314,15 @@ def analyze_query(name: str, sql: str, tables: Dict[str, Table]) -> Query:
 
 
 def normalize_params(sql: str) -> Tuple[str, List[str]]:
+    occurrences = scan_param_occurrences(sql)
     out: List[str] = []
-    params: List[str] = []
-    index = 0
-    i = 0
-    quote: Optional[str] = None
-    while i < len(sql):
-        ch = sql[i]
-        if quote:
-            out.append(ch)
-            if ch == quote:
-                if i + 1 < len(sql) and sql[i + 1] == quote:
-                    out.append(sql[i + 1])
-                    i += 2
-                    continue
-                quote = None
-            i += 1
-            continue
-        if ch in {"'", '"'}:
-            quote = ch
-            out.append(ch)
-            i += 1
-            continue
-        if ch == "?":
-            param_name = f"p{index}"
-            params.append(param_name)
-            out.append("?")
-            index += 1
-            i += 1
-            continue
-        if ch == ":" and i + 1 < len(sql) and re.match(r"[A-Za-z_]", sql[i + 1]):
-            match = re.match(r":([A-Za-z_][A-Za-z0-9_]*)(\?)?", sql[i:])
-            if match:
-                params.append(match.group(1))
-                out.append("?")
-                i += len(match.group(0))
-                continue
-        out.append(ch)
-        i += 1
-    return "".join(out), params
+    cursor = 0
+    for occurrence in occurrences:
+        out.append(sql[cursor:occurrence.start])
+        out.append("?")
+        cursor = occurrence.end
+    out.append(sql[cursor:])
+    return "".join(out), [occurrence.name for occurrence in occurrences]
 
 
 def infer_params(sql: str, param_order: List[str], tables: Dict[str, Table]) -> List[Parameter]:
@@ -413,15 +459,10 @@ def infer_limit_param_types(sql: str, param_order: List[str]) -> Dict[str, str]:
 def infer_nullable_params(sql: str, param_order: List[str]) -> set[str]:
     occurrences = scan_param_occurrences(sql)
     nullable = {occurrence.name for occurrence in occurrences if occurrence.nullable}
-    nullable.update(
-        match.group(1)
-        for match in re.finditer(r":([A-Za-z_][A-Za-z0-9_]*)\s+IS\s+(?:NOT\s+)?NULL\b", sql, re.IGNORECASE)
-    )
-
-    for match in re.finditer(r"\?\s+IS\s+(?:NOT\s+)?NULL\b", sql, re.IGNORECASE):
-        param_name = param_name_at(sql, match.start(), param_order)
-        if param_name is not None:
-            nullable.add(param_name)
+    code = mask_sql_non_code(sql)
+    for occurrence in occurrences:
+        if re.match(r"\s+IS\s+(?:NOT\s+)?NULL\b", code[occurrence.end:], re.IGNORECASE):
+            nullable.add(occurrence.name)
     return nullable
 
 
@@ -445,42 +486,79 @@ def param_name_at(sql: str, start: int, param_order: List[str]) -> Optional[str]
 def scan_param_occurrences(sql: str) -> List[ParamOccurrence]:
     occurrences: List[ParamOccurrence] = []
     positional_index = 0
+    for start, end in sql_code_ranges(sql):
+        i = start
+        while i < end:
+            ch = sql[i]
+            if ch == "?":
+                occurrences.append(
+                    ParamOccurrence(start=i, end=i + 1, name=f"p{positional_index}", nullable=False)
+                )
+                positional_index += 1
+                i += 1
+                continue
+            if ch == ":" and i + 1 < end and re.match(r"[A-Za-z_]", sql[i + 1]):
+                match = re.match(r":([A-Za-z_][A-Za-z0-9_]*)(\?)?", sql[i:end])
+                if match:
+                    occurrences.append(
+                        ParamOccurrence(
+                            start=i,
+                            end=i + len(match.group(0)),
+                            name=match.group(1),
+                            nullable=bool(match.group(2)),
+                        )
+                    )
+                    i += len(match.group(0))
+                    continue
+            i += 1
+    return occurrences
+
+
+def sql_code_ranges(sql: str) -> List[Tuple[int, int]]:
+    """Return code spans, excluding literals, quoted identifiers, and comments."""
+    ranges: List[Tuple[int, int]] = []
+    code_start = 0
     i = 0
-    quote: Optional[str] = None
     while i < len(sql):
-        ch = sql[i]
-        if quote:
-            if ch == quote:
-                if i + 1 < len(sql) and sql[i + 1] == quote:
+        quote = sql[i]
+        is_line_comment = sql.startswith("--", i)
+        is_block_comment = sql.startswith("/*", i)
+        is_quoted = quote in {"'", '"', "`", "["}
+        if not is_line_comment and not is_block_comment and not is_quoted:
+            i += 1
+            continue
+
+        if code_start < i:
+            ranges.append((code_start, i))
+        if is_line_comment:
+            newline = sql.find("\n", i + 2)
+            i = len(sql) if newline == -1 else newline + 1
+        elif is_block_comment:
+            terminator = sql.find("*/", i + 2)
+            i = len(sql) if terminator == -1 else terminator + 2
+        else:
+            closing_quote = "]" if quote == "[" else quote
+            i += 1
+            while i < len(sql):
+                if sql[i] != closing_quote:
+                    i += 1
+                    continue
+                if i + 1 < len(sql) and sql[i + 1] == closing_quote:
                     i += 2
                     continue
-                quote = None
-            i += 1
-            continue
-        if ch in {"'", '"'}:
-            quote = ch
-            i += 1
-            continue
-        if ch == "?":
-            occurrences.append(ParamOccurrence(start=i, end=i + 1, name=f"p{positional_index}", nullable=False))
-            positional_index += 1
-            i += 1
-            continue
-        if ch == ":" and i + 1 < len(sql) and re.match(r"[A-Za-z_]", sql[i + 1]):
-            match = re.match(r":([A-Za-z_][A-Za-z0-9_]*)(\?)?", sql[i:])
-            if match:
-                occurrences.append(
-                    ParamOccurrence(
-                        start=i,
-                        end=i + len(match.group(0)),
-                        name=match.group(1),
-                        nullable=bool(match.group(2)),
-                    )
-                )
-                i += len(match.group(0))
-                continue
-        i += 1
-    return occurrences
+                i += 1
+                break
+        code_start = i
+    if code_start < len(sql):
+        ranges.append((code_start, len(sql)))
+    return ranges
+
+
+def mask_sql_non_code(sql: str) -> str:
+    masked = [" " if not character.isspace() else character for character in sql]
+    for start, end in sql_code_ranges(sql):
+        masked[start:end] = sql[start:end]
+    return "".join(masked)
 
 
 def infer_result_fields(sql: str, tables: Dict[str, Table]) -> List[Column]:
@@ -667,6 +745,8 @@ def sanitize_identifier(name: str) -> str:
     cleaned = re.sub(r"\W+", "_", name)
     if not cleaned or re.match(r"\d", cleaned):
         cleaned = f"p_{cleaned}"
+    if cleaned in TYPESCRIPT_RESERVED_IDENTIFIERS:
+        cleaned = f"_{cleaned}"
     return cleaned
 
 
