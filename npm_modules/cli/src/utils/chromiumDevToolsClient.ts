@@ -30,6 +30,13 @@ export interface ChromiumDevToolsEvent {
   params: Record<string, unknown>;
 }
 
+export class ChromiumDevToolsProtocolError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ChromiumDevToolsProtocolError';
+  }
+}
+
 function encodeWebSocketFrame(opcode: number, payload: Buffer): Buffer {
   const mask = crypto.randomBytes(4);
   let header: Buffer;
@@ -342,7 +349,11 @@ export class ChromiumDevToolsConnection {
     this.pending.delete(response.id);
     clearTimeout(command.timer);
     if (response.error) {
-      command.reject(new Error(response.error.message ?? 'The Chromium DevTools target rejected the request.'));
+      command.reject(
+        new ChromiumDevToolsProtocolError(
+          response.error.message ?? 'The Chromium DevTools target rejected the request.',
+        ),
+      );
       return;
     }
     command.resolve(response.result);

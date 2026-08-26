@@ -55,10 +55,16 @@ interface MockChromiumConsoleServer {
   port: number;
   runtimeEnableReceived: Promise<void>;
   releaseRuntimeEnable(): void;
+  setInspectedUrl(inspectedUrl: string): void;
+  setTargetNonce(targetNonce: string): void;
 }
 
 interface MockChromiumConsoleServerOptions {
+  closeOnTracingEnd?: boolean;
+  dropTracingStartResponse?: boolean;
   holdRuntimeEnable: boolean;
+  rejectIdentityAfterTracingStart?: boolean;
+  rejectTracingStart?: boolean;
 }
 
 function encodeChromiumServerMessage(payload: Record<string, unknown>): Buffer {
@@ -111,6 +117,8 @@ async function startMockChromiumConsoleServer(
   const debuggerSockets = new Set<net.Socket>();
   const pendingRuntimeEnableResponses: Array<() => void> = [];
   const methods: string[] = [];
+  let currentInspectedUrl = `${applicationUrl}${applicationUrl.includes('?') ? '&' : '?'}valdiDevTools=1`;
+  let currentTargetNonce = targetNonce;
   let resolveRuntimeEnableReceived: (() => void) | null = null;
   const runtimeEnableReceived = new Promise<void>(resolve => {
     resolveRuntimeEnableReceived = resolve;
@@ -132,7 +140,7 @@ async function startMockChromiumConsoleServer(
           id: 'selected-page',
           title: 'Selected Valdi page',
           type: 'page',
-          url: `${applicationUrl}${applicationUrl.includes('?') ? '&' : '?'}valdiDevTools=1`,
+          url: currentInspectedUrl,
           webSocketDebuggerUrl: `ws://127.0.0.1:${address.port}/devtools/page/selected-page`,
         },
       ]),
@@ -151,6 +159,8 @@ async function startMockChromiumConsoleServer(
     debuggerSockets.add(socket);
     socket.once('end', () => socket.destroy());
     socket.once('close', () => debuggerSockets.delete(socket));
+    let metricRequestCount = 0;
+    let tracingStarted = false;
     let buffered = Buffer.alloc(0);
     socket.on('data', chunk => {
       buffered = Buffer.concat([buffered, chunk]);
@@ -165,60 +175,148 @@ async function startMockChromiumConsoleServer(
           return;
         }
         methods.push(method);
-        if (method === 'Runtime.evaluate') {
-          const expression = typeof params?.['expression'] === 'string' ? params['expression'] : '';
-          const matched = expression.includes(applicationUrl) && expression.includes(targetNonce);
-          socket.write(
-            encodeChromiumServerMessage({
-              id,
-              result: {
+        switch (method) {
+          case 'Runtime.evaluate': {
+            const expression = typeof params?.['expression'] === 'string' ? params['expression'] : '';
+            const guarded = expression.includes('__valdiDevToolsTargetMatched');
+            const matched =
+              guarded &&
+              expression.includes(applicationUrl) &&
+              expression.includes(currentTargetNonce) &&
+              !(options.rejectIdentityAfterTracingStart === true && tracingStarted);
+            let value: unknown;
+            if (guarded) {
+              value = { __valdiDevToolsTargetMatched: matched, ...(matched ? { value: true } : {}) };
+            } else if (expression === 'String(globalThis.location.href)') {
+              value = currentInspectedUrl;
+            } else if (expression.includes("getEntriesByType('resource')")) {
+              value = {
+                navigation: { domContentLoadedMs: 30, loadMs: 50 },
+                paints: [{ name: 'first-contentful-paint', startTime: 25 }],
+                rendererTracingEnabled: false,
+                resourceCount: 4,
+                transferSize: 2048,
+                uptimeMs: 100,
+              };
+            } else {
+              value = true;
+            }
+            socket.write(
+              encodeChromiumServerMessage({
+                id,
                 result: {
-                  type: 'object',
-                  value: { __valdiDevToolsTargetMatched: matched, ...(matched ? { value: true } : {}) },
+                  result: {
+                    type: typeof value,
+                    value,
+                  },
                 },
-              },
-            }),
-          );
-        } else {
-          const sendResponse = () => {
-            if (socket.destroyed) return;
-            socket.write(encodeChromiumServerMessage({ id, result: {} }));
-            if (method === 'Runtime.enable') {
-              socket.write(
+              }),
+            );
+            break;
+          }
+          case 'Performance.getMetrics': {
+            metricRequestCount++;
+            socket.write(
+              encodeChromiumServerMessage({
+                id,
+                result: {
+                  metrics: [
+                    { name: 'TaskDuration', value: metricRequestCount * 0.012 },
+                    { name: 'ScriptDuration', value: metricRequestCount * 0.004 },
+                    { name: 'LayoutDuration', value: metricRequestCount * 0.002 },
+                    { name: 'LayoutCount', value: metricRequestCount * 2 },
+                    { name: 'RecalcStyleCount', value: metricRequestCount },
+                    { name: 'JSHeapUsedSize', value: 1024 },
+                    { name: 'JSHeapTotalSize', value: 2048 },
+                  ],
+                },
+              }),
+            );
+            break;
+          }
+          case 'Tracing.end': {
+            if (options.closeOnTracingEnd) {
+              socket.destroy();
+              break;
+            }
+            socket.write(
+              Buffer.concat([
+                encodeChromiumServerMessage({ id, result: {} }),
                 encodeChromiumServerMessage({
-                  method: 'Runtime.consoleAPICalled',
+                  method: 'Tracing.dataCollected',
                   params: {
-                    args: [{ type: 'string', value: 'Synthetic <renderer> output' }],
-                    timestamp: 101,
-                    type: 'warning',
+                    value: [
+                      { name: 'Valdi.Renderer.onRender.Example', ph: 'X', ts: 1000, dur: 300, tid: 7 },
+                      { name: 'Layout', ph: 'X', ts: 1400, dur: 500, tid: 7 },
+                      { name: 'RunTask', ph: 'X', ts: 2000, dur: 75_000, tid: 7 },
+                      { name: 'Unrelated', ph: 'X', ts: 3000, dur: 400, tid: 7 },
+                    ],
                   },
                 }),
-              );
-            }
-            if (method === 'Log.enable') {
+                encodeChromiumServerMessage({
+                  method: 'Tracing.tracingComplete',
+                  params: { dataLossOccurred: false },
+                }),
+              ]),
+            );
+            break;
+          }
+          default: {
+            if (method === 'Tracing.start' && options.rejectTracingStart) {
               socket.write(
                 encodeChromiumServerMessage({
-                  method: 'Log.entryAdded',
-                  params: {
-                    entry: {
-                      level: 'error',
-                      text: 'authorization: Bearer synthetic-private-token',
-                      timestamp: 102,
+                  error: { message: 'Tracing is already started by another client.' },
+                  id,
+                }),
+              );
+              break;
+            }
+            if (method === 'Tracing.start') tracingStarted = true;
+            if (method === 'Tracing.start' && options.dropTracingStartResponse) {
+              socket.destroy();
+              break;
+            }
+            const sendResponse = () => {
+              if (socket.destroyed) return;
+              socket.write(encodeChromiumServerMessage({ id, result: {} }));
+              if (method === 'Runtime.enable') {
+                socket.write(
+                  encodeChromiumServerMessage({
+                    method: 'Runtime.consoleAPICalled',
+                    params: {
+                      args: [{ type: 'string', value: 'Synthetic <renderer> output' }],
+                      timestamp: 101,
+                      type: 'warning',
                     },
-                  },
-                }),
-              );
-            }
-          };
-          if (method === 'Runtime.enable') {
-            resolveRuntimeEnableReceived?.();
-            if (options.holdRuntimeEnable) {
-              pendingRuntimeEnableResponses.push(sendResponse);
+                  }),
+                );
+              }
+              if (method === 'Log.enable') {
+                socket.write(
+                  encodeChromiumServerMessage({
+                    method: 'Log.entryAdded',
+                    params: {
+                      entry: {
+                        level: 'error',
+                        text: 'authorization: Bearer synthetic-private-token',
+                        timestamp: 102,
+                      },
+                    },
+                  }),
+                );
+              }
+            };
+            if (method === 'Runtime.enable') {
+              resolveRuntimeEnableReceived?.();
+              if (options.holdRuntimeEnable) {
+                pendingRuntimeEnableResponses.push(sendResponse);
+              } else {
+                sendResponse();
+              }
             } else {
               sendResponse();
             }
-          } else {
-            sendResponse();
+            break;
           }
         }
         frame = readChromiumClientFrame(buffered);
@@ -244,6 +342,12 @@ async function startMockChromiumConsoleServer(
       for (const sendResponse of pendingRuntimeEnableResponses.splice(0)) sendResponse();
     },
     runtimeEnableReceived,
+    setInspectedUrl(nextInspectedUrl: string): void {
+      currentInspectedUrl = nextInspectedUrl;
+    },
+    setTargetNonce(nextTargetNonce: string): void {
+      currentTargetNonce = nextTargetNonce;
+    },
   };
 }
 
@@ -787,6 +891,460 @@ describe('debugger server', () => {
     expect(JSON.parse(result.body)).toEqual({
       error: 'DevTools target discovery requires a valid inspected-tab nonce.',
     });
+  });
+
+  it('requires the exact session, inspected URL, and nonce for web preview performance routes', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html?tenant=alpha';
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+      webPreviewUrl: applicationUrl,
+      chromiumDebuggingPort: 9333,
+    });
+    const statusUrl = new URL('/api/devtools/performance/trace/status', debuggerServer.url);
+    statusUrl.searchParams.set('inspectedUrl', `${applicationUrl}&valdiDevTools=1`);
+    statusUrl.searchParams.set('sessionId', 'owl:web-preview');
+    statusUrl.searchParams.set('targetNonce', WEB_PREVIEW_NONCE);
+    const aliasedSession = await request(statusUrl.toString(), GET_REQUEST_OPTIONS);
+    statusUrl.searchParams.set('sessionId', 'web-preview');
+    statusUrl.searchParams.set('inspectedUrl', 'http://127.0.0.1:54321/other.html');
+    const wrongUrl = await request(statusUrl.toString(), GET_REQUEST_OPTIONS);
+    statusUrl.searchParams.set('inspectedUrl', `${applicationUrl}&valdiDevTools=1`);
+    statusUrl.searchParams.delete('targetNonce');
+    const missingNonce = await request(statusUrl.toString(), GET_REQUEST_OPTIONS);
+    const duplicateResults: HttpResult[] = [];
+    for (const [name, value] of [
+      ['sessionId', 'conflicting-session'],
+      ['inspectedUrl', 'http://127.0.0.1:54321/other.html'],
+      ['targetNonce', 'conflicting-nonce-123456'],
+    ] as const) {
+      const duplicateUrl = new URL('/api/devtools/performance/trace/status', debuggerServer.url);
+      duplicateUrl.searchParams.append('sessionId', 'web-preview');
+      duplicateUrl.searchParams.append('inspectedUrl', `${applicationUrl}&valdiDevTools=1`);
+      duplicateUrl.searchParams.append('targetNonce', WEB_PREVIEW_NONCE);
+      duplicateUrl.searchParams.append(name, value);
+      duplicateResults.push(await request(duplicateUrl.toString(), GET_REQUEST_OPTIONS));
+    }
+
+    expect(aliasedSession.statusCode).toBe(404);
+    expect(JSON.parse(aliasedSession.body)).toEqual({
+      error: 'The inspected web preview session is no longer available.',
+    });
+    expect(wrongUrl.statusCode).toBe(404);
+    expect(JSON.parse(wrongUrl.body)).toEqual({
+      error: 'The inspected page does not match the configured Valdi web preview target.',
+    });
+    expect(missingNonce.statusCode).toBe(400);
+    expect(JSON.parse(missingNonce.body)).toEqual({
+      error: 'targetNonce must appear exactly once for web preview performance requests.',
+    });
+    expect(duplicateResults.map(result => result.statusCode)).toEqual([400, 400, 400]);
+    expect(duplicateResults.map(result => (JSON.parse(result.body) as { error: string }).error)).toEqual([
+      'sessionId must appear exactly once for web preview performance requests.',
+      'inspectedUrl must appear exactly once for web preview performance requests.',
+      'targetNonce must appear exactly once for web preview performance requests.',
+    ]);
+  });
+
+  it('serves bounded Chromium snapshots and traces on the isolated web preview routes', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html';
+    const inspectedUrl = `${applicationUrl}?valdiDevTools=1`;
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      holdRuntimeEnable: false,
+    });
+    try {
+      debuggerServer = await startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: applicationUrl,
+        chromiumDebuggingPort: chromium.port,
+      });
+      const route = (pathName: string): URL => {
+        const url = new URL(pathName, debuggerServer?.url);
+        url.searchParams.set('inspectedUrl', inspectedUrl);
+        url.searchParams.set('sessionId', 'web-preview');
+        url.searchParams.set('targetNonce', WEB_PREVIEW_NONCE);
+        return url;
+      };
+
+      const snapshot = await request(route('/api/devtools/performance/snapshot').toString(), GET_REQUEST_OPTIONS);
+      const captureResult = await request(route('/api/devtools/performance/trace/capture').toString(), {
+        body: JSON.stringify({ durationMs: 100 }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+      const capture = JSON.parse(captureResult.body) as Record<string, unknown>;
+      const traces = capture['traces'] as Array<Record<string, unknown>>;
+
+      expect(snapshot.statusCode).toBe(200);
+      expect(JSON.parse(snapshot.body)).toEqual(
+        jasmine.objectContaining({
+          mainThread: jasmine.objectContaining({ taskDurationMs: 12 }),
+          memory: { totalBytes: 2048, usedBytes: 1024 },
+          resourceCount: 4,
+          transferSize: 2048,
+        }),
+      );
+      expect(captureResult.statusCode).toBe(200);
+      expect(Buffer.byteLength(captureResult.body, 'utf8')).toBeLessThanOrEqual(MAX_TRACE_HTTP_RESPONSE_BYTES);
+      expect(traces.map(trace => trace['trace'])).toEqual([
+        'Valdi.Renderer.onRender.Example',
+        'Browser.Layout.Layout',
+        'Browser.MainThread.Task',
+      ]);
+      expect(capture['browserMetrics']).toEqual(jasmine.objectContaining({ LayoutCount: 2, TaskDurationMs: 12 }));
+      expect(capture['browserSummary']).toEqual(
+        jasmine.objectContaining({ browserEventCount: 2, longTaskCount: 1, rendererEventCount: 1 }),
+      );
+      expect(capture['rawTraceEvents']).toBeUndefined();
+      expect(capture['perfetto']).toBeUndefined();
+      expect(capture['perfettoMetadata']).toEqual(jasmine.any(Object));
+      expect(chromium.methods).toContain('Tracing.start');
+      expect(chromium.methods).toContain('Tracing.end');
+    } finally {
+      await chromium.close();
+    }
+  });
+
+  it('does not let a second same-URL tab steal a live performance trace', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html';
+    const inspectedUrl = `${applicationUrl}?valdiDevTools=1`;
+    const competingNonce = 'server-competing-nonce-654321';
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      holdRuntimeEnable: false,
+    });
+    try {
+      debuggerServer = await startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: applicationUrl,
+        chromiumDebuggingPort: chromium.port,
+      });
+      const route = (pathName: string, targetNonce: string): URL => {
+        const url = new URL(pathName, debuggerServer?.url);
+        url.searchParams.set('inspectedUrl', inspectedUrl);
+        url.searchParams.set('sessionId', 'web-preview');
+        url.searchParams.set('targetNonce', targetNonce);
+        return url;
+      };
+      const post = (url: URL): Promise<HttpResult> =>
+        request(url.toString(), {
+          body: '{}',
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+        });
+
+      const started = await post(route('/api/devtools/performance/trace/start', WEB_PREVIEW_NONCE));
+      const competing = await post(route('/api/devtools/performance/trace/start', competingNonce));
+
+      expect(started.statusCode).toBe(200);
+      expect(competing.statusCode).toBe(500);
+      expect((JSON.parse(competing.body) as { error: string }).error).toContain(
+        'Another inspected web preview owns the current Chromium performance trace.',
+      );
+      expect(chromium.methods.filter(method => method === 'Tracing.start').length).toBe(1);
+      expect(chromium.methods).not.toContain('Tracing.end');
+      await post(route('/api/devtools/performance/trace/stop', WEB_PREVIEW_NONCE));
+    } finally {
+      await chromium.close();
+    }
+  });
+
+  it('ends an old nonce owner before starting after a verified web-preview reload', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html';
+    const inspectedUrl = `${applicationUrl}?valdiDevTools=1`;
+    const reloadedNonce = 'server-reloaded-nonce-654321';
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      holdRuntimeEnable: false,
+    });
+    try {
+      debuggerServer = await startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: applicationUrl,
+        chromiumDebuggingPort: chromium.port,
+      });
+      const route = (pathName: string, targetNonce: string): URL => {
+        const url = new URL(pathName, debuggerServer?.url);
+        url.searchParams.set('inspectedUrl', inspectedUrl);
+        url.searchParams.set('sessionId', 'web-preview');
+        url.searchParams.set('targetNonce', targetNonce);
+        return url;
+      };
+      const post = (url: URL): Promise<HttpResult> =>
+        request(url.toString(), {
+          body: '{}',
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+        });
+
+      const initialStart = await post(route('/api/devtools/performance/trace/start', WEB_PREVIEW_NONCE));
+      expect(initialStart.statusCode).toBe(200);
+      chromium.setTargetNonce(reloadedNonce);
+      const reloadedStart = await post(route('/api/devtools/performance/trace/start', reloadedNonce));
+      expect(reloadedStart.statusCode).toBe(200);
+
+      const startIndexes = chromium.methods
+        .map((method, index) => (method === 'Tracing.start' ? index : -1))
+        .filter(index => index >= 0);
+      const endIndex = chromium.methods.indexOf('Tracing.end');
+      expect(startIndexes.length).toBe(2);
+      expect(endIndex).toBeGreaterThan(startIndexes[0] ?? -1);
+      expect(startIndexes[1]).toBeGreaterThan(endIndex);
+      await post(route('/api/devtools/performance/trace/stop', reloadedNonce));
+    } finally {
+      await chromium.close();
+    }
+  });
+
+  it('recovers when the same nonce navigates away from the owner inspected URL', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html';
+    const oldInspectedUrl = `${applicationUrl}?valdiDevTools=1#old`;
+    const newInspectedUrl = `${applicationUrl}?valdiDevTools=1#new`;
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      holdRuntimeEnable: false,
+    });
+    chromium.setInspectedUrl(oldInspectedUrl);
+    try {
+      debuggerServer = await startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: applicationUrl,
+        chromiumDebuggingPort: chromium.port,
+      });
+      const route = (pathName: string, inspectedPageUrl: string): URL => {
+        const url = new URL(pathName, debuggerServer?.url);
+        url.searchParams.set('inspectedUrl', inspectedPageUrl);
+        url.searchParams.set('sessionId', 'web-preview');
+        url.searchParams.set('targetNonce', WEB_PREVIEW_NONCE);
+        return url;
+      };
+      const post = (url: URL): Promise<HttpResult> =>
+        request(url.toString(), {
+          body: '{}',
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+        });
+
+      const initialStart = await post(route('/api/devtools/performance/trace/start', oldInspectedUrl));
+      expect(initialStart.statusCode).toBe(200);
+      chromium.setInspectedUrl(newInspectedUrl);
+      const navigatedStart = await post(route('/api/devtools/performance/trace/start', newInspectedUrl));
+      expect(navigatedStart.statusCode).toBe(200);
+
+      expect(chromium.methods.filter(method => method === 'Tracing.start').length).toBe(2);
+      expect(chromium.methods).toContain('Tracing.end');
+      await post(route('/api/devtools/performance/trace/stop', newInspectedUrl));
+    } finally {
+      await chromium.close();
+    }
+  });
+
+  it('retains fail-closed ownership when a Tracing.start response is lost', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html';
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      dropTracingStartResponse: true,
+      holdRuntimeEnable: false,
+    });
+    try {
+      debuggerServer = await startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: applicationUrl,
+        chromiumDebuggingPort: chromium.port,
+      });
+      const startUrl = new URL('/api/devtools/performance/trace/start', debuggerServer.url);
+      startUrl.searchParams.set('inspectedUrl', `${applicationUrl}?valdiDevTools=1`);
+      startUrl.searchParams.set('sessionId', 'web-preview');
+      startUrl.searchParams.set('targetNonce', WEB_PREVIEW_NONCE);
+      const post = (): Promise<HttpResult> =>
+        request(startUrl.toString(), {
+          body: '{}',
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+        });
+
+      const first = await post();
+      const second = await post();
+
+      expect(first.statusCode).toBe(500);
+      expect(second.statusCode).toBe(500);
+      expect((JSON.parse(second.body) as { error: string }).error).toContain(
+        'Best-effort Chromium trace cleanup also failed',
+      );
+      expect(chromium.methods.filter(method => method === 'Tracing.start').length).toBe(1);
+    } finally {
+      await chromium.close();
+    }
+  });
+
+  it('does not end a trace after Chromium definitively rejects Tracing.start', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html';
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      holdRuntimeEnable: false,
+      rejectTracingStart: true,
+    });
+    try {
+      debuggerServer = await startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: applicationUrl,
+        chromiumDebuggingPort: chromium.port,
+      });
+      const startUrl = new URL('/api/devtools/performance/trace/start', debuggerServer.url);
+      startUrl.searchParams.set('inspectedUrl', `${applicationUrl}?valdiDevTools=1`);
+      startUrl.searchParams.set('sessionId', 'web-preview');
+      startUrl.searchParams.set('targetNonce', WEB_PREVIEW_NONCE);
+
+      const result = await request(startUrl.toString(), {
+        body: '{}',
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+
+      expect(result.statusCode).toBe(500);
+      expect((JSON.parse(result.body) as { error: string }).error).toContain(
+        'Tracing is already started by another client.',
+      );
+      expect(chromium.methods.filter(method => method === 'Tracing.start').length).toBe(1);
+      expect(chromium.methods).not.toContain('Tracing.end');
+    } finally {
+      await chromium.close();
+    }
+  });
+
+  it('handles a socket close during Tracing.end without an unhandled rejection', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html';
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      closeOnTracingEnd: true,
+      holdRuntimeEnable: false,
+    });
+    const unhandledRejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown): void => {
+      unhandledRejections.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandledRejection);
+    try {
+      debuggerServer = await startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: applicationUrl,
+        chromiumDebuggingPort: chromium.port,
+      });
+      const route = (pathName: string): URL => {
+        const url = new URL(pathName, debuggerServer?.url);
+        url.searchParams.set('inspectedUrl', `${applicationUrl}?valdiDevTools=1`);
+        url.searchParams.set('sessionId', 'web-preview');
+        url.searchParams.set('targetNonce', WEB_PREVIEW_NONCE);
+        return url;
+      };
+      const post = (url: URL): Promise<HttpResult> =>
+        request(url.toString(), {
+          body: '{}',
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+        });
+
+      const started = await post(route('/api/devtools/performance/trace/start'));
+      const stopped = await post(route('/api/devtools/performance/trace/stop'));
+      expect(started.statusCode).toBe(200);
+      expect(stopped.statusCode).toBe(500);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(unhandledRejections).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+      await chromium.close();
+    }
+  });
+
+  it('ends an owned trace before rejecting a target identity that changed during capture', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html';
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      holdRuntimeEnable: false,
+      rejectIdentityAfterTracingStart: true,
+    });
+    try {
+      debuggerServer = await startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: applicationUrl,
+        chromiumDebuggingPort: chromium.port,
+      });
+      const captureUrl = new URL('/api/devtools/performance/trace/capture', debuggerServer.url);
+      captureUrl.searchParams.set('inspectedUrl', `${applicationUrl}?valdiDevTools=1`);
+      captureUrl.searchParams.set('sessionId', 'web-preview');
+      captureUrl.searchParams.set('targetNonce', WEB_PREVIEW_NONCE);
+
+      const result = await request(captureUrl.toString(), {
+        body: JSON.stringify({ durationMs: 100 }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+
+      expect(result.statusCode).toBe(500);
+      expect((JSON.parse(result.body) as { error: string }).error).toContain(
+        'inspected web preview changed while the performance request was running',
+      );
+      const endIndex = chromium.methods.lastIndexOf('Tracing.end');
+      const validationIndex = chromium.methods.lastIndexOf('Runtime.evaluate');
+      expect(endIndex).toBeGreaterThan(-1);
+      expect(validationIndex).toBeGreaterThan(endIndex);
+    } finally {
+      await chromium.close();
+    }
+  });
+
+  it('enables renderer trace markers only through the exact web preview performance route', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html';
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      holdRuntimeEnable: false,
+    });
+    try {
+      debuggerServer = await startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: applicationUrl,
+        chromiumDebuggingPort: chromium.port,
+      });
+      const enableUrl = new URL('/api/devtools/performance/trace/enable', debuggerServer.url);
+      enableUrl.searchParams.set('inspectedUrl', `${applicationUrl}?valdiDevTools=1`);
+      enableUrl.searchParams.set('sessionId', 'web-preview');
+      enableUrl.searchParams.set('targetNonce', WEB_PREVIEW_NONCE);
+
+      const result = await request(enableUrl.toString(), {
+        body: '{}',
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+      const payload = JSON.parse(result.body) as { inspectedUrl: string };
+
+      expect(result.statusCode).toBe(200);
+      expect(payload.inspectedUrl).toContain('valdiDevTools=1');
+      expect(payload.inspectedUrl).toContain('valdiTrace=chrome');
+      expect(chromium.methods).toContain('Page.navigate');
+    } finally {
+      await chromium.close();
+    }
   });
 
   it('rejects console streams that do not carry the exact selected target tuple', async () => {
@@ -1855,7 +2413,7 @@ describe('debugger server', () => {
       {},
       0,
     ).traceEvents.find(event => event.name === 'Unrelated.trace');
-    expect(fabricatedInstant).toEqual(jasmine.objectContaining({ ph: 'X', dur: 1 }));
+    expect(fabricatedInstant).toEqual(jasmine.objectContaining({ ph: 'i', s: 't' }));
   });
 
   it('drops malformed renderer trace events and caps conversion work', () => {
@@ -1918,6 +2476,13 @@ describe('debugger server', () => {
         })),
         droppedTraceEventCount: 0,
         timedOut: false,
+        webPreviewTrace: true,
+        browserMetrics: {
+          LayoutCount: 10,
+          PrivateMetric: 1,
+          ScriptDurationMs: 20,
+          TaskDurationMs: 30,
+        },
       },
       { contextId: '\0'.repeat(100_000), name: '\0'.repeat(100_000), port: 13_591 },
     );
@@ -1928,6 +2493,8 @@ describe('debugger server', () => {
     expect(Array.isArray(result['traces'])).toBeTrue();
     expect(result['traceCount'] as number).toBeLessThan(512);
     expect(result['traceEventLimitReached']).toBeTrue();
+    expect(result['browserMetrics']).toEqual({ LayoutCount: 10, ScriptDurationMs: 20, TaskDurationMs: 30 });
+    expect((result['browserMetrics'] as Record<string, unknown>)['PrivateMetric']).toBeUndefined();
     expect((result['perfettoMetadata'] as { droppedTraceEventCount: number }).droppedTraceEventCount).toBe(
       result['droppedTraceEventCount'] as number,
     );

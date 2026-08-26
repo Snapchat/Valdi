@@ -45,6 +45,7 @@ Important routes:
 - `/api/performance/profile/*`: list Hermes contexts and capture CPU profiles.
 - `/api/devtools/target`: matches the inspected Chromium page to the exact configured preview origin and path.
 - `/api/devtools/snapshot`, `/api/devtools/highlight`, and `/api/devtools/evaluate`: proxy the explicit web debugger bridge contract through loopback CDP.
+- `/api/devtools/performance/snapshot` and `/api/devtools/performance/trace/*`: sample the exact web preview and record one bounded global Chromium trace without changing the daemon/Hermes `/api/performance/*` routes.
 
 Renderer tracing uses the runtime debugger protocol and the existing native
 trace recorder. Captures are process-wide: the selected context is the capture
@@ -61,6 +62,16 @@ Web-renderer inspection uses the first-party bridge exposed as
 `window.__VALDI_WEB_DEBUGGER__` with `getSnapshot()`, `highlightNode()`, and
 `clearHighlight()`. The DevTools panel proxies inspection through the exact
 configured loopback Chromium target.
+
+Web-preview performance requests require the exact `sessionId`, `inspectedUrl`,
+and per-tab `targetNonce`; incomplete, stale, or cross-tab identities fail
+closed. The recorder normalizes CDP events incrementally and retains at most
+10,000 events with 2 KiB UTF-8 trace names. One-shot captures run for their
+requested duration from 100 milliseconds through 15 seconds; manually started
+recordings have a 15-second watchdog. An undelivered completed result is kept
+for one minute. The complete response is limited
+to 4 MiB and contains one normalized trace list plus export metadata—never a
+duplicate raw or Perfetto event list.
 
 The Data section discovers target-owned providers through a generic custom
 message contract. The persistence module registers its bounded web snapshot as

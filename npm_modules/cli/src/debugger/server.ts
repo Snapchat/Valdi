@@ -27,6 +27,11 @@ import {
 } from '../utils/owlCdpClient';
 import { type ChromiumConsoleEntry, formatChromiumConsoleEvent } from './chromiumConsole';
 import { DebuggerInputType, sendDebuggerInput, validateDebuggerInputRequest } from './inputClient';
+import {
+  type WebPreviewPerformanceIdentity,
+  type WebPreviewTraceCapture,
+  createWebPreviewPerformanceController,
+} from './webPreviewPerformance';
 
 const DEFAULT_HOST = process.env['VALDI_DEBUGGER_HOST'] || '127.0.0.1';
 const DEFAULT_PORT = Number.parseInt(process.env['VALDI_DEBUGGER_PORT'] || '8765', 10);
@@ -68,6 +73,7 @@ const TRACE_CAPTURE_TARGET_STRING_KEYS = [
   'clientId',
   'contextId',
   'applicationId',
+  'sessionId',
 ] as const;
 const DEBUGGER_PROVIDERS_IDENTIFIER = 'ValdiDebuggerProviders';
 const DEBUG_SETTINGS_IDENTIFIER = 'ValdiDebuggerSettings';
@@ -115,6 +121,7 @@ export interface RecordedTrace {
   startMicros: number;
   endMicros: number;
   threadId: number;
+  type?: number;
 }
 
 export interface PerfettoCaptureMetadata {
@@ -296,6 +303,7 @@ let activeProfileSession: ActiveProfileSession | null = null;
 let profileTransitionInProgress = false;
 let traceTransitionInProgress = false;
 const debuggerUiState = createDebuggerUiState();
+const webPreviewPerformanceController = createWebPreviewPerformanceController();
 
 function getDefaultAssetRoot(): string {
   // The published CLI is emitted as CommonJS, so __dirname is the reliable package-relative anchor.
@@ -1255,6 +1263,40 @@ function resolveInspectedWebPreviewContext(
   return { inspectedUrl: inspected.toString(), targetNonce };
 }
 
+function resolveWebPreviewPerformanceIdentity(searchParams: URLSearchParams): {
+  identity: WebPreviewPerformanceIdentity;
+  target: WebPreviewDebuggerTarget;
+} {
+  const sessionId = readExactWebPreviewPerformanceParameter(searchParams, 'sessionId');
+  const target = resolveWebPreviewDebuggerTarget(sessionId);
+  if (sessionId !== target.sessionId) {
+    throw new ApiRequestError(404, 'The inspected web preview session is no longer available.');
+  }
+  const context = resolveInspectedWebPreviewContext(
+    target,
+    readExactWebPreviewPerformanceParameter(searchParams, 'inspectedUrl'),
+    readExactWebPreviewPerformanceParameter(searchParams, 'targetNonce'),
+  );
+  return {
+    identity: {
+      applicationUrl: target.applicationUrl,
+      debuggingPort: target.debuggingPort,
+      inspectedUrl: context.inspectedUrl,
+      sessionId: target.sessionId,
+      targetNonce: context.targetNonce,
+    },
+    target,
+  };
+}
+
+function readExactWebPreviewPerformanceParameter(searchParams: URLSearchParams, name: string): string {
+  const values = searchParams.getAll(name);
+  if (values.length !== 1 || !values[0]) {
+    throw new ApiRequestError(400, `${name} must appear exactly once for web preview performance requests.`);
+  }
+  return values[0];
+}
+
 function resolveInspectedWebPreviewTarget(searchParams: URLSearchParams): Record<string, unknown> {
   if (!activeWebPreviewTarget) {
     throw new ApiRequestError(404, 'Start valdi debugger with --web-preview-url before opening the DevTools panel.');
@@ -1265,6 +1307,106 @@ function resolveInspectedWebPreviewTarget(searchParams: URLSearchParams): Record
     searchParams.get('targetNonce') ?? undefined,
   );
   return { target: webPreviewTargetPayload(activeWebPreviewTarget) };
+}
+
+function decorateWebPreviewTraceResult(
+  result: Record<string, unknown>,
+  target: WebPreviewDebuggerTarget,
+): Record<string, unknown> {
+  return decorateTraceResult(
+    { ...result, webPreviewTrace: true },
+    { ...webPreviewTargetPayload(target), state: 'attached' },
+  );
+}
+
+function webPreviewTraceCaptureResult(capture: WebPreviewTraceCapture): Record<string, unknown> {
+  return {
+    ...capture,
+    completedRecordingAvailable: false,
+    recording: false,
+    tracingSupported: true,
+  };
+}
+
+async function inspectWebPreviewPerformanceSnapshot(
+  request: IncomingMessage,
+  searchParams: URLSearchParams,
+): Promise<Record<string, unknown>> {
+  if (request.method !== 'GET') {
+    throw new ApiRequestError(405, 'Web preview performance snapshots require GET.');
+  }
+  const { identity, target } = resolveWebPreviewPerformanceIdentity(searchParams);
+  return {
+    ...(await webPreviewPerformanceController.snapshot(identity)),
+    target: { ...webPreviewTargetPayload(target), state: 'attached' },
+  };
+}
+
+async function inspectWebPreviewPerformanceTraceStatus(
+  request: IncomingMessage,
+  searchParams: URLSearchParams,
+): Promise<Record<string, unknown>> {
+  if (request.method !== 'GET') {
+    throw new ApiRequestError(405, 'Web preview performance trace status requires GET.');
+  }
+  const { identity, target } = resolveWebPreviewPerformanceIdentity(searchParams);
+  return decorateWebPreviewTraceResult({ ...(await webPreviewPerformanceController.status(identity)) }, target);
+}
+
+async function startWebPreviewPerformanceTrace(
+  request: IncomingMessage,
+  searchParams: URLSearchParams,
+): Promise<Record<string, unknown>> {
+  if (request.method !== 'POST') {
+    throw new ApiRequestError(405, 'Web preview performance trace start requires POST.');
+  }
+  await readJsonBody(request);
+  const { identity, target } = resolveWebPreviewPerformanceIdentity(searchParams);
+  return decorateWebPreviewTraceResult({ ...(await webPreviewPerformanceController.start(identity)) }, target);
+}
+
+async function stopWebPreviewPerformanceTrace(
+  request: IncomingMessage,
+  searchParams: URLSearchParams,
+): Promise<Record<string, unknown>> {
+  if (request.method !== 'POST') {
+    throw new ApiRequestError(405, 'Web preview performance trace stop requires POST.');
+  }
+  await readJsonBody(request);
+  const { identity, target } = resolveWebPreviewPerformanceIdentity(searchParams);
+  const capture = await webPreviewPerformanceController.stop(identity);
+  return decorateWebPreviewTraceResult(webPreviewTraceCaptureResult(capture), target);
+}
+
+async function captureWebPreviewPerformanceTrace(
+  request: IncomingMessage,
+  searchParams: URLSearchParams,
+): Promise<Record<string, unknown>> {
+  if (request.method !== 'POST') {
+    throw new ApiRequestError(405, 'Web preview performance trace capture requires POST.');
+  }
+  const body = await readJsonBody(request);
+  const durationMs = normalizeTraceCaptureDurationMs(body);
+  const { identity, target } = resolveWebPreviewPerformanceIdentity(searchParams);
+  const capture = await webPreviewPerformanceController.capture(identity, durationMs);
+  return decorateWebPreviewTraceResult(webPreviewTraceCaptureResult(capture), target);
+}
+
+async function enableWebPreviewPerformanceTracing(
+  request: IncomingMessage,
+  searchParams: URLSearchParams,
+): Promise<Record<string, unknown>> {
+  if (request.method !== 'POST') {
+    throw new ApiRequestError(405, 'Web preview renderer tracing enablement requires POST.');
+  }
+  await readJsonBody(request);
+  const { identity, target } = resolveWebPreviewPerformanceIdentity(searchParams);
+  const inspectedUrl = await webPreviewPerformanceController.enableTracing(identity);
+  return {
+    inspectedUrl,
+    rendererTracingEnabled: true,
+    target: { ...webPreviewTargetPayload(target), state: 'attached' },
+  };
 }
 
 function readUnknownRecord(value: unknown): Record<string, unknown> {
@@ -2760,6 +2902,8 @@ export function decorateTraceResult(
     typeof result['completionError'] === 'string'
       ? truncateStringForJson(result['completionError'], MAX_TRACE_HTTP_STRING_BYTES)
       : undefined;
+  const browserMetrics = readBrowserTraceMetrics(result['browserMetrics']);
+  const webPreviewTrace = result['webPreviewTrace'] === true;
 
   const buildResult = (includedTraceCount: number): Record<string, unknown> => {
     const includedTraces = traces.slice(0, includedTraceCount);
@@ -2784,6 +2928,13 @@ export function decorateTraceResult(
       traceEventLimitReached: droppedTraceEventCount > 0,
       summary: summarizeTraces(includedTraces),
       perfettoMetadata,
+      ...(webPreviewTrace
+        ? {
+            browserMetrics,
+            browserSummary: summarizeBrowserTraces(includedTraces),
+            webPreviewTrace: true,
+          }
+        : {}),
     };
   };
 
@@ -2804,6 +2955,39 @@ export function decorateTraceResult(
     }
   }
   return boundedResult;
+}
+
+function readBrowserTraceMetrics(value: unknown): Record<string, number> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  const record = value as Record<string, unknown>;
+  const metrics: Record<string, number> = {};
+  for (const name of ['TaskDurationMs', 'ScriptDurationMs', 'LayoutDurationMs', 'LayoutCount', 'RecalcStyleCount']) {
+    const candidate = record[name];
+    if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= 0) {
+      metrics[name] = candidate;
+    }
+  }
+  return metrics;
+}
+
+function summarizeBrowserTraces(traces: readonly RecordedTrace[]): Record<string, number> {
+  let browserEventCount = 0;
+  let frameCount = 0;
+  let longTaskCount = 0;
+  let longestTaskMs = 0;
+  let rendererEventCount = 0;
+  for (const trace of traces) {
+    if (trace.trace.startsWith('Valdi.')) rendererEventCount++;
+    if (!trace.trace.startsWith('Browser.')) continue;
+    browserEventCount++;
+    if (trace.trace.startsWith('Browser.Frames.')) frameCount++;
+    if (trace.trace === 'Browser.MainThread.Task') {
+      const durationMs = Math.max(0, trace.endMicros - trace.startMicros) / 1000;
+      if (durationMs >= 50) longTaskCount++;
+      longestTaskMs = Math.max(longestTaskMs, durationMs);
+    }
+  }
+  return { browserEventCount, frameCount, longTaskCount, longestTaskMs, rendererEventCount };
 }
 
 function saturatingAdd(left: number, right: number): number {
@@ -2844,6 +3028,7 @@ export function readRecordedTraces(value: unknown): RecordedTrace[] {
       startMicros,
       endMicros,
       threadId,
+      ...(candidate['type'] === 1 ? { type: 1 } : {}),
     };
     traces.push(recordedTrace);
   }
@@ -2857,7 +3042,7 @@ export function summarizeTraces(traces: readonly RecordedTrace[]): RendererTrace
   const viewModelTriggers = new Map<string, number>();
 
   for (const trace of traces) {
-    if (isRendererViewModelChangeTrace(trace.trace)) {
+    if (trace.type === 1 || isRendererViewModelChangeTrace(trace.trace)) {
       instantTraceCount += 1;
     } else {
       durationTraceCount += 1;
@@ -2936,7 +3121,7 @@ export function buildPerfettoTracePayload(
   }
 
   for (const trace of traces) {
-    const isInstant = isRendererViewModelChangeTrace(trace.trace);
+    const isInstant = trace.type === 1 || isRendererViewModelChangeTrace(trace.trace);
     const event: PerfettoTraceEvent = {
       name: trace.trace,
       cat: PERFETTO_TRACE_CATEGORY,
@@ -3252,6 +3437,36 @@ async function handleApi(request: IncomingMessage, response: ServerResponse, url
       return;
     }
 
+    if (url.pathname === '/api/devtools/performance/snapshot') {
+      sendJson(response, 200, await inspectWebPreviewPerformanceSnapshot(request, url.searchParams));
+      return;
+    }
+
+    if (url.pathname === '/api/devtools/performance/trace/status') {
+      sendTraceJson(response, 200, await inspectWebPreviewPerformanceTraceStatus(request, url.searchParams));
+      return;
+    }
+
+    if (url.pathname === '/api/devtools/performance/trace/start') {
+      sendTraceJson(response, 200, await startWebPreviewPerformanceTrace(request, url.searchParams));
+      return;
+    }
+
+    if (url.pathname === '/api/devtools/performance/trace/stop') {
+      sendTraceJson(response, 200, await stopWebPreviewPerformanceTrace(request, url.searchParams));
+      return;
+    }
+
+    if (url.pathname === '/api/devtools/performance/trace/capture') {
+      sendTraceJson(response, 200, await captureWebPreviewPerformanceTrace(request, url.searchParams));
+      return;
+    }
+
+    if (url.pathname === '/api/devtools/performance/trace/enable') {
+      sendJson(response, 200, await enableWebPreviewPerformanceTracing(request, url.searchParams));
+      return;
+    }
+
     if (url.pathname === '/api/devtools/console/stream') {
       if (request.method !== 'GET') {
         sendJson(response, 405, { error: 'Valdi DevTools console streaming requires GET.' });
@@ -3364,7 +3579,10 @@ async function handleApi(request: IncomingMessage, response: ServerResponse, url
   } catch (error) {
     const status = error instanceof ApiRequestError ? error.statusCode : 500;
     const payload = clientErrorPayload(error);
-    if (url.pathname.startsWith('/api/performance/trace/')) {
+    if (
+      url.pathname.startsWith('/api/performance/trace/') ||
+      url.pathname.startsWith('/api/devtools/performance/trace/')
+    ) {
       sendTraceJson(response, status, payload);
     } else {
       sendJson(response, status, payload);
@@ -3509,6 +3727,11 @@ async function closeDebuggerServer(server: Server): Promise<void> {
   // Wait for in-flight profile setup/capture requests before inspecting the
   // active session so shutdown cannot orphan a session created late.
   await closeHttpServer(server);
+  try {
+    await webPreviewPerformanceController.close();
+  } catch (error) {
+    console.warn(`Could not stop the active web preview trace during shutdown: ${errorPayload(error).error}`);
+  }
   if (activeProfileSession) {
     try {
       await stopActiveProfileSession();
