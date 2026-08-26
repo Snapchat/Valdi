@@ -49,6 +49,43 @@ class ErrorResponseSocket extends EventEmitter {
   }
 }
 
+// net.Socket uses EventEmitter semantics, which this protocol test mirrors.
+// eslint-disable-next-line unicorn/prefer-event-target
+class CustomResponseSocket extends EventEmitter {
+  readonly remotePort = 13_591;
+  request: Record<string, unknown> | undefined;
+
+  write(data: Buffer, callback?: (error?: Error) => void): boolean {
+    const packet = JSON.parse(data.subarray(8).toString('utf8')) as Record<string, unknown>;
+    const event = packet['event'] as Record<string, unknown> | undefined;
+    const payloadFromClient = event?.['payload_from_client'] as Record<string, unknown> | undefined;
+    if (payloadFromClient) {
+      this.request = JSON.parse(String(payloadFromClient['payload_string'])) as Record<string, unknown>;
+      const customResponse = {
+        request: {
+          forward_client_payload: {
+            client_id: 1,
+            payload_string: JSON.stringify({
+              type: -1000,
+              requestId: this.request['requestId'],
+              body: { handled: true, data: { contractVersion: 1 } },
+            }),
+          },
+          request_id: 'device-response-1',
+        },
+      };
+      queueMicrotask(() => this.emit('data', encodeTestPacket(customResponse)));
+    }
+    callback?.();
+    return true;
+  }
+
+  destroy(): this {
+    this.emit('close');
+    return this;
+  }
+}
+
 describe('DaemonConnection', () => {
   it('surfaces runtime error responses from debugger requests', async () => {
     const socket = new ErrorResponseSocket();
@@ -56,6 +93,28 @@ describe('DaemonConnection', () => {
 
     try {
       await expectAsync(connection.dumpHeap('1', false)).toBeRejectedWithError('Heap dump failed.');
+    } finally {
+      connection.close();
+    }
+  });
+
+  it('sends custom debugger messages through the shared runtime request type', async () => {
+    const socket = new CustomResponseSocket();
+    const connection = new DaemonConnection(socket as unknown as Socket);
+
+    try {
+      const response = await connection.customRequest('1', 'ValdiDebuggerInput', { type: 'capabilities' }, 5000);
+
+      expect(socket.request).toEqual(
+        jasmine.objectContaining({
+          type: 1000,
+          body: {
+            identifier: 'ValdiDebuggerInput',
+            data: { type: 'capabilities' },
+          },
+        }),
+      );
+      expect(response).toEqual({ handled: true, data: { contractVersion: 1 } });
     } finally {
       connection.close();
     }

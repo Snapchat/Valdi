@@ -1,6 +1,6 @@
 // DOM event wiring and initial debugger boot sequence.
 elements.screen.addEventListener('click', event => {
-  selectPreviewNodeAtEvent(event);
+  void dispatchTapInput(event);
 });
 
 elements.screen.addEventListener('mousedown', event => {
@@ -83,7 +83,24 @@ elements.treeSearch.addEventListener('input', renderTree);
 elements.logSearch.addEventListener('input', renderLogs);
 
 elements.htmlPreviewRoot.addEventListener('click', event => {
-  selectHtmlPreviewNodeAtEvent(event);
+  void dispatchHtmlPreviewTapInput(event);
+});
+elements.htmlPreviewRoot.addEventListener(
+  'wheel',
+  event => {
+    void dispatchHtmlPreviewScrollInput(event);
+  },
+  { passive: false },
+);
+elements.htmlPreviewRoot.addEventListener('input', dispatchHtmlPreviewTextInput);
+elements.htmlPreviewRoot.addEventListener('keydown', event => {
+  void dispatchHtmlPreviewKeyInput(event);
+});
+elements.htmlPreviewRoot.addEventListener('focusin', event => {
+  void dispatchHtmlPreviewFocusInput(event, true);
+});
+elements.htmlPreviewRoot.addEventListener('focusout', event => {
+  void dispatchHtmlPreviewFocusInput(event, false);
 });
 
 document

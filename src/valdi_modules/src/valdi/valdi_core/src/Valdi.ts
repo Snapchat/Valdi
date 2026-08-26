@@ -16,6 +16,7 @@ import { jsx } from './JSXBootstrap';
 import { RootComponentsManager } from './RootComponentsManager';
 import { Style } from './Style';
 import { DaemonClientManager } from './debugging/DaemonClientManager';
+import { DebuggerInputMessageHandler } from './debugging/DebuggerInputMessageHandler';
 import { mergePartial } from './utils/PartialUtils';
 
 export interface Attributes {
@@ -738,17 +739,29 @@ declare class Proxy<T> {
 }
 
 let lastRootComponentsManager: RootComponentsManager | undefined;
+let debuggerInputMessageHandler: DebuggerInputMessageHandler | undefined;
 
 export function getLastRootComponentsManager(): RootComponentsManager | undefined {
   return lastRootComponentsManager;
 }
 
 export function makeRootComponentsManager(): IRootComponentsManager {
+  if (debuggerInputMessageHandler) {
+    jsx.removeCustomMessageHandler(debuggerInputMessageHandler);
+    debuggerInputMessageHandler = undefined;
+  }
   lastRootComponentsManager = new RootComponentsManager(
     jsx,
     runtime.isDebugEnabled ? jsx.daemonClientManager : undefined,
     runtime.submitDebugMessage,
   );
+  if (runtime.isDebugEnabled) {
+    const rootComponentsManager = lastRootComponentsManager;
+    debuggerInputMessageHandler = new DebuggerInputMessageHandler(
+      contextId => rootComponentsManager.rootComponents[contextId]?.renderer,
+    );
+    jsx.addCustomMessageHandler(debuggerInputMessageHandler);
+  }
   return lastRootComponentsManager;
 }
 

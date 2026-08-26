@@ -51,6 +51,7 @@ const state = {
   lastDebuggerRevision: 0,
   rootSnapshotImage: null,
   rootSnapshotRequestId: 0,
+  inputRefreshTimers: new Map(),
   manualDetach: false,
   followLatestTarget: true,
   exportObjectUrl: null,

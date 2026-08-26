@@ -410,6 +410,116 @@ describe('debugger server', () => {
     expect((JSON.parse(invalidPort.body) as { error: string }).error).toContain('between 1 and 65535');
   });
 
+  it('rejects non-integer input element identifiers before connecting to a daemon', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+    const inputUrl = new URL('/api/input', debuggerServer.url).toString();
+    const invalidBodies = [
+      JSON.stringify({ type: 'tap', elementId: '12' }),
+      JSON.stringify({ type: 'tap', elementId: '12px' }),
+      JSON.stringify({ type: 'tap', elementId: 12.5 }),
+      JSON.stringify({ type: 'tap', elementId: null }),
+      '{"type":"tap","elementId":1e400}',
+    ];
+
+    for (const body of invalidBodies) {
+      const result = await request(inputUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+
+      expect(result.statusCode).toBe(400);
+      expect((JSON.parse(result.body) as { error: string }).error).toBe('elementId must be a finite integer.');
+    }
+  });
+
+  it('rejects action-specific input fields and malformed ports before connecting to a daemon', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+    const baseUrl = new URL('/api/input', debuggerServer.url);
+    const cases = [
+      {
+        url: baseUrl.toString(),
+        body: { type: 'tap', elementId: 1, text: 'unexpected' },
+        error: "Field 'text' is not supported for tap input.",
+      },
+      {
+        url: baseUrl.toString(),
+        body: { type: 'text', elementId: 1, text: 'a', value: 'b' },
+        error: 'Use only one of text or value.',
+      },
+      {
+        url: baseUrl.toString(),
+        body: { type: 'key', elementId: 1, key: 'abc' },
+        error: 'key must be Enter, Return, Escape, Backspace, Delete, or one printable grapheme.',
+      },
+      {
+        url: new URL('/api/input?port=13591oops', debuggerServer.url).toString(),
+        body: { type: 'capabilities' },
+        error: 'Input port must be an integer between 1 and 65535.',
+      },
+    ];
+
+    for (const inputCase of cases) {
+      const result = await request(inputCase.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(inputCase.body),
+      });
+      expect(result.statusCode).toBe(400);
+      expect((JSON.parse(result.body) as { error: string }).error).toBe(inputCase.error);
+    }
+  });
+
+  it('returns explicit client errors for unsupported input methods and malformed bodies', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+    });
+    const inputUrl = new URL('/api/input', debuggerServer.url).toString();
+
+    const unsupportedMethod = await request(inputUrl, GET_REQUEST_OPTIONS);
+    expect(unsupportedMethod.statusCode).toBe(405);
+    expect((JSON.parse(unsupportedMethod.body) as { error: string }).error).toBe('Input dispatch requires POST.');
+
+    const malformedJson = await request(inputUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{',
+    });
+    expect(malformedJson.statusCode).toBe(400);
+    expect((JSON.parse(malformedJson.body) as { error: string }).error).toBe('Request body must contain valid JSON.');
+
+    for (const body of ['null', '[]', '"input"']) {
+      const malformedBody = await request(inputUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      expect(malformedBody.statusCode).toBe(400);
+      expect((JSON.parse(malformedBody.body) as { error: string }).error).toBe('Request body must be a JSON object.');
+    }
+
+    const oversizedBody = await request(inputUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ padding: 'a'.repeat(1024 * 1024) }),
+    });
+    expect(oversizedBody.statusCode).toBe(400);
+    expect((JSON.parse(oversizedBody.body) as { error: string }).error).toBe('Request body is too large.');
+  });
+
   it('decodes JSON only after joining split UTF-8 request bytes', async () => {
     debuggerServer = await startDebuggerServer({
       assetRoot,

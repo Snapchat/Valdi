@@ -155,7 +155,7 @@ Starts the Valdi [hotreloader](./start-about.md#prototype-quickly-with-hot-reloa
 `valdi debugger [--host host] [--port port] [--strict-port] [--json]`\
 Starts a local browser-based Valdi debugger web interface. The debugger attaches
 to running Valdi daemon targets and exposes live view hierarchy, preview,
-inspector data, element snapshots, heap dumps, and runtime logs. CPU profiling
+inspector data, element snapshots, heap dumps, input dispatch, and runtime logs. CPU profiling
 uses a separate Hermes debugger connection.
 
 - The default host is `127.0.0.1`; the debugger rejects non-loopback bind
@@ -165,6 +165,20 @@ uses a separate Hermes debugger connection.
 - Use `--strict-port` to fail instead of auto-selecting another port.
 - Use `--json` to print one machine-readable startup object with the selected
   `url`, `port`, `requestedPort`, and `portWasAutoSelected` fields.<br></br>
+
+`valdi inspect input <capabilities|query|tap|focus|text|key|scroll> [contextId]`\
+Queries or controls a running debug `valdi_application` through the default,
+cross-platform debugger input contract.
+
+- Target an element with `--element-id`, `--accessibility-id`, or `--selector`.
+- Use `--client` to choose a connected target and `--port 13591` for a
+  standalone macOS app; the default port `13592` targets in-app mobile clients.
+- Action-specific values include `--text`, `--key`, `--focused`/`--no-focused`,
+  `--selection-start`, `--selection-end`, `--x`, `--y`, `--delta-x`, and
+  `--delta-y`.
+- Each successful command writes exactly one JSON object to standard output.
+- Start with `capabilities`, then use `query` to discover stable
+  `accessibilityId` selectors and available actions.<br></br>
 
 `valdi test [--module module_name] [--target target_name]`\
 Executes the test(s) for the provided targets. Note that multiple modules OR targets can be provided to execute all tests simultaneously. If no modules or targets are provided, ALL tests within the current workspace will be ran.<br></br>

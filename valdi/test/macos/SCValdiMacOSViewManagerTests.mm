@@ -9,12 +9,107 @@
 #import <AppKit/AppKit.h>
 #import <XCTest/XCTest.h>
 #import "valdi/macos/SCValdiMacOSViewManager.h"
+#import "valdi/macos/SCValdiMacOSFunction.h"
+#import "valdi/macos/Views/SCValdiMacOSTextField.h"
 #import "valdi/macos/SCValdiObjCUtils.h"
+#include "valdi/runtime/Attributes/AttributeIds.hpp"
+#include "valdi_core/cpp/Attributes/ColorPalette.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
+#include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
+#include "valdi_core/cpp/Utils/ValueFunctionWithCallable.hpp"
 #include "valdi/runtime/Attributes/BoundAttributes.hpp"
+#include "valdi/runtime/Context/ViewNode.hpp"
+#include "valdi/runtime/Interfaces/IViewTransaction.hpp"
+#include "valdi/runtime/Utils/MainThreadManager.hpp"
+#include "valdi/runtime/Views/DeferredViewTransaction.hpp"
+#include "valdi/runtime/Views/ViewFactory.hpp"
+
+#include <vector>
 
 using namespace ValdiMacOS;
 using namespace Valdi;
+
+@interface NSView (SCValdiAccessibilityTests)
+- (BOOL)valdi_hasAttachedViewNode;
+- (BOOL)valdi_hasAttachedViewNodeHandle;
+- (BOOL)valdi_isAttachedToViewNode:(Valdi::ViewNode *)viewNode;
+- (void)valdi_didChangeValue:(id)value forAttribute:(NSString *)attributeName;
+- (void)valdi_setAccessibilityCategory:(nullable NSString *)category;
+- (void)valdi_setAccessibilityStateDisabled:(nullable NSNumber *)disabled;
+- (void)valdi_setAccessibilityStateSelected:(nullable NSNumber *)selected;
+@end
+
+namespace {
+
+class QueuedMainThreadDispatcher final : public IMainThreadDispatcher {
+public:
+    ~QueuedMainThreadDispatcher() override {
+        for (auto *function : _pendingFunctions) {
+            delete function;
+        }
+    }
+
+    void dispatch(DispatchFunction *function, bool sync) override {
+        if (sync) {
+            (*function)();
+            delete function;
+        } else {
+            _pendingFunctions.emplace_back(function);
+        }
+    }
+
+    size_t pendingCount() const {
+        return _pendingFunctions.size();
+    }
+
+    void runNext() {
+        auto *function = _pendingFunctions.front();
+        _pendingFunctions.erase(_pendingFunctions.begin());
+        (*function)();
+        delete function;
+    }
+
+private:
+    std::vector<DispatchFunction *> _pendingFunctions;
+};
+
+static Ref<ViewNode> makeTestViewNode(AttributeIds& attributeIds) {
+    return makeShared<ViewNode>(nullptr, attributeIds, nullptr, ConsoleLogger::getLogger());
+}
+
+} // namespace
+
+@interface SCValdiMacOSTextField (SCValdiMacOSTextFieldTests)
+- (NSDictionary *)_editTextEvent;
+- (NSDictionary *)_editTextEndEvent;
+- (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)commandSelector;
+- (void)valdi_setFocused:(nullable NSNumber *)focused;
+- (void)valdi_setSelection:(nullable NSArray<NSNumber *> *)selection;
+- (void)valdi_setOnChange:(nullable SCValdiMacOSFunction *)onChange;
+- (void)valdi_setOnWillChange:(nullable SCValdiMacOSFunction *)onWillChange;
+@end
+
+@interface SCValdiTrackingMacOSTextField : SCValdiMacOSTextField
+@property (nonatomic, readonly) NSMutableDictionary<NSString *, id> *changedValues;
+@end
+
+@implementation SCValdiTrackingMacOSTextField
+
+- (instancetype)initWithFrame:(NSRect)frameRect
+{
+    self = [super initWithFrame:frameRect];
+    if (self) {
+        _changedValues = [NSMutableDictionary new];
+    }
+    return self;
+}
+
+- (void)valdi_didChangeValue:(id)value forAttribute:(NSString *)attributeName
+{
+    self.changedValues[attributeName] = value;
+}
+
+@end
 
 @interface SCValdiMacOSViewManagerTests : XCTestCase
 @property (nonatomic, assign) ViewManager* viewManager;
@@ -77,6 +172,295 @@ using namespace Valdi;
 - (void)testGetPlatformType {
     Valdi::PlatformType type = self.viewManager->getPlatformType();
     XCTAssertEqual(type, Valdi::PlatformTypeMacOS, @"MacOS ViewManager reports PlatformTypeMacOS");
+}
+
+- (void)testAccessibilityCategoryExposesSemanticRoleAndRestoresNativeRole {
+    SCValdiMacOSTextField *textField = [[SCValdiMacOSTextField alloc] initWithFrame:NSMakeRect(0, 0, 100, 30)];
+    NSAccessibilityRole originalRole = textField.accessibilityRole;
+
+    [textField valdi_setAccessibilityCategory:@"button"];
+
+    XCTAssertTrue(textField.isAccessibilityElement);
+    XCTAssertEqualObjects(textField.accessibilityRole, NSAccessibilityButtonRole);
+
+    [textField valdi_setAccessibilityCategory:@"auto"];
+
+    XCTAssertEqualObjects(textField.accessibilityRole, originalRole);
+}
+
+- (void)testAccessibilityStateMapsToNativeEnabledAndSelectedState {
+    NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 100, 30)];
+
+    [view valdi_setAccessibilityStateDisabled:@YES];
+    [view valdi_setAccessibilityStateSelected:@YES];
+
+    XCTAssertFalse(view.isAccessibilityEnabled);
+    XCTAssertTrue(view.isAccessibilitySelected);
+
+    [view valdi_setAccessibilityStateDisabled:nil];
+    [view valdi_setAccessibilityStateSelected:nil];
+
+    XCTAssertTrue(view.isAccessibilityEnabled);
+    XCTAssertFalse(view.isAccessibilitySelected);
+}
+
+- (void)testRemovingAccessibilityDisabledPreservesDisabledControlState {
+    NSButton *button = [[NSButton alloc] initWithFrame:NSMakeRect(0, 0, 100, 30)];
+    button.enabled = NO;
+
+    [button valdi_setAccessibilityStateDisabled:@YES];
+    [button valdi_setAccessibilityStateDisabled:nil];
+
+    XCTAssertFalse(button.isAccessibilityEnabled);
+
+    button.enabled = YES;
+    [button valdi_setAccessibilityStateDisabled:@YES];
+    button.enabled = YES;
+    [button valdi_setAccessibilityStateDisabled:nil];
+
+    XCTAssertTrue(button.isAccessibilityEnabled);
+}
+
+- (void)testRetainedRootNativeViewDoesNotKeepViewNodeAlive {
+    auto factory = self.viewManager->createViewFactory(STRING_LITERAL("NSView"), nullptr);
+    auto view = factory->createView(nullptr, nullptr, false);
+    NSView *nativeView = fromValdiView(view);
+    AttributeIds attributeIds;
+    auto viewNode = makeTestViewNode(attributeIds);
+    auto weakViewNode = weakRef(viewNode.get());
+    auto transaction = self.viewManager->createViewTransaction(nullptr, false);
+
+    transaction->moveViewToTree(view, nullptr, viewNode.get());
+    XCTAssertTrue([nativeView valdi_isAttachedToViewNode:viewNode.get()]);
+
+    viewNode = nullptr;
+
+    XCTAssertTrue(weakViewNode.expired());
+    XCTAssertTrue([nativeView valdi_hasAttachedViewNodeHandle]);
+    XCTAssertFalse([nativeView valdi_hasAttachedViewNode]);
+    [nativeView valdi_didChangeValue:@"ignored" forAttribute:@"value"];
+}
+
+- (void)testDestroyingDetachedViewWrapperClearsNativeOverrideHandle {
+    auto factory = self.viewManager->createViewFactory(STRING_LITERAL("NSView"), nullptr);
+    auto view = factory->createView(nullptr, nullptr, false);
+    NSView *nativeView = fromValdiView(view);
+    AttributeIds attributeIds;
+    auto viewNode = makeTestViewNode(attributeIds);
+    auto transaction = self.viewManager->createViewTransaction(nullptr, false);
+
+    transaction->moveViewToTree(view, nullptr, viewNode.get());
+    XCTAssertTrue([nativeView valdi_isAttachedToViewNode:viewNode.get()]);
+
+    view = nullptr;
+
+    XCTAssertFalse([nativeView valdi_hasAttachedViewNodeHandle]);
+    XCTAssertFalse([nativeView valdi_hasAttachedViewNode]);
+}
+
+- (void)testRemoveWithClearDropsNativeOverrideHandle {
+    auto factory = self.viewManager->createViewFactory(STRING_LITERAL("NSView"), nullptr);
+    auto view = factory->createView(nullptr, nullptr, false);
+    NSView *nativeView = fromValdiView(view);
+    AttributeIds attributeIds;
+    auto viewNode = makeTestViewNode(attributeIds);
+    auto transaction = self.viewManager->createViewTransaction(nullptr, false);
+
+    transaction->moveViewToTree(view, nullptr, viewNode.get());
+    transaction->removeViewFromParent(view, nullptr, true);
+
+    XCTAssertFalse([nativeView valdi_hasAttachedViewNodeHandle]);
+    XCTAssertFalse([nativeView valdi_hasAttachedViewNode]);
+}
+
+- (void)testDeferredMoveLeavesOnlyExpiredWeakHandleAfterOperationRuns {
+    auto factory = self.viewManager->createViewFactory(STRING_LITERAL("NSView"), nullptr);
+    auto view = factory->createView(nullptr, nullptr, false);
+    NSView *nativeView = fromValdiView(view);
+    AttributeIds attributeIds;
+    auto viewNode = makeTestViewNode(attributeIds);
+    auto weakViewNode = weakRef(viewNode.get());
+    auto dispatcher = makeShared<QueuedMainThreadDispatcher>();
+    auto mainThreadManager = makeShared<MainThreadManager>(dispatcher);
+    auto transaction = makeShared<DeferredViewTransaction>(*self.viewManager, *mainThreadManager);
+
+    transaction->moveViewToTree(view, nullptr, viewNode.get());
+    transaction->flush(false);
+    viewNode = nullptr;
+
+    XCTAssertEqual(dispatcher->pendingCount(), 1u);
+    XCTAssertFalse(weakViewNode.expired());
+    XCTAssertFalse([nativeView valdi_hasAttachedViewNodeHandle]);
+
+    dispatcher->runNext();
+
+    XCTAssertTrue(weakViewNode.expired());
+    XCTAssertTrue([nativeView valdi_hasAttachedViewNodeHandle]);
+    XCTAssertFalse([nativeView valdi_hasAttachedViewNode]);
+    [nativeView valdi_didChangeValue:@"ignored" forAttribute:@"value"];
+}
+
+- (void)testDeferredRemovalIsSafeWhenViewNodeDiesBeforeDelivery {
+    auto factory = self.viewManager->createViewFactory(STRING_LITERAL("NSView"), nullptr);
+    auto view = factory->createView(nullptr, nullptr, false);
+    NSView *nativeView = fromValdiView(view);
+    AttributeIds attributeIds;
+    auto viewNode = makeTestViewNode(attributeIds);
+    auto directTransaction = self.viewManager->createViewTransaction(nullptr, false);
+    directTransaction->moveViewToTree(view, nullptr, viewNode.get());
+    auto dispatcher = makeShared<QueuedMainThreadDispatcher>();
+    auto mainThreadManager = makeShared<MainThreadManager>(dispatcher);
+    auto deferredTransaction = makeShared<DeferredViewTransaction>(*self.viewManager, *mainThreadManager);
+
+    deferredTransaction->removeViewFromParent(view, nullptr, true);
+    deferredTransaction->flush(false);
+    viewNode = nullptr;
+
+    XCTAssertEqual(dispatcher->pendingCount(), 1u);
+    XCTAssertTrue([nativeView valdi_hasAttachedViewNodeHandle]);
+    XCTAssertFalse([nativeView valdi_hasAttachedViewNode]);
+    [nativeView valdi_didChangeValue:@"ignored" forAttribute:@"value"];
+
+    dispatcher->runNext();
+
+    XCTAssertFalse([nativeView valdi_hasAttachedViewNodeHandle]);
+}
+
+- (void)testDeferredPoolEnqueueClearsNativeOverrideBeforeCallback {
+    auto factory = self.viewManager->createViewFactory(STRING_LITERAL("NSView"), nullptr);
+    auto view = factory->createView(nullptr, nullptr, false);
+    NSView *nativeView = fromValdiView(view);
+    AttributeIds attributeIds;
+    auto viewNode = makeTestViewNode(attributeIds);
+    auto directTransaction = self.viewManager->createViewTransaction(nullptr, false);
+    directTransaction->moveViewToTree(view, nullptr, viewNode.get());
+    auto dispatcher = makeShared<QueuedMainThreadDispatcher>();
+    auto mainThreadManager = makeShared<MainThreadManager>(dispatcher);
+    auto deferredTransaction = makeShared<DeferredViewTransaction>(*self.viewManager, *mainThreadManager);
+    bool callbackCalled = false;
+    bool handleWasCleared = false;
+
+    deferredTransaction->willEnqueueViewToPool(view, [&](View&) {
+        callbackCalled = true;
+        handleWasCleared = ![nativeView valdi_hasAttachedViewNodeHandle];
+    });
+    deferredTransaction->flush(false);
+
+    XCTAssertEqual(dispatcher->pendingCount(), 1u);
+    XCTAssertTrue([nativeView valdi_isAttachedToViewNode:viewNode.get()]);
+
+    dispatcher->runNext();
+
+    XCTAssertTrue(callbackCalled);
+    XCTAssertTrue(handleWasCleared);
+    XCTAssertFalse([nativeView valdi_hasAttachedViewNodeHandle]);
+}
+
+- (void)testPhysicalTextEditingAppliesWillChangeAndSynchronizesNativeOverrides {
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 320, 200)
+                                                   styleMask:NSWindowStyleMaskBorderless
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    SCValdiTrackingMacOSTextField *textField =
+        [[SCValdiTrackingMacOSTextField alloc] initWithFrame:NSMakeRect(10, 10, 200, 30)];
+    textField.stringValue = @"seed";
+    [textField valdi_setSelection:@[@1, @1]];
+    [window.contentView addSubview:textField];
+
+    __block NSDictionary *changeEvent = nil;
+    SCValdiMacOSFunction *onWillChange = [[SCValdiMacOSFunction alloc]
+        initWithBlock:^id(NSArray<id> *parameters) {
+            NSDictionary *event = parameters.firstObject;
+            NSString *uppercaseText = [event[@"text"] uppercaseString];
+            return @{
+                @"text": uppercaseText,
+                @"selectionStart": @(uppercaseText.length),
+                @"selectionEnd": @(uppercaseText.length),
+            };
+        }];
+    SCValdiMacOSFunction *onChange = [[SCValdiMacOSFunction alloc]
+        initWithBlock:^id(NSArray<id> *parameters) {
+            changeEvent = parameters.firstObject;
+            return nil;
+        }];
+    [textField valdi_setOnWillChange:onWillChange];
+    [textField valdi_setOnChange:onChange];
+
+    XCTAssertTrue([window makeFirstResponder:textField]);
+    NSText *editor = textField.currentEditor;
+    XCTAssertNotNil(editor);
+    editor.string = @"draft";
+    editor.selectedRange = NSMakeRange(5, 0);
+    [textField textDidChange:[NSNotification notificationWithName:NSControlTextDidChangeNotification object:textField]];
+
+    XCTAssertEqualObjects(textField.stringValue, @"DRAFT");
+    XCTAssertEqualObjects(editor.string, @"DRAFT");
+    XCTAssertEqual(editor.selectedRange.location, 5u);
+    XCTAssertEqualObjects(changeEvent[@"text"], @"DRAFT");
+    XCTAssertEqualObjects(textField.changedValues[@"value"], @"DRAFT");
+    XCTAssertEqualObjects(textField.changedValues[@"selection"], (@[@5, @5]));
+    XCTAssertEqualObjects(textField.changedValues[@"focused"], @YES);
+
+    [textField valdi_setFocused:@NO];
+    XCTAssertEqualObjects(textField.changedValues[@"focused"], @NO);
+    [textField valdi_setFocused:@YES];
+    XCTAssertEqual(textField.currentEditor.selectedRange.location, 5u);
+    XCTAssertEqual(textField.currentEditor.selectedRange.length, 0u);
+    [textField valdi_setFocused:@NO];
+    [window close];
+}
+
+- (void)testMacOSFunctionRequestsSynchronousReturnAndConvertsMaps {
+    ValueFunctionFlags receivedFlags = ValueFunctionFlagsNone;
+    auto cppFunction = makeShared<ValueFunctionWithCallable>(
+        [&receivedFlags](const ValueFunctionCallContext& callContext) -> Value {
+            receivedFlags = callContext.getFlags();
+            return ValueFromNSObject(@{
+                @"text": @"replacement",
+                @"selectionStart": @11,
+                @"selectionEnd": @11,
+            });
+        });
+    SCValdiMacOSFunction *function =
+        [[SCValdiMacOSFunction alloc] initWithCppInstance:(void *)cppFunction.get()];
+
+    NSDictionary *result = [function performWithParametersAndReturnValue:@[]];
+
+    XCTAssertNotNil(result);
+    XCTAssertEqualObjects(result[@"text"], @"replacement");
+    XCTAssertEqualObjects(result[@"selectionStart"], @11);
+    XCTAssertTrue((receivedFlags & ValueFunctionFlagsCallSync) != ValueFunctionFlagsNone);
+}
+
+- (void)testTextFieldChangeEventIncludesValueAndSelection {
+    SCValdiMacOSTextField *textField = [[SCValdiMacOSTextField alloc] initWithFrame:NSMakeRect(0, 0, 100, 30)];
+    textField.stringValue = @"draft";
+    NSDictionary *editTextEvent = [textField _editTextEvent];
+
+    XCTAssertEqualObjects(editTextEvent[@"text"], @"draft");
+    XCTAssertEqualObjects(editTextEvent[@"selectionStart"], @5);
+    XCTAssertEqualObjects(editTextEvent[@"selectionEnd"], @5);
+}
+
+- (void)testTextFieldEditEndEventIncludesUnknownReturnAndDismissReasons {
+    SCValdiMacOSTextField *unknownTextField =
+        [[SCValdiMacOSTextField alloc] initWithFrame:NSMakeRect(0, 0, 100, 30)];
+    XCTAssertEqualObjects([unknownTextField _editTextEndEvent][@"reason"], @0);
+
+    SCValdiMacOSTextField *returnTextField =
+        [[SCValdiMacOSTextField alloc] initWithFrame:NSMakeRect(0, 0, 100, 30)];
+    NSTextView *fieldEditor = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 100, 30)];
+
+    [returnTextField control:returnTextField textView:fieldEditor doCommandBySelector:@selector(insertNewline:)];
+
+    XCTAssertEqualObjects([returnTextField _editTextEndEvent][@"reason"], @1);
+
+    SCValdiMacOSTextField *dismissTextField =
+        [[SCValdiMacOSTextField alloc] initWithFrame:NSMakeRect(0, 0, 100, 30)];
+
+    [dismissTextField control:dismissTextField textView:fieldEditor doCommandBySelector:@selector(cancelOperation:)];
+
+    XCTAssertEqualObjects([dismissTextField _editTextEndEvent][@"reason"], @2);
 }
 
 @end

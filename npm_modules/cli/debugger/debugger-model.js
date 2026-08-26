@@ -371,20 +371,125 @@ function findNodeAtPoint(point, predicate = () => true) {
   return hits[0]?.node || null;
 }
 
-function findPreviewNodeAtEvent(event) {
+function findInputNodeAtEvent(event) {
   const point = pointFromScreenEvent(event);
   const overlayNode = event.target.closest('.overlay-node');
   const overlayTreeNode =
     overlayNode && elements.screen.contains(overlayNode) ? findNode(overlayNode.dataset.nodeId) : null;
-  return overlayTreeNode && getElementIdForNode(overlayTreeNode) !== null
-    ? overlayTreeNode
-    : findNodeAtPoint(point, node => getElementIdForNode(node) !== null);
+  const nodeWithElement =
+    overlayTreeNode && getElementIdForNode(overlayTreeNode) !== null
+      ? overlayTreeNode
+      : findNodeAtPoint(point, node => getElementIdForNode(node) !== null);
+  return { node: nodeWithElement, point };
 }
 
 function findOverlayNodeAtEvent(event) {
   const overlayNode = event.target.closest('.overlay-node');
   if (!overlayNode || !elements.screen.contains(overlayNode)) return null;
   return findNode(overlayNode.dataset.nodeId);
+}
+
+let debuggerInputDispatchTail = Promise.resolve(null);
+
+function captureDebuggerInputTarget() {
+  if (state.source !== 'daemon') return null;
+  const params = getSelectedTargetParams();
+  if (!params.clientId || !params.contextId || !Number.isFinite(params.port)) return null;
+  return Object.freeze({
+    port: params.port,
+    clientId: params.clientId,
+    contextId: params.contextId,
+  });
+}
+
+function debuggerInputTargetKey(target) {
+  return JSON.stringify([target.port, target.clientId, target.contextId]);
+}
+
+function debuggerInputTargetElementKey(target, elementId) {
+  return JSON.stringify([target.port, target.clientId, target.contextId, elementId]);
+}
+
+function isSelectedDebuggerInputTarget(target) {
+  const selectedTarget = captureDebuggerInputTarget();
+  return selectedTarget !== null && debuggerInputTargetKey(selectedTarget) === debuggerInputTargetKey(target);
+}
+
+function scheduleInputRefresh(target, delayMs) {
+  const key = debuggerInputTargetKey(target);
+  const previousTimer = state.inputRefreshTimers.get(key);
+  if (previousTimer) window.clearTimeout(previousTimer);
+  const timer = window.setTimeout(() => {
+    state.inputRefreshTimers.delete(key);
+    if (!isSelectedDebuggerInputTarget(target)) return;
+    loadRealSnapshot(target, { silent: true, preserveSelection: true });
+  }, delayMs);
+  state.inputRefreshTimers.set(key, timer);
+}
+
+async function dispatchDebuggerInput(target, payload, options) {
+  if (!target) {
+    addLog('warn', 'input', 'Attach to a live Valdi daemon target before dispatching input.');
+    return null;
+  }
+
+  try {
+    const result = await apiPost('/api/input', target, payload, { timeoutMs: 5000 });
+    const input = result.input || {};
+    if (input.handled) {
+      if (!options.quiet) {
+        const action = input.action ? ` via ${input.action}` : '';
+        addLog('info', 'input', `${payload.type} handled by #${input.elementId}${action}.`);
+      }
+      if (options.refresh !== false) {
+        scheduleInputRefresh(target, options.refreshDelayMs ?? 120);
+      }
+    } else if (!options.quiet) {
+      addLog('warn', 'input', input.message || `${payload.type} was not handled.`);
+    }
+    return input;
+  } catch (error) {
+    addLog('error', 'input', `${payload.type} failed: ${error.message}`);
+    return null;
+  }
+}
+
+function reserveDebuggerInput(target) {
+  let releaseReservation;
+  let cancelled = false;
+  const reservation = new Promise(resolve => {
+    releaseReservation = resolve;
+  });
+  const dispatch = debuggerInputDispatchTail
+    .catch(error => {
+      addLog('warn', 'input', `Continuing after a queued input failed: ${error?.message || String(error)}`);
+      return null;
+    })
+    .then(() => reservation)
+    .then(input => (input && !cancelled ? dispatchDebuggerInput(target, input.payload, input.options) : null));
+  debuggerInputDispatchTail = dispatch;
+  let released = false;
+  return Object.freeze({
+    dispatch(payload, options) {
+      if (!released) {
+        released = true;
+        releaseReservation({ payload, options });
+      }
+      return dispatch;
+    },
+    cancel() {
+      cancelled = true;
+      if (!released) {
+        released = true;
+        releaseReservation(null);
+      }
+      return dispatch;
+    },
+  });
+}
+
+function enqueueDebuggerInput(target, payload, options) {
+  return reserveDebuggerInput(target).dispatch(payload, options);
 }
 
 function getPageScrollTarget() {
@@ -439,16 +544,37 @@ function forwardPreviewWheelToPage(event) {
   });
 }
 
-function selectPreviewNodeAtEvent(event) {
+async function dispatchTapInput(event) {
   if (event.target.closest('.html-preview-root')) return;
   const overlaySelection = findOverlayNodeAtEvent(event);
-  const selectedPreviewNode = overlaySelection || findPreviewNodeAtEvent(event);
+  const { node, point } = findInputNodeAtEvent(event);
+  const selectedPreviewNode = overlaySelection || node;
+  const elementId = getElementIdForNode(node);
 
   if (selectedPreviewNode) {
     event.preventDefault();
     event.stopPropagation();
     selectPreviewNode(selectedPreviewNode);
   }
+
+  if (elementId === null) {
+    if (!selectedPreviewNode) {
+      addLog('warn', 'input', 'Click ignored because no Valdi element was under the cursor.');
+    }
+    return;
+  }
+
+  const target = captureDebuggerInputTarget();
+  await enqueueDebuggerInput(
+    target,
+    {
+      type: 'tap',
+      elementId,
+      x: point.x,
+      y: point.y,
+    },
+    {},
+  );
 }
 
 function isInteractiveNode(node) {

@@ -2,16 +2,46 @@ import { ElementFrame } from 'valdi_tsx/src/Geometry';
 import { Point, Size } from '../Geometry';
 import { IRenderedElement } from '../IRenderedElement';
 
+const MAX_RENDERED_ELEMENT_PARENT_WALK = 20000;
+
+enum ParentWalkStatus {
+  Completed,
+  Stopped,
+  Failed,
+}
+
+function walkParents(
+  element: IRenderedElement | undefined,
+  visitor: (element: IRenderedElement) => boolean,
+): ParentWalkStatus {
+  const visited = new Set<IRenderedElement>();
+  let current = element;
+  let remainingWork = MAX_RENDERED_ELEMENT_PARENT_WALK;
+  while (current) {
+    if (remainingWork === 0 || visited.has(current)) {
+      return ParentWalkStatus.Failed;
+    }
+    remainingWork -= 1;
+    visited.add(current);
+    if (!visitor(current)) {
+      return ParentWalkStatus.Stopped;
+    }
+    current = current.parent;
+  }
+  return ParentWalkStatus.Completed;
+}
+
 export namespace RenderedElementUtils {
   /**
    * Compute a relative position within the element tree by recursively looking through the parents
    */
   export function relativePositionTo(parent: IRenderedElement, child: IRenderedElement): Point | undefined {
-    let current: IRenderedElement | undefined = child;
     const position = { x: 0, y: 0 };
-    while (current) {
+    let found = false;
+    const status = walkParents(child, current => {
       if (current == parent) {
-        return position;
+        found = true;
+        return false;
       }
       const contentOffsetX = current.getAttribute('contentOffsetX') ?? 0;
       const contentOffsetY = current.getAttribute('contentOffsetY') ?? 0;
@@ -19,9 +49,9 @@ export namespace RenderedElementUtils {
       const translationY = current.getAttribute('translationY') ?? 0;
       position.x += current.frame.x - contentOffsetX + translationX;
       position.y += current.frame.y - contentOffsetY + translationY;
-      current = current.parent;
-    }
-    return undefined;
+      return true;
+    });
+    return found && status !== ParentWalkStatus.Failed ? position : undefined;
   }
   /**
    * Check if a relative position is within the bounds of a frame
@@ -53,11 +83,12 @@ export namespace RenderedElementUtils {
    * Returns undefined if the element is undefined.
    */
   export function rootElement(element: IRenderedElement | undefined): IRenderedElement | undefined {
-    let current = element;
-    while (current?.parent) {
-      current = current.parent;
-    }
-    return current;
+    let root: IRenderedElement | undefined;
+    const status = walkParents(element, current => {
+      root = current;
+      return true;
+    });
+    return status === ParentWalkStatus.Failed ? undefined : root;
   }
 
   /**
@@ -66,20 +97,14 @@ export namespace RenderedElementUtils {
    * Returns undefined if no element with a valid frame width is found.
    */
   export function rootElementWithFrame(element: IRenderedElement | undefined): IRenderedElement | undefined {
-    let current = element;
     let lastWithValidWidth: IRenderedElement | undefined;
-
-    while (current) {
+    const status = walkParents(element, current => {
       if (current.frame?.width) {
         lastWithValidWidth = current;
       }
-      if (!current.parent) {
-        break;
-      }
-      current = current.parent;
-    }
-
-    return lastWithValidWidth;
+      return true;
+    });
+    return status === ParentWalkStatus.Failed ? undefined : lastWithValidWidth;
   }
 
   /**
@@ -89,11 +114,9 @@ export namespace RenderedElementUtils {
    */
   export function absolutePosition(element: IRenderedElement | undefined): Point {
     const position = { x: 0, y: 0 };
-    let current = element;
-
-    while (current) {
+    const status = walkParents(element, current => {
       if (!current.frame) {
-        break;
+        return false;
       }
       // Only subtract contentOffset if it belongs to a parent (affecting the current element's position)
       // The element's own contentOffset does not affect its own absolute frame position
@@ -104,9 +127,8 @@ export namespace RenderedElementUtils {
       const translationY = current.getAttribute('translationY') ?? 0;
       position.x += current.frame.x - contentOffsetX + translationX;
       position.y += current.frame.y - contentOffsetY + translationY;
-      current = current.parent;
-    }
-
-    return position;
+      return true;
+    });
+    return status === ParentWalkStatus.Failed ? { x: 0, y: 0 } : position;
   }
 }

@@ -15,6 +15,7 @@ import {
 } from '../utils/daemonClient';
 import { getUserConfig, resolveFilePath } from '../utils/fileUtils';
 import { type CpuProfile, HERMES_PORT, HermesConnection, listHermesDevices } from '../utils/hermesClient';
+import { DebuggerInputType, sendDebuggerInput, validateDebuggerInputRequest } from './inputClient';
 
 const DEFAULT_HOST = process.env['VALDI_DEBUGGER_HOST'] || '127.0.0.1';
 const DEFAULT_PORT = Number.parseInt(process.env['VALDI_DEBUGGER_PORT'] || '8765', 10);
@@ -308,16 +309,21 @@ async function readJsonBody(request: IncomingMessage): Promise<Record<string, un
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
     byteLength += buffer.length;
     if (byteLength > 1024 * 1024) {
-      throw new Error('Request body is too large.');
+      throw new ApiRequestError(400, 'Request body is too large.');
     }
     chunks.push(buffer);
   }
 
   const raw = Buffer.concat(chunks, byteLength).toString('utf8');
   if (!raw.trim()) return {};
-  const parsed = JSON.parse(raw) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    throw new ApiRequestError(400, 'Request body must contain valid JSON.');
+  }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error('Request body must be a JSON object.');
+    throw new ApiRequestError(400, 'Request body must be a JSON object.');
   }
   return parsed as Record<string, unknown>;
 }
@@ -987,25 +993,7 @@ async function resolveTarget(
   contexts: RemoteContext[];
   context: RemoteContext;
 }> {
-  const clients = await conn.listConnectedClients();
-  if (clients.length === 0) {
-    throw new Error('No clients connected to this Valdi daemon.');
-  }
-
-  const requestedClientId = searchParams.get('clientId');
-  const firstClient = clients[0];
-  if (!firstClient) {
-    throw new Error('No clients connected to this Valdi daemon.');
-  }
-  let client = firstClient;
-  if (requestedClientId !== null) {
-    const requestedClient = clients.find(candidate => candidate.client_id === requestedClientId);
-    if (!requestedClient) {
-      throw new Error(`No connected Valdi client has id ${requestedClientId}.`);
-    }
-    client = requestedClient;
-  }
-
+  const { clients, client } = await resolveClient(searchParams, conn);
   const contexts = await conn.listContexts(client.client_id);
   if (contexts.length === 0) {
     throw new Error(`No Valdi contexts found for client ${client.client_id}.`);
@@ -1026,6 +1014,32 @@ async function resolveTarget(
   }
 
   return { clients, client, contexts, context };
+}
+
+async function resolveClient(
+  searchParams: URLSearchParams,
+  conn: DaemonConnection,
+): Promise<{ clients: DaemonConnectedClient[]; client: DaemonConnectedClient }> {
+  const clients = await conn.listConnectedClients();
+  if (clients.length === 0) {
+    throw new Error('No clients connected to this Valdi daemon.');
+  }
+
+  const requestedClientId = searchParams.get('clientId');
+  const firstClient = clients[0];
+  if (!firstClient) {
+    throw new Error('No clients connected to this Valdi daemon.');
+  }
+  let client = firstClient;
+  if (requestedClientId !== null) {
+    const requestedClient = clients.find(candidate => candidate.client_id === requestedClientId);
+    if (!requestedClient) {
+      throw new Error(`No connected Valdi client has id ${requestedClientId}.`);
+    }
+    client = requestedClient;
+  }
+
+  return { clients, client };
 }
 
 function flattenTargets(
@@ -1129,6 +1143,57 @@ async function inspectHeap(request: IncomingMessage, searchParams: URLSearchPara
       port,
       clientId: client.client_id,
       heap,
+    };
+  });
+}
+
+async function dispatchInput(
+  request: IncomingMessage,
+  searchParams: URLSearchParams,
+): Promise<Record<string, unknown>> {
+  if (request.method !== 'POST') {
+    throw new ApiRequestError(405, 'Input dispatch requires POST.');
+  }
+
+  const body = await readJsonBody(request);
+  const validationError = validateDebuggerInputRequest(body);
+  if (validationError) {
+    throw new ApiRequestError(400, validationError);
+  }
+  const inputType = body['type'] as DebuggerInputType;
+
+  const portValue = searchParams.get('port');
+  if (portValue !== null && !/^\d+$/.test(portValue)) {
+    throw new ApiRequestError(400, 'Input port must be an integer between 1 and 65535.');
+  }
+  const port = portValue === null ? STANDALONE_PORT : Number(portValue);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new ApiRequestError(400, 'Input port must be an integer between 1 and 65535.');
+  }
+  return await withConnection(port, async conn => {
+    const target =
+      inputType === DebuggerInputType.Capabilities
+        ? { ...(await resolveClient(searchParams, conn)), context: undefined }
+        : await resolveTarget(searchParams, conn);
+    const { client, context } = target;
+
+    const elementLabel = body['elementId'] === undefined ? 'none' : String(body['elementId']);
+    console.log(
+      `[input] dispatch type=${inputType} element=${elementLabel} client=${client.client_id} context=${context?.id ?? 'none'}`,
+    );
+    const result = await sendDebuggerInput(conn, client.client_id, {
+      ...body,
+      ...(context ? { contextId: context.id } : {}),
+    });
+    console.log(
+      `[input] result handled=${String(Boolean(result['handled']))} element=${String(result['elementId'] ?? 'none')} action=${String(result['action'] ?? 'none')}`,
+    );
+
+    return {
+      port,
+      clientId: client.client_id,
+      contextId: context?.id,
+      input: result,
     };
   });
 }
@@ -1356,6 +1421,11 @@ async function handleApi(request: IncomingMessage, response: ServerResponse, url
 
     if (url.pathname === '/api/heap') {
       sendJson(response, 200, await inspectHeap(request, url.searchParams));
+      return;
+    }
+
+    if (url.pathname === '/api/input') {
+      sendJson(response, 200, await dispatchInput(request, url.searchParams));
       return;
     }
 

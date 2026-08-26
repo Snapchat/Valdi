@@ -19,6 +19,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)bindColorAttribute:(NSString*)attributeName
     invalidateLayoutOnChange:(BOOL)invalidateLayoutOnChange
                     selector:(SEL)sel;
+- (void)bindAccessibilityAttributes;
 
 @end
 

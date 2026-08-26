@@ -51,6 +51,8 @@ export const enum DaemonMsgType {
   TAKE_ELEMENT_SNAPSHOT_RESPONSE = -4,
   DUMP_HEAP_REQUEST = 5,
   DUMP_HEAP_RESPONSE = -5,
+  CUSTOM_REQUEST = 1000,
+  CUSTOM_RESPONSE = -1000,
 }
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -131,6 +133,16 @@ export class DaemonConnection {
     socket.on('data', (data: Buffer) => this.onData(data));
     socket.on('close', () => this.rejectAllPending(new Error('Connection closed unexpectedly')));
     socket.on('error', err => this.rejectAllPending(err));
+  }
+
+  async customRequest(
+    clientId: string,
+    identifier: string,
+    data: Record<string, unknown>,
+    timeoutMs: number,
+  ): Promise<Record<string, unknown>> {
+    const resp = await this.forwardAndWait(clientId, DaemonMsgType.CUSTOM_REQUEST, { identifier, data }, timeoutMs);
+    return (resp['body'] ?? {}) as Record<string, unknown>;
   }
 
   private rejectAllPending(err: Error): void {
