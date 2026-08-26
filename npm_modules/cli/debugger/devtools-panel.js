@@ -4,6 +4,9 @@ const inspectedTargetNonce = query.get('targetNonce');
 const MAX_CONSOLE_ENTRIES = 500;
 const MAX_CONSOLE_ENTRY_CHARACTERS = 50_000;
 const MAX_CONSOLE_HISTORY_ENTRIES = 100;
+const MAX_PERFORMANCE_SAMPLES = 120;
+const MAX_PERFORMANCE_TIMELINE_ROWS = 120;
+const MAX_PERFORMANCE_SUMMARY_ROWS = 12;
 
 const state = {
   target: null,
@@ -31,6 +34,23 @@ const state = {
   consoleHistoryIndex: 0,
   consoleStream: null,
   consoleStreamTargetKey: null,
+  performance: {
+    data: null,
+    durationSeconds: 3,
+    error: null,
+    lastTrace: null,
+    navigationExpanded: false,
+    operationGeneration: 0,
+    ownerIdentity: null,
+    pending: false,
+    rendererTracingEnabled: false,
+    requestGeneration: 0,
+    samples: [],
+    snapshotPending: false,
+    traceActive: false,
+    traceScope: 'valdi',
+    traceSearch: '',
+  },
   error: null,
 };
 
@@ -57,6 +77,7 @@ const elements = {
   consoleMessages: document.getElementById('consoleMessages'),
   consoleForm: document.getElementById('consoleForm'),
   consoleInput: document.getElementById('consoleInput'),
+  performanceContent: document.getElementById('performanceContent'),
 };
 
 function escapeHtml(value) {
@@ -97,12 +118,98 @@ async function requestJson(path, params, options) {
   return payload;
 }
 
+function stopPerformanceOnPageHide() {
+  const identity = state.performance.ownerIdentity;
+  if (!identity) return;
+  const url = new URL('/api/devtools/performance/trace/stop', window.location.origin);
+  for (const [key, value] of Object.entries(identity)) url.searchParams.set(key, String(value));
+  void fetch(url, {
+    body: '{}',
+    headers: { 'Content-Type': 'application/json' },
+    keepalive: true,
+    method: 'POST',
+  }).catch(error => console.warn('Unable to stop the web preview performance trace while closing DevTools.', error));
+}
+
 function formatNumber(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return '—';
   return Number.isInteger(numeric)
     ? numeric.toLocaleString()
     : numeric.toLocaleString(undefined, { maximumFractionDigits: 1 });
+}
+
+function formatBytes(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return '—';
+  if (numeric < 1024) return `${formatNumber(numeric)} B`;
+  if (numeric < 1024 * 1024) return `${formatNumber(numeric / 1024)} KiB`;
+  return `${formatNumber(numeric / (1024 * 1024))} MiB`;
+}
+
+function formatDuration(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return '—';
+  if (numeric < 1) return `${formatNumber(numeric * 1000)} µs`;
+  if (numeric < 1000) return `${formatNumber(numeric)} ms`;
+  return `${formatNumber(numeric / 1000)} s`;
+}
+
+function formatUptime(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return '—';
+  if (numeric < 60_000) return `${formatNumber(numeric / 1000)} s`;
+  return `${formatNumber(numeric / 60_000)} min`;
+}
+
+function performanceIdentity(target = state.target) {
+  if (!target?.sessionId || !inspectedUrl || !inspectedTargetNonce) {
+    throw new Error('The selected web preview does not have a complete performance identity.');
+  }
+  return {
+    inspectedUrl,
+    sessionId: target.sessionId,
+    targetNonce: inspectedTargetNonce,
+  };
+}
+
+function samePerformanceIdentity(left, right) {
+  return Boolean(
+    left &&
+      right &&
+      left.sessionId === right.sessionId &&
+      left.inspectedUrl === right.inspectedUrl &&
+      left.targetNonce === right.targetNonce,
+  );
+}
+
+function performanceIdentityIsCurrent(identity) {
+  try {
+    return samePerformanceIdentity(identity, performanceIdentity());
+  } catch {
+    return false;
+  }
+}
+
+function performancePollingInputIsFocused() {
+  return ['performanceDurationInput', 'performanceTraceFilter'].includes(document.activeElement?.id);
+}
+
+function preparePerformanceForTargetChange() {
+  const perf = state.performance;
+  perf.requestGeneration++;
+  perf.operationGeneration++;
+  perf.snapshotPending = false;
+  perf.pending = false;
+  perf.data = null;
+  perf.lastTrace = null;
+  perf.rendererTracingEnabled = false;
+  perf.samples = [];
+  if (perf.traceActive || perf.ownerIdentity) {
+    perf.error = 'The previous web preview still owns a performance recording. Stop and retrieve it before switching.';
+    return;
+  }
+  perf.error = null;
 }
 
 function nodeAttributes(node) {
@@ -236,6 +343,7 @@ async function connectToInspectedApplication() {
       state.consoleEntries = [];
       state.consoleEntryKeys.clear();
       elements.consoleMessages.innerHTML = '';
+      preparePerformanceForTargetChange();
     }
     state.target = payload.target;
     elements.targetName.textContent = state.target.name || 'Valdi application';
@@ -304,8 +412,9 @@ async function refreshSnapshot() {
 function startRefreshTimer() {
   if (state.refreshTimer) window.clearInterval(state.refreshTimer);
   state.refreshTimer = window.setInterval(() => {
-    if (!state.autoRefresh || document.hidden || state.activeSection !== 'elements') return;
-    void refreshSnapshot();
+    if (!state.autoRefresh || document.hidden) return;
+    if (state.activeSection === 'elements') void refreshSnapshot();
+    if (state.activeSection === 'performance') void refreshPerformance({ silent: true });
   }, 1200);
 }
 
@@ -649,6 +758,528 @@ function queueHighlight(nodeIdValue) {
   );
 }
 
+function renderPerformanceMetric(label, value) {
+  return `<div class="metric-card"><div class="metric-label">${escapeHtml(label)}</div><div class="metric-value">${escapeHtml(value)}</div></div>`;
+}
+
+function recordPerformanceSample(data) {
+  const uptimeMs = Number(data?.uptimeMs);
+  if (!Number.isFinite(uptimeMs) || uptimeMs < 0) return;
+  const samples = state.performance.samples;
+  const previous = samples[samples.length - 1];
+  if (previous?.uptimeMs === uptimeMs) return;
+  if (previous && previous.uptimeMs > uptimeMs) samples.length = 0;
+  const sample = { uptimeMs };
+  for (const [property, value] of [
+    ['heapUsedBytes', data?.memory?.usedBytes],
+    ['layoutDurationMs', data?.mainThread?.layoutDurationMs],
+    ['resourceCount', data?.resourceCount],
+    ['scriptDurationMs', data?.mainThread?.scriptDurationMs],
+    ['taskDurationMs', data?.mainThread?.taskDurationMs],
+  ]) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) sample[property] = numeric;
+  }
+  samples.push(sample);
+  if (samples.length > MAX_PERFORMANCE_SAMPLES) {
+    samples.splice(0, samples.length - MAX_PERFORMANCE_SAMPLES);
+  }
+}
+
+function performanceGraphPath(points, minimum, maximum) {
+  if (!points.length) return '';
+  const firstTime = points[0].time;
+  const lastTime = points[points.length - 1].time;
+  const timeSpan = Math.max(lastTime - firstTime, 1);
+  const valueSpan = Math.max(maximum - minimum, 1);
+  return points
+    .map((point, index) => {
+      const x = points.length === 1 ? 100 : ((point.time - firstTime) / timeSpan) * 100;
+      const y = 27 - Math.max(0, Math.min(1, (point.value - minimum) / valueSpan)) * 23;
+      return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(' ');
+}
+
+function renderSampledPerformanceMetric(label, kind, property, formattedValue) {
+  const points = state.performance.samples
+    .filter(sample => Number.isFinite(sample[property]))
+    .map(sample => ({ time: sample.uptimeMs, value: sample[property] }));
+  if (!points.length) return renderPerformanceMetric(label, formattedValue);
+  const minimum = Math.min(...points.map(point => point.value));
+  const maximum = Math.max(...points.map(point => point.value));
+  const padding = Math.max((maximum - minimum) * 0.12, maximum * 0.015, 1);
+  const path = performanceGraphPath(points, Math.max(0, minimum - padding), maximum + padding);
+  return `
+    <article class="metric-card metric-card-chart">
+      <div class="metric-label">${escapeHtml(label)}</div>
+      <div class="metric-value">${escapeHtml(formattedValue)}</div>
+      <svg class="performance-sparkline ${escapeHtml(kind)}" viewBox="0 0 100 30" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(label)} over time">
+        <path class="performance-sparkline-baseline" d="M0 27H100" />
+        <path class="performance-sparkline-area" d="${path} L100 27 L0 27 Z" />
+        <path class="performance-sparkline-line" d="${path}" />
+      </svg>
+    </article>
+  `;
+}
+
+function performanceScopeMatches(trace, scope) {
+  const name = String(trace?.trace || '');
+  if (scope === 'valdi') return name.startsWith('Valdi.');
+  if (scope === 'browser') return name.startsWith('Browser.');
+  return name.startsWith('Valdi.') || name.startsWith('Browser.');
+}
+
+function filteredPerformanceTraces(result) {
+  const search = String(state.performance.traceSearch || '')
+    .trim()
+    .toLowerCase();
+  const traces = Array.isArray(result?.traces) ? result.traces : [];
+  return traces.filter(
+    trace =>
+      performanceScopeMatches(trace, state.performance.traceScope) &&
+      (!search ||
+        String(trace.trace || '')
+          .toLowerCase()
+          .includes(search)),
+  );
+}
+
+function performanceScopeCounts(traces) {
+  const counts = { all: 0, browser: 0, valdi: 0 };
+  for (const trace of traces) {
+    if (!performanceScopeMatches(trace, 'all')) continue;
+    counts.all++;
+    if (performanceScopeMatches(trace, 'valdi')) counts.valdi++;
+    if (performanceScopeMatches(trace, 'browser')) counts.browser++;
+  }
+  return counts;
+}
+
+function performanceLane(trace) {
+  const name = String(trace?.trace || '');
+  if (name.startsWith('Valdi.')) return 'valdi';
+  if (name.startsWith('Browser.Layout.')) return 'layout';
+  if (name.startsWith('Browser.Paint.')) return 'paint';
+  if (name.startsWith('Browser.Frames.')) return 'frames';
+  if (name.startsWith('Browser.GC.')) return 'gc';
+  return 'script';
+}
+
+function renderPerformanceTimeline(result) {
+  const traces = Array.isArray(result?.traces) ? result.traces : [];
+  const counts = performanceScopeCounts(traces);
+  const scopes = [
+    ['valdi', 'Valdi'],
+    ['browser', 'Browser'],
+    ['all', 'All'],
+  ];
+  const controls = `
+    <div class="performance-trace-filters">
+      <div class="performance-scope-group" role="group" aria-label="Trace event scope">
+        ${scopes
+          .map(
+            ([scope, label]) =>
+              `<button type="button" class="performance-scope-button${state.performance.traceScope === scope ? ' selected' : ''}" data-performance-scope="${scope}" aria-pressed="${state.performance.traceScope === scope ? 'true' : 'false'}">${label} <span>${escapeHtml(formatNumber(counts[scope]))}</span></button>`,
+          )
+          .join('')}
+      </div>
+      <input id="performanceTraceFilter" class="performance-trace-search" type="search" value="${escapeHtml(state.performance.traceSearch)}" placeholder="Filter trace names" aria-label="Filter trace names" />
+    </div>
+  `;
+  if (!traces.length) {
+    return `${controls}<div class="empty-state">Record an interaction to inspect browser and Valdi renderer events.</div>`;
+  }
+  const filtered = filteredPerformanceTraces(result);
+  if (!filtered.length) return `${controls}<div class="empty-state">No captured events match this filter.</div>`;
+
+  let firstTimestamp = Infinity;
+  let lastTimestamp = -Infinity;
+  for (const trace of filtered) {
+    firstTimestamp = Math.min(firstTimestamp, Number(trace.startMicros));
+    lastTimestamp = Math.max(lastTimestamp, Number(trace.endMicros));
+  }
+  const spanMicros = Math.max(lastTimestamp - firstTimestamp, 1000);
+  const displayed = filtered.slice(0, MAX_PERFORMANCE_TIMELINE_ROWS);
+  const rows = displayed
+    .map(trace => {
+      const startMicros = Number(trace.startMicros);
+      const durationMicros = Math.max(0, Number(trace.endMicros) - startMicros);
+      const offset = Math.max(0, Math.min(100, ((startMicros - firstTimestamp) / spanMicros) * 100));
+      const width = Math.max(0.65, Math.min(100 - offset, (durationMicros / spanMicros) * 100));
+      const duration = trace.type === 1 ? 'instant' : formatDuration(durationMicros / 1000);
+      const name = String(trace.trace || '').replace(/^Browser\./, '');
+      return `
+        <div class="performance-timeline-row" title="${escapeHtml(trace.trace)}">
+          <span class="performance-event-name">${escapeHtml(name)}</span>
+          <span class="performance-event-track"><span class="performance-event-bar ${performanceLane(trace)}" style="left:${offset.toFixed(3)}%;width:${width.toFixed(3)}%"></span></span>
+          <span class="performance-event-duration">${escapeHtml(duration)}</span>
+        </div>
+      `;
+    })
+    .join('');
+  const truncated =
+    filtered.length > displayed.length
+      ? `<div class="performance-caption">Showing ${formatNumber(displayed.length)} of ${formatNumber(filtered.length)} matching events. Export includes every bounded event.</div>`
+      : '';
+  return `
+    ${controls}
+    <div class="performance-legend">
+      <span class="performance-legend-item valdi">Valdi</span>
+      <span class="performance-legend-item script">JavaScript</span>
+      <span class="performance-legend-item layout">Layout</span>
+      <span class="performance-legend-item paint">Paint</span>
+      <span class="performance-legend-item frames">Frames</span>
+      <span class="performance-legend-item gc">GC</span>
+    </div>
+    <div class="performance-timeline">${rows}</div>
+    ${truncated}
+  `;
+}
+
+function renderPerformanceSummary(result) {
+  const grouped = new Map();
+  for (const trace of filteredPerformanceTraces(result)) {
+    const name = String(trace.trace || '');
+    const event = grouped.get(name) || { count: 0, durationMs: 0, name };
+    event.count++;
+    event.durationMs += Math.max(0, Number(trace.endMicros) - Number(trace.startMicros)) / 1000;
+    grouped.set(name, event);
+  }
+  const rows = Array.from(grouped.values())
+    .sort((left, right) => right.durationMs - left.durationMs || right.count - left.count)
+    .slice(0, MAX_PERFORMANCE_SUMMARY_ROWS)
+    .map(
+      event =>
+        `<tr><td>${escapeHtml(event.name)}</td><td>${escapeHtml(formatNumber(event.count))}</td><td>${escapeHtml(formatDuration(event.durationMs))}</td></tr>`,
+    )
+    .join('');
+  if (!rows) return '';
+  return `
+    <div class="utility-heading">Total captured duration by event</div>
+    <table class="performance-results-table"><thead><tr><th>Operation</th><th>Calls</th><th>Inclusive total</th></tr></thead><tbody>${rows}</tbody></table>
+  `;
+}
+
+function performanceButton(label, action, options = {}) {
+  return `<button type="button" class="performance-button${options.primary ? ' primary' : ''}" data-performance-action="${escapeHtml(action)}"${options.disabled ? ' disabled' : ''}>${escapeHtml(label)}</button>`;
+}
+
+function replacePerformanceContent(html) {
+  const contentScrollTop = elements.performanceContent.scrollTop;
+  const previousTimeline = elements.performanceContent.querySelector?.('.performance-timeline');
+  const timelineScrollLeft = previousTimeline?.scrollLeft ?? 0;
+  const timelineScrollTop = previousTimeline?.scrollTop ?? 0;
+  elements.performanceContent.innerHTML = html;
+  elements.performanceContent.scrollTop = contentScrollTop;
+  const nextTimeline = elements.performanceContent.querySelector?.('.performance-timeline');
+  if (nextTimeline) {
+    nextTimeline.scrollLeft = timelineScrollLeft;
+    nextTimeline.scrollTop = timelineScrollTop;
+  }
+}
+
+function renderPerformance(data = state.performance.data) {
+  const perf = state.performance;
+  if (!data) {
+    const error = perf.error ? `<div class="performance-error" role="alert">${escapeHtml(perf.error)}</div>` : '';
+    const ownerRecovery = perf.ownerIdentity
+      ? `<section class="performance-recorder-card"><div class="performance-recorder-heading"><strong>Previous web preview recording</strong><span class="performance-status recording" role="status" aria-live="polite">${perf.traceActive ? 'Recording' : 'Result pending'}</span></div><div class="performance-recorder-controls">${performanceButton('Stop and retrieve', 'trace-stop', { disabled: perf.pending, primary: true })}</div></section>`
+      : '';
+    replacePerformanceContent(
+      error || ownerRecovery
+        ? `${error}${ownerRecovery}`
+        : '<div class="empty-state">Loading web preview performance…</div>',
+    );
+    return;
+  }
+  perf.data = data;
+  recordPerformanceSample(data);
+  const browserMetrics = perf.lastTrace?.browserMetrics || {};
+  const browserSummary = perf.lastTrace?.browserSummary || {};
+  const metrics = [
+    renderSampledPerformanceMetric('JS heap', 'heap', 'heapUsedBytes', formatBytes(data.memory?.usedBytes)),
+    renderSampledPerformanceMetric(
+      'Main-thread time (page lifetime)',
+      'main-thread',
+      'taskDurationMs',
+      formatDuration(data.mainThread?.taskDurationMs),
+    ),
+    renderSampledPerformanceMetric(
+      'JavaScript time (page lifetime)',
+      'script',
+      'scriptDurationMs',
+      formatDuration(data.mainThread?.scriptDurationMs),
+    ),
+    renderSampledPerformanceMetric(
+      'Layout time (page lifetime)',
+      'layout',
+      'layoutDurationMs',
+      formatDuration(data.mainThread?.layoutDurationMs),
+    ),
+    renderSampledPerformanceMetric('Resources', 'resources', 'resourceCount', formatNumber(data.resourceCount)),
+    renderPerformanceMetric('Page uptime', formatUptime(data.uptimeMs)),
+  ];
+  if (perf.lastTrace) {
+    metrics.push(
+      renderPerformanceMetric('Captured events', formatNumber(perf.lastTrace.traceCount)),
+      renderPerformanceMetric('Long tasks', formatNumber(browserSummary.longTaskCount)),
+      renderPerformanceMetric('Layout passes', formatNumber(browserMetrics.LayoutCount)),
+    );
+  }
+  const hasTraceOwner = Boolean(perf.traceActive || perf.ownerIdentity);
+  const rendererStatus = perf.rendererTracingEnabled
+    ? '<span class="performance-tracing-badge enabled">Valdi renderer events enabled</span>'
+    : '<span class="performance-tracing-badge disabled">Valdi renderer events disabled</span>';
+  const rendererNotice = perf.rendererTracingEnabled
+    ? ''
+    : `<div class="performance-notice">Browser events can be recorded now. Valdi renderer events require reloading the inspected page; reloading can reset page state. ${performanceButton('Enable renderer events', 'enable-tracing', { disabled: perf.pending || hasTraceOwner })}</div>`;
+  const traceStatus = `<span class="performance-status${hasTraceOwner ? ' recording' : ''}" role="status" aria-live="polite">${perf.traceActive ? 'Recording' : perf.ownerIdentity ? 'Result pending' : 'Idle'}</span>`;
+  const traceCaption = perf.lastTrace
+    ? `<div class="performance-caption">${escapeHtml(formatNumber(perf.lastTrace.traceCount))} events · ${escapeHtml(formatDuration(perf.lastTrace.elapsedMs))}${perf.lastTrace.droppedTraceEventCount ? ` · ${escapeHtml(formatNumber(perf.lastTrace.droppedTraceEventCount))} dropped` : ''}</div>`
+    : '';
+  const paints = (Array.isArray(data.paints) ? data.paints : [])
+    .map(paint => `<tr><td>${escapeHtml(paint.name)}</td><td>${escapeHtml(formatDuration(paint.startTime))}</td></tr>`)
+    .join('');
+  replacePerformanceContent(`
+    <div class="metric-grid">${metrics.join('')}</div>
+    <div class="performance-caption">Main-thread, JavaScript, and layout counters are cumulative for the current page lifetime.</div>
+    ${perf.error ? `<div class="performance-error" role="alert">${escapeHtml(perf.error)}</div>` : ''}
+    <section class="performance-recorder-card">
+      <div class="performance-recorder-heading"><div><strong>Rendering and main-thread trace</strong>${rendererStatus}</div>${traceStatus}</div>
+      <div class="performance-recorder-controls">
+        <label class="performance-duration">Duration <input id="performanceDurationInput" type="number" min="0.1" max="15" step="0.5" value="${escapeHtml(perf.durationSeconds)}" /> s</label>
+        ${performanceButton('Start', 'trace-start', { disabled: perf.pending || hasTraceOwner })}
+        ${performanceButton('Stop', 'trace-stop', { disabled: perf.pending || !hasTraceOwner, primary: hasTraceOwner })}
+        ${performanceButton('Capture', 'trace-capture', { disabled: perf.pending || hasTraceOwner, primary: !hasTraceOwner })}
+        ${performanceButton('Export trace', 'trace-export', { disabled: !perf.lastTrace })}
+      </div>
+      ${rendererNotice}
+      ${traceCaption}
+      ${renderPerformanceTimeline(perf.lastTrace)}
+      ${renderPerformanceSummary(perf.lastTrace)}
+    </section>
+    <details class="performance-navigation"${perf.navigationExpanded ? ' open' : ''}>
+      <summary>Initial page-load milestones</summary>
+      <div class="performance-caption">DOM ready ${escapeHtml(formatDuration(data.navigation?.domContentLoadedMs))} · Page load ${escapeHtml(formatDuration(data.navigation?.loadMs))} · Transferred ${escapeHtml(formatBytes(data.transferSize))}</div>
+      ${paints ? `<table class="performance-results-table"><tbody>${paints}</tbody></table>` : '<div class="empty-state">No paint milestones have been reported.</div>'}
+    </details>
+  `);
+}
+
+function buildPerformanceTraceExport(result) {
+  const traces = Array.isArray(result?.traces) ? result.traces : [];
+  const firstTimestamp = traces.reduce(
+    (minimum, trace) => Math.min(minimum, Number(trace.startMicros)),
+    Number(traces[0]?.startMicros || 0),
+  );
+  const threadIds = Array.from(new Set(traces.map(trace => Number(trace.threadId)))).slice(0, 256);
+  const traceEvents = [
+    { args: { name: 'Valdi web preview' }, name: 'process_name', ph: 'M', pid: 1 },
+    ...threadIds.map(threadId => ({
+      args: { name: `Thread ${threadId}` },
+      name: 'thread_name',
+      ph: 'M',
+      pid: 1,
+      tid: threadId,
+    })),
+  ];
+  for (const trace of traces) {
+    const instant = trace.type === 1;
+    const event = {
+      cat: String(trace.trace || '').startsWith('Valdi.') ? 'valdi' : 'browser',
+      name: String(trace.trace || ''),
+      ph: instant ? 'i' : 'X',
+      pid: 1,
+      tid: Number(trace.threadId),
+      ts: Number(trace.startMicros) - firstTimestamp,
+    };
+    if (instant) event.s = 't';
+    else event.dur = Math.max(0, Number(trace.endMicros) - Number(trace.startMicros));
+    traceEvents.push(event);
+  }
+  return {
+    displayTimeUnit: 'ms',
+    metadata: result?.perfettoMetadata || {},
+    traceEvents,
+  };
+}
+
+function downloadPerformanceTrace(result) {
+  const blob = new Blob([JSON.stringify(buildPerformanceTraceExport(result), null, 2)], {
+    type: 'application/json',
+  });
+  const artifactUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = artifactUrl;
+  link.download = `valdi-web-preview-${Date.now()}.trace.json`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(artifactUrl), 1000);
+}
+
+async function refreshPerformance(options = {}) {
+  if (options.silent && performancePollingInputIsFocused()) return;
+  if (!state.target || state.performance.pending || state.performance.snapshotPending) return;
+  const perf = state.performance;
+  const identity = performanceIdentity();
+  const requestGeneration = ++perf.requestGeneration;
+  const requestIsCurrent = () => requestGeneration === perf.requestGeneration && performanceIdentityIsCurrent(identity);
+  perf.snapshotPending = true;
+  if (!options.silent && !perf.data) renderPerformance();
+  try {
+    const [data, status] = await Promise.all([
+      requestJson('/api/devtools/performance/snapshot', identity, {}),
+      requestJson('/api/devtools/performance/trace/status', identity, {}),
+    ]);
+    if (status.completionError) {
+      try {
+        await requestJson('/api/devtools/performance/trace/stop', identity, { body: {} });
+      } catch {
+        // Stop surfaces the retained completion error after clearing it on the server.
+      }
+      if (requestIsCurrent() && (!perf.ownerIdentity || samePerformanceIdentity(perf.ownerIdentity, identity))) {
+        perf.traceActive = false;
+        perf.ownerIdentity = null;
+      }
+      throw new Error(status.completionError);
+    }
+    let completedTrace = null;
+    if (status.completedRecordingAvailable) {
+      completedTrace = await requestJson('/api/devtools/performance/trace/stop', identity, { body: {} });
+    }
+    if (!requestIsCurrent()) return;
+    perf.data = data;
+    if (!perf.ownerIdentity || samePerformanceIdentity(perf.ownerIdentity, identity)) {
+      perf.traceActive = Boolean(status.recording);
+      perf.ownerIdentity = perf.traceActive ? identity : null;
+    }
+    perf.rendererTracingEnabled = Boolean(data.rendererTracingEnabled || status.rendererTracingEnabled);
+    if (completedTrace) {
+      perf.traceActive = false;
+      perf.ownerIdentity = null;
+      perf.lastTrace = completedTrace;
+    }
+    perf.error = null;
+    renderPerformance(data);
+  } catch (error) {
+    if (requestIsCurrent()) {
+      perf.error = error instanceof Error ? error.message : String(error);
+      renderPerformance(perf.data);
+    }
+  } finally {
+    if (requestIsCurrent()) perf.snapshotPending = false;
+  }
+}
+
+async function runPerformanceAction(action) {
+  const perf = state.performance;
+  if (action === 'refresh') {
+    await refreshPerformance();
+    return;
+  }
+  if (action === 'trace-export') {
+    if (perf.lastTrace) downloadPerformanceTrace(perf.lastTrace);
+    return;
+  }
+  if (!state.target || perf.pending) return;
+  if (['enable-tracing', 'trace-capture', 'trace-start'].includes(action) && (perf.traceActive || perf.ownerIdentity)) {
+    return;
+  }
+  if (
+    action === 'enable-tracing' &&
+    !window.confirm('Enable Valdi renderer events? This reloads the inspected page and can reset page state.')
+  ) {
+    return;
+  }
+
+  const selectedIdentity = performanceIdentity();
+  const identity = action === 'trace-stop' && perf.ownerIdentity ? perf.ownerIdentity : selectedIdentity;
+  perf.requestGeneration++;
+  perf.snapshotPending = false;
+  const operationGeneration = ++perf.operationGeneration;
+  const selectedTargetIsCurrent = () =>
+    operationGeneration === perf.operationGeneration && performanceIdentityIsCurrent(selectedIdentity);
+  const operationOwnsTrace = () => samePerformanceIdentity(perf.ownerIdentity, identity);
+  let refreshSelectedTarget = false;
+  perf.pending = true;
+  perf.error = null;
+  renderPerformance(perf.data);
+  try {
+    if (action === 'enable-tracing') {
+      await requestJson('/api/devtools/performance/trace/enable', identity, { body: {} });
+      if (!selectedTargetIsCurrent()) return;
+      perf.rendererTracingEnabled = true;
+      addConsoleEntry('info', 'Reloaded the inspected page with Valdi renderer events enabled.');
+    } else {
+      const operation = action.slice('trace-'.length);
+      const durationMs = Math.round(Math.max(0.1, Math.min(15, Number(perf.durationSeconds) || 3)) * 1000);
+      if (operation === 'capture') {
+        perf.traceActive = true;
+        perf.ownerIdentity = identity;
+        renderPerformance(perf.data);
+      }
+      const result = await requestJson(`/api/devtools/performance/trace/${operation}`, identity, {
+        body: operation === 'capture' ? { durationMs } : {},
+      });
+      if (operation === 'start') {
+        if (!selectedTargetIsCurrent()) {
+          if (result.recording) {
+            try {
+              await requestJson('/api/devtools/performance/trace/stop', identity, { body: {} });
+            } catch (cleanupError) {
+              if (!perf.ownerIdentity || samePerformanceIdentity(perf.ownerIdentity, identity)) {
+                perf.traceActive = true;
+                perf.ownerIdentity = identity;
+                perf.error = `The previous web preview still owns a performance recording: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`;
+                if (state.activeSection === 'performance') renderPerformance(perf.data);
+              }
+            }
+          }
+          return;
+        }
+        perf.traceActive = Boolean(result.recording);
+        perf.ownerIdentity = perf.traceActive ? identity : null;
+        refreshSelectedTarget = true;
+      } else {
+        const completedOwnedTrace = ['capture', 'stop'].includes(operation) && operationOwnsTrace();
+        const completedPreviousOwner = completedOwnedTrace && !samePerformanceIdentity(identity, selectedIdentity);
+        if (completedOwnedTrace) {
+          perf.traceActive = false;
+          perf.ownerIdentity = null;
+        }
+        if (completedPreviousOwner) {
+          perf.data = null;
+          perf.lastTrace = null;
+          perf.rendererTracingEnabled = false;
+          perf.samples = [];
+        }
+        if (selectedTargetIsCurrent() && !completedPreviousOwner) {
+          perf.traceActive = false;
+          perf.ownerIdentity = null;
+          perf.lastTrace = result;
+        }
+        refreshSelectedTarget = selectedTargetIsCurrent();
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (selectedTargetIsCurrent() || operationOwnsTrace()) {
+      perf.error = message;
+      if (state.activeSection === 'performance') renderPerformance(perf.data);
+    } else {
+      console.warn('Ignoring a stale web preview performance action error.', error);
+    }
+  } finally {
+    if (selectedTargetIsCurrent()) {
+      perf.pending = false;
+      if (state.activeSection === 'performance') renderPerformance(perf.data);
+    }
+  }
+  if (refreshSelectedTarget && selectedTargetIsCurrent() && state.target) {
+    await refreshPerformance({ silent: true });
+  }
+}
+
 function setActiveSection(section) {
   state.activeSection = section;
   for (const tab of elements.mainTabs) {
@@ -661,6 +1292,7 @@ function setActiveSection(section) {
   }
   if (section === 'console') elements.consoleInput.focus();
   if (section === 'elements') void refreshSnapshot();
+  if (section === 'performance') void refreshPerformance();
 }
 
 function setActiveDetail(detail) {
@@ -823,7 +1455,46 @@ function wireEvents() {
   for (const tab of elements.detailTabs) {
     tab.addEventListener('click', () => setActiveDetail(tab.dataset.detail));
   }
-  elements.refreshButton.addEventListener('click', () => void refreshSnapshot());
+  elements.refreshButton.addEventListener('click', () => {
+    if (state.activeSection === 'performance') void refreshPerformance();
+    else void refreshSnapshot();
+  });
+  for (const button of document.querySelectorAll('.section-header [data-performance-action]')) {
+    button.addEventListener('click', () => void runPerformanceAction(button.dataset.performanceAction));
+  }
+  elements.performanceContent.addEventListener('click', event => {
+    const scope = event.target.closest('[data-performance-scope]');
+    if (scope) {
+      state.performance.traceScope = scope.dataset.performanceScope;
+      renderPerformance();
+      return;
+    }
+    const button = event.target.closest('[data-performance-action]');
+    if (button && !button.disabled) void runPerformanceAction(button.dataset.performanceAction);
+  });
+  elements.performanceContent.addEventListener('input', event => {
+    if (event.target.id === 'performanceDurationInput') {
+      state.performance.durationSeconds = Math.max(0.1, Math.min(15, Number(event.target.value) || 3));
+      return;
+    }
+    if (event.target.id !== 'performanceTraceFilter') return;
+    const selectionStart = event.target.selectionStart;
+    const selectionEnd = event.target.selectionEnd;
+    state.performance.traceSearch = event.target.value;
+    renderPerformance();
+    const filter = document.getElementById('performanceTraceFilter');
+    filter?.focus();
+    if (selectionStart !== null && selectionEnd !== null) filter?.setSelectionRange(selectionStart, selectionEnd);
+  });
+  elements.performanceContent.addEventListener(
+    'toggle',
+    event => {
+      if (event.target?.tagName === 'DETAILS' && event.target.classList.contains('performance-navigation')) {
+        state.performance.navigationExpanded = event.target.open;
+      }
+    },
+    true,
+  );
   elements.autoRefreshToggle.addEventListener('change', () => {
     state.autoRefresh = elements.autoRefreshToggle.checked;
     if (state.autoRefresh) {
@@ -905,9 +1576,13 @@ function wireEvents() {
       applyTheme(event.data.theme);
     }
   });
-  window.addEventListener('pagehide', stopConsoleStream);
+  window.addEventListener('pagehide', () => {
+    stopConsoleStream();
+    stopPerformanceOnPageHide();
+  });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && state.activeSection === 'elements') void refreshSnapshot();
+    if (!document.hidden && state.activeSection === 'performance') void refreshPerformance({ silent: true });
   });
 }
 

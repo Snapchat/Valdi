@@ -21,7 +21,7 @@ the CLI package.
 - `debugger-actions.js`: UI actions, command prompt handling, auto-refresh, and externally driven debugger actions.
 - `debugger-session.js`: `sessionStorage` restore/persist for reload-friendly debugger state.
 - `debugger-bootstrap.js`: DOM event wiring and boot sequence.
-- `devtools-panel.html`, `devtools-panel.css`, and `devtools-panel.js`: the focused Chromium Elements and Console panel embedded by the generated extension.
+- `devtools-panel.html`, `devtools-panel.css`, and `devtools-panel.js`: the focused Chromium Elements, Console, and bounded Performance panel embedded by the generated extension.
 
 Scripts are loaded as classic browser scripts in the order listed in
 `index.html`. There is no module loader or bundler for this frontend; shared
@@ -71,7 +71,9 @@ requested duration from 100 milliseconds through 15 seconds; manually started
 recordings have a 15-second watchdog. An undelivered completed result is kept
 for one minute. The complete response is limited
 to 4 MiB and contains one normalized trace list plus export metadata—never a
-duplicate raw or Perfetto event list.
+duplicate raw or Perfetto event list. The panel shows at most 120 graph samples,
+120 timeline rows, and 12 grouped summary rows. Its only trace filters are
+Valdi, Browser, and All; Chrome Trace JSON is assembled only when exported.
 
 The Data section discovers target-owned providers through a generic custom
 message contract. The persistence module registers its bounded web snapshot as

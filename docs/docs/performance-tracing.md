@@ -28,6 +28,32 @@ The debugger proxies these operations through `/api/performance/trace/status`,
 `start`, `stop`, and `capture`; the application keeps ownership of the recorder,
 so captures continue to work across the loopback debugger HTTP connection.
 
+#### Web preview traces
+
+When `valdi debugger` is attached to an exact loopback web preview, the
+integrated DevTools **Performance** panel can sample navigation, resource, heap,
+and main-thread metrics. It can also record one global Chromium trace at a
+time. The timeline filters are **Valdi**, **Browser**, and **All**. Enabling
+Valdi renderer events reloads the inspected page with the explicit tracing
+query parameters; browser events remain available without that reload.
+
+Web capture operations use the separate
+`/api/devtools/performance/trace/status`, `start`, `stop`, `capture`, and
+`enable` routes. They do not replace the daemon-backed `/api/performance/*`
+routes described above. Every web request is bound to the exact inspected
+`sessionId`, `inspectedUrl`, and per-tab `targetNonce`; a changed or incomplete
+identity fails closed.
+
+One-shot web captures run for their requested duration from 100 milliseconds
+through 15 seconds. Manually started recordings automatically stop after a
+15-second watchdog. Normalization happens as CDP events arrive, retaining at
+most 10,000 events with trace names no larger than
+2 KiB. The complete JSON response is limited to 4 MiB, and an automatically
+completed result remains retrievable for one minute. Responses contain the
+bounded normalized trace list and export metadata, not a second raw or
+Perfetto event list. The panel constructs Chrome Trace JSON only when you
+choose **Export trace**.
+
 > [!NOTE]
 > Please make sure to add `//src/valdi_modules/src/valdi/benchmarking` to the `deps` attribute of the `valdi_module()` call in your module's `BUILD.bazel`.
 

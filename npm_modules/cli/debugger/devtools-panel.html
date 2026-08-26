@@ -10,8 +10,39 @@
     <div class="devtools-app">
       <header class="main-toolbar">
         <nav class="main-tabs" aria-label="Valdi development tools" role="tablist">
-          <button class="main-tab selected" data-section="elements" role="tab" aria-selected="true">Elements</button>
-          <button class="main-tab" data-section="console" role="tab" aria-selected="false">Console</button>
+          <button
+            id="elementsTab"
+            type="button"
+            class="main-tab selected"
+            data-section="elements"
+            role="tab"
+            aria-controls="elementsSection"
+            aria-selected="true"
+          >
+            Elements
+          </button>
+          <button
+            id="performanceTab"
+            type="button"
+            class="main-tab"
+            data-section="performance"
+            role="tab"
+            aria-controls="performanceSection"
+            aria-selected="false"
+          >
+            Performance
+          </button>
+          <button
+            id="consoleTab"
+            type="button"
+            class="main-tab"
+            data-section="console"
+            role="tab"
+            aria-controls="consoleSection"
+            aria-selected="false"
+          >
+            Console
+          </button>
         </nav>
         <div class="toolbar-spacer"></div>
         <button id="refreshButton" class="icon-button" title="Refresh inspected application" aria-label="Refresh">
@@ -31,7 +62,13 @@
       </div>
 
       <main class="main-content">
-        <section id="elementsSection" class="section selected" data-panel="elements">
+        <section
+          id="elementsSection"
+          class="section selected"
+          data-panel="elements"
+          role="tabpanel"
+          aria-labelledby="elementsTab"
+        >
           <div class="tree-pane">
             <div class="filter-toolbar">
               <svg class="filter-icon" viewBox="0 0 20 20" aria-hidden="true">
@@ -77,7 +114,29 @@
           </footer>
         </section>
 
-        <section id="consoleSection" class="section console-section" data-panel="console">
+        <section
+          id="performanceSection"
+          class="section utility-section"
+          data-panel="performance"
+          role="tabpanel"
+          aria-labelledby="performanceTab"
+        >
+          <div class="section-header">
+            <span>Web preview performance</span>
+            <button type="button" class="text-button" data-performance-action="refresh">Refresh</button>
+          </div>
+          <div id="performanceContent" class="utility-content">
+            <div class="empty-state">Open Performance to inspect the selected web preview.</div>
+          </div>
+        </section>
+
+        <section
+          id="consoleSection"
+          class="section console-section"
+          data-panel="console"
+          role="tabpanel"
+          aria-labelledby="consoleTab"
+        >
           <div id="consoleMessages" class="console-messages"></div>
           <form id="consoleForm" class="console-prompt">
             <span class="console-chevron">›</span>

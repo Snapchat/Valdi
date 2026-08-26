@@ -602,3 +602,526 @@ describe('integrated DevTools console panel', () => {
     ]);
   });
 });
+
+interface DevToolsPerformancePanel {
+  document: { activeElement: { id?: string } | null };
+  performanceContent: {
+    innerHTML: string;
+    scrollTop: number;
+    querySelector(selector: string): { scrollLeft: number; scrollTop: number } | null;
+  };
+  state: {
+    activeSection: string;
+    performance: {
+      data: Record<string, unknown> | null;
+      durationSeconds: number;
+      error: string | null;
+      lastTrace: Record<string, unknown> | null;
+      ownerIdentity: Record<string, string> | null;
+      pending: boolean;
+      samples: Array<Record<string, number>>;
+      snapshotPending: boolean;
+      traceActive: boolean;
+      traceScope: string;
+      traceSearch: string;
+    };
+    target: { id: string; sessionId: string } | null;
+  };
+  buildPerformanceTraceExport(result: Record<string, unknown>): { traceEvents: Array<Record<string, unknown>> };
+  dispatchWindowEvent(type: string): void;
+  preparePerformanceForTargetChange(): void;
+  refreshPerformance(options?: Record<string, unknown>): Promise<void>;
+  renderPerformance(data?: Record<string, unknown>): void;
+  runPerformanceAction(action: string): Promise<void>;
+}
+
+describe('integrated DevTools performance panel', () => {
+  let panel: DevToolsPerformancePanel;
+  let requests: Array<{ body?: string; keepalive?: boolean; method: string; url: string }>;
+  let nextFetchResponse: Promise<{ ok: boolean; status: number; json(): Promise<Record<string, unknown>> }> | undefined;
+  let traceRecording: boolean;
+  let completionErrorPending: boolean;
+  let stopFailure: string | null;
+  let snapshotResponse: Record<string, unknown>;
+
+  const snapshot = {
+    mainThread: { layoutDurationMs: 2, scriptDurationMs: 4, taskDurationMs: 12 },
+    memory: { totalBytes: 4096, usedBytes: 2048 },
+    navigation: { domContentLoadedMs: 30, loadMs: 50 },
+    paints: [{ name: 'first-contentful-paint', startTime: 25 }],
+    rendererTracingEnabled: true,
+    resourceCount: 4,
+    transferSize: 1024,
+    uptimeMs: 100,
+  };
+
+  function traceResult(): Record<string, unknown> {
+    return {
+      browserMetrics: { LayoutCount: 2, TaskDurationMs: 12 },
+      browserSummary: { browserEventCount: 1, longTaskCount: 1, rendererEventCount: 1 },
+      droppedTraceEventCount: 0,
+      elapsedMs: 100,
+      perfettoMetadata: { captureScope: 'process-wide' },
+      recording: false,
+      traceCount: 2,
+      traces: [
+        { endMicros: 1300, startMicros: 1000, threadId: 1, trace: 'Valdi.Renderer.onRender.Example' },
+        { endMicros: 76_500, startMicros: 1500, threadId: 1, trace: 'Browser.MainThread.Task' },
+      ],
+    };
+  }
+
+  beforeEach(() => {
+    requests = [];
+    nextFetchResponse = undefined;
+    traceRecording = false;
+    completionErrorPending = false;
+    stopFailure = null;
+    snapshotResponse = snapshot;
+    const treeModelSource = fs.readFileSync(path.resolve(process.cwd(), 'debugger', 'debugger-tree-model.js'), 'utf8');
+    const rawPanelSource = fs.readFileSync(path.resolve(process.cwd(), 'debugger', 'devtools-panel.js'), 'utf8');
+    const panelSource = rawPanelSource.replace('void connectToInspectedApplication();', 'void 0;');
+    const elements = new Map<string, Record<string, unknown>>();
+    const document = {
+      activeElement: null as { id?: string } | null,
+      addEventListener() {},
+      createElement() {
+        return { click() {} };
+      },
+      documentElement: { dataset: {} },
+      getElementById(id: string): Record<string, unknown> {
+        let element = elements.get(id);
+        if (element === undefined) {
+          element = {
+            checked: true,
+            className: '',
+            classList: { contains: () => false, toggle() {} },
+            dataset: {},
+            innerHTML: '',
+            scrollHeight: 0,
+            scrollTop: 0,
+            style: {},
+            textContent: '',
+            value: '',
+            addEventListener() {},
+            contains: () => false,
+            focus() {},
+            removeAttribute() {},
+            querySelector: () => null,
+            setAttribute() {},
+            setSelectionRange() {},
+          };
+          elements.set(id, element);
+        }
+        return element;
+      },
+      querySelectorAll(): unknown[] {
+        return [];
+      },
+    };
+    const windowListeners = new Map<string, Array<() => void>>();
+    const window = {
+      addEventListener(type: string, listener: () => void) {
+        const listeners = windowListeners.get(type) ?? [];
+        listeners.push(listener);
+        windowListeners.set(type, listeners);
+      },
+      clearInterval() {},
+      clearTimeout() {},
+      confirm: () => true,
+      location: {
+        origin: 'http://127.0.0.1:18768',
+        search:
+          '?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3FvaldiDevTools%3D1&targetNonce=panel-target-nonce-123456',
+      },
+      parent: {},
+      dispatch(type: string) {
+        for (const listener of windowListeners.get(type) ?? []) listener();
+      },
+      setInterval: () => 1,
+      setTimeout: () => 1,
+    };
+
+    panel = new Script(
+      `${treeModelSource}\n${panelSource}\n({ buildPerformanceTraceExport, dispatchWindowEvent: type => window.dispatch(type), document, performanceContent: elements.performanceContent, preparePerformanceForTargetChange, refreshPerformance, renderPerformance, runPerformanceAction, state })`,
+    ).runInNewContext({
+      Blob,
+      Date,
+      EventSource: class {
+        addEventListener() {}
+        close() {}
+      },
+      URL,
+      URLSearchParams,
+      console,
+      document,
+      elements,
+      fetch: (url: URL, options: { body?: string; keepalive?: boolean; method: string }) => {
+        const requestUrl = new URL(url.toString());
+        requests.push({
+          ...(options.body === undefined ? {} : { body: options.body }),
+          ...(options.keepalive === undefined ? {} : { keepalive: options.keepalive }),
+          method: options.method,
+          url: requestUrl.toString(),
+        });
+        if (nextFetchResponse) {
+          const response = nextFetchResponse;
+          nextFetchResponse = undefined;
+          return response;
+        }
+        let payload: Record<string, unknown>;
+        if (requestUrl.pathname.endsWith('/snapshot')) {
+          payload = snapshotResponse;
+        } else if (requestUrl.pathname.endsWith('/status')) {
+          payload = {
+            completedRecordingAvailable: false,
+            ...(completionErrorPending ? { completionError: 'Synthetic retained completion error.' } : {}),
+            recording: traceRecording,
+            rendererTracingEnabled: true,
+            tracingSupported: true,
+          };
+        } else if (requestUrl.pathname.endsWith('/start')) {
+          traceRecording = true;
+          payload = { recording: true, rendererTracingEnabled: true, tracingSupported: true };
+        } else if (requestUrl.pathname.endsWith('/enable')) {
+          payload = { rendererTracingEnabled: true };
+        } else if (requestUrl.pathname.endsWith('/stop') && completionErrorPending) {
+          completionErrorPending = false;
+          return Promise.resolve({
+            json: () => Promise.resolve({ error: 'Synthetic retained completion error.' }),
+            ok: false,
+            status: 500,
+          });
+        } else if (requestUrl.pathname.endsWith('/stop') && stopFailure) {
+          const error = stopFailure;
+          stopFailure = null;
+          return Promise.resolve({ json: () => Promise.resolve({ error }), ok: false, status: 500 });
+        } else {
+          traceRecording = false;
+          payload = traceResult();
+        }
+        return Promise.resolve({ json: () => Promise.resolve(payload), ok: true, status: 200 });
+      },
+      navigator: { clipboard: { writeText: () => Promise.resolve() } },
+      window,
+    }) as DevToolsPerformancePanel;
+    panel.state.activeSection = 'performance';
+    panel.state.target = { id: 'owl:web-preview', sessionId: 'web-preview' };
+  });
+
+  it('binds snapshots and status polling to the complete inspected-target tuple', async () => {
+    await panel.refreshPerformance();
+
+    expect(requests.length).toBe(2);
+    for (const request of requests) {
+      const url = new URL(request.url);
+      expect(url.searchParams.get('sessionId')).toBe('web-preview');
+      expect(url.searchParams.get('inspectedUrl')).toBe('http://127.0.0.1:54321/index.html?valdiDevTools=1');
+      expect(url.searchParams.get('targetNonce')).toBe('panel-target-nonce-123456');
+    }
+    expect(panel.state.performance.samples.length).toBe(1);
+    expect(panel.performanceContent.innerHTML).toContain('data-performance-scope="valdi"');
+    expect(panel.performanceContent.innerHTML).toContain('data-performance-scope="browser"');
+    expect(panel.performanceContent.innerHTML).toContain('data-performance-scope="all"');
+    expect(panel.performanceContent.innerHTML).not.toContain('data-performance-scope="app"');
+    expect(panel.performanceContent.innerHTML).toContain('JavaScript time');
+    expect(panel.performanceContent.innerHTML).toContain('Layout time');
+    expect(panel.performanceContent.innerHTML).toContain('<button type="button"');
+  });
+
+  it('links the Performance tab and panel with tab semantics', () => {
+    const html = fs.readFileSync(path.resolve(process.cwd(), 'debugger', 'devtools-panel.html'), 'utf8');
+
+    expect(html).toContain('id="performanceTab"');
+    expect(html).toContain('aria-controls="performanceSection"');
+    expect(html).toContain('id="performanceSection"');
+    expect(html).toMatch(/role="tabpanel"\s+aria-labelledby="performanceTab"/);
+  });
+
+  it('clamps capture to fifteen seconds and never calls a CPU profiling route', async () => {
+    panel.state.performance.data = snapshot;
+    panel.state.performance.durationSeconds = 90;
+
+    await panel.runPerformanceAction('trace-capture');
+
+    const capture = requests.find(request => new URL(request.url).pathname.endsWith('/trace/capture'));
+    if (!capture?.body) throw new Error('Expected a trace capture request.');
+    expect(JSON.parse(capture.body)).toEqual({ durationMs: 15_000 });
+    expect(new URL(capture.url).searchParams.get('sessionId')).toBe('web-preview');
+    expect(requests.some(request => request.url.includes('/profile/'))).toBeFalse();
+    expect(panel.state.performance.lastTrace).toEqual(jasmine.objectContaining({ traceCount: 2 }));
+  });
+
+  it('keeps the recording owner tuple when stopping after the selected target changes', async () => {
+    panel.state.performance.data = snapshot;
+    await panel.runPerformanceAction('trace-start');
+    expect(panel.state.performance.traceActive).toBeTrue();
+    expect(panel.state.performance.ownerIdentity).toEqual(
+      jasmine.objectContaining({ sessionId: 'web-preview', targetNonce: 'panel-target-nonce-123456' }),
+    );
+
+    panel.state.performance.lastTrace = traceResult();
+    panel.preparePerformanceForTargetChange();
+    expect(panel.state.performance.data).toBeNull();
+    expect(panel.state.performance.lastTrace).toBeNull();
+    expect(panel.state.performance.samples).toEqual([]);
+    panel.state.target = { id: 'owl:replacement', sessionId: 'replacement' };
+    snapshotResponse = { ...snapshot, resourceCount: 9, uptimeMs: 200 };
+    await panel.runPerformanceAction('trace-stop');
+
+    const stop = requests.find(request => new URL(request.url).pathname.endsWith('/trace/stop'));
+    if (!stop) throw new Error('Expected a trace stop request.');
+    expect(new URL(stop.url).searchParams.get('sessionId')).toBe('web-preview');
+    expect(panel.state.performance.traceActive).toBeFalse();
+    expect(panel.state.performance.ownerIdentity).toBeNull();
+    expect(panel.state.performance.lastTrace).toBeNull();
+    expect(panel.state.performance.data).toEqual(jasmine.objectContaining({ resourceCount: 9 }));
+    expect(panel.state.performance.samples.length).toBe(1);
+  });
+
+  it('acknowledges a retained completion error through Stop before allowing another Start', async () => {
+    panel.state.performance.data = snapshot;
+    panel.state.performance.traceActive = true;
+    panel.state.performance.ownerIdentity = {
+      inspectedUrl: 'http://127.0.0.1:54321/index.html?valdiDevTools=1',
+      sessionId: 'web-preview',
+      targetNonce: 'panel-target-nonce-123456',
+    };
+    completionErrorPending = true;
+
+    await panel.refreshPerformance();
+
+    const acknowledgement = requests.find(request => new URL(request.url).pathname.endsWith('/trace/stop'));
+    if (!acknowledgement) throw new Error('Expected completion-error acknowledgement through Stop.');
+    expect(new URL(acknowledgement.url).searchParams.get('sessionId')).toBe('web-preview');
+    expect(panel.state.performance.error).toBe('Synthetic retained completion error.');
+    expect(completionErrorPending).toBeFalse();
+    expect(panel.state.performance.traceActive).toBeFalse();
+    expect(panel.state.performance.ownerIdentity).toBeNull();
+
+    await panel.runPerformanceAction('trace-start');
+    expect(panel.state.performance.traceActive).toBeTrue();
+  });
+
+  it('invalidates an old snapshot without wedging polling when the target changes', async () => {
+    let resolveSnapshot:
+      | ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void)
+      | undefined;
+    nextFetchResponse = new Promise(resolve => {
+      resolveSnapshot = resolve;
+    });
+    const oldRefresh = panel.refreshPerformance();
+    await Promise.resolve();
+    expect(panel.state.performance.snapshotPending).toBeTrue();
+
+    panel.preparePerformanceForTargetChange();
+    panel.state.target = { id: 'owl:replacement', sessionId: 'replacement' };
+    expect(panel.state.performance.snapshotPending).toBeFalse();
+    if (!resolveSnapshot) throw new Error('Expected a deferred performance snapshot.');
+    resolveSnapshot({ json: () => Promise.resolve(snapshot), ok: true, status: 200 });
+    await oldRefresh;
+
+    expect(panel.state.performance.data).toBeNull();
+    await panel.refreshPerformance();
+    expect(panel.state.performance.data).toEqual(snapshot);
+    expect(panel.state.performance.snapshotPending).toBeFalse();
+  });
+
+  it('does not let a delayed pre-start status response overwrite a successful Start', async () => {
+    panel.state.performance.data = snapshot;
+    let resolveSnapshot:
+      | ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void)
+      | undefined;
+    nextFetchResponse = new Promise(resolve => {
+      resolveSnapshot = resolve;
+    });
+    const oldPoll = panel.refreshPerformance({ silent: true });
+    await Promise.resolve();
+
+    await panel.runPerformanceAction('trace-start');
+    if (!resolveSnapshot) throw new Error('Expected a deferred pre-start snapshot.');
+    resolveSnapshot({ json: () => Promise.resolve(snapshot), ok: true, status: 200 });
+    await oldPoll;
+
+    expect(panel.state.performance.traceActive).toBeTrue();
+    expect(panel.state.performance.ownerIdentity).toEqual(jasmine.objectContaining({ sessionId: 'web-preview' }));
+  });
+
+  it('cleans up a stale successful start without overwriting the replacement target', async () => {
+    panel.state.performance.data = snapshot;
+    let resolveStart:
+      | ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void)
+      | undefined;
+    nextFetchResponse = new Promise(resolve => {
+      resolveStart = resolve;
+    });
+    const start = panel.runPerformanceAction('trace-start');
+    await Promise.resolve();
+
+    panel.preparePerformanceForTargetChange();
+    panel.state.target = { id: 'owl:replacement', sessionId: 'replacement' };
+    if (!resolveStart) throw new Error('Expected a deferred performance start.');
+    resolveStart({
+      json: () => Promise.resolve({ recording: true, rendererTracingEnabled: true, tracingSupported: true }),
+      ok: true,
+      status: 200,
+    });
+    await start;
+
+    const startRequest = requests.find(request => new URL(request.url).pathname.endsWith('/trace/start'));
+    const cleanupRequest = requests.find(request => new URL(request.url).pathname.endsWith('/trace/stop'));
+    if (!startRequest || !cleanupRequest) throw new Error('Expected stale-start cleanup requests.');
+    expect(new URL(startRequest.url).searchParams.get('sessionId')).toBe('web-preview');
+    expect(new URL(cleanupRequest.url).searchParams.get('sessionId')).toBe('web-preview');
+    expect(panel.state.target?.sessionId).toBe('replacement');
+    expect(panel.state.performance.traceActive).toBeFalse();
+    expect(panel.state.performance.ownerIdentity).toBeNull();
+    expect(panel.state.performance.pending).toBeFalse();
+  });
+
+  it('retains and surfaces a stale Start owner when exact cleanup fails', async () => {
+    panel.state.performance.data = snapshot;
+    let resolveStart:
+      | ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void)
+      | undefined;
+    nextFetchResponse = new Promise(resolve => {
+      resolveStart = resolve;
+    });
+    const start = panel.runPerformanceAction('trace-start');
+    await Promise.resolve();
+
+    panel.preparePerformanceForTargetChange();
+    panel.state.target = { id: 'owl:replacement', sessionId: 'replacement' };
+    stopFailure = 'Synthetic stale cleanup failure.';
+    if (!resolveStart) throw new Error('Expected a deferred performance start.');
+    resolveStart({
+      json: () => Promise.resolve({ recording: true, rendererTracingEnabled: true, tracingSupported: true }),
+      ok: true,
+      status: 200,
+    });
+    await start;
+
+    expect(panel.state.performance.traceActive).toBeTrue();
+    expect(panel.state.performance.ownerIdentity).toEqual(jasmine.objectContaining({ sessionId: 'web-preview' }));
+    expect(panel.state.performance.error).toContain('Synthetic stale cleanup failure.');
+    expect(panel.performanceContent.innerHTML).toContain('Stop and retrieve');
+
+    await panel.runPerformanceAction('trace-stop');
+    const stopRequests = requests.filter(request => new URL(request.url).pathname.endsWith('/trace/stop'));
+    expect(stopRequests.length).toBe(2);
+    expect(new URL(stopRequests[1]?.url ?? '').searchParams.get('sessionId')).toBe('web-preview');
+    expect(panel.state.performance.ownerIdentity).toBeNull();
+  });
+
+  it('keeps an in-flight Capture owned across a target change without publishing its old result', async () => {
+    panel.state.performance.data = snapshot;
+    let resolveCapture:
+      | ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void)
+      | undefined;
+    nextFetchResponse = new Promise(resolve => {
+      resolveCapture = resolve;
+    });
+    const capture = panel.runPerformanceAction('trace-capture');
+    await Promise.resolve();
+    expect(panel.state.performance.traceActive).toBeTrue();
+    expect(panel.state.performance.ownerIdentity).toEqual(jasmine.objectContaining({ sessionId: 'web-preview' }));
+
+    panel.preparePerformanceForTargetChange();
+    panel.state.target = { id: 'owl:replacement', sessionId: 'replacement' };
+    expect(panel.state.performance.data).toBeNull();
+    expect(panel.state.performance.ownerIdentity).toEqual(jasmine.objectContaining({ sessionId: 'web-preview' }));
+    if (!resolveCapture) throw new Error('Expected a deferred performance capture.');
+    resolveCapture({ json: () => Promise.resolve(traceResult()), ok: true, status: 200 });
+    await capture;
+
+    expect(panel.state.performance.traceActive).toBeFalse();
+    expect(panel.state.performance.ownerIdentity).toBeNull();
+    expect(panel.state.performance.lastTrace).toBeNull();
+  });
+
+  it('skips silent polling while a generated Performance input is focused', async () => {
+    panel.state.performance.data = snapshot;
+    panel.document.activeElement = { id: 'performanceTraceFilter' };
+
+    await panel.refreshPerformance({ silent: true });
+
+    expect(requests).toEqual([]);
+    expect(panel.state.performance.data).toBe(snapshot);
+  });
+
+  it('preserves panel and timeline scroll positions when polling rerenders', () => {
+    const previousTimeline = { scrollLeft: 83, scrollTop: 47 };
+    const replacementTimeline = { scrollLeft: 0, scrollTop: 0 };
+    let queryCount = 0;
+    panel.performanceContent.scrollTop = 129;
+    panel.performanceContent.querySelector = () => (queryCount++ === 0 ? previousTimeline : replacementTimeline);
+
+    panel.renderPerformance(snapshot);
+
+    expect(panel.performanceContent.scrollTop).toBe(129);
+    expect(replacementTimeline.scrollLeft).toBe(83);
+    expect(replacementTimeline.scrollTop).toBe(47);
+  });
+
+  it('uses an exact-owner keepalive Stop when the panel unloads', async () => {
+    panel.state.performance.data = snapshot;
+    await panel.runPerformanceAction('trace-start');
+    requests = [];
+
+    panel.dispatchWindowEvent('pagehide');
+    await Promise.resolve();
+
+    const stop = requests.find(request => new URL(request.url).pathname.endsWith('/trace/stop'));
+    if (!stop) throw new Error('Expected a pagehide trace stop request.');
+    expect(stop.keepalive).toBeTrue();
+    expect(new URL(stop.url).searchParams.get('sessionId')).toBe('web-preview');
+    expect(new URL(stop.url).searchParams.get('targetNonce')).toBe('panel-target-nonce-123456');
+  });
+
+  it('bounds samples, timeline rows, and grouped summary rows', () => {
+    const traces = Array.from({ length: 180 }, (_, index) => ({
+      endMicros: index * 1000 + 500,
+      startMicros: index * 1000,
+      threadId: 1,
+      trace: `Valdi.Operation.${index % 20}`,
+    }));
+    panel.state.performance.lastTrace = { ...traceResult(), traceCount: traces.length, traces };
+    for (let index = 0; index < 125; index++) {
+      panel.renderPerformance({ ...snapshot, uptimeMs: index + 1 });
+    }
+
+    const timelineRows = panel.performanceContent.innerHTML.match(/class="performance-timeline-row"/g) ?? [];
+    const summaryRows = panel.performanceContent.innerHTML.match(/<tr><td>Valdi\.Operation\./g) ?? [];
+    expect(panel.state.performance.samples.length).toBe(120);
+    expect(timelineRows.length).toBe(120);
+    expect(summaryRows.length).toBe(12);
+    expect(panel.performanceContent.innerHTML).toContain('Total captured duration by event');
+    expect(panel.performanceContent.innerHTML).toContain('Inclusive total');
+  });
+
+  it('builds the export only on demand without requiring duplicated raw or Perfetto event lists', () => {
+    const result = traceResult();
+    const exported = panel.buildPerformanceTraceExport(result);
+
+    expect(result['rawTraceEvents']).toBeUndefined();
+    expect(result['perfetto']).toBeUndefined();
+    expect(exported.traceEvents.filter(event => event['ph'] === 'X').length).toBe(2);
+    expect(exported.traceEvents.length).toBe(4);
+  });
+
+  it('escapes filtered trace names in the panel while preserving them in on-demand export', () => {
+    const maliciousName = 'Valdi.<img src=x onerror=alert(1)>';
+    const result = traceResult();
+    const traces = result['traces'] as Array<Record<string, unknown>>;
+    traces.push({ endMicros: 77_000, startMicros: 76_700, threadId: 1, trace: maliciousName });
+    panel.state.performance.lastTrace = { ...result, traceCount: traces.length };
+    panel.state.performance.traceSearch = 'onerror';
+
+    panel.renderPerformance(snapshot);
+    const exported = panel.buildPerformanceTraceExport(result);
+
+    expect(panel.performanceContent.innerHTML).not.toContain('<img src=x');
+    expect(panel.performanceContent.innerHTML).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(exported.traceEvents).toContain(jasmine.objectContaining({ name: maliciousName }));
+  });
+});
