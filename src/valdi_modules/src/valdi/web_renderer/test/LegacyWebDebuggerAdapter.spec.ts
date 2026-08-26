@@ -1,0 +1,909 @@
+import 'jasmine/src/jasmine';
+import type { IRenderedElement } from 'valdi_core/src/IRenderedElement';
+import type { IRenderer } from 'valdi_core/src/IRenderer';
+import {
+  MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+  ValdiWebRendererDelegate,
+} from '../src/ValdiWebRendererDelegate';
+import type { WebValdiLayout } from '../src/views/WebValdiLayout';
+
+interface InstalledDom {
+  createElement(tagName: string): HTMLElement;
+  restore(): void;
+}
+
+function installDom(): InstalledDom {
+  const previousGlobals = new Map<string, unknown>();
+  const globalNames = [
+    'Document',
+    'Element',
+    'HTMLElement',
+    'IntersectionObserver',
+    'ResizeObserver',
+    'ShadowRoot',
+    'customElements',
+    'document',
+    'window',
+  ];
+  for (const name of globalNames) {
+    previousGlobals.set(name, (globalThis as Record<string, unknown>)[name]);
+  }
+
+  class FakeElement {
+    parentElement: FakeHTMLElement | null = null;
+  }
+
+  class FakeHTMLElement extends FakeElement {
+    readonly attributesByName = new Map<string, string>();
+    readonly children: FakeHTMLElement[] = [];
+    readonly childNodes = { item: (index: number) => this.children[index] ?? null };
+    readonly classList = {
+      add: (_className: string) => {},
+      remove: (_className: string) => {},
+    };
+    readonly dataset: Record<string, string> = {};
+    readonly style: Record<string, unknown> = {
+      removeProperty: (_name: string) => {},
+      setProperty: (_name: string, _value: string) => {},
+    };
+    readonly ownerDocument: FakeDocument;
+    readonly tagName: string;
+    scrollLeft = 0;
+    scrollTop = 0;
+    textContent: string | null = null;
+    rect = { left: 0, top: 0, width: 0, height: 0 };
+
+    constructor(tagName: string, ownerDocument: FakeDocument) {
+      super();
+      this.tagName = tagName.toUpperCase();
+      this.ownerDocument = ownerDocument;
+    }
+
+    get attributes() {
+      const entries = [...this.attributesByName.entries()];
+      return {
+        length: entries.length,
+        item: (index: number) => {
+          const entry = entries[index];
+          return entry === undefined ? null : { name: entry[0], value: entry[1] };
+        },
+      };
+    }
+
+    get childElementCount(): number {
+      return this.children.length;
+    }
+
+    addEventListener(): void {}
+    removeEventListener(): void {}
+    appendChild(child: FakeHTMLElement): FakeHTMLElement {
+      child.parentElement = this;
+      this.children.push(child);
+      return child;
+    }
+    contains(): boolean {
+      return false;
+    }
+    getAttribute(name: string): string | null {
+      return this.attributesByName.get(name) ?? null;
+    }
+    getBoundingClientRect() {
+      return { ...this.rect, x: this.rect.left, y: this.rect.top, right: 0, bottom: 0, toJSON: () => ({}) };
+    }
+    getRootNode(): FakeDocument {
+      return this.ownerDocument;
+    }
+    insertBefore(child: FakeHTMLElement, reference: FakeHTMLElement | null): FakeHTMLElement {
+      child.parentElement = this;
+      const index = reference === null ? this.children.length : this.children.indexOf(reference);
+      this.children.splice(index < 0 ? this.children.length : index, 0, child);
+      return child;
+    }
+    remove(): void {
+      const parent = this.parentElement;
+      if (parent !== null) {
+        const index = parent.children.indexOf(this);
+        if (index >= 0) {
+          parent.children.splice(index, 1);
+        }
+      }
+      this.parentElement = null;
+    }
+    removeAttribute(name: string): void {
+      this.attributesByName.delete(name);
+    }
+    replaceChildren(...children: FakeHTMLElement[]): void {
+      this.children.splice(0, this.children.length, ...children);
+      for (const child of children) {
+        child.parentElement = this;
+      }
+    }
+    setAttribute(name: string, value: string): void {
+      this.attributesByName.set(name, value);
+    }
+  }
+
+  class FakeDocument {
+    readonly head: FakeHTMLElement;
+
+    constructor() {
+      this.head = new FakeHTMLElement('head', this);
+    }
+
+    createElement(tagName: string): FakeHTMLElement {
+      return new FakeHTMLElement(tagName, this);
+    }
+  }
+
+  class FakeShadowRoot extends FakeHTMLElement {
+    querySelector(): null {
+      return null;
+    }
+  }
+
+  const document = new FakeDocument();
+  (document.head as FakeHTMLElement & { querySelector?: () => null }).querySelector = () => null;
+  (globalThis as Record<string, unknown>).Element = FakeElement;
+  (globalThis as Record<string, unknown>).HTMLElement = FakeHTMLElement;
+  (globalThis as Record<string, unknown>).Document = FakeDocument;
+  (globalThis as Record<string, unknown>).ShadowRoot = FakeShadowRoot;
+  (globalThis as Record<string, unknown>).document = document;
+  (globalThis as Record<string, unknown>).window = { innerHeight: 768, innerWidth: 1024, setTimeout, clearTimeout };
+  (globalThis as Record<string, unknown>).customElements = { define: () => {}, get: () => undefined };
+  (globalThis as Record<string, unknown>).IntersectionObserver = function () {
+    return { disconnect: () => {}, observe: () => {}, unobserve: () => {} };
+  };
+  (globalThis as Record<string, unknown>).ResizeObserver = function () {
+    return { disconnect: () => {}, observe: () => {}, unobserve: () => {} };
+  };
+
+  return {
+    createElement: tagName => document.createElement(tagName) as unknown as HTMLElement,
+    restore: () => {
+      for (const [name, value] of previousGlobals) {
+        if (value === undefined) {
+          delete (globalThis as Record<string, unknown>)[name];
+        } else {
+          (globalThis as Record<string, unknown>)[name] = value;
+        }
+      }
+    },
+  };
+}
+
+function makeRenderedElement(
+  id: number,
+  tag: string,
+  attributes: Record<string, unknown>,
+): IRenderedElement {
+  return {
+    id,
+    tag,
+    getAttribute: (name: string) => attributes[name],
+    getAttributeNames: () => Object.keys(attributes),
+  } as unknown as IRenderedElement;
+}
+
+function makeRenderer(elements: IRenderedElement[]): IRenderer {
+  const elementsById = new Map(elements.map(element => [element.id, element]));
+  return {
+    getElementForId: id => elementsById.get(id),
+  } as IRenderer;
+}
+
+function captureSnapshot(
+  delegate: ValdiWebRendererDelegate,
+  elements: IRenderedElement[],
+) {
+  return delegate.getDebugSnapshot(makeRenderer(elements), MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+}
+
+function getBackingNode(delegate: ValdiWebRendererDelegate, id: number): WebValdiLayout | undefined {
+  return (delegate as unknown as { nodesRef: Map<number, WebValdiLayout> }).nodesRef.get(id);
+}
+
+function makeMutationMetadata(mutation: () => void): Record<string, unknown> {
+  let hasMutated = false;
+  return new Proxy(
+    { trigger: 'value' },
+    {
+      ownKeys: target => {
+        if (!hasMutated) {
+          hasMutated = true;
+          mutation();
+        }
+        return Reflect.ownKeys(target);
+      },
+    },
+  );
+}
+
+function observeIndexedChildReads(
+  children: WebValdiLayout[],
+  onIndexedRead: () => void,
+): WebValdiLayout[] {
+  return new Proxy(children, {
+    get: (target, property, receiver) => {
+      if (typeof property === 'string' && /^(0|[1-9]\d*)$/.test(property)) {
+        onIndexedRead();
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+}
+
+function expectUnicodeSafeTruncation(value: unknown): void {
+  const marker = '... <truncated>';
+  const stringValue = String(value);
+  const prefix = stringValue.slice(0, -marker.length);
+  const lastPrefixCharacter = prefix.charCodeAt(prefix.length - 1);
+  expect(stringValue).toContain(marker);
+  expect(stringValue.length).toBeLessThanOrEqual(65_536);
+  expect(lastPrefixCharacter < 0xd800 || lastPrefixCharacter > 0xdbff).toBeTrue();
+}
+
+function makeZeroRect(): DOMRect {
+  return {
+    bottom: 0,
+    height: 0,
+    left: 0,
+    right: 0,
+    top: 0,
+    width: 0,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  };
+}
+
+describe('ValdiWebRendererDelegate debugger adapter', () => {
+  let dom: InstalledDom;
+
+  beforeEach(() => {
+    dom = installDom();
+  });
+
+  afterEach(() => {
+    dom.restore();
+  });
+
+  it('captures the legacy node tree with DOM bounds and rendered element attributes', () => {
+    const root = dom.createElement('main');
+    const delegate = new ValdiWebRendererDelegate(root);
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementCreated(2, 'label');
+    delegate.onElementBecameRoot(1);
+    delegate.onElementMoved(2, 1, 0);
+
+    const rootNode = delegate.getDebugNode(1)!;
+    const labelNode = delegate.getDebugNode(2)!;
+    expect(rootNode.htmlElement.tagName).toBe('DIV');
+    expect(labelNode.htmlElement.tagName).toBe('SPAN');
+    rootNode.htmlElement.setAttribute('role', 'main');
+    labelNode.htmlElement.setAttribute('aria-label', 'Greeting');
+    (rootNode.htmlElement as unknown as { rect: object }).rect = { left: 10, top: 20, width: 300, height: 200 };
+    (labelNode.htmlElement as unknown as { rect: object }).rect = { left: 14, top: 28, width: 80, height: 24 };
+
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const renderedElements = [
+      makeRenderedElement(1, 'layout', { backgroundColor: '#fff' }),
+      makeRenderedElement(2, 'label', { onTap: () => {}, value: 'Hello', metadata: circular }),
+    ];
+
+    const snapshot = captureSnapshot(delegate, renderedElements);
+
+    expect(snapshot.viewport).toEqual({ width: 1024, height: 768 });
+    expect(snapshot.tree).toEqual(
+      jasmine.objectContaining({
+        id: '1',
+        tag: 'layout',
+        bounds: { x: 10, y: 20, width: 300, height: 200 },
+        element: jasmine.objectContaining({
+          attributes: { backgroundColor: '#fff' },
+          dom: { attributes: { role: 'main' }, tagName: 'div' },
+        }),
+      }),
+    );
+    expect(snapshot.tree?.children[0]).toEqual(
+      jasmine.objectContaining({
+        id: '2',
+        tag: 'label',
+        bounds: { x: 14, y: 28, width: 80, height: 24 },
+        element: jasmine.objectContaining({
+          attributes: { onTap: '[function]', value: 'Hello', metadata: { self: '<circular object/>' } },
+          dom: { attributes: { 'aria-label': 'Greeting' }, tagName: 'span' },
+        }),
+      }),
+    );
+  });
+
+  it('keeps debugger lookup scoped to this renderer and removes destroyed nodes', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(7, 'layout');
+
+    expect(delegate.getDebugNode(7)?.type).toBe('layout');
+
+    delegate.onElementDestroyed(7);
+
+    expect(delegate.getDebugNode(7)).toBeUndefined();
+  });
+
+  it('unlinks a destroyed child from snapshots and the highlight lookup', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementCreated(2, 'label');
+    delegate.onElementBecameRoot(1);
+    delegate.onElementMoved(2, 1, 0);
+
+    delegate.onElementDestroyed(2);
+
+    const snapshot = captureSnapshot(delegate, [
+      makeRenderedElement(1, 'layout', {}),
+      makeRenderedElement(2, 'label', {}),
+    ]);
+    expect(delegate.getDebugNode(2)).toBeUndefined();
+    expect(snapshot.tree?.children).toEqual([]);
+  });
+
+  it('purges every live descendant when one subtree destroy notification is emitted', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    for (const id of [1, 2, 3, 4]) {
+      delegate.onElementCreated(id, id === 3 ? 'label' : 'layout');
+    }
+    delegate.onElementBecameRoot(1);
+    delegate.onElementMoved(2, 1, 0);
+    delegate.onElementMoved(3, 2, 0);
+    delegate.onElementMoved(4, 1, 1);
+
+    delegate.onElementDestroyed(2);
+
+    const snapshot = captureSnapshot(delegate, [
+      makeRenderedElement(1, 'layout', {}),
+      makeRenderedElement(2, 'layout', {}),
+      makeRenderedElement(3, 'label', {}),
+      makeRenderedElement(4, 'layout', {}),
+    ]);
+    expect(delegate.getDebugNode(2)).toBeUndefined();
+    expect(delegate.getDebugNode(3)).toBeUndefined();
+    expect(snapshot.tree?.children.map(child => child.id)).toEqual(['4']);
+  });
+
+  it('preserves a child reparented out of a subsequently destroyed subtree', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    for (const id of [1, 2, 3, 4]) {
+      delegate.onElementCreated(id, 'layout');
+    }
+    delegate.onElementBecameRoot(1);
+    delegate.onElementMoved(2, 1, 0);
+    delegate.onElementMoved(3, 1, 1);
+    delegate.onElementMoved(4, 2, 0);
+    delegate.onElementMoved(4, 3, 0);
+    getBackingNode(delegate, 2)!.children.push(getBackingNode(delegate, 4)!);
+
+    delegate.onElementDestroyed(2);
+
+    const snapshot = captureSnapshot(delegate, [
+      makeRenderedElement(1, 'layout', {}),
+      makeRenderedElement(3, 'layout', {}),
+      makeRenderedElement(4, 'layout', {}),
+    ]);
+    expect(delegate.getDebugNode(4)).toBeDefined();
+    expect(snapshot.tree?.children.map(child => child.id)).toEqual(['3']);
+    expect(snapshot.tree?.children[0].children.map(child => child.id)).toEqual(['4']);
+  });
+
+  it('ignores adversarial stale child links for snapshots and highlight lookup', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementCreated(2, 'label');
+    delegate.onElementBecameRoot(1);
+    delegate.onElementMoved(2, 1, 0);
+    const rootNode = getBackingNode(delegate, 1)!;
+    const staleChild = getBackingNode(delegate, 2)!;
+
+    delegate.onElementDestroyed(2);
+    rootNode.children.push(staleChild);
+    staleChild.parent = rootNode;
+    const getElementForId = jasmine.createSpy('getElementForId').and.callFake((id: number) =>
+      makeRenderedElement(id, id === 1 ? 'layout' : 'label', {}),
+    );
+    const renderer = { getElementForId } as unknown as IRenderer;
+
+    const snapshot = delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+
+    expect(delegate.getDebugNode(2)).toBeUndefined();
+    expect(snapshot.tree?.children).toEqual([]);
+    expect(getElementForId.calls.count()).toBe(1);
+    expect(getElementForId).toHaveBeenCalledWith(1);
+  });
+
+  it('continues safely when metadata destroys a later sibling during capture', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    for (const id of [1, 2, 3, 4]) {
+      delegate.onElementCreated(id, 'layout');
+    }
+    delegate.onElementBecameRoot(1);
+    delegate.onElementMoved(2, 1, 0);
+    delegate.onElementMoved(3, 1, 1);
+    delegate.onElementMoved(4, 1, 2);
+    const metadata = makeMutationMetadata(() => delegate.onElementDestroyed(3));
+
+    const snapshot = captureSnapshot(delegate, [
+      makeRenderedElement(1, 'layout', {}),
+      makeRenderedElement(2, 'layout', { metadata }),
+      makeRenderedElement(3, 'layout', {}),
+      makeRenderedElement(4, 'layout', {}),
+    ]);
+
+    expect(delegate.getDebugNode(3)).toBeUndefined();
+    expect(snapshot.tree?.children.map(child => child.id)).toEqual(['2', '4']);
+  });
+
+  it('continues safely when metadata detaches a later sibling during capture', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    for (const id of [1, 2, 3, 4]) {
+      delegate.onElementCreated(id, 'layout');
+    }
+    delegate.onElementBecameRoot(1);
+    delegate.onElementMoved(2, 1, 0);
+    delegate.onElementMoved(3, 1, 1);
+    delegate.onElementMoved(4, 1, 2);
+    const rootNode = getBackingNode(delegate, 1)!;
+    const detachedNode = getBackingNode(delegate, 3)!;
+    const metadata = makeMutationMetadata(() => {
+      rootNode.removeChild(detachedNode);
+      detachedNode.parent = null;
+    });
+
+    const snapshot = captureSnapshot(delegate, [
+      makeRenderedElement(1, 'layout', {}),
+      makeRenderedElement(2, 'layout', { metadata }),
+      makeRenderedElement(3, 'layout', {}),
+      makeRenderedElement(4, 'layout', {}),
+    ]);
+
+    expect(delegate.getDebugNode(3)).toBeDefined();
+    expect(snapshot.tree?.children.map(child => child.id)).toEqual(['2', '4']);
+  });
+
+  it('continues safely when metadata reparents a later sibling during capture', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    for (const id of [1, 2, 3, 4]) {
+      delegate.onElementCreated(id, 'layout');
+    }
+    delegate.onElementBecameRoot(1);
+    delegate.onElementMoved(2, 1, 0);
+    delegate.onElementMoved(3, 1, 1);
+    delegate.onElementMoved(4, 1, 2);
+    const metadata = makeMutationMetadata(() => delegate.onElementMoved(3, 4, 0));
+
+    const snapshot = captureSnapshot(delegate, [
+      makeRenderedElement(1, 'layout', {}),
+      makeRenderedElement(2, 'layout', { metadata }),
+      makeRenderedElement(3, 'layout', {}),
+      makeRenderedElement(4, 'layout', {}),
+    ]);
+
+    expect(snapshot.tree?.children.map(child => child.id)).toEqual(['2', '4']);
+    expect(snapshot.tree?.children[1].children.map(child => child.id)).toEqual(['3']);
+  });
+
+  it('bounds work for a wide array containing only stale child links', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementCreated(2, 'layout');
+    delegate.onElementBecameRoot(1);
+    delegate.onElementMoved(2, 1, 0);
+    const rootNode = getBackingNode(delegate, 1)!;
+    const staleNode = getBackingNode(delegate, 2)!;
+    delegate.onElementDestroyed(2);
+    staleNode.parent = rootNode;
+    let indexedReads = 0;
+    rootNode.children = observeIndexedChildReads(
+      new Array<WebValdiLayout>(20_000).fill(staleNode),
+      () => indexedReads++,
+    );
+    const getElementForId = jasmine.createSpy('getElementForId').and.callFake((id: number) =>
+      makeRenderedElement(id, 'layout', {}),
+    );
+
+    const snapshot = delegate.getDebugSnapshot(
+      { getElementForId } as unknown as IRenderer,
+      MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS,
+    );
+
+    expect(indexedReads).toBe(1_000);
+    expect(getElementForId.calls.count()).toBe(1);
+    expect(snapshot.tree?.children).toEqual([]);
+    expect(snapshot.tree?.childrenTruncated).toBeTrue();
+  });
+
+  it('includes mixed live and stale links at the work cap and truncates beyond it', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    for (const id of [1, 2, 3]) {
+      delegate.onElementCreated(id, 'layout');
+    }
+    delegate.onElementBecameRoot(1);
+    delegate.onElementMoved(2, 1, 0);
+    delegate.onElementMoved(3, 1, 1);
+    const rootNode = getBackingNode(delegate, 1)!;
+    const liveNode = getBackingNode(delegate, 2)!;
+    const staleNode = getBackingNode(delegate, 3)!;
+    delegate.onElementDestroyed(3);
+    staleNode.parent = rootNode;
+    const renderer = makeRenderer([
+      makeRenderedElement(1, 'layout', {}),
+      makeRenderedElement(2, 'layout', {}),
+    ]);
+    let atCapReads = 0;
+    rootNode.children = observeIndexedChildReads(
+      [...new Array<WebValdiLayout>(999).fill(staleNode), liveNode],
+      () => atCapReads++,
+    );
+
+    const atCapSnapshot = delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+
+    expect(atCapReads).toBe(1_000);
+    expect(atCapSnapshot.tree?.children.map(child => child.id)).toEqual(['2']);
+    expect(atCapSnapshot.tree?.childrenTruncated).toBeUndefined();
+
+    let overCapReads = 0;
+    rootNode.children = observeIndexedChildReads(
+      [...new Array<WebValdiLayout>(1_000).fill(staleNode), liveNode],
+      () => overCapReads++,
+    );
+
+    const overCapSnapshot = delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+
+    expect(overCapReads).toBe(1_000);
+    expect(overCapSnapshot.tree?.children).toEqual([]);
+    expect(overCapSnapshot.tree?.childrenTruncated).toBeTrue();
+  });
+
+  it('does not invoke getters and distinguishes shared references from cycles', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    let getterCalls = 0;
+    const dangerous: Record<string, unknown> = {};
+    Object.defineProperty(dangerous, 'secret', {
+      enumerable: true,
+      get: () => {
+        getterCalls++;
+        return 'should not be read';
+      },
+    });
+    const shared = { value: 'shared' };
+    const metadata: Record<string, unknown> = { dangerous, first: shared, second: shared };
+    metadata.self = metadata;
+    Object.defineProperty(metadata, '__proto__', { enumerable: true, value: 'own property' });
+
+    const snapshot = captureSnapshot(delegate, [makeRenderedElement(1, 'layout', { metadata })]);
+    const debugMetadata = snapshot.tree?.element.attributes.metadata as Record<string, unknown>;
+
+    expect(getterCalls).toBe(0);
+    expect(debugMetadata.dangerous).toEqual({ secret: '<accessor/>' });
+    expect(debugMetadata.first).toEqual({ value: 'shared' });
+    expect(debugMetadata.second).toEqual({ value: 'shared' });
+    expect(debugMetadata.self).toBe('<circular object/>');
+    expect(Object.prototype.hasOwnProperty.call(debugMetadata, '__proto__')).toBeTrue();
+    expect(debugMetadata['__proto__']).toBe('own property');
+  });
+
+  it('inspects only the capped prefix of large sparse arrays without invoking getters', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    let getterCalls = 0;
+    const sparseArray: unknown[] = [];
+    sparseArray.length = 1_000_000;
+    for (const index of [0, 49, 50]) {
+      Object.defineProperty(sparseArray, String(index), {
+        enumerable: true,
+        get: () => {
+          getterCalls++;
+          return `secret-${index}`;
+        },
+      });
+    }
+    const inspectedProperties: string[] = [];
+    const inspectedArray = new Proxy(sparseArray, {
+      getOwnPropertyDescriptor: (target, property) => {
+        inspectedProperties.push(String(property));
+        return Reflect.getOwnPropertyDescriptor(target, property);
+      },
+    });
+
+    const snapshot = captureSnapshot(delegate, [
+      makeRenderedElement(1, 'layout', { items: inspectedArray }),
+    ]);
+    const debugItems = snapshot.tree?.element.attributes.items as unknown[];
+
+    expect(getterCalls).toBe(0);
+    expect(inspectedProperties).toEqual([
+      'length',
+      ...Array.from({ length: 50 }, (_value, index) => String(index)),
+    ]);
+    expect(inspectedProperties).not.toContain('50');
+    expect(debugItems[0]).toBe('<accessor/>');
+    expect(debugItems[49]).toBe('<accessor/>');
+    expect(debugItems[50]).toBe('999950 more items');
+  });
+
+  it('caps attribute count, individual strings, and the aggregate snapshot budget', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const attributes: Record<string, unknown> = {};
+    for (let index = 0; index < 60; index++) {
+      attributes[`value${index}`] = 'x'.repeat(100_000);
+    }
+
+    const snapshot = captureSnapshot(delegate, [makeRenderedElement(1, 'layout', attributes)]);
+    const debugAttributes = snapshot.tree?.element.attributes ?? {};
+
+    expect(String(debugAttributes.value0).length).toBeLessThanOrEqual(65_536);
+    expect(String(debugAttributes.value0)).toContain('<truncated>');
+    expect(debugAttributes.__truncated__).toBeDefined();
+    expect(JSON.stringify(debugAttributes).length).toBeLessThan(264_000);
+  });
+
+  it('truncates rendered, nested, and DOM attribute strings at Unicode boundaries', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const unicodeBoundaryValue = `${'a'.repeat(65_520)}${'😀'.repeat(10_000)}`;
+    delegate.getDebugNode(1)!.htmlElement.setAttribute('data-emoji', unicodeBoundaryValue);
+
+    const snapshot = captureSnapshot(delegate, [
+      makeRenderedElement(1, 'layout', {
+        metadata: { nested: unicodeBoundaryValue },
+        value: unicodeBoundaryValue,
+      }),
+    ]);
+    const attributes = snapshot.tree!.element.attributes;
+    const nested = attributes.metadata as Record<string, unknown>;
+
+    expectUnicodeSafeTruncation(attributes.value);
+    expectUnicodeSafeTruncation(nested.nested);
+    expectUnicodeSafeTruncation(snapshot.tree!.element.dom.attributes['data-emoji']);
+    expect(JSON.stringify(snapshot).length).toBeLessThanOrEqual(MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+  });
+
+  it('honors a smaller serialized-character budget assigned by the standalone envelope', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const renderer = makeRenderer([
+      makeRenderedElement(1, 'layout', { payload: 'x'.repeat(100_000) }),
+    ]);
+
+    const snapshot = delegate.getDebugSnapshot(renderer, 8_192);
+
+    expect(JSON.stringify(snapshot).length).toBeLessThanOrEqual(8_192);
+    expect(String(snapshot.tree?.element.attributes.payload)).toContain('<truncated>');
+  });
+
+  it('bounds the complete serialized snapshot and omits over-budget property names before insertion', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const hugeKey = `key-${'k'.repeat(2_000_000)}`;
+    const hugeValue = `value-${'v'.repeat(2_000_000)}`;
+    let getterCalls = 0;
+    const metadata: Record<string, unknown> = {};
+    Object.defineProperty(metadata, hugeKey, {
+      enumerable: true,
+      get: () => {
+        getterCalls++;
+        return 'secret';
+      },
+    });
+    const attributeReads: string[] = [];
+    const element = {
+      id: 1,
+      tag: 'layout',
+      getAttribute: (name: string) => {
+        attributeReads.push(name);
+        return name === 'hugeValue' ? hugeValue : metadata;
+      },
+      getAttributeNames: () => ['hugeValue', 'metadata', hugeKey],
+    } as unknown as IRenderedElement;
+    delegate.getDebugNode(1)!.htmlElement.setAttribute(hugeKey, hugeValue);
+
+    const snapshot = captureSnapshot(delegate, [element]);
+    const serializedSnapshot = JSON.stringify(snapshot);
+    const debugAttributes = snapshot.tree?.element.attributes ?? {};
+
+    expect(serializedSnapshot.length).toBeLessThanOrEqual(MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+    expect(String(debugAttributes.hugeValue).length).toBeLessThanOrEqual(65_536);
+    expect(String(debugAttributes.hugeValue)).toContain('<truncated>');
+    expect((debugAttributes.metadata as Record<string, unknown>).__truncated__).toBeDefined();
+    expect(Object.prototype.hasOwnProperty.call(debugAttributes, hugeKey)).toBeFalse();
+    expect(Object.prototype.hasOwnProperty.call(snapshot.tree?.element.dom.attributes ?? {}, hugeKey)).toBeFalse();
+    expect(attributeReads).not.toContain(hugeKey);
+    expect(getterCalls).toBe(0);
+  });
+
+  it('caps nested collection entries and depth', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    const properties: Record<string, number> = {};
+    for (let index = 0; index < 52; index++) {
+      properties[`property${index}`] = index;
+    }
+    let tooDeepGetterCalls = 0;
+    const tooDeepObject: Record<string, unknown> = {};
+    Object.defineProperty(tooDeepObject, 'secret', {
+      enumerable: true,
+      get: () => {
+        tooDeepGetterCalls++;
+        return 'should not be read';
+      },
+    });
+    const nested = {
+      level1: {
+        level2: {
+          boundary: 'visible',
+          level3: {
+            level4: 'too-deep',
+            objectAtDepthLimit: tooDeepObject,
+          },
+        },
+      },
+    };
+
+    const snapshot = captureSnapshot(delegate, [
+      makeRenderedElement(1, 'layout', { nested, properties }),
+    ]);
+    const debugAttributes = snapshot.tree?.element.attributes ?? {};
+    const debugProperties = debugAttributes.properties as Record<string, unknown>;
+
+    expect(debugProperties.property49).toBe(49);
+    expect(debugProperties.property50).toBeUndefined();
+    expect(debugProperties.__truncated__).toBe('more fields');
+    expect(debugAttributes.nested).toEqual({
+      level1: {
+        level2: {
+          boundary: 'visible',
+          level3: {
+            level4: '... <truncated>',
+            objectAtDepthLimit: '... <truncated>',
+          },
+        },
+      },
+    });
+    expect(tooDeepGetterCalls).toBe(0);
+  });
+
+  it('bounds wide backing-tree work without materializing eager renderer children', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    let renderedNodeReads = 0;
+    let eagerElementChildrenReads = 0;
+    let eagerVirtualChildrenReads = 0;
+    const attributeReads = jasmine.createSpy('attributeReads').and.returnValue([]);
+    const renderedElement = {
+      id: 1,
+      get children(): IRenderedElement[] {
+        eagerElementChildrenReads++;
+        return new Array(20_000).fill(undefined);
+      },
+      getAttribute: () => undefined,
+      getAttributeNames: attributeReads,
+    } as unknown as IRenderedElement;
+    const adversarialRootVirtualNode = {} as Record<string, unknown>;
+    Object.defineProperty(adversarialRootVirtualNode, 'children', {
+      get: () => {
+        eagerVirtualChildrenReads++;
+        return new Array(20_000).fill(adversarialRootVirtualNode);
+      },
+    });
+    const getElementForId = jasmine.createSpy('getElementForId').and.returnValue(renderedElement);
+    const getRootVirtualNode = jasmine
+      .createSpy('getRootVirtualNode')
+      .and.returnValue(adversarialRootVirtualNode);
+    const renderer = { getElementForId, getRootVirtualNode } as unknown as IRenderer;
+
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    delegate.getDebugNode(1)!.htmlElement.getBoundingClientRect = () => {
+      renderedNodeReads++;
+      return makeZeroRect();
+    };
+    for (let id = 2; id <= 1_101; id++) {
+      delegate.onElementCreated(id, 'label');
+      delegate.onElementMoved(id, 1, id - 2);
+      delegate.getDebugNode(id)!.htmlElement.getBoundingClientRect = () => {
+        renderedNodeReads++;
+        return makeZeroRect();
+      };
+    }
+
+    const snapshot = delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+
+    expect(renderedNodeReads).toBe(1_000);
+    expect(getElementForId.calls.count()).toBe(1_000);
+    expect(attributeReads.calls.count()).toBe(1_000);
+    expect(getRootVirtualNode).not.toHaveBeenCalled();
+    expect(eagerElementChildrenReads).toBe(0);
+    expect(eagerVirtualChildrenReads).toBe(0);
+    expect(snapshot.tree?.children.length).toBe(999);
+    expect(snapshot.tree?.childrenTruncated).toBeTrue();
+    expect(JSON.stringify(snapshot).length).toBeLessThanOrEqual(MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+  });
+
+  it('stops deeply nested backing trees without consulting recursive virtual children', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementBecameRoot(1);
+    for (let id = 2; id <= 100; id++) {
+      delegate.onElementCreated(id, 'layout');
+      delegate.onElementMoved(id, id - 1, 0);
+    }
+
+    let eagerChildrenReads = 0;
+    const renderedElement = makeRenderedElement(1, 'layout', {});
+    Object.defineProperty(renderedElement, 'children', {
+      get: () => {
+        eagerChildrenReads++;
+        return new Array(20_000).fill(renderedElement);
+      },
+    });
+    const getElementForId = jasmine.createSpy('getElementForId').and.returnValue(renderedElement);
+    const renderer = { getElementForId } as unknown as IRenderer;
+    const snapshot = delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
+    let capturedDepth = 0;
+    let deepestNode = snapshot.tree;
+    while (deepestNode !== null && deepestNode !== undefined) {
+      capturedDepth++;
+      if (deepestNode.children.length === 0) {
+        break;
+      }
+      deepestNode = deepestNode.children[0];
+    }
+
+    expect(capturedDepth).toBe(64);
+    expect(getElementForId.calls.count()).toBe(64);
+    expect(eagerChildrenReads).toBe(0);
+    expect(deepestNode?.id).toBe('64');
+    expect(deepestNode?.childrenTruncated).toBeTrue();
+  });
+
+  it('does not visit descendants after the aggregate character budget is exhausted', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    delegate.onElementCreated(2, 'label');
+    delegate.onElementBecameRoot(1);
+    delegate.onElementMoved(2, 1, 0);
+    const attributes: Record<string, unknown> = {};
+    for (let index = 0; index < 5; index++) {
+      attributes[`value${index}`] = 'x'.repeat(100_000);
+    }
+    const rootElement = makeRenderedElement(1, 'layout', attributes);
+    const childElement = makeRenderedElement(2, 'label', {});
+    const childAttributeReads = jasmine.createSpy('childAttributeReads').and.returnValue([]);
+    childElement.getAttributeNames = childAttributeReads;
+
+    const snapshot = captureSnapshot(delegate, [rootElement, childElement]);
+
+    expect(childAttributeReads).not.toHaveBeenCalled();
+    expect(snapshot.tree?.children).toEqual([]);
+    expect(snapshot.tree?.childrenTruncated).toBeTrue();
+  });
+
+  it('returns an empty snapshot until a root is mounted and after it is destroyed', () => {
+    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    delegate.onElementCreated(1, 'layout');
+    const renderer = makeRenderer([]);
+
+    expect(delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS).tree).toBeNull();
+
+    delegate.onElementBecameRoot(1);
+    expect(delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS).tree?.id).toBe('1');
+
+    delegate.onElementDestroyed(1);
+    expect(delegate.getDebugSnapshot(renderer, MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS).tree).toBeNull();
+  });
+});
