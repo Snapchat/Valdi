@@ -1,15 +1,68 @@
 const query = new URLSearchParams(window.location.search);
-const inspectedUrl = query.get('inspectedUrl');
-const inspectedTargetNonce = query.get('targetNonce');
+const MAX_REGISTRY_CAPABILITIES = 32;
+const MAX_REGISTRY_ENTRIES = 256;
+const MAX_REGISTRY_ID_CHARACTERS = 512;
+const MAX_REGISTRY_LABEL_CHARACTERS = 96;
+const MAX_REGISTRY_LABEL_TOTAL_CHARACTERS = 180;
 const MAX_CONSOLE_ENTRIES = 500;
 const MAX_CONSOLE_ENTRY_CHARACTERS = 50_000;
 const MAX_CONSOLE_HISTORY_ENTRIES = 100;
 const MAX_PERFORMANCE_SAMPLES = 120;
 const MAX_PERFORMANCE_TIMELINE_ROWS = 120;
 const MAX_PERFORMANCE_SUMMARY_ROWS = 12;
+const MANUAL_WEB_CAPABILITIES = new Set(['components', 'console', 'highlight', 'performance', 'snapshot', 'storage']);
+
+function parseLaunchIdentity(searchParams) {
+  const targetIds = searchParams.getAll('targetId');
+  const inspectedUrls = searchParams.getAll('inspectedUrl');
+  const targetNonces = searchParams.getAll('targetNonce');
+  if (targetIds.length > 1 || inspectedUrls.length > 1 || targetNonces.length > 1) {
+    return { error: 'The DevTools URL contains a duplicated target identity.' };
+  }
+
+  const targetId = targetIds[0];
+  const inspectedPageUrl = inspectedUrls[0];
+  const targetNonce = targetNonces[0];
+  if (targetId !== undefined) {
+    if (
+      targetId.length === 0 ||
+      targetId.length > MAX_REGISTRY_ID_CHARACTERS ||
+      /[\u0000-\u001f\u007f]/.test(targetId) ||
+      inspectedPageUrl !== undefined ||
+      targetNonce !== undefined
+    ) {
+      return { error: 'Direct DevTools requires one bounded targetId and no inspected-page identity.' };
+    }
+    return { mode: 'target-id', requestedTargetId: targetId };
+  }
+
+  if (
+    inspectedPageUrl === undefined ||
+    inspectedPageUrl.length === 0 ||
+    targetNonce === undefined ||
+    targetNonce.length === 0
+  ) {
+    return { error: 'Inspected-page DevTools requires both inspectedUrl and targetNonce.' };
+  }
+  return { inspectedUrl: inspectedPageUrl, mode: 'inspected-page', targetNonce };
+}
+
+const launchIdentity = parseLaunchIdentity(query);
+const inspectedUrl = launchIdentity.mode === 'inspected-page' ? launchIdentity.inspectedUrl : null;
+const inspectedTargetNonce = launchIdentity.mode === 'inspected-page' ? launchIdentity.targetNonce : null;
 
 const state = {
   target: null,
+  targetGeneration: 0,
+  targetSwitchMessage: null,
+  registryTargets: [],
+  registryError: null,
+  registryGeneration: 0,
+  registryRequestGeneration: 0,
+  registryPending: false,
+  connectionRequestGeneration: 0,
+  initialTargetResolutionPending: launchIdentity.mode === 'target-id',
+  unavailableTargetId: null,
   snapshot: null,
   activeSection: 'elements',
   activeDetail: 'styles',
@@ -59,8 +112,11 @@ const elements = {
   detailTabs: Array.from(document.querySelectorAll('.detail-tab')),
   sections: Array.from(document.querySelectorAll('.section')),
   targetStatusDot: document.getElementById('targetStatusDot'),
+  targetSelectLabel: document.getElementById('targetSelectLabel'),
+  targetSelect: document.getElementById('targetSelect'),
   targetName: document.getElementById('targetName'),
   targetMetadata: document.getElementById('targetMetadata'),
+  targetPickerStatus: document.getElementById('targetPickerStatus'),
   autoRefreshToggle: document.getElementById('autoRefreshToggle'),
   refreshButton: document.getElementById('refreshButton'),
   treeFilter: document.getElementById('treeFilter'),
@@ -119,6 +175,227 @@ async function requestJson(path, params, options) {
   return payload;
 }
 
+function isDirectMode() {
+  return launchIdentity.mode === 'target-id';
+}
+
+function targetCapabilities(target = state.target) {
+  if (Array.isArray(target?.capabilities)) return new Set(target.capabilities);
+  return launchIdentity.mode === 'inspected-page' ? MANUAL_WEB_CAPABILITIES : new Set();
+}
+
+function targetSupports(capability, target = state.target) {
+  return Boolean(target && targetCapabilities(target).has(capability));
+}
+
+function targetIdentityParameters(target = state.target) {
+  if (!target) throw new Error('No debugger target is selected.');
+  if (isDirectMode()) return { targetId: target.id };
+  if (!target.sessionId || !inspectedUrl || !inspectedTargetNonce) {
+    throw new Error('The selected inspected page does not have a complete target identity.');
+  }
+  return {
+    inspectedUrl,
+    sessionId: target.sessionId,
+    targetNonce: inspectedTargetNonce,
+  };
+}
+
+function targetIdentityKey(target = state.target) {
+  const identity = targetIdentityParameters(target);
+  return Object.keys(identity)
+    .sort()
+    .map(key => `${key}:${identity[key]}`)
+    .join('|');
+}
+
+function targetOperationalKey(target) {
+  return `${targetIdentityKey(target)}|capabilities:${JSON.stringify(Array.from(targetCapabilities(target)).sort())}`;
+}
+
+function targetEventMatches(target, payload) {
+  if (!target || payload.targetId !== target.id) return false;
+  return isDirectMode() || payload.sessionId === target.sessionId;
+}
+
+function boundedRegistryLabel(value, fallback) {
+  if (typeof value !== 'string') return fallback;
+  const normalized = value
+    .slice(0, MAX_REGISTRY_LABEL_CHARACTERS * 2)
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .trim();
+  if (!normalized) return fallback;
+  const characters = Array.from(normalized);
+  return characters.length <= MAX_REGISTRY_LABEL_CHARACTERS
+    ? normalized
+    : `${characters.slice(0, MAX_REGISTRY_LABEL_CHARACTERS - 1).join('')}…`;
+}
+
+function parseRegistryTarget(value) {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const id = value.id;
+  if (
+    typeof id !== 'string' ||
+    id.length === 0 ||
+    id.length > MAX_REGISTRY_ID_CHARACTERS ||
+    /[\u0000-\u001f\u007f]/.test(id) ||
+    typeof value.attachable !== 'boolean' ||
+    !['inspected-page', 'target-id'].includes(value.identityMode) ||
+    typeof value.transport !== 'string' ||
+    value.transport.length === 0 ||
+    value.transport.length > 64 ||
+    !Array.isArray(value.capabilities) ||
+    value.capabilities.length > MAX_REGISTRY_CAPABILITIES
+  ) {
+    return null;
+  }
+
+  const capabilities = [];
+  const seenCapabilities = new Set();
+  for (const capability of value.capabilities) {
+    if (
+      typeof capability !== 'string' ||
+      capability.length === 0 ||
+      capability.length > 64 ||
+      /[\u0000-\u001f\u007f]/.test(capability) ||
+      seenCapabilities.has(capability)
+    ) {
+      return null;
+    }
+    seenCapabilities.add(capability);
+    capabilities.push(capability);
+  }
+
+  if (value.state !== undefined && !['attached', 'available', 'waiting'].includes(value.state)) return null;
+  if (value.platform !== undefined && (typeof value.platform !== 'string' || value.platform.length > 32)) return null;
+  if (value.port !== undefined && (!Number.isSafeInteger(value.port) || value.port <= 0 || value.port > 65_535)) {
+    return null;
+  }
+  const name = boundedRegistryLabel(value.name, '');
+  return {
+    attachable: value.attachable,
+    capabilities,
+    id,
+    identityMode: value.identityMode,
+    name: name || boundedRegistryLabel(value.applicationId, 'Valdi target'),
+    platform: boundedRegistryLabel(value.platform, 'unknown'),
+    ...(value.port === undefined ? {} : { port: value.port }),
+    state: value.state || 'available',
+    transport: value.transport,
+  };
+}
+
+function parseTargetRegistry(payload) {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload) || !Array.isArray(payload.targets)) {
+    throw new Error('The debugger target registry returned an invalid response.');
+  }
+  if (payload.targets.length > MAX_REGISTRY_ENTRIES) {
+    throw new Error(`The debugger target registry exceeded ${MAX_REGISTRY_ENTRIES} entries.`);
+  }
+  const targets = [];
+  const ids = new Set();
+  for (const value of payload.targets) {
+    const target = parseRegistryTarget(value);
+    if (!target) throw new Error('The debugger target registry contains a malformed entry.');
+    if (ids.has(target.id)) throw new Error(`The debugger target registry contains duplicate target IDs.`);
+    ids.add(target.id);
+    targets.push(target);
+  }
+  return targets;
+}
+
+function isSelectableDirectTarget(target) {
+  const capabilities = targetCapabilities(target);
+  return Boolean(
+    target.attachable &&
+    target.state !== 'waiting' &&
+    target.identityMode === 'target-id' &&
+    target.transport === 'valdi-daemon' &&
+    capabilities.has('components') &&
+    capabilities.has('snapshot'),
+  );
+}
+
+function directTargetUnavailableReason(target) {
+  if (target.identityMode === 'inspected-page') return 'Open from the inspected page';
+  if (!target.attachable || target.state === 'waiting') return 'Waiting for application';
+  if (target.transport !== 'valdi-daemon') return 'Unsupported transport';
+  if (!targetSupports('components', target) || !targetSupports('snapshot', target)) {
+    return 'Component snapshots unavailable';
+  }
+  return 'Unavailable';
+}
+
+function directTargetLabel(target) {
+  const metadata = [target.platform, target.port === undefined ? null : `:${target.port}`].filter(Boolean).join(' ');
+  const reason = isSelectableDirectTarget(target) ? '' : ` — ${directTargetUnavailableReason(target)}`;
+  const label = `${target.name}${metadata ? ` (${metadata})` : ''}${reason}`;
+  const characters = Array.from(label);
+  return characters.length <= MAX_REGISTRY_LABEL_TOTAL_CHARACTERS
+    ? label
+    : `${characters.slice(0, MAX_REGISTRY_LABEL_TOTAL_CHARACTERS - 1).join('')}…`;
+}
+
+function appendTargetOption(value, label, options = {}) {
+  const option = document.createElement('option');
+  option.value = value;
+  option.textContent = label;
+  option.disabled = Boolean(options.disabled);
+  option.selected = Boolean(options.selected);
+  elements.targetSelect.append(option);
+}
+
+function setTargetPickerStatus(message) {
+  elements.targetPickerStatus.textContent = message || '';
+}
+
+function renderTargetPicker() {
+  const direct = isDirectMode();
+  elements.targetSelect.hidden = !direct;
+  elements.targetSelectLabel.hidden = !direct;
+  elements.targetName.hidden = direct;
+  if (!direct) return;
+
+  elements.targetSelect.replaceChildren();
+  const selectedId = state.target?.id || null;
+  const unavailableTarget = state.unavailableTargetId
+    ? state.registryTargets.find(target => target.id === state.unavailableTargetId)
+    : null;
+  appendTargetOption('', state.registryPending ? 'Loading debugger targets…' : 'Choose a debugger target', {
+    disabled: false,
+    selected: selectedId === null,
+  });
+  for (const target of state.registryTargets) {
+    appendTargetOption(target.id, directTargetLabel(target), {
+      disabled: !isSelectableDirectTarget(target),
+      selected: target.id === selectedId,
+    });
+  }
+  if (state.unavailableTargetId && !unavailableTarget) {
+    appendTargetOption(state.unavailableTargetId, 'Requested target is unavailable', { disabled: true });
+  }
+  elements.targetSelect.value = selectedId || '';
+  if (state.targetSwitchMessage) {
+    setTargetPickerStatus(state.targetSwitchMessage);
+  } else if (state.registryError) {
+    setTargetPickerStatus(state.registryError);
+  } else if (state.error) {
+    setTargetPickerStatus(state.error);
+  } else if (state.target) {
+    setTargetPickerStatus(`Connected to ${state.target.name}.`);
+  } else if (state.unavailableTargetId) {
+    setTargetPickerStatus(
+      unavailableTarget && isSelectableDirectTarget(unavailableTarget)
+        ? 'The requested target is available. Select it to connect.'
+        : unavailableTarget
+          ? directTargetUnavailableReason(unavailableTarget)
+          : 'The requested target is unavailable. Choose another target.',
+    );
+  } else {
+    setTargetPickerStatus('Choose a target. Targets are never selected automatically.');
+  }
+}
+
 function stopPerformanceOnPageHide() {
   const identity = state.performance.ownerIdentity;
   if (!identity) return;
@@ -164,23 +441,19 @@ function formatUptime(value) {
 }
 
 function performanceIdentity(target = state.target) {
-  if (!target?.sessionId || !inspectedUrl || !inspectedTargetNonce) {
-    throw new Error('The selected web preview does not have a complete performance identity.');
-  }
-  return {
-    inspectedUrl,
-    sessionId: target.sessionId,
-    targetNonce: inspectedTargetNonce,
-  };
+  if (!targetSupports('performance', target)) throw new Error('The selected target does not support Performance.');
+  return targetIdentityParameters(target);
 }
 
 function samePerformanceIdentity(left, right) {
-  return Boolean(
-    left &&
-      right &&
-      left.sessionId === right.sessionId &&
-      left.inspectedUrl === right.inspectedUrl &&
-      left.targetNonce === right.targetNonce,
+  if (!left || !right) return false;
+  if (left.targetId !== undefined || right.targetId !== undefined) {
+    return left.targetId !== undefined && left.targetId === right.targetId;
+  }
+  return (
+    left.sessionId === right.sessionId &&
+    left.inspectedUrl === right.inspectedUrl &&
+    left.targetNonce === right.targetNonce
   );
 }
 
@@ -204,13 +477,132 @@ function preparePerformanceForTargetChange() {
   perf.pending = false;
   perf.data = null;
   perf.lastTrace = null;
+  perf.navigationExpanded = false;
   perf.rendererTracingEnabled = false;
   perf.samples = [];
+  perf.traceScope = 'valdi';
+  perf.traceSearch = '';
   if (perf.traceActive || perf.ownerIdentity) {
     perf.error = 'The previous web preview still owns a performance recording. Stop and retrieve it before switching.';
     return;
   }
   perf.error = null;
+}
+
+function performanceBlocksTargetSwitch() {
+  const perf = state.performance;
+  return Boolean(perf.pending || perf.traceActive || perf.ownerIdentity);
+}
+
+function sectionIsAvailable(section) {
+  if (section === 'elements') return true;
+  if (section === 'console') return targetSupports('console');
+  if (section === 'performance') return targetSupports('performance') || Boolean(state.performance.ownerIdentity);
+  return false;
+}
+
+function updateCapabilityUi() {
+  for (const tab of elements.mainTabs) {
+    const available = sectionIsAvailable(tab.dataset.section);
+    tab.disabled = !available;
+    tab.setAttribute('aria-disabled', String(!available));
+  }
+  elements.consoleInput.disabled = !targetSupports('console');
+  elements.clearConsoleButton.disabled = !targetSupports('console');
+  elements.refreshButton.disabled = !state.target;
+  if (!sectionIsAvailable(state.activeSection)) setActiveSection('elements');
+}
+
+function resetHighlightForTargetChange() {
+  state.highlightIntentGeneration++;
+  if (state.highlightTimer) window.clearTimeout(state.highlightTimer);
+  state.highlightTimer = null;
+  state.hoveredNodeId = null;
+  state.hoveredSnapshotGeneration = 0;
+  state.highlightMayBeActive = false;
+}
+
+function enqueueExactHighlightClear(target) {
+  if (!target || !targetSupports('highlight', target) || !state.highlightMayBeActive) return;
+  const identity = targetIdentityParameters(target);
+  const request = state.highlightRequestTail.then(() =>
+    requestJson('/api/devtools/highlight', {}, { body: identity }).catch(error => {
+      console.warn('Unable to clear the previous Valdi target highlight.', error);
+    }),
+  );
+  state.highlightRequestTail = request.catch(error => {
+    console.warn('Unable to order the previous Valdi target highlight clear.', error);
+  });
+}
+
+function resetConsoleForTargetChange() {
+  clearConsole();
+  state.consoleHistory = [];
+  state.consoleHistoryIndex = 0;
+  elements.consoleInput.value = '';
+}
+
+function clearTargetPresentation(message) {
+  state.snapshotRequestGeneration++;
+  state.refreshPending = false;
+  state.snapshot = null;
+  state.snapshotGeneration++;
+  state.selectedNodeId = null;
+  state.remoteSelectedNodeId = null;
+  state.expandedNodeIds.clear();
+  resetHighlightForTargetChange();
+  resetConsoleForTargetChange();
+  preparePerformanceForTargetChange();
+  elements.treeEmpty.textContent = message;
+  render();
+}
+
+function applyDirectTargetSelection(nextTarget, options = {}) {
+  const currentId = state.target?.id || null;
+  const nextId = nextTarget?.id || null;
+  if (currentId !== null && currentId === nextId && !options.force) {
+    state.targetSwitchMessage = null;
+    renderTargetPicker();
+    return true;
+  }
+  if (!options.force && performanceBlocksTargetSwitch()) {
+    state.targetSwitchMessage = 'Stop or finish the current Performance operation before switching debugger targets.';
+    renderTargetPicker();
+    return false;
+  }
+
+  stopConsoleStream();
+  enqueueExactHighlightClear(state.target);
+  state.targetGeneration++;
+  clearTargetPresentation(nextTarget ? 'Loading the selected target…' : 'Choose a debugger target to inspect.');
+  state.target = nextTarget;
+  state.unavailableTargetId = options.unavailableTargetId || null;
+  state.targetSwitchMessage = options.message || null;
+  state.error = nextTarget
+    ? null
+    : options.unavailableTargetId
+      ? options.message || 'The selected target is unavailable.'
+      : null;
+  if (nextTarget) {
+    elements.targetMetadata.textContent = [
+      nextTarget.platform,
+      nextTarget.port === undefined ? null : `:${nextTarget.port}`,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    setConnected(true);
+  } else {
+    elements.targetMetadata.textContent = '';
+    setConnected(false);
+  }
+  updateCapabilityUi();
+  if (state.activeSection === 'performance') renderPerformance();
+  renderTargetPicker();
+  if (nextTarget) {
+    startConsoleStream();
+    void refreshSnapshot();
+  }
+  return true;
 }
 
 function nodeAttributes(node) {
@@ -316,7 +708,10 @@ function expandUsefulNodes(root) {
 
 function setConnected(connected, message) {
   elements.targetStatusDot.className = `status-dot${connected ? '' : state.error ? ' error' : ' connecting'}`;
-  if (message) elements.targetName.textContent = message;
+  if (message) {
+    if (isDirectMode()) setTargetPickerStatus(message);
+    else elements.targetName.textContent = message;
+  }
 }
 
 function reportError(error) {
@@ -326,28 +721,117 @@ function reportError(error) {
   elements.treeEmpty.textContent = message;
 }
 
-async function connectToInspectedApplication() {
-  if (!inspectedUrl || !inspectedTargetNonce) {
-    state.error = 'The DevTools extension did not provide its inspected page identity.';
-    setConnected(false, state.error);
-    return;
+async function refreshTargetRegistry() {
+  if (!isDirectMode() || state.registryPending) return;
+  state.registryPending = true;
+  const requestGeneration = ++state.registryRequestGeneration;
+  renderTargetPicker();
+  try {
+    const payload = await requestJson('/api/devtools/targets', {}, {});
+    if (requestGeneration !== state.registryRequestGeneration) return;
+    const targets = parseTargetRegistry(payload);
+    state.registryTargets = targets;
+    state.registryGeneration++;
+    state.registryError = null;
+    if (!state.target) state.error = null;
+
+    if (state.initialTargetResolutionPending) {
+      state.initialTargetResolutionPending = false;
+      const requestedId = launchIdentity.requestedTargetId;
+      const requestedTarget = targets.find(target => target.id === requestedId);
+      if (requestedTarget && isSelectableDirectTarget(requestedTarget)) {
+        state.unavailableTargetId = null;
+        applyDirectTargetSelection(requestedTarget, { force: true });
+      } else {
+        state.unavailableTargetId = requestedId;
+        state.error = 'The requested target is unavailable.';
+        updateCapabilityUi();
+        setConnected(false);
+      }
+    } else if (state.target) {
+      const refreshedTarget = targets.find(target => target.id === state.target.id);
+      if (!refreshedTarget || !isSelectableDirectTarget(refreshedTarget)) {
+        const unavailableTargetId = state.target.id;
+        applyDirectTargetSelection(null, {
+          force: true,
+          message: 'The selected target is no longer available. Choose another target.',
+          unavailableTargetId,
+        });
+      } else {
+        const previousTarget = state.target;
+        const targetChanged = targetOperationalKey(previousTarget) !== targetOperationalKey(refreshedTarget);
+        if (targetChanged) {
+          stopConsoleStream();
+          enqueueExactHighlightClear(previousTarget);
+          state.targetGeneration++;
+          clearTargetPresentation('Refreshing the selected target…');
+        }
+        state.target = refreshedTarget;
+        elements.targetMetadata.textContent = [
+          refreshedTarget.platform,
+          refreshedTarget.port === undefined ? null : `:${refreshedTarget.port}`,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        updateCapabilityUi();
+        if (state.activeSection === 'performance') renderPerformance();
+        if (targetChanged) {
+          startConsoleStream();
+          void refreshSnapshot();
+        }
+      }
+    }
+    if (!state.target) setConnected(false);
+    renderTargetPicker();
+  } catch (error) {
+    if (requestGeneration !== state.registryRequestGeneration) return;
+    state.registryError = error instanceof Error ? error.message : String(error);
+    if (!state.target) {
+      state.error = state.registryError;
+      setConnected(false);
+    }
+    renderTargetPicker();
+  } finally {
+    if (requestGeneration === state.registryRequestGeneration) {
+      state.registryPending = false;
+      renderTargetPicker();
+    }
   }
+}
+
+async function connectToInspectedPage() {
+  const connectionGeneration = ++state.connectionRequestGeneration;
 
   try {
     const payload = await requestJson('/api/devtools/target', { inspectedUrl, targetNonce: inspectedTargetNonce }, {});
+    if (connectionGeneration !== state.connectionRequestGeneration) return;
     const previousTargetKey = state.target
       ? `${state.target.id}:${state.target.sessionId}:${inspectedTargetNonce}`
       : null;
     const nextTargetKey = `${payload.target.id}:${payload.target.sessionId}:${inspectedTargetNonce}`;
     if (previousTargetKey !== null && previousTargetKey !== nextTargetKey) {
       stopConsoleStream();
-      clearConsole();
+      enqueueExactHighlightClear(state.target);
+      resetConsoleForTargetChange();
       preparePerformanceForTargetChange();
+      state.snapshotRequestGeneration++;
+      state.refreshPending = false;
+      state.snapshot = null;
+      state.snapshotGeneration++;
+      state.selectedNodeId = null;
+      state.remoteSelectedNodeId = null;
+      state.expandedNodeIds.clear();
+      resetHighlightForTargetChange();
+      render();
     }
+    if (previousTargetKey !== nextTargetKey) state.targetGeneration++;
     state.target = payload.target;
     elements.targetName.textContent = state.target.name || 'Valdi application';
     elements.targetName.title = state.target.applicationUrl || inspectedUrl;
     elements.targetMetadata.textContent = `Chromium · :${state.target.debuggingPort}`;
+    renderTargetPicker();
+    updateCapabilityUi();
+    if (state.activeSection === 'performance') renderPerformance();
     setConnected(true);
     if (previousTargetKey !== nextTargetKey) {
       addConsoleEntry('info', `Connected to ${state.target.applicationUrl}`);
@@ -356,23 +840,42 @@ async function connectToInspectedApplication() {
     await refreshSnapshot();
     startRefreshTimer();
   } catch (error) {
+    if (connectionGeneration !== state.connectionRequestGeneration) return;
     reportError(error);
-    window.setTimeout(connectToInspectedApplication, 1500);
+    window.setTimeout(connectToInspectedPage, 1500);
   }
 }
 
+async function connectToInspectedApplication() {
+  renderTargetPicker();
+  updateCapabilityUi();
+  if (launchIdentity.error) {
+    state.error = launchIdentity.error;
+    setConnected(false, state.error);
+    elements.treeEmpty.textContent = state.error;
+    return;
+  }
+  if (isDirectMode()) {
+    await refreshTargetRegistry();
+    startRefreshTimer();
+    return;
+  }
+  await connectToInspectedPage();
+}
+
 async function refreshSnapshot() {
-  if (!state.target || state.refreshPending) return;
+  if (!state.target || !targetSupports('components') || !targetSupports('snapshot') || state.refreshPending) return;
   state.refreshPending = true;
   const requestTarget = state.target;
+  const requestTargetGeneration = state.targetGeneration;
   const requestGeneration = ++state.snapshotRequestGeneration;
+  const requestIsCurrent = () =>
+    state.targetGeneration === requestTargetGeneration &&
+    state.target?.id === requestTarget.id &&
+    state.snapshotRequestGeneration === requestGeneration;
   try {
-    const snapshot = await requestJson(
-      '/api/devtools/snapshot',
-      { inspectedUrl, sessionId: requestTarget.sessionId, targetNonce: inspectedTargetNonce },
-      {},
-    );
-    if (state.target !== requestTarget || state.snapshotRequestGeneration !== requestGeneration) return;
+    const snapshot = await requestJson('/api/devtools/snapshot', targetIdentityParameters(requestTarget), {});
+    if (!requestIsCurrent()) return;
     snapshot.tree = valdiDebuggerTreeModel.restoreTree(snapshot.tree);
     const wasEmpty = !state.snapshot?.tree;
     const shouldClearHighlight = state.hoveredNodeId !== null || state.highlightMayBeActive;
@@ -385,6 +888,7 @@ async function refreshSnapshot() {
     if (shouldClearHighlight) queueHighlight(null);
     state.error = null;
     setConnected(true);
+    renderTargetPicker();
 
     if (wasEmpty) {
       expandUsefulNodes(snapshot.tree);
@@ -402,16 +906,18 @@ async function refreshSnapshot() {
     }
     render();
   } catch (error) {
-    reportError(error);
+    if (requestIsCurrent()) reportError(error);
   } finally {
-    state.refreshPending = false;
+    if (requestIsCurrent()) state.refreshPending = false;
   }
 }
 
 function startRefreshTimer() {
   if (state.refreshTimer) window.clearInterval(state.refreshTimer);
   state.refreshTimer = window.setInterval(() => {
-    if (!state.autoRefresh || document.hidden) return;
+    if (document.hidden) return;
+    if (isDirectMode()) void refreshTargetRegistry();
+    if (!state.autoRefresh) return;
     if (state.activeSection === 'elements') void refreshSnapshot();
     if (state.activeSection === 'performance') void refreshPerformance({ silent: true });
   }, 1200);
@@ -696,12 +1202,19 @@ function handleTreeNavigation(event) {
   scrollSelectedTreeRowIntoView();
 }
 
-function enqueueHighlightRequest(intentGeneration, target, targetSessionId, snapshotGeneration, nodeIdValue) {
+function enqueueHighlightRequest(
+  intentGeneration,
+  target,
+  targetGeneration,
+  snapshotGeneration,
+  identity,
+  nodeIdValue,
+) {
   const request = state.highlightRequestTail.then(async () => {
     if (
       intentGeneration !== state.highlightIntentGeneration ||
-      state.target !== target ||
-      target.sessionId !== targetSessionId ||
+      state.targetGeneration !== targetGeneration ||
+      state.target?.id !== target.id ||
       state.snapshotGeneration !== snapshotGeneration
     ) {
       return;
@@ -712,14 +1225,16 @@ function enqueueHighlightRequest(intentGeneration, target, targetSessionId, snap
         {},
         {
           body: {
-            inspectedUrl,
-            sessionId: targetSessionId,
-            targetNonce: inspectedTargetNonce,
+            ...identity,
             ...(nodeIdValue ? { nodeId: nodeIdValue } : {}),
           },
         },
       );
-      if (nodeIdValue === null && intentGeneration === state.highlightIntentGeneration) {
+      if (
+        nodeIdValue === null &&
+        intentGeneration === state.highlightIntentGeneration &&
+        state.targetGeneration === targetGeneration
+      ) {
         state.highlightMayBeActive = false;
       }
     } catch (error) {
@@ -734,13 +1249,15 @@ function enqueueHighlightRequest(intentGeneration, target, targetSessionId, snap
 function queueHighlight(nodeIdValue) {
   if (
     !state.target ||
+    !targetSupports('highlight') ||
     (state.hoveredNodeId === nodeIdValue &&
       state.hoveredSnapshotGeneration === state.snapshotGeneration &&
       !(nodeIdValue === null && state.highlightMayBeActive))
   )
     return;
   const target = state.target;
-  const targetSessionId = target.sessionId;
+  const targetGeneration = state.targetGeneration;
+  const identity = targetIdentityParameters(target);
   const snapshotGeneration = state.snapshotGeneration;
   const intentGeneration = ++state.highlightIntentGeneration;
   state.hoveredNodeId = nodeIdValue;
@@ -749,9 +1266,14 @@ function queueHighlight(nodeIdValue) {
   state.highlightTimer = window.setTimeout(
     () => {
       state.highlightTimer = null;
-      if (state.target !== target || state.snapshotGeneration !== snapshotGeneration) return;
+      if (
+        state.targetGeneration !== targetGeneration ||
+        state.target?.id !== target.id ||
+        state.snapshotGeneration !== snapshotGeneration
+      )
+        return;
       if (nodeIdValue !== null) state.highlightMayBeActive = true;
-      enqueueHighlightRequest(intentGeneration, target, targetSessionId, snapshotGeneration, nodeIdValue);
+      enqueueHighlightRequest(intentGeneration, target, targetGeneration, snapshotGeneration, identity, nodeIdValue);
     },
     nodeIdValue ? 80 : 20,
   );
@@ -1118,11 +1640,22 @@ function downloadPerformanceTrace(result) {
 
 async function refreshPerformance(options = {}) {
   if (options.silent && performancePollingInputIsFocused()) return;
-  if (!state.target || state.performance.pending || state.performance.snapshotPending) return;
+  if (
+    !state.target ||
+    !targetSupports('performance') ||
+    state.performance.pending ||
+    state.performance.snapshotPending
+  ) {
+    return;
+  }
   const perf = state.performance;
   const identity = performanceIdentity();
+  const targetGeneration = state.targetGeneration;
   const requestGeneration = ++perf.requestGeneration;
-  const requestIsCurrent = () => requestGeneration === perf.requestGeneration && performanceIdentityIsCurrent(identity);
+  const requestIsCurrent = () =>
+    targetGeneration === state.targetGeneration &&
+    requestGeneration === perf.requestGeneration &&
+    performanceIdentityIsCurrent(identity);
   perf.snapshotPending = true;
   if (!options.silent && !perf.data) renderPerformance();
   try {
@@ -1170,6 +1703,32 @@ async function refreshPerformance(options = {}) {
   }
 }
 
+function retainStalePerformanceOwnerAfterCleanupFailure(identity, cleanupError, operationGeneration) {
+  const perf = state.performance;
+  if (perf.ownerIdentity) {
+    const ownerDescription = samePerformanceIdentity(perf.ownerIdentity, identity)
+      ? 'the same recording is already retained by a newer operation'
+      : 'a different recording is already owned by a newer operation';
+    console.warn(`Unable to retain a stale Performance recording because ${ownerDescription}.`, cleanupError);
+    return;
+  }
+  if (operationGeneration !== perf.operationGeneration && perf.pending) {
+    console.warn('Unable to retain a stale Performance recording while a newer operation is pending.', cleanupError);
+    return;
+  }
+
+  // Exact cleanup failed. Claim a fresh repair generation only when no newer
+  // operation or owner needs the state, then retain the orphaned exact owner.
+  const repairGeneration =
+    operationGeneration === perf.operationGeneration ? operationGeneration : ++perf.operationGeneration;
+  if (repairGeneration !== perf.operationGeneration) return;
+  perf.traceActive = true;
+  perf.ownerIdentity = identity;
+  perf.error = `The previous web preview still owns a performance recording: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`;
+  updateCapabilityUi();
+  if (state.activeSection === 'performance') renderPerformance(perf.data);
+}
+
 async function runPerformanceAction(action) {
   const perf = state.performance;
   if (action === 'refresh') {
@@ -1180,7 +1739,8 @@ async function runPerformanceAction(action) {
     if (perf.lastTrace) downloadPerformanceTrace(perf.lastTrace);
     return;
   }
-  if (!state.target || perf.pending) return;
+  const stoppingPreviousOwner = action === 'trace-stop' && perf.ownerIdentity;
+  if (perf.pending || (!stoppingPreviousOwner && (!state.target || !targetSupports('performance')))) return;
   if (['enable-tracing', 'trace-capture', 'trace-start'].includes(action) && (perf.traceActive || perf.ownerIdentity)) {
     return;
   }
@@ -1191,13 +1751,19 @@ async function runPerformanceAction(action) {
     return;
   }
 
-  const selectedIdentity = performanceIdentity();
-  const identity = action === 'trace-stop' && perf.ownerIdentity ? perf.ownerIdentity : selectedIdentity;
+  const selectedIdentity = state.target && targetSupports('performance') ? performanceIdentity() : null;
+  const targetGeneration = state.targetGeneration;
+  const identity = stoppingPreviousOwner ? perf.ownerIdentity : selectedIdentity;
+  if (!identity) return;
   perf.requestGeneration++;
   perf.snapshotPending = false;
   const operationGeneration = ++perf.operationGeneration;
+  const operationIsCurrent = () => operationGeneration === perf.operationGeneration;
   const selectedTargetIsCurrent = () =>
-    operationGeneration === perf.operationGeneration && performanceIdentityIsCurrent(selectedIdentity);
+    operationIsCurrent() &&
+    selectedIdentity !== null &&
+    targetGeneration === state.targetGeneration &&
+    performanceIdentityIsCurrent(selectedIdentity);
   const operationOwnsTrace = () => samePerformanceIdentity(perf.ownerIdentity, identity);
   let refreshSelectedTarget = false;
   perf.pending = true;
@@ -1226,12 +1792,7 @@ async function runPerformanceAction(action) {
             try {
               await requestJson('/api/devtools/performance/trace/stop', identity, { body: {} });
             } catch (cleanupError) {
-              if (!perf.ownerIdentity || samePerformanceIdentity(perf.ownerIdentity, identity)) {
-                perf.traceActive = true;
-                perf.ownerIdentity = identity;
-                perf.error = `The previous web preview still owns a performance recording: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`;
-                if (state.activeSection === 'performance') renderPerformance(perf.data);
-              }
+              retainStalePerformanceOwnerAfterCleanupFailure(identity, cleanupError, operationGeneration);
             }
           }
           return;
@@ -1240,6 +1801,7 @@ async function runPerformanceAction(action) {
         perf.ownerIdentity = perf.traceActive ? identity : null;
         refreshSelectedTarget = true;
       } else {
+        if (!operationIsCurrent()) return;
         const completedOwnedTrace = ['capture', 'stop'].includes(operation) && operationOwnsTrace();
         const completedPreviousOwner = completedOwnedTrace && !samePerformanceIdentity(identity, selectedIdentity);
         if (completedOwnedTrace) {
@@ -1262,16 +1824,17 @@ async function runPerformanceAction(action) {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (selectedTargetIsCurrent() || operationOwnsTrace()) {
+    if (operationIsCurrent() && (selectedTargetIsCurrent() || operationOwnsTrace())) {
       perf.error = message;
       if (state.activeSection === 'performance') renderPerformance(perf.data);
     } else {
       console.warn('Ignoring a stale web preview performance action error.', error);
     }
   } finally {
-    if (selectedTargetIsCurrent()) {
+    if (operationIsCurrent()) {
       perf.pending = false;
       if (state.activeSection === 'performance') renderPerformance(perf.data);
+      updateCapabilityUi();
     }
   }
   if (refreshSelectedTarget && selectedTargetIsCurrent() && state.target) {
@@ -1280,18 +1843,42 @@ async function runPerformanceAction(action) {
 }
 
 function setActiveSection(section) {
-  state.activeSection = section;
+  const activeSection = sectionIsAvailable(section) ? section : 'elements';
+  state.activeSection = activeSection;
   for (const tab of elements.mainTabs) {
-    const selected = tab.dataset.section === section;
+    const selected = tab.dataset.section === activeSection;
     tab.classList.toggle('selected', selected);
     tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
   }
   for (const panel of elements.sections) {
-    panel.classList.toggle('selected', panel.dataset.panel === section);
+    const selected = panel.dataset.panel === activeSection;
+    panel.classList.toggle('selected', selected);
+    panel.hidden = !selected;
   }
-  if (section === 'console') elements.consoleInput.focus();
-  if (section === 'elements') void refreshSnapshot();
-  if (section === 'performance') void refreshPerformance();
+  if (activeSection === 'console') elements.consoleInput.focus();
+  if (activeSection === 'elements') void refreshSnapshot();
+  if (activeSection === 'performance') {
+    renderPerformance();
+    void refreshPerformance();
+  }
+}
+
+function handleMainTabNavigation(event) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  const tabs = elements.mainTabs.filter(tab => !tab.disabled);
+  if (!tabs.length) return;
+  event.preventDefault();
+  const currentIndex = Math.max(0, tabs.indexOf(event.currentTarget));
+  const nextIndex =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? tabs.length - 1
+        : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+  const nextTab = tabs[nextIndex];
+  setActiveSection(nextTab.dataset.section);
+  nextTab.focus();
 }
 
 function setActiveDetail(detail) {
@@ -1305,31 +1892,32 @@ function setActiveDetail(detail) {
 }
 
 function stopConsoleStream() {
-  if (!state.consoleStream) return;
-  state.consoleStream.close();
+  if (state.consoleStream) state.consoleStream.close();
   state.consoleStream = null;
   state.consoleStreamTargetKey = null;
 }
 
 function startConsoleStream() {
-  if (!state.target || !state.autoRefresh || !inspectedUrl || !inspectedTargetNonce) {
+  if (!state.target || !state.autoRefresh || !targetSupports('console')) {
     stopConsoleStream();
     return;
   }
-  const targetKey = `${state.target.id}:${state.target.sessionId}:${inspectedTargetNonce}`;
+  const target = state.target;
+  const targetGeneration = state.targetGeneration;
+  const identity = targetIdentityParameters(target);
+  const targetKey = `${targetGeneration}:${targetIdentityKey(target)}`;
   if (state.consoleStream && state.consoleStreamTargetKey === targetKey) return;
   stopConsoleStream();
 
   const url = new URL('/api/devtools/console/stream', window.location.origin);
-  url.searchParams.set('inspectedUrl', inspectedUrl);
-  url.searchParams.set('sessionId', state.target.sessionId);
-  url.searchParams.set('targetNonce', inspectedTargetNonce);
+  for (const [key, value] of Object.entries(identity)) url.searchParams.set(key, String(value));
   const stream = new EventSource(url.toString());
   state.consoleStream = stream;
   state.consoleStreamTargetKey = targetKey;
 
   stream.addEventListener('console', event => {
-    if (state.consoleStream !== stream || !state.target) return;
+    if (state.consoleStream !== stream || state.targetGeneration !== targetGeneration || state.target?.id !== target.id)
+      return;
     let entry;
     try {
       entry = JSON.parse(event.data);
@@ -1338,26 +1926,19 @@ function startConsoleStream() {
       return;
     }
     if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return;
-    if (
-      entry.sessionId !== state.target.sessionId ||
-      entry.targetId !== state.target.id ||
-      typeof entry.message !== 'string'
-    ) {
+    if (!targetEventMatches(target, entry) || typeof entry.message !== 'string') {
       return;
     }
     addConsoleEntry(entry.level, entry.message, entry.timestamp, entry.source);
   });
 
   stream.addEventListener('stream-error', event => {
-    if (state.consoleStream !== stream || !state.target) return;
+    if (state.consoleStream !== stream || state.targetGeneration !== targetGeneration || state.target?.id !== target.id)
+      return;
     try {
       const payload = JSON.parse(event.data);
       if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return;
-      if (
-        payload.sessionId === state.target.sessionId &&
-        payload.targetId === state.target.id &&
-        typeof payload.error === 'string'
-      ) {
+      if (targetEventMatches(target, payload) && typeof payload.error === 'string') {
         addConsoleEntry('error', payload.error);
       }
     } catch (error) {
@@ -1366,15 +1947,12 @@ function startConsoleStream() {
   });
 
   stream.addEventListener('stream-warning', event => {
-    if (state.consoleStream !== stream || !state.target) return;
+    if (state.consoleStream !== stream || state.targetGeneration !== targetGeneration || state.target?.id !== target.id)
+      return;
     try {
       const payload = JSON.parse(event.data);
       if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return;
-      if (
-        payload.sessionId === state.target.sessionId &&
-        payload.targetId === state.target.id &&
-        typeof payload.message === 'string'
-      ) {
+      if (targetEventMatches(target, payload) && typeof payload.message === 'string') {
         addConsoleEntry('warn', payload.message);
       }
     } catch (error) {
@@ -1416,6 +1994,11 @@ function clearConsole() {
 }
 
 async function evaluateConsoleExpression(expression) {
+  if (!state.target || !targetSupports('console')) return;
+  const target = state.target;
+  const targetGeneration = state.targetGeneration;
+  const identity = targetIdentityParameters(target);
+  const requestIsCurrent = () => state.targetGeneration === targetGeneration && state.target?.id === target.id;
   addConsoleEntry('input', expression);
   try {
     const result = await requestJson(
@@ -1424,17 +2007,16 @@ async function evaluateConsoleExpression(expression) {
       {
         body: {
           expression,
-          inspectedUrl,
-          sessionId: state.target.sessionId,
-          targetNonce: inspectedTargetNonce,
+          ...identity,
         },
       },
     );
+    if (!requestIsCurrent()) return;
     const serialized = result.type === 'undefined' ? undefined : JSON.stringify(result.value, null, 2);
     const value = result.type === 'undefined' ? 'undefined' : (serialized ?? String(result.value));
     addConsoleEntry('result', value);
   } catch (error) {
-    addConsoleEntry('error', error.message);
+    if (requestIsCurrent()) addConsoleEntry('error', error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -1456,11 +2038,31 @@ function startSplitResize(event) {
 function wireEvents() {
   for (const tab of elements.mainTabs) {
     tab.addEventListener('click', () => setActiveSection(tab.dataset.section));
+    tab.addEventListener('keydown', handleMainTabNavigation);
   }
   for (const tab of elements.detailTabs) {
     tab.addEventListener('click', () => setActiveDetail(tab.dataset.detail));
   }
+  elements.targetSelect.addEventListener('change', () => {
+    if (!isDirectMode()) return;
+    const targetId = elements.targetSelect.value;
+    if (!targetId) {
+      applyDirectTargetSelection(null);
+      return;
+    }
+    const target = state.registryTargets.find(candidate => candidate.id === targetId);
+    if (!target || !isSelectableDirectTarget(target)) {
+      state.targetSwitchMessage = target
+        ? directTargetUnavailableReason(target)
+        : 'The requested target is unavailable.';
+      renderTargetPicker();
+      return;
+    }
+    state.unavailableTargetId = null;
+    applyDirectTargetSelection(target);
+  });
   elements.refreshButton.addEventListener('click', () => {
+    if (isDirectMode()) void refreshTargetRegistry();
     if (state.activeSection === 'performance') void refreshPerformance();
     else void refreshSnapshot();
   });
@@ -1555,7 +2157,7 @@ function wireEvents() {
   elements.consoleForm.addEventListener('submit', event => {
     event.preventDefault();
     const expression = elements.consoleInput.value.trim();
-    if (!expression || !state.target) return;
+    if (!expression || !state.target || !targetSupports('console')) return;
     state.consoleHistory.push(expression);
     if (state.consoleHistory.length > MAX_CONSOLE_HISTORY_ENTRIES) {
       state.consoleHistory.splice(0, state.consoleHistory.length - MAX_CONSOLE_HISTORY_ENTRIES);
@@ -1587,6 +2189,7 @@ function wireEvents() {
     stopPerformanceOnPageHide();
   });
   document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && isDirectMode()) void refreshTargetRegistry();
     if (!document.hidden && state.activeSection === 'elements') void refreshSnapshot();
     if (!document.hidden && state.activeSection === 'performance') void refreshPerformance({ silent: true });
   });

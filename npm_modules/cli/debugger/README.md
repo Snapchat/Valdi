@@ -98,6 +98,26 @@ serialized `/api/devtools/targets` response is independently capped at 512 KiB.
 The legacy `/api/status` route intentionally keeps its prior port probing and
 forwarding behavior and does not run registry discovery.
 
+The DevTools panel has two mutually exclusive identity modes. An extension-opened
+inspected page keeps using its exact `sessionId`, `inspectedUrl`, and
+`targetNonce` tuple and never requests the target registry. A directly opened
+panel receives one opaque `targetId`, discovers at most 256 registry entries,
+and never falls back to the first, only, attached, or newly discovered target.
+Only attachable `target-id` entries using the `valdi-daemon` transport and
+advertising both `components` and `snapshot` can be selected. Inspected-page,
+waiting, and unsupported entries remain visible with a disabled explanation.
+Direct snapshot and capability-supported tool requests send only the selected
+opaque `targetId`.
+
+Target changes close the old Console stream before installing the replacement,
+invalidate outstanding snapshot, highlight, Console, and Performance work, and
+clear all target-owned presentation. Console and Performance tabs are enabled
+only when the selected descriptor advertises their capability. A target change
+is blocked while a Performance operation or recording owns the selected target;
+if registry removal forces a detach, the exact previous Performance owner stays
+available solely so the recording can be stopped and retrieved. Registry
+removal never selects another target automatically.
+
 The Data section discovers target-owned providers through a generic custom
 message contract. The persistence module registers its bounded web snapshot as
 the `persistent-store` Storage provider and reports it unavailable on platforms

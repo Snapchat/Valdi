@@ -74,6 +74,110 @@ interface MockConsoleEventSource {
   emit(type: string, payload: Record<string, unknown>): void;
 }
 
+interface PickerTarget {
+  attachable: boolean;
+  capabilities: string[];
+  id: string;
+  identityMode: 'inspected-page' | 'target-id';
+  name: string;
+  platform: string;
+  port?: number;
+  state: 'attached' | 'available' | 'waiting';
+  transport: string;
+}
+
+interface PickerStubEvent {
+  currentTarget: PickerStubElement;
+  key: string;
+  target: PickerStubElement;
+  preventDefault(): void;
+  stopPropagation(): void;
+}
+
+interface PickerStubElement {
+  checked: boolean;
+  children: PickerStubElement[];
+  classList: {
+    contains(value: string): boolean;
+    toggle(value: string, enabled: boolean): void;
+  };
+  className: string;
+  dataset: Record<string, string>;
+  disabled: boolean;
+  hidden: boolean;
+  id: string;
+  innerHTML: string;
+  open: boolean;
+  scrollHeight: number;
+  scrollTop: number;
+  selected: boolean;
+  style: Record<string, string>;
+  tabIndex: number;
+  textContent: string;
+  title: string;
+  value: string;
+  addEventListener(type: string, listener: (event: PickerStubEvent) => void): void;
+  append(child: PickerStubElement): void;
+  closest(): PickerStubElement | null;
+  contains(): boolean;
+  dispatch(type: string, properties?: Partial<PickerStubEvent>): void;
+  focus(): void;
+  getAttribute(name: string): string | null;
+  getBoundingClientRect(): { bottom: number; height: number; left: number; right: number; top: number; width: number };
+  querySelector(): PickerStubElement | null;
+  querySelectorAll(): PickerStubElement[];
+  removeAttribute(name: string): void;
+  replaceChildren(): void;
+  scrollIntoView(): void;
+  setAttribute(name: string, value: string): void;
+  setSelectionRange(): void;
+}
+
+interface PickerPanel {
+  state: {
+    activeSection: string;
+    consoleEntries: Array<{ kind: string; value: string }>;
+    consoleEntryKeys: Set<string>;
+    consoleHistory: string[];
+    error: string | null;
+    expandedNodeIds: Set<string>;
+    highlightMayBeActive: boolean;
+    highlightRequestTail: Promise<void>;
+    highlightTimer: number | null;
+    performance: {
+      data: Record<string, unknown> | null;
+      error: string | null;
+      lastTrace: Record<string, unknown> | null;
+      ownerIdentity: Record<string, string> | null;
+      pending: boolean;
+      samples: Record<string, unknown>[];
+      snapshotPending: boolean;
+      traceActive: boolean;
+    };
+    refreshPending: boolean;
+    registryPending: boolean;
+    registryRequestGeneration: number;
+    registryTargets: PickerTarget[];
+    selectedNodeId: string | null;
+    snapshot: { tree: DevToolsTreeNode } | null;
+    target: PickerTarget | null;
+    targetGeneration: number;
+    targetSwitchMessage: string | null;
+    unavailableTargetId: string | null;
+  };
+  applyDirectTargetSelection(target: PickerTarget | null, options?: Record<string, unknown>): boolean;
+  connectToInspectedApplication(): Promise<void>;
+  evaluateConsoleExpression(expression: string): Promise<void>;
+  parseTargetRegistry(payload: unknown): PickerTarget[];
+  queueHighlight(nodeId: string | null): void;
+  refreshSnapshot(): Promise<void>;
+  refreshTargetRegistry(): Promise<void>;
+  renderTargetPicker(): void;
+  runPerformanceAction(action: string): Promise<void>;
+  setActiveSection(section: string): void;
+  startConsoleStream(): void;
+}
+
 interface DevToolsConsolePanel {
   clearButton: StubElement;
   consoleInput: StubElement;
@@ -139,6 +243,321 @@ function componentTree(): DevToolsTreeNode {
     id: 'component:[null,"root"]',
     tag: 'RootExampleComponent',
   };
+}
+
+function pickerTarget(id: string, overrides: Partial<PickerTarget> = {}): PickerTarget {
+  return {
+    attachable: true,
+    capabilities: ['components', 'snapshot'],
+    id,
+    identityMode: 'target-id',
+    name: `Target ${id}`,
+    platform: 'macos',
+    port: 9166,
+    state: 'available',
+    transport: 'valdi-daemon',
+    ...overrides,
+  };
+}
+
+function createPickerStubElement(id: string): PickerStubElement {
+  const attributes = new Map<string, string>();
+  const classes = new Set<string>();
+  const listeners = new Map<string, Array<(event: PickerStubEvent) => void>>();
+  const element: PickerStubElement = {
+    checked: true,
+    children: [],
+    classList: {
+      contains: value => classes.has(value),
+      toggle: (value, enabled) => {
+        if (enabled) classes.add(value);
+        else classes.delete(value);
+      },
+    },
+    className: '',
+    dataset: {},
+    disabled: false,
+    hidden: false,
+    id,
+    innerHTML: '',
+    open: false,
+    scrollHeight: 0,
+    scrollTop: 0,
+    selected: false,
+    style: {},
+    tabIndex: -1,
+    textContent: '',
+    title: '',
+    value: '',
+    addEventListener(type, listener) {
+      const entries = listeners.get(type) ?? [];
+      entries.push(listener);
+      listeners.set(type, entries);
+    },
+    append(child) {
+      element.children.push(child);
+      if (child.selected) element.value = child.value;
+    },
+    closest: () => null,
+    contains: () => true,
+    dispatch(type, properties = {}) {
+      const event: PickerStubEvent = {
+        currentTarget: element,
+        key: '',
+        preventDefault() {},
+        stopPropagation() {},
+        target: element,
+        ...properties,
+      };
+      for (const listener of listeners.get(type) ?? []) listener(event);
+    },
+    focus() {},
+    getAttribute: name => attributes.get(name) ?? null,
+    getBoundingClientRect: () => ({ bottom: 500, height: 500, left: 0, right: 500, top: 0, width: 500 }),
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    removeAttribute(name) {
+      attributes.delete(name);
+    },
+    replaceChildren() {
+      element.children = [];
+      element.value = '';
+    },
+    scrollIntoView() {},
+    setAttribute(name, value) {
+      attributes.set(name, value);
+    },
+    setSelectionRange() {},
+  };
+  return element;
+}
+
+interface PickerFetchRequest {
+  body?: string;
+  method: string;
+  url: string;
+}
+
+interface PickerResponse {
+  ok: boolean;
+  status: number;
+  json(): Promise<Record<string, unknown>>;
+}
+
+interface PickerDeferredResponse {
+  reject(error: Error): void;
+  resolve(payload: Record<string, unknown>, ok?: boolean, status?: number): void;
+}
+
+interface PickerHarness {
+  closeTargetIds: Array<string | null>;
+  elements: Map<string, PickerStubElement>;
+  eventSources: MockConsoleEventSource[];
+  fetchRequests: PickerFetchRequest[];
+  panel: PickerPanel;
+  queueDeferred(pathname: string): PickerDeferredResponse;
+  queueResponse(pathname: string, payload: Record<string, unknown>, ok?: boolean, status?: number): void;
+  runTimer(timerId: number): void;
+}
+
+interface PickerPanelReference {
+  value: PickerPanel | undefined;
+}
+
+function createPickerHarness(search: string): PickerHarness {
+  const treeModelSource = fs.readFileSync(path.resolve(process.cwd(), 'debugger', 'debugger-tree-model.js'), 'utf8');
+  const rawPanelSource = fs.readFileSync(path.resolve(process.cwd(), 'debugger', 'devtools-panel.js'), 'utf8');
+  const panelSource = rawPanelSource.replace('void connectToInspectedApplication();', 'void 0;');
+  const elements = new Map<string, PickerStubElement>();
+  const fetchRequests: PickerFetchRequest[] = [];
+  const queuedResponses = new Map<string, Array<Promise<PickerResponse>>>();
+  const eventSources: MockConsoleEventSource[] = [];
+  const closeTargetIds: Array<string | null> = [];
+  const timers = new Map<number, () => void>();
+  const windowListeners = new Map<string, () => void>();
+  const documentDataset: Record<string, string> = {};
+  const activePanel: PickerPanelReference = { value: undefined };
+  let nextTimerId = 1;
+  let activeElement: PickerStubElement | null = null;
+
+  function elementForId(id: string): PickerStubElement {
+    let element = elements.get(id);
+    if (!element) {
+      element = createPickerStubElement(id);
+      element.focus = () => {
+        activeElement = element ?? null;
+      };
+      elements.set(id, element);
+    }
+    return element;
+  }
+
+  const mainTabs = ['elements', 'performance', 'console'].map(section => {
+    const tab = elementForId(`${section}Tab`);
+    tab.dataset['section'] = section;
+    return tab;
+  });
+  const sections = ['elements', 'performance', 'console'].map(section => {
+    const panelElement = elementForId(`${section}Section`);
+    panelElement.dataset['panel'] = section;
+    return panelElement;
+  });
+
+  const documentObject = {
+    addEventListener() {},
+    get activeElement(): PickerStubElement | null {
+      return activeElement;
+    },
+    createElement(type: string): PickerStubElement {
+      return createPickerStubElement(type);
+    },
+    documentElement: { dataset: documentDataset },
+    getElementById(id: string): PickerStubElement {
+      return elementForId(id);
+    },
+    hidden: false,
+    querySelectorAll(selector: string): PickerStubElement[] {
+      if (selector === '.main-tab') return mainTabs;
+      if (selector === '.detail-tab') return [];
+      if (selector === '.section') return sections;
+      return [];
+    },
+  };
+
+  function response(payload: Record<string, unknown>, ok = true, status = ok ? 200 : 400): PickerResponse {
+    return { json: () => Promise.resolve(payload), ok, status };
+  }
+
+  function enqueue(pathname: string, plannedResponse: Promise<PickerResponse>): void {
+    const entries = queuedResponses.get(pathname) ?? [];
+    entries.push(plannedResponse);
+    queuedResponses.set(pathname, entries);
+  }
+
+  function defaultPayload(pathname: string): Record<string, unknown> {
+    if (pathname === '/api/devtools/targets') return { targets: [] };
+    if (pathname === '/api/devtools/snapshot') return { tree: componentTree() };
+    if (pathname === '/api/devtools/highlight') return { highlighted: true };
+    if (pathname === '/api/devtools/evaluate') return { type: 'string', value: 'ok' };
+    if (pathname.endsWith('/trace/stop')) return { traceCount: 0, traces: [] };
+    return {};
+  }
+
+  class PickerEventSource implements MockConsoleEventSource {
+    closed = false;
+    private readonly listeners = new Map<string, Array<(event: { data: string }) => void>>();
+
+    constructor(readonly url: string) {
+      eventSources.push(this);
+    }
+
+    addEventListener(type: string, listener: (event: { data: string }) => void): void {
+      const entries = this.listeners.get(type) ?? [];
+      entries.push(listener);
+      this.listeners.set(type, entries);
+    }
+
+    close(): void {
+      closeTargetIds.push(activePanel.value?.state.target?.id ?? null);
+      this.closed = true;
+    }
+
+    emit(type: string, payload: Record<string, unknown>): void {
+      for (const listener of this.listeners.get(type) ?? []) listener({ data: JSON.stringify(payload) });
+    }
+  }
+
+  const windowObject = {
+    addEventListener(type: string, listener: () => void) {
+      windowListeners.set(type, listener);
+    },
+    clearInterval() {},
+    clearTimeout(timerId: number) {
+      timers.delete(timerId);
+    },
+    confirm: () => true,
+    location: { origin: 'http://127.0.0.1:18768', search },
+    parent: {},
+    removeEventListener() {},
+    setInterval: () => nextTimerId++,
+    setTimeout(callback: () => void): number {
+      const timerId = nextTimerId++;
+      timers.set(timerId, callback);
+      return timerId;
+    },
+  };
+
+  const panel = new Script(
+    `${treeModelSource}\n${panelSource}\n({ applyDirectTargetSelection, connectToInspectedApplication, evaluateConsoleExpression, parseTargetRegistry, queueHighlight, refreshSnapshot, refreshTargetRegistry, renderTargetPicker, runPerformanceAction, setActiveSection, startConsoleStream, state })`,
+  ).runInNewContext({
+    Blob,
+    EventSource: PickerEventSource,
+    URL,
+    URLSearchParams,
+    console,
+    document: documentObject,
+    fetch: (input: URL, options: { body?: string; method: string }) => {
+      const url = new URL(input.toString());
+      fetchRequests.push({
+        ...(options.body === undefined ? {} : { body: options.body }),
+        method: options.method,
+        url: url.toString(),
+      });
+      const entries = queuedResponses.get(url.pathname);
+      return entries?.shift() ?? Promise.resolve(response(defaultPayload(url.pathname)));
+    },
+    navigator: { clipboard: { writeText: () => Promise.resolve() } },
+    window: windowObject,
+  }) as PickerPanel;
+  activePanel.value = panel;
+
+  return {
+    closeTargetIds,
+    elements,
+    eventSources,
+    fetchRequests,
+    panel,
+    queueDeferred(pathname) {
+      let resolveResponse: ((value: PickerResponse) => void) | undefined;
+      let rejectResponse: ((error: Error) => void) | undefined;
+      enqueue(
+        pathname,
+        new Promise<PickerResponse>((resolve, reject) => {
+          resolveResponse = resolve;
+          rejectResponse = reject;
+        }),
+      );
+      return {
+        reject(error) {
+          if (!rejectResponse) throw new Error('Deferred response was not initialized.');
+          rejectResponse(error);
+        },
+        resolve(payload, ok = true, status = ok ? 200 : 400) {
+          if (!resolveResponse) throw new Error('Deferred response was not initialized.');
+          resolveResponse(response(payload, ok, status));
+        },
+      };
+    },
+    queueResponse(pathname, payload, ok = true, status = ok ? 200 : 400) {
+      enqueue(pathname, Promise.resolve(response(payload, ok, status)));
+    },
+    runTimer(timerId) {
+      const callback = timers.get(timerId);
+      if (!callback) throw new Error(`Unknown timer ${timerId}.`);
+      timers.delete(timerId);
+      callback();
+    },
+  };
+}
+
+async function flushPickerPromises(): Promise<void> {
+  for (let index = 0; index < 10; index++) await Promise.resolve();
+}
+
+function requiredPickerElement(harness: PickerHarness, id: string): PickerStubElement {
+  const element = harness.elements.get(id);
+  if (!element) throw new Error(`Expected picker element ${id}.`);
+  return element;
 }
 
 describe('integrated DevTools component hierarchy', () => {
@@ -273,7 +692,9 @@ describe('integrated DevTools component hierarchy', () => {
     expect(panel.state.expandedNodeIds.has('7')).toBeTrue();
 
     const elementRoot = componentTree().children[0];
-    elementRoot.children = [elementRoot.children[0].children[0]];
+    const nestedElement = elementRoot?.children[0]?.children[0];
+    if (!elementRoot || !nestedElement) throw new Error('Expected the component fixture to contain a nested element.');
+    elementRoot.children = [nestedElement];
     fetchResponse = { tree: elementRoot };
     await panel.refreshSnapshot();
 
@@ -404,8 +825,673 @@ describe('integrated DevTools component hierarchy', () => {
     const finalRequestBody = highlightRequests[1]?.body;
     if (finalRequestBody === undefined) throw new Error('Expected a serialized final clear request.');
     const finalRequest = JSON.parse(finalRequestBody) as Record<string, unknown>;
-    expect(finalRequest.nodeId).toBeUndefined();
+    expect(finalRequest['nodeId']).toBeUndefined();
     expect(panel.state.highlightMayBeActive).toBeFalse();
+  });
+});
+
+describe('integrated DevTools capability-aware target picker', () => {
+  it('provides a labeled picker, live status, and accessible tab relationships', () => {
+    const html = fs.readFileSync(path.resolve(process.cwd(), 'debugger', 'devtools-panel.html'), 'utf8');
+    const css = fs.readFileSync(path.resolve(process.cwd(), 'debugger', 'devtools-panel.css'), 'utf8');
+
+    expect(html).toContain(
+      '<label id="targetSelectLabel" class="target-select-label" for="targetSelect">Target</label>',
+    );
+    expect(html).toContain('id="targetSelect"');
+    expect(html).toMatch(/id="targetPickerStatus"[^>]*role="status"[^>]*aria-live="polite"/);
+    expect(html).toMatch(/id="targetStatusDot"[^>]*aria-hidden="true"/);
+    expect(html).toMatch(/id="performanceSection"[\S\s]*?role="tabpanel"[\S\s]*?hidden/);
+    expect(css).toMatch(/@media \(max-width: 480px\)[\S\s]*?\.target-picker-status\s*{[^}]*clip-path: inset\(50%\)/);
+    expect(css).not.toMatch(/\.target-picker-status\s*{[^}]*display:\s*none/);
+  });
+
+  it('rejects mixed, partial, empty, and duplicated launch identities without making a request', async () => {
+    const invalidSearches = [
+      '?targetId=direct&inspectedUrl=http%3A%2F%2F127.0.0.1%3A1234%2F&targetNonce=nonce',
+      '?inspectedUrl=http%3A%2F%2F127.0.0.1%3A1234%2F',
+      '?targetNonce=nonce',
+      '?targetId=',
+      '?targetId=one&targetId=two',
+      '?inspectedUrl=one&inspectedUrl=two&targetNonce=nonce',
+    ];
+
+    for (const search of invalidSearches) {
+      const harness = createPickerHarness(search);
+      await harness.panel.connectToInspectedApplication();
+      expect(harness.fetchRequests).withContext(search).toEqual([]);
+      expect(harness.panel.state.error)
+        .withContext(search)
+        .toMatch(/identity|requires|targetId/);
+    }
+  });
+
+  it('preserves inspected-page mode and never discovers the target registry', async () => {
+    const harness = createPickerHarness(
+      '?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3FvaldiDevTools%3D1&targetNonce=panel-target-nonce-123456',
+    );
+    harness.queueResponse('/api/devtools/target', {
+      target: {
+        applicationUrl: 'http://127.0.0.1:54321/index.html?valdiDevTools=1',
+        debuggingPort: 9222,
+        id: 'owl:web-preview',
+        name: 'index.html',
+        sessionId: 'web-preview',
+      },
+    });
+    harness.queueResponse('/api/devtools/snapshot', { tree: componentTree() });
+
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+
+    const paths = harness.fetchRequests.map(request => new URL(request.url).pathname);
+    expect(paths).toContain('/api/devtools/target');
+    expect(paths).toContain('/api/devtools/snapshot');
+    expect(paths).not.toContain('/api/devtools/targets');
+    const snapshotRequest = harness.fetchRequests.find(request => request.url.includes('/snapshot'));
+    if (!snapshotRequest) throw new Error('Expected an inspected-page snapshot request.');
+    const snapshotUrl = new URL(snapshotRequest.url);
+    expect(Object.fromEntries(snapshotUrl.searchParams)).toEqual({
+      inspectedUrl: 'http://127.0.0.1:54321/index.html?valdiDevTools=1',
+      sessionId: 'web-preview',
+      targetNonce: 'panel-target-nonce-123456',
+    });
+    expect(requiredPickerElement(harness, 'targetSelect').hidden).toBeTrue();
+  });
+
+  it('clears target-owned Console state when an inspected-page session is replaced', async () => {
+    const harness = createPickerHarness(
+      '?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3FvaldiDevTools%3D1&targetNonce=panel-target-nonce-123456',
+    );
+    harness.queueResponse('/api/devtools/target', {
+      target: {
+        applicationUrl: 'http://127.0.0.1:54321/index.html?valdiDevTools=1',
+        debuggingPort: 9222,
+        id: 'owl:web-preview',
+        name: 'index.html',
+        sessionId: 'web-preview',
+      },
+    });
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+    harness.panel.state.consoleEntries.push({ kind: 'log', value: 'old session output' });
+    harness.panel.state.consoleEntryKeys.add('old-session-entry');
+    harness.panel.state.consoleHistory.push('oldSessionExpression()');
+    requiredPickerElement(harness, 'consoleInput').value = 'old draft';
+    harness.queueResponse('/api/devtools/target', {
+      target: {
+        applicationUrl: 'http://127.0.0.1:54321/replacement.html?valdiDevTools=1',
+        debuggingPort: 9222,
+        id: 'owl:replacement',
+        name: 'replacement.html',
+        sessionId: 'replacement',
+      },
+    });
+
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+
+    expect(harness.panel.state.target?.id).toBe('owl:replacement');
+    expect(harness.panel.state.consoleEntries.some(entry => entry.value === 'old session output')).toBeFalse();
+    expect(harness.panel.state.consoleEntryKeys.has('old-session-entry')).toBeFalse();
+    expect(harness.panel.state.consoleHistory).toEqual([]);
+    expect(requiredPickerElement(harness, 'consoleInput').value).toBe('');
+  });
+
+  it('rerenders cleared Performance state after an inspected-page replacement with Live off', async () => {
+    const harness = createPickerHarness(
+      '?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html%3FvaldiDevTools%3D1&targetNonce=panel-target-nonce-123456',
+    );
+    harness.queueResponse('/api/devtools/target', {
+      target: {
+        applicationUrl: 'http://127.0.0.1:54321/index.html?valdiDevTools=1',
+        debuggingPort: 9222,
+        id: 'owl:web-preview',
+        name: 'index.html',
+        sessionId: 'web-preview',
+      },
+    });
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+    const liveToggle = requiredPickerElement(harness, 'autoRefreshToggle');
+    liveToggle.checked = false;
+    liveToggle.dispatch('change');
+    harness.panel.state.performance.data = {
+      mainThread: { layoutDurationMs: 2, scriptDurationMs: 4, taskDurationMs: 12 },
+      memory: { usedBytes: 2048 },
+      resourceCount: 4,
+      uptimeMs: 100,
+    };
+    harness.panel.state.performance.pending = true;
+    harness.panel.setActiveSection('performance');
+    expect(requiredPickerElement(harness, 'performanceContent').innerHTML).toContain('JS heap');
+    harness.queueResponse('/api/devtools/target', {
+      target: {
+        applicationUrl: 'http://127.0.0.1:54321/replacement.html?valdiDevTools=1',
+        debuggingPort: 9222,
+        id: 'owl:replacement',
+        name: 'replacement.html',
+        sessionId: 'replacement',
+      },
+    });
+
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+
+    expect(harness.panel.state.performance.data).toBeNull();
+    expect(harness.panel.state.performance.pending).toBeFalse();
+    expect(requiredPickerElement(harness, 'performanceContent').innerHTML).not.toContain('JS heap');
+  });
+
+  it('renders bounded unavailable targets truthfully and never selects the first registry entry', async () => {
+    const harness = createPickerHarness('?targetId=missing-target');
+    const longUnsafeName = `<img src=x onerror=alert(1)>${'x'.repeat(300)}`;
+    harness.queueResponse('/api/devtools/targets', {
+      targets: [
+        pickerTarget('available-target', { name: longUnsafeName }),
+        pickerTarget('web-preview', {
+          identityMode: 'inspected-page',
+          name: 'Web preview',
+          transport: 'chromium-cdp',
+        }),
+        pickerTarget('waiting-proxy', {
+          attachable: true,
+          capabilities: ['components', 'snapshot'],
+          identityMode: 'target-id',
+          name: 'Waiting proxy',
+          state: 'waiting',
+          transport: 'valdi-daemon',
+        }),
+      ],
+    });
+
+    await harness.panel.connectToInspectedApplication();
+
+    expect(harness.panel.state.target).toBeNull();
+    expect(harness.fetchRequests.filter(request => request.url.includes('/snapshot'))).toEqual([]);
+    const options = requiredPickerElement(harness, 'targetSelect').children;
+    const available = options.find(option => option.value === 'available-target');
+    const web = options.find(option => option.value === 'web-preview');
+    const waiting = options.find(option => option.value === 'waiting-proxy');
+    const missing = options.find(option => option.value === 'missing-target');
+    expect(available?.selected).toBeFalse();
+    expect(available?.textContent.length).toBeLessThanOrEqual(180);
+    expect(available?.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(available?.innerHTML).toBe('');
+    expect(web?.disabled).toBeTrue();
+    expect(web?.textContent).toContain('Open from the inspected page');
+    expect(waiting?.disabled).toBeTrue();
+    expect(waiting?.textContent).toContain('Waiting for application');
+    expect(missing?.disabled).toBeTrue();
+    expect(requiredPickerElement(harness, 'targetPickerStatus').textContent).toContain('unavailable');
+  });
+
+  it('fails closed on oversized, duplicated, and malformed registries', () => {
+    const harness = createPickerHarness('?targetId=requested');
+    const oversized = Array.from({ length: 257 }, (_value, index) => pickerTarget(`target-${index}`));
+
+    for (const [payload, expectedMessage] of [
+      [{ targets: oversized }, 'exceeded 256 entries'],
+      [{ targets: [pickerTarget('duplicate'), pickerTarget('duplicate')] }, 'duplicate target IDs'],
+      [{ targets: [{ ...pickerTarget('bad-capability'), capabilities: ['snapshot', 'snapshot'] }] }, 'malformed entry'],
+      [{ targets: [{ ...pickerTarget('bad-port'), port: 0 }] }, 'malformed entry'],
+    ] as Array<[Record<string, unknown>, string]>) {
+      let message = '';
+      try {
+        harness.panel.parseTargetRegistry(payload);
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+      expect(message).toContain(expectedMessage);
+    }
+  });
+
+  it('selects only the exact requested opaque ID and sends targetId alone for direct snapshots', async () => {
+    const harness = createPickerHarness('?targetId=opaque%3Arequested%2Ftarget');
+    harness.queueResponse('/api/devtools/targets', {
+      targets: [pickerTarget('first-target'), pickerTarget('opaque:requested/target')],
+    });
+    harness.queueResponse('/api/devtools/snapshot', { tree: componentTree() });
+
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+
+    expect(harness.panel.state.target?.id).toBe('opaque:requested/target');
+    const snapshotRequest = harness.fetchRequests.find(request => request.url.includes('/api/devtools/snapshot'));
+    if (!snapshotRequest) throw new Error('Expected a direct snapshot request.');
+    const snapshotUrl = new URL(snapshotRequest.url);
+    expect(Array.from(snapshotUrl.searchParams.keys())).toEqual(['targetId']);
+    expect(snapshotUrl.searchParams.get('targetId')).toBe('opaque:requested/target');
+    expect(harness.fetchRequests.some(request => request.url.includes('/api/devtools/target?'))).toBeFalse();
+  });
+
+  it('clears all target-owned presentation and closes Console before an idle user switch', async () => {
+    const harness = createPickerHarness('?targetId=target-a');
+    const targetA = pickerTarget('target-a', { capabilities: ['components', 'snapshot', 'console'] });
+    const targetB = pickerTarget('target-b', { capabilities: ['components', 'snapshot', 'console'] });
+    harness.queueResponse('/api/devtools/targets', { targets: [targetA, targetB] });
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+
+    harness.panel.state.consoleEntries.push({ kind: 'log', value: 'old output' });
+    harness.panel.state.consoleEntryKeys.add('old');
+    harness.panel.state.consoleHistory.push('oldExpression()');
+    harness.panel.state.expandedNodeIds.add('7');
+    harness.panel.state.selectedNodeId = '7';
+    harness.panel.state.performance.data = { uptimeMs: 1 };
+    harness.panel.state.performance.lastTrace = { traceCount: 1 };
+    harness.panel.state.performance.samples.push({ uptimeMs: 1 });
+    const select = requiredPickerElement(harness, 'targetSelect');
+    select.value = 'target-b';
+    select.dispatch('change');
+
+    expect(harness.closeTargetIds).toContain('target-a');
+    expect(harness.panel.state.target?.id).toBe('target-b');
+    expect(harness.panel.state.snapshot).toBeNull();
+    expect(harness.panel.state.selectedNodeId).toBeNull();
+    expect(harness.panel.state.expandedNodeIds.size).toBe(0);
+    expect(harness.panel.state.consoleEntries).toEqual([]);
+    expect(harness.panel.state.consoleEntryKeys.size).toBe(0);
+    expect(harness.panel.state.consoleHistory).toEqual([]);
+    expect(harness.panel.state.performance.data).toBeNull();
+    expect(harness.panel.state.performance.lastTrace).toBeNull();
+    expect(harness.panel.state.performance.samples).toEqual([]);
+  });
+
+  it('blocks pending and owned Performance switches and restores the selected option', async () => {
+    const harness = createPickerHarness('?targetId=target-a');
+    const targetA = pickerTarget('target-a', { capabilities: ['components', 'snapshot', 'performance'] });
+    const targetB = pickerTarget('target-b', { capabilities: ['components', 'snapshot', 'performance'] });
+    harness.queueResponse('/api/devtools/targets', { targets: [targetA, targetB] });
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+    const select = requiredPickerElement(harness, 'targetSelect');
+
+    harness.panel.state.performance.pending = true;
+    select.value = 'target-b';
+    select.dispatch('change');
+    expect(harness.panel.state.target?.id).toBe('target-a');
+    expect(select.value).toBe('target-a');
+    expect(requiredPickerElement(harness, 'targetPickerStatus').textContent).toContain('before switching');
+
+    harness.panel.state.performance.pending = false;
+    harness.panel.state.performance.traceActive = true;
+    harness.panel.state.performance.ownerIdentity = { targetId: 'target-a' };
+    select.value = 'target-b';
+    select.dispatch('change');
+    expect(harness.panel.state.target?.id).toBe('target-a');
+    expect(select.value).toBe('target-a');
+  });
+
+  it('detaches on registry removal without fallback and keeps exact-owner Stop reachable', async () => {
+    const harness = createPickerHarness('?targetId=target-a');
+    const targetA = pickerTarget('target-a', { capabilities: ['components', 'snapshot', 'performance'] });
+    const targetB = pickerTarget('target-b', { capabilities: ['components', 'snapshot', 'performance'] });
+    harness.queueResponse('/api/devtools/targets', { targets: [targetA, targetB] });
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+    harness.panel.setActiveSection('performance');
+    harness.panel.state.performance.traceActive = true;
+    harness.panel.state.performance.ownerIdentity = { targetId: 'target-a' };
+    harness.queueResponse('/api/devtools/targets', { targets: [targetB] });
+
+    await harness.panel.refreshTargetRegistry();
+
+    expect(harness.panel.state.target).toBeNull();
+    expect(harness.panel.state.performance.ownerIdentity).toEqual({ targetId: 'target-a' });
+    expect(requiredPickerElement(harness, 'performanceTab').disabled).toBeFalse();
+    expect(harness.panel.state.activeSection).toBe('performance');
+    harness.queueResponse('/api/devtools/performance/trace/stop', { traceCount: 0, traces: [] });
+    await harness.panel.runPerformanceAction('trace-stop');
+    const stopRequest = harness.fetchRequests.find(request => request.url.includes('/trace/stop'));
+    if (!stopRequest) throw new Error('Expected an exact-owner Performance stop.');
+    expect(new URL(stopRequest.url).searchParams.get('targetId')).toBe('target-a');
+    expect(harness.panel.state.performance.ownerIdentity).toBeNull();
+    expect(requiredPickerElement(harness, 'performanceTab').disabled).toBeTrue();
+    expect(harness.panel.state.activeSection).toBe('elements');
+  });
+
+  it('renders exact-owner recovery without stale metrics when removal interrupts a capture offscreen', async () => {
+    const harness = createPickerHarness('?targetId=target-a');
+    const targetA = pickerTarget('target-a', { capabilities: ['components', 'snapshot', 'performance'] });
+    const targetB = pickerTarget('target-b', { capabilities: ['components', 'snapshot', 'performance'] });
+    harness.queueResponse('/api/devtools/targets', { targets: [targetA, targetB] });
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+    harness.panel.state.performance.data = {
+      mainThread: { layoutDurationMs: 2, scriptDurationMs: 4, taskDurationMs: 12 },
+      memory: { usedBytes: 2048 },
+      resourceCount: 4,
+      uptimeMs: 100,
+    };
+    const oldCapture = harness.queueDeferred('/api/devtools/performance/trace/capture');
+    const oldCaptureAction = harness.panel.runPerformanceAction('trace-capture');
+    await flushPickerPromises();
+    expect(harness.panel.state.activeSection).toBe('elements');
+    expect(harness.panel.state.performance.pending).toBeTrue();
+    expect(harness.panel.state.performance.ownerIdentity).toEqual({ targetId: 'target-a' });
+    expect(requiredPickerElement(harness, 'performanceContent').innerHTML).toContain('JS heap');
+    harness.queueResponse('/api/devtools/targets', { targets: [targetB] });
+
+    await harness.panel.refreshTargetRegistry();
+    harness.panel.setActiveSection('performance');
+
+    const recoveryContent = requiredPickerElement(harness, 'performanceContent').innerHTML;
+    expect(harness.panel.state.target).toBeNull();
+    expect(harness.panel.state.performance.data).toBeNull();
+    expect(harness.panel.state.performance.ownerIdentity).toEqual({ targetId: 'target-a' });
+    expect(recoveryContent).toContain('Stop and retrieve');
+    expect(recoveryContent).toContain('data-performance-action="trace-stop"');
+    expect(recoveryContent).not.toContain('data-performance-action="trace-stop" disabled');
+    expect(recoveryContent).not.toContain('JS heap');
+
+    oldCapture.resolve({ traceCount: 1, traces: [] });
+    await oldCaptureAction;
+    expect(harness.panel.state.performance.ownerIdentity).toEqual({ targetId: 'target-a' });
+    expect(harness.panel.state.performance.pending).toBeFalse();
+  });
+
+  it('does not let an old owner Stop result or finally clear a newer recovery Stop', async () => {
+    const harness = createPickerHarness('?targetId=target-a');
+    const targetA = pickerTarget('target-a', { capabilities: ['components', 'snapshot', 'performance'] });
+    const targetB = pickerTarget('target-b', { capabilities: ['components', 'snapshot', 'performance'] });
+    harness.queueResponse('/api/devtools/targets', { targets: [targetA, targetB] });
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+    harness.panel.state.performance.traceActive = true;
+    harness.panel.state.performance.ownerIdentity = { targetId: 'target-a' };
+    const oldStop = harness.queueDeferred('/api/devtools/performance/trace/stop');
+    const oldStopAction = harness.panel.runPerformanceAction('trace-stop');
+    await flushPickerPromises();
+    harness.queueResponse('/api/devtools/targets', { targets: [targetB] });
+    await harness.panel.refreshTargetRegistry();
+    const recoveryStop = harness.queueDeferred('/api/devtools/performance/trace/stop');
+    const recoveryStopAction = harness.panel.runPerformanceAction('trace-stop');
+    await flushPickerPromises();
+    harness.panel.state.performance.lastTrace = { marker: 'newer recovery state' };
+
+    oldStop.resolve({ marker: 'old stop result', traceCount: 1, traces: [] });
+    await oldStopAction;
+
+    expect(harness.panel.state.performance.ownerIdentity).toEqual({ targetId: 'target-a' });
+    expect(harness.panel.state.performance.traceActive).toBeTrue();
+    expect(harness.panel.state.performance.pending).toBeTrue();
+    expect(harness.panel.state.performance.lastTrace).toEqual({ marker: 'newer recovery state' });
+    expect(harness.panel.state.performance.error).toBeNull();
+
+    recoveryStop.resolve({ traceCount: 2, traces: [] });
+    await recoveryStopAction;
+    expect(harness.panel.state.performance.ownerIdentity).toBeNull();
+    expect(harness.panel.state.performance.pending).toBeFalse();
+  });
+
+  it('does not let an old capture error or finally overwrite a new target capture', async () => {
+    const harness = createPickerHarness('?targetId=target-a');
+    const targetA = pickerTarget('target-a', { capabilities: ['components', 'snapshot', 'performance'] });
+    const targetB = pickerTarget('target-b', { capabilities: ['components', 'snapshot', 'performance'] });
+    harness.queueResponse('/api/devtools/targets', { targets: [targetA, targetB] });
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+    const oldCapture = harness.queueDeferred('/api/devtools/performance/trace/capture');
+    const oldCaptureAction = harness.panel.runPerformanceAction('trace-capture');
+    await flushPickerPromises();
+    harness.queueResponse('/api/devtools/targets', { targets: [targetB] });
+    await harness.panel.refreshTargetRegistry();
+    harness.queueResponse('/api/devtools/performance/trace/stop', { traceCount: 0, traces: [] });
+    await harness.panel.runPerformanceAction('trace-stop');
+    const select = requiredPickerElement(harness, 'targetSelect');
+    select.value = 'target-b';
+    select.dispatch('change');
+    const newCapture = harness.queueDeferred('/api/devtools/performance/trace/capture');
+    const newCaptureAction = harness.panel.runPerformanceAction('trace-capture');
+    await flushPickerPromises();
+    harness.panel.state.performance.data = { marker: 'new target metrics' };
+    harness.panel.state.performance.lastTrace = { marker: 'new target trace' };
+    const warn = spyOn(console, 'warn');
+
+    oldCapture.reject(new Error('old capture failure'));
+    await oldCaptureAction;
+
+    expect(harness.panel.state.performance.ownerIdentity).toEqual({ targetId: 'target-b' });
+    expect(harness.panel.state.performance.traceActive).toBeTrue();
+    expect(harness.panel.state.performance.pending).toBeTrue();
+    expect(harness.panel.state.performance.error).toBeNull();
+    expect(harness.panel.state.performance.data).toEqual({ marker: 'new target metrics' });
+    expect(harness.panel.state.performance.lastTrace).toEqual({ marker: 'new target trace' });
+    expect(warn).toHaveBeenCalledWith('Ignoring a stale web preview performance action error.', jasmine.anything());
+
+    newCapture.resolve({ traceCount: 3, traces: [] });
+    await newCaptureAction;
+    expect(harness.panel.state.performance.ownerIdentity).toBeNull();
+    expect(harness.panel.state.performance.pending).toBeFalse();
+  });
+
+  it('keeps a replacement snapshot pending when an older target resolves or rejects', async () => {
+    const harness = createPickerHarness('?targetId=target-a');
+    const targetA = pickerTarget('target-a');
+    const targetB = pickerTarget('target-b');
+    harness.queueResponse('/api/devtools/targets', { targets: [targetA, targetB] });
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+
+    const oldSnapshot = harness.queueDeferred('/api/devtools/snapshot');
+    void harness.panel.refreshSnapshot();
+    const replacementSnapshot = harness.queueDeferred('/api/devtools/snapshot');
+    const select = requiredPickerElement(harness, 'targetSelect');
+    select.value = 'target-b';
+    select.dispatch('change');
+    oldSnapshot.resolve({ tree: componentTree() });
+    await flushPickerPromises();
+    expect(harness.panel.state.target?.id).toBe('target-b');
+    expect(harness.panel.state.snapshot).toBeNull();
+    expect(harness.panel.state.refreshPending).toBeTrue();
+    replacementSnapshot.resolve({ tree: componentTree() });
+    await flushPickerPromises();
+    expect(harness.panel.state.refreshPending).toBeFalse();
+
+    const staleError = harness.queueDeferred('/api/devtools/snapshot');
+    void harness.panel.refreshSnapshot();
+    const finalSnapshot = harness.queueDeferred('/api/devtools/snapshot');
+    select.value = 'target-a';
+    select.dispatch('change');
+    staleError.reject(new Error('stale target failure'));
+    await flushPickerPromises();
+    expect(harness.panel.state.error).toBeNull();
+    expect(harness.panel.state.refreshPending).toBeTrue();
+    finalSnapshot.resolve({ tree: componentTree() });
+    await flushPickerPromises();
+  });
+
+  it('orders an exact old-target highlight clear before new-target highlight work', async () => {
+    const harness = createPickerHarness('?targetId=target-a');
+    const capabilities = ['components', 'snapshot', 'highlight'];
+    const targetA = pickerTarget('target-a', { capabilities });
+    const targetB = pickerTarget('target-b', { capabilities });
+    harness.queueResponse('/api/devtools/targets', { targets: [targetA, targetB] });
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+    const oldHighlight = harness.queueDeferred('/api/devtools/highlight');
+
+    harness.panel.queueHighlight('7');
+    if (harness.panel.state.highlightTimer === null) throw new Error('Expected a highlight timer.');
+    harness.runTimer(harness.panel.state.highlightTimer);
+    await flushPickerPromises();
+    const select = requiredPickerElement(harness, 'targetSelect');
+    select.value = 'target-b';
+    select.dispatch('change');
+    expect(harness.fetchRequests.filter(request => request.url.includes('/highlight')).length).toBe(1);
+
+    oldHighlight.resolve({ highlighted: true });
+    await harness.panel.state.highlightRequestTail;
+    const highlightRequests = harness.fetchRequests.filter(request => request.url.includes('/highlight'));
+    expect(highlightRequests.length).toBe(2);
+    const finalHighlightRequest = highlightRequests[1];
+    if (finalHighlightRequest?.body === undefined) throw new Error('Expected a serialized old-target highlight clear.');
+    expect(JSON.parse(finalHighlightRequest.body)).toEqual({ targetId: 'target-a' });
+  });
+
+  it('drops old Console streams and evaluation success or failure after a switch', async () => {
+    const harness = createPickerHarness('?targetId=target-a');
+    const capabilities = ['components', 'snapshot', 'console'];
+    const targetA = pickerTarget('target-a', { capabilities });
+    const targetB = pickerTarget('target-b', { capabilities });
+    harness.queueResponse('/api/devtools/targets', { targets: [targetA, targetB] });
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+    const oldStream = harness.eventSources[0];
+    if (!oldStream) throw new Error('Expected a Console stream.');
+    const oldEvaluation = harness.queueDeferred('/api/devtools/evaluate');
+    void harness.panel.evaluateConsoleExpression('oldValue()');
+    const select = requiredPickerElement(harness, 'targetSelect');
+    select.value = 'target-b';
+    select.dispatch('change');
+
+    oldStream.emit('console', { level: 'log', message: 'stale log', targetId: 'target-a' });
+    oldStream.emit('stream-warning', { message: 'stale warning', targetId: 'target-a' });
+    oldStream.emit('stream-error', { error: 'stale error', targetId: 'target-a' });
+    oldEvaluation.resolve({ type: 'string', value: 'stale result' });
+    await flushPickerPromises();
+    expect(harness.panel.state.consoleEntries).toEqual([]);
+
+    const staleFailure = harness.queueDeferred('/api/devtools/evaluate');
+    void harness.panel.evaluateConsoleExpression('secondOldValue()');
+    select.value = 'target-a';
+    select.dispatch('change');
+    staleFailure.reject(new Error('stale evaluation failure'));
+    await flushPickerPromises();
+    expect(harness.panel.state.consoleEntries).toEqual([]);
+  });
+
+  it('gates unsupported tabs and generates no Console or Performance traffic for component-only targets', async () => {
+    const harness = createPickerHarness('?targetId=components-only');
+    harness.queueResponse('/api/devtools/targets', { targets: [pickerTarget('components-only')] });
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+
+    expect(requiredPickerElement(harness, 'consoleTab').disabled).toBeTrue();
+    expect(requiredPickerElement(harness, 'consoleTab').getAttribute('aria-disabled')).toBe('true');
+    expect(requiredPickerElement(harness, 'performanceTab').disabled).toBeTrue();
+    expect(harness.eventSources).toEqual([]);
+    harness.panel.setActiveSection('console');
+    expect(harness.panel.state.activeSection).toBe('elements');
+    harness.panel.setActiveSection('performance');
+    expect(harness.panel.state.activeSection).toBe('elements');
+    await harness.panel.evaluateConsoleExpression('shouldNotRun()');
+    expect(
+      harness.fetchRequests.some(request =>
+        ['/api/devtools/evaluate', '/api/devtools/console/stream', '/api/devtools/performance'].some(pathname =>
+          request.url.includes(pathname),
+        ),
+      ),
+    ).toBeFalse();
+  });
+
+  it('uses roving tab focus and skips capability-disabled tools during keyboard navigation', async () => {
+    const harness = createPickerHarness('?targetId=console-target');
+    harness.queueResponse('/api/devtools/targets', {
+      targets: [pickerTarget('console-target', { capabilities: ['components', 'snapshot', 'console'] })],
+    });
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+    harness.panel.setActiveSection('elements');
+    const elementsTab = requiredPickerElement(harness, 'elementsTab');
+    const performanceTab = requiredPickerElement(harness, 'performanceTab');
+    const consoleTab = requiredPickerElement(harness, 'consoleTab');
+
+    elementsTab.dispatch('keydown', { key: 'ArrowRight' });
+
+    expect(performanceTab.disabled).toBeTrue();
+    expect(harness.panel.state.activeSection).toBe('console');
+    expect(elementsTab.tabIndex).toBe(-1);
+    expect(consoleTab.tabIndex).toBe(0);
+    expect(consoleTab.getAttribute('aria-selected')).toBe('true');
+    expect(requiredPickerElement(harness, 'elementsSection').hidden).toBeTrue();
+    expect(requiredPickerElement(harness, 'consoleSection').hidden).toBeFalse();
+
+    consoleTab.dispatch('keydown', { key: 'ArrowRight' });
+    expect(harness.panel.state.activeSection).toBe('elements');
+  });
+
+  it('invalidates streams and active tabs when capabilities change for the same target ID', async () => {
+    const harness = createPickerHarness('?targetId=target-a');
+    const consoleTarget = pickerTarget('target-a', {
+      capabilities: ['components', 'snapshot', 'console', 'performance'],
+    });
+    harness.queueResponse('/api/devtools/targets', { targets: [consoleTarget] });
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+    const oldGeneration = harness.panel.state.targetGeneration;
+    const oldStream = harness.eventSources[0];
+    if (!oldStream) throw new Error('Expected a Console stream.');
+    harness.panel.state.consoleEntries.push({ kind: 'log', value: 'old capability output' });
+    harness.panel.state.consoleEntryKeys.add('old-capability-entry');
+    harness.panel.state.consoleHistory.push('oldCapabilityExpression()');
+    harness.panel.state.expandedNodeIds.add('7');
+    harness.panel.state.selectedNodeId = '7';
+    harness.panel.state.performance.data = { uptimeMs: 1 };
+    harness.panel.state.performance.lastTrace = { traceCount: 1 };
+    harness.panel.state.performance.samples.push({ uptimeMs: 1 });
+    harness.panel.setActiveSection('console');
+    const replacementSnapshot = harness.queueDeferred('/api/devtools/snapshot');
+    harness.queueResponse('/api/devtools/targets', {
+      targets: [pickerTarget('target-a', { capabilities: ['components', 'snapshot', 'console,performance'] })],
+    });
+
+    await harness.panel.refreshTargetRegistry();
+
+    expect(harness.panel.state.target?.id).toBe('target-a');
+    expect(harness.panel.state.targetGeneration).toBeGreaterThan(oldGeneration);
+    expect(oldStream.closed).toBeTrue();
+    expect(harness.panel.state.selectedNodeId).toBeNull();
+    expect(harness.panel.state.expandedNodeIds.size).toBe(0);
+    expect(harness.panel.state.consoleEntries).toEqual([]);
+    expect(harness.panel.state.consoleEntryKeys.size).toBe(0);
+    expect(harness.panel.state.consoleHistory).toEqual([]);
+    expect(harness.panel.state.performance.data).toBeNull();
+    expect(harness.panel.state.performance.lastTrace).toBeNull();
+    expect(harness.panel.state.performance.samples).toEqual([]);
+    expect(requiredPickerElement(harness, 'consoleTab').disabled).toBeTrue();
+    expect(harness.panel.state.activeSection).toBe('elements');
+    oldStream.emit('console', { level: 'log', message: 'stale same-id log', targetId: 'target-a' });
+    expect(harness.panel.state.consoleEntries).toEqual([]);
+    replacementSnapshot.resolve({ tree: componentTree() });
+    await flushPickerPromises();
+  });
+
+  it('keeps the exact current target when a later registry payload is malformed', async () => {
+    const harness = createPickerHarness('?targetId=target-a');
+    harness.queueResponse('/api/devtools/targets', { targets: [pickerTarget('target-a'), pickerTarget('target-b')] });
+    await harness.panel.connectToInspectedApplication();
+    await flushPickerPromises();
+    const targetGeneration = harness.panel.state.targetGeneration;
+    harness.queueResponse('/api/devtools/targets', {
+      targets: [pickerTarget('duplicate'), pickerTarget('duplicate')],
+    });
+
+    await harness.panel.refreshTargetRegistry();
+
+    expect(harness.panel.state.target?.id).toBe('target-a');
+    expect(harness.panel.state.targetGeneration).toBe(targetGeneration);
+    expect(requiredPickerElement(harness, 'targetSelect').value).toBe('target-a');
+    expect(requiredPickerElement(harness, 'targetPickerStatus').textContent).toContain('duplicate target IDs');
+  });
+
+  it('lets only the newest registry generation publish and still does not auto-select', async () => {
+    const harness = createPickerHarness('?targetId=requested-target');
+    const first = harness.queueDeferred('/api/devtools/targets');
+    void harness.panel.refreshTargetRegistry();
+    harness.panel.state.registryPending = false;
+    const second = harness.queueDeferred('/api/devtools/targets');
+    void harness.panel.refreshTargetRegistry();
+
+    second.resolve({ targets: [pickerTarget('newest-target')] });
+    await flushPickerPromises();
+    first.resolve({ targets: [pickerTarget('requested-target')] });
+    await flushPickerPromises();
+
+    expect(harness.panel.state.registryTargets.map(target => target.id)).toEqual(['newest-target']);
+    expect(harness.panel.state.target).toBeNull();
+    expect(harness.panel.state.unavailableTargetId).toBe('requested-target');
   });
 });
 
@@ -977,8 +2063,7 @@ describe('integrated DevTools performance panel', () => {
 
   it('invalidates an old snapshot without wedging polling when the target changes', async () => {
     let resolveSnapshot:
-      | ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void)
-      | undefined;
+      ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void) | undefined;
     nextFetchResponse = new Promise(resolve => {
       resolveSnapshot = resolve;
     });
@@ -1002,8 +2087,7 @@ describe('integrated DevTools performance panel', () => {
   it('does not let a delayed pre-start status response overwrite a successful Start', async () => {
     panel.state.performance.data = snapshot;
     let resolveSnapshot:
-      | ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void)
-      | undefined;
+      ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void) | undefined;
     nextFetchResponse = new Promise(resolve => {
       resolveSnapshot = resolve;
     });
@@ -1022,8 +2106,7 @@ describe('integrated DevTools performance panel', () => {
   it('cleans up a stale successful start without overwriting the replacement target', async () => {
     panel.state.performance.data = snapshot;
     let resolveStart:
-      | ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void)
-      | undefined;
+      ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void) | undefined;
     nextFetchResponse = new Promise(resolve => {
       resolveStart = resolve;
     });
@@ -1054,8 +2137,7 @@ describe('integrated DevTools performance panel', () => {
   it('retains and surfaces a stale Start owner when exact cleanup fails', async () => {
     panel.state.performance.data = snapshot;
     let resolveStart:
-      | ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void)
-      | undefined;
+      ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void) | undefined;
     nextFetchResponse = new Promise(resolve => {
       resolveStart = resolve;
     });
@@ -1085,11 +2167,49 @@ describe('integrated DevTools performance panel', () => {
     expect(panel.state.performance.ownerIdentity).toBeNull();
   });
 
-  it('keeps an in-flight Capture owned across a target change without publishing its old result', async () => {
+  it('does not replace a newer owner when stale Start cleanup fails', async () => {
+    panel.state.performance.data = snapshot;
+    let resolveStart:
+      ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void) | undefined;
+    nextFetchResponse = new Promise(resolve => {
+      resolveStart = resolve;
+    });
+    const staleStart = panel.runPerformanceAction('trace-start');
+    await Promise.resolve();
+
+    panel.preparePerformanceForTargetChange();
+    panel.state.target = { id: 'owl:replacement', sessionId: 'replacement' };
+    await panel.runPerformanceAction('trace-start');
+    expect(panel.state.performance.ownerIdentity).toEqual(jasmine.objectContaining({ sessionId: 'replacement' }));
+    stopFailure = 'Synthetic stale cleanup failure.';
+    const warn = spyOn(console, 'warn');
+    if (!resolveStart) throw new Error('Expected a deferred stale performance start.');
+    resolveStart({
+      json: () => Promise.resolve({ recording: true, rendererTracingEnabled: true, tracingSupported: true }),
+      ok: true,
+      status: 200,
+    });
+    await staleStart;
+
+    const cleanupRequest = requests.find(
+      request =>
+        new URL(request.url).pathname.endsWith('/trace/stop') &&
+        new URL(request.url).searchParams.get('sessionId') === 'web-preview',
+    );
+    if (!cleanupRequest) throw new Error('Expected exact stale-owner cleanup.');
+    expect(panel.state.performance.ownerIdentity).toEqual(jasmine.objectContaining({ sessionId: 'replacement' }));
+    expect(panel.state.performance.traceActive).toBeTrue();
+    expect(panel.state.performance.error).toBeNull();
+    expect(warn).toHaveBeenCalledWith(
+      'Unable to retain a stale Performance recording because a different recording is already owned by a newer operation.',
+      jasmine.anything(),
+    );
+  });
+
+  it('keeps an in-flight Capture owned for exact recovery after a target change', async () => {
     panel.state.performance.data = snapshot;
     let resolveCapture:
-      | ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void)
-      | undefined;
+      ((response: { ok: boolean; status: number; json(): Promise<Record<string, unknown>> }) => void) | undefined;
     nextFetchResponse = new Promise(resolve => {
       resolveCapture = resolve;
     });
@@ -1106,9 +2226,14 @@ describe('integrated DevTools performance panel', () => {
     resolveCapture({ json: () => Promise.resolve(traceResult()), ok: true, status: 200 });
     await capture;
 
+    expect(panel.state.performance.traceActive).toBeTrue();
+    expect(panel.state.performance.ownerIdentity).toEqual(jasmine.objectContaining({ sessionId: 'web-preview' }));
+    expect(panel.state.performance.lastTrace).toBeNull();
+    expect(panel.state.performance.pending).toBeFalse();
+
+    await panel.runPerformanceAction('trace-stop');
     expect(panel.state.performance.traceActive).toBeFalse();
     expect(panel.state.performance.ownerIdentity).toBeNull();
-    expect(panel.state.performance.lastTrace).toBeNull();
   });
 
   it('skips silent polling while a generated Performance input is focused', async () => {

@@ -137,6 +137,13 @@ button {
   background: var(--surface-hover);
 }
 
+.main-tab:disabled {
+  background: transparent;
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .main-tab.selected,
 .detail-tab.selected {
   color: var(--accent);
@@ -205,6 +212,38 @@ button {
   min-width: 0;
   overflow: hidden;
   font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.target-select-label {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.target-select {
+  width: min(320px, 42vw);
+  min-width: 120px;
+  height: 22px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-overflow: ellipsis;
+}
+
+.target-select[hidden],
+.target-select-label[hidden] {
+  display: none;
+}
+
+.target-picker-status {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1022,5 +1061,22 @@ button {
 
   .target-metadata {
     display: none;
+  }
+
+  .target-picker-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    border: 0;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .target-select {
+    width: min(230px, 52vw);
   }
 }

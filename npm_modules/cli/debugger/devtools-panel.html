@@ -18,6 +18,7 @@
             role="tab"
             aria-controls="elementsSection"
             aria-selected="true"
+            tabindex="0"
           >
             Elements
           </button>
@@ -29,6 +30,7 @@
             role="tab"
             aria-controls="performanceSection"
             aria-selected="false"
+            tabindex="-1"
           >
             Performance
           </button>
@@ -40,6 +42,7 @@
             role="tab"
             aria-controls="consoleSection"
             aria-selected="false"
+            tabindex="-1"
           >
             Console
           </button>
@@ -53,9 +56,14 @@
       </header>
 
       <div class="target-toolbar">
-        <span id="targetStatusDot" class="status-dot connecting"></span>
+        <span id="targetStatusDot" class="status-dot connecting" aria-hidden="true"></span>
+        <label id="targetSelectLabel" class="target-select-label" for="targetSelect">Target</label>
+        <select id="targetSelect" class="target-select" aria-describedby="targetPickerStatus">
+          <option value="">Loading debugger targets…</option>
+        </select>
         <span id="targetName" class="target-name">Connecting to inspected Valdi application…</span>
         <span id="targetMetadata" class="target-metadata"></span>
+        <span id="targetPickerStatus" class="target-picker-status" role="status" aria-live="polite"></span>
         <label class="live-toggle" title="Keep the inspected hierarchy current">
           <input id="autoRefreshToggle" type="checkbox" checked /> Live
         </label>
@@ -76,7 +84,12 @@
               </svg>
               <input id="treeFilter" type="search" placeholder="Filter nodes, text, attributes" autocomplete="off" />
               <span id="filterSummary" class="filter-summary"></span>
-              <button id="expandButton" class="icon-button" title="Expand useful nodes" aria-label="Expand useful nodes">
+              <button
+                id="expandButton"
+                class="icon-button"
+                title="Expand useful nodes"
+                aria-label="Expand useful nodes"
+              >
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h12M4 10h8M4 14h5M14 12v5M11.5 14.5h5" /></svg>
               </button>
             </div>
@@ -91,7 +104,13 @@
             <div id="treeEmpty" class="empty-state">Waiting for the inspected Valdi renderer…</div>
           </div>
 
-          <div id="splitHandle" class="split-handle" role="separator" aria-label="Resize inspector" aria-orientation="horizontal"></div>
+          <div
+            id="splitHandle"
+            class="split-handle"
+            role="separator"
+            aria-label="Resize inspector"
+            aria-orientation="horizontal"
+          ></div>
 
           <section class="inspector-pane" aria-label="Selected element inspector">
             <div class="inspector-toolbar">
@@ -120,6 +139,7 @@
           data-panel="performance"
           role="tabpanel"
           aria-labelledby="performanceTab"
+          hidden
         >
           <div class="section-header">
             <span>Web preview performance</span>
@@ -136,6 +156,7 @@
           data-panel="console"
           role="tabpanel"
           aria-labelledby="consoleTab"
+          hidden
         >
           <div class="section-header">
             <span>Console output</span>
