@@ -34,7 +34,7 @@ assets and proxies debugger requests to Valdi daemon or Hermes endpoints.
 
 Important routes:
 
-- `/api/status`: probes daemon targets and hot reload proxy state.
+- `/api/status`: preserves the legacy daemon-port and hot reload proxy status contract.
 - `/api/snapshot`: fetches the selected target's view tree and preview data.
 - `/api/runtime-logs` and `/api/runtime-logs/stream`: read and stream target logs.
 - `/api/debugger/state`, `/api/debugger/events`, and `/api/debugger/actions`: keep the browser UI and external agents in sync.
@@ -43,7 +43,8 @@ Important routes:
 - `/api/debugger/providers` and `/api/debugger/providers/request`: discover and query target-owned debugger providers.
 - `/api/debugger/settings`: discover and update target-published debug settings.
 - `/api/performance/profile/*`: list Hermes contexts and capture CPU profiles.
-- `/api/devtools/target`: matches the inspected Chromium page to the exact configured preview origin and path.
+- `/api/devtools/targets`: returns a fresh, bounded registry of native Valdi, explicit web-preview, and JavaScript-proxy targets.
+- `/api/devtools/target`: resolves either one opaque native target ID or the exact configured inspected Chromium page identity.
 - `/api/devtools/snapshot`, `/api/devtools/highlight`, and `/api/devtools/evaluate`: proxy the explicit web debugger bridge contract through loopback CDP.
 - `/api/devtools/performance/snapshot` and `/api/devtools/performance/trace/*`: sample the exact web preview and record one bounded global Chromium trace without changing the daemon/Hermes `/api/performance/*` routes.
 
@@ -74,6 +75,28 @@ to 4 MiB and contains one normalized trace list plus export metadata—never a
 duplicate raw or Perfetto event list. The panel shows at most 120 graph samples,
 120 timeline rows, and 12 grouped summary rows. Its only trace filters are
 Valdi, Browser, and All; Chrome Trace JSON is assembled only when exported.
+
+Every `/api/devtools/targets` descriptor declares an `identityMode`.
+`target-id` is used by native Valdi and waiting proxy records; only an
+attachable `target-id` target using the `valdi-daemon` transport can be resolved
+or snapshotted through `targetId`. `inspected-page` is reserved for the explicit
+Chromium web preview, which must use the complete `inspectedUrl` plus
+`targetNonce` identity for target resolution and the complete `sessionId`,
+`inspectedUrl`, and `targetNonce` tuple for snapshots and performance. An
+inspected-page target is never attachable through its public ID, and identity
+modes cannot be mixed in one request.
+
+Registry reads are snapshots, not leases: each list or target-ID resolution
+rediscovers the current endpoints and rejects removed or replaced identities.
+Discovery reads existing companion-owned ADB forwards and loopback proxy
+metadata without creating or replacing forwarding state. It retains at most 8
+ADB forwards, 10 daemon endpoints, 16 clients per endpoint, 64 contexts per
+client, 128 proxy records, and 256 final targets; daemon fan-out is limited to
+4 workers. Configured web-preview URLs are capped at 4,096 UTF-8 bytes and their
+derived names at 256 bytes. Proxy responses are capped at 512 KiB and the final
+serialized `/api/devtools/targets` response is independently capped at 512 KiB.
+The legacy `/api/status` route intentionally keeps its prior port probing and
+forwarding behavior and does not run registry discovery.
 
 The Data section discovers target-owned providers through a generic custom
 message contract. The persistence module registers its bounded web snapshot as

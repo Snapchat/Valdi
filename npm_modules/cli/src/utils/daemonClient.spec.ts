@@ -1,6 +1,6 @@
 import 'jasmine';
 import { EventEmitter } from 'node:events';
-import type { Socket } from 'node:net';
+import net, { type Socket } from 'node:net';
 import {
   DaemonConnection,
   DaemonMsgType,
@@ -8,6 +8,8 @@ import {
   MAX_DAEMON_INNER_PAYLOAD_BYTES,
   MAX_DAEMON_PACKET_PAYLOAD_BYTES,
   MAX_DAEMON_TRACE_PAYLOAD_BYTES,
+  MOBILE_PORT,
+  connectToDaemon,
 } from './daemonClient';
 
 const TEST_MAGIC = Buffer.from([0x33, 0xc6, 0x00, 0x01]);
@@ -205,6 +207,63 @@ function makeTraceStopResponse(trace: Record<string, unknown>): (messageType: nu
     },
   });
 }
+
+interface MockDaemonServer {
+  readonly port: number;
+  readonly server: net.Server;
+  readonly sockets: Set<net.Socket>;
+}
+
+async function startMockDaemonServer(): Promise<MockDaemonServer> {
+  const sockets = new Set<net.Socket>();
+  const server = net.createServer(socket => {
+    sockets.add(socket);
+    socket.once('close', () => sockets.delete(socket));
+  });
+  return await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (typeof address !== 'object' || address === null) {
+        server.close(() => reject(new Error('Could not allocate a mock Valdi daemon port.')));
+        return;
+      }
+      resolve({ port: address.port, server, sockets });
+    });
+  });
+}
+
+async function stopMockDaemonServer(mock: MockDaemonServer): Promise<void> {
+  for (const socket of mock.sockets) socket.destroy();
+  await new Promise<void>((resolve, reject) => {
+    mock.server.close(error => (error ? reject(error) : resolve()));
+  });
+}
+
+describe('Valdi daemon connection endpoints', () => {
+  it('connects through existing per-device tunnels without replacing their ADB forwards', async () => {
+    const first = await startMockDaemonServer();
+    const second = await startMockDaemonServer();
+    try {
+      const [firstConnection, secondConnection] = await Promise.all([
+        connectToDaemon({ autoForward: false, deviceId: 'emulator-5554', port: first.port }),
+        connectToDaemon({ autoForward: false, deviceId: 'phone-123', port: second.port }),
+      ]);
+      firstConnection.close();
+      secondConnection.close();
+
+      expect(first.port).not.toBe(second.port);
+    } finally {
+      await Promise.all([stopMockDaemonServer(first), stopMockDaemonServer(second)]);
+    }
+  });
+
+  it('rejects unsafe Android serials before constructing an ADB command', async () => {
+    await expectAsync(
+      connectToDaemon({ autoForward: true, deviceId: 'emulator-5554;unsafe', port: MOBILE_PORT }),
+    ).toBeRejectedWithError('Android device serial contains unsupported characters.');
+  });
+});
 
 describe('DaemonConnection', () => {
   it('surfaces runtime error responses from debugger requests', async () => {

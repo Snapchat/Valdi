@@ -9,6 +9,7 @@ import { TextDecoder } from 'node:util';
 import {
   type DaemonConnectedClient,
   type DaemonConnection,
+  type DaemonConnectionEndpoint,
   DaemonProtocolError,
   MOBILE_PORT,
   type RemoteContext,
@@ -27,6 +28,20 @@ import {
 } from '../utils/owlCdpClient';
 import { type ChromiumConsoleEntry, formatChromiumConsoleEvent } from './chromiumConsole';
 import { DebuggerInputType, sendDebuggerInput, validateDebuggerInputRequest } from './inputClient';
+import {
+  type AndroidDaemonDiscovery,
+  type DebuggerPortStatus,
+  type DebuggerProxyTarget,
+  DebuggerTargetCapability,
+  type DebuggerTargetDescriptor,
+  DebuggerTargetIdentityMode,
+  DebuggerTargetPlatform,
+  DebuggerTargetState,
+  DebuggerTargetTransport,
+  buildDebuggerTargetRegistry,
+  discoverAndroidDaemonEndpoints,
+  discoverDebuggerProxyTargets,
+} from './targetRegistry';
 import {
   type WebPreviewPerformanceIdentity,
   type WebPreviewTraceCapture,
@@ -58,6 +73,14 @@ const CHROMIUM_CONSOLE_COMMAND_TIMEOUT_MS = 8000;
 const CHROMIUM_CONSOLE_IDENTITY_INTERVAL_MS = 15_000;
 const CHROMIUM_CONSOLE_DEDUPLICATION_WINDOW_MS = 500;
 const MAX_PENDING_CHROMIUM_CONSOLE_ENTRIES = 128;
+const MAX_DISCOVERY_CLIENTS_PER_ENDPOINT = 16;
+const MAX_DISCOVERY_CONTEXTS_PER_CLIENT = 64;
+const MAX_DISCOVERY_DAEMON_ENDPOINTS = 10;
+const MAX_CONCURRENT_DAEMON_DISCOVERIES = 4;
+const DAEMON_DISCOVERY_CONFIGURE_TIMEOUT_MS = 1500;
+const MAX_WEB_PREVIEW_URL_BYTES = 4096;
+const MAX_WEB_PREVIEW_TARGET_NAME_BYTES = 256;
+const MAX_DEVTOOLS_TARGETS_RESPONSE_BYTES = 512 * 1024;
 export const MAX_CONSOLE_SSE_BUFFERED_BYTES = 512 * 1024;
 export const MAX_CONSOLE_SSE_BUFFERED_EVENTS = 128;
 const PERFETTO_PROCESS_ID = 1;
@@ -223,12 +246,21 @@ interface DebuggerServerOptions {
   logsDirectory?: string;
   webPreviewUrl?: string;
   chromiumDebuggingPort?: number;
+  targetDiscovery?: DebuggerTargetDiscoveryDependencies;
+}
+
+interface DebuggerTargetDiscoveryDependencies {
+  readonly defaultDaemonEndpoints: readonly DaemonConnectionEndpoint[];
+  discoverAndroidDaemonEndpoints(): Promise<AndroidDaemonDiscovery>;
+  discoverDebuggerProxyTargets(port: number): Promise<DebuggerProxyTarget[]>;
+  probeDebuggerProxy(port: number): Promise<boolean>;
 }
 
 interface WebPreviewDebuggerTarget {
   applicationUrl: string;
   debuggingPort: number;
   id: string;
+  name: string;
   sessionId: string;
 }
 
@@ -292,6 +324,16 @@ const debuggerActions = [
   'setDebugSetting',
   'resetDebugSetting',
 ];
+const DEFAULT_DEBUGGER_TARGET_DISCOVERY: DebuggerTargetDiscoveryDependencies = {
+  defaultDaemonEndpoints: [
+    { autoForward: false, port: STANDALONE_PORT },
+    // Registry refreshes are observational: companion/hotreload remain the sole ADB forward owners.
+    { autoForward: false, port: MOBILE_PORT },
+  ],
+  discoverAndroidDaemonEndpoints,
+  discoverDebuggerProxyTargets,
+  probeDebuggerProxy: async (port: number) => await probeTcpPort(port, 750),
+};
 let devRevision = 0;
 let debuggerEventRevision = 0;
 let devReloadTimer: NodeJS.Timeout | null = null;
@@ -299,6 +341,7 @@ let activeHost = DEFAULT_HOST;
 let assetRoot = getDefaultAssetRoot();
 let activeLogsDirectory: string | null = null;
 let activeWebPreviewTarget: WebPreviewDebuggerTarget | null = null;
+let activeDebuggerTargetDiscovery = DEFAULT_DEBUGGER_TARGET_DISCOVERY;
 let activeProfileSession: ActiveProfileSession | null = null;
 let profileTransitionInProgress = false;
 let traceTransitionInProgress = false;
@@ -1167,6 +1210,9 @@ function createWebPreviewDebuggerTarget(
   webPreviewUrl: string | undefined,
   debuggingPort: number,
 ): WebPreviewDebuggerTarget | null {
+  if (webPreviewUrl !== undefined && Buffer.byteLength(webPreviewUrl, 'utf8') > MAX_WEB_PREVIEW_URL_BYTES) {
+    throw new Error(`The integrated DevTools web preview URL cannot exceed ${MAX_WEB_PREVIEW_URL_BYTES} bytes.`);
+  }
   const rawUrl = webPreviewUrl?.trim();
   if (!rawUrl) return null;
   if (!Number.isInteger(debuggingPort) || debuggingPort < 1 || debuggingPort > 65_535) {
@@ -1190,23 +1236,57 @@ function createWebPreviewDebuggerTarget(
     throw new Error('The integrated DevTools web preview must use an unauthenticated loopback HTTP URL.');
   }
 
+  const normalizedApplicationUrl = applicationUrl.toString();
+  if (Buffer.byteLength(normalizedApplicationUrl, 'utf8') > MAX_WEB_PREVIEW_URL_BYTES) {
+    throw new Error(`The integrated DevTools web preview URL cannot exceed ${MAX_WEB_PREVIEW_URL_BYTES} bytes.`);
+  }
+  const name = applicationUrl.pathname.split('/').filter(Boolean).at(-1) ?? applicationUrl.hostname;
+  if (Buffer.byteLength(name, 'utf8') > MAX_WEB_PREVIEW_TARGET_NAME_BYTES) {
+    throw new Error(
+      `The integrated DevTools web preview target name cannot exceed ${MAX_WEB_PREVIEW_TARGET_NAME_BYTES} bytes.`,
+    );
+  }
+
   return {
-    applicationUrl: applicationUrl.toString(),
+    applicationUrl: normalizedApplicationUrl,
     debuggingPort,
     id: 'owl:web-preview',
+    name,
     sessionId: 'web-preview',
   };
 }
 
-function webPreviewTargetPayload(target: WebPreviewDebuggerTarget): Record<string, unknown> {
-  const applicationUrl = new URL(target.applicationUrl);
-  const pathName = applicationUrl.pathname.split('/').filter(Boolean).at(-1) ?? applicationUrl.hostname;
+function webPreviewTargetPayload(target: WebPreviewDebuggerTarget): DebuggerTargetDescriptor {
+  return {
+    applicationId: target.applicationUrl,
+    applicationUrl: target.applicationUrl,
+    attachable: true,
+    capabilities: [
+      DebuggerTargetCapability.Components,
+      DebuggerTargetCapability.Snapshot,
+      DebuggerTargetCapability.Highlight,
+      DebuggerTargetCapability.Console,
+      DebuggerTargetCapability.Performance,
+    ],
+    debuggingPort: target.debuggingPort,
+    id: target.id,
+    identityMode: DebuggerTargetIdentityMode.InspectedPage,
+    name: target.name,
+    owlTarget: true,
+    platform: DebuggerTargetPlatform.Web,
+    sessionId: target.sessionId,
+    state: DebuggerTargetState.Available,
+    transport: DebuggerTargetTransport.ChromiumCDP,
+  };
+}
+
+function legacyWebPreviewTargetPayload(target: WebPreviewDebuggerTarget): Record<string, unknown> {
   return {
     applicationId: target.applicationUrl,
     applicationUrl: target.applicationUrl,
     debuggingPort: target.debuggingPort,
     id: target.id,
-    name: pathName,
+    name: target.name,
     owlTarget: true,
     platform: 'web',
     sessionId: target.sessionId,
@@ -1267,6 +1347,9 @@ function resolveWebPreviewPerformanceIdentity(searchParams: URLSearchParams): {
   identity: WebPreviewPerformanceIdentity;
   target: WebPreviewDebuggerTarget;
 } {
+  if (searchParams.getAll('targetId').length > 0) {
+    throw new ApiRequestError(400, 'Web preview performance requests do not accept debugger target IDs.');
+  }
   const sessionId = readExactWebPreviewPerformanceParameter(searchParams, 'sessionId');
   const target = resolveWebPreviewDebuggerTarget(sessionId);
   if (sessionId !== target.sessionId) {
@@ -1297,14 +1380,38 @@ function readExactWebPreviewPerformanceParameter(searchParams: URLSearchParams, 
   return values[0];
 }
 
+function readAtMostOneDebuggerParameter(searchParams: URLSearchParams, name: string): string | undefined {
+  const values = searchParams.getAll(name);
+  if (values.length > 1) {
+    throw new ApiRequestError(400, `${name} must not appear more than once in a debugger target identity.`);
+  }
+  return values[0] || undefined;
+}
+
+function readExactDebuggerParameter(searchParams: URLSearchParams, name: string): string {
+  const value = readAtMostOneDebuggerParameter(searchParams, name);
+  if (!value) {
+    throw new ApiRequestError(400, `${name} must appear exactly once in a debugger target identity.`);
+  }
+  return value;
+}
+
+function rejectDebuggerIdentityParameters(searchParams: URLSearchParams, names: readonly string[]): void {
+  const present = names.find(name => searchParams.getAll(name).length > 0);
+  if (present !== undefined) {
+    throw new ApiRequestError(400, `Debugger target identity modes cannot mix ${present} with this request.`);
+  }
+}
+
 function resolveInspectedWebPreviewTarget(searchParams: URLSearchParams): Record<string, unknown> {
   if (!activeWebPreviewTarget) {
     throw new ApiRequestError(404, 'Start valdi debugger with --web-preview-url before opening the DevTools panel.');
   }
+  rejectDebuggerIdentityParameters(searchParams, ['targetId', 'sessionId', 'port', 'clientId', 'contextId']);
   resolveInspectedWebPreviewContext(
     activeWebPreviewTarget,
-    searchParams.get('inspectedUrl') ?? undefined,
-    searchParams.get('targetNonce') ?? undefined,
+    readAtMostOneDebuggerParameter(searchParams, 'inspectedUrl'),
+    readAtMostOneDebuggerParameter(searchParams, 'targetNonce'),
   );
   return { target: webPreviewTargetPayload(activeWebPreviewTarget) };
 }
@@ -1414,11 +1521,16 @@ function readUnknownRecord(value: unknown): Record<string, unknown> {
 }
 
 async function inspectWebPreviewSnapshot(searchParams: URLSearchParams): Promise<Record<string, unknown>> {
-  const target = resolveWebPreviewDebuggerTarget(searchParams.get('sessionId') ?? undefined);
+  rejectDebuggerIdentityParameters(searchParams, ['targetId', 'port', 'clientId', 'contextId']);
+  const sessionId = readExactDebuggerParameter(searchParams, 'sessionId');
+  const target = resolveWebPreviewDebuggerTarget(sessionId);
+  if (sessionId !== target.sessionId) {
+    throw new ApiRequestError(404, 'The inspected web preview session is no longer available.');
+  }
   const context = resolveInspectedWebPreviewContext(
     target,
-    searchParams.get('inspectedUrl') ?? undefined,
-    searchParams.get('targetNonce') ?? undefined,
+    readExactDebuggerParameter(searchParams, 'inspectedUrl'),
+    readExactDebuggerParameter(searchParams, 'targetNonce'),
   );
   const bridgePayload = await readOwlDebuggerSnapshot(target.debuggingPort, target.applicationUrl, context.targetNonce);
   if (bridgePayload['channel'] !== 'valdi-web-debugger' || bridgePayload['type'] !== 'snapshot') {
@@ -2348,6 +2460,20 @@ async function withConnection<T>(port: number, callback: (conn: DaemonConnection
   }
 }
 
+async function withDaemonEndpointConnection<T>(
+  endpoint: DaemonConnectionEndpoint,
+  configureTimeoutMs: number,
+  callback: (conn: DaemonConnection) => Promise<T>,
+): Promise<T> {
+  const conn = await connectToDaemon(endpoint);
+  try {
+    await conn.configureWithTimeout(configureTimeoutMs);
+    return await callback(conn);
+  } finally {
+    conn.close();
+  }
+}
+
 async function collectClientContexts(
   conn: DaemonConnection,
   clients: DaemonConnectedClient[],
@@ -2408,6 +2534,130 @@ async function inspectPort(port: number): Promise<{
   }
 }
 
+async function inspectDebuggerEndpoint(endpoint: DaemonConnectionEndpoint): Promise<DebuggerPortStatus> {
+  try {
+    return await withDaemonEndpointConnection(endpoint, DAEMON_DISCOVERY_CONFIGURE_TIMEOUT_MS, async conn => {
+      const clients = await conn.listConnectedClients();
+      if (clients.length > MAX_DISCOVERY_CLIENTS_PER_ENDPOINT) {
+        throw new Error(
+          `Valdi daemon target discovery exceeded ${MAX_DISCOVERY_CLIENTS_PER_ENDPOINT.toString()} clients.`,
+        );
+      }
+      const clientsWithContexts = await Promise.all(
+        clients.map(async client => {
+          const contexts = await conn.listContextsWithTimeout(client.client_id, DAEMON_DISCOVERY_CONFIGURE_TIMEOUT_MS);
+          if (contexts.length > MAX_DISCOVERY_CONTEXTS_PER_CLIENT) {
+            throw new Error(
+              `Valdi daemon target discovery exceeded ${MAX_DISCOVERY_CONTEXTS_PER_CLIENT.toString()} contexts for one client.`,
+            );
+          }
+          return { ...client, contexts, contextError: null };
+        }),
+      );
+
+      return {
+        port: endpoint.port,
+        portName: portName(endpoint.port),
+        connected: true,
+        clients: clientsWithContexts,
+        ...(endpoint.deviceId === undefined ? {} : { deviceId: endpoint.deviceId }),
+        error: null,
+      };
+    });
+  } catch (error) {
+    return {
+      port: endpoint.port,
+      portName: portName(endpoint.port),
+      connected: false,
+      clients: [],
+      ...(endpoint.deviceId === undefined ? {} : { deviceId: endpoint.deviceId }),
+      error: clientErrorPayload(error).error,
+    };
+  }
+}
+
+function debuggerDaemonEndpoints(android: AndroidDaemonDiscovery): DaemonConnectionEndpoint[] {
+  const endpointsByPort = new Map<number, DaemonConnectionEndpoint>();
+  for (const endpoint of android.endpoints) {
+    const existing = endpointsByPort.get(endpoint.port);
+    if (existing && existing.deviceId !== endpoint.deviceId) {
+      throw new Error('Android debugger discovery returned an ambiguous local daemon port.');
+    }
+    endpointsByPort.set(endpoint.port, {
+      autoForward: false,
+      ...(endpoint.deviceId === undefined ? {} : { deviceId: endpoint.deviceId }),
+      port: endpoint.port,
+    });
+  }
+  for (const endpoint of activeDebuggerTargetDiscovery.defaultDaemonEndpoints) {
+    if (endpointsByPort.has(endpoint.port)) continue;
+    endpointsByPort.set(endpoint.port, {
+      ...endpoint,
+      // Target discovery must not create or replace ADB forwarding state.
+      autoForward: false,
+    });
+  }
+  const endpoints = [...endpointsByPort.values()];
+  if (endpoints.length > MAX_DISCOVERY_DAEMON_ENDPOINTS) {
+    throw new Error(`Debugger discovery exceeded ${MAX_DISCOVERY_DAEMON_ENDPOINTS.toString()} daemon endpoints.`);
+  }
+  return endpoints;
+}
+
+async function inspectDebuggerEndpoints(endpoints: readonly DaemonConnectionEndpoint[]): Promise<DebuggerPortStatus[]> {
+  const results = new Map<number, DebuggerPortStatus>();
+  let nextIndex = 0;
+  const workerCount = Math.min(MAX_CONCURRENT_DAEMON_DISCOVERIES, endpoints.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < endpoints.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const endpoint = endpoints[index];
+      if (!endpoint) throw new Error('Debugger endpoint discovery lost an indexed endpoint.');
+      results.set(index, await inspectDebuggerEndpoint(endpoint));
+    }
+  });
+  await Promise.all(workers);
+  return endpoints.map((_endpoint, index) => {
+    const result = results.get(index);
+    if (!result) throw new Error('Debugger endpoint discovery did not inspect every bounded endpoint.');
+    return result;
+  });
+}
+
+interface DebuggerTargetDiscoveryResult {
+  readonly android: AndroidDaemonDiscovery;
+  readonly ports: readonly DebuggerPortStatus[];
+  readonly proxyConnected: boolean;
+  readonly proxyError: string | null;
+  readonly proxyTargets: readonly DebuggerProxyTarget[];
+  readonly targets: readonly DebuggerTargetDescriptor[];
+}
+
+async function discoverDebuggerTargets(): Promise<DebuggerTargetDiscoveryResult> {
+  const [android, proxyConnected] = await Promise.all([
+    activeDebuggerTargetDiscovery.discoverAndroidDaemonEndpoints(),
+    activeDebuggerTargetDiscovery.probeDebuggerProxy(HOT_RELOAD_PROXY_PORT),
+  ]);
+  const endpoints = debuggerDaemonEndpoints(android);
+  const ports = await inspectDebuggerEndpoints(endpoints);
+  let proxyTargets: DebuggerProxyTarget[] = [];
+  let proxyError: string | null = null;
+  if (proxyConnected) {
+    try {
+      proxyTargets = await activeDebuggerTargetDiscovery.discoverDebuggerProxyTargets(HOT_RELOAD_PROXY_PORT);
+    } catch (error) {
+      proxyError = clientErrorPayload(error).error;
+    }
+  }
+  const targets = buildDebuggerTargetRegistry({
+    ports,
+    proxyTargets,
+    webPreviewTargets: activeWebPreviewTarget ? [webPreviewTargetPayload(activeWebPreviewTarget)] : [],
+  });
+  return { android, ports, proxyConnected, proxyError, proxyTargets, targets };
+}
+
 async function inspectStatus(searchParams: URLSearchParams): Promise<Record<string, unknown>> {
   const explicitPort = searchParams.get('port');
   const ports = explicitPort ? [readNumber(searchParams, 'port', MOBILE_PORT)] : [STANDALONE_PORT, MOBILE_PORT];
@@ -2424,8 +2674,133 @@ async function inspectStatus(searchParams: URLSearchParams): Promise<Record<stri
       connected: await probeTcpPort(HOT_RELOAD_PROXY_PORT, 750),
     },
     defaultPort: STANDALONE_PORT,
-    webPreviewTarget: activeWebPreviewTarget ? webPreviewTargetPayload(activeWebPreviewTarget) : null,
+    webPreviewTarget: activeWebPreviewTarget ? legacyWebPreviewTargetPayload(activeWebPreviewTarget) : null,
   };
+}
+
+async function inspectDebuggerTargets(): Promise<Record<string, unknown>> {
+  const discovery = await discoverDebuggerTargets();
+  const payload = {
+    discovery: {
+      android: { error: discovery.android.error, tunnelCount: discovery.android.endpoints.length },
+      proxy: { error: discovery.proxyError, targetCount: discovery.proxyTargets.length },
+    },
+    targets: discovery.targets,
+  };
+  if (Buffer.byteLength(JSON.stringify(payload), 'utf8') > MAX_DEVTOOLS_TARGETS_RESPONSE_BYTES) {
+    throw new Error(`Valdi DevTools target registry response exceeded ${MAX_DEVTOOLS_TARGETS_RESPONSE_BYTES} bytes.`);
+  }
+  return payload;
+}
+
+async function resolveCurrentDebuggerTarget(targetId: string): Promise<DebuggerTargetDescriptor> {
+  const discovery = await discoverDebuggerTargets();
+  const matches = discovery.targets.filter(target => target.id === targetId);
+  if (matches.length === 0) {
+    throw new ApiRequestError(404, 'The selected Valdi debugger target is no longer available.');
+  }
+  if (matches.length !== 1) {
+    throw new ApiRequestError(409, 'Valdi debugger target discovery returned an ambiguous target identity.');
+  }
+  const target = matches[0];
+  if (!target) throw new ApiRequestError(404, 'The selected Valdi debugger target is no longer available.');
+  if (
+    target.identityMode !== DebuggerTargetIdentityMode.TargetId ||
+    !target.attachable ||
+    target.transport !== DebuggerTargetTransport.ValdiDaemon
+  ) {
+    throw new ApiRequestError(400, 'The selected debugger target cannot be attached by target ID.');
+  }
+  return target;
+}
+
+async function resolveInspectedDebuggerTarget(searchParams: URLSearchParams): Promise<Record<string, unknown>> {
+  const targetIdValues = searchParams.getAll('targetId');
+  if (targetIdValues.length > 0) {
+    rejectDebuggerIdentityParameters(searchParams, [
+      'sessionId',
+      'inspectedUrl',
+      'targetNonce',
+      'port',
+      'clientId',
+      'contextId',
+    ]);
+    const targetId = readExactDebuggerParameter(searchParams, 'targetId');
+    return { target: await resolveCurrentDebuggerTarget(targetId) };
+  }
+  return resolveInspectedWebPreviewTarget(searchParams);
+}
+
+async function inspectNativeDebuggerSnapshot(target: DebuggerTargetDescriptor): Promise<Record<string, unknown>> {
+  if (
+    target.transport !== DebuggerTargetTransport.ValdiDaemon ||
+    target.port === undefined ||
+    target.clientId === undefined ||
+    target.contextId === undefined
+  ) {
+    throw new ApiRequestError(400, 'The selected target does not expose a live native Valdi component tree.');
+  }
+  const port = target.port;
+  const clientId = target.clientId;
+  const contextId = target.contextId;
+  const endpoint: DaemonConnectionEndpoint = {
+    autoForward: false,
+    ...(target.deviceId === undefined ? {} : { deviceId: target.deviceId }),
+    port,
+  };
+  return await withDaemonEndpointConnection(endpoint, DAEMON_DISCOVERY_CONFIGURE_TIMEOUT_MS, async conn => {
+    const clients = await conn.listConnectedClients();
+    const client = clients.find(candidate => candidate.client_id === clientId);
+    if (!client || client.application_id !== target.applicationId) {
+      throw new ApiRequestError(404, 'The selected Valdi debugger target changed or disconnected.');
+    }
+    const contexts = await conn.listContexts(client.client_id);
+    const context = contexts.find(candidate => candidate.id === contextId);
+    if (!context) {
+      throw new ApiRequestError(404, 'The selected Valdi debugger target changed or disconnected.');
+    }
+    const currentTarget = buildDebuggerTargetRegistry({
+      ports: [
+        {
+          clients: [{ ...client, contexts: [context], contextError: null }],
+          connected: true,
+          ...(target.deviceId === undefined ? {} : { deviceId: target.deviceId }),
+          error: null,
+          port,
+          portName: portName(port),
+        },
+      ],
+      proxyTargets: [],
+      webPreviewTargets: [],
+    })[0];
+    if (!currentTarget || currentTarget.id !== target.id) {
+      throw new ApiRequestError(404, 'The selected Valdi debugger target changed or disconnected.');
+    }
+    const tree = await conn.getContextTree(client.client_id, context.id, true);
+    return {
+      contexts: [target],
+      issues: [],
+      logs: [],
+      source: 'valdi-daemon',
+      target: { ...target, state: DebuggerTargetState.Attached },
+      targets: [target],
+      tree: projectDebuggerTreeForJson(tree),
+    };
+  });
+}
+
+async function inspectDevToolsSnapshot(searchParams: URLSearchParams): Promise<Record<string, unknown>> {
+  if (searchParams.getAll('targetId').length === 0) return await inspectWebPreviewSnapshot(searchParams);
+  rejectDebuggerIdentityParameters(searchParams, [
+    'sessionId',
+    'inspectedUrl',
+    'targetNonce',
+    'port',
+    'clientId',
+    'contextId',
+  ]);
+  const targetId = readExactDebuggerParameter(searchParams, 'targetId');
+  return await inspectNativeDebuggerSnapshot(await resolveCurrentDebuggerTarget(targetId));
 }
 
 async function resolveTarget(
@@ -3419,12 +3794,21 @@ async function handleApi(request: IncomingMessage, response: ServerResponse, url
       return;
     }
 
+    if (url.pathname === '/api/devtools/targets') {
+      if (request.method !== 'GET') {
+        sendJson(response, 405, { error: 'Valdi DevTools target discovery requires GET.' });
+        return;
+      }
+      sendJson(response, 200, await inspectDebuggerTargets());
+      return;
+    }
+
     if (url.pathname === '/api/devtools/target') {
       if (request.method !== 'GET') {
         sendJson(response, 405, { error: 'Valdi DevTools target discovery requires GET.' });
         return;
       }
-      sendJson(response, 200, resolveInspectedWebPreviewTarget(url.searchParams));
+      sendJson(response, 200, await resolveInspectedDebuggerTarget(url.searchParams));
       return;
     }
 
@@ -3433,7 +3817,7 @@ async function handleApi(request: IncomingMessage, response: ServerResponse, url
         sendJson(response, 405, { error: 'Valdi DevTools snapshots require GET.' });
         return;
       }
-      sendJson(response, 200, await inspectWebPreviewSnapshot(url.searchParams));
+      sendJson(response, 200, await inspectDevToolsSnapshot(url.searchParams));
       return;
     }
 
@@ -3740,6 +4124,7 @@ async function closeDebuggerServer(server: Server): Promise<void> {
     }
   }
   activeWebPreviewTarget = null;
+  activeDebuggerTargetDiscovery = DEFAULT_DEBUGGER_TARGET_DISCOVERY;
 }
 
 export async function startDebuggerServer(options: DebuggerServerOptions): Promise<DebuggerServerInfo> {
@@ -3755,10 +4140,12 @@ export async function startDebuggerServer(options: DebuggerServerOptions): Promi
     throw new Error(`Debugger port must be an integer between 1 and 65535; received '${String(preferredPort)}'.`);
   }
   const previousWebPreviewTarget = activeWebPreviewTarget;
+  const previousDebuggerTargetDiscovery = activeDebuggerTargetDiscovery;
   activeWebPreviewTarget = createWebPreviewDebuggerTarget(
     options.webPreviewUrl,
     options.chromiumDebuggingPort ?? DEFAULT_CHROMIUM_DEBUGGING_PORT,
   );
+  activeDebuggerTargetDiscovery = options.targetDiscovery ?? DEFAULT_DEBUGGER_TARGET_DISCOVERY;
   const strictPort = Boolean(options.strictPort);
   const maxAttempts = strictPort ? 1 : PORT_SEARCH_LIMIT;
 
@@ -3795,6 +4182,7 @@ export async function startDebuggerServer(options: DebuggerServerOptions): Promi
     throw new Error(`No available port found in ${preferredPort}-${preferredPort + maxAttempts - 1}.`);
   } catch (error) {
     activeWebPreviewTarget = previousWebPreviewTarget;
+    activeDebuggerTargetDiscovery = previousDebuggerTargetDiscovery;
     throw error;
   }
 }

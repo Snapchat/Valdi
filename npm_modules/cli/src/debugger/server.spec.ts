@@ -46,6 +46,8 @@ interface MockDaemon {
   close: () => Promise<void>;
   port: number;
   requests: Array<Record<string, unknown>>;
+  setApplicationId(applicationId: string): void;
+  setContexts(contexts: Array<{ id: string; rootComponentName: string }>): void;
 }
 
 interface MockChromiumConsoleServer {
@@ -186,7 +188,18 @@ async function startMockChromiumConsoleServer(
               !(options.rejectIdentityAfterTracingStart === true && tracingStarted);
             let value: unknown;
             if (guarded) {
-              value = { __valdiDevToolsTargetMatched: matched, ...(matched ? { value: true } : {}) };
+              const guardedValue = expression.includes('__VALDI_WEB_DEBUGGER__?.getSnapshot()')
+                ? {
+                    channel: 'valdi-web-debugger',
+                    selectedNodeId: 'web-root',
+                    snapshot: {
+                      tree: { children: [], id: 'web-root', tag: 'WebRoot' },
+                      viewport: { height: 800, width: 1200 },
+                    },
+                    type: 'snapshot',
+                  }
+                : true;
+              value = { __valdiDevToolsTargetMatched: matched, ...(matched ? { value: guardedValue } : {}) };
             } else if (expression === 'String(globalThis.location.href)') {
               value = currentInspectedUrl;
             } else if (expression.includes("getEntriesByType('resource')")) {
@@ -364,6 +377,8 @@ function encodeDaemonPacket(payload: object): Buffer {
 async function startMockDaemon(customResponseBody?: unknown): Promise<MockDaemon> {
   const sockets = new Set<net.Socket>();
   const requests: Array<Record<string, unknown>> = [];
+  let applicationId = 'mock.app';
+  let contexts = [{ id: 'mock-context', rootComponentName: 'Mock App' }];
   let responseId = 0;
   const server = net.createServer(socket => {
     sockets.add(socket);
@@ -386,7 +401,15 @@ async function startMockDaemon(customResponseBody?: unknown): Promise<MockDaemon
         let responseType: number;
         if (type === 2) {
           responseType = -2;
-          body = [{ id: 'mock-context', rootComponentName: 'Mock App' }];
+          body = contexts;
+        } else if (type === 3) {
+          responseType = -3;
+          const requestedContext = (requestBody['body'] as Record<string, unknown>)['id'];
+          body = {
+            children: [],
+            id: `tree-${String(requestedContext)}`,
+            tag: 'MockRoot',
+          };
         } else {
           responseType = -1000;
           const custom = requestBody['body'] as Record<string, unknown>;
@@ -434,7 +457,7 @@ async function startMockDaemon(customResponseBody?: unknown): Promise<MockDaemon
     socket.write(
       encodeDaemonPacket({
         request: {
-          configure: { application_id: 'mock.app', platform: 'test' },
+          configure: { application_id: applicationId, platform: 'android' },
           request_id: 'configure-1',
         },
       }),
@@ -453,6 +476,29 @@ async function startMockDaemon(customResponseBody?: unknown): Promise<MockDaemon
     },
     port: address.port,
     requests,
+    setApplicationId(nextApplicationId: string): void {
+      applicationId = nextApplicationId;
+    },
+    setContexts(nextContexts: Array<{ id: string; rootComponentName: string }>): void {
+      contexts = nextContexts;
+    },
+  };
+}
+
+function targetDiscoveryFor(endpoints: () => Array<{ deviceId: string; port: number }>): {
+  defaultDaemonEndpoints: [];
+  discoverAndroidDaemonEndpoints(): Promise<{
+    endpoints: Array<{ deviceId: string; port: number }>;
+    error: null;
+  }>;
+  discoverDebuggerProxyTargets(): Promise<[]>;
+  probeDebuggerProxy(): Promise<false>;
+} {
+  return {
+    defaultDaemonEndpoints: [],
+    discoverAndroidDaemonEndpoints: () => Promise.resolve({ endpoints: endpoints(), error: null }),
+    discoverDebuggerProxyTargets: () => Promise.resolve([]),
+    probeDebuggerProxy: () => Promise.resolve(false),
   };
 }
 
@@ -855,8 +901,10 @@ describe('debugger server', () => {
     expect(JSON.parse(matching.body)).toEqual({
       target: jasmine.objectContaining({
         applicationUrl: 'http://127.0.0.1:54321/index.html?tenant=alpha&mode=dev',
+        capabilities: ['components', 'snapshot', 'highlight', 'console', 'performance'],
         debuggingPort: 9333,
         id: 'owl:web-preview',
+        identityMode: 'inspected-page',
         sessionId: 'web-preview',
       }),
     });
@@ -891,6 +939,513 @@ describe('debugger server', () => {
     expect(JSON.parse(result.body)).toEqual({
       error: 'DevTools target discovery requires a valid inspected-tab nonce.',
     });
+  });
+
+  it('bounds configured web preview URLs and derived target names at startup', async () => {
+    const urlPrefix = 'http://127.0.0.1:54321/?padding=';
+    const maximumUrl = `${urlPrefix}${'x'.repeat(4096 - Buffer.byteLength(urlPrefix, 'utf8'))}`;
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+      webPreviewUrl: maximumUrl,
+    });
+    await debuggerServer.close();
+    debuggerServer = undefined;
+
+    await expectAsync(
+      startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: `${maximumUrl}x`,
+      }),
+    ).toBeRejectedWithError('The integrated DevTools web preview URL cannot exceed 4096 bytes.');
+
+    const maximumName = 'n'.repeat(256);
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+      webPreviewUrl: `http://127.0.0.1:54321/${maximumName}`,
+    });
+    await debuggerServer.close();
+    debuggerServer = undefined;
+
+    await expectAsync(
+      startDebuggerServer({
+        assetRoot,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        webPreviewUrl: `http://127.0.0.1:54321/${maximumName}x`,
+      }),
+    ).toBeRejectedWithError('The integrated DevTools web preview target name cannot exceed 256 bytes.');
+  });
+
+  it('discovers and exact-resolves opaque native targets alongside the explicit web preview', async () => {
+    mockDaemon = await startMockDaemon();
+    mockDaemon.setContexts([
+      { id: 'first-context', rootComponentName: 'First' },
+      { id: 'second-context', rootComponentName: 'Second' },
+    ]);
+    let endpoints = [{ deviceId: 'emulator-5554', port: mockDaemon.port }];
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+      targetDiscovery: targetDiscoveryFor(() => endpoints),
+      webPreviewUrl: 'http://127.0.0.1:54321/index.html',
+    });
+
+    const registry = await request(
+      new URL('/api/devtools/targets', debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const registryBody = JSON.parse(registry.body) as { targets: Array<Record<string, unknown>> };
+    const nativeTargets = registryBody.targets.filter(target => target['transport'] === 'valdi-daemon');
+    const webTargets = registryBody.targets.filter(target => target['id'] === 'owl:web-preview');
+    const second = nativeTargets.find(target => target['contextId'] === 'second-context');
+    if (!second) throw new Error('Expected the second native debugger context.');
+    const targetId = String(second['id']);
+
+    expect(registry.statusCode).toBe(200);
+    expect(nativeTargets.length).toBe(2);
+    expect(webTargets.length).toBe(1);
+    expect(targetId).toMatch(/^vdt_[\w-]{32}$/);
+    expect(targetId).not.toContain(mockDaemon.port.toString());
+    expect(targetId).not.toContain('second-context');
+    expect(second['capabilities']).toEqual(['components', 'snapshot']);
+    expect(second['identityMode']).toBe('target-id');
+    expect(webTargets[0]?.['identityMode']).toBe('inspected-page');
+    expect(webTargets[0]?.['capabilities']).toEqual(['components', 'snapshot', 'highlight', 'console', 'performance']);
+
+    const resolved = await request(
+      new URL(`/api/devtools/target?targetId=${encodeURIComponent(targetId)}`, debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const snapshot = await request(
+      new URL(`/api/devtools/snapshot?targetId=${encodeURIComponent(targetId)}`, debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const snapshotBody = JSON.parse(snapshot.body) as {
+      target: Record<string, unknown>;
+      tree: { nodes: Array<{ data: Record<string, unknown> }> };
+    };
+
+    expect(resolved.statusCode).toBe(200);
+    expect((JSON.parse(resolved.body) as { target: Record<string, unknown> }).target['id']).toBe(targetId);
+    expect(snapshot.statusCode).toBe(200);
+    expect(snapshotBody.target['id']).toBe(targetId);
+    expect(snapshotBody.tree.nodes[0]?.data['id']).toBe('tree-second-context');
+
+    const duplicate = await request(
+      new URL(
+        `/api/devtools/target?targetId=${encodeURIComponent(targetId)}&targetId=${encodeURIComponent(targetId)}`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const mixed = await request(
+      new URL(
+        `/api/devtools/snapshot?targetId=${encodeURIComponent(targetId)}&port=${mockDaemon.port.toString()}`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const unknown = await request(
+      new URL('/api/devtools/target?targetId=vdt_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+
+    expect(duplicate.statusCode).toBe(400);
+    expect(mixed.statusCode).toBe(400);
+    expect(unknown.statusCode).toBe(404);
+
+    mockDaemon.setApplicationId('mock.replacement');
+    const replaced = await request(
+      new URL(`/api/devtools/target?targetId=${encodeURIComponent(targetId)}`, debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    expect(replaced.statusCode).toBe(404);
+
+    const replacementRegistry = await request(
+      new URL('/api/devtools/targets', debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const replacementTargets = (JSON.parse(replacementRegistry.body) as { targets: Array<Record<string, unknown>> })
+      .targets;
+    expect(replacementTargets.some(target => target['id'] === targetId)).toBeFalse();
+    const replacementTarget = replacementTargets.find(target => target['contextId'] === 'second-context');
+    if (!replacementTarget) throw new Error('Expected the replacement native debugger context.');
+    const replacementTargetId = String(replacementTarget['id']);
+    expect(replacementTargetId).not.toBe(targetId);
+
+    endpoints = [{ deviceId: 'replacement-device', port: mockDaemon.port }];
+    const samePortReplacement = await request(
+      new URL(
+        `/api/devtools/target?targetId=${encodeURIComponent(replacementTargetId)}`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    expect(samePortReplacement.statusCode).toBe(404);
+
+    const samePortReplacementRegistry = await request(
+      new URL('/api/devtools/targets', debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const samePortReplacementTargets = (
+      JSON.parse(samePortReplacementRegistry.body) as { targets: Array<Record<string, unknown>> }
+    ).targets;
+    const samePortReplacementTarget = samePortReplacementTargets.find(
+      target => target['contextId'] === 'second-context',
+    );
+    if (!samePortReplacementTarget) throw new Error('Expected the same-port replacement debugger context.');
+    const samePortReplacementTargetId = String(samePortReplacementTarget['id']);
+    expect(samePortReplacementTargetId).not.toBe(replacementTargetId);
+
+    endpoints = [];
+    const removed = await request(
+      new URL(
+        `/api/devtools/target?targetId=${encodeURIComponent(samePortReplacementTargetId)}`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    expect(removed.statusCode).toBe(404);
+  });
+
+  it('treats every configured target-discovery endpoint as read-only', async () => {
+    mockDaemon = await startMockDaemon();
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+      targetDiscovery: {
+        defaultDaemonEndpoints: [
+          {
+            autoForward: true,
+            deviceId: 'unsafe;device',
+            port: mockDaemon.port,
+          },
+        ],
+        discoverAndroidDaemonEndpoints: () => Promise.resolve({ endpoints: [], error: null }),
+        discoverDebuggerProxyTargets: () => Promise.resolve([]),
+        probeDebuggerProxy: () => Promise.resolve(false),
+      },
+    });
+
+    const registry = await request(
+      new URL('/api/devtools/targets', debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const targets = (JSON.parse(registry.body) as { targets: Array<Record<string, unknown>> }).targets;
+
+    expect(registry.statusCode).toBe(200);
+    expect(targets.some(target => target['transport'] === 'valdi-daemon')).toBeTrue();
+  });
+
+  it('preserves the legacy status shape and explicit-port path without registry discovery', async () => {
+    mockDaemon = await startMockDaemon();
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+      targetDiscovery: {
+        defaultDaemonEndpoints: [],
+        discoverAndroidDaemonEndpoints: () => Promise.reject(new Error('Status must not discover ADB endpoints.')),
+        discoverDebuggerProxyTargets: () => Promise.reject(new Error('Status must not discover proxy targets.')),
+        probeDebuggerProxy: () => Promise.reject(new Error('Status must not use registry proxy discovery.')),
+      },
+      webPreviewUrl: 'http://127.0.0.1:54321/index.html',
+    });
+
+    const originalPath = process.env['PATH'];
+    process.env['PATH'] = '/nonexistent';
+    let status: HttpResult;
+    try {
+      status = await request(
+        new URL(`/api/status?port=${mockDaemon.port.toString()}`, debuggerServer.url).toString(),
+        GET_REQUEST_OPTIONS,
+      );
+    } finally {
+      if (originalPath === undefined) delete process.env['PATH'];
+      else process.env['PATH'] = originalPath;
+    }
+    const payload = JSON.parse(status.body) as Record<string, unknown>;
+    const webPreviewTarget = payload['webPreviewTarget'] as Record<string, unknown>;
+
+    expect(status.statusCode).toBe(200);
+    expect(Object.keys(payload).sort()).toEqual(['defaultPort', 'hotReloadProxy', 'ports', 'webPreviewTarget']);
+    expect(payload['ports']).toEqual([
+      jasmine.objectContaining({
+        connected: true,
+        port: mockDaemon.port,
+      }),
+    ]);
+    expect(Object.keys(webPreviewTarget).sort()).toEqual([
+      'applicationId',
+      'applicationUrl',
+      'debuggingPort',
+      'id',
+      'name',
+      'owlTarget',
+      'platform',
+      'sessionId',
+      'state',
+      'transport',
+    ]);
+  });
+
+  it('rejects a final serialized target registry response larger than 512 KiB', async () => {
+    let proxyTargetCount = 1;
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+      targetDiscovery: {
+        defaultDaemonEndpoints: [],
+        discoverAndroidDaemonEndpoints: () => Promise.resolve({ endpoints: [], error: null }),
+        discoverDebuggerProxyTargets: () =>
+          Promise.resolve(
+            Array.from({ length: proxyTargetCount }, (_, index) => {
+              const suffix = index.toString();
+              const deviceId = `device-${suffix}-${'d'.repeat(900)}`;
+              return {
+                adapterType: `_android_${deviceId}`,
+                appId: `application-${suffix}-${'a'.repeat(980)}`,
+                id: `proxy-${suffix}`,
+                metadata: { deviceId, deviceName: `Device ${suffix} ${'n'.repeat(980)}` },
+                title: `Runtime ${suffix} ${'t'.repeat(980)}`,
+                webSocketDebuggerUrl: `ws://127.0.0.1:9010/${suffix}/${'w'.repeat(3900)}`,
+              };
+            }),
+          ),
+        probeDebuggerProxy: () => Promise.resolve(true),
+      },
+    });
+
+    const bounded = await request(new URL('/api/devtools/targets', debuggerServer.url).toString(), GET_REQUEST_OPTIONS);
+    proxyTargetCount = 80;
+    const oversized = await request(
+      new URL('/api/devtools/targets', debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+
+    expect(bounded.statusCode).toBe(200);
+    expect(oversized.statusCode).toBe(500);
+    expect(JSON.parse(oversized.body)).toEqual({
+      error: 'Valdi DevTools target registry response exceeded 524288 bytes.',
+    });
+  });
+
+  it('rejects mixed web-preview and target-ID resolver modes without falling back', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+      targetDiscovery: targetDiscoveryFor(() => []),
+      webPreviewUrl: 'http://127.0.0.1:54321/index.html',
+    });
+    const mixed = await request(
+      new URL(
+        `/api/devtools/target?targetId=owl%3Aweb-preview&inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html&targetNonce=${WEB_PREVIEW_NONCE}`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const duplicateNonce = await request(
+      new URL(
+        `/api/devtools/target?inspectedUrl=http%3A%2F%2F127.0.0.1%3A54321%2Findex.html&targetNonce=${WEB_PREVIEW_NONCE}&targetNonce=${WEB_PREVIEW_NONCE}`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const webByIdTarget = await request(
+      new URL('/api/devtools/target?targetId=owl%3Aweb-preview', debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const webByIdSnapshot = await request(
+      new URL('/api/devtools/snapshot?targetId=owl%3Aweb-preview', debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+
+    expect(mixed.statusCode).toBe(400);
+    expect(duplicateNonce.statusCode).toBe(400);
+    expect(webByIdTarget.statusCode).toBe(400);
+    expect(webByIdSnapshot.statusCode).toBe(400);
+    expect(JSON.parse(webByIdTarget.body)).toEqual({
+      error: 'The selected debugger target cannot be attached by target ID.',
+    });
+    expect(JSON.parse(webByIdSnapshot.body)).toEqual({
+      error: 'The selected debugger target cannot be attached by target ID.',
+    });
+  });
+
+  it('resolves and snapshots the web preview only through its inspected-page identity', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html';
+    const inspectedUrl = `${applicationUrl}?valdiDevTools=1`;
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      holdRuntimeEnable: false,
+    });
+    try {
+      debuggerServer = await startDebuggerServer({
+        assetRoot,
+        chromiumDebuggingPort: chromium.port,
+        host: '127.0.0.1',
+        port: await getFreePort(),
+        strictPort: true,
+        targetDiscovery: targetDiscoveryFor(() => []),
+        webPreviewUrl: applicationUrl,
+      });
+      const targetUrl = new URL('/api/devtools/target', debuggerServer.url);
+      targetUrl.searchParams.set('inspectedUrl', inspectedUrl);
+      targetUrl.searchParams.set('targetNonce', WEB_PREVIEW_NONCE);
+      const snapshotUrl = new URL('/api/devtools/snapshot', debuggerServer.url);
+      snapshotUrl.searchParams.set('inspectedUrl', inspectedUrl);
+      snapshotUrl.searchParams.set('sessionId', 'web-preview');
+      snapshotUrl.searchParams.set('targetNonce', WEB_PREVIEW_NONCE);
+
+      const target = await request(targetUrl.toString(), GET_REQUEST_OPTIONS);
+      const snapshot = await request(snapshotUrl.toString(), GET_REQUEST_OPTIONS);
+      const snapshotBody = JSON.parse(snapshot.body) as {
+        target: Record<string, unknown>;
+        tree: { nodes: Array<{ data: Record<string, unknown> }> };
+      };
+
+      expect(target.statusCode).toBe(200);
+      expect((JSON.parse(target.body) as { target: Record<string, unknown> }).target).toEqual(
+        jasmine.objectContaining({
+          id: 'owl:web-preview',
+          identityMode: 'inspected-page',
+          transport: 'chromium-cdp',
+        }),
+      );
+      expect(snapshot.statusCode).withContext(snapshot.body).toBe(200);
+      expect(snapshotBody.target['identityMode']).toBe('inspected-page');
+      expect(snapshotBody.tree.nodes[0]?.data['id']).toBe('web-root');
+    } finally {
+      await chromium.close();
+    }
+  });
+
+  it('lists proxy-only target IDs but rejects them as non-native attachments', async () => {
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+      targetDiscovery: {
+        defaultDaemonEndpoints: [],
+        discoverAndroidDaemonEndpoints: () => Promise.resolve({ endpoints: [], error: null }),
+        discoverDebuggerProxyTargets: () =>
+          Promise.resolve([
+            {
+              adapterType: '_android_emulator-5554',
+              appId: 'com.example.android',
+              id: 'proxy-only',
+              metadata: { deviceId: 'emulator-5554' },
+              webSocketDebuggerUrl: 'ws://127.0.0.1:9010/android/proxy-only',
+            },
+          ]),
+        probeDebuggerProxy: () => Promise.resolve(true),
+      },
+    });
+
+    const registry = await request(
+      new URL('/api/devtools/targets', debuggerServer.url).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const target = (JSON.parse(registry.body) as { targets: Array<Record<string, unknown>> }).targets[0];
+    if (!target) throw new Error('Expected a proxy-only debugger target.');
+    const resolved = await request(
+      new URL(
+        `/api/devtools/target?targetId=${encodeURIComponent(String(target['id']))}`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+    const snapshot = await request(
+      new URL(
+        `/api/devtools/snapshot?targetId=${encodeURIComponent(String(target['id']))}`,
+        debuggerServer.url,
+      ).toString(),
+      GET_REQUEST_OPTIONS,
+    );
+
+    expect(target).toEqual(
+      jasmine.objectContaining({
+        attachable: false,
+        identityMode: 'target-id',
+        transport: 'chromium-cdp',
+      }),
+    );
+    expect(resolved.statusCode).toBe(400);
+    expect(snapshot.statusCode).toBe(400);
+    expect(JSON.parse(resolved.body)).toEqual({
+      error: 'The selected debugger target cannot be attached by target ID.',
+    });
+  });
+
+  it('refreshes the target registry without changing active web-preview performance ownership', async () => {
+    const applicationUrl = 'http://127.0.0.1:54321/index.html';
+    const inspectedUrl = `${applicationUrl}?valdiDevTools=1`;
+    const chromium = await startMockChromiumConsoleServer(applicationUrl, WEB_PREVIEW_NONCE, {
+      holdRuntimeEnable: false,
+    });
+    debuggerServer = await startDebuggerServer({
+      assetRoot,
+      chromiumDebuggingPort: chromium.port,
+      host: '127.0.0.1',
+      port: await getFreePort(),
+      strictPort: true,
+      targetDiscovery: targetDiscoveryFor(() => []),
+      webPreviewUrl: applicationUrl,
+    });
+    const debuggerServerUrl = debuggerServer.url;
+    const traceUrl = (pathname: string): string => {
+      const url = new URL(pathname, debuggerServerUrl);
+      url.searchParams.set('inspectedUrl', inspectedUrl);
+      url.searchParams.set('sessionId', 'web-preview');
+      url.searchParams.set('targetNonce', WEB_PREVIEW_NONCE);
+      return url.toString();
+    };
+    const postOptions: HttpRequestOptions = {
+      body: '{}',
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    };
+    try {
+      const started = await request(traceUrl('/api/devtools/performance/trace/start'), postOptions);
+      const registry = await request(
+        new URL('/api/devtools/targets', debuggerServer.url).toString(),
+        GET_REQUEST_OPTIONS,
+      );
+      const status = await request(traceUrl('/api/devtools/performance/trace/status'), GET_REQUEST_OPTIONS);
+      const targetIdShortcut = new URL(traceUrl('/api/devtools/performance/trace/status'));
+      targetIdShortcut.searchParams.set('targetId', 'owl:web-preview');
+      const rejectedShortcut = await request(targetIdShortcut.toString(), GET_REQUEST_OPTIONS);
+      const stopped = await request(traceUrl('/api/devtools/performance/trace/stop'), postOptions);
+
+      expect(started.statusCode).withContext(started.body).toBe(200);
+      expect(registry.statusCode).toBe(200);
+      expect((JSON.parse(status.body) as { recording: boolean }).recording)
+        .withContext(status.body)
+        .toBeTrue();
+      expect(rejectedShortcut.statusCode).toBe(400);
+      expect(stopped.statusCode).withContext(stopped.body).toBe(200);
+    } finally {
+      await chromium.close();
+    }
   });
 
   it('requires the exact session, inspected URL, and nonce for web preview performance routes', async () => {

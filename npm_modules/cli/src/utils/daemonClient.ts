@@ -94,6 +94,13 @@ export interface RemoteContext {
   rootComponentName: string;
 }
 
+/** An existing platform tunnel must not be replaced by generic ADB forwarding. */
+export interface DaemonConnectionEndpoint {
+  readonly autoForward: boolean;
+  readonly deviceId?: string;
+  readonly port: number;
+}
+
 export interface PerformanceTraceStatusRequestBody extends Record<string, unknown> {
   contextId?: string;
 }
@@ -167,8 +174,8 @@ function encodePacket(json: object): Buffer {
 // In the direct-to-device protocol we are "client 1" (non-zero required by device JS check).
 const DIRECT_CLIENT_ID = 1;
 const ADB_FORWARD_REFRESH_INTERVAL_MS = 5000;
-const adbForwardedAtByPort = new Map<number, number>();
-const adbForwardRefreshByPort = new Map<number, Promise<void>>();
+const adbForwardedAtByEndpoint = new Map<string, number>();
+const adbForwardRefreshByEndpoint = new Map<string, Promise<void>>();
 
 interface PendingRequest {
   resolve: (value: Record<string, unknown>) => void;
@@ -509,6 +516,13 @@ export class DaemonConnection {
    * request immediately on connect; we respond automatically and this resolves when done).
    */
   configure(): Promise<void> {
+    return this.configureWithTimeout(5000);
+  }
+
+  configureWithTimeout(timeoutMs: number): Promise<void> {
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 5000) {
+      return Promise.reject(new Error('Valdi daemon configure timeout must be between 1 and 5000 milliseconds.'));
+    }
     if (this.configureData) return Promise.resolve();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -519,7 +533,7 @@ export class DaemonConnection {
               `Is the hot-reloader actually running and connected?`,
           ),
         );
-      }, 5_000);
+      }, timeoutMs);
       this.configureReady = {
         resolve: () => {
           clearTimeout(timer);
@@ -627,7 +641,11 @@ export class DaemonConnection {
   }
 
   async listContexts(clientId: string): Promise<RemoteContext[]> {
-    const resp = await this.forwardAndWait(clientId, DaemonMsgType.LIST_CONTEXTS_REQUEST, {});
+    return await this.listContextsWithTimeout(clientId, 15_000);
+  }
+
+  async listContextsWithTimeout(clientId: string, timeoutMs: number): Promise<RemoteContext[]> {
+    const resp = await this.forwardAndWait(clientId, DaemonMsgType.LIST_CONTEXTS_REQUEST, {}, timeoutMs);
     return (resp['body'] ?? []) as RemoteContext[];
   }
 
@@ -753,39 +771,54 @@ export class DaemonConnection {
 
 // ─── Factory ─────────────────────────────────────────────────────────────────
 
-async function tryAdbForward(port: number): Promise<void> {
-  const lastForwardedAt = adbForwardedAtByPort.get(port);
+function adbForwardKey(endpoint: DaemonConnectionEndpoint): string {
+  return `${endpoint.deviceId ?? ''}\0${endpoint.port.toString()}`;
+}
+
+async function tryAdbForward(endpoint: DaemonConnectionEndpoint): Promise<void> {
+  if (endpoint.deviceId !== undefined && !/^[\w.:-]{1,128}$/.test(endpoint.deviceId)) {
+    throw new CliError('Android device serial contains unsupported characters.');
+  }
+  const key = adbForwardKey(endpoint);
+  const lastForwardedAt = adbForwardedAtByEndpoint.get(key);
   if (lastForwardedAt !== undefined && Date.now() - lastForwardedAt < ADB_FORWARD_REFRESH_INTERVAL_MS) return;
 
-  const pendingRefresh = adbForwardRefreshByPort.get(port);
+  const pendingRefresh = adbForwardRefreshByEndpoint.get(key);
   if (pendingRefresh) {
     await pendingRefresh;
     return;
   }
 
-  const refresh = refreshAdbForward(port);
-  adbForwardRefreshByPort.set(port, refresh);
+  const refresh = refreshAdbForward(endpoint, key);
+  adbForwardRefreshByEndpoint.set(key, refresh);
   try {
     await refresh;
   } finally {
-    if (adbForwardRefreshByPort.get(port) === refresh) adbForwardRefreshByPort.delete(port);
+    if (adbForwardRefreshByEndpoint.get(key) === refresh) adbForwardRefreshByEndpoint.delete(key);
   }
 }
 
-async function refreshAdbForward(port: number): Promise<void> {
+async function refreshAdbForward(endpoint: DaemonConnectionEndpoint, key: string): Promise<void> {
   try {
-    await runCliCommand(`adb forward tcp:${port} tcp:${port}`);
-    adbForwardedAtByPort.set(port, Date.now());
+    const deviceSelector = endpoint.deviceId === undefined ? '' : `-s ${endpoint.deviceId} `;
+    await runCliCommand(`adb ${deviceSelector}forward tcp:${endpoint.port} tcp:${endpoint.port}`);
+    adbForwardedAtByEndpoint.set(key, Date.now());
   } catch {
     // ADB is optional for standalone targets; retry the next time a mobile connection is requested.
   }
 }
 
-export async function connectToDaemon(port: number = DEFAULT_PORT): Promise<DaemonConnection> {
+export async function connectToDaemon(target?: number | DaemonConnectionEndpoint): Promise<DaemonConnection> {
+  const resolvedTarget = target ?? DEFAULT_PORT;
+  const endpoint: DaemonConnectionEndpoint =
+    typeof resolvedTarget === 'number'
+      ? { autoForward: resolvedTarget !== STANDALONE_PORT, port: resolvedTarget }
+      : resolvedTarget;
+  const port = endpoint.port;
   // Only set up adb forwarding for mobile ports — standalone macOS apps listen
-  // directly on localhost and adb forward would shadow them.
-  if (port !== STANDALONE_PORT) {
-    await tryAdbForward(port);
+  // directly on localhost and companion-owned device tunnels must remain intact.
+  if (endpoint.autoForward && port !== STANDALONE_PORT) {
+    await tryAdbForward(endpoint);
   }
   return new Promise((resolve, reject) => {
     const socket = net.createConnection({ port, host: '127.0.0.1' });
