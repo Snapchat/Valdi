@@ -1,10 +1,6 @@
 load("//bzl:expand_template.bzl", "expand_template")
 load("//bzl/valdi:suffixed_deps.bzl", "get_suffixed_deps")
 
-_HTTP_INCLUDE = "#include \"valdi/standalone_http/CurlHTTPRequestManager.hpp\""
-
-_HTTP_MANAGER = ", Valdi::makeCurlHTTPRequestManager()"
-
 def valdi_cli_application(
         name,
         script_path,
@@ -25,14 +21,15 @@ def valdi_cli_application(
     """
     main_target = "{}_main".format(name)
 
+    # Two whole templates rather than one with the manager spliced in, so both stay readable C++.
+    template = "cli_main_http.cpp.tpl" if enable_http else "cli_main.cpp.tpl"
+
     expand_template(
         name = main_target,
-        src = "@valdi//bzl/valdi/app_templates:cli_main.cpp.tpl",
+        src = "@valdi//bzl/valdi/app_templates:" + template,
         output = "main.cpp",
         substitutions = {
             "@VALDI_SCRIPT_PATH@": script_path,
-            "@VALDI_HTTP_INCLUDE@": _HTTP_INCLUDE if enable_http else "",
-            "@VALDI_HTTP_MANAGER@": _HTTP_MANAGER if enable_http else "",
         },
     )
 
