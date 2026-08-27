@@ -170,6 +170,42 @@ TEST_P(StandaloneRequestManagerFixture, httpClientRejectsItsPromiseOnFailure) {
            "open waiting for a settlement that never comes";
 }
 
+// No manager reports a cancelled request, so the settlement has to come from JavaScript. Without it
+// the runtime never runs down.
+TEST_P(StandaloneRequestManagerFixture, httpClientRejectsItsPromiseOnCancel) {
+    auto requestManager = Valdi::makeShared<RequestManagerMock>(ConsoleLogger::getLogger());
+    requestManager->addMockedResponse(STRING_LITERAL("http://localhost/"), STRING_LITERAL("GET"), BytesView());
+
+    auto arguments = makeArguments();
+    arguments.requestManager = requestManager;
+
+    auto standaloneRuntime = createValdiStandaloneRuntime(arguments);
+    auto* jsRuntime = standaloneRuntime->getRuntime().getJavaScriptRuntime();
+
+    auto evaluate = [&](const std::string& source) {
+        return jsRuntime->evaluateScript(makeShared<ByteBuffer>(source)->toBytesView(),
+                                         STRING_LITERAL("standalone_request_manager_test.js"));
+    };
+
+    auto started = evaluate("var HTTPClient = global.require('valdi_http/src/HTTPClient').HTTPClient;"
+                            "global.__outcome = '<promise never settled>';"
+                            "var request = new HTTPClient().get('http://localhost/');"
+                            "request.then("
+                            "  function () { global.__outcome = 'resolved'; },"
+                            "  function (e) { global.__outcome = 'rejected: ' + e; });"
+                            "request.cancel();"
+                            "return 'started';");
+    ASSERT_TRUE(started) << started.description();
+
+    requestManager->getAllPerformedTasks();
+
+    auto outcome = evaluate("return global.__outcome;");
+    ASSERT_TRUE(outcome) << outcome.description();
+    EXPECT_EQ("rejected: Error: Request was cancelled", outcome.value().toString())
+        << "cancelling left the promise pending, so a CLI that called beginKeepAlive waits forever "
+           "for a settlement no manager is going to send";
+}
+
 INSTANTIATE_TEST_SUITE_P(StandaloneRequestManagerTests,
                          StandaloneRequestManagerFixture,
                          ::testing::Values(JavaScriptEngineTestCase::Hermes,

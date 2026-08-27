@@ -16,6 +16,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
+#include <cstdio>
 #include <cstring>
 #include <future>
 #include <mutex>
@@ -293,6 +294,92 @@ public:
 private:
     // ::send places only what fits in the socket buffer and returns, so anything above a few
     // hundred kilobytes needs the loop.
+    static bool sendAll(int connection, const char* data, size_t size) {
+        while (size > 0) {
+            auto written = ::send(connection, data, size, 0);
+            if (written <= 0) {
+                return false;
+            }
+            data += written;
+            size -= static_cast<size_t>(written);
+        }
+        return true;
+    }
+
+    int _listener = -1;
+    uint16_t _port = 0;
+    std::atomic_bool _stopping{false};
+    std::thread _thread;
+};
+
+// Streams a body of a given size out of one small buffer. A server holding the whole thing would
+// take peak resident size past anything the transfer goes on to ask for, leaving a peak measured
+// across that transfer meaningless.
+class BulkServer {
+public:
+    explicit BulkServer(size_t bodySize) {
+        ignoreSigPipe();
+
+        _listener = ::socket(AF_INET, SOCK_STREAM, 0);
+        _port = bindToLoopback(_listener);
+        ::listen(_listener, 1);
+
+        _thread = std::thread([this, bodySize]() { serve(bodySize); });
+    }
+
+    ~BulkServer() {
+        _stopping.store(true);
+        wakeAccept(_port);
+
+        if (_thread.joinable()) {
+            _thread.join();
+        }
+        ::close(_listener);
+    }
+
+    std::string url() const {
+        return "http://127.0.0.1:" + std::to_string(_port) + "/";
+    }
+
+private:
+    void serve(size_t bodySize) {
+        int connection = ::accept(_listener, nullptr, nullptr);
+        if (connection < 0) {
+            return;
+        }
+        if (_stopping.load()) {
+            ::close(connection);
+            return;
+        }
+
+        std::vector<char> buffer(64 * 1024);
+        std::string head;
+        while (head.find("\r\n\r\n") == std::string::npos) {
+            auto received = ::recv(connection, buffer.data(), buffer.size(), 0);
+            if (received <= 0) {
+                ::close(connection);
+                return;
+            }
+            head.append(buffer.data(), static_cast<size_t>(received));
+        }
+
+        auto response =
+            "HTTP/1.1 200 OK\r\nContent-Length: " + std::to_string(bodySize) + "\r\nConnection: close\r\n\r\n";
+        if (sendAll(connection, response.data(), response.size())) {
+            std::fill(buffer.begin(), buffer.end(), 'x');
+            for (size_t sent = 0; sent < bodySize;) {
+                auto size = std::min(buffer.size(), bodySize - sent);
+                if (!sendAll(connection, buffer.data(), size)) {
+                    break;
+                }
+                sent += size;
+            }
+        }
+
+        ::shutdown(connection, SHUT_RDWR);
+        ::close(connection);
+    }
+
     static bool sendAll(int connection, const char* data, size_t size) {
         while (size > 0) {
             auto written = ::send(connection, data, size, 0);
@@ -869,6 +956,32 @@ TEST(CurlHTTPRequestManagerTests, sendsAnEmptyValuedOverrideOfACurlDefault) {
         << requests[0];
 }
 
+// This build has no decompression codecs, so a caller asking on its behalf gets back a response
+// nothing can read. fetch drops the header too, so the same JavaScript already loses it on web.
+TEST(CurlHTTPRequestManagerTests, ignoresACallerSuppliedAcceptEncoding) {
+    ScriptedServer server({okResponse()});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(
+        makeGetWithHeaders(server.url("/").c_str(), makeHeaders({{"Accept-Encoding", "gzip, deflate"}})), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    EXPECT_FALSE(completion->error().has_value())
+        << "asking for compression should cost the caller nothing but the compression: "
+        << completion->error().value_or("");
+    EXPECT_EQ(completion->statusCode(), 200);
+    EXPECT_EQ(completion->bodySize(), 2u);
+
+    auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 1u);
+    EXPECT_EQ(requests[0].find("Accept-Encoding"), std::string::npos)
+        << "the caller's Accept-Encoding reached the origin, so a conforming origin will compress a "
+           "response this build cannot decode and the request fails where it succeeds everywhere "
+           "else. Request was:\n"
+        << requests[0];
+}
+
 TEST(CurlHTTPRequestManagerTests, failsAResponseItCannotDecode) {
     ScriptedServer server({"HTTP/1.1 200 OK\r\n"
                            "Content-Encoding: gzip\r\n"
@@ -1017,7 +1130,10 @@ TEST(CurlHTTPRequestManagerTests, followsASeeOtherWithGet) {
     EXPECT_EQ(requests[1], "GET /final HTTP/1.1") << "a 303 must be followed with GET, not the original verb";
 }
 
-TEST(CurlHTTPRequestManagerTests, followsASeeOtherFromACustomVerbWithGet) {
+// Curl_http_method takes the request line from CUSTOMREQUEST unconditionally, so a verb sent that
+// way survives the chain, while the body still goes because that follows curl's own idea of the
+// method. iOS and Android send GET here. Pinned so the divergence stays a decision.
+TEST(CurlHTTPRequestManagerTests, keepsACustomVerbAcrossASeeOtherButDropsItsBody) {
     ScriptedServer server({"HTTP/1.1 303 See Other\r\n"
                            "Location: /final\r\n"
                            "Content-Length: 0\r\n"
@@ -1033,18 +1149,19 @@ TEST(CurlHTTPRequestManagerTests, followsASeeOtherFromACustomVerbWithGet) {
     auto completion = std::make_shared<RecordingCompletion>();
 
     auto start = std::chrono::steady_clock::now();
-    manager->performRequest(makeRequest("DELETE", server.url("/thing").c_str()), completion);
+    manager->performRequest(makeRequestWithBody("PATCH", server.url("/thing").c_str(), "a=1"), completion);
     ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(30)));
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
 
     ASSERT_EQ(completion->statusCode(), 200);
 
-    auto requests = server.requestLines();
+    auto requests = server.requests();
     ASSERT_EQ(requests.size(), 2u);
-    EXPECT_EQ(requests[0], "DELETE /thing HTTP/1.1");
-    EXPECT_EQ(requests[1], "GET /final HTTP/1.1")
-        << "a 303 must be followed with GET, including for a verb curl only knows as a custom "
-           "request line";
+    EXPECT_EQ(requests[0].substr(0, requests[0].find("\r\n")), "PATCH /thing HTTP/1.1");
+    EXPECT_EQ(requests[1].substr(0, requests[1].find("\r\n")), "PATCH /final HTTP/1.1");
+    EXPECT_EQ(requests[1].find("\r\n\r\na=1"), std::string::npos)
+        << "the body survived a 303, which drops it whatever the verb. Request was:\n"
+        << requests[1];
 
     EXPECT_LT(elapsed.count(), 500) << "a two hop redirect took " << elapsed.count()
                                     << " ms, so a hop is not picked up until the poll has slept out "
@@ -1139,6 +1256,128 @@ TEST(CurlHTTPRequestManagerTests, keepsThePostBodyAcrossATemporaryRedirect) {
         << requests[1];
     EXPECT_NE(requests[1].find("\r\n\r\na=1"), std::string::npos)
         << "a 307 must be repeated with the original body. Request was:\n"
+        << requests[1];
+}
+
+// @curl is built http_only, so these pass on build configuration alone. They exist to hold
+// CURLOPT_PROTOCOLS_STR in place, without which the guarantee is one build flag from a file read.
+TEST(CurlHTTPRequestManagerTests, refusesAUrlThatIsNotHttp) {
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeGet("file:///etc/hosts"), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    EXPECT_TRUE(completion->error().has_value()) << "a file:// URL from JavaScript was fetched";
+    EXPECT_EQ(completion->bodySize(), 0u) << "the contents of a local file reached the caller";
+}
+
+TEST(CurlHTTPRequestManagerTests, refusesARedirectToAUrlThatIsNotHttp) {
+    ScriptedServer server({"HTTP/1.1 302 Found\r\n"
+                           "Location: file:///etc/hosts\r\n"
+                           "Content-Length: 0\r\n"
+                           "Connection: close\r\n"
+                           "\r\n"});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeGet(server.url("/start").c_str()), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    EXPECT_TRUE(completion->error().has_value())
+        << "an origin redirected the request at a local file and it was followed";
+    EXPECT_EQ(completion->bodySize(), 0u) << "the contents of a local file reached the caller";
+}
+
+TEST(CurlHTTPRequestManagerTests, ignoresACallerSuppliedContentLength) {
+    ScriptedServer server({"HTTP/1.1 303 See Other\r\n"
+                           "Location: /final\r\n"
+                           "Content-Length: 0\r\n"
+                           "Connection: close\r\n"
+                           "\r\n",
+                           okResponse()});
+
+    // JavaScript is not held to HTTPTypes.d.ts, so a caller can set this. NSURLSession ignores it.
+    auto request = makeRequestWithBody("POST", server.url("/submit").c_str(), "a=1");
+    request.headers.setMapValue(std::string_view("Content-Length"), Value(StringBox::fromCString("3")));
+    request.headers.setMapValue(std::string_view("Content-Type"), Value(StringBox::fromCString("text/plain")));
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(request, completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_NE(requests[0].find("Content-Length: 3\r\n"), std::string::npos)
+        << "the body's own length must still be declared. Request was:\n"
+        << requests[0];
+    EXPECT_EQ(requests[1].find("Content-Length"), std::string::npos)
+        << "a 303 drops the body, but the caller's Content-Length came along, so the server waits "
+           "for three bytes that will never arrive. Request was:\n"
+        << requests[1];
+}
+
+TEST(CurlHTTPRequestManagerTests, withholdsCredentialHeadersFromARedirectToAnotherOrigin) {
+    // Two loopback servers differ by port, which is part of an origin, so this is the same shape as
+    // api.example.com answering 302 Location: https://attacker.test/.
+    ScriptedServer elsewhere({okResponse()});
+
+    ScriptedServer origin({"HTTP/1.1 302 Found\r\n"
+                           "Location: " +
+                           elsewhere.url("/collect") +
+                           "\r\n"
+                           "Content-Length: 0\r\n"
+                           "Connection: close\r\n"
+                           "\r\n"});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeGetWithHeaders(origin.url("/start").c_str(),
+                                               makeHeaders({{"Authorization", "Bearer secret"},
+                                                            {"Cookie", "session=abc"},
+                                                            {"X-Trace", "keep-me"}})),
+                            completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto forwarded = elsewhere.requests();
+    ASSERT_EQ(forwarded.size(), 1u) << "the redirect was not followed, so there is nothing to judge";
+    EXPECT_EQ(forwarded[0].find("Authorization:"), std::string::npos)
+        << "the caller's bearer token was handed to the host the first one redirected to. Request was:\n"
+        << forwarded[0];
+    EXPECT_EQ(forwarded[0].find("Cookie:"), std::string::npos)
+        << "the caller's cookies were handed to the host the first one redirected to. Request was:\n"
+        << forwarded[0];
+    EXPECT_NE(forwarded[0].find("X-Trace: keep-me\r\n"), std::string::npos)
+        << "only Authorization and Cookie are withheld; an ordinary header still crosses. Request was:\n"
+        << forwarded[0];
+}
+
+TEST(CurlHTTPRequestManagerTests, keepsCredentialHeadersOnARedirectWithinTheSameOrigin) {
+    ScriptedServer server({"HTTP/1.1 302 Found\r\n"
+                           "Location: /final\r\n"
+                           "Content-Length: 0\r\n"
+                           "Connection: close\r\n"
+                           "\r\n",
+                           okResponse()});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(
+        makeGetWithHeaders(server.url("/start").c_str(), makeHeaders({{"Authorization", "Bearer secret"}})),
+        completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_NE(requests[1].find("Authorization: Bearer secret\r\n"), std::string::npos)
+        << "a redirect within the same origin must keep the caller's credentials, or every "
+           "authenticated request that redirects starts failing. Request was:\n"
         << requests[1];
 }
 
@@ -1323,15 +1562,9 @@ TEST(CurlHTTPRequestManagerTests, survivesAPeerHangingUpMidResponse) {
 TEST(CurlHTTPRequestManagerTests, doesNotHoldTheResponseBodyTwice) {
     constexpr size_t kBodySize = 32 * 1024 * 1024;
 
-    DribblingServer server("HTTP/1.1 200 OK\r\n"
-                           "Content-Length: " +
-                               std::to_string(kBodySize) +
-                               "\r\n"
-                               "Connection: close\r\n"
-                               "\r\n" +
-                               std::string(kBodySize, 'x'),
-                           1,
-                           std::chrono::milliseconds(0));
+    // Streaming, so nothing here has held a body this size when the baseline below is taken.
+    // Otherwise the peak is already past anything the transfer reaches and the comparison is vacuous.
+    BulkServer server(kBodySize);
 
     auto manager = makeCurlHTTPRequestManager();
     auto completion = std::make_shared<RecordingCompletion>();
@@ -1343,10 +1576,12 @@ TEST(CurlHTTPRequestManagerTests, doesNotHoldTheResponseBodyTwice) {
     ASSERT_EQ(completion->statusCode(), 200);
     ASSERT_EQ(completion->bodySize(), kBodySize) << "the large body did not arrive intact";
 
-    // Holding the payload once measured 1.03x and holding it twice measured 2.03x, so the threshold
-    // sits midway instead of just under the failing value.
+    // 2x is inherent: ByteBuffer grows geometrically, so the last reallocation holds the old buffer
+    // and the written part of the new one at once, and sizing up front would mean trusting a
+    // server-chosen Content-Length. A second copy of the finished payload is 3x, which is the thing
+    // this catches, so the threshold sits between them.
     auto growth = peakResidentBytes() - before;
-    EXPECT_LT(growth, kBodySize + kBodySize / 2)
+    EXPECT_LT(growth, kBodySize * 5 / 2)
         << "peak memory grew by " << growth / (1024 * 1024) << " MiB to receive a "
         << kBodySize / (1024 * 1024)
         << " MiB body, so the payload is accumulated in one buffer and then copied whole into another";
@@ -1373,6 +1608,22 @@ TEST(CurlHTTPRequestManagerTests, cancellingARequestDropsItsCompletion) {
 
     EXPECT_FALSE(completion->waitForCompletion(std::chrono::seconds(1)))
         << "a cancelled request must leave its completion uncalled, as on iOS and Android";
+}
+
+TEST(CurlHTTPRequestManagerTests, doesNotConnectForARequestCancelledBeforeItStarts) {
+    StallServer server;
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+
+    // performRequest only queues the task, so cancelling straight back lands before the curl thread
+    // has been scheduled to pick it up.
+    auto cancelable = manager->performRequest(makeGet(server.url().c_str()), completion);
+    cancelable->cancel();
+
+    EXPECT_FALSE(server.waitForConnection(std::chrono::seconds(1)))
+        << "a request cancelled before it ever started was still handed to curl, which resolved the "
+           "name and completed a handshake before the progress callback got a say";
 }
 
 TEST(CurlHTTPRequestManagerTests, abortsACancelledTransferWithoutWaitingOutThePollTimeout) {
