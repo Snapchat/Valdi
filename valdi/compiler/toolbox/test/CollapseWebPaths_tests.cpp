@@ -73,7 +73,9 @@ TEST(CollapseWebPaths, buildsTheCompleteWebPackage) {
                                 "module.exports = require('core/src/Core');\n");
     auto worker = directory.write("inputs/app/src/Worker.js", "workerService(module);\n");
     auto strings = directory.write("inputs/app/src/Strings.js", "\"use strict\";\n");
-    auto declaration = directory.write("inputs/app/src/Types.d.ts", "import { Core } from 'core/src/Core';\n");
+    auto declaration = directory.write("inputs/app/src/Types.d.ts",
+                                       "import { Core } from 'core/src/Core';\n"
+                                       "export type Lazy = typeof import('core/src/Core');\n");
     auto locale = directory.write("inputs/app/strings/en.json", "{}\n");
     auto image = directory.write("inputs/app/res/music_icon.svg", "<svg/>\n");
     auto config = directory.write("inputs/app/res/config.json", "{}\n");
@@ -115,7 +117,8 @@ TEST(CollapseWebPaths, buildsTheCompleteWebPackage) {
               "NavigationPage)(module);\n"
               "module.exports = require('../../core/src/Core.js');\n");
     EXPECT_EQ(directory.read("output/src/app/src/Types.d.ts"),
-              "import { Core } from '@scope/package/src/core/src/Core';\n");
+              "import { Core } from '@scope/package/src/core/src/Core';\n"
+              "export type Lazy = typeof import('@scope/package/src/core/src/Core');\n");
     EXPECT_EQ(directory.read("output/src/_navigation_registry.js"),
               "var __r = (globalThis.__valdiNavigationPages = globalThis.__valdiNavigationPages || {});\n"
               "__r['app/src/Main'] = function() { return require('./app/src/Main'); };\n");

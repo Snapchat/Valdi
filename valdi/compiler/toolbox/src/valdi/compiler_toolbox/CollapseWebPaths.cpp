@@ -142,6 +142,8 @@ static void rewriteDeclarationImports(std::string& content, const std::string& p
     rewriteDeclarationImportsForPrefix(content, "from \"", '"', packageName);
     rewriteDeclarationImportsForPrefix(content, "import '", '\'', packageName);
     rewriteDeclarationImportsForPrefix(content, "import \"", '"', packageName);
+    rewriteDeclarationImportsForPrefix(content, "import('", '\'', packageName);
+    rewriteDeclarationImportsForPrefix(content, "import(\"", '"', packageName);
 }
 
 static Result<Void> copySourceDeclarations(const Path& outputDirectory, const Path& manifestPath) {
@@ -271,26 +273,67 @@ static std::string camelCaseImageStem(std::string_view stem) {
     return result;
 }
 
-static Result<Void> generateImageRegistry(const Path& sourceDirectory, const FlatSet<std::string>& noInlineModules) {
-    std::vector<Path> moduleDirectories;
-    for (const auto& child : DiskUtils::listDirectory(sourceDirectory)) {
-        if (DiskUtils::isDirectory(child)) {
-            moduleDirectories.push_back(child);
+struct ModuleResDirectory {
+    std::string moduleName;
+    std::string relativePrefix;
+    Path directory;
+};
+
+// Recursively collect every module `res` directory that holds images. Direct
+// dependencies land at `src/<module>/res`, but transitive dependencies are staged
+// under `src/<flavor>/res/<module>/res`; scanning only the immediate children of
+// `src/` misses the transitive ones, so their images are bundled yet never
+// registered (blank icons at runtime).
+static void collectModuleResDirectories(const Path& directory,
+                                        const std::string& relativePrefix,
+                                        std::string_view parentName,
+                                        std::vector<ModuleResDirectory>& out) {
+    auto name = std::string(directory.getLastComponent());
+    auto children = DiskUtils::listDirectory(directory);
+    if (name == "res") {
+        for (const auto& child : children) {
+            if (DiskUtils::isFile(child) && isImageExtension(child.getFileExtension())) {
+                // A res directory containing images belongs to its parent module. Stop the image
+                // scan but keep recursing subdirectories: transitive deps staged as res/<module>/res
+                // live below this dir and must still be collected.
+                out.push_back({std::string(parentName), relativePrefix, directory});
+                break;
+            }
         }
     }
-    std::sort(moduleDirectories.begin(), moduleDirectories.end(), [](const auto& lhs, const auto& rhs) {
-        return lhs.getLastComponent() < rhs.getLastComponent();
+    for (const auto& child : children) {
+        if (DiskUtils::isDirectory(child)) {
+            auto childName = std::string(child.getLastComponent());
+            auto childPrefix = relativePrefix.empty() ? childName : relativePrefix + "/" + childName;
+            collectModuleResDirectories(child, childPrefix, name, out);
+        }
+    }
+}
+
+static Result<Void> generateImageRegistry(const Path& sourceDirectory, const FlatSet<std::string>& noInlineModules) {
+    std::vector<ModuleResDirectory> resDirectories;
+    collectModuleResDirectories(sourceDirectory, "", sourceDirectory.getLastComponent(), resDirectories);
+
+    // Shallower paths first so a top-level module res wins over a staged copy of the
+    // same module (identical images; the top-level require path is canonical).
+    std::sort(resDirectories.begin(), resDirectories.end(), [](const auto& lhs, const auto& rhs) {
+        auto lhsDepth = std::count(lhs.relativePrefix.begin(), lhs.relativePrefix.end(), '/');
+        auto rhsDepth = std::count(rhs.relativePrefix.begin(), rhs.relativePrefix.end(), '/');
+        if (lhsDepth != rhsDepth) {
+            return lhsDepth < rhsDepth;
+        }
+        return lhs.relativePrefix < rhs.relativePrefix;
     });
 
     std::string content = "var __r = (globalThis.__valdiImageRegistry = globalThis.__valdiImageRegistry || {});\n";
-    for (const auto& moduleDirectory : moduleDirectories) {
-        auto resourcesDirectory = moduleDirectory.appending("res");
-        if (!DiskUtils::isDirectory(resourcesDirectory)) {
+    FlatSet<std::string> seenModules;
+    for (const auto& resDirectory : resDirectories) {
+        if (seenModules.find(resDirectory.moduleName) != seenModules.end()) {
             continue;
         }
 
         std::vector<Path> images;
-        for (const auto& resource : DiskUtils::listDirectory(resourcesDirectory)) {
+        for (const auto& resource : DiskUtils::listDirectory(resDirectory.directory)) {
             if (DiskUtils::isFile(resource) && isImageExtension(resource.getFileExtension())) {
                 images.push_back(resource);
             }
@@ -299,8 +342,7 @@ static Result<Void> generateImageRegistry(const Path& sourceDirectory, const Fla
             return lhs.getLastComponent() < rhs.getLastComponent();
         });
 
-        auto moduleName = std::string(moduleDirectory.getLastComponent());
-        auto noInlineImages = noInlineModules.find(moduleName) != noInlineModules.end();
+        auto noInlineImages = noInlineModules.find(resDirectory.moduleName) != noInlineModules.end();
         std::string entries;
         for (const auto& image : images) {
             auto filename = std::string(image.getLastComponent());
@@ -316,11 +358,12 @@ static Result<Void> generateImageRegistry(const Path& sourceDirectory, const Fla
             if (noInlineImages) {
                 resourceQuery.append(resourceQuery.empty() ? "?no-inline" : "&no-inline");
             }
-            entries.append(
-                fmt::format("  '{}': require('./{}/res/{}{}'),\n", key, moduleName, filename, resourceQuery));
+            entries.append(fmt::format(
+                "  '{}': require('./{}/{}{}'),\n", key, resDirectory.relativePrefix, filename, resourceQuery));
         }
         if (!entries.empty()) {
-            content.append(fmt::format("__r['{}/res'] = {{\n{}}};\n", moduleName, entries));
+            seenModules.insert(resDirectory.moduleName);
+            content.append(fmt::format("__r['{}/res'] = {{\n{}}};\n", resDirectory.moduleName, entries));
         }
     }
     return DiskUtils::store(sourceDirectory.appending("_image_registry.js"), content);

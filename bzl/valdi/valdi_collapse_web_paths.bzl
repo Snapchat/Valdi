@@ -1,22 +1,6 @@
 load(":valdi_compiled.bzl", "ValdiModuleInfo")
 load(":valdi_web_workers.bzl", "validate_web_workers")
 
-def _repository_relative_short_path(file):
-    """Returns a File.short_path relative to the root of its owning repository."""
-    rel = file.short_path
-    if not rel.startswith("../"):
-        return rel
-
-    repo_name = file.owner.repo_name
-    if not repo_name:
-        fail("External file has no owning repository: {}".format(rel))
-
-    external_prefix = "../{}/".format(repo_name)
-    if not rel.startswith(external_prefix):
-        fail("External file path {} does not match owning repository {}".format(rel, repo_name))
-
-    return rel[len(external_prefix):]
-
 def _dest_native(rel):
     """Canonical path for a file in the native/ tree: <module>/web/<file> or module path.
 
@@ -107,7 +91,9 @@ def _dest(rel):
 
     parts = rel.split("/")
     for i in range(1, len(parts)):
-        if parts[i] == "res":
+        # Skip the compiler-generated web/<flavor>/res directories; those are handled
+        # by the web/<flavor>/{assets,res} logic below so the real module name is kept.
+        if parts[i] == "res" and parts[i - 1] not in ["debug", "release"]:
             module_name = parts[i - 1]
             tail = "/".join(parts[i:])
             return "src/{}/{}".format(module_name, tail)
@@ -119,15 +105,12 @@ def _dest(rel):
 
     # Try to find and strip the valdi marker from the path
     rel2 = rel
-    is_valdi_source_path = False
     if valdi_marker in rel:
         idx = rel.find(valdi_marker)
         rel2 = rel[idx + len(valdi_marker):]
-        is_valdi_source_path = True
     elif rel.startswith("src/valdi_modules/src/valdi/"):
         # Handle direct paths (non-external)
         rel2 = rel[len("src/valdi_modules/src/valdi/"):]
-        is_valdi_source_path = True
 
     parts = rel2.split("/")
 
@@ -148,9 +131,9 @@ def _dest(rel):
             tail = "/".join(parts[i + 4:])
             return "src/{}".format(tail)
 
-    # Handle source .d.ts files rooted under Valdi's source tree.
+    # Handle source .d.ts files from any path containing /src/valdi_modules/src/valdi/
     # These should go into src/<module_name>/src/...
-    if rel.endswith(".d.ts") and is_valdi_source_path:
+    if rel.endswith(".d.ts") and valdi_marker in rel:
         # rel2 already has the marker stripped, so it's <module_name>/src/...
         # Return it as src/<module_name>/src/...
         return "src/{}".format(rel2)
@@ -170,12 +153,11 @@ def _impl(ctx):
     seen_dest = {}
     lines = []
     for f in ctx.files.srcs:
-        rel = _repository_relative_short_path(f)
-        if exclude_jsx and "valdi_tsx/src/JSX.d.ts" in rel:
+        if exclude_jsx and "valdi_tsx/src/JSX.d.ts" in f.short_path:
             continue
-        if _should_exclude_from_package(rel):
+        if _should_exclude_from_package(f.short_path):
             continue
-        d = _dest(rel)
+        d = _dest(f.short_path)
         if d not in seen_dest:
             seen_dest[d] = True
             lines.append("{}\t{}".format(f.path, d))
@@ -296,8 +278,14 @@ def _impl_native(ctx):
     manifest = ctx.actions.declare_file(ctx.label.name + ".manifest")
     lines = []
     for f in ctx.files.srcs:
-        rel = _repository_relative_short_path(f)
-        lines.append("{}\t{}".format(f.path, _dest_native(rel)))
+        # Only files under a module's web/ dir belong in the native tree. Source files
+        # (e.g. <module>/src/*.d.ts) have no web/ segment, so _dest_native falls back to
+        # the raw short_path (../<external_repo>/...) which would escape the -o directory
+        # and fail under a strict sandbox. Those declarations are placed by the main
+        # collapse_web_paths pass instead.
+        if "web" not in f.short_path.split("/"):
+            continue
+        lines.append("{}\t{}".format(f.path, _dest_native(f.short_path)))
     ctx.actions.write(manifest, "\n".join(lines))
 
     compiler_toolbox = ctx.executable._compiler_toolbox
@@ -366,8 +354,7 @@ def _generate_register_native_modules_impl(ctx):
     seen_dest = {}
     n = 0
     for f in ctx.files.srcs:
-        rel = _repository_relative_short_path(f)
-        dest = _dest_native(rel)
+        dest = _dest_native(f.short_path)
         if not dest.endswith(".js"):
             continue
         if not _should_register_native_module(dest):

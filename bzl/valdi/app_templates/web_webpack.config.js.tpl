@@ -68,8 +68,10 @@ module.exports = {
         type: 'javascript/auto',
       },
       {
+        // Webpack has no built-in byte-array module type; use the custom loader.
         test: /\.(bin|protodecl)$/i,
-        type: 'asset/bytes',
+        use: [{ loader: path.resolve(__dirname, 'src/bytes-loader.js') }],
+        type: 'javascript/auto',
       },
       {
         test: /\.(png|jpe?g|svg|webp)$/i,
