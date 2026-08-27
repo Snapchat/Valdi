@@ -4853,6 +4853,31 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
       }
     },
   },
+  {
+    // A scroll with content taller than its fixed height must clip (and scroll),
+    // not grow to its content height and push following siblings out of bounds.
+    id: 'scroll-overflow-clipping',
+    name: 'Scroll clips overflowing content',
+    description:
+      'Scroll with fixed height 200 containing 600px of content; the content must be clipped to the scroll bounds, and the sentinel below must stay on-canvas.',
+    element: 'scroll',
+    render: (ctx: IntegrationTestRenderContext) => {
+      <view key={ctx.caseId} ref={ctx.rootRef} width={WIDTH} height={HEIGHT} backgroundColor={CARD} padding={16}>
+        <scroll height={200} width="100%" backgroundColor="#FFFFFF" border="1 solid #CBD5E1">
+          <view height={600} backgroundColor="#DBEAFE" padding={12}>
+            <label value="Top of tall content — should be visible." numberOfLines={0} color="#1E3A8A" font="system 14" />
+          </view>
+        </scroll>
+        <label
+          value="Sentinel below the scroll — must not be pushed off by spillover."
+          numberOfLines={0}
+          color="#334155"
+          font="system 14"
+          width="100%"
+        />
+      </view>;
+    },
+  },
 ];
 
 export type IntegrationCoverageLedgerElement = NativeTemplateElementName | 'slot';
