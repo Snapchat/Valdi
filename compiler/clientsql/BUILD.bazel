@@ -1,0 +1,85 @@
+load("@aspect_rules_js//js:defs.bzl", "js_binary")
+load("@rules_python//python:defs.bzl", "py_test")
+
+cc_binary(
+    name = "sqlite_316_validator",
+    srcs = ["sqlite_316_validator.cpp"],
+    visibility = ["//visibility:public"],
+    deps = ["//bzl/valdi:clientsql_validation_sqlite"],
+)
+
+py_library(
+    name = "clientsql_lib",
+    srcs = glob(["src/clientsql/*.py"]),
+    imports = ["src"],
+    visibility = ["//visibility:private"],
+)
+
+py_binary(
+    name = "clientsql",
+    srcs = ["src/clientsql_main.py"],
+    main = "src/clientsql_main.py",
+    visibility = ["//visibility:public"],
+    deps = [":clientsql_lib"],
+)
+
+py_binary(
+    name = "clientsql_toolchain",
+    srcs = ["src/clientsql_toolchain.py"],
+    data = [
+        ":clientsql",
+        ":sqlite_316_validator",
+    ],
+    main = "src/clientsql_toolchain.py",
+    visibility = ["//visibility:public"],
+    deps = ["@rules_python//python/runfiles"],
+)
+
+py_binary(
+    name = "package_clientsql",
+    srcs = ["package_clientsql.py"],
+    data = glob(["src/clientsql/*.py"]),
+    main = "package_clientsql.py",
+    visibility = ["//visibility:private"],
+)
+
+js_binary(
+    name = "clientsql_test_javascript_runner",
+    entry_point = "run_generated_javascript.js",
+    testonly = True,
+)
+
+py_test(
+    name = "test_clientsql",
+    srcs = ["test_clientsql.py"],
+    data = [
+        ":clientsql",
+        ":clientsql_toolchain",
+        ":clientsql_test_javascript_runner",
+        ":package_clientsql",
+        ":sqlite_316_validator",
+        "BUILD.bazel",
+        "sqlite_316_validator.cpp",
+        "@npm_typescript//:tsc",
+        "//:clientsql_generator_test_data",
+        "//bin:clientsql_generator_test_data",
+        "//bzl:clientsql_generator_test_data",
+        "//bzl/valdi:clientsql_generator_test_data",
+        "//compiler/compiler:clientsql_generator_test_data",
+        "//src/valdi_modules/src/valdi/client_sql:clientsql_generator_test_data",
+        "//third-party/sqlite:clientsql_generator_test_data",
+        "//valdi:clientsql_generator_test_data",
+        "//valdi/testdata/resources/modules/client_sql_smoke:clientsql_generator_test_data",
+        "//valdi/testdata/resources/modules/client_sql_smoke:client_sql_smoke_projectsync",
+    ],
+    env = {
+        "BAZEL_BINDIR": ".",
+        "CLIENTSQL_TEST_GENERATOR": "$(rootpath :clientsql)",
+        "CLIENTSQL_TEST_TOOLCHAIN_GENERATOR": "$(rootpath :clientsql_toolchain)",
+        "CLIENTSQL_TEST_JAVASCRIPT_RUNNER": "$(rootpath :clientsql_test_javascript_runner)",
+        "CLIENTSQL_TEST_SQLITE_VALIDATOR": "$(rootpath :sqlite_316_validator)",
+        "CLIENTSQL_TEST_TYPESCRIPT_COMPILER": "$(rootpath @npm_typescript//:tsc)",
+    },
+    size = "medium",
+    deps = [":clientsql_lib"],
+)

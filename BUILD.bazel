@@ -12,3 +12,13 @@ npm_link_package(
     src = "@valdi//src/valdi_modules/src/valdi/valdi_core:valdi_core_dts",
     visibility = ["//visibility:public"],
 )
+
+filegroup(
+    name = "clientsql_generator_test_data",
+    srcs = [
+        "MODULE.bazel",
+        "fossa-deps.yml",
+    ],
+    testonly = True,
+    visibility = ["//compiler/clientsql:__pkg__"],
+)
