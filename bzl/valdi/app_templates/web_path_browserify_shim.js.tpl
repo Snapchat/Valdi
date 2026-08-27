@@ -10,7 +10,11 @@ function normalize(value) {
       continue;
     }
     if (part === '..') {
-      out.pop();
+      if (out.length === 0 || out[out.length - 1] === '..') {
+        if (!absolute) out.push('..');
+      } else {
+        out.pop();
+      }
     } else {
       out.push(part);
     }

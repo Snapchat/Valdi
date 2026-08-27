@@ -11,5 +11,6 @@ exports_files([
     "web_index.html.tpl",
     "web_index.js.tpl",
     "web_path_browserify_shim.js.tpl",
+    "web_bytes_loader.js.tpl",
     "web_webpack.config.js.tpl",
 ])

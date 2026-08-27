@@ -25,6 +25,9 @@ final class HotReloadLifecycleReporter {
     private let port: Int?
     private let output: Output
     private let errorOutput: Output
+    // Emitted from multiple queues (DaemonService connection queue, AutoRecompiler main
+    // queue); serialize writes so concurrent lines are not interleaved.
+    private let writeLock = NSLock()
 
     init(target: String,
          port: Int?,
@@ -102,8 +105,13 @@ final class HotReloadLifecycleReporter {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-            output(String(decoding: try encoder.encode(payload), as: UTF8.self))
+            let line = String(decoding: try encoder.encode(payload), as: UTF8.self)
+            writeLock.lock()
+            defer { writeLock.unlock() }
+            output(line)
         } catch {
+            writeLock.lock()
+            defer { writeLock.unlock() }
             errorOutput("Failed to encode Valdi hot reload lifecycle event '\(event)': \(error)")
         }
     }

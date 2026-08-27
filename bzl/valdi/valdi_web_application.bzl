@@ -109,6 +109,7 @@ def valdi_web_application(
     html_target = "{}_html".format(name)
     entry_target = "{}_entry".format(name)
     path_shim_target = "{}_path_browserify_shim".format(name)
+    bytes_loader_target = "{}_bytes_loader".format(name)
     api_version_target = "{}_api_version".format(name)
     webpack_config_target = "{}_webpack_config".format(name)
     webpack_target = "{}_webpack".format(name)
@@ -141,6 +142,13 @@ def valdi_web_application(
         substitutions = {},
     )
 
+    expand_template(
+        name = bytes_loader_target,
+        src = "@valdi//bzl/valdi/app_templates:web_bytes_loader.js.tpl",
+        output = "{}/src/bytes-loader.js".format(build_dir),
+        substitutions = {},
+    )
+
     web_api_version_json(
         name = api_version_target,
         output = "{}/src/valdi_api_version.json".format(build_dir),
@@ -161,6 +169,7 @@ def valdi_web_application(
         srcs = [
             ":{}".format(entry_target),
             ":{}".format(path_shim_target),
+            ":{}".format(bytes_loader_target),
             ":{}".format(api_version_target),
             ":{}".format(webpack_config_target),
             ":{}".format(web_package_name),
