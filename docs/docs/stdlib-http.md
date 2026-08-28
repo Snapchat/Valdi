@@ -372,3 +372,17 @@ The `valdi_http` module works on:
 
 Network requests are always performed asynchronously and will not block the JavaScript thread.
 
+### CLI differences
+
+The CLI's HTTP client is libcurl rather than a platform user agent, so a few things differ from iOS
+and Android:
+
+- **No response compression.** Responses arrive uncompressed, and a response that carries a
+  `Content-Encoding` this build cannot decode fails rather than handing back unreadable bytes.
+- **`Accept-Encoding` and `Content-Length` request headers are ignored**, as `fetch()` ignores them
+  on the web. The transport sets both itself.
+- **A non-standard method survives a 303 redirect** instead of becoming `GET`. Standard methods are
+  rewritten per RFC 9110; its body is dropped either way.
+- **Certificates verify against the system trust store**, found via `SSL_CERT_FILE`, `SSL_CERT_DIR`,
+  `CURL_CA_BUNDLE` or `CURL_CA_PATH`, or else the usual distribution paths. If none is found, every
+  HTTPS request fails rather than succeeding unverified.
