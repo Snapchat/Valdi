@@ -9,6 +9,7 @@
 #include "valdi/runtime/JavaScript/JavaScriptRuntime.hpp"
 
 #include <boost/algorithm/string.hpp>
+#include <cstdint>
 #include <fmt/ostream.h>
 
 #include "utils/platform/BuildOptions.hpp"
@@ -101,7 +102,19 @@
 namespace Valdi {
 
 // static const long long kJsGarbageCollectionDelaySeconds = 2;
-constexpr int kTraceRecordingTimeoutSeconds = 20;
+// Debugger-driven recordings are stopped and retained by the TypeScript handler after 20 seconds.
+// Keep a separate native leak guard with enough margin that it cannot discard a handler-owned result.
+constexpr int kTraceRecordingTimeoutSeconds = 30;
+constexpr uint64_t kMaxJavaScriptSafeInteger = 9007199254740991ULL;
+
+constexpr uint64_t clampTraceDroppedEventCountForJavaScript(uint64_t value) {
+    return value > kMaxJavaScriptSafeInteger ? kMaxJavaScriptSafeInteger : value;
+}
+
+static_assert(clampTraceDroppedEventCountForJavaScript(kMaxJavaScriptSafeInteger) == kMaxJavaScriptSafeInteger,
+              "Exact JavaScript-safe trace drop counts must be preserved");
+static_assert(clampTraceDroppedEventCountForJavaScript(kMaxJavaScriptSafeInteger + 1) == kMaxJavaScriptSafeInteger,
+              "Oversized trace drop counts must be clamped before double conversion");
 
 constexpr size_t kLoadPropertyName = 0;
 constexpr size_t kUnloadAllUnusedPropertyName = 1;
@@ -1069,19 +1082,30 @@ static double traceTimePointToEpochMicroseconds(const TraceTimePoint& timePoint)
     return static_cast<double>(asMicroseconds.count());
 }
 
-// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-JSValueRef JavaScriptRuntime::runtimeStopTraceRecording(JSFunctionNativeCallContext& callContext) {
+static JSValueRef stopTraceRecording(JSFunctionNativeCallContext& callContext, bool includeDroppedTraceEventCount) {
     auto id = static_cast<size_t>(callContext.getParameterAsInt(0));
     CHECK_CALL_CONTEXT(callContext);
 
-    auto traces = Tracer::shared().stopRecording(static_cast<size_t>(id));
-    std::sort(traces.begin(), traces.end(), [](const RecordedTrace& left, const RecordedTrace& right) -> bool {
-        return left.start < right.start;
-    });
+    TraceRecordingResult result;
+    if (includeDroppedTraceEventCount) {
+        result = Tracer::shared().stopRecordingWithStats(static_cast<size_t>(id));
+    } else {
+        result.traces = Tracer::shared().stopRecording(static_cast<size_t>(id));
+    }
+    std::sort(result.traces.begin(),
+              result.traces.end(),
+              [](const RecordedTrace& left, const RecordedTrace& right) -> bool {
+                  return left.start < right.start;
+              });
 
     ValueArrayBuilder output;
+    if (includeDroppedTraceEventCount) {
+        const auto droppedTraceEventCount =
+            clampTraceDroppedEventCountForJavaScript(static_cast<uint64_t>(result.droppedTraceEventCount));
+        output.append(Value(static_cast<double>(droppedTraceEventCount)));
+    }
 
-    for (auto& trace : traces) {
+    for (auto& trace : result.traces) {
         output.append(Value(StringCache::getGlobal().makeString(std::move(trace.trace))));
 
         output.append(Value(traceTimePointToEpochMicroseconds(trace.start)));
@@ -1094,6 +1118,16 @@ JSValueRef JavaScriptRuntime::runtimeStopTraceRecording(JSFunctionNativeCallCont
                           Value(array),
                           ReferenceInfoBuilder(callContext.getReferenceInfo()).withReturnValue(),
                           callContext.getExceptionTracker());
+}
+
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+JSValueRef JavaScriptRuntime::runtimeStopTraceRecording(JSFunctionNativeCallContext& callContext) {
+    return stopTraceRecording(callContext, false);
+}
+
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+JSValueRef JavaScriptRuntime::runtimeStopTraceRecordingWithStats(JSFunctionNativeCallContext& callContext) {
+    return stopTraceRecording(callContext, true);
 }
 
 JSValueRef JavaScriptRuntime::runtimeSubmitDebugMessage(JSFunctionNativeCallContext& callContext) {
@@ -2584,6 +2618,11 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
 
     JS_BIND(context, exceptionTracker, runtimeObject, "startTraceRecording", runtimeStartTraceRecording);
     JS_BIND(context, exceptionTracker, runtimeObject, "stopTraceRecording", runtimeStopTraceRecording);
+    JS_BIND(context,
+            exceptionTracker,
+            runtimeObject,
+            "stopTraceRecordingWithStats",
+            runtimeStopTraceRecordingWithStats);
 
     JS_BIND(context, exceptionTracker, runtimeObject, "scheduleWorkItem", runtimeScheduleWorkItem);
     JS_BIND(context, exceptionTracker, runtimeObject, "unscheduleWorkItem", runtimeUnscheduleWorkItem);

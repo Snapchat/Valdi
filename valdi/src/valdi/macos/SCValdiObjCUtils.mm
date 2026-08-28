@@ -9,7 +9,9 @@
 
 #import "valdi_core/SCValdiNativeConvertible.h"
 #import "valdi_core/cpp/Utils/StringCache.hpp"
+#import "valdi_core/cpp/Utils/ValueArray.hpp"
 #import "valdi_core/cpp/Utils/ValueFunction.hpp"
+#import "valdi_core/cpp/Utils/ValueMap.hpp"
 
 #import "djinni/objc/DJIMarshal+Private.h"
 #import "SCValdiMacOSFunction.h"
@@ -76,8 +78,16 @@ id NSObjectFromValue(const Valdi::Value &value) {
             return @(value.toDouble());
         case Valdi::ValueType::Bool:
             return @(value.toBool());
-        case Valdi::ValueType::Map:
-            return nil;
+        case Valdi::ValueType::Map: {
+            const Valdi::ValueMap* map = value.getMap();
+            if (!map) return nil;
+            NSMutableDictionary *result = [NSMutableDictionary dictionaryWithCapacity:map->size()];
+            for (const auto &entry : *map) {
+                id object = NSObjectFromValue(entry.second);
+                result[NSStringFromString(entry.first)] = object ?: [NSNull null];
+            }
+            return result;
+        }
         case Valdi::ValueType::Array: {
             const Valdi::ValueArray* arr = value.getArray();
             if (!arr) return nil;
@@ -130,6 +140,15 @@ Valdi::Value ValueFromNSDictionary(NSDictionary<NSString *, id> *dict) {
     return Valdi::Value(map);
 }
 
+Valdi::Value ValueFromNSArray(NSArray<id> *array) {
+    auto valueArray = Valdi::ValueArray::make(array.count);
+    size_t index = 0;
+    for (id item in array) {
+        valueArray->emplace(index++, ValueFromNSObject(item));
+    }
+    return Valdi::Value(valueArray);
+}
+
 Valdi::Value ValueFromNSObject(id object) {
     if (!object || [object isKindOfClass:[NSNull class]]) {
         return Valdi::Value::undefined();
@@ -142,6 +161,9 @@ Valdi::Value ValueFromNSObject(id object) {
     }
     if ([object isKindOfClass:[NSDictionary class]]) {
         return ValueFromNSDictionary(object);
+    }
+    if ([object isKindOfClass:[NSArray class]]) {
+        return ValueFromNSArray(object);
     }
     if ([object isKindOfClass:[SCValdiMacOSFunction class]]) {
         Valdi::ValueFunction *function = (Valdi::ValueFunction *)((SCValdiMacOSFunction *)object).cppInstance;

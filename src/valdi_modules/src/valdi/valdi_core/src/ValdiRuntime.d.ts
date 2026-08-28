@@ -163,6 +163,8 @@ export interface ValdiRuntime extends RuntimeBase {
 
   startTraceRecording(): number;
   stopTraceRecording(id: number): any[];
+  /** Optional so valdi_core remains compatible with older native and web runtime implementations. */
+  stopTraceRecordingWithStats?(id: number): any[];
 
   submitDebugMessage: SubmitDebugMessageFunc;
 

@@ -33,6 +33,8 @@ typedef void (^SCValdiRuntimeCreatedCallback)(id<SCValdiRuntimeProtocol>);
 /**
  The block will be provided with a SCValdiConfiguration instance that you can mutate
  and the runtime manager will apply this configuration after the block finishes executing.
+ Constructor-time settings such as debugger service configuration should be provided before
+ the underlying RuntimeManager is initialized.
  */
 - (void)updateConfiguration:(void (^)(SCValdiConfiguration* configuration))updateBlock;
 

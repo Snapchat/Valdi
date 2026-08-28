@@ -88,6 +88,20 @@ static id<SCNValdiKeychain> SCValdiCreateKeychainStore() {
     #endif
 }
 
+static std::optional<uint32_t> SCValdiResolveDebuggerServicePort(SCValdiConfiguration* configuration) {
+    NSInteger debuggerServicePort = configuration.debuggerServicePort;
+    if (debuggerServicePort == 0) {
+        return std::nullopt;
+    }
+
+    if (debuggerServicePort < 0 || debuggerServicePort > 65535) {
+        SCLogValdiWarning(@"Ignoring invalid Valdi debugger service port: <redacted> (expected 1...65535)");
+        return std::nullopt;
+    }
+
+    return static_cast<uint32_t>(debuggerServicePort);
+}
+
 static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *> *runtimeManagers)) {
     static dispatch_once_t onceToken;
     static NSMutableArray<NSValue *> *kAllRuntimeManagers;
@@ -204,6 +218,7 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
         _diskCache = Valdi::makeShared<Valdi::DiskCacheImpl>(resolveDocumentsDirectory());
 
         id<SCNValdiKeychain> keychainStore = SCValdiCreateKeychainStore();
+        SCValdiConfiguration *configuration = [self _getOrCreateConfiguration];
 
         _cppInstance = Valdi::makeShared<Valdi::RuntimeManager>(mainThreadDispatcher,
                                                                      [self _javaScriptBridge],
@@ -213,9 +228,10 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
                                                                      Valdi::PlatformTypeIOS,
                                                                      Valdi::ThreadQoSClassMax,
                                                                      logger,
-                                                                     /* enableDebuggerService */ true,
-                                                                     /* disableHotReloader */ false,
-                                                                     /* isStandalone */ false);
+                                                                     configuration.enableDebuggerService,
+                                                                     configuration.disableHotReloader,
+                                                                     /* isStandalone */ false,
+                                                                     SCValdiResolveDebuggerServicePort(configuration));
         _cppInstance->postInit();
         NSString *bundleIdentifier = [NSBundle mainBundle].bundleIdentifier;
         _cppInstance->setApplicationId(ValdiIOS::StringFromNSString(bundleIdentifier));

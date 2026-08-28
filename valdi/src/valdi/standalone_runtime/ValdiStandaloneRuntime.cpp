@@ -403,7 +403,8 @@ Ref<ValdiStandaloneRuntime> ValdiStandaloneRuntime::create(bool enableDebuggerSe
                                                             Valdi::strongSmallRef(&ConsoleLogger::getLogger()),
                                                             enableDebuggerService,
                                                             disableHotReloader,
-                                                            /* isStandalone */ true);
+                                                            /* isStandalone */ true,
+                                                            std::nullopt);
     runtimeManager->postInit();
     runtimeManager->registerBytesAssetLoader(diskCache);
     auto shouldWaitForHotReload = enableDebuggerService && !disableHotReloader;

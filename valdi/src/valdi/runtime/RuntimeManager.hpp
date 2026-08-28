@@ -75,6 +75,18 @@ public:
                    bool enableDebuggerService,
                    bool disableHotReloader,
                    bool isStandalone);
+    RuntimeManager(const Ref<IMainThreadDispatcher>& mainThreadDispatcher,
+                   IJavaScriptBridge* jsBridge,
+                   const Ref<IDiskCache>& diskCache,
+                   Shared<snap::valdi::Keychain> keychain,
+                   const Shared<snap::valdi::RuntimeMessageHandler>& runtimeMessageHandler,
+                   PlatformType platformType,
+                   ThreadQoSClass jsThreadQoS,
+                   const Ref<ILogger>& logger,
+                   bool enableDebuggerService,
+                   bool disableHotReloader,
+                   bool isStandalone,
+                   std::optional<uint32_t> debuggerPort);
     ~RuntimeManager() override;
 
     void postInit();
@@ -113,6 +125,7 @@ public:
     void applicationWillTerminate();
 
     bool debuggerServiceEnabled() const;
+    std::optional<uint32_t> getDebuggerServicePort() const;
 
     void setUserSession(const StringBox& userId);
     void setApplicationId(const StringBox& applicationId);

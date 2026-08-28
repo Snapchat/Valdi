@@ -18,6 +18,11 @@
 
 #include "valdi_core/cpp/Utils/ContainerUtils.hpp"
 
+#include <charconv>
+#include <cstdlib>
+#include <cstring>
+#include <system_error>
+
 namespace Valdi {
 
 class DaemonClientTCPDataSender : public DaemonClientDataSender {
@@ -136,6 +141,10 @@ void DebuggerService::stop() {
             VALDI_INFO(*_logger, "Stopped Valdi debugger service");
         }
     });
+}
+
+uint32_t DebuggerService::getConfiguredPort() const {
+    return _debuggerPort;
 }
 
 uint16_t DebuggerService::getBoundPort() {
@@ -314,6 +323,45 @@ Ref<ILogger> DebuggerService::getBridgeLogger() const {
 
 uint32_t DebuggerService::resolveDebuggerPort(bool isStandalone) {
     return isStandalone ? kStandaloneDebuggerPort : kMobileDebuggerPort;
+}
+
+DebuggerPortResolution DebuggerService::resolveDebuggerPortWithDiagnostics(
+    bool isStandalone,
+    std::optional<uint32_t> requestedPort) {
+    DebuggerPortResolution resolution{
+        resolveDebuggerPort(isStandalone),
+        std::nullopt,
+        std::nullopt,
+    };
+
+    if (requestedPort.has_value()) {
+        if (requestedPort.value() > 0 && requestedPort.value() <= 65535) {
+            resolution.port = requestedPort.value();
+            return resolution;
+        }
+        resolution.rejectedRequestedPort = requestedPort;
+    }
+
+    const char* overridePort = std::getenv("VALDI_DEBUGGER_SERVICE_PORT");
+    if (overridePort != nullptr) {
+        uint32_t parsedPort = 0;
+        const char* overridePortEnd = overridePort + std::strlen(overridePort);
+        const auto parseResult = std::from_chars(overridePort, overridePortEnd, parsedPort);
+        if (parseResult.ec == std::errc() && parseResult.ptr == overridePortEnd && parsedPort > 0 &&
+            parsedPort <= 65535) {
+            resolution.port = parsedPort;
+            return resolution;
+        }
+
+        if (parseResult.ec == std::errc::result_out_of_range ||
+            (parseResult.ec == std::errc() && parseResult.ptr == overridePortEnd)) {
+            resolution.environmentError = DebuggerPortEnvironmentError::OutOfRange;
+        } else {
+            resolution.environmentError = DebuggerPortEnvironmentError::Malformed;
+        }
+    }
+
+    return resolution;
 }
 
 } // namespace Valdi

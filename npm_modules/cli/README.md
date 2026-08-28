@@ -89,6 +89,7 @@ For complete documentation, see:
 - Restricts the server to loopback addresses because debugger snapshots can contain application data
 - Prefers port `8765` and automatically selects the next available port so multiple local sessions can run at once
 - Supports `--json` for automation-friendly startup output
+- Supports exact-page Owl/Chromium attachment with `--web-preview-url` and `--chromium-debugging-port`; this emits a temporary first-party DevTools extension directory and an explicitly opted-in preview URL
 
 **`valdi skills`** - AI assistant skills
 - Installs Valdi context files into Claude Code, Cursor, or GitHub Copilot so AI tools generate correct Valdi code instead of React patterns

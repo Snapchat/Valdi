@@ -7,7 +7,9 @@
 
 #import <Foundation/Foundation.h>
 
-typedef id (^SCValdiMacOSFunctionBlock)(NSArray<id>* parameters);
+NS_ASSUME_NONNULL_BEGIN
+
+typedef id _Nullable (^SCValdiMacOSFunctionBlock)(NSArray<id>* parameters);
 
 @interface SCValdiMacOSFunction : NSObject
 
@@ -17,5 +19,8 @@ typedef id (^SCValdiMacOSFunctionBlock)(NSArray<id>* parameters);
 - (instancetype)initWithBlock:(SCValdiMacOSFunctionBlock)block;
 
 - (void)performWithParameters:(NSArray<id>*)parameters;
+- (nullable id)performWithParametersAndReturnValue:(NSArray<id>*)parameters;
 
 @end
+
+NS_ASSUME_NONNULL_END

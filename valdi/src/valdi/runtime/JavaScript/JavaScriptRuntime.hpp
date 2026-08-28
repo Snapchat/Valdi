@@ -563,6 +563,7 @@ private:
     JSValueRef runtimeMakeTraceProxy(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeStartTraceRecording(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeStopTraceRecording(JSFunctionNativeCallContext& callContext);
+    JSValueRef runtimeStopTraceRecordingWithStats(JSFunctionNativeCallContext& callContext);
 
     JSValueRef runtimeScheduleWorkItem(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeUnscheduleWorkItem(JSFunctionNativeCallContext& callContext);

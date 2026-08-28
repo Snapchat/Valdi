@@ -1,5 +1,5 @@
-import { PropertyList } from 'valdi_tsx/src/PropertyList';
-import { PersistentStoreNative } from '../src/PersistentStoreNative';
+import type { PropertyList } from 'valdi_tsx/src/PropertyList';
+import type { PersistentStoreNative } from '../src/PersistentStoreNative';
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -40,6 +40,8 @@ const LS_PREFIX = 'valdi.PersistentStore.';
 
 interface LocalStorageLike {
   getItem(key: string): string | null;
+  key?(index: number): string | null;
+  readonly length?: number;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
 }
@@ -323,4 +325,670 @@ export function setPersistentStoreNative(newImpl: PersistentStoreNative): void {
 export function __resetInMemoryForTest(): void {
   memoryStores.clear();
   hydratedStores.clear();
+}
+
+// --- Read-only debugger adapter -------------------------------------------
+
+const MAX_DEBUG_STORES = 100;
+const MAX_DEBUG_ENTRIES_PER_STORE = 100;
+const MAX_DEBUG_INSPECTED_ENTRIES_PER_STORE = 200;
+const MAX_DEBUG_INSPECTED_STORAGE_KEYS = 1000;
+const MAX_DEBUG_NAME_CHARACTERS = 512;
+const MAX_DEBUG_STORAGE_KEY_CHARACTERS = LS_PREFIX.length + MAX_DEBUG_NAME_CHARACTERS;
+const MAX_DEBUG_KEY_CHARACTERS = 1024;
+const MAX_DEBUG_VALUE_CHARACTERS = 32 * 1024;
+const MAX_DEBUG_ERROR_CHARACTERS = 1024;
+const MAX_DEBUG_SERIALIZED_STORE_CHARACTERS = 128 * 1024;
+const MAX_DEBUG_TOTAL_CHARACTERS = 256 * 1024;
+const MAX_DEBUG_TOTAL_BYTES = 512 * 1024;
+const DEBUG_BASE_STRUCTURAL_CHARACTERS = 1024;
+const DEBUG_BASE_STRUCTURAL_BYTES = 2048;
+const DEBUG_STORE_STRUCTURAL_CHARACTERS = 512;
+const DEBUG_STORE_STRUCTURAL_BYTES = 1024;
+const DEBUG_ENTRY_STRUCTURAL_CHARACTERS = 512;
+const DEBUG_ENTRY_STRUCTURAL_BYTES = 1024;
+
+interface BoundedString {
+  readonly bytes: number;
+  readonly characters: number;
+  readonly originalLength: number;
+  readonly truncated: boolean;
+  readonly value: string;
+}
+
+export interface WebPersistentStoreDiagnostics {
+  readonly hydratedStores: number;
+  readonly memoryStores: number;
+  readonly storageAvailable: boolean;
+}
+
+export interface WebPersistentStoreDebugEntry {
+  readonly encoding: number;
+  readonly expiresAt?: number;
+  readonly key: string;
+  readonly keyLength?: number;
+  readonly keyTruncated?: boolean;
+  readonly unavailableReason?: string;
+  readonly value: string;
+  readonly valueLength?: number;
+  readonly valueTruncated?: boolean;
+  readonly weight?: number;
+}
+
+export interface WebPersistentStoreDebugStore {
+  readonly backend: 'browser' | 'memory';
+  readonly entries: readonly WebPersistentStoreDebugEntry[];
+  readonly entriesTruncated?: boolean;
+  readonly error?: string;
+  readonly errorLength?: number;
+  readonly errorTruncated?: boolean;
+  readonly inspectedEntries: number;
+  readonly inspectionTruncated?: boolean;
+  readonly name: string;
+  readonly nameLength?: number;
+  readonly nameTruncated?: boolean;
+  readonly serializedLength?: number;
+}
+
+export interface WebPersistentStoreSnapshotLimits {
+  readonly maxEntriesPerStore: number;
+  readonly maxErrorCharacters: number;
+  readonly maxInspectedEntriesPerStore: number;
+  readonly maxInspectedStorageKeys: number;
+  readonly maxKeyCharacters: number;
+  readonly maxNameCharacters: number;
+  readonly maxSerializedStoreCharacters: number;
+  readonly maxStorageKeyCharacters: number;
+  readonly maxStores: number;
+  readonly maxTotalBytes: number;
+  readonly maxTotalCharacters: number;
+  readonly maxValueCharacters: number;
+}
+
+export interface WebPersistentStoreSnapshot {
+  readonly diagnostics: WebPersistentStoreDiagnostics;
+  readonly inspectedStorageKeys: number;
+  readonly limits: WebPersistentStoreSnapshotLimits;
+  readonly rejectedStorageKeys: number;
+  readonly storageError?: string;
+  readonly storageErrorLength?: number;
+  readonly storageErrorTruncated?: boolean;
+  readonly storageInspectionTruncated?: boolean;
+  readonly stores: readonly WebPersistentStoreDebugStore[];
+  readonly truncated: boolean;
+  readonly usage: { readonly bytes: number; readonly characters: number };
+}
+
+const DEBUG_LIMITS: WebPersistentStoreSnapshotLimits = {
+  maxEntriesPerStore: MAX_DEBUG_ENTRIES_PER_STORE,
+  maxErrorCharacters: MAX_DEBUG_ERROR_CHARACTERS,
+  maxInspectedEntriesPerStore: MAX_DEBUG_INSPECTED_ENTRIES_PER_STORE,
+  maxInspectedStorageKeys: MAX_DEBUG_INSPECTED_STORAGE_KEYS,
+  maxKeyCharacters: MAX_DEBUG_KEY_CHARACTERS,
+  maxNameCharacters: MAX_DEBUG_NAME_CHARACTERS,
+  maxSerializedStoreCharacters: MAX_DEBUG_SERIALIZED_STORE_CHARACTERS,
+  maxStorageKeyCharacters: MAX_DEBUG_STORAGE_KEY_CHARACTERS,
+  maxStores: MAX_DEBUG_STORES,
+  maxTotalBytes: MAX_DEBUG_TOTAL_BYTES,
+  maxTotalCharacters: MAX_DEBUG_TOTAL_CHARACTERS,
+  maxValueCharacters: MAX_DEBUG_VALUE_CHARACTERS,
+};
+
+class DebugSnapshotBudget {
+  bytes = 0;
+  characters = 0;
+
+  reserve(characters: number, bytes: number): boolean {
+    if (this.characters + characters > MAX_DEBUG_TOTAL_CHARACTERS || this.bytes + bytes > MAX_DEBUG_TOTAL_BYTES) {
+      return false;
+    }
+    this.characters += characters;
+    this.bytes += bytes;
+    return true;
+  }
+
+  take(value: string, maximumCharacters: number): BoundedString | undefined {
+    const remainingCharacters = MAX_DEBUG_TOTAL_CHARACTERS - this.characters;
+    const remainingBytes = MAX_DEBUG_TOTAL_BYTES - this.bytes;
+    if (remainingCharacters < 2 || remainingBytes < 2) {
+      return undefined;
+    }
+    const result = truncateDebugString(value, maximumCharacters, remainingCharacters, remainingBytes);
+    this.characters += result.characters;
+    this.bytes += result.bytes;
+    return result;
+  }
+}
+
+interface DebugSnapshotBuildState {
+  aggregateExhausted: boolean;
+  readonly budget: DebugSnapshotBudget;
+  readonly stores: WebPersistentStoreDebugStore[];
+  truncated: boolean;
+}
+
+function utf8BytesForDebugCodePoint(codePoint: number): number {
+  if (codePoint <= 0x7f) {
+    return 1;
+  }
+  if (codePoint <= 0x7ff) {
+    return 2;
+  }
+  if (codePoint <= 0xffff) {
+    return 3;
+  }
+  return 4;
+}
+
+function debugJsonCost(value: string, index: number, codePoint: number, characterLength: number): {
+  bytes: number;
+  characters: number;
+} {
+  const codeUnit = value.charCodeAt(index);
+  if (characterLength === 1 && (codeUnit === 0x22 || codeUnit === 0x5c)) {
+    return { bytes: 2, characters: 2 };
+  }
+  if (characterLength === 1 && codeUnit <= 0x1f) {
+    const shortEscape =
+      codeUnit === 0x08 ||
+      codeUnit === 0x09 ||
+      codeUnit === 0x0a ||
+      codeUnit === 0x0c ||
+      codeUnit === 0x0d;
+    return shortEscape ? { bytes: 2, characters: 2 } : { bytes: 6, characters: 6 };
+  }
+  if (characterLength === 1 && codeUnit >= 0xd800 && codeUnit <= 0xdfff) {
+    return { bytes: 6, characters: 6 };
+  }
+  return { bytes: utf8BytesForDebugCodePoint(codePoint), characters: characterLength };
+}
+
+function truncateDebugString(
+  value: string,
+  maximumCharacters: number,
+  maximumBudgetCharacters: number,
+  maximumBudgetBytes: number,
+): BoundedString {
+  let bytes = 2;
+  let characters = 2;
+  let end = 0;
+  while (end < value.length && end < maximumCharacters) {
+    const codePoint = value.codePointAt(end) as number;
+    const characterLength = codePoint > 0xffff ? 2 : 1;
+    const cost = debugJsonCost(value, end, codePoint, characterLength);
+    if (
+      end + characterLength > maximumCharacters ||
+      characters + cost.characters > maximumBudgetCharacters ||
+      bytes + cost.bytes > maximumBudgetBytes
+    ) {
+      break;
+    }
+    end += characterLength;
+    bytes += cost.bytes;
+    characters += cost.characters;
+  }
+  return { bytes, characters, originalLength: value.length, truncated: end < value.length, value: value.slice(0, end) };
+}
+
+function safeErrorMessage(error: unknown): string {
+  return typeof error === 'string' ? error : 'Storage inspection failed.';
+}
+
+function diagnosticsForStorage(storageAvailable: boolean): WebPersistentStoreDiagnostics {
+  return {
+    hydratedStores: hydratedStores.size,
+    memoryStores: memoryStores.size,
+    storageAvailable,
+  };
+}
+
+/** Return value-free state for an attached debugger without touching persistence data. */
+export function getPersistentStoreDiagnostics(): WebPersistentStoreDiagnostics {
+  return diagnosticsForStorage(getLocalStorage() !== undefined);
+}
+
+function boundedDebugError(state: DebugSnapshotBuildState, error: unknown): BoundedString | undefined {
+  const bounded = state.budget.take(safeErrorMessage(error), MAX_DEBUG_ERROR_CHARACTERS);
+  if (bounded === undefined) {
+    state.aggregateExhausted = true;
+    state.truncated = true;
+  } else if (bounded.truncated) {
+    state.truncated = true;
+  }
+  return bounded;
+}
+
+function memoryDebugValue(entry: Entry): {
+  encoding: number;
+  originalLength: number;
+  preview: string;
+  truncated: boolean;
+} {
+  if (typeof entry.value === 'string') {
+    return { encoding: 0, originalLength: entry.value.length, preview: entry.value, truncated: false };
+  }
+  const byteLength = entry.value.byteLength;
+  const originalLength = byteLength === 0 ? 0 : Math.ceil(byteLength / 3) * 4;
+  const maximumPreviewBytes = Math.floor(Math.floor(MAX_DEBUG_VALUE_CHARACTERS / 4) * 3 / 3) * 3;
+  const previewByteLength = Math.min(byteLength, maximumPreviewBytes);
+  const preview = bytesToBase64(new Uint8Array(entry.value, 0, previewByteLength));
+  return { encoding: 1, originalLength, preview, truncated: previewByteLength < byteLength };
+}
+
+function appendMemoryDebugStore(
+  state: DebugSnapshotBuildState,
+  storeName: string,
+  store: Map<string, Entry>,
+): boolean {
+  if (!state.budget.reserve(DEBUG_STORE_STRUCTURAL_CHARACTERS, DEBUG_STORE_STRUCTURAL_BYTES)) {
+    state.aggregateExhausted = true;
+    state.truncated = true;
+    return false;
+  }
+  const name = state.budget.take(storeName, MAX_DEBUG_NAME_CHARACTERS);
+  if (name === undefined) {
+    state.aggregateExhausted = true;
+    state.truncated = true;
+    return false;
+  }
+
+  const entries: WebPersistentStoreDebugEntry[] = [];
+  let entriesTruncated = false;
+  let inspectedEntries = 0;
+  let inspectionTruncated = false;
+  const entryIterator = store.entries();
+  while (true) {
+    const nextEntry = entryIterator.next();
+    if (nextEntry.done) {
+      break;
+    }
+    const [key, entry] = nextEntry.value;
+    if (entries.length >= MAX_DEBUG_ENTRIES_PER_STORE || inspectedEntries >= MAX_DEBUG_INSPECTED_ENTRIES_PER_STORE) {
+      entriesTruncated = entries.length >= MAX_DEBUG_ENTRIES_PER_STORE;
+      inspectionTruncated = true;
+      state.truncated = true;
+      break;
+    }
+    inspectedEntries++;
+    if (isExpired(entry)) {
+      continue;
+    }
+    if (!state.budget.reserve(DEBUG_ENTRY_STRUCTURAL_CHARACTERS, DEBUG_ENTRY_STRUCTURAL_BYTES)) {
+      state.aggregateExhausted = true;
+      state.truncated = true;
+      entriesTruncated = true;
+      inspectionTruncated = true;
+      break;
+    }
+    const boundedKey = state.budget.take(key, MAX_DEBUG_KEY_CHARACTERS);
+    if (boundedKey === undefined) {
+      state.aggregateExhausted = true;
+      state.truncated = true;
+      entriesTruncated = true;
+      inspectionTruncated = true;
+      break;
+    }
+
+    let debugValue: ReturnType<typeof memoryDebugValue>;
+    try {
+      debugValue = memoryDebugValue(entry);
+    } catch {
+      entries.push({
+        encoding: typeof entry.value === 'string' ? 0 : 1,
+        key: boundedKey.value,
+        ...(boundedKey.truncated ? { keyLength: boundedKey.originalLength, keyTruncated: true } : {}),
+        unavailableReason: 'unavailable-memory-value',
+        value: '',
+      });
+      state.truncated = true;
+      continue;
+    }
+    const boundedValue = state.budget.take(debugValue.preview, MAX_DEBUG_VALUE_CHARACTERS);
+    if (boundedValue === undefined) {
+      state.aggregateExhausted = true;
+      state.truncated = true;
+      entriesTruncated = true;
+      inspectionTruncated = true;
+      break;
+    }
+    const valueTruncated = debugValue.truncated || boundedValue.truncated;
+    const metadataInvalid =
+      (entry.expiresAt !== undefined && !Number.isFinite(entry.expiresAt)) ||
+      (entry.weight !== undefined && !Number.isFinite(entry.weight));
+    entries.push({
+      encoding: debugValue.encoding,
+      ...(entry.expiresAt !== undefined && Number.isFinite(entry.expiresAt) ? { expiresAt: entry.expiresAt } : {}),
+      key: boundedKey.value,
+      ...(boundedKey.truncated ? { keyLength: boundedKey.originalLength, keyTruncated: true } : {}),
+      ...(metadataInvalid ? { unavailableReason: 'invalid-entry-metadata' } : {}),
+      value: boundedValue.value,
+      ...(valueTruncated ? { valueLength: debugValue.originalLength, valueTruncated: true } : {}),
+      ...(entry.weight !== undefined && Number.isFinite(entry.weight) ? { weight: entry.weight } : {}),
+    });
+    state.truncated = state.truncated || boundedKey.truncated || valueTruncated || metadataInvalid;
+  }
+
+  state.stores.push({
+    backend: 'memory',
+    entries,
+    ...(entriesTruncated ? { entriesTruncated: true } : {}),
+    inspectedEntries,
+    ...(inspectionTruncated ? { inspectionTruncated: true } : {}),
+    name: name.value,
+    ...(name.truncated ? { nameLength: name.originalLength, nameTruncated: true } : {}),
+  });
+  state.truncated = state.truncated || name.truncated;
+  return true;
+}
+
+function appendPersistedDebugStore(
+  state: DebugSnapshotBuildState,
+  storage: LocalStorageLike,
+  storageName: string,
+): boolean {
+  if (!state.budget.reserve(DEBUG_STORE_STRUCTURAL_CHARACTERS, DEBUG_STORE_STRUCTURAL_BYTES)) {
+    state.aggregateExhausted = true;
+    state.truncated = true;
+    return false;
+  }
+  const name = state.budget.take(storageName, MAX_DEBUG_NAME_CHARACTERS);
+  if (name === undefined) {
+    state.aggregateExhausted = true;
+    state.truncated = true;
+    return false;
+  }
+
+  let raw: string | null;
+  try {
+    raw = storage.getItem(LS_PREFIX + storageName);
+  } catch (error) {
+    const boundedError = boundedDebugError(state, error);
+    state.stores.push({
+      backend: 'browser',
+      entries: [],
+      ...(boundedError === undefined ? {} : { error: boundedError.value }),
+      ...(boundedError?.truncated ? { errorLength: boundedError.originalLength, errorTruncated: true } : {}),
+      inspectedEntries: 0,
+      name: name.value,
+      ...(name.truncated ? { nameLength: name.originalLength, nameTruncated: true } : {}),
+    });
+    state.truncated = true;
+    return true;
+  }
+  if (raw === null) {
+    return true;
+  }
+  if (typeof raw !== 'string') {
+    state.stores.push({
+      backend: 'browser',
+      entries: [],
+      error: 'unsupported-serialized-store',
+      inspectedEntries: 0,
+      name: name.value,
+      ...(name.truncated ? { nameLength: name.originalLength, nameTruncated: true } : {}),
+    });
+    state.truncated = true;
+    return true;
+  }
+  if (raw.length > MAX_DEBUG_SERIALIZED_STORE_CHARACTERS) {
+    state.stores.push({
+      backend: 'browser',
+      entries: [],
+      error: 'serialized-store-too-large',
+      inspectedEntries: 0,
+      name: name.value,
+      ...(name.truncated ? { nameLength: name.originalLength, nameTruncated: true } : {}),
+      serializedLength: raw.length,
+    });
+    state.truncated = true;
+    return true;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    const boundedError = boundedDebugError(state, error);
+    state.stores.push({
+      backend: 'browser',
+      entries: [],
+      ...(boundedError === undefined ? {} : { error: boundedError.value }),
+      ...(boundedError?.truncated ? { errorLength: boundedError.originalLength, errorTruncated: true } : {}),
+      inspectedEntries: 0,
+      name: name.value,
+      ...(name.truncated ? { nameLength: name.originalLength, nameTruncated: true } : {}),
+      serializedLength: raw.length,
+    });
+    state.truncated = true;
+    return true;
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    state.stores.push({
+      backend: 'browser',
+      entries: [],
+      error: 'unsupported-store-metadata',
+      inspectedEntries: 0,
+      name: name.value,
+      ...(name.truncated ? { nameLength: name.originalLength, nameTruncated: true } : {}),
+      serializedLength: raw.length,
+    });
+    state.truncated = true;
+    return true;
+  }
+
+  const entries: WebPersistentStoreDebugEntry[] = [];
+  let entriesTruncated = false;
+  let inspectedEntries = 0;
+  let inspectionTruncated = false;
+  for (const key in parsed) {
+    if (!Object.prototype.hasOwnProperty.call(parsed, key)) {
+      continue;
+    }
+    if (entries.length >= MAX_DEBUG_ENTRIES_PER_STORE || inspectedEntries >= MAX_DEBUG_INSPECTED_ENTRIES_PER_STORE) {
+      entriesTruncated = entries.length >= MAX_DEBUG_ENTRIES_PER_STORE;
+      inspectionTruncated = true;
+      state.truncated = true;
+      break;
+    }
+    inspectedEntries++;
+    if (!state.budget.reserve(DEBUG_ENTRY_STRUCTURAL_CHARACTERS, DEBUG_ENTRY_STRUCTURAL_BYTES)) {
+      state.aggregateExhausted = true;
+      state.truncated = true;
+      entriesTruncated = true;
+      inspectionTruncated = true;
+      break;
+    }
+    const boundedKey = state.budget.take(key, MAX_DEBUG_KEY_CHARACTERS);
+    if (boundedKey === undefined) {
+      state.aggregateExhausted = true;
+      state.truncated = true;
+      entriesTruncated = true;
+      inspectionTruncated = true;
+      break;
+    }
+
+    const persisted = (parsed as Record<string, unknown>)[key];
+    if (typeof persisted !== 'object' || persisted === null || Array.isArray(persisted)) {
+      entries.push({
+        encoding: 0,
+        key: boundedKey.value,
+        ...(boundedKey.truncated ? { keyLength: boundedKey.originalLength, keyTruncated: true } : {}),
+        unavailableReason: 'unsupported-entry-metadata',
+        value: '',
+      });
+      state.truncated = true;
+      continue;
+    }
+    const pe = persisted as PersistedEntry;
+    const encoding = typeof pe.b === 'string' ? 1 : 0;
+    const persistedValue = typeof pe.b === 'string' ? pe.b : typeof pe.s === 'string' ? pe.s : undefined;
+    if (persistedValue === undefined) {
+      entries.push({
+        encoding,
+        key: boundedKey.value,
+        ...(boundedKey.truncated ? { keyLength: boundedKey.originalLength, keyTruncated: true } : {}),
+        unavailableReason: 'unsupported-entry-metadata',
+        value: '',
+      });
+      state.truncated = true;
+      continue;
+    }
+    if (typeof pe.e === 'number' && Number.isFinite(pe.e) && nowSec() >= pe.e) {
+      continue;
+    }
+    const boundedValue = state.budget.take(persistedValue, MAX_DEBUG_VALUE_CHARACTERS);
+    if (boundedValue === undefined) {
+      state.aggregateExhausted = true;
+      state.truncated = true;
+      entriesTruncated = true;
+      inspectionTruncated = true;
+      break;
+    }
+    const metadataInvalid =
+      (pe.e !== undefined && (typeof pe.e !== 'number' || !Number.isFinite(pe.e))) ||
+      (pe.w !== undefined && (typeof pe.w !== 'number' || !Number.isFinite(pe.w)));
+    entries.push({
+      encoding,
+      ...(typeof pe.e === 'number' && Number.isFinite(pe.e) ? { expiresAt: pe.e } : {}),
+      key: boundedKey.value,
+      ...(boundedKey.truncated ? { keyLength: boundedKey.originalLength, keyTruncated: true } : {}),
+      ...(metadataInvalid ? { unavailableReason: 'invalid-entry-metadata' } : {}),
+      value: boundedValue.value,
+      ...(boundedValue.truncated ? { valueLength: boundedValue.originalLength, valueTruncated: true } : {}),
+      ...(typeof pe.w === 'number' && Number.isFinite(pe.w) ? { weight: pe.w } : {}),
+    });
+    state.truncated = state.truncated || boundedKey.truncated || boundedValue.truncated || metadataInvalid;
+  }
+
+  state.stores.push({
+    backend: 'browser',
+    entries,
+    ...(entriesTruncated ? { entriesTruncated: true } : {}),
+    inspectedEntries,
+    ...(inspectionTruncated ? { inspectionTruncated: true } : {}),
+    name: name.value,
+    ...(name.truncated ? { nameLength: name.originalLength, nameTruncated: true } : {}),
+    serializedLength: raw.length,
+  });
+  state.truncated = state.truncated || name.truncated;
+  return true;
+}
+
+/**
+ * Return a bounded, read-only view over current and persisted legacy web stores.
+ * Keys and values are deliberately unredacted so an inspector can diagnose the
+ * actual store. Callers must expose this only from an explicitly debug-enabled
+ * runtime over an authenticated debugger transport and must treat the result as
+ * sensitive application data.
+ */
+export function getPersistentStoreSnapshot(): WebPersistentStoreSnapshot {
+  const storage = getLocalStorage();
+  const budget = new DebugSnapshotBudget();
+  budget.reserve(DEBUG_BASE_STRUCTURAL_CHARACTERS, DEBUG_BASE_STRUCTURAL_BYTES);
+  const state: DebugSnapshotBuildState = {
+    aggregateExhausted: false,
+    budget,
+    stores: [],
+    truncated: false,
+  };
+  const seenStoreNames = new Set<string>();
+
+  const storeIterator = memoryStores.entries();
+  while (true) {
+    const nextStore = storeIterator.next();
+    if (nextStore.done) {
+      break;
+    }
+    const [storeName, store] = nextStore.value;
+    if (state.stores.length >= MAX_DEBUG_STORES) {
+      state.truncated = true;
+      break;
+    }
+    if (!appendMemoryDebugStore(state, storeName, store)) {
+      break;
+    }
+    seenStoreNames.add(storeName);
+    if (state.aggregateExhausted) {
+      break;
+    }
+  }
+
+  if (state.stores.length >= MAX_DEBUG_STORES && storage !== undefined) {
+    state.truncated = true;
+  }
+
+  let inspectedStorageKeys = 0;
+  let rejectedStorageKeys = 0;
+  let storageInspectionTruncated = false;
+  let storageError: BoundedString | undefined;
+  if (storage !== undefined && !state.aggregateExhausted && state.stores.length < MAX_DEBUG_STORES) {
+    let storageLength = 0;
+    try {
+      const length = storage.length;
+      storageLength = typeof length === 'number' && Number.isFinite(length) ? Math.max(0, Math.floor(length)) : 0;
+    } catch (error) {
+      storageError = boundedDebugError(state, error);
+      state.truncated = true;
+      storageInspectionTruncated = true;
+    }
+
+    for (let index = 0; index < storageLength; index++) {
+      if (state.stores.length >= MAX_DEBUG_STORES || state.aggregateExhausted) {
+        state.truncated = true;
+        storageInspectionTruncated = true;
+        break;
+      }
+      if (inspectedStorageKeys >= MAX_DEBUG_INSPECTED_STORAGE_KEYS) {
+        state.truncated = true;
+        storageInspectionTruncated = true;
+        break;
+      }
+      inspectedStorageKeys++;
+      let fullStorageKey: string | null;
+      try {
+        fullStorageKey = storage.key?.(index) ?? null;
+      } catch (error) {
+        storageError = boundedDebugError(state, error);
+        state.truncated = true;
+        storageInspectionTruncated = true;
+        break;
+      }
+      if (typeof fullStorageKey !== 'string') {
+        continue;
+      }
+      if (fullStorageKey.length > MAX_DEBUG_STORAGE_KEY_CHARACTERS) {
+        rejectedStorageKeys++;
+        state.truncated = true;
+        continue;
+      }
+      if (!fullStorageKey.startsWith(LS_PREFIX)) {
+        continue;
+      }
+      const storeName = fullStorageKey.slice(LS_PREFIX.length);
+      if (seenStoreNames.has(storeName)) {
+        continue;
+      }
+      if (!appendPersistedDebugStore(state, storage, storeName)) {
+        storageInspectionTruncated = true;
+        break;
+      }
+      seenStoreNames.add(storeName);
+    }
+  }
+
+  return {
+    diagnostics: diagnosticsForStorage(storage !== undefined),
+    inspectedStorageKeys,
+    limits: { ...DEBUG_LIMITS },
+    rejectedStorageKeys,
+    ...(storageError === undefined ? {} : { storageError: storageError.value }),
+    ...(storageError?.truncated
+      ? { storageErrorLength: storageError.originalLength, storageErrorTruncated: true }
+      : {}),
+    ...(storageInspectionTruncated ? { storageInspectionTruncated: true } : {}),
+    stores: state.stores,
+    truncated: state.truncated,
+    usage: { bytes: budget.bytes, characters: budget.characters },
+  };
 }

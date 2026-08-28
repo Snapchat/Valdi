@@ -10,7 +10,11 @@
 
 - (id<SCValdiRuntimeManagerProtocol>)createRuntimeManager {
     if (!self.runtimeManager) {
-        self.runtimeManager = [[SCValdiRuntimeManager alloc] init];
+        self.runtimeManager = [SCValdiRuntimeManager new];
+        [self.runtimeManager updateConfiguration:^(SCValdiConfiguration* configuration) {
+            // Preserve Snap's default-on development-host behavior; direct hosts can opt out through configuration.
+            configuration.enableDebuggerService = YES;
+        }];
     }
     return self.runtimeManager;
 }

@@ -1,6 +1,6 @@
 // DOM event wiring and initial debugger boot sequence.
 elements.screen.addEventListener('click', event => {
-  selectPreviewNodeAtEvent(event);
+  void dispatchTapInput(event);
 });
 
 elements.screen.addEventListener('mousedown', event => {
@@ -29,6 +29,23 @@ document.addEventListener('click', event => {
   const issue = event.target.closest('[data-issue-node]');
   if (issue && issue.dataset.issueNode) void requestDebuggerAction('selectNode', { id: issue.dataset.issueNode });
 
+  const providerTab = event.target.closest('[data-provider-tab]');
+  if (providerTab) setActiveProviderTab(providerTab.dataset.providerTab);
+
+  const resetSetting = event.target.closest('[data-reset-setting]');
+  if (resetSetting && !resetSetting.disabled) {
+    void changeDebugSetting('reset', resetSetting.dataset.resetSetting);
+  }
+
+  if (event.target.closest('#sqlPreviousButton')) {
+    state.providers.sqlOffset = Math.max(0, state.providers.sqlOffset - state.providers.sqlLimit);
+    void loadSqlTable();
+  }
+  if (event.target.closest('#sqlNextButton')) {
+    state.providers.sqlOffset += state.providers.sqlLimit;
+    void loadSqlTable();
+  }
+
   const target = event.target.closest('.target');
   if (target) void requestDebuggerAction('selectTarget', { id: target.dataset.targetId });
 });
@@ -41,11 +58,12 @@ document.addEventListener('keydown', event => {
   actionable.click();
 });
 
-function selectTarget(id) {
+async function selectTarget(id) {
   const target = debuggerTargets().find(candidate => candidate.id === id);
   if (!target) return;
+  if (!(await preparePerformanceTraceTargetSwitch(target))) return;
   if (target.daemonPort && target.port) {
-    setTargetPort(target.port);
+    await setTargetPort(target.port, target);
     state.snapshot.target = {
       ...state.snapshot.target,
       ...target,
@@ -61,9 +79,17 @@ function selectTarget(id) {
   }
   state.followLatestTarget = false;
   if (target.clientId && target.contextId) {
+    resetDebuggerToolsForTarget();
+    state.snapshot.target = {
+      ...state.snapshot.target,
+      ...target,
+      state: 'attached',
+    };
+    render();
     loadRealSnapshot(target);
     return;
   }
+  resetDebuggerToolsForTarget();
   state.snapshot.target = {
     ...state.snapshot.target,
     id: target.id,
@@ -83,7 +109,24 @@ elements.treeSearch.addEventListener('input', renderTree);
 elements.logSearch.addEventListener('input', renderLogs);
 
 elements.htmlPreviewRoot.addEventListener('click', event => {
-  selectHtmlPreviewNodeAtEvent(event);
+  void dispatchHtmlPreviewTapInput(event);
+});
+elements.htmlPreviewRoot.addEventListener(
+  'wheel',
+  event => {
+    void dispatchHtmlPreviewScrollInput(event);
+  },
+  { passive: false },
+);
+elements.htmlPreviewRoot.addEventListener('input', dispatchHtmlPreviewTextInput);
+elements.htmlPreviewRoot.addEventListener('keydown', event => {
+  void dispatchHtmlPreviewKeyInput(event);
+});
+elements.htmlPreviewRoot.addEventListener('focusin', event => {
+  void dispatchHtmlPreviewFocusInput(event, true);
+});
+elements.htmlPreviewRoot.addEventListener('focusout', event => {
+  void dispatchHtmlPreviewFocusInput(event, false);
 });
 
 document
@@ -149,11 +192,64 @@ elements.autoRefreshToggle.addEventListener(
   'change',
   () => void requestDebuggerAction('setAutoRefresh', { enabled: elements.autoRefreshToggle.checked }),
 );
+elements.traceStartButton.addEventListener('click', () => void requestDebuggerAction('startRendererTrace'));
+elements.traceStopButton.addEventListener('click', () => void requestDebuggerAction('stopRendererTrace'));
+elements.traceCaptureButton.addEventListener('click', () => void requestDebuggerAction('captureRendererTrace'));
+elements.traceExportButton.addEventListener('click', exportPerformanceTrace);
 elements.profileRefreshButton.addEventListener('click', () => void requestDebuggerAction('refreshHermesContexts'));
 elements.profileStartButton.addEventListener('click', () => void requestDebuggerAction('startCpuProfile'));
 elements.profileStopButton.addEventListener('click', () => void requestDebuggerAction('stopCpuProfile'));
 elements.profileCaptureButton.addEventListener('click', () => void requestDebuggerAction('captureCpuProfile'));
 elements.profileExportButton.addEventListener('click', exportCpuProfile);
+elements.providerRefreshButton.addEventListener('click', () => {
+  void requestDebuggerAction('refreshDebuggerProviders', getSelectedTargetParams());
+});
+elements.settingsRefreshButton.addEventListener('click', () => {
+  void requestDebuggerAction('refreshDebugSettings', getSelectedTargetParams());
+});
+elements.settingsGroupSelect.addEventListener('change', () => {
+  state.settings.selectedGroupId = elements.settingsGroupSelect.value || null;
+  renderDebugSettings();
+});
+
+document.addEventListener('change', event => {
+  if (event.target.id === 'storageProviderSelect' || event.target.id === 'sqlProviderSelect') {
+    const kind = event.target.id === 'sqlProviderSelect' ? 'sql' : 'storage';
+    if (!selectDebuggerProvider(kind, event.target.value)) return;
+    renderDebuggerProviders();
+    if (kind === 'sql') void loadSqlDatabases();
+    else void loadStorageProvider();
+    return;
+  }
+  if (event.target.id === 'sqlDatabaseSelect') {
+    state.providers.selectedDatabaseId = event.target.value;
+    const database = selectedSQLDatabase();
+    state.providers.selectedTable = Array.isArray(database?.tables) ? database.tables[0]?.name || null : null;
+    state.providers.sqlOffset = 0;
+    state.providers.sqlTable = null;
+    void loadSqlTable();
+    return;
+  }
+  if (event.target.id === 'sqlTableSelect') {
+    state.providers.selectedTable = event.target.value;
+    state.providers.sqlOffset = 0;
+    state.providers.sqlTable = null;
+    void loadSqlTable();
+    return;
+  }
+  const setting = event.target.closest('[data-setting-id]');
+  if (setting) {
+    const parsed = readDebugSettingInput(setting);
+    if (parsed.error) {
+      setting.setCustomValidity?.(parsed.error);
+      setting.reportValidity?.();
+      addLog('warn', 'settings', parsed.error);
+      return;
+    }
+    setting.setCustomValidity?.('');
+    void changeDebugSetting('set', setting.dataset.settingId, parsed.value);
+  }
+});
 
 document.getElementById('copyPathButton').addEventListener('click', async () => {
   const path = getPathToNode(state.selectedNodeId)
@@ -193,4 +289,7 @@ applyDebuggerSessionDomState();
 setAutoRefresh(state.autoRefresh, { silent: true });
 installDebuggerSessionPersistence();
 void refreshProfileContexts({ silent: true });
-refreshTargets({ silent: restoredDebuggerSession, autoAttach: !state.manualDetach });
+void (async () => {
+  await recoverPerformanceTraceState();
+  await refreshTargets({ silent: restoredDebuggerSession, autoAttach: !state.manualDetach });
+})();

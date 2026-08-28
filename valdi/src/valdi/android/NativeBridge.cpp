@@ -62,6 +62,8 @@
 #endif
 
 #include <android/native_window_jni.h>
+#include <cstdlib>
+#include <string>
 
 inline ValdiAndroid::RuntimeWrapper* getRuntimeWrapper(jlong handle) {
     return reinterpret_cast<ValdiAndroid::RuntimeWrapper*>(handle);
@@ -146,6 +148,12 @@ jint ValdiAndroid::NativeBridge::getBuildOptions(fbjni::alias_ref<fbjni::JClass>
 #endif
 
     return static_cast<jint>(buildOptions);
+}
+
+void ValdiAndroid::NativeBridge::setDebuggerPortEnvironment(fbjni::alias_ref<fbjni::JClass> /* clazz */,
+                                                            jint debuggerPort) {
+    const auto debuggerPortString = std::to_string(debuggerPort);
+    setenv("VALDI_DEBUGGER_SERVICE_PORT", debuggerPortString.c_str(), 1);
 }
 
 jlong ValdiAndroid::NativeBridge::createRuntimeManager( // NOLINT
@@ -2530,6 +2538,7 @@ jlong ValdiAndroid::NativeBridge::snapDrawingGetMaxRenderTargetSize(fbjni::alias
 void ValdiAndroid::NativeBridge::registerNatives() {
     javaClassStatic()->registerNatives({
         makeNativeMethod("getBuildOptions", ValdiAndroid::NativeBridge::getBuildOptions),
+        makeNativeMethod("setDebuggerPortEnvironment", ValdiAndroid::NativeBridge::setDebuggerPortEnvironment),
         makeNativeMethod("getAllRuntimeAttachedObjects", ValdiAndroid::NativeBridge::getAllRuntimeAttachedObjects),
         makeNativeMethod("prepareRenderBackend", ValdiAndroid::NativeBridge::prepareRenderBackend),
         makeNativeMethod("emitRuntimeManagerInitMetrics", ValdiAndroid::NativeBridge::emitRuntimeManagerInitMetrics),

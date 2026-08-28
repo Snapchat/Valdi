@@ -82,7 +82,7 @@ function startRuntimeLogStream(options = {}) {
   if (state.runtimeLogStream && state.runtimeLogStreamKey === key) return;
 
   stopRuntimeLogStream();
-  const source = new EventSource(`/api/runtime-logs/stream?${key}`);
+  const source = new EventSource(debuggerEventSourceUrl(`/api/runtime-logs/stream?${key}`));
   state.runtimeLogStream = source;
   state.runtimeLogStreamKey = key;
 
@@ -147,6 +147,9 @@ async function refreshTargets(options = {}) {
       const previousTargetId = state.snapshot.target?.id || null;
       const selectedTarget = chooseLiveTarget(targets);
       const targetChanged = selectedTarget.id !== previousTargetId;
+      if (targetChanged && !(await preparePerformanceTraceTargetSwitch(selectedTarget))) {
+        return;
+      }
       state.snapshot.targets = markSelectedTarget(targets, selectedTarget);
       state.snapshot.target = {
         ...state.snapshot.target,
@@ -217,12 +220,14 @@ async function loadRealSnapshot(target, options = {}) {
     ? { port: target.port || target.proxyPort, clientId: target.clientId, contextId: target.contextId }
     : getSelectedTargetParams();
   const previousSelectedNodeId = state.selectedNodeId;
+  const previousTargetKey = debuggerTargetKey();
   const previousLogs = state.source === 'daemon' ? state.snapshot.logs : [];
 
   try {
     if (!options.silent) addLog('info', 'daemon', `Fetching Valdi tree from port ${params.port}.`);
     const snapshot = await apiGet('/api/snapshot', params, { timeoutMs: 20000 });
     state.snapshot = decorateSnapshot(snapshot);
+    if (debuggerTargetKey() !== previousTargetKey) resetDebuggerToolsForTarget();
     state.snapshot.logs = [...previousLogs, ...(state.snapshot.logs || [])];
     trimRuntimeLogs();
     state.selectedNodeId =
@@ -238,6 +243,7 @@ async function loadRealSnapshot(target, options = {}) {
     state.lastUpdated = new Date().toLocaleTimeString();
     elements.portSelect.value = String(state.snapshot.target.proxyPort || params.port);
     render();
+    maybeRefreshDebuggerTools(state.activeSection);
     if (!options.silent || !state.rootSnapshotImage) {
       void captureRootSnapshot(params, options);
     }
@@ -270,12 +276,18 @@ async function loadRealSnapshot(target, options = {}) {
 
 function firstElementDescendant(node) {
   if (!node) return null;
-  if (node.element && node.element.id !== undefined) return node;
-  for (const child of node.children || []) {
-    const match = firstElementDescendant(child);
-    if (match) return match;
-  }
-  return null;
+  let found = null;
+  valdiDebuggerTreeModel.walk(
+    node,
+    current => {
+      if (!current.element || current.element.id === undefined) return true;
+      found = current;
+      return false;
+    },
+    [],
+    0,
+  );
+  return found;
 }
 
 async function captureSelectedElementSnapshot() {
@@ -363,9 +375,13 @@ async function copyPreview() {
   }
 
   try {
-    await navigator.clipboard.writeText(JSON.stringify(state.snapshot, null, 2));
+    await navigator.clipboard.writeText(previewSnapshotProjectionJson());
     addLog('info', 'preview', 'Copied current snapshot JSON.');
   } catch (error) {
     addLog('error', 'preview', `Copy failed: ${error.message}`);
   }
+}
+
+function previewSnapshotProjectionJson() {
+  return JSON.stringify(valdiDebuggerTreeModel.projectSnapshot(state.snapshot), null, 2);
 }

@@ -47,8 +47,17 @@ struct RecordedTrace {
     TraceDuration duration() const;
 };
 
+struct TraceRecordingResult {
+    std::vector<RecordedTrace> traces;
+    size_t droppedTraceEventCount = 0;
+};
+
 class Tracer {
 public:
+    static constexpr size_t kMaxRecordedTraceCount = 10000;
+    static constexpr size_t kMaxRecordedTraceNameLengthBytes = 2048;
+    static constexpr size_t kMaxRecordedTraceNameBytes = 1024 * 1024;
+
     Tracer();
     ~Tracer();
 
@@ -58,6 +67,7 @@ public:
 
     size_t startRecording();
     std::vector<RecordedTrace> stopRecording(size_t recordingIdentifier);
+    TraceRecordingResult stopRecordingWithStats(size_t recordingIdentifier);
 
     void append(std::string&& trace, const TraceTimePoint& start, const TraceTimePoint& end);
 

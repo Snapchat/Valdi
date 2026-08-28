@@ -2319,6 +2319,983 @@ describe('Renderer', () => {
         ],
       },
     ]);
+
+    const rootVirtualNode = renderer.getRootVirtualNode()!;
+    const rootDebugSnapshot = renderer.getDebugVirtualNodeSnapshot(rootVirtualNode, 10, 20)!;
+    const componentVirtualNode = rootDebugSnapshot.children[0];
+    const componentDebugSnapshot = renderer.getDebugVirtualNodeSnapshot(componentVirtualNode, 10, 20)!;
+    const headerContainerVirtualNode = componentDebugSnapshot.children[0];
+    const headerContainerDebugSnapshot = renderer.getDebugVirtualNodeSnapshot(headerContainerVirtualNode, 10, 20)!;
+
+    expect(componentDebugSnapshot.componentViewModel).toBe(componentDebugSnapshot.component?.viewModel);
+    expect(Object.getOwnPropertyDescriptor(componentDebugSnapshot, 'componentViewModel')?.enumerable).toBeFalse();
+    expect(Object.keys(componentDebugSnapshot)).not.toContain('componentViewModel');
+    expect(headerContainerDebugSnapshot.children.map(child => child.element?.tag)).toEqual(['header']);
+    expect(renderer.getDebugVirtualNodeSnapshot(headerContainerVirtualNode, 10, 2)).toBeUndefined();
+  });
+
+  it('bounds wide, deep, and cyclic internal slot traversal', () => {
+    interface DebugRawVirtualNode {
+      children?: { children: DebugRawVirtualNode[] };
+      key: string;
+      slot?: boolean;
+    }
+
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    const root = makeNodeProtoype('root');
+    renderer.begin();
+    renderer.beginElement(root);
+    renderer.endElement();
+    renderer.end();
+
+    const rootVirtualNode = renderer.getRootVirtualNode()!;
+    const rawRoot = (rootVirtualNode as unknown as { node: DebugRawVirtualNode }).node;
+    const leaf: DebugRawVirtualNode = { key: 'leaf' };
+
+    rawRoot.children = { children: new Array<DebugRawVirtualNode>(10_000).fill(leaf) };
+    expect(renderer.getDebugVirtualNodeSnapshot(rootVirtualNode, 10, 100)).toBeUndefined();
+
+    let nestedSlotChild = leaf;
+    for (let depth = 0; depth < 10_000; depth++) {
+      nestedSlotChild = { children: { children: [nestedSlotChild] }, key: `slot-${depth}`, slot: true };
+    }
+    rawRoot.children = { children: [nestedSlotChild] };
+    expect(renderer.getDebugVirtualNodeSnapshot(rootVirtualNode, 10, 100)).toBeUndefined();
+
+    const cyclicSlot: DebugRawVirtualNode = { key: 'cycle', slot: true };
+    cyclicSlot.children = { children: [cyclicSlot] };
+    rawRoot.children = { children: [cyclicSlot] };
+    expect(renderer.getDebugVirtualNodeSnapshot(rootVirtualNode, 10, 100)).toBeUndefined();
+  });
+
+  it('applies exact debugger scalar edits through a descriptor-preserving full ViewModel rerender', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    const label = makeNodeProtoype('label');
+
+    class EditableComponent extends TestComponent {
+      onRender() {
+        renderer.beginElement(label);
+        renderer.setAttribute('value', this.viewModel.title);
+        renderer.endElement();
+      }
+    }
+
+    const viewModel = Object.create(null);
+    Object.defineProperties(viewModel, {
+      hidden: { configurable: false, enumerable: false, value: 'preserved', writable: false },
+      title: { configurable: false, enumerable: true, value: 'before', writable: true },
+    });
+    renderer.begin();
+    renderer.beginComponent(EditableComponent, makeComponentPrototype());
+    renderer.setViewModelFull(viewModel);
+    renderer.endComponent();
+    renderer.end();
+    output.clear();
+
+    const component = renderer.getRootComponent() as EditableComponent;
+    const node = renderer.getRootVirtualNode()!;
+    const titleDescriptor = Object.getOwnPropertyDescriptor(viewModel, 'title')!;
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: titleDescriptor,
+        expectedViewModel: viewModel,
+        expectedViewModelExtensible: true,
+        newValue: 'after',
+        node,
+        propertyName: 'title',
+      }),
+    ).toBeTrue();
+
+    expect(component.viewModel === viewModel).toBeFalse();
+    expect(Object.getPrototypeOf(component.viewModel)).toBeNull();
+    expect(Object.getOwnPropertyDescriptor(component.viewModel, 'title')).toEqual({
+      configurable: false,
+      enumerable: true,
+      value: 'after',
+      writable: true,
+    });
+    expect(Object.getOwnPropertyDescriptor(component.viewModel, 'hidden')).toEqual({
+      configurable: false,
+      enumerable: false,
+      value: 'preserved',
+      writable: false,
+    });
+    expect(output.requests).toEqual([
+      {
+        entries: [
+          {
+            type: RawRenderRequestEntryType.setElementAttribute,
+            id: 1,
+            name: 'value',
+            value: 'after',
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('preserves an unusual property name and exact string on a no-op debugger edit', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    class EditableComponent extends TestComponent {}
+    const propertyName = ' line\r\n\0\uD800"[] ';
+    const value = 'first\r\nsecond\0\uD800"\\last';
+    const viewModel = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(viewModel, propertyName, {
+      configurable: true,
+      enumerable: true,
+      value,
+      writable: true,
+    });
+    renderer.begin();
+    renderer.beginComponent(EditableComponent, makeComponentPrototype());
+    renderer.setViewModelFull(viewModel);
+    renderer.endComponent();
+    renderer.end();
+
+    const component = renderer.getRootComponent() as EditableComponent;
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: Object.getOwnPropertyDescriptor(viewModel, propertyName)!,
+        expectedViewModel: viewModel,
+        expectedViewModelExtensible: true,
+        newValue: value,
+        node: renderer.getRootVirtualNode()!,
+        propertyName,
+      }),
+    ).toBeTrue();
+    expect(component.viewModel[propertyName]).toBe(value);
+    expect(Object.getOwnPropertyDescriptor(component.viewModel, propertyName)?.value).toBe(value);
+    expect(viewModel[propertyName]).toBe(value);
+  });
+
+  it('keeps custom-prototype ViewModels read only before receiver-sensitive rerendering', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    class CustomViewModel {
+      readonly #secret = 'private';
+      title = 'before';
+
+      get secret(): string {
+        return this.#secret;
+      }
+    }
+    class EditableComponent extends TestComponent {
+      onRender(): void {
+        void this.viewModel.secret;
+      }
+    }
+    const viewModel = new CustomViewModel();
+    renderer.begin();
+    renderer.beginComponent(EditableComponent, makeComponentPrototype());
+    renderer.setViewModelFull(viewModel as unknown as PropertyList);
+    renderer.endComponent();
+    renderer.end();
+    const component = renderer.getRootComponent() as EditableComponent;
+
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: Object.getOwnPropertyDescriptor(viewModel, 'title')!,
+        expectedViewModel: viewModel,
+        expectedViewModelExtensible: true,
+        newValue: 'after',
+        node: renderer.getRootVirtualNode()!,
+        propertyName: 'title',
+      }),
+    ).toBeFalse();
+    expect(component.viewModel).toBe(viewModel);
+    expect(component.viewModel.secret).toBe('private');
+    expect(component.viewModel.title).toBe('before');
+  });
+
+  it('keeps accessor-bearing ViewModels read only without invoking receiver-sensitive getters', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    const receiverSecrets = new WeakMap<object, string>();
+    const readSecret = function (this: object): string {
+      return receiverSecrets.get(this) ?? 'wrong receiver';
+    };
+    let viewModel: { readSecret(): string; title: string };
+    const readSecretGetter = jasmine.createSpy('readSecretGetter').and.callFake(function (this: object) {
+      if (this !== viewModel) throw new Error('The exact ViewModel must remain the accessor receiver.');
+      return readSecret;
+    });
+    viewModel = Object.create(null) as { readSecret(): string; title: string };
+    Object.defineProperties(viewModel, {
+      readSecret: { configurable: true, enumerable: false, get: readSecretGetter },
+      title: { configurable: true, enumerable: true, value: 'before', writable: true },
+    });
+    receiverSecrets.set(viewModel, 'private');
+    class EditableComponent extends TestComponent {
+      renderedSecret?: string;
+
+      onRender(): void {
+        this.renderedSecret = this.viewModel.readSecret();
+      }
+    }
+    renderer.begin();
+    renderer.beginComponent(EditableComponent, makeComponentPrototype());
+    renderer.setViewModelFull(viewModel);
+    renderer.endComponent();
+    renderer.end();
+    const component = renderer.getRootComponent() as EditableComponent;
+    expect(component.renderedSecret).toBe('private');
+    readSecretGetter.calls.reset();
+
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: Object.getOwnPropertyDescriptor(viewModel, 'title')!,
+        expectedViewModel: viewModel,
+        expectedViewModelExtensible: true,
+        newValue: 'after',
+        node: renderer.getRootVirtualNode()!,
+        propertyName: 'title',
+      }),
+    ).toBeFalse();
+    expect(readSecretGetter).not.toHaveBeenCalled();
+    expect(component.viewModel).toBe(viewModel);
+    expect(component.renderedSecret).toBe('private');
+    expect(component.viewModel.title).toBe('before');
+  });
+
+  it('keeps ViewModels with receiver-sensitive own methods read only', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    const receiverSecrets = new WeakMap<object, string>();
+    const viewModel = Object.create(null) as {
+      readSecret(): string;
+      title: string;
+    };
+    Object.defineProperties(viewModel, {
+      readSecret: {
+        configurable: true,
+        enumerable: false,
+        value(this: object) {
+          const secret = receiverSecrets.get(this);
+          if (secret === undefined) throw new Error('The exact ViewModel must remain the method receiver.');
+          return secret;
+        },
+        writable: true,
+      },
+      title: { configurable: true, enumerable: true, value: 'before', writable: true },
+    });
+    receiverSecrets.set(viewModel, 'private');
+    class EditableComponent extends TestComponent {
+      renderedSecret?: string;
+
+      onRender(): void {
+        this.renderedSecret = this.viewModel.readSecret();
+      }
+    }
+    renderer.begin();
+    renderer.beginComponent(EditableComponent, makeComponentPrototype());
+    renderer.setViewModelFull(viewModel);
+    renderer.endComponent();
+    renderer.end();
+    const component = renderer.getRootComponent() as EditableComponent;
+
+    expect(component.renderedSecret).toBe('private');
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: Object.getOwnPropertyDescriptor(viewModel, 'title')!,
+        expectedViewModel: viewModel,
+        expectedViewModelExtensible: true,
+        newValue: 'after',
+        node: renderer.getRootVirtualNode()!,
+        propertyName: 'title',
+      }),
+    ).toBeFalse();
+    expect(component.viewModel).toBe(viewModel);
+    expect(component.viewModel.readSecret()).toBe('private');
+    expect(component.viewModel.title).toBe('before');
+  });
+
+  it('preserves inherited Object methods without letting them mutate the source ViewModel', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    class EditableComponent extends TestComponent {}
+    const viewModel = { title: 'before' };
+    renderer.begin();
+    renderer.beginComponent(EditableComponent, makeComponentPrototype());
+    renderer.setViewModelFull(viewModel);
+    renderer.endComponent();
+    renderer.end();
+    const component = renderer.getRootComponent() as EditableComponent;
+
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: Object.getOwnPropertyDescriptor(viewModel, 'title')!,
+        expectedViewModel: viewModel,
+        expectedViewModelExtensible: true,
+        newValue: 'after',
+        node: renderer.getRootVirtualNode()!,
+        propertyName: 'title',
+      }),
+    ).toBeTrue();
+    const overlay = component.viewModel as unknown as {
+      __defineGetter__(propertyName: PropertyKey, getter: () => unknown): void;
+      __defineSetter__(propertyName: PropertyKey, setter: (value: unknown) => void): void;
+      constructor: ObjectConstructor;
+    };
+    const objectPrototype = Object.prototype as unknown as {
+      __defineGetter__: typeof overlay.__defineGetter__;
+      __defineSetter__: typeof overlay.__defineSetter__;
+    };
+    expect(overlay.constructor).toBe(Object);
+    expect(overlay.__defineGetter__).toBe(objectPrototype.__defineGetter__);
+    expect(overlay.__defineSetter__).toBe(objectPrototype.__defineSetter__);
+    expect(() => overlay.__defineGetter__('injectedGetter', () => 'value')).toThrowError(TypeError);
+    expect(() => overlay.__defineSetter__('injectedSetter', () => {})).toThrowError(TypeError);
+    expect(Object.getOwnPropertyDescriptor(viewModel, 'injectedGetter')).toBeUndefined();
+    expect(Object.getOwnPropertyDescriptor(viewModel, 'injectedSetter')).toBeUndefined();
+    expect(Object.getOwnPropertyDescriptor(overlay, 'injectedGetter')).toBeUndefined();
+    expect(Object.getOwnPropertyDescriptor(overlay, 'injectedSetter')).toBeUndefined();
+  });
+
+  it('does not report success when the debugger full-ViewModel rerender fails', () => {
+    const output = new RendererTestDelegate();
+    const uncaughtError = spyOn(output, 'onUncaughtError').and.callFake(() => {});
+    const renderer = makeRenderer(output);
+    const viewModel = Object.create(null) as { title: string };
+    Object.defineProperty(viewModel, 'title', {
+      configurable: true,
+      enumerable: true,
+      value: 'before',
+      writable: true,
+    });
+    class EditableComponent extends TestComponent {
+      onRender(): void {
+        if (this.viewModel.title === 'after') throw new Error('debug rerender failed');
+      }
+    }
+    renderer.begin();
+    renderer.beginComponent(EditableComponent, makeComponentPrototype());
+    renderer.setViewModelFull(viewModel);
+    renderer.endComponent();
+    renderer.end();
+    const component = renderer.getRootComponent() as EditableComponent;
+
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: Object.getOwnPropertyDescriptor(viewModel, 'title')!,
+        expectedViewModel: viewModel,
+        expectedViewModelExtensible: true,
+        newValue: 'after',
+        node: renderer.getRootVirtualNode()!,
+        propertyName: 'title',
+      }),
+    ).toBeFalse();
+    expect(uncaughtError).toHaveBeenCalledWith(
+      "Failed to render component 'EditableComponent'",
+      jasmine.objectContaining({ message: 'debug rerender failed' }),
+    );
+  });
+
+  it('preserves sealed and frozen ViewModels while editing only stable shadow targets', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    const componentPrototype = makeComponentPrototype();
+    class EditableComponent extends TestComponent {}
+    const render = (viewModel: PropertyList) => {
+      renderer.begin();
+      renderer.beginComponent(EditableComponent, componentPrototype);
+      renderer.setViewModelFull(viewModel);
+      renderer.endComponent();
+      renderer.end();
+    };
+
+    const sealedViewModel = Object.seal({ title: 'before' });
+    render(sealedViewModel);
+    const component = renderer.getRootComponent() as EditableComponent;
+    const node = renderer.getRootVirtualNode()!;
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: Object.getOwnPropertyDescriptor(sealedViewModel, 'title')!,
+        expectedViewModel: sealedViewModel,
+        expectedViewModelExtensible: false,
+        newValue: 'after',
+        node,
+        propertyName: 'title',
+      }),
+    ).toBeTrue();
+    expect(Object.isExtensible(component.viewModel)).toBeFalse();
+    expect(Object.getOwnPropertyDescriptor(component.viewModel, 'title')).toEqual({
+      configurable: false,
+      enumerable: true,
+      value: 'after',
+      writable: true,
+    });
+    expect(sealedViewModel.title).toBe('before');
+
+    const frozenViewModel = Object.freeze({ title: 'frozen' });
+    render(frozenViewModel);
+    const frozenComponent = renderer.getRootComponent() as EditableComponent;
+    expect(
+      renderer.editDebugComponentProperty({
+        component: frozenComponent,
+        expectedDescriptor: Object.getOwnPropertyDescriptor(frozenViewModel, 'title')!,
+        expectedViewModel: frozenViewModel,
+        expectedViewModelExtensible: false,
+        newValue: 'after freeze',
+        node: renderer.getRootVirtualNode()!,
+        propertyName: 'title',
+      }),
+    ).toBeTrue();
+    expect(frozenComponent.viewModel).not.toBe(frozenViewModel);
+    expect(Object.isExtensible(frozenComponent.viewModel)).toBeFalse();
+    expect(Object.getOwnPropertyDescriptor(frozenComponent.viewModel, 'title')).toEqual({
+      configurable: false,
+      enumerable: true,
+      value: 'after freeze',
+      writable: false,
+    });
+    expect(frozenViewModel.title).toBe('frozen');
+  });
+
+  it('retains source receiver and Proxy semantics while flattening stable shadow overlays', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    const trapCalls = { descriptor: 0, extensible: 0, get: 0, has: 0, ownKeys: 0, prototype: 0 };
+    const source = {
+      first: 'one',
+      readSecret: 'descriptor callable',
+      receiverSecret: 'descriptor secret',
+      second: 'two',
+    } as unknown as {
+      first: string;
+      readonly readSecret: () => string;
+      readonly receiverSecret: string;
+      second: string;
+    };
+    const receiverSecrets = new WeakMap<object, string>();
+    const readSecret = function (this: object): string {
+      return receiverSecrets.get(this) ?? 'wrong receiver';
+    };
+    let viewModel: typeof source;
+    viewModel = new Proxy(source, {
+      get(target, key, receiver) {
+        trapCalls.get++;
+        if (receiver !== viewModel) throw new Error('The inner Proxy received a foreign receiver.');
+        if (key === 'readSecret') return readSecret;
+        if (key === 'receiverSecret') return receiverSecrets.get(receiver) ?? 'wrong receiver';
+        return Reflect.get(target, key, receiver);
+      },
+      getOwnPropertyDescriptor(target, key) {
+        trapCalls.descriptor++;
+        return Reflect.getOwnPropertyDescriptor(target, key);
+      },
+      getPrototypeOf(target) {
+        trapCalls.prototype++;
+        return Reflect.getPrototypeOf(target);
+      },
+      has(target, key) {
+        trapCalls.has++;
+        if (key === 'second') return false;
+        if (key === 'virtual') return true;
+        return Reflect.has(target, key);
+      },
+      isExtensible(target) {
+        trapCalls.extensible++;
+        return Reflect.isExtensible(target);
+      },
+      ownKeys() {
+        trapCalls.ownKeys++;
+        return ['second', 'receiverSecret', 'readSecret', 'first'];
+      },
+    });
+    receiverSecrets.set(viewModel, 'receiver preserved');
+    class EditableComponent extends TestComponent {
+      readonly previousViewModels: unknown[] = [];
+      renderedSecret?: string;
+      renderedMethodSecret?: string;
+
+      onRender(): void {
+        this.renderedSecret = this.viewModel.receiverSecret;
+        this.renderedMethodSecret = this.viewModel.readSecret();
+      }
+
+      onViewModelUpdate(previousViewModel?: unknown): void {
+        super.onViewModelUpdate();
+        this.previousViewModels.push(previousViewModel);
+      }
+    }
+    const componentPrototype = makeComponentPrototype();
+    const render = (nextViewModel: PropertyList) => {
+      renderer.begin();
+      renderer.beginComponent(EditableComponent, componentPrototype);
+      renderer.setViewModelFull(nextViewModel);
+      renderer.endComponent();
+      renderer.end();
+    };
+    render(viewModel);
+    const component = renderer.getRootComponent() as EditableComponent;
+    const node = renderer.getRootVirtualNode()!;
+    expect(component.previousViewModels).toEqual([undefined]);
+    component.previousViewModels.length = 0;
+    component.onViewModelUpdateCount = 0;
+
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: Object.getOwnPropertyDescriptor(viewModel, 'first')!,
+        expectedViewModel: viewModel,
+        expectedViewModelExtensible: true,
+        newValue: 'ONE',
+        node,
+        propertyName: 'first',
+      }),
+    ).toBeTrue();
+    const firstOverlay = component.viewModel;
+    expect(component.previousViewModels).toEqual([viewModel]);
+    expect(component.renderedSecret).toBe('receiver preserved');
+    expect(component.renderedMethodSecret).toBe('receiver preserved');
+    const callsBeforeReadChecks = { ...trapCalls };
+    expect(firstOverlay.second).toBe('two');
+    expect(firstOverlay.receiverSecret).toBe('receiver preserved');
+    const firstBoundCallable = firstOverlay.readSecret;
+    expect(firstBoundCallable).toBe(firstOverlay.readSecret);
+    expect(firstBoundCallable()).toBe('receiver preserved');
+    expect('second' in firstOverlay).toBeTrue();
+    expect('virtual' in firstOverlay).toBeTrue();
+    expect(Reflect.ownKeys(firstOverlay)).toEqual(['second', 'receiverSecret', 'readSecret', 'first']);
+    expect(Object.getOwnPropertyDescriptor(firstOverlay, 'second')?.value).toBe('two');
+    expect(Object.getPrototypeOf(firstOverlay)).toBe(Object.prototype);
+    expect(Object.isExtensible(firstOverlay)).toBeTrue();
+    expect(trapCalls.get).toBeGreaterThan(callsBeforeReadChecks.get);
+    expect(trapCalls.has).toBeGreaterThan(callsBeforeReadChecks.has);
+    expect(trapCalls.ownKeys).toBe(callsBeforeReadChecks.ownKeys);
+    expect(trapCalls.descriptor).toBe(callsBeforeReadChecks.descriptor);
+    expect(trapCalls.prototype).toBe(callsBeforeReadChecks.prototype);
+    expect(trapCalls.extensible).toBe(callsBeforeReadChecks.extensible);
+
+    expect(Reflect.set(firstOverlay, 'second', 'mutated')).toBeFalse();
+    expect(Reflect.defineProperty(firstOverlay, 'third', { value: 'mutated' })).toBeFalse();
+    expect(Reflect.deleteProperty(firstOverlay, 'second')).toBeFalse();
+    expect(Reflect.setPrototypeOf(firstOverlay, null)).toBeFalse();
+    expect(Reflect.preventExtensions(firstOverlay)).toBeFalse();
+    expect(source.first).toBe('one');
+    expect(source.second).toBe('two');
+    expect(Object.getPrototypeOf(source)).toBe(Object.prototype);
+    expect(Object.isExtensible(source)).toBeTrue();
+
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: Object.getOwnPropertyDescriptor(firstOverlay, 'second')!,
+        expectedViewModel: firstOverlay,
+        expectedViewModelExtensible: true,
+        newValue: 'TWO',
+        node,
+        propertyName: 'second',
+      }),
+    ).toBeTrue();
+    expect(component.viewModel).not.toBe(firstOverlay);
+    expect(component.viewModel.first).toBe('ONE');
+    expect(component.viewModel.second).toBe('TWO');
+    expect(component.viewModel.receiverSecret).toBe('receiver preserved');
+    expect(component.viewModel.readSecret()).toBe('receiver preserved');
+    expect(firstOverlay.first).toBe('ONE');
+    expect(firstOverlay.second).toBe('two');
+    expect(source.first).toBe('one');
+    expect(source.second).toBe('two');
+    expect(component.onViewModelUpdateCount).toBe(2);
+    expect(component.previousViewModels).toEqual([viewModel, firstOverlay]);
+
+    const parentReplacement = {
+      first: 'parent',
+      readSecret: () => 'parent',
+      receiverSecret: 'parent',
+      second: 'replacement',
+    };
+    const secondOverlay = component.viewModel;
+    Object.freeze(viewModel);
+    const ownKeyCallsAfterSourceFreeze = trapCalls.ownKeys;
+    expect(Object.isExtensible(firstOverlay)).toBeTrue();
+    expect(Object.getPrototypeOf(firstOverlay)).toBe(Object.prototype);
+    expect(Object.getOwnPropertyDescriptor(firstOverlay, 'first')).toEqual({
+      configurable: true,
+      enumerable: true,
+      value: 'ONE',
+      writable: true,
+    });
+    expect(Reflect.ownKeys(firstOverlay)).toEqual(['second', 'receiverSecret', 'readSecret', 'first']);
+    expect(Object.getOwnPropertyDescriptor(secondOverlay, 'second')?.value).toBe('TWO');
+    expect(trapCalls.ownKeys).toBe(ownKeyCallsAfterSourceFreeze);
+
+    render(parentReplacement);
+    expect(renderer.getRootComponent()).toBe(component);
+    expect(component.viewModel).toBe(parentReplacement);
+    expect(component.previousViewModels).toEqual([viewModel, firstOverlay, secondOverlay]);
+  });
+
+  it('rejects an edit when a rerender observer changes ViewModel extensibility', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    class EditableComponent extends TestComponent {}
+    const viewModel = { title: 'before' };
+    renderer.begin();
+    renderer.beginComponent(EditableComponent, makeComponentPrototype());
+    renderer.setViewModelFull(viewModel);
+    renderer.endComponent();
+    renderer.end();
+    const component = renderer.getRootComponent() as EditableComponent;
+    const node = renderer.getRootVirtualNode()!;
+    renderer.addObserver({
+      onComponentWillRerender() {
+        Object.preventExtensions(viewModel);
+      },
+    });
+
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: Object.getOwnPropertyDescriptor(viewModel, 'title')!,
+        expectedViewModel: viewModel,
+        expectedViewModelExtensible: true,
+        newValue: 'debugger',
+        node,
+        propertyName: 'title',
+      }),
+    ).toBeFalse();
+    expect(Object.isExtensible(viewModel)).toBeFalse();
+    expect(component.viewModel).toBe(viewModel);
+    expect(component.viewModel.title).toBe('before');
+  });
+
+  it('rejects stale, forbidden, accessor, and non-finite debugger property edits', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    class EditableComponent extends TestComponent {}
+    const viewModel = Object.defineProperties(
+      {},
+      {
+        accessor: { enumerable: true, get: () => 'secret' },
+        count: { configurable: true, enumerable: true, value: 1, writable: true },
+      },
+    );
+    renderer.begin();
+    renderer.beginComponent(EditableComponent, makeComponentPrototype());
+    renderer.setViewModelFull(viewModel);
+    renderer.endComponent();
+    renderer.end();
+    const component = renderer.getRootComponent() as EditableComponent;
+    const node = renderer.getRootVirtualNode()!;
+    const countDescriptor = Object.getOwnPropertyDescriptor(viewModel, 'count')!;
+
+    for (const [propertyName, expectedDescriptor, newValue] of [
+      ['children', countDescriptor, 2],
+      ['constructor', countDescriptor, 2],
+      ['prototype', countDescriptor, 2],
+      ['__proto__', countDescriptor, 2],
+      ['accessor', Object.getOwnPropertyDescriptor(viewModel, 'accessor')!, 'changed'],
+      ['count', countDescriptor, Number.NaN],
+      ['count', countDescriptor, Number.POSITIVE_INFINITY],
+      ['count', countDescriptor, -0],
+      ['count', countDescriptor, '2'],
+    ] as const) {
+      expect(
+        renderer.editDebugComponentProperty({
+          component,
+          expectedDescriptor,
+          expectedViewModel: viewModel,
+          expectedViewModelExtensible: true,
+          newValue,
+          node,
+          propertyName,
+        }),
+      )
+        .withContext(propertyName)
+        .toBeFalse();
+    }
+    Object.defineProperty(viewModel, 'count', { ...countDescriptor, value: 3 });
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: countDescriptor,
+        expectedViewModel: viewModel,
+        expectedViewModelExtensible: true,
+        newValue: 2,
+        node,
+        propertyName: 'count',
+      }),
+    ).toBeFalse();
+  });
+
+  it('rejects a property edit when Proxy reflection replaces the current ViewModel', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    const componentPrototype = makeComponentPrototype();
+    class EditableComponent extends TestComponent {}
+    const replacementViewModel = { count: 9 };
+    let replaceDuringReflection = false;
+    let replacementTriggered = false;
+
+    const render = (viewModel: PropertyList) => {
+      renderer.begin();
+      renderer.beginComponent(EditableComponent, componentPrototype);
+      renderer.setViewModelFull(viewModel);
+      renderer.endComponent();
+      renderer.end();
+    };
+    const viewModel = new Proxy(
+      Object.defineProperty({}, 'count', {
+        configurable: true,
+        enumerable: true,
+        value: 1,
+        writable: true,
+      }),
+      {
+        ownKeys(target) {
+          if (replaceDuringReflection) {
+            replaceDuringReflection = false;
+            replacementTriggered = true;
+            render(replacementViewModel);
+          }
+          return Reflect.ownKeys(target);
+        },
+      },
+    );
+    render(viewModel);
+    const component = renderer.getRootComponent() as EditableComponent;
+    const node = renderer.getRootVirtualNode()!;
+    const countDescriptor = Object.getOwnPropertyDescriptor(viewModel, 'count')!;
+    replaceDuringReflection = true;
+
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: countDescriptor,
+        expectedViewModel: viewModel,
+        expectedViewModelExtensible: true,
+        newValue: 2,
+        node,
+        propertyName: 'count',
+      }),
+    ).toBeFalse();
+    expect(replacementTriggered).toBeTrue();
+    expect(component.viewModel).toBe(replacementViewModel);
+    expect(component.viewModel.count).toBe(9);
+  });
+
+  it('fails closed when Proxy reflection mutates an unrelated ViewModel descriptor', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    class EditableComponent extends TestComponent {}
+    const target = { other: 'before', title: 'before' };
+    let armMutation = false;
+    let reflectingDescriptors = false;
+    let mutationTriggered = false;
+    const viewModel = new Proxy(target, {
+      getOwnPropertyDescriptor(currentTarget, propertyName) {
+        if (reflectingDescriptors && propertyName === 'title' && !mutationTriggered) {
+          mutationTriggered = true;
+          currentTarget.other = 'newer';
+        }
+        return Reflect.getOwnPropertyDescriptor(currentTarget, propertyName);
+      },
+      ownKeys(currentTarget) {
+        reflectingDescriptors = armMutation;
+        return Reflect.ownKeys(currentTarget);
+      },
+    });
+    renderer.begin();
+    renderer.beginComponent(EditableComponent, makeComponentPrototype());
+    renderer.setViewModelFull(viewModel);
+    renderer.endComponent();
+    renderer.end();
+    const component = renderer.getRootComponent() as EditableComponent;
+    const node = renderer.getRootVirtualNode()!;
+    const titleDescriptor = Object.getOwnPropertyDescriptor(target, 'title')!;
+    armMutation = true;
+
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: titleDescriptor,
+        expectedViewModel: viewModel,
+        expectedViewModelExtensible: true,
+        newValue: 'debugger',
+        node,
+        propertyName: 'title',
+      }),
+    ).toBeFalse();
+    expect(mutationTriggered).toBeTrue();
+    expect(component.viewModel === viewModel).toBeTrue();
+    expect(target.other).toBe('newer');
+    expect(target.title).toBe('before');
+  });
+
+  it('fails closed when a Proxy getPrototypeOf trap mutates an unrelated ViewModel descriptor', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    class EditableComponent extends TestComponent {}
+    const target = { other: 'before', title: 'before' };
+    let armMutation = false;
+    let mutationTriggered = false;
+    const viewModel = new Proxy(target, {
+      getPrototypeOf(currentTarget) {
+        if (armMutation && !mutationTriggered) {
+          mutationTriggered = true;
+          currentTarget.other = 'newer';
+        }
+        return Reflect.getPrototypeOf(currentTarget);
+      },
+    });
+    renderer.begin();
+    renderer.beginComponent(EditableComponent, makeComponentPrototype());
+    renderer.setViewModelFull(viewModel);
+    renderer.endComponent();
+    renderer.end();
+    const component = renderer.getRootComponent() as EditableComponent;
+    const node = renderer.getRootVirtualNode()!;
+    const titleDescriptor = Object.getOwnPropertyDescriptor(target, 'title')!;
+    armMutation = true;
+
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: titleDescriptor,
+        expectedViewModel: viewModel,
+        expectedViewModelExtensible: true,
+        newValue: 'debugger',
+        node,
+        propertyName: 'title',
+      }),
+    ).toBeFalse();
+    expect(mutationTriggered).toBeTrue();
+    expect(component.viewModel === viewModel).toBeTrue();
+    expect(target.other).toBe('newer');
+    expect(target.title).toBe('before');
+  });
+
+  it('rejects inherited properties even when the descriptor map prototype is polluted', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    class EditableComponent extends TestComponent {}
+    const viewModel = { count: 1 };
+    renderer.begin();
+    renderer.beginComponent(EditableComponent, makeComponentPrototype());
+    renderer.setViewModelFull(viewModel);
+    renderer.endComponent();
+    renderer.end();
+    const component = renderer.getRootComponent() as EditableComponent;
+    const node = renderer.getRootVirtualNode()!;
+    const pollutedPropertyName = '__valdiDebuggerPollutedDescriptor';
+    const expectedDescriptor = {
+      configurable: true,
+      enumerable: true,
+      value: 1,
+      writable: true,
+    };
+    Object.defineProperty(Object.prototype, pollutedPropertyName, {
+      configurable: true,
+      enumerable: false,
+      value: expectedDescriptor,
+      writable: true,
+    });
+    try {
+      expect(
+        renderer.editDebugComponentProperty({
+          component,
+          expectedDescriptor,
+          expectedViewModel: viewModel,
+          expectedViewModelExtensible: true,
+          newValue: 2,
+          node,
+          propertyName: pollutedPropertyName,
+        }),
+      ).toBeFalse();
+      expect(Object.getOwnPropertyDescriptor(component.viewModel, pollutedPropertyName)).toBeUndefined();
+    } finally {
+      delete (Object.prototype as Record<string, unknown>)[pollutedPropertyName];
+    }
+  });
+
+  it('preserves a newer ViewModel installed reentrantly by a rerender observer', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    const componentPrototype = makeComponentPrototype();
+    class EditableComponent extends TestComponent {}
+    const viewModel = { title: 'before' };
+    const replacementViewModel = { title: 'newer' };
+    const render = (nextViewModel: PropertyList) => {
+      renderer.begin();
+      renderer.beginComponent(EditableComponent, componentPrototype);
+      renderer.setViewModelFull(nextViewModel);
+      renderer.endComponent();
+      renderer.end();
+    };
+    render(viewModel);
+    const component = renderer.getRootComponent() as EditableComponent;
+    const node = renderer.getRootVirtualNode()!;
+    const titleDescriptor = Object.getOwnPropertyDescriptor(viewModel, 'title')!;
+    let observerCalls = 0;
+    renderer.addObserver({
+      onComponentWillRerender() {
+        observerCalls++;
+        render(replacementViewModel);
+      },
+    });
+
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: titleDescriptor,
+        expectedViewModel: viewModel,
+        expectedViewModelExtensible: true,
+        newValue: 'debugger',
+        node,
+        propertyName: 'title',
+      }),
+    ).toBeFalse();
+    expect(observerCalls).toBe(1);
+    expect(component.viewModel).toBe(replacementViewModel);
+    expect(component.viewModel.title).toBe('newer');
+  });
+
+  it('clones after rerender observers so an in-place update to another property is preserved', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    class EditableComponent extends TestComponent {}
+    const viewModel = { other: 'before', title: 'before' };
+    renderer.begin();
+    renderer.beginComponent(EditableComponent, makeComponentPrototype());
+    renderer.setViewModelFull(viewModel);
+    renderer.endComponent();
+    renderer.end();
+    const component = renderer.getRootComponent() as EditableComponent;
+    const node = renderer.getRootVirtualNode()!;
+    const titleDescriptor = Object.getOwnPropertyDescriptor(viewModel, 'title')!;
+    renderer.addObserver({
+      onComponentWillRerender() {
+        viewModel.other = 'newer';
+      },
+    });
+
+    expect(
+      renderer.editDebugComponentProperty({
+        component,
+        expectedDescriptor: titleDescriptor,
+        expectedViewModel: viewModel,
+        expectedViewModelExtensible: true,
+        newValue: 'debugger',
+        node,
+        propertyName: 'title',
+      }),
+    ).toBeTrue();
+    expect(component.viewModel).not.toBe(viewModel);
+    expect(component.viewModel.other).toBe('newer');
+    expect(component.viewModel.title).toBe('debugger');
   });
 
   it('can avoid re-render slotted components', () => {

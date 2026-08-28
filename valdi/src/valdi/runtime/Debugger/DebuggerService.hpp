@@ -18,6 +18,7 @@
 
 #include "utils/platform/BuildOptions.hpp"
 
+#include <optional>
 #include <vector>
 
 namespace snap::valdi {
@@ -35,6 +36,17 @@ class DebuggerService;
 class Runtime;
 
 class IDebuggerServiceListener;
+
+enum class DebuggerPortEnvironmentError {
+    Malformed,
+    OutOfRange,
+};
+
+struct DebuggerPortResolution {
+    uint32_t port;
+    std::optional<uint32_t> rejectedRequestedPort;
+    std::optional<DebuggerPortEnvironmentError> environmentError;
+};
 
 class DebuggerService : public SharedPtrRefCountable,
                         protected ITCPServerListener,
@@ -67,9 +79,12 @@ public:
     StringBox getApplicationId() const;
     void setApplicationId(const StringBox& applicationId);
 
+    uint32_t getConfiguredPort() const;
     uint16_t getBoundPort();
 
     static uint32_t resolveDebuggerPort(bool isStandalone);
+    static DebuggerPortResolution resolveDebuggerPortWithDiagnostics(bool isStandalone,
+                                                                     std::optional<uint32_t> requestedPort);
 
 protected:
     // TCPServerListener

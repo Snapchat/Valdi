@@ -14,6 +14,27 @@ The `persistence` module provides a simple key-value store that persists data ac
 - LRU cache behavior with maximum weight limits
 - Batch writes for performance
 
+### Web debugger inspection
+
+The web binding exposes a read-only, bounded snapshot for attached developer
+tools. It inspects the existing in-memory stores and the established
+`valdi.PersistentStore.<name>` browser records without hydrating, rewriting, or
+removing them. Store names, entry keys, values, serialized records, store and
+entry counts, browser-key scans, and the aggregate UTF-16/UTF-8 payload are all
+bounded. Truncation and corruption are reported as snapshot metadata so an
+inspector cannot wedge application persistence or perform unbounded work.
+When `PersistentStore` is loaded in a debug runtime, this snapshot is published
+to the generic debugger Data panel as the read-only `persistent-store`
+provider. The adapter applies a smaller 43 KiB transport projection and reports
+the exact known store and entry omissions. Native bindings that do not expose
+the snapshot callback advertise the provider as unavailable.
+
+The snapshot is intentionally an inspector, not a secret scanner: entry keys
+and values are returned unredacted and can contain credentials, personal data,
+or other sensitive application state. Only consume it from an explicitly
+debug-enabled runtime over an authenticated local debugger transport, and do
+not publish or attach snapshots without reviewing their contents.
+
 ## Installation
 
 Add the `persistence` module to your `BUILD.bazel` dependencies:
@@ -435,4 +456,3 @@ The `persistence` module works on:
 - **Encryption has overhead** - only use for sensitive data
 - **LRU caching helps** - use maxWeight to limit storage usage
 - **TTL prevents bloat** - set reasonable expiration times
-

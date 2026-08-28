@@ -598,6 +598,7 @@ kt_jvm_test(
         "@android_mvn//:org_junit_vintage_junit_vintage_engine",
     ],
     deps = [
+        ":valdi_android_support",
         ":valdi_android_test_support",
         ":valdi_java",
         "//src/valdi_modules/src/valdi/valdi_test:valdi_test_kt",

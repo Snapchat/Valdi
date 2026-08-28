@@ -6,6 +6,54 @@ To help you debug performance issues, Valdi provides a cross-platform tracing AP
 
 ### Recording traces
 
+#### Using the Valdi Debugger
+
+With a hot reloader connected to the application, run `valdi debugger`, attach
+to a native target, and open **Performance**. The **UI Performance** card can
+start and stop a renderer trace or capture a bounded interval of up to 15
+seconds. Enable **Renderer events** to include component `onRender()` spans and
+ViewModel-change triggers. Exported captures use Chrome Trace JSON and can be
+opened in [Perfetto UI](https://ui.perfetto.dev/). Native trace recording is
+process-wide; the selected context is recorded as the capture target used to
+reach the runtime, not as the origin of each trace event.
+
+To keep debugger responses bounded before serialization, the native recorder
+retains at most 10,000 events, 2 KiB per trace name, and 1 MiB of aggregate
+trace-name data per active recording window. Capture results report how many
+events were dropped by those limits. Automatically stopped and recently
+completed results remain available for retry for one minute before they are
+discarded.
+
+The debugger proxies these operations through `/api/performance/trace/status`,
+`start`, `stop`, and `capture`; the application keeps ownership of the recorder,
+so captures continue to work across the loopback debugger HTTP connection.
+
+#### Web preview traces
+
+When `valdi debugger` is attached to an exact loopback web preview, the
+integrated DevTools **Performance** panel can sample navigation, resource, heap,
+and main-thread metrics. It can also record one global Chromium trace at a
+time. The timeline filters are **Valdi**, **Browser**, and **All**. Enabling
+Valdi renderer events reloads the inspected page with the explicit tracing
+query parameters; browser events remain available without that reload.
+
+Web capture operations use the separate
+`/api/devtools/performance/trace/status`, `start`, `stop`, `capture`, and
+`enable` routes. They do not replace the daemon-backed `/api/performance/*`
+routes described above. Every web request is bound to the exact inspected
+`sessionId`, `inspectedUrl`, and per-tab `targetNonce`; a changed or incomplete
+identity fails closed.
+
+One-shot web captures run for their requested duration from 100 milliseconds
+through 15 seconds. Manually started recordings automatically stop after a
+15-second watchdog. Normalization happens as CDP events arrive, retaining at
+most 10,000 events with trace names no larger than
+2 KiB. The complete JSON response is limited to 4 MiB, and an automatically
+completed result remains retrievable for one minute. Responses contain the
+bounded normalized trace list and export metadata, not a second raw or
+Perfetto event list. The panel constructs Chrome Trace JSON only when you
+choose **Export trace**.
+
 > [!NOTE]
 > Please make sure to add `//src/valdi_modules/src/valdi/benchmarking` to the `deps` attribute of the `valdi_module()` call in your module's `BUILD.bazel`.
 
@@ -91,4 +139,3 @@ The Valdi runtime traces some default important events that happens during the l
 - `Valdi.setUserDefinedViewport`: The framework is reacting to a scroll change.
 - `Valdi.updateVisibility`: The framework is resolving the viewports for the nodes. It is finding out which nodes are visible and which nodes are not visible on the screen.
 - `Valdi.calculateLayout`: The framework is calculating the frames (rectangles) for the nodes. This can happen because nodes have been inserted/removed, because a layout attribute has changed (like `padding`), or because the available space for the root component has changed (for instance if the window has been resized). This can be an expensive operation. Because of this, you should avoid triggering changes in the elements that will cause a layout pass to happen when scrolling. If you need to move elements or show/hide them when scrolling, prefer using the `translationX`/`translationY` attributes or `opacity` which are not layout attributes and don't trigger layout passes when they change.
-

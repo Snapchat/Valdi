@@ -60,6 +60,21 @@
     (*_cppInstance)(outParameters.data(), outParameters.size());
 }
 
+- (id)performWithParametersAndReturnValue:(NSArray<id> *)parameters
+{
+    Valdi::SmallVector<Valdi::Value, 8> outParameters;
+    for (id parameter in parameters) {
+        outParameters.emplace_back(ValueFromNSObject(parameter));
+    }
+
+    auto result = _cppInstance->call(
+        Valdi::ValueFunctionFlagsCallSync, outParameters.data(), outParameters.size());
+    if (!result) {
+        return nil;
+    }
+    return NSObjectFromValue(result.value());
+}
+
 - (void *)cppInstance
 {
     return _cppInstance.get();
