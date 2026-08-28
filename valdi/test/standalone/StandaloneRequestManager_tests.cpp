@@ -165,7 +165,7 @@ TEST_P(StandaloneRequestManagerFixture, httpClientRejectsItsPromiseOnFailure) {
 
     auto outcome = evaluate("return global.__outcome;");
     ASSERT_TRUE(outcome) << outcome.description();
-    EXPECT_EQ("rejected: No mocked response for given request", outcome.value().toString())
+    EXPECT_EQ("rejected: Error: No mocked response for given request", outcome.value().toString())
         << "the promise was left pending, which is what hangs a CLI: beginKeepAlive holds the runtime "
            "open waiting for a settlement that never comes";
 }
