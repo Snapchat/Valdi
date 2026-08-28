@@ -781,6 +781,46 @@ TEST(CurlHTTPRequestManagerTests, overridesACurlDefaultHeader) {
         << requests[0];
 }
 
+// libcurl sends no User-Agent unless told to, where NSURLSession and HttpURLConnection both send the
+// transport's own. A request without one is refused outright by a fair number of CDNs.
+TEST(CurlHTTPRequestManagerTests, sendsAUserAgentNamingTheTransport) {
+    ScriptedServer server({okResponse()});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(makeGet(server.url("/").c_str()), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 1u);
+    EXPECT_NE(requests[0].find("User-Agent: curl/"), std::string::npos)
+        << "no User-Agent reached the wire, so a CDN that requires one refuses this. Request was:\n"
+        << requests[0];
+}
+
+TEST(CurlHTTPRequestManagerTests, overridesTheDefaultUserAgent) {
+    ScriptedServer server({okResponse()});
+
+    auto manager = makeCurlHTTPRequestManager();
+    auto completion = std::make_shared<RecordingCompletion>();
+    manager->performRequest(
+        makeGetWithHeaders(server.url("/").c_str(), makeHeaders({{"User-Agent", "Atolla/1.0"}})), completion);
+
+    ASSERT_TRUE(completion->waitForCompletion(std::chrono::seconds(10)));
+    ASSERT_EQ(completion->statusCode(), 200);
+
+    auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 1u);
+    EXPECT_NE(requests[0].find("User-Agent: Atolla/1.0\r\n"), std::string::npos)
+        << "an app naming itself was ignored. Request was:\n"
+        << requests[0];
+    EXPECT_EQ(requests[0].find("User-Agent: curl/"), std::string::npos)
+        << "the default went out alongside the caller's, so the server sees two. Request was:\n"
+        << requests[0];
+}
+
 TEST(CurlHTTPRequestManagerTests, coercesNonStringHeaderValues) {
     ScriptedServer server({okResponse()});
 

@@ -66,6 +66,14 @@ CaStore curlsOwnCaStore() {
     return store;
 }
 
+// Neither the iOS nor the Android manager sets a User-Agent: NSURLSession and HttpURLConnection each
+// send the transport's own, and Valdi never names itself. libcurl is the exception in sending none at
+// all, which a fair number of CDNs answer with a 403, so it names itself the way the curl tool does.
+const char* defaultUserAgent() {
+    static const std::string agent = std::string("curl/") + curl_version_info(CURLVERSION_NOW)->version;
+    return agent.c_str();
+}
+
 // Always a map, never null: HTTPTypes.d.ts declares headers as StringMap<string>, and iOS, Android
 // and web all hand back {} when a response carried none.
 Value emptyHeaderMap() {
@@ -495,6 +503,9 @@ private:
         } else {
             curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, method.c_str());
         }
+
+        // Set before the caller's headers so that one of their own still replaces it.
+        curl_easy_setopt(easy, CURLOPT_USERAGENT, defaultUserAgent());
 
         for (const auto& key : request.headers.sortedMapKeys()) {
             // The transport's to set, not the caller's: curl frames the body itself, and asking for
