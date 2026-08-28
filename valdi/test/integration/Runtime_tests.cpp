@@ -6991,6 +6991,39 @@ TEST_P(RuntimeFixture, pushModuleToMarshallerStillErrorsForMissingModuleWhenRunt
         << "A genuine resolution failure must not be labeled as a teardown skip: " << error.toString();
 }
 
+// Cooperative termination mode (the default) must DRAIN: a task dispatched while the runtime is
+// disposed but its context is still alive still runs, rather than being silently skipped (a skip
+// drops an in-flight bridge call and crashes its caller on the undefined result). Aggressive mode
+// skips it (the pre-fix host-teardown behavior). Uses setDisposedForTesting to hold the
+// disposed-but-context-alive window deterministically without running teardown.
+TEST_P(RuntimeFixture, cooperativeTeardownDrainsInFlightWorkAggressiveSkipsIt) {
+    auto* javaScriptRuntime = wrapper.runtime->getJavaScriptRuntime();
+
+    // Cooperative (default): disposed-but-context-alive work runs.
+    {
+        bool ran = false;
+        javaScriptRuntime->dispatchSynchronouslyOnJsThread([&](auto&) {
+            javaScriptRuntime->setDisposedForTesting(true);
+            javaScriptRuntime->dispatchSynchronouslyOnJsThread([&](auto&) { ran = true; });
+            javaScriptRuntime->setDisposedForTesting(false);
+        });
+        EXPECT_TRUE(ran) << "cooperative mode must drain in-flight work during the teardown window";
+    }
+
+    // Aggressive: disposed work is skipped (restore cooperative afterward for clean fixture teardown).
+    javaScriptRuntime->setCooperativeTermination(false);
+    {
+        bool ran = false;
+        javaScriptRuntime->dispatchSynchronouslyOnJsThread([&](auto&) {
+            javaScriptRuntime->setDisposedForTesting(true);
+            javaScriptRuntime->dispatchSynchronouslyOnJsThread([&](auto&) { ran = true; });
+            javaScriptRuntime->setDisposedForTesting(false);
+        });
+        EXPECT_FALSE(ran) << "aggressive mode skips disposed work";
+    }
+    javaScriptRuntime->setCooperativeTermination(true);
+}
+
 // Verifies that a sync JS call from the main thread triggers the assertion when the module has
 // async_strict_mode and the function is not annotated with @AllowSyncCall. Uses a dedicated
 // test_async_strict module (async_strict_mode=True) so the main test module can stay non-strict.

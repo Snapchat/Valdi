@@ -15,7 +15,10 @@ JavaScriptWorker::JavaScriptWorker(Ref<JavaScriptRuntime> hostRuntime,
 
 JavaScriptWorker::~JavaScriptWorker() {
     VALDI_INFO(_workerRuntime->getLogger(), "Destroying JS Worker with URL: {}", _url);
-    _workerRuntime->requestExecutionTermination();
+    // Cooperative mode drains the worker instead of forcing execution termination; see terminate().
+    if (!_workerRuntime->cooperativeTermination()) {
+        _workerRuntime->requestExecutionTermination();
+    }
     _workerRuntime->requestFullTeardown();
 }
 
@@ -75,7 +78,13 @@ void JavaScriptWorker::terminate() {
         _hostOnMessage = nullptr;
     }
 
-    _workerRuntime->requestExecutionTermination();
+    // Aggressive termination forces the JS engine to abort mid-execution (even a frozen worker), which
+    // tears down in-flight bridge calls and causes teardown-race side effects. In cooperative mode we
+    // skip the forced abort: the worker drains its current work on the serial JS queue and the
+    // async-queued teardown then runs cleanly after it (matching self.close()).
+    if (!_workerRuntime->cooperativeTermination()) {
+        _workerRuntime->requestExecutionTermination();
+    }
     _workerRuntime->requestFullTeardown();
 }
 

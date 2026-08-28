@@ -753,6 +753,11 @@ void Runtime::setRuntimeTweaks(const Ref<ValdiRuntimeTweaks>& runtimeTweaks) {
         // during teardown, when the listener (this Runtime) is no longer reachable.
         _javaScriptRuntime->setResolutionTeardownDegradeEnabled(
             runtimeTweaks != nullptr ? runtimeTweaks->enableResolutionTeardownDegrade() : true);
+        // Same for the termination mode. This reaches the host runtime; worker runtimes pull it
+        // themselves in JavaScriptRuntime::postInit (they inherit the host's listener, not this
+        // pushed tweak), so a host override reaches both.
+        _javaScriptRuntime->setCooperativeTermination(
+            runtimeTweaks != nullptr ? runtimeTweaks->useCooperativeTermination() : true);
     }
 }
 

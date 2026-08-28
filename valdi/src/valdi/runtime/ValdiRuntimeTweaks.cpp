@@ -118,6 +118,12 @@ bool ValdiRuntimeTweaks::enableResolutionTeardownDegrade() const {
     return _tweakValueProvider->getBool(configKey, true);
 }
 
+bool ValdiRuntimeTweaks::useCooperativeTermination() const {
+    auto configKey =
+        StringCache::getGlobal().makeStringFromLiteral(std::string_view("VALDI_USE_COOPERATIVE_TERMINATION"));
+    return _tweakValueProvider->getBool(configKey, true);
+}
+
 bool ValdiRuntimeTweaks::applyManagedChildFramePadding() const {
     auto configKey =
         StringCache::getGlobal().makeStringFromLiteral(std::string_view("VALDI_MANAGES_CHILD_FRAME_PADDING_ENABLED"));

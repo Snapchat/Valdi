@@ -344,6 +344,11 @@ void JavaScriptRuntime::postInit() {
         auto runtimeTweaks = listener->getRuntimeTweaks();
         if (runtimeTweaks != nullptr) {
             _dispatchQueue->setDisableSyncCallsInCallingThread(runtimeTweaks->disableSyncCallsInCallingThread());
+            // Pull the termination mode here too: worker runtimes are created fresh (runtimeCreateWorker)
+            // and only inherit the host's listener, not its pushed tweaks, so Runtime::setRuntimeTweaks
+            // (which targets the host runtime) never reaches them. Reading it at postInit — after the
+            // worker's listener is set — lets a worker honor an aggressive-termination override.
+            setCooperativeTermination(runtimeTweaks->useCooperativeTermination());
         }
     }
 }
@@ -4058,7 +4063,16 @@ DispatchFunction JavaScriptRuntime::makeJsThreadDispatchFunction(Ref<Context>&& 
                                                                  JavaScriptThreadTask&& jsTask) {
     SC_ASSERT(ownerContext != nullptr);
     return [this, retainedContext = RetainedContext(std::move(ownerContext)), jsTask = std::move(jsTask)]() {
-        if (_isDisposed || _javaScriptContext == nullptr || !_running) {
+        if (_javaScriptContext == nullptr || !_running) {
+            return;
+        }
+        // Aggressive teardown flips _isDisposed from another thread and only queues teardownOnJsThread,
+        // so skipping disposed work here can silently drop an in-flight bridge call and crash its caller
+        // on the undefined result. Cooperative mode instead drains: in-flight and already-queued work
+        // runs (the context is still alive, since teardownOnJsThread is serialized after it on this
+        // serial queue), then teardown destroys the context and later calls are refused by the check
+        // above.
+        if (_isDisposed && !_cooperativeTermination) {
             return;
         }
 

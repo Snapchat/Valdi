@@ -223,6 +223,22 @@ public:
         _resolutionTeardownDegradeEnabled = enabled;
     }
 
+    // Kept in sync with VALDI_USE_COOPERATIVE_TERMINATION by Runtime::setRuntimeTweaks. Read by
+    // JavaScriptWorker::terminate()/dtor (skip forced execution termination) and by
+    // makeJsThreadDispatchFunction (drain in-flight/queued work during teardown instead of skipping it).
+    void setCooperativeTermination(bool enabled) {
+        _cooperativeTermination = enabled;
+    }
+    bool cooperativeTermination() const {
+        return _cooperativeTermination;
+    }
+
+    // Test-only: enter/leave the disposed-but-context-alive teardown window without running teardown,
+    // so the dispatch guard's cooperative-drain vs aggressive-skip behavior can be tested deterministically.
+    void setDisposedForTesting(bool disposed) {
+        _isDisposed = disposed;
+    }
+
     // True when ANR diagnostics are on and the caller is on this runtime's JS thread. Guards the
     // native-call activity writes so worker threads never touch the JS thread's slot.
     bool anrDiagnosticsActiveOnJsThread();
@@ -428,6 +444,9 @@ private:
     // to gate the teardown degrade; held here (not fetched via the listener) so it survives teardown.
     // Defaults to on.
     std::atomic<bool> _resolutionTeardownDegradeEnabled = true;
+    // Mirror of VALDI_USE_COOPERATIVE_TERMINATION (see setCooperativeTermination). Held here
+    // so JavaScriptWorker can read it independent of the listener. Defaults to cooperative.
+    std::atomic<bool> _cooperativeTermination = true;
     std::atomic<ContextId> _lastDispatchedContextId;
     // ANR attribution diagnostics, gated by the VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS COF key (key
     // name kept from the earlier module-load diagnostics for config continuity). The mutex guards

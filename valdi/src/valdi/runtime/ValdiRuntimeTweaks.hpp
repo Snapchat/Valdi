@@ -38,6 +38,11 @@ public:
     // kResolutionSkippedDuringTeardownErrorCode so a marshalling boundary can degrade to a no-op
     // instead of raising an uncatchable error. Set false to restore the raising behavior.
     bool enableResolutionTeardownDegrade() const;
+    // When true (default), teardown drains cooperatively: worker terminate() skips forced execution
+    // termination, and a disposed runtime lets in-flight/queued JS-thread work finish before teardown
+    // (avoids the silent-skip that crashes an in-flight bridge call). Set false for aggressive
+    // termination that stops even frozen JS, at the cost of teardown-race side effects.
+    bool useCooperativeTermination() const;
     bool applyManagedChildFramePadding() const;
     bool disableHitTestSyncDeadline() const;
     // True when VALDI_MAX_VIEW_OPERATIONS_PROCESSING_TIME > 0 (throttling enabled). Gates top-down move order in TS.
