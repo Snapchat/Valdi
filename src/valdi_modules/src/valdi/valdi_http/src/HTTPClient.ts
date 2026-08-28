@@ -46,7 +46,9 @@ export class HTTPClient implements IHTTPClient {
           if (response) {
             resolve(response);
           } else {
-            reject(error);
+            // A request manager reports its failure as text, so wrap it: callers should not have to
+            // ask whether the rejection they caught is a string or an Error.
+            reject(error instanceof Error ? error : new Error(String(error)));
           }
         });
       } catch (err: unknown) {

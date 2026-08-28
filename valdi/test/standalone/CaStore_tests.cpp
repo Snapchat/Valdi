@@ -121,9 +121,9 @@ TEST_F(CaStoreFixture, findsNothingWhenNothingIsAskedFor) {
     EXPECT_TRUE(store.empty());
 }
 
-// The @curl dep compiles in no trust store and is built without CURL_CA_FALLBACK, so on Linux
-// whatever this finds is the only thing standing between BoringSSL and rejecting every certificate.
-// Debian and Ubuntu are the common case and neither is served by the RHEL or openSUSE paths.
+// @curl compiles in Debian's bundle path on every Linux, so on RHEL, Fedora or openSUSE what this
+// finds is the only thing standing between BoringSSL and rejecting every certificate. All four are
+// listed because no one of them serves the others.
 TEST_F(CaStoreFixture, namesTheTrustStoreOfTheCommonDistributions) {
     // Not a filesystem probe: this asserts the list, since the machine running the test has at most
     // one of these and the point is that all of them are covered.
@@ -144,6 +144,32 @@ TEST_F(CaStoreFixture, namesTheTrustStoreOfTheCommonDistributions) {
     }
 
     GTEST_SKIP() << "no distribution bundle on this machine to resolve";
+}
+
+// The reason the resolution checks existence rather than trusting what curl reports. A build on RHEL
+// or Fedora carries Debian's bundle path, and taking that as a trust store skips the probe that would
+// have found the one this machine actually has.
+TEST_F(CaStoreFixture, doesNotCountABundleThatIsNotThere) {
+    EXPECT_FALSE(caStoreExists({"/no/such/bundle.pem", ""}));
+    EXPECT_FALSE(caStoreExists({"", "/no/such/certs"}));
+    EXPECT_FALSE(caStoreExists({}));
+}
+
+TEST_F(CaStoreFixture, countsAStoreThatIsThere) {
+    EXPECT_TRUE(caStoreExists({"", "/etc"})) << "a directory that exists was not taken as a CAPATH";
+
+    // Whichever of the two kinds this machine has; both branches matter and neither is guaranteed.
+    auto installed = installedCaStore();
+    if (installed.empty()) {
+        GTEST_SKIP() << "no distribution trust store on this machine to check against";
+    }
+    EXPECT_TRUE(caStoreExists(installed));
+}
+
+// A bundle is a file and a path is a directory, so the kinds are not interchangeable: handing curl a
+// directory as CAINFO fails to load, and a file as CAPATH is ignored.
+TEST_F(CaStoreFixture, doesNotAcceptADirectoryAsABundle) {
+    EXPECT_FALSE(caStoreExists({"/etc", ""}));
 }
 
 } // namespace ValdiTest

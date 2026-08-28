@@ -22,10 +22,14 @@ struct CaStore {
  */
 CaStore requestedCaStore(const StringBox& configured);
 
+/** Whether a store is actually on this machine: a bundle that is a file, or a path that is a directory. */
+bool caStoreExists(const CaStore& store);
+
 /**
- * Where the distributions keep their trust stores. Load bearing on Linux: @curl compiles in no CA
- * bundle unless --@curl//:ca_bundle says so and is built without CURL_CA_FALLBACK, so BoringSSL
- * would otherwise verify against an empty store. macOS gets SecureTransport and the keychain.
+ * Where the distributions keep their trust stores, for when the one curl compiled in is not on this
+ * machine. @curl hardcodes that per OS — Debian's bundle path on every Linux — so a build on RHEL or
+ * openSUSE is pointed at a file that does not exist, and BoringSSL, which is the backend on macOS
+ * too, would verify against an empty store. Compare with caStoreExists before relying on it.
  */
 CaStore installedCaStore();
 

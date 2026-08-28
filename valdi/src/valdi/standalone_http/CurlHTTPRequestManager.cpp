@@ -46,19 +46,24 @@ constexpr int kPollTimeoutMs = 10000;
 // begins, so sleeping this long strands nothing. Finite only so a lost wakeup would right itself.
 constexpr int kIdlePollTimeoutMs = 24 * 60 * 60 * 1000;
 
-bool curlHasItsOwnCaStore() {
+// What curl compiled in as its default. @curl hardcodes this per OS rather than probing, so on any
+// Linux it names Debian's bundle whether or not this machine is Debian, and reports it whether or not
+// the file is there.
+CaStore curlsOwnCaStore() {
     auto* easy = curl_easy_init();
     if (easy == nullptr) {
-        return false;
+        return {};
     }
 
     char* file = nullptr;
     char* path = nullptr;
     curl_easy_getinfo(easy, CURLINFO_CAINFO, &file);
     curl_easy_getinfo(easy, CURLINFO_CAPATH, &path);
+
+    CaStore store{file != nullptr ? file : "", path != nullptr ? path : ""};
     curl_easy_cleanup(easy);
 
-    return file != nullptr || path != nullptr;
+    return store;
 }
 
 // Always a map, never null: HTTPTypes.d.ts declares headers as StringMap<string>, and iOS, Android
@@ -310,9 +315,11 @@ public:
             return;
         }
 
-        // Probed last, so a deliberate --@curl//:ca_bundle is never overridden.
+        // Probed last, so a deliberate --@curl//:ca_bundle is never overridden. Its existence is what
+        // decides, not merely that curl reports one: a compiled-in default naming a file this machine
+        // does not have must not suppress the probe, or the store that is here goes unfound.
         _caStore = requestedCaStore(caBundlePath);
-        if (_caStore.empty() && !curlHasItsOwnCaStore()) {
+        if (_caStore.empty() && !caStoreExists(curlsOwnCaStore())) {
             _caStore = installedCaStore();
         }
 
@@ -543,6 +550,11 @@ private:
             curl_easy_setopt(easy, CURLOPT_LOW_SPEED_LIMIT, 1L);
             curl_easy_setopt(easy, CURLOPT_LOW_SPEED_TIME, static_cast<long>(_idleTimeoutSeconds));
         }
+
+        // curl's own floor is TLS 1.0, and iOS (App Transport Security) and Android both refuse
+        // anything below 1.2. Without this the same request gets a weaker floor on the CLI than in
+        // the app it shares its code with.
+        curl_easy_setopt(easy, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
 
         if (!_caStore.file.empty()) {
             curl_easy_setopt(easy, CURLOPT_CAINFO, _caStore.file.c_str());
