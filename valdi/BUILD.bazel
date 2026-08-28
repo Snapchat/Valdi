@@ -930,9 +930,13 @@ valdi_test(
     deps = [
         ":test_utils",
         ":valdi_runtime_with_vm",
+        ":valdi_standalone_http",
         "//src/valdi_modules/src/cpp/valdi_http:valdi_http_cpp",
         "//src/valdi_modules/src/valdi/persistence:persistence_native",
         "//src/valdi_modules/src/valdi/valdi_core:valdi_core_native",
+        # The JavaScript side of valdi_http, for driving HTTPClient and asserting on the promise it
+        # hands back rather than only the native performRequest binding.
+        "//src/valdi_modules/src/valdi/valdi_http:valdi_http_native",
         "//src/valdi_modules/src/valdi/valdi_protobuf:valdi_protobuf_native",
         "//tsn",
         "//valdi/testdata/resources/modules/local:local_native",
@@ -987,26 +991,6 @@ cc_library(
     ],
 )
 
-valdi_test(
-    name = "test_standalone",
-    srcs = glob(["test/standalone/**/*.cpp"]) + [
-        "test/integration/JSBridgeTestFixture.cpp",
-    ],
-    hdrs = glob([
-        "test/integration/**/*.hpp",
-        "test/standalone/**/*.hpp",
-    ]),
-    deps = [
-        ":test_utils",
-        ":valdi_runtime_with_vm",
-        ":valdi_standalone_http",
-        "//src/valdi_modules/src/cpp/valdi_http:valdi_http_cpp",
-        # The JavaScript side of valdi_http. Tests need this to drive HTTPClient and assert on the
-        # promise it hands back, rather than only the native performRequest binding.
-        "//src/valdi_modules/src/valdi/valdi_http:valdi_http_native",
-        "//src/valdi_modules/src/valdi/valdi_core:valdi_core_native",
-    ],
-)
 
 valdi_test(
     name = "test_hermes",
