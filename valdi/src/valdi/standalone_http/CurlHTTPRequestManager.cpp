@@ -589,9 +589,9 @@ private:
                         finish(easy,
                                task,
                                Error(StringBox::fromString(
-                                   "Cannot decode a response sent with Content-Encoding: " + *encoding +
-                                   ". This build has no decompression support, so an Accept-Encoding request "
-                                   "header must not be set.")));
+                                   "The server sent Content-Encoding: " + *encoding +
+                                   ", which this build cannot decode. No Accept-Encoding was requested, so the "
+                                   "response was compressed unasked.")));
                         continue;
                     }
                 }
