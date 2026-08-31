@@ -30,7 +30,8 @@ objc_library(
     target_compatible_with = ["@platforms//os:ios"],
     visibility = ["//visibility:public"],
     deps = [
-        # Provides the generated SCCTeardownProbeMakeTeardownProbe bridge-function class.
+        # Provides the generated SCCTeardownProbeMakeTeardownProbe / SCCTeardownProbeGetTeardownPath
+        # bridge-function classes.
         "//apps/helloworld/src/valdi/teardown_probe:SCCTeardownProbe",
         # Runtime manager + ITweakValueProvider (to force the teardown-degrade kill switch).
         "@valdi//valdi:valdi",

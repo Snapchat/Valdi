@@ -12,3 +12,7 @@ export function reproduceTeardownDegraded(): void {
 export function reproduceTeardownCrash(): void {
   console.log('[TeardownRepro] no-op on web');
 }
+
+export function reproduceTeardownInvocationCrash(): void {
+  console.log('[TeardownRepro] no-op on web');
+}

@@ -40,6 +40,18 @@ NS_ASSUME_NONNULL_BEGIN
  */
 + (void)reproduceWithDegradeEnabled:(BOOL)degradeEnabled;
 
+/**
+ Reproduces the bridge-function INVOCATION teardown crash. Resolves a bridge function on an isolated,
+ torn-down runtime (the resolution degrade, on by default, returns a no-op function), then INVOKES
+ it. The invocation returns a null value into a @c _Nonnull-typed return (a null @c NSString);
+ passing that null to an API with a non-null precondition (@c +[NSURL fileURLWithPath:]) raises
+ @c NSInvalidArgumentException and aborts (SIGABRT).
+
+ Distinct from @c reproduceWithDegradeEnabled: (the resolution path). Runs the invocation on a
+ background queue.
+ */
++ (void)reproduceInvocationCrash;
+
 @end
 
 NS_ASSUME_NONNULL_END

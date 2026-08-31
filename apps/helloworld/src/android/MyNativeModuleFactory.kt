@@ -20,6 +20,10 @@ class MyNativeModuleFactory: NativeModuleModuleFactory() {
             override fun reproduceTeardownCrash() {
                 android.util.Log.i("TeardownRepro", "no-op on Android")
             }
+
+            override fun reproduceTeardownInvocationCrash() {
+                android.util.Log.i("TeardownRepro", "no-op on Android")
+            }
         }
     }
 }

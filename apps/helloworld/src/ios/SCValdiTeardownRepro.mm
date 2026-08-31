@@ -109,4 +109,45 @@ class TeardownDegradeProvider : public Valdi::SharedPtrRefCountable, public Vald
     });
 }
 
++ (void)reproduceInvocationCrash
+{
+    // Isolated runtime so teardown can be forced without touching the app's shared runtime.
+    __block SCValdiRuntimeManager *manager = [SCValdiRuntimeManager new];
+    SCValdiRuntime *runtime = manager.mainRuntime;
+    id<SCValdiJSRuntime> jsRuntime = [runtime jsRuntime];
+    runtime = nil;
+
+    // No tweak provider: we WANT the resolution degrade at its shipped default (on). Resolution
+    // after teardown then returns a no-op function; INVOKING that no-op returns a null object, which
+    // is the invocation-teardown crash we want (not the resolution abort).
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        // Sanity on the live runtime: the probe resolves.
+        @try {
+            SCCTeardownProbeMakeTeardownProbe *live = [SCCTeardownProbeMakeTeardownProbe functionWithJSRuntime:jsRuntime];
+            NSLog(@"[TeardownRepro] invocation live resolve ok: %@", live);
+        } @catch (SCValdiError *error) {
+            NSLog(@"[TeardownRepro] invocation live resolve raised (probe module may not be bundled): %@", error.reason);
+        }
+
+        // Tear the runtime down.
+        manager = nil;
+
+        // Resolve (degrades to a no-op function) then invoke it. The invocation returns a null value
+        // in a _Nonnull-typed slot: a null NSString here (the codegen return type is
+        // `NSString * _Nonnull`, so callers trust it is non-null).
+        NSLog(@"[TeardownRepro] invocation: resolving + invoking after teardown...");
+        SCCTeardownProbeGetTeardownPath *fn = [SCCTeardownProbeGetTeardownPath functionWithJSRuntime:jsRuntime];
+        NSString *path = [fn getTeardownPath];
+        NSLog(@"[TeardownRepro] invocation: invoked; path=%@ (null on teardown), passing to a nonnull API...", path);
+
+        // Pass the null-in-_Nonnull string to an API with a non-null precondition. +[NSURL
+        // fileURLWithPath:] raises NSInvalidArgumentException on a nil path, aborting the process
+        // (SIGABRT). This is the invocation-teardown nil-in-nonnull crash: the degrade produced a null
+        // where downstream code trusts the non-null contract. No @try: the point is the crash.
+        NSURL *url = [NSURL fileURLWithPath:path];
+        NSLog(@"[TeardownRepro] invocation UNEXPECTED: built url without crashing: %@", url);
+        NSLog(@"[TeardownRepro] invocation UNEXPECTED: returned without crashing");
+    });
+}
+
 @end

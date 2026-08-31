@@ -17,3 +17,8 @@ export function reproduceTeardownDegraded(): void;
 // Degrade OFF (kill switch disabled): resolves a bridge function after teardown; aborts the process
 // (SIGABRT) — the original teardown crash.
 export function reproduceTeardownCrash(): void;
+
+// Invocation after teardown: resolution degrades to a no-op, invoking it returns a null value in a
+// nonnull-typed slot; passing that null to a non-null-requiring API (+[NSURL fileURLWithPath:])
+// aborts the process (SIGABRT).
+export function reproduceTeardownInvocationCrash(): void;

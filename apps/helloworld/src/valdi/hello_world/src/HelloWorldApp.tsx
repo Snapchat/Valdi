@@ -6,7 +6,12 @@ import { Label, ScrollView } from 'valdi_tsx/src/NativeTemplateElements';
 import res from '../res';
 import { ByteExactImageExample } from './ByteExactImageExample';
 import { onRootComponentCreated } from './CppModule';
-import { APP_NAME, reproduceTeardownCrash, reproduceTeardownDegraded } from './NativeModule';
+import {
+  APP_NAME,
+  reproduceTeardownCrash,
+  reproduceTeardownDegraded,
+  reproduceTeardownInvocationCrash,
+} from './NativeModule';
 
 /**
  * @ViewModel
@@ -75,6 +80,24 @@ export class App extends Component<ViewModel, ComponentContext> {
         >
           <label
             value="⚠️ Resolve after teardown (degrade OFF — SIGABRT)"
+            font={systemFont(16)}
+            style={styles.reproCrashLabel}
+          />
+        </view>
+        {/* Debug-only: resolve (degrades to a no-op) then INVOKE after teardown — the invocation
+            returns a null value in a nonnull slot; passing it to a nonnull-requiring API
+            (+[NSURL fileURLWithPath:]) aborts (SIGABRT). Shows the degrade relocating a resolution
+            abort into an invocation nil-in-nonnull crash. */}
+        <view
+          marginTop={12}
+          padding={12}
+          backgroundColor="#f7eeee"
+          borderRadius={8}
+          onTap={reproduceTeardownInvocationCrash}
+          accessibilityId="teardown-invocation-button"
+        >
+          <label
+            value="💥 Invoke after teardown (nil → nonnull → SIGABRT)"
             font={systemFont(16)}
             style={styles.reproCrashLabel}
           />
