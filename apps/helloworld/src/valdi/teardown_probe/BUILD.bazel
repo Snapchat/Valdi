@@ -1,0 +1,25 @@
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+# Minimal module hosting the teardown-repro probe. Kept separate from the hello_world module so the
+# native harness (which resolves the probe's generated bridge-function class) can depend on this
+# module's umbrella without a dependency cycle — a module's own native code cannot depend on that
+# same module's generated bindings.
+valdi_module(
+    name = "teardown_probe",
+    srcs = glob([
+        "src/**/*.ts",
+    ]) + [
+        "tsconfig.json",
+    ],
+    android_class_path = "com.snap.valdi.modules.teardown_probe",
+    android_output_target = "debug",
+    # async_strict_mode makes @ExportFunction resolution go through the raising
+    # +functionWithJSRuntime: path (SCValdiBridgeFunction) that aborts on runtime teardown.
+    async_strict_mode = True,
+    ios_module_name = "SCCTeardownProbe",
+    ios_output_target = "debug",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+    ],
+)

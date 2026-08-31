@@ -2,6 +2,8 @@
 #import <SCCHelloWorldTypes/SCCHelloWorldTypes.h>
 #import <Foundation/Foundation.h>
 
+#import "SCValdiTeardownRepro.h"
+
 @interface SCMyNativeModule: NSObject<SCCHelloWorldNativeModuleModule>
 
 @end
@@ -16,6 +18,18 @@
 - (void)setAPP_NAME:(NSString *)appName
 {
 
+}
+
+- (void)reproduceTeardownDegraded
+{
+    // Degrade ON (shipped default): resolution after teardown returns a no-op, no crash.
+    [SCValdiTeardownRepro reproduceWithDegradeEnabled:YES];
+}
+
+- (void)reproduceTeardownCrash
+{
+    // Degrade OFF (kill switch disabled): resolution after teardown aborts the process (SIGABRT).
+    [SCValdiTeardownRepro reproduceWithDegradeEnabled:NO];
 }
 
 @end

@@ -1,13 +1,41 @@
 objc_library(
     name = "native_module_ios",
-    srcs = glob([
-        "**/*.m",
-    ]),
+    srcs = [
+        "SCMyNativeModuleFactory.m",
+    ],
     hdrs = [],
     copts = ["-I."],
     target_compatible_with = ["@platforms//os:ios"],
     visibility = ["//visibility:public"],
     deps = [
         "//apps/helloworld/src/valdi/hello_world:hello_world_api_objc",
+        # Debug-only teardown repro harness (invoked from reproduceTeardown* native methods).
+        ":teardown_repro",
+    ],
+)
+
+# Debug-only harness for the bridge-function resolution teardown behavior. Kept in its own library
+# (not native_module_ios) because it depends on the teardown_probe module umbrella
+# (:SCCTeardownProbe) for the generated bridge-function class — which cannot be depended on from a
+# module's own ios_deps without a cycle.
+objc_library(
+    name = "teardown_repro",
+    srcs = [
+        "SCValdiTeardownRepro.mm",
+    ],
+    hdrs = [
+        "SCValdiTeardownRepro.h",
+    ],
+    copts = ["-I."],
+    target_compatible_with = ["@platforms//os:ios"],
+    visibility = ["//visibility:public"],
+    deps = [
+        # Provides the generated SCCTeardownProbeMakeTeardownProbe bridge-function class.
+        "//apps/helloworld/src/valdi/teardown_probe:SCCTeardownProbe",
+        # Runtime manager + ITweakValueProvider (to force the teardown-degrade kill switch).
+        "@valdi//valdi:valdi",
+        # StringBox / Value / Shared used by the injected tweak provider.
+        "@valdi//valdi_core",
+        "@valdi//valdi_core:valdi_core_objc",
     ],
 )
