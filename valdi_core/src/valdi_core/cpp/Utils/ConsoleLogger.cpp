@@ -134,7 +134,7 @@ void ConsoleLogger::writeDirect(std::string_view message) {
 #else
     auto t = message.size();
     (void)t;
-    _stream << message;
+    _stream << message << std::flush;
 #endif
 }
 
