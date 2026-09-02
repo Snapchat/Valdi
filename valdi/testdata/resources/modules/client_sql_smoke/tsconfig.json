@@ -1,0 +1,8 @@
+{
+  "extends": "../../../../../../src/valdi_modules/src/valdi/_configs/base.tsconfig.json",
+  "compilerOptions": {
+    "noImplicitReturns": true,
+    "noImplicitAny": true,
+    "strict": true
+  }
+}

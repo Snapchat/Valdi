@@ -1,0 +1,13 @@
+{
+  "name": "ledger_sql_demo",
+  "private": true,
+  "scripts": {
+    "macos": "valdi install macos --application //apps/ledger_sql_demo:ledger_sql_demo_macos",
+    "hotreload": "valdi hotreload --target //apps/ledger_sql_demo:ledger_sql_demo_hotreload",
+    "ios:build": "valdi build ios --application //apps/ledger_sql_demo:ledger_sql_demo_ios",
+    "android:build": "valdi build android --application //apps/ledger_sql_demo:ledger_sql_demo_android",
+    "android:install": "valdi install android --application //apps/ledger_sql_demo:ledger_sql_demo_android",
+    "android:smoke": "python3 scripts/android_smoke.py",
+    "android:smoke:build": "python3 scripts/android_smoke.py --build"
+  }
+}

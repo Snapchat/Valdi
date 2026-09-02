@@ -183,6 +183,24 @@ http_archive(
     url = "https://github.com/fmtlib/fmt/releases/download/7.1.3/fmt-7.1.3.zip",
 )
 
+# MODULE.bazel and WORKSPACE repository setup cannot share repository-rule macros. Keep this
+# declaration in sync with bzl/dependencies.bzl; ClientSQL's dependency-shape test guards it.
+http_archive(
+    name = "valdi_clientsql_sqlite",
+    build_file = "@valdi//third-party/sqlite:sqlite.BUILD",
+    sha256 = "0e9483900e92cd5de8fd48d16bf9200145a61f7fd5be542a5ac81d8a9516eb9c",
+    strip_prefix = "sqlite-autoconf-3530400",
+    url = "https://www.sqlite.org/2026/sqlite-autoconf-3530400.tar.gz",
+)
+
+http_archive(
+    name = "valdi_clientsql_sqlite_316",
+    build_file = "@valdi//third-party/sqlite:sqlite_316.BUILD",
+    sha256 = "3b5dfb65807e2b17e6463357df848e322badba01dc9a4a1de8fdbb72d448e3b0",
+    strip_prefix = "sqlite-amalgamation-3160000",
+    url = "https://www.sqlite.org/2017/sqlite-amalgamation-3160000.zip",
+)
+
 bazel_dep(name = "android_macros")
 local_path_override(
     module_name = "android_macros",

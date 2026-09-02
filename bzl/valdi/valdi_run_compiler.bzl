@@ -40,7 +40,7 @@ def generate_config(ctx):
     )
     return out
 
-def resolve_compiler_executable(ctx, toolchain, include_tools):
+def resolve_compiler_executable(ctx, toolchain, include_tools, include_client_sql_tools = False):
     """ Resolves the tools required to run the Valdi compiler action.
 
         * compiler binary
@@ -52,6 +52,8 @@ def resolve_compiler_executable(ctx, toolchain, include_tools):
     Args:
         ctx: The context of the current rule invocation
         toolchain: The toolchain info for the current rule invocation
+        include_tools: Whether to include the complete compiler toolbox inputs
+        include_client_sql_tools: Whether to include only the ClientSQL generator
 
     Returns:
         A tuple of (executable: File, inputs: depset, tools: list[FilesToRunProvider])
@@ -68,19 +70,36 @@ def resolve_compiler_executable(ctx, toolchain, include_tools):
     if include_tools:
         inputs_depsets.append(toolchain.compiler_toolbox.files)
         inputs_depsets.append(toolchain.minify_config.files)
+
+    if include_tools or include_client_sql_tools:
         inputs_depsets.append(toolchain.sqldelight_compiler.files)
 
         tools.append(toolchain.sqldelight_compiler[DefaultInfo].files_to_run)
 
     return (toolchain.compiler.files.to_list()[0], depset(transitive = inputs_depsets), tools)
 
-def run_valdi_compiler(ctx, args, outputs, inputs, mnemonic, progress_message, use_worker, include_tools = True, worker_protocol = "proto"):
+def run_valdi_compiler(
+        ctx,
+        args,
+        outputs,
+        inputs,
+        mnemonic,
+        progress_message,
+        use_worker,
+        include_tools = True,
+        worker_protocol = "proto",
+        include_client_sql_tools = False):
     """ Run the Valdi compiler with the provided arguments.
     This will resolve the Valdi toolchain with the compiler executable
     and emits outputs.
     """
     toolchain = ctx.toolchains[VALDI_TOOLCHAIN_TYPE].info
-    (executable, tool_inputs, tools) = resolve_compiler_executable(ctx, toolchain, include_tools)
+    (executable, tool_inputs, tools) = resolve_compiler_executable(
+        ctx,
+        toolchain,
+        include_tools,
+        include_client_sql_tools,
+    )
 
     companion_bin_wrapper = toolchain.companion.files.to_list()[0]
     compiler_toolbox = toolchain.compiler_toolbox.files.to_list()[0]

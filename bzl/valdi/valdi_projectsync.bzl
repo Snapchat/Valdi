@@ -1,7 +1,7 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load(":valdi_compiled.bzl", "ValdiModuleInfo", "build_dependency_entries")
-load(":valdi_paths.bzl", "get_ids_yaml_dts_path", "get_resources_dirs", "get_sql_dts_paths", "get_strings_dts_path", "infer_base_output_dir", "resolve_module_dir_and_name", "resolve_relative_project_path")
+load(":valdi_paths.bzl", "get_ids_yaml_dts_path", "get_resources_dirs", "get_sql_ts_paths", "get_strings_dts_path", "infer_base_output_dir", "resolve_module_dir_and_name", "resolve_relative_project_path")
 load(":valdi_run_compiler.bzl", "generate_config", "run_valdi_compiler")
 load(":valdi_toolchain_type.bzl", "VALDI_TOOLCHAIN_TYPE")
 
@@ -53,8 +53,16 @@ def _prepare_explicit_input_list_file(ctx, module_name):
 def _get_files_output_paths(ctx, module_name, module_directory):
     outputs = []
 
-    # tablename.d.ts files
-    outputs += get_sql_dts_paths(ctx.attr.sql_db_names, ctx.files.sql_srcs, module_name, module_directory)
+    # ClientSQL-generated TypeScript sources used by editor tooling. The normal
+    # compile action owns the corresponding declarations under
+    # .valdi_build/compile/typescript/output.
+    outputs += get_sql_ts_paths(
+        ctx.attr.sql_db_names,
+        ctx.files.sql_srcs,
+        module_name,
+        module_directory,
+        _TYPESCRIPT_GENERATED_TS_DIR,
+    )
 
     # ids.d.ts
     outputs += get_ids_yaml_dts_path(_TYPESCRIPT_GENERATED_TS_DIR, module_name, ctx.file.ids_yaml)
@@ -155,6 +163,7 @@ def _invoke_valdi_compiler(ctx, module_name):
             progress_message = "Running projectsync for module: " + module_name,
             use_worker = False,
             include_tools = False,
+            include_client_sql_tools = bool(ctx.files.sql_srcs),
         )
 
     return outputs

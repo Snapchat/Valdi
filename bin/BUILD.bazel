@@ -6,9 +6,9 @@ load(
     "valdi_compiler_companion_files",
 )
 
-filegroup(
+alias(
     name = "sqldelight_compiler",
-    srcs = [],
+    actual = "@valdi//compiler/clientsql:clientsql_toolchain",
     visibility = ["//visibility:public"],
 )
 
@@ -51,4 +51,11 @@ js_binary(
     ],
     visibility = ["//visibility:public"],
     # log_level = "debug", # increase verbosity of logs if you need to debug anything
+)
+
+filegroup(
+    name = "clientsql_generator_test_data",
+    srcs = ["BUILD.bazel"],
+    testonly = True,
+    visibility = ["//compiler/clientsql:__pkg__"],
 )

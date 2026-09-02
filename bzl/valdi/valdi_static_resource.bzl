@@ -20,6 +20,7 @@ def _valdi_static_resource_impl(ctx):
         mnemonic = "ValdiGenStaticResource",
         progress_message = "Generating static Valdi resource",
         use_worker = False,
+        include_client_sql_tools = False,
     )
 
     return [

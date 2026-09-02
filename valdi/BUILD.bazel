@@ -924,9 +924,7 @@ valdi_static_resource(
 
 valdi_test(
     name = "test_integration",
-    srcs = glob([
-        "test/integration/**/*.cpp",
-    ]) + [":remote_assets_static_res"],
+    srcs = glob(["test/integration/**/*.cpp"]) + [":remote_assets_static_res"],
     hdrs = glob(["test/integration/**/*.hpp"]),
     deps = [
         ":test_utils",
@@ -939,10 +937,34 @@ valdi_test(
         "//valdi/testdata/resources/modules/local:local_native",
         "//valdi/testdata/resources/modules/remote:remote_native",
         "//valdi/testdata/resources/modules/remote_assets:remote_assets_native",
+        "//valdi/testdata/resources/modules/client_sql_smoke:client_sql_smoke_native_desktop",
         "//valdi/testdata/resources/modules/test:test_cpp",
         "//valdi/testdata/resources/modules/test:test_native",
         "//valdi/testdata/resources/modules/test2:test2_native",
         "//valdi/testdata/resources/modules/test_async_strict:test_async_strict_native",
+    ],
+)
+
+# Focused form of the ClientSQL runtime contract test. The same source is also
+# part of test_integration_lib so //valdi:test covers it without linking a
+# second copy of JSBridgeTestFixture.cpp or RuntimeTestsUtils.cpp.
+valdi_test(
+    name = "test_client_sql_runtime_integration",
+    srcs = [
+        "test/integration/ClientSQLRuntime_tests.cpp",
+        "test/integration/JSBridgeTestFixture.cpp",
+        "test/integration/RuntimeTestsUtils.cpp",
+    ],
+    hdrs = [
+        "test/integration/JSBridgeTestFixture.hpp",
+        "test/integration/RuntimeTestsUtils.hpp",
+    ],
+    deps = [
+        ":test_utils",
+        ":valdi_runtime_with_vm",
+        "//src/valdi_modules/src/valdi/valdi_core:valdi_core_native",
+        "//tsn",
+        "//valdi/testdata/resources/modules/client_sql_smoke:client_sql_smoke_native_desktop",
     ],
 )
 
@@ -998,6 +1020,7 @@ cc_test(
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
+        "//bzl/valdi:clientsql_native_test_library",
         ":test_hermes_lib",
         ":test_integration_lib",
         ":test_runtime_lib",
@@ -1290,4 +1313,14 @@ filegroup(
         "generated-src/java/**/*.java",
     ]),
     visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "clientsql_generator_test_data",
+    srcs = [
+        "BUILD.bazel",
+        "test/integration/ClientSQLRuntime_tests.cpp",
+    ],
+    testonly = True,
+    visibility = ["//compiler/clientsql:__pkg__"],
 )
