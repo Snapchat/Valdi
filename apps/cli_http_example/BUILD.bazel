@@ -1,0 +1,22 @@
+load("//bzl/valdi:valdi_cli_application.bzl", "valdi_cli_application")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "cli_http_example",
+    srcs = glob([
+        "**/*.ts",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_http",
+        "//src/valdi_modules/src/valdi/valdi_standalone",
+    ],
+)
+
+valdi_cli_application(
+    name = "cli_http_example_app",
+    script_path = "cli_http_example/index",
+    enable_http = True,
+    deps = [":cli_http_example"],
+)
