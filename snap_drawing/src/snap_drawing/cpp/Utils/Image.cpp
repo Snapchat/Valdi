@@ -180,7 +180,8 @@ Valdi::Result<Ref<Image>> Image::make(const Valdi::BytesView& data) {
     auto skImage = SkImages::DeferredFromEncodedData(skData);
 
     if (skImage == nullptr) {
-        return Valdi::Error("Unable to decode image");
+        const auto message = describeUndecodablePayload(data, "Unable to decode image");
+        return Valdi::Error(std::string_view(message));
     }
 
     return Ref<Image>(Valdi::makeShared<Image>(skImage));
