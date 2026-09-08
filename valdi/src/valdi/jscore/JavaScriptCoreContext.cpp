@@ -774,7 +774,14 @@ Valdi::JSValueRef JavaScriptCoreContext::derefWeakRef(const Valdi::JSValue& weak
         Valdi::JSFunctionCallContext callContext(*this, nullptr, 0, exceptionTracker);
         callContext.setThisValue(weakRef);
 
-        return callObjectAsFunction(derefFn.get(), callContext);
+        auto target = callObjectAsFunction(derefFn.get(), callContext);
+        // iOS links the system JavaScriptCore, and the one shipped with iOS 15 returns null from
+        // WeakRef.prototype.deref() for a collected target. iOS 16+, the spec, and the other
+        // engines return undefined.
+        if (isValueNull(target.get())) {
+            return newUndefined();
+        }
+        return target;
     }
 }
 

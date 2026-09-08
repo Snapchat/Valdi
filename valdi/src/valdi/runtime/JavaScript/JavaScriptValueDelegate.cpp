@@ -116,7 +116,10 @@ std::optional<JSValueRef> JavaScriptObjectStore::getObjectForId(uint32_t objectI
         return std::nullopt;
     }
 
-    if (_jsContext->isValueUndefined(deref.get())) {
+    // A live entry can only deref to the stored object. JavaScriptCore on iOS 15 returns null
+    // (not undefined) for a collected WeakRef target, so test for "not an object" rather than
+    // for undefined; returning that null to the caller hands JS a null in place of the proxy.
+    if (!_jsContext->isValueObject(deref.get())) {
         _objectById.erase(it);
         return std::nullopt;
     }

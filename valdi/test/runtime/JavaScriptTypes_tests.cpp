@@ -4,6 +4,7 @@
 #include "valdi/runtime/JavaScript/JSPropertyNameIndex.hpp"
 #include "valdi/runtime/JavaScript/JSValueRefHolder.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptTaskScheduler.hpp"
+#include "valdi/runtime/JavaScript/JavaScriptValueDelegate.hpp"
 #include "valdi/runtime/JavaScript/WrappedJSValueRef.hpp"
 #include "valdi/runtime/Utils/HexUtils.hpp"
 #include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
@@ -691,6 +692,95 @@ TEST(PropertyNameIndex, canUnloadProperties) {
 
     ASSERT_EQ(1, firstPropertyCpp.getInternedString()->retainCount());
     ASSERT_EQ(1, secondPropertyCpp.getInternedString()->retainCount());
+}
+
+enum class WeakRefDerefResult { Target, Undefined, Null };
+
+// Object store view of a JS engine whose WeakRef.prototype.deref() outcome is scripted, so the
+// collected case can be exercised for both the spec result (undefined) and the value
+// JavaScriptCore returned on iOS 15 (null).
+struct WeakRefJavaScriptContext : public MockJavaScriptContext {
+    MyJSValue target;
+    MyJSValue weakRef;
+    MyJSValue undefinedValue;
+    MyJSValue nullValue;
+    WeakRefDerefResult derefResult = WeakRefDerefResult::Target;
+    int derefCalls = 0;
+
+    WeakRefJavaScriptContext() : MockJavaScriptContext(nullptr) {}
+
+    JSValueRef newWeakRef(const JSValue& value, JSExceptionTracker& exceptionTracker) override {
+        return JSValueRef(this, JSValue(&weakRef), false);
+    }
+
+    JSValueRef derefWeakRef(const JSValue& value, JSExceptionTracker& exceptionTracker) override {
+        derefCalls++;
+        switch (derefResult) {
+            case WeakRefDerefResult::Target:
+                return JSValueRef(this, JSValue(&target), false);
+            case WeakRefDerefResult::Undefined:
+                return JSValueRef(this, JSValue(&undefinedValue), false);
+            case WeakRefDerefResult::Null:
+                return JSValueRef(this, JSValue(&nullValue), false);
+        }
+    }
+
+    bool isValueUndefined(const JSValue& value) override {
+        return value == JSValue(&undefinedValue);
+    }
+
+    bool isValueNull(const JSValue& value) override {
+        return value == JSValue(&nullValue);
+    }
+
+    bool isValueObject(const JSValue& value) override {
+        return value == JSValue(&target);
+    }
+};
+
+TEST(JavaScriptObjectStore, returnsLiveObjectForId) {
+    WeakRefJavaScriptContext jsContext;
+    JSExceptionTracker exceptionTracker(jsContext);
+    JavaScriptObjectStore store(jsContext, false, exceptionTracker);
+
+    store.setObjectForId(1, JSValueRef(&jsContext, JSValue(&jsContext.target), false), exceptionTracker);
+
+    auto object = store.getObjectForId(1, exceptionTracker);
+    ASSERT_TRUE(exceptionTracker);
+    ASSERT_TRUE(object.has_value());
+    ASSERT_EQ(JSValue(&jsContext.target), object->get());
+}
+
+TEST(JavaScriptObjectStore, dropsEntryWhenWeakRefDerefsToUndefined) {
+    WeakRefJavaScriptContext jsContext;
+    JSExceptionTracker exceptionTracker(jsContext);
+    JavaScriptObjectStore store(jsContext, false, exceptionTracker);
+
+    store.setObjectForId(1, JSValueRef(&jsContext, JSValue(&jsContext.target), false), exceptionTracker);
+    jsContext.derefResult = WeakRefDerefResult::Undefined;
+
+    ASSERT_FALSE(store.getObjectForId(1, exceptionTracker).has_value());
+    ASSERT_TRUE(exceptionTracker);
+    ASSERT_EQ(1, jsContext.derefCalls);
+
+    ASSERT_FALSE(store.getObjectForId(1, exceptionTracker).has_value());
+    ASSERT_EQ(1, jsContext.derefCalls);
+}
+
+TEST(JavaScriptObjectStore, dropsEntryWhenWeakRefDerefsToNull) {
+    WeakRefJavaScriptContext jsContext;
+    JSExceptionTracker exceptionTracker(jsContext);
+    JavaScriptObjectStore store(jsContext, false, exceptionTracker);
+
+    store.setObjectForId(1, JSValueRef(&jsContext, JSValue(&jsContext.target), false), exceptionTracker);
+    jsContext.derefResult = WeakRefDerefResult::Null;
+
+    ASSERT_FALSE(store.getObjectForId(1, exceptionTracker).has_value());
+    ASSERT_TRUE(exceptionTracker);
+    ASSERT_EQ(1, jsContext.derefCalls);
+
+    ASSERT_FALSE(store.getObjectForId(1, exceptionTracker).has_value());
+    ASSERT_EQ(1, jsContext.derefCalls);
 }
 
 } // namespace ValdiTest
