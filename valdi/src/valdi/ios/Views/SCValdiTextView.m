@@ -80,6 +80,27 @@ static NSString *const kTextGradientLayoutKey = @"text_gradient";
 @end
 
 @implementation SCValdiTextViewInternal
+
+- (void)setText:(NSString *)text
+{
+    BOOL charactersChanged = ![(self.text ?: @"") isEqualToString:text ?: @""];
+    [super setText:text];
+    NSUndoManager *undoManager = self.undoManager;
+    if (charactersChanged && !undoManager.isUndoing && !undoManager.isRedoing) {
+        [undoManager removeAllActions];
+    }
+}
+
+- (void)setAttributedText:(NSAttributedString *)attributedText
+{
+    BOOL charactersChanged = ![(self.attributedText.string ?: @"") isEqualToString:attributedText.string ?: @""];
+    [super setAttributedText:attributedText];
+    NSUndoManager *undoManager = self.undoManager;
+    if (charactersChanged && !undoManager.isUndoing && !undoManager.isRedoing) {
+        [undoManager removeAllActions];
+    }
+}
+
 @end
 
 static NSString* const kSCValdiTextViewContentSizeKey = @"contentSize";
