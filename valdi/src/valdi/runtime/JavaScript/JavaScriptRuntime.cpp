@@ -464,7 +464,10 @@ void JavaScriptRuntime::teardownOnJsThread(bool destroyContext) {
         _anrDetector->removeTaskScheduler(this);
     }
 
-    _running = false;
+    // Do not clear _running here. fullTeardown() below drains work that was queued before teardown,
+    // and that work must run while the context is still alive (destroyed further down). Liveness is
+    // gated on _javaScriptContext in makeJsThreadDispatchFunction, not on _running, so the drain
+    // completes instead of silently skipping and handing callers an undefined result.
     setListener(nullptr, {});
     _dispatchQueue->fullTeardown();
 
@@ -4097,6 +4100,11 @@ DispatchFunction JavaScriptRuntime::makeJsThreadDispatchFunction(Ref<Context>&& 
                                                                  JavaScriptThreadTask&& jsTask) {
     SC_ASSERT(ownerContext != nullptr);
     return [this, retainedContext = RetainedContext(std::move(ownerContext)), jsTask = std::move(jsTask)]() {
+        // _running is cleared only by onInitError (teardownOnJsThread no longer clears it), so
+        // !_running here uniquely means module-loader init failed while the context is still
+        // non-null. Refuse: queued work must not run against a runtime that never finished
+        // initializing, even under cooperative termination. A normal teardown drain keeps _running
+        // true, so this does not block the drain -- liveness for that path is gated on the context.
         if (_javaScriptContext == nullptr || !_running) {
             return;
         }

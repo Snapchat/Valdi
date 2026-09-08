@@ -7041,6 +7041,26 @@ TEST_P(RuntimeFixture, cooperativeTeardownDrainsInFlightWorkAggressiveSkipsIt) {
     javaScriptRuntime->setCooperativeTermination(true);
 }
 
+// onInitError (module-loader init failure) clears _running while the context is still non-null.
+// teardownOnJsThread does NOT clear _running, so !_running uniquely identifies that init-failure
+// state, and the dispatch guard must refuse queued work against a runtime that never finished
+// initializing -- even under cooperative termination (the default), whose _isDisposed drain is a
+// separate window. The teardown drain itself keeps _running true and is covered by
+// cooperativeTeardownDrainsInFlightWorkAggressiveSkipsIt above. Uses setRunningForTesting to hold
+// the init-failure state deterministically without driving a real init failure.
+TEST_P(RuntimeFixture, initFailedRuntimeSkipsQueuedWorkWhileContextAlive) {
+    auto* javaScriptRuntime = wrapper.runtime->getJavaScriptRuntime();
+
+    bool ran = false;
+    javaScriptRuntime->dispatchSynchronouslyOnJsThread([&](auto&) {
+        javaScriptRuntime->setRunningForTesting(false);
+        javaScriptRuntime->dispatchSynchronouslyOnJsThread([&](auto&) { ran = true; });
+        javaScriptRuntime->setRunningForTesting(true);
+    });
+    EXPECT_FALSE(ran) << "queued work must be skipped while _running is cleared (module-loader init failed) even "
+                         "though the context is still alive";
+}
+
 // Verifies that a sync JS call from the main thread triggers the assertion when the module has
 // async_strict_mode and the function is not annotated with @AllowSyncCall. Uses a dedicated
 // test_async_strict module (async_strict_mode=True) so the main test module can stay non-strict.

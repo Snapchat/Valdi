@@ -28,3 +28,13 @@ class JsTestObject implements ITestObject {
 export function makeTestObject(): ITestObject {
   return new JsTestObject();
 }
+
+// Returns a non-null string. Used to exercise the invocation-teardown boundary: after the runtime is
+// torn down the raising resolver degrades to a no-op function whose invocation returns a null value
+// in this non-null-typed return slot.
+/**
+ * @ExportFunction
+ */
+export function getTestString(): string {
+  return 'ok';
+}

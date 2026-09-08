@@ -239,6 +239,12 @@ public:
         _isDisposed = disposed;
     }
 
+    // Test-only: simulate the onInitError init-failure state (running cleared while the context is
+    // still non-null), so the dispatch guard's !_running refusal can be tested deterministically.
+    void setRunningForTesting(bool running) {
+        _running = running;
+    }
+
     // True when ANR diagnostics are on and the caller is on this runtime's JS thread. Guards the
     // native-call activity writes so worker threads never touch the JS thread's slot.
     bool anrDiagnosticsActiveOnJsThread();

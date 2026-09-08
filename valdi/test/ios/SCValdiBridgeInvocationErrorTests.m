@@ -135,4 +135,61 @@
     }];
 }
 
+/// Invocation-teardown null-in-nonnull: after the runtime is torn down, the raising resolver
+/// degrades to a no-op function; INVOKING it returns a null value in a `_Nonnull`-typed return slot
+/// (here a nil NSString). This is the framework side of the production crash where a caller then
+/// feeds that null to an API with a non-null precondition (e.g. +[NSURL fileURLWithPath:]) and
+/// aborts, or a Swift caller dereferences it. The framework itself must NOT raise here — it returns
+/// nil.
+///
+/// NOTE: the durable boundary-sanitize fix should replace this teardown null with a type-safe
+/// non-null default (an empty string). When that lands, flip the assertion to
+/// `XCTAssertEqualObjects(result, @"")`.
+- (void)testStringInvocationAfterTeardownReturnsNullNotRaise
+{
+    // Isolated runtime so teardown can be forced without touching other tests.
+    SCValdiRuntimeManager *manager = [SCValdiRuntimeManager new];
+    id<SCValdiRuntimeProtocol> runtime = manager.mainRuntime;
+    XCTAssertNotNil(runtime);
+    id<SCValdiJSRuntime> jsRuntime = [runtime jsRuntime];
+    XCTAssertNotNil(jsRuntime);
+    runtime = nil;
+
+    // Control: on the live runtime the string function resolves + invokes to its real value.
+    // (off the main thread: async_strict_mode forbids resolution on the main thread.)
+    XCTestExpectation *live = [self expectationWithDescription:@"live invocation"];
+    __block NSString *liveResult = nil;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        SCCValdiTestGetTestString *fn = [SCCValdiTestGetTestString functionWithJSRuntime:jsRuntime];
+        liveResult = [fn getTestString];
+        [live fulfill];
+    });
+    [self waitForExpectations:@[live] timeout:5.0];
+    XCTAssertEqualObjects(liveResult, @"ok");
+
+    // Drop the last strong reference to the manager -> dealloc -> fullTeardown -> runtime disposed.
+    // jsRuntime is retained separately so the disposed runtime stays addressable.
+    manager = nil;
+
+    // After teardown: resolution degrades to a no-op function and invoking it returns nil. It must
+    // not raise an SCValdiError NSException.
+    XCTestExpectation *afterTeardown = [self expectationWithDescription:@"invocation after teardown"];
+    __block NSString *result = @"sentinel";
+    __block BOOL raised = NO;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        @try {
+            SCCValdiTestGetTestString *fn = [SCCValdiTestGetTestString functionWithJSRuntime:jsRuntime];
+            result = [fn getTestString];
+        } @catch (NSException *exception) {
+            raised = YES;
+        }
+        [afterTeardown fulfill];
+    });
+    [self waitForExpectations:@[afterTeardown] timeout:5.0];
+
+    XCTAssertFalse(raised, @"Invocation after teardown must not raise across the bridge");
+    XCTAssertNil(result, @"Degraded invocation returns a null in the non-null return slot "
+                         @"(see NOTE: the boundary-sanitize fix should make this an empty string)");
+}
+
 @end
