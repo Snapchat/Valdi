@@ -1,6 +1,7 @@
 package com.snap.valdi.attributes.impl
 
 import android.content.Context
+import android.os.Build
 import android.text.TextUtils
 import android.view.View
 import com.snap.valdi.attributes.AttributesBinder
@@ -38,6 +39,9 @@ abstract class AbstractTextViewAttributesBinder<T>(
     protected val coordinateResolver = CoordinateResolver(context)
     protected var valueAttributeId = 0
 
+    /** Overridable so tests can drive the unsupported path on any Robolectric SDK. */
+    protected open val textShadowSupported: Boolean = isTextShadowSupported()
+
     companion object {
         val FONT_ATTRIBUTES_PARTS = arrayListOf(
             CompositeAttributePart("color", AttributeType.COLOR, true, false),
@@ -52,6 +56,13 @@ abstract class AbstractTextViewAttributesBinder<T>(
             CompositeAttributePart("minimumScaleFactor", AttributeType.DOUBLE, true, false),
             CompositeAttributePart("customUnderlineStyle", AttributeType.STRING, true, false),
         )
+
+        /**
+         * Whether `textShadow` can be rendered on the given API level. Through Android 6 (API 23)
+         * hwui blurs TextView shadow layers with RenderScript, which segfaults on the RenderThread
+         * on some devices, so text shadows are dropped there instead of drawn.
+         */
+        fun isTextShadowSupported(sdkInt: Int = Build.VERSION.SDK_INT): Boolean = sdkInt > Build.VERSION_CODES.M
     }
 
     protected fun getTextViewHelper(view: T): TextViewHelper {
@@ -138,6 +149,11 @@ abstract class AbstractTextViewAttributesBinder<T>(
 
         if (value.size < 5) {
             throw AttributeError("textShadow components should have 5 entries")
+        }
+
+        if (!textShadowSupported) {
+            resetTextShadow(view, animator)
+            return
         }
 
         var color = ColorConversions.fromRGBA(value[0] as? Long ?: 0)
