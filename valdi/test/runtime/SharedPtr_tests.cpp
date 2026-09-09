@@ -31,6 +31,53 @@ struct Outer : public SharedPtrRefCountable {
     }
 };
 
+struct DestroyCounted : public SharedPtrRefCountable {
+    int* destroyCount;
+
+    explicit DestroyCounted(int* destroyCount) : destroyCount(destroyCount) {}
+
+    ~DestroyCounted() override {
+        ++*destroyCount;
+    }
+};
+
+// Owns the only references to a single DestroyCounted, through a Ref, an upcast Ref and a Shared,
+// so releasing the parent destroys the child. Assigning one of those members into the Ref that
+// holds the last parent reference is the tied-lifetime shape: the argument stays alive only as
+// long as the parent it lives in.
+struct Parent : public SharedPtrRefCountable {
+    int* parentDestroyCount;
+    Ref<DestroyCounted> child;
+    Ref<SharedPtrRefCountable> childBase;
+    Shared<SharedPtrRefCountable> childShared;
+
+    Parent(int* parentDestroyCount, int* childDestroyCount)
+        : parentDestroyCount(parentDestroyCount),
+          child(Valdi::makeShared<DestroyCounted>(childDestroyCount)),
+          childBase(child),
+          childShared(child.toShared()) {}
+
+    ~Parent() override {
+        ++*parentDestroyCount;
+    }
+};
+
+// Releases the last strong reference to a DestroyCounted while keeping its storage alive through
+// a weak reference, then hands back the raw pointer to it. This is the shape a use-after-destroy
+// takes in production: the destructor has run, but the control block, and therefore the storage,
+// is still around because something else holds a weak reference to it.
+struct DestroyedInstance {
+    int destroyCount = 0;
+    Weak<DestroyCounted> weak;
+    DestroyCounted* rawPtr = nullptr;
+
+    DestroyedInstance() {
+        auto object = Valdi::makeShared<DestroyCounted>(&destroyCount);
+        rawPtr = object.get();
+        weak = object.toWeak();
+    }
+};
+
 TEST(SharedPtr, canBridgeRetainAndRelease) {
     auto object = Valdi::makeShared<Int>(0).toShared();
 
@@ -199,6 +246,149 @@ TEST(Ref, canCreateWeakRef) {
     ASSERT_EQ(2, object.use_count());
     ASSERT_FALSE(weak.expired());
     ASSERT_EQ(weak.lock(), object);
+}
+
+TEST(Ref, weakRefDoesNotRetain) {
+    auto object = Valdi::makeShared<Int>(0).toShared();
+
+    ASSERT_EQ(1, object->retainCount());
+
+    auto weak = weakRef(object.get());
+
+    ASSERT_EQ(1, object->retainCount());
+    ASSERT_FALSE(weak.expired());
+    ASSERT_EQ(object, weak.lock());
+
+    // Locking is what takes the strong reference, and dropping it gives it back.
+    {
+        auto locked = weak.lock();
+        ASSERT_EQ(2, object->retainCount());
+    }
+
+    ASSERT_EQ(1, object->retainCount());
+}
+
+TEST(Ref, rawSelfAssignmentKeepsTheLastReference) {
+    int destroyCount = 0;
+    Ref<DestroyCounted> ref(Valdi::makeShared<DestroyCounted>(&destroyCount));
+    auto* rawPtr = ref.get();
+
+    ASSERT_EQ(1, ref->retainCount());
+
+    // Releasing before retaining would drop the only reference here, destroying the instance and
+    // leaving the retain to abort on a dead one.
+    ref = ref.get();
+
+    ASSERT_EQ(0, destroyCount);
+    ASSERT_EQ(1, ref->retainCount());
+    ASSERT_EQ(rawPtr, ref.get());
+}
+
+TEST(Ref, rawTiedLifetimeAssignmentRetainsBeforeReleasing) {
+    int parentDestroyCount = 0;
+    int childDestroyCount = 0;
+    Ref<SharedPtrRefCountable> ref = Valdi::makeShared<Parent>(&parentDestroyCount, &childDestroyCount);
+
+    ASSERT_EQ(1, ref->retainCount());
+
+    // The raw pointer is owned by the instance ref is about to let go of. Releasing first destroys
+    // the parent, and with it the child, so the retain would land on a destroyed instance.
+    ref = static_cast<Parent*>(ref.get())->child.get();
+
+    ASSERT_EQ(1, parentDestroyCount);
+    ASSERT_EQ(0, childDestroyCount);
+    ASSERT_EQ(1, ref->retainCount());
+
+    ref = nullptr;
+
+    ASSERT_EQ(1, childDestroyCount);
+}
+
+TEST(Ref, refTiedLifetimeAssignmentRetainsBeforeReleasing) {
+    int parentDestroyCount = 0;
+    int childDestroyCount = 0;
+    Ref<SharedPtrRefCountable> ref = Valdi::makeShared<Parent>(&parentDestroyCount, &childDestroyCount);
+
+    ASSERT_EQ(1, ref->retainCount());
+
+    // childBase is a Ref<SharedPtrRefCountable>, so this binds to operator=(const Ref<T>&) without
+    // a converting temporary: other itself lives inside the parent ref is releasing.
+    ref = static_cast<Parent*>(ref.get())->childBase;
+
+    ASSERT_EQ(1, parentDestroyCount);
+    ASSERT_EQ(0, childDestroyCount);
+    ASSERT_EQ(1, ref->retainCount());
+
+    ref = nullptr;
+
+    ASSERT_EQ(1, childDestroyCount);
+}
+
+TEST(Ref, sharedMoveTiedLifetimeAssignmentRetainsBeforeReleasing) {
+    int parentDestroyCount = 0;
+    int childDestroyCount = 0;
+    Ref<SharedPtrRefCountable> ref = Valdi::makeShared<Parent>(&parentDestroyCount, &childDestroyCount);
+
+    ASSERT_EQ(1, ref->retainCount());
+
+    // Same shape through operator=(Shared<T>&&): the shared_ptr being moved from is a member of the
+    // parent, so releasing first would move out of freed storage.
+    ref = std::move(static_cast<Parent*>(ref.get())->childShared);
+
+    ASSERT_EQ(1, parentDestroyCount);
+    ASSERT_EQ(0, childDestroyCount);
+    ASSERT_EQ(1, ref->retainCount());
+
+    ref = nullptr;
+
+    ASSERT_EQ(1, childDestroyCount);
+}
+
+TEST(SharedPtr, strongRefReturnsNullForDestroyedInstance) {
+    DestroyedInstance destroyed;
+
+    ASSERT_EQ(1, destroyed.destroyCount);
+    ASSERT_TRUE(destroyed.weak.expired());
+
+    // Taking a strong reference here would revive the instance and destroy it a second time when
+    // that reference dropped.
+    ASSERT_TRUE(strongRef(destroyed.rawPtr) == nullptr);
+    ASSERT_EQ(1, destroyed.destroyCount);
+}
+
+TEST(SharedPtr, weakRefIsExpiredForDestroyedInstance) {
+    DestroyedInstance destroyed;
+
+    ASSERT_EQ(1, destroyed.destroyCount);
+
+    // weakRef() goes through strongRef(), whose lock comes back null here, so the transient strong
+    // reference cannot revive the instance and destroy it again on release.
+    auto weak = weakRef(destroyed.rawPtr);
+
+    ASSERT_TRUE(weak.expired());
+    ASSERT_TRUE(weak.lock() == nullptr);
+    ASSERT_EQ(1, destroyed.destroyCount);
+}
+
+TEST(Ref, refusesToRetainDestroyedInstanceFromRawPointer) {
+    DestroyedInstance destroyed;
+
+    ASSERT_EQ(1, destroyed.destroyCount);
+
+    // Don't pin the signal or the abort message: the SC_ABORT fires on both platforms, but macOS
+    // aborts with the message on stderr while on Linux/glibc the assert reporter itself faults
+    // while formatting, so nothing reaches the child's stderr. Matching ".*" keeps the real
+    // guarantee (a retain of a destroyed instance must not silently succeed) portable.
+    EXPECT_DEATH(
+        {
+            Ref<DestroyCounted> revived(destroyed.rawPtr);
+            (void)revived;
+        },
+        ".*");
+    EXPECT_DEATH({ (void)strongSmallRef(destroyed.rawPtr); }, ".*");
+
+    // Neither attempt ran the destructor again in this process.
+    ASSERT_EQ(1, destroyed.destroyCount);
 }
 
 TEST(SimpleRefCountable, canAllocAndDealloc) {

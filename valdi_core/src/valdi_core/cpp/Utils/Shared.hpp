@@ -90,8 +90,56 @@ public:
 
     void unsafeReleaseInner() final;
 
+    /**
+     * Takes an owning reference the way unsafeRetainInner() does, except that it refuses to do so
+     * when the strong reference count has already reached zero, in which case it takes no
+     * reference and returns false. Use this whenever the pointer came in as a raw pointer, since
+     * unsafeRetainInner() would revive an instance that is being (or has been) destroyed.
+     */
+    bool tryRetainInnerFromRaw();
+
     const Shared<SharedPtrRefCountable>* getInnerSharedPtr() const;
+
+    /**
+     * The weak reference std::enable_shared_from_this keeps to this instance. Locking it is the
+     * only way to obtain a strong reference from a raw pointer without reviving a dead instance,
+     * and copying it is the only way to obtain a weak reference without touching the strong count.
+     */
+    const Weak<SharedPtrRefCountable>* getInnerWeakPtr() const;
 };
+
+/**
+ Aborts the process. Called when an owning reference is requested from a raw pointer to a
+ SharedPtrRefCountable whose strong reference count already reached zero. The abort names the
+ failure at the call site that caused it, instead of letting the revived instance be destroyed a
+ second time and double free its members later, on another thread.
+*/
+[[noreturn]] void reportRetainOfDestroyedInstance();
+
+/**
+ Increment the reference count of a SharedPtrRefCountable that came in as a raw pointer.
+
+ Unlike unsafeRetain(), which is always handed a pointer some other reference already owns, the
+ argument here may be a pointer to an instance whose strong count already reached zero: its
+ destructor is running or has run, while its storage is kept alive by the weak references holding
+ the control block. Incrementing the count of such an instance revives it, and destroys it a
+ second time when the new reference drops. Abort instead.
+*/
+template<typename T>
+T* unsafeRetainFromRaw(T* instance) {
+    if (instance != nullptr) {
+        if constexpr (std::is_convertible_v<T*, SharedPtrRefCountable*>) {
+            if (!static_cast<SharedPtrRefCountable*>(instance)->tryRetainInnerFromRaw()) {
+                reportRetainOfDestroyedInstance();
+            }
+        } else {
+            // SimpleRefCountable and NonAtomicRefCountable free their storage as the count reaches
+            // zero, so there is nothing left to inspect and no safe check to make.
+            instance->unsafeRetainInner();
+        }
+    }
+    return instance;
+}
 
 template<typename T>
 constexpr void assertSharedTypeCompatible() {
@@ -118,7 +166,7 @@ public:
         other._ptr = nullptr;
     }
 
-    explicit Ref(T* ptr) : _ptr(unsafeRetain(ptr)) {}
+    explicit Ref(T* ptr) : _ptr(unsafeRetainFromRaw(ptr)) {}
 
     Ref(T* ptr, AdoptRef /*unused*/) : _ptr(ptr) {}
 
@@ -141,40 +189,54 @@ public:
         unsafeRelease(_ptr);
     }
 
+    /*
+     Every assignment below takes the new reference before releasing the old one, because the
+     argument may be owned by the instance currently held: in `ref = ref->child`, releasing first
+     destroys the parent and with it the child, leaving the assignment to retain, or even to read,
+     an already destroyed argument.
+    */
     Ref<T>& operator=(T* ptr) {
-        unsafeRelease(_ptr);
-        _ptr = unsafeRetain(ptr);
+        if (_ptr != ptr) {
+            T* old = _ptr;
+            _ptr = unsafeRetainFromRaw(ptr);
+            unsafeRelease(old);
+        }
         return *this;
     }
 
     Ref<T>& operator=(const Ref<T>& other) {
         if (this != &other) {
-            unsafeRelease(_ptr);
+            T* old = _ptr;
             _ptr = unsafeRetain(other._ptr);
+            unsafeRelease(old);
         }
         return *this;
     }
 
     Ref<T>& operator=(const Shared<T>& other) {
-        unsafeRelease(_ptr);
+        T* old = _ptr;
         _ptr = unsafeRetain(other.get());
+        unsafeRelease(old);
 
         return *this;
     }
 
     Ref<T>& operator=(Shared<T>&& other) {
-        unsafeRelease(_ptr);
+        T* old = _ptr;
         _ptr = unsafeSharedMove(std::move(other));
+        unsafeRelease(old);
 
         return *this;
     }
 
     Ref<T>& operator=(Ref<T>&& other) noexcept {
         if (this != &other) {
-            unsafeRelease(_ptr);
-
-            _ptr = other._ptr;
+            T* newPtr = other._ptr;
             other._ptr = nullptr;
+
+            T* old = _ptr;
+            _ptr = newPtr;
+            unsafeRelease(old);
         }
         return *this;
     }
@@ -368,7 +430,22 @@ Shared<T> strongRef(T* instance) {
         return nullptr;
     }
 
-    return Shared<T>(*instance->getInnerSharedPtr(), instance);
+    const auto* innerSharedPtr = instance->getInnerSharedPtr();
+    if (innerSharedPtr->get() == nullptr) {
+        // Never owned by a shared_ptr: a stack instance, or one referenced from inside its own
+        // constructor, before makeShared() wired up the weak reference. There is no count to take
+        // and nothing to revive, so keep the historical non-owning aliasing behaviour.
+        return Shared<T>(*innerSharedPtr, instance);
+    }
+
+    // Copying the inner shared_ptr would increment the count unconditionally, reviving an instance
+    // that already reached zero. Locking the weak reference refuses to do that.
+    auto owner = instance->getInnerWeakPtr()->lock();
+    if (owner == nullptr) {
+        return nullptr;
+    }
+
+    return Shared<T>(owner, instance);
 }
 
 template<typename T, typename std::enable_if<std::is_convertible<T*, SharedPtrRefCountable*>::value, int>::type = 0>
@@ -383,8 +460,10 @@ Ref<T> strongSmallRef(T* instance) {
 
 template<typename T, typename std::enable_if<std::is_convertible<T*, SharedPtrRefCountable*>::value, int>::type = 0>
 Weak<T> weakRef(T* instance) {
-    // No way to convert from Shared<T> to Weak<T2>
-    // without first going to Shared<T2> unfortunately.
+    // strongRef() locks the inner weak reference, so the transient strong reference below cannot
+    // revive an instance whose count already reached zero: it comes back null and the result is an
+    // expired Weak. std::weak_ptr has no aliasing constructor, so this is the only cast-free path
+    // from a raw pointer to a Weak<T>.
     return Weak<T>(strongRef(instance));
 }
 

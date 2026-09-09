@@ -7,6 +7,9 @@
 
 #include "valdi_core/cpp/Utils/Shared.hpp"
 
+#include <cstdlib>
+#include <utility>
+
 namespace Valdi {
 
 SimpleRefCountable::SimpleRefCountable() : _retainCount(1) {}
@@ -79,9 +82,50 @@ const Shared<SharedPtrRefCountable>* SharedPtrRefCountable::getInnerSharedPtr() 
              ->weakPtr);
 }
 
+const Weak<SharedPtrRefCountable>* SharedPtrRefCountable::getInnerWeakPtr() const {
+    return reinterpret_cast<const Weak<SharedPtrRefCountable>*>(
+        &reinterpret_cast<const EnableSharedFromThisPrivate*>(
+             static_cast<const std::enable_shared_from_this<SharedPtrRefCountable>*>(this))
+             ->weakPtr);
+}
+
 void SharedPtrRefCountable::unsafeRetainInner() {
     SharedPtrPrivate storage;
     new (&storage) std::shared_ptr<SharedPtrRefCountable>(*getInnerSharedPtr());
+}
+
+bool SharedPtrRefCountable::tryRetainInnerFromRaw() {
+    if (getInnerSharedPtr()->get() == nullptr) {
+        // Never owned by a shared_ptr: a stack instance, or one referenced from inside its own
+        // constructor, before makeShared() wired up the weak reference. There is no count to take
+        // and nothing to revive, so keep the historical non-owning behaviour.
+        unsafeRetainInner();
+        return true;
+    }
+
+    // Copying the inner shared_ptr, the way unsafeRetainInner() does, increments the count
+    // unconditionally and so revives an instance that already reached zero. Locking the weak
+    // reference refuses to increment from zero.
+    auto owner = getInnerWeakPtr()->lock();
+    if (owner == nullptr) {
+        return false;
+    }
+
+    // Leak the locked reference into the raw count, exactly the way unsafeRetainInner() leaks the
+    // copy it makes; unsafeReleaseInner() destroys the matching reference.
+    SharedPtrPrivate storage;
+    new (&storage) std::shared_ptr<SharedPtrRefCountable>(std::move(owner));
+
+    return true;
+}
+
+void reportRetainOfDestroyedInstance() {
+    SC_ABORT("Valdi::Ref: retain from a raw pointer of a SharedPtrRefCountable whose strong "
+             "reference count already reached zero. The instance is being or has been destroyed; "
+             "taking an owning reference to it would revive it and run its destructor a second "
+             "time, double freeing its members.");
+    // SC_ABORT is expected to terminate; keep the noreturn contract if a platform ever returns.
+    std::abort();
 }
 
 void SharedPtrRefCountable::unsafeReleaseInner() {
