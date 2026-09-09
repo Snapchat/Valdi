@@ -45,7 +45,13 @@ public class ValdiPromise<T> : ValdiMarshallableObject {
     
     // ValdiConstructable
     public required init(from marshaller: ValdiMarshaller, at objectIndex: Int) throws {
-        self.valuePromise = SwiftValdiMarshaller_GetPromise(marshaller.marshallerCpp, objectIndex)
+        guard let valuePromise = SwiftValdiMarshaller_GetPromise(marshaller.marshallerCpp, objectIndex) else {
+            // A JS call skipped during runtime teardown yields 'undefined' instead of a Promise; throw rather than trap on the nil pointer.
+            try marshaller.checkError()
+            throw ValdiError.runtimeError(
+                "Value at index \(objectIndex) is not a Promise; the JS call was likely skipped because the runtime is tearing down")
+        }
+        self.valuePromise = valuePromise
     }
 
     // ValdiMarshallable

@@ -1266,6 +1266,22 @@ class SwiftValdiMarshallerTests : XCTestCase {
         waitForExpectations(timeout: 1.0, handler: nil)
     }
 
+    // A JS call skipped during runtime teardown yields 'undefined' with a clean exception
+    // tracker; unmarshalling it as a Promise must throw a catchable ValdiError, not trap
+    // (COMPOSER-6242).
+    func testUnmarshallingNonPromiseValueThrowsInsteadOfTrapping() throws {
+        try withMarshaller { marshaller in
+            let undefinedIndex = marshaller.pushUndefined()
+            XCTAssertThrowsError(try marshaller.getPromise(undefinedIndex) as ValdiPromise<String>) { error in
+                XCTAssertTrue(error is ValdiError)
+            }
+            let intIndex = marshaller.pushInt(42)
+            XCTAssertThrowsError(try marshaller.getPromise(intIndex) as ValdiPromise<String>) { error in
+                XCTAssertTrue(error is ValdiError)
+            }
+        }
+    }
+
     func testStringMarshallingPerformance() throws {
         self.measure {
             do {
