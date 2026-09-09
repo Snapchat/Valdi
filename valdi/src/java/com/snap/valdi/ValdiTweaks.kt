@@ -51,9 +51,4 @@ data class ValdiTweaks(
           * When false, legacy behavior resets the caret to index 0.
           */
          val editTextResetSelectionMatchesIos: Boolean = false,
-         /**
-          * When true, use direct TextViewMeasureDelegate using StaticLayout/TextPaint for text measurement
-          * instead of creating and measuring placeholder Android TextView instances.
-          */
-         val enableDirectTextViewMeasure: Boolean = false,
 )

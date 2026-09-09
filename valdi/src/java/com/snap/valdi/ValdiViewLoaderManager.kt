@@ -356,7 +356,6 @@ class ValdiRuntimeManager(context: Context,
                     resetSelectionMatchesIos = tweaks?.editTextResetSelectionMatchesIos == true,
                     logger)
 
-            val enableDirectTextViewMeasure = tweaks?.enableDirectTextViewMeasure == true
             arrayOf(
                     viewAttributesBinder,
                     ViewGroupAttributesBinder(),
@@ -367,7 +366,7 @@ class ValdiRuntimeManager(context: Context,
                     ValdiSpinnerViewAttributesBinder(),
                     ValdiVideoViewAttributesBinder(context),
                     ValdiTextViewBaseAttributesBinder(context, fontManager, FontAttributes.default, logger),
-                    ValdiTextViewAttributesBinder(context, fontManager, FontAttributes.default, logger, enableDirectTextViewMeasure),
+                    ValdiTextViewAttributesBinder(context),
                     editTextAttributesBinder,
                     EditTextMultilineAttributesBinder(context),
                     ValdiIndexPickerAttributesBinder(context, logger),
