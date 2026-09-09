@@ -132,7 +132,7 @@ private:
     double _deviceDensity;
     Ref<ValdiRuntimeTweaks> _runtimeTweaks;
     Ref<Metrics> _metrics;
-    bool _didSetupImageAssetOverrideDirectory = false;
+    std::once_flag _imageAssetOverrideDirectoryOnce;
     bool _enableTSN = true;
     bool _inlineAssetsEnabled = true;
     bool _hotReloaderEnabled;
@@ -142,10 +142,18 @@ private:
 
     ILogger& _logger;
     FlatMap<StringBox, Ref<Bundle>> _bundleByName;
-    FlatSet<StringBox> _seenComponentPaths;
     std::vector<IResourceManagerListener*> _listeners;
     std::shared_ptr<snap::valdi_core::HTTPRequestManager> _requestManager;
+    // Guards the bundle table and settings. Lock order is _mutex -> Bundle mutex (getBundle takes the
+    // new Bundle's mutex via BundleInitializer while holding _mutex); never take _mutex while holding
+    // a Bundle mutex. Do not hold _mutex across anything that can block for long: the resource
+    // loader, runtime tweak reads, disk I/O, or waiting on a Bundle mutex another thread holds across
+    // its init. The main thread contends on this mutex from Runtime::createContext.
     mutable Mutex _mutex;
+    // Separate from _mutex so the main-thread dedupe in preloadForComponentPath never queues
+    // behind a bundle load.
+    mutable Mutex _seenComponentPathsMutex;
+    FlatSet<StringBox> _seenComponentPaths;
 
     // Resolved mmap/metrics settings are passed in by the caller (getBundle) rather than read
     // here: this runs while the caller holds the Bundle's mutex, and acquiring _mutex under that

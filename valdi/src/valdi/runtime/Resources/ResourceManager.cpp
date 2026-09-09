@@ -97,18 +97,25 @@ static int32_t parseApiVersion(const BytesView& bytes, ILogger& logger) {
 }
 
 int32_t ResourceManager::getApiVersion() {
-    std::lock_guard<Mutex> guard(_mutex);
-    if (_apiVersion.has_value()) {
-        return _apiVersion.value();
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        if (_apiVersion.has_value()) {
+            return _apiVersion.value();
+        }
     }
 
+    // Loaded outside _mutex: the resource loader crosses into the platform and on the first call can
+    // initialize the Dynamic Delivery archive, which waits on the content manager. Holding _mutex
+    // across it blocked the main thread in preloadForComponentPath for 10s+ (MUSIC-13144,
+    // SHARING-35215). Concurrent first callers may both reach the loader; the Dynamic Delivery
+    // archive init behind it is a std::call_once, so the heavy work still runs once.
     auto content = _resourceLoader->loadModuleContent(STRING_LITERAL("valdi_api_version"));
-    if (!content) {
-        _apiVersion = 0;
-        return _apiVersion.value();
-    }
+    int32_t apiVersion = content ? parseApiVersion(content.value(), _logger) : 0;
 
-    _apiVersion = parseApiVersion(content.value(), _logger);
+    std::lock_guard<Mutex> guard(_mutex);
+    if (!_apiVersion.has_value()) {
+        _apiVersion = apiVersion;
+    }
     return _apiVersion.value();
 }
 
@@ -313,22 +320,22 @@ void ResourceManager::onAssetCatalogChanged(const Ref<Bundle>& bundle) {
 
 Path ResourceManager::getImageAssetsOverrideDirectory() {
     Path path("hotreloaded_assets");
-    std::lock_guard<Mutex> guard(_mutex);
-    if (!_didSetupImageAssetOverrideDirectory) {
-        _didSetupImageAssetOverrideDirectory = true;
-        _diskCache->remove(path);
-    }
-
+    std::call_once(_imageAssetOverrideDirectoryOnce, [&]() { _diskCache->remove(path); });
     return path;
 }
 
 bool ResourceManager::isBundleLoaded(const StringBox& bundleName) {
-    std::lock_guard<Mutex> guard(_mutex);
-    const auto& it = _bundleByName.find(bundleName);
-    if (it == _bundleByName.end()) {
-        return false;
+    Ref<Bundle> bundle;
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        const auto& it = _bundleByName.find(bundleName);
+        if (it == _bundleByName.end()) {
+            return false;
+        }
+        bundle = it->second;
     }
-    return !it->second->hasRemoteArchiveNeedingLoad();
+    // The Bundle mutex is held for the whole archive decompression while the bundle initializes.
+    return !bundle->hasRemoteArchiveNeedingLoad();
 }
 
 bool ResourceManager::bundleHasRemoteSources(const StringBox& bundleName) {
@@ -353,23 +360,26 @@ Ref<Bundle> ResourceManager::getBundle(const StringBox& bundleName) {
     auto bundleInitializer = registerBundle(bundleName);
     auto inlineAssetsEnabled = _inlineAssetsEnabled;
 
-    // Snapshot the mmap/metrics settings while we still hold _mutex. getArchiveForModule runs below
-    // while the BundleInitializer holds the Bundle's mutex; it must not take _mutex itself, or it
-    // would invert the cleanup path's (_mutex -> Bundle mutex) order and can deadlock.
-    bool useMmap = false;
-    if (_runtimeTweaks != nullptr) {
-        // Denylisted modules take the heap path — identical to mmap-off behavior, which on
-        // swapless iOS de-facto pins them. The per-module Module_Archive_Heap counter
-        // self-verifies the routing in production.
-        useMmap = _runtimeTweaks->enableMmapModuleArchives() && !_mmapCacheDirectory.empty() &&
-                  !_runtimeTweaks->isMmapModuleArchiveDenylisted(bundleName);
-    }
+    // Snapshot the settings while we still hold _mutex. getArchiveForModule runs below while the
+    // BundleInitializer holds the Bundle's mutex; it must not take _mutex itself, or it would invert
+    // the cleanup path's (_mutex -> Bundle mutex) order and can deadlock.
+    auto runtimeTweaks = _runtimeTweaks;
     auto mmapCacheDir = _mmapCacheDirectory;
     auto metrics = _metrics;
 
     // We now have a lock on the Bundle itself. Release our lock so that
     // other threads can query the ResourceManager on other bundles.
     lock.unlock();
+
+    // Tweak reads can go to COF; evaluate them after releasing _mutex.
+    bool useMmap = false;
+    if (runtimeTweaks != nullptr) {
+        // Denylisted modules take the heap path — identical to mmap-off behavior, which on
+        // swapless iOS de-facto pins them. The per-module Module_Archive_Heap counter
+        // self-verifies the routing in production.
+        useMmap = runtimeTweaks->enableMmapModuleArchives() && !mmapCacheDir.empty() &&
+                  !runtimeTweaks->isMmapModuleArchiveDenylisted(bundleName);
+    }
 
     auto assetPackageKey = STRING_LITERAL("res.assetpackage");
     auto hasAssetPackage = false;
@@ -416,8 +426,8 @@ std::vector<StringBox> ResourceManager::getAllLoadedBundleNames() const {
 
 std::vector<std::pair<StringBox, Ref<Bundle>>> ResourceManager::getAllInitializedBundles() const {
     std::vector<std::pair<StringBox, Ref<Bundle>>> result;
-    result.reserve(_bundleByName.size());
     std::lock_guard<Mutex> guard(_mutex);
+    result.reserve(_bundleByName.size());
     for (auto it = _bundleByName.begin(); it != _bundleByName.end(); ++it) {
         if (it->second != nullptr && it->second->initialized()) {
             result.push_back(*it);
@@ -461,7 +471,7 @@ void ResourceManager::populateSourceMap(const StringBox& bundleName, Bundle& bun
 void ResourceManager::preloadForComponentPath(const ComponentPath& componentPath) {
     auto componentPathString = StringCache::getGlobal().makeString(componentPath.toString());
     {
-        std::lock_guard<Mutex> lock(_mutex);
+        std::lock_guard<Mutex> lock(_seenComponentPathsMutex);
         if (_seenComponentPaths.contains(componentPathString)) {
             return;
         }
@@ -606,18 +616,13 @@ const Ref<IDiskCache>& ResourceManager::getDiskCache() const {
 }
 
 bool ResourceManager::enableAccessibility() const {
-    if (_runtimeTweaks == nullptr) {
-        return false;
-    }
-    return _runtimeTweaks->enableAccessibility();
+    auto runtimeTweaks = getRuntimeTweaks();
+    return runtimeTweaks != nullptr && runtimeTweaks->enableAccessibility();
 }
 
 bool ResourceManager::enableDeferredGC() const {
-    std::lock_guard<Mutex> guard(_mutex);
-    if (_runtimeTweaks == nullptr) {
-        return false;
-    }
-    return _runtimeTweaks->enableDeferredGC();
+    auto runtimeTweaks = getRuntimeTweaks();
+    return runtimeTweaks != nullptr && runtimeTweaks->enableDeferredGC();
 }
 
 void ResourceManager::setRuntimeTweaks(const Ref<ValdiRuntimeTweaks>& runtimeTweaks) {
@@ -639,16 +644,23 @@ const Ref<Metrics>& ResourceManager::getMetrics() const {
 }
 
 void ResourceManager::removeUnusedResources() {
-    std::lock_guard<Mutex> guard(_mutex);
-
-    auto it = _bundleByName.begin();
-    while (it != _bundleByName.end()) {
-        if (it->second.use_count() == 1) {
-            it = _bundleByName.erase(it);
-        } else {
-            it->second->unloadUnusedResources();
-            ++it;
+    std::vector<Ref<Bundle>> retainedBundles;
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        auto it = _bundleByName.begin();
+        while (it != _bundleByName.end()) {
+            if (it->second.use_count() == 1) {
+                it = _bundleByName.erase(it);
+            } else {
+                retainedBundles.push_back(it->second);
+                ++it;
+            }
         }
+    }
+
+    // Each call takes the Bundle mutex, which a concurrent bundle init holds across decompression.
+    for (const auto& bundle : retainedBundles) {
+        bundle->unloadUnusedResources();
     }
 }
 
@@ -661,20 +673,25 @@ void ResourceManager::setLazyModulePreloadingEnabled(bool lazyModulePreloadingEn
 }
 
 bool ResourceManager::enableTSN() const {
-    std::lock_guard<Mutex> guard(_mutex);
-    if (_runtimeTweaks == nullptr) {
-        return _enableTSN;
+    Ref<ValdiRuntimeTweaks> runtimeTweaks;
+    bool enableTSN;
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        runtimeTweaks = _runtimeTweaks;
+        enableTSN = _enableTSN;
     }
-    return _runtimeTweaks->enableTSN();
+    return runtimeTweaks != nullptr ? runtimeTweaks->enableTSN() : enableTSN;
 }
 
 bool ResourceManager::enableTSNForModule(StringBox& moduleName) const {
-    std::lock_guard<Mutex> guard(_mutex);
-    if (_runtimeTweaks == nullptr) {
-        return _enableTSN;
+    Ref<ValdiRuntimeTweaks> runtimeTweaks;
+    bool enableTSN;
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        runtimeTweaks = _runtimeTweaks;
+        enableTSN = _enableTSN;
     }
-
-    return _runtimeTweaks->enableTSNForModule(moduleName);
+    return runtimeTweaks != nullptr ? runtimeTweaks->enableTSNForModule(moduleName) : enableTSN;
 }
 
 void ResourceManager::setEnableTSN(bool enableTSN) {
