@@ -8,6 +8,7 @@
 #include "valdi/snap_drawing/ImageLoading/ImageLoader.hpp"
 
 #include "snap_drawing/cpp/Utils/Image.hpp"
+#include "valdi/snap_drawing/ImageLoading/AssetSourceDescription.hpp"
 #include "valdi/snap_drawing/ImageLoading/ImageLoaderBridge.hpp"
 #include "valdi/snap_drawing/ImageLoading/ImageLoaderTask.hpp"
 
@@ -19,6 +20,8 @@
 
 #include "valdi_core/cpp/Constants.hpp"
 
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace snap::drawing {
@@ -143,7 +146,11 @@ void ImageLoader::loadImageFromBytes(const Ref<ImageLoaderTask>& task, const Val
 
     auto result = Image::make(bytes);
     if (!result) {
-        handleImageLoadResult(task, result.error());
+        // flatten() rather than getMessage(): the SVG rasterization path rethrows with a cause, and
+        // getMessage() returns only the outermost message, which would drop why the bitmap failed.
+        const auto message = std::string(result.error().flatten().getMessage().toStringView()) + " [" +
+                             describeAssetSource(task->getUrl()) + "]";
+        handleImageLoadResult(task, Valdi::Error(std::string_view(message)));
         return;
     }
 

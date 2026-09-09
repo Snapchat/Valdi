@@ -109,6 +109,14 @@ TEST_F(ImageLoaderTests, returnsErrorIfDataCannotBeConvertedToImage) {
     ASSERT_TRUE(result.error().toString().length() != 0);
 }
 
+TEST_F(ImageLoaderTests, decodeFailureReportsPayloadAndAssetSource) {
+    auto result = loadImage(_dataErrorUrl, getWidth(), getHeight());
+    ASSERT_TRUE(result.failure());
+    const auto message = result.error().toString();
+    EXPECT_NE(std::string::npos, message.find("Empty payload (bytes=0 magic=)")) << message;
+    EXPECT_NE(std::string::npos, message.find("[host=module ext=none]")) << message;
+}
+
 // NOTE(rjaber): Zero Dimension bitmaps are possible, but not currently supported by snap drawing
 //               They seems to fail in the Image::make(data) call. Leaving here in case
 //               this changes in the future

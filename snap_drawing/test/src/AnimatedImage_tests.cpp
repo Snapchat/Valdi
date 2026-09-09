@@ -46,4 +46,53 @@ TEST(AnimatedImage, truncatedImageErrorReportsLengthAndMagicBytes) {
     EXPECT_NE(std::string::npos, message.find("magic=89504e47")) << message;
 }
 
+TEST(AnimatedImage, keepsFallbackLabelForUnclassifiablePayload) {
+    auto payload = bytesFromString("definitely not an image payload");
+
+    auto image = AnimatedImage::make(nullptr, payload.data(), payload.size());
+
+    ASSERT_FALSE(image);
+    const auto message = image.error().toString();
+    EXPECT_NE(std::string::npos, message.find("Unsupported image format")) << message;
+    EXPECT_EQ(std::string::npos, message.find("Non-image")) << message;
+}
+
+TEST(AnimatedImage, keepsFallbackLabelForTruncatedPngHeader) {
+    const char truncatedPng[] = "\x89PNG";
+    auto payload = Valdi::BytesView(nullptr, reinterpret_cast<const Valdi::Byte*>(truncatedPng), 4);
+
+    auto image = AnimatedImage::make(nullptr, payload.data(), payload.size());
+
+    ASSERT_FALSE(image);
+    const auto message = image.error().toString();
+    EXPECT_NE(std::string::npos, message.find("Unsupported image format")) << message;
+    EXPECT_NE(std::string::npos, message.find("magic=89504e47")) << message;
+}
+
+TEST(AnimatedImage, reportsEmptyPayload) {
+    const char storage[] = "unused";
+    auto payload = Valdi::BytesView(nullptr, reinterpret_cast<const Valdi::Byte*>(storage), 0);
+
+    auto image = AnimatedImage::make(nullptr, payload.data(), payload.size());
+
+    ASSERT_FALSE(image);
+    const auto message = image.error().toString();
+    EXPECT_NE(std::string::npos, message.find("Empty payload")) << message;
+    EXPECT_NE(std::string::npos, message.find("bytes=0")) << message;
+}
+
+TEST(AnimatedImage, routesJsonPayloadToLottieWhenEnabled) {
+    if constexpr (!kLottieEnabled) {
+        GTEST_SKIP() << "JSON routing is compiled out in this configuration";
+    }
+
+    auto payload = bytesFromString("{\"v\":\"5.7.4\",\"layers\":[]}");
+
+    auto image = AnimatedImage::make(nullptr, payload.data(), payload.size());
+
+    const auto message = image ? std::string() : image.error().toString();
+    EXPECT_EQ(std::string::npos, message.find("Non-image JSON body")) << message;
+    EXPECT_EQ(std::string::npos, message.find("Lottie payload in a build without Lottie support")) << message;
+}
+
 } // namespace snap::drawing

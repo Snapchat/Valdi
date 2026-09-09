@@ -9,8 +9,6 @@
 #include "snap_drawing/cpp/Utils/SkCodecAnimatedImage.hpp"
 #include "valdi_core/cpp/Utils/JSONReader.hpp"
 
-#include <algorithm>
-#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -33,22 +31,6 @@ void AnimatedImage::drawInCanvas(const DrawableSurfaceCanvas& canvas,
     doDraw(canvas.getSkiaCanvas(), drawBounds, time, fittingSizeMode);
 }
 
-static std::string describePayload(const Valdi::Byte* data, size_t length) {
-    static constexpr char kHexDigits[] = "0123456789abcdef";
-    static constexpr size_t kMaxMagicBytes = 12;
-
-    const size_t magicLength = std::min(length, kMaxMagicBytes);
-    std::string magic;
-    magic.reserve(magicLength * 2);
-    for (size_t i = 0; i < magicLength; i++) {
-        const auto byte = static_cast<uint8_t>(data[i]);
-        magic.push_back(kHexDigits[byte >> 4]);
-        magic.push_back(kHexDigits[byte & 0x0F]);
-    }
-
-    return "bytes=" + std::to_string(length) + " magic=" + magic;
-}
-
 Valdi::Result<Ref<AnimatedImage>> AnimatedImage::make(const Ref<IFontManager>& fontManager,
                                                       const Valdi::Byte* data,
                                                       size_t length) {
@@ -68,7 +50,18 @@ Valdi::Result<Ref<AnimatedImage>> AnimatedImage::make(const Ref<IFontManager>& f
     auto skData = skDataFromBytes(bytesView, DataConversionModeAlwaysCopy);
     auto codec = SkCodec::MakeFromData(skData);
     if (codec == nullptr) {
-        const auto message = "Unsupported image format (" + describePayload(data, length) + ")";
+        // The classifier below would call a Lottie payload a JSON body. That is correct only while
+        // kLottieEnabled is true AND the JSON check precedes this branch, which routes Lottie away
+        // before it can get here. Where the check is compiled out, name the real cause instead.
+        if constexpr (!kLottieEnabled) {
+            if (isJsonObject(data, length)) {
+                const auto lottieMessage =
+                    "Lottie payload in a build without Lottie support (" + describePayloadBytes(bytesView) + ")";
+                return Valdi::Error(std::string_view(lottieMessage));
+            }
+        }
+
+        const auto message = describeUndecodablePayload(bytesView, "Unsupported image format");
         return Valdi::Error(std::string_view(message));
     }
     return SkCodecAnimatedImage::make(std::move(codec)).map<Ref<AnimatedImage>>();
