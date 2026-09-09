@@ -272,6 +272,10 @@ public:
     // native-call activity writes so worker threads never touch the JS thread's slot.
     bool anrDiagnosticsActiveOnJsThread();
 
+    // Breadcrumb name for an ANR inside a runtime.trace span: the tag cut at its first ':' (tags put
+    // dynamic payloads after it) and capped, so one span is one group.
+    static StringBox anrNativeCallNameForTraceSpan(const StringBox& traceName);
+
     // Swaps the recorded in-flight JS->native call name and returns the previous one, so nested
     // calls report the innermost and unwind to the parent. Written on the JS thread around bridge
     // calls, read by the ANR detector.
@@ -758,12 +762,13 @@ private:
 /**
  Records the JS->native call the JS thread is inside so an ANR whose stack capture times out can
  name it. Saves and restores the previous name, so nested calls report the innermost and unwind
- to the parent. No-op when ANR diagnostics are off or off the runtime's JS thread.
+ to the parent. No-op when ANR diagnostics are off, off the runtime's JS thread, or the name is
+ empty (which would only erase the parent's).
  */
 class ScopedNativeCallActivity {
 public:
     ScopedNativeCallActivity(JavaScriptRuntime* runtime, const StringBox& functionName) {
-        if (runtime != nullptr && runtime->anrDiagnosticsActiveOnJsThread()) {
+        if (runtime != nullptr && !functionName.isEmpty() && runtime->anrDiagnosticsActiveOnJsThread()) {
             _runtime = runtime;
             _previousName = runtime->swapCurrentNativeCallName(functionName);
         }

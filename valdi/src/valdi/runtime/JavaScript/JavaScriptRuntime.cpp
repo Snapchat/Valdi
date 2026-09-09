@@ -1064,12 +1064,19 @@ JSValueRef JavaScriptRuntime::runtimeSubmitRenderRequest(JSFunctionNativeCallCon
     return callContext.getContext().newUndefined();
 }
 
-// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 JSValueRef JavaScriptRuntime::runtimeTrace(JSFunctionNativeCallContext& callContext) {
     auto traceName = callContext.getParameterAsString(0);
     CHECK_CALL_CONTEXT(callContext);
 
     VALDI_TRACE_META("Valdi.jsTrace", traceName);
+
+    StringBox nativeCallName;
+    if (anrDiagnosticsActiveOnJsThread()) {
+        nativeCallName = anrNativeCallNameForTraceSpan(traceName);
+    }
+    // Nested inside the generic builtin activity so an ANR inside the traced callback names the
+    // span rather than "runtime.trace".
+    ScopedNativeCallActivity spanActivity(this, nativeCallName);
 
     auto subCallContext = callContext.makeSubContext(nullptr, 0);
 
@@ -4060,6 +4067,18 @@ void JavaScriptRuntime::setANRDiagnosticsEnabled(bool enabled) {
 
 bool JavaScriptRuntime::anrDiagnosticsActiveOnJsThread() {
     return _anrDiagnosticsEnabled && isInJsThread();
+}
+
+StringBox JavaScriptRuntime::anrNativeCallNameForTraceSpan(const StringBox& traceName) {
+    static constexpr size_t kMaxLength = 128;
+    auto end = traceName.indexOf(':').value_or(traceName.length());
+    if (end > kMaxLength) {
+        end = kMaxLength;
+    }
+    if (end == traceName.length()) {
+        return traceName;
+    }
+    return traceName.substring(0, end).trimmed();
 }
 
 StringBox JavaScriptRuntime::swapCurrentNativeCallName(StringBox name) {

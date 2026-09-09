@@ -9585,6 +9585,82 @@ TEST_P(RuntimeFixture, recordsRuntimeBuiltinWithModulePathForANRAttribution) {
     EXPECT_EQ(std::string::npos, jsRuntime->getANRAttributionInfo().find("[stuck-in:"));
 }
 
+// Spins the JS thread inside `spinBody` until `gateBundle` is registered, and returns the first
+// ANR attribution info observed from another thread that contains `expected` (empty on timeout).
+static std::string observeANRAttributionWhileSpinning(RuntimeWrapper& wrapper,
+                                                      const std::string& spinBody,
+                                                      const char* gateBundle,
+                                                      const std::string& expected) {
+    auto* jsRuntime = wrapper.runtime->getJavaScriptRuntime();
+
+    Result<Value> evalResult;
+    std::thread evalThread([&] {
+        evalResult = jsRuntime->evaluateScript(makeShared<ByteBuffer>(spinBody)->toBytesView(),
+                                               STRING_LITERAL("anr_attribution_eval.js"));
+    });
+
+    std::string observed;
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto info = jsRuntime->getANRAttributionInfo();
+        if (info.find(expected) != std::string::npos) {
+            observed = info;
+            break;
+        }
+        std::this_thread::yield();
+    }
+
+    // Registering the gate bundle makes isModuleLoaded return true, releasing the JS loop.
+    wrapper.loadModule(StringBox::fromCString(gateBundle), ResourceManagerLoadModuleType::Sources);
+    evalThread.join();
+    EXPECT_TRUE(evalResult) << evalResult.description();
+    return observed;
+}
+
+static bool isRuntimeTraceBound(JavaScriptRuntime& jsRuntime) {
+    auto probe = jsRuntime.evaluateScript(
+        makeShared<ByteBuffer>(std::string("return typeof runtime.trace === 'function' ? 1 : 0;"))->toBytesView(),
+        STRING_LITERAL("eval.js"));
+    return probe && probe.value().toInt() == 1;
+}
+
+// A trace span runs its callback synchronously inside runtime.trace, so the breadcrumb used to
+// read "[stuck-in: runtime.trace]" for the whole span. It must name the span instead.
+TEST_P(RuntimeFixture, recordsTraceSpanTagForANRAttribution) {
+    wrapper.teardown();
+
+    auto tweakModule = makeShared<TestTweakValueProvider>().toShared();
+    tweakModule->config.setMapValue("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS", Valdi::Value(static_cast<bool>(true)));
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, tweakModule);
+
+    auto* jsRuntime = wrapper.runtime->getJavaScriptRuntime();
+    if (!isRuntimeTraceBound(*jsRuntime)) {
+        GTEST_SKIP() << "tracing disabled in this build (runtime.trace not bound)";
+    }
+
+    std::string spinBody = "runtime.trace('renderComponent.AnrAttributionProbe', () => {"
+                           "  while (!runtime.isModuleLoaded('anr_attribution_gate_span')) {}"
+                           "});"
+                           "return 0;";
+    const std::string expected = "[stuck-in: renderComponent.AnrAttributionProbe]";
+    auto observed = observeANRAttributionWhileSpinning(wrapper, spinBody, "anr_attribution_gate_span", expected);
+
+    EXPECT_NE(std::string::npos, observed.find(expected)) << "observed: '" << observed << "'";
+    EXPECT_EQ(std::string::npos, observed.find("runtime.trace")) << "observed: '" << observed << "'";
+    EXPECT_EQ(std::string::npos, jsRuntime->getANRAttributionInfo().find("[stuck-in:"));
+}
+
+TEST(JavaScriptRuntimeANRAttribution, traceSpanNameKeepsStaticPrefixOnly) {
+    EXPECT_EQ(STRING_LITERAL("renderComponent.SendToRecipientList"),
+              JavaScriptRuntime::anrNativeCallNameForTraceSpan(STRING_LITERAL("renderComponent.SendToRecipientList")));
+    EXPECT_EQ(STRING_LITERAL("DatabaseSync - Save Sync Token"),
+              JavaScriptRuntime::anrNativeCallNameForTraceSpan(
+                  STRING_LITERAL("DatabaseSync - Save Sync Token: client-a")));
+    EXPECT_TRUE(JavaScriptRuntime::anrNativeCallNameForTraceSpan(STRING_LITERAL(": dynamic-only")).isEmpty());
+    EXPECT_EQ(128u,
+              JavaScriptRuntime::anrNativeCallNameForTraceSpan(StringBox::fromString(std::string(200, 'x'))).length());
+}
+
 TEST_P(RuntimeFixture, canGetFileEntry) {
     auto jsResult = callFunctionSync(wrapper, "test/src/LoadFile", "loadFromString", {});
     ASSERT_TRUE(jsResult) << jsResult.value();
