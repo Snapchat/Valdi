@@ -14,6 +14,9 @@
 @interface SCValdiTextView (SCValdiTextInputFocusTests)
 - (BOOL)valdi_setFocused:(BOOL)focused;
 - (BOOL)valdi_setEnabled:(BOOL)enabled;
+- (void)valdi_setValue:(id)value;
+- (BOOL)valdi_setSelectTextOnFocus:(BOOL)selectTextOnFocus;
+- (BOOL)valdi_setScrollToEndBeforeFocus:(BOOL)scrollToEndBeforeFocus;
 @end
 
 // The 'focused' attribute can be applied before the native view is attached to a UIWindow
@@ -246,6 +249,48 @@
     [view removeFromSuperview];
 }
 
+- (void)testTextViewMovesSelectionToEndBeforeFocusWhenEnabled
+{
+    SCValdiTextView *view = [[SCValdiTextView alloc] initWithFrame:CGRectMake(0, 0, 200, 40)];
+    UITextView *textView = [self editableTextViewIn:view];
+    XCTAssertNotNil(textView);
+    [view valdi_setValue:[@"Prompt " stringByPaddingToLength:1000 withString:@"long text " startingAtIndex:0]];
+    [view valdi_setScrollToEndBeforeFocus:YES];
+    [_window addSubview:view];
+    [view layoutIfNeeded];
+    XCTAssertGreaterThan(textView.contentSize.height, textView.bounds.size.height);
+
+    textView.selectedRange = NSMakeRange(0, 0);
+    textView.contentOffset = CGPointZero;
+    XCTAssertTrue([view valdi_setFocused:YES]);
+    XCTAssertTrue(textView.isFirstResponder);
+    XCTAssertEqual(textView.selectedRange.location, textView.text.length);
+    XCTAssertEqual(textView.selectedRange.length, 0);
+
+    [view removeFromSuperview];
+}
+
+- (void)testTextViewDoesNotScrollToEndBeforeFocusByDefault
+{
+    SCValdiTextView *view = [[SCValdiTextView alloc] initWithFrame:CGRectMake(0, 0, 200, 40)];
+    UITextView *textView = [self editableTextViewIn:view];
+    XCTAssertNotNil(textView);
+    [view valdi_setValue:[@"Prompt " stringByPaddingToLength:1000 withString:@"long text " startingAtIndex:0]];
+    [view valdi_setSelectTextOnFocus:YES];
+    [_window addSubview:view];
+    [view layoutIfNeeded];
+    XCTAssertGreaterThan(textView.contentSize.height, textView.bounds.size.height);
+
+    textView.selectedRange = NSMakeRange(0, 0);
+    textView.contentOffset = CGPointZero;
+    XCTAssertTrue([view valdi_setFocused:YES]);
+    XCTAssertEqual(textView.selectedRange.location, 0);
+    XCTAssertEqual(textView.selectedRange.length, 0);
+    XCTAssertEqual(textView.contentOffset.y, 0.0);
+
+    [view removeFromSuperview];
+}
+
 - (void)testTextViewFocusRequestedWhileAnotherWindowIsKeyIsDeferred
 {
     SCValdiTextView *view = [[SCValdiTextView alloc] initWithFrame:CGRectMake(0, 0, 200, 100)];
@@ -262,6 +307,35 @@
     [_window makeKeyAndVisible];
 
     XCTAssertTrue(textView.isFirstResponder, @"deferred focus must be applied when the view's window becomes key");
+    alertWindow.hidden = YES;
+    [view removeFromSuperview];
+}
+
+- (void)testPendingTextViewFocusDoesNotMoveSelectionAfterManualFocus
+{
+    SCValdiTextView *view = [[SCValdiTextView alloc] initWithFrame:CGRectMake(0, 0, 200, 40)];
+    UITextView *textView = [self editableTextViewIn:view];
+    XCTAssertNotNil(textView);
+    [view valdi_setValue:[@"Prompt " stringByPaddingToLength:1000 withString:@"long text " startingAtIndex:0]];
+    [view valdi_setScrollToEndBeforeFocus:YES];
+    [_window addSubview:view];
+    [view layoutIfNeeded];
+
+    UIWindow *alertWindow = [[UIWindow alloc] initWithFrame:CGRectMake(0, 0, 320, 480)];
+    [alertWindow makeKeyAndVisible];
+
+    XCTAssertTrue([view valdi_setFocused:YES]);
+    XCTAssertTrue([textView becomeFirstResponder]);
+    XCTAssertTrue(textView.isFirstResponder);
+    textView.selectedRange = NSMakeRange(0, 0);
+    textView.contentOffset = CGPointZero;
+
+    [_window makeKeyAndVisible];
+
+    XCTAssertEqual(textView.selectedRange.location, 0);
+    XCTAssertEqual(textView.selectedRange.length, 0);
+    XCTAssertEqual(textView.contentOffset.y, 0.0);
+
     alertWindow.hidden = YES;
     [view removeFromSuperview];
 }

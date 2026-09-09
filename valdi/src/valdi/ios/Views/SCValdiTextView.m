@@ -255,6 +255,8 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
     NSNumber *_characterLimit;
     /// YES if all text should be selected on begin editing
     BOOL _selectTextOnFocus;
+    /// YES if the text view should scroll to its end before becoming focused
+    BOOL _scrollToEndBeforeFocus;
     /// YES if read-only text should allow selection
     BOOL _selectable;
     /// YES if we discard any typed newline
@@ -558,8 +560,21 @@ static CGFloat SCValdiTextViewContentHeightForGravity(UITextView *textView,
     if (!self.window.isKeyWindow) {
         return;
     }
-    if (_textView.isFirstResponder || [_textView becomeFirstResponder]) {
+    if (_textView.isFirstResponder) {
         _pendingFocused = NO;
+        return;
+    }
+    [self _moveSelectionToEndBeforeFocusIfNeeded];
+    if ([_textView becomeFirstResponder]) {
+        _pendingFocused = NO;
+    }
+}
+
+- (void)_moveSelectionToEndBeforeFocusIfNeeded
+{
+    if (_scrollToEndBeforeFocus && _textView.text.length > 0) {
+        _textView.selectedRange = NSMakeRange(_textView.text.length, 0);
+        [_textView scrollRangeToVisible:_textView.selectedRange];
     }
 }
 
@@ -1492,7 +1507,12 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
         // and on a non-key window becomeFirstResponder can report success without ever showing
         // the keyboard. Keep the intent pending and apply it when the app becomes active or this
         // view's window becomes key, instead of failing permanently.
-        if (!self.window.isKeyWindow || ![_textView becomeFirstResponder]) {
+        if (!self.window.isKeyWindow) {
+            _pendingFocused = YES;
+            return YES;
+        }
+        [self _moveSelectionToEndBeforeFocusIfNeeded];
+        if (![_textView becomeFirstResponder]) {
             _pendingFocused = YES;
         }
         return YES;
@@ -1541,6 +1561,12 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
 - (BOOL)valdi_setSelectTextOnFocus:(BOOL)selectTextOnFocus
 {
     _selectTextOnFocus = selectTextOnFocus;
+    return YES;
+}
+
+- (BOOL)valdi_setScrollToEndBeforeFocus:(BOOL)scrollToEndBeforeFocus
+{
+    _scrollToEndBeforeFocus = scrollToEndBeforeFocus;
     return YES;
 }
 
@@ -1974,6 +2000,15 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextView 
         }
         resetBlock:^(SCValdiTextView *textView, id<SCValdiAnimatorProtocol> animator) {
             [textView valdi_setSelectTextOnFocus:NO];
+        }];
+
+    [attributesBinder bindAttribute:@"scrollToEndBeforeFocus"
+        invalidateLayoutOnChange:NO
+        withBoolBlock:^BOOL(SCValdiTextView *textView, BOOL attributeValue, id<SCValdiAnimatorProtocol> animator) {
+            return [textView valdi_setScrollToEndBeforeFocus:attributeValue];
+        }
+        resetBlock:^(SCValdiTextView *textView, id<SCValdiAnimatorProtocol> animator) {
+            [textView valdi_setScrollToEndBeforeFocus:NO];
         }];
 
     [attributesBinder bindAttribute:@"returnType"

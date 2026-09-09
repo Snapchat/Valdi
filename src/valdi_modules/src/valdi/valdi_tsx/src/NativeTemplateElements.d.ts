@@ -1349,6 +1349,13 @@ export interface TextFieldInteractive extends TextField {
 // @NativeTemplateElement({ios: 'SCValdiTextView', android: 'com.snap.valdi.views.ValdiEditTextMultiline', jsx: 'textview'})
 export interface TextView extends _TextView, CommonEditTextInterface, ContainerTemplateElement {
   /**
+   * [iOS-Only]
+   * Scrolls to the end of the text before the text view becomes focused.
+   * @default: false
+   */
+  scrollToEndBeforeFocus?: boolean;
+
+  /**
    * The content type identifies what keyboard keys
    * and capabilities are available on the input and which ones appear by default.
    * @default: 'default'

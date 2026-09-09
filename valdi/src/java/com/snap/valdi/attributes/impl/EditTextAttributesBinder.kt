@@ -143,6 +143,12 @@ class EditTextAttributesBinder(private val context: Context,
             this::applySelectTextOnFocus,
             this::resetSelectTextOnFocus
         )
+        attributesBindingContext.bindBooleanAttribute(
+            "scrollToEndBeforeFocus",
+            false,
+            this::applyScrollToEndBeforeFocusNoop,
+            this::resetScrollToEndBeforeFocusNoop
+        )
         attributesBindingContext.setPlaceholderViewMeasureDelegate(lazy {
             ValdiEditText(context).apply {
                 layoutParams = ViewGroup.LayoutParams(
@@ -390,6 +396,12 @@ class EditTextAttributesBinder(private val context: Context,
 
     private fun resetSelectTextOnFocus(editText: ValdiEditText, animator: ValdiAnimator?) {
         applySelectTextOnFocus(editText, false, animator)
+    }
+
+    private fun applyScrollToEndBeforeFocusNoop(view: ValdiEditText, value: Boolean, animator: ValdiAnimator?) {
+    }
+
+    private fun resetScrollToEndBeforeFocusNoop(view: ValdiEditText, animator: ValdiAnimator?) {
     }
 
     private fun applyAutocorrection(editText: ValdiEditText, value: String, animator: ValdiAnimator?) {
