@@ -43,6 +43,11 @@ public:
     // (avoids the silent-skip that crashes an in-flight bridge call). Set false for aggressive
     // termination that stops even frozen JS, at the cost of teardown-race side effects.
     bool useCooperativeTermination() const;
+    // When true (default), ~JavaScriptRuntime joins the JS thread before destroying members, so an
+    // in-flight JS task can't touch a freed member during teardown. Set false to revert to the prior
+    // behavior (the join becomes a hang if the JS thread is frozen; off trades that back for the
+    // earlier member-order crash).
+    bool joinJsThreadOnTeardown() const;
     bool applyManagedChildFramePadding() const;
     bool disableHitTestSyncDeadline() const;
     // True when VALDI_MAX_VIEW_OPERATIONS_PROCESSING_TIME > 0 (throttling enabled). Gates top-down move order in TS.

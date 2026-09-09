@@ -7061,6 +7061,38 @@ TEST_P(RuntimeFixture, initFailedRuntimeSkipsQueuedWorkWhileContextAlive) {
                          "though the context is still alive";
 }
 
+// Mechanism repro for the JS-runtime teardown use-after-free (ASan-only; DISABLED so CI never runs
+// it). Reproduces the exact memory violation the ~JavaScriptRuntime join fix prevents:
+// _moduleResourceTracker is a lock-free
+// vector that loadJsModule mutates only on the JS thread, but the destructor frees it during member
+// destruction on whatever thread drops the last ref (in production the djinni GC thread). Here the JS
+// thread takes a pointer into the buffer (as loadJsModule holds .back()) and parks; another thread
+// frees the buffer (modelling the destructor); the JS thread then writes through it. Enable with
+// --gtest_also_run_disabled_tests under ASan on a ThreadedDispatchQueue engine (e.g. QuickJS) to see
+// the heap-use-after-free. It is NOT a fix gate (it frees via a seam, bypassing the destructor); a
+// destructor-gated red/green test needs to own a runtime via the djinni/worker path (follow-up).
+// WARNING: the write below is a deliberate use-after-free -- it corrupts the heap without ASan.
+TEST_P(RuntimeFixture, DISABLED_moduleResourceTrackerFreedUnderJsThreadIsUseAfterFree) {
+    auto* jsRuntime = wrapper.runtime->getJavaScriptRuntime();
+
+    std::promise<void> parked;
+    std::promise<void> freed;
+
+    std::thread jsSide([&] {
+        jsRuntime->dispatchSynchronouslyOnJsThread([&](auto&) {
+            auto* elem = jsRuntime->mutateAndGetModuleResourceTrackerBackForTesting();
+            parked.set_value();
+            freed.get_future().wait();
+            elem->memoryWaterMark = 42; // heap-use-after-free: the buffer was freed on the main thread
+        });
+    });
+
+    parked.get_future().wait();
+    jsRuntime->freeModuleResourceTrackerForTesting();
+    freed.set_value();
+    jsSide.join();
+}
+
 // Verifies that a sync JS call from the main thread triggers the assertion when the module has
 // async_strict_mode and the function is not annotated with @AllowSyncCall. Uses a dedicated
 // test_async_strict module (async_strict_mode=True) so the main test module can stay non-strict.

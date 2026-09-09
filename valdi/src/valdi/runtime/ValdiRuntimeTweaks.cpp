@@ -124,6 +124,12 @@ bool ValdiRuntimeTweaks::useCooperativeTermination() const {
     return _tweakValueProvider->getBool(configKey, true);
 }
 
+bool ValdiRuntimeTweaks::joinJsThreadOnTeardown() const {
+    auto configKey =
+        StringCache::getGlobal().makeStringFromLiteral(std::string_view("VALDI_JOIN_JS_THREAD_ON_TEARDOWN"));
+    return _tweakValueProvider->getBool(configKey, true);
+}
+
 bool ValdiRuntimeTweaks::applyManagedChildFramePadding() const {
     auto configKey =
         StringCache::getGlobal().makeStringFromLiteral(std::string_view("VALDI_MANAGES_CHILD_FRAME_PADDING_ENABLED"));

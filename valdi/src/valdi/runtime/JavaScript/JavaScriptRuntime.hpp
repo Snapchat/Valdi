@@ -233,6 +233,13 @@ public:
         return _cooperativeTermination;
     }
 
+    // Kept in sync with VALDI_JOIN_JS_THREAD_ON_TEARDOWN by Runtime::setRuntimeTweaks (and pulled in
+    // postInit for worker runtimes, which don't get the pushed tweaks). Read by ~JavaScriptRuntime to
+    // join the JS thread before member destruction; off reverts to the prior member-order behavior.
+    void setJoinJsThreadOnTeardown(bool enabled) {
+        _joinJsThreadOnTeardown = enabled;
+    }
+
     // Test-only: enter/leave the disposed-but-context-alive teardown window without running teardown,
     // so the dispatch guard's cooperative-drain vs aggressive-skip behavior can be tested deterministically.
     void setDisposedForTesting(bool disposed) {
@@ -243,6 +250,22 @@ public:
     // still non-null), so the dispatch guard's !_running refusal can be tested deterministically.
     void setRunningForTesting(bool running) {
         _running = running;
+    }
+
+    // Test-only: mirror the _moduleResourceTracker mutation loadJsModule performs on
+    // the JS thread and return a pointer INTO the buffer (as loadJsModule holds
+    // _moduleResourceTracker.back() across its load), so the teardown-race regression test can observe
+    // a use-after-free if the destructor frees the buffer without first joining the JS thread.
+    ModuleResourceConsumptionInfo* mutateAndGetModuleResourceTrackerBackForTesting() {
+        _moduleResourceTracker.push_back({0, 0, 0, 0});
+        return &_moduleResourceTracker.back();
+    }
+
+    // Test-only: free the _moduleResourceTracker buffer as ~JavaScriptRuntime does
+    // during member destruction, standalone, so the ASan mechanism repro can free it from one thread
+    // while the JS thread holds a pointer into it.
+    void freeModuleResourceTrackerForTesting() {
+        std::vector<ModuleResourceConsumptionInfo>().swap(_moduleResourceTracker);
     }
 
     // True when ANR diagnostics are on and the caller is on this runtime's JS thread. Guards the
@@ -453,6 +476,9 @@ private:
     // Mirror of VALDI_USE_COOPERATIVE_TERMINATION (see setCooperativeTermination). Held here
     // so JavaScriptWorker can read it independent of the listener. Defaults to cooperative.
     std::atomic<bool> _cooperativeTermination = true;
+    // Mirror of VALDI_JOIN_JS_THREAD_ON_TEARDOWN (see setJoinJsThreadOnTeardown). Gates the
+    // destructor's JS-thread join. Defaults on.
+    std::atomic<bool> _joinJsThreadOnTeardown = true;
     std::atomic<ContextId> _lastDispatchedContextId;
     // ANR attribution diagnostics, gated by the VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS COF key (key
     // name kept from the earlier module-load diagnostics for config continuity). The mutex guards

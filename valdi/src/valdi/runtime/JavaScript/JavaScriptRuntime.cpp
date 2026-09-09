@@ -362,6 +362,7 @@ void JavaScriptRuntime::postInit() {
             // (which targets the host runtime) never reaches them. Reading it at postInit — after the
             // worker's listener is set — lets a worker honor an aggressive-termination override.
             setCooperativeTermination(runtimeTweaks->useCooperativeTermination());
+            setJoinJsThreadOnTeardown(runtimeTweaks->joinJsThreadOnTeardown());
         }
     }
 }
@@ -369,6 +370,21 @@ void JavaScriptRuntime::postInit() {
 JavaScriptRuntime::~JavaScriptRuntime() {
     VALDI_DEBUG(*_logger, "Destroying JavaScriptRuntime (instance ptr {})", static_cast<void*>(this));
     fullTeardown();
+
+    // fullTeardown() -> teardown() early-returns without draining when the runtime is already
+    // disposed, trusting a prior disposer to have quiesced the JS thread. That trust is unsafe:
+    // dispatched JS-thread tasks hold the runtime only by raw pointer, so an in-flight loadJsModule can
+    // still be mutating members (e.g. the lock-free _moduleResourceTracker) when the last ref drops on
+    // another thread. The only off-thread join would otherwise be the _dispatchQueue member destructor,
+    // which runs AFTER _moduleResourceTracker is freed (member order) -- too late. Force the (idempotent)
+    // drain+join here, before any member is destroyed. Off the JS thread this joins; on it, it is a no-op.
+    //
+    // Gated by VALDI_JOIN_JS_THREAD_ON_TEARDOWN (default on): the join replaces the prior member-order
+    // crash with a wait, so a frozen JS thread turns it into a hang instead. The flag lets that trade be
+    // flipped off without a build if a frozen-JS population shows up.
+    if (_joinJsThreadOnTeardown) {
+        _dispatchQueue->fullTeardown();
+    }
 }
 
 void JavaScriptRuntime::doInitialize() {
@@ -4099,7 +4115,16 @@ std::string JavaScriptRuntime::getANRAttributionInfo() const {
 DispatchFunction JavaScriptRuntime::makeJsThreadDispatchFunction(Ref<Context>&& ownerContext,
                                                                  JavaScriptThreadTask&& jsTask) {
     SC_ASSERT(ownerContext != nullptr);
-    return [this, retainedContext = RetainedContext(std::move(ownerContext)), jsTask = std::move(jsTask)]() {
+    return [this,
+            // Retain the runtime for the task's lifetime so an in-flight JS-thread task can't have a
+            // member freed under it by a runtime whose last external ref was dropped on another thread.
+            // With this held, the final ref is released here on the JS thread when the task completes,
+            // so ~JavaScriptRuntime runs on the JS thread and its teardown join is a no-op self-join --
+            // never a cross-thread block that could deadlock against a task synchronously waiting on the
+            // dropping thread. Gated by the same kill switch as the destructor join.
+            retainedSelf = (_joinJsThreadOnTeardown ? strongSmallRef(this) : Ref<JavaScriptRuntime>()),
+            retainedContext = RetainedContext(std::move(ownerContext)),
+            jsTask = std::move(jsTask)]() {
         // _running is cleared only by onInitError (teardownOnJsThread no longer clears it), so
         // !_running here uniquely means module-loader init failed while the context is still
         // non-null. Refuse: queued work must not run against a runtime that never finished

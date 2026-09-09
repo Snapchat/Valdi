@@ -758,6 +758,10 @@ void Runtime::setRuntimeTweaks(const Ref<ValdiRuntimeTweaks>& runtimeTweaks) {
         // pushed tweak), so a host override reaches both.
         _javaScriptRuntime->setCooperativeTermination(
             runtimeTweaks != nullptr ? runtimeTweaks->useCooperativeTermination() : true);
+        // Push the teardown-join kill switch down too (read during ~JavaScriptRuntime, when this
+        // Runtime listener is no longer reachable). Workers pull it themselves in postInit.
+        _javaScriptRuntime->setJoinJsThreadOnTeardown(
+            runtimeTweaks != nullptr ? runtimeTweaks->joinJsThreadOnTeardown() : true);
     }
 }
 
