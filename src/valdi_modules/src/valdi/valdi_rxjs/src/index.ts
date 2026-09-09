@@ -16,6 +16,7 @@ export { firstValueFrom } from './firstValueFrom';
 export { share } from './operators/share';
 export { shareReplay } from './operators/shareReplay';
 export { skip } from './operators/skip';
+export { skipWhile } from './operators/skipWhile';
 
 export { map } from './operators/map';
 export { tap } from './operators/tap';
