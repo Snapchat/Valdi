@@ -614,6 +614,29 @@ kt_jvm_test(
     ],
 )
 
+# Runs the pure-JVM worker cache lifecycle tests in seconds, instead of waiting for :test_java.
+kt_jvm_test(
+    name = "test_worker_runtime_cache",
+    # The randomized-interleaving tests are CPU-time sensitive: ~2 s on a quiet machine, but they
+    # have hit the 60 s small-test limit on a heavily loaded one.
+    size = "medium",
+    srcs = ["test/java/com/snap/valdi/WorkerRuntimeCacheTest.kt"],
+    args = [
+        "--select-class=com.snap.valdi.WorkerRuntimeCacheTest",
+    ],
+    main_class = "org.junit.platform.console.ConsoleLauncher",
+    runtime_deps = [
+        "@android_mvn//:org_junit_jupiter_junit_jupiter_engine",
+        "@android_mvn//:org_junit_platform_junit_platform_launcher",
+        "@android_mvn//:org_junit_platform_junit_platform_reporting",
+    ],
+    deps = [
+        ":valdi_java",
+        "@android_mvn//:org_junit_jupiter_junit_jupiter_api",
+        "@android_mvn//:org_junit_platform_junit_platform_console",
+    ],
+)
+
 # Allows to use Valdi in headless mode without UI, without
 # a platform specific integration.
 cc_library(

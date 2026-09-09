@@ -104,6 +104,18 @@ class ValdiRuntimeManager(context: Context,
 
     private var observingProcessLifecycle = false
 
+    /**
+     * Guards [destroyed], and every resolution of [mainRuntimeLazy] including the public
+     * [mainRuntime] getter's. Deliberately its own monitor rather than `mainRuntimeListeners`:
+     * resolving the runtime under this guard can run the lazy initializer, which takes the listener
+     * monitor, so every reader acquires this lock, then the lazy's, then the listeners', in that
+     * order. Reusing the listener monitor here would close that chain into a cycle.
+     */
+    private val lifecycleLock = Any()
+
+    // Guarded by `lifecycleLock`.
+    private var destroyed = false
+
     private var mainRuntimeHolder: ValdiRuntime? = null
 
     private val mainRuntimeLazy = lazy {
@@ -126,7 +138,18 @@ class ValdiRuntimeManager(context: Context,
     val baseContext: Context = context
     val context: Context = context.applicationContext
 
-    val mainRuntime: ValdiRuntime by mainRuntimeLazy
+    /**
+     * This manager's main Valdi runtime, created on first access.
+     *
+     * Resolved under [lifecycleLock] rather than by delegating straight to the lazy, so that every
+     * reader initializes the runtime under the same guard [destroy] takes: an initialization that
+     * raced [destroy] is then either not started yet or already finished when [destroy] looks, and
+     * a runtime handed back here is one [destroy] can see and tear down rather than one that
+     * outlives the manager undestroyed. A reader arriving after [destroy] still initializes a fresh
+     * runtime, as it always has.
+     */
+    val mainRuntime: ValdiRuntime
+        get() = synchronized(lifecycleLock) { mainRuntimeLazy.value }
 
     val fontManager = FontManager(context, typefaceResLoader ?: DefaultTypefaceResLoader())
 
@@ -483,43 +506,30 @@ class ValdiRuntimeManager(context: Context,
      * Destroy the RuntimeManager and release all its native resources.
      */
     fun destroy() {
+        // Marked destroyed before anything is torn down, and the guard is never held across the
+        // teardown below: that teardown synchronizes with the JS thread, on which a worker-creation
+        // request may be waiting for this guard. Every reader of `mainRuntime` resolves it under
+        // this same guard, so an initialization racing this call has either finished -- and its
+        // runtime is the one destroyed here -- or not started, which makes it an ordinary
+        // post-destroy read, as free as it always was to build a runtime this manager no longer
+        // owns.
+        val mainRuntimeToDestroy = synchronized(lifecycleLock) {
+            destroyed = true
+            if (mainRuntimeLazy.isInitialized()) mainRuntimeLazy.value else null
+        }
+
         stopObservingProcessLifecycle()
 
-        if (mainRuntimeLazy.isInitialized()) {
-            mainRuntimeLazy.value.destroy()
-        }
+        // Before the runtime it creates workers on goes away: the cache stops requesting creations
+        // and stops handing caller blocks to the worker threads. A creation callback already queued
+        // on that runtime's JS thread is dropped by the runtime once it is destroyed, and the flag
+        // set above is what stops a request that lost the race from lazily re-initializing a
+        // runtime nothing would then destroy.
+        workerCache.destroy()
+
+        mainRuntimeToDestroy?.destroy()
         handle.destroy()
         snapDrawingRuntimeField?.clearCache()
-
-        // An entry whose creation never completed would otherwise keep a null worker forever:
-        // this runtime's JS thread drops pending work silently once it is destroyed, so the
-        // creator can no longer publish, and every later caller - from any manager, since the
-        // cache is process-wide - would queue a block behind it and leak the closure. So the
-        // entry is handed to another manager still waiting on it, or removed when there is none,
-        // and either way the worker ends up created on a live runtime.
-        val handovers = synchronized(workerExecutorCache) {
-            val taken = mutableListOf<Pair<String, ValdiRuntimeManager>>()
-            val iterator = workerExecutorCache.entries.iterator()
-            while (iterator.hasNext()) {
-                val (executor, entry) = iterator.next()
-                if (entry.worker != null || entry.creator !== this) continue
-                // Blocks queued by this manager die with its runtime, exactly as a dropped
-                // callback did before they were queued; blocks from other managers must still run.
-                entry.pending.removeAll { it.manager === this }
-                val successor = entry.pending.firstOrNull()?.manager
-                if (successor == null) {
-                    iterator.remove()
-                } else {
-                    // A late callback from this manager publishes nothing once it no longer owns
-                    // the entry, so the successor publishes the worker exactly once.
-                    entry.creator = successor
-                    taken.add(executor to successor)
-                }
-            }
-            taken
-        }
-        // Called outside the lock because it may initialize the successor's lazy main runtime.
-        handovers.forEach { (executor, successor) -> successor.createWorkerFor(executor) }
     }
 
     /**
@@ -796,72 +806,32 @@ class ValdiRuntimeManager(context: Context,
         NativeBridge.enqueueWorkerTask(nativeHandle, runnable)
     }
 
+    // One worker per executor name per manager, pinned for as long as this manager lives, exactly
+    // as iOS does (SCValdiRuntimeManager keeps them in a strong-to-strong map). The executor name
+    // is only a cache key here: createWorker() does not take one.
+    private val workerCache = WorkerRuntimeCache<ValdiJSWorker>(
+        create = createWorker@{ _, onReady ->
+            // The cache no longer serializes creation against its own destroy(), so the destroyed
+            // check here is what keeps a request that lost that race from lazily initializing a
+            // runtime nothing would destroy. Held only across resolving the runtime: getJSRuntime
+            // dispatches onto the JS thread, and that dispatch runs inline when the caller already
+            // is that thread, so it must not run under a lock of ours.
+            val runtime = synchronized(lifecycleLock) {
+                if (destroyed) null else mainRuntime
+            } ?: return@createWorker
+
+            runtime.getJSRuntime { jsRuntime ->
+                onReady(ValdiJSWorker(jsRuntime.getNativeObject().createWorker()))
+            }
+        },
+        post = { worker, block -> worker.runOnJsThread { block(worker) } }
+    )
+
     /**
      * Acquire a Worker runtime on the given executor
      */
     fun getWorker(executor: String, block: (ValdiJSRuntime) -> Unit) {
-        var isCreator = false
-        val readyWorker: ValdiJSWorker? = synchronized(workerExecutorCache) {
-            val entry = workerExecutorCache.getOrPut(executor) {
-                isCreator = true
-                WorkerEntry(this)
-            }
-            val worker = entry.worker
-            if (worker == null) {
-                entry.pending.add(PendingBlock(this, block))
-            }
-            worker
-        }
-        if (readyWorker != null) {
-            readyWorker.runOnJsThread { block(readyWorker) }
-            return
-        }
-        if (!isCreator) {
-            return
-        }
-        createWorkerFor(executor)
-    }
-
-    private fun createWorkerFor(executor: String) {
-        // getWorker() and destroy() release the cache lock between deciding who creates and
-        // getting here, so this manager may already have been destroyed and handed the entry
-        // on. Touching mainRuntime then would initialize a runtime nothing will ever destroy.
-        val stillCreator = synchronized(workerExecutorCache) {
-            workerExecutorCache[executor]?.creator === this
-        }
-        if (!stillCreator) {
-            return
-        }
-        mainRuntime.getJSRuntime { jsRuntime ->
-            // Only the entry's creator reaches here, so the worker is created exactly once and
-            // never discarded; a discarded worker would be collected while its JS thread is
-            // still bootstrapping.
-            val newWorker = ValdiJSWorker(jsRuntime.getNativeObject().createWorker())
-            synchronized(workerExecutorCache) {
-                val entry = workerExecutorCache[executor]
-                if (entry == null || entry.creator !== this) {
-                    // destroy() removed this manager's entry, or handed it to another manager,
-                    // while the callback was in flight, so this runtime is on its way out and
-                    // its worker must not become the shared one. Keep it alive until its own JS
-                    // thread has drained the bootstrap work queued ahead of this task, then let
-                    // it go: nothing else references it, so it is collected idle.
-                    orphanedWorkers.add(newWorker)
-                    newWorker.runOnJsThread {
-                        synchronized(workerExecutorCache) {
-                            orphanedWorkers.remove(newWorker)
-                        }
-                    }
-                } else {
-                    entry.worker = newWorker
-                    entry.creator = null
-                    // Dispatched while the lock is held, so a caller that observes the worker
-                    // next cannot run ahead of the blocks queued before it. runOnJsThread only
-                    // posts to the worker's JS queue, so nothing blocks under the lock.
-                    entry.pending.forEach { queued -> newWorker.runOnJsThread { queued.block(newWorker) } }
-                    entry.pending.clear()
-                }
-            }
-        }
+        workerCache.getWorker(executor) { worker -> block(worker) }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -953,31 +923,5 @@ class ValdiRuntimeManager(context: Context,
         fun allRuntimes(): List<ValdiRuntime> {
             return synchronized(runtimes) { runtimes.mapNotNull { it.get() } }
         }
-
-        // One entry per executor name. Creation is asynchronous, so callers that arrive while the
-        // worker is still being created queue their block here instead of blocking on the cache
-        // lock; the creator drains the queue once the worker exists. Guarded by workerExecutorCache.
-        // creator is the manager that owns the in-flight creation, held strongly so its runtime
-        // outlives the callback that publishes the worker, and cleared once it has.
-        private class WorkerEntry(var creator: ValdiRuntimeManager?) {
-            var worker: ValdiJSWorker? = null
-            val pending = mutableListOf<PendingBlock>()
-        }
-
-        // The queueing manager is recorded so that destroy() can tell which blocks go with the
-        // runtime being destroyed and which manager can take over an unfinished creation.
-        private class PendingBlock(val manager: ValdiRuntimeManager, val block: (ValdiJSRuntime) -> Unit)
-
-        // Workers created by a manager that was destroyed mid-creation, kept alive only until their
-        // JS thread has finished bootstrapping (see createWorkerFor). Guarded by workerExecutorCache.
-        private val orphanedWorkers = mutableListOf<ValdiJSWorker>()
-
-        // Worker entries are pinned for the lifetime of the process, and so are the workers they
-        // hold. A djinni JSRuntime has no teardown entry point, so its only teardown is the
-        // GC-timed native destructor, which can run on the object-manager thread while the
-        // worker's own JS thread is still loading modules and destroy the runtime underneath that
-        // work. iOS pins workers for the same reason (SCValdiRuntimeManager keeps them in a
-        // strong-to-strong map).
-        private val workerExecutorCache = mutableMapOf<String, WorkerEntry>()
     }
 }
