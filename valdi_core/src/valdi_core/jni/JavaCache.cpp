@@ -220,6 +220,7 @@ IMPLEMENT_JAVA_CLASS(UndefinedValue, "com/snapchat/client/valdi/UndefinedValue")
 
 IMPLEMENT_JAVA_CLASS(ValdiException, "com/snap/valdi/exceptions/ValdiException")
 IMPLEMENT_JAVA_METHOD(ValdiException, Constructor, kJniSigConstructor, ConstructorType, String)
+IMPLEMENT_JAVA_METHOD(ValdiException, ConstructorWithErrorCode, kJniSigConstructor, ConstructorType, String, int32_t)
 IMPLEMENT_JAVA_CLASS(MarshallerException, "com/snap/valdi/exceptions/MarshallerException")
 
 IMPLEMENT_JAVA_CLASS(CppObjectWrapper, "com/snapchat/client/valdi/utils/CppObjectWrapper")

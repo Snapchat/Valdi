@@ -6,6 +6,38 @@ export interface CancelablePromise<T> extends PromiseLike<T> {
 }
 
 /**
+ * Error code stamped on the failure a canceled native promise delivers to its callbacks — the C++
+ * Valdi::kPromiseCanceledErrorCode. Native errors carry their code onto the JS Error as `code`.
+ */
+export const PROMISE_CANCELED_ERROR_CODE = 101;
+
+const PROMISE_CANCELED_MESSAGE = 'Promise canceled';
+
+/**
+ * Whether a rejection is a promise cancellation rather than a genuine failure.
+ *
+ * Canceling a native promise settles it with this failure, so anything that awaits a promise it
+ * also cancels will see a rejection where it previously saw nothing at all. Cancellation is
+ * intentional: callers generally want to treat it as an abort rather than log it, record it as a
+ * failure, or surface it to the user.
+ *
+ * `code` is the only reliable signal — every boundary a cancellation can cross preserves it
+ * (`convertValdiErrorToJSError` into JS, `CppPromiseCallback`/`newValdiException` across JNI,
+ * `NSErrorFromError`/`ErrorFromNSError` across Obj-C). The message check is a backstop for a
+ * producer that rejects with the canceled message but no code, and it only holds where the message
+ * arrives verbatim: on Android `CppPromiseCallback` sends `messageWithCauses()`, which prefixes the
+ * exception class, so the message never matches there. Check the raw rejection before wrapping it —
+ * a wrapper that copies `.message` into a new Error without `code` defeats both checks.
+ */
+export function isPromiseCanceledError(error: unknown): boolean {
+  if (error === undefined || error === null) {
+    return false;
+  }
+  const candidate = error as { code?: unknown; message?: unknown };
+  return candidate.code === PROMISE_CANCELED_ERROR_CODE || candidate.message === PROMISE_CANCELED_MESSAGE;
+}
+
+/**
  * Return a CancelablePromise from an existing promise, with a cancel callback that will
  * be invoked when the cancelable promise is canceled.
  */

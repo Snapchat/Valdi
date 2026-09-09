@@ -20,6 +20,15 @@ namespace Valdi {
  */
 static constexpr int32_t kResolutionSkippedDuringTeardownErrorCode = 100;
 
+/**
+ Error code stamped on the synthetic failure a canceled promise delivers to its callbacks when the
+ producer does not settle it during cancellation (see ResolvablePromise::cancel). Lets Swift map the
+ failure to a cancellation (NSErrorFromError carries getErrorCode() into kValdiErrorDomain) and lets
+ JS filter cancellations without string-matching the message. Distinct from ErrorCodes::Composer (1-9)
+ and kResolutionSkippedDuringTeardownErrorCode (100).
+ */
+static constexpr int32_t kPromiseCanceledErrorCode = 101;
+
 struct ErrorStorage : public SimpleRefCountable {
     StringBox message;
     StringBox stackTrace;

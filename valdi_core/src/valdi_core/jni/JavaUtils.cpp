@@ -249,6 +249,16 @@ JavaObject toJavaObject(JavaEnv env, bool value) {
 
 static djinni::LocalRef<jobject> newValdiException(JavaEnv env, const Valdi::Error& error) {
     auto convertedMessage = toJavaObject(env, error.getMessage());
+    // Carry the code when there is one, so a cancellation stays distinguishable from a genuine
+    // failure on the Kotlin side (see Throwable.valdiErrorCode) instead of only the message
+    // surviving. Errors without a code keep using the message-only constructor.
+    const auto errorCode = error.getErrorCode();
+    if (errorCode != 0) {
+        return JavaEnv::getCache().getValdiExceptionClass().newObject(
+            JavaEnv::getCache().getValdiExceptionConstructorWithErrorCodeMethod(),
+            std::move(convertedMessage),
+            errorCode);
+    }
     return JavaEnv::getCache().getValdiExceptionClass().newObject(
         JavaEnv::getCache().getValdiExceptionConstructorMethod(), std::move(convertedMessage));
 }

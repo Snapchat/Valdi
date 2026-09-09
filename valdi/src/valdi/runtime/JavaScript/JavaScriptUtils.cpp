@@ -86,11 +86,22 @@ JSValueRef convertValdiErrorToJSError(IJavaScriptContext& jsContext,
     auto flattenedError = error.flatten();
     JSValueRef jsError;
     if (flattenedError.getStack().isEmpty()) {
-        return jsContext.newError(flattenedError.getMessage().toStringView(), std::nullopt, exceptionTracker);
+        jsError = jsContext.newError(flattenedError.getMessage().toStringView(), std::nullopt, exceptionTracker);
     } else {
-        return jsContext.newError(
+        jsError = jsContext.newError(
             flattenedError.getMessage().toStringView(), {flattenedError.getStack().toStringView()}, exceptionTracker);
     }
+
+    // Carry the error code onto the JS error so consumers can branch on it instead of matching the
+    // message — kPromiseCanceledErrorCode is what lets JS tell an intentional cancellation apart
+    // from a genuine failure. Only stamped when set, to keep ordinary errors unchanged.
+    const auto errorCode = flattenedError.getErrorCode();
+    if (errorCode != 0 && exceptionTracker) {
+        jsContext.setObjectProperty(
+            jsError.get(), std::string_view("code"), jsContext.newNumber(errorCode).get(), exceptionTracker);
+    }
+
+    return jsError;
 }
 
 Ref<ValdiObject> jsValueToValdiObject(IJavaScriptContext& jsContext,

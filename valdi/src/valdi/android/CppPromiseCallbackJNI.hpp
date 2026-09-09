@@ -47,14 +47,17 @@ public:
     static void nativeOnFailure(fbjni::alias_ref<fbjni::JClass> /* clazz */,
                                 jlong ptr,
                                 jlong valueMarshallerNativeHandle,
-                                jstring error) {
+                                jstring error,
+                                jint errorCode) {
         auto promiseCompletion = getPromiseCallback(ptr);
         auto valueMarshaller = getValueMarshaller(valueMarshallerNativeHandle);
         if (promiseCompletion == nullptr || valueMarshaller == nullptr) {
             return;
         }
 
-        promiseCompletion->onFailure(Valdi::Error(toInternedString(JavaEnv(), error)));
+        // Preserve the code the Kotlin side computed (see Throwable.valdiErrorCode) so a
+        // cancellation stays distinguishable from a genuine failure past this boundary.
+        promiseCompletion->onFailure(Valdi::Error(toInternedString(JavaEnv(), error), errorCode));
     }
 
     static void registerNatives() {

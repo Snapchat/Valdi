@@ -148,6 +148,7 @@ public:
 
     DECLARE_JAVA_CLASS(ValdiException)
     DECLARE_JAVA_METHOD(ValdiException, Constructor, ConstructorType, String)
+    DECLARE_JAVA_METHOD(ValdiException, ConstructorWithErrorCode, ConstructorType, String, int32_t)
     DECLARE_JAVA_CLASS(MarshallerException)
 
     DECLARE_JAVA_CLASS(ValdiThread)

@@ -581,6 +581,13 @@ NSError *NSErrorFromError(const Valdi::Error &error) {
 }
 
 Valdi::Error ErrorFromNSError(NSError *error) {
+    // Round-trip the code for errors we produced (NSErrorFromError stamps it into kValdiErrorDomain),
+    // so a cancellation crossing back into C++ — and on into JS — stays distinguishable from a
+    // genuine failure. Codes from other domains are not Valdi::Error codes, so they are dropped.
+    if ([error.domain isEqualToString:kValdiErrorDomain] && error.code != 0) {
+        return Valdi::Error(InternedStringFromNSString(error.localizedDescription),
+                            static_cast<int32_t>(error.code));
+    }
     return Valdi::Error(InternedStringFromNSString(error.localizedDescription));
 }
 
