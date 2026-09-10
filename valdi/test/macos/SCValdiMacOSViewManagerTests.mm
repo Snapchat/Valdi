@@ -365,24 +365,15 @@ static Ref<ViewNode> makeTestViewNode(AttributeIds& attributeIds) {
 }
 
 - (void)testPhysicalTextEditingAppliesWillChangeAndSynchronizesNativeOverrides {
-    // Driving a live field editor requires a key window + first responder, which needs an Aqua GUI
-    // session. Headless CI runners (no WindowServer) crash in window activation instead of running,
-    // so skip there; the assertions below still execute on machines with a GUI session.
-    CFDictionaryRef guiSession = CGSessionCopyCurrentDictionary();
-    BOOL hasGuiSession = guiSession != NULL;
-    if (guiSession != NULL) {
-        CFRelease(guiSession);
-    }
-    XCTSkipUnless(hasGuiSession, @"Requires an Aqua GUI session; skipping on headless CI.");
-
-    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 320, 200)
-                                                   styleMask:NSWindowStyleMaskBorderless
-                                                     backing:NSBackingStoreBuffered
-                                                       defer:NO];
+    // Exercises the onWillChange transform + native-override sync through the real
+    // textDidBeginEditing/textDidChange/textDidEndEditing interception. A live key window + first
+    // responder needs an interactive WindowServer and SIGSEGVs on headless CI, so drive a synthetic
+    // field editor instead: fieldEditorOverride makes -currentEditor return it, and the production
+    // interception path runs unchanged. Focus teardown against a real window is covered by
+    // testTextEditingLifecyclePreservesFocusedAndSelectionOverrides.
     SCValdiTrackingMacOSTextField *textField =
-        [[SCValdiTrackingMacOSTextField alloc] initWithFrame:NSMakeRect(10, 10, 200, 30)];
+        [[SCValdiTrackingMacOSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 30)];
     textField.stringValue = @"seed";
-    [window.contentView addSubview:textField];
 
     __block NSDictionary *changeEvent = nil;
     __block NSArray<id> *willChangeParameters = nil;
@@ -419,11 +410,14 @@ static Ref<ViewNode> makeTestViewNode(AttributeIds& attributeIds) {
     [textField valdi_setOnWillChange:onWillChange];
     [textField valdi_setOnChange:onChange];
 
-    [window makeKeyAndOrderFront:nil];
-    XCTAssertTrue([window makeFirstResponder:textField]);
+    NSTextView *editor = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 200, 30)];
+    editor.string = @"seed";
+    textField.fieldEditorOverride = editor;
+    [textField textDidBeginEditing:[NSNotification notificationWithName:NSTextDidBeginEditingNotification
+                                                                 object:editor]];
     NSUInteger invocationsAfterFocus = willChangeInvocationCount;
-    NSText *editor = textField.currentEditor;
-    XCTAssertNotNil(editor);
+    XCTAssertEqualObjects(textField.changedValues[@"focused"], @YES);
+
     [textField valdi_setSelection:@[@1, @1]];
     XCTAssertEqual(editor.selectedRange.location, 1u);
     XCTAssertEqual(editor.selectedRange.length, 0u);
@@ -435,8 +429,8 @@ static Ref<ViewNode> makeTestViewNode(AttributeIds& attributeIds) {
     XCTAssertEqualObjects(sourceEvent[@"text"], @"draft");
     XCTAssertTrue([sourceEvent[@"text"] isKindOfClass:NSString.class]);
 
-    // Drive the field editor so AppKit supplies the NSFieldEditor notification metadata.
-    [(NSTextView *)editor didChangeText];
+    // Deliver the change notification AppKit posts when the field editor's text changes.
+    [textField textDidChange:[NSNotification notificationWithName:NSTextDidChangeNotification object:editor]];
 
     XCTAssertEqual(invocationsAfterFocus, 0u);
     XCTAssertEqual(invocationsAfterEditorString, 0u);
@@ -452,10 +446,10 @@ static Ref<ViewNode> makeTestViewNode(AttributeIds& attributeIds) {
     XCTAssertEqualObjects(textField.changedValues[@"value"], @"DRAFT");
     XCTAssertEqualObjects(textField.changedValues[@"selection"], (@[@5, @5]));
 
-    [textField valdi_setFocused:@NO];
-    XCTAssertNil(textField.currentEditor);
-    XCTAssertEqualObjects(textField.stringValue, @"DRAFT");
-    [window close];
+    [textField textDidEndEditing:[NSNotification notificationWithName:NSTextDidEndEditingNotification
+                                                               object:editor
+                                                             userInfo:@{NSTextMovementUserInfoKey: @(NSOtherTextMovement)}]];
+    XCTAssertEqualObjects(textField.changedValues[@"focused"], @NO);
 }
 
 - (void)testTextEditingLifecyclePreservesFocusedAndSelectionOverrides {
