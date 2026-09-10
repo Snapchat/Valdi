@@ -7097,6 +7097,13 @@ TEST_P(RuntimeFixture, DISABLED_moduleResourceTrackerFreedUnderJsThreadIsUseAfte
 // async_strict_mode and the function is not annotated with @AllowSyncCall. Uses a dedicated
 // test_async_strict module (async_strict_mode=True) so the main test module can stay non-strict.
 TEST_P(RuntimeFixture, AsyncStrictModeSyncCallAssertsOnMainThread) {
+    // This fixture owns a live runtime with several worker/JS threads. The default "fast"
+    // death-test style fork()s in place, so the child inherits those threads frozen mid-flight;
+    // on loaded CI runners the child then stalls for ~90s on an orphaned lock before the assert's
+    // abort() completes, and the parameterized variants blow the suite timeout. "threadsafe"
+    // re-execs a fresh process for the death check, so no locked mutexes are inherited.
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
+
     wrapper.flushQueues();
 
     // test_async_strict has async_strict_mode=True; compute() has no @AllowSyncCall.

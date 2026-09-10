@@ -366,14 +366,22 @@ static Ref<ViewNode> makeTestViewNode(AttributeIds& attributeIds) {
 
 - (void)testPhysicalTextEditingAppliesWillChangeAndSynchronizesNativeOverrides {
     // Driving a live field editor requires a key window + first responder, which needs an Aqua GUI
-    // session. Headless CI runners (no WindowServer) crash in window activation instead of running,
-    // so skip there; the assertions below still execute on machines with a GUI session.
+    // session. A non-NULL session dictionary is necessary but not sufficient: CI runners (e.g.
+    // GitHub Actions macOS) report a login session yet cannot host a live key window, and window
+    // activation SIGSEGVs there. Require the session to be active on the console, and bail out
+    // under CI where no usable WindowServer is guaranteed. The assertions below still execute on
+    // developer machines with a real GUI session.
     CFDictionaryRef guiSession = CGSessionCopyCurrentDictionary();
-    BOOL hasGuiSession = guiSession != NULL;
+    BOOL onConsole = NO;
     if (guiSession != NULL) {
+        CFBooleanRef onConsoleValue =
+            (CFBooleanRef)CFDictionaryGetValue(guiSession, kCGSessionOnConsoleKey);
+        onConsole = (onConsoleValue != NULL) && CFBooleanGetValue(onConsoleValue);
         CFRelease(guiSession);
     }
-    XCTSkipUnless(hasGuiSession, @"Requires an Aqua GUI session; skipping on headless CI.");
+    BOOL runningUnderCI = NSProcessInfo.processInfo.environment[@"CI"] != nil;
+    XCTSkipUnless(onConsole && !runningUnderCI,
+                  @"Requires an interactive Aqua GUI session; skipping on headless/CI runners.");
 
     NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 320, 200)
                                                    styleMask:NSWindowStyleMaskBorderless
