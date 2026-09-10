@@ -121,3 +121,16 @@ build --repo_env=CARGO_BAZEL_REPIN=true
 
 # Remote cache (activated in CI via .bazelrc.local)
 build:ci --experimental_circuit_breaker_strategy=failure
+
+# AddressSanitizer, used by the nightly sanitizer job (tools/ci/sanitizer_tests.sh) to catch
+# teardown / threading memory-safety bugs (use-after-free, heap corruption) that an optimized build
+# hides. Instrumented and not remotely cached, so it is a slow full build -- nightly / manual only,
+# never per-PR. Hermes is excluded at the test level (its parser trips a benign stack-use-after-scope
+# under ASan); the QuickJS engines cover the ThreadedDispatchQueue teardown paths.
+build:asan --copt=-fsanitize=address
+build:asan --copt=-fno-omit-frame-pointer
+build:asan --copt=-Og
+build:asan --copt=-g
+build:asan --copt=-Wno-macro-redefined
+build:asan --linkopt=-fsanitize=address
+build:asan --test_env=ASAN_OPTIONS=detect_leaks=0:halt_on_error=1
