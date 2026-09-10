@@ -973,7 +973,15 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
     // _animationRanges builds ranges in document order, and this walk relies on
     // that monotonic ordering when advancing currentGlyphLocation.
     for (SCValdiTextViewAnimationRange *animationRange in animationRanges) {
-        NSRange animationGlyphRange = [self glyphRangeForCharacterRange:animationRange.range actualCharacterRange:nil];
+        // The range is sourced from the processed-text model, which can momentarily outlive the
+        // live text storage while text is edited (e.g. deleting characters of a caption glyph that
+        // is mid-animation). Clamp to the current length so the character->glyph mapping never
+        // indexes past the end and raises NSRangeException.
+        NSRange animationCharRange = NSIntersectionRange(animationRange.range, NSMakeRange(0, self.textStorage.length));
+        if (animationCharRange.length == 0) {
+            continue;
+        }
+        NSRange animationGlyphRange = [self glyphRangeForCharacterRange:animationCharRange actualCharacterRange:nil];
         NSRange intersectionGlyphRange = NSIntersectionRange(glyphsToShow, animationGlyphRange);
         if (intersectionGlyphRange.length == 0) {
             continue;
@@ -1115,19 +1123,23 @@ static NSArray<NSValue *> *SCValdiSubtractAnimationRanges(NSRange range,
                glyphsOrigin:(CGPoint)origin
                     context:(CGContextRef)context
 {
-    if (animationRange.range.length == 0 || animationRange.opacity <= 0) {
+    // The range is sourced from the processed-text model, which can momentarily outlive the live
+    // text storage while text is edited; clamp to the current length before mapping characters to
+    // glyphs so we never index past the end (which raises NSRangeException).
+    NSRange animationCharRange = NSIntersectionRange(animationRange.range, NSMakeRange(0, self.textStorage.length));
+    if (animationCharRange.length == 0 || animationRange.opacity <= 0) {
         return;
     }
 
-    NSUInteger charIndex = animationRange.range.location;
-    NSUInteger charRangeEnd = NSMaxRange(animationRange.range);
+    NSUInteger charIndex = animationCharRange.location;
+    NSUInteger charRangeEnd = NSMaxRange(animationCharRange);
 
     while (charIndex < charRangeEnd) {
         NSUInteger glyphIndex = [self glyphIndexForCharacterAtIndex:charIndex];
         NSRange lineGlyphRange;
         [self lineFragmentRectForGlyphAtIndex:glyphIndex effectiveRange:&lineGlyphRange];
         NSRange lineCharRange = [self characterRangeForGlyphRange:lineGlyphRange actualGlyphRange:nil];
-        NSRange intersectionRange = NSIntersectionRange(animationRange.range, lineCharRange);
+        NSRange intersectionRange = NSIntersectionRange(animationCharRange, lineCharRange);
         if (intersectionRange.length == 0) {
             charIndex = NSMaxRange(lineCharRange);
             continue;
