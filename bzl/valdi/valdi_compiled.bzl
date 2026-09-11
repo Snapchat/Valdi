@@ -505,6 +505,7 @@ def _invoke_valdi_compiler(ctx, module_name, module_yaml, enable_android = True,
         mnemonic = "ValdiCompile",
         progress_message = "Compiling Valdi module: " + str(ctx.label),
         use_worker = True,
+        include_client_sql_tools = False,
         worker_protocol = worker_protocol,
     )
 
@@ -860,6 +861,7 @@ def _register_image_processing_action(ctx, config_yaml_file, explicit_image_asse
         # full compilations. Keep it as a one-shot action for now; revisit if action
         # startup becomes a bottleneck.
         use_worker = False,
+        include_client_sql_tools = False,
     )
 
     return manifest_with_sizes_file
@@ -2271,7 +2273,12 @@ def _invoke_valdi_hotreloader(ctx):
     toolchain = ctx.toolchains[VALDI_TOOLCHAIN_TYPE].info
 
     config_yaml_file = generate_config(ctx)
-    (executable, tool_inputs, tools) = resolve_compiler_executable(ctx, toolchain, include_tools = True)
+    (executable, tool_inputs, tools) = resolve_compiler_executable(
+        ctx,
+        toolchain,
+        include_tools = True,
+        include_client_sql_tools = False,
+    )
 
     all_targets = depset(direct = ctx.attr.targets, transitive = [target[ValdiModuleInfo].deps for target in ctx.attr.targets]).to_list()
 

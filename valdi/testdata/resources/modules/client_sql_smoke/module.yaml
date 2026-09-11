@@ -1,0 +1,9 @@
+name: client_sql_smoke
+ios:
+  module_name: SCCClientSQLSmoke
+  output: release
+android:
+  output: release
+dependencies:
+  - client_sql
+  - valdi_core

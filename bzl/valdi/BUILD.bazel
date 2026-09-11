@@ -71,6 +71,69 @@ label_flag(
     visibility = ["//visibility:public"],
 )
 
+# The default runtime dependency uses the platform SQLite on Apple and the
+# pinned amalgamation elsewhere. Consumers that already own SQLite can replace
+# the complete CcInfo dependency without adding config_settings for its label.
+cc_library(
+    name = "clientsql_default_runtime_sqlite",
+    linkopts = select({
+        "//bzl/conditions:ios": ["-lsqlite3"],
+        "//bzl/conditions:macos": ["-lsqlite3"],
+        "//conditions:default": [],
+    }),
+    deps = select({
+        "//bzl/conditions:ios": [],
+        "//bzl/conditions:macos": [],
+        "//conditions:default": ["@valdi_clientsql_sqlite//:sqlite"],
+    }),
+)
+
+label_flag(
+    name = "clientsql_runtime_sqlite",
+    build_setting_default = ":clientsql_default_runtime_sqlite",
+    visibility = ["//visibility:public"],
+)
+
+# The validator checks the linked library's exact SQLite 3.16 source identity,
+# so an override must provide that same compatibility floor and CcInfo surface.
+label_flag(
+    name = "clientsql_validation_sqlite",
+    build_setting_default = "@valdi_clientsql_sqlite_316//:sqlite",
+    visibility = ["//visibility:public"],
+)
+
+# Select the one factory that owns client_sql/src/ClientSQLNative registration.
+# Internal builds must never link their implementation alongside the default.
+label_flag(
+    name = "clientsql_native_implementation",
+    build_setting_default = "//src/valdi_modules/src/valdi/client_sql:client_sql_native_impl",
+    visibility = ["//visibility:public"],
+)
+
+# Useful both as an explicit opt-out and as an analysis-time proof that the
+# default OSS registration factory is not linked when the implementation flag
+# is overridden.
+cc_library(
+    name = "empty_clientsql_native_implementation",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "empty_clientsql_native_test_library",
+    testonly = True,
+    visibility = ["//visibility:public"],
+)
+
+# Implementation-specific tests must be selected with the implementation. An
+# internal configuration may point this at its own test library or the empty
+# library above while retaining the shared runtime integration contract test.
+label_flag(
+    name = "clientsql_native_test_library",
+    build_setting_default = "//src/valdi_modules/src/valdi/client_sql:client_sql_native_aggregate_tests",
+    testonly = True,
+    visibility = ["//visibility:public"],
+)
+
 string_flag(
     name = "assets_mode",
     build_setting_default = "bundle",
@@ -434,6 +497,9 @@ valdi_toolchain(
     compiler = ":compiler_source",
     compiler_companion = ":compiler_companion_source",
     compiler_toolbox = "@valdi_toolchain//:valdi_compiler_toolbox",
+    # Keep the established toolchain seam so internal builds can supply their
+    # existing compiler. The public toolchain target wraps the reviewed source
+    # generator with its hermetic SQLite validator without changing this CLI.
     sqldelight_compiler = "@valdi_toolchain//:sqldelight_compiler",
 )
 
@@ -468,4 +534,15 @@ toolchain(
     target_settings = [":mac_only_execution_enabled"],
     toolchain = ":valdi",
     toolchain_type = ":toolchain_type",
+)
+
+filegroup(
+    name = "clientsql_generator_test_data",
+    srcs = [
+        "BUILD.bazel",
+        "valdi_run_compiler.bzl",
+        "valdi_toolchain.bzl",
+    ],
+    testonly = True,
+    visibility = ["//compiler/clientsql:__pkg__"],
 )

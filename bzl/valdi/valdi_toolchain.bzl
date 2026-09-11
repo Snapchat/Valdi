@@ -50,7 +50,7 @@ valdi_toolchain = rule(
         ),
         "sqldelight_compiler": attr.label(
             cfg = "exec",
-            doc = "The sqldelight compiler to use.",
+            doc = "The ClientSQL compiler to use.",
         ),
     },
 )

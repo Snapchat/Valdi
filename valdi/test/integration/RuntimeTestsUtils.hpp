@@ -27,12 +27,22 @@ struct RuntimeWrapper {
     RuntimeWrapper();
     RuntimeWrapper(Valdi::IJavaScriptBridge* jsBridge, TSNMode tsnMode);
 
+    RuntimeWrapper(Valdi::IJavaScriptBridge* jsBridge,
+                   TSNMode tsnMode,
+                   const Valdi::Ref<Valdi::IDiskCache>& runtimeDiskCache);
+
     RuntimeWrapper(Valdi::IJavaScriptBridge* jsBridge, TSNMode tsnMode, bool enableViewPreloader);
 
     RuntimeWrapper(Valdi::IJavaScriptBridge* jsBridge,
                    TSNMode tsnMode,
                    bool enableViewPreloader,
                    const Valdi::Shared<Valdi::ITweakValueProvider>& tweakValueProvider);
+
+    RuntimeWrapper(Valdi::IJavaScriptBridge* jsBridge,
+                   TSNMode tsnMode,
+                   bool enableViewPreloader,
+                   const Valdi::Shared<Valdi::ITweakValueProvider>& tweakValueProvider,
+                   const Valdi::Ref<Valdi::IDiskCache>& runtimeDiskCache);
 
     ~RuntimeWrapper();
 
