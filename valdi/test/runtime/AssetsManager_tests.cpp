@@ -828,8 +828,16 @@ TEST(AssetsManager, failsConsumerOnResolveFail) {
     auto moduleName = STRING_LITERAL("module");
     auto filePath = STRING_LITERAL("local");
 
-    wrapper.callbacks.emplace_back(
-        [](const auto& asset) { ASSERT_EQ(AssetStateResolvingLocation, asset->getState()); });
+    // Pause the worker queue so the async location resolve cannot outrace delivery of the
+    // ResolvingLocation notification. Without this the resolve can fail before the first callback
+    // observes ResolvingLocation, so the callback sees FailedPermanently instead (flaky under CI
+    // load). Resume inside the first callback, mirroring failsConsumerOnLoadFail.
+    wrapper.pauseWorkerQueue();
+
+    wrapper.callbacks.emplace_back([&](const auto& asset) {
+        ASSERT_EQ(AssetStateResolvingLocation, asset->getState());
+        wrapper.resumeWorkerQueue();
+    });
 
     wrapper.callbacks.emplace_back([](const auto& asset) {
         ASSERT_EQ(AssetStateFailedPermanently, asset->getState());
