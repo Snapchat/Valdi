@@ -31,7 +31,9 @@ export class HTTPClient implements IHTTPClient {
     body: ArrayBuffer | Uint8Array | undefined,
   ): CancelablePromise<HTTPResponse> {
     let cancelFn: (() => void) | undefined;
+    let rejectFn: ((reason: unknown) => void) | undefined;
     const promise = new Promise<HTTPResponse>((resolve, reject) => {
+      rejectFn = reject;
       try {
         const request: HTTPRequest = {
           url: makeURL(this.baseUrl, pathOrUrl),
@@ -44,7 +46,9 @@ export class HTTPClient implements IHTTPClient {
           if (response) {
             resolve(response);
           } else {
-            reject(error);
+            // A request manager reports its failure as text, so wrap it: callers should not have to
+            // ask whether the rejection they caught is a string or an Error.
+            reject(error instanceof Error ? error : new Error(String(error)));
           }
         });
       } catch (err: unknown) {
@@ -52,7 +56,12 @@ export class HTTPClient implements IHTTPClient {
       }
     });
 
-    return promiseToCancelablePromise(promise, () => cancelFn?.());
+    // No request manager reports a cancelled request, so without this the promise never settles.
+    // Rejecting an already settled one is a no-op, so a late cancel changes nothing.
+    return promiseToCancelablePromise(promise, () => {
+      cancelFn?.();
+      rejectFn?.(new Error('Request was cancelled'));
+    });
   }
 
   get(pathOrUrl: string, headers?: StringMap<string> | undefined): CancelablePromise<HTTPResponse> {

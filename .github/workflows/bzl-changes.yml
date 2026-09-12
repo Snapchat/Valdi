@@ -176,6 +176,9 @@ jobs:
         # iOS/macOS ObjC/Swift suites that never execute on the Linux runner.
         run: ./tools/ci/run_tests.sh
 
+      - name: "Run: Standalone Tests"
+        run: ./tools/ci/test_standalone.sh
+
   # Note: Linux CLI distribution tests moved to dedicated workflow:
   # .github/workflows/test-cli-linux.yml
   # This avoids duplication and provides better test organization.
@@ -191,6 +194,8 @@ jobs:
         include:
           - name: C++ Tests
             task: test-cpp
+          - name: Standalone Tests
+            task: test-standalone
           - name: Build Compiler
             task: build-compiler
           - name: Build & Export
@@ -241,6 +246,10 @@ jobs:
       - name: "Run: C++ Tests"
         if: matrix.task == 'test-cpp'
         run: ./tools/ci/run_tests.sh
+
+      - name: "Run: Standalone Tests"
+        if: matrix.task == 'test-standalone'
+        run: ./tools/ci/test_standalone.sh
 
       - name: "Run: Build Compiler"
         if: matrix.task == 'build-compiler'

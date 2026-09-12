@@ -7,5 +7,6 @@ exports_files([
     "AndroidLibManifest.xml",
     "StartActivity.kt.tpl",
     "cli_main.cpp.tpl",
+    "cli_main_http.cpp.tpl",
     "linux_main.cpp.tpl",
 ])
