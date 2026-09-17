@@ -1,0 +1,8 @@
+name: client_sql
+ios:
+  module_name: SCCClientSQL
+  output: release
+android:
+  output: release
+dependencies:
+  - valdi_core

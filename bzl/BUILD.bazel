@@ -1,0 +1,6 @@
+filegroup(
+    name = "clientsql_generator_test_data",
+    srcs = ["dependencies.bzl"],
+    testonly = True,
+    visibility = ["//compiler/clientsql:__pkg__"],
+)

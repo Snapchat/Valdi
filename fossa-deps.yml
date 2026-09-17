@@ -67,6 +67,12 @@ remote-dependencies:
 - name: fmt
   version: 7.1.3
   url: https://github.com/fmtlib/fmt/releases/download/7.1.3/fmt-7.1.3.zip
+- name: sqlite
+  version: 3.53.4
+  url: https://www.sqlite.org/2026/sqlite-autoconf-3530400.tar.gz
+- name: sqlite-clientsql-validator
+  version: 3.16.0
+  url: https://www.sqlite.org/2017/sqlite-amalgamation-3160000.zip
 - name: jsoncpp
   version: 1.8.0
   url: https://github.com/open-source-parsers/jsoncpp/archive/refs/tags/1.8.0.zip

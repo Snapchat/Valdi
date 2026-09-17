@@ -1,0 +1,11 @@
+# Package marker for the external SQLite repository build definition.
+
+filegroup(
+    name = "clientsql_generator_test_data",
+    srcs = [
+        "sqlite.BUILD",
+        "sqlite_316.BUILD",
+    ],
+    testonly = True,
+    visibility = ["//compiler/clientsql:__pkg__"],
+)

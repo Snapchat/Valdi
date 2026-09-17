@@ -1,0 +1,27 @@
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "ledger_sql_demo",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+    ]) + [
+        "tsconfig.json",
+    ],
+    android_output_target = "release",
+    ios_module_name = "SCCLedgerSQLDemo",
+    ios_output_target = "release",
+    sql_db_names = ["LedgerDb"],
+    sql_srcs = glob([
+        "sql/**/*.sq",
+        "sql/**/*.sqm",
+        "sql/sql_types.yaml",
+        "sql/sql_manifest.yaml",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/client_sql",
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)

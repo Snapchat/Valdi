@@ -1,0 +1,10 @@
+name: ledger_sql_demo
+ios:
+  module_name: SCCLedgerSQLDemo
+  output: release
+android:
+  output: release
+dependencies:
+  - client_sql
+  - valdi_core
+  - valdi_tsx
