@@ -1,0 +1,6 @@
+import { ElementRef } from "valdi_core/src/ElementRef";
+import { LegacyVueComponent } from "valdi_core/src/Valdi";
+export declare class MyComponent extends LegacyVueComponent<any> {
+    slotRef: ElementRef<any>;
+    onViewModelUpdate(): void;
+}

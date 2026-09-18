@@ -1,0 +1,2 @@
+import { ViewModelAtInitChild } from './ViewModelAtInitChild.vue';
+export declare const ComponentClass: typeof ViewModelAtInitChild;

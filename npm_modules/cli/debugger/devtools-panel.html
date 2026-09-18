@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Valdi DevTools</title>
+    <link rel="stylesheet" href="./devtools-panel.css" />
+  </head>
+  <body>
+    <div class="devtools-app">
+      <header class="main-toolbar">
+        <nav class="main-tabs" aria-label="Valdi development tools" role="tablist">
+          <button
+            id="elementsTab"
+            type="button"
+            class="main-tab selected"
+            data-section="elements"
+            role="tab"
+            aria-controls="elementsSection"
+            aria-selected="true"
+            tabindex="0"
+          >
+            Elements
+          </button>
+          <button
+            id="stateTab"
+            type="button"
+            class="main-tab"
+            data-section="state"
+            role="tab"
+            aria-controls="stateSection"
+            aria-selected="false"
+            tabindex="-1"
+          >
+            State
+          </button>
+          <button
+            id="performanceTab"
+            type="button"
+            class="main-tab"
+            data-section="performance"
+            role="tab"
+            aria-controls="performanceSection"
+            aria-selected="false"
+            tabindex="-1"
+          >
+            Performance
+          </button>
+          <button
+            id="consoleTab"
+            type="button"
+            class="main-tab"
+            data-section="console"
+            role="tab"
+            aria-controls="consoleSection"
+            aria-selected="false"
+            tabindex="-1"
+          >
+            Console
+          </button>
+        </nav>
+        <div class="toolbar-spacer"></div>
+        <button id="refreshButton" class="icon-button" title="Refresh inspected application" aria-label="Refresh">
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M16.3 8A6.5 6.5 0 1 0 16 13M16.3 8V4.8M16.3 8H13" />
+          </svg>
+        </button>
+      </header>
+
+      <div class="target-toolbar">
+        <span id="targetStatusDot" class="status-dot connecting" aria-hidden="true"></span>
+        <label id="targetSelectLabel" class="target-select-label" for="targetSelect">Target</label>
+        <select id="targetSelect" class="target-select" aria-describedby="targetPickerStatus">
+          <option value="">Loading debugger targets…</option>
+        </select>
+        <span id="targetName" class="target-name">Connecting to inspected Valdi application…</span>
+        <span id="targetMetadata" class="target-metadata"></span>
+        <span id="targetPickerStatus" class="target-picker-status" role="status" aria-live="polite"></span>
+        <label class="live-toggle" title="Keep the inspected hierarchy current">
+          <input id="autoRefreshToggle" type="checkbox" checked /> Live
+        </label>
+      </div>
+
+      <main class="main-content">
+        <section
+          id="elementsSection"
+          class="section selected"
+          data-panel="elements"
+          role="tabpanel"
+          aria-labelledby="elementsTab"
+        >
+          <div class="tree-pane">
+            <div class="filter-toolbar">
+              <svg class="filter-icon" viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M3 4h14l-5.4 6v5l-3.2 1v-6z" />
+              </svg>
+              <input id="treeFilter" type="search" placeholder="Filter nodes, text, attributes" autocomplete="off" />
+              <span id="filterSummary" class="filter-summary"></span>
+              <button
+                id="expandButton"
+                class="icon-button"
+                title="Expand useful nodes"
+                aria-label="Expand useful nodes"
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h12M4 10h8M4 14h5M14 12v5M11.5 14.5h5" /></svg>
+              </button>
+            </div>
+            <div
+              id="tree"
+              class="tree"
+              role="tree"
+              tabindex="0"
+              aria-label="Valdi element hierarchy"
+              aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Home End"
+            ></div>
+            <div id="treeEmpty" class="empty-state">Waiting for the inspected Valdi renderer…</div>
+          </div>
+
+          <div
+            id="splitHandle"
+            class="split-handle"
+            role="separator"
+            aria-label="Resize inspector"
+            aria-orientation="horizontal"
+          ></div>
+
+          <section class="inspector-pane" aria-label="Selected element inspector">
+            <div class="inspector-toolbar">
+              <nav class="detail-tabs" aria-label="Element inspection" role="tablist">
+                <button
+                  id="stylesDetailTab"
+                  type="button"
+                  class="detail-tab selected"
+                  data-detail="styles"
+                  role="tab"
+                  aria-controls="inspector"
+                  aria-selected="true"
+                  tabindex="0"
+                >
+                  Styles
+                </button>
+                <button
+                  id="computedDetailTab"
+                  type="button"
+                  class="detail-tab"
+                  data-detail="computed"
+                  role="tab"
+                  aria-controls="inspector"
+                  aria-selected="false"
+                  tabindex="-1"
+                >
+                  Computed
+                </button>
+                <button
+                  id="stateDetailTab"
+                  type="button"
+                  class="detail-tab"
+                  data-detail="state"
+                  role="tab"
+                  aria-controls="inspector"
+                  aria-selected="false"
+                  tabindex="-1"
+                >
+                  State
+                </button>
+                <button
+                  id="domDetailTab"
+                  type="button"
+                  class="detail-tab"
+                  data-detail="dom"
+                  role="tab"
+                  aria-controls="inspector"
+                  aria-selected="false"
+                  tabindex="-1"
+                >
+                  DOM
+                </button>
+              </nav>
+              <div class="toolbar-spacer"></div>
+              <button id="copyNodeButton" class="icon-button" title="Copy selected node JSON" aria-label="Copy node">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 6h9v10H7zM4 13V4h9" /></svg>
+              </button>
+            </div>
+            <div id="inspector" class="inspector" role="tabpanel" aria-labelledby="stylesDetailTab"></div>
+          </section>
+
+          <footer class="breadcrumb-bar">
+            <div id="breadcrumbs" class="breadcrumbs"></div>
+            <span id="nodeSummary" class="node-summary"></span>
+          </footer>
+        </section>
+
+        <section
+          id="stateSection"
+          class="section utility-section"
+          data-panel="state"
+          role="tabpanel"
+          aria-labelledby="stateTab"
+          hidden
+        >
+          <div class="section-header runtime-state-toolbar">
+            <span>Component state</span>
+            <span id="stateSummary" class="runtime-state-summary" role="status" aria-live="polite"></span>
+            <input
+              id="stateFilter"
+              class="runtime-state-filter"
+              type="search"
+              placeholder="Filter components, keys, or values"
+              aria-label="Filter component state"
+              autocomplete="off"
+            />
+          </div>
+          <div id="stateContent" class="utility-content runtime-state-content"></div>
+        </section>
+
+        <section
+          id="performanceSection"
+          class="section utility-section"
+          data-panel="performance"
+          role="tabpanel"
+          aria-labelledby="performanceTab"
+          hidden
+        >
+          <div class="section-header">
+            <span>Web preview performance</span>
+            <button type="button" class="text-button" data-performance-action="refresh">Refresh</button>
+          </div>
+          <div id="performanceContent" class="utility-content">
+            <div class="empty-state">Open Performance to inspect the selected web preview.</div>
+          </div>
+        </section>
+
+        <section
+          id="consoleSection"
+          class="section console-section"
+          data-panel="console"
+          role="tabpanel"
+          aria-labelledby="consoleTab"
+          hidden
+        >
+          <div class="section-header">
+            <span>Console output</span>
+            <button
+              id="clearConsoleButton"
+              class="text-button"
+              type="button"
+              title="Clear console output"
+              aria-label="Clear console"
+              aria-controls="consoleMessages"
+            >
+              Clear
+            </button>
+          </div>
+          <div id="consoleMessages" class="console-messages"></div>
+          <form id="consoleForm" class="console-prompt">
+            <span class="console-chevron">›</span>
+            <input
+              id="consoleInput"
+              type="text"
+              autocomplete="off"
+              maxlength="10000"
+              spellcheck="false"
+              placeholder="Evaluate JavaScript in the inspected application"
+            />
+          </form>
+        </section>
+      </main>
+    </div>
+    <script src="./debugger-tree-model.js"></script>
+    <script src="./debugger-api.js"></script>
+    <script src="./devtools-panel.js"></script>
+  </body>
+</html>

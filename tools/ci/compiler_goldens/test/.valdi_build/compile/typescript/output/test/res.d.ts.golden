@@ -1,0 +1,9 @@
+import { Asset } from 'valdi_core/src/Asset';
+/**
+* Assets Catalog Module generated from files in test/res
+*/
+interface AssetCatalog {
+    readonly emoji: Asset;
+}
+declare const catalog: AssetCatalog;
+export default catalog;

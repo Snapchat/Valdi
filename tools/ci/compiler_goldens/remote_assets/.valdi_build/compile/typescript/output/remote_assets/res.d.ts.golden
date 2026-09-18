@@ -1,0 +1,9 @@
+import { Asset } from 'valdi_core/src/Asset';
+/**
+* Assets Catalog Module generated from files in remote_assets/res
+*/
+interface AssetCatalog {
+    readonly remoteImage: Asset;
+}
+declare const catalog: AssetCatalog;
+export default catalog;

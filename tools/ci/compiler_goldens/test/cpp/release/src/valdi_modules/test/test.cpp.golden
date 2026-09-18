@@ -1,0 +1,271 @@
+//
+// CalculatorToStringFormat.cpp
+//
+
+#include "valdi_core/cpp/Marshalling/CppGeneratedEnum.hpp"
+#include "valdi_modules/test/test.hpp"
+
+namespace snap::valdi_modules::test {
+
+  namespace {
+    const Valdi::CppIntEnumMarshaller<CalculatorToStringFormat, 2> &getCalculatorToStringFormatEnumMarshaller() {
+      static auto kEnumMarshaller = Valdi::CppIntEnumMarshaller<CalculatorToStringFormat, 2>({1, 2});
+      return kEnumMarshaller;
+    }
+  }
+
+  void unmarshallEnum(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Value &value, CalculatorToStringFormat &out) {
+    getCalculatorToStringFormatEnumMarshaller().unmarshall(exceptionTracker, value, out);
+  }
+
+  void marshallEnum(Valdi::ExceptionTracker &exceptionTracker, CalculatorToStringFormat value, Valdi::Value &out) {
+    getCalculatorToStringFormatEnumMarshaller().marshall(exceptionTracker, value, out);
+  }
+
+  Valdi::RegisteredCppGeneratedClass *getRegisteredEnumClass(const CalculatorToStringFormat *) {
+    static auto kEnumClass = Valdi::CppGeneratedEnum::registerEnumSchema("e<i> 'snap::valdi_modules::test::CalculatorToStringFormat'{'DECIMAL':1, 'INTEGER':2}");
+    return kEnumClass;
+  }
+}
+
+//
+// ICalculator.cpp
+//
+
+#include "valdi_core/cpp/Marshalling/CppMarshaller.hpp"
+#include "valdi_modules/test/test.hpp"
+
+namespace snap::valdi_modules::test {
+
+  class ICalculatorProxy: public ICalculator {
+    public:
+    using AddFn = Valdi::Function<void(double)>;
+    using SubFn = Valdi::Function<void(double)>;
+    using MulFn = Valdi::Function<void(double)>;
+    using DivFn = Valdi::Function<void(double)>;
+    using TotalFn = Valdi::Function<double()>;
+    using ToStringFn = Valdi::Function<Valdi::StringBox(CalculatorToStringFormat)>;
+
+    ICalculatorProxy() = default;
+    ~ICalculatorProxy() override = default;
+
+    void add(double value) final {
+      _add(value);
+    }
+
+    void sub(double value) final {
+      _sub(value);
+    }
+
+    void mul(double value) final {
+      _mul(value);
+    }
+
+    void div(double value) final {
+      _div(value);
+    }
+
+    double total() final {
+      return _total();
+    }
+
+    Valdi::StringBox toString(CalculatorToStringFormat format) final {
+      return _toString(format);
+    }
+
+    static void unmarshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Value &value, Valdi::Ref<ICalculatorProxy> &out) {
+      out = Valdi::makeShared<ICalculatorProxy>();
+      auto &self = *out;
+      Valdi::CppMarshaller::unmarshallTypedObject(exceptionTracker, *getRegisteredClass(), value, self._add, self._sub, self._mul, self._div, self._total, self._toString);
+    }
+
+    private:
+    AddFn _add;
+    SubFn _sub;
+    MulFn _mul;
+    DivFn _div;
+    TotalFn _total;
+    ToStringFn _toString;
+  };
+
+  ICalculator::ICalculator(): Valdi::CppGeneratedInterface(getRegisteredClass()) {
+  }
+
+  void ICalculator::unmarshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Value &value, Valdi::Ref<ICalculator> &out) {
+    Valdi::CppMarshaller::unmarshallProxyObject<ICalculatorProxy>(exceptionTracker, *getRegisteredClass(), value, out);
+  }
+
+  void ICalculator::marshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Ref<ICalculator> &value, Valdi::Value &out) {
+    Valdi::CppMarshaller::marshallProxyObject(exceptionTracker, *getRegisteredClass(), *value, out, [&]() {
+      Valdi::CppMarshaller::marshallTypedObject(exceptionTracker, *getRegisteredClass(), out, Valdi::CppMarshaller::methodToFunction<ICalculator, &ICalculator::add>(value), Valdi::CppMarshaller::methodToFunction<ICalculator, &ICalculator::sub>(value), Valdi::CppMarshaller::methodToFunction<ICalculator, &ICalculator::mul>(value), Valdi::CppMarshaller::methodToFunction<ICalculator, &ICalculator::div>(value), Valdi::CppMarshaller::methodToFunction<ICalculator, &ICalculator::total>(value), Valdi::CppMarshaller::methodToFunction<ICalculator, &ICalculator::toString>(value));
+    });
+  }
+
+  Valdi::RegisteredCppGeneratedClass *ICalculator::getRegisteredClass() {
+    static auto *kRegisteredClass = Valdi::CppGeneratedClass::registerSchema("c+ 'snap::valdi_modules::test::ICalculator'{'add':f|m|(d), 'sub':f|m|(d), 'mul':f|m|(d), 'div':f|m|(d), 'total':f|m|(): d, 'toString':f|m|(r<e>:'[0]'): s}", []() -> Valdi::TypeReferencesVec {
+      return {::snap::valdi_modules::test::getRegisteredEnumClass(static_cast<const CalculatorToStringFormat *>(nullptr))};
+    });
+
+    return kRegisteredClass;
+  }
+
+}
+
+//
+// MakeCalculator.cpp
+//
+
+#include "valdi_core/cpp/Marshalling/CppGeneratedExportedFunctionUtils.hpp"
+#include "valdi_modules/test/test.hpp"
+
+namespace snap::valdi_modules::test {
+
+  Valdi::RegisteredCppGeneratedClass& MakeCalculator::registeredSchema() {
+    static auto *kSchema = Valdi::CppGeneratedExportedFunctionUtils::registerFunctionSchema("c 'MakeCalculator'{'makeCalculator':f(): r:'[0]'}", []() -> Valdi::TypeReferencesVec {
+      return {ICalculator::getRegisteredClass()};
+    });
+    return *kSchema;
+  }
+
+  Valdi::Result<MakeCalculator> MakeCalculator::resolve(snap::valdi_core::JSRuntime &jsRuntime, const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager) {
+    return Valdi::CppGeneratedExportedFunctionUtils::resolve<MakeCalculator>(jsRuntime, nativeObjectsManager, "test/src/JsCalculator", registeredSchema());
+  }
+
+  Valdi::Result<Valdi::Ref<Valdi::ValueTypedObject>> MakeCalculator::resolveAsTypedObject(snap::valdi_core::JSRuntime &jsRuntime, const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager) {
+    return Valdi::CppGeneratedExportedFunctionUtils::resolveAsTypedObject(jsRuntime, nativeObjectsManager, "test/src/JsCalculator", registeredSchema());
+  }
+}
+
+//
+// MyModel.cpp
+//
+
+#include "valdi_core/cpp/Marshalling/CppMarshaller.hpp"
+#include "valdi_modules/test/test.hpp"
+
+namespace snap::valdi_modules::test {
+
+  MyModel::MyModel(): Valdi::CppGeneratedModel(getRegisteredClass()) {
+  }
+
+  MyModel::MyModel(double i, const Valdi::StringBox &s, bool b): Valdi::CppGeneratedModel(getRegisteredClass()),
+  _i(i),
+  _s(std::move(s)),
+  _b(b) {
+  }
+
+  double MyModel::getI() const {
+    return _i;
+  }
+
+  void MyModel::setI(double value) {
+    _i = value;
+  }
+
+  const Valdi::StringBox &MyModel::getS() const {
+    return _s;
+  }
+
+  void MyModel::setS(const Valdi::StringBox &value) {
+    _s = value;
+  }
+
+  void MyModel::setS(Valdi::StringBox &&value) {
+    _s = std::move(value);
+  }
+
+  bool MyModel::getB() const {
+    return _b;
+  }
+
+  void MyModel::setB(bool value) {
+    _b = value;
+  }
+
+  void MyModel::unmarshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Value &value, MyModel &out) {
+    auto &self = out;
+    Valdi::CppMarshaller::unmarshallTypedObject(exceptionTracker, *getRegisteredClass(), value, self._i, self._s, self._b);
+  }
+
+  void MyModel::marshall(Valdi::ExceptionTracker &exceptionTracker, const MyModel &value, Valdi::Value &out) {
+    const auto &self = value;
+    Valdi::CppMarshaller::marshallTypedObject(exceptionTracker, *getRegisteredClass(), out, self._i, self._s, self._b);
+  }
+
+  Valdi::RegisteredCppGeneratedClass *MyModel::getRegisteredClass() {
+    static auto *kRegisteredClass = Valdi::CppGeneratedClass::registerSchema("c 'snap::valdi_modules::test::MyModel'{'i':d, 's':s, 'b':b}");
+
+    return kRegisteredClass;
+  }
+
+}
+
+//
+// NativeCalculatorModule.cpp
+//
+
+#include "valdi_core/cpp/Marshalling/CppMarshaller.hpp"
+#include "valdi_modules/test/test.hpp"
+
+namespace snap::valdi_modules::test {
+
+  class NativeCalculatorModuleProxy: public NativeCalculatorModule {
+    public:
+    using MakeCalculatorFn = Valdi::Function<Valdi::Ref<ICalculator>()>;
+
+    NativeCalculatorModuleProxy() = default;
+    ~NativeCalculatorModuleProxy() override = default;
+
+    Valdi::Ref<ICalculator> makeCalculator() final {
+      return _makeCalculator();
+    }
+
+    static void unmarshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Value &value, Valdi::Ref<NativeCalculatorModuleProxy> &out) {
+      out = Valdi::makeShared<NativeCalculatorModuleProxy>();
+      auto &self = *out;
+      Valdi::CppMarshaller::unmarshallTypedObject(exceptionTracker, *getRegisteredClass(), value, self._makeCalculator);
+    }
+
+    private:
+    MakeCalculatorFn _makeCalculator;
+  };
+
+  NativeCalculatorModule::NativeCalculatorModule(): Valdi::CppGeneratedInterface(getRegisteredClass()) {
+  }
+
+  void NativeCalculatorModule::unmarshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Value &value, Valdi::Ref<NativeCalculatorModule> &out) {
+    Valdi::CppMarshaller::unmarshallProxyObject<NativeCalculatorModuleProxy>(exceptionTracker, *getRegisteredClass(), value, out);
+  }
+
+  void NativeCalculatorModule::marshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Ref<NativeCalculatorModule> &value, Valdi::Value &out) {
+    Valdi::CppMarshaller::marshallProxyObject(exceptionTracker, *getRegisteredClass(), *value, out, [&]() {
+      Valdi::CppMarshaller::marshallTypedObject(exceptionTracker, *getRegisteredClass(), out, Valdi::CppMarshaller::methodToFunction<NativeCalculatorModule, &NativeCalculatorModule::makeCalculator>(value));
+    });
+  }
+
+  Valdi::RegisteredCppGeneratedClass *NativeCalculatorModule::getRegisteredClass() {
+    static auto *kRegisteredClass = Valdi::CppGeneratedClass::registerSchema("c+ 'snap::valdi_modules::test::NativeCalculatorModule'{'makeCalculator':f|m|(): r:'[0]'}", []() -> Valdi::TypeReferencesVec {
+      return {ICalculator::getRegisteredClass()};
+    });
+
+    return kRegisteredClass;
+  }
+
+}
+
+//
+// NativeCalculatorModuleFactory.cpp
+//
+
+#include "valdi_modules/test/test.hpp"
+
+namespace snap::valdi_modules::test {
+
+  NativeCalculatorModuleFactory::NativeCalculatorModuleFactory() = default;
+  NativeCalculatorModuleFactory::~NativeCalculatorModuleFactory() = default;
+
+  Valdi::StringBox NativeCalculatorModuleFactory::getModulePath() {
+    return Valdi::StringBox::fromCString("test/src/NativeCalculator");
+  }
+}
+

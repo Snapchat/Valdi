@@ -1,0 +1,9 @@
+import { Component } from 'valdi_core/src/Component';
+interface ViewModel {
+    translationX: number | string;
+    translationY: number | string;
+}
+export declare class TestComponent extends Component<ViewModel> {
+    onRender(): void;
+}
+export {};

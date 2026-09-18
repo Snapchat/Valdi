@@ -1,0 +1,4 @@
+import { Component } from 'valdi_core/src/Component';
+export declare class LayoutFlexInteraction extends Component {
+    onRender(): void;
+}

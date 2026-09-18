@@ -1,0 +1,5 @@
+import { ICalculator } from './NativeCalculator';
+/**
+ * @ExportFunction
+ */
+export declare function makeCalculator(): ICalculator;

@@ -1,0 +1,108 @@
+//
+// SCCTestCalculatorToStringFormat.m
+//
+
+#import <valdi_core/SCValdiBuiltinTrampolines.h>
+#import <valdi_core/SCValdiMarshallableObjectRegistry.h>
+
+#import "SCCTestTypes.h"
+
+VALDI_INT_ENUM(SCCTestCalculatorToStringFormat, SCCTestCalculatorToStringFormatDECIMAL, SCCTestCalculatorToStringFormatINTEGER)
+
+NSArray<NSNumber *> * _Nonnull SCCTestCalculatorToStringFormatGetAllCases() {
+    static dispatch_once_t onceToken;
+    static NSArray<NSNumber *> *kAllCases;
+    dispatch_once(&onceToken, ^{
+        kAllCases = @[@1, @2];
+    });
+    return kAllCases;
+}
+
+//
+// SCCTestMakeCalculator.m
+//
+
+#import <valdi_core/SCValdiBuiltinTrampolines.h>
+
+#import "SCCTestTypes.h"
+
+
+//
+// SCCTestMyModel.m
+//
+
+#import <valdi_core/SCValdiBuiltinTrampolines.h>
+#import <valdi_core/SCValdiMarshallableObjectDescriptor.h>
+
+#import "SCCTestTypes.h"
+
+@implementation SCCTestMyModel
+
+@dynamic i;
+@dynamic s;
+@dynamic b;
+
+- (instancetype _Nonnull)initWithI:(double)i s:(NSString * _Nonnull)s b:(BOOL)b
+{
+    return [super initWithFieldValues:nil, i, s, b];
+}
+
++ (SCValdiMarshallableObjectDescriptor)valdiMarshallableObjectDescriptor
+{
+    static const SCValdiMarshallableObjectFieldDescriptor kFields[] = {
+        {.name = "i", .selName = nil, .type = "d"},
+        {.name = "s", .selName = nil, .type = "s"},
+        {.name = "b", .selName = nil, .type = "b"},
+        {.name = nil},
+    };
+    return SCValdiMarshallableObjectDescriptorMake(kFields, nil, nil, SCValdiMarshallableObjectTypeClass);
+}
+
+@end
+
+
+//
+// SCCTestNativeCalculatorModule.m
+//
+
+#import <valdi_core/SCValdiBuiltinTrampolines.h>
+#import <valdi_core/SCValdiMarshallableObjectDescriptor.h>
+
+#import "SCCTestTypes.h"
+
+
+//
+// SCCTestNativeCalculatorModuleFactory.m
+//
+
+#import "SCCTestTypes.h"
+
+@implementation SCCTestNativeCalculatorModuleFactory
+
+- (id<SCCTestNativeCalculatorModule>)onLoadModule
+{
+    return [self onLoadModule];
+}
+
+- (NSString *)getModulePath
+{
+    return @"test/src/NativeCalculator";
+}
+
+- (Protocol *)moduleProtocol
+{
+    return @protocol(SCCTestNativeCalculatorModule);
+}
+
+@end
+
+//
+// SCCTestICalculator.m
+//
+
+#import <valdi_core/SCValdiBuiltinTrampolines.h>
+#import <valdi_core/SCValdiMarshallableObjectDescriptor.h>
+
+#import "SCCTestTypes.h"
+
+

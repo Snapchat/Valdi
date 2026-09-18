@@ -1,0 +1,2 @@
+import { RetainNativeRefs } from './RetainNativeRefs.vue';
+export declare const ComponentClass: typeof RetainNativeRefs;

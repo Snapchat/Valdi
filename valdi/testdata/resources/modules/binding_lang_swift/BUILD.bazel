@@ -1,0 +1,17 @@
+load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+# Swift-only sibling of binding_lang_both (see that module's comment). Shares the
+# same bridgeable API source; ios_language=["swift"] so only the Swift emitter
+# runs (no ObjC .h/.m).
+valdi_module(
+    name = "binding_lang_swift",
+    srcs = glob(["src/**/*.ts"]),
+    android_output_target = "release",
+    ios_language = ["swift"],
+    ios_module_name = "SCCBindingLangSwift",
+    ios_output_target = "release",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+    ],
+)

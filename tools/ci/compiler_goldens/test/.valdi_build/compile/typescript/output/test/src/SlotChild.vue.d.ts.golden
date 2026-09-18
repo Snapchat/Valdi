@@ -1,0 +1,3 @@
+import { ElementRef } from "valdi_core/src/ElementRef";
+export declare const footerRef: ElementRef<any>;
+export declare const headerRef: ElementRef<any>;

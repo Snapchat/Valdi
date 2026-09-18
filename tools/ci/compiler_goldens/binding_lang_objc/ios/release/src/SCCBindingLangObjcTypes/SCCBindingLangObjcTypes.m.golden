@@ -1,0 +1,74 @@
+//
+// SCCBindingLangObjcGreeting.m
+//
+
+#import <valdi_core/SCValdiBuiltinTrampolines.h>
+#import <valdi_core/SCValdiMarshallableObjectRegistry.h>
+
+#import "SCCBindingLangObjcTypes.h"
+
+VALDI_INT_ENUM(SCCBindingLangObjcGreeting, SCCBindingLangObjcGreetingCASUAL, SCCBindingLangObjcGreetingFORMAL)
+
+NSArray<NSNumber *> * _Nonnull SCCBindingLangObjcGreetingGetAllCases() {
+    static dispatch_once_t onceToken;
+    static NSArray<NSNumber *> *kAllCases;
+    dispatch_once(&onceToken, ^{
+        kAllCases = @[@1, @2];
+    });
+    return kAllCases;
+}
+
+//
+// SCCBindingLangObjcMakeGreeter.m
+//
+
+#import <valdi_core/SCValdiBuiltinTrampolines.h>
+
+#import "SCCBindingLangObjcTypes.h"
+
+
+//
+// SCCBindingLangObjcNativeApiModule.m
+//
+
+#import <valdi_core/SCValdiBuiltinTrampolines.h>
+#import <valdi_core/SCValdiMarshallableObjectDescriptor.h>
+
+#import "SCCBindingLangObjcTypes.h"
+
+
+//
+// SCCBindingLangObjcNativeApiModuleFactory.m
+//
+
+#import "SCCBindingLangObjcTypes.h"
+
+@implementation SCCBindingLangObjcNativeApiModuleFactory
+
+- (id<SCCBindingLangObjcNativeApiModule>)onLoadModule
+{
+    return [self onLoadModule];
+}
+
+- (NSString *)getModulePath
+{
+    return @"binding_lang_objc/src/NativeApi";
+}
+
+- (Protocol *)moduleProtocol
+{
+    return @protocol(SCCBindingLangObjcNativeApiModule);
+}
+
+@end
+
+//
+// SCCBindingLangObjcIGreeter.m
+//
+
+#import <valdi_core/SCValdiBuiltinTrampolines.h>
+#import <valdi_core/SCValdiMarshallableObjectDescriptor.h>
+
+#import "SCCBindingLangObjcTypes.h"
+
+

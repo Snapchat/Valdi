@@ -1,0 +1,16 @@
+import { Asset } from 'valdi_core/src/Asset';
+import { Component } from 'valdi_core/src/Component';
+interface ViewModel {
+    lightAsset: string | Asset;
+    darkAsset: string | Asset;
+    includeDarkAsset: boolean;
+}
+export declare class ThemableAsset extends Component<ViewModel> {
+    private asset?;
+    private nestedAsset?;
+    onCreate(): void;
+    onViewModelUpdate(): void;
+    onRender(): void;
+    setDarkColorPalette(): void;
+}
+export {};

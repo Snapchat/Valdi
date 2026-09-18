@@ -1,0 +1,11 @@
+import { TypeConverter } from 'valdi_core/src/TypeConverter';
+export interface InputObject {
+    left: number;
+    right: number;
+}
+export interface OutputObject {
+    value: string;
+}
+export declare function makeConverter(): TypeConverter<InputObject, OutputObject>;
+export declare function add(obj: InputObject): number;
+export declare function makeObject(left: number, right: number): InputObject;

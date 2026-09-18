@@ -1,0 +1,317 @@
+//
+// startup_benchmark_native.c
+//
+
+#include "tsn/tsn.h"
+#include <math.h>
+
+ // BEGIN ATOMS
+#define TSN_ATOM_JSX 0
+#define TSN_ATOM_MAKENODEPROTOTYPE 1
+#define TSN_ATOM_COMPONENT 2
+#define TSN_ATOM_STARTUPBENCHMARK 3
+#define TSN_ATOM_ONRENDER 4
+#define TSN_ATOM_BEGINRENDER 5
+#define TSN_ATOM_ENDRENDER 6
+// END ATOMS
+
+static tsn_value startup_benchmark_src_StartupBenchmark__module_init__(tsn_vm *ctx, tsn_value_const this_val, tsn_stackframe *stackframe, int argc, tsn_value_const *argv, tsn_closure *closure);
+static tsn_value startup_benchmark_src_StartupBenchmark_StartupBenchmark(tsn_vm *ctx, tsn_value_const new_target, tsn_stackframe *stackframe, int argc, tsn_value_const *argv, tsn_closure *closure);
+static tsn_value startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender(tsn_vm *ctx, tsn_value_const this_val, tsn_stackframe *stackframe, int argc, tsn_value_const *argv, tsn_closure *closure);
+
+static tsn_value startup_benchmark_src_StartupBenchmark__module_init__(tsn_vm *ctx, tsn_value_const this_val, tsn_stackframe *stackframe, int argc, tsn_value_const *argv, tsn_closure *closure)
+ {
+    tsn_module *module = closure->module;
+    tsn_value retval_var1 = tsn_undefined(ctx);
+    tsn_value object_var2 = tsn_undefined(ctx);
+    tsn_value object_var3 = tsn_undefined(ctx);
+    tsn_var_ref vref_var4 = tsn_empty_var_ref(ctx);
+    tsn_var_ref vref_var5 = tsn_empty_var_ref(ctx);
+    tsn_var_ref vref_var6 = tsn_empty_var_ref(ctx);
+    tsn_value object_var7 = tsn_undefined(ctx);
+    tsn_value object_var8 = tsn_undefined(ctx);
+    tsn_value object_var9 = tsn_undefined(ctx);
+    tsn_value object_var10 = tsn_undefined(ctx);
+    tsn_value number_var11 = tsn_undefined(ctx);
+    tsn_value object_var12 = tsn_undefined(ctx);
+    tsn_value number_var13 = tsn_undefined(ctx);
+    tsn_value undefined_var14 = tsn_undefined(ctx);
+    object_var2 = tsn_get_func_arg(ctx, argc, argv, 0);
+    object_var3 = tsn_get_func_arg(ctx, argc, argv, 2);
+    vref_var4 = tsn_new_var_ref(ctx);
+    if (tsn_var_ref_is_exception(ctx, vref_var4)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    vref_var5 = tsn_new_var_ref(ctx);
+    if (tsn_var_ref_is_exception(ctx, vref_var5)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    vref_var6 = tsn_new_var_ref(ctx);
+    if (tsn_var_ref_is_exception(ctx, vref_var6)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    object_var7 = tsn_get_module_const(ctx, module, 0);
+    object_var8 = tsn_call(ctx, object_var2, object_var2, 1, (tsn_value[]){object_var7});
+    if (tsn_is_exception(ctx, object_var8)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    tsn_release_inline(ctx, object_var7);
+    object_var7 = tsn_get_property(ctx, &object_var8, module->atoms[TSN_ATOM_JSX], &object_var8, module->prop_cache + 0);
+    if (tsn_is_exception(ctx, object_var7)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    tsn_set_var_ref(ctx, vref_var4, object_var7);
+    tsn_release_inline(ctx, object_var8);
+    object_var8 = tsn_get_property(ctx, &object_var7, module->atoms[TSN_ATOM_MAKENODEPROTOTYPE], &object_var7, module->prop_cache + 1);
+    if (tsn_is_exception(ctx, object_var8)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    object_var9 = tsn_get_module_const(ctx, module, 1);
+    object_var10 = tsn_call(ctx, object_var8, object_var7, 1, (tsn_value[]){object_var9});
+    if (tsn_is_exception(ctx, object_var10)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    tsn_set_var_ref(ctx, vref_var5, object_var10);
+    tsn_release_inline(ctx, object_var8);
+    object_var8 = tsn_get_property(ctx, &object_var7, module->atoms[TSN_ATOM_MAKENODEPROTOTYPE], &object_var7, module->prop_cache + 2);
+    if (tsn_is_exception(ctx, object_var8)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    tsn_release_inline(ctx, object_var9);
+    object_var9 = tsn_get_module_const(ctx, module, 2);
+    tsn_release_inline(ctx, object_var10);
+    object_var10 = tsn_new_array(ctx);
+    if (tsn_is_exception(ctx, object_var10)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    number_var11 = tsn_int32(ctx, 0);
+    object_var12 = tsn_get_module_const(ctx, module, 3);
+    if (tsn_set_property_value(ctx, object_var10, number_var11, object_var12)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    number_var13 = tsn_op_inc(ctx, number_var11);
+    tsn_release_inline(ctx, object_var12);
+    object_var12 = tsn_get_module_const(ctx, module, 4);
+    if (tsn_set_property_value(ctx, object_var10, number_var13, object_var12)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    number_var11 = tsn_op_inc(ctx, number_var13);
+    tsn_release_inline(ctx, object_var12);
+    object_var12 = tsn_call(ctx, object_var8, object_var7, 2, (tsn_value[]){object_var9, object_var10});
+    if (tsn_is_exception(ctx, object_var12)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    tsn_set_var_ref(ctx, vref_var6, object_var12);
+    tsn_release_inline(ctx, object_var7);
+    object_var7 = tsn_get_module_const(ctx, module, 5);
+    tsn_release_inline(ctx, object_var8);
+    object_var8 = tsn_call(ctx, object_var2, undefined_var14, 1, (tsn_value[]){object_var7});
+    if (tsn_is_exception(ctx, object_var8)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    tsn_release_inline(ctx, object_var9);
+    object_var9 = tsn_retain_inline(ctx, object_var8);
+    tsn_release_inline(ctx, object_var10);
+    object_var10 = tsn_get_property(ctx, &object_var9, module->atoms[TSN_ATOM_COMPONENT], &object_var9, module->prop_cache + 3);
+    if (tsn_is_exception(ctx, object_var10)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    tsn_release_inline(ctx, object_var12);
+    object_var12 = tsn_new_class(ctx, module, module->atoms[TSN_ATOM_STARTUPBENCHMARK], &startup_benchmark_src_StartupBenchmark_StartupBenchmark, 0, object_var10);
+    if (tsn_is_exception(ctx, object_var12)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    tsn_release_inline(ctx, object_var2);
+    object_var2 = tsn_retain_inline(ctx, object_var12);
+    tsn_release_inline(ctx, object_var7);
+    object_var7 = tsn_new_function_closure(ctx, module, module->atoms[TSN_ATOM_ONRENDER], &startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender, 0, 3, (tsn_var_ref[]){vref_var4, vref_var5, vref_var6});
+    if (tsn_is_exception(ctx, object_var7)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    if (tsn_set_class_method(ctx, object_var12, module->atoms[TSN_ATOM_ONRENDER], object_var7)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    if (tsn_set_property(ctx, &object_var3, module->atoms[TSN_ATOM_STARTUPBENCHMARK], &object_var12)) {
+        goto target_startup_benchmark_src_StartupBenchmark__module_init___0_exception;
+    }
+    goto target_startup_benchmark_src_StartupBenchmark__module_init___1_return;
+    target_startup_benchmark_src_StartupBenchmark__module_init___0_exception:
+    retval_var1 = tsn_exception(ctx);
+    /*
+        eliminated assignment
+    */
+    target_startup_benchmark_src_StartupBenchmark__module_init___1_return:
+    tsn_release_inline(ctx, object_var12);
+    tsn_release_inline(ctx, object_var10);
+    tsn_release_inline(ctx, object_var9);
+    tsn_release_inline(ctx, object_var8);
+    tsn_release_inline(ctx, object_var7);
+    tsn_release_var_ref(ctx, vref_var6);
+    tsn_release_var_ref(ctx, vref_var5);
+    tsn_release_var_ref(ctx, vref_var4);
+    tsn_release_inline(ctx, object_var3);
+    tsn_release_inline(ctx, object_var2);
+    return retval_var1;
+}
+
+static tsn_value startup_benchmark_src_StartupBenchmark_StartupBenchmark(tsn_vm *ctx, tsn_value_const new_target, tsn_stackframe *stackframe, int argc, tsn_value_const *argv, tsn_closure *closure)
+ {
+    tsn_module *module = closure->module;
+    tsn_value retval_var1 = tsn_undefined(ctx);
+    tsn_value object_var2 = tsn_undefined(ctx);
+    tsn_value undefined_var3 = tsn_undefined(ctx);
+    tsn_value object_super_var4 = tsn_undefined(ctx);
+    tsn_value object_var5 = tsn_undefined(ctx);
+    tsn_value object_var6 = tsn_undefined(ctx);
+    tsn_value object_var7 = tsn_undefined(ctx);
+    object_var2 = undefined_var3;
+    object_super_var4 = tsn_get_super_constructor(ctx, stackframe);
+    if (tsn_is_exception(ctx, object_super_var4)) {
+        goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_0_exception;
+    }
+    object_var5 = tsn_retain(ctx, new_target);
+    object_var6 = tsn_get_func_args_object(ctx, argc, argv, 0);
+    if (tsn_is_exception(ctx, object_var6)) {
+        goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_0_exception;
+    }
+    object_var7 = tsn_call_constructor_vargs(ctx, object_super_var4, object_var5, object_var6);
+    if (tsn_is_exception(ctx, object_var7)) {
+        goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_0_exception;
+    }
+    tsn_release_inline(ctx, object_var2);
+    object_var2 = tsn_retain_inline(ctx, object_var7);
+    retval_var1 = tsn_retain_inline(ctx, object_var2);
+    goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_1_return;
+    goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_1_return;
+    target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_0_exception:
+    retval_var1 = tsn_exception(ctx);
+    /*
+        eliminated assignment
+    */
+    target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_1_return:
+    tsn_release_inline(ctx, object_var7);
+    tsn_release_inline(ctx, object_var6);
+    tsn_release_inline(ctx, object_var5);
+    tsn_release_inline(ctx, object_super_var4);
+    tsn_release_inline(ctx, object_var2);
+    return retval_var1;
+}
+
+static tsn_value startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender(tsn_vm *ctx, tsn_value_const this_val, tsn_stackframe *stackframe, int argc, tsn_value_const *argv, tsn_closure *closure)
+ {
+    tsn_module *module = closure->module;
+    tsn_value retval_var1 = tsn_undefined(ctx);
+    tsn_var_ref vref_var2 = tsn_empty_var_ref(ctx);
+    tsn_var_ref vref_var3 = tsn_empty_var_ref(ctx);
+    tsn_var_ref vref_var4 = tsn_empty_var_ref(ctx);
+    tsn_value object_var5 = tsn_undefined(ctx);
+    tsn_value object_var6 = tsn_undefined(ctx);
+    tsn_value object_var7 = tsn_undefined(ctx);
+    tsn_value object_var8 = tsn_undefined(ctx);
+    tsn_value undefined_var9 = tsn_undefined(ctx);
+    vref_var2 = tsn_get_closure_var(ctx, closure, 0);
+    vref_var3 = tsn_get_closure_var(ctx, closure, 1);
+    vref_var4 = tsn_get_closure_var(ctx, closure, 2);
+    object_var5 = tsn_load_var_ref(ctx, vref_var2);
+    if (tsn_is_exception(ctx, object_var5)) {
+        goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender_0_exception;
+    }
+    object_var6 = tsn_get_property(ctx, &object_var5, module->atoms[TSN_ATOM_BEGINRENDER], &object_var5, module->prop_cache + 4);
+    if (tsn_is_exception(ctx, object_var6)) {
+        goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender_0_exception;
+    }
+    object_var7 = tsn_load_var_ref(ctx, vref_var3);
+    if (tsn_is_exception(ctx, object_var7)) {
+        goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender_0_exception;
+    }
+    object_var8 = tsn_call(ctx, object_var6, object_var5, 2, (tsn_value[]){object_var7, undefined_var9});
+    if (tsn_is_exception(ctx, object_var8)) {
+        goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender_0_exception;
+    }
+    tsn_release_inline(ctx, object_var6);
+    object_var6 = tsn_get_property(ctx, &object_var5, module->atoms[TSN_ATOM_BEGINRENDER], &object_var5, module->prop_cache + 5);
+    if (tsn_is_exception(ctx, object_var6)) {
+        goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender_0_exception;
+    }
+    tsn_release_inline(ctx, object_var7);
+    object_var7 = tsn_load_var_ref(ctx, vref_var4);
+    if (tsn_is_exception(ctx, object_var7)) {
+        goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender_0_exception;
+    }
+    tsn_release_inline(ctx, object_var8);
+    object_var8 = tsn_call(ctx, object_var6, object_var5, 2, (tsn_value[]){object_var7, undefined_var9});
+    if (tsn_is_exception(ctx, object_var8)) {
+        goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender_0_exception;
+    }
+    tsn_release_inline(ctx, object_var6);
+    object_var6 = tsn_get_property(ctx, &object_var5, module->atoms[TSN_ATOM_ENDRENDER], &object_var5, module->prop_cache + 6);
+    if (tsn_is_exception(ctx, object_var6)) {
+        goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender_0_exception;
+    }
+    tsn_release_inline(ctx, object_var7);
+    object_var7 = tsn_call(ctx, object_var6, object_var5, 0, NULL);
+    if (tsn_is_exception(ctx, object_var7)) {
+        goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender_0_exception;
+    }
+    tsn_release_inline(ctx, object_var8);
+    object_var8 = tsn_get_property(ctx, &object_var5, module->atoms[TSN_ATOM_ENDRENDER], &object_var5, module->prop_cache + 7);
+    if (tsn_is_exception(ctx, object_var8)) {
+        goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender_0_exception;
+    }
+    tsn_release_inline(ctx, object_var6);
+    object_var6 = tsn_call(ctx, object_var8, object_var5, 0, NULL);
+    if (tsn_is_exception(ctx, object_var6)) {
+        goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender_0_exception;
+    }
+    goto target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender_1_return;
+    target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender_0_exception:
+    retval_var1 = tsn_exception(ctx);
+    /*
+        eliminated assignment
+    */
+    target_startup_benchmark_src_StartupBenchmark_StartupBenchmark_onRender_1_return:
+    tsn_release_inline(ctx, object_var8);
+    tsn_release_inline(ctx, object_var7);
+    tsn_release_inline(ctx, object_var6);
+    tsn_release_inline(ctx, object_var5);
+    tsn_release_var_ref(ctx, vref_var4);
+    tsn_release_var_ref(ctx, vref_var3);
+    tsn_release_var_ref(ctx, vref_var2);
+    return retval_var1;
+}
+
+
+ // BEGIN MODULE DEFINITION 'startup_benchmark_src_StartupBenchmark'
+static const tsn_string_def startup_benchmark_src_StartupBenchmark_module_atoms[] =  {
+    {"jsx", 3},
+    {"makeNodePrototype", 17},
+    {"Component", 9},
+    {"StartupBenchmark", 16},
+    {"onRender", 8},
+    {"beginRender", 11},
+    {"endRender", 9},
+};
+static const tsn_string_def startup_benchmark_src_StartupBenchmark_module_constants[] =  {
+    {"valdi_core/src/JSX", 18},
+    {"view", 4},
+    {"label", 5},
+    {"value", 5},
+    {"Startup Benchmark", 17},
+    {"valdi_core/src/Component", 24},
+};
+static tsn_value startup_benchmark_src_StartupBenchmark_create_module_func(tsn_vm *ctx) {
+    tsn_module *module;
+    module = tsn_new_module(ctx, 7, 6, 8);
+    tsn_assign_module_atoms(ctx, module, startup_benchmark_src_StartupBenchmark_module_atoms, 7);
+    tsn_assign_module_strings(ctx, module, startup_benchmark_src_StartupBenchmark_module_constants, 6);
+    tsn_value output;
+    output = tsn_new_module_init_fn(ctx, module, &startup_benchmark_src_StartupBenchmark__module_init__);
+    tsn_free_module(ctx, module);
+    return output;
+}
+
+__attribute__((constructor)) static void __do_register_module() {
+    tsn_register_module("startup_benchmark/src/StartupBenchmark", startup_benchmark_src_StartupBenchmark_create_module_func);
+}
+
+

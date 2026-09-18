@@ -1,0 +1,12 @@
+import { LegacyVueComponent } from 'valdi_core/src/Valdi';
+interface ViewModel {
+    moduleName: string;
+}
+interface State {
+    isError: boolean;
+    isLoaded: boolean;
+}
+export declare class RemoteAsyncLoadComponent extends LegacyVueComponent<ViewModel, State> {
+    onCreate(): void;
+}
+export {};

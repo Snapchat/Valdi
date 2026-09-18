@@ -1,0 +1,17 @@
+load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+# ObjC-only sibling of binding_lang_both (see that module's comment). Shares the
+# same bridgeable API source; ios_language=["objc"] so only the ObjC emitter
+# runs (.h/.m, no .swift).
+valdi_module(
+    name = "binding_lang_objc",
+    srcs = glob(["src/**/*.ts"]),
+    android_output_target = "release",
+    ios_language = ["objc"],
+    ios_module_name = "SCCBindingLangObjc",
+    ios_output_target = "release",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+    ],
+)

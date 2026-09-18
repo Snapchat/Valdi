@@ -1,0 +1,12 @@
+import { ElementFrame } from "valdi_tsx/src/Geometry";
+import { Component } from "valdi_core/src/Component";
+interface ViewModel {
+    onLayoutComplete(rootFrame: ElementFrame, childFrame: ElementFrame): void;
+    childSize: number;
+}
+export declare class OnLayoutComplete extends Component<ViewModel> {
+    private rootRef;
+    private childRef;
+    onRender(): void;
+}
+export {};

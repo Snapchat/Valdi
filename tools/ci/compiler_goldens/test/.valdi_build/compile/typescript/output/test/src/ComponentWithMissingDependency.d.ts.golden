@@ -1,0 +1,4 @@
+import { Component } from "valdi_core/src/Component";
+export declare class MyComponent extends Component {
+    onRender(): void;
+}

@@ -1,0 +1,6 @@
+import { LegacyVueComponent } from 'valdi_core/src/Valdi';
+export declare class ViewModelAtInitChild extends LegacyVueComponent {
+    hadViewModelOnCreate: boolean;
+    hadViewModel(callback: (v: boolean) => void): void;
+    onCreate(): void;
+}

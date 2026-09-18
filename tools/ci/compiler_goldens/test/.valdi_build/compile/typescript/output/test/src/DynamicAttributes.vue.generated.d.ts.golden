@@ -1,0 +1,5 @@
+import { LegacyVueComponent } from 'valdi_core/src/Valdi';
+declare class DynamicAttributesComponent extends LegacyVueComponent {
+}
+export declare const ComponentClass: typeof DynamicAttributesComponent;
+export {};

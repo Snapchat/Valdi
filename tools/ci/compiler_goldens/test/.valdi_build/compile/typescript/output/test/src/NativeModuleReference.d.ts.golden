@@ -1,0 +1,6 @@
+import { Component } from "valdi_core/src/Component";
+export declare class NativeModuleReference extends Component {
+    onCreate(): void;
+}
+export declare function callCallback1(): any;
+export declare function callCallback2(): any;

@@ -1,0 +1,4 @@
+import { Component } from 'valdi_core/src/Component';
+export declare class LayoutCardGrid extends Component {
+    onRender(): void;
+}

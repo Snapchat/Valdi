@@ -1,0 +1,2 @@
+import { MyComponent } from './UnmarshalledViewModelChild.vue';
+export declare const ComponentClass: typeof MyComponent;

@@ -1,0 +1,8 @@
+import { LegacyVueComponent } from 'valdi_core/src/Valdi';
+export interface ViewModel {
+    id: string;
+}
+export declare class MyComponent extends LegacyVueComponent<ViewModel> {
+    idUsedOnCreate: string;
+    onCreate(): void;
+}

@@ -1,0 +1,8 @@
+import { Component } from "valdi_core/src/Component";
+interface ViewModel {
+    onRender(): void;
+}
+export declare class CallCallbackOnRender extends Component<ViewModel> {
+    onRender(): void;
+}
+export {};

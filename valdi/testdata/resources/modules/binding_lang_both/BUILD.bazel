@@ -1,0 +1,22 @@
+load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+# Golden-harness fixture: a minimal module with a real bridgeable API surface
+# (an @ExportProxy interface + @ExportEnum) so the platform-binding emitters
+# produce non-empty output. The binding_lang_{objc,swift,both} trio shares this
+# source and differs only in ios_language, so the goldens characterize each
+# ObjC/Swift emit path from identical input.
+valdi_module(
+    name = "binding_lang_both",
+    srcs = glob(["src/**/*.ts"]),
+    android_output_target = "release",
+    ios_language = [
+        "objc",
+        "swift",
+    ],
+    ios_module_name = "SCCBindingLangBoth",
+    ios_output_target = "release",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+    ],
+)

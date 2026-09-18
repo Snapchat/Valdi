@@ -1,0 +1,7 @@
+import { Component } from "valdi_core/src/Component";
+interface ViewModel {
+}
+export declare class ModulePreload extends Component<ViewModel> {
+    onRender(): void;
+}
+export {};

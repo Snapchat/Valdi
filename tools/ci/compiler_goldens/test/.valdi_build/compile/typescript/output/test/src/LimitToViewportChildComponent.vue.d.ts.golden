@@ -1,0 +1,2 @@
+import { ElementRef } from "valdi_core/src/ElementRef";
+export declare const slotRef: ElementRef<any>;

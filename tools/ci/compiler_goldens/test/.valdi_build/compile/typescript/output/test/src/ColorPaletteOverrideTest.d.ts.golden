@@ -1,0 +1,8 @@
+import { Component } from 'valdi_core/src/Component';
+export declare class ColorPaletteOverrideTest extends Component {
+    onCreate(): void;
+    onRender(): void;
+    setDarkActiveColorPalette(): void;
+    updateDarkColorPalette(): void;
+    updateUnusedColorPalette(): void;
+}

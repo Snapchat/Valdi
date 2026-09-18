@@ -1,0 +1,6 @@
+import { Component } from "valdi_core/src/Component";
+export declare class DumpLogTest extends Component {
+    onCreate(): void;
+    onRender(): void;
+    private dumpCustomLog;
+}

@@ -1,0 +1,183 @@
+//
+// Greeting.cpp
+//
+
+#include "valdi_core/cpp/Marshalling/CppGeneratedEnum.hpp"
+#include "valdi_modules/binding_lang_objc/binding_lang_objc.hpp"
+
+namespace snap::valdi_modules::binding_lang_objc {
+
+  namespace {
+    const Valdi::CppIntEnumMarshaller<Greeting, 2> &getGreetingEnumMarshaller() {
+      static auto kEnumMarshaller = Valdi::CppIntEnumMarshaller<Greeting, 2>({1, 2});
+      return kEnumMarshaller;
+    }
+  }
+
+  void unmarshallEnum(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Value &value, Greeting &out) {
+    getGreetingEnumMarshaller().unmarshall(exceptionTracker, value, out);
+  }
+
+  void marshallEnum(Valdi::ExceptionTracker &exceptionTracker, Greeting value, Valdi::Value &out) {
+    getGreetingEnumMarshaller().marshall(exceptionTracker, value, out);
+  }
+
+  Valdi::RegisteredCppGeneratedClass *getRegisteredEnumClass(const Greeting *) {
+    static auto kEnumClass = Valdi::CppGeneratedEnum::registerEnumSchema("e<i> 'snap::valdi_modules::binding_lang_objc::Greeting'{'CASUAL':1, 'FORMAL':2}");
+    return kEnumClass;
+  }
+}
+
+//
+// IGreeter.cpp
+//
+
+#include "valdi_core/cpp/Marshalling/CppMarshaller.hpp"
+#include "valdi_modules/binding_lang_objc/binding_lang_objc.hpp"
+
+namespace snap::valdi_modules::binding_lang_objc {
+
+  class IGreeterProxy: public IGreeter {
+    public:
+    using GreetFn = Valdi::Function<Valdi::StringBox(Valdi::StringBox, Greeting)>;
+    using CountFn = Valdi::Function<double()>;
+
+    IGreeterProxy() = default;
+    ~IGreeterProxy() override = default;
+
+    Valdi::StringBox greet(Valdi::StringBox name, Greeting style) final {
+      return _greet(name, style);
+    }
+
+    double count() final {
+      return _count();
+    }
+
+    static void unmarshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Value &value, Valdi::Ref<IGreeterProxy> &out) {
+      out = Valdi::makeShared<IGreeterProxy>();
+      auto &self = *out;
+      Valdi::CppMarshaller::unmarshallTypedObject(exceptionTracker, *getRegisteredClass(), value, self._greet, self._count);
+    }
+
+    private:
+    GreetFn _greet;
+    CountFn _count;
+  };
+
+  IGreeter::IGreeter(): Valdi::CppGeneratedInterface(getRegisteredClass()) {
+  }
+
+  void IGreeter::unmarshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Value &value, Valdi::Ref<IGreeter> &out) {
+    Valdi::CppMarshaller::unmarshallProxyObject<IGreeterProxy>(exceptionTracker, *getRegisteredClass(), value, out);
+  }
+
+  void IGreeter::marshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Ref<IGreeter> &value, Valdi::Value &out) {
+    Valdi::CppMarshaller::marshallProxyObject(exceptionTracker, *getRegisteredClass(), *value, out, [&]() {
+      Valdi::CppMarshaller::marshallTypedObject(exceptionTracker, *getRegisteredClass(), out, Valdi::CppMarshaller::methodToFunction<IGreeter, &IGreeter::greet>(value), Valdi::CppMarshaller::methodToFunction<IGreeter, &IGreeter::count>(value));
+    });
+  }
+
+  Valdi::RegisteredCppGeneratedClass *IGreeter::getRegisteredClass() {
+    static auto *kRegisteredClass = Valdi::CppGeneratedClass::registerSchema("c+ 'snap::valdi_modules::binding_lang_objc::IGreeter'{'greet':f|m|(s, r<e>:'[0]'): s, 'count':f|m|(): d}", []() -> Valdi::TypeReferencesVec {
+      return {::snap::valdi_modules::binding_lang_objc::getRegisteredEnumClass(static_cast<const Greeting *>(nullptr))};
+    });
+
+    return kRegisteredClass;
+  }
+
+}
+
+//
+// MakeGreeter.cpp
+//
+
+#include "valdi_core/cpp/Marshalling/CppGeneratedExportedFunctionUtils.hpp"
+#include "valdi_modules/binding_lang_objc/binding_lang_objc.hpp"
+
+namespace snap::valdi_modules::binding_lang_objc {
+
+  Valdi::RegisteredCppGeneratedClass& MakeGreeter::registeredSchema() {
+    static auto *kSchema = Valdi::CppGeneratedExportedFunctionUtils::registerFunctionSchema("c 'MakeGreeter'{'makeGreeter':f(): r:'[0]'}", []() -> Valdi::TypeReferencesVec {
+      return {IGreeter::getRegisteredClass()};
+    });
+    return *kSchema;
+  }
+
+  Valdi::Result<MakeGreeter> MakeGreeter::resolve(snap::valdi_core::JSRuntime &jsRuntime, const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager) {
+    return Valdi::CppGeneratedExportedFunctionUtils::resolve<MakeGreeter>(jsRuntime, nativeObjectsManager, "binding_lang_objc/src/JsApi", registeredSchema());
+  }
+
+  Valdi::Result<Valdi::Ref<Valdi::ValueTypedObject>> MakeGreeter::resolveAsTypedObject(snap::valdi_core::JSRuntime &jsRuntime, const std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager>& nativeObjectsManager) {
+    return Valdi::CppGeneratedExportedFunctionUtils::resolveAsTypedObject(jsRuntime, nativeObjectsManager, "binding_lang_objc/src/JsApi", registeredSchema());
+  }
+}
+
+//
+// NativeApiModule.cpp
+//
+
+#include "valdi_core/cpp/Marshalling/CppMarshaller.hpp"
+#include "valdi_modules/binding_lang_objc/binding_lang_objc.hpp"
+
+namespace snap::valdi_modules::binding_lang_objc {
+
+  class NativeApiModuleProxy: public NativeApiModule {
+    public:
+    using MakeGreeterFn = Valdi::Function<Valdi::Ref<IGreeter>()>;
+
+    NativeApiModuleProxy() = default;
+    ~NativeApiModuleProxy() override = default;
+
+    Valdi::Ref<IGreeter> makeGreeter() final {
+      return _makeGreeter();
+    }
+
+    static void unmarshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Value &value, Valdi::Ref<NativeApiModuleProxy> &out) {
+      out = Valdi::makeShared<NativeApiModuleProxy>();
+      auto &self = *out;
+      Valdi::CppMarshaller::unmarshallTypedObject(exceptionTracker, *getRegisteredClass(), value, self._makeGreeter);
+    }
+
+    private:
+    MakeGreeterFn _makeGreeter;
+  };
+
+  NativeApiModule::NativeApiModule(): Valdi::CppGeneratedInterface(getRegisteredClass()) {
+  }
+
+  void NativeApiModule::unmarshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Value &value, Valdi::Ref<NativeApiModule> &out) {
+    Valdi::CppMarshaller::unmarshallProxyObject<NativeApiModuleProxy>(exceptionTracker, *getRegisteredClass(), value, out);
+  }
+
+  void NativeApiModule::marshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Ref<NativeApiModule> &value, Valdi::Value &out) {
+    Valdi::CppMarshaller::marshallProxyObject(exceptionTracker, *getRegisteredClass(), *value, out, [&]() {
+      Valdi::CppMarshaller::marshallTypedObject(exceptionTracker, *getRegisteredClass(), out, Valdi::CppMarshaller::methodToFunction<NativeApiModule, &NativeApiModule::makeGreeter>(value));
+    });
+  }
+
+  Valdi::RegisteredCppGeneratedClass *NativeApiModule::getRegisteredClass() {
+    static auto *kRegisteredClass = Valdi::CppGeneratedClass::registerSchema("c+ 'snap::valdi_modules::binding_lang_objc::NativeApiModule'{'makeGreeter':f|m|(): r:'[0]'}", []() -> Valdi::TypeReferencesVec {
+      return {IGreeter::getRegisteredClass()};
+    });
+
+    return kRegisteredClass;
+  }
+
+}
+
+//
+// NativeApiModuleFactory.cpp
+//
+
+#include "valdi_modules/binding_lang_objc/binding_lang_objc.hpp"
+
+namespace snap::valdi_modules::binding_lang_objc {
+
+  NativeApiModuleFactory::NativeApiModuleFactory() = default;
+  NativeApiModuleFactory::~NativeApiModuleFactory() = default;
+
+  Valdi::StringBox NativeApiModuleFactory::getModulePath() {
+    return Valdi::StringBox::fromCString("binding_lang_objc/src/NativeApi");
+  }
+}
+

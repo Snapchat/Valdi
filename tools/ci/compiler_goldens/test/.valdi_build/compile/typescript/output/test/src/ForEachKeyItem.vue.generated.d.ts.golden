@@ -1,0 +1,2 @@
+import { MyComponent } from './ForEachKeyItem.vue';
+export declare const ComponentClass: typeof MyComponent;

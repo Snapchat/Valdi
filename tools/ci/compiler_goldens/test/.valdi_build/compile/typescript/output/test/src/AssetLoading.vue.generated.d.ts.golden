@@ -1,0 +1,2 @@
+import { MyComponent } from './AssetLoading.vue';
+export declare const ComponentClass: typeof MyComponent;

@@ -1,0 +1,9 @@
+import { ElementFrame } from 'valdi_tsx/src/Geometry';
+import { Component } from 'valdi_core/src/Component';
+interface ViewModel {
+    onViewportChanged: (frame: ElementFrame) => void;
+}
+export declare class ViewportUpdates extends Component<ViewModel> {
+    onRender(): void;
+}
+export {};

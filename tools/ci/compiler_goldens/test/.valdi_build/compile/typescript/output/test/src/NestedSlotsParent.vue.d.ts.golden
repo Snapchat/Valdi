@@ -1,0 +1,3 @@
+import { LegacyVueComponent } from 'valdi_core/src/Valdi';
+export declare class MyComponent extends LegacyVueComponent {
+}

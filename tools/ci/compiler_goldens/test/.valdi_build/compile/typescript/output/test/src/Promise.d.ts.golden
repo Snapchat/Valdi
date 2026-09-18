@@ -1,0 +1,4 @@
+export declare function getStringAsync(): Promise<string>;
+export declare function getStringSync(): string;
+export declare function concatStrings(left: Promise<string>, right: Promise<string>, onStep?: (step: number) => void): Promise<string>;
+export declare function concatStringsComplex(prefix: Promise<Promise<string>>, array: Promise<string>[]): Promise<string>;

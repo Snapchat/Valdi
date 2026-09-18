@@ -1,0 +1,2 @@
+import { MyView } from './JSInstance.vue';
+export declare const ComponentClass: typeof MyView;

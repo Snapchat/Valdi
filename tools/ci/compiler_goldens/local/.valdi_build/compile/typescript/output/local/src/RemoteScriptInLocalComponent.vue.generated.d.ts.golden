@@ -1,0 +1,2 @@
+import { LocalComponent } from './RemoteScriptInLocalComponent.vue';
+export declare const ComponentClass: typeof LocalComponent;

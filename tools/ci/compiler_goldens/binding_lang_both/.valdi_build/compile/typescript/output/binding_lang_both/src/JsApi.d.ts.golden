@@ -1,0 +1,5 @@
+import { IGreeter } from './NativeApi';
+/**
+ * @ExportFunction
+ */
+export declare function makeGreeter(): IGreeter;

@@ -1,0 +1,2 @@
+import { MyComponent } from './NestedSlots.vue';
+export declare const ComponentClass: typeof MyComponent;

@@ -1,0 +1,2 @@
+export declare function testMicrotask(setTimeoutCb: () => void, microtaskCb: () => void): void;
+export declare function testPromiseFulfillment(onResolved: () => void): void;

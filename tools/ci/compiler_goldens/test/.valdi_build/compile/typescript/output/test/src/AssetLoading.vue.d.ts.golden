@@ -1,0 +1,6 @@
+import { LegacyVueComponent } from 'valdi_core/src/Valdi';
+export declare class MyComponent extends LegacyVueComponent {
+    private subscription?;
+    loadAsset(src: string, callback: (asset: unknown, error: string | undefined) => void): void;
+    unloadAsset(): void;
+}

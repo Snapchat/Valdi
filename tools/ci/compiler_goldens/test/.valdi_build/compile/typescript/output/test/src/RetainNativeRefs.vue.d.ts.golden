@@ -1,0 +1,7 @@
+import { LegacyVueComponent } from 'valdi_core/src/Valdi';
+export declare class RetainNativeRefs extends LegacyVueComponent {
+    protectContext(cb: (context: any) => void): void;
+    makeGlobalCallback(cb: (fn: any) => void): void;
+    makeBytes(cb: (fn: ArrayBuffer) => void): void;
+}
+export declare function callFn(fn: Function): any;

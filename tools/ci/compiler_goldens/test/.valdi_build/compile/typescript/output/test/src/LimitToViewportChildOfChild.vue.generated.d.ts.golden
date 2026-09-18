@@ -1,0 +1,2 @@
+import { MyComponent } from './LimitToViewportChildOfChild.vue';
+export declare const ComponentClass: typeof MyComponent;

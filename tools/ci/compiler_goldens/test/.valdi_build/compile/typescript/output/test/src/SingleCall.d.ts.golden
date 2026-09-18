@@ -1,0 +1,3 @@
+export declare function getCallback(): () => string;
+export declare function callCallback(iteration: number, cb: () => void): void;
+export declare function getSingleCallback(): () => string;

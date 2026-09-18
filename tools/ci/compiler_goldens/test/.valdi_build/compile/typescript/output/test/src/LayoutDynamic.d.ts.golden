@@ -1,0 +1,9 @@
+import { Component } from 'valdi_core/src/Component';
+interface ViewModel {
+    showItem1: boolean;
+    showItem2: boolean;
+}
+export declare class LayoutDynamic extends Component<ViewModel> {
+    onRender(): void;
+}
+export {};

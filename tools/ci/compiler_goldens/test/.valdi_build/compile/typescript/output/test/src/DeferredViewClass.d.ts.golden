@@ -1,0 +1,12 @@
+import { Component } from "valdi_core/src/Component";
+import { ViewFactory } from "valdi_tsx/src/ViewFactory";
+interface ViewModel {
+    iosClassName?: string;
+    androidClassName?: string;
+    viewFactory?: ViewFactory;
+}
+export declare class DeferredViewClass extends Component<ViewModel> {
+    onRender(): void;
+    private renderInner;
+}
+export {};

@@ -1,0 +1,2 @@
+import { RemoteAsyncLoadComponent } from './RemoteAsyncLoadComponent.vue';
+export declare const ComponentClass: typeof RemoteAsyncLoadComponent;

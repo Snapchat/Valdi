@@ -1,0 +1,11 @@
+import { Component } from 'valdi_core/src/Component';
+import Worker from 'worker/src/Worker';
+export declare class WorkerTest extends Component {
+    worker: Worker | null;
+    callWorker(callback: (res: string) => void): void;
+    terminateBusyWorker(callback: (res: string) => void): void;
+    terminateBusyWorkerWithPort(callback: (res: string) => void): void;
+    terminateIdleWorker(callback: (res: string) => void): void;
+    terminateBeforeInitialization(callback: (res: string) => void): void;
+    onRender(): void;
+}

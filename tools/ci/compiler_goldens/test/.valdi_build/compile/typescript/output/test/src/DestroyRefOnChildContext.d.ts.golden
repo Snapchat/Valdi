@@ -1,0 +1,7 @@
+type NativeRef = unknown;
+interface ChildContext {
+    contextId: string;
+    getNativeRef(): NativeRef;
+}
+export declare function createChildContext(makeRef: () => NativeRef): ChildContext;
+export {};

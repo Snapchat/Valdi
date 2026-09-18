@@ -1,0 +1,9 @@
+import { Component } from "valdi_core/src/Component";
+import { ElementRef } from "valdi_core/src/ElementRef";
+import { NativeNode } from "valdi_tsx/src/NativeNode";
+import { View } from "valdi_tsx/src/NativeTemplateElements";
+export declare class NativeNodeComponent extends Component {
+    ref: ElementRef<View>;
+    onRender(): void;
+    receiveNode(receiver: (node: NativeNode | undefined) => void): void;
+}

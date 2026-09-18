@@ -1,0 +1,2 @@
+export declare function emitUncaughtError(handler: (error: unknown, contextId: string) => number): void;
+export declare function emitRejectedPromise(handler: (error: unknown, contextId: string) => number): void;

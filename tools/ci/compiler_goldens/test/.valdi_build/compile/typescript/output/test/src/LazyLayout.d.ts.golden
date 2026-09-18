@@ -1,0 +1,9 @@
+import { Component } from "valdi_core/src/Component";
+interface ViewModel {
+    items: any[];
+}
+export declare class LazyLayout extends Component<ViewModel> {
+    onRender(): void;
+    onRenderItems(): void;
+}
+export {};

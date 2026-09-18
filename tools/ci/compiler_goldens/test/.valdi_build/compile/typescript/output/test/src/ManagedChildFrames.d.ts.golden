@@ -1,0 +1,29 @@
+import { Component } from 'valdi_core/src/Component';
+export declare class ManagedChildFrames extends Component {
+    onRender(): void;
+}
+export declare class InlineViewTextAttribute extends Component {
+    onRender(): void;
+    private inlineText;
+}
+export declare class InlineViewVerticalAlignmentTextAttribute extends Component {
+    onRender(): void;
+    private inlineText;
+}
+export declare class InlineViewTextViewAttribute extends Component {
+    onRender(): void;
+    private inlineText;
+}
+export declare class InlineViewInvalidChildIndexAttribute extends Component {
+    onRender(): void;
+    private inlineText;
+}
+interface InlineViewDynamicSizeViewModel {
+    childWidth: number;
+    childHeight: number;
+}
+export declare class InlineViewDynamicSizeAttribute extends Component<InlineViewDynamicSizeViewModel> {
+    onRender(): void;
+    private inlineText;
+}
+export {};

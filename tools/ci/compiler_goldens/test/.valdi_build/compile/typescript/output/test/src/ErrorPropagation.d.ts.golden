@@ -1,0 +1,2 @@
+export declare function receiveError(cb: () => void): string | undefined;
+export declare function throwError(): void;

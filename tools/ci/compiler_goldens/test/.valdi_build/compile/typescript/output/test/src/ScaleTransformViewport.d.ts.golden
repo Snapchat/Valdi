@@ -1,0 +1,8 @@
+import { Component } from 'valdi_core/src/Component';
+interface ViewModel {
+    scaleY: number;
+}
+export declare class ScaleTransformViewport extends Component<ViewModel> {
+    onRender(): void;
+}
+export {};

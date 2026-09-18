@@ -1,0 +1,4 @@
+import { LegacyVueComponent } from 'valdi_core/src/Valdi';
+export declare class LocalComponent extends LegacyVueComponent {
+    getText(): string;
+}

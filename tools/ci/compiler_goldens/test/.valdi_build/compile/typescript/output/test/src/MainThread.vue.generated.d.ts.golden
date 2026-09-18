@@ -1,0 +1,2 @@
+import { MyView } from './MainThread.vue';
+export declare const ComponentClass: typeof MyView;

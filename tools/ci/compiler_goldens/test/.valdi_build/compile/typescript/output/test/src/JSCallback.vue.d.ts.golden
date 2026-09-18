@@ -1,0 +1,7 @@
+import { LegacyVueComponent } from 'valdi_core/src/Valdi';
+export declare class MyView extends LegacyVueComponent {
+    sequence: number;
+    subViewTapped(): void;
+    increment(args: any): void;
+    incrementWithOptionalInvocation(args: any): void;
+}

@@ -1,0 +1,17 @@
+import { Component } from "valdi_core/src/Component";
+interface MakeInterruptibleCallbackParams {
+    interruptible: boolean;
+    cb: (cb: Function) => void;
+}
+export declare class AttributedError extends Component {
+    shouldErrorOut: boolean;
+    onRender(): void;
+    makeInterruptibleCallback(params: MakeInterruptibleCallbackParams): void;
+    makeCallbackError(cb: (cb: Function) => void): void;
+    makeRenderError(): void;
+    makeImportError(): void;
+    makeImportInitError(): void;
+    makeSetTimeoutError(): void;
+    makeDelayedImportError(): void;
+}
+export {};

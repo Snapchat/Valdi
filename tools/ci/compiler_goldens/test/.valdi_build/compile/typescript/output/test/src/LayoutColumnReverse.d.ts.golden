@@ -1,0 +1,4 @@
+import { Component } from 'valdi_core/src/Component';
+export declare class LayoutColumnReverse extends Component {
+    onRender(): void;
+}

@@ -1,0 +1,2 @@
+declare const _default: 43;
+export = _default;

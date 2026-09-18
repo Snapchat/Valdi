@@ -1,0 +1,74 @@
+//
+// SCCBindingLangBothGreeting.m
+//
+
+#import <valdi_core/SCValdiBuiltinTrampolines.h>
+#import <valdi_core/SCValdiMarshallableObjectRegistry.h>
+
+#import "SCCBindingLangBothTypes.h"
+
+VALDI_INT_ENUM(SCCBindingLangBothGreeting, SCCBindingLangBothGreetingCASUAL, SCCBindingLangBothGreetingFORMAL)
+
+NSArray<NSNumber *> * _Nonnull SCCBindingLangBothGreetingGetAllCases() {
+    static dispatch_once_t onceToken;
+    static NSArray<NSNumber *> *kAllCases;
+    dispatch_once(&onceToken, ^{
+        kAllCases = @[@1, @2];
+    });
+    return kAllCases;
+}
+
+//
+// SCCBindingLangBothMakeGreeter.m
+//
+
+#import <valdi_core/SCValdiBuiltinTrampolines.h>
+
+#import "SCCBindingLangBothTypes.h"
+
+
+//
+// SCCBindingLangBothNativeApiModule.m
+//
+
+#import <valdi_core/SCValdiBuiltinTrampolines.h>
+#import <valdi_core/SCValdiMarshallableObjectDescriptor.h>
+
+#import "SCCBindingLangBothTypes.h"
+
+
+//
+// SCCBindingLangBothNativeApiModuleFactory.m
+//
+
+#import "SCCBindingLangBothTypes.h"
+
+@implementation SCCBindingLangBothNativeApiModuleFactory
+
+- (id<SCCBindingLangBothNativeApiModule>)onLoadModule
+{
+    return [self onLoadModule];
+}
+
+- (NSString *)getModulePath
+{
+    return @"binding_lang_both/src/NativeApi";
+}
+
+- (Protocol *)moduleProtocol
+{
+    return @protocol(SCCBindingLangBothNativeApiModule);
+}
+
+@end
+
+//
+// SCCBindingLangBothIGreeter.m
+//
+
+#import <valdi_core/SCValdiBuiltinTrampolines.h>
+#import <valdi_core/SCValdiMarshallableObjectDescriptor.h>
+
+#import "SCCBindingLangBothTypes.h"
+
+

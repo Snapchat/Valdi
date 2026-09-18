@@ -1,0 +1,6 @@
+import { LegacyVueComponent } from 'valdi_core/src/Valdi';
+export declare class MyView extends LegacyVueComponent {
+    renderCount: number;
+    getRenders(completion: (any: any) => void): void;
+    doRender(): string;
+}

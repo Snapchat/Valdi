@@ -1,0 +1,8 @@
+import { Component } from 'valdi_core/src/Component';
+interface ViewModel {
+    src: string;
+}
+export declare class RemoteAsset extends Component<ViewModel> {
+    onRender(): void;
+}
+export {};

@@ -1,0 +1,5 @@
+import { LegacyVueComponent } from 'valdi_core/src/Valdi';
+declare class JSLabelComponent extends LegacyVueComponent {
+}
+export declare const ComponentClass: typeof JSLabelComponent;
+export {};
