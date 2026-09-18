@@ -6,6 +6,9 @@ Valdi supports injecting native views inside of an existing valdi feature throug
 
 This type of integration is useful when a very complex view (such as a system view) is already implemented natively and we want to re-use platform-specific code instead of writing a new cross-platform component.
 
+> [!IMPORTANT]
+> A `<custom-view>` binds its native view **one** of two ways: a `viewFactory` (a `ViewFactory` supplied at runtime, shown below) **or** platform class names (`iosClass`/`androidClass`/`macosClass`/`webClass`, covered further down). The two are mutually exclusive — specifying both on the same element is a compile error. If a view needs a `viewFactory` on one platform and a registered class on another, branch into two sibling `<custom-view>` elements, each with a single mechanism. Prefer gating on whether a `viewFactory` is provided (`if (viewFactory) { … } else { …class… }`) over `Device.isWeb()`, since the factory is often supplied by native too. Keep a platform class only when it actually exists.
+
 ## Using a `<custom-view>`
 
 Here we find a simple example on how to inject custom views inside of a Valdi rendered feature.

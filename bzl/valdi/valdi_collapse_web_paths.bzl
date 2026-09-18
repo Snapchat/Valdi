@@ -107,7 +107,9 @@ def _dest(rel):
 
     parts = rel.split("/")
     for i in range(1, len(parts)):
-        if parts[i] == "res":
+        # Skip the compiler-generated web/<flavor>/res directories; those are handled
+        # by the web/<flavor>/{assets,res} logic below so the real module name is kept.
+        if parts[i] == "res" and parts[i - 1] not in ["debug", "release"]:
             module_name = parts[i - 1]
             tail = "/".join(parts[i:])
             return "src/{}/{}".format(module_name, tail)
@@ -297,6 +299,12 @@ def _impl_native(ctx):
     lines = []
     for f in ctx.files.srcs:
         rel = _repository_relative_short_path(f)
+
+        # Only files under a module's web/ dir belong in the native tree. Source files
+        # (e.g. <module>/src/*.d.ts) have no web/ segment; they are placed by the main
+        # collapse_web_paths pass instead, so skip them here.
+        if "web" not in rel.split("/"):
+            continue
         lines.append("{}\t{}".format(f.path, _dest_native(rel)))
     ctx.actions.write(manifest, "\n".join(lines))
 

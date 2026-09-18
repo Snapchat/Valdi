@@ -53,7 +53,7 @@ class MyComponent extends Component<MyViewModel> {
 }
 ```
 
-`viewFactory` and `*Class` attributes are mutually exclusive — use one or the other. `viewFactory` takes precedence when both are provided.
+`viewFactory` and `*Class` attributes are mutually exclusive — use one or the other. Specifying both on the same `<custom-view>` is a compile error (the JSXProcessor rejects it). If a view needs a `viewFactory` on one platform and a registered class on another, branch into two sibling `<custom-view>` elements, each with a single mechanism. Prefer gating on whether a `viewFactory` is provided (`if (viewFactory) { … } else { …class… }`) over `Device.isWeb()`: the factory is often supplied by native too, so an `isWeb` branch that routes native to classes can break it. Only keep a platform class you've confirmed actually exists.
 
 ## macOS Attribute Binding
 

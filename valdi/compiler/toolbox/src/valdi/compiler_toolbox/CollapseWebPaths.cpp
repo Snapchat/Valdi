@@ -142,6 +142,8 @@ static void rewriteDeclarationImports(std::string& content, const std::string& p
     rewriteDeclarationImportsForPrefix(content, "from \"", '"', packageName);
     rewriteDeclarationImportsForPrefix(content, "import '", '\'', packageName);
     rewriteDeclarationImportsForPrefix(content, "import \"", '"', packageName);
+    rewriteDeclarationImportsForPrefix(content, "import('", '\'', packageName);
+    rewriteDeclarationImportsForPrefix(content, "import(\"", '"', packageName);
 }
 
 static Result<Void> copySourceDeclarations(const Path& outputDirectory, const Path& manifestPath) {

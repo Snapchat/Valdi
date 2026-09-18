@@ -893,15 +893,24 @@ def _get_web_output_target(attr, force_debug):
 def _supports_web_release(ctx, code_coverage):
     return _get_web_output_target(ctx.attr, code_coverage or ctx.attr.output_flavor[BuildSettingInfo].value == "debug") == "release"
 
+def _web_output_flavor(ctx, code_coverage):
+    # Must equal the compiler's web_output_target (see _get_web_output_target, passed to
+    # the compiler as output_target): a module emits/consumes web/release only when both
+    # android and ios output_target are release and the build isn't forced to debug;
+    # otherwise web/debug. Keying off output_flavor alone mis-declares web/release for
+    # debug-output_target modules (e.g. jasmine), whose compiler only writes web/debug.
+    return _get_web_output_target(ctx.attr, code_coverage or ctx.attr.output_flavor[BuildSettingInfo].value == "debug")
+
 def _get_files_output_paths(ctx, module_name, module_directory, localization_mode, enable_web, code_coverage, enable_android = True, enable_ios = True, emit_debug = True, emit_release = True):
     filtered_srcs = _get_compiled_srcs(ctx)
     outputs = _get_srcs_dts_paths(filtered_srcs, module_name, module_directory)
 
-    web_release_enabled = enable_web and _supports_web_release(ctx, code_coverage)
-    if web_release_enabled:
-        outputs += _get_srcs_js_paths(filtered_srcs + ctx.files.protodecl_srcs, module_name, module_directory, bool(ctx.files.res), bool(ctx.file.ids_yaml), bool(ctx.attr.strings_dir))
-        outputs += _get_web_native_module_package_file_paths(ctx.attr.web_register_native_module_id_overrides)
-        outputs += _get_srcs_vue_paths(ctx.files.legacy_vue_srcs, module_name, module_directory)
+    web_flavor = _web_output_flavor(ctx, code_coverage)
+    web_res_index = 0 if web_flavor == "debug" else 1
+    if enable_web:
+        outputs += _get_srcs_js_paths(filtered_srcs + ctx.files.protodecl_srcs, module_name, module_directory, bool(ctx.files.res), bool(ctx.file.ids_yaml), bool(ctx.attr.strings_dir), web_flavor)
+        outputs += _get_web_native_module_package_file_paths(ctx.attr.web_register_native_module_id_overrides, web_flavor)
+        outputs += _get_srcs_vue_paths(ctx.files.legacy_vue_srcs, module_name, module_directory, web_flavor)
         outputs += get_sql_js_paths(ctx.attr.sql_db_names, ctx.files.sql_srcs, module_name, module_directory)
 
     outputs += get_legacy_vue_srcs_dts_paths(ctx.files.legacy_vue_srcs, module_name, module_directory)
@@ -945,8 +954,8 @@ def _get_files_output_paths(ctx, module_name, module_directory, localization_mod
     strings_json_srcs = ctx.files.strings_json_srcs
     outputs += get_strings_dts_path(TYPESCRIPT_GENERATED_TS_DIR, module_name, strings_json_srcs)
 
-    if web_release_enabled:
-        outputs += _get_web_string_resource_paths(module_name, strings_json_srcs, ctx.attr.strings_dir)[1]
+    if enable_web:
+        outputs += _get_web_string_resource_paths(module_name, strings_json_srcs, ctx.attr.strings_dir)[web_res_index]
 
     if localization_mode == "external":
         # Android strings-xx.xml
@@ -967,9 +976,9 @@ def _get_files_output_paths(ctx, module_name, module_directory, localization_mod
             outputs = _append_debug_and_maybe_release(outputs, android_output_target, _get_android_image_resources_paths(module_name, basenames), emit_debug, emit_release)
         if enable_ios:
             outputs = _append_debug_and_maybe_release(outputs, ios_output_target, _get_ios_image_resources_paths(module_name, basenames), emit_debug, emit_release)
-        if web_release_enabled:
+        if enable_web:
             renamed_resources = _extract_renamed_resources(ctx.files.res)
-            outputs += _get_web_resource_paths(module_name, renamed_resources)[1]
+            outputs += _get_web_resource_paths(module_name, renamed_resources)[web_res_index]
             outputs += _get_web_generated_resource_paths(module_name, outputs)
 
     outputs.append(_get_dumped_compilation_metadata(module_name))
@@ -1140,9 +1149,8 @@ def _get_srcs_dts_paths(srcs, module_name, module_directory):
         if f.extension in ["tsx", "ts"] and not f.basename.endswith(".d.ts")
     ]
 
-def _get_srcs_js_paths(srcs, module_name, module_directory, has_resources, has_ids, has_strings):
+def _get_srcs_js_paths(srcs, module_name, module_directory, has_resources, has_ids, has_strings, output_target):
     out = []
-    output_target = "release"
 
     for f in srcs:
         if _is_test_file(f):
@@ -1159,8 +1167,8 @@ def _get_srcs_js_paths(srcs, module_name, module_directory, has_resources, has_i
 
     return out
 
-def _get_web_native_module_package_file_paths(web_register_native_module_id_overrides):
-    output_dir = base_relative_dir("web", "release", "assets")
+def _get_web_native_module_package_file_paths(web_register_native_module_id_overrides, output_target):
+    output_dir = base_relative_dir("web", output_target, "assets")
     out = []
 
     for implementation_path in web_register_native_module_id_overrides:
@@ -1172,9 +1180,8 @@ def _get_web_native_module_package_file_paths(web_register_native_module_id_over
 
     return out
 
-def _get_srcs_vue_paths(srcs, module_name, module_directory):
+def _get_srcs_vue_paths(srcs, module_name, module_directory, output_target):
     out = []
-    output_target = "release"
 
     for f in srcs:
         if _is_test_file(f):
@@ -1911,11 +1918,12 @@ def _create_valdi_module_info(ctx, module_name, module_yaml, module_definition, 
     base_path = paths.join(ctx.label.workspace_root, ctx.label.package)
     single_file_codegen = ctx.attr.single_file_codegen
 
-    web_release_enabled = _supports_web_release(ctx, code_coverage)
-    web_input_dts_files = _extract_web_dts_files(in_declarations) if web_release_enabled else []
-    web_output_dts_files = _extract_web_dts_files(out_declarations) if web_release_enabled else []
-    web_resource_files = _extract_web_resources("release", outputs) if web_release_enabled else []
-    if web_release_enabled and ctx.attr.inline_assets:
+    enable_web = ctx.var.get("enable_web")
+    web_flavor = _web_output_flavor(ctx, code_coverage)
+    web_input_dts_files = _extract_web_dts_files(in_declarations) if enable_web else []
+    web_output_dts_files = _extract_web_dts_files(out_declarations) if enable_web else []
+    web_resource_files = _extract_web_resources(web_flavor, outputs) if enable_web else []
+    if enable_web and ctx.attr.inline_assets:
         web_resource_files += ctx.files.res
 
     return ValdiModuleInfo(
@@ -1979,11 +1987,11 @@ def _create_valdi_module_info(ctx, module_name, module_yaml, module_definition, 
 
         # web outputs
         protodecl_srcs = ctx.files.protodecl_srcs,
-        web_sources = _extract_js_files(module_name, "release", outputs) if web_release_enabled else [],
+        web_sources = _extract_js_files(module_name, web_flavor, outputs) if enable_web else [],
         web_resource_files = web_resource_files,
         web_no_inline_images = ctx.attr.web_no_inline_images,
         web_module_file_entries = _collect_web_module_file_entries(ctx, module_name),
-        web_strings = _extract_web_strings("release", outputs) if web_release_enabled else [],
+        web_strings = _extract_web_strings(web_flavor, outputs) if enable_web else [],
         web_deps = _extract_npm_package_files(ctx.attr.web_deps),
         web_input_dts_files = web_input_dts_files,
         web_output_dts_files = web_output_dts_files,
