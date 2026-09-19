@@ -20,7 +20,7 @@ namespace Valdi {
 class FileStat {
 public:
     FileStat(bool exists, bool isDir, bool isFile, size_t size)
-        : _exists(exists), _isDir(isDir), _isFile(isFile), _size(size) {}
+        : _exists(exists), _isDir(exists && isDir), _isFile(exists && isFile), _size(exists ? size : 0) {}
 
     constexpr bool exists() const {
         return _exists;
