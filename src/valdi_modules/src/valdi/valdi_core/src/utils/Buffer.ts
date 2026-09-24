@@ -13,7 +13,7 @@ export class Buffer {
   }
 
   inner(): ArrayBuffer {
-    return this.array.buffer;
+    return this.array.buffer as ArrayBuffer;
   }
 
   empty(): boolean {
