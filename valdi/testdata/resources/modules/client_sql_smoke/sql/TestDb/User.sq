@@ -1,0 +1,29 @@
+CREATE TABLE user (
+  id INTEGER NOT NULL PRIMARY KEY,
+  name TEXT NOT NULL,
+  age INTEGER,
+  nickname TEXT
+);
+
+CREATE TABLE runtime_value (
+  id INTEGER NOT NULL PRIMARY KEY,
+  enabled BOOLEAN NOT NULL,
+  optional BOOLEAN,
+  payload BLOB NOT NULL
+);
+
+selectAll:
+SELECT * FROM user;
+
+selectById:
+SELECT id, name, age FROM user WHERE id = :id;
+
+insertUser:
+INSERT INTO user(id, name, age) VALUES (:id, :name, :age);
+
+insertRuntimeValue:
+INSERT INTO runtime_value(id, enabled, optional, payload)
+VALUES (:id, :enabled, :optional, :payload);
+
+selectRuntimeValues:
+SELECT id, enabled, optional, payload FROM runtime_value ORDER BY id;

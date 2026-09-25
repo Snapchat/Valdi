@@ -23,6 +23,18 @@ final class ClientSqlProcessor: CompilationProcessor {
     private var bundleToSourceMap: Synchronized<[String: [RelativePath: String]]> = Synchronized(data: [:])
     private let diskCache: DiskCache?
 
+    static func compilerArguments(sqlDirectory: String,
+                                  package: String,
+                                  outputDirectory: String,
+                                  typeMapping: [String]) -> [String] {
+        return ["-s", sqlDirectory,
+                "-p", package,
+                "-c", package,
+                "-m", package,
+                "-o", outputDirectory,
+                "-l", "typescript"] + typeMapping
+    }
+
     init(logger: ILogger, 
          fileManager: ValdiFileManager,
          diskCacheProvider: DiskCacheProvider,
@@ -35,8 +47,12 @@ final class ClientSqlProcessor: CompilationProcessor {
         self.rootBundle = rootBundle
 
         if let clientSqlCompilerPath = projectConfig.clientSqlURL?.path, diskCacheProvider.isEnabled() {
-            logger.debug("Resolving SQL version")
-            let output = try SyncProcessHandle.run(logger: logger, command: clientSqlCompilerPath, arguments: ["-version"]).trimmed
+            logger.debug("Resolving ClientSQL generator artifact identity")
+            let output = try SyncProcessHandle.run(
+                logger: logger,
+                command: clientSqlCompilerPath,
+                arguments: ["-version"]
+            ).trimmed
             diskCache = diskCacheProvider.newCache(cacheName: "clientsql", outputExtension: "ts", metadata: ["version": output])
         } else {
             diskCache = nil
@@ -95,11 +111,15 @@ final class ClientSqlProcessor: CompilationProcessor {
         ["-tm", Files.sqlTypesYaml] : []
 
         // Locate the input files and expected output file path
-        let outputDirectory = projectConfig.generatedTsDirectoryURL
+        let unresolvedOutputDirectory = projectConfig.generatedTsDirectoryURL
             .appendingPathComponent("\(bundleInfo.name)")
             .appendingPathComponent(outdir)
-            .resolvingSymlinksInPath()
-        try fileManager.createDirectory(at: outputDirectory)
+        try fileManager.createDirectory(at: unresolvedOutputDirectory)
+
+        // The generated directory may sit below Bazel's output symlink. Resolve
+        // it only after creation so emitted files and their base directory use
+        // the same canonical path on the first compilation pass.
+        let outputDirectory = unresolvedOutputDirectory.resolvingSymlinksInPath()
 
         // All input files sorted by path and put together as the key to locate the DiskCache entry
         let sortedSourcePaths = sourceMap.keys.sorted()
@@ -139,12 +159,10 @@ final class ClientSqlProcessor: CompilationProcessor {
             }
         }
 
-        let args = ["-s", sqlDir,
-                    "-p", pkg,
-                    "-c", clazz,
-                    "-m", clazz,
-                    "-o", outputDirectory.path,
-                    "-l", "typescript"] + typemapping
+        let args = Self.compilerArguments(sqlDirectory: sqlDir,
+                                          package: clazz,
+                                          outputDirectory: outputDirectory.path,
+                                          typeMapping: typemapping)
         let output = try SyncProcessHandle.run(logger: logger, command: compilerPath, arguments: args)
 
         logger.verbose("-- CLIENTSQL compiler:")

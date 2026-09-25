@@ -233,3 +233,13 @@ native_binary(
     out = "local_valdi_compiler_native",
     visibility = ["//visibility:public"],
 )
+
+filegroup(
+    name = "clientsql_generator_test_data",
+    srcs = [
+        "Compiler/Sources/Processors/ClientSqlProcessor.swift",
+        "Compiler/Tests/CompilerTests/ClientSqlProcessorTests.swift",
+    ],
+    testonly = True,
+    visibility = ["//compiler/clientsql:__pkg__"],
+)

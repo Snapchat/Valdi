@@ -144,6 +144,9 @@ def _output_declaration_file_path_for_legacy_source_file(f, module_name, module_
 def get_sql_dts_paths(db_names, sql_srcs, module_name, module_directory):
     return _get_sql_generated_paths(db_names, sql_srcs, module_name, module_directory, TYPESCRIPT_OUTPUT_DIR, ".d.ts")
 
+def get_sql_ts_paths(db_names, sql_srcs, module_name, module_directory, generated_ts_dir):
+    return _get_sql_generated_paths(db_names, sql_srcs, module_name, module_directory, generated_ts_dir, ".ts")
+
 def get_sql_js_paths(db_names, sql_srcs, module_name, module_directory):
     # Sibling .js outputs of the .sq generated .ts sources. The compiler already
     # emits them next to the .d.ts (see ClientSqlProcessor + the Valdi ts→js
@@ -160,9 +163,9 @@ def _get_sql_generated_paths(db_names, sql_srcs, module_name, module_directory, 
         # The logic below mimics the one used by the SQL Compiler which drops the DB name and outputs everything in the same directory
         # 1. src/valdi_modules/src/valdi/creative_tools_platform/sql/CTPStorage/FeedTree.sq
         # 2. src/valdi_modules/src/valdi/creative_tools_platform/sql/CTPStorage/
-        # 3. .valdi_build/compile/generated_ts/creative_tools_platform/src/sqlgen/
-        # 4. .valdi_build/compile/generated_ts/creative_tools_platform/src/sqlgen/FeedTreeTypes.d.ts
-        # 5. .valdi_build/compile/generated_ts/creative_tools_platform/src/sqlgen/FeedTreeQueries.d.ts
+        # 3. <base_output_dir>/creative_tools_platform/src/sqlgen/
+        # 4. <base_output_dir>/creative_tools_platform/src/sqlgen/FeedTreeTypes<suffix>
+        # 5. <base_output_dir>/creative_tools_platform/src/sqlgen/FeedTreeQueries<suffix>
         prefix_to_drop = paths.join(module_name, "sql/")
         db_name = replace_prefix(sql_file_path, prefix_to_drop, "").split("/")[0]
 
