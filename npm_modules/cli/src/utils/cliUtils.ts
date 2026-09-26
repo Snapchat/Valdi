@@ -42,14 +42,14 @@ export function spawnCliCommand(
     child.stdout?.on('data', (data: Buffer) => {
       stdout += data.toString();
       if (!quiet) {
-        process.stdout.write(stdout);
+        process.stdout.write(data);
       }
     });
 
     child.stderr?.on('data', (data: Buffer) => {
       stderr += data.toString();
       if (!quiet) {
-        process.stderr.write(stderr);
+        process.stderr.write(data);
       }
     });
 
