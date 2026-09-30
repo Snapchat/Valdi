@@ -34,6 +34,7 @@
 #include "valdi_core/JSRuntime.hpp"
 
 #include "valdi/runtime/JavaScript/JSPropertyNameIndex.hpp"
+#include "valdi/runtime/JavaScript/JavaScriptANRAttribution.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptComponentContextHandler.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptStringCache.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptTaskScheduler.hpp"
@@ -280,11 +281,6 @@ public:
     // dynamic payloads after it) and capped, so one span is one group.
     static StringBox anrNativeCallNameForTraceSpan(const StringBox& traceName);
 
-    // Swaps the recorded in-flight JS->native call name and returns the previous one, so nested
-    // calls report the innermost and unwind to the parent. Written on the JS thread around bridge
-    // calls, read by the ANR detector.
-    StringBox swapCurrentNativeCallName(StringBox name);
-
     void fullTeardown();
     void partialTeardown();
     void requestFullTeardown();
@@ -503,11 +499,11 @@ private:
     std::atomic<ContextId> _lastDispatchedContextId;
     // ANR attribution diagnostics, gated by the VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS COF key (key
     // name kept from the earlier module-load diagnostics for config continuity). The mutex guards
-    // the in-flight native call name: written on the JS thread around JS->native bridge calls,
+    // the attribution stack: written on the JS thread around JS->native bridge calls,
     // read by the ANR detector without running JS.
     std::atomic<bool> _anrDiagnosticsEnabled = false;
     mutable Mutex _nativeCallActivityMutex;
-    StringBox _currentNativeCallName;
+    JavaScriptANRAttribution _anrAttribution;
     // A lock that will block the JS thread until postInit() is called and the initialization has completed
     AsyncGroup _initLock;
     bool _hasGcScheduled = false;
@@ -747,6 +743,13 @@ private:
                                                   JavaScriptThreadTask&& jsTask,
                                                   StringBox dispatchAttribution = StringBox());
 
+    friend class ScopedNativeCallActivity;
+    friend class ScopedANRAttribution;
+    JavaScriptANRAttribution::RestoreToken pushNativeCallActivity(const StringBox& name);
+    void popNativeCallActivity(JavaScriptANRAttribution::RestoreToken token);
+    JavaScriptANRAttribution swapANRAttribution(JavaScriptANRAttribution attribution);
+    Shared<const JavaScriptANRAttribution> captureANRAttribution(const StringBox& dispatchAttribution);
+
     void dispatchOnJsThreadImpl(Ref<Context> ownerContext,
                                 JavaScriptTaskScheduleType scheduleType,
                                 uint32_t delayMs,
@@ -779,22 +782,21 @@ private:
 
 /**
  Records the JS->native call the JS thread is inside so an ANR whose stack capture times out can
- name it. Saves and restores the previous name, so nested calls report the innermost and unwind
- to the parent. No-op when ANR diagnostics are off, off the runtime's JS thread, or the name is
- empty (which would only erase the parent's).
+ name it alongside its enclosing scopes. No-op when ANR diagnostics are off, off the runtime's
+ JS thread, or the name is empty.
  */
 class ScopedNativeCallActivity {
 public:
     ScopedNativeCallActivity(JavaScriptRuntime* runtime, const StringBox& functionName) {
         if (runtime != nullptr && !functionName.isEmpty() && runtime->anrDiagnosticsActiveOnJsThread()) {
             _runtime = runtime;
-            _previousName = runtime->swapCurrentNativeCallName(functionName);
+            _restoreToken = runtime->pushNativeCallActivity(functionName);
         }
     }
 
     ~ScopedNativeCallActivity() {
         if (_runtime != nullptr) {
-            _runtime->swapCurrentNativeCallName(std::move(_previousName));
+            _runtime->popNativeCallActivity(std::move(_restoreToken));
         }
     }
 
@@ -803,7 +805,7 @@ public:
 
 private:
     JavaScriptRuntime* _runtime = nullptr;
-    StringBox _previousName;
+    JavaScriptANRAttribution::RestoreToken _restoreToken;
 };
 
 } // namespace Valdi

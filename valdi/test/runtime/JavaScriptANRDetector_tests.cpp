@@ -226,7 +226,9 @@ TEST(ANRDetector, includesANRAttributionInfoInMessageWhenSet) {
     ANRDetectorTestHelper helper;
 
     helper.taskScheduler->setShouldSimulateANR();
-    helper.taskScheduler->setANRAttributionInfo(" [stuck-in: Graphene.partitionMakeMetric] [module: search_v2]");
+    helper.taskScheduler->setANRAttributionInfo(
+        " [stuck-in: Graphene.partitionMakeMetric]"
+        " [attribution: Search.load -> SharedWrapper.load -> Graphene.partitionMakeMetric] [module: search_v2]");
 
     helper.anrDetector->onEnterForeground();
     helper.anrDetector->start(std::chrono::milliseconds(1));
@@ -238,7 +240,8 @@ TEST(ANRDetector, includesANRAttributionInfoInMessageWhenSet) {
     auto anr = helper.getLastANR();
     ASSERT_TRUE(anr.has_value());
 
-    ASSERT_EQ("Detected unattributed ANR after 1.0 ms [stuck-in: Graphene.partitionMakeMetric] [module: search_v2]",
+    ASSERT_EQ("Detected unattributed ANR after 1.0 ms [stuck-in: Graphene.partitionMakeMetric]"
+              " [attribution: Search.load -> SharedWrapper.load -> Graphene.partitionMakeMetric] [module: search_v2]",
               anr->getMessage());
 }
 

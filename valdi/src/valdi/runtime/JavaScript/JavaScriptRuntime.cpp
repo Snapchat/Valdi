@@ -178,6 +178,29 @@ STRING_CONST(callActionMessageName, "callAction")
 STRING_CONST(callActionParameterActionKey, "action")
 STRING_CONST(callActionParameterParametersKey, "parameters")
 
+class ScopedANRAttribution {
+public:
+    ScopedANRAttribution(JavaScriptRuntime& runtime, const JavaScriptANRAttribution* attribution) {
+        if (runtime.anrDiagnosticsActiveOnJsThread()) {
+            _runtime = &runtime;
+            _previous = runtime.swapANRAttribution(attribution != nullptr ? *attribution : JavaScriptANRAttribution());
+        }
+    }
+
+    ~ScopedANRAttribution() {
+        if (_runtime != nullptr) {
+            _runtime->swapANRAttribution(std::move(_previous));
+        }
+    }
+
+    ScopedANRAttribution(const ScopedANRAttribution&) = delete;
+    ScopedANRAttribution& operator=(const ScopedANRAttribution&) = delete;
+
+private:
+    JavaScriptRuntime* _runtime = nullptr;
+    JavaScriptANRAttribution _previous;
+};
+
 class JavaScriptRuntimeCallable : public JSFunctionWithMethod<JavaScriptRuntime> {
 public:
     JavaScriptRuntimeCallable(JavaScriptRuntime& self,
@@ -4222,10 +4245,38 @@ StringBox JavaScriptRuntime::anrNativeCallNameForTraceSpan(const StringBox& trac
     return traceName.substring(0, end).trimmed();
 }
 
-StringBox JavaScriptRuntime::swapCurrentNativeCallName(StringBox name) {
+JavaScriptANRAttribution::RestoreToken JavaScriptRuntime::pushNativeCallActivity(const StringBox& name) {
     std::lock_guard<Mutex> lock(_nativeCallActivityMutex);
-    std::swap(_currentNativeCallName, name);
-    return name;
+    return _anrAttribution.push(name);
+}
+
+void JavaScriptRuntime::popNativeCallActivity(JavaScriptANRAttribution::RestoreToken token) {
+    std::lock_guard<Mutex> lock(_nativeCallActivityMutex);
+    _anrAttribution.pop(std::move(token));
+}
+
+JavaScriptANRAttribution JavaScriptRuntime::swapANRAttribution(JavaScriptANRAttribution attribution) {
+    std::lock_guard<Mutex> lock(_nativeCallActivityMutex);
+    std::swap(_anrAttribution, attribution);
+    return attribution;
+}
+
+Shared<const JavaScriptANRAttribution> JavaScriptRuntime::captureANRAttribution(const StringBox& dispatchAttribution) {
+    if (!anrDiagnosticsEnabled()) {
+        return nullptr;
+    }
+
+    JavaScriptANRAttribution attribution;
+    // Another thread submitting work is not a child of the task currently running on this runtime.
+    if (isInJsThread()) {
+        std::lock_guard<Mutex> lock(_nativeCallActivityMutex);
+        attribution = _anrAttribution;
+    }
+    attribution.push(dispatchAttribution);
+    if (attribution.empty()) {
+        return nullptr;
+    }
+    return makeShared<JavaScriptANRAttribution>(std::move(attribution));
 }
 
 bool JavaScriptRuntime::isReadyForANRDetection() const {
@@ -4237,16 +4288,12 @@ std::string JavaScriptRuntime::getANRAttributionInfo() const {
         return {};
     }
 
-    std::string info;
-
-    StringBox nativeCallName;
+    JavaScriptANRAttribution attribution;
     {
         std::lock_guard<Mutex> lock(_nativeCallActivityMutex);
-        nativeCallName = _currentNativeCallName;
+        attribution = _anrAttribution;
     }
-    if (!nativeCallName.isEmpty()) {
-        info += " [stuck-in: " + nativeCallName.slowToString() + "]";
-    }
+    auto info = attribution.format();
 
     // The JS queue is serial, so the last dispatched context belongs to the task that is currently
     // running (the stuck one when this is read during an ANR).
@@ -4275,7 +4322,7 @@ DispatchFunction JavaScriptRuntime::makeJsThreadDispatchFunction(Ref<Context>&& 
             retainedSelf = (_joinJsThreadOnTeardown ? strongSmallRef(this) : Ref<JavaScriptRuntime>()),
             retainedContext = RetainedContext(std::move(ownerContext)),
             jsTask = std::move(jsTask),
-            dispatchAttribution = std::move(dispatchAttribution)]() {
+            attribution = captureANRAttribution(dispatchAttribution)]() {
         // _running is cleared only by onInitError (teardownOnJsThread no longer clears it), so
         // !_running here uniquely means module-loader init failed while the context is still
         // non-null. Refuse: queued work must not run against a runtime that never finished
@@ -4308,14 +4355,11 @@ DispatchFunction JavaScriptRuntime::makeJsThreadDispatchFunction(Ref<Context>&& 
             JavaScriptContextEntry contextEntry(ownerContext);
             JSExceptionTracker exceptionTracker(jsContext);
             {
+                // VM exit can drain microtasks that enqueue children of this dispatch.
+                ScopedANRAttribution attributionScope(*this, attribution.get());
                 JavaScriptEntryParameters jsEntry(jsContext, exceptionTracker, ownerContext);
 
-                if (!dispatchAttribution.isEmpty()) {
-                    ScopedNativeCallActivity nativeCallActivity(this, dispatchAttribution);
-                    jsTask(jsEntry);
-                } else {
-                    jsTask(jsEntry);
-                }
+                jsTask(jsEntry);
             }
 
             if (!exceptionTracker) {

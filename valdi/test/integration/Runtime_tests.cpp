@@ -9813,7 +9813,8 @@ TEST_P(RuntimeFixture, recordsTraceSpanTagForANRAttribution) {
     auto observed = observeANRAttributionWhileSpinning(wrapper, spinBody, "anr_attribution_gate_span", expected);
 
     EXPECT_NE(std::string::npos, observed.find(expected)) << "observed: '" << observed << "'";
-    EXPECT_EQ(std::string::npos, observed.find("runtime.trace")) << "observed: '" << observed << "'";
+    EXPECT_EQ(std::string::npos, observed.find("[stuck-in: runtime.trace]")) << "observed: '" << observed << "'";
+    EXPECT_NE(std::string::npos, observed.find("runtime.trace -> renderComponent.AnrAttributionProbe"));
     EXPECT_EQ(std::string::npos, jsRuntime->getANRAttributionInfo().find("[stuck-in:"));
 }
 
@@ -9832,6 +9833,7 @@ TEST_P(RuntimeFixture, recordsScheduledWorkItemForANRAttribution) {
     auto observed = observeANRAttributionWhileSpinning(wrapper, spinBody, "anr_attribution_gate_work_item", expected);
 
     EXPECT_NE(std::string::npos, observed.find(expected)) << "observed: '" << observed << "'";
+    EXPECT_NE(std::string::npos, observed.find("[attribution: runtime.evaluateScript -> runtime.scheduleWorkItem"));
     EXPECT_EQ(std::string::npos, wrapper.runtime->getJavaScriptRuntime()->getANRAttributionInfo().find("[stuck-in:"));
 }
 
@@ -9913,6 +9915,118 @@ TEST_P(RuntimeFixture, recordsAttributionForOwnerlessJsThreadDispatch) {
         jsRuntime->dispatchOnJsThread(
             JsThreadDispatchReason::PerformGc, JavaScriptTaskScheduleTypeAlwaysSync, 0, std::move(task));
     });
+}
+
+TEST_P(RuntimeFixture, preservesNestedScopesForANRAttribution) {
+    wrapper.teardown();
+    auto tweaks = makeShared<TestTweakValueProvider>().toShared();
+    tweaks->config.setMapValue("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS", Value(true));
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, tweaks);
+    auto* runtime = wrapper.runtime->getJavaScriptRuntime();
+
+    std::promise<void> entered;
+    auto enteredFuture = entered.get_future();
+    std::promise<void> release;
+    auto releaseFuture = release.get_future();
+    std::string afterNestedDispatch;
+    std::string afterWrapper;
+
+    std::thread caller([&]() {
+        runtime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("Product.load"), [&](auto&) {
+            {
+                ScopedNativeCallActivity wrapperScope(runtime, STRING_LITERAL("SharedWrapper.load"));
+                runtime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("Bridge.decode"), [&](auto&) {
+                    ScopedNativeCallActivity nativeScope(runtime, STRING_LITERAL("Native.read"));
+                    entered.set_value();
+                    releaseFuture.wait();
+                });
+                afterNestedDispatch = runtime->getANRAttributionInfo();
+            }
+            afterWrapper = runtime->getANRAttributionInfo();
+        });
+    });
+
+    auto status = enteredFuture.wait_for(std::chrono::seconds(30));
+    std::string observed;
+    {
+        ScopedNativeCallActivity otherThread(runtime, STRING_LITERAL("Unrelated.thread"));
+        observed = runtime->getANRAttributionInfo();
+    }
+    release.set_value();
+    caller.join();
+
+    ASSERT_EQ(std::future_status::ready, status);
+    EXPECT_EQ(" [stuck-in: Native.read]"
+              " [attribution: Product.load -> SharedWrapper.load -> Bridge.decode -> Native.read]",
+              observed);
+    EXPECT_EQ(" [stuck-in: SharedWrapper.load] [attribution: Product.load -> SharedWrapper.load]", afterNestedDispatch);
+    EXPECT_EQ(" [stuck-in: Product.load]", afterWrapper);
+    EXPECT_EQ("", runtime->getANRAttributionInfo());
+}
+
+TEST_P(RuntimeFixture, carriesANRAttributionToQueuedChildrenWithoutAttributingUnrelatedTasks) {
+    wrapper.teardown();
+    auto tweaks = makeShared<TestTweakValueProvider>().toShared();
+    tweaks->config.setMapValue("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS", Value(true));
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, tweaks);
+    auto* runtime = wrapper.runtime->getJavaScriptRuntime();
+
+    std::promise<void> parentEntered;
+    auto parentEnteredFuture = parentEntered.get_future();
+    std::promise<void> releaseParent;
+    auto releaseParentFuture = releaseParent.get_future();
+    std::promise<std::string> childReport;
+    auto childFuture = childReport.get_future();
+    std::promise<std::string> unrelatedReport;
+    auto unrelatedFuture = unrelatedReport.get_future();
+
+    runtime->dispatchOnJsThread(STRING_LITERAL("Product.load"), JavaScriptTaskScheduleTypeAlwaysAsync, 0, [&](auto&) {
+        ScopedNativeCallActivity wrapperScope(runtime, STRING_LITERAL("SharedWrapper.load"));
+        runtime->dispatchOnJsThread(
+            STRING_LITERAL("Bridge.decode"), JavaScriptTaskScheduleTypeAlwaysAsync, 0, [&](auto&) {
+                ScopedNativeCallActivity nativeScope(runtime, STRING_LITERAL("Native.read"));
+                childReport.set_value(runtime->getANRAttributionInfo());
+            });
+        parentEntered.set_value();
+        releaseParentFuture.wait();
+    });
+
+    auto parentStatus = parentEnteredFuture.wait_for(std::chrono::seconds(30));
+    runtime->dispatchOnJsThread(STRING_LITERAL("OtherProduct.load"),
+                                JavaScriptTaskScheduleTypeAlwaysAsync,
+                                0,
+                                [&](auto&) { unrelatedReport.set_value(runtime->getANRAttributionInfo()); });
+    releaseParent.set_value();
+    runtime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("test.barrier"), [](auto&) {});
+
+    ASSERT_EQ(std::future_status::ready, parentStatus);
+    ASSERT_EQ(std::future_status::ready, childFuture.wait_for(std::chrono::seconds(30)));
+    ASSERT_EQ(std::future_status::ready, unrelatedFuture.wait_for(std::chrono::seconds(30)));
+    EXPECT_EQ(" [stuck-in: Native.read]"
+              " [attribution: Product.load -> SharedWrapper.load -> Bridge.decode -> Native.read]",
+              childFuture.get());
+    EXPECT_EQ(" [stuck-in: OtherProduct.load]", unrelatedFuture.get());
+    EXPECT_EQ("", runtime->getANRAttributionInfo());
+}
+
+TEST_P(RuntimeFixture, disabledANRAttributionDoesNotRecordNestedOrQueuedScopes) {
+    auto* runtime = wrapper.runtime->getJavaScriptRuntime();
+    ASSERT_FALSE(runtime->anrDiagnosticsEnabled());
+    std::promise<std::string> childReport;
+    auto childFuture = childReport.get_future();
+    runtime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("Product.load"), [&](auto&) {
+        ScopedNativeCallActivity wrapperScope(runtime, STRING_LITERAL("SharedWrapper.load"));
+        EXPECT_EQ("", runtime->getANRAttributionInfo());
+        runtime->dispatchOnJsThread(
+            STRING_LITERAL("Bridge.decode"), JavaScriptTaskScheduleTypeAlwaysAsync, 0, [&](auto&) {
+                ScopedNativeCallActivity nativeScope(runtime, STRING_LITERAL("Native.read"));
+                childReport.set_value(runtime->getANRAttributionInfo());
+            });
+    });
+    runtime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("test.barrier"), [](auto&) {});
+    ASSERT_EQ(std::future_status::ready, childFuture.wait_for(std::chrono::seconds(30)));
+    EXPECT_EQ("", childFuture.get());
+    EXPECT_EQ("", runtime->getANRAttributionInfo());
 }
 
 TEST_P(RuntimeFixture, canGetFileEntry) {
