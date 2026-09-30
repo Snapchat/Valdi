@@ -162,6 +162,7 @@ export interface JSRuntime {
     destroyNativeObjectsManager(nativeObjectsManager: JSRuntimeNativeObjectsManager): void;
     createWorker(): JSRuntime;
     runOnJsThread(runnable: any): void;
+    runOnJsThreadWithAttribution(attribution: string, runnable: any): void;
 }
 
 export interface ValdiCore_statics {

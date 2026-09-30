@@ -37,6 +37,8 @@ public:
     virtual /*not-null*/ std::shared_ptr<JSRuntime> createWorker() = 0;
 
     virtual void runOnJsThread(const Valdi::Value & runnable) = 0;
+
+    virtual void runOnJsThreadWithAttribution(const std::string & attribution, const Valdi::Value & runnable) = 0;
 };
 
 } // namespace snap::valdi_core

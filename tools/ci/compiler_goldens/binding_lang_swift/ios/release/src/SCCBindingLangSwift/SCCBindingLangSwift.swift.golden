@@ -41,7 +41,7 @@ public class MakeGreeter: ValdiBridgeFunction {
                 // Handle error - for now we'll just print it
                 print("Error in invokeWithJSRuntime: \(error)")
             }
-        })
+        }, attribution: "generated.invokeWithJSRuntime:binding_lang_swift/src/JsApi#makeGreeter")
     }
 
     static func create_callBlock_bridgeFunction(using functionImpl: @escaping (() throws -> IGreeter)) -> ((ValdiMarshaller) -> Bool) {

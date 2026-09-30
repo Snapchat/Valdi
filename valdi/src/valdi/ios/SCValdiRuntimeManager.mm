@@ -55,6 +55,13 @@
 #import <memory>
 #import <utils/debugging/Assert.hpp>
 
+static NSString *const SCValdiGetWorkerAttribution = @"platform.runtimeManager.getWorker";
+
+static NSString *SCValdiComposeWorkerAttribution(NSString *operation, NSString *caller)
+{
+    return caller.length == 0 ? operation : [NSString stringWithFormat:@"%@:%@", operation, caller];
+}
+
 // Weak definition: defaults to the standard UIKit foreground notification.
 // A host app that provides a strong definition (e.g. Snapchat's SceneDelegate
 // migration via SCMainAppSceneDelegate) overrides this at link time.
@@ -115,6 +122,9 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
 }
 
 @interface SCValdiRuntimeManager () <SCValdiMainRuntimeProvider>
+- (void)getWorkerOnExecutor:(NSString *)executor
+        dispatchAttribution:(NSString *)dispatchAttribution
+                      block:(void (^)(id<SCValdiJSRuntime>))block;
 @end
 
 @implementation SCValdiRuntimeManager {
@@ -801,6 +811,22 @@ static SCValdiCapturedJSStacktrace *toObjCStacktrace(const Valdi::JavaScriptCapt
 
 - (void)getWorkerOnExecutor:(NSString*)executor block:(void (^)(id<SCValdiJSRuntime>))block
 {
+    [self getWorkerOnExecutor:executor dispatchAttribution:SCValdiGetWorkerAttribution block:block];
+}
+
+- (void)getWorkerOnExecutor:(NSString *)executor
+                attribution:(NSString *)attribution
+                      block:(void (^)(id<SCValdiJSRuntime>))block
+{
+    [self getWorkerOnExecutor:executor
+          dispatchAttribution:SCValdiComposeWorkerAttribution(SCValdiGetWorkerAttribution, attribution)
+                        block:block];
+}
+
+- (void)getWorkerOnExecutor:(NSString *)executor
+        dispatchAttribution:(NSString *)dispatchAttribution
+                      block:(void (^)(id<SCValdiJSRuntime>))block
+{
     // Resolve the (possibly lazily-initialized) main runtime outside the cache lock to
     // avoid nesting its initialization under it.
     auto runtimeInstance = self.mainRuntime.cppInstance;
@@ -835,7 +861,8 @@ static SCValdiCapturedJSStacktrace *toObjCStacktrace(const Valdi::JavaScriptCapt
         return;
     }
     id<SCValdiJSRuntime> resolvedWorker = worker;
-    [resolvedWorker dispatchInJsThread:^() { block(resolvedWorker); }];
+    [resolvedWorker dispatchInJsThread:^() { block(resolvedWorker); }
+                             attribution:dispatchAttribution];
 }
 
 + (NSArray<SCValdiRuntimeManager *> *)allRuntimeManagers

@@ -33,4 +33,7 @@
 
 - (void)runOnJsThread:(nonnull NSObject *)runnable;
 
+- (void)runOnJsThreadWithAttribution:(nonnull NSString *)attribution
+                            runnable:(nonnull NSObject *)runnable;
+
 @end

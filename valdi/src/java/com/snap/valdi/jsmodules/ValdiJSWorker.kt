@@ -39,6 +39,15 @@ class ValdiJSWorker(val jsRuntime: JSRuntime) : ValdiJSRuntime {
         });
     }
 
+    override fun runOnJsThread(attribution: String, runnable: Runnable) {
+        jsRuntime.runOnJsThreadWithAttribution(attribution, object: ValdiFunction {
+            override fun perform(marshaller: ValdiMarshaller): Boolean {
+                runnable.run()
+                return false
+            }
+        });
+    }
+
     override fun getNativeObject(): JSRuntime {
         return jsRuntime
     }

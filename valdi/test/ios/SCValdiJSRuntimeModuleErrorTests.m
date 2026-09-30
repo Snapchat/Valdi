@@ -70,7 +70,8 @@ static NSString *const kUnresolvableModulePath = @"__no_such_bundle__/__no_such_
     [jsRuntime dispatchInJsThread:^{
         block(jsRuntime);
         [expectation fulfill];
-    }];
+    }
+                        attribution:@"test.moduleError.withJSRuntime"];
     [self waitForExpectations:@[expectation] timeout:10.0];
 }
 

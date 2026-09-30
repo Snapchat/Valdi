@@ -51,15 +51,23 @@ public class AsyncValdiRuntimeProvider: NSObject, AsyncValdiRuntimeProviding, SC
 
     @objc(getJSRuntime:)
     public func getJSRuntime(completion: @escaping (SCValdiJSRuntime?) -> Void) {
+        getJSRuntime(attribution: "", completion: completion)
+    }
+
+    @objc(getJSRuntimeWithAttribution:completion:)
+    public func getJSRuntime(
+        attribution: String,
+        completion: @escaping (SCValdiJSRuntime?) -> Void
+    ) {
         if deliversWarmCompletionsInline, let cachedRuntime {
-            cachedRuntime.getJSRuntime { jsRuntime in
+            cachedRuntime.getJSRuntime(attribution: attribution) { jsRuntime in
                 completion(jsRuntime)
             }
             return
         }
         Task { @ValdiActor in
             let runtime = await self.actorRuntime
-            runtime.getJSRuntime { jsRuntime in
+            runtime.getJSRuntime(attribution: attribution) { jsRuntime in
                 completion(jsRuntime)
             }
         }

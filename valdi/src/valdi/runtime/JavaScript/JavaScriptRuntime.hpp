@@ -351,7 +351,6 @@ public:
     void dispatchOnJsThreadSync(const StringBox& attribution, JavaScriptThreadTask&& function) {
         dispatchOnJsThread(attribution, JavaScriptTaskScheduleTypeAlwaysSync, 0, std::move(function));
     }
-    void dispatchSynchronouslyOnJsThread(JavaScriptThreadTask&& function);
     void dispatchSynchronouslyOnJsThread(JsThreadDispatchReason reason, JavaScriptThreadTask&& function);
     void dispatchSynchronouslyOnJsThread(const StringBox& attribution, JavaScriptThreadTask&& function);
     bool isInJsThread() final;
@@ -398,6 +397,7 @@ public:
     std::shared_ptr<snap::valdi_core::JSRuntime> createWorker() override;
 
     void runOnJsThread(const Value& runnable) override;
+    void runOnJsThreadWithAttribution(const std::string& attribution, const Value& runnable) override;
 
     JSValueRef symbolicateError(const JSValueRef& error) override;
     Ref<JSStackTraceProvider> captureCurrentStackTrace() override;

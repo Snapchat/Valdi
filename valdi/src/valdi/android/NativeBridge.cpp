@@ -1193,6 +1193,7 @@ void ValdiAndroid::NativeBridge::callOnJsThread( // NOLINT
     fbjni::alias_ref<fbjni::JClass> /* clazz */, // NOLINT
     jlong runtimeHandle,
     jboolean sync,
+    jstring attribution,
     jobject runnable) {
     auto* runtimeWrapper = getRuntimeWrapper(runtimeHandle);
 
@@ -1201,12 +1202,16 @@ void ValdiAndroid::NativeBridge::callOnJsThread( // NOLINT
     }
 
     auto runnableRef = Valdi::makeShared<ValdiAndroid::JavaRunnable>(ValdiAndroid::JavaEnv(), runnable);
+    auto* jsRuntime = runtimeWrapper->getRuntime().getJavaScriptRuntime();
+    auto attributionCpp = jsRuntime->anrDiagnosticsEnabled() ?
+                              ValdiAndroid::toInternedString(ValdiAndroid::JavaEnv(), attribution) :
+                              Valdi::StringBox();
 
-    runtimeWrapper->getRuntime().getJavaScriptRuntime()->dispatchOnJsThread(
-        nullptr,
-        (sync != 0u) ? Valdi::JavaScriptTaskScheduleTypeAlwaysSync : Valdi::JavaScriptTaskScheduleTypeDefault,
-        0,
-        [runnableRef = std::move(runnableRef)](auto& /*jsEntry*/) { (*runnableRef)(); });
+    jsRuntime->dispatchOnJsThread(attributionCpp,
+                                  (sync != 0u) ? Valdi::JavaScriptTaskScheduleTypeAlwaysSync :
+                                                 Valdi::JavaScriptTaskScheduleTypeDefault,
+                                  0,
+                                  [runnableRef = std::move(runnableRef)](auto& /*jsEntry*/) { (*runnableRef)(); });
 }
 
 void ValdiAndroid::NativeBridge::enqueueLoadOperation( // NOLINT

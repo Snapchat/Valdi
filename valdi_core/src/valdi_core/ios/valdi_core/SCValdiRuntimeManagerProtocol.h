@@ -91,6 +91,13 @@ typedef void (^SCValdiRuntimeCreatedCallback)(id<SCValdiRuntimeProtocol>);
 - (void)getWorkerOnExecutor:(NSString*)executor block:(void (^)(id<SCValdiJSRuntime>))block;
 
 /**
+ Gets a worker and attributes the worker-thread dispatch to the provided callsite.
+ */
+- (void)getWorkerOnExecutor:(NSString*)executor
+                attribution:(NSString*)attribution
+                      block:(void (^)(id<SCValdiJSRuntime>))block;
+
+/**
  Aggregates memory statistics across all JS runtimes managed by this runtime manager.
  */
 - (SCValdiMemoryStatistics)dumpMemoryStatistics;

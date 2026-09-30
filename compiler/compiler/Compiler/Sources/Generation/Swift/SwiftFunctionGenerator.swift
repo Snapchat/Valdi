@@ -120,7 +120,7 @@ final class SwiftFunctionGenerator {
                         // Handle error - for now we'll just print it
                         print("Error in invokeWithJSRuntime: \\(error)")
                     }
-                })
+                }, attribution: "\(JSThreadDispatchAttribution.generatedFunction(bundleName: bundleName, modulePath: modulePath, functionName: exportedFunction.functionName))")
             }
 
             \(functionHelpers.content)

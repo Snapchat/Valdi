@@ -143,7 +143,12 @@ public class NativeBridge {
     public static native void setVisibleViewport(long runtimeHandle, long contextHandle, int x, int y, int width, int height, boolean shouldUnset);
 
     // The given runnable must be an object implementing java.lang.Runnable
-    public static native void callOnJsThread(long runtimeHandle, boolean sync, Object runnable);
+    public static void callOnJsThread(long runtimeHandle, boolean sync, Object runnable) {
+        callOnJsThread(runtimeHandle, sync, "platform.nativeBridge.callOnJsThread", runnable);
+    }
+
+    // The given runnable must be an object implementing java.lang.Runnable
+    public static native void callOnJsThread(long runtimeHandle, boolean sync, String attribution, Object runnable);
 
     // The given runnable must be an object implementing java.lang.Runnable
     public static native void enqueueLoadOperation(long runtimeManagerHandle, Object runnable);

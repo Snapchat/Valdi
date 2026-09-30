@@ -28,6 +28,8 @@ public abstract class JSRuntime {
 
     public abstract void runOnJsThread(java.lang.Object runnable);
 
+    public abstract void runOnJsThreadWithAttribution(String attribution, java.lang.Object runnable);
+
     public static final class CppProxy extends JSRuntime
     {
         private final long nativeRef;
@@ -104,5 +106,13 @@ public abstract class JSRuntime {
             native_runOnJsThread(this.nativeRef, runnable);
         }
         private native void native_runOnJsThread(long _nativeRef, java.lang.Object runnable);
+
+        @Override
+        public void runOnJsThreadWithAttribution(String attribution, java.lang.Object runnable)
+        {
+            assert !this.destroyed.get() : "trying to use a destroyed object";
+            native_runOnJsThreadWithAttribution(this.nativeRef, attribution, runnable);
+        }
+        private native void native_runOnJsThreadWithAttribution(long _nativeRef, String attribution, java.lang.Object runnable);
     }
 }

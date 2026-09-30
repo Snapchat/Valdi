@@ -34,7 +34,9 @@ private final class MockValdiJSRuntime: NSObject, SCValdiJSRuntime {
     func createScopedJSRuntime(withScopeName scopeName: String) -> SCValdiJSRuntime { self }
     func dispose() {}
     func dispatch(inJsThread block: @escaping () -> Void) { block() }
+    func dispatch(inJsThread block: @escaping () -> Void, attribution: String) { block() }
     func dispatchInJsThreadSync(_ block: @escaping @Sendable () -> Void) { block() }
+    func dispatchInJsThreadSync(_ block: @escaping () -> Void, attribution: String) { block() }
 }
 
 private struct TestBridgeFunction: ValdiBridgeFunction {

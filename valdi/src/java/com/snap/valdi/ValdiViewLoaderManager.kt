@@ -80,6 +80,8 @@ import java.io.File
 import java.lang.ref.WeakReference
 import java.util.concurrent.atomic.AtomicBoolean
 
+private const val GET_WORKER_ATTRIBUTION = "platform.runtimeManager.getWorker"
+
 class ValdiRuntimeManager(context: Context,
                                 customLogger: Logger? = null,
                                 val tweaks: ValdiTweaks? = null,
@@ -830,7 +832,12 @@ class ValdiRuntimeManager(context: Context,
                 onReady(ValdiJSWorker(jsRuntime.getNativeObject().createWorker()))
             }
         },
-        post = { worker, block -> worker.runOnJsThread { block(worker) } }
+        post = { worker, block ->
+            worker.runOnJsThread(GET_WORKER_ATTRIBUTION) { block(worker) }
+        },
+        attributedPost = { worker, attribution, block ->
+            worker.runOnJsThread(attribution) { block(worker) }
+        }
     )
 
     /**
@@ -838,6 +845,14 @@ class ValdiRuntimeManager(context: Context,
      */
     fun getWorker(executor: String, block: (ValdiJSRuntime) -> Unit) {
         workerCache.getWorker(executor) { worker -> block(worker) }
+    }
+
+    /**
+     * Acquire a Worker runtime and attribute the worker-thread dispatch to the requesting callsite.
+     */
+    fun getWorker(executor: String, attribution: String, block: (ValdiJSRuntime) -> Unit) {
+        val dispatchAttribution = composeJsThreadAttribution(GET_WORKER_ATTRIBUTION, attribution)
+        workerCache.getWorker(executor, dispatchAttribution) { worker -> block(worker) }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

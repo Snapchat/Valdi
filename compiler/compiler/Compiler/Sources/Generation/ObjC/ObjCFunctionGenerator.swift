@@ -152,7 +152,11 @@ final class ObjCFunctionGenerator {
             invokeWithJSRuntimeImpl.appendBody("    completionHandler(result);\n")
         }
         
-        invokeWithJSRuntimeImpl.appendBody("  }];\n")
+        let attribution = JSThreadDispatchAttribution.generatedFunction(
+            bundleName: bundleName,
+            modulePath: modulePath,
+            functionName: exportedFunction.functionName)
+        invokeWithJSRuntimeImpl.appendBody("  } attribution:@\"\(attribution)\"];\n")
         invokeWithJSRuntimeImpl.appendBody("}\n")
         invokeWithJSRuntimeImpl.appendBody("\n")
         

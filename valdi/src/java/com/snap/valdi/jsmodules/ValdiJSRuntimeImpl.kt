@@ -38,6 +38,10 @@ class ValdiJSRuntimeImpl(val jsRuntime: JSRuntime,
         return jsThreadDispatcher.runOnJsThread(runnable)
     }
 
+    override fun runOnJsThread(attribution: String, runnable: Runnable) {
+        return jsThreadDispatcher.runOnJsThread(attribution, runnable)
+    }
+
     override fun getNativeObject(): JSRuntime {
         return jsRuntime
     }

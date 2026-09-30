@@ -26,7 +26,11 @@ class RuntimeNative(private val nativeBridge: NativeBridge, nativeHandle: Long):
     }
 
     fun callOnJsThread(sync: Boolean, runnable: Runnable) {
-        NativeBridge.callOnJsThread(nativeHandle, sync, runnable)
+        callOnJsThread(sync, "platform.runtimeNative.callOnJsThread", runnable)
+    }
+
+    fun callOnJsThread(sync: Boolean, attribution: String, runnable: Runnable) {
+        NativeBridge.callOnJsThread(nativeHandle, sync, attribution, runnable)
     }
 
     fun unloadAllJsModules() {

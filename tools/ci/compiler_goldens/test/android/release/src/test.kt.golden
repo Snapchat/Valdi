@@ -170,7 +170,7 @@ class MakeCalculator: ValdiBridgeFunction {
         @JvmStatic
         fun invokeWithJSRuntime(jsRuntimeProvider: () -> ValdiJSRuntime, completionHandler: (ICalculator) -> Unit) {
             val runtime = jsRuntimeProvider()
-            runtime.runOnJsThread {
+            runtime.runOnJsThread("generated.invokeWithJSRuntime:test/src/JsCalculator#makeCalculator") {
                 val function = create(runtime)
                 val result = function._invoker()
                 completionHandler(result)

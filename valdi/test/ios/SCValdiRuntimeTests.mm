@@ -504,7 +504,9 @@
 
         [self.runtimeManager.mainRuntime dispatchOnJSQueueWithBlock:^{
             // Flush JS queue
-        } sync:YES];
+        }
+                                                               sync:YES
+                                                        attribution:@"test.runtime.flushJSQueue"];
 
         // Get references again
         objcReferences = valdiContext.trackedObjCReferences;

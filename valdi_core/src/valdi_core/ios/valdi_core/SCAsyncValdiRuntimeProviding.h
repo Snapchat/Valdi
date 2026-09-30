@@ -15,6 +15,13 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)getJSRuntime:(void (^)(id<SCValdiJSRuntime> _Nullable))completion
     NS_SWIFT_NAME(getJSRuntime(completion:));
 
+/**
+ * Gets the JS runtime and attributes the JS-thread dispatch to the provided callsite.
+ */
+- (void)getJSRuntimeWithAttribution:(NSString *)attribution
+                         completion:(void (^)(id<SCValdiJSRuntime> _Nullable))completion
+    NS_SWIFT_NAME(getJSRuntime(attribution:completion:));
+
 @end
 
 NS_ASSUME_NONNULL_END

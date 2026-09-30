@@ -135,12 +135,23 @@
 
 - (void)dispatchInJsThread:(dispatch_block_t)block
 {
-    [_jsRuntimeProvider dispatchOnJSQueueWithBlock:block sync:NO];
+    [self dispatchInJsThread:block attribution:@"platform.valdiJSRuntime.dispatchInJsThread"];
 }
 
 - (void)dispatchInJsThreadSyncWithBlock:(dispatch_block_t)block
 {
-    [_jsRuntimeProvider dispatchOnJSQueueWithBlock:block sync:YES];
+    [self dispatchInJsThreadSyncWithBlock:block
+                              attribution:@"platform.valdiJSRuntime.dispatchInJsThreadSync"];
+}
+
+- (void)dispatchInJsThread:(dispatch_block_t)block attribution:(NSString *)attribution
+{
+    [_jsRuntimeProvider dispatchOnJSQueueWithBlock:block sync:NO attribution:attribution];
+}
+
+- (void)dispatchInJsThreadSyncWithBlock:(dispatch_block_t)block attribution:(NSString *)attribution
+{
+    [_jsRuntimeProvider dispatchOnJSQueueWithBlock:block sync:YES attribution:attribution];
 }
 
 @end

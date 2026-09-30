@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
  * - That takes a jsRuntimeProvider function
  * - Followed by the original function parameters
  * - And a completionHandler callback
- * - That dispatches to the JS thread
+ * - That dispatches to the JS thread with generated callsite attribution
  * 
  * This test uses the actual generated MakeTestObject from FunctionTest.ts.
  * 
@@ -38,16 +38,17 @@ internal class InvokeWithJSRuntimeTest {
      */
     private class MockValdiJSRuntime : ValdiJSRuntime {
         var capturedCallback: Runnable? = null
+        var capturedAttribution: String? = null
         var moduleWasPushed = false
         var pushModulePath: String? = null
-        
+
         override fun pushModuleToMarshaller(modulePath: String, marshaller: ValdiMarshaller): Int {
             // Record that module was pushed, but don't actually execute JS
             moduleWasPushed = true
             pushModulePath = modulePath
             return 1
         }
-        
+
         override fun addHotReloadObserver(modulePath: String, callback: Runnable) {
             // No-op for testing
         }
@@ -59,9 +60,14 @@ internal class InvokeWithJSRuntimeTest {
         override fun preloadModules(modulePaths: List<String>, maxDepth: Int) {
             // No-op for testing
         }
-        
+
         override fun runOnJsThread(runnable: Runnable) {
+            capturedCallback = runnable
+        }
+
+        override fun runOnJsThread(attribution: String, runnable: Runnable) {
             // Capture the callback - DON'T execute it since we can't run JS
+            capturedAttribution = attribution
             capturedCallback = runnable
         }
         
@@ -102,6 +108,11 @@ internal class InvokeWithJSRuntimeTest {
         // Verify that runOnJsThread was invoked
         assertNotNull(mockRuntime.capturedCallback, 
             "invokeWithJSRuntime should dispatch to JS thread via runOnJsThread")
+        assertEquals(
+            "generated.invokeWithJSRuntime:valdi_test/src/FunctionTest#makeTestObject",
+            mockRuntime.capturedAttribution,
+            "invokeWithJSRuntime should identify the generated function callsite"
+        )
     }
     
     @Test

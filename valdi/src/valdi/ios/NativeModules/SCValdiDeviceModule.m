@@ -185,10 +185,10 @@ static void *SCValdiDeviceModuleGeometryKVOContext = &SCValdiDeviceModuleGeometr
     return keyWindowInsets;
 }
 
-- (void)_dispatchOnJsQueue:(dispatch_block_t)block
+- (void)_dispatchOnJsQueue:(dispatch_block_t)block attribution:(NSString *)attribution
 {
     if (_jsQueueDispatcher) {
-        [_jsQueueDispatcher dispatchOnJSQueueWithBlock:block sync:NO];
+        [_jsQueueDispatcher dispatchOnJSQueueWithBlock:block sync:NO attribution:attribution];
     } else {
         block();
     }
@@ -216,7 +216,8 @@ static void *SCValdiDeviceModuleGeometryKVOContext = &SCValdiDeviceModuleGeometr
                               insets.top, insets.left, insets.bottom, insets.right,
                               notify ? @"YES" : @"NO");
         }
-    }];
+    }
+                     attribution:@"platform.deviceModule.notifyInsetsChanged"];
 }
 
 - (void)_handleTraitCollectionDidChange:(NSNotification *)notification
@@ -239,7 +240,8 @@ static void *SCValdiDeviceModuleGeometryKVOContext = &SCValdiDeviceModuleGeometr
         // nothing ends up changing. Kept for subscribers that predate the size observer.
         [self _dispatchOnJsQueue:^{
             [self->_displayInsetsObserver notifyWithMarshaller:nil];
-        }];
+        }
+                         attribution:@"platform.deviceModule.notifyOrientationInsetsChanged"];
     });
 }
 
@@ -335,7 +337,8 @@ static void *SCValdiDeviceModuleGeometryKVOContext = &SCValdiDeviceModuleGeometr
         // the insets observer here would make every insets subscriber re-render on each
         // frame of a continuous resize.
         [self->_displaySizeObserver notifyWithMarshaller:nil];
-    }];
+    }
+                     attribution:@"platform.deviceModule.notifyDisplaySizeChanged"];
 }
 
 - (void)ensureDeviceModuleIsReadyForContextCreation
@@ -429,7 +432,8 @@ static void *SCValdiDeviceModuleGeometryKVOContext = &SCValdiDeviceModuleGeometr
                 SCValdiMarshallerPushBool(marshaller, isDarkMode);
                 [self->_darkModeObserver notifyWithMarshaller:marshaller];
             });
-        }];
+        }
+                         attribution:@"platform.deviceModule.notifyDarkModeChanged"];
     }
 }
 

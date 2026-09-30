@@ -32,6 +32,13 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)getJSRuntimeWithBlock:(void (^)(id<SCValdiJSRuntime> _Nullable))block;
 
 /**
+ * Asynchronously gets the JS runtime and attributes the JS-thread dispatch to the provided callsite.
+ */
+- (void)getJSRuntimeWithAttribution:(NSString *)attribution
+                              block:(void (^)(id<SCValdiJSRuntime> _Nullable))block
+    NS_SWIFT_NAME(getJSRuntime(attribution:block:));
+
+/**
  Returns the JS Runtime instance that can then be used with
  * @GenerateNativeFunc generated code to call functions defined in your Valdi modules.
  */

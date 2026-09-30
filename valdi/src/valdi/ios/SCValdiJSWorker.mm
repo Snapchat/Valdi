@@ -95,8 +95,22 @@
 
 - (void)dispatchInJsThread:(dispatch_block_t)block
 {
+    [self dispatchInJsThread:block attribution:@"platform.valdiJSWorker.dispatchInJsThread"];
+}
+
+- (void)dispatchInJsThreadSyncWithBlock:(dispatch_block_t)block
+{
+    [self dispatchInJsThreadSyncWithBlock:block
+                              attribution:@"platform.valdiJSWorker.dispatchInJsThreadSync"];
+}
+
+- (void)dispatchInJsThread:(dispatch_block_t)block attribution:(NSString *)attribution
+{
     auto wrappedValue = ValdiIOS::ValueFromNSObject([block copy]);
-    ([self cppRuntime])->dispatchOnJsThreadAsync(nullptr, [=](auto &/*jsEntry*/) {
+    auto cppRuntime = [self cppRuntime];
+    auto attributionCpp = cppRuntime->anrDiagnosticsEnabled() ? ValdiIOS::InternedStringFromNSString(attribution)
+                                                              : Valdi::StringBox();
+    cppRuntime->dispatchOnJsThreadAsync(attributionCpp, [=](auto &/*jsEntry*/) {
             dispatch_block_t block = ValdiIOS::NSObjectFromValue(wrappedValue);
             block();
         });
@@ -117,9 +131,12 @@
     }
 }
 
-- (void)dispatchInJsThreadSyncWithBlock:(dispatch_block_t)block
+- (void)dispatchInJsThreadSyncWithBlock:(dispatch_block_t)block attribution:(NSString *)attribution
 {
-    ([self cppRuntime])->dispatchSynchronouslyOnJsThread([&](auto &/*jsEntry*/) {
+    auto cppRuntime = [self cppRuntime];
+    auto attributionCpp = cppRuntime->anrDiagnosticsEnabled() ? ValdiIOS::InternedStringFromNSString(attribution)
+                                                              : Valdi::StringBox();
+    cppRuntime->dispatchSynchronouslyOnJsThread(attributionCpp, [&](auto &/*jsEntry*/) {
             block();
         });
 }

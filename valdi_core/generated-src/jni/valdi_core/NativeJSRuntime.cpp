@@ -103,4 +103,14 @@ CJNIEXPORT void JNICALL Java_com_snapchat_client_valdi_1core_JSRuntime_00024CppP
     } JNI_TRANSLATE_EXCEPTIONS_RETURN(jniEnv, )
 }
 
+CJNIEXPORT void JNICALL Java_com_snapchat_client_valdi_1core_JSRuntime_00024CppProxy_native_1runOnJsThreadWithAttribution(JNIEnv* jniEnv, jobject /*this*/, jlong nativeRef, jstring j_attribution, ValdiAndroid::ValueTranslator::JniType j_runnable)
+{
+    try {
+        DJINNI_FUNCTION_PROLOGUE("JSRuntime.native_runOnJsThreadWithAttribution");
+        const auto& ref = ::djinni::objectFromHandleAddress<::snap::valdi_core::JSRuntime>(nativeRef);
+        ref->runOnJsThreadWithAttribution(::djinni::String::toCpp(jniEnv, j_attribution),
+                                          ValdiAndroid::ValueTranslator::toCpp(jniEnv, j_runnable));
+    } JNI_TRANSLATE_EXCEPTIONS_RETURN(jniEnv, )
+}
+
 } // namespace djinni_generated_client::valdi_core

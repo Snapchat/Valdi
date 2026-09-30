@@ -162,4 +162,6 @@ JSRuntime = interface +c {
   createWorker(): JSRuntime;
 
   runOnJsThread(runnable: Value);
+
+  runOnJsThreadWithAttribution(attribution: string, runnable: Value);
 }

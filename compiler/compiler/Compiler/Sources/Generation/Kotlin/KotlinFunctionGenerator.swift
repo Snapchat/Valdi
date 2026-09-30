@@ -90,7 +90,7 @@ final class KotlinFunctionGenerator {
             @JvmStatic
             fun invokeWithJSRuntime(jsRuntimeProvider: () -> \(jsRuntimeClass.name)\(functionTypeParser.parameterNames.isEmpty ? "" : ", ")\(functionTypeParser.parameterNames.enumerated().map { "\($0.element.name): \(functionTypeParser.parameterTypes[$0.offset].fullTypeName)" }.joined(separator: ", ")), completionHandler: \(functionTypeParser.returnType.fullTypeName == "Unit" ? "() -> Unit" : "(\(functionTypeParser.returnType.fullTypeName)) -> Unit")) {
                 val runtime = jsRuntimeProvider()
-                runtime.runOnJsThread {
+                runtime.runOnJsThread("\(JSThreadDispatchAttribution.generatedFunction(bundleName: bundleInfo.name, modulePath: modulePath, functionName: exportedFunction.functionName))") {
                     val function = create(runtime)
                     \(functionTypeParser.returnType.fullTypeName == "Unit" ? "function.\(fieldName)(\(invokeParameters))\n                    completionHandler()" : "val result = function.\(fieldName)(\(invokeParameters))\n                    completionHandler(result)")
                 }

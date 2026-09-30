@@ -104,6 +104,15 @@ generated code to call functions defined in your Valdi modules.
 
 - (void)dispatchInJsThreadSyncWithBlock:(dispatch_block_t)block;
 
+/**
+ * @param attribution A stable, nonempty identifier for the scheduling callsite. It must remain
+ * low-cardinality and must not contain user or content identifiers.
+ */
+- (void)dispatchInJsThread:(dispatch_block_t)block attribution:(NSString *)attribution;
+
+/** See `dispatchInJsThread:attribution:` for attribution requirements. */
+- (void)dispatchInJsThreadSyncWithBlock:(dispatch_block_t)block attribution:(NSString *)attribution;
+
 @end
 
 NS_ASSUME_NONNULL_END

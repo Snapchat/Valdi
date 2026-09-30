@@ -197,6 +197,32 @@ class WorkerRuntimeCacheTest {
         }
     }
 
+    @Test
+    fun attributedRequestUsesOneAttributedPost() {
+        var genericPostCount = 0
+        val attributions = mutableListOf<String>()
+        var callerRuns = 0
+        val cache = WorkerRuntimeCache<TestWorker>(
+            create = { executor, onReady -> onReady(TestWorker(executor)) },
+            post = { worker, block ->
+                genericPostCount++
+                block(worker)
+            },
+            attributedPost = { worker, attribution, block ->
+                attributions.add(attribution)
+                block(worker)
+            }
+        )
+
+        cache.getWorker("worker", "platform.runtimeManager.getWorker:test.callsite") {
+            callerRuns++
+        }
+
+        assertEquals(1, callerRuns)
+        assertEquals(0, genericPostCount)
+        assertEquals(listOf("platform.runtimeManager.getWorker:test.callsite"), attributions)
+    }
+
     /** Concurrent first callers each elect themselves creator unless election and queueing are atomic. */
     @Test
     fun concurrentFirstCallersCreateOneWorkerAndEveryBlockRunsOnce() {

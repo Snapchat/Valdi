@@ -37,11 +37,20 @@ package com.snap.valdi
  *   it ran inline, stops neither the batch nor the drain; the first such failure is rethrown to
  *   whichever thread ran the dispatch once the queue has been emptied, carrying every later
  *   failure with it as a suppressed exception.
+ * @param attributedPost schedules attributed requests without wrapping them in a second post.
+ *   Defaults to [post] for cache users that do not distinguish attributed work.
  */
 class WorkerRuntimeCache<W : Any>(
     private val create: (executor: String, onReady: (W) -> Unit) -> Unit,
-    private val post: (worker: W, block: (W) -> Unit) -> Unit
+    private val post: (worker: W, block: (W) -> Unit) -> Unit,
+    private val attributedPost: (worker: W, attribution: String, block: (W) -> Unit) -> Unit =
+        { worker, _, block -> post(worker, block) }
 ) {
+
+    private class Request<W : Any>(
+        val attribution: String?,
+        val block: (W) -> Unit
+    )
 
     private class Entry<W : Any> {
         var worker: W? = null
@@ -52,7 +61,7 @@ class WorkerRuntimeCache<W : Any>(
          * the blocks queued before it.
          */
         var draining = false
-        val pending = mutableListOf<(W) -> Unit>()
+        val pending = mutableListOf<Request<W>>()
     }
 
     private val entries = mutableMapOf<String, Entry<W>>()
@@ -69,6 +78,11 @@ class WorkerRuntimeCache<W : Any>(
      * exists, which is the same outcome a caller saw before such blocks were queued.
      */
     fun getWorker(executor: String, block: (W) -> Unit) {
+        getWorker(executor, null, block)
+    }
+
+    fun getWorker(executor: String, attribution: String?, block: (W) -> Unit) {
+        val request = Request(attribution, block)
         var isCreator = false
         var readyWorker: W? = null
         synchronized(entries) {
@@ -79,12 +93,12 @@ class WorkerRuntimeCache<W : Any>(
             if (entry == null) {
                 // Elect this caller as creator and queue its block in one step, so concurrent
                 // first callers cannot each create a worker and overwrite each other's.
-                entries[executor] = Entry<W>().apply { pending.add(block) }
+                entries[executor] = Entry<W>().apply { pending.add(request) }
                 isCreator = true
             } else {
                 val worker = entry.worker
                 if (worker == null || entry.draining) {
-                    entry.pending.add(block)
+                    entry.pending.add(request)
                 } else {
                     readyWorker = worker
                 }
@@ -95,7 +109,7 @@ class WorkerRuntimeCache<W : Any>(
         } else {
             // This caller took no `draining` claim and left nothing queued -- it captured a worker
             // nobody was draining for -- so a failure out of `post` here has no state to unwind.
-            readyWorker?.let { worker -> post(worker, block) }
+            readyWorker?.let { worker -> postRequest(worker, request) }
         }
     }
 
@@ -121,7 +135,7 @@ class WorkerRuntimeCache<W : Any>(
     }
 
     private fun publish(executor: String, worker: W) {
-        var firstBatch: List<(W) -> Unit> = emptyList()
+        var firstBatch: List<Request<W>> = emptyList()
         val entry = synchronized(entries) {
             val published = if (destroyed) null else entries[executor]
             if (published != null) {
@@ -151,7 +165,7 @@ class WorkerRuntimeCache<W : Any>(
      * [entry] is null when [worker] arrived at an already-destroyed cache, so there is nothing to
      * drain and the keep-alive is that worker's only post.
      */
-    private fun dispatchToWorker(worker: W, entry: Entry<W>?, firstBatch: List<(W) -> Unit>) {
+    private fun dispatchToWorker(worker: W, entry: Entry<W>?, firstBatch: List<Request<W>>) {
         var batch = firstBatch
         var posted = false
         var failure: Throwable? = null
@@ -179,7 +193,7 @@ class WorkerRuntimeCache<W : Any>(
                 // keep-alive down the same path would fare no better.
                 posted = true
                 try {
-                    post(worker, queued)
+                    postRequest(worker, queued)
                 } catch (error: Throwable) {
                     record(error)
                 }
@@ -212,5 +226,14 @@ class WorkerRuntimeCache<W : Any>(
         }
 
         failure?.let { throw it }
+    }
+
+    private fun postRequest(worker: W, request: Request<W>) {
+        val attribution = request.attribution
+        if (attribution == null) {
+            post(worker, request.block)
+        } else {
+            attributedPost(worker, attribution, request.block)
+        }
     }
 }

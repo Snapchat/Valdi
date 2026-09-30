@@ -165,6 +165,7 @@ public:
     static void callOnJsThread(fbjni::alias_ref<fbjni::JClass> clazz,
                                jlong runtimeHandle,
                                jboolean sync,
+                               jstring attribution,
                                jobject runnable);
 
     static void callSyncWithJsThread(fbjni::alias_ref<fbjni::JClass> clazz, jlong runtimeHandle, jobject runnable);

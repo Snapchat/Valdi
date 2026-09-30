@@ -129,7 +129,7 @@ class MakeGreeter: ValdiBridgeFunction {
         @JvmStatic
         fun invokeWithJSRuntime(jsRuntimeProvider: () -> ValdiJSRuntime, completionHandler: (IGreeter) -> Unit) {
             val runtime = jsRuntimeProvider()
-            runtime.runOnJsThread {
+            runtime.runOnJsThread("generated.invokeWithJSRuntime:binding_lang_swift/src/JsApi#makeGreeter") {
                 val function = create(runtime)
                 val result = function._invoker()
                 completionHandler(result)

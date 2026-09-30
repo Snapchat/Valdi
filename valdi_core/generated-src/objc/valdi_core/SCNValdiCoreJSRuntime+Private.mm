@@ -104,6 +104,15 @@ static_assert(__has_feature(objc_arc), "Djinni requires ARC to be enabled for th
     } DJINNI_TRANSLATE_EXCEPTIONS()
 }
 
+- (void)runOnJsThreadWithAttribution:(nonnull NSString *)attribution
+                            runnable:(nonnull NSObject *)runnable {
+    try {
+        DJINNI_FUNCTION_PROLOGUE("JSRuntime.runOnJsThreadWithAttribution");
+        _cppRefHandle.get()->runOnJsThreadWithAttribution(::djinni::String::toCpp(attribution),
+                                                          ValdiIOS::ValueTranslator::toCpp(runnable));
+    } DJINNI_TRANSLATE_EXCEPTIONS()
+}
+
 namespace djinni_generated_client::valdi_core {
 
 auto JSRuntime::toCpp(ObjcType objc) -> CppType

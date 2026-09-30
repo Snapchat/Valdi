@@ -37,6 +37,13 @@ import com.snapchat.client.valdi_core.Asset
 import com.snapchat.client.valdi_core.ModuleFactory
 import com.snapchat.client.valdi.NativeBridge
 
+private const val GET_JS_RUNTIME_ATTRIBUTION = "platform.valdiRuntime.getJSRuntime"
+private const val CREATE_SCOPED_JS_RUNTIME_ATTRIBUTION = "platform.valdiRuntime.createScopedJSRuntime"
+
+internal fun composeJsThreadAttribution(operation: String, caller: String): String {
+    return if (caller.isEmpty()) operation else "$operation:$caller"
+}
+
 /**
  * The Runtime is one of the core class of Valdi. It is primarily used to create a
  * View tree for its document name. Because it is backed by a C++ instance, destroy()
@@ -228,8 +235,16 @@ class ValdiRuntime(
         runOnJsThread(Runnable { callback() })
     }
 
+    inline fun runOnJsThread(attribution: String, crossinline callback: () -> Unit) {
+        runOnJsThread(attribution, Runnable { callback() })
+    }
+
     override fun runOnJsThread(runnable: Runnable) {
         native.callOnJsThread(false, runnable)
+    }
+
+    override fun runOnJsThread(attribution: String, runnable: Runnable) {
+        native.callOnJsThread(false, attribution, runnable)
     }
 
     override fun registerNativeModuleFactory(moduleFactory: ModuleFactory) {
@@ -245,7 +260,7 @@ class ValdiRuntime(
     }
 
     override fun getJSRuntime(block: (ValdiJSRuntime) -> Unit) {
-        runOnJsThread {
+        runOnJsThread(GET_JS_RUNTIME_ATTRIBUTION) {
             if (cachingJSRuntime != null) {
                 block(cachingJSRuntime!!)
                 return@runOnJsThread
@@ -257,7 +272,8 @@ class ValdiRuntime(
     }
 
     override fun createScopedJSRuntime(scopeName: String, block: (ValdiScopedJSRuntime) -> Unit) {
-        runOnJsThread {
+        val dispatchAttribution = composeJsThreadAttribution(CREATE_SCOPED_JS_RUNTIME_ATTRIBUTION, scopeName)
+        runOnJsThread(dispatchAttribution) {
             val jsRuntime = native.getJSRuntime()
             val scopedRuntime = ValdiJSRuntimeImpl(jsRuntime, this, jsRuntime.createNativeObjectsManager(scopeName))
             block(scopedRuntime)
@@ -267,7 +283,7 @@ class ValdiRuntime(
     fun performGcNow(synchronous: Boolean) {
         native.performGcNow()
         if (synchronous) {
-            native.callOnJsThread(true, object: Runnable {
+            native.callOnJsThread(true, "platform.valdiRuntime.performGcBarrier", object: Runnable {
                 override fun run() { }
             })
         }

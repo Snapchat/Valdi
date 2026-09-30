@@ -48,7 +48,7 @@
         SCCTestMakeCalculatorBlock callBlock = (SCCTestMakeCalculatorBlock)function.callBlock;
         id<SCCTestICalculator> _Nonnull result = callBlock();
         completionHandler(result);
-    }];
+    } attribution:@"generated.invokeWithJSRuntime:test/src/JsCalculator#makeCalculator"];
 }
 
 + (SCValdiMarshallableObjectDescriptor)valdiMarshallableObjectDescriptor

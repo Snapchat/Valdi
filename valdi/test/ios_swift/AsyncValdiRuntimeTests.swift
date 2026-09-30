@@ -10,6 +10,10 @@ class MockValdiRuntime: NSObject, SCValdiRuntimeProtocol {
         jsRuntimeRequestCount += 1
         block(nil)
     }
+    func getJSRuntime(attribution: String, block: @escaping ((any SCValdiJSRuntime)?) -> Void) {
+        jsRuntimeRequestCount += 1
+        block(nil)
+    }
     func jsRuntime() -> (any SCValdiJSRuntime)? {
         jsRuntimeRequestCount += 1
         return nil

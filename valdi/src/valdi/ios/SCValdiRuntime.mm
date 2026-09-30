@@ -49,6 +49,13 @@
 
 #import "valdi/ios/SCValdiAttributesBinder.h"
 
+static NSString *const SCValdiGetJSRuntimeAttribution = @"platform.valdiRuntime.getJSRuntime";
+
+static NSString *SCValdiComposeJSRuntimeAttribution(NSString *operation, NSString *caller)
+{
+    return caller.length == 0 ? operation : [NSString stringWithFormat:@"%@:%@", operation, caller];
+}
+
 @interface SCValdiFontDataProviderImpl: NSObject <SCValdiFontDataProvider>
 
 @end
@@ -296,13 +303,27 @@
     [self flushPendingMainThreadLoadOperationsIfNeeded];
     [self dispatchOnJSQueueWithBlock:^{
         block(self->_jsRuntime);
-    } sync:NO];
+    }
+                               sync:NO
+                        attribution:SCValdiGetJSRuntimeAttribution];
+}
+
+- (void)getJSRuntimeWithAttribution:(NSString *)attribution block:(void (^)(id<SCValdiJSRuntime>))block
+{
+    [self flushPendingMainThreadLoadOperationsIfNeeded];
+    [self dispatchOnJSQueueWithBlock:^{
+        block(self->_jsRuntime);
+    }
+                               sync:NO
+                        attribution:SCValdiComposeJSRuntimeAttribution(SCValdiGetJSRuntimeAttribution, attribution)];
 }
 
 - (void)executeMainThreadBatch:(dispatch_block_t)function
 {
     auto batch = _runtime->getMainThreadManager().scopedBatch();
-    [self dispatchOnJSQueueWithBlock:function sync:YES];
+    [self dispatchOnJSQueueWithBlock:function
+                                 sync:YES
+                          attribution:@"platform.valdiRuntime.executeMainThreadBatch"];
 }
 
 - (void)loadModule:(NSString *)moduleName completion:(void (^)(NSError *))completion
@@ -400,14 +421,26 @@ static SCNValdiCoreAsset *getAssetWithKey(Valdi::Runtime &runtime, const Valdi::
 
 - (void)dispatchOnJSQueueWithBlock:(dispatch_block_t)block sync:(BOOL)sync
 {
+    [self dispatchOnJSQueueWithBlock:block
+                                sync:sync
+                         attribution:@"platform.valdiRuntime.dispatchOnJSQueue"];
+}
+
+- (void)dispatchOnJSQueueWithBlock:(dispatch_block_t)block
+                               sync:(BOOL)sync
+                        attribution:(NSString *)attribution
+{
+    auto* jsRuntime = _runtime->getJavaScriptRuntime();
+    auto attributionCpp = jsRuntime->anrDiagnosticsEnabled() ? ValdiIOS::InternedStringFromNSString(attribution)
+                                                             : Valdi::StringBox();
     if (sync) {
-        _runtime->getJavaScriptRuntime()->dispatchSynchronouslyOnJsThread([&](auto &/*jsEntry*/) {
+        jsRuntime->dispatchSynchronouslyOnJsThread(attributionCpp, [&](auto &/*jsEntry*/) {
             block();
         });
     } else {
         auto wrappedValue = ValdiIOS::ValueFromNSObject([block copy]);
 
-        _runtime->getJavaScriptRuntime()->dispatchOnJsThreadAsync(nullptr, [=](auto &/*jsEntry*/) {
+        jsRuntime->dispatchOnJsThreadAsync(attributionCpp, [=](auto &/*jsEntry*/) {
             dispatch_block_t block = ValdiIOS::NSObjectFromValue(wrappedValue);
             block();
         });

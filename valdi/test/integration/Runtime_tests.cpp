@@ -7010,7 +7010,7 @@ std::promise<void> stallJsThread(RuntimeWrapper& wrapper) {
     std::promise<void> release;
     auto released = release.get_future().share();
     wrapper.runtime->getJavaScriptRuntime()->dispatchOnJsThreadAsync(
-        nullptr, [released](auto& /*jsEntry*/) { released.wait(); });
+        STRING_LITERAL("test.runtime"), [released](auto& /*jsEntry*/) { released.wait(); });
     return release;
 }
 

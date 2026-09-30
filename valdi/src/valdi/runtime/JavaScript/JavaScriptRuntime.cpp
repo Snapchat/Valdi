@@ -3704,6 +3704,16 @@ void JavaScriptRuntime::runOnJsThread(const Value& runnable) {
     });
 }
 
+void JavaScriptRuntime::runOnJsThreadWithAttribution(const std::string& attribution, const Value& runnable) {
+    auto dispatchAttribution = anrDiagnosticsEnabled() ? StringCache::getGlobal().makeString(attribution) : StringBox();
+    dispatchOnJsThreadAsync(dispatchAttribution, [=](JavaScriptEntryParameters& entry) {
+        auto* func = runnable.getFunction();
+        if (func != nullptr) {
+            (*func)();
+        }
+    });
+}
+
 void JavaScriptRuntime::daemonClientConnected(const Shared<IDaemonClient>& daemonClient) {
     constexpr auto reason = JsThreadDispatchReason::DaemonClientConnected;
     dispatchOnJsThreadAsync(reason, [=](JavaScriptEntryParameters& jsEntry) {
@@ -4114,6 +4124,7 @@ void JavaScriptRuntime::dispatchOnJsThread(Ref<Context> ownerContext,
                                            JavaScriptTaskScheduleType scheduleType,
                                            uint32_t delayMs,
                                            JavaScriptThreadTask&& function) {
+    SC_ASSERT(ownerContext != nullptr);
     dispatchOnJsThreadImpl(std::move(ownerContext), scheduleType, delayMs, StringBox(), std::move(function));
 }
 
@@ -4164,11 +4175,6 @@ void JavaScriptRuntime::dispatchOnJsThreadImpl(Ref<Context> ownerContext,
     } else {
         _dispatchQueue->async(std::move(dispatchFunc));
     }
-}
-
-void JavaScriptRuntime::dispatchSynchronouslyOnJsThread(JavaScriptThreadTask&& function) {
-    dispatchOnJsThreadImpl(
-        nullptr, JavaScriptTaskScheduleTypeAlwaysSync, 0, StringBox(), std::move(function));
 }
 
 void JavaScriptRuntime::dispatchSynchronouslyOnJsThread(JsThreadDispatchReason reason,

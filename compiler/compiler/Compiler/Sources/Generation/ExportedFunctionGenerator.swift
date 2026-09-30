@@ -7,6 +7,14 @@
 
 import Foundation
 
+enum JSThreadDispatchAttribution {
+    /// Returns the attribution string that generated `invokeWithJSRuntime` methods pass to the
+    /// JS-thread dispatcher.
+    static func generatedFunction(bundleName: String, modulePath: String, functionName: String) -> String {
+        "generated.invokeWithJSRuntime:\(bundleName)/\(modulePath)#\(functionName)"
+    }
+}
+
 struct ExportedFunction {
     let containingIosType: IOSType?
     let containingAndroidTypeName: String?

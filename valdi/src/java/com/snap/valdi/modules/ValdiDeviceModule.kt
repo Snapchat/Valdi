@@ -95,7 +95,7 @@ class ValdiDeviceModule(
     }
 
     fun notifyInsetsChanged(topInset: Double, bottomInset: Double) {
-        jsThreadDispatcher.runOnJsThread(Runnable {
+        jsThreadDispatcher.runOnJsThread("platform.deviceModule.notifyInsetsChanged", Runnable {
             updateDisplaySize()
 
             displayTopInset = topInset / displayScale
@@ -108,7 +108,7 @@ class ValdiDeviceModule(
     }
 
     fun notifyDisplaySizeChanged() {
-        jsThreadDispatcher.runOnJsThread(Runnable {
+        jsThreadDispatcher.runOnJsThread("platform.deviceModule.notifyDisplaySizeChanged", Runnable {
             updateDisplaySize()
 
             ValdiMarshaller.use {
@@ -119,7 +119,7 @@ class ValdiDeviceModule(
     // Pass useDarkMode=null to flush current resolved
     // dark mode value
     fun notifyDarkModeChanged(useDarkMode: Boolean?) {
-        jsThreadDispatcher.runOnJsThread(Runnable {
+        jsThreadDispatcher.runOnJsThread("platform.deviceModule.notifyDarkModeChanged", Runnable {
             if (useDarkMode != null) {
                 systemUsesDarkMode = useDarkMode
             }

@@ -48,7 +48,7 @@
         SCCBindingLangBothMakeGreeterBlock callBlock = (SCCBindingLangBothMakeGreeterBlock)function.callBlock;
         id<SCCBindingLangBothIGreeter> _Nonnull result = callBlock();
         completionHandler(result);
-    }];
+    } attribution:@"generated.invokeWithJSRuntime:binding_lang_both/src/JsApi#makeGreeter"];
 }
 
 + (SCValdiMarshallableObjectDescriptor)valdiMarshallableObjectDescriptor
