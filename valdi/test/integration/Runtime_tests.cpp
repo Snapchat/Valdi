@@ -9781,6 +9781,14 @@ static std::string observeANRAttributionWhileSpinning(RuntimeWrapper& wrapper,
     wrapper.loadModule(StringBox::fromCString(gateBundle), ResourceManagerLoadModuleType::Sources);
     evalThread.join();
     EXPECT_TRUE(evalResult) << evalResult.description();
+
+    // evalThread.join() only waits for the outer eval, which may merely *enqueue* the stuck work
+    // (runtime.scheduleWorkItem dispatches asynchronously onto the serial JS queue). Drain the queue
+    // with a sync barrier so that async work item runs to completion and its ScopedNativeCallActivity
+    // restores the attribution before a caller reads the post-completion "cleared" state -- otherwise
+    // that assertion races the still-running work item. Harmless for the synchronous trace-span path,
+    // where the queue is already idle here.
+    jsRuntime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("test.runtime"), [](auto&) {});
     return observed;
 }
 
