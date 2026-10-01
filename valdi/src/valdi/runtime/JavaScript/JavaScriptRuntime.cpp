@@ -4147,7 +4147,6 @@ void JavaScriptRuntime::dispatchOnJsThread(Ref<Context> ownerContext,
                                            JavaScriptTaskScheduleType scheduleType,
                                            uint32_t delayMs,
                                            JavaScriptThreadTask&& function) {
-    SC_ASSERT(ownerContext != nullptr);
     dispatchOnJsThreadImpl(std::move(ownerContext), scheduleType, delayMs, StringBox(), std::move(function));
 }
 
