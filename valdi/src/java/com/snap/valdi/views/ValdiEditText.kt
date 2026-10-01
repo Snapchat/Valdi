@@ -221,6 +221,11 @@ class ValdiEditTextInput(context: Context) : AppCompatEditText(context), ValdiTo
     private fun applyValdiEditableState() {
         if (valdiEditable) {
             setTextIsSelectable(false)
+            // On a view that was selectable, setTextIsSelectable(false) nulls the movement method,
+            // and TextView only draws the caret while one is set. Nothing else restores it.
+            if (movementMethod == null) {
+                movementMethod = getDefaultMovementMethod()
+            }
             keyListener = editableKeyListener
             super.setRawInputType(valdiInputType)
             setShowSoftInputOnFocusCompat(true)
