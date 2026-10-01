@@ -65,7 +65,7 @@ class ValdiDatePickerAttributesBinder(private val context: Context, val logger: 
     }
 
     override fun bindAttributes(attributesBindingContext: AttributesBindingContext<ValdiDatePicker>) {
-        attributesBindingContext.bindFloatAttribute("dateSeconds", false, this::applyDateSeconds, this::resetDateSeconds)
+        attributesBindingContext.bindFloatAttribute("dateSeconds", true, this::applyDateSeconds, this::resetDateSeconds)
         attributesBindingContext.bindFloatAttribute("minimumDateSeconds", false, this::applyMinimumDateSeconds, this::resetMinimumDateSeconds)
         attributesBindingContext.bindFloatAttribute("maximumDateSeconds", false, this::applyMaximumDateSeconds, this::resetMaximumDateSeconds)
         attributesBindingContext.bindFunctionAttribute("onChange", this::applyOnChange, this::resetOnChange)

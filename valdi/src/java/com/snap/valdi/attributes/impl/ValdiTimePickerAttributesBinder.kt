@@ -82,8 +82,8 @@ class ValdiTimePickerAttributesBinder(private val context: Context, val logger: 
     }
 
     override fun bindAttributes(attributesBindingContext: AttributesBindingContext<ValdiTimePicker>) {
-        attributesBindingContext.bindIntAttribute("hourOfDay", false, this::applyHourOfDay, this::resetHourOfDay)
-        attributesBindingContext.bindIntAttribute("minuteOfHour", false, this::applyMinuteOfHour, this::resetMinuteOfHour)
+        attributesBindingContext.bindIntAttribute("hourOfDay", true, this::applyHourOfDay, this::resetHourOfDay)
+        attributesBindingContext.bindIntAttribute("minuteOfHour", true, this::applyMinuteOfHour, this::resetMinuteOfHour)
         attributesBindingContext.bindIntAttribute("intervalMinutes", false, this::applyInterval, this::resetInterval)
         attributesBindingContext.bindFunctionAttribute("onChange", this::applyOnChange, this::resetOnChange)
         attributesBindingContext.bindIntAttribute("preferredStyle", true, this::applyPreferredStyle, this::resetPreferredStyle)
