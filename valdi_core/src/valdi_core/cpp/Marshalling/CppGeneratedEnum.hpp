@@ -20,13 +20,18 @@ class CppIntEnumMarshaller {
 public:
     explicit CppIntEnumMarshaller(std::array<int32_t, kSize> enumValues) : _enumValues(enumValues) {}
 
+    // Generated int enum cases carry their TypeScript values, so a case converts to its value directly
+    // and only needs validating.
     void marshall(ExceptionTracker& exceptionTracker, T value, Value& out) const {
-        auto index = static_cast<size_t>(value);
-        if (index >= kSize) {
-            exceptionTracker.onError(fmt::format("Invalid enum value: {}", value));
-            return;
+        auto intValue = static_cast<int32_t>(value);
+        for (auto enumValue : _enumValues) {
+            if (enumValue == intValue) {
+                out = Value(intValue);
+                return;
+            }
         }
-        out = Value(_enumValues[index]);
+
+        exceptionTracker.onError(fmt::format("Invalid enum value: {}", intValue));
     }
 
     void unmarshall(ExceptionTracker& exceptionTracker, const Value& value, T& out) const {

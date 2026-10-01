@@ -52,7 +52,9 @@ class CppEnumGenerator {
         let schemaWriter = CppSchemaWriter(typeParameters: nil, generator: nil)
         let nameAllocator = PropertyNameAllocator.forCpp()
 
-        let allCases: [(String, String?)]
+        // Int cases carry their TypeScript value so C++ can hand one to anything keyed by the number
+        // (a proto field, a server-side code). String cases have no number, so they take their index.
+        let allCases: [(name: String, value: Int?, comments: String?)]
         switch exportedEnum.cases {
         case .enum(let intCases):
             try schemaWriter.appendIntEnum(cppType.declaration.fullTypeName, enumCases: intCases)
@@ -60,7 +62,7 @@ class CppEnumGenerator {
             fqMarshallerTypeName = "\(intEnumMarshaller.fullTypeName)<\(cppType.declaration.name), \(intCases.count)>"
             allEnumValuesLiteral = intCases.map { "\($0.value)" }.joined(separator: ", ")
 
-            allCases = intCases.map { (nameAllocator.allocate(property: $0.name).name, $0.comments) }
+            allCases = intCases.map { (nameAllocator.allocate(property: $0.name).name, $0.value, $0.comments) }
             break
         case .stringEnum(let stringCases):
             try schemaWriter.appendStringEnum(cppType.declaration.fullTypeName, enumCases: stringCases)
@@ -69,18 +71,18 @@ class CppEnumGenerator {
             fqMarshallerTypeName = "\(stringEnumMarshaller.fullTypeName)<\(cppType.declaration.name), \(stringCases.count)>"
             allEnumValuesLiteral = stringCases.map { "\"\($0.value)\"" }.joined(separator: ", ")
 
-            allCases = stringCases.map { (nameAllocator.allocate(property: $0.name).name, $0.comments) }
+            allCases = stringCases.map { (nameAllocator.allocate(property: $0.name).name, nil, $0.comments) }
             break
         }
 
         let lastIndex = allCases.count - 1
-        for (idx, (caseName, comments)) in allCases.enumerated() {
+        for (idx, (caseName, value, comments)) in allCases.enumerated() {
             if let comments {
                 enumBody.appendBody(FileHeaderCommentGenerator.generateMultilineComment(comment: comments))
                 enumBody.appendBody("\n")
             }
 
-            enumBody.appendBody("\(caseName) = \(idx)")
+            enumBody.appendBody("\(caseName) = \(value ?? idx)")
             if idx != lastIndex {
                 enumBody.appendBody(",\n")
             } else {
