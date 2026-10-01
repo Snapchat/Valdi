@@ -818,7 +818,7 @@ class ValdiRuntimeManager(context: Context,
     // as iOS does (SCValdiRuntimeManager keeps them in a strong-to-strong map). The executor name
     // is only a cache key here: createWorker() does not take one.
     private val workerCache = WorkerRuntimeCache<ValdiJSWorker>(
-        create = createWorker@{ _, onReady ->
+        create = createWorker@{ executor, onReady ->
             // The cache no longer serializes creation against its own destroy(), so the destroyed
             // check here is what keeps a request that lost that race from lazily initializing a
             // runtime nothing would destroy. Held only across resolving the runtime: getJSRuntime
@@ -828,7 +828,7 @@ class ValdiRuntimeManager(context: Context,
                 if (destroyed) null else mainRuntime
             } ?: return@createWorker
 
-            runtime.getJSRuntime { jsRuntime ->
+            runtime.getJSRuntime(composeJsThreadAttribution("worker.create", executor)) { jsRuntime ->
                 onReady(ValdiJSWorker(jsRuntime.getNativeObject().createWorker()))
             }
         },

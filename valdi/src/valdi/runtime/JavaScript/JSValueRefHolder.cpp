@@ -8,6 +8,8 @@
 #include "valdi/runtime/JavaScript/JSValueRefHolder.hpp"
 #include "valdi/runtime/Context/Context.hpp"
 #include "valdi/runtime/ErrorCodes.hpp"
+#include "valdi/runtime/JavaScript/JSFunctionWithCallable.hpp"
+#include "valdi/runtime/JavaScript/JavaScriptRuntime.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptTaskScheduler.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptUtils.hpp"
 #include "valdi_core/cpp/Utils/Format.hpp"
@@ -25,6 +27,18 @@ JSValueRefHolder::JSValueRefHolder(IJavaScriptContext& jsContext,
       _referenceInfo(referenceInfo) {
     SC_ASSERT(_context != nullptr, "No context set when creating the JSValueRefHolder");
     _context->insertDisposable(this);
+
+    auto* runtime = dynamic_cast<JavaScriptRuntime*>(jsContext.getTaskScheduler());
+    if (runtime != nullptr && runtime->anrDiagnosticsActiveOnJsThread() && jsContext.isValueFunction(jsValue)) {
+        // Some engines report an error when a valid JS function has no native wrapper.
+        JSExceptionTracker attributionExceptionTracker(jsContext);
+        auto function =
+            castOrNull<JSFunctionWithCallable>(jsContext.valueToFunction(jsValue, attributionExceptionTracker));
+        if (attributionExceptionTracker && function != nullptr) {
+            _anrAttribution = function->getANRAttribution();
+        }
+        attributionExceptionTracker.clearError();
+    }
 
     if (captureStackTrace) {
         if (exceptionTracker.getStackTraceProvider() == nullptr && jsContext.getListener() != nullptr) {
@@ -66,6 +80,10 @@ const ReferenceInfo& JSValueRefHolder::getReferenceInfo() const {
     return _referenceInfo;
 }
 
+const StringBox& JSValueRefHolder::getANRAttribution() const {
+    return _anrAttribution;
+}
+
 void JSValueRefHolder::throwReferenceError(JSExceptionTracker& exceptionTracker, const Error& error) const {
     if (_stackTraceProvider != nullptr) {
         auto stack = _stackTraceProvider->getStackTrace();
@@ -83,7 +101,8 @@ JSValue JSValueRefHolder::getJsValue(IJavaScriptContext& jsContext, JSExceptionT
             "Cannot unwrap JS value reference '{}' as it was disposed. Reference was taken from context {}",
             _referenceInfo,
             _context->getIdAndPathString());
-        throwReferenceError(exceptionTracker, Error(errorMessage, ErrorCodes::Composer::CANNOT_UNWRAP_DISPOSED_JS_VALUE));
+        throwReferenceError(exceptionTracker,
+                            Error(errorMessage, ErrorCodes::Composer::CANNOT_UNWRAP_DISPOSED_JS_VALUE));
         return JSValue();
     }
 

@@ -9925,6 +9925,79 @@ TEST_P(RuntimeFixture, recordsAttributionForOwnerlessJsThreadDispatch) {
     });
 }
 
+TEST_P(RuntimeFixture, preservesBridgedCallbackANRAttributionDuringPromiseContinuations) {
+    wrapper.teardown();
+    auto tweaks = makeShared<TestTweakValueProvider>().toShared();
+    tweaks->config.setMapValue("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS", Value(true));
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, tweaks);
+    auto* runtime = wrapper.runtime->getJavaScriptRuntime();
+    auto label = STRING_LITERAL("worker.receive(TestService.run@test/WorkerService)");
+
+    for (bool attributed : {true, false}) {
+        SCOPED_TRACE(attributed ? "attributed callback" : "unwrapped callback");
+        std::string script = "const callback = report => { Promise.resolve().then(() => report()); };";
+        script += attributed ?
+                      "return runtime.makeANRAttributionProxy('worker.receive(TestService.run@test/WorkerService)', "
+                      "callback);" :
+                      "return callback;";
+        auto callbackResult =
+            runtime->evaluateScript(makeShared<ByteBuffer>(script)->toBytesView(), STRING_LITERAL("attribution.js"));
+        ASSERT_TRUE(callbackResult) << callbackResult.description();
+        auto callback = callbackResult.value().getFunctionRef();
+        ASSERT_NE(nullptr, callback);
+        auto* bridgedCallback = dynamic_cast<ValueFunctionWithJSValue*>(callback.get());
+        ASSERT_NE(nullptr, bridgedCallback);
+        EXPECT_EQ(attributed ? label : StringBox(), bridgedCallback->getANRAttribution());
+
+        auto report = std::make_shared<std::promise<std::string>>();
+        auto observed = report->get_future();
+        auto receiver = makeShared<ValueFunctionWithCallable>([runtime, report](const auto&) {
+            report->set_value(runtime->getANRAttributionInfo());
+            return Value::undefined();
+        });
+
+        Result<Value> callResult;
+        std::thread caller([&]() {
+            EXPECT_FALSE(runtime->isInJsThread());
+            callResult = callback->call(ValueFunctionFlagsCallSync, {Value(receiver)});
+        });
+        caller.join();
+        ASSERT_TRUE(callResult) << callResult.description();
+        ASSERT_EQ(std::future_status::ready, observed.wait_for(std::chrono::seconds(30)));
+        auto info = observed.get();
+        // The proxy's own scope has ended, so the continuation requires dispatch-level attribution.
+        if (attributed) {
+            EXPECT_NE(std::string::npos, info.find(label.toStringView())) << info;
+        } else {
+            EXPECT_EQ(std::string::npos, info.find(label.toStringView())) << info;
+        }
+        runtime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("test.barrier"), [](auto&) {});
+        EXPECT_EQ("", runtime->getANRAttributionInfo());
+    }
+}
+
+TEST_P(RuntimeFixture, returnsOriginalANRAttributionCallbackWhenDiagnosticsAreDisabled) {
+    auto* runtime = wrapper.runtime->getJavaScriptRuntime();
+    ASSERT_FALSE(runtime->anrDiagnosticsEnabled());
+    std::string script = "const callback = () => 42;"
+                         "if (runtime.makeANRAttributionProxy('test.callback', callback) !== callback) {"
+                         "  throw new Error('Expected the original callback');"
+                         "}"
+                         "return callback;";
+    auto callbackResult =
+        runtime->evaluateScript(makeShared<ByteBuffer>(script)->toBytesView(), STRING_LITERAL("attribution.js"));
+    ASSERT_TRUE(callbackResult) << callbackResult.description();
+    auto callback = callbackResult.value().getFunctionRef();
+    ASSERT_NE(nullptr, callback);
+    auto* bridgedCallback = dynamic_cast<ValueFunctionWithJSValue*>(callback.get());
+    ASSERT_NE(nullptr, bridgedCallback);
+    EXPECT_TRUE(bridgedCallback->getANRAttribution().isEmpty());
+    auto callResult = callback->call(ValueFunctionFlagsCallSync, {});
+    ASSERT_TRUE(callResult) << callResult.description();
+    EXPECT_EQ(42, callResult.value().toInt());
+    EXPECT_EQ("", runtime->getANRAttributionInfo());
+}
+
 TEST_P(RuntimeFixture, preservesNestedScopesForANRAttribution) {
     wrapper.teardown();
     auto tweaks = makeShared<TestTweakValueProvider>().toShared();

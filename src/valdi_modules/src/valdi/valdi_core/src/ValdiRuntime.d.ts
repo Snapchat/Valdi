@@ -111,6 +111,8 @@ export interface ValdiRuntime extends RuntimeBase {
   getNativeNodeForElementId(contextId: string, elementId: ElementId): NativeNode | undefined;
   makeOpaque(object: any): any;
   configureCallback<F extends AnyFunction>(options: number, func: F): void;
+  /** Associates a stable label with direct calls and native dispatches of the returned callback. */
+  makeANRAttributionProxy?<F extends AnyFunction>(attribution: string, func: F): F;
   getViewNodeDebugInfo(
     contextId: string,
     elementId: ElementId,

@@ -24,6 +24,9 @@ public:
         bool pushed = false;
     };
 
+    /** Limits a stored label to kMaxLabelBytes without splitting UTF-8 characters. */
+    static StringBox boundedLabel(const StringBox& label);
+
     RestoreToken push(const StringBox& label);
     void pop(RestoreToken token);
 

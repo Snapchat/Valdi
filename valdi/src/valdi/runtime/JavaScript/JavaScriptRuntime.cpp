@@ -769,6 +769,34 @@ JSValueRef JavaScriptRuntime::runtimeConfigureCallback(JSFunctionNativeCallConte
     return callContext.getContext().newUndefined();
 }
 
+JSValueRef JavaScriptRuntime::runtimeMakeANRAttributionProxy(JSFunctionNativeCallContext& callContext) {
+    auto callback = callContext.getParameter(1);
+    if (!anrDiagnosticsEnabled()) {
+        return JSValueRef::makeRetained(callContext.getContext(), callback);
+    }
+    auto attribution = callContext.getParameterAsString(0);
+    CHECK_CALL_CONTEXT(callContext);
+    if (!callContext.getContext().isValueFunction(callback)) {
+        return callContext.throwError(Error("Expecting callback function"));
+    }
+    auto function = makeShared<JSFunctionWithCallable>(
+        ReferenceInfoBuilder().withObject(nameFromJSFunction(callContext.getContext(), callback)),
+        [callback =
+             JSValueRef::makeRetained(callContext.getContext(), callback)](JSFunctionNativeCallContext& context) {
+            return context.getContext().callObjectAsFunction(callback.get(), context);
+        },
+        attribution);
+    auto exportMode = callContext.getContext().getValueFunctionExportMode(callback, callContext.getExceptionTracker());
+    CHECK_CALL_CONTEXT(callContext);
+    JavaScriptContextEntry entry(nullptr);
+    auto proxy = callContext.getContext().newFunction(function, callContext.getExceptionTracker());
+    CHECK_CALL_CONTEXT(callContext);
+    if (exportMode != kJSFunctionExportModeEmpty) {
+        callContext.getContext().setValueFunctionExportMode(proxy.get(), exportMode, callContext.getExceptionTracker());
+    }
+    return proxy;
+}
+
 JSValueRef JavaScriptRuntime::runtimePerformSyncWithMainThread(JSFunctionNativeCallContext& callContext) {
     auto wrappedJsFunctionResult = callContext.getParameterAsValue(0);
     CHECK_CALL_CONTEXT(callContext);
@@ -2364,6 +2392,11 @@ JSValueRef JavaScriptRuntime::runtimeSetUnhandledRejectionHandler(JSFunctionNati
 }
 
 JSValueRef JavaScriptRuntime::runtimeCreateWorker(JSFunctionNativeCallContext& callContext) {
+    auto url = callContext.getParameterAsString(0);
+    CHECK_CALL_CONTEXT(callContext);
+    auto attribution =
+        anrDiagnosticsActiveOnJsThread() ? JavaScriptWorker::makeANRAttribution("create", url) : StringBox();
+    ScopedNativeCallActivity activity(this, attribution);
     auto workerRuntime = makeShared<JavaScriptRuntime>(_javaScriptBridge,
                                                        _resourceManager,
                                                        _contextManager,
@@ -2389,8 +2422,7 @@ JSValueRef JavaScriptRuntime::runtimeCreateWorker(JSFunctionNativeCallContext& c
     for (const auto& typeConverter : _typeConverters) {
         workerRuntime->registerTypeConverter(typeConverter.typeName, typeConverter.functionPath);
     }
-    auto worker =
-        makeShared<JavaScriptWorker>(strongSmallRef(this), workerRuntime, callContext.getParameterAsString(0));
+    auto worker = makeShared<JavaScriptWorker>(strongSmallRef(this), workerRuntime, url);
     worker->postInit();
     CHECK_CALL_CONTEXT(callContext);
     // worker->init(); // call outside of ctor so that shared_from_this() is available
@@ -2460,6 +2492,8 @@ JSValueRef JavaScriptRuntime::workerSetOnMessage(JSFunctionNativeCallContext& ca
 JSValueRef JavaScriptRuntime::workerPostMessage(JSFunctionNativeCallContext& callContext) {
     auto worker = thisFromCallContext<JavaScriptWorker>(callContext);
     if (worker != nullptr) {
+        ScopedNativeCallActivity activity(this,
+                                          anrDiagnosticsEnabled() ? worker->getSendANRAttribution() : StringBox());
         auto data = callContext.getParameterAsValue(0);
         CHECK_CALL_CONTEXT(callContext);
         auto transfer = callContext.getParameterSize() > 1 ? callContext.getParameterAsValue(1) : Value::undefined();
@@ -2595,6 +2629,7 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
     JS_BIND(context, exceptionTracker, runtimeObject, "makeOpaque", runtimeMakeOpaque);
     JS_BIND(context, exceptionTracker, runtimeObject, "bytesToString", runtimeBytesToString);
     JS_BIND(context, exceptionTracker, runtimeObject, "configureCallback", runtimeConfigureCallback);
+    JS_BIND(context, exceptionTracker, runtimeObject, "makeANRAttributionProxy", runtimeMakeANRAttributionProxy);
     JS_BIND(context, exceptionTracker, runtimeObject, "getViewNodeDebugInfo", runtimeGetViewNodeDebugInfo);
     JS_BIND(context, exceptionTracker, runtimeObject, "getLayoutDebugInfo", runtimeGetLayoutDebugInfo);
     JS_BIND(context, exceptionTracker, runtimeObject, "getNativeNodeForElementId", runtimeGetNativeNodeForElementId);
@@ -4148,6 +4183,19 @@ void JavaScriptRuntime::dispatchOnJsThread(Ref<Context> ownerContext,
                                            uint32_t delayMs,
                                            JavaScriptThreadTask&& function) {
     dispatchOnJsThreadImpl(std::move(ownerContext), scheduleType, delayMs, StringBox(), std::move(function));
+}
+
+void JavaScriptRuntime::dispatchOnJsThread(Ref<Context> ownerContext,
+                                           const StringBox& attribution,
+                                           JavaScriptTaskScheduleType scheduleType,
+                                           uint32_t delayMs,
+                                           JavaScriptThreadTask&& function) {
+    SC_ASSERT(ownerContext != nullptr);
+    dispatchOnJsThreadImpl(std::move(ownerContext),
+                           scheduleType,
+                           delayMs,
+                           anrDiagnosticsEnabled() ? attribution : StringBox(),
+                           std::move(function));
 }
 
 void JavaScriptRuntime::dispatchOnJsThread(JsThreadDispatchReason reason,

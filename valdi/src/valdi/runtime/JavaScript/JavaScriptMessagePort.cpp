@@ -586,7 +586,9 @@ void JavaScriptMessage::callHandler(JavaScriptEntryParameters& entry, const JSVa
     entry.jsContext.callObjectAsFunction(handler, callContext);
 }
 
-void JavaScriptMessage::dispatchHandler(const Shared<JSValueRefHolder>& handler, Function<bool()>&& shouldDispatch) {
+void JavaScriptMessage::dispatchHandler(const Shared<JSValueRefHolder>& handler,
+                                        Function<bool()>&& shouldDispatch,
+                                        const StringBox& attribution) {
     if (handler == nullptr) {
         return;
     }
@@ -597,6 +599,7 @@ void JavaScriptMessage::dispatchHandler(const Shared<JSValueRefHolder>& handler,
     auto self = strongSmallRef(this);
     scheduler->dispatchOnJsThreadAsync(
         handler->getContext(),
+        handler->getANRAttribution().isEmpty() ? attribution : handler->getANRAttribution(),
         [handler, self, shouldDispatch = std::move(shouldDispatch)](JavaScriptEntryParameters& entry) {
             if (!shouldDispatch()) {
                 return;

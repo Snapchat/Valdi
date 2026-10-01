@@ -9,7 +9,11 @@ VALDI_CLASS_IMPL(JavaScriptWorker);
 JavaScriptWorker::JavaScriptWorker(Ref<JavaScriptRuntime> hostRuntime,
                                    Ref<JavaScriptRuntime> workerRuntime,
                                    const StringBox& url)
-    : _hostRuntime(hostRuntime), _workerRuntime(std::move(workerRuntime)), _url(url) {
+    : _hostRuntime(hostRuntime),
+      _workerRuntime(std::move(workerRuntime)),
+      _url(url),
+      _sendANRAttribution(makeANRAttribution("send", url)),
+      _receiveANRAttribution(makeANRAttribution("receive", url)) {
     VALDI_INFO(_workerRuntime->getLogger(), "Created JS Worker with URL: {}", url);
 }
 
@@ -22,6 +26,12 @@ JavaScriptWorker::~JavaScriptWorker() {
     _workerRuntime->requestFullTeardown();
 }
 
+StringBox JavaScriptWorker::makeANRAttribution(const char* operation, const StringBox& url) {
+    auto path = url.toStringView();
+    path = path.substr(0, path.find_first_of("?#"));
+    return JavaScriptANRAttribution::boundedLabel(STRING_FORMAT("worker.{}({})", operation, path));
+}
+
 Ref<JavaScriptRuntime> JavaScriptWorker::getWorkerRuntime() const {
     return _workerRuntime;
 }
@@ -32,6 +42,10 @@ static JSValueRef getGlobalOnMessage(JavaScriptEntryParameters& entry) {
     auto onmessage =
         entry.jsContext.getObjectProperty(globalObj.get(), onMessageKey.toStringView(), entry.exceptionTracker);
     return entry.jsContext.isValueFunction(onmessage.get()) ? std::move(onmessage) : entry.jsContext.newUndefined();
+}
+
+const StringBox& JavaScriptWorker::getSendANRAttribution() const {
+    return _sendANRAttribution;
 }
 
 void JavaScriptWorker::postInit() {
@@ -110,10 +124,14 @@ void JavaScriptWorker::doPostInit() {
                 callContext.getExceptionTracker().onError(message.moveError());
                 return Value::undefined();
             }
-            message.value()->dispatchHandler(self->getHostOnMessage(), [weakSelf]() {
-                auto self = weakSelf.lock();
-                return self != nullptr && self->canDeliverPendingMessage();
-            });
+            auto attribution = hostRuntime->anrDiagnosticsEnabled() ? self->_receiveANRAttribution : StringBox();
+            message.value()->dispatchHandler(
+                self->getHostOnMessage(),
+                [weakSelf]() {
+                    auto self = weakSelf.lock();
+                    return self != nullptr && self->canDeliverPendingMessage();
+                },
+                attribution);
         }
         return Value::undefined();
     };

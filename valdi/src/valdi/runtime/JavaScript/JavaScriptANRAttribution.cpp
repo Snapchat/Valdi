@@ -4,7 +4,7 @@
 
 namespace Valdi {
 
-static StringBox boundedLabel(const StringBox& label) {
+StringBox JavaScriptANRAttribution::boundedLabel(const StringBox& label) {
     auto text = label.toStringView();
     if (text.size() <= JavaScriptANRAttribution::kMaxLabelBytes) {
         return label;

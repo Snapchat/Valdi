@@ -43,6 +43,7 @@ public:
     bool dispose(std::unique_lock<Mutex>& disposablesLock) override;
 
     const ReferenceInfo& getReferenceInfo() const;
+    const StringBox& getANRAttribution() const;
 
     static Shared<JSValueRefHolder> makeRetainedCallback(IJavaScriptContext& jsContext,
                                                          const JSValue& jsValue,
@@ -54,6 +55,7 @@ private:
     Weak<JavaScriptTaskScheduler> _taskScheduler;
     JSValueID _jsValueId;
     ReferenceInfo _referenceInfo;
+    StringBox _anrAttribution;
     Ref<JSStackTraceProvider> _stackTraceProvider;
 
     bool doDispose(std::unique_lock<Mutex>& disposablesLock);

@@ -339,6 +339,11 @@ public:
                             JavaScriptTaskScheduleType scheduleType,
                             uint32_t delayMs,
                             JavaScriptThreadTask&& function);
+    void dispatchOnJsThread(Ref<Context> ownerContext,
+                            const StringBox& attribution,
+                            JavaScriptTaskScheduleType scheduleType,
+                            uint32_t delayMs,
+                            JavaScriptThreadTask&& function) final;
     using JavaScriptTaskScheduler::dispatchOnJsThreadAsync;
     using JavaScriptTaskScheduler::dispatchOnJsThreadSync;
     void dispatchOnJsThreadAsync(const StringBox& attribution, JavaScriptThreadTask&& function) {
@@ -566,6 +571,7 @@ private:
     JSValueRef runtimeGetNativeViewForViewId(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeMakeOpaque(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeConfigureCallback(JSFunctionNativeCallContext& callContext);
+    JSValueRef runtimeMakeANRAttributionProxy(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimePerformSyncWithMainThread(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeCallOnMainThread(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeGetLayoutDebugInfo(JSFunctionNativeCallContext& callContext);

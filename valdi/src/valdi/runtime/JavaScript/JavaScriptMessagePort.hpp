@@ -34,7 +34,9 @@ public:
     const std::vector<Ref<JavaScriptMessagePortEndpoint>>& getTransferredPorts() const;
 
     void callHandler(JavaScriptEntryParameters& entry, const JSValue& handler);
-    void dispatchHandler(const Shared<JSValueRefHolder>& handler, Function<bool()>&& shouldDispatch);
+    void dispatchHandler(const Shared<JSValueRefHolder>& handler,
+                         Function<bool()>&& shouldDispatch,
+                         const StringBox& attribution = StringBox());
 
 private:
     Value _data;

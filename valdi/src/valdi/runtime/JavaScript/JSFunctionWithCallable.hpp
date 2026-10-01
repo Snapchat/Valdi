@@ -20,15 +20,20 @@ using JSFunctionCallable = Function<JSValueRef(JSFunctionNativeCallContext&)>;
  */
 class JSFunctionWithCallable : public JSFunction {
 public:
-    JSFunctionWithCallable(const ReferenceInfoBuilder& referenceInfoBuilder, JSFunctionCallable&& callable);
+    JSFunctionWithCallable(const ReferenceInfoBuilder& referenceInfoBuilder,
+                           JSFunctionCallable&& callable,
+                           const StringBox& anrAttribution = StringBox());
     ~JSFunctionWithCallable() override;
 
     const ReferenceInfo& getReferenceInfo() const override;
+    /** Stable label carried when this callback is dispatched back to its owning runtime. */
+    const StringBox& getANRAttribution() const;
     JSValueRef operator()(JSFunctionNativeCallContext& callContext) noexcept override;
 
 private:
     ReferenceInfo _referenceInfo;
     JSFunctionCallable _callable;
+    StringBox _anrAttribution;
 };
 
 } // namespace Valdi

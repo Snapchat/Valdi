@@ -100,7 +100,29 @@ public:
                                     JavaScriptTaskScheduleType scheduleType,
                                     uint32_t delayMs,
                                     JavaScriptThreadTask&& function) = 0;
+    /** Schedules a callback with its owning context and an optional ANR boundary label. */
+    virtual void dispatchOnJsThread(Ref<Context> ownerContext,
+                                    const StringBox& /*attribution*/,
+                                    JavaScriptTaskScheduleType scheduleType,
+                                    uint32_t delayMs,
+                                    JavaScriptThreadTask&& function) {
+        dispatchOnJsThread(std::move(ownerContext), scheduleType, delayMs, std::move(function));
+    }
     virtual bool isInJsThread() = 0;
+
+    inline void dispatchOnJsThreadAsync(Ref<Context> ownerContext,
+                                        const StringBox& attribution,
+                                        JavaScriptThreadTask&& function) {
+        dispatchOnJsThread(
+            std::move(ownerContext), attribution, JavaScriptTaskScheduleTypeDefault, 0, std::move(function));
+    }
+
+    inline void dispatchOnJsThreadSync(Ref<Context> ownerContext,
+                                       const StringBox& attribution,
+                                       JavaScriptThreadTask&& function) {
+        dispatchOnJsThread(
+            std::move(ownerContext), attribution, JavaScriptTaskScheduleTypeAlwaysSync, 0, std::move(function));
+    }
 
     inline void dispatchOnJsThreadAsync(Ref<Context> ownerContext, JavaScriptThreadTask&& function) {
         dispatchOnJsThread(std::move(ownerContext), JavaScriptTaskScheduleTypeDefault, 0, std::move(function));

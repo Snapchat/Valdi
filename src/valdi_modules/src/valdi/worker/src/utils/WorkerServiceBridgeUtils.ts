@@ -5,6 +5,7 @@
 import { CancelablePromise, PromiseCanceler, PromiseOnCancelFn } from 'valdi_core/src/CancelablePromise';
 import { toError } from 'valdi_core/src/utils/ErrorUtils';
 import { ServiceCallback, ServiceCallbackType, ServiceError } from '../ServiceCallback';
+import { attributeWorkerCallback } from '../internal/WorkerAttribution';
 
 function toServiceError(error: any): ServiceError {
   if (typeof error === 'string') {
@@ -68,6 +69,7 @@ export function forwardCallToService<P extends any[], R>(
   fn: ServiceFunction<P, R>,
   promiseCanceler: PromiseCanceler,
   params: P,
+  attribution?: string,
 ): Promise<R> {
   return new Promise<R>((resolve, reject) => {
     const serviceCallback: ServiceCallback<R> = (data, error, type) => {
@@ -92,7 +94,11 @@ export function forwardCallToService<P extends any[], R>(
       }
     };
 
-    fn.apply(receiver, [...params, serviceCallback]);
+    const callback = attributeWorkerCallback(
+      attribution ? `worker.receive(${attribution})` : undefined,
+      serviceCallback,
+    );
+    fn.apply(receiver, [...params, callback]);
   });
 }
 

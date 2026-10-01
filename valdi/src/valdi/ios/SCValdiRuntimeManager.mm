@@ -843,6 +843,10 @@ static SCValdiCapturedJSStacktrace *toObjCStacktrace(const Valdi::JavaScriptCapt
                 auto runtime = runtimeInstance->getJavaScriptRuntime();
                 SC_ASSERT(runtime);
                 if (runtime != nullptr) {
+                    auto attribution = runtime->anrDiagnosticsActiveOnJsThread() ?
+                        ValdiIOS::InternedStringFromNSString(
+                            SCValdiComposeWorkerAttribution(@"worker.create", executor)) : Valdi::StringBox();
+                    Valdi::ScopedNativeCallActivity activity(runtime, attribution);
                     auto workerRuntime =
                         djinni_generated_client::valdi_core::JSRuntime::fromCpp(runtime->createWorker());
                     SC_ASSERT(workerRuntime);

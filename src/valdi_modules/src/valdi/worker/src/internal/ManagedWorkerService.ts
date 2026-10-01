@@ -6,8 +6,14 @@ import { IWorkerServiceClient, IWorkerService } from '../IWorkerService';
 import { processWorkerServiceExecutorTask, WorkerServiceExecutorTask } from '../WorkerServiceExecutor';
 import { ServiceFunction, canBeUsedAsProxyMethod, forwardCallToService } from '../utils/WorkerServiceBridgeUtils';
 import { ManagedWorker } from './ManagedWorker';
+import { attributeWorkerCallback } from './WorkerAttribution';
 
 type NativeRefsDisposable = () => void;
+
+interface WorkerServiceAttribution {
+  readonly className: string;
+  readonly file: string;
+}
 
 export class ManagedWorkerService<T> {
   private retainCount = 0;
@@ -36,11 +42,19 @@ export class ManagedWorkerService<T> {
       managedWorker.onUsed();
     }
 
+    /** Foreground services run on the current JS thread, so they have no worker boundary to attribute. */
+    const attribution = managedWorker ? { className, file } : undefined;
     const servicePromise: Promise<IWorkerService<T>> = new Promise((resolve, reject) => {
       const task = makeCreateWorkerServiceTask(serviceId, file, className, args, resolve, reject);
-
       if (managedWorker) {
-        managedWorker.worker.postMessage(task);
+        const serviceAttribution = `${className}@${file}`;
+        const attributedTask = {
+          ...task,
+          callback: attributeWorkerCallback(`worker.receive(${serviceAttribution})`, task.callback),
+        };
+        attributeWorkerCallback(`worker.create(${serviceAttribution})`, () =>
+          managedWorker.worker.postMessage(attributedTask),
+        )();
       } else {
         processWorkerServiceExecutorTask(task);
       }
@@ -50,7 +64,7 @@ export class ManagedWorkerService<T> {
       serviceId,
       file,
       className,
-      makeAPIProxy<T>(servicePromise),
+      makeAPIProxy<T>(servicePromise, attribution),
       servicePromise,
       args,
       nativeRefsDisposable,
@@ -115,11 +129,16 @@ export class ManagedWorkerService<T> {
       delete global.$managedServiceWorkers[this.serviceId];
 
       // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      this.servicePromise.then(service => {
-        service.dispose();
-        this.nativeRefsDisposable();
-        this.managedWorker?.onUnused();
-      });
+      this.servicePromise.then(
+        attributeWorkerCallback(
+          this.managedWorker ? `worker.dispose(${this.className}@${this.file})` : undefined,
+          service => {
+            service.dispose();
+            this.nativeRefsDisposable();
+            this.managedWorker?.onUnused();
+          },
+        ),
+      );
     }
   }
 
@@ -161,11 +180,17 @@ declare const global: ManagedServiceWorkersrGetters;
 
 type AnyPromiseFunction = (...args: unknown[]) => CancelablePromise<unknown>;
 
-function makeAPIProxyFunction<T>(name: PropertyKey, servicePromise: Promise<IWorkerService<T>>): AnyPromiseFunction {
+function makeAPIProxyFunction<T>(
+  name: PropertyKey,
+  servicePromise: Promise<IWorkerService<T>>,
+  attribution: WorkerServiceAttribution | undefined,
+): AnyPromiseFunction {
+  const methodAttribution = attribution ? `${attribution.className}.${String(name)}@${attribution.file}` : undefined;
+  const sendAttribution = methodAttribution ? `worker.send(${methodAttribution})` : undefined;
   function proxyFunction(...args: unknown[]): CancelablePromise<unknown> {
     const promiseCanceler = new PromiseCanceler();
 
-    const promise = servicePromise.then(client => {
+    const callService = attributeWorkerCallback(sendAttribution, (client: IWorkerService<T>) => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const api = client.api as any;
       if (!api) {
@@ -177,8 +202,9 @@ function makeAPIProxyFunction<T>(name: PropertyKey, servicePromise: Promise<IWor
         throw new Error(`Cannot call ${name.toString()}: WorkerService does not expose this method`);
       }
 
-      return forwardCallToService(api, fn, promiseCanceler, args);
+      return forwardCallToService(api, fn, promiseCanceler, args, methodAttribution);
     });
+    const promise = servicePromise.then(callService);
 
     return promiseCanceler.toCancelablePromise(promise);
   }
@@ -188,7 +214,10 @@ function makeAPIProxyFunction<T>(name: PropertyKey, servicePromise: Promise<IWor
   return proxyFunction;
 }
 
-function makeAPIProxy<T>(servicePromise: Promise<IWorkerService<T>>): T {
+function makeAPIProxy<T>(
+  servicePromise: Promise<IWorkerService<T>>,
+  attribution: WorkerServiceAttribution | undefined,
+): T {
   return new Proxy(
     {},
     {
@@ -196,7 +225,7 @@ function makeAPIProxy<T>(servicePromise: Promise<IWorkerService<T>>): T {
         let fn = target[prop] as AnyPromiseFunction | undefined;
         if (!fn) {
           if (canBeUsedAsProxyMethod(prop)) {
-            fn = makeAPIProxyFunction(prop, servicePromise);
+            fn = makeAPIProxyFunction(prop, servicePromise, attribution);
             target[prop] = fn;
           }
         }
