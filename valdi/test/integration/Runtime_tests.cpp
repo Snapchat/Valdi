@@ -17,6 +17,7 @@
 #include "valdi/runtime/Resources/ObservableAsset.hpp"
 #include "valdi/runtime/Resources/ValdiModuleArchive.hpp"
 #include "valdi/runtime/Runtime.hpp"
+#include "valdi/runtime/Utils/Disposable.hpp"
 #include "valdi/runtime/ValdiRuntimeTweaks.hpp"
 #include "valdi_core/cpp/Attributes/TextAttributeValue.hpp"
 #include "valdi_core/cpp/Constants.hpp"
@@ -7217,6 +7218,97 @@ TEST_P(RuntimeFixture, initFailedRuntimeSkipsQueuedWorkWhileContextAlive) {
     });
     EXPECT_FALSE(ran) << "queued work must be skipped while _running is cleared (module-loader init failed) even "
                          "though the context is still alive";
+}
+
+namespace {
+class ReleaseOrderProbe : public Disposable {
+public:
+    bool dispose(std::unique_lock<Mutex>& /*disposablesLock*/) override {
+        disposed = true;
+        disposedByOtherRetainRelease = releasingOtherRetain.load();
+        return true;
+    }
+
+    std::atomic<bool> releasingOtherRetain = false;
+    std::atomic<bool> disposed = false;
+    std::atomic<bool> disposedByOtherRetainRelease = false;
+};
+
+// Drops the context's constructor retain when destroyed. Stands in for the retain that production releases
+// concurrently with the dispatch (e.g. the JS thread dropping queued tasks while tearing down).
+class OtherRetainReleaser {
+public:
+    OtherRetainReleaser(Ref<Context> context, ReleaseOrderProbe& probe) : _context(std::move(context)), _probe(probe) {}
+
+    ~OtherRetainReleaser() {
+        _probe.releasingOtherRetain = true;
+        _context->releaseDisposables();
+        _probe.releasingOtherRetain = false;
+    }
+
+private:
+    Ref<Context> _context;
+    ReleaseOrderProbe& _probe;
+};
+} // namespace
+
+// COMPOSER-6339: once teardownOnJsThread has disposed the JS queue, a dispatch from another thread
+// (in production, a ComposerSqlConnection worker releasing a JS callback via doReleaseJsValue) used to
+// build its task anyway, retaining the owner context's disposables. The disposed TaskQueue then destroyed
+// the task inline on the calling thread; if the context's other retain had been released meanwhile, the
+// task's RetainedContext was the last one and disposed JS-backed objects there, tripping QuickJS's
+// ThreadAccessChecker against the JS thread. The dispatch must now be refused before any retain is taken,
+// so the final release stays with whoever held the other retain.
+TEST_P(RuntimeFixture, dispatchAfterJsQueueTeardownTakesNoContextRetain) {
+    auto& runtime = *wrapper.runtime;
+    auto* javaScriptRuntime = runtime.getJavaScriptRuntime();
+
+    javaScriptRuntime->fullTeardown();
+
+    auto dispatchFromOtherThread = [&](ReleaseOrderProbe& probe, JavaScriptTaskScheduleType scheduleType) {
+        auto context = runtime.getContextManager().createContext(
+            javaScriptRuntime->getContextHandler(),
+            wrapper.standaloneRuntime->getViewManagerContext(),
+            ComponentPath::parse(STRING_LITERAL("ComponentClass@test/src/BasicViewTree.vue.generated")),
+            nullptr,
+            nullptr,
+            true,
+            false);
+        ASSERT_TRUE(context->insertDisposable(&probe));
+
+        std::thread([&]() {
+            auto releaser = std::make_shared<OtherRetainReleaser>(context, probe);
+            javaScriptRuntime->dispatchOnJsThread(context, scheduleType, 0, [releaser = std::move(releaser)](auto&) {});
+        }).join();
+
+        context->removeDisposable(&probe);
+    };
+
+    for (auto scheduleType : {JavaScriptTaskScheduleTypeAlwaysAsync,
+                              JavaScriptTaskScheduleTypeDefault,
+                              JavaScriptTaskScheduleTypeAlwaysSync}) {
+        SCOPED_TRACE(static_cast<int>(scheduleType));
+
+        ReleaseOrderProbe probe;
+        dispatchFromOtherThread(probe, scheduleType);
+        EXPECT_TRUE(probe.disposed);
+        EXPECT_TRUE(probe.disposedByOtherRetainRelease)
+            << "a dispatch after JS queue teardown must not take a context retain that outlives the other one";
+
+#if !defined(__APPLE__)
+        // Kill switch off restores the old path. The task is built, then dropped by the disposed
+        // ThreadedDispatchQueue on the calling thread (async: rejected inline; sync: the barrier runs inline and
+        // the task dies when dispatchOnJsThreadImpl returns). Its jsTask (holding the releaser) is destroyed
+        // before its RetainedContext, so the RetainedContext makes the final release on the calling thread. This
+        // is the crash mechanism. (GCD queues on Apple drop rejected work asynchronously on a GCD thread instead.)
+        javaScriptRuntime->setRefuseDispatchAfterJsQueueTeardown(false);
+        ReleaseOrderProbe oldPathProbe;
+        dispatchFromOtherThread(oldPathProbe, scheduleType);
+        EXPECT_TRUE(oldPathProbe.disposed);
+        EXPECT_FALSE(oldPathProbe.disposedByOtherRetainRelease);
+        javaScriptRuntime->setRefuseDispatchAfterJsQueueTeardown(true);
+#endif
+    }
 }
 
 // Mechanism repro for the JS-runtime teardown use-after-free (ASan-only; DISABLED so CI never runs

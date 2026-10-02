@@ -243,6 +243,14 @@ public:
         _joinJsThreadOnTeardown = enabled;
     }
 
+    // Kept in sync with VALDI_REFUSE_DISPATCH_AFTER_JS_QUEUE_TEARDOWN by Runtime::setRuntimeTweaks (and
+    // pulled in postInit for worker runtimes). When on, off-JS-thread dispatches arriving after teardownOnJsThread
+    // closed the JS queue are refused before the task (and its RetainedContext) is built, instead of being
+    // built and destroyed on the calling thread.
+    void setRefuseDispatchAfterJsQueueTeardown(bool enabled) {
+        _refuseDispatchAfterJsQueueTeardown = enabled;
+    }
+
     // Test-only: enter/leave the disposed-but-context-alive teardown window without running teardown,
     // so the dispatch guard's cooperative-drain vs aggressive-skip behavior can be tested deterministically.
     void setDisposedForTesting(bool disposed) {
@@ -501,6 +509,12 @@ private:
     // Mirror of VALDI_JOIN_JS_THREAD_ON_TEARDOWN (see setJoinJsThreadOnTeardown). Gates the
     // destructor's JS-thread join. Defaults on.
     std::atomic<bool> _joinJsThreadOnTeardown = true;
+    // Mirror of VALDI_REFUSE_DISPATCH_AFTER_JS_QUEUE_TEARDOWN (see setRefuseDispatchAfterJsQueueTeardown).
+    std::atomic<bool> _refuseDispatchAfterJsQueueTeardown = true;
+    // Recursive: a task rejected by a queue disposed outside teardownOnJsThread is destroyed inside the
+    // enqueue while this is held, and its destructors can dispatch again.
+    RecursiveMutex _jsQueueTeardownMutex;
+    bool _jsQueueTornDown = false;
     std::atomic<ContextId> _lastDispatchedContextId;
     // ANR attribution diagnostics, gated by the VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS COF key (key
     // name kept from the earlier module-load diagnostics for config continuity). The mutex guards

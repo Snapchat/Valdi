@@ -763,6 +763,8 @@ void Runtime::setRuntimeTweaks(const Ref<ValdiRuntimeTweaks>& runtimeTweaks) {
         // Runtime listener is no longer reachable). Workers pull it themselves in postInit.
         _javaScriptRuntime->setJoinJsThreadOnTeardown(
             runtimeTweaks != nullptr ? runtimeTweaks->joinJsThreadOnTeardown() : true);
+        _javaScriptRuntime->setRefuseDispatchAfterJsQueueTeardown(
+            runtimeTweaks != nullptr ? runtimeTweaks->refuseDispatchAfterJsQueueTeardown() : true);
     }
 }
 

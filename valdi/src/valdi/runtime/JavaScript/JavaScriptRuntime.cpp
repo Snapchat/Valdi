@@ -388,6 +388,7 @@ void JavaScriptRuntime::postInit() {
             // worker's listener is set — lets a worker honor an aggressive-termination override.
             setCooperativeTermination(runtimeTweaks->useCooperativeTermination());
             setJoinJsThreadOnTeardown(runtimeTweaks->joinJsThreadOnTeardown());
+            setRefuseDispatchAfterJsQueueTeardown(runtimeTweaks->refuseDispatchAfterJsQueueTeardown());
         }
     }
 }
@@ -510,6 +511,10 @@ void JavaScriptRuntime::teardownOnJsThread(bool destroyContext) {
     // gated on _javaScriptContext in makeJsThreadDispatchFunction, not on _running, so the drain
     // completes instead of silently skipping and handing callers an undefined result.
     setListener(nullptr, {});
+    {
+        std::lock_guard<RecursiveMutex> lock(_jsQueueTeardownMutex);
+        _jsQueueTornDown = true;
+    }
     _dispatchQueue->fullTeardown();
 
     if (!destroyContext) {
@@ -4220,6 +4225,40 @@ void JavaScriptRuntime::dispatchOnJsThreadImpl(Ref<Context> ownerContext,
                                                uint32_t delayMs,
                                                StringBox dispatchAttribution,
                                                JavaScriptThreadTask&& function) {
+    auto isOffJsThread = scheduleType == JavaScriptTaskScheduleTypeAlwaysAsync || !_dispatchQueue->isCurrent();
+    if (isOffJsThread && _refuseDispatchAfterJsQueueTeardown) {
+        // A disposed TaskQueue destroys a rejected task inline on the enqueuing thread. The task's
+        // RetainedContext can be the context's last disposables retain, so that drop would dispose
+        // JS-backed objects (e.g. ObjectValueMarshaller class delegates) off the JS thread while
+        // teardown is still using the JS context (COMPOSER-6339). Refuse before the task is built.
+        // Sync dispatches are refused too: a disposed queue either runs the barrier inline on the
+        // calling thread (dropping the RetainedContext there) or, with sync calls disabled in the
+        // calling thread, drops the async wrapper and breaks the promise sync() waits on.
+        // Held across the enqueue so teardown cannot dispose the queue between the check and it.
+        std::unique_lock<RecursiveMutex> lock(_jsQueueTeardownMutex);
+        if (_jsQueueTornDown) {
+            return;
+        }
+        auto dispatchFunc =
+            makeJsThreadDispatchFunction(ownerContext != nullptr ? std::move(ownerContext) : Ref(_globalContext),
+                                         std::move(function),
+                                         std::move(dispatchAttribution));
+        if (scheduleType == JavaScriptTaskScheduleTypeAlwaysAsync) {
+            _dispatchQueue->asyncAfter(std::move(dispatchFunc), std::chrono::milliseconds(delayMs));
+        } else if (scheduleType == JavaScriptTaskScheduleTypeAlwaysSync) {
+            // Blocking on the JS thread while holding the lock would deadlock against teardownOnJsThread,
+            // which takes it before disposing the queue. A teardown that lands after this unlock is the
+            // narrow race the old path always had.
+            lock.unlock();
+            SC_ASSERT(!(_isWorker && _mainThreadManager.currentThreadIsMainThread()),
+                      "The main thread must never dispatch synchronously into a worker runtime");
+            _dispatchQueue->sync(dispatchFunc);
+        } else {
+            _dispatchQueue->async(std::move(dispatchFunc));
+        }
+        return;
+    }
+
     auto dispatchFunc =
         makeJsThreadDispatchFunction(ownerContext != nullptr ? std::move(ownerContext) : Ref(_globalContext),
                                      std::move(function),

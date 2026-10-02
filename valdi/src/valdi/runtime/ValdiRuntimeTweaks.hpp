@@ -47,6 +47,10 @@ public:
     // behavior (the join becomes a hang if the JS thread is frozen; off trades that back for the
     // earlier member-order crash).
     bool joinJsThreadOnTeardown() const;
+    // When true (default), off-JS-thread dispatches (async or sync) arriving after the JS queue was torn down are
+    // refused up front, so the dropped task's RetainedContext is never released (and JS-backed
+    // disposables never disposed) on the calling thread. Set false to restore the prior behavior.
+    bool refuseDispatchAfterJsQueueTeardown() const;
     bool applyManagedChildFramePadding() const;
     bool disableHitTestSyncDeadline() const;
     // Killswitch for failing deadline-bounded sync JS calls fast while an earlier one is still
