@@ -20,7 +20,10 @@ import com.snap.valdi.attributes.impl.richtext.TextViewHelper
 import com.snap.valdi.attributes.impl.richtext.TextAnimationTransform
 import com.snap.valdi.attributes.impl.richtext.TextDecoration
 import com.snap.valdi.callable.ValdiFunction
+import com.snap.valdi.extensions.ViewUtils
 import com.snap.valdi.logger.Logger
+import com.snap.valdi.utils.ValdiMarshaller
+import com.snap.valdi.views.touches.AttributedTextTapGestureRecognizer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -43,7 +46,8 @@ internal class ValdiTextViewTest {
     private class Part(
         val content: String,
         val inlineViewAttachment: InlineViewAttachmentInfo? = null,
-        val animationTransform: TextAnimationTransform? = null
+        val animationTransform: TextAnimationTransform? = null,
+        val onTap: ValdiFunction? = null
     )
 
     private class FakeAttributedText(private val parts: List<Part>) : AttributedText {
@@ -53,7 +57,7 @@ internal class ValdiTextViewTest {
         override fun getTextDecorationAtIndex(index: Int): TextDecoration? = null
         override fun getColorAtIndex(index: Int): Int? = null
         override fun getBackgroundColorAtIndex(index: Int): Int? = null
-        override fun getOnTapAtIndex(index: Int): ValdiFunction? = null
+        override fun getOnTapAtIndex(index: Int): ValdiFunction? = parts[index].onTap
         override fun getOnLayoutAtIndex(index: Int): ValdiFunction? = null
         override fun getOutlineColorAtIndex(index: Int): Int? = null
         override fun getOutlineWidthAtIndex(index: Int): Float = 0f
@@ -94,6 +98,40 @@ internal class ValdiTextViewTest {
         assertSame(ViewGroup::class.java, ValdiTextViewBase::class.java.superclass)
         assertEquals(1, textView.childCount)
         assertSame(textView.backingTextView, textView.getChildAt(0))
+    }
+
+    @Test
+    fun plainTextRemovesAttributedTextTapGestureRecognizer() {
+        val context = getApplicationContext<Context>()
+        val textView = TestValdiTextViewBase(context)
+        val onTap = object : ValdiFunction {
+            override fun perform(marshaller: ValdiMarshaller): Boolean = true
+        }
+        val helper = textView.getOrCreateTextViewHelper(
+            createFontManager(context),
+            FontAttributes.default.copy(fontSize = 20f),
+            0,
+            NoopLogger
+        )
+        val widthSpec = View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY)
+        val heightSpec = View.MeasureSpec.makeMeasureSpec(160, View.MeasureSpec.EXACTLY)
+
+        helper.textValue = FakeAttributedText(listOf(Part("tappable headline", onTap = onTap)))
+        textView.measure(widthSpec, heightSpec)
+
+        assertNotNull(
+            ViewUtils.getGestureRecognizers(textView.backingTextView)
+                ?.getGestureRecognizer(AttributedTextTapGestureRecognizer::class.java)
+        )
+
+        // Simulates a recycled label being reused with plain text: the stale span tap must not survive.
+        helper.textValue = "plain text"
+        textView.measure(widthSpec, heightSpec)
+
+        assertNull(
+            ViewUtils.getGestureRecognizers(textView.backingTextView)
+                ?.getGestureRecognizer(AttributedTextTapGestureRecognizer::class.java)
+        )
     }
 
     @Test

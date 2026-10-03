@@ -283,6 +283,9 @@ class TextViewHelper(private val view: TextView,
 
     private fun applyTextSimple(text: String?) {
         processedTextValue = null
+        // The recognizer holds its own reference to the previous processed text. Leaving it attached lets taps on
+        // the new plain text invoke the old span's onTap, e.g. after this view was recycled into another context.
+        removeAttributedTextTapGestureRecognizer()
         clearTextAnimationState()
         if (view is ValdiEditTextInput) {
             view.setTextAndSelection(text ?: "")
