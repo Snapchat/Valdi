@@ -119,14 +119,15 @@ final class DaemonService {
         }
 
         queue.async {
-            let readyClients = self.connectedClients.filter(\.clientIsReady)
-            guard !readyClients.isEmpty else {
+            let plan = ResourceDeliveryPlanner.plan(resources: resources, clients: self.connectedClients.map(\.deliveryInfo))
+            guard plan.readyClientCount > 0 else {
                 self.logger.info("[Hot reloader] \(resources.count) updated resources, but no connected clients.")
                 return
             }
-            self.logger.info("[Hot reloader] sending \(resources.count) updated resources to \(readyClients.count) connected client(s)...")
-            for client in readyClients {
-                self.send(resources: resources, to: client)
+            self.logger.info("[Hot reloader] sending \(resources.count) updated resources to \(plan.readyClientCount) connected client(s)...")
+            for delivery in plan.deliveries {
+                guard let client = self.connectedClients.first(where: { $0.id == delivery.clientId }) else { continue }
+                self.send(resources: delivery.resources, to: client)
             }
         }
     }
@@ -134,15 +135,7 @@ final class DaemonService {
     private func sendAllResourcesToNewlyConnected(client: DaemonServiceConnectedClient) {
         guard !client.hotReloadDisabled else { return }
         logger.info("[Hot reloader] Sending all resources to newly connected client \(client)")
-        self.send(resources: resourceStore.allResources, to: client)
-    }
-
-    private func shouldClientReceiveResource(client: DaemonServiceConnectedClient, resource: Resource) -> Bool {
-        guard let platform = client.platform else {
-            return true
-        }
-
-        return platform == resource.finalFile.platform
+        self.send(resources: ResourceDeliveryPlanner.resources(resourceStore.allResources, forClientPlatform: client.platform), to: client)
     }
 
     /// Buffering a packet costs the device 2-3x its size in contiguous allocations
@@ -177,8 +170,7 @@ final class DaemonService {
             batchBytes = 0
         }
 
-        for resource in resources where shouldClientReceiveResource(client: client, resource: resource) {
-
+        for resource in resources {
             var dataString: String?
             var data: Data?
             if let asString = String(data: resource.data, encoding: .utf8) {

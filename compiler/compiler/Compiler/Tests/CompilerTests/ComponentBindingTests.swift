@@ -144,8 +144,8 @@ final class ComponentBindingTests: XCTestCase {
     }
 }
 
-// Minimal ILogger stub for tests that construct NativeCodeGenerationManager directly.
-private final class NullLogger: ILogger {
+// Minimal ILogger stub shared by tests that need a logger.
+final class NullLogger: ILogger {
     var minLevel: LogLevel = .info
     var duplicateStderrToStdout: Bool = false
     var interceptor: LoggerInterceptor? = nil
