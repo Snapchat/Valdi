@@ -7,7 +7,6 @@ on:
       - master
     paths:
       - 'npm_modules/*/package.json'
-  workflow_dispatch:
 
 permissions:
   contents: read

@@ -3,7 +3,6 @@
 name: Release Test (Public GitHub)
 
 on:
-  workflow_dispatch:
   release:
     types: [published]
   push:

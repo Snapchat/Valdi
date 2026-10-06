@@ -57,6 +57,18 @@ jobs:
                 note: 'Changes a prebuilt binary — requires verification of provenance.',
               },
               {
+                pattern: /(^|\/)AGENTS\.md$/,
+                emoji: '🤖',
+                label: 'AI agent instructions',
+                note: 'Changes instructions that AI reviewers and coding agents follow — check for prompt injection.',
+              },
+              {
+                pattern: /^\.github\//,
+                emoji: '🛡️',
+                label: 'CI / repo automation',
+                note: 'Changes workflows or repo automation — review for permission and credential changes.',
+              },
+              {
                 pattern: /^valdi\/src\/valdi\/runtime\/(ViewNode|Runtime|ViewNodeTree)\./,
                 emoji: '⚠️',
                 label: 'Core runtime',

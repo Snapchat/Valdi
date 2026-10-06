@@ -41,7 +41,7 @@ act push -W .github/workflows/release-test.yml -j release-test
 - **macOS runner**: `act` runs jobs in Linux containers by default. The Release Test and Bazel smoke jobs use `runs-on: macos-latest` (for Xcode / iOS build). To run those as in CI you either:
   - Run the script directly on your Mac (see above), or
   - Use `act` with a macOS image if your act version supports it (experimental).
-- **Secrets**: Use `act -s NPM_TOKEN=...` (or a `.secrets` file) for workflows that need secrets; they are not pulled from GitHub.
+- **Secrets**: Use `act -s NAME=...` (or a `.secrets` file) for workflows that need secrets; they are not pulled from GitHub.
 - **Services / caches**: Some actions (e.g. `actions/cache`, `actions/checkout`) work in act; others may differ from GitHub.
 
 For the **Release Test** workflow, running `./tools/ci/release_test.sh` on a Mac is the closest to CI and usually the easiest.
@@ -60,7 +60,6 @@ The `release-test.yml` workflow verifies that the **bleeding edge (main branch)*
 
 ### When it runs
 
-- **Manual**: Actions → "Release Test (Public GitHub)" → Run workflow
 - **On release**: When a GitHub release is published
 - **On version tags**: Push `v*` or `beta-*` (e.g. `v1.0.1`, `beta-0.0.2`)
 - **On PR**: When bootstrap/release-test files change (`npm_modules/cli` bootstrap, `tools/ci/release_test.sh`, or this workflow)
@@ -92,7 +91,8 @@ This workflow handles publishing for:
 The workflow runs when:
 1. Changes are pushed to `main` or `master` branch
 2. The changes include modifications to `npm_modules/*/package.json`
-3. Manual trigger via workflow_dispatch
+
+There is no manual trigger: publishing only happens when a version bump reaches `main`.
 
 ### How It Works
 
@@ -109,28 +109,13 @@ The workflow runs when:
 
 ### Setup Requirements
 
-#### NPM Token
+#### npm Trusted Publishing
 
-You must configure an `NPM_TOKEN` secret in your GitHub repository:
-
-1. **Create an NPM Access Token**:
-   - Log in to [npmjs.com](https://www.npmjs.com/)
-   - Go to Account Settings → Access Tokens
-   - Click "Generate New Token" → "Classic Token"
-   - Select "Automation" type
-   - Copy the generated token
-
-2. **Add Secret to GitHub**:
-   - Go to your GitHub repository
-   - Navigate to Settings → Secrets and variables → Actions
-   - Click "New repository secret"
-   - Name: `NPM_TOKEN`
-   - Value: Paste your npm access token
-   - Click "Add secret"
+Publishing uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC), so no npm token is stored in the repository. Each package on npmjs.com must list this repository, `publish-npm.yml`, and the `npm-publish` environment as a trusted publisher.
 
 #### Package Publishing Permissions
 
-Ensure the npm account associated with the token has:
+Ensure the trusted publisher is configured on npmjs.com with:
 - Publishing rights for the `@snap` organization (for both `@snap/valdi` and `@snap/eslint-plugin-valdi`)
 
 ### Usage
@@ -155,20 +140,10 @@ To publish a new version of a package:
    - Build the package
    - Publish it to npm
 
-### Manual Trigger
-
-You can also manually trigger the workflow:
-1. Go to Actions tab in GitHub
-2. Select "Publish NPM Packages" workflow
-3. Click "Run workflow"
-4. Select the branch and click "Run workflow"
-
-Note: Manual triggers will attempt to publish all packages, so ensure versions have been updated to avoid npm publish errors.
-
 ### Troubleshooting things
 
-- **401 Unauthorized**: Check that the `NPM_TOKEN` secret is correctly configured
-- **403 Forbidden**: Ensure the npm account has publishing permissions for the package
+- **401 Unauthorized**: Check that the trusted publisher on npmjs.com matches this repository, workflow file, and environment
+- **403 Forbidden**: Ensure the trusted publisher has publishing permissions for the package
 - **Version already exists**: Update the version number in package.json before publishing
 - **Build failures**: Check that the package builds successfully locally before pushing
 

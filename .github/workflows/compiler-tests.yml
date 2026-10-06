@@ -20,7 +20,6 @@ on:
     paths:
       - 'compiler/**'
       - '.github/workflows/compiler-tests.yml'
-  workflow_dispatch:
 
 # Workflow-level permissions: id-token: write needed for GCP WIF auth on the
 # bazel-cache action. The auth step has continue-on-error, so fork PRs (which
