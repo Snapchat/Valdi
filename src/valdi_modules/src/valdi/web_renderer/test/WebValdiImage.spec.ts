@@ -54,13 +54,28 @@ function installDomStubs(canvasRectW = 0, canvasRectH = 0) {
     return { observe: () => {}, unobserve: () => {}, disconnect: () => {} };
   };
 
-  // Stub Image constructor
+  // Stub Image constructor. `src` counts assignments and backs getAttribute the way the DOM does,
+  // so a spec can tell "already holds this URL" from "requested it again".
   (globalThis as any).Image = function () {
+    let src = '';
+    let srcAssignments = 0;
     return {
       crossOrigin: '',
       naturalWidth: 0,
       naturalHeight: 0,
-      src: '',
+      get src() {
+        return src;
+      },
+      set src(value: string) {
+        src = value;
+        srcAssignments += 1;
+      },
+      get srcAssignments() {
+        return srcAssignments;
+      },
+      getAttribute: function (name: string) {
+        return name === 'src' ? src || null : null;
+      },
       onload: null as (() => void) | null,
     };
   };
@@ -156,6 +171,103 @@ describe('WebValdiImage – error handling', () => {
   it('sets onerror handler on the internal img element', () => {
     const { img } = makeImage();
     expect(img.img.onerror).not.toBeNull();
+  });
+});
+
+describe('WebValdiImage – CORS mode', () => {
+  afterEach(() => uninstallDomStubs());
+
+  const URL_A = 'https://example.com/3/screenshot.webp';
+  const URL_B = 'https://example.com/3/other.webp';
+
+  function failOnce(img: any) {
+    img.img.onerror?.({} as any);
+  }
+
+  it('requests in CORS mode so the canvas stays exportable', () => {
+    const { img } = makeImage();
+    img.changeAttribute('src', URL_A);
+
+    expect(img.img.crossOrigin).toBe('anonymous');
+    expect(img.img.src).toBe(URL_A);
+  });
+
+  it('retries without CORS when the CORS request fails, instead of dropping the image', () => {
+    const { img } = makeImage();
+    let reported = false;
+    img.changeAttribute('onAssetLoad', () => {
+      reported = true;
+    });
+    img.changeAttribute('src', URL_A);
+    failOnce(img);
+
+    expect(img.img.crossOrigin).toBeFalsy();
+    expect(img.img.src).toBe(URL_A);
+    // The retry is still in flight, so no zero-size load has been reported yet.
+    expect(reported).toBe(false);
+  });
+
+  it('reports the failure when the non-CORS retry fails too', () => {
+    const { img } = makeImage();
+    let reportedW = -1;
+    let reportedH = -1;
+    img.changeAttribute('onAssetLoad', (e: { width: number; height: number }) => {
+      reportedW = e.width;
+      reportedH = e.height;
+    });
+    img.changeAttribute('src', URL_A);
+    failOnce(img);
+    failOnce(img);
+
+    expect(reportedW).toBe(0);
+    expect(reportedH).toBe(0);
+  });
+
+  it('gives a different URL its own CORS attempt after a fallback', () => {
+    const { img } = makeImage();
+    img.changeAttribute('src', URL_A);
+    failOnce(img);
+    img.changeAttribute('src', URL_B);
+
+    expect(img.img.crossOrigin).toBe('anonymous');
+    expect(img.img.src).toBe(URL_B);
+  });
+
+  it('drops CORS again when a reused view returns to a URL that already fell back', () => {
+    // Without clearing it, 'anonymous' leaks in from URL_B, URL_A is requested with CORS a second
+    // time, and onerror has no retry left for it — the image never loads again.
+    const { img } = makeImage();
+    img.changeAttribute('src', URL_A);
+    failOnce(img);
+    img.changeAttribute('src', URL_B);
+    img.changeAttribute('src', URL_A);
+
+    expect(img.img.crossOrigin).toBeFalsy();
+    expect(img.img.src).toBe(URL_A);
+  });
+
+  it('gives a URL CORS again when the retry failed too, so a blip does not latch', () => {
+    // Both attempts failing means the error was a 404 or a dropped connection,
+    // not a CORS refusal. Keeping the downgrade would taint the canvas for the
+    // life of the view once the host recovers.
+    const { img } = makeImage();
+    img.changeAttribute('src', URL_A);
+    failOnce(img);
+    failOnce(img);
+    img.changeAttribute('src', URL_B);
+    img.changeAttribute('src', URL_A);
+
+    expect(img.img.crossOrigin).toBe('anonymous');
+  });
+
+  it('does not re-request a relative URL it already holds', () => {
+    // `img.src` reads back as an absolute URL in a browser, so comparing against it made every
+    // relative URL look new and re-entered CORS mode on each update.
+    const { img } = makeImage();
+    img.changeAttribute('src', '/res/placeholder_creative_image.png');
+    img.changeAttribute('src', '/res/placeholder_creative_image.png');
+
+    expect((img.img as unknown as { srcAssignments: number }).srcAssignments).toBe(1);
   });
 });
 

@@ -1,6 +1,7 @@
 import { AttributedText, AttributedTextOnTap } from 'valdi_tsx/src/AttributedText';
 import { LabelTextDecoration } from 'valdi_tsx/src/NativeTemplateElements';
 import { convertColor } from '../styles/ValdiWebStyles';
+import { isWeightToken } from '../styles/parseFontStyle';
 
 const enum AttributedTextEntryType {
   Content = 1,
@@ -178,11 +179,3 @@ function createStyledSpan(text: string, style: StyleState): HTMLSpanElement {
   return span;
 }
 
-const FONT_WEIGHTS = new Set([
-  'normal', 'bold', 'lighter', 'bolder',
-  '100', '200', '300', '400', '500', '600', '700', '800', '900',
-]);
-
-function isWeightToken(token: string): boolean {
-  return FONT_WEIGHTS.has(token.toLowerCase());
-}

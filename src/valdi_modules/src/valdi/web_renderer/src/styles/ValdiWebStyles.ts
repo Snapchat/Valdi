@@ -1,6 +1,7 @@
 import { requiresUnitlessNumber } from './requiresUnitlessNumber';
 import { isNumber } from './isNumber';
 import { handleMarginPadding } from './handleMarginPadding';
+import { parseFontStyle } from './parseFontStyle';
 const VALID_STYLE_KEYS = document.createElement('div').style;
 
 declare const global: {
@@ -53,12 +54,7 @@ export function generateStyles(attribute: string, value: any): Partial<CSSStyleD
   }
 
   if (attribute === 'font') {
-    const [fontFamily, fontSize, fontWeight] = value.split(' ');
-    return {
-      fontFamily,
-      fontSize: `${fontSize}px`,
-      fontWeight,
-    };
+    return parseFontStyle(value);
   }
 
   if (attribute === 'boxShadow') {

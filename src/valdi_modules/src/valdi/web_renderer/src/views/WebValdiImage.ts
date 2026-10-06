@@ -19,10 +19,16 @@ export class WebValdiImage extends WebValdiLayout {
   private _explicitHeight: number | string | undefined;
   private _rotation = 0;
   private _observer?: ResizeObserver;
+  private _corsFallbackSrc?: string;
 
   constructor(id: number, attributeDelegate?: UpdateAttributeDelegate) {
     super(id, attributeDelegate);
     this.img = new Image();
+    // Request in CORS mode so the pixels we draw stay readable: a canvas drawn
+    // from a no-CORS image is tainted, which breaks tint (getImageData below)
+    // and any host rasterizing the preview to PNG/GIF. Hosts that don't send
+    // Access-Control-Allow-Origin are handled by the onerror fallback.
+    this.img.crossOrigin = 'anonymous';
     this.img.onload = () => {
       const w = this.img.naturalWidth / WEB_IMAGE_NATURAL_SCALE;
       const h = this.img.naturalHeight / WEB_IMAGE_NATURAL_SCALE;
@@ -31,6 +37,25 @@ export class WebValdiImage extends WebValdiLayout {
       this._onImageDecoded?.();
     };
     this.img.onerror = () => {
+      // A CORS-mode request to a host that sends no Access-Control-Allow-Origin
+      // fails outright. Retry that URL once without CORS: a tainted canvas is
+      // still better than a missing image, and it restores the old behaviour.
+      // getAttribute, not `.src`: the property getter hands back the absolute URL
+      // the browser resolved, which never equals the relative string the caller
+      // passed, so the downgrade below would not be recognised on the next update.
+      const failedSrc = this.img.getAttribute('src');
+      if (failedSrc && this.img.crossOrigin && failedSrc !== this._corsFallbackSrc) {
+        this._corsFallbackSrc = failedSrc;
+        this.img.crossOrigin = null;
+        this.img.src = failedSrc;
+        return;
+      }
+      // The retry failed too, so the first error was a 404 or a dropped
+      // connection rather than a CORS rejection. Drop the downgrade: leaving it
+      // latched would pin this URL to no-CORS for the life of the view and taint
+      // the canvas once the host recovers. A refusal that is really about CORS
+      // keeps the latch, because its retry is the one that succeeds.
+      this._corsFallbackSrc = undefined;
       this._onAssetLoad?.({ width: 0, height: 0 });
     };
   }
@@ -197,7 +222,14 @@ export class WebValdiImage extends WebValdiLayout {
       case 'src':
         const src = this.recursivelyResolveSrc(attributeValue);
 
-        if (src && this.img.src !== src) {
+        // getAttribute returns the string last assigned, where `.src` returns the
+        // browser's absolute resolution of it. Comparing against the property made
+        // every relative URL look new and re-request on each update.
+        if (src && this.img.getAttribute('src') !== src) {
+          // Set every time, not only on the CORS branch: a recycled view can carry
+          // `anonymous` over from the previous URL, and a URL that already refused
+          // CORS would then be requested with it again and have no retry left.
+          this.img.crossOrigin = src === this._corsFallbackSrc ? null : 'anonymous';
           this.img.src = src;
         }
         return;
