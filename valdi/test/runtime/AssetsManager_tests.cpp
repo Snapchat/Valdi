@@ -647,6 +647,46 @@ TEST(AssetsManager, doesntLoadAssetAgainWhenReceivingNewConsumersWithSameSpecs) 
     wrapper.tearDown();
 }
 
+TEST(AssetsManager, reusesLoadedAssetAcrossNullAndUndefinedAttachedData) {
+    AssetsManagerWrapper wrapper;
+
+    auto assetToLoad = makeShared<StandaloneLoadedAsset>(BytesView(), 0, 0);
+    auto url = STRING_LITERAL("https://snapchat.com/image.png");
+
+    wrapper.assetLoader->setAssetResponse(url, assetToLoad);
+
+    wrapper.callbacks.emplace_back([&](const auto& asset) {});
+
+    wrapper.callbacks.emplace_back([&](const auto& asset) {});
+
+    wrapper.callbacks.emplace_back([](const auto& asset) {});
+
+    // A JS load observer attaches undefined.
+    auto result = wrapper.loadAssetSync(AssetKey(url), 0, 0, Value::undefined());
+
+    ASSERT_TRUE(result) << result.description();
+    ASSERT_EQ(assetToLoad, result.value().getTypedRef<LoadedAsset>());
+    ASSERT_TRUE(wrapper.allCallbacksCalled());
+
+    auto assetToLoad2 = makeShared<StandaloneLoadedAsset>(BytesView(), 0, 0);
+    // Replace the asset to load, the second consumer should NOT get it
+    wrapper.assetLoader->setAssetResponse(url, assetToLoad2);
+
+    wrapper.callbacks.emplace_back([&](const auto& asset) {
+        ASSERT_EQ(static_cast<size_t>(2), asset->getConsumersSize());
+        ASSERT_EQ(AssetConsumerStateLoaded, asset->getConsumer(1)->getState());
+    });
+
+    wrapper.callbacks.emplace_back([&](const auto& asset) { ASSERT_TRUE(asset->getConsumer(1)->notified()); });
+
+    // An image view without a filter attaches null.
+    auto result2 = wrapper.loadAssetSync(AssetKey(url), 0, 0, Value());
+
+    ASSERT_TRUE(result2) << result2.description();
+    ASSERT_EQ(assetToLoad, result2.value().getTypedRef<LoadedAsset>());
+    wrapper.tearDown();
+}
+
 TEST(AssetsManager, loadAssetAgainWhenReceivingNewConsumersWithDifferentSpecs) {
     AssetsManagerWrapper wrapper;
 

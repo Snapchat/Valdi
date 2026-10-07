@@ -210,7 +210,9 @@ void AssetsManager::addAssetLoadObserver(const AssetKey& assetKey,
     consumer->setOutputType(outputType);
     consumer->setPreferredWidth(preferredWidth);
     consumer->setPreferredHeight(preferredHeight);
-    consumer->setAttachedData(attachedData);
+    // An image view without a filter attaches null and a JS load observer undefined. Treating them alike lets the view
+    // reuse an image the observer preloaded.
+    consumer->setAttachedData(attachedData.isNullOrUndefined() ? Value() : attachedData);
 
     if (managedAsset->getState() == AssetStateFailedRetryable) {
         // Retry the resolving now that we have a new consumer
