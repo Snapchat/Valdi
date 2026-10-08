@@ -1,0 +1,33 @@
+module.path = "test/src/LazyLayout";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.LazyLayout = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeLayout1 = __Renderer.makeNodePrototype('layout');
+const __nodeScroll1 = __Renderer.makeNodePrototype('scroll');
+const __nodeView1 = __Renderer.makeNodePrototype('view', ['width', "40", 'height', "40"]);
+const __nodeView2 = __Renderer.makeNodePrototype('view', ['margin', "10", 'id', "inner", 'flexGrow', 1]);
+const __nodeView3 = __Renderer.makeNodePrototype('view', ['width', "2", 'height', "2"]);
+const Component_1 = require("valdi_core/src/Component");
+class LazyLayout extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeLayout1, undefined);
+        __Renderer.beginRender(__nodeScroll1, undefined);
+        {this.onRenderItems()}
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+    onRenderItems() {
+        for (const item of this.viewModel.items) {
+            __Renderer.beginRender(__nodeView1, undefined);
+            __Renderer.setAttribute('lazyLayout', true);
+            __Renderer.setAttribute('limitToViewport', true);
+            __Renderer.beginRender(__nodeView2, undefined);
+            __Renderer.beginRender(__nodeView3, undefined);
+            __Renderer.endRender();
+            __Renderer.endRender();
+            __Renderer.endRender();
+        }
+    }
+}
+exports.LazyLayout = LazyLayout;

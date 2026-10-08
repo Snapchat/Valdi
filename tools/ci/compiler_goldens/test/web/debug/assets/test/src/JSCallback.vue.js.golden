@@ -1,0 +1,33 @@
+module.path = "test/src/JSCallback.vue";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.MyView = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+// @Component
+class MyView extends Valdi_1.LegacyVueComponent {
+    constructor() {
+        super(...arguments);
+        this.sequence = 0;
+    }
+    subViewTapped() {
+        this.elements.subView.attributes.color = 'red';
+        this.render();
+    }
+    increment(args) {
+        this.sequence += 1;
+        args.callback({
+            sequence: this.sequence,
+        });
+    }
+    incrementWithOptionalInvocation(args) {
+        var _a;
+        this.sequence += 1;
+        (_a = args.callback) === null || _a === void 0 ? void 0 : _a.call(args, {
+            sequence: this.sequence,
+        });
+    }
+}
+exports.MyView = MyView;
+;
+
+MyView.componentPath = "ComponentClass@test/src/JSCallback.vue.generated";

@@ -1,0 +1,31 @@
+module.path = "local/src/RemoteAsyncLoadComponent.vue";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.RemoteAsyncLoadComponent = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+// @Component
+class RemoteAsyncLoadComponent extends Valdi_1.LegacyVueComponent {
+    onCreate() {
+        this.state = {
+            isError: false,
+            isLoaded: (0, Valdi_1.isModuleLoaded)(this.viewModel.moduleName)
+        };
+        if (!this.state.isLoaded) {
+            (0, Valdi_1.loadModule)(this.viewModel.moduleName, (error) => {
+                if (!error) {
+                    this.setState({
+                        isLoaded: true
+                    });
+                }
+                else {
+                    this.setState({
+                        isError: true
+                    });
+                }
+            });
+        }
+    }
+}
+exports.RemoteAsyncLoadComponent = RemoteAsyncLoadComponent;
+
+RemoteAsyncLoadComponent.componentPath = "ComponentClass@local/src/RemoteAsyncLoadComponent.vue.generated";

@@ -1,0 +1,50 @@
+module.path = "test/src/AttributedError";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.AttributedError = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view');
+const Component_1 = require("valdi_core/src/Component");
+const FunctionUtils_1 = require("valdi_core/src/utils/FunctionUtils");
+class AttributedError extends Component_1.Component {
+    constructor() {
+        super(...arguments);
+        this.shouldErrorOut = false;
+    }
+    onRender() {
+        if (this.shouldErrorOut) {
+            throw new Error('Error in Render');
+        }
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.endRender();
+    }
+    makeInterruptibleCallback(params) {
+        params.cb((0, FunctionUtils_1.makeInterruptibleCallbackOptionally)(params.interruptible, () => {
+            return 42;
+        }));
+    }
+    makeCallbackError(cb) {
+        cb(() => {
+            throw new Error('Error in Callback');
+        });
+    }
+    makeRenderError() {
+        this.shouldErrorOut = true;
+        this.renderer.renderComponent(this, undefined);
+    }
+    makeImportError() {
+        require('invalid_module/src/NotARealFile');
+    }
+    makeImportInitError() {
+        require('test/src/ErrorModule');
+    }
+    makeSetTimeoutError() {
+        setTimeout(() => {
+            throw new Error('Error in setTimeout');
+        });
+    }
+    makeDelayedImportError() {
+        require('test/src/DelayedErrorModule');
+    }
+}
+exports.AttributedError = AttributedError;

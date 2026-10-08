@@ -1,0 +1,24 @@
+module.path = "test/src/ViewportUpdates";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ViewportUpdates = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view');
+const __nodeScroll1 = __Renderer.makeNodePrototype('scroll', ['width', '100%', 'height', '100%']);
+const __nodeView2 = __Renderer.makeNodePrototype('view', ['width', 100, 'height', 100]);
+const __nodeLayout1 = __Renderer.makeNodePrototype('layout', ['width', 100, 'height', 100]);
+const Component_1 = require("valdi_core/src/Component");
+class ViewportUpdates extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeScroll1, undefined);
+        __Renderer.beginRender(__nodeView2, undefined);
+        __Renderer.setAttributeFunction('onViewportChanged', this.viewModel.onViewportChanged);
+        __Renderer.endRender();
+        __Renderer.beginRender(__nodeLayout1, undefined);
+        __Renderer.endRender();
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+}
+exports.ViewportUpdates = ViewportUpdates;

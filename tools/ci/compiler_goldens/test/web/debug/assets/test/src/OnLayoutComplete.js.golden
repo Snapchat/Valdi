@@ -1,0 +1,32 @@
+module.path = "test/src/OnLayoutComplete";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.OnLayoutComplete = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view', ['width', 100, 'height', 100]);
+const __nodeLayout1 = __Renderer.makeNodePrototype('layout', ['left', 25, 'top', 25]);
+const Component_1 = require("valdi_core/src/Component");
+const ElementRef_1 = require("valdi_core/src/ElementRef");
+class OnLayoutComplete extends Component_1.Component {
+    constructor() {
+        super(...arguments);
+        this.rootRef = new ElementRef_1.ElementRef();
+        this.childRef = new ElementRef_1.ElementRef();
+    }
+    onRender() {
+        this.renderer.onLayoutComplete(() => {
+            const rootFrame = this.rootRef.single().frame;
+            const childFrame = this.childRef.single().frame;
+            this.viewModel.onLayoutComplete(rootFrame, childFrame);
+        });
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.setAttributeRef(this.rootRef);
+        __Renderer.beginRender(__nodeLayout1, undefined);
+        __Renderer.setAttributeRef(this.childRef);
+        __Renderer.setAttributeNumber('width', this.viewModel.childSize);
+        __Renderer.setAttributeNumber('height', this.viewModel.childSize);
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+}
+exports.OnLayoutComplete = OnLayoutComplete;

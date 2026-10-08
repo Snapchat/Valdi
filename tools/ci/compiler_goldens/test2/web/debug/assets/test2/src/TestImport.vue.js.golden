@@ -1,0 +1,3 @@
+module.path = "test2/src/TestImport.vue";
+"use strict";
+// no-op

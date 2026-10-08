@@ -1,0 +1,64 @@
+module.path = "test/src/CombinedForEachRenderIf.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/CombinedForEachRenderIf.vue.valdicss');
+const __nodeCombinedForEachRenderIf = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'CombinedForEachRenderIf'
+]);
+const __nodeView = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'View'
+]);
+const __nodeLabel = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label'
+]);
+const __nodeLabel2 = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label'
+]);
+const __nodeButton = renderer.makeNodePrototype('custom-view', [
+    'androidClass', 'com.snap.valdi.views.ValdiButton',
+    'cssDocument', __cssDocument,
+    'iosClass', 'UIButton',
+    'tag', 'Button',
+    'value', 'Button 1'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeCombinedForEachRenderIf);
+    let __index2 = 0;
+    for (const card of viewModel.cards) {
+        const __key = (__index2).toString();
+        const __renderIfResult2 = !(!(card.title.length > 0));
+        if (__renderIfResult2) {
+            renderer.beginRender(__nodeView, __key);
+            renderer.beginRender(__nodeLabel);
+            renderer.setAttribute('value', card.title);
+            renderer.endRender();
+            const __renderIfResult4 = !(!(card.subtitle.length > 0));
+            if (__renderIfResult4) {
+                renderer.beginRender(__nodeLabel2);
+                renderer.setAttribute('value', card.subtitle);
+                renderer.endRender();
+            }
+            renderer.endRender();
+        }
+        __index2 += 1;
+    }
+    renderer.beginRender(__nodeButton);
+    renderer.endRender();
+    renderer.endRender();
+}
+class CombinedForEachRenderIfComponent extends Valdi_1.LegacyVueComponent {
+}
+exports.ComponentClass = CombinedForEachRenderIfComponent;
+const elements = [];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

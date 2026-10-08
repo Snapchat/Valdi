@@ -1,0 +1,3 @@
+module.path = "remote/src/LocalComponentInRemoteComponent.vue";
+"use strict";
+// no-op

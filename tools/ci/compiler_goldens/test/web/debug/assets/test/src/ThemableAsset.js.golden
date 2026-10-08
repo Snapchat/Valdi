@@ -1,0 +1,52 @@
+module.path = "test/src/ThemableAsset";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ThemableAsset = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view');
+const __nodeImage1 = __Renderer.makeNodePrototype('image');
+const __nodeView2 = __Renderer.makeNodePrototype('view', ['colorPaletteName', 'dark']);
+const __nodeImage2 = __Renderer.makeNodePrototype('image');
+const __nodeImage3 = __Renderer.makeNodePrototype('image');
+const Asset_1 = require("valdi_core/src/Asset");
+const Component_1 = require("valdi_core/src/Component");
+class ThemableAsset extends Component_1.Component {
+    onCreate() {
+        runtime.configureColorPalette('light', {
+            background: 'rgba(0, 0, 255, 1)',
+        });
+        runtime.configureColorPalette('dark', {
+            background: 'rgba(255, 0, 0, 1)',
+        });
+        runtime.setActiveColorPalette('light');
+    }
+    onViewModelUpdate() {
+        const assetsByColorPalette = {
+            light: this.viewModel.lightAsset,
+        };
+        if (this.viewModel.includeDarkAsset) {
+            assetsByColorPalette.dark = this.viewModel.darkAsset;
+        }
+        this.asset = (0, Asset_1.makeThemableAsset)(assetsByColorPalette);
+        this.nestedAsset = (0, Asset_1.makeDirectionalAsset)(this.asset, this.viewModel.lightAsset);
+    }
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeImage1, undefined);
+        __Renderer.setAttribute('src', this.asset);
+        __Renderer.endRender();
+        __Renderer.beginRender(__nodeView2, undefined);
+        __Renderer.beginRender(__nodeImage2, undefined);
+        __Renderer.setAttribute('src', this.asset);
+        __Renderer.endRender();
+        __Renderer.endRender();
+        __Renderer.beginRender(__nodeImage3, undefined);
+        __Renderer.setAttribute('src', this.nestedAsset);
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+    setDarkColorPalette() {
+        runtime.setActiveColorPalette('dark');
+    }
+}
+exports.ThemableAsset = ThemableAsset;

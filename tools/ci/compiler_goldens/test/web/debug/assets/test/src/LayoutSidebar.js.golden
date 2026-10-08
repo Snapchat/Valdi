@@ -1,0 +1,20 @@
+module.path = "test/src/LayoutSidebar";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.LayoutSidebar = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view', ['flexDirection', "row"]);
+const __nodeView2 = __Renderer.makeNodePrototype('view', ['id', "sidebar", 'width', 100]);
+const __nodeView3 = __Renderer.makeNodePrototype('view', ['id', "main", 'flexGrow', 1]);
+const Component_1 = require("valdi_core/src/Component");
+class LayoutSidebar extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeView2, undefined);
+        __Renderer.endRender();
+        __Renderer.beginRender(__nodeView3, undefined);
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+}
+exports.LayoutSidebar = LayoutSidebar;

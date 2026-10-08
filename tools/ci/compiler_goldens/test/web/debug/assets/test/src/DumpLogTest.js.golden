@@ -1,0 +1,25 @@
+module.path = "test/src/DumpLogTest";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.DumpLogTest = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view');
+const __nodeLayout1 = __Renderer.makeNodePrototype('layout');
+const Component_1 = require("valdi_core/src/Component");
+const BugReporter_1 = require("valdi_core/src/BugReporter");
+class DumpLogTest extends Component_1.Component {
+    onCreate() {
+        const observer = (0, BugReporter_1.registerLogMetadataProvider)('CustomLog', () => this.dumpCustomLog());
+        this.registerDisposable(observer);
+    }
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeLayout1, undefined);
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+    dumpCustomLog() {
+        return { verbose: 'test123', metadata: { myKey: 'myValue' } };
+    }
+}
+exports.DumpLogTest = DumpLogTest;

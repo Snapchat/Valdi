@@ -1,0 +1,19 @@
+module.path = "test/src/JSInstance.vue";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.MyView = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+// @Component
+class MyView extends Valdi_1.LegacyVueComponent {
+    onCreate() {
+        super.onCreate();
+        this.elements.rootView.attributes.color = 'white';
+        this.elements.button1.attributes.value = 'Button 1';
+        this.elements.button2.attributes.value = 'Button 2';
+        this.elements.button3.attributes.value = 'Button 3';
+    }
+}
+exports.MyView = MyView;
+;
+
+MyView.componentPath = "ComponentClass@test/src/JSInstance.vue.generated";

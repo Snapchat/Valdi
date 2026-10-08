@@ -1,0 +1,3 @@
+module.path = "test/src/RenderIfChildDocument.vue";
+"use strict";
+// no-op

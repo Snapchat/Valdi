@@ -1,0 +1,28 @@
+module.path = "binding_lang_swift/src/JsApi";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.makeGreeter = void 0;
+class JsGreeter {
+    constructor() {
+        this._count = 0;
+    }
+    greet(name, style) {
+        this._count += 1;
+        switch (style) {
+            case 1 /* Greeting.CASUAL */:
+                return 'Hi ' + name;
+            case 2 /* Greeting.FORMAL */:
+                return 'Hello, ' + name;
+        }
+    }
+    count() {
+        return this._count;
+    }
+}
+/**
+ * @ExportFunction
+ */
+function makeGreeter() {
+    return new JsGreeter();
+}
+exports.makeGreeter = makeGreeter;

@@ -1,0 +1,3 @@
+module.path = "test/src/ModuleLoaderTestChild";
+"use strict";
+module.exports = 42;

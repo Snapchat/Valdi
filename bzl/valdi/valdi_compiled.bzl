@@ -1055,6 +1055,9 @@ def _get_srcs_vue_paths(srcs, module_name, module_directory):
         if f.extension in ["vue"] and not f.basename.endswith(".d.ts"):
             out.append(output_declaration_compiled_file_path_for_source_file(f, module_name, module_directory, replacement_suffix = ".vue.js"))
 
+            # The template's render code lives in the generated file, not in .vue.js.
+            out.append(output_declaration_compiled_file_path_for_source_file(f, module_name, module_directory, replacement_suffix = ".vue.generated.js"))
+
     return out
 
 def _get_web_resource_paths(module_name, resources_basenames):

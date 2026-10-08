@@ -1,0 +1,38 @@
+module.path = "test/src/JSCallback.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const JSCallback_vue_1 = require("./JSCallback.vue.js");
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/JSCallback.vue.valdicss');
+const __nodeJSCallback = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'JSCallback'
+]);
+const __nodeView = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'View'
+]);
+const __nodeView2 = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'id', 'subView',
+    'tag', 'View'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeJSCallback);
+    renderer.beginRender(__nodeView);
+    renderer.setAttribute('onTap', () => this.subViewTapped());
+    renderer.endRender();
+    renderer.beginRender(__nodeView2);
+    renderer.setAttribute('ref', this.elementRefs['subView']);
+    renderer.endRender();
+    renderer.endRender();
+}
+exports.ComponentClass = JSCallback_vue_1.MyView;
+const elements = ['subView'];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

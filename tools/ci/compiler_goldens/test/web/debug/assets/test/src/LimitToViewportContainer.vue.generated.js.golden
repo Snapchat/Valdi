@@ -1,0 +1,52 @@
+module.path = "test/src/LimitToViewportContainer.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/LimitToViewportContainer.vue.valdicss');
+const __nodeLimitToViewportContainer = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'flexDirection', 'column',
+    'overflow', 'scroll',
+    'tag', 'LimitToViewportContainer'
+]);
+const __nodeView = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'height', 100,
+    'id', 'container',
+    'limitToViewport', 'true',
+    'tag', 'View',
+    'width', 100
+]);
+const __nodeView2 = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'height', 100,
+    'id', 'child',
+    'tag', 'View',
+    'width', 100
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeLimitToViewportContainer);
+    let __indexContainer = 0;
+    for (const entry of viewModel.entries) {
+        const __key = (__indexContainer).toString();
+        renderer.beginRender(__nodeView, __key);
+        renderer.setAttribute('ref', this.elementRefs['container']);
+        renderer.beginRender(__nodeView2);
+        renderer.setAttribute('ref', this.elementRefs['child']);
+        renderer.endRender();
+        renderer.endRender();
+        __indexContainer += 1;
+    }
+    renderer.endRender();
+}
+class LimitToViewportContainerComponent extends Valdi_1.LegacyVueComponent {
+}
+exports.ComponentClass = LimitToViewportContainerComponent;
+const elements = ['child', 'container'];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

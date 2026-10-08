@@ -1,0 +1,69 @@
+module.path = "test/src/CSSAttributes.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/CSSAttributes.vue.valdicss');
+const __nodeCSSAttributes = renderer.makeNodePrototype('view', [
+    'class', 'main    alsomain',
+    'cssDocument', __cssDocument,
+    'tag', 'CSSAttributes'
+]);
+const __nodeLabel = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'Title'
+]);
+const __nodeView = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'id', 'container',
+    'tag', 'View'
+]);
+const __nodeButton = renderer.makeNodePrototype('custom-view', [
+    'androidClass', 'com.snap.valdi.views.ValdiButton',
+    'cssDocument', __cssDocument,
+    'iosClass', 'UIButton',
+    'tag', 'Button',
+    'value', 'Button 1'
+]);
+const __nodeButton2 = renderer.makeNodePrototype('custom-view', [
+    'androidClass', 'com.snap.valdi.views.ValdiButton',
+    'cssDocument', __cssDocument,
+    'iosClass', 'UIButton',
+    'tag', 'Button',
+    'value', 'Button 2'
+]);
+const __nodeButton3 = renderer.makeNodePrototype('custom-view', [
+    'androidClass', 'com.snap.valdi.views.ValdiButton',
+    'cssDocument', __cssDocument,
+    'iosClass', 'UIButton',
+    'tag', 'Button',
+    'value', 'Button 3'
+]);
+function renderTemplate() {
+    var _a;
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeCSSAttributes);
+    renderer.beginRender(__nodeLabel);
+    renderer.endRender();
+    renderer.beginRender(__nodeView);
+    renderer.setAttribute('color', (_a = viewModel === null || viewModel === void 0 ? void 0 : viewModel.containerColor) !== null && _a !== void 0 ? _a : 'black');
+    renderer.setAttribute('ref', this.elementRefs['container']);
+    renderer.beginRender(__nodeButton);
+    renderer.endRender();
+    renderer.beginRender(__nodeButton2);
+    renderer.endRender();
+    renderer.beginRender(__nodeButton3);
+    renderer.endRender();
+    renderer.endRender();
+    renderer.endRender();
+}
+class CSSAttributesComponent extends Valdi_1.LegacyVueComponent {
+}
+exports.ComponentClass = CSSAttributesComponent;
+const elements = ['container'];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

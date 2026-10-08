@@ -1,0 +1,36 @@
+module.path = "test/src/ViewCallbacks.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/ViewCallbacks.vue.valdicss');
+const __nodeViewCallbacks = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'ViewCallbacks'
+]);
+const __nodeView = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'View'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeViewCallbacks);
+    const __renderIfResult2 = !(!(viewModel && viewModel.shouldRender));
+    if (__renderIfResult2) {
+        renderer.beginRender(__nodeView);
+        renderer.setAttribute('onViewChange', viewModel.onViewChange);
+        renderer.setAttribute('onViewCreate', viewModel.onViewCreate);
+        renderer.setAttribute('onViewDestroy', viewModel.onViewDestroy);
+        renderer.endRender();
+    }
+    renderer.endRender();
+}
+class ViewCallbacksComponent extends Valdi_1.LegacyVueComponent {
+}
+exports.ComponentClass = ViewCallbacksComponent;
+const elements = [];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

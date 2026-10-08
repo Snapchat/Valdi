@@ -41,14 +41,13 @@ The captured content was verified deterministic and portable — free of absolut
 paths, `bazel-out` references, timestamps, and arch/host strings, and
 byte-identical between macOS and Linux CI.
 
+Web JS is captured from `web/debug/assets/<mod>`, the declared web outputs,
+including the Vue template render code (`*.vue.generated.js`).
+
 **Not captured:** the `.valdimodule` bytecode blob (brittle binary), `.map.json`
-source maps (embed absolute paths), and **web-transpiled JS**
-(`web/release/assets/<mod>/**/*.js`). The web/Vue codegen is not reproducible
-across hosts today (macOS and Linux emit different generated member references
-for some `.vue` files), so it can't be a stable golden yet — tracked as a
-follow-up. Likewise the **debug-flavor C++** (`cpp/debug`): the complex `test`
-module's debug C++ diverges macOS vs Linux (while `cpp/release` is byte-identical
-cross-host), so only the release flavor is pinned.
+source maps (embed absolute paths), and files the build rule never declares:
+web JS under `web/release` and debug-flavor C++ (`cpp/debug`). Undeclared files show up or not, with
+whatever content, depending on how the compile action happened to run.
 
 ## Where it runs
 

@@ -1,0 +1,37 @@
+module.path = "remote/src/RemoteScriptInRemoteComponent.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const RemoteScriptInRemoteComponent_vue_1 = require("./RemoteScriptInRemoteComponent.vue.js");
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('remote/src/RemoteScriptInRemoteComponent.vue.valdicss');
+const __nodeRemoteScriptInLocalComponent = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'RemoteScriptInLocalComponent'
+]);
+const __nodeLabel = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'This is remote'
+]);
+const __nodeLabel2 = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeRemoteScriptInLocalComponent);
+    renderer.beginRender(__nodeLabel);
+    renderer.endRender();
+    renderer.beginRender(__nodeLabel2);
+    renderer.setAttribute('value', this.getText());
+    renderer.endRender();
+    renderer.endRender();
+}
+exports.ComponentClass = RemoteScriptInRemoteComponent_vue_1.LocalComponent;
+const elements = [];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

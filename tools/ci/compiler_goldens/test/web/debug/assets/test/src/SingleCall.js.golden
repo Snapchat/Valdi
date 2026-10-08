@@ -1,0 +1,19 @@
+module.path = "test/src/SingleCall";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getSingleCallback = exports.callCallback = exports.getCallback = void 0;
+const FunctionUtils_1 = require("valdi_core/src/utils/FunctionUtils");
+function getCallback() {
+    return () => 'Hello World';
+}
+exports.getCallback = getCallback;
+function callCallback(iteration, cb) {
+    for (let i = 0; i < iteration; i++) {
+        cb();
+    }
+}
+exports.callCallback = callCallback;
+function getSingleCallback() {
+    return (0, FunctionUtils_1.makeSingleCallCallback)(() => 'Hello World');
+}
+exports.getSingleCallback = getSingleCallback;

@@ -1,0 +1,30 @@
+module.path = "test/src/DeferredViewClass";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.DeferredViewClass = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view');
+const __nodeCustomview1 = __Renderer.makeNodePrototype('custom-view');
+const __nodeCustomview2 = __Renderer.makeNodePrototype('custom-view');
+const Component_1 = require("valdi_core/src/Component");
+class DeferredViewClass extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        {this.renderInner()}
+        __Renderer.endRender();
+    }
+    renderInner() {
+        if (this.viewModel.iosClassName && this.viewModel.androidClassName) {
+            __Renderer.beginRender(__nodeCustomview1, undefined);
+            __Renderer.setAttributeString('iosClass', this.viewModel.iosClassName);
+            __Renderer.setAttributeString('androidClass', this.viewModel.androidClassName);
+            __Renderer.endRender();
+        }
+        else if (this.viewModel.viewFactory) {
+            __Renderer.beginRender(__nodeCustomview2, undefined);
+            __Renderer.setAttribute('viewFactory', this.viewModel.viewFactory);
+            __Renderer.endRender();
+        }
+    }
+}
+exports.DeferredViewClass = DeferredViewClass;

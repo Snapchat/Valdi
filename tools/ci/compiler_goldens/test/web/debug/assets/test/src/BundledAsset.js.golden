@@ -1,0 +1,19 @@
+module.path = "test/src/BundledAsset";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.BundledAsset = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view');
+const __nodeImage1 = __Renderer.makeNodePrototype('image', ['id', 'imageView']);
+const res_1 = require("test/res");
+const Component_1 = require("valdi_core/src/Component");
+class BundledAsset extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeImage1, undefined);
+        __Renderer.setAttribute('src', res_1.default.emoji);
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+}
+exports.BundledAsset = BundledAsset;

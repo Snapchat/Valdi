@@ -1,0 +1,23 @@
+module.path = "test/src/LimitToViewportChildOfChild.vue";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.MyComponent = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+function makeFullsize(element) {
+    element.setAttribute('width', '100%');
+    element.setAttribute('height', '100%');
+    element.setAttribute('position', 'absolute');
+    element.children.forEach(makeFullsize);
+}
+// @Component
+class MyComponent extends Valdi_1.LegacyVueComponent {
+    onRender() {
+        super.onRender();
+        for (const element of this.rootElements) {
+            element.children.forEach(makeFullsize);
+        }
+    }
+}
+exports.MyComponent = MyComponent;
+
+MyComponent.componentPath = "ComponentClass@test/src/LimitToViewportChildOfChild.vue.generated";

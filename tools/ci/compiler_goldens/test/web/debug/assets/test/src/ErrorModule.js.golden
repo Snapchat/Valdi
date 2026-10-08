@@ -1,0 +1,3 @@
+module.path = "test/src/ErrorModule";
+"use strict";
+throw new Error('I throw on creation');

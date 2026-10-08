@@ -1,0 +1,30 @@
+module.path = "test/src/LimitToViewportChildOfChild.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const LimitToViewportChildOfChild_vue_1 = require("./LimitToViewportChildOfChild.vue.js");
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const ChildDocument = require("test/src/ChildDocument.vue.generated");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/LimitToViewportChildOfChild.vue.valdicss');
+const __nodeLimitToViewportChildOfChild = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'limitToViewport', 'true',
+    'tag', 'LimitToViewportChildOfChild'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeLimitToViewportChildOfChild);
+    renderer.beginComponentWithoutPrototype(ChildDocument.ComponentClass, undefined, undefined);
+    renderer.setViewModelProperty('childViewModel', { padding: 10, title: 'Hello', subtitleHeight: 45.5 });
+    renderer.setInjectedAttribute('$cssDocument', __cssDocument);
+    renderer.setInjectedAttribute('$tag', 'ChildDocument');
+    renderer.endComponent();
+    renderer.endRender();
+}
+exports.ComponentClass = LimitToViewportChildOfChild_vue_1.MyComponent;
+const elements = [];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

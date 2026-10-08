@@ -1,0 +1,3 @@
+module.path = "test/src/CompositeAttributesRaw.vue";
+"use strict";
+// no-op

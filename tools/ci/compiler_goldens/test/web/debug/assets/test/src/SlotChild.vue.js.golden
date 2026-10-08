@@ -1,0 +1,9 @@
+module.path = "test/src/SlotChild.vue";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.headerRef = exports.footerRef = void 0;
+const ElementRef_1 = require("valdi_core/src/ElementRef");
+exports.footerRef = new ElementRef_1.ElementRef();
+exports.footerRef.setAttribute('color', '#00ff00');
+exports.headerRef = new ElementRef_1.ElementRef();
+exports.headerRef.setAttribute('color', '#ff0000');

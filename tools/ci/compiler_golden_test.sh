@@ -88,10 +88,10 @@ trap 'rm -rf "$STAGING" "$DIFF_BRIEF"' EXIT
 # free of absolute paths, timestamps, and arch/host strings, and byte-identical
 # between macOS and Linux CI):
 #   - TypeScript declaration files (.d.ts)
-#   - generated C++ (cpp/release; the NativeCompiler C++ emitter). The debug
-#     flavor is NOT captured: the debug C++ emit is not host-reproducible (the
-#     complex `test` module's cpp/debug diverges macOS vs Linux while cpp/release
-#     is byte-identical), so it can't be a stable golden.
+#   - generated C++ (cpp/release). cpp/debug is not captured: the build rule
+#     only declares cpp/release, so anything under cpp/debug is incidental.
+#   - web JS (web/debug/assets/<mod>, the declared web outputs), including the
+#     Vue template render code in *.vue.generated.js
 #   - generated native C (the per-flavor *_native.c; the TSN-atom emitter)
 #   - compilation metadata JSON
 #   - generated platform bindings, release flavor: ObjC (.h/.m under
@@ -110,11 +110,8 @@ trap 'rm -rf "$STAGING" "$DIFF_BRIEF"' EXIT
 # Excluded:
 #   - the .valdimodule bytecode blob (a brittle binary)
 #   - .map.json source maps (can embed absolute paths)
-#   - web-transpiled JavaScript (web/release/assets/<mod>/**/*.js): the web/Vue
-#     codegen is NOT reproducible across hosts today -- macOS and Linux emit
-#     different generated member references for some .vue files -- so it cannot
-#     be a stable golden yet. Tracked as a follow-up (investigate the compiler
-#     non-determinism, then add it back).
+#   - web JS under web/release: the build rule never declares it, so its
+#     presence and content depend on how the compile action happened to run.
 collect_module() {
   local mod="$1"
   local base="${SRC_ROOT}/${mod}"
@@ -133,6 +130,7 @@ collect_module() {
     find "${base}/.valdi_build/compile/typescript/dumped_symbols/${mod}" -name 'compilation-metadata.json' 2>/dev/null || true
     find "${base}/ios/release/src" \( -name '*.h' -o -name '*.m' -o -name '*.swift' \) 2>/dev/null || true
     find "${base}/android/release/src" -name '*.kt' 2>/dev/null || true
+    find "${base}/web/debug/assets/${mod}" -name '*.js' ! -name '*.spec.js' 2>/dev/null || true
   )
 }
 

@@ -1,0 +1,144 @@
+module.path = "test/src/ManagedChildFrames";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.InlineViewDynamicSizeAttribute = exports.InlineViewInvalidChildIndexAttribute = exports.InlineViewTextViewAttribute = exports.InlineViewVerticalAlignmentTextAttribute = exports.InlineViewTextAttribute = exports.ManagedChildFrames = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view', ['height', 200, 'width', 200]);
+const __nodeCustomview1 = __Renderer.makeNodePrototype('custom-view', ['height', 60, 'id', 'managed', 'iosClass', 'ManagedChildFrameView', 'width', 100]);
+const __nodeView2 = __Renderer.makeNodePrototype('view', ['height', 20, 'id', 'managedChild', 'left', 10, 'position', 'absolute', 'width', 30]);
+const __nodeView3 = __Renderer.makeNodePrototype('view', ['height', 200, 'width', 200]);
+const __nodeLabel1 = __Renderer.makeNodePrototype('label', ['height', 60, 'id', 'inlineLabel', 'width', 100]);
+const __nodeView4 = __Renderer.makeNodePrototype('view', ['height', 12, 'id', 'inlineChild', 'width', 18]);
+const __nodeView5 = __Renderer.makeNodePrototype('view', ['height', 200, 'width', 200]);
+const __nodeLabel2 = __Renderer.makeNodePrototype('label', ['height', 80, 'id', 'inlineLabel', 'width', 140]);
+const __nodeView6 = __Renderer.makeNodePrototype('view', ['height', 12, 'id', 'inlineTop', 'width', 11]);
+const __nodeView7 = __Renderer.makeNodePrototype('view', ['height', 24, 'id', 'inlineCenter', 'width', 22]);
+const __nodeView8 = __Renderer.makeNodePrototype('view', ['height', 36, 'id', 'inlineBottom', 'width', 33]);
+const __nodeView9 = __Renderer.makeNodePrototype('view', ['height', 14, 'id', 'inlineBaseline', 'width', 44]);
+const __nodeView10 = __Renderer.makeNodePrototype('view', ['height', 200, 'width', 200]);
+const __nodeTextview1 = __Renderer.makeNodePrototype('textview', ['height', 80, 'id', 'inlineTextView', 'width', 140]);
+const __nodeView11 = __Renderer.makeNodePrototype('view', ['height', 16, 'id', 'textViewInlineChild', 'width', 26]);
+const __nodeView12 = __Renderer.makeNodePrototype('view', ['height', 200, 'width', 200]);
+const __nodeLabel3 = __Renderer.makeNodePrototype('label', ['height', 60, 'id', 'inlineLabel', 'width', 100]);
+const __nodeView13 = __Renderer.makeNodePrototype('view', ['height', 12, 'id', 'inlineChild', 'width', 18]);
+const __nodeView14 = __Renderer.makeNodePrototype('view', ['height', 200, 'width', 200]);
+const __nodeLabel4 = __Renderer.makeNodePrototype('label', ['height', 80, 'id', 'inlineLabel', 'width', 140]);
+const __nodeView15 = __Renderer.makeNodePrototype('view', ['id', 'inlineChild']);
+const Component_1 = require("valdi_core/src/Component");
+const AttributedTextBuilder_1 = require("valdi_core/src/utils/AttributedTextBuilder");
+class ManagedChildFrames extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeCustomview1, undefined);
+        __Renderer.beginRender(__nodeView2, undefined);
+        __Renderer.endRender();
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+}
+exports.ManagedChildFrames = ManagedChildFrames;
+class InlineViewTextAttribute extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView3, undefined);
+        __Renderer.beginRender(__nodeLabel1, undefined);
+        __Renderer.setAttribute('value', this.inlineText());
+        __Renderer.beginRender(__nodeView4, undefined);
+        __Renderer.endRender();
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+    inlineText() {
+        return new AttributedTextBuilder_1.AttributedTextBuilder()
+            .append('Before ')
+            .appendInlineView(0, 2 /* AttributedTextInlineViewVerticalAlignment.Bottom */)
+            .append(' after')
+            .build();
+    }
+}
+exports.InlineViewTextAttribute = InlineViewTextAttribute;
+class InlineViewVerticalAlignmentTextAttribute extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView5, undefined);
+        __Renderer.beginRender(__nodeLabel2, undefined);
+        __Renderer.setAttribute('value', this.inlineText());
+        __Renderer.beginRender(__nodeView6, undefined);
+        __Renderer.endRender();
+        __Renderer.beginRender(__nodeView7, undefined);
+        __Renderer.endRender();
+        __Renderer.beginRender(__nodeView8, undefined);
+        __Renderer.endRender();
+        __Renderer.beginRender(__nodeView9, undefined);
+        __Renderer.endRender();
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+    inlineText() {
+        return new AttributedTextBuilder_1.AttributedTextBuilder()
+            .append('A')
+            .appendInlineView(0, 1 /* AttributedTextInlineViewVerticalAlignment.Top */)
+            .append('B')
+            .appendInlineView(1, 0 /* AttributedTextInlineViewVerticalAlignment.Center */)
+            .append('C')
+            .appendInlineView(2, 2 /* AttributedTextInlineViewVerticalAlignment.Bottom */)
+            .append('D')
+            .appendInlineView(3, 3 /* AttributedTextInlineViewVerticalAlignment.Baseline */)
+            .append('E')
+            .build();
+    }
+}
+exports.InlineViewVerticalAlignmentTextAttribute = InlineViewVerticalAlignmentTextAttribute;
+class InlineViewTextViewAttribute extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView10, undefined);
+        __Renderer.beginRender(__nodeTextview1, undefined);
+        __Renderer.setAttribute('value', this.inlineText());
+        __Renderer.beginRender(__nodeView11, undefined);
+        __Renderer.endRender();
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+    inlineText() {
+        return new AttributedTextBuilder_1.AttributedTextBuilder()
+            .append('Textview ')
+            .appendInlineView(0, 1 /* AttributedTextInlineViewVerticalAlignment.Top */)
+            .append(' child')
+            .build();
+    }
+}
+exports.InlineViewTextViewAttribute = InlineViewTextViewAttribute;
+class InlineViewInvalidChildIndexAttribute extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView12, undefined);
+        __Renderer.beginRender(__nodeLabel3, undefined);
+        __Renderer.setAttribute('value', this.inlineText());
+        __Renderer.beginRender(__nodeView13, undefined);
+        __Renderer.endRender();
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+    inlineText() {
+        return new AttributedTextBuilder_1.AttributedTextBuilder().append('Before ').appendInlineView(1).append(' after').build();
+    }
+}
+exports.InlineViewInvalidChildIndexAttribute = InlineViewInvalidChildIndexAttribute;
+class InlineViewDynamicSizeAttribute extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView14, undefined);
+        __Renderer.beginRender(__nodeLabel4, undefined);
+        __Renderer.setAttribute('value', this.inlineText());
+        __Renderer.beginRender(__nodeView15, undefined);
+        __Renderer.setAttributeNumber('height', this.viewModel.childHeight);
+        __Renderer.setAttributeNumber('width', this.viewModel.childWidth);
+        __Renderer.endRender();
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+    inlineText() {
+        return new AttributedTextBuilder_1.AttributedTextBuilder()
+            .append('Size ')
+            .appendInlineView(0, 0 /* AttributedTextInlineViewVerticalAlignment.Center */)
+            .append(' child')
+            .build();
+    }
+}
+exports.InlineViewDynamicSizeAttribute = InlineViewDynamicSizeAttribute;

@@ -1,0 +1,21 @@
+module.path = "test/src/UnmarshalledViewModelParent.vue";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.MyComponent = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+// @Component
+class MyComponent extends Valdi_1.LegacyVueComponent {
+    onCreate() {
+        super.onCreate();
+        this.childViewModel = {
+            count: 1
+        };
+        this.elements.child.attributes.viewModel = this.childViewModel;
+    }
+    incrementCountOfChildViewModel() {
+        this.childViewModel.count += 1;
+    }
+}
+exports.MyComponent = MyComponent;
+
+MyComponent.componentPath = "ComponentClass@test/src/UnmarshalledViewModelParent.vue.generated";

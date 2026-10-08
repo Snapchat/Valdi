@@ -1,0 +1,34 @@
+module.path = "test/src/ForEachWithComponents.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const JSInstance = require("test/src/JSInstance.vue.generated");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/ForEachWithComponents.vue.valdicss');
+const __nodeForEachWithComponents = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'ForEachWithComponents'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeForEachWithComponents);
+    let __index2 = 0;
+    for (const instance of viewModel.children) {
+        const __key = (__index2).toString();
+        renderer.beginComponentWithoutPrototype(JSInstance.ComponentClass, __key, undefined);
+        renderer.setInjectedAttribute('$cssDocument', __cssDocument);
+        renderer.setInjectedAttribute('$tag', 'JSInstance');
+        renderer.endComponent();
+        __index2 += 1;
+    }
+    renderer.endRender();
+}
+class ForEachWithComponentsComponent extends Valdi_1.LegacyVueComponent {
+}
+exports.ComponentClass = ForEachWithComponentsComponent;
+const elements = [];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

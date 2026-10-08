@@ -1,0 +1,3 @@
+module.path = "test/src/StaticAttributes.vue";
+"use strict";
+// no-op

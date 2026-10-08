@@ -1,0 +1,5 @@
+module.path = "test/src/InfiniteWorker";
+"use strict";
+postMessage('ready');
+postMessage('late');
+while (true) { }

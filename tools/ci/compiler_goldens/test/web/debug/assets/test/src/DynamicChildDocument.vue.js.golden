@@ -1,0 +1,3 @@
+module.path = "test/src/DynamicChildDocument.vue";
+"use strict";
+// no-op

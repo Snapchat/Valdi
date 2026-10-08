@@ -1,0 +1,13 @@
+module.path = "test_async_strict/src/AsyncStrictModule";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.compute = void 0;
+/**
+ * Used only by AsyncStrictModeSyncCallAssertsOnMainThread test.
+ * This module has async_strict_mode=True; compute() is intentionally not @AllowSyncCall
+ * so that a sync call from the main thread triggers the assertion.
+ */
+function compute() {
+    return 42;
+}
+exports.compute = compute;

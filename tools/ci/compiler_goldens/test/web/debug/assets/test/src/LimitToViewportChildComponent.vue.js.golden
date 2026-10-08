@@ -1,0 +1,9 @@
+module.path = "test/src/LimitToViewportChildComponent.vue";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.slotRef = void 0;
+const ElementRef_1 = require("valdi_core/src/ElementRef");
+exports.slotRef = new ElementRef_1.ElementRef();
+exports.slotRef.setAttribute('width', 10);
+exports.slotRef.setAttribute('height', 10);
+exports.slotRef.setAttribute('limitToViewport', true);

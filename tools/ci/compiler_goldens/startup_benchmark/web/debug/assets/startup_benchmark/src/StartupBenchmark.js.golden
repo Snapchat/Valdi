@@ -1,0 +1,17 @@
+module.path = "startup_benchmark/src/StartupBenchmark";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.StartupBenchmark = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view');
+const __nodeLabel1 = __Renderer.makeNodePrototype('label', ['value', 'Startup Benchmark']);
+const Component_1 = require("valdi_core/src/Component");
+class StartupBenchmark extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeLabel1, undefined);
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+}
+exports.StartupBenchmark = StartupBenchmark;

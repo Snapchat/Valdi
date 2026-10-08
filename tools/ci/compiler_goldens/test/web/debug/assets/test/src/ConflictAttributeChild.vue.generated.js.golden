@@ -1,0 +1,26 @@
+module.path = "test/src/ConflictAttributeChild.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/ConflictAttributeChild.vue.valdicss');
+const __nodeConflictingAttributeChild = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'ConflictingAttributeChild'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeConflictingAttributeChild);
+    renderer.setAttribute('class', viewModel.class);
+    renderer.setAttribute('color', viewModel.color);
+    renderer.endRender();
+}
+class ConflictAttributeChildComponent extends Valdi_1.LegacyVueComponent {
+}
+exports.ComponentClass = ConflictAttributeChildComponent;
+const elements = [];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

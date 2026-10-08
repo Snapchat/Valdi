@@ -1,0 +1,12 @@
+module.path = "test/src/ANRDetection";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ANRDetection = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const Component_1 = require("valdi_core/src/Component");
+class ANRDetection extends Component_1.Component {
+    onCreate() {
+        while (this.viewModel.shouldContinue()) { }
+    }
+}
+exports.ANRDetection = ANRDetection;

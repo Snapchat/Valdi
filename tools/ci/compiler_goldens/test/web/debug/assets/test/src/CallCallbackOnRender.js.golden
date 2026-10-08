@@ -1,0 +1,15 @@
+module.path = "test/src/CallCallbackOnRender";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.CallCallbackOnRender = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view');
+const Component_1 = require("valdi_core/src/Component");
+class CallCallbackOnRender extends Component_1.Component {
+    onRender() {
+        this.viewModel.onRender();
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.endRender();
+    }
+}
+exports.CallCallbackOnRender = CallCallbackOnRender;

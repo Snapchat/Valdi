@@ -1,0 +1,3 @@
+module.path = "test/src/BasicViewTree.vue";
+"use strict";
+// no-op

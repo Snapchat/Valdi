@@ -1,0 +1,17 @@
+module.path = "test/src/StyleTest";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.StyleTest = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view');
+const Component_1 = require("valdi_core/src/Component");
+const Style_1 = require("valdi_core/src/Style");
+const rootStyle = new Style_1.Style({ backgroundColor: 'red', scaleX: 0.5, scaleY: 0.75 });
+class StyleTest extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.setAttributeStyle('style', rootStyle);
+        __Renderer.endRender();
+    }
+}
+exports.StyleTest = StyleTest;

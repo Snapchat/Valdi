@@ -1,0 +1,3 @@
+module.path = "test/src/ES6.vue";
+"use strict";
+// no-op

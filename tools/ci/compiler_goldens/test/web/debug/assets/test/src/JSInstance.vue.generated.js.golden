@@ -1,0 +1,69 @@
+module.path = "test/src/JSInstance.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const JSInstance_vue_1 = require("./JSInstance.vue.js");
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/JSInstance.vue.valdicss');
+const __nodeJSInstance = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'id', 'rootView',
+    'tag', 'JSInstance'
+]);
+const __nodeLabel = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'id', 'label',
+    'tag', 'Label'
+]);
+const __nodeView = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'View'
+]);
+const __nodeButton = renderer.makeNodePrototype('custom-view', [
+    'androidClass', 'com.snap.valdi.views.ValdiButton',
+    'cssDocument', __cssDocument,
+    'id', 'button1',
+    'iosClass', 'UIButton',
+    'tag', 'Button'
+]);
+const __nodeButton2 = renderer.makeNodePrototype('custom-view', [
+    'androidClass', 'com.snap.valdi.views.ValdiButton',
+    'cssDocument', __cssDocument,
+    'id', 'button2',
+    'iosClass', 'UIButton',
+    'tag', 'Button'
+]);
+const __nodeButton3 = renderer.makeNodePrototype('custom-view', [
+    'androidClass', 'com.snap.valdi.views.ValdiButton',
+    'cssDocument', __cssDocument,
+    'id', 'button3',
+    'iosClass', 'UIButton',
+    'tag', 'Button'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeJSInstance);
+    renderer.setAttribute('ref', this.elementRefs['rootView']);
+    renderer.beginRender(__nodeLabel);
+    renderer.setAttribute('ref', this.elementRefs['label']);
+    renderer.endRender();
+    renderer.beginRender(__nodeView);
+    renderer.beginRender(__nodeButton);
+    renderer.setAttribute('ref', this.elementRefs['button1']);
+    renderer.endRender();
+    renderer.beginRender(__nodeButton2);
+    renderer.setAttribute('ref', this.elementRefs['button2']);
+    renderer.endRender();
+    renderer.beginRender(__nodeButton3);
+    renderer.setAttribute('ref', this.elementRefs['button3']);
+    renderer.endRender();
+    renderer.endRender();
+    renderer.endRender();
+}
+exports.ComponentClass = JSInstance_vue_1.MyView;
+const elements = ['button1', 'button2', 'button3', 'label', 'rootView'];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

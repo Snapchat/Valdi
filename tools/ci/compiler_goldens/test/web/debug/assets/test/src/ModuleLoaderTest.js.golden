@@ -1,0 +1,14 @@
+module.path = "test/src/ModuleLoaderTest";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getScopedImportedType = exports.getImportedType = void 0;
+const importedModule = require('./ModuleLoaderTestChild.js');
+const importedScopedModule = require('./@fakescope/ModuleLoaderTestChildScoped.js');
+function getImportedType() {
+    return typeof importedModule;
+}
+exports.getImportedType = getImportedType;
+function getScopedImportedType() {
+    return typeof importedScopedModule;
+}
+exports.getScopedImportedType = getScopedImportedType;

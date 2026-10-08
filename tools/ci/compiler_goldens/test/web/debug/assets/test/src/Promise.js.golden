@@ -1,0 +1,40 @@
+module.path = "test/src/Promise";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.concatStringsComplex = exports.concatStrings = exports.getStringSync = exports.getStringAsync = void 0;
+const tslib_1 = require("tslib");
+function getStringAsync() {
+    return tslib_1.__awaiter(this, void 0, void 0, function* () {
+        return 'Hello World Async';
+    });
+}
+exports.getStringAsync = getStringAsync;
+function getStringSync() {
+    return 'Hello World Sync';
+}
+exports.getStringSync = getStringSync;
+function concatStrings(left, right, onStep) {
+    return tslib_1.__awaiter(this, void 0, void 0, function* () {
+        if (onStep) {
+            onStep(1);
+        }
+        const leftValue = yield left;
+        if (onStep) {
+            onStep(2);
+        }
+        const rightValue = yield right;
+        if (onStep) {
+            onStep(3);
+        }
+        return `${leftValue}_${rightValue}`;
+    });
+}
+exports.concatStrings = concatStrings;
+function concatStringsComplex(prefix, array) {
+    return tslib_1.__awaiter(this, void 0, void 0, function* () {
+        const resolvedPrefix = yield prefix;
+        const suffixes = yield Promise.all(array);
+        return `${resolvedPrefix}->${suffixes.join('_')}`;
+    });
+}
+exports.concatStringsComplex = concatStringsComplex;

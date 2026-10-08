@@ -339,7 +339,9 @@ class ValdiDocumentParser {
 
         func visit(_ element: SwiftSoup.Element) throws {
             let tagName = element.tagName()
-            let attributes = element.getAttributes()?.associate { ($0.getKey(), $0.getValue() ) } ?? [:]
+            // Keep source order: same-name attributes (e.g. `class` and `:class`) tie in the later
+            // name sort, and a Dictionary's per-process hash order made the output nondeterministic.
+            let attributes = element.getAttributes()?.map { ($0.getKey(), $0.getValue()) } ?? []
             parserDelegate.parser(self.parser, didStartElement: tagName, attributes: attributes)
             if parserDelegate.error != nil {
                 return
@@ -610,7 +612,7 @@ class ValdiDocumentParser {
 //            parser.abortParsing()
         }
 
-        func parser(_ parser: SwiftSoup.Parser, didStartElement elementName: String, attributes attributeDict: [String: String] = [:]) {
+        func parser(_ parser: SwiftSoup.Parser, didStartElement elementName: String, attributes attributeDict: [(String, String)] = []) {
             guard error == nil else {
                 return
             }

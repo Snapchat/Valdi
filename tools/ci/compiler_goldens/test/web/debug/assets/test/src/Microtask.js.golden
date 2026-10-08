@@ -1,0 +1,17 @@
+module.path = "test/src/Microtask";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.testPromiseFulfillment = exports.testMicrotask = void 0;
+function testMicrotask(setTimeoutCb, microtaskCb) {
+    setTimeout(setTimeoutCb);
+    queueMicrotask(microtaskCb);
+}
+exports.testMicrotask = testMicrotask;
+function testPromiseFulfillment(onResolved) {
+    new Promise((resolve) => {
+        resolve();
+    }).then(() => {
+        onResolved();
+    });
+}
+exports.testPromiseFulfillment = testPromiseFulfillment;

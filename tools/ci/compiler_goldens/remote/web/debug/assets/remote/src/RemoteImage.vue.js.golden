@@ -1,0 +1,3 @@
+module.path = "remote/src/RemoteImage.vue";
+"use strict";
+// no-op

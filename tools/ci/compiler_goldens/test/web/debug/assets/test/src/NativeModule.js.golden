@@ -1,0 +1,20 @@
+module.path = "test/src/NativeModule";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.countSyncCall = exports.compute = void 0;
+const NativeCalculator_1 = require("./NativeCalculator.js");
+function compute() {
+    const calculator = (0, NativeCalculator_1.makeCalculator)();
+    calculator.add(42);
+    calculator.add(8);
+    return calculator.total();
+}
+exports.compute = compute;
+let syncCallCount = 0;
+// Counts how many times native actually ran this function, so tests can tell a call that was
+// skipped after its deadline from one that ran late.
+function countSyncCall() {
+    syncCallCount++;
+    return syncCallCount;
+}
+exports.countSyncCall = countSyncCall;

@@ -1,0 +1,30 @@
+module.path = "test/src/LayoutDynamic";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.LayoutDynamic = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view', ['flexDirection', "column"]);
+const __nodeView2 = __Renderer.makeNodePrototype('view', ['id', "header", 'height', 50]);
+const __nodeView3 = __Renderer.makeNodePrototype('view', ['id', "item1", 'height', 60]);
+const __nodeView4 = __Renderer.makeNodePrototype('view', ['id', "item2", 'height', 60]);
+const __nodeView5 = __Renderer.makeNodePrototype('view', ['id', "footer", 'flexGrow', 1]);
+const Component_1 = require("valdi_core/src/Component");
+class LayoutDynamic extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeView2, undefined);
+        __Renderer.endRender();
+        {this.viewModel.showItem1 && (() => {
+            __Renderer.beginRender(__nodeView3, undefined);
+            __Renderer.endRender();
+        })()}
+        {this.viewModel.showItem2 && (() => {
+            __Renderer.beginRender(__nodeView4, undefined);
+            __Renderer.endRender();
+        })()}
+        __Renderer.beginRender(__nodeView5, undefined);
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+}
+exports.LayoutDynamic = LayoutDynamic;

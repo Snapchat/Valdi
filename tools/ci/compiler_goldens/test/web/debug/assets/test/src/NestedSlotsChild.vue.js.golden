@@ -1,0 +1,11 @@
+module.path = "test/src/NestedSlotsChild.vue";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.MyComponent = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+// @Component
+class MyComponent extends Valdi_1.LegacyVueComponent {
+}
+exports.MyComponent = MyComponent;
+
+MyComponent.componentPath = "ComponentClass@test/src/NestedSlotsChild.vue.generated";

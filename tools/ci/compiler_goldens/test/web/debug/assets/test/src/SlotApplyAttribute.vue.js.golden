@@ -1,0 +1,19 @@
+module.path = "test/src/SlotApplyAttribute.vue";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.MyComponent = void 0;
+const ElementRef_1 = require("valdi_core/src/ElementRef");
+const Valdi_1 = require("valdi_core/src/Valdi");
+// @Component
+class MyComponent extends Valdi_1.LegacyVueComponent {
+    constructor() {
+        super(...arguments);
+        this.slotRef = new ElementRef_1.ElementRef();
+    }
+    onViewModelUpdate() {
+        this.slotRef.setAttribute('text', this.viewModel && this.viewModel.valueInSlot);
+    }
+}
+exports.MyComponent = MyComponent;
+
+MyComponent.componentPath = "ComponentClass@test/src/SlotApplyAttribute.vue.generated";

@@ -1,0 +1,3 @@
+module.path = "test/src/@fakescope/ModuleLoaderTestChildScoped";
+"use strict";
+module.exports = 43;

@@ -1,0 +1,23 @@
+module.path = "test/src/RetainNativeRefs.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const RetainNativeRefs_vue_1 = require("./RetainNativeRefs.vue.js");
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/RetainNativeRefs.vue.valdicss');
+const __nodeRetainNativeRefs = renderer.makeNodePrototype('layout', [
+    'cssDocument', __cssDocument,
+    'tag', 'RetainNativeRefs'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeRetainNativeRefs);
+    renderer.endRender();
+}
+exports.ComponentClass = RetainNativeRefs_vue_1.RetainNativeRefs;
+const elements = [];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

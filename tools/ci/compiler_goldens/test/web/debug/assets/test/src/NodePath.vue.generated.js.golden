@@ -1,0 +1,66 @@
+module.path = "test/src/NodePath.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/NodePath.vue.valdicss');
+const __nodeNodePath = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'NodePath'
+]);
+const __nodeView = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'id', 'outer',
+    'tag', 'View'
+]);
+const __nodeView2 = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'id', 'container',
+    'tag', 'View'
+]);
+const __nodeLabel = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'id', 'uniqueLabel',
+    'tag', 'Label'
+]);
+const __nodeLabel2 = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'id', 'multiLabel',
+    'tag', 'Label'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeNodePath);
+    renderer.beginRender(__nodeView);
+    renderer.setAttribute('ref', this.elementRefs['outer']);
+    renderer.endRender();
+    let __indexContainer = 0;
+    for (const index of new Array(10)) {
+        const __key = (__indexContainer).toString();
+        renderer.beginRender(__nodeView2, __key);
+        renderer.setAttribute('ref', this.elementRefs['container']);
+        renderer.beginRender(__nodeLabel);
+        renderer.setAttribute('ref', this.elementRefs['uniqueLabel']);
+        renderer.endRender();
+        let __indexMultiLabel = 0;
+        for (const index of new Array(2)) {
+            const __key2 = (__indexMultiLabel).toString();
+            renderer.beginRender(__nodeLabel2, __key2);
+            renderer.setAttribute('ref', this.elementRefs['multiLabel']);
+            renderer.endRender();
+            __indexMultiLabel += 1;
+        }
+        renderer.endRender();
+        __indexContainer += 1;
+    }
+    renderer.endRender();
+}
+class NodePathComponent extends Valdi_1.LegacyVueComponent {
+}
+exports.ComponentClass = NodePathComponent;
+const elements = ['container', 'multiLabel', 'outer', 'uniqueLabel'];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

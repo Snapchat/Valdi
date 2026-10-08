@@ -1,0 +1,36 @@
+module.path = "test/src/RetainNativeRefs.vue";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.callFn = exports.RetainNativeRefs = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const NativeReferences_1 = require("valdi_core/src/NativeReferences");
+// @Component
+class RetainNativeRefs extends Valdi_1.LegacyVueComponent {
+    protectContext(cb) {
+        const context = this.context;
+        (0, NativeReferences_1.protectNativeRefs)(this);
+        // We return the context so that the unit test can retain it
+        cb(runtime.makeOpaque(context));
+    }
+    makeGlobalCallback(cb) {
+        cb(runtime.makeOpaque(() => {
+            return 'Nice';
+        }));
+    }
+    makeBytes(cb) {
+        const buffer = new ArrayBuffer(8);
+        const bytes = new DataView(buffer);
+        for (let i = 0; i < buffer.byteLength; i++) {
+            bytes.setUint8(i, i * 2);
+        }
+        cb(buffer);
+    }
+}
+exports.RetainNativeRefs = RetainNativeRefs;
+;
+function callFn(fn) {
+    return fn();
+}
+exports.callFn = callFn;
+
+RetainNativeRefs.componentPath = "ComponentClass@test/src/RetainNativeRefs.vue.generated";

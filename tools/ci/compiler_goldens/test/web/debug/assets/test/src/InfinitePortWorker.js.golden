@@ -1,0 +1,11 @@
+module.path = "test/src/InfinitePortWorker";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+onmessage = workerEvent => {
+    const event = workerEvent;
+    const port = event.ports[0];
+    // Acknowledge over the transferred port so the host knows the worker is running, then spin forever.
+    // The host terminates the worker while this loop is executing.
+    port.postMessage('ready');
+    while (true) { }
+};

@@ -1,0 +1,6 @@
+module.path = "remote_assets/res";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const AssetCatalog_1 = require("valdi_core/src/AssetCatalog");
+const catalog = (0, AssetCatalog_1.loadCatalog)('remote_assets/res');
+exports.default = catalog;

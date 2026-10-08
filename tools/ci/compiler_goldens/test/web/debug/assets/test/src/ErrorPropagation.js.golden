@@ -1,0 +1,18 @@
+module.path = "test/src/ErrorPropagation";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.throwError = exports.receiveError = void 0;
+function receiveError(cb) {
+    try {
+        cb();
+        return undefined;
+    }
+    catch (err) {
+        return err.message;
+    }
+}
+exports.receiveError = receiveError;
+function throwError() {
+    throw new Error('This is an error');
+}
+exports.throwError = throwError;

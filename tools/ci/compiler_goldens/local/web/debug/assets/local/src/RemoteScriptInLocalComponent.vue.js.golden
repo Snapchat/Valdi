@@ -1,0 +1,15 @@
+module.path = "local/src/RemoteScriptInLocalComponent.vue";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.LocalComponent = void 0;
+const RemoteTS_1 = require("remote/src/RemoteTS");
+const Valdi_1 = require("valdi_core/src/Valdi");
+// @Component
+class LocalComponent extends Valdi_1.LegacyVueComponent {
+    getText() {
+        return 'From remote: ' + (0, RemoteTS_1.add)(42, 42);
+    }
+}
+exports.LocalComponent = LocalComponent;
+
+LocalComponent.componentPath = "ComponentClass@local/src/RemoteScriptInLocalComponent.vue.generated";

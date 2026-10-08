@@ -1,0 +1,17 @@
+module.path = "test/src/DestroyRefOnChildContext";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.createChildContext = void 0;
+function createChildContext(makeRef) {
+    const contextId = runtime.createContext();
+    runtime.pushCurrentContext(contextId);
+    const nativeRef = makeRef();
+    runtime.popCurrentContext();
+    return {
+        contextId,
+        getNativeRef() {
+            return nativeRef;
+        },
+    };
+}
+exports.createChildContext = createChildContext;

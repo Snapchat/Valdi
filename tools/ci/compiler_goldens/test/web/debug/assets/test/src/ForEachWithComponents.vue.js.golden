@@ -1,0 +1,3 @@
+module.path = "test/src/ForEachWithComponents.vue";
+"use strict";
+// no-op

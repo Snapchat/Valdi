@@ -1,0 +1,19 @@
+module.path = "test/src/LimitToViewportTranslate";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.TestComponent = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view', ['width', 100, 'height', 100]);
+const __nodeView2 = __Renderer.makeNodePrototype('view', ['width', 50, 'height', 50]);
+const Component_1 = require("valdi_core/src/Component");
+class TestComponent extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeView2, undefined);
+        __Renderer.setAttribute('translationX', this.viewModel.translationX);
+        __Renderer.setAttribute('translationY', this.viewModel.translationY);
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+}
+exports.TestComponent = TestComponent;

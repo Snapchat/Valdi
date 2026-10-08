@@ -1,0 +1,34 @@
+module.path = "test/src/LayoutInvalidation.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/LayoutInvalidation.vue.valdicss');
+const __nodeLayoutInvalidation = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'LayoutInvalidation'
+]);
+const __nodeView = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'height', '50%',
+    'id', 'subview',
+    'tag', 'View',
+    'width', '50%'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeLayoutInvalidation);
+    renderer.beginRender(__nodeView);
+    renderer.setAttribute('ref', this.elementRefs['subview']);
+    renderer.endRender();
+    renderer.endRender();
+}
+class LayoutInvalidationComponent extends Valdi_1.LegacyVueComponent {
+}
+exports.ComponentClass = LayoutInvalidationComponent;
+const elements = ['subview'];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

@@ -1,0 +1,5 @@
+module.path = "test/src/DelayedErrorModule";
+"use strict";
+setTimeout(() => {
+    throw new Error('I throw right after creation');
+}, 0);

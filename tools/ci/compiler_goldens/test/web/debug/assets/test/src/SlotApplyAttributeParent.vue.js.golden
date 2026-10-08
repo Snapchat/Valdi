@@ -1,0 +1,3 @@
+module.path = "test/src/SlotApplyAttributeParent.vue";
+"use strict";
+// no-op

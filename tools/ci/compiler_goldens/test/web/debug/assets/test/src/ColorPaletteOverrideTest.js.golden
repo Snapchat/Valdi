@@ -1,0 +1,53 @@
+module.path = "test/src/ColorPaletteOverrideTest";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ColorPaletteOverrideTest = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view', ['background', 'background']);
+const __nodeView2 = __Renderer.makeNodePrototype('view', ['colorPaletteName', 'dark', 'background', 'background']);
+const __nodeView3 = __Renderer.makeNodePrototype('view', ['background', 'foreground']);
+const __nodeView4 = __Renderer.makeNodePrototype('view', ['background', 'foreground']);
+const Component_1 = require("valdi_core/src/Component");
+class ColorPaletteOverrideTest extends Component_1.Component {
+    onCreate() {
+        runtime.configureColorPalette('light', {
+            background: 'rgba(0, 0, 255, 1)',
+            foreground: 'rgba(0, 128, 0, 1)',
+        });
+        runtime.configureColorPalette('dark', {
+            background: 'rgba(255, 0, 0, 1)',
+            foreground: 'rgba(255, 255, 0, 1)',
+        });
+        runtime.configureColorPalette('unused', {
+            background: 'rgba(0, 0, 0, 1)',
+            foreground: 'rgba(255, 255, 255, 1)',
+        });
+        runtime.setActiveColorPalette('light');
+    }
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeView2, undefined);
+        __Renderer.beginRender(__nodeView3, undefined);
+        __Renderer.endRender();
+        __Renderer.endRender();
+        __Renderer.beginRender(__nodeView4, undefined);
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+    setDarkActiveColorPalette() {
+        runtime.setActiveColorPalette('dark');
+    }
+    updateDarkColorPalette() {
+        runtime.configureColorPalette('dark', {
+            background: 'rgba(0, 0, 0, 1)',
+            foreground: 'rgba(255, 255, 255, 1)',
+        });
+    }
+    updateUnusedColorPalette() {
+        runtime.configureColorPalette('unused', {
+            background: 'rgba(255, 255, 255, 1)',
+            foreground: 'rgba(0, 0, 0, 1)',
+        });
+    }
+}
+exports.ColorPaletteOverrideTest = ColorPaletteOverrideTest;

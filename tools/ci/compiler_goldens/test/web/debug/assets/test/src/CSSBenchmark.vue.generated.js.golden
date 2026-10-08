@@ -1,0 +1,235 @@
+module.path = "test/src/CSSBenchmark.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/CSSBenchmark.vue.valdicss');
+const __nodeCSSDemoView = renderer.makeNodePrototype('layout', [
+    'class', 'main',
+    'cssDocument', __cssDocument,
+    'id', 'root',
+    'tag', 'CSSDemoView'
+]);
+const __nodeScrollView = renderer.makeNodePrototype('scroll', [
+    'cssDocument', __cssDocument,
+    'tag', 'ScrollView'
+]);
+const __nodeView = renderer.makeNodePrototype('view', [
+    'class', 'section',
+    'cssDocument', __cssDocument,
+    'tag', 'View'
+]);
+const __nodeLabel = renderer.makeNodePrototype('label', [
+    'class', 'title',
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'Dynamic CSS'
+]);
+const __nodeLabel2 = renderer.makeNodePrototype('label', [
+    'class', 'desc',
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'Click "toggle button state" to toggle the class on a View, which changes the CSS selectors\n          its children are styled by.'
+]);
+const __nodeView2 = renderer.makeNodePrototype('view', [
+    'class', 'disabled',
+    'cssDocument', __cssDocument,
+    'id', 'button',
+    'tag', 'View'
+]);
+const __nodeLabel3 = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'A Button!!!'
+]);
+const __nodeButton = renderer.makeNodePrototype('custom-view', [
+    'androidClass', 'com.snap.valdi.views.ValdiButton',
+    'cssDocument', __cssDocument,
+    'id', 'toggleButton',
+    'iosClass', 'UIButton',
+    'tag', 'Button',
+    'value', 'Toggle Button State'
+]);
+const __nodeView3 = renderer.makeNodePrototype('view', [
+    'class', 'section',
+    'cssDocument', __cssDocument,
+    'tag', 'View'
+]);
+const __nodeLabel4 = renderer.makeNodePrototype('label', [
+    'class', 'title',
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'Styled text'
+]);
+const __nodeLabel5 = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'id', 'text-demo',
+    'tag', 'Label',
+    'value', 'Some label'
+]);
+const __nodeView4 = renderer.makeNodePrototype('view', [
+    'class', 'section gradient-test',
+    'cssDocument', __cssDocument,
+    'tag', 'View'
+]);
+const __nodeLabel6 = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'This is a linear gradient test'
+]);
+const __nodeView5 = renderer.makeNodePrototype('view', [
+    'class', 'section',
+    'cssDocument', __cssDocument,
+    'tag', 'View'
+]);
+const __nodeLabel7 = renderer.makeNodePrototype('label', [
+    'class', 'title',
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'First/last child'
+]);
+const __nodeLabel8 = renderer.makeNodePrototype('label', [
+    'class', 'desc',
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'We can style elements via :first-child and :last-child. At the bottom of this example view,\n          there"s a node rendered via for-each that returns zero items, so the node before it becomes the last\n          child.'
+]);
+const __nodeView6 = renderer.makeNodePrototype('view', [
+    'class', 'first_last_container',
+    'cssDocument', __cssDocument,
+    'tag', 'View'
+]);
+const __nodeLabel9 = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'I am the first child.'
+]);
+const __nodeLabel10 = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'I am the middle child.'
+]);
+const __nodeLabel11 = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'I am the last child!'
+]);
+const __nodeView7 = renderer.makeNodePrototype('view', [
+    'class', 'section',
+    'cssDocument', __cssDocument,
+    'tag', 'View'
+]);
+const __nodeLabel12 = renderer.makeNodePrototype('label', [
+    'class', 'title',
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'CSS ancestry'
+]);
+const __nodeLabel13 = renderer.makeNodePrototype('label', [
+    'class', 'desc',
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'This demo shows use of the direct descendent selector.'
+]);
+const __nodeView8 = renderer.makeNodePrototype('view', [
+    'class', 'ancestry',
+    'cssDocument', __cssDocument,
+    'tag', 'View'
+]);
+const __nodeLabel14 = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'I am the first level.'
+]);
+const __nodeView9 = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'View'
+]);
+const __nodeLabel15 = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'I am the second level.'
+]);
+const __nodeView10 = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'View'
+]);
+const __nodeLabel16 = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'I am the third level deep!'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeCSSDemoView);
+    renderer.setAttribute('ref', this.elementRefs['root']);
+    renderer.beginRender(__nodeScrollView);
+    renderer.beginRender(__nodeView);
+    renderer.beginRender(__nodeLabel);
+    renderer.endRender();
+    renderer.beginRender(__nodeLabel2);
+    renderer.endRender();
+    renderer.beginRender(__nodeView2);
+    renderer.setAttribute('ref', this.elementRefs['button']);
+    renderer.beginRender(__nodeLabel3);
+    renderer.endRender();
+    renderer.endRender();
+    renderer.beginRender(__nodeButton);
+    renderer.setAttribute('ref', this.elementRefs['toggleButton']);
+    renderer.endRender();
+    renderer.endRender();
+    renderer.beginRender(__nodeView3);
+    renderer.beginRender(__nodeLabel4);
+    renderer.endRender();
+    renderer.beginRender(__nodeLabel5);
+    renderer.setAttribute('ref', this.elementRefs['text-demo']);
+    renderer.endRender();
+    renderer.endRender();
+    renderer.beginRender(__nodeView4);
+    renderer.beginRender(__nodeLabel6);
+    renderer.endRender();
+    renderer.endRender();
+    renderer.beginRender(__nodeView5);
+    renderer.beginRender(__nodeLabel7);
+    renderer.endRender();
+    renderer.beginRender(__nodeLabel8);
+    renderer.endRender();
+    renderer.beginRender(__nodeView6);
+    renderer.beginRender(__nodeLabel9);
+    renderer.endRender();
+    renderer.beginRender(__nodeLabel10);
+    renderer.endRender();
+    renderer.beginRender(__nodeLabel11);
+    renderer.endRender();
+    renderer.endRender();
+    renderer.endRender();
+    renderer.beginRender(__nodeView7);
+    renderer.beginRender(__nodeLabel12);
+    renderer.endRender();
+    renderer.beginRender(__nodeLabel13);
+    renderer.endRender();
+    renderer.beginRender(__nodeView8);
+    renderer.beginRender(__nodeLabel14);
+    renderer.endRender();
+    renderer.beginRender(__nodeView9);
+    renderer.beginRender(__nodeLabel15);
+    renderer.endRender();
+    renderer.beginRender(__nodeView10);
+    renderer.beginRender(__nodeLabel16);
+    renderer.endRender();
+    renderer.endRender();
+    renderer.endRender();
+    renderer.endRender();
+    renderer.endRender();
+    renderer.endRender();
+    renderer.endRender();
+}
+class CSSBenchmarkComponent extends Valdi_1.LegacyVueComponent {
+}
+exports.ComponentClass = CSSBenchmarkComponent;
+const elements = ['button', 'root', 'text-demo', 'toggleButton'];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

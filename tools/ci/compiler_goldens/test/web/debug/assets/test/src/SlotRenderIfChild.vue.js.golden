@@ -1,0 +1,3 @@
+module.path = "test/src/SlotRenderIfChild.vue";
+"use strict";
+// no-op

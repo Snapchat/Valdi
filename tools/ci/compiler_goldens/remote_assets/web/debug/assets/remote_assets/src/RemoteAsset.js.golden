@@ -1,0 +1,18 @@
+module.path = "remote_assets/src/RemoteAsset";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.RemoteAsset = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view');
+const __nodeImage1 = __Renderer.makeNodePrototype('image', ['id', 'imageView']);
+const Component_1 = require("valdi_core/src/Component");
+class RemoteAsset extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeImage1, undefined);
+        __Renderer.setAttributeString('src', this.viewModel.src);
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+}
+exports.RemoteAsset = RemoteAsset;

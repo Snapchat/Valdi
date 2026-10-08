@@ -1,0 +1,63 @@
+module.path = "local/src/RemoteAsyncLoadComponent.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const RemoteAsyncLoadComponent_vue_1 = require("./RemoteAsyncLoadComponent.vue.js");
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const RemoteComponent = require("remote/src/RemoteComponent.vue.generated");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('local/src/RemoteAsyncLoadComponent.vue.valdicss');
+const __nodeRemoteAsyncLoadComponent = renderer.makeNodePrototype('layout', [
+    'cssDocument', __cssDocument,
+    'tag', 'RemoteAsyncLoadComponent'
+]);
+const __nodeView = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'View'
+]);
+const __nodeLabel = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'Error occured'
+]);
+const __nodeView2 = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'View'
+]);
+const __nodeLabel2 = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label',
+    'value', 'We are not loaded'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeRemoteAsyncLoadComponent);
+    const __renderIfResult2 = !(!(state === null || state === void 0 ? void 0 : state.isError));
+    if (__renderIfResult2) {
+        renderer.beginRender(__nodeView);
+        renderer.beginRender(__nodeLabel);
+        renderer.endRender();
+        renderer.endRender();
+    }
+    const __renderIfResult4 = !__renderIfResult2 && !(!(!(state === null || state === void 0 ? void 0 : state.isLoaded)));
+    if (__renderIfResult4) {
+        renderer.beginRender(__nodeView2);
+        renderer.beginRender(__nodeLabel2);
+        renderer.endRender();
+        renderer.endRender();
+    }
+    const __renderIfResult6 = !__renderIfResult2 && !__renderIfResult4 && !(!(true));
+    if (__renderIfResult6) {
+        renderer.beginComponentWithoutPrototype(RemoteComponent.ComponentClass, undefined, undefined);
+        renderer.setInjectedAttribute('$cssDocument', __cssDocument);
+        renderer.setInjectedAttribute('$tag', 'RemoteComponent');
+        renderer.endComponent();
+    }
+    renderer.endRender();
+}
+exports.ComponentClass = RemoteAsyncLoadComponent_vue_1.RemoteAsyncLoadComponent;
+const elements = [];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

@@ -1,0 +1,24 @@
+module.path = "test/src/SlotApplyAttribute.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const SlotApplyAttribute_vue_1 = require("./SlotApplyAttribute.vue.js");
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/SlotApplyAttribute.vue.valdicss');
+const __nodeSlotApplyAttribute = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'SlotApplyAttribute'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeSlotApplyAttribute);
+    renderer.renderNamedSlot('default', this, this.slotRef);
+    renderer.endRender();
+}
+exports.ComponentClass = SlotApplyAttribute_vue_1.MyComponent;
+const elements = [];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

@@ -1,0 +1,32 @@
+module.path = "test/src/AssetLoading.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const AssetLoading_vue_1 = require("./AssetLoading.vue.js");
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/AssetLoading.vue.valdicss');
+const __nodeAssetLoading = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'AssetLoading'
+]);
+const __nodeImageView = renderer.makeNodePrototype('image', [
+    'cssDocument', __cssDocument,
+    'id', 'imageView',
+    'tag', 'ImageView'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeAssetLoading);
+    renderer.beginRender(__nodeImageView);
+    renderer.setAttribute('src', viewModel.src);
+    renderer.setAttribute('ref', this.elementRefs['imageView']);
+    renderer.endRender();
+    renderer.endRender();
+}
+exports.ComponentClass = AssetLoading_vue_1.MyComponent;
+const elements = ['imageView'];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

@@ -1,0 +1,28 @@
+module.path = "test/src/NativeNode";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.NativeNodeComponent = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view');
+const __nodeView2 = __Renderer.makeNodePrototype('view', ['backgroundColor', "red"]);
+const Component_1 = require("valdi_core/src/Component");
+const ElementRef_1 = require("valdi_core/src/ElementRef");
+class NativeNodeComponent extends Component_1.Component {
+    constructor() {
+        super(...arguments);
+        this.ref = new ElementRef_1.ElementRef();
+    }
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeView2, undefined);
+        __Renderer.setAttributeRef(this.ref);
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+    // Called from the C++ test
+    receiveNode(receiver) {
+        const node = this.ref.single().getNativeNode();
+        receiver(node);
+    }
+}
+exports.NativeNodeComponent = NativeNodeComponent;

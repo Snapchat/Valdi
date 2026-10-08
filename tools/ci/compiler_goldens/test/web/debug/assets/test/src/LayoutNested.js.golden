@@ -1,0 +1,32 @@
+module.path = "test/src/LayoutNested";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.LayoutNested = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view', ['flexDirection', "column"]);
+const __nodeView2 = __Renderer.makeNodePrototype('view', ['id', "topRow", 'flexDirection', "row", 'height', 100]);
+const __nodeView3 = __Renderer.makeNodePrototype('view', ['id', "left", 'flexGrow', 1]);
+const __nodeView4 = __Renderer.makeNodePrototype('view', ['id', "right", 'flexGrow', 1]);
+const __nodeView5 = __Renderer.makeNodePrototype('view', ['id', "bottomCol", 'flexDirection', "column", 'flexGrow', 1]);
+const __nodeView6 = __Renderer.makeNodePrototype('view', ['id', "topItem", 'height', 100]);
+const __nodeView7 = __Renderer.makeNodePrototype('view', ['id', "bottomItem", 'flexGrow', 1]);
+const Component_1 = require("valdi_core/src/Component");
+class LayoutNested extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeView2, undefined);
+        __Renderer.beginRender(__nodeView3, undefined);
+        __Renderer.endRender();
+        __Renderer.beginRender(__nodeView4, undefined);
+        __Renderer.endRender();
+        __Renderer.endRender();
+        __Renderer.beginRender(__nodeView5, undefined);
+        __Renderer.beginRender(__nodeView6, undefined);
+        __Renderer.endRender();
+        __Renderer.beginRender(__nodeView7, undefined);
+        __Renderer.endRender();
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+}
+exports.LayoutNested = LayoutNested;

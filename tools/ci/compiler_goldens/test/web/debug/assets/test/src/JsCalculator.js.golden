@@ -1,0 +1,39 @@
+module.path = "test/src/JsCalculator";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.makeCalculator = void 0;
+class JsCalculator {
+    constructor() {
+        this._value = 0;
+    }
+    add(value) {
+        this._value += value;
+    }
+    sub(value) {
+        this._value -= value;
+    }
+    mul(value) {
+        this._value *= value;
+    }
+    div(value) {
+        this._value /= value;
+    }
+    total() {
+        return this._value;
+    }
+    toString(format) {
+        switch (format) {
+            case 1 /* CalculatorToStringFormat.DECIMAL */:
+                return this._value % 1 === 0 ? this._value.toFixed(1) : this._value.toString();
+            case 2 /* CalculatorToStringFormat.INTEGER */:
+                return Math.floor(this._value).toString();
+        }
+    }
+}
+/**
+ * @ExportFunction
+ */
+function makeCalculator() {
+    return new JsCalculator();
+}
+exports.makeCalculator = makeCalculator;

@@ -1,0 +1,3 @@
+module.path = "test/src/ComponentInsideSlot.vue";
+"use strict";
+// no-op

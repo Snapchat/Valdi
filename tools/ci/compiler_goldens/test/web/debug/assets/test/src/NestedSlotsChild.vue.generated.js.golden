@@ -1,0 +1,40 @@
+module.path = "test/src/NestedSlotsChild.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const NestedSlotsChild_vue_1 = require("./NestedSlotsChild.vue.js");
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/NestedSlotsChild.vue.valdicss');
+const __nodeNestedSlotsChild = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'NestedSlotsChild'
+]);
+const __nodeView = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'id', 'beforeNestedSlot',
+    'tag', 'View'
+]);
+const __nodeView2 = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'id', 'afterNestedSlot',
+    'tag', 'View'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeNestedSlotsChild);
+    renderer.beginRender(__nodeView);
+    renderer.setAttribute('ref', this.elementRefs['beforeNestedSlot']);
+    renderer.endRender();
+    renderer.renderNamedSlot('default', this);
+    renderer.beginRender(__nodeView2);
+    renderer.setAttribute('ref', this.elementRefs['afterNestedSlot']);
+    renderer.endRender();
+    renderer.endRender();
+}
+exports.ComponentClass = NestedSlotsChild_vue_1.MyComponent;
+const elements = ['afterNestedSlot', 'beforeNestedSlot'];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

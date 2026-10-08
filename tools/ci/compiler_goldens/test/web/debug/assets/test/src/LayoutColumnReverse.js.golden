@@ -1,0 +1,23 @@
+module.path = "test/src/LayoutColumnReverse";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.LayoutColumnReverse = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view', ['flexDirection', "column-reverse"]);
+const __nodeView2 = __Renderer.makeNodePrototype('view', ['id', "first", 'width', 100, 'height', 50]);
+const __nodeView3 = __Renderer.makeNodePrototype('view', ['id', "second", 'width', 100, 'height', 50]);
+const __nodeView4 = __Renderer.makeNodePrototype('view', ['id', "third", 'width', 100, 'height', 50]);
+const Component_1 = require("valdi_core/src/Component");
+class LayoutColumnReverse extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeView2, undefined);
+        __Renderer.endRender();
+        __Renderer.beginRender(__nodeView3, undefined);
+        __Renderer.endRender();
+        __Renderer.beginRender(__nodeView4, undefined);
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+}
+exports.LayoutColumnReverse = LayoutColumnReverse;

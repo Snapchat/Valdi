@@ -1,0 +1,18 @@
+module.path = "test/src/ErrorHandler";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.emitRejectedPromise = exports.emitUncaughtError = void 0;
+function emitUncaughtError(handler) {
+    runtime.setUncaughtExceptionHandler(handler);
+    setTimeout(() => {
+        throw new Error('This has thrown an error');
+    });
+}
+exports.emitUncaughtError = emitUncaughtError;
+function emitRejectedPromise(handler) {
+    runtime.setUnhandledRejectionHandler(handler);
+    new Promise((resolve, reject) => {
+        reject(new Error('This promise has failed'));
+    });
+}
+exports.emitRejectedPromise = emitRejectedPromise;

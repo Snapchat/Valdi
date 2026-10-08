@@ -1,0 +1,26 @@
+module.path = "test/src/NativeModuleReference";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.callCallback2 = exports.callCallback1 = exports.NativeModuleReference = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const Component_1 = require("valdi_core/src/Component");
+const nativeModule = require('NativeModuleReferenceTest');
+let callback1;
+let callback2;
+class NativeModuleReference extends Component_1.Component {
+    onCreate() {
+        // We emit those native callbacks under the NativeModuleReference's Context
+        // which we store as global so that we can later call them in the global Context
+        callback1 = nativeModule.makeCallback1();
+        callback2 = nativeModule.makeCallback2();
+    }
+}
+exports.NativeModuleReference = NativeModuleReference;
+function callCallback1() {
+    return callback1();
+}
+exports.callCallback1 = callCallback1;
+function callCallback2() {
+    return callback2();
+}
+exports.callCallback2 = callCallback2;

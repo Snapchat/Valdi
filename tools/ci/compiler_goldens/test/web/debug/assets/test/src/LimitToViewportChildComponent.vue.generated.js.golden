@@ -1,0 +1,34 @@
+module.path = "test/src/LimitToViewportChildComponent.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const LimitToViewportChildComponent_vue_1 = require("./LimitToViewportChildComponent.vue.js");
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/LimitToViewportChildComponent.vue.valdicss');
+const __nodeLimitToViewportChildComponent = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'LimitToViewportChildComponent'
+]);
+const __nodeView = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'id', 'slotContainer',
+    'tag', 'View'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeLimitToViewportChildComponent);
+    renderer.beginRender(__nodeView);
+    renderer.setAttribute('ref', this.elementRefs['slotContainer']);
+    renderer.renderNamedSlot('default', this, LimitToViewportChildComponent_vue_1.slotRef);
+    renderer.endRender();
+    renderer.endRender();
+}
+class LimitToViewportChildComponentComponent extends Valdi_1.LegacyVueComponent {
+}
+exports.ComponentClass = LimitToViewportChildComponentComponent;
+const elements = ['slotContainer'];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

@@ -1,0 +1,3 @@
+module.path = "test/src/ForEachKeys.vue";
+"use strict";
+// no-op

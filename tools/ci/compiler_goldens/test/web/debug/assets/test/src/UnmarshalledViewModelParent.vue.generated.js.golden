@@ -1,0 +1,30 @@
+module.path = "test/src/UnmarshalledViewModelParent.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const UnmarshalledViewModelParent_vue_1 = require("./UnmarshalledViewModelParent.vue.js");
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const UnmarshalledViewModelChild = require("test/src/UnmarshalledViewModelChild.vue.generated");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/UnmarshalledViewModelParent.vue.valdicss');
+const __nodeUnmarshalledViewModelParent = renderer.makeNodePrototype('layout', [
+    'cssDocument', __cssDocument,
+    'tag', 'UnmarshalledViewModelParent'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeUnmarshalledViewModelParent);
+    renderer.beginComponentWithoutPrototype(UnmarshalledViewModelChild.ComponentClass, undefined, undefined);
+    renderer.setInjectedAttribute('$ref', this.elementRefs['child']);
+    renderer.setInjectedAttribute('$cssDocument', __cssDocument);
+    renderer.setInjectedAttribute('$id', 'child');
+    renderer.setInjectedAttribute('$tag', 'UnmarshalledViewModelChild');
+    renderer.endComponent();
+    renderer.endRender();
+}
+exports.ComponentClass = UnmarshalledViewModelParent_vue_1.MyComponent;
+const elements = ['child'];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

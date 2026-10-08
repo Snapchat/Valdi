@@ -1,0 +1,46 @@
+module.path = "test/src/SlotApplyAttributeParent.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const SlotApplyAttribute = require("test/src/SlotApplyAttribute.vue.generated");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/SlotApplyAttributeParent.vue.valdicss');
+const __nodeSlotApplyAttributeParent = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'SlotApplyAttributeParent'
+]);
+const __nodeLabel = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'id', 'myChild',
+    'tag', 'Label'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeSlotApplyAttributeParent);
+    renderer.beginComponentWithoutPrototype(SlotApplyAttribute.ComponentClass, undefined, undefined);
+    renderer.setViewModelProperty('valueInSlot', viewModel.valueInSlot);
+    renderer.setInjectedAttribute('$cssDocument', __cssDocument);
+    renderer.setInjectedAttribute('$tag', 'SlotApplyAttribute');
+    renderer.setNamedSlot('default', () => {
+        let __indexMyChild = 0;
+        for (const value of [0, 1]) {
+            const __key = (__indexMyChild).toString();
+            renderer.beginRender(__nodeLabel, __key);
+            renderer.setAttribute('value', 'Item ' + value);
+            renderer.setAttribute('ref', this.elementRefs['myChild']);
+            renderer.endRender();
+            __indexMyChild += 1;
+        }
+    });
+    renderer.endComponent();
+    renderer.endRender();
+}
+class SlotApplyAttributeParentComponent extends Valdi_1.LegacyVueComponent {
+}
+exports.ComponentClass = SlotApplyAttributeParentComponent;
+const elements = ['myChild'];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

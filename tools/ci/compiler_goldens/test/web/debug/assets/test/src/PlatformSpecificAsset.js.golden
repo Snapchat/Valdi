@@ -1,0 +1,25 @@
+module.path = "test/src/PlatformSpecificAsset";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.PlatformSpecificAsset = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view');
+const __nodeImage1 = __Renderer.makeNodePrototype('image');
+const Asset_1 = require("valdi_core/src/Asset");
+const Component_1 = require("valdi_core/src/Component");
+class PlatformSpecificAsset extends Component_1.Component {
+    onViewModelUpdate() {
+        const platformOverrides = {
+            ios: this.viewModel.iOSOverrideAsset
+        };
+        this.asset = (0, Asset_1.makePlatformSpecificAsset)(this.viewModel.defaultAsset, platformOverrides);
+    }
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeImage1, undefined);
+        __Renderer.setAttribute('src', this.asset);
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+}
+exports.PlatformSpecificAsset = PlatformSpecificAsset;

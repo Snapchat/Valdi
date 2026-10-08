@@ -1,0 +1,53 @@
+module.path = "test/src/StaticAttributes.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/StaticAttributes.vue.valdicss');
+const __nodeStaticAttributes = renderer.makeNodePrototype('view', [
+    'color', 'white',
+    'cssDocument', __cssDocument,
+    'tag', 'StaticAttributes'
+]);
+const __nodeLabel = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'font', 'title',
+    'tag', 'Label',
+    'value', 'Title'
+]);
+const __nodeButton = renderer.makeNodePrototype('custom-view', [
+    'androidClass', 'com.snap.valdi.views.ValdiButton',
+    'cssDocument', __cssDocument,
+    'dummyHeight', 40,
+    'iosClass', 'UIButton',
+    'tag', 'Button',
+    'value', 'Button 1'
+]);
+const __nodeButton2 = renderer.makeNodePrototype('custom-view', [
+    'androidClass', 'com.snap.valdi.views.ValdiButton',
+    'cssDocument', __cssDocument,
+    'dummyHeight', 45.0,
+    'iosClass', 'UIButton',
+    'tag', 'Button',
+    'value', 'Button 2'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeStaticAttributes);
+    renderer.beginRender(__nodeLabel);
+    renderer.endRender();
+    renderer.beginRender(__nodeButton);
+    renderer.endRender();
+    renderer.beginRender(__nodeButton2);
+    renderer.endRender();
+    renderer.endRender();
+}
+class StaticAttributesComponent extends Valdi_1.LegacyVueComponent {
+}
+exports.ComponentClass = StaticAttributesComponent;
+const elements = [];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

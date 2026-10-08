@@ -1,0 +1,40 @@
+module.path = "test/src/DynamicAttributes.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/DynamicAttributes.vue.valdicss');
+const __nodeDynamicAttributes = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'DynamicAttributes'
+]);
+const __nodeLabel = renderer.makeNodePrototype('label', [
+    'color', 'red',
+    'cssDocument', __cssDocument,
+    'tag', 'Label'
+]);
+const __nodeLabel2 = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeDynamicAttributes);
+    renderer.setAttribute('padding', viewModel === null || viewModel === void 0 ? void 0 : viewModel.padding);
+    renderer.beginRender(__nodeLabel);
+    renderer.setAttribute('value', viewModel === null || viewModel === void 0 ? void 0 : viewModel.title);
+    renderer.endRender();
+    renderer.beginRender(__nodeLabel2);
+    renderer.setAttribute('dummyHeight', viewModel === null || viewModel === void 0 ? void 0 : viewModel.subtitleHeight);
+    renderer.endRender();
+    renderer.endRender();
+}
+class DynamicAttributesComponent extends Valdi_1.LegacyVueComponent {
+}
+exports.ComponentClass = DynamicAttributesComponent;
+const elements = [];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

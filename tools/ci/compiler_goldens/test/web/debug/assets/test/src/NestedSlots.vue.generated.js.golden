@@ -1,0 +1,38 @@
+module.path = "test/src/NestedSlots.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const NestedSlots_vue_1 = require("./NestedSlots.vue.js");
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const NestedSlotsParent = require("test/src/NestedSlotsParent.vue.generated");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/NestedSlots.vue.valdicss');
+const __nodeNestedSlots = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'NestedSlots'
+]);
+const __nodeView = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'id', 'deepInside',
+    'tag', 'View'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeNestedSlots);
+    renderer.beginComponentWithoutPrototype(NestedSlotsParent.ComponentClass, undefined, undefined);
+    renderer.setInjectedAttribute('$cssDocument', __cssDocument);
+    renderer.setInjectedAttribute('$tag', 'NestedSlotsParent');
+    renderer.setNamedSlot('default', () => {
+        renderer.beginRender(__nodeView);
+        renderer.setAttribute('ref', this.elementRefs['deepInside']);
+        renderer.endRender();
+    });
+    renderer.endComponent();
+    renderer.endRender();
+}
+exports.ComponentClass = NestedSlots_vue_1.MyComponent;
+const elements = ['deepInside'];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

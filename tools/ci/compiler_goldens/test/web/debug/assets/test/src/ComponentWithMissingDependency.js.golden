@@ -1,0 +1,20 @@
+module.path = "test/src/ComponentWithMissingDependency";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.MyComponent = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view');
+const __nodeLabel1 = __Renderer.makeNodePrototype('label');
+const Component_1 = require("valdi_core/src/Component");
+// We inject this file only through hot reload.
+const value = require('./NewFile.js').value;
+class MyComponent extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeLabel1, undefined);
+        __Renderer.setAttributeString('value', value);
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+}
+exports.MyComponent = MyComponent;

@@ -1,0 +1,23 @@
+module.path = "test/src/LayoutRowReverse";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.LayoutRowReverse = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view', ['flexDirection', "row-reverse"]);
+const __nodeView2 = __Renderer.makeNodePrototype('view', ['id', "first", 'width', 60, 'height', 40]);
+const __nodeView3 = __Renderer.makeNodePrototype('view', ['id', "second", 'width', 60, 'height', 40]);
+const __nodeView4 = __Renderer.makeNodePrototype('view', ['id', "third", 'width', 60, 'height', 40]);
+const Component_1 = require("valdi_core/src/Component");
+class LayoutRowReverse extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.beginRender(__nodeView2, undefined);
+        __Renderer.endRender();
+        __Renderer.beginRender(__nodeView3, undefined);
+        __Renderer.endRender();
+        __Renderer.beginRender(__nodeView4, undefined);
+        __Renderer.endRender();
+        __Renderer.endRender();
+    }
+}
+exports.LayoutRowReverse = LayoutRowReverse;

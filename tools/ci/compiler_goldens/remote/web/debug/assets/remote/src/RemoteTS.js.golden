@@ -1,0 +1,8 @@
+module.path = "remote/src/RemoteTS";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.add = void 0;
+function add(left, right) {
+    return `${left.toString()} + ${right.toString()} = ${(left + right).toString()}`;
+}
+exports.add = add;

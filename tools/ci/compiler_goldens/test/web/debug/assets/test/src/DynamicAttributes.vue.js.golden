@@ -1,0 +1,3 @@
+module.path = "test/src/DynamicAttributes.vue";
+"use strict";
+// no-op

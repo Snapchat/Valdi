@@ -1,0 +1,46 @@
+module.path = "test/src/BidirectionalAttributes.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/BidirectionalAttributes.vue.valdicss');
+const __nodeBidirectionalAttributes = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'BidirectionalAttributes'
+]);
+const __nodeView = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'id', 'container',
+    'tag', 'View'
+]);
+const __nodeLabel = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'id', 'label',
+    'tag', 'Label'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeBidirectionalAttributes);
+    let __indexContainer = 0;
+    for (const label of viewModel.labels) {
+        const __key = (__indexContainer).toString();
+        renderer.beginRender(__nodeView, __key);
+        renderer.setAttribute('ref', this.elementRefs['container']);
+        renderer.beginRender(__nodeLabel);
+        renderer.setAttribute('value', label);
+        renderer.setAttribute('ref', this.elementRefs['label']);
+        renderer.endRender();
+        renderer.endRender();
+        __indexContainer += 1;
+    }
+    renderer.endRender();
+}
+class BidirectionalAttributesComponent extends Valdi_1.LegacyVueComponent {
+}
+exports.ComponentClass = BidirectionalAttributesComponent;
+const elements = ['container', 'label'];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

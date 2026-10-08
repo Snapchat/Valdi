@@ -1,0 +1,37 @@
+module.path = "test/src/ForEachKeyItem.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const ForEachKeyItem_vue_1 = require("./ForEachKeyItem.vue.js");
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/ForEachKeyItem.vue.valdicss');
+const __nodeForEachKeyItem = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'ForEachKeyItem'
+]);
+const __nodeLabel = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label'
+]);
+const __nodeLabel2 = renderer.makeNodePrototype('label', [
+    'cssDocument', __cssDocument,
+    'tag', 'Label'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeForEachKeyItem);
+    renderer.beginRender(__nodeLabel);
+    renderer.setAttribute('value', this.idUsedOnCreate);
+    renderer.endRender();
+    renderer.beginRender(__nodeLabel2);
+    renderer.setAttribute('value', viewModel.id);
+    renderer.endRender();
+    renderer.endRender();
+}
+exports.ComponentClass = ForEachKeyItem_vue_1.MyComponent;
+const elements = [];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);

@@ -1,0 +1,40 @@
+module.path = "test/src/SlotRenderIfParent.vue.generated";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ComponentClass = void 0;
+const Valdi_1 = require("valdi_core/src/Valdi");
+const JSX = require("valdi_core/src/JSX");
+const renderer = JSX.jsx;
+const CSSModule_1 = require("valdi_core/src/CSSModule");
+const SlotRenderIfChild = require("test/src/SlotRenderIfChild.vue.generated");
+const __cssDocument = (0, CSSModule_1.getNativeModule)('test/src/SlotRenderIfParent.vue.valdicss');
+const __nodeSlotRenderIfParent = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'tag', 'SlotRenderIfParent'
+]);
+const __nodeView = renderer.makeNodePrototype('view', [
+    'cssDocument', __cssDocument,
+    'id', 'child',
+    'tag', 'View'
+]);
+function renderTemplate() {
+    const viewModel = this.viewModel;
+    const state = this.state;
+    renderer.beginRender(__nodeSlotRenderIfParent);
+    renderer.beginComponentWithoutPrototype(SlotRenderIfChild.ComponentClass, undefined, undefined);
+    renderer.setViewModelProperties(viewModel && viewModel.childViewModel);
+    renderer.setInjectedAttribute('$cssDocument', __cssDocument);
+    renderer.setInjectedAttribute('$tag', 'SlotRenderIfChild');
+    renderer.setNamedSlot('default', () => {
+        renderer.beginRender(__nodeView);
+        renderer.setAttribute('ref', this.elementRefs['child']);
+        renderer.endRender();
+    });
+    renderer.endComponent();
+    renderer.endRender();
+}
+class SlotRenderIfParentComponent extends Valdi_1.LegacyVueComponent {
+}
+exports.ComponentClass = SlotRenderIfParentComponent;
+const elements = ['child'];
+Valdi_1.LegacyVueComponent.setup(exports.ComponentClass, elements, renderTemplate);
