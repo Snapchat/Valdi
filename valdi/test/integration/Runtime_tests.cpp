@@ -18,6 +18,7 @@
 #include "valdi/runtime/Resources/ValdiModuleArchive.hpp"
 #include "valdi/runtime/Runtime.hpp"
 #include "valdi/runtime/Utils/Disposable.hpp"
+#include "valdi/runtime/Utils/ShutdownUtils.hpp"
 #include "valdi/runtime/ValdiRuntimeTweaks.hpp"
 #include "valdi_core/cpp/Attributes/TextAttributeValue.hpp"
 #include "valdi_core/cpp/Constants.hpp"
@@ -186,7 +187,8 @@ static Result<Value> getJsModuleWithSchema(
     auto moduleIndex = runtime->getJavaScriptRuntime()->pushModuleToMarshaller(
         nativeObjectsManager, StringCache::getGlobal().makeString(moduleName), marshaller);
     if (!exceptionTracker) {
-        return Error(STRING_FORMAT("Couldn't resolve module '{}'", moduleName));
+        return Error(
+            STRING_FORMAT("Couldn't resolve module '{}': {}", moduleName, exceptionTracker.extractError().toString()));
     }
 
     return marshaller.get(moduleIndex);
@@ -7221,6 +7223,284 @@ TEST_P(RuntimeFixture, initFailedRuntimeSkipsQueuedWorkWhileContextAlive) {
 }
 
 namespace {
+// RuntimeManager::applicationWillTerminate sets a process-global flag that nothing resets in
+// production (the process exits right after). Restore it so later tests can enqueue load operations.
+struct ApplicationShutdownScope {
+    ~ApplicationShutdownScope() {
+        Valdi::setApplicationShuttingDown(false);
+    }
+};
+
+// The remotely controllable teardown flags (VALDI_ENABLE_RESOLUTION_TEARDOWN_DEGRADE,
+// VALDI_USE_COOPERATIVE_TERMINATION, VALDI_JOIN_JS_THREAD_ON_TEARDOWN,
+// VALDI_REFUSE_DISPATCH_AFTER_JS_QUEUE_TEARDOWN). All default on.
+struct TeardownFlags {
+    bool degrade = true;
+    bool cooperative = true;
+    bool join = true;
+    bool refuse = true;
+
+    void applyTo(JavaScriptRuntime* javaScriptRuntime) const {
+        javaScriptRuntime->setResolutionTeardownDegradeEnabled(degrade);
+        javaScriptRuntime->setCooperativeTermination(cooperative);
+        javaScriptRuntime->setJoinJsThreadOnTeardown(join);
+        javaScriptRuntime->setRefuseDispatchAfterJsQueueTeardown(refuse);
+    }
+
+    std::string toString() const {
+        return STRING_FORMAT("degrade={} cooperative={} join={} refuse={}", degrade, cooperative, join, refuse)
+            .slowToString();
+    }
+};
+
+// Production exits right after applicationWillTerminate and never releases a terminated runtime: its
+// JS context stays alive and keeps the runtime retained. Tests that terminate use their own runtime
+// and leak it on purpose instead of tearing down the fixture's. The list is itself never destroyed so the
+// leaked runtimes stay reachable for LeakSanitizer through process exit.
+RuntimeWrapper& makeRuntimeForTermination(RuntimeWrapper& fixtureWrapper,
+                                          Valdi::IJavaScriptBridge* jsBridge,
+                                          TSNMode tsnMode) {
+    // Let the fixture's runtime finish initializing first: Hermes is not safe to initialize two runtimes
+    // concurrently.
+    fixtureWrapper.runtime->getJavaScriptRuntime()->dispatchSynchronouslyOnJsThread(STRING_LITERAL("test.runtime"),
+                                                                                    [](auto& /*jsEntry*/) {});
+    static auto* terminatedRuntimes = new std::vector<std::unique_ptr<RuntimeWrapper>>();
+    terminatedRuntimes->push_back(std::make_unique<RuntimeWrapper>(jsBridge, tsnMode));
+    return *terminatedRuntimes->back();
+}
+
+Result<Value> resolveAndCallCompute(RuntimeWrapper& wrapper) {
+    return callFunctionSync(wrapper, "test/src/NativeModule", "compute", {});
+}
+
+// Waits until `javaScriptRuntime` reports disposed: applicationWillTerminate marks it disposed before
+// disposing its JS queue, then waits for the in-flight task.
+bool waitUntilDisposed(JavaScriptRuntime* javaScriptRuntime) {
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!javaScriptRuntime->isDisposed()) {
+        if (std::chrono::steady_clock::now() > deadline) {
+            return false;
+        }
+        std::this_thread::yield();
+    }
+    return true;
+}
+
+// Drives applicationWillTerminate on its own thread (main, in production) while a task parked on the
+// JS thread waits for termination to start, then resolves and calls a bridge function.
+// `onTerminationStarted` runs once the runtime is disposed and before the parked task resumes.
+Result<Value> resolveAndCallFromJsThreadDuringApplicationWillTerminate(RuntimeWrapper& wrapper,
+                                                                       const TeardownFlags& flags,
+                                                                       std::function<void()> onTerminationStarted) {
+    auto* javaScriptRuntime = wrapper.runtime->getJavaScriptRuntime();
+    flags.applyTo(javaScriptRuntime);
+
+    // Termination drops work that has not started, so the task must be running before it begins.
+    std::promise<void> running;
+    std::promise<void> resume;
+    auto resumeFuture = resume.get_future().share();
+    std::promise<Result<Value>> inFlightResult;
+    javaScriptRuntime->dispatchOnJsThreadAsync(STRING_LITERAL("test.runtime"), [&, resumeFuture](auto& /*jsEntry*/) {
+        running.set_value();
+        resumeFuture.wait();
+        inFlightResult.set_value(resolveAndCallCompute(wrapper));
+    });
+
+    auto inFlightResultFuture = inFlightResult.get_future();
+    running.get_future().wait();
+    std::thread terminatingThread([&]() { wrapper.runtimeManager->applicationWillTerminate(); });
+    EXPECT_TRUE(waitUntilDisposed(javaScriptRuntime)) << "termination did not start";
+    onTerminationStarted();
+    resume.set_value();
+    auto result = inFlightResultFuture.get();
+    terminatingThread.join();
+
+    TeardownFlags().applyTo(javaScriptRuntime);
+    return result;
+}
+
+void expectInFlightComputeSucceeded(const Result<Value>& result) {
+    ASSERT_TRUE(result) << "in-flight JS-thread resolution must not be skipped by termination: "
+                        << result.description();
+    ASSERT_TRUE(result.value().isNumber()) << result.value().toString();
+    ASSERT_EQ(50.0, result.value().toDouble());
+}
+} // namespace
+
+// iOS process termination: UIApplicationWillTerminateNotification -> RuntimeManager::applicationWillTerminate
+// -> partialTeardown() runs teardown inline on the main thread while JS-thread work (e.g. a queued
+// native callback waiting on the JS queue) is still executing. That work must still be able to resolve and call bridge
+// functions: the context is alive until the process exits, and a skipped resolution degrades to a no-op that
+// hands nil to nonnull callers.
+TEST_P(RuntimeFixture, jsThreadWorkInFlightAtApplicationWillTerminateStillResolvesAndCalls) {
+    auto& terminating = makeRuntimeForTermination(wrapper, getJsBridge(), getTSNMode());
+    ApplicationShutdownScope shutdownScope;
+    expectInFlightComputeSucceeded(
+        resolveAndCallFromJsThreadDuringApplicationWillTerminate(terminating, TeardownFlags(), []() {}));
+}
+
+// Only cooperative termination decides whether in-flight work survives termination: turning every other
+// teardown flag off must not change the outcome.
+TEST_P(RuntimeFixture, jsThreadWorkInFlightAtApplicationWillTerminateIsIndependentOfOtherTeardownFlags) {
+    auto& terminating = makeRuntimeForTermination(wrapper, getJsBridge(), getTSNMode());
+    ApplicationShutdownScope shutdownScope;
+    TeardownFlags flags;
+    flags.degrade = false;
+    flags.join = false;
+    flags.refuse = false;
+    expectInFlightComputeSucceeded(
+        resolveAndCallFromJsThreadDuringApplicationWillTerminate(terminating, flags, []() {}));
+}
+
+// With VALDI_USE_COOPERATIVE_TERMINATION off (aggressive), disposed work is skipped, so in-flight JS-thread
+// work at termination loses its resolution again. Pins what flipping that flag costs.
+TEST_P(RuntimeFixture, jsThreadWorkInFlightAtApplicationWillTerminateIsSkippedWithoutCooperativeTermination) {
+    auto& terminating = makeRuntimeForTermination(wrapper, getJsBridge(), getTSNMode());
+    ApplicationShutdownScope shutdownScope;
+    TeardownFlags flags;
+    flags.cooperative = false;
+    auto result = resolveAndCallFromJsThreadDuringApplicationWillTerminate(terminating, flags, []() {});
+    ASSERT_FALSE(result) << "expected the in-flight resolution to be skipped, got "
+                         << (result ? result.value().toString() : std::string());
+}
+
+// Same window with _running cleared when the JS queue is torn down, as teardownOnJsThread did before
+// flush-then-dispose. The in-flight resolution is then skipped and reported as a teardown
+// skip, which is what the degrade turns into the nil above. Pins that the tests above discriminate.
+TEST_P(RuntimeFixture, jsThreadWorkInFlightAtApplicationWillTerminateIsSkippedWhenTeardownClearsRunning) {
+    auto& terminating = makeRuntimeForTermination(wrapper, getJsBridge(), getTSNMode());
+    ApplicationShutdownScope shutdownScope;
+    auto* javaScriptRuntime = terminating.runtime->getJavaScriptRuntime();
+
+    auto result = resolveAndCallFromJsThreadDuringApplicationWillTerminate(
+        terminating, TeardownFlags(), [javaScriptRuntime]() { javaScriptRuntime->setRunningForTesting(false); });
+
+    ASSERT_FALSE(result) << "expected the in-flight resolution to be skipped, got "
+                         << (result ? result.value().toString() : std::string());
+}
+
+namespace {
+struct OffJsThreadOutcome {
+    std::optional<int32_t> resolutionErrorCode;
+    Result<Value> callResult;
+};
+
+// Resolves test/src/NativeModule and calls `preResolved` from a fresh thread, as Swift concurrency tasks
+// and queue performers do after termination.
+OffJsThreadOutcome resolveAndCallOffJsThread(JavaScriptRuntime* javaScriptRuntime,
+                                             const Ref<ValueFunction>& preResolved) {
+    OffJsThreadOutcome outcome;
+    std::thread([&]() {
+        SimpleExceptionTracker exceptionTracker;
+        Marshaller marshaller(exceptionTracker);
+        javaScriptRuntime->pushModuleToMarshaller(nullptr, STRING_LITERAL("test/src/NativeModule"), marshaller);
+        if (!exceptionTracker) {
+            outcome.resolutionErrorCode = exceptionTracker.extractError().getErrorCode();
+        }
+        outcome.callResult = preResolved->call(ValueFunctionFlagsCallSync, nullptr, 0);
+    }).join();
+    return outcome;
+}
+
+} // namespace
+
+// After applicationWillTerminate, background threads (Swift concurrency tasks, serial queues) still resolve and
+// call bridge functions. With refusal on (the default), every combination of the other teardown flags must
+// give a deterministic, non-raising outcome: resolution reports the distinguishable teardown code exactly
+// when the degrade is on (its kill switch omits it so resolution raises as before), and calling an
+// already-resolved function reports its owner as tearing down and yields undefined instead of running.
+TEST_P(RuntimeFixture, offJsThreadBridgeCallsAfterApplicationWillTerminateReportTeardown) {
+    auto& terminating = makeRuntimeForTermination(wrapper, getJsBridge(), getTSNMode());
+    ApplicationShutdownScope shutdownScope;
+    auto* javaScriptRuntime = terminating.runtime->getJavaScriptRuntime();
+    auto countSyncCallResult =
+        getJsModulePropertyAsUntypedFunction(terminating.runtime, nullptr, "test/src/NativeModule", "countSyncCall");
+    ASSERT_TRUE(countSyncCallResult) << countSyncCallResult.description();
+    auto countSyncCall = countSyncCallResult.value();
+
+    terminating.runtimeManager->applicationWillTerminate();
+    EXPECT_TRUE(countSyncCall->ownerIsTearingDown());
+
+    for (bool degrade : {true, false}) {
+        for (bool cooperative : {true, false}) {
+            for (bool join : {true, false}) {
+                TeardownFlags flags;
+                flags.degrade = degrade;
+                flags.cooperative = cooperative;
+                flags.join = join;
+                SCOPED_TRACE(flags.toString());
+                flags.applyTo(javaScriptRuntime);
+
+                auto outcome = resolveAndCallOffJsThread(javaScriptRuntime, countSyncCall);
+
+                ASSERT_TRUE(outcome.resolutionErrorCode.has_value())
+                    << "resolution after termination must report an error, not succeed";
+                if (degrade) {
+                    EXPECT_EQ(Valdi::kResolutionSkippedDuringTeardownErrorCode, outcome.resolutionErrorCode.value());
+                } else {
+                    EXPECT_NE(Valdi::kResolutionSkippedDuringTeardownErrorCode, outcome.resolutionErrorCode.value());
+                }
+                ASSERT_TRUE(outcome.callResult) << outcome.callResult.description();
+                EXPECT_TRUE(outcome.callResult.value().isUndefined()) << outcome.callResult.value().toString();
+            }
+        }
+    }
+
+    TeardownFlags().applyTo(javaScriptRuntime);
+}
+
+// With VALDI_REFUSE_DISPATCH_AFTER_JS_QUEUE_TEARDOWN off, off-JS-thread work after applicationWillTerminate
+// is no longer refused: the context is still alive and a GCD sync dispatch still runs (GCD's sync path does
+// not consult the destroyed flag), so resolution and calls succeed unless aggressive termination skips them
+// as disposed work. Pins the difference between the refusal (on master) and release builds without it, so
+// changing it is a deliberate decision. JSCore only: the threaded queues would run the task inline on the
+// calling thread, off the JS thread.
+TEST_P(RuntimeFixture, offJsThreadBridgeCallsAfterApplicationWillTerminateRunWhenNotRefused) {
+    if (!isJSCore()) {
+        GTEST_SKIP() << "only the GCD-backed JSCore queue still runs sync work after its teardown";
+    }
+    auto& terminating = makeRuntimeForTermination(wrapper, getJsBridge(), getTSNMode());
+    ApplicationShutdownScope shutdownScope;
+    auto* javaScriptRuntime = terminating.runtime->getJavaScriptRuntime();
+    // countSyncCall is plain JS; native module factories are no longer resolvable once termination finished.
+    auto countSyncCallResult =
+        getJsModulePropertyAsUntypedFunction(terminating.runtime, nullptr, "test/src/NativeModule", "countSyncCall");
+    ASSERT_TRUE(countSyncCallResult) << countSyncCallResult.description();
+    auto countSyncCall = countSyncCallResult.value();
+
+    terminating.runtimeManager->applicationWillTerminate();
+
+    for (bool cooperative : {true, false}) {
+        for (bool degrade : {true, false}) {
+            TeardownFlags flags;
+            flags.refuse = false;
+            flags.cooperative = cooperative;
+            flags.degrade = degrade;
+            SCOPED_TRACE(flags.toString());
+            flags.applyTo(javaScriptRuntime);
+
+            auto outcome = resolveAndCallOffJsThread(javaScriptRuntime, countSyncCall);
+
+            ASSERT_TRUE(outcome.callResult) << outcome.callResult.description();
+            if (cooperative) {
+                EXPECT_FALSE(outcome.resolutionErrorCode.has_value())
+                    << "unrefused resolution after termination must run, got code "
+                    << outcome.resolutionErrorCode.value_or(0);
+                EXPECT_TRUE(outcome.callResult.value().isNumber()) << outcome.callResult.value().toString();
+            } else {
+                ASSERT_TRUE(outcome.resolutionErrorCode.has_value())
+                    << "aggressive termination must skip disposed work even when not refused";
+                EXPECT_EQ(degrade,
+                          outcome.resolutionErrorCode.value() == Valdi::kResolutionSkippedDuringTeardownErrorCode);
+                EXPECT_TRUE(outcome.callResult.value().isUndefined()) << outcome.callResult.value().toString();
+            }
+        }
+    }
+
+    TeardownFlags().applyTo(javaScriptRuntime);
+}
+
+namespace {
 class ReleaseOrderProbe : public Disposable {
 public:
     bool dispose(std::unique_lock<Mutex>& /*disposablesLock*/) override {
@@ -7341,6 +7621,55 @@ TEST_P(RuntimeFixture, DISABLED_moduleResourceTrackerFreedUnderJsThreadIsUseAfte
     jsRuntime->freeModuleResourceTrackerForTesting();
     freed.set_value();
     jsSide.join();
+}
+
+// Android: a disposed worker runtime's last reference is dropped on a non-JS thread (in
+// production djinni's NativeObjectManager GC thread, via JSRuntime$CppProxy.nativeDestroy) while its JS
+// thread is still executing a task. ~JavaScriptRuntime's teardown early-returns for an already-disposed
+// runtime, so it used to skip quiescing the JS thread and free members such as the lock-free
+// _moduleResourceTracker that the running task still writes through. Dispatched tasks now retain the
+// runtime, so the drop returns immediately and destruction waits for the task, then completes on the
+// worker's own thread, so the queue tears itself down.
+//
+// The prior disposal is modeled with setDisposedForTesting: requestFullTeardown queues a teardown task that
+// itself retains the runtime, so it cannot leave the disposed-but-unjoined state this guards (older builds could).
+//
+// Red proof: setJoinJsThreadOnTeardown(false) on the worker before dispatching. The drop then blocks in the
+// dispatch queue's member destructor and the write lands in freed memory (heap-use-after-free under ASan).
+TEST_P(RuntimeFixture, disposedWorkerReleasedOffJsThreadWhileExecutingIsSafe) {
+    auto* hostRuntime = wrapper.runtime->getJavaScriptRuntime();
+    // Let the host finish initializing first: Hermes debugger registration is not safe to run concurrently
+    // from the host's and the worker's initialization.
+    hostRuntime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("test.runtime"), [](auto& /*jsEntry*/) {});
+    auto worker = hostRuntime->createWorker();
+    auto* workerRuntime = dynamic_cast<JavaScriptRuntime*>(worker.get());
+    ASSERT_NE(nullptr, workerRuntime);
+
+    std::promise<void> parked;
+    std::promise<void> release;
+    std::promise<void> taskFinished;
+    auto releaseFuture = release.get_future().share();
+    workerRuntime->dispatchOnJsThreadAsync(STRING_LITERAL("test.worker"), [&, workerRuntime, releaseFuture](auto&) {
+        auto* trackerEntry = workerRuntime->mutateAndGetModuleResourceTrackerBackForTesting();
+        parked.set_value();
+        releaseFuture.wait();
+        trackerEntry->memoryWaterMark = 42;
+        taskFinished.set_value();
+    });
+    parked.get_future().wait();
+
+    workerRuntime->setDisposedForTesting(true);
+    workerRuntime = nullptr;
+
+    auto dropped = std::async(std::launch::async, [worker = std::move(worker)]() mutable { worker.reset(); });
+    auto dropStatus = dropped.wait_for(std::chrono::seconds(5));
+
+    release.set_value();
+    dropped.wait();
+    taskFinished.get_future().wait();
+
+    EXPECT_EQ(std::future_status::ready, dropStatus)
+        << "dropping a disposed worker's last reference off its JS thread must not block on in-flight work";
 }
 
 // Verifies that a sync JS call from the main thread triggers the assertion when the module has

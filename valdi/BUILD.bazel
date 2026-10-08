@@ -766,6 +766,29 @@ ios_unit_test(
     deps = [":objc_unit_tests_lib"],
 )
 
+# Process termination tests post UIApplicationWillTerminateNotification, which reaches every live
+# SCValdiRuntimeManager and sets a process-global shutdown flag, so they get their own test bundle.
+ios_unit_test(
+    name = "valdi_ios_termination_test",
+    minimum_os_version = "13.0",
+    runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",
+    deps = [":termination_unit_tests_lib"],
+)
+
+objc_library(
+    name = "termination_unit_tests_lib",
+    testonly = True,
+    srcs = glob(["test/ios_termination/**/*.mm"]),
+    copts = ["-I."],
+    includes = ["src"],
+    module_name = "ValdiIosTerminationTests",
+    target_compatible_with = ["@platforms//os:ios"],
+    deps = [
+        ":valdi_ios",
+        "//src/valdi_modules/src/valdi/valdi_test:valdi_test_objc",
+    ],
+)
+
 objc_library(
     name = "objc_unit_tests_lib",
     testonly = True,

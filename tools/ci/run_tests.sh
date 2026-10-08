@@ -40,6 +40,7 @@ fi
 
 if [[ $(uname) != Linux ]] ; then
     bzl test //valdi:valdi_ios_objc_test --test_output=errors
+    bzl test //valdi:valdi_ios_termination_test --test_output=errors
     bzl test //valdi:valdi_ios_swift_test --test_output=errors
     bzl test //valdi:valdi_macos_objc_test --test_output=errors
 
