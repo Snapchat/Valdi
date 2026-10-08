@@ -1,0 +1,230 @@
+name: Triage
+
+# Runs on pull_request_target so it can comment on and close fork PRs. It never
+# checks out or executes PR code; it only calls the GitHub API.
+on:
+  pull_request_target:
+    types: [opened, reopened, labeled]
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: triage-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  pr-cap:
+    if: github.event_name == 'pull_request_target' && (github.event.action == 'opened' || github.event.action == 'reopened')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const PR_CAP = 5;
+            const CAP_LABEL = 'r: too-many-prs';
+            const OVERRIDE_LABEL = 'no-automation';
+            // Trusted outside contributors are added as Read collaborators, which
+            // marks their PRs COLLABORATOR without granting extra access.
+            const EXEMPT_ASSOCIATIONS = ['OWNER', 'MEMBER', 'COLLABORATOR'];
+            const WRITE_PERMISSIONS = ['admin', 'maintain', 'write', 'triage'];
+
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+            const pr = context.payload.pull_request;
+            const author = pr.user.login;
+            const labels = pr.labels.map(l => l.name);
+
+            if (labels.includes(OVERRIDE_LABEL)) return;
+            if (pr.user.type === 'Bot') return;
+            if (EXEMPT_ASSOCIATIONS.includes(pr.author_association)) return;
+
+            async function hasRepoAccess(login) {
+              try {
+                const { data } = await github.rest.repos.getCollaboratorPermissionLevel({ ...repo, username: login });
+                return WRITE_PERMISSIONS.includes(data.role_name) || WRITE_PERMISSIONS.includes(data.permission);
+              } catch (e) {
+                return false;
+              }
+            }
+
+            // Org membership can be private and invisible to GITHUB_TOKEN, so
+            // author_association alone under-reports maintainers.
+            if (await hasRepoAccess(author)) return;
+
+            // A maintainer reopening a capped PR is an explicit override.
+            if (context.payload.action === 'reopened' && await hasRepoAccess(context.payload.sender.login)) return;
+
+            const openPrs = await github.paginate(github.rest.pulls.list, { ...repo, state: 'open', per_page: 100 });
+            const authorPrs = openPrs.filter(p => p.user?.login === author);
+            if (authorPrs.length <= PR_CAP) return;
+
+            await github.rest.issues.addLabels({ ...repo, issue_number: pr.number, labels: [CAP_LABEL] });
+            await github.rest.issues.createComment({
+              ...repo,
+              issue_number: pr.number,
+              body: [
+                `Hi @${author}, thank you for your interest in contributing to Valdi.`,
+                '',
+                `To keep reviews manageable for our small maintainer team, we ask that each contributor have at most ${PR_CAP} pull requests open at a time. You currently have ${authorPrs.length}, so we've closed this one for now.`,
+                '',
+                'Once some of your open pull requests are merged or closed, you are welcome to reopen this one or open it again. If you believe this was a mistake, please let us know in a comment and a maintainer will take a look.',
+                '',
+                '<sub>This is an automated message.</sub>',
+              ].join('\n'),
+            });
+            await github.rest.pulls.update({ ...repo, pull_number: pr.number, state: 'closed' });
+
+  label-response:
+    if: github.event.action == 'labeled'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const OVERRIDE_LABEL = 'no-automation';
+            const DISCUSSIONS = 'https://github.com/Snapchat/Valdi/discussions';
+            const CONTRIBUTING = 'https://github.com/Snapchat/Valdi/blob/main/CONTRIBUTING.md';
+            const ISSUES = 'https://github.com/Snapchat/Valdi/issues/new/choose';
+            const HACKERONE = 'https://hackerone.com/snapchat';
+
+            const RESPONSES = {
+              'close: duplicate': {
+                reason: 'not_planned',
+                message: [
+                  'Thank you for the report. This appears to duplicate an existing issue, so we are closing this one to keep the discussion in a single place.',
+                  '',
+                  'Please follow the original issue for updates, and feel free to add any new details there.',
+                ],
+              },
+              'close: cannot-reproduce': {
+                reason: 'not_planned',
+                message: [
+                  'Thank you for the report. We were unable to reproduce this issue with the information provided, so we are closing it for now.',
+                  '',
+                  'If you can share a minimal project or exact steps that reproduce the problem on the latest version of Valdi, please comment here and we will be happy to take another look.',
+                ],
+              },
+              'close: needs-info': {
+                reason: 'not_planned',
+                message: [
+                  'Thank you for opening this. We need a bit more information before we can investigate, and we have not received it yet, so we are closing this issue for now.',
+                  '',
+                  `If you are still running into this, please comment with the requested details or open a new issue using one of our [issue forms](${ISSUES}).`,
+                ],
+              },
+              'close: not-planned': {
+                reason: 'not_planned',
+                message: [
+                  'Thank you for the suggestion. After review, this is not something we plan to take on in Valdi core at this time, so we are closing it.',
+                  '',
+                  `We appreciate you taking the time to share it. If you would like to continue the conversation, [GitHub Discussions](${DISCUSSIONS}) is a great place to explore ideas with the community.`,
+                ],
+              },
+              'r: support': {
+                reason: 'not_planned',
+                message: [
+                  `Thank you for reaching out. We use GitHub Issues to track bugs and planned work, so usage and setup questions are best asked in [GitHub Discussions](${DISCUSSIONS}), where the community and maintainers can help.`,
+                  '',
+                  'We are closing this issue, but please feel free to start a discussion there.',
+                ],
+              },
+              'r: feature-discussion': {
+                reason: 'not_planned',
+                message: [
+                  `Thank you for the proposal. As described in our [contributing guide](${CONTRIBUTING}), new features start as a [GitHub Discussion](${DISCUSSIONS}) so the community and the Valdi team can agree on the approach before code is written.`,
+                  '',
+                  'We are closing this for now. Please open a discussion, and once there is agreement on the direction, we will be glad to review an implementation.',
+                ],
+              },
+              'r: refactor-only': {
+                reason: 'not_planned',
+                message: [
+                  `Thank you for the contribution. We generally do not accept pull requests that only refactor or restyle code without fixing a concrete problem, because they are costly to review and can conflict with ongoing work. See our [contributing guide](${CONTRIBUTING}) for the kinds of changes we welcome.`,
+                  '',
+                  'We are closing this pull request. If this change addresses a specific bug or limitation, please describe it and link the related issue, and we will be glad to reconsider.',
+                ],
+              },
+              'r: security': {
+                reason: 'not_planned',
+                lock: 'resolved',
+                message: [
+                  `Thank you for raising this. To protect Valdi users, please report potential security vulnerabilities privately through [HackerOne](${HACKERONE}) rather than in a public issue.`,
+                  '',
+                  'We are closing and locking this thread so details are not discussed publicly. Our security team reviews every report submitted through HackerOne.',
+                ],
+              },
+              'r: spam': {
+                reason: 'not_planned',
+                lock: 'spam',
+                message: [
+                  'This has been closed and locked because it does not appear to be a genuine contribution or report.',
+                ],
+              },
+            };
+
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+            const item = context.payload.pull_request || context.payload.issue;
+            const isPr = !!context.payload.pull_request;
+            const labelName = context.payload.label.name;
+            const response = RESPONSES[labelName];
+            if (!response) return;
+            if (item.labels.some(l => l.name === OVERRIDE_LABEL)) return;
+
+            const marker = `<!-- triage-response: ${labelName} -->`;
+            const comments = await github.paginate(github.rest.issues.listComments, { ...repo, issue_number: item.number });
+            if (!comments.some(c => c.body && c.body.includes(marker))) {
+              await github.rest.issues.createComment({
+                ...repo,
+                issue_number: item.number,
+                body: [marker, ...response.message, '', '<sub>This is an automated message. A maintainer applied this label; reply here if you believe it was applied in error.</sub>'].join('\n'),
+              });
+            }
+
+            if (item.state === 'open') {
+              if (isPr) {
+                await github.rest.pulls.update({ ...repo, pull_number: item.number, state: 'closed' });
+              } else {
+                await github.rest.issues.update({ ...repo, issue_number: item.number, state: 'closed', state_reason: response.reason });
+              }
+            }
+
+            if (response.lock && !item.locked) {
+              await github.rest.issues.lock({ ...repo, issue_number: item.number, lock_reason: response.lock });
+            }
+
+  sync-labels:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+            const LABELS = [
+              { name: 'close: duplicate', color: 'cfd3d7', description: 'Closed as a duplicate of an existing issue' },
+              { name: 'close: cannot-reproduce', color: 'cfd3d7', description: 'Closed because the problem could not be reproduced' },
+              { name: 'close: needs-info', color: 'cfd3d7', description: 'Closed because requested information was not provided' },
+              { name: 'close: not-planned', color: 'cfd3d7', description: 'Closed because it is out of scope for Valdi core' },
+              { name: 'r: support', color: 'd4c5f9', description: 'Usage question; redirected to Discussions and closed' },
+              { name: 'r: feature-discussion', color: 'd4c5f9', description: 'Feature needs a Discussion first; closed' },
+              { name: 'r: refactor-only', color: 'd4c5f9', description: 'Refactor-only PR without a linked problem; closed' },
+              { name: 'r: security', color: 'b60205', description: 'Security report redirected to HackerOne; closed and locked' },
+              { name: 'r: spam', color: 'b60205', description: 'Spam; closed and locked' },
+              { name: 'r: too-many-prs', color: 'd4c5f9', description: 'Author exceeded the open pull request limit; closed' },
+              { name: 'no-automation', color: '000000', description: 'Maintainer override: triage automation skips this item' },
+            ];
+            for (const label of LABELS) {
+              try {
+                await github.rest.issues.updateLabel({ ...repo, name: label.name, color: label.color, description: label.description });
+                core.info(`Updated ${label.name}`);
+              } catch (e) {
+                if (e.status !== 404) throw e;
+                await github.rest.issues.createLabel({ ...repo, ...label });
+                core.info(`Created ${label.name}`);
+              }
+            }
