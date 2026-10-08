@@ -1,0 +1,104 @@
+name: Bug report
+description: Report something in Valdi that isn't working as expected.
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report a bug. A clear, reproducible report is the fastest path to a fix.
+
+        Before filing, please:
+        - Search [existing issues](https://github.com/Snapchat/Valdi/issues?q=is%3Aissue) to avoid duplicates.
+        - Check the [troubleshooting guide](https://github.com/Snapchat/Valdi/blob/main/docs/docs/help-troubleshooting.md).
+        - Report one problem per issue.
+
+        For usage questions, please use [GitHub Discussions](https://github.com/Snapchat/Valdi/discussions). To report a security vulnerability, please do not open a public issue; report it through [HackerOne](https://hackerone.com/snapchat) instead.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A short description of the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: |
+        The minimal steps needed to reproduce the problem. A small code snippet or a link to a minimal repository is the most helpful thing you can include.
+      placeholder: |
+        1. Create a new project with `valdi bootstrap`
+        2. Add the following component: ...
+        3. Run `valdi install ios`
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened, including any error messages. Screenshots or recordings are welcome.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Valdi version
+      description: The output of `valdi --version`, plus the Valdi release tag or commit your project depends on.
+      placeholder: "CLI 1.2.0, Valdi beta-0.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: target-platforms
+    attributes:
+      label: Affected target platforms
+      description: Select every platform where you have observed the problem.
+      multiple: true
+      options:
+        - iOS
+        - Android
+        - Web
+        - macOS
+        - Not platform-specific (CLI, compiler, or build)
+    validations:
+      required: true
+  - type: dropdown
+    id: dev-os
+    attributes:
+      label: Development machine
+      options:
+        - macOS (Apple Silicon)
+        - Linux
+        - Other (please describe in Additional context)
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and OS version
+      description: For runtime issues, the device or simulator and its OS version.
+      placeholder: "iPhone 16 simulator, iOS 26.0"
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`valdi doctor` output"
+      description: For install, build, or tooling issues, please paste the output of `valdi doctor`.
+      render: shell
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Build output, stack traces, or device logs. This field is automatically formatted as code.
+      render: shell
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that may help, such as a suspected cause or a recent change that introduced the problem.

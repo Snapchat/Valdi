@@ -1,0 +1,28 @@
+name: Documentation improvement
+description: Report missing, unclear, or incorrect documentation.
+title: "[Docs]: "
+labels: ["documentation", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve the Valdi documentation. Small fixes, such as typos or broken links, are also welcome directly as pull requests.
+  - type: input
+    id: location
+    attributes:
+      label: Location
+      description: The URL or file path of the page that needs improvement.
+      placeholder: "docs/docs/start-install.md"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is missing, unclear, or incorrect?
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested change
+      description: How you would improve it, if you have a suggestion.

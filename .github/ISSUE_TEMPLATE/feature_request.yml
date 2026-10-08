@@ -1,0 +1,40 @@
+name: Feature request
+description: Propose a well-scoped improvement to Valdi.
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping shape Valdi.
+
+        For new features, we ask that you first start a [GitHub Discussion](https://github.com/Snapchat/Valdi/discussions) so the community and the Valdi team can explore the idea together, as described in our [contributing guide](https://github.com/Snapchat/Valdi/blob/main/CONTRIBUTING.md). Use this form once there is a concrete, well-scoped proposal.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: The problem you are trying to solve or the use case that is currently difficult. Please focus on the problem rather than a specific solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How you would like Valdi to address this problem.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you have tried, or other approaches you considered.
+  - type: input
+    id: discussion
+    attributes:
+      label: Related discussion
+      description: A link to the GitHub Discussion for this proposal, if one exists.
+      placeholder: "https://github.com/Snapchat/Valdi/discussions/..."
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Examples from other frameworks, mockups, or anything else that helps explain the request.
