@@ -5,7 +5,7 @@
   </picture>
 </h1>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Platforms](https://img.shields.io/badge/platform-iOS%20%7C%20Android%20%7C%20macOS-lightgrey)](./docs/INSTALL.md)
 [![Status](https://img.shields.io/badge/status-beta-yellow)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue?logo=typescript)](https://www.typescriptlang.org/)
@@ -149,4 +149,4 @@ Please follow the [contributing](./CONTRIBUTING.md) guidelines.
 
 ## License
 
-Valdi is made available under the MIT [License](./LICENSE.md).
+Valdi is made available under the MIT [License](./LICENSE).

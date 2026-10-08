@@ -24,6 +24,34 @@ To contribute, follow these steps:
 - **Submit a pull request (PR)** with a clear description of the changes.
 - A maintainer will review your PR, suggest any necessary changes, and merge it once approved.
 
+All changes are reviewed and approved by the maintainer team. See [GOVERNANCE.md](./GOVERNANCE.md) for how decisions are made and how accepted pull requests are merged.
+
+### What makes a good pull request
+
+- **It solves a concrete problem.** Link the issue or Discussion it addresses, or describe the bug or limitation it fixes.
+- **It includes evidence.** Show that the change works: the commands you ran, test output, or screenshots and recordings for visual changes.
+- **It is focused.** One logical change per pull request. Smaller pull requests are reviewed faster.
+
+### Changes we generally do not accept
+
+To make the best use of reviewers' time, please do not open pull requests for:
+
+- Refactoring, reformatting, or renaming that does not fix a concrete problem.
+- Test-only or CI-only changes that are not tied to a reported bug.
+- New features that have not been discussed in a [GitHub Discussion](https://github.com/Snapchat/Valdi/discussions) first.
+- Broad changes that touch many unrelated areas of the codebase at once.
+- Many near-identical pull requests, such as the same small change applied file by file.
+
+Pull requests like these may be closed with a link to this section. If you are unsure whether a change is welcome, please ask in Discussions before starting.
+
+### Pull request limit
+
+Contributors who are not project collaborators may have up to five pull requests open at a time. Additional pull requests are closed automatically and can be reopened once some of your open pull requests are merged or closed.
+
+### AI-assisted contributions
+
+Contributions made with the help of AI tools are welcome, and disclosure is not required. They are held to the same standard as any other contribution: the pull request must address a concrete problem and include evidence that the change works. As the contributor, you are responsible for understanding and standing behind every line you submit, and for responding to review feedback.
+
 ### Commit Messages
 
 Use clear and descriptive commit messages. Follow the conventional commit format when possible:
@@ -55,11 +83,11 @@ To maintain a consistent codebase, please follow these guidelines:
 
 ## 5.  Reporting Issues
 
-If you find a bug or have a feature request, please open an issue and provide as much detail as possible:
+If you find a bug, please open an issue using one of our [issue forms](https://github.com/Snapchat/Valdi/issues/new/choose), which ask for the details we need to investigate, including steps to reproduce and your Valdi version. Please report one problem per issue and search existing issues first.
 
-- Steps to reproduce, including operating system, and Valdi version
-- Expected and actual behavior
-- Suspected cause (if any)
+- **Questions** belong in [GitHub Discussions](https://github.com/Snapchat/Valdi/discussions). See [SUPPORT.md](./SUPPORT.md).
+- **Feature ideas** should start as a [GitHub Discussion](https://github.com/Snapchat/Valdi/discussions).
+- **Security vulnerabilities** must be reported privately through [HackerOne](https://hackerone.com/snapchat), never in a public issue.
 
 ## 6.  Recognition
 

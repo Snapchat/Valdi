@@ -14,8 +14,8 @@
 - [ ] Tested on multiple platforms (iOS/Android/Web/macOS as applicable)
 - [ ] Manual testing performed (describe below)
 
-### Testing Details
-<!-- Describe the testing you performed -->
+### Evidence
+<!-- Required: show that the change works. Paste the commands you ran and their output, or attach screenshots/recordings for visual changes. -->
 
 ## Checklist
 - [ ] Code follows project style guidelines
