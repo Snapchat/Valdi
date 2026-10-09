@@ -38,3 +38,12 @@ export function makeTestObject(): ITestObject {
 export function getTestString(): string {
   return 'ok';
 }
+
+// Returns a promise of a non-null string. Used to exercise a Promise return across app termination: the
+// degraded no-op function returns no promise at all, which non-null Swift callers trap on.
+/**
+ * @ExportFunction
+ */
+export function getTestStringPromise(): Promise<string> {
+  return Promise.resolve('ok');
+}

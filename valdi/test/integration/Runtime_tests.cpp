@@ -7379,6 +7379,59 @@ TEST_P(RuntimeFixture, jsThreadWorkInFlightAtApplicationWillTerminateIsSkippedWh
                          << (result ? result.value().toString() : std::string());
 }
 
+// A background thread's synchronous bridge call queued behind JS-thread work when applicationWillTerminate
+// starts. Whether it lands before or after the queue is torn down is a race the test cannot pin without
+// hooks, so each round accepts either outcome: it ran (a real result) or it was skipped as a teardown (the
+// distinguishable code). It must never hang, crash, hand back undefined, or report any other error.
+TEST_P(RuntimeFixture, offJsThreadSyncCallQueuedBehindInFlightWorkAtApplicationWillTerminateIsWellDefined) {
+    for (int round = 0; round < 5; round++) {
+        SCOPED_TRACE(round);
+        ApplicationShutdownScope shutdownScope;
+        auto& terminating = makeRuntimeForTermination(wrapper, getJsBridge(), getTSNMode());
+        auto* javaScriptRuntime = terminating.runtime->getJavaScriptRuntime();
+
+        std::promise<void> running;
+        std::promise<void> resume;
+        auto resumeFuture = resume.get_future().share();
+        javaScriptRuntime->dispatchOnJsThreadAsync(STRING_LITERAL("test.runtime"),
+                                                   [&, resumeFuture](auto& /*jsEntry*/) {
+                                                       running.set_value();
+                                                       resumeFuture.wait();
+                                                   });
+        running.get_future().wait();
+
+        std::promise<void> queuing;
+        auto queuedCall = std::async(std::launch::async, [&]() {
+            queuing.set_value();
+            SimpleExceptionTracker exceptionTracker;
+            Marshaller marshaller(exceptionTracker);
+            javaScriptRuntime->pushModuleToMarshaller(nullptr, STRING_LITERAL("test/src/NativeModule"), marshaller);
+            std::optional<int32_t> errorCode;
+            if (!exceptionTracker) {
+                errorCode = exceptionTracker.extractError().getErrorCode();
+            }
+            return errorCode;
+        });
+        queuing.get_future().wait();
+        std::this_thread::yield();
+
+        std::thread terminatingThread([&]() { terminating.runtimeManager->applicationWillTerminate(); });
+        EXPECT_TRUE(waitUntilDisposed(javaScriptRuntime)) << "termination did not start";
+        resume.set_value();
+
+        auto queuedCallStatus = queuedCall.wait_for(std::chrono::seconds(10));
+        terminatingThread.join();
+        ASSERT_EQ(std::future_status::ready, queuedCallStatus)
+            << "a sync call queued behind in-flight work must not hang across termination";
+
+        auto errorCode = queuedCall.get();
+        if (errorCode.has_value()) {
+            EXPECT_EQ(Valdi::kResolutionSkippedDuringTeardownErrorCode, errorCode.value())
+                << "a skipped sync call must report the teardown code, not another error";
+        }
+    }
+}
+
 namespace {
 struct OffJsThreadOutcome {
     std::optional<int32_t> resolutionErrorCode;

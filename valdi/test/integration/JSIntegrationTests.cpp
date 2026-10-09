@@ -1479,6 +1479,10 @@ TEST_P(JSContextFixture, canCallFunctionThrottled) {
     // The first call, because it has no flag
     // The 4th call, because 2nd and 3rd call should have been throttled
     // The 5th call, because it has no flag
+    // The callback signals before its JS task returns. Let the JS thread finish that task before the
+    // function and the wrapper it runs against are destroyed on this thread.
+    dispatchQueue->sync([]() {});
+
     ASSERT_EQ(std::vector<double>({1.0, 4.0, 5.0}), callSemaphore->getValueHistory());
 }
 

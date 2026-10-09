@@ -136,6 +136,61 @@
     XCTAssertNil(resolvedBeforeTerminationResult);
 }
 
+// Promise returns across termination. The degraded no-op hands back no promise at all in a non-null slot
+// (the shape non-null Swift ValdiPromise callers trap on). A function resolved before termination returns a
+// promise, but its JS call is dispatched after the JS queue is torn down, so the dispatch is refused and the
+// promise never settles: whoever awaits it waits forever.
+//
+// NOTE: both pin current behavior. When the boundary hands back a rejected promise instead of nil, and a
+// refused Promise call rejects its promise, flip these to assert a rejection.
+- (void)testPromiseReturningBridgeCrossingsAcrossWillTerminate
+{
+    id<SCValdiJSRuntime> jsRuntime = _jsRuntime;
+
+    __block SCCValdiTestGetTestStringPromise *resolvedBeforeTermination = nil;
+    __block SCValdiPromise<NSString *> *livePromise = nil;
+    [self runInBackground:@"live resolution"
+                    block:^{
+                        resolvedBeforeTermination = [SCCValdiTestGetTestStringPromise functionWithJSRuntime:jsRuntime];
+                        livePromise = [resolvedBeforeTermination getTestStringPromise];
+                    }];
+    XCTestExpectation *liveCompleted = [self expectationWithDescription:@"live promise completed"];
+    __block NSString *liveValue = nil;
+    [livePromise onCompleteWithCallbackBlock:^(NSString *value, NSError *error) {
+        liveValue = value;
+        [liveCompleted fulfill];
+    }];
+    [self waitForExpectations:@[liveCompleted] timeout:10.0];
+    XCTAssertEqualObjects(liveValue, @"ok");
+
+    [self postWillTerminate];
+
+    __block NSException *raised = nil;
+    __block SCValdiPromise<NSString *> *degradedPromise = livePromise;
+    __block SCValdiPromise<NSString *> *afterTerminationPromise = nil;
+    [self runInBackground:@"promise crossings after termination"
+                    block:^{
+                        @try {
+                            degradedPromise =
+                                [[SCCValdiTestGetTestStringPromise functionWithJSRuntime:jsRuntime] getTestStringPromise];
+                            afterTerminationPromise = [resolvedBeforeTermination getTestStringPromise];
+                        } @catch (NSException *exception) {
+                            raised = exception;
+                        }
+                    }];
+
+    XCTAssertNil(raised, @"No Promise crossing may raise after termination, got %@: %@", raised.name, raised.reason);
+    XCTAssertNil(degradedPromise, @"The degraded no-op returns no promise in the non-null slot");
+    XCTAssertNotNil(afterTerminationPromise, @"An already-resolved function must still return a promise");
+
+    XCTestExpectation *settled = [self expectationWithDescription:@"promise after termination settled"];
+    settled.inverted = YES;
+    [afterTerminationPromise onCompleteWithCallbackBlock:^(NSString *value, NSError *error) {
+        [settled fulfill];
+    }];
+    [self waitForExpectations:@[settled] timeout:0.5];
+}
+
 // VALDI_ENABLE_RESOLUTION_TEARDOWN_DEGRADE off (its kill switch): resolution after termination raises the
 // original SCValdiError again. Pins that the flag is a real lever at termination, not only after dealloc.
 - (void)testBackgroundResolutionAfterWillTerminateRaisesWithDegradeOff
