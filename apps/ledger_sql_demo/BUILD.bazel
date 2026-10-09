@@ -1,0 +1,12 @@
+load("//bzl/valdi:valdi_application.bzl", "valdi_application")
+
+valdi_application(
+    name = "ledger_sql_demo",
+    desktop_window_height = 820,
+    desktop_window_width = 900,
+    ios_bundle_id = "com.snap.valdi.ledgersqldemo",
+    root_component_path = "App@ledger_sql_demo/src/LedgerSqlDemoApp",
+    title = "Ledger SQL Demo",
+    version = "1.0.0",
+    deps = ["//apps/ledger_sql_demo/src/valdi/ledger_sql_demo"],
+)
