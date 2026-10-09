@@ -217,7 +217,16 @@ objc_library(
         "src/snap_drawing/apple/**/*.hpp",
     ]),
     aspect_hints = [":snap_drawing_apple_swift_interop"],
-    copts = OBJC_ONLY_FLAGS,
+    copts = OBJC_ONLY_FLAGS + select({
+        # Apple clang's MachineOutliner hangs for hours on MetalSurfacePresenterManager.mm on arm64e.
+        # -fno-lto moves codegen to compile time so the per-target -mllvm flag applies.
+        "//bzl/conditions:ios_arm64e": [
+            "-fno-lto",
+            "-mllvm",
+            "-enable-machine-outliner=never",
+        ],
+        "//conditions:default": [],
+    }),
     includes = [
         "src",
     ],
