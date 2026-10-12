@@ -253,6 +253,10 @@ struct JSRuntime {
     JSGCPhaseEnum gc_phase : 8;
     size_t malloc_gc_threshold;
     size_t external_malloc_bytes;
+    /* live JS_GC_OBJ_TYPE_JS_OBJECT count, so it can be read without walking gc_obj_list */
+    int64_t js_object_count;
+    /* byte_length of live ArrayBuffers whose data was not allocated through malloc_state */
+    int64_t external_array_buffer_bytes;
 #ifdef DUMP_LEAKS
     struct list_head string_list; /* list of JSString.link */
 #endif
@@ -662,6 +666,7 @@ typedef struct JSArrayBuffer {
     int byte_length; /* 0 if detached */
     uint8_t detached;
     uint8_t shared; /* if shared, the array buffer cannot be detached */
+    uint8_t external_data; /* data not allocated through malloc_state, so not in malloc_size */
     uint8_t* data;  /* NULL if detached */
     struct list_head array_list;
     void* opaque;
@@ -4555,6 +4560,7 @@ static JSValue JS_NewObjectFromShape(JSContext* ctx, JSShape* sh, JSClassID clas
     }
     p->header.ref_count = 1;
     add_gc_object(ctx->rt, &p->header, JS_GC_OBJ_TYPE_JS_OBJECT);
+    ctx->rt->js_object_count++;
     return JS_MKPTR(JS_TAG_OBJECT, p);
 }
 
@@ -5099,6 +5105,7 @@ static void free_object(JSRuntime* rt, JSObject* p) {
     p->u.func.home_object = NULL;
 
     remove_gc_object(&p->header);
+    rt->js_object_count--;
     if (rt->gc_phase == JS_GC_PHASE_REMOVE_CYCLES && p->header.ref_count != 0) {
         list_add_tail(&p->header.link, &rt->gc_zero_ref_count_list);
     } else {
@@ -5559,6 +5566,7 @@ void JS_ComputeMemoryUsage(JSRuntime* rt, JSMemoryUsage* s) {
     s->malloc_count = rt->malloc_state.malloc_count;
     s->malloc_size = rt->malloc_state.malloc_size;
     s->malloc_limit = rt->malloc_state.malloc_limit;
+    s->external_array_buffer_size = rt->external_array_buffer_bytes;
 
     s->memory_used_count = 2; /* rt + rt->class_array */
     s->memory_used_size = sizeof(JSRuntime) + sizeof(JSValue) * rt->class_count;
@@ -5823,6 +5831,17 @@ void JS_ComputeMemoryUsage(JSRuntime* rt, JSMemoryUsage* s) {
                             s->shape_count + s->js_func_count + s->js_func_pc2line_count;
     s->memory_used_size += s->atom_size + s->str_size + s->obj_size + s->prop_size + s->shape_size + s->js_func_size +
                            s->js_func_code_size + s->js_func_pc2line_size;
+}
+
+/* O(1): JS_ComputeMemoryUsage walks every GC object, which touches the whole heap and can hold
+   the calling thread for seconds. */
+void JS_ComputeMemoryUsageSummary(JSRuntime* rt, JSMemoryUsage* s) {
+    memset(s, 0, sizeof(*s));
+    s->malloc_count = rt->malloc_state.malloc_count;
+    s->malloc_size = rt->malloc_state.malloc_size;
+    s->malloc_limit = rt->malloc_state.malloc_limit;
+    s->obj_count = rt->js_object_count;
+    s->external_array_buffer_size = rt->external_array_buffer_bytes;
 }
 
 void JS_DumpMemoryUsage(FILE* fp, const JSMemoryUsage* s, JSRuntime* rt) {
@@ -50059,12 +50078,14 @@ static JSValue js_array_buffer_constructor3(JSContext* ctx,
     if (!abuf)
         goto fail;
     abuf->byte_length = len;
+    abuf->external_data = !alloc_flag;
     if (alloc_flag) {
         if (class_id == JS_CLASS_SHARED_ARRAY_BUFFER && rt->sab_funcs.sab_alloc) {
             abuf->data = rt->sab_funcs.sab_alloc(rt->sab_funcs.sab_opaque, max_int(len, 1));
             if (!abuf->data)
                 goto fail;
             memset(abuf->data, 0, len);
+            abuf->external_data = TRUE;
         } else {
             /* the allocation must be done after the object creation */
             abuf->data = js_mallocz(ctx, max_int(len, 1));
@@ -50084,6 +50105,8 @@ static JSValue js_array_buffer_constructor3(JSContext* ctx,
     abuf->free_func = free_func;
     if (alloc_flag && buf)
         memcpy(abuf->data, buf, len);
+    if (abuf->external_data)
+        rt->external_array_buffer_bytes += abuf->byte_length;
     JS_SetOpaque(obj, abuf);
     return obj;
 fail:
@@ -50169,6 +50192,8 @@ static void js_array_buffer_finalizer(JSRuntime* rt, JSValue val) {
             if (abuf->free_func)
                 abuf->free_func(rt, abuf->opaque, abuf->data);
         }
+        if (abuf->external_data)
+            rt->external_array_buffer_bytes -= abuf->byte_length;
         js_free_rt(rt, abuf);
     }
 }
@@ -50211,6 +50236,8 @@ void JS_DetachArrayBuffer(JSContext* ctx, JSValueConst obj) {
         return;
     if (abuf->free_func)
         abuf->free_func(ctx->rt, abuf->opaque, abuf->data);
+    if (abuf->external_data)
+        ctx->rt->external_array_buffer_bytes -= abuf->byte_length;
     abuf->data = NULL;
     abuf->byte_length = 0;
     abuf->detached = TRUE;

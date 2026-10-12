@@ -2595,6 +2595,109 @@ TEST_P(JSContextFixture, canDumpMemoryStatistics) {
     ASSERT_EQ(initialMemoryStatistics.objectsCount, memoryStatisticsAfterGC.objectsCount);
 }
 
+// QuickJS reads its object count from a counter instead of walking the heap (ADL-24865), so the
+// counter must track creation, refcount frees, and cycle collection exactly.
+TEST_P(JSContextFixture, quickJSMemoryStatisticsTrackObjectCountExactly) {
+    if (!isQuickJS()) {
+        GTEST_SKIP() << "QuickJS-only object counter";
+    }
+
+    MAIN_THREAD_INIT();
+
+    auto wrapper = createWrapper();
+    auto jsEntry = wrapper.makeJsEntry();
+    auto& context = jsEntry.context;
+    auto& exceptionTracker = jsEntry.exceptionTracker;
+
+    context.garbageCollect();
+    auto initial = context.dumpMemoryStatistics();
+
+    constexpr size_t kObjectCount = 1000;
+    std::vector<JSValueRef> objects;
+    for (size_t i = 0; i < kObjectCount; i++) {
+        objects.emplace_back(context.newObject(exceptionTracker));
+        jsEntry.checkException();
+    }
+
+    auto afterCreate = context.dumpMemoryStatistics();
+    ASSERT_EQ(initial.objectsCount + kObjectCount, afterCreate.objectsCount);
+    ASSERT_GT(afterCreate.memoryUsageBytes, initial.memoryUsageBytes);
+
+    objects.clear();
+    auto afterRelease = context.dumpMemoryStatistics();
+    ASSERT_EQ(initial.objectsCount, afterRelease.objectsCount);
+
+    // Reference cycles are only reclaimed by the cycle collector. Root one side of each cycle so an
+    // automatic GC during allocation can't collect them before the count is checked.
+    std::vector<JSValueRef> cycleRoots;
+    for (size_t i = 0; i < kObjectCount; i++) {
+        auto a = context.newObject(exceptionTracker);
+        auto b = context.newObject(exceptionTracker);
+        context.setObjectProperty(a.get(), std::string_view("b"), b.get(), exceptionTracker);
+        context.setObjectProperty(b.get(), std::string_view("a"), a.get(), exceptionTracker);
+        jsEntry.checkException();
+        cycleRoots.emplace_back(std::move(a));
+    }
+
+    auto withCycles = context.dumpMemoryStatistics();
+    ASSERT_EQ(initial.objectsCount + 2 * kObjectCount, withCycles.objectsCount);
+
+    cycleRoots.clear();
+    context.garbageCollect();
+    auto afterGC = context.dumpMemoryStatistics();
+    ASSERT_EQ(initial.objectsCount, afterGC.objectsCount);
+}
+
+// newArrayBuffer backs ArrayBuffers with native storage outside QuickJS's allocator, which the
+// O(1) memory summary must still account for until the buffer is finalized.
+TEST_P(JSContextFixture, quickJSMemoryStatisticsCountNativeBackedArrayBuffers) {
+    if (!isQuickJS()) {
+        GTEST_SKIP() << "QuickJS-only memory accounting";
+    }
+
+    MAIN_THREAD_INIT();
+
+    auto wrapper = createWrapper();
+    auto jsEntry = wrapper.makeJsEntry();
+    auto& context = jsEntry.context;
+    auto& exceptionTracker = jsEntry.exceptionTracker;
+
+    constexpr size_t kBufferSize = 8 * 1024 * 1024;
+
+    auto makeBytes = [&]() {
+        auto byteBuffer = makeShared<ByteBuffer>();
+        byteBuffer->resize(kBufferSize);
+        return byteBuffer;
+    };
+
+    context.garbageCollect();
+    auto initial = context.dumpMemoryStatistics();
+
+    // Still referenced natively, so newArrayBuffer shares the storage.
+    auto sharedBytes = makeBytes();
+    auto sharedArrayBuffer = context.newArrayBuffer(sharedBytes->toBytesView(), exceptionTracker);
+    jsEntry.checkException();
+
+    auto withShared = context.dumpMemoryStatistics();
+    ASSERT_GE(withShared.memoryUsageBytes, initial.memoryUsageBytes + kBufferSize);
+
+    // Only referenced by the view, so newArrayBuffer takes ownership of the storage.
+    auto transferredView = makeBytes()->toBytesView();
+    auto transferredArrayBuffer = context.newArrayBuffer(transferredView, exceptionTracker);
+    transferredView = BytesView();
+    jsEntry.checkException();
+
+    auto withBoth = context.dumpMemoryStatistics();
+    ASSERT_GE(withBoth.memoryUsageBytes, withShared.memoryUsageBytes + kBufferSize);
+
+    sharedArrayBuffer = JSValueRef();
+    transferredArrayBuffer = JSValueRef();
+    context.garbageCollect();
+
+    auto afterRelease = context.dumpMemoryStatistics();
+    ASSERT_LT(afterRelease.memoryUsageBytes, initial.memoryUsageBytes + kBufferSize);
+}
+
 TEST_P(JSContextFixture, stackOverflowGuard) {
     SKIP_IF_V8("Ticket: 2259");
     MAIN_THREAD_INIT();

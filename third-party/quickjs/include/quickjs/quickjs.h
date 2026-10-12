@@ -412,9 +412,14 @@ typedef struct JSMemoryUsage {
     int64_t c_func_count, array_count;
     int64_t fast_array_count, fast_array_elements;
     int64_t binary_object_count, binary_object_size;
+    /* ArrayBuffer bytes backed by memory outside malloc_size (e.g. JS_NewArrayBuffer without copy) */
+    int64_t external_array_buffer_size;
 } JSMemoryUsage;
 
 void JS_ComputeMemoryUsage(JSRuntime* rt, JSMemoryUsage* s);
+/* O(1) subset of JS_ComputeMemoryUsage: only malloc_count, malloc_size, malloc_limit, obj_count and
+   external_array_buffer_size are set. */
+void JS_ComputeMemoryUsageSummary(JSRuntime* rt, JSMemoryUsage* s);
 void JS_DumpMemoryUsage(FILE* fp, const JSMemoryUsage* s, JSRuntime* rt);
 
 /* atom support */

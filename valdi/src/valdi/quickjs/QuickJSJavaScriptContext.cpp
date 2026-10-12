@@ -1276,11 +1276,14 @@ void QuickJSJavaScriptContext::enqueueMicrotask(const Valdi::JSValue& value,
 
 Valdi::JavaScriptContextMemoryStatistics QuickJSJavaScriptContext::dumpMemoryStatistics() {
     auto guard = _threadAccessChecker.guard();
+    // Runs on the JS thread. The full JS_ComputeMemoryUsage walk held it past the 5s ANR threshold on
+    // large heaps (ADL-24865), so only read the allocator counters and the object count.
     JSMemoryUsage memoryUsage;
-    JS_ComputeMemoryUsage(_runtime, &memoryUsage);
+    JS_ComputeMemoryUsageSummary(_runtime, &memoryUsage);
 
     Valdi::JavaScriptContextMemoryStatistics out;
-    out.memoryUsageBytes = static_cast<size_t>(memoryUsage.memory_used_size);
+    // newArrayBuffer hands QuickJS native-backed storage that malloc_size never sees.
+    out.memoryUsageBytes = static_cast<size_t>(memoryUsage.malloc_size + memoryUsage.external_array_buffer_size);
     out.objectsCount = static_cast<size_t>(memoryUsage.obj_count);
 
     return out;

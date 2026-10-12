@@ -24,3 +24,4 @@ MODIFICATIONS:
  - Merged upstream 2021-03-27
  - Added JS_PromiseMarkRejectionHandled()
  - Added Unicode SpecialCasing.txt locale-conditional and context-conditional casing to String.prototype.toLocale{Upper,Lower}Case (tr/az/lt, After_I, Before_Dot, After_Soft_Dotted, More_Above). Includes a partial CCC=230 (Above) table for the context predicates.
+ - Added JS_ComputeMemoryUsageSummary() and JSMemoryUsage.external_array_buffer_size
