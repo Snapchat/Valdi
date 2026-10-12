@@ -9,17 +9,89 @@ import com.snap.valdi.utils.NativeRef
  */
 class ContextNative(nativeHandle: Long, val nativeBridge: NativeBridge, val runtimeNative: RuntimeNative) {
 
-    val nativeWrapper = NativeRef(nativeHandle)
+    /**
+     * Owns the strong reference to the native Context. Calls made through [withHandle] pin it, so that a
+     * concurrent [destroy] or [markDestroyed] on another thread defers releasing that reference until the
+     * last in-flight call returns. Releasing it between reading the handle and the native side retaining
+     * it would hand native a pointer to a Context whose last reference is gone.
+     */
+    open class PinnableContextRef(handle: Long) : NativeRef(handle) {
+        private var pinCount = 0
+        private var destroyRequested = false
+
+        override fun getNativeHandle(): Long {
+            synchronized(this) {
+                return if (destroyRequested) 0L else super.getNativeHandle()
+            }
+        }
+
+        /**
+         * Returns the handle with a pin held, or 0 if the reference is already destroyed. Every non-zero
+         * return must be balanced by [unpin].
+         */
+        fun pin(): Long {
+            synchronized(this) {
+                if (destroyRequested) {
+                    return 0L
+                }
+                val handle = super.getNativeHandle()
+                if (handle != 0L) {
+                    pinCount++
+                }
+                return handle
+            }
+        }
+
+        fun unpin() {
+            val releaseNow = synchronized(this) {
+                pinCount--
+                pinCount == 0 && destroyRequested
+            }
+            if (releaseNow) {
+                super.destroy()
+            }
+        }
+
+        override fun destroy() {
+            val releaseNow = synchronized(this) {
+                destroyRequested = true
+                pinCount == 0
+            }
+            if (releaseNow) {
+                super.destroy()
+            }
+        }
+    }
+
+    val nativeWrapper = PinnableContextRef(nativeHandle)
+
+    /**
+     * Runs [block] with the native Context handle, guaranteeing the Context stays retained for the duration
+     * of the call. Returns [defaultValue] without calling [block] when the Context was already destroyed.
+     */
+    inline fun <T> withHandle(defaultValue: T, block: (Long) -> T): T {
+        val handle = nativeWrapper.pin()
+        if (handle == 0L) {
+            return defaultValue
+        }
+        try {
+            return block(handle)
+        } finally {
+            nativeWrapper.unpin()
+        }
+    }
+
+    inline fun withHandle(block: (Long) -> Unit) {
+        withHandle(Unit, block)
+    }
 
     fun onCreate() {
-        NativeBridge.contextOnCreate(nativeWrapper.nativeHandle)
+        withHandle { NativeBridge.contextOnCreate(it) }
     }
 
     fun destroy() {
-        if (nativeWrapper.nativeHandle != 0L) {
-            NativeBridge.destroyContext(runtimeNative.nativeHandle, nativeWrapper.nativeHandle)
-            nativeWrapper.destroy()
-        }
+        withHandle { NativeBridge.destroyContext(runtimeNative.nativeHandle, it) }
+        nativeWrapper.destroy()
     }
 
     fun markDestroyed() {
@@ -27,43 +99,45 @@ class ContextNative(nativeHandle: Long, val nativeBridge: NativeBridge, val runt
     }
 
     fun getView(id: String): ViewRef? {
-        return NativeBridge.getViewInContextForId(nativeWrapper.nativeHandle, id) as? ViewRef
+        return withHandle(null) { NativeBridge.getViewInContextForId(it, id) as? ViewRef }
     }
 
     fun setRootView(rootView: ViewRef?) {
-        NativeBridge.setRootView(runtimeNative.nativeHandle, nativeWrapper.nativeHandle, rootView)
+        withHandle { NativeBridge.setRootView(runtimeNative.nativeHandle, it, rootView) }
     }
 
     fun setSnapDrawingRootView(snapDrawingRootHandle: Long, previousSnapDrawingRootHandle: Long, rootView: ViewRef?) {
-        NativeBridge.setSnapDrawingRootView(nativeWrapper.nativeHandle, snapDrawingRootHandle, previousSnapDrawingRootHandle, rootView)
+        withHandle { NativeBridge.setSnapDrawingRootView(it, snapDrawingRootHandle, previousSnapDrawingRootHandle, rootView) }
     }
 
     fun setViewModel(viewModel: Any?) {
-        NativeBridge.setViewModel(nativeWrapper.nativeHandle, viewModel)
+        withHandle { NativeBridge.setViewModel(it, viewModel) }
     }
 
     fun callJSFunction(functionName: String, arguments: Array<Any?>) {
-        NativeBridge.callJSFunction(runtimeNative.nativeHandle, nativeWrapper.nativeHandle, functionName, arguments)
+        withHandle { NativeBridge.callJSFunction(runtimeNative.nativeHandle, it, functionName, arguments) }
     }
 
     fun measureLayout(maxWidth: Int, widthMode: Int, maxHeight: Int, heightMode: Int, isRTL: Boolean): Long {
-        return NativeBridge.measureLayout(runtimeNative.nativeHandle, nativeWrapper.nativeHandle, maxWidth, widthMode, maxHeight, heightMode, isRTL)
+        return withHandle(0L) {
+            NativeBridge.measureLayout(runtimeNative.nativeHandle, it, maxWidth, widthMode, maxHeight, heightMode, isRTL)
+        }
     }
 
     fun setLayoutSpecs(width: Int, height: Int, isRTL: Boolean) {
-        NativeBridge.setLayoutSpecs(runtimeNative.nativeHandle, nativeWrapper.nativeHandle, width, height, isRTL)
+        withHandle { NativeBridge.setLayoutSpecs(runtimeNative.nativeHandle, it, width, height, isRTL) }
     }
 
     fun setVisibleViewport(x: Int, y: Int, width: Int, height: Int) {
-        NativeBridge.setVisibleViewport(runtimeNative.nativeHandle, nativeWrapper.nativeHandle, x, y, width, height, false)
+        withHandle { NativeBridge.setVisibleViewport(runtimeNative.nativeHandle, it, x, y, width, height, false) }
     }
 
     fun unsetVisibleViewport() {
-        NativeBridge.setVisibleViewport(runtimeNative.nativeHandle, nativeWrapper.nativeHandle, 0, 0, 0, 0, true)
+        withHandle { NativeBridge.setVisibleViewport(runtimeNative.nativeHandle, it, 0, 0, 0, 0, true) }
     }
 
     fun getRuntime(): ValdiRuntime? {
-        return NativeBridge.getRuntimeAttachedObjectFromContext(nativeWrapper.nativeHandle) as? ValdiRuntime
+        return withHandle(null) { NativeBridge.getRuntimeAttachedObjectFromContext(it) as? ValdiRuntime }
     }
 
 }

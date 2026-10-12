@@ -637,6 +637,26 @@ kt_jvm_test(
     ],
 )
 
+kt_jvm_test(
+    name = "test_context_native_ref",
+    size = "small",
+    srcs = ["test/java/com/snap/valdi/nativebridge/PinnableContextRefTest.kt"],
+    args = [
+        "--select-class=com.snap.valdi.nativebridge.PinnableContextRefTest",
+    ],
+    main_class = "org.junit.platform.console.ConsoleLauncher",
+    runtime_deps = [
+        "@android_mvn//:org_junit_jupiter_junit_jupiter_engine",
+        "@android_mvn//:org_junit_platform_junit_platform_launcher",
+        "@android_mvn//:org_junit_platform_junit_platform_reporting",
+    ],
+    deps = [
+        ":valdi_java",
+        "@android_mvn//:org_junit_jupiter_junit_jupiter_api",
+        "@android_mvn//:org_junit_platform_junit_platform_console",
+    ],
+)
+
 # Allows to use Valdi in headless mode without UI, without
 # a platform specific integration.
 cc_library(

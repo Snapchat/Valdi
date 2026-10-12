@@ -155,7 +155,7 @@ class ValdiContext(val native: ContextNative,
                 viewInflationEnabledInner = value
 
                 runOnMainThreadIfNeeded {
-                    NativeBridge.setViewInflationEnabled(native.nativeWrapper.nativeHandle, viewInflationEnabledInner)
+                    native.withHandle { NativeBridge.setViewInflationEnabled(it, viewInflationEnabledInner) }
                 }
             }
         }
@@ -387,7 +387,7 @@ class ValdiContext(val native: ContextNative,
      * this factory will be enqueued into a local view pool instead of the global view pool.
      */
     fun registerViewFactory(viewFactory: ViewFactory) {
-        NativeBridge.registerLocalViewFactory(native.nativeWrapper.nativeHandle, viewFactory.getHandle().nativeHandle)
+        native.withHandle { NativeBridge.registerLocalViewFactory(it, viewFactory.getHandle().nativeHandle) }
     }
 
     /**
@@ -416,7 +416,7 @@ class ValdiContext(val native: ContextNative,
     }
 
     fun setKeepViewAliveOnDestroy(keepViewAliveOnDestroy: Boolean) {
-        NativeBridge.setKeepViewAliveOnDestroy(native.nativeWrapper.nativeHandle, keepViewAliveOnDestroy)
+        native.withHandle { NativeBridge.setKeepViewAliveOnDestroy(it, keepViewAliveOnDestroy) }
     }
 
     fun performJsAction(name: String, parameters: Array<Any?>) {
@@ -428,11 +428,21 @@ class ValdiContext(val native: ContextNative,
     }
 
     fun setParentContext(parentContext: ValdiContext) {
-        NativeBridge.setParentContext(native.nativeWrapper.nativeHandle, parentContext.native.nativeWrapper.nativeHandle)
+        native.withHandle { handle ->
+            val parentRef = parentContext.native.nativeWrapper
+            val parentHandle = parentRef.pin()
+            try {
+                NativeBridge.setParentContext(handle, parentHandle)
+            } finally {
+                if (parentHandle != 0L) {
+                    parentRef.unpin()
+                }
+            }
+        }
     }
 
     private fun getRetainedViewNode(viewId: String?, viewNodeId: Int): ValdiViewNode? {
-        val viewNodeHandle = NativeBridge.getRetainedViewNodeInContext(native.nativeWrapper.nativeHandle, viewId, viewNodeId)
+        val viewNodeHandle = native.withHandle(0L) { NativeBridge.getRetainedViewNodeInContext(it, viewId, viewNodeId) }
         if (viewNodeHandle == 0L) {
             return null
         }
@@ -457,7 +467,7 @@ class ValdiContext(val native: ContextNative,
     }
 
     override fun setRetainsLayoutSpecsOnInvalidateLayout(retainsLayoutSpecsOnInvalidateLayout: Boolean) {
-        NativeBridge.setRetainsLayoutSpecsOnInvalidateLayout(native.nativeWrapper.nativeHandle, retainsLayoutSpecsOnInvalidateLayout)
+        native.withHandle { NativeBridge.setRetainsLayoutSpecsOnInvalidateLayout(it, retainsLayoutSpecsOnInvalidateLayout) }
     }
 
     private fun makeValdiFunction(callback: () -> Unit): ValdiFunction {
@@ -475,15 +485,15 @@ class ValdiContext(val native: ContextNative,
      * the callback will be called immediately
      */
     override fun waitUntilAllUpdatesCompleted(callback: () -> Unit) {
-        NativeBridge.waitUntilAllUpdatesCompleted(native.nativeWrapper.nativeHandle, makeValdiFunction(callback), false)
+        native.withHandle { NativeBridge.waitUntilAllUpdatesCompleted(it, makeValdiFunction(callback), false) }
     }
 
     override fun onNextLayout(callback: () -> Unit) {
-        NativeBridge.onNextLayout(native.nativeWrapper.nativeHandle, makeValdiFunction(callback))
+        native.withHandle { NativeBridge.onNextLayout(it, makeValdiFunction(callback)) }
     }
 
     override fun scheduleExclusiveUpdate(callback: Runnable) {
-        NativeBridge.scheduleExclusiveUpdate(native.nativeWrapper.nativeHandle, callback)
+        native.withHandle { NativeBridge.scheduleExclusiveUpdate(it, callback) }
     }
 
     /**
@@ -492,7 +502,7 @@ class ValdiContext(val native: ContextNative,
      * scheduled into the context instead of waiting for the main thread to process them.
      */
     fun waitUntilAllUpdatesCompletedSync(shouldFlushRenderRequests: Boolean = false) {
-        NativeBridge.waitUntilAllUpdatesCompleted(native.nativeWrapper.nativeHandle, null, shouldFlushRenderRequests)
+        native.withHandle { NativeBridge.waitUntilAllUpdatesCompleted(it, null, shouldFlushRenderRequests) }
     }
 
     // Called any time a context has been rendered.
