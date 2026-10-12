@@ -4853,6 +4853,29 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
       }
     },
   },
+  {
+    // An image sized width:100% with no explicit height must give its
+    // (auto-height) container an intrinsic height from the image aspect ratio.
+    // Web must not collapse the container to 0 height.
+    id: 'image-intrinsic-height-container',
+    name: 'Image intrinsic height drives container',
+    description:
+      'Image with width:100% and no explicit height inside an auto-height container; the container must take the image height, not collapse to zero.',
+    element: 'image',
+    render: (ctx: IntegrationTestRenderContext) => {
+      <view key={ctx.caseId} ref={ctx.rootRef} width={WIDTH} height={HEIGHT} backgroundColor={CARD} padding={16}>
+        <view backgroundColor="#FFFFFF" border="1 solid #CBD5E1" padding={12}>
+          <image
+            src={res.image}
+            width="100%"
+            objectFit="contain"
+            onImageDecoded={(w, h) => ctx.record(`intrinsic image decoded:${w}x${h}`)}
+            onAssetLoad={(success, error) => ctx.record(`intrinsic image asset:${success}:${error ?? ''}`)}
+          />
+        </view>
+      </view>;
+    },
+  },
 ];
 
 export type IntegrationCoverageLedgerElement = NativeTemplateElementName | 'slot';
