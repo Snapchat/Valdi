@@ -644,6 +644,7 @@ maven.install(
         "org.robolectric:annotations:4.10.3",
         "org.robolectric:robolectric:4.10.3",
     ],
+    lock_file = "//:android_mvn_install.json",
     repositories = [
         "https://repo1.maven.org/maven2",
         "https://maven.google.com",
@@ -670,6 +671,7 @@ maven.install(
         "org.hamcrest:hamcrest-core:1.3",
         "org.hamcrest:hamcrest-library:1.3",
     ],
+    lock_file = "//:test_mvn_install.json",
     repositories = [
         "https://repo1.maven.org/maven2",
         "https://maven.google.com",
@@ -678,6 +680,52 @@ maven.install(
     version_conflict_policy = "pinned",
 )
 use_repo(maven, "test_mvn")
+
+# Pins the maven namespaces that other modules declare without a lock file
+# (bazel_worker_java's "maven", rules_android's, protobuf's). Unpinned repos are resolved
+# by coursier straight from Maven Central, which rate-limits CI (HTTP 429); with a lock
+# file the jars are fetched by Bazel's downloader instead. The root module's lock file
+# wins for a merged namespace, including its repositories (the tag defaults to Maven
+# Central only), so each one repeats its declaring module's list. dev_dependency keeps these pins out of downstream builds,
+# whose versions of those modules may resolve a different artifact set. Each lock file
+# covers its merged artifact set, so repin after bumping the declaring module:
+#   REPIN=1 bzl run @<name>//:pin
+maven_pins = use_extension("@rules_jvm_external//:extensions.bzl", "maven", dev_dependency = True)
+maven_pins.install(
+    name = "android_ide_common_30_1_3",
+    lock_file = "//:android_ide_common_30_1_3_install.json",
+    repositories = [
+        "https://maven.google.com",
+        "https://repo1.maven.org/maven2",
+    ],
+)
+maven_pins.install(
+    name = "maven",
+    lock_file = "//:maven_install.json",
+)
+maven_pins.install(
+    name = "protobuf_maven",
+    lock_file = "//:protobuf_maven_install.json",
+    repositories = [
+        "https://repo1.maven.org/maven2",
+        "https://repo.maven.apache.org/maven2",
+    ],
+)
+maven_pins.install(
+    name = "rules_android_maven",
+    lock_file = "//:rules_android_maven_install.json",
+    repositories = [
+        "https://maven.google.com",
+        "https://repo1.maven.org/maven2",
+    ],
+)
+use_repo(
+    maven_pins,
+    "android_ide_common_30_1_3",
+    "maven",
+    "protobuf_maven",
+    "rules_android_maven",
+)
 
 http_archive(
     name = "expat_config",
