@@ -5,10 +5,15 @@ import android.view.View
 import android.widget.TextView
 import com.snap.valdi.views.ValdiTouchTarget
 
-class ScrollViewDragGestureRecognizer(view: View, listener: DragGestureRecognizerListener): DragGestureRecognizer(view, listener) {
+class ScrollViewDragGestureRecognizer(
+    view: View,
+    listener: DragGestureRecognizerListener,
+    private val onStopScrolling: (() -> Unit)? = null
+): DragGestureRecognizer(view, listener) {
 
     var isHorizontalScroll = false
     var isAnimatingScroll = false
+    var stopScrollingOnTouch = false
 
     var bounces = true
     var bouncesFromDragAtStart = true
@@ -64,6 +69,9 @@ class ScrollViewDragGestureRecognizer(view: View, listener: DragGestureRecognize
     }
 
     override fun onUpdate(event: MotionEvent) {
+        if (stopScrollingOnTouch && isAnimatingScroll && event.actionMasked == MotionEvent.ACTION_DOWN && state == ValdiGestureRecognizerState.POSSIBLE) {
+            onStopScrolling?.invoke()
+        }
         super.onUpdate(event)
 
         // Immediately start the scroll gesture on down if we are already animating.

@@ -145,6 +145,10 @@ open class ValdiScrollView(context: Context) : ValdiView(context, attributeSet(c
         get() = dragGestureRecognizer.cancelsTouchesOnScroll
         set(value) { dragGestureRecognizer.cancelsTouchesOnScroll = value }
 
+    var stopScrollingOnTouch: Boolean
+        get() = dragGestureRecognizer.stopScrollingOnTouch
+        set(value) { dragGestureRecognizer.stopScrollingOnTouch = value }
+
     var fadingEdgeStartEnabled: Boolean = true
         set(value) {
             if (field != value) {
@@ -234,7 +238,9 @@ open class ValdiScrollView(context: Context) : ValdiView(context, attributeSet(c
 
     init {
         addView(contentView)
-        dragGestureRecognizer = ScrollViewDragGestureRecognizer(this, this)
+        dragGestureRecognizer = ScrollViewDragGestureRecognizer(this, this) {
+            setContentOffset(contentOffsetX, contentOffsetY, 0f, 0f, false)
+        }
         ViewUtils.addGestureRecognizer(this, dragGestureRecognizer)
 
         isHorizontalScrollBarEnabled = true
