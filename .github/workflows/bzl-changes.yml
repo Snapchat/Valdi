@@ -253,6 +253,12 @@ jobs:
         if: matrix.task == 'test-cpp'
         run: ./tools/ci/run_tests.sh
 
+      # Build every benchmark binary so an API change that breaks one fails the PR
+      # here, instead of it silently dropping out of the nightly perf suite.
+      - name: "Build: Benchmarks"
+        if: matrix.task == 'test-cpp'
+        run: ./tools/ci/build_benchmarks.sh
+
       - name: "Run: Build Compiler"
         if: matrix.task == 'build-compiler'
         run: ./tools/ci/build_compiler.sh

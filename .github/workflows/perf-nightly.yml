@@ -1,0 +1,74 @@
+name: Perf Nightly
+
+# Nightly perf-regression signal for the Valdi hot-path microbenchmark suite. Perf is a
+# trend signal, not a correctness gate, and the baseline rebuild is expensive — so this
+# runs once a day against master tip rather than on every PR, keeping the cost bounded
+# and off every contributor's critical path.
+#
+# tools/ci/perf_ratio.sh builds the suite at tip and at master-as-of-~24h-ago on the SAME
+# runner (cancelling shared-hardware variance). PRIMARY metric per benchmark is
+# allocations/op (deterministic — strict threshold, any increase flags); wall-time is a
+# loose, advisory secondary and is de-bounced here (file only on 2 consecutive crossings).
+# NON-BLOCKING — the script always exits 0; on a flagged regression this job files (or
+# comments on) a `perf-regression` issue carrying the two SHAs and a link to the per-
+# benchmark summary table so the day's commit range can be bisected.
+
+on:
+  schedule:
+    # 09:00 UTC — off-peak, after the nightly mirror has settled.
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  perf-nightly:
+    name: Microbenchmark Perf Ratio
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Full history: the baseline is resolved from git history
+          # (git rev-list --before) and built from a checkout of that SHA.
+          fetch-depth: 0
+
+      # The runtime + LLVM toolchain don't fit the small hosted-runner disk
+      # alongside a Bazel build; reclaim the preinstalled toolchains we don't use.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /opt/hostedtoolcache/CodeQL /usr/local/.ghcup || true
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          df -h /
+
+      # Non-blocking: the script always exits 0; continue-on-error is a
+      # belt-and-suspenders so an unexpected failure never reddens the schedule.
+      - name: Run perf ratio (suite)
+        id: perf
+        continue-on-error: true
+        run: ./tools/ci/perf_ratio.sh
+
+      # Deliver the verdict via the shared tools/ci/perf_notify.sh — the SAME
+      # script the internal SnapCI nightly runs. Externally it files/comments a
+      # rolling perf-regression / perf-improvement issue via `gh`; internally it
+      # trips the job so the SnapCI Slack notify fires. Keeping this in a script
+      # (not inline github-script) is what lets both sides share it. Non-blocking.
+      - name: Notify on perf verdict
+        if: steps.perf.outputs.regressed == 'true' || steps.perf.outputs.improved == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PERF_REGRESSED: ${{ steps.perf.outputs.regressed }}
+          PERF_IMPROVED: ${{ steps.perf.outputs.improved }}
+          PERF_HEAD_SHA: ${{ steps.perf.outputs.head_sha }}
+          PERF_BASE_SHA: ${{ steps.perf.outputs.base_sha }}
+          PERF_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: ./tools/ci/perf_notify.sh

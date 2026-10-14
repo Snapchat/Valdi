@@ -1174,6 +1174,20 @@ cc_binary(
 )
 
 cc_binary(
+    name = "marshalling_benchmark",
+    testonly = 1,
+    srcs = [
+        "test/benchmark/HeapAllocationCounter.hpp",
+        "test/benchmark/marshalling_benchmark.cpp",
+    ],
+    linkstatic = True,
+    deps = [
+        ":valdi_runtime_with_vm",
+        "@com_github_google_benchmark//:benchmark",
+    ],
+)
+
+cc_binary(
     name = "valdi_standalone",
     srcs = glob([
         "src/valdi/standalone/**/*.cpp",
