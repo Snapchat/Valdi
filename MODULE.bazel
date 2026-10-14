@@ -112,10 +112,11 @@ swift_toolchains_extension = use_extension("//bzlmod:swift_toolchains_extension.
 use_repo(
     swift_toolchains_extension,
     "swift_toolchain_linux_x86_64",
+    "swift_toolchain_linux_x86_64_toolchains",
 )
 
 register_toolchains(
-    "@swift_toolchain_linux_x86_64//:rules_swift_toolchain",
+    "@swift_toolchain_linux_x86_64_toolchains//:rules_swift_toolchain",
 )
 
 bazel_dep(name = "rules_apple", version = "4.0.0", repo_name = "build_bazel_rules_apple")

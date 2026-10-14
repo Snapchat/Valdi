@@ -8,6 +8,7 @@ Mirrors @rules_android//contrib_rules/remote_android_sdk_repository:repositories
 load(
     ":remote_swift_toolchain_repository.bzl",
     _remote_swift_toolchain_repository = "remote_swift_toolchain_repository",
+    _swift_toolchain_registration_repository = "swift_toolchain_registration_repository",
 )
 
 # Re-export so consumers load everything from //bzl/swift_toolchains:rules.bzl.
@@ -28,8 +29,9 @@ def remote_swift_toolchain(
     helper used for Android SDK entries in //bzl/android_toolchains.bzl.
 
     Args:
-        name: Repository name. Also used for the toolchain label
-            (`@<name>//:rules_swift_toolchain`).
+        name: Repository name for the archive. The toolchain to register
+            lives in a download-free sibling repo:
+            `@<name>_toolchains//:rules_swift_toolchain`.
         url: HTTP URL of the archive.
         sha256: SHA-256 of the archive.
         strip_prefix: Top-level directory inside the archive to strip.
@@ -73,4 +75,9 @@ def make_swift_toolchains(toolchains):
             arch = entry["arch"],
             version = entry["version"],
             swift_relative_path = entry["swift_relative_path"],
+        )
+        _swift_toolchain_registration_repository(
+            name = entry["name"] + "_toolchains",
+            toolchain_repo = entry["name"],
+            arch = entry["arch"],
         )

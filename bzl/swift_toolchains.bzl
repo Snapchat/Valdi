@@ -29,8 +29,7 @@ SWIFT_TOOLCHAINS = [
             "https://download.swift.org/swift-{v}-release/ubuntu2204/" +
             "swift-{v}-RELEASE/swift-{v}-RELEASE-ubuntu22.04.tar.gz"
         ).format(v = _SWIFT_VERSION),
-        # TODO: pin once the first fetch reports the sha256.
-        sha256 = "",
+        sha256 = "cab1bfffd33b79ebd49f4b7475bef6c7eb2d60cf3948cbc693d61afabd23c282",
         strip_prefix = "swift-{}-RELEASE-ubuntu22.04".format(_SWIFT_VERSION),
         arch = "x86_64",
         version = _SWIFT_VERSION,

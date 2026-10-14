@@ -101,7 +101,7 @@ fi
 echo ""
 echo "--- Swift toolchain repo exists ---"
 
-if bzl cquery @swift_toolchain_linux_x86_64//:rules_swift_toolchain \
+if bzl cquery @swift_toolchain_linux_x86_64_toolchains//:rules_swift_toolchain \
     --output=label 2>/dev/null; then
     pass "swift_toolchain_linux_x86_64 repo resolved and toolchain target exists"
 else
