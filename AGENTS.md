@@ -698,9 +698,14 @@ These rules apply when an AI reviewer (for example Codex code review) reviews a 
 
 ### Findings are advisory
 
+- Start every review with this line: _Automated review by Codex. Advisory only; a maintainer decides what happens with this pull request._
 - Your review is advisory. Never approve, request changes, or give an overall pass/fail verdict. A maintainer decides.
 - Don't push commits, open pull requests, create branches or tags, or run workflows. Post review comments only.
 - End with one summary line: **No material findings**, **Findings to check**, or **Unguarded shared-path change** (see the primary lens below).
+
+### Security issues
+
+- This repo is public, so everything you post is public. If you think a change introduces or exposes a security vulnerability, don't describe the vulnerability, how to trigger it, or where exactly it is. Post only: **Possible security issue in this change. A maintainer will follow up privately.**
 
 ### How to write the review
 
@@ -784,7 +789,7 @@ A finding is reportable when an allocation scales with data the user doesn't con
 
 ### Bar
 
-Only raise a finding you can tie to a concrete failure or regression at a specific hunk. If you're unsure, say so briefly rather than asserting. If the shared-path audit finds nothing and nothing else is material, post **No material findings** with no other comments. That's the expected default.
+Only raise a finding you can tie to a concrete failure or regression at a specific hunk. If you're unsure, say so briefly rather than asserting. If the shared-path audit finds nothing and nothing else is material, post the opening line and **No material findings** with no other comments. That's the expected default.
 
 ## Contributing
 
