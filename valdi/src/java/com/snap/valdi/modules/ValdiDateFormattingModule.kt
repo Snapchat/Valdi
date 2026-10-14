@@ -3,19 +3,38 @@ package com.snap.valdi.modules
 import android.content.Context
 import android.text.format.DateFormat
 import android.text.format.DateUtils
+import com.snap.valdi.utils.ExecutorsUtil
 import com.snap.valdi.utils.ValdiMarshaller
 import java.util.Calendar
 import java.util.Date
 import java.util.TimeZone
+import java.util.concurrent.Executor
 
 /**
  * Duktape does not support Javascript date formatting. This native module can be used to format dates using Android's
  * built-in date formatter.
  */
-class ValdiDateFormattingModule(private val context: Context) : ValdiBridgeModule() {
+class ValdiDateFormattingModule(
+    private val context: Context,
+    computationExecutor: Executor? = null,
+) : ValdiBridgeModule() {
     companion object {
         private const val DEFAULT_FORMAT = "MEDIUM"
+
+        // Only for hosts that don't pass a computation executor.
+        private val fallbackExecutor by lazy {
+            ExecutorsUtil.newSingleThreadCachedExecutor { r ->
+                Thread(r).apply {
+                    name = "Valdi Date Formatting"
+                    priority = Thread.NORM_PRIORITY
+                }
+            }
+        }
     }
+
+    // The first call in a process loads ICU locale data, which can take seconds on devices under memory
+    // pressure. formatDateAsync keeps that off the JS thread.
+    private val asyncExecutor: Executor by lazy { computationExecutor ?: fallbackExecutor }
 
     private class Formats(context: Context) {
         val shortDate = DateFormat.getDateFormat(context)
@@ -32,18 +51,55 @@ class ValdiDateFormattingModule(private val context: Context) : ValdiBridgeModul
 
     override fun loadModule(): Any {
         return mapOf(
-                "formatDate" to makeBridgeMethod(this::formatDate)
+                "formatDate" to makeBridgeMethod(this::formatDate),
+                "formatDateAsync" to makeBridgeMethod(this::formatDateAsync)
         )
     }
 
     private fun formatDate(marshaller: ValdiMarshaller) {
         val epochMillis = marshaller.getDouble(0).toLong()
-
         val format = if (marshaller.isString(1)) marshaller.getString(1) else DEFAULT_FORMAT
         val timeZone = if (marshaller.isString(2)) marshaller.getString(2) else null
+
+        marshaller.pushString(formatEpochMillis(epochMillis, format, timeZone))
+    }
+
+    /**
+     * Same arguments as formatDate, followed by a callback that receives (formatted) on success or
+     * (undefined, errorMessage) on failure. The callback runs on the JS thread.
+     */
+    private fun formatDateAsync(marshaller: ValdiMarshaller) {
+        val epochMillis = marshaller.getDouble(0).toLong()
+        val format = if (marshaller.isString(1)) marshaller.getString(1) else DEFAULT_FORMAT
+        val timeZone = if (marshaller.isString(2)) marshaller.getString(2) else null
+        val callback = marshaller.getFunction(3)
+
+        asyncExecutor.execute {
+            val result = try {
+                Result.success(formatEpochMillis(epochMillis, format, timeZone))
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+
+            ValdiMarshaller.use {
+                result.fold(
+                    onSuccess = { formatted -> it.pushString(formatted) },
+                    onFailure = { error ->
+                        it.pushUndefined()
+                        it.pushString(error.message ?: error.javaClass.name)
+                    }
+                )
+                callback.perform(it)
+            }
+        }
+
+        marshaller.pushUndefined()
+    }
+
+    private fun formatEpochMillis(epochMillis: Long, format: String, timeZone: String?): String {
         val date = Date(epochMillis)
 
-        val str = when (format) {
+        return when (format) {
 
             // EN: 4/20/21 -> FR: 20/04/2021
             "SHORT" -> formatWithTimeZone(formats.value.shortDate, timeZone, date)
@@ -101,8 +157,6 @@ class ValdiDateFormattingModule(private val context: Context) : ValdiBridgeModul
             // Fallback
             else -> formatWithTimeZone(formats.value.mediumDate, timeZone, date)
         }
-
-        marshaller.pushString(str)
     }
 
     private fun getCalendar(date: Date, timeZone: String?): Calendar {

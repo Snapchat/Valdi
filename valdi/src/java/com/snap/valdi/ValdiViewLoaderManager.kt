@@ -78,6 +78,7 @@ import com.snapchat.client.valdi.NativeBridge
 import com.snapchat.client.valdi.utils.NativeHandleWrapper
 import java.io.File
 import java.lang.ref.WeakReference
+import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 
 private const val GET_WORKER_ATTRIBUTION = "platform.runtimeManager.getWorker"
@@ -90,7 +91,12 @@ class ValdiRuntimeManager(context: Context,
                                 typefaceResLoader: TypefaceResLoader? = null,
                                 hostUncaughtExceptionHandler: HostUncaughtExceptionHandler? = null,
                                 tracer: Tracer? = null,
-                                val customModuleProvider: IValdiCustomModuleProvider? = null
+                                val customModuleProvider: IValdiCustomModuleProvider? = null,
+                                /**
+                                 * Host pool for CPU-bound work that native modules move off the JS thread.
+                                 * Modules fall back to their own background thread when this is null.
+                                 */
+                                private val computationExecutor: Executor? = null
 ) : LifecycleObserver, ComponentCallbacks, FontManager.Listener {
 
     val logger: Logger
@@ -479,7 +485,7 @@ class ValdiRuntimeManager(context: Context,
         return ValdiNativeModules(
                 ValdiApplicationModule(context, isIntegrationTestEnvironment),
                 ValdiDeviceModule(jsThreadDispatcher, context, forceDarkMode),
-                ValdiDateFormattingModule(context),
+                ValdiDateFormattingModule(context, computationExecutor),
                 ValdiNumberFormattingModule(context, logger),
                 DrawingModuleImpl(coordinateResolver, fontManager, logger),
                 // We use `baseContext` here to ensure ContextWrapper is used if one was provided.
