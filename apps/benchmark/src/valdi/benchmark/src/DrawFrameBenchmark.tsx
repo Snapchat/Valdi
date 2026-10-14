@@ -15,7 +15,7 @@ import { IBitmap } from 'drawing/src/IBitmap';
 import { setTimeoutInterruptible } from 'valdi_core/src/SetTimeout';
 
 // ---------------------------------------------------------------------------
-// Complex synthetic scene -- approximates SnapEditor-level complexity
+// Complex synthetic scene -- approximates a complex production editor screen
 // ~100-150 nodes, 8-10 levels deep, exercises all major drawing primitives
 // ---------------------------------------------------------------------------
 

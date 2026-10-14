@@ -63,8 +63,8 @@ static NSString *SCValdiComposeWorkerAttribution(NSString *operation, NSString *
 }
 
 // Weak definition: defaults to the standard UIKit foreground notification.
-// A host app that provides a strong definition (e.g. Snapchat's SceneDelegate
-// migration via SCMainAppSceneDelegate) overrides this at link time.
+// A host app that provides a strong definition (e.g. as part of a
+// SceneDelegate migration) overrides this at link time.
 __attribute__((weak)) NSNotificationName SCLegacyUIApplicationWillEnterForegroundNotification =
     @"UIApplicationWillEnterForegroundNotification";
 

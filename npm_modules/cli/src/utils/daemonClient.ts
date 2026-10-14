@@ -35,7 +35,7 @@ import { getUserChoice, runCliCommand } from './cliUtils';
 
 /** DebuggerService port for standalone Valdi apps: macOS, CLI runner, standalone iOS/Android. */
 export const STANDALONE_PORT = 13591;
-/** DebuggerService port for in-app mobile targets (iOS in Snapchat, Android). */
+/** DebuggerService port for in-app mobile targets (iOS and Android host apps). */
 export const MOBILE_PORT = 13592;
 export const DEFAULT_PORT = MOBILE_PORT;
 

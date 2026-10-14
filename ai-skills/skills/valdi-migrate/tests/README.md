@@ -41,7 +41,7 @@ Save each output to the `output/` directory:
 Verify none of the outputs contain framework-specific patterns:
 
 ```bash
-cd client/src/open_source/ai-skills/skills/valdi-migrate/tests
+cd <valdi-repo-root>/ai-skills/skills/valdi-migrate/tests
 
 python3 check_antipatterns.py output/flutter_migrated.tsx   # must pass
 python3 check_antipatterns.py output/compose_migrated.tsx   # must pass
@@ -57,7 +57,7 @@ python3 check_antipatterns.py compose_example.kt            # expected: fail
 Verify all outputs (reference + migrations) build with the Valdi compiler:
 
 ```bash
-cd client/src/open_source
+cd <valdi-repo-root>
 bazel build //ai-skills/skills/valdi-migrate/tests:tests
 ```
 

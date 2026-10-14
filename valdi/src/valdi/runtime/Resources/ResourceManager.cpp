@@ -371,7 +371,7 @@ Ref<Bundle> ResourceManager::getBundle(const StringBox& bundleName) {
     // other threads can query the ResourceManager on other bundles.
     lock.unlock();
 
-    // Tweak reads can go to COF; evaluate them after releasing _mutex.
+    // Tweak reads can hit the host's config backend; evaluate them after releasing _mutex.
     bool useMmap = false;
     if (runtimeTweaks != nullptr) {
         // Denylisted modules take the heap path — identical to mmap-off behavior, which on

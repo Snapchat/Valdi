@@ -744,7 +744,7 @@ Valdi::Result<JavaClassDelegate*> AndroidValueMarshallerRegistry::getOrCreateReg
     auto jvmClassName = className.replacing('.', '/');
     auto javaClass = JavaClass::resolveOrAbort(JavaEnv(), jvmClassName.getCStr());
 
-    // Fast path (COF-gated, default off): resolve the descriptor from the batched closure cache. One
+    // Fast path (tweak-gated, default off): resolve the descriptor from the batched closure cache. One
     // getDescriptorClosure JNI call brings in this class plus its transitive references (parsed natively
     // from a ByteBuffer), so reference recursion below becomes cache hits with no further JNI. When the
     // gate is off we skip straight to the legacy per-class path below.

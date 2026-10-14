@@ -85,11 +85,11 @@ public:
 
     // Enables the batched getDescriptorClosure fast path in getOrCreateRegisteredMarshallableClass.
     // Default off: the registry uses the legacy per-class descriptor fetch until the app opts in
-    // (COF-gated, set once at startup). See ValdiValueMarshallerRegistry.setDescriptorClosureEnabled.
+    // (tweak-gated, set once at startup). See ValdiValueMarshallerRegistry.setDescriptorClosureEnabled.
     void setDescriptorClosureEnabled(bool enabled);
 
     // Enables lazy resolution of function synchronous-value return marshallers (deferred to first call
-    // instead of root-create). Default off; set once at startup via the COF. See
+    // instead of root-create). Default off; set once at startup via the runtime tweak. See
     // ValueMarshallerRegistry.setLazyFunctionReturnMarshallerEnabled.
     void setLazyFunctionReturnMarshallerEnabled(bool enabled);
 
@@ -114,7 +114,7 @@ private:
     // not echoed back to it (see ValdiMarshallableObjectDescriptor.resolvedClassNames).
     Valdi::FlatMap<Valdi::StringBox, ParsedDescriptor> _descriptorByName;
     // Gates the batched getDescriptorClosure fast path. Off by default; flipped on via
-    // setDescriptorClosureEnabled when the COF is enabled. When off, only the legacy path runs.
+    // setDescriptorClosureEnabled when the tweak is enabled. When off, only the legacy path runs.
     bool _descriptorClosureEnabled = false;
 
     struct RegisteredSchema {

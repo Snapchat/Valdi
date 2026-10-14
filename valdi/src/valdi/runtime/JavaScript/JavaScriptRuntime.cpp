@@ -1083,7 +1083,7 @@ JSValueRef JavaScriptRuntime::runtimeSubmitRenderRequest(JSFunctionNativeCallCon
     // Fix: if the current context is destroyed, temporarily override it with the
     // render request's owning component context (treeId), which is still alive.
     //
-    // Gated by COF VALDI_ENABLE_RENDER_REQUEST_CONTEXT_FIX (default: on)
+    // Gated by tweak VALDI_ENABLE_RENDER_REQUEST_CONTEXT_FIX (default: on)
     std::unique_ptr<ContextEntry> contextOverride;
     auto* currentCtx = Context::current();
     auto* currentRoot = Context::currentRoot();
@@ -3617,7 +3617,7 @@ int32_t JavaScriptRuntime::pushModuleToMarshaller(
         // The distinguishable teardown code lets a marshalling boundary degrade gracefully rather
         // than raise. The kill switch omits the code (reverting to the plain raising behavior) so the
         // degrade can be disabled remotely without a rebuild. It reads _resolutionTeardownDegradeEnabled,
-        // which Runtime::setRuntimeTweaks keeps in sync with the COF-backed tweak — the listener is
+        // which Runtime::setRuntimeTweaks keeps in sync with the host-backed tweak — the listener is
         // already detached by the time this branch runs, so it can't be read through it here.
         int32_t errorCode = _resolutionTeardownDegradeEnabled ? kResolutionSkippedDuringTeardownErrorCode : 0;
         marshaller.getExceptionTracker().onError(
@@ -3663,7 +3663,7 @@ void JavaScriptRuntime::preloadModule(const StringBox& path, int32_t maxDepth) {
 void JavaScriptRuntime::preloadModules(const std::vector<StringBox>& paths, int32_t maxDepth) {
     _resourceManager.warmUpBundles(paths);
 
-    // Read the yield chunk size live (not an init-time snapshot) so a COF ramp takes effect on the
+    // Read the yield chunk size live (not an init-time snapshot) so a tweak ramp takes effect on the
     // next capture without an app restart, and so it is unaffected by runtime-init vs
     // config-availability ordering. 0 = evaluate the batch as a single uninterrupted task (default).
     int32_t chunkSize = 0;

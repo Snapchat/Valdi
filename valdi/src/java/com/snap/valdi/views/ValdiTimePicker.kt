@@ -38,7 +38,7 @@ open class ValdiTimePicker(context: Context) : ViewGroup(context), ValdiTouchTar
         private val hourOfDayProperty = InternedString.create("hourOfDay")
         private val minuteOfHourProperty = InternedString.create("minuteOfHour")
 
-        // Source of truth: STYLE_MAP in composer/coreui/src/components/pickers/DatePickerPreferredStyle.ts
+        // Source of truth: STYLE_MAP in the date picker's TypeScript preferred-style definitions
         private const val STYLE_SPINNER = 1
         private const val STYLE_OVERLAY = 2
 

@@ -104,8 +104,8 @@ class FixedResolutionTeardownDegradeProvider : public Valdi::SharedPtrRefCountab
                    @"With the teardown-degrade kill switch on, resolution after teardown must not raise");
 }
 
-// Kill switch off (COF disabled): resolution after teardown raises the original SCValdiError. This is
-// the assertion that the COF is a real lever, not a dead read.
+// Kill switch off (tweak disabled): resolution after teardown raises the original SCValdiError. This is
+// the assertion that the tweak is a real lever, not a dead read.
 - (void)testDegradeOffRaisesAfterTeardown
 {
     self.continueAfterFailure = NO;

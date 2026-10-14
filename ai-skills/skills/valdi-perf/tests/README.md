@@ -15,7 +15,7 @@ Compile check for the performance patterns taught in `skill.md`.
 ## Compile check
 
 ```bash
-cd client/src/open_source
+cd <valdi-repo-root>
 bazel build //ai-skills/skills/valdi-perf/tests:tests
 ```
 

@@ -57,8 +57,8 @@ static NSURL *containedResourceUrl(NSURL *resourceRoot, NSString *resourceName) 
 // Direct filesystem lookup of a resource relative to a bundle's resource directory. Unlike
 // -[NSBundle URLForResource:withExtension:], this does not go through _CFBundleCopyFindResources,
 // which enumerates the bundle's entire resource directory and builds a resource index that
-// CoreFoundation retains for the bundle's lifetime — the dominant live-CFString source in a
-// SnapEditor Allocations trace, made worse by the allBundles loop below building an index for
+// CoreFoundation retains for the bundle's lifetime — the dominant live-CFString source in an
+// Instruments Allocations trace of a large app, made worse by the allBundles loop below building an index for
 // every scanned bundle. This is a plain direct-name lookup: placements it can't resolve — device
 // modifiers (~ipad/~iphone) and localized subdirectories — fall through to the URLForResource:
 // fallback, which resolves them correctly (Valdi modules are flat and don't ship device variants,

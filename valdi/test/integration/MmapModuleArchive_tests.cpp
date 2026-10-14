@@ -3,7 +3,7 @@
 //
 //  Integration tests for the mmap module archive A/B telemetry path.
 //  Verifies that ResourceManager dispatches to the mmap-backed decompressor
-//  when the COF is on and a cache directory is configured, and falls back
+//  when the tweak is on and a cache directory is configured, and falls back
 //  to the heap decompressor in all other cases. Exactly one of the three
 //  Module_Archive_* counters must be emitted per archive load, and the
 //  Module_Decompress_Latency timer must be emitted alongside it.
@@ -48,7 +48,7 @@ constexpr auto kModuleName = "test";
 // Test doubles
 // ---------------------------------------------------------------------------
 
-// Tweak provider that exposes a single boolean COF used by ValdiRuntimeTweaks.
+// Tweak provider that exposes a single boolean tweak used by ValdiRuntimeTweaks.
 class MmapTweakProvider : public SharedPtrRefCountable,
                           public snap::valdi_core::ModuleFactory,
                           public ITweakValueProvider {
@@ -213,7 +213,7 @@ protected:
         }
     }
 
-    // Lazily construct the wrapper so the test can set the COF before the
+    // Lazily construct the wrapper so the test can set the tweak before the
     // runtime queries it during module load. Uses a real JS bridge because
     // ResourceManager::loadModuleAsync runs JS initialization downstream of
     // the decompress path we're trying to exercise.
@@ -237,10 +237,10 @@ protected:
 // Tests
 // ---------------------------------------------------------------------------
 
-// COF off → heap counter fires, mmap counters do not, latency timer fires.
+// Tweak off → heap counter fires, mmap counters do not, latency timer fires.
 TEST_F(MmapModuleArchiveFixture, EmitsHeapCounterWhenCofDisabled) {
     auto& wrapper = makeWrapper(/*enableCof=*/false);
-    // Cache dir intentionally NOT set; with COF off it doesn't matter anyway.
+    // Cache dir intentionally NOT set; with the tweak off it doesn't matter anyway.
 
     auto result = wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources);
     ASSERT_TRUE(result) << result.description();
@@ -254,7 +254,7 @@ TEST_F(MmapModuleArchiveFixture, EmitsHeapCounterWhenCofDisabled) {
     EXPECT_EQ(0, _metrics->mmapPublishFail.load()) << "Publish-failure counter is for the mmap path only";
 }
 
-// COF on but no cache dir → ResourceManager short-circuits to the heap path
+// Tweak on but no cache dir → ResourceManager short-circuits to the heap path
 // (because _mmapCacheDirectory is empty), so heap counter fires.
 TEST_F(MmapModuleArchiveFixture, EmitsHeapCounterWhenCofOnButNoCacheDir) {
     auto& wrapper = makeWrapper(/*enableCof=*/true);
@@ -270,7 +270,7 @@ TEST_F(MmapModuleArchiveFixture, EmitsHeapCounterWhenCofOnButNoCacheDir) {
     EXPECT_EQ(0, _metrics->mmapPublishFail.load());
 }
 
-// COF on + cache dir set → mmap path is dispatched. We don't assert which
+// Tweak on + cache dir set → mmap path is dispatched. We don't assert which
 // arm wins (success vs fallback) because that depends on whether the test
 // module artifact is ZStd-compressed by the build pipeline; we only require
 // that the heap counter is NOT used and that exactly one mmap counter fires
@@ -285,7 +285,7 @@ TEST_F(MmapModuleArchiveFixture, DispatchesToMmapPathWhenCofOnAndCacheDirSet) {
 
     const int mmapTotal = _metrics->mmapSuccess.load() + _metrics->mmapFallback.load();
     EXPECT_GE(mmapTotal, 1) << "At least one mmap-path counter should fire";
-    EXPECT_EQ(0, _metrics->heap.load()) << "Heap counter must not fire when COF is on and cache dir is set";
+    EXPECT_EQ(0, _metrics->heap.load()) << "Heap counter must not fire when the tweak is on and cache dir is set";
     EXPECT_EQ(mmapTotal, _metrics->totalPathCounters()) << "Only mmap counters should fire";
     EXPECT_EQ(mmapTotal, _metrics->decompressLatencyCalls.load()) << "Latency timer should fire once per decompress";
     // Happy-path expectation: nothing should report a publish failure when
@@ -293,9 +293,9 @@ TEST_F(MmapModuleArchiveFixture, DispatchesToMmapPathWhenCofOnAndCacheDirSet) {
     EXPECT_EQ(0, _metrics->mmapPublishFail.load());
 }
 
-// COF on + cache dir set, but the module matches a denylist prefix (with
+// Tweak on + cache dir set, but the module matches a denylist prefix (with
 // surrounding whitespace, exercising trimming) → the heap path must be taken,
-// exactly as if the mmap COF were off for this module. This is the pinning
+// exactly as if the mmap tweak were off for this module. This is the pinning
 // mechanism for surfaces whose refault latency outweighs their memory win.
 TEST_F(MmapModuleArchiveFixture, HeapPathWhenModuleDenylisted) {
     TemporaryDirectory tmp;
@@ -375,7 +375,7 @@ TEST_F(MmapModuleArchiveFixture, MmapPathWhenDenylistDoesNotMatch) {
     EXPECT_EQ(0, _metrics->heap.load()) << "No module is denylisted, so nothing should take the heap path";
 }
 
-// COF on + cache dir set + mmap success → file backing must exist at the
+// Tweak on + cache dir set + mmap success → file backing must exist at the
 // expected hashed-flat path under the cache directory. Only meaningful when
 // the test module artifact is ZStd-compressed; if it isn't, this test
 // degenerates to a no-op assertion (skip via GTEST_SKIP).

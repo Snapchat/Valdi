@@ -16,7 +16,7 @@ import org.junit.Test
  * PR #107's reland dropped two of them this way — `editTextResetSelectionMatchesIos` was replaced
  * with a literal `false` at the `EditTextAttributesBinder` call site, and `useLocaleLanguageTag` was
  * omitted from the `ValdiDeviceModule` constructor so it fell back to its default. Both compiled,
- * both left a COF-gated feature permanently off, and no test noticed: the tweaks are plumbing, and
+ * both left a tweak-gated feature permanently off, and no test noticed: the tweaks are plumbing, and
  * the tests that touch the affected constructors pass their own literals rather than asserting the
  * wiring.
  *

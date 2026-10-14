@@ -193,7 +193,7 @@ bool ValdiRuntimeTweaks::isMmapModuleArchiveDenylisted(const StringBox& modulePa
 }
 
 bool ValdiRuntimeTweaks::enableANRDiagnostics() const {
-    // Key name kept from the earlier module-load diagnostics so the existing COF config carries over.
+    // Key name kept from the earlier module-load diagnostics so the existing tweak config carries over.
     return getConfigKey("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS");
 }
 

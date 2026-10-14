@@ -242,7 +242,7 @@ export interface ValdiRuntime extends RuntimeBase {
 
   /**
    * When true, the renderer emits moves in top-down order (parent before children) to reduce ANR risk.
-   * Gated by VALDI_MAX_VIEW_OPERATIONS_PROCESSING_TIME (same COF as view-op throttling); true when that value > 0.
+   * Gated by VALDI_MAX_VIEW_OPERATIONS_PROCESSING_TIME (same tweak as view-op throttling); true when that value > 0.
    */
   useTopDownMoveOrder: boolean;
 

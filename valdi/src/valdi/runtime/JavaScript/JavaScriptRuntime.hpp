@@ -516,7 +516,7 @@ private:
     RecursiveMutex _jsQueueTeardownMutex;
     bool _jsQueueTornDown = false;
     std::atomic<ContextId> _lastDispatchedContextId;
-    // ANR attribution diagnostics, gated by the VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS COF key (key
+    // ANR attribution diagnostics, gated by the VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS tweak key (key
     // name kept from the earlier module-load diagnostics for config continuity). The mutex guards
     // the attribution stack: written on the JS thread around JS->native bridge calls,
     // read by the ANR detector without running JS.

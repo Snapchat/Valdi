@@ -30,7 +30,7 @@ open class ValdiDatePicker(context: Context) : ViewGroup(context), ValdiTouchTar
     companion object {
         private val dateSecondsProperty = InternedString.create("dateSeconds")
 
-        // Source of truth: STYLE_MAP in composer/coreui/src/components/pickers/DatePickerPreferredStyle.ts
+        // Source of truth: STYLE_MAP in the date picker's TypeScript preferred-style definitions
         private const val STYLE_SPINNER = 1
         private const val STYLE_OVERLAY = 2
 

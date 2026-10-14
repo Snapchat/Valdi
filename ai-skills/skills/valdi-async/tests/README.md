@@ -14,7 +14,7 @@ Compile check for the async lifecycle safety patterns taught in `skill.md`.
 ## Compile check
 
 ```bash
-cd client/src/open_source
+cd <valdi-repo-root>
 bazel build //ai-skills/skills/valdi-async/tests:tests
 ```
 

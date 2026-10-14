@@ -109,7 +109,7 @@ NSTextAlignment SCValdiFontAttributesResolveTextAlignment(NSTextAlignment textAl
         // NSParagraphStyle.lineHeightMultiple applies exactly that. It must NOT be resolved against
         // font.pointSize and clamped with minimum/maximumLineHeight: pointSize is roughly 0.8x the
         // natural line height, so any multiple below ~1.2 would clamp the line box under the glyphs
-        // and clip the text (SEARCH-48847 — Search captions use 0.8-0.97 multiples).
+        // and clip the text (SEARCH-48847 — caption styles commonly use 0.8-0.97 multiples).
         CGFloat multiple = lineHeight.doubleValue;
         if (multiple <= 0) {
             return;

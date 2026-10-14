@@ -71,7 +71,7 @@ public:
     bool enableFixFlexBasisFitContent() const;
     // Number of modules ModuleLoader.preloadBatch evaluates per JS-scheduler task before yielding.
     // 0 (default) keeps preload as a single uninterrupted task. > 0 bounds the max contiguous JS
-    // occupancy during capture-start preload so the 5s Composer watchdog ack can run. Read via getInt.
+    // occupancy during startup preload so the 5s ANR watchdog ack can run. Read via getInt.
     int32_t preloadYieldChunkSize() const;
 
 private:

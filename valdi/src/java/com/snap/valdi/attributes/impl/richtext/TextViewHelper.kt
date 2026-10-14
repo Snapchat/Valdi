@@ -87,7 +87,7 @@ class TextViewHelper(private val view: TextView,
     /**
      * When true, match iOS: after text is set programmatically, keep the caret at the end of the
      * text instead of Android's default of moving it to the start, unless an explicit selection is
-     * provided. Gated by the VALDI_EDITTEXT_RESET_SELECTION_MATCHES_IOS COF; applies to ValdiEditText.
+     * provided. Gated by the VALDI_EDITTEXT_RESET_SELECTION_MATCHES_IOS tweak; applies to ValdiEditText.
      */
     var matchIosTextSetCaret = false
 

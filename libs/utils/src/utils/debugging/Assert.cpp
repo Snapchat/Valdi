@@ -9,7 +9,7 @@ namespace {
 // Global variable that we set by setEnableReleaseAsserts(). Enabled by default for development builds.
 std::atomic_bool gReleaseAssertsEnabled{kAssertsCompiledIn};
 // Global variable indicating whether fused assertions are enabled. Disabled by
-// default. Should be enabled when running in Snapchat app.
+// default. Should be enabled by production host apps.
 std::atomic_bool gFusedAssertionEnabled{false};
 } // namespace
 

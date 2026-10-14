@@ -9,8 +9,8 @@
 // Regression coverage for the live UITextView consuming backgroundEffectPadding as
 // lineFragmentPadding (both horizontal sides) plus a vertical textContainerInset, so measurement
 // must reserve the same space. Without the reserve, a text view sized to its measured width loses
-// 2x padding of usable width and wraps one character per line (the SnapEditor bubble-wrap caption
-// rendered vertically in the caption editor).
+// 2x padding of usable width and wraps one character per line (a bubble-wrap caption
+// rendered vertically in a caption editor).
 @interface SCValdiTextView (MeasurementTesting)
 + (CGSize)measureSizeWithMaxSize:(CGSize)maxSize
                    fontAttributes:(SCValdiFontAttributes *)fontAttributes

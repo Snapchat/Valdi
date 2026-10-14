@@ -8,7 +8,7 @@ void SCValdiFixIOS14DatePicker(UIDatePicker* datePicker);
 
 /// Sets the preferred date picker style on iOS 14+.
 /// Values: 1 = spinner (wheels), 2 = overlay (compact), 3 = expanded (inline).
-/// Source of truth: STYLE_MAP in composer/coreui/src/components/pickers/DatePickerPreferredStyle.ts
+/// Source of truth: STYLE_MAP in the date picker's TypeScript preferred-style definitions
 void SCValdiSetDatePickerStyle(UIDatePicker* datePicker, NSInteger style);
 
 NS_ASSUME_NONNULL_END

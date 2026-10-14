@@ -428,7 +428,7 @@ static void SCValdiCallEventWithReason(id<SCValdiFunction> function, UITextField
             NSTextAlignment resolvedTextAlignment = [fontAttributes resolveTextAlignmentWithIsRightToLeft:isRightToLeft];
 
             // NSTextAlignmentNatural switches alignment based on keyboard language instead of app language,
-            // introduce fix under COF to use NSTextAlignmentLeft and NSTextAlignmentRight
+            // introduce fix behind a tweak to use NSTextAlignmentLeft and NSTextAlignmentRight
             // instead of Natural (the NSTextAlignment used for left)
             if (resolvedTextAlignment == NSTextAlignmentNatural) {
                 if (traitCollection.layoutDirection == UITraitEnvironmentLayoutDirectionRightToLeft) {

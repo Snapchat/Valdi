@@ -196,9 +196,9 @@ export class ModuleLoader implements IModuleLoader {
 
     // chunkSize > 0 opts into cooperative yielding: evaluate up to `chunkSize` modules, then
     // return control to the JS scheduler before the next chunk. Preloading a large batch
-    // (e.g. the capture-start SnapEditor list) otherwise runs as a single uninterrupted JS task
+    // (e.g. a startup preload list) otherwise runs as a single uninterrupted JS task
     // that holds the runtime thread for its entire duration; on slow devices that can exceed the
-    // 5s Composer watchdog (JavaScriptANRDetector's ack task is queued on this same thread) and
+    // 5s ANR watchdog (JavaScriptANRDetector's ack task is queued on this same thread) and
     // block queued input. Yielding between chunks lets the ack and input tasks interleave.
     //
     // chunkSize omitted / <= 0 keeps the original synchronous single-task behavior. The batch

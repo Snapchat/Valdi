@@ -24,7 +24,7 @@ Reference spec file demonstrating all test utility patterns from `skill.md`.
 ## Run tests
 
 ```bash
-cd client/src/open_source
+cd <valdi-repo-root>
 bazel test //ai-skills/skills/valdi-component-tests/tests:tests
 ```
 

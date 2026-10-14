@@ -558,8 +558,8 @@ NSURL *NSURLFromString(const Valdi::StringBox &urlString) {
                                                   nil));
 }
 
-// The domain is a de-facto contract: consumers (e.g. SCMediaTranscodingLogger) match on it to
-// classify Composer/JS failures.
+// The domain is a de-facto contract: consumers (e.g. host error loggers) match on it to
+// classify Valdi/JS failures.
 static NSString *const kValdiErrorDomain = @"com.snap.valdi";
 static NSString *const kValdiErrorStackTraceKey = @"SCValdiErrorStackTrace";
 

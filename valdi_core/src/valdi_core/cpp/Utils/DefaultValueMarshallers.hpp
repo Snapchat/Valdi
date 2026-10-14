@@ -1408,13 +1408,13 @@ protected:
 /**
  ValueMarshaller that resolves its inner marshaller lazily, on the first marshall()/unmarshall() call,
  instead of when the owning registry is built. Used for function/Provider return types so that a tool's
- dependency type closure is not resolved+bound on the root-create / CCD critical path; the real return
+ dependency type closure is not resolved+bound on the root-create / startup critical path; the real return
  marshaller is resolved on the first call that actually marshalls a return value, then cached.
 
  Optionality is reported from the return schema (known statically, without forcing resolution), and the
  resolved inner performs the actual null-handling, so runtime behaviour matches the eager path. Lazy
  resolution mutates the registry, so it is only safe while marshalling runs on the thread that owns the
- registry build (true for the SnapEditor first-render path, which marshalls on the Valdi JS thread); a
+ registry build (true for a typical first-render path, which marshalls on the Valdi JS thread); a
  form that defers resolution across threads must lock the registry on the resolve path.
  */
 template<typename ValueType>

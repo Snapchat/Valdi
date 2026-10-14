@@ -470,7 +470,7 @@ extern std::unordered_map<void*, CppProxyCacheEntry> cppProxyCache;
 extern std::mutex jsProxyCacheMutex;
 extern std::mutex cppProxyCacheMutex;
 
-// Set once from the Composer layer after COF resolves; read on the hot path (COMPOSER-6103).
+// Set once by the host after its runtime tweaks resolve; read on the hot path (COMPOSER-6103).
 void setGlobalOneWayCalls(bool enabled) noexcept;
 bool globalOneWayCallsEnabled() noexcept;
 

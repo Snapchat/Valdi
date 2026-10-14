@@ -25,7 +25,7 @@ namespace Valdi {
 // specialization (JavaValue for JNI marshalling, JSValueRef for the JS engine, ...), and a per-instance
 // flag would only ever be set on the one instance the platform setter can reach — leaving the others
 // eager and the registries non-uniform (a mixed lazy/eager registry does not render). One global read
-// by all specializations keeps them uniform. Set once at startup via the COF (see
+// by all specializations keeps them uniform. Set once at startup via the runtime tweak (see
 // setLazyFunctionReturnMarshallerEnabled); the inline function-local static gives a single instance
 // across translation units.
 inline std::atomic<bool>& lazyFunctionReturnMarshallerFlag() {
@@ -127,7 +127,7 @@ public:
     }
 
     // When enabled, a function's synchronous value return-type marshaller is resolved lazily on first
-    // call instead of at root-create, keeping its type closure off the CCD critical path. Writes the
+    // call instead of at root-create, keeping its type closure off the startup critical path. Writes the
     // process-global flag (see lazyFunctionReturnMarshallerFlag) so every registry specialization sees
     // it. Set once before any marshallable class is registered (see SnapValdiRuntimeManagerFactory.create).
     void setLazyFunctionReturnMarshallerEnabled(bool enabled) {
@@ -382,7 +382,7 @@ private:
         }
 
         // Defer the return-type marshaller resolution (and its full type closure) to the first call that
-        // marshalls a return value, keeping it off the root-create / CCD critical path. For a Provider<X>
+        // marshalls a return value, keeping it off the root-create / startup critical path. For a Provider<X>
         // field this leaves X's closure unresolved until the tool is actually used. The resolver goes
         // through the public getValueMarshaller so any indirect marshallers it creates are flushed.
         //

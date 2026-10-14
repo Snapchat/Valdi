@@ -4,11 +4,11 @@ Valdi is a language, framework, and view abstraction layer that lets you declara
 
 ## Build for macOS
 
-Open `client/src/open_source/compiler/compiler/Compiler/Package.swift` in Xcode and allow it to resolve the dependencies, and then it should build successfully.
+Open `compiler/compiler/Compiler/Package.swift` in Xcode and allow it to resolve the dependencies, and then it should build successfully.
 
 ## Build for Ubuntu 18.04
 
-Run client/src/dev_setup.sh. This should download and install Swift, clone and build watchman from source and install all the necessary apt-get dependencies.
+Run `scripts/dev_setup.sh`. This should download and install Swift, clone and build watchman from source and install all the necessary apt-get dependencies.
 
 ## Building the compiler locally
 

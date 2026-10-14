@@ -71,7 +71,7 @@ public:
     bool getAccessibilityEnabled() const;
 
     // Gates adding a managesChildFrames node's own padding to its measured size (see
-    // ViewNode::onMeasure). On by default; a host can disable it per renderer via config (COF) as a
+    // ViewNode::onMeasure). On by default; a host can disable it per renderer via a runtime tweak as a
     // kill switch if the size change regresses a surface.
     void setApplyManagedChildFramePadding(const bool applyManagedChildFramePadding);
     bool getApplyManagedChildFramePadding() const;

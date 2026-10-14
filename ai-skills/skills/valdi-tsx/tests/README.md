@@ -18,7 +18,7 @@ Compile check for the core TSX component patterns taught in `skill.md`.
 ## Compile check
 
 ```bash
-cd client/src/open_source
+cd <valdi-repo-root>
 bazel build //ai-skills/skills/valdi-tsx/tests:tests
 ```
 

@@ -271,7 +271,7 @@
     // TextLayoutLineHeight::getLineMetrics, which scales the font's ascent/descent, and the pre-reland
     // behavior). It is applied as lineHeightMultiple, not an absolute minimum/maximumLineHeight;
     // resolving it against font.pointSize instead clamped the line box below the glyphs and clipped
-    // Search captions (SEARCH-48847).
+    // captions (SEARCH-48847).
     XCTAssertEqualWithAccuracy(paragraphStyle.lineHeightMultiple, multiple, 0.001);
     XCTAssertEqualWithAccuracy(paragraphStyle.minimumLineHeight, 0, 0.001);
     XCTAssertEqualWithAccuracy(paragraphStyle.maximumLineHeight, 0, 0.001);
@@ -282,7 +282,7 @@
 - (void)testRelativeLineHeightDoesNotCompressBelowNaturalWithoutBaselineOffset
 {
     UIFont *font = [UIFont systemFontOfSize:48 weight:UIFontWeightMedium];
-    // The value coreui Search captions use — a sub-1 multiple. It must scale the natural line height
+    // A typical caption-style value — a sub-1 multiple. It must scale the natural line height
     // (0.9x), never resolve to font.pointSize and add a negative baseline offset that clips the text.
     CGFloat multiple = 0.9;
     SCValdiFont *valdiFont = [[SCValdiFont alloc] initWithFont:font
