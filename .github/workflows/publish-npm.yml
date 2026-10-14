@@ -101,6 +101,7 @@ jobs:
           gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          service_account_ro: ${{ vars.GCP_SERVICE_ACCOUNT_RO }}
           cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
 
       - name: Setup Node.js

@@ -95,6 +95,7 @@ jobs:
           gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          service_account_ro: ${{ vars.GCP_SERVICE_ACCOUNT_RO }}
           cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
           cache_key: smoke-test
 
@@ -154,6 +155,7 @@ jobs:
           gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          service_account_ro: ${{ vars.GCP_SERVICE_ACCOUNT_RO }}
           cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
           cache_key: macos-tests
 
@@ -220,6 +222,7 @@ jobs:
           gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          service_account_ro: ${{ vars.GCP_SERVICE_ACCOUNT_RO }}
           cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
           cache_key: ${{ matrix.task }}
 
@@ -309,6 +312,7 @@ jobs:
           gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          service_account_ro: ${{ vars.GCP_SERVICE_ACCOUNT_RO }}
           cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
           cache_key: snapshot-tests
 
@@ -375,6 +379,7 @@ jobs:
           gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          service_account_ro: ${{ vars.GCP_SERVICE_ACCOUNT_RO }}
           cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
           cache_key: web-integration
 

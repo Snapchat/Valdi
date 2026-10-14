@@ -9,7 +9,10 @@ inputs:
     description: 'Full workload identity provider resource name'
     required: true
   service_account:
-    description: 'GCP service account email'
+    description: 'GCP service account email with read/write cache access. Only used for push/schedule on main.'
+    required: true
+  service_account_ro:
+    description: 'GCP service account email with read-only cache access. Used for every other run.'
     required: true
   cache_bucket:
     description: 'GCS bucket name for remote cache'
@@ -22,6 +25,33 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    # GCP IAM only lets the writer SA be impersonated by push/schedule runs on
+    # main (WIF attribute.ref_event). Picking it anywhere else fails auth, so
+    # this choice must match that binding rather than act as the control.
+    - name: Select cache identity
+      id: sa
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        REF: ${{ github.ref }}
+        SA_RW: ${{ inputs.service_account }}
+        SA_RO: ${{ inputs.service_account_ro }}
+      run: |
+        if { [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "schedule" ]; } && [ "$REF" = "refs/heads/main" ]; then
+          SA="$SA_RW"; WRITER=true; KIND="read/write"
+        else
+          SA="$SA_RO"; WRITER=false; KIND="read-only"
+        fi
+        # Composite actions don't enforce `required`, and an empty SA makes the
+        # auth step fail under continue-on-error, so the build would silently go cold.
+        if [ -z "$SA" ]; then
+          echo "::error::No $KIND cache service account configured (check GCP_SERVICE_ACCOUNT / GCP_SERVICE_ACCOUNT_RO repo variables)."
+          exit 1
+        fi
+        echo "email=$SA" >> "$GITHUB_OUTPUT"
+        echo "writer=$WRITER" >> "$GITHUB_OUTPUT"
+        echo "Using $KIND cache identity: $SA"
+
     - name: Authenticate to Google Cloud
       id: auth
       continue-on-error: true
@@ -29,7 +59,7 @@ runs:
       with:
         project_id: ${{ inputs.gcp_project_id }}
         workload_identity_provider: ${{ inputs.workload_identity_provider }}
-        service_account: ${{ inputs.service_account }}
+        service_account: ${{ steps.sa.outputs.email }}
         token_format: 'access_token'
 
     - name: Configure Bazel remote cache
@@ -37,7 +67,7 @@ runs:
       env:
         AUTH_OUTCOME: ${{ steps.auth.outcome }}
         CACHE_BUCKET: ${{ inputs.cache_bucket }}
-        EVENT_NAME: ${{ github.event_name }}
+        CACHE_WRITER: ${{ steps.sa.outputs.writer }}
       run: |
         # Always write config=ci for non-remote flags (circuit breaker, etc.)
         echo "build --config=ci" >> .bazelrc.local
@@ -76,10 +106,8 @@ runs:
         # when Bazel opens its default 100 concurrent connections to the cache.
         # Retries don't help: the host is out of socket buffers, not blipping.
         echo "build --remote_max_connections=32" >> .bazelrc.local
-        # Only upload cache results on trusted events, not pull requests. Scheduled runs
-        # count: they always execute on the default branch, and without uploads a nightly
-        # job pays for a full cold build every time and leaves nothing behind for PRs.
-        if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$EVENT_NAME" = "release" ] || [ "$EVENT_NAME" = "schedule" ]; then
+        # Only the writer identity can upload; anything else would 403 on every write.
+        if [ "$CACHE_WRITER" = "true" ]; then
           echo "build --remote_upload_local_results=true" >> .bazelrc.local
         else
           echo "build --remote_upload_local_results=false" >> .bazelrc.local
@@ -97,7 +125,7 @@ runs:
         echo "build --remote_timeout=300s" >> "$CACHE_RC"
         echo "build --remote_max_connections=32" >> "$CACHE_RC"
         echo "build --experimental_circuit_breaker_strategy=failure" >> "$CACHE_RC"
-        if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$EVENT_NAME" = "release" ] || [ "$EVENT_NAME" = "schedule" ]; then
+        if [ "$CACHE_WRITER" = "true" ]; then
           echo "build --remote_upload_local_results=true" >> "$CACHE_RC"
         else
           echo "build --remote_upload_local_results=false" >> "$CACHE_RC"
@@ -115,6 +143,18 @@ runs:
           exit 1
         fi
         echo "Bazel GCS credential helper sanity check passed."
+
+        # A minted token doesn't prove the identity can read the bucket (e.g. the
+        # SA's bucket role lapsed). Without this, every cache read 403s and the
+        # build silently runs cold.
+        AUTH_HEADER="$(printf '%s' "$HELPER_OUT" | jq -r '.headers.Authorization[0]')"
+        PROBE_CODE="$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: $AUTH_HEADER" \
+          "https://storage.googleapis.com/storage/v1/b/$CACHE_BUCKET/o?maxResults=1")"
+        if [ "$PROBE_CODE" != "200" ]; then
+          echo "::error::Cache identity cannot list gs://$CACHE_BUCKET (HTTP $PROBE_CODE)."
+          exit 1
+        fi
+        echo "Bazel cache bucket read check passed."
 
     - name: Prune and configure disk cache
       if: inputs.cache_key != ''
