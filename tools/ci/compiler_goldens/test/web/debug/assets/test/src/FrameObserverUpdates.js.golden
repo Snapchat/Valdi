@@ -1,0 +1,15 @@
+module.path = "test/src/FrameObserverUpdates";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.FrameObserverUpdates = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view', ['width', '100%', 'height', '100%']);
+const Component_1 = require("valdi_core/src/Component");
+class FrameObserverUpdates extends Component_1.Component {
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        __Renderer.setAttributeFunction('onLayout', this.viewModel.onLayout);
+        __Renderer.endRender();
+    }
+}
+exports.FrameObserverUpdates = FrameObserverUpdates;

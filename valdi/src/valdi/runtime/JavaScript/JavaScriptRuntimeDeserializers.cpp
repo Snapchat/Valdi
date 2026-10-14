@@ -370,15 +370,16 @@ Ref<RenderRequest> JavaScriptRuntimeDeserializers::parseRequestDescriptor(
             auto valueIndex = static_cast<size_t>(descriptor[current++]);
 
             auto* entry = renderRequest->appendOnLayoutComplete();
-            entry->setCallback(getAttachedValue(requestDescriptor,
-                                                values,
-                                                valueIndex,
-                                                ReferenceInfoBuilder().withObject(kOnLayoutComplete),
-                                                exceptionTracker)
-                                   .getFunctionRef());
+            const auto& callback = getAttachedValue(requestDescriptor,
+                                                    values,
+                                                    valueIndex,
+                                                    ReferenceInfoBuilder().withObject(kOnLayoutComplete),
+                                                    exceptionTracker);
             if (!exceptionTracker) {
                 return nullptr;
             }
+            disableCallIfContextIsDestroyed(callback);
+            entry->setCallback(callback.getFunctionRef());
         } else if (type == 17) {
             // Cancel animation
             if (current + 1 > length) {
@@ -396,20 +397,24 @@ Ref<RenderRequest> JavaScriptRuntimeDeserializers::parseRequestDescriptor(
             auto valueIndex = static_cast<size_t>(descriptor[current++]);
 
             auto* entry = renderRequest->appendOnNextDraw();
-            entry->setCallback(getAttachedValue(requestDescriptor,
-                                                values,
-                                                valueIndex,
-                                                ReferenceInfoBuilder().withObject(kOnNextDraw),
-                                                exceptionTracker)
-                                   .getFunctionRef());
+            const auto& callback = getAttachedValue(requestDescriptor,
+                                                    values,
+                                                    valueIndex,
+                                                    ReferenceInfoBuilder().withObject(kOnNextDraw),
+                                                    exceptionTracker);
             if (!exceptionTracker) {
                 return nullptr;
             }
+            disableCallIfContextIsDestroyed(callback);
+            entry->setCallback(callback.getFunctionRef());
         } else {
             return onParseError(exceptionTracker);
         }
     }
 
+    // The tree can flush these after the context is destroyed (teardown, or a flush ack that lands after it).
+    disableCallIfContextIsDestroyed(requestDescriptor.visibilityObserver);
+    disableCallIfContextIsDestroyed(requestDescriptor.frameObserver);
     renderRequest->setVisibilityObserverCallback(requestDescriptor.visibilityObserver);
     renderRequest->setFrameObserverCallback(requestDescriptor.frameObserver);
 

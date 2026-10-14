@@ -8380,6 +8380,133 @@ TEST_P(RuntimeFixture, attributesHotReloadErrorOnContext) {
     ASSERT_EQ(static_cast<size_t>(2), messageHandler->messages().debugMessages.size());
 }
 
+TEST_P(RuntimeFixture, visibilityObserverDoesNotCallIntoDestroyedContext) {
+    auto messageHandler = makeShared<MockRuntimeMessageHandler>();
+    wrapper.runtime->setRuntimeMessageHandler(messageHandler);
+
+    SharedAtomic<Value> notifiedViewport;
+    auto viewportUpdatesCallback = makeShared<ValueFunctionWithCallable>([notifiedViewport](const auto& parameters) {
+        notifiedViewport.set(parameters.getParameter(0));
+        return Value();
+    });
+
+    auto tree =
+        wrapper.createViewNodeTreeAndContext(STRING_LITERAL("ViewportUpdates@test/src/ViewportUpdates"),
+                                             Value().setMapValue("onViewportChanged", Value(viewportUpdatesCallback)),
+                                             Value());
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    auto scrollViewNode = tree->getRootViewNode()->getChildAt(0);
+    tree->setLayoutSpecs(Size(100, 100), LayoutDirectionLTR);
+    tree->scheduleExclusiveUpdate(
+        [=]() { scrollViewNode->setScrollContentOffset(tree->getCurrentViewTransactionScope(), Point(0, 0)); });
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    // The JS visibility observer is wired: the component received its viewport.
+    ASSERT_FALSE(notifiedViewport.get().isUndefined());
+    ASSERT_EQ(static_cast<size_t>(0), messageHandler->messages().errors.size());
+
+    // Destroy the context while the tree is still alive, as happens when a tree teardown races the context
+    // destruction, then produce more visibility updates. They must not reach the dead JS callback.
+    tree->getContext()->onDestroy();
+    wrapper.flushQueues();
+
+    tree->scheduleExclusiveUpdate(
+        [=]() { scrollViewNode->setScrollContentOffset(tree->getCurrentViewTransactionScope(), Point(20, 7)); });
+    wrapper.flushQueues();
+    tree->scheduleExclusiveUpdate([=]() { tree->flushVisibilityObservers(); });
+    wrapper.flushQueues();
+
+    ASSERT_EQ(static_cast<size_t>(0), messageHandler->messages().errors.size());
+}
+
+static void runJsFrameObserverAfterContextDestroy(RuntimeWrapper& wrapper) {
+    auto messageHandler = makeShared<MockRuntimeMessageHandler>();
+    wrapper.runtime->setRuntimeMessageHandler(messageHandler);
+
+    int layoutCount = 0;
+    auto onLayout = makeShared<ValueFunctionWithCallable>([&](const auto& /*callContext*/) -> Value {
+        layoutCount += 1;
+        return Value::undefined();
+    });
+
+    // The component's root fills the tree, so every resize changes its frame, the tree flushes the JS
+    // renderer's frame observer, and the renderer calls the element's onLayout.
+    auto tree =
+        wrapper.createViewNodeTreeAndContext(STRING_LITERAL("FrameObserverUpdates@test/src/FrameObserverUpdates"),
+                                             Value().setMapValue("onLayout", Value(onLayout)),
+                                             Value());
+    tree->setLayoutSpecs(Size(200, 200), LayoutDirectionLTR);
+    wrapper.waitUntilAllUpdatesCompleted();
+    wrapper.flushQueues();
+
+    // The frame observer is wired: the layout reached JS.
+    ASSERT_GT(layoutCount, 0);
+    const auto layoutCountBeforeDestroy = layoutCount;
+    ASSERT_EQ(static_cast<size_t>(0), messageHandler->messages().errors.size());
+
+    // The context dies while the tree is still alive (teardown racing the context destruction); a later
+    // resize must not reach the frame observer, a JS function owned by the dead context.
+    tree->getContext()->onDestroy();
+    wrapper.flushQueues();
+
+    tree->setLayoutSpecs(Size(120, 160), LayoutDirectionLTR);
+    wrapper.flushQueues();
+
+    ASSERT_EQ(layoutCountBeforeDestroy, layoutCount);
+    ASSERT_EQ(static_cast<size_t>(0), messageHandler->messages().errors.size());
+}
+
+TEST_P(RuntimeFixture, jsFrameObserverIsSkippedAfterContextDestroy) {
+    runJsFrameObserverAfterContextDestroy(wrapper);
+}
+
+TEST_P(RuntimeFixture, jsFrameObserverIsSkippedAfterContextDestroyWithFixKillSwitchOff) {
+    // The kill switch is process-global; restore it even if an assertion returns early.
+    struct DestroyedContextFixDisabledScope {
+        const bool previous = Context::isDestroyedContextFixEnabled();
+        DestroyedContextFixDisabledScope() {
+            Context::setDestroyedContextFixEnabled(false);
+        }
+        ~DestroyedContextFixDisabledScope() {
+            Context::setDestroyedContextFixEnabled(previous);
+        }
+    } fixDisabled;
+
+    // With the kill switch off the function falls back to checking its own context, which is also destroyed.
+    runJsFrameObserverAfterContextDestroy(wrapper);
+}
+
+TEST_P(RuntimeFixture, nativeOnNextLayoutAndDrawCallbacksStillFireAfterContextDestroy) {
+    auto rootView = Valdi::makeShared<StandaloneView>(STRING_LITERAL("MyRootView"));
+
+    auto tree = wrapper.runtime->createViewNodeTreeAndContext(wrapper.standaloneRuntime->getViewManagerContext(),
+                                                              STRING_LITERAL("test/src/BasicViewTree.valdi"));
+    wrapper.waitUntilAllUpdatesCompleted();
+    tree->setRootView(rootView);
+    tree->setLayoutSpecs(Size(200, 200), LayoutDirectionLTR);
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    int callbackCount = 0;
+    auto callback = makeShared<ValueFunctionWithCallable>([&](const auto& /*callContext*/) -> Value {
+        callbackCount += 1;
+        return Value::undefined();
+    });
+
+    // Native callbacks (e.g. Android ValdiContext.onNextLayout closures) do not die with the JS context, so a
+    // layout pass that outlives the context must still deliver them.
+    tree->scheduleExclusiveUpdate([=]() {
+        tree->onNextLayout(callback);
+        tree->onNextDraw(callback);
+        tree->getContext()->onDestroy();
+    });
+    wrapper.flushQueues();
+    tree->setLayoutSpecs(Size(120, 120), LayoutDirectionLTR);
+    wrapper.flushQueues();
+
+    ASSERT_EQ(2, callbackCount);
+}
+
 TEST_P(RuntimeFixture, showStackTraceResponsibleForEmittingDanglingReference) {
     wrapper.runtime->getJavaScriptRuntime()->setForceStackTraceCapture(true);
 
