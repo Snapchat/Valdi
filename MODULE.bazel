@@ -304,6 +304,10 @@ http_archive(
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
 rust.toolchain(
     edition = "2024",
+    # macOS 27 dyld rejects proc-macro dylibs that rustc < 1.98 strips with
+    # -Cstrip=debuginfo (misaligned LINKEDIT string table, rust-lang/rust#157750)
+    # when linked against the Xcode 27 SDK. Drop once the toolchain is >= 1.98.
+    extra_exec_rustc_flags = ["-Cstrip=none"],
     extra_target_triples = [
         "aarch64-apple-ios",
         "aarch64-apple-ios-sim",

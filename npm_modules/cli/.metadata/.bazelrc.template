@@ -40,7 +40,7 @@ build --incompatible_use_specific_tool_files=false
 ## For Objective-C source files
 build --per_file_copt=.*\.mm\$@-std=c++20
 build --host_per_file_copt=.*\.mm\$@-std=c++20
-build --ios_minimum_os=12.0
+build --ios_minimum_os=15.0
 
 ## TODO: (dchapp) this is currently needed otherwise -O0 and -DDEBUG=1 get passed to compilations of .mm/.m for production flavor builds
 build --experimental_objc_fastbuild_options=""

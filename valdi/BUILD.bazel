@@ -781,7 +781,7 @@ objc_library(
 
 ios_unit_test(
     name = "valdi_ios_objc_test",
-    minimum_os_version = "13.0",
+    minimum_os_version = "15.0",
     runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",
     deps = [":objc_unit_tests_lib"],
 )
@@ -790,7 +790,7 @@ ios_unit_test(
 # SCValdiRuntimeManager and sets a process-global shutdown flag, so they get their own test bundle.
 ios_unit_test(
     name = "valdi_ios_termination_test",
-    minimum_os_version = "13.0",
+    minimum_os_version = "15.0",
     runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",
     deps = [":termination_unit_tests_lib"],
 )
@@ -832,7 +832,7 @@ objc_library(
 # :objc_unit_tests_lib dep) is not defined.
 ios_unit_test(
     name = "valdi_ios_device_module_test",
-    minimum_os_version = "13.0",
+    minimum_os_version = "15.0",
     runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",
     deps = [":objc_device_module_tests_lib"],
 )
@@ -850,7 +850,7 @@ objc_library(
 
 ios_unit_test(
     name = "valdi_ios_text_view_undo_test",
-    minimum_os_version = "13.0",
+    minimum_os_version = "15.0",
     runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",
     deps = [":objc_text_view_undo_tests_lib"],
 )
@@ -868,7 +868,7 @@ objc_library(
 
 ios_unit_test(
     name = "valdi_ios_perf_test",
-    minimum_os_version = "13.0",
+    minimum_os_version = "15.0",
     runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",
     deps = [":objc_perf_tests_lib"],
 )
@@ -912,7 +912,7 @@ objc_library(
 
 macos_unit_test(
     name = "valdi_macos_objc_test",
-    minimum_os_version = "10.15",
+    minimum_os_version = "14.0",
     # Default runner drives xcodebuild, which needs testmanagerd (a GUI session
     # service). CI runs headless, so use the xctest-agent runner instead.
     runner = "//bzl/testing:macos_xctest_agent_runner",
@@ -921,7 +921,7 @@ macos_unit_test(
 
 ios_unit_test(
     name = "valdi_ios_swift_test",
-    minimum_os_version = "13.0",
+    minimum_os_version = "15.0",
     runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",
     deps = [":unit_tests_lib"],
 )

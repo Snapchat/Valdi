@@ -169,3 +169,30 @@ python.single_version_platform_override(
     platform = "aarch64-apple-darwin",
     python_version = "3.11.14",
 )
+
+# -- Rust toolchain ------------------------------------------------------------
+# rules_rust only honors rust.toolchain() from the root module, so Valdi's own
+# toolchain config does not reach bootstrapped apps. Mirror it here.
+# -Cstrip=none for exec-config (host tool / proc-macro) builds: rustc's
+# debuginfo strip leaves a misaligned LINKEDIT string table that macOS 27 dyld
+# rejects when the dylib was linked against SDK 27 (rust-lang/rust#157750,
+# fixed in Rust 1.98.0).
+bazel_dep(name = "rules_rust", version = "0.64.0")
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2024",
+    extra_exec_rustc_flags = ["-Cstrip=none"],
+    extra_target_triples = [
+        "aarch64-apple-ios",
+        "aarch64-apple-ios-sim",
+        "aarch64-linux-android",
+        "armv7-linux-androideabi",
+        "x86_64-apple-ios",
+        "x86_64-linux-android",
+    ],
+    versions = ["1.87.0"],
+)
+use_repo(rust, "rust_toolchains")
+
+register_toolchains("@rust_toolchains//:all")

@@ -127,7 +127,7 @@ done | sed '/^import ValdiCoreSwift$$/d' > $@
             "@valdi//bzl/valdi:Info.plist",
         ],
         minimum_os_versions = {
-            "ios": "13.0",
+            "ios": "15.0",
         },
         families_required = {
             "ios": [

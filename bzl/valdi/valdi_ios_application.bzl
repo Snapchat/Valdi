@@ -41,7 +41,7 @@ def valdi_ios_application(
         ]
 
     if not minimum_os_version:
-        minimum_os_version = "12.0"
+        minimum_os_version = "15.0"
 
     infoplists = []
     if info_plist:

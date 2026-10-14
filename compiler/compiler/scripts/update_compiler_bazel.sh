@@ -123,7 +123,7 @@ else
     # build inherits the SDK's own version as the minimum, producing a binary
     # that refuses to run on older hosts and hard-links Swift runtime dylibs
     # (e.g. libswift_DarwinFoundation1.dylib) that only ship with that OS.
-    MACOS_MIN_OS="11.0"
+    MACOS_MIN_OS="12.0"
 
     build_arch() {
         local arch="$1"
