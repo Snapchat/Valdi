@@ -8,6 +8,10 @@
 #import "valdi_core/SCValdiBlockHelper.h"
 #import "valdi_core/SCValdiMarshallableObjectUtils.h"
 
+#if __has_feature(ptrauth_calls)
+#import <ptrauth.h>
+#endif
+
 namespace ValdiIOS {
 
 /**
@@ -18,9 +22,17 @@ typedef struct ObjectiveCBlock {
     int flags;
     int reserved;
     /**
-     Holds the actual function pointer to the block.
+     Holds the actual function pointer to the block. On arm64e a block's
+     invoke pointer is signed with the block ABI (IA key, address-diversified
+     by the field's address); declaring it as a plain function pointer
+     authenticates it with the wrong (zero) discriminator and PAC-faults when
+     the block is called. Match the block ABI so objcBlock->invoke authenticates.
      */
+#if __has_feature(ptrauth_calls)
+    void (*__ptrauth(ptrauth_key_function_pointer, 1, 0) invoke)(struct ObjectiveCBlock *);
+#else
     void (*invoke)(struct ObjectiveCBlock *);
+#endif
 } ObjectiveCBlock;
 
 ObjCBlockHelper::ObjCBlockHelper(SCValdiFunctionInvoker invoker,
