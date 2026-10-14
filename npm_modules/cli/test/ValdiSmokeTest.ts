@@ -46,12 +46,14 @@ void describe('valdi ui app', () => {
   void describe('cli', () => {
     void it('build ios', async () => {
       const task = run('valdi', ['build', 'ios']);
-      await lookForOutput({ stderr: [/Build completed successfully, \d+ total actions?/] }, task);
+      // Match build android's idle budget: a cold/remote-cache bazel build can go quiet
+      // for well over the 30s default, which otherwise fails this as a flake.
+      await lookForOutput({ stderr: [/Build completed successfully, \d+ total actions?/], idleTimeoutMs: 120_000 }, task);
     });
 
     void it('build macos', async () => {
       const task = run('valdi', ['build', 'macos']);
-      await lookForOutput({ stderr: [/Build completed successfully, \d+ total actions?/] }, task);
+      await lookForOutput({ stderr: [/Build completed successfully, \d+ total actions?/], idleTimeoutMs: 120_000 }, task);
     });
 
     void it('build android', async () => {
@@ -115,6 +117,7 @@ void describe('valdi ui app', () => {
       await client.command('close', { file });
     });
   });
+
 
   void describe('typescript', () => {
     void it('finds project references', async () => {
@@ -242,6 +245,7 @@ void describe('valdi cli app', () => {
     );
   });
 });
+
 
 /**
  * Sets up a valdi project for tests

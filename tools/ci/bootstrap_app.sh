@@ -24,6 +24,10 @@ export CARGO_BAZEL_REPIN=true
 # Make sure the targets build
 if [[ $(uname) != Linux ]] ; then
     pushd "$OPEN_SOURCE_DIR/npm_modules/cli"
-    OPEN_SOURCE_DIR=$OPEN_SOURCE_DIR PROJECT_ROOT=$APP_DIR node -r ts-node/register --test "test/**/*test.ts"
+    # --test-force-exit: the smoke tests spawn detached `valdi`/bazel children; if one
+    # is left alive (e.g. a build that failed on an idle timeout), node --test otherwise
+    # never exits and the whole job idles to its wall-clock cap. Force exit once the
+    # suite finishes so a leaked handle can't turn a red into a multi-hour timeout.
+    OPEN_SOURCE_DIR=$OPEN_SOURCE_DIR PROJECT_ROOT=$APP_DIR node -r ts-node/register --test --test-force-exit "test/**/*test.ts"
     popd
 fi

@@ -30,9 +30,14 @@ function killExistingHotreloaders(): void {
 
 async function hotreloadResolvedTarget(client: BazelClient, resolvedTarget: string) {
   killExistingHotreloaders();
-  await client.buildTarget(resolvedTarget);
+  // Optional extra bazel flags for the reloader build. Used by CI to force the
+  // from-source reloader (--//bzl/valdi:use_local_compiler=true) as a fallback when
+  // the prebuilt binary misbehaves; empty for normal use. Passed to the query too so
+  // cquery resolves the script from the same configuration that was built.
+  const extraBuildFlags = process.env['VALDI_HOTRELOAD_BUILD_FLAGS'] ?? '';
+  await client.buildTarget(resolvedTarget, extraBuildFlags);
   const workspaceRoot = await client.getWorkspaceRoot();
-  const buildOutputs = await client.queryBuildOutputs([resolvedTarget]);
+  const buildOutputs = await client.queryBuildOutputs([resolvedTarget], extraBuildFlags);
 
   if (buildOutputs.length === 0) {
     throw new CliError(`No build outputs found for target: ${resolvedTarget}`);

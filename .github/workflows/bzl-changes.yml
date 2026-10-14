@@ -125,6 +125,12 @@ jobs:
           OPEN_SOURCE_DIR: ${{ github.workspace }}
           PROJECT_ROOT: /tmp/valdi_app
 
+      - name: "Run: Hotreload Delivery Smoke"
+        # Reuses this job's watchman install and the compiler already built by the
+        # smoke tests above (warm bazel cache), so it adds a delivery assertion the
+        # macOS-only hotreload_smoke.sh can't give without a second cold build.
+        run: ./tools/ci/hotreload_delivery_smoke.sh
+
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4

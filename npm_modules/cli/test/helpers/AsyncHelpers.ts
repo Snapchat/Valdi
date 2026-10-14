@@ -1,5 +1,82 @@
+import type { Readable } from 'node:stream';
 import type { SubCommand } from './CommandHelpers';
 import { onEachLine } from './StreamHelpers';
+
+/**
+ * Watch a long-running command's output for the first line matching `pattern` and
+ * resolve with the RegExp match (so callers can pull out capture groups, e.g. a port).
+ *
+ * Unlike {@link lookForOutput}, this resolves as soon as the line appears and does NOT
+ * wait for the process to exit — the intended use is a persistent process (the
+ * hot-reload daemon) that the caller keeps alive and later kills.
+ */
+export function waitForLine(
+  subcommand: SubCommand,
+  pattern: RegExp,
+  { stream = 'both', timeoutMs = 120_000 }: { stream?: 'stdout' | 'stderr' | 'both'; timeoutMs?: number } = {},
+): Promise<RegExpMatchArray> {
+  const streams: Readable[] =
+    stream === 'stdout'
+      ? [subcommand.process.stdout]
+      : stream === 'stderr'
+        ? [subcommand.process.stderr]
+        : [subcommand.process.stdout, subcommand.process.stderr];
+
+  return new Promise((resolve, reject) => {
+    // The process may have already exited before we were called (e.g. between two
+    // sequential waitForLine calls); the 'exit' event won't fire again, so check up
+    // front and fail fast rather than blocking for the full timeout.
+    if (subcommand.process.exitCode !== null || subcommand.process.signalCode !== null) {
+      reject(
+        new Error(
+          `process already exited (code ${subcommand.process.exitCode ?? 'null'}, signal ${subcommand.process.signalCode ?? 'null'}) before matching ${pattern.toString()}`,
+        ),
+      );
+      return;
+    }
+
+    const readers = streams.map(source => {
+      // Buffer across chunk boundaries so a line split between two reads still matches.
+      let buffer = '';
+      const onChunk = (chunk: Buffer) => {
+        buffer += chunk.toString('utf8');
+        let newline = buffer.indexOf('\n');
+        while (newline !== -1) {
+          const line = buffer.slice(0, newline);
+          buffer = buffer.slice(newline + 1);
+          const match = line.match(pattern);
+          if (match) {
+            finish(() => resolve(match));
+            return;
+          }
+          newline = buffer.indexOf('\n');
+        }
+      };
+      source.on('data', onChunk);
+      return { source, onChunk };
+    });
+
+    const timer = setTimeout(() => {
+      finish(() => reject(new Error(`timed out waiting for ${pattern.toString()}`)));
+    }, timeoutMs);
+
+    // If the process dies before the line appears (e.g. the build fails), fail fast
+    // instead of blocking for the full timeout.
+    const onExit = (code: number | null) => {
+      finish(() => reject(new Error(`process exited (code ${code ?? 'null'}) before matching ${pattern.toString()}`)));
+    };
+    subcommand.process.once('exit', onExit);
+
+    function finish(settle: () => void) {
+      clearTimeout(timer);
+      subcommand.process.off('exit', onExit);
+      for (const { source, onChunk } of readers) {
+        source.off('data', onChunk);
+      }
+      settle();
+    }
+  });
+}
 
 /**
  * Create a Promise that rejects after ms milliseconds from the last time it is "touched".
