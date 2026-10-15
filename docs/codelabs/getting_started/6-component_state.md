@@ -185,4 +185,4 @@ onRenderMessage(message: string) {
 
 Take a look at the UI, you should see the hello message some of the time and a kitten every 5 seconds.
 
-### [Next >](./6-component_lifecycle.md)
+### [Next >](./7-component_lifecycle.md)

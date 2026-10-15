@@ -297,6 +297,14 @@ External dependencies and their Bazel build configurations
 
 ## Important Conventions
 
+### Security: Handling Credentials
+
+1. **Never print credential files or secrets.** When diagnosing setup, install, or registry problems, do not `cat`, `head`, `grep`, or otherwise echo `~/.npmrc`, `~/.netrc`, `~/.gitconfig` credential sections, `~/.docker/config.json`, Bazel credential helpers, `.env` files, or environment variables that may hold tokens. Tool output ends up in transcripts and logs.
+2. **Read only the setting you need, by key.** For example `npm config get registry` (never `npm config list`, which can include auth values) or `git config --get remote.origin.url`.
+3. **If you must inspect such a file, redact first** and print key names only, e.g. `sed -E 's/(_authToken|_auth|_password|password|token)[[:space:]]*=.*/\1=<redacted>/' ~/.npmrc`.
+4. **If a secret is exposed anyway, say so plainly** so the user can rotate it.
+
+
 ### Build System
 
 1. **Bazel is the primary build system** - Use `bazel build`, `bazel test`, etc.

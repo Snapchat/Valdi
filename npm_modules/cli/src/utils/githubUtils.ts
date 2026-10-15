@@ -14,7 +14,7 @@ function parseGitHubRepoSlug(repoUrl: string): string {
 }
 
 const LATEST_RELEASE_HINT =
-  'Use --valdiVersion=latest to retry, or --valdiVersion=<tag> (e.g. main or v1.0.0) to pin a version.';
+  'Use --valdiVersion=latest to retry, or --valdiVersion=<tag> (e.g. main or beta-0.2.0) to pin a version.';
 
 /**
  * Returns the tag name of the release marked as "Latest" on GitHub (releases UI).

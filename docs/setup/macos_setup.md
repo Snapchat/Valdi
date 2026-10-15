@@ -8,15 +8,17 @@ This guide documents the dependencies Valdi needs on macOS and how to install th
 
 This guide assumes you're using the default shell (zsh). Setup is possible for other shells, but you'll need to adapt the configuration file paths.
 
-## Setting up XCode
+## Setting up Xcode
 
-Make sure you have the latest version of XCode installed in addition to iPhone Simulator packages for iOS development. Latest versions of [XCode](https://apps.apple.com/us/app/xcode/id497799835) can be found on Apple's App Store.
+Install **Xcode 26.5 or 27** plus the iOS Simulator runtime (see [Prerequisites](../INSTALL.md#prerequisites)). Older Xcode versions are available from [Apple Developer downloads](https://developer.apple.com/download/all/).
 
-Make sure XCode tools are in your path:
+Select it so the command-line tools use it (adjust the path to where Xcode is installed):
 
 ```
-sudo xcode-select -s /Applications/Xcode.app
+sudo xcode-select -s /Applications/Xcode-26.5.app
 ```
+
+If you have more than one Xcode installed, Bazel may still pick a different one; see [Troubleshooting](../TROUBLESHOOTING.md#bazel-uses-the-wrong-xcode-version).
 
 ## Homebrew
 
@@ -46,7 +48,7 @@ Make sure to load your changes via `source ~/.zshrc`.
 ## Brew install dependencies
 
 ```
-brew install npm bazelisk openjdk@17 temurin watchman ios-webkit-debug-proxy
+brew install npm bazelisk openjdk@17 temurin watchman ios-webkit-debug-proxy android-platform-tools
 ```
 
 ## Setup JDK path

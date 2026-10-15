@@ -22,4 +22,4 @@ This is called once when the component is destroyed. A component gets destroyed 
 
 `onDestroy` is a good place to cleanup long running tasks and resources.
 
-### [Next >](./7-component_events.md)
+### [Next >](./8-component_events.md)

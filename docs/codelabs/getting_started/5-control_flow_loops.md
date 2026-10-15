@@ -201,4 +201,4 @@ onRenderMessage(message: string) {
 
 This isn't just useful for conditionals that are not expressions, it can make your code more readable and reusable.
 
-### [Next >](./5-component_state.md)
+### [Next >](./6-component_state.md)

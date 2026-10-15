@@ -2,7 +2,6 @@
 common --registry=https://raw.githubusercontent.com/Snapchat/Valdi/{{VALDI_RELEASE_TAG}}/registry
 common --registry=https://bcr.bazel.build
 
-common --bes_instance_name=client
 common --enable_platform_specific_config
 
 # Disable workers for repo fetching to prevent OOM
@@ -74,7 +73,6 @@ build:macos --spawn_strategy=local
 build:linux --sandbox_writable_path=/var/tmp
 
 # Disable disk cache to save disk space
-# https://docs.google.com/document/d/1N8W_M83n9jhMi7pgUhXuEuxypb3dmlHBu_CG_eXipXI/edit?usp=sharing
 build --disk_cache=""
 
 # common build configuration
@@ -86,8 +84,6 @@ build --generate_json_trace_profile
 # CLI passes to its build/test flows so they converge; raw `bazel` keeps the
 # default. Changing test flags (e.g. --test_output) repopulates it once.
 build:stable_exec --notrim_test_configuration
-# enable grpc log
-build --remote_grpc_log=/tmp/snap_client_grpc.log
 build --experimental_reuse_sandbox_directories
 
 # Default JS engine

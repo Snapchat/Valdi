@@ -32,4 +32,4 @@ You should already be familiar with your native platform of choice. That means y
 
 Follow the instructions in [INSTALL.md](../../INSTALL.md) to get your machine prepared for building apps with Valdi.
 
-### [Next >](./2-start_coding.md)
+### [Next >](./2-setup_code_tools.md)

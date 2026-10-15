@@ -47,6 +47,15 @@ Commands:
   valdi skills <command>                                       Manage AI assistant skills for Valdi development
   valdi doctor                                                 Check your Valdi development environment for common issues
   valdi log                                                    Streams Valdi logs from the connected device to console
+  valdi inspect <command>                                      Inspect a running Valdi app — component trees, contexts,
+                                                               screenshots, heap
+  valdi agent-check [--module module_name] [--target           Validate a Valdi module: resolve targets, build, lint, and
+  target_name] [--quick]                                       test in one command
+  valdi analyze <command>                                      Analyze Valdi modules — component duplication, patterns,
+                                                               health
+  valdi preview <component>                                    Preview a Valdi component in a macOS window
+  valdi profile <command>                                      Capture a CPU profile from the Hermes JS runtime
+  valdi web-hotreload --target <bazel-target>                  Start a Valdi web playground with hot module reload
 
 Options:
   --debug    Run with debug logging                            [boolean] [default: false]
@@ -248,6 +257,50 @@ valdi doctor --project --framework --json
 
 > [!TIP]
 > Run `valdi doctor` if you encounter setup issues or build failures. It will identify common problems and suggest solutions.<br></br>
+
+`valdi agent-check [--module module_name] [--target target_name] [--quick] [--json]`\
+Validate a Valdi module in one command: resolves the module's targets, then builds, lints, and runs its tests. Designed for AI coding agents and quick pre-commit checks.
+
+Options:
+- `--module`: Name of the Valdi module to validate
+- `--target`: Bazel target path to validate
+- `--quick`: Skip the build step (use when the hot reloader is already compiling your changes). Runs only lint + test
+- `--json`: Output results as machine-readable JSON
+
+Example:
+```sh
+valdi agent-check --module hello_world
+valdi agent-check --module hello_world --quick --json
+```
+<br></br>
+
+`valdi analyze duplicates [--module module_name] [--pattern pattern] [--json]`\
+Find duplicated component patterns across Valdi modules, clustering similar components so they can be extracted into a shared library.
+
+Options:
+- `--module`: Scope the scan to a single module
+- `--threshold, -t`: Similarity threshold for clustering (0-1, default `0.6`)
+- `--pattern`: Only detect a specific known pattern: `async`, `button`, or `shimmer`
+- `--scan-root`: Root directory to scan (repeatable). Auto-detected if omitted
+- `--shared-lib`: Shared component library name (repeatable). Defaults to `valdi_widgets`
+- `--json, -j`: Machine-readable JSON output
+- `--output, -o`: Write the JSON report to a file
+- `--verbose, -v`: Show per-file detail in the output<br></br>
+
+`valdi preview <component>`\
+Preview a Valdi component in a macOS window. `<component>` is either a component import path (e.g. `widgets/src/components/button/Checkbox`) or a file path (e.g. `./valdi_modules/widgets/src/components/button/Checkbox.tsx`).<br></br>
+
+`valdi profile capture [--duration seconds] [--output file]`\
+Capture a CPU profile from the Hermes JS runtime of a running app and write it as a `.cpuprofile` file you can open in Chrome DevTools. Requires the Hermes engine; see the [Hermes Debugger guide](./workflow-hermes-debugger.md).
+
+Options:
+- `--duration, -d`: Profile for N seconds then stop automatically (omit to stop with Ctrl+C)
+- `--output, -o`: Output `.cpuprofile` file path (default: `/tmp/valdi-profile-<timestamp>.cpuprofile`)
+- `--port`: Hermes debug socket port (default `13595`)
+- `--context`: JS context ID to profile; auto-selected if only one<br></br>
+
+`valdi web-hotreload --target <bazel-target>`\
+Start a Valdi web playground with hot module reload (webpack-dev-server). Pass the Bazel label of the playground `:dev` target created by `valdi_web_playground(hmr_config = ...)` (defined in `tools/valdi_web_devtools/valdi_web_playground.bzl`), for example `//experiments/helloworld_playground:dev`.<br></br>
 
 `valdi log`\
 Displays and streams the Valdi logs. Will prompt user for selection if multiple logs are detected. The list of logs are ordered by descending modification time, with newest entries on the top.

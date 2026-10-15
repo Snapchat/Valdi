@@ -176,7 +176,7 @@ function initializeConfigFiles(
     TemplateFile.init(TEMPLATE_BASE_PATHS.BAZEL_RC).withReplacements({
       VALDI_RELEASE_TAG: valdiReleaseTag,
     }),
-    TemplateFile.init(TEMPLATE_BASE_PATHS.README),
+    TemplateFile.init(TEMPLATE_BASE_PATHS.README).withReplacements({ PROJECT_NAME: projectName }),
     TemplateFile.init(TEMPLATE_BASE_PATHS.GIT_IGNORE),
     TemplateFile.init(TEMPLATE_BASE_PATHS.WATCHMAN_CONFIG),
     TemplateFile.init(TEMPLATE_BASE_PATHS.EDITOR_CONFIG),

@@ -52,17 +52,15 @@ For complete documentation, see:
 ### Key Commands
 
 **`valdi dev_setup`** - Automated environment setup
-- Installs all required dependencies (Bazel, Node.js, Java JDK 17, Android SDK, etc.)
-- Configures environment variables and PATH
-- Initializes Git LFS
+- Installs required dependencies: Bazelisk, Java JDK 17, Watchman and adb (Homebrew on macOS, your distro's package manager on Linux)
+- Configures `PATH` and `JAVA_HOME` in your shell profile; asks for `sudo` for package installs and (macOS) the JDK symlink
 - Sets up shell autocomplete
-- Platform-specific: macOS (Homebrew, Xcode) or Linux (apt packages)
+- The Android SDK/NDK aren't installed; Bazel downloads them during the build
+- Requires Node.js 18+ and, on macOS, Xcode 26.5 or 27
 
 **`valdi doctor`** - Environment diagnostics
-- Validates Node.js, Bazel, Java, Android SDK installations
-- Checks Git LFS initialization
+- Validates Node.js, Bazel, Java, Android SDK and adb installations
 - Verifies shell autocomplete configuration
-- Checks VSCode/Cursor extensions (warns if missing)
 - macOS: Validates Xcode installation
 - Supports `--framework` mode for additional checks
 - Supports `--fix` to auto-repair issues
@@ -70,8 +68,8 @@ For complete documentation, see:
 
 **`valdi bootstrap`** - Project initialization
 - Creates a new Valdi project in the current directory
-- Sets up BUILD.bazel, WORKSPACE, package.json, and source files
-- Supports multiple application templates (Hello World, Counter, etc.)
+- Sets up `MODULE.bazel`, `.bazelrc`, `BUILD.bazel` and source files, pinned to the latest framework release (override with `--valdiVersion=<tag>`)
+- Application templates: `ui_application` and `cli_application`
 - Options: `-y` (skip confirmation), `-n` (project name), `-t` (application type), `-l` (local Valdi path), `-c` (clean directory first). Run `valdi bootstrap --help` for all options.
 
 **`valdi install <platform>`** - Build and install
@@ -125,7 +123,7 @@ Requirements for Valdi module names:
 
 Recommended Directory Structure:
 my_application/          # Root directory of your application
-├── WORKSPACE            # Bazel Workspace
+├── MODULE.bazel         # Bazel module (dependencies)
 ├── BUILD.bazel          # Bazel build
 └── modules/
     ├── module_a/

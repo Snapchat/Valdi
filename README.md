@@ -40,7 +40,7 @@ class HelloWorld extends Component {
 
 ## Quick Start
 
-**Prerequisites:** Xcode (macOS only) - everything else is automatic!
+**Prerequisites:** [Node.js](https://nodejs.org/) 18 or later (22 recommended) and, on macOS, Xcode 26.5 or 27. `valdi dev_setup` installs the rest. See the [Installation Guide](./docs/INSTALL.md#prerequisites).
 
 ```bash
 # Install Valdi CLI
@@ -56,7 +56,7 @@ valdi install ios  # or android
 ```
 
 > [!TIP]
-> **Editor Extensions:** For the best development experience, install the [Valdi VSCode/Cursor extensions](./docs/INSTALL.md#vscodecursor-setup-optional-but-recommended) for syntax highlighting, debugging, and device logs during hot reload.
+> **Editor setup:** No Valdi-specific extension is needed. See [VSCode/Cursor setup](./docs/INSTALL.md#vscodecursor-setup-optional-but-recommended) to point your editor at the workspace TypeScript version.
 
 ## Quick Links
 

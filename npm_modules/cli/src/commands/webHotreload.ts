@@ -14,7 +14,7 @@ async function valdiWebHotreload(argv: ArgumentsResolver<CommandParameters>) {
   const target = argv.getArgument('target');
 
   if (!target) {
-    throw new Error('--target is required (e.g. //apps/helloworld:dev)');
+    throw new Error('--target is required (e.g. //experiments/helloworld_playground:dev)');
   }
 
   logReproduceThisCommandIfNeeded(argv);
@@ -39,7 +39,7 @@ export const describe =
   + 'valdi_web_playground(hmr_config = ...).';
 export const builder = (yargs: Argv<CommandParameters>) => {
   yargs.option('target', {
-    describe: 'Bazel label of the playground :dev js_binary (e.g. //apps/helloworld:dev)',
+    describe: 'Bazel label of the playground :dev js_binary (e.g. //experiments/helloworld_playground:dev)',
     type: 'string',
     requiresArg: true,
     demandOption: true,

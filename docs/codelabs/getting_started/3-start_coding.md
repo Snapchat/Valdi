@@ -6,7 +6,7 @@ Now that you have the code and tools installed, you can jump right in. The quick
 
 The source for the `helloworld` app is located in `./apps/helloworld` of the [github.com/Snapchat/Valdi](https://github.com/Snapchat/Valdi) repository.
 
-If you followed the INSTALL.md instructions you can build the `helloworld` Valdi app. Start an emulator/simulator/development device of your choice and use the correct install script for iOS and Android
+From the root of your Valdi clone, you can build the `helloworld` Valdi app. Start an emulator/simulator/development device of your choice and use the correct install script for iOS and Android
 
 For Android:
 
@@ -120,4 +120,4 @@ If you see your change, you're ready to move on to the next step.
 If your UI isn't updating or you're seeing other issues, check out the [How to get help](../how_to_get_help.md) section.
 
 
-### [Next >](./3-declarative_rendering.md)
+### [Next >](./4-declarative_rendering.md)

@@ -6,24 +6,27 @@ This guide will help you set up your development environment and get started wit
 
 ## Prerequisites
 
+### All Platforms
+**Install [Node.js](https://nodejs.org/) 18 or later** (22 recommended; it's what Valdi's CI uses). You need `npm` to install the Valdi CLI. On macOS you can use `brew install node`.
+
 ### macOS
-**Install Xcode** from the [App Store](https://apps.apple.com/us/app/xcode/id497799835) - this is required for iOS development.
+**Install Xcode 26.5 or 27** (from [Apple Developer downloads](https://developer.apple.com/download/all/) or the [App Store](https://apps.apple.com/us/app/xcode/id497799835)). It's required for iOS development.
+
+> [!IMPORTANT]
+> **Supported toolchain:** Valdi is tested with **Xcode 26.5** on **macOS 26** and **Xcode 27** on **macOS 27**. A project created with an older Valdi release needs to update Valdi to build with Xcode 27 (see [Troubleshooting](./TROUBLESHOOTING.md#xcode-27-libcxx)). If you have several Xcode versions installed, see [Troubleshooting](./TROUBLESHOOTING.md#bazel-uses-the-wrong-xcode-version) to make sure Bazel picks the one you want.
 
 ### Linux
-No prerequisites! The Valdi CLI will install everything you need.
+No other prerequisites. The Valdi CLI installs everything else.
 
-### All Platforms
-That's it! The `valdi dev_setup` command handles all other dependencies automatically, including:
-- Homebrew (macOS)
-- Bazelisk
-- Java JDK 17
-- Android SDK command-line tools
-- Git LFS
-- Watchman
-- Shell autocomplete, JDK symlink (macOS), Android env vars, and platform-specific extras (e.g. ios-webkit-debug-proxy on macOS; adb, zlib/fontconfig dev libs on Linux)
+### What `valdi dev_setup` installs
+- **macOS:** Homebrew (if missing), then `npm`, `bazelisk`, `openjdk@17`, `temurin`, `watchman`, `ios-webkit-debug-proxy` and `android-platform-tools` via Homebrew
+- **Linux:** Bazelisk (into `~/.valdi/bin`), Java JDK 17, Watchman, adb and build libraries (e.g. zlib/fontconfig dev packages) via your distro's package manager
+- **Both:** shell autocomplete
 
-> [!TIP]
-> For manual installation details, see the [macOS](./setup/macos_setup.md) or [Linux](./setup/linux_setup.md) reference guides.
+You don't need to install the Android SDK or NDK yourself: Bazel downloads them during the build.
+
+> [!WARNING]
+> `valdi dev_setup` changes your machine: it asks for `sudo` (for package installs and, on macOS, to symlink the JDK into `/Library/Java/JavaVirtualMachines`) and appends `PATH`, `JAVA_HOME` and Homebrew lines to your shell profile (`~/.zprofile` and `~/.zshrc`, or `~/.bashrc`). To do these steps by hand instead, follow the [macOS](./setup/macos_setup.md) or [Linux](./setup/linux_setup.md) reference guides.
 
 ## Installation
 
@@ -84,7 +87,11 @@ valdi install android
 ```
 
 > [!NOTE]
-> The first build may take several minutes as it sets up the bazel WORKSPACE.
+> The first build may take several minutes while Bazel downloads and builds dependencies.
+
+### Versions
+
+The CLI and the framework are versioned separately. The CLI is the `@snap/valdi` npm package (e.g. `1.2.0`). The framework is released as tags on GitHub (e.g. `beta-0.2.0`). `valdi bootstrap` pins your project to the latest framework release; pass `--valdiVersion=<tag>` (or `--valdiVersion=main` for the development branch) to choose a different one. See the [releases page](https://github.com/Snapchat/Valdi/releases) for available tags.
 
 ### 3. Enable Hot Reloading
 
@@ -156,7 +163,7 @@ If you encounter any issues during setup:
    This will check your environment and provide specific fix suggestions.
 
 2. **Check prerequisites:**
-   - **macOS:** Ensure Xcode is installed and configured (`sudo xcode-select -s /Applications/Xcode.app`)
+   - **macOS:** Ensure Xcode 26.5 or 27 is installed and selected (`sudo xcode-select -s /Applications/Xcode.app`, adjusting the path to wherever it's installed)
    - **All platforms:** Ensure you have a stable internet connection for downloading dependencies
 
 3. **Review detailed setup guides:**
@@ -165,13 +172,13 @@ If you encounter any issues during setup:
 
 4. **Get help:**
    - Ask in [GitHub Discussions](https://github.com/Snapchat/Valdi/discussions)
-   - Check [Troubleshooting Guide](./TROUBLESHOOTING.md)
+   - Check the [Troubleshooting Guide](./TROUBLESHOOTING.md) and the more detailed [help & troubleshooting page](./docs/help-troubleshooting.md)
 
 ## Next Steps
 
 Ready to start building? Check out:
 
-- [Getting Started Codelab](https://github.com/Snapchat/Valdi/blob/main/docs/codelabs/getting_started/1-introduction.md)
+- [Getting Started Codelab](./codelabs/getting_started/1-introduction.md)
 - [Documentation](https://github.com/Snapchat/Valdi/tree/main/docs#the-basics)
 - [API Reference](https://github.com/Snapchat/Valdi/tree/main/docs/api)
 - [Command Line Reference](./docs/command-line-references.md)
