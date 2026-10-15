@@ -412,12 +412,17 @@ static SCValdiBorderStyle SCValdiBorderStyleFromString(NSString *styleString)
 
     __weak typeof(self) weakSelf = self;
     [self.valdiViewNode setDidFinishLayoutBlock:^(UIView *view, id<SCValdiAnimatorProtocol> animator) {
-        [weakSelf valdi_updateBorderLayer];
+        [weakSelf valdi_updateBorderLayerWithAnimator:animator];
     }
                                           forKey:kBorderLayerLayoutKey];
 }
 
 - (void)valdi_updateBorderLayer
+{
+    [self valdi_updateBorderLayerWithAnimator:nil];
+}
+
+- (void)valdi_updateBorderLayerWithAnimator:(id<SCValdiAnimatorProtocol>)animator
 {
     SCValdiBorderStyle style = ValdiCurrentBorderStyle(self);
     CGFloat storedWidth = ValdiStoredBorderWidth(self);
@@ -483,7 +488,12 @@ static SCValdiBorderStyle SCValdiBorderStyleFromString(NSString *styleString)
                                                radii.bottomLeft,
                                                radii.bottomRight,
                                                self.bounds.size);
-    borderLayer.path = path.CGPath;
+    // The layer's delegate disables implicit actions, so animate the path explicitly to follow cornerRadius.
+    if (animator) {
+        [animator addAnimationOnLayer:borderLayer forKeyPath:@"path" value:(__bridge id)path.CGPath];
+    } else {
+        borderLayer.path = path.CGPath;
+    }
 
     [self valdi_scheduleBorderLayerLayoutForStyle:style];
 }
@@ -1008,7 +1018,7 @@ static void SCValdiDetermineCornerRadiusMethod(CGFloat topLeftRadius, CGFloat to
         .bottomLeft = bottomLeftRadius,
     };
     ValdiSetResolvedCornerRadii(self, radii);
-    [self valdi_updateBorderLayer];
+    [self valdi_updateBorderLayerWithAnimator:animator];
 }
 
 - (BOOL)valdi_setBorderRadius:(SCValdiCornerValues)attributeValue animator:(id<SCValdiAnimatorProtocol> )animator
