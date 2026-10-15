@@ -156,6 +156,10 @@ bool ValdiRuntimeTweaks::enableMmapModuleArchives() const {
     return getConfigKey("VALDI_ENABLE_MMAP_MODULE_ARCHIVES");
 }
 
+bool ValdiRuntimeTweaks::skipSourceMapLookup() const {
+    return getConfigKey("VALDI_SKIP_SOURCE_MAP_LOOKUP");
+}
+
 bool ValdiRuntimeTweaks::isMmapModuleArchiveDenylisted(const StringBox& modulePath) const {
     static const StringBox kKey = StringCache::getGlobal().makeStringFromLiteral("VALDI_MMAP_MODULE_ARCHIVES_DENYLIST");
     auto denylist = _tweakValueProvider->getString(kKey, StringBox());

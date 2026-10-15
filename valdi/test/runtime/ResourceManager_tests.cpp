@@ -4,9 +4,11 @@
 //
 
 #include "valdi/runtime/Interfaces/IResourceLoader.hpp"
+#include "valdi/runtime/Interfaces/ITweakValueProvider.hpp"
 #include "valdi/runtime/Resources/AssetLoaderManager.hpp"
 #include "valdi/runtime/Resources/ResourceManager.hpp"
 #include "valdi/runtime/Utils/MainThreadManager.hpp"
+#include "valdi/runtime/ValdiRuntimeTweaks.hpp"
 #include "valdi/standalone_runtime/InMemoryDiskCache.hpp"
 #include "valdi_core/cpp/Context/ComponentPath.hpp"
 #include "valdi_core/cpp/Threading/DispatchQueue.hpp"
@@ -19,12 +21,15 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <future>
 #include <mutex>
+#include <string>
 #include <thread>
+#include <vector>
 
 using namespace Valdi;
 
@@ -69,6 +74,66 @@ private:
     bool _isReleased = false;
 };
 
+static Ref<ResourceManager> makeTestResourceManager(const Shared<IResourceLoader>& resourceLoader,
+                                                    const Ref<DispatchQueue>& workerQueue,
+                                                    MainThreadManager& mainThreadManager) {
+    Holder<Shared<snap::valdi_core::HTTPRequestManager>> requestManagerHolder;
+    return makeShared<ResourceManager>(resourceLoader,
+                                       makeShared<InMemoryDiskCache>(),
+                                       makeShared<AssetLoaderManager>(),
+                                       requestManagerHolder,
+                                       workerQueue,
+                                       mainThreadManager,
+                                       1.0,
+                                       false,
+                                       ConsoleLogger::getLogger());
+}
+
+// Fails every load, except `available` paths, and records which paths were requested.
+class RecordingResourceLoader : public IResourceLoader {
+public:
+    Result<BytesView> loadModuleContent(const StringBox& module) override {
+        std::lock_guard<std::mutex> lock(_mutex);
+        _requested.emplace_back(module.toStringView());
+        if (std::find(available.begin(), available.end(), module.toStringView()) != available.end()) {
+            return BytesView(nullptr, reinterpret_cast<const Byte*>("{}"), 2);
+        }
+        return Error("Not found");
+    }
+
+    std::vector<std::string> available;
+
+    StringBox resolveLocalAssetURL(const StringBox& /*moduleName*/, const StringBox& /*resourcePath*/) override {
+        return StringBox();
+    }
+
+    bool wasRequested(std::string_view path) const {
+        std::lock_guard<std::mutex> lock(_mutex);
+        return std::find(_requested.begin(), _requested.end(), path) != _requested.end();
+    }
+
+private:
+    mutable std::mutex _mutex;
+    std::vector<std::string> _requested;
+};
+
+struct RecordingResourceManagerWrapper {
+    Ref<MainQueue> mainQueue = makeShared<MainQueue>();
+    Ref<DispatchQueue> workerQueue = DispatchQueue::create(STRING_LITERAL("Worker Thread"), ThreadQoSClassHigh);
+    Ref<MainThreadManager> mainThreadManager = makeShared<MainThreadManager>(mainQueue->createMainThreadDispatcher());
+    Shared<RecordingResourceLoader> resourceLoader = makeShared<RecordingResourceLoader>();
+    Ref<ResourceManager> resourceManager;
+
+    RecordingResourceManagerWrapper() {
+        mainThreadManager->markCurrentThreadIsMainThread();
+        resourceManager = makeTestResourceManager(resourceLoader, workerQueue, *mainThreadManager);
+    }
+
+    ~RecordingResourceManagerWrapper() {
+        workerQueue->fullTeardown();
+    }
+};
+
 struct ResourceManagerWrapper {
     Ref<MainQueue> mainQueue;
     Ref<DispatchQueue> workerQueue;
@@ -83,16 +148,7 @@ struct ResourceManagerWrapper {
         mainThreadManager->markCurrentThreadIsMainThread();
         resourceLoader = makeShared<BlockingResourceLoader>();
 
-        Holder<Shared<snap::valdi_core::HTTPRequestManager>> requestManagerHolder;
-        resourceManager = makeShared<ResourceManager>(resourceLoader,
-                                                      makeShared<InMemoryDiskCache>(),
-                                                      makeShared<AssetLoaderManager>(),
-                                                      requestManagerHolder,
-                                                      workerQueue,
-                                                      *mainThreadManager,
-                                                      1.0,
-                                                      false,
-                                                      ConsoleLogger::getLogger());
+        resourceManager = makeTestResourceManager(resourceLoader, workerQueue, *mainThreadManager);
     }
 
     ~ResourceManagerWrapper() {
@@ -137,6 +193,76 @@ TEST(ResourceManagerTests, apiVersionIsLoadedOnceAndCached) {
 
     ASSERT_EQ(42, wrapper.resourceManager->getApiVersion());
     ASSERT_EQ(42, wrapper.resourceManager->getApiVersion());
+}
+
+class SourceMapTweakProvider : public SharedPtrRefCountable, public ITweakValueProvider {
+public:
+    explicit SourceMapTweakProvider(bool skipSourceMapLookup) : _skipSourceMapLookup(skipSourceMapLookup) {}
+
+    StringBox getString(const StringBox& /*key*/, const StringBox& fallback) override {
+        return fallback;
+    }
+    bool getBool(const StringBox& key, bool fallback) override {
+        return key == STRING_LITERAL("VALDI_SKIP_SOURCE_MAP_LOOKUP") ? _skipSourceMapLookup : fallback;
+    }
+    float getFloat(const StringBox& /*key*/, float fallback) override {
+        return fallback;
+    }
+    int32_t getInt(const StringBox& /*key*/, int32_t fallback) override {
+        return fallback;
+    }
+    Value getBinary(const StringBox& /*key*/, const Value& fallback) override {
+        return fallback;
+    }
+
+private:
+    bool _skipSourceMapLookup;
+};
+
+static void setSkipSourceMapLookup(ResourceManager& resourceManager, bool skip) {
+    resourceManager.setRuntimeTweaks(
+        makeShared<ValdiRuntimeTweaks>(makeShared<SourceMapTweakProvider>(skip).toShared()));
+}
+
+TEST(ResourceManagerTests, looksUpSourceMapByDefault) {
+    RecordingResourceManagerWrapper wrapper;
+
+    wrapper.resourceManager->getBundle(STRING_LITERAL("module_a"));
+
+    EXPECT_TRUE(wrapper.resourceLoader->wasRequested("module_a.valdimodule"));
+    EXPECT_TRUE(wrapper.resourceLoader->wasRequested("module_a.map.json"));
+}
+
+TEST(ResourceManagerTests, looksUpSourceMapWhenTweakOff) {
+    RecordingResourceManagerWrapper wrapper;
+    setSkipSourceMapLookup(*wrapper.resourceManager, false);
+
+    wrapper.resourceManager->getBundle(STRING_LITERAL("module_a"));
+
+    EXPECT_TRUE(wrapper.resourceLoader->wasRequested("module_a.map.json"));
+}
+
+TEST(ResourceManagerTests, skipsSourceMapLookupWhenTweakOnAndNoMapsShip) {
+    RecordingResourceManagerWrapper wrapper;
+    setSkipSourceMapLookup(*wrapper.resourceManager, true);
+
+    wrapper.resourceManager->getBundle(STRING_LITERAL("module_a"));
+    wrapper.resourceManager->getBundle(STRING_LITERAL("module_b"));
+
+    EXPECT_TRUE(wrapper.resourceLoader->wasRequested("module_a.valdimodule"));
+    EXPECT_FALSE(wrapper.resourceLoader->wasRequested("module_a.map.json"));
+    EXPECT_FALSE(wrapper.resourceLoader->wasRequested("module_b.map.json"));
+    EXPECT_TRUE(wrapper.resourceLoader->wasRequested("valdi_core.map.json")) << "probed once";
+}
+
+TEST(ResourceManagerTests, keepsSourceMapLookupWhenMapsShip) {
+    RecordingResourceManagerWrapper wrapper;
+    wrapper.resourceLoader->available.emplace_back("valdi_core.map.json");
+    setSkipSourceMapLookup(*wrapper.resourceManager, true);
+
+    wrapper.resourceManager->getBundle(STRING_LITERAL("module_a"));
+
+    EXPECT_TRUE(wrapper.resourceLoader->wasRequested("module_a.map.json"));
 }
 
 } // namespace ValdiTest

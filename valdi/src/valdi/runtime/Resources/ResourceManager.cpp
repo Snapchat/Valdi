@@ -380,6 +380,8 @@ Ref<Bundle> ResourceManager::getBundle(const StringBox& bundleName) {
         useMmap = runtimeTweaks->enableMmapModuleArchives() && !mmapCacheDir.empty() &&
                   !runtimeTweaks->isMmapModuleArchiveDenylisted(bundleName);
     }
+    // Builds that ship source maps (debug) keep the lookup, so on-device symbolication still works.
+    bool lookUpSourceMap = runtimeTweaks == nullptr || !runtimeTweaks->skipSourceMapLookup() || areSourceMapsBundled();
 
     auto assetPackageKey = STRING_LITERAL("res.assetpackage");
     auto hasAssetPackage = false;
@@ -395,7 +397,9 @@ Ref<Bundle> ResourceManager::getBundle(const StringBox& bundleName) {
         initializeBundle(bundleInitializer, archiveResult.value());
     }
 
-    populateSourceMap(bundleName, *bundleInitializer.getBundle());
+    if (lookUpSourceMap) {
+        populateSourceMap(bundleName, *bundleInitializer.getBundle());
+    }
 
     if (hasAssetPackage) {
         insertAssetPackageInBundle(bundleInitializer.getBundle(),
@@ -434,6 +438,15 @@ std::vector<std::pair<StringBox, Ref<Bundle>>> ResourceManager::getAllInitialize
         }
     }
     return result;
+}
+
+bool ResourceManager::areSourceMapsBundled() {
+    // A build ships a source map for every module or for none, and every build has valdi_core.
+    std::call_once(_sourceMapsBundledOnce, [this]() {
+        _sourceMapsBundled = static_cast<bool>(
+            _resourceLoader->loadModuleContent(resolveSourceMapFilePath(STRING_LITERAL("valdi_core"))));
+    });
+    return _sourceMapsBundled;
 }
 
 void ResourceManager::populateSourceMap(const StringBox& bundleName, Bundle& bundle) {

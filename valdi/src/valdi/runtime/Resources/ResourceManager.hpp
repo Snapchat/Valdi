@@ -133,6 +133,8 @@ private:
     Ref<ValdiRuntimeTweaks> _runtimeTweaks;
     Ref<Metrics> _metrics;
     std::once_flag _imageAssetOverrideDirectoryOnce;
+    std::once_flag _sourceMapsBundledOnce;
+    bool _sourceMapsBundled = false;
     bool _enableTSN = true;
     bool _inlineAssetsEnabled = true;
     bool _hotReloaderEnabled;
@@ -169,6 +171,8 @@ private:
     Ref<Bundle> lockFreeGetBundle(const StringBox& bundleName, std::unique_lock<Mutex>& lock);
 
     void populateSourceMap(const StringBox& bundleName, Bundle& bundle);
+    // Whether this build ships source maps; probed once through the resource loader.
+    bool areSourceMapsBundled();
 
     void loadModuleAsyncInner(const StringBox& bundleName,
                               FlatSet<StringBox>& processedModules,
