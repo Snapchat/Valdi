@@ -335,6 +335,20 @@ External dependencies and their Bazel build configurations
 2. **Don't modify generated code** - Change the source `.djinni` file instead
 3. Generated files are typically in `generated-src/` directories
 
+### Runtime Configuration (Flags and Tweaks)
+
+When adding a flag or setting, put it here:
+
+- **Cross-platform, read by the C++ runtime:** add a getter to `ValdiRuntimeTweaks` (`/valdi/src/valdi/runtime/ValdiRuntimeTweaks.hpp`).
+- **Read only by platform code, or an object (loader, reporter, callback):** add it to the platform config, `ValdiTweaks` (`/valdi/src/java/com/snap/valdi/ValdiTweaks.kt`) on Android and `SCValdiConfiguration` (`/valdi_core/src/valdi_core/ios/valdi_core/SCValdiConfiguration.h`) on iOS.
+
+1. **Handle missing tweaks with a safe default.** The `ValdiRuntimeTweaks` object is null until a host attaches a provider, and stays null in hosts that never do. Null-check it at every call site and fall back to the same safe value as the getter's own fallback.
+2. **Don't move a C++ setting to the platform config for timing.** If C++ needs the value early, apply it when the provider attaches (`RuntimeManager::setTweakValueProvider`) or read it at use time. Only use the platform config if the value must be fixed before any provider can exist, and say why in its doc comment.
+3. **Platform data in, decision in C++.** When C++ needs data only the platform has (a directory, a package identity), pass the data through the platform config and keep the on/off decision in `ValdiRuntimeTweaks`.
+4. **Snapshot values that must stay consistent.** Whether a provider's values can change mid-process is up to the host, so read once and keep the value if it must not change.
+5. **Prefix new tweak keys with `VALDI_`.**
+6. **Follow these rules, not neighboring fields.** Some existing platform-config fields predate them and aren't precedent.
+
 ## Common Tasks
 
 ### Building the Compiler
