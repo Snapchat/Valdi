@@ -402,6 +402,16 @@ void RuntimeManager::applicationWillPause() {
     if (!_keepDebuggerServiceOnPause) {
         stopDebuggerServices();
     }
+    // Long-lived trees would otherwise only report on teardown, which may never come once backgrounded.
+    for (const auto& runtime : getAllRuntimes()) {
+        const auto& metrics = runtime->getMetrics();
+        if (metrics == nullptr) {
+            continue;
+        }
+        for (const auto& tree : runtime->getViewNodeTreeManager().getAllRootViewNodeTrees()) {
+            tree->flushViewPoolStats(*metrics);
+        }
+    }
     clearViewPools();
     scheduleDeferredGCTask();
 }

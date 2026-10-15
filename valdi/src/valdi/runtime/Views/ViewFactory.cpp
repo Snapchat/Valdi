@@ -24,7 +24,13 @@ void ViewFactory::clearViewPool() {
     _pooledViews.clear();
 }
 
-Ref<View> ViewFactory::createView(ViewNodeTree* viewNodeTree, ViewNode* viewNode, bool allowPool) {
+Ref<View> ViewFactory::createView(ViewNodeTree* viewNodeTree,
+                                  ViewNode* viewNode,
+                                  bool allowPool,
+                                  bool* outReusedFromPool) {
+    if (outReusedFromPool != nullptr) {
+        *outReusedFromPool = false;
+    }
     if (allowPool) {
         std::lock_guard<Mutex> lock(_mutex);
 
@@ -32,6 +38,9 @@ Ref<View> ViewFactory::createView(ViewNodeTree* viewNodeTree, ViewNode* viewNode
             auto view = _pooledViews.front();
             _pooledViews.pop_front();
 
+            if (outReusedFromPool != nullptr) {
+                *outReusedFromPool = true;
+            }
             return view;
         }
     }

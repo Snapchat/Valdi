@@ -29,7 +29,14 @@ public:
     ViewFactory(StringBox viewClassName, IViewManager& viewManager, Ref<BoundAttributes> boundAttributes);
     ~ViewFactory() override;
 
-    Ref<View> createView(ViewNodeTree* viewNodeTree, ViewNode* viewNode, bool allowPool);
+    /**
+     * Returns a view from the pool when allowPool is set and one is available, otherwise creates one.
+     * If outReusedFromPool is non-null it is set to whether the returned view came from the pool.
+     */
+    Ref<View> createView(ViewNodeTree* viewNodeTree,
+                         ViewNode* viewNode,
+                         bool allowPool,
+                         bool* outReusedFromPool = nullptr);
     void enqueueViewToPool(const Ref<View>& view);
     void clearViewPool();
 

@@ -21,6 +21,7 @@
 #include "valdi_core/cpp/Utils/TrackedLock.hpp"
 #include "valdi_core/cpp/Utils/ValdiObject.hpp"
 #include "valdi_core/cpp/Views/Measure.hpp"
+#include <atomic>
 #include <chrono>
 #include <deque>
 #include <optional>
@@ -260,11 +261,32 @@ public:
 
     TrackedLock lock() const;
 
+    struct ViewPoolStats {
+        uint64_t hits = 0;
+        uint64_t misses = 0;
+        uint64_t drops = 0;
+    };
+
+    /** Counts a view handed to a node of this tree, either reused from the pool or created fresh. */
+    void recordViewPoolCreate(bool reusedFromPool);
+    /** Counts a view obtained through createView() and released with pooling disabled for it. */
+    void recordViewPoolDrop();
+    /** Counts accumulated since the last emission (exposed for tests). */
+    ViewPoolStats getViewPoolStats() const;
+    /** Emits and resets the counts. Called from clear() and when the app pauses. */
+    void flushViewPoolStats(Metrics& metrics);
+
 private:
     SharedContext _context;
     Ref<ViewManagerContext> _viewManagerContext;
     IViewManager* _viewManager;
     Ref<Runtime> _runtime;
+    // Aggregated and emitted in clear() and on app pause, so recording stays a relaxed atomic increment.
+    std::atomic<uint64_t> _viewPoolHits{0};
+    std::atomic<uint64_t> _viewPoolMisses{0};
+    std::atomic<uint64_t> _viewPoolDrops{0};
+
+    void flushViewPoolStatsIfNeeded();
 
     FlatMap<StringBox, Ref<ViewFactory>> _viewFactories;
     FlatMap<RawViewNodeId, Ref<ViewNode>> _rawViewNodes;

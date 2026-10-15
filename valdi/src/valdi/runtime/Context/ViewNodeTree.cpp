@@ -74,8 +74,46 @@ ViewNodeTree::~ViewNodeTree() {
     clear();
 }
 
+void ViewNodeTree::recordViewPoolCreate(bool reusedFromPool) {
+    (reusedFromPool ? _viewPoolHits : _viewPoolMisses).fetch_add(1, std::memory_order_relaxed);
+}
+
+void ViewNodeTree::recordViewPoolDrop() {
+    _viewPoolDrops.fetch_add(1, std::memory_order_relaxed);
+}
+
+ViewNodeTree::ViewPoolStats ViewNodeTree::getViewPoolStats() const {
+    ViewPoolStats stats;
+    stats.hits = _viewPoolHits.load(std::memory_order_relaxed);
+    stats.misses = _viewPoolMisses.load(std::memory_order_relaxed);
+    stats.drops = _viewPoolDrops.load(std::memory_order_relaxed);
+    return stats;
+}
+
+void ViewNodeTree::flushViewPoolStatsIfNeeded() {
+    auto metrics = getMetrics();
+    if (metrics != nullptr) {
+        flushViewPoolStats(*metrics);
+    }
+}
+
+void ViewNodeTree::flushViewPoolStats(Metrics& metrics) {
+    auto hits = _viewPoolHits.exchange(0, std::memory_order_relaxed);
+    auto misses = _viewPoolMisses.exchange(0, std::memory_order_relaxed);
+    auto drops = _viewPoolDrops.exchange(0, std::memory_order_relaxed);
+    if (hits == 0 && misses == 0 && drops == 0) {
+        return;
+    }
+
+    const auto& module =
+        _context != nullptr ? _context->getPath().getResourceId().bundleName : StringBox::emptyString();
+    metrics.emitViewPoolStats(
+        module, static_cast<int64_t>(hits), static_cast<int64_t>(misses), static_cast<int64_t>(drops));
+}
+
 void ViewNodeTree::clear() {
     flushRunUpdatesInnerStatsIfNeeded();
+    flushViewPoolStatsIfNeeded();
     clearRunUpdatesMetricsSession();
     _runtime = nullptr;
     _viewFactories.clear();

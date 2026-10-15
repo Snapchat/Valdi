@@ -175,6 +175,7 @@ constexpr size_t kManagedChildrenLayoutNeedsCommit = 33;
 constexpr size_t kTranslationXIsPercent = 34;
 constexpr size_t kTranslationYIsPercent = 35;
 constexpr size_t kHasOveriddenColorPalette = 36;
+constexpr size_t kViewFromFactoryFlag = 37;
 
 ViewNode::ViewNode(YGConfig* yogaConfig,
                    AttributeIds& attributeIds,
@@ -369,6 +370,11 @@ void ViewNode::setView(ViewTransactionScope& viewTransactionScope,
             // nor do we explicitly remove it from the view hierarchy. We let
             // native code handle the root view itself.
             auto shouldEnqueueToPool = _view->canBeReused() && !getViewClassName().isEmpty();
+            // Only views obtained through createView() count, so creates = pool returns + drops + live.
+            if (_flags[kViewFromFactoryFlag] && !shouldEnqueueToPool && _viewNodeTree != nullptr) {
+                _viewNodeTree->recordViewPoolDrop();
+            }
+            _flags[kViewFromFactoryFlag] = false;
 
             // Restore the view to default
             _attributesApplier.willRemoveView(viewTransactionScope);
@@ -425,11 +431,14 @@ bool ViewNode::createView(ViewTransactionScope& viewTransactionScope, const Ref<
         return false;
     }
 
-    auto view = _viewFactory->createView(_viewNodeTree, this, true);
+    bool reusedFromPool = false;
+    auto view = _viewFactory->createView(_viewNodeTree, this, true, &reusedFromPool);
 
     if (view != nullptr) {
+        _viewNodeTree->recordViewPoolCreate(reusedFromPool);
         viewTransactionScope.transaction().moveViewToTree(view, _viewNodeTree, this);
         setView(viewTransactionScope, view, animator);
+        _flags[kViewFromFactoryFlag] = true;
         return true;
     } else {
         VALDI_WARN(getLogger(), "{} Could not create view with class {}", getLoggerFormatPrefix(), getViewClassName());

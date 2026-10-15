@@ -681,7 +681,7 @@ private:
     float _stickyCachedParentH = 0.0f;
     float _stickyCachedChildH = 0.0f;
 
-    std::bitset<37> _flags;
+    std::bitset<38> _flags;
 
     ViewNodeTree* _viewNodeTree = nullptr;
 

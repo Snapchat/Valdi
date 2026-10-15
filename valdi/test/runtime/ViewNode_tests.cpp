@@ -1,5 +1,7 @@
 #include "ViewNodeTestsUtils.hpp"
 #include "valdi/runtime/Attributes/ViewNodeTextInlineAttachment.hpp"
+#include "valdi/runtime/Metrics/Metrics.hpp"
+#include "valdi/standalone_runtime/StandaloneView.hpp"
 #include "gtest/gtest.h"
 
 using namespace Valdi;
@@ -16,6 +18,161 @@ void assertAllFlagsAreUpToDate(ViewNode* viewNode) {
     for (auto* child : *viewNode) {
         assertAllFlagsAreUpToDate(child);
     }
+}
+
+namespace {
+
+Ref<ViewNode> addSizedChild(ViewNodeTestsDependencies& utils, const Ref<ViewNode>& root) {
+    auto child = utils.createView();
+    utils.setViewNodeAttribute(child, "width", Value(50.0));
+    utils.setViewNodeAttribute(child, "height", Value(50.0));
+    root->appendChild(utils.getViewTransactionScope(), child);
+    root->performLayout(utils.getViewTransactionScope(), Size(100, 100), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+    return child;
+}
+
+} // namespace
+
+TEST(ViewNode, countsViewPoolMissesHitsAndDrops) {
+    ViewNodeTestsDependencies utils;
+    // Must precede the first view factory creation, which captures the setting.
+    utils.getViewManager().setAllowViewPooling(true);
+    auto root = utils.createRootView();
+
+    auto first = addSizedChild(utils, root);
+    ASSERT_TRUE(first->hasView());
+    auto stats = utils.getTree().getViewPoolStats();
+    ASSERT_EQ(0u, stats.hits);
+    ASSERT_EQ(1u, stats.misses);
+    ASSERT_EQ(0u, stats.drops);
+
+    // Released into the pool, then reused by the next node of the same class.
+    first->removeFromParent(utils.getViewTransactionScope());
+    first->setView(utils.getViewTransactionScope(), nullptr, nullptr);
+    auto second = addSizedChild(utils, root);
+    ASSERT_TRUE(second->hasView());
+    stats = utils.getTree().getViewPoolStats();
+    ASSERT_EQ(1u, stats.hits);
+    ASSERT_EQ(1u, stats.misses);
+    ASSERT_EQ(0u, stats.drops);
+
+    // A view taken out of the pool is a drop when its node releases it.
+    (void)second->getViewAndDisablePooling();
+    second->removeFromParent(utils.getViewTransactionScope());
+    second->setView(utils.getViewTransactionScope(), nullptr, nullptr);
+    stats = utils.getTree().getViewPoolStats();
+    ASSERT_EQ(1u, stats.drops);
+
+    // With the pool empty again the next view is a fresh creation.
+    auto third = addSizedChild(utils, root);
+    ASSERT_TRUE(third->hasView());
+    stats = utils.getTree().getViewPoolStats();
+    ASSERT_EQ(1u, stats.hits);
+    ASSERT_EQ(2u, stats.misses);
+    ASSERT_EQ(1u, stats.drops);
+}
+
+namespace {
+
+class ViewPoolRecordingMetrics : public Metrics {
+public:
+    struct Emission {
+        StringBox module;
+        int64_t hits;
+        int64_t misses;
+        int64_t drops;
+    };
+    std::vector<Emission> emissions;
+
+    void emitViewPoolStats(const StringBox& module, int64_t hits, int64_t misses, int64_t drops) override {
+        emissions.push_back(Emission{module, hits, misses, drops});
+    }
+
+    void emitInitialRenderLatency(const StringBox&, const MetricsDuration&) override {}
+    void emitOnViewModelUpdatedLatency(const StringBox&, const MetricsDuration&) override {}
+    void emitOnCreateLatency(const StringBox&, const MetricsDuration&) override {}
+    void emitOnDestroyLatency(const StringBox&, const MetricsDuration&) override {}
+    void emitDestroyContextLatency(const StringBox&, const MetricsDuration&) override {}
+    void emitCalculateLayoutLatency(const StringBox&, const StringBox&, const MetricsDuration&) override {}
+    void emitCalculateLazyLayoutLatency(const StringBox&, const StringBox&, const MetricsDuration&) override {}
+    void emitCalculateLayoutLatencyMeasure(const StringBox&, const StringBox&, const MetricsDuration&) override {}
+    void emitCalculateLazyLayoutLatencyMeasure(const StringBox&, const StringBox&, const MetricsDuration&) override {}
+    void emitProcessRequestLatency(const StringBox&, const MetricsDuration&) override {}
+    void emitSessionTime(const StringBox&, const MetricsDuration&) override {}
+    void emitANR(const StringBox&) override {}
+    void emitANR() override {}
+    void emitRuntimeManagerInitLatency(const MetricsDuration&) override {}
+    void emitRuntimeManagerXpatInitLatency(const MetricsDuration&) override {}
+    void emitRuntimeManagerIosInitLatency(const MetricsDuration&) override {}
+    void emitRuntimePreInitLatency(const MetricsDuration&) override {}
+    void emitRuntimeInitLatency(const MetricsDuration&) override {}
+    void emitUserSessionReadyLatency(const MetricsDuration&) override {}
+    void emitAssetsDownloadSuccess(const StringBox&) override {}
+    void emitAssetsDownloadFailure(const StringBox&) override {}
+    void emitAssetsCacheHit(const StringBox&) override {}
+    void emitAssetsCacheMiss(const StringBox&) override {}
+    void emitUncaughtError(const StringBox&) override {}
+    void emitUncaughtError() override {}
+    void emitOnScrollLatency(const StringBox&, const StringBox&, const MetricsDuration&) override {}
+    void emitSlowAsyncJsCall(const StringBox&, const MetricsDuration&) override {}
+    void emitSlowSyncJsCallThreshold(const StringBox&, const MetricsDuration&) override {}
+};
+
+} // namespace
+
+TEST(ViewNode, flushesViewPoolStatsOnceAndSkipsEmpty) {
+    ViewNodeTestsDependencies utils;
+    utils.getViewManager().setAllowViewPooling(true);
+    auto root = utils.createRootView();
+    auto metrics = makeShared<ViewPoolRecordingMetrics>();
+
+    utils.getTree().flushViewPoolStats(*metrics);
+    ASSERT_TRUE(metrics->emissions.empty());
+
+    addSizedChild(utils, root);
+    utils.getTree().flushViewPoolStats(*metrics);
+    ASSERT_EQ(1u, metrics->emissions.size());
+    ASSERT_EQ(utils.getTree().getContext()->getPath().getResourceId().bundleName, metrics->emissions[0].module);
+    ASSERT_EQ(0, metrics->emissions[0].hits);
+    ASSERT_EQ(1, metrics->emissions[0].misses);
+    ASSERT_EQ(0, metrics->emissions[0].drops);
+
+    // Counts reset on flush, so a second flush (e.g. pause then teardown) does not re-emit them.
+    utils.getTree().flushViewPoolStats(*metrics);
+    ASSERT_EQ(1u, metrics->emissions.size());
+    auto stats = utils.getTree().getViewPoolStats();
+    ASSERT_EQ(0u, stats.misses);
+}
+
+TEST(ViewNode, placeholderMeasureViewIsNotAViewPoolDrop) {
+    ViewNodeTestsDependencies utils;
+    utils.getViewManager().setAllowViewPooling(true);
+    auto root = utils.createRootView();
+    auto node = utils.createView();
+    root->appendChild(utils.getViewTransactionScope(), node);
+
+    // Mirrors PlaceholderViewMeasureDelegate: the placeholder view is not obtained from the factory.
+    auto placeholderView = makeShared<StandaloneView>(STRING_LITERAL("View"));
+    auto placeholderNode = node->makePlaceholderViewNode(utils.getViewTransactionScope(), placeholderView);
+    placeholderNode->removeView(utils.getViewTransactionScope());
+
+    auto stats = utils.getTree().getViewPoolStats();
+    ASSERT_EQ(0u, stats.misses);
+    ASSERT_EQ(0u, stats.drops);
+}
+
+TEST(ViewNode, replacingRootViewNodeIsNotAViewPoolDrop) {
+    ViewNodeTestsDependencies utils;
+    utils.getViewManager().setAllowViewPooling(true);
+    auto root = utils.createRootView();
+    ASSERT_TRUE(root->hasView());
+
+    utils.getTree().setRootViewNode(utils.createView(), false);
+    ASSERT_FALSE(root->hasView());
+
+    auto stats = utils.getTree().getViewPoolStats();
+    ASSERT_EQ(0u, stats.drops);
 }
 
 TEST(ViewNode, settingColorPaletteOnDetachedNodeClearsResolvedPalette) {

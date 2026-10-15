@@ -89,6 +89,11 @@ public:
     // valid for the session (the inode is kept alive while mapped); this
     // counter exists so the A/B can observe and alert on the publish failure.
     virtual void emitModuleArchiveMmapPublishFail(const StringBox& module) {};
+    // View pool usage of one ViewNodeTree since the last emission, emitted when the tree is torn down
+    // and when the app pauses. hits: views reused from the pool; misses: views created fresh; drops:
+    // views from the factory released with pooling disabled via canBeReused (e.g. through a platform
+    // accessor that may retain the view). Views the platform refuses to pool are not drops.
+    virtual void emitViewPoolStats(const StringBox& module, int64_t hits, int64_t misses, int64_t drops) {};
 
     // Wall time of one synchronous view-tree inflation pass (ViewNode::updateViewTree),
     // with the node/view counts the pass already computes. The counts let a slow pass be
