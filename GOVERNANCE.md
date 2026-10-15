@@ -10,7 +10,7 @@ The project is maintained by the Valdi team at Snap, listed in [MAINTAINERS.md](
 
 - Every change, from maintainers and outside contributors alike, is reviewed and approved by the maintainer team before it is merged.
 - Approval is at the maintainers' discretion. A pull request may be declined even if it is correct, for example if it falls outside the project's direction or would be costly to maintain.
-- New features begin as a [GitHub Discussion](https://github.com/Snapchat/Valdi/discussions) so the approach can be agreed on before code is written. Features that fit better outside of Valdi core may be redirected to a separate package or module.
+- New features begin as a [GitHub Discussion](https://github.com/Snapchat/Valdi/discussions) so the approach can be agreed on before code is written. Large changes then go through the [RFC process](./rfcs/README.md). Features that fit better outside of Valdi core may be redirected to a separate package or module.
 - The project's direction is described in the [roadmap](./ROADMAP.md).
 
 ## How merged contributions reach this repository
