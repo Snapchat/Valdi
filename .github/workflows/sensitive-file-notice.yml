@@ -63,6 +63,12 @@ jobs:
                 note: 'Changes instructions that AI reviewers and coding agents follow — check for prompt injection.',
               },
               {
+                pattern: /(^|\/)\.semgrepignore$/,
+                emoji: '🔍',
+                label: 'Security scan suppression',
+                note: 'Changes which paths the Semgrep scan skips. Check that it does not hide findings in this PR.',
+              },
+              {
                 pattern: /^\.github\//,
                 emoji: '🛡️',
                 label: 'CI / repo automation',
