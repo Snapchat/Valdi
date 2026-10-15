@@ -1,0 +1,54 @@
+name: Cache Write Isolation Check
+
+# Detects drift in the Bazel cache WIF bindings. The writer SA must only be
+# impersonable by push/schedule runs on main (attribute.ref_event); every other
+# run gets the read-only SA. This job proves that from a real non-main token:
+# the read-only SA must authenticate and the writer SA must be denied.
+#
+# Detective, not preventive: a PR can edit this file in its own branch. GCP IAM
+# is the actual control.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  writer-denied:
+    # Fork PRs get no OIDC token, so there is nothing to test.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate as read-only SA (must succeed)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT_RO }}
+          token_format: 'access_token'
+
+      - name: Authenticate as writer SA (must be denied)
+        id: writer
+        continue-on-error: true
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          token_format: 'access_token'
+
+      - name: Assert writer SA was denied
+        shell: bash
+        env:
+          WRITER_OUTCOME: ${{ steps.writer.outcome }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$WRITER_OUTCOME" = "success" ]; then
+            echo "::error::A $EVENT run on $REF obtained the cache writer identity. The WIF writer binding has drifted."
+            exit 1
+          fi
+          echo "Writer SA correctly denied for $EVENT on $REF."
