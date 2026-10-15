@@ -1188,6 +1188,52 @@ cc_binary(
 )
 
 cc_binary(
+    name = "layout_benchmark",
+    testonly = 1,
+    srcs = [
+        "test/benchmark/BenchViewTree.hpp",
+        "test/benchmark/HeapAllocationCounter.hpp",
+        "test/benchmark/layout_benchmark.cpp",
+    ],
+    linkstatic = True,
+    deps = [
+        ":valdi_runtime",
+        ":valdi_standalone_runtime",
+        "@com_github_google_benchmark//:benchmark",
+    ],
+)
+
+cc_binary(
+    name = "render_benchmark",
+    testonly = 1,
+    srcs = [
+        "test/benchmark/BenchViewTree.hpp",
+        "test/benchmark/HeapAllocationCounter.hpp",
+        "test/benchmark/render_benchmark.cpp",
+    ],
+    linkstatic = True,
+    deps = [
+        ":valdi_runtime",
+        ":valdi_standalone_runtime",
+        "@com_github_google_benchmark//:benchmark",
+    ],
+)
+
+cc_binary(
+    name = "runtime_init_benchmark",
+    testonly = 1,
+    srcs = [
+        "test/benchmark/HeapAllocationCounter.hpp",
+        "test/benchmark/runtime_init_benchmark.cpp",
+    ],
+    linkstatic = True,
+    deps = [
+        ":valdi_runtime_with_vm",
+        "@com_github_google_benchmark//:benchmark",
+    ],
+)
+
+cc_binary(
     name = "valdi_standalone",
     srcs = glob([
         "src/valdi/standalone/**/*.cpp",

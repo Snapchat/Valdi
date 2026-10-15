@@ -25,6 +25,10 @@ BENCHMARKS="${PERF_BENCHMARKS:-$(cat <<'EOF'
 //valdi:heapdump_benchmark|BuildHeapDump
 //valdi:marshalling_benchmark|MarshalRoundTripQuickJS
 //valdi:marshalling_benchmark|MarshalNativeToJsQuickJS
+//valdi:layout_benchmark|LayoutDeepTree
+//valdi:render_benchmark|RenderInitialTree
+//valdi:render_benchmark|RenderStateUpdate
+//valdi:runtime_init_benchmark|RuntimeInitQuickJS
 EOF
 )}"
 
