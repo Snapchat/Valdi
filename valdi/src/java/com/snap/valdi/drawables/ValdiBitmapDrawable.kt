@@ -159,7 +159,13 @@ class ValdiBitmapDrawable(val clipper: CanvasClipper): Drawable() {
     }
 
     override fun draw(canvas: Canvas) {
-        this.bitmap ?: return
+        val bitmap = this.bitmap ?: return
+        // The owning ValdiImage can recycle the bitmap once its last retain is released, possibly
+        // before this drawable is handed a new one. Lazily creating the native BitmapShader for a
+        // recycled bitmap aborts in hwui, so skip the frame instead.
+        if (bitmap.isRecycled) {
+            return
+        }
 
         if (matrixDirty) {
             matrixDirty = false
