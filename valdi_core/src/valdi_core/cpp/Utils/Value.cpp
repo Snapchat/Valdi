@@ -232,6 +232,30 @@ Value& Value::operator=(const Value& other) noexcept {
     return *this;
 }
 
+namespace {
+
+bool staticStringEqualsUTF8(const StaticString& staticString, std::string_view utf8) {
+    switch (staticString.encoding()) {
+        case StaticString::Encoding::UTF8:
+            return staticString.utf8StringView() == utf8;
+        case StaticString::Encoding::UTF16:
+            // n UTF-16 code units encode to n..3n UTF-8 bytes; reject on length before transcoding.
+            if (utf8.size() < staticString.size() || utf8.size() > staticString.size() * 3) {
+                return false;
+            }
+            // utf8Storage() transcodes into a thread-local buffer: no lock.
+            return staticString.utf8Storage().toStringView() == utf8;
+        case StaticString::Encoding::UTF32:
+            if (utf8.size() < staticString.size() || utf8.size() > staticString.size() * 4) {
+                return false;
+            }
+            return staticString.utf8Storage().toStringView() == utf8;
+    }
+    return false;
+}
+
+} // namespace
+
 bool Value::operator==(const Value& other) const noexcept {
     if (this == &other) {
         return true;
@@ -243,10 +267,16 @@ bool Value::operator==(const Value& other) const noexcept {
             return toDouble() == other.toDouble();
         }
         if (isString() && other.isString()) {
-            // Strings can be stored as InternedString or StaticString; normalize
-            // to StringBox for cross-subtype equality (e.g. comparing a JS-sourced
-            // value to a schema's compile-time string literal).
-            return toStringBox() == other.toStringBox();
+            // Strings can be stored as InternedString or StaticString (e.g. comparing a
+            // JS-sourced value to a schema's compile-time string literal). Compare bytes
+            // directly rather than interning the StaticString side: interning hashes the
+            // whole string and takes the global StringCache lock on every compare.
+            const auto* interned =
+                isInternedString() ? toPointer<InternedStringImpl>() : other.toPointer<InternedStringImpl>();
+            const auto* staticString = isStaticString() ? getStaticString() : other.getStaticString();
+            // A null interned pointer is the empty string (see StringBox).
+            auto internedView = interned != nullptr ? interned->toStringView() : std::string_view();
+            return staticStringEqualsUTF8(*staticString, internedView);
         }
 
         return false;
@@ -258,7 +288,8 @@ bool Value::operator==(const Value& other) const noexcept {
         case ValueType::Undefined:
             return true;
         case ValueType::InternedString:
-            return toStringBox() == other.toStringBox();
+            // Same as StringBox::operator==, without the two StringBox temporaries (4 refcount atomics).
+            return _data.p == other._data.p;
         case ValueType::StaticString:
             return *getStaticString() == *other.getStaticString();
         case ValueType::Int:
@@ -822,7 +853,8 @@ size_t Value::hash() const {
         case ValueType::Undefined:
             return 0;
         case ValueType::InternedString:
-            return toStringBox().hash();
+            // Same as StringBox::hash(), without the StringBox temporary.
+            return reinterpret_cast<size_t>(_data.p);
         case ValueType::StaticString:
             return getStaticString()->hash();
         case ValueType::Int:

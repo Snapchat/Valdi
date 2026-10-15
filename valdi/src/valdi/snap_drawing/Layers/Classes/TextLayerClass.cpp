@@ -92,15 +92,27 @@ Valdi::Ref<Layer> TextLayerClass::instantiate() {
 }
 
 Size TextLayerClass::onMeasure(const Valdi::Value& attributes, Size maxSize, bool isRightToLeft) {
-    auto text = attributes.getMapValue("value");
-    auto font = Valdi::castOrNull<Font>(attributes.getMapValue("font").getValdiObject());
-    auto numberOfLines = attributes.getMapValue("numberOfLines");
-    auto lineHeight = attributes.getMapValue("lineHeight");
-    auto lineHeightAbsolute = attributes.getMapValue("lineHeightAbsolute");
-    auto letterSpacing = attributes.getMapValue("letterSpacing");
-    auto adjustsFontSizeToFitWidth = attributes.getMapValue("adjustsFontSizeToFitWidth");
-    auto minimumScaleFactor = attributes.getMapValue("minimumScaleFactor");
-    auto textOverflowStr = attributes.getMapValue("textOverflow");
+    // Interned once: getMapValue(const char*) would hash the key and take the global
+    // StringCache lock on every measure, which Yoga calls for each dirty text node.
+    static const auto kValue = STRING_LITERAL("value");
+    static const auto kFont = STRING_LITERAL("font");
+    static const auto kNumberOfLines = STRING_LITERAL("numberOfLines");
+    static const auto kLineHeight = STRING_LITERAL("lineHeight");
+    static const auto kLineHeightAbsolute = STRING_LITERAL("lineHeightAbsolute");
+    static const auto kLetterSpacing = STRING_LITERAL("letterSpacing");
+    static const auto kAdjustsFontSizeToFitWidth = STRING_LITERAL("adjustsFontSizeToFitWidth");
+    static const auto kMinimumScaleFactor = STRING_LITERAL("minimumScaleFactor");
+    static const auto kTextOverflow = STRING_LITERAL("textOverflow");
+
+    auto text = attributes.getMapValue(kValue);
+    auto font = Valdi::castOrNull<Font>(attributes.getMapValue(kFont).getValdiObject());
+    auto numberOfLines = attributes.getMapValue(kNumberOfLines);
+    auto lineHeight = attributes.getMapValue(kLineHeight);
+    auto lineHeightAbsolute = attributes.getMapValue(kLineHeightAbsolute);
+    auto letterSpacing = attributes.getMapValue(kLetterSpacing);
+    auto adjustsFontSizeToFitWidth = attributes.getMapValue(kAdjustsFontSizeToFitWidth);
+    auto minimumScaleFactor = attributes.getMapValue(kMinimumScaleFactor);
+    auto textOverflowStr = attributes.getMapValue(kTextOverflow);
 
     auto respectDynamicType = getResources()->getRespectDynamicType();
     auto displayScale = getResources()->getDisplayScale();

@@ -52,17 +52,24 @@ Result<Void> AttributeHandler::applyAttribute(ViewTransactionScope& viewTransact
                                               const SharedAnimator& animator) const {
     SC_ASSERT(!requiresView() || viewNode.hasView());
 
+    SC_ASSERT(_delegate != nullptr, "AttributeHandler::applyAttribute called with null delegate");
+    if (_delegate == nullptr) {
+        return Error("AttributeHandler::applyAttribute called with null delegate");
+    }
+
     Result<Void> result;
-    auto postprocessedValue = postprocess(viewNode, value);
-    if (postprocessedValue) {
-        SC_ASSERT(_delegate != nullptr, "AttributeHandler::applyAttribute called with null delegate");
-        if (_delegate == nullptr) {
-            return Error("AttributeHandler::applyAttribute called with null delegate");
-        }
-        result = _delegate->onApply(
-            viewTransactionScope, viewNode, viewNode.getView(), _name, postprocessedValue.value(), animator);
+    if (_postprocessors.empty()) {
+        // Most handlers have no postprocessors; skip the Result<Value> copy (an atomic
+        // retain/release for string, array and map payloads) on every attribute apply.
+        result = _delegate->onApply(viewTransactionScope, viewNode, viewNode.getView(), _name, value, animator);
     } else {
-        result = postprocessedValue.moveError();
+        auto postprocessedValue = postprocess(viewNode, value);
+        if (postprocessedValue) {
+            result = _delegate->onApply(
+                viewTransactionScope, viewNode, viewNode.getView(), _name, postprocessedValue.value(), animator);
+        } else {
+            result = postprocessedValue.moveError();
+        }
     }
 
     if (!result) {

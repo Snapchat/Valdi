@@ -1163,6 +1163,20 @@ cc_binary(
 )
 
 cc_binary(
+    name = "runtime_hotpath_benchmark",
+    testonly = 1,
+    srcs = ["test/benchmark/runtime_hotpath_benchmark.cpp"],
+    copts = COMMON_COMPILE_FLAGS,
+    linkstatic = True,
+    deps = [
+        ":valdi_runtime",
+        ":valdi_standalone_runtime",
+        "//libs/utils:utils_oss_cc",
+        "@com_github_google_benchmark//:benchmark",
+    ],
+)
+
+cc_binary(
     name = "heapdump_benchmark",
     testonly = 1,
     srcs = ["test/benchmark/JavaScriptHeapDump_benchmark.cpp"],

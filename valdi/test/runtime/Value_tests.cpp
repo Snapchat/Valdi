@@ -6,6 +6,7 @@
 //
 
 #include "valdi/runtime/Attributes/ValueConverters.hpp"
+#include "valdi_core/cpp/Utils/StaticString.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
 #include "valdi_core/cpp/Utils/Value.hpp"
 #include "valdi_core/cpp/Utils/ValueArray.hpp"
@@ -136,6 +137,33 @@ TEST(Value, canHandleStrings) {
     auto copy = strValue;
     ASSERT_EQ(copy, strValue);
     ASSERT_EQ(Value(strValue), strValue);
+}
+
+TEST(Value, comparesInternedAndStaticStringsWithoutInterning) {
+    auto interned = Value(STRING_LITERAL("hello"));
+    auto staticUtf8 = Value(StaticString::makeUTF8(std::string_view("hello")));
+    std::u16string utf16 = u"hello";
+    auto staticUtf16 = Value(StaticString::makeUTF16(utf16.data(), utf16.size()));
+
+    ASSERT_EQ(interned, staticUtf8);
+    ASSERT_EQ(staticUtf8, interned);
+    ASSERT_EQ(interned, staticUtf16);
+    ASSERT_EQ(staticUtf16, interned);
+    ASSERT_NE(interned, Value(StaticString::makeUTF8(std::string_view("hellO"))));
+    ASSERT_NE(interned, Value(StaticString::makeUTF8(std::string_view("hell"))));
+    ASSERT_NE(Value(STRING_LITERAL("")), staticUtf8);
+    ASSERT_EQ(Value(STRING_LITERAL("")), Value(StaticString::makeUTF8(std::string_view(""))));
+
+    // A null interned pointer aliases the empty string.
+    ASSERT_EQ(Value(Ref<InternedStringImpl>()), Value(STRING_LITERAL("")));
+    ASSERT_EQ(Value(STRING_LITERAL("")), Value(Ref<InternedStringImpl>()));
+    ASSERT_EQ(Value(Ref<InternedStringImpl>()).hash(), Value(STRING_LITERAL("")).hash());
+    ASSERT_EQ(Value(Ref<InternedStringImpl>()), Value(StaticString::makeUTF8(std::string_view(""))));
+    ASSERT_NE(Value(Ref<InternedStringImpl>()), staticUtf8);
+
+    ASSERT_EQ(interned.hash(), Value(STRING_LITERAL("hello")).hash());
+    ASSERT_EQ(interned.hash(), STRING_LITERAL("hello").hash());
+    ASSERT_NE(interned.hash(), Value(STRING_LITERAL("world")).hash());
 }
 
 TEST(Value, canHandleArray) {

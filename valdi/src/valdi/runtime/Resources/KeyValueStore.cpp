@@ -11,6 +11,8 @@
 #include "valdi_core/cpp/Utils/Parser.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
 
+#include <algorithm>
+
 namespace Valdi {
 
 struct KeyValueStoreEntryManifest {
@@ -107,22 +109,21 @@ std::vector<std::pair<StringBox, KeyValueStoreEntry>> KeyValueStore::collectEntr
     auto it = _entries.begin();
     while (it != _entries.end()) {
         if (!isEntryExpired(it->second)) {
-            auto pair = std::make_pair(it->first, it->second);
-            auto insertionIt = std::upper_bound(entries.begin(),
-                                                entries.end(),
-                                                pair,
-                                                [](const std::pair<StringBox, KeyValueStoreEntry>& left,
-                                                   const std::pair<StringBox, KeyValueStoreEntry>& right) {
-                                                    return left.second.mutationId < right.second.mutationId;
-                                                });
-
-            entries.emplace(insertionIt, std::move(pair));
-
+            entries.emplace_back(it->first, it->second);
             it++;
         } else {
             it = _entries.erase(it);
         }
     }
+
+    // Sort once rather than inserting into the middle of the vector per entry (O(n^2));
+    // this runs on every save of the store. mutationIds are unique, so no stable sort needed.
+    std::sort(entries.begin(),
+              entries.end(),
+              [](const std::pair<StringBox, KeyValueStoreEntry>& left,
+                 const std::pair<StringBox, KeyValueStoreEntry>& right) {
+                  return left.second.mutationId < right.second.mutationId;
+              });
 
     if (_maxWeight > 0) {
         evictEntriesIfNeeded(entries);

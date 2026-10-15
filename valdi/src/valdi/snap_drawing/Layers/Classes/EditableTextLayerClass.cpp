@@ -89,9 +89,13 @@ Valdi::Ref<Layer> EditableTextLayerClass::instantiate() {
 }
 
 Size EditableTextLayerClass::onMeasure(const Valdi::Value& attributes, Size maxSize, bool isRightToLeft) {
-    auto value = attributes.getMapValue("value");
-    auto placeholder = attributes.getMapValue("placeholder");
-    auto numberOfLines = attributes.getMapValue("numberOfLines");
+    static const auto kValue = STRING_LITERAL("value");
+    static const auto kPlaceholder = STRING_LITERAL("placeholder");
+    static const auto kNumberOfLines = STRING_LITERAL("numberOfLines");
+
+    auto value = attributes.getMapValue(kValue);
+    auto placeholder = attributes.getMapValue(kPlaceholder);
+    auto numberOfLines = attributes.getMapValue(kNumberOfLines);
     auto valueHasContent = textValueHasContent(value);
 
     if (valueHasContent && numberOfLines.isNumber()) {
@@ -107,12 +111,11 @@ Size EditableTextLayerClass::onMeasure(const Valdi::Value& attributes, Size maxS
     auto measureAttributes = Valdi::Value(newMap);
 
     if (!valueHasContent && placeholder.isString()) {
-        measureAttributes.setMapValue(STRING_LITERAL("value"), placeholder);
+        measureAttributes.setMapValue(kValue, placeholder);
     }
 
     if (!numberOfLines.isNumber()) {
-        measureAttributes.setMapValue(STRING_LITERAL("numberOfLines"),
-                                      Valdi::Value(static_cast<int32_t>(_defaultNumberOfLines)));
+        measureAttributes.setMapValue(kNumberOfLines, Valdi::Value(static_cast<int32_t>(_defaultNumberOfLines)));
     }
 
     return _textLayerClass->onMeasure(measureAttributes, maxSize, isRightToLeft);

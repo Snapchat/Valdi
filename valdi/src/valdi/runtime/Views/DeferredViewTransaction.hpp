@@ -18,7 +18,11 @@ namespace Valdi {
 
 class IViewManager;
 
-using DeferredViewTransactionOperation = Valdi::Function<void(IViewTransaction&)>;
+// 64 bytes of inline storage (on 64-bit). setViewFrame (view + Frame + rtl + animator, ~40 bytes)
+// and the operations capturing a whole function object (scheduleOnNextDraw,
+// executeInTransactionThread, snapshotView, willEnqueueViewToPool) overflow the 32-byte buffer of
+// Valdi::Function and would heap-allocate once per operation per render.
+using DeferredViewTransactionOperation = snap::OptimizedCopyableFunction<void* [8], void(IViewTransaction&)>;
 class IViewManager;
 class MainThreadManager;
 class Context;
