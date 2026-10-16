@@ -79,6 +79,23 @@ describe('DeferredPromise', () => {
     });
   });
 
+  describe('state', () => {
+    it('is pending until resolved', () => {
+      const def = new DeferredPromise<number>();
+      expect(def.state).toBe('pending');
+      def.resolve(1);
+      def.reject('ignored');
+      expect(def.state).toBe('resolved');
+    });
+
+    it('is rejected after reject', async () => {
+      const def = new DeferredPromise<number>();
+      def.reject('err');
+      expect(def.state).toBe('rejected');
+      await expectAsync(def.promise).toBeRejectedWith('err');
+    });
+  });
+
   describe('Types & Properties', () => {
     it('works with objects', async () => {
       const def = new DeferredPromise<{ id: number }>();

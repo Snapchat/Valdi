@@ -11,15 +11,28 @@ export class DeferredPromiseTimeoutError extends Error {
 }
 
 /**
+ * Whether a DeferredPromise is still pending, or which of resolve or reject settled it first. A timeout
+ * rejects.
+ */
+export type DeferredPromiseState = 'pending' | 'resolved' | 'rejected';
+
+/**
  * Creates a Promise that can later be resolved or rejected
  */
 export class DeferredPromise<T> implements PromiseLike<T> {
-  private resolved = false;
+  private _state: DeferredPromiseState = 'pending';
   private timeoutId?: any;
 
   readonly promise: Promise<T>;
   resolve!: (value: T | PromiseLike<T>) => void;
   reject!: (reason?: unknown) => void;
+
+  /**
+   * Whether the promise is still pending, resolved, or rejected (including by timeout).
+   */
+  get state(): DeferredPromiseState {
+    return this._state;
+  }
 
   constructor(timeoutMs?: number) {
     let res: (value: T | PromiseLike<T>) => void;
@@ -30,8 +43,8 @@ export class DeferredPromise<T> implements PromiseLike<T> {
       rej = _rej;
     });
 
-    this.resolve = value => this.finalize(res, value);
-    this.reject = reason => this.finalize(rej, reason);
+    this.resolve = value => this.finalize(res, value, 'resolved');
+    this.reject = reason => this.finalize(rej, reason, 'rejected');
 
     if (timeoutMs !== undefined) {
       this.timeoutId = setTimeout(() => {
@@ -43,9 +56,9 @@ export class DeferredPromise<T> implements PromiseLike<T> {
   /**
    * Prevents multiple resolutions and clears any active timeout.
    */
-  private finalize(callback: Function, arg: any) {
-    if (this.resolved) return;
-    this.resolved = true;
+  private finalize(callback: Function, arg: any, state: DeferredPromiseState) {
+    if (this._state !== 'pending') return;
+    this._state = state;
 
     if (this.timeoutId) {
       clearTimeout(this.timeoutId);
