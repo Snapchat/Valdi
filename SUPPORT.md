@@ -22,4 +22,6 @@ Please report security vulnerabilities privately through [HackerOne](https://hac
 
 ## Response times
 
-Valdi is maintained by a small team, and support in Discussions and Issues is provided on a best-effort basis. We read everything, but we cannot guarantee a response time.
+For pull request response and review expectations, see [What to Expect After You Open a PR](./CONTRIBUTING.md#3-what-to-expect-after-you-open-a-pr) in CONTRIBUTING.md.
+
+Support in Issues and Discussions is best-effort, with no guaranteed response time.

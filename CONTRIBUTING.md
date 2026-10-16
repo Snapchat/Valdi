@@ -16,10 +16,12 @@ We welcome contributions in various forms, including:
 
 If you would like to add new features, please start a [GitHub Discussion](https://github.com/Snapchat/Valdi/discussions) to discuss with the Valdi team first.
 
+Large or cross-cutting changes and changes to public API require the [RFC process](./rfcs/README.md) before implementation. An RFC can't be accepted without an automated test strategy the maintainers agree is sufficient. See [VERSIONING.md](./VERSIONING.md#what-counts-as-public-api) for what counts as public API.
+
 To contribute, follow these steps:
 
 - **Fork** the repository and create a new branch.
-- **Make your changes**, ensuring they align with our coding standards (§4 below).
+- **Make your changes**, ensuring they align with our coding standards (§5 below).
 - **Run tests** to ensure your changes do not break existing functionality.
 - **Submit a pull request (PR)** with a clear description of the changes.
 - A maintainer will review your PR, suggest any necessary changes, and merge it once approved.
@@ -60,7 +62,16 @@ feat: Add new authentication method
 fix: Resolve issue with session timeout  
 docs: Update README with new installation steps  
 
-## 3.  Legal Terms
+## 3. What to Expect After You Open a PR
+
+- **First response:** Someone from our team will look at your PR within 3 business days.
+- **Review timeline:** We aim to land small implementation PRs within about a week and medium implementation PRs within about two weeks. RFCs follow the separate review timeline in the [RFC process](./rfcs/README.md#how-it-works).
+- **Keep PRs reviewable:** Prefer small, independently reviewable PRs. If your change spans multiple PRs, link them and note the order they depend on.
+- **How changes land:** Accepted PRs are imported into our internal repository, validated, and landed there before being reflected publicly. Your authorship is preserved.
+- **Inactivity:** If a PR is waiting on the author with no activity for about a week, we'll follow up. PRs that remain inactive may be closed, and you're welcome to reopen them.
+- **Outcomes:** Every PR ends as landed or closed, and we'll explain the reason if we don't accept a change.
+
+## 4.  Legal Terms
 
 By submitting a contribution, you represent and warrant that:
 
@@ -72,7 +83,7 @@ We do not require a Contributor License Agreement (CLA). However, by contributin
 
 Where permitted by law, you waive any moral rights in your contribution (e.g., the right to object to modifications). If such rights cannot be waived, you agree not to assert them in a way that interferes with the project’s use of your contribution.
 
-## 4.  Coding Standards
+## 5.  Coding Standards
 
 To maintain a consistent codebase, please follow these guidelines:
 
@@ -81,7 +92,7 @@ To maintain a consistent codebase, please follow these guidelines:
 - Write tests for new features and bug fixes.
 - Avoid introducing unnecessary dependencies.
 
-## 5.  Reporting Issues
+## 6.  Reporting Issues
 
 If you find a bug, please open an issue using one of our [issue forms](https://github.com/Snapchat/Valdi/issues/new/choose), which ask for the details we need to investigate, including steps to reproduce and your Valdi version. Please report one problem per issue and search existing issues first.
 
@@ -89,6 +100,6 @@ If you find a bug, please open an issue using one of our [issue forms](https://g
 - **Feature ideas** should start as a [GitHub Discussion](https://github.com/Snapchat/Valdi/discussions).
 - **Security vulnerabilities** must be reported privately through [HackerOne](https://hackerone.com/snapchat), never in a public issue.
 
-## 6.  Recognition
+## 7.  Recognition
 
 We use the All Contributors specification to recognize community members. If your contribution is merged, you will be added to the project's list of contributors. This includes contributions of all kinds—code, documentation, design, testing, and more.
