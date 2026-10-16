@@ -32,6 +32,7 @@
 #import "valdi_core/SCNValdiCoreModuleFactory+Private.h"
 #import "valdi_core/SCNValdiCoreAsset+Private.h"
 #import "valdi/runtime/Runtime.hpp"
+#import "valdi/runtime/ValdiRuntimeTweaks.hpp"
 #import "SCValdiJSRuntimeImpl.h"
 #import "valdi_core/SCNValdiCoreJSRuntime+Private.h"
 
@@ -39,6 +40,7 @@
 
 #import "valdi/ios/NativeModules/Drawing/SCValdiDrawingModuleFactory.h"
 #import "valdi/ios/NativeModules/SCValdiApplicationModule.h"
+#import "valdi/ios/NativeModules/SCValdiDateFormattingModule.h"
 #import "valdi/ios/NativeModules/SCValdiDeviceModule.h"
 
 #import "valdi/ios/Text/SCValdiFontManager.h"
@@ -132,6 +134,10 @@ static NSString *SCValdiComposeJSRuntimeAttribution(NSString *operation, NSStrin
         [self registerNativeModuleFactory:[[SCValdiDrawingModuleFactory alloc] initWithFontManager:fontManager]];
         [self registerNativeModuleFactory:_deviceModule];
         [self registerNativeModuleFactory:_applicationModule];
+        __weak SCValdiRuntime *weakSelf = self;
+        [self registerNativeModuleFactory:[[SCValdiDateFormattingModule alloc] initWithIsEnabled:^BOOL {
+                  return [weakSelf _isNativeDateFormattingEnabled];
+              }]];
 
         _jsRuntime = [[SCValdiJSRuntimeImpl alloc] initWithJSRuntimeProvider:self];
 
@@ -280,6 +286,15 @@ static NSString *SCValdiComposeJSRuntimeAttribution(NSString *operation, NSStrin
     valdiContext.rootValdiViewShouldDestroyContext = YES;
     valdiContext.owner = owner;
     valdiContext.rootValdiView = view;
+}
+
+- (BOOL)_isNativeDateFormattingEnabled
+{
+    if (_runtime == nullptr) {
+        return NO;
+    }
+    auto runtimeTweaks = _runtime->getResourceManager().getRuntimeTweaks();
+    return runtimeTweaks != nullptr && runtimeTweaks->enableIosNativeDateFormatting();
 }
 
 - (const Valdi::SharedRuntime &)cppInstance

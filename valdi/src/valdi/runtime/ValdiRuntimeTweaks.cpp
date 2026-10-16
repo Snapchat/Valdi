@@ -205,6 +205,10 @@ bool ValdiRuntimeTweaks::enableFixFlexBasisFitContent() const {
     return getConfigKey("VALDI_ENABLE_FIX_FLEX_BASIS_FIT_CONTENT");
 }
 
+bool ValdiRuntimeTweaks::enableIosNativeDateFormatting() const {
+    return getConfigKey("VALDI_ENABLE_IOS_NATIVE_DATE_FORMATTING");
+}
+
 int32_t ValdiRuntimeTweaks::preloadYieldChunkSize() const {
     auto configKey = StringCache::getGlobal().makeStringFromLiteral(std::string_view("VALDI_PRELOAD_YIELD_CHUNK_SIZE"));
     return _tweakValueProvider->getInt(configKey, 0);

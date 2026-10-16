@@ -72,6 +72,10 @@ public:
     bool isMmapModuleArchiveDenylisted(const StringBox& modulePath) const;
     bool enableANRDiagnostics() const;
     bool enableFixFlexBasisFitContent() const;
+    // When true, iOS registers a native DateFormatting module so Valdi date/time formatting follows
+    // NSDateFormatter (and the 24-Hour Time setting) instead of the JS locale formatter. Off by default
+    // while existing iOS callers are validated.
+    bool enableIosNativeDateFormatting() const;
     // Number of modules ModuleLoader.preloadBatch evaluates per JS-scheduler task before yielding.
     // 0 (default) keeps preload as a single uninterrupted task. > 0 bounds the max contiguous JS
     // occupancy during startup preload so the 5s ANR watchdog ack can run. Read via getInt.
