@@ -68,7 +68,7 @@ struct ValdiProjectConfig {
     let minifyConfigURL: URL?
 
     let clientSqlURL: URL?
-    
+
     let sqlExportPathTemplate: String?
 
     let androidDefaultClassPath: String?
@@ -291,7 +291,7 @@ struct ValdiProjectConfig {
                 .map { try $0.resolvingVariables(environment) }
                 .flatMap { configDirectoryUrl.resolving(path: $0, isDirectory: false) }
         }
-        
+
         let sqlExportPathTemplate = config["sql_export_path_template"]?.string
         
         let hotReloadingEnabled = args.monitor

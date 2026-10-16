@@ -9,6 +9,11 @@ RuntimeWrapper::RuntimeWrapper() = default;
 RuntimeWrapper::RuntimeWrapper(Valdi::IJavaScriptBridge* jsBridge, TSNMode tsnMode)
     : RuntimeWrapper(jsBridge, tsnMode, false) {}
 
+RuntimeWrapper::RuntimeWrapper(Valdi::IJavaScriptBridge* jsBridge,
+                               TSNMode tsnMode,
+                               const Ref<IDiskCache>& runtimeDiskCache)
+    : RuntimeWrapper(jsBridge, tsnMode, false, nullptr, runtimeDiskCache) {}
+
 RuntimeWrapper::RuntimeWrapper(Valdi::IJavaScriptBridge* jsBridge, TSNMode tsnMode, bool enableViewPreloader)
     : RuntimeWrapper(jsBridge, tsnMode, enableViewPreloader, nullptr) {}
 
@@ -16,6 +21,13 @@ RuntimeWrapper::RuntimeWrapper(Valdi::IJavaScriptBridge* jsBridge,
                                TSNMode tsnMode,
                                bool enableViewPreloader,
                                const Shared<Valdi::ITweakValueProvider>& tweakValueProvider)
+    : RuntimeWrapper(jsBridge, tsnMode, enableViewPreloader, tweakValueProvider, nullptr) {}
+
+RuntimeWrapper::RuntimeWrapper(Valdi::IJavaScriptBridge* jsBridge,
+                               TSNMode tsnMode,
+                               bool enableViewPreloader,
+                               const Shared<Valdi::ITweakValueProvider>& tweakValueProvider,
+                               const Ref<IDiskCache>& runtimeDiskCache)
     : logger(&Valdi::ConsoleLogger::getLogger()),
       mainQueue(Valdi::makeShared<MainQueue>()),
       runtimeListener(Valdi::makeShared<RuntimeListener>()),
@@ -30,7 +42,7 @@ RuntimeWrapper::RuntimeWrapper(Valdi::IJavaScriptBridge* jsBridge,
                                                               true,
                                                               jsBridge,
                                                               mainQueue,
-                                                              diskCache,
+                                                              runtimeDiskCache != nullptr ? runtimeDiskCache : diskCache,
                                                               runtimeListener,
                                                               resourceLoader,
                                                               tweakValueProvider);

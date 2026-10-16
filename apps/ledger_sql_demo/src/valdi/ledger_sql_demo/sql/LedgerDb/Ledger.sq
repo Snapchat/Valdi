@@ -1,0 +1,100 @@
+CREATE TABLE account (
+  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  code TEXT NOT NULL,
+  normal_side TEXT NOT NULL
+);
+
+CREATE TABLE ledger_entry (
+  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  memo TEXT NOT NULL,
+  transfer_group TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE transaction_log (
+  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  transfer_group TEXT NOT NULL,
+  from_account_id INTEGER NOT NULL,
+  to_account_id INTEGER NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  memo TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+selectAccounts:
+SELECT * FROM account ORDER BY id;
+
+selectAccountByCode:
+SELECT * FROM account WHERE code = :code;
+
+countAccounts:
+SELECT count(*) AS count FROM account;
+
+countLedgerEntries:
+SELECT count(*) AS count FROM ledger_entry;
+
+countTransactionLog:
+SELECT count(*) AS count FROM transaction_log;
+
+selectBalances:
+SELECT
+  account.id AS id,
+  account.name AS name,
+  account.code AS code,
+  COALESCE(SUM(ledger_entry.amount_cents), 0) AS balance_cents,
+  COUNT(ledger_entry.id) AS entry_count
+FROM ledger_entry
+JOIN account ON account.id = ledger_entry.account_id
+GROUP BY account.id, account.name, account.code
+ORDER BY account.id;
+
+selectRecentEntries:
+SELECT
+  ledger_entry.id AS id,
+  ledger_entry.account_id AS account_id,
+  account.name AS account_name,
+  ledger_entry.amount_cents AS amount_cents,
+  ledger_entry.memo AS memo,
+  ledger_entry.transfer_group AS transfer_group,
+  ledger_entry.created_at AS created_at
+FROM ledger_entry
+JOIN account ON account.id = ledger_entry.account_id
+ORDER BY ledger_entry.created_at DESC, ledger_entry.id DESC  LIMIT :limit OFFSET :rowOffset;
+
+selectTransactionLog:
+SELECT
+  transaction_log.id AS id,
+  transaction_log.transfer_group AS transfer_group,
+  from_account.name AS from_account_name,
+  to_account.name AS to_account_name,
+  transaction_log.amount_cents AS amount_cents,
+  transaction_log.memo AS memo,
+  transaction_log.created_at AS created_at
+FROM transaction_log
+JOIN account AS from_account ON from_account.id = transaction_log.from_account_id
+JOIN account AS to_account ON to_account.id = transaction_log.to_account_id
+ORDER BY transaction_log.created_at DESC, transaction_log.id DESC LIMIT :limit;
+
+insertAccount:
+INSERT INTO account(name, code, normal_side)
+VALUES (:name, :code, :normalSide);
+
+insertLedgerEntry:
+INSERT INTO ledger_entry(account_id, amount_cents, memo, transfer_group, created_at)
+VALUES (:accountId, :amountCents, :memo, :transferGroup, :createdAt);
+
+insertTransactionLog:
+INSERT INTO transaction_log(transfer_group, from_account_id, to_account_id, amount_cents, memo, created_at)
+VALUES (:transferGroup, :fromAccountId, :toAccountId, :amountCents, :memo, :createdAt);
+
+deleteLedgerEntries:
+DELETE FROM ledger_entry;
+
+deleteTransactionLog:
+DELETE FROM transaction_log;
+
+deleteAccounts:
+DELETE FROM account;

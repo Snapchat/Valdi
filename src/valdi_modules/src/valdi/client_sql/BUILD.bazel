@@ -1,0 +1,84 @@
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+load("//valdi:valdi.bzl", "valdi_test")
+
+cc_library(
+    name = "client_sql_native_impl",
+    srcs = ["native/ClientSQLNativeModuleFactory.cpp"],
+    hdrs = ["native/ClientSQLNativeModuleFactory.hpp"],
+    alwayslink = 1,
+    local_defines = select({
+        "//bzl/conditions:ios": [],
+        "//bzl/conditions:macos": [],
+        "//conditions:default": ["VALDI_CLIENTSQL_USE_BUNDLED_SQLITE"],
+    }),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":client_sql_cpp",
+        "//bzl/valdi:clientsql_runtime_sqlite",
+        "//valdi:valdi_runtime",
+    ],
+)
+
+valdi_test(
+    name = "client_sql_native_tests",
+    srcs = ["native/ClientSQLNativeModuleFactory_tests.cpp"],
+    deps = [
+        ":client_sql_native_impl",
+        "//valdi:test_utils",
+        "//valdi:valdi_runtime",
+    ],
+)
+
+alias(
+    name = "client_sql_native_aggregate_tests",
+    actual = ":client_sql_native_tests_lib",
+    visibility = ["//visibility:public"],
+)
+
+ts_project(
+    name = "client_sql_web",
+    srcs = glob([
+        "web/**/*.ts",
+        "src/**/*.d.ts",
+    ]),
+    allow_js = True,
+    composite = True,
+    declaration = True,
+    transpiler = "tsc",
+    tsconfig = "web/tsconfig.json",
+)
+
+valdi_module(
+    name = "client_sql",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "test/**/*.ts",
+        "test/**/*.tsx",
+    ]) + [
+        "tsconfig.json",
+    ],
+    android_output_target = "release",
+    ios_module_name = "SCCClientSQL",
+    ios_output_target = "release",
+    native_deps = ["//bzl/valdi:clientsql_native_implementation"],
+    visibility = ["//visibility:public"],
+    web_deps = [":client_sql_web"],
+    web_register_native_module_id_overrides = {
+        "client_sql/web/ClientSQLNative.js": "client_sql/src/ClientSQLNative",
+    },
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+    ],
+)
+
+filegroup(
+    name = "clientsql_generator_test_data",
+    srcs = [
+        "BUILD.bazel",
+        "src/ClientSQLNative.d.ts",
+    ],
+    testonly = True,
+    visibility = ["//compiler/clientsql:__pkg__"],
+)

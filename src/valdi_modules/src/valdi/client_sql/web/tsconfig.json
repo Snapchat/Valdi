@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2016",
+    "module": "commonjs",
+    "strict": true,
+    "composite": true,
+    "declaration": true,
+    "allowJs": true,
+    "lib": ["dom", "ES2019"],
+    "baseUrl": "..",
+    "paths": {
+      "valdi_core/*": ["../valdi_core/*"]
+    }
+  },
+  "files": ["ClientSQLNative.ts", "../src/ClientSQLNative.d.ts"]
+}
