@@ -9,4 +9,8 @@ exports_files([
     "cli_main.cpp.tpl",
     "cli_main_http.cpp.tpl",
     "linux_main.cpp.tpl",
+    "web_index.html.tpl",
+    "web_index.js.tpl",
+    "web_path_browserify_shim.js.tpl",
+    "web_webpack.config.js.tpl",
 ])

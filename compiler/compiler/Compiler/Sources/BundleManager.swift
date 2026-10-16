@@ -94,6 +94,7 @@ class BundleManager {
                                                     inclusionConfig: InclusionConfig.alwaysIncluded,
                                                     excludeGlobs: [],
                                                     dependencies: [],
+                                                    allowedDebugDependencies: [],
                                                     stringsConfig: nil,
                                                     projectConfig: projectConfig,
                                                     outputTarget: compilerConfig.outputTarget
@@ -374,6 +375,7 @@ class BundleManager {
                                                         inclusionConfig: inclusionConfig,
                                                         excludeGlobs: excludeGlobs,
                                                         dependencies: dependencies,
+                                                        allowedDebugDependencies: allowedDebugDependencies,
                                                         stringsConfig: stringsConfig,
                                                         projectConfig: projectConfig,
                                                         outputTarget: compilerConfig.outputTarget)

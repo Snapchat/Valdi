@@ -24,6 +24,7 @@ js_library(
 js_library(
     name = "pkg",
     srcs = [
+        "bytes-loader.js",
         "hmr.js",
         "hmr-loader.js",
         "hmr-server.js",
@@ -44,6 +45,7 @@ js_library(
 npm_package(
     name = "package",
     srcs = [
+        "bytes-loader.js",
         "hmr.js",
         "hmr-loader.js",
         "hmr-server.js",

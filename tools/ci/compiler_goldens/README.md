@@ -41,12 +41,12 @@ The captured content was verified deterministic and portable — free of absolut
 paths, `bazel-out` references, timestamps, and arch/host strings, and
 byte-identical between macOS and Linux CI.
 
-Web JS is captured from `web/debug/assets/<mod>`, the declared web outputs,
+Web JS is captured from `web/release/assets/<mod>`, the declared web outputs,
 including the Vue template render code (`*.vue.generated.js`).
 
 **Not captured:** the `.valdimodule` bytecode blob (brittle binary), `.map.json`
 source maps (embed absolute paths), and files the build rule never declares:
-web JS under `web/release` and debug-flavor C++ (`cpp/debug`). Undeclared files show up or not, with
+web JS under `web/debug` and debug-flavor C++ (`cpp/debug`). Undeclared files show up or not, with
 whatever content, depending on how the compile action happened to run.
 
 ## Where it runs

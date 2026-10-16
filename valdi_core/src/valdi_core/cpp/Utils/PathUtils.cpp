@@ -123,6 +123,28 @@ Path Path::appending(const std::string_view& component) const {
     return copy;
 }
 
+Path Path::relativeTo(const Path& basePath) const {
+    auto target = *this;
+    target.normalize();
+    auto base = basePath;
+    base.normalize();
+
+    size_t commonComponentCount = 0;
+    while (commonComponentCount < target._components.size() && commonComponentCount < base._components.size() &&
+           target._components[commonComponentCount] == base._components[commonComponentCount]) {
+        commonComponentCount++;
+    }
+
+    Path result;
+    for (size_t i = commonComponentCount; i < base._components.size(); i++) {
+        result.append("..");
+    }
+    for (size_t i = commonComponentCount; i < target._components.size(); i++) {
+        result.append(target._components[i]);
+    }
+    return result;
+}
+
 std::string Path::toString() const {
     std::string out;
     auto hadComponent = false;

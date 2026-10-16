@@ -186,14 +186,21 @@ class ValdiCompilerRunner {
             }
 
             var daemonService: DaemonService?
+            var hotReloadLifecycleReporter: HotReloadLifecycleReporter?
             if hotReloadingEnabled {
+                hotReloadLifecycleReporter = HotReloadLifecycleReporter.standardOutput(
+                    enabled: self.arguments.hotreloadJsonEvents,
+                    target: self.arguments.hotreloadTarget ?? "",
+                    port: self.arguments.port)
                 daemonService = try DaemonService(logger: logger,
                                                   fileManager: fileManager,
                                                   userConfig: configs.userConfig,
                                                   projectConfig: configs.projectConfig,
                                                   compilerConfig: configs.compilerConfig,
                                                   companion: compilerCompanion,
-                                                  reloadOverUSB: self.arguments.usb)
+                                                  reloadOverUSB: self.arguments.usb,
+                                                  port: self.arguments.port,
+                                                  lifecycleReporter: hotReloadLifecycleReporter)
             }
 
             let dumpComponentURLs = self.arguments.dumpComponents.map { baseUrl.resolving(path: $0) }
@@ -235,7 +242,10 @@ class ValdiCompilerRunner {
                                                     filesFinder: filesFinder,
                                                     bundleManager: bundleManager,
                                                     fileDependenciesManager: fileDependenciesManager,
-                                                    errorDumper: self.errorDumper)
+                                                    errorDumper: self.errorDumper,
+                                                    onRecompilationSucceeded: { changedFileCount in
+                                                        hotReloadLifecycleReporter?.recompilationSucceeded(changedFileCount: changedFileCount)
+                                                    })
 
                 if let explicitInputList = configs.compilerConfig.explicitInputList {
                     try compiler.addFiles(fromInputList: explicitInputList, baseUrl: baseUrl)
@@ -505,6 +515,7 @@ class ValdiCompilerRunner {
             
             if (configs.projectConfig.webEnabled) {
                 builder.append(postprocessor: PrependWebJSProcessor(logger: logger))
+                builder.append(postprocessor: GenerateWebNativeModulePackageFilesProcessor(compilerConfig: configs.compilerConfig, bundleManager: bundleManager))
             }
 
             let bundleResourceOutputMode: BundleResourcesProcessor.OutputMode

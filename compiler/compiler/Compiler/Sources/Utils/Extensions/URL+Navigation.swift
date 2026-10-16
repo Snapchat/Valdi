@@ -14,8 +14,11 @@ struct RelativePath: CustomStringConvertible, CustomDebugStringConvertible, Hash
     init(from: URL, to: URL) {
         let components = from.pathComponents.replacingPrefix(["/", "private"], replacement: ["/"])
         let otherComponents = to.pathComponents.replacingPrefix(["/", "private"], replacement: ["/"])
+        self.init(from: components, to: otherComponents)
+    }
 
-        var matchingIndex = 0
+    init(from components: [String], to otherComponents: [String]) {
+        var matchingIndex = -1
         var index = 0
         while index < components.count && index < otherComponents.count {
             if components[index] == otherComponents[index] {
@@ -27,7 +30,7 @@ struct RelativePath: CustomStringConvertible, CustomDebugStringConvertible, Hash
         }
 
         let dotDots = Array(repeating: "..", count: components.count - matchingIndex - 1)
-        let componentsRest = otherComponents[(matchingIndex + 1)...]
+        let componentsRest = otherComponents.dropFirst(matchingIndex + 1)
         self.components = dotDots + componentsRest
     }
 

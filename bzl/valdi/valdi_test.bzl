@@ -90,7 +90,7 @@ valdi_test = rule(
         "srcs": attr.label_list(
             doc = "List of sources for this module",
             mandatory = True,
-            allow_files = [".js", ".ts", ".tsx", ".json"],
+            allow_files = [".js", ".ts", ".tsx", ".json", ".bin"],
         ),
         "js_engine": attr.label(
             default = Label("@valdi//bzl/valdi:js_engine"),

@@ -90,7 +90,7 @@ trap 'rm -rf "$STAGING" "$DIFF_BRIEF"' EXIT
 #   - TypeScript declaration files (.d.ts)
 #   - generated C++ (cpp/release). cpp/debug is not captured: the build rule
 #     only declares cpp/release, so anything under cpp/debug is incidental.
-#   - web JS (web/debug/assets/<mod>, the declared web outputs), including the
+#   - web JS (web/release/assets/<mod>, the declared web outputs), including the
 #     Vue template render code in *.vue.generated.js
 #   - generated native C (the per-flavor *_native.c; the TSN-atom emitter)
 #   - compilation metadata JSON
@@ -110,8 +110,8 @@ trap 'rm -rf "$STAGING" "$DIFF_BRIEF"' EXIT
 # Excluded:
 #   - the .valdimodule bytecode blob (a brittle binary)
 #   - .map.json source maps (can embed absolute paths)
-#   - web JS under web/release: the build rule never declares it, so its
-#     presence and content depend on how the compile action happened to run.
+#   - web JS under web/debug: the declared web flavor follows the module's
+#     android/ios output_target, which is release for every corpus module.
 collect_module() {
   local mod="$1"
   local base="${SRC_ROOT}/${mod}"
@@ -130,7 +130,7 @@ collect_module() {
     find "${base}/.valdi_build/compile/typescript/dumped_symbols/${mod}" -name 'compilation-metadata.json' 2>/dev/null || true
     find "${base}/ios/release/src" \( -name '*.h' -o -name '*.m' -o -name '*.swift' \) 2>/dev/null || true
     find "${base}/android/release/src" -name '*.kt' 2>/dev/null || true
-    find "${base}/web/debug/assets/${mod}" -name '*.js' ! -name '*.spec.js' 2>/dev/null || true
+    find "${base}/web/release/assets/${mod}" -name '*.js' ! -name '*.spec.js' 2>/dev/null || true
   )
 }
 

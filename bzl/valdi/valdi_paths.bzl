@@ -6,6 +6,7 @@ load(
     "TYPESCRIPT_DUMPED_SYMBOLS_DIR",
     "TYPESCRIPT_GENERATED_TS_DIR",
     "TYPESCRIPT_OUTPUT_DIR",
+    "base_relative_dir",
 )
 
 def replace_prefix(text, prefix_to_drop, replacement_prefix):
@@ -84,9 +85,9 @@ def _get_current_directory(path):
     return path[path.rfind("/") + 1:]
 
 # For a given .ts, .tsx, .js source file, return the expected path to the output compiled JS file.
-def output_declaration_compiled_file_path_for_source_file(f, module_name, module_directory, replacement_suffix = ".js"):
+def output_declaration_compiled_file_path_for_source_file(f, module_name, module_directory, replacement_suffix = ".js", output_target = "release"):
     suffix_to_drop = "." + f.extension
-    output_dir = "web/debug/assets/"
+    output_dir = base_relative_dir("web", output_target, "assets")
 
     # For now, this needs to be fixed eventually
     # src/valdi_modules/src/valdi/<module_name>/debug/assets/<module_name>/src
@@ -147,12 +148,14 @@ def get_sql_dts_paths(db_names, sql_srcs, module_name, module_directory):
 def get_sql_ts_paths(db_names, sql_srcs, module_name, module_directory, generated_ts_dir):
     return _get_sql_generated_paths(db_names, sql_srcs, module_name, module_directory, generated_ts_dir, ".ts")
 
-def get_sql_js_paths(db_names, sql_srcs, module_name, module_directory):
+def get_sql_js_paths(db_names, sql_srcs, module_name, module_directory, output_target):
     # Sibling .js outputs of the .sq generated .ts sources. The compiler already
     # emits them next to the .d.ts (see ClientSqlProcessor + the Valdi ts→js
     # pass), so declaring them here just surfaces them to Bazel so the web
-    # collapse pipeline can bundle them into composer_example_npm.
-    return _get_sql_generated_paths(db_names, sql_srcs, module_name, module_directory, "web/debug/assets", ".js")
+    # collapse pipeline can bundle them into composer_example_npm. output_target
+    # must match the compiler's web flavor (web/debug vs web/release); hardcoding
+    # debug drops the outputs on release-flavor builds.
+    return _get_sql_generated_paths(db_names, sql_srcs, module_name, module_directory, "web/{}/assets".format(output_target), ".js")
 
 def _get_sql_generated_paths(db_names, sql_srcs, module_name, module_directory, base_output_dir, suffix):
     if not db_names:

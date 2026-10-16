@@ -255,6 +255,7 @@ struct CompilationItem {
         let inclusionConfig: InclusionConfig
         let excludeGlobs: [String]
         let dependencies: [BundleInfo]
+        let allowedDebugDependencies: [BundleInfo]
 
         let compilationModeConfig: CompilationModeConfig
         let compilationModeExplicit: Bool
@@ -340,6 +341,7 @@ struct CompilationItem {
              inclusionConfig: InclusionConfig,
              excludeGlobs: [String],
              dependencies: [BundleInfo],
+             allowedDebugDependencies: [BundleInfo],
              stringsConfig: ModuleStringsConfig?,
              projectConfig: ValdiProjectConfig,
              outputTarget: OutputTarget) throws {
@@ -369,6 +371,7 @@ struct CompilationItem {
             self.inclusionConfig = inclusionConfig
             self.excludeGlobs = excludeGlobs
             self.dependencies = dependencies
+            self.allowedDebugDependencies = allowedDebugDependencies
             self.allDependencies = Self.collectAllDependencies(dependencies)
             self.allDependenciesNames = Set(allDependencies.map { $0.name })
 

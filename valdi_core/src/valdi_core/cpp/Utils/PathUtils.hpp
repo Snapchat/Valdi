@@ -49,6 +49,11 @@ public:
     Path appending(const std::string_view& component) const;
 
     /**
+     Returns a new path that addresses this path relative to the given base path.
+     */
+    Path relativeTo(const Path& basePath) const;
+
+    /**
      Returns the last path component, or empty string if the path is empty
      */
     std::string_view getLastComponent() const;

@@ -1,12 +1,19 @@
 {
   "name": "${name}",
   "version": "${version}",
-  "main": "index.js",
   "type": "commonjs",
   "dependencies": {
     "@protobuf-ts/runtime": "^2.11.1",
     "long": "4.0.0",
     "path-browserify": "^1.0.1"
+  },
+  "exports": {
+    "./*": {
+      "types": "./*.d.ts",
+      "require": "./*.js",
+      "default": "./*.js"
+    },
+    "./package.json": "./package.json"
   },
   "imports": {
     "#root/*": "./*"

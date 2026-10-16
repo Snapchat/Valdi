@@ -43,7 +43,10 @@ valdi_module(
     visibility = ["//visibility:public"],
     web_deps = [":valdi_core_web"],
     web_register_native_module_id_overrides = {
-        "valdi_core/web/DeviceBridge.js": "DeviceBridge",
+        "valdi_core/web/ApplicationBridge.js": "valdi_core/src/ApplicationBridge",
+        "valdi_core/web/DeviceBridge.js": "valdi_core/src/DeviceBridge",
+        "valdi_core/web/NumberFormatting.js": "NumberFormatting",
+        "valdi_core/web/Strings.js": "valdi_core/src/Strings",
     },
     deps = [
         "//src/valdi_modules/src/valdi/coreutils",
