@@ -106,6 +106,10 @@ static const CGFloat SCValdiTextSelectionHandleHitTestOutset = 44.0;
     self.backgroundColor = UIColor.clearColor;
     self.opaque = NO;
     self.userInteractionEnabled = YES;
+    // Glyphs are drawn in -drawRect:, so the layer caches a bitmap. The UIView default
+    // ScaleToFill would stretch that stale bitmap when the label is resized after drawing
+    // (e.g. streamed text growing from one line to many) instead of redrawing the text.
+    self.contentMode = UIViewContentModeRedraw;
     [self configureWithUsesEffectsLayoutManager:usesEffectsLayoutManager];
 }
 
