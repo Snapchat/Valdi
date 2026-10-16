@@ -175,6 +175,11 @@ TEST(ViewNode, replacingRootViewNodeIsNotAViewPoolDrop) {
     ASSERT_EQ(0u, stats.drops);
 }
 
+TEST(ViewNode, treeKeepsViewPoolingOnLayoutCallbacksWithoutRuntimeTweaks) {
+    ViewNodeTestsDependencies utils;
+    ASSERT_TRUE(utils.getTree().keepsViewPoolingOnLayoutCallbacks());
+}
+
 TEST(ViewNode, settingColorPaletteOnDetachedNodeClearsResolvedPalette) {
     ViewNodeTestsDependencies utils;
     auto viewNode = utils.createView();

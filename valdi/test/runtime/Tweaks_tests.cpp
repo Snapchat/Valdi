@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "valdi/runtime/Context/ViewNodeTree.hpp"
 #include "valdi/runtime/ValdiRuntimeTweaks.hpp"
 #include "valdi/valdi.pb.h"
 #include "valdi_core/cpp/Utils/Bytes.hpp"
@@ -77,6 +78,31 @@ TEST(RuntimeTweaks, anrDiagnosticsSetting) {
 
     provider->config = Value(config);
     ASSERT_TRUE(tweaks->enableANRDiagnostics());
+}
+
+TEST(RuntimeTweaks, disableViewPoolingOnLayoutCallbacksIsOffByDefault) {
+    auto provider = makeShared<TestTweakValueProvider>();
+    auto tweaks = makeShared<ValdiRuntimeTweaks>(provider.toShared());
+
+    ASSERT_FALSE(tweaks->disableViewPoolingOnLayoutCallbacks());
+
+    auto config = makeShared<ValueMap>();
+    (*config)[STRING_LITERAL("VALDI_DISABLE_VIEW_POOLING_ON_LAYOUT_CALLBACKS")] = Value(true);
+    provider->config = Value(config);
+    ASSERT_TRUE(tweaks->disableViewPoolingOnLayoutCallbacks());
+}
+
+TEST(RuntimeTweaks, viewPoolingOnLayoutCallbacksKillswitchReachesViewNodeTree) {
+    auto provider = makeShared<TestTweakValueProvider>();
+    auto tweaks = makeShared<ValdiRuntimeTweaks>(provider.toShared());
+
+    ASSERT_TRUE(ViewNodeTree::shouldKeepViewPoolingOnLayoutCallbacks(nullptr));
+    ASSERT_TRUE(ViewNodeTree::shouldKeepViewPoolingOnLayoutCallbacks(tweaks.get()));
+
+    auto config = makeShared<ValueMap>();
+    (*config)[STRING_LITERAL("VALDI_DISABLE_VIEW_POOLING_ON_LAYOUT_CALLBACKS")] = Value(true);
+    provider->config = Value(config);
+    ASSERT_FALSE(ViewNodeTree::shouldKeepViewPoolingOnLayoutCallbacks(tweaks.get()));
 }
 
 } // namespace ValdiTest

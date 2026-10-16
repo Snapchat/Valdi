@@ -42,6 +42,7 @@ class IViewNodesAssetTracker;
 class MainThreadManager;
 class AttributesManager;
 class Metrics;
+class ValdiRuntimeTweaks;
 
 struct ViewNodeTreeUpdates {
     DispatchFunction performUpdates;
@@ -259,6 +260,17 @@ public:
 
     bool shouldRenderInMainThread() const;
 
+    /**
+     * Whether platform layout callbacks (e.g. iOS didFinishLayout blocks) may read a node's view
+     * without taking it out of the view pool. True unless the
+     * disableViewPoolingOnLayoutCallbacks killswitch is on. Snapshotted at construction so the
+     * per-layout check never reaches the tweak provider.
+     */
+    bool keepsViewPoolingOnLayoutCallbacks() const;
+    /** Exposed for tests; production trees take the value from the runtime tweaks. */
+    void setKeepsViewPoolingOnLayoutCallbacks(bool keepsViewPoolingOnLayoutCallbacks);
+    static bool shouldKeepViewPoolingOnLayoutCallbacks(const ValdiRuntimeTweaks* tweaks);
+
     TrackedLock lock() const;
 
     struct ViewPoolStats {
@@ -281,6 +293,7 @@ private:
     Ref<ViewManagerContext> _viewManagerContext;
     IViewManager* _viewManager;
     Ref<Runtime> _runtime;
+    bool _keepsViewPoolingOnLayoutCallbacks = true;
     // Aggregated and emitted in clear() and on app pause, so recording stays a relaxed atomic increment.
     std::atomic<uint64_t> _viewPoolHits{0};
     std::atomic<uint64_t> _viewPoolMisses{0};

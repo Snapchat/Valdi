@@ -73,7 +73,21 @@ static UIAccessibilityTraits SCValdiAccessibilityCategoryToAccessibilityTrait(Va
 
 - (UIView *)view
 {
+    // Public accessor: the caller may hold on to the UIView, so it can no longer be recycled.
     return ValdiIOS::UIViewHolder::uiViewFromRef(_viewNode->getViewAndDisablePooling());
+}
+
+// For transient reads by the runtime itself (layout callbacks, accessibility fallbacks) that never
+// retain the view. Going through -view here used to permanently exclude every view with a
+// borderRadius/boxShadow/gradient/mask from the pool. The killswitch restores that behavior.
+- (UIView *)_transientView
+{
+    // A detached node cannot read the killswitch, so it keeps the old behavior.
+    auto *tree = _viewNode->getViewNodeTree();
+    if (tree == nullptr || !tree->keepsViewPoolingOnLayoutCallbacks()) {
+        return self.view;
+    }
+    return ValdiIOS::UIViewHolder::uiViewFromRef(_viewNode->getView());
 }
 
 - (CGRect)relativeFrame
@@ -208,7 +222,7 @@ static UIAccessibilityTraits SCValdiAccessibilityCategoryToAccessibilityTrait(Va
         return;
     }
 
-    UIView *view = self.view;
+    UIView *view = [self _transientView];
     if (view) {
         NSDictionary *didFinishLayoutBlocks = _didFinishLayoutBlocks;
         for (NSString *key in didFinishLayoutBlocks) {
@@ -340,7 +354,7 @@ static void applyContentOffsetOverride(const std::optional<Valdi::Point> &conten
 {
     auto accessibilityValue = _viewNode->getAccessibilityValue();
     if (accessibilityValue.isEmpty()) {
-        return [[self view] accessibilityValue]; // If undefined, we fallback to the iOS value, in case the element is a fancy control
+        return [[self _transientView] accessibilityValue]; // If undefined, we fallback to the iOS value, in case the element is a fancy control
     }
     return ValdiIOS::NSStringFromString(accessibilityValue);
 }
@@ -349,7 +363,7 @@ static void applyContentOffsetOverride(const std::optional<Valdi::Point> &conten
 {
     auto accessibilityIdentifier = _viewNode->getAccessibilityId();
     if (accessibilityIdentifier.isEmpty()) {
-        return [[self view] accessibilityIdentifier];
+        return [[self _transientView] accessibilityIdentifier];
     }
     return ValdiIOS::NSStringFromString(accessibilityIdentifier);
 }
@@ -371,7 +385,7 @@ static void applyContentOffsetOverride(const std::optional<Valdi::Point> &conten
     // Note:
     // We combine the computed accessibilityTraits with the view's ones if possible
     // This is because iOS cheats and have traits that are NOT available to the public API (such as TextField)
-    return accessibilityTraits | [[self view] accessibilityTraits];
+    return accessibilityTraits | [[self _transientView] accessibilityTraits];
 }
 
 - (void)walkCustomViewForAccessibility:(UIView*) view elements:(NSMutableArray *)elements {

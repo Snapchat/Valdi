@@ -70,6 +70,12 @@ public:
     // trading back their share of the memory win to avoid refault latency on
     // bursty surfaces.
     bool isMmapModuleArchiveDenylisted(const StringBox& modulePath) const;
+    // Killswitch for iOS view recycling of views that have a didFinishLayout block (borderRadius,
+    // boxShadow, gradients, masks, shape paths). Historically SCValdiViewNode's layout callback
+    // fetched the view through the pooling-disabling public accessor, which permanently excluded
+    // every such view from the pool. Off (default) keeps those views recyclable; set true to
+    // restore the old behavior. Snapshotted per ViewNodeTree, not read per layout.
+    bool disableViewPoolingOnLayoutCallbacks() const;
     bool enableANRDiagnostics() const;
     bool enableFixFlexBasisFitContent() const;
     // When true, iOS registers a native DateFormatting module so Valdi date/time formatting follows

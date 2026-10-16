@@ -20,8 +20,10 @@
 #include "valdi/runtime/Interfaces/IViewTransaction.hpp"
 #include "valdi/runtime/Metrics/Metrics.hpp"
 #include "valdi/runtime/Resources/AssetsManager.hpp"
+#include "valdi/runtime/Resources/ResourceManager.hpp"
 #include "valdi/runtime/Runtime.hpp"
 #include "valdi/runtime/ValdiBuildFlags.hpp"
+#include "valdi/runtime/ValdiRuntimeTweaks.hpp"
 #include "valdi/runtime/Views/GlobalViewFactories.hpp"
 #include "valdi/runtime/Views/MeasureDelegate.hpp"
 #include "valdi/runtime/Views/ViewTransactionScope.hpp"
@@ -68,10 +70,27 @@ ViewNodeTree::ViewNodeTree(const SharedContext& context,
       _viewManager(viewManager),
       _runtime(std::move(runtime)),
       _mainThreadManager(mainThreadManager),
-      _shouldRenderInMainThread(shouldRenderInMainThread) {}
+      _shouldRenderInMainThread(shouldRenderInMainThread) {
+    if (_runtime != nullptr) {
+        _keepsViewPoolingOnLayoutCallbacks =
+            shouldKeepViewPoolingOnLayoutCallbacks(_runtime->getResourceManager().getRuntimeTweaks().get());
+    }
+}
+
+bool ViewNodeTree::shouldKeepViewPoolingOnLayoutCallbacks(const ValdiRuntimeTweaks* tweaks) {
+    return tweaks == nullptr || !tweaks->disableViewPoolingOnLayoutCallbacks();
+}
+
+void ViewNodeTree::setKeepsViewPoolingOnLayoutCallbacks(bool keepsViewPoolingOnLayoutCallbacks) {
+    _keepsViewPoolingOnLayoutCallbacks = keepsViewPoolingOnLayoutCallbacks;
+}
 
 ViewNodeTree::~ViewNodeTree() {
     clear();
+}
+
+bool ViewNodeTree::keepsViewPoolingOnLayoutCallbacks() const {
+    return _keepsViewPoolingOnLayoutCallbacks;
 }
 
 void ViewNodeTree::recordViewPoolCreate(bool reusedFromPool) {
