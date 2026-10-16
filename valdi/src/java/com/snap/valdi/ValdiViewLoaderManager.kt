@@ -834,7 +834,7 @@ class ValdiRuntimeManager(context: Context,
                 if (destroyed) null else mainRuntime
             } ?: return@createWorker
 
-            runtime.getJSRuntime(composeJsThreadAttribution("worker.create", executor)) { jsRuntime ->
+            runtime.getJSRuntimeWithAttribution(composeJsThreadAttribution("worker.create", executor)) { jsRuntime ->
                 onReady(ValdiJSWorker(jsRuntime.getNativeObject().createWorker()))
             }
         },

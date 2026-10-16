@@ -58,6 +58,15 @@ interface IValdiRuntime: Disposable {
     fun getJSRuntime(block: (ValdiJSRuntime) -> Unit)
 
     /**
+     * Gets the shared JS runtime, labelling the JS thread dispatch with [callsite] so ANR and
+     * trace reports attribute the work to its owner instead of to the runtime itself.
+     * Implementations that don't label dispatches fall back to the unattributed getter.
+     */
+    fun getJSRuntime(callsite: String, block: (ValdiJSRuntime) -> Unit) {
+        getJSRuntime(block)
+    }
+
+    /**
      * Creates a scoped JS runtime for executing TypeScript code.
      *
      * Each scoped runtime has its own [NativeObjectsManager], which means all native objects

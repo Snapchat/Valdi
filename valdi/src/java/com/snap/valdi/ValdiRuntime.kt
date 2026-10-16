@@ -260,10 +260,14 @@ class ValdiRuntime(
     }
 
     override fun getJSRuntime(block: (ValdiJSRuntime) -> Unit) {
-        getJSRuntime(GET_JS_RUNTIME_ATTRIBUTION, block)
+        getJSRuntimeWithAttribution(GET_JS_RUNTIME_ATTRIBUTION, block)
     }
 
-    internal fun getJSRuntime(attribution: String, block: (ValdiJSRuntime) -> Unit) {
+    override fun getJSRuntime(callsite: String, block: (ValdiJSRuntime) -> Unit) {
+        getJSRuntimeWithAttribution(composeJsThreadAttribution(GET_JS_RUNTIME_ATTRIBUTION, callsite), block)
+    }
+
+    internal fun getJSRuntimeWithAttribution(attribution: String, block: (ValdiJSRuntime) -> Unit) {
         runOnJsThread(attribution) {
             if (cachingJSRuntime != null) {
                 block(cachingJSRuntime!!)
