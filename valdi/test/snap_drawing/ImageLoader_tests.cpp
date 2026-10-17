@@ -5,14 +5,18 @@
 #include "TestBitmap.hpp"
 #include "TestDataUtils.hpp"
 #include "snap_drawing/cpp/Utils/Image.hpp"
+#include "valdi/runtime/Resources/AssetBytesStore.hpp"
 #include "valdi/snap_drawing/ImageLoading/ImageLoader.hpp"
 #include "valdi/snap_drawing/ImageLoading/ImageLoaderFactory.hpp"
+#include "valdi/snap_drawing/ImageLoading/ImageLoaderTask.hpp"
 #include "valdi/standalone_runtime/InMemoryDiskCache.hpp"
 #include "valdi_core/cpp/Utils/Bytes.hpp"
 #include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
+#include "valdi_core/cpp/Utils/SimpleAtomicCancelable.hpp"
 #include "valdi_core/cpp/Utils/ValueTypedArray.hpp"
 #include "valdi_test_utils.hpp"
 
+#include <atomic>
 #include <gtest/gtest.h>
 
 using namespace Valdi;
@@ -89,13 +93,58 @@ protected:
     StringBox _errMsg = STRING_LITERAL("Error URL Result");
     BytesView _imageData;
     Valdi::Ref<ImageFilter> _filter;
+    Valdi::Ref<DispatchQueue> _queue;
 
 private:
     int _width;
     int _height;
-
-    Valdi::Ref<DispatchQueue> _queue;
 };
+
+TEST_F(ImageLoaderTests, cancelingSynchronousDownloadCompletionAcceptsNullCancelable) {
+    class CancelOnCompletion : public AssetLoaderCompletion {
+    public:
+        void onLoadComplete(const Result<Valdi::Ref<LoadedAsset>>& result) override {
+            failed = result.failure();
+            completions++;
+            cancelable->cancel();
+        }
+
+        Shared<snap::valdi_core::Cancelable> cancelable;
+        std::atomic<size_t> completions = 0;
+        std::atomic<bool> failed = false;
+    };
+
+    auto downloader = makeShared<AssetBytesStore>();
+    auto assetLoader = _imageLoader->createAssetLoader({}, downloader);
+    auto completion = makeShared<CancelOnCompletion>();
+    _queue->sync([&] { completion->cancelable = assetLoader->loadAsset(Value(_url), 0, 0, Value(), completion); });
+    _queue->sync([] {});
+
+    EXPECT_EQ(completion->completions.load(), 1u);
+    EXPECT_TRUE(completion->failed.load());
+}
+
+TEST_F(ImageLoaderTests, cancelsDownloadHandleReturnedAfterTaskCancellation) {
+    auto task = makeShared<ImageLoaderTask>(
+        _imageLoader.toWeak(), _url, 0, 0, Value(), _downloader, Weak<AssetLoaderCompletion>());
+    auto cancelable = makeShared<SimpleAtomicCancelable>();
+    task->cancel();
+
+    task->setCurrentCancelable(cancelable.toShared());
+
+    EXPECT_TRUE(cancelable->wasCanceled());
+}
+
+TEST_F(ImageLoaderTests, cancelsDownloadHandleRegisteredBeforeTaskCancellation) {
+    auto task = makeShared<ImageLoaderTask>(
+        _imageLoader.toWeak(), _url, 0, 0, Value(), _downloader, Weak<AssetLoaderCompletion>());
+    auto cancelable = makeShared<SimpleAtomicCancelable>();
+    task->setCurrentCancelable(cancelable.toShared());
+
+    task->cancel();
+
+    EXPECT_TRUE(cancelable->wasCanceled());
+}
 
 TEST_F(ImageLoaderTests, returnsErrorIfDownloaderFails) {
     auto result = loadImage(_downloadErrorUrl, getWidth(), getHeight());

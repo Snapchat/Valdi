@@ -54,7 +54,9 @@ void ImageLoaderTask::setCurrentCancelable(const Valdi::Shared<snap::valdi_core:
     std::unique_lock<Valdi::Mutex> lock(_mutex);
     if (_wasCanceled) {
         lock.unlock();
-        currentCancelable->cancel();
+        if (currentCancelable != nullptr) {
+            currentCancelable->cancel();
+        }
         return;
     }
 
