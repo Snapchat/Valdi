@@ -1,0 +1,32 @@
+# Paths Semgrep skips when scanning this repo.
+#
+# A custom .semgrepignore replaces Semgrep's built-in default ignores, so the
+# defaults are repeated here. Only add generated files. Hand-written code,
+# docs and build files stay in the scan. Changes to this file get a
+# sensitive-file notice on the PR.
+
+# Semgrep defaults
+node_modules/
+build/
+dist/
+vendor/
+.env/
+.venv/
+.tox/
+*.min.js
+.npm/
+.yarn/
+test/
+tests/
+*_test.go
+.semgrep
+.semgrep_logs/
+
+# Generated: compiler golden outputs (rewritten by tools/ci/compiler_goldens)
+tools/ci/compiler_goldens/
+compiler/companion/golden_corpus/expected/
+*.golden
+
+# Generated: rules_jvm_external Maven lock files
+maven_install.json
+*_install.json
