@@ -302,6 +302,15 @@ void RuntimeManagerWrapper::unregisterAssetLoader(jobject assetLoader) {
     }
 }
 
+void RuntimeManagerWrapper::setModuleArchiveCache(const std::string& directory,
+                                                  const std::string& buildVersion,
+                                                  const std::string& bundledModulesIdentity) {
+    _resourceLoader->setBundledModulesIdentity(bundledModulesIdentity);
+    if (_runtimeManager != nullptr) {
+        _runtimeManager->setMmapCacheDirectory(Valdi::Path(std::string_view(directory)), buildVersion);
+    }
+}
+
 void RuntimeManagerWrapper::setRequestManager(
     const Valdi::Shared<snap::valdi_core::HTTPRequestManager>& requestManager) {
     if (_runtimeManager != nullptr) {

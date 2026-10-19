@@ -149,7 +149,8 @@ public:
 
     void setAtomicInitialAutoRenderStateEnabled(bool enabled);
 
-    void setMmapCacheDirectory(const Path& path);
+    // `buildVersion` identifies the app build; the module archive cache starts fresh when it changes.
+    void setMmapCacheDirectory(const Path& path, const std::string& buildVersion);
 
     JavaScriptContextMemoryStatistics dumpMemoryStatistics();
     void dumpMemoryStatisticsAsync(Function<void(JavaScriptContextMemoryStatistics)> completion);
@@ -223,6 +224,7 @@ private:
     std::optional<MetricsDuration> _userSessionAttachLatency;
     bool _userSessionAttachLatencyEmitted = false;
     Path _mmapCacheDirectory;
+    std::string _mmapCacheBuildVersion;
     Ref<JavaScriptANRDetector> _anrDetector;
     PlatformType _platformType;
     ThreadQoSClass _jsThreadQoS;

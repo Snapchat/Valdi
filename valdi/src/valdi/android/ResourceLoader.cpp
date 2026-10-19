@@ -94,6 +94,24 @@ Valdi::Result<Valdi::BytesView> ResourceLoader::loadModuleContent(const Valdi::S
 #endif
 }
 
+std::optional<Valdi::ModuleContentIdentity> ResourceLoader::getModuleIdentity(const Valdi::StringBox& /*module*/) {
+    // Java may serve any module from elsewhere (dynamic delivery); only its bytes can identify it.
+    if (_shouldDeferModuleLoadToJava) {
+        return std::nullopt;
+    }
+    std::lock_guard<Valdi::Mutex> guard(_bundledModulesIdentityMutex);
+    if (_bundledModulesIdentity.empty()) {
+        return std::nullopt;
+    }
+    // The APK is immutable while installed, so its identity plus the module name identifies the bytes.
+    return Valdi::ModuleContentIdentity{Valdi::ModuleContentIdentity::Kind::BundledContainer, _bundledModulesIdentity};
+}
+
+void ResourceLoader::setBundledModulesIdentity(std::string identity) {
+    std::lock_guard<Valdi::Mutex> guard(_bundledModulesIdentityMutex);
+    _bundledModulesIdentity = std::move(identity);
+}
+
 Valdi::StringBox ResourceLoader::resolveLocalAssetURL(const Valdi::StringBox& moduleName,
                                                       const Valdi::StringBox& resourcePath) {
     auto env = JavaEnv();

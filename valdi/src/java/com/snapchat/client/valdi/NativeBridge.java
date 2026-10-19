@@ -33,6 +33,11 @@ public class NativeBridge {
 
     public static native void setRuntimeManagerRequestManager(long runtimeManagerHandle, Object requestManager);
     public static native void setRuntimeManagerJsThreadQoS(long runtimeManagerHandle, int qosClass);
+    public static native void setRuntimeManagerModuleArchiveCache(long runtimeManagerHandle,
+                                                                  String directory,
+                                                                  String buildVersion,
+                                                                  String bundledModulesIdentity);
+    public static native void disableModuleArchiveCacheForBuild(String directory, String buildVersion);
 
     public static native long createRuntime(long runtimeManagerHandle, Object customResourceResolver);
     public static native void onRuntimeReady(long runtimeManagerHandle, long runtimeHandle);

@@ -5,20 +5,9 @@
 
 #include <gtest/gtest.h>
 
-#include "valdi/runtime/Resources/MmapBuffer.hpp"
 #include "valdi/runtime/Resources/ZStdUtils.hpp"
-#include "valdi_core/cpp/Utils/DiskUtils.hpp"
-#include "valdi_core/cpp/Utils/Exception.hpp"
-#include "valdi_core/cpp/Utils/Format.hpp"
-#include "valdi_core/cpp/Utils/StringCache.hpp"
 #include "zstd.h"
-#include <atomic>
-#include <cstdio>
 #include <cstring>
-#include <stdlib.h>
-#include <sys/stat.h>
-#include <thread>
-#include <unistd.h>
 #include <vector>
 
 using namespace Valdi;
@@ -181,28 +170,6 @@ TEST(ZStdUtils, decompressSpoofedContentSizeDoesNotOOM) {
 
 namespace {
 
-class TemporaryDirectory {
-public:
-    TemporaryDirectory() {
-        char directoryLocation[] = "/tmp/.valdi_zstd_mmap_test.XXXXXX";
-        if (mkdtemp(directoryLocation) == nullptr) {
-            throw Exception(STRING_FORMAT("Failed to create temporary directory: {}", strerror(errno)));
-        }
-        _rootDirectory = STRING_LITERAL(directoryLocation);
-    }
-
-    ~TemporaryDirectory() {
-        DiskUtils::remove(Path(_rootDirectory.toStringView()));
-    }
-
-    Path child(const char* name) const {
-        return Path(_rootDirectory.toStringView()).appending(std::string_view(name));
-    }
-
-private:
-    StringBox _rootDirectory;
-};
-
 static std::vector<Byte> compressWithContentSize(const Byte* src, size_t srcSize) {
     auto* cctx = ZSTD_createCCtx();
     ZSTD_CCtx_setParameter(cctx, ZSTD_c_contentSizeFlag, 1);
@@ -217,171 +184,80 @@ static std::vector<Byte> compressWithContentSize(const Byte* src, size_t srcSize
 
 } // namespace
 
-TEST(ZStdUtilsMmap, DecompressToMmapSingleFrameRoundtrips) {
-    TemporaryDirectory dir;
-    std::string original = "Hello mmap-backed decompression!";
+static std::vector<Byte> withSkippableFrame(std::vector<Byte> compressed,
+                                            uint32_t magic,
+                                            const std::vector<Byte>& payload) {
+    auto appendLE32 = [&](uint32_t value) {
+        for (int i = 0; i < 4; i++) {
+            compressed.push_back(static_cast<Byte>((value >> (8 * i)) & 0xFF));
+        }
+    };
+    appendLE32(magic);
+    appendLE32(static_cast<uint32_t>(payload.size()));
+    compressed.insert(compressed.end(), payload.begin(), payload.end());
+    return compressed;
+}
+
+static std::vector<Byte> contentHashPayload(Byte fill) {
+    std::vector<Byte> payload;
+    for (int i = 0; i < 4; i++) {
+        payload.push_back(static_cast<Byte>((ZStdUtils::kContentHashTag >> (8 * i)) & 0xFF));
+    }
+    payload.insert(payload.end(), 32, fill);
+    return payload;
+}
+
+TEST(ZStdUtilsTrailer, InspectParsesContentHashTrailer) {
+    std::string original = "payload with a content hash trailer";
     auto compressed = compressWithContentSize(reinterpret_cast<const Byte*>(original.data()), original.size());
+    auto dataFrameSize = compressed.size();
+    auto input = withSkippableFrame(compressed, ZStdUtils::kContentHashFrameMagic, contentHashPayload(0x5A));
+    ASSERT_EQ(dataFrameSize + ZStdUtils::kContentHashFrameSize, input.size());
 
-    auto path = dir.child("single_frame.bin");
-    auto result = ZStdUtils::decompressToMmap(compressed.data(), compressed.size(), path);
-    ASSERT_TRUE(result.success()) << result.description();
-
-    auto& buf = result.value();
-    ASSERT_EQ(original.size(), buf->size());
-    ASSERT_EQ(0, std::memcmp(buf->data(), original.data(), original.size()));
-
-    // The atomic rename should have produced the final cache file at `path`.
-    auto reopen = MmapBuffer::openReadOnly(path);
-    ASSERT_TRUE(reopen.success()) << reopen.description();
-    ASSERT_EQ(original.size(), reopen.value()->size());
-    ASSERT_EQ(0, std::memcmp(reopen.value()->data(), original.data(), original.size()));
-}
-
-TEST(ZStdUtilsMmap, DecompressToMmapRejectsMultiFrame) {
-    TemporaryDirectory dir;
-    std::string a = "frame one";
-    std::string b = "frame two";
-    auto c1 = compressWithContentSize(reinterpret_cast<const Byte*>(a.data()), a.size());
-    auto c2 = compressWithContentSize(reinterpret_cast<const Byte*>(b.data()), b.size());
-    std::vector<Byte> multi;
-    multi.insert(multi.end(), c1.begin(), c1.end());
-    multi.insert(multi.end(), c2.begin(), c2.end());
-
-    auto path = dir.child("multi.bin");
-    auto result = ZStdUtils::decompressToMmap(multi.data(), multi.size(), path);
-    ASSERT_TRUE(result.failure());
-
-    // No final file should be produced on the failure path.
-    auto reopen = MmapBuffer::openReadOnly(path);
-    ASSERT_TRUE(reopen.failure());
-}
-
-TEST(ZStdUtilsMmap, DecompressToMmapRejectsMissingContentSize) {
-    TemporaryDirectory dir;
-    std::string original = "no content size encoded";
-
-    auto* cctx = ZSTD_createCCtx();
-    ZSTD_CCtx_setParameter(cctx, ZSTD_c_contentSizeFlag, 0);
-    auto bound = ZSTD_compressBound(original.size());
-    std::vector<Byte> compressed(bound);
-    auto sz = ZSTD_compress2(cctx, compressed.data(), compressed.size(), original.data(), original.size());
-    ASSERT_FALSE(ZSTD_isError(sz));
-    compressed.resize(sz);
-    ZSTD_freeCCtx(cctx);
-
-    ASSERT_EQ(static_cast<unsigned long long>(ZSTD_CONTENTSIZE_UNKNOWN),
-              ZSTD_getFrameContentSize(compressed.data(), compressed.size()));
-
-    auto path = dir.child("no_fcs.bin");
-    auto result = ZStdUtils::decompressToMmap(compressed.data(), compressed.size(), path);
-    ASSERT_TRUE(result.failure());
-
-    auto reopen = MmapBuffer::openReadOnly(path);
-    ASSERT_TRUE(reopen.failure());
-}
-
-TEST(ZStdUtilsMmap, ConcurrentDecompressToSamePathDoesNotCorrupt) {
-    TemporaryDirectory dir;
-    // Use a payload large enough that decompression spans multiple pages so a
-    // racy write would be likely to corrupt visible bytes.
-    std::vector<Byte> original(64 * 1024);
-    for (size_t i = 0; i < original.size(); ++i) {
-        original[i] = static_cast<Byte>((i * 31) & 0xFF);
+    auto info = ZStdUtils::inspectSingleFrame(input.data(), input.size());
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(dataFrameSize, info->dataFrameSize);
+    EXPECT_EQ(original.size(), info->contentSize);
+    ASSERT_TRUE(info->contentSha256.has_value());
+    for (auto byte : *info->contentSha256) {
+        EXPECT_EQ(0x5A, byte);
     }
-    auto compressed = compressWithContentSize(original.data(), original.size());
-
-    auto path = dir.child("concurrent.bin");
-
-    constexpr int kThreads = 8;
-    std::atomic<int> successes{0};
-    std::vector<std::thread> threads;
-    threads.reserve(kThreads);
-    for (int i = 0; i < kThreads; ++i) {
-        threads.emplace_back([&] {
-            auto r = ZStdUtils::decompressToMmap(compressed.data(), compressed.size(), path);
-            if (r.success() && r.value()->size() == original.size() &&
-                std::memcmp(r.value()->data(), original.data(), original.size()) == 0) {
-                successes.fetch_add(1, std::memory_order_relaxed);
-            }
-        });
-    }
-    for (auto& t : threads) {
-        t.join();
-    }
-
-    ASSERT_EQ(kThreads, successes.load());
-
-    // The thread that won the rename leaves a final file matching the payload.
-    auto reopen = MmapBuffer::openReadOnly(path);
-    ASSERT_TRUE(reopen.success()) << reopen.description();
-    ASSERT_EQ(original.size(), reopen.value()->size());
-    ASSERT_EQ(0, std::memcmp(reopen.value()->data(), original.data(), original.size()));
 }
 
-TEST(ZStdUtilsMmap, DecompressToMmapPassesThroughNonZstdInput) {
-    // The mmap path is normally entered from ValdiModuleArchive::decompress(...,mmapPath),
-    // which itself short-circuits non-zstd input before calling decompressToMmap. But if a
-    // caller invokes decompressToMmap directly with non-zstd bytes, it must not silently
-    // succeed and must not produce a final cache file.
-    TemporaryDirectory dir;
-    std::vector<Byte> bogus = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07};
-    auto path = dir.child("bogus.bin");
-    auto result = ZStdUtils::decompressToMmap(bogus.data(), bogus.size(), path);
-    ASSERT_TRUE(result.failure());
-    ASSERT_TRUE(MmapBuffer::openReadOnly(path).failure());
-}
-
-TEST(ZStdUtilsMmap, DecompressToMmapReportsPublishFailureButReturnsValidBuffer) {
-    // Force std::rename to fail by making the target path a directory. POSIX
-    // rename(file -> non-empty dir) returns EISDIR / ENOTEMPTY. The mmap region
-    // must still be returned and contain the correct bytes — the only thing
-    // that's failed is publishing the cache file to disk.
-    TemporaryDirectory dir;
-    std::string original = "publish-failure regression payload";
+TEST(ZStdUtilsTrailer, InspectIgnoresUnrelatedSkippableFrames) {
+    std::string original = "payload";
     auto compressed = compressWithContentSize(reinterpret_cast<const Byte*>(original.data()), original.size());
+    auto input = withSkippableFrame(compressed, ZStdUtils::kContentHashFrameMagic + 3, {1, 2, 3});
 
-    auto targetPath = dir.child("target_is_a_directory");
-    DiskUtils::makeDirectory(targetPath, /*createIntermediates=*/true);
-    // Drop a sentinel file inside so the dir is non-empty; some platforms allow
-    // rename onto an empty dir, but not a non-empty one.
-    {
-        auto sentinel = targetPath.appending(std::string_view("sentinel"));
-        FILE* f = std::fopen(sentinel.toString().c_str(), "w");
-        ASSERT_NE(nullptr, f);
-        std::fputs("x", f);
-        std::fclose(f);
-    }
-
-    bool publishFailed = false;
-    auto result = ZStdUtils::decompressToMmap(compressed.data(), compressed.size(), targetPath, &publishFailed);
-    ASSERT_TRUE(result.success()) << result.description();
-    EXPECT_TRUE(publishFailed) << "rename onto a non-empty directory must fail and be reported";
-
-    // The in-memory buffer must still have the decompressed bytes via the
-    // unlinked tmp inode.
-    auto& buf = result.value();
-    ASSERT_EQ(original.size(), buf->size());
-    ASSERT_EQ(0, std::memcmp(buf->data(), original.data(), original.size()));
-
-    // The target path is still a directory — rename was rejected, not partial.
-    struct stat st{};
-    ASSERT_EQ(0, ::stat(targetPath.toString().c_str(), &st));
-    EXPECT_TRUE(S_ISDIR(st.st_mode));
+    auto info = ZStdUtils::inspectSingleFrame(input.data(), input.size());
+    ASSERT_TRUE(info.has_value());
+    EXPECT_FALSE(info->contentSha256.has_value());
 }
 
-TEST(ZStdUtilsMmap, DecompressToMmapClearsPublishFailedOnHappyPath) {
-    // Sanity check that the out-param isn't spuriously set when everything works.
-    TemporaryDirectory dir;
-    std::string original = "happy path";
+TEST(ZStdUtilsTrailer, InspectRejectsGarbageAfterDataFrame) {
+    std::string original = "payload";
     auto compressed = compressWithContentSize(reinterpret_cast<const Byte*>(original.data()), original.size());
+    compressed.push_back(0x42);
+    EXPECT_FALSE(ZStdUtils::inspectSingleFrame(compressed.data(), compressed.size()).has_value());
 
-    auto targetPath = dir.child("ok.bin");
-    bool publishFailed = false;
-    auto result = ZStdUtils::decompressToMmap(compressed.data(), compressed.size(), targetPath, &publishFailed);
-    ASSERT_TRUE(result.success()) << result.description();
-    EXPECT_FALSE(publishFailed);
-    // And the file is published.
-    EXPECT_TRUE(MmapBuffer::openReadOnly(targetPath).success());
+    auto truncated =
+        withSkippableFrame(compressWithContentSize(reinterpret_cast<const Byte*>(original.data()), original.size()),
+                           ZStdUtils::kContentHashFrameMagic,
+                           contentHashPayload(0));
+    truncated.pop_back();
+    EXPECT_FALSE(ZStdUtils::inspectSingleFrame(truncated.data(), truncated.size()).has_value());
+}
+
+TEST(ZStdUtilsTrailer, DecompressHandlesTrailer) {
+    std::string original = "heap decompression with a trailer";
+    auto input =
+        withSkippableFrame(compressWithContentSize(reinterpret_cast<const Byte*>(original.data()), original.size()),
+                           ZStdUtils::kContentHashFrameMagic,
+                           contentHashPayload(0));
+
+    auto result = ZStdUtils::decompress(input.data(), input.size());
+    ASSERT_TRUE(result) << result.description();
+    ASSERT_EQ(original, std::string(reinterpret_cast<const char*>(result.value()->data()), result.value()->size()));
 }
 
 } // namespace ValdiTest

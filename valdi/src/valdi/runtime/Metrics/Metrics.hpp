@@ -12,6 +12,7 @@
 #include "valdi_core/cpp/Utils/Function.hpp"
 #include "valdi_core/cpp/Utils/StringBox.hpp"
 #include <chrono>
+#include <cstdint>
 
 namespace Valdi {
 
@@ -77,18 +78,28 @@ public:
     virtual void emitLoadModuleDuration(const StringBox& module, int64_t totalDuration, int64_t ownDuration) {};
     virtual void emitRunUpdatesInnerTimePercentage(const StringBox& module, int64_t percentage) {};
 
-    // Module archive decompression A/B telemetry.
-    // Exactly one of these counters is incremented per ValdiModuleArchive::decompress call.
+    // Module archive loads. Each successful load emits exactly one of MmapSuccess (served from the module
+    // archive pack) or Heap (decompressed to the heap, including pack misses), plus the latency.
     virtual void emitModuleArchiveMmapSuccess(const StringBox& module) {};
-    virtual void emitModuleArchiveMmapFallback(const StringBox& module) {};
     virtual void emitModuleArchiveHeap(const StringBox& module) {};
-    // Wall-clock time spent decompressing a module archive (either backing).
+    // Wall-clock time spent obtaining a module archive's decompressed content: the pack lookup on a hit,
+    // the read and decompression otherwise.
     virtual void emitModuleDecompressLatency(const StringBox& module, const MetricsDuration& duration) {};
-    // Mmap region created and decompressed successfully, but std::rename of the
-    // tmp file onto the cache path failed. The returned MmapBuffer is still
-    // valid for the session (the inode is kept alive while mapped); this
-    // counter exists so the A/B can observe and alert on the publish failure.
-    virtual void emitModuleArchiveMmapPublishFail(const StringBox& module) {};
+
+    // Module archive pack.
+    // A miss whose decompressed archive could not be written or failed hash verification, so it was not
+    // added to the pack; the session still uses the heap copy.
+    virtual void emitModuleArchiveCachePublishFail(const StringBox& module) {};
+    // The archive has no content-hash trailer, so its identity was computed by hashing the compressed bytes.
+    virtual void emitModuleArchiveCacheNoContentHash(const StringBox& module) {};
+    // The pack was started fresh. `reason` is one of new_build, cap, bad_index, crash_loop.
+    virtual void emitModuleArchiveCacheReset(const StringBox& reason) {};
+    // An entry served from the pack was corrupt and is banned until the next build.
+    virtual void emitModuleArchiveCacheBan(const StringBox& module) {};
+    // Size of the pack when the process opened it.
+    virtual void emitModuleArchivePackSize(int64_t kilobytes) {};
+    // Cache misses of this launch, reported once when module loads first go quiet.
+    virtual void emitModuleArchiveLaunchMisses(int64_t misses) {};
     // View pool usage of one ViewNodeTree since the last emission, emitted when the tree is torn down
     // and when the app pauses. hits: views reused from the pool; misses: views created fresh; drops:
     // views from the factory released with pooling disabled via canBeReused (e.g. through a platform

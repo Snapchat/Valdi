@@ -1654,8 +1654,19 @@ JSValueRef JavaScriptRuntime::loadJsModule(IJavaScriptContext& jsContext,
             _moduleResourceTracker.push_back({memoryWaterMarkBefore, 0, timestampBefore, 0});
         }
 
-        result = loadJsModuleFromBytes(
-            jsContext, jsFileContent.value().content, importPath, parameters, parametersLength, exceptionTracker);
+        bool parseFailed = false;
+        result = loadJsModuleFromBytes(jsContext,
+                                       jsFileContent.value().content,
+                                       importPath,
+                                       parameters,
+                                       parametersLength,
+                                       exceptionTracker,
+                                       &parseFailed);
+        // Parse errors depend only on the bytes, so they can reveal a corrupt cached archive. A runtime being torn
+        // down fails evaluation for its own reasons.
+        if (parseFailed && !_isDisposed) {
+            _resourceManager.reportModuleParseFailure(resourceId.bundleName);
+        }
 
         if (memoryWaterMarkBefore != 0) {
             // Compute the memory usage: watermark_after - watermark_before
@@ -1708,7 +1719,8 @@ ModuleLoadResult JavaScriptRuntime::loadJsModuleFromBytes(IJavaScriptContext& js
                                                           const StringBox& importPath,
                                                           const JSValueRef* parameters,
                                                           size_t parametersLength,
-                                                          JSExceptionTracker& exceptionTracker) {
+                                                          JSExceptionTracker& exceptionTracker,
+                                                          bool* outParseFailed) {
     // Assign global context when loading a JS module
     JavaScriptContextEntry contextEntry(_globalContext);
 
@@ -1734,6 +1746,9 @@ ModuleLoadResult JavaScriptRuntime::loadJsModuleFromBytes(IJavaScriptContext& js
     }
 
     if (!exceptionTracker) {
+        if (outParseFailed != nullptr) {
+            *outParseFailed = true;
+        }
         return std::make_pair(jsContext.newUndefined(), moduleLoadMode);
     }
 

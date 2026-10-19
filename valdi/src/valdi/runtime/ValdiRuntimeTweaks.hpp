@@ -58,18 +58,12 @@ public:
     bool disableSyncDeadlineCircuitBreaker() const;
     // True when VALDI_MAX_VIEW_OPERATIONS_PROCESSING_TIME > 0 (throttling enabled). Gates top-down move order in TS.
     bool useTopDownMoveOrder() const;
-    bool enableMmapModuleArchives() const;
+    // Serve module archives from a per-build pack of decompressed archives, mapped once per process, instead
+    // of decompressing each archive to the heap on every load. Off deletes the pack.
+    bool enableMmapModuleArchiveCacheReuse() const;
     // Skips the per-module `<module>.map.json` lookup when the build ships no source maps, where every
     // lookup misses (on iOS a miss scans every loaded bundle). Off (default) keeps the lookup.
     bool skipSourceMapLookup() const;
-    // True when the module matches an entry in VALDI_MMAP_MODULE_ARCHIVES_DENYLIST
-    // (comma-separated). Each entry is a prefix; a trailing '$' anchors it to an
-    // exact module name ("camera$" pins only "camera", not "camera_control_center").
-    // Denylisted modules keep heap-backed archives even when
-    // enableMmapModuleArchives() is on — on swapless iOS that de-facto pins them,
-    // trading back their share of the memory win to avoid refault latency on
-    // bursty surfaces.
-    bool isMmapModuleArchiveDenylisted(const StringBox& modulePath) const;
     // Killswitch for iOS view recycling of views that have a didFinishLayout block (borderRadius,
     // boxShadow, gradients, masks, shape paths). Historically SCValdiViewNode's layout callback
     // fetched the view through the pooling-disabling public accessor, which permanently excluded

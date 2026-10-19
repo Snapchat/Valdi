@@ -52,4 +52,10 @@ data class ValdiTweaks(
          */
          val editTextResetSelectionMatchesIos: Boolean = false,
          val enableAtomicInitialAutoRenderState: Boolean = false,
+         /**
+          * Deletes this build's module archive cache and keeps it off for the rest of the build. Set after a
+          * startup crash-loop recovery: a corrupt cached module the runtime cannot detect would otherwise
+          * crash every launch.
+         */
+         val disableModuleArchiveCacheForBuild: Boolean = false,
 )

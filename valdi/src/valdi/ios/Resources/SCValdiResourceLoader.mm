@@ -31,7 +31,7 @@ namespace ValdiIOS {
 // (PREVIEW-31440). Rejecting ".." anywhere in the name is stricter than strictly required; real
 // module names never contain it. -[NSBundle URLForResource:] never traversed out of the bundle;
 // this preserves that guarantee.
-static NSURL *containedResourceUrl(NSURL *resourceRoot, NSString *resourceName) {
+static NSURL *containedResourceUrl(NSURL *resourceRoot, NSString *resourceName, struct stat *outStat) {
     if ([resourceName containsString:@"/"] || [resourceName containsString:@".."]) {
         return nil;
     }
@@ -49,6 +49,9 @@ static NSURL *containedResourceUrl(NSURL *resourceRoot, NSString *resourceName) 
     if (stat(candidatePath.fileSystemRepresentation, &candidateStat) != 0 || !S_ISREG(candidateStat.st_mode)) {
         return nil;
     }
+    if (outStat) {
+        *outStat = candidateStat;
+    }
     // isDirectory:NO is not just a hint: +[NSURL fileURLWithPath:] without it stats the path again to
     // decide the URL's trailing-slash form, which the S_ISREG check above already settled.
     return [NSURL fileURLWithPath:candidatePath isDirectory:NO];
@@ -63,15 +66,15 @@ static NSURL *containedResourceUrl(NSURL *resourceRoot, NSString *resourceName) 
 // modifiers (~ipad/~iphone) and localized subdirectories — fall through to the URLForResource:
 // fallback, which resolves them correctly (Valdi modules are flat and don't ship device variants,
 // so the fast path covers the real cases). Returns nil if the file is not present.
-static NSURL *directResourceUrlInBundle(NSBundle *bundle, NSString *resourceName) {
+static NSURL *directResourceUrlInBundle(NSBundle *bundle, NSString *resourceName, struct stat *outStat) {
     NSURL *resourceRoot = bundle.resourceURL;
     if (!resourceRoot) {
         return nil;
     }
-    return containedResourceUrl(resourceRoot, resourceName);
+    return containedResourceUrl(resourceRoot, resourceName, outStat);
 }
 
-static NSURL *getResourceUrlForResourceName(NSString *resourceName) {
+static NSURL *getResourceUrlForResourceName(NSString *resourceName, struct stat *outStat) {
     // NSStringFromString(module) returns nil for invalid UTF-8 and @"" for an empty module name.
     // Guard both: URLByAppendingPathComponent: throws on nil, and an empty component resolves to the
     // bundle's resource directory (which fileExistsAtPath: accepts), so we'd return a bogus dir URL.
@@ -84,13 +87,13 @@ static NSURL *getResourceUrlForResourceName(NSString *resourceName) {
 
     // Resolve by direct filesystem lookup, which avoids constructing the retained per-bundle
     // resource index. Order: main bundle, SCValdiImage bundle, then all other bundles.
-    NSURL *url = directResourceUrlInBundle(mainBundle, resourceName);
+    NSURL *url = directResourceUrlInBundle(mainBundle, resourceName, outStat);
     if (!url) {
-        url = directResourceUrlInBundle(imageBundle, resourceName);
+        url = directResourceUrlInBundle(imageBundle, resourceName, outStat);
     }
     if (!url) {
         for (NSBundle *bundle in [NSBundle allBundles]) {
-            url = directResourceUrlInBundle(bundle, resourceName);
+            url = directResourceUrlInBundle(bundle, resourceName, outStat);
             if (url) {
                 break;
             }
@@ -122,7 +125,7 @@ Valdi::Result<Valdi::BytesView> ResourceLoader::loadModuleContent(const Valdi::S
         }
     }
 
-    NSURL *url = getResourceUrlForResourceName(resourceName);
+    NSURL *url = getResourceUrlForResourceName(resourceName, nullptr);
     if (!url) {
         return Valdi::Error("Could not find module");
     }
@@ -131,6 +134,34 @@ Valdi::Result<Valdi::BytesView> ResourceLoader::loadModuleContent(const Valdi::S
     Valdi::Path path(cppPath.toStringView());
 
     return Valdi::DiskUtils::load(path);
+}
+
+std::optional<Valdi::ModuleContentIdentity> ResourceLoader::getModuleIdentity(const Valdi::StringBox &module) {
+    NSString *resourceName = ValdiIOS::NSStringFromString(module);
+    if (_moduleProvider) {
+        // The provider is asked first, as in loadModuleContent.
+        if (![_moduleProvider respondsToSelector:@selector(customModuleIdentityForPath:)]) {
+            return std::nullopt;
+        }
+        NSString *identity = [_moduleProvider customModuleIdentityForPath:resourceName];
+        if (identity) {
+            return Valdi::ModuleContentIdentity{Valdi::ModuleContentIdentity::Kind::DeliveryContainer,
+                                                std::string(identity.UTF8String ?: "")};
+        }
+    }
+
+    struct stat fileStat;
+    if (!getResourceUrlForResourceName(resourceName, &fileStat)) {
+        return std::nullopt;
+    }
+    // An app update installs new files with new inodes, and a rebuilt module gets a new mtime.
+    int64_t fields[] = {static_cast<int64_t>(fileStat.st_dev),
+                        static_cast<int64_t>(fileStat.st_ino),
+                        static_cast<int64_t>(fileStat.st_size),
+                        static_cast<int64_t>(fileStat.st_mtimespec.tv_sec),
+                        static_cast<int64_t>(fileStat.st_mtimespec.tv_nsec)};
+    return Valdi::ModuleContentIdentity{Valdi::ModuleContentIdentity::Kind::BundledFile,
+                                        std::string(reinterpret_cast<const char *>(fields), sizeof(fields))};
 }
 
 Valdi::StringBox ResourceLoader::resolveLocalAssetURL(const Valdi::StringBox &moduleName, const Valdi::StringBox &resourcePath) {

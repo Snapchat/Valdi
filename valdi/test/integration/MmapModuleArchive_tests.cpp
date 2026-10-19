@@ -1,12 +1,9 @@
 //
 //  MmapModuleArchive_tests.cpp
 //
-//  Integration tests for the mmap module archive A/B telemetry path.
-//  Verifies that ResourceManager dispatches to the mmap-backed decompressor
-//  when the tweak is on and a cache directory is configured, and falls back
-//  to the heap decompressor in all other cases. Exactly one of the three
-//  Module_Archive_* counters must be emitted per archive load, and the
-//  Module_Decompress_Latency timer must be emitted alongside it.
+//  Integration tests for loading module archives through ResourceManager with the module archive pack on
+//  and off. Each successful load emits exactly one of Module_Archive_Mmap_Success (served from the pack) or
+//  Module_Archive_Heap, alongside Module_Decompress_Latency.
 //
 
 #include "RuntimeTestsUtils.hpp"
@@ -27,11 +24,13 @@
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <cstring>
-#include <dirent.h>
 #include <mutex>
 #include <stdlib.h>
 #include <string>
+#include <sys/stat.h>
+#include <thread>
 #include <vector>
 
 using namespace Valdi;
@@ -40,25 +39,20 @@ namespace ValdiTest {
 
 namespace {
 
-constexpr auto kTweakKey = "VALDI_ENABLE_MMAP_MODULE_ARCHIVES";
-constexpr auto kDenylistTweakKey = "VALDI_MMAP_MODULE_ARCHIVES_DENYLIST";
+constexpr auto kPackTweakKey = "VALDI_MMAP_MODULE_ARCHIVES_CACHE_REUSE";
 constexpr auto kModuleName = "test";
 
 // ---------------------------------------------------------------------------
 // Test doubles
 // ---------------------------------------------------------------------------
 
-// Tweak provider that exposes a single boolean tweak used by ValdiRuntimeTweaks.
+// Tweak provider that exposes the module archive pack switch read by ValdiRuntimeTweaks.
 class MmapTweakProvider : public SharedPtrRefCountable,
                           public snap::valdi_core::ModuleFactory,
                           public ITweakValueProvider {
 public:
-    void setEnabled(bool enabled) {
-        _config.setMapValue(kTweakKey, Value(static_cast<bool>(enabled)));
-    }
-
-    void setDenylist(const char* denylist) {
-        _config.setMapValue(kDenylistTweakKey, Value(STRING_LITERAL(denylist)));
+    void setPackEnabled(bool enabled) {
+        _config.setMapValue(kPackTweakKey, Value(static_cast<bool>(enabled)));
     }
 
     StringBox getModulePath() override {
@@ -87,33 +81,27 @@ private:
     Value _config;
 };
 
-// Metrics implementation that records counter / timer calls for the four
-// metrics added in this PR. All other Metrics methods are no-ops; gtest
-// fails loudly via SC_ASSERT if a pure-virtual were missed.
+// Records the module archive load counters. All other Metrics methods are no-ops.
 class RecordingMetrics : public Metrics {
 public:
     std::atomic<int> mmapSuccess{0};
-    std::atomic<int> mmapFallback{0};
     std::atomic<int> heap{0};
     std::atomic<int> decompressLatencyCalls{0};
-    std::atomic<int> mmapPublishFail{0};
 
     void emitModuleArchiveMmapSuccess(const StringBox& modulePath) override {
         ++mmapSuccess;
-        recordModule(_mmapModules, modulePath);
-    }
-    void emitModuleArchiveMmapFallback(const StringBox& modulePath) override {
-        ++mmapFallback;
         recordModule(_mmapModules, modulePath);
     }
     void emitModuleArchiveHeap(const StringBox& modulePath) override {
         ++heap;
         recordModule(_heapModules, modulePath);
     }
+    void emitModuleDecompressLatency(const StringBox&, const MetricsDuration&) override {
+        ++decompressLatencyCalls;
+    }
 
-    // Per-module routing, for tests that pin some modules but not others. A
-    // module load can pull in dependency bundles, so counter totals alone
-    // can't tell which module took which path.
+    // A module load can pull in dependency bundles, so counter totals alone can't tell which module took
+    // which path.
     bool moduleTookHeapPath(const char* module) const {
         std::lock_guard<std::mutex> lock(_modulesMutex);
         return std::find(_heapModules.begin(), _heapModules.end(), module) != _heapModules.end();
@@ -122,15 +110,9 @@ public:
         std::lock_guard<std::mutex> lock(_modulesMutex);
         return std::find(_mmapModules.begin(), _mmapModules.end(), module) != _mmapModules.end();
     }
-    void emitModuleDecompressLatency(const StringBox&, const MetricsDuration&) override {
-        ++decompressLatencyCalls;
-    }
-    void emitModuleArchiveMmapPublishFail(const StringBox&) override {
-        ++mmapPublishFail;
-    }
 
     int totalPathCounters() const {
-        return mmapSuccess + mmapFallback + heap;
+        return mmapSuccess + heap;
     }
 
 private:
@@ -211,19 +193,41 @@ protected:
             _wrapper->teardown();
             _wrapper.reset();
         }
+        ModuleArchiveCache::resetSharedInstancesForTesting();
     }
 
     // Lazily construct the wrapper so the test can set the tweak before the
     // runtime queries it during module load. Uses a real JS bridge because
     // ResourceManager::loadModuleAsync runs JS initialization downstream of
     // the decompress path we're trying to exercise.
-    RuntimeWrapper& makeWrapper(bool enableCof) {
-        _tweakProvider->setEnabled(enableCof);
+    RuntimeWrapper& makeWrapper(bool enablePack) {
+        _tweakProvider->setPackEnabled(enablePack);
         auto* jsBridge = Valdi::JavaScriptBridge::get(snap::valdi_core::JavaScriptEngineType::QuickJS);
         _wrapper = std::make_unique<RuntimeWrapper>(jsBridge, TSNMode::Disabled);
         _wrapper->runtime->setMetrics(_metrics);
         _wrapper->runtime->setRuntimeTweaks(makeShared<ValdiRuntimeTweaks>(_tweakProvider.toShared()));
         return *_wrapper;
+    }
+
+    // Stands in for the end of a process: publishes what this launch missed and closes the pack.
+    void endLaunch() {
+        _wrapper->runtime->getResourceManager().flushPendingArchiveCachePublishes();
+        _wrapper->teardown();
+        _wrapper.reset();
+        ModuleArchiveCache::resetSharedInstancesForTesting();
+    }
+
+    static Path generationDirectory(const TemporaryDirectory& tmp) {
+        auto directory = ModuleArchiveCache::getShared(tmp.path(), "test")->getGenerationDirectory();
+        ModuleArchiveCache::resetSharedInstancesForTesting();
+        return directory;
+    }
+
+    // False when nothing was appended, e.g. because the test module isn't ZStd-compressed in this build.
+    static bool packHasData(const Path& generation) {
+        struct stat st{};
+        auto dataPath = generation.appending(std::string_view("data")).toString();
+        return stat(dataPath.c_str(), &st) == 0 && st.st_size > 0;
     }
 
     Ref<MmapTweakProvider> _tweakProvider;
@@ -237,179 +241,92 @@ protected:
 // Tests
 // ---------------------------------------------------------------------------
 
-// Tweak off → heap counter fires, mmap counters do not, latency timer fires.
-TEST_F(MmapModuleArchiveFixture, EmitsHeapCounterWhenCofDisabled) {
-    auto& wrapper = makeWrapper(/*enableCof=*/false);
-    // Cache dir intentionally NOT set; with the tweak off it doesn't matter anyway.
+TEST_F(MmapModuleArchiveFixture, EveryLoadTakesTheHeapWhenThePackIsOff) {
+    TemporaryDirectory tmp;
+    auto& wrapper = makeWrapper(/*enablePack=*/false);
+    wrapper.runtime->setMmapCacheDirectory(tmp.path(), "test");
 
     auto result = wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources);
     ASSERT_TRUE(result) << result.description();
 
     EXPECT_EQ(0, _metrics->mmapSuccess.load());
-    EXPECT_EQ(0, _metrics->mmapFallback.load());
     EXPECT_GE(_metrics->heap.load(), 1);
-    EXPECT_EQ(_metrics->heap.load(), _metrics->totalPathCounters()) << "Exactly the heap counter should have fired";
     EXPECT_EQ(_metrics->heap.load(), _metrics->decompressLatencyCalls.load())
-        << "Latency timer should fire once per successful decompress";
-    EXPECT_EQ(0, _metrics->mmapPublishFail.load()) << "Publish-failure counter is for the mmap path only";
+        << "Latency timer should fire once per successful load";
 }
 
-// Tweak on but no cache dir → ResourceManager short-circuits to the heap path
-// (because _mmapCacheDirectory is empty), so heap counter fires.
-TEST_F(MmapModuleArchiveFixture, EmitsHeapCounterWhenCofOnButNoCacheDir) {
-    auto& wrapper = makeWrapper(/*enableCof=*/true);
-    // Deliberately do NOT call setMmapCacheDirectory.
+TEST_F(MmapModuleArchiveFixture, EveryLoadTakesTheHeapWithoutACacheDirectory) {
+    auto& wrapper = makeWrapper(/*enablePack=*/true);
 
     auto result = wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources);
     ASSERT_TRUE(result) << result.description();
 
     EXPECT_EQ(0, _metrics->mmapSuccess.load());
-    EXPECT_EQ(0, _metrics->mmapFallback.load());
     EXPECT_GE(_metrics->heap.load(), 1);
     EXPECT_EQ(_metrics->heap.load(), _metrics->decompressLatencyCalls.load());
-    EXPECT_EQ(0, _metrics->mmapPublishFail.load());
 }
 
-// Tweak on + cache dir set → mmap path is dispatched. We don't assert which
-// arm wins (success vs fallback) because that depends on whether the test
-// module artifact is ZStd-compressed by the build pipeline; we only require
-// that the heap counter is NOT used and that exactly one mmap counter fires
-// per decompress, alongside the latency timer.
-TEST_F(MmapModuleArchiveFixture, DispatchesToMmapPathWhenCofOnAndCacheDirSet) {
+// The first launch misses, is served from the heap and appends the archive to the pack; the next launch
+// serves it from the pack instead of decompressing.
+TEST_F(MmapModuleArchiveFixture, PackServesTheNextLaunch) {
     TemporaryDirectory tmp;
-    auto& wrapper = makeWrapper(/*enableCof=*/true);
-    wrapper.runtime->setMmapCacheDirectory(tmp.path());
+    {
+        auto& wrapper = makeWrapper(/*enablePack=*/true);
+        wrapper.runtime->setMmapCacheDirectory(tmp.path(), "test");
+        auto result = wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources);
+        ASSERT_TRUE(result) << result.description();
+        EXPECT_EQ(0, _metrics->mmapSuccess.load()) << "a new pack has nothing to serve";
+        EXPECT_TRUE(_metrics->moduleTookHeapPath(kModuleName));
+        endLaunch();
+    }
+    if (!packHasData(generationDirectory(tmp))) {
+        GTEST_SKIP() << "Test module isn't ZStd-compressed in this build; the pack is not exercised";
+    }
+    auto heapLoadsBefore = _metrics->heap.load();
+    auto pathCountersBefore = _metrics->totalPathCounters();
+    auto latencyCallsBefore = _metrics->decompressLatencyCalls.load();
 
-    auto result = wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources);
+    auto& nextLaunch = makeWrapper(/*enablePack=*/true);
+    nextLaunch.runtime->setMmapCacheDirectory(tmp.path(), "test");
+    auto result = nextLaunch.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources);
     ASSERT_TRUE(result) << result.description();
 
-    const int mmapTotal = _metrics->mmapSuccess.load() + _metrics->mmapFallback.load();
-    EXPECT_GE(mmapTotal, 1) << "At least one mmap-path counter should fire";
-    EXPECT_EQ(0, _metrics->heap.load()) << "Heap counter must not fire when the tweak is on and cache dir is set";
-    EXPECT_EQ(mmapTotal, _metrics->totalPathCounters()) << "Only mmap counters should fire";
-    EXPECT_EQ(mmapTotal, _metrics->decompressLatencyCalls.load()) << "Latency timer should fire once per decompress";
-    // Happy-path expectation: nothing should report a publish failure when
-    // tmp file and cache dir live in the same writable filesystem.
-    EXPECT_EQ(0, _metrics->mmapPublishFail.load());
+    EXPECT_TRUE(_metrics->moduleTookMmapPath(kModuleName));
+    EXPECT_EQ(heapLoadsBefore, _metrics->heap.load());
+    EXPECT_EQ(_metrics->totalPathCounters() - pathCountersBefore,
+              _metrics->decompressLatencyCalls.load() - latencyCallsBefore);
 }
 
-// Tweak on + cache dir set, but the module matches a denylist prefix (with
-// surrounding whitespace, exercising trimming) → the heap path must be taken,
-// exactly as if the mmap tweak were off for this module. This is the pinning
-// mechanism for surfaces whose refault latency outweighs their memory win.
-TEST_F(MmapModuleArchiveFixture, HeapPathWhenModuleDenylisted) {
+// Turning the pack off deletes it, so its files don't outlive the experiment.
+TEST_F(MmapModuleArchiveFixture, PackIsDeletedWhenTurnedOff) {
     TemporaryDirectory tmp;
-    _tweakProvider->setDenylist(" some_other_module , test ");
-    auto& wrapper = makeWrapper(/*enableCof=*/true);
-    wrapper.runtime->setMmapCacheDirectory(tmp.path());
-
-    auto result = wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources);
-    ASSERT_TRUE(result) << result.description();
-
-    // Dependency bundles may load alongside the requested module; only the
-    // denylisted module itself must be diverted to the heap path.
-    EXPECT_TRUE(_metrics->moduleTookHeapPath(kModuleName)) << "Denylisted module must take the heap path";
-    EXPECT_FALSE(_metrics->moduleTookMmapPath(kModuleName));
-    EXPECT_EQ(_metrics->totalPathCounters(), _metrics->decompressLatencyCalls.load());
-}
-
-// Denylist matches on path prefix (module "test" matches entry "te").
-TEST_F(MmapModuleArchiveFixture, HeapPathWhenModuleMatchesDenylistPrefix) {
-    TemporaryDirectory tmp;
-    _tweakProvider->setDenylist("te");
-    auto& wrapper = makeWrapper(/*enableCof=*/true);
-    wrapper.runtime->setMmapCacheDirectory(tmp.path());
-
-    auto result = wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources);
-    ASSERT_TRUE(result) << result.description();
-
-    EXPECT_TRUE(_metrics->moduleTookHeapPath(kModuleName))
-        << "Module matching a denylist prefix must take the heap path";
-    EXPECT_FALSE(_metrics->moduleTookMmapPath(kModuleName));
-}
-
-// A populated denylist that does NOT match the module leaves the mmap path
-// untouched — pinning one surface must not degrade the others.
-// A trailing '$' anchors a denylist entry to an exact module name: "test$"
-// pins the module "test".
-TEST_F(MmapModuleArchiveFixture, HeapPathWhenModuleMatchesExactEntry) {
-    TemporaryDirectory tmp;
-    _tweakProvider->setDenylist("some_other_module,test$");
-    auto& wrapper = makeWrapper(/*enableCof=*/true);
-    wrapper.runtime->setMmapCacheDirectory(tmp.path());
-
-    auto result = wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources);
-    ASSERT_TRUE(result) << result.description();
-
-    EXPECT_TRUE(_metrics->moduleTookHeapPath(kModuleName)) << "Exact entry must pin the module";
-    EXPECT_FALSE(_metrics->moduleTookMmapPath(kModuleName));
-}
-
-// An anchored entry must NOT prefix-match: "tes$" does not pin "test", even
-// though the unanchored "tes" would.
-TEST_F(MmapModuleArchiveFixture, MmapPathWhenExactEntryIsOnlyPrefix) {
-    TemporaryDirectory tmp;
-    _tweakProvider->setDenylist("tes$");
-    auto& wrapper = makeWrapper(/*enableCof=*/true);
-    wrapper.runtime->setMmapCacheDirectory(tmp.path());
-
-    auto result = wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources);
-    ASSERT_TRUE(result) << result.description();
-
-    EXPECT_TRUE(_metrics->moduleTookMmapPath(kModuleName)) << "Anchored entry must not act as a prefix";
-    EXPECT_FALSE(_metrics->moduleTookHeapPath(kModuleName));
-}
-
-TEST_F(MmapModuleArchiveFixture, MmapPathWhenDenylistDoesNotMatch) {
-    TemporaryDirectory tmp;
-    _tweakProvider->setDenylist("search_v2,profile_identity");
-    auto& wrapper = makeWrapper(/*enableCof=*/true);
-    wrapper.runtime->setMmapCacheDirectory(tmp.path());
-
-    auto result = wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources);
-    ASSERT_TRUE(result) << result.description();
-
-    EXPECT_TRUE(_metrics->moduleTookMmapPath(kModuleName))
-        << "Non-matching denylist must not divert the module to the heap path";
-    EXPECT_FALSE(_metrics->moduleTookHeapPath(kModuleName));
-    EXPECT_EQ(0, _metrics->heap.load()) << "No module is denylisted, so nothing should take the heap path";
-}
-
-// Tweak on + cache dir set + mmap success → file backing must exist at the
-// expected hashed-flat path under the cache directory. Only meaningful when
-// the test module artifact is ZStd-compressed; if it isn't, this test
-// degenerates to a no-op assertion (skip via GTEST_SKIP).
-TEST_F(MmapModuleArchiveFixture, MmapSuccessProducesFileInCacheDir) {
-    TemporaryDirectory tmp;
-    auto& wrapper = makeWrapper(/*enableCof=*/true);
-    wrapper.runtime->setMmapCacheDirectory(tmp.path());
-
-    auto result = wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources);
-    ASSERT_TRUE(result) << result.description();
-
-    if (_metrics->mmapSuccess.load() == 0) {
-        GTEST_SKIP() << "Test module isn't ZStd-compressed in this build; mmap_success "
-                        "path not exercised. Counters: success="
-                     << _metrics->mmapSuccess.load() << " fallback=" << _metrics->mmapFallback.load()
-                     << " heap=" << _metrics->heap.load();
+    {
+        auto& wrapper = makeWrapper(/*enablePack=*/true);
+        wrapper.runtime->setMmapCacheDirectory(tmp.path(), "test");
+        ASSERT_TRUE(wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources));
+        endLaunch();
+    }
+    auto generation = generationDirectory(tmp);
+    if (!packHasData(generation)) {
+        GTEST_SKIP() << "Test module isn't ZStd-compressed in this build; the pack is not exercised";
     }
 
-    // At least one file should exist in the cache dir. We don't open or compare
-    // bytes — the unit tests in ZStdUtils_tests.cpp cover the contents and the
-    // atomic rename; here we just verify dispatch produced an on-disk artifact.
-    auto pathStr = tmp.path().toString();
-    DIR* d = opendir(pathStr.c_str());
-    ASSERT_NE(nullptr, d) << "Cache dir vanished: " << pathStr;
-    int regularFiles = 0;
-    while (auto* entry = readdir(d)) {
-        std::string name = entry->d_name;
-        if (name == "." || name == "..") {
-            continue;
-        }
-        ++regularFiles;
+    // The runtime picks up this shared instance; without the delay the test does not wait for the default.
+    ModuleArchiveCache::Options immediate;
+    immediate.removalDelay = std::chrono::milliseconds(0);
+    auto cache = ModuleArchiveCache::getShared(tmp.path(), "test", immediate);
+    auto mmapLoadsBefore = _metrics->mmapSuccess.load();
+    auto heapLoadsBefore = _metrics->heap.load();
+    auto& wrapper = makeWrapper(/*enablePack=*/false);
+    wrapper.runtime->setMmapCacheDirectory(tmp.path(), "test");
+    ASSERT_TRUE(wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources));
+    EXPECT_EQ(mmapLoadsBefore, _metrics->mmapSuccess.load()) << "the pack is off, so nothing is served from it";
+    EXPECT_GT(_metrics->heap.load(), heapLoadsBefore);
+
+    for (int i = 0; i < 100 && DiskUtils::isDirectory(generation); i++) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
-    closedir(d);
-    EXPECT_GE(regularFiles, 1) << "Expected the rename target to leave a file in the cache dir";
+    EXPECT_FALSE(DiskUtils::isDirectory(generation));
 }
 
 } // namespace ValdiTest

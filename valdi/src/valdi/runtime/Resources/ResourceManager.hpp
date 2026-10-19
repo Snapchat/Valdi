@@ -14,6 +14,7 @@
 #include <string>
 
 #include "valdi/runtime/Resources/Bundle.hpp"
+#include "valdi/runtime/Resources/ModuleArchiveCache.hpp"
 #include "valdi_core/cpp/Utils/FlatMap.hpp"
 #include "valdi_core/cpp/Utils/FlatSet.hpp"
 #include "valdi_core/cpp/Utils/Function.hpp"
@@ -121,7 +122,15 @@ public:
 
     void setInlineAssetsEnabled(bool inlineAssetsEnabled);
 
-    void setMmapCacheDirectory(const Path& path);
+    // `buildVersion` identifies the app build; the archive cache starts fresh when it changes.
+    void setMmapCacheDirectory(const Path& path, const std::string& buildVersion);
+
+    // Synchronously appends the archives of earlier cache misses to the persistent archive cache.
+    void flushPendingArchiveCachePublishes();
+
+    // Called when the JS engine fails to parse a file of `bundleName`, so that a corrupt cached archive is
+    // not served again.
+    void reportModuleParseFailure(const StringBox& bundleName);
 
 private:
     Shared<IResourceLoader> _resourceLoader;
@@ -140,7 +149,7 @@ private:
     bool _hotReloaderEnabled;
     std::optional<int32_t> _apiVersion;
     std::atomic_bool _lazyModulePreloadingEnabled = true;
-    Path _mmapCacheDirectory;
+    Ref<ModuleArchiveCache> _archiveCache;
 
     ILogger& _logger;
     FlatMap<StringBox, Ref<Bundle>> _bundleByName;
@@ -152,18 +161,24 @@ private:
     // loader, runtime tweak reads, disk I/O, or waiting on a Bundle mutex another thread holds across
     // its init. The main thread contends on this mutex from Runtime::createContext.
     mutable Mutex _mutex;
+    // Pack entry that served each bundle of this runtime, so that a parse failure bans that entry and not
+    // another variant of the module served to another runtime. A leaf lock: taken under a Bundle mutex,
+    // never held while taking another lock.
+    mutable Mutex _packEntryKeysMutex;
+    FlatMap<StringBox, std::string> _packEntryKeyByBundle;
     // Separate from _mutex so the main-thread dedupe in preloadForComponentPath never queues
     // behind a bundle load.
     mutable Mutex _seenComponentPathsMutex;
     FlatSet<StringBox> _seenComponentPaths;
 
-    // Resolved mmap/metrics settings are passed in by the caller (getBundle) rather than read
-    // here: this runs while the caller holds the Bundle's mutex, and acquiring _mutex under that
-    // lock would invert the cleanup path's _mutex -> Bundle order and can deadlock.
+    // The cache and metrics are passed in by the caller (getBundle) rather than read here: this runs
+    // while the caller holds the Bundle's mutex, and acquiring _mutex under that lock would invert the
+    // cleanup path's _mutex -> Bundle order and can deadlock. `archiveCache` is null when the pack is off.
     [[nodiscard]] Result<Ref<ValdiModuleArchive>> getArchiveForModule(const StringBox& modulePath,
-                                                                      bool useMmap,
-                                                                      const Path& mmapCacheDir,
+                                                                      Ref<ModuleArchiveCache> archiveCache,
                                                                       const Ref<Metrics>& metrics);
+    // Records the pack entry that served `bundleName`, or forgets it when `entryKey` is empty (heap load).
+    void rememberPackEntry(const StringBox& bundleName, std::string entryKey);
     void initializeBundle(BundleInitializer& bundleInitializer, Ref<ValdiModuleArchive> moduleArchive);
 
     BundleInitializer registerBundle(const StringBox& bundleName);

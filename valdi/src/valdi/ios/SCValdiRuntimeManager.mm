@@ -43,6 +43,7 @@
 #import "valdi/runtime/JavaScript/JavaScriptANRDetector.hpp"
 #import "valdi/runtime/RuntimeManager.hpp"
 #import "valdi/runtime/Resources/AssetLoaderManager.hpp"
+#import "valdi/runtime/Resources/ModuleArchiveCache.hpp"
 
 #import "valdi/ios/SnapDrawing/SCValdiSnapDrawingRuntime.h"
 #import "valdi/snap_drawing/Modules/SnapDrawingModuleFactoriesProvider.hpp"
@@ -107,6 +108,20 @@ static std::optional<uint32_t> SCValdiResolveDebuggerServicePort(SCValdiConfigur
     }
 
     return static_cast<uint32_t>(debuggerServicePort);
+}
+
+// Both the runtime and crash-loop recovery must agree on where the module archive cache lives.
+static BOOL SCValdiModuleArchiveCacheLocation(Valdi::Path *outRoot, std::string *outBuildVersion) {
+    NSString *cachesDir = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject;
+    if (!cachesDir) {
+        return NO;
+    }
+    NSURL *mmapCacheURL = [[NSURL fileURLWithPath:cachesDir] URLByAppendingPathComponent:@"valdi_mmap_cache"];
+    NSDictionary *info = [NSBundle mainBundle].infoDictionary;
+    NSString *buildVersion = [NSString stringWithFormat:@"%@/%@", info[@"CFBundleShortVersionString"] ?: @"", info[@"CFBundleVersion"] ?: @""];
+    *outRoot = Valdi::Path(ValdiIOS::StringFromNSString(mmapCacheURL.path));
+    *outBuildVersion = std::string(buildVersion.UTF8String ?: "");
+    return YES;
 }
 
 static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *> *runtimeManagers)) {
@@ -250,10 +265,10 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
         NSString *bundleIdentifier = [NSBundle mainBundle].bundleIdentifier;
         _cppInstance->setApplicationId(ValdiIOS::StringFromNSString(bundleIdentifier));
 
-        NSString *cachesDir = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject;
-        if (cachesDir) {
-            NSURL *mmapCacheURL = [[NSURL fileURLWithPath:cachesDir] URLByAppendingPathComponent:@"valdi_mmap_cache"];
-            _cppInstance->setMmapCacheDirectory(Valdi::Path(ValdiIOS::StringFromNSString(mmapCacheURL.path)));
+        Valdi::Path mmapCacheRoot;
+        std::string mmapCacheBuildVersion;
+        if (SCValdiModuleArchiveCacheLocation(&mmapCacheRoot, &mmapCacheBuildVersion)) {
+            _cppInstance->setMmapCacheDirectory(mmapCacheRoot, mmapCacheBuildVersion);
         }
         if ([NSThread isMainThread]) {
             _cppInstance->getMainThreadManager().markCurrentThreadIsMainThread();
@@ -867,6 +882,15 @@ static SCValdiCapturedJSStacktrace *toObjCStacktrace(const Valdi::JavaScriptCapt
     id<SCValdiJSRuntime> resolvedWorker = worker;
     [resolvedWorker dispatchInJsThread:^() { block(resolvedWorker); }
                              attribution:dispatchAttribution];
+}
+
++ (void)disableModuleArchiveCacheForCurrentBuild
+{
+    Valdi::Path root;
+    std::string buildVersion;
+    if (SCValdiModuleArchiveCacheLocation(&root, &buildVersion)) {
+        Valdi::ModuleArchiveCache::disableForBuild(root, buildVersion);
+    }
 }
 
 + (NSArray<SCValdiRuntimeManager *> *)allRuntimeManagers

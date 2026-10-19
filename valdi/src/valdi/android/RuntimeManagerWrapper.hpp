@@ -90,6 +90,12 @@ public:
 
     void setRequestManager(const Valdi::Shared<snap::valdi_core::HTTPRequestManager>& requestManager);
 
+    // Enables the persistent module archive cache in `directory`. `bundledModulesIdentity` identifies the
+    // installed packages, so that bundled modules can be served from the cache without being read.
+    void setModuleArchiveCache(const std::string& directory,
+                               const std::string& buildVersion,
+                               const std::string& bundledModulesIdentity);
+
     void registerAssetLoader(jobject assetLoader, jobject supportedSchemes, jint supportedOutputTypes);
     void unregisterAssetLoader(jobject assetLoader);
 

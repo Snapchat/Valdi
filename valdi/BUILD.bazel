@@ -164,6 +164,7 @@ cc_library(
         "@fmt",
         "@harfbuzz",
         "@phmap",
+        "@xxhash",
         "@zstd",
     ],
 )
@@ -1189,12 +1190,12 @@ cc_test(
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
-        "//bzl/valdi:clientsql_native_test_library",
         ":test_hermes_lib",
         ":test_integration_lib",
         ":test_runtime_lib",
         ":test_snap_drawing_lib",
         ":test_svg_lib",
+        "//bzl/valdi:clientsql_native_test_library",
         "@gtest//:gtest_main",
     ],
 )
@@ -1560,10 +1561,10 @@ filegroup(
 
 filegroup(
     name = "clientsql_generator_test_data",
+    testonly = True,
     srcs = [
         "BUILD.bazel",
         "test/integration/ClientSQLRuntime_tests.cpp",
     ],
-    testonly = True,
     visibility = ["//compiler/clientsql:__pkg__"],
 )

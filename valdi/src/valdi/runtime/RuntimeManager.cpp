@@ -266,7 +266,7 @@ SharedRuntime RuntimeManager::createRuntime(const Shared<IResourceLoader>& resou
         // different one), so there is no lock-inversion risk. This mirrors how
         // the peer setters (e.g. setMmapCacheDirectory, setTweakValueProvider)
         // already operate on runtimes they iterate.
-        runtime->setMmapCacheDirectory(_mmapCacheDirectory);
+        runtime->setMmapCacheDirectory(_mmapCacheDirectory, _mmapCacheBuildVersion);
         runtime->setRuntimeTweaks(_runtimeTweaks);
         if (atomicInitialAutoRenderStateEnabled) {
             runtime->setAutoRenderDisabled(autoRenderDisabled);
@@ -382,6 +382,7 @@ void RuntimeManager::stopDebuggerServices() {
 void RuntimeManager::applicationDidResume() {
     VALDI_INFO(*_logger, "Application did resume");
     _anrDetector->onEnterForeground();
+    ModuleArchiveCache::setApplicationInForeground(true);
     startDebuggerServices();
     cancelDeferredGCTask();
 
@@ -399,6 +400,7 @@ void RuntimeManager::applicationDidResume() {
 void RuntimeManager::applicationWillPause() {
     VALDI_INFO(*_logger, "Application will pause");
     _anrDetector->onEnterBackground();
+    ModuleArchiveCache::setApplicationInForeground(false);
     if (!_keepDebuggerServiceOnPause) {
         stopDebuggerServices();
     }
@@ -908,11 +910,12 @@ const Ref<JavaScriptANRDetector>& RuntimeManager::getANRDetector() const {
     return _anrDetector;
 }
 
-void RuntimeManager::setMmapCacheDirectory(const Path& path) {
+void RuntimeManager::setMmapCacheDirectory(const Path& path, const std::string& buildVersion) {
     std::lock_guard<Mutex> guard(_mutex);
     _mmapCacheDirectory = path;
+    _mmapCacheBuildVersion = buildVersion;
     for (const auto& runtime : getAllRuntimes(guard)) {
-        runtime->setMmapCacheDirectory(path);
+        runtime->setMmapCacheDirectory(path, buildVersion);
     }
 }
 

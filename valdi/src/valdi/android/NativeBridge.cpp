@@ -22,6 +22,7 @@
 #include "valdi/runtime/Interfaces/IDiskCache.hpp"
 #include "valdi/runtime/Resources/AssetLoaderCompletion.hpp"
 #include "valdi/runtime/Resources/AssetsManager.hpp"
+#include "valdi/runtime/Resources/ModuleArchiveCache.hpp"
 #include "valdi/runtime/Views/ViewTransactionScope.hpp"
 #include "valdi_core/jni/IndirectJavaGlobalRef.hpp"
 #include "valdi_core/jni/JavaCache.hpp"
@@ -334,6 +335,31 @@ void ValdiAndroid::NativeBridge::setRuntimeManagerRequestManager( // NOLINT
             runtimeManagerWrapper->setRequestManager(nullptr);
         }
     }
+}
+
+void ValdiAndroid::NativeBridge::setRuntimeManagerModuleArchiveCache( // NOLINT
+    fbjni::alias_ref<fbjni::JClass> /* clazz */,                      // NOLINT
+    jlong runtimeManagerHandle,
+    jstring directory,
+    jstring buildVersion,
+    jstring bundledModulesIdentity) {
+    auto* runtimeManagerWrapper = getRuntimeManagerWrapper(runtimeManagerHandle);
+    if (runtimeManagerWrapper != nullptr) {
+        auto env = ValdiAndroid::JavaEnv();
+        runtimeManagerWrapper->setModuleArchiveCache(ValdiAndroid::toStdString(env, directory),
+                                                     ValdiAndroid::toStdString(env, buildVersion),
+                                                     ValdiAndroid::toStdString(env, bundledModulesIdentity));
+    }
+}
+
+void ValdiAndroid::NativeBridge::disableModuleArchiveCacheForBuild( // NOLINT
+    fbjni::alias_ref<fbjni::JClass> /* clazz */,                    // NOLINT
+    jstring directory,
+    jstring buildVersion) {
+    auto env = ValdiAndroid::JavaEnv();
+    auto directoryString = ValdiAndroid::toStdString(env, directory);
+    Valdi::ModuleArchiveCache::disableForBuild(Valdi::Path(std::string_view(directoryString)),
+                                               ValdiAndroid::toStdString(env, buildVersion));
 }
 
 void ValdiAndroid::NativeBridge::setRuntimeManagerJsThreadQoS( // NOLINT
@@ -2643,6 +2669,10 @@ void ValdiAndroid::NativeBridge::registerNatives() {
         makeNativeMethod("setRuntimeAttachedObject", ValdiAndroid::NativeBridge::setRuntimeAttachedObject),
         makeNativeMethod("setRuntimeManagerRequestManager",
                          ValdiAndroid::NativeBridge::setRuntimeManagerRequestManager),
+        makeNativeMethod("setRuntimeManagerModuleArchiveCache",
+                         ValdiAndroid::NativeBridge::setRuntimeManagerModuleArchiveCache),
+        makeNativeMethod("disableModuleArchiveCacheForBuild",
+                         ValdiAndroid::NativeBridge::disableModuleArchiveCacheForBuild),
         makeNativeMethod("setRetainsLayoutSpecsOnInvalidateLayout",
                          ValdiAndroid::NativeBridge::setRetainsLayoutSpecsOnInvalidateLayout),
         makeNativeMethod("setViewModel", ValdiAndroid::NativeBridge::setViewModel),

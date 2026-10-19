@@ -728,12 +728,14 @@ private:
                             size_t parametersLength,
                             JSExceptionTracker& exceptionTracker);
 
+    // `outParseFailed`, if set, is set to true when the module failed to parse, before any of its code ran.
     ModuleLoadResult loadJsModuleFromBytes(IJavaScriptContext& jsContext,
                                            const BytesView& jsModule,
                                            const StringBox& importPath,
                                            const JSValueRef* parameters,
                                            size_t parametersLength,
-                                           JSExceptionTracker& exceptionTracker);
+                                           JSExceptionTracker& exceptionTracker,
+                                           bool* outParseFailed = nullptr);
 
     ModuleLoadResult loadJsModuleFromNative(IJavaScriptContext& jsContext,
                                             const StringBox& importPath,

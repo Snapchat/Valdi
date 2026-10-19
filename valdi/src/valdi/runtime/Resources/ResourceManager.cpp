@@ -41,6 +41,7 @@
 #include "valdi_core/cpp/Utils/ValueMap.hpp"
 #include "valdi_core/cpp/Utils/ValueUtils.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <fmt/format.h>
@@ -120,10 +121,37 @@ int32_t ResourceManager::getApiVersion() {
 }
 
 Result<Ref<ValdiModuleArchive>> ResourceManager::getArchiveForModule(const StringBox& modulePath,
-                                                                     bool useMmap,
-                                                                     const Path& mmapCacheDir,
+                                                                     Ref<ModuleArchiveCache> archiveCache,
                                                                      const Ref<Metrics>& metrics) {
     auto bundleFilePath = resolveModuleArchiveFilePath(modulePath);
+    // A pack that cannot be used (disabled after a crash loop, locked by another process) costs nothing.
+    if (archiveCache != nullptr && !archiveCache->isUsable(metrics, _logger)) {
+        archiveCache = nullptr;
+    }
+
+    // NOTE: do not acquire _mutex anywhere in this function. It is called from getBundle while the
+    // BundleInitializer holds the Bundle's mutex; the cleanup path (removeUnusedResources) takes
+    // _mutex and then a Bundle mutex, so taking _mutex here inverts that order and can deadlock.
+    // The cache and metrics are snapshotted by getBundle under _mutex and passed in.
+
+    std::optional<ModuleContentIdentity> sourceIdentity;
+    if (archiveCache != nullptr) {
+        // A hit needs only the loader's identity of the module, not its bytes.
+        MetricsStopWatch lookupStopWatch;
+        sourceIdentity = _resourceLoader->getModuleIdentity(bundleFilePath);
+        if (sourceIdentity) {
+            std::string entryKey;
+            auto hit = archiveCache->lookup(modulePath, *sourceIdentity, metrics, _logger, &entryKey);
+            if (hit) {
+                rememberPackEntry(modulePath, std::move(entryKey));
+                if (metrics != nullptr) {
+                    metrics->emitModuleArchiveMmapSuccess(modulePath);
+                    metrics->emitModuleDecompressLatency(modulePath, lookupStopWatch.elapsed());
+                }
+                return Valdi::makeShared<ValdiModuleArchive>(std::move(*hit));
+            }
+        }
+    }
 
     auto bundleContent = _resourceLoader->loadModuleContent(bundleFilePath);
     if (!bundleContent) {
@@ -138,48 +166,36 @@ Result<Ref<ValdiModuleArchive>> ResourceManager::getArchiveForModule(const Strin
 
     const auto& data = bundleContent.value();
 
-    // NOTE: do not acquire _mutex anywhere in this function. It is called from getBundle while the
-    // BundleInitializer holds the Bundle's mutex; the cleanup path (removeUnusedResources) takes
-    // _mutex and then a Bundle mutex, so taking _mutex here inverts that order and can deadlock.
-    // The mmap/metrics settings are snapshotted by getBundle under _mutex and passed in.
+    // The source (e.g. a dynamic-delivery container) may have been replaced between the identity probe and
+    // the read. Only key the bytes by the loader's identity if it still holds; otherwise they are hashed.
+    if (sourceIdentity) {
+        auto identityAfterRead = _resourceLoader->getModuleIdentity(bundleFilePath);
+        if (!identityAfterRead || identityAfterRead->kind != sourceIdentity->kind ||
+            identityAfterRead->value != sourceIdentity->value) {
+            sourceIdentity.reset();
+        }
+    }
 
-    bool usedMmap = false;
-    bool mmapPublishFailed = false;
+    bool servedFromPack = false;
+    std::string entryKey;
     MetricsStopWatch decompressStopWatch;
-    Result<ValdiModuleArchive> result = [&]() {
-        if (useMmap) {
-            // Flat filename keyed by SHA-256 of the module path. Avoids
-            // nested directories under the cache dir, sidesteps any
-            // path-traversal concern from manifest-supplied module paths,
-            // and is deterministic across app launches (std::hash is not —
-            // libc++ may seed it randomly, which would orphan every cache
-            // file on every restart and slowly fill the user's disk).
-            auto modulePathView = modulePath.toStringView();
-            auto flatName =
-                BytesUtils::sha256String(reinterpret_cast<const Byte*>(modulePathView.data()), modulePathView.size());
-            auto mmapPath = mmapCacheDir.appending(std::string_view(flatName));
-            return ValdiModuleArchive::decompress(data.data(), data.size(), mmapPath, &usedMmap, &mmapPublishFailed);
+    Result<ValdiModuleArchive> result = [&]() -> Result<ValdiModuleArchive> {
+        if (archiveCache != nullptr) {
+            auto cached = archiveCache->load(
+                modulePath, sourceIdentity, data.data(), data.size(), metrics, _logger, servedFromPack, &entryKey);
+            if (cached) {
+                return cached;
+            }
         }
         return ValdiModuleArchive::decompress(data.data(), data.size());
     }();
     auto decompressDuration = decompressStopWatch.elapsed();
+    rememberPackEntry(modulePath, servedFromPack ? std::move(entryKey) : std::string());
 
-    // A/B telemetry. Emit a single path counter and a latency timer per call.
-    // Failures don't get a path counter — they wouldn't tell us anything useful
-    // about realized mmap rate.
+    // Misses are served from the heap like loads with the pack off; the pack appends them in the background.
     if (result && metrics != nullptr) {
-        if (useMmap) {
-            if (usedMmap) {
-                metrics->emitModuleArchiveMmapSuccess(modulePath);
-                // Emitted alongside Mmap_Success when the rename-into-cache step
-                // failed; the in-memory buffer is still valid but no file was
-                // published. Expected to be ~0 in production.
-                if (mmapPublishFailed) {
-                    metrics->emitModuleArchiveMmapPublishFail(modulePath);
-                }
-            } else {
-                metrics->emitModuleArchiveMmapFallback(modulePath);
-            }
+        if (servedFromPack) {
+            metrics->emitModuleArchiveMmapSuccess(modulePath);
         } else {
             metrics->emitModuleArchiveHeap(modulePath);
         }
@@ -364,21 +380,22 @@ Ref<Bundle> ResourceManager::getBundle(const StringBox& bundleName) {
     // BundleInitializer holds the Bundle's mutex; it must not take _mutex itself, or it would invert
     // the cleanup path's (_mutex -> Bundle mutex) order and can deadlock.
     auto runtimeTweaks = _runtimeTweaks;
-    auto mmapCacheDir = _mmapCacheDirectory;
+    auto archiveCache = _archiveCache;
     auto metrics = _metrics;
 
     // We now have a lock on the Bundle itself. Release our lock so that
     // other threads can query the ResourceManager on other bundles.
     lock.unlock();
 
-    // Tweak reads can hit the host's config backend; evaluate them after releasing _mutex.
-    bool useMmap = false;
-    if (runtimeTweaks != nullptr) {
-        // Denylisted modules take the heap path — identical to mmap-off behavior, which on
-        // swapless iOS de-facto pins them. The per-module Module_Archive_Heap counter
-        // self-verifies the routing in production.
-        useMmap = runtimeTweaks->enableMmapModuleArchives() && !mmapCacheDir.empty() &&
-                  !runtimeTweaks->isMmapModuleArchiveDenylisted(bundleName);
+    // Tweak reads can hit the host's config backend; evaluate them after releasing _mutex. Without tweaks
+    // the pack is left alone, since the host may attach a provider that turns it on.
+    if (archiveCache != nullptr) {
+        if (runtimeTweaks == nullptr) {
+            archiveCache = nullptr;
+        } else if (!runtimeTweaks->enableMmapModuleArchiveCacheReuse()) {
+            archiveCache->scheduleRemoval();
+            archiveCache = nullptr;
+        }
     }
     // Builds that ship source maps (debug) keep the lookup, so on-device symbolication still works.
     bool lookUpSourceMap = runtimeTweaks == nullptr || !runtimeTweaks->skipSourceMapLookup() || areSourceMapsBundled();
@@ -386,7 +403,7 @@ Ref<Bundle> ResourceManager::getBundle(const StringBox& bundleName) {
     auto assetPackageKey = STRING_LITERAL("res.assetpackage");
     auto hasAssetPackage = false;
 
-    auto archiveResult = getArchiveForModule(bundleName, useMmap, mmapCacheDir, metrics);
+    auto archiveResult = getArchiveForModule(bundleName, archiveCache, metrics);
     if (!archiveResult) {
         if (!_hotReloaderEnabled) {
             VALDI_ERROR(_logger, "Failed to load archive of Module '{}': {}", bundleName, archiveResult.error());
@@ -717,9 +734,53 @@ void ResourceManager::setInlineAssetsEnabled(bool inlineAssetsEnabled) {
     _inlineAssetsEnabled = inlineAssetsEnabled;
 }
 
-void ResourceManager::setMmapCacheDirectory(const Path& path) {
+void ResourceManager::flushPendingArchiveCachePublishes() {
+    Ref<ModuleArchiveCache> archiveCache;
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        archiveCache = _archiveCache;
+    }
+    if (archiveCache != nullptr) {
+        archiveCache->flushPendingPublishes();
+    }
+}
+
+void ResourceManager::reportModuleParseFailure(const StringBox& bundleName) {
+    std::string entryKey;
+    {
+        std::lock_guard<Mutex> guard(_packEntryKeysMutex);
+        auto it = _packEntryKeyByBundle.find(bundleName);
+        if (it == _packEntryKeyByBundle.end()) {
+            return;
+        }
+        entryKey = std::move(it->second);
+        _packEntryKeyByBundle.erase(it);
+    }
+    Ref<ModuleArchiveCache> archiveCache;
+    Ref<Metrics> metrics;
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        archiveCache = _archiveCache;
+        metrics = _metrics;
+    }
+    if (archiveCache != nullptr) {
+        archiveCache->reportParseFailure(bundleName, entryKey, metrics);
+    }
+}
+
+void ResourceManager::rememberPackEntry(const StringBox& bundleName, std::string entryKey) {
+    std::lock_guard<Mutex> guard(_packEntryKeysMutex);
+    if (entryKey.empty()) {
+        _packEntryKeyByBundle.erase(bundleName);
+    } else {
+        _packEntryKeyByBundle[bundleName] = std::move(entryKey);
+    }
+}
+
+void ResourceManager::setMmapCacheDirectory(const Path& path, const std::string& buildVersion) {
     std::lock_guard<Mutex> guard(_mutex);
-    _mmapCacheDirectory = path;
+    // One instance per process and directory: the cache has a single writer.
+    _archiveCache = path.empty() ? nullptr : ModuleArchiveCache::getShared(path, buildVersion);
 }
 
 } // namespace Valdi

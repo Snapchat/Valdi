@@ -302,6 +302,14 @@ public:
     static void setRuntimeManagerRequestManager(fbjni::alias_ref<fbjni::JClass> clazz,
                                                 jlong runtimeManagerHandle,
                                                 jobject requestManager);
+    static void setRuntimeManagerModuleArchiveCache(fbjni::alias_ref<fbjni::JClass> clazz,
+                                                    jlong runtimeManagerHandle,
+                                                    jstring directory,
+                                                    jstring buildVersion,
+                                                    jstring bundledModulesIdentity);
+    static void disableModuleArchiveCacheForBuild(fbjni::alias_ref<fbjni::JClass> clazz,
+                                                  jstring directory,
+                                                  jstring buildVersion);
     static void setRuntimeManagerJsThreadQoS(fbjni::alias_ref<fbjni::JClass> clazz,
                                              jlong runtimeManagerHandle,
                                              jint jsThreadQoS);

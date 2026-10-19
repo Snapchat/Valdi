@@ -337,6 +337,9 @@ class ValdiRuntimeManager(context: Context,
         compositeRequestManager.addRequestManager("https", httpRequestManager)
         NativeBridge.setRuntimeManagerRequestManager(handle.nativeHandle, compositeRequestManager)
 
+        // Only hands the runtime the cache location; ValdiRuntimeTweaks decides whether it is used.
+        configureModuleArchiveCache(handle.nativeHandle)
+
         registerAssetLoader(DefaultValdiImageLoader(
             context,
             imageLoaderPostprocessor,
@@ -371,6 +374,24 @@ class ValdiRuntimeManager(context: Context,
         })
 
         startObservingProcessLifecycle()
+    }
+
+    private fun configureModuleArchiveCache(runtimeManagerHandle: Long) {
+        val applicationInfo = context.applicationInfo
+        // Installed APKs are immutable and replaced on every install, so their paths, sizes and
+        // modification times identify the bundled modules without reading them. The same value serves as
+        // the build version, which avoids a PackageManager call at startup.
+        val apkPaths = listOf(applicationInfo.sourceDir) + (applicationInfo.splitSourceDirs?.toList() ?: emptyList())
+        val bundledModulesIdentity = apkPaths.joinToString("|") { path ->
+            val apk = File(path)
+            "$path:${apk.length()}:${apk.lastModified()}"
+        }
+        val directory = File(context.codeCacheDir, "valdi_module_archive_cache").absolutePath
+        if (tweaks?.disableModuleArchiveCacheForBuild == true) {
+            NativeBridge.disableModuleArchiveCacheForBuild(directory, bundledModulesIdentity)
+        }
+        NativeBridge.setRuntimeManagerModuleArchiveCache(
+            runtimeManagerHandle, directory, bundledModulesIdentity, bundledModulesIdentity)
     }
 
     private fun registerDefaultGlobalAttributesBinder() {

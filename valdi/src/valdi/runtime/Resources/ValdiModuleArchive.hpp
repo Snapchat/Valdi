@@ -12,6 +12,7 @@
 #include "valdi_core/cpp/Utils/PathUtils.hpp"
 #include "valdi_core/cpp/Utils/Result.hpp"
 #include "valdi_core/cpp/Utils/StringBox.hpp"
+#include <tuple>
 #include <vector>
 
 namespace Valdi {
@@ -37,26 +38,16 @@ public:
 
     [[nodiscard]] static Result<ValdiModuleArchive> decompress(const Byte* data, size_t len);
 
-    /**
-     * Decompress using mmap-backed storage when possible.
-     * Falls back to heap allocation if the mmap path fails (e.g. legacy modules
-     * without encoded content size).
-     *
-     * If outUsedMmap is non-null, it is set to true iff the returned archive is
-     * backed by an MmapBuffer and false iff the call fell back to a heap
-     * ByteBuffer. Useful for A/B telemetry. Untouched on error.
-     *
-     * If outMmapPublishFailed is non-null, it is set to true iff the mmap path
-     * succeeded in-memory but failed to publish the cache file to disk (the
-     * returned archive is still valid). Untouched on the heap path or on error.
-     */
-    [[nodiscard]] static Result<ValdiModuleArchive> decompress(const Byte* data,
-                                                               size_t len,
-                                                               const Path& mmapFilePath,
-                                                               bool* outUsedMmap = nullptr,
-                                                               bool* outMmapPublishFailed = nullptr);
-
     [[nodiscard]] static Result<ValdiModuleArchive> deserialize(BytesView decompressedContent);
+
+    /**
+     * Builds an archive over decompressed content from the file list an earlier deserialize produced, without
+     * walking the content. Each entry is (path, offset in the content, size). Returns an error if the content
+     * does not start with a Valdi archive header or an entry is out of bounds; the caller guarantees that the
+     * list otherwise matches the content.
+     */
+    [[nodiscard]] static Result<ValdiModuleArchive> fromDirectory(
+        BytesView decompressedContent, const std::vector<std::tuple<StringBox, size_t, size_t>>& directory);
 
     bool operator==(const ValdiModuleArchive& other) const;
     bool operator!=(const ValdiModuleArchive& other) const;

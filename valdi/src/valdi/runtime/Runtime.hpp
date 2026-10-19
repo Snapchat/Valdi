@@ -246,7 +246,7 @@ public:
 
     void setRuntimeTweaks(const Ref<ValdiRuntimeTweaks>& runtimeTweaks);
 
-    void setMmapCacheDirectory(const Path& path);
+    void setMmapCacheDirectory(const Path& path, const std::string& buildVersion);
 
     void setMetrics(const Ref<Metrics>& metrics);
     const Ref<Metrics>& getMetrics() const;

@@ -19,6 +19,8 @@ public:
 
     Valdi::Result<Valdi::BytesView> loadModuleContent(const Valdi::StringBox& module) override;
 
+    std::optional<Valdi::ModuleContentIdentity> getModuleIdentity(const Valdi::StringBox& module) override;
+
     Valdi::StringBox resolveLocalAssetURL(const Valdi::StringBox& moduleName,
                                           const Valdi::StringBox& resourcePath) override;
 

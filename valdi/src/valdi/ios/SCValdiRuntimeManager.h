@@ -67,6 +67,12 @@ NS_ASSUME_NONNULL_BEGIN
  */
 + (NSArray<SCValdiRuntimeManager*>*)allRuntimeManagers;
 
+/**
+ Deletes this build's module archive cache and keeps it off until the next build. For startup crash-loop
+ recovery: call it before any runtime manager is created.
+ */
++ (void)disableModuleArchiveCacheForCurrentBuild;
+
 @end
 
 NS_ASSUME_NONNULL_END

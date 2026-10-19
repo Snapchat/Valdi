@@ -768,8 +768,8 @@ void Runtime::setRuntimeTweaks(const Ref<ValdiRuntimeTweaks>& runtimeTweaks) {
     }
 }
 
-void Runtime::setMmapCacheDirectory(const Path& path) {
-    _resourceManager->setMmapCacheDirectory(path);
+void Runtime::setMmapCacheDirectory(const Path& path, const std::string& buildVersion) {
+    _resourceManager->setMmapCacheDirectory(path, buildVersion);
 }
 
 void Runtime::setMetrics(const Ref<Metrics>& metrics) {

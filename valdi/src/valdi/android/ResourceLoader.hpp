@@ -9,6 +9,7 @@
 
 #include "valdi/runtime/Interfaces/IResourceLoader.hpp"
 #include "valdi/runtime/Resources/AssetLoader.hpp"
+#include "valdi_core/cpp/Utils/Mutex.hpp"
 #include "valdi_core/jni/GlobalRefJavaObject.hpp"
 #include "valdi_core/jni/JavaEnv.hpp"
 #include "valdi_core/jni/JavaMethod.hpp"
@@ -25,6 +26,14 @@ public:
     Valdi::Shared<Valdi::IResourceLoader> withCustomResourceResolver(jobject customResourceResolver) const;
 
     Valdi::Result<Valdi::BytesView> loadModuleContent(const Valdi::StringBox& module) override;
+
+    std::optional<Valdi::ModuleContentIdentity> getModuleIdentity(const Valdi::StringBox& module) override;
+
+    /**
+     * Sets the identity of the installed packages that contain the bundled modules (e.g. APK path, size and
+     * modification time). Bundled modules are then identified without being read. Empty disables it.
+     */
+    void setBundledModulesIdentity(std::string identity);
 
     Valdi::StringBox resolveLocalAssetURL(const Valdi::StringBox& moduleName,
                                           const Valdi::StringBox& resourcePath) override;
@@ -65,6 +74,8 @@ private:
     JavaMethod<JavaObject, ByteArray, int32_t, int32_t, JavaObject, float, int64_t> _loadAssetFromBytes;
     JavaMethod<JavaObject, JavaObject, int32_t, int32_t, JavaObject, float, int64_t> _loadAssetFromBitmap;
     bool _shouldDeferModuleLoadToJava;
+    Valdi::Mutex _bundledModulesIdentityMutex;
+    std::string _bundledModulesIdentity;
 };
 
 } // namespace ValdiAndroid

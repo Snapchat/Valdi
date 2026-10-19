@@ -28,6 +28,15 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (NSData*)customModuleDataForPath:(NSString*)modulePath error:(NSError**)error;
 
+@optional
+
+/**
+ Returns an identity of the data customModuleDataForPath:error: would return for the given module path, without
+ loading it, or nil if this provider does not serve the path. The identity must change whenever the data could
+ change. Without this method the runtime has to load every module to identify it.
+ */
+- (nullable NSString*)customModuleIdentityForPath:(NSString*)modulePath;
+
 @end
 
 NS_ASSUME_NONNULL_END

@@ -6,11 +6,11 @@
 //
 
 #include "valdi/runtime/Resources/ValdiModuleArchive.hpp"
-#include "valdi/runtime/Resources/MmapBuffer.hpp"
 #include "valdi/runtime/Resources/ZStdUtils.hpp"
 #include "valdi_core/cpp/Resources/ValdiArchive.hpp"
+#include "valdi_core/cpp/Resources/ValdiPacket.hpp"
 
-#include "valdi_core/cpp/Utils/DiskUtils.hpp"
+#include "valdi_core/cpp/Utils/Format.hpp"
 #include "valdi_core/cpp/Utils/Parser.hpp"
 #include "valdi_core/cpp/Utils/Shared.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
@@ -81,44 +81,26 @@ Result<ValdiModuleArchive> ValdiModuleArchive::decompress(const Byte* data, size
     }
 }
 
-// Future optimization: reuse cached mmap files across launches.
-// The compiler can append a ZStd skippable frame (magic 0x184D2A50, 8-byte header + 32-byte
-// SHA-256) to the end of each .valdimodule file. The runtime reads the last 40 bytes to extract
-// the hash, uses it as the cache filename, and opens the existing file via MmapBuffer::openReadOnly
-// instead of decompressing. Skippable frames are backward-compatible: old clients decompress
-// normally (streaming path handles them), new clients get a free staleness check.
-Result<ValdiModuleArchive> ValdiModuleArchive::decompress(
-    const Byte* data, size_t len, const Path& mmapFilePath, bool* outUsedMmap, bool* outMmapPublishFailed) {
-    if (!ZStdUtils::isZstdFile(data, len)) {
-        // Plain (uncompressed) archives don't touch either decompress backend.
-        // Treat as "heap" for the purposes of the mmap A/B since no mmap region
-        // is created.
-        if (outUsedMmap != nullptr) {
-            *outUsedMmap = false;
+Result<ValdiModuleArchive> ValdiModuleArchive::fromDirectory(
+    BytesView decompressedContent, const std::vector<std::tuple<StringBox, size_t, size_t>>& directory) {
+    // Only the 8-byte packet header is read; the entries' own headers are never touched.
+    auto dataSection = ValdiPacket::read(decompressedContent.data(), decompressedContent.size());
+    if (!dataSection) {
+        return dataSection.moveError();
+    }
+
+    FlatMap<StringBox, ValdiModuleArchiveEntry> entries;
+    std::vector<StringBox> orderedEntryPaths;
+    orderedEntryPaths.reserve(directory.size());
+    for (const auto& [path, offset, size] : directory) {
+        if (offset > decompressedContent.size() || size > decompressedContent.size() - offset) {
+            return Error(STRING_FORMAT("Archive entry '{}' is out of bounds", path));
         }
-        return ValdiModuleArchive::deserialize(BytesView(nullptr, data, len));
+        entries[path] = (ValdiModuleArchiveEntry){.data = decompressedContent.data() + offset, .size = size};
+        orderedEntryPaths.emplace_back(path);
     }
 
-    auto parentDir = mmapFilePath.removingLastComponent();
-    DiskUtils::makeDirectory(parentDir, true);
-
-    auto mmapResult = ZStdUtils::decompressToMmap(data, len, mmapFilePath, outMmapPublishFailed);
-    if (mmapResult) {
-        if (outUsedMmap != nullptr) {
-            *outUsedMmap = true;
-        }
-        return ValdiModuleArchive::deserialize(mmapResult.value()->toBytesView());
-    }
-
-    auto heapResult = ZStdUtils::decompress(data, len);
-    if (!heapResult) {
-        return heapResult.moveError();
-    }
-
-    if (outUsedMmap != nullptr) {
-        *outUsedMmap = false;
-    }
-    return ValdiModuleArchive::deserialize(heapResult.value()->toBytesView());
+    return ValdiModuleArchive(std::move(decompressedContent), std::move(entries), std::move(orderedEntryPaths));
 }
 
 Result<ValdiModuleArchive> ValdiModuleArchive::deserialize(BytesView decompressedContent) {
