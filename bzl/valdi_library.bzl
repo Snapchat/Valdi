@@ -16,6 +16,7 @@ WARNING_FLAGS = [
     "-Wno-gnu-anonymous-struct",
     "-Wno-nested-anon-types",
     "-Wno-unused-parameter",
+    "-Wno-nullability-extension",
     # Disable for SC_PICK_ASSERTION_ARGS:
     "-Wno-gnu-zero-variadic-macro-arguments",
     # Disable errors for deprecation warnings

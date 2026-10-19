@@ -240,6 +240,8 @@ void describe('valdi cli app', () => {
         stderr: [/Build completed successfully, \d+ total actions?/],
         // The default bootstrapped app logs "Hello world!"
         stdout: ['Hello world!'],
+        // Match the build tests' idle budget for pauses while fetching remote-cache results.
+        idleTimeoutMs: 120_000,
       },
       task,
     );
