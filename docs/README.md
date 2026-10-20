@@ -93,6 +93,7 @@
  - [Valdi Style Guide](./docs/workflow-style-guide.md)
  - [Valdi Inspector](./docs/workflow-inspector.md)
  - [Testing](./docs/workflow-testing.md)
+ - [Web development](./docs/workflow-web-development.md)
  - [Hermes Debugger](./docs/workflow-hermes-debugger.md)
  - [Disk Management](./docs/workflow-disk.md)
 

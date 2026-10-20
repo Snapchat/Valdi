@@ -1,3 +1,5 @@
+import { IViewNodeAssetTracker, ViewNodeAssetTrackerEventType } from './IViewNodeAssetTracker';
+
 interface AssetState {
   next: AssetState | undefined;
   prev: AssetState | undefined;
@@ -5,7 +7,7 @@ interface AssetState {
   error: string | undefined;
 }
 
-export class ManagedContextAssetTracker {
+export class ViewNodeAssetTracker implements IViewNodeAssetTracker {
   get assetsCount(): number {
     return this._assetCount;
   }
@@ -19,6 +21,20 @@ export class ManagedContextAssetTracker {
   private _assetCount = 0;
   private onAllAssetsLoadedCallbacks: (() => void)[] = [];
   private assetStateRoot: AssetState | undefined = undefined;
+
+  onAssetEvent(eventType: ViewNodeAssetTrackerEventType, nodeId: number, error: string | undefined): void {
+    switch (eventType) {
+      case ViewNodeAssetTrackerEventType.beganRequestingLoadedAsset:
+        this.onBeganRequestingLoadedAsset(nodeId);
+        break;
+      case ViewNodeAssetTrackerEventType.endRequestingLoadedAsset:
+        this.onEndRequestingLoadedAsset(nodeId);
+        break;
+      case ViewNodeAssetTrackerEventType.loadedAssetChange:
+        this.onLoadedAssetChanged(nodeId, error);
+        break;
+    }
+  }
 
   collectErrors(): string[] | undefined {
     let errors: string[] | undefined;
@@ -36,12 +52,12 @@ export class ManagedContextAssetTracker {
     return errors;
   }
 
-  onAllAssetsLoaded(cb: () => void): void {
-    this.onAllAssetsLoadedCallbacks.push(cb);
+  onAllAssetsLoaded(callback: () => void): void {
+    this.onAllAssetsLoadedCallbacks.push(callback);
     this.flushAllAssetsLoadedIfNeeded();
   }
 
-  private removeAssetState(assetState: AssetState) {
+  private removeAssetState(assetState: AssetState): void {
     const prev = assetState.prev;
     const next = assetState.next;
 
@@ -62,7 +78,7 @@ export class ManagedContextAssetTracker {
     assetState.next = undefined;
   }
 
-  private appendAssetState(assetState: AssetState) {
+  private appendAssetState(assetState: AssetState): void {
     this._assetCount++;
 
     if (this.assetStateRoot) {
@@ -85,7 +101,7 @@ export class ManagedContextAssetTracker {
     return true;
   }
 
-  private flushAllAssetsLoadedIfNeeded() {
+  private flushAllAssetsLoadedIfNeeded(): void {
     if (this.areAllAssetsLoaded() && this.onAllAssetsLoadedCallbacks.length > 0) {
       const callbacks = this.onAllAssetsLoadedCallbacks;
       this.onAllAssetsLoadedCallbacks = [];
@@ -96,7 +112,7 @@ export class ManagedContextAssetTracker {
   }
 
   onBeganRequestingLoadedAsset(viewNode: number): void {
-    let existingState = this.assetStateById[viewNode];
+    const existingState = this.assetStateById[viewNode];
     if (existingState) {
       this.removeAssetState(existingState);
     }
@@ -104,12 +120,11 @@ export class ManagedContextAssetTracker {
     this.assetStateById[viewNode] = newAssetState;
 
     this.appendAssetState(newAssetState);
-
     this.flushAllAssetsLoadedIfNeeded();
   }
 
   onEndRequestingLoadedAsset(viewNode: number): void {
-    let existingState = this.assetStateById[viewNode];
+    const existingState = this.assetStateById[viewNode];
     delete this.assetStateById[viewNode];
 
     if (existingState) {
@@ -120,15 +135,13 @@ export class ManagedContextAssetTracker {
   }
 
   onLoadedAssetChanged(viewNode: number, error: string | undefined): void {
-    let existingState = this.assetStateById[viewNode];
-
+    const existingState = this.assetStateById[viewNode];
     if (!existingState) {
       return;
     }
 
     existingState.loaded = !error;
     existingState.error = error;
-
     this.flushAllAssetsLoadedIfNeeded();
   }
 }

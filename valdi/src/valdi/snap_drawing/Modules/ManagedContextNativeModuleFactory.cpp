@@ -17,7 +17,6 @@
 #include "snap_drawing/cpp/Text/FontManager.hpp"
 #include "valdi/runtime/Context/Context.hpp"
 #include "valdi/runtime/Context/ContextAutoDestroy.hpp"
-#include "valdi/runtime/Context/IViewNodesAssetTracker.hpp"
 #include "valdi/runtime/Context/ViewManagerContext.hpp"
 #include "valdi/runtime/Runtime.hpp"
 #include "valdi/snap_drawing/Utils/ValdiUtils.hpp"
@@ -186,39 +185,6 @@ private:
     Ref<DisplayList> _displayList;
 };
 
-class AssetTrackerBridge : public Valdi::IViewNodesAssetTracker {
-public:
-    static constexpr int32_t kEventTypeBeganRequesting = 1;
-    static constexpr int32_t kEventTypeEndRequesting = 2;
-    static constexpr int32_t kEventTypeLoadedAssetChanged = 3;
-
-    explicit AssetTrackerBridge(Ref<Valdi::ValueFunction> callback) : _callback(std::move(callback)) {}
-
-    ~AssetTrackerBridge() override = default;
-
-    void onBeganRequestingLoadedAsset(Valdi::RawViewNodeId viewNodeId, const Ref<Valdi::Asset>& asset) override {
-        _callback->call(Valdi::ValueFunctionFlagsNone,
-                        {Valdi::Value(kEventTypeBeganRequesting), Valdi::Value(viewNodeId)});
-    }
-
-    void onEndRequestingLoadedAsset(Valdi::RawViewNodeId viewNodeId, const Ref<Valdi::Asset>& asset) override {
-        _callback->call(Valdi::ValueFunctionFlagsNone,
-                        {Valdi::Value(kEventTypeEndRequesting), Valdi::Value(viewNodeId)});
-    }
-
-    void onLoadedAssetChanged(Valdi::RawViewNodeId viewNodeId,
-                              const Ref<Valdi::Asset>& asset,
-                              const std::optional<Valdi::StringBox>& error) override {
-        _callback->call(Valdi::ValueFunctionFlagsNone,
-                        {Valdi::Value(kEventTypeLoadedAssetChanged),
-                         Valdi::Value(viewNodeId),
-                         error ? Valdi::Value(error.value()) : Valdi::Value::undefined()});
-    }
-
-private:
-    Ref<Valdi::ValueFunction> _callback;
-};
-
 ManagedContextNativeModuleFactory::ManagedContextNativeModuleFactory(
     Valdi::Function<Ref<Runtime>()> runtimeProvider,
     Valdi::Function<Ref<Valdi::ViewManagerContext>()> viewManagerContextProvider)
@@ -272,15 +238,6 @@ Valdi::Value ManagedContextNativeModuleFactory::createValdiContextWithSnapDrawin
         return Valdi::Value();
     }
 
-    Ref<Valdi::IViewNodesAssetTracker> assetTracker;
-    if (callContext.getParametersSize() > 2) {
-        auto callback = callContext.getParameterAsFunction(2);
-        if (callback == nullptr) {
-            return Valdi::Value();
-        }
-        assetTracker = Valdi::makeShared<AssetTrackerBridge>(std::move(callback));
-    }
-
     auto* runtime = context->getRuntime();
 
     auto newContext =
@@ -288,7 +245,6 @@ Valdi::Value ManagedContextNativeModuleFactory::createValdiContextWithSnapDrawin
     auto viewNodeTree = runtime->createViewNodeTree(newContext, Valdi::ViewNodeTreeThreadAffinity::ANY);
     viewNodeTree->setRootViewWithDefaultViewClass();
     viewNodeTree->setRetainsLayoutSpecsOnInvalidateLayout(true);
-    viewNodeTree->setAssetTracker(assetTracker);
 
     return Valdi::Value()
         .setMapValue("contextId", Valdi::Value(static_cast<int32_t>(newContext->getContextId())))

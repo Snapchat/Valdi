@@ -1,0 +1,48 @@
+module.path = "test/src/TrackedBundledAsset";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.TrackedBundledAsset = void 0;
+const __Renderer = require('valdi_core/src/JSX').jsx;
+const __nodeView1 = __Renderer.makeNodePrototype('view');
+const __nodeImage1 = __Renderer.makeNodePrototype('image', ['id', "imageView"]);
+const res_1 = require("test/res");
+const Component_1 = require("valdi_core/src/Component");
+const ViewNodeAssetTracker_1 = require("valdi_core/src/ViewNodeAssetTracker");
+class ReportingViewNodeAssetTracker extends ViewNodeAssetTracker_1.ViewNodeAssetTracker {
+    constructor(viewModel) {
+        super();
+        this.viewModel = viewModel;
+    }
+    onBeganRequestingLoadedAsset(viewNode) {
+        super.onBeganRequestingLoadedAsset(viewNode);
+        this.viewModel.onAssetEvent(1 /* ViewNodeAssetTrackerEventType.beganRequestingLoadedAsset */, viewNode, undefined);
+        this.onAllAssetsLoaded(() => this.viewModel.onAllAssetsLoaded());
+    }
+    onEndRequestingLoadedAsset(viewNode) {
+        super.onEndRequestingLoadedAsset(viewNode);
+        this.viewModel.onAssetEvent(2 /* ViewNodeAssetTrackerEventType.endRequestingLoadedAsset */, viewNode, undefined);
+    }
+    onLoadedAssetChanged(viewNode, error) {
+        this.viewModel.onAssetEvent(3 /* ViewNodeAssetTrackerEventType.loadedAssetChange */, viewNode, error);
+        super.onLoadedAssetChanged(viewNode, error);
+    }
+}
+class TrackedBundledAsset extends Component_1.Component {
+    onCreate() {
+        const assetTracker = new ReportingViewNodeAssetTracker(this.viewModel);
+        runtime.setViewNodeAssetTracker(this.renderer.contextId, assetTracker.onAssetEvent.bind(assetTracker));
+    }
+    onRender() {
+        __Renderer.beginRender(__nodeView1, undefined);
+        {this.viewModel.showImage ? (() => {
+            __Renderer.beginRender(__nodeImage1, undefined);
+            __Renderer.setAttribute('src', res_1.default.emoji);
+            __Renderer.endRender();
+        })() : null}
+        __Renderer.endRender();
+    }
+    clearAssetTracker() {
+        runtime.setViewNodeAssetTracker(this.renderer.contextId, undefined);
+    }
+}
+exports.TrackedBundledAsset = TrackedBundledAsset;

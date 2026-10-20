@@ -1,0 +1,13 @@
+import { Component } from 'valdi_core/src/Component';
+import { ViewNodeAssetTrackerEventType } from 'valdi_core/src/IViewNodeAssetTracker';
+interface ViewModel {
+    showImage: boolean;
+    onAssetEvent(eventType: ViewNodeAssetTrackerEventType, nodeId: number, error: string | undefined): void;
+    onAllAssetsLoaded(): void;
+}
+export declare class TrackedBundledAsset extends Component<ViewModel> {
+    onCreate(): void;
+    onRender(): void;
+    clearAssetTracker(): void;
+}
+export {};

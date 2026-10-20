@@ -13,22 +13,9 @@ export interface SnapDrawingValdiContext {
   native: SnapDrawingValdiContextNative;
 }
 
-export const enum AssetTrackerEventType {
-  beganRequestingLoadedAsset = 1,
-  endRequestingLoadedAsset = 2,
-  loadedAssetChange = 3,
-}
-
-export type AssetTrackerCallback = (
-  eventType: AssetTrackerEventType,
-  nodeId: number,
-  error: string | undefined,
-) => void;
-
 export function createValdiContextWithSnapDrawing(
   useNewExternalSurfaceRasterMethod: boolean,
   enableDeltaRasterization: boolean,
-  assetTrackerCallback: AssetTrackerCallback,
 ): SnapDrawingValdiContext;
 
 export function destroyValdiContextWithSnapDrawing(native: SnapDrawingValdiContextNative): void;

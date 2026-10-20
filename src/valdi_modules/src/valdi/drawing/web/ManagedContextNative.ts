@@ -3,8 +3,6 @@ import {
   SnapDrawingValdiContext,
   SnapDrawingValdiContextNative,
   SnapDrawingFrameNative,
-  AssetTrackerCallback,
-  AssetTrackerEventType,
 } from '../src/ManagedContextNative';
 import type { Rect } from '../src/ManagedContextNative';
 
@@ -22,17 +20,9 @@ function makeFrame(): SnapDrawingFrameNative {
 }
 
 export function createValdiContextWithSnapDrawing(
-  useNewExternalSurfaceRasterMethod: boolean,
-  assetTrackerCallback: AssetTrackerCallback,
+  _useNewExternalSurfaceRasterMethod: boolean,
+  _enableDeltaRasterization: boolean,
 ): SnapDrawingValdiContext {
-  // Fire a benign "started" and "ended" sequence to exercise the callback.
-  try {
-    assetTrackerCallback(AssetTrackerEventType.beganRequestingLoadedAsset, 0, undefined);
-    assetTrackerCallback(AssetTrackerEventType.endRequestingLoadedAsset, 0, undefined);
-  } catch {
-    // Intentionally swallow in stub
-  }
-
   const id = String(_nextContextId++);
   return {
     contextId: id,

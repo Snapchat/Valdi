@@ -1,8 +1,6 @@
 import { TextDecoder, TextEncoder } from 'coreutils/src/unicode/TextCoding';
 import 'jasmine/src/jasmine';
 
-declare const global: any;
-
 describe('TextDecoder', () => {
   it('can decode utf8', () => {
     const textDecoder = new TextDecoder('utf-8');
@@ -22,8 +20,8 @@ describe('TextDecoder', () => {
     expect(str).toBe('👍🏻');
   });
 
-  it('is assigned in global', () => {
-    expect(global.TextDecoder).toBeDefined();
+  it('is assigned in globalThis', () => {
+    expect(globalThis.TextDecoder).toBeDefined();
   });
 });
 
@@ -52,7 +50,7 @@ describe('TextEncoder', () => {
     expect(new Uint32Array(result.buffer)).toEqual(new Uint32Array([0x1f44d, 0x1f3fb]));
   });
 
-  it('is assigned in global', () => {
-    expect(global.TextDecoder).toBeDefined();
+  it('is assigned in globalThis', () => {
+    expect(globalThis.TextDecoder).toBeDefined();
   });
 });

@@ -3,6 +3,7 @@ export declare class ColorPaletteTest extends Component {
     onCreate(): void;
     onRender(): void;
     setDarkColorPalette(): void;
+    setLegacyColorPalette(): void;
     updateDarkColorPalette(): void;
     updateLightColorPalette(): void;
 }

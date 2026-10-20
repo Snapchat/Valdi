@@ -143,6 +143,12 @@ class Runtime {
     }
   }
 
+  /** @deprecated Use configureColorPalette() and setActiveColorPalette() instead. */
+  setColorPalette(palette: any) {
+    this.configureColorPalette('default', palette);
+    this.setActiveColorPalette('default');
+  }
+
   getColorPalette() {
     return (global as any).currentPalette;
   }
@@ -164,6 +170,9 @@ class Runtime {
   setLayoutSpecs(contextId: string, width: number, height: number, rtl: boolean) {
     // console.log("setLayoutSpecs", contextId, width, height, rtl);
   }
+
+  // This renderer does not report asset loads; callers see no tracked assets.
+  setViewNodeAssetTracker(contextId: string, callback: unknown) {}
 
   postMessage(contextId: string, command: string, params: any) {
     // console.log("postMessage", contextId, command, params);

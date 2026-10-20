@@ -7,6 +7,7 @@ import { ElementId } from './IRenderedElement';
 import { IRootComponentsManager } from './IRootComponentsManager';
 import { RenderRequest } from './RenderRequest';
 import { SubmitDebugMessageFunc } from './debugging/DebugMessage';
+import { ViewNodeAssetTrackerCallback } from './IViewNodeAssetTracker';
 import { AnyFunction } from './utils/Callback';
 import { PropertyList } from './utils/PropertyList';
 
@@ -129,6 +130,7 @@ export interface ValdiRuntime extends RuntimeBase {
   createContext(manager?: IRootComponentsManager): string;
   destroyContext(contextId: string): void;
   setLayoutSpecs(contextId: string, width: number, height: number, rtl: boolean): void;
+  setViewNodeAssetTracker(contextId: string, callback: ViewNodeAssetTrackerCallback | undefined): void;
   measureContext(
     contextId: string,
     maxWidth: number,
@@ -188,6 +190,8 @@ export interface ValdiRuntime extends RuntimeBase {
   ): () => void;
   getLoadedAssetMetadata(loadedAsset: LoadedAsset): LoadedAssetMetadata | undefined;
 
+  /** @deprecated Use configureColorPalette() and setActiveColorPalette() instead. */
+  setColorPalette(colorPalette: ColorPalette): void;
   configureColorPalette(name: string, colorPalette: ColorPalette): void;
   setActiveColorPalette(name: string): void;
 

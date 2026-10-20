@@ -26,6 +26,13 @@ export class ColorPaletteTest extends Component {
     runtime.setActiveColorPalette('dark');
   }
 
+  setLegacyColorPalette() {
+    runtime.setColorPalette({
+      background: 'rgba(0, 0, 0, 1)',
+      foreground: 'rgba(255, 255, 255, 1)',
+    });
+  }
+
   updateDarkColorPalette() {
     runtime.configureColorPalette('dark', {
       background: 'rgba(0, 0, 0, 1)',

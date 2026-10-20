@@ -26,6 +26,9 @@ import {
   RELEASE_BUILD_FLAGS,
   VALID_PLATFORMS,
   androidPlatformsFlag,
+  WEB_BAZEL_APPLICATION_TAG,
+  WEB_BUILD_FLAGS,
+  WEB_EXPORTED_LIBRARY_TAG,
 } from '../core/constants';
 import { CliError } from '../core/errors';
 import type { BazelClient } from './BazelClient';
@@ -47,7 +50,7 @@ export function makeArgsBuilder<T extends SharedCommandParameters>(
   return yargs => {
     yargs
       .positional('platform', {
-        describe: 'Platform to build the library or application for: <ios|android>',
+        describe: 'Platform to build for: <ios|android|macos|cli|web>',
         type: 'string',
         choices: VALID_PLATFORMS,
         coerce: arg => {
@@ -55,7 +58,7 @@ export function makeArgsBuilder<T extends SharedCommandParameters>(
         },
       })
       .option('build_config', {
-        describe: 'Specifiy whether the application or library should be built in release or debug mode',
+        describe: 'Specifiy whether the target should be built in release or debug mode',
         type: 'string',
         choices: ['debug', 'release'],
         default: 'debug',
@@ -127,6 +130,9 @@ export function getApplicationTargetTagForPlatform(platform: PLATFORM): string {
     case PLATFORM.CLI: {
       return CLI_BAZEL_APPLICATION_TAG;
     }
+    case PLATFORM.WEB: {
+      return WEB_BAZEL_APPLICATION_TAG;
+    }
   }
 }
 
@@ -146,6 +152,9 @@ export function getExportedLibraryTargetTagForPlatform(platform: PLATFORM): stri
     }
     case PLATFORM.CLI: {
       throw new CliError('Exported library is not supported for CLI platform');
+    }
+    case PLATFORM.WEB: {
+      return WEB_EXPORTED_LIBRARY_TAG;
     }
   }
 }
@@ -167,6 +176,9 @@ export function applicationExtensionForPlatform(platform: PLATFORM): string {
     case PLATFORM.CLI: {
       return '';
     }
+    case PLATFORM.WEB: {
+      return '.zip';
+    }
   }
 }
 
@@ -185,6 +197,9 @@ export function exportedLibraryExtensionForPlatform(platform: PLATFORM): string 
       return '.zip';
     }
     case PLATFORM.CLI: {
+      return '.zip';
+    }
+    case PLATFORM.WEB: {
       return '.zip';
     }
   }
@@ -276,6 +291,8 @@ export function resolveBazelBuildArgs(
     allArgs.push(...MACOS_BUILD_FLAGS);
   } else if (platform === PLATFORM.LINUX) {
     allArgs.push(...LINUX_BUILD_FLAGS);
+  } else if (platform === PLATFORM.WEB) {
+    allArgs.push(...WEB_BUILD_FLAGS);
   }
 
   if (platform === PLATFORM.ANDROID) {

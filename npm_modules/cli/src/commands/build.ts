@@ -59,6 +59,12 @@ async function valdiBuild(argv: ArgumentsResolver<CommandParameters>) {
       await bazel.buildTarget(buildInfo.application, buildInfo.bazelArgs);
       break;
     }
+    case PLATFORM.WEB: {
+      logReproduceThisCommandIfNeeded(argv);
+      console.log('Building web application...');
+      await bazel.buildTarget(buildInfo.application, buildInfo.bazelArgs);
+      break;
+    }
   }
 }
 

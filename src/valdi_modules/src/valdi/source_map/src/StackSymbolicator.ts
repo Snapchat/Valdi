@@ -137,20 +137,25 @@ function symbolicateStackFrame(stackFrame: StackFrame, getOrCreateSourceMapFunc:
     return stackFrame;
   }
 
-  const sourceMap = getOrCreateSourceMapFunc(stackFrame.fileName, createSourceMap);
-  if (!sourceMap) {
+  try {
+    const sourceMap = getOrCreateSourceMapFunc(stackFrame.fileName, createSourceMap);
+    if (!sourceMap) {
+      return stackFrame;
+    }
+
+    const resolved = sourceMap.resolve(stackFrame.line, stackFrame.column, stackFrame.name);
+    if (!resolved) {
+      return stackFrame;
+    }
+
+    const fileName = resolved.fileName ?? stackFrame.fileName;
+    const name = resolved.name ?? stackFrame.name;
+
+    return { fileName, name, line: resolved.line, column: resolved.column };
+  } catch (err: any) {
+    console.error(`Failed to symbolicate stack frame ${stackFrame.fileName}: ${err.message}`);
     return stackFrame;
   }
-
-  const resolved = sourceMap.resolve(stackFrame.line, stackFrame.column, stackFrame.name);
-  if (!resolved) {
-    return stackFrame;
-  }
-
-  const fileName = resolved.fileName ?? stackFrame.fileName;
-  const name = resolved.name ?? stackFrame.name;
-
-  return { fileName, name, line: resolved.line, column: resolved.column };
 }
 
 export function symbolicateStackFrames(

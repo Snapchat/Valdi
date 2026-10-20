@@ -174,4 +174,5 @@ done | sed '/^import ValdiCoreSwift$$/d' > $@
         npm_version = npm_version,
         exclude_jsx_global_declaration = web_exclude_jsx_global_declaration,
         modules = deps,
+        tags = ["valdi_web_exported_library"],
     )
