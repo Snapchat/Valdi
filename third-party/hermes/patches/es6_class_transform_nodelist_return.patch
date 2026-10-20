@@ -1,0 +1,55 @@
+--- a/lib/AST/ES6Class.cpp
++++ b/lib/AST/ES6Class.cpp
+@@ -55,13 +55,13 @@
+     _storage.insert(_storage.begin(), node);
+   }
+ 
+-  ESTree::NodeList toNodeList() const {
+-    ESTree::NodeList nodeList;
++  /// Links the nodes into \p out. Fill a named list and std::move it into the
++  /// node instead of returning a NodeList by value: the by-value return left
++  /// the nodes pointing at a dead stack copy of the list's sentinel.
++  void appendTo(ESTree::NodeList &out) const {
+     for (auto &node : _storage) {
+-      nodeList.push_back(*node);
++      out.push_back(*node);
+     }
+-
+-    return nodeList;
+   }
+ 
+  private:
+@@ -407,8 +407,10 @@
+ 
+     auto *getPropertyNode = createTransformedNode<ESTree::MemberExpressionNode>(
+         srcNode, hermesInternalIdentifier, methodIdentifier, false);
++    ESTree::NodeList arguments;
++    parameters.appendTo(arguments);
+     return createTransformedNode<ESTree::CallExpressionNode>(
+-        srcNode, getPropertyNode, nullptr, parameters.toNodeList());
++        srcNode, getPropertyNode, nullptr, std::move(arguments));
+   }
+ 
+   ESTree::IdentifierNode *makeIdentifierNode(
+@@ -441,8 +443,10 @@
+ 
+     auto *getPropertyNode = createTransformedNode<ESTree::MemberExpressionNode>(
+         srcNode, object, methodIdentifier, false);
++    ESTree::NodeList arguments;
++    parameters.appendTo(arguments);
+     return createTransformedNode<ESTree::CallExpressionNode>(
+-        srcNode, getPropertyNode, nullptr, parameters.toNodeList());
++        srcNode, getPropertyNode, nullptr, std::move(arguments));
+   }
+ 
+   ESTree::Node *createSuperCall(
+@@ -522,7 +526,8 @@
+       ESTree::Node *srcNode,
+       const NodeVector &statements,
+       ESTree::Node *returnVariableName) {
+-    auto stmtList = statements.toNodeList();
++    ESTree::NodeList stmtList;
++    statements.appendTo(stmtList);
+ 
+     auto *returnStmt = createTransformedNode<ESTree::ReturnStatementNode>(
+         srcNode, copyIdentifier(returnVariableName));

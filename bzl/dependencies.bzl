@@ -160,7 +160,10 @@ def setup_dependencies(workspace_root = None):
         strip_prefix = "hermes-880b1645b5dca974f4329dc4108692d301abee0d",
         build_file = "@valdi//third-party/hermes:hermes.BUILD",
         patch_args = ["-p1"],
-        patches = ["@valdi//third-party/hermes/patches:nontrivial_memcall.patch"],
+        patches = [
+            "@valdi//third-party/hermes/patches:es6_class_transform_nodelist_return.patch",
+            "@valdi//third-party/hermes/patches:nontrivial_memcall.patch",
+        ],
     )
 
     http_archive(
