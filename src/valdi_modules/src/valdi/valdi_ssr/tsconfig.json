@@ -1,0 +1,8 @@
+{
+  "extends": "../_configs/base.tsconfig.json",
+  "compilerOptions": {
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "strict": true
+  }
+}

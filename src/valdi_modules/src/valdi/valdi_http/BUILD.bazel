@@ -35,10 +35,12 @@ valdi_module(
     visibility = ["//visibility:public"],
     web_deps = [":valdi_http_web"],
     web_register_native_module_id_overrides = {
+        "valdi_http/web/TCPSocket.js": "TCPSocket",
         "valdi_http/web/WebHTTPClient.js": "valdi_http/src/NativeHTTPClient",
     },
     deps = [
         "//src/valdi_modules/src/valdi/coreutils",
+        "//src/valdi_modules/src/valdi/jasmine",
         "//src/valdi_modules/src/valdi/valdi_core",
     ],
 )
