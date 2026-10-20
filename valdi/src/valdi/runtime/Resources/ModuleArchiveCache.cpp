@@ -14,6 +14,9 @@
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
 #include "valdi_core/cpp/Utils/Trace.hpp"
+// Inlined so the link never pulls xxhash_internal's object: its XXH32/XXH64 collide with the
+// unprefixed copies in prebuilt libzstd.a (looksery) and ld64.lld rejects the duplicates.
+#define XXH_INLINE_ALL
 #include "xxhash.h"
 
 #include <algorithm>
