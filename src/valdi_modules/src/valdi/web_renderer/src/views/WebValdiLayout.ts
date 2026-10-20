@@ -3,6 +3,16 @@ import { injectTouchAreaStyles } from '../styles/touchAreaExtension';
 import { UpdateAttributeDelegate } from '../ValdiWebRendererDelegate';
 import { TouchEventState } from 'valdi_tsx/src/GestureEvents';
 
+// Clicks a view's onTap already consumed. The click keeps bubbling so listeners outside the
+// Valdi tree (host page, document, accessibility handlers) still see it; only Valdi tap handlers
+// above the claiming view skip it, which matches device where only the deepest handler fires.
+const claimedTaps = new WeakSet<Event>();
+
+// Clicks whose hitTest target is already resolved, so each view's hitTest runs at most once.
+const resolvedHitTests = new WeakSet<Event>();
+
+const hitTestViews = new WeakMap<Element, WebValdiLayout>();
+
 export class WebValdiLayout {
   public type = 'layout';
 
@@ -32,6 +42,8 @@ export class WebValdiLayout {
   private _onLongPressPredicate?: (e: any) => boolean;
   private _onDrag?: (e: any) => void;
   private _onDragPredicate?: (e: any) => boolean;
+  private _hitTest?: (e: any) => boolean;
+  private _hitTestListenerInstalled: boolean = false;
 
   // Lifecycle, visibility, and attachment handlers
   private _onViewCreate?: () => void;
@@ -187,8 +199,11 @@ export class WebValdiLayout {
 
   private setupEventListeners() {
     this.htmlElement.addEventListener('click', (e: MouseEvent) => {
-      if (this._onTapDisabled || !this._onTap) return;
-      this.createTouchEventHandler(this._onTap, TouchEventState.Ended, this._onTapPredicate)(e);
+      if (claimedTaps.has(e) || this._onTapDisabled || typeof this._onTap !== 'function') return;
+      const touchEvent = this.createTouchEvent(e, TouchEventState.Ended);
+      if (this._onTapPredicate && !this._onTapPredicate(touchEvent)) return;
+      claimedTaps.add(e);
+      this._onTap(touchEvent);
     });
 
     this.htmlElement.addEventListener('dblclick', (e: MouseEvent) => {
@@ -237,22 +252,98 @@ export class WebValdiLayout {
   private createTouchEventHandler(value: any, state: TouchEventState, predicate?: (e: any) => boolean) {
     return (event: MouseEvent | TouchEvent) => {
       if (typeof value !== 'function') return;
-      const touch = 'touches' in event ? event.touches[0] || event.changedTouches[0] : event;
-      const rect = this.htmlElement.getBoundingClientRect();
-      const touchEvent = {
-        state,
-        x: touch.clientX - rect.left,
-        y: touch.clientY - rect.top,
-        absoluteX: touch.clientX,
-        absoluteY: touch.clientY,
-        pointerCount: 'touches' in event ? event.touches.length : 1,
-        pointerLocations: [],
-      };
+      const touchEvent = this.createTouchEvent(event, state);
       if (predicate && !predicate(touchEvent)) {
         return;
       }
       value(touchEvent);
     };
+  }
+
+  private createTouchEvent(event: MouseEvent | TouchEvent, state: TouchEventState) {
+    const touch = 'touches' in event ? event.touches[0] || event.changedTouches[0] : event;
+    const rect = this.htmlElement.getBoundingClientRect();
+    // A host page can scale the Valdi root with a CSS transform. Report Valdi points, as on device,
+    // and measure absolute points from the root host rather than from the browser viewport.
+    const rootHost = (this.htmlElement.getRootNode() as ShadowRoot).host as HTMLElement | undefined;
+    const rootRect = rootHost?.getBoundingClientRect();
+    const measuredScale = rootHost && rootRect && rootHost.offsetWidth ? rootRect.width / rootHost.offsetWidth : 1;
+    const scale = measuredScale > 0 ? measuredScale : 1;
+    const originX = rootRect ? rootRect.left : 0;
+    const originY = rootRect ? rootRect.top : 0;
+    return {
+      state,
+      x: (touch.clientX - rect.left) / scale,
+      y: (touch.clientY - rect.top) / scale,
+      absoluteX: (touch.clientX - originX) / scale,
+      absoluteY: (touch.clientY - originY) / scale,
+      pointerCount: 'touches' in event ? event.touches.length : 1,
+      pointerLocations: [],
+    };
+  }
+
+  private installHitTestListener() {
+    if (this._hitTestListenerInstalled) return;
+    this._hitTestListenerInstalled = true;
+    hitTestViews.set(this.htmlElement, this);
+    // Capture phase: the outermost hitTest view on the click path runs first and resolves the
+    // target for the whole tree, before this view or its children handle the click.
+    this.htmlElement.addEventListener(
+      'click',
+      (e: MouseEvent) => {
+        if (resolvedHitTests.has(e)) return;
+        resolvedHitTests.add(e);
+        const resolved = this.resolveHitTestTarget(e);
+        if (!resolved.rejected || resolved.target === e.target) return;
+        e.stopImmediatePropagation();
+        if (!resolved.target) return;
+        const forwarded = new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          screenX: e.screenX,
+          screenY: e.screenY,
+          button: e.button,
+          detail: e.detail,
+          view: e.view,
+        });
+        resolvedHitTests.add(forwarded);
+        resolved.target.dispatchEvent(forwarded);
+      },
+      true,
+    );
+  }
+
+  // Emulates device hit testing in one pass: walk the elements under the point topmost first, and
+  // take the first one whose hitTest ancestors all accept. A view whose hitTest returns false drops
+  // out with its children, as on device. Each hitTest runs at most once per click.
+  private resolveHitTestTarget(e: MouseEvent): { target?: Element; rejected: boolean } {
+    const rootNode = this.htmlElement.getRootNode() as ShadowRoot | Document;
+    if (typeof rootNode.elementsFromPoint !== 'function') return { rejected: false };
+    const verdicts = new Map<Element, boolean>();
+    let rejected = false;
+    const accepts = (view: WebValdiLayout) => {
+      let verdict = verdicts.get(view.htmlElement);
+      if (verdict === undefined) {
+        const hitTest = view._hitTest;
+        verdict = typeof hitTest !== 'function' || !!hitTest(view.createTouchEvent(e, TouchEventState.Started));
+        verdicts.set(view.htmlElement, verdict);
+        if (!verdict) rejected = true;
+      }
+      return verdict;
+    };
+    for (const candidate of rootNode.elementsFromPoint(e.clientX, e.clientY)) {
+      const chain: WebValdiLayout[] = [];
+      for (let node: Node | null = candidate; node && node !== rootNode; node = node.parentNode) {
+        const view = hitTestViews.get(node as Element);
+        if (view) chain.push(view);
+      }
+      // Outermost first, as device traverses top-down and never asks the children of a rejecting view.
+      if (chain.reverse().every(accepts)) return { target: candidate, rejected };
+    }
+    return { rejected };
   }
 
   changeAttribute(attributeName: string, attributeValue: any) {
@@ -339,7 +430,16 @@ export class WebValdiLayout {
         this.htmlElement.style.overflow = attributeValue ? 'hidden' : 'visible';
         return;
       case 'touchEnabled':
+        this.htmlElement.style.pointerEvents = attributeValue ? 'auto' : 'none';
+        return;
       case 'hitTest':
+        if (typeof attributeValue === 'function') {
+          this._hitTest = attributeValue;
+          this.htmlElement.style.pointerEvents = 'auto';
+          this.installHitTestListener();
+          return;
+        }
+        this._hitTest = undefined;
         this.htmlElement.style.pointerEvents = attributeValue ? 'auto' : 'none';
         return;
       case 'onTouch': {
