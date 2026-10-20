@@ -49,9 +49,17 @@ async function getDeviceChoice(platform: string): Promise<string> {
   return await getUserChoice(choices, 'Please select a device to perform the install:');
 }
 
+/**
+ * Whether to build for a physical device. Defaults to the simulator; only an explicit
+ * `--simulator=false` (or `--no-simulator`) selects a device build.
+ */
+export function isDeviceBuild(simulator: boolean | undefined): boolean {
+  return simulator === false;
+}
+
 export async function getBuildInfo(argv: ArgumentsResolver<CommandParameters>, bazel: BazelClient, checkDevice: boolean): Promise<BuildInfo> {
   const platform = argv.getArgument('platform') as PLATFORM;
-  const forDevice = !!argv.getArgument('simulator');
+  const forDevice = isDeviceBuild(argv.getArgument('simulator'));
 
   let selectedDevice: string | undefined;
   let architectures: Architecture[] = ALL_ARCHITECTURES;

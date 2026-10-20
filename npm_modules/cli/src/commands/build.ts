@@ -88,7 +88,7 @@ export const builder = makeArgsBuilder((yargs: Argv<CommandParameters>) => {
       requiresArg: true,
     })
     .option('simulator', {
-      describe: 'Whether to build for simulator or for device',
+      describe: 'Build for the iOS simulator (default). Pass --no-simulator to build for a device',
       type: 'boolean',
     });
 });

@@ -91,7 +91,7 @@ valdi install android
 
 ### Versions
 
-The CLI and the framework are versioned separately. The CLI is the `@snap/valdi` npm package (e.g. `1.2.0`). The framework is released as tags on GitHub (e.g. `beta-0.2.0`). `valdi bootstrap` pins your project to the latest framework release; pass `--valdiVersion=<tag>` (or `--valdiVersion=main` for the development branch) to choose a different one. See the [releases page](https://github.com/Snapchat/Valdi/releases) for available tags.
+The CLI and the framework are versioned separately. The CLI is the `@snap/valdi` npm package (e.g. `1.2.1`). The framework is released as tags on GitHub (e.g. `beta-0.2.1`). `valdi bootstrap` pins your project to the latest framework release; pass `--valdiVersion=<tag>` (or `--valdiVersion=main` for the development branch) to choose a different one. See the [releases page](https://github.com/Snapchat/Valdi/releases) for available tags.
 
 ### 3. Enable Hot Reloading
 
