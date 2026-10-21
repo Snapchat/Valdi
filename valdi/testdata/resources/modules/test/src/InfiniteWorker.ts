@@ -1,4 +1,8 @@
-postMessage('ready');
-postMessage('late');
+// Waits for the host's first message before posting, so the host's onmessage is already set (a message
+// posted while the host has no handler is dropped).
+onmessage = () => {
+  postMessage('ready');
+  postMessage('late');
 
-while (true) {}
+  while (true) {}
+};

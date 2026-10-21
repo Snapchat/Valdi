@@ -113,6 +113,38 @@ public:
     }
 };
 
+// Overrides only the keys it is given and returns the fallback for every other key, so a test can flip one
+// tweak without changing the defaults of the rest (TestTweakValueProvider returns false for missing keys).
+class OverridingTweakValueProvider : public SharedPtrRefCountable, public ITweakValueProvider {
+public:
+    explicit OverridingTweakValueProvider(FlatMap<StringBox, bool> boolOverrides)
+        : _boolOverrides(std::move(boolOverrides)) {}
+
+    StringBox getString(const StringBox& key, const StringBox& fallback) override {
+        return fallback;
+    }
+
+    bool getBool(const StringBox& key, bool fallback) override {
+        auto it = _boolOverrides.find(key);
+        return it != _boolOverrides.end() ? it->second : fallback;
+    }
+
+    float getFloat(const StringBox& key, float fallback) override {
+        return fallback;
+    }
+
+    int32_t getInt(const StringBox& key, int32_t fallback) override {
+        return fallback;
+    }
+
+    Value getBinary(const StringBox& key, const Value& fallback) override {
+        return fallback;
+    }
+
+private:
+    FlatMap<StringBox, bool> _boolOverrides;
+};
+
 class TestValueTypedProxyObject : public ValueTypedProxyObject {
 public:
     explicit TestValueTypedProxyObject(const Ref<ValueTypedObject>& typedObject) : ValueTypedProxyObject(typedObject) {}
@@ -6960,10 +6992,26 @@ TEST_P(RuntimeFixture, workerCanBeTerminatedBeforeInitialization) {
     EXPECT_EQ("works", result.toString());
 }
 
+// Workers read VALDI_USE_COOPERATIVE_TERMINATION from the host's tweaks at postInit. Under the default
+// cooperative mode terminate() does not interrupt running JS, so a worker spinning in a loop is never stopped:
+// the busy-worker tests would leak a thread spinning at full CPU into every later test. Make workers created
+// afterwards use aggressive termination; the host keeps the default so the fixture tears down as usual.
+static void useAggressiveWorkerTermination(RuntimeWrapper& wrapper) {
+    FlatMap<StringBox, bool> overrides;
+    overrides[STRING_LITERAL("VALDI_USE_COOPERATIVE_TERMINATION")] = false;
+    wrapper.runtime->setRuntimeTweaks(
+        makeShared<ValdiRuntimeTweaks>(makeShared<OverridingTweakValueProvider>(std::move(overrides)).toShared()));
+    wrapper.runtime->getJavaScriptRuntime()->setCooperativeTermination(true);
+}
+
 TEST_P(RuntimeFixture, busyWorkerCanBeTerminated) {
     if (isJSCore()) {
         GTEST_SKIP() << "JavaScriptCore cannot interrupt a pure JavaScript loop through its public API";
     }
+    if (isWithTSN()) {
+        GTEST_SKIP() << "TSN is unused; its native-compiled loop is not reliably interruptible";
+    }
+    useAggressiveWorkerTermination(wrapper);
 
     auto tree =
         wrapper.createViewNodeTreeAndContext(STRING_LITERAL("WorkerTest@test/src/WorkerTest"), Value(), Value());
@@ -6978,6 +7026,10 @@ TEST_P(RuntimeFixture, busyWorkerWithTransferredPortCanBeTerminated) {
     if (isJSCore()) {
         GTEST_SKIP() << "JavaScriptCore cannot interrupt a pure JavaScript loop through its public API";
     }
+    if (isWithTSN()) {
+        GTEST_SKIP() << "TSN is unused; its native-compiled loop is not reliably interruptible";
+    }
+    useAggressiveWorkerTermination(wrapper);
 
     auto tree =
         wrapper.createViewNodeTreeAndContext(STRING_LITERAL("WorkerTest@test/src/WorkerTest"), Value(), Value());

@@ -32,6 +32,7 @@ export class WorkerTest extends Component {
       };
       replacementWorker.postMessage('hi');
     };
+    busyWorker.postMessage('start');
   }
 
   terminateBusyWorkerWithPort(callback: (res: string) => void) {

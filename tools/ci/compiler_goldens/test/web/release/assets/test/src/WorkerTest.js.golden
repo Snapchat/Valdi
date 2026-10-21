@@ -36,6 +36,7 @@ class WorkerTest extends Component_1.Component {
             };
             replacementWorker.postMessage('hi');
         };
+        busyWorker.postMessage('start');
     }
     terminateBusyWorkerWithPort(callback) {
         const busyWorker = new Worker_1.default('test/src/InfinitePortWorker');
