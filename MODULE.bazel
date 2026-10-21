@@ -812,3 +812,7 @@ use_repo(
     "yams",
     "zip_lib",
 )
+
+# Optional local SDL3 binding, fetched only by experimental Linux window targets.
+valdi_system_sdl3 = use_extension("//valdi_linux_window:sdl3_repository.bzl", "system_sdl3")
+use_repo(valdi_system_sdl3, "valdi_system_sdl3")
