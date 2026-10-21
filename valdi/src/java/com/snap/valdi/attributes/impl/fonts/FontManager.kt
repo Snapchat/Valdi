@@ -136,6 +136,16 @@ class FontManager(val context: Context, private val typefaceResLoader: TypefaceR
         return null
     }
 
+    private fun hasExactRegisteredFont(fontDescriptor: FontDescriptor): Boolean {
+        synchronized(this) {
+            if (fontDescriptor.name != null) {
+                return registeredFontsByName.containsKey(fontDescriptor.name)
+            }
+            val family = fontDescriptor.family ?: "default"
+            return registeredFontsByFamily[family]?.any { it.descriptor == fontDescriptor } == true
+        }
+    }
+
     private fun resolveFont(fontDescriptor: FontDescriptor): RegisteredFont? {
         if (fontDescriptor.name != null) {
             val font = registeredFontsByName[fontDescriptor.name]
@@ -326,7 +336,12 @@ class FontManager(val context: Context, private val typefaceResLoader: TypefaceR
      * Get an already loaded Typeface given the FontDescriptor.
      */
     fun get(fontDescriptor: FontDescriptor): Typeface? {
-        listener?.onFontRequested(fontDescriptor)
+        // onFontRequested blocks the caller until the whole Valdi worker queue drains, which takes
+        // seconds on low-end devices under load. Only pay for it when a pending load operation could
+        // still register this font.
+        if (!hasExactRegisteredFont(fontDescriptor)) {
+            listener?.onFontRequested(fontDescriptor)
+        }
 
         val typeface: Typeface?
         val fontLoader: FontLoader?
