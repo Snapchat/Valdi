@@ -851,7 +851,7 @@ objc_library(
 
 ios_unit_test(
     name = "valdi_ios_date_formatting_module_test",
-    minimum_os_version = "13.0",
+    minimum_os_version = "15.0",
     runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",
     deps = [":objc_date_formatting_module_tests_lib"],
 )
@@ -905,7 +905,7 @@ objc_library(
 
 ios_unit_test(
     name = "valdi_ios_pooling_test",
-    minimum_os_version = "13.0",
+    minimum_os_version = "15.0",
     runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",
     deps = [":objc_pooling_tests_lib"],
 )
