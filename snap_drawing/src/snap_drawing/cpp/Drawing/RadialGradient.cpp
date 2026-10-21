@@ -101,6 +101,8 @@ void RadialGradient::draw(DrawingContext& drawingContext, const BorderRadius& bo
 
     Paint paint;
     applyToPaint(paint);
+    // As for a solid background: without it, a rounded corner's edge is clipped to whole pixels.
+    paint.setAntiAlias(true);
 
     drawingContext.drawPaint(paint, borderRadius, _lazyPath);
 }
