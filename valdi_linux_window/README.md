@@ -1,0 +1,96 @@
+# Experimental SDL3 Linux window host
+
+CPU raster bring-up for a single SnapDrawing `LayerRoot`. The host owns the SDL
+window, main-thread event loop, bounded temporary RGBA buffer, and presentation
+through `SDL_GetWindowSurface` / `SDL_UpdateWindowSurface`. SnapDrawing renders
+on the CPU; SDL owns presentation and may internally use an accelerated renderer
+and graphics context for that surface. The host creates no SnapDrawing GPU
+context and manages no swapchain. Disabling `SDL_FRAMEBUFFER_ACCELERATION` is
+not portable: the tested Wayland backend required SDL's default presentation
+path. SDL3 is an optional dependency of this target;
+the existing Linux runtime, Android, and Apple targets do not depend on it.
+
+The caller supplies the root, optional Valdi `TaskQueue`, and `WindowClient`.
+Those objects outlive the host. Destroy the host before destroying the root or
+runtime. It exclusively occupies the root/queue listener slots while open and
+currently consumes the process-wide SDL event loop: multiple independent SDL
+windows are outside this prototype's contract.
+
+## Build
+
+Install SDL3 >= 3.2 headers/libraries and pkg-config. The initial Bazel binding
+uses the system SDL3 installation when this optional target is requested.
+It is a local development binding, not a hermetic dependency or SDK packaging
+policy. A supported upstream dependency/version/distribution policy is still
+required before shipping this as a supported platform.
+
+```sh
+bazel build //apps/linux_window_demo:linux_window_demo
+bazel test //valdi_linux_window:framebuffer_test
+xvfb-run -a -s "-screen 0 1280x900x24 -noreset" bazel test \
+  //valdi_linux_window:sdl_window_host_test --test_env=DISPLAY \
+  --test_env=SDL_VIDEODRIVER=x11 --test_env=SDL_FRAMEBUFFER_ACCELERATION=0 --test_output=errors
+bazel-bin/apps/linux_window_demo/linux_window_demo /path/to/font.ttf
+```
+
+The demo registers an explicitly supplied font, renders a native SnapDrawing
+layer tree, counts taps and displays text commit/preedit events. It does not
+yet instantiate a compiled Valdi component or a complete text editor.
+
+The first smoke validation compiled only these new host/demo/test files against
+an existing Linux engine binary and its matching headers. The source-build
+Bazel targets above still need validation against the current upstream engine;
+the binary smoke test does not establish that compatibility.
+
+For already-built test binaries, `bash valdi_linux_window/test/run-displays.sh
+/path/to/host-test /path/to/results` starts private Xvfb and headless Weston
+displays, checks 1× and 2× Wayland outputs, and cleans up those display processes.
+It requires Weston with headless, Pixman and fake-seat support, Xvfb, Mesa
+software rendering and `timeout`. It creates no VM, container or deployment.
+
+## Input, scale, scheduling and lifetime
+
+- Mouse button/motion/wheel events enter `LayerRoot::dispatchTouchEvent`. Layout,
+  pointer positions and IME rectangles share SDL window coordinates. Framebuffer
+  size comes from the reacquired SDL surface. Pixel density and the user's
+  display/content scale are reported separately; content-scale policy belongs
+  in the application adapter. Touch, hover, key binding and scroll-step policy
+  need follow-up work.
+- Key events are commands, never synthesized characters. Committed UTF-8 text
+  and composing UTF-8 text are separate callbacks. Composition offsets retain
+  SDL's character units, including `-1`; a future editor adapter must convert
+  those to its own indexing model. `setTextInput` controls activation and caret
+  rectangle; focus loss stops input and clears composition. Clipboard APIs
+  copy data with SDL's allocator correctly paired with `SDL_free`.
+- The optional task queue wakes SDL without calling into the queue under its
+  lock. Each pump processes at most 256 events and 32 tasks (with a 2 ms budget
+  checked between tasks; an individual callback is not preemptible). Rendering
+  is capped near 60 Hz and runs when the tree or window is dirty. A 16 ms timed
+  queue check covers delayed work because `TaskQueue` exposes no next deadline.
+  This is not a compositor presentation-clock implementation.
+- Framebuffer allocation is bounded and checked before multiplication. SDL
+  owns its window surface; it is reacquired after resizing. A local bitmap
+  drawable cannot outlive or retain the temporary pixels across reallocations.
+  Queue/root listeners detach before window/video cleanup. The caller then
+  destroys the root and runtime in its own ownership order.
+
+## Tests and remaining gates
+
+The display test checks exact raster output, resize, event routing, separate
+preedit/commit handling, clipboard, tap delivery, worker/delayed queue work,
+bounded queue batches, idle rendering and three open/close cycles. These tests
+inject SDL text events. They do **not** establish real IBus/Fcitx composition,
+candidate placement, surrounding text or full editor behavior.
+
+Before this is a complete Valdi Linux application host: connect a compiled
+TypeScript component and runtime teardown, establish a supported dependency
+binding, add editor focus/selection/index conversion, validate real desktop
+IMEs and clipboard ownership changes, implement accessibility, and test physical
+GPU/multi-monitor/fractional-scale configurations. GPU presentation, external
+native views and performance claims require separate work and measurements.
+
+Primary API references: [SDL window surfaces](https://wiki.libsdl.org/SDL3/SDL_GetWindowSurface),
+[text composition](https://wiki.libsdl.org/SDL3/SDL_TextEditingEvent),
+[text input area](https://wiki.libsdl.org/SDL3/SDL_SetTextInputArea),
+[window display scale](https://wiki.libsdl.org/SDL3/SDL_GetWindowDisplayScale).
+See also [SDL framebuffer acceleration](https://wiki.libsdl.org/SDL3/SDL_HINT_FRAMEBUFFER_ACCELERATION).

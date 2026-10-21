@@ -1,0 +1,16 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+# First bring-up uses a native SnapDrawing layer tree. Connecting a compiled
+# Valdi component to this same LayerRoot is a subsequent integration check.
+cc_binary(
+    name = "linux_window_demo",
+    srcs = ["main.cpp"],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        "//snap_drawing:snap_drawing_cc",
+        "//valdi_core:valdi_core_cc",
+        "//valdi_linux_window:sdl_window_host",
+        "@valdi_system_sdl3//:sdl3",
+    ],
+)
