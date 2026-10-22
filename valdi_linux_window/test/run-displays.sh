@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Run an already-built host test under private X11 and Wayland displays.
+# Run an already-built executable under private X11 and Wayland displays.
+# Extra arguments precede the per-display snapshot path.
 set -euo pipefail
 
-host_test=$(realpath "${1:?Usage: run-displays.sh /path/to/host-test [output-directory]}")
+host_test=$(realpath "${1:?Usage: run-displays.sh /path/to/executable [output-directory [arguments...]]}")
 output=$(realpath -m "${2:-window-host-results}")
+command_args=("${@:3}")
 mkdir -p "$output"
 runtime=$(mktemp -d)
 display_pid=
@@ -25,7 +27,7 @@ for _ in {1..100}; do
     sleep 0.05
 done
 DISPLAY=":$(cat "$runtime/x11-display")" SDL_VIDEODRIVER=x11 SDL_FRAMEBUFFER_ACCELERATION=0 \
-    timeout 30 "$host_test" "$output/x11.bmp" >"$output/x11.log" 2>&1
+    timeout 30 "$host_test" "${command_args[@]}" "$output/x11.bmp" >"$output/x11.log" 2>&1
 kill "$display_pid"
 wait "$display_pid" 2>/dev/null || true
 display_pid=
@@ -47,7 +49,7 @@ for scale in 1 2; do
     # makes this a CPU/VM check, not a physical GPU qualification.
     env -u SDL_FRAMEBUFFER_ACCELERATION XDG_RUNTIME_DIR="$runtime/wayland-$scale" \
         WAYLAND_DISPLAY=window-host-test SDL_VIDEODRIVER=wayland LIBGL_ALWAYS_SOFTWARE=1 \
-        timeout 30 "$host_test" "$output/wayland-$scale.bmp" >"$output/wayland-$scale.log" 2>&1
+        timeout 30 "$host_test" "${command_args[@]}" "$output/wayland-$scale.bmp" >"$output/wayland-$scale.log" 2>&1
     kill "$display_pid"
     wait "$display_pid" 2>/dev/null || true
     display_pid=

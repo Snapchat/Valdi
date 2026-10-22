@@ -14,8 +14,8 @@ The caller supplies the root, optional Valdi `TaskQueue`, and `WindowClient`.
 Those objects outlive the host. Destroy the host before destroying the root or
 runtime. It exclusively occupies the root listener slot, chains an existing
 queue listener and restores it during shutdown. Do not replace either listener
-while open. It currently consumes the process-wide SDL event loop: multiple independent SDL
-windows are outside this prototype's contract.
+while open. It currently consumes the process-wide SDL event loop: multiple
+independent SDL windows are outside this prototype's contract.
 
 ## Build
 
@@ -84,24 +84,22 @@ software rendering and `timeout`. It creates no VM, container or deployment.
   owns its window surface; it is reacquired after resizing. A local bitmap
   drawable cannot outlive or retain the temporary pixels across reallocations.
   The root listener detaches and the original queue listener is restored before
-  window/video cleanup. The caller then
-  destroys the root and runtime in its own ownership order.
+  window/video cleanup. The caller then destroys the root and runtime in its
+  own ownership order.
 
 ## Tests and remaining gates
 
 The display test checks exact raster output, resize, event routing, separate
 preedit/commit handling, clipboard, tap delivery, worker/delayed queue work,
 bounded queue batches, idle rendering and three open/close cycles. These tests
-also verify forwarding/restoration of a pre-existing queue listener. The calculator
-checks its real Valdi layout, tap handlers, keyboard bridge and runtime reopen.
-These tests
-inject SDL text events. They do **not** establish real IBus/Fcitx composition,
+also verify forwarding/restoration of a pre-existing queue listener. The
+calculator checks its real Valdi layout, tap handlers, keyboard bridge and
+runtime reopen. The host tests inject SDL text events. They do **not** establish real IBus/Fcitx composition,
 candidate placement, surrounding text or full editor behavior.
 
 Before this is a complete Valdi Linux application host: validate a clean current
 upstream source build, establish a supported dependency binding, add editor
-focus/selection/index conversion, validate real desktop
-IMEs and clipboard ownership changes, implement accessibility, and test physical
+focus/selection/index conversion, validate real desktop IMEs and clipboard ownership changes, implement accessibility, and test physical
 GPU/multi-monitor/fractional-scale configurations. GPU presentation, external
 native views and performance claims require separate work and measurements.
 
