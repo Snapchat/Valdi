@@ -1,0 +1,14 @@
+objc_library(
+    name = "integration_test_host_ios",
+    srcs = glob([
+        "**/*.m",
+    ]),
+    hdrs = [],
+    copts = ["-I."],
+    target_compatible_with = ["@platforms//os:ios"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//apps/integration_test/src/valdi/integration_test_app:integration_test_app_api_objc",
+        "//valdi:valdi_ios",
+    ],
+)

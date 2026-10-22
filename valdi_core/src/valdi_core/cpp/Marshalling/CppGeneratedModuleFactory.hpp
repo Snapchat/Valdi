@@ -1,3 +1,5 @@
+#pragma once
+
 #include "valdi_core/ModuleFactory.hpp"
 #include "valdi_core/cpp/Marshalling/CppGeneratedClass.hpp"
 #include "valdi_core/cpp/Marshalling/CppMarshaller.hpp"

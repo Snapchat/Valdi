@@ -1,0 +1,13 @@
+load("//bzl/valdi:valdi_android_library.bzl", "valdi_android_library")
+
+valdi_android_library(
+    name = "integration_test_host_android",
+    srcs = glob([
+        "**/*.kt",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//apps/integration_test/src/valdi/integration_test_app:integration_test_app_api_kt",
+        "//valdi:valdi_android_support",
+    ],
+)
