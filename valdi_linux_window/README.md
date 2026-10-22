@@ -44,9 +44,17 @@ registration and ordered shutdown. The [calculator](../apps/linux_calculator/REA
 uses this adapter without application-specific services:
 
 ```sh
-bazel build //apps/linux_calculator:calculator
+bazel build //apps/linux_calculator:calculator \
+  --//bzl/valdi:js_engine=quickjs \
+  --//bzl/valdi:js_bytecode_format=quickjs
 bazel-bin/apps/linux_calculator/calculator /path/to/modules /path/to/font.ttf
 ```
+
+Keep the runtime engine, generated module bytecode and compiler/toolbox cohort
+matched. The host inherits the runtime's configured engine; it does not require
+Hermes. The explicit QuickJS flags above describe the pending clean-source
+qualification path. Retained binary-SDK validation used a matched Hermes profile,
+not QuickJS. See the calculator notes before consuming a prebuilt SDK.
 
 Validation has compiled the native demo and the complete TSX calculator with
 their host/tests against an existing Linux engine binary and matching headers.
