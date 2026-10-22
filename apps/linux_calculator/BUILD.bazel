@@ -24,3 +24,20 @@ cc_binary(
         "@valdi_system_sdl3//:sdl3",
     ],
 )
+
+# Deterministic theme source; still uses the real SDL event loop and Valdi runtime.
+cc_binary(
+    name = "calculator_theme_test",
+    testonly = True,
+    srcs = ["main.cpp", "//valdi_linux_window:test/SystemThemeStub.cpp"],
+    copts = ["-DVALDI_LINUX_THEME_TEST"],
+    linkopts = ["-Wl,--wrap=SDL_GetSystemTheme"],
+    tags = ["manual", "requires-display"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":linux_calculator_native",
+        "//valdi_core:valdi_core_cc",
+        "//valdi_linux_window:valdi_window_application",
+        "@valdi_system_sdl3//:sdl3",
+    ],
+)

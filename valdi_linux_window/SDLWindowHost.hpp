@@ -11,6 +11,8 @@
 
 namespace ValdiLinux {
 
+enum class SystemTheme { Unknown, Light, Dark };
+
 struct WindowMetrics {
     int width = 0; // SDL window coordinates, also used for layout and input.
     int height = 0;
@@ -41,6 +43,9 @@ struct KeyEvent {
 class WindowClient {
 public:
     virtual ~WindowClient() = default;
+    // Delivered once during open(), then when the system theme changes.
+    // Unknown means the desktop/backend has not supplied an appearance.
+    virtual void onSystemThemeChanged(SystemTheme theme) {}
     virtual void onResize(const WindowMetrics& metrics) {}
     virtual void onKey(const KeyEvent& event) {}
     virtual void onTextInput(const std::string& text) {}
@@ -73,6 +78,7 @@ public:
     Valdi::Result<std::string> getClipboardText() const;
     Valdi::Result<Valdi::Void> setClipboardText(const std::string& text);
 
+    SystemTheme getSystemTheme() const;
     const WindowMetrics& getMetrics() const;
     uint32_t getWindowId() const;
     uint64_t getPresentedFrames() const;

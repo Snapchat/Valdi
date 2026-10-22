@@ -2,6 +2,8 @@ load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files(["test/SystemThemeStub.cpp"])
+
 cc_library(
     name = "sdl_window_host",
     srcs = ["SDLWindowHost.cpp"],
@@ -47,7 +49,8 @@ cc_test(
 # Requires a display server. Use Xvfb or a headless Wayland compositor in CI.
 cc_test(
     name = "sdl_window_host_test",
-    srcs = ["test/SDLWindowHostTest.cpp"],
+    srcs = ["test/SDLWindowHostTest.cpp", "test/SystemThemeStub.cpp"],
+    linkopts = ["-Wl,--wrap=SDL_GetSystemTheme"],
     tags = ["manual", "requires-display"],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
