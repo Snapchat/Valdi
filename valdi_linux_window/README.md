@@ -149,3 +149,38 @@ Primary API references: [SDL window surfaces](https://wiki.libsdl.org/SDL3/SDL_G
 [text input area](https://wiki.libsdl.org/SDL3/SDL_SetTextInputArea),
 [window display scale](https://wiki.libsdl.org/SDL3/SDL_GetWindowDisplayScale).
 See also [SDL framebuffer acceleration](https://wiki.libsdl.org/SDL3/SDL_HINT_FRAMEBUFFER_ACCELERATION).
+
+## System appearance
+
+After SDL video initialization, the host reads
+[`SDL_GetSystemTheme`](https://wiki.libsdl.org/SDL3/SDL_GetSystemTheme) on the main
+thread and reports its initial `SystemTheme` before `open()` returns. It queries
+again on `SDL_EVENT_SYSTEM_THEME_CHANGED`, suppressing unchanged values. The
+host preserves `Unknown`, `Light` and `Dark`; it does not infer appearance from
+wall-clock time, window background colors or a theme-name environment variable.
+
+`ValdiWindowApplication` supplies the effective value through the standalone
+runtime's `setDarkMode()` before loading the application, then forwards updates.
+The existing `Device.isDarkMode()` / `Device.observeDarkMode()` APIs use light
+for unknown/no preference. Applications own their palettes and cancel their
+subscriptions when destroyed; the calculator demonstrates both. A desktop or
+SDL backend that does not publish appearance will remain on the light fallback.
+This requires the standalone Device observer fix submitted separately from the
+optional SDL host; no SDL dependency is added to headless runtime targets.
+
+The host regression test wraps only `SDL_GetSystemTheme` at link time. The
+calculator's optional `calculator_theme_test` binary uses the same deterministic
+source to assert initial dark/light/unknown and live transitions through the real
+Device API, Valdi component and raster pixels, without changing user settings:
+
+```sh
+bazel build //apps/linux_calculator:calculator_theme_test
+mkdir -p /tmp/valdi-calculator-modules
+SDL_VIDEODRIVER=dummy SDL_FRAMEBUFFER_ACCELERATION=0 \
+  bazel-bin/apps/linux_calculator/calculator_theme_test \
+  /tmp/valdi-calculator-modules /path/to/font.ttf --self-test
+```
+
+Synthetic changes validate our event/bridge/rendering path, not a desktop portal
+implementation. Real desktop preference publication and notifications require
+separate integration testing on each supported desktop/backend.

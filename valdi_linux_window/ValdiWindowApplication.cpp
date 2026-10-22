@@ -19,7 +19,7 @@
 
 namespace ValdiLinux {
 
-struct ValdiWindowApplication::Impl {
+struct ValdiWindowApplication::Impl : WindowClient {
     WindowClient& client;
     Valdi::Ref<Valdi::ValdiStandaloneRuntime> runtime;
     Valdi::Ref<snap::drawing::Runtime> drawing;
@@ -29,6 +29,19 @@ struct ValdiWindowApplication::Impl {
     std::unique_ptr<SDLWindowHost> host;
 
     explicit Impl(WindowClient& client) : client(client) {}
+
+    void onSystemThemeChanged(SystemTheme theme) override {
+        // Device's existing API is boolean. Unknown/no preference uses light.
+        runtime->setDarkMode(theme == SystemTheme::Dark);
+        client.onSystemThemeChanged(theme);
+    }
+    void onResize(const WindowMetrics& metrics) override { client.onResize(metrics); }
+    void onKey(const KeyEvent& event) override { client.onKey(event); }
+    void onTextInput(const std::string& text) override { client.onTextInput(text); }
+    void onTextEditing(const std::string& text, int32_t start, int32_t length) override {
+        client.onTextEditing(text, start, length);
+    }
+    void onFocusChanged(bool focused) override { client.onFocusChanged(focused); }
 
     ~Impl() {
         // Detach SDL/queue callbacks before releasing any runtime resources.
@@ -74,7 +87,6 @@ Valdi::Result<Valdi::Void> ValdiWindowApplication::open(const WindowApplicationO
     for (const auto& directory : options.moduleDirectories) {
         p.runtime->getResourceLoader().addModuleSearchDirectory(Valdi::StringBox::fromString(directory));
     }
-    p.runtime->setupJsRuntime({});
     p.drawing = Valdi::makeShared<snap::drawing::Runtime>(
         nullptr, snap::drawing::GesturesConfiguration::getDefault(), nullptr, nullptr,
         Valdi::ConsoleLogger::getLogger(), p.runtime->getRuntimeManager().getWorkerQueue(), 32 * 1024 * 1024);
@@ -90,11 +102,17 @@ Valdi::Result<Valdi::Void> ValdiWindowApplication::open(const WindowApplicationO
     p.root = Valdi::makeShared<snap::drawing::LayerRoot>(p.drawing->getResources());
     p.component = snap::drawing::makeLayer<snap::drawing::ValdiLayer>(p.drawing->getResources(),
                                                                       &p.runtime->getRuntime(), p.viewContext.get());
+    p.host = std::make_unique<SDLWindowHost>(p.root, p, p.runtime->getMainQueue().get());
+    auto opened = p.host->open(options.window);
+    if (!opened) {
+        return opened.error();
+    }
+    // SDL has seeded Device appearance before application modules/first render.
+    p.runtime->setupJsRuntime({});
     p.component->setComponent(Valdi::StringBox::fromString(options.rootComponentPath), Valdi::Value(),
                               componentContext);
     p.root->setContentLayer(p.component, snap::drawing::ContentLayerSizingModeMatchSize);
-    p.host = std::make_unique<SDLWindowHost>(p.root, p.client, p.runtime->getMainQueue().get());
-    return p.host->open(options.window);
+    return Valdi::Void();
 }
 
 SDLWindowHost* ValdiWindowApplication::getHost() const { return _impl->host.get(); }
