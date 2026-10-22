@@ -151,6 +151,20 @@ jobs:
           OPEN_SOURCE_DIR: ${{ github.workspace }}
           PROJECT_ROOT: /tmp/valdi_app
 
+      - name: Stop smoke-test Bazel servers
+        # Each app the smoke tests bootstrap keeps its own Bazel server up (3h idle
+        # timeout), and the hotreload build below starts another. The 7 GB xcode-27
+        # runner ran out of memory in that build with them still up.
+        run: |
+          free_mb() { vm_stat | awk '/page size/ {ps=$8} /Pages (free|inactive|speculative)/ {gsub("\\.","",$NF); n+=$NF} END {printf "%d", n*ps/1048576}'; }
+          echo "Free+inactive memory before: $(free_mb) MB"
+          for ws in /tmp/valdi_app /tmp/valdi_app/valdi_cli_app; do
+            if [ -f "$ws/MODULE.bazel" ]; then
+              (cd "$ws" && bazel shutdown) || true
+            fi
+          done
+          echo "Free+inactive memory after: $(free_mb) MB"
+
       - name: "Run: Hotreload Delivery Smoke"
         # Reuses this job's watchman install and the compiler already built by the
         # smoke tests above (warm bazel cache), so it adds a delivery assertion the
@@ -209,6 +223,20 @@ jobs:
         # On macOS the `uname != Linux` branch of run_tests.sh fires, running the
         # iOS/macOS ObjC/Swift suites that never execute on the Linux runner.
         run: ./tools/ci/run_tests.sh
+
+      - name: Upload test logs and crash reports
+        # The job log only shows "signal 6: Abort trap"; the abort reason is in the
+        # test log and the simulator crash report.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-test-logs
+          path: |
+            bazel-testlogs/valdi/**/test.log
+            bazel-testlogs/valdi/**/test.outputs/**
+            ~/Library/Logs/DiagnosticReports/**
+          if-no-files-found: ignore
+          retention-days: 7
 
   # Note: Linux CLI distribution tests moved to dedicated workflow:
   # .github/workflows/test-cli-linux.yml
