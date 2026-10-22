@@ -388,6 +388,20 @@
 
 - (void)testCanWaitUntilRenderCompleted
 {
+    [self _assertCanWaitUntilRenderCompleted];
+}
+
+- (void)testCanWaitUntilRenderCompletedWithAtomicInitialAutoRenderState
+{
+    [self.runtimeManager updateConfiguration:^(SCValdiConfiguration *configuration) {
+        configuration.enableAtomicInitialAutoRenderState = YES;
+    }];
+
+    [self _assertCanWaitUntilRenderCompleted];
+}
+
+- (void)_assertCanWaitUntilRenderCompleted
+{
     __block id<SCValdiContextProtocol> context;
     [self getRuntimeUsingBatch:NO withBlock:^(id<SCValdiRuntimeProtocol> runtime) {
         SCCValdiTestViewModel *viewModel = [[SCCValdiTestViewModel alloc] initWithHeaderTitle:@"" scrollable:NO entries:@[]];
@@ -535,6 +549,11 @@
         configuration.enableGesturePrewarm = YES;
     }];
     XCTAssertTrue(self.runtimeManager.gesturePrewarmEnabled);
+}
+
+- (void)testAtomicInitialAutoRenderStateDisabledByDefault
+{
+    XCTAssertFalse([SCValdiConfiguration new].enableAtomicInitialAutoRenderState);
 }
 
 - (void)testCanHandleTap

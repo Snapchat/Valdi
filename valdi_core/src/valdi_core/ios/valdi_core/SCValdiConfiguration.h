@@ -76,6 +76,14 @@ typedef void (^SCValdiPerformHapticFeedbackBlock)(NSString* type);
 @property (assign, nonatomic) BOOL enableGesturePrewarm;
 
 /**
+ Whether a new runtime's initial auto-render state is applied while the runtime manager still holds
+ the lock that publishes the runtime. When NO (default), it is applied after the lock is released, so
+ a load operation finishing concurrently can be overwritten by a stale value and leave the runtime's
+ first render queued. Applies to runtimes created after the configuration is updated.
+ */
+@property (assign, nonatomic) BOOL enableAtomicInitialAutoRenderState;
+
+/**
  * Local-development-only debugger and hot-reload settings.
  *
  * These values are read when SCValdiRuntimeManager initializes its underlying

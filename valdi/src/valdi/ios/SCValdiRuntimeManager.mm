@@ -413,6 +413,8 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
         _cppInstance->setUserSession(Valdi::StringBox());
     }
 
+    _cppInstance->setAtomicInitialAutoRenderStateEnabled(configuration.enableAtomicInitialAutoRenderState);
+
     if (configuration.disableGcStackUsageDetection) {
         Valdi::forceRetainJsObjects = true;
     }
