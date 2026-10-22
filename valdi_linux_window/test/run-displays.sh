@@ -46,9 +46,12 @@ for scale in 1 2; do
     done
     # Keep SDL's default surface presentation path: disabling its acceleration
     # is not supported by every Wayland video backend. Mesa software rendering
-    # makes this a CPU/VM check, not a physical GPU qualification.
+    # makes this a CPU/VM check, not a physical GPU qualification. Softpipe
+    # avoids mixing Mesa LLVM JIT unwind registration with the consumer runtime.
+    # Callers may explicitly select another Gallium driver for investigation.
     env -u SDL_FRAMEBUFFER_ACCELERATION XDG_RUNTIME_DIR="$runtime/wayland-$scale" \
         WAYLAND_DISPLAY=window-host-test SDL_VIDEODRIVER=wayland LIBGL_ALWAYS_SOFTWARE=1 \
+        GALLIUM_DRIVER="${GALLIUM_DRIVER:-softpipe}" \
         timeout 30 "$host_test" "${command_args[@]}" "$output/wayland-$scale.bmp" >"$output/wayland-$scale.log" 2>&1
     kill "$display_pid"
     wait "$display_pid" 2>/dev/null || true
