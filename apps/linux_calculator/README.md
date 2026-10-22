@@ -35,9 +35,19 @@ regenerate every module and static resource with the matched tools. Do not reuse
 Hermes output with a QuickJS runtime, or the reverse. A matched Hermes source
 build can select `hermes` for both flags instead.
 
-The retained binary-SDK calculator evidence used Hermes. The QuickJS commands
-above are the intended clean-source qualification path; a successful QuickJS
-calculator run has not yet been established.
+The calculator has passed three full runtime cycles on each of X11, Wayland 1×
+and Wayland 2× using a clean QuickJS SDK cohort based on public runtime source
+`53b70efda8c520037ecba12a7264b777d9e3f4fd` (SDK export recipe
+`b37c808620d64a67a44f43823a824ea02a007f98`). This exposed and required the
+Linux JSX bootstrap/class-mapping fix included in this change. Its corrected
+`valdi_core` module was regenerated with the matched compiler/toolbox and a
+source-restored companion in Bazel; the SDK engine archives remained unchanged.
+
+That qualification compiled only the application/test sources and one generated
+core-resource source, then ran with the module producer source/cache inaccessible.
+It is an SDK-consumer qualification at the recorded source cohort, not a full
+Bazel source build of the newer upstream engine. The copied SDK TypeScript tool
+payload is not qualified for arbitrary compilation without its source context.
 
 The Bazel target statically registers its compiled module resources, so its
 extra module-search directory may be empty. Pass a real font file; it is
@@ -83,5 +93,6 @@ desktop accessibility bridge.
 
 ![Calculator on a headless Wayland output at 2×](docs/calculator-wayland-2x.png)
 
-This screenshot comes from the retained historical binary-SDK validation.
-It does not establish clean current-upstream build compatibility.
+This screenshot is the actual SDL surface from the clean QuickJS SDK consumer
+with the Linux bootstrap fix, after resizing on a 2× headless Wayland output.
+SDL presentation used Mesa softpipe; this is not physical GPU qualification.

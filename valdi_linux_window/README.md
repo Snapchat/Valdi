@@ -52,21 +52,54 @@ bazel-bin/apps/linux_calculator/calculator /path/to/modules /path/to/font.ttf
 
 Keep the runtime engine, generated module bytecode and compiler/toolbox cohort
 matched. The host inherits the runtime's configured engine; it does not require
-Hermes. The explicit QuickJS flags above describe the pending clean-source
-qualification path. Retained binary-SDK validation used a matched Hermes profile,
-not QuickJS. See the calculator notes before consuming a prebuilt SDK.
+Hermes. The explicit QuickJS flags above match the qualified clean SDK consumer
+cohort. See the calculator notes before consuming a prebuilt SDK.
 
-Validation has compiled the native demo and the complete TSX calculator with
-their host/tests against an existing Linux engine binary and matching headers.
-The calculator's Bazel build also compiled its generated module resources and
-compiler helpers. Source-build targets still need validation against the current
-upstream engine; historical binary-cohort tests do not establish that compatibility.
+Clean SDK-consumer validation uses public runtime source
+`53b70efda8c520037ecba12a7264b777d9e3f4fd` and SDK export recipe
+`b37c808620d64a67a44f43823a824ea02a007f98`. The calculator and host suites
+passed three complete lifecycles on each of X11, Wayland 1× and Wayland 2×.
+The initial calculator run found that JSX bootstrap rejected Linux platform ID 5.
+This change accepts Linux and uses the iOS class names already registered by
+SnapDrawing, including the existing desktop custom-view fallback policy.
+
+The corrected core module was source-generated in Bazel with the matched retained
+compiler/toolbox and a source-restored companion; its native stub and four
+transitive modules remained unchanged. A consumer-side core-resource archive
+replaced only the generated resource object. The sealed SDK engine/manifest was
+unchanged. Application/test compilation and the module-generation audit found no
+engine compilation. Final runtime checks ran with the module producer source and
+Bazel cache inaccessible.
+
+This qualifies an explicit SDK/source cohort. A full Bazel build of these targets
+against the newer upstream engine remains unverified. Copied SDK compiler tools
+also remain unqualified for arbitrary standalone TypeScript compilation; use the
+matched source build for module generation.
 
 For already-built test binaries, `bash valdi_linux_window/test/run-displays.sh
 /path/to/host-test /path/to/results` starts private Xvfb and headless Weston
 displays, checks 1× and 2× Wayland outputs, and cleans up those display processes.
 It requires Weston with headless, Pixman and fake-seat support, Xvfb, Mesa
 software rendering and `timeout`. It creates no VM, container or deployment.
+
+The headless Wayland harness defaults to Mesa `softpipe` for its controlled
+software presentation check; set `GALLIUM_DRIVER` explicitly to investigate
+other drivers. A retained LLVM/libunwind consumer with Mesa llvmpipe emitted
+bad-FDE diagnostics on the validation VM even though native host assertions
+passed. Softpipe completed those assertions without these diagnostics; this does
+not resolve or qualify LLVM/JIT unwind interoperability. See the
+[Mesa driver-selection documentation](https://docs.mesa3d.org/envvars.html#gallium-driver).
+
+The bootstrap platform-mapping regression test exercises the real TypeScript
+module with native/debugging services stubbed, including Linux initialization,
+built-in class names, desktop custom-view fallbacks, and existing platforms:
+
+```sh
+node valdi_linux_window/test/JSXPlatformTest.cjs /path/to/typescript/lib/typescript.js
+```
+
+Use TypeScript 5.3.3. This source-level test complements the native calculator
+integration; it does not establish native custom-view support.
 
 ## Input, scale, scheduling and lifetime
 
