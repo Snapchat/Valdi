@@ -20,10 +20,24 @@ Install SDL3 >= 3.2 development headers/libraries and pkg-config. See the
 dependency binding and current source-build qualification limits.
 
 ```sh
-bazel build //apps/linux_calculator:calculator
+bazel build //apps/linux_calculator:calculator \
+  --//bzl/valdi:js_engine=quickjs \
+  --//bzl/valdi:js_bytecode_format=quickjs
 mkdir -p /tmp/valdi-calculator-modules
 bazel-bin/apps/linux_calculator/calculator /tmp/valdi-calculator-modules /path/to/font.ttf
 ```
+
+The host uses the runtime's configured default JavaScript engine. The command
+above explicitly selects matching QuickJS runtime and module bytecode profiles;
+the repository's engine default and bytecode default are separate settings.
+For a prebuilt SDK, use its recorded engine/bytecode/compiler profile and
+regenerate every module and static resource with the matched tools. Do not reuse
+Hermes output with a QuickJS runtime, or the reverse. A matched Hermes source
+build can select `hermes` for both flags instead.
+
+The retained binary-SDK calculator evidence used Hermes. The QuickJS commands
+above are the intended clean-source qualification path; a successful QuickJS
+calculator run has not yet been established.
 
 The Bazel target statically registers its compiled module resources, so its
 extra module-search directory may be empty. Pass a real font file; it is
