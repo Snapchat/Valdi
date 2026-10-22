@@ -17,6 +17,7 @@
 
 namespace Valdi {
 
+class DeviceModule;
 class StandaloneMainQueue;
 class StandaloneResourceLoader;
 class StandaloneViewManager;
@@ -46,6 +47,12 @@ public:
     const Ref<ViewManagerContext>& getViewManagerContext() const;
     const Ref<StandaloneMainQueue>& getMainQueue() const;
 
+    // Supply the host's effective appearance before setupJsRuntime() for the initial
+    // value, and again when it changes. Updates are serialized on the JS queue.
+    // No platform discovery/window dependency is
+    // added to headless hosts. Observers use the existing Device.observeDarkMode API.
+    void setDarkMode(bool darkMode);
+
     void setupJsRuntime(const std::vector<StringBox>& jsArguments);
     void evalScript(const StringBox& scriptPath, const std::vector<StringBox>& jsArguments);
 
@@ -71,6 +78,7 @@ public:
                                               PlatformType platformType = PlatformTypeIOS);
 
 private:
+    Ref<DeviceModule> _deviceModule;
     Ref<RuntimeManager> _runtimeManager;
     Ref<Runtime> _runtime;
     Shared<StandaloneResourceLoader> _resourceLoader;
