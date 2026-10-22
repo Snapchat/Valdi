@@ -10,8 +10,11 @@
 #include <cstdlib>
 #include <iostream>
 #include <thread>
+#include <vector>
 
 namespace sd = snap::drawing;
+
+void setTestSystemTheme(SDL_SystemTheme theme);
 
 #define CHECK(condition)                                                                                               \
     do {                                                                                                               \
@@ -22,6 +25,8 @@ namespace sd = snap::drawing;
     } while (false)
 
 struct Client final : ValdiLinux::WindowClient {
+    std::vector<ValdiLinux::SystemTheme> themes;
+    void onSystemThemeChanged(ValdiLinux::SystemTheme theme) override { themes.push_back(theme); }
     std::string committed;
     std::string preedit;
     int32_t start = -1;
@@ -88,11 +93,26 @@ int main(int argc, char** argv) {
             ValdiLinux::WindowOptions options;
             options.width = 320;
             options.height = 240;
+            setTestSystemTheme(SDL_SYSTEM_THEME_UNKNOWN);
             auto opened = host.open(options);
             if (!opened) {
                 std::cerr << opened.error() << '\n';
             }
             CHECK(opened);
+            CHECK(client.themes == std::vector<ValdiLinux::SystemTheme>({ValdiLinux::SystemTheme::Unknown}));
+            for (auto theme : {SDL_SYSTEM_THEME_LIGHT, SDL_SYSTEM_THEME_DARK, SDL_SYSTEM_THEME_UNKNOWN}) {
+                setTestSystemTheme(theme);
+                SDL_Event changed{};
+                changed.type = SDL_EVENT_SYSTEM_THEME_CHANGED;
+                CHECK(SDL_PushEvent(&changed));
+                pump(host);
+                CHECK(static_cast<int>(host.getSystemTheme()) == static_cast<int>(theme));
+                const auto count = client.themes.size();
+                CHECK(SDL_PushEvent(&changed));
+                pump(host);
+                CHECK(client.themes.size() == count);
+            }
+            CHECK(client.themes.size() == 4);
             pump(host);
             CHECK(host.getPresentedFrames() > 0);
             const auto initialMetrics = host.getMetrics();

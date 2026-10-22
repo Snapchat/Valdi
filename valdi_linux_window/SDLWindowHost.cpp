@@ -54,6 +54,7 @@ struct SDLWindowHost::Impl {
     SDL_Window* window = nullptr;
     WindowOptions options;
     WindowMetrics metrics;
+    SystemTheme systemTheme = SystemTheme::Unknown;
     std::vector<uint8_t> pixels;
     snap::drawing::BitmapGraphicsContext graphics;
     bool videoInitialized = false;
@@ -92,6 +93,19 @@ struct SDLWindowHost::Impl {
         }
     }
 
+    void updateSystemTheme(bool initial = false) {
+        SystemTheme theme = SystemTheme::Unknown;
+        switch (SDL_GetSystemTheme()) {
+            case SDL_SYSTEM_THEME_LIGHT: theme = SystemTheme::Light; break;
+            case SDL_SYSTEM_THEME_DARK: theme = SystemTheme::Dark; break;
+            default: break;
+        }
+        if (initial || systemTheme != theme) {
+            systemTheme = theme;
+            client.onSystemThemeChanged(theme);
+        }
+    }
+
     void event(const SDL_Event& event) {
         if (event.type == SDL_EVENT_QUIT) {
             closed = true;
@@ -99,6 +113,9 @@ struct SDLWindowHost::Impl {
         }
         const auto id = SDL_GetWindowID(window);
         switch (event.type) {
+            case SDL_EVENT_SYSTEM_THEME_CHANGED:
+                updateSystemTheme();
+                break;
             case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
                 if (event.window.windowID == id) {
                     closed = true;
@@ -310,6 +327,7 @@ Valdi::Result<Valdi::Void> SDLWindowHost::open(const WindowOptions& options) {
         p.mainQueue->setListener(std::make_shared<QueueWakeup>(wakeEvent, p.previousQueueListener));
     }
     p.listenersAttached = true;
+    p.updateSystemTheme(true);
     return Valdi::Void();
 }
 
@@ -412,6 +430,8 @@ Valdi::Result<Valdi::Void> SDLWindowHost::setClipboardText(const std::string& te
     }
     return Valdi::Void();
 }
+
+SystemTheme SDLWindowHost::getSystemTheme() const { return _impl->systemTheme; }
 
 const WindowMetrics& SDLWindowHost::getMetrics() const { return _impl->metrics; }
 uint32_t SDLWindowHost::getWindowId() const { return SDL_GetWindowID(_impl->window); }

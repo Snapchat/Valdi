@@ -8,6 +8,10 @@
 #include <mutex>
 #include <optional>
 
+#ifdef VALDI_LINUX_THEME_TEST
+void setTestSystemTheme(SDL_SystemTheme theme);
+#endif
+
 namespace {
 struct Frame {
     std::string parent;
@@ -245,6 +249,23 @@ bool selfTest(ValdiLinux::SDLWindowHost& host, CalculatorBridge& bridge, const c
         })) {
         return false;
     }
+#ifdef VALDI_LINUX_THEME_TEST
+    auto pixelIs = [&](bool dark) {
+        uint8_t r = 0, g = 0, b = 0, a = 0;
+        auto* surface = SDL_GetWindowSurface(SDL_GetWindowFromID(host.getWindowId()));
+        return surface && SDL_ReadSurfacePixel(surface, 2, 2, &r, &g, &b, &a) &&
+               r == (dark ? 0x10 : 0xf4) && g == (dark ? 0x15 : 0xf6) && b == (dark ? 0x1f : 0xfa);
+    };
+    if (!waitFor(host, [&] { return pixelIs(host.getSystemTheme() == ValdiLinux::SystemTheme::Dark); })) return false;
+    for (auto theme : {SDL_SYSTEM_THEME_DARK, SDL_SYSTEM_THEME_LIGHT, SDL_SYSTEM_THEME_UNKNOWN, SDL_SYSTEM_THEME_DARK}) {
+        setTestSystemTheme(theme);
+        SDL_Event changed{};
+        changed.type = SDL_EVENT_SYSTEM_THEME_CHANGED;
+        if (!SDL_PushEvent(&changed) || !waitFor(host, [&] { return pixelIs(theme == SDL_SYSTEM_THEME_DARK); })) return false;
+        if (bridge.readDisplay() != "0") return false;
+    }
+    std::cout << "PASS: initial appearance and live dark/light/unknown palette pixels through Device.observeDarkMode\n";
+#endif
     SDL_Event focus{};
     focus.type = SDL_EVENT_WINDOW_FOCUS_GAINED;
     focus.window.windowID = host.getWindowId();
@@ -294,6 +315,9 @@ int main(int argc, char** argv) {
     }
     const bool testing = argc > 3 && std::string(argv[3]) == "--self-test";
     for (int cycle = 0; cycle < (testing ? 3 : 1); ++cycle) {
+#ifdef VALDI_LINUX_THEME_TEST
+        setTestSystemTheme(cycle == 0 ? SDL_SYSTEM_THEME_DARK : cycle == 1 ? SDL_SYSTEM_THEME_LIGHT : SDL_SYSTEM_THEME_UNKNOWN);
+#endif
         auto bridge = std::make_shared<CalculatorBridge>();
         CalculatorClient client(bridge);
         int exitCode = 0;
