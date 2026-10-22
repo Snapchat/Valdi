@@ -67,15 +67,39 @@ concurrency:
 
 jobs:
   smoke-test:
-    name: Valdi Smoke Tests
-    runs-on: macos-26
+    name: Valdi Smoke Tests (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            xcode: '26.5.0'
+          # macOS 27: its dyld rejects Rust proc-macros stripped by rustc < 1.98
+          # (rust-lang/rust#157750), which macOS 26 runners can't catch.
+          - runner: xcode-27
+            xcode: '27.0.0'
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - name: Free disk space
+        env:
+          XCODE_VERSION: ${{ matrix.xcode }}
         run: |
           # The smoke tests bootstrap two separate Bazel workspaces (ui_app +
           # cli_app) which can exhaust the runner's disk. Remove large unused
           # components to reclaim ~5-8 GB.
+          # The xcode-27 image ships several Xcodes and starts with ~40 GB free
+          # (vs ~97 GB on macos-26); keep only the one pin-xcode will select.
+          # Skip if the pin is missing so pin-xcode reports it.
+          XCODE_APP="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [[ -d "$XCODE_APP" ]]; then
+            KEEP=$(cd "$XCODE_APP" && pwd -P)
+            for app in /Applications/Xcode*.app; do
+              [[ -L "$app" ]] && continue
+              [[ "$(cd "$app" && pwd -P)" == "$KEEP" ]] || sudo rm -rf "$app"
+            done
+            find /Applications -maxdepth 1 -name 'Xcode*.app' -type l ! -exec test -e {} \; -exec sudo rm -f {} \;
+          fi
           xcrun simctl delete unavailable 2>/dev/null || true
           sudo rm -rf ~/Library/Developer/CoreSimulator/Caches/* 2>/dev/null || true
           rm -rf ~/Library/Android/sdk/system-images 2>/dev/null || true
@@ -88,6 +112,8 @@ jobs:
 
       - name: Pin Xcode
         uses: ./.github/actions/pin-xcode
+        with:
+          version: ${{ matrix.xcode }}
 
       - name: Configure Bazel cache
         uses: ./.github/actions/bazel-cache
@@ -97,7 +123,7 @@ jobs:
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
           service_account_ro: ${{ vars.GCP_SERVICE_ACCOUNT_RO }}
           cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
-          cache_key: smoke-test
+          cache_key: smoke-test-${{ matrix.runner }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -135,7 +161,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-macos
+          name: test-results-${{ matrix.runner }}
           path: |
             /tmp/valdi_app/*.log
             /tmp/valdi_app/config.yaml

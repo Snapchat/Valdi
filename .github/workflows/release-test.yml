@@ -26,8 +26,18 @@ concurrency:
 
 jobs:
   release-test:
-    name: Bootstrap with default pinned versions, build & test
-    runs-on: macos-26
+    name: Bootstrap with default pinned versions, build & test (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            xcode: '26.5.0'
+          # macOS 27: its dyld rejects Rust proc-macros stripped by rustc < 1.98
+          # (rust-lang/rust#157750), which macOS 26 runners can't catch.
+          - runner: xcode-27
+            xcode: '27.0.0'
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - name: Checkout code
@@ -35,6 +45,8 @@ jobs:
 
       - name: Pin Xcode
         uses: ./.github/actions/pin-xcode
+        with:
+          version: ${{ matrix.xcode }}
 
       - name: Configure Bazel cache
         uses: ./.github/actions/bazel-cache
@@ -69,7 +81,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: release-test-failure
+          name: release-test-failure-${{ matrix.runner }}
           path: |
             /tmp/valdi_release_test/MODULE.bazel
             /tmp/valdi_release_test/WORKSPACE
