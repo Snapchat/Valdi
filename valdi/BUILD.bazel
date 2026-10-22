@@ -1338,6 +1338,7 @@ cc_binary(
     deps = [
         ":valdi_runtime_with_vm",
         ":valdi_standalone_runtime",
+        "//src/valdi_modules/src/valdi/valdi_cli:valdi_cli_native",
     ],
 )
 

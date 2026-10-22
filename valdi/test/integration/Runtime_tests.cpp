@@ -64,6 +64,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <cstring>
 #include <future>
 #include <iostream>
 #include <memory>
@@ -5897,6 +5898,28 @@ TEST_P(RuntimeFixture, canTrackBundledAssetThroughJavaScriptRenderer) {
     ASSERT_EQ(nullptr, tree->getAssetTracker());
 }
 
+// Compares the WebP header rather than the byte count, which depends on whether the host's image
+// pipeline embeds an ICC profile chunk for the image's colorspace.
+::testing::AssertionResult isExtendedWebPWithSize(const BytesView& bytes, uint32_t width, uint32_t height) {
+    // RIFF header (12) + VP8X chunk header (8) + flags and reserved (4) + 24-bit canvas width and height minus one (6).
+    if (bytes.size() < 30 || std::memcmp(bytes.data(), "RIFF", 4) != 0 ||
+        std::memcmp(bytes.data() + 8, "WEBP", 4) != 0 || std::memcmp(bytes.data() + 12, "VP8X", 4) != 0) {
+        return ::testing::AssertionFailure() << "not an extended WebP (" << bytes.size() << " bytes)";
+    }
+    auto readUInt24 = [&](size_t offset) {
+        const auto* data = bytes.data() + offset;
+        return static_cast<uint32_t>(data[0]) | (static_cast<uint32_t>(data[1]) << 8) |
+               (static_cast<uint32_t>(data[2]) << 16);
+    };
+    auto actualWidth = readUInt24(24) + 1;
+    auto actualHeight = readUInt24(27) + 1;
+    if (actualWidth != width || actualHeight != height) {
+        return ::testing::AssertionFailure()
+               << "WebP is " << actualWidth << "x" << actualHeight << ", expected " << width << "x" << height;
+    }
+    return ::testing::AssertionSuccess();
+}
+
 TEST_P(RuntimeFixture, canLoadBundledAsset) {
     configureWrapperWithRemoteSupport(wrapper);
 
@@ -5917,7 +5940,7 @@ TEST_P(RuntimeFixture, canLoadBundledAsset) {
 
     ASSERT_TRUE(loadedAsset != nullptr);
 
-    ASSERT_EQ(static_cast<size_t>(1742), loadedAsset->getBytes().size());
+    ASSERT_TRUE(isExtendedWebPWithSize(loadedAsset->getBytes(), 88, 88));
 }
 
 void loadRemoteBundle(RuntimeWrapper& wrapper) {
@@ -6164,7 +6187,7 @@ TEST_P(RuntimeFixture, canLoadRemoteAsset) {
 
     ASSERT_TRUE(loadedAsset != nullptr);
 
-    ASSERT_EQ(static_cast<size_t>(1070), loadedAsset->getBytes().size());
+    ASSERT_TRUE(isExtendedWebPWithSize(loadedAsset->getBytes(), 60, 44));
 }
 
 TEST_P(RuntimeFixture, canResolveRemoteAssetWithKebabCaseFromRemoteComponent) {

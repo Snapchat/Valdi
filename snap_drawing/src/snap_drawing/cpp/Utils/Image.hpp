@@ -63,6 +63,8 @@ public:
 
     Valdi::Ref<Valdi::IBitmap> getBitmap();
 
+    Valdi::Ref<Valdi::IBitmap> toConvertedBitmap(const Valdi::BitmapInfo& bitmapInfo);
+
     /**
      Make an Image from bytes representing an encoded image, like in PNG or JPG format.
      */

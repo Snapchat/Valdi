@@ -8,6 +8,8 @@
 #include "snap_drawing/cpp/Utils/BitmapUtils.hpp"
 #include "include/core/SkImageInfo.h"
 
+#include <limits>
+
 namespace snap::drawing {
 
 static Valdi::ColorType toValdiColorType(SkColorType colorType) {
@@ -97,6 +99,32 @@ static void releaseBitmap(const void* /*ptr*/, void* context) {
     auto bitmap = Valdi::unsafeBridge<Valdi::IBitmap>(context);
     bitmap->unlockBytes();
     Valdi::unsafeBridgeRelease(context);
+}
+
+bool tryAllocBitmapPixels(SkBitmap& bitmap, const SkImageInfo& info, size_t rowBytes) {
+    if (info.isEmpty() || rowBytes == info.minRowBytes()) {
+        return bitmap.tryAllocPixels(info, rowBytes);
+    }
+    if (!info.validRowBytes(rowBytes)) {
+        return false;
+    }
+
+    const auto height = static_cast<size_t>(info.height());
+    if (rowBytes > std::numeric_limits<size_t>::max() / height) {
+        return false;
+    }
+    auto data = SkData::MakeUninitialized(rowBytes * height);
+    if (data == nullptr) {
+        return false;
+    }
+
+    auto* pixels = data->writable_data();
+    return bitmap.installPixels(
+        info,
+        pixels,
+        rowBytes,
+        [](void* /*addr*/, void* context) { static_cast<SkData*>(context)->unref(); },
+        data.release());
 }
 
 Valdi::Result<sk_sp<SkData>> bitmapToData(const Valdi::Ref<Valdi::IBitmap>& bitmap,

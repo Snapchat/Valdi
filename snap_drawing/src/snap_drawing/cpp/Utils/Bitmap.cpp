@@ -14,7 +14,10 @@ Bitmap::Bitmap(SkBitmap&& bitmap) : _bitmap(std::move(bitmap)) {}
 
 Valdi::BitmapInfo Bitmap::getInfo() const {
     const auto& pixmap = _bitmap.pixmap();
-    return toBitmapInfo(pixmap.info());
+    auto info = toBitmapInfo(pixmap.info());
+    // The pixels may have been allocated with a stride wider than the minimum.
+    info.rowBytes = pixmap.rowBytes();
+    return info;
 }
 
 void* Bitmap::lockBytes() {
@@ -31,7 +34,7 @@ void Bitmap::dispose() {
 Valdi::Result<Ref<Bitmap>> Bitmap::make(const Valdi::BitmapInfo& info) {
     SkBitmap skBitmap;
     auto imageInfo = toSkiaImageInfo(info);
-    if (!skBitmap.tryAllocPixels(imageInfo, std::max(info.rowBytes, imageInfo.minRowBytes()))) {
+    if (!tryAllocBitmapPixels(skBitmap, imageInfo, std::max(info.rowBytes, imageInfo.minRowBytes()))) {
         return Valdi::Error("Failed to allocate pixels for bitmap");
     }
 

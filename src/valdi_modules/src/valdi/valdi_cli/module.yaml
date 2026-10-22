@@ -1,0 +1,5 @@
+dependencies:
+  - coreutils
+  - file_system
+
+output_target: release
