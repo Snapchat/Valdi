@@ -5,6 +5,7 @@
 #include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
 
 #include <SDL3/SDL.h>
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
@@ -37,6 +38,12 @@ struct Client final : ValdiLinux::WindowClient {
     void onFocusChanged(bool value) override { focused = value; }
 };
 
+struct QueueObserver final : Valdi::IQueueListener {
+    std::atomic<int> notifications{0};
+    void onQueueEmpty() override { ++notifications; }
+    void onQueueNonEmpty() override { ++notifications; }
+};
+
 void windowEvent(ValdiLinux::SDLWindowHost& host, uint32_t type) {
     SDL_Event event{};
     event.type = type;
@@ -63,6 +70,10 @@ int main(int argc, char** argv) {
         content->setBackgroundColor(sd::Color::make(0xff123456));
         root->setContentLayer(content, sd::ContentLayerSizingModeMatchSize);
         Valdi::TaskQueue queue;
+        auto observer = std::make_shared<QueueObserver>();
+        if (cycle == 1) {
+            queue.setListener(observer);
+        }
         Client client;
         int taps = 0;
         auto tap = Valdi::makeShared<sd::SingleTapGestureRecognizer>(resources->getGesturesConfiguration());
@@ -217,7 +228,12 @@ int main(int argc, char** argv) {
                       << " displayScale=" << initialMetrics.displayScale << " pixels=" << initialMetrics.pixelWidth
                       << 'x' << initialMetrics.pixelHeight << " frames=" << host.getPresentedFrames() << '\n';
         }
-        CHECK(!root->getListener() && !queue.getListener());
+        CHECK(!root->getListener());
+        if (cycle == 1) {
+            CHECK(queue.getListener() == observer && observer->notifications > 0);
+        } else {
+            CHECK(!queue.getListener());
+        }
         root->destroy();
     }
     std::cout << "PASS: raster pixels, resize, text boundary, clipboard, tap, queue, idle, teardown\n";

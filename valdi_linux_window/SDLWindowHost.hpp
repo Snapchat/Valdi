@@ -52,8 +52,9 @@ public:
 // use an internal accelerated renderer for its window surface. The host never
 // creates a SnapDrawing GPU context or manages a swapchain.
 // Caller owns the root, queue, client and SDL main thread. They must outlive the
-// host. While open, this host exclusively owns their listener slots and the SDL
-// event loop. Detach/destroy the host before destroying the root or runtime.
+// host. While open, this host owns the root listener and SDL event loop. It
+// chains an existing queue listener and restores it during destruction. Do not
+// replace either listener while open. Destroy the host before the root/runtime.
 class SDLWindowHost final : private snap::drawing::LayerRootListener {
 public:
     SDLWindowHost(const Valdi::Ref<snap::drawing::LayerRoot>& root, WindowClient& client,
