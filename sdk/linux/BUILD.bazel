@@ -1,0 +1,53 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_python//python:defs.bzl", "py_test")
+load("//bzl/valdi:valdi_toolchain.bzl", "valdi_toolchain")
+load(":export.bzl", "linux_sdk_export")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(name = "no_client_sql")
+
+# Compiler, TS companion and bytecode toolbox come from the same source tree.
+# ClientSQL is intentionally outside this profile.
+valdi_toolchain(
+    name = "source_tools",
+    compiler = "//compiler/compiler:local_valdi_compiler",
+    compiler_toolbox = "//valdi/compiler/toolbox:valdi_compiler_toolbox",
+    compiler_companion = "//compiler/companion:ts_bin_wrapper",
+    sqldelight_compiler = ":no_client_sql",
+)
+
+toolchain(
+    name = "source_toolchain",
+    toolchain = ":source_tools",
+    toolchain_type = "//bzl/valdi:toolchain_type",
+    exec_compatible_with = ["@platforms//os:linux", "@platforms//cpu:x86_64"],
+)
+
+# Opt-in: existing Linux applications and other platforms are unchanged.
+cc_library(
+    name = "runtime",
+    target_compatible_with = ["@platforms//os:linux", "@platforms//cpu:x86_64"],
+    deps = [
+        "//valdi:valdi_linux",
+        "//tsn",
+        "//src/valdi_modules/src/valdi/valdi_core:valdi_core_native",
+    ],
+)
+
+linux_sdk_export(
+    name = "export",
+    deps = [":runtime"],
+    fixture_deps = [
+        "//sdk/linux/sdk_service:sdk_service_cpp",
+        "//sdk/linux/sdk_service:sdk_service_native",
+    ],
+    target_compatible_with = ["@platforms//os:linux", "@platforms//cpu:x86_64"],
+)
+
+py_test(
+    name = "package_test",
+    srcs = ["package.py", "test_package.py"],
+    main = "test_package.py",
+    data = ["README.md"] + glob(["consumer/*"]),
+)
