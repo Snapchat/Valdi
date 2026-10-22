@@ -7,6 +7,7 @@
 
 #include "valdi/runtime/JavaScript/Modules/JavaScriptModuleFactoryBridge.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptUtils.hpp"
+#include "valdi_core/cpp/Utils/Trace.hpp"
 
 namespace Valdi {
 
@@ -22,6 +23,9 @@ StringBox JavaScriptModuleFactoryBridge::getModulePath() const {
 JSValueRef JavaScriptModuleFactoryBridge::loadModule(IJavaScriptContext& jsContext,
                                                      const ReferenceInfoBuilder& referenceInfoBuilder,
                                                      JSExceptionTracker& exceptionTracker) {
+    // Native factories can block the JS thread here (e.g. the iOS device module waits for the main thread to read
+    // screen settings), and that wait is otherwise only visible as unexplained time in the importing loadJsModule.
+    VALDI_TRACE_META("Valdi.loadNativeModule", _moduleFactory->getModulePath());
     auto value = _moduleFactory->loadModule();
     return valueToJSValue(jsContext, value, referenceInfoBuilder.withReturnValue(), exceptionTracker);
 }
