@@ -138,13 +138,49 @@ bool DeviceModule::isDesktop() {
     return true;
 }
 
-// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-Valdi::Value DeviceModule::observeDarkMode() {
+void DeviceModule::setDarkMode(bool darkMode) {
+    std::lock_guard<Valdi::RecursiveMutex> guard(_darkModeMutex);
+    if (_darkMode == darkMode) {
+        return;
+    }
+    _darkMode = darkMode;
+    const auto revision = ++_darkModeRevision;
+    // Copy before invoking: a native observer may cancel itself/another observer,
+    // subscribe, or publish a newer value during its callback.
+    const auto observers = _darkModeObservers;
+    for (const auto& [id, observer] : observers) {
+        if (_darkModeRevision != revision) {
+            break;
+        }
+        if (_darkModeObservers.find(id) != _darkModeObservers.end()) {
+            (*observer)(ValueFunctionFlagsNeverCallSync, {Value(darkMode)});
+        }
+    }
+}
+
+Valdi::Value DeviceModule::observeDarkMode(const Valdi::ValueFunctionCallContext& callContext) {
+    auto observer = callContext.getParameterAsFunction(0);
+    if (!callContext.getExceptionTracker()) {
+        return Value();
+    }
+    std::lock_guard<Valdi::RecursiveMutex> guard(_darkModeMutex);
+    const auto id = ++_nextDarkModeObserverId;
+    _darkModeObservers.emplace(id, observer);
+    // On the JS thread this delivers the current value before registration returns,
+    // allowing Device.isDarkMode() to be initialized before the first render.
+    (*observer)(ValueFunctionFlagsNeverCallSync, {Value(_darkMode)});
     Valdi::Value out;
     out.setMapValue(
         "cancel",
         Valdi::Value(Valdi::makeShared<Valdi::ValueFunctionWithCallable>(
-            [](const Valdi::ValueFunctionCallContext& /*callContext*/) -> Valdi::Value { return Valdi::Value(); })));
+            [weakSelf = weakRef(this), id](const Valdi::ValueFunctionCallContext&) -> Valdi::Value {
+                auto self = weakSelf.lock();
+                if (self != nullptr) {
+                    std::lock_guard<Valdi::RecursiveMutex> guard(self->_darkModeMutex);
+                    self->_darkModeObservers.erase(id);
+                }
+                return Valdi::Value();
+            })));
     return out;
 }
 
