@@ -23,10 +23,18 @@ Valdi::Error sdlError() { return Valdi::Error(SDL_GetError()); }
 
 class QueueWakeup final : public Valdi::IQueueListener {
 public:
-    explicit QueueWakeup(uint32_t eventType) : _eventType(eventType) {}
-    void onQueueEmpty() override {}
+    QueueWakeup(uint32_t eventType, Valdi::Shared<Valdi::IQueueListener> previous)
+        : _eventType(eventType), _previous(std::move(previous)) {}
+    void onQueueEmpty() override {
+        if (_previous) {
+            _previous->onQueueEmpty();
+        }
+    }
     void onQueueNonEmpty() override {
         // Called under TaskQueue's lock: never access the queue here.
+        if (_previous) {
+            _previous->onQueueNonEmpty();
+        }
         SDL_Event event{};
         event.type = _eventType;
         SDL_PushEvent(&event); // Timed pumping also covers a full SDL queue.
@@ -34,6 +42,7 @@ public:
 
 private:
     uint32_t _eventType;
+    Valdi::Shared<Valdi::IQueueListener> _previous;
 };
 } // namespace
 
@@ -41,6 +50,7 @@ struct SDLWindowHost::Impl {
     Valdi::Ref<snap::drawing::LayerRoot> root;
     WindowClient& client;
     Valdi::TaskQueue* mainQueue;
+    Valdi::Shared<Valdi::IQueueListener> previousQueueListener;
     SDL_Window* window = nullptr;
     WindowOptions options;
     WindowMetrics metrics;
@@ -254,7 +264,7 @@ SDLWindowHost::~SDLWindowHost() {
     auto& p = *_impl;
     if (p.listenersAttached) {
         if (p.mainQueue) {
-            p.mainQueue->setListener(nullptr);
+            p.mainQueue->setListener(p.previousQueueListener);
         }
         p.root->setListener(nullptr);
         p.cancelPointer();
@@ -273,8 +283,8 @@ Valdi::Result<Valdi::Void> SDLWindowHost::open(const WindowOptions& options) {
     if (p.window || p.videoInitialized) {
         return Valdi::Error("Window host can only be opened once");
     }
-    if (p.root == nullptr || p.root->getListener() || (p.mainQueue && p.mainQueue->getListener())) {
-        return Valdi::Error("Window host requires a root and unused root/queue listener slots");
+    if (p.root == nullptr || p.root->getListener()) {
+        return Valdi::Error("Window host requires a root and an unused root listener slot");
     }
     if (!framebufferBytes(options.width, options.height, options.maxFramebufferBytes)) {
         return Valdi::Error("Invalid initial window dimensions or framebuffer limit");
@@ -296,7 +306,8 @@ Valdi::Result<Valdi::Void> SDLWindowHost::open(const WindowOptions& options) {
     p.focused = (SDL_GetWindowFlags(p.window) & SDL_WINDOW_INPUT_FOCUS) != 0;
     p.root->setListener(this);
     if (p.mainQueue) {
-        p.mainQueue->setListener(std::make_shared<QueueWakeup>(wakeEvent));
+        p.previousQueueListener = p.mainQueue->getListener();
+        p.mainQueue->setListener(std::make_shared<QueueWakeup>(wakeEvent, p.previousQueueListener));
     }
     p.listenersAttached = true;
     return Valdi::Void();

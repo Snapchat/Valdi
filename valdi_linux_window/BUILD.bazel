@@ -22,6 +22,22 @@ cc_library(
     hdrs = ["Framebuffer.hpp"],
 )
 
+cc_library(
+    name = "valdi_window_application",
+    srcs = ["ValdiWindowApplication.cpp"],
+    hdrs = ["ValdiWindowApplication.hpp"],
+    copts = ["-fno-exceptions"],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":sdl_window_host",
+        "//snap_drawing:snap_drawing_cc",
+        "//valdi:valdi_linux",
+        "//valdi:valdi_snap_drawing",
+        "//valdi_core:valdi_core_cc",
+    ],
+)
+
 cc_test(
     name = "framebuffer_test",
     srcs = ["test/FramebufferTest.cpp"],
