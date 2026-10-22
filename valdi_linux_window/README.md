@@ -12,8 +12,9 @@ the existing Linux runtime, Android, and Apple targets do not depend on it.
 
 The caller supplies the root, optional Valdi `TaskQueue`, and `WindowClient`.
 Those objects outlive the host. Destroy the host before destroying the root or
-runtime. It exclusively occupies the root/queue listener slots while open and
-currently consumes the process-wide SDL event loop: multiple independent SDL
+runtime. It exclusively occupies the root listener slot, chains an existing
+queue listener and restores it during shutdown. Do not replace either listener
+while open. It currently consumes the process-wide SDL event loop: multiple independent SDL
 windows are outside this prototype's contract.
 
 ## Build
@@ -37,10 +38,21 @@ The demo registers an explicitly supplied font, renders a native SnapDrawing
 layer tree, counts taps and displays text commit/preedit events. It does not
 yet instantiate a compiled Valdi component or a complete text editor.
 
-The first smoke validation compiled only these new host/demo/test files against
-an existing Linux engine binary and its matching headers. The source-build
-Bazel targets above still need validation against the current upstream engine;
-the binary smoke test does not establish that compatibility.
+`ValdiWindowApplication` adds standalone runtime ownership, a SnapDrawing
+view-manager context, a compiled component mounted through `ValdiLayer`, font
+registration and ordered shutdown. The [calculator](../apps/linux_calculator/README.md)
+uses this adapter without application-specific services:
+
+```sh
+bazel build //apps/linux_calculator:calculator
+bazel-bin/apps/linux_calculator/calculator /path/to/modules /path/to/font.ttf
+```
+
+Validation has compiled the native demo and the complete TSX calculator with
+their host/tests against an existing Linux engine binary and matching headers.
+The calculator's Bazel build also compiled its generated module resources and
+compiler helpers. Source-build targets still need validation against the current
+upstream engine; historical binary-cohort tests do not establish that compatibility.
 
 For already-built test binaries, `bash valdi_linux_window/test/run-displays.sh
 /path/to/host-test /path/to/results` starts private Xvfb and headless Weston
@@ -71,7 +83,8 @@ software rendering and `timeout`. It creates no VM, container or deployment.
 - Framebuffer allocation is bounded and checked before multiplication. SDL
   owns its window surface; it is reacquired after resizing. A local bitmap
   drawable cannot outlive or retain the temporary pixels across reallocations.
-  Queue/root listeners detach before window/video cleanup. The caller then
+  The root listener detaches and the original queue listener is restored before
+  window/video cleanup. The caller then
   destroys the root and runtime in its own ownership order.
 
 ## Tests and remaining gates
@@ -79,12 +92,15 @@ software rendering and `timeout`. It creates no VM, container or deployment.
 The display test checks exact raster output, resize, event routing, separate
 preedit/commit handling, clipboard, tap delivery, worker/delayed queue work,
 bounded queue batches, idle rendering and three open/close cycles. These tests
+also verify forwarding/restoration of a pre-existing queue listener. The calculator
+checks its real Valdi layout, tap handlers, keyboard bridge and runtime reopen.
+These tests
 inject SDL text events. They do **not** establish real IBus/Fcitx composition,
 candidate placement, surrounding text or full editor behavior.
 
-Before this is a complete Valdi Linux application host: connect a compiled
-TypeScript component and runtime teardown, establish a supported dependency
-binding, add editor focus/selection/index conversion, validate real desktop
+Before this is a complete Valdi Linux application host: validate a clean current
+upstream source build, establish a supported dependency binding, add editor
+focus/selection/index conversion, validate real desktop
 IMEs and clipboard ownership changes, implement accessibility, and test physical
 GPU/multi-monitor/fractional-scale configurations. GPU presentation, external
 native views and performance claims require separate work and measurements.

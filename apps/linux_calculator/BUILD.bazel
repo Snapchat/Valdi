@@ -1,0 +1,26 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "linux_calculator",
+    srcs = glob(["src/**/*.ts", "src/**/*.tsx"]) + ["tsconfig.json"],
+    ios_module_name = "LinuxCalculator",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)
+
+cc_binary(
+    name = "calculator",
+    srcs = ["main.cpp"],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":linux_calculator_native",
+        "//valdi_core:valdi_core_cc",
+        "//valdi_linux_window:valdi_window_application",
+        "@valdi_system_sdl3//:sdl3",
+    ],
+)
