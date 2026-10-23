@@ -14,16 +14,16 @@ interface GlobalProviderSourceStoreAccessor {
   $globalProviderSourceStore?: GlobalProviderSourceStore;
 }
 
-declare const global: GlobalProviderSourceStoreAccessor;
+const globalProviderSourceStoreAccessor = globalThis as typeof globalThis & GlobalProviderSourceStoreAccessor;
 
 function getOrCreateGlobalProviderSourceStore(): GlobalProviderSourceStore {
-  let store = global.$globalProviderSourceStore;
+  let store = globalProviderSourceStoreAccessor.$globalProviderSourceStore;
   if (!store) {
     store = {
       index: {},
       sequence: 0,
     };
-    global.$globalProviderSourceStore = store;
+    globalProviderSourceStoreAccessor.$globalProviderSourceStore = store;
   }
   return store;
 }
