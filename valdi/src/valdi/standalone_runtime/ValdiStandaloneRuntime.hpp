@@ -49,8 +49,8 @@ public:
 
     // Supply the host's effective appearance before setupJsRuntime() for the initial
     // value, and again when it changes. Updates are serialized on the JS queue.
-    // No platform discovery/window dependency is
-    // added to headless hosts. Observers use the existing Device.observeDarkMode API.
+    // No platform discovery or window dependency is added to headless hosts.
+    // Observers use the existing Device.observeDarkMode API.
     void setDarkMode(bool darkMode);
 
     void setupJsRuntime(const std::vector<StringBox>& jsArguments);

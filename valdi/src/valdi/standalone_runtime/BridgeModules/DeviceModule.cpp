@@ -166,8 +166,9 @@ Valdi::Value DeviceModule::observeDarkMode(const Valdi::ValueFunctionCallContext
     std::lock_guard<Valdi::RecursiveMutex> guard(_darkModeMutex);
     const auto id = ++_nextDarkModeObserverId;
     _darkModeObservers.emplace(id, observer);
-    // On the JS thread this delivers the current value before registration returns,
-    // allowing Device.isDarkMode() to be initialized before the first render.
+    // Registration from JS invokes inline on the JS thread, including with NeverCallSync,
+    // so Device.isDarkMode() is initialized before the first render. The flag prevents
+    // a synchronous cross-thread JS call when this method is called by a native host.
     (*observer)(ValueFunctionFlagsNeverCallSync, {Value(_darkMode)});
     Valdi::Value out;
     out.setMapValue(
