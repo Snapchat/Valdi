@@ -36,14 +36,24 @@ runs:
         REF: ${{ github.ref }}
         SA_RW: ${{ inputs.service_account }}
         SA_RO: ${{ inputs.service_account_ro }}
+        REPO: ${{ github.repository }}
+        HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        REPO_IS_FORK: ${{ github.event.repository.fork }}
       run: |
+        # GitHub withholds repo variables and OIDC tokens from fork PRs (and
+        # forks have none of their own), so WIF auth can't succeed there.
+        if { [ -n "$HEAD_REPO" ] && [ "$HEAD_REPO" != "$REPO" ]; } || [ "$REPO_IS_FORK" = "true" ]; then
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Fork run: building without remote cache."
+          exit 0
+        fi
         if { [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "schedule" ]; } && [ "$REF" = "refs/heads/main" ]; then
           SA="$SA_RW"; WRITER=true; KIND="read/write"
         else
           SA="$SA_RO"; WRITER=false; KIND="read-only"
         fi
-        # Composite actions don't enforce `required`, and an empty SA makes the
-        # auth step fail under continue-on-error, so the build would silently go cold.
+        # Composite actions don't enforce `required`; name the missing variable
+        # instead of surfacing an opaque auth failure.
         if [ -z "$SA" ]; then
           echo "::error::No $KIND cache service account configured (check GCP_SERVICE_ACCOUNT / GCP_SERVICE_ACCOUNT_RO repo variables)."
           exit 1
@@ -54,6 +64,7 @@ runs:
 
     - name: Authenticate to Google Cloud
       id: auth
+      if: steps.sa.outputs.skip != 'true'
       continue-on-error: true
       uses: google-github-actions/auth@v2
       with:
@@ -66,6 +77,7 @@ runs:
       shell: bash
       env:
         AUTH_OUTCOME: ${{ steps.auth.outcome }}
+        SKIP_REMOTE: ${{ steps.sa.outputs.skip }}
         CACHE_BUCKET: ${{ inputs.cache_bucket }}
         CACHE_WRITER: ${{ steps.sa.outputs.writer }}
       run: |
@@ -79,9 +91,12 @@ runs:
         > "$CACHE_RC"
         echo "BAZEL_CACHE_RC=$CACHE_RC" >> "$GITHUB_ENV"
 
-        if [ "$AUTH_OUTCOME" != "success" ]; then
-          echo "Auth skipped (expected for fork PRs). Building without remote cache."
+        if [ "$SKIP_REMOTE" = "true" ]; then
           exit 0
+        fi
+        if [ "$AUTH_OUTCOME" != "success" ]; then
+          echo "::error::Google Cloud auth failed for the cache identity; see the Authenticate to Google Cloud step."
+          exit 1
         fi
 
         # Bazel credential helper for the GCS remote cache. Invoked per
