@@ -224,17 +224,22 @@ jobs:
         # iOS/macOS ObjC/Swift suites that never execute on the Linux runner.
         run: ./tools/ci/run_tests.sh
 
-      - name: Upload test logs and crash reports
+      - name: Collect test logs and crash reports
         # The job log only shows "signal 6: Abort trap"; the abort reason is in the
-        # test log and the simulator crash report.
+        # test log and the simulator crash report. bazel-testlogs is a symlink, so
+        # copy real files for upload-artifact. Best effort: a dangling link makes cp exit 1.
+        if: failure()
+        run: |
+          mkdir -p /tmp/macos-test-logs/testlogs
+          if [ -d bazel-testlogs/valdi ]; then cp -RL bazel-testlogs/valdi /tmp/macos-test-logs/testlogs/ || true; fi
+          if [ -d ~/Library/Logs/DiagnosticReports ]; then cp -R ~/Library/Logs/DiagnosticReports /tmp/macos-test-logs/ || true; fi
+
+      - name: Upload test logs and crash reports
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: macos-test-logs
-          path: |
-            bazel-testlogs/valdi/**/test.log
-            bazel-testlogs/valdi/**/test.outputs/**
-            ~/Library/Logs/DiagnosticReports/**
+          path: /tmp/macos-test-logs
           if-no-files-found: ignore
           retention-days: 7
 
