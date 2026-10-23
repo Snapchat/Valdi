@@ -283,7 +283,7 @@ public:
     // native-call activity writes so worker threads never touch the JS thread's slot.
     bool anrDiagnosticsActiveOnJsThread();
     // Safe to read from any thread so bridges can skip attribution conversion before dispatch.
-    bool anrDiagnosticsEnabled() const;
+    bool anrDiagnosticsEnabled() const override;
 
     // Breadcrumb name for an ANR inside a runtime.trace span: the tag cut at its first ':' (tags put
     // dynamic payloads after it) and capped, so one span is one group.

@@ -10760,6 +10760,69 @@ TEST_P(RuntimeFixture, preservesBridgedCallbackANRAttributionDuringPromiseContin
     }
 }
 
+TEST_P(RuntimeFixture, namesUnattributedBridgedCallbackAfterItsReferenceForANRAttribution) {
+    wrapper.teardown();
+    auto tweaks = makeShared<TestTweakValueProvider>().toShared();
+    tweaks->config.setMapValue("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS", Value(true));
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, tweaks);
+    auto* runtime = wrapper.runtime->getJavaScriptRuntime();
+
+    std::string script = "return services => services.subscribe((callReport, timerReport) => {"
+                         "  callReport();"
+                         "  runtime.scheduleWorkItem(() => timerReport(), 0);"
+                         "});";
+    auto installResult =
+        runtime->evaluateScript(makeShared<ByteBuffer>(script)->toBytesView(), STRING_LITERAL("attribution.js"));
+    ASSERT_TRUE(installResult) << installResult.description();
+    auto install = installResult.value().getFunctionRef();
+    ASSERT_NE(nullptr, install);
+
+    Ref<ValueFunction> subscriber;
+    auto subscribe = makeShared<ValueFunctionWithCallable>([&](const auto& callContext) {
+        subscriber = callContext.getParameter(0).getFunctionRef();
+        return Value::undefined();
+    });
+    auto installCall = install->call(ValueFunctionFlagsCallSync, {Value().setMapValue("subscribe", Value(subscribe))});
+    ASSERT_TRUE(installCall) << installCall.description();
+    auto* bridgedSubscriber = dynamic_cast<ValueFunctionWithJSValue*>(subscriber.get());
+    ASSERT_NE(nullptr, bridgedSubscriber);
+    EXPECT_TRUE(bridgedSubscriber->getANRAttribution().isEmpty());
+    auto subscriberName = bridgedSubscriber->getReferenceInfo().toFunctionIdentifier().slowToString();
+    ASSERT_NE(std::string::npos, subscriberName.find("subscribe.<p0>")) << subscriberName;
+
+    std::promise<std::string> callInfo;
+    std::promise<std::string> timerInfo;
+    auto callReport = makeShared<ValueFunctionWithCallable>([&](const auto&) {
+        callInfo.set_value(runtime->getANRAttributionInfo());
+        return Value::undefined();
+    });
+    auto timerReport = makeShared<ValueFunctionWithCallable>([&](const auto&) {
+        timerInfo.set_value(runtime->getANRAttributionInfo());
+        return Value::undefined();
+    });
+    Result<Value> callResult;
+    std::thread caller([&]() {
+        EXPECT_FALSE(runtime->isInJsThread());
+        callResult = subscriber->call(ValueFunctionFlagsNone, {Value(callReport), Value(timerReport)});
+    });
+    caller.join();
+    ASSERT_TRUE(callResult) << callResult.description();
+
+    auto callFuture = callInfo.get_future();
+    auto timerFuture = timerInfo.get_future();
+    ASSERT_EQ(std::future_status::ready, callFuture.wait_for(std::chrono::seconds(30)));
+    ASSERT_EQ(std::future_status::ready, timerFuture.wait_for(std::chrono::seconds(30)));
+    auto callAttribution = callFuture.get();
+    auto timerAttribution = timerFuture.get();
+    EXPECT_NE(std::string::npos, callAttribution.find("[attribution: " + subscriberName + " -> ")) << callAttribution;
+    EXPECT_NE(std::string::npos,
+              timerAttribution.find("[attribution: " + subscriberName + " -> runtime.scheduleWorkItem -> "))
+        << timerAttribution;
+
+    runtime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("test.barrier"), [](auto&) {});
+    EXPECT_EQ("", runtime->getANRAttributionInfo());
+}
+
 TEST_P(RuntimeFixture, returnsOriginalANRAttributionCallbackWhenDiagnosticsAreDisabled) {
     auto* runtime = wrapper.runtime->getJavaScriptRuntime();
     ASSERT_FALSE(runtime->anrDiagnosticsEnabled());
