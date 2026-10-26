@@ -1,0 +1,8 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+cc_binary(
+    name = "service",
+    srcs = ["main.cpp"],
+    copts = ["-std=c++20", "-stdlib=libc++", "-fno-exceptions"],
+    deps = ["@valdi_linux_sdk//:runtime", "@valdi_linux_sdk//:fixture_module"],
+)

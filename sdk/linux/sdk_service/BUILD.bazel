@@ -1,0 +1,11 @@
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "sdk_service",
+    srcs = glob(["src/**/*.ts"]) + ["tsconfig.json"],
+    compilation_mode = "native",
+    android_output_target = "release",
+    ios_output_target = "release",
+    visibility = ["//visibility:public"],
+    deps = ["//src/valdi_modules/src/valdi/valdi_core"],
+)

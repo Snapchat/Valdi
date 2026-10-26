@@ -1,0 +1,4 @@
+{
+  "extends": "../../../bzl/valdi/tsconfig.json",
+  "compilerOptions": { "strict": true, "noImplicitReturns": true }
+}

@@ -1,0 +1,6 @@
+module(name = "linux_sdk_consumer")
+bazel_dep(name = "valdi_linux_sdk", version = "0.0.0")
+local_path_override(module_name = "valdi_linux_sdk", path = "../sdk")
+bazel_dep(name = "rules_cc", version = "0.2.20")
+# Select LLVM 19.1.7 / libc++ and C++20 using your toolchain registration.
+# The independent verifier accepts the exact compiler explicitly instead.

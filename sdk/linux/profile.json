@@ -1,0 +1,23 @@
+{
+  "schema": "valdi.linux-sdk-profile/1",
+  "target": "x86_64-linux-gnu",
+  "engine": "quickjs",
+  "cxx_standard": "c++20",
+  "cxx_library": "libc++",
+  "compiler_runtime": "compiler-rt",
+  "unwind_library": "libunwind",
+  "consumer_link_flags": ["-stdlib=libc++", "-rtlib=compiler-rt", "--unwindlib=libunwind", "-fuse-ld=lld"],
+  "llvm_version": "19.1.7",
+  "rtti": true,
+  "exceptions": false,
+  "consumer_defines": ["_LIBCPP_ENABLE_CXX20_REMOVED_TYPE_TRAITS"],
+  "flags": [
+    "-c", "opt",
+    "--snap_flavor=production",
+    "--//bzl/valdi:js_engine=quickjs",
+    "--//bzl/valdi:js_bytecode_format=quickjs",
+    "--extra_toolchains=//sdk/linux:source_toolchain"
+  ],
+  "capabilities": ["compiled-module", "generated-native-function", "native-typescript", "host-main-queue"],
+  "unqualified": ["workers", "http", "storage", "clientsql", "layout", "raster", "gpu", "window", "ime", "accessibility", "stable-cxx-abi"]
+}
