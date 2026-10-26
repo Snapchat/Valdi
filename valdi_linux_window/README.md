@@ -7,8 +7,9 @@ on the CPU; SDL owns presentation and may internally use an accelerated renderer
 and graphics context for that surface. The host creates no SnapDrawing GPU
 context and manages no swapchain. Disabling `SDL_FRAMEBUFFER_ACCELERATION` is
 not portable: the tested Wayland backend required SDL's default presentation
-path. SDL3 is an optional dependency of this target;
-the existing Linux runtime, Android, and Apple targets do not depend on it.
+path. SDL3 is linked only by the optional graphical targets, but the prototype
+registers system discovery in the root Bazel module; dependency-resolution
+isolation is still a draft gate.
 
 The caller supplies the root, optional Valdi `TaskQueue`, and `WindowClient`.
 Those objects outlive the host. Destroy the host before destroying the root or
@@ -16,6 +17,54 @@ runtime. It exclusively occupies the root listener slot, chains an existing
 queue listener and restores it during shutdown. Do not replace either listener
 while open. It currently consumes the process-wide SDL event loop: multiple
 independent SDL windows are outside this prototype's contract.
+
+## Prototype status and RFC review gates
+
+`SDLWindowHost`, `WindowClient`, `ValdiWindowApplication` and their option/metric
+types are experimental APIs. They can change as the
+[RFC review](https://github.com/Snapchat/Valdi/pull/196#issuecomment-6370179837)
+is resolved. The manual targets are a raster bring-up prototype, not a supported
+Linux application target or a Linux support-tier change. There is no window-host
+mode in `valdi_application` or the CLI yet.
+
+The following review prerequisites remain unimplemented here:
+
+- **Main queue and shutdown:** the host replaces the single queue-listener slot
+  and forwards it, rather than using a supported subscription. The standalone
+  idle-exit coordinator is still active, and the pump does not close on a disposed
+  main queue. Teardown destroys SDL resources before releasing the component and
+  has no explicit context-destruction completion barrier before runtime teardown.
+  Repeated prototype cycles do not prove that this ordering is safe.
+- **Scheduling and lifecycle:** delayed work uses a 16 ms poll. Queue deadlines
+  and frame-invalidation wakeups, host-owned main-thread initialization, explicit
+  exit-code/close semantics and minimize/pause integration need coordinated core
+  changes and regression tests.
+- **Drawing and Device data:** the adapter constructs a second drawing runtime
+  without the standalone runtime's `FontResolverWithRuntimeManager`. Reusing the
+  existing drawing runtime remains required. Device identity/window dimensions
+  and effective-scale updates are missing; only appearance is forwarded.
+- **Fonts and scale:** a supplied font file in one weight is prototype coverage.
+  There is no system discovery, CJK/emoji fallback qualification or vendored text
+  baseline. SDL display scale is reported but not applied to layout/input, so
+  X11 HiDPI remains incorrect. Native fractional scaling is unqualified.
+- **Dependency isolation:** root-level `pkg-config` discovery is non-hermetic
+  and can fail dependency queries on machines without SDL. The RFC proposes a
+  separately rooted host Bazel module with pinned BCR SDL3; that migration and
+  its license/runtime-dependency audit are not implemented. Wayland presentation
+  may need EGL/Mesa despite CPU rasterization; the llvmpipe/unwind issue remains
+  open.
+- **Acceptance testing:** graphical targets are manual and have no agreed Linux
+  CI job/budget, vendored text font, Linux text snapshots/tolerance or failure
+  artifact upload. The portable JSX regression runs in the existing module-test
+  step; that does not qualify the graphical host. A full current-base engine
+  build and lifecycle/sanitizer qualification are still required.
+
+Real editing/selection/IBus/Fcitx acceptance needs a separate editing RFC and
+cross-platform tests. Public keyboard/hover APIs, cursors/multiple pointers,
+custom-native-view registration, accessibility, multiple windows, arm64 and GPU
+rendering are outside this prototype's qualification. Debugger and hot reload
+are off in the adapter; any future enabled debugger needs a loopback-only gate.
+RFC acceptance itself assigns no maintainer, CI budget or support-tier change.
 
 ## Build
 
@@ -40,7 +89,7 @@ yet instantiate a compiled Valdi component or a complete text editor.
 
 `ValdiWindowApplication` adds standalone runtime ownership, a SnapDrawing
 view-manager context, a compiled component mounted through `ValdiLayer`, font
-registration and ordered shutdown. The [calculator](../apps/linux_calculator/README.md)
+registration and prototype shutdown. The [calculator](../apps/linux_calculator/README.md)
 uses this adapter without application-specific services:
 
 ```sh
@@ -61,7 +110,9 @@ Clean SDK-consumer validation uses public runtime source
 passed three complete lifecycles on each of X11, Wayland 1× and Wayland 2×.
 The initial calculator run found that JSX bootstrap rejected Linux platform ID 5.
 This change accepts Linux and uses the iOS class names already registered by
-SnapDrawing, including the existing desktop custom-view fallback policy.
+SnapDrawing, with Linux custom-class precedence `linuxClass`, then `macosClass`, then
+`iosClass`. The precedence correction has portable source-level coverage; the
+historical native runs below predate it.
 
 The corrected core module was source-generated in Bazel with the matched retained
 compiler/toolbox and a source-restored companion; its native stub and four
@@ -95,11 +146,14 @@ module with native/debugging services stubbed, including Linux initialization,
 built-in class names, desktop custom-view fallbacks, and existing platforms:
 
 ```sh
-node valdi_linux_window/test/JSXPlatformTest.cjs /path/to/typescript/lib/typescript.js
+bazel test //src/valdi_modules/src/valdi/valdi_core:jsx_platform_test --test_output=errors
+# Or run directly with the repository-pinned TypeScript:
+node src/valdi_modules/src/valdi/valdi_core/test/JSXPlatformTest.cjs /path/to/typescript/lib/typescript.js
 ```
 
-Use TypeScript 5.3.3. This source-level test complements the native calculator
-integration; it does not establish native custom-view support.
+Use TypeScript 5.3.3. `tools/ci/test_modules.sh` includes the Bazel target in
+the existing `test-modules` job. This source-level test complements the native
+calculator integration; it does not establish native custom-view support.
 
 ## Input, scale, scheduling and lifetime
 

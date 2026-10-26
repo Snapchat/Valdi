@@ -43,7 +43,7 @@ These are known limitations the Valdi team is actively working on or tracking:
 | WebSocket API | Not available | Use native bindings via Valdi's TypeScript bridge |
 | CMake / non-Bazel build | Not available | Bazel required |
 | Bazel Central Registry | Not registered | Use `http_archive` with the GitHub release |
-| Linux native target | Not available | — |
+| Linux native target | Experimental raster-window prototype; not supported for shipping apps | See the [prototype and remaining gates](../../valdi_linux_window/README.md#prototype-status-and-rfc-review-gates) |
 
 ## Quick decision guide
 
