@@ -270,10 +270,12 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
       let androidClass: string | undefined;
       let iosClass: string | undefined;
       let macosClass: string | undefined;
+      let linuxClass: string | undefined;
       if (attributes) {
         androidClass = removeProperty(attributes, 'androidClass');
         iosClass = removeProperty(attributes, 'iosClass');
         macosClass = removeProperty(attributes, 'macosClass');
+        linuxClass = removeProperty(attributes, 'linuxClass');
         // webClass is left in attributes so WebValdiCustomView receives it via changeAttribute
       }
 
@@ -287,6 +289,9 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
         } else {
           return new DeferredNodePrototype(className, attributes);
         }
+      }
+      if (this.currentPlatform === 5 && linuxClass) {
+        return new NodePrototype(className, linuxClass, attributes);
       }
       if (this.currentPlatform === 3 || this.currentPlatform === 5) {
         if (macosClass) {
