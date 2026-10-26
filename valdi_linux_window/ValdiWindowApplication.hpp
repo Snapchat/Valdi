@@ -17,9 +17,10 @@ struct WindowApplicationOptions {
     std::string fontFamily = "Window";
 };
 
-// Owns a standalone Linux Valdi runtime, SnapDrawing view-manager context,
-// ValdiLayer, LayerRoot and SDL host, in that lifetime order. No application
-// services are installed. All methods and destruction run on the main thread.
+// Experimental prototype API; its lifecycle contract is still under RFC review
+// (see README.md). Owns the standalone runtime, drawing context, component and
+// SDL host. No application services are installed. All methods and destruction
+// run on the main thread.
 class ValdiWindowApplication {
 public:
     explicit ValdiWindowApplication(WindowClient& client);

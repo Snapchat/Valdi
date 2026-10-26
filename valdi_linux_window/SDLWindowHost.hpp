@@ -11,6 +11,8 @@
 
 namespace ValdiLinux {
 
+// Experimental host API and types; see README.md for unresolved RFC gates.
+
 enum class SystemTheme { Unknown, Light, Dark };
 
 struct WindowMetrics {
