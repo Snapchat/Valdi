@@ -50,6 +50,9 @@ public:
 
     // Hosts supply appearance; the standalone runtime does not discover a desktop.
     // Unconfigured/headless hosts default to light. Repeated values are ignored.
+    // Hosts must use ValdiStandaloneRuntime::setDarkMode(), which serializes updates
+    // on the JS queue. This bridge entry point invokes observers while holding
+    // _darkModeMutex and must not introduce synchronous cross-thread dependencies.
     void setDarkMode(bool darkMode);
     Valdi::Value observeDarkMode(const Valdi::ValueFunctionCallContext& callContext);
     Valdi::Value observeDisplayInsetChange();

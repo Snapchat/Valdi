@@ -153,7 +153,6 @@ ValdiStandaloneRuntime::~ValdiStandaloneRuntime() {
     // This prevents the debugger from accepting new connections during runtime teardown.
     // Note: _runtime was created via _runtimeManager->createRuntime(), so it's in _runtimes
     // and will be torn down by _runtimeManager->fullTeardown(). Don't call it again.
-    _deviceModule = nullptr;
     _runtimeManager->fullTeardown();
     _runtime = nullptr;
     _runtimeManager = nullptr;
@@ -497,12 +496,12 @@ Ref<ValdiStandaloneRuntime> ValdiStandaloneRuntime::create(bool enableDebuggerSe
     runtimeManager->applicationDidResume();
 
     auto standaloneRuntime = Valdi::makeShared<ValdiStandaloneRuntime>(std::move(runtimeManager),
-                                                     std::move(runtime),
-                                                     resourceLoader,
-                                                     mainQueue,
-                                                     std::move(viewManager),
-                                                     std::move(viewManagerContext),
-                                                     shouldWaitForHotReload);
+                                                                       std::move(runtime),
+                                                                       resourceLoader,
+                                                                       mainQueue,
+                                                                       std::move(viewManager),
+                                                                       std::move(viewManagerContext),
+                                                                       shouldWaitForHotReload);
     standaloneRuntime->_deviceModule = std::move(deviceModule);
     return standaloneRuntime;
 }

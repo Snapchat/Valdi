@@ -171,17 +171,16 @@ Valdi::Value DeviceModule::observeDarkMode(const Valdi::ValueFunctionCallContext
     // a synchronous cross-thread JS call when this method is called by a native host.
     (*observer)(ValueFunctionFlagsNeverCallSync, {Value(_darkMode)});
     Valdi::Value out;
-    out.setMapValue(
-        "cancel",
-        Valdi::Value(Valdi::makeShared<Valdi::ValueFunctionWithCallable>(
-            [weakSelf = weakRef(this), id](const Valdi::ValueFunctionCallContext&) -> Valdi::Value {
-                auto self = weakSelf.lock();
-                if (self != nullptr) {
-                    std::lock_guard<Valdi::RecursiveMutex> guard(self->_darkModeMutex);
-                    self->_darkModeObservers.erase(id);
-                }
-                return Valdi::Value();
-            })));
+    out.setMapValue("cancel",
+                    Valdi::Value(Valdi::makeShared<Valdi::ValueFunctionWithCallable>(
+                        [weakSelf = weakRef(this), id](const Valdi::ValueFunctionCallContext&) -> Valdi::Value {
+                            auto self = weakSelf.lock();
+                            if (self != nullptr) {
+                                std::lock_guard<Valdi::RecursiveMutex> guard(self->_darkModeMutex);
+                                self->_darkModeObservers.erase(id);
+                            }
+                            return Valdi::Value();
+                        })));
     return out;
 }
 

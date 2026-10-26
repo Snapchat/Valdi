@@ -19,8 +19,11 @@ namespace ValdiTest {
 using namespace Valdi;
 
 static Value observe(const Ref<DeviceModule>& device, ValueFunctionCallable callback) {
-    auto result = device->loadModule().getMapValue("observeDarkMode").getFunctionRef()->call(
-        ValueFunctionFlagsNone, {Value(makeShared<ValueFunctionWithCallable>(std::move(callback)))});
+    auto result =
+        device->loadModule()
+            .getMapValue("observeDarkMode")
+            .getFunctionRef()
+            ->call(ValueFunctionFlagsNone, {Value(makeShared<ValueFunctionWithCallable>(std::move(callback)))});
     EXPECT_TRUE(result.success());
     return result.value();
 }
@@ -51,8 +54,14 @@ TEST(StandaloneDevice, SeededAppearanceAndIndependentSubscriptions) {
     auto device = makeShared<DeviceModule>();
     device->setDarkMode(true);
     std::vector<bool> first, second;
-    auto a = observe(device, [&](const auto& call) { first.push_back(call.getParameterAsBool(0)); return Value(); });
-    auto b = observe(device, [&](const auto& call) { second.push_back(call.getParameterAsBool(0)); return Value(); });
+    auto a = observe(device, [&](const auto& call) {
+        first.push_back(call.getParameterAsBool(0));
+        return Value();
+    });
+    auto b = observe(device, [&](const auto& call) {
+        second.push_back(call.getParameterAsBool(0));
+        return Value();
+    });
     cancel(a);
     device->setDarkMode(false);
     EXPECT_EQ(first, std::vector<bool>({true}));
@@ -67,7 +76,9 @@ TEST(StandaloneDevice, CancellationReleasesObserverAndOutlivesModule) {
         auto device = makeShared<DeviceModule>();
         auto payload = std::make_shared<int>(0);
         weak = payload;
-        subscription = observe(device, [payload](const auto&) { return Value(); });
+        subscription = observe(device, [payload](const auto&) {
+            return Value();
+        });
         payload.reset();
         EXPECT_FALSE(weak.expired());
         cancel(subscription);
@@ -87,17 +98,26 @@ TEST(StandaloneDevice, NativeObserverCanCancelAndPublishDuringNotification) {
         }
         return Value();
     });
-    auto second = observe(device, [&](const auto& call) { values.push_back(call.getParameterAsBool(0)); return Value(); });
+    auto second = observe(device, [&](const auto& call) {
+        values.push_back(call.getParameterAsBool(0));
+        return Value();
+    });
     device->setDarkMode(true);
     EXPECT_EQ(values, std::vector<bool>({false, false})); // No stale outer true after nested false.
     cancel(second);
 }
 
-TEST(StandaloneDevice, HostThreadCanPublishAndObserverCanCancel) {
+TEST(StandaloneDevice, HostThreadCanPublish) {
     auto device = makeShared<DeviceModule>();
     std::vector<bool> values;
-    auto subscription = observe(device, [&](const auto& call) { values.push_back(call.getParameterAsBool(0)); return Value(); });
-    std::thread host([&] { for (int i = 0; i < 100; ++i) device->setDarkMode(i % 2 == 0); });
+    auto subscription = observe(device, [&](const auto& call) {
+        values.push_back(call.getParameterAsBool(0));
+        return Value();
+    });
+    std::thread host([&] {
+        for (int i = 0; i < 100; ++i)
+            device->setDarkMode(i % 2 == 0);
+    });
     host.join();
     EXPECT_EQ(values.size(), 101u);
     cancel(subscription);
