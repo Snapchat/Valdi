@@ -1,11 +1,11 @@
 export type ValdiGlobalTestSuiteDoneHandler = {
   __onValdiTestSuiteDone: () => void;
 };
-declare const global: ValdiGlobalTestSuiteDoneHandler;
 
 const callbacks: Array<() => void> = [];
 
-global.__onValdiTestSuiteDone = () => callbacks.forEach(callback => callback());
+(globalThis as typeof globalThis & ValdiGlobalTestSuiteDoneHandler).__onValdiTestSuiteDone = () =>
+  callbacks.forEach(callback => callback());
 
 /**
  * Registers a callback to be called when a Jasmine test suite is done.

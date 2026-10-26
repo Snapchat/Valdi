@@ -32,7 +32,7 @@ interface ErrorHandlersProvider {
   catchAllErrorHandler?: UncaughtErrorHandler;
 }
 
-declare const global: ErrorHandlersProvider;
+const errorHandlersProvider = globalThis as typeof globalThis & ErrorHandlersProvider;
 
 function doCallErrorHandler(
   errorHandler: UncaughtErrorHandler,
@@ -55,7 +55,7 @@ function callErrorHandlers(
   isHandledRejectedPromise: boolean,
   error: unknown,
 ): ExceptionHandlerResult {
-  const catchAllErrorHandler = global.catchAllErrorHandler;
+  const catchAllErrorHandler = errorHandlersProvider.catchAllErrorHandler;
   if (catchAllErrorHandler) {
     return doCallErrorHandler(catchAllErrorHandler, isHandledRejectedPromise, error);
   }
@@ -65,7 +65,7 @@ function callErrorHandlers(
     return ExceptionHandlerResult.NOTIFY;
   }
 
-  const handlers = global.errorHandlersByContextId?.[contextId];
+  const handlers = errorHandlersProvider.errorHandlersByContextId?.[contextId];
   if (!handlers?.length) {
     return ExceptionHandlerResult.NOTIFY;
   }
@@ -87,7 +87,7 @@ runtime.setUnhandledRejectionHandler((promiseResult, contextId) => {
  * for any uncaught errors.
  */
 export function setCatchAllUncaughtErrorHandler(errorHandler: UncaughtErrorHandler | undefined) {
-  global.catchAllErrorHandler = errorHandler;
+  errorHandlersProvider.catchAllErrorHandler = errorHandler;
 }
 
 /**
@@ -99,24 +99,24 @@ export function registerUncaughtErrorHandlerForContextId(
   contextId: string,
   errorHandler: UncaughtErrorHandler,
 ): () => void {
-  if (!global.errorHandlersByContextId) {
-    global.errorHandlersByContextId = {};
+  if (!errorHandlersProvider.errorHandlersByContextId) {
+    errorHandlersProvider.errorHandlersByContextId = {};
   }
-  let handlers = global.errorHandlersByContextId[contextId];
+  let handlers = errorHandlersProvider.errorHandlersByContextId[contextId];
   if (!handlers) {
     handlers = [];
-    global.errorHandlersByContextId[contextId] = handlers;
+    errorHandlersProvider.errorHandlersByContextId[contextId] = handlers;
   }
   handlers.push(errorHandler);
 
   return () => {
-    if (!global.errorHandlersByContextId) {
+    if (!errorHandlersProvider.errorHandlersByContextId) {
       return;
     }
-    const handlers = global.errorHandlersByContextId[contextId];
+    const handlers = errorHandlersProvider.errorHandlersByContextId[contextId];
     if (handlers) {
       if (remove(handlers, errorHandler) && handlers.length === 0) {
-        delete global.errorHandlersByContextId[contextId];
+        delete errorHandlersProvider.errorHandlersByContextId[contextId];
       }
     }
   };

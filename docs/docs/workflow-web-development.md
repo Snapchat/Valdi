@@ -41,7 +41,9 @@ The compiler remains the only source monitor. Its normal Watchman subscription e
 
 A `valdi_module` may provide browser-only code with `web_deps`. Web dependencies must be typed `ts_project` targets, not filegroups.
 
-See [Native custom views](./native-customviews.md) for custom views on Web.
+Custom views use `webClass`, with factories exported through `webPolyglotViews`. A factory receives its container DOM element and may return a `changeAttribute(name, value)` handler.
+
+See [Native custom views](./native-customviews.md) for a complete cross-platform example.
 
 ## Export a package
 
@@ -51,7 +53,7 @@ Use the CLI to export a standalone Web archive or npm package:
 valdi export web --library //apps/helloworld:hello_world_export_npm --output_path ./hello_world_web.zip
 ```
 
-Web application and package rules can control image inlining and output directories.
+Web application and package rules can control image inlining and output directories. Published packages include the Valdi native API version metadata used by the browser runtime.
 
 ### Binary module entries
 

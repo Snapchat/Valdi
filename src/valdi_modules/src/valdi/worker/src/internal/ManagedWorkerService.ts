@@ -10,6 +10,13 @@ import { attributeWorkerCallback } from './WorkerAttribution';
 
 type NativeRefsDisposable = () => void;
 
+interface ManagedServiceWorkersGetters {
+  $managedServiceWorkers: { [key: number]: ManagedWorkerService<unknown> };
+  $managedServiceWorkerSequence: number;
+}
+
+const managedServiceWorkerGlobals = globalThis as typeof globalThis & ManagedServiceWorkersGetters;
+
 interface WorkerServiceAttribution {
   readonly className: string;
   readonly file: string;
@@ -35,7 +42,7 @@ export class ManagedWorkerService<T> {
     args: readonly unknown[],
     managedWorker: ManagedWorker | undefined,
   ): ManagedWorkerService<T> {
-    const serviceId = (global.$managedServiceWorkerSequence ?? 0) + 1;
+    const serviceId = (managedServiceWorkerGlobals.$managedServiceWorkerSequence ?? 0) + 1;
     const nativeRefsDisposable = protectNativeRefsForCurrentContextId();
 
     if (managedWorker) {
@@ -71,17 +78,17 @@ export class ManagedWorkerService<T> {
       managedWorker,
     );
 
-    global.$managedServiceWorkerSequence = serviceId;
-    if (!global.$managedServiceWorkers) {
-      global.$managedServiceWorkers = {};
+    managedServiceWorkerGlobals.$managedServiceWorkerSequence = serviceId;
+    if (!managedServiceWorkerGlobals.$managedServiceWorkers) {
+      managedServiceWorkerGlobals.$managedServiceWorkers = {};
     }
-    global.$managedServiceWorkers[serviceId] = instance;
+    managedServiceWorkerGlobals.$managedServiceWorkers[serviceId] = instance;
 
     return instance;
   }
 
   static fromId(serviceId: number, file: string, className: string): ManagedWorkerService<unknown> | undefined {
-    const service = global.$managedServiceWorkers[serviceId];
+    const service = managedServiceWorkerGlobals.$managedServiceWorkers[serviceId];
     if (!service || service.file !== file || service.className !== className) {
       return undefined;
     }
@@ -93,7 +100,7 @@ export class ManagedWorkerService<T> {
     className: string,
     cb: (id: number, managedServiceWorker: ManagedWorkerService<unknown>) => void,
   ): void {
-    const managedServiceWorkers = global.$managedServiceWorkers;
+    const managedServiceWorkers = managedServiceWorkerGlobals.$managedServiceWorkers;
     if (managedServiceWorkers) {
       for (const id in managedServiceWorkers) {
         const managedServiceWorker = managedServiceWorkers[id];
@@ -126,7 +133,7 @@ export class ManagedWorkerService<T> {
     this.retainCount--;
 
     if (this.retainCount === 0) {
-      delete global.$managedServiceWorkers[this.serviceId];
+      delete managedServiceWorkerGlobals.$managedServiceWorkers[this.serviceId];
 
       // eslint-disable-next-line @typescript-eslint/no-floating-promises
       this.servicePromise.then(
@@ -170,13 +177,6 @@ class WorkerServiceClient<T> implements IWorkerServiceClient<T> {
     }
   }
 }
-
-interface ManagedServiceWorkersrGetters {
-  $managedServiceWorkers: { [key: number]: ManagedWorkerService<unknown> };
-  $managedServiceWorkerSequence: number;
-}
-
-declare const global: ManagedServiceWorkersrGetters;
 
 type AnyPromiseFunction = (...args: unknown[]) => CancelablePromise<unknown>;
 

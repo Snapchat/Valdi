@@ -1,4 +1,6 @@
 (function () {
+  const valdiGlobalThis = globalThis;
+
   function loadRootModule(jsEvaluator, path) {
     var exports = {};
     var module = {};
@@ -26,14 +28,14 @@
   const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
   if (!isBrowser) {
     // Native runtime: override global require so bare module paths resolve via moduleLoader
-    global.require = instance.load.bind(instance);
+    valdiGlobalThis.require = instance.load.bind(instance);
   } else {
     // Deprecated: valdiRequire remains for backwards compatibility with existing
     // consumers. Use standard require() with package-relative paths instead.
-    global.valdiRequire = instance.load.bind(instance);
+    valdiGlobalThis.valdiRequire = instance.load.bind(instance);
   }
-  global.moduleLoader = instance;
-  global.Long = instance.load('valdi_core/src/Long', true);
+  valdiGlobalThis.moduleLoader = instance;
+  valdiGlobalThis.Long = instance.load('valdi_core/src/Long', true);
 
   instance.load('valdi_core/src/PostInit', true).postInit();
 })();

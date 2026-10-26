@@ -8,6 +8,7 @@
 #include "valdi/runtime/JavaScript/ValueFunctionWithJSValue.hpp"
 #include "valdi/runtime/Context/Context.hpp"
 #include "valdi/runtime/Interfaces/IJavaScriptContext.hpp"
+#include "valdi/runtime/JavaScript/JavaScriptANRAttribution.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptFunctionCallContext.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptTaskScheduler.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptUtils.hpp"
@@ -22,6 +23,7 @@
 
 #include "utils/debugging/Assert.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <future>
 
@@ -59,6 +61,29 @@ const StringBox& ValueFunctionWithJSValue::getFunctionName() {
     }
 
     return _functionName;
+}
+
+const StringBox& ValueFunctionWithJSValue::getDispatchAttribution(const JavaScriptTaskScheduler& taskScheduler) {
+    const auto& attribution = getANRAttribution();
+    if (!attribution.isEmpty()) {
+        return attribution;
+    }
+    if (!taskScheduler.anrDiagnosticsEnabled()) {
+        return attribution;
+    }
+    // Built from the immutable ReferenceInfo rather than getFunctionName(): callers dispatch from any
+    // thread, and that cache is only written on the JS thread.
+    std::call_once(_referenceAttributionOnce, [this]() {
+        const auto& referenceInfo = getReferenceInfo();
+        // A path with no assigned name ("<anon>.<p0>") would put unrelated callbacks under one label.
+        auto hasName = std::any_of(referenceInfo.begin(), referenceInfo.end(), [](const auto& component) {
+            return component.type == ReferenceInfo::Component::Type::Property && component.hasAssignedName;
+        });
+        if (hasName) {
+            _referenceAttribution = JavaScriptANRAttribution::boundedLabel(referenceInfo.toFunctionIdentifier());
+        }
+    });
+    return _referenceAttribution;
 }
 
 bool ValueFunctionWithJSValue::prefersSyncCalls() const {
@@ -196,7 +221,7 @@ Result<Value> ValueFunctionWithJSValue::dispatchAndWaitOnJsThread(const Ref<Java
 
     taskScheduler->dispatchOnJsThreadAsync(
         getContext(),
-        getANRAttribution(),
+        getDispatchAttribution(*taskScheduler),
         [self = strongSmallRef(this), parameters = captureParameters(parameters, parametersSize), promise](
             auto& jsEntry) {
             MainThreadBatchAllowScope mainThreadBatchAllowScope;
@@ -238,7 +263,7 @@ Result<Value> ValueFunctionWithJSValue::dispatchAndWaitOnJsThreadWithCircuitBrea
         if (!skipIfTimedOut) {
             taskScheduler->dispatchOnJsThreadAsync(
                 getContext(),
-                getANRAttribution(),
+                getDispatchAttribution(*taskScheduler),
                 [self = strongSmallRef(this),
                  parameters = captureParameters(parameters, parametersSize)](auto& jsEntry) {
                     MainThreadBatchAllowScope mainThreadBatchAllowScope;
@@ -256,7 +281,7 @@ Result<Value> ValueFunctionWithJSValue::dispatchAndWaitOnJsThreadWithCircuitBrea
 
     taskScheduler->dispatchOnJsThreadAsync(
         getContext(),
-        getANRAttribution(),
+        getDispatchAttribution(*taskScheduler),
         [self = strongSmallRef(this),
          taskScheduler,
          parameters = captureParameters(parameters, parametersSize),
@@ -327,6 +352,7 @@ Value ValueFunctionWithJSValue::callSync(ValueFunctionFlags flags,
                                          const Ref<JavaScriptTaskScheduler>& taskScheduler,
                                          const ValueFunctionCallContext& callContext) {
     auto retValue = Value::undefined();
+    const auto& dispatchAttribution = getDispatchAttribution(*taskScheduler);
     getContext()->withAttribution([&]() {
         auto shouldStartMainThreadBatch =
             _shouldBlockMainThread && _mainThreadManager != nullptr && _mainThreadManager->currentThreadIsMainThread();
@@ -344,7 +370,7 @@ Value ValueFunctionWithJSValue::callSync(ValueFunctionFlags flags,
                 auto future = throttledCall->promise.get_future();
 
                 taskScheduler->dispatchOnJsThreadAsync(
-                    getContext(), getANRAttribution(), [self = strongSmallRef(this), throttledCall](auto& jsEntry) {
+                    getContext(), dispatchAttribution, [self = strongSmallRef(this), throttledCall](auto& jsEntry) {
                         auto currentCallId = self->_callSequence.load();
                         if (currentCallId != throttledCall->callId) {
                             // Throttling call, our callId doesn't match what is in the
@@ -380,7 +406,7 @@ Value ValueFunctionWithJSValue::callSync(ValueFunctionFlags flags,
                     retValue = result.value();
                 }
             } else {
-                taskScheduler->dispatchOnJsThreadSync(getContext(), getANRAttribution(), [&](auto& jsEntry) {
+                taskScheduler->dispatchOnJsThreadSync(getContext(), dispatchAttribution, [&](auto& jsEntry) {
                     MainThreadBatchAllowScope mainThreadBatchAllowScope;
                     retValue = this->doJsCall(jsEntry,
                                               callContext.getParameters(),
@@ -392,7 +418,7 @@ Value ValueFunctionWithJSValue::callSync(ValueFunctionFlags flags,
 
             _mainThreadManager->endBatch();
         } else {
-            taskScheduler->dispatchOnJsThreadSync(getContext(), getANRAttribution(), [&](auto& jsEntry) {
+            taskScheduler->dispatchOnJsThreadSync(getContext(), dispatchAttribution, [&](auto& jsEntry) {
                 retValue = this->doJsCall(jsEntry,
                                           callContext.getParameters(),
                                           callContext.getParametersSize(),
@@ -454,7 +480,7 @@ Value ValueFunctionWithJSValue::operator()(const ValueFunctionCallContext& callC
 
         taskScheduler->dispatchOnJsThreadAsync(
             getContext(),
-            getANRAttribution(),
+            getDispatchAttribution(*taskScheduler),
             [self = strongSmallRef(this), parameters = captureParameters(callContext), callId](auto& jsEntry) {
                 auto currentCallId = self->_callSequence.load();
                 if (currentCallId != callId) {
@@ -470,7 +496,7 @@ Value ValueFunctionWithJSValue::operator()(const ValueFunctionCallContext& callC
     } else {
         taskScheduler->dispatchOnJsThreadAsync(
             getContext(),
-            getANRAttribution(),
+            getDispatchAttribution(*taskScheduler),
             [self = strongSmallRef(this), parameters = captureParameters(callContext)](auto& jsEntry) {
                 self->doJsCall(jsEntry, parameters.data(), parameters.size(), nullptr, true);
             });
@@ -485,7 +511,7 @@ Value ValueFunctionWithJSValue::callPromise(const Ref<JavaScriptTaskScheduler>& 
 
     taskScheduler->dispatchOnJsThreadAsync(
         getContext(),
-        getANRAttribution(),
+        getDispatchAttribution(*taskScheduler),
         [self = strongSmallRef(this), promise, parameters = captureParameters(callContext)](auto& jsEntry) {
             Value result = self->doJsCall(jsEntry, parameters.data(), parameters.size(), nullptr, false);
             if (!jsEntry.exceptionTracker) {

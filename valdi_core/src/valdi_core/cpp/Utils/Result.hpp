@@ -73,7 +73,17 @@ public:
         }
     }
 
-    Result(Result<T>&& other) noexcept : ResultBase(other._index), _storage(other._storage) {
+    Result(Result<T>&& other) noexcept : ResultBase(other._index) {
+        // Move-construct the stored object rather than byte-copying _storage: on arm64e a raw copy
+        // relocates an address-diversified signed pointer (e.g. a polymorphic value's vtable pointer)
+        // without re-signing it for the new address, so the next authentication traps. Constructing
+        // re-signs for this storage's address.
+        if (_index == kValueIndex) {
+            new (&_storage) T(std::move(other.unsafeGetValue()));
+        } else if (_index == kErrorIndex) {
+            new (&_storage) Error(std::move(other.unsafeGetError()));
+        }
+        other.deconstructStorage();
         other._index = kUninitializedIndex;
     }
 
@@ -112,8 +122,16 @@ public:
             deconstructStorage();
 
             _index = other._index;
-            _storage = other._storage;
 
+            // Move-construct rather than byte-copy _storage; see the move constructor for why a raw
+            // copy breaks arm64e pointer authentication.
+            if (_index == kValueIndex) {
+                new (&_storage) T(std::move(other.unsafeGetValue()));
+            } else if (_index == kErrorIndex) {
+                new (&_storage) Error(std::move(other.unsafeGetError()));
+            }
+
+            other.deconstructStorage();
             other._index = kUninitializedIndex;
         }
 

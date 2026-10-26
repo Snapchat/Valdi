@@ -13,6 +13,8 @@
 #include "valdi_core/cpp/Utils/SmallVector.hpp"
 #include "valdi_core/cpp/Utils/ValueFunction.hpp"
 
+#include <mutex>
+
 namespace Valdi {
 
 class MainThreadManager;
@@ -65,6 +67,8 @@ protected:
 private:
     std::atomic_int _callSequence;
     StringBox _functionName;
+    std::once_flag _referenceAttributionOnce;
+    StringBox _referenceAttribution;
     MainThreadManager* _mainThreadManager;
     Weak<Context> _creationContext;
     bool _shouldBlockMainThread = false;
@@ -112,6 +116,14 @@ private:
                                                               SyncCallTimeoutPolicy timeoutPolicy);
 
     const StringBox& getFunctionName();
+
+    /**
+     ANR attribution for dispatching this function to the JS thread: the explicit attribution when
+     there is one, else the bridge reference the function was passed through (e.g.
+     "<anon>.friendmojiProvider.forUsers.<p1>"). Empty when ANR diagnostics are off or the reference
+     has no assigned name. Safe to call from any thread.
+     */
+    const StringBox& getDispatchAttribution(const JavaScriptTaskScheduler& taskScheduler);
 
     Value callPromise(const Ref<JavaScriptTaskScheduler>& taskScheduler, const ValueFunctionCallContext& callContext);
 };
