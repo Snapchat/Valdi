@@ -1,10 +1,11 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+load("//bzl/valdi:valdi_web_application.bzl", "valdi_web_application")
 
 valdi_module(
-    name = "linux_calculator",
+    name = "calculator",
     srcs = glob(["src/**/*.ts", "src/**/*.tsx"]) + ["tsconfig.json"],
-    ios_module_name = "LinuxCalculator",
+    ios_module_name = "Calculator",
     visibility = ["//visibility:public"],
     deps = [
         "//src/valdi_modules/src/valdi/valdi_core",
@@ -13,12 +14,12 @@ valdi_module(
 )
 
 cc_binary(
-    name = "calculator",
-    srcs = ["main.cpp"],
+    name = "calculator_linux",
+    srcs = ["linux/main.cpp"],
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
-        ":linux_calculator_native",
+        ":calculator_native",
         "//valdi_core:valdi_core_cc",
         "//valdi_linux_window:valdi_window_application",
         "@valdi_system_sdl3//:sdl3",
@@ -27,17 +28,24 @@ cc_binary(
 
 # Deterministic theme source; still uses the real SDL event loop and Valdi runtime.
 cc_binary(
-    name = "calculator_theme_test",
+    name = "calculator_linux_theme_test",
     testonly = True,
-    srcs = ["main.cpp", "//valdi_linux_window:test/SystemThemeStub.cpp"],
+    srcs = ["linux/main.cpp", "//valdi_linux_window:test/SystemThemeStub.cpp"],
     copts = ["-DVALDI_LINUX_THEME_TEST"],
     linkopts = ["-Wl,--wrap=SDL_GetSystemTheme"],
     tags = ["manual", "requires-display"],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
-        ":linux_calculator_native",
+        ":calculator_native",
         "//valdi_core:valdi_core_cc",
         "//valdi_linux_window:valdi_window_application",
         "@valdi_system_sdl3//:sdl3",
     ],
+)
+
+valdi_web_application(
+    name = "calculator_web",
+    title = "Valdi Calculator",
+    root_component_path = "CalculatorApp@calculator/src/CalculatorApp",
+    deps = [":calculator"],
 )
