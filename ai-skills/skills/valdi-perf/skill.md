@@ -419,8 +419,8 @@ first access and caches it thereafter — no `await`, no render-path tick.
 ```typescript
 import { lazyImport } from 'valdi_core/src/LazyImport';
 
-// Pass the current module's `require` so the relative path resolves from here.
-const heavy = lazyImport<typeof import('./HeavyUtil')>(require, './HeavyUtil');
+// The loader runs in this module, so the relative path resolves from here.
+const heavy = lazyImport<typeof import('./HeavyUtil')>(() => require('./HeavyUtil', true));
 
 // First `.get` parses + initialises the module; later reads are cached.
 heavy.get.doWork();

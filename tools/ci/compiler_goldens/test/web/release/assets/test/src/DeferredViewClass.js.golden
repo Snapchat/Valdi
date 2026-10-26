@@ -21,8 +21,7 @@ class DeferredViewClass extends Component_1.Component {
             __Renderer.endRender();
         }
         else if (this.viewModel.viewFactory) {
-            __Renderer.beginRender(__nodeCustomview2, undefined);
-            __Renderer.setAttribute('viewFactory', this.viewModel.viewFactory);
+            __Renderer.beginRenderWithViewFactory(__nodeCustomview2, this.viewModel.viewFactory, undefined);
             __Renderer.endRender();
         }
     }

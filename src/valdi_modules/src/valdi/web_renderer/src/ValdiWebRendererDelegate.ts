@@ -1,10 +1,13 @@
 import { AnimationOptions } from 'valdi_core/src/AnimationOptions';
 import type { IRenderedElement } from 'valdi_core/src/IRenderedElement';
 import type { IRenderer } from 'valdi_core/src/IRenderer';
-import { FrameObserver, IRendererDelegate, VisibilityObserver } from 'valdi_core/src/IRendererDelegate';
+import { ElementLayoutDispatcher } from 'valdi_core/src/ElementLayoutDispatcher';
+import { IRendererDelegate, VisibilityObserver } from 'valdi_core/src/IRendererDelegate';
 import { Style } from 'valdi_core/src/Style';
+import { ElementFrame } from 'valdi_tsx/src/Geometry';
 import { NativeNode } from 'valdi_tsx/src/NativeNode';
 import { NativeView } from 'valdi_tsx/src/NativeView';
+import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
 import {
   changeAttributeOnElement,
   createElement,
@@ -124,7 +127,7 @@ const DEBUG_CIRCULAR_MARKER = '<circular object/>';
 
 export class ValdiWebRendererDelegate implements IRendererDelegate {
   private attributeDelegate?: UpdateAttributeDelegate;
-  private frameObserver?: FrameObserver;
+  private layoutDispatcher = new ElementLayoutDispatcher((message, error) => this.onUncaughtError(message, error));
   private resizeObserver?: ResizeObserver;
   private elementIdByHtmlElement = new WeakMap<Element, number>();
   private debugTopologyRevision = 0;
@@ -151,7 +154,11 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
     moveElement(this.nodesRef, id, parentId, parentIndex);
     this.debugTopologyRevision++;
   }
+  setRenderCompleteScheduler(schedule: (callback: () => void) => void): void {
+    this.layoutDispatcher.setRenderCompleteScheduler(schedule);
+  }
   onElementCreated(id: number, viewClass: string): void {
+    this.layoutDispatcher.onElementCreated(id);
     createElement(this.nodesRef, id, viewClass, this.attributeDelegate);
     this.debugTopologyRevision++;
     const element = this.nodesRef.get(id);
@@ -160,7 +167,12 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
       this.resizeObserver?.observe(element.htmlElement);
     }
   }
+  onCustomElementCreated(id: number, viewFactory: ViewFactory): void {
+    this.onElementCreated(id, 'custom-view');
+    this.onElementAttributeChangeAny(id, 'viewFactory', viewFactory);
+  }
   onElementDestroyed(id: number): void {
+    this.layoutDispatcher.onElementDestroyed(id);
     const element = this.nodesRef.get(id);
     if (element === undefined) {
       return;
@@ -194,6 +206,7 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
       const node = nodesToDestroy[index];
       this.resizeObserver?.unobserve(node.htmlElement);
       this.elementIdByHtmlElement.delete(node.htmlElement);
+      this.layoutDispatcher.onElementDestroyed(node.id);
       node.destroy();
       this.nodesRef.delete(node.id);
       node.parent = null;
@@ -204,7 +217,13 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
     }
     this.debugTopologyRevision++;
   }
+  onElementDestroyedFromParent(id: number): void {
+    this.layoutDispatcher.onElementDestroyed(id);
+  }
   onElementAttributeChangeAny(id: number, attributeName: string, attributeValue: any): void {
+    if (this.layoutDispatcher.handleAttribute(id, attributeName, attributeValue)) {
+      return;
+    }
     changeAttributeOnElement(this.nodesRef, id, attributeName, attributeValue);
   }
   onElementAttributeChangeNumber(id: number, attributeName: string, attributeValue: number): void {
@@ -220,6 +239,9 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
     changeAttributeOnElement(this.nodesRef, id, attributeName, undefined);
   }
   onElementAttributeChangeUndefined(id: number, attributeName: string): void {
+    if (this.layoutDispatcher.handleAttribute(id, attributeName, undefined)) {
+      return;
+    }
     changeAttributeOnElement(this.nodesRef, id, attributeName, undefined);
   }
   onElementAttributeChangeStyle(id: number, attributeName: string, style: Style<any>): void {
@@ -229,6 +251,9 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
     });
   }
   onElementAttributeChangeFunction(id: number, attributeName: string, fn: () => void): void {
+    if (this.layoutDispatcher.handleAttribute(id, attributeName, fn)) {
+      return;
+    }
     changeAttributeOnElement(this.nodesRef, id, attributeName, fn);
   }
   onNextLayoutComplete(callback: () => void): void {}
@@ -248,14 +273,13 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
   onAnimationEnd(): void {}
   onAnimationCancel(token: number): void {}
   registerVisibilityObserver(observer: VisibilityObserver): void {
-    // TODO(mgharmalkar)
-    // console.log('registerVisibilityObserver');
+    // The Renderer registers its observers once, at its first render; frame reporting starts with them.
+    this.startFrameReporting();
   }
-  registerFrameObserver(observer: FrameObserver): void {
-    this.frameObserver = observer;
-
+  private startFrameReporting(): void {
+    if (this.resizeObserver) return;
     this.resizeObserver = new ResizeObserver(entries => {
-      if (!this.frameObserver) return;
+      if (!this.resizeObserver) return;
 
       const updates: number[] = [];
       for (const entry of entries) {
@@ -282,7 +306,7 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
       }
 
       if (updates.length > 0) {
-        this.frameObserver(new Float64Array(updates));
+        this.layoutDispatcher.processFrameUpdates(new Float64Array(updates));
       }
     });
   }
@@ -290,14 +314,18 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
   getNativeNode(id: number): NativeNode | undefined {
     throw new Error('Method not implemented.');
   }
+  getCachedElementFrame(id: number): ElementFrame | undefined {
+    return this.layoutDispatcher.getFrame(id);
+  }
   getElementFrame(id: number, callback: (instance: any) => void): void {}
   takeElementSnapshot(id: number, callback: (snapshotBase64: string | undefined) => void): void {}
   onUncaughtError(message: string, error: Error): void {
     console.error(message, error);
   }
   onDestroyed(): void {
-    this.frameObserver = undefined;
     this.resizeObserver?.disconnect();
+    this.resizeObserver = undefined;
+    this.layoutDispatcher.clear();
   }
 
   getDebugNode(id: number): { htmlElement: HTMLElement; type: string } | undefined {

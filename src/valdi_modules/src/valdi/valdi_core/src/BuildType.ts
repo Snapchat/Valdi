@@ -1,4 +1,4 @@
-import { ValdiRuntime } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 
 export enum BuildType {
   Dev = 'dev',
@@ -7,13 +7,11 @@ export enum BuildType {
   Prod = 'prod',
 }
 
-declare const runtime: ValdiRuntime;
-
 /**
  * @returns The BuildType that the Valdi runtime was compiled in.
  */
 export function getBuildType(): BuildType {
-  const buildType = runtime.buildType as BuildType;
+  const buildType = getValdiRuntime().buildType as BuildType;
   if (buildType === undefined) {
     return BuildType.Dev;
   }

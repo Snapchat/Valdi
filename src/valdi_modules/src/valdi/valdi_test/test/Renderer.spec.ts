@@ -14,6 +14,7 @@ import { getNodeTag, toXML } from 'valdi_core/src/utils/RenderedVirtualNodeUtils
 import { RendererError } from 'valdi_core/src/utils/RendererError';
 import 'jasmine/src/jasmine';
 import { PropertyList } from 'valdi_tsx/src/PropertyList';
+import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
 import { StringMap } from 'coreutils/src/StringMap';
 import { RawRenderRequestEntryType, RendererTestDelegate } from './RendererTestDelegate';
 
@@ -192,6 +193,107 @@ describe('Renderer', () => {
             id: 3,
             parentId: 1,
             parentIndex: 1,
+          },
+          {
+            type: RawRenderRequestEntryType.setRootElement,
+            id: 1,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('creates factory-backed custom elements through the deferred native protocol', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    const viewFactory: ViewFactory = { __tag: 'ViewFactory' };
+    const node = new NodePrototype('custom-view', 'custom-view');
+
+    renderer.begin();
+    renderer.beginElementWithViewFactory(node, viewFactory, undefined);
+    renderer.endElement();
+    renderer.end();
+
+    expect(renderer.getElementForId(1)?.getAttribute('viewFactory')).toBe(viewFactory);
+    expect(output.requests).toEqual([
+      {
+        entries: [
+          {
+            type: RawRenderRequestEntryType.createElement,
+            id: 1,
+            className: 'Deferred',
+          },
+          {
+            type: RawRenderRequestEntryType.setElementAttribute,
+            id: 1,
+            name: 'viewFactory',
+            value: viewFactory,
+          },
+          {
+            type: RawRenderRequestEntryType.setRootElement,
+            id: 1,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('forwards a changed view factory of an existing custom element as an attribute', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    const firstViewFactory: ViewFactory = { __tag: 'ViewFactory' };
+    const secondViewFactory: ViewFactory = { __tag: 'ViewFactory' };
+    const node = new NodePrototype('custom-view', 'custom-view');
+
+    renderer.begin();
+    renderer.beginElementWithViewFactory(node, firstViewFactory, undefined);
+    renderer.endElement();
+    renderer.end();
+
+    output.clear();
+    renderer.begin();
+    renderer.beginElementWithViewFactory(node, firstViewFactory, undefined);
+    renderer.endElement();
+    renderer.end();
+    expect(output.requests).toEqual([]);
+
+    renderer.begin();
+    renderer.beginElementWithViewFactory(node, secondViewFactory, undefined);
+    renderer.endElement();
+    renderer.end();
+
+    expect(renderer.getElementForId(1)?.getAttribute('viewFactory')).toBe(secondViewFactory);
+    expect(output.requests).toEqual([
+      {
+        entries: [
+          {
+            type: RawRenderRequestEntryType.setElementAttribute,
+            id: 1,
+            name: 'viewFactory',
+            value: secondViewFactory,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('creates a plain element from the node prototype when the view factory is undefined', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    const node = new NodePrototype('custom-view', 'Deferred');
+
+    renderer.begin();
+    renderer.beginElementWithViewFactory(node, undefined as unknown as ViewFactory, undefined);
+    renderer.endElement();
+    renderer.end();
+
+    expect(output.requests).toEqual([
+      {
+        entries: [
+          {
+            type: RawRenderRequestEntryType.createElement,
+            id: 1,
+            className: 'Deferred',
           },
           {
             type: RawRenderRequestEntryType.setRootElement,

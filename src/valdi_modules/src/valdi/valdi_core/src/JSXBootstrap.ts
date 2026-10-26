@@ -2,11 +2,12 @@ import { StringCache } from 'valdi_core/src/StringCache';
 import { StringMap } from 'coreutils/src/StringMap';
 import { IRenderedComponentHolder } from 'valdi_tsx/src/IRenderedComponentHolder';
 import { IRenderedElementHolder } from 'valdi_tsx/src/IRenderedElementHolder';
+import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
 import { AnyRenderFunction } from './AnyRenderFunction';
 import { isDevBuild } from './BuildType';
 import { resolveComponentConstructor } from './ComponentPath';
 import { ComponentPrototype } from './ComponentPrototype';
-import { ValdiRuntime } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { ComponentConstructor, IComponent } from './IComponent';
 import { RequireFunc } from './IModuleLoader';
 import { IRenderedElement } from './IRenderedElement';
@@ -31,8 +32,6 @@ import { PropertyList, removeProperty } from './utils/PropertyList';
 /**
  * TypeScript to Native interactions
  */
-
-declare const runtime: ValdiRuntime;
 
 class DummyComponent implements IComponent {
   viewModel: any;
@@ -61,6 +60,7 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
   readonly daemonClientManager: DaemonClientManager;
 
   constructor() {
+    const runtime = getValdiRuntime();
     this.currentPlatform = runtime.getCurrentPlatform();
     if (this.currentPlatform !== 1 && this.currentPlatform !== 2 && this.currentPlatform !== 3 && this.currentPlatform !== 4) {
       throw Error(`Unrecognized platform type ${this.currentPlatform.toString()}`);
@@ -98,8 +98,20 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
     getRenderer().beginElement(prototype, key);
   }
 
+  beginRenderWithViewFactory(prototype: NodePrototype, viewFactory: ViewFactory, key: string | undefined): void {
+    getRenderer().beginElementWithViewFactory(prototype, viewFactory, key);
+  }
+
   beginRenderIfNeeded(prototype: NodePrototype, key?: string): boolean {
     return getRenderer().beginElementIfNeeded(prototype, key);
+  }
+
+  beginRenderWithViewFactoryIfNeeded(
+    prototype: NodePrototype,
+    viewFactory: ViewFactory,
+    key: string | undefined,
+  ): boolean {
+    return getRenderer().beginElementWithViewFactoryIfNeeded(prototype, viewFactory, key);
   }
 
   endRender() {
@@ -319,6 +331,7 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
   }
 
   makeRendererWithAllowedRootElementTypes(allowedRootElementTypes: string[] | undefined, treeId: string): Renderer {
+    const runtime = getValdiRuntime();
     const useTopDownMoveOrder = typeof runtime.useTopDownMoveOrder === 'boolean' ? runtime.useTopDownMoveOrder : false;
     return new Renderer(
       treeId,
@@ -399,6 +412,7 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
       message.respond(requestId => Messages.customMessageResponse(requestId, { handled: false, data: undefined }));
     } else if (message.message.type === DaemonClientMessageType.DUMP_HEAP_REQUEST) {
       const dumpHeapRequest = (message.message as DumpHeapRequest).body;
+      const runtime = getValdiRuntime();
       if (!runtime.dumpHeap) {
         message.respond(requestId => Messages.errorResponse(requestId, `Runtime does not support dumping heap`));
         return;

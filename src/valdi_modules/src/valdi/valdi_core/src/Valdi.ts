@@ -5,7 +5,8 @@ import { NativeView } from 'valdi_tsx/src/NativeView';
 import { AnimationOptions } from './AnimationOptions';
 import { ComponentKey } from './ComponentKey';
 import { parseComponentPath } from './ComponentPath';
-import { ValdiRuntime, NativeViewNodeInfo } from './ValdiRuntime';
+import { NativeViewNodeInfo } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { ElementRef } from './ElementRef';
 import { ComponentConstructor, IComponent } from './IComponent';
 import { RequireFunc } from './IModuleLoader';
@@ -50,8 +51,6 @@ export function formatParameterizedString(format: string, ...formatArgs: any[]):
   });
 }
 
-declare const runtime: ValdiRuntime;
-
 export interface ActionCaller {
   callAction(actionName: string, parameters: any[]): void;
 }
@@ -63,7 +62,7 @@ export interface ActionCaller {
  * @param module the Valdi module to query
  */
 export function isModuleLoaded(module: string): boolean {
-  return runtime.isModuleLoaded(module);
+  return getValdiRuntime().isModuleLoaded(module);
 }
 
 /**
@@ -74,7 +73,7 @@ export function isModuleLoaded(module: string): boolean {
  * @param completion the callback which will be called when loading has completed.
  */
 export function loadModule(module: string, completion: (error?: string) => void): void {
-  runtime.loadModule(module, completion);
+  getValdiRuntime().loadModule(module, completion);
 }
 
 /**
@@ -82,7 +81,7 @@ export function loadModule(module: string, completion: (error?: string) => void)
  * inside the given Valdi module.
  */
 export function getModuleFileEntryAsBytes(module: string, path: string): Uint8Array {
-  return runtime.getModuleEntry(module, path, false) as Uint8Array;
+  return getValdiRuntime().getModuleEntry(module, path, false) as Uint8Array;
 }
 
 /**
@@ -90,14 +89,14 @@ export function getModuleFileEntryAsBytes(module: string, path: string): Uint8Ar
  * inside the given Valdi module.
  */
 export function getModuleFileEntryAsString(module: string, path: string): string {
-  return runtime.getModuleEntry(module, path, true) as string;
+  return getValdiRuntime().getModuleEntry(module, path, true) as string;
 }
 
 /**
  * Retrieves all the JS files that are available within the given Valdi module name
  */
 export function getModuleJsPaths(module: string): string[] {
-  return runtime.getModuleJsPaths(module);
+  return getValdiRuntime().getModuleJsPaths(module);
 }
 
 interface NodeIdPathEntry {
@@ -402,11 +401,11 @@ export class LegacyVueComponent<
    * @param callback
    */
   getElementFrames(elementIds: Array<string>, callback: (frames: Array<ElementFrame>) => void): void {
-    this.callRuntimeElementIdMethodFromStringIds(elementIds, runtime.getFrameForElementId, callback);
+    this.callRuntimeElementIdMethodFromStringIds(elementIds, getValdiRuntime().getFrameForElementId, callback);
   }
 
   getElementFramesFromRawElementIds(elementIds: Array<number>, callback: (frames: Array<ElementFrame>) => void): void {
-    this.callRuntimeElementIdMethod(elementIds, runtime.getFrameForElementId, callback);
+    this.callRuntimeElementIdMethod(elementIds, getValdiRuntime().getFrameForElementId, callback);
   }
 
   /**
@@ -415,7 +414,7 @@ export class LegacyVueComponent<
    * @param callback
    */
   getElementNativeViews(elementIds: Array<string>, callback: (views: Array<NativeView>) => void): void {
-    this.callRuntimeElementIdMethodFromStringIds(elementIds, runtime.getNativeViewForElementId, callback);
+    this.callRuntimeElementIdMethodFromStringIds(elementIds, getValdiRuntime().getNativeViewForElementId, callback);
   }
 
   /**
@@ -427,7 +426,7 @@ export class LegacyVueComponent<
    * @param callback
    */
   getElementLayoutDebugInfos(elementIds: Array<string>, callback: (layoutInfos: Array<string>) => void): void {
-    this.callRuntimeElementIdMethodFromStringIds(elementIds, runtime.getLayoutDebugInfo, callback);
+    this.callRuntimeElementIdMethodFromStringIds(elementIds, getValdiRuntime().getLayoutDebugInfo, callback);
   }
 
   /**
@@ -441,7 +440,7 @@ export class LegacyVueComponent<
     elementIds: Array<string>,
     callback: (nativeDebugInfos: Array<NativeViewNodeInfo>) => void,
   ): void {
-    this.callRuntimeElementIdMethodFromStringIds(elementIds, runtime.getViewNodeDebugInfo, callback);
+    this.callRuntimeElementIdMethodFromStringIds(elementIds, getValdiRuntime().getViewNodeDebugInfo, callback);
   }
 
   /**
@@ -471,7 +470,7 @@ export class LegacyVueComponent<
    * the given parameters.
    */
   callAction(actionName: string, parameters: any[]) {
-    runtime.postMessage(this.componentId, 'callAction', {
+    getValdiRuntime().postMessage(this.componentId, 'callAction', {
       action: actionName,
       parameters,
     });
@@ -726,7 +725,7 @@ export class ViewControllerComponent<
 }
 
 export function performSyncWithMainThread(func: () => void): void {
-  runtime.performSyncWithMainThread(func);
+  getValdiRuntime().performSyncWithMainThread(func);
 }
 
 interface ProxyHandler<T> {
@@ -746,6 +745,7 @@ export function getLastRootComponentsManager(): RootComponentsManager | undefine
 }
 
 export function makeRootComponentsManager(): IRootComponentsManager {
+  const runtime = getValdiRuntime();
   if (debuggerInputMessageHandler) {
     jsx.removeCustomMessageHandler(debuggerInputMessageHandler);
     debuggerInputMessageHandler = undefined;

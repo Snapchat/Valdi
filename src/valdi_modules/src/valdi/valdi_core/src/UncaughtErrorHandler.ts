@@ -1,8 +1,7 @@
 import { remove } from 'coreutils/src/ArrayUtils';
-import { ValdiRuntime, ExceptionHandlerResult } from './ValdiRuntime';
+import { ExceptionHandlerResult } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { IComponent } from './IComponent';
-
-declare const runtime: ValdiRuntime;
 
 export const enum UncaughtErrorHandlerResult {
   /**
@@ -74,11 +73,11 @@ function callErrorHandlers(
   return doCallErrorHandler(handler, isHandledRejectedPromise, error);
 }
 
-runtime.setUncaughtExceptionHandler((error, contextId) => {
+getValdiRuntime().setUncaughtExceptionHandler((error, contextId) => {
   return callErrorHandlers(contextId, false, error);
 });
 
-runtime.setUnhandledRejectionHandler((promiseResult, contextId) => {
+getValdiRuntime().setUnhandledRejectionHandler((promiseResult, contextId) => {
   return callErrorHandlers(contextId, true, promiseResult);
 });
 

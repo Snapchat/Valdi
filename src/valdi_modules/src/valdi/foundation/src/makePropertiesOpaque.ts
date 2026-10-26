@@ -1,6 +1,4 @@
-import { ValdiRuntime } from 'valdi_core/src/ValdiRuntime';
-
-declare const runtime: ValdiRuntime;
+import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 
 export interface WithOpaqueProperties<T> {}
 
@@ -10,7 +8,7 @@ export interface WithOpaqueProperties<T> {}
 export function makePropertiesOpaque<T>(obj: T): WithOpaqueProperties<T> {
   const result = {} as any;
   for (const key in obj) {
-    result[key] = runtime.makeOpaque(obj[key]);
+    result[key] = getValdiRuntime().makeOpaque(obj[key]);
   }
   return result;
 }

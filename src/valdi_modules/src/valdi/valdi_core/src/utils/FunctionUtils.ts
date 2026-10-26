@@ -1,7 +1,5 @@
-import { ValdiRuntime } from '../ValdiRuntime';
+import { getValdiRuntime } from '../ValdiRuntimeProvider';
 import { AnyFunction } from './Callback';
-
-declare const runtime: ValdiRuntime;
 
 export const enum CallbackOptions {
   /**
@@ -41,7 +39,7 @@ export function makeConfiguredCallback<F extends AnyFunction>(options: CallbackO
   const cb = ((...args: unknown[]): unknown => {
     return fn(...args);
   }) as F;
-  runtime.configureCallback(options, cb);
+  getValdiRuntime().configureCallback(options, cb);
   return cb;
 }
 

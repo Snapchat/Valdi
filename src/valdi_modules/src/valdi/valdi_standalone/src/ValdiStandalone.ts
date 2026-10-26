@@ -1,6 +1,6 @@
 import { ComponentPath } from 'valdi_core/src/ComponentPath';
 import { ComponentContext, LegacyVueComponent } from 'valdi_core/src/Valdi';
-import { ValdiRuntime } from 'valdi_core/src/ValdiRuntime';
+import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 import { makeEntryPointRenderFunction } from 'valdi_core/src/EntryPointComponent';
 import { EntryPointRenderFunction } from 'valdi_core/src/EntryPointRenderFunction';
 import { ComponentConstructor, IComponent } from 'valdi_core/src/IComponent';
@@ -11,8 +11,6 @@ import { RootComponentsManager } from 'valdi_core/src/RootComponentsManager';
 import { DaemonClientManager } from 'valdi_core/src/debugging/DaemonClientManager';
 import { SubmitDebugMessageFunc } from 'valdi_core/src/debugging/DebugMessage';
 import { StringMap } from 'coreutils/src/StringMap';
-
-declare const runtime: ValdiRuntime;
 
 export interface Rectangle {
   x: number;
@@ -283,7 +281,7 @@ export class InstrumentedComponentBase<T extends IComponent, ViewModelType, Cont
     this.rootComponentsManager = new OverridenRootComponentsManager(
       { makeRenderer: treeId => jsx.makeRendererWithAllowedRootElementTypes(undefined, treeId) },
       undefined,
-      runtime.submitDebugMessage,
+      getValdiRuntime().submitDebugMessage,
       makeEntryPointRenderFunction(() => componentClass, useErrorBoundary, undefined),
       {
         filePath: '<none>',
@@ -293,7 +291,7 @@ export class InstrumentedComponentBase<T extends IComponent, ViewModelType, Cont
       componentContext,
     );
 
-    const contextId = runtime.createContext(this.rootComponentsManager);
+    const contextId = getValdiRuntime().createContext(this.rootComponentsManager);
 
     const component = (this.rootComponentsManager.getComponentForContextId(contextId) as IEntryPointComponent)
       ?.rootComponent;
@@ -353,7 +351,7 @@ export class InstrumentedComponentBase<T extends IComponent, ViewModelType, Cont
   }
 
   destroy() {
-    runtime.destroyContext(this.componentId);
+    getValdiRuntime().destroyContext(this.componentId);
   }
 
   setViewModel(viewModel: ViewModelType) {
@@ -361,12 +359,12 @@ export class InstrumentedComponentBase<T extends IComponent, ViewModelType, Cont
   }
 
   setLayoutSpecs(width: number, height: number, rtl?: boolean): void {
-    runtime.setLayoutSpecs(this.componentId, width, height, !!rtl);
+    getValdiRuntime().setLayoutSpecs(this.componentId, width, height, !!rtl);
   }
 
   waitForNextLayout(): Promise<void> {
     return new Promise(resolve => {
-      runtime.performSyncWithMainThread(resolve);
+      getValdiRuntime().performSyncWithMainThread(resolve);
     });
   }
 

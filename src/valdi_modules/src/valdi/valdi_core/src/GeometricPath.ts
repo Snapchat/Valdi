@@ -170,3 +170,91 @@ export class GeometricPathBuilder {
     return Float64Array.from(this.data);
   }
 }
+
+export interface GeometricPathVisitor {
+  beginPath?(extentWidth: number, extentHeight: number, scaleType: GeometricPathScaleType): void;
+  moveTo(x: number, y: number): void;
+  lineTo(x: number, y: number): void;
+  quadTo(controlX: number, controlY: number, x: number, y: number): void;
+  cubicTo(controlX1: number, controlY1: number, controlX2: number, controlY2: number, x: number, y: number): void;
+  roundRectTo(x: number, y: number, width: number, height: number, radiusX: number, radiusY: number): void;
+  arcTo(centerX: number, centerY: number, radius: number, startAngle: number, sweepAngle: number): void;
+  close(): void;
+}
+
+function isValidScaleType(scaleType: number): scaleType is GeometricPathScaleType {
+  return (
+    scaleType === GeometricPathScaleType.Fill ||
+    scaleType === GeometricPathScaleType.Contain ||
+    scaleType === GeometricPathScaleType.Cover ||
+    scaleType === GeometricPathScaleType.None
+  );
+}
+
+function hasValues(path: GeometricPath, index: number, count: number): boolean {
+  return index + count <= path.length;
+}
+
+export function visitGeometricPath(path: GeometricPath, visitor: GeometricPathVisitor): boolean {
+  if (path.length < 3) {
+    return false;
+  }
+
+  let index = 0;
+  const extentWidth = path[index++];
+  const extentHeight = path[index++];
+  const scaleType = path[index++];
+  if (extentWidth <= 0 || extentHeight <= 0 || !isValidScaleType(scaleType)) {
+    return false;
+  }
+  visitor.beginPath?.(extentWidth, extentHeight, scaleType);
+
+  while (index < path.length) {
+    const component = path[index++] as GeometricPathComponent;
+    switch (component) {
+      case GeometricPathComponent.Move:
+        if (!hasValues(path, index, 2)) {
+          return false;
+        }
+        visitor.moveTo(path[index++], path[index++]);
+        break;
+      case GeometricPathComponent.Line:
+        if (!hasValues(path, index, 2)) {
+          return false;
+        }
+        visitor.lineTo(path[index++], path[index++]);
+        break;
+      case GeometricPathComponent.Quad:
+        if (!hasValues(path, index, 4)) {
+          return false;
+        }
+        visitor.quadTo(path[index++], path[index++], path[index++], path[index++]);
+        break;
+      case GeometricPathComponent.Cubic:
+        if (!hasValues(path, index, 6)) {
+          return false;
+        }
+        visitor.cubicTo(path[index++], path[index++], path[index++], path[index++], path[index++], path[index++]);
+        break;
+      case GeometricPathComponent.RoundRect:
+        if (!hasValues(path, index, 6)) {
+          return false;
+        }
+        visitor.roundRectTo(path[index++], path[index++], path[index++], path[index++], path[index++], path[index++]);
+        break;
+      case GeometricPathComponent.Arc:
+        if (!hasValues(path, index, 5)) {
+          return false;
+        }
+        visitor.arcTo(path[index++], path[index++], path[index++], path[index++], path[index++]);
+        break;
+      case GeometricPathComponent.Close:
+        visitor.close();
+        break;
+      default:
+        return false;
+    }
+  }
+
+  return true;
+}

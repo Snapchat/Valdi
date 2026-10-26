@@ -1,4 +1,4 @@
-import { ValdiRuntime } from 'valdi_core/src/ValdiRuntime';
+import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 import { IBenchmarkContext, randomInt, randomString } from './BenchmarkUtils';
 
 interface KeyValue<T> {
@@ -100,8 +100,6 @@ function testObjectIntVsStringKeys(context: IBenchmarkContext) {
   });
 }
 
-declare const runtime: ValdiRuntime;
-
 const CALL_PER_BENCH = 1000;
 
 function anotherFunc(): any {
@@ -141,7 +139,7 @@ function makeBenchFuncs(cb: () => void, str: string, anObject: any): BenchFuncs 
 }
 
 function testFunctionCalls(context: IBenchmarkContext) {
-  const nativeCb: () => void = runtime.getCurrentPlatform;
+  const nativeCb: () => void = getValdiRuntime().getCurrentPlatform;
   const jsCb: () => void = anotherFunc;
   const str = 'A String';
   const anObject = {};

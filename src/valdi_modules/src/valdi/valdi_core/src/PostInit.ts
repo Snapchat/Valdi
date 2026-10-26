@@ -2,7 +2,7 @@
 // This should be loaded right after the ModuleLoader is loaded
 
 import { Console } from 'valdi_core/src/Console';
-import { ValdiRuntime } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { ModuleLoader } from './ModuleLoader';
 import { arePromiseUtterlyBroken, polyfillPromise } from './PromisePolyfill';
 import {
@@ -12,16 +12,14 @@ import {
   __tsn_get_iterator,
 } from './TsnHelper';
 
-declare const runtime: ValdiRuntime;
-
 const valdiGlobalThis = globalThis as any;
 
 function setTimeout(handler: (...args: any[]) => void, timeout?: number, ...args: any[]): number {
-  return runtime.scheduleWorkItem(args.length ? handler.bind(undefined, args) : handler, timeout || 0);
+  return getValdiRuntime().scheduleWorkItem(args.length ? handler.bind(undefined, args) : handler, timeout || 0);
 }
 
 function clearTimeout(handler: number): void {
-  runtime.unscheduleWorkItem(handler);
+  getValdiRuntime().unscheduleWorkItem(handler);
 }
 
 class Timer {
@@ -35,7 +33,7 @@ class Timer {
   invalidate(): void {
     this.handler = undefined;
     if (this.currentTaskId) {
-      runtime.unscheduleWorkItem(this.currentTaskId);
+      getValdiRuntime().unscheduleWorkItem(this.currentTaskId);
       this.currentTaskId = undefined;
     }
   }
@@ -45,7 +43,7 @@ class Timer {
       return false;
     }
 
-    this.currentTaskId = runtime.scheduleWorkItem(() => {
+    this.currentTaskId = getValdiRuntime().scheduleWorkItem(() => {
       this.tick();
     }, this.timeout);
 
@@ -57,7 +55,7 @@ class Timer {
       try {
         this.handler();
       } catch (err: any) {
-        runtime.onUncaughtError('TimerCallback', err);
+        getValdiRuntime().onUncaughtError('TimerCallback', err);
       }
     }
 
@@ -96,7 +94,7 @@ export function postInit(): void {
   const isWeb = typeof globalThis.location !== 'undefined';
 
   if (!isWeb) {
-    valdiGlobalThis.console = new Console(runtime.outputLog);
+    valdiGlobalThis.console = new Console(getValdiRuntime().outputLog);
   }
 
   if (!isWeb && !valdiGlobalThis.realTimingFunctions) {
@@ -114,7 +112,7 @@ export function postInit(): void {
     valdiGlobalThis.clearInterval = clearInterval;
   }
 
-  if (arePromiseUtterlyBroken(runtime.getCurrentPlatform)) {
+  if (arePromiseUtterlyBroken(getValdiRuntime().getCurrentPlatform)) {
     polyfillPromise();
   }
 
@@ -147,10 +145,10 @@ export function postInit(): void {
         if (target === null || (typeof target !== 'object' && typeof target !== 'function')) {
           throw new TypeError('WeakRef: target must be an object');
         }
-        this._handle = runtime.newWeakRef(target);
+        this._handle = getValdiRuntime().newWeakRef(target);
       }
       deref(): object | undefined {
-        return runtime.derefWeakRef(this._handle);
+        return getValdiRuntime().derefWeakRef(this._handle);
       }
     }
     valdiGlobalThis.WeakRef = ValdiWeakRef;

@@ -1,8 +1,6 @@
-import { ValdiRuntime } from '../ValdiRuntime';
+import { getValdiRuntime } from '../ValdiRuntimeProvider';
 import { setTimeoutInterruptible } from '../SetTimeout';
 import { makeInterruptibleCallback } from './FunctionUtils';
-
-declare const runtime: ValdiRuntime;
 
 /**
  * Call the given function when the main thread and the js thread
@@ -12,6 +10,6 @@ declare const runtime: ValdiRuntime;
  */
 export function onIdleInterruptible(cb: () => void) {
   setTimeoutInterruptible(() => {
-    runtime.onMainThreadIdle(makeInterruptibleCallback(cb));
+    getValdiRuntime().onMainThreadIdle(makeInterruptibleCallback(cb));
   });
 }

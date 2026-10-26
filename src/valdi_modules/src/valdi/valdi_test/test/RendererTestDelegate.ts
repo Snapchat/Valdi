@@ -1,9 +1,10 @@
 import { AnimationOptions } from 'valdi_core/src/AnimationOptions';
-import { FrameObserver, IRendererDelegate, VisibilityObserver } from 'valdi_core/src/IRendererDelegate';
+import { IRendererDelegate, VisibilityObserver } from 'valdi_core/src/IRendererDelegate';
 import { Style } from 'valdi_core/src/Style';
 import { ElementFrame } from 'valdi_tsx/src/Geometry';
 import { NativeNode } from 'valdi_tsx/src/NativeNode';
 import { NativeView } from 'valdi_tsx/src/NativeView';
+import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
 
 export enum RawRenderRequestEntryType {
   createElement = 'CreateElement',
@@ -45,6 +46,8 @@ export class RendererTestDelegate implements IRendererDelegate {
     this.entries = [];
   }
 
+  setRenderCompleteScheduler(schedule: (callback: () => void) => void): void {}
+
   clear() {
     this.requests = [];
     this.nextLayoutCompleteCallbacks = [];
@@ -74,6 +77,13 @@ export class RendererTestDelegate implements IRendererDelegate {
       className: viewClass,
     });
   }
+
+  onCustomElementCreated(id: number, viewFactory: ViewFactory): void {
+    this.onElementCreated(id, 'Deferred');
+    this.onElementAttributeChangeAny(id, 'viewFactory', viewFactory);
+  }
+
+  onElementDestroyedFromParent(id: number): void {}
 
   onElementDestroyed(id: number): void {
     this.entries.push({
@@ -176,13 +186,16 @@ export class RendererTestDelegate implements IRendererDelegate {
     this.observer = observer;
   }
 
-  registerFrameObserver(observer: FrameObserver) {}
 
   getNativeView(id: number, callback: (view: NativeView | undefined) => void) {
     callback(undefined);
   }
 
   getNativeNode(id: number): NativeNode | undefined {
+    return undefined;
+  }
+
+  getCachedElementFrame(id: number): ElementFrame | undefined {
     return undefined;
   }
 

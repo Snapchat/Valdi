@@ -1,4 +1,4 @@
-import { ValdiRuntime } from 'valdi_core/src/ValdiRuntime';
+import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 import { IRenderer } from 'valdi_core/src/IRenderer';
 import { jsx } from 'valdi_core/src/JSXBootstrap';
 import { Renderer } from 'valdi_core/src/Renderer';
@@ -19,8 +19,6 @@ import {
   processFrame as nativeProcessFrame,
   rasterFrame,
 } from './ManagedContextNative';
-
-declare const runtime: ValdiRuntime;
 
 class FrameImpl implements IManagedContextFrame {
   constructor(readonly native: SnapDrawingFrameNative) {}
@@ -61,7 +59,7 @@ class ManagedContextImpl implements IManagedContext {
       enableDeltaRasterization,
     );
     this.contextId = this.snapDrawingValdiContext.contextId;
-    runtime.setViewNodeAssetTracker(this.contextId, this.assetTracker.onAssetEvent.bind(this.assetTracker));
+    getValdiRuntime().setViewNodeAssetTracker(this.contextId, this.assetTracker.onAssetEvent.bind(this.assetTracker));
     this._renderer = jsx.makeRenderer(this.contextId);
     this.renderer = this._renderer;
   }
@@ -87,7 +85,7 @@ class ManagedContextImpl implements IManagedContext {
       });
     }
     // Sync path: use runtime.measureContext directly (same as original implementation; no native module dispatch).
-    const result = runtime.measureContext(
+    const result = getValdiRuntime().measureContext(
       this.contextId,
       maxWidth,
       widthMode,
@@ -107,7 +105,7 @@ class ManagedContextImpl implements IManagedContext {
       });
     }
     // Sync path: use runtime.setLayoutSpecs directly (same as original implementation).
-    runtime.setLayoutSpecs(this.contextId, width, height, rtl);
+    getValdiRuntime().setLayoutSpecs(this.contextId, width, height, rtl);
     return Promise.resolve();
   }
 

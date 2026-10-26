@@ -5,15 +5,15 @@ import { StringMap } from 'coreutils/src/StringMap';
 import { ElementFrame } from 'valdi_tsx/src/Geometry';
 import { NativeNode } from 'valdi_tsx/src/NativeNode';
 import { NativeView } from 'valdi_tsx/src/NativeView';
+import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
 import { AnimationCurve, AnimationOptions } from './AnimationOptions';
 import { CancelToken } from './CancellableAnimation';
-import { ValdiRuntime } from './ValdiRuntime';
-import { FrameObserver, IRendererDelegate, VisibilityObserver } from './IRendererDelegate';
+import { ElementLayoutDispatcher } from './ElementLayoutDispatcher';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
+import { IRendererDelegate, VisibilityObserver } from './IRendererDelegate';
 import { NativeFrameObserver, NativeVisibilityObserver } from './RenderRequest';
 import { Style } from './Style';
 import { Buffer } from './utils/Buffer';
-
-declare const runtime: ValdiRuntime;
 
 const enum RenderRequestEntryType {
   CREATE_ELEMENT = 1,
@@ -52,6 +52,7 @@ export class JSXRendererDelegate implements IRendererDelegate {
   private renderStartTime?: number;
   private pendingVisibilityObserver?: NativeVisibilityObserver;
   private pendingFrameObserver?: NativeFrameObserver;
+  private layoutDispatcher: ElementLayoutDispatcher;
 
   constructor(
     treeId: string,
@@ -68,18 +69,36 @@ export class JSXRendererDelegate implements IRendererDelegate {
     this.attachedValues = [];
     this.attachedValueIndexByString = {};
     this.attachedValueIndexByObjectId = {};
+    this.layoutDispatcher = new ElementLayoutDispatcher((message, error) => this.onUncaughtError(message, error));
+    this.pendingFrameObserver = updates => this.layoutDispatcher.processFrameUpdates(updates);
+  }
+
+  setRenderCompleteScheduler(schedule: (callback: () => void) => void): void {
+    this.layoutDispatcher.setRenderCompleteScheduler(schedule);
   }
 
   onDestroyed() {
     this.destroyed = true;
+    this.layoutDispatcher.clear();
   }
 
   onElementCreated(id: number, viewClass: string): void {
+    this.layoutDispatcher.onElementCreated(id);
     this.buffer.putUint32_2(RenderRequestEntryType.CREATE_ELEMENT | (id << 8), this.stringCache.get(viewClass));
   }
 
+  onCustomElementCreated(id: number, viewFactory: ViewFactory): void {
+    this.onElementCreated(id, 'Deferred');
+    this.onElementAttributeChangeAny(id, 'viewFactory', viewFactory);
+  }
+
   onElementDestroyed(id: number): void {
+    this.layoutDispatcher.onElementDestroyed(id);
     this.buffer.putUint32(RenderRequestEntryType.DESTROY_ELEMENT | (id << 8));
+  }
+
+  onElementDestroyedFromParent(id: number): void {
+    this.layoutDispatcher.onElementDestroyed(id);
   }
 
   onElementBecameRoot(id: number): void {
@@ -206,18 +225,24 @@ export class JSXRendererDelegate implements IRendererDelegate {
   }
 
   onElementAttributeChangeUndefined(id: number, attributeName: string): void {
+    if (this.layoutDispatcher.handleAttribute(id, attributeName, undefined)) {
+      return;
+    }
     const attributeNameParam = this.attributeCache.get(attributeName);
     this.buffer.putUint32_2(RenderRequestEntryType.SET_ATTRIBUTE_UNDEFINED | (id << 8), attributeNameParam);
   }
 
   onElementAttributeChangeStyle(id: number, attributeName: string, style: Style<any>): void {
     const attributeNameParam = this.attributeCache.get(attributeName);
-    const index = style.toNative(runtime.createCSSRule);
+    const index = style.toNative(getValdiRuntime().createCSSRule);
 
     this.buffer.putUint32_3(RenderRequestEntryType.SET_ATTRIBUTE_STYLE | (id << 8), attributeNameParam, index);
   }
 
   onElementAttributeChangeFunction(id: number, attributeName: string, fn: () => void): void {
+    if (this.layoutDispatcher.handleAttribute(id, attributeName, fn)) {
+      return;
+    }
     const attributeNameParam = this.attributeCache.get(attributeName);
     const attachedValues = this.attachedValues;
     const attachedValuesIndex = attachedValues.length;
@@ -231,6 +256,10 @@ export class JSXRendererDelegate implements IRendererDelegate {
   }
 
   onElementAttributeChangeAny(id: number, attributeName: string, attributeValue: any): void {
+    if (this.layoutDispatcher.handleAttribute(id, attributeName, attributeValue)) {
+      return;
+    }
+
     let attributeNameParam: number;
 
     if (attributeName[0] === '$') {
@@ -267,7 +296,7 @@ export class JSXRendererDelegate implements IRendererDelegate {
         buffer.putUint32(index);
       }
     } else if (attributeValue instanceof Style) {
-      const index = attributeValue.toNative(runtime.createCSSRule);
+      const index = attributeValue.toNative(getValdiRuntime().createCSSRule);
 
       buffer.putUint32_3(RenderRequestEntryType.SET_ATTRIBUTE_STYLE | (id << 8), attributeNameParam, index);
     } else {
@@ -326,7 +355,7 @@ export class JSXRendererDelegate implements IRendererDelegate {
     // this.buffer may change in submitRawRenderRequest() if it re-enters JS code
     const buffer = this.buffer;
 
-    runtime.submitRawRenderRequest(
+    getValdiRuntime().submitRawRenderRequest(
       {
         treeId: this.treeId,
         descriptor,
@@ -374,12 +403,8 @@ export class JSXRendererDelegate implements IRendererDelegate {
     };
   }
 
-  registerFrameObserver(observer: FrameObserver) {
-    this.pendingFrameObserver = observer;
-  }
-
   getNativeView(id: number, callback: (view: NativeView | undefined) => void) {
-    runtime.getNativeViewForElementId(this.treeId, id, view => {
+    getValdiRuntime().getNativeViewForElementId(this.treeId, id, view => {
       if (view) {
         callback(view);
       } else {
@@ -389,18 +414,22 @@ export class JSXRendererDelegate implements IRendererDelegate {
   }
 
   getNativeNode(id: number): NativeNode | undefined {
-    return runtime.getNativeNodeForElementId(this.treeId, id);
+    return getValdiRuntime().getNativeNodeForElementId(this.treeId, id);
+  }
+
+  getCachedElementFrame(id: number): ElementFrame | undefined {
+    return this.layoutDispatcher.getFrame(id);
   }
 
   getElementFrame(id: number, callback: (frame: ElementFrame | undefined) => void) {
-    runtime.getFrameForElementId(this.treeId, id, callback);
+    getValdiRuntime().getFrameForElementId(this.treeId, id, callback);
   }
 
   takeElementSnapshot(id: number, callback: (snapshotBase64: string | undefined) => void) {
-    runtime.takeElementSnapshot(this.treeId, id, callback);
+    getValdiRuntime().takeElementSnapshot(this.treeId, id, callback);
   }
 
   onUncaughtError(message: string, error: Error) {
-    runtime.onUncaughtError(message, error);
+    getValdiRuntime().onUncaughtError(message, error);
   }
 }

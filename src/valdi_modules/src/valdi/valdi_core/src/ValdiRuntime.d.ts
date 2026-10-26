@@ -164,6 +164,11 @@ export interface ValdiRuntime extends RuntimeBase {
 
   trace(tag: string, callback: () => any): any;
   makeTraceProxy(tag: string, callback: () => void): () => void;
+  /** Optional: only runtimes that support unscoped trace sections implement these. */
+  beginTrace?(tag: string): void;
+  endTrace?(): void;
+  /** `args` is a flat list of alternating string keys and values. */
+  instantTrace?(tag: string, args?: readonly unknown[]): void;
 
   startTraceRecording(): number;
   stopTraceRecording(id: number): any[];

@@ -1,6 +1,4 @@
-import { ValdiRuntime } from './ValdiRuntime';
-
-declare const runtime: ValdiRuntime;
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 
 /**
  * setTimeout implementation that guarantees that the given callback
@@ -10,7 +8,7 @@ declare const runtime: ValdiRuntime;
  * @returns
  */
 export function setTimeoutUninterruptible(handler: () => void, timeout?: number): number {
-  const disposable = runtime.protectNativeRefs(0);
+  const disposable = getValdiRuntime().protectNativeRefs(0);
   return setTimeout(() => {
     try {
       handler();
@@ -28,7 +26,7 @@ export function setTimeoutUninterruptible(handler: () => void, timeout?: number)
  * @returns An identifier that must be passed into `clearTimeout` to cancel the timer.
  */
 export function setTimeoutInterruptible(handler: () => void, timeout?: number): number {
-  return runtime.scheduleWorkItem(handler, timeout, true);
+  return getValdiRuntime().scheduleWorkItem(handler, timeout, true);
 }
 
 /**

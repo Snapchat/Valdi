@@ -92,6 +92,19 @@ function fn() {
 }
 ```
 
+#### instantTrace()
+
+This function records an instant event at the current time. Use it for point-in-time causes such as "this property scheduled a component render", where there is no duration to measure. On runtimes without instant events, it records a zero-length trace instead.
+Example:
+
+```ts
+function updateTitle() {
+  instantTrace('TitleChanged');
+}
+```
+
+`instantTraceWithArgs()` attaches arguments, passed as alternating string keys and values: `instantTraceWithArgs('TitleChanged', ['length', title.length])`. Runtimes that don't support arguments drop them.
+
 #### `@Trace` annotation
 
 This annotation can be put on a TypeScript class, and will make all its methods automatically traced. Traced methods using the annotation have lower overhead than the `trace()` function, and they can be thus put on hot code paths.

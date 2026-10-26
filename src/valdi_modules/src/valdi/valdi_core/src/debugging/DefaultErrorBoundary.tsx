@@ -1,5 +1,5 @@
 import { StatefulComponent } from '../Component';
-import { ValdiRuntime } from '../ValdiRuntime';
+import { getValdiRuntime } from '../ValdiRuntimeProvider';
 import { withLazyPromise } from '../WithLazyPromise';
 import { lazyPromise } from '../utils/LazyPromise';
 import { RendererError } from '../utils/RendererError';
@@ -8,8 +8,6 @@ const ErrorComponent = withLazyPromise(lazyPromise(() => import('./ErrorComponen
 interface State {
   error?: Error;
 }
-
-declare const runtime: ValdiRuntime;
 
 /**
  * A component which catches errors and display an error screen
@@ -29,9 +27,9 @@ export class DefaultErrorBoundary extends StatefulComponent<{}, State> {
 
   onError(error: Error) {
     if (error instanceof RendererError) {
-      runtime.onUncaughtError(error.message, error.sourceError);
+      getValdiRuntime().onUncaughtError(error.message, error.sourceError);
     } else {
-      runtime.onUncaughtError(error.message, error);
+      getValdiRuntime().onUncaughtError(error.message, error);
     }
 
     if (!this.state.error) {

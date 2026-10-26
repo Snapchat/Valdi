@@ -6,10 +6,8 @@ import {
   GetCurrentLocalesFn,
   InlineUnparsedLocalizableStringResolver,
 } from './localization/InlineUnparsedLocalizableStringResolver';
-import { ValdiRuntime } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { getCurrentLocales } from './localization/LocaleResolver';
-
-declare const runtime: ValdiRuntime;
 
 export function overrideLocales(exports: any, getCurrentLocales: GetCurrentLocalesFn): void {
   const module = LocalizableStringsModule.fromExports(exports);
@@ -59,7 +57,7 @@ export function buildInlineModule(
         // Check for bundler-preloaded JSON (web builds register lazy thunks via __valdiPreloadedStrings)
         const preloaded = (globalThis as any).__valdiPreloadedStrings?.[module]?.[filePath];
         if (typeof preloaded === 'function') return preloaded();
-        return JSON.parse(runtime.getModuleEntry(module, filePath, true) as string);
+        return JSON.parse(getValdiRuntime().getModuleEntry(module, filePath, true) as string);
       },
       getCurrentLocales,
     ),

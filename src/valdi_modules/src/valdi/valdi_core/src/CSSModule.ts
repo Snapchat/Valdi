@@ -1,8 +1,7 @@
 import { StringMap } from 'coreutils/src/StringMap';
-import { ValdiRuntime, CSSModuleNative } from './ValdiRuntime';
+import { CSSModuleNative } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { setObjectId } from './utils/IdentifyableObject';
-
-declare const runtime: ValdiRuntime;
 
 export interface CSSRule {}
 
@@ -31,7 +30,7 @@ export function makeModule(compiledCSSPath: string, ruleMapping: StringMap<strin
 }
 
 export function getNativeModule(compiledCSSPath: string): CSSModuleNative {
-  const cssModule = runtime.getCSSModule(compiledCSSPath);
+  const cssModule = getValdiRuntime().getCSSModule(compiledCSSPath);
   setObjectId(cssModule);
   return cssModule;
 }

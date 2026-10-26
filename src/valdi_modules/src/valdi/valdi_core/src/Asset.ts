@@ -1,5 +1,6 @@
 import { Asset } from 'valdi_tsx/src/Asset';
-import { BackendRenderingType, LoadedAsset, LoadedAssetMetadata, ValdiRuntime } from './ValdiRuntime';
+import { BackendRenderingType, LoadedAsset, LoadedAssetMetadata } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { Device } from './Device';
 
 export { Asset };
@@ -34,13 +35,11 @@ export const enum AssetType {
   DUMMY,
 }
 
-declare const runtime: ValdiRuntime;
-
 /**
  * Make an Asset (to be set on <image/>) from an arbitrary URL
  */
 export function makeAssetFromUrl(url: string): Asset {
-  return runtime.makeAssetFromUrl(url);
+  return getValdiRuntime().makeAssetFromUrl(url);
 }
 
 /**
@@ -51,7 +50,7 @@ export function makeAssetFromUrl(url: string): Asset {
  * to display inside the image element.
  */
 export function makeAssetFromBytes(bytes: ArrayBuffer | Uint8Array): Asset {
-  return runtime.makeAssetFromBytes(bytes);
+  return getValdiRuntime().makeAssetFromBytes(bytes);
 }
 
 /**
@@ -65,7 +64,7 @@ export function makeAssetFromBytes(bytes: ArrayBuffer | Uint8Array): Asset {
  * use either the ltr or rtl asset depending the layout direction.
  */
 export function makeDirectionalAsset(ltrAsset: string | Asset, rtlAsset: string | Asset): Asset {
-  return runtime.makeDirectionalAsset(ltrAsset, rtlAsset);
+  return getValdiRuntime().makeDirectionalAsset(ltrAsset, rtlAsset);
 }
 
 export type PlatformAssetOverrides = {
@@ -98,7 +97,7 @@ export function makePlatformSpecificAsset(
   defaultAsset: string | Asset,
   platformAssetOverrides: PlatformAssetOverrides,
 ): Asset {
-  return runtime.makePlatformSpecificAsset(defaultAsset, platformAssetOverrides);
+  return getValdiRuntime().makePlatformSpecificAsset(defaultAsset, platformAssetOverrides);
 }
 
 /**
@@ -110,7 +109,7 @@ export function makePlatformSpecificAsset(
  * asset matching the resolved color palette.
  */
 export function makeThemableAsset(assetsByColorPalette: ThemableAssetMap): Asset {
-  return runtime.makeThemableAsset(assetsByColorPalette);
+  return getValdiRuntime().makeThemableAsset(assetsByColorPalette);
 }
 
 /**
@@ -132,7 +131,7 @@ export function resolveAssetOutputType(contextId: number | string, assetType: As
     case AssetType.BYTES:
       return AssetOutputType.BYTES;
     case AssetType.IMAGE:
-      switch (runtime.getBackendRenderingTypeForContextId(contextId)) {
+      switch (getValdiRuntime().getBackendRenderingTypeForContextId(contextId)) {
         case BackendRenderingType.ANDROID:
           return AssetOutputType.IMAGE_ANDROID;
         case BackendRenderingType.IOS:
@@ -142,7 +141,7 @@ export function resolveAssetOutputType(contextId: number | string, assetType: As
       }
       break;
     case AssetType.VIDEO:
-      switch (runtime.getBackendRenderingTypeForContextId(contextId)) {
+      switch (getValdiRuntime().getBackendRenderingTypeForContextId(contextId)) {
         case BackendRenderingType.ANDROID:
           return AssetOutputType.VIDEO_ANDROID;
         case BackendRenderingType.IOS:
@@ -179,7 +178,7 @@ export function addAssetLoadObserver(
   preferredWidth?: number,
   preferredHeight?: number,
 ): AssetSubscription {
-  const unsubscribe = runtime.addAssetLoadObserver(asset, onLoad, outputType, preferredWidth, preferredHeight);
+  const unsubscribe = getValdiRuntime().addAssetLoadObserver(asset, onLoad, outputType, preferredWidth, preferredHeight);
   return { unsubscribe };
 }
 
@@ -187,5 +186,5 @@ export function addAssetLoadObserver(
  * Returns the metadata reported by the LoadedAsset.
  */
 export function getLoadedAssetMetadata(loadedAsset: LoadedAsset): LoadedAssetMetadata | undefined {
-  return runtime.getLoadedAssetMetadata(loadedAsset);
+  return getValdiRuntime().getLoadedAssetMetadata(loadedAsset);
 }

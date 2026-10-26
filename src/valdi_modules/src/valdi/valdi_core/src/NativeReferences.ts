@@ -1,7 +1,5 @@
-import { ValdiRuntime } from './ValdiRuntime';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { IComponent } from './IComponent';
-
-declare const runtime: ValdiRuntime;
 
 /**
  * By default, bridged objects from native are disposed after onDestroy()
@@ -28,7 +26,7 @@ export function protectNativeRefs(component: IComponent): () => void {
  * calls eventually.
  */
 export function protectNativeRefsForContextId(contextId: string): () => void {
-  return runtime.protectNativeRefs(contextId);
+  return getValdiRuntime().protectNativeRefs(contextId);
 }
 
 /**
@@ -42,7 +40,7 @@ export function protectNativeRefsForContextId(contextId: string): () => void {
  * calls eventually.
  */
 export function protectNativeRefsForCurrentContextId(): () => void {
-  return runtime.protectNativeRefs(0);
+  return getValdiRuntime().protectNativeRefs(0);
 }
 
 /**
@@ -84,11 +82,11 @@ export function asyncWithProtectedRefsForContextId<T>(contextId: string, asyncAc
  * aren't destroyed when a root component is destroyed.
  */
 export function withGlobalNativeRefs<T>(cb: () => T): T {
-  runtime.pushCurrentContext(undefined);
+  getValdiRuntime().pushCurrentContext(undefined);
   try {
     return cb();
   } finally {
-    runtime.popCurrentContext();
+    getValdiRuntime().popCurrentContext();
   }
 }
 
@@ -99,11 +97,11 @@ export function withGlobalNativeRefs<T>(cb: () => T): T {
  * references on the given context.
  */
 export function withLocalNativeRefs<T>(contextId: string, cb: () => T): T {
-  runtime.pushCurrentContext(contextId);
+  getValdiRuntime().pushCurrentContext(contextId);
   try {
     return cb();
   } finally {
-    runtime.popCurrentContext();
+    getValdiRuntime().popCurrentContext();
   }
 }
 
@@ -159,7 +157,7 @@ export class NativeReferencesContext {
    * Destroy the Context, which will release all the retained references.
    */
   destroy() {
-    runtime.destroyContext(this.contextId);
+    getValdiRuntime().destroyContext(this.contextId);
   }
 
   /**
@@ -184,7 +182,7 @@ export class NativeReferencesContext {
    * destroy() method.
    */
   static create(): NativeReferencesContext {
-    return new NativeReferencesContext(runtime.createContext());
+    return new NativeReferencesContext(getValdiRuntime().createContext());
   }
 
   /**

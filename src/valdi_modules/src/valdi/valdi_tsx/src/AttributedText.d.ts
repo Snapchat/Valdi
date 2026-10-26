@@ -21,6 +21,15 @@ export interface AttributedTextAnimationTransform {
   key?: string;
 
   /**
+   * Initial horizontal offset, in logical pixels, applied to each animated part.
+   *
+   * The part animates from this offset back to its normal text position.
+   *
+   * Only the web renderer applies this today; iOS and Android ignore it.
+   */
+  translationX?: number;
+
+  /**
    * Initial vertical offset, in logical pixels, applied to each animated part.
    *
    * The part animates from this offset back to its normal text position.

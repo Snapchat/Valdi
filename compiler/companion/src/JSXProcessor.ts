@@ -42,6 +42,7 @@ interface JSXAttributeStatements {
   nodeRef: ts.Expression | undefined;
   componentContext: ts.Expression | undefined;
   lazy: boolean;
+  viewFactory: ts.Expression | undefined;
   staticAttributesLiteral?: ts.Expression;
   dynamicAttributes: JSXAttribute[];
   injectedAttributes: JSXAttribute[];
@@ -138,6 +139,26 @@ export class JSXProcessor {
     let lazy = false;
     let nodeRef: ts.Expression | undefined;
     let componentContext: ts.Expression | undefined;
+    let viewFactory: ts.Expression | undefined;
+
+    if (nodeTypeStr === 'custom-view') {
+      const factoryAttribute = attributes.find((attribute) => attribute.name === 'viewFactory');
+      if (factoryAttribute) {
+        const conflictingAttribute = attributes.find(
+          (attribute) =>
+            attribute.name === 'iosClass' ||
+            attribute.name === 'androidClass' ||
+            attribute.name === 'macosClass' ||
+            attribute.name === 'webClass',
+        );
+        if (conflictingAttribute) {
+          this.onError(
+            conflictingAttribute.node,
+            'custom-view cannot specify both viewFactory and platform view classes',
+          );
+        }
+      }
+    }
 
     for (const attribute of attributes) {
       if (attribute.name === 'slot') {
@@ -149,6 +170,11 @@ export class JSXProcessor {
       }
       if (attribute.name === 'key') {
         key = attribute.value.value;
+        continue;
+      }
+
+      if (nodeTypeStr === 'custom-view' && attribute.name === 'viewFactory') {
+        viewFactory = attribute.value.value;
         continue;
       }
 
@@ -191,6 +217,7 @@ export class JSXProcessor {
       allAttributes,
       slot,
       lazy,
+      viewFactory,
       key,
       nodeRef,
       componentContext,
@@ -810,11 +837,12 @@ export class JSXProcessor {
     );
 
     const keyOrUndefined = attributeStatements.key || transformContext.factory.createIdentifier('undefined');
+    const viewFactory = attributeStatements.viewFactory;
 
     if (attributeStatements.lazy) {
       const beginIfNeeded = this.createRendererCallExpr(
-        'beginRenderIfNeeded',
-        [nodeIdentifier, keyOrUndefined],
+        viewFactory ? 'beginRenderWithViewFactoryIfNeeded' : 'beginRenderIfNeeded',
+        viewFactory ? [nodeIdentifier, viewFactory, keyOrUndefined] : [nodeIdentifier, keyOrUndefined],
         transformContext,
       );
 
@@ -832,8 +860,8 @@ export class JSXProcessor {
       };
     } else {
       const beginRenderStatement = this.createRendererCall(
-        'beginRender',
-        [nodeIdentifier, keyOrUndefined],
+        viewFactory ? 'beginRenderWithViewFactory' : 'beginRender',
+        viewFactory ? [nodeIdentifier, viewFactory, keyOrUndefined] : [nodeIdentifier, keyOrUndefined],
         undefined,
         transformContext,
       );

@@ -1,12 +1,32 @@
-import { ValdiRuntime } from 'valdi_core/src/ValdiRuntime';
+import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 
-declare const runtime: ValdiRuntime;
+export const enum RecordedTraceType {
+  Duration = 0,
+  Instant = 1,
+}
+
+export type TraceArgumentValue = unknown;
+
+/**
+ * Validates instant-trace arguments as alternating string keys and values,
+ * e.g. `['count', 3, 'name', 'feed']`.
+ */
+export type TraceArgumentsFor<Args extends readonly unknown[]> = Args extends readonly []
+  ? readonly []
+  : Args extends readonly [infer Key, infer Value, ...infer Rest]
+    ? Key extends string
+      ? readonly [Key, Value, ...TraceArgumentsFor<Rest>]
+      : never
+    : never;
 
 export interface RecordedTrace {
   trace: string;
   startMicros: number;
   endMicros: number;
   threadId: number;
+  /** Absent for runtimes that only record durations. */
+  type?: RecordedTraceType;
+  args?: Record<string, TraceArgumentValue>;
 }
 
 export interface TraceRecordingResult {
@@ -133,7 +153,7 @@ export function decodeTraceRecordingResultWithNativeStats(result: any[]): TraceR
  * to "stopTraceRecording"
  */
 export function startTraceRecording(): number {
-  return runtime.startTraceRecording();
+  return getValdiRuntime().startTraceRecording();
 }
 
 /**
@@ -149,6 +169,7 @@ export function stopTraceRecording(id: number): RecordedTrace[] {
  * serialization bounds. Older runtimes retain the legacy trace-only method and are bounded here.
  */
 export function stopTraceRecordingWithStats(id: number): TraceRecordingResult {
+  const runtime = getValdiRuntime();
   if (runtime.stopTraceRecordingWithStats) {
     return decodeTraceRecordingResultWithNativeStats(runtime.stopTraceRecordingWithStats(id));
   }
@@ -156,7 +177,51 @@ export function stopTraceRecordingWithStats(id: number): TraceRecordingResult {
 }
 
 export function isTracingSupported(): boolean {
-  return runtime.trace !== undefined;
+  const runtime = getValdiRuntime();
+  return runtime.trace !== undefined || (runtime.beginTrace !== undefined && runtime.endTrace !== undefined);
+}
+
+/**
+ * Opens a trace section that must be closed by a matching `endTrace()` on the same thread.
+ * No-op on runtimes that only support scoped traces; use `trace()` for portable code.
+ */
+export function beginTrace(tag: string): void {
+  getValdiRuntime().beginTrace?.(tag);
+}
+
+/**
+ * Closes the trace section opened by the most recent `beginTrace()`.
+ */
+export function endTrace(): void {
+  getValdiRuntime().endTrace?.();
+}
+
+/**
+ * Records a zero-duration trace event.
+ */
+export function instantTrace(tag: string): void {
+  const runtime = getValdiRuntime();
+  if (runtime.instantTrace) {
+    runtime.instantTrace(tag);
+  } else if (runtime.trace) {
+    runtime.trace(tag, () => {});
+  }
+}
+
+/**
+ * Records a zero-duration trace event with arguments, passed as alternating string keys and values.
+ * Runtimes without argument support record the event without them.
+ */
+export function instantTraceWithArgs<Args extends readonly unknown[]>(
+  tag: string,
+  args: Args & TraceArgumentsFor<Args>,
+): void {
+  const runtime = getValdiRuntime();
+  if (runtime.instantTrace) {
+    runtime.instantTrace(tag, args);
+  } else if (runtime.trace) {
+    runtime.trace(tag, () => {});
+  }
 }
 
 /**
@@ -165,17 +230,25 @@ export function isTracingSupported(): boolean {
  * @param func to function to evaluate
  */
 export function trace<T>(tag: string, func: () => T): T {
-  if (!runtime.trace) {
-    return func();
-  } else {
+  const runtime = getValdiRuntime();
+  if (runtime.trace) {
     return runtime.trace(tag, func);
+  }
+  if (!runtime.beginTrace || !runtime.endTrace) {
+    return func();
+  }
+  runtime.beginTrace(tag);
+  try {
+    return func();
+  } finally {
+    runtime.endTrace();
   }
 }
 
 const TRACE_PROXY_KEY = '$trace-proxy-target';
 
 function makeProxyFunction(tag: string, fn: (...params: any[]) => any): (...params: any[]) => any {
-  const makeTraceProxy = runtime.makeTraceProxy;
+  const makeTraceProxy = getValdiRuntime().makeTraceProxy;
   if (!makeTraceProxy) {
     return fn;
   }
@@ -223,7 +296,7 @@ function makeTraceProxyFunctionForProperty(
  * @returns
  */
 export function installTraceProxy(objectClass: new (...input: any[]) => any) {
-  if (!runtime.makeTraceProxy) {
+  if (!getValdiRuntime().makeTraceProxy) {
     return;
   }
 
@@ -266,7 +339,7 @@ export function Trace(cls: new (...input: any[]) => any): void {
  * Install a trace proxy on a single method.
  */
 export function TraceMethod(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
-  if (!runtime.makeTraceProxy) {
+  if (!getValdiRuntime().makeTraceProxy) {
     return;
   }
 
