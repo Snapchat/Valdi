@@ -80,6 +80,7 @@ struct CalculatorBridge {
 
     Valdi::Value context(const std::shared_ptr<CalculatorBridge>& self) {
         Valdi::Value value;
+        value.setMapValue("fontFamily", Valdi::Value(Valdi::StringBox::fromString("Window")));
         value.setMapValue("connect",
                           Valdi::Value(Valdi::makeShared<Valdi::ValueFunctionWithCallable>(
                               [self](const Valdi::ValueFunctionCallContext& call) {
@@ -310,7 +311,7 @@ bool selfTest(ValdiLinux::SDLWindowHost& host, CalculatorBridge& bridge, const c
 
 int main(int argc, char** argv) {
     if (argc < 3) {
-        std::cerr << "Usage: calculator /path/to/modules /path/to/font.ttf [--self-test [snapshot.bmp]]\n";
+        std::cerr << "Usage: calculator_linux /path/to/modules /path/to/font.ttf [--self-test [snapshot.bmp]]\n";
         return 2;
     }
     const bool testing = argc > 3 && std::string(argv[3]) == "--self-test";
@@ -324,7 +325,7 @@ int main(int argc, char** argv) {
         {
             ValdiLinux::ValdiWindowApplication application(client);
             ValdiLinux::WindowApplicationOptions options;
-            options.rootComponentPath = "CalculatorApp@linux_calculator/src/CalculatorApp";
+            options.rootComponentPath = "CalculatorApp@calculator/src/CalculatorApp";
             options.moduleDirectories = {argv[1]};
             options.fontPath = argv[2];
             options.window.title = "Valdi Calculator";

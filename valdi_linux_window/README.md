@@ -89,14 +89,14 @@ yet instantiate a compiled Valdi component or a complete text editor.
 
 `ValdiWindowApplication` adds standalone runtime ownership, a SnapDrawing
 view-manager context, a compiled component mounted through `ValdiLayer`, font
-registration and prototype shutdown. The [calculator](../apps/linux_calculator/README.md)
+registration and prototype shutdown. The [calculator](../apps/calculator/README.md)
 uses this adapter without application-specific services:
 
 ```sh
-bazel build //apps/linux_calculator:calculator \
+bazel build //apps/calculator:calculator_linux \
   --//bzl/valdi:js_engine=quickjs \
   --//bzl/valdi:js_bytecode_format=quickjs
-bazel-bin/apps/linux_calculator/calculator /path/to/modules /path/to/font.ttf
+bazel-bin/apps/calculator/calculator_linux /path/to/modules /path/to/font.ttf
 ```
 
 Keep the runtime engine, generated module bytecode and compiler/toolbox cohort
@@ -223,15 +223,15 @@ This requires the standalone Device observer fix submitted separately from the
 optional SDL host; no SDL dependency is added to headless runtime targets.
 
 The host regression test wraps only `SDL_GetSystemTheme` at link time. The
-calculator's optional `calculator_theme_test` binary uses the same deterministic
+calculator's optional `calculator_linux_theme_test` binary uses the same deterministic
 source to assert initial dark/light/unknown and live transitions through the real
 Device API, Valdi component and raster pixels, without changing user settings:
 
 ```sh
-bazel build //apps/linux_calculator:calculator_theme_test
+bazel build //apps/calculator:calculator_linux_theme_test
 mkdir -p /tmp/valdi-calculator-modules
 SDL_VIDEODRIVER=dummy SDL_FRAMEBUFFER_ACCELERATION=0 \
-  bazel-bin/apps/linux_calculator/calculator_theme_test \
+  bazel-bin/apps/calculator/calculator_linux_theme_test \
   /tmp/valdi-calculator-modules /path/to/font.ttf --self-test
 ```
 
