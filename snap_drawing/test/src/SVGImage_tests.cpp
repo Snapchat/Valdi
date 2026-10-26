@@ -28,6 +28,11 @@ static void expectBitmapIsRed(const Ref<Image>& image) {
     }
 }
 
+// Internal linkage: RasterContext_tests.cpp defines a different snap::drawing::TestBitmapFactory
+// in the same test binary, and two external definitions are an ODR violation (ASan caught a
+// heap-buffer-overflow when the other class's createBitmap ran on this one's object).
+namespace {
+
 class TestBitmapFactory : public Valdi::IBitmapFactory {
 public:
     Valdi::Result<Valdi::Ref<Valdi::IBitmap>> createBitmap(int width, int height) override {
@@ -35,6 +40,8 @@ public:
         return bitmap;
     }
 };
+
+} // namespace
 
 // --- isSVG detection ---
 

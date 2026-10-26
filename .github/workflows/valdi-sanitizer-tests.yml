@@ -19,6 +19,9 @@ on:
       - 'valdi/BUILD.bazel'
       - 'valdi/src/**'
       - 'valdi/test/integration/**'
+      - 'valdi/test/runtime/**'
+      - 'valdi/test/snap_drawing/**'
+      - 'snap_drawing/**'
       - 'valdi_core/src/**'
   schedule:
     - cron: '0 10 * * *'  # 10:00 UTC, ~3am PT (offset from the other nightly jobs)

@@ -17,6 +17,18 @@ bzl test //valdi:test_layout --test_output=all --test_arg=--gtest_print_time=1
 # canLockAllJSContexts, is DISABLED, so the suite runs green).
 bzl test //valdi:test_svg --test_output=errors
 
+# snap_drawing's own C++ unit suite (canvas, paths, layers, text layout). Engine-free and safe on
+# both platforms: its BUILD select drops the TextLayout tests on Linux and the Lottie tests unless
+# Lottie is enabled. It was not gated by either CI before.
+bzl test //snap_drawing:test --test_output=errors
+
+# Valdi's Android JVM unit tests under Robolectric (views, text, touch hit-testing, JS bridge).
+# Internal CI already runs these in a separate step, so run them only on GitHub Actions here to
+# avoid running them twice.
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]] ; then
+    bzl test //valdi:test_java --test_output=errors
+fi
+
 # djinni-support-lib Valdi proxy dispatch unit tests. Engine-free (links only
 # valdi_core, not valdi_standalone_runtime), so safe on both Linux and macOS.
 bzl test //third-party/djinni-support-lib:test_valdi --test_output=errors
