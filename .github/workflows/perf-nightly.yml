@@ -9,7 +9,7 @@ name: Perf Nightly
 # runner (cancelling shared-hardware variance). PRIMARY metric per benchmark is
 # allocations/op (deterministic — strict threshold, any increase flags); wall-time is a
 # loose, advisory secondary and is de-bounced here (file only on 2 consecutive crossings).
-# NON-BLOCKING — the script always exits 0; on a flagged regression this job files (or
+# NON-BLOCKING on regressions (it fails only if no benchmark builds); on a flagged regression this job files (or
 # comments on) a `perf-regression` issue carrying the two SHAs and a link to the per-
 # benchmark summary table so the day's commit range can be bisected.
 
@@ -30,7 +30,8 @@ permissions:
 jobs:
   perf-nightly:
     name: Microbenchmark Perf Ratio
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: 26.04 lacks libxml2.so.2, which the LLVM 19 ld.lld needs.
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
@@ -49,11 +50,11 @@ jobs:
           sudo docker image prune --all --force >/dev/null 2>&1 || true
           df -h /
 
-      # Non-blocking: the script always exits 0; continue-on-error is a
-      # belt-and-suspenders so an unexpected failure never reddens the schedule.
+      # Regressions never redden the schedule (they file an issue below); the script
+      # exits non-zero only when no benchmark built at all, so a broken suite can't
+      # pass as green.
       - name: Run perf ratio (suite)
         id: perf
-        continue-on-error: true
         run: ./tools/ci/perf_ratio.sh
 
       # Deliver the verdict via the shared tools/ci/perf_notify.sh — the SAME

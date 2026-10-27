@@ -47,7 +47,8 @@ jobs:
     name: Android Instrumentation Tests
     # x86_64, not arm64: GitHub's arm64 Linux runners do not expose /dev/kvm, so an
     # emulator there would have no hardware acceleration.
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: 26.04 lacks libxml2.so.2, which the LLVM 19 ld.lld needs.
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
 
     steps:

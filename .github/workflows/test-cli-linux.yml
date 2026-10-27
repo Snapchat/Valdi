@@ -26,7 +26,8 @@ concurrency:
 jobs:
   test-distribution-detection:
     name: Test on ${{ matrix.distro }}
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: 26.04 lacks libxml2.so.2, which the LLVM 19 ld.lld needs.
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -327,7 +328,8 @@ jobs:
 
   test-unit-tests:
     name: Run Unit Tests
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: 26.04 lacks libxml2.so.2, which the LLVM 19 ld.lld needs.
+    runs-on: ubuntu-24.04
     
     steps:
       - name: Checkout code

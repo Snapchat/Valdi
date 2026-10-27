@@ -38,7 +38,8 @@ concurrency:
 jobs:
   valdi-sanitizer-tests:
     name: Valdi ASan Integration Tests
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: 26.04 lacks libxml2.so.2, which the LLVM 19 ld.lld needs.
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
 
     steps:

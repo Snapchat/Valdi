@@ -15,9 +15,10 @@
 #     nightly crossings). We still compare tip vs master-as-of-~24h-ago built on
 #     the SAME runner in the SAME job to cancel most cross-runner variance.
 #
-# NON-BLOCKING (always exits 0): it annotates the job summary and emits a machine-
+# NON-BLOCKING on regressions: it annotates the job summary and emits a machine-
 # readable verdict; the workflow files a public issue for the day's commit range.
-# Degrades gracefully: any build/run/lookup failure reports what it has, exits 0.
+# Degrades gracefully: a partial build/run/lookup failure reports what it has and
+# exits 0. Exits 1 only when no benchmark produced metrics at HEAD.
 set -uo pipefail
 
 # The suite: "bazel_target|benchmark_name". Add a line per benchmark as the suite grows.
@@ -110,8 +111,8 @@ HEAD_TSV="$(mktemp)"
 log "Running suite at HEAD..."
 collect "$HEAD_TSV"
 if [ ! -s "$HEAD_TSV" ]; then
-  log "No benchmark produced metrics at HEAD — nothing to report (non-blocking)."
-  emit false false "$HEAD_SHA" ""; exit 0
+  log "No benchmark produced metrics at HEAD — the suite is broken, failing."
+  emit false false "$HEAD_SHA" ""; exit 1
 fi
 
 BASE_SHA="${PERF_BASE_SHA:-}"
@@ -200,5 +201,5 @@ open(res, "w").write("true" if regressed else "false")
 open(imp, "w").write("true" if improved else "false")
 PY
 emit "$(cat "$RES")" "$(cat "$IMP")" "$HEAD_SHA" "${BASE_SHA:-}"
-log "Done (non-blocking; always exits 0)."
+log "Done (non-blocking)."
 exit 0
