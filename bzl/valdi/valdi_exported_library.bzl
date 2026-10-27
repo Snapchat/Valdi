@@ -135,7 +135,7 @@ done | sed '/^import ValdiCoreSwift$$/d' > $@
         },
         ios = {
             "device": ["arm64"],
-            "simulator": ["arm64", "x86_64"],
+            "simulator": ["arm64"],
         },
         tags = ["valdi_ios_exported_library"],
         bundle_id = ios_bundle_id,

@@ -63,7 +63,7 @@ class ViewController: UIViewController {
 }
 ```
 
-**Troubleshooting (iOS):** If the host app fails to build with **"SCValdiDrawingModule.h file not found"**, the exported xcframework may omit this header. Add a stub header in both slices of your `.xcframework` (e.g. `YourName.xcframework/ios-arm64/YourBundleName.framework/Headers/` and `.../ios-arm64_x86_64-simulator/.../Headers/`): create `SCValdiDrawingModule.h` with:
+**Troubleshooting (iOS):** If the host app fails to build with **"SCValdiDrawingModule.h file not found"**, the exported xcframework may omit this header. Add a stub header in both slices of your `.xcframework` (e.g. `YourName.xcframework/ios-arm64/YourBundleName.framework/Headers/` and `.../ios-arm64-simulator/.../Headers/`): create `SCValdiDrawingModule.h` with:
 
 ```objc
 #import <Foundation/Foundation.h>
