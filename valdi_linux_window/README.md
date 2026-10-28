@@ -18,6 +18,12 @@ queue listener and restores it during shutdown. Do not replace either listener
 while open. It currently consumes the process-wide SDL event loop: multiple
 independent SDL windows are outside this prototype's contract.
 
+When `pkg-config` or its `sdl3` package is absent, the development repository
+writes an incompatible `sdl3` stub and prints installation guidance. Wildcard
+queries, fetches and unrelated targets can still resolve the repository; SDL
+targets are incompatible until the development package is installed. An installed
+SDL3 version below 3.2 or invalid package metadata remains a hard error.
+
 ## Prototype status and RFC review gates
 
 `SDLWindowHost`, `WindowClient`, `ValdiWindowApplication` and their option/metric
@@ -48,8 +54,8 @@ The following review prerequisites remain unimplemented here:
   baseline. SDL display scale is reported but not applied to layout/input, so
   X11 HiDPI remains incorrect. Native fractional scaling is unqualified.
 - **Dependency isolation:** root-level `pkg-config` discovery is non-hermetic
-  and can fail dependency queries on machines without SDL. The RFC proposes a
-  separately rooted host Bazel module with pinned BCR SDL3; that migration and
+  even though missing installations now yield incompatible targets. The RFC
+  proposes a separately rooted host Bazel module with pinned BCR SDL3; that migration and
   its license/runtime-dependency audit are not implemented. Wayland presentation
   may need EGL/Mesa despite CPU rasterization; the llvmpipe/unwind issue remains
   open.

@@ -1,7 +1,11 @@
+load("@aspect_rules_js//js:defs.bzl", "js_test")
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("//bzl/valdi:valdi_module.bzl", "valdi_module")
 load("//bzl/valdi:valdi_web_application.bzl", "valdi_web_application")
 
+# Keep the shared UI and browser example in wildcard builds so they stay compiled;
+# only the SDL launchers require an explicitly selected Linux/display environment.
 valdi_module(
     name = "calculator",
     srcs = glob(["src/**/*.ts", "src/**/*.tsx"]) + ["tsconfig.json"],
@@ -48,4 +52,25 @@ valdi_web_application(
     title = "Valdi Calculator",
     root_component_path = "CalculatorApp@calculator/src/CalculatorApp",
     deps = [":calculator"],
+)
+
+# Compile only the pure model; this test needs neither the native compiler nor SDL.
+ts_project(
+    name = "calculator_model",
+    srcs = ["src/Calculator.ts"],
+    transpiler = "tsc",
+    tsconfig = {
+        "compilerOptions": {
+            "target": "ES2020",
+            "module": "commonjs",
+            "strict": True,
+            "types": [],
+        },
+    },
+)
+
+js_test(
+    name = "calculator_model_test",
+    data = [":calculator_model"],
+    entry_point = "test/model.test.cjs",
 )
