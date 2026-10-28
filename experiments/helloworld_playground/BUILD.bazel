@@ -1,3 +1,4 @@
+load("@rules_python//python:defs.bzl", "py_test")
 load("@valdi_npm//:defs.bzl", "npm_link_all_packages")
 load("@valdi_npm//experiments/helloworld_playground:webpack/package_json.bzl", webpack_bin = "bin")
 load("//bzl/valdi:valdi_exported_library.bzl", "valdi_exported_library")
@@ -30,4 +31,15 @@ valdi_web_playground(
     npm_package = ":hello_experiment_npm",
     test_srcs = glob(["tests/**"]),
     webpack_bin = webpack_bin,
+)
+
+py_test(
+    name = "native_declarations_test",
+    size = "small",
+    srcs = ["native_declarations_test.py"],
+    data = [
+        ":hello_experiment_npm",
+        ":hello_experiment_npm_web_native",
+    ],
+    deps = ["@rules_python//python/runfiles"],
 )

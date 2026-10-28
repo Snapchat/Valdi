@@ -105,6 +105,14 @@ def _dest(rel):
     if _is_native_module_js(rel):
         return "native/" + _dest_native(rel)
 
+    # The package exports map types next to the .js (`./*` -> `./*.d.ts`), so a native
+    # module's .d.ts must sit beside it in native/. CompilerToolbox also only repairs
+    # `<pkg>/src/../src/` declaration imports for files under native/.
+    if rel.endswith(".d.ts") and "web" in rel.split("/"):
+        js_rel = rel[:-len(".d.ts")] + ".js"
+        if _is_native_module_js(js_rel):
+            return "native/" + _dest_native(rel)
+
     parts = rel.split("/")
     for i in range(1, len(parts)):
         # Skip the compiler-generated web/<flavor>/res directories; those are handled
