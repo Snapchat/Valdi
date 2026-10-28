@@ -1,6 +1,8 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { Calculator } = require(process.argv[2]);
+const path = require('node:path');
+const modelPath = process.argv[2] ? path.resolve(process.argv[2]) : path.join(__dirname, '../src/Calculator.js');
+const { Calculator } = require(modelPath);
 
 function calculate(keys) {
   const calculator = new Calculator();

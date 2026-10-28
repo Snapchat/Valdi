@@ -34,6 +34,9 @@ shortcuts below belong to the Linux launcher. The native label font auto-fit
 attribute is omitted on web because the current web renderer does not implement
 it; long results may overflow at narrow widths.
 
+The shared `:calculator` module and `:calculator_web` launcher intentionally stay
+in wildcard builds; only the native SDL launchers are `manual`.
+
 ## Linux
 
 ### Build and run
@@ -91,8 +94,16 @@ This was a web smoke test, using a source-built compiler and locally adapted
 Command Line Tools packaging setup. It does not qualify the default full native
 Bazel toolchain, native macOS, or a rerun of the renamed Linux launcher.
 
-From this directory, compile the pure calculation model with TypeScript 5.3.3
-and run its Node tests:
+The calculator model is compiled by `ts_project` and its seven Node tests are
+gated through the existing `tools/ci/test_modules.sh` entry point in both CI
+systems. Run the target directly from the repository root:
+
+```sh
+bazel test //apps/calculator:calculator_model_test --test_output=errors
+```
+
+For a manual run from this directory, compile the pure calculation model with
+TypeScript 5.3.3 and pass its output path to the same Node tests:
 
 ```sh
 model_output=$(mktemp -d)
