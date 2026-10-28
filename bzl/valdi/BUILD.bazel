@@ -407,10 +407,7 @@ selects.config_setting_combinations(
 )
 
 # Toolchain for compiling Bazel modules.
-toolchain_type(
-    name = "toolchain_type",
-    visibility = ["//sdk/linux:__pkg__"],
-)
+toolchain_type(name = "toolchain_type")
 
 # Flag to control whether to use prebuilt companion binary or build from source
 bool_flag(
