@@ -62,7 +62,13 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
   constructor() {
     const runtime = getValdiRuntime();
     this.currentPlatform = runtime.getCurrentPlatform();
-    if (this.currentPlatform !== 1 && this.currentPlatform !== 2 && this.currentPlatform !== 3 && this.currentPlatform !== 4) {
+    if (
+      this.currentPlatform !== 1 &&
+      this.currentPlatform !== 2 &&
+      this.currentPlatform !== 3 &&
+      this.currentPlatform !== 4 &&
+      this.currentPlatform !== 5
+    ) {
       throw Error(`Unrecognized platform type ${this.currentPlatform.toString()}`);
     }
 
@@ -276,14 +282,16 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
       let androidClass: string | undefined;
       let iosClass: string | undefined;
       let macosClass: string | undefined;
+      let linuxClass: string | undefined;
       if (attributes) {
         androidClass = removeProperty(attributes, 'androidClass');
         iosClass = removeProperty(attributes, 'iosClass');
         macosClass = removeProperty(attributes, 'macosClass');
+        linuxClass = removeProperty(attributes, 'linuxClass');
         // webClass is left in attributes so WebValdiCustomView receives it via changeAttribute
       }
 
-      // 1 = Android, 2 = iOS, 3 = MacOS, 4 = Web
+      // 1 = Android, 2 = iOS, 3 = MacOS, 4 = Web, 5 = Linux
       if (this.currentPlatform === 4) {
         return new NodePrototype(className, 'custom-view', attributes);
       }
@@ -294,11 +302,14 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
           return new DeferredNodePrototype(className, attributes);
         }
       }
-      if (this.currentPlatform === 3) {
+      if (this.currentPlatform === 5 && linuxClass) {
+        return new NodePrototype(className, linuxClass, attributes);
+      }
+      if (this.currentPlatform === 3 || this.currentPlatform === 5) {
         if (macosClass) {
           return new NodePrototype(className, macosClass, attributes);
         } else if (iosClass) {
-          // macOS falls through to iOS class names
+          // Desktop SnapDrawing hosts fall through to iOS class names
           return new NodePrototype(className, iosClass, attributes);
         } else {
           return new DeferredNodePrototype(className, attributes);
@@ -345,8 +356,8 @@ class JSXModule implements IDaemonClientManagerListener, RendererFactory {
 
   registerNativeElement(className: string, iosClass: string, androidClass: string): void {
     let viewClassName: string;
-    if (this.currentPlatform === 2 || this.currentPlatform === 3) {
-      // macOS (3) falls through to iOS class names
+    if (this.currentPlatform === 2 || this.currentPlatform === 3 || this.currentPlatform === 5) {
+      // SnapDrawing on macOS (3) and Linux (5) registers iOS class names
       viewClassName = iosClass;
     } else if (this.currentPlatform === 1) {
       viewClassName = androidClass;

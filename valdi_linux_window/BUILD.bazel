@@ -1,0 +1,62 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["test/SystemThemeStub.cpp"])
+
+cc_library(
+    name = "sdl_window_host",
+    srcs = ["SDLWindowHost.cpp"],
+    hdrs = ["SDLWindowHost.hpp"],
+    copts = ["-fno-exceptions"],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":framebuffer",
+        "//snap_drawing:snap_drawing_cc",
+        "//valdi_core:valdi_core_cc",
+        "@valdi_system_sdl3//:sdl3",
+    ],
+)
+
+cc_library(
+    name = "framebuffer",
+    hdrs = ["Framebuffer.hpp"],
+)
+
+cc_library(
+    name = "valdi_window_application",
+    srcs = ["ValdiWindowApplication.cpp"],
+    hdrs = ["ValdiWindowApplication.hpp"],
+    copts = ["-fno-exceptions"],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":sdl_window_host",
+        "//snap_drawing:snap_drawing_cc",
+        "//valdi:valdi_linux",
+        "//valdi:valdi_snap_drawing",
+        "//valdi_core:valdi_core_cc",
+    ],
+)
+
+cc_test(
+    name = "framebuffer_test",
+    srcs = ["test/FramebufferTest.cpp"],
+    deps = [":framebuffer"],
+)
+
+# Requires a display server. Use Xvfb or a headless Wayland compositor in CI.
+cc_test(
+    name = "sdl_window_host_test",
+    srcs = ["test/SDLWindowHostTest.cpp", "test/SystemThemeStub.cpp"],
+    linkopts = ["-Wl,--wrap=SDL_GetSystemTheme"],
+    tags = ["manual", "requires-display"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":sdl_window_host",
+        "//snap_drawing:snap_drawing_cc",
+        "//valdi_core:valdi_core_cc",
+        "@valdi_system_sdl3//:sdl3",
+    ],
+)

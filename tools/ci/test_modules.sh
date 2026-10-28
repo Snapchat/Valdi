@@ -9,4 +9,7 @@ set -euxo pipefail
 # Intended to be run from open_source/
 cd "$(dirname "$0")/../.."
 
-bzl test //modules/... --test_output=errors
+bzl test //modules/... \
+    //src/valdi_modules/src/valdi/valdi_core:jsx_platform_test \
+    //apps/calculator:calculator_model_test \
+    --test_output=errors

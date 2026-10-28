@@ -1,0 +1,76 @@
+load("@aspect_rules_js//js:defs.bzl", "js_test")
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+load("//bzl/valdi:valdi_web_application.bzl", "valdi_web_application")
+
+# Keep the shared UI and browser example in wildcard builds so they stay compiled;
+# only the SDL launchers require an explicitly selected Linux/display environment.
+valdi_module(
+    name = "calculator",
+    srcs = glob(["src/**/*.ts", "src/**/*.tsx"]) + ["tsconfig.json"],
+    ios_module_name = "Calculator",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)
+
+cc_binary(
+    name = "calculator_linux",
+    srcs = ["linux/main.cpp"],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":calculator_native",
+        "//valdi_core:valdi_core_cc",
+        "//valdi_linux_window:valdi_window_application",
+        "@valdi_system_sdl3//:sdl3",
+    ],
+)
+
+# Deterministic theme source; still uses the real SDL event loop and Valdi runtime.
+cc_binary(
+    name = "calculator_linux_theme_test",
+    testonly = True,
+    srcs = ["linux/main.cpp", "//valdi_linux_window:test/SystemThemeStub.cpp"],
+    copts = ["-DVALDI_LINUX_THEME_TEST"],
+    linkopts = ["-Wl,--wrap=SDL_GetSystemTheme"],
+    tags = ["manual", "requires-display"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":calculator_native",
+        "//valdi_core:valdi_core_cc",
+        "//valdi_linux_window:valdi_window_application",
+        "@valdi_system_sdl3//:sdl3",
+    ],
+)
+
+valdi_web_application(
+    name = "calculator_web",
+    title = "Valdi Calculator",
+    root_component_path = "CalculatorApp@calculator/src/CalculatorApp",
+    deps = [":calculator"],
+)
+
+# Compile only the pure model; this test needs neither the native compiler nor SDL.
+ts_project(
+    name = "calculator_model",
+    srcs = ["src/Calculator.ts"],
+    transpiler = "tsc",
+    tsconfig = {
+        "compilerOptions": {
+            "target": "ES2020",
+            "module": "commonjs",
+            "strict": True,
+            "types": [],
+        },
+    },
+)
+
+js_test(
+    name = "calculator_model_test",
+    data = [":calculator_model"],
+    entry_point = "test/model.test.cjs",
+)
