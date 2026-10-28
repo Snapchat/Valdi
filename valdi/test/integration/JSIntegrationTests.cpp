@@ -1072,6 +1072,38 @@ TEST_P(JSContextFixture, hermesExecutionTerminationInterruptsPrecompiledJavaScri
     exceptionTracker.clearError();
 }
 
+TEST_P(JSContextFixture, hermesPrecompilesUnicodePropertyEscapes) {
+    if (!isHermes()) {
+        GTEST_SKIP() << "This verifies the Hermes bytecode compiler used by preCompile";
+    }
+
+    MAIN_THREAD_INIT();
+    auto wrapper = createWrapper();
+    auto jsEntry = wrapper.makeJsEntry();
+    auto& context = jsEntry.context;
+    auto& exceptionTracker = jsEntry.exceptionTracker;
+    auto moduleData = context.preCompile(
+        "module.exports = /^\\p{L}+$/u.test('午前') ? 1 : 0;", "precompiled-property-escapes.js", exceptionTracker);
+    jsEntry.checkException();
+    auto bytecode = getPreCompiledJsModuleData(moduleData);
+    ASSERT_TRUE(bytecode);
+
+    auto moduleFunction =
+        context.evaluatePreCompiled(bytecode.value(), "precompiled-property-escapes.js", exceptionTracker);
+    jsEntry.checkException();
+
+    auto module = context.newObject(exceptionTracker);
+    jsEntry.checkException();
+    JSValueRef params[] = {context.newUndefined(), module, context.newUndefined()};
+    JSFunctionCallContext callContext(context, params, 3, exceptionTracker);
+    context.callObjectAsFunction(moduleFunction.get(), callContext);
+    jsEntry.checkException();
+
+    auto exports = context.getObjectProperty(module.get(), "exports", exceptionTracker);
+    jsEntry.checkException();
+    ASSERT_EQ(1, context.valueToInt(exports.get(), exceptionTracker));
+}
+
 TEST_P(JSContextFixture, javaScriptCoreExecutionTerminationInterruptsAtNativeCallBoundary) {
     if (!isJSCore()) {
         GTEST_SKIP() << "This verifies JavaScriptCore's best-effort native-call checkpoint";

@@ -325,6 +325,27 @@ TEST_P(RuntimeFixture, exposesGlobalThis) {
     ASSERT_TRUE(evalResult.value().toBool());
 }
 
+TEST_P(RuntimeFixture, supportsUnicodePropertyEscapesInRegExp) {
+    // Hermes rejects \p{...} at parse time unless built with HERMES_ENABLE_UNICODE_REGEXP_PROPERTY_ESCAPES,
+    // which fails the whole module that contains the regex literal.
+    // [\P{...}] is left out on purpose: Hermes mis-handles a negated property inside a class.
+    std::string evalBody = R"(return [
+        /^\p{L}+$/u.test('午前'),
+        /\p{L}/u.test('12:30'),
+        new RegExp('^\\p{L}+$', 'u').test('午前'),
+        /^\P{L}+$/u.test('12:30'),
+        /^[\p{L}\d]+$/u.test('abc123'),
+        /\p{Script=Latin}/u.test('é'),
+        /\p{Script=Latin}/u.test('ع'),
+    ].map(Number).join('');)";
+
+    auto evalResult = wrapper.runtime->getJavaScriptRuntime()->evaluateScript(
+        makeShared<ByteBuffer>(evalBody)->toBytesView(), STRING_LITERAL("eval.js"));
+
+    ASSERT_TRUE(evalResult) << evalResult.description();
+    ASSERT_EQ(STRING_LITERAL("1011110"), evalResult.value().toStringBox());
+}
+
 TEST_P(RuntimeFixture, traceProxyRetainsCallbackAcrossGC) {
     // Regression: JavaScriptRuntimeTraceProxyCallable used to hold its wrapped callback as a bare,
     // non-owning JSValue. Under Hermes the callback's pooled value could be collected and its slot
