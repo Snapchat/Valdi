@@ -39,6 +39,14 @@ bool ValdiRuntimeTweaks::enableCommonJsModuleLoader() const {
     return getConfigKey("VALDI_ENABLE_COMMONJS_MODULE_LOADER");
 }
 
+bool ValdiRuntimeTweaks::enableModuleUnloadWorklist() const {
+    return getConfigKey("VALDI_ENABLE_MODULE_UNLOAD_WORKLIST_ANDROID");
+}
+
+bool ValdiRuntimeTweaks::skipTrailingUnloadGc() const {
+    return getConfigKey("VALDI_SKIP_TRAILING_UNLOAD_GC_ANDROID");
+}
+
 bool ValdiRuntimeTweaks::disableHotReloaderLazyDenylist() const {
     return getConfigKey("VALDI_DISABLE_HOTRELOADER_LAZY_DENYLIST");
 }

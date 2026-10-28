@@ -6282,7 +6282,7 @@ TEST_P(RuntimeFixture, canHandleRemoteModuleLoadAsyncFailure) {
         getRootView(tree));
 }
 
-TEST_P(RuntimeFixture, canRemoveUnusedResourcesOnTrimMemory) {
+static void verifyUnusedResourceCleanup(RuntimeWrapper& wrapper) {
     // Disable inline assets for this test as they will prevent the "test" module
     // to be found as unused.
     wrapper.runtime->getResourceManager().setInlineAssetsEnabled(false);
@@ -6376,6 +6376,42 @@ TEST_P(RuntimeFixture, canRemoveUnusedResourcesOnTrimMemory) {
     ASSERT_TRUE(wrapper.runtime->getJavaScriptRuntime()->isJsModuleLoaded(
         ResourceId(STRING_LITERAL("test2"), STRING_LITERAL("src/TestImport.vue.generated"))));
     ASSERT_TRUE(wrapper.runtime->getJavaScriptRuntime()->isJsModuleLoaded(ResourceId(STRING_LITERAL("Valdi"))));
+}
+
+TEST_P(RuntimeFixture, canRemoveUnusedResourcesOnTrimMemory) {
+    verifyUnusedResourceCleanup(wrapper);
+}
+
+TEST_P(RuntimeFixture, moduleUnloadExperimentArmsRetainAndReloadModules) {
+    for (bool worklist : {false, true}) {
+        for (bool skipTrailingGc : {false, true}) {
+            SCOPED_TRACE(::testing::Message() << "worklist=" << worklist << " skipTrailingGc=" << skipTrailingGc);
+            FlatMap<StringBox, bool> overrides;
+            overrides[STRING_LITERAL("VALDI_ENABLE_MODULE_UNLOAD_WORKLIST_ANDROID")] = worklist;
+            overrides[STRING_LITERAL("VALDI_SKIP_TRAILING_UNLOAD_GC_ANDROID")] = skipTrailingGc;
+            auto provider = makeShared<OverridingTweakValueProvider>(std::move(overrides));
+            auto armOwner = std::unique_ptr<RuntimeWrapper, void (*)(RuntimeWrapper*)>(
+                new RuntimeWrapper(getJsBridge(), getTSNMode(), false, provider.toShared()),
+                [](RuntimeWrapper* runtime) {
+                    runtime->teardown();
+                    delete runtime;
+                });
+            auto& arm = *armOwner;
+            verifyUnusedResourceCleanup(arm);
+
+            auto worklistEnabled = arm.runtime->getJavaScriptRuntime()->evaluateScript(
+                makeShared<ByteBuffer>("return runtime.enableModuleUnloadWorklist;")->toBytesView(),
+                STRING_LITERAL("eval.js"));
+            ASSERT_TRUE(worklistEnabled) << worklistEnabled.description();
+            ASSERT_EQ(worklist, worklistEnabled.value().toBool());
+
+            bool completed = false;
+            arm.runtime->getJavaScriptRuntime()->unloadUnusedModules([&completed] { completed = true; });
+            arm.flushQueues();
+            ASSERT_TRUE(completed);
+            ASSERT_TRUE(arm.runtime->getJavaScriptRuntime()->isJsModuleLoaded(ResourceId(STRING_LITERAL("Valdi"))));
+        }
+    }
 }
 
 TEST_P(RuntimeFixture, retainsReferencedModulesInNativeOnTrimMemory) {

@@ -484,6 +484,7 @@ private:
     Result<JSValueRef> _symbolicateFunction;
     Result<JSValueRef> _onDaemonClientEventFunction;
     JSValueRef _moduleLoader;
+    bool _skipTrailingUnloadGc = false;
     JSPropertyNameIndex<7> _propertyNameIndex;
 
     Ref<IDiskCache> _diskCache;

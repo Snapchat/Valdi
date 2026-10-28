@@ -23,7 +23,13 @@
 
   const moduleLoader = loadRootModule(jsEvaluator, 'valdi_core/src/ModuleLoader');
   const commonjsModuleLoaderType = runtime.moduleLoaderType === 'commonjs';
-  const instance = moduleLoader.create(jsEvaluator, runtime.getSourceMap, runtime.loadModule, commonjsModuleLoaderType);
+  const instance = moduleLoader.create(
+    jsEvaluator,
+    runtime.getSourceMap,
+    runtime.loadModule,
+    commonjsModuleLoaderType,
+    runtime.enableModuleUnloadWorklist,
+  );
 
   const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
   if (!isBrowser) {

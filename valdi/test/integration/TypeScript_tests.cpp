@@ -25,6 +25,10 @@ TEST_P(TypeScriptTestFixture, canRunPersistentStoreTests) {
     runTest("persistence/test/PersistentStoreTest");
 }
 
+TEST_P(TypeScriptTestFixture, canRunModuleLoaderUnloadTests) {
+    runTest("valdi_core/test/ModuleLoaderUnloadTest");
+}
+
 INSTANTIATE_TEST_SUITE_P(TypeScriptTests,
                          TypeScriptTestFixture,
                          ::testing::Values(JavaScriptEngineTestCase::QuickJS),

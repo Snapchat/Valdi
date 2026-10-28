@@ -98,6 +98,7 @@ interface Module {
   lazyExports: (() => any) | undefined;
   status: ModuleStatus;
   dependents: StringSet;
+  dependentCount?: number;
   dependencies: StringSet;
   sourceMap: ISourceMap | undefined | null;
   sourceMapLineOffset?: number;
@@ -105,6 +106,9 @@ interface Module {
 }
 
 function isModuleUsed(jsModule: Module) {
+  if (jsModule.dependentCount !== undefined) {
+    return jsModule.dependentCount > 0;
+  }
   for (const key in jsModule.dependents) {
     // A module is considered used if it has dependents (other modules depend on it).
     return true;
@@ -129,18 +133,23 @@ export class ModuleLoader implements IModuleLoader {
   private moduleRegisteredCallbacks: { [path: string]: OnModuleRegisteredCallback[] } = {};
   private preloadedValdiModules: StringSet = {};
   private commonJsCompatible: boolean;
+  private readonly enableUnloadWorklist: boolean;
+  private moduleLoadGeneration = 0;
+  private unloadWorklists?: string[][];
 
   constructor(
     jsEvaluator: JsEvaluator,
     sourceMapResolver: SourceMapResolver | undefined,
     valdiModulePreloader: ValdiModulePreloader | undefined,
     commonJsCompatible?: boolean,
+    enableUnloadWorklist?: boolean,
   ) {
     this.jsEvaluator = jsEvaluator;
     this.sourceMapResolver = sourceMapResolver;
     // Backward compat with previous runtime version
     this.valdiModulePreloader = valdiModulePreloader ?? (() => {});
     this.commonJsCompatible = commonJsCompatible === true;
+    this.enableUnloadWorklist = enableUnloadWorklist === true;
   }
 
   getDependencies(path: string): string[] {
@@ -311,8 +320,12 @@ export class ModuleLoader implements IModuleLoader {
       indexedModulesToKeep[absolutePath] = true;
     }
 
-    // eslint-disable-next-line no-empty
-    while (this.unloadNextModule(indexedModulesToKeep, unloadedModules)) {}
+    if (this.enableUnloadWorklist) {
+      this.unloadWithWorklist(indexedModulesToKeep, unloadedModules);
+    } else {
+      // eslint-disable-next-line no-empty
+      while (this.unloadNextModule(indexedModulesToKeep, unloadedModules)) {}
+    }
 
     const out: string[] = [];
     for (const jsModule in unloadedModules) {
@@ -355,6 +368,36 @@ export class ModuleLoader implements IModuleLoader {
       }
     }
     return unloadedAny;
+  }
+
+  private unloadWithWorklist(modulesToKeep: StringSet, unloadedModules: StringSet): void {
+    let generation: number;
+    do {
+      generation = this.moduleLoadGeneration;
+      const leaves: string[] = [];
+      for (const path in this.modules) {
+        if (!modulesToKeep[path] && !isModuleUsed(this.modules[path])) {
+          leaves.push(path);
+        }
+      }
+      const worklists = this.unloadWorklists ?? (this.unloadWorklists = []);
+      worklists.push(leaves);
+      try {
+        for (let i = 0; i < leaves.length; i++) {
+          const path = leaves[i];
+          const jsModule = this.modules[path];
+          if (jsModule && !modulesToKeep[path] && !isModuleUsed(jsModule)) {
+            this.doUnload(path, unloadedModules);
+          }
+        }
+      } finally {
+        worklists.pop();
+        if (worklists.length === 0) {
+          this.unloadWorklists = undefined;
+        }
+      }
+      // Disposables may import new modules while unloading; include those in this cleanup too.
+    } while (generation !== this.moduleLoadGeneration);
   }
 
   unload(paths: string[], isHotReloading: boolean, disableHotReloadDenyList: boolean): string[] {
@@ -489,7 +532,15 @@ export class ModuleLoader implements IModuleLoader {
       }
 
       // Remove this module from the imported module's dependents
+      if (importedModule.dependentCount !== undefined && importedModule.dependents[path]) {
+        importedModule.dependentCount--;
+      }
       delete importedModule.dependents[path];
+      if (this.unloadWorklists && !isModuleUsed(importedModule)) {
+        for (const worklist of this.unloadWorklists) {
+          worklist.push(dependency);
+        }
+      }
     }
 
     const disposables = jsModule.disposables;
@@ -511,6 +562,9 @@ export class ModuleLoader implements IModuleLoader {
 
     const parentPath = parent.resolvedPath.absolutePath;
 
+    if (jsModule.dependentCount !== undefined && !jsModule.dependents[parentPath]) {
+      jsModule.dependentCount++;
+    }
     jsModule.dependents[parentPath] = true;
     parent.dependencies[jsModule.resolvedPath.absolutePath] = true;
   }
@@ -555,6 +609,10 @@ export class ModuleLoader implements IModuleLoader {
       sourceMap: undefined,
     };
     this.modules[absolutePath] = jsModule;
+    if (this.enableUnloadWorklist) {
+      jsModule.dependentCount = 0;
+      this.moduleLoadGeneration++;
+    }
 
     try {
       if (!disableSyncDependencies) {
@@ -673,6 +731,13 @@ export function create(
   sourceMapResolver: SourceMapResolver | undefined,
   valdiModulePreloader: ValdiModulePreloader | undefined,
   commonJsCompatible: boolean,
+  enableUnloadWorklist?: boolean,
 ): IModuleLoader {
-  return new ModuleLoader(jsEvaluator, sourceMapResolver, valdiModulePreloader, commonJsCompatible);
+  return new ModuleLoader(
+    jsEvaluator,
+    sourceMapResolver,
+    valdiModulePreloader,
+    commonJsCompatible,
+    enableUnloadWorklist,
+  );
 }

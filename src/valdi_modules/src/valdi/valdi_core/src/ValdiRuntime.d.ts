@@ -255,5 +255,8 @@ export interface ValdiRuntime extends RuntimeBase {
    */
   useTopDownMoveOrder: boolean;
 
+  /** Whether the module loader uses a worklist to unload unused modules. Fixed at runtime initialization. */
+  enableModuleUnloadWorklist?: boolean;
+
   buildType: string;
 }

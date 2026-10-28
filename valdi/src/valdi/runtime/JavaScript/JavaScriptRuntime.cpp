@@ -2687,6 +2687,15 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
     std::string_view moduleLoaderTypeStr =
         (tweaks != nullptr && tweaks->enableCommonJsModuleLoader()) ? "commonjs" : "valdi";
 
+    const auto enableModuleUnloadWorklist = tweaks != nullptr && tweaks->enableModuleUnloadWorklist();
+    _skipTrailingUnloadGc = tweaks != nullptr && tweaks->skipTrailingUnloadGc();
+    auto jsEnableModuleUnloadWorklist = context.newBool(enableModuleUnloadWorklist);
+    context.setObjectProperty(
+        runtimeObject.get(), "enableModuleUnloadWorklist", jsEnableModuleUnloadWorklist.get(), exceptionTracker);
+    if (!exceptionTracker) {
+        return;
+    }
+
     auto moduleLoaderType = context.newStringUTF8(moduleLoaderTypeStr, exceptionTracker);
     if (!exceptionTracker) {
         return;
@@ -3160,6 +3169,7 @@ void JavaScriptRuntime::unloadUnusedModules(const Ref<AsyncGroup>& completionGro
 
     constexpr auto reason = JsThreadDispatchReason::UnloadUnusedModules;
     dispatchOnJsThreadAsync(reason, [this, completionGroup = completionGroup](JavaScriptEntryParameters& entry) {
+        VALDI_TRACE("Valdi.unloadUnusedModules");
         for (const auto& jsWorker : getAllWorkers()) {
             jsWorker->unloadUnusedModules(completionGroup);
         }
@@ -3172,13 +3182,17 @@ void JavaScriptRuntime::unloadUnusedModules(const Ref<AsyncGroup>& completionGro
             // Unload modules as much as we can, then kick off a GC.
             // Re-do this process until we can't unload a module anymore.
             auto unloaded = true;
+            auto didGc = false;
             while (unloaded) {
                 unloaded = false;
                 while (unloadNextUnusedModule(entry)) {
                     unloaded = true;
                 }
 
-                performGcNow(entry.jsContext);
+                if (!_skipTrailingUnloadGc || unloaded || !didGc) {
+                    performGcNow(entry.jsContext);
+                    didGc = true;
+                }
             }
         }
 
@@ -3578,6 +3592,7 @@ Ref<JSStackTraceProvider> JavaScriptRuntime::doCaptureCurrentStackTrace(IJavaScr
 }
 
 void JavaScriptRuntime::performGcNow(IJavaScriptContext& jsContext) {
+    VALDI_TRACE("Valdi.performGcNow");
     _hasGcScheduled = false;
     jsContext.garbageCollect();
     VALDI_DEBUG(*_logger, "Performed JS GC");

@@ -22,6 +22,8 @@ public:
     bool enableAccessibility() const;
     bool enableDeferredGC() const;
     bool enableCommonJsModuleLoader() const;
+    bool enableModuleUnloadWorklist() const;
+    bool skipTrailingUnloadGc() const;
     bool disableHotReloaderLazyDenylist() const;
     bool disableSyncCallsInCallingThread() const;
     bool enableTSN() const;
