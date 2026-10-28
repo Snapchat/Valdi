@@ -27,6 +27,13 @@ public:
     ValdiModuleArchive();
     ~ValdiModuleArchive() override;
 
+    // The user-declared destructor suppresses the implicit move, which would make every Result<ValdiModuleArchive>
+    // move deep-copy the entry tables.
+    ValdiModuleArchive(const ValdiModuleArchive& other) = default;
+    ValdiModuleArchive(ValdiModuleArchive&& other) noexcept = default;
+    ValdiModuleArchive& operator=(const ValdiModuleArchive& other) = default;
+    ValdiModuleArchive& operator=(ValdiModuleArchive&& other) noexcept = default;
+
     std::optional<ValdiModuleArchiveEntry> getEntry(const Valdi::StringBox& path) const;
     ValdiModuleArchiveEntry getEntryForIndex(size_t index) const;
 

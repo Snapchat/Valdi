@@ -112,6 +112,54 @@ TEST(Result, canBeMoved) {
     ASSERT_EQ(1, ptr.use_count());
 }
 
+// Polymorphic like ValdiModuleArchive, and remembers its own address the way an arm64e vtable pointer
+// signed with the object address does, so a bitwise move of the Result storage is detected on any platform.
+class AddressBoundValue {
+public:
+    AddressBoundValue() = default;
+    AddressBoundValue(const AddressBoundValue& /*other*/) {}
+    AddressBoundValue(AddressBoundValue&& /*other*/) noexcept {}
+
+    virtual ~AddressBoundValue() {
+        EXPECT_EQ(this, _self);
+    }
+
+    bool isAtOwnAddress() const {
+        return _self == this;
+    }
+
+private:
+    const AddressBoundValue* _self = this;
+};
+
+static Result<AddressBoundValue> makeAddressBoundResult() {
+    return AddressBoundValue();
+}
+
+TEST(Result, moveConstructionKeepsValueBoundToItsAddress) {
+    Result<AddressBoundValue> result = makeAddressBoundResult();
+    Result<AddressBoundValue> result2(std::move(result));
+
+    ASSERT_TRUE(result2.success());
+    ASSERT_TRUE(result2.value().isAtOwnAddress());
+    ASSERT_TRUE(result.empty());
+}
+
+TEST(Result, moveAssignmentKeepsValueBoundToItsAddress) {
+    Result<AddressBoundValue> result;
+    result = makeAddressBoundResult();
+
+    ASSERT_TRUE(result.success());
+    ASSERT_TRUE(result.value().isAtOwnAddress());
+
+    Result<AddressBoundValue> result2 = Error("Bad");
+    result2 = std::move(result);
+
+    ASSERT_TRUE(result2.success());
+    ASSERT_TRUE(result2.value().isAtOwnAddress());
+    ASSERT_TRUE(result.empty());
+}
+
 TEST(Result, isCompact) {
     Result<bool> result1;
 
