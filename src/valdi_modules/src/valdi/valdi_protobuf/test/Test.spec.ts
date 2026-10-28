@@ -2,6 +2,7 @@ import { Arena, DecodingMode } from 'valdi_protobuf/src/Arena';
 import { loadDescriptorPoolFromProtoFiles } from 'valdi_protobuf/src/ProtobufBuilder';
 import { IArena, IMessage } from 'valdi_protobuf/src/types';
 import 'jasmine/src/jasmine';
+import { Base64 } from 'coreutils/src/Base64';
 import { package_with_underscores, test } from './proto';
 
 interface MessageFactory<InterfaceType, MessageType> {
@@ -1062,6 +1063,35 @@ describe('Valdi Proto Runtime', () => {
           x.bytes = [...x.bytes, new Uint8Array([2, 3])];
         },
       );
+    });
+    describe('nested bytes decoded from a buffer', () => {
+      const payload = new Uint8Array([9, 8, 7, 6, 5]);
+      const encoded = test.Message.create(new Arena(), {
+        string: 'header',
+        selfMessage: { int32: 42, bytes: payload },
+        int32: 7,
+      }).encode();
+
+      const expectPayload = (buffer: Uint8Array) => {
+        const decoded = test.Message.decode(new Arena(), buffer);
+        expect(decoded.selfMessage!.bytes).toEqual(payload);
+        expect(decoded.selfMessage!.int32).toEqual(42);
+      };
+
+      it('from native-backed buffer (control)', () => {
+        expectPayload(encoded);
+      });
+      it('from Base64.toByteArray', () => {
+        expectPayload(Base64.toByteArray(Base64.fromByteArray(encoded)));
+      });
+      it('from JS Uint8Array copy', () => {
+        expectPayload(new Uint8Array(encoded));
+      });
+      it('from JS subarray', () => {
+        const padded = new Uint8Array(encoded.length + 4);
+        padded.set(encoded, 2);
+        expectPayload(padded.subarray(2, 2 + encoded.length));
+      });
     });
   });
 

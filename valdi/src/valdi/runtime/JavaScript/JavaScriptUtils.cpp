@@ -607,21 +607,33 @@ Ref<ValueTypedArray> jsTypedArrayToValueTypedArray(IJavaScriptContext& jsContext
                                        BytesView(source, reinterpret_cast<const Byte*>(result.data), result.length));
 }
 
+// jsTypedArrayToValueTypedArray keeps the whole JS ArrayBuffer as source even for a subarray,
+// so the source can only stand in for the view when the two coincide.
+static JSValueRef reusableSourceArrayBuffer(IJavaScriptContext& jsContext,
+                                            const BytesView& bytesView,
+                                            JSExceptionTracker& exceptionTracker) {
+    auto source = unwrapJSValueIfNeeded(jsContext, bytesView.getSource().get(), nullptr, exceptionTracker);
+    if (!source || !exceptionTracker) {
+        return JSValueRef();
+    }
+
+    auto sourceBuffer = jsContext.valueToTypedArray(source.value(), exceptionTracker);
+    if (!exceptionTracker || sourceBuffer.data != bytesView.data() || sourceBuffer.length != bytesView.size()) {
+        return JSValueRef();
+    }
+    return JSValueRef::makeRetained(jsContext, source.value());
+}
+
 JSValueRef newTypedArrayFromBytesView(IJavaScriptContext& jsContext,
                                       TypedArrayType arrayType,
                                       const BytesView& bytesView,
                                       JSExceptionTracker& exceptionTracker) {
-    JSValueRef arrayBuffer;
-    auto unwrappedArrayBuffer =
-        unwrapJSValueIfNeeded(jsContext, bytesView.getSource().get(), nullptr, exceptionTracker);
+    auto arrayBuffer = reusableSourceArrayBuffer(jsContext, bytesView, exceptionTracker);
+    if (!exceptionTracker) {
+        return arrayBuffer;
+    }
 
-    if (unwrappedArrayBuffer) {
-        arrayBuffer = JSValueRef::makeRetained(jsContext, unwrappedArrayBuffer.value());
-    } else {
-        if (!exceptionTracker) {
-            return arrayBuffer;
-        }
-
+    if (arrayBuffer.empty()) {
         arrayBuffer = jsContext.newArrayBuffer(bytesView, exceptionTracker);
         if (!exceptionTracker) {
             return arrayBuffer;
