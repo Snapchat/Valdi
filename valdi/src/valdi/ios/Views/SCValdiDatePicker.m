@@ -12,6 +12,7 @@
 
 @implementation SCValdiDatePicker {
     id<SCValdiFunction> _Nullable _onChange;
+    BOOL _needsWheelsStyle;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -24,8 +25,15 @@
     return self;
 }
 
+- (void)layoutSubviews
+{
+    SCValdiDatePickerApplyDeferredStyle(self, &_needsWheelsStyle);
+    [super layoutSubviews];
+}
+
 - (CGSize)sizeThatFits:(CGSize)size
 {
+    SCValdiDatePickerApplyDeferredStyle(self, &_needsWheelsStyle);
     if (@available(iOS 13.4, *)) {
         if (self.preferredDatePickerStyle == UIDatePickerStyleCompact) {
             CGSize fittingSize = [self systemLayoutSizeFittingSize:UILayoutFittingCompressedSize
@@ -159,10 +167,11 @@ INTERNED_STRING_CONST("dateSeconds", SCValdiDatePickerDateInSecondsKey);
     [attributesBinder bindAttribute:@"preferredStyle"
            invalidateLayoutOnChange:YES
                        withIntBlock:^BOOL(SCValdiDatePicker *view, NSInteger attributeValue, id<SCValdiAnimatorProtocol> animator) {
+        view->_needsWheelsStyle = NO;
         SCValdiSetDatePickerStyle(view, attributeValue);
         return YES;
     } resetBlock:^(SCValdiDatePicker *view, id<SCValdiAnimatorProtocol> animator) {
-        SCValdiSetDatePickerStyle(view, 1 /* wheels */);
+        SCValdiDatePickerResetStyle(view, &view->_needsWheelsStyle);
     }];
 
     [attributesBinder setPlaceholderViewMeasureDelegate:^UIView *{

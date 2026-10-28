@@ -7,7 +7,21 @@
 
 #import "SCValdiConfiguration.h"
 
+#import <stdatomic.h>
+
+static atomic_bool sDeferCompactPickerStyleResetEnabled = false;
+
 @implementation SCValdiConfiguration
+
++ (void)setDeferCompactPickerStyleResetEnabled:(BOOL)enabled
+{
+    atomic_store(&sDeferCompactPickerStyleResetEnabled, enabled);
+}
+
++ (BOOL)deferCompactPickerStyleResetEnabled
+{
+    return atomic_load(&sDeferCompactPickerStyleResetEnabled);
+}
 
 - (instancetype)init
 {

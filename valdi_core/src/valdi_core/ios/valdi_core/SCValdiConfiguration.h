@@ -126,6 +126,14 @@ typedef void (^SCValdiPerformHapticFeedbackBlock)(NSString* type);
  */
 @property (assign, nonatomic) NSInteger anrTimeoutMs;
 
+/**
+ Process-wide switch that makes date and time pickers defer the wheels-style rebuild Valdi applies
+ when a picker's `preferredStyle` is reset, until the picker is next measured or laid out.
+ Defaults to NO.
+ */
++ (void)setDeferCompactPickerStyleResetEnabled:(BOOL)enabled;
++ (BOOL)deferCompactPickerStyleResetEnabled;
+
 @end
 
 NS_ASSUME_NONNULL_END

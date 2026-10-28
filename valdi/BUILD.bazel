@@ -904,6 +904,24 @@ objc_library(
 )
 
 ios_unit_test(
+    name = "valdi_ios_date_picker_style_reset_test",
+    minimum_os_version = "15.0",
+    runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",
+    deps = [":objc_date_picker_style_reset_tests_lib"],
+)
+
+objc_library(
+    name = "objc_date_picker_style_reset_tests_lib",
+    testonly = True,
+    srcs = ["test/ios/SCValdiDatePickerStyleResetTests.m"],
+    copts = ["-I."],
+    includes = ["src"],
+    module_name = "ValdiIosDatePickerStyleResetTests",
+    target_compatible_with = ["@platforms//os:ios"],
+    deps = [":valdi_ios"],
+)
+
+ios_unit_test(
     name = "valdi_ios_pooling_test",
     minimum_os_version = "15.0",
     runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",

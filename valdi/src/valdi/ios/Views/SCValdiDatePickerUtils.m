@@ -1,5 +1,7 @@
 #import <UIKit/UIKit.h>
 
+#import "valdi_core/SCValdiConfiguration.h"
+
 #ifndef __IPHONE_14_0
 #define __IPHONE_14_0 140000
 #endif
@@ -31,4 +33,24 @@ void SCValdiSetDatePickerStyle(UIDatePicker *datePicker, NSInteger style) {
 
 void SCValdiFixIOS14DatePicker(UIDatePicker *datePicker) {
     SCValdiSetDatePickerStyle(datePicker, 1 /* wheels */);
+}
+
+void SCValdiDatePickerResetStyle(UIDatePicker *datePicker, BOOL *needsWheelsStyle) {
+    if (![SCValdiConfiguration deferCompactPickerStyleResetEnabled] ||
+        datePicker.preferredDatePickerStyle != UIDatePickerStyleCompact) {
+        *needsWheelsStyle = NO;
+        SCValdiFixIOS14DatePicker(datePicker);
+        return;
+    }
+    *needsWheelsStyle = YES;
+    // A fixed-size picker that stays attached is never re-measured, so rely on the next layout pass.
+    [datePicker setNeedsLayout];
+}
+
+void SCValdiDatePickerApplyDeferredStyle(UIDatePicker *datePicker, BOOL *needsWheelsStyle) {
+    if (!*needsWheelsStyle) {
+        return;
+    }
+    *needsWheelsStyle = NO;
+    SCValdiFixIOS14DatePicker(datePicker);
 }

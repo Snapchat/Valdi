@@ -11,4 +11,12 @@ void SCValdiFixIOS14DatePicker(UIDatePicker* datePicker);
 /// Source of truth: STYLE_MAP in the date picker's TypeScript preferred-style definitions
 void SCValdiSetDatePickerStyle(UIDatePicker* datePicker, NSInteger style);
 
+/// Reset path for the `preferredStyle` attribute. Restores wheels immediately, or when
+/// +[SCValdiConfiguration deferCompactPickerStyleResetEnabled] is set, records it in `needsWheelsStyle`
+/// and schedules a layout pass so a picker that stays on screen still picks it up.
+void SCValdiDatePickerResetStyle(UIDatePicker* datePicker, BOOL* needsWheelsStyle);
+
+/// Applies a reset recorded by SCValdiDatePickerResetStyle. Call before measuring or laying out.
+void SCValdiDatePickerApplyDeferredStyle(UIDatePicker* datePicker, BOOL* needsWheelsStyle);
+
 NS_ASSUME_NONNULL_END
