@@ -194,6 +194,26 @@ Ref<ValueFunction> ValdiStandaloneRuntime::makeMainThreadFunction(const ValueFun
     });
 }
 
+void ValdiStandaloneRuntime::setDarkMode(bool darkMode) {
+    if (_deviceModule == nullptr) {
+        return;
+    }
+    auto* jsRuntime = _runtime->getJavaScriptRuntime();
+    if (jsRuntime == nullptr) {
+        _deviceModule->setDarkMode(darkMode);
+        return;
+    }
+    // Serialize host updates with subscription/cancellation on the JS queue.
+    // Resolve the observer list when the task runs, so canceled observers do not
+    // receive a host update that was queued before cancellation.
+    jsRuntime->getJsDispatchQueue()->async([device = weakRef(_deviceModule.get()), darkMode]() {
+        auto module = device.lock();
+        if (module != nullptr) {
+            module->setDarkMode(darkMode);
+        }
+    });
+}
+
 void ValdiStandaloneRuntime::setupJsRuntime(const std::vector<StringBox>& jsArguments) {
     auto exitCoordinator = _exitCoordinator;
 
@@ -463,7 +483,8 @@ Ref<ValdiStandaloneRuntime> ValdiStandaloneRuntime::create(bool enableDebuggerSe
     auto runtime = runtimeManager->createRuntime(resourceLoader, static_cast<double>(viewManager->getPointScale()));
     runtime->setListener(runtimeListener);
 
-    runtime->registerNativeModuleFactory(makeShared<DeviceModule>().toShared());
+    auto deviceModule = makeShared<DeviceModule>();
+    runtime->registerNativeModuleFactory(deviceModule.toShared());
     runtime->registerNativeModuleFactory(makeShared<ApplicationModule>().toShared());
 
     if (runtime->getJavaScriptRuntime() != nullptr) {
@@ -474,13 +495,15 @@ Ref<ValdiStandaloneRuntime> ValdiStandaloneRuntime::create(bool enableDebuggerSe
 
     runtimeManager->applicationDidResume();
 
-    return Valdi::makeShared<ValdiStandaloneRuntime>(std::move(runtimeManager),
-                                                     std::move(runtime),
-                                                     resourceLoader,
-                                                     mainQueue,
-                                                     std::move(viewManager),
-                                                     std::move(viewManagerContext),
-                                                     shouldWaitForHotReload);
+    auto standaloneRuntime = Valdi::makeShared<ValdiStandaloneRuntime>(std::move(runtimeManager),
+                                                                       std::move(runtime),
+                                                                       resourceLoader,
+                                                                       mainQueue,
+                                                                       std::move(viewManager),
+                                                                       std::move(viewManagerContext),
+                                                                       shouldWaitForHotReload);
+    standaloneRuntime->_deviceModule = std::move(deviceModule);
+    return standaloneRuntime;
 }
 
 } // namespace Valdi

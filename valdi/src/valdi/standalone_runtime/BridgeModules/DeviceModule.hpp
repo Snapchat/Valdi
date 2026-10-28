@@ -12,6 +12,8 @@
 #include "valdi_core/cpp/Utils/Shared.hpp"
 #include "valdi_core/cpp/Utils/ValueFunction.hpp"
 
+#include <map>
+
 namespace Valdi {
 
 class DeviceModule : public Valdi::SharedPtrRefCountable, public snap::valdi_core::ModuleFactory {
@@ -46,7 +48,13 @@ public:
 
     bool isDesktop();
 
-    Valdi::Value observeDarkMode();
+    // Hosts supply appearance; the standalone runtime does not discover a desktop.
+    // Unconfigured/headless hosts default to light. Repeated values are ignored.
+    // Hosts must use ValdiStandaloneRuntime::setDarkMode(), which serializes updates
+    // on the JS queue. This bridge entry point invokes observers while holding
+    // _darkModeMutex and must not introduce synchronous cross-thread dependencies.
+    void setDarkMode(bool darkMode);
+    Valdi::Value observeDarkMode(const Valdi::ValueFunctionCallContext& callContext);
     Valdi::Value observeDisplayInsetChange();
 
     Valdi::Value writeFile(const Valdi::ValueFunctionCallContext& callContext);
@@ -56,6 +64,15 @@ public:
 
 private:
     mutable Valdi::Mutex _mutex;
+
+    // Serialize registration and notification order across host and JS threads.
+    // Native observers can cancel/reenter; JS observers are never called synchronously
+    // across threads while this lock is held.
+    Valdi::RecursiveMutex _darkModeMutex;
+    bool _darkMode = false;
+    uint64_t _darkModeRevision = 0;
+    uint64_t _nextDarkModeObserverId = 0;
+    std::map<uint64_t, Valdi::Ref<Valdi::ValueFunction>> _darkModeObservers;
 
     double _displayWidth = 0.0;
     double _displayHeight = 0.0;
