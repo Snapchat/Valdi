@@ -140,6 +140,12 @@ bool ValdiRuntimeTweaks::refuseDispatchAfterJsQueueTeardown() const {
     return _tweakValueProvider->getBool(configKey, true);
 }
 
+bool ValdiRuntimeTweaks::enableTeardownStopOrphanedWorkers() const {
+    auto configKey =
+        StringCache::getGlobal().makeStringFromLiteral(std::string_view("VALDI_ENABLE_TEARDOWN_STOP_ORPHANED_WORKERS"));
+    return _tweakValueProvider->getBool(configKey, false);
+}
+
 bool ValdiRuntimeTweaks::applyManagedChildFramePadding() const {
     auto configKey =
         StringCache::getGlobal().makeStringFromLiteral(std::string_view("VALDI_MANAGES_CHILD_FRAME_PADDING_ENABLED"));

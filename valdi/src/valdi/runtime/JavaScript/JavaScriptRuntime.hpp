@@ -251,6 +251,29 @@ public:
         _refuseDispatchAfterJsQueueTeardown = enabled;
     }
 
+    // Kept in sync with VALDI_ENABLE_TEARDOWN_STOP_ORPHANED_WORKERS by Runtime::setRuntimeTweaks. Off by default.
+    // When on, teardown marks this runtime's workers host-torn-down.
+    void setStopWorkersOnHostTeardown(bool enabled) {
+        _stopWorkersOnHostTeardown = enabled;
+    }
+
+    bool stopWorkersOnHostTeardown() const {
+        return _stopWorkersOnHostTeardown;
+    }
+
+    // Set on a worker by its host's teardown when VALDI_ENABLE_TEARDOWN_STOP_ORPHANED_WORKERS is on. From then on
+    // the worker's JS-thread tasks return before touching anything, because its ResourceManager,
+    // MainThreadManager and AttributeIds references point into the host, which is being freed.
+    void markHostTornDown() {
+        _hostTornDown = true;
+        // A worker's own workers hold the same references into the original host.
+        markWorkersHostTornDown();
+    }
+
+    bool isHostTornDown() const {
+        return _hostTornDown;
+    }
+
     // Test-only: enter/leave the disposed-but-context-alive teardown window without running teardown,
     // so the dispatch guard's cooperative-drain vs aggressive-skip behavior can be tested deterministically.
     void setDisposedForTesting(bool disposed) {
@@ -512,6 +535,10 @@ private:
     std::atomic<bool> _joinJsThreadOnTeardown = true;
     // Mirror of VALDI_REFUSE_DISPATCH_AFTER_JS_QUEUE_TEARDOWN (see setRefuseDispatchAfterJsQueueTeardown).
     std::atomic<bool> _refuseDispatchAfterJsQueueTeardown = true;
+    // Mirror of VALDI_ENABLE_TEARDOWN_STOP_ORPHANED_WORKERS (see setStopWorkersOnHostTeardown).
+    std::atomic<bool> _stopWorkersOnHostTeardown = false;
+    // Set by the host's teardown (see markHostTornDown). Only ever set on workers.
+    std::atomic<bool> _hostTornDown = false;
     // Recursive: a task rejected by a queue disposed outside teardownOnJsThread is destroyed inside the
     // enqueue while this is held, and its destructors can dispatch again.
     RecursiveMutex _jsQueueTeardownMutex;
@@ -707,6 +734,7 @@ private:
     void reevalUnloadedModulesIfNeeded();
 
     std::vector<Ref<JavaScriptRuntime>> getAllWorkers();
+    void markWorkersHostTornDown();
     void dispatchPerformGcToWorkers();
     void performGcNow(IJavaScriptContext& jsContext);
     JavaScriptContextMemoryStatistics dumpMemoryStatistics(IJavaScriptContext& jsContext);

@@ -7929,6 +7929,91 @@ TEST_P(RuntimeFixture, disposedWorkerReleasedOffJsThreadWhileExecutingIsSafe) {
         << "dropping a disposed worker's last reference off its JS thread must not block on in-flight work";
 }
 
+// A worker holds raw references to its host's ResourceManager, MainThreadManager and AttributeIds. With
+// VALDI_ENABLE_TEARDOWN_STOP_ORPHANED_WORKERS on, host teardown marks the worker, and work dispatched to it
+// afterwards is skipped instead of running against freed host state.
+TEST_P(RuntimeFixture, workerSkipsWorkAfterHostTeardown) {
+    auto* hostRuntime = wrapper.runtime->getJavaScriptRuntime();
+    ASSERT_FALSE(hostRuntime->stopWorkersOnHostTeardown()) << "the flag must default to the old behavior";
+    hostRuntime->setStopWorkersOnHostTeardown(true);
+    hostRuntime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("test.runtime"), [](auto& /*jsEntry*/) {});
+    auto worker = hostRuntime->createWorker();
+    auto* workerRuntime = dynamic_cast<JavaScriptRuntime*>(worker.get());
+    ASSERT_NE(nullptr, workerRuntime);
+    ASSERT_FALSE(workerRuntime->isHostTornDown());
+    // Let the worker finish initializing (queued first on its thread): the flag stops work that starts after host
+    // teardown, not work that is already running there.
+    {
+        std::promise<void> initialized;
+        workerRuntime->getJsDispatchQueue()->async([&]() { initialized.set_value(); });
+        initialized.get_future().wait();
+    }
+
+    wrapper.teardown();
+    ASSERT_TRUE(workerRuntime->isHostTornDown());
+
+    std::atomic<bool> ran = false;
+    workerRuntime->dispatchOnJsThreadAsync(STRING_LITERAL("test.worker"), [&](auto& /*jsEntry*/) { ran = true; });
+    workerRuntime->getJsDispatchQueue()->sync([]() {});
+    EXPECT_FALSE(ran.load());
+
+    workerRuntime = nullptr;
+    worker.reset();
+}
+
+// A worker's own workers hold the same references into the original host, so they are marked too.
+TEST_P(RuntimeFixture, nestedWorkerIsMarkedOnHostTeardown) {
+    auto* hostRuntime = wrapper.runtime->getJavaScriptRuntime();
+    hostRuntime->setStopWorkersOnHostTeardown(true);
+    hostRuntime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("test.runtime"), [](auto& /*jsEntry*/) {});
+
+    auto waitForInit = [](JavaScriptRuntime* runtime) {
+        std::promise<void> initialized;
+        runtime->getJsDispatchQueue()->async([&]() { initialized.set_value(); });
+        initialized.get_future().wait();
+    };
+
+    auto worker = hostRuntime->createWorker();
+    auto* workerRuntime = dynamic_cast<JavaScriptRuntime*>(worker.get());
+    ASSERT_NE(nullptr, workerRuntime);
+    waitForInit(workerRuntime);
+    auto nestedWorker = workerRuntime->createWorker();
+    auto* nestedWorkerRuntime = dynamic_cast<JavaScriptRuntime*>(nestedWorker.get());
+    ASSERT_NE(nullptr, nestedWorkerRuntime);
+    EXPECT_TRUE(nestedWorkerRuntime->stopWorkersOnHostTeardown());
+    waitForInit(nestedWorkerRuntime);
+
+    wrapper.teardown();
+    EXPECT_TRUE(workerRuntime->isHostTornDown());
+    EXPECT_TRUE(nestedWorkerRuntime->isHostTornDown());
+
+    nestedWorkerRuntime = nullptr;
+    nestedWorker.reset();
+    workerRuntime = nullptr;
+    worker.reset();
+}
+
+TEST_P(RuntimeFixture, workersInheritStopWorkersOnHostTeardownOff) {
+    auto* hostRuntime = wrapper.runtime->getJavaScriptRuntime();
+    ASSERT_FALSE(hostRuntime->stopWorkersOnHostTeardown());
+    hostRuntime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("test.runtime"), [](auto& /*jsEntry*/) {});
+    auto worker = hostRuntime->createWorker();
+    auto* workerRuntime = dynamic_cast<JavaScriptRuntime*>(worker.get());
+    ASSERT_NE(nullptr, workerRuntime);
+    EXPECT_FALSE(workerRuntime->stopWorkersOnHostTeardown());
+    {
+        std::promise<void> initialized;
+        workerRuntime->getJsDispatchQueue()->async([&]() { initialized.set_value(); });
+        initialized.get_future().wait();
+    }
+
+    // Tear the worker down before the host: with the switch off nothing protects it from the host's freed state.
+    workerRuntime->fullTeardown();
+    workerRuntime = nullptr;
+    worker.reset();
+    wrapper.teardown();
+}
+
 // Verifies that a sync JS call from the main thread triggers the assertion when the module has
 // async_strict_mode and the function is not annotated with @AllowSyncCall. Uses a dedicated
 // test_async_strict module (async_strict_mode=True) so the main test module can stay non-strict.

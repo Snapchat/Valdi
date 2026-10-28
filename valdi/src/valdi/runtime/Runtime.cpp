@@ -765,6 +765,8 @@ void Runtime::setRuntimeTweaks(const Ref<ValdiRuntimeTweaks>& runtimeTweaks) {
             runtimeTweaks != nullptr ? runtimeTweaks->joinJsThreadOnTeardown() : true);
         _javaScriptRuntime->setRefuseDispatchAfterJsQueueTeardown(
             runtimeTweaks != nullptr ? runtimeTweaks->refuseDispatchAfterJsQueueTeardown() : true);
+        _javaScriptRuntime->setStopWorkersOnHostTeardown(
+            runtimeTweaks != nullptr ? runtimeTweaks->enableTeardownStopOrphanedWorkers() : false);
     }
 }
 

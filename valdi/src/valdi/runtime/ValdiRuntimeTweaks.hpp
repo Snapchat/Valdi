@@ -53,6 +53,11 @@ public:
     // refused up front, so the dropped task's RetainedContext is never released (and JS-backed
     // disposables never disposed) on the calling thread. Set false to restore the prior behavior.
     bool refuseDispatchAfterJsQueueTeardown() const;
+    // VALDI_ENABLE_TEARDOWN_STOP_ORPHANED_WORKERS (default false). When true, a runtime's teardown marks its
+    // workers (disposed ones included) as orphaned, and the workers skip their JS-thread work from then on:
+    // they hold raw references to host-owned state (ResourceManager, MainThreadManager, AttributeIds) that the
+    // host frees.
+    bool enableTeardownStopOrphanedWorkers() const;
     bool applyManagedChildFramePadding() const;
     bool disableHitTestSyncDeadline() const;
     // Killswitch for failing deadline-bounded sync JS calls fast while an earlier one is still

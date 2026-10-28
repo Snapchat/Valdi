@@ -35,17 +35,18 @@ RuntimeWrapper::RuntimeWrapper(Valdi::IJavaScriptBridge* jsBridge,
       runtimeManager(nullptr),
       runtime(nullptr),
       resourceLoader(Valdi::makeShared<Valdi::StandaloneResourceLoader>()) {
-    standaloneRuntime = Valdi::ValdiStandaloneRuntime::create(false,
-                                                              false,
-                                                              enableViewPreloader,
-                                                              true,
-                                                              true,
-                                                              jsBridge,
-                                                              mainQueue,
-                                                              runtimeDiskCache != nullptr ? runtimeDiskCache : diskCache,
-                                                              runtimeListener,
-                                                              resourceLoader,
-                                                              tweakValueProvider);
+    standaloneRuntime =
+        Valdi::ValdiStandaloneRuntime::create(false,
+                                              false,
+                                              enableViewPreloader,
+                                              true,
+                                              true,
+                                              jsBridge,
+                                              mainQueue,
+                                              runtimeDiskCache != nullptr ? runtimeDiskCache : diskCache,
+                                              runtimeListener,
+                                              resourceLoader,
+                                              tweakValueProvider);
     runtimeManager = &standaloneRuntime->getRuntimeManager();
     runtime = &standaloneRuntime->getRuntime();
     runtime->getResourceManager().setLazyModulePreloadingEnabled(false);

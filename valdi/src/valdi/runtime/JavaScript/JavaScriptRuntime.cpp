@@ -415,7 +415,7 @@ JavaScriptRuntime::~JavaScriptRuntime() {
 }
 
 void JavaScriptRuntime::doInitialize() {
-    if (_isDisposed) {
+    if (_isDisposed || _hostTornDown) {
         return;
     }
 
@@ -488,6 +488,8 @@ void JavaScriptRuntime::teardown(bool destroyContext) {
     // Just in case postInit() was never called
     _initLock.leaveIfNotCompleted();
 
+    markWorkersHostTornDown();
+
     // Workers share this runtime's listener (see createWorker); detach them so a worker
     // outliving this runtime does not keep a dangling reference. A worker task holding a
     // RetainedListener keeps the listener's owner alive until the call completes.
@@ -503,6 +505,9 @@ void JavaScriptRuntime::teardown(bool destroyContext) {
 }
 
 void JavaScriptRuntime::teardownOnJsThread(bool destroyContext) {
+    // requestFullTeardown() reaches here without going through teardown().
+    markWorkersHostTornDown();
+
     if (_anrDetector != nullptr) {
         _anrDetector->removeTaskScheduler(this);
     }
@@ -2486,6 +2491,8 @@ JSValueRef JavaScriptRuntime::runtimeCreateWorker(JSFunctionNativeCallContext& c
         std::lock_guard<Mutex> guard(_listenerMutex);
         workerRuntime->setListener(_listener, _listenerOwner);
     }
+    // Workers can create workers of their own; those must be marked when this worker tears down.
+    workerRuntime->setStopWorkersOnHostTeardown(_stopWorkersOnHostTeardown);
     workerRuntime->postInit();
     for (const auto& moduleFactory : _moduleFactories) {
         workerRuntime->registerJavaScriptModuleFactory(moduleFactory);
@@ -2520,6 +2527,11 @@ JSValueRef JavaScriptRuntime::runtimeCreateWorker(JSFunctionNativeCallContext& c
     {
         std::lock_guard<Mutex> guard(_jsWorkersMutex);
         _jsWorkers.emplace_back(weakRef(workerRuntime.get()));
+    }
+    // A worker created by a task already running when this runtime was marked joined _jsWorkers too late for
+    // markWorkersHostTornDown(). Checked after the append, so either that pass saw it or this sees the flag.
+    if (_hostTornDown) {
+        workerRuntime->markHostTornDown();
     }
     return workerJSValue;
 }
@@ -2894,6 +2906,30 @@ std::vector<Ref<JavaScriptRuntime>> JavaScriptRuntime::getAllWorkers() {
     }
 
     return out;
+}
+
+void JavaScriptRuntime::markWorkersHostTornDown() {
+    if (!_stopWorkersOnHostTeardown) {
+        return;
+    }
+
+    // Not getAllWorkers(): it skips and forgets disposed workers, and a disposed worker can still have work
+    // queued that reaches into this runtime's state. Mark outside the lock: dropping the last ref to a worker
+    // runs its destructor, which joins its JS thread.
+    std::vector<Ref<JavaScriptRuntime>> workers;
+    {
+        std::lock_guard<Mutex> guard(_jsWorkersMutex);
+        workers.reserve(_jsWorkers.size());
+        for (const auto& weakWorker : _jsWorkers) {
+            auto jsWorker = weakWorker.lock();
+            if (jsWorker != nullptr) {
+                workers.emplace_back(std::move(jsWorker));
+            }
+        }
+    }
+    for (const auto& jsWorker : workers) {
+        jsWorker->markHostTornDown();
+    }
 }
 
 void JavaScriptRuntime::dispatchPerformGcToWorkers() {
@@ -3832,6 +3868,8 @@ std::shared_ptr<snap::valdi_core::JSRuntime> JavaScriptRuntime::createWorker() {
         std::lock_guard<Mutex> guard(_listenerMutex);
         workerRuntime->setListener(_listener, _listenerOwner);
     }
+    // Workers can create workers of their own; those must be marked when this worker tears down.
+    workerRuntime->setStopWorkersOnHostTeardown(_stopWorkersOnHostTeardown);
     workerRuntime->postInit();
     for (const auto& moduleFactory : _moduleFactories) {
         workerRuntime->registerJavaScriptModuleFactory(moduleFactory);
@@ -3842,6 +3880,11 @@ std::shared_ptr<snap::valdi_core::JSRuntime> JavaScriptRuntime::createWorker() {
     {
         std::lock_guard<Mutex> guard(_jsWorkersMutex);
         _jsWorkers.emplace_back(weakRef(workerRuntime.get()));
+    }
+    // A worker created by a task already running when this runtime was marked joined _jsWorkers too late for
+    // markWorkersHostTornDown(). Checked after the append, so either that pass saw it or this sees the flag.
+    if (_hostTornDown) {
+        workerRuntime->markHostTornDown();
     }
     return std::dynamic_pointer_cast<snap::valdi_core::JSRuntime>(*workerRuntime->getInnerSharedPtr());
 }
@@ -4313,6 +4356,11 @@ void JavaScriptRuntime::dispatchOnJsThreadImpl(Ref<Context> ownerContext,
                                                uint32_t delayMs,
                                                StringBox dispatchAttribution,
                                                JavaScriptThreadTask&& function) {
+    // Refused like a dispatch after the JS queue is torn down: the sync path below reads the host's
+    // MainThreadManager before the task's own check could run.
+    if (_hostTornDown) {
+        return;
+    }
     auto isOffJsThread = scheduleType == JavaScriptTaskScheduleTypeAlwaysAsync || !_dispatchQueue->isCurrent();
     if (isOffJsThread && _refuseDispatchAfterJsQueueTeardown) {
         // A disposed TaskQueue destroys a rejected task inline on the enqueuing thread. The task's
@@ -4497,6 +4545,9 @@ DispatchFunction JavaScriptRuntime::makeJsThreadDispatchFunction(Ref<Context>&& 
             retainedContext = RetainedContext(std::move(ownerContext)),
             jsTask = std::move(jsTask),
             attribution = captureANRAttribution(dispatchAttribution)]() {
+        if (_hostTornDown) {
+            return;
+        }
         // _running is cleared only by onInitError (teardownOnJsThread no longer clears it), so
         // !_running here uniquely means module-loader init failed while the context is still
         // non-null. Refuse: queued work must not run against a runtime that never finished
