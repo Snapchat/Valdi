@@ -20,7 +20,7 @@ A Linux host should be able to load compiled Valdi service modules and call gene
 - [`validate_registry.sh`](../tools/ci/validate_registry.sh) supplies a clean Bzlmod-consumer pattern but builds only `@valdi//libs/dummy:dummy`; it does not qualify runtime embedding. [`test_external_build_graph.sh`](../tools/ci/test_external_build_graph.sh) already checks external engine isolation and is a starting point for the real service closure audit.
 - `valdi_linux_application` takes a root component and links the drawing runtime. It is not the service bootstrap. The current `valdi_standalone_runtime` itself links SnapDrawing and registers its module provider under `SNAP_DRAWING_ENABLED`; changing the Linux alias alone cannot produce a drawing-free core.
 
-These observations were checked against public source `6822d68b22192952222c4d8b95a78980c07b9600`. They describe starting points, not completed stage-1 behavior.
+These observations were checked against public source `6822d68b22192952222c4d8b95a78980c07b9600`. They describe starting points, not completed stage-1 behavior. The device-appearance row below additionally reflects #199 as mirrored in public source `b8470370ed0093d4c06e764d4403887e816e6847`.
 
 ## Detailed design
 
@@ -76,7 +76,7 @@ The starting matrix is explicit; existing stubs are not evidence of supported se
 | Surface | Current source behavior | Stage-1 embedding contract |
 |---|---|---|
 | Module loading/generated native bindings | Existing source compilation and module APIs | Qualify freshly source-built, matched QuickJS modules and generated bindings through the external source-consuming fixture; cover missing/corrupt module failures and entry errors. |
-| Device appearance | `observeDarkMode` is a no-op at the inspected base; [#199](https://github.com/Snapchat/Valdi/pull/199) separately fixes host-supplied observation | No OS appearance discovery. Include host-supplied observation only after its implementation/tests land; otherwise report it unsupported. |
+| Device appearance | Host-supplied `setDarkMode`/`observeDarkMode` and regression coverage landed in [#199](https://github.com/Snapchat/Valdi/pull/199), mirrored as `8e74176d` | No OS appearance discovery. Qualify host-supplied initial value, updates, cancellation and teardown in the new source-consuming profile; the landed coverage does not qualify that profile. |
 | Insets/haptics | `observeDisplayInsetChange` and `performHapticFeedback` are no-ops | Unsupported without a host adapter. |
 | Application observers | Background, foreground and keyboard-height observers are no-ops | Unsupported without a host adapter. |
 | Linux identity | `DeviceModule::getSystemType()` returns `"ios"` | Correct/define the Linux service identity with a compatibility regression; do not advertise the stub as Linux support. |
