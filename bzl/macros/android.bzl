@@ -7,7 +7,9 @@ def aar_import(**kwargs):
     patched_kwargs = dict(kwargs)
     existing = patched_kwargs.get("deps", [])
     patched_kwargs["deps"] = existing + [
-        "@rules_kotlin//kotlin/compiler:kotlin-stdlib",
+        # Label() so this resolves against android_macros' repo mapping, not
+        # the calling package's. See Valdi_Widgets#20.
+        Label("@rules_kotlin//kotlin/compiler:kotlin-stdlib"),
     ]
 
     _aar_import(**patched_kwargs)

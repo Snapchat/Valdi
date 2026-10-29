@@ -92,7 +92,9 @@ def client_objc_library(
             module_name = module_name,
             system_pcms = select({
                 "@valdi//bzl/conditions:explicit_modules": [
-                    "@build_bazel_rules_swift//system_sdks:system_sdks",
+                    # Label() so this resolves against Valdi's repo mapping,
+                    # not the calling package's. See Valdi_Widgets#20.
+                    Label("@build_bazel_rules_swift//system_sdks:system_sdks"),
                 ],
                 "//conditions:default": [],
             }),

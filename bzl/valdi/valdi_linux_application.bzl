@@ -1,5 +1,6 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("//bzl:expand_template.bzl", "expand_template")
+load("//bzl/valdi:common.bzl", "LINUX_OS_CONSTRAINT")
 
 def valdi_linux_application(
         name,
@@ -19,7 +20,7 @@ def valdi_linux_application(
     cc_binary(
         name = name,
         srcs = [":{}".format(main_target)],
-        target_compatible_with = ["@platforms//os:linux"],
+        target_compatible_with = [LINUX_OS_CONSTRAINT],
         tags = ["valdi_linux_application"],
         visibility = ["//visibility:public"],
         deps = [
