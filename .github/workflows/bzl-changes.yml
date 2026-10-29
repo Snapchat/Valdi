@@ -74,10 +74,14 @@ jobs:
         include:
           - runner: macos-26
             xcode: '26.5.0'
+            test_name_pattern: ''
           # macOS 27: its dyld rejects Rust proc-macros stripped by rustc < 1.98
-          # (rust-lang/rust#157750), which macOS 26 runners can't catch.
+          # (rust-lang/rust#157750), which macOS 26 runners can't catch. `build ios`
+          # compiles the Rust tool crates, so that's all this leg runs: the full suite
+          # is three cold workspaces, more than this runner's ~44 GB disk / 7 GB RAM.
           - runner: xcode-27
             xcode: '27.0.0'
+            test_name_pattern: 'build ios'
     runs-on: ${{ matrix.runner }}
 
     steps:
@@ -150,26 +154,7 @@ jobs:
         env:
           OPEN_SOURCE_DIR: ${{ github.workspace }}
           PROJECT_ROOT: /tmp/valdi_app
-
-      - name: Stop smoke-test Bazel servers
-        # Each app the smoke tests bootstrap keeps its own Bazel server up (3h idle
-        # timeout), and the hotreload build below starts another. The 7 GB xcode-27
-        # runner ran out of memory in that build with them still up.
-        run: |
-          free_mb() { vm_stat | awk '/page size/ {ps=$8} /Pages (free|inactive|speculative)/ {gsub("\\.","",$NF); n+=$NF} END {printf "%d", n*ps/1048576}'; }
-          echo "Free+inactive memory before: $(free_mb) MB"
-          for ws in /tmp/valdi_app /tmp/valdi_app/valdi_cli_app; do
-            if [ -f "$ws/MODULE.bazel" ]; then
-              (cd "$ws" && bazel shutdown) || true
-            fi
-          done
-          echo "Free+inactive memory after: $(free_mb) MB"
-
-      - name: "Run: Hotreload Delivery Smoke"
-        # Reuses this job's watchman install and the compiler already built by the
-        # smoke tests above (warm bazel cache), so it adds a delivery assertion the
-        # macOS-only hotreload_smoke.sh can't give without a second cold build.
-        run: ./tools/ci/hotreload_delivery_smoke.sh
+          SMOKE_TEST_NAME_PATTERN: ${{ matrix.test_name_pattern }}
 
       - name: Upload test results
         if: failure()
@@ -211,10 +196,16 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Install Bazel
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Bazel and watchman
         run: |
-          brew install bazelisk
+          brew install bazelisk watchman
           bazel --version
+          watchman --version
           # run_tests.sh invokes `bzl`; on Linux setup_linux_env.sh creates this
           # symlink, but the macOS runner only ships `bazel` from bazelisk.
           sudo ln -sf "$(command -v bazel)" /usr/local/bin/bzl
@@ -223,6 +214,15 @@ jobs:
         # On macOS the `uname != Linux` branch of run_tests.sh fires, running the
         # iOS/macOS ObjC/Swift suites that never execute on the Linux runner.
         run: ./tools/ci/run_tests.sh
+
+      - name: "Run: Hotreload Delivery Smoke"
+        # Lives here, not in the smoke-test job: it builds this (root) workspace, which
+        # shares nothing with the bootstrapped apps there (Bazel 7 vs 8, different repo
+        # names), so it was a third cold output base on that job's smallest runner.
+        if: ${{ !cancelled() }}
+        run: |
+          df -h /
+          ./tools/ci/hotreload_delivery_smoke.sh
 
       - name: Collect test logs and crash reports
         # The job log only shows "signal 6: Abort trap"; the abort reason is in the

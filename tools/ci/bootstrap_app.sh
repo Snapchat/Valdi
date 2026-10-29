@@ -28,6 +28,11 @@ if [[ $(uname) != Linux ]] ; then
     # is left alive (e.g. a build that failed on an idle timeout), node --test otherwise
     # never exits and the whole job idles to its wall-clock cap. Force exit once the
     # suite finishes so a leaked handle can't turn a red into a multi-hour timeout.
-    OPEN_SOURCE_DIR=$OPEN_SOURCE_DIR PROJECT_ROOT=$APP_DIR node -r ts-node/register --test --test-force-exit "test/**/*test.ts"
+    # SMOKE_TEST_NAME_PATTERN narrows the run (e.g. 'build ios' on runners too small for all of it).
+    NAME_FILTER=()
+    if [[ -n "${SMOKE_TEST_NAME_PATTERN:-}" ]]; then
+        NAME_FILTER=(--test-name-pattern="$SMOKE_TEST_NAME_PATTERN")
+    fi
+    OPEN_SOURCE_DIR=$OPEN_SOURCE_DIR PROJECT_ROOT=$APP_DIR node -r ts-node/register --test --test-force-exit "${NAME_FILTER[@]}" "test/**/*test.ts"
     popd
 fi
