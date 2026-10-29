@@ -18,6 +18,7 @@ on:
       - 'tools/ci/setup_linux_env.sh'
       - 'valdi/BUILD.bazel'
       - 'valdi/src/**'
+      - 'valdi/fuzz/**'
       - 'valdi/test/integration/**'
       - 'valdi/test/runtime/**'
       - 'valdi/test/snap_drawing/**'

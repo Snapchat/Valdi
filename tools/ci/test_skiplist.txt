@@ -1,0 +1,25 @@
+# Test targets that neither tools/ci/run_tests.sh nor tools/ci/test_modules.sh runs, with the
+# reason for each.
+#
+# Between them, those two scripts run every test target in the repo (minus `manual` tests), so a
+# new test target is gated by both CIs automatically. A target listed here is skipped instead.
+# Every entry needs a reason, and the scripts fail if an entry isn't a test target any more, so
+# the list can't go stale.
+#
+# Format: <label> <where> # <reason>
+#   where: all, linux or macos (skipped on those platforms), or run_by:<path> (another CI job runs
+#   it; <path> must mention the label). See select_tests.sh.
+
+//libs/dummy:test all # Asserts asserts, logging and tracing are compiled in, which is false in the default build config.
+//tsn:262 all # Downloads tc39/test262 main.zip, an unpinned branch archive, so it isn't hermetic. Pin it before gating.
+//src/valdi_modules/src/valdi/valdi_core:test all # ModuleLoader.preloadBatch suite is red (async timeouts and order assertions).
+//src/valdi_modules/src/valdi/valdi_test:test all # Intl/locale specs (uppercase ß, ECMA-402 locale shapes) and the glass-view JSX spec fail on the default engine.
+//valdi:test_runtime linux # `bzl test` trips a pre-existing gtest XML static-destructor segfault on Linux (all tests pass). Covered by //valdi:test, and run directly under ASan.
+//third-party/rules_hdrs/hmap:hmaptest linux # Header-map tool for Xcode builds; hmap.c doesn't compile with glibc (asprintf and bswap_32 undeclared without _GNU_SOURCE and byteswap.h).
+//valdi/compiler/toolbox:test linux # Fails to link on Linux: undefined Rust allocator shim symbols (__rdl_alloc etc.) and SkColorInfo::bytesPerPixel under --no-allow-shlib-undefined.
+
+# Run by other jobs. Listed so run_tests.sh doesn't build them a second time.
+//experiments/helloworld_playground:integration_test run_by:tools/ci/web_integration_test.sh # Needs --define enable_web=true and a headless browser.
+//compiler/companion:golden_test run_by:.github/workflows/bzl-changes.yml # Compiler Golden Diff job (internal: client_validate_valdi_open_source.sh).
+//compiler/compiler:CompilerTests run_by:tools/ci/compiler_tests.sh # Compiler Unit Tests job.
+//valdi/fuzz:ValdiModuleArchive_fuzz_test run_by:tools/ci/sanitizer_tests.sh # Instrumented build of the whole runtime; the ASan job already builds it.

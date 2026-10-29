@@ -7,31 +7,19 @@ set -eux
 # Intended to be run from open_source/
 cd "$(dirname "$0")/../.."
 
-bzl test //valdi:test_snap_drawing //valdi:test_hermes --test_output=errors
-bzl test //valdi:test_layout --test_output=all --test_arg=--gtest_print_time=1
-
-# test_svg passes but was not gated. Safe on Linux: it only deps :valdi_svg and
-# //snap_drawing:test_utils, so it avoids the runtime link that keeps test_runtime macOS-only
-# (see the block below). The full //valdi:test (incl. test_integration) runs on both platforms
-# at the bottom of this script; the old "main thread dispatch" abort is gone (its trigger,
-# canLockAllJSContexts, is DISABLED, so the suite runs green).
-bzl test //valdi:test_svg --test_output=errors
-
-# snap_drawing's own C++ unit suite (canvas, paths, layers, text layout). Engine-free and safe on
-# both platforms: its BUILD select drops the TextLayout tests on Linux and the Lottie tests unless
-# Lottie is enabled. It was not gated by either CI before.
-bzl test //snap_drawing:test --test_output=errors
-
-# Valdi's Android JVM unit tests under Robolectric (views, text, touch hit-testing, JS bridge).
-# Internal CI already runs these in a separate step, so run them only on GitHub Actions here to
-# avoid running them twice.
-if [[ "${GITHUB_ACTIONS:-}" == "true" ]] ; then
-    bzl test //valdi:test_java --test_output=errors
-fi
-
-# djinni-support-lib Valdi proxy dispatch unit tests. Engine-free (links only
-# valdi_core, not valdi_standalone_runtime), so safe on both Linux and macOS.
-bzl test //third-party/djinni-support-lib:test_valdi --test_output=errors
+# Every test target in the repo except valdi_test modules (test_modules.sh runs those), minus
+# `manual` tests and tools/ci/test_skiplist.txt; see select_tests.sh. Running a query instead of a
+# hand-written list means a new test target is gated by both CIs (this script runs on public GitHub
+# Actions and in internal CI) without anyone wiring it in.
+source tools/ci/select_tests.sh
+select_tests cpp
+# --keep_going reports every failing target in one run. --skip_incompatible_explicit_targets skips
+# targets that can't build on this platform (e.g. Linux-only or iOS-platform tests on macOS), the
+# way `bzl test //...` would, instead of failing because they were named explicitly. Raise the
+# console stdout/stderr cap: the //valdi:test binary's output (~1.1MB) exceeds bazel's 1MB default,
+# and bazel then hides it.
+bzl test "${TEST_TARGETS[@]}" --keep_going --skip_incompatible_explicit_targets --test_output=errors \
+    --experimental_ui_max_stdouterr_bytes=33554432
 
 # The hot-reload smoke runs as its own parallel job on external GitHub Actions
 # (the hotreload-smoke matrix leg). Gate it here too — but ONLY internally (skip
@@ -51,19 +39,6 @@ if [[ "${GITHUB_ACTIONS:-}" != "true" && "$(uname)" == "Linux" ]] ; then
 fi
 
 if [[ $(uname) != Linux ]] ; then
-    bzl test //valdi:valdi_ios_objc_test --test_output=errors
-    bzl test //valdi:valdi_ios_termination_test --test_output=errors
-    bzl test //valdi:valdi_ios_pooling_test --test_output=errors
-    bzl test //valdi:valdi_ios_swift_test --test_output=errors
-    bzl test //valdi:valdi_macos_objc_test --test_output=errors
-
-    # C++ runtime unit tests (Value, ValueUtils, JavaScriptTypes, etc.), engine-agnostic.
-    # External counterpart of the internal ValdiBazelTestStep addition (#115098).
-    # macOS-only: on Linux `bzl test` trips a pre-existing static-destructor segfault in
-    # gtest's XML writer when linked against valdi_standalone_runtime (all tests pass; only
-    # teardown crashes under bzl test). Internal CI works around it by running the binary directly.
-    bzl test //valdi:test_runtime --test_output=errors
-
     # The compiler's Swift unit suite runs as its own parallel job on external
     # GitHub Actions (compiler-tests.yml). Gate it here too — but ONLY internally
     # (skip on GitHub Actions to avoid duplicating that job) — so internal cool,
@@ -73,17 +48,5 @@ if [[ $(uname) != Linux ]] ; then
         ./tools/ci/compiler_tests.sh
     fi
 fi
-
-# Full Valdi C++ suite: test_integration + runtime + snap_drawing + svg + hermes libs, run as one
-# binary across all engines (QuickJS/QuickJSWithTSN/JSCore/Hermes) — ~1866 tests. This is the whole
-# //valdi:test target the internal suite runs, now gated externally too. The old "main thread must
-# never dispatch synchronously into a worker runtime" abort no longer fires (its only trigger,
-# canLockAllJSContexts, is DISABLED), so the suite is green on macOS.
-#
-# Raise the console stdout/stderr cap: //valdi:test is a single binary and its whole-suite output
-# (~1.1MB) exceeds bazel's 1MB default (--experimental_ui_max_stdouterr_bytes), so on failure bazel
-# SKIPS the output entirely and the failing test is invisible in CI logs. Bump to 32MB so failures
-# actually surface.
-bzl test //valdi:test --test_output=errors --experimental_ui_max_stdouterr_bytes=33554432
 
 )

@@ -29,6 +29,12 @@ bzl test //snap_drawing:test //valdi:test_snap_drawing \
     --config=asan \
     --test_output=errors
 
+# Replays the module-archive fuzzer's corpus. It links the whole runtime, which this job already
+# builds under ASan, so it's cheap here and expensive anywhere else.
+bzl test //valdi/fuzz:ValdiModuleArchive_fuzz_test \
+    --config=asan \
+    --test_output=errors
+
 # C++ runtime unit tests (Value, ValueUtils, JavaScriptTypes, ...). On Linux, `bzl test` trips a
 # pre-existing static-destructor segfault in gtest's XML writer for this target (all tests pass;
 # see run_tests.sh), so build it and run the binary directly, as internal CI does.

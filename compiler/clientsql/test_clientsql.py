@@ -144,7 +144,12 @@ class ClientSQLGeneratorTest(unittest.TestCase):
 
         integration_target = valdi_build[valdi_build.index('name = "test_integration"'):]
         focused_target = valdi_build[valdi_build.index('name = "test_client_sql_runtime_integration"'):]
-        aggregate_target = valdi_build[valdi_build.index('name = "test",\n    linkstatic = 1'):]
+        # Match the aggregate cc_test by its rule header, not by the attribute that follows the name,
+        # so adding or reordering attributes (e.g. timeout) doesn't break the lookup.
+        aggregate_start = re.search(r'^cc_test\(\n\s*name = "test",\n', valdi_build, re.MULTILINE)
+        self.assertIsNotNone(aggregate_start, "//valdi:test cc_test not found in valdi/BUILD.bazel")
+        aggregate_target = valdi_build[aggregate_start.start() :]
+        aggregate_target = aggregate_target[: aggregate_target.index("\n)\n") + 2]
         self.assertIn("client_sql_smoke:client_sql_smoke_native_desktop", integration_target)
         self.assertNotIn('exclude = ["test/integration/ClientSQLRuntime_tests.cpp"]', integration_target)
         self.assertIn('"test/integration/ClientSQLRuntime_tests.cpp"', focused_target)
