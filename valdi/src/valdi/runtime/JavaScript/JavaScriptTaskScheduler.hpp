@@ -49,7 +49,6 @@ enum class JsThreadDispatchReason {
     RegisterModuleFactory,
     RegisterTypeConverter,
     CallModuleFunction,
-    PushModuleToMarshaller,
     AddModuleUnloadObserver,
     PreloadModule,
     PreloadModules,

@@ -10771,6 +10771,60 @@ TEST_P(RuntimeFixture, recordsScheduledWorkItemForANRAttribution) {
     EXPECT_EQ(std::string::npos, wrapper.runtime->getJavaScriptRuntime()->getANRAttributionInfo().find("[stuck-in:"));
 }
 
+class BlockingModuleFactory : public SharedPtrRefCountable, public snap::valdi_core::ModuleFactory {
+public:
+    explicit BlockingModuleFactory(std::shared_future<void> release) : _release(std::move(release)) {}
+
+    std::promise<void> loading;
+
+    StringBox getModulePath() override {
+        return STRING_LITERAL("test/src/AnrAttributionBlockingModule");
+    }
+
+    Value loadModule() override {
+        loading.set_value();
+        _release.wait();
+        return Value().setMapValue("CONSTANT", Value(1));
+    }
+
+private:
+    std::shared_future<void> _release;
+};
+
+TEST_P(RuntimeFixture, recordsModulePathWhenPushingModuleToMarshallerForANRAttribution) {
+    wrapper.teardown();
+
+    auto tweakModule = makeShared<TestTweakValueProvider>().toShared();
+    tweakModule->config.setMapValue("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS", Valdi::Value(static_cast<bool>(true)));
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, tweakModule);
+
+    std::promise<void> release;
+    auto moduleFactory = makeShared<BlockingModuleFactory>(release.get_future().share());
+    auto loading = moduleFactory->loading.get_future();
+    wrapper.runtime->registerNativeModuleFactory(moduleFactory.toShared());
+
+    auto* jsRuntime = wrapper.runtime->getJavaScriptRuntime();
+    bool resolved = false;
+    std::thread resolveThread([&] {
+        SimpleExceptionTracker exceptionTracker;
+        Marshaller marshaller(exceptionTracker);
+        jsRuntime->pushModuleToMarshaller(nullptr, STRING_LITERAL("test/src/AnrAttributionBlockingModule"), marshaller);
+        resolved = static_cast<bool>(exceptionTracker);
+    });
+
+    auto loadStarted = loading.wait_for(std::chrono::seconds(30)) == std::future_status::ready;
+    auto observed = jsRuntime->getANRAttributionInfo();
+    release.set_value();
+    resolveThread.join();
+
+    ASSERT_TRUE(loadStarted);
+    EXPECT_TRUE(resolved);
+    EXPECT_NE(std::string::npos,
+              observed.find("[stuck-in: runtime.pushModuleToMarshaller(test/src/AnrAttributionBlockingModule)]"))
+        << "observed: '" << observed << "'";
+    EXPECT_EQ(std::string::npos, jsRuntime->getANRAttributionInfo().find("[stuck-in:"));
+}
+
 TEST(JavaScriptRuntimeANRAttribution, traceSpanNameKeepsStaticPrefixOnly) {
     EXPECT_EQ(STRING_LITERAL("renderComponent.SendToRecipientList"),
               JavaScriptRuntime::anrNativeCallNameForTraceSpan(STRING_LITERAL("renderComponent.SendToRecipientList")));

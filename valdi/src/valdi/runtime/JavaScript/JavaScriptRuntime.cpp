@@ -3703,8 +3703,12 @@ int32_t JavaScriptRuntime::pushModuleToMarshaller(
     Marshaller& marshaller) {
     int32_t retValue = 0;
     bool taskRan = false;
-    constexpr auto reason = JsThreadDispatchReason::PushModuleToMarshaller;
-    dispatchOnJsThreadSync(reason, [&](JavaScriptEntryParameters& jsEntry) {
+    // Callers resolving from off the JS thread have no parent label to inherit, so the module path is
+    // the only thing that points the dispatch at an owner.
+    auto attribution = anrDiagnosticsEnabled() ?
+                           STRING_FORMAT("runtime.pushModuleToMarshaller({})", path.toStringView()) :
+                           StringBox();
+    dispatchOnJsThreadSync(attribution, [&](JavaScriptEntryParameters& jsEntry) {
         taskRan = true;
         auto importResult = this->importModule(path, jsEntry);
         if (!jsEntry.exceptionTracker) {
@@ -4254,8 +4258,6 @@ static StringBox dispatchReasonName(JsThreadDispatchReason reason) {
             return STRING_LITERAL("runtime.registerTypeConverter");
         case JsThreadDispatchReason::CallModuleFunction:
             return STRING_LITERAL("runtime.callModuleFunction");
-        case JsThreadDispatchReason::PushModuleToMarshaller:
-            return STRING_LITERAL("runtime.pushModuleToMarshaller");
         case JsThreadDispatchReason::AddModuleUnloadObserver:
             return STRING_LITERAL("runtime.addModuleUnloadObserver");
         case JsThreadDispatchReason::PreloadModule:
