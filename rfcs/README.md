@@ -20,7 +20,7 @@ Not sure? Open a [Discussion](https://github.com/Snapchat/Valdi/discussions) and
 
 1. **Pitch.** Open a [Discussion](https://github.com/Snapchat/Valdi/discussions) with a short description of the problem and your idea. This is where you find out early whether it's a fit. If you skip this step, you risk writing an RFC that gets declined.
 2. **Write the RFC.** Copy [`0000-template.md`](./0000-template.md) to `rfcs/0000-short-name.md` and fill it in, including the automated test strategy. Open a pull request.
-3. **Review.** Maintainers and the community comment on the pull request. The review period is at least **30 days**. That gives the maintainer team time to discuss the RFC, and gives people in other time zones and on other schedules time to weigh in.
+3. **Review.** Maintainers and the community comment on the pull request. The review period lasts up to **30 days**: maintainers aim to reach a decision within that time, and can decide sooner once the discussion has settled. Leave enough time for people in other time zones and on other schedules to weigh in.
 4. **Decision.** The maintainers make the call, as described in [GOVERNANCE.md](../GOVERNANCE.md). **An RFC can't be accepted without an automated test strategy the maintainers agree is sufficient.** The outcome is one of:
    - **Accepted.** The RFC gets a number and merges. Implementation can start. Accepting an RFC means we want the change, not that anyone has committed to building it.
    - **Declined.** The pull request is closed with the reasoning written down.
