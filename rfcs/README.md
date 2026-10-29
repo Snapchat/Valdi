@@ -40,4 +40,5 @@ Like every other change, an accepted RFC is merged through the process in [GOVER
 
 ## Accepted RFCs
 
+- [RFC 0001: Optional Linux window host for SnapDrawing](0001-linux-snapdrawing-host.md) ([#196](https://github.com/Snapchat/Valdi/pull/196))
 - [RFC 0002: Source-based Linux runtime embedding](0002-linux-headless-sdk.md) ([#197](https://github.com/Snapchat/Valdi/pull/197))
