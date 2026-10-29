@@ -40,4 +40,4 @@ Like every other change, an accepted RFC is merged through the process in [GOVER
 
 ## Accepted RFCs
 
-None yet.
+- [RFC 0002: Source-based Linux runtime embedding](0002-linux-headless-sdk.md) ([#197](https://github.com/Snapchat/Valdi/pull/197))
