@@ -504,6 +504,39 @@ TEST_P(RuntimeFixture, clearViewNodesOnDestroy) {
     }
 }
 
+// An attribute update rendered by JS can still be queued for the main thread when the context is destroyed.
+// Destroying it in that window must drop the update: the views keep no attributes and the tree stays cleared.
+TEST_P(RuntimeFixture, pendingAttributeUpdateIsDroppedWhenContextIsDestroyed) {
+    auto viewModelParameters = makeShared<ValueMap>();
+    auto tree = wrapper.createViewNodeTreeAndContext("test", "DynamicAttributes", Value(viewModelParameters));
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    auto rootNode = tree->getRootViewNode();
+    ASSERT_TRUE(rootNode != nullptr);
+    ASSERT_EQ(static_cast<uint32_t>(2), rootNode->getChildCount());
+    auto rootView = rootNode->getView();
+    auto title = rootNode->getChildAt(static_cast<uint32_t>(0))->getView();
+    auto subtitle = rootNode->getChildAt(static_cast<uint32_t>(1))->getView();
+
+    (*viewModelParameters)[STRING_LITERAL("title")] = Valdi::Value(std::string("Hello"));
+    (*viewModelParameters)[STRING_LITERAL("subtitleHeight")] = Valdi::Value(45.5);
+    (*viewModelParameters)[STRING_LITERAL("padding")] = Valdi::Value(10);
+    wrapper.setViewModel(tree->getContext(), Value(viewModelParameters));
+
+    // Let JS render without running the main queue, so the update is enqueued but not applied.
+    wrapper.flushJsQueue();
+    ASSERT_TRUE(tree->getContext()->hasPendingRenderRequests());
+
+    wrapper.runtime->destroyContext(tree->getContext());
+    wrapper.flushQueues();
+
+    EXPECT_EQ(DummyView("SCValdiView"), getDummyView(rootView));
+    EXPECT_EQ(DummyView("SCValdiLabel"), getDummyView(title));
+    EXPECT_EQ(DummyView("SCValdiLabel"), getDummyView(subtitle));
+    EXPECT_TRUE(tree->getRootViewNode() == nullptr);
+    EXPECT_FALSE(rootNode->hasView());
+}
+
 TEST_P(RuntimeFixture, respectAttributeTyping) {
     auto tree = wrapper.createViewNodeTreeAndContext("test", "StaticAttributes");
 
@@ -7950,6 +7983,57 @@ TEST_P(RuntimeFixture, disposedWorkerReleasedOffJsThreadWhileExecutingIsSafe) {
         << "dropping a disposed worker's last reference off its JS thread must not block on in-flight work";
 }
 
+// A runtime whose last reference drops inside a task on its own JS thread must tear down inline. Blocking on
+// its own queue from teardown traps (GCD) or deadlocks (dedicated thread).
+TEST_P(RuntimeFixture, runtimeReleasedFromTaskOnItsOwnJsThreadTearsDownInline) {
+    auto* hostRuntime = wrapper.runtime->getJavaScriptRuntime();
+    hostRuntime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("test.runtime"), [](auto& /*jsEntry*/) {});
+    auto worker = hostRuntime->createWorker();
+    auto* workerRuntime = dynamic_cast<JavaScriptRuntime*>(worker.get());
+    ASSERT_NE(nullptr, workerRuntime);
+    {
+        std::promise<void> initialized;
+        workerRuntime->getJsDispatchQueue()->async([&]() { initialized.set_value(); });
+        initialized.get_future().wait();
+    }
+
+    std::weak_ptr<snap::valdi_core::JSRuntime> weakWorker = worker;
+    // Queued JS-thread work retains the runtime; wait until the test holds the only reference.
+    for (int i = 0; i < 100 && weakWorker.use_count() > 1; i++) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (weakWorker.use_count() > 1) {
+        // Hermes and JSCore (its run-loop flush) keep delayed JS-thread work queued on an idle worker, so the test
+        // cannot own the last reference. That work would outlive the host torn down after this test and run against
+        // its freed state, so tear the worker down while the host is still alive.
+        workerRuntime->fullTeardown();
+        GTEST_SKIP() << "queued JS-thread work keeps the worker retained";
+    }
+    // Shared holder so a copy of the task cannot keep its own reference: the drop happens at reset().
+    auto lastRef = std::make_shared<std::shared_ptr<snap::valdi_core::JSRuntime>>(std::move(worker));
+    auto released = std::make_shared<std::promise<void>>();
+    auto releasedFuture = released->get_future();
+    auto droppedLastRef = std::make_shared<std::atomic<bool>>(false);
+    workerRuntime->getJsDispatchQueue()->async([lastRef, released, droppedLastRef]() {
+        *droppedLastRef = lastRef->use_count() == 1;
+        lastRef->reset();
+        released->set_value();
+    });
+    workerRuntime = nullptr;
+
+    if (releasedFuture.wait_for(std::chrono::seconds(10)) != std::future_status::ready) {
+        // The JS thread is wedged inside teardown and cannot be recovered; abort rather than hang the suite.
+        ADD_FAILURE() << "releasing a runtime from its own JS thread deadlocked in teardown";
+        std::abort();
+    }
+    EXPECT_TRUE(droppedLastRef->load());
+    if (auto leftoverWorker = weakWorker.lock()) {
+        ADD_FAILURE() << "the worker outlived the release of the test's reference";
+        // Do not let it outlive the host torn down after this test.
+        dynamic_cast<JavaScriptRuntime*>(leftoverWorker.get())->fullTeardown();
+    }
+}
+
 // A worker holds raw references to its host's ResourceManager, MainThreadManager and AttributeIds. With
 // VALDI_ENABLE_TEARDOWN_STOP_ORPHANED_WORKERS on, host teardown marks the worker, and work dispatched to it
 // afterwards is skipped instead of running against freed host state.
@@ -8918,6 +9002,37 @@ TEST_P(RuntimeFixture, scopeNameAppearsInDisposedReferenceError) {
     auto errorMessage = messageHandler->messages().errors[0].second;
     ASSERT_TRUE(errorMessage.contains("MyFeature.MyCallsite"))
         << "Expected error message to contain scopeName 'MyFeature.MyCallsite', got: " << errorMessage.slowToString();
+}
+
+// A native objects manager can be destroyed twice: an explicit dispose, then again when its owner is
+// deallocated. The repeat finds the scope context already gone and must be a no-op.
+TEST_P(RuntimeFixture, destroyingNativeObjectsManagerTwiceDestroysItsContextOnce) {
+    auto* jsRuntime = wrapper.runtime->getJavaScriptRuntime();
+    Ref<MyNativeObject> nativeObject = makeShared<MyNativeObject>();
+
+    auto contextsBefore = wrapper.runtime->getContextManager().getAllContexts().size();
+    auto objectsManager = jsRuntime->createNativeObjectsManager("");
+    ASSERT_EQ(contextsBefore + 1, wrapper.runtime->getContextManager().getAllContexts().size());
+
+    auto jsResult =
+        callFunctionSync(wrapper, objectsManager, "test/src/WrapNativeObject", "wrapper", {Value(nativeObject)});
+    ASSERT_TRUE(jsResult) << jsResult.description();
+    ASSERT_EQ(2, nativeObject.use_count());
+
+    jsRuntime->destroyNativeObjectsManager(objectsManager);
+    wrapper.flushJsQueue();
+    ASSERT_EQ(1, nativeObject.use_count());
+    ASSERT_EQ(contextsBefore, wrapper.runtime->getContextManager().getAllContexts().size());
+
+    jsRuntime->destroyNativeObjectsManager(objectsManager);
+    wrapper.flushJsQueue();
+    EXPECT_EQ(1, nativeObject.use_count());
+    EXPECT_EQ(contextsBefore, wrapper.runtime->getContextManager().getAllContexts().size());
+
+    jsResult = Result<Value>();
+    objectsManager = nullptr;
+    wrapper.flushJsQueue();
+    EXPECT_EQ(contextsBefore, wrapper.runtime->getContextManager().getAllContexts().size());
 }
 
 TEST_P(RuntimeFixture, supportsSingleCallJsFunction) {
@@ -11423,6 +11538,39 @@ TEST_P(RuntimeFixture, canDetectANR) {
 
     ASSERT_TRUE(stacktrace.contains("at onCreate"));
     ASSERT_TRUE(stacktrace.contains("test/src/ANRDetection"));
+}
+
+// The ANR detector holds runtimes by raw pointer and keeps ticking after one of them is destroyed, so
+// runtime teardown must deregister it; a later tick would otherwise dispatch into a freed runtime.
+TEST_P(RuntimeFixture, anrDetectorKeepsTickingSafelyAfterARuntimeIsDestroyed) {
+    auto anrDetector = wrapper.runtimeManager->getANRDetector();
+    anrDetector->setTickInterval(std::chrono::milliseconds(1));
+    anrDetector->start(std::chrono::seconds(30));
+
+    auto waitForTicks = [&](int count) {
+        for (int i = 0; i < count; i++) {
+            auto ticked = std::make_shared<std::promise<void>>();
+            auto tickedFuture = ticked->get_future();
+            anrDetector->onNextTick([ticked]() { ticked->set_value(); });
+            ASSERT_EQ(std::future_status::ready, tickedFuture.wait_for(std::chrono::seconds(5)));
+        }
+    };
+
+    auto secondRuntime = wrapper.runtimeManager->createRuntime(wrapper.resourceLoader, 1.0);
+    auto* secondJsRuntime = secondRuntime->getJavaScriptRuntime();
+    ASSERT_NE(nullptr, secondJsRuntime);
+    secondJsRuntime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("test.runtime"), [](auto& /*jsEntry*/) {});
+    // The detector is now probing the second runtime.
+    waitForTicks(3);
+
+    auto weakSecondJsRuntime = weakRef(secondJsRuntime);
+    secondJsRuntime = nullptr;
+    secondRuntime->fullTeardown();
+    secondRuntime = nullptr;
+    ASSERT_TRUE(weakSecondJsRuntime.expired());
+
+    waitForTicks(20);
+    anrDetector->stop();
 }
 
 TEST_P(RuntimeFixture, cancelsComponentCreationIfDestroyIsCalledBeforeComponentIsCreated) {
