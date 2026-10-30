@@ -1,4 +1,4 @@
-# RFC: Terminal renderer for CLI applications (`valdi_tui`)
+# RFC 0003: Terminal renderer for CLI applications (`valdi_tui`)
 
 - Status: Draft
 - Author(s): @beaucollins
@@ -124,4 +124,3 @@ Behavior change for CLI applications and `valdi_test` suites: `padding`, `justif
 - Should nested `<Text>` flow inline as in Ink? It needs either a compiler-visible way for a component to read its children as data, or a text-run collection pass; spans cover the common case today.
 - Mouse support and the alternate screen are not proposed; worth deciding whether `fitTerminal` applications want them.
 - Whether `createValdiStandaloneRuntime` should also opt the CLI runtime into Yoga rounding (point scale 1) once the standalone tests are audited for fractional expectations.
-- RFC number is assigned at acceptance.
