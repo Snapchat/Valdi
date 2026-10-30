@@ -61,6 +61,13 @@ echo ""
 echo "AAR found at: $AAR_PATH"
 echo "AAR size: $(du -h "$AAR_PATH" | cut -f1)"
 
+# Keep a copy for size_report.sh, which measures the native libraries in it. The temp dir is removed
+# at the end of this script.
+if [ -n "${VALDI_EXPORTED_AAR_COPY:-}" ]; then
+    mkdir -p "$(dirname "$VALDI_EXPORTED_AAR_COPY")"
+    cp "$AAR_PATH" "$VALDI_EXPORTED_AAR_COPY"
+fi
+
 # Verify AAR contents
 echo ""
 echo "Verifying AAR contents..."

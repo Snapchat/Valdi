@@ -66,6 +66,9 @@ on:
 permissions:
   contents: read
   id-token: write
+  # Read-only: tools/ci/size_report.sh downloads the size-report artifact of an earlier main run
+  # as its baseline. Fork PRs get this read scope too.
+  actions: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -338,6 +341,34 @@ jobs:
         env:
           OPEN_SOURCE_DIR: ${{ github.workspace }}
           PROJECT_ROOT: /tmp/valdi_app
+          VALDI_EXPORTED_AAR_COPY: ${{ runner.temp }}/valdi-size/hello_world_export.aar
+
+      # Warn-only module size report (step summary; annotations once VALDI_SIZE_ANNOTATE is on).
+      # Never blocks: the script exits 0, and continue-on-error covers anything unexpected.
+      # Each main push publishes its report as the baseline later PRs compare against.
+      - name: "Report: Valdi Module Sizes"
+        id: size-report
+        if: matrix.task == 'build-export'
+        continue-on-error: true
+        run: ./tools/ci/size_report.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VALDI_SIZE_AAR: ${{ runner.temp }}/valdi-size/hello_world_export.aar
+          VALDI_SIZE_OUT: ${{ runner.temp }}/valdi-size/size-report.json
+          VALDI_SIZE_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          VALDI_SIZE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          # Rollout phase 1 is report-only. Set to '1' to emit ::warning annotations.
+          VALDI_SIZE_ANNOTATE: '0'
+
+      - name: "Upload: Valdi size report (main baseline)"
+        if: matrix.task == 'build-export' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.size-report.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: valdi-size-report
+          path: ${{ runner.temp }}/valdi-size/size-report.json
+          if-no-files-found: warn
+          retention-days: 90
 
       - name: "Run: Module Tests"
         if: matrix.task == 'test-modules'

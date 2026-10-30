@@ -1,0 +1,8 @@
+# Modules left out of the size report (tools/ci/size_report.sh). One entry per line: a module name
+# (the last path component of its package, e.g. `jasmine`) or a full label. `#` starts a comment.
+#
+# Only list modules that do not ship in a production app (test frameworks, debug tooling). Their
+# size is noise in the report, and growth there is not a regression anyone ships.
+jasmine       # test framework
+valdi_test    # test harness
+source_map    # stack-trace symbolication, debug only
