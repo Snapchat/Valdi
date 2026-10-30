@@ -1,0 +1,31 @@
+load("//bzl/valdi:valdi_cli_application.bzl", "valdi_cli_application")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "tui_example",
+    srcs = glob([
+        "**/*.ts",
+        "**/*.tsx",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_standalone",
+        "//src/valdi_modules/src/valdi/valdi_tui",
+    ],
+)
+
+valdi_cli_application(
+    name = "tui_example_app",
+    script_path = "tui_example/index",
+    deps = [":tui_example"],
+)
+
+# Runs the example without a terminal (stdout is a pipe) and checks the single frame it prints.
+sh_test(
+    name = "tui_example_smoke_test",
+    size = "small",
+    srcs = ["smoke_test.sh"],
+    args = ["$(rootpath :tui_example_app)"],
+    data = [":tui_example_app"],
+)

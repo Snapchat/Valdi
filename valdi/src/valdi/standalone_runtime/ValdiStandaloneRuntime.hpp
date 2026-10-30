@@ -18,6 +18,7 @@
 namespace Valdi {
 
 class DeviceModule;
+class TerminalModule;
 class StandaloneMainQueue;
 class StandaloneResourceLoader;
 class StandaloneViewManager;
@@ -79,6 +80,7 @@ public:
 
 private:
     Ref<DeviceModule> _deviceModule;
+    Ref<TerminalModule> _terminalModule;
     Ref<RuntimeManager> _runtimeManager;
     Ref<Runtime> _runtime;
     Shared<StandaloneResourceLoader> _resourceLoader;
