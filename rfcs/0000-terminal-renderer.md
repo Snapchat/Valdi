@@ -2,8 +2,8 @@
 
 - Status: Draft
 - Author(s): @beaucollins
-- Discussion: This pull request.
-- Implementation: IMPLEMENTATION_PR_PLACEHOLDER
+- Discussion: [This pull request](https://github.com/Snapchat/Valdi/pull/202).
+- Implementation: [https://github.com/Snapchat/Valdi/pull/203](https://github.com/Snapchat/Valdi/pull/203) (draft, opened alongside this RFC)
 
 ## Summary
 
