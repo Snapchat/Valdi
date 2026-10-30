@@ -15,7 +15,12 @@ export class WebValdiCustomView extends WebValdiView {
   private _pendingAttributes: Array<[string, unknown]> = [];
 
   override changeAttribute(attributeName: string, attributeValue: unknown): void {
-    if (attributeName === 'androidClass' || attributeName === 'iosClass' || attributeName === 'macosClass') {
+    if (
+      attributeName === 'androidClass' ||
+      attributeName === 'iosClass' ||
+      attributeName === 'macosClass' ||
+      attributeName === 'linuxClass'
+    ) {
       return;
     }
     if (attributeName === 'webClass') {

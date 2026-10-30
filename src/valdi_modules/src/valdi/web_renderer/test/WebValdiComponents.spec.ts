@@ -1,9 +1,11 @@
 import 'jasmine/src/jasmine';
 import { Style } from 'valdi_core/src/Style';
 import { WebValdiLabel } from '../src/views/WebValdiLabel';
+import { WebValdiCustomView } from '../src/views/WebValdiCustomView';
 import { WebValdiLayout } from '../src/views/WebValdiLayout';
 import { WebValdiScroll } from '../src/views/WebValdiScroll';
 import { ValdiWebRendererDelegate } from '../src/ValdiWebRendererDelegate';
+import { registerWebViewClass } from '../src/WebViewClassRegistry';
 
 function installDomStubs() {
   const elements: HTMLElement[] = [];
@@ -248,5 +250,26 @@ describe('web renderer – cross-page node id isolation (Valdi#115)', () => {
     // Bug #115: id 1 resolves to Page B's WebValdiLayout in the shared global map,
     // which has no `value` case and throws "Attribute value is not valid".
     expect(() => pageA.onElementAttributeChangeString(1, 'value', 'hello')).not.toThrow();
+  });
+});
+
+describe('WebValdiCustomView – platform class selectors', () => {
+  afterEach(() => uninstallDomStubs());
+
+  it('never forwards linuxClass to the registered attribute handler', () => {
+    installDomStubs();
+    const handler = { changeAttribute: jasmine.createSpy('changeAttribute') };
+    registerWebViewClass('LinuxClassSelectorTestView', () => handler);
+    const view = new WebValdiCustomView(1);
+
+    // Before webClass, attributes are buffered and flushed to the handler.
+    view.changeAttribute('linuxClass', 'HostView');
+    view.changeAttribute('webClass', 'LinuxClassSelectorTestView');
+    // After webClass, attributes go straight to the handler.
+    view.changeAttribute('linuxClass', 'OtherHostView');
+    view.changeAttribute('customValue', 42);
+
+    expect(handler.changeAttribute).toHaveBeenCalledWith('customValue', 42);
+    expect(handler.changeAttribute).not.toHaveBeenCalledWith('linuxClass', jasmine.anything());
   });
 });

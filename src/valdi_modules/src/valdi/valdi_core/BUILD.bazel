@@ -1,3 +1,4 @@
+load("@aspect_rules_js//js:defs.bzl", "js_test")
 load("@aspect_rules_js//npm:defs.bzl", "npm_package")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("//bzl/valdi:valdi_module.bzl", "valdi_module")
@@ -54,4 +55,16 @@ valdi_module(
         "//src/valdi_modules/src/valdi/source_map",
         "//src/valdi_modules/src/valdi/valdi_tsx",
     ],
+)
+
+# Exercise the real JSX bootstrap for every platform without native services.
+js_test(
+    name = "jsx_platform_test",
+    data = [
+        "src/JSXBootstrap.ts",
+        "src/NodePrototype.ts",
+        "src/utils/PropertyList.ts",
+        "//compiler/companion:node_modules/typescript",
+    ],
+    entry_point = "test/JSXPlatformTest.cjs",
 )

@@ -149,6 +149,7 @@ export class JSXProcessor {
             attribute.name === 'iosClass' ||
             attribute.name === 'androidClass' ||
             attribute.name === 'macosClass' ||
+            attribute.name === 'linuxClass' ||
             attribute.name === 'webClass',
         );
         if (conflictingAttribute) {

@@ -1626,7 +1626,7 @@ function onRender(viewModel: ViewModel) {
     expect(result).not.toContain("setAttribute('viewFactory'");
   });
 
-  for (const platformClass of ['iosClass', 'androidClass', 'macosClass', 'webClass']) {
+  for (const platformClass of ['iosClass', 'androidClass', 'macosClass', 'linuxClass', 'webClass']) {
     it(`rejects a factory-backed custom view with ${platformClass}`, () => {
       expect(() => compile(`<custom-view ${platformClass}="HostView" viewFactory={factory}/>`)).toThrow(
         'custom-view cannot specify both viewFactory and platform view classes',
