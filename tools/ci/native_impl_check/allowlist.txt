@@ -1,0 +1,32 @@
+# Native element attributes that are declared in NativeTemplateElements.d.ts but are
+# intentionally NOT registered by a platform attributes binder.
+#
+# Format: <attribute> <platforms> <reason>
+#   platforms: ios | android | ios,android  -> allowed to be missing on those platforms
+#              runtime                      -> consumed by the TypeScript renderer or the C++
+#                                              runtime itself, never by a platform binder
+#
+# Every entry needs a reason. Entries are checked for staleness: if an allowlisted attribute is
+# removed from the TypeScript declarations, or gains an implementation on a listed platform, the
+# check fails until the entry is removed.
+
+# Handled by the renderer / runtime, not by a native view.
+key                       runtime  Element identity, consumed by the TypeScript renderer.
+ref                       runtime  Element reference holder, consumed by the TypeScript renderer.
+children                  runtime  JSX children, consumed by the TypeScript renderer.
+style                     runtime  Expanded into individual attributes by the runtime (default attribute).
+class                     runtime  CSS class, resolved by the C++ CSS engine (default attribute).
+id                        runtime  CSS id, resolved by the C++ CSS engine (default attribute).
+onLayout                  runtime  Dispatched by the TypeScript renderer's layout dispatcher.
+onVisibilityChanged       runtime  Dispatched by the TypeScript renderer from viewport tracking.
+onViewportChanged         runtime  Dispatched by the TypeScript renderer from viewport tracking.
+
+# Intentionally single-platform.
+onTextSelectionMenu       android  Documented [iOS-Only]: iOS text selection edit menu.
+onTextSelectionMenuAction android  Documented [iOS-Only]: iOS text selection edit menu.
+cursor                    ios,android  Pointer cursor; only meaningful on the web renderer.
+
+# Known gap: declared and documented, but no native binder registers it on either platform, so it
+# is currently a no-op on iOS and Android (only the web renderer reads it). Remove this entry once
+# it is implemented natively, or remove the declaration.
+allowReuse                ios,android  KNOWN GAP: no native implementation on iOS or Android today.

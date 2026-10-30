@@ -1,0 +1,3 @@
+void YogaAttributes::bind(AttributeHandlerById& attributes) {
+    bindPaddingOrMarginAttributes("margin", false, attributes, setMargin);
+}

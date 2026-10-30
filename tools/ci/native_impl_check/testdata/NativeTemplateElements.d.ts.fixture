@@ -1,0 +1,54 @@
+// Minimal fixture shaped like valdi_tsx/src/NativeTemplateElements.d.ts.
+type _View = { __nativeElementType?: 'View' };
+
+export interface TemplateElement {}
+
+export interface ContainerTemplateElement extends TemplateElement {
+  children?: unknown;
+}
+
+interface LayoutAttributes {
+  /** Margin, expanded into marginTop/Right/Bottom/Left by the runtime. */
+  margin?: string;
+  marginTop?: number;
+}
+
+interface ViewAttributes {
+  /** A gesture: onTapPredicate / onTapDisabled are derived from onTap. */
+  onTap?: () => void;
+  onTapPredicate?: () => boolean;
+  onTapDisabled?: boolean;
+  backgroundColor?: string;
+  // An object-typed attribute: its nested keys must not be reported as attributes.
+  shadow?: { color: string; radius: number };
+  maskImage?: string;
+}
+
+/**
+ * @NativeTemplateElement({layout: true, jsx: 'layout'})
+ */
+export interface Layout extends ContainerTemplateElement, LayoutAttributes {
+  ref?: unknown;
+}
+
+/**
+ * @NativeTemplateElement({slot: true})
+ */
+export interface Slot extends TemplateElement {
+  slotOnlyName?: string;
+}
+
+// @NativeTemplateElement({ios: 'SCValdiView', android: 'com.snap.valdi.views.ValdiView', jsx: 'view'})
+export interface View
+  extends _View,
+    ViewAttributes,
+    LayoutAttributes,
+    ContainerTemplateElement {
+  font?: string;
+  iosOnlyThing?: boolean;
+}
+
+// Not annotated: never part of the declared set.
+export interface NotAnElement {
+  unrelated?: string;
+}

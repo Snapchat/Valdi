@@ -48,6 +48,23 @@ TypeScript dependency bump, which type-checks and unit specs do not cover.
 - A regenerated golden in a PR triggers a **Sensitive File Notice** comment so
   reviewers confirm the emit change is intended. See `compiler_goldens/README.md`.
 
+## Native implementation check
+
+`native_impl_check.sh` is a static scan (no Bazel) that runs in the `api-surface` job of
+`bzl-changes.yml`. Every attribute declared on a `@NativeTemplateElement` in
+`NativeTemplateElements.d.ts` must be registered with the attributes binder on iOS
+(`bind*Attribute:@"name"`) and on Android (`bind*Attribute("name"`), or by the shared C++
+runtime binders. A missing registration fails the job, because otherwise the attribute silently
+becomes a no-op on that platform.
+
+- **Intentionally single-platform or runtime-handled attributes** go in
+  `native_impl_check/allowlist.txt`, one per line with a reason. Stale entries fail the check.
+- **Matching is by attribute name, not per view class.** Registering a name for one view class
+  satisfies every element that declares it. It also can't see a registration that exists but
+  does nothing.
+- **When a binder refactor changes how names are registered**, update the extractor patterns in
+  `native_impl_check/check_native_impl.py` and add a fixture case to its unit tests.
+
 ## Guardrails
 
 - Reproduce CI's exact invocation when debugging; don't scope a run just to make it pass.

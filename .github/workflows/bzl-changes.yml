@@ -23,6 +23,9 @@ on:
       - 'apps/snapshot_tests/**'
       - 'apps/helloworld/**'
       - 'valdi/src/**'
+      - 'valdi_core/src/**'
+      - 'src/valdi_modules/src/valdi/*/ios/**'
+      - 'src/valdi_modules/src/valdi/*/android/**'
       - 'snap_drawing/**'
       - 'experiments/helloworld_playground/**'
       - 'tools/valdi_web_devtools/**'
@@ -50,6 +53,9 @@ on:
       - 'apps/snapshot_tests/**'
       - 'apps/helloworld/**'
       - 'valdi/src/**'
+      - 'valdi_core/src/**'
+      - 'src/valdi_modules/src/valdi/*/ios/**'
+      - 'src/valdi_modules/src/valdi/*/android/**'
       - 'snap_drawing/**'
       - 'experiments/helloworld_playground/**'
       - 'tools/valdi_web_devtools/**'
@@ -429,6 +435,13 @@ jobs:
 
       - name: Check API surface
         run: ./tools/ci/api_surface_tests.sh
+
+      # Every attribute declared in NativeTemplateElements.d.ts must be registered on both iOS
+      # and Android (or by the shared C++ runtime). Catches a deleted platform implementation
+      # that would otherwise ship as a silent no-op.
+      - name: Check native implementations
+        if: ${{ !cancelled() }}
+        run: ./tools/ci/native_impl_check.sh
 
   web-integration-test:
     name: valdi_web Integration Test

@@ -1,0 +1,27 @@
+static NSString *const kFixtureFontAttribute = @"font";
+
+@implementation UIView (Fixture)
+
++ (void)bindAttributes:(id<SCValdiAttributesBinderProtocol>)attributesBinder
+{
+    [attributesBinder bindAttribute:@"onTap"
+        withFunctionAndPredicateBlock:^(UIView *view, id fn, id predicate) {}
+                           resetBlock:^(UIView *view) {}];
+    [attributesBinder bindColorAttribute:@"backgroundColor"
+                invalidateLayoutOnChange:NO
+                               withBlock:nil
+                              resetBlock:nil];
+    [attributesBinder bindAttribute:@"maskImage"
+        invalidateLayoutOnChange:NO
+        withArrayBlock:nil
+        resetBlock:nil];
+    [attributesBinder bindCompositeAttribute:@"shadowComposite"
+                                       parts:@[
+        [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:@"shadow" type:0 optional:YES invalidateLayoutOnChange:NO],
+        [[SCNValdiCoreCompositeAttributePart alloc] initWithAttribute:kFixtureFontAttribute type:0 optional:YES invalidateLayoutOnChange:NO],
+    ] withUntypedBlock:nil resetBlock:nil];
+    [attributesBinder bindBooleanAttribute:@"iosOnlyThing" invalidateLayoutOnChange:NO withBlock:nil resetBlock:nil];
+    // [attributesBinder bindAttribute:@"commentedOut" ...];
+}
+
+@end

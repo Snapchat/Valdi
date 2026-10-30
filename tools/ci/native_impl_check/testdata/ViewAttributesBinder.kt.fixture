@@ -1,0 +1,16 @@
+class ViewAttributesBinder : AttributesBinder<View> {
+    override fun bindAttributes(attributesBindingContext: AttributesBindingContext<View>) {
+        attributesBindingContext.bindFunctionAndPredicateAttribute("onTap", this::applyTap, this::resetTap)
+        attributesBindingContext.bindColorAttribute(
+            "backgroundColor", false, this::applyBackgroundColor, this::resetBackgroundColor)
+        attributesBindingContext.bindArrayAttribute("maskImage", false, this::applyImageMask, this::resetImageMask)
+        attributesBindingContext.bindCompositeAttribute("shadowComposite", listOf(
+            CompositeAttributePart("shadow", AttributeType.UNTYPED, true, false),
+            CompositeAttributePart(FONT_ATTRIBUTE, AttributeType.STRING, true, false),
+        ), this::applyShadow, this::resetShadow)
+    }
+
+    companion object {
+        private const val FONT_ATTRIBUTE = "font"
+    }
+}
