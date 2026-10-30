@@ -16,7 +16,8 @@ namespace Valdi {
 
 /**
  A JSStackTraceProvider which provides its stacktrace through an Error object, and will automatically
- symbolicate the error when getStackTrace() is called.
+ symbolicate the error when getStackTrace() is called. The symbolicator may also name the bundle of the
+ innermost feature frame, exposed through getStackBundleName().
  */
 class JavaScriptErrorStackTrace : public JSStackTraceProvider {
 public:
@@ -26,10 +27,12 @@ public:
     ~JavaScriptErrorStackTrace() override;
 
     StringBox getStackTrace() override;
+    StringBox getStackBundleName() override;
 
 private:
     JSValueRefHolder _error;
     StringBox _stackTrace;
+    StringBox _stackBundleName;
 };
 
 } // namespace Valdi

@@ -160,8 +160,15 @@ bool JavaScriptANRDetector::onANR(JavaScriptTaskScheduler& taskScheduler,
     StringBox moduleName;
     std::string message;
 
-    if (!stacktraces.empty() && stacktraces[0].getContext() != nullptr) {
-        moduleName = stacktraces[0].getContext()->getPath().getResourceId().bundleName;
+    if (!stacktraces.empty()) {
+        if (stacktraces[0].getContext() != nullptr) {
+            moduleName = stacktraces[0].getContext()->getPath().getResourceId().bundleName;
+        }
+        // Work under the global context (native callbacks, module evaluation) has no bundle on its context,
+        // but the innermost feature frame still names the module whose code was running.
+        if (moduleName.isEmpty()) {
+            moduleName = stacktraces[0].getStackBundleName();
+        }
     }
 
     if (!hasRunningStacktrace(stacktraces) && ack.load()) {

@@ -13,8 +13,9 @@ namespace Valdi {
 
 JavaScriptCapturedStacktrace::JavaScriptCapturedStacktrace(Status status,
                                                            const StringBox& stackTrace,
-                                                           const Ref<Context>& context)
-    : _status(status), _stackTrace(stackTrace), _context(context) {}
+                                                           const Ref<Context>& context,
+                                                           const StringBox& stackBundleName)
+    : _status(status), _stackTrace(stackTrace), _context(context), _stackBundleName(stackBundleName) {}
 
 JavaScriptCapturedStacktrace::~JavaScriptCapturedStacktrace() = default;
 

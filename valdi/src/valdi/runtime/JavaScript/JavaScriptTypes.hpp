@@ -209,6 +209,10 @@ using JSValueRef = JSRef<JSValue>;
 class JSStackTraceProvider : public SimpleRefCountable {
 public:
     virtual StringBox getStackTrace() = 0;
+    /** Bundle of the innermost feature frame in getStackTrace(), when the provider can tell; empty otherwise. */
+    virtual StringBox getStackBundleName() {
+        return StringBox();
+    }
 };
 
 class JSExceptionTracker final : public ExceptionTracker {

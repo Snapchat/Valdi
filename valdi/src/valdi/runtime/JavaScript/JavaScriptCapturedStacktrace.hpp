@@ -23,7 +23,10 @@ public:
         TIMED_OUT,
     };
 
-    JavaScriptCapturedStacktrace(Status status, const StringBox& stackTrace, const Ref<Context>& context);
+    JavaScriptCapturedStacktrace(Status status,
+                                 const StringBox& stackTrace,
+                                 const Ref<Context>& context,
+                                 const StringBox& stackBundleName = StringBox());
     ~JavaScriptCapturedStacktrace();
 
     constexpr Status getStatus() const {
@@ -34,12 +37,18 @@ public:
         return _stackTrace;
     }
 
+    /** Bundle of the innermost feature frame in the stack trace, when known. */
+    constexpr const StringBox& getStackBundleName() const {
+        return _stackBundleName;
+    }
+
     const Ref<Context>& getContext() const;
 
 private:
     Status _status;
     StringBox _stackTrace;
     Ref<Context> _context;
+    StringBox _stackBundleName;
 };
 
 } // namespace Valdi

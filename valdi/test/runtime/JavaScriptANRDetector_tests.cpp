@@ -55,8 +55,10 @@ public:
         if (_clearAttributionOnCapture) {
             _anrAttributionInfo.clear();
         }
-        return {JavaScriptCapturedStacktrace(
-            JavaScriptCapturedStacktrace::Status::RUNNING, STRING_LITERAL("A fake stacktrace"), nullptr)};
+        return {JavaScriptCapturedStacktrace(JavaScriptCapturedStacktrace::Status::RUNNING,
+                                             STRING_LITERAL("A fake stacktrace"),
+                                             nullptr,
+                                             _stackBundleName)};
     }
 
     std::string getANRAttributionInfo() const override {
@@ -88,12 +90,18 @@ public:
         _clearAttributionOnCapture = true;
     }
 
+    /** Simulates the symbolicator naming a feature bundle in the captured stack. */
+    void setStackBundleName(StringBox stackBundleName) {
+        _stackBundleName = std::move(stackBundleName);
+    }
+
 private:
     std::atomic_bool _shouldSimulateANR = false;
     std::atomic_bool _readyForANRDetection = true;
     std::atomic_bool _clearAttributionOnCapture = false;
     std::atomic_int _taskIdSequence = 0;
     std::string _anrAttributionInfo;
+    StringBox _stackBundleName;
 };
 
 struct ANRDetectorTestHelper {
@@ -264,6 +272,27 @@ TEST(ANRDetector, keepsANRAttributionInfoWhenNativeCallEndsDuringCapture) {
 
     ASSERT_EQ("Detected unattributed ANR after 1.0 ms [stuck-in: runtime.loadJsModule(coreui/src/InitSemanticColors)]",
               anr->getMessage());
+}
+
+TEST(ANRDetector, attributesANRToBundleNamedByStackWhenContextHasNone) {
+    ANRDetectorTestHelper helper;
+
+    helper.taskScheduler->setShouldSimulateANR();
+    helper.taskScheduler->setStackBundleName(STRING_LITERAL("send_to"));
+    helper.taskScheduler->setANRAttributionInfo(" [stuck-in: friendmojiProvider.forUsers]");
+
+    helper.anrDetector->onEnterForeground();
+    helper.anrDetector->start(std::chrono::milliseconds(1));
+
+    helper.waitForNextTick();
+    helper.waitForNextTick();
+    helper.waitForNextTick();
+
+    auto anr = helper.getLastANR();
+    ASSERT_TRUE(anr.has_value());
+
+    ASSERT_EQ("Detected ANR in 'send_to' after 1.0 ms [stuck-in: friendmojiProvider.forUsers]", anr->getMessage());
+    ASSERT_EQ(STRING_LITERAL("send_to"), anr->getModuleName());
 }
 
 } // namespace ValdiTest

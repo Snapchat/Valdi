@@ -41,10 +41,17 @@ StringBox JavaScriptErrorStackTrace::getStackTrace() {
                         jsEntry.jsContext.getObjectProperty(retainedJsError.get(), "stack", exceptionTracker);
                     if (exceptionTracker) {
                         _stackTrace = jsEntry.jsContext.valueToString(jsStack.get(), exceptionTracker);
-                        exceptionTracker.clearError();
-                    } else {
-                        exceptionTracker.clearError();
                     }
+                    exceptionTracker.clearError();
+
+                    auto jsBundleName = jsEntry.jsContext.getObjectProperty(retainedJsError.get(),
+                                                                            "stackBundleName",
+                                                                            exceptionTracker);
+                    if (exceptionTracker && !jsEntry.jsContext.isValueUndefined(jsBundleName.get()) &&
+                        !jsEntry.jsContext.isValueNull(jsBundleName.get())) {
+                        _stackBundleName = jsEntry.jsContext.valueToString(jsBundleName.get(), exceptionTracker);
+                    }
+                    exceptionTracker.clearError();
                 } else {
                     exceptionTracker.clearError();
                 }
@@ -53,6 +60,11 @@ StringBox JavaScriptErrorStackTrace::getStackTrace() {
     }
 
     return _stackTrace;
+}
+
+StringBox JavaScriptErrorStackTrace::getStackBundleName() {
+    getStackTrace();
+    return _stackBundleName;
 }
 
 } // namespace Valdi

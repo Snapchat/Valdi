@@ -4200,8 +4200,13 @@ void JavaScriptRuntime::onInterrupt(IJavaScriptContext& jsContext) {
         }
 
         auto stacktrace = doCaptureCurrentStackTrace(jsContext);
-        captureSession->setCapturedStacktrace(JavaScriptCapturedStacktrace(
-            JavaScriptCapturedStacktrace::Status::RUNNING, stacktrace->getStackTrace(), Context::currentRef()));
+        auto stackTraceString = stacktrace->getStackTrace();
+        // The bundle named by the stack only feeds ANR reporting, so it rides the same gate as the breadcrumbs.
+        auto stackBundleName = anrDiagnosticsEnabled() ? stacktrace->getStackBundleName() : StringBox();
+        captureSession->setCapturedStacktrace(JavaScriptCapturedStacktrace(JavaScriptCapturedStacktrace::Status::RUNNING,
+                                                                           stackTraceString,
+                                                                           Context::currentRef(),
+                                                                           stackBundleName));
     }
 }
 

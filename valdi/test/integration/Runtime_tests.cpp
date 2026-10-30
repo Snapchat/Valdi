@@ -10560,6 +10560,67 @@ TEST_P(RuntimeFixture, canCaptureStackTraces) {
     ASSERT_EQ(JavaScriptCapturedStacktrace::Status::NOT_RUNNING, output[0].getStatus());
 }
 
+static std::string bundleNamingSymbolicatorBody() {
+    return R"""(
+    module.exports.symbolicate = function(error) {
+        var symbolicated = new Error(error.message);
+        symbolicated.stack = error.stack;
+        symbolicated.stackBundleName = 'send_to';
+        return symbolicated;
+    };
+    )""";
+}
+
+// Captures the stack from inside the InfiniteLoop module, mirroring canCaptureStackTraces.
+static std::vector<JavaScriptCapturedStacktrace> captureStackTracesWhileLooping(RuntimeWrapper& wrapper) {
+    ExitOnDestruct exitOnDestruct;
+    auto callback = makeShared<ValueFunctionWithCallable>(
+        [shouldContinue = exitOnDestruct.shouldContinue](const auto& callContext) -> Value {
+            return Value(static_cast<bool>(shouldContinue->load()));
+        });
+
+    auto function =
+        getJsModulePropertyAsUntypedFunction(wrapper.runtime, nullptr, "test/src/InfiniteLoop", "callIndefinitely");
+    EXPECT_TRUE(function) << function.description();
+    if (!function) {
+        return {};
+    }
+    function.value()->call(ValueFunctionFlagsNeverCallSync, {Value(callback)}).value();
+
+    auto output = wrapper.runtime->getJavaScriptRuntime()->captureStackTraces(std::chrono::seconds(5));
+    (*exitOnDestruct.shouldContinue) = false;
+    wrapper.flushJsQueue();
+    return output;
+}
+
+TEST_P(RuntimeFixture, capturesBundleNamedByStackWhenANRDiagnosticsAreEnabled) {
+    wrapper.teardown();
+
+    auto tweakModule = makeShared<TestTweakValueProvider>().toShared();
+    tweakModule->config.setMapValue("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS", Valdi::Value(static_cast<bool>(true)));
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, tweakModule);
+
+    wrapper.hotReload(STRING_LITERAL("valdi_core"), STRING_LITERAL("src/Symbolicator.js"), bundleNamingSymbolicatorBody());
+
+    auto output = captureStackTracesWhileLooping(wrapper);
+
+    ASSERT_EQ(static_cast<size_t>(1), output.size());
+    ASSERT_EQ(JavaScriptCapturedStacktrace::Status::RUNNING, output[0].getStatus());
+    ASSERT_EQ(STRING_LITERAL("send_to"), output[0].getStackBundleName());
+}
+
+TEST_P(RuntimeFixture, dropsBundleNamedByStackWhenANRDiagnosticsAreDisabled) {
+    ASSERT_FALSE(wrapper.runtime->getJavaScriptRuntime()->anrDiagnosticsEnabled());
+
+    wrapper.hotReload(STRING_LITERAL("valdi_core"), STRING_LITERAL("src/Symbolicator.js"), bundleNamingSymbolicatorBody());
+
+    auto output = captureStackTracesWhileLooping(wrapper);
+
+    ASSERT_EQ(static_cast<size_t>(1), output.size());
+    ASSERT_EQ(JavaScriptCapturedStacktrace::Status::RUNNING, output[0].getStatus());
+    ASSERT_TRUE(output[0].getStackBundleName().isEmpty());
+}
+
 static std::atomic_int myAttributionFnCallCount = 0;
 static const void* myAttributionFn(const Valdi::AttributionFunctionCallback& fn) {
     myAttributionFnCallCount++;
