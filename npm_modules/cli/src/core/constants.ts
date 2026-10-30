@@ -51,6 +51,12 @@ export enum TEMPLATE_BASE_PATHS {
   // from the root module, and the pinned public Valdi release may not ship it).
   RULES_PYTHON_PATCH = 'bzl/patches/rules_python/1.9.0/remove_setuptools_spaces.patch.template',
   RULES_PYTHON_PATCH_BUILD = 'bzl/patches/rules_python/1.9.0/BUILD.bazel.template',
+  // Maven lock files for the namespaces the generated MODULE.bazel pins, so
+  // its Android build never resolves through coursier (see MODULE.bazel.template).
+  ANDROID_MVN_LOCK = 'android_mvn_install.json.template',
+  ANDROID_IDE_COMMON_LOCK = 'android_ide_common_30_1_3_install.json.template',
+  MAVEN_LOCK = 'maven_install.json.template',
+  RULES_ANDROID_MAVEN_LOCK = 'rules_android_maven_install.json.template',
 }
 
 export const VALID_PLATFORMS: string[] = [

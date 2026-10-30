@@ -183,6 +183,10 @@ function initializeConfigFiles(
     TemplateFile.init(TEMPLATE_BASE_PATHS.AGENTS).withReplacements({ MODULE_NAME: projectName }),
     TemplateFile.init(TEMPLATE_BASE_PATHS.RULES_PYTHON_PATCH_BUILD),
     TemplateFile.init(TEMPLATE_BASE_PATHS.RULES_PYTHON_PATCH),
+    TemplateFile.init(TEMPLATE_BASE_PATHS.ANDROID_MVN_LOCK),
+    TemplateFile.init(TEMPLATE_BASE_PATHS.ANDROID_IDE_COMMON_LOCK),
+    TemplateFile.init(TEMPLATE_BASE_PATHS.MAVEN_LOCK),
+    TemplateFile.init(TEMPLATE_BASE_PATHS.RULES_ANDROID_MAVEN_LOCK),
   ];
 
   TEMPLATE_FILES.forEach(templateFile => {

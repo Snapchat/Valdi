@@ -144,9 +144,39 @@ maven.install(
     aar_import_bzl_label = "@rules_android//rules:rules.bzl",
     use_starlark_android_rules = True,
     version_conflict_policy = "pinned",
+    lock_file = "//:android_mvn_install.json",
 )
 
 use_repo(maven, "android_mvn")
+
+# Unpinned maven repos are resolved by coursier straight from Maven Central,
+# which rate-limits (HTTP 429). With a lock file Bazel's downloader fetches
+# each jar by checksum instead. The root module's lock file wins for a namespace,
+# and Valdi's own pins for these namespaces don't reach this app, so the app
+# pins the ones an Android build fetches. A root tag also replaces the
+# namespace's repositories, so each repeats its declaring module's list.
+# After changing artifacts or bumping a declaring module, repin with
+# `REPIN=1 bazel run @unpinned_<name>//:pin` (add the name to use_repo first).
+maven.install(
+    name = "android_ide_common_30_1_3",
+    lock_file = "//:android_ide_common_30_1_3_install.json",
+    repositories = [
+        "https://maven.google.com",
+        "https://repo1.maven.org/maven2",
+    ],
+)
+maven.install(
+    name = "maven",
+    lock_file = "//:maven_install.json",
+)
+maven.install(
+    name = "rules_android_maven",
+    lock_file = "//:rules_android_maven_install.json",
+    repositories = [
+        "https://maven.google.com",
+        "https://repo1.maven.org/maven2",
+    ],
+)
 
 # -- Version pins (must match Valdi's MODULE.bazel) ---------------------------
 single_version_override(module_name = "protobuf", version = "27.0")

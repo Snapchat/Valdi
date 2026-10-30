@@ -40,6 +40,8 @@ describe('npm package contents', () => {
   it('includes .metadata templates for bootstrap config', () => {
     expect(packedFiles).toContain('.metadata/config.yaml.template');
     expect(packedFiles).toContain('.metadata/MODULE.bazel.template');
+    expect(packedFiles).toContain('.metadata/android_mvn_install.json.template');
+    expect(packedFiles).toContain('.metadata/rules_android_maven_install.json.template');
   });
 
   it('includes .bootstrap templates for project scaffolding', () => {
