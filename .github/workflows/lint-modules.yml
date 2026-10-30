@@ -1,0 +1,65 @@
+name: Lint Valdi Modules
+
+# Runs the Valdi module style rules (tools/lint) on the module and app sources a pull request
+# changes, in full, then everything outside tools/lint/baseline.txt; see tools/ci/lint_modules.sh.
+
+on:
+  pull_request:
+    paths:
+      - 'src/valdi_modules/**/*.ts'
+      - 'src/valdi_modules/**/*.tsx'
+      - 'apps/**/*.ts'
+      - 'apps/**/*.tsx'
+      - 'tools/lint/**'
+      - 'tools/ci/lint_modules.sh'
+      - '.prettierrc.json'
+      - '.github/workflows/lint-modules.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/valdi_modules/**/*.ts'
+      - 'src/valdi_modules/**/*.tsx'
+      - 'apps/**/*.ts'
+      - 'apps/**/*.tsx'
+      - 'tools/lint/**'
+      - 'tools/ci/lint_modules.sh'
+      - '.prettierrc.json'
+      - '.github/workflows/lint-modules.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-modules:
+    name: Lint Valdi modules
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Full history so the pull request's merge base is available for --changed.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Lint changed files
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: ./tools/ci/lint_modules.sh --changed "origin/$BASE_REF"
+
+      # Everything outside tools/lint/baseline.txt. Catches a rule or config change that breaks
+      # files the pull request did not touch.
+      - name: Lint all modules and apps
+        if: always()
+        run: ./tools/ci/lint_modules.sh

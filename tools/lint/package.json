@@ -1,0 +1,22 @@
+{
+  "name": "valdi-modules-lint",
+  "private": true,
+  "description": "ESLint setup that enforces the Valdi module style rules on the modules and sample apps in this repo",
+  "license": "MIT",
+  "scripts": {
+    "lint": "cd ../.. && ./tools/ci/lint_modules.sh"
+  },
+  "devDependencies": {
+    "@snap/eslint-plugin-valdi": "1.0.2",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^8.5.0",
+    "eslint-plugin-import": "^2.26.0",
+    "eslint-plugin-prettier": "^4.2.1",
+    "eslint-plugin-rxjs": "^5.0.2",
+    "eslint-plugin-unused-imports": "^3.2.0",
+    "prettier": "^2.8.8",
+    "typescript": "5.3.3"
+  }
+}

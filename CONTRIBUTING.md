@@ -91,6 +91,7 @@ To maintain a consistent codebase, please follow these guidelines:
 - Ensure all code changes are well-documented.
 - Write tests for new features and bug fixes.
 - Avoid introducing unnecessary dependencies.
+- Lint TypeScript changes to modules (`src/valdi_modules`) and sample apps (`apps/`) before you open a pull request: `./tools/ci/lint_modules.sh --changed origin/main` (add `--fix` to apply formatting and import-order fixes). CI runs the same check, and every file you change is linted in full.
 
 ## 6.  Reporting Issues
 

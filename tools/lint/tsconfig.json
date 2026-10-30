@@ -1,0 +1,38 @@
+{
+  // Type-checking project for the Valdi module lint (see .eslintrc.js). It is never used to emit code.
+  // Module resolution mirrors src/valdi_modules/src/valdi/_configs/base.tsconfig.json, widened so the
+  // sample apps under apps/ resolve framework and sibling-module imports from one program.
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "target": "ES2016",
+    "module": "commonjs",
+    "noEmit": true,
+    "baseUrl": "../..",
+    "paths": {
+      "Valdi": ["src/valdi_modules/src/valdi/valdi_core/src/Valdi"],
+      "tslib": ["src/valdi_modules/src/valdi/valdi_core/src/tslib.d.ts"],
+      "jasmine": ["src/valdi_modules/src/valdi/jasmine/src/jasmine.d.ts"],
+      "*": [
+        "src/valdi_modules/src/valdi/*",
+        "apps/benchmark/src/valdi/*",
+        "apps/helloworld/src/valdi/*",
+        "apps/valdi_gpt/src/valdi/*",
+        ".valdi_build/compile/generated_ts/*"
+      ]
+    },
+    "lib": ["dom", "ES2019"],
+    "noImplicitReturns": true,
+    "noImplicitAny": true,
+    "importHelpers": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "jsx": "preserve",
+    "types": [
+      "../../src/valdi_modules/src/valdi/types/Long",
+      "../../src/valdi_modules/src/valdi/types/globals"
+    ],
+    "typeRoots": ["../../src/valdi_modules/src/valdi"]
+  },
+  "include": ["../../src/valdi_modules/src/valdi/**/*.ts", "../../src/valdi_modules/src/valdi/**/*.tsx", "../../apps/**/*.ts", "../../apps/**/*.tsx"],
+  "exclude": ["**/node_modules/**"]
+}

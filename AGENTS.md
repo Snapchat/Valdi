@@ -317,7 +317,7 @@ External dependencies and their Bazel build configurations
 ### Code Style
 
 1. **C++**: Follow the project's C++ style conventions
-2. **TypeScript**: Use ESLint with Valdi-specific rules
+2. **TypeScript**: Use ESLint with Valdi-specific rules. For modules and apps, run `./tools/ci/lint_modules.sh --changed origin/main` (rules in `tools/lint/.eslintrc.js`)
 3. **Swift**: Follow Swift conventions for compiler code
 4. **Kotlin**: Follow Kotlin conventions for Android runtime
 5. **Indentation**: Always match existing file conventions
