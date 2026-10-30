@@ -1,13 +1,28 @@
 name: Valdi Sanitizer Tests
 
-# Deliberately not run on pull requests. AddressSanitizer is a full instrumented build that the
-# Bazel remote cache does not populate for PRs (the bazel-cache action only uploads on push,
-# schedule and workflow_dispatch), so every PR would pay the multi-minute cold build. Running on
-# main plus nightly still catches teardown / threading memory-safety regressions, and PRs keep the
-# cheap build gate that internal CI runs via client_validate_valdi_open_source.sh.
+# Runs Valdi's C++ integration, runtime, snap_drawing and fuzzer-corpus tests under AddressSanitizer.
+#
+# Pull requests run this only when they touch what the ASan targets build from (the runtime,
+# snap_drawing, the fuzzer, valdi/test/**, the ASan toolchain config), so unrelated changes skip
+# the instrumented build. PR runs read the Bazel remote cache that main and nightly populate (the
+# bazel-cache action never uploads from a PR), so a same-repo PR pays roughly a warm-cache run.
+# Fork PRs get no GCP credentials from GitHub; they build without the remote cache but can still
+# restore the actions/cache disk cache saved from main.
 #
 # Use the manual trigger to exercise this on a branch before merging.
 on:
+  pull_request:
+    paths:
+      - '.bazelrc'
+      - '.github/workflows/valdi-sanitizer-tests.yml'
+      - 'tools/ci/sanitizer_tests.sh'
+      - 'tools/ci/setup_linux_env.sh'
+      - 'valdi/BUILD.bazel'
+      - 'valdi/src/**'
+      - 'valdi/fuzz/**'
+      - 'valdi/test/**'
+      - 'snap_drawing/**'
+      - 'valdi_core/src/**'
   push:
     branches:
       - main
@@ -28,10 +43,15 @@ on:
     - cron: '0 10 * * *'  # 10:00 UTC, ~3am PT (offset from the other nightly jobs)
   workflow_dispatch:
 
+# id-token: write is only for the bazel-cache action's GCP Workload Identity auth. PRs get the
+# read-only cache account; GitHub withholds OIDC tokens from fork PRs, and the action then builds
+# without the remote cache. Never switch this to pull_request_target: PR code must not run with
+# the base repo's credentials.
 permissions:
   contents: read
   id-token: write
 
+# github.ref is refs/pull/<n>/merge for PRs, so a new push to a PR cancels that PR's older run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
