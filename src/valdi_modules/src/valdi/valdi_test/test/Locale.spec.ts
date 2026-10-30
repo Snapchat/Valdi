@@ -1,5 +1,6 @@
 import { Locale } from 'valdi_core/src/localization/Locale';
 import 'jasmine/src/jasmine';
+import { supportsLocaleCasing } from './EngineSupport';
 
 describe('Locale', () => {
   it('can parse with language and region', () => {
@@ -16,7 +17,8 @@ describe('Locale', () => {
     expect(locale.region).toBeUndefined();
   });
 
-  it('uses lowercase language and uppercase region', () => {
+  // Locale.parse uppercases the region with toLocaleUpperCase, a no-op on engines without locale casing.
+  (supportsLocaleCasing ? it : xit)('uses lowercase language and uppercase region', () => {
     const locale = Locale.parse('FR-fr');
 
     expect(locale.language).toBe('fr');

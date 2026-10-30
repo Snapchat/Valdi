@@ -12,8 +12,6 @@
 
 //libs/dummy:test all # Asserts asserts, logging and tracing are compiled in, which is false in the default build config.
 //tsn:262 all # Downloads tc39/test262 main.zip, an unpinned branch archive, so it isn't hermetic. Pin it before gating.
-//src/valdi_modules/src/valdi/valdi_core:test all # ModuleLoader.preloadBatch suite is red (async timeouts and order assertions).
-//src/valdi_modules/src/valdi/valdi_test:test all # Intl/locale specs (uppercase ß, ECMA-402 locale shapes) and the glass-view JSX spec fail on the default engine.
 //valdi:test_runtime linux # `bzl test` trips a pre-existing gtest XML static-destructor segfault on Linux (all tests pass). Covered by //valdi:test, and run directly under ASan.
 //third-party/rules_hdrs/hmap:hmaptest linux # Header-map tool for Xcode builds; hmap.c doesn't compile with glibc (asprintf and bswap_32 undeclared without _GNU_SOURCE and byteswap.h).
 //valdi/compiler/toolbox:test linux # Fails to link on Linux: undefined Rust allocator shim symbols (__rdl_alloc etc.) and SkColorInfo::bytesPerPixel under --no-allow-shlib-undefined.

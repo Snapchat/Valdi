@@ -36,6 +36,7 @@
 #include "valdi_core/cpp/Utils/ContainerUtils.hpp"
 #include "valdi_test_utils.hpp"
 
+#include <atomic>
 #include <gtest/gtest.h>
 
 using namespace Valdi;
@@ -1964,6 +1965,47 @@ TEST(AssetsManager, canLoadBytesAssetWithNonBytesOutput) {
 
     ASSERT_TRUE(bytesContentResult) << result.description();
     ASSERT_EQ(bytesContentResult.value(), bytes->toBytesView());
+
+    wrapper.tearDown();
+}
+
+// An image loaded asset can be backed by a platform object that must not be read as raw bytes
+// (doing so crashed on Android), so only consumers that asked for bytes may read them.
+class BytesReadCountingLoadedAsset : public LoadedAsset {
+public:
+    Result<BytesView> getBytesContent() override {
+        _bytesContentCalls++;
+        return BytesView();
+    }
+
+    size_t getBytesContentCalls() const {
+        return _bytesContentCalls.load();
+    }
+
+    VALDI_CLASS_HEADER_IMPL(BytesReadCountingLoadedAsset)
+
+private:
+    std::atomic<size_t> _bytesContentCalls = 0;
+};
+
+TEST(AssetsManager, imageOutputNeverReadsBytesContent) {
+    AssetsManagerWrapper wrapper;
+
+    auto imageLoader = makeShared<MockAssetLoader>(std::vector<StringBox>{STRING_LITERAL("my-image")},
+                                                   snap::valdi_core::AssetOutputType::ImageAndroid);
+    wrapper.assetLoaderManager->registerAssetLoader(imageLoader);
+
+    auto assetToLoad = makeShared<BytesReadCountingLoadedAsset>();
+    auto url = STRING_LITERAL("my-image://image.png");
+    imageLoader->setAssetResponse(url, assetToLoad);
+
+    auto asset = wrapper.assetsManager->getAsset(AssetKey(url));
+    auto result = SyncAssetLoadObserver::loadSync(
+        wrapper.mainQueue, asset, 0, 0, Value(), snap::valdi_core::AssetOutputType::ImageAndroid);
+
+    ASSERT_TRUE(result) << result.description();
+    ASSERT_EQ(assetToLoad, result.value().getTypedRef<LoadedAsset>()) << result.description();
+    ASSERT_EQ(static_cast<size_t>(0), assetToLoad->getBytesContentCalls());
 
     wrapper.tearDown();
 }

@@ -1,6 +1,8 @@
 #include "gtest/gtest.h"
 #include <cstdint>
+#include <cstring>
 #include <gtest/gtest.h>
+#include <vector>
 
 #include "TestBitmap.hpp"
 #include "snap_drawing/cpp/Drawing/DisplayList/DisplayList.hpp"
@@ -103,6 +105,36 @@ public:
 private:
     Ref<Valdi::IBitmapFactory> _bitmapFactory;
     Color _color;
+};
+
+class PaddedRowsBitmap : public Valdi::IBitmap {
+public:
+    PaddedRowsBitmap(int width, int height, size_t rowBytes)
+        : _width(width), _height(height), _rowBytes(rowBytes), _pixels(static_cast<size_t>(height) * rowBytes) {}
+
+    void dispose() override {}
+
+    Valdi::BitmapInfo getInfo() const override {
+        return Valdi::BitmapInfo(_width, _height, Valdi::ColorTypeBGRA8888, Valdi::AlphaTypePremul, _rowBytes);
+    }
+
+    void* lockBytes() override {
+        return _pixels.data();
+    }
+
+    void unlockBytes() override {}
+
+    Color getPixel(int x, int y) const {
+        Color color;
+        std::memcpy(&color, _pixels.data() + (static_cast<size_t>(y) * _rowBytes) + (x * sizeof(Color)), sizeof(Color));
+        return color;
+    }
+
+private:
+    int _width;
+    int _height;
+    size_t _rowBytes;
+    std::vector<uint8_t> _pixels;
 };
 
 class RasterContextTests : public ::testing::Test {
@@ -409,6 +441,43 @@ TEST_F(RasterContextTests, canRasterSceneWithExternalSurface) {
 
     ASSERT_EQ(1, _bitmapFactory->createdBitmapCount);
     ASSERT_EQ(1, externalSurface->rasterCount);
+}
+
+// The external surface's scratch bitmap comes from its own factory with a tight stride, so clearing
+// it with the destination's (padded) stride overran the allocation, including after a surface swap.
+TEST_F(RasterContextTests, rastersAndReplacesExternalSurfaceInBitmapWithPaddedRows) {
+    _contentLayer->setBackgroundColor(Color::red());
+
+    auto centerLayer = makeLayer<ExternalLayer>(_resources);
+    auto externalSurface = makeShared<RasterContextTestExternalSurface>(_bitmapFactory, Color::green());
+    centerLayer->setExternalSurface(externalSurface);
+
+    _contentLayer->addChild(centerLayer);
+
+    _contentLayer->setFrame(Rect::makeXYWH(0, 0, 4, 4));
+    centerLayer->setFrame(Rect::makeXYWH(1, 1, 2, 2));
+
+    auto outputBitmap = makeShared<PaddedRowsBitmap>(4, 4, 64 * sizeof(Color));
+    auto result = rasterInto(outputBitmap);
+    ASSERT_TRUE(result) << result.description();
+
+    ASSERT_EQ(Color::red(), outputBitmap->getPixel(0, 0));
+    ASSERT_EQ(Color::green(), outputBitmap->getPixel(1, 1));
+    ASSERT_EQ(Color::green(), outputBitmap->getPixel(2, 2));
+    ASSERT_EQ(Color::red(), outputBitmap->getPixel(3, 3));
+    ASSERT_EQ(1, externalSurface->rasterCount);
+
+    auto replacementSurface = makeShared<RasterContextTestExternalSurface>(_bitmapFactory, Color::blue());
+    centerLayer->setExternalSurface(replacementSurface);
+
+    result = rasterInto(outputBitmap);
+    ASSERT_TRUE(result) << result.description();
+
+    ASSERT_EQ(Color::red(), outputBitmap->getPixel(0, 0));
+    ASSERT_EQ(Color::blue(), outputBitmap->getPixel(1, 1));
+    ASSERT_EQ(Color::blue(), outputBitmap->getPixel(2, 2));
+    ASSERT_EQ(Color::red(), outputBitmap->getPixel(3, 3));
+    ASSERT_EQ(1, replacementSurface->rasterCount);
 }
 
 TEST_F(RasterContextTests, appliesClipToExternalSurface) {
