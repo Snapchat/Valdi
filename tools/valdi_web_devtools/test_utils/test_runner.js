@@ -6,8 +6,45 @@
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
-const { install, computeExecutablePath } = require('@puppeteer/browsers');
+const { install, uninstall, computeExecutablePath } = require('@puppeteer/browsers');
 const { startServer } = require('./static_server');
+
+const CHROME_BUILD_ID = '131.0.6778.87';
+const CHROME_BROWSER = 'chrome-headless-shell';
+
+function chromePlatform() {
+  if (process.platform === 'darwin') {
+    return process.arch === 'arm64' ? 'mac_arm' : 'mac';
+  }
+  // Chrome for Testing publishes no linux-arm64 build.
+  return 'linux';
+}
+
+// Defaults to the per-run TEST_TMPDIR: a cache inside the runfiles tree outlives the run,
+// so one interrupted download left an empty install dir that failed every later run.
+function chromeCacheDir() {
+  return process.env.VALDI_WEB_CHROME_CACHE_DIR ||
+    process.env.TEST_TMPDIR ||
+    path.join(process.cwd(), 'tests', '.chrome-cache');
+}
+
+async function ensureChrome(cacheDir = chromeCacheDir()) {
+  // The same platform must feed the cache check and the install, or they compute
+  // different paths and the cache never hits.
+  const options = { browser: CHROME_BROWSER, buildId: CHROME_BUILD_ID, cacheDir, platform: chromePlatform() };
+  await fs.promises.mkdir(cacheDir, { recursive: true });
+
+  const execPath = computeExecutablePath(options);
+  try {
+    await fs.promises.access(execPath, fs.constants.X_OK);
+    return execPath;
+  } catch {}
+
+  // install() refuses to overwrite an install dir that has no executable.
+  await uninstall(options);
+  const result = await install(options);
+  return result.executablePath;
+}
 
 function run(config) {
   const runfiles = process.env.RUNFILES_DIR || process.env.RUNFILES;
@@ -16,31 +53,10 @@ function run(config) {
     process.exit(1);
   }
 
-  const chromeCache = path.join(process.cwd(), 'tests', '.chrome-cache');
-
   const staticDirs = [
     config.distPath ? path.join(runfiles, config.distPath) : null,
     path.join(runfiles, config.staticFilesPath),
   ].filter(Boolean);
-
-  async function ensureChrome() {
-    const buildId = '131.0.6778.87';
-    const browser = 'chrome-headless-shell';
-    const platform = process.platform === 'darwin' ? 'mac' : 'linux';
-
-    try {
-      await fs.promises.mkdir(chromeCache, { recursive: true });
-    } catch {}
-
-    const execPath = computeExecutablePath({ browser, buildId, cacheDir: chromeCache });
-    try {
-      await fs.promises.access(execPath, fs.constants.X_OK);
-      return execPath;
-    } catch {}
-
-    const result = await install({ browser, buildId, cacheDir: chromeCache, platform });
-    return result.executablePath;
-  }
 
   function runTests(chromePath, port) {
     return new Promise((resolve, reject) => {
