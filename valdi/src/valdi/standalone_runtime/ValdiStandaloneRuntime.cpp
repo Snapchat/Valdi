@@ -16,6 +16,7 @@
 #include "valdi/runtime/RuntimeManager.hpp"
 #include "valdi/standalone_runtime/BridgeModules/ApplicationModule.hpp"
 #include "valdi/standalone_runtime/BridgeModules/DeviceModule.hpp"
+#include "valdi/standalone_runtime/BridgeModules/TerminalModule.hpp"
 #include "valdi/standalone_runtime/InMemoryKeychain.hpp"
 #include "valdi/standalone_runtime/StandaloneAssetLoader.hpp"
 #include "valdi/standalone_runtime/StandaloneExitCoordinator.hpp"
@@ -145,6 +146,11 @@ ValdiStandaloneRuntime::ValdiStandaloneRuntime(Ref<RuntimeManager> runtimeManage
 }
 
 ValdiStandaloneRuntime::~ValdiStandaloneRuntime() {
+    // Joins the stdin reader thread and restores the tty before any JS observer it could call
+    // into is destroyed with the runtime.
+    if (_terminalModule != nullptr) {
+        _terminalModule->shutdown();
+    }
     if (_exitCoordinator != nullptr) {
         _exitCoordinator->flushUpdatesSync();
     }
@@ -486,6 +492,8 @@ Ref<ValdiStandaloneRuntime> ValdiStandaloneRuntime::create(bool enableDebuggerSe
     auto deviceModule = makeShared<DeviceModule>();
     runtime->registerNativeModuleFactory(deviceModule.toShared());
     runtime->registerNativeModuleFactory(makeShared<ApplicationModule>().toShared());
+    auto terminalModule = makeShared<TerminalModule>();
+    runtime->registerNativeModuleFactory(terminalModule.toShared());
 
     if (runtime->getJavaScriptRuntime() != nullptr) {
         runtime->getJavaScriptRuntime()->setDefaultViewManagerContext(viewManagerContext);
@@ -503,6 +511,7 @@ Ref<ValdiStandaloneRuntime> ValdiStandaloneRuntime::create(bool enableDebuggerSe
                                                                        std::move(viewManagerContext),
                                                                        shouldWaitForHotReload);
     standaloneRuntime->_deviceModule = std::move(deviceModule);
+    standaloneRuntime->_terminalModule = std::move(terminalModule);
     return standaloneRuntime;
 }
 

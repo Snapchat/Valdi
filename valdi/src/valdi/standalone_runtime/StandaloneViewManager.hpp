@@ -45,6 +45,11 @@ public:
     void bindAttributes(const StringBox& className, Valdi::AttributesBindingContext& binder) override;
 
     void setRegisterCustomAttributes(bool registerCustomAttributes);
+    // Some of the custom dummy attributes ("padding", "justifyContent", "alignItems", "top") share
+    // their name with layout attributes; binding them replaces the layout handler, so the
+    // attribute is recorded on the StandaloneView but no longer affects Yoga. Tests that inspect
+    // StandaloneView attributes rely on that; applications that need real layout turn it off.
+    void setRegisterLayoutAttributeOverrides(bool registerLayoutAttributeOverrides);
     void setKeepAttributesHistory(bool keepAttributesHistory);
     void setAlwaysRenderInMainThread(bool alwaysRenderInMainThread);
     void setManagesChildFramesForClass(const StringBox& className, bool managesChildFrames);
@@ -61,6 +66,7 @@ public:
 private:
     PlatformType _platformType;
     bool _registerCustomAttributes = false;
+    bool _registerLayoutAttributeOverrides = true;
     bool _keepAttributesHistory = false;
     bool _allowViewPooling = false;
     bool _alwaysRenderInMainThread = false;

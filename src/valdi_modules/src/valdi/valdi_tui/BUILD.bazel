@@ -1,0 +1,27 @@
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+# Terminal UI renderer for Valdi CLI applications. Only meaningful under the standalone
+# runtime (valdi_cli_application); no native exports are generated for iOS or Android.
+valdi_module(
+    name = "valdi_tui",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "test/**/*.ts",
+        "test/**/*.tsx",
+    ]) + [
+        "tsconfig.json",
+    ],
+    android_output_target = "debug",
+    compilation_mode = "js",
+    has_android_exports = False,
+    has_ios_exports = False,
+    ios_module_name = "SCCValdiTUI",
+    ios_output_target = "debug",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/jasmine",
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_standalone",
+    ],
+)
