@@ -1,13 +1,13 @@
-import { IUnparsedLocalizableStringResolver } from './localization/IUnparsedLocalizableStringResolver';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { ExternalUnparsedLocalizableStringResolver } from './localization/ExternalUnparsedLocalizableStringResolver';
-import { LocalizableStringsModule, LocalizableStringsModuleExports } from './localization/LocalizableStringsModule';
-import { LocalizableStringParameterType } from './localization/LocalizableString';
+import { IUnparsedLocalizableStringResolver } from './localization/IUnparsedLocalizableStringResolver';
 import {
   GetCurrentLocalesFn,
   InlineUnparsedLocalizableStringResolver,
 } from './localization/InlineUnparsedLocalizableStringResolver';
-import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { getCurrentLocales } from './localization/LocaleResolver';
+import { LocalizableStringParameterType } from './localization/LocalizableString';
+import { LocalizableStringsModule, LocalizableStringsModuleExports } from './localization/LocalizableStringsModule';
 
 export function overrideLocales(exports: any, getCurrentLocales: GetCurrentLocalesFn): void {
   const module = LocalizableStringsModule.fromExports(exports);

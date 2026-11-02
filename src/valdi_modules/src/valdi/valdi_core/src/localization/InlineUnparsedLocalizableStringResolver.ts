@@ -1,6 +1,6 @@
 import { IUnparsedLocalizableStringResolver } from './IUnparsedLocalizableStringResolver';
-import { resolveLocale } from './LocaleResolver';
 import { Locale } from './Locale';
+import { resolveLocale } from './LocaleResolver';
 
 function convertStringParametersToIndexes(str: string): string {
   let argumentIndex = 0;

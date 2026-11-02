@@ -8,8 +8,8 @@ describe('JSX', () => {
     class BasicComponent extends Component {
       onRender() {
         <layout>
-          <view backgroundColor='red'>
-            <label value='Hello world' />
+          <view backgroundColor="red">
+            <label value="Hello world" />
             <image />
           </view>
         </layout>;
@@ -65,11 +65,11 @@ describe('JSX', () => {
     class TextAnimationGroupComponent extends Component {
       onRender() {
         <view>
-          <textanimationgroup backgroundColor='blue'>
+          <textanimationgroup backgroundColor="blue">
             <view>
-              <label value='First' />
+              <label value="First" />
             </view>
-            <textview value='Second' />
+            <textview value="Second" />
           </textanimationgroup>
         </view>;
       }
@@ -116,8 +116,8 @@ describe('JSX', () => {
   xit('can render a glass element with children and passes glass attributes through', async () => {
     class GlassComponent extends Component {
       onRender() {
-        <glass glassStyle='clear' glassTintColor='red' interactive={true}>
-          <label value='Behind glass' />
+        <glass glassStyle="clear" glassTintColor="red" interactive={true}>
+          <label value="Behind glass" />
         </glass>;
       }
     }

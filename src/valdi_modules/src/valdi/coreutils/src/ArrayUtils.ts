@@ -58,12 +58,7 @@ export function lazyMap<T>(array: T[] | undefined, visitor: (item: T) => T): T[]
  * 0 to indicate a perfect match.
  */
 const binarySearchRangeResult: Range = { min: 0, max: 0 };
-export function binarySearch<T>(
-  array: T[],
-  compareFn: (item: T) => number,
-  start?: number,
-  end?: number,
-): number {
+export function binarySearch<T>(array: T[], compareFn: (item: T) => number, start?: number, end?: number): number {
   const range = binarySearchRange(array, compareFn, binarySearchRangeResult, start, end);
   if (range.min === range.max) {
     return range.min;
@@ -128,11 +123,7 @@ export function binarySearchRange<T>(
  * than the searched index, <0 to indicate that the given item is "lower",
  * 0 to indicate a perfect match.
  */
-export function exponentialSearch<T>(
-  array: T[],
-  compareFn: (item: T) => number,
-  startIdx: number = 0,
-): number {
+export function exponentialSearch<T>(array: T[], compareFn: (item: T) => number, startIdx: number = 0): number {
   const len = array.length;
   if (len === 0) {
     return -1;

@@ -96,9 +96,7 @@ export function valdiIt(_expectation: string, _assertion: (driver: IComponentTes
 export function fvaldiIt(_expectation: string, _assertion: (driver: IComponentTestDriver) => Promise<void>): void {}
 export function xvaldiIt(_expectation: string, _assertion: (driver: IComponentTestDriver) => Promise<void>): void {}
 
-export function withValdiRenderer(
-  _assertion: (driver: IComponentTestDriver) => Promise<void>,
-): () => Promise<void> {
+export function withValdiRenderer(_assertion: (driver: IComponentTestDriver) => Promise<void>): () => Promise<void> {
   return async () => {};
 }
 

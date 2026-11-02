@@ -19,7 +19,11 @@ export async function runFullComparison(args: string[]): Promise<void> {
   const afterBazelArgs: Argument<string> = parser.addString('--after-bazel-args', 'After Bazel args', false);
   const valdiBin: Argument<string> = parser.addString('--valdi-bin', 'Valdi binary path/name', false);
   const pixelThreshold: Argument<string> = parser.addString('--pixel-threshold', 'Pixel channel threshold', false);
-  const failAbove: Argument<string> = parser.addString('--fail-above', 'Fail when max diff exceeds this percent', false);
+  const failAbove: Argument<string> = parser.addString(
+    '--fail-above',
+    'Fail when max diff exceeds this percent',
+    false,
+  );
   parser.parse();
 
   if (!isPlatform(beforePlatform.value) || !isPlatform(afterPlatform.value)) {

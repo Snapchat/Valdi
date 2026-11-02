@@ -31,10 +31,7 @@ export function createRgbaBitmap(width: number, height: number, data?: Uint8Arra
 }
 
 export class LockedBitmapPixels {
-  constructor(
-    readonly info: BitmapInfo,
-    private readonly pixels: Uint8Array,
-  ) {
+  constructor(readonly info: BitmapInfo, private readonly pixels: Uint8Array) {
     if (info.colorType !== BitmapColorType.RGBA8888) {
       throw new Error(`Expected RGBA8888 bitmap pixels, got color type ${info.colorType}`);
     }

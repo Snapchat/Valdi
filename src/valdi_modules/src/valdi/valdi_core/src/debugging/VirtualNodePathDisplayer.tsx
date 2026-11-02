@@ -31,7 +31,7 @@ export class VirtualNodePathDisplayer extends Component<ViewModel> {
     }
 
     <layout>
-      <label style={headerStyle} color='black' value={title} />
+      <label style={headerStyle} color="black" value={title} />
       <view style={styles.console}>
         <scroll horizontal>
           <layout>{this.renderNodePaths()}</layout>

@@ -121,8 +121,8 @@ export namespace RenderedElementUtils {
       // Only subtract contentOffset if it belongs to a parent (affecting the current element's position)
       // The element's own contentOffset does not affect its own absolute frame position
       const isTargetElement = current === element;
-      const contentOffsetX = isTargetElement ? 0 : (current.getAttribute('contentOffsetX') ?? 0);
-      const contentOffsetY = isTargetElement ? 0 : (current.getAttribute('contentOffsetY') ?? 0);
+      const contentOffsetX = isTargetElement ? 0 : current.getAttribute('contentOffsetX') ?? 0;
+      const contentOffsetY = isTargetElement ? 0 : current.getAttribute('contentOffsetY') ?? 0;
       const translationX = current.getAttribute('translationX') ?? 0;
       const translationY = current.getAttribute('translationY') ?? 0;
       position.x += current.frame.x - contentOffsetX + translationX;

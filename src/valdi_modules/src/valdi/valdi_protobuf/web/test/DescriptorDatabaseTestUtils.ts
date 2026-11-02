@@ -8,8 +8,8 @@ const path = require('path');
 
 export function getLoadedDescriptorDatabase(): DescriptorDatabase {
   // Load proto.protodecl from the test directory
-    // Path is relative to compiled location in web/test/, goes up 2 levels to valdi_protobuf/, then to test/
-    const protoDeclPath = path.join(__dirname, '../../test/proto.protodecl');
+  // Path is relative to compiled location in web/test/, goes up 2 levels to valdi_protobuf/, then to test/
+  const protoDeclPath = path.join(__dirname, '../../test/proto.protodecl');
   const protoDeclContent = fs.readFileSync(protoDeclPath);
   const database = new DescriptorDatabase();
   database.addFileDescriptorSet(new Uint8Array(protoDeclContent));

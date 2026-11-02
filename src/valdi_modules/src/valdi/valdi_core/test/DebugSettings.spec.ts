@@ -1,8 +1,8 @@
 import 'jasmine/src/jasmine';
 import { jsx } from '../src/JSXBootstrap';
 import type { ValdiRuntime } from '../src/ValdiRuntime';
-import { DebugSettingKind, registerDebugSettingsGroup } from '../src/debugging/DebugSettings';
 import type { CustomMessageHandler } from '../src/debugging/CustomMessageHandler';
+import { DebugSettingKind, registerDebugSettingsGroup } from '../src/debugging/DebugSettings';
 import type {
   DebugSettingsGroup,
   DebugSettingsRegistration,

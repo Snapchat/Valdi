@@ -1,9 +1,9 @@
 import { trace } from 'valdi_core/src/utils/Trace';
 import { Arena } from './Arena';
 import Descriptor from './Descriptor';
-import { IArena, IDescriptor, IDescriptorPool, IMessage, IMessageNamespace } from './types';
 import { ValdiProtobufModule, IField, INativeMessageFactory, INativeNamespaceEntries } from './ValdiProtobuf';
 import { getProtobufModule } from './ValdiProtobufModule';
+import { IArena, IDescriptor, IDescriptorPool, IMessage, IMessageNamespace } from './types';
 
 function createMessageNamespace(descriptor: IDescriptor): IMessageNamespace {
   function createMessage(arena: IArena | undefined, value?: any): IMessage {

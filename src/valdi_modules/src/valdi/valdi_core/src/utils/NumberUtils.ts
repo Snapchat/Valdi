@@ -10,7 +10,15 @@ try {
 }
 
 // We rely on a native currency formatter to be set in Android to get around `Intl.NumberFormat` being unavailable in quickjs.
-let nativeNumberWithCurrencyFormatter: ((value: number, currencyCode: string, minimumFractionDigits?: number, maximumFractionDigits?: number, localeIdentifier?: string) => string) | undefined = undefined;
+let nativeNumberWithCurrencyFormatter:
+  | ((
+      value: number,
+      currencyCode: string,
+      minimumFractionDigits?: number,
+      maximumFractionDigits?: number,
+      localeIdentifier?: string,
+    ) => string)
+  | undefined = undefined;
 
 try {
   nativeNumberWithCurrencyFormatter = getModuleLoader().load('NumberFormatting').formatNumberWithCurrency;
@@ -61,7 +69,13 @@ export function formatNumberWithCurrency(
   options?: { minimumFractionDigits?: number; maximumFractionDigits?: number; localeIdentifier?: string },
 ): string {
   if (nativeNumberWithCurrencyFormatter) {
-    return nativeNumberWithCurrencyFormatter(value, currencyCode, options?.minimumFractionDigits, options?.maximumFractionDigits, options?.localeIdentifier);
+    return nativeNumberWithCurrencyFormatter(
+      value,
+      currencyCode,
+      options?.minimumFractionDigits,
+      options?.maximumFractionDigits,
+      options?.localeIdentifier,
+    );
   }
 
   // Use the provided localeIdentifier if available, otherwise fall back to undefined (device locale)

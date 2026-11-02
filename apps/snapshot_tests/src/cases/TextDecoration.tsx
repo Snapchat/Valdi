@@ -22,22 +22,12 @@ export class TextDecoration extends Component {
 
       <view {...styles.section}>
         <label value="none (default):" font={testFont(9)} color="#666666" />
-        <label
-          value="Normal text without decoration"
-          font={testFont(14)}
-          color="#000000"
-          textDecoration="none"
-        />
+        <label value="Normal text without decoration" font={testFont(14)} color="#000000" textDecoration="none" />
       </view>
 
       <view {...styles.section}>
         <label value="underline:" font={testFont(9)} color="#666666" />
-        <label
-          value="Underlined text decoration"
-          font={testFont(14)}
-          color="#000000"
-          textDecoration="underline"
-        />
+        <label value="Underlined text decoration" font={testFont(14)} color="#000000" textDecoration="underline" />
       </view>
 
       <view {...styles.section}>
@@ -52,22 +42,12 @@ export class TextDecoration extends Component {
 
       <view {...styles.section}>
         <label value="underline + bold:" font={testFont(9)} color="#666666" />
-        <label
-          value="Bold underlined text"
-          font={testBoldFont(14)}
-          color="#000000"
-          textDecoration="underline"
-        />
+        <label value="Bold underlined text" font={testBoldFont(14)} color="#000000" textDecoration="underline" />
       </view>
 
       <view {...styles.section}>
         <label value="strikethrough + colored:" font={testFont(9)} color="#666666" />
-        <label
-          value="Red strikethrough text"
-          font={testFont(14)}
-          color="#FF0000"
-          textDecoration="strikethrough"
-        />
+        <label value="Red strikethrough text" font={testFont(14)} color="#FF0000" textDecoration="strikethrough" />
       </view>
     </view>;
   }

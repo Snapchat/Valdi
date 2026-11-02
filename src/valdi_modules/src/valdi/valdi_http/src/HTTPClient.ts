@@ -1,5 +1,5 @@
-import { CancelablePromise, promiseToCancelablePromise } from 'valdi_core/src/CancelablePromise';
 import { StringMap } from 'coreutils/src/StringMap';
+import { CancelablePromise, promiseToCancelablePromise } from 'valdi_core/src/CancelablePromise';
 import { HTTPMethod, HTTPRequest, HTTPResponse } from './HTTPTypes';
 import { IHTTPClient } from './IHTTPClient';
 import { performRequest } from './NativeHTTPClient';

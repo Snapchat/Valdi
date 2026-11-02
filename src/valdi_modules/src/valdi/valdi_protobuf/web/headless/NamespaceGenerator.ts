@@ -1,9 +1,9 @@
-import { Message as ValdiMessage } from '../Message';
-import { IArena, IMessage, IMessageNamespace, JSONPrintOptions } from '../src_symlink/types';
-import { FullyQualifiedName } from './FullyQualifiedName';
 import { IMessageType, PbLong, PbULong } from '@protobuf-ts/runtime';
-import { DescriptorDatabase } from './DescriptorDatabase';
+import { Message as ValdiMessage } from '../Message';
 import { INativeMessageIndex } from '../src_symlink/ValdiProtobuf';
+import { IArena, IMessage, IMessageNamespace, JSONPrintOptions } from '../src_symlink/types';
+import { DescriptorDatabase } from './DescriptorDatabase';
+import { FullyQualifiedName } from './FullyQualifiedName';
 
 // Monkey-patch PbLong to accept Long objects from long.js
 // @protobuf-ts uses PbLong.from() to convert values to their internal long representation
@@ -11,7 +11,7 @@ import { INativeMessageIndex } from '../src_symlink/ValdiProtobuf';
 const originalPbLongFrom = PbLong.from;
 const originalPbULongFrom = PbULong.from;
 
-PbLong.from = function(value: any): any {
+PbLong.from = function (value: any): any {
   // If it's a Long object, convert it to a primitive
   if (value && typeof value === 'object' && 'low' in value && 'high' in value && 'unsigned' in value) {
     const num = value.toNumber?.();
@@ -23,7 +23,7 @@ PbLong.from = function(value: any): any {
   return originalPbLongFrom.call(this, value);
 };
 
-PbULong.from = function(value: any): any {
+PbULong.from = function (value: any): any {
   // If it's a Long object, convert it to a primitive
   if (value && typeof value === 'object' && 'low' in value && 'high' in value && 'unsigned' in value) {
     const num = value.toNumber?.();
@@ -82,15 +82,13 @@ export class ProtobufTsMessageWrapper<MessageProps = {}> extends ValdiMessage<Me
 
   override toDebugJSON(options?: JSONPrintOptions): string {
     const obj = this.toPlainObject();
-    return options && (options & JSONPrintOptions.PRETTY) !== 0
-      ? JSON.stringify(obj, null, 2)
-      : JSON.stringify(obj);
+    return options && (options & JSONPrintOptions.PRETTY) !== 0 ? JSON.stringify(obj, null, 2) : JSON.stringify(obj);
   }
 }
 
 function resolveTargetNamespace(
   current: IMonkeyPatchedProtobufJsNamespace,
-  fqn: FullyQualifiedName
+  fqn: FullyQualifiedName,
 ): IMonkeyPatchedProtobufJsNamespace {
   if (fqn.parent) {
     const parent = resolveTargetNamespace(current, fqn.parent);
@@ -105,10 +103,7 @@ function resolveTargetNamespace(
   return current[fqn.symbolName] as IMonkeyPatchedProtobufJsNamespace;
 }
 
-function populateNamespaceFromMessageType(
-  messageType: IMessageType<any>,
-  namespace: IMessageNamespace
-): void {
+function populateNamespaceFromMessageType(messageType: IMessageType<any>, namespace: IMessageNamespace): void {
   namespace.create = (_arena: IArena | undefined, value?: any): IMessage => {
     const data = messageType.create(value);
     return new ProtobufTsMessageWrapper(messageType, data) as unknown as IMessage;

@@ -5,11 +5,11 @@ function exists<T>(value: T | null | undefined): T {
   return value;
 }
 
-import { formatParameterizedString, LegacyVueComponent } from 'valdi_core/src/Valdi';
 import { IComponent } from 'valdi_core/src/IComponent';
 import { IRenderedVirtualNode } from 'valdi_core/src/IRenderedVirtualNode';
 import { IRenderer } from 'valdi_core/src/IRenderer';
 import { IRendererEventListener } from 'valdi_core/src/IRendererEventListener';
+import { formatParameterizedString, LegacyVueComponent } from 'valdi_core/src/Valdi';
 import { classNames } from 'valdi_core/src/utils/ClassNames';
 import 'jasmine/src/jasmine';
 

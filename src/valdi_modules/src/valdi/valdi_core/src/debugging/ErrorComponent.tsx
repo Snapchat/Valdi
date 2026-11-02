@@ -74,10 +74,10 @@ export class ErrorComponent extends Component<ViewModel> {
       return;
     }
 
-    <view width='100%' height='100%' backgroundColor='white' alignItems='center' justifyContent='center' padding={20}>
+    <view width="100%" height="100%" backgroundColor="white" alignItems="center" justifyContent="center" padding={20}>
       <scroll>
         <label
-          textAlign='center'
+          textAlign="center"
           numberOfLines={0}
           font={fonts.title}
           color={colors.errorText}
@@ -85,7 +85,7 @@ export class ErrorComponent extends Component<ViewModel> {
           value={processedError.errorTitle}
         />
         <label
-          textAlign='center'
+          textAlign="center"
           numberOfLines={0}
           style={styles.infoText}
           value={`'${processedError.errorMessage}'`}
@@ -99,7 +99,7 @@ export class ErrorComponent extends Component<ViewModel> {
         {when(processedError.consoleMessage, consoleMessage => {
           <layout marginTop={20}>
             {when(processedError.hasStacktrace, () => {
-              <label style={styles.infoText} value='Stacktrace:' marginBottom={8} />;
+              <label style={styles.infoText} value="Stacktrace:" marginBottom={8} />;
             })}
             <view style={styles.console}>
               <label numberOfLines={0} style={styles.consoleText} value={consoleMessage} />

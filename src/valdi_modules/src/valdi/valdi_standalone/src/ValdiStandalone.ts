@@ -1,6 +1,5 @@
+import { StringMap } from 'coreutils/src/StringMap';
 import { ComponentPath } from 'valdi_core/src/ComponentPath';
-import { ComponentContext, LegacyVueComponent } from 'valdi_core/src/Valdi';
-import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 import { makeEntryPointRenderFunction } from 'valdi_core/src/EntryPointComponent';
 import { EntryPointRenderFunction } from 'valdi_core/src/EntryPointRenderFunction';
 import { ComponentConstructor, IComponent } from 'valdi_core/src/IComponent';
@@ -8,9 +7,10 @@ import { IEntryPointComponent } from 'valdi_core/src/IEntryPointComponent';
 import { jsx } from 'valdi_core/src/JSXBootstrap';
 import { RendererFactory } from 'valdi_core/src/RendererFactory';
 import { RootComponentsManager } from 'valdi_core/src/RootComponentsManager';
+import { ComponentContext, LegacyVueComponent } from 'valdi_core/src/Valdi';
+import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 import { DaemonClientManager } from 'valdi_core/src/debugging/DaemonClientManager';
 import { SubmitDebugMessageFunc } from 'valdi_core/src/debugging/DebugMessage';
-import { StringMap } from 'coreutils/src/StringMap';
 
 export interface Rectangle {
   x: number;

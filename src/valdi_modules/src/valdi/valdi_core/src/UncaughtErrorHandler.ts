@@ -1,7 +1,7 @@
 import { remove } from 'coreutils/src/ArrayUtils';
+import { IComponent } from './IComponent';
 import { ExceptionHandlerResult } from './ValdiRuntime';
 import { getValdiRuntime } from './ValdiRuntimeProvider';
-import { IComponent } from './IComponent';
 
 export const enum UncaughtErrorHandlerResult {
   /**

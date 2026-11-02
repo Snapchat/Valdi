@@ -5,7 +5,10 @@ import { globToRegex } from './globToRegex';
  * Find elements by globbing their relative path
  * Allow search by glob wildcard (like in file system)
  */
-export function elementGlobFind<T = any>(element: IRenderedElement | IRenderedElement[], pattern: string): IRenderedElement<T>[] {
+export function elementGlobFind<T = any>(
+  element: IRenderedElement | IRenderedElement[],
+  pattern: string,
+): IRenderedElement<T>[] {
   const possibilities: { path: string; element: IRenderedElement }[] = [];
 
   const recursor = (current: IRenderedElement, path: string) => {

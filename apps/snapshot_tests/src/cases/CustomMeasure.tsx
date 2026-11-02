@@ -92,12 +92,24 @@ export class CustomMeasure extends Component {
       {/* Wrapping tags: measured label width drives wrap behavior */}
       <view {...styles.section}>
         <layout {...styles.wrapContainer}>
-          <view {...styles.tag}><label value="Layout" font={testFont(10)} color="#1565C0" /></view>
-          <view {...styles.tag}><label value="Yoga" font={testFont(10)} color="#1565C0" /></view>
-          <view {...styles.tag}><label value="Custom Measure" font={testFont(10)} color="#1565C0" /></view>
-          <view {...styles.tag}><label value="FlexWrap" font={testFont(10)} color="#1565C0" /></view>
-          <view {...styles.tag}><label value="Snapshot" font={testFont(10)} color="#1565C0" /></view>
-          <view {...styles.tag}><label value="Test" font={testFont(10)} color="#1565C0" /></view>
+          <view {...styles.tag}>
+            <label value="Layout" font={testFont(10)} color="#1565C0" />
+          </view>
+          <view {...styles.tag}>
+            <label value="Yoga" font={testFont(10)} color="#1565C0" />
+          </view>
+          <view {...styles.tag}>
+            <label value="Custom Measure" font={testFont(10)} color="#1565C0" />
+          </view>
+          <view {...styles.tag}>
+            <label value="FlexWrap" font={testFont(10)} color="#1565C0" />
+          </view>
+          <view {...styles.tag}>
+            <label value="Snapshot" font={testFont(10)} color="#1565C0" />
+          </view>
+          <view {...styles.tag}>
+            <label value="Test" font={testFont(10)} color="#1565C0" />
+          </view>
         </layout>
       </view>
 

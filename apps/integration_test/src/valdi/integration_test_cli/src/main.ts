@@ -41,7 +41,11 @@ async function main(): Promise<void> {
     const after: Argument<string> = parser.addString('--after', 'After result JSON', true);
     const outputDir: Argument<string> = parser.addString('--output-dir', 'Output directory', true);
     const pixelThreshold: Argument<string> = parser.addString('--pixel-threshold', 'Pixel channel threshold', false);
-    const failAbove: Argument<string> = parser.addString('--fail-above', 'Fail when max diff exceeds this percent', false);
+    const failAbove: Argument<string> = parser.addString(
+      '--fail-above',
+      'Fail when max diff exceeds this percent',
+      false,
+    );
     parser.parse();
     compareResults({
       before: before.value!,

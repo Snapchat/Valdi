@@ -22,11 +22,25 @@ export class TransformOrigin extends Component {
 
       {/* pivot: top-left corner */}
       <view {...anchor} top={20} left={110} />
-      <view {...box} top={20} left={110} backgroundColor="#2E7D32" rotation={FORTY_FIVE_DEG} transformOrigin="top left" />
+      <view
+        {...box}
+        top={20}
+        left={110}
+        backgroundColor="#2E7D32"
+        rotation={FORTY_FIVE_DEG}
+        transformOrigin="top left"
+      />
 
       {/* pivot: 25% 75% of the box */}
       <view {...anchor} top={120} left={65} />
-      <view {...box} top={120} left={65} backgroundColor="#00838F" rotation={FORTY_FIVE_DEG} transformOrigin="25% 75%" />
+      <view
+        {...box}
+        top={120}
+        left={65}
+        backgroundColor="#00838F"
+        rotation={FORTY_FIVE_DEG}
+        transformOrigin="25% 75%"
+      />
     </view>;
   }
 }

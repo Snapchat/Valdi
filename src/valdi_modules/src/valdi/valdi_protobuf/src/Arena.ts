@@ -1,7 +1,7 @@
 import { makeSingleCallInterruptibleCallback } from 'valdi_core/src/utils/FunctionUtils';
+import { ValdiProtobufModule, INativeMessageArena, INativeMessageIndex } from './ValdiProtobuf';
 import { getProtobufModule } from './ValdiProtobufModule';
 import { IArena, IMessage, IMessageConstructor, JSONPrintOptions } from './types';
-import { ValdiProtobufModule, INativeMessageArena, INativeMessageIndex } from './ValdiProtobuf';
 
 /**
  * Specifies how the Arena should decode messages.

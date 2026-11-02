@@ -31,7 +31,7 @@ describe('ComponentTestExample', () => {
     const childRef = new ElementRef();
 
     driver.render(() => {
-      <layout ref={rootRef} width='100%' height='100%' justifyContent='center' alignItems='center'>
+      <layout ref={rootRef} width="100%" height="100%" justifyContent="center" alignItems="center">
         <layout ref={childRef} width={25} height={25} />
       </layout>;
     });

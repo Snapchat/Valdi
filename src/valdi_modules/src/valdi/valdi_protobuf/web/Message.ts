@@ -1,5 +1,5 @@
-import { IArena, IMessage, IMessageConstructor, JSONPrintOptions } from './src_symlink/types';
 import { INativeMessageIndex } from './src_symlink/ValdiProtobuf';
+import { IArena, IMessage, IMessageConstructor, JSONPrintOptions } from './src_symlink/types';
 
 // Minimal ConsoleRepresentable interface for web
 interface ConsoleRepresentable {

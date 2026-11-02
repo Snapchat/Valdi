@@ -41,15 +41,36 @@ export class AlignSelfOverrides extends Component {
       </layout>
 
       <label value="column + alignSelf" font={testFont(9)} {...styles.sectionLabel} />
-      <view flexDirection="column" backgroundColor="#F5F5F5" borderRadius={4} padding={4} {...styles.section} height={70}>
-        <view height={15} backgroundColor="#3F51B5" borderRadius={4} marginBottom={4} alignSelf="flex-start" width={60} />
+      <view
+        flexDirection="column"
+        backgroundColor="#F5F5F5"
+        borderRadius={4}
+        padding={4}
+        {...styles.section}
+        height={70}
+      >
+        <view
+          height={15}
+          backgroundColor="#3F51B5"
+          borderRadius={4}
+          marginBottom={4}
+          alignSelf="flex-start"
+          width={60}
+        />
         <view height={15} backgroundColor="#009688" borderRadius={4} marginBottom={4} alignSelf="center" width={80} />
         <view height={15} backgroundColor="#FFC107" borderRadius={4} alignSelf="flex-end" width={50} />
       </view>
 
       <label value="mixed sizes + align" font={testFont(9)} {...styles.sectionLabel} />
       <layout {...styles.row} flexGrow={1} alignItems="center">
-        <view width={20} height={20} backgroundColor="#F44336" borderRadius={10} marginRight={4} alignSelf="flex-start" />
+        <view
+          width={20}
+          height={20}
+          backgroundColor="#F44336"
+          borderRadius={10}
+          marginRight={4}
+          alignSelf="flex-start"
+        />
         <view flexGrow={1} height={30} backgroundColor="#E8F5E9" borderRadius={4} marginRight={4}>
           <label value="grows" font={testFont(8)} color="#333333" />
         </view>

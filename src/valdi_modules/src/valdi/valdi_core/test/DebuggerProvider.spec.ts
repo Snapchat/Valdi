@@ -1,9 +1,10 @@
 import 'jasmine/src/jasmine';
+import type { IModuleLoader } from '../src/IModuleLoader';
 import { jsx } from '../src/JSXBootstrap';
 import { ModuleLoader } from '../src/ModuleLoader';
 import { getModuleLoader } from '../src/ModuleLoaderGlobal';
-import type { IModuleLoader } from '../src/IModuleLoader';
 import type { ValdiRuntime } from '../src/ValdiRuntime';
+import type { CustomMessageHandler } from '../src/debugging/CustomMessageHandler';
 import {
   createDebuggerProviderOwner,
   createDebuggerProviderResult,
@@ -11,7 +12,6 @@ import {
   registerDebuggerProvider,
   reloadDebuggerProviderModuleForTesting,
 } from '../src/debugging/DebuggerProvider';
-import type { CustomMessageHandler } from '../src/debugging/CustomMessageHandler';
 import type {
   DebuggerProvider,
   DebuggerProviderRegistration,
@@ -136,7 +136,10 @@ describe('DebuggerProvider', () => {
   });
 
   it('applies the action-document budget before final response transport', () => {
-    const tooManyProperties = `{${Array.from({ length: 101 }, (_, index) => `"k${index.toString()}":${index.toString()}`).join(',')}}`;
+    const tooManyProperties = `{${Array.from(
+      { length: 101 },
+      (_, index) => `"k${index.toString()}":${index.toString()}`,
+    ).join(',')}}`;
     const tooManyItems = `[${Array.from({ length: 101 }, (_, index) => index.toString()).join(',')}]`;
     const tooDeep = '{"a":'.repeat(10) + 'true' + '}'.repeat(10);
     const exactByteLimit = JSON.stringify({

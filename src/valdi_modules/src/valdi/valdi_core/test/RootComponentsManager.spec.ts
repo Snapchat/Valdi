@@ -2,8 +2,8 @@ import 'jasmine/src/jasmine';
 import { IComponent } from '../src/IComponent';
 import { IRenderedVirtualNode } from '../src/IRenderedVirtualNode';
 import { IRenderedVirtualNodeData } from '../src/IRenderedVirtualNodeData';
-import { RootComponentHandle, RootComponentsManager } from '../src/RootComponentsManager';
 import { RendererFactory } from '../src/RendererFactory';
+import { RootComponentHandle, RootComponentsManager } from '../src/RootComponentsManager';
 import { ReceivedDaemonClientMessage } from '../src/debugging/DaemonClientManager';
 import {
   DaemonClientMessage,

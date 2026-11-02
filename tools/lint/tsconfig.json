@@ -27,11 +27,7 @@
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "jsx": "preserve",
-    "types": [
-      "../../src/valdi_modules/src/valdi/types/Long",
-      "../../src/valdi_modules/src/valdi/types/globals"
-    ],
-    "typeRoots": ["../../src/valdi_modules/src/valdi"]
+    "types": []
   },
   "include": ["../../src/valdi_modules/src/valdi/**/*.ts", "../../src/valdi_modules/src/valdi/**/*.tsx", "../../apps/**/*.ts", "../../apps/**/*.tsx"],
   "exclude": ["**/node_modules/**"]

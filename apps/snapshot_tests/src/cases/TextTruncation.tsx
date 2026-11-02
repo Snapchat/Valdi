@@ -27,42 +27,22 @@ export class TextTruncation extends Component {
 
       <label value="numberOfLines=1 (default):" font={testFont(9)} color="#666666" />
       <view {...styles.textBox}>
-        <label
-          value={longText}
-          font={testFont(12)}
-          color="#000000"
-          numberOfLines={1}
-        />
+        <label value={longText} font={testFont(12)} color="#000000" numberOfLines={1} />
       </view>
 
       <label value="numberOfLines=2:" font={testFont(9)} color="#666666" />
       <view {...styles.textBox}>
-        <label
-          value={longText}
-          font={testFont(12)}
-          color="#000000"
-          numberOfLines={2}
-        />
+        <label value={longText} font={testFont(12)} color="#000000" numberOfLines={2} />
       </view>
 
       <label value="numberOfLines=3:" font={testFont(9)} color="#666666" />
       <view {...styles.textBox}>
-        <label
-          value={longText}
-          font={testFont(12)}
-          color="#000000"
-          numberOfLines={3}
-        />
+        <label value={longText} font={testFont(12)} color="#000000" numberOfLines={3} />
       </view>
 
       <label value="numberOfLines=0 (unlimited):" font={testFont(9)} color="#666666" />
       <view {...styles.textBox}>
-        <label
-          value={longText}
-          font={testFont(12)}
-          color="#000000"
-          numberOfLines={0}
-        />
+        <label value={longText} font={testFont(12)} color="#000000" numberOfLines={0} />
       </view>
     </view>;
   }

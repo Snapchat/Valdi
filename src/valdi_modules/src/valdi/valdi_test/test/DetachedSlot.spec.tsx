@@ -28,7 +28,7 @@ describe('DetachedSlot', () => {
     expect(renderZoneRendererNode.children.length).toBe(0);
 
     slot.slotted(() => {
-      <label value='Hello' />;
+      <label value="Hello" />;
     });
 
     // The zone should now have a child
@@ -40,7 +40,7 @@ describe('DetachedSlot', () => {
     const slot = new DetachedSlot();
 
     slot.slotted(() => {
-      <label value='Hello' />;
+      <label value="Hello" />;
     });
 
     const nodes = driver.render(() => {
@@ -86,7 +86,7 @@ describe('DetachedSlot', () => {
       </view>;
 
       slot.slotted(() => {
-        <label value='Hello' />;
+        <label value="Hello" />;
       });
     });
 

@@ -16,11 +16,7 @@ class TestElement {
   renderer: IRenderer = undefined!;
   emittingComponent = undefined;
 
-  constructor(
-    readonly id: number,
-    readonly tag: string,
-    private readonly attributes: { [name: string]: any },
-  ) {
+  constructor(readonly id: number, readonly tag: string, private readonly attributes: { [name: string]: any }) {
     this.key = `${tag}-${id}`;
   }
 

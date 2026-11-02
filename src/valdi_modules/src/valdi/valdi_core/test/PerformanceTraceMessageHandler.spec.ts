@@ -1,11 +1,5 @@
 import 'jasmine/src/jasmine';
 import {
-  PERFORMANCE_TRACE_HANDLER_TIMEOUT_MS,
-  PERFORMANCE_TRACE_RESULT_TTL_MS,
-  PerformanceTraceMessageHandler,
-  PerformanceTraceRuntime,
-} from '../src/debugging/PerformanceTraceMessageHandler';
-import {
   MAX_PERFORMANCE_TRACE_CONTEXT_ID_BYTES,
   MAX_PERFORMANCE_TRACE_ERROR_BYTES,
   MAX_PERFORMANCE_TRACE_MESSAGE_BYTES,
@@ -14,6 +8,12 @@ import {
   PerformanceTraceStartRequestBody,
   PerformanceTraceStopBody,
 } from '../src/debugging/Messages';
+import {
+  PERFORMANCE_TRACE_HANDLER_TIMEOUT_MS,
+  PERFORMANCE_TRACE_RESULT_TTL_MS,
+  PerformanceTraceMessageHandler,
+  PerformanceTraceRuntime,
+} from '../src/debugging/PerformanceTraceMessageHandler';
 import {
   decodeLegacyTraceRecordingResult,
   decodeTraceRecordingResultWithNativeStats,

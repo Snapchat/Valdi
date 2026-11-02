@@ -1,5 +1,12 @@
 import 'jasmine/src/jasmine';
-import { beginTrace, endTrace, instantTrace, instantTraceWithArgs, isTracingSupported, trace } from '../src/utils/Trace';
+import {
+  beginTrace,
+  endTrace,
+  instantTrace,
+  instantTraceWithArgs,
+  isTracingSupported,
+  trace,
+} from '../src/utils/Trace';
 
 type TraceRuntime = {
   trace?: (tag: string, callback: () => unknown) => unknown;

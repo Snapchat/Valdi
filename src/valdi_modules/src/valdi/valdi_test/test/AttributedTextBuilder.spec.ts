@@ -187,12 +187,7 @@ describe('AtributedTextBuilder', () => {
   });
 
   it('can push background padding as a single number', () => {
-    const output = new AttributedTextBuilder()
-      .append('Hello ')
-      .pushBackgroundPadding(4)
-      .append('World')
-      .pop()
-      .build();
+    const output = new AttributedTextBuilder().append('Hello ').pushBackgroundPadding(4).append('World').pop().build();
     expect(output).toEqual([
       AttributedTextEntryType.Content,
       'Hello ',

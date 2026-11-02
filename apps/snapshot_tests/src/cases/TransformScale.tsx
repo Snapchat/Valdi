@@ -20,7 +20,15 @@ export class TransformScale extends Component {
 
       {/* 1.5x anchored at top-left: grows down and to the right only */}
       <view {...anchor} top={30} left={120} />
-      <view {...box} top={30} left={120} backgroundColor="#FB8C00" scaleX={1.5} scaleY={1.5} transformOrigin="top left" />
+      <view
+        {...box}
+        top={30}
+        left={120}
+        backgroundColor="#FB8C00"
+        scaleX={1.5}
+        scaleY={1.5}
+        transformOrigin="top left"
+      />
 
       {/* vertical flip about center */}
       <view {...anchor} top={130} left={30} />

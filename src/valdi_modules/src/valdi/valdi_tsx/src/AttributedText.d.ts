@@ -1,6 +1,6 @@
-import { LabelTextDecoration } from './NativeTemplateElements';
 import { AttributedTextInlineImageAttachment } from './AttributedTextInlineImageAttachment';
 import { AttributedTextInlineViewAttachment } from './AttributedTextInlineViewAttachment';
+import { LabelTextDecoration } from './NativeTemplateElements';
 
 export type AttributedTextOnTap = () => void;
 export type AttributedTextOnLayout = (x: number, y: number, width: number, height: number) => void;

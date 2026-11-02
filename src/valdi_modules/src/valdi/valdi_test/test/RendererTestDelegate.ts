@@ -186,7 +186,6 @@ export class RendererTestDelegate implements IRendererDelegate {
     this.observer = observer;
   }
 
-
   getNativeView(id: number, callback: (view: NativeView | undefined) => void) {
     callback(undefined);
   }

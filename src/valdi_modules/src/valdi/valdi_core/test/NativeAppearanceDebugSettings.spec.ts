@@ -1,8 +1,8 @@
 import 'jasmine/src/jasmine';
 
 import type { IRenderedElement } from '../src/IRenderedElement';
-import type { IRendererDelegate } from '../src/IRendererDelegate';
 import type { RendererObserver } from '../src/IRenderer';
+import type { IRendererDelegate } from '../src/IRendererDelegate';
 import { NodePrototype } from '../src/NodePrototype';
 import { Renderer } from '../src/Renderer';
 import type { ValdiRuntime } from '../src/ValdiRuntime';

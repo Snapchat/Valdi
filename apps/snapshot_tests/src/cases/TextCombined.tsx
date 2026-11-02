@@ -24,11 +24,7 @@ export class TextCombined extends Component {
       <layout height={6} />
 
       <view {...styles.card}>
-        <label
-          value="lineHeight + letterSpacing"
-          font={testFont(9)}
-          color="#666666"
-        />
+        <label value="lineHeight + letterSpacing" font={testFont(9)} color="#666666" />
         <label
           value="Wide spacing with double line height text that wraps around."
           font={testFont(12)}
@@ -40,11 +36,7 @@ export class TextCombined extends Component {
       </view>
 
       <view {...styles.card}>
-        <label
-          value="underline + center + multiline"
-          font={testFont(9)}
-          color="#666666"
-        />
+        <label value="underline + center + multiline" font={testFont(9)} color="#666666" />
         <label
           value="Centered underlined multiline text wrapping in a card."
           font={testFont(12)}
@@ -56,11 +48,7 @@ export class TextCombined extends Component {
       </view>
 
       <view {...styles.card}>
-        <label
-          value="truncation + decoration"
-          font={testFont(9)}
-          color="#666666"
-        />
+        <label value="truncation + decoration" font={testFont(9)} color="#666666" />
         <label
           value="This strikethrough text is truncated to two lines which tests the combination of decoration and line clamping."
           font={testFont(12)}
@@ -71,11 +59,7 @@ export class TextCombined extends Component {
       </view>
 
       <view {...styles.card}>
-        <label
-          value="tight spacing + right align"
-          font={testFont(9)}
-          color="#666666"
-        />
+        <label value="tight spacing + right align" font={testFont(9)} color="#666666" />
         <label
           value="Tight letter spacing right aligned multiline."
           font={testFont(12)}
@@ -88,11 +72,7 @@ export class TextCombined extends Component {
       </view>
 
       <view {...styles.card}>
-        <label
-          value="shadow + bold + wide"
-          font={testFont(9)}
-          color="#666666"
-        />
+        <label value="shadow + bold + wide" font={testFont(9)} color="#666666" />
         <label
           value="BOLD WIDE SHADOW"
           font={testBoldFont(18)}

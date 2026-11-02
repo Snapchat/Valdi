@@ -1,5 +1,5 @@
-import { TouchEventState } from 'valdi_tsx/src/GestureEvents';
 import type { ElementFrame } from 'valdi_tsx/src/Geometry';
+import { TouchEventState } from 'valdi_tsx/src/GestureEvents';
 import type { IRenderedElement } from '../IRenderedElement';
 import type { IRenderedVirtualNode } from '../IRenderedVirtualNode';
 import type { IRenderer } from '../IRenderer';
@@ -359,11 +359,7 @@ function getAttributeCallback(element: IRenderedElement, name: string): Attribut
 class DebuggerTraversalFailure extends Error {}
 
 class DebuggerInputCallbackFailure extends Error {
-  constructor(
-    readonly elementId: number,
-    callbackName: string,
-    error: unknown,
-  ) {
+  constructor(readonly elementId: number, callbackName: string, error: unknown) {
     const detail = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, ' ').slice(0, 256);
     super(`Element ${elementId} ${callbackName} callback failed${detail ? `: ${detail}` : '.'}`);
   }

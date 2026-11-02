@@ -1,5 +1,5 @@
-import { FieldValue } from '../types';
 import { FieldModifier, FieldType, IField } from '../ValdiProtobuf';
+import { FieldValue } from '../types';
 
 export type DefaultValueFactory = () => FieldValue;
 

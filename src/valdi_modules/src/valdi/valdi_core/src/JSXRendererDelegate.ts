@@ -1,7 +1,7 @@
+import { StringMap } from 'coreutils/src/StringMap';
 import { StringCache } from 'valdi_core/src/StringCache';
 import { MergeType } from 'valdi_core/src/utility_types/MergeType';
 import { getObjectId } from 'valdi_core/src/utils/IdentifyableObject';
-import { StringMap } from 'coreutils/src/StringMap';
 import { ElementFrame } from 'valdi_tsx/src/Geometry';
 import { NativeNode } from 'valdi_tsx/src/NativeNode';
 import { NativeView } from 'valdi_tsx/src/NativeView';
@@ -9,10 +9,10 @@ import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
 import { AnimationCurve, AnimationOptions } from './AnimationOptions';
 import { CancelToken } from './CancellableAnimation';
 import { ElementLayoutDispatcher } from './ElementLayoutDispatcher';
-import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { IRendererDelegate, VisibilityObserver } from './IRendererDelegate';
 import { NativeFrameObserver, NativeVisibilityObserver } from './RenderRequest';
 import { Style } from './Style';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { Buffer } from './utils/Buffer';
 
 const enum RenderRequestEntryType {

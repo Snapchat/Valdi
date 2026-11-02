@@ -7,6 +7,7 @@ import { IRenderedComponentHolder } from 'valdi_tsx/src/IRenderedComponentHolder
 import { IRenderedElementHolder } from 'valdi_tsx/src/IRenderedElementHolder';
 import { NativeNode } from 'valdi_tsx/src/NativeNode';
 import { NativeView } from 'valdi_tsx/src/NativeView';
+import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
 import { AnimationOptions, BasicAnimationOptions, SpringAnimationOptions } from './AnimationOptions';
 import { AnyRenderFunction } from './AnyRenderFunction';
 import { DumpedLogs } from './BugReporter';
@@ -28,7 +29,6 @@ import {
 import { IRendererDelegate } from './IRendererDelegate';
 import { IRendererEventListener } from './IRendererEventListener';
 import { NodePrototype } from './NodePrototype';
-import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
 import { Style } from './Style';
 import { MergeType } from './utility_types/MergeType';
 import { tryReuseCallback } from './utils/CallbackInternal';
@@ -1320,7 +1320,12 @@ export class Renderer implements IRenderer {
     } else if (isFactoryBacked && resolvedNode.element.attributes.viewFactory !== viewFactory) {
       // Same as setting `viewFactory` as a plain attribute, which is what the compiler emitted
       // before factory-backed elements existed: the delegate decides what a new factory means.
-      this.onAttributeChange(resolvedNode.element, 'viewFactory', viewFactory, resolvedNode.element.attributes.viewFactory);
+      this.onAttributeChange(
+        resolvedNode.element,
+        'viewFactory',
+        viewFactory,
+        resolvedNode.element.attributes.viewFactory,
+      );
     }
 
     this.pushVirtualNode(resolvedNode);

@@ -1,8 +1,8 @@
 import { StringMap } from 'coreutils/src/StringMap';
 import { makeMessageFields } from './FieldFactory';
 import { Message } from './Message';
-import { IArena, IDescriptor, IDescriptorPool, IMessage, IMessageConstructor } from './types';
 import { IField, INativeMessageFactory } from './ValdiProtobuf';
+import { IArena, IDescriptor, IDescriptorPool, IMessage, IMessageConstructor } from './types';
 
 export default class Descriptor implements IDescriptor {
   private messageConstructor: IMessageConstructor | undefined;

@@ -1,10 +1,14 @@
-import { renderImage } from 'valdi_image_generator/src/ImageGenerator';
 import { ImageEncoding } from 'drawing/src/IBitmap';
 import { fs } from 'file_system/src/FileSystem';
+import { renderImage } from 'valdi_image_generator/src/ImageGenerator';
 import { testCases } from './cases/index';
 
 export async function renderAllTestCases(outputDir: string): Promise<void> {
-  try { fs.createDirectorySync(outputDir, true); } catch { /* already exists */ }
+  try {
+    fs.createDirectorySync(outputDir, true);
+  } catch {
+    /* already exists */
+  }
 
   for (const tc of testCases) {
     console.info(`Rendering ${tc.name} (${tc.width}x${tc.height})...`);

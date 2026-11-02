@@ -1,6 +1,6 @@
 import { ConsoleRepresentable } from 'valdi_core/src/ConsoleRepresentable';
-import { IArena, IMessage, IMessageConstructor, JSONPrintOptions } from './types';
 import { INativeMessageIndex } from './ValdiProtobuf';
+import { IArena, IMessage, IMessageConstructor, JSONPrintOptions } from './types';
 
 function toPlainObjectImpl(value: any): any {
   if (value === undefined) {

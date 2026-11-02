@@ -28,7 +28,7 @@ import {
   observeDisplayInsetChange as nativeObserveDisplayInsetChange,
   copyToClipBoard as nativeCopyToClipBoard,
   performHapticFeedback as nativePerformHapticFeedback,
-  setBackButtonObserver as nativeSetBackButtonObserver
+  setBackButtonObserver as nativeSetBackButtonObserver,
 } from 'valdi_core/src/DeviceBridge';
 
 /**
@@ -365,7 +365,7 @@ export namespace Device {
    * @param timeZoneName - the name of the time zone to query (Uses the local time zone if undefined)
    */
   export function getTimeZoneDstSecondsFromGMT(timeZoneName?: string): number {
-    // TODO(1102) - handle changes to the current timezone 
+    // TODO(1102) - handle changes to the current timezone
     const cacheKey = timeZoneName ?? '';
     let cacheValue = cacheTimeZoneDstSecondsFromGMT[cacheKey];
     if (cacheValue === undefined) {

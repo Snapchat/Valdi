@@ -41,7 +41,9 @@ describe('visitGeometricPath', () => {
 
   it('rejects a missing or empty extent', () => {
     expect(visitGeometricPath(new Float64Array([10, 20]), recordingVisitor([]))).toBeFalse();
-    expect(visitGeometricPath(new Float64Array([0, 20, GeometricPathScaleType.Fill]), recordingVisitor([]))).toBeFalse();
+    expect(
+      visitGeometricPath(new Float64Array([0, 20, GeometricPathScaleType.Fill]), recordingVisitor([])),
+    ).toBeFalse();
   });
 
   it('rejects a truncated component', () => {

@@ -153,8 +153,8 @@ export class DebugConsole
         >
           <layout style={headerContainerStyle}>
             <layout style={topHeaderTopStyle}>
-              <DebugButton text='Dismiss' onTap={this.close} />
-              <label value={`${this.state.issues.length} Valdi Warnings`} font='Montserrat-SemiBold 13' />
+              <DebugButton text="Dismiss" onTap={this.close} />
+              <label value={`${this.state.issues.length} Valdi Warnings`} font="Montserrat-SemiBold 13" />
               <DebugButton
                 text={this.state.collapseState === CollapseState.expanded ? 'Collapse' : 'Expand'}
                 onTap={this.expandOrCollapse}
@@ -175,12 +175,12 @@ export class DebugConsole
       height={this.state.collapseState !== CollapseState.expanded ? 0 : undefined}
       opacity={this.state.collapseState === CollapseState.expanded ? 1.0 : 0}
     >
-      <DebugButton onTap={this.goToPreviousIssue} text='<' />
+      <DebugButton onTap={this.goToPreviousIssue} text="<" />
       <label
         style={issueTextSelectorStyle}
         value={`Issue ${this.state.issueIndex + 1} / ${this.state.issues.length}`}
       />
-      <DebugButton onTap={this.goToNextIssue} text='>' />
+      <DebugButton onTap={this.goToNextIssue} text=">" />
     </view>;
   }
 
@@ -226,8 +226,8 @@ export class DebugConsole
     const isFullyExpanded = this.state.collapseState === CollapseState.expanded;
 
     <view
-      backgroundColor='white'
-      width='100%'
+      backgroundColor="white"
+      width="100%"
       flexGrow={1}
       flexShrink={1}
       padding={!isFullyExpanded ? 0 : 8}

@@ -1,15 +1,15 @@
+import { $slot } from 'valdi_core/src/CompilerIntrinsics';
 import { Component } from 'valdi_core/src/Component';
 import { ComponentConstructor, IComponent } from 'valdi_core/src/IComponent';
 import { systemBoldFont } from 'valdi_core/src/SystemFont';
-import { NavigationRoot } from 'valdi_navigation/src/NavigationRoot';
-import { NavigationController } from 'valdi_navigation/src/NavigationController';
-import { $slot } from 'valdi_core/src/CompilerIntrinsics';
 import { createReusableCallback } from 'valdi_core/src/utils/Callback';
-import { MicroBenchTest } from './MicroBenchTest';
-import { MarshallingTest } from './MarshallingTest';
-import { RenderTest } from './RenderTest';
+import { NavigationController } from 'valdi_navigation/src/NavigationController';
+import { NavigationRoot } from 'valdi_navigation/src/NavigationRoot';
 import { DrawFrameBenchmark } from './DrawFrameBenchmark';
+import { MarshallingTest } from './MarshallingTest';
+import { MicroBenchTest } from './MicroBenchTest';
 import { ProtoImportTest } from './ProtoImportTest';
+import { RenderTest } from './RenderTest';
 
 // Bechmarks
 // - Quickjs microbench

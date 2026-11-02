@@ -1,5 +1,5 @@
-import { ElementRefs, LegacyVueComponent } from 'valdi_core/src/Valdi';
 import { ComponentConstructor, IComponent } from 'valdi_core/src/IComponent';
+import { ElementRefs, LegacyVueComponent } from 'valdi_core/src/Valdi';
 
 export interface KeyedItem<T> {
   readonly key: string;

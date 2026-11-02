@@ -5,9 +5,9 @@ import { NativeView } from 'valdi_tsx/src/NativeView';
 import { Asset, PlatformAssetOverrides, ThemableAssetMap } from './Asset';
 import { ElementId } from './IRenderedElement';
 import { IRootComponentsManager } from './IRootComponentsManager';
+import { ViewNodeAssetTrackerCallback } from './IViewNodeAssetTracker';
 import { RenderRequest } from './RenderRequest';
 import { SubmitDebugMessageFunc } from './debugging/DebugMessage';
-import { ViewNodeAssetTrackerCallback } from './IViewNodeAssetTracker';
 import { AnyFunction } from './utils/Callback';
 import { PropertyList } from './utils/PropertyList';
 

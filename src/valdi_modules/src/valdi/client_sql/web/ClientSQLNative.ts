@@ -27,10 +27,7 @@ export type UnsupportedClientSQLTransactionBody = (
 ) => void;
 
 export interface UnsupportedClientSQLNativeConnection extends UnsupportedClientSQLTransaction {
-  transaction(
-    body: UnsupportedClientSQLTransactionBody,
-    callback: UnsupportedClientSQLCallback<void>,
-  ): void;
+  transaction(body: UnsupportedClientSQLTransactionBody, callback: UnsupportedClientSQLCallback<void>): void;
   close(callback: UnsupportedClientSQLCallback<void>): void;
 }
 
@@ -67,10 +64,7 @@ class UnsupportedClientSQLConnection implements UnsupportedClientSQLNativeConnec
     callback(undefined, unsupported(this.name, this.schemaVersion, this.createStatements, this.migrations).message);
   }
 
-  transaction(
-    _body: UnsupportedClientSQLTransactionBody,
-    callback: UnsupportedClientSQLCallback<void>,
-  ): void {
+  transaction(_body: UnsupportedClientSQLTransactionBody, callback: UnsupportedClientSQLCallback<void>): void {
     callback(undefined, unsupported(this.name, this.schemaVersion, this.createStatements, this.migrations).message);
   }
 

@@ -130,7 +130,10 @@ function sideStatus(testCase: HtmlReportCase, side: 'before' | 'after'): string 
   if (testCase.status === 'missing' && testCase.missingFrom === side) {
     return 'missing';
   }
-  if (testCase.status === 'missing-snapshot' && (side === 'before' ? testCase.beforeImage === undefined : testCase.afterImage === undefined)) {
+  if (
+    testCase.status === 'missing-snapshot' &&
+    (side === 'before' ? testCase.beforeImage === undefined : testCase.afterImage === undefined)
+  ) {
     return 'missing snapshot';
   }
   return (side === 'before' ? testCase.beforeStatus : testCase.afterStatus) ?? 'unknown';
@@ -897,15 +900,23 @@ export function writeHtmlReport(summary: ComparisonSummary, outputDir: Path): vo
     <header class="page-header">
       <div>
         <h1>Valdi Integration Diff</h1>
-        <div class="paths" id="paths">${escapeHtml(`Before: ${report.before} | After: ${report.after} | Generated: ${report.generatedAt}`)}</div>
+        <div class="paths" id="paths">${escapeHtml(
+          `Before: ${report.before} | After: ${report.after} | Generated: ${report.generatedAt}`,
+        )}</div>
       </div>
     </header>
 
     <section class="metrics" aria-label="Summary">
       <div class="metric"><span>Cases</span><strong id="caseCount">${escapeHtml(report.caseCount)}</strong></div>
-      <div class="metric"><span>Changed</span><strong id="changedCaseCount">${escapeHtml(report.changedCaseCount)}</strong></div>
-      <div class="metric"><span>Max Diff</span><strong id="maxDiff">${escapeHtml(percent(report.maxDiffPercent))}</strong></div>
-      <div class="metric"><span>Platforms</span><strong id="platforms">${escapeHtml(`${report.beforePlatform} -> ${report.afterPlatform}`)}</strong></div>
+      <div class="metric"><span>Changed</span><strong id="changedCaseCount">${escapeHtml(
+        report.changedCaseCount,
+      )}</strong></div>
+      <div class="metric"><span>Max Diff</span><strong id="maxDiff">${escapeHtml(
+        percent(report.maxDiffPercent),
+      )}</strong></div>
+      <div class="metric"><span>Platforms</span><strong id="platforms">${escapeHtml(
+        `${report.beforePlatform} -> ${report.afterPlatform}`,
+      )}</strong></div>
     </section>
 
     <section class="controls" aria-label="Filters">
@@ -931,7 +942,9 @@ export function writeHtmlReport(summary: ComparisonSummary, outputDir: Path): vo
         <option value="element">Element</option>
       </select>
     </section>
-    <div class="result-count" id="resultCount">${escapeHtml(`${report.cases.length} of ${report.caseCount} cases shown`)}</div>
+    <div class="result-count" id="resultCount">${escapeHtml(
+      `${report.cases.length} of ${report.caseCount} cases shown`,
+    )}</div>
 
     <section id="cases">${staticCasesHtml}
     </section>

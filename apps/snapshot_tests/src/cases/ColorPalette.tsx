@@ -63,7 +63,13 @@ export class ColorPaletteThemes extends Component {
 
   onRender(): void {
     <view {...styles.root}>
-      <view {...styles.panel} colorPaletteName={SNAP_LIGHT} background="panelBg" border="2 solid accent" marginRight={12}>
+      <view
+        {...styles.panel}
+        colorPaletteName={SNAP_LIGHT}
+        background="panelBg"
+        border="2 solid accent"
+        marginRight={12}
+      >
         <view {...styles.bar} background="accent" />
         <view {...styles.lineWide} background="panelText" />
         <view {...styles.lineNarrow} background="panelText" />

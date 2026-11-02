@@ -1,5 +1,5 @@
-import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { IComponent } from './IComponent';
+import { getValdiRuntime } from './ValdiRuntimeProvider';
 
 /**
  * By default, bridged objects from native are disposed after onDestroy()
@@ -108,9 +108,9 @@ export function withLocalNativeRefs<T>(contextId: string, cb: () => T): T {
 /**
  * Given an async function, returns a new async function with native references that will be protected
  * for the duration of the async execution.
- * 
+ *
  * This is a convenience for:
- * 
+ *
  * ```ts
  * async function someAsyncFunction() {
  *  const dispose = protectNativeRefsForCurrentContextId();
@@ -124,9 +124,9 @@ export function withLocalNativeRefs<T>(contextId: string, cb: () => T): T {
  *  }
  * }
  * ```
- * 
+ *
  * This can be written as:
- * 
+ *
  * ```ts
  * const someAsyncFunction = withCurrentContextProtected(async () => {
  *  // do async work

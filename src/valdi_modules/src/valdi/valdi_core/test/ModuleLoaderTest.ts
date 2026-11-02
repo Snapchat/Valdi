@@ -36,12 +36,7 @@ describe('ModuleLoader.preloadBatch', () => {
   beforeEach(() => {
     evalOrder = [];
     scheduled = [];
-    loader = new ModuleLoader(
-      () => undefined,
-      undefined,
-      undefined,
-      false,
-    );
+    loader = new ModuleLoader(() => undefined, undefined, undefined, false);
     originalScheduleWorkItem = runtime.scheduleWorkItem;
     runtime.scheduleWorkItem = (cb: () => void, delayMs?: number, interruptible?: boolean) => {
       if (!interruptible) {

@@ -1,5 +1,5 @@
-import { getValdiRuntime } from '../ValdiRuntimeProvider';
 import { setTimeoutInterruptible } from '../SetTimeout';
+import { getValdiRuntime } from '../ValdiRuntimeProvider';
 import { makeInterruptibleCallback } from './FunctionUtils';
 
 /**

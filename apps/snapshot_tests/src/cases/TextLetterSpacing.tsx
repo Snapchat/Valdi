@@ -22,42 +22,22 @@ export class TextLetterSpacing extends Component {
 
       <view {...styles.row}>
         <label value="0 (default):" font={testFont(9)} color="#666666" />
-        <label
-          value="Default letter spacing"
-          font={testFont(14)}
-          color="#000000"
-          letterSpacing={0}
-        />
+        <label value="Default letter spacing" font={testFont(14)} color="#000000" letterSpacing={0} />
       </view>
 
       <view {...styles.row}>
         <label value="1pt:" font={testFont(9)} color="#666666" />
-        <label
-          value="Wider letter spacing"
-          font={testFont(14)}
-          color="#000000"
-          letterSpacing={1}
-        />
+        <label value="Wider letter spacing" font={testFont(14)} color="#000000" letterSpacing={1} />
       </view>
 
       <view {...styles.row}>
         <label value="3pt:" font={testFont(9)} color="#666666" />
-        <label
-          value="Very wide spacing"
-          font={testFont(14)}
-          color="#000000"
-          letterSpacing={3}
-        />
+        <label value="Very wide spacing" font={testFont(14)} color="#000000" letterSpacing={3} />
       </view>
 
       <view {...styles.row}>
         <label value="-0.5pt:" font={testFont(9)} color="#666666" />
-        <label
-          value="Tighter letter spacing"
-          font={testFont(14)}
-          color="#000000"
-          letterSpacing={-0.5}
-        />
+        <label value="Tighter letter spacing" font={testFont(14)} color="#000000" letterSpacing={-0.5} />
       </view>
 
       <view {...styles.row}>

@@ -90,7 +90,7 @@ function displayName(base: string): string {
 }
 
 export function parseFontStyle(value: string): ParsedFontStyle {
-  const tokens = value.split(/\s+/).filter((token) => token.length > 0);
+  const tokens = value.split(/\s+/).filter(token => token.length > 0);
 
   // The size anchors the string: the family runs up to it and may be multi-word
   // (`Times New Roman 16`), and what follows is a trailer. Only the first

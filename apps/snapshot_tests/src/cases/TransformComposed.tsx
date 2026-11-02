@@ -16,7 +16,13 @@ export class TransformComposed extends Component {
     <view width="100%" height="100%" backgroundColor="#FFFFFF">
       {/* translate + rotate + uniform scale composed in one string */}
       <view {...anchor} top={20} left={20} />
-      <view {...box} top={20} left={20} backgroundColor="#C2185B" transform="translate(30px, 10px) rotate(20deg) scale(1.2)" />
+      <view
+        {...box}
+        top={20}
+        left={20}
+        backgroundColor="#C2185B"
+        transform="translate(30px, 10px) rotate(20deg) scale(1.2)"
+      />
 
       {/* percent translateX + negative rotation */}
       <view {...anchor} top={120} left={20} />

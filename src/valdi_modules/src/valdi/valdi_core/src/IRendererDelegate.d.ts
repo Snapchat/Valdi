@@ -1,9 +1,9 @@
+import { ElementFrame } from 'valdi_tsx/src/Geometry';
 import { NativeNode } from 'valdi_tsx/src/NativeNode';
 import { NativeView } from 'valdi_tsx/src/NativeView';
 import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
 import { AnimationOptions } from './AnimationOptions';
 import { CancelToken } from './CancellableAnimation';
-import { ElementFrame } from 'valdi_tsx/src/Geometry';
 import { Style } from './Style';
 
 export type VisibilityObserver = (

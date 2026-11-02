@@ -60,8 +60,7 @@ function installFakeLocalStorage(storage = new FakeStorage()): FakeStorage {
 
 type NativeStore = ReturnType<typeof newPersistentStore>;
 
-const makeStore = (name: string): NativeStore =>
-  newPersistentStore(name, true, false, 0, undefined, undefined, false);
+const makeStore = (name: string): NativeStore => newPersistentStore(name, true, false, 0, undefined, undefined, false);
 
 // PersistentStore.ts reaches this binding through Valdi's
 // require('PersistentStoreNative') module linker, which raw Node ESM does not
@@ -117,9 +116,7 @@ const fetchBuf = (persistentStore: NativeStore, key: string): Promise<ArrayBuffe
   );
 
 const removeAll = (persistentStore: NativeStore): Promise<void> =>
-  new Promise((resolve, reject) =>
-    persistentStore.removeAll(error => (error ? reject(new Error(error)) : resolve())),
-  );
+  new Promise((resolve, reject) => persistentStore.removeAll(error => (error ? reject(new Error(error)) : resolve())));
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -508,8 +505,12 @@ function verifyHostileStorageGetter(): void {
     'hostile coercion must use the constant diagnostic fallback',
   );
   assert(
-    JSON.stringify([primitiveSnapshot, symbolMessageSnapshot, hostileMessageSnapshot, hostileCoercionSnapshot])
-      .includes('storageError'),
+    JSON.stringify([
+      primitiveSnapshot,
+      symbolMessageSnapshot,
+      hostileMessageSnapshot,
+      hostileCoercionSnapshot,
+    ]).includes('storageError'),
     'all hostile thrown-value snapshots must remain serializable',
   );
 

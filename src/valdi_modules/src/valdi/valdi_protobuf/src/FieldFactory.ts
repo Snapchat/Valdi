@@ -1,6 +1,14 @@
 import { lazyMap } from 'coreutils/src/ArrayUtils';
 import { StringMap } from 'coreutils/src/StringMap';
 import {
+  FieldModifier,
+  FieldType,
+  IField,
+  INativeMessageIndex,
+  NativeFieldValues,
+  NonRepeatedNativeFieldValues,
+} from './ValdiProtobuf';
+import {
   FieldValue,
   FieldValues,
   IArena,
@@ -12,14 +20,6 @@ import {
   NonRepeatedFieldValues,
 } from './types';
 import { defaultValueForField } from './utils/misc';
-import {
-  FieldModifier,
-  FieldType,
-  IField,
-  INativeMessageIndex,
-  NativeFieldValues,
-  NonRepeatedNativeFieldValues,
-} from './ValdiProtobuf';
 
 // Use a value outside the bounds of a 32-bit integer to avoid
 // any possible conflicts with enum values, since enum values can

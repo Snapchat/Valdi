@@ -5,7 +5,7 @@ import { WebViewClassFactory, addRegistrationCallback } from './WebViewClassRegi
  * Registers a web custom-view class name with the renderer registry when available.
  */
 export function registerWebPolyglotViewClass(className: string, factory: WebViewClassFactory): void {
-  addRegistrationCallback((registry) => {
+  addRegistrationCallback(registry => {
     registry.set(className, factory);
   });
 }

@@ -4,12 +4,12 @@ export default function bareMinimum(): void {
   //const arena = new Arena();
   console.log('Making a request');
   new HTTPClient('https://google.com').get('/').then(
-    (response) => {
-      console.log('success', response)
+    response => {
+      console.log('success', response);
     },
-    (error) => {
+    error => {
       console.error('request failed', error);
-    }
+    },
   );
 }
 

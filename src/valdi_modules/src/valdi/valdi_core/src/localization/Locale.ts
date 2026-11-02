@@ -25,9 +25,9 @@ export class Locale {
 
   static parse(input: string): Locale {
     const components = input.split('-');
-    if  (components.length === 2) {
+    if (components.length === 2) {
       return new Locale(components[0] /* language */, components[1] /* region */);
     }
     return new Locale(components[0] /* language */, components[2] /* region */, components[1] /* script */);
-    }
+  }
 }

@@ -1,11 +1,9 @@
-import { ApplicationCancelable } from "../src/ApplicationBridge";
+import { ApplicationCancelable } from '../src/ApplicationBridge';
 
 const noopCancelable: ApplicationCancelable = { cancel() {} };
 
 // minimal Node env shim so TS stops complaining (no runtime dependency)
-declare const process:
-  | undefined
-  | { env?: Record<string, string | undefined> };
+declare const process: undefined | { env?: Record<string, string | undefined> };
 
 /**
  * Fires when your app “enters background”.
@@ -79,5 +77,5 @@ export function getAppVersion(): string {
     return process.env.npm_package_version!;
   }
 
-  return "0.0.0";
+  return '0.0.0';
 }

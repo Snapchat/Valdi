@@ -14,10 +14,10 @@ export type TraceArgumentValue = unknown;
 export type TraceArgumentsFor<Args extends readonly unknown[]> = Args extends readonly []
   ? readonly []
   : Args extends readonly [infer Key, infer Value, ...infer Rest]
-    ? Key extends string
-      ? readonly [Key, Value, ...TraceArgumentsFor<Rest>]
-      : never
-    : never;
+  ? Key extends string
+    ? readonly [Key, Value, ...TraceArgumentsFor<Rest>]
+    : never
+  : never;
 
 export interface RecordedTrace {
   trace: string;

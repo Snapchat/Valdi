@@ -48,32 +48,17 @@ export class TextShadow extends Component {
 
       <view {...styles.darkBg}>
         <label value="Light text on dark:" font={testFont(9)} color="#999999" />
-        <label
-          value="Glow effect on dark bg"
-          font={testBoldFont(16)}
-          color="#FFFFFF"
-          textShadow="#FFFFFF 6 0.67 0 0"
-        />
+        <label value="Glow effect on dark bg" font={testBoldFont(16)} color="#FFFFFF" textShadow="#FFFFFF 6 0.67 0 0" />
       </view>
 
       <view {...styles.section}>
         <label value="Colored shadow:" font={testFont(9)} color="#666666" />
-        <label
-          value="Blue shadow on text"
-          font={testBoldFont(16)}
-          color="#000000"
-          textShadow="#0000FF 3 0.67 1 1"
-        />
+        <label value="Blue shadow on text" font={testBoldFont(16)} color="#000000" textShadow="#0000FF 3 0.67 1 1" />
       </view>
 
       <view {...styles.section}>
         <label value="No blur shadow:" font={testFont(9)} color="#666666" />
-        <label
-          value="Hard shadow no blur"
-          font={testBoldFont(16)}
-          color="#000000"
-          textShadow="#000000 0 0.4 2 2"
-        />
+        <label value="Hard shadow no blur" font={testBoldFont(16)} color="#000000" textShadow="#000000 0 0.4 2 2" />
       </view>
     </view>;
   }

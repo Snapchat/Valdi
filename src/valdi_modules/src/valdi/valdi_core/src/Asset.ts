@@ -1,7 +1,7 @@
 import { Asset } from 'valdi_tsx/src/Asset';
+import { Device } from './Device';
 import { BackendRenderingType, LoadedAsset, LoadedAssetMetadata } from './ValdiRuntime';
 import { getValdiRuntime } from './ValdiRuntimeProvider';
-import { Device } from './Device';
 
 export { Asset };
 
@@ -178,7 +178,13 @@ export function addAssetLoadObserver(
   preferredWidth?: number,
   preferredHeight?: number,
 ): AssetSubscription {
-  const unsubscribe = getValdiRuntime().addAssetLoadObserver(asset, onLoad, outputType, preferredWidth, preferredHeight);
+  const unsubscribe = getValdiRuntime().addAssetLoadObserver(
+    asset,
+    onLoad,
+    outputType,
+    preferredWidth,
+    preferredHeight,
+  );
   return { unsubscribe };
 }
 

@@ -1,4 +1,4 @@
-import { PropertyList } from "valdi_core/src/utils/PropertyList";
+import { PropertyList } from 'valdi_core/src/utils/PropertyList';
 
 export interface PersistentStoreNative {
   store(

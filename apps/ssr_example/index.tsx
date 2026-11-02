@@ -7,8 +7,8 @@ interface GreetingViewModel {
 
 class Greeting extends Component<GreetingViewModel> {
   onRender(): void {
-    <view flexDirection='column' padding={24}>
-      <label value='Hello from Valdi SSR' font='system-bold 24' />
+    <view flexDirection="column" padding={24}>
+      <label value="Hello from Valdi SSR" font="system-bold 24" />
       <label value={`Server update ${this.viewModel.updateCount}`} marginTop={12} />
     </view>;
   }

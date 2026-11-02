@@ -1,5 +1,5 @@
-import { resolveLocale } from 'valdi_core/src/localization/LocaleResolver';
 import { Locale } from 'valdi_core/src/localization/Locale';
+import { resolveLocale } from 'valdi_core/src/localization/LocaleResolver';
 
 import 'jasmine/src/jasmine';
 
