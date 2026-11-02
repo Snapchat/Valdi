@@ -1,9 +1,8 @@
-import myStrings from 'valdi_test/src/Strings';
-
 import 'jasmine/src/jasmine';
 import { Device } from 'valdi_core/src/Device';
 import { overrideLocales, removeOverrideLocales } from 'valdi_core/src/LocalizableStrings';
 import { Locale } from 'valdi_core/src/localization/Locale';
+import myStrings from 'valdi_test/src/Strings';
 import { hasDeviceLocales } from './EngineSupport';
 
 describe('Localization', () => {
@@ -13,12 +12,12 @@ describe('Localization', () => {
 
   // CI hosts can report no device locales at all.
   (hasDeviceLocales() ? it : xit)('can resolve system locale', () => {
-      const locales = Device.getDeviceLocales();
-      expect(locales).not.toEqual([]);
+    const locales = Device.getDeviceLocales();
+    expect(locales).not.toEqual([]);
   });
 
   it('can resolve string using system locale', () => {
-      expect(myStrings.myFirst()).not.toBe('my_first');
+    expect(myStrings.myFirst()).not.toBe('my_first');
   });
 
   it('can localize without format', () => {

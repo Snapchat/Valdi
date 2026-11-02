@@ -71,7 +71,7 @@ export class App extends StatefulComponent<{}, State> {
   }
 
   private goBack = (): void => {
-    this.webViewController.getState().then(state => {
+    void this.webViewController.getState().then(state => {
       if (state.canGoBack) {
         this.webViewController.goBack();
       }
@@ -79,7 +79,7 @@ export class App extends StatefulComponent<{}, State> {
   };
 
   private goForward = (): void => {
-    this.webViewController.getState().then(state => {
+    void this.webViewController.getState().then(state => {
       if (state.canGoForward) {
         this.webViewController.goForward();
       }

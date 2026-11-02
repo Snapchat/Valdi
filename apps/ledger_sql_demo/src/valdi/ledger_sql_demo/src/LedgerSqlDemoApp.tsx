@@ -79,8 +79,8 @@ class AccountBalanceRow extends Component<AccountBalanceRowViewModel> {
               ? styles.negativeAmountCompact
               : styles.negativeAmount
             : compact
-              ? styles.positiveAmountCompact
-              : styles.positiveAmount
+            ? styles.positiveAmountCompact
+            : styles.positiveAmount
         }
         value={formatCents(balanceCents)}
       />
@@ -92,8 +92,8 @@ class AccountBalanceRow extends Component<AccountBalanceRowViewModel> {
                 ? styles.selectionButtonSelectedCompact
                 : styles.selectionButtonSelected
               : compact
-                ? styles.selectionButtonCompact
-                : styles.selectionButton
+              ? styles.selectionButtonCompact
+              : styles.selectionButton
           }
           onTap={this.selectFrom}
         >
@@ -109,8 +109,8 @@ class AccountBalanceRow extends Component<AccountBalanceRowViewModel> {
                 ? styles.selectionButtonSelectedCompact
                 : styles.selectionButtonSelected
               : compact
-                ? styles.selectionButtonCompact
-                : styles.selectionButton
+              ? styles.selectionButtonCompact
+              : styles.selectionButton
           }
           onTap={this.selectTo}
         >
@@ -141,10 +141,7 @@ class TransferRow extends Component<TransferRowViewModel> {
     const transfer = this.viewModel.transfer;
     <view style={styles.transferRow}>
       <view style={styles.transferHeader}>
-        <label
-          style={styles.transferRoute}
-          value={`${transfer.from_account_name} -> ${transfer.to_account_name}`}
-        />
+        <label style={styles.transferRoute} value={`${transfer.from_account_name} -> ${transfer.to_account_name}`} />
         <view style={styles.transferAmountPill}>
           <label style={styles.transferAmount} value={formatCents(transfer.amount_cents)} />
         </view>
@@ -167,10 +164,7 @@ class LedgerEntryRow extends Component<LedgerEntryRowViewModel> {
     const entry = this.viewModel.entry;
     const compact = isCompactLayout();
     <view style={compact ? styles.entryRowCompact : styles.entryRow}>
-      <label
-        style={compact ? styles.entryAccountCompact : styles.entryAccount}
-        value={entry.account_name}
-      />
+      <label style={compact ? styles.entryAccountCompact : styles.entryAccount} value={entry.account_name} />
       <label
         style={
           entry.amount_cents < 0
@@ -178,15 +172,12 @@ class LedgerEntryRow extends Component<LedgerEntryRowViewModel> {
               ? styles.entryAmountNegativeCompact
               : styles.entryAmountNegative
             : compact
-              ? styles.entryAmountPositiveCompact
-              : styles.entryAmountPositive
+            ? styles.entryAmountPositiveCompact
+            : styles.entryAmountPositive
         }
         value={formatCents(entry.amount_cents)}
       />
-      <label
-        style={compact ? styles.entryMemoCompact : styles.entryMemo}
-        value={entry.memo}
-      />
+      <label style={compact ? styles.entryMemoCompact : styles.entryMemo} value={entry.memo} />
       <label
         style={compact ? styles.entryMetaCompact : styles.entryMeta}
         value={`#${entry.id} | ${formatTime(entry.created_at)} | ${shortGroup(entry.transfer_group)}`}
@@ -229,16 +220,10 @@ class LedgerPaginationControls extends Component<LedgerPaginationControlsViewMod
           />
         </view>
         <view style={this.showAllButtonStyle()} onTap={this.toggleShowAll}>
-          <label
-            style={this.showAllTextStyle()}
-            value={this.viewModel.showAll ? 'Page' : 'All'}
-          />
+          <label style={this.showAllTextStyle()} value={this.viewModel.showAll ? 'Page' : 'All'} />
         </view>
         <view style={this.canNext() ? styles.paginationButton : styles.paginationButtonDisabled} onTap={this.next}>
-          <label
-            style={this.canNext() ? styles.paginationButtonText : styles.paginationButtonTextDisabled}
-            value=">"
-          />
+          <label style={this.canNext() ? styles.paginationButtonText : styles.paginationButtonTextDisabled} value=">" />
         </view>
       </view>
     </view>;
@@ -407,11 +392,7 @@ export class App extends StatefulComponent<ViewModel, State> {
               value="CLIENTSQL TRANSACTIONS + WATCHERS"
               font={systemBoldFont(compact ? 11 : 13)}
             />
-            <label
-              style={styles.title}
-              value="Ledger ClientSQL Demo"
-              font={systemBoldFont(compact ? 25 : 32)}
-            />
+            <label style={styles.title} value="Ledger ClientSQL Demo" font={systemBoldFont(compact ? 25 : 32)} />
             <label
               style={styles.subtitle}
               value="Transfers write two ledger entries and one log row in a single transaction. Balance and log sections are generated reactive aggregate queries."
@@ -451,9 +432,7 @@ export class App extends StatefulComponent<ViewModel, State> {
                 <label
                   style={styles.primaryButtonText}
                   value={
-                    this.state.activeMutation === LedgerMutation.Transfer
-                      ? 'Posting...'
-                      : 'Post transfer transaction'
+                    this.state.activeMutation === LedgerMutation.Transfer ? 'Posting...' : 'Post transfer transaction'
                   }
                 />
               </view>
@@ -465,9 +444,7 @@ export class App extends StatefulComponent<ViewModel, State> {
                 <label
                   style={styles.secondaryButtonText}
                   value={
-                    this.state.activeMutation === LedgerMutation.StressBatch
-                      ? 'Running batch...'
-                      : 'Run stress batch'
+                    this.state.activeMutation === LedgerMutation.StressBatch ? 'Running batch...' : 'Run stress batch'
                   }
                 />
               </view>
@@ -932,14 +909,7 @@ export class App extends StatefulComponent<ViewModel, State> {
   ): Promise<void> {
     await queries.insertLedgerEntry(fromAccountId, -amountCents, memo, transferGroup, createdAt);
     await queries.insertLedgerEntry(toAccountId, amountCents, memo, transferGroup, createdAt);
-    await queries.insertTransactionLog(
-      transferGroup,
-      fromAccountId,
-      toAccountId,
-      amountCents,
-      memo,
-      createdAt,
-    );
+    await queries.insertTransactionLog(transferGroup, fromAccountId, toAccountId, amountCents, memo, createdAt);
   }
 
   private async requireAccountByCode(queries: LedgerQueries, code: string): Promise<Account> {

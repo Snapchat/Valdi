@@ -1,15 +1,17 @@
-import { FontManager } from 'drawing/src/FontManager';
+/* eslint-disable @snap/valdi/jsx-no-lambda -- each case's render callback is a plain function, not a
+   component, so there is no instance to hold stable handlers; every handler records into its own case's ctx. */
 import { Base64 } from 'coreutils/src/Base64';
-import { GeometricPathBuilder, GeometricPathScaleType } from 'valdi_core/src/GeometricPath';
-import { Component, StatefulComponent } from 'valdi_core/src/Component';
-import { Style } from 'valdi_core/src/Style';
+import { FontManager } from 'drawing/src/FontManager';
 import type { Asset } from 'valdi_core/src/Asset';
+import { Component, StatefulComponent } from 'valdi_core/src/Component';
+import { GeometricPathBuilder, GeometricPathScaleType } from 'valdi_core/src/GeometricPath';
+import { Style } from 'valdi_core/src/Style';
 import { ValdiRuntime } from 'valdi_core/src/ValdiRuntime';
 import { AttributedTextBuilder } from 'valdi_core/src/utils/AttributedTextBuilder';
+import type { AttributedText } from 'valdi_core/src/utils/AttributedTextBuilder';
 import { ImageFilters } from 'valdi_core/src/utils/ImageFilter';
 import { AttributedTextInlineViewVerticalAlignment } from 'valdi_tsx/src/AttributedTextInlineViewAttachment';
-import type { ViewFactory } from 'valdi_tsx/src/ViewFactory';
-import { Worker } from 'worker/src/Worker';
+import type { IFontProvider } from 'valdi_tsx/src/IFontProvider';
 import type {
   AnimatedImage,
   BlurView,
@@ -24,6 +26,8 @@ import type {
   View,
   WebViewElement,
 } from 'valdi_tsx/src/NativeTemplateElements';
+import type { ViewFactory } from 'valdi_tsx/src/ViewFactory';
+import { Worker } from 'worker/src/Worker';
 
 import res from '../res';
 import { createIntegrationViewFactory } from './FactoryIntegrationHost';
@@ -87,13 +91,17 @@ function configureIntegrationColorPalettes(): void {
   runtime.setActiveColorPalette('integration-light');
 }
 
+function errorMessage(error: unknown): string {
+  return (error as { message?: string } | null | undefined)?.message ?? String(error);
+}
+
 function lottieResourceSource(ctx: IntegrationTestRenderContext): Asset | string {
   try {
     const bytes = runtime.getModuleEntry('integration_test_app', 'res/animation.json', false) as Uint8Array;
     ctx.record(`lottie resource bytes:${bytes.length}`);
     return runtime.makeAssetFromBytes(bytes);
-  } catch (error: any) {
-    ctx.record(`lottie resource unavailable:${error?.message ?? String(error)}`);
+  } catch (error: unknown) {
+    ctx.record(`lottie resource unavailable:${errorMessage(error)}`);
     return 'integration-test-missing-lottie.json';
   }
 }
@@ -181,7 +189,7 @@ const styleAnimatedImageSample = new Style<AnimatedImage>({
   width: 130,
 });
 
-function attributedLabelFontColorValue() {
+function attributedLabelFontColorValue(): AttributedText {
   return new AttributedTextBuilder()
     .append('plain ', { color: '#111827', font: 'system 18' })
     .append('bold red ', { color: '#DC2626', font: 'system-bold 22' })
@@ -189,7 +197,7 @@ function attributedLabelFontColorValue() {
     .build();
 }
 
-function attributedLabelBackgroundDecorationValue() {
+function attributedLabelBackgroundDecorationValue(): AttributedText {
   return new AttributedTextBuilder()
     .append('badge ', {
       backgroundBorderRadius: 7,
@@ -203,7 +211,7 @@ function attributedLabelBackgroundDecorationValue() {
     .build();
 }
 
-function attributedLabelOutlineLayoutValue(ctx: IntegrationTestRenderContext) {
+function attributedLabelOutlineLayoutValue(ctx: IntegrationTestRenderContext): AttributedText {
   return new AttributedTextBuilder()
     .append('outline', {
       color: '#7C3AED',
@@ -218,7 +226,7 @@ function attributedLabelOutlineLayoutValue(ctx: IntegrationTestRenderContext) {
     .build();
 }
 
-function attributedInlineImageValue() {
+function attributedInlineImageValue(): AttributedText {
   return new AttributedTextBuilder()
     .append('before ', { color: '#111827', font: 'system 19' })
     .appendInlineImage({
@@ -231,7 +239,7 @@ function attributedInlineImageValue() {
     .build();
 }
 
-function attributedInlineViewAlignmentValue() {
+function attributedInlineViewAlignmentValue(): AttributedText {
   return new AttributedTextBuilder()
     .append('Top ', { color: '#0F172A', font: 'system 23' })
     .appendInlineView(0, AttributedTextInlineViewVerticalAlignment.Top)
@@ -245,21 +253,21 @@ function attributedInlineViewAlignmentValue() {
     .build();
 }
 
-function attributedInlineViewLtrValue() {
+function attributedInlineViewLtrValue(): AttributedText {
   return new AttributedTextBuilder()
     .append('Text before ', { color: '#0F172A', font: 'system 22' })
     .appendInlineView(0, AttributedTextInlineViewVerticalAlignment.Center)
     .build();
 }
 
-function attributedInlineViewRtlValue() {
+function attributedInlineViewRtlValue(): AttributedText {
   return new AttributedTextBuilder()
     .append('אבג ', { color: '#0F172A', font: 'system 22' })
     .appendInlineView(0, AttributedTextInlineViewVerticalAlignment.Center)
     .build();
 }
 
-function attributedCitationPillValue() {
+function attributedCitationPillValue(): AttributedText {
   return new AttributedTextBuilder()
     .append('Source ', { color: '#0F172A', font: 'system 17' })
     .appendInlineView(0, AttributedTextInlineViewVerticalAlignment.Center)
@@ -267,7 +275,7 @@ function attributedCitationPillValue() {
     .build();
 }
 
-function attributedInlineViewExpandingButtonValue(kind: 'label' | 'textview') {
+function attributedInlineViewExpandingButtonValue(kind: 'label' | 'textview'): AttributedText {
   return new AttributedTextBuilder()
     .append(`${kind === 'label' ? 'Label' : 'Textview'} inline child: `, {
       color: '#0F172A',
@@ -278,7 +286,7 @@ function attributedInlineViewExpandingButtonValue(kind: 'label' | 'textview') {
     .build();
 }
 
-function attributedTapValue(ctx: IntegrationTestRenderContext) {
+function attributedTapValue(ctx: IntegrationTestRenderContext): AttributedText {
   return new AttributedTextBuilder()
     .append('tap me', {
       color: '#7C3AED',
@@ -289,7 +297,7 @@ function attributedTapValue(ctx: IntegrationTestRenderContext) {
     .build();
 }
 
-function attributedMultilineValue() {
+function attributedMultilineValue(): AttributedText {
   return new AttributedTextBuilder()
     .append('Large red words wrap ', { color: '#DC2626', font: 'system-bold 22' })
     .append('into smaller blue words with a highlighted background ', {
@@ -303,17 +311,17 @@ function attributedMultilineValue() {
     .build();
 }
 
-function defaultLottieFontProvider(ctx: IntegrationTestRenderContext) {
+function defaultLottieFontProvider(ctx: IntegrationTestRenderContext): IFontProvider | undefined {
   try {
     ctx.record('animatedimage lottie fontProvider created from drawing FontManager');
     return FontManager.getDefault().fontProvider;
-  } catch (error: any) {
-    ctx.record(`animatedimage lottie fontProvider unavailable:${error?.message ?? String(error)}`);
+  } catch (error: unknown) {
+    ctx.record(`animatedimage lottie fontProvider unavailable:${errorMessage(error)}`);
     return undefined;
   }
 }
 
-function attributedTextViewOutlineBackgroundValue() {
+function attributedTextViewOutlineBackgroundValue(): AttributedText {
   return new AttributedTextBuilder()
     .append('Outer outline ', {
       color: '#111827',
@@ -331,7 +339,7 @@ function attributedTextViewOutlineBackgroundValue() {
     .build();
 }
 
-function attributedTextViewDecorationAnimationValue(ctx: IntegrationTestRenderContext) {
+function attributedTextViewDecorationAnimationValue(ctx: IntegrationTestRenderContext): AttributedText {
   return new AttributedTextBuilder()
     .append('animated part', {
       animationTransform: {
@@ -353,7 +361,7 @@ function attributedTextViewDecorationAnimationValue(ctx: IntegrationTestRenderCo
     .build();
 }
 
-function summarizeEvent(event: any): string {
+function summarizeEvent(event: object | null | undefined): string {
   if (!event) {
     return 'none';
   }
@@ -370,7 +378,7 @@ function summarizeEvent(event: any): string {
     'scale',
     'rotation',
   ]) {
-    const value = event[key];
+    const value = (event as Record<string, unknown>)[key];
     if (value !== undefined) {
       parts.push(`${key}=${typeof value === 'number' ? Math.round(value * 100) / 100 : value}`);
     }
@@ -514,6 +522,37 @@ class LifecycleRecreateFixture extends StatefulComponent<
   state: LifecycleRecreateFixtureState = { phase: 0, show: true };
   private scheduled = false;
 
+  onRender(): void {
+    this.scheduleRecreate();
+    const phase = this.state?.phase ?? 0;
+    const show = this.state?.show ?? true;
+    <view height={170} width="100%">
+      {show ? (
+        <view
+          key={`lifecycle-child-${phase}`}
+          allowReuse={false}
+          backgroundColor={phase === 0 ? '#0EA5E9' : '#22C55E'}
+          borderRadius={18}
+          height={150}
+          onViewChange={nativeView =>
+            this.viewModel.renderContext.record(
+              `lifecycle:onViewChange:${nativeView ? 'created' : 'destroyed'}:${phase}`,
+            )
+          }
+          onViewCreate={() => this.viewModel.renderContext.record(`lifecycle:onViewCreate:${phase}`)}
+          onViewDestroy={() => this.viewModel.renderContext.record(`lifecycle:onViewDestroy:${phase}`)}
+          width="100%"
+        >
+          <label value={`lifecycle phase ${phase}`} color="#FFFFFF" font="system-bold 22" margin={24} />
+        </view>
+      ) : (
+        <view backgroundColor="#E5E7EB" borderRadius={18} height={150} width="100%">
+          <label value="child hidden" color="#334155" font="system-bold 22" margin={24} />
+        </view>
+      )}
+    </view>;
+  }
+
   private scheduleRecreate(): void {
     if (this.scheduled) {
       return;
@@ -528,35 +567,6 @@ class LifecycleRecreateFixture extends StatefulComponent<
         this.setState({ phase: 1, show: true });
       }, 0);
     }, 0);
-  }
-
-  onRender(): void {
-    this.scheduleRecreate();
-    const phase = this.state?.phase ?? 0;
-    const show = this.state?.show ?? true;
-    <view height={170} width="100%">
-      {show ? (
-        <view
-          key={`lifecycle-child-${phase}`}
-          allowReuse={false}
-          backgroundColor={phase === 0 ? '#0EA5E9' : '#22C55E'}
-          borderRadius={18}
-          height={150}
-          onViewChange={nativeView =>
-            this.viewModel.renderContext.record(`lifecycle:onViewChange:${nativeView ? 'created' : 'destroyed'}:${phase}`)
-          }
-          onViewCreate={() => this.viewModel.renderContext.record(`lifecycle:onViewCreate:${phase}`)}
-          onViewDestroy={() => this.viewModel.renderContext.record(`lifecycle:onViewDestroy:${phase}`)}
-          width="100%"
-        >
-          <label value={`lifecycle phase ${phase}`} color="#FFFFFF" font="system-bold 22" margin={24} />
-        </view>
-      ) : (
-        <view backgroundColor="#E5E7EB" borderRadius={18} height={150} width="100%">
-          <label value="child hidden" color="#334155" font="system-bold 22" margin={24} />
-        </view>
-      )}
-    </view>;
   }
 }
 
@@ -643,12 +653,9 @@ interface InlineViewExpandingRowState {
   expanded: boolean;
 }
 
-class InlineViewExpandingRow extends StatefulComponent<
-  InlineViewExpandingRowViewModel,
-  InlineViewExpandingRowState
-> {
+class InlineViewExpandingRow extends StatefulComponent<InlineViewExpandingRowViewModel, InlineViewExpandingRowState> {
   state: InlineViewExpandingRowState = { expanded: false };
-  private value: any = undefined;
+  private value: AttributedText | undefined = undefined;
   private scheduledExpansion = false;
 
   onCreate(): void {
@@ -671,14 +678,7 @@ class InlineViewExpandingRow extends StatefulComponent<
     <view backgroundColor="#FFFFFF" border="1 solid #CBD5E1" borderRadius={10} padding={10} width="100%">
       <label color="#475569" font="system-bold 12" marginBottom={6} value={this.viewModel.title} width="100%" />
       {this.viewModel.kind === 'label' ? (
-        <label
-          color="#0F172A"
-          font="system 20"
-          lineHeight={1.35}
-          numberOfLines={0}
-          value={this.value}
-          width="100%"
-        >
+        <label color="#0F172A" font="system 20" lineHeight={1.35} numberOfLines={0} value={this.value} width="100%">
           <view
             accessibilityCategory="button"
             alignItems="center"
@@ -733,7 +733,7 @@ class InlineViewExpandingRow extends StatefulComponent<
     </view>;
   }
 
-  private toggle = () => {
+  private toggle = (): void => {
     this.viewModel.renderContext.record('inline expanding button tapped');
     this.setState({ expanded: !this.state.expanded });
   };
@@ -770,12 +770,14 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
   {
     id: 'custom-view-host-view-factory',
     name: 'Host-provided custom view factory',
-    description: 'Creates a custom view directly from a platform host factory and applies host plus standard view attributes.',
+    description:
+      'Creates a custom view directly from a platform host factory and applies host plus standard view attributes.',
     element: 'custom-view',
     coverage: coverage('visual', ['viewFactory', 'factoryText', 'backgroundColor', 'borderRadius']),
     render: (ctx: IntegrationTestRenderContext) => {
       const platform = getPlatform();
-      const viewFactory = platform !== 'macos' ? (integrationViewFactory ??= createIntegrationViewFactory()) : undefined;
+      const viewFactory =
+        platform !== 'macos' ? (integrationViewFactory ??= createIntegrationViewFactory()) : undefined;
 
       <view key={ctx.caseId} ref={ctx.rootRef} width={WIDTH} height={HEIGHT} backgroundColor={CARD} padding={18}>
         <label value="Host-provided view factory" font="system-bold 20" color="#0F172A" marginBottom={18} />
@@ -954,9 +956,9 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
     element: 'layout',
     coverage: coverage('visual', ['flexDirection']),
     render: (ctx: IntegrationTestRenderContext) => {
-      const swatch = (color: string) => (
-        <view backgroundColor={color} borderRadius={8} height={42} margin={4} width={58} />
-      );
+      const swatch = (color: string): void => {
+        <view backgroundColor={color} borderRadius={8} height={42} margin={4} width={58} />;
+      };
       <view key={ctx.caseId} ref={ctx.rootRef} width={WIDTH} height={HEIGHT} backgroundColor={CARD} padding={18}>
         <layout flexDirection="row" width="100%">
           {swatch('#EF4444')}
@@ -989,13 +991,13 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
       const row = (
         justifyContent: 'flex-start' | 'flex-end' | 'center' | 'space-between' | 'space-around' | 'space-evenly',
         color: string,
-      ) => (
+      ): void => {
         <layout flexDirection="row" justifyContent={justifyContent} height={48} marginBottom={10} width="100%">
           <view backgroundColor={color} borderRadius={7} height={36} width={44} />
           <view backgroundColor={color} borderRadius={7} height={36} width={44} />
           <view backgroundColor={color} borderRadius={7} height={36} width={44} />
-        </layout>
-      );
+        </layout>;
+      };
       <view key={ctx.caseId} ref={ctx.rootRef} width={WIDTH} height={HEIGHT} backgroundColor={CARD} padding={18}>
         {row('flex-start', '#2563EB')}
         {row('flex-end', '#F97316')}
@@ -1080,7 +1082,9 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
     element: 'layout',
     coverage: coverage('visual', ['flexWrap', 'gap', 'rowGap', 'columnGap']),
     render: (ctx: IntegrationTestRenderContext) => {
-      const child = (color: string) => <view backgroundColor={color} borderRadius={8} height={46} width={86} />;
+      const child = (color: string): void => {
+        <view backgroundColor={color} borderRadius={8} height={46} width={86} />;
+      };
       <view key={ctx.caseId} ref={ctx.rootRef} width={WIDTH} height={HEIGHT} backgroundColor={CARD} padding={18}>
         <layout flexDirection="row" flexWrap="wrap" gap="10 14" width={250}>
           {child('#EF4444')}
@@ -1118,14 +1122,14 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
       const block = (
         alignContent: 'flex-start' | 'center' | 'flex-end' | 'space-between' | 'space-around',
         color: string,
-      ) => (
+      ): void => {
         <layout alignContent={alignContent} flexDirection="row" flexWrap="wrap" width={140} height={150} margin={6}>
           <view backgroundColor={color} height={34} width={58} margin={3} />
           <view backgroundColor={color} height={34} width={58} margin={3} />
           <view backgroundColor={color} height={34} width={58} margin={3} />
           <view backgroundColor={color} height={34} width={58} margin={3} />
-        </layout>
-      );
+        </layout>;
+      };
       <view key={ctx.caseId} ref={ctx.rootRef} width={WIDTH} height={HEIGHT} backgroundColor={CARD} padding={18}>
         <layout flexDirection="row" flexWrap="wrap">
           {block('flex-start', '#EF4444')}
@@ -1209,9 +1213,9 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
     element: 'layout',
     coverage: coverage('visual', ['direction', 'flipOnRtl']),
     render: (ctx: IntegrationTestRenderContext) => {
-      const swatch = (color: string) => (
-        <view backgroundColor={color} borderRadius={8} height={50} margin={4} width={62} />
-      );
+      const swatch = (color: string): void => {
+        <view backgroundColor={color} borderRadius={8} height={50} margin={4} width={62} />;
+      };
       <view key={ctx.caseId} ref={ctx.rootRef} width={WIDTH} height={HEIGHT} backgroundColor={CARD} padding={18}>
         <layout direction="ltr" flexDirection="row" width="100%">
           {swatch('#EF4444')}
@@ -1279,7 +1283,9 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
           onVisibilityChanged={visible => ctx.record(`layout:onVisibilityChanged:${visible}`)}
           onViewportChanged={(viewport, frame) =>
             ctx.record(
-              `layout:onViewportChanged:${Math.round(viewport.width)}x${Math.round(viewport.height)} of ${Math.round(frame.width)}x${Math.round(frame.height)}`,
+              `layout:onViewportChanged:${Math.round(viewport.width)}x${Math.round(viewport.height)} of ${Math.round(
+                frame.width,
+              )}x${Math.round(frame.height)}`,
             )
           }
         >
@@ -1424,8 +1430,7 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
   {
     id: 'view-border-styles',
     name: 'View border syntaxes and styles',
-    description:
-      'Renders dashed and dotted border shorthands plus an asymmetric borderRadius.',
+    description: 'Renders dashed and dotted border shorthands plus an asymmetric borderRadius.',
     element: 'view',
     render: (ctx: IntegrationTestRenderContext) => {
       <view key={ctx.caseId} ref={ctx.rootRef} width={WIDTH} height={HEIGHT} backgroundColor={CARD} padding={18}>
@@ -3740,7 +3745,9 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
           onImageDecoded={(w, h) => ctx.record(`animatedimage:onImageDecoded:${w}x${h}`)}
           onProgress={event =>
             ctx.record(
-              `animatedimage:onProgress:${Math.round(event.time * 100) / 100}/${Math.round(event.duration * 100) / 100}`,
+              `animatedimage:onProgress:${Math.round(event.time * 100) / 100}/${
+                Math.round(event.duration * 100) / 100
+              }`,
             )
           }
           src={lottieResourceSource(ctx)}
@@ -4092,13 +4099,7 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
           marginTop={9}
           width="100%"
         />
-        <label
-          value="system-bold-italic 18"
-          color="#111827"
-          font="system-bold-italic 18"
-          marginTop={9}
-          width="100%"
-        />
+        <label value="system-bold-italic 18" color="#111827" font="system-bold-italic 18" marginTop={9} width="100%" />
         <label
           value="system-bold 22 unscaled"
           color="#1D4ED8"
@@ -4221,15 +4222,14 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
       const value = attributedCitationPillValue();
       <view key={ctx.caseId} ref={ctx.rootRef} width={WIDTH} height={HEIGHT} backgroundColor={CARD} padding={18}>
         <view backgroundColor="#FFFFFF" border="1 solid #CBD5E1" borderRadius={10} padding={14} width="100%">
-          <label color="#334155" font="system-bold 14" marginBottom={12} value="Citation pill text metrics" width="100%" />
           <label
-            color="#0F172A"
-            font="system 17"
-            lineHeight={26 / 17}
-            numberOfLines={0}
-            value={value}
+            color="#334155"
+            font="system-bold 14"
+            marginBottom={12}
+            value="Citation pill text metrics"
             width="100%"
-          >
+          />
+          <label color="#0F172A" font="system 17" lineHeight={26 / 17} numberOfLines={0} value={value} width="100%">
             <CitationPillFixture domain="axios.com" sourceCount={3} />
           </label>
         </view>
@@ -4245,7 +4245,13 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
     render: (ctx: IntegrationTestRenderContext) => {
       <view key={ctx.caseId} ref={ctx.rootRef} width={WIDTH} height={HEIGHT} backgroundColor={CARD} padding={18}>
         <view backgroundColor="#FFFFFF" border="1 solid #CBD5E1" borderRadius={10} padding={14} width="100%">
-          <label color="#334155" font="system-bold 14" marginBottom={12} value="TextView inline alignments" width="100%" />
+          <label
+            color="#334155"
+            font="system-bold 14"
+            marginBottom={12}
+            value="TextView inline alignments"
+            width="100%"
+          />
           <textview
             backgroundColor="#FFFFFF"
             color="#0F172A"
@@ -4278,7 +4284,14 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
           <label color="#334155" font="system-bold 14" marginBottom={12} value="Label LTR / RTL append" width="100%" />
           <view alignItems="center" flexDirection="row" marginBottom={12} width="100%">
             <label color="#475569" font="system-bold 12" marginRight={10} textAlign="center" value="LTR" width={34} />
-            <view backgroundColor="#F8FAFC" border="1 solid #CBD5E1" borderRadius={8} direction="ltr" flexGrow={1} padding={10}>
+            <view
+              backgroundColor="#F8FAFC"
+              border="1 solid #CBD5E1"
+              borderRadius={8}
+              direction="ltr"
+              flexGrow={1}
+              padding={10}
+            >
               <label
                 color="#0F172A"
                 font="system 22"
@@ -4293,7 +4306,14 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
           </view>
           <view alignItems="center" flexDirection="row" width="100%">
             <label color="#475569" font="system-bold 12" marginRight={10} textAlign="center" value="RTL" width={34} />
-            <view backgroundColor="#F8FAFC" border="1 solid #CBD5E1" borderRadius={8} direction="rtl" flexGrow={1} padding={10}>
+            <view
+              backgroundColor="#F8FAFC"
+              border="1 solid #CBD5E1"
+              borderRadius={8}
+              direction="rtl"
+              flexGrow={1}
+              padding={10}
+            >
               <label
                 color="#0F172A"
                 font="system 22"
@@ -4319,10 +4339,23 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
     render: (ctx: IntegrationTestRenderContext) => {
       <view key={ctx.caseId} ref={ctx.rootRef} width={WIDTH} height={HEIGHT} backgroundColor={CARD} padding={18}>
         <view backgroundColor="#FFFFFF" border="1 solid #CBD5E1" borderRadius={10} padding={14} width="100%">
-          <label color="#334155" font="system-bold 14" marginBottom={12} value="TextView LTR / RTL append" width="100%" />
+          <label
+            color="#334155"
+            font="system-bold 14"
+            marginBottom={12}
+            value="TextView LTR / RTL append"
+            width="100%"
+          />
           <view alignItems="center" flexDirection="row" marginBottom={12} width="100%">
             <label color="#475569" font="system-bold 12" marginRight={10} textAlign="center" value="LTR" width={34} />
-            <view backgroundColor="#F8FAFC" border="1 solid #CBD5E1" borderRadius={8} direction="ltr" flexGrow={1} padding={10}>
+            <view
+              backgroundColor="#F8FAFC"
+              border="1 solid #CBD5E1"
+              borderRadius={8}
+              direction="ltr"
+              flexGrow={1}
+              padding={10}
+            >
               <textview
                 backgroundColor="#F8FAFC"
                 color="#0F172A"
@@ -4340,7 +4373,14 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
           </view>
           <view alignItems="center" flexDirection="row" width="100%">
             <label color="#475569" font="system-bold 12" marginRight={10} textAlign="center" value="RTL" width={34} />
-            <view backgroundColor="#F8FAFC" border="1 solid #CBD5E1" borderRadius={8} direction="rtl" flexGrow={1} padding={10}>
+            <view
+              backgroundColor="#F8FAFC"
+              border="1 solid #CBD5E1"
+              borderRadius={8}
+              direction="rtl"
+              flexGrow={1}
+              padding={10}
+            >
               <textview
                 backgroundColor="#F8FAFC"
                 color="#0F172A"

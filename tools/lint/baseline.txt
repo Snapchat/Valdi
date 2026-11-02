@@ -19,11 +19,9 @@ apps/benchmark/src/valdi/benchmark/src/RenderTest.tsx
 apps/benchmark/src/valdi/benchmark/src/main.tsx
 apps/helloworld/src/valdi/hello_world/src/ByteExactImageExample.tsx
 apps/helloworld/src/valdi/hello_world/src/GettingStartedCodelab.tsx
-apps/helloworld/src/valdi/hello_world/src/HelloWorldApp.tsx
 apps/helloworld/src/valdi/hello_world/web/CppModule.ts
 apps/inline_text_children_example/InlineTextChildrenExample.tsx
 apps/integration_test/src/valdi/integration_test_app/src/IntegrationTestApp.tsx
-apps/integration_test/src/valdi/integration_test_app/src/IntegrationTestCases.tsx
 apps/integration_test/src/valdi/integration_test_app/src/IntegrationTestRunner.ts
 apps/integration_test/src/valdi/integration_test_app/src/IntegrationTestTypes.ts
 apps/integration_test/src/valdi/integration_test_app/src/WebWorkerProbe.ts
@@ -31,7 +29,6 @@ apps/integration_test/src/valdi/integration_test_cli/src/compare.ts
 apps/integration_test/src/valdi/integration_test_cli/src/exportSnapshots.ts
 apps/integration_test/src/valdi/integration_test_cli/src/run.ts
 apps/integration_test/src/valdi/integration_test_cli/src/selfTest.ts
-apps/ledger_sql_demo/src/valdi/ledger_sql_demo/src/LedgerSqlDemoApp.tsx
 apps/managed_context_example/ManagedContextExample.tsx
 apps/navigation_example/NavigationExample.tsx
 apps/snapshot_tests/src/cases/InlineImageLayout.tsx
@@ -44,7 +41,6 @@ apps/transforms_playground/TransformsPlaygroundApp.tsx
 apps/valdi_gpt/src/valdi/ai_service/src/OpenAi.ts
 apps/valdi_gpt/src/valdi/conversation/src/Conversation.tsx
 apps/valdi_gpt/src/valdi/conversation/test/Conversation.spec.tsx
-apps/webview_example/WebViewExample.tsx
 src/valdi_modules/src/valdi/bridge_observables/src/utils/convertBridgeObservableToObservable.ts
 src/valdi_modules/src/valdi/client_sql/src/ClientSQLDebug.ts
 src/valdi_modules/src/valdi/client_sql/test/ClientSQLDebug.spec.ts
@@ -95,7 +91,6 @@ src/valdi_modules/src/valdi/valdi_ssr/test/ValdiHTMLRenderer.spec.tsx
 src/valdi_modules/src/valdi/valdi_standalone/src/JasmineBootstrap.ts
 src/valdi_modules/src/valdi/valdi_test/test/JSXTestUtils.tsx
 src/valdi_modules/src/valdi/valdi_test/test/LocalizableStrings.spec.ts
-src/valdi_modules/src/valdi/valdi_test/test/Localization.spec.ts
 src/valdi_modules/src/valdi/valdi_test/test/ModuleLoader.spec.ts
 src/valdi_modules/src/valdi/valdi_test/test/Renderer.spec.ts
 src/valdi_modules/src/valdi/valdi_test/test/SpecialCasing.spec.ts

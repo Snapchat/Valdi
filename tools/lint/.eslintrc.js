@@ -141,7 +141,9 @@ module.exports = {
   parser: '@typescript-eslint/parser',
   parserOptions: {
     tsconfigRootDir: __dirname,
-    project: ['./tsconfig.json'],
+    // lint_modules.sh points this at tsconfig.generated.json, which adds the compiler-generated
+    // TypeScript (res.ts, Strings.d.ts, ClientSQL sources). See generated_tsconfig.js.
+    project: [process.env.VALDI_LINT_TSCONFIG || './tsconfig.json'],
   },
   ignorePatterns: [
     '**/node_modules/**',

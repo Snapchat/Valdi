@@ -7,6 +7,12 @@
 #   ./tools/ci/lint_modules.sh --changed <ref>  lint the .ts/.tsx files changed since <ref> (what PRs run)
 #   ./tools/ci/lint_modules.sh <paths>          lint only these files or directories
 #   ./tools/ci/lint_modules.sh --fix ...        also apply auto-fixes (formatting, import order, unused imports)
+#   ./tools/ci/lint_modules.sh --skip-generated ...  don't build the compiler-generated TypeScript (no Bazel)
+#
+# By default the script first builds the modules' <module>_projectsync targets with Bazel, the same
+# step `valdi projectsync` runs for editors, so imports of compiler-generated TypeScript (res.ts,
+# Strings.d.ts, ClientSQL sources) type-check. With --skip-generated those imports don't resolve,
+# and files that use them report type findings that CI would not.
 #
 # Changed files and explicit paths are linted in full, including files listed in the baseline.
 # Warnings fail the run too (--max-warnings 0).
@@ -22,11 +28,13 @@ LINT_DIR=tools/lint
 LINT_ROOTS=(src/valdi_modules/src/valdi apps)
 
 FIX=()
+GENERATED=1
 PATHS=()
 CHANGED_BASE=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --fix) FIX=(--fix); shift ;;
+        --skip-generated) GENERATED=0; shift ;;
         --changed)
             [[ $# -ge 2 ]] || { echo "--changed needs a git ref" >&2; exit 2; }
             CHANGED_BASE="$2"; shift 2 ;;
@@ -38,6 +46,26 @@ done
 # registry.npmjs.org URLs in it are redirected to whatever registry npm is configured with.
 if [[ ! -x "$LINT_DIR/node_modules/.bin/eslint" ]]; then
     npm ci --prefix "$LINT_DIR" --no-audit --no-fund
+fi
+
+if [[ "$GENERATED" -eq 1 ]]; then
+    BAZEL=bzl
+    command -v bzl >/dev/null 2>&1 || BAZEL=bazel
+    if ! command -v "$BAZEL" >/dev/null 2>&1; then
+        echo "Bazel not found. It builds the compiler-generated TypeScript; pass --skip-generated to lint without it." >&2
+        exit 2
+    fi
+    PROJECTSYNC_QUERY="kind(valdi_projectsync, $(printf '//%s/... + ' "${LINT_ROOTS[@]}" | sed 's/ + $//'))"
+    PROJECTSYNC_TARGETS=()
+    while IFS= read -r t; do
+        [[ -n "$t" ]] && PROJECTSYNC_TARGETS+=("$t")
+    done <<< "$("$BAZEL" query "$PROJECTSYNC_QUERY")"
+    echo "Building compiler-generated TypeScript for ${#PROJECTSYNC_TARGETS[@]} module(s)."
+    "$BAZEL" build "${PROJECTSYNC_TARGETS[@]}"
+    # The explicit target set, not the kind() query: cquery would configure every target under the roots.
+    GENERATED_FILES="$("$BAZEL" cquery --output=files "set(${PROJECTSYNC_TARGETS[*]})")"
+    printf '%s\n' "$GENERATED_FILES" | { grep -E '/generated_ts/.*\.tsx?$' || true; } | node "$LINT_DIR/generated_tsconfig.js"
+    export VALDI_LINT_TSCONFIG=./tsconfig.generated.json
 fi
 
 IGNORES=()

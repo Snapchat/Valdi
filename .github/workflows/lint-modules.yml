@@ -2,6 +2,8 @@ name: Lint Valdi Modules
 
 # Runs the Valdi module style rules (tools/lint) on the module and app sources a pull request
 # changes, in full, then everything outside tools/lint/baseline.txt; see tools/ci/lint_modules.sh.
+# The script first builds the compiler-generated TypeScript (res.ts, Strings.d.ts, ClientSQL sources)
+# with Bazel, so this job uses the Bazel cache like the build jobs do.
 
 on:
   pull_request:
@@ -14,6 +16,7 @@ on:
       - 'tools/ci/lint_modules.sh'
       - '.prettierrc.json'
       - '.github/workflows/lint-modules.yml'
+      - '.github/actions/bazel-cache/**'
   push:
     branches:
       - main
@@ -32,14 +35,20 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# id-token: write is only for the bazel-cache action's GCP Workload Identity auth. PRs get the
+# read-only cache account; GitHub withholds OIDC tokens from fork PRs, and the action then builds
+# without the remote cache. Never switch this to pull_request_target: PR code must not run with
+# the base repo's credentials.
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   lint-modules:
     name: Lint Valdi modules
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # A cold Bazel cache takes about 15 minutes to build the generated TypeScript; a warm one, about 1.
+    timeout-minutes: 45
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -51,6 +60,27 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Configure Bazel cache
+        uses: ./.github/actions/bazel-cache
+        with:
+          gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          service_account_ro: ${{ vars.GCP_SERVICE_ACCOUNT_RO }}
+          cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
+          cache_key: lint-modules
+
+      # Frees disk: fetching the Bazel dependencies for the projectsync build fills a stock runner
+      # ("No space left on device" extracting the Rust toolchain).
+      - name: Setup Linux environment
+        run: source ./tools/ci/setup_linux_env.sh
 
       - name: Lint changed files
         if: github.event_name == 'pull_request'
