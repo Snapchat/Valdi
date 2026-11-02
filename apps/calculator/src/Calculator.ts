@@ -42,7 +42,8 @@ export class Calculator {
       }
     } else if (this.display !== 'Error') {
       if (key === 'negate') {
-        if (this.display !== '0') this.display = this.display.startsWith('-') ? this.display.slice(1) : '-' + this.display;
+        if (this.display !== '0')
+          this.display = this.display.startsWith('-') ? this.display.slice(1) : '-' + this.display;
       } else if (key === 'percent') {
         this.display = this.format(Number(this.display) / 100);
       } else if (key === '+' || key === '-' || key === '*' || key === '/') {
@@ -63,8 +64,14 @@ export class Calculator {
     const left = this.accumulator;
     const right = Number(this.display);
     if (left === undefined || !this.operator) return true;
-    const value = this.operator === '+' ? left + right : this.operator === '-' ? left - right :
-      this.operator === '*' ? left * right : left / right;
+    const value =
+      this.operator === '+'
+        ? left + right
+        : this.operator === '-'
+        ? left - right
+        : this.operator === '*'
+        ? left * right
+        : left / right;
     this.display = this.format(value);
     this.operator = undefined;
     this.accumulator = undefined;

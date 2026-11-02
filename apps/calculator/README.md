@@ -66,7 +66,8 @@ runtime cycles on each of X11, Wayland 1× and Wayland 2× using a clean QuickJS
 SDK cohort based on public runtime source
 `53b70efda8c520037ecba12a7264b777d9e3f4fd` (SDK export recipe
 `b37c808620d64a67a44f43823a824ea02a007f98`). This exposed and required the
-Linux JSX bootstrap/class-mapping fix included in this change. Its corrected
+Linux JSX bootstrap/class-mapping fix now available upstream through
+[#200](https://github.com/Snapchat/Valdi/pull/200). Its corrected
 `valdi_core` module was regenerated with the matched compiler/toolbox and a
 source-restored companion in Bazel; the SDK engine archives remained unchanged.
 
@@ -95,8 +96,8 @@ Command Line Tools packaging setup. It does not qualify the default full native
 Bazel toolchain, native macOS, or a rerun of the renamed Linux launcher.
 
 The calculator model is compiled by `ts_project` and its seven Node tests are
-gated through the existing `tools/ci/test_modules.sh` entry point in both CI
-systems. Run the target directly from the repository root:
+discovered by `tools/ci/select_tests.sh` and run through `tools/ci/run_tests.sh`
+in both CI systems. Run the target directly from the repository root:
 
 ```sh
 bazel test //apps/calculator:calculator_model_test --test_output=errors

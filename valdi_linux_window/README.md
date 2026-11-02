@@ -61,8 +61,9 @@ The following review prerequisites remain unimplemented here:
   open.
 - **Acceptance testing:** graphical targets are manual and have no agreed Linux
   CI job/budget, vendored text font, Linux text snapshots/tolerance or failure
-  artifact upload. The portable JSX regression runs in the existing module-test
-  step; that does not qualify the graphical host. A full current-base engine
+  artifact upload. The portable JSX, calculator-model and framebuffer regressions
+  are discovered by `tools/ci/select_tests.sh` and run through `tools/ci/run_tests.sh`;
+  that does not qualify the graphical host. A full current-base engine
   build and lifecycle/sanitizer qualification are still required.
 
 Real editing/selection/IBus/Fcitx acceptance needs a separate editing RFC and
@@ -115,7 +116,8 @@ Clean SDK-consumer validation uses public runtime source
 `b37c808620d64a67a44f43823a824ea02a007f98`. The calculator and host suites
 passed three complete lifecycles on each of X11, Wayland 1× and Wayland 2×.
 The initial calculator run found that JSX bootstrap rejected Linux platform ID 5.
-This change accepts Linux and uses the iOS class names already registered by
+The upstream fix in [#200](https://github.com/Snapchat/Valdi/pull/200) accepts Linux
+and uses the iOS class names already registered by
 SnapDrawing, with Linux custom-class precedence `linuxClass`, then `macosClass`, then
 `iosClass`. The precedence correction has portable source-level coverage; the
 historical native runs below predate it.
@@ -157,8 +159,8 @@ bazel test //src/valdi_modules/src/valdi/valdi_core:jsx_platform_test --test_out
 node src/valdi_modules/src/valdi/valdi_core/test/JSXPlatformTest.cjs /path/to/typescript/lib/typescript.js
 ```
 
-Use TypeScript 5.3.3. `tools/ci/test_modules.sh` includes the Bazel target in
-the existing `test-modules` job. This source-level test complements the native
+Use TypeScript 5.3.3. `tools/ci/select_tests.sh` discovers the Bazel target for
+`tools/ci/run_tests.sh`. This source-level test complements the native
 calculator integration; it does not establish native custom-view support.
 
 ## Input, scale, scheduling and lifetime
