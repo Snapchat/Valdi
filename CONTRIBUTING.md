@@ -65,7 +65,12 @@ docs: Update README with new installation steps
 ## 3. What to Expect After You Open a PR
 
 - **First response:** Someone from our team will look at your PR within 3 business days.
-- **Review timeline:** We aim to land small implementation PRs within about a week and medium implementation PRs within about two weeks. RFCs follow the separate review timeline in the [RFC process](./rfcs/README.md#how-it-works).
+- **Review timeline:** We aim to decide on and land implementation PRs within these times, counted in business days. The clock pauses while we're waiting on you.
+  - Under 100 lines changed: a decision in 5 business days, landed in 10.
+  - 100 to 999 lines: a decision in 7 business days, landed in 15.
+  - 1,000 to 4,999 lines: a decision in 10 business days, landed in 25.
+
+  Changes to the C++ runtime can take longer, because fewer maintainers can review them. Changes of roughly 1,000 lines or more usually need an RFC first, which follows its own timeline in the [RFC process](./rfcs/README.md#how-it-works).
 - **Keep PRs reviewable:** Prefer small, independently reviewable PRs. If your change spans multiple PRs, link them and note the order they depend on.
 - **How changes land:** Accepted PRs are imported into our internal repository, validated, and landed there before being reflected publicly. Your authorship is preserved.
 - **Inactivity:** If a PR is waiting on the author with no activity for about a week, we'll follow up. PRs that remain inactive may be closed, and you're welcome to reopen them.
