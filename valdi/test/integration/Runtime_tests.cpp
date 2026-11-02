@@ -7404,6 +7404,113 @@ TEST_P(RuntimeFixture, callSyncWithDeadlineWaitsFullDeadlineWhenCircuitBreakerDi
     ASSERT_EQ(4.0, countSyncCalls(function));
 }
 
+namespace {
+// Long enough that an unbounded wait is unmistakable, short enough that a regressed call site fails
+// the elapsed-time assertion instead of hanging the suite.
+constexpr auto kCallSiteStall = std::chrono::seconds(3);
+constexpr auto kCallSiteBound = std::chrono::milliseconds(1500);
+
+// Parks the JS thread until the returned promise is fulfilled or kCallSiteStall elapses.
+std::promise<void> stallJsThreadAtMost(RuntimeWrapper& wrapper) {
+    std::promise<void> release;
+    auto released = release.get_future().share();
+    wrapper.runtime->getJavaScriptRuntime()->dispatchOnJsThreadAsync(
+        STRING_LITERAL("test.runtime"), [released](auto& /*jsEntry*/) { released.wait_for(kCallSiteStall); });
+    return release;
+}
+
+template<typename F>
+std::chrono::steady_clock::duration measure(F&& fn) {
+    auto start = std::chrono::steady_clock::now();
+    fn();
+    return std::chrono::steady_clock::now() - start;
+}
+
+Ref<ValueFunction> getMainThreadCountSyncCallFunction(RuntimeWrapper& wrapper) {
+    auto fnResult = getCountSyncCallFunction(wrapper);
+    EXPECT_TRUE(fnResult) << fnResult.description();
+    if (!fnResult) {
+        return nullptr;
+    }
+    auto function = fnResult.value();
+    auto* jsFunction = dynamic_cast<ValueFunctionWithJSValue*>(function.get());
+    EXPECT_NE(nullptr, jsFunction);
+    if (jsFunction != nullptr) {
+        jsFunction->setShouldBlockMainThread(true);
+    }
+    return function;
+}
+} // namespace
+
+// The scroll view asks JS for a snap target synchronously when the finger lifts. With a stalled JS
+// thread that call must give up at the input deadline and report failure, not hold the UI thread
+// until JS drains.
+TEST_P(RuntimeFixture, scrollDragEndingCallSiteReturnsWithinDeadlineWhileJsThreadIsStalled) {
+    ASSERT_TRUE(wrapper.runtime->getMainThreadManager().currentThreadIsMainThread());
+    auto fnResult = getCountSyncCallFunction(wrapper);
+    ASSERT_TRUE(fnResult) << fnResult.description();
+    auto function = fnResult.value();
+    ASSERT_EQ(1.0, countSyncCalls(function));
+
+    ViewNodeScrollState scrollState;
+    scrollState.setOnDragEndingCallback(Ref<ValueFunction>(function));
+
+    auto release = stallJsThreadAtMost(wrapper);
+
+    Result<std::optional<Point>> result = {std::nullopt};
+    auto elapsed = measure([&]() { result = scrollState.notifyOnDragEnding(Point(0, 0), Point(0, 0), Point(0, 0)); });
+    ASSERT_LT(elapsed, kCallSiteBound);
+    ASSERT_FALSE(result);
+
+    release.set_value();
+    wrapper.flushJsQueue();
+}
+
+// Drag start, drag end and scroll end handlers exported to run in sync with the main thread are
+// invoked from the UI thread on every gesture. A stalled JS thread must cost each of them at most the
+// input deadline, and the handlers must still run once JS drains.
+TEST_P(RuntimeFixture, scrollLifecycleCallSitesReturnWithinDeadlineWhileJsThreadIsStalled) {
+    ASSERT_TRUE(wrapper.runtime->getMainThreadManager().currentThreadIsMainThread());
+    auto function = getMainThreadCountSyncCallFunction(wrapper);
+    ASSERT_NE(nullptr, function);
+    ASSERT_EQ(1.0, countSyncCalls(function));
+
+    ViewNodeScrollState scrollState;
+    scrollState.setOnDragStartCallback(Ref<ValueFunction>(function));
+    scrollState.setOnDragEndCallback(Ref<ValueFunction>(function));
+    scrollState.setOnScrollEndCallback(Ref<ValueFunction>(function));
+
+    auto release = stallJsThreadAtMost(wrapper);
+
+    ASSERT_LT(measure([&]() { scrollState.notifyOnDragStart(Point(0, 0), Point(0, 0), Point(0, 0)); }), kCallSiteBound);
+    ASSERT_LT(measure([&]() { scrollState.notifyOnDragEnd(Point(0, 10), Point(0, 10), Point(0, 0)); }), kCallSiteBound);
+    ASSERT_LT(measure([&]() { scrollState.notifyOnScrollEnd(Point(0, 10), Point(0, 10)); }), kCallSiteBound);
+
+    release.set_value();
+    wrapper.flushJsQueue();
+
+    ASSERT_EQ(5.0, countSyncCalls(function));
+}
+
+// Per-frame scroll callbacks exported to run in sync with the main thread are throttled: a stalled JS
+// thread must not turn a scroll frame into an unbounded wait on the UI thread.
+TEST_P(RuntimeFixture, scrollOnScrollCallSiteReturnsWithinBoundWhileJsThreadIsStalled) {
+    ASSERT_TRUE(wrapper.runtime->getMainThreadManager().currentThreadIsMainThread());
+    auto function = getMainThreadCountSyncCallFunction(wrapper);
+    ASSERT_NE(nullptr, function);
+    ASSERT_EQ(1.0, countSyncCalls(function));
+
+    ViewNodeScrollState scrollState;
+    scrollState.setOnScrollCallback(Ref<ValueFunction>(function));
+
+    auto release = stallJsThreadAtMost(wrapper);
+
+    ASSERT_LT(measure([&]() { scrollState.notifyOnScroll(Point(0, 5), Point(0, 5), Point(0, 1)); }), kCallSiteBound);
+
+    release.set_value();
+    wrapper.flushJsQueue();
+}
+
 // The teardown case (resolving after the runtime is disposed reports the distinguishable
 // kResolutionSkippedDuringTeardownErrorCode) is covered end-to-end by the iOS
 // SCValdiJSRuntimeModuleErrorTests teardown regression, which induces disposal on the correct
