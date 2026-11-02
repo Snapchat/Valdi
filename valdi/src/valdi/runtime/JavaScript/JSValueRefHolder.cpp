@@ -30,11 +30,12 @@ JSValueRefHolder::JSValueRefHolder(IJavaScriptContext& jsContext,
 
     auto* runtime = dynamic_cast<JavaScriptRuntime*>(jsContext.getTaskScheduler());
     if (runtime != nullptr && runtime->anrDiagnosticsActiveOnJsThread() && jsContext.isValueFunction(jsValue)) {
+        _anrAttribution = runtime->getCallbackAttribution();
         // Some engines report an error when a valid JS function has no native wrapper.
         JSExceptionTracker attributionExceptionTracker(jsContext);
         auto function =
             castOrNull<JSFunctionWithCallable>(jsContext.valueToFunction(jsValue, attributionExceptionTracker));
-        if (attributionExceptionTracker && function != nullptr) {
+        if (attributionExceptionTracker && function != nullptr && !function->getANRAttribution().isEmpty()) {
             _anrAttribution = function->getANRAttribution();
         }
         attributionExceptionTracker.clearError();

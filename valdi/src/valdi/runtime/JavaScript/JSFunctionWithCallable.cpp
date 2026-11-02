@@ -33,6 +33,7 @@ JSValueRef JSFunctionWithCallable::operator()(JSFunctionNativeCallContext& callC
                         nullptr :
                         dynamic_cast<JavaScriptRuntime*>(callContext.getContext().getTaskScheduler());
     ScopedNativeCallActivity activity(runtime, _anrAttribution);
+    ScopedCallbackAttribution callbackScope(runtime, _anrAttribution);
     return _callable(callContext);
 }
 

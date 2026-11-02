@@ -1108,6 +1108,25 @@ valdi_test(
     ],
 )
 
+valdi_test(
+    name = "test_callback_attribution",
+    srcs = [
+        "test/integration/CallbackAttribution_tests.cpp",
+        "test/integration/JSBridgeTestFixture.cpp",
+        "test/integration/RuntimeTestsUtils.cpp",
+    ],
+    hdrs = [
+        "test/integration/JSBridgeTestFixture.hpp",
+        "test/integration/RuntimeTestsUtils.hpp",
+    ],
+    deps = [
+        ":test_utils",
+        ":valdi_runtime_with_vm",
+        "//src/valdi_modules/src/valdi/valdi_core:valdi_core_native",
+        "//tsn",
+    ],
+)
+
 # Focused form of the ClientSQL runtime contract test. The same source is also
 # part of test_integration_lib so //valdi:test covers it without linking a
 # second copy of JSBridgeTestFixture.cpp or RuntimeTestsUtils.cpp.

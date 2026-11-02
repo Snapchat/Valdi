@@ -114,6 +114,8 @@ export interface ValdiRuntime extends RuntimeBase {
   configureCallback<F extends AnyFunction>(options: number, func: F): void;
   /** Associates a stable label with direct calls and native dispatches of the returned callback. */
   makeANRAttributionProxy?<F extends AnyFunction>(attribution: string, func: F): F;
+  /** Runs a block with ownership captured by callbacks exported to native within the block. */
+  withCallbackAttribution<T>(attribution: string, callback: () => T): T;
   getViewNodeDebugInfo(
     contextId: string,
     elementId: ElementId,

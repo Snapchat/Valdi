@@ -32,7 +32,7 @@ export class ManagedWorker {
   onUnused(): void {
     this._useCount--;
     if (this._useCount === 0 && !this._destroyTimeout) {
-      this._destroyTimeout = withGlobalNativeRefs(() => {
+      this._destroyTimeout = withGlobalNativeRefs('worker.ManagedWorker.dispose', () => {
         return setTimeout(() => {
           this.dispose();
         }, this.keepAliveDelayMs);

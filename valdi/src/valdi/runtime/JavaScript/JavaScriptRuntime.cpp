@@ -780,6 +780,23 @@ JSValueRef JavaScriptRuntime::runtimeConfigureCallback(JSFunctionNativeCallConte
     return callContext.getContext().newUndefined();
 }
 
+JSValueRef JavaScriptRuntime::runtimeWithCallbackAttribution(JSFunctionNativeCallContext& callContext) {
+    auto callback = callContext.getParameter(1);
+    if (!callContext.getContext().isValueFunction(callback)) {
+        return callContext.throwError(Error("Expecting callback function"));
+    }
+    JSFunctionCallContext callbackContext(callContext.getContext(), nullptr, 0, callContext.getExceptionTracker());
+    if (!anrDiagnosticsActiveOnJsThread()) {
+        return callContext.getContext().callObjectAsFunction(callback, callbackContext);
+    }
+    auto attribution = callContext.getParameterAsString(0);
+    CHECK_CALL_CONTEXT(callContext);
+    attribution = JavaScriptANRAttribution::boundedLabel(attribution);
+    ScopedNativeCallActivity activity(this, attribution);
+    ScopedCallbackAttribution callbackScope(this, attribution);
+    return callContext.getContext().callObjectAsFunction(callback, callbackContext);
+}
+
 JSValueRef JavaScriptRuntime::runtimeMakeANRAttributionProxy(JSFunctionNativeCallContext& callContext) {
     auto callback = callContext.getParameter(1);
     if (!anrDiagnosticsEnabled()) {
@@ -2727,6 +2744,7 @@ void JavaScriptRuntime::buildContext(Valdi::IJavaScriptContext& context,
     JS_BIND(context, exceptionTracker, runtimeObject, "bytesToString", runtimeBytesToString);
     JS_BIND(context, exceptionTracker, runtimeObject, "configureCallback", runtimeConfigureCallback);
     JS_BIND(context, exceptionTracker, runtimeObject, "makeANRAttributionProxy", runtimeMakeANRAttributionProxy);
+    JS_BIND(context, exceptionTracker, runtimeObject, "withCallbackAttribution", runtimeWithCallbackAttribution);
     JS_BIND(context, exceptionTracker, runtimeObject, "getViewNodeDebugInfo", runtimeGetViewNodeDebugInfo);
     JS_BIND(context, exceptionTracker, runtimeObject, "getLayoutDebugInfo", runtimeGetLayoutDebugInfo);
     JS_BIND(context, exceptionTracker, runtimeObject, "getNativeNodeForElementId", runtimeGetNativeNodeForElementId);
@@ -4512,6 +4530,11 @@ bool JavaScriptRuntime::isReadyForANRDetection() const {
     return _bootstrapCompleted;
 }
 
+const StringBox& JavaScriptRuntime::getCallbackAttribution() {
+    SC_ASSERT(isInJsThread());
+    return _callbackAttribution;
+}
+
 std::string JavaScriptRuntime::getANRAttributionInfo() const {
     if (!anrDiagnosticsEnabled()) {
         return {};
@@ -4551,6 +4574,7 @@ DispatchFunction JavaScriptRuntime::makeJsThreadDispatchFunction(Ref<Context>&& 
             retainedSelf = (_joinJsThreadOnTeardown ? strongSmallRef(this) : Ref<JavaScriptRuntime>()),
             retainedContext = RetainedContext(std::move(ownerContext)),
             jsTask = std::move(jsTask),
+            callbackAttribution = anrDiagnosticsActiveOnJsThread() ? _callbackAttribution : StringBox(),
             attribution = captureANRAttribution(dispatchAttribution)]() {
         if (_hostTornDown) {
             return;
@@ -4590,8 +4614,10 @@ DispatchFunction JavaScriptRuntime::makeJsThreadDispatchFunction(Ref<Context>&& 
                 // VM exit can drain microtasks that enqueue children of this dispatch.
                 ScopedANRAttribution attributionScope(*this, attribution.get());
                 JavaScriptEntryParameters jsEntry(jsContext, exceptionTracker, ownerContext);
-
-                jsTask(jsEntry);
+                {
+                    ScopedCallbackAttribution callbackScope(this, callbackAttribution);
+                    jsTask(jsEntry);
+                }
             }
 
             if (!exceptionTracker) {

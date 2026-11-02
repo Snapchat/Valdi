@@ -10,6 +10,7 @@
 #include "valdi/runtime/Interfaces/IJavaScriptContext.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptANRAttribution.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptFunctionCallContext.hpp"
+#include "valdi/runtime/JavaScript/JavaScriptRuntime.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptTaskScheduler.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptUtils.hpp"
 #include "valdi/runtime/Utils/MainThreadManager.hpp"
@@ -172,6 +173,10 @@ Value ValueFunctionWithJSValue::doJsCall(JavaScriptEntryParameters& jsEntry,
         return Value::undefined();
     }
 
+    auto* runtime = getANRAttribution().isEmpty() ?
+                        nullptr :
+                        dynamic_cast<JavaScriptRuntime*>(jsEntry.jsContext.getTaskScheduler());
+    ScopedCallbackAttribution callbackScope(runtime, getANRAttribution());
     auto retValue = callJsFunction(jsEntry, jsValue, parameters, parametersSize, ignoreRetValue);
     if (!jsEntry.exceptionTracker && exceptionTracker != nullptr) {
         exceptionTracker->onError(jsEntry.exceptionTracker.extractError());

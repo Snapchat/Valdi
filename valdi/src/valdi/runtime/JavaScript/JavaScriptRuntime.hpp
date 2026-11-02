@@ -388,6 +388,9 @@ public:
     bool isInJsThread() final;
     Ref<Context> getLastDispatchedContext() const final;
     std::string getANRAttributionInfo() const final;
+
+    /** Explicit owner captured by callbacks exported on the JS thread. */
+    const StringBox& getCallbackAttribution();
     bool isReadyForANRDetection() const final;
 
     void performGc();
@@ -551,6 +554,7 @@ private:
     std::atomic<bool> _anrDiagnosticsEnabled = false;
     mutable Mutex _nativeCallActivityMutex;
     JavaScriptANRAttribution _anrAttribution;
+    StringBox _callbackAttribution;
     // A lock that will block the JS thread until postInit() is called and the initialization has completed
     AsyncGroup _initLock;
     bool _hasGcScheduled = false;
@@ -614,6 +618,7 @@ private:
     JSValueRef runtimeMakeOpaque(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeConfigureCallback(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeMakeANRAttributionProxy(JSFunctionNativeCallContext& callContext);
+    JSValueRef runtimeWithCallbackAttribution(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimePerformSyncWithMainThread(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeCallOnMainThread(JSFunctionNativeCallContext& callContext);
     JSValueRef runtimeGetLayoutDebugInfo(JSFunctionNativeCallContext& callContext);
@@ -798,6 +803,7 @@ private:
 
     friend class ScopedNativeCallActivity;
     friend class ScopedANRAttribution;
+    friend class ScopedCallbackAttribution;
     JavaScriptANRAttribution::RestoreToken pushNativeCallActivity(const StringBox& name);
     void popNativeCallActivity(JavaScriptANRAttribution::RestoreToken token);
     JavaScriptANRAttribution swapANRAttribution(JavaScriptANRAttribution attribution);
@@ -859,6 +865,30 @@ public:
 private:
     JavaScriptRuntime* _runtime = nullptr;
     JavaScriptANRAttribution::RestoreToken _restoreToken;
+};
+
+/** Keeps callback ownership independent of the context managing native reference lifetime. */
+class ScopedCallbackAttribution {
+public:
+    ScopedCallbackAttribution(JavaScriptRuntime* runtime, const StringBox& attribution) {
+        if (runtime != nullptr && runtime->anrDiagnosticsActiveOnJsThread()) {
+            _runtime = runtime;
+            _previous = std::exchange(runtime->_callbackAttribution, attribution);
+        }
+    }
+
+    ~ScopedCallbackAttribution() {
+        if (_runtime != nullptr) {
+            _runtime->_callbackAttribution = std::move(_previous);
+        }
+    }
+
+    ScopedCallbackAttribution(const ScopedCallbackAttribution&) = delete;
+    ScopedCallbackAttribution& operator=(const ScopedCallbackAttribution&) = delete;
+
+private:
+    JavaScriptRuntime* _runtime = nullptr;
+    StringBox _previous;
 };
 
 } // namespace Valdi
