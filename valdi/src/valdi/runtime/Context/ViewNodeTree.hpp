@@ -263,8 +263,9 @@ public:
     /**
      * Whether platform layout callbacks (e.g. iOS didFinishLayout blocks) may read a node's view
      * without taking it out of the view pool. True unless the
-     * disableViewPoolingOnLayoutCallbacks killswitch is on. Snapshotted at construction so the
-     * per-layout check never reaches the tweak provider.
+     * disableViewPoolingOnLayoutCallbacks killswitch is on. Copied at construction from the
+     * ViewManagerContext snapshot, so neither construction (main thread) nor the per-layout check
+     * reaches the tweak provider.
      */
     bool keepsViewPoolingOnLayoutCallbacks() const;
     /** Exposed for tests; production trees take the value from the runtime tweaks. */

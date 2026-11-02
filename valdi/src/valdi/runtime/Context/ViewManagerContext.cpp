@@ -82,6 +82,14 @@ bool ViewManagerContext::getApplyManagedChildFramePadding() const {
     return _applyManagedChildFramePadding;
 }
 
+void ViewManagerContext::setKeepsViewPoolingOnLayoutCallbacks(const bool keepsViewPoolingOnLayoutCallbacks) {
+    _keepsViewPoolingOnLayoutCallbacks.store(keepsViewPoolingOnLayoutCallbacks, std::memory_order_relaxed);
+}
+
+bool ViewManagerContext::getKeepsViewPoolingOnLayoutCallbacks() const {
+    return _keepsViewPoolingOnLayoutCallbacks.load(std::memory_order_relaxed);
+}
+
 void ViewManagerContext::setPreloadingWorkQueue(const Ref<DispatchQueue>& preloadingWorkQueue) {
     if (_viewPreloader != nullptr) {
         _viewPreloader->setWorkQueue(preloadingWorkQueue);

@@ -180,6 +180,28 @@ TEST(ViewNode, treeKeepsViewPoolingOnLayoutCallbacksWithoutRuntimeTweaks) {
     ASSERT_TRUE(utils.getTree().keepsViewPoolingOnLayoutCallbacks());
 }
 
+// Trees are created from setRootView on the main thread, so they must take the killswitch from the
+// ViewManagerContext snapshot rather than reading the tweak provider (a StrictMode violation on Android).
+TEST(ViewNode, treeTakesViewPoolingOnLayoutCallbacksFromViewManagerContext) {
+    auto mainQueue = makeShared<StandaloneMainQueue>();
+    auto mainThreadManager = makeShared<MainThreadManager>(mainQueue->createMainThreadDispatcher());
+    StandaloneViewManager viewManager;
+    AttributeIds attributeIds;
+    auto viewManagerContext = makeShared<ViewManagerContext>(viewManager,
+                                                             attributeIds,
+                                                             makeShared<ColorPaletteManager>(),
+                                                             Yoga::createConfig(0),
+                                                             false,
+                                                             mainThreadManager,
+                                                             ConsoleLogger::getLogger());
+    ASSERT_TRUE(viewManagerContext->getKeepsViewPoolingOnLayoutCallbacks());
+
+    viewManagerContext->setKeepsViewPoolingOnLayoutCallbacks(false);
+    auto tree = makeShared<ViewNodeTree>(
+        nullptr, viewManagerContext, &viewManager, nullptr, mainThreadManager.get(), false);
+    ASSERT_FALSE(tree->keepsViewPoolingOnLayoutCallbacks());
+}
+
 TEST(ViewNode, settingColorPaletteOnDetachedNodeClearsResolvedPalette) {
     ViewNodeTestsDependencies utils;
     auto viewNode = utils.createView();

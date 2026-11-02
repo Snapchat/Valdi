@@ -10,6 +10,7 @@
 #include "valdi/runtime/Attributes/DefaultAttributeProcessors.hpp"
 #include "valdi/runtime/Context/AttributionResolver.hpp"
 #include "valdi/runtime/Context/ViewManagerContext.hpp"
+#include "valdi/runtime/Context/ViewNodeTree.hpp"
 #include "valdi/runtime/Resources/BytesAssetLoader.hpp"
 #include "valdi/runtime/ValdiBuildFlags.hpp"
 #include "valdi/runtime/ValdiRuntimeTweaks.hpp"
@@ -316,10 +317,18 @@ Ref<ViewManagerContext> RuntimeManager::createViewManagerContext(
 
     _viewManagerContexts.emplace_back(viewManagerContext);
 
+    Ref<ValdiRuntimeTweaks> runtimeTweaks;
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        runtimeTweaks = _runtimeTweaks;
+    }
+
     // Seed the kill switch from the current tweaks so contexts created after the provider is set pick
     // it up; the setTweakValueProvider loop handles contexts created before it arrives.
     viewManagerContext->setApplyManagedChildFramePadding(
-        _runtimeTweaks != nullptr ? _runtimeTweaks->applyManagedChildFramePadding() : true);
+        runtimeTweaks != nullptr ? runtimeTweaks->applyManagedChildFramePadding() : true);
+    viewManagerContext->setKeepsViewPoolingOnLayoutCallbacks(
+        ViewNodeTree::shouldKeepViewPoolingOnLayoutCallbacks(runtimeTweaks.get()));
 
     return viewManagerContext;
 }
@@ -660,10 +669,12 @@ void RuntimeManager::setTweakValueProvider(const Shared<ITweakValueProvider>& tw
         runtimeTweaks != nullptr ? runtimeTweaks->disableAnimationRemoveOnCompleteIos() : false;
     auto applyManagedChildFramePadding =
         runtimeTweaks != nullptr ? runtimeTweaks->applyManagedChildFramePadding() : true;
+    auto keepsViewPoolingOnLayoutCallbacks = ViewNodeTree::shouldKeepViewPoolingOnLayoutCallbacks(runtimeTweaks.get());
     for (const auto& viewManagerContext : _viewManagerContexts) {
         viewManagerContext->getViewManager().setDisableAnimationRemoveOnCompleteIos(
             disableAnimationRemoveOnCompleteIos);
         viewManagerContext->setApplyManagedChildFramePadding(applyManagedChildFramePadding);
+        viewManagerContext->setKeepsViewPoolingOnLayoutCallbacks(keepsViewPoolingOnLayoutCallbacks);
     }
 
     for (const auto& runtime : runtimes) {

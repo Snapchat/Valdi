@@ -13,6 +13,8 @@
 
 #include "valdi_core/Platform.hpp"
 
+#include <atomic>
+
 namespace Valdi {
 
 class IViewManager;
@@ -76,6 +78,12 @@ public:
     void setApplyManagedChildFramePadding(const bool applyManagedChildFramePadding);
     bool getApplyManagedChildFramePadding() const;
 
+    // Snapshot of the disableViewPoolingOnLayoutCallbacks killswitch (true unless it is on). Seeded by
+    // RuntimeManager off the main thread, so ViewNodeTree construction in setRootView never reads the
+    // tweak provider on the UI thread (on Android that read is a StrictMode violation).
+    void setKeepsViewPoolingOnLayoutCallbacks(const bool keepsViewPoolingOnLayoutCallbacks);
+    bool getKeepsViewPoolingOnLayoutCallbacks() const;
+
     ViewPoolsStats getViewPoolsStats() const;
 
 private:
@@ -86,6 +94,7 @@ private:
     Ref<MainThreadManager> _mainThreadManager;
     bool _accessibilityEnabled;
     bool _applyManagedChildFramePadding = true;
+    std::atomic<bool> _keepsViewPoolingOnLayoutCallbacks{true};
 };
 
 } // namespace Valdi

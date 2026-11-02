@@ -71,9 +71,10 @@ ViewNodeTree::ViewNodeTree(const SharedContext& context,
       _runtime(std::move(runtime)),
       _mainThreadManager(mainThreadManager),
       _shouldRenderInMainThread(shouldRenderInMainThread) {
-    if (_runtime != nullptr) {
-        _keepsViewPoolingOnLayoutCallbacks =
-            shouldKeepViewPoolingOnLayoutCallbacks(_runtime->getResourceManager().getRuntimeTweaks().get());
+    // Use the snapshot on the ViewManagerContext instead of reading the tweak here: trees are created
+    // from setRootView on the main thread, where a config read trips StrictMode on Android.
+    if (_viewManagerContext != nullptr) {
+        _keepsViewPoolingOnLayoutCallbacks = _viewManagerContext->getKeepsViewPoolingOnLayoutCallbacks();
     }
 }
 
