@@ -1,6 +1,6 @@
-import { WebValdiLayout } from './WebValdiLayout';
 import { UpdateAttributeDelegate } from '../ValdiWebRendererDelegate';
 import { convertColor, hexToRGBColor } from '../styles/ValdiWebStyles';
+import { WebValdiLayout } from './WebValdiLayout';
 
 const WEB_IMAGE_NATURAL_SCALE = 3;
 
@@ -60,7 +60,7 @@ export class WebValdiImage extends WebValdiLayout {
     };
   }
 
-  createHtmlElement() {
+  createHtmlElement(): HTMLCanvasElement {
     const element = document.createElement('canvas');
 
     Object.assign(element.style, {
@@ -87,12 +87,82 @@ export class WebValdiImage extends WebValdiLayout {
     return element;
   }
 
-  destroy() {
+  destroy(): void {
     this._observer?.disconnect();
     super.destroy();
   }
 
-  private updateImage() {
+  changeAttribute(attributeName: string, attributeValue: unknown): void {
+    switch (attributeName) {
+      case 'src': {
+        const src = this.recursivelyResolveSrc(attributeValue);
+
+        // getAttribute returns the string last assigned, where `.src` returns the
+        // browser's absolute resolution of it. Comparing against the property made
+        // every relative URL look new and re-request on each update.
+        if (src && this.img.getAttribute('src') !== src) {
+          // Set every time, not only on the CORS branch: a recycled view can carry
+          // `anonymous` over from the previous URL, and a URL that already refused
+          // CORS would then be requested with it again and have no retry left.
+          this.img.crossOrigin = src === this._corsFallbackSrc ? null : 'anonymous';
+          this.img.src = src;
+        }
+        return;
+      }
+      case 'objectFit':
+        this._objectFit = attributeValue as typeof this._objectFit;
+        this.updateImage();
+        return;
+      case 'onAssetLoad':
+        this._onAssetLoad = attributeValue as typeof this._onAssetLoad;
+        return;
+      case 'onImageDecoded':
+        this._onImageDecoded = attributeValue as typeof this._onImageDecoded;
+        return;
+      case 'tint':
+        this._tint = attributeValue as string | null;
+        this.updateImage();
+        return;
+      case 'flipOnRtl':
+        this._flipOnRtl = !!attributeValue;
+        this.updateImage();
+        return;
+      case 'contentScaleX':
+        this._contentScaleX = Number(attributeValue) || 1;
+        this.updateImage();
+        return;
+      case 'contentScaleY':
+        this._contentScaleY = Number(attributeValue) || 1;
+        this.updateImage();
+        return;
+      case 'contentRotation':
+        this._contentRotation = Number(attributeValue) || 0;
+        this.updateImage();
+        return;
+      case 'filter':
+        this.htmlElement.style.filter = attributeValue as string;
+        return;
+      case 'ref':
+        // This is likely for framework-level component references. No-op at this level.
+        return;
+      case 'width':
+        this._explicitWidth = attributeValue as typeof this._explicitWidth;
+        super.changeAttribute(attributeName, attributeValue);
+        return;
+      case 'height':
+        this._explicitHeight = attributeValue as typeof this._explicitHeight;
+        super.changeAttribute(attributeName, attributeValue);
+        return;
+      case 'rotation':
+        this._rotation = Number(attributeValue) || 0;
+        this.updateImage();
+        return;
+    }
+
+    super.changeAttribute(attributeName, attributeValue);
+  }
+
+  private updateImage(): void {
     const canvas = this.htmlElement as HTMLCanvasElement;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
@@ -108,7 +178,7 @@ export class WebValdiImage extends WebValdiLayout {
     const logicalH = ih / WEB_IMAGE_NATURAL_SCALE;
 
     if (!this._explicitWidth && !this._explicitHeight) {
-      const isRotated90or270 = Math.abs(Math.abs(this._rotation) % Math.PI - Math.PI / 2) < 0.01;
+      const isRotated90or270 = Math.abs((Math.abs(this._rotation) % Math.PI) - Math.PI / 2) < 0.01;
       if (isRotated90or270) {
         this.htmlElement.style.width = `${logicalH}px`;
         this.htmlElement.style.height = `${logicalW}px`;
@@ -118,7 +188,7 @@ export class WebValdiImage extends WebValdiLayout {
       }
     }
 
-    const isRotated90or270 = Math.abs(Math.abs(this._rotation) % Math.PI - Math.PI / 2) < 0.01;
+    const isRotated90or270 = Math.abs((Math.abs(this._rotation) % Math.PI) - Math.PI / 2) < 0.01;
     const effectiveIw = isRotated90or270 ? logicalH : logicalW;
     const effectiveIh = isRotated90or270 ? logicalW : logicalH;
 
@@ -151,8 +221,7 @@ export class WebValdiImage extends WebValdiLayout {
     const imageAspect = effectiveIw / effectiveIh;
     const aspectMismatch = Math.abs(boxAspect - imageAspect) > 0.01;
     // When layout box and image aspect ratios differ, use contain so we don't squish (e.g. wide icon in square slot)
-    const effectiveFit =
-      this._objectFit === 'fill' && aspectMismatch ? 'contain' : this._objectFit;
+    const effectiveFit = this._objectFit === 'fill' && aspectMismatch ? 'contain' : this._objectFit;
     if (effectiveFit !== 'fill') {
       let scale = 1;
       if (effectiveFit === 'contain') {
@@ -205,7 +274,7 @@ export class WebValdiImage extends WebValdiLayout {
   }
 
   // Finds the first valid src string in a nested object.
-  private recursivelyResolveSrc(src: Record<string, any> | string | undefined): string | undefined {
+  private recursivelyResolveSrc(src: unknown): string | undefined {
     if (!src) {
       return undefined;
     }
@@ -214,75 +283,6 @@ export class WebValdiImage extends WebValdiLayout {
       return src;
     }
 
-    return this.recursivelyResolveSrc(src?.src);
-  }
-
-  changeAttribute(attributeName: string, attributeValue: any): void {
-    switch (attributeName) {
-      case 'src':
-        const src = this.recursivelyResolveSrc(attributeValue);
-
-        // getAttribute returns the string last assigned, where `.src` returns the
-        // browser's absolute resolution of it. Comparing against the property made
-        // every relative URL look new and re-request on each update.
-        if (src && this.img.getAttribute('src') !== src) {
-          // Set every time, not only on the CORS branch: a recycled view can carry
-          // `anonymous` over from the previous URL, and a URL that already refused
-          // CORS would then be requested with it again and have no retry left.
-          this.img.crossOrigin = src === this._corsFallbackSrc ? null : 'anonymous';
-          this.img.src = src;
-        }
-        return;
-      case 'objectFit':
-        this._objectFit = attributeValue;
-        this.updateImage();
-        return;
-      case 'onAssetLoad':
-        this._onAssetLoad = attributeValue;
-        return;
-      case 'onImageDecoded':
-        this._onImageDecoded = attributeValue;
-        return;
-      case 'tint':
-        this._tint = attributeValue;
-        this.updateImage();
-        return;
-      case 'flipOnRtl':
-        this._flipOnRtl = !!attributeValue;
-        this.updateImage();
-        return;
-      case 'contentScaleX':
-        this._contentScaleX = Number(attributeValue) || 1;
-        this.updateImage();
-        return;
-      case 'contentScaleY':
-        this._contentScaleY = Number(attributeValue) || 1;
-        this.updateImage();
-        return;
-      case 'contentRotation':
-        this._contentRotation = Number(attributeValue) || 0;
-        this.updateImage();
-        return;
-      case 'filter':
-        this.htmlElement.style.filter = attributeValue;
-        return;
-      case 'ref':
-        // This is likely for framework-level component references. No-op at this level.
-        return;
-      case 'width':
-        this._explicitWidth = attributeValue;
-        super.changeAttribute(attributeName, attributeValue);
-        return;
-      case 'height':
-        this._explicitHeight = attributeValue;
-        super.changeAttribute(attributeName, attributeValue);
-        return;
-      case 'rotation':
-        this._rotation = Number(attributeValue) || 0;
-        this.updateImage();
-        return;
-    }
-
-    super.changeAttribute(attributeName, attributeValue);
+    return this.recursivelyResolveSrc((src as { src?: unknown })?.src);
   }
 }

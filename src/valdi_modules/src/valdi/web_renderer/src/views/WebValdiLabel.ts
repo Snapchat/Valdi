@@ -4,7 +4,7 @@ import { WebValdiLayout } from './WebValdiLayout';
 export class WebValdiLabel extends WebValdiLayout {
   public type = 'label';
 
-  createHtmlElement() {
+  createHtmlElement(): HTMLElement {
     const element = document.createElement('span');
 
     Object.assign(element.style, {
@@ -30,17 +30,18 @@ export class WebValdiLabel extends WebValdiLayout {
     return element;
   }
 
-  changeAttribute(attributeName: string, attributeValue: any): void {
+  changeAttribute(attributeName: string, attributeValue: unknown): void {
     switch (attributeName) {
       case 'value':
         if (isAttributedText(attributeValue)) {
           this.htmlElement.textContent = '';
           this.htmlElement.appendChild(renderAttributedText(attributeValue));
         } else {
-          this.htmlElement.textContent = attributeValue;
+          this.htmlElement.textContent = attributeValue as string | null;
         }
         return;
       case 'numberOfLines':
+        /* eslint-disable @typescript-eslint/naming-convention -- vendor-prefixed CSSOM property names */
         if (typeof attributeValue === 'number' && attributeValue > 0) {
           Object.assign(this.htmlElement.style, {
             display: '-webkit-box',
@@ -72,6 +73,7 @@ export class WebValdiLabel extends WebValdiLayout {
             wordWrap: '',
           });
         }
+        /* eslint-enable @typescript-eslint/naming-convention */
         return;
     }
 

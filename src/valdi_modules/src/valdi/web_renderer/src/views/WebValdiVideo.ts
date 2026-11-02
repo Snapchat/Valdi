@@ -1,5 +1,5 @@
-import { WebValdiLayout } from './WebValdiLayout';
 import { UpdateAttributeDelegate } from '../ValdiWebRendererDelegate';
+import { WebValdiLayout } from './WebValdiLayout';
 
 export class WebValdiVideo extends WebValdiLayout {
   public type = 'video';
@@ -45,10 +45,7 @@ export class WebValdiVideo extends WebValdiLayout {
     videoEl.addEventListener('timeupdate', () => {
       if (this._destroyed) return;
       if (this._onProgressUpdated && videoEl.duration) {
-        this._onProgressUpdated(
-          Math.round(videoEl.currentTime * 1000),
-          Math.round(videoEl.duration * 1000),
-        );
+        this._onProgressUpdated(Math.round(videoEl.currentTime * 1000), Math.round(videoEl.duration * 1000));
       }
     });
 
@@ -67,12 +64,6 @@ export class WebValdiVideo extends WebValdiLayout {
     });
     wrapper.appendChild(videoEl);
     return wrapper;
-  }
-
-  private resolveSrc(src: unknown): string | undefined {
-    if (typeof src === 'string') return src;
-    if (src && typeof src === 'object' && 'src' in src) return this.resolveSrc((src as { src: unknown }).src);
-    return undefined;
   }
 
   changeAttribute(attributeName: string, attributeValue: unknown): void {
@@ -150,5 +141,11 @@ export class WebValdiVideo extends WebValdiLayout {
     this.videoEl.pause();
     this.videoEl.removeAttribute('src');
     super.destroy();
+  }
+
+  private resolveSrc(src: unknown): string | undefined {
+    if (typeof src === 'string') return src;
+    if (src && typeof src === 'object' && 'src' in src) return this.resolveSrc((src as { src: unknown }).src);
+    return undefined;
   }
 }

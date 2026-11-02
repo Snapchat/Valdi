@@ -24,7 +24,7 @@ export class WebValdiScroll extends WebValdiLayout {
     return element;
   }
 
-  destroy() {
+  destroy(): void {
     if (this._onScrollEndTimer !== null) {
       clearTimeout(this._onScrollEndTimer);
     }
@@ -36,12 +36,12 @@ export class WebValdiScroll extends WebValdiLayout {
     super.destroy();
   }
 
-  changeAttribute(attributeName: string, attributeValue: any): void {
+  changeAttribute(attributeName: string, attributeValue: unknown): void {
     switch (attributeName) {
-      case "onScroll":
+      case 'onScroll':
         this._replaceScrollListener('onScroll', 'scroll', (() => {
           if (typeof attributeValue === 'function') {
-            attributeValue({
+            (attributeValue as (event: unknown) => void)({
               contentOffset: {
                 x: this.htmlElement.scrollLeft,
                 y: this.htmlElement.scrollTop,
@@ -58,80 +58,82 @@ export class WebValdiScroll extends WebValdiLayout {
           }
         }) as EventListener);
         return;
-      case "onScrollEnd":
+      case 'onScrollEnd':
         this._replaceScrollListener('onScrollEnd', 'scroll', (() => {
           if (this._onScrollEndTimer !== null) {
             clearTimeout(this._onScrollEndTimer);
           }
           this._onScrollEndTimer = window.setTimeout(() => {
             if (typeof attributeValue === 'function') {
-              attributeValue();
+              (attributeValue as () => void)();
             }
           }, 100);
         }) as EventListener);
         return;
-      case "onDragStart":
-        this._replaceScrollListener('onDragStart:mousedown', 'mousedown', attributeValue);
-        this._replaceScrollListener('onDragStart:touchstart', 'touchstart', attributeValue);
+      case 'onDragStart':
+        this._replaceScrollListener('onDragStart:mousedown', 'mousedown', attributeValue as EventListener);
+        this._replaceScrollListener('onDragStart:touchstart', 'touchstart', attributeValue as EventListener);
         return;
-      case "onDragEnding":
+      case 'onDragEnding':
         this._replaceScrollListener('onDragEnding', 'scroll', (() => {
           if (this._onScrollEndTimer !== null) {
             clearTimeout(this._onScrollEndTimer);
           }
           this._onScrollEndTimer = window.setTimeout(() => {
             if (typeof attributeValue === 'function') {
-              attributeValue();
+              (attributeValue as () => void)();
             }
           }, 150);
         }) as EventListener);
         return;
-      case "onDragEnd":
-        this._replaceScrollListener('onDragEnd:mouseup', 'mouseup', attributeValue);
-        this._replaceScrollListener('onDragEnd:touchend', 'touchend', attributeValue);
+      case 'onDragEnd':
+        this._replaceScrollListener('onDragEnd:mouseup', 'mouseup', attributeValue as EventListener);
+        this._replaceScrollListener('onDragEnd:touchend', 'touchend', attributeValue as EventListener);
         return;
-      case "onContentSizeChange":
+      case 'onContentSizeChange': {
         const observer = new ResizeObserver(entries => {
-            for (const entry of entries) {
-                if (typeof attributeValue === 'function') {
-                    attributeValue({
-                        width: this.htmlElement.scrollWidth,
-                        height: this.htmlElement.scrollHeight,
-                    });
-                }
+          entries.forEach(() => {
+            if (typeof attributeValue === 'function') {
+              (attributeValue as (size: { width: number; height: number }) => void)({
+                width: this.htmlElement.scrollWidth,
+                height: this.htmlElement.scrollHeight,
+              });
             }
+          });
         });
         // This observes the scroll container itself. It will trigger when the
         // container's size changes, which is an approximation for content changes.
         // A more robust solution would observe children, but is more complex.
         observer.observe(this.htmlElement);
         return;
-      case "bounces":
+      }
+      case 'bounces':
         // CSS `overscroll-behavior` can prevent scroll-chaining, but doesn't provide a bounce effect.
         // A true bounce effect requires a custom JS-based scrolling solution.
         this.htmlElement.style.overscrollBehavior = attributeValue ? 'auto' : 'contain';
         return;
-      case "bouncesFromDragAtStart":
-      case "bouncesFromDragAtEnd":
-      case "bouncesVerticalWithSmallContent":
-      case "bouncesHorizontalWithSmallContent":
+      case 'bouncesFromDragAtStart':
+      case 'bouncesFromDragAtEnd':
+      case 'bouncesVerticalWithSmallContent':
+      case 'bouncesHorizontalWithSmallContent':
         // No direct web equivalent for bounce physics.
-        console.log("WebValdiScroll not implemented: ", attributeName, attributeValue);
+        console.log('WebValdiScroll not implemented: ', attributeName, attributeValue);
         return;
-      case "cancelsTouchesOnScroll":
+      case 'cancelsTouchesOnScroll':
         // This is default browser behavior. A no-op.
         return;
-      case "dismissKeyboardOnDrag":
+      case 'dismissKeyboardOnDrag':
         this._replaceScrollListener('dismissKeyboardOnDrag', 'scroll', (() => {
           if (attributeValue && document.activeElement instanceof HTMLElement) {
             document.activeElement.blur();
           }
         }) as EventListener);
         return;
-      case "pagingEnabled":
+      case 'pagingEnabled':
         this._pagingEnabled = !!attributeValue;
         if (attributeValue) {
-          this.htmlElement.style.scrollSnapType = this.htmlElement.style.overflowX === 'hidden' ? 'y mandatory' : 'x mandatory';
+          this.htmlElement.style.scrollSnapType =
+            this.htmlElement.style.overflowX === 'hidden' ? 'y mandatory' : 'x mandatory';
           this._applySnapAlignToChildren();
           if (!this._pagingObserver) {
             this._pagingObserver = new MutationObserver(() => this._applySnapAlignToChildren());
@@ -146,10 +148,10 @@ export class WebValdiScroll extends WebValdiLayout {
           }
         }
         return;
-      case "horizontal":
-       //Todo implement
+      case 'horizontal':
+        //Todo implement
         return;
-      case "showsVerticalScrollIndicator":
+      case 'showsVerticalScrollIndicator':
         if (attributeValue) {
           this.htmlElement.classList.remove('hide-v-scrollbar');
           this.htmlElement.style.setProperty('scrollbar-width', 'auto'); // Firefox
@@ -158,7 +160,7 @@ export class WebValdiScroll extends WebValdiLayout {
           this.htmlElement.style.setProperty('scrollbar-width', 'none'); // Firefox
         }
         return;
-      case "showsHorizontalScrollIndicator":
+      case 'showsHorizontalScrollIndicator':
         if (attributeValue) {
           this.htmlElement.classList.remove('hide-h-scrollbar');
           // Do NOT touch 'scrollbar-width' here; in Firefox it affects both axes.
@@ -168,62 +170,62 @@ export class WebValdiScroll extends WebValdiLayout {
           // So we leave it alone to avoid nuking the vertical scrollbar.
         }
         return;
-      case "scrollEnabled":
+      case 'scrollEnabled':
         this.htmlElement.style.overflow = attributeValue ? 'auto' : 'hidden';
         return;
-      case "ref":
+      case 'ref':
         // This is likely for framework-level component references. No-op at this level.
         return;
-      case "scrollPerfLoggerBridge":
-      case "circularRatio":
+      case 'scrollPerfLoggerBridge':
+      case 'circularRatio':
         // Complex features requiring custom implementation.
-        console.log("WebValdiScroll not implemented: ", attributeName, attributeValue);
+        console.log('WebValdiScroll not implemented: ', attributeName, attributeValue);
         return;
       case 'fadingEdgeLength':
-        this._fadingEdgeLength = attributeValue;
+        this._fadingEdgeLength = attributeValue as number;
         this._updateFadingEdge();
         return;
       case 'fadingEdgeStart':
-        this._fadingEdgeStartEnabled = attributeValue;
+        this._fadingEdgeStartEnabled = attributeValue as boolean;
         this._updateFadingEdge();
         return;
       case 'fadingEdgeEnd':
-        this._fadingEdgeEndEnabled = attributeValue;
+        this._fadingEdgeEndEnabled = attributeValue as boolean;
         this._updateFadingEdge();
         return;
-      case "decelerationRate":
+      case 'decelerationRate':
         // Controls scroll momentum, not directly controllable via standard web APIs.
-        console.log("WebValdiScroll not implemented: ", attributeName, attributeValue);
+        console.log('WebValdiScroll not implemented: ', attributeName, attributeValue);
         return;
-      case "viewportExtensionTop":
-      case "viewportExtensionRight":
-      case "viewportExtensionBottom":
-      case "viewportExtensionLeft":
+      case 'viewportExtensionTop':
+      case 'viewportExtensionRight':
+      case 'viewportExtensionBottom':
+      case 'viewportExtensionLeft':
         // Related to virtualized lists; handled by the list implementation, not the scroll container.
-        console.log("WebValdiScroll not implemented: ", attributeName, attributeValue);
+        console.log('WebValdiScroll not implemented: ', attributeName, attributeValue);
         return;
-      case "contentOffsetX":
+      case 'contentOffsetX':
         if (this._contentOffsetAnimated) {
-          this.htmlElement.scrollTo({ left: attributeValue, behavior: 'smooth' });
+          this.htmlElement.scrollTo({ left: attributeValue as number, behavior: 'smooth' });
         } else {
-          this.htmlElement.scrollLeft = attributeValue;
+          this.htmlElement.scrollLeft = attributeValue as number;
         }
         return;
-      case "contentOffsetY":
+      case 'contentOffsetY':
         if (this._contentOffsetAnimated) {
-          this.htmlElement.scrollTo({ top: attributeValue, behavior: 'smooth' });
+          this.htmlElement.scrollTo({ top: attributeValue as number, behavior: 'smooth' });
         } else {
-          this.htmlElement.scrollTop = attributeValue;
+          this.htmlElement.scrollTop = attributeValue as number;
         }
         return;
-      case "contentOffsetAnimated":
+      case 'contentOffsetAnimated':
         this._contentOffsetAnimated = !!attributeValue;
         return;
-      case "staticContentWidth":
-      case "staticContentHeight":
+      case 'staticContentWidth':
+      case 'staticContentHeight':
         // These are hints for native layout systems, often for virtualization.
         // No direct equivalent for a simple web scroll view.
-        console.log("WebValdiScroll not implemented: ", attributeName, attributeValue);
+        console.log('WebValdiScroll not implemented: ', attributeName, attributeValue);
         return;
     }
     super.changeAttribute(attributeName, attributeValue);
@@ -236,7 +238,7 @@ export class WebValdiScroll extends WebValdiLayout {
     }
   }
 
-  private _replaceScrollListener(key: string, eventType: string, handler: EventListener) {
+  private _replaceScrollListener(key: string, eventType: string, handler: EventListener): void {
     const idx = this._scrollListeners.findIndex(l => l.type === key);
     if (idx >= 0) {
       this.htmlElement.removeEventListener(eventType, this._scrollListeners[idx].handler);

@@ -1,21 +1,37 @@
-import { requiresUnitlessNumber } from './requiresUnitlessNumber';
-import { isNumber } from './isNumber';
 import { handleMarginPadding } from './handleMarginPadding';
+import { isNumber } from './isNumber';
 import { parseFontStyle } from './parseFontStyle';
+import { requiresUnitlessNumber } from './requiresUnitlessNumber';
 const VALID_STYLE_KEYS = document.createElement('div').style;
 
 declare const global: {
-  currentPalette: any;
+  currentPalette: Record<string, string> | undefined;
   darkModeObserver: object;
   theme: string;
 };
 
 export function isAttributeValidStyle(attribute: string): boolean {
   // Include flexbox properties that might not be in VALID_STYLE_KEYS
-  const flexboxProperties = ['justifyContent', 'alignItems', 'alignContent', 'alignSelf', 'flexDirection', 'flexWrap', 'flex', 'flexGrow', 'flexShrink', 'flexBasis'];
+  const flexboxProperties = [
+    'justifyContent',
+    'alignItems',
+    'alignContent',
+    'alignSelf',
+    'flexDirection',
+    'flexWrap',
+    'flex',
+    'flexGrow',
+    'flexShrink',
+    'flexBasis',
+  ];
   // Include zIndex, boxShadow, and borderRadius explicitly since they're critical for styling
   const additionalProperties = ['zIndex', 'boxShadow', 'borderRadius'];
-  return attribute in VALID_STYLE_KEYS || attribute === "style" || flexboxProperties.includes(attribute) || additionalProperties.includes(attribute);
+  return (
+    attribute in VALID_STYLE_KEYS ||
+    attribute === 'style' ||
+    flexboxProperties.includes(attribute) ||
+    additionalProperties.includes(attribute)
+  );
 }
 
 export function isStyleKeyColor(attribute: string): boolean {
@@ -34,7 +50,10 @@ export function hexToRGBColor(hex: string): RGBColor {
 
   // Support short form (#f36 → #ff3366)
   if (hex.length === 3) {
-    hex = hex.split('').map(c => c + c).join('');
+    hex = hex
+      .split('')
+      .map(c => c + c)
+      .join('');
   }
 
   if (hex.length !== 6) {
@@ -48,18 +67,18 @@ export function hexToRGBColor(hex: string): RGBColor {
   return { r, g, b };
 }
 
-export function generateStyles(attribute: string, value: any): Partial<CSSStyleDeclaration> {
+export function generateStyles(attribute: string, value: unknown): Partial<CSSStyleDeclaration> {
   if (value === undefined || value === null) {
     return { [attribute]: '' };
   }
 
   if (attribute === 'font') {
-    return parseFontStyle(value);
+    return parseFontStyle(value as string);
   }
 
   if (attribute === 'boxShadow') {
     // Parse "x y blur color" - color may contain spaces (e.g. "rgba(0, 0, 0, 0.2)")
-    const parts = value.trim().split(/\s+/);
+    const parts = (value as string).trim().split(/\s+/);
     if (parts.length >= 4) {
       const x = parts[0];
       const y = parts[1];
@@ -69,7 +88,7 @@ export function generateStyles(attribute: string, value: any): Partial<CSSStyleD
         boxShadow: `${x}px ${y}px ${blur}px ${convertColor(color)}`,
       };
     }
-    return { boxShadow: value };
+    return { boxShadow: value as string };
   }
 
   if (attribute === 'borderRadius') {
@@ -79,7 +98,7 @@ export function generateStyles(attribute: string, value: any): Partial<CSSStyleD
       // Creates a circle for square elements
       return { borderRadius: '9999px' };
     }
-    
+
     // Handle borderRadius values - can be numbers (px), percentages, or other CSS values
     if (typeof value === 'string' && value.includes('%')) {
       return { borderRadius: value };
@@ -105,7 +124,7 @@ export function generateStyles(attribute: string, value: any): Partial<CSSStyleD
     }
 
     // Other string values (like 'inherit', 'initial', or strings with units) - pass through as-is
-    return { borderRadius: value };
+    return { borderRadius: value as string };
   }
 
   // Handle zIndex explicitly to ensure it's properly applied
@@ -115,16 +134,25 @@ export function generateStyles(attribute: string, value: any): Partial<CSSStyleD
       return { zIndex: '' };
     }
     const zIndexValue = typeof value === 'number' ? value : parseInt(String(value), 10) || 0;
-    return { zIndex: String(zIndexValue) as any };
+    return { zIndex: String(zIndexValue) };
   }
 
   // Handle flexbox properties BEFORE the isAttributeValidStyle check
   // JavaScript style object uses camelCase
-  if (attribute === 'justifyContent' || attribute === 'alignItems' || attribute === 'alignContent' || attribute === 'alignSelf' || 
-      attribute === 'flexDirection' || attribute === 'flexWrap' || attribute === 'flex' || 
-      attribute === 'flexGrow' || attribute === 'flexShrink' || attribute === 'flexBasis') {
+  if (
+    attribute === 'justifyContent' ||
+    attribute === 'alignItems' ||
+    attribute === 'alignContent' ||
+    attribute === 'alignSelf' ||
+    attribute === 'flexDirection' ||
+    attribute === 'flexWrap' ||
+    attribute === 'flex' ||
+    attribute === 'flexGrow' ||
+    attribute === 'flexShrink' ||
+    attribute === 'flexBasis'
+  ) {
     // Keep camelCase for JavaScript style object assignment
-    return { [attribute]: value };
+    return { [attribute]: value as string };
   }
 
   if (!isAttributeValidStyle(attribute)) {
@@ -132,11 +160,11 @@ export function generateStyles(attribute: string, value: any): Partial<CSSStyleD
   }
 
   if (isStyleKeyColor(attribute)) {
-    return { [attribute]: convertColor(value) };
+    return { [attribute]: convertColor(value as string) };
   }
 
   if (attribute === 'margin' || attribute === 'padding') {
-    return handleMarginPadding(attribute, value);
+    return handleMarginPadding(attribute, value as string);
   }
 
   // Handle undefined values - remove the CSS property
@@ -146,13 +174,13 @@ export function generateStyles(attribute: string, value: any): Partial<CSSStyleD
 
   if (isNumber(value)) {
     if (requiresUnitlessNumber(attribute)) {
-      return { [attribute]: value };
+      return { [attribute]: value as string };
     } else {
       return { [attribute]: `${value}px` };
     }
   }
 
   return {
-    [attribute]: value,
+    [attribute]: value as string,
   };
 }

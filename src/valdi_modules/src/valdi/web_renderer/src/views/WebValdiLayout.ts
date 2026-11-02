@@ -1,7 +1,7 @@
+import { TouchEventState, TouchEvent as ValdiTouchEvent } from 'valdi_tsx/src/GestureEvents';
+import { UpdateAttributeDelegate } from '../ValdiWebRendererDelegate';
 import { generateStyles, isAttributeValidStyle } from '../styles/ValdiWebStyles';
 import { injectTouchAreaStyles } from '../styles/touchAreaExtension';
-import { UpdateAttributeDelegate } from '../ValdiWebRendererDelegate';
-import { TouchEventState } from 'valdi_tsx/src/GestureEvents';
 
 // Clicks a view's onTap already consumed. The click keeps bubbling so listeners outside the
 // Valdi tree (host page, document, accessibility handlers) still see it; only Valdi tap handlers
@@ -13,6 +13,10 @@ const resolvedHitTests = new WeakSet<Event>();
 
 const hitTestViews = new WeakMap<Element, WebValdiLayout>();
 
+type TouchHandler = (event: ValdiTouchEvent) => void;
+type TouchPredicate = (event: ValdiTouchEvent) => boolean;
+type FrameCallback = (frame: { x: number; y: number; width: number; height: number }) => void;
+
 export class WebValdiLayout {
   public type = 'layout';
 
@@ -21,7 +25,13 @@ export class WebValdiLayout {
   public children: WebValdiLayout[] = [];
   public htmlElement: HTMLElement;
   public attributeDelegate?: UpdateAttributeDelegate;
-  private _transforms: { [key: string]: any } = {};
+  private _transforms: {
+    scaleX?: number;
+    scaleY?: number;
+    rotation?: number;
+    translationX?: number;
+    translationY?: number;
+  } = {};
   private _onLayoutObserver?: ResizeObserver;
   private _visibilityAndViewportObserver?: IntersectionObserver;
   private _longPressTimer?: number;
@@ -34,15 +44,15 @@ export class WebValdiLayout {
   private _onDragDisabled: boolean = false;
 
   // Gesture handlers
-  private _onTap?: (e: any) => void;
-  private _onTapPredicate?: (e: any) => boolean;
-  private _onDoubleTap?: (e: any) => void;
-  private _onDoubleTapPredicate?: (e: any) => boolean;
-  private _onLongPress?: (e: any) => void;
-  private _onLongPressPredicate?: (e: any) => boolean;
-  private _onDrag?: (e: any) => void;
-  private _onDragPredicate?: (e: any) => boolean;
-  private _hitTest?: (e: any) => boolean;
+  private _onTap?: TouchHandler;
+  private _onTapPredicate?: TouchPredicate;
+  private _onDoubleTap?: TouchHandler;
+  private _onDoubleTapPredicate?: TouchPredicate;
+  private _onLongPress?: TouchHandler;
+  private _onLongPressPredicate?: TouchPredicate;
+  private _onDrag?: TouchHandler;
+  private _onDragPredicate?: TouchPredicate;
+  private _hitTest?: TouchPredicate;
   private _hitTestListenerInstalled: boolean = false;
 
   // Lifecycle, visibility, and attachment handlers
@@ -50,7 +60,7 @@ export class WebValdiLayout {
   private _onViewDestroy?: () => void;
   private _onViewChange?: (event: { type: 'Attached' | 'Detached' }) => void;
   private _onVisibilityChanged?: (isVisible: boolean) => void;
-  private _onViewportChanged?: (viewport: any, frame: any, eventTime: any) => void;
+  private _onViewportChanged?: (viewport: DOMRectReadOnly | null, frame: DOMRectReadOnly, eventTime: number) => void;
   private _isAttached: boolean = false;
 
   // Touch area extension
@@ -68,7 +78,7 @@ export class WebValdiLayout {
     setTimeout(() => this._onViewCreate?.(), 0);
   }
 
-  setAttributeDelegate(attributeDelegate?: UpdateAttributeDelegate) {
+  setAttributeDelegate(attributeDelegate?: UpdateAttributeDelegate): void {
     this.attributeDelegate = attributeDelegate;
   }
 
@@ -101,7 +111,7 @@ export class WebValdiLayout {
     return element;
   }
 
-  makeRoot(root: HTMLElement | ShadowRoot) {
+  makeRoot(root: HTMLElement | ShadowRoot): void {
     this.parent?.removeChild(this);
     this.parent = null;
     root.replaceChildren(this.htmlElement);
@@ -116,11 +126,11 @@ export class WebValdiLayout {
     }
   }
 
-  removeChild(child: WebValdiLayout) {
+  removeChild(child: WebValdiLayout): void {
     this.children = this.children.filter(c => c.id !== child.id);
   }
 
-  move(parent: WebValdiLayout, index: number) {
+  move(parent: WebValdiLayout, index: number): void {
     this.parent?.removeChild(this);
 
     this.parent = parent;
@@ -132,7 +142,7 @@ export class WebValdiLayout {
     }
   }
 
-  destroy() {
+  destroy(): void {
     if (this._onViewChange && this._isAttached) {
       this._isAttached = false;
       this._onViewChange({ type: 'Detached' });
@@ -147,7 +157,415 @@ export class WebValdiLayout {
     this.htmlElement.remove();
   }
 
-  private _removeListenersByKey(key: string) {
+  changeAttribute(attributeName: string, attributeValue: unknown): void {
+    // A whole Style object lands here when a component spreads props through
+    // setAttributes(): that path dispatches via onElementAttributeChangeAny,
+    // which (unlike setAttributeStyle -> onElementAttributeChangeStyle) does not
+    // expand the style per key. Without this, generateStyles('style', ...)
+    // yields {style: <object>} and the element's whole style is silently dropped.
+    if (attributeName === 'style' && attributeValue && typeof attributeValue === 'object') {
+      const styleAttributes = (attributeValue as { attributes?: unknown }).attributes;
+      if (styleAttributes && typeof styleAttributes === 'object') {
+        for (const key of Object.keys(styleAttributes)) {
+          this.changeAttribute(key, (styleAttributes as Record<string, unknown>)[key]);
+        }
+        return;
+      }
+    }
+
+    if (isAttributeValidStyle(attributeName)) {
+      const generatedStyles = generateStyles(attributeName, attributeValue);
+      Object.assign(this.htmlElement.style, generatedStyles);
+      return;
+    }
+
+    switch (attributeName) {
+      case 'accessibilityId':
+        this.htmlElement.setAttribute('id', attributeValue as string);
+        return;
+      case 'accessibilityLabel':
+        this.htmlElement.setAttribute('aria-label', attributeValue as string);
+        return;
+      case 'accessibilityRole':
+      case 'accessibilityCategory':
+        this.htmlElement.setAttribute('aria-roledescription', attributeValue as string);
+        return;
+      case 'accessibilityStateSelected':
+        this.htmlElement.setAttribute('aria-selected', attributeValue as string);
+        return;
+      case 'touchAreaExtension': {
+        const extension = Number(attributeValue) || 0;
+        this._touchAreaExtension = { top: extension, right: extension, bottom: extension, left: extension };
+        this.updateTouchAreaExtension();
+        return;
+      }
+      case 'touchAreaExtensionTop':
+        this._touchAreaExtension.top = Number(attributeValue) || 0;
+        this.updateTouchAreaExtension();
+        return;
+      case 'touchAreaExtensionRight':
+        this._touchAreaExtension.right = Number(attributeValue) || 0;
+        this.updateTouchAreaExtension();
+        return;
+      case 'touchAreaExtensionBottom':
+        this._touchAreaExtension.bottom = Number(attributeValue) || 0;
+        this.updateTouchAreaExtension();
+        return;
+      case 'touchAreaExtensionLeft':
+        this._touchAreaExtension.left = Number(attributeValue) || 0;
+        this.updateTouchAreaExtension();
+        return;
+      case 'allowReuse':
+        // This is a rendering hint for native platforms, like React's `key` prop,
+        // to help with view recycling. It's a no-op in this direct DOM manipulation model.
+        return;
+      /*
+        From NativeTemplateElements ViewAttributes
+      */
+      case 'onViewCreate':
+        this._onViewCreate = attributeValue as (() => void) | undefined;
+        return;
+      case 'onViewDestroy':
+        this._onViewDestroy = attributeValue as (() => void) | undefined;
+        return;
+      case 'onViewChange': {
+        this._onViewChange = attributeValue as typeof this._onViewChange;
+        // Check initial state in case the element is already in the DOM when this is set.
+        const isCurrentlyAttached = document.body.contains(this.htmlElement);
+        if (this._isAttached !== isCurrentlyAttached) {
+          this._isAttached = isCurrentlyAttached;
+          this._onViewChange?.({ type: isCurrentlyAttached ? 'Attached' : 'Detached' });
+        }
+        return;
+      }
+      case 'slowClipping':
+        this.htmlElement.style.overflow = attributeValue ? 'hidden' : 'visible';
+        return;
+      case 'touchEnabled':
+        this.htmlElement.style.pointerEvents = attributeValue ? 'auto' : 'none';
+        return;
+      case 'hitTest':
+        if (typeof attributeValue === 'function') {
+          this._hitTest = attributeValue as TouchPredicate;
+          this.htmlElement.style.pointerEvents = 'auto';
+          this.installHitTestListener();
+          return;
+        }
+        this._hitTest = undefined;
+        this.htmlElement.style.pointerEvents = attributeValue ? 'auto' : 'none';
+        return;
+      case 'onTouch': {
+        this._removeListenersByKey('onTouch');
+        this.htmlElement.style.pointerEvents = 'auto';
+
+        const addTracked = (target: EventTarget, type: string, handler: EventListener): void => {
+          target.addEventListener(type, handler);
+          this._onTouchListeners.push({ key: 'onTouch', type, handler, target });
+        };
+
+        addTracked(
+          this.htmlElement,
+          'touchstart',
+          this.createTouchEventHandler(attributeValue, TouchEventState.Started) as EventListener,
+        );
+        addTracked(
+          this.htmlElement,
+          'touchmove',
+          this.createTouchEventHandler(attributeValue, TouchEventState.Changed) as EventListener,
+        );
+        addTracked(
+          this.htmlElement,
+          'touchend',
+          this.createTouchEventHandler(attributeValue, TouchEventState.Ended) as EventListener,
+        );
+        addTracked(
+          this.htmlElement,
+          'touchcancel',
+          this.createTouchEventHandler(attributeValue, TouchEventState.Ended) as EventListener,
+        );
+
+        const mouseMoveHandler = this.createTouchEventHandler(attributeValue, TouchEventState.Changed);
+        const mouseEndHandler = this.createTouchEventHandler(attributeValue, TouchEventState.Ended);
+        const onMouseUp = ((e: MouseEvent) => {
+          if (e.button !== 0) return;
+          document.removeEventListener('mousemove', mouseMoveHandler);
+          document.removeEventListener('mouseup', onMouseUp);
+          mouseEndHandler(e);
+        }) as EventListener;
+        addTracked(this.htmlElement, 'mousedown', ((e: MouseEvent) => {
+          if (e.button !== 0) return;
+          this.createTouchEventHandler(attributeValue, TouchEventState.Started)(e);
+          document.addEventListener('mousemove', mouseMoveHandler);
+          document.addEventListener('mouseup', onMouseUp);
+        }) as EventListener);
+        return;
+      }
+      case 'onTouchStart': {
+        this._removeListenersByKey('onTouchStart');
+        const handler = this.createTouchEventHandler(attributeValue, TouchEventState.Started) as EventListener;
+        this.htmlElement.addEventListener('touchstart', handler);
+        this._onTouchListeners.push({ key: 'onTouchStart', type: 'touchstart', handler, target: this.htmlElement });
+        return;
+      }
+      case 'onTouchEnd': {
+        this._removeListenersByKey('onTouchEnd');
+        const handler = this.createTouchEventHandler(attributeValue, TouchEventState.Ended) as EventListener;
+        this.htmlElement.addEventListener('touchend', handler);
+        this._onTouchListeners.push({ key: 'onTouchEnd', type: 'touchend', handler, target: this.htmlElement });
+        return;
+      }
+      case 'onTouchDelayDuration':
+        // This affects gesture recognition timing. Mapping to long press duration.
+        this._longPressDuration = attributeValue as number;
+        return;
+      case 'onTapDisabled':
+        this._onTapDisabled = !!attributeValue;
+        return;
+      case 'onTap':
+        this._onTap = attributeValue as TouchHandler | undefined;
+        if (attributeValue) {
+          this.htmlElement.style.pointerEvents = 'auto';
+          this.htmlElement.style.cursor = 'pointer';
+        } else {
+          this.htmlElement.style.pointerEvents = 'none';
+          this.htmlElement.style.cursor = '';
+        }
+        return;
+      case 'onTapPredicate':
+        this._onTapPredicate = attributeValue as TouchPredicate | undefined;
+        return;
+      case 'onDoubleTapDisabled':
+        this._onDoubleTapDisabled = !!attributeValue;
+        return;
+      case 'onDoubleTap':
+        this._onDoubleTap = attributeValue as TouchHandler | undefined;
+        return;
+      case 'onDoubleTapPredicate':
+        this._onDoubleTapPredicate = attributeValue as TouchPredicate | undefined;
+        return;
+      case 'longPressDuration':
+        this._longPressDuration = attributeValue as number;
+        return;
+      case 'onLongPressDisabled':
+        this._onLongPressDisabled = !!attributeValue;
+        return;
+      case 'onLongPress':
+        this._onLongPress = attributeValue as TouchHandler | undefined;
+        return;
+      case 'onLongPressPredicate':
+        this._onLongPressPredicate = attributeValue as TouchPredicate | undefined;
+        return;
+      case 'onDragDisabled':
+        this._onDragDisabled = !!attributeValue;
+        return;
+      case 'onDrag':
+        this._onDrag = attributeValue as TouchHandler | undefined;
+        return;
+      case 'onDragPredicate':
+        this._onDragPredicate = attributeValue as TouchPredicate | undefined;
+        return;
+      case 'onPinchDisabled':
+      case 'onPinch':
+      case 'onPinchPredicate':
+      case 'onRotateDisabled':
+      case 'onRotate':
+      case 'onRotatePredicate':
+        // These require multi-touch gesture implementation by tracking `event.touches`.
+        // For example, pinch would track the distance between two touch points,
+        // and rotate would track the angle formed by them.
+        console.log('WebValdiLayout not implemented: ', attributeName, attributeValue);
+        return;
+      case 'scaleX':
+        this._transforms.scaleX = attributeValue as number;
+        this.updateTransform();
+        return;
+      case 'scaleY':
+        this._transforms.scaleY = attributeValue as number;
+        this.updateTransform();
+        return;
+      case 'rotation':
+        this._transforms.rotation = attributeValue as number;
+        this.updateTransform();
+        return;
+      case 'translationX':
+        this._transforms.translationX = attributeValue as number;
+        this.updateTransform();
+        return;
+      case 'translationY':
+        this._transforms.translationY = attributeValue as number;
+        this.updateTransform();
+        return;
+      case 'canAlwaysScrollHorizontal':
+        this.htmlElement.style.overflowX = attributeValue ? 'scroll' : 'auto';
+        return;
+      case 'canAlwaysScrollVertical':
+        this.htmlElement.style.overflowY = attributeValue ? 'scroll' : 'auto';
+        return;
+      case 'maskOpacity':
+        // This could map to CSS opacity, but it's often used with a mask.
+        this.htmlElement.style.opacity = String(attributeValue);
+        return;
+      case 'maskPath':
+        // This can be implemented using CSS `clip-path` or `mask-image`.
+        // The format of `attributeValue` would determine the exact implementation.
+        // e.g., `url(...)` for an SVG mask or `polygon(...)` for a shape.
+        this.htmlElement.style.clipPath = attributeValue as string;
+        return;
+      case 'filterTouchesWhenObscured':
+        // This is a mobile-specific security feature. Browsers handle this behavior.
+        console.log('WebValdiLayout not implemented: ', attributeName, attributeValue);
+        return;
+      /*
+        From NativeTemplateElements LayoutAttributes
+      */
+      case 'onLayout':
+        if (this._onLayoutObserver) {
+          this._onLayoutObserver.disconnect();
+        }
+        if (attributeValue) {
+          this._onLayoutObserver = new ResizeObserver(entries => {
+            for (const entry of entries) {
+              const { width, height, x, y } = entry.contentRect;
+              (attributeValue as FrameCallback)({ x, y, width, height });
+            }
+          });
+          this._onLayoutObserver.observe(this.htmlElement);
+        }
+        return;
+      case 'onVisibilityChanged':
+        this._onVisibilityChanged = attributeValue as typeof this._onVisibilityChanged;
+        return;
+      case 'onViewportChanged':
+        this._onViewportChanged = attributeValue as typeof this._onViewportChanged;
+        return;
+      case 'onLayoutComplete':
+        if (typeof attributeValue === 'function') {
+          // Schedules the callback to run after the next browser repaint.
+          requestAnimationFrame(attributeValue as FrameRequestCallback);
+        }
+        return;
+      case 'lazyLayout':
+        // Uses `content-visibility` for performance optimization.
+        this.htmlElement.style.setProperty('content-visibility', attributeValue ? 'auto' : 'visible');
+        return;
+      case 'onMeasure':
+        if (typeof attributeValue === 'function') {
+          const rect = this.htmlElement.getBoundingClientRect();
+          (attributeValue as FrameCallback)({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+        }
+        return;
+      case 'estimatedWidth':
+        // Used with `content-visibility: auto` to reserve space.
+        this.htmlElement.style.containIntrinsicWidth = `${attributeValue}px`;
+        return;
+      case 'estimatedHeight':
+        // Used with `content-visibility: auto` to reserve space.
+        this.htmlElement.style.containIntrinsicHeight = `${attributeValue}px`;
+        return;
+      case 'limitToViewport':
+        this.htmlElement.style.overflow = attributeValue ? 'hidden' : 'visible';
+        return;
+      case 'lazy':
+        // Assuming 'lazy' is equivalent to 'lazyLayout' for a layout component.
+        this.htmlElement.style.setProperty('content-visibility', attributeValue ? 'auto' : 'visible');
+        return;
+      case 'id':
+        this.htmlElement.setAttribute('id', attributeValue as string);
+        return;
+      case 'key':
+        // Use a data-attribute for keys, useful for debugging and testing.
+        this.htmlElement.setAttribute('data-key', attributeValue as string);
+        return;
+      case 'animationsEnabled':
+        if (attributeValue === false) {
+          this.htmlElement.style.transition = 'none';
+        } else {
+          this.htmlElement.style.transition = ''; // Re-enable transitions
+        }
+        return;
+      case 'class':
+        this.htmlElement.className = attributeValue as string;
+        return;
+      case 'ignoreParentViewport':
+        // No direct web equivalent for ignoring a parent's clipping.
+        // `position: fixed` is relative to the viewport, which is different.
+        console.log('WebValdiLayout not implemented: ', attributeName, attributeValue);
+        return;
+      case 'aspectRatio':
+        this.htmlElement.style.aspectRatio = String(attributeValue);
+        return;
+      case 'display':
+        this.htmlElement.style.display = attributeValue as string;
+        return;
+      case 'accessibilityNavigation':
+        // Not a thing on the web. Navigation is based on DOM structure and ARIA roles.
+        console.log('WebValdiLayout not implemented: ', attributeName, attributeValue);
+        return;
+      case 'accessibilityPriority':
+        // Not a thing on the web. Focus order can be influenced by `tabindex`.
+        console.log('WebValdiLayout not implemented: ', attributeName, attributeValue);
+        return;
+      case 'accessibilityHint':
+        this.htmlElement.setAttribute('title', attributeValue as string);
+        return;
+      case 'accessibilityValue':
+        this.htmlElement.setAttribute('aria-valuetext', attributeValue as string);
+        return;
+      case 'accessibilityStateDisabled':
+        this.htmlElement.setAttribute('aria-disabled', String(!!attributeValue));
+        return;
+      case 'accessibilityStateLiveRegion':
+        this.htmlElement.setAttribute('aria-live', attributeValue ? 'polite' : 'off');
+        return;
+      case 'accessibilityHidden': // Alias for accessibilityElementsHidden
+      case 'accessibilityElementsHidden':
+        this.htmlElement.setAttribute('aria-hidden', String(!!attributeValue));
+        return;
+      case 'accessibilityStateChecked':
+        // Can be 'true', 'false', or 'mixed' for tri-state checkboxes.
+        this.htmlElement.setAttribute('aria-checked', String(attributeValue));
+        return;
+      case 'accessibilityStateExpanded':
+        this.htmlElement.setAttribute('aria-expanded', String(!!attributeValue));
+        return;
+      case 'accessibilityViewIsModal':
+        this.htmlElement.setAttribute('aria-modal', String(!!attributeValue));
+        return;
+      case 'onAccessibilityTap':
+      case 'onAccessibilityActivate': // Usually the same as a tap/click.
+        this.htmlElement.addEventListener('click', e => {
+          if (typeof attributeValue === 'function') {
+            (attributeValue as (event: MouseEvent) => void)(e);
+          }
+        });
+        return;
+      case 'onAccessibilityEscape':
+        this.htmlElement.addEventListener('keydown', (e: KeyboardEvent) => {
+          if (e.key === 'Escape' && typeof attributeValue === 'function') {
+            (attributeValue as (event: KeyboardEvent) => void)(e);
+          }
+        });
+        return;
+      case 'accessibilityIgnoresInvertColors': // iOS-specific.
+      case 'accessibilityTraits': // Complex mapping to ARIA roles/states.
+      case 'onAccessibilityMagicTap': // iOS-specific gesture.
+      case 'onAccessibilityIncrement': // For adjustable controls.
+      case 'onAccessibilityDecrement': // For adjustable controls.
+        // These properties do not have a direct, simple web equivalent
+        // and would require a custom implementation or library.
+        console.log('WebValdiLayout not implemented: ', attributeName, attributeValue);
+        return;
+      case 'width':
+        this.htmlElement.style.width = attributeValue as string;
+        return;
+      case 'height':
+        this.htmlElement.style.height = attributeValue as string;
+        return;
+    }
+
+    throw new Error(`Attribute ${attributeName} is not valid`);
+  }
+  private _removeListenersByKey(key: string): void {
     const remaining: typeof this._onTouchListeners = [];
     for (const entry of this._onTouchListeners) {
       if (entry.key === key) {
@@ -159,7 +577,7 @@ export class WebValdiLayout {
     this._onTouchListeners = remaining;
   }
 
-  private updateTransform() {
+  private updateTransform(): void {
     const { scaleX = 1, scaleY = 1, rotation = 0, translationX = 0, translationY = 0 } = this._transforms;
     const parts: string[] = [];
     if (translationX !== 0 || translationY !== 0) {
@@ -174,7 +592,7 @@ export class WebValdiLayout {
     this.htmlElement.style.transform = parts.join(' ');
   }
 
-  private updateTouchAreaExtension() {
+  private updateTouchAreaExtension(): void {
     const { top, right, bottom, left } = this._touchAreaExtension;
     const hasExtension = top > 0 || right > 0 || bottom > 0 || left > 0;
 
@@ -197,7 +615,7 @@ export class WebValdiLayout {
     }
   }
 
-  private setupEventListeners() {
+  private setupEventListeners(): void {
     this.htmlElement.addEventListener('click', (e: MouseEvent) => {
       if (claimedTaps.has(e) || this._onTapDisabled || typeof this._onTap !== 'function') return;
       const touchEvent = this.createTouchEvent(e, TouchEventState.Ended);
@@ -211,7 +629,7 @@ export class WebValdiLayout {
       this.createTouchEventHandler(this._onDoubleTap, TouchEventState.Ended, this._onDoubleTapPredicate)(e);
     });
 
-    const startLongPress = (e: MouseEvent | TouchEvent) => {
+    const startLongPress = (e: MouseEvent | TouchEvent): void => {
       if (this._onLongPressDisabled || !this._onLongPress) return;
       const handler = this.createTouchEventHandler(
         this._onLongPress,
@@ -220,7 +638,7 @@ export class WebValdiLayout {
       );
       this._longPressTimer = window.setTimeout(() => handler(e), this._longPressDuration);
     };
-    const endLongPress = () => {
+    const endLongPress = (): void => {
       if (this._longPressTimer) clearTimeout(this._longPressTimer);
     };
     this.htmlElement.addEventListener('mousedown', startLongPress);
@@ -229,7 +647,7 @@ export class WebValdiLayout {
       this.htmlElement.addEventListener(evt, endLongPress),
     );
 
-    const onDrag = (e: MouseEvent | TouchEvent) => {
+    const onDrag = (e: MouseEvent | TouchEvent): void => {
       if (e instanceof MouseEvent && e.buttons !== 1) return;
       if (this._onDragDisabled || !this._onDrag) return;
       this.createTouchEventHandler(this._onDrag, TouchEventState.Changed, this._onDragPredicate)(e);
@@ -249,18 +667,22 @@ export class WebValdiLayout {
     this._visibilityAndViewportObserver.observe(this.htmlElement);
   }
 
-  private createTouchEventHandler(value: any, state: TouchEventState, predicate?: (e: any) => boolean) {
+  private createTouchEventHandler(
+    value: unknown,
+    state: TouchEventState,
+    predicate?: TouchPredicate,
+  ): (event: MouseEvent | TouchEvent) => void {
     return (event: MouseEvent | TouchEvent) => {
       if (typeof value !== 'function') return;
       const touchEvent = this.createTouchEvent(event, state);
       if (predicate && !predicate(touchEvent)) {
         return;
       }
-      value(touchEvent);
+      (value as TouchHandler)(touchEvent);
     };
   }
 
-  private createTouchEvent(event: MouseEvent | TouchEvent, state: TouchEventState) {
+  private createTouchEvent(event: MouseEvent | TouchEvent, state: TouchEventState): ValdiTouchEvent {
     const touch = 'touches' in event ? event.touches[0] || event.changedTouches[0] : event;
     const rect = this.htmlElement.getBoundingClientRect();
     // A host page can scale the Valdi root with a CSS transform. Report Valdi points, as on device,
@@ -282,7 +704,7 @@ export class WebValdiLayout {
     };
   }
 
-  private installHitTestListener() {
+  private installHitTestListener(): void {
     if (this._hitTestListenerInstalled) return;
     this._hitTestListenerInstalled = true;
     hitTestViews.set(this.htmlElement, this);
@@ -324,7 +746,7 @@ export class WebValdiLayout {
     if (typeof rootNode.elementsFromPoint !== 'function') return { rejected: false };
     const verdicts = new Map<Element, boolean>();
     let rejected = false;
-    const accepts = (view: WebValdiLayout) => {
+    const accepts = (view: WebValdiLayout): boolean => {
       let verdict = verdicts.get(view.htmlElement);
       if (verdict === undefined) {
         const hitTest = view._hitTest;
@@ -344,403 +766,5 @@ export class WebValdiLayout {
       if (chain.reverse().every(accepts)) return { target: candidate, rejected };
     }
     return { rejected };
-  }
-
-  changeAttribute(attributeName: string, attributeValue: any) {
-    // A whole Style object lands here when a component spreads props through
-    // setAttributes(): that path dispatches via onElementAttributeChangeAny,
-    // which (unlike setAttributeStyle -> onElementAttributeChangeStyle) does not
-    // expand the style per key. Without this, generateStyles('style', ...)
-    // yields {style: <object>} and the element's whole style is silently dropped.
-    if (attributeName === 'style' && attributeValue && typeof attributeValue === 'object') {
-      const styleAttributes = attributeValue.attributes;
-      if (styleAttributes && typeof styleAttributes === 'object') {
-        for (const key of Object.keys(styleAttributes)) {
-          this.changeAttribute(key, styleAttributes[key]);
-        }
-        return;
-      }
-    }
-
-    if (isAttributeValidStyle(attributeName)) {
-      const generatedStyles = generateStyles(attributeName, attributeValue);
-      Object.assign(this.htmlElement.style, generatedStyles);
-      return;
-    }
-
-    switch (attributeName) {
-      case 'accessibilityId':
-        this.htmlElement.setAttribute('id', attributeValue);
-        return;
-      case 'accessibilityLabel':
-        this.htmlElement.setAttribute('aria-label', attributeValue);
-        return;
-      case 'accessibilityRole':
-      case 'accessibilityCategory':
-        this.htmlElement.setAttribute('aria-roledescription', attributeValue);
-        return;
-      case 'accessibilityStateSelected':
-        this.htmlElement.setAttribute('aria-selected', attributeValue);
-        return;
-      case 'touchAreaExtension': {
-        const extension = Number(attributeValue) || 0;
-        this._touchAreaExtension = { top: extension, right: extension, bottom: extension, left: extension };
-        this.updateTouchAreaExtension();
-        return;
-      }
-      case 'touchAreaExtensionTop':
-        this._touchAreaExtension.top = Number(attributeValue) || 0;
-        this.updateTouchAreaExtension();
-        return;
-      case 'touchAreaExtensionRight':
-        this._touchAreaExtension.right = Number(attributeValue) || 0;
-        this.updateTouchAreaExtension();
-        return;
-      case 'touchAreaExtensionBottom':
-        this._touchAreaExtension.bottom = Number(attributeValue) || 0;
-        this.updateTouchAreaExtension();
-        return;
-      case 'touchAreaExtensionLeft':
-        this._touchAreaExtension.left = Number(attributeValue) || 0;
-        this.updateTouchAreaExtension();
-        return;
-      case 'allowReuse':
-        // This is a rendering hint for native platforms, like React's `key` prop,
-        // to help with view recycling. It's a no-op in this direct DOM manipulation model.
-        return;
-      /*
-        From NativeTemplateElements ViewAttributes
-      */
-      case 'onViewCreate':
-        this._onViewCreate = attributeValue;
-        return;
-      case 'onViewDestroy':
-        this._onViewDestroy = attributeValue;
-        return;
-      case 'onViewChange':
-        this._onViewChange = attributeValue;
-        // Check initial state in case the element is already in the DOM when this is set.
-        const isCurrentlyAttached = document.body.contains(this.htmlElement);
-        if (this._isAttached !== isCurrentlyAttached) {
-          this._isAttached = isCurrentlyAttached;
-          this._onViewChange?.({ type: isCurrentlyAttached ? 'Attached' : 'Detached' });
-        }
-        return;
-      case 'slowClipping':
-        this.htmlElement.style.overflow = attributeValue ? 'hidden' : 'visible';
-        return;
-      case 'touchEnabled':
-        this.htmlElement.style.pointerEvents = attributeValue ? 'auto' : 'none';
-        return;
-      case 'hitTest':
-        if (typeof attributeValue === 'function') {
-          this._hitTest = attributeValue;
-          this.htmlElement.style.pointerEvents = 'auto';
-          this.installHitTestListener();
-          return;
-        }
-        this._hitTest = undefined;
-        this.htmlElement.style.pointerEvents = attributeValue ? 'auto' : 'none';
-        return;
-      case 'onTouch': {
-        this._removeListenersByKey('onTouch');
-        this.htmlElement.style.pointerEvents = 'auto';
-
-        const addTracked = (target: EventTarget, type: string, handler: EventListener) => {
-          target.addEventListener(type, handler);
-          this._onTouchListeners.push({ key: 'onTouch', type, handler, target });
-        };
-
-        addTracked(this.htmlElement, 'touchstart', this.createTouchEventHandler(attributeValue, TouchEventState.Started) as EventListener);
-        addTracked(this.htmlElement, 'touchmove', this.createTouchEventHandler(attributeValue, TouchEventState.Changed) as EventListener);
-        addTracked(this.htmlElement, 'touchend', this.createTouchEventHandler(attributeValue, TouchEventState.Ended) as EventListener);
-        addTracked(this.htmlElement, 'touchcancel', this.createTouchEventHandler(attributeValue, TouchEventState.Ended) as EventListener);
-
-        const mouseMoveHandler = this.createTouchEventHandler(attributeValue, TouchEventState.Changed);
-        const mouseEndHandler = this.createTouchEventHandler(attributeValue, TouchEventState.Ended);
-        const onMouseUp = ((e: MouseEvent) => {
-          if (e.button !== 0) return;
-          document.removeEventListener('mousemove', mouseMoveHandler);
-          document.removeEventListener('mouseup', onMouseUp);
-          mouseEndHandler(e);
-        }) as EventListener;
-        addTracked(this.htmlElement, 'mousedown', ((e: MouseEvent) => {
-          if (e.button !== 0) return;
-          this.createTouchEventHandler(attributeValue, TouchEventState.Started)(e);
-          document.addEventListener('mousemove', mouseMoveHandler);
-          document.addEventListener('mouseup', onMouseUp);
-        }) as EventListener);
-        return;
-      }
-      case 'onTouchStart': {
-        this._removeListenersByKey('onTouchStart');
-        const handler = this.createTouchEventHandler(attributeValue, TouchEventState.Started) as EventListener;
-        this.htmlElement.addEventListener('touchstart', handler);
-        this._onTouchListeners.push({ key: 'onTouchStart', type: 'touchstart', handler, target: this.htmlElement });
-        return;
-      }
-      case 'onTouchEnd': {
-        this._removeListenersByKey('onTouchEnd');
-        const handler = this.createTouchEventHandler(attributeValue, TouchEventState.Ended) as EventListener;
-        this.htmlElement.addEventListener('touchend', handler);
-        this._onTouchListeners.push({ key: 'onTouchEnd', type: 'touchend', handler, target: this.htmlElement });
-        return;
-      }
-      case 'onTouchDelayDuration':
-        // This affects gesture recognition timing. Mapping to long press duration.
-        this._longPressDuration = attributeValue;
-        return;
-      case 'onTapDisabled':
-        this._onTapDisabled = !!attributeValue;
-        return;
-      case 'onTap':
-        this._onTap = attributeValue;
-        if (attributeValue) {
-          this.htmlElement.style.pointerEvents = 'auto';
-          this.htmlElement.style.cursor = 'pointer';
-        } else {
-          this.htmlElement.style.pointerEvents = 'none';
-          this.htmlElement.style.cursor = '';
-        }
-        return;
-      case 'onTapPredicate':
-        this._onTapPredicate = attributeValue;
-        return;
-      case 'onDoubleTapDisabled':
-        this._onDoubleTapDisabled = !!attributeValue;
-        return;
-      case 'onDoubleTap':
-        this._onDoubleTap = attributeValue;
-        return;
-      case 'onDoubleTapPredicate':
-        this._onDoubleTapPredicate = attributeValue;
-        return;
-      case 'longPressDuration':
-        this._longPressDuration = attributeValue;
-        return;
-      case 'onLongPressDisabled':
-        this._onLongPressDisabled = !!attributeValue;
-        return;
-      case 'onLongPress':
-        this._onLongPress = attributeValue;
-        return;
-      case 'onLongPressPredicate':
-        this._onLongPressPredicate = attributeValue;
-        return;
-      case 'onDragDisabled':
-        this._onDragDisabled = !!attributeValue;
-        return;
-      case 'onDrag':
-        this._onDrag = attributeValue;
-        return;
-      case 'onDragPredicate':
-        this._onDragPredicate = attributeValue;
-        return;
-      case 'onPinchDisabled':
-      case 'onPinch':
-      case 'onPinchPredicate':
-      case 'onRotateDisabled':
-      case 'onRotate':
-      case 'onRotatePredicate':
-        // These require multi-touch gesture implementation by tracking `event.touches`.
-        // For example, pinch would track the distance between two touch points,
-        // and rotate would track the angle formed by them.
-        console.log('WebValdiLayout not implemented: ', attributeName, attributeValue);
-        return;
-      case 'scaleX':
-        this._transforms.scaleX = attributeValue;
-        this.updateTransform();
-        return;
-      case 'scaleY':
-        this._transforms.scaleY = attributeValue;
-        this.updateTransform();
-        return;
-      case 'rotation':
-        this._transforms.rotation = attributeValue;
-        this.updateTransform();
-        return;
-      case 'translationX':
-        this._transforms.translationX = attributeValue;
-        this.updateTransform();
-        return;
-      case 'translationY':
-        this._transforms.translationY = attributeValue;
-        this.updateTransform();
-        return;
-      case 'canAlwaysScrollHorizontal':
-        this.htmlElement.style.overflowX = attributeValue ? 'scroll' : 'auto';
-        return;
-      case 'canAlwaysScrollVertical':
-        this.htmlElement.style.overflowY = attributeValue ? 'scroll' : 'auto';
-        return;
-      case 'maskOpacity':
-        // This could map to CSS opacity, but it's often used with a mask.
-        this.htmlElement.style.opacity = String(attributeValue);
-        return;
-      case 'maskPath':
-        // This can be implemented using CSS `clip-path` or `mask-image`.
-        // The format of `attributeValue` would determine the exact implementation.
-        // e.g., `url(...)` for an SVG mask or `polygon(...)` for a shape.
-        this.htmlElement.style.clipPath = attributeValue;
-        return;
-      case 'filterTouchesWhenObscured':
-        // This is a mobile-specific security feature. Browsers handle this behavior.
-        console.log('WebValdiLayout not implemented: ', attributeName, attributeValue);
-        return;
-      /*
-        From NativeTemplateElements LayoutAttributes
-      */
-      case 'onLayout':
-        if (this._onLayoutObserver) {
-          this._onLayoutObserver.disconnect();
-        }
-        if (attributeValue) {
-          this._onLayoutObserver = new ResizeObserver(entries => {
-            for (const entry of entries) {
-              const { width, height, x, y } = entry.contentRect;
-              attributeValue({ x, y, width, height });
-            }
-          });
-          this._onLayoutObserver.observe(this.htmlElement);
-        }
-        return;
-      case 'onVisibilityChanged':
-        this._onVisibilityChanged = attributeValue;
-        return;
-      case 'onViewportChanged':
-        this._onViewportChanged = attributeValue;
-        return;
-      case 'onLayoutComplete':
-        if (typeof attributeValue === 'function') {
-          // Schedules the callback to run after the next browser repaint.
-          requestAnimationFrame(attributeValue);
-        }
-        return;
-      case 'lazyLayout':
-        // Uses `content-visibility` for performance optimization.
-        this.htmlElement.style.setProperty('content-visibility', attributeValue ? 'auto' : 'visible');
-        return;
-      case 'onMeasure':
-        if (typeof attributeValue === 'function') {
-          const rect = this.htmlElement.getBoundingClientRect();
-          attributeValue({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
-        }
-        return;
-      case 'estimatedWidth':
-        // Used with `content-visibility: auto` to reserve space.
-        this.htmlElement.style.containIntrinsicWidth = `${attributeValue}px`;
-        return;
-      case 'estimatedHeight':
-        // Used with `content-visibility: auto` to reserve space.
-        this.htmlElement.style.containIntrinsicHeight = `${attributeValue}px`;
-        return;
-      case 'limitToViewport':
-        this.htmlElement.style.overflow = attributeValue ? 'hidden' : 'visible';
-        return;
-      case 'lazy':
-        // Assuming 'lazy' is equivalent to 'lazyLayout' for a layout component.
-        this.htmlElement.style.setProperty('content-visibility', attributeValue ? 'auto' : 'visible');
-        return;
-      case 'id':
-        this.htmlElement.setAttribute('id', attributeValue);
-        return;
-      case 'key':
-        // Use a data-attribute for keys, useful for debugging and testing.
-        this.htmlElement.setAttribute('data-key', attributeValue);
-        return;
-      case 'animationsEnabled':
-        if (attributeValue === false) {
-          this.htmlElement.style.transition = 'none';
-        } else {
-          this.htmlElement.style.transition = ''; // Re-enable transitions
-        }
-        return;
-      case 'class':
-        this.htmlElement.className = attributeValue;
-        return;
-      case 'ignoreParentViewport':
-        // No direct web equivalent for ignoring a parent's clipping.
-        // `position: fixed` is relative to the viewport, which is different.
-        console.log('WebValdiLayout not implemented: ', attributeName, attributeValue);
-        return;
-      case 'aspectRatio':
-        this.htmlElement.style.aspectRatio = String(attributeValue);
-        return;
-      case 'display':
-        this.htmlElement.style.display = attributeValue;
-        return;
-      case 'accessibilityRole':
-        this.htmlElement.setAttribute('role', attributeValue);
-        return;
-      case 'accessibilityNavigation':
-        // Not a thing on the web. Navigation is based on DOM structure and ARIA roles.
-        console.log('WebValdiLayout not implemented: ', attributeName, attributeValue);
-        return;
-      case 'accessibilityPriority':
-        // Not a thing on the web. Focus order can be influenced by `tabindex`.
-        console.log('WebValdiLayout not implemented: ', attributeName, attributeValue);
-        return;
-      case 'accessibilityLabel':
-        this.htmlElement.setAttribute('aria-label', attributeValue);
-        return;
-      case 'accessibilityHint':
-        this.htmlElement.setAttribute('title', attributeValue);
-        return;
-      case 'accessibilityValue':
-        this.htmlElement.setAttribute('aria-valuetext', attributeValue);
-        return;
-      case 'accessibilityStateDisabled':
-        this.htmlElement.setAttribute('aria-disabled', String(!!attributeValue));
-        return;
-      case 'accessibilityStateLiveRegion':
-        this.htmlElement.setAttribute('aria-live', attributeValue ? 'polite' : 'off');
-        return;
-      case 'accessibilityHidden': // Alias for accessibilityElementsHidden
-      case 'accessibilityElementsHidden':
-        this.htmlElement.setAttribute('aria-hidden', String(!!attributeValue));
-        return;
-      case 'accessibilityStateChecked':
-        // Can be 'true', 'false', or 'mixed' for tri-state checkboxes.
-        this.htmlElement.setAttribute('aria-checked', String(attributeValue));
-        return;
-      case 'accessibilityStateExpanded':
-        this.htmlElement.setAttribute('aria-expanded', String(!!attributeValue));
-        return;
-      case 'accessibilityViewIsModal':
-        this.htmlElement.setAttribute('aria-modal', String(!!attributeValue));
-        return;
-      case 'onAccessibilityTap':
-      case 'onAccessibilityActivate': // Usually the same as a tap/click.
-        this.htmlElement.addEventListener('click', e => {
-          if (typeof attributeValue === 'function') {
-            attributeValue(e);
-          }
-        });
-        return;
-      case 'onAccessibilityEscape':
-        this.htmlElement.addEventListener('keydown', (e: KeyboardEvent) => {
-          if (e.key === 'Escape' && typeof attributeValue === 'function') {
-            attributeValue(e);
-          }
-        });
-        return;
-      case 'accessibilityIgnoresInvertColors': // iOS-specific.
-      case 'accessibilityTraits': // Complex mapping to ARIA roles/states.
-      case 'onAccessibilityMagicTap': // iOS-specific gesture.
-      case 'onAccessibilityIncrement': // For adjustable controls.
-      case 'onAccessibilityDecrement': // For adjustable controls.
-        // These properties do not have a direct, simple web equivalent
-        // and would require a custom implementation or library.
-        console.log('WebValdiLayout not implemented: ', attributeName, attributeValue);
-        return;
-      case 'width':
-        this.htmlElement.style.width = attributeValue;
-        return;
-      case 'height':
-        this.htmlElement.style.height = attributeValue;
-        return;
-    }
-
-    throw new Error(`Attribute ${attributeName} is not valid`);
   }
 }

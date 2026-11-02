@@ -1,6 +1,6 @@
-import { WebValdiLayout } from './WebValdiLayout';
 import { UpdateAttributeDelegate } from '../ValdiWebRendererDelegate';
 import { convertColor } from '../styles/ValdiWebStyles';
+import { WebValdiLayout } from './WebValdiLayout';
 
 /**
  * Web implementation of ShapeView using SVG.
@@ -24,7 +24,7 @@ function geometricPathToSvgD(data: Float64Array): { d: string; viewBox: string }
   let i = 0;
   const extentWidth = data[i++];
   const extentHeight = data[i++];
-  const scaleType = data[i++];
+  i++; // scaleType: not used by the SVG renderer
   const viewBox = `0 0 ${extentWidth} ${extentHeight}`;
   const parts: string[] = [];
   while (i < data.length) {
@@ -65,7 +65,11 @@ function geometricPathToSvgD(data: Float64Array): { d: string; viewBox: string }
           parts.push(`M ${x} ${y} h ${w} v ${h} h ${-w} Z`);
         } else {
           parts.push(
-            `M ${x + rx} ${y} L ${x + w - rx} ${y} Q ${x + w} ${y} ${x + w} ${y + ry} L ${x + w} ${y + h - ry} Q ${x + w} ${y + h} ${x + w - rx} ${y + h} L ${x + rx} ${y + h} Q ${x} ${y + h} ${x} ${y + h - ry} L ${x} ${y + ry} Q ${x} ${y} ${x + rx} ${y} Z`,
+            `M ${x + rx} ${y} L ${x + w - rx} ${y} Q ${x + w} ${y} ${x + w} ${y + ry} L ${x + w} ${y + h - ry} Q ${
+              x + w
+            } ${y + h} ${x + w - rx} ${y + h} L ${x + rx} ${y + h} Q ${x} ${y + h} ${x} ${y + h - ry} L ${x} ${
+              y + ry
+            } Q ${x} ${y} ${x + rx} ${y} Z`,
           );
         }
         break;
@@ -107,7 +111,7 @@ export class WebValdiShape extends WebValdiLayout {
   }
 
   createHtmlElement(): HTMLElement {
-    const pathEl = document.createElementNS(SVG_NS, 'path') as SVGPathElement;
+    const pathEl = document.createElementNS(SVG_NS, 'path');
     this.pathEl = pathEl;
     pathEl.setAttribute('fill', 'none');
 
@@ -120,7 +124,7 @@ export class WebValdiShape extends WebValdiLayout {
       padding: 0,
       pointerEvents: 'auto',
     });
-    const svg = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
+    const svg = document.createElementNS(SVG_NS, 'svg');
     this.svgEl = svg;
     svg.setAttribute('viewBox', '0 0 1 1');
     svg.setAttribute('preserveAspectRatio', 'none');
@@ -132,27 +136,6 @@ export class WebValdiShape extends WebValdiLayout {
     svg.appendChild(pathEl);
     wrapper.appendChild(svg);
     return wrapper;
-  }
-
-  private pathToString(path: unknown): string | undefined {
-    if (typeof path === 'string') return path;
-    if (path instanceof Float64Array) {
-      const arr = path;
-      const { d, viewBox } = geometricPathToSvgD(arr);
-      this.svgEl.setAttribute('viewBox', viewBox);
-      return d || undefined;
-    }
-    return undefined;
-  }
-
-  private applyStrokeDash(): void {
-    const path = this.pathEl;
-    const total = path.getTotalLength();
-    if (total <= 0) return;
-    const start = this._strokeStart * total;
-    const length = (this._strokeEnd - this._strokeStart) * total;
-    path.setAttribute('stroke-dasharray', `${length} ${total}`);
-    path.setAttribute('stroke-dashoffset', String(-start));
   }
 
   changeAttribute(attributeName: string, attributeValue: unknown): void {
@@ -194,5 +177,26 @@ export class WebValdiShape extends WebValdiLayout {
         break;
     }
     super.changeAttribute(attributeName, attributeValue);
+  }
+
+  private pathToString(path: unknown): string | undefined {
+    if (typeof path === 'string') return path;
+    if (path instanceof Float64Array) {
+      const arr = path;
+      const { d, viewBox } = geometricPathToSvgD(arr);
+      this.svgEl.setAttribute('viewBox', viewBox);
+      return d || undefined;
+    }
+    return undefined;
+  }
+
+  private applyStrokeDash(): void {
+    const path = this.pathEl;
+    const total = path.getTotalLength();
+    if (total <= 0) return;
+    const start = this._strokeStart * total;
+    const length = (this._strokeEnd - this._strokeStart) * total;
+    path.setAttribute('stroke-dasharray', `${length} ${total}`);
+    path.setAttribute('stroke-dashoffset', String(-start));
   }
 }

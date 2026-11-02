@@ -1,4 +1,4 @@
-export function isNumber(value: any): boolean {
+export function isNumber(value: unknown): boolean {
   if (typeof value === 'number') {
     return !Number.isNaN(value);
   }

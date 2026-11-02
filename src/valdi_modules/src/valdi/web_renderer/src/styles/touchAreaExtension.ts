@@ -12,7 +12,7 @@ const TOUCH_AREA_STYLES = `
 
 const STYLE_ID = 'valdi-touch-area-styles';
 
-export function injectTouchAreaStyles(root: Document | ShadowRoot) {
+export function injectTouchAreaStyles(root: Document | ShadowRoot): void {
   const container = root instanceof Document ? root.head : root;
   if (container.querySelector(`#${STYLE_ID}`)) return;
 

@@ -1,7 +1,7 @@
-import { WebValdiLayout } from './WebValdiLayout';
 import { convertColor } from '../styles/ValdiWebStyles';
+import { WebValdiLayout } from './WebValdiLayout';
 
-function applyTextDecoration(element: HTMLElement, value: string | undefined) {
+function applyTextDecoration(element: HTMLElement, value: string | undefined): void {
   element.style.textDecorationLine = '';
   element.style.textDecorationStyle = '';
 
@@ -32,14 +32,6 @@ function applyTextDecoration(element: HTMLElement, value: string | undefined) {
 export class WebValdiTextView extends WebValdiLayout {
   public type = 'textview';
   public declare htmlElement: HTMLTextAreaElement;
-  
-  private onEditEndCallback: (event: { text: string, selectionStart: number, selectionEnd: number, reason: string }) => void = () => {};
-  private onSelectionChangeCallback: (event: { text: string, selectionStart: number, selectionEnd: number }) => void = () => {};
-  private onChangeCallback: (event: { text: string, selectionStart: number, selectionEnd: number }) => void = () => {};
-  private onWillChangeCallback: (event: { text: string, selectionStart: number, selectionEnd: number }) => boolean | void = () => {};
-  private onEditBeginCallback: (event: { text: string, selectionStart: number, selectionEnd: number }) => void = () => {};
-  private onReturnCallback: (event: { text: string, selectionStart: number, selectionEnd: number }) => void = () => {};
-  private onWillDeleteCallback: (event: { text: string, selectionStart: number, selectionEnd: number }) => void = () => {};
   private selectTextOnFocus: boolean = false;
   private returnType: string = 'linereturn';
   private closesWhenReturnKeyPressed: boolean = false;
@@ -47,9 +39,9 @@ export class WebValdiTextView extends WebValdiLayout {
   private pendingEditEndReason: string | null = null;
   private selectionChangeHandler!: () => void;
 
-  createHtmlElement() {
+  createHtmlElement(): HTMLTextAreaElement {
     const textarea = document.createElement('textarea');
-    
+
     Object.assign(textarea.style, {
       width: '100%',
       height: '100%',
@@ -68,12 +60,12 @@ export class WebValdiTextView extends WebValdiLayout {
       pointerEvents: 'auto',
     });
 
-    textarea.addEventListener('mousedown', (e) => e.stopPropagation());
-    textarea.addEventListener('touchstart', (e) => e.stopPropagation());
-    textarea.addEventListener('click', (e) => e.stopPropagation());
+    textarea.addEventListener('mousedown', e => e.stopPropagation());
+    textarea.addEventListener('touchstart', e => e.stopPropagation());
+    textarea.addEventListener('click', e => e.stopPropagation());
 
     textarea.addEventListener('input', () => {
-      this.attributeDelegate?.updateAttribute(this.id, "value", textarea.value);
+      this.attributeDelegate?.updateAttribute(this.id, 'value', textarea.value);
       this.onChangeCallback({
         text: textarea.value,
         selectionStart: textarea.selectionStart,
@@ -120,14 +112,14 @@ export class WebValdiTextView extends WebValdiLayout {
       }
     });
 
-    const handleEditEnd = (reason: string) => {
+    const handleEditEnd = (reason: string): void => {
       if (this.pendingEditEndReason) {
         reason = this.pendingEditEndReason;
         this.pendingEditEndReason = null;
       }
       if (this.debounceTimer) clearTimeout(this.debounceTimer);
       this.debounceTimer = window.setTimeout(() => {
-        this.attributeDelegate?.updateAttribute(this.id, "value", textarea.value);
+        this.attributeDelegate?.updateAttribute(this.id, 'value', textarea.value);
         this.onEditEndCallback({
           text: textarea.value,
           selectionStart: textarea.selectionStart,
@@ -170,49 +162,49 @@ export class WebValdiTextView extends WebValdiLayout {
     return textarea;
   }
 
-  override destroy() {
+  override destroy(): void {
     document.removeEventListener('selectionchange', this.selectionChangeHandler);
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     super.destroy();
   }
 
-  changeAttribute(attributeName: string, attributeValue: any): void {
+  changeAttribute(attributeName: string, attributeValue: unknown): void {
     const textarea = this.htmlElement;
-    
+
     switch (attributeName) {
       case 'onWillChange':
-        this.onWillChangeCallback = attributeValue;
+        this.onWillChangeCallback = attributeValue as typeof this.onWillChangeCallback;
         return;
       case 'onChange':
-        this.onChangeCallback = attributeValue;
+        this.onChangeCallback = attributeValue as typeof this.onChangeCallback;
         return;
       case 'onEditBegin':
-        this.onEditBeginCallback = attributeValue;
+        this.onEditBeginCallback = attributeValue as typeof this.onEditBeginCallback;
         return;
       case 'onEditEnd':
-        this.onEditEndCallback = attributeValue;
+        this.onEditEndCallback = attributeValue as typeof this.onEditEndCallback;
         return;
       case 'onReturn':
-        this.onReturnCallback = attributeValue;
+        this.onReturnCallback = attributeValue as typeof this.onReturnCallback;
         return;
       case 'onWillDelete':
-        this.onWillDeleteCallback = attributeValue;
+        this.onWillDeleteCallback = attributeValue as typeof this.onWillDeleteCallback;
         return;
       case 'onSelectionChange':
-        this.onSelectionChangeCallback = attributeValue;
+        this.onSelectionChangeCallback = attributeValue as typeof this.onSelectionChangeCallback;
         return;
 
       case 'tintColor':
-        textarea.style.caretColor = convertColor(attributeValue);
+        textarea.style.caretColor = convertColor(attributeValue as string);
         return;
       case 'placeholderColor':
         // Can't style placeholder without CSS injection, skip for now
         return;
       case 'textAlign':
-        textarea.style.textAlign = attributeValue;
+        textarea.style.textAlign = attributeValue as string;
         return;
       case 'textDecoration':
-        applyTextDecoration(textarea, attributeValue);
+        applyTextDecoration(textarea, attributeValue as string | undefined);
         return;
       case 'font': {
         const parts = String(attributeValue).split(' ');
@@ -223,14 +215,14 @@ export class WebValdiTextView extends WebValdiLayout {
         return;
       }
       case 'color':
-        textarea.style.color = convertColor(attributeValue);
+        textarea.style.color = convertColor(attributeValue as string);
         return;
 
       case 'placeholder':
-        textarea.placeholder = attributeValue ?? '';
+        textarea.placeholder = (attributeValue as string | null | undefined) ?? '';
         return;
       case 'value':
-        textarea.value = attributeValue ?? '';
+        textarea.value = (attributeValue as string | null | undefined) ?? '';
         return;
       case 'selection':
         if (Array.isArray(attributeValue) && attributeValue.length === 2) {
@@ -259,21 +251,21 @@ export class WebValdiTextView extends WebValdiLayout {
         this.closesWhenReturnKeyPressed = attributeValue !== false;
         return;
       case 'returnType':
-        this.returnType = attributeValue || 'linereturn';
-        textarea.setAttribute('enterkeyhint', attributeValue === 'linereturn' ? 'enter' : attributeValue);
+        this.returnType = (attributeValue as string) || 'linereturn';
+        textarea.setAttribute('enterkeyhint', attributeValue === 'linereturn' ? 'enter' : (attributeValue as string));
         return;
 
       case 'keyboardAppearance':
-        textarea.style.colorScheme = attributeValue;
+        textarea.style.colorScheme = attributeValue as string;
         return;
       case 'autocapitalization':
-        textarea.setAttribute('autocapitalize', attributeValue);
+        textarea.setAttribute('autocapitalize', attributeValue as string);
         return;
       case 'autocorrection':
         textarea.setAttribute('autocorrect', attributeValue ? 'on' : 'off');
         return;
       case 'characterLimit':
-        textarea.maxLength = attributeValue;
+        textarea.maxLength = attributeValue as number;
         return;
 
       case 'textGravity':
@@ -287,9 +279,29 @@ export class WebValdiTextView extends WebValdiLayout {
         return;
 
       default:
-        // Fall through to parent
+      // Fall through to parent
     }
 
     super.changeAttribute(attributeName, attributeValue);
   }
+
+  private onEditEndCallback: (event: {
+    text: string;
+    selectionStart: number;
+    selectionEnd: number;
+    reason: string;
+  }) => void = () => {};
+  private onSelectionChangeCallback: (event: { text: string; selectionStart: number; selectionEnd: number }) => void =
+    () => {};
+  private onChangeCallback: (event: { text: string; selectionStart: number; selectionEnd: number }) => void = () => {};
+  private onWillChangeCallback: (event: {
+    text: string;
+    selectionStart: number;
+    selectionEnd: number;
+  }) => boolean | void = () => {};
+  private onEditBeginCallback: (event: { text: string; selectionStart: number; selectionEnd: number }) => void =
+    () => {};
+  private onReturnCallback: (event: { text: string; selectionStart: number; selectionEnd: number }) => void = () => {};
+  private onWillDeleteCallback: (event: { text: string; selectionStart: number; selectionEnd: number }) => void =
+    () => {};
 }

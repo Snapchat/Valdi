@@ -33,7 +33,7 @@ export class WebValdiSpinner extends WebValdiLayout {
     this.svgElement.classList.add('valdi-spinner');
     this.svgElement.setAttribute('viewBox', '0 0 12 12');
     this.svgElement.setAttribute('role', 'status');
-    
+
     Object.assign(this.svgElement.style, {
       width: '20px',
       height: '20px',
@@ -55,7 +55,8 @@ export class WebValdiSpinner extends WebValdiLayout {
     Object.assign(outerCircle.style, {
       transformBox: 'fill-box',
       transformOrigin: 'center',
-      animation: 'valdi-spin-cw 1s linear infinite, valdi-dash-outer 0.9s ease-out forwards, valdi-grow 0.5s ease-out forwards',
+      animation:
+        'valdi-spin-cw 1s linear infinite, valdi-dash-outer 0.9s ease-out forwards, valdi-grow 0.5s ease-out forwards',
     });
 
     const innerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -71,7 +72,8 @@ export class WebValdiSpinner extends WebValdiLayout {
     Object.assign(innerCircle.style, {
       transformBox: 'fill-box',
       transformOrigin: 'center',
-      animation: 'valdi-spin-ccw 1s linear infinite, valdi-dash-inner 0.9s ease-out forwards, valdi-grow 0.5s ease-out forwards',
+      animation:
+        'valdi-spin-ccw 1s linear infinite, valdi-dash-inner 0.9s ease-out forwards, valdi-grow 0.5s ease-out forwards',
     });
 
     this.svgElement.appendChild(outerCircle);
@@ -118,29 +120,29 @@ export class WebValdiSpinner extends WebValdiLayout {
         }
       }
     `;
-    
+
     element.appendChild(style);
     element.appendChild(this.svgElement);
     return element;
   }
 
-  changeAttribute(attributeName: string, attributeValue: any) {
+  changeAttribute(attributeName: string, attributeValue: unknown): void {
     switch (attributeName) {
       case 'color':
         if (this.svgElement) {
-          this.svgElement.style.color = attributeValue;
+          this.svgElement.style.color = attributeValue as string;
         }
         return;
       case 'width':
-        this.htmlElement.style.width = attributeValue;
+        this.htmlElement.style.width = attributeValue as string;
         if (this.svgElement) {
-          this.svgElement.style.width = attributeValue;
+          this.svgElement.style.width = attributeValue as string;
         }
         return;
       case 'height':
-        this.htmlElement.style.height = attributeValue;
+        this.htmlElement.style.height = attributeValue as string;
         if (this.svgElement) {
-          this.svgElement.style.height = attributeValue;
+          this.svgElement.style.height = attributeValue as string;
         }
         return;
     }
@@ -148,4 +150,3 @@ export class WebValdiSpinner extends WebValdiLayout {
     super.changeAttribute(attributeName, attributeValue);
   }
 }
-
