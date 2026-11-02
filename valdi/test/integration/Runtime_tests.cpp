@@ -10822,7 +10822,8 @@ TEST_P(RuntimeFixture, capturesBundleNamedByStackWhenANRDiagnosticsAreEnabled) {
     tweakModule->config.setMapValue("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS", Valdi::Value(static_cast<bool>(true)));
     wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, tweakModule);
 
-    wrapper.hotReload(STRING_LITERAL("valdi_core"), STRING_LITERAL("src/Symbolicator.js"), bundleNamingSymbolicatorBody());
+    wrapper.hotReload(
+        STRING_LITERAL("valdi_core"), STRING_LITERAL("src/Symbolicator.js"), bundleNamingSymbolicatorBody());
 
     auto output = captureStackTracesWhileLooping(wrapper);
 
@@ -10834,7 +10835,8 @@ TEST_P(RuntimeFixture, capturesBundleNamedByStackWhenANRDiagnosticsAreEnabled) {
 TEST_P(RuntimeFixture, dropsBundleNamedByStackWhenANRDiagnosticsAreDisabled) {
     ASSERT_FALSE(wrapper.runtime->getJavaScriptRuntime()->anrDiagnosticsEnabled());
 
-    wrapper.hotReload(STRING_LITERAL("valdi_core"), STRING_LITERAL("src/Symbolicator.js"), bundleNamingSymbolicatorBody());
+    wrapper.hotReload(
+        STRING_LITERAL("valdi_core"), STRING_LITERAL("src/Symbolicator.js"), bundleNamingSymbolicatorBody());
 
     auto output = captureStackTracesWhileLooping(wrapper);
 
@@ -11139,6 +11141,10 @@ TEST_P(RuntimeFixture, recordsAttributionForOwnerlessJsThreadDispatch) {
 
     auto* jsRuntime = wrapper.runtime->getJavaScriptRuntime();
 
+    // The live runtime owns several threads; a fork()ed child can inherit one of their locks held and
+    // never reach the assert. "threadsafe" re-execs the binary instead (see
+    // AsyncStrictModeSyncCallAssertsOnMainThread).
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
     EXPECT_DEATH(
         {
             jsRuntime->dispatchOnJsThread(
