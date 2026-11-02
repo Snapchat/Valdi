@@ -1,0 +1,43 @@
+module.path = "test/src/MarshallingGC";
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.checkObject = exports.checkArguments = void 0;
+const PADDING = 'x'.repeat(64);
+function expectedElement(slot, index) {
+    return `v${slot}_${index}_${PADDING}`;
+}
+function checkArray(slot, value, elementsCount) {
+    if (!Array.isArray(value)) {
+        return `slot ${slot}: expected an array, got ${typeof value}`;
+    }
+    if (value.length !== elementsCount) {
+        return `slot ${slot}: expected ${elementsCount} elements, got ${value.length}`;
+    }
+    for (let i = 0; i < elementsCount; i++) {
+        const expected = expectedElement(slot, i);
+        if (value[i] !== expected) {
+            return `slot ${slot}[${i}]: expected '${expected}', got '${String(value[i])}'`;
+        }
+    }
+    return undefined;
+}
+function checkArguments(elementsCount, ...args) {
+    for (let i = 0; i < args.length; i++) {
+        const error = checkArray(i, args[i], elementsCount);
+        if (error) {
+            return error;
+        }
+    }
+    return `ok:${args.length}`;
+}
+exports.checkArguments = checkArguments;
+function checkObject(elementsCount, propertiesCount, object) {
+    for (let i = 0; i < propertiesCount; i++) {
+        const error = checkArray(i, object[`p${i}`], elementsCount);
+        if (error) {
+            return error;
+        }
+    }
+    return `ok:${propertiesCount}`;
+}
+exports.checkObject = checkObject;

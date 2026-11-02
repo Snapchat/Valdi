@@ -1,0 +1,2 @@
+export declare function checkArguments(elementsCount: number, ...args: unknown[]): string;
+export declare function checkObject(elementsCount: number, propertiesCount: number, object: Record<string, unknown>): string;

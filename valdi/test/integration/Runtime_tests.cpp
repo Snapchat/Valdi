@@ -11802,6 +11802,106 @@ TEST_P(RuntimeFixture, supportsModuleRegisteredThroughModuleRegistry) {
     ASSERT_EQ(7, evalResult.value().toInt());
 }
 
+// Marshalled arguments and object properties must stay visible to a conservative stack-scanning GC
+// (JavaScriptCore) while the rest of the call is being marshalled. Spilling them into a heap buffer
+// past a small inline capacity (8 arguments, 32 properties) let the GC collect them mid-call.
+static constexpr size_t kMarshallingGCElementsCount = 2000;
+
+#if defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define VALDI_MARSHALLING_GC_TEST_ASAN 1
+#endif
+#elif defined(__SANITIZE_ADDRESS__)
+#define VALDI_MARSHALLING_GC_TEST_ASAN 1
+#endif
+
+static bool skipsMarshallingGCTest(bool isJSCore) {
+#ifdef VALDI_MARSHALLING_GC_TEST_ASAN
+    // ASan's fake stack hides address-taken locals from JavaScriptCore's conservative stack scan.
+    return isJSCore;
+#else
+    return false;
+#endif
+}
+
+static Value makeMarshallingGCArray(size_t slot) {
+    ValueArrayBuilder builder;
+    std::string padding(64, 'x');
+    for (size_t i = 0; i < kMarshallingGCElementsCount; i++) {
+        builder.append(Value(StringCache::getGlobal().makeString(fmt::format("v{}_{}_{}", slot, i, padding))));
+    }
+    return Value(builder.build());
+}
+
+TEST_P(RuntimeFixture, typedCallWithManyArgumentsKeepsArgumentsAliveAcrossGC) {
+    if (skipsMarshallingGCTest(isJSCore())) {
+        GTEST_SKIP() << "JavaScriptCore's conservative GC cannot scan ASan's fake stack";
+    }
+
+    constexpr size_t kArgumentsCount = 40;
+
+    std::string schema = "f(d";
+    for (size_t i = 0; i < kArgumentsCount; i++) {
+        schema += ", a<s>";
+    }
+    schema += "): s";
+
+    auto function = getJsModulePropertyWithSchema(wrapper.runtime, "test/src/MarshallingGC", "checkArguments", schema);
+    ASSERT_TRUE(function) << function.description();
+
+    std::vector<Value> parameters;
+    parameters.emplace_back(static_cast<double>(kMarshallingGCElementsCount));
+    for (size_t i = 0; i < kArgumentsCount; i++) {
+        parameters.emplace_back(makeMarshallingGCArray(i));
+    }
+
+    for (size_t iteration = 0; iteration < 3; iteration++) {
+        auto result = function.value().getFunction()->call(
+            static_cast<ValueFunctionFlags>(ValueFunctionFlagsCallSync | ValueFunctionFlagsPropagatesError),
+            parameters.data(),
+            parameters.size());
+        ASSERT_TRUE(result) << result.description();
+        ASSERT_EQ(fmt::format("ok:{}", kArgumentsCount), result.value().toStringBox().slowToString());
+    }
+}
+
+TEST_P(RuntimeFixture, typedObjectWithManyPropertiesKeepsPropertiesAliveAcrossGC) {
+    if (skipsMarshallingGCTest(isJSCore())) {
+        GTEST_SKIP() << "JavaScriptCore's conservative GC cannot scan ASan's fake stack";
+    }
+
+    constexpr size_t kPropertiesCount = 40;
+
+    std::string schema = "f(d, d, c 'ManyPropertiesObject'{";
+    for (size_t i = 0; i < kPropertiesCount; i++) {
+        if (i > 0) {
+            schema += ", ";
+        }
+        schema += fmt::format("'p{}': a<s>", i);
+    }
+    schema += "}): s";
+
+    auto function = getJsModulePropertyWithSchema(wrapper.runtime, "test/src/MarshallingGC", "checkObject", schema);
+    ASSERT_TRUE(function) << function.description();
+
+    auto object = Value();
+    for (size_t i = 0; i < kPropertiesCount; i++) {
+        object.setMapValue(fmt::format("p{}", i), makeMarshallingGCArray(i));
+    }
+
+    std::vector<Value> parameters = {
+        Value(static_cast<double>(kMarshallingGCElementsCount)), Value(static_cast<double>(kPropertiesCount)), object};
+
+    for (size_t iteration = 0; iteration < 3; iteration++) {
+        auto result = function.value().getFunction()->call(
+            static_cast<ValueFunctionFlags>(ValueFunctionFlagsCallSync | ValueFunctionFlagsPropagatesError),
+            parameters.data(),
+            parameters.size());
+        ASSERT_TRUE(result) << result.description();
+        ASSERT_EQ(fmt::format("ok:{}", kPropertiesCount), result.value().toStringBox().slowToString());
+    }
+}
+
 INSTANTIATE_TEST_SUITE_P(RuntimeTests,
                          RuntimeFixture,
                          ::testing::Values(JavaScriptEngineTestCase::Hermes,
