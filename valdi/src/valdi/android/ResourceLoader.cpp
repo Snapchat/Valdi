@@ -32,16 +32,30 @@ private:
 };
 #endif
 
+void BundledModulesIdentity::set(std::string identity) {
+    std::lock_guard<Valdi::Mutex> guard(_mutex);
+    _identity = std::move(identity);
+}
+
+std::string BundledModulesIdentity::get() {
+    std::lock_guard<Valdi::Mutex> guard(_mutex);
+    return _identity;
+}
+
 ResourceLoader::ResourceLoader(JavaEnv env,
                                jobject localResourceResolver,
                                jobject assetManager,
-                               bool shouldDeferModuleLoadToJava)
+                               bool shouldDeferModuleLoadToJava,
+                               Valdi::Ref<BundledModulesIdentity> bundledModulesIdentity)
     : _localResourceResolver(env, localResourceResolver, "ResourceResolver"),
       _assetManagerJava(JavaEnv::newGlobalRef(assetManager)),
-      _shouldDeferModuleLoadToJava(shouldDeferModuleLoadToJava) {
+      _shouldDeferModuleLoadToJava(shouldDeferModuleLoadToJava),
+      _bundledModulesIdentity(bundledModulesIdentity != nullptr ? std::move(bundledModulesIdentity) :
+                                                                  Valdi::makeShared<BundledModulesIdentity>()) {
     auto localResourceResolverRef = _localResourceResolver.toObject();
     auto cls = localResourceResolverRef.getClass();
     cls.getMethod("getCustomModuleData", _getCustomModuleDataMethod);
+    cls.getMethod("getCustomModuleIdentity", _getCustomModuleIdentityMethod);
     cls.getMethod("resolveResource", _resolveResourceMethod);
     cls.getMethod("requestPayloadFromURL", _requestPayloadFromURLMethod);
     cls.getMethod("loadAsset", _loadAssetMethod);
@@ -56,7 +70,8 @@ ResourceLoader::ResourceLoader(JavaEnv env,
 ResourceLoader::~ResourceLoader() = default;
 
 Valdi::Shared<Valdi::IResourceLoader> ResourceLoader::withCustomResourceResolver(jobject customResourceResolver) const {
-    return Valdi::makeShared<ResourceLoader>(JavaEnv(), customResourceResolver, _assetManagerJava.get(), true)
+    return Valdi::makeShared<ResourceLoader>(
+               JavaEnv(), customResourceResolver, _assetManagerJava.get(), true, _bundledModulesIdentity)
         .toShared();
 }
 
@@ -94,22 +109,35 @@ Valdi::Result<Valdi::BytesView> ResourceLoader::loadModuleContent(const Valdi::S
 #endif
 }
 
-std::optional<Valdi::ModuleContentIdentity> ResourceLoader::getModuleIdentity(const Valdi::StringBox& /*module*/) {
-    // Java may serve any module from elsewhere (dynamic delivery); only its bytes can identify it.
+std::optional<Valdi::ModuleContentIdentity> ResourceLoader::getModuleIdentity(const Valdi::StringBox& module) {
     if (_shouldDeferModuleLoadToJava) {
-        return std::nullopt;
+        // Java may serve the module from elsewhere (dynamic delivery), so it is asked first, as in
+        // loadModuleContent. It answers an empty identity when the bundled module is used.
+        auto env = JavaEnv();
+        auto identity =
+            toValue(env,
+                    _getCustomModuleIdentityMethod.call(_localResourceResolver.toObject(), toJavaObject(env, module))
+                        .stealLocalRef());
+        if (!identity.isString()) {
+            return std::nullopt;
+        }
+        auto identityString = identity.toStringBox();
+        if (!identityString.isEmpty()) {
+            return Valdi::ModuleContentIdentity{Valdi::ModuleContentIdentity::Kind::DeliveryContainer,
+                                                identityString.slowToString()};
+        }
     }
-    std::lock_guard<Valdi::Mutex> guard(_bundledModulesIdentityMutex);
-    if (_bundledModulesIdentity.empty()) {
+    auto bundledModulesIdentity = _bundledModulesIdentity->get();
+    if (bundledModulesIdentity.empty()) {
         return std::nullopt;
     }
     // The APK is immutable while installed, so its identity plus the module name identifies the bytes.
-    return Valdi::ModuleContentIdentity{Valdi::ModuleContentIdentity::Kind::BundledContainer, _bundledModulesIdentity};
+    return Valdi::ModuleContentIdentity{Valdi::ModuleContentIdentity::Kind::BundledContainer,
+                                        std::move(bundledModulesIdentity)};
 }
 
 void ResourceLoader::setBundledModulesIdentity(std::string identity) {
-    std::lock_guard<Valdi::Mutex> guard(_bundledModulesIdentityMutex);
-    _bundledModulesIdentity = std::move(identity);
+    _bundledModulesIdentity->set(std::move(identity));
 }
 
 Valdi::StringBox ResourceLoader::resolveLocalAssetURL(const Valdi::StringBox& moduleName,

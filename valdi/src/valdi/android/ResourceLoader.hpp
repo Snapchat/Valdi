@@ -10,6 +10,7 @@
 #include "valdi/runtime/Interfaces/IResourceLoader.hpp"
 #include "valdi/runtime/Resources/AssetLoader.hpp"
 #include "valdi_core/cpp/Utils/Mutex.hpp"
+#include "valdi_core/cpp/Utils/Shared.hpp"
 #include "valdi_core/jni/GlobalRefJavaObject.hpp"
 #include "valdi_core/jni/JavaEnv.hpp"
 #include "valdi_core/jni/JavaMethod.hpp"
@@ -18,9 +19,24 @@ struct AAssetManager;
 
 namespace ValdiAndroid {
 
+// Shared by a loader and the loaders derived from it with withCustomResourceResolver.
+class BundledModulesIdentity : public Valdi::SimpleRefCountable {
+public:
+    void set(std::string identity);
+    std::string get();
+
+private:
+    Valdi::Mutex _mutex;
+    std::string _identity;
+};
+
 class ResourceLoader : public Valdi::SharedPtrRefCountable, public Valdi::IResourceLoader {
 public:
-    ResourceLoader(JavaEnv env, jobject localResourceResolver, jobject assetManager, bool shouldDeferModuleLoadToJava);
+    ResourceLoader(JavaEnv env,
+                   jobject localResourceResolver,
+                   jobject assetManager,
+                   bool shouldDeferModuleLoadToJava,
+                   Valdi::Ref<BundledModulesIdentity> bundledModulesIdentity = nullptr);
     ~ResourceLoader() override;
 
     Valdi::Shared<Valdi::IResourceLoader> withCustomResourceResolver(jobject customResourceResolver) const;
@@ -67,6 +83,7 @@ private:
     GlobalRefJavaObjectBase _localResourceResolver;
     djinni::GlobalRef<jobject> _assetManagerJava;
     JavaMethod<ByteArray, String, int64_t> _getCustomModuleDataMethod;
+    JavaMethod<String, String> _getCustomModuleIdentityMethod;
     JavaMethod<JavaObject, String, String> _resolveResourceMethod;
     JavaMethod<JavaObject, JavaObject, String, int64_t> _requestPayloadFromURLMethod;
     JavaMethod<JavaObject, JavaObject, JavaObject, int32_t, int32_t, JavaObject, float, int32_t, int64_t>
@@ -74,8 +91,7 @@ private:
     JavaMethod<JavaObject, ByteArray, int32_t, int32_t, JavaObject, float, int64_t> _loadAssetFromBytes;
     JavaMethod<JavaObject, JavaObject, int32_t, int32_t, JavaObject, float, int64_t> _loadAssetFromBitmap;
     bool _shouldDeferModuleLoadToJava;
-    Valdi::Mutex _bundledModulesIdentityMutex;
-    std::string _bundledModulesIdentity;
+    Valdi::Ref<BundledModulesIdentity> _bundledModulesIdentity;
 };
 
 } // namespace ValdiAndroid

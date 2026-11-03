@@ -42,6 +42,22 @@ class ResourceResolver(private val context: Context,
         }
     }
 
+    /**
+     * Called by C++ to identify the data getCustomModuleData would return, without loading it. Returns the
+     * provider's identity, an empty string when the built-in module would be used, or null when the
+     * provider can't tell, in which case the data is loaded.
+     */
+    @Keep
+    fun getCustomModuleIdentity(path: String): String? {
+        val identityProvider = customModuleProvider as? IValdiCustomModuleIdentityProvider ?: return null
+        return try {
+            identityProvider.getCustomModuleIdentity(path) ?: ""
+        } catch (e: Exception) {
+            // Loading the data reports the error, if there still is one.
+            null
+        }
+    }
+
     @Keep
     fun resolveResource(moduleName: String, resourcePath: String): Any? {
         val currentTime = System.nanoTime()
