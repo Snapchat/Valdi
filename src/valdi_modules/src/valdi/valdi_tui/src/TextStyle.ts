@@ -45,12 +45,12 @@ export function mergeStyles(base: TextStyle | undefined, overlay: TextStyle | un
   if (isEmptyStyle(base)) {
     return overlay;
   }
-  const out: { -readonly [K in keyof TextStyle]: TextStyle[K] } = { ...base };
+  const out: { [key: string]: string | boolean | undefined } = { ...base };
   for (const key of STYLE_KEYS) {
     const value = overlay![key];
     if (value !== undefined) {
-      (out as any)[key] = value;
+      out[key] = value;
     }
   }
-  return out;
+  return out as TextStyle;
 }

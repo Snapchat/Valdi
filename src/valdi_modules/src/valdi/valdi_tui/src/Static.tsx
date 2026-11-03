@@ -19,8 +19,8 @@ export class Static<T = unknown> extends Component<StaticProps<T>> {
     <custom-view
       iosClass={STATIC_CLASS}
       androidClass={STATIC_CLASS}
-      position='absolute'
-      flexDirection='column'
+      position="absolute"
+      flexDirection="column"
       top={0}
       left={0}
       right={0}
