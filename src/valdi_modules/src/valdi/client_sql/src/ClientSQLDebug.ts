@@ -99,10 +99,12 @@ const CLIENT_SQL_DEBUG_MAX_VALUE_DEPTH = 8;
 const CLIENT_SQL_DEBUG_MAX_ROW_COUNT_SCAN = 10000;
 const CLIENT_SQL_DEBUG_ESTIMATED_UTF8_BYTES_PER_CHARACTER = 4;
 const CLIENT_SQL_DEBUG_PROVIDER_OWNER_KEY = 'client_sql/src/ClientSQLDebug';
-const databasesById: { [id: string]: ClientSQLDebugDatabase[] | undefined } = Object.create(null);
-const databaseSummaryCacheById: {
+type DatabasesById = { [id: string]: ClientSQLDebugDatabase[] | undefined };
+type DatabaseSummaryCacheById = {
   [id: string]: { cachedAt: number; summary: Record<string, unknown> } | undefined;
-} = Object.create(null);
+};
+const databasesById = Object.create(null) as DatabasesById;
+const databaseSummaryCacheById = Object.create(null) as DatabaseSummaryCacheById;
 let debugProviderRegistration: DebuggerProviderRegistration | undefined;
 let debugProviderOwner: DebuggerProviderOwner | undefined;
 let debugRevision = 0;
@@ -318,8 +320,7 @@ class ClientSQLDebugPayloadLimiter {
   }
 
   private isExhausted(): boolean {
-    return this.bytesUsed + 8 > CLIENT_SQL_DEBUG_MAX_CONTENT_BYTES
-      || this.valueCount >= CLIENT_SQL_DEBUG_MAX_VALUES;
+    return this.bytesUsed + 8 > CLIENT_SQL_DEBUG_MAX_CONTENT_BYTES || this.valueCount >= CLIENT_SQL_DEBUG_MAX_VALUES;
   }
 
   private reserveBytes(bytes: number): boolean {
@@ -334,11 +335,7 @@ class ClientSQLDebugPayloadLimiter {
   private limitString(value: string): string {
     const remainingBytes = Math.max(0, CLIENT_SQL_DEBUG_MAX_CONTENT_BYTES - this.bytesUsed - 8);
     const payloadCharacters = Math.floor(remainingBytes / 2);
-    const characterCount = Math.min(
-      value.length,
-      CLIENT_SQL_DEBUG_MAX_STRING_CHARACTERS,
-      payloadCharacters,
-    );
+    const characterCount = Math.min(value.length, CLIENT_SQL_DEBUG_MAX_STRING_CHARACTERS, payloadCharacters);
     const limited = value.slice(0, characterCount);
     if (limited.length < value.length) {
       this.noteTruncatedString();
@@ -393,10 +390,11 @@ function utf8ByteLength(value: string): number {
     } else if (codeUnit <= 0x7ff) {
       bytes += 2;
     } else if (
-      codeUnit >= 0xd800 && codeUnit <= 0xdbff
-      && index + 1 < value.length
-      && value.charCodeAt(index + 1) >= 0xdc00
-      && value.charCodeAt(index + 1) <= 0xdfff
+      codeUnit >= 0xd800 &&
+      codeUnit <= 0xdbff &&
+      index + 1 < value.length &&
+      value.charCodeAt(index + 1) >= 0xdc00 &&
+      value.charCodeAt(index + 1) <= 0xdfff
     ) {
       bytes += 4;
       index += 1;
@@ -411,10 +409,7 @@ function jsonPayloadBytes(value: unknown): number {
   return utf8ByteLength(JSON.stringify(value) ?? 'null');
 }
 
-function assignExactPayloadBytes(
-  value: Record<string, unknown>,
-  limiter: ClientSQLDebugPayloadLimiter,
-): number {
+function assignExactPayloadBytes(value: Record<string, unknown>, limiter: ClientSQLDebugPayloadLimiter): number {
   let previousBytes = -1;
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const payloadBytes = jsonPayloadBytes(value);
@@ -463,9 +458,7 @@ function serializeDebugProviderDocument(value: Record<string, unknown>): string 
   return JSON.stringify(fallback);
 }
 
-function createClientSQLDebuggerProviderResult(
-  value: Record<string, unknown>,
-): DebuggerProviderResult {
+function createClientSQLDebuggerProviderResult(value: Record<string, unknown>): DebuggerProviderResult {
   return createDebuggerProviderResult(serializeDebugProviderDocument(value));
 }
 
@@ -475,7 +468,7 @@ function nextDebugRevision(): number {
   return debugRevision;
 }
 
-function requestInteger(data: any, field: string, fallback: number): number {
+function requestInteger(data: DebuggerProviderRequest, field: string, fallback: number): number {
   const value = data?.[field];
   if (value === undefined) {
     return fallback;
@@ -495,9 +488,7 @@ function quoteSQLiteIdentifier(identifier: string): string {
 }
 
 function clientSQLRowsOrderClause(tableType: string | null | undefined, columns: ClientSQLDebugColumn[]): string {
-  const primaryKeyColumns = columns
-    .filter(column => column.pk > 0)
-    .sort((a, b) => a.pk - b.pk);
+  const primaryKeyColumns = columns.filter(column => column.pk > 0).sort((a, b) => a.pk - b.pk);
   if (primaryKeyColumns.length) {
     return ` ORDER BY ${primaryKeyColumns.map(column => `${quoteSQLiteIdentifier(column.name)} DESC`).join(', ')}`;
   }
@@ -546,10 +537,10 @@ async function summarizeTable(
 
   const appliedColumnLimit = Math.min(CLIENT_SQL_DEBUG_MAX_COLUMNS_PER_TABLE, columnLimit);
   const columns = await database.query<ClientSQLDebugColumn>(
-    'SELECT cid, substr(name, 1, ?) AS name, substr(type, 1, ?) AS type, '
-      + '"notnull" AS "notnull", '
-      + 'CASE WHEN dflt_value IS NULL THEN NULL ELSE substr(CAST(dflt_value AS TEXT), 1, ?) END AS dflt_value, pk '
-      + 'FROM pragma_table_info(?) ORDER BY cid LIMIT ?',
+    'SELECT cid, substr(name, 1, ?) AS name, substr(type, 1, ?) AS type, ' +
+      '"notnull" AS "notnull", ' +
+      'CASE WHEN dflt_value IS NULL THEN NULL ELSE substr(CAST(dflt_value AS TEXT), 1, ?) END AS dflt_value, pk ' +
+      'FROM pragma_table_info(?) ORDER BY cid LIMIT ?',
     [
       CLIENT_SQL_DEBUG_MAX_STRING_CHARACTERS + 1,
       CLIENT_SQL_DEBUG_MAX_STRING_CHARACTERS + 1,
@@ -567,9 +558,7 @@ async function summarizeTable(
   let rowCountUnavailable = false;
   try {
     const countRows = await database.query<{ count: number }>(
-      `SELECT COUNT(*) AS count FROM (`
-        + `SELECT 1 FROM ${quoteSQLiteIdentifier(table.name)} LIMIT ?`
-        + ')',
+      `SELECT COUNT(*) AS count FROM (` + `SELECT 1 FROM ${quoteSQLiteIdentifier(table.name)} LIMIT ?` + ')',
       [CLIENT_SQL_DEBUG_MAX_ROW_COUNT_SCAN + 1],
     );
     const count = Number(countRows[0]?.count ?? 0);
@@ -581,8 +570,8 @@ async function summarizeTable(
   } catch (error) {
     rowCountUnavailable = true;
     console.warn(
-      `ClientSQL debugger could not count rows for database '${database.name}', `
-        + `table '${safeTableName}': ${debugErrorMessage(error)}`,
+      `ClientSQL debugger could not count rows for database '${database.name}', ` +
+        `table '${safeTableName}': ${debugErrorMessage(error)}`,
     );
   }
 
@@ -605,10 +594,10 @@ async function summarizeDatabase(database: ClientSQLDebugDatabase): Promise<Reco
   const limiter = new ClientSQLDebugPayloadLimiter();
   const versionRows = await database.query<{ user_version: number }>('PRAGMA user_version', []);
   const tables = await database.query<{ name: string; type: string; sql: string | null }>(
-    "SELECT substr(name, 1, ?) AS name, type, "
-      + "CASE WHEN sql IS NULL THEN NULL ELSE substr(sql, 1, ?) END AS sql "
-      + "FROM sqlite_schema WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' "
-      + 'ORDER BY type, name LIMIT ?',
+    'SELECT substr(name, 1, ?) AS name, type, ' +
+      'CASE WHEN sql IS NULL THEN NULL ELSE substr(sql, 1, ?) END AS sql ' +
+      "FROM sqlite_schema WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' " +
+      'ORDER BY type, name LIMIT ?',
     [
       CLIENT_SQL_DEBUG_MAX_STRING_CHARACTERS + 1,
       CLIENT_SQL_DEBUG_MAX_STRING_CHARACTERS + 1,
@@ -643,7 +632,7 @@ async function summarizeDatabase(database: ClientSQLDebugDatabase): Promise<Reco
   };
   const limitedSummary = limitDebugPayload(rawSummary, limiter);
   const limitedTables = Array.isArray(limitedSummary.tables)
-    ? limitedSummary.tables as Array<Record<string, unknown>>
+    ? (limitedSummary.tables as Array<Record<string, unknown>>)
     : [];
   limitedSummary.tables = limitedTables;
   limiter.noteOmittedTables(Math.max(0, tableSummaries.length - limitedTables.length));
@@ -681,10 +670,10 @@ async function summarizeSingleTable(
     throw new Error(`ClientSQL table name exceeds ${CLIENT_SQL_DEBUG_MAX_STRING_CHARACTERS} characters.`);
   }
   const tables = await database.query<{ name: string; type: string; sql: string | null }>(
-    "SELECT substr(name, 1, ?) AS name, type, "
-      + "CASE WHEN sql IS NULL THEN NULL ELSE substr(sql, 1, ?) END AS sql "
-      + "FROM sqlite_schema WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' "
-      + 'AND name = ? LIMIT 1',
+    'SELECT substr(name, 1, ?) AS name, type, ' +
+      'CASE WHEN sql IS NULL THEN NULL ELSE substr(sql, 1, ?) END AS sql ' +
+      "FROM sqlite_schema WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' " +
+      'AND name = ? LIMIT 1',
     [CLIENT_SQL_DEBUG_MAX_STRING_CHARACTERS + 1, CLIENT_SQL_DEBUG_MAX_STRING_CHARACTERS + 1, tableName],
   );
   const table = tables[0];
@@ -694,7 +683,7 @@ async function summarizeSingleTable(
   return summarizeTable(database, table, CLIENT_SQL_DEBUG_MAX_COLUMNS_PER_TABLE);
 }
 
-async function inspectDatabases(data: any): Promise<Record<string, unknown>> {
+async function inspectDatabases(data: DebuggerProviderRequest): Promise<Record<string, unknown>> {
   const forceRefresh = Boolean(data?.refresh);
   const limiter = new ClientSQLDebugPayloadLimiter();
   const databases = firstOpenDatabaseById();
@@ -720,17 +709,19 @@ async function inspectDatabases(data: any): Promise<Record<string, unknown>> {
 
 function rowSelectExpression(column: ClientSQLDebugColumn, index: number): string {
   const identifier = quoteSQLiteIdentifier(column.name);
-  return `CASE WHEN typeof(${identifier}) = 'text' THEN `
-    + `substr(${identifier}, 1, ${CLIENT_SQL_DEBUG_MAX_STRING_CHARACTERS}) `
-    + `WHEN typeof(${identifier}) = 'blob' THEN `
-    + `substr(${identifier}, 1, ${CLIENT_SQL_DEBUG_MAX_BLOB_BYTES}) `
-    + `ELSE ${identifier} END AS ${quoteSQLiteIdentifier(`__clientsql_value_${index}`)}, `
-    + `typeof(${identifier}) AS ${quoteSQLiteIdentifier(`__clientsql_type_${index}`)}, `
-    + `CASE WHEN typeof(${identifier}) IN ('text', 'blob') THEN length(${identifier}) ELSE 0 END `
-    + `AS ${quoteSQLiteIdentifier(`__clientsql_length_${index}`)}`;
+  return (
+    `CASE WHEN typeof(${identifier}) = 'text' THEN ` +
+    `substr(${identifier}, 1, ${CLIENT_SQL_DEBUG_MAX_STRING_CHARACTERS}) ` +
+    `WHEN typeof(${identifier}) = 'blob' THEN ` +
+    `substr(${identifier}, 1, ${CLIENT_SQL_DEBUG_MAX_BLOB_BYTES}) ` +
+    `ELSE ${identifier} END AS ${quoteSQLiteIdentifier(`__clientsql_value_${index}`)}, ` +
+    `typeof(${identifier}) AS ${quoteSQLiteIdentifier(`__clientsql_type_${index}`)}, ` +
+    `CASE WHEN typeof(${identifier}) IN ('text', 'blob') THEN length(${identifier}) ELSE 0 END ` +
+    `AS ${quoteSQLiteIdentifier(`__clientsql_length_${index}`)}`
+  );
 }
 
-async function inspectTable(data: any): Promise<Record<string, unknown>> {
+async function inspectTable(data: DebuggerProviderRequest): Promise<Record<string, unknown>> {
   const databaseId = String(data?.databaseId ?? '');
   const identity = databaseId.startsWith('target:') ? databaseId.slice('target:'.length) : databaseId;
   const database = databasesById[identity]?.[0];
@@ -765,17 +756,18 @@ async function inspectTable(data: any): Promise<Record<string, unknown>> {
   const orderClause = clientSQLRowsOrderClause(tableSummary.type, columns);
   const selectExpressions = columns.map(rowSelectExpression).join(', ');
   const queriedRows = await database.query<Record<string, unknown>>(
-    `SELECT ${selectExpressions} FROM ${quoteSQLiteIdentifier(table)}`
-      + `${orderClause} LIMIT ? OFFSET ?`,
+    `SELECT ${selectExpressions} FROM ${quoteSQLiteIdentifier(table)}` + `${orderClause} LIMIT ? OFFSET ?`,
     [limit + 1, offset],
   );
   const selectedRows = queriedRows.slice(0, limit);
   // Rows are positional arrays aligned with the separately bounded `columns`
   // metadata. SQL identifiers are valid far beyond the generic provider's
   // JSON property-name limit, so they must never become bridge object keys.
-  const rows = selectedRows.map(row => columns.map((_column, index) => {
-    return row[`__clientsql_value_${index}`];
-  }));
+  const rows = selectedRows.map(row =>
+    columns.map((_column, index) => {
+      return row[`__clientsql_value_${index}`];
+    }),
+  );
 
   const limiter = new ClientSQLDebugPayloadLimiter();
   if (requestedLimit !== validLimit) {
@@ -857,9 +849,10 @@ function ensureDebugProviderRegistered(): void {
       const databaseCount = firstOpenDatabaseById().length;
       return {
         available: databaseCount > 0,
-        message: databaseCount > 0
-          ? `${databaseCount} open ClientSQL database${databaseCount === 1 ? '' : 's'}.`
-          : 'No ClientSQL databases are currently open.',
+        message:
+          databaseCount > 0
+            ? `${databaseCount} open ClientSQL database${databaseCount === 1 ? '' : 's'}.`
+            : 'No ClientSQL databases are currently open.',
       };
     },
     description: 'Inspect open ClientSQL databases through bounded, read-only queries.',

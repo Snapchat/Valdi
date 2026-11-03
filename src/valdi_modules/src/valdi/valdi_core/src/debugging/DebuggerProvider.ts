@@ -534,13 +534,12 @@ function clearRegistrations(bridge: ProviderBridgeState): void {
 }
 
 function createProviderBridge(): ProviderBridgeState {
-  let bridge: ProviderBridgeState;
   const handler: CustomMessageHandler = {
     messageReceived(identifier: string, data: unknown): Promise<unknown> | undefined {
       return bridge.delegate?.(identifier, data);
     },
   };
-  bridge = {
+  const bridge: ProviderBridgeState = {
     activeRegistrationCount: 0,
     generation: 0,
     handler,

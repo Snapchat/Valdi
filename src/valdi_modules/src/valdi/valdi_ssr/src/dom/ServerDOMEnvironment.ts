@@ -97,7 +97,7 @@ export function installServerDOMGlobals(): ServerDocument {
   const document = new ServerDocument();
   installedDocument = document;
   const windowListeners = new Map<string, Array<EventListenerOrEventListenerObject>>();
-  const serverWindow: Record<string, any> = {
+  const serverWindow: Record<string, unknown> = {
     devicePixelRatio: 1,
     document,
     innerHeight: 0,

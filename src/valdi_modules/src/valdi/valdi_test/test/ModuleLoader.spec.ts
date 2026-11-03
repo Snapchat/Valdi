@@ -1,7 +1,7 @@
-import { JSEvalResult, JsEvaluator, ModuleLoader, RequireFunc, SourceMapFactory } from 'valdi_core/src/ModuleLoader';
 import { StringMap } from 'coreutils/src/StringMap';
 import 'jasmine/src/jasmine';
 import { ISourceMap, MappedPosition } from 'source_map/src/ISourceMap';
+import { JSEvalResult, JsEvaluator, ModuleLoader, RequireFunc, SourceMapFactory } from 'valdi_core/src/ModuleLoader';
 
 type JsModuleFunc = (require: RequireFunc, module: any, exports: any) => void;
 

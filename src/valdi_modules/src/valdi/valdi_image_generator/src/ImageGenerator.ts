@@ -11,7 +11,7 @@ function waitForIdle(): Promise<void> {
 }
 
 function withKeepAlive(cb: () => Promise<void>): Promise<void> {
-  let keepAlive = beginKeepAlive();
+  const keepAlive = beginKeepAlive();
   return cb().finally(() => endKeepAlive(keepAlive));
 }
 

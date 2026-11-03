@@ -76,6 +76,24 @@ export class ChildProcess {
     return this.errorCode;
   }
 
+  static async run(command: string, args: string[], cwd?: string): Promise<ChildProcessResult> {
+    const child = new ChildProcess(command);
+    const stdout = new ChildProcessPipeBuffer();
+    const stderr = new ChildProcessPipeBuffer();
+    child.args = args;
+    child.cwd = cwd;
+    child.stdout = stdout;
+    child.stderr = stderr;
+    await child.launch();
+    child.closeStdin();
+    const errorCode = await child.waitForExit();
+    return {
+      errorCode: errorCode,
+      stdout: stdout.toData(),
+      stderr: stderr.toData(),
+    };
+  }
+
   sendToStdin(data: Uint8Array): void {
     if (this.pid === undefined) {
       throw new Error(`Cannot send stdin to ${this.command} before launch()`);
@@ -137,23 +155,5 @@ export class ChildProcess {
     if (this.pid !== undefined && this.errorCode === undefined) {
       kill(this.pid);
     }
-  }
-
-  static async run(command: string, args: string[], cwd?: string): Promise<ChildProcessResult> {
-    const child = new ChildProcess(command);
-    const stdout = new ChildProcessPipeBuffer();
-    const stderr = new ChildProcessPipeBuffer();
-    child.args = args;
-    child.cwd = cwd;
-    child.stdout = stdout;
-    child.stderr = stderr;
-    await child.launch();
-    child.closeStdin();
-    const errorCode = await child.waitForExit();
-    return {
-      errorCode: errorCode,
-      stdout: stdout.toData(),
-      stderr: stderr.toData(),
-    };
   }
 }

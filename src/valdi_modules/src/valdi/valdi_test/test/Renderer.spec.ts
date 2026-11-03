@@ -1,3 +1,4 @@
+import { StringMap } from 'coreutils/src/StringMap';
 import { Component } from 'valdi_core/src/Component';
 import { ComponentPrototype } from 'valdi_core/src/ComponentPrototype';
 import { ComponentRef } from 'valdi_core/src/ComponentRef';
@@ -15,7 +16,6 @@ import { RendererError } from 'valdi_core/src/utils/RendererError';
 import 'jasmine/src/jasmine';
 import { PropertyList } from 'valdi_tsx/src/PropertyList';
 import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
-import { StringMap } from 'coreutils/src/StringMap';
 import { RawRenderRequestEntryType, RendererTestDelegate } from './RendererTestDelegate';
 
 const createdRenderers: Renderer[] = [];
@@ -2622,12 +2622,11 @@ describe('Renderer', () => {
     const readSecret = function (this: object): string {
       return receiverSecrets.get(this) ?? 'wrong receiver';
     };
-    let viewModel: { readSecret(): string; title: string };
     const readSecretGetter = jasmine.createSpy('readSecretGetter').and.callFake(function (this: object) {
       if (this !== viewModel) throw new Error('The exact ViewModel must remain the accessor receiver.');
       return readSecret;
     });
-    viewModel = Object.create(null) as { readSecret(): string; title: string };
+    const viewModel = Object.create(null) as { readSecret(): string; title: string };
     Object.defineProperties(viewModel, {
       readSecret: { configurable: true, enumerable: false, get: readSecretGetter },
       title: { configurable: true, enumerable: true, value: 'before', writable: true },
@@ -2883,8 +2882,7 @@ describe('Renderer', () => {
     const readSecret = function (this: object): string {
       return receiverSecrets.get(this) ?? 'wrong receiver';
     };
-    let viewModel: typeof source;
-    viewModel = new Proxy(source, {
+    const viewModel: typeof source = new Proxy(source, {
       get(target, key, receiver) {
         trapCalls.get++;
         if (receiver !== viewModel) throw new Error('The inner Proxy received a foreign receiver.');
@@ -5031,7 +5029,7 @@ describe('Renderer', () => {
     renderer.onNextDraw(() => {
       nextDrawCount++;
     });
-    renderer.onNextDraw((hookTimeMs) => {
+    renderer.onNextDraw(hookTimeMs => {
       observedHookTimeMs = hookTimeMs;
     });
 

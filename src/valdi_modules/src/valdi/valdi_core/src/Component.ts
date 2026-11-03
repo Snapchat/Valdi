@@ -67,9 +67,9 @@ export class Component<ViewModel = object, ComponentContext = object>
    * @param disposable the callback to call after the component is destroyed
    * @returns {boolean} true if a disposable was registered to be disposed
    */
-  registerDisposable(disposable: ComponentDisposable): true
-  registerDisposable(disposable: undefined): false
-  registerDisposable(disposable: ComponentDisposable | undefined): boolean
+  registerDisposable(disposable: ComponentDisposable): true;
+  registerDisposable(disposable: undefined): false;
+  registerDisposable(disposable: ComponentDisposable | undefined): boolean;
   registerDisposable(disposable: ComponentDisposable | undefined): boolean {
     if (!disposable) {
       return false;
@@ -90,7 +90,7 @@ export class Component<ViewModel = object, ComponentContext = object>
    * @deprecated @see registerDisposable
    */
   maybeRegisterDisposable(disposable: ComponentDisposable | undefined): void {
-    if (!!disposable) {
+    if (disposable) {
       this.registerDisposable(disposable);
     }
   }

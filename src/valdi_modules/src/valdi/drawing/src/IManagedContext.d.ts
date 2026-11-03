@@ -32,6 +32,12 @@ export interface IManagedContext {
   renderer: IRenderer;
 
   /**
+   * True when every tracked asset has settled, counting an errored asset as settled. Lets a
+   * per-frame caller skip {@link onAllAssetsLoaded} entirely when nothing is outstanding.
+   */
+  readonly allAssetsLoaded: boolean;
+
+  /**
    * Starts a render and evaluate the given render function
    */
   render(renderFunc: () => void): void;
@@ -42,7 +48,13 @@ export interface IManagedContext {
    * When using the async path, measurement is dispatched to the main thread.
    * If the context is disposed before completion (async path), the promise still resolves with { width: 0, height: 0 }.
    */
-  measure(maxWidth: number, widthMode: MeasureMode, maxHeight: number, heightMode: MeasureMode, rtl: boolean): Promise<Size>;
+  measure(
+    maxWidth: number,
+    widthMode: MeasureMode,
+    maxHeight: number,
+    heightMode: MeasureMode,
+    rtl: boolean,
+  ): Promise<Size>;
 
   /**
    * Set the layout specifications of the tree.
@@ -71,12 +83,6 @@ export interface IManagedContext {
    * Schedule a callback to be called when all the assets have been loaded.
    */
   onAllAssetsLoaded(): Promise<IManagedContextAssetsLoadResult>;
-
-  /**
-   * True when every tracked asset has settled, counting an errored asset as settled. Lets a
-   * per-frame caller skip {@link onAllAssetsLoaded} entirely when nothing is outstanding.
-   */
-  readonly allAssetsLoaded: boolean;
 
   /**
    * Destroy the managed context and its associated resources

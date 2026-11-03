@@ -1,4 +1,13 @@
-import { FontWeight, DrawingModule, FontSpecs, Font, Size, FontStyle, DrawingModuleProvider } from "../src/DrawingModuleProvider";
+import type { AttributedTextNative } from '../src/AttributedTextNative';
+import {
+  FontWeight,
+  DrawingModule,
+  FontSpecs,
+  Font,
+  Size,
+  FontStyle,
+  DrawingModuleProvider,
+} from '../src/DrawingModuleProvider';
 
 const registered = new Set<string>();
 
@@ -11,13 +20,20 @@ function getCanvas(): CanvasRenderingContext2D {
 
 function cssWeight(w: FontWeight): string {
   switch (w) {
-    case FontWeight.LIGHT: return '300';
-    case FontWeight.NORMAL: return '400';
-    case FontWeight.MEDIUM: return '500';
-    case FontWeight.DEMI_BOLD: return '600';
-    case FontWeight.BOLD: return '700';
-    case FontWeight.BLACK: return '900';
-    default: return '400';
+    case FontWeight.LIGHT:
+      return '300';
+    case FontWeight.NORMAL:
+      return '400';
+    case FontWeight.MEDIUM:
+      return '500';
+    case FontWeight.DEMI_BOLD:
+      return '600';
+    case FontWeight.BOLD:
+      return '700';
+    case FontWeight.BLACK:
+      return '900';
+    default:
+      return '400';
   }
 }
 
@@ -34,19 +50,24 @@ const Drawing: DrawingModule = {
     const lineHeight = specs.lineHeight ?? defaultLineHeight;
 
     return {
-      measureText(text: string, maxWidth?: number, maxHeight?: number, maxLines?: number): Size {
+      measureText(text: string, maxWidth?: number, maxHeight?: number, _maxLines?: number): Size {
         // naive single-line; clamp to maxWidth/Height if given
         const metrics = ctx.measureText(text);
         let width = Math.ceil(metrics.width);
         let height = lineHeight;
-        if (maxWidth != null) width = Math.min(width, Math.floor(maxWidth));
-        if (maxHeight != null) height = Math.min(height, Math.floor(maxHeight));
+        if (maxWidth !== undefined && maxWidth !== null) width = Math.min(width, Math.floor(maxWidth));
+        if (maxHeight !== undefined && maxHeight !== null) height = Math.min(height, Math.floor(maxHeight));
         // ignore wrapping/maxLines in this stub
         return { width, height };
       },
-      measureAttributedText(attributedText: any, maxWidth?: number, maxHeight?: number, maxLines?: number): Size {
+      measureAttributedText(
+        attributedText: AttributedTextNative,
+        maxWidth?: number,
+        maxHeight?: number,
+        maxLines?: number,
+      ): Size {
         // TODO: Implement this properly. For now just measure the plain text.
-        const plainText = attributedText?.text || '';
+        const plainText = (attributedText as { text?: string } | undefined)?.text || '';
         return this.measureText(plainText, maxWidth, maxHeight, maxLines);
       },
     };
@@ -64,5 +85,6 @@ const Drawing: DrawingModule = {
   },
 };
 
+// eslint-disable-next-line @typescript-eslint/naming-convention -- the module export key is the native module name
 const provider: DrawingModuleProvider = { Drawing };
 export = provider;

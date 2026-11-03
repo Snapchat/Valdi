@@ -1,7 +1,4 @@
-import type {
-  NativeChildProcessExitListener,
-  NativeChildProcessPipe,
-} from '../src/ChildProcessNative';
+import type { NativeChildProcessExitListener, NativeChildProcessPipe } from '../src/ChildProcessNative';
 
 function unavailable(): never {
   throw new Error('valdi_cli ChildProcess is unavailable in web builds.');

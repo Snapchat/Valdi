@@ -1,7 +1,9 @@
 // @NativeClass({ marshallAsUntyped: false, ios: 'SCValdiINavigatorPageConfig', iosImportPrefix: 'valdi_core', android: 'com.snap.valdi.navigation.INavigatorPageConfig'})
 export interface INavigatorPageConfig {
   componentPath: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- exported type; narrowing it is a public API change
   componentViewModel: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- exported type; narrowing it is a public API change
   componentContext: any;
   showPlatformNavigationBar?: boolean;
   wrapInPlatformNavigationController?: boolean;
@@ -42,5 +44,6 @@ export interface INavigator {
 // this is a bit of a hack for the purposes of a JS-only navigator implementation that has
 // to prevent context and viewModel from being made opaque.
 export interface JSOnlyINavigator {
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- exported property name; renaming it is a public API change
   __shouldDisableMakeOpaque?: boolean;
 }

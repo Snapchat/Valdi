@@ -7,6 +7,10 @@ export class ServerStyleDeclaration {
     return this.entries.map(entry => `${entry[0]}: ${entry[1]};`).join(' ');
   }
 
+  get entries(): Array<[string, string]> {
+    return Array.from(this.values.entries());
+  }
+
   set cssText(value: string) {
     this.values.clear();
     const declarations = value.split(';');
@@ -23,10 +27,6 @@ export class ServerStyleDeclaration {
       }
     }
     this.onMutation();
-  }
-
-  get entries(): Array<[string, string]> {
-    return Array.from(this.values.entries());
   }
 
   getPropertyValue(name: string): string {
@@ -71,8 +71,8 @@ export function createServerStyleDeclaration(onMutation: () => void): ServerStyl
       if (typeof property === 'string' && !(property in target)) {
         return target.getPropertyValue(property);
       }
-      const value = Reflect.get(target, property, receiver);
-      return typeof value === 'function' ? value.bind(target) : value;
+      const value: unknown = Reflect.get(target, property, receiver);
+      return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
     },
     set(target, property, value, receiver): boolean {
       if (typeof property === 'string' && !(property in target)) {

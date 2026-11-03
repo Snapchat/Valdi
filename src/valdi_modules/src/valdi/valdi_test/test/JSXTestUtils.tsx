@@ -140,6 +140,7 @@ class ComponentTestDriverImpl implements IComponentTestDriver {
 
   render(cb: () => void): IRenderedVirtualNode[] {
     const wrappedCb = () => {
+      // eslint-disable-next-line @snap/valdi/jsx-no-lambda -- test driver wraps each render callback once; the handler does not need a stable identity
       <ErrorCatcher onInterceptedError={error => this.errors.push(error)}>{$slot(cb)}</ErrorCatcher>;
     };
     this.instrumentedComponent.setViewModel({ renderCb: wrappedCb });

@@ -1,7 +1,7 @@
 import { Component } from 'valdi_core/src/Component';
-import { Label, View, ImageView } from 'valdi_tsx/src/NativeTemplateElements';
-import { systemFont } from 'valdi_core/src/SystemFont';
 import { Style } from 'valdi_core/src/Style';
+import { systemFont } from 'valdi_core/src/SystemFont';
+import { Label, View, ImageView } from 'valdi_tsx/src/NativeTemplateElements';
 import { getOtherKitten } from './ValdiWeb';
 
 export interface NewModuleViewModel {
@@ -9,15 +9,15 @@ export interface NewModuleViewModel {
 }
 
 export class WebTest extends Component<NewModuleViewModel> {
-  onCreate() {
+  onCreate(): void {
     // Called when the component is created in the render-tree
     // Used to prepare some resources, precomputed values or subscribe to observables
   }
-  onDestroy() {
+  onDestroy(): void {
     // Called the component is not longer in the render-tree
     // Used to dispose of resources and observables
   }
-  onViewModelUpdate(previous?: NewModuleViewModel) {
+  onViewModelUpdate(_previous?: NewModuleViewModel): void {
     // Called every time the view model changes
     // Used to trigger some computations, typically used for asynchronous operations,
     // that would then impact the internal component state
@@ -47,5 +47,5 @@ const styles = {
   img: new Style<ImageView>({
     width: '200px',
     height: '200px',
-  })
+  }),
 };

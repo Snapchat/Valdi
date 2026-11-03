@@ -44,13 +44,6 @@ export class Path {
     return Path.fromString(fs.currentWorkingDirectory());
   }
 
-  normalize(): Path {
-    if (this.isNormalized) {
-      return this;
-    }
-    return new Path(normalizedParts(this.parts, this.isAbsolutePath), this.isAbsolutePath, true);
-  }
-
   static isAbsolute(path: string): boolean {
     return isAbsolutePath(path);
   }
@@ -65,6 +58,13 @@ export class Path {
       out = Path.isAbsolute(part) ? Path.fromString(part) : out.appending(part);
     }
     return out.normalize();
+  }
+
+  normalize(): Path {
+    if (this.isNormalized) {
+      return this;
+    }
+    return new Path(normalizedParts(this.parts, this.isAbsolutePath), this.isAbsolutePath, true);
   }
 
   parent(): Path {
@@ -82,10 +82,11 @@ export class Path {
     if (this.parts.length === 0) {
       return this.isAbsolutePath ? '/' : '.';
     }
-    return this.parts[this.parts.length - 1]!;
+    return this.parts[this.parts.length - 1];
   }
 
   appending(...paths: string[]): Path {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- loop accumulator starts at this; not a closure alias
     let out: Path = this;
     for (const path of paths) {
       if (Path.isAbsolute(path)) {

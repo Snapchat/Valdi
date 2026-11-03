@@ -4,7 +4,9 @@ import type { PersistentStoreNative } from '../src/PersistentStoreNative';
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-const microtask = (fn: () => void) => { void Promise.resolve().then(fn); };
+const microtask = (fn: () => void) => {
+  void Promise.resolve().then(fn);
+};
 
 type Entry = {
   value: ArrayBuffer | string;
@@ -18,7 +20,7 @@ const memoryStores = new Map<string, Map<string, Entry>>();
 const hydratedStores = new Set<string>();
 let nowOverrideSec: number | undefined;
 
-const nowSec = () => (nowOverrideSec ?? Math.floor(Date.now() / 1000));
+const nowSec = () => nowOverrideSec ?? Math.floor(Date.now() / 1000);
 const cloneBuf = (b: ArrayBuffer) => b.slice(0);
 const toBuf = (s: string) => enc.encode(s).buffer;
 const toStr = (b: ArrayBuffer) => dec.decode(new Uint8Array(b));
@@ -103,7 +105,8 @@ const persistStore = (storeName: string, store: Map<string, Entry>): void => {
   // assignment, which JSON.stringify then drops - silently losing that entry.
   const obj: Record<string, PersistedEntry> = Object.create(null);
   store.forEach((e, k) => {
-    const pe: PersistedEntry = typeof e.value === 'string' ? { s: e.value } : { b: bytesToBase64(new Uint8Array(e.value)) };
+    const pe: PersistedEntry =
+      typeof e.value === 'string' ? { s: e.value } : { b: bytesToBase64(new Uint8Array(e.value)) };
     if (e.weight !== undefined) {
       pe.w = e.weight;
     }
@@ -192,8 +195,7 @@ const createStore = (storeName: string): PersistentStoreNative => ({
           value: typeof value === 'string' ? value : cloneBuf(value),
           weight,
           expiresAt:
-            ttlSeconds === undefined ? undefined :
-            ttlSeconds <= 0 ? nowSec() : nowSec() + Math.floor(ttlSeconds),
+            ttlSeconds === undefined ? undefined : ttlSeconds <= 0 ? nowSec() : nowSec() + Math.floor(ttlSeconds),
         };
         const store = getMemoryStore(storeName);
         store.set(storageKey(storeName, key), entry);
@@ -205,11 +207,7 @@ const createStore = (storeName: string): PersistentStoreNative => ({
     });
   },
 
-  fetch(
-    key: string,
-    completion: (value?: ArrayBuffer | string, error?: string) => void,
-    asString: boolean,
-  ) {
+  fetch(key: string, completion: (value?: ArrayBuffer | string, error?: string) => void, asString: boolean) {
     microtask(() => {
       const fullKey = storageKey(storeName, key);
       const store = getMemoryStore(storeName);
@@ -480,7 +478,12 @@ function utf8BytesForDebugCodePoint(codePoint: number): number {
   return 4;
 }
 
-function debugJsonCost(value: string, index: number, codePoint: number, characterLength: number): {
+function debugJsonCost(
+  value: string,
+  index: number,
+  codePoint: number,
+  characterLength: number,
+): {
   bytes: number;
   characters: number;
 } {
@@ -490,11 +493,7 @@ function debugJsonCost(value: string, index: number, codePoint: number, characte
   }
   if (characterLength === 1 && codeUnit <= 0x1f) {
     const shortEscape =
-      codeUnit === 0x08 ||
-      codeUnit === 0x09 ||
-      codeUnit === 0x0a ||
-      codeUnit === 0x0c ||
-      codeUnit === 0x0d;
+      codeUnit === 0x08 || codeUnit === 0x09 || codeUnit === 0x0a || codeUnit === 0x0c || codeUnit === 0x0d;
     return shortEscape ? { bytes: 2, characters: 2 } : { bytes: 6, characters: 6 };
   }
   if (characterLength === 1 && codeUnit >= 0xd800 && codeUnit <= 0xdfff) {
@@ -569,17 +568,13 @@ function memoryDebugValue(entry: Entry): {
   }
   const byteLength = entry.value.byteLength;
   const originalLength = byteLength === 0 ? 0 : Math.ceil(byteLength / 3) * 4;
-  const maximumPreviewBytes = Math.floor(Math.floor(MAX_DEBUG_VALUE_CHARACTERS / 4) * 3 / 3) * 3;
+  const maximumPreviewBytes = Math.floor((Math.floor(MAX_DEBUG_VALUE_CHARACTERS / 4) * 3) / 3) * 3;
   const previewByteLength = Math.min(byteLength, maximumPreviewBytes);
   const preview = bytesToBase64(new Uint8Array(entry.value, 0, previewByteLength));
   return { encoding: 1, originalLength, preview, truncated: previewByteLength < byteLength };
 }
 
-function appendMemoryDebugStore(
-  state: DebugSnapshotBuildState,
-  storeName: string,
-  store: Map<string, Entry>,
-): boolean {
+function appendMemoryDebugStore(state: DebugSnapshotBuildState, storeName: string, store: Map<string, Entry>): boolean {
   if (!state.budget.reserve(DEBUG_STORE_STRUCTURAL_CHARACTERS, DEBUG_STORE_STRUCTURAL_BYTES)) {
     state.aggregateExhausted = true;
     state.truncated = true;
@@ -597,7 +592,7 @@ function appendMemoryDebugStore(
   let inspectedEntries = 0;
   let inspectionTruncated = false;
   const entryIterator = store.entries();
-  while (true) {
+  for (;;) {
     const nextEntry = entryIterator.next();
     if (nextEntry.done) {
       break;
@@ -895,7 +890,7 @@ export function getPersistentStoreSnapshot(): WebPersistentStoreSnapshot {
   const seenStoreNames = new Set<string>();
 
   const storeIterator = memoryStores.entries();
-  while (true) {
+  for (;;) {
     const nextStore = storeIterator.next();
     if (nextStore.done) {
       break;

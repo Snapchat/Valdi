@@ -139,7 +139,7 @@ export class ManagedWorkerService<T> {
       this.servicePromise.then(
         attributeWorkerCallback(
           this.managedWorker ? `worker.dispose(${this.className}@${this.file})` : undefined,
-          service => {
+          (service: IWorkerService<T>) => {
             service.dispose();
             this.nativeRefsDisposable();
             this.managedWorker?.onUnused();

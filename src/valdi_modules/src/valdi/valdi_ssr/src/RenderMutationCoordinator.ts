@@ -58,7 +58,7 @@ export class RenderMutationCoordinator implements ServerDOMMutationTracker, IRen
       return;
     }
     this.scheduled = true;
-    Promise.resolve().then(() => {
+    void Promise.resolve().then(() => {
       this.scheduled = false;
       if (this.renderDepth === 0) {
         this.commitIfNeeded();

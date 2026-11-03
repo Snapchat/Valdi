@@ -1,10 +1,8 @@
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment -- this web test is not type-checked against the protobuf-ts runtime typings
 // @ts-nocheck
-import { IArena, IMessage, IMessageNamespace } from '../src_symlink/types';
-import {
-  generateMonkeyPatchedNamespace,
-  ProtobufTsMessageWrapper,
-} from '../headless/NamespaceGenerator';
 import { Message as ValdiMessage } from '../Message';
+import { generateMonkeyPatchedNamespace, ProtobufTsMessageWrapper } from '../headless/NamespaceGenerator';
+import { IArena, IMessage, IMessageNamespace } from '../src_symlink/types';
 import { getLoadedDescriptorDatabase } from './DescriptorDatabaseTestUtils';
 
 // Import extracted types (interfaces + const enums) without native dependencies
@@ -18,18 +16,42 @@ interface IRuntimeMessage extends IMessage {
 
 // Mock Arena for web tests - the namespace generator ignores it anyway
 class MockArena implements IArena {
-  createMessage(): never { throw new Error('Not implemented'); }
-  decodeMessage(): never { throw new Error('Not implemented'); }
-  decodeMessageAsync(): never { throw new Error('Not implemented'); }
-  decodeMessageDebugJSONAsync(): never { throw new Error('Not implemented'); }
-  encodeMessage(): never { throw new Error('Not implemented'); }
-  encodeMessageAsync(): never { throw new Error('Not implemented'); }
-  batchEncodeMessageAsync(): never { throw new Error('Not implemented'); }
-  encodeMessageToJSON(): never { throw new Error('Not implemented'); }
-  getMessageFields(): never { throw new Error('Not implemented'); }
-  setMessageField(): never { throw new Error('Not implemented'); }
-  getMessageInstance(): never { throw new Error('Not implemented'); }
-  copyMessage(): never { throw new Error('Not implemented'); }
+  createMessage(): never {
+    throw new Error('Not implemented');
+  }
+  decodeMessage(): never {
+    throw new Error('Not implemented');
+  }
+  decodeMessageAsync(): never {
+    throw new Error('Not implemented');
+  }
+  decodeMessageDebugJSONAsync(): never {
+    throw new Error('Not implemented');
+  }
+  encodeMessage(): never {
+    throw new Error('Not implemented');
+  }
+  encodeMessageAsync(): never {
+    throw new Error('Not implemented');
+  }
+  batchEncodeMessageAsync(): never {
+    throw new Error('Not implemented');
+  }
+  encodeMessageToJSON(): never {
+    throw new Error('Not implemented');
+  }
+  getMessageFields(): never {
+    throw new Error('Not implemented');
+  }
+  setMessageField(): never {
+    throw new Error('Not implemented');
+  }
+  getMessageInstance(): never {
+    throw new Error('Not implemented');
+  }
+  copyMessage(): never {
+    throw new Error('Not implemented');
+  }
 }
 
 // Base64 encoding (ported from coreutils/src/Base64.ts)
@@ -54,7 +76,7 @@ const Base64 = {
       parts.push(lookup[tmp >> 10] + lookup[(tmp >> 4) & 0x3f] + lookup[(tmp << 2) & 0x3f] + '=');
     }
     return parts.join('');
-  }
+  },
 };
 
 interface TypedMessageNamespace<I> {
@@ -134,9 +156,7 @@ describe('NamespaceGenerator', () => {
   });
 
   it('supports nested messages in monkey patched js namespace', () => {
-    const ParentMessage = getTypedMessageNamespace<test.IParentMessage>(
-      namespace => namespace.test?.ParentMessage,
-    );
+    const ParentMessage = getTypedMessageNamespace<test.IParentMessage>(namespace => namespace.test?.ParentMessage);
 
     const parentMessage = ParentMessage.create(new MockArena(), {
       childMessage: {
@@ -151,9 +171,7 @@ describe('NamespaceGenerator', () => {
 
   // Does not yet work
   xit('supports nested map messages in monkey patched js namespace', () => {
-    const MapMessage = getTypedMessageNamespace<test.IMapMessage>(
-      namespace => namespace.test?.MapMessage,
-    );
+    const MapMessage = getTypedMessageNamespace<test.IMapMessage>(namespace => namespace.test?.MapMessage);
 
     const message = MapMessage.create(new MockArena(), {
       stringToDouble: new Map([

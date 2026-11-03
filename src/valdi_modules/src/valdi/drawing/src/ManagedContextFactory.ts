@@ -1,11 +1,18 @@
-import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 import { IRenderer } from 'valdi_core/src/IRenderer';
 import { jsx } from 'valdi_core/src/JSXBootstrap';
 import { Renderer } from 'valdi_core/src/Renderer';
+import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 import { ViewNodeAssetTracker } from 'valdi_core/src/ViewNodeAssetTracker';
 import { Size } from './DrawingModuleProvider';
 import { IBitmap } from './IBitmap';
-import { IManagedContext, IManagedContextAssetsLoadResult, IManagedContextDrawResult, IManagedContextFrame, MeasureMode, RasterResult } from './IManagedContext';
+import {
+  IManagedContext,
+  IManagedContextAssetsLoadResult,
+  IManagedContextDrawResult,
+  IManagedContextFrame,
+  MeasureMode,
+  RasterResult,
+} from './IManagedContext';
 import {
   SnapDrawingValdiContext,
   SnapDrawingFrameNative,
@@ -47,11 +54,7 @@ class ManagedContextImpl implements IManagedContext {
   private assetTracker: ViewNodeAssetTracker;
   private readonly useAsyncPath: boolean;
 
-  constructor(
-    useNewExternalSurfaceRasterMethod: boolean,
-    enableDeltaRasterization: boolean,
-    useAsyncPath: boolean,
-  ) {
+  constructor(useNewExternalSurfaceRasterMethod: boolean, enableDeltaRasterization: boolean, useAsyncPath: boolean) {
     this.useAsyncPath = useAsyncPath;
     this.assetTracker = new ViewNodeAssetTracker();
     this.snapDrawingValdiContext = createValdiContextWithSnapDrawing(
@@ -64,11 +67,21 @@ class ManagedContextImpl implements IManagedContext {
     this.renderer = this._renderer;
   }
 
+  get allAssetsLoaded(): boolean {
+    return this.assetTracker.allAssetsLoaded;
+  }
+
   render(renderFunc: () => void): void {
     this._renderer.renderRoot(renderFunc);
   }
 
-  measure(maxWidth: number, widthMode: MeasureMode, maxHeight: number, heightMode: MeasureMode, rtl: boolean): Promise<Size> {
+  measure(
+    maxWidth: number,
+    widthMode: MeasureMode,
+    maxHeight: number,
+    heightMode: MeasureMode,
+    rtl: boolean,
+  ): Promise<Size> {
     if (this.useAsyncPath) {
       return new Promise(resolve => {
         measureAsync(
@@ -85,14 +98,7 @@ class ManagedContextImpl implements IManagedContext {
       });
     }
     // Sync path: use runtime.measureContext directly (same as original implementation; no native module dispatch).
-    const result = getValdiRuntime().measureContext(
-      this.contextId,
-      maxWidth,
-      widthMode,
-      maxHeight,
-      heightMode,
-      rtl,
-    );
+    const result = getValdiRuntime().measureContext(this.contextId, maxWidth, widthMode, maxHeight, heightMode, rtl);
     return Promise.resolve({ width: result[0], height: result[1] });
   }
 
@@ -112,12 +118,9 @@ class ManagedContextImpl implements IManagedContext {
   draw(): Promise<IManagedContextDrawResult> {
     if (this.useAsyncPath) {
       return new Promise(resolve => {
-        drawFrame(
-          this.snapDrawingValdiContext.native,
-          (frameNative: SnapDrawingFrameNative, mainThreadMs: number) => {
-            resolve({ frame: new FrameImpl(frameNative), mainThreadMs });
-          },
-        );
+        drawFrame(this.snapDrawingValdiContext.native, (frameNative: SnapDrawingFrameNative, mainThreadMs: number) => {
+          resolve({ frame: new FrameImpl(frameNative), mainThreadMs });
+        });
       });
     }
     const frameNative = drawFrameSync(this.snapDrawingValdiContext.native);
@@ -129,10 +132,6 @@ class ManagedContextImpl implements IManagedContext {
 
   processFrame(deltaMs: number): void {
     nativeProcessFrame(this.snapDrawingValdiContext.native, deltaMs);
-  }
-
-  get allAssetsLoaded(): boolean {
-    return this.assetTracker.allAssetsLoaded;
   }
 
   onAllAssetsLoaded(): Promise<IManagedContextAssetsLoadResult> {

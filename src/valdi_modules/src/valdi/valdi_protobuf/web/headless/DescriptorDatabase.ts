@@ -1,3 +1,5 @@
+import { MessageType, ScalarType, RepeatType, PartialFieldInfo, IMessageType, EnumInfo } from '@protobuf-ts/runtime';
+import { FullyQualifiedName } from './FullyQualifiedName';
 import {
   DescriptorProto,
   EnumDescriptorProto,
@@ -5,18 +7,8 @@ import {
   FieldDescriptorProto_Label as FieldLabel,
   FieldDescriptorProto_Type as FieldType,
   FileDescriptorProto,
-  FileDescriptorSet,
   FileDescriptorSetType,
 } from './descriptor';
-import { FullyQualifiedName } from './FullyQualifiedName';
-import {
-  MessageType,
-  ScalarType,
-  RepeatType,
-  PartialFieldInfo,
-  IMessageType,
-  EnumInfo,
-} from '@protobuf-ts/runtime';
 
 export interface RegisteredDescriptor {
   name: FullyQualifiedName;
@@ -73,7 +65,7 @@ export class DescriptorDatabase {
     // Resolve fields
     const resolvedFields: PartialFieldInfo[] = pending.fields.map(pf => {
       const info = pf.fieldInfo as any;
-      
+
       if (info.kind === 'message' && pf.typeName) {
         // Resolve message type reference
         info.T = () => this.getMessageType(pf.typeName!);
@@ -91,7 +83,7 @@ export class DescriptorDatabase {
           }
         }
       }
-      
+
       return info as PartialFieldInfo;
     });
 
@@ -99,7 +91,7 @@ export class DescriptorDatabase {
     const messageType = new MessageType<any>(typeName, resolvedFields);
     pending.messageType = messageType;
     this.messageTypes.set(typeName, messageType);
-    
+
     return messageType;
   }
 
@@ -217,14 +209,15 @@ export class DescriptorDatabase {
       };
     } else if (fieldType === FieldType.MESSAGE) {
       const typeName = this.toTypeNameString(fieldDescriptor.typeName);
-      
+
       // Check if this is a map field
       const mapType = this.mapTypeByName.get(typeName);
       if (mapType) {
         // Map field
-        const mapValue: any = mapType.valueKind === 'scalar'
-          ? { kind: 'scalar', T: mapType.valueScalarType! }
-          : mapType.valueKind === 'message'
+        const mapValue: any =
+          mapType.valueKind === 'scalar'
+            ? { kind: 'scalar', T: mapType.valueScalarType! }
+            : mapType.valueKind === 'message'
             ? { kind: 'message', T: () => this.getMessageType(mapType.valueType) }
             : { kind: 'enum', T: () => this.getEnumInfo(mapType.valueType) };
 
@@ -246,7 +239,9 @@ export class DescriptorDatabase {
           kind: 'message',
           no: fieldDescriptor.number,
           name: fieldDescriptor.name,
-          T: () => { throw new Error('Not resolved yet'); }, // Placeholder
+          T: () => {
+            throw new Error('Not resolved yet');
+          }, // Placeholder
           repeat: isRepeated ? RepeatType.UNPACKED : RepeatType.NO,
         } as PartialFieldInfo,
         typeName,
@@ -258,7 +253,9 @@ export class DescriptorDatabase {
           kind: 'enum',
           no: fieldDescriptor.number,
           name: fieldDescriptor.name,
-          T: () => { throw new Error('Not resolved yet'); }, // Placeholder
+          T: () => {
+            throw new Error('Not resolved yet');
+          }, // Placeholder
           repeat: isRepeated ? RepeatType.PACKED : RepeatType.NO,
         } as PartialFieldInfo,
         typeName,
@@ -325,10 +322,7 @@ export class DescriptorDatabase {
     };
   }
 
-  private addDescriptor(
-    parentPackage: FullyQualifiedName | undefined,
-    descriptorProto: DescriptorProto,
-  ): void {
+  private addDescriptor(parentPackage: FullyQualifiedName | undefined, descriptorProto: DescriptorProto): void {
     const name = descriptorProto.name ?? '';
     if (!name) return; // Skip descriptors without names
     const childPackage = new FullyQualifiedName(parentPackage, name);
@@ -372,10 +366,7 @@ export class DescriptorDatabase {
     }
   }
 
-  private addEnumDescriptor(
-    parentPackage: FullyQualifiedName | undefined,
-    enumDescriptor: EnumDescriptorProto,
-  ): void {
+  private addEnumDescriptor(parentPackage: FullyQualifiedName | undefined, enumDescriptor: EnumDescriptorProto): void {
     const name = enumDescriptor.name ?? '';
     if (!name) return; // Skip enum descriptors without names
     const values = enumDescriptor.value;
@@ -410,8 +401,14 @@ export class DescriptorDatabase {
     if (buffer.length >= 8) {
       const tagBytes = buffer.subarray(0, 8);
       const tag = String.fromCharCode(
-        tagBytes[0], tagBytes[1], tagBytes[2], tagBytes[3],
-        tagBytes[4], tagBytes[5], tagBytes[6], tagBytes[7]
+        tagBytes[0],
+        tagBytes[1],
+        tagBytes[2],
+        tagBytes[3],
+        tagBytes[4],
+        tagBytes[5],
+        tagBytes[6],
+        tagBytes[7],
       );
       if (tag === 'VALDIPRO') {
         const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);

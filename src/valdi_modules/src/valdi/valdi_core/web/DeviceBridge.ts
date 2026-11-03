@@ -1,5 +1,4 @@
-import { DeviceCancelable, DeviceHapticFeedbackType, DeviceSystemType } from "../src/DeviceBridge";
-
+import { DeviceCancelable, DeviceHapticFeedbackType, DeviceSystemType } from '../src/DeviceBridge';
 
 const noopCancelable: DeviceCancelable = { cancel() {} };
 
@@ -16,10 +15,7 @@ const isAndroid = /\bAndroid\b/i.test(ua);
 
 const DPR = isBrowser && window.devicePixelRatio ? window.devicePixelRatio : 1;
 
-function on<K extends keyof WindowEventMap>(
-  type: K,
-  fn: (ev: WindowEventMap[K]) => void
-): DeviceCancelable {
+function on<K extends keyof WindowEventMap>(type: K, fn: (ev: WindowEventMap[K]) => void): DeviceCancelable {
   if (!isBrowser) return noopCancelable;
   window.addEventListener(type, fn as EventListener);
   return { cancel: () => window.removeEventListener(type, fn as EventListener) };
@@ -144,7 +140,7 @@ export function getDeviceLocales(): string[] {
   if (!isBrowser) return [];
   const langs = (navigator as any).languages as string[] | undefined;
   const lang = navigator.language;
-  const arr = langs && langs.length ? langs : (lang ? [lang] : []);
+  const arr = langs && langs.length ? langs : lang ? [lang] : [];
   return arr.map(s => s.replace('_', '-'));
 }
 
@@ -232,7 +228,12 @@ export function observeDisplayInsetChange(observe: () => void): DeviceCancelable
   // Approximate: fire on resize and orientation changes
   const c1 = on('resize', observe);
   const c2 = on('orientationchange' as any, observe as any);
-  return { cancel: () => { c1.cancel(); c2.cancel(); } };
+  return {
+    cancel: () => {
+      c1.cancel();
+      c2.cancel();
+    },
+  };
 }
 
 export function observeDisplaySizeChange(observe: () => void): DeviceCancelable {
@@ -243,19 +244,23 @@ export function observeDarkMode(observe: (isDarkMode: boolean) => void): DeviceC
   if (!isBrowser || !window.matchMedia) return noopCancelable;
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
   const handler = () => {
-    try { observe(mq.matches); } catch { /* ignore */ }
+    try {
+      observe(mq.matches);
+    } catch {
+      /* ignore */
+    }
   };
   handler();
   mq.addEventListener?.('change', handler);
   // Safari < 14 fallback
-  // @ts-ignore
+  // @ts-ignore -- addListener is the deprecated MediaQueryList API Safari < 14 still needs
   mq.addListener?.(handler);
   return {
     cancel: () => {
       mq.removeEventListener?.('change', handler);
-      // @ts-ignore
+      // @ts-ignore -- removeListener is the deprecated MediaQueryList API Safari < 14 still needs
       mq.removeListener?.(handler);
-    }
+    },
   };
 }
 

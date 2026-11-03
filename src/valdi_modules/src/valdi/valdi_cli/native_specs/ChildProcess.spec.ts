@@ -90,6 +90,7 @@ describeIfNative('ChildProcess', () => {
 
     await child.launch();
     while (!stdout.toString().includes('closed')) {
+      // eslint-disable-next-line @snap/valdi/assign-timer-id -- one-shot test delay that is awaited, so there is nothing to cancel
       await new Promise<void>(resolve => setTimeout(resolve, 10));
     }
     // Without SIGPIPE suppression this write terminates the host.
@@ -116,7 +117,8 @@ describeIfNative('ChildProcess', () => {
   }, 5000);
 
   it('does not signal pids it did not spawn', async () => {
-    const native = require('valdi_cli/src/ChildProcessNative', true) as typeof import('valdi_cli/src/ChildProcessNative');
+    const native =
+      require('valdi_cli/src/ChildProcessNative', true) as typeof import('valdi_cli/src/ChildProcessNative');
     // The grandchild sleep outlives its parent shell and is never tracked by the native module.
     const started = await ChildProcess.run('/bin/sh', ['-c', 'sleep 5 >/dev/null 2>&1 & echo $!']);
     const untrackedPid = Number.parseInt(arrayToString(started.stdout).trim(), 10);

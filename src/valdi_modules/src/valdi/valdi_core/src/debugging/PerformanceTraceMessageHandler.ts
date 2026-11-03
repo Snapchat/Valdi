@@ -37,6 +37,7 @@ const defaultPerformanceTraceRuntime: PerformanceTraceRuntime = {
   isTracingSupported,
   nowMs: () => performance.now(),
   nowEpochMs: () => Date.now(),
+  // eslint-disable-next-line @snap/valdi/assign-timer-id -- the timer id is returned to the caller, which cancels it through cancelTimeout
   scheduleTimeout: (callback, timeoutMs) => setTimeout(callback, timeoutMs),
   startTraceRecording,
   stopTraceRecording: stopTraceRecordingWithStats,

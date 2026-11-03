@@ -34,10 +34,10 @@ describe('MessageChannel', () => {
     expect(Object.getOwnPropertyDescriptor(channel, 'port1')?.writable).toBeTrue();
     expect(Object.getOwnPropertyDescriptor(channel, 'port2')?.writable).toBeTrue();
     expect(Object.prototype.hasOwnProperty.call(channel.port1, 'postMessage')).toBeFalse();
-    expect(typeof Object.getPrototypeOf(channel.port1).postMessage).toBe('function');
+    expect(typeof (Object.getPrototypeOf(channel.port1) as { postMessage?: unknown }).postMessage).toBe('function');
     expect(channel.port1.onmessage).toBeNull();
 
-    const onmessage = () => {};
+    const onmessage = (): void => {};
     channel.port1.onmessage = onmessage;
     expect(channel.port1.onmessage).toBe(onmessage);
     channel.port1.onmessage = null;

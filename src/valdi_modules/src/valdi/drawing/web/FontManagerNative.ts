@@ -1,10 +1,9 @@
-import { IFontProvider } from 'valdi_tsx/src/IFontProvider';
 import { FontStyle, FontWeight } from '../src/DrawingModuleProvider';
 import { IFontManagerNative } from '../src/FontManagerNative';
 
-
 type FontKey = `${string}|${FontWeight}|${FontStyle}`;
 
+// eslint-disable-next-line @typescript-eslint/naming-convention -- brand property of the IFontManagerNative type
 const defaultManager: IFontManagerNative = { __tag: 'IFontProvider' };
 const registrations = new Map<
   FontKey,

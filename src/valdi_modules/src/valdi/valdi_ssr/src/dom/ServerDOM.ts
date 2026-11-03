@@ -40,7 +40,6 @@ export abstract class ServerNode {
 
   abstract readonly nodeType: number;
   abstract readonly nodeName: string;
-  abstract cloneNode(deep?: boolean): ServerNode;
 
   constructor(readonly ownerDocument: ServerDocument) {
     this.childNodes = new ServerNodeList(this.mutableChildNodes);
@@ -145,6 +144,7 @@ export abstract class ServerNode {
   }
 
   getRootNode(): ServerNode {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- loop accumulator starts at this; not a closure alias
     let root: ServerNode = this;
     while (root.parentNode) {
       root = root.parentNode;
@@ -162,6 +162,8 @@ export abstract class ServerNode {
   protected didMutate(): void {
     this.mutationTracker?.markMutation();
   }
+
+  abstract cloneNode(deep?: boolean): ServerNode;
 }
 
 export class ServerText extends ServerNode {
@@ -212,6 +214,10 @@ class ServerNamedNodeMap {
 class ServerClassList {
   constructor(private readonly element: ServerElement) {}
 
+  private get values(): Set<string> {
+    return new Set(this.element.className.split(/\s+/).filter(Boolean));
+  }
+
   add(...names: string[]): void {
     const values = this.values;
     for (let index = 0; index < names.length; index++) {
@@ -244,10 +250,6 @@ class ServerClassList {
     }
     this.element.className = Array.from(values).join(' ');
     return shouldAdd;
-  }
-
-  private get values(): Set<string> {
-    return new Set(this.element.className.split(/\s+/).filter(Boolean));
   }
 }
 
@@ -387,20 +389,8 @@ export class ServerElement extends ServerNode {
     return this.getAttribute('id') ?? '';
   }
 
-  set id(value: string) {
-    this.setAttribute('id', value);
-  }
-
   get className(): string {
     return this.getAttribute('class') ?? '';
-  }
-
-  set className(value: string) {
-    if (value) {
-      this.setAttribute('class', value);
-    } else {
-      this.removeAttribute('class');
-    }
   }
 
   get clientHeight(): number {
@@ -437,6 +427,18 @@ export class ServerElement extends ServerNode {
 
   get scrollWidth(): number {
     return this.offsetWidth;
+  }
+
+  set id(value: string) {
+    this.setAttribute('id', value);
+  }
+
+  set className(value: string) {
+    if (value) {
+      this.setAttribute('class', value);
+    } else {
+      this.removeAttribute('class');
+    }
   }
 
   override appendChild<T extends ServerNode>(child: T): T {
@@ -689,10 +691,7 @@ export class ServerShadowRoot extends ServerNode {
   readonly nodeName = '#document-fragment';
   activeElement: ServerElement | null = null;
 
-  constructor(
-    ownerDocument: ServerDocument,
-    readonly host: ServerElement,
-  ) {
+  constructor(ownerDocument: ServerDocument, readonly host: ServerElement) {
     super(ownerDocument);
   }
 
@@ -741,7 +740,7 @@ export class ServerImageElement extends ServerElement {
       set: value => {
         this.setAttribute('src', String(value));
         if (value) {
-          Promise.resolve().then(() => this.onload?.());
+          void Promise.resolve().then(() => this.onload?.());
         }
       },
     });

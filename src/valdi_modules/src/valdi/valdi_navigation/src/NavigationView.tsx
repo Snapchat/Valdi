@@ -1,6 +1,10 @@
+import { SerialTaskQueue } from 'coreutils/src/SerialTaskQueue';
+import { StringSet } from 'coreutils/src/StringSet';
+import { Lazy } from 'foundation/src/Lazy';
 import { StatefulComponent } from 'valdi_core/src/Component';
 import { parseComponentPath, resolveComponentConstructor } from 'valdi_core/src/ComponentPath';
 import { ComponentRef } from 'valdi_core/src/ComponentRef';
+import { Device } from 'valdi_core/src/Device';
 import { ElementRef } from 'valdi_core/src/ElementRef';
 import { IComponent } from 'valdi_core/src/IComponent';
 import { getModuleLoader } from 'valdi_core/src/ModuleLoaderGlobal';
@@ -8,13 +12,9 @@ import { Style } from 'valdi_core/src/Style';
 import { DefaultErrorBoundary } from 'valdi_core/src/debugging/DefaultErrorBoundary';
 import { onIdleInterruptible } from 'valdi_core/src/utils/OnIdle';
 import { when } from 'valdi_core/src/utils/When';
-import { SerialTaskQueue } from 'coreutils/src/SerialTaskQueue';
-import { StringSet } from 'coreutils/src/StringSet';
-import { Lazy } from 'foundation/src/Lazy';
+import { Layout, View } from 'valdi_tsx/src/NativeTemplateElements';
 import { INavigator, INavigatorPageConfig, JSOnlyINavigator } from './INavigator';
 import { NavigationPageContext } from './NavigationComponent';
-import { Layout, View } from 'valdi_tsx/src/NativeTemplateElements';
-import { Device } from 'valdi_core/src/Device';
 
 export interface NavigationViewContext {
   hideBackButton: boolean;
@@ -22,7 +22,9 @@ export interface NavigationViewContext {
 
 interface ReloadableComponentData {
   componentPath: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- reachable through NavigationView's public state type; narrowing it is a public API change
   viewModel: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- reachable through NavigationView's public state type; narrowing it is a public API change
   context: any;
 }
 
@@ -64,7 +66,7 @@ export class NavigationView extends StatefulComponent<NavigationViewModel, State
   private containerRef = new ElementRef<Layout>();
   private taskQueue = new SerialTaskQueue();
 
-  onCreate() {
+  onCreate(): void {
     const key = (++this.keySequence).toString();
     const navigator = new NavigationViewNavigator(this);
     const entry: ComponentStackEntry = {
@@ -88,7 +90,7 @@ export class NavigationView extends StatefulComponent<NavigationViewModel, State
     Device.setBackButtonObserver(this.onBackButtonPressed);
   }
 
-  onDestroy() {
+  onDestroy(): void {
     Device.setBackButtonObserver(undefined);
 
     for (const item of this.state.stack) {
@@ -96,7 +98,7 @@ export class NavigationView extends StatefulComponent<NavigationViewModel, State
     }
   }
 
-  onRender() {
+  onRender(): void {
     <view backgroundColor="white" width={'100%'} height={'100%'}>
       <layout style={style.itemContainer} ref={this.containerRef}>
         {this.renderNavigationStack()}
@@ -104,12 +106,65 @@ export class NavigationView extends StatefulComponent<NavigationViewModel, State
     </view>;
   }
 
-  private onBackButtonPressed = () => {
-    this.pop(true);
-    return true;
+  pushComponent(
+    componentPath: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- public method; the values come from the any-typed INavigatorPageConfig
+    viewModel: any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- public method; the values come from the any-typed INavigatorPageConfig
+    context: any,
+    title: string,
+    isModal: boolean,
+    isTransparent: boolean,
+    animated: boolean,
+  ): void {
+    const newEntry = this.makeEntry(componentPath, viewModel, context, title, isModal, isTransparent);
+
+    this.appendEntry(newEntry, animated);
   }
 
-  private renderNavigationStack() {
+  popToNavigator(navigator: INavigator, animated: boolean): void {
+    this.taskQueue.enqueueTask(done => {
+      const index = this.indexOfNavigator(navigator);
+      if (index > 0) {
+        this.doPop(this.state.stack[index], AnimationType.PUSH_POP, animated, done);
+      } else {
+        done();
+      }
+    });
+  }
+
+  dismissNavigator(navigator: INavigator, animated: boolean): void {
+    this.taskQueue.enqueueTask(done => {
+      let index = this.indexOfNavigator(navigator);
+
+      if (index < 0) {
+        done();
+        return;
+      }
+
+      while (index > 0 && !this.state.stack[index].isModal) {
+        index--;
+      }
+
+      this.doPop(this.state.stack[index], AnimationType.MODAL, animated, done);
+    });
+  }
+
+  pop(animated: boolean): void {
+    this.taskQueue.enqueueTask(done => {
+      if (this.state.stack.length > 1) {
+        const itemToRemove = this.getCurrentItem();
+        this.doPop(itemToRemove, AnimationType.PUSH_POP, animated, done);
+      }
+    });
+  }
+
+  private onBackButtonPressed = (): boolean => {
+    this.pop(true);
+    return true;
+  };
+
+  private renderNavigationStack(): void {
     const topItem = this.getCurrentItem();
     for (const item of this.state.stack) {
       <view key={item.key} style={style.item} ref={item.viewContainerRef}>
@@ -124,7 +179,7 @@ export class NavigationView extends StatefulComponent<NavigationViewModel, State
     }
   }
 
-  private setupItem(ref: ComponentRef<IComponent>) {
+  private setupItem(ref: ComponentRef<IComponent>): void {
     const component = ref.single();
     if (!component) {
       return;
@@ -141,21 +196,7 @@ export class NavigationView extends StatefulComponent<NavigationViewModel, State
     return this.state.stack[this.state.stack.length - 1];
   }
 
-  pushComponent(
-    componentPath: string,
-    viewModel: any,
-    context: any,
-    title: string,
-    isModal: boolean,
-    isTransparent: boolean,
-    animated: boolean,
-  ) {
-    const newEntry = this.makeEntry(componentPath, viewModel, context, title, isModal, isTransparent);
-
-    this.appendEntry(newEntry, animated);
-  }
-
-  private appendEntry(newEntry: ComponentStackEntry, animated: boolean) {
+  private appendEntry(newEntry: ComponentStackEntry, animated: boolean): void {
     this.taskQueue.enqueueTask(done => {
       if (animated && this.state.stack.length > 0) {
         const previousEntry = this.getCurrentItem();
@@ -185,7 +226,7 @@ export class NavigationView extends StatefulComponent<NavigationViewModel, State
     leftEntry: ComponentStackEntry,
     animationType: AnimationType,
     rightEntries: ComponentStackEntry[],
-  ) {
+  ): void {
     const containerFrame = this.containerRef.single()!.frame;
 
     for (const rightEntry of rightEntries) {
@@ -210,7 +251,7 @@ export class NavigationView extends StatefulComponent<NavigationViewModel, State
     leftEntry.occlusionViewRef.setAttribute('opacity', 0);
   }
 
-  private applyTransitionToState(leftEntry: ComponentStackEntry, rightEntries: ComponentStackEntry[]) {
+  private applyTransitionToState(leftEntry: ComponentStackEntry, rightEntries: ComponentStackEntry[]): void {
     const containerFrame = this.containerRef.single()!.frame;
 
     let hasModal = false;
@@ -238,8 +279,8 @@ export class NavigationView extends StatefulComponent<NavigationViewModel, State
 
   private makeEntry(
     componentPath: string,
-    viewModel: any,
-    context: any,
+    viewModel: object | undefined,
+    context: object | undefined,
     title: string,
     isModal: boolean,
     isTransparent: boolean,
@@ -272,7 +313,7 @@ export class NavigationView extends StatefulComponent<NavigationViewModel, State
     const contextWithNavigator = { ...context, navigator };
 
     const ref = new ComponentRef();
-    const renderFn = () => {
+    const renderFn = (): void => {
       <ctor.target context={contextWithNavigator} ref={ref} {...viewModel} />;
     };
 
@@ -306,44 +347,7 @@ export class NavigationView extends StatefulComponent<NavigationViewModel, State
     return -1;
   }
 
-  popToNavigator(navigator: INavigator, animated: boolean) {
-    this.taskQueue.enqueueTask(done => {
-      const index = this.indexOfNavigator(navigator);
-      if (index > 0) {
-        this.doPop(this.state.stack[index], AnimationType.PUSH_POP, animated, done);
-      } else {
-        done();
-      }
-    });
-  }
-
-  dismissNavigator(navigator: INavigator, animated: boolean) {
-    this.taskQueue.enqueueTask(done => {
-      let index = this.indexOfNavigator(navigator);
-
-      if (index < 0) {
-        done();
-        return;
-      }
-
-      while (index > 0 && !this.state.stack[index].isModal) {
-        index--;
-      }
-
-      this.doPop(this.state.stack[index], AnimationType.MODAL, animated, done);
-    });
-  }
-
-  pop(animated: boolean) {
-    this.taskQueue.enqueueTask(done => {
-      if (this.state.stack.length > 1) {
-        const itemToRemove = this.getCurrentItem();
-        this.doPop(itemToRemove, AnimationType.PUSH_POP, animated, done);
-      }
-    });
-  }
-
-  private doPop(atItem: ComponentStackEntry, animationType: AnimationType, animated: boolean, done: () => void) {
+  private doPop(atItem: ComponentStackEntry, animationType: AnimationType, animated: boolean, done: () => void): void {
     const itemsToRemove: ComponentStackEntry[] = [];
     const itemIndex = this.state.stack.indexOf(atItem);
     const newTopItem = this.state.stack[itemIndex - 1];
@@ -378,11 +382,11 @@ export class NavigationView extends StatefulComponent<NavigationViewModel, State
     }
   }
 
-  private teardownStackEntry(entry: ComponentStackEntry) {
+  private teardownStackEntry(entry: ComponentStackEntry): void {
     entry.hotReloadObserver?.();
   }
 
-  private rebuildStack() {
+  private rebuildStack(): void {
     const newStack: ComponentStackEntry[] = [];
 
     for (const entry of this.state.stack) {
@@ -408,7 +412,7 @@ export class NavigationView extends StatefulComponent<NavigationViewModel, State
     this.updateStackNonAnimated(newStack);
   }
 
-  private updateStackNonAnimated(newStack: ComponentStackEntry[]) {
+  private updateStackNonAnimated(newStack: ComponentStackEntry[]): void {
     this.renderer.batchUpdates(() => {
       this.setState({ stack: newStack });
 
@@ -456,18 +460,10 @@ const style = {
 };
 
 class NavigationViewNavigator implements INavigator, JSOnlyINavigator {
-  constructor(private navigationView: NavigationView) {}
-
-  // tslint:disable-next-line: variable-name
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- implements JSOnlyINavigator.__shouldDisableMakeOpaque
   __shouldDisableMakeOpaque = true;
 
-  private hasTransparentBackground(page: INavigatorPageConfig): boolean {
-    const componentContext = page.componentContext as NavigationPageContext;
-    if (!componentContext) {
-      return false;
-    }
-    return componentContext.pageNavigationOptions?.pageBackgroundColor === 'transparent';
-  }
+  constructor(private navigationView: NavigationView) {}
 
   pushComponent(page: INavigatorPageConfig, animated: boolean): void {
     this.navigationView.pushComponent(
@@ -485,12 +481,12 @@ class NavigationViewNavigator implements INavigator, JSOnlyINavigator {
     this.navigationView.popToNavigator(this, animated);
   }
 
-  popToRoot(animated: boolean): void {
+  popToRoot(): void {
     // TODO: Actual implementation. Could pop until the next isModal (without including it)
     throw new Error('popToRoot is not currently implemented in the desktop app navigation');
   }
 
-  popToSelf(animated: boolean): void {
+  popToSelf(): void {
     // TODO: Actual implementation.
     throw new Error('popToSelf is not currently implemented in the desktop app navigation');
   }
@@ -511,15 +507,23 @@ class NavigationViewNavigator implements INavigator, JSOnlyINavigator {
     this.navigationView.dismissNavigator(this, animated);
   }
 
-  forceDisableDismissalGesture(forceDisable: boolean): void {
+  forceDisableDismissalGesture(): void {
     console.error('forceDisableDismissalGesture is not implemented in the desktop app navigation');
   }
 
-  setBackButtonObserver(observer: (() => void) | undefined): void {
+  setBackButtonObserver(): void {
     // setBackButtonObserver is not implemented in the desktop app navigation
   }
 
-  setOnPausePopAfterDelay(delayMs: number | undefined): void {
+  setOnPausePopAfterDelay(): void {
     // setOnPausePopAfterDelay is not implemented in the desktop app navigation
+  }
+
+  private hasTransparentBackground(page: INavigatorPageConfig): boolean {
+    const componentContext = page.componentContext as NavigationPageContext;
+    if (!componentContext) {
+      return false;
+    }
+    return componentContext.pageNavigationOptions?.pageBackgroundColor === 'transparent';
   }
 }

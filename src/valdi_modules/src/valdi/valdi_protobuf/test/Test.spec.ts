@@ -1,8 +1,8 @@
+import { Base64 } from 'coreutils/src/Base64';
 import { Arena, DecodingMode } from 'valdi_protobuf/src/Arena';
 import { loadDescriptorPoolFromProtoFiles } from 'valdi_protobuf/src/ProtobufBuilder';
 import { IArena, IMessage } from 'valdi_protobuf/src/types';
 import 'jasmine/src/jasmine';
-import { Base64 } from 'coreutils/src/Base64';
 import { package_with_underscores, test } from './proto';
 
 interface MessageFactory<InterfaceType, MessageType> {

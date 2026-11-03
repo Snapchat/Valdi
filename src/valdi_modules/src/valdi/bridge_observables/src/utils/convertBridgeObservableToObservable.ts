@@ -20,11 +20,12 @@ export function convertBridgeObservableToObservable<T>(observable: BridgeObserva
         case BridgeObserverEvent.NEXT:
           subscriber.next(value);
           break;
-        case BridgeObserverEvent.ERROR:
-          const jsErr = new Error(error?.message)
+        case BridgeObserverEvent.ERROR: {
+          const jsErr = new Error(error?.message);
           jsErr.stack = error?.stack;
           subscriber.error(jsErr);
           break;
+        }
         case BridgeObserverEvent.COMPLETE:
           subscriber.complete();
           break;

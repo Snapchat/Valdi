@@ -8,7 +8,6 @@ import type {
 } from 'valdi_core/src/debugging/DebuggerProvider';
 import {
   ClientSQLDebugDatabase,
-  ClientSQLDebugValue,
   notifyClientSQLDebugChanged,
   registerClientSQLDebugDatabase,
   unregisterClientSQLDebugDatabase,
@@ -29,10 +28,11 @@ function utf8ByteLength(value: string): number {
     } else if (codeUnit <= 0x7ff) {
       bytes += 2;
     } else if (
-      codeUnit >= 0xd800 && codeUnit <= 0xdbff
-      && index + 1 < value.length
-      && value.charCodeAt(index + 1) >= 0xdc00
-      && value.charCodeAt(index + 1) <= 0xdfff
+      codeUnit >= 0xd800 &&
+      codeUnit <= 0xdbff &&
+      index + 1 < value.length &&
+      value.charCodeAt(index + 1) >= 0xdc00 &&
+      value.charCodeAt(index + 1) <= 0xdfff
     ) {
       bytes += 4;
       index += 1;
@@ -46,6 +46,7 @@ function utf8ByteLength(value: string): number {
 function makeDebugDatabase(id: string): ClientSQLDebugDatabase {
   const blob = new Uint8Array(8192);
   blob.fill(0xab);
+  /* eslint-disable @typescript-eslint/naming-convention -- keys mirror ClientSQLDebug's SQL column aliases */
   const debugRow: Record<string, unknown> = {
     __clientsql_value_0: '\u0000\u0001'.repeat(4096),
     __clientsql_type_0: 'text',
@@ -57,6 +58,7 @@ function makeDebugDatabase(id: string): ClientSQLDebugDatabase {
     __clientsql_type_2: 'blob',
     __clientsql_length_2: blob.byteLength,
   };
+  /* eslint-enable @typescript-eslint/naming-convention */
   return {
     id,
     name: 'Debug database',
@@ -68,16 +70,18 @@ function makeDebugDatabase(id: string): ClientSQLDebugDatabase {
         pendingChangedTables: PENDING_CHANGED_TABLES.slice(),
       });
     },
-    query<T>(sql: string, _parameters: ClientSQLDebugValue[] | undefined): Promise<T[]> {
+    query<T>(sql: string): Promise<T[]> {
       if (sql === 'PRAGMA user_version') {
         return Promise.resolve([{ user_version: 1 }] as unknown as T[]);
       }
       if (sql.indexOf('FROM sqlite_schema') !== -1) {
-        return Promise.resolve([{
-          name: 'sample',
-          type: 'table',
-          sql: 'CREATE TABLE sample(control TEXT, emoji TEXT, payload BLOB)',
-        }] as unknown as T[]);
+        return Promise.resolve([
+          {
+            name: 'sample',
+            type: 'table',
+            sql: 'CREATE TABLE sample(control TEXT, emoji TEXT, payload BLOB)',
+          },
+        ] as unknown as T[]);
       }
       if (sql.indexOf('FROM pragma_table_info') !== -1) {
         return Promise.resolve([
@@ -154,8 +158,7 @@ describe('ClientSQLDebug', () => {
     expect(Array.isArray(listResponse.databases)).toBe(true);
     expect(utf8ByteLength(listDocument)).toBeLessThanOrEqual(40 * 1024);
     const listTruncation = listResponse.truncation as Record<string, unknown>;
-    expect(listTruncation.payloadBytes)
-      .toBe(utf8ByteLength(listDocument));
+    expect(listTruncation.payloadBytes).toBe(utf8ByteLength(listDocument));
     expect(listTruncation.omittedValues).toBe(1);
     expect(listTruncation.reasons).toContain('collectionValues');
     expect((listTruncation.limits as Record<string, unknown>).collectionItems).toBe(100);
@@ -168,13 +171,15 @@ describe('ClientSQLDebug', () => {
     expect(databaseTruncation.omittedValues).toBe(1);
     expect(databaseTruncation.reasons).toContain('collectionValues');
 
-    const blobDocument = (await provider.handleRequest({
-      action: 'table',
-      databaseId: `target:${database.id}`,
-      table: 'sample',
-      limit: 1,
-      offset: 0,
-    })).json;
+    const blobDocument = (
+      await provider.handleRequest({
+        action: 'table',
+        databaseId: `target:${database.id}`,
+        table: 'sample',
+        limit: 1,
+        offset: 0,
+      })
+    ).json;
     expect(blobDocument).toContain('"encoding":"hex"');
     const blobResponse = JSON.parse(blobDocument) as Record<string, unknown>;
     const blobColumns = blobResponse.columns as Array<Record<string, unknown>>;
@@ -183,20 +188,22 @@ describe('ClientSQLDebug', () => {
     expect(Array.isArray(blobRows[0])).toBe(true);
     expect(blobDocument).not.toContain(`"${LONG_COLUMN_NAME}":`);
 
-    const tableDocument = (await provider.handleRequest({
-      action: 'table',
-      databaseId: `target:${database.id}`,
-      table: 'sample',
-      limit: 100,
-      offset: 0,
-    })).json;
+    const tableDocument = (
+      await provider.handleRequest({
+        action: 'table',
+        databaseId: `target:${database.id}`,
+        table: 'sample',
+        limit: 100,
+        offset: 0,
+      })
+    ).json;
     const tableResponse = JSON.parse(tableDocument) as Record<string, unknown>;
     expect(utf8ByteLength(tableDocument)).toBeLessThanOrEqual(40 * 1024);
-    expect((tableResponse.truncation as Record<string, unknown>).payloadBytes)
-      .toBe(utf8ByteLength(tableDocument));
+    expect((tableResponse.truncation as Record<string, unknown>).payloadBytes).toBe(utf8ByteLength(tableDocument));
     expect(tableDocument).not.toContain('[object ArrayBuffer]');
-    await expectAsync(provider.handleRequest({ action: 'write' }) as Promise<unknown>)
-      .toBeRejectedWithError(/Unsupported ClientSQL debugger action/);
+    await expectAsync(provider.handleRequest({ action: 'write' }) as Promise<unknown>).toBeRejectedWithError(
+      /Unsupported ClientSQL debugger action/,
+    );
 
     notifyClientSQLDebugChanged(database.id);
     expect(notifyChange).toHaveBeenCalled();

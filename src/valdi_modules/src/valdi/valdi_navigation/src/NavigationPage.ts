@@ -1,6 +1,8 @@
 import { IComponent } from 'valdi_core/src/IComponent';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- exported type; narrowing it is a public API change
 export type AnyFunction<A = any> = (...input: any[]) => A;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- exported type; narrowing it is a public API change
 export type AnyConstructor<A = object> = new (...input: any[]) => A;
 
 export type Mixin<T extends AnyFunction> = InstanceType<ReturnType<T>>;
@@ -21,11 +23,11 @@ export const NavigationPage =
     Object.defineProperty(newClass, 'componentPath', {
       enumerable: false,
       get() {
-        const exports = module.exports as any;
+        const exports = module.exports as Record<string, unknown>;
         for (const exportedPropertyName in exports) {
           const property = exports[exportedPropertyName];
 
-          if (newClass === property || Object.prototype.isPrototypeOf.call(newClass, property)) {
+          if (newClass === property || Object.prototype.isPrototypeOf.call(newClass, property as object)) {
             return `${exportedPropertyName}@${module.path}`;
           }
         }

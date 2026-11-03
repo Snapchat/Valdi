@@ -4,6 +4,7 @@ const encUtf8 = new TextEncoder();
 const decUtf8 = new TextDecoder();
 
 /** UTF-16LE encode/decode (simple, BOM-less) */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- UTF-16 encoder kept alongside decodeUtf16LE for utf16 writes
 function encodeUtf16LE(str: string): Uint8Array {
   const out = new Uint8Array(str.length * 2);
   for (let i = 0; i < str.length; i++) {
@@ -14,7 +15,7 @@ function encodeUtf16LE(str: string): Uint8Array {
   return out;
 }
 function decodeUtf16LE(buf: Uint8Array): string {
-  let s = "";
+  let s = '';
   const len = buf.length & ~1; // even length
   for (let i = 0; i < len; i += 2) {
     s += String.fromCharCode(buf[i] | (buf[i + 1] << 8));
@@ -22,21 +23,24 @@ function decodeUtf16LE(buf: Uint8Array): string {
   return s;
 }
 
-const ROOT = "/";
+const ROOT = '/';
 function norm(p: string): string {
   // POSIX-like normalization; treat relative as from ROOT
-  const parts = (p.startsWith("/") ? p : ROOT + p).split("/").filter(Boolean);
+  const parts = (p.startsWith('/') ? p : ROOT + p).split('/').filter(Boolean);
   const stack: string[] = [];
   for (const part of parts) {
-    if (part === ".") continue;
-    if (part === "..") { stack.pop(); continue; }
+    if (part === '.') continue;
+    if (part === '..') {
+      stack.pop();
+      continue;
+    }
     stack.push(part);
   }
-  return ROOT + stack.join("/");
+  return ROOT + stack.join('/');
 }
 function parentDir(p: string): string {
   if (p === ROOT) return ROOT;
-  const idx = p.lastIndexOf("/");
+  const idx = p.lastIndexOf('/');
   return idx > 0 ? p.slice(0, idx) : ROOT;
 }
 
@@ -44,10 +48,10 @@ function parentDir(p: string): string {
 
 const dirs = new Set<string>([ROOT]);
 const files = new Map<string, Uint8Array>();
-let CWD = ROOT;
+const CWD = ROOT;
 
 function toBytes(data: WriteFileData): Uint8Array {
-  if (typeof data === "string") return encUtf8.encode(data);
+  if (typeof data === 'string') return encUtf8.encode(data);
   if (data instanceof Uint8Array) return data.slice();
   return new Uint8Array(data).slice();
 }
@@ -68,13 +72,13 @@ const fsStub: FileSystemModule = {
       let removed = false;
       // remove all nested files/dirs
       for (const f of Array.from(files.keys())) {
-        if (f === p || f.startsWith(p + "/")) {
+        if (f === p || f.startsWith(p + '/')) {
           files.delete(f);
           removed = true;
         }
       }
       for (const d of Array.from(dirs.values())) {
-        if (d !== ROOT && (d === p || d.startsWith(p + "/"))) {
+        if (d !== ROOT && (d === p || d.startsWith(p + '/'))) {
           dirs.delete(d);
           removed = true;
         }
@@ -111,8 +115,8 @@ const fsStub: FileSystemModule = {
     const buf = files.get(p) ?? new Uint8Array(0);
 
     const enc = options?.encoding;
-    if (enc === "utf8") return decUtf8.decode(buf);
-    if (enc === "utf16") return decodeUtf16LE(buf);
+    if (enc === 'utf8') return decUtf8.decode(buf);
+    if (enc === 'utf16') return decodeUtf16LE(buf);
     // undefined/null => raw bytes
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   },

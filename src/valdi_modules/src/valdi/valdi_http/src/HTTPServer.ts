@@ -101,10 +101,7 @@ class HTTPServerResponseStreamImpl implements HTTPServerResponseStream {
   private closeListeners: Array<() => void> = [];
   private isClosed = false;
 
-  constructor(
-    private readonly connection: TCPSocketConnection,
-    private readonly didClose: () => void,
-  ) {}
+  constructor(private readonly connection: TCPSocketConnection, private readonly didClose: () => void) {}
 
   get closed(): boolean {
     return this.isClosed;
@@ -271,10 +268,7 @@ export class HTTPServer {
   private readonly maxHeaderBytes: number;
   private readonly maxBodyBytes: number;
 
-  constructor(
-    private readonly handler: HTTPServerHandler,
-    private readonly options: HTTPServerOptions = {},
-  ) {
+  constructor(private readonly handler: HTTPServerHandler, private readonly options: HTTPServerOptions = {}) {
     this.maxHeaderBytes = options.maxHeaderBytes ?? DEFAULT_MAX_HEADER_BYTES;
     this.maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
   }
@@ -419,15 +413,15 @@ export class HTTPServer {
     const body = buffer.slice(bodyStart, requestEnd);
     state.readOffset = requestEnd;
     this.compactConsumedBytes(state);
-    const target = requestParts[1]!;
+    const target = requestParts[1];
     const parsedTarget = parseTarget(target);
     const request: HTTPServerRequest = {
       clientId,
-      method: requestParts[0]!,
+      method: requestParts[0],
       target,
       path: parsedTarget.path,
       queryString: parsedTarget.queryString,
-      version: requestParts[2]!,
+      version: requestParts[2],
       headers,
       body,
     };

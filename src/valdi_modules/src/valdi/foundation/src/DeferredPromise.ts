@@ -56,7 +56,7 @@ export class DeferredPromise<T> implements PromiseLike<T> {
   /**
    * Prevents multiple resolutions and clears any active timeout.
    */
-  private finalize(callback: Function, arg: any, state: DeferredPromiseState) {
+  private finalize(callback: (arg: any) => void, arg: any, state: DeferredPromiseState) {
     if (this._state !== 'pending') return;
     this._state = state;
 

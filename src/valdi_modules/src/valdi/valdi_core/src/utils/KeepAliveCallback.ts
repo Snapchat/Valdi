@@ -17,7 +17,7 @@ export function endKeepAlive(keepAlive: KeepAlive) {
  * so that the main JS task queue doesn't get empty, which would make the CLI exit.
  */
 export function makeKeepAliveCallback<F extends AnyFunction>(callback: F): F {
-  let keepAlive = beginKeepAlive();
+  const keepAlive = beginKeepAlive();
 
   const fn: F = function (this: any, ...args: Parameters<F>): ReturnType<F> {
     endKeepAlive(keepAlive);

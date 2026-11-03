@@ -1,6 +1,7 @@
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment -- this web test is not type-checked against the protobuf-ts runtime typings
 // @ts-nocheck
-import { getLoadedDescriptorDatabase } from './DescriptorDatabaseTestUtils';
 import { ScalarType } from '@protobuf-ts/runtime';
+import { getLoadedDescriptorDatabase } from './DescriptorDatabaseTestUtils';
 
 describe('DescriptorDatabase', () => {
   it('can load type names', () => {

@@ -17,9 +17,9 @@ interface ArgumentInner {
   readonly description: string;
   readonly required: boolean;
   readonly type: ArgumentType;
-  readonly parser?: (value: string) => any;
+  readonly parser?: (value: string) => unknown;
 
-  readonly valueContainer: Argument<any>;
+  readonly valueContainer: Argument<unknown>;
 }
 
 export class ArgumentsParser {
@@ -80,14 +80,39 @@ export class ArgumentsParser {
     return this.add(name, description, required);
   }
 
+  printDescription(): void {
+    const prefix = `usage: ${this.programName} `;
+    console.info(prefix);
+
+    let indent = '';
+    while (indent.length < prefix.length) {
+      indent += ' ';
+    }
+
+    for (const argument of this.arguments) {
+      console.info(`${indent}${argument.name}: ${argument.description}`);
+    }
+  }
+
+  parse(): void {
+    try {
+      this.doParseArguments(this.programArguments);
+      this.checkForMissingArguments();
+    } catch (err: unknown) {
+      this.printDescription();
+      console.error((err as Error).message);
+      throw err;
+    }
+  }
+
   private doAdd(
-    argument: Argument<any>,
+    argument: Argument<unknown>,
     type: ArgumentType,
     name: string,
     description: string,
     required: boolean,
-    parser?: (value: string) => any,
-  ) {
+    parser?: (value: string) => unknown,
+  ): void {
     if (this.argumentByName[name]) {
       throw new Error(`Duplicate argument ${name}`);
     }
@@ -105,21 +130,7 @@ export class ArgumentsParser {
     this.argumentByName[name] = innerArgument;
   }
 
-  printDescription() {
-    const prefix = `usage: ${this.programName} `;
-    console.info(prefix);
-
-    let indent = '';
-    while (indent.length < prefix.length) {
-      indent += ' ';
-    }
-
-    for (const argument of this.arguments) {
-      console.info(`${indent}${argument.name}: ${argument.description}`);
-    }
-  }
-
-  private doParseArguments(programArguments: string[]) {
+  private doParseArguments(programArguments: string[]): void {
     const args = programArguments.slice();
     // Ignore first argument
     args.shift();
@@ -142,12 +153,12 @@ export class ArgumentsParser {
           throw new Error(`Missing argument value for ${name}`);
         }
 
-        let value: any;
+        let value: unknown;
         const argumentValue = args.shift()!;
         if (argument.parser) {
           try {
             value = argument.parser(argumentValue);
-          } catch (err: any) {
+          } catch (err: unknown) {
             console.error(`Failed to parse argument ${argument.name}: ${err}`);
             console.error('Passed value:', argumentValue);
             throw err;
@@ -166,7 +177,7 @@ export class ArgumentsParser {
             argument.valueContainer.value = [];
           }
 
-          argument.valueContainer.value.push(value);
+          (argument.valueContainer.value as unknown[]).push(value);
         } else {
           throw new Error('Unrecognized argumenet type');
         }
@@ -174,22 +185,11 @@ export class ArgumentsParser {
     }
   }
 
-  private checkForMissingArguments() {
+  private checkForMissingArguments(): void {
     for (const argument of this.arguments) {
       if (argument.required && !argument.valueContainer.isSet) {
         throw new Error(`Argument ${argument.name} is required but was not provided`);
       }
-    }
-  }
-
-  parse() {
-    try {
-      this.doParseArguments(this.programArguments);
-      this.checkForMissingArguments();
-    } catch (err: any) {
-      this.printDescription();
-      console.error(err.message);
-      throw err;
     }
   }
 }

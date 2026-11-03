@@ -7,6 +7,7 @@ import {
   HTTPServerResponseStream,
   TCPSocketConnection,
   TCPSocketModule,
+  TCPSocketServer,
   TCPSocketServerListeners,
 } from 'valdi_http/src/HTTPServer';
 
@@ -18,6 +19,10 @@ class FakeConnection implements TCPSocketConnection {
   readonly sent: string[] = [];
   closedWith: string | undefined;
 
+  get output(): string {
+    return this.sent.join('');
+  }
+
   send(data: Uint8Array | string): void {
     this.sent.push(typeof data === 'string' ? data : decoder.decode(data.slice().buffer));
   }
@@ -25,17 +30,13 @@ class FakeConnection implements TCPSocketConnection {
   close(error: string): void {
     this.closedWith = error;
   }
-
-  get output(): string {
-    return this.sent.join('');
-  }
 }
 
 class FakeSocketModule implements TCPSocketModule {
   listeners: TCPSocketServerListeners = {};
   stopped = false;
 
-  createServer(_port: number, _protocol: string, listeners: TCPSocketServerListeners) {
+  createServer(_port: number, _protocol: string, listeners: TCPSocketServerListeners): TCPSocketServer {
     this.listeners = listeners;
     return {
       start: () => {},
@@ -158,10 +159,10 @@ describe('HTTPServer', () => {
 
     // Only the first request is in flight; the second waits for its response.
     expect(pending.length).toBe(1);
-    pending[0]!();
+    pending[0]();
     await settle();
     expect(pending.length).toBe(2);
-    pending[1]!();
+    pending[1]();
     await settle();
 
     const output = connection.output;
@@ -172,9 +173,7 @@ describe('HTTPServer', () => {
   it('holds the next pipelined request until a streamed response closes', async () => {
     let stream: HTTPServerResponseStream | undefined;
     await startServer(request =>
-      request.path === '/stream'
-        ? { statusCode: 200, stream: s => (stream = s) }
-        : { statusCode: 200, body: 'after' },
+      request.path === '/stream' ? { statusCode: 200, stream: s => (stream = s) } : { statusCode: 200, body: 'after' },
     );
     const connection = socket.connect(1);
     socket.send(1, 'GET /stream HTTP/1.1\r\n\r\nGET /next HTTP/1.1\r\n\r\n');

@@ -1,12 +1,12 @@
+import 'jasmine/src/jasmine';
 import { buildModuleWithResolver } from 'valdi_core/src/LocalizableStrings';
 import { IUnparsedLocalizableStringResolver } from 'valdi_core/src/localization/IUnparsedLocalizableStringResolver';
-import { LocalizableStringParameterType } from 'valdi_core/src/localization/LocalizableString';
-import 'jasmine/src/jasmine';
 import {
   InlineUnparsedLocalizableStringResolver,
   LocalizationJsonFile,
 } from 'valdi_core/src/localization/InlineUnparsedLocalizableStringResolver';
 import { Locale } from 'valdi_core/src/localization/Locale';
+import { LocalizableStringParameterType } from 'valdi_core/src/localization/LocalizableString';
 
 function makeUnparsedLocalizableStringResolver(
   localization: Map<string, string>,
