@@ -9073,6 +9073,82 @@ TEST_P(RuntimeFixture, showStackTraceResponsibleForEmittingDanglingReference) {
     ASSERT_EQ(static_cast<size_t>(1), messageHandler->messages().debugMessages.size());
 }
 
+TEST_P(RuntimeFixture, namesUnlabeledScopedRuntimeTaskAfterItsScopeForANRAttribution) {
+    wrapper.teardown();
+    auto tweaks = makeShared<TestTweakValueProvider>().toShared();
+    tweaks->config.setMapValue("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS", Value(true));
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, tweaks);
+    auto* runtime = wrapper.runtime->getJavaScriptRuntime();
+    auto objectsManager = runtime->createNativeObjectsManager("MyFeature.MyCallsite");
+
+    auto getStringAsyncFn = getJsModulePropertyWithSchema(
+        wrapper.runtime, objectsManager, nullptr, "test/src/Promise", "getStringAsync", "f(): p<s>");
+    ASSERT_TRUE(getStringAsyncFn) << getStringAsyncFn.description();
+    auto callResult = getStringAsyncFn.value().getFunction()->call(ValueFunctionFlagsPropagatesError, {});
+    ASSERT_TRUE(callResult) << callResult.description();
+    auto promise = callResult.value().getTypedRef<Promise>();
+    ASSERT_NE(nullptr, promise);
+
+    // The completion runs in an unlabeled task owned by the scoped runtime's context.
+    std::promise<std::string> completionInfo;
+    promise->onComplete([&](const Result<Value>&) { completionInfo.set_value(runtime->getANRAttributionInfo()); });
+    auto completionFuture = completionInfo.get_future();
+    ASSERT_EQ(std::future_status::ready, completionFuture.wait_for(std::chrono::seconds(30)));
+    EXPECT_EQ(" [stuck-in: MyFeature.MyCallsite]", completionFuture.get());
+
+    runtime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("test.barrier"), [](auto&) {});
+    EXPECT_EQ("", runtime->getANRAttributionInfo());
+}
+
+TEST_P(RuntimeFixture, leadsScopedRuntimeANRAttributionWithItsScope) {
+    wrapper.teardown();
+    auto tweaks = makeShared<TestTweakValueProvider>().toShared();
+    tweaks->config.setMapValue("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS", Value(true));
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, tweaks);
+    auto* runtime = wrapper.runtime->getJavaScriptRuntime();
+    auto objectsManager = runtime->createNativeObjectsManager("MyFeature.MyCallsite");
+
+    auto receiveError = getJsModulePropertyAsUntypedFunction(
+        wrapper.runtime, objectsManager, "test/src/ErrorPropagation", "receiveError");
+    ASSERT_TRUE(receiveError) << receiveError.description();
+
+    std::string attribution;
+    auto callback = makeShared<ValueFunctionWithCallable>([&](const auto&) {
+        ScopedNativeCallActivity activity(runtime, STRING_LITERAL("test.nativeWork"));
+        attribution = runtime->getANRAttributionInfo();
+        return Value::undefined();
+    });
+    auto result = receiveError.value()->call(ValueFunctionFlagsCallSync, {Value(callback)});
+    ASSERT_TRUE(result) << result.description();
+
+    EXPECT_NE(std::string::npos, attribution.find("[stuck-in: test.nativeWork]")) << attribution;
+    EXPECT_NE(std::string::npos, attribution.find("[attribution: MyFeature.MyCallsite -> ")) << attribution;
+}
+
+TEST_P(RuntimeFixture, dropsScopedRuntimeANRAttributionWhenANestedCallReturns) {
+    wrapper.teardown();
+    auto tweaks = makeShared<TestTweakValueProvider>().toShared();
+    tweaks->config.setMapValue("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS", Value(true));
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, tweaks);
+    auto* runtime = wrapper.runtime->getJavaScriptRuntime();
+    auto objectsManager = runtime->createNativeObjectsManager("MyFeature.MyCallsite");
+
+    auto receiveError = getJsModulePropertyAsUntypedFunction(
+        wrapper.runtime, objectsManager, "test/src/ErrorPropagation", "receiveError");
+    ASSERT_TRUE(receiveError) << receiveError.description();
+
+    // An unlabeled task that calls into the scoped runtime keeps running after the call returns.
+    std::string attribution;
+    runtime->dispatchOnJsThreadSync(Ref<Context>(), [&](auto&) {
+        auto callback = makeShared<ValueFunctionWithCallable>([](const auto&) { return Value::undefined(); });
+        auto result = receiveError.value()->call(ValueFunctionFlagsCallSync, {Value(callback)});
+        ASSERT_TRUE(result) << result.description();
+        attribution = runtime->getANRAttributionInfo();
+    });
+
+    EXPECT_EQ("", attribution);
+}
+
 TEST_P(RuntimeFixture, scopeNameAppearsInDisposedReferenceError) {
     auto messageHandler = makeShared<MockRuntimeMessageHandler>();
     wrapper.runtime->setRuntimeMessageHandler(messageHandler);

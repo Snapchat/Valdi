@@ -4508,16 +4508,27 @@ JavaScriptANRAttribution JavaScriptRuntime::swapANRAttribution(JavaScriptANRAttr
     return attribution;
 }
 
-Shared<const JavaScriptANRAttribution> JavaScriptRuntime::captureANRAttribution(const StringBox& dispatchAttribution) {
+Shared<const JavaScriptANRAttribution> JavaScriptRuntime::captureANRAttribution(const Context& ownerContext,
+                                                                               const StringBox& dispatchAttribution) {
     if (!anrDiagnosticsEnabled()) {
         return nullptr;
     }
 
     JavaScriptANRAttribution attribution;
+    StringBox dispatcherScopeName;
     // Another thread submitting work is not a child of the task currently running on this runtime.
     if (isInJsThread()) {
         std::lock_guard<Mutex> lock(_nativeCallActivityMutex);
         attribution = _anrAttribution;
+        auto* dispatcherContext = ContextBase::current();
+        if (dispatcherContext != nullptr) {
+            dispatcherScopeName = dispatcherContext->getScopeName();
+        }
+    }
+    // A scoped runtime's scope name is the owner label its creator passed in. Record it where work enters
+    // the runtime, not on every task the runtime dispatches to itself.
+    if (ownerContext.getScopeName() != dispatcherScopeName) {
+        attribution.push(ownerContext.getScopeName());
     }
     attribution.push(dispatchAttribution);
     if (attribution.empty()) {
@@ -4564,6 +4575,7 @@ DispatchFunction JavaScriptRuntime::makeJsThreadDispatchFunction(Ref<Context>&& 
                                                                  JavaScriptThreadTask&& jsTask,
                                                                  StringBox dispatchAttribution) {
     SC_ASSERT(ownerContext != nullptr);
+    auto attribution = captureANRAttribution(*ownerContext, dispatchAttribution);
     return [this,
             // Retain the runtime for the task's lifetime so an in-flight JS-thread task can't have a
             // member freed under it by a runtime whose last external ref was dropped on another thread.
@@ -4575,7 +4587,7 @@ DispatchFunction JavaScriptRuntime::makeJsThreadDispatchFunction(Ref<Context>&& 
             retainedContext = RetainedContext(std::move(ownerContext)),
             jsTask = std::move(jsTask),
             callbackAttribution = anrDiagnosticsActiveOnJsThread() ? _callbackAttribution : StringBox(),
-            attribution = captureANRAttribution(dispatchAttribution)]() {
+            attribution = std::move(attribution)]() {
         if (_hostTornDown) {
             return;
         }

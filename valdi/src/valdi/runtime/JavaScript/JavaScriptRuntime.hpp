@@ -807,7 +807,8 @@ private:
     JavaScriptANRAttribution::RestoreToken pushNativeCallActivity(const StringBox& name);
     void popNativeCallActivity(JavaScriptANRAttribution::RestoreToken token);
     JavaScriptANRAttribution swapANRAttribution(JavaScriptANRAttribution attribution);
-    Shared<const JavaScriptANRAttribution> captureANRAttribution(const StringBox& dispatchAttribution);
+    Shared<const JavaScriptANRAttribution> captureANRAttribution(const Context& ownerContext,
+                                                                 const StringBox& dispatchAttribution);
 
     void dispatchOnJsThreadImpl(Ref<Context> ownerContext,
                                 JavaScriptTaskScheduleType scheduleType,
