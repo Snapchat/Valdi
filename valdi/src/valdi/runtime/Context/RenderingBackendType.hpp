@@ -11,7 +11,12 @@
 
 namespace Valdi {
 
-enum RenderingBackendType { RenderingBackendTypeNative, RenderingBackendTypeSnapDrawing, RenderingBackendTypeUnset };
+enum RenderingBackendType {
+    RenderingBackendTypeNative,
+    RenderingBackendTypeSnapDrawing,
+    RenderingBackendTypeTerminal,
+    RenderingBackendTypeUnset
+};
 
 const StringBox& getBackendString(RenderingBackendType type);
 
