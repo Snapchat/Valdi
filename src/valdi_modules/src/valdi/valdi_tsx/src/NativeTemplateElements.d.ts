@@ -2193,7 +2193,7 @@ export interface ScrollViewInteractive extends ScrollView {
   nativeStickyOffset?: number;
 }
 
-// @NativeTemplateElement({ios: 'SCValdiSpinnerView', android: 'com.snap.valdi.views.ValiSpinnerView', jsx: 'spinner'})
+// @NativeTemplateElement({ios: 'SCValdiSpinnerView', android: 'com.snap.valdi.views.ValdiSpinnerView', jsx: 'spinner'})
 export interface SpinnerView extends _SpinnerView, LeafView {
   /**
    * Color of the spinning shape

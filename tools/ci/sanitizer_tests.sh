@@ -4,8 +4,9 @@
 # teardown / threading / renderer memory-safety bugs (use-after-free, heap corruption) that a
 # normal optimized build hides.
 #
-# Slow by design: ASan is a full instrumented build and is not remotely cached, so this runs
-# nightly (and on manual dispatch), never on every PR. Hermes is excluded -- its parser trips a
+# Slow by design: ASan is a full instrumented build. It runs nightly, on main, on manual dispatch,
+# and on PRs that touch the code these targets build from (see the trigger paths in
+# valdi-sanitizer-tests.yml); unrelated PRs skip it. Hermes is excluded -- its parser trips a
 # benign stack-use-after-scope under ASan; the QuickJS engines exercise the ThreadedDispatchQueue
 # teardown paths that matter here.
 
