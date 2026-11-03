@@ -43,6 +43,7 @@ private:
 
     Value createRoot(const ValueFunctionCallContext& callContext);
     Value destroyRoot(const ValueFunctionCallContext& callContext);
+    Value finishRoot(const ValueFunctionCallContext& callContext);
     Value observeFrame(const ValueFunctionCallContext& callContext);
     Value setSize(const ValueFunctionCallContext& callContext);
     Value feedInput(const ValueFunctionCallContext& callContext);
