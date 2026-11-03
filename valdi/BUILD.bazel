@@ -1102,6 +1102,7 @@ valdi_test(
 valdi_test(
     name = "test_terminal",
     srcs = glob(["test/terminal/**/*.cpp"]),
+    hdrs = glob(["test/terminal/**/*.hpp"]),
     deps = [
         ":test_utils",
         ":valdi_terminal",
