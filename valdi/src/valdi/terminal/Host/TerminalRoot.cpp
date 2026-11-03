@@ -261,6 +261,10 @@ void TerminalRoot::writeAbove(std::vector<std::string> lines) {
     }
     {
         std::lock_guard<RecursiveMutex> guard(_mutex);
+        // A finished output has already been left in its final state, and no later paint would drain these.
+        if (_finished) {
+            return;
+        }
         _pendingAbove.insert(
             _pendingAbove.end(), std::make_move_iterator(lines.begin()), std::make_move_iterator(lines.end()));
     }
@@ -269,6 +273,9 @@ void TerminalRoot::writeAbove(std::vector<std::string> lines) {
 
 void TerminalRoot::clear() {
     std::lock_guard<RecursiveMutex> guard(_mutex);
+    if (_destroyed || _finished) {
+        return;
+    }
     _writer.clear();
     _sink->flush();
 }

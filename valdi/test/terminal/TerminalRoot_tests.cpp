@@ -478,6 +478,7 @@ TEST(TerminalRoot, clippedSingleLineLabelsCutAtTheWidthWithoutAnEllipsis) {
     f.append(f.rootNode, label);
     render(f);
     ASSERT_EQ((Lines{"hello wo"}), f.sink->lastPlainLines());
+}
 
 TEST(TerminalRoot, writesQueuedLinesAboveTheLiveFrameOnce) {
     TerminalTreeFixture f;
@@ -501,6 +502,44 @@ TEST(TerminalRoot, clearErasesTheLiveFrameFromTheSink) {
     const auto before = f.sink->output().size();
     f.root->clear();
     ASSERT_GT(f.sink->output().size(), before);
+}
+
+TEST(TerminalRoot, clearAndWriteAboveAreNoOpsAfterFinish) {
+    TerminalTreeFixture f;
+    addLabel(f, f.rootNode, "live", 1);
+    render(f);
+    f.root->finish();
+    const auto before = f.sink->output();
+
+    f.root->clear();
+    f.root->writeAbove({"late"});
+    f.mainQueue->flush();
+    f.root->paintNow();
+
+    ASSERT_EQ(before, f.sink->output());
+}
+
+TEST(TerminalRoot, clearAndWriteAboveAreNoOpsAfterDestroy) {
+    TerminalTreeFixture f;
+    addLabel(f, f.rootNode, "live", 1);
+    render(f);
+    f.root->destroy();
+    const auto before = f.sink->output();
+
+    f.root->clear();
+    f.root->writeAbove({"late"});
+    f.mainQueue->flush();
+
+    ASSERT_EQ(before, f.sink->output());
+}
+
+TEST(TerminalRoot, writeAboveQueuedBeforeFinishIsFlushedByTheFinalFrame) {
+    TerminalTreeFixture f;
+    addLabel(f, f.rootNode, "live", 1);
+    render(f);
+    f.root->writeAbove({"last words"});
+    f.root->finish();
+    ASSERT_NE(std::string::npos, f.sink->output().find("last words\n"));
 }
 
 } // namespace ValdiTest
