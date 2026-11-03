@@ -8,9 +8,39 @@ same flexbox engine that Valdi uses on device, measured in terminal cells, and p
 as ANSI text. Each state change redraws the previous frame in place.
 
 A terminal application is a [CLI application](./workflow-cli-application.md): it is
-built with `valdi_cli_application()` and runs under the standalone runtime. The runtime
-has to link the native terminal backend (`//valdi:valdi_terminal`), which provides the
-view classes `valdi_tui` renders into.
+built with `valdi_cli_application()` and runs under the standalone runtime. Pass
+`terminal = True` to opt in:
+
+```python
+valdi_cli_application(
+    name = "my_tui_app",
+    script_path = "my_tui/index",
+    terminal = True,
+    deps = [":my_tui"],
+)
+```
+
+`terminal = True` links the native terminal backend (`//valdi:valdi_terminal`), registers it
+with the runtime, runs the JS runtime as macOS or Linux, and has the host take ownership of the
+terminal while a `tty` root is on screen (raw mode, keyboard input, resize, Ctrl+C) and restore
+it however the process ends. Linking the backend is not enough: without `terminal = True`
+`render()` fails with "valdi_tui needs the native terminal backend". An application built
+without it links no terminal code at all.
+
+## Run the example
+
+```sh
+bazel run //apps/tui_example:tui_example_app
+```
+
+![The example app: a bordered header with a spinner, a task list driven by the arrow keys, a typed note, and a log written above the live frame](./assets/workflow-terminal-ui/demo.gif)
+
+The recording is also available as an [asciicast](./assets/workflow-terminal-ui/demo.cast) for `asciinema play`.
+
+Use the arrow keys to move, type a note and press Enter to log it, and Esc or Ctrl+C to
+quit. Running the same binary with stdout redirected to a file or pipe prints a single frame
+and exits. The example's tests (`tui_example_smoke_test` and `tui_example_pty_test`) run it
+without and inside a pseudo terminal.
 
 ## Building blocks
 
@@ -87,8 +117,15 @@ void instance.waitUntilExit().then(() => getStandaloneRuntime().exit(0));
 `render()` returns an instance with `rerender(viewModel)`, `unmount()`,
 `waitUntilExit()`, `clear()` and, for tests, `lastFrame()`, `nextFrame()`, `feedInput()`,
 `setSize()` and `output()`. The renderer keeps the runtime alive until `unmount()` is
-called or a component calls `getTerminalApp().exit()`. Ctrl+C unmounts as well unless
-`exitOnCtrlC: false` is passed.
+called or a component calls `getTerminalApp().exit()`.
+
+Raw mode turns the terminal's own Ctrl+C handling off, so the host handles the key. With the
+default `exitOnCtrlC: true` it restores the terminal and exits the process with status 130
+without waiting for JavaScript (the application is not unmounted); if the process has not exited
+a second later, for example because the JS thread is stuck, the host exits it anyway. With
+`exitOnCtrlC: false` the byte is delivered to `useInput()` handlers as `ctrl` + `c`, and the
+application decides what to do. SIGINT, SIGTERM, SIGHUP and SIGQUIT, and crashes, restore the
+terminal (modes, colors and cursor) before the process dies.
 
 By default the root is as tall as its content, like Ink. Pass `fitTerminal: true` to size
 it to the terminal instead, for full-screen layouts that use `flexGrow` to fill the
@@ -211,12 +248,16 @@ pipeline as on device:
   `useInput()` handlers. Input and resize observers belong to one root, so several renders in
   one process do not see each other's keys. `getTerminalApp()` returns the newest mounted
   application, and unmounting restores the one before it.
+- For `tty` roots in an application built with `terminal = True`, a host (`TerminalHost`) reads the
+  real keyboard: `render()` asks it for raw mode when stdin is a terminal, and a reader thread
+  delivers the input, whole UTF-8 sequences at a time, to the same observers. A `SIGWINCH` handler
+  wakes the reader, which lays the live roots out for the new size on the main thread and notifies
+  `useResize()` handlers; roots created with explicit `columns` or `rows` keep their size. The module
+  test runner registers the backend without a host, so specs only use the memory sink.
 
 The bridge module is `valdi_tui/src/TerminalBackendBridge`; its declarations live in
 `TerminalBackendBridge.d.ts` and `TerminalBackend.ts` wraps it.
 
 Limitations: no mouse support, no alternate screen, nested `<Text>` does not flow inline,
 named colors are fixed RGB values (a 16-color terminal gets the nearest match rather than
-its own palette entry), and Windows is not supported. Keyboard input, raw mode and resize
-signals from a real terminal are not wired up yet, so with the `tty` sink an application
-renders output only until a host reader feeds the input bridge.
+its own palette entry), and Windows is not supported.
