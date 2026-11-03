@@ -1,13 +1,12 @@
-import { INavigator, INavigatorPageConfig, INavigatorPageVisibility } from 'valdi_navigation/src/INavigator';
+import { INavigator, INavigatorPageConfig } from 'valdi_navigation/src/INavigator';
 import { WebNavStack } from './WebNavStack';
 
 export class WebNavigator implements INavigator {
+  // Name is defined by JSOnlyINavigator in valdi_navigation, which NavigationController checks.
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   __shouldDisableMakeOpaque = true;
 
-  constructor(
-    private navStack: WebNavStack,
-    private pageIndex: number,
-  ) {}
+  constructor(private navStack: WebNavStack, private pageIndex: number) {}
 
   pushComponent(page: INavigatorPageConfig, animated: boolean): void {
     this.navStack.push(page, animated, false);
@@ -35,11 +34,11 @@ export class WebNavigator implements INavigator {
     this.navStack.dismissFrom(this.pageIndex, animated);
   }
 
-  forceDisableDismissalGesture(_forceDisable: boolean): void {}
+  forceDisableDismissalGesture(): void {}
 
-  setBackButtonObserver(_observer: (() => void) | undefined): void {}
+  setBackButtonObserver(): void {}
 
-  setOnPausePopAfterDelay(_delayMs: number | undefined): void {}
+  setOnPausePopAfterDelay(): void {}
 
-  setPageVisibilityObserver(_observer: ((visibility: INavigatorPageVisibility) => void) | undefined): void {}
+  setPageVisibilityObserver(): void {}
 }

@@ -20,31 +20,34 @@ export type WebViewClassRegistryModule = {
 const REGISTRY_KEY = '__valdiWebViewClassRegistry';
 const CALLBACKS_KEY = '__valdiWebViewClassRegistryCallbacks';
 
-function getGlobal(): typeof globalThis | undefined {
-  return typeof globalThis !== 'undefined' ? globalThis : undefined;
+/** globalThis plus the shared registry slots, whose contents are unchecked until read. */
+type RegistryGlobal = typeof globalThis & { [CALLBACKS_KEY]?: unknown; [REGISTRY_KEY]?: unknown };
+
+function getGlobal(): RegistryGlobal | undefined {
+  return typeof globalThis !== 'undefined' ? (globalThis as RegistryGlobal) : undefined;
 }
 
 function getSharedCallbacks(): Array<WebViewClassRegistrationCallback> {
   const g = getGlobal();
   if (!g) return [];
-  let cbs = (g as any)[CALLBACKS_KEY];
+  let cbs = g[CALLBACKS_KEY];
   if (!Array.isArray(cbs)) {
     cbs = [];
-    (g as any)[CALLBACKS_KEY] = cbs;
+    g[CALLBACKS_KEY] = cbs;
   }
-  return cbs;
+  return cbs as Array<WebViewClassRegistrationCallback>;
 }
 
 function getSharedRegistry(): WebViewClassRegistry | null {
   const g = getGlobal();
   if (!g) return null;
-  const reg = (g as any)[REGISTRY_KEY];
-  return reg instanceof Map ? reg : null;
+  const reg = g[REGISTRY_KEY];
+  return reg instanceof Map ? (reg as WebViewClassRegistry) : null;
 }
 
 function setSharedRegistry(reg: WebViewClassRegistry): void {
   const g = getGlobal();
-  if (g) (g as any)[REGISTRY_KEY] = reg;
+  if (g) g[REGISTRY_KEY] = reg;
 }
 
 /**

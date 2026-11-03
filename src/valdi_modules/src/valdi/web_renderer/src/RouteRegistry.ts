@@ -1,8 +1,8 @@
 export interface RouteEntry {
   urlSegment: string;
   componentPath: string;
-  defaultViewModel?: () => any;
-  defaultContext?: () => any;
+  defaultViewModel?: () => unknown;
+  defaultContext?: () => unknown;
 }
 
 export interface RouteRegistry {

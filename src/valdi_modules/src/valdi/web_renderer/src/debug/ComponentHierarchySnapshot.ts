@@ -583,7 +583,8 @@ function captureComponentRuntimeState(
     ) {
       return undefined;
     }
-    const identity = stateDescriptor.value;
+    // Checked above to be a non-null object.
+    const identity = stateDescriptor.value as object;
     const wrapper = Object.create(null) as Record<string, unknown>;
     Object.defineProperty(wrapper, 'state', {
       configurable: true,
@@ -880,19 +881,19 @@ function readElementId(element: IRenderedElement): string | undefined {
 }
 
 function readComponentName(component: IComponent): string | undefined {
-  let prototype: object | null = Object.getPrototypeOf(component);
+  let prototype = Object.getPrototypeOf(component) as object | null;
   let depth = 0;
   while (prototype !== null && depth < MAX_COMPONENT_PROTOTYPE_DEPTH) {
     const constructorDescriptor = Object.getOwnPropertyDescriptor(prototype, 'constructor');
-    const constructorValue = constructorDescriptor?.value;
+    const constructorValue: unknown = constructorDescriptor?.value;
     if (typeof constructorValue === 'function') {
       const nameDescriptor = Object.getOwnPropertyDescriptor(constructorValue, 'name');
-      const name = nameDescriptor?.value;
+      const name: unknown = nameDescriptor?.value;
       if (typeof name === 'string' && name.length > 0 && name.length <= MAX_COMPONENT_NAME_CHARACTERS) {
         return name;
       }
     }
-    prototype = Object.getPrototypeOf(prototype);
+    prototype = Object.getPrototypeOf(prototype) as object | null;
     depth++;
   }
   return undefined;

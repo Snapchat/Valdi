@@ -56,15 +56,18 @@ export function instantValdiWebTrace(tag: string, args: readonly unknown[] | und
   }
 }
 
-export function makeValdiWebTraceProxy(tag: string, callback: Function): (...parameters: any[]) => any {
-  return function (this: unknown, ...parameters: any[]) {
+export function makeValdiWebTraceProxy<F extends (...parameters: never[]) => unknown>(tag: string, callback: F): F {
+  // The proxy forwards `this` and every argument unchanged, so it has the same call signature as `callback`.
+  const target = callback as unknown as (this: unknown, ...parameters: unknown[]) => unknown;
+  const proxy = function (this: unknown, ...parameters: unknown[]): unknown {
     const handle = beginValdiWebTrace(tag);
     try {
-      return callback.apply(this, parameters);
+      return target.apply(this, parameters);
     } finally {
       endValdiWebTrace(handle);
     }
   };
+  return proxy as unknown as F;
 }
 
 export function valdiWebTraceName(tag: string): string {

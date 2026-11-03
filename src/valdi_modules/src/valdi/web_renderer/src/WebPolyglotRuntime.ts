@@ -1,6 +1,6 @@
 import type { WebPolyglotRegistryModule } from './WebPolyglotTypes';
 
-declare const require: (id: string) => any;
+declare const require: (id: string) => unknown;
 
 /**
  * Registers a web polyglot custom-view class with the web renderer registry.
