@@ -82,11 +82,11 @@ public:
 
     /**
      * Queues lines that are written once, above the live frame, with the next paint. Used for output
-     * that must not be erased, such as redirected console messages.
+     * that must not be erased, such as redirected console messages. Dropped once the output is finished.
      */
     void writeAbove(std::vector<std::string> lines);
 
-    /** Erases the live frame from the terminal. The next paint draws it again. */
+    /** Erases the live frame from the terminal. The next paint draws it again. Does nothing once finished. */
     void clear();
 
     /**
