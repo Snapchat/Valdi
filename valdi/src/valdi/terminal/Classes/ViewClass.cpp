@@ -70,6 +70,29 @@ void ViewClass::bindAttributes(AttributesBindingContext& binder) {
         },
         [](TerminalView& view) { view.style().borderWidth = 0; });
 
+    // The attributes manager preprocesses "1 solid red" style strings into [width, color], as for SnapDrawing.
+    TERMINAL_BIND_ATTRIBUTE(
+        binder,
+        Untyped,
+        "border",
+        false,
+        [](TerminalView& view, const Value& value) -> Result<Void> {
+            const auto* entries = value.getArray();
+            if (entries == nullptr) {
+                return Error("Missing border components");
+            }
+            view.style().borderWidth = entries->empty() ? 0.0 : (*entries)[0].toDouble();
+            view.style().borderColor.reset();
+            if (entries->size() > 1) {
+                view.style().borderColor = toTermColor((*entries)[1]);
+            }
+            return Void();
+        },
+        [](TerminalView& view) {
+            view.style().borderWidth = 0;
+            view.style().borderColor.reset();
+        });
+
     TERMINAL_BIND_ATTRIBUTE(
         binder,
         String,

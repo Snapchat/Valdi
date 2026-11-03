@@ -53,6 +53,66 @@ TEST(TerminalCellGrid, attachesZeroWidthClustersToThePreviousCell) {
     ASSERT_EQ((Lines{"éx"}), grid.toLines(ColorLevel::None));
 }
 
+TEST(TerminalCellGrid, aLaterOpaqueFillReplacesTheBackgroundAndCoversText) {
+    CellGrid grid(5, 1);
+    grid.writeText(0, 0, "hello", Style(), grid.bounds());
+    grid.fillBackground(IntRect(0, 0, 5, 1), TermColor::rgb(255, 0, 0), grid.bounds());
+    ASSERT_EQ("     ", grid.rowText(0, 0, 5));
+    grid.fillBackground(IntRect(1, 0, 2, 1), TermColor::rgb(0, 0, 255), grid.bounds());
+    ASSERT_EQ((Lines{"\x1b[48;2;255;0;0m \x1b[0m\x1b[48;2;0;0;255m  \x1b[0m\x1b[48;2;255;0;0m  \x1b[0m"}),
+              grid.toLines(ColorLevel::TrueColor));
+}
+
+TEST(TerminalCellGrid, fillCoveringHalfAWideCharacterLeavesABlankInsteadOfAHalf) {
+    CellGrid grid(4, 1);
+    grid.writeText(0, 0, "日本", Style(), grid.bounds());
+    grid.fillBackground(IntRect(1, 0, 2, 1), TermColor::rgb(1, 2, 3), grid.bounds());
+    ASSERT_EQ("    ", grid.rowText(0, 0, 4));
+}
+
+TEST(TerminalCellGrid, aTranslucentFillTintsTheBackgroundAndKeepsTheText) {
+    CellGrid grid(3, 1);
+    grid.fillBackground(IntRect(0, 0, 3, 1), TermColor::rgb(255, 255, 255), grid.bounds());
+    grid.writeText(0, 0, "ab", Style(), grid.bounds());
+    grid.fillBackground(IntRect(0, 0, 3, 1), *TermColor::fromValdiColor(Valdi::Color(0, 0, 0, 128)), grid.bounds());
+    ASSERT_EQ("ab ", grid.rowText(0, 0, 3));
+    ASSERT_EQ((Lines{"\x1b[48;2;127;127;127mab \x1b[0m"}), grid.toLines(ColorLevel::TrueColor));
+}
+
+TEST(TerminalCellGrid, blendsTranslucentTextColorsAgainstTheCellBackground) {
+    CellGrid grid(2, 1);
+    grid.fillBackground(IntRect(0, 0, 2, 1), TermColor::rgb(255, 255, 255), grid.bounds());
+    Style style;
+    style.fg = TermColor::fromValdiColor(Valdi::Color(0, 0, 0, 128));
+    grid.writeText(0, 0, "x", style, grid.bounds());
+    ASSERT_EQ((Lines{"\x1b[38;2;127;127;127;48;2;255;255;255mx\x1b[0m\x1b[48;2;255;255;255m \x1b[0m"}),
+              grid.toLines(ColorLevel::TrueColor));
+}
+
+TEST(TerminalCellGrid, translucentColorsWithoutABackdropBlendAgainstBlack) {
+    CellGrid grid(1, 1);
+    const auto translucentWhite = *TermColor::fromValdiColor(Valdi::Color(255, 255, 255, 128));
+    grid.fillBackground(IntRect(0, 0, 1, 1), translucentWhite, grid.bounds());
+    ASSERT_EQ((Lines{"\x1b[48;2;128;128;128m \x1b[0m"}), grid.toLines(ColorLevel::TrueColor));
+}
+
+TEST(TerminalCellGrid, leadingZeroWidthClustersJoinTheNextCellInsteadOfTheLeftNeighbor) {
+    CellGrid grid(4, 1);
+    grid.writeText(0, 0, "ab", Style(), grid.bounds());
+    grid.writeText(2,
+                   0,
+                   "\xcc\x81"
+                   "c",
+                   Style(),
+                   grid.bounds());
+    ASSERT_EQ("b", grid.rowText(0, 1, 1));
+    ASSERT_EQ("\xcc\x81"
+              "c",
+              grid.rowText(0, 2, 1));
+    grid.writeText(3, 0, "\xcc\x81", Style(), grid.bounds());
+    ASSERT_EQ(" ", grid.rowText(0, 3, 1));
+}
+
 TEST(TerminalCellGrid, emitsMinimalSgrChanges) {
     const auto red = fgStyle(TermColor::ansi16(1));
     CellGrid grid(6, 1);
@@ -62,10 +122,10 @@ TEST(TerminalCellGrid, emitsMinimalSgrChanges) {
     ASSERT_EQ((Lines{"\x1b[31mabcd\x1b[0me"}), grid.toLines(ColorLevel::Basic16));
 }
 
-TEST(TerminalCellGrid, fillsBackgroundsUnderExistingText) {
+TEST(TerminalCellGrid, textWrittenAfterAFillKeepsTheFillBackground) {
     CellGrid grid(4, 1);
-    grid.writeText(0, 0, "ab", fgStyle(TermColor::ansi16(1)), grid.bounds());
     grid.fillBackground(IntRect(0, 0, 4, 1), TermColor::ansi16(4), grid.bounds());
+    grid.writeText(0, 0, "ab", fgStyle(TermColor::ansi16(1)), grid.bounds());
     ASSERT_EQ((Lines{"\x1b[31;44mab\x1b[0m\x1b[44m  \x1b[0m"}), grid.toLines(ColorLevel::Basic16));
 }
 

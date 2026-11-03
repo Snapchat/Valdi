@@ -49,32 +49,53 @@ void FrameWriter::write(const std::vector<std::string>& frame, const std::vector
         return;
     }
 
-    std::string text;
+    _fullStaticOutput += staticOutput;
+
     const int rows = _sink->rows();
-    if (rows > 0 && static_cast<int>(frame.size()) >= rows) {
-        // Taller than the viewport: erasing by line count would scroll, so clear and repaint.
+    const int lineCount = static_cast<int>(frame.size());
+    const bool tall = rows > 0 && lineCount > rows;
+    // A frame that fills the viewport has no row left below it for the cursor; a trailing newline would
+    // scroll the first row away.
+    const bool trailingNewline = rows <= 0 || lineCount < rows;
+
+    std::string text;
+    if (tall || _previousTall) {
+        // Erasing by line count would scroll (tall) or leave the tail of the previous frame on screen
+        // (shrinking back), so clear everything and redraw. Static output is replayed because the
+        // clear removes scrollback too.
         text += Ansi::kClearTerminal;
-        text += staticOutput;
-        text += output + "\n";
-    } else if (staticOutput.empty() && _previousOutput && !frame.empty() && frame.size() == _previousFrame.size()) {
-        text += Ansi::cursorUp(static_cast<int>(frame.size()));
+        text += _fullStaticOutput;
+        text += output;
+        if (trailingNewline) {
+            text += '\n';
+        }
+    } else if (staticOutput.empty() && _previousOutput && !frame.empty() && frame.size() == _previousFrame.size() &&
+               trailingNewline == _previousTrailingNewline) {
+        text += Ansi::cursorUp(trailingNewline ? lineCount : lineCount - 1);
         text += Ansi::kCursorLeft;
         for (size_t i = 0; i < frame.size(); i++) {
             if (frame[i] != _previousFrame[i]) {
                 text += Ansi::kEraseLine;
                 text += frame[i];
             }
-            text += '\n';
+            if (i + 1 < frame.size() || trailingNewline) {
+                text += '\n';
+            }
         }
     } else {
         text += Ansi::eraseLines(_previousLineCount);
         text += staticOutput;
-        text += output + "\n";
+        text += output;
+        if (trailingNewline) {
+            text += '\n';
+        }
     }
     _sink->write(text);
     _previousOutput = output;
     _previousFrame = frame;
-    _previousLineCount = static_cast<int>(frame.size()) + 1;
+    _previousTall = tall;
+    _previousTrailingNewline = trailingNewline;
+    _previousLineCount = lineCount + (trailingNewline ? 1 : 0);
 }
 
 void FrameWriter::clear() {
@@ -85,6 +106,7 @@ void FrameWriter::clear() {
     _previousLineCount = 0;
     _previousOutput.reset();
     _previousFrame.clear();
+    _previousTall = false;
 }
 
 void FrameWriter::finish() {
@@ -94,6 +116,10 @@ void FrameWriter::finish() {
     _finished = true;
     if (!_sink->isTTY() && !_options.debug && !_lastFrame.empty()) {
         _sink->write(join(_lastFrame) + "\n");
+    }
+    if (_sink->isTTY() && !_options.debug && _previousOutput && !_previousTrailingNewline) {
+        // The last frame ended without a newline so the cursor would otherwise stay on its final row.
+        _sink->write("\n");
     }
     if (_cursorHidden) {
         _sink->write(Ansi::kCursorShow);

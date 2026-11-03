@@ -1,7 +1,9 @@
 #include "valdi/terminal/Sink/MemorySink.hpp"
 #include "valdi/terminal/Sink/TtySink.hpp"
 
+#include <fcntl.h>
 #include <gtest/gtest.h>
+#include <thread>
 #include <unistd.h>
 
 using namespace Valdi;
@@ -64,6 +66,38 @@ TEST(TerminalSink, ttySinkWritesToTheFileDescriptor) {
     ::close(fds[0]);
     ASSERT_EQ(6, count);
     ASSERT_EQ("hello\n", std::string(buffer, static_cast<size_t>(count)));
+}
+
+TEST(TerminalSink, ttySinkWritesEverythingToANonBlockingDescriptorThatFillsUp) {
+    int fds[2];
+    ASSERT_EQ(0, ::pipe(fds));
+    ASSERT_NE(-1, ::fcntl(fds[1], F_SETFL, ::fcntl(fds[1], F_GETFL) | O_NONBLOCK));
+
+    // Far more than a pipe buffer holds, so the writer hits EAGAIN until the reader catches up.
+    const std::string payload(4 * 1024 * 1024, 'x');
+    std::string received;
+    std::thread reader([&]() {
+        char buffer[4096];
+        while (true) {
+            const auto count = ::read(fds[0], buffer, sizeof(buffer));
+            if (count <= 0) {
+                break;
+            }
+            received.append(buffer, static_cast<size_t>(count));
+            if (received.size() < 65536) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        }
+    });
+    {
+        TtySink sink(fds[1]);
+        sink.write(payload);
+    }
+    ::close(fds[1]);
+    reader.join();
+    ::close(fds[0]);
+    ASSERT_EQ(payload.size(), received.size());
+    ASSERT_EQ(payload, received);
 }
 
 TEST(TerminalSink, ttySinkHonorsAnExplicitColorLevel) {

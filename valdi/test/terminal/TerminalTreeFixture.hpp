@@ -67,7 +67,9 @@ public:
     }
 
     ~TerminalTreeFixture() {
-        root->destroy();
+        if (root != nullptr) {
+            root->destroy();
+        }
     }
 
     Valdi::Ref<Valdi::ViewNode> createNode(const char* className) {

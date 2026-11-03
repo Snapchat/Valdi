@@ -57,10 +57,14 @@ void CellGrid::putCluster(int x, int y, const Cluster& cluster, const Style& sty
     }
     Style resolved = style;
     const auto& existing = slotAt(x, y);
-    if (existing.occupied && existing.cell.style.bg && !style.bg) {
-        Style inherited;
-        inherited.bg = existing.cell.style.bg;
-        resolved = Style::merge(inherited, style);
+    const std::optional<TermColor> below = existing.occupied ? existing.cell.style.bg : std::nullopt;
+    if (resolved.bg) {
+        resolved.bg = resolved.bg->blendedOver(below);
+    } else {
+        resolved.bg = below;
+    }
+    if (resolved.fg) {
+        resolved.fg = resolved.fg->blendedOver(resolved.bg);
     }
 
     if (cluster.width == 2) {
@@ -90,9 +94,15 @@ void CellGrid::putCluster(int x, int y, const Cluster& cluster, const Style& sty
 int CellGrid::writeClusters(
     int x, int y, const std::vector<Cluster>& clusters, const Style& style, const IntRect& clip) {
     int cursor = x;
+    bool wroteCell = false;
+    // Zero-width clusters that come before any cell have no base to attach to; they travel with the next cell
+    // instead of landing on whatever was already to the left.
+    std::string leading;
     for (const auto& cluster : clusters) {
         if (cluster.width == 0) {
-            if (writable(clip, cursor - 1, y)) {
+            if (!wroteCell) {
+                leading += cluster.text;
+            } else if (writable(clip, cursor - 1, y)) {
                 auto& slot = slotAt(cursor - 1, y);
                 if (slot.occupied && slot.cell.width > 0) {
                     slot.cell.text += cluster.text;
@@ -100,7 +110,13 @@ int CellGrid::writeClusters(
             }
             continue;
         }
-        putCluster(cursor, y, cluster, style, clip);
+        if (leading.empty()) {
+            putCluster(cursor, y, cluster, style, clip);
+        } else {
+            putCluster(cursor, y, Cluster{leading + cluster.text, cluster.width}, style, clip);
+            leading.clear();
+        }
+        wroteCell = true;
         cursor += cluster.width;
     }
     return cursor;
@@ -120,16 +136,25 @@ int CellGrid::writeSegments(int x, int y, const std::vector<StyledSegment>& segm
 
 void CellGrid::fillBackground(const IntRect& rect, const TermColor& color, const IntRect& clip) {
     const auto area = intersect(intersect(rect, clip), bounds());
-    Style background;
-    background.bg = color;
+    const bool opaque = color.kind != TermColor::Kind::Rgb || color.alpha == 255;
     for (int y = area.y; y < area.y + area.height; y++) {
         for (int x = area.x; x < area.x + area.width; x++) {
             auto& slot = slotAt(x, y);
-            if (!slot.occupied) {
+            if (opaque) {
+                // Parent views paint before their children, so a later fill is on top and hides what it covers.
+                clearCell(x, y);
+                Style background;
+                background.bg = color;
+                slot.occupied = true;
+                slot.cell = Cell{" ", 1, background};
+            } else if (!slot.occupied) {
+                Style background;
+                background.bg = color.blendedOver(std::nullopt);
                 slot.occupied = true;
                 slot.cell = Cell{" ", 1, background};
             } else {
-                slot.cell.style = Style::merge(background, slot.cell.style);
+                // A translucent fill tints what is below it instead of covering it.
+                slot.cell.style.bg = color.blendedOver(slot.cell.style.bg);
             }
         }
     }

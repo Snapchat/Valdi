@@ -41,6 +41,36 @@ TEST(TerminalPainter, fallsBackToTheSingleStyleForUnknownBorderStyles) {
     ASSERT_EQ((Lines{"┌─┐", "└─┘"}), paintTree(*tree, 3, 2).grid.toLines(ColorLevel::None));
 }
 
+TEST(TerminalPainter, aChildBackgroundWinsOverItsParents) {
+    TerminalViewBuilder b;
+    auto parent = b.box(0, 0, 6, 1);
+    parent->style().backgroundColor = TermColor::rgb(255, 0, 0);
+    auto child = b.box(1, 0, 2, 1);
+    child->style().backgroundColor = TermColor::rgb(0, 0, 255);
+    parent->insertChild(child, 0);
+    ASSERT_EQ((Lines{"\x1b[48;2;255;0;0m \x1b[0m\x1b[48;2;0;0;255m  \x1b[0m\x1b[48;2;255;0;0m   \x1b[0m"}),
+              paintTree(*parent, 6, 1).grid.toLines(ColorLevel::TrueColor));
+}
+
+TEST(TerminalPainter, aLaterSiblingBackgroundCoversEarlierText) {
+    TerminalViewBuilder b;
+    auto tree = b.box(0, 0, 5, 1);
+    tree->insertChild(b.text(0, 0, 5, 1, "hello"), 0);
+    auto cover = b.box(1, 0, 3, 1);
+    cover->style().backgroundColor = TermColor::rgb(1, 2, 3);
+    tree->insertChild(cover, 1);
+    ASSERT_EQ("h   o", paintTree(*tree, 5, 1).grid.rowText(0, 0, 5));
+}
+
+TEST(TerminalPainter, aSingleColumnBorderStaysInsideItsRect) {
+    TerminalViewBuilder b;
+    auto tree = b.box(0, 0, 1, 3);
+    tree->style().borderWidth = 1;
+    const auto painted = paintTree(*tree, 3, 3);
+    ASSERT_EQ((Lines{"┌", "│", "└"}), painted.grid.toLines(ColorLevel::None));
+    ASSERT_EQ(" ", painted.grid.rowText(0, 1, 1));
+}
+
 TEST(TerminalPainter, wrapsTextToItsFrame) {
     TerminalViewBuilder b;
     auto painted = paintTree(*b.text(0, 0, 5, 2, "hello world"), 5, 2);
