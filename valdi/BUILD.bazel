@@ -189,6 +189,23 @@ cc_library(
     ],
 )
 
+# ViewManager implementation that renders to a terminal cell grid.
+cc_library(
+    name = "valdi_terminal",
+    srcs = glob([
+        "src/valdi/terminal/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/terminal/**/*.hpp",
+    ]),
+    copts = CC_COMPILER_FLAGS + ["-Wno-deprecated-this-capture"],
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_runtime",
+    ],
+)
+
 cc_library(
     name = "valdi_svg",
     srcs = glob([
@@ -1083,6 +1100,15 @@ valdi_test(
 )
 
 valdi_test(
+    name = "test_terminal",
+    srcs = glob(["test/terminal/**/*.cpp"]),
+    deps = [
+        ":test_utils",
+        ":valdi_terminal",
+    ],
+)
+
+valdi_test(
     name = "test_svg",
     srcs = glob(["test/svg/**/*.cpp"]),
     deps = [
@@ -1250,6 +1276,7 @@ cc_test(
         ":test_runtime_lib",
         ":test_snap_drawing_lib",
         ":test_svg_lib",
+        ":test_terminal_lib",
         "//bzl/valdi:clientsql_native_test_library",
         "@gtest//:gtest_main",
     ],
