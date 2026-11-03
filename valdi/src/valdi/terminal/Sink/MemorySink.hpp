@@ -1,10 +1,14 @@
 #pragma once
 
 #include "valdi/terminal/Sink/ITerminalSink.hpp"
+#include "valdi_core/cpp/Utils/Mutex.hpp"
 
 namespace Valdi::Terminal {
 
-/** An in-memory sink that records everything written to it. Used by tests and headless hosts. */
+/**
+ * An in-memory sink that records everything written to it. Used by tests and headless hosts. Thread
+ * safe: the paint thread writes while the host reads and resizes, so accessors return copies.
+ */
 class MemorySink : public ITerminalSink {
 public:
     MemorySink();
@@ -22,22 +26,23 @@ public:
     void setColorLevel(ColorLevel colorLevel);
 
     /** Each call to write(), in order. */
-    const std::vector<std::string>& writes() const;
+    std::vector<std::string> writes() const;
 
     /** Everything written so far, concatenated. */
     std::string output() const;
 
     /** The last frame reported through didRenderFrame(). */
-    const FrameSnapshot& lastFrame() const;
+    FrameSnapshot lastFrame() const;
 
     /** Plain text rows of the last frame. */
-    const std::vector<std::string>& lastPlainLines() const;
+    std::vector<std::string> lastPlainLines() const;
 
     size_t frameCount() const;
 
     void clearRecording();
 
 private:
+    mutable Mutex _mutex;
     std::vector<std::string> _writes;
     FrameSnapshot _lastFrame;
     size_t _frameCount = 0;
