@@ -95,14 +95,14 @@ export function textRunsFromProps(vm: TextProps): TextRun[] {
   return runs.length > 0 ? runs : [{ text: '', style }];
 }
 
-// Only the weight and slant of a font survive in a terminal, as bold, dim and italic.
+// Only the weight and slant of a font survive in a terminal, as bold, dim and italic. The terminal
+// backend reads each from the name on its own, so bold and dim can both be set (SGR 1 and 2).
 function fontFor(style: TextStyle | undefined): string | undefined {
   if (!style) {
     return undefined;
   }
-  const weight = style.bold ? '-bold' : style.dim ? '-light' : '';
-  const slant = style.italic ? '-italic' : '';
-  return weight || slant ? `system${weight}${slant} 1` : undefined;
+  const traits = `${style.bold ? '-bold' : ''}${style.dim ? '-light' : ''}${style.italic ? '-italic' : ''}`;
+  return traits ? `system${traits} 1` : undefined;
 }
 
 function decorationFor(style: TextStyle | undefined): LabelTextDecoration | undefined {

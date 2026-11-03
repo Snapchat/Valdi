@@ -231,21 +231,33 @@ export class TerminalApp {
   }
 }
 
-let activeApp: TerminalApp | undefined;
+// A stack, so unmounting an application that is not the newest one leaves the newest in place and
+// unmounting the newest restores the one rendered before it.
+const activeApps: TerminalApp[] = [];
 
-export function setActiveTerminalApp(app: TerminalApp | undefined): void {
-  activeApp = app;
+/** Makes `app` the one {@link getTerminalApp} returns until it is deactivated. */
+export function activateTerminalApp(app: TerminalApp): void {
+  activeApps.push(app);
+}
+
+/** Removes `app`; the most recently activated remaining application becomes current again. */
+export function deactivateTerminalApp(app: TerminalApp): void {
+  const index = activeApps.lastIndexOf(app);
+  if (index >= 0) {
+    activeApps.splice(index, 1);
+  }
 }
 
 /**
- * The application most recently rendered with `render()`. Components use it to read input,
- * react to resizes or exit.
+ * The application most recently rendered with `render()` that is still mounted. Components use it
+ * to read input, react to resizes or exit.
  */
 export function getTerminalApp(): TerminalApp {
-  if (!activeApp) {
+  const app = activeApps[activeApps.length - 1];
+  if (!app) {
     throw new Error('No terminal application is rendered. Call render() from valdi_tui first.');
   }
-  return activeApp;
+  return app;
 }
 
 /** The part of `Component` these helpers need; any Valdi component satisfies it. */

@@ -57,6 +57,7 @@ const CSI_KEYS: { readonly [code: string]: keyof Key } = {
   D: 'leftArrow',
   H: 'home',
   F: 'end',
+  Z: 'tab',
   '1~': 'home',
   '7~': 'home',
   '4~': 'end',
@@ -111,6 +112,10 @@ function parseEscapeSequence(data: string, start: number): [KeyPress, number] | 
       return undefined;
     }
     key[name] = true;
+    if (code === 'Z') {
+      // Back-tab is reported as its own final byte, without a modifier parameter.
+      key.shift = true;
+    }
     const modifier = final === '~' ? parseInt(parts[1] ?? '1', 10) : parseInt(parts[1] ?? parts[0] ?? '1', 10);
     if (!isNaN(modifier) && modifier > 1) {
       applyModifier(key, modifier);

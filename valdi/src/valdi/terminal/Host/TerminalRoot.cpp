@@ -207,6 +207,7 @@ void TerminalRoot::paintNow() {
         frame.plainLines = grid.toPlainLines();
         frame.columns = columns;
         frame.height = height;
+        frame.sequence = ++_frameSequence;
         for (size_t i = 0; i < frame.ansiLines.size(); i++) {
             if (i > 0) {
                 frame.ansi += '\n';

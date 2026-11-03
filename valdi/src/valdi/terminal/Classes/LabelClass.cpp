@@ -29,11 +29,9 @@ Terminal::Style LabelClass::styleFromFontName(std::string_view fontName) {
     }
 
     Terminal::Style style;
-    if (contains(name, "bold") || contains(name, "heavy") || contains(name, "black")) {
-        style.bold = true;
-    } else if (contains(name, "light") || contains(name, "thin")) {
-        style.dim = true;
-    }
+    // Independent so a name such as "system-bold-light" carries both, which a terminal can show as SGR 1 and 2.
+    style.bold = contains(name, "bold") || contains(name, "heavy") || contains(name, "black");
+    style.dim = contains(name, "light") || contains(name, "thin");
     if (contains(name, "italic") || contains(name, "oblique")) {
         style.italic = true;
     }

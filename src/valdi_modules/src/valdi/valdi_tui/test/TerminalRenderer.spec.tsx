@@ -3,8 +3,10 @@ import { Component, StatefulComponent } from 'valdi_core/src/Component';
 import { getTerminalApp, useInput } from '../src/App';
 import { Box } from '../src/Box';
 import { Static } from '../src/Static';
-import { RenderInstance, render } from '../src/TerminalRenderer';
+import { getTerminalBackend } from '../src/TerminalBackend';
+import { RenderInstance, render as renderUntracked } from '../src/TerminalRenderer';
 import { Text } from '../src/Text';
+import { render, unmountAll } from './renderTracked';
 
 interface GreetingViewModel {
   readonly name: string;
@@ -62,6 +64,12 @@ class Row extends Component {
   }
 }
 
+class Throwing extends Component {
+  onRender(): void {
+    throw new Error('render failed');
+  }
+}
+
 type Lines = ReadonlyArray<string>;
 
 // Frames can be painted between a change and its final layout, so a test waits for the frame it
@@ -79,6 +87,8 @@ async function frameMatching(instance: RenderInstance<object>, accept: (frame: L
 const isSettled = (frame: Lines): boolean => frame.length > 0;
 
 describe('render', () => {
+  afterEach(unmountAll);
+
   it('lays out boxes and wraps text to the terminal width', async () => {
     const instance = render(Greeting, { name: 'Valdi' }, { sink: 'memory', columns: 20, rows: 10 });
     try {
@@ -176,5 +186,131 @@ describe('render', () => {
     expect(instance.output()).toBe('');
     instance.unmount();
     expect(instance.output()).toBe('left   right\n');
+  });
+
+  it('delivers the first frame already laid out', async () => {
+    const instance = render(Row, {}, { sink: 'memory', columns: 40, rows: 10 });
+    expect(await instance.nextFrame()).toEqual(['left   right']);
+  });
+
+  it('keeps the newest application active when an older one unmounts', () => {
+    const first = render(Row, {}, { sink: 'memory', columns: 40, rows: 10 });
+    const second = render(Row, {}, { sink: 'memory', columns: 40, rows: 10 });
+    expect(getTerminalApp()).toBe(second.app);
+    first.unmount();
+    expect(getTerminalApp()).toBe(second.app);
+    second.unmount();
+    expect(() => getTerminalApp()).toThrow();
+  });
+
+  it('restores the previous application when the newest one unmounts', () => {
+    const first = render(Row, {}, { sink: 'memory', columns: 40, rows: 10 });
+    const second = render(Row, {}, { sink: 'memory', columns: 40, rows: 10 });
+    second.unmount();
+    expect(getTerminalApp()).toBe(first.app);
+  });
+
+  it('rejects nextFrame() after unmount', async () => {
+    const instance = render(Row, {}, { sink: 'memory', columns: 40, rows: 10 });
+    await frameMatching(instance, isSettled);
+    instance.unmount();
+    let rejection: unknown;
+    try {
+      await instance.nextFrame();
+    } catch (error) {
+      rejection = error;
+    }
+    expect(rejection instanceof Error).toBe(true);
+  });
+
+  it('resolves a pending nextFrame() with the last frame when unmounting', async () => {
+    const instance = render(Row, {}, { sink: 'memory', columns: 40, rows: 10 });
+    await frameMatching(instance, isSettled);
+    const pending = instance.nextFrame();
+    instance.unmount();
+    expect(await pending).toEqual(['left   right']);
+  });
+
+  it('keeps input and resizes of one render away from another', async () => {
+    const first = render(Counter, {}, { sink: 'memory', columns: 40, rows: 10 });
+    const second = render(Counter, {}, { sink: 'memory', columns: 40, rows: 10 });
+    await frameMatching(first, isSettled);
+    await frameMatching(second, isSettled);
+
+    const next = frameMatching(first, frame => frame[0] === 'count: 1');
+    first.feedInput('\x1b[A');
+    await next;
+    expect(second.lastFrame()).toEqual(['count: 0']);
+
+    first.setSize(20, 5);
+    expect(first.app.terminal.columns).toBe(20);
+    expect(second.app.terminal.columns).toBe(40);
+  });
+
+  it('finishes unmounting and rejects waitUntilExit when a release step throws', async () => {
+    const instance = render(Row, {}, { sink: 'memory', columns: 40, rows: 10 });
+    await frameMatching(instance, isSettled);
+    const backend = getTerminalBackend() as { finishRoot: (native: unknown) => void };
+    const originalFinish = backend.finishRoot;
+    backend.finishRoot = () => {
+      throw new Error('finish failed');
+    };
+    let thrown: unknown;
+    try {
+      instance.unmount();
+    } catch (error) {
+      thrown = error;
+    } finally {
+      backend.finishRoot = originalFinish;
+    }
+    expect(thrown instanceof Error).toBe(true);
+    expect(() => getTerminalApp()).toThrow();
+    let rejection: unknown;
+    try {
+      await instance.waitUntilExit();
+    } catch (error) {
+      rejection = error;
+    }
+    expect(rejection).toBe(thrown);
+  });
+
+  describe('when the root component throws', () => {
+    interface TimerGlobals {
+      setInterval: (...args: unknown[]) => unknown;
+      clearInterval: (id: unknown) => void;
+    }
+
+    it('undoes the keep-alive, console patch and active application, and rethrows', () => {
+      const globals = globalThis as unknown as TimerGlobals;
+      const originalSet = globals.setInterval;
+      const originalClear = globals.clearInterval;
+      const pending = new Set<unknown>();
+      globals.setInterval = (...args: unknown[]) => {
+        const id = originalSet(...args);
+        pending.add(id);
+        return id;
+      };
+      globals.clearInterval = (id: unknown) => {
+        pending.delete(id);
+        originalClear(id);
+      };
+      const originalLog = console.log;
+      let thrown: unknown;
+      try {
+        renderUntracked(Throwing, {}, { sink: 'memory', columns: 40, rows: 10 });
+      } catch (error) {
+        thrown = error;
+      } finally {
+        globals.setInterval = originalSet;
+        globals.clearInterval = originalClear;
+      }
+      for (const id of pending) {
+        originalClear(id);
+      }
+      expect(thrown instanceof Error).toBe(true);
+      expect(console.log).toBe(originalLog);
+      expect(() => getTerminalApp()).toThrow();
+      expect(pending.size).toBe(0);
+    });
   });
 });

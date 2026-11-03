@@ -117,6 +117,10 @@ TEST(TerminalLabelFont, derivesWeightAndSlantFromFontNames) {
     ASSERT_TRUE(LabelClass::styleFromFontName("Helvetica-BoldItalic 12").bold);
     ASSERT_TRUE(LabelClass::styleFromFontName("Helvetica-BoldItalic 12").italic);
     ASSERT_TRUE(LabelClass::styleFromFontName("Helvetica 12").isEmpty());
+    const auto boldAndDim = LabelClass::styleFromFontName("system-bold-light-italic 1");
+    ASSERT_TRUE(boldAndDim.bold);
+    ASSERT_TRUE(boldAndDim.dim);
+    ASSERT_TRUE(boldAndDim.italic);
 }
 
 } // namespace ValdiTest

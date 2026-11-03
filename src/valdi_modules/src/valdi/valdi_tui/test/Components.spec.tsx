@@ -1,10 +1,11 @@
 import 'jasmine/src/jasmine';
 import { Component } from 'valdi_core/src/Component';
 import { Box } from '../src/Box';
-import { RenderInstance, render } from '../src/TerminalRenderer';
+import { RenderInstance } from '../src/TerminalRenderer';
 import { Text } from '../src/Text';
 import { Transform } from '../src/Transform';
 import { ColorLevel } from '../src/ansi';
+import { render, unmountAll } from './renderTracked';
 
 type Lines = ReadonlyArray<string>;
 
@@ -36,7 +37,6 @@ class OpenTop extends Component {
   }
 }
 
-// The root element must be a Box: the root view is a plain view, which cannot take a label's text.
 const STATUS_VALUE = ['Status: ', { text: 'ok', color: 'green', bold: true }];
 
 function shout(line: string): string {
@@ -67,7 +67,21 @@ class Logging extends Component {
   }
 }
 
+class RootText extends Component {
+  onRender(): void {
+    <Text value="just text" />;
+  }
+}
+
+class BoldDim extends Component {
+  onRender(): void {
+    <Text bold dimColor value="both" />;
+  }
+}
+
 describe('components', () => {
+  afterEach(unmountAll);
+
   it('truncates text instead of wrapping', async () => {
     const instance = render(Truncated, {}, { sink: 'memory', columns: 40, rows: 10 });
     try {
@@ -115,6 +129,20 @@ describe('components', () => {
       await next;
       expect(instance.output()).toContain('hello there\n');
     } finally {
+      instance.unmount();
+    }
+  });
+
+  it('renders a root component whose own element is a Text', async () => {
+    const instance = render(RootText, {}, { sink: 'memory', columns: 40, rows: 10 });
+    expect(await frameMatching(instance, isSettled)).toEqual(['just text']);
+  });
+
+  it('keeps bold and dim together on one text', async () => {
+    for (const colorLevel of [ColorLevel.Basic, ColorLevel.TrueColor]) {
+      const instance = render(BoldDim, {}, { sink: 'memory', columns: 40, rows: 10, colorLevel });
+      expect(await frameMatching(instance, isSettled)).toEqual(['both']);
+      expect(instance.output()).toContain('\x1b[1;2mboth');
       instance.unmount();
     }
   });

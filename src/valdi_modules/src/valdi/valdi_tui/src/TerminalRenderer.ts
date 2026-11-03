@@ -2,16 +2,23 @@ import { makeEntryPointRenderFunction } from 'valdi_core/src/EntryPointComponent
 import { ComponentConstructor, IComponent } from 'valdi_core/src/IComponent';
 import { jsx } from 'valdi_core/src/JSXBootstrap';
 import { RootComponentsManager } from 'valdi_core/src/RootComponentsManager';
+import {
+  UncaughtErrorHandler,
+  UncaughtErrorHandlerResult,
+  setCatchAllUncaughtErrorHandler,
+} from 'valdi_core/src/UncaughtErrorHandler';
 import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 import { KeepAlive, beginKeepAlive, endKeepAlive } from 'valdi_core/src/utils/KeepAliveCallback';
-import { Disposable, TerminalApp, TerminalInfo, setActiveTerminalApp } from './App';
+import { Disposable, TerminalApp, TerminalInfo, activateTerminalApp, deactivateTerminalApp } from './App';
 import {
   TerminalBackend,
   TerminalFrame,
   TerminalRootHandle,
+  TerminalRootNative,
   TerminalSinkKind,
   getTerminalBackend,
 } from './TerminalBackend';
+import { makeTerminalRootContainer } from './TerminalRootContainer';
 import { ColorLevel } from './ansi';
 import { parseInput } from './keys';
 
@@ -51,7 +58,11 @@ export interface RenderInstance<ViewModel> {
   readonly app: TerminalApp;
   /** Renders the root component again with a new view model. */
   rerender(viewModel: ViewModel): void;
-  /** Stops rendering, restores the terminal and releases the component tree. */
+  /**
+   * Stops rendering, restores the terminal and releases the component tree. Every release step runs
+   * even if an earlier one fails; the first failure rejects `waitUntilExit()` and is thrown after
+   * cleanup, unless an `error` was passed, which takes precedence.
+   */
   unmount(error?: Error): void;
   /** Resolves after `unmount()`; rejects when the application exited with an error. */
   waitUntilExit(): Promise<void>;
@@ -59,11 +70,14 @@ export interface RenderInstance<ViewModel> {
   clear(): void;
   /** Lines of the most recent frame, without ANSI styling. */
   lastFrame(): ReadonlyArray<string> | undefined;
-  /** Resolves with the next frame that is produced. */
+  /**
+   * Resolves with the next frame that is produced, or with the last frame if the instance unmounts
+   * first. Rejects when called after `unmount()`.
+   */
   nextFrame(): Promise<ReadonlyArray<string>>;
   /**
-   * Delivers text as if it had been typed. Reaches every application rendered in the runtime,
-   * which makes it the way tests drive input into a memory sink.
+   * Delivers text as if it had been typed. Reaches only this instance, which makes it the way tests
+   * drive input into a memory sink.
    */
   feedInput(text: string): void;
   /** Resizes the terminal and lays the frame out again. */
@@ -113,12 +127,19 @@ function envNumber(name: string): number | undefined {
   return isNaN(value) || value <= 0 ? undefined : value;
 }
 
+// The handler registry keeps the current catch-all on the global object but only exports a setter.
+const catchAllHandlerHolder = globalThis as typeof globalThis & { catchAllErrorHandler?: UncaughtErrorHandler };
+
+function toError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(String(value));
+}
+
 class TerminalRenderer<ViewModel extends object, Context extends object> implements RenderInstance<ViewModel> {
   readonly app: TerminalApp;
   private readonly backend: TerminalBackend;
-  private readonly root: TerminalRootHandle;
-  private readonly contextId: string;
-  private readonly rootManager: RootComponentsManager;
+  private root: TerminalRootHandle | undefined;
+  private contextId: string | undefined;
+  private rootManager: RootComponentsManager | undefined;
   private readonly keepAlive: KeepAlive;
   private readonly terminal: TerminalInfo;
   private readonly disposables: Disposable[] = [];
@@ -128,6 +149,7 @@ class TerminalRenderer<ViewModel extends object, Context extends object> impleme
   private readonly frameWaiters: ((frame: ReadonlyArray<string>) => void)[] = [];
   private restoreConsole: (() => void) | undefined;
   private lastPlainFrame: ReadonlyArray<string> | undefined;
+  private lastSequence = 0;
   private unmounted = false;
 
   constructor(
@@ -146,63 +168,33 @@ class TerminalRenderer<ViewModel extends object, Context extends object> impleme
     });
     // Unhandled rejections are not fatal here; callers opt in through waitUntilExit().
     this.exitPromise.catch(() => {});
-    this.app = new TerminalApp(this.terminal, error => this.unmount(error));
-    setActiveTerminalApp(this.app);
+    this.app = new TerminalApp(this.terminal, error => this.exitFromApp(error));
+    activateTerminalApp(this.app);
     this.keepAlive = beginKeepAlive();
 
-    this.root = this.backend.createRoot({
-      sink,
-      columns: options.columns,
-      rows: options.rows,
-      fitTerminal: options.fitTerminal,
-      exitOnCtrlC: options.exitOnCtrlC,
-      debug: options.debug,
-      isTTY: options.isTTY,
-      colorLevel: options.colorLevel,
-    });
-    this.contextId = this.root.contextId;
-
-    // The context was created natively, so this manager only drives the component tree.
-    const runtime = getValdiRuntime();
-    this.rootManager = new RootComponentsManager(
-      { makeRenderer: treeId => jsx.makeRendererWithAllowedRootElementTypes(undefined, treeId) },
-      undefined,
-      runtime.submitDebugMessage,
-    );
-
-    const frameObservation = this.backend.observeFrame(this.root.native, frame => this.onFrame(frame));
-    this.disposables.push({ dispose: () => frameObservation.cancel() });
-
-    this.setupInput();
-    const resizeObservation = this.backend.observeResize((columns, rows) => {
-      this.terminal.columns = columns;
-      this.terminal.rows = rows;
-      this.app.dispatchResize(columns, rows);
-    });
-    this.disposables.push({ dispose: () => resizeObservation.cancel() });
-
-    if (options.patchConsole !== false && this.terminal.isOutputTTY && !options.debug) {
-      this.patchConsole();
+    // A constructor that throws hands the caller no instance to unmount, so it has to undo everything
+    // itself; otherwise the keep-alive timer holds the process open and console stays patched.
+    try {
+      this.mount(sink, componentClass, viewModel, componentContext);
+    } catch (error) {
+      this.unmounted = true;
+      this.release(/* finishOutput */ false);
+      throw error;
     }
-
-    this.rootManager.createWithRenderFunction(
-      this.contextId,
-      { filePath: '<valdi_tui>', symbolName: componentClass.name },
-      makeEntryPointRenderFunction(() => componentClass, options.errorBoundary ?? false, undefined),
-      viewModel,
-      componentContext,
-    );
   }
 
   rerender(viewModel: ViewModel): void {
-    if (this.unmounted) {
+    if (this.unmounted || this.rootManager === undefined || this.contextId === undefined) {
       return;
     }
     this.rootManager.render(this.contextId, viewModel);
   }
 
   clear(): void {
-    this.backend.clearRoot(this.root.native);
+    if (this.unmounted) {
+      return;
+    }
+    this.backend.clearRoot(this.nativeRoot());
   }
 
   lastFrame(): ReadonlyArray<string> | undefined {
@@ -210,21 +202,24 @@ class TerminalRenderer<ViewModel extends object, Context extends object> impleme
   }
 
   nextFrame(): Promise<ReadonlyArray<string>> {
+    if (this.unmounted) {
+      return Promise.reject(new Error('nextFrame() was called after unmount(): no more frames will be produced.'));
+    }
     return new Promise(resolve => {
       this.frameWaiters.push(resolve);
     });
   }
 
   feedInput(text: string): void {
-    this.backend.feedInput(this.root.native, text);
+    this.backend.feedInput(this.nativeRoot(), text);
   }
 
   setSize(columns: number, rows: number): void {
-    this.backend.setSize(this.root.native, columns, rows);
+    this.backend.setSize(this.nativeRoot(), columns, rows);
   }
 
   output(): string {
-    return this.backend.getOutput(this.root.native);
+    return this.backend.getOutput(this.nativeRoot());
   }
 
   waitUntilExit(): Promise<void> {
@@ -236,33 +231,147 @@ class TerminalRenderer<ViewModel extends object, Context extends object> impleme
       return;
     }
     this.unmounted = true;
-    if (this.restoreConsole) {
-      this.restoreConsole();
-      this.restoreConsole = undefined;
-    }
-    // Painted before the component tree is released, so the last frame stays on screen. The
-    // frame observer is still attached here, which keeps lastFrame() on that final frame.
-    this.backend.finishRoot(this.root.native);
-    for (const disposable of this.disposables.splice(0)) {
-      disposable.dispose();
-    }
-    try {
-      this.rootManager.destroy(this.contextId);
-    } catch (destroyError) {
-      console.error('valdi_tui: failed to release the component tree', destroyError);
-    }
-    this.backend.destroyRoot(this.root.native);
-    setActiveTerminalApp(undefined);
-    endKeepAlive(this.keepAlive);
+    // Every release step runs and the exit promise always settles, even if one step throws.
+    const cleanupError = this.release(/* finishOutput */ true);
     const waiters = this.frameWaiters.splice(0);
     for (const waiter of waiters) {
       waiter(this.lastPlainFrame ?? []);
     }
-    if (error) {
-      this.rejectExit(error);
+    const failure = error ?? cleanupError;
+    if (failure) {
+      this.rejectExit(failure);
     } else {
       this.resolveExit();
     }
+    if (!error && cleanupError) {
+      throw cleanupError;
+    }
+  }
+
+  // Exits requested from inside the application (`exit()`, Ctrl+C) have nowhere to throw to; the
+  // failure reaches the caller through waitUntilExit().
+  private exitFromApp(error?: Error): void {
+    try {
+      this.unmount(error);
+    } catch {
+      // Already reported through waitUntilExit().
+    }
+  }
+
+  private nativeRoot(): TerminalRootNative {
+    if (this.root === undefined) {
+      throw new Error('The terminal root is not available.');
+    }
+    return this.root.native;
+  }
+
+  private mount(
+    sink: TerminalSinkKind,
+    componentClass: ComponentConstructor<IComponent<ViewModel, Context>>,
+    viewModel: ViewModel,
+    componentContext: Context,
+  ): void {
+    const options = this.options;
+    const root = this.backend.createRoot({
+      sink,
+      columns: options.columns,
+      rows: options.rows,
+      fitTerminal: options.fitTerminal,
+      exitOnCtrlC: options.exitOnCtrlC,
+      debug: options.debug,
+      isTTY: options.isTTY,
+      colorLevel: options.colorLevel,
+    });
+    this.root = root;
+    const contextId = root.contextId;
+    this.contextId = contextId;
+
+    // The context was created natively, so this manager only drives the component tree.
+    const runtime = getValdiRuntime();
+    const rootManager = new RootComponentsManager(
+      { makeRenderer: treeId => jsx.makeRendererWithAllowedRootElementTypes(undefined, treeId) },
+      undefined,
+      runtime.submitDebugMessage,
+    );
+    this.rootManager = rootManager;
+
+    const frameObservation = this.backend.observeFrame(root.native, frame => this.onFrame(frame));
+    this.disposables.push({ dispose: () => frameObservation.cancel() });
+
+    this.setupInput(root.native);
+    const resizeObservation = this.backend.observeResize(root.native, (columns, rows) => {
+      this.terminal.columns = columns;
+      this.terminal.rows = rows;
+      this.app.dispatchResize(columns, rows);
+    });
+    this.disposables.push({ dispose: () => resizeObservation.cancel() });
+
+    if (options.patchConsole !== false && this.terminal.isOutputTTY && !options.debug) {
+      this.patchConsole(root.native);
+    }
+
+    const container = makeTerminalRootContainer(componentClass);
+    // The renderer reports an error thrown by a component through the runtime instead of throwing it,
+    // which would leave a half-built application running. The initial render is synchronous and runs on
+    // the caller's context rather than the new one, so only the catch-all handler sees its errors.
+    const initialErrors: unknown[] = [];
+    const previousCatchAll = catchAllHandlerHolder.catchAllErrorHandler;
+    setCatchAllUncaughtErrorHandler((_isRejection, error) => {
+      initialErrors.push(error);
+      return UncaughtErrorHandlerResult.IGNORE;
+    });
+    try {
+      rootManager.createWithRenderFunction(
+        contextId,
+        { filePath: '<valdi_tui>', symbolName: componentClass.name },
+        makeEntryPointRenderFunction(() => container, options.errorBoundary ?? false, undefined),
+        viewModel,
+        componentContext,
+      );
+    } finally {
+      setCatchAllUncaughtErrorHandler(previousCatchAll);
+    }
+    if (initialErrors.length > 0) {
+      throw toError(initialErrors[0]);
+    }
+  }
+
+  /** Undoes everything `mount()` and the constructor set up. Returns the first error, after running every step. */
+  private release(finishOutput: boolean): Error | undefined {
+    let firstError: Error | undefined;
+    const attempt = (step: () => void): void => {
+      try {
+        step();
+      } catch (error) {
+        firstError = firstError ?? toError(error);
+      }
+    };
+
+    attempt(() => {
+      if (this.restoreConsole) {
+        this.restoreConsole();
+        this.restoreConsole = undefined;
+      }
+    });
+    if (finishOutput && this.root !== undefined) {
+      // Painted before the component tree is released, so the last frame stays on screen. The
+      // frame observer is still attached here, which keeps lastFrame() on that final frame.
+      const native = this.root.native;
+      attempt(() => this.backend.finishRoot(native));
+    }
+    for (const disposable of this.disposables.splice(0)) {
+      attempt(() => disposable.dispose());
+    }
+    const { rootManager, contextId, root } = this;
+    if (rootManager !== undefined && contextId !== undefined) {
+      attempt(() => rootManager.destroy(contextId));
+    }
+    if (root !== undefined) {
+      attempt(() => this.backend.destroyRoot(root.native));
+    }
+    attempt(() => deactivateTerminalApp(this.app));
+    attempt(() => endKeepAlive(this.keepAlive));
+    return firstError;
   }
 
   private makeTerminalInfo(sink: TerminalSinkKind): TerminalInfo {
@@ -284,15 +393,15 @@ class TerminalRenderer<ViewModel extends object, Context extends object> impleme
     };
   }
 
-  private setupInput(): void {
+  private setupInput(native: TerminalRootNative): void {
     // For the tty sink no reader feeds this yet, so applications run output-only.
-    const observation = this.backend.observeInput(data => {
+    const observation = this.backend.observeInput(native, data => {
       if (this.unmounted) {
         return;
       }
       for (const press of parseInput(data)) {
         if (this.options.exitOnCtrlC !== false && press.key.ctrl && press.input === 'c') {
-          this.unmount();
+          this.exitFromApp();
           return;
         }
         this.app.dispatchInput(press);
@@ -301,7 +410,7 @@ class TerminalRenderer<ViewModel extends object, Context extends object> impleme
     this.disposables.push({ dispose: () => observation.cancel() });
   }
 
-  private patchConsole(): void {
+  private patchConsole(native: TerminalRootNative): void {
     const target = console as unknown as { [method: string]: (...args: unknown[]) => void };
     const originals: { [method: string]: (...args: unknown[]) => void } = {};
     for (const method of CONSOLE_METHODS) {
@@ -311,7 +420,7 @@ class TerminalRenderer<ViewModel extends object, Context extends object> impleme
       }
       originals[method] = original;
       target[method] = (...args: unknown[]) => {
-        this.backend.writeAbove(this.root.native, formatConsoleArgs(args));
+        this.backend.writeAbove(native, formatConsoleArgs(args));
       };
     }
     this.restoreConsole = () => {
@@ -322,6 +431,11 @@ class TerminalRenderer<ViewModel extends object, Context extends object> impleme
   }
 
   private onFrame(frame: TerminalFrame): void {
+    // Frames from different paint threads can arrive out of order; an older one never replaces a newer one.
+    if (frame.sequence <= this.lastSequence) {
+      return;
+    }
+    this.lastSequence = frame.sequence;
     this.lastPlainFrame = frame.lines;
     const waiters = this.frameWaiters.splice(0);
     for (const waiter of waiters) {

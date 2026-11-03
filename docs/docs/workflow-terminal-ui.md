@@ -36,8 +36,8 @@ view classes `valdi_tui` renders into.
 `backgroundColor`. A border occupies one cell on each enabled side; it is part of the
 box's layout, so it needs no extra padding. Like Ink, `flexDirection` defaults to `row`.
 
-The root component has to render a `<Box>`: the root of a context is a plain view, so a
-`<Text>` at the root has nowhere to put its text and renders nothing.
+`render()` hosts the root component in a column container, so the root component can render
+any element, including a lone `<Text>` or `<Static>`.
 
 `<Text>` takes its content through `value`. A plain string wraps inside the available
 width; an array of strings and spans styles parts of one paragraph:
@@ -65,7 +65,8 @@ RGB values and downgraded to what the terminal supports. `wrap` is one of `wrap`
 `truncate`, `truncate-start` or `truncate-middle`.
 
 `<Text>` is a `<label>`, so bold, dim and italic reach the backend through the label's
-`font` (`system-bold 1`, `system-light 1`, `system-italic 1`), underline and strikethrough
+`font` (`system-bold 1`, `system-light 1`, `system-italic 1`; the traits combine, so
+`bold` with `dimColor` is `system-bold-light 1` and prints SGR 1 and 2), underline and strikethrough
 through `textDecoration`, and styled parts through attributed text. `inverse` applies to the
 whole text, not to a single span.
 
@@ -104,6 +105,7 @@ subscription is disposed with the component:
 ```tsx
 import { StatefulComponent } from 'valdi_core/src/Component';
 import { getTerminalApp, useFocus, useInput } from 'valdi_tui/src/App';
+import { Text } from 'valdi_tui/src/Text';
 
 class Menu extends StatefulComponent<{}, { readonly index: number }> {
   state = { index: 0 };
@@ -138,10 +140,22 @@ Use it for logs and completed work. It is positioned absolutely, so it takes no 
 the live frame:
 
 ```tsx
-<Static items={this.state.log} render={(entry: LogEntry) => <Text dimColor value={entry.text} />} />
+class Log extends StatefulComponent<{}, { readonly entries: ReadonlyArray<LogEntry> }> {
+  state = { entries: [] };
+
+  onRender(): void {
+    <Static items={this.state.entries} render={this.renderEntry} />;
+  }
+
+  private readonly renderEntry = (entry: LogEntry): void => {
+    <Text dimColor value={entry.text} />;
+  };
+}
 ```
 
-Only lines that have not been written yet are emitted when the list grows.
+What has been written is tracked by item index, as in Ink: when the list grows, only the items
+after the ones already emitted are written. Keep the list append-only; changing or reordering
+earlier items does not rewrite them.
 
 ## Testing
 
@@ -159,9 +173,10 @@ expect(await instance.nextFrame()).toEqual(['count: 1']);
 instance.unmount();
 ```
 
-A frame can be painted before a change has finished laying out, so tests that care about a
-particular frame should keep calling `nextFrame()` until the expected one arrives. Other
-options for the memory sink: `isTTY: false` writes the output once at `unmount()` like a
+The first frame after `render()` is already laid out. Later frames can be painted before a
+change has finished laying out, so tests that care about a particular frame should keep calling
+`nextFrame()` until the expected one arrives. `nextFrame()` rejects once the instance is
+unmounted, and a pending one resolves with the last frame at `unmount()`. Other options for the memory sink: `isTTY: false` writes the output once at `unmount()` like a
 redirected stdout, `colorLevel` selects how many colors the recorded output uses, `output()`
 returns everything written, and `setSize(columns, rows)` resizes the terminal.
 
@@ -186,12 +201,16 @@ pipeline as on device:
   sink's color level, and writes it through a frame writer that redraws the previous frame in
   place. Frames are coalesced to one per turn of the main thread.
 - `observeFrame()` delivers each painted frame to JavaScript; `lastFrame()` and `nextFrame()`
-  are built on it. `writeAbove()` queues lines that are written above the live frame, which is
+  are built on it. Frames carry an increasing `sequence`, and an older frame never replaces a
+  newer one. Frames are painted on the main thread and handed to the JavaScript queue, except
+  the last frame at `unmount()`, which is painted and delivered on the JavaScript thread. `writeAbove()` queues lines that are written above the live frame, which is
   how `console.log` is redirected, and `finishRoot()` paints the last frame and leaves the
   output consistent when the application unmounts.
 - Input is carried by the same bridge. `feedInput()` delivers text to the observers registered
-  with `observeInput()`, which parse it into key presses and dispatch them to `useInput()`
-  handlers.
+  with `observeInput()` for the same root, which parse it into key presses and dispatch them to
+  `useInput()` handlers. Input and resize observers belong to one root, so several renders in
+  one process do not see each other's keys. `getTerminalApp()` returns the newest mounted
+  application, and unmounting restores the one before it.
 
 The bridge module is `valdi_tui/src/TerminalBackendBridge`; its declarations live in
 `TerminalBackendBridge.d.ts` and `TerminalBackend.ts` wraps it.
