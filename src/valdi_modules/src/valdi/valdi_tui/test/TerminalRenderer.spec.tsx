@@ -12,11 +12,11 @@ interface GreetingViewModel {
 
 class Greeting extends Component<GreetingViewModel> {
   onRender(): void {
-    <Box flexDirection='column'>
-      <Box borderStyle='single' paddingX={1}>
+    <Box flexDirection="column">
+      <Box borderStyle="single" paddingX={1}>
         <Text bold value={`Hello ${this.viewModel.name}`} />
       </Box>
-      <Text value='The quick brown fox jumps over the lazy dog' />
+      <Text value="The quick brown fox jumps over the lazy dog" />
     </Box>;
   }
 }
@@ -42,18 +42,22 @@ class Counter extends StatefulComponent<{}, CounterState> {
   }
 
   onRender(): void {
-    <Box flexDirection='column'>
-      <Static items={this.state.log} render={(entry: string) => <Text value={entry} />} />
+    <Box flexDirection="column">
+      <Static items={this.state.log} render={this.renderEntry} />
       <Text value={`count: ${this.state.count}`} />
     </Box>;
   }
+
+  private readonly renderEntry = (entry: string): void => {
+    <Text value={entry} />;
+  };
 }
 
 class Row extends Component {
   onRender(): void {
-    <Box width={12} justifyContent='space-between'>
-      <Text value='left' />
-      <Text value='right' />
+    <Box width={12} justifyContent="space-between">
+      <Text value="left" />
+      <Text value="right" />
     </Box>;
   }
 }
@@ -62,7 +66,7 @@ type Lines = ReadonlyArray<string>;
 
 // Frames can be painted between a change and its final layout, so a test waits for the frame it
 // expects instead of taking whichever comes next. Call it before making the change.
-async function frameMatching(instance: RenderInstance<any>, accept: (frame: Lines) => boolean): Promise<Lines> {
+async function frameMatching(instance: RenderInstance<object>, accept: (frame: Lines) => boolean): Promise<Lines> {
   for (let attempt = 0; attempt < 10; attempt++) {
     const frame = await instance.nextFrame();
     if (accept(frame)) {
@@ -72,7 +76,7 @@ async function frameMatching(instance: RenderInstance<any>, accept: (frame: Line
   throw new Error('No frame matched the expectation');
 }
 
-const isSettled = (frame: Lines) => frame.length > 0;
+const isSettled = (frame: Lines): boolean => frame.length > 0;
 
 describe('render', () => {
   it('lays out boxes and wraps text to the terminal width', async () => {

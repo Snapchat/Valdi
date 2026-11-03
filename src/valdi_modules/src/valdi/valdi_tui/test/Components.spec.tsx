@@ -8,7 +8,7 @@ import { ColorLevel } from '../src/ansi';
 
 type Lines = ReadonlyArray<string>;
 
-async function frameMatching(instance: RenderInstance<any>, accept: (frame: Lines) => boolean): Promise<Lines> {
+async function frameMatching(instance: RenderInstance<object>, accept: (frame: Lines) => boolean): Promise<Lines> {
   for (let attempt = 0; attempt < 10; attempt++) {
     const frame = await instance.nextFrame();
     if (accept(frame)) {
@@ -18,29 +18,35 @@ async function frameMatching(instance: RenderInstance<any>, accept: (frame: Line
   throw new Error('No frame matched the expectation');
 }
 
-const isSettled = (frame: Lines) => frame.length > 0;
+const isSettled = (frame: Lines): boolean => frame.length > 0;
 
 class Truncated extends Component {
   onRender(): void {
     <Box width={10}>
-      <Text wrap='truncate-end' value='hello wonderful world' />
+      <Text wrap="truncate-end" value="hello wonderful world" />
     </Box>;
   }
 }
 
 class OpenTop extends Component {
   onRender(): void {
-    <Box borderStyle='round' borderTop={false} width={6}>
-      <Text value='ab' />
+    <Box borderStyle="round" borderTop={false} width={6}>
+      <Text value="ab" />
     </Box>;
   }
 }
 
 // The root element must be a Box: the root view is a plain view, which cannot take a label's text.
+const STATUS_VALUE = ['Status: ', { text: 'ok', color: 'green', bold: true }];
+
+function shout(line: string): string {
+  return line.toUpperCase();
+}
+
 class Spans extends Component {
   onRender(): void {
     <Box>
-      <Text value={['Status: ', { text: 'ok', color: 'green', bold: true }]} />
+      <Text value={STATUS_VALUE} />
     </Box>;
   }
 }
@@ -48,7 +54,7 @@ class Spans extends Component {
 class Shouting extends Component {
   onRender(): void {
     <Box>
-      <Transform transform={line => line.toUpperCase()} value='quiet' />
+      <Transform transform={shout} value="quiet" />
     </Box>;
   }
 }
@@ -56,7 +62,7 @@ class Shouting extends Component {
 class Logging extends Component {
   onRender(): void {
     <Box>
-      <Text value='live' />
+      <Text value="live" />
     </Box>;
   }
 }

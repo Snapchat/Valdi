@@ -101,7 +101,7 @@ function clampChannel(value: number): number {
 }
 
 function toHex(r: number, g: number, b: number): string {
-  const channel = (value: number) => clampChannel(value).toString(16).padStart(2, '0');
+  const channel = (value: number): string => clampChannel(value).toString(16).padStart(2, '0');
   return `#${channel(r)}${channel(g)}${channel(b)}`;
 }
 
@@ -111,14 +111,14 @@ function packedToHex(packed: number): string {
 
 function ansi256ToHex(code: number): string {
   if (code < 16) {
-    return packedToHex(ANSI16_RGB[code]!);
+    return packedToHex(ANSI16_RGB[code]);
   }
   if (code >= 232) {
     const gray = (code - 232) * 10 + 8;
     return toHex(gray, gray, gray);
   }
   const index = code - 16;
-  const level = (n: number) => (n === 0 ? 0 : 55 + n * 40);
+  const level = (n: number): number => (n === 0 ? 0 : 55 + n * 40);
   return toHex(level(Math.floor(index / 36)), level(Math.floor((index % 36) / 6)), level(index % 6));
 }
 
@@ -137,7 +137,7 @@ export function parseColor(input: string | undefined): string | undefined {
   }
   const ansi = ANSI_NAMES[value];
   if (ansi !== undefined) {
-    return packedToHex(ANSI16_RGB[ansi]!);
+    return packedToHex(ANSI16_RGB[ansi]);
   }
   if (value.charAt(0) === '#') {
     let hex = value.substring(1);
@@ -161,16 +161,16 @@ export function parseColor(input: string | undefined): string | undefined {
   }
   const fn = /^([a-zA-Z0-9]+)\s*\((.*)\)$/.exec(value);
   if (fn) {
-    const name = fn[1]!.toLowerCase();
-    const args = fn[2]!.split(/[\s,/]+/).filter(part => part.length > 0);
+    const name = fn[1].toLowerCase();
+    const args = fn[2].split(/[\s,/]+/).filter(part => part.length > 0);
     if ((name === 'rgb' || name === 'rgba') && args.length >= 3) {
-      if (args.length >= 4 && parseFloat(args[3]!) === 0) {
+      if (args.length >= 4 && parseFloat(args[3]) === 0) {
         return undefined;
       }
-      return toHex(parseFloat(args[0]!), parseFloat(args[1]!), parseFloat(args[2]!));
+      return toHex(parseFloat(args[0]), parseFloat(args[1]), parseFloat(args[2]));
     }
     if ((name === 'ansi256' || name === 'ansi') && args.length >= 1) {
-      const code = parseInt(args[0]!, 10);
+      const code = parseInt(args[0], 10);
       if (isNaN(code)) {
         return undefined;
       }
@@ -184,7 +184,7 @@ export function parseColor(input: string | undefined): string | undefined {
   }
   const lowerAnsi = ANSI_NAMES[value.toLowerCase()];
   if (lowerAnsi !== undefined) {
-    return packedToHex(ANSI16_RGB[lowerAnsi]!);
+    return packedToHex(ANSI16_RGB[lowerAnsi]);
   }
   return undefined;
 }

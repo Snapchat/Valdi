@@ -41,10 +41,14 @@ export interface Focusable extends Disposable {
  * Equivalent of Ink's `useFocus` and `useFocusManager`.
  */
 export class FocusManager {
+  enabled = true;
   private readonly entries: FocusEntry[] = [];
   private focusedId: string | undefined;
   private nextId = 0;
-  enabled = true;
+
+  get activeId(): string | undefined {
+    return this.focusedId;
+  }
 
   register(options: FocusOptions = {}): Focusable {
     const id = options.id ?? `focusable-${++this.nextId}`;
@@ -64,10 +68,6 @@ export class FocusManager {
     if (this.focusedId === entry.id) {
       this.setFocused(undefined);
     }
-  }
-
-  get activeId(): string | undefined {
-    return this.focusedId;
   }
 
   isFocused(id: string): boolean {
@@ -125,7 +125,7 @@ export class FocusManager {
     } else {
       nextIndex = (currentIndex + direction + active.length) % active.length;
     }
-    this.setFocused(active[nextIndex]!.id);
+    this.setFocused(active[nextIndex].id);
   }
 
   private setFocused(id: string | undefined): void {
@@ -146,11 +146,7 @@ class FocusEntry implements Focusable {
   private readonly callbacks = new Set<(isFocused: boolean) => void>();
   private active: boolean;
 
-  constructor(
-    private readonly manager: FocusManager,
-    readonly id: string,
-    isActive: boolean,
-  ) {
+  constructor(private readonly manager: FocusManager, readonly id: string, isActive: boolean) {
     this.active = isActive;
   }
 
@@ -197,10 +193,7 @@ export class TerminalApp {
   private readonly resizeHandlers = new Set<ResizeHandler>();
   private exitRequested = false;
 
-  constructor(
-    readonly terminal: TerminalInfo,
-    private readonly requestExit: (error?: Error) => void,
-  ) {}
+  constructor(readonly terminal: TerminalInfo, private readonly requestExit: (error?: Error) => void) {}
 
   /** Unmounts the application. An error rejects `waitUntilExit()`. */
   exit(error?: Error): void {
