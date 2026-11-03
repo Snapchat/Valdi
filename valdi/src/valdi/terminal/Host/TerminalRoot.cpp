@@ -7,6 +7,7 @@
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <limits>
 
 namespace Valdi {
@@ -187,7 +188,8 @@ void TerminalRoot::paintNow() {
         painter.paintRoot(*rootView);
 
         const auto level = _sink->colorLevel();
-        std::vector<std::string> staticLines;
+        std::vector<std::string> staticLines = std::move(_pendingAbove);
+        _pendingAbove.clear();
         for (auto* staticView : painter.staticViews()) {
             const size_t childCount = staticView->getChildren().size();
             const size_t emitted = std::min(staticView->getEmittedChildCount(), childCount);
@@ -251,6 +253,24 @@ void TerminalRoot::removeFrameObserver(int id) {
 Terminal::FrameSnapshot TerminalRoot::getLastFrame() const {
     std::lock_guard<RecursiveMutex> guard(_mutex);
     return _lastFrame;
+}
+
+void TerminalRoot::writeAbove(std::vector<std::string> lines) {
+    if (_destroyed || lines.empty()) {
+        return;
+    }
+    {
+        std::lock_guard<RecursiveMutex> guard(_mutex);
+        _pendingAbove.insert(
+            _pendingAbove.end(), std::make_move_iterator(lines.begin()), std::make_move_iterator(lines.end()));
+    }
+    scheduleFrame();
+}
+
+void TerminalRoot::clear() {
+    std::lock_guard<RecursiveMutex> guard(_mutex);
+    _writer.clear();
+    _sink->flush();
 }
 
 void TerminalRoot::finish() {
