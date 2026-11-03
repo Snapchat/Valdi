@@ -52,3 +52,7 @@ It is off by default because it links libcurl and BoringSSL into the binary, whi
 
 You can then run your application using `valdi install cli`.
 You can package your application into a single binary using `valdi package cli`.
+
+## Terminal user interfaces
+
+To draw an interactive interface instead of printing lines, use the `valdi_tui` module. See [Terminal user interfaces](./workflow-terminal-ui.md).
