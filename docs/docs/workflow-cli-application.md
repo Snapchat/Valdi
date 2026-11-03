@@ -66,4 +66,4 @@ valdi_cli_application(
 )
 ```
 
-`terminal = True` registers the native terminal backend, lets the application read the keyboard and track the terminal size, restores the terminal when the process ends or is signalled, and reports the platform as macOS or Linux (`Device.getSystemType()` returns `macos` or `linux`, so `Device.isIOS()` is false). `valdi_tui` fails without it. See [Terminal user interfaces](./workflow-terminal-ui.md).
+`terminal = True` registers the native terminal backend, lets the application read the keyboard and track the terminal size, restores the terminal when the process ends or is signalled, and reports the platform as macOS or Linux through `getCurrentPlatform()` and the JSX platform (`Device.getSystemType()` still returns `ios` until device identity for desktop command line applications lands). `valdi_tui` fails without it. See [Terminal user interfaces](./workflow-terminal-ui.md).

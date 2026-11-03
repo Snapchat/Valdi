@@ -3,8 +3,8 @@ import { ComponentConstructor, IComponent } from 'valdi_core/src/IComponent';
 import { jsx } from 'valdi_core/src/JSXBootstrap';
 import { RootComponentsManager } from 'valdi_core/src/RootComponentsManager';
 import {
-  UncaughtErrorHandler,
   UncaughtErrorHandlerResult,
+  getCatchAllUncaughtErrorHandler,
   setCatchAllUncaughtErrorHandler,
 } from 'valdi_core/src/UncaughtErrorHandler';
 import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
@@ -127,8 +127,10 @@ function envNumber(name: string): number | undefined {
   return isNaN(value) || value <= 0 ? undefined : value;
 }
 
-// The handler registry keeps the current catch-all on the global object but only exports a setter.
-const catchAllHandlerHolder = globalThis as typeof globalThis & { catchAllErrorHandler?: UncaughtErrorHandler };
+/** Keyboard input needs a terminal on both ends: raw mode changes the terminal that stdin is attached to. */
+export function wantsRawMode(terminal: Pick<TerminalInfo, 'isInputTTY' | 'isOutputTTY'>): boolean {
+  return terminal.isInputTTY && terminal.isOutputTTY;
+}
 
 function toError(value: unknown): Error {
   return value instanceof Error ? value : new Error(String(value));
@@ -315,7 +317,7 @@ class TerminalRenderer<ViewModel extends object, Context extends object> impleme
     // which would leave a half-built application running. The initial render is synchronous and runs on
     // the caller's context rather than the new one, so only the catch-all handler sees its errors.
     const initialErrors: unknown[] = [];
-    const previousCatchAll = catchAllHandlerHolder.catchAllErrorHandler;
+    const previousCatchAll = getCatchAllUncaughtErrorHandler();
     setCatchAllUncaughtErrorHandler((_isRejection, error) => {
       initialErrors.push(error);
       return UncaughtErrorHandlerResult.IGNORE;
@@ -394,9 +396,10 @@ class TerminalRenderer<ViewModel extends object, Context extends object> impleme
   }
 
   private setupInput(native: TerminalRootNative, sink: TerminalSinkKind): void {
-    // The host reads stdin only in raw mode. Without a terminal on stdin, or in a host that does not own
-    // the terminal, setRawMode() is a no-op and the application runs output-only.
-    if (sink === 'tty' && this.terminal.isInputTTY && this.backend.setRawMode(native, true)) {
+    // The host reads stdin only in raw mode. Without a terminal on stdin and stdout, or in a host that does not
+    // own the terminal, setRawMode() is a no-op and the application runs output-only: raw mode with a redirected
+    // stdout would leave the user's terminal unable to echo while nothing is drawn.
+    if (sink === 'tty' && wantsRawMode(this.terminal) && this.backend.setRawMode(native, true)) {
       this.disposables.push({ dispose: () => this.backend.setRawMode(native, false) });
     }
     const observation = this.backend.observeInput(native, data => {

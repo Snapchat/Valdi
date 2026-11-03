@@ -3,6 +3,7 @@
 #include "valdi/runtime/Context/Context.hpp"
 #include "valdi/runtime/Context/ContextAutoDestroy.hpp"
 #include "valdi/runtime/Context/ContextManager.hpp"
+#include "valdi/runtime/JavaScript/JavaScriptRuntime.hpp"
 #include "valdi/runtime/Runtime.hpp"
 #include "valdi/terminal/Host/TerminalRoot.hpp"
 #include "valdi/terminal/Sink/MemorySink.hpp"
@@ -156,6 +157,21 @@ public:
             ContextAutoDestroy::destroy();
             runtime->destroyViewNodeTree(*_viewNodeTree);
         }
+    }
+
+    /**
+     * Drops `handle` on the JS thread. The destructor tears the context down, which has to happen where the JS
+     * garbage collector would have run it, not on the host reader thread that briefly held a reference.
+     */
+    static void releaseOnJsThread(Ref<TerminalRootHandle> handle) {
+        auto runtime = handle->_runtime.lock();
+        auto* javaScriptRuntime = runtime != nullptr ? runtime->getJavaScriptRuntime() : nullptr;
+        if (javaScriptRuntime == nullptr) {
+            return;
+        }
+        javaScriptRuntime->dispatchOnJsThreadAsync(
+            STRING_LITERAL("TerminalRootHandle.release"),
+            [handle = std::move(handle)](JavaScriptEntryParameters& /*entry*/) mutable { handle = nullptr; });
     }
 
     /** Paints a last time so non-interactive output gets its single frame. */
@@ -513,13 +529,13 @@ void TerminalBackendModule::dispatchResize(TerminalRootHandle& handle, int colum
     }
 }
 
-std::vector<Ref<TerminalRootHandle>> TerminalBackendModule::liveHandles() {
-    std::vector<Ref<TerminalRootHandle>> out;
+std::vector<TerminalBackendModule::LiveHandle> TerminalBackendModule::liveHandles() {
+    std::vector<LiveHandle> out;
     std::lock_guard<Mutex> guard(_mutex);
     for (const auto& weak : _handles) {
         auto handle = weak.lock();
         if (handle != nullptr) {
-            out.emplace_back(std::move(handle));
+            out.emplace_back(std::move(handle), &TerminalRootHandle::releaseOnJsThread);
         }
     }
     return out;

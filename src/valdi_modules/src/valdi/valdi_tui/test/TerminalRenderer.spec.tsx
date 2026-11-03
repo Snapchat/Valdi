@@ -4,7 +4,7 @@ import { getTerminalApp, useInput } from '../src/App';
 import { Box } from '../src/Box';
 import { Static } from '../src/Static';
 import { getTerminalBackend } from '../src/TerminalBackend';
-import { RenderInstance, render as renderUntracked } from '../src/TerminalRenderer';
+import { RenderInstance, render as renderUntracked, wantsRawMode } from '../src/TerminalRenderer';
 import { Text } from '../src/Text';
 import { render, unmountAll } from './renderTracked';
 
@@ -85,6 +85,15 @@ async function frameMatching(instance: RenderInstance<object>, accept: (frame: L
 }
 
 const isSettled = (frame: Lines): boolean => frame.length > 0;
+
+describe('wantsRawMode', () => {
+  it('needs a terminal on both stdin and stdout', () => {
+    expect(wantsRawMode({ isInputTTY: true, isOutputTTY: true })).toBe(true);
+    expect(wantsRawMode({ isInputTTY: true, isOutputTTY: false })).toBe(false);
+    expect(wantsRawMode({ isInputTTY: false, isOutputTTY: true })).toBe(false);
+    expect(wantsRawMode({ isInputTTY: false, isOutputTTY: false })).toBe(false);
+  });
+});
 
 describe('render', () => {
   afterEach(unmountAll);
