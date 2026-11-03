@@ -167,6 +167,12 @@ class Rendering(Base):
         self.assertNotIn("::warning", out)
         self.assertIn("4.9 KiB", md)  # absolute size listed
 
+    def test_log_line_when_compared(self):
+        out, _ = self.compare(report([vm("a", 5000)]), report([vm("a", 5000)], commit="b" * 40))
+        self.assertIn("vs baseline bbbbbbbbbbbb: 0 threshold crossing(s)", out)
+        out, _ = self.compare(report([vm("a", 200 * KIB)]), report([vm("a", 100 * KIB)]), annotate=False)
+        self.assertIn(": 2 threshold crossing(s)", out)  # the module and the total
+
     def test_table_lists_only_1k_changes_top_20(self):
         filler = vm("zz_filler", 100 * 1024 * KIB)
         base = [vm("m%02d" % i, 100 * KIB) for i in range(30)] + [vm("tiny", 100 * KIB), filler]

@@ -533,6 +533,12 @@ def cmd_compare(args):
 
     if baseline is None:
         print("NO BASELINE: Valdi size report shows absolute sizes only. %s" % note)
+    elif args.summary:
+        # The table only goes to the step summary; leave a line in the log too.
+        print(
+            "Valdi size report vs baseline %s: %d threshold crossing(s). Details are in the step summary."
+            % (baseline["commit"][:12], len(warnings))
+        )
     for w in warnings:
         if args.annotate and reason is None:
             print("::warning title=Valdi size::%s" % gh_escape(w))

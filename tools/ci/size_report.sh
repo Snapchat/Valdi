@@ -135,6 +135,14 @@ if ! "$BAZEL" cquery "$TARGET_SET" --output=starlark \
     warn "could not locate the built .valdimodule files; no size report this run."
     exit 0
 fi
+# A cquery that succeeds but locates nothing would otherwise produce a report with no modules:
+# every module would read as removed, shrinkage never warns, and on main that report would become
+# the baseline later PRs compare against.
+if [[ ! -s "$WORK_DIR/valdimodules.tsv" ]]; then
+    cat "$WORK_DIR/cquery.log" >&2
+    warn "located none of the built .valdimodule files; no size report this run."
+    exit 0
+fi
 
 # --- 3. Native library sizes ----------------------------------------------------------------
 AAR="${VALDI_SIZE_AAR:-}"
