@@ -16,6 +16,8 @@ struct FrameSnapshot {
     std::vector<std::string> plainLines;
     /** Live region rows with ANSI styling at the sink's color level. */
     std::vector<std::string> ansiLines;
+    /** ansiLines joined with newlines. */
+    std::string ansi;
     int columns = 0;
     int height = 0;
 };
