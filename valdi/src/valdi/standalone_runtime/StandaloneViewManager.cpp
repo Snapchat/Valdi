@@ -25,6 +25,8 @@
 #include "valdi/runtime/Attributes/AttributesBindingContext.hpp"
 #include "valdi/runtime/Context/ViewNode.hpp"
 
+#include <algorithm>
+
 namespace Valdi {
 
 // A view class which artifically takes 10ms to inflate
@@ -144,17 +146,20 @@ void StandaloneViewManager::bindAttributes(const Valdi::StringBox& className, Va
         doRegisterAttribute("class", binder);
         doRegisterAttribute("color", binder);
         doRegisterAttribute("dummyHeight", binder);
-        doRegisterAttribute("padding", binder);
         doRegisterAttribute("onTap", binder);
-        doRegisterAttribute("justifyContent", binder);
-        doRegisterAttribute("alignItems", binder);
-        doRegisterAttribute("top", binder);
         doRegisterAttribute("opacity", binder);
         doRegisterAttribute("border", binder);
         doRegisterAttribute("boxShadow", binder);
         doRegisterAttribute("borderRadius", binder);
         doRegisterAttribute("background", binder);
         doRegisterAttribute("backgroundColor", binder);
+    }
+
+    const auto extraAttributes = _extraDummyAttributes.find(className);
+    if (extraAttributes != _extraDummyAttributes.end()) {
+        for (const auto& attributeName : extraAttributes->second) {
+            binder.bindUntypedAttribute(attributeName, false, Valdi::makeShared<DummyAttributeHandlerDelegate>());
+        }
     }
 
     if (className == "UIButton" || className == "SCValdiLabel" || className == "SCValdiTextView") {
@@ -218,6 +223,13 @@ Ref<IViewTransaction> StandaloneViewManager::createViewTransaction(const Ref<Mai
 
 Ref<IBitmapFactory> StandaloneViewManager::getViewRasterBitmapFactory() const {
     return nullptr;
+}
+
+void StandaloneViewManager::addDummyAttribute(const StringBox& className, const StringBox& attributeName) {
+    auto& attributeNames = _extraDummyAttributes[className];
+    if (std::find(attributeNames.begin(), attributeNames.end(), attributeName) == attributeNames.end()) {
+        attributeNames.push_back(attributeName);
+    }
 }
 
 void StandaloneViewManager::setKeepAttributesHistory(bool keepAttributesHistory) {
