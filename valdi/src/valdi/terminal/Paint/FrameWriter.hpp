@@ -37,6 +37,9 @@ public:
     /** Leaves the last frame on screen and restores the cursor. */
     void finish();
 
+    /** Stops writing without the trailing newline and cursor restore, because something else already restored them. */
+    void abandon();
+
 private:
     Ref<ITerminalSink> _sink;
     FrameWriterOptions _options;
