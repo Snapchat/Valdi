@@ -47,6 +47,11 @@ export interface TerminalFrame {
   ansi: string;
   columns: number;
   height: number;
+  /**
+   * Increases with every frame the root paints. Observers can be called out of order when frames
+   * are painted on different threads, so compare it to drop a frame older than one already seen.
+   */
+  sequence: number;
 }
 
 export function createRoot(options: CreateRootOptions): TerminalRootHandle;
@@ -56,7 +61,11 @@ export function finishRoot(native: TerminalRootNative): void;
 
 export function destroyRoot(native: TerminalRootNative): void;
 
-/** Observes every painted frame. Callbacks run on the JS queue. */
+/**
+ * Observes every painted frame. Frames are painted on the main thread and handed to the JS queue.
+ * Painting that runs on the JS thread itself, such as the final frame of {@link finishRoot},
+ * calls the callback synchronously on that thread.
+ */
 export function observeFrame(native: TerminalRootNative, callback: (frame: TerminalFrame) => void): Cancelable;
 
 export function getLastFrame(native: TerminalRootNative): TerminalFrame | undefined;
@@ -74,19 +83,22 @@ export function clearRoot(native: TerminalRootNative): void;
 export function getOutput(native: TerminalRootNative): string;
 
 /**
- * Delivers terminal input to the observers registered with {@link observeInput}. Memory-sink
- * tests use it to type; a TTY host reader calls the same native path.
+ * Delivers terminal input to the observers that {@link observeInput} registered for this root.
+ * Memory-sink tests use it to type; a TTY host reader calls the same native path.
  */
 export function feedInput(native: TerminalRootNative, text: string): void;
 
 /**
- * Observes raw terminal input. Nothing produces input for the `tty` sink yet, so a registered
- * observer only fires for {@link feedInput}.
+ * Observes raw terminal input for one root. Nothing produces input for the `tty` sink yet, so a
+ * registered observer only fires for {@link feedInput}.
  */
-export function observeInput(callback: (text: string) => void): Cancelable;
+export function observeInput(native: TerminalRootNative, callback: (text: string) => void): Cancelable;
 
-/** Observes terminal size changes reported with {@link setSize}. */
-export function observeResize(callback: (columns: number, rows: number) => void): Cancelable;
+/** Observes the terminal size changes reported for one root with {@link setSize}. */
+export function observeResize(
+  native: TerminalRootNative,
+  callback: (columns: number, rows: number) => void,
+): Cancelable;
 
 /** Size of the process terminal as `[columns, rows]`, or undefined when stdout is not a terminal. */
 export function getSize(): [number, number] | undefined;

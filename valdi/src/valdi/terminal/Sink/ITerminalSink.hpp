@@ -4,6 +4,7 @@
 
 #include "valdi_core/cpp/Utils/Shared.hpp"
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -20,6 +21,8 @@ struct FrameSnapshot {
     std::string ansi;
     int columns = 0;
     int height = 0;
+    /** Increases by one with every frame a root paints, starting at 1. Lets observers drop stale frames. */
+    uint64_t sequence = 0;
 };
 
 /**

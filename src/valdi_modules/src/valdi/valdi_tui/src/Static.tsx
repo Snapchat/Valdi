@@ -11,6 +11,10 @@ export interface StaticProps<T> {
 /**
  * Output that is written above the live frame and never erased: logs, completed tasks,
  * test results. Items are rendered as a column; rows already written are not written again.
+ *
+ * What counts as already written is tracked by child index, the way Ink's `<Static>` does: the
+ * first `n` items stay as they were emitted and only items appended after them are written. Keep
+ * `items` append-only; replacing or reordering existing items does not rewrite them.
  */
 export class Static<T = unknown> extends Component<StaticProps<T>> {
   onRender(): void {

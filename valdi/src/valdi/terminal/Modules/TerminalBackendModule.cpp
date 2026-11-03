@@ -13,7 +13,10 @@
 #include "valdi_core/cpp/Utils/ValueFunctionWithMethod.hpp"
 
 #include <algorithm>
+#include <map>
+#include <mutex>
 #include <unistd.h>
+#include <vector>
 
 namespace Valdi {
 
@@ -32,7 +35,8 @@ Value frameToValue(const Terminal::FrameSnapshot& frame) {
         .setMapValue("lines", Value(lines))
         .setMapValue("ansi", makeString(frame.ansi))
         .setMapValue("columns", Value(static_cast<int32_t>(frame.columns)))
-        .setMapValue("height", Value(static_cast<int32_t>(frame.height)));
+        .setMapValue("height", Value(static_cast<int32_t>(frame.height)))
+        .setMapValue("sequence", Value(static_cast<double>(frame.sequence)));
 }
 
 Value makeCancelable(Function<void()> cancel) {
@@ -59,6 +63,45 @@ std::vector<std::string> splitLines(std::string_view text) {
     }
     return lines;
 }
+
+/** Callbacks registered from JS for one root, keyed by an id handed back through the cancelable. */
+class ObserverList {
+public:
+    int add(const Ref<ValueFunction>& observer) {
+        std::lock_guard<Mutex> guard(_mutex);
+        const int id = ++_nextId;
+        _entries.emplace(id, observer);
+        return id;
+    }
+
+    void remove(int id) {
+        std::lock_guard<Mutex> guard(_mutex);
+        _entries.erase(id);
+    }
+
+    std::vector<Ref<ValueFunction>> snapshot() const {
+        std::lock_guard<Mutex> guard(_mutex);
+        std::vector<Ref<ValueFunction>> out;
+        out.reserve(_entries.size());
+        for (const auto& entry : _entries) {
+            out.emplace_back(entry.second);
+        }
+        return out;
+    }
+
+    void clear() {
+        std::map<int, Ref<ValueFunction>> released;
+        {
+            std::lock_guard<Mutex> guard(_mutex);
+            released.swap(_entries);
+        }
+    }
+
+private:
+    mutable Mutex _mutex;
+    std::map<int, Ref<ValueFunction>> _entries;
+    int _nextId = 0;
+};
 
 } // namespace
 
@@ -91,6 +134,9 @@ public:
             return;
         }
         _root->destroy();
+        // JS closures registered here capture the renderer that owns this handle; release them with it.
+        _inputObservers.clear();
+        _resizeObservers.clear();
         auto runtime = _runtime.lock();
         if (runtime != nullptr) {
             ContextAutoDestroy::destroy();
@@ -113,7 +159,17 @@ public:
         return _memorySink;
     }
 
+    ObserverList& inputObservers() {
+        return _inputObservers;
+    }
+
+    ObserverList& resizeObservers() {
+        return _resizeObservers;
+    }
+
 private:
+    ObserverList _inputObservers;
+    ObserverList _resizeObservers;
     std::atomic<bool> _destroyed{false};
     Weak<Runtime> _runtime;
     Ref<ViewNodeTree> _viewNodeTree;
@@ -217,6 +273,7 @@ Value TerminalBackendModule::createRoot(const ValueFunctionCallContext& callCont
 
     auto handle = makeShared<TerminalRootHandle>(
         runtime, viewNodeTree, newContext->getContextId(), runtime->getContextManager(), root, sink, memorySink);
+    registerHandle(handle);
 
     return Value()
         .setMapValue("contextId", Value(static_cast<int32_t>(newContext->getContextId())))
@@ -246,7 +303,9 @@ Value TerminalBackendModule::observeFrame(const ValueFunctionCallContext& callCo
         return Value();
     }
 
-    // Frames are painted on the main thread; the flag hops the call onto the JS queue.
+    // Frames are painted on the main thread, and the flag hops the call onto the JS queue. Painting that happens
+    // on the JS thread itself (finishRoot) runs the callback synchronously on that thread instead, because a
+    // function called from its own queue's thread is never deferred.
     const auto id = handle->getRoot()->addFrameObserver([observer](const Terminal::FrameSnapshot& frame) {
         (*observer)(ValueFunctionFlagsNeverCallSync, {frameToValue(frame)});
     });
@@ -270,16 +329,17 @@ Value TerminalBackendModule::setSize(const ValueFunctionCallContext& callContext
         handle->getMemorySink()->setSize(columns, rows);
     }
     handle->getRoot()->setSize(columns, rows);
-    dispatchResize(columns, rows);
+    dispatchResize(*handle, columns, rows);
     return Value();
 }
 
 Value TerminalBackendModule::feedInput(const ValueFunctionCallContext& callContext) {
+    auto handle = getHandle(callContext);
     const auto text = callContext.getParameterAsString(1);
-    if (!callContext.getExceptionTracker()) {
+    if (handle == nullptr || !callContext.getExceptionTracker()) {
         return Value();
     }
-    dispatchInput(text);
+    dispatchInput(*handle, text);
     return Value();
 }
 
@@ -340,63 +400,73 @@ Value TerminalBackendModule::isTTY(const ValueFunctionCallContext& callContext) 
     return Value(::isatty(fd) != 0);
 }
 
-Value TerminalBackendModule::addObserver(std::map<int, Ref<ValueFunction>>& observers,
-                                         const Ref<ValueFunction>& observer) {
-    int id;
-    {
-        std::lock_guard<Mutex> guard(_mutex);
-        id = ++_nextObserverId;
-        observers.emplace(id, observer);
+void TerminalBackendModule::registerHandle(const Ref<TerminalRootHandle>& handle) {
+    std::lock_guard<Mutex> guard(_mutex);
+    _handles.erase(std::remove_if(_handles.begin(),
+                                  _handles.end(),
+                                  [](const Weak<TerminalRootHandle>& weak) { return weak.lock() == nullptr; }),
+                   _handles.end());
+    _handles.emplace_back(weakRef(handle.get()));
+}
+
+Value TerminalBackendModule::addObserver(const ValueFunctionCallContext& callContext, bool isInput) {
+    auto handle = getHandle(callContext);
+    auto observer = callContext.getParameterAsFunction(1);
+    if (handle == nullptr || !callContext.getExceptionTracker()) {
+        return Value();
     }
-    return makeCancelable([weakSelf = weakRef(this), &observers, id]() {
-        auto self = weakSelf.lock();
-        if (self != nullptr) {
-            std::lock_guard<Mutex> guard(self->_mutex);
-            observers.erase(id);
+    auto& list = isInput ? handle->inputObservers() : handle->resizeObservers();
+    const int id = list.add(observer);
+    return makeCancelable([weakHandle = weakRef(handle.get()), isInput, id]() {
+        auto handle = weakHandle.lock();
+        if (handle != nullptr) {
+            (isInput ? handle->inputObservers() : handle->resizeObservers()).remove(id);
         }
     });
 }
 
 Value TerminalBackendModule::observeInput(const ValueFunctionCallContext& callContext) {
-    auto observer = callContext.getParameterAsFunction(0);
-    if (!callContext.getExceptionTracker()) {
-        return Value();
-    }
-    return addObserver(_inputObservers, observer);
+    return addObserver(callContext, /* isInput */ true);
 }
 
 Value TerminalBackendModule::observeResize(const ValueFunctionCallContext& callContext) {
-    auto observer = callContext.getParameterAsFunction(0);
-    if (!callContext.getExceptionTracker()) {
-        return Value();
-    }
-    return addObserver(_resizeObservers, observer);
+    return addObserver(callContext, /* isInput */ false);
 }
 
-void TerminalBackendModule::dispatchInput(const StringBox& text) {
-    std::vector<Ref<ValueFunction>> observers;
-    {
-        std::lock_guard<Mutex> guard(_mutex);
-        for (const auto& entry : _inputObservers) {
-            observers.emplace_back(entry.second);
-        }
-    }
-    for (const auto& observer : observers) {
+void TerminalBackendModule::dispatchInput(TerminalRootHandle& handle, const StringBox& text) {
+    for (const auto& observer : handle.inputObservers().snapshot()) {
         (*observer)(ValueFunctionFlagsNeverCallSync, {Value(text)});
     }
 }
 
-void TerminalBackendModule::dispatchResize(int columns, int rows) {
-    std::vector<Ref<ValueFunction>> observers;
-    {
-        std::lock_guard<Mutex> guard(_mutex);
-        for (const auto& entry : _resizeObservers) {
-            observers.emplace_back(entry.second);
-        }
-    }
-    for (const auto& observer : observers) {
+void TerminalBackendModule::dispatchResize(TerminalRootHandle& handle, int columns, int rows) {
+    for (const auto& observer : handle.resizeObservers().snapshot()) {
         (*observer)(ValueFunctionFlagsNeverCallSync,
                     {Value(static_cast<int32_t>(columns)), Value(static_cast<int32_t>(rows))});
+    }
+}
+
+std::vector<Ref<TerminalRootHandle>> TerminalBackendModule::liveHandles() {
+    std::vector<Ref<TerminalRootHandle>> out;
+    std::lock_guard<Mutex> guard(_mutex);
+    for (const auto& weak : _handles) {
+        auto handle = weak.lock();
+        if (handle != nullptr) {
+            out.emplace_back(std::move(handle));
+        }
+    }
+    return out;
+}
+
+void TerminalBackendModule::dispatchInput(const StringBox& text) {
+    for (const auto& handle : liveHandles()) {
+        dispatchInput(*handle, text);
+    }
+}
+
+void TerminalBackendModule::dispatchResize(int columns, int rows) {
+    for (const auto& handle : liveHandles()) {
+        dispatchResize(*handle, columns, rows);
     }
 }
 
