@@ -57,9 +57,13 @@ void writeFully(int fd, const char* data, size_t size) {
 
 // Async-signal-safe: only atomics, tcsetattr and write.
 void restoreTerminalSignalSafe() {
-    if (gRawActive.exchange(false) && gHasSavedTermios.load()) {
+    // Restores whenever the original modes are known instead of trusting gRawActive: a thread that is
+    // halfway through leaving raw mode has already cleared the flag but may not have called tcsetattr yet,
+    // and applying the saved modes twice is harmless.
+    if (gHasSavedTermios.load()) {
         tcsetattr(STDIN_FILENO, TCSANOW, &gSavedTermios);
     }
+    gRawActive.store(false);
     if (gOutputArmed.load()) {
         if (!gRestoreWritten.exchange(true)) {
             writeFully(STDOUT_FILENO, kRestoreSequence, sizeof(kRestoreSequence) - 1);
@@ -87,8 +91,27 @@ void resizeSignalHandler(int /*signal*/) {
     wake(kWakeResize);
 }
 
-constexpr int kTerminatingSignals[] = {SIGINT, SIGTERM, SIGHUP, SIGQUIT};
-constexpr int kCrashSignals[] = {SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL};
+// These replace backward's SIGQUIT handler on purpose: Ctrl+backslash should end the program with the terminal
+// restored, not print a stack trace. SIGPIPE is here because its default action kills the process without a chance
+// to restore.
+// SIGWINCH is installed without chaining because nothing else in valdi/src handles it.
+constexpr int kTerminatingSignals[] = {SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGPIPE};
+// The same list backward installs its handler for, so a crash anywhere it would have printed a trace still restores
+// the terminal first.
+constexpr int kCrashSignals[] = {
+    SIGSEGV,
+    SIGABRT,
+    SIGBUS,
+    SIGFPE,
+    SIGILL,
+    SIGTRAP,
+    SIGSYS,
+    SIGXCPU,
+    SIGXFSZ,
+#ifdef SIGEMT
+    SIGEMT,
+#endif
+};
 
 struct sigaction gPreviousCrashActions[NSIG];
 
@@ -134,7 +157,7 @@ void ensureWakePipe() {
 }
 
 bool enableRawModeLocked() {
-    if (isatty(STDIN_FILENO) == 0) {
+    if (!TerminalHost::rawModeAllowed(isatty(STDIN_FILENO) != 0, isatty(STDOUT_FILENO) != 0)) {
         return false;
     }
     if (!gHasSavedTermios.load()) {
@@ -158,9 +181,11 @@ bool enableRawModeLocked() {
 }
 
 void disableRawMode() {
-    if (gRawActive.exchange(false) && gHasSavedTermios.load()) {
+    // Restore before clearing the flag so that a signal arriving in between still sees raw mode as active.
+    if (gRawActive.load() && gHasSavedTermios.load()) {
         tcsetattr(STDIN_FILENO, TCSANOW, &gSavedTermios);
     }
+    gRawActive.store(false);
 }
 
 } // namespace
@@ -201,7 +226,10 @@ void TerminalHost::installSignalHandlers() {
         struct sigaction action;
         memset(&action, 0, sizeof(action));
         action.sa_sigaction = crashSignalHandler;
-        sigemptyset(&action.sa_mask);
+        // Block every other signal while the crash handler and the handler it chains to print their trace, so a
+        // Ctrl+C or SIGTERM cannot cut the trace short; the crash signal itself stays deliverable.
+        sigfillset(&action.sa_mask);
+        sigdelset(&action.sa_mask, signalNumber);
         action.sa_flags = SA_SIGINFO | SA_ONSTACK | SA_NODEFER | SA_RESETHAND;
         if (sigaction(signalNumber, &action, &gPreviousCrashActions[signalNumber]) != 0) {
             memset(&gPreviousCrashActions[signalNumber], 0, sizeof(struct sigaction));
@@ -280,6 +308,15 @@ void TerminalHost::releaseRawMode() {
 
 void TerminalHost::restoreTerminal() {
     restoreTerminalSignalSafe();
+}
+
+bool TerminalHost::rawModeAllowed(bool stdinIsTTY, bool stdoutIsTTY) {
+    // With stdout redirected nothing is drawn, so a user at the keyboard would only lose echo and line editing.
+    return stdinIsTTY && stdoutIsTTY;
+}
+
+bool TerminalHost::isRestoreWritten() {
+    return gRestoreWritten.load();
 }
 
 bool TerminalHost::isTTY(int fd) {
@@ -363,8 +400,13 @@ void TerminalHost::runReader() {
         if (resized) {
             handleResize();
         }
-        if (count == 2 && (fds[1].revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
-            readStdin();
+        if (count == 2) {
+            if ((fds[1].revents & POLLNVAL) != 0) {
+                // A closed descriptor reports POLLNVAL forever; reading it would spin.
+                _stdinClosed = true;
+            } else if ((fds[1].revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
+                readStdin();
+            }
         }
     }
 }
@@ -402,6 +444,13 @@ void TerminalHost::readStdin() {
 }
 
 void TerminalHost::handleInput(const std::string& text) {
+    const bool hasCtrlC = text.find('\x03') != std::string::npos;
+    // Checked before the client is looked up: while the application is winding down the module may already be gone,
+    // and the second Ctrl+C is the user's way out of a process that does not finish exiting.
+    if (hasCtrlC && _exiting) {
+        requestExit(kExitCodeInterrupted);
+        return;
+    }
     Ref<TerminalBackendModule> client;
     {
         std::lock_guard<Mutex> guard(_mutex);
@@ -411,7 +460,7 @@ void TerminalHost::handleInput(const std::string& text) {
         return;
     }
     // Raw mode turned ISIG off, so Ctrl+C arrives as data.
-    if (text.find('\x03') != std::string::npos && client->hostExitsOnCtrlC()) {
+    if (hasCtrlC && client->hostExitsOnCtrlC()) {
         requestExit(kExitCodeInterrupted);
         return;
     }
@@ -441,7 +490,10 @@ void TerminalHost::handleResize() {
 
 void TerminalHost::requestExit(int code) {
     if (_exiting.exchange(true)) {
-        return;
+        // A second Ctrl+C means the user does not want to wait for the application to wind down. Sinks write
+        // without buffering, so no frame is cut short.
+        restoreTerminalSignalSafe();
+        _exit(code);
     }
     restoreTerminalSignalSafe();
 
@@ -455,6 +507,8 @@ void TerminalHost::requestExit(int code) {
     }
 
     // The main queue may never get to exit when JS is stuck; the user's Ctrl+C must still end the process.
+    // The watchdog is never cancelled and its code wins: a process still running a second after Ctrl+C is cut off
+    // with 130 even if the application was about to exit with another status.
     std::thread([code]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(kExitGraceMs));
         restoreTerminalSignalSafe();

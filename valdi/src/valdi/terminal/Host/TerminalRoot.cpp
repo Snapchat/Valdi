@@ -1,6 +1,7 @@
 #include "valdi/terminal/Host/TerminalRoot.hpp"
 
 #include "valdi/runtime/Utils/MainThreadManager.hpp"
+#include "valdi/terminal/Host/TerminalHost.hpp"
 #include "valdi/terminal/Paint/CellGrid.hpp"
 #include "valdi/terminal/Paint/Painter.hpp"
 #include "valdi/terminal/TerminalView.hpp"
@@ -301,9 +302,18 @@ void TerminalRoot::finish() {
     if (_destroyed || _finishRequested.exchange(true)) {
         return;
     }
-    paintNow();
+    // After a Ctrl+C or signal restore the terminal is already in its final state; painting again would hide the
+    // cursor and repeat the newline.
+    const bool alreadyRestored = _sink->isTTY() && Terminal::TerminalHost::isRestoreWritten();
+    if (!alreadyRestored) {
+        paintNow();
+    }
     std::lock_guard<RecursiveMutex> guard(_mutex);
-    _writer.finish();
+    if (alreadyRestored) {
+        _writer.abandon();
+    } else {
+        _writer.finish();
+    }
     _finished = true;
     _sink->flush();
 }

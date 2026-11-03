@@ -1,6 +1,7 @@
 #pragma once
 
 #include "valdi/runtime/Context/ViewManagerContext.hpp"
+#include "valdi/terminal/Host/HopReleasedRef.hpp"
 #include "valdi/terminal/Host/TerminalHost.hpp"
 #include "valdi/terminal/TerminalRuntime.hpp"
 #include "valdi_core/ModuleFactory.hpp"
@@ -73,7 +74,10 @@ private:
 
     Value addObserver(const ValueFunctionCallContext& callContext, bool isInput);
     void registerHandle(const Ref<TerminalRootHandle>& handle);
-    std::vector<Ref<TerminalRootHandle>> liveHandles();
+    // The references live handles are held through never run the last release of a handle on the calling
+    // thread: that is the reader thread for host input, and a handle must be destroyed on the JS thread.
+    using LiveHandle = Terminal::HopReleasedRef<TerminalRootHandle>;
+    std::vector<LiveHandle> liveHandles();
     static void dispatchInput(TerminalRootHandle& handle, const StringBox& text);
     static void dispatchResize(TerminalRootHandle& handle, int columns, int rows);
 };

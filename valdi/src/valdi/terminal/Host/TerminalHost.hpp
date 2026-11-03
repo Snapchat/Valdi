@@ -41,17 +41,18 @@ public:
     static TerminalHost& shared();
 
     /**
-     * Installs async-signal-safe restore handlers for SIGINT, SIGTERM, SIGHUP and SIGQUIT, and for the crash
-     * signals, which restore the terminal and then run the previously installed handler so the stack trace
-     * of the crash handler still prints. Also installs the SIGWINCH handler and registers the exit restore.
+     * Installs async-signal-safe restore handlers for SIGINT, SIGTERM, SIGHUP, SIGQUIT and SIGPIPE, which restore
+     * the terminal and re-raise the signal, and for the crash signals, which restore the terminal and then run the
+     * previously installed handler so the stack trace of the crash handler still prints. Also installs the SIGWINCH
+     * handler and registers the exit restore.
      * Call it after SignalHandler::install(); calling it again does nothing.
      */
     void installSignalHandlers();
 
     /**
      * Sets the function that asks the application to exit with a code, normally StandaloneMainQueue::exit.
-     * Used for Ctrl+C. The host falls back to `_exit` when the application has not exited about a second
-     * later, so a hung JS thread cannot trap the user in the terminal.
+     * Used for Ctrl+C. The host falls back to `_exit(130)` when the application has not exited about a second
+     * later, or at once on a second Ctrl+C, so a hung JS thread cannot trap the user in the terminal.
      */
     void setExitHandler(Function<void(int)> exitHandler);
 
@@ -75,6 +76,15 @@ public:
     void restoreTerminal();
 
     static bool isTTY(int fd);
+
+    /** Whether raw mode may be entered: stdin and stdout must both be terminals. */
+    static bool rawModeAllowed(bool stdinIsTTY, bool stdoutIsTTY);
+
+    /**
+     * Whether the signal path or Ctrl+C already restored the terminal and wrote the trailing newline, in which case
+     * a root finishing afterwards must not paint again or repeat it.
+     */
+    static bool isRestoreWritten();
 
     /** The size of the controlling terminal, or false when there is none. */
     static bool queryWindowSize(int& columns, int& rows);

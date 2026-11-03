@@ -127,4 +127,8 @@ void FrameWriter::finish() {
     }
 }
 
+void FrameWriter::abandon() {
+    _finished = true;
+}
+
 } // namespace Valdi::Terminal

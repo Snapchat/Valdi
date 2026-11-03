@@ -23,7 +23,9 @@ valdi_cli_application(
 `terminal = True` links the native terminal backend (`//valdi:valdi_terminal`), registers it
 with the runtime, runs the JS runtime as macOS or Linux, and has the host take ownership of the
 terminal while a `tty` root is on screen (raw mode, keyboard input, resize, Ctrl+C) and restore
-it however the process ends. Linking the backend is not enough: without `terminal = True`
+it however the process ends. The platform the runtime reports (`getCurrentPlatform()`, and with
+it the JSX platform) is macOS or Linux, but `Device.getSystemType()` still returns `ios` for every
+standalone host; device identity for desktop command line applications is a follow-up. Linking the backend is not enough: without `terminal = True`
 `render()` fails with "valdi_tui needs the native terminal backend". An application built
 without it links no terminal code at all.
 
@@ -38,8 +40,9 @@ bazel run //apps/tui_example:tui_example_app
 The recording is also available as an [asciicast](./assets/workflow-terminal-ui/demo.cast) for `asciinema play`.
 
 Use the arrow keys to move, type a note and press Enter to log it, and Esc or Ctrl+C to
-quit. Running the same binary with stdout redirected to a file or pipe prints a single frame
-and exits. The example's tests (`tui_example_smoke_test` and `tui_example_pty_test`) run it
+quit. Running the same binary with `--once` and stdout redirected to a file or pipe prints a
+single frame and exits; without `--once` a redirected run keeps going, draws nothing until it
+exits, and then prints its last frame. The example's tests (`tui_example_smoke_test` and `tui_example_pty_test`) run it
 without and inside a pseudo terminal.
 
 ## Building blocks
@@ -121,11 +124,14 @@ called or a component calls `getTerminalApp().exit()`.
 
 Raw mode turns the terminal's own Ctrl+C handling off, so the host handles the key. With the
 default `exitOnCtrlC: true` it restores the terminal and exits the process with status 130
-without waiting for JavaScript (the application is not unmounted); if the process has not exited
-a second later, for example because the JS thread is stuck, the host exits it anyway. With
+without waiting for JavaScript: the application is not unmounted and no final frame is painted.
+If the process has not exited a second later, for example because the JS thread is stuck, the
+host exits it anyway, and a second Ctrl+C exits immediately instead of waiting. With
 `exitOnCtrlC: false` the byte is delivered to `useInput()` handlers as `ctrl` + `c`, and the
-application decides what to do. SIGINT, SIGTERM, SIGHUP and SIGQUIT, and crashes, restore the
-terminal (modes, colors and cursor) before the process dies.
+application decides what to do. SIGINT, SIGTERM, SIGHUP, SIGQUIT and SIGPIPE, and crashes,
+restore the terminal (modes, colors and cursor) before the process dies. Raw mode is entered only
+when both stdin and stdout are terminals, so a redirected stdout never leaves the shell without
+echo.
 
 By default the root is as tall as its content, like Ink. Pass `fitTerminal: true` to size
 it to the terminal instead, for full-screen layouts that use `flexGrow` to fill the
