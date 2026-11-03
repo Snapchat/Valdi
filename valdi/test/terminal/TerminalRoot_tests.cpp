@@ -478,6 +478,29 @@ TEST(TerminalRoot, clippedSingleLineLabelsCutAtTheWidthWithoutAnEllipsis) {
     f.append(f.rootNode, label);
     render(f);
     ASSERT_EQ((Lines{"hello wo"}), f.sink->lastPlainLines());
+
+TEST(TerminalRoot, writesQueuedLinesAboveTheLiveFrameOnce) {
+    TerminalTreeFixture f;
+    addLabel(f, f.rootNode, "live", 1);
+    render(f);
+
+    f.root->writeAbove({"log 1", "log 2"});
+    f.mainQueue->flush();
+    f.root->paintNow();
+
+    const auto output = f.sink->output();
+    ASSERT_NE(std::string::npos, output.find("log 1\nlog 2\n"));
+    ASSERT_EQ(output.find("log 1"), output.rfind("log 1"));
+    ASSERT_EQ((Lines{"live"}), f.sink->lastPlainLines());
+}
+
+TEST(TerminalRoot, clearErasesTheLiveFrameFromTheSink) {
+    TerminalTreeFixture f;
+    addLabel(f, f.rootNode, "live", 1);
+    render(f);
+    const auto before = f.sink->output().size();
+    f.root->clear();
+    ASSERT_GT(f.sink->output().size(), before);
 }
 
 } // namespace ValdiTest
