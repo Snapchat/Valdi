@@ -1071,7 +1071,7 @@ export class Renderer implements IRenderer {
     prototype: ComponentPrototype,
     viewModel: ViewModel,
     context: Context,
-  ) {
+  ): void {
     this.renderRoot(() => {
       this.beginComponent(ctr, prototype);
       if (context) {

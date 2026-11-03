@@ -26,5 +26,6 @@ valdi_exported_library(
     name = "integration_test_export",
     ios_bundle_id = "com.snap.valdi.integrationtest.lib",
     ios_bundle_name = "ValdiIntegrationTest",
+    web_package_name = "integration_test_web_npm",
     deps = ["//apps/integration_test/src/valdi/integration_test_app"],
 )

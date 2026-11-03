@@ -1,4 +1,4 @@
-import type { GlobalWithModulePath, WebPolyglotRegistryModule } from './WebPolyglotTypes';
+import type { WebPolyglotRegistryModule } from './WebPolyglotTypes';
 
 declare const require: (id: string) => any;
 
@@ -29,7 +29,8 @@ export function tryRegisterWebPolyglotViewClass(
   try {
     registerWebPolyglotViewClassOrThrow(fallbackModulePath, className, factory);
     return true;
-  } catch (_e) {
+  } catch (error) {
+    console.warn(`Valdi web renderer failed to register web polyglot view class '${className}'`, error);
     return false;
   }
 }

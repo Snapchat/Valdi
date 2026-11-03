@@ -1,22 +1,20 @@
+import { fs } from 'file_system/src/FileSystem';
 import { ElementRef } from 'valdi_core/src/ElementRef';
 import type { IRenderer } from 'valdi_core/src/IRenderer';
-import type { ValdiRuntime } from 'valdi_core/src/ValdiRuntime';
+import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 import { ViewNodeAssetTracker } from 'valdi_core/src/ViewNodeAssetTracker';
 import { onIdleInterruptible } from 'valdi_core/src/utils/OnIdle';
 import { wait } from 'valdi_core/src/utils/PromiseUtils';
-import { fs } from 'file_system/src/FileSystem';
 
-import { getOutputPath, getPlatform, markFinished, writeTextFile } from './IntegrationTestHost';
 import { INTEGRATION_TEST_CASES } from './IntegrationTestCases';
-import { toIntegrationTestRenderedNode } from './RenderedNodeOutput';
+import { getOutputPath, getPlatform, markFinished, writeTextFile } from './IntegrationTestHost';
 import {
   IntegrationTestCaseResult,
   IntegrationTestInteractionContext,
   IntegrationTestRenderedNode,
   IntegrationTestResult,
 } from './IntegrationTestTypes';
-
-declare const runtime: ValdiRuntime;
+import { toIntegrationTestRenderedNode } from './RenderedNodeOutput';
 
 const INTERACTION_TIMEOUT_MS = 3000;
 const SNAPSHOT_TIMEOUT_MS = 5000;
@@ -25,9 +23,12 @@ export const SNAPSHOT_WIDTH = 360;
 export const SNAPSHOT_HEIGHT = 560;
 
 export interface IntegrationTestRefs {
+  // Cases render whichever native element they exercise, so the refs stay untyped like ElementRef's default.
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   rootRef: ElementRef<any>;
   snapshotRef: ElementRef<any>;
   targetRef: ElementRef<any>;
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
 export interface CaptureRequest extends IntegrationTestRefs {
@@ -40,6 +41,10 @@ export type CaptureOutcome =
   | { kind: 'advance'; nextIndex: number; summary: string }
   | { kind: 'finished'; summary: string };
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export class IntegrationTestRunner {
   private readonly renderer: IRenderer;
   private readonly assetTracker = new ViewNodeAssetTracker();
@@ -50,7 +55,10 @@ export class IntegrationTestRunner {
 
   constructor(renderer: IRenderer) {
     this.renderer = renderer;
-    runtime.setViewNodeAssetTracker(renderer.contextId, this.assetTracker.onAssetEvent.bind(this.assetTracker));
+    getValdiRuntime().setViewNodeAssetTracker(
+      renderer.contextId,
+      this.assetTracker.onAssetEvent.bind(this.assetTracker),
+    );
   }
 
   record(message: string): void {
@@ -64,120 +72,6 @@ export class IntegrationTestRunner {
 
     this.currentCaseId = caseId;
     this.observations = [];
-  }
-
-  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-    return await Promise.race([
-      promise,
-      wait(timeoutMs).then(() => {
-        throw new Error(`${label} timed out after ${timeoutMs}ms`);
-      }) as Promise<T>,
-    ]);
-  }
-
-  private async waitForLayoutComplete(label: string): Promise<void> {
-    await this.withTimeout(
-      new Promise<void>(resolve => {
-        this.renderer.onLayoutComplete(resolve);
-      }),
-      SNAPSHOT_TIMEOUT_MS,
-      `${label} layout`,
-    );
-  }
-
-  private async waitForIdle(label: string): Promise<void> {
-    await this.withTimeout(
-      new Promise<void>(resolve => {
-        onIdleInterruptible(resolve);
-      }),
-      SNAPSHOT_TIMEOUT_MS,
-      `${label} idle`,
-    );
-  }
-
-  private async waitForSnapshotReadiness(label: string): Promise<void> {
-    await this.waitForLayoutComplete(label);
-    await this.waitForIdle(label);
-  }
-
-  private async waitForTrackedAssetLoads(caseId: string): Promise<void> {
-    if (this.assetTracker.assetsCount === 0) {
-      return;
-    }
-
-    await this.withTimeout(
-      new Promise<void>(resolve => {
-        this.assetTracker.onAllAssetsLoaded(resolve);
-      }),
-      SNAPSHOT_TIMEOUT_MS,
-      `${caseId} asset load`,
-    );
-  }
-
-  private async takeSnapshotWithRetry(refs: IntegrationTestRefs, caseId: string): Promise<string | undefined> {
-    const attempts = 4;
-    let lastError: any;
-
-    for (let attempt = 0; attempt < attempts; attempt++) {
-      if (attempt > 0) {
-        await this.waitForSnapshotReadiness(`${caseId} snapshot attempt ${attempt + 1}`);
-      }
-      try {
-        const root = refs.rootRef.single() ?? refs.snapshotRef.single();
-        if (root) {
-          const snapshot = await this.withTimeout(root.takeSnapshot(), SNAPSHOT_TIMEOUT_MS, `${caseId} snapshot attempt ${attempt + 1}`);
-          if (snapshot) {
-            return snapshot;
-          }
-        }
-        this.record(`snapshot attempt ${attempt + 1}: no data`);
-      } catch (error: any) {
-        lastError = error;
-        this.record(`snapshot attempt ${attempt + 1}: ${error?.message ?? String(error)}`);
-      }
-    }
-
-    if (lastError && getPlatform() !== 'android') {
-      throw lastError;
-    }
-    return undefined;
-  }
-
-  private captureRenderedNode(refs: IntegrationTestRefs): IntegrationTestRenderedNode | undefined {
-    const element = refs.snapshotRef.single() ?? refs.rootRef.single();
-    return element ? toIntegrationTestRenderedNode(element.getVirtualNode()) : undefined;
-  }
-
-  private writeProgress(currentIndex: number, phase: string, caseId?: string, error?: string): void {
-    const outputPath = getOutputPath();
-    const progress = JSON.stringify({
-      phase,
-      caseId,
-      currentIndex,
-      capturedCases: this.results.length,
-      observations: this.observations.join('\n'),
-      error,
-      updatedAt: new Date().toISOString(),
-    }, null, 2);
-
-    try {
-      writeTextFile(`${outputPath}.progress.json`, progress);
-    } catch (_error) {
-      // Native progress files are diagnostic only.
-    }
-
-    try {
-      markFinished(`${outputPath}.progress.${phase}.${caseId ?? 'none'}`);
-    } catch (_error) {
-      // Native progress markers are diagnostic only.
-    }
-
-    try {
-      this.ensureParentDirectory(outputPath);
-      fs.writeFileSync(`${outputPath}.progress.json`, progress);
-    } catch (_error) {
-      // Progress files are diagnostic only; never fail the integration run.
-    }
   }
 
   async captureCurrentCase(request: CaptureRequest): Promise<CaptureOutcome> {
@@ -237,7 +131,9 @@ export class IntegrationTestRunner {
       const maybeSnapshot = await this.takeSnapshotWithRetry(request, testCase.id);
       const snapshotBase64 = maybeSnapshot ?? '';
       const expectedFailure = (testCase.expectedFailureOnPlatforms ?? []).indexOf(platform) !== -1;
-      const expectedFailureReason = expectedFailure ? testCase.expectedFailureReason ?? `expected failure on ${platform}` : undefined;
+      const expectedFailureReason = expectedFailure
+        ? testCase.expectedFailureReason ?? `expected failure on ${platform}`
+        : undefined;
       if (expectedFailureReason) {
         this.record(expectedFailureReason);
       }
@@ -253,8 +149,8 @@ export class IntegrationTestRunner {
         error: expectedFailureReason ?? (snapshotBase64 ? undefined : 'takeSnapshot returned no data'),
       });
       this.writeProgress(request.currentIndex, 'captured', testCase.id);
-    } catch (error: any) {
-      const message = error?.message ?? String(error);
+    } catch (error) {
+      const message = errorMessage(error);
       this.results.push({
         id: testCase.id,
         name: testCase.name,
@@ -272,6 +168,54 @@ export class IntegrationTestRunner {
     return await this.advanceFromIndex(request.currentIndex);
   }
 
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+    return await Promise.race([
+      promise,
+      wait(timeoutMs).then(() => {
+        throw new Error(`${label} timed out after ${timeoutMs}ms`);
+      }),
+    ]);
+  }
+
+  private async waitForLayoutComplete(label: string): Promise<void> {
+    await this.withTimeout(
+      new Promise<void>(resolve => {
+        this.renderer.onLayoutComplete(resolve);
+      }),
+      SNAPSHOT_TIMEOUT_MS,
+      `${label} layout`,
+    );
+  }
+
+  private async waitForIdle(label: string): Promise<void> {
+    await this.withTimeout(
+      new Promise<void>(resolve => {
+        onIdleInterruptible(resolve);
+      }),
+      SNAPSHOT_TIMEOUT_MS,
+      `${label} idle`,
+    );
+  }
+
+  private async waitForSnapshotReadiness(label: string): Promise<void> {
+    await this.waitForLayoutComplete(label);
+    await this.waitForIdle(label);
+  }
+
+  private async waitForTrackedAssetLoads(caseId: string): Promise<void> {
+    if (this.assetTracker.assetsCount === 0) {
+      return;
+    }
+
+    await this.withTimeout(
+      new Promise<void>(resolve => {
+        this.assetTracker.onAllAssetsLoaded(resolve);
+      }),
+      SNAPSHOT_TIMEOUT_MS,
+      `${caseId} asset load`,
+    );
+  }
+
   private async advanceFromIndex(currentIndex: number): Promise<CaptureOutcome> {
     const nextIndex = currentIndex + 1;
     if (nextIndex >= INTEGRATION_TEST_CASES.length) {
@@ -283,6 +227,80 @@ export class IntegrationTestRunner {
       nextIndex,
       summary: `captured ${nextIndex}/${INTEGRATION_TEST_CASES.length}`,
     };
+  }
+
+  private async takeSnapshotWithRetry(refs: IntegrationTestRefs, caseId: string): Promise<string | undefined> {
+    const attempts = 4;
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      if (attempt > 0) {
+        await this.waitForSnapshotReadiness(`${caseId} snapshot attempt ${attempt + 1}`);
+      }
+      try {
+        const root = refs.rootRef.single() ?? refs.snapshotRef.single();
+        if (root) {
+          const snapshot = await this.withTimeout(
+            root.takeSnapshot(),
+            SNAPSHOT_TIMEOUT_MS,
+            `${caseId} snapshot attempt ${attempt + 1}`,
+          );
+          if (snapshot) {
+            return snapshot;
+          }
+        }
+        this.record(`snapshot attempt ${attempt + 1}: no data`);
+      } catch (error) {
+        lastError = error;
+        this.record(`snapshot attempt ${attempt + 1}: ${errorMessage(error)}`);
+      }
+    }
+
+    if (lastError && getPlatform() !== 'android') {
+      throw lastError;
+    }
+    return undefined;
+  }
+
+  private captureRenderedNode(refs: IntegrationTestRefs): IntegrationTestRenderedNode | undefined {
+    const element = refs.snapshotRef.single() ?? refs.rootRef.single();
+    return element ? toIntegrationTestRenderedNode(element.getVirtualNode()) : undefined;
+  }
+
+  private writeProgress(currentIndex: number, phase: string, caseId?: string, error?: string): void {
+    const outputPath = getOutputPath();
+    const progress = JSON.stringify(
+      {
+        phase,
+        caseId,
+        currentIndex,
+        capturedCases: this.results.length,
+        observations: this.observations.join('\n'),
+        error,
+        updatedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    );
+
+    try {
+      writeTextFile(`${outputPath}.progress.json`, progress);
+    } catch (_error) {
+      // Native progress files are diagnostic only.
+    }
+
+    try {
+      markFinished(`${outputPath}.progress.${phase}.${caseId ?? 'none'}`);
+    } catch (_error) {
+      // Native progress markers are diagnostic only.
+    }
+
+    try {
+      this.ensureParentDirectory(outputPath);
+      fs.writeFileSync(`${outputPath}.progress.json`, progress);
+    } catch (_error) {
+      // Progress files are diagnostic only; never fail the integration run.
+    }
   }
 
   private ensureParentDirectory(path: string): void {

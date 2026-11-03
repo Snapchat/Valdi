@@ -8,7 +8,7 @@ interface GreetingViewModel {
 
 class Greeting extends Component<GreetingViewModel> {
   onRender(): void {
-    <view flexDirection='column' padding={24} backgroundColor='#ff0000'>
+    <view flexDirection="column" padding={24} backgroundColor="#ff0000">
       <label value={`Hello ${this.viewModel.name}`} />
     </view>;
   }
@@ -24,7 +24,8 @@ describe('ValdiHTMLRenderer', () => {
       expect(html).toMatch(/^<\?start name="valdi-html-\d+">/);
       expect(html).toContain('Hello server');
       expect(html).toContain('flex-direction: column');
-      expect(html).toContain('padding-top: 24px');
+      // The renderer may serialize padding as the longhand or the shorthand.
+      expect(html).toMatch(/padding(-top)?: 24px/);
       expect(html).toContain('background-color: #ff0000');
     } finally {
       renderer.destroy();
@@ -37,7 +38,9 @@ describe('ValdiHTMLRenderer', () => {
     try {
       await renderer.render({ name: 'first' });
       await renderer.render({ name: 'second' });
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise(resolve => {
+        return setTimeout(resolve, 50);
+      });
 
       expect(updates).toBeGreaterThan(0);
       expect(renderer.currentHtml()).toMatch(/^<template for="valdi-html-\d+">/);

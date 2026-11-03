@@ -6,7 +6,10 @@
  * registry and pending callbacks are stored on globalThis so all chunks share one registry.
  */
 
-export type WebViewClassAttributeHandler = { changeAttribute: (name: string, value: unknown) => void };
+export interface WebViewClassAttributeHandler {
+  changeAttribute(name: string, value: unknown): void;
+  destroy?(): void;
+}
 export type WebViewClassFactory = (container: HTMLElement) => WebViewClassAttributeHandler | void;
 export type WebViewClassRegistry = Map<string, WebViewClassFactory>;
 export type WebViewClassRegistrationCallback = (reg: WebViewClassRegistry) => void;
@@ -66,7 +69,7 @@ export function getRegistry(): WebViewClassRegistry {
   }
   const registry: WebViewClassRegistry = new Map<string, WebViewClassFactory>();
   const cbs = getSharedCallbacks();
-  cbs.forEach((cb) => cb(registry));
+  cbs.forEach(cb => cb(registry));
   cbs.length = 0;
   setSharedRegistry(registry);
   return registry;

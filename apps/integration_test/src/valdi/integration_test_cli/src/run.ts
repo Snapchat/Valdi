@@ -1,10 +1,11 @@
-import { fs } from 'file_system/src/FileSystem';
 import { arrayToString } from 'coreutils/src/Uint8ArrayUtils';
+import { fs } from 'file_system/src/FileSystem';
 import { Argument, ArgumentsParser } from 'valdi_cli/src/ArgumentsParser';
 import { ChildProcess } from 'valdi_cli/src/ChildProcess';
 import { Path } from 'valdi_cli/src/Path';
 
 import type { Platform } from './types';
+import { runWebIntegrationTests } from './webRun';
 
 const PACKAGE = 'com.snap.valdi.integrationtest';
 
@@ -33,7 +34,9 @@ interface WaitForResultOptions extends RunIntegrationTestsOptions {
 }
 
 function wait(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(resolve => {
+    return setTimeout(resolve, ms);
+  });
 }
 
 export function isPlatform(value: string | undefined): value is Platform {
@@ -55,7 +58,7 @@ function isBazelOutputPath(path: string): boolean {
 
 function findRepoFrom(start: string): string {
   let current = Path.fromString(start);
-  while (true) {
+  for (;;) {
     if (isValdiRepo(current.toString())) {
       return current.toString();
     }
@@ -278,8 +281,7 @@ export async function runIntegrationTests(options: RunIntegrationTestsOptions): 
   output.parent().ensureDirectory();
 
   if (platform === 'web') {
-    // The web host depends on the v2 web renderer, which hasn't landed yet.
-    throw new Error('The web integration run requires the v2 web renderer and is not available yet');
+    return await runWebIntegrationTests({ ...options, repo, output: output.toString() });
   }
 
   const valdiBin = options.valdiBin ?? 'valdi';

@@ -1,9 +1,9 @@
-import { INavigatorPageConfig } from 'valdi_navigation/src/INavigator';
-import { ComponentConstructor, IComponent } from 'valdi_core/src/IComponent';
 import { ComponentPrototype } from 'valdi_core/src/ComponentPrototype';
+import { ComponentConstructor, IComponent } from 'valdi_core/src/IComponent';
+import { INavigatorPageConfig } from 'valdi_navigation/src/INavigator';
+import { RouteRegistry } from './RouteRegistry';
 import { ValdiWebRenderer } from './ValdiWebRenderer';
 import { WebNavigator } from './WebNavigator';
-import { RouteRegistry } from './RouteRegistry';
 
 interface WebNavPage {
   pageDiv: HTMLDivElement;
@@ -132,11 +132,11 @@ export class WebNavStack {
       'position:absolute;inset:0;background:white;overflow:hidden;display:flex;flex-direction:column;min-height:0;';
 
     const renderer = new ValdiWebRenderer(pageDiv);
-    const contextWithNav = { ...(context ?? {} as any), navigator };
+    const contextWithNav = { ...(context ?? ({} as any)), navigator };
     renderer.renderRootComponent(
       ctor,
       ComponentPrototype.instanceWithNewId(),
-      viewModel ?? {} as any,
+      viewModel ?? ({} as any),
       contextWithNav,
     );
 
@@ -246,7 +246,7 @@ export class WebNavStack {
 
     const cleanup = (): void => {
       for (const entry of entriesToRemove) {
-        entry.renderer?.destroy();
+        this.destroyRenderer(entry.renderer);
         entry.pageDiv.remove();
       }
     };
@@ -354,7 +354,7 @@ export class WebNavStack {
   destroy(): void {
     window.removeEventListener('popstate', this.boundOnPopState);
     for (const entry of this.stack) {
-      entry.renderer?.destroy();
+      this.destroyRenderer(entry.renderer);
       entry.pageDiv.remove();
     }
     this.stack = [];
@@ -427,11 +427,7 @@ export class WebNavStack {
     });
   }
 
-  private animateOut(
-    pageDiv: HTMLDivElement,
-    isModal: boolean,
-    onComplete: () => void,
-  ): void {
+  private animateOut(pageDiv: HTMLDivElement, isModal: boolean, onComplete: () => void): void {
     const axis = isModal ? 'Y' : 'X';
     pageDiv.style.transition = `transform ${ANIMATION_DURATION_MS}ms ease-out`;
     pageDiv.style.transform = `translate${axis}(100%)`;
@@ -444,10 +440,21 @@ export class WebNavStack {
       onComplete();
     };
     pageDiv.addEventListener('transitionend', finish);
-    setTimeout(finish, ANIMATION_DURATION_MS + 50);
+    const fallbackTimer = setTimeout(finish, ANIMATION_DURATION_MS + 50);
+    void fallbackTimer;
   }
 
   // -- Internal helpers -----------------------------------------------------
+
+  private destroyRenderer(renderer: ValdiWebRenderer | undefined): void {
+    if (!renderer) {
+      return;
+    }
+    // Renderer.onDestroy only releases its delegate. Render an empty root first
+    // so presented components receive their normal onDestroy lifecycle hooks.
+    renderer.renderRoot(() => {});
+    renderer.onDestroy();
+  }
 
   private updateVisibility(): void {
     for (let i = 0; i < this.stack.length; i++) {

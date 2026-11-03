@@ -1,32 +1,20 @@
 import { AnimationOptions } from 'valdi_core/src/AnimationOptions';
 import type { IRenderedElement } from 'valdi_core/src/IRenderedElement';
 import type { IRenderer } from 'valdi_core/src/IRenderer';
-import { ElementLayoutDispatcher } from 'valdi_core/src/ElementLayoutDispatcher';
 import { IRendererDelegate, VisibilityObserver } from 'valdi_core/src/IRendererDelegate';
 import { Style } from 'valdi_core/src/Style';
 import { ElementFrame } from 'valdi_tsx/src/Geometry';
 import { NativeNode } from 'valdi_tsx/src/NativeNode';
 import { NativeView } from 'valdi_tsx/src/NativeView';
 import { ViewFactory } from 'valdi_tsx/src/ViewFactory';
-import {
-  changeAttributeOnElement,
-  createElement,
-  createNodesRef,
-  makeElementRoot,
-  moveElement,
-  NodesRef,
-  registerElements,
-  setAllElementsAttributeDelegate,
-} from './HTMLRenderer';
+import { WebViewFactory } from './ViewFactory';
+import type { AttributeUpdatedExternallyDelegate } from './core/ElementClass';
+import type { ViewNode } from './core/ViewNode';
+import { ViewNodeTree } from './core/ViewNodeTree';
 import {
   captureComponentHierarchySnapshot,
   type ComponentPropertyEditRegistrar,
 } from './debug/ComponentHierarchySnapshot';
-import type { WebValdiLayout } from './views/WebValdiLayout';
-
-export interface UpdateAttributeDelegate {
-  updateAttribute(elementId: number, attributeName: string, attributeValue: any): void;
-}
 
 export interface WebRendererDebugNodeSnapshot {
   id: string;
@@ -126,211 +114,154 @@ const DEBUG_ACCESSOR_MARKER = '<accessor/>';
 const DEBUG_CIRCULAR_MARKER = '<circular object/>';
 
 export class ValdiWebRendererDelegate implements IRendererDelegate {
-  private attributeDelegate?: UpdateAttributeDelegate;
-  private layoutDispatcher = new ElementLayoutDispatcher((message, error) => this.onUncaughtError(message, error));
-  private resizeObserver?: ResizeObserver;
-  private elementIdByHtmlElement = new WeakMap<Element, number>();
+  private attributeUpdatedExternallyDelegate?: AttributeUpdatedExternallyDelegate;
   private debugTopologyRevision = 0;
-  // Owned per delegate (i.e. per renderer/page) so element ids can't collide
-  // with another page's (github.com/Snapchat/Valdi#115).
-  private nodesRef: NodesRef = createNodesRef();
-  private rootElementId?: number;
 
-  constructor(private htmlRoot: HTMLElement | ShadowRoot) {
-    registerElements();
+  constructor(private htmlRoot: HTMLElement | ShadowRoot, private readonly viewNodeTree: ViewNodeTree) {}
+
+  setRenderCompleteScheduler(schedule: (callback: () => void) => void): void {
+    this.viewNodeTree.setRenderCompleteScheduler(schedule);
   }
-  setAttributeDelegate(delegate: UpdateAttributeDelegate) {
-    this.attributeDelegate = delegate;
 
-    setAllElementsAttributeDelegate(this.nodesRef, this.attributeDelegate);
+  setAttributeUpdatedExternallyDelegate(delegate: AttributeUpdatedExternallyDelegate): void {
+    this.attributeUpdatedExternallyDelegate = delegate;
   }
 
   onElementBecameRoot(id: number): void {
-    makeElementRoot(this.nodesRef, id, this.htmlRoot);
-    this.rootElementId = id;
+    this.viewNodeTree.makeElementRoot(id, this.htmlRoot);
     this.debugTopologyRevision++;
+    this.viewNodeTree.scheduleVisibilityRefresh(false);
   }
   onElementMoved(id: number, parentId: number, parentIndex: number): void {
-    moveElement(this.nodesRef, id, parentId, parentIndex);
+    this.viewNodeTree.moveElement(id, parentId, parentIndex);
     this.debugTopologyRevision++;
-  }
-  setRenderCompleteScheduler(schedule: (callback: () => void) => void): void {
-    this.layoutDispatcher.setRenderCompleteScheduler(schedule);
+    this.viewNodeTree.scheduleVisibilityRefresh(false);
   }
   onElementCreated(id: number, viewClass: string): void {
-    this.layoutDispatcher.onElementCreated(id);
-    createElement(this.nodesRef, id, viewClass, this.attributeDelegate);
+    this.viewNodeTree.createElement(id, viewClass, this.attributeUpdatedExternallyDelegate);
     this.debugTopologyRevision++;
-    const element = this.nodesRef.get(id);
-    if (element?.htmlElement) {
-      this.elementIdByHtmlElement.set(element.htmlElement, id);
-      this.resizeObserver?.observe(element.htmlElement);
-    }
   }
   onCustomElementCreated(id: number, viewFactory: ViewFactory): void {
-    this.onElementCreated(id, 'custom-view');
-    this.onElementAttributeChangeAny(id, 'viewFactory', viewFactory);
-  }
-  onElementDestroyed(id: number): void {
-    this.layoutDispatcher.onElementDestroyed(id);
-    const element = this.nodesRef.get(id);
-    if (element === undefined) {
-      return;
+    if (!(viewFactory instanceof WebViewFactory)) {
+      throw new Error('Expected a web view factory when creating a custom element');
     }
-
-    const nodesToDestroy: WebValdiLayout[] = [];
-    const visitedNodes = new Set<WebValdiLayout>();
-    const pendingNodes = [element];
-    // Renderer.destroyVirtualNode emits one delegate notification for the first
-    // destroyed element in a subtree. Walk the live backing links here so that
-    // descendants do not remain addressable by the production renderer or the
-    // debugger after that single notification.
-    while (pendingNodes.length > 0) {
-      const node = pendingNodes.pop()!;
-      if (visitedNodes.has(node) || this.nodesRef.get(node.id) !== node) {
-        continue;
-      }
-      visitedNodes.add(node);
-      nodesToDestroy.push(node);
-      for (const child of node.children) {
-        // A moved child can remain in an adversarially stale child array. Only
-        // purge links that still describe the live backing-node relationship.
-        if (child.parent === node && this.nodesRef.get(child.id) === child) {
-          pendingNodes.push(child);
-        }
-      }
-    }
-
-    element.parent?.removeChild(element);
-    for (let index = nodesToDestroy.length - 1; index >= 0; index--) {
-      const node = nodesToDestroy[index];
-      this.resizeObserver?.unobserve(node.htmlElement);
-      this.elementIdByHtmlElement.delete(node.htmlElement);
-      this.layoutDispatcher.onElementDestroyed(node.id);
-      node.destroy();
-      this.nodesRef.delete(node.id);
-      node.parent = null;
-      node.children = [];
-      if (this.rootElementId === node.id) {
-        this.rootElementId = undefined;
-      }
-    }
+    this.viewNodeTree.createElementWithClass(
+      id,
+      'custom-view',
+      viewFactory.elementClass,
+      this.attributeUpdatedExternallyDelegate,
+    );
     this.debugTopologyRevision++;
   }
-  onElementDestroyedFromParent(id: number): void {
-    this.layoutDispatcher.onElementDestroyed(id);
+  onElementDestroyed(id: number): void {
+    this.viewNodeTree.destroyElement(id);
+    this.debugTopologyRevision++;
   }
+  onElementDestroyedFromParent(id: number): void {}
   onElementAttributeChangeAny(id: number, attributeName: string, attributeValue: any): void {
-    if (this.layoutDispatcher.handleAttribute(id, attributeName, attributeValue)) {
-      return;
-    }
-    changeAttributeOnElement(this.nodesRef, id, attributeName, attributeValue);
+    this.viewNodeTree.setAttributeOnElement(id, attributeName, attributeValue);
   }
   onElementAttributeChangeNumber(id: number, attributeName: string, attributeValue: number): void {
-    changeAttributeOnElement(this.nodesRef, id, attributeName, attributeValue);
+    this.viewNodeTree.setAttributeOnElement(id, attributeName, attributeValue);
   }
   onElementAttributeChangeString(id: number, attributeName: string, attributeValue: string): void {
-    changeAttributeOnElement(this.nodesRef, id, attributeName, attributeValue);
+    this.viewNodeTree.setAttributeOnElement(id, attributeName, attributeValue);
   }
   onElementAttributeChangeTrue(id: number, attributeName: string): void {
-    changeAttributeOnElement(this.nodesRef, id, attributeName, undefined);
+    this.viewNodeTree.setAttributeOnElement(id, attributeName, true);
   }
   onElementAttributeChangeFalse(id: number, attributeName: string): void {
-    changeAttributeOnElement(this.nodesRef, id, attributeName, undefined);
+    this.viewNodeTree.setAttributeOnElement(id, attributeName, false);
   }
   onElementAttributeChangeUndefined(id: number, attributeName: string): void {
-    if (this.layoutDispatcher.handleAttribute(id, attributeName, undefined)) {
-      return;
-    }
-    changeAttributeOnElement(this.nodesRef, id, attributeName, undefined);
+    this.viewNodeTree.setAttributeOnElement(id, attributeName, undefined);
   }
   onElementAttributeChangeStyle(id: number, attributeName: string, style: Style<any>): void {
-    const attributes = style.attributes ?? {};
-    Object.keys(attributes).forEach(key => {
-      changeAttributeOnElement(this.nodesRef, id, key, attributes[key]);
-    });
+    this.viewNodeTree.setStyleAttributeOnElement(id, attributeName, style);
   }
   onElementAttributeChangeFunction(id: number, attributeName: string, fn: () => void): void {
-    if (this.layoutDispatcher.handleAttribute(id, attributeName, fn)) {
+    this.viewNodeTree.setAttributeOnElement(id, attributeName, fn);
+  }
+  onNextLayoutComplete(callback: () => void): void {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      void Promise.resolve().then(() => {
+        this.drainScheduledLayoutObservers(true);
+        void Promise.resolve().then(() => {
+          this.drainScheduledLayoutObservers(true);
+          callback();
+        });
+      });
       return;
     }
-    changeAttributeOnElement(this.nodesRef, id, attributeName, fn);
+    requestAnimationFrame(() => {
+      this.drainScheduledLayoutObservers(false);
+      requestAnimationFrame(() => {
+        this.drainScheduledLayoutObservers(false);
+        callback();
+      });
+    });
   }
-  onNextLayoutComplete(callback: () => void): void {}
-  onNextDraw(callback: (hookTimeMs: number) => void): void {}
+  onNextDraw(callback: (hookTimeMs: number) => void): void {
+    requestAnimationFrame(hookTimeMs => callback(hookTimeMs));
+  }
   onRenderStart(): void {
-    // TODO(mgharmalkar)
-    // console.log('onRenderStart');
+    this.viewNodeTree.beginRender();
   }
   onRenderEnd(): void {
-    // TODO(mgharmalkar)
-    // console.log('onRenderEnd');
+    this.viewNodeTree.endRender();
+    this.viewNodeTree.scheduleVisibilityRefresh(false);
   }
   onAnimationStart(options: AnimationOptions, token: number): void {
-    // TODO: no animation support on web yet, so just call completion with cancelled = false.
-    options.completion?.(false);
+    this.viewNodeTree.beginAnimation(options, token);
   }
-  onAnimationEnd(): void {}
-  onAnimationCancel(token: number): void {}
+  onAnimationEnd(): void {
+    this.viewNodeTree.endAnimation();
+  }
+  onAnimationCancel(token: number): void {
+    this.viewNodeTree.cancelAnimation(token);
+  }
   registerVisibilityObserver(observer: VisibilityObserver): void {
-    // The Renderer registers its observers once, at its first render; frame reporting starts with them.
-    this.startFrameReporting();
-  }
-  private startFrameReporting(): void {
-    if (this.resizeObserver) return;
-    this.resizeObserver = new ResizeObserver(entries => {
-      if (!this.resizeObserver) return;
-
-      const updates: number[] = [];
-      for (const entry of entries) {
-        const elementId = this.elementIdByHtmlElement.get(entry.target);
-        if (elementId === undefined) continue;
-
-        const htmlElement = entry.target as HTMLElement;
-        const rect = htmlElement.getBoundingClientRect();
-        const offsetParent = htmlElement.offsetParent as HTMLElement | null;
-
-        let x: number;
-        let y: number;
-        if (offsetParent) {
-          const parentRect = offsetParent.getBoundingClientRect();
-          const cs = getComputedStyle(offsetParent);
-          x = rect.left - parentRect.left + offsetParent.scrollLeft - (parseFloat(cs.borderLeftWidth) || 0);
-          y = rect.top - parentRect.top + offsetParent.scrollTop - (parseFloat(cs.borderTopWidth) || 0);
-        } else {
-          x = rect.left;
-          y = rect.top;
-        }
-
-        updates.push(elementId, x, y, rect.width, rect.height);
-      }
-
-      if (updates.length > 0) {
-        this.layoutDispatcher.processFrameUpdates(new Float64Array(updates));
-      }
-    });
+    this.viewNodeTree.registerVisibilityObserver(observer);
   }
   getNativeView(id: number, callback: (instance: NativeView | undefined) => void): void {}
   getNativeNode(id: number): NativeNode | undefined {
-    throw new Error('Method not implemented.');
+    return this.viewNodeTree.getNode(id)?.htmlElement as unknown as NativeNode | undefined;
   }
   getCachedElementFrame(id: number): ElementFrame | undefined {
-    return this.layoutDispatcher.getFrame(id);
+    return this.viewNodeTree.getElementFrame(id);
   }
-  getElementFrame(id: number, callback: (instance: any) => void): void {}
-  takeElementSnapshot(id: number, callback: (snapshotBase64: string | undefined) => void): void {}
+  getElementFrame(id: number, callback: (instance: ElementFrame | undefined) => void): void {
+    callback(this.viewNodeTree.getElementFrame(id));
+  }
+  takeElementSnapshot(id: number, callback: (snapshotBase64: string | undefined) => void): void {
+    const element = this.viewNodeTree.getNode(id)?.htmlElement;
+    const takeSnapshot = (
+      globalThis as unknown as {
+        __valdiTakeElementSnapshot?: (element: HTMLElement) => Promise<string | undefined>;
+      }
+    ).__valdiTakeElementSnapshot;
+    if (!element || !takeSnapshot) {
+      callback(undefined);
+      return;
+    }
+
+    takeSnapshot(element)
+      .then(snapshot => callback(snapshot))
+      .catch(error => {
+        console.error('Failed to capture Valdi web element snapshot', error);
+        callback(undefined);
+      });
+  }
   onUncaughtError(message: string, error: Error): void {
     console.error(message, error);
   }
   onDestroyed(): void {
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = undefined;
-    this.layoutDispatcher.clear();
+    this.viewNodeTree.destroy();
   }
 
   getDebugNode(id: number): { htmlElement: HTMLElement; type: string } | undefined {
-    const node = this.nodesRef.get(id);
-    return node === undefined ? undefined : { htmlElement: node.htmlElement, type: node.type };
+    const node = this.viewNodeTree.getNode(id);
+    return node === undefined ? undefined : { htmlElement: node.htmlElement, type: node.viewClass };
   }
 
   getDebugSnapshot(
@@ -355,11 +286,12 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
         truncated: false,
       },
     };
-    const rootNode = this.rootElementId === undefined ? undefined : this.nodesRef.get(this.rootElementId);
+    // Read-only: flushing here would run pending lifecycle/layout callbacks from a debugger read.
+    const rootNode = this.viewNodeTree.getRootNode();
     const elementTree =
-      rootNode === undefined
+      rootNode === null
         ? null
-        : (captureDebugElementSnapshot(rootNode, null, this.nodesRef, renderer, budget, 0, false) ?? null);
+        : captureDebugElementSnapshot(rootNode, null, this.viewNodeTree, renderer, budget, 0, false) ?? null;
     const elementSnapshot: WebRendererDebugSnapshot = {
       tree: elementTree,
       viewport,
@@ -388,6 +320,11 @@ export class ValdiWebRendererDelegate implements IRendererDelegate {
     }
     stripComponentProperties(componentTree);
     return JSON.stringify(componentSnapshot).length <= snapshotCharacterLimit ? componentSnapshot : elementSnapshot;
+  }
+
+  private drainScheduledLayoutObservers(forceVisibility: boolean): void {
+    this.viewNodeTree.drainScheduledLayoutObserverRefresh();
+    this.viewNodeTree.drainScheduledVisibilityRefresh(forceVisibility);
   }
 }
 
@@ -460,30 +397,30 @@ function captureRenderedElementAttributes(
 }
 
 function captureDebugElementSnapshot(
-  node: WebValdiLayout,
-  expectedParent: WebValdiLayout | null,
-  nodesRef: NodesRef,
+  node: ViewNode,
+  expectedParent: ViewNode | null,
+  tree: ViewNodeTree,
   renderer: IRenderer,
   budget: DebugSnapshotBudget,
   depth: number,
   hasPreviousSibling: boolean,
 ): WebRendererDebugElementSnapshot | undefined {
-  if (!isLiveDebugNode(node, expectedParent, nodesRef) || !tryConsumeDebugTreeNode(budget.renderedTree, depth)) {
+  if (!isLiveDebugNode(node, expectedParent, tree) || !tryConsumeDebugTreeNode(budget.renderedTree, depth)) {
     return undefined;
   }
   const rect = node.htmlElement.getBoundingClientRect();
-  if (!isLiveDebugNode(node, expectedParent, nodesRef)) {
+  if (!isLiveDebugNode(node, expectedParent, tree)) {
     return undefined;
   }
   const renderedElement = renderer.getElementForId(node.id);
-  if (!isLiveDebugNode(node, expectedParent, nodesRef)) {
+  if (!isLiveDebugNode(node, expectedParent, tree)) {
     return undefined;
   }
   const domAttributes: Record<string, string> = {};
   const attributes: Record<string, unknown> = {};
   const snapshot: WebRendererDebugElementSnapshot = {
     id: String(node.id),
-    tag: node.type,
+    tag: node.viewClass,
     element: {
       id: node.id,
       attributes,
@@ -508,7 +445,7 @@ function captureDebugElementSnapshot(
 
   if (renderedElement !== undefined) {
     snapshot.element.attributes = captureRenderedElementAttributes(renderedElement, budget);
-    if (!isLiveDebugNode(node, expectedParent, nodesRef)) {
+    if (!isLiveDebugNode(node, expectedParent, tree)) {
       return undefined;
     }
   }
@@ -536,14 +473,14 @@ function captureDebugElementSnapshot(
   if (domAttributesTruncated) {
     addDebugTruncationProperty(domAttributes, DEBUG_TRUNCATION_MARKER, budget);
   }
-  if (!isLiveDebugNode(node, expectedParent, nodesRef)) {
+  if (!isLiveDebugNode(node, expectedParent, tree)) {
     return undefined;
   }
 
   let childrenTruncated = false;
   if (depth + 1 >= MAX_DEBUG_TREE_DEPTH) {
-    const hasChildren = node.children.length > 0;
-    if (!isLiveDebugNode(node, expectedParent, nodesRef)) {
+    const hasChildren = node.getDebugChildren().length > 0;
+    if (!isLiveDebugNode(node, expectedParent, tree)) {
       return undefined;
     }
     if (hasChildren) {
@@ -551,13 +488,14 @@ function captureDebugElementSnapshot(
       budget.renderedTree.truncated = true;
     }
   } else {
+    const children = node.getDebugChildren();
     let childIndex = 0;
-    while (true) {
-      if (!isLiveDebugNode(node, expectedParent, nodesRef)) {
+    for (;;) {
+      if (!isLiveDebugNode(node, expectedParent, tree)) {
         return undefined;
       }
-      const currentChildCount = node.children.length;
-      if (!isLiveDebugNode(node, expectedParent, nodesRef)) {
+      const currentChildCount = children.length;
+      if (!isLiveDebugNode(node, expectedParent, tree)) {
         return undefined;
       }
       if (childIndex >= currentChildCount) {
@@ -572,27 +510,27 @@ function captureDebugElementSnapshot(
         budget.renderedTree.truncated = true;
         break;
       }
-      const child = node.children[childIndex];
+      const child = children[childIndex];
       childIndex++;
-      if (!isLiveDebugNode(node, expectedParent, nodesRef)) {
+      if (!isLiveDebugNode(node, expectedParent, tree)) {
         return undefined;
       }
-      if (child === undefined || !isLiveDebugNode(child, node, nodesRef)) {
+      if (child === undefined || child.isPendingRemoval() || !isLiveDebugNode(child, node, tree)) {
         continue;
       }
       const childSnapshot = captureDebugElementSnapshot(
         child,
         node,
-        nodesRef,
+        tree,
         renderer,
         budget,
         depth + 1,
         snapshot.children.length > 0,
       );
-      if (!isLiveDebugNode(node, expectedParent, nodesRef)) {
+      if (!isLiveDebugNode(node, expectedParent, tree)) {
         return undefined;
       }
-      if (!isLiveDebugNode(child, node, nodesRef)) {
+      if (!isLiveDebugNode(child, node, tree)) {
         continue;
       }
       if (childSnapshot === undefined) {
@@ -610,8 +548,8 @@ function captureDebugElementSnapshot(
   return snapshot;
 }
 
-function isLiveDebugNode(node: WebValdiLayout, expectedParent: WebValdiLayout | null, nodesRef: NodesRef): boolean {
-  return node.parent === expectedParent && nodesRef.get(node.id) === node;
+function isLiveDebugNode(node: ViewNode, expectedParent: ViewNode | null, tree: ViewNodeTree): boolean {
+  return node.getDebugParent() === expectedParent && tree.getNode(node.id) === node;
 }
 
 function tryConsumeDebugTreeChildLink(budget: DebugTreeTraversalBudget): boolean {
@@ -691,8 +629,8 @@ function toDebugValue(
           descriptor === undefined
             ? captureDebugString('<empty/>', budget, DEBUG_TRUNCATION_BUDGET_RESERVE)
             : descriptor.get || descriptor.set
-              ? captureDebugString(DEBUG_ACCESSOR_MARKER, budget, 0)
-              : toDebugValue(descriptor.value, depth + 1, activePath, budget),
+            ? captureDebugString(DEBUG_ACCESSOR_MARKER, budget, 0)
+            : toDebugValue(descriptor.value, depth + 1, activePath, budget),
         );
       }
       if (length > inspectedItemCount && tryConsumeDebugArrayItemPrefix(debugArray, budget, 2)) {

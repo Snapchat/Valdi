@@ -8,6 +8,12 @@ npm_link_package(
 )
 
 npm_link_package(
+    name = "web_renderer_link",
+    src = "@valdi//src/valdi_modules/src/valdi/web_renderer:web_renderer_dts",
+    visibility = ["//visibility:public"],
+)
+
+npm_link_package(
     name = "valdi_core_link",
     src = "@valdi//src/valdi_modules/src/valdi/valdi_core:valdi_core_dts",
     visibility = ["//visibility:public"],
@@ -15,10 +21,10 @@ npm_link_package(
 
 filegroup(
     name = "clientsql_generator_test_data",
+    testonly = True,
     srcs = [
         "MODULE.bazel",
         "fossa-deps.yml",
     ],
-    testonly = True,
     visibility = ["//compiler/clientsql:__pkg__"],
 )

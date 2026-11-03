@@ -6,6 +6,7 @@ import type {
   WebRendererDebugSnapshot,
 } from '../src/ValdiWebRendererDelegate';
 import { MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS } from '../src/ValdiWebRendererDelegate';
+import type { ViewNodeTree } from '../src/core/ViewNodeTree';
 import type { ComponentPropertyEditRegistrar } from '../src/debug/ComponentHierarchySnapshot';
 import type { StandaloneWebDebuggerRuntime, StandaloneWebDebuggerSnapshot } from '../src/debug/WebDebuggerBridge';
 import { WebDebuggerBridge } from '../src/debug/WebDebuggerBridge';
@@ -15,6 +16,7 @@ interface FakeDebuggerWindow {
   addEventListener: jasmine.Spy;
   location: {
     href: string;
+    origin?: string;
     search: string;
   };
   parent: FakeDebuggerWindow | { postMessage: jasmine.Spy };
@@ -503,6 +505,8 @@ describe('WebDebuggerBridge legacy renderer adapter', () => {
     const editDebugComponentProperty = jasmine.createSpy('editDebugComponentProperty').and.returnValue(true);
     renderer.editDebugComponentProperty = editDebugComponentProperty;
     let nested = false;
+    // Assigned after the fake below, which closes over it, is installed.
+    // eslint-disable-next-line prefer-const
     let runtime: StandaloneWebDebuggerRuntime;
     let innerSnapshot: StandaloneWebDebuggerSnapshot | undefined;
     delegate.getDebugSnapshot = jasmine
@@ -579,6 +583,8 @@ describe('WebDebuggerBridge legacy renderer adapter', () => {
     const node = {} as never;
     const viewModel = { title: 'before' };
     renderer.editDebugComponentProperty = jasmine.createSpy('editDebugComponentProperty').and.returnValue(true);
+    // Assigned after the fake below, which closes over it, is installed.
+    // eslint-disable-next-line prefer-const
     let bridge: WebDebuggerBridge;
     let capturedMetadata: WebRendererDebugPropertyEditMetadata | undefined;
     let retainedSnapshot: WebRendererDebugSnapshot | undefined;
@@ -1020,6 +1026,52 @@ describe('WebDebuggerBridge legacy renderer adapter', () => {
       }),
     };
   }
+
+  describe('embedded frames', () => {
+    let previousRaf: unknown;
+    let parent: { postMessage: jasmine.Spy };
+    const viewNodeTree = {
+      getDebugSnapshot: () => ({ tree: null, viewport: { width: 640, height: 480 } }),
+      getNodeIdForHtmlElement: () => undefined,
+    } as unknown as ViewNodeTree;
+
+    beforeEach(() => {
+      previousRaf = (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame;
+      (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame = (callback: () => void) => {
+        callback();
+        return 1;
+      };
+      parent = { postMessage: jasmine.createSpy('postMessage') };
+      fakeWindow.parent = parent;
+      fakeWindow.location.origin = 'http://127.0.0.1:54321';
+      fakeWindow.location.search = '?valdiDebugger=1';
+    });
+
+    afterEach(() => {
+      restoreGlobal('requestAnimationFrame', previousRaf);
+    });
+
+    it('targets the embedding referrer origin instead of broadcasting snapshots to *', () => {
+      (globalThis as unknown as { document: { referrer?: string } }).document.referrer =
+        'http://devtools.example:9000/inspect?app=owl';
+      const bridge = new WebDebuggerBridge({} as HTMLElement, delegate, renderer, viewNodeTree);
+
+      expect(parent.postMessage).toHaveBeenCalledTimes(1);
+      expect(parent.postMessage.calls.mostRecent().args[0]).toEqual(
+        jasmine.objectContaining({ channel: 'valdi-web-debugger', type: 'snapshot' }),
+      );
+      expect(parent.postMessage.calls.mostRecent().args[1]).toBe('http://devtools.example:9000');
+      bridge.destroy();
+    });
+
+    it('falls back to the same origin when no referrer is available', () => {
+      (globalThis as unknown as { document: { referrer?: string } }).document.referrer = '';
+      const bridge = new WebDebuggerBridge({} as HTMLElement, delegate, renderer, viewNodeTree);
+
+      expect(parent.postMessage.calls.mostRecent().args[1]).toBe('http://127.0.0.1:54321');
+      bridge.destroy();
+    });
+  });
 });
 
 function restoreGlobal(name: string, value: unknown): void {

@@ -134,6 +134,8 @@ const RELAXED_MODULES = [
   'valdi_protobuf',
   'valdi_standalone',
   'valdi_test',
+  // The web renderer was imported from Snapchat/Valdi#148, written before these rules existed.
+  'web_renderer',
 ];
 
 module.exports = {

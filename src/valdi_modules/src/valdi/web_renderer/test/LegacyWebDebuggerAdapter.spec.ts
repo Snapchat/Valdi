@@ -4,7 +4,11 @@ import type { IRenderedElement } from 'valdi_core/src/IRenderedElement';
 import type { IRenderedVirtualNode } from 'valdi_core/src/IRenderedVirtualNode';
 import type { IRenderer } from 'valdi_core/src/IRenderer';
 import { MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS, ValdiWebRendererDelegate } from '../src/ValdiWebRendererDelegate';
-import type { WebValdiLayout } from '../src/views/WebValdiLayout';
+import { ViewNodeTree } from '../src/core/ViewNodeTree';
+import { getElementClassForViewClass } from '../src/elements/ElementClassRegistry';
+
+// Tests reach into backing nodes to simulate adversarial/stale links; ViewNode keeps these fields private.
+type WebValdiLayout = any;
 
 interface InstalledDom {
   createElement(tagName: string): HTMLElement;
@@ -120,6 +124,23 @@ function installDom(): InstalledDom {
     setAttribute(name: string, value: string): void {
       this.attributesByName.set(name, value);
     }
+    cloneNode(deep?: boolean): FakeHTMLElement {
+      const clone = new FakeHTMLElement(this.tagName, this.ownerDocument);
+      for (const [name, value] of this.attributesByName) {
+        clone.attributesByName.set(name, value);
+      }
+      for (const [name, value] of Object.entries(this.style)) {
+        if (typeof value !== 'function') {
+          clone.style[name] = value;
+        }
+      }
+      if (deep) {
+        for (const child of this.children) {
+          clone.appendChild(child.cloneNode(true));
+        }
+      }
+      return clone;
+    }
   }
 
   class FakeDocument {
@@ -168,6 +189,19 @@ function installDom(): InstalledDom {
       }
     },
   };
+}
+
+// Element classes are module singletons that cache a template element from whichever DOM created it first;
+// drop those caches so this suite's fake DOM is used and does not leak into later suites.
+function resetElementClassTemplates(): void {
+  for (const viewClass of ['layout', 'view', 'label', 'scroll', 'image', 'textfield', 'textview', 'custom-view']) {
+    const elementClass = getElementClassForViewClass(viewClass) as unknown as Record<string, unknown> | undefined;
+    if (elementClass) {
+      elementClass['templateElement'] = undefined;
+      elementClass['paintElementTemplate'] = undefined;
+      elementClass['textContentElementTemplate'] = undefined;
+    }
+  }
 }
 
 function makeRenderedElement(id: number, tag: string, attributes: Record<string, unknown>): IRenderedElement {
@@ -244,8 +278,12 @@ function captureSnapshot(delegate: ValdiWebRendererDelegate, elements: IRendered
   return delegate.getDebugSnapshot(makeRenderer(elements), MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
 }
 
+function makeDelegate(root: HTMLElement): ValdiWebRendererDelegate {
+  return new ValdiWebRendererDelegate(root, new ViewNodeTree());
+}
+
 function getBackingNode(delegate: ValdiWebRendererDelegate, id: number): WebValdiLayout | undefined {
-  return (delegate as unknown as { nodesRef: Map<number, WebValdiLayout> }).nodesRef.get(id);
+  return (delegate as unknown as { viewNodeTree: ViewNodeTree }).viewNodeTree.getNode(id);
 }
 
 function makeMutationMetadata(mutation: () => void): Record<string, unknown> {
@@ -304,15 +342,17 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
 
   beforeEach(() => {
     dom = installDom();
+    resetElementClassTemplates();
   });
 
   afterEach(() => {
+    resetElementClassTemplates();
     dom.restore();
   });
 
   it('captures the legacy node tree with DOM bounds and rendered element attributes', () => {
     const root = dom.createElement('main');
-    const delegate = new ValdiWebRendererDelegate(root);
+    const delegate = makeDelegate(root);
     delegate.onElementCreated(1, 'layout');
     delegate.onElementCreated(2, 'label');
     delegate.onElementBecameRoot(1);
@@ -365,7 +405,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     class RootExampleComponent {}
     class NestedExampleComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementCreated(2, 'label');
     delegate.onElementCreated(3, 'label');
@@ -433,7 +473,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('keeps stable component ids across fresh snapshots and captures updated physical values', () => {
     class StableComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'label');
     delegate.onElementBecameRoot(1);
     const attributes = { value: 'first' };
@@ -457,7 +497,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('captures the renderer-owned ViewModel without inspecting component instance accessors', () => {
     class SafeComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -503,7 +543,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('captures only the component instance own enumerable state data descriptor', () => {
     class StatefulExampleComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -532,7 +572,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('omits inherited, accessor, non-enumerable, scalar, and null component state without invoking getters', () => {
     class RestrictedStateComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -594,7 +634,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('charges the escaped runtime-state wire string against the shared component budget', () => {
     class EscapedStateComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -622,7 +662,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('admits escaped state only when its exact transported wrapper fits 64 KiB', () => {
     class EscapedStateComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -650,7 +690,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('bounds aggregate state capture work across a hierarchy without consuming the property budget', () => {
     class WorkBoundedStateComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -749,7 +789,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     });
 
     for (const expensiveState of expensiveStates) {
-      const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+      const delegate = makeDelegate(dom.createElement('main'));
       delegate.onElementCreated(1, 'layout');
       delegate.onElementBecameRoot(1);
       const element = makeRenderedElement(1, 'layout', {});
@@ -796,7 +836,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('registers only exact captured own scalar data descriptors for component edits', () => {
     class EditableComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -854,7 +894,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
       title = 'custom';
     }
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -928,7 +968,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('retains read-only properties when a Proxy blocks edit-descriptor reflection', () => {
     class ProxyComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -963,7 +1003,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('does not register a property deleted during Proxy reflection through a polluted descriptor-map prototype', () => {
     class ProxyComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -1011,7 +1051,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     class ParentBudgetComponent {}
     class ChildBudgetComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -1044,7 +1084,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('drops stale properties but keeps hierarchy when the ViewModel identity changes during capture', () => {
     class ReplacedViewModelComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -1093,7 +1133,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('drops only runtime state when its exact component identity changes during capture', () => {
     class ReplacedStateComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -1139,7 +1179,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('uses properties first and omits runtime state when the shared 64 KiB budget is exhausted', () => {
     class BudgetedStateComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -1166,7 +1206,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('strips component properties before the complete hierarchy envelope overflows', () => {
     class PropertyHeavyComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {
@@ -1197,7 +1237,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('strips runtime state before properties when the complete hierarchy envelope overflows', () => {
     class StateHeavyComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {
@@ -1236,7 +1276,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('omits properties from a revoked Proxy without discarding the hierarchy', () => {
     class ProxyBackedComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -1264,7 +1304,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     class BoundaryComponent {}
 
     const captureWithRoot = (rootVirtualNode: MutableVirtualNode) => {
-      const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+      const delegate = makeDelegate(dom.createElement('main'));
       delegate.onElementCreated(1, 'layout');
       delegate.onElementBecameRoot(1);
       const element = makeRenderedElement(1, 'layout', {});
@@ -1324,7 +1364,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('bounds virtual child arrays before indexing and falls back without partial component data', () => {
     class WideComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -1355,7 +1395,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     class LongNameComponent {}
     Object.defineProperty(LongNameComponent, 'name', { value: 'C'.repeat(256) });
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const element = makeRenderedElement(1, 'layout', {});
@@ -1381,7 +1421,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('falls back to the captured element tree when hierarchy access reparents a backing node', () => {
     class MutatingComponent {}
 
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     for (const id of [1, 2, 3]) {
       delegate.onElementCreated(id, 'layout');
     }
@@ -1424,7 +1464,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('keeps debugger lookup scoped to this renderer and removes destroyed nodes', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(7, 'layout');
 
     expect(delegate.getDebugNode(7)?.type).toBe('layout');
@@ -1435,7 +1475,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('unlinks a destroyed child from snapshots and the highlight lookup', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementCreated(2, 'label');
     delegate.onElementBecameRoot(1);
@@ -1452,7 +1492,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('purges every live descendant when one subtree destroy notification is emitted', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     for (const id of [1, 2, 3, 4]) {
       delegate.onElementCreated(id, id === 3 ? 'label' : 'layout');
     }
@@ -1475,7 +1515,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('preserves a child reparented out of a subsequently destroyed subtree', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     for (const id of [1, 2, 3, 4]) {
       delegate.onElementCreated(id, 'layout');
     }
@@ -1483,8 +1523,8 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     delegate.onElementMoved(2, 1, 0);
     delegate.onElementMoved(3, 1, 1);
     delegate.onElementMoved(4, 2, 0);
+    // ViewNode.move() unlinks the old parent, so v2 has no stale 2 -> 4 link to simulate.
     delegate.onElementMoved(4, 3, 0);
-    getBackingNode(delegate, 2)!.children.push(getBackingNode(delegate, 4)!);
 
     delegate.onElementDestroyed(2);
 
@@ -1499,7 +1539,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('ignores adversarial stale child links for snapshots and highlight lookup', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementCreated(2, 'label');
     delegate.onElementBecameRoot(1);
@@ -1524,7 +1564,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('continues safely when metadata destroys a later sibling during capture', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     for (const id of [1, 2, 3, 4]) {
       delegate.onElementCreated(id, 'layout');
     }
@@ -1546,7 +1586,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('continues safely when metadata detaches a later sibling during capture', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     for (const id of [1, 2, 3, 4]) {
       delegate.onElementCreated(id, 'layout');
     }
@@ -1573,7 +1613,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('continues safely when metadata reparents a later sibling during capture', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     for (const id of [1, 2, 3, 4]) {
       delegate.onElementCreated(id, 'layout');
     }
@@ -1595,7 +1635,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('bounds work for a wide array containing only stale child links', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementCreated(2, 'layout');
     delegate.onElementBecameRoot(1);
@@ -1625,7 +1665,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('includes mixed live and stale links at the work cap and truncates beyond it', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     for (const id of [1, 2, 3]) {
       delegate.onElementCreated(id, 'layout');
     }
@@ -1664,7 +1704,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('does not invoke getters and distinguishes shared references from cycles', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     let getterCalls = 0;
@@ -1694,7 +1734,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('inspects only the capped prefix of large sparse arrays without invoking getters', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     let getterCalls = 0;
@@ -1729,7 +1769,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('caps attribute count, individual strings, and the aggregate snapshot budget', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const attributes: Record<string, unknown> = {};
@@ -1747,7 +1787,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('truncates rendered, nested, and DOM attribute strings at Unicode boundaries', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const unicodeBoundaryValue = `${'a'.repeat(65_520)}${'😀'.repeat(10_000)}`;
@@ -1769,7 +1809,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('honors a smaller serialized-character budget assigned by the standalone envelope', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const renderer = makeRenderer([makeRenderedElement(1, 'layout', { payload: 'x'.repeat(100_000) })]);
@@ -1781,7 +1821,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('bounds the complete serialized snapshot and omits over-budget property names before insertion', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const hugeKey = `key-${'k'.repeat(2_000_000)}`;
@@ -1822,7 +1862,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('caps nested collection entries and depth', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     const properties: Record<string, number> = {};
@@ -1872,7 +1912,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('bounds wide backing-tree work without materializing eager renderer children', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     let renderedNodeReads = 0;
     let eagerElementChildrenReads = 0;
     let eagerVirtualChildrenReads = 0;
@@ -1926,7 +1966,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('stops deeply nested backing trees without consulting recursive virtual children', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementBecameRoot(1);
     for (let id = 2; id <= 100; id++) {
@@ -1963,7 +2003,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('does not visit descendants after the aggregate character budget is exhausted', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     delegate.onElementCreated(2, 'label');
     delegate.onElementBecameRoot(1);
@@ -1985,7 +2025,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   });
 
   it('returns an empty snapshot until a root is mounted and after it is destroyed', () => {
-    const delegate = new ValdiWebRendererDelegate(dom.createElement('main'));
+    const delegate = makeDelegate(dom.createElement('main'));
     delegate.onElementCreated(1, 'layout');
     const renderer = makeRenderer([]);
 

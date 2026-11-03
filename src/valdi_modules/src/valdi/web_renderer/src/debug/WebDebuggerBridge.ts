@@ -1,8 +1,9 @@
 import type { IRenderer } from 'valdi_core/src/IRenderer';
 import type { ValdiWebRendererDelegate, WebRendererDebugSnapshot } from '../ValdiWebRendererDelegate';
 import { MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS } from '../ValdiWebRendererDelegate';
-import type { ComponentPropertyEditCandidate, ComponentPropertyEditRegistrar } from './ComponentHierarchySnapshot';
+import type { ViewNodeTree } from '../core/ViewNodeTree';
 import { hasWebLocationQueryParameter } from '../utils/LocationQuery';
+import type { ComponentPropertyEditCandidate, ComponentPropertyEditRegistrar } from './ComponentHierarchySnapshot';
 
 const WEB_DEBUGGER_CHANNEL = 'valdi-web-debugger';
 const WEB_DEBUGGER_QUERY_KEY = 'valdiDebugger';
@@ -11,6 +12,11 @@ const DEVTOOLS_QUERY_KEY = 'valdiDevTools';
 const OWL_DEBUGGER_QUERY_KEY = 'valdiOwlDebugger';
 const MAX_SOURCE_METADATA_SERIALIZED_CHARACTERS = 16_384;
 const SOURCE_METADATA_TRUNCATION_MARKER = '... <truncated>';
+
+interface EmbeddedWebDebuggerMessage {
+  channel?: string;
+  type?: string;
+}
 
 export interface StandaloneWebDebuggerSnapshot {
   channel: string;
@@ -79,9 +85,17 @@ const MAX_COMPONENT_PROPERTY_NAME_CHARACTERS = 256;
 const MAX_COMPONENT_PROPERTY_STRING_BYTES = 65_536;
 const COMPONENT_PROPERTY_EDIT_ERROR = 'The component property edit is stale or invalid.';
 
+/**
+ * Two transports share one bridge:
+ * - standalone: a top-level page exposes `window.__VALDI_WEB_DEBUGGER__` for browser tooling.
+ * - embedded: a page framed by the web devtools host streams snapshots/selection via postMessage.
+ */
 export class WebDebuggerBridge {
   private destroyed = false;
   private readonly enabled: boolean;
+  private readonly embeddedEnabled: boolean;
+  private mutationObserver?: MutationObserver;
+  private embeddedSnapshotScheduled = false;
   private highlightedNode?: HTMLDivElement;
   private standaloneRuntime?: StandaloneWebDebuggerRuntime;
   private previousStandaloneRuntime?: StandaloneWebDebuggerRuntime;
@@ -93,21 +107,32 @@ export class WebDebuggerBridge {
   private componentPropertySnapshotRevision = 0;
 
   constructor(
-    _root: HTMLElement | ShadowRoot,
+    private readonly root: HTMLElement | ShadowRoot,
     private readonly delegate: ValdiWebRendererDelegate,
     private readonly renderer: IRenderer,
+    private readonly viewNodeTree?: ViewNodeTree,
   ) {
     this.enabled = shouldEnableWebDebuggerBridge();
     if (this.enabled) {
       this.registerStandaloneRuntime();
     }
+    this.embeddedEnabled = viewNodeTree !== undefined && shouldEnableEmbeddedWebDebuggerBridge();
+    if (this.embeddedEnabled) {
+      this.startEmbeddedBridge();
+    }
   }
 
   destroy(): void {
-    if (!this.enabled || this.destroyed) {
+    if ((!this.enabled && !this.embeddedEnabled) || this.destroyed) {
       return;
     }
     this.destroyed = true;
+    if (this.embeddedEnabled) {
+      this.stopEmbeddedBridge();
+    }
+    if (!this.enabled) {
+      return;
+    }
     this.componentPropertyEditCaptureGeneration++;
     this.componentPropertyEditLifecycleGeneration++;
     this.clearComponentPropertyEditRegistry();
@@ -127,6 +152,108 @@ export class WebDebuggerBridge {
     }
     this.standaloneRuntime = undefined;
     this.previousStandaloneRuntime = undefined;
+  }
+
+  private startEmbeddedBridge(): void {
+    window.addEventListener('message', this.handleEmbeddedMessage);
+    window.addEventListener('resize', this.handleEmbeddedLayoutChange);
+    window.addEventListener('scroll', this.handleEmbeddedLayoutChange, true);
+    window.addEventListener('input', this.handleEmbeddedLayoutChange, true);
+    window.addEventListener('change', this.handleEmbeddedLayoutChange, true);
+    window.addEventListener('pointerdown', this.handleEmbeddedPointerDown, true);
+    if (typeof MutationObserver !== 'undefined') {
+      this.mutationObserver = new MutationObserver(this.handleEmbeddedLayoutChange);
+      this.mutationObserver.observe(this.root, {
+        attributes: true,
+        childList: true,
+        subtree: true,
+      });
+    }
+    this.scheduleEmbeddedSnapshot();
+  }
+
+  private stopEmbeddedBridge(): void {
+    window.removeEventListener('message', this.handleEmbeddedMessage);
+    window.removeEventListener('resize', this.handleEmbeddedLayoutChange);
+    window.removeEventListener('scroll', this.handleEmbeddedLayoutChange, true);
+    window.removeEventListener('input', this.handleEmbeddedLayoutChange, true);
+    window.removeEventListener('change', this.handleEmbeddedLayoutChange, true);
+    window.removeEventListener('pointerdown', this.handleEmbeddedPointerDown, true);
+    this.mutationObserver?.disconnect();
+    this.mutationObserver = undefined;
+  }
+
+  private readonly handleEmbeddedMessage = (event: MessageEvent<EmbeddedWebDebuggerMessage>): void => {
+    if (this.destroyed || event.source !== window.parent) {
+      return;
+    }
+    const message = event.data;
+    if (message?.channel !== WEB_DEBUGGER_CHANNEL || message.type !== 'request-snapshot') {
+      return;
+    }
+    this.scheduleEmbeddedSnapshot();
+  };
+
+  private readonly handleEmbeddedLayoutChange = (): void => {
+    this.scheduleEmbeddedSnapshot();
+  };
+
+  private readonly handleEmbeddedPointerDown = (event: PointerEvent): void => {
+    // The renderer lives in a ShadowRoot, so `event.target` on the window
+    // listener is retargeted to the shadow host; composedPath() keeps the
+    // original element.
+    const composedTarget = typeof event.composedPath === 'function' ? event.composedPath()[0] : undefined;
+    const target = composedTarget ?? event.target;
+    let element = target instanceof Element ? target : null;
+    while (element) {
+      const nodeId = this.viewNodeTree!.getNodeIdForHtmlElement(element);
+      if (nodeId !== undefined) {
+        this.postEmbeddedMessage({
+          type: 'selection',
+          nodeId: String(nodeId),
+        });
+        return;
+      }
+      element = element.parentElement;
+    }
+  };
+
+  private scheduleEmbeddedSnapshot(): void {
+    if (this.destroyed || this.embeddedSnapshotScheduled) {
+      return;
+    }
+    this.embeddedSnapshotScheduled = true;
+    requestAnimationFrame(() => {
+      this.embeddedSnapshotScheduled = false;
+      this.postEmbeddedSnapshot();
+    });
+  }
+
+  private postEmbeddedSnapshot(): void {
+    if (this.destroyed || window.parent === window) {
+      return;
+    }
+    this.postEmbeddedMessage({
+      type: 'snapshot',
+      source: {
+        title: document.title,
+        url: window.location.href,
+      },
+      snapshot: this.viewNodeTree!.getDebugSnapshot(),
+    });
+  }
+
+  private postEmbeddedMessage(payload: Record<string, unknown>): void {
+    if (this.destroyed || window.parent === window) {
+      return;
+    }
+    window.parent.postMessage(
+      {
+        channel: WEB_DEBUGGER_CHANNEL,
+        ...payload,
+      },
+      getEmbeddedTargetOrigin(),
+    );
   }
 
   private getSnapshot(): StandaloneWebDebuggerSnapshot {
@@ -287,10 +414,10 @@ export class WebDebuggerBridge {
       parsed === undefined
         ? undefined
         : this.componentPropertyEditTokens.has(parsed.componentToken)
-          ? this.componentPropertyEditTokens
-          : this.componentPropertyEditPreviousTokens.has(parsed.componentToken)
-            ? this.componentPropertyEditPreviousTokens
-            : undefined;
+        ? this.componentPropertyEditTokens
+        : this.componentPropertyEditPreviousTokens.has(parsed.componentToken)
+        ? this.componentPropertyEditPreviousTokens
+        : undefined;
     const record = parsed === undefined ? undefined : registry?.get(parsed.componentToken);
     if (
       parsed === undefined ||
@@ -384,8 +511,7 @@ export class WebDebuggerBridge {
       for (const record of registry.values()) nextExpiry = Math.min(nextExpiry, record.expiresAt);
     }
     const delay = Math.max(0, nextExpiry - Date.now());
-    let timer: ReturnType<typeof setTimeout>;
-    timer = setTimeout(() => {
+    const timer: ReturnType<typeof setTimeout> = setTimeout(() => {
       if (this.componentPropertyEditExpiryTimer !== timer || this.destroyed) return;
       this.componentPropertyEditExpiryTimer = undefined;
       this.pruneExpiredComponentPropertyEditTokens(Date.now());
@@ -676,4 +802,24 @@ function shouldEnableWebDebuggerBridge(): boolean {
     hasWebLocationQueryParameter(window.location.search, DEVTOOLS_QUERY_KEY, WEB_DEBUGGER_QUERY_VALUE) ||
     hasWebLocationQueryParameter(window.location.search, OWL_DEBUGGER_QUERY_KEY, WEB_DEBUGGER_QUERY_VALUE)
   );
+}
+
+// Snapshots carry the full tree, text content and live input values, so never
+// broadcast them to '*'. The embedding devtools page is the referrer; without
+// one, only a same-origin parent may receive them.
+function getEmbeddedTargetOrigin(): string {
+  const referrer = typeof document !== 'undefined' ? document.referrer : '';
+  // Hand-parsed so it also works in the non-browser test runtime, which has no URL.
+  const match = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/(?:[^/?#@]*@)?([^/?#]+)/.exec(referrer ?? '');
+  if (match) {
+    return `${match[1].toLowerCase()}://${match[2].toLowerCase()}`;
+  }
+  return window.location.origin;
+}
+
+function shouldEnableEmbeddedWebDebuggerBridge(): boolean {
+  if (typeof window === 'undefined' || window.parent === window) {
+    return false;
+  }
+  return hasWebLocationQueryParameter(window.location.search, WEB_DEBUGGER_QUERY_KEY, WEB_DEBUGGER_QUERY_VALUE);
 }

@@ -95,7 +95,6 @@ src/valdi_modules/src/valdi/valdi_test/test/ModuleLoader.spec.ts
 src/valdi_modules/src/valdi/valdi_test/test/Renderer.spec.ts
 src/valdi_modules/src/valdi/valdi_test/test/SpecialCasing.spec.ts
 src/valdi_modules/src/valdi/valdi_web/src/WebTest.tsx
-src/valdi_modules/src/valdi/web_renderer/src/HTMLRenderer.ts
 src/valdi_modules/src/valdi/web_renderer/src/RouteRegistry.ts
 src/valdi_modules/src/valdi/web_renderer/src/ValdiWebRenderer.ts
 src/valdi_modules/src/valdi/web_renderer/src/ValdiWebRendererDelegate.ts
@@ -113,10 +112,5 @@ src/valdi_modules/src/valdi/web_renderer/test/LegacyWebDebuggerAdapter.spec.ts
 src/valdi_modules/src/valdi/web_renderer/test/ValdiWebRuntimeTiming.spec.ts
 src/valdi_modules/src/valdi/web_renderer/test/ValdiWebTracing.spec.ts
 src/valdi_modules/src/valdi/web_renderer/test/WebDebuggerBridge.spec.ts
-src/valdi_modules/src/valdi/web_renderer/test/WebValdiComponents.spec.ts
-src/valdi_modules/src/valdi/web_renderer/test/WebValdiImage.spec.ts
-src/valdi_modules/src/valdi/web_renderer/test/WebValdiLayoutTouch.spec.ts
-src/valdi_modules/src/valdi/web_renderer/test/WebValdiTextField.spec.ts
-src/valdi_modules/src/valdi/web_renderer/test/WebValdiTextView.spec.ts
 src/valdi_modules/src/valdi/worker/src/internal/ManagedWorkerService.ts
 src/valdi_modules/src/valdi/worker/test/MessageChannel.spec.ts

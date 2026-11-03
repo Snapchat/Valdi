@@ -1,4 +1,22 @@
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+ts_project(
+    name = "integration_test_app_web",
+    srcs = glob([
+        "web/**/*.ts",
+        "src/**/*.d.ts",
+    ]),
+    allow_js = True,
+    composite = True,
+    transpiler = "tsc",
+    tsconfig = "web/tsconfig.json",
+    deps = [
+        "//:valdi_core_link",
+        "//:valdi_tsx_link",
+        "//:web_renderer_link",
+    ],
+)
 
 valdi_module(
     name = "integration_test_app",
@@ -19,6 +37,15 @@ valdi_module(
         "res/**/*.svg",
     ]),
     visibility = ["//visibility:public"],
+    web_deps = [":integration_test_app_web"],
+    # Exercise external Web asset emission in the integration harness. Other
+    # examples, including Hello World, retain the default inline policy.
+    web_no_inline_images = True,
+    web_register_native_module_id_overrides = {
+        "integration_test_app/web/FactoryIntegrationHost.js": "integration_test_app/src/FactoryIntegrationHost",
+        "integration_test_app/web/IntegrationTestHost.js": "integration_test_app/src/IntegrationTestHost",
+    },
+    web_workers = ["integration_test_app/src/WebWorkerProbe"],
     deps = [
         "//src/valdi_modules/src/valdi/coreutils",
         "//src/valdi_modules/src/valdi/drawing",
@@ -26,6 +53,7 @@ valdi_module(
         "//src/valdi_modules/src/valdi/valdi_core",
         "//src/valdi_modules/src/valdi/valdi_tsx",
         "//src/valdi_modules/src/valdi/valdi_webview",
+        "//src/valdi_modules/src/valdi/web_renderer",
         "//src/valdi_modules/src/valdi/worker",
     ],
 )
