@@ -98,12 +98,11 @@ public:
         }
     }
 
-    /** Paints a last time so non-interactive output gets its single frame, then tears down. */
-    void finishAndDestroy() {
+    /** Paints a last time so non-interactive output gets its single frame. */
+    void finish() {
         if (!_destroyed) {
             _root->finish();
         }
-        destroy();
     }
 
     const Ref<TerminalRoot>& getRoot() const {
@@ -142,6 +141,7 @@ Value TerminalBackendModule::loadModule() {
     ValueFunctionMethodBinder<TerminalBackendModule> binder(this, out);
     binder.bind("createRoot", &TerminalBackendModule::createRoot);
     binder.bind("destroyRoot", &TerminalBackendModule::destroyRoot);
+    binder.bind("finishRoot", &TerminalBackendModule::finishRoot);
     binder.bind("observeFrame", &TerminalBackendModule::observeFrame);
     binder.bind("setSize", &TerminalBackendModule::setSize);
     binder.bind("feedInput", &TerminalBackendModule::feedInput);
@@ -226,7 +226,15 @@ Value TerminalBackendModule::createRoot(const ValueFunctionCallContext& callCont
 Value TerminalBackendModule::destroyRoot(const ValueFunctionCallContext& callContext) {
     auto handle = getHandle(callContext);
     if (handle != nullptr) {
-        handle->finishAndDestroy();
+        handle->destroy();
+    }
+    return Value();
+}
+
+Value TerminalBackendModule::finishRoot(const ValueFunctionCallContext& callContext) {
+    auto handle = getHandle(callContext);
+    if (handle != nullptr) {
+        handle->finish();
     }
     return Value();
 }
