@@ -19,7 +19,7 @@ namespace Valdi {
         STRINGIFY(__method__),                                                                                         \
         Valdi::Value(Valdi::ValueFunctionWithCallable::makeFromMethod(this, &DeviceModule::__method__)))
 
-DeviceModule::DeviceModule() = default;
+DeviceModule::DeviceModule(PlatformType platformType) : _platformType(platformType) {}
 
 DeviceModule::~DeviceModule() = default;
 
@@ -118,6 +118,17 @@ double DeviceModule::getDisplayTopInset() {
 
 // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 Valdi::StringBox DeviceModule::getSystemType() {
+    // The test runners and other hosts that pass Android or web keep the historical "ios" answer.
+    switch (_platformType) {
+        case PlatformTypeMacOS:
+            return STRING_LITERAL("macos");
+        case PlatformTypeLinux:
+            return STRING_LITERAL("linux");
+        case PlatformTypeAndroid:
+        case PlatformTypeIOS:
+        case PlatformTypeWeb:
+            break;
+    }
     return STRING_LITERAL("ios");
 }
 
