@@ -76,7 +76,8 @@ static void paintBorder(CellGrid& grid, const IntRect& rect, const TerminalViewS
     const bool top = style.sideEnabled[static_cast<size_t>(TerminalBorderSide::Top)];
     const bool bottom = style.sideEnabled[static_cast<size_t>(TerminalBorderSide::Bottom)];
     const bool left = style.sideEnabled[static_cast<size_t>(TerminalBorderSide::Left)];
-    const bool right = style.sideEnabled[static_cast<size_t>(TerminalBorderSide::Right)];
+    // A single column has no room for a separate right edge; the left edge is drawn alone.
+    const bool right = style.sideEnabled[static_cast<size_t>(TerminalBorderSide::Right)] && rect.width > 1;
     const int x0 = rect.x;
     const int x1 = rect.x + rect.width - 1;
     const int y0 = rect.y;
@@ -103,7 +104,7 @@ static void paintBorder(CellGrid& grid, const IntRect& rect, const TerminalViewS
             grid.writeText(x0, y, characters->left, sideLook, clip);
         }
     }
-    if (right && rect.width > 1) {
+    if (right) {
         const auto sideLook = sideStyle(style, TerminalBorderSide::Right);
         for (int y = firstRow; y <= lastRow; y++) {
             grid.writeText(x1, y, characters->right, sideLook, clip);

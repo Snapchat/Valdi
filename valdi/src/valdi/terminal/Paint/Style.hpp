@@ -19,13 +19,24 @@ struct TermColor {
     uint8_t g = 0;
     uint8_t b = 0;
     uint8_t code = 0;
+    /** Opacity of an Rgb color; translucent colors are blended against the cell below when written to a grid. */
+    uint8_t alpha = 255;
 
     static TermColor ansi16(int code);
     static TermColor ansi256(int code);
     static TermColor rgb(int r, int g, int b);
 
-    /** Converts a Valdi RGBA color. Fully transparent colors have no terminal equivalent and yield nullopt. */
+    /**
+     * Converts a Valdi RGBA color, keeping its alpha. Fully transparent colors have no terminal
+     * equivalent and yield nullopt.
+     */
     static std::optional<TermColor> fromValdiColor(const Color& color);
+
+    /** The color as RGB, using the default xterm values for palette colors. */
+    TermColor toRgb() const;
+
+    /** Source-over composite of this color on `backdrop`; the result is opaque. Opaque colors are returned as is. */
+    TermColor blendedOver(const std::optional<TermColor>& backdrop) const;
 
     bool operator==(const TermColor& other) const;
     bool operator!=(const TermColor& other) const;

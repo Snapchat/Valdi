@@ -96,7 +96,8 @@ static void appendUtf8(std::string& out, char32_t cp) {
     }
 }
 
-// Invalid sequences decode to U+FFFD, one per offending byte.
+// Invalid sequences decode to U+FFFD, one per offending byte. Overlong forms, surrogates, values past U+10FFFF
+// and the lead bytes that can only start those (C0, C1, F5-FF) are all invalid.
 static std::vector<char32_t> decodeUtf8(std::string_view text) {
     std::vector<char32_t> out;
     out.reserve(text.size());
@@ -108,10 +109,10 @@ static std::vector<char32_t> decodeUtf8(std::string_view text) {
         if (lead >= 0xF0 && lead <= 0xF4) {
             length = 4;
             cp = lead & 0x07;
-        } else if (lead >= 0xE0) {
+        } else if (lead >= 0xE0 && lead <= 0xEF) {
             length = 3;
             cp = lead & 0x0F;
-        } else if (lead >= 0xC2) {
+        } else if (lead >= 0xC2 && lead <= 0xDF) {
             length = 2;
             cp = lead & 0x1F;
         } else if (lead >= 0x80) {
@@ -129,6 +130,12 @@ static std::vector<char32_t> decodeUtf8(std::string_view text) {
                     cp = (cp << 6) | (next & 0x3F);
                 }
             }
+            if (valid) {
+                const auto second = static_cast<unsigned char>(text[i + 1]);
+                if ((lead == 0xE0 && second < 0xA0) || (lead == 0xF0 && second < 0x90)) {
+                    valid = false;
+                }
+            }
             if (!valid || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
                 out.push_back(0xFFFD);
                 i++;
@@ -139,6 +146,11 @@ static std::vector<char32_t> decodeUtf8(std::string_view text) {
         i += length;
     }
     return out;
+}
+
+// Control characters would move the terminal cursor or start escape sequences, so they never reach a cell.
+static bool isControl(char32_t cp) {
+    return cp < 0x20 || (cp >= 0x7f && cp < 0xa0);
 }
 
 std::vector<Cluster> clusterize(std::string_view text) {
@@ -158,6 +170,9 @@ std::vector<Cluster> clusterize(std::string_view text) {
     };
 
     for (const char32_t cp : decodeUtf8(text)) {
+        if (isControl(cp)) {
+            continue;
+        }
         if (cp == kZeroWidthJoiner) {
             if (current.empty()) {
                 continue;
@@ -265,6 +280,7 @@ StyledLine toStyledLine(const ClusterLine& clusters) {
 }
 
 std::vector<ClusterLine> splitParagraphs(const std::vector<TextRun>& runs) {
+    // Empty text is deliberately one empty row rather than zero, matching Ink's <Text>.
     std::vector<ClusterLine> paragraphs(1);
     for (const auto& run : runs) {
         std::string normalized;
@@ -417,12 +433,28 @@ int totalWidth(const ClusterLine& clusters) {
     return width;
 }
 
-ClusterLine truncateParagraph(const ClusterLine& clusters, int maxWidth, WrapMode mode) {
+ClusterLine truncateParagraph(const ClusterLine& clusters, int maxWidth, WrapMode mode, bool ellipsis = true) {
     if (totalWidth(clusters) <= maxWidth) {
         return clusters;
     }
     if (maxWidth <= 0) {
         return {};
+    }
+    if (!ellipsis) {
+        switch (mode) {
+            case WrapMode::TruncateStart:
+                return takeFromEnd(clusters, maxWidth);
+            case WrapMode::TruncateMiddle: {
+                const int headWidth = (maxWidth + 1) / 2;
+                auto out = takeFromStart(clusters, 0, headWidth);
+                for (auto& cluster : takeFromEnd(clusters, maxWidth - totalWidth(out))) {
+                    out.push_back(std::move(cluster));
+                }
+                return out;
+            }
+            default:
+                return takeFromStart(clusters, 0, maxWidth);
+        }
     }
     const Style anchor =
         clusters.empty() ? Style() : (mode == WrapMode::TruncateStart ? clusters.back().style : clusters.front().style);
@@ -497,7 +529,7 @@ std::vector<StyledLine> layoutText(const std::vector<TextRun>& runs, const Layou
                 lines.push_back(LineInfo{std::move(wrapped.clusters), p, wrapped.start});
             }
         } else {
-            lines.push_back(LineInfo{truncateParagraph(paragraph, *width, options.mode), p, 0});
+            lines.push_back(LineInfo{truncateParagraph(paragraph, *width, options.mode, options.ellipsize), p, 0});
         }
     }
 

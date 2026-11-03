@@ -271,25 +271,33 @@ void LabelClass::paint(TerminalView& view, Terminal::Painter& painter, const Ter
         return;
     }
 
-    // Wrap at the same whole-cell width the measure callback used so lines match the measured height.
-    const int wrapWidth = std::max(0, static_cast<int>(std::floor(view.getFrame().width + 0.5f)));
-    const auto& lines = label.lines(wrapWidth);
+    // Yoga measures the text box and adds the padding around it, so the text lives inside the padding.
+    const auto padding = view.layoutPadding();
     const auto& rect = area.rect;
-    const auto region =
-        Terminal::intersect(Terminal::IntRect(rect.x, rect.y, std::max(rect.width, wrapWidth), rect.height), area.clip);
+    const Terminal::IntRect content(rect.x + padding.left,
+                                    rect.y + padding.top,
+                                    std::max(0, rect.width - padding.left - padding.right),
+                                    std::max(0, rect.height - padding.top - padding.bottom));
+
+    // Wrap at the same whole-cell width the measure callback used so lines match the measured height.
+    const int frameWidth = std::max(0, static_cast<int>(std::floor(view.getFrame().width + 0.5f)));
+    const int wrapWidth = std::max(0, frameWidth - padding.left - padding.right);
+    const auto& lines = label.lines(wrapWidth);
+    const auto region = Terminal::intersect(
+        Terminal::IntRect(content.x, content.y, std::max(content.width, wrapWidth), content.height), area.clip);
 
     for (size_t i = 0; i < lines.size(); i++) {
-        const int y = rect.y + static_cast<int>(i);
+        const int y = content.y + static_cast<int>(i);
         if (y >= region.y + region.height) {
             break;
         }
         int offset = 0;
         if (label.align == TerminalTextAlign::Center) {
-            offset = (rect.width - lines[i].width) / 2;
+            offset = (content.width - lines[i].width) / 2;
         } else if (label.align == TerminalTextAlign::Right) {
-            offset = rect.width - lines[i].width;
+            offset = content.width - lines[i].width;
         }
-        painter.target().writeSegments(rect.x + std::max(0, offset), y, lines[i].segments, region);
+        painter.target().writeSegments(content.x + std::max(0, offset), y, lines[i].segments, region);
     }
 }
 

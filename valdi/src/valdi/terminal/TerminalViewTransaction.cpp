@@ -4,6 +4,8 @@
 #include "valdi/terminal/TerminalView.hpp"
 #include "valdi_core/cpp/Utils/Bytes.hpp"
 
+#include <algorithm>
+
 namespace Valdi {
 
 TerminalViewTransaction::TerminalViewTransaction() = default;

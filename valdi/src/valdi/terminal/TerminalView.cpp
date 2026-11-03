@@ -5,6 +5,7 @@
 #include "valdi/terminal/Host/TerminalRoot.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <yoga/Yoga.h>
 
 namespace Valdi {
@@ -20,7 +21,7 @@ std::vector<Terminal::StyledLine> TerminalLabelParams::layout(std::optional<int>
     options.ellipsize = ellipsize;
     if (wrap) {
         options.mode = *wrap;
-    } else if (numberOfLines == 1 && ellipsize) {
+    } else if (numberOfLines == 1) {
         options.mode = Terminal::WrapMode::TruncateEnd;
     }
     return Terminal::layoutText(runs, options);
@@ -141,6 +142,26 @@ bool TerminalView::clipsChildren() const {
         }
     }
     return _clipsChildren;
+}
+
+TerminalInsets TerminalView::layoutPadding() const {
+    TerminalInsets insets;
+    auto node = _viewNode.lock();
+    if (node == nullptr) {
+        return insets;
+    }
+    auto* yogaNode = node->getYogaNode();
+    if (yogaNode == nullptr) {
+        return insets;
+    }
+    const auto toCells = [](float value) {
+        return std::isnan(value) ? 0 : std::max(0, static_cast<int>(std::floor(value + 0.5f)));
+    };
+    insets.left = toCells(YGNodeLayoutGetPadding(yogaNode, YGEdgeLeft));
+    insets.top = toCells(YGNodeLayoutGetPadding(yogaNode, YGEdgeTop));
+    insets.right = toCells(YGNodeLayoutGetPadding(yogaNode, YGEdgeRight));
+    insets.bottom = toCells(YGNodeLayoutGetPadding(yogaNode, YGEdgeBottom));
+    return insets;
 }
 
 void TerminalView::setClipsChildren(bool clipsChildren) {

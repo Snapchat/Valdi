@@ -57,6 +57,34 @@ TEST(TerminalTextWidth, replacesInvalidUtf8WithASingleColumnCharacter) {
     ASSERT_EQ(3, stringWidth(std::string("a\xff") + "b"));
 }
 
+TEST(TerminalTextSanitizing, dropsControlCharactersSoTheyNeverReachTheTerminal) {
+    ASSERT_EQ((Lines{"a[31mb"}), layoutPlain("a\x1b[31mb", 20));
+    ASSERT_EQ((Lines{"ab"}), layoutPlain(std::string("a\x07") + "b", 20));
+    ASSERT_EQ((Lines{"ab"}),
+              layoutPlain("a\xc2\x9b"
+                          "b",
+                          20));
+    ASSERT_EQ((Lines{"ab"}), layoutPlain(std::string("a\x7f") + "b", 20));
+    ASSERT_EQ((Lines{"a b"}), layoutPlain("a\tb", 20));
+    const auto clusters = clusterize("a\x1b");
+    ASSERT_EQ(1u, clusters.size());
+    ASSERT_EQ("a", clusters[0].text);
+}
+
+TEST(TerminalTextSanitizing, rejectsOverlongAndOutOfRangeUtf8) {
+    const std::string replacement = "\xef\xbf\xbd";
+    // Overlong encoding of ESC: every offending byte becomes U+FFFD.
+    ASSERT_EQ((Lines{replacement + replacement + replacement}), layoutPlain("\xe0\x80\x9b", 20));
+    ASSERT_EQ((Lines{replacement + replacement + replacement + replacement}), layoutPlain("\xf0\x80\x80\x9b", 20));
+    ASSERT_EQ((Lines{replacement + replacement + replacement + replacement}), layoutPlain("\xf8\x80\x80\x80", 20));
+    ASSERT_EQ((Lines{replacement + replacement}), layoutPlain("\xc0\x9b", 20));
+    ASSERT_EQ((Lines{replacement + replacement + replacement}), layoutPlain("\xed\xa0\x80", 20));
+    ASSERT_EQ((Lines{replacement + replacement + replacement + replacement}), layoutPlain("\xf4\x90\x80\x80", 20));
+    // Valid encodings next to the boundaries still decode.
+    ASSERT_EQ((Lines{"\xe0\xa0\x80"}), layoutPlain("\xe0\xa0\x80", 20));
+    ASSERT_EQ((Lines{"\xf0\x90\x80\x80"}), layoutPlain("\xf0\x90\x80\x80", 20));
+}
+
 TEST(TerminalWrap, returnsASingleLineWhenUnconstrained) {
     const auto lines = layoutText(plain("hello world"), std::nullopt);
     ASSERT_EQ((Lines{"hello world"}), linesToPlainText(lines));
@@ -89,6 +117,24 @@ TEST(TerminalWrap, honorsHardLineBreaks) {
 
 TEST(TerminalWrap, doesNotSplitWideCharacters) {
     ASSERT_EQ((Lines{"日本", "語"}), layoutPlain("日本語", 4));
+}
+
+TEST(TerminalWrap, putsAClusterWiderThanTheLineOnItsOwnLineAndMeasuresItsRealWidth) {
+    const auto lines = layoutText(plain("日本"), 1);
+    ASSERT_EQ((Lines{"日", "本"}), linesToPlainText(lines));
+    ASSERT_EQ(2, measureLines(lines).width);
+    ASSERT_EQ(2, measureLines(lines).height);
+    ASSERT_EQ((Lines{"a", "日"}), layoutPlain("a日", 1));
+}
+
+TEST(TerminalWrap, clipsInsteadOfEllipsizingWhenEllipsizeIsOff) {
+    LayoutOptions options;
+    options.maxWidth = 8;
+    options.mode = WrapMode::TruncateEnd;
+    options.ellipsize = false;
+    ASSERT_EQ((Lines{"hello wo"}), linesToPlainText(layoutText(plain("hello wonderful world"), options)));
+    options.mode = WrapMode::TruncateStart;
+    ASSERT_EQ((Lines{"ul world"}), linesToPlainText(layoutText(plain("hello wonderful world"), options)));
 }
 
 TEST(TerminalWrap, truncatesWithAnEllipsis) {

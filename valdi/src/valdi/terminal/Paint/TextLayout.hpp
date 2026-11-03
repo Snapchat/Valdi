@@ -62,7 +62,7 @@ struct LayoutOptions {
     WrapMode mode = WrapMode::Wrap;
     /** Zero means unlimited. */
     int maxLines = 0;
-    /** Whether text cut by `maxLines` ends with an ellipsis. */
+    /** Whether text cut by `maxLines` or by a truncate mode ends with an ellipsis; when false it is clipped. */
     bool ellipsize = true;
 };
 

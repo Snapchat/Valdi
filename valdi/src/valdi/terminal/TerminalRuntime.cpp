@@ -6,7 +6,7 @@
 namespace Valdi {
 
 TerminalRuntime::TerminalRuntime(RuntimeManager& runtimeManager, PlatformType platformType)
-    : _runtimeManager(weakRef(&runtimeManager)), _viewManager(platformType) {}
+    : _runtimeManager(weakRef(&runtimeManager)), _viewManager(makeShared<TerminalViewManager>(platformType)) {}
 
 TerminalRuntime::~TerminalRuntime() = default;
 
@@ -15,7 +15,7 @@ void TerminalRuntime::configureRuntime(Runtime& runtime) {
 }
 
 TerminalViewManager& TerminalRuntime::getViewManager() {
-    return _viewManager;
+    return *_viewManager;
 }
 
 Ref<ViewManagerContext> TerminalRuntime::getViewManagerContext() {
@@ -25,7 +25,7 @@ Ref<ViewManagerContext> TerminalRuntime::getViewManagerContext() {
         if (runtimeManager == nullptr) {
             return nullptr;
         }
-        _viewManagerContext = runtimeManager->createViewManagerContext(_viewManager,
+        _viewManagerContext = runtimeManager->createViewManagerContext(*_viewManager,
                                                                        /* enablePreloading */ false,
                                                                        /* mainThreadManagerOverride */ nullptr,
                                                                        Yoga::createConfig(1.0f));
