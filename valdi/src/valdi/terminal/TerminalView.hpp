@@ -87,7 +87,7 @@ public:
 
     /** Frame relative to the parent, in cells; fractional values are rounded when painting. */
     const Frame& getFrame() const;
-    void setFrame(const Frame& frame);
+    void setFrame(const Frame& frame, bool requestRepaint = true);
 
     TerminalViewStyle& style();
     const TerminalViewStyle& style() const;

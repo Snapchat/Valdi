@@ -6,7 +6,8 @@ namespace Valdi {
 
 /**
  * Content that is written once above the live frame and then left in the terminal scrollback,
- * like a log. The live frame skips the subtree; TerminalRoot emits each child exactly once.
+ * like a log. The live frame skips the subtree; TerminalRoot emits each child exactly once. The
+ * view should be absolutely positioned so that it does not take up space in the live frame.
  */
 class StaticClass : public ITerminalViewClass {
 public:

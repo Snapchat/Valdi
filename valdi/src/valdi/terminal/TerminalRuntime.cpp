@@ -1,6 +1,7 @@
 #include "valdi/terminal/TerminalRuntime.hpp"
 
 #include "valdi/runtime/Attributes/Yoga/Yoga.hpp"
+#include "valdi/runtime/Runtime.hpp"
 
 namespace Valdi {
 
@@ -8,6 +9,10 @@ TerminalRuntime::TerminalRuntime(RuntimeManager& runtimeManager, PlatformType pl
     : _runtimeManager(weakRef(&runtimeManager)), _viewManager(platformType) {}
 
 TerminalRuntime::~TerminalRuntime() = default;
+
+void TerminalRuntime::configureRuntime(Runtime& runtime) {
+    runtime.setLimitToViewportDisabled(true);
+}
 
 TerminalViewManager& TerminalRuntime::getViewManager() {
     return _viewManager;
