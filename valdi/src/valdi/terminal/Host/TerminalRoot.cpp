@@ -87,6 +87,22 @@ void TerminalRoot::setSize(int columns, int rows) {
     scheduleFrame();
 }
 
+void TerminalRoot::setSizeOnPaintThread(int columns, int rows) {
+    if (_destroyed) {
+        return;
+    }
+    if (!canDispatch()) {
+        setSize(columns, rows);
+        return;
+    }
+    dispatchOnPaintThread(DispatchFunction([weakSelf = weakRef(this), columns, rows]() {
+        auto self = weakSelf.lock();
+        if (self != nullptr) {
+            self->setSize(columns, rows);
+        }
+    }));
+}
+
 bool TerminalRoot::canDispatch() const {
     return _options.dispatcher || _tree->getMainThreadManager() != nullptr;
 }

@@ -59,6 +59,12 @@ public:
     void setSize(int columns, int rows);
 
     /**
+     * Like setSize() but applies the layout on the painting thread, for callers on a host thread such as the
+     * terminal reader. Applies it inline when there is no painting thread to hop to.
+     */
+    void setSizeOnPaintThread(int columns, int rows);
+
+    /**
      * Requests a repaint. Safe to call from any thread; requests made before the paint runs
      * coalesce. When the tree has no main thread manager and no dispatcher was provided there is
      * nowhere safe to paint, so the request is dropped and logged once; call paintNow() instead.
