@@ -35,6 +35,12 @@ protected:
 
 } // namespace
 
+TEST_F(LabelMeasureFixture, clippedSingleLinesMeasureTheClippedWidth) {
+    auto map = attributes("hello wonderful world", 1);
+    (*map)[STRING_LITERAL("textOverflow")] = Value(STRING_LITERAL("clip"));
+    ASSERT_EQ(Size(8, 1), measure(map, 8, MeasureModeExactly));
+}
+
 TEST_F(LabelMeasureFixture, usesTheWidestLineWhenWidthIsUnspecified) {
     ASSERT_EQ(Size(11, 1), measure(attributes("hello world", 0), 0, MeasureModeUnspecified));
     ASSERT_EQ(Size(5, 2), measure(attributes("hello\nworld", 0), 0, MeasureModeUnspecified));

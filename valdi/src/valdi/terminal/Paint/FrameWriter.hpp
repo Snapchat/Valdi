@@ -17,7 +17,8 @@ struct FrameWriterOptions {
  * Writes frames to a sink the way log-update does: the previous frame is erased and redrawn in
  * place, static content is emitted once above it, and when the sink is not a terminal the live
  * frame is only written when the writer finishes. Frames of equal height rewrite only the rows
- * that changed.
+ * that changed. A frame taller than the viewport clears the terminal and replays all static output;
+ * a frame exactly as tall as the viewport is drawn in place without a trailing newline so nothing scrolls.
  *
  * The erase and redraw pattern is the one used by log-update and ansi-escapes (MIT, Sindre Sorhus).
  */
@@ -40,6 +41,10 @@ private:
     Ref<ITerminalSink> _sink;
     FrameWriterOptions _options;
     int _previousLineCount = 0;
+    bool _previousTall = false;
+    bool _previousTrailingNewline = true;
+    /** Every static line written so far, replayed when the terminal is cleared for a frame taller than the viewport. */
+    std::string _fullStaticOutput;
     std::optional<std::string> _previousOutput;
     std::vector<std::string> _previousFrame;
     std::vector<std::string> _lastFrame;

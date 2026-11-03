@@ -25,7 +25,11 @@ public:
     int height() const;
     IntRect bounds() const;
 
-    /** Writes clusters left to right starting at (x, y); zero-width clusters attach to the previous cell. */
+    /**
+     * Writes clusters left to right starting at (x, y); zero-width clusters attach to the previous
+     * cell, or to the next one when they come first. Translucent colors are blended against the
+     * cell they land on.
+     */
     int writeClusters(int x, int y, const std::vector<Cluster>& clusters, const Style& style, const IntRect& clip);
 
     /** Returns the column after the last written cluster. */
@@ -33,7 +37,11 @@ public:
 
     int writeSegments(int x, int y, const std::vector<StyledSegment>& segments, const IntRect& clip);
 
-    /** Applies a background color to every cell of `rect`, creating blank cells where needed. */
+    /**
+     * Fills every cell of `rect` with `color`. An opaque fill replaces what was painted there, so
+     * the last fill wins and text below it is covered; a translucent fill only tints the cells'
+     * existing background.
+     */
     void fillBackground(const IntRect& rect, const TermColor& color, const IntRect& clip);
 
     /** Plain text of a row span, with wide characters counted once and empty cells as spaces. */

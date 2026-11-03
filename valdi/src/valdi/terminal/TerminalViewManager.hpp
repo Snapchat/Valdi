@@ -19,8 +19,11 @@ class ILogger;
  * IViewManager for the terminal backend. Views are TerminalViews laid out in whole cells and
  * painted by their view class into a cell grid. Classes are registered under both their iOS and
  * Android names so components resolve the same way on either platform.
+ *
+ * Reference counted because view manager contexts and trees refer to it by plain reference: whoever
+ * hands one out (TerminalRuntime, TerminalRoot) holds a Ref so it cannot be destroyed under them.
  */
-class TerminalViewManager : public IViewManager {
+class TerminalViewManager : public IViewManager, public SharedPtrRefCountable {
 public:
     explicit TerminalViewManager(PlatformType platformType = PlatformTypeIOS);
     TerminalViewManager(PlatformType platformType, ILogger& logger);

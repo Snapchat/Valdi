@@ -175,12 +175,13 @@ int rgbToAnsi256(int r, int g, int b) {
 }
 
 int rgbToAnsi16(int r, int g, int b) {
-    const double value = std::max({r, g, b}) / 255.0;
-    if (value == 0) {
+    const int maxChannel = std::max({r, g, b});
+    if (maxChannel == 0) {
         return 0;
     }
     int code = (roundHalfUp(b / 255.0) << 2) | (roundHalfUp(g / 255.0) << 1) | roundHalfUp(r / 255.0);
-    if (value > 0.5) {
+    // ansi-styles brightens only when a channel is saturated, so mid-intensity colors and grays stay normal.
+    if (maxChannel == 255) {
         code += 8;
     }
     return code;

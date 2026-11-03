@@ -46,7 +46,8 @@ struct TerminalLabelParams {
 
     /**
      * Lays the text out for the given width in cells; nullopt means unconstrained. Without an
-     * explicit wrap mode, a single ellipsized line truncates and anything else wraps.
+     * explicit wrap mode, a single line truncates (with an ellipsis unless `ellipsize` is false, in which
+     * case it is clipped) and anything else wraps.
      */
     std::vector<Terminal::StyledLine> layout(std::optional<int> width) const;
 };
@@ -68,6 +69,14 @@ public:
 private:
     std::vector<Terminal::StyledLine> _lines;
     std::optional<int> _linesWidth;
+};
+
+/** Cells between a view's frame and its content box. */
+struct TerminalInsets {
+    int left = 0;
+    int top = 0;
+    int right = 0;
+    int bottom = 0;
 };
 
 /** A view of the terminal backend: a rectangle of cells with children. Painted by its view class. */
@@ -105,6 +114,12 @@ public:
      */
     bool clipsChildren() const;
     void setClipsChildren(bool clipsChildren);
+
+    /**
+     * The padding Yoga resolved for the attached ViewNode, rounded to whole cells; zero when there
+     * is no node or layout has not run. Views that draw content inset it by this amount.
+     */
+    TerminalInsets layoutPadding() const;
 
     /** Associates the ViewNode this view renders; nullptr detaches it. */
     void setViewNode(ViewNode* viewNode);

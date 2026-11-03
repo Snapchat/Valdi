@@ -3,6 +3,7 @@
 #include "valdi/runtime/Context/ViewNodeTree.hpp"
 #include "valdi/terminal/Paint/FrameWriter.hpp"
 #include "valdi/terminal/Sink/ITerminalSink.hpp"
+#include "valdi/terminal/TerminalViewManager.hpp"
 #include "valdi_core/cpp/Utils/Function.hpp"
 #include "valdi_core/cpp/Utils/Mutex.hpp"
 
@@ -25,7 +26,13 @@ struct TerminalRootOptions {
     std::optional<int> rows;
     /** Append every frame instead of redrawing in place. */
     bool debug = false;
-    /** Runs a function on the thread that paints. Defaults to the tree's main thread manager. */
+    /**
+     * Runs a function on the thread that paints. Defaults to the tree's main thread manager. It
+     * must run the function on the thread that applies view transactions (the main thread): a frame
+     * is painted from the view tree as it stands, so painting from another thread while a
+     * transaction is mutating the tree would show half an update. Dropping the function without
+     * running it is allowed; the next scheduleFrame() will dispatch again.
+     */
     Function<void(DispatchFunction)> dispatcher;
 };
 
@@ -50,23 +57,38 @@ public:
     /** Lays the tree out for a terminal of the given size. Repeated calls with the same size do nothing. */
     void setSize(int columns, int rows);
 
-    /** Requests a repaint. Safe to call from any thread; requests made before the paint runs coalesce. */
+    /**
+     * Requests a repaint. Safe to call from any thread; requests made before the paint runs
+     * coalesce. When the tree has no main thread manager and no dispatcher was provided there is
+     * nowhere safe to paint, so the request is dropped and logged once; call paintNow() instead.
+     */
     void scheduleFrame();
 
     /** Paints synchronously and writes the frame to the sink. */
     void paintNow();
 
-    /** Registers a callback that receives every painted frame. Returns an id for removeFrameObserver(). */
+    /**
+     * Registers a callback that receives every painted frame. Returns an id for removeFrameObserver().
+     * Callbacks run on the painting thread with no locks held, so they may call back into the root.
+     * The observer list is copied when a frame finishes: an observer removed while earlier observers
+     * of the same frame are running is not called, but one that is already running is not interrupted.
+     */
     int addFrameObserver(TerminalFrameObserver observer);
     void removeFrameObserver(int id);
 
     /** The most recently painted frame. */
     Terminal::FrameSnapshot getLastFrame() const;
 
-    /** Paints a final frame and lets the writer leave the output in a consistent state. */
+    /**
+     * Paints a final frame and lets the writer leave the output in a consistent state (cursor shown,
+     * non-interactive sinks receive the final frame). Later calls and calls after destroy() do nothing.
+     */
     void finish();
 
-    /** Detaches from the tree; further paint requests are ignored. */
+    /**
+     * Finishes the output if finish() was not called, then detaches from the tree; further paint
+     * requests are ignored. Also called by the destructor.
+     */
     void destroy();
 
     bool isDestroyed() const;
@@ -74,13 +96,20 @@ public:
     const Ref<ViewNodeTree>& getTree() const;
 
 private:
+    struct FrameRequest;
+
     Ref<ViewNodeTree> _tree;
+    // The tree's view manager is held by raw reference through the ViewManagerContext, so the root keeps it alive.
+    Ref<TerminalViewManager> _viewManager;
     Ref<Terminal::ITerminalSink> _sink;
     TerminalRootOptions _options;
     Terminal::FrameWriter _writer;
     mutable RecursiveMutex _mutex;
     std::atomic<bool> _frameScheduled{false};
     std::atomic<bool> _destroyed{false};
+    std::atomic<bool> _finishRequested{false};
+    std::atomic<bool> _reportedNoPaintThread{false};
+    bool _finished = false;
     bool _painting = false;
     std::optional<std::tuple<int, int, bool>> _appliedLayout;
     Terminal::FrameSnapshot _lastFrame;
@@ -90,7 +119,9 @@ private:
     int initialColumns() const;
     int initialRows() const;
     void applyLayout(int columns, int rows);
+    bool canDispatch() const;
     void dispatchOnPaintThread(DispatchFunction function);
+    bool isObserverRegistered(int id) const;
 };
 
 } // namespace Valdi

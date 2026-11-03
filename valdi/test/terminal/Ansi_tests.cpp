@@ -81,9 +81,32 @@ TEST(TerminalAnsi, convertsRgbToPalettes) {
     ASSERT_EQ(196, rgbToAnsi256(255, 0, 0));
     ASSERT_EQ(9, rgbToAnsi16(255, 0, 0));
     ASSERT_EQ(0, rgbToAnsi16(0, 0, 0));
-    ASSERT_EQ(13, rgbToAnsi16(200, 0, 200));
+    // ansi-styles brightens only saturated colors; 200 is not 255.
+    ASSERT_EQ(5, rgbToAnsi16(200, 0, 200));
+    ASSERT_EQ(13, rgbToAnsi16(255, 0, 255));
+    ASSERT_EQ(7, ansi256ToAnsi16(244));
+    ASSERT_EQ(15, ansi256ToAnsi16(231));
     ASSERT_EQ(9, ansi256ToAnsi16(196));
     ASSERT_EQ(3, ansi256ToAnsi16(3));
+}
+
+TEST(TerminalAnsi, downgradesMidIntensityColorsToNormalBasicColors) {
+    Style magenta;
+    magenta.fg = TermColor::rgb(200, 0, 200);
+    ASSERT_EQ("\x1b[35m", styleToSgr(magenta, ColorLevel::Basic16));
+    Style gray;
+    gray.fg = TermColor::rgb(128, 128, 128);
+    ASSERT_EQ("\x1b[37m", styleToSgr(gray, ColorLevel::Basic16));
+}
+
+TEST(TerminalAnsi, keepsTheAlphaOfValdiColorsAndBlendsOverABackdrop) {
+    const auto half = TermColor::fromValdiColor(Valdi::Color(0, 0, 0, 128));
+    ASSERT_TRUE(half.has_value());
+    ASSERT_EQ(128, half->alpha);
+    ASSERT_EQ(TermColor::rgb(127, 127, 127), half->blendedOver(TermColor::rgb(255, 255, 255)));
+    ASSERT_EQ(TermColor::rgb(0, 0, 0), half->blendedOver(std::nullopt));
+    ASSERT_EQ(TermColor::rgb(0, 205, 0), TermColor::ansi16(2).toRgb());
+    ASSERT_EQ(TermColor::rgb(255, 0, 0), TermColor::rgb(255, 0, 0).blendedOver(TermColor::rgb(1, 2, 3)));
 }
 
 TEST(TerminalAnsi, detectsColorLevelFromTheEnvironment) {

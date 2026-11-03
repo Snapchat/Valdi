@@ -36,7 +36,7 @@ public:
 
 private:
     Weak<RuntimeManager> _runtimeManager;
-    TerminalViewManager _viewManager;
+    Ref<TerminalViewManager> _viewManager;
     Mutex _mutex;
     Ref<ViewManagerContext> _viewManagerContext;
 };

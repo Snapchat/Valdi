@@ -1,10 +1,13 @@
 #include "valdi/terminal/Sink/TtySink.hpp"
 
 #include <cerrno>
+#include <poll.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
 namespace Valdi::Terminal {
+
+static constexpr int kWritePollTimeoutMs = 100;
 
 TtySink::TtySink(int fd, std::optional<ColorLevel> colorLevelOverride)
     : _fd(fd), _isTTY(::isatty(fd) != 0), _colorLevel(ColorLevel::None) {
@@ -22,6 +25,17 @@ void TtySink::write(std::string_view data) {
         const auto written = ::write(_fd, data.data(), data.size());
         if (written < 0) {
             if (errno == EINTR) {
+                continue;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // A non-blocking descriptor with a full buffer: wait for room rather than dropping output.
+                struct pollfd descriptor{};
+                descriptor.fd = _fd;
+                descriptor.events = POLLOUT;
+                const int ready = ::poll(&descriptor, 1, kWritePollTimeoutMs);
+                if (ready < 0 && errno != EINTR) {
+                    return;
+                }
                 continue;
             }
             return;

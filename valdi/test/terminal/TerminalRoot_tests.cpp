@@ -1,6 +1,9 @@
 #include "TerminalTreeFixture.hpp"
 
+#include <atomic>
+#include <chrono>
 #include <gtest/gtest.h>
+#include <thread>
 
 using namespace Valdi;
 using namespace Valdi::Terminal;
@@ -276,13 +279,205 @@ TEST(TerminalRoot, ignoresRepaintRequestsAfterDestroy) {
     TerminalTreeFixture f;
     addLabel(f, f.rootNode, "hi", 1);
     render(f);
-    const auto before = f.sink->frameCount();
     f.root->destroy();
+    const auto before = f.sink->frameCount();
     ASSERT_TRUE(f.root->isDestroyed());
     f.root->scheduleFrame();
     f.root->paintNow();
     f.mainQueue->flush();
     ASSERT_EQ(before, f.sink->frameCount());
+}
+
+TEST(TerminalRoot, aPendingPaintAfterDestroyWritesNothing) {
+    std::vector<DispatchFunction> queued;
+    TerminalRootOptions options;
+    options.dispatcher = [&queued](DispatchFunction function) { queued.push_back(std::move(function)); };
+    TerminalTreeFixture f(options);
+    addLabel(f, f.rootNode, "hi", 1);
+    render(f);
+    for (auto& function : queued) {
+        function();
+    }
+    queued.clear();
+
+    f.root->scheduleFrame();
+    ASSERT_EQ(1u, queued.size());
+    f.root->destroy();
+    const auto writes = f.sink->writes().size();
+    const auto frames = f.sink->frameCount();
+    queued[0]();
+    ASSERT_EQ(writes, f.sink->writes().size());
+    ASSERT_EQ(frames, f.sink->frameCount());
+}
+
+TEST(TerminalRoot, observersRunWithoutHoldingTheRootsLocks) {
+    TerminalTreeFixture f;
+    addLabel(f, f.rootNode, "hi", 1);
+    std::atomic<bool> workerDone{false};
+    bool workerFinishedWhileObserving = false;
+    std::thread worker;
+    const auto observerId = f.root->addFrameObserver(TerminalFrameObserver([&](const FrameSnapshot&) {
+        // Same thread: re-entering the root from an observer works.
+        f.root->getLastFrame();
+        f.root->scheduleFrame();
+
+        // Another thread needs the root's mutex while this observer is still running.
+        worker = std::thread([&]() {
+            f.root->getLastFrame();
+            f.root->scheduleFrame();
+            workerDone = true;
+        });
+        for (int i = 0; i < 300 && !workerDone; i++) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        workerFinishedWhileObserving = workerDone;
+    }));
+    render(f);
+    // destroy() paints a last frame; the observer must not run again once its captures are gone.
+    f.root->removeFrameObserver(observerId);
+    if (worker.joinable()) {
+        worker.join();
+    }
+    ASSERT_TRUE(workerFinishedWhileObserving);
+}
+
+TEST(TerminalRoot, skipsObserversRemovedByAnEarlierObserverOfTheSameFrame) {
+    TerminalTreeFixture f;
+    addLabel(f, f.rootNode, "hi", 1);
+    int removedCalls = 0;
+    int removedId = 0;
+    f.root->addFrameObserver(
+        TerminalFrameObserver([&](const FrameSnapshot&) { f.root->removeFrameObserver(removedId); }));
+    removedId = f.root->addFrameObserver(TerminalFrameObserver([&](const FrameSnapshot&) { removedCalls++; }));
+    render(f);
+    ASSERT_EQ(0, removedCalls);
+}
+
+TEST(TerminalRoot, destroyFinishesTheOutputFirstAndLaterFinishIsANoOp) {
+    TerminalTreeFixture f;
+    f.sink->setIsTTY(false);
+    auto label = addLabel(f, f.rootNode, "first", 1);
+    render(f);
+    f.set(label, "value", text("second"));
+    render(f);
+    ASSERT_EQ("", f.sink->output());
+    f.root->destroy();
+    ASSERT_EQ("second\n", f.sink->output());
+    f.root->finish();
+    f.root->destroy();
+    ASSERT_EQ("second\n", f.sink->output());
+}
+
+TEST(TerminalRoot, destroyShowsTheCursorAgainOnAnInteractiveSink) {
+    TerminalTreeFixture f;
+    addLabel(f, f.rootNode, "hi", 1);
+    render(f);
+    ASSERT_NE(std::string(Ansi::kCursorShow), f.sink->writes().back());
+    f.root->destroy();
+    ASSERT_EQ(std::string(Ansi::kCursorShow), f.sink->writes().back());
+}
+
+TEST(TerminalRoot, destroyingTheLastReferenceFinishesTheOutput) {
+    TerminalTreeFixture f;
+    addLabel(f, f.rootNode, "hi", 1);
+    render(f);
+    f.root = nullptr;
+    ASSERT_EQ(std::string(Ansi::kCursorShow), f.sink->writes().back());
+}
+
+TEST(TerminalRoot, keepsTheViewManagerAliveAfterTheRuntimeIsReleased) {
+    // Declared first so it outlives the fixture, whose tree still refers to the manager while it is torn down.
+    Ref<TerminalViewManager> keptForTeardown;
+    TerminalTreeFixture f;
+    keptForTeardown = strongRef(&f.terminalRuntime->getViewManager());
+    Weak<TerminalViewManager> weakManager = weakRef(keptForTeardown.get());
+    keptForTeardown = nullptr;
+    ASSERT_NE(nullptr, weakManager.lock());
+
+    // Only the runtime and the root hold the manager; dropping the runtime must not free it.
+    f.terminalRuntime = nullptr;
+    keptForTeardown = weakManager.lock();
+    ASSERT_NE(nullptr, keptForTeardown);
+}
+
+TEST(TerminalRoot, dropsFrameRequestsWhenThereIsNoMainThreadManagerOrDispatcher) {
+    TerminalTreeFixture f;
+    auto tree = makeShared<ViewNodeTree>(
+        f.tree->getContext(), f.viewManagerContext, &f.terminalRuntime->getViewManager(), nullptr, nullptr, false);
+    auto sink = makeShared<MemorySink>();
+    auto root = makeShared<TerminalRoot>(tree, sink, TerminalRootOptions());
+    root->scheduleFrame();
+    root->scheduleFrame();
+    ASSERT_EQ(0u, sink->frameCount());
+    ASSERT_EQ(0u, sink->writes().size());
+    root->destroy();
+}
+
+TEST(TerminalRoot, aDispatcherThatDropsTheFrameDoesNotBlockLaterRequests) {
+    int dispatches = 0;
+    TerminalRootOptions options;
+    options.dispatcher = [&dispatches](DispatchFunction /*dropped*/) { dispatches++; };
+    TerminalTreeFixture f(options);
+    const int baseline = dispatches;
+    f.root->scheduleFrame();
+    ASSERT_EQ(baseline + 1, dispatches);
+    f.root->scheduleFrame();
+    ASSERT_EQ(baseline + 2, dispatches);
+}
+
+TEST(TerminalRoot, borderAttributeAcceptsAWidthWithoutAColor) {
+    TerminalTreeFixture f;
+    f.sink->setColorLevel(ColorLevel::TrueColor);
+    auto box = f.createNode("SCValdiView");
+    f.set(box, "width", Value(4.0));
+    f.set(box, "height", Value(3.0));
+    f.set(box, "border", Value(1.0));
+    f.append(f.rootNode, box);
+    render(f);
+    ASSERT_EQ((Lines{"┌──┐", "│  │", "└──┘"}), f.sink->lastPlainLines());
+    ASSERT_EQ(f.sink->lastFrame().plainLines[0], f.sink->lastFrame().ansiLines[0]);
+}
+
+TEST(TerminalRoot, borderAttributeAcceptsTheShorthandString) {
+    TerminalTreeFixture f;
+    f.sink->setColorLevel(ColorLevel::TrueColor);
+    auto box = f.createNode("SCValdiView");
+    f.set(box, "width", Value(4.0));
+    f.set(box, "height", Value(3.0));
+    f.set(box, "border", text("1 solid red"));
+    f.append(f.rootNode, box);
+    render(f);
+    ASSERT_EQ((Lines{"┌──┐", "│  │", "└──┘"}), f.sink->lastPlainLines());
+    ASSERT_NE(std::string::npos, f.sink->lastFrame().ansiLines[0].find("38;2;255;0;0"));
+}
+
+TEST(TerminalRoot, labelPaddingInsetsTheTextAndCountsTowardTheHeight) {
+    TerminalTreeFixture f;
+    auto label = addLabel(f, f.rootNode, "hi", 1);
+    f.set(label, "padding", Value(1.0));
+    render(f);
+    ASSERT_EQ(3, f.sink->lastFrame().height);
+    ASSERT_EQ((Lines{"", " hi", ""}), f.sink->lastPlainLines());
+}
+
+TEST(TerminalRoot, labelsWrapAtTheWidthInsideTheirPadding) {
+    TerminalTreeFixture f;
+    f.root->setSize(7, 10);
+    auto label = addLabel(f, f.rootNode, "ab cd ef", 0);
+    f.set(label, "padding", Value(1.0));
+    render(f);
+    ASSERT_EQ((Lines{"", " ab cd", " ef", ""}), f.sink->lastPlainLines());
+}
+
+TEST(TerminalRoot, clippedSingleLineLabelsCutAtTheWidthWithoutAnEllipsis) {
+    TerminalTreeFixture f;
+    f.root->setSize(8, 10);
+    auto label = f.createNode("SCValdiLabel");
+    f.set(label, "value", text("hello wonderful world"));
+    f.set(label, "textOverflow", text("clip"));
+    f.append(f.rootNode, label);
+    render(f);
+    ASSERT_EQ((Lines{"hello wo"}), f.sink->lastPlainLines());
 }
 
 } // namespace ValdiTest
