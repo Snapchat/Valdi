@@ -1,10 +1,6 @@
 export const enum DeviceSystemType {
   IOS = 'ios',
   ANDROID = 'android',
-  /** Standalone runtimes built for a macOS terminal CLI. */
-  MACOS = 'macos',
-  /** Standalone runtimes built for a Linux terminal CLI. */
-  LINUX = 'linux',
 }
 
 export const enum DeviceHapticFeedbackType {
