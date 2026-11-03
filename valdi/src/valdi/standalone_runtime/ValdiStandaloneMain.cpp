@@ -76,7 +76,8 @@ Ref<ValdiStandaloneRuntime> createValdiStandaloneRuntime(const StandaloneArgumen
                                                   Valdi::makeShared<InMemoryDiskCache>(),
                                                   nullptr,
                                                   resourceLoader,
-                                                  tweakValueProvider.toShared());
+                                                  tweakValueProvider.toShared(),
+                                                  arguments.platformType);
 
     for (const auto& moduleFactoriesProvider : arguments.moduleFactoriesProviders) {
         runtime->getRuntimeManager().registerModuleFactoriesProvider(moduleFactoriesProvider);

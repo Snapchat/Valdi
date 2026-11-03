@@ -483,7 +483,7 @@ Ref<ValdiStandaloneRuntime> ValdiStandaloneRuntime::create(bool enableDebuggerSe
     auto runtime = runtimeManager->createRuntime(resourceLoader, static_cast<double>(viewManager->getPointScale()));
     runtime->setListener(runtimeListener);
 
-    auto deviceModule = makeShared<DeviceModule>();
+    auto deviceModule = makeShared<DeviceModule>(platformType);
     runtime->registerNativeModuleFactory(deviceModule.toShared());
     runtime->registerNativeModuleFactory(makeShared<ApplicationModule>().toShared());
 
