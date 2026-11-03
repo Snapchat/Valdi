@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <optional>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -80,6 +81,15 @@ public:
     Terminal::FrameSnapshot getLastFrame() const;
 
     /**
+     * Queues lines that are written once, above the live frame, with the next paint. Used for output
+     * that must not be erased, such as redirected console messages.
+     */
+    void writeAbove(std::vector<std::string> lines);
+
+    /** Erases the live frame from the terminal. The next paint draws it again. */
+    void clear();
+
+    /**
      * Paints a final frame and lets the writer leave the output in a consistent state (cursor shown,
      * non-interactive sinks receive the final frame). Later calls and calls after destroy() do nothing.
      */
@@ -114,6 +124,7 @@ private:
     std::optional<std::tuple<int, int, bool>> _appliedLayout;
     Terminal::FrameSnapshot _lastFrame;
     std::vector<std::pair<int, TerminalFrameObserver>> _observers;
+    std::vector<std::string> _pendingAbove;
     int _nextObserverId = 1;
 
     int initialColumns() const;
