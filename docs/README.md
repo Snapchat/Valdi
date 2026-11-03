@@ -89,6 +89,7 @@
  - [SwiftPM, CocoaPods, Xcode and Gradle integration](./docs/workflow-external-build-system.md)
  - [Releasing to app stores](./docs/workflow-appstore-release.md)
  - [Building a CLI application](./docs/workflow-cli-application.md)
+ - [Terminal user interfaces](./docs/workflow-terminal-ui.md)
  - [Valdi rules for Bazel](./docs/workflow-bazel.md)
  - [Valdi Style Guide](./docs/workflow-style-guide.md)
  - [Valdi Inspector](./docs/workflow-inspector.md)
