@@ -314,6 +314,13 @@ public:
     bool isAnimationsEnabled() const;
     void setAnimationsEnabled(ViewTransactionScope& viewTransactionScope, bool animationsEnabled);
 
+    /**
+     * Backs the `allowReuse` attribute. When false, createView() always makes a new view instead
+     * of taking one from the view pool, and the view is not returned to the pool when removed.
+     */
+    void setAllowReuse(bool allowReuse);
+    bool allowsReuse() const;
+
     void setShouldReceiveVisibilityUpdates(bool shouldReceiveVisibilityUpdates);
     bool shouldReceiveVisibilityUpdates() const;
 
@@ -681,7 +688,7 @@ private:
     float _stickyCachedParentH = 0.0f;
     float _stickyCachedChildH = 0.0f;
 
-    std::bitset<38> _flags;
+    std::bitset<39> _flags;
 
     ViewNodeTree* _viewNodeTree = nullptr;
 

@@ -48,6 +48,15 @@ void DefaultAttributes::bind(AttributeHandlerById& attributes) {
     binder.bindViewNodeFloat("estimatedHeight", &ViewNode::setEstimatedHeight);
     binder.bindViewNodeString("colorPaletteName", &ViewNode::setColorPaletteName);
 
+    // Not bindViewNodeBoolean: that resets to false, and allowReuse defaults to true.
+    binder.bind(
+        "allowReuse",
+        [](ViewTransactionScope& /*viewTransactionScope*/, ViewNode& viewNode, const Value& value) -> Result<Void> {
+            viewNode.setAllowReuse(value.toBool());
+            return Void();
+        },
+        [](ViewTransactionScope& /*viewTransactionScope*/, auto& viewNode) { viewNode.setAllowReuse(true); });
+
     binder.bind(
         "limitToViewport",
         [](ViewTransactionScope& /*viewTransactionScope*/, ViewNode& viewNode, const Value& value) -> Result<Void> {

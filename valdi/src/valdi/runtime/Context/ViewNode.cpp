@@ -176,6 +176,7 @@ constexpr size_t kTranslationXIsPercent = 34;
 constexpr size_t kTranslationYIsPercent = 35;
 constexpr size_t kHasOveriddenColorPalette = 36;
 constexpr size_t kViewFromFactoryFlag = 37;
+constexpr size_t kDisallowViewReuseFlag = 38;
 
 ViewNode::ViewNode(YGConfig* yogaConfig,
                    AttributeIds& attributeIds,
@@ -432,9 +433,14 @@ bool ViewNode::createView(ViewTransactionScope& viewTransactionScope, const Ref<
     }
 
     bool reusedFromPool = false;
-    auto view = _viewFactory->createView(_viewNodeTree, this, true, &reusedFromPool);
+    auto allowReuse = !_flags[kDisallowViewReuseFlag];
+    auto view = _viewFactory->createView(_viewNodeTree, this, /*allowPool*/ allowReuse, &reusedFromPool);
 
     if (view != nullptr) {
+        if (!allowReuse) {
+            // allowReuse={false}: the view is new, and it is dropped instead of pooled when removed.
+            view->setCanBeReused(false);
+        }
         _viewNodeTree->recordViewPoolCreate(reusedFromPool);
         viewTransactionScope.transaction().moveViewToTree(view, _viewNodeTree, this);
         setView(viewTransactionScope, view, animator);
@@ -3538,6 +3544,20 @@ void ViewNode::setHasChildWithAccessibilityId() {
             parent->setHasChildWithAccessibilityId();
         }
     }
+}
+
+void ViewNode::setAllowReuse(bool allowReuse) {
+    _flags[kDisallowViewReuseFlag] = !allowReuse;
+
+    // A view that already exists can't be swapped for a new one here, but it must not go back into
+    // the pool. Setting the attribute back to true doesn't re-enable pooling for that view.
+    if (!allowReuse && hasView()) {
+        _view->setCanBeReused(false);
+    }
+}
+
+bool ViewNode::allowsReuse() const {
+    return !_flags[kDisallowViewReuseFlag];
 }
 
 void ViewNode::setAnimationsEnabled(ViewTransactionScope& viewTransactionScope, bool animationsEnabled) {

@@ -75,6 +75,89 @@ TEST(ViewNode, countsViewPoolMissesHitsAndDrops) {
 
 namespace {
 
+Ref<ViewNode> addSizedChildWithoutReuse(ViewNodeTestsDependencies& utils, const Ref<ViewNode>& root) {
+    auto child = utils.createView();
+    utils.setViewNodeAttribute(child, "allowReuse", Value(false));
+    utils.setViewNodeAttribute(child, "width", Value(50.0));
+    utils.setViewNodeAttribute(child, "height", Value(50.0));
+    root->appendChild(utils.getViewTransactionScope(), child);
+    root->performLayout(utils.getViewTransactionScope(), Size(100, 100), LayoutDirectionLTR);
+    root->updateVisibilityAndPerformUpdates(utils.getViewTransactionScope());
+    return child;
+}
+
+void releaseView(ViewNodeTestsDependencies& utils, const Ref<ViewNode>& node) {
+    node->removeFromParent(utils.getViewTransactionScope());
+    node->setView(utils.getViewTransactionScope(), nullptr, nullptr);
+}
+
+} // namespace
+
+TEST(ViewNode, allowReuseFalseSkipsTheViewPool) {
+    ViewNodeTestsDependencies utils;
+    utils.getViewManager().setAllowViewPooling(true);
+    auto root = utils.createRootView();
+
+    // Put one view in the pool.
+    auto pooled = addSizedChild(utils, root);
+    auto pooledView = pooled->getView();
+    releaseView(utils, pooled);
+
+    // allowReuse={false} gets a new view even though the pool has one...
+    auto fresh = addSizedChildWithoutReuse(utils, root);
+    ASSERT_FALSE(fresh->allowsReuse());
+    ASSERT_TRUE(fresh->hasView());
+    ASSERT_NE(pooledView, fresh->getView());
+    auto stats = utils.getTree().getViewPoolStats();
+    ASSERT_EQ(0u, stats.hits);
+    ASSERT_EQ(2u, stats.misses);
+
+    // ...and its view is dropped, not pooled, when released.
+    releaseView(utils, fresh);
+    stats = utils.getTree().getViewPoolStats();
+    ASSERT_EQ(1u, stats.drops);
+
+    // The default still reuses: the next node takes the view that was pooled first.
+    auto reused = addSizedChild(utils, root);
+    ASSERT_TRUE(reused->allowsReuse());
+    ASSERT_EQ(pooledView, reused->getView());
+    stats = utils.getTree().getViewPoolStats();
+    ASSERT_EQ(1u, stats.hits);
+}
+
+TEST(ViewNode, allowReuseFalseOnAnExistingViewKeepsItOutOfThePool) {
+    ViewNodeTestsDependencies utils;
+    utils.getViewManager().setAllowViewPooling(true);
+    auto root = utils.createRootView();
+
+    auto child = addSizedChild(utils, root);
+    ASSERT_TRUE(child->hasView());
+    utils.setViewNodeAttribute(child, "allowReuse", Value(false));
+    child->getAttributesApplier().flush(utils.getViewTransactionScope());
+    ASSERT_FALSE(child->allowsReuse());
+
+    releaseView(utils, child);
+    auto stats = utils.getTree().getViewPoolStats();
+    ASSERT_EQ(1u, stats.drops);
+}
+
+TEST(ViewNode, removingAllowReuseRestoresTheDefault) {
+    ViewNodeTestsDependencies utils;
+    auto root = utils.createRootView();
+    auto child = utils.createView();
+
+    utils.setViewNodeAttribute(child, "allowReuse", Value(false));
+    child->getAttributesApplier().flush(utils.getViewTransactionScope());
+    ASSERT_FALSE(child->allowsReuse());
+
+    // Unsetting the attribute resets it to true, not to false.
+    utils.setViewNodeAttribute(child, "allowReuse", Value::undefined());
+    child->getAttributesApplier().flush(utils.getViewTransactionScope());
+    ASSERT_TRUE(child->allowsReuse());
+}
+
+namespace {
+
 class ViewPoolRecordingMetrics : public Metrics {
 public:
     struct Emission {
@@ -197,8 +280,8 @@ TEST(ViewNode, treeTakesViewPoolingOnLayoutCallbacksFromViewManagerContext) {
     ASSERT_TRUE(viewManagerContext->getKeepsViewPoolingOnLayoutCallbacks());
 
     viewManagerContext->setKeepsViewPoolingOnLayoutCallbacks(false);
-    auto tree = makeShared<ViewNodeTree>(
-        nullptr, viewManagerContext, &viewManager, nullptr, mainThreadManager.get(), false);
+    auto tree =
+        makeShared<ViewNodeTree>(nullptr, viewManagerContext, &viewManager, nullptr, mainThreadManager.get(), false);
     ASSERT_FALSE(tree->keepsViewPoolingOnLayoutCallbacks());
 }
 

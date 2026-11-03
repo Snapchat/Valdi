@@ -25,8 +25,3 @@ onViewportChanged         runtime  Dispatched by the TypeScript renderer from vi
 onTextSelectionMenu       android  Documented [iOS-Only]: iOS text selection edit menu.
 onTextSelectionMenuAction android  Documented [iOS-Only]: iOS text selection edit menu.
 cursor                    ios,android  Pointer cursor; only meaningful on the web renderer.
-
-# Known gap: declared and documented, but no native binder registers it on either platform, so it
-# is currently a no-op on iOS and Android (only the web renderer reads it). Remove this entry once
-# it is implemented natively, or remove the declaration.
-allowReuse                ios,android  KNOWN GAP: no native implementation on iOS or Android today.
