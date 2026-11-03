@@ -37,6 +37,13 @@ describe('parseInput', () => {
     expect(parseInput('\x1b')[0].key.escape).toBe(true);
   });
 
+  it('parses back-tab as shift+tab', () => {
+    const press = parseInput('\x1b[Z')[0];
+    expect(press.key.tab).toBe(true);
+    expect(press.key.shift).toBe(true);
+    expect(parseInput('\t')[0].key.shift).toBe(false);
+  });
+
   it('parses meta combinations', () => {
     const press = parseInput('\x1bx')[0];
     expect(press.input).toBe('x');

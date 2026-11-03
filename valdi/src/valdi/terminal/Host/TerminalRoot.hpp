@@ -126,6 +126,7 @@ private:
     std::vector<std::pair<int, TerminalFrameObserver>> _observers;
     std::vector<std::string> _pendingAbove;
     int _nextObserverId = 1;
+    uint64_t _frameSequence = 0;
 
     int initialColumns() const;
     int initialRows() const;

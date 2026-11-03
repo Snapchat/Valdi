@@ -263,6 +263,26 @@ TEST(TerminalRoot, notifiesFrameObserversUntilTheyAreRemoved) {
     ASSERT_EQ((Lines{"hi"}), f.root->getLastFrame().plainLines);
 }
 
+TEST(TerminalRoot, numbersFramesInIncreasingOrder) {
+    TerminalTreeFixture f;
+    addLabel(f, f.rootNode, "hi", 1);
+    std::vector<uint64_t> sequences;
+    const auto id = f.root->addFrameObserver(
+        TerminalFrameObserver([&sequences](const FrameSnapshot& frame) { sequences.push_back(frame.sequence); }));
+    render(f);
+    f.root->paintNow();
+    f.root->paintNow();
+    // The fixture finishes the root when it is destroyed, which paints once more.
+    f.root->removeFrameObserver(id);
+
+    ASSERT_EQ(3u, sequences.size());
+    ASSERT_EQ(1u, sequences[0]);
+    ASSERT_LT(sequences[0], sequences[1]);
+    ASSERT_LT(sequences[1], sequences[2]);
+    ASSERT_EQ(sequences[2], f.root->getLastFrame().sequence);
+    ASSERT_EQ(sequences[2], f.sink->lastFrame().sequence);
+}
+
 TEST(TerminalRoot, writesOnlyTheFinalFrameToANonInteractiveSink) {
     TerminalTreeFixture f;
     f.sink->setIsTTY(false);
