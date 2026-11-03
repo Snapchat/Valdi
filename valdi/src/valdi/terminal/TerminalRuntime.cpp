@@ -11,6 +11,8 @@ TerminalRuntime::TerminalRuntime(RuntimeManager& runtimeManager, PlatformType pl
 TerminalRuntime::~TerminalRuntime() = default;
 
 void TerminalRuntime::configureRuntime(Runtime& runtime) {
+    // A Runtime-wide switch: it applies to every Context of this Runtime, not only terminal roots. Terminal
+    // frames are painted from the whole tree, so nothing may be culled by a viewport that does not exist.
     runtime.setLimitToViewportDisabled(true);
 }
 

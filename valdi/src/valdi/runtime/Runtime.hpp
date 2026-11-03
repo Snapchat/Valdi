@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <vector>
 
 #include "valdi/runtime/Interfaces/IJavaScriptBridge.hpp"
@@ -331,7 +332,7 @@ private:
     bool _traceViewLifecycle = false;
     bool _debugRequests = false;
     bool _didEvaluateKotlinJs = false;
-    bool _limitToViewportDisabled = false;
+    std::atomic<bool> _limitToViewportDisabled{false};
     bool _debuggerServiceEnabled;
     bool _didInit = false;
     bool _shouldProcessUpdatesSynchronously = false;
