@@ -18,6 +18,11 @@
 /// on the main thread.
 FOUNDATION_EXTERN void SCValdiPrewarmGestureRecognizers(void);
 
+/// Keeps a scroll view's own pan at one touch while a pinch is bound to it and
+/// +[SCValdiConfiguration scrollPinchWhileDraggingEnabled] is on, so a second finger can pinch instead of
+/// joining the pan. Otherwise restores the pan's original touch limit. Does nothing for other views.
+FOUNDATION_EXTERN void SCValdiSetScrollPanLimitedForPinch(UIView* view, BOOL pinchBound);
+
 @protocol SCValdiGestureRecognizer <NSObject, UIGestureRecognizerDelegate>
 
 - (void)setFunction:(id<SCValdiFunction>)function;

@@ -1332,9 +1332,11 @@ static void SCValdiDetermineCornerRadiusMethod(CGFloat topLeftRadius, CGFloat to
         withFunctionAndPredicateBlock:^(__kindof UIView *view, id<SCValdiFunction> attributeValue, id<SCValdiFunction> predicate, id additionalValue) {
             [view valdi_setupGestureRecognizerForClass:[SCValdiPinchGestureRecognizer class]
                                                    function:attributeValue predicate:predicate];
+            SCValdiSetScrollPanLimitedForPinch(view, YES);
         }
         resetBlock:^(__kindof UIView *view) {
             [view valdi_resetGestureRecognizerForClass:[SCValdiPinchGestureRecognizer class]];
+            SCValdiSetScrollPanLimitedForPinch(view, NO);
         }];
     [attributesBinder bindAttribute:@"onRotate"
         withFunctionAndPredicateBlock:^(__kindof UIView *view, id<SCValdiFunction> attributeValue, id<SCValdiFunction> predicate, id additionalValue) {

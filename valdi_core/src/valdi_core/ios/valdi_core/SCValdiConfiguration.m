@@ -10,6 +10,7 @@
 #import <stdatomic.h>
 
 static atomic_bool sDeferCompactPickerStyleResetEnabled = false;
+static atomic_bool sScrollPinchWhileDraggingEnabled = false;
 
 @implementation SCValdiConfiguration
 
@@ -21,6 +22,16 @@ static atomic_bool sDeferCompactPickerStyleResetEnabled = false;
 + (BOOL)deferCompactPickerStyleResetEnabled
 {
     return atomic_load(&sDeferCompactPickerStyleResetEnabled);
+}
+
++ (void)setScrollPinchWhileDraggingEnabled:(BOOL)enabled
+{
+    atomic_store(&sScrollPinchWhileDraggingEnabled, enabled);
+}
+
++ (BOOL)scrollPinchWhileDraggingEnabled
+{
+    return atomic_load(&sScrollPinchWhileDraggingEnabled);
 }
 
 - (instancetype)init

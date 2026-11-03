@@ -134,6 +134,18 @@ typedef void (^SCValdiPerformHapticFeedbackBlock)(NSString* type);
 + (void)setDeferCompactPickerStyleResetEnabled:(BOOL)enabled;
 + (BOOL)deferCompactPickerStyleResetEnabled;
 
+/**
+ Process-wide switch for the scroll view pinch behavior: a view with `onPinch` set on a scroll view lets the
+ pinch start while a finger is dragging, caps the scroll pan at one touch, and hands the drag to the
+ remaining finger when the dragging finger lifts. Capping the pan at one touch means two-finger scrolling
+ stops working on a scroll view with `onPinch` while this is on. The handoff is skipped on paging scroll views.
+ A scroll view that snaps by returning a new offset from `onDragEnding` is not supported: the handoff ends with
+ zero velocity and discards the offset the delegate returns.
+ When NO, scroll views behave as before. Defaults to NO.
+ */
++ (void)setScrollPinchWhileDraggingEnabled:(BOOL)enabled;
++ (BOOL)scrollPinchWhileDraggingEnabled;
+
 @end
 
 NS_ASSUME_NONNULL_END

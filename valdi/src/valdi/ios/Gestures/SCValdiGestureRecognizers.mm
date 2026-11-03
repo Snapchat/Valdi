@@ -8,6 +8,8 @@
 
 #import "valdi/ios/Gestures/SCValdiGestureRecognizers.h"
 
+#import "valdi_core/SCValdiConfiguration.h"
+#import "valdi_core/SCValdiScrollView.h"
 #import "valdi_core/UIView+ValdiObjects.h"
 #import "valdi_core/SCValdiTouches.h"
 #import "valdi_core/SCValdiMarshaller+CPP.h"
@@ -15,6 +17,7 @@
 #import "valdi_core/SCValdiLogger.h"
 
 #import <UIKit/UIGestureRecognizerSubclass.h>
+#import <objc/runtime.h>
 
 void SCValdiPrewarmGestureRecognizers(void)
 {
@@ -488,6 +491,26 @@ Valdi::Value SCValdiMakeDragEvent(UIPanGestureRecognizer *gestureRecognizer) {
 
 @end
 
+static const void *kValdiScrollPanMaximumTouchesKey = &kValdiScrollPanMaximumTouchesKey;
+
+void SCValdiSetScrollPanLimitedForPinch(UIView *view, BOOL pinchBound)
+{
+    if (![view isKindOfClass:[SCValdiScrollView class]]) {
+        return;
+    }
+    UIPanGestureRecognizer *pan = ((SCValdiScrollView *)view).innerScrollView.panGestureRecognizer;
+    NSNumber *original = objc_getAssociatedObject(view, kValdiScrollPanMaximumTouchesKey);
+    if (pinchBound && [SCValdiConfiguration scrollPinchWhileDraggingEnabled]) {
+        if (!original) {
+            objc_setAssociatedObject(view, kValdiScrollPanMaximumTouchesKey, @(pan.maximumNumberOfTouches), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        pan.maximumNumberOfTouches = 1;
+    } else if (original) {
+        pan.maximumNumberOfTouches = original.unsignedIntegerValue;
+        objc_setAssociatedObject(view, kValdiScrollPanMaximumTouchesKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
 @interface SCValdiPinchGestureRecognizer () <UIGestureRecognizerDelegate>
 
 @end
@@ -496,6 +519,10 @@ Valdi::Value SCValdiMakeDragEvent(UIPanGestureRecognizer *gestureRecognizer) {
     UIEvent *_lastEvent;
     id<SCValdiFunction> _function;
     id<SCValdiFunction> _predicate;
+    BOOL _panWasDragging;
+    UITouch *_handoffTouch;
+    BOOL _handoffBegun;
+    CGPoint _handoffLocation;
 }
 
 - (instancetype)init
@@ -510,31 +537,139 @@ Valdi::Value SCValdiMakeDragEvent(UIPanGestureRecognizer *gestureRecognizer) {
 - (void)reset
 {
     _lastEvent = nil;
+    _panWasDragging = NO;
+    [self _endHandoff];
     [super reset];
+}
+
+- (UIScrollView *)_ownScrollView
+{
+    return [self.view isKindOfClass:[SCValdiScrollView class]] ? ((SCValdiScrollView *)self.view).innerScrollView : nil;
+}
+
+- (void)_endHandoff
+{
+    BOOL begun = _handoffBegun;
+    UIScrollView *scrollView = [self _ownScrollView];
+    _handoffTouch = nil;
+    _handoffBegun = NO;
+    if (!begun || !scrollView) {
+        return;
+    }
+    SCLogValdiInfo(@"[SCValdiPinch] handoff end offset: %.1f", scrollView.contentOffset.x);
+    id<UIScrollViewDelegate> delegate = scrollView.delegate;
+    CGPoint target = scrollView.contentOffset;
+    [delegate scrollViewWillEndDragging:scrollView withVelocity:CGPointZero targetContentOffset:&target];
+    [delegate scrollViewDidEndDragging:scrollView willDecelerate:NO];
+}
+
+- (void)_beginHandoff
+{
+    UIScrollView *scrollView = [self _ownScrollView];
+    UITouch *touch = _handoffTouch;
+    if (!touch || _handoffBegun || !scrollView.delegate || !scrollView.panGestureRecognizer.enabled || touch.phase == UITouchPhaseEnded || touch.phase == UITouchPhaseCancelled) {
+        return;
+    }
+    _handoffBegun = YES;
+    [scrollView setContentOffset:scrollView.contentOffset animated:NO];
+    _handoffLocation = [touch locationInView:self.view];
+    SCLogValdiInfo(@"[SCValdiPinch] handoff begin offset: %.1f", scrollView.contentOffset.x);
+    [scrollView.delegate scrollViewWillBeginDragging:scrollView];
+}
+
+- (void)_moveHandoffTouch:(UITouch *)touch scrollView:(UIScrollView *)scrollView
+{
+    CGPoint location = [touch locationInView:self.view];
+    UIEdgeInsets inset = scrollView.adjustedContentInset;
+    CGPoint offset = scrollView.contentOffset;
+    CGFloat minX = -inset.left;
+    CGFloat minY = -inset.top;
+    CGFloat maxX = MAX(minX, scrollView.contentSize.width + inset.right - CGRectGetWidth(scrollView.bounds));
+    CGFloat maxY = MAX(minY, scrollView.contentSize.height + inset.bottom - CGRectGetHeight(scrollView.bounds));
+    offset.x = MIN(maxX, MAX(minX, offset.x - (location.x - _handoffLocation.x)));
+    offset.y = MIN(maxY, MAX(minY, offset.y - (location.y - _handoffLocation.y)));
+    _handoffLocation = location;
+    if (!CGPointEqualToPoint(offset, scrollView.contentOffset)) {
+        scrollView.contentOffset = offset;
+    }
+}
+
+- (void)_updateHandoffWithEvent:(UIEvent *)event
+{
+    UIScrollView *scrollView = [self _ownScrollView];
+    if (!scrollView || !scrollView.delegate || ![SCValdiConfiguration scrollPinchWhileDraggingEnabled]) {
+        return;
+    }
+    NSMutableArray<UITouch *> *down = [NSMutableArray array];
+    for (UITouch *touch in [event touchesForGestureRecognizer:self]) {
+        if (touch.phase != UITouchPhaseEnded && touch.phase != UITouchPhaseCancelled) {
+            [down addObject:touch];
+        }
+    }
+    UIGestureRecognizerState panState = scrollView.panGestureRecognizer.state;
+    if (scrollView.pagingEnabled || panState == UIGestureRecognizerStateCancelled ||
+        panState == UIGestureRecognizerStateFailed) {
+        _panWasDragging = NO;
+        [self _endHandoff];
+        return;
+    }
+    BOOL panActive = panState == UIGestureRecognizerStateBegan || panState == UIGestureRecognizerStateChanged;
+
+    if (_handoffTouch) {
+        if (panActive || down.count != 1 || down.firstObject != _handoffTouch) {
+            if (down.count > 1) {
+                _panWasDragging = YES;
+            }
+            [self _endHandoff];
+        } else if (_handoffBegun) {
+            [self _moveHandoffTouch:_handoffTouch scrollView:scrollView];
+        }
+        return;
+    }
+    if (panActive) {
+        _panWasDragging = YES;
+        return;
+    }
+    if (_panWasDragging) {
+        if (down.count == 1) {
+            _panWasDragging = NO;
+            _handoffTouch = down.firstObject;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self _beginHandoff];
+            });
+        } else if (down.count == 0) {
+            _panWasDragging = NO;
+        }
+    }
 }
 
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
 {
     _lastEvent = event;
+    SCValdiSetScrollPanLimitedForPinch(self.view, YES);
     [super touchesBegan:touches withEvent:event];
+    [self _updateHandoffWithEvent:event];
 }
 
 - (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
 {
     _lastEvent = event;
     [super touchesMoved:touches withEvent:event];
+    [self _updateHandoffWithEvent:event];
 }
 
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
 {
     _lastEvent = event;
     [super touchesEnded:touches withEvent:event];
+    [self _updateHandoffWithEvent:event];
 }
 
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
 {
     _lastEvent = event;
     [super touchesCancelled:touches withEvent:event];
+    [self _updateHandoffWithEvent:event];
 }
 
 
@@ -585,7 +720,11 @@ Valdi::Value SCValdiMakePinchEvent(UIPinchGestureRecognizer *gestureRecognizer) 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
     shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer
 {
-    return [otherGestureRecognizer isKindOfClass:[SCValdiDragGestureRecognizer class]] ||
+    UIView *view = gestureRecognizer.view;
+    BOOL isOwnScrollViewPan = [SCValdiConfiguration scrollPinchWhileDraggingEnabled] &&
+        [view isKindOfClass:[SCValdiScrollView class]] &&
+        otherGestureRecognizer == ((SCValdiScrollView *)view).innerScrollView.panGestureRecognizer;
+    return isOwnScrollViewPan || [otherGestureRecognizer isKindOfClass:[SCValdiDragGestureRecognizer class]] ||
            [otherGestureRecognizer isKindOfClass:[SCValdiRotationGestureRecognizer class]];
 }
 
