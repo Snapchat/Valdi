@@ -138,6 +138,8 @@ export function resolveAssetOutputType(contextId: number | string, assetType: As
           return AssetOutputType.IMAGE_IOS;
         case BackendRenderingType.SNAP_DRAWING:
           return AssetOutputType.IMAGE_SNAP_DRAWING;
+        case BackendRenderingType.TERMINAL:
+          return AssetOutputType.DUMMY;
       }
       break;
     case AssetType.VIDEO:
@@ -154,6 +156,8 @@ export function resolveAssetOutputType(contextId: number | string, assetType: As
           } else {
             return AssetOutputType.DUMMY;
           }
+        case BackendRenderingType.TERMINAL:
+          return AssetOutputType.DUMMY;
       }
       break;
     case AssetType.ANIMATED_IMAGE:

@@ -96,9 +96,14 @@ public:
                                 double displayScale,
                                 const Ref<MainThreadManager>& mainThreadManagerOverride = nullptr,
                                 std::optional<PlatformType> platformType = std::nullopt);
+    /**
+     * Creates a ViewManagerContext. When yogaConfigOverride is provided, the context's nodes use it instead of the
+     * runtime-wide Yoga config (e.g. to enable point-scale rounding). The runtime keeps applying its Yoga tweaks to it.
+     */
     Ref<ViewManagerContext> createViewManagerContext(IViewManager& viewManager,
                                                      bool enablePreloading,
-                                                     const Ref<MainThreadManager>& mainThreadManagerOverride = nullptr);
+                                                     const Ref<MainThreadManager>& mainThreadManagerOverride = nullptr,
+                                                     const Shared<YGConfig>& yogaConfigOverride = nullptr);
 
     std::vector<SharedRuntime> getAllRuntimes();
 
@@ -190,6 +195,7 @@ private:
 
     std::shared_ptr<MetricsStopWatch> _initStopWatch;
     std::shared_ptr<YGConfig> _yogaConfig;
+    std::vector<std::weak_ptr<YGConfig>> _yogaConfigOverrides;
     Shared<DebuggerService> _debuggerService;
     AttributeIds _attributeIds;
 
