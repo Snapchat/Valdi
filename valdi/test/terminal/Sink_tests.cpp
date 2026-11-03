@@ -21,6 +21,28 @@ TEST(TerminalSink, memorySinkRecordsWritesInOrder) {
     ASSERT_EQ("", sink.output());
 }
 
+TEST(TerminalSink, memorySinkSurvivesConcurrentWritesAndReads) {
+    MemorySink sink;
+    constexpr int kIterations = 2000;
+    std::thread writer([&]() {
+        for (int i = 0; i < kIterations; i++) {
+            sink.write("x");
+            FrameSnapshot frame;
+            frame.plainLines = {"line"};
+            sink.didRenderFrame(frame);
+        }
+    });
+    for (int i = 0; i < kIterations; i++) {
+        ASSERT_LE(sink.output().size(), static_cast<size_t>(kIterations));
+        ASSERT_LE(sink.lastPlainLines().size(), 1u);
+        ASSERT_LE(sink.writes().size(), static_cast<size_t>(kIterations));
+        sink.setSize(80 + i % 3, 24);
+    }
+    writer.join();
+    ASSERT_EQ(std::string(kIterations, 'x'), sink.output());
+    ASSERT_EQ(static_cast<size_t>(kIterations), sink.frameCount());
+}
+
 TEST(TerminalSink, memorySinkReportsItsConfiguration) {
     MemorySink sink;
     ASSERT_EQ(80, sink.columns());
