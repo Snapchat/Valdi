@@ -1,7 +1,10 @@
 #pragma once
 
+#include "valdi/runtime/Attributes/BoundAttributes.hpp"
 #include "valdi/runtime/Interfaces/IViewManager.hpp"
+#include "valdi/runtime/Utils/MainThreadManager.hpp"
 #include "valdi/terminal/Classes/ITerminalViewClass.hpp"
+#include "valdi_core/cpp/Interfaces/IBitmapFactory.hpp"
 #include "valdi_core/cpp/Utils/FlatMap.hpp"
 #include "valdi_core/cpp/Utils/FlatSet.hpp"
 #include "valdi_core/cpp/Utils/Mutex.hpp"

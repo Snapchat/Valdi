@@ -8,6 +8,8 @@
 
 #include <atomic>
 #include <optional>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 namespace Valdi {
@@ -18,7 +20,7 @@ struct TerminalRootOptions {
      * and the frame is as tall as its content.
      */
     bool fitTerminal = false;
-    /** Overrides for the size reported by the sink. */
+    /** Overrides for the size the sink reports when the root is attached. */
     std::optional<int> columns;
     std::optional<int> rows;
     /** Append every frame instead of redrawing in place. */
@@ -39,7 +41,10 @@ public:
     TerminalRoot(const Ref<ViewNodeTree>& tree, const Ref<Terminal::ITerminalSink>& sink, TerminalRootOptions options);
     ~TerminalRoot() override;
 
-    /** Creates the root view, retains layout specs across invalidations and applies the initial layout size. */
+    /**
+     * Creates the root view, retains layout specs across invalidations and lays out for the size
+     * of the sink. Hosts report later resizes with setSize().
+     */
     void attach();
 
     /** Lays the tree out for a terminal of the given size. Repeated calls with the same size do nothing. */
@@ -73,7 +78,7 @@ private:
     Ref<Terminal::ITerminalSink> _sink;
     TerminalRootOptions _options;
     Terminal::FrameWriter _writer;
-    mutable Mutex _mutex;
+    mutable RecursiveMutex _mutex;
     std::atomic<bool> _frameScheduled{false};
     std::atomic<bool> _destroyed{false};
     bool _painting = false;
@@ -82,8 +87,8 @@ private:
     std::vector<std::pair<int, TerminalFrameObserver>> _observers;
     int _nextObserverId = 1;
 
-    int currentColumns() const;
-    int currentRows() const;
+    int initialColumns() const;
+    int initialRows() const;
     void applyLayout(int columns, int rows);
     void dispatchOnPaintThread(DispatchFunction function);
 };

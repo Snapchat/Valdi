@@ -95,9 +95,11 @@ const Frame& TerminalView::getFrame() const {
     return _frame;
 }
 
-void TerminalView::setFrame(const Frame& frame) {
+void TerminalView::setFrame(const Frame& frame, bool requestRepaint) {
     _frame = frame;
-    markDirty();
+    if (requestRepaint) {
+        markDirty();
+    }
 }
 
 TerminalViewStyle& TerminalView::style() {
