@@ -298,7 +298,7 @@ class TerminalRenderer<ViewModel extends object, Context extends object> impleme
     const frameObservation = this.backend.observeFrame(root.native, frame => this.onFrame(frame));
     this.disposables.push({ dispose: () => frameObservation.cancel() });
 
-    this.setupInput(root.native);
+    this.setupInput(root.native, sink);
     const resizeObservation = this.backend.observeResize(root.native, (columns, rows) => {
       this.terminal.columns = columns;
       this.terminal.rows = rows;
@@ -393,8 +393,12 @@ class TerminalRenderer<ViewModel extends object, Context extends object> impleme
     };
   }
 
-  private setupInput(native: TerminalRootNative): void {
-    // For the tty sink no reader feeds this yet, so applications run output-only.
+  private setupInput(native: TerminalRootNative, sink: TerminalSinkKind): void {
+    // The host reads stdin only in raw mode. Without a terminal on stdin, or in a host that does not own
+    // the terminal, setRawMode() is a no-op and the application runs output-only.
+    if (sink === 'tty' && this.terminal.isInputTTY && this.backend.setRawMode(native, true)) {
+      this.disposables.push({ dispose: () => this.backend.setRawMode(native, false) });
+    }
     const observation = this.backend.observeInput(native, data => {
       if (this.unmounted) {
         return;

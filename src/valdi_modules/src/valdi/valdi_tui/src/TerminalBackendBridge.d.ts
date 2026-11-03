@@ -1,6 +1,7 @@
 /**
- * The native terminal backend, registered by hosts that link `//valdi:valdi_terminal`
- * (the module test runner and the standalone runtime). Contexts created here render through the
+ * The native terminal backend, registered by hosts that link `//valdi:valdi_terminal`: the module
+ * test runner (memory sink only) and CLI applications built with `valdi_cli_application(terminal = True)`,
+ * which also own the process terminal. Contexts created here render through the
  * terminal view manager, so `<view>` and `<label>` paint into a cell grid instead of platform views.
  */
 
@@ -23,7 +24,12 @@ export interface CreateRootOptions {
   rows?: number;
   /** Lay out to the full terminal height instead of the content height. */
   fitTerminal?: boolean;
-  /** Reserved for hosts that own input; Ctrl+C handling happens in the TypeScript layer. */
+  /**
+   * `tty` roots: when the host receives Ctrl+C it restores the terminal and exits the process (status 130)
+   * without involving JS; when false the byte is delivered to input observers instead. Memory roots never
+   * exit natively; the TypeScript layer handles the Ctrl+C that {@link feedInput} delivers.
+   * @default true
+   */
   exitOnCtrlC?: boolean;
   /** Append every frame instead of redrawing in place. */
   debug?: boolean;
@@ -89,12 +95,23 @@ export function getOutput(native: TerminalRootNative): string;
 export function feedInput(native: TerminalRootNative, text: string): void;
 
 /**
- * Observes raw terminal input for one root. Nothing produces input for the `tty` sink yet, so a
- * registered observer only fires for {@link feedInput}.
+ * Observes raw terminal input for one root. For the `tty` sink the host delivers keyboard input while
+ * {@link setRawMode} is enabled; memory roots receive what {@link feedInput} delivers.
  */
 export function observeInput(native: TerminalRootNative, callback: (text: string) => void): Cancelable;
 
-/** Observes the terminal size changes reported for one root with {@link setSize}. */
+/**
+ * Puts the process terminal in raw mode for a `tty` root, which is what makes keyboard input reach
+ * {@link observeInput} observers. The host restores the terminal when the last root that enabled it
+ * is destroyed, and when the process exits or is signalled. Returns false for memory roots, when
+ * stdin is not a terminal, and in hosts that do not own the terminal.
+ */
+export function setRawMode(native: TerminalRootNative, enabled: boolean): boolean;
+
+/**
+ * Observes the terminal size changes of one root: its own {@link setSize} calls and, for `tty` roots
+ * without an explicit size, resizes of the process terminal.
+ */
 export function observeResize(
   native: TerminalRootNative,
   callback: (columns: number, rows: number) => void,

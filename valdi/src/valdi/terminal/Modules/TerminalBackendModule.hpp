@@ -1,6 +1,7 @@
 #pragma once
 
 #include "valdi/runtime/Context/ViewManagerContext.hpp"
+#include "valdi/terminal/Host/TerminalHost.hpp"
 #include "valdi/terminal/TerminalRuntime.hpp"
 #include "valdi_core/ModuleFactory.hpp"
 #include "valdi_core/cpp/Utils/Mutex.hpp"
@@ -18,14 +19,16 @@ class TerminalRootHandle;
  * terminal view manager, hands their frames to JS and carries keyboard input and resize
  * notifications from the host to JS.
  *
- * Input has no native reader in this module: hosts (or tests, through feedInput) push text in and
- * the observers registered with observeInput() receive it. Observers belong to one root, so
- * several renders in one process never see each other's input. A TTY host reader plugs into
- * dispatchInput() and dispatchResize(), which reach every live root.
+ * Input has no reader of its own: hosts (or tests, through feedInput) push text in and the
+ * observers registered with observeInput() receive it. Observers belong to one root, so several
+ * renders in one process never see each other's input. dispatchInput() and dispatchResize() reach
+ * every live root. A module created with a TerminalHost also receives the process terminal's
+ * keyboard input, resize events and Ctrl+C for its `tty` roots, and asks the host to put the
+ * terminal in raw mode on their behalf; without a host `tty` roots only draw.
  */
 class TerminalBackendModule final : public SharedPtrRefCountable, public snap::valdi_core::ModuleFactory {
 public:
-    explicit TerminalBackendModule(Ref<TerminalRuntime> terminalRuntime);
+    explicit TerminalBackendModule(Ref<TerminalRuntime> terminalRuntime, Terminal::TerminalHost* host = nullptr);
     ~TerminalBackendModule() final;
 
     StringBox getModulePath() final;
@@ -37,8 +40,18 @@ public:
     /** Reports a host terminal size change to the observers of every live root. */
     void dispatchResize(int columns, int rows);
 
+    /** Delivers input read from the process terminal to the observers of every live `tty` root. */
+    void handleHostInput(const StringBox& text);
+
+    /** Lays the live `tty` roots out for the new terminal size, then notifies their resize observers. */
+    void handleHostResize(int columns, int rows);
+
+    /** Whether a live `tty` root asked for Ctrl+C to exit the application (the default). */
+    bool hostExitsOnCtrlC();
+
 private:
     Ref<TerminalRuntime> _terminalRuntime;
+    Terminal::TerminalHost* _host;
     Mutex _mutex;
     std::vector<Weak<TerminalRootHandle>> _handles;
 
@@ -56,6 +69,7 @@ private:
     Value isTTY(const ValueFunctionCallContext& callContext);
     Value observeInput(const ValueFunctionCallContext& callContext);
     Value observeResize(const ValueFunctionCallContext& callContext);
+    Value setRawMode(const ValueFunctionCallContext& callContext);
 
     Value addObserver(const ValueFunctionCallContext& callContext, bool isInput);
     void registerHandle(const Ref<TerminalRootHandle>& handle);
