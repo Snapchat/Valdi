@@ -8,6 +8,7 @@
 #pragma once
 
 #include "valdi_core/ModuleFactory.hpp"
+#include "valdi_core/cpp/Context/PlatformType.hpp"
 #include "valdi_core/cpp/Utils/Mutex.hpp"
 #include "valdi_core/cpp/Utils/Shared.hpp"
 #include "valdi_core/cpp/Utils/ValueFunction.hpp"
@@ -18,7 +19,8 @@ namespace Valdi {
 
 class DeviceModule : public Valdi::SharedPtrRefCountable, public snap::valdi_core::ModuleFactory {
 public:
-    DeviceModule();
+    /** @param platformType What getSystemType() reports on macOS and Linux; every other value reports iOS. */
+    explicit DeviceModule(PlatformType platformType = PlatformTypeIOS);
     ~DeviceModule() override;
 
     Valdi::StringBox getModulePath() override;
@@ -63,6 +65,7 @@ public:
     Valdi::Value readDirectory(const Valdi::ValueFunctionCallContext& callContext);
 
 private:
+    PlatformType _platformType;
     mutable Valdi::Mutex _mutex;
 
     // Serialize registration and notification order across host and JS threads.
