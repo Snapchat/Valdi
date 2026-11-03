@@ -1425,6 +1425,25 @@ cc_binary(
     ],
 )
 
+# The module test runner for valdi_tui, selected with valdi_module(test_standalone_binary = ...). It is the shared
+# runner plus the terminal backend, kept separate so no other module's tests link the backend or share a JS runtime
+# with a terminal context.
+cc_binary(
+    name = "valdi_standalone_terminal",
+    srcs = glob([
+        "src/valdi/standalone/**/*.cpp",
+        "src/valdi/standalone/**/*.hpp",
+    ]),
+    local_defines = ["VALDI_STANDALONE_TERMINAL"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_runtime_with_vm",
+        ":valdi_standalone_runtime",
+        ":valdi_terminal",
+        "//src/valdi_modules/src/valdi/valdi_cli:valdi_cli_native",
+    ],
+)
+
 cc_binary(
     name = "startup_benchmark",
     srcs = glob([
