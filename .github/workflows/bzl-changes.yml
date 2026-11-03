@@ -267,6 +267,8 @@ jobs:
         include:
           - name: C++ Tests
             task: test-cpp
+          - name: Android C++ (strict flags)
+            task: android-cpp-strict
           - name: Build Compiler
             task: build-compiler
           - name: Build & Export
@@ -326,6 +328,13 @@ jobs:
       - name: "Build: Benchmarks"
         if: matrix.task == 'test-cpp'
         run: ./tools/ci/build_benchmarks.sh
+
+      # Compiles the Android C++ at NDK API 21 with clang's default-on warnings under -Werror,
+      # the flags Valdi sees when vendored into a larger Android app; the NDK toolchain's
+      # defaults used by "Build & Export" hide those failures. See android_strict_cxx in .bazelrc.
+      - name: "Build: Android C++ (strict flags)"
+        if: matrix.task == 'android-cpp-strict'
+        run: ./tools/ci/build_android_cpp_strict.sh
 
       - name: "Run: Build Compiler"
         if: matrix.task == 'build-compiler'

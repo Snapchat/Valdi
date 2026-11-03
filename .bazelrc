@@ -134,3 +134,61 @@ build:asan --copt=-g
 build:asan --copt=-Wno-macro-redefined
 build:asan --linkopt=-fsanitize=address
 build:asan --test_env=ASAN_OPTIONS=detect_leaks=0:halt_on_error=1
+
+# Strict Android C++: compiles Valdi's Android C++ the way a larger Android app that vendors Valdi
+# does, so code that only breaks under those flags fails public CI instead of failing downstream.
+# Used by tools/ci/build_android_cpp_strict.sh; arm64-only (the --target override below is arm64).
+#
+# The default public Android build uses rules_android_ndk's toolchain, which differs in three ways
+# that hide real -Werror failures:
+#   1. It targets API 31. Downstream builds target API 21, where bionic hides newer libc symbols
+#      (aligned_alloc, getrandom, ...) and using them is a hard "undeclared identifier" error.
+#   2. Its default flags pass -Wno-deprecated, so C++20 deprecations (enum-enum arithmetic,
+#      implicit [=] capture of this, volatile compound ops, ...) never reach Valdi's -Werror.
+#   3. It passes -Wno-* for a batch of warnings clang enables by default (return-type-c-linkage,
+#      final-dtor-non-final-class, implicit-const-int-float-conversion, ...). -Wall/-Wextra in
+#      Valdi's copts don't turn these back on because they aren't in those groups.
+# --copt lands after the toolchain's flags and before each target's copts, so this re-enables
+# exactly clang's default-on diagnostics and per-target -Wno-* still win, as they do downstream.
+build:android_strict_cxx --platforms=@snap_platforms//os:android_arm64
+build:android_strict_cxx --compilation_mode=dbg
+build:android_strict_cxx --copt=--target=aarch64-linux-android21
+build:android_strict_cxx --copt=-Og
+build:android_strict_cxx --copt=-DANDROID
+build:android_strict_cxx --copt=-DANDROID_WITH_JNI
+build:android_strict_cxx --copt=-DBAZEL_BUILD=1
+build:android_strict_cxx --copt=-DDJINNI_DISABLE_DESCRIPTION_METHODS
+build:android_strict_cxx --copt=-Wno-unknown-warning-option
+## (2) C++20 deprecations: the group, minus its members clang leaves off by default.
+build:android_strict_cxx --copt=-Wdeprecated
+build:android_strict_cxx --copt=-Wno-deprecated-copy
+build:android_strict_cxx --copt=-Wno-deprecated-copy-with-dtor
+build:android_strict_cxx --copt=-Wno-deprecated-copy-with-user-provided-copy
+build:android_strict_cxx --copt=-Wno-deprecated-copy-with-user-provided-dtor
+build:android_strict_cxx --copt=-Wno-deprecated-dynamic-exception-spec
+build:android_strict_cxx --copt=-Wno-deprecated-literal-operator
+build:android_strict_cxx --copt=-Wno-deprecated-redundant-constexpr-static-def
+## (3) Default-on warnings the NDK toolchain turns off.
+build:android_strict_cxx --copt=-Wambiguous-member-template
+build:android_strict_cxx --copt=-Wdynamic-exception-spec
+build:android_strict_cxx --copt=-Wextern-c-compat
+build:android_strict_cxx --copt=-Wfinal-dtor-non-final-class
+build:android_strict_cxx --copt=-Wgnu-alignof-expression
+build:android_strict_cxx --copt=-Wgnu-variable-sized-type-not-at-end
+build:android_strict_cxx --copt=-Wignored-optimization-argument
+build:android_strict_cxx --copt=-Wimplicit-const-int-float-conversion
+build:android_strict_cxx --copt=-Winvalid-source-encoding
+build:android_strict_cxx --copt=-Wpointer-sign
+build:android_strict_cxx --copt=-Wprivate-header
+build:android_strict_cxx --copt=-Wreserved-user-defined-literal
+build:android_strict_cxx --copt=-Wreturn-type-c-linkage
+build:android_strict_cxx --copt=-Wsigned-unsigned-wchar
+build:android_strict_cxx --copt=-Wtrigraphs
+build:android_strict_cxx --copt=-Wuser-defined-warnings
+## Warnings the downstream build turns off globally (so this config isn't stricter than it).
+build:android_strict_cxx --copt=-Wno-deprecated-builtins
+build:android_strict_cxx --copt=-Wno-nontrivial-memcall
+build:android_strict_cxx --cxxopt=-Wno-unused-private-field
+## Downstream C++ codegen: no C++17 aligned new, no exit-time destructors for statics.
+build:android_strict_cxx --cxxopt=-fno-aligned-allocation
+build:android_strict_cxx --cxxopt=-fno-c++-static-destructors
