@@ -55,4 +55,15 @@ You can package your application into a single binary using `valdi package cli`.
 
 ## Terminal user interfaces
 
-To draw an interactive interface instead of printing lines, use the `valdi_tui` module. See [Terminal user interfaces](./workflow-terminal-ui.md).
+To draw an interactive interface instead of printing lines, use the `valdi_tui` module and build the application with `terminal = True`:
+
+```python
+valdi_cli_application(
+    name = "cli_example_app",
+    script_path = "cli_example/index",
+    terminal = True,
+    deps = [":cli_example"],
+)
+```
+
+`terminal = True` registers the native terminal backend, lets the application read the keyboard and track the terminal size, restores the terminal when the process ends or is signalled, and reports the platform as macOS or Linux (`Device.getSystemType()` returns `macos` or `linux`, so `Device.isIOS()` is false). `valdi_tui` fails without it. See [Terminal user interfaces](./workflow-terminal-ui.md).
