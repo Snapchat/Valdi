@@ -27,7 +27,7 @@ const Ref<ViewNodeTree>& TerminalRoot::getTree() const {
     return _tree;
 }
 
-int TerminalRoot::currentColumns() const {
+int TerminalRoot::initialColumns() const {
     if (_options.columns) {
         return std::max(1, *_options.columns);
     }
@@ -35,7 +35,7 @@ int TerminalRoot::currentColumns() const {
     return columns > 0 ? columns : kFallbackColumns;
 }
 
-int TerminalRoot::currentRows() const {
+int TerminalRoot::initialRows() const {
     if (_options.rows) {
         return std::max(1, *_options.rows);
     }
@@ -52,15 +52,19 @@ void TerminalRoot::attach() {
     if (rootView != nullptr) {
         rootView->setRoot(strongRef(this));
     }
-    applyLayout(currentColumns(), currentRows());
+    applyLayout(initialColumns(), initialRows());
 }
 
 void TerminalRoot::applyLayout(int columns, int rows) {
     const auto key = std::make_tuple(columns, rows, _options.fitTerminal);
-    if (_appliedLayout && *_appliedLayout == key) {
-        return;
+    {
+        // Released before touching the tree: paintNow() takes the tree lock first, then _mutex.
+        std::lock_guard<RecursiveMutex> guard(_mutex);
+        if (_appliedLayout && *_appliedLayout == key) {
+            return;
+        }
+        _appliedLayout = key;
     }
-    _appliedLayout = key;
     // Unspecified height lets content decide how tall the frame is.
     const float height = _options.fitTerminal ? static_cast<float>(rows) : std::numeric_limits<float>::quiet_NaN();
     _tree->setLayoutSpecs(Size(static_cast<float>(columns), height), LayoutDirectionLTR);
@@ -107,7 +111,7 @@ void TerminalRoot::paintNow() {
         return;
     }
     auto treeLock = _tree->lock();
-    std::lock_guard<Mutex> guard(_mutex);
+    std::lock_guard<RecursiveMutex> guard(_mutex);
     if (_painting) {
         return;
     }
@@ -119,13 +123,16 @@ void TerminalRoot::paintNow() {
         return;
     }
 
-    if (!_options.columns && !_options.rows) {
-        applyLayout(currentColumns(), currentRows());
+    // Valdi leaves the frame of the root view to the host.
+    const auto& rootNode = _tree->getRootViewNode();
+    if (rootNode != nullptr) {
+        rootView->setFrame(rootNode->getCalculatedFrame(), /* requestRepaint */ false);
     }
 
-    const int columns = currentColumns();
+    const int columns = _appliedLayout ? std::get<0>(*_appliedLayout) : initialColumns();
+    const int rows = _appliedLayout ? std::get<1>(*_appliedLayout) : initialRows();
     const auto rootRect = Terminal::Painter::roundRect(rootView->getFrame(), 0, 0);
-    const int height = _options.fitTerminal ? currentRows() : std::max(0, rootRect.y + rootRect.height);
+    const int height = _options.fitTerminal ? rows : std::max(0, rootRect.y + rootRect.height);
 
     Terminal::CellGrid grid(columns, height);
     Terminal::Painter painter(grid);
@@ -172,21 +179,21 @@ void TerminalRoot::paintNow() {
 }
 
 int TerminalRoot::addFrameObserver(TerminalFrameObserver observer) {
-    std::lock_guard<Mutex> guard(_mutex);
+    std::lock_guard<RecursiveMutex> guard(_mutex);
     const int id = _nextObserverId++;
     _observers.emplace_back(id, std::move(observer));
     return id;
 }
 
 void TerminalRoot::removeFrameObserver(int id) {
-    std::lock_guard<Mutex> guard(_mutex);
+    std::lock_guard<RecursiveMutex> guard(_mutex);
     _observers.erase(
         std::remove_if(_observers.begin(), _observers.end(), [id](const auto& o) { return o.first == id; }),
         _observers.end());
 }
 
 Terminal::FrameSnapshot TerminalRoot::getLastFrame() const {
-    std::lock_guard<Mutex> guard(_mutex);
+    std::lock_guard<RecursiveMutex> guard(_mutex);
     return _lastFrame;
 }
 
@@ -195,7 +202,7 @@ void TerminalRoot::finish() {
         return;
     }
     paintNow();
-    std::lock_guard<Mutex> guard(_mutex);
+    std::lock_guard<RecursiveMutex> guard(_mutex);
     _writer.finish();
     _sink->flush();
 }
@@ -209,7 +216,7 @@ void TerminalRoot::destroy() {
     if (rootView != nullptr) {
         rootView->setRoot(nullptr);
     }
-    std::lock_guard<Mutex> guard(_mutex);
+    std::lock_guard<RecursiveMutex> guard(_mutex);
     _observers.clear();
 }
 

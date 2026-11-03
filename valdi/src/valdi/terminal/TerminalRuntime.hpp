@@ -11,10 +11,19 @@ namespace Valdi {
  * Owns the terminal view manager and the ViewManagerContext contexts render with. The context is
  * created on first use so that a runtime that never renders pays nothing.
  */
+class Runtime;
+
 class TerminalRuntime : public SharedPtrRefCountable {
 public:
     TerminalRuntime(RuntimeManager& runtimeManager, PlatformType platformType = PlatformTypeIOS);
     ~TerminalRuntime() override;
+
+    /**
+     * Prepares a JS Runtime that renders into terminal view managers. Views are only inflated
+     * inside the viewport by default, which would drop Static content that lives outside the
+     * root frame; painting off-screen content costs nothing in a terminal.
+     */
+    static void configureRuntime(Runtime& runtime);
 
     TerminalViewManager& getViewManager();
 
