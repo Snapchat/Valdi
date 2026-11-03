@@ -105,6 +105,14 @@ private:
 
 } // namespace
 
+struct TerminalRootHandleHostOptions {
+    Terminal::TerminalHost* host = nullptr;
+    bool isTty = false;
+    bool exitOnCtrlC = true;
+    // A root whose size was given explicitly keeps it when the terminal is resized.
+    bool followsHostSize = true;
+};
+
 /**
  * Keeps the terminal root and its context alive for JS. Dropping the last reference destroys the
  * context, like the managed contexts of the SnapDrawing module.
@@ -117,8 +125,10 @@ public:
                        ContextManager& contextManager,
                        const Ref<TerminalRoot>& root,
                        const Ref<Terminal::ITerminalSink>& sink,
-                       const Ref<Terminal::MemorySink>& memorySink)
+                       const Ref<Terminal::MemorySink>& memorySink,
+                       const TerminalRootHandleHostOptions& hostOptions)
         : ContextAutoDestroy(contextId, contextManager),
+          _hostOptions(hostOptions),
           _runtime(weakRef(runtime)),
           _viewNodeTree(viewNodeTree),
           _root(root),
@@ -134,6 +144,10 @@ public:
             return;
         }
         _root->destroy();
+        if (_hostOptions.host != nullptr && _hostOptions.isTty) {
+            setRawMode(false);
+            _hostOptions.host->rootDetached();
+        }
         // JS closures registered here capture the renderer that owns this handle; release them with it.
         _inputObservers.clear();
         _resizeObservers.clear();
@@ -159,6 +173,31 @@ public:
         return _memorySink;
     }
 
+    const TerminalRootHandleHostOptions& hostOptions() const {
+        return _hostOptions;
+    }
+
+    /** Asks the host to put the terminal in raw mode for this root. False when there is no host or terminal. */
+    bool setRawMode(bool enabled) {
+        if (_hostOptions.host == nullptr || !_hostOptions.isTty) {
+            return false;
+        }
+        if (enabled) {
+            if (_holdsRawMode.exchange(true)) {
+                return true;
+            }
+            if (!_hostOptions.host->acquireRawMode()) {
+                _holdsRawMode = false;
+                return false;
+            }
+            return true;
+        }
+        if (_holdsRawMode.exchange(false)) {
+            _hostOptions.host->releaseRawMode();
+        }
+        return true;
+    }
+
     ObserverList& inputObservers() {
         return _inputObservers;
     }
@@ -168,6 +207,8 @@ public:
     }
 
 private:
+    TerminalRootHandleHostOptions _hostOptions;
+    std::atomic<bool> _holdsRawMode{false};
     ObserverList _inputObservers;
     ObserverList _resizeObservers;
     std::atomic<bool> _destroyed{false};
@@ -182,8 +223,8 @@ static Ref<TerminalRootHandle> getHandle(const ValueFunctionCallContext& callCon
     return callContext.getParameter(0).checkedToValdiObject<TerminalRootHandle>(callContext.getExceptionTracker());
 }
 
-TerminalBackendModule::TerminalBackendModule(Ref<TerminalRuntime> terminalRuntime)
-    : _terminalRuntime(std::move(terminalRuntime)) {}
+TerminalBackendModule::TerminalBackendModule(Ref<TerminalRuntime> terminalRuntime, Terminal::TerminalHost* host)
+    : _terminalRuntime(std::move(terminalRuntime)), _host(host) {}
 
 TerminalBackendModule::~TerminalBackendModule() = default;
 
@@ -209,6 +250,7 @@ Value TerminalBackendModule::loadModule() {
     binder.bind("isTTY", &TerminalBackendModule::isTTY);
     binder.bind("observeInput", &TerminalBackendModule::observeInput);
     binder.bind("observeResize", &TerminalBackendModule::observeResize);
+    binder.bind("setRawMode", &TerminalBackendModule::setRawMode);
     return out;
 }
 
@@ -271,9 +313,25 @@ Value TerminalBackendModule::createRoot(const ValueFunctionCallContext& callCont
     auto root = makeShared<TerminalRoot>(viewNodeTree, sink, std::move(rootOptions));
     root->attach();
 
-    auto handle = makeShared<TerminalRootHandle>(
-        runtime, viewNodeTree, newContext->getContextId(), runtime->getContextManager(), root, sink, memorySink);
+    TerminalRootHandleHostOptions hostOptions;
+    hostOptions.host = _host;
+    hostOptions.isTty = !useMemory;
+    const auto exitOnCtrlC = options.getMapValue("exitOnCtrlC");
+    hostOptions.exitOnCtrlC = !exitOnCtrlC.isBool() || exitOnCtrlC.toBool();
+    hostOptions.followsHostSize = !columns.isNumber() && !rows.isNumber();
+
+    auto handle = makeShared<TerminalRootHandle>(runtime,
+                                                 viewNodeTree,
+                                                 newContext->getContextId(),
+                                                 runtime->getContextManager(),
+                                                 root,
+                                                 sink,
+                                                 memorySink,
+                                                 hostOptions);
     registerHandle(handle);
+    if (_host != nullptr && hostOptions.isTty) {
+        _host->rootAttached();
+    }
 
     return Value()
         .setMapValue("contextId", Value(static_cast<int32_t>(newContext->getContextId())))
@@ -425,6 +483,15 @@ Value TerminalBackendModule::addObserver(const ValueFunctionCallContext& callCon
     });
 }
 
+Value TerminalBackendModule::setRawMode(const ValueFunctionCallContext& callContext) {
+    auto handle = getHandle(callContext);
+    const auto enabled = callContext.getParameterAsBool(1);
+    if (handle == nullptr || !callContext.getExceptionTracker()) {
+        return Value();
+    }
+    return Value(handle->setRawMode(enabled));
+}
+
 Value TerminalBackendModule::observeInput(const ValueFunctionCallContext& callContext) {
     return addObserver(callContext, /* isInput */ true);
 }
@@ -468,6 +535,33 @@ void TerminalBackendModule::dispatchResize(int columns, int rows) {
     for (const auto& handle : liveHandles()) {
         dispatchResize(*handle, columns, rows);
     }
+}
+
+void TerminalBackendModule::handleHostInput(const StringBox& text) {
+    for (const auto& handle : liveHandles()) {
+        if (handle->hostOptions().isTty) {
+            dispatchInput(*handle, text);
+        }
+    }
+}
+
+void TerminalBackendModule::handleHostResize(int columns, int rows) {
+    for (const auto& handle : liveHandles()) {
+        if (!handle->hostOptions().isTty || !handle->hostOptions().followsHostSize) {
+            continue;
+        }
+        handle->getRoot()->setSizeOnPaintThread(columns, rows);
+        dispatchResize(*handle, columns, rows);
+    }
+}
+
+bool TerminalBackendModule::hostExitsOnCtrlC() {
+    for (const auto& handle : liveHandles()) {
+        if (handle->hostOptions().isTty && handle->hostOptions().exitOnCtrlC) {
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace Valdi

@@ -26,7 +26,8 @@ export function getTerminalBackend(): TerminalBackend {
     } catch (error) {
       throw new Error(
         'valdi_tui needs the native terminal backend, which this runtime does not provide. ' +
-          'Run it with valdi_standalone built with //valdi:valdi_terminal. ' +
+          'Build the application with valdi_cli_application(terminal = True), or run module tests with ' +
+          'valdi_module(test_standalone_binary = "@valdi//valdi:valdi_standalone_terminal"). ' +
           `(${error instanceof Error ? error.message : String(error)})`,
       );
     }
