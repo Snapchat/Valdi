@@ -5,7 +5,13 @@ import { RootComponentsManager } from 'valdi_core/src/RootComponentsManager';
 import { getValdiRuntime } from 'valdi_core/src/ValdiRuntimeProvider';
 import { KeepAlive, beginKeepAlive, endKeepAlive } from 'valdi_core/src/utils/KeepAliveCallback';
 import { Disposable, TerminalApp, TerminalInfo, setActiveTerminalApp } from './App';
-import { TerminalBackend, TerminalFrame, TerminalRootHandle, TerminalSinkKind, getTerminalBackend } from './TerminalBackend';
+import {
+  TerminalBackend,
+  TerminalFrame,
+  TerminalRootHandle,
+  TerminalSinkKind,
+  getTerminalBackend,
+} from './TerminalBackend';
 import { ColorLevel } from './ansi';
 import { parseInput } from './keys';
 
@@ -188,70 +194,6 @@ class TerminalRenderer<ViewModel extends object, Context extends object> impleme
     );
   }
 
-  private makeTerminalInfo(sink: TerminalSinkKind): TerminalInfo {
-    if (sink === 'memory') {
-      return {
-        isOutputTTY: this.options.isTTY ?? true,
-        // Input is delivered with feedInput() into a memory sink.
-        isInputTTY: true,
-        columns: this.options.columns ?? DEFAULT_COLUMNS,
-        rows: this.options.rows ?? DEFAULT_ROWS,
-      };
-    }
-    const size = this.backend.getSize();
-    return {
-      isOutputTTY: this.backend.isTTY(STDOUT_FD),
-      isInputTTY: this.backend.isTTY(STDIN_FD),
-      columns: this.options.columns ?? size?.[0] ?? envNumber('COLUMNS') ?? DEFAULT_COLUMNS,
-      rows: this.options.rows ?? size?.[1] ?? envNumber('LINES') ?? DEFAULT_ROWS,
-    };
-  }
-
-  private setupInput(): void {
-    // For the tty sink no reader feeds this yet, so applications run output-only.
-    const observation = this.backend.observeInput(data => {
-      if (this.unmounted) {
-        return;
-      }
-      for (const press of parseInput(data)) {
-        if (this.options.exitOnCtrlC !== false && press.key.ctrl && press.input === 'c') {
-          this.unmount();
-          return;
-        }
-        this.app.dispatchInput(press);
-      }
-    });
-    this.disposables.push({ dispose: () => observation.cancel() });
-  }
-
-  private patchConsole(): void {
-    const target = console as unknown as { [method: string]: (...args: unknown[]) => void };
-    const originals: { [method: string]: (...args: unknown[]) => void } = {};
-    for (const method of CONSOLE_METHODS) {
-      const original = target[method];
-      if (typeof original !== 'function') {
-        continue;
-      }
-      originals[method] = original;
-      target[method] = (...args: unknown[]) => {
-        this.backend.writeAbove(this.root.native, formatConsoleArgs(args));
-      };
-    }
-    this.restoreConsole = () => {
-      for (const method of Object.keys(originals)) {
-        target[method] = originals[method]!;
-      }
-    };
-  }
-
-  private onFrame(frame: TerminalFrame): void {
-    this.lastPlainFrame = frame.lines;
-    const waiters = this.frameWaiters.splice(0);
-    for (const waiter of waiters) {
-      waiter(frame.lines);
-    }
-  }
-
   rerender(viewModel: ViewModel): void {
     if (this.unmounted) {
       return;
@@ -320,6 +262,70 @@ class TerminalRenderer<ViewModel extends object, Context extends object> impleme
       this.rejectExit(error);
     } else {
       this.resolveExit();
+    }
+  }
+
+  private makeTerminalInfo(sink: TerminalSinkKind): TerminalInfo {
+    if (sink === 'memory') {
+      return {
+        isOutputTTY: this.options.isTTY ?? true,
+        // Input is delivered with feedInput() into a memory sink.
+        isInputTTY: true,
+        columns: this.options.columns ?? DEFAULT_COLUMNS,
+        rows: this.options.rows ?? DEFAULT_ROWS,
+      };
+    }
+    const size = this.backend.getSize();
+    return {
+      isOutputTTY: this.backend.isTTY(STDOUT_FD),
+      isInputTTY: this.backend.isTTY(STDIN_FD),
+      columns: this.options.columns ?? size?.[0] ?? envNumber('COLUMNS') ?? DEFAULT_COLUMNS,
+      rows: this.options.rows ?? size?.[1] ?? envNumber('LINES') ?? DEFAULT_ROWS,
+    };
+  }
+
+  private setupInput(): void {
+    // For the tty sink no reader feeds this yet, so applications run output-only.
+    const observation = this.backend.observeInput(data => {
+      if (this.unmounted) {
+        return;
+      }
+      for (const press of parseInput(data)) {
+        if (this.options.exitOnCtrlC !== false && press.key.ctrl && press.input === 'c') {
+          this.unmount();
+          return;
+        }
+        this.app.dispatchInput(press);
+      }
+    });
+    this.disposables.push({ dispose: () => observation.cancel() });
+  }
+
+  private patchConsole(): void {
+    const target = console as unknown as { [method: string]: (...args: unknown[]) => void };
+    const originals: { [method: string]: (...args: unknown[]) => void } = {};
+    for (const method of CONSOLE_METHODS) {
+      const original = target[method];
+      if (typeof original !== 'function') {
+        continue;
+      }
+      originals[method] = original;
+      target[method] = (...args: unknown[]) => {
+        this.backend.writeAbove(this.root.native, formatConsoleArgs(args));
+      };
+    }
+    this.restoreConsole = () => {
+      for (const method of Object.keys(originals)) {
+        target[method] = originals[method]!;
+      }
+    };
+  }
+
+  private onFrame(frame: TerminalFrame): void {
+    this.lastPlainFrame = frame.lines;
+    const waiters = this.frameWaiters.splice(0);
+    for (const waiter of waiters) {
+      waiter(frame.lines);
     }
   }
 }

@@ -8,7 +8,15 @@ export type AlignSelf = AlignItems | 'auto';
 export type JustifyContent = 'flex-start' | 'center' | 'flex-end' | 'space-between' | 'space-around' | 'space-evenly';
 
 /** The border glyph sets of the terminal backend. */
-export type BorderStyle = 'single' | 'double' | 'round' | 'bold' | 'singleDouble' | 'doubleSingle' | 'classic' | 'arrow';
+export type BorderStyle =
+  | 'single'
+  | 'double'
+  | 'round'
+  | 'bold'
+  | 'singleDouble'
+  | 'doubleSingle'
+  | 'classic'
+  | 'arrow';
 
 /** Layout and decoration of a {@link Box}. Mirrors Ink's `<Box>` props; sizes are in terminal cells. */
 export interface BoxProps {
@@ -89,7 +97,8 @@ export class Box extends Component<BoxProps> {
     const vm = this.viewModel;
     const hasBorder = vm.borderStyle !== undefined;
     // Yoga lays out the border cells itself; disabled sides give theirs back.
-    const sideWidth = (enabled: boolean | undefined) => (hasBorder ? (enabled === false ? 0 : 1) : undefined);
+    const sideWidth = (enabled: boolean | undefined): number | undefined =>
+      hasBorder ? (enabled === false ? 0 : 1) : undefined;
 
     // custom-view with the view classes, because the border attributes of the terminal backend are
     // not part of the <view> typings.

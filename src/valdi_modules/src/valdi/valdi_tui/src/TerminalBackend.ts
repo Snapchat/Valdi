@@ -11,7 +11,7 @@ export type {
 
 export type TerminalBackend = typeof Bridge;
 
-declare const require: (id: string) => any;
+declare const require: (id: string) => unknown;
 
 let cachedBackend: TerminalBackend | undefined;
 

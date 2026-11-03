@@ -129,7 +129,7 @@ export function parseInput(data: string): KeyPress[] {
   let index = 0;
   let pendingText = '';
 
-  const flushText = () => {
+  const flushText = (): void => {
     if (pendingText !== '') {
       const key = emptyKey();
       if (pendingText.length === 1 && pendingText !== pendingText.toLowerCase()) {

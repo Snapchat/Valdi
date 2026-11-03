@@ -153,7 +153,7 @@ export class Text extends Component<TextProps> {
     const style = baseStyle(vm);
     const wrap = vm.wrap ?? 'wrap';
     const wraps = wrap === 'wrap';
-    const value = needsAttributedValue(runs) ? attributedValue(runs) : runs[0]!.text;
+    const value = needsAttributedValue(runs) ? attributedValue(runs) : runs[0].text;
 
     // custom-view with the label classes, because `inverse` and `textWrap` are terminal attributes
     // the <label> typings do not declare.
@@ -165,7 +165,7 @@ export class Text extends Component<TextProps> {
       font={fontFor(style)}
       textDecoration={decorationFor(style)}
       numberOfLines={wraps ? 0 : 1}
-      textOverflow='ellipsis'
+      textOverflow="ellipsis"
       textWrap={wraps ? undefined : wrap}
       inverse={style?.inverse}
       flexShrink={1}
