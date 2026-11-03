@@ -1,6 +1,6 @@
 import { Component } from 'valdi_core/src/Component';
 import { AttributedTextBuilder } from 'valdi_core/src/utils/AttributedTextBuilder';
-import { testFont, testBoldFont } from './TestFont';
+import { testFont } from './TestFont';
 
 const styles = {
   root: {

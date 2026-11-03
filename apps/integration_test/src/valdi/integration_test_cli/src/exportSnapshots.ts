@@ -1,8 +1,8 @@
 import { Base64 } from 'coreutils/src/Base64';
+import type { IBitmap } from 'drawing/src/IBitmap';
 import { fs } from 'file_system/src/FileSystem';
 import { Argument, ArgumentsParser } from 'valdi_cli/src/ArgumentsParser';
 import { Path } from 'valdi_cli/src/Path';
-import type { IBitmap } from 'drawing/src/IBitmap';
 
 import { accessBitmapPixels, createRgbaBitmap, decodePng, encodePng, LockedBitmapPixels } from './png';
 import type { Pixel } from './png';
@@ -51,11 +51,25 @@ function asBytes(value: Uint8Array | ArrayBuffer): Uint8Array {
   return value instanceof Uint8Array ? value : new Uint8Array(value);
 }
 
-function copyPixel(source: LockedBitmapPixels, target: LockedBitmapPixels, sourceX: number, sourceY: number, targetX: number, targetY: number): void {
+function copyPixel(
+  source: LockedBitmapPixels,
+  target: LockedBitmapPixels,
+  sourceX: number,
+  sourceY: number,
+  targetX: number,
+  targetY: number,
+): void {
   target.setPixel(targetX, targetY, source.getPixel(sourceX, sourceY));
 }
 
-function fillRect(image: LockedBitmapPixels, left: number, top: number, width: number, height: number, pixel: Pixel): void {
+function fillRect(
+  image: LockedBitmapPixels,
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+  pixel: Pixel,
+): void {
   for (let y = Math.max(0, top); y < Math.min(image.info.height, top + height); y++) {
     for (let x = Math.max(0, left); x < Math.min(image.info.width, left + width); x++) {
       image.setPixel(x, y, pixel);
@@ -63,7 +77,14 @@ function fillRect(image: LockedBitmapPixels, left: number, top: number, width: n
   }
 }
 
-function pasteScaled(source: IBitmap, target: LockedBitmapPixels, left: number, top: number, width: number, height: number): void {
+function pasteScaled(
+  source: IBitmap,
+  target: LockedBitmapPixels,
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+): void {
   accessBitmapPixels(source, sourcePixels => {
     for (let y = 0; y < height; y++) {
       const sourceY = Math.min(sourcePixels.info.height - 1, Math.floor((y / height) * sourcePixels.info.height));
@@ -147,7 +168,9 @@ function buildContactSheet(entries: SnapshotEntry[], outputPath: string, options
 }
 
 export function exportSnapshots(options: ExportSnapshotsOptions): SnapshotEntry[] {
-  const result = JSON.parse(fs.readFileSync(Path.resolve(options.result).toString(), { encoding: 'utf8' }) as string) as IntegrationTestResult;
+  const result = JSON.parse(
+    fs.readFileSync(Path.resolve(options.result).toString(), { encoding: 'utf8' }) as string,
+  ) as IntegrationTestResult;
   const outputDir = Path.resolve(options.outputDir);
   outputDir.ensureDirectory();
 
@@ -184,11 +207,17 @@ export function exportSnapshots(options: ExportSnapshotsOptions): SnapshotEntry[
     });
     fs.writeFileSync(
       outputDir.appending('manifest.json').toString(),
-      JSON.stringify({
-        platform: result.platform,
-        caseCount: result.cases.length,
-        cases: entries.map(({ image: _image, ...entry }): SnapshotManifestEntry => entry),
-      }, null, 2),
+      JSON.stringify(
+        {
+          platform: result.platform,
+          caseCount: result.cases.length,
+          // Destructures `image` out so the manifest entries omit the bitmap.
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          cases: entries.map(({ image: _image, ...entry }): SnapshotManifestEntry => entry),
+        },
+        null,
+        2,
+      ),
     );
     fs.writeFileSync(
       outputDir.appending('index.md').toString(),
@@ -199,8 +228,11 @@ export function exportSnapshots(options: ExportSnapshotsOptions): SnapshotEntry[
         '',
         '| # | Case | Element | Status | Description | Image |',
         '| ---: | --- | --- | --- | --- | --- |',
-        ...entries.map(entry =>
-          `| ${entry.index} | ${entry.id} | ${entry.element} | ${entry.status}${entry.error ? ` (${entry.error})` : ''} | ${entry.description ?? ''} | ${entry.fileName ?? 'missing'} |`,
+        ...entries.map(
+          entry =>
+            `| ${entry.index} | ${entry.id} | ${entry.element} | ${entry.status}${
+              entry.error ? ` (${entry.error})` : ''
+            } | ${entry.description ?? ''} | ${entry.fileName ?? 'missing'} |`,
         ),
         '',
       ].join('\n'),
@@ -218,7 +250,11 @@ export function exportSnapshots(options: ExportSnapshotsOptions): SnapshotEntry[
 export function exportSnapshotsFromArgs(args: string[]): SnapshotEntry[] {
   const parser = new ArgumentsParser('export-snapshots', ['export-snapshots', ...args]);
   const result: Argument<string> = parser.addString('--result', 'Result JSON path', true);
-  const outputDir: Argument<string> = parser.addString('--output-dir', 'Directory for exported PNGs and manifest', true);
+  const outputDir: Argument<string> = parser.addString(
+    '--output-dir',
+    'Directory for exported PNGs and manifest',
+    true,
+  );
   const columns: Argument<string> = parser.addString('--columns', 'Contact sheet column count', false);
   parser.parse();
   return exportSnapshots({

@@ -3,16 +3,14 @@ import { Style } from 'valdi_core/src/Style';
 import { systemFont } from 'valdi_core/src/SystemFont';
 import { Label, ScrollView, View } from 'valdi_tsx/src/NativeTemplateElements';
 
-// Valdi PR #124 widens translationX/Y to accept strings and adds
-// transformOrigin / transform. The type declarations for those props
-// haven't reached checkpoint yet, so cast through this helper. Delete
-// the helper (and its call sites) once the import PR lands.
+// Groups the transform props this playground exercises: string translationX/Y,
+// transformOrigin and transform.
 function futureTransforms(props: {
   translationX?: number | string;
   translationY?: number | string;
   transformOrigin?: string;
   transform?: string;
-}): any {
+}): Pick<View, 'translationX' | 'translationY' | 'transformOrigin' | 'transform'> {
   return props;
 }
 
@@ -51,60 +49,74 @@ export class App extends StatefulComponent<{}, State> {
   };
 
   onRender(): void {
-    const percent = percentSteps[this.state.percentIndex]!;
-    const transformString = transformStrings[this.state.transformIndex]!;
+    const percent = percentSteps[this.state.percentIndex];
+    const transformString = transformStrings[this.state.transformIndex];
 
-    <view backgroundColor='white' width='100%' height='100%'>
+    <view backgroundColor="white" width="100%" height="100%">
       <scroll style={styles.scroll} padding={16}>
-        <label style={styles.title} value='Valdi Transforms Playground' font={systemFont(20)} />
+        <label style={styles.title} value="Valdi Transforms Playground" font={systemFont(20)} />
 
-        <label style={styles.section} value='Percent translation' font={systemFont(16)} />
-        <label style={styles.caption} value='Tap the box to cycle. Percents resolve against the moving view.' />
+        <label style={styles.section} value="Percent translation" font={systemFont(16)} />
+        <label style={styles.caption} value="Tap the box to cycle. Percents resolve against the moving view." />
         <label style={styles.value} value={percent.label} />
         <view style={styles.stage} onTap={this.cyclePercent}>
           <view style={styles.percentBox} {...futureTransforms({ translationX: percent.x, translationY: percent.y })} />
         </view>
 
-        <label style={styles.section} value='transformOrigin' font={systemFont(16)} />
-        <label style={styles.caption} value='Same rotation (0.5 rad) applied at four different origins.' />
+        <label style={styles.section} value="transformOrigin" font={systemFont(16)} />
+        <label style={styles.caption} value="Same rotation (0.5 rad) applied at four different origins." />
         <label style={styles.rowLabel} value="transformOrigin = 'center'" />
         <view style={styles.originRow}>
           <view style={styles.originBoxPrimary} rotation={0.5} {...futureTransforms({ transformOrigin: 'center' })} />
         </view>
         <label style={styles.rowLabel} value="transformOrigin = 'top left'" />
         <view style={styles.originRow}>
-          <view style={styles.originBoxSecondary} rotation={0.5} {...futureTransforms({ transformOrigin: 'top left' })} />
+          <view
+            style={styles.originBoxSecondary}
+            rotation={0.5}
+            {...futureTransforms({ transformOrigin: 'top left' })}
+          />
         </view>
         <label style={styles.rowLabel} value="transformOrigin = 'right bottom'" />
         <view style={styles.originRow}>
-          <view style={styles.originBoxTertiary} rotation={0.5} {...futureTransforms({ transformOrigin: 'right bottom' })} />
+          <view
+            style={styles.originBoxTertiary}
+            rotation={0.5}
+            {...futureTransforms({ transformOrigin: 'right bottom' })}
+          />
         </view>
         <label style={styles.rowLabel} value="transformOrigin = '25% 75%'" />
         <view style={styles.originRow}>
-          <view style={styles.originBoxQuaternary} rotation={0.5} {...futureTransforms({ transformOrigin: '25% 75%' })} />
+          <view
+            style={styles.originBoxQuaternary}
+            rotation={0.5}
+            {...futureTransforms({ transformOrigin: '25% 75%' })}
+          />
         </view>
 
-        <label style={styles.section} value='LTR vs RTL (horizontal percent flips)' font={systemFont(16)} />
-        <label style={styles.caption} value="Both boxes below apply translationX='50%'. RTL flips the resolved value." />
+        <label style={styles.section} value="LTR vs RTL (horizontal percent flips)" font={systemFont(16)} />
+        <label
+          style={styles.caption}
+          value="Both boxes below apply translationX='50%'. RTL flips the resolved value."
+        />
         <label style={styles.rowLabel} value="direction = 'ltr'" />
-        <view style={styles.rtlStage} direction='ltr'>
+        <view style={styles.rtlStage} direction="ltr">
           <view style={styles.rtlBox} {...futureTransforms({ translationX: '50%' })} />
         </view>
         <label style={styles.rowLabel} value="direction = 'rtl'" />
-        <view style={styles.rtlStage} direction='rtl'>
+        <view style={styles.rtlStage} direction="rtl">
           <view style={styles.rtlBox} {...futureTransforms({ translationX: '50%' })} />
         </view>
-        <label style={styles.value} value={`Tap box below to toggle. direction = '${this.state.isRtl ? 'rtl' : 'ltr'}'`} />
-        <view
-          style={styles.rtlToggleStage}
-          direction={this.state.isRtl ? 'rtl' : 'ltr'}
-          onTap={this.toggleDirection}
-        >
+        <label
+          style={styles.value}
+          value={`Tap box below to toggle. direction = '${this.state.isRtl ? 'rtl' : 'ltr'}'`}
+        />
+        <view style={styles.rtlToggleStage} direction={this.state.isRtl ? 'rtl' : 'ltr'} onTap={this.toggleDirection}>
           <view style={styles.rtlToggleBox} {...futureTransforms({ translationX: '50%' })} />
         </view>
 
-        <label style={styles.section} value='CSS transform strings' font={systemFont(16)} />
-        <label style={styles.caption} value='Tap the box to cycle through composed transforms.' />
+        <label style={styles.section} value="CSS transform strings" font={systemFont(16)} />
+        <label style={styles.caption} value="Tap the box to cycle through composed transforms." />
         <label style={styles.value} value={`transform = '${transformString}'`} />
         <view style={styles.transformStage} onTap={this.cycleTransform}>
           <view style={styles.transformBox} {...futureTransforms({ transform: transformString })} />

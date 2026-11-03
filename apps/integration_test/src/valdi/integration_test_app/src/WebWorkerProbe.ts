@@ -7,6 +7,6 @@ const workerGlobal = globalThis as typeof globalThis & {
   postMessage(message: unknown): void;
 };
 
-workerGlobal.onmessage = event => {
+workerGlobal.onmessage = (event: WorkerProbeMessageEvent) => {
   workerGlobal.postMessage({ echoed: event.data, source: 'valdi-web-worker' });
 };

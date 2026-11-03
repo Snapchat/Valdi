@@ -1,18 +1,18 @@
+import { Component } from 'valdi_core/src/Component';
+import { IComponent } from 'valdi_core/src/IComponent';
+import { Style } from 'valdi_core/src/Style';
+import { systemFont } from 'valdi_core/src/SystemFont';
 import { NavigationPage } from 'valdi_navigation/src/NavigationPage';
 import { NavigationPageStatefulComponent } from 'valdi_navigation/src/NavigationPageComponent';
-import { Style } from 'valdi_core/src/Style';
-import { Component } from 'valdi_core/src/Component';
-import { systemFont } from 'valdi_core/src/SystemFont';
 import { Label, ScrollView } from 'valdi_tsx/src/NativeTemplateElements';
 import { BenchmarkRunner, BenchmarkSingleRunComponent } from './BenchmarkSingleRunComponent';
-import { IComponent } from 'valdi_core/src/IComponent';
 import { now } from './cpp';
 
 export interface ViewModel {}
 export interface ComponentContext {}
 
 class TestPage extends Component {
-  onRender() {
+  onRender(): void {
     <scroll height="100%" width="100%" backgroundColor="lightblue">
       {[...Array(1000).keys()].map(i => {
         <label value={`Hello! ${i}`} />;
@@ -31,7 +31,7 @@ export class RenderTest extends NavigationPageStatefulComponent<ViewModel, Compo
     measureAsync: (metricName: string) => {
       const start = now();
       return () => {
-        let newState: any = { ...this.state, [metricName]: (now() - start).toFixed(2) };
+        const newState: Record<string, string> = { ...this.state, [metricName]: (now() - start).toFixed(2) };
         this.setState(newState);
       };
     },
@@ -58,11 +58,11 @@ export class RenderTest extends NavigationPageStatefulComponent<ViewModel, Compo
     </view>;
   }
 
-  private verifyCompleted = (component: IComponent) => {
+  private verifyCompleted = (component: IComponent): boolean => {
     return !!component;
   };
 
-  private onComplete = () => {};
+  private onComplete = (): void => {};
 }
 
 const styles = {

@@ -3,12 +3,7 @@ import { Device } from 'valdi_core/src/Device';
 import { ElementRef } from 'valdi_core/src/ElementRef';
 
 import { INTEGRATION_TEST_CASES } from './IntegrationTestCases';
-import {
-  CaptureOutcome,
-  IntegrationTestRunner,
-  SNAPSHOT_HEIGHT,
-  SNAPSHOT_WIDTH,
-} from './IntegrationTestRunner';
+import { CaptureOutcome, IntegrationTestRunner, SNAPSHOT_HEIGHT, SNAPSHOT_WIDTH } from './IntegrationTestRunner';
 
 /**
  * @ViewModel
@@ -53,9 +48,9 @@ export class IntegrationTestApp extends StatefulComponent<ViewModel, State, Comp
     ...readShellInsets(),
   };
 
-  private rootRef = new ElementRef<any>();
-  private snapshotRef = new ElementRef<any>();
-  private targetRef = new ElementRef<any>();
+  private rootRef = new ElementRef();
+  private snapshotRef = new ElementRef();
+  private targetRef = new ElementRef();
   private runner?: IntegrationTestRunner;
   private hasStarted = false;
   private scheduledCaptureCaseId?: string;
@@ -67,63 +62,6 @@ export class IntegrationTestApp extends StatefulComponent<ViewModel, State, Comp
       this.setState(readShellInsets());
     });
     this.registerDisposable(() => insetsObserver.cancel());
-  }
-
-  private getRunner(): IntegrationTestRunner {
-    if (!this.runner) {
-      this.runner = new IntegrationTestRunner(this.renderer);
-    }
-    return this.runner;
-  }
-
-  private async captureCurrentCase(): Promise<void> {
-    const runner = this.getRunner();
-    this.hasStarted = true;
-    const outcome = await runner.captureCurrentCase({
-      currentIndex: this.state?.currentIndex ?? 0,
-      isFinished: this.state?.finished ?? false,
-      rootRef: this.rootRef,
-      snapshotRef: this.snapshotRef,
-      targetRef: this.targetRef,
-    });
-    this.applyCaptureOutcome(outcome);
-  }
-
-  private applyCaptureOutcome(outcome: CaptureOutcome): void {
-    if (outcome.kind === 'noop') {
-      return;
-    }
-
-    if (outcome.kind === 'finished') {
-      this.setState({
-        finished: true,
-        summary: outcome.summary,
-      });
-      return;
-    }
-
-    this.rootRef = new ElementRef<any>();
-    this.snapshotRef = new ElementRef<any>();
-    this.targetRef = new ElementRef<any>();
-    this.setState({
-      currentIndex: outcome.nextIndex,
-      summary: outcome.summary,
-    });
-  }
-
-  private scheduleCaptureForRenderedCase(caseId: string): void {
-    if (this.scheduledCaptureCaseId === caseId) {
-      return;
-    }
-
-    this.scheduledCaptureCaseId = caseId;
-    this.renderer.onLayoutComplete(() => {
-      const currentIndex = this.state?.currentIndex ?? 0;
-      const currentCase = INTEGRATION_TEST_CASES[currentIndex];
-      if (!this.state?.finished && currentCase?.id === caseId) {
-        void this.captureCurrentCase();
-      }
-    });
   }
 
   onRender(): void {
@@ -177,7 +115,9 @@ export class IntegrationTestApp extends StatefulComponent<ViewModel, State, Comp
         })}
       </view>
       <label
-        value={`case ${currentIndex + 1}/${INTEGRATION_TEST_CASES.length}: ${testCase.id}${this.hasStarted ? '' : ' (warming up)'}`}
+        value={`case ${currentIndex + 1}/${INTEGRATION_TEST_CASES.length}: ${testCase.id}${
+          this.hasStarted ? '' : ' (warming up)'
+        }`}
         position="absolute"
         left={10 + insetLeft}
         bottom={10 + insetBottom}
@@ -188,5 +128,62 @@ export class IntegrationTestApp extends StatefulComponent<ViewModel, State, Comp
 
     // Schedule after emitting the test body so the layout callback observes this render.
     this.scheduleCaptureForRenderedCase(testCase.id);
+  }
+
+  private getRunner(): IntegrationTestRunner {
+    if (!this.runner) {
+      this.runner = new IntegrationTestRunner(this.renderer);
+    }
+    return this.runner;
+  }
+
+  private async captureCurrentCase(): Promise<void> {
+    const runner = this.getRunner();
+    this.hasStarted = true;
+    const outcome = await runner.captureCurrentCase({
+      currentIndex: this.state?.currentIndex ?? 0,
+      isFinished: this.state?.finished ?? false,
+      rootRef: this.rootRef,
+      snapshotRef: this.snapshotRef,
+      targetRef: this.targetRef,
+    });
+    this.applyCaptureOutcome(outcome);
+  }
+
+  private applyCaptureOutcome(outcome: CaptureOutcome): void {
+    if (outcome.kind === 'noop') {
+      return;
+    }
+
+    if (outcome.kind === 'finished') {
+      this.setState({
+        finished: true,
+        summary: outcome.summary,
+      });
+      return;
+    }
+
+    this.rootRef = new ElementRef();
+    this.snapshotRef = new ElementRef();
+    this.targetRef = new ElementRef();
+    this.setState({
+      currentIndex: outcome.nextIndex,
+      summary: outcome.summary,
+    });
+  }
+
+  private scheduleCaptureForRenderedCase(caseId: string): void {
+    if (this.scheduledCaptureCaseId === caseId) {
+      return;
+    }
+
+    this.scheduledCaptureCaseId = caseId;
+    this.renderer.onLayoutComplete(() => {
+      const currentIndex = this.state?.currentIndex ?? 0;
+      const currentCase = INTEGRATION_TEST_CASES[currentIndex];
+      if (!this.state?.finished && currentCase?.id === caseId) {
+        void this.captureCurrentCase();
+      }
+    });
   }
 }

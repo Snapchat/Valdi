@@ -120,11 +120,7 @@ export class App extends StatefulComponent<ViewModel, State> {
         style={styles.twoLineEllipsisLabel}
         value="Two-line label ellipsis should render the truncation glyph at the end of the second line instead of clipping this deliberately long sentence."
       />
-      <label
-        style={styles.richTextLabel}
-        value={richTextValue}
-        onSelectionChange={this.onLabelSelectionChange}
-      />
+      <label style={styles.richTextLabel} value={richTextValue} onSelectionChange={this.onLabelSelectionChange} />
       <label style={styles.inlineTextLabel} value={inlineTextValue}>
         <InlinePill color="#0F766E" title="BASE" />
       </label>
@@ -177,14 +173,14 @@ export class App extends StatefulComponent<ViewModel, State> {
     <label style={styles.sectionTitle} value={title} />;
   }
 
-  private toggleEnabled = () => {
+  private toggleEnabled = (): void => {
     this.setState({
       enabled: !this.state.enabled,
       eventLog: this.state.enabled ? 'Inputs disabled.' : 'Inputs enabled.',
     });
   };
 
-  private resetValues = () => {
+  private resetValues = (): void => {
     this.setState({
       eventLog: 'Values reset.',
       fieldValue: 'Editable value',

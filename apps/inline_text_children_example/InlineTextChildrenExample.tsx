@@ -107,7 +107,7 @@ class ExpandableInlineButton extends StatefulComponent<ExpandableInlineButtonVie
     </view>;
   }
 
-  private toggle = () => {
+  private toggle = (): void => {
     this.setState({ expanded: !this.state.expanded });
   };
 }
@@ -150,7 +150,13 @@ export class App extends Component<ViewModel> {
           </view>
 
           <view style={styles.card} marginBottom={14}>
-            <label color="#334155" font={systemBoldFont(14)} marginBottom={10} value="Textview alignment" width="100%" />
+            <label
+              color="#334155"
+              font={systemBoldFont(14)}
+              marginBottom={10}
+              value="Textview alignment"
+              width="100%"
+            />
             <textview
               backgroundColor="#FFFFFF"
               color="#0F172A"
@@ -170,7 +176,13 @@ export class App extends Component<ViewModel> {
           </view>
 
           <view style={styles.card} marginBottom={14}>
-            <label color="#334155" font={systemBoldFont(14)} marginBottom={10} value="Label LTR vs RTL append position" width="100%" />
+            <label
+              color="#334155"
+              font={systemBoldFont(14)}
+              marginBottom={10}
+              value="Label LTR vs RTL append position"
+              width="100%"
+            />
             <label
               color="#64748B"
               font={systemFont(13)}
@@ -181,7 +193,14 @@ export class App extends Component<ViewModel> {
               width="100%"
             />
             <view alignItems="center" flexDirection="row" marginBottom={8} width="100%">
-              <label color="#475569" font={systemBoldFont(12)} marginRight={10} textAlign="center" value="LTR" width={34} />
+              <label
+                color="#475569"
+                font={systemBoldFont(12)}
+                marginRight={10}
+                textAlign="center"
+                value="LTR"
+                width={34}
+              />
               <view
                 backgroundColor="#F8FAFC"
                 border="1 solid #CBD5E1"
@@ -203,7 +222,14 @@ export class App extends Component<ViewModel> {
               </view>
             </view>
             <view alignItems="center" flexDirection="row" width="100%">
-              <label color="#475569" font={systemBoldFont(12)} marginRight={10} textAlign="center" value="RTL" width={34} />
+              <label
+                color="#475569"
+                font={systemBoldFont(12)}
+                marginRight={10}
+                textAlign="center"
+                value="RTL"
+                width={34}
+              />
               <view
                 backgroundColor="#F8FAFC"
                 border="1 solid #CBD5E1"
@@ -227,7 +253,13 @@ export class App extends Component<ViewModel> {
           </view>
 
           <view style={styles.card} marginBottom={14}>
-            <label color="#334155" font={systemBoldFont(14)} marginBottom={10} value="Stateful child in a label" width="100%" />
+            <label
+              color="#334155"
+              font={systemBoldFont(14)}
+              marginBottom={10}
+              value="Stateful child in a label"
+              width="100%"
+            />
             <label
               color="#0F172A"
               font={systemFont(19)}
@@ -241,7 +273,13 @@ export class App extends Component<ViewModel> {
           </view>
 
           <view style={styles.card}>
-            <label color="#334155" font={systemBoldFont(14)} marginBottom={10} value="Stateful child in a textview" width="100%" />
+            <label
+              color="#334155"
+              font={systemBoldFont(14)}
+              marginBottom={10}
+              value="Stateful child in a textview"
+              width="100%"
+            />
             <textview
               backgroundColor="#FFFFFF"
               color="#0F172A"

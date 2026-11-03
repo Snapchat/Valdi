@@ -1,17 +1,17 @@
 import 'jasmine/src/jasmine';
+import { DeferredPromise } from 'foundation/src/DeferredPromise';
+import { componentTypeFind } from 'foundation/test/util/componentTypeFind';
 import { IComponentTestDriver, withValdiRenderer } from 'valdi_test/test/JSXTestUtils';
-import { AiService, GptMessage } from '../../ai_service/src/AiService';
+import { AiService } from '../../ai_service/src/AiService';
 import { Conversation, ConversationContext } from '../src/Conversation';
 import { Message } from '../src/Message';
-import { componentTypeFind } from 'foundation/test/util/componentTypeFind';
-import { DeferredPromise } from 'foundation/src/DeferredPromise';
 
 class TestAiService implements AiService {
   nextResponse: Promise<string> = Promise.resolve('response');
 
-  addSystemPrompt(message: string): void {}
+  addSystemPrompt(): void {}
 
-  getResponse(messages: GptMessage[]): Promise<string> {
+  getResponse(): Promise<string> {
     return this.nextResponse;
   }
 }

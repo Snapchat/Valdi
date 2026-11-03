@@ -1,13 +1,13 @@
-import { Component } from 'valdi_core/src/Component';
-import { NavigationPage } from 'valdi_navigation/src/NavigationPage';
-import { systemBoldFont } from 'valdi_core/src/SystemFont';
-import { ComponentConstructor, IComponent } from 'valdi_core/src/IComponent';
-import { createReusableCallback } from 'valdi_core/src/utils/Callback';
-import { NavigationRoot } from 'valdi_navigation/src/NavigationRoot';
-import { NavigationPageComponent } from 'valdi_navigation/src/NavigationPageComponent';
-import { $slot } from 'valdi_core/src/CompilerIntrinsics';
-import { NavigationController } from 'valdi_navigation/src/NavigationController';
 import { AnyRenderFunction } from 'valdi_core/src/AnyRenderFunction';
+import { $slot } from 'valdi_core/src/CompilerIntrinsics';
+import { Component } from 'valdi_core/src/Component';
+import { ComponentConstructor, IComponent } from 'valdi_core/src/IComponent';
+import { systemBoldFont } from 'valdi_core/src/SystemFont';
+import { createReusableCallback } from 'valdi_core/src/utils/Callback';
+import { NavigationController } from 'valdi_navigation/src/NavigationController';
+import { NavigationPage } from 'valdi_navigation/src/NavigationPage';
+import { NavigationPageComponent } from 'valdi_navigation/src/NavigationPageComponent';
+import { NavigationRoot } from 'valdi_navigation/src/NavigationRoot';
 
 interface PageButtonViewModel {
   title: string;
@@ -33,7 +33,9 @@ class PageButton extends Component<PageButtonViewModel> {
   }
 }
 
-function PageBackground(viewModel: { children?: AnyRenderFunction | void }) {
+// JSX function components need a capitalized name.
+// eslint-disable-next-line @typescript-eslint/naming-convention
+function PageBackground(viewModel: { children?: AnyRenderFunction | void }): void {
   <view backgroundColor="white" width="100%" height="100%" alignItems="center" justifyContent="center">
     {viewModel.children?.()}
   </view>;
@@ -73,7 +75,7 @@ export class Page3 extends NavigationPageComponent<{}> {
     <PageBackground>{this.renderChildren()}</PageBackground>;
   }
 
-  private renderChildren() {
+  private renderChildren(): void {
     <PageButton
       title={`Present nested`}
       onTap={createReusableCallback(() => {

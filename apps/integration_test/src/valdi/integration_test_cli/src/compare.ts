@@ -1,11 +1,11 @@
 import { Base64 } from 'coreutils/src/Base64';
 import { wrapBitmap } from 'drawing/src/BitmapFactory';
+import type { IBitmap } from 'drawing/src/IBitmap';
 import { fs } from 'file_system/src/FileSystem';
 import { Path } from 'valdi_cli/src/Path';
-import type { IBitmap } from 'drawing/src/IBitmap';
 
-import { writeHtmlReport } from './htmlReport';
 import * as ImageDiffNative from './ImageDiffNative';
+import { writeHtmlReport } from './htmlReport';
 import { encodePng } from './png';
 import type { IntegrationTestCaseResult, IntegrationTestRenderedNode, IntegrationTestResult } from './types';
 
@@ -94,8 +94,8 @@ function pngDimensions(data: Uint8Array): { width: number; height: number } {
     throw new Error('Invalid PNG data');
   }
   return {
-    width: ((data[16]! << 24) | (data[17]! << 16) | (data[18]! << 8) | data[19]!) >>> 0,
-    height: ((data[20]! << 24) | (data[21]! << 16) | (data[22]! << 8) | data[23]!) >>> 0,
+    width: ((data[16] << 24) | (data[17] << 16) | (data[18] << 8) | data[19]) >>> 0,
+    height: ((data[20] << 24) | (data[21] << 16) | (data[22] << 8) | data[23]) >>> 0,
   };
 }
 
@@ -198,7 +198,7 @@ export function compareResults(options: CompareOptions): ComparisonSummary {
           totalPixels = diff.totalPixels;
           diffPercent = diff.diffPercent;
           dimensionMismatch = diff.dimensionMismatch;
-          fs.writeFileSync(diffImagePath!, encodePng(diff.image));
+          fs.writeFileSync(diffImagePath, encodePng(diff.image));
         } finally {
           diff.image.dispose();
         }
@@ -263,7 +263,9 @@ export function compareResults(options: CompareOptions): ComparisonSummary {
       '| --- | --- | ---: | --- |',
       ...cases.map(
         testCase =>
-          `| ${testCase.id} | ${testCase.element ?? ''} | ${testCase.diffPercent.toFixed(4)}% | ${testCase.observationsChanged ? 'changed' : 'same'} |`,
+          `| ${testCase.id} | ${testCase.element ?? ''} | ${testCase.diffPercent.toFixed(4)}% | ${
+            testCase.observationsChanged ? 'changed' : 'same'
+          } |`,
       ),
       '',
     ].join('\n'),

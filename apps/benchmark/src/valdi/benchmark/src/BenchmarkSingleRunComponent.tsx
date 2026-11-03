@@ -53,7 +53,7 @@ export class BenchmarkSingleRunComponent
   private onSettleCompletion?: () => void;
   private didComplete = false;
 
-  onCreate() {
+  onCreate(): void {
     this.viewModel.benchmarkRunner.incrementRunCount();
     this.onSettleCompletion = this.viewModel.benchmarkRunner.measureAsync('Settle');
 
@@ -64,11 +64,11 @@ export class BenchmarkSingleRunComponent
     });
   }
 
-  onDestroy() {
+  onDestroy(): void {
     this.renderer.removeObserver(this);
   }
 
-  onRender() {
+  onRender(): void {
     if (!this.state.didSettleOnce) {
       return;
     }
@@ -87,7 +87,16 @@ export class BenchmarkSingleRunComponent
     const benchmarkedComponent = emittedComponents[0];
     this.benchmarkedComponent = benchmarkedComponent;
 
-    this.scheduleOnRenderEnd(onDone, benchmarkedComponent);
+    this.scheduleOnRenderEnd(onDone);
+  }
+
+  onComponentWillRerender(component: IComponent): void {
+    if (!this.isComponentIsBenchmarkedComponentSubtree(component)) {
+      return;
+    }
+    const onDone = this.viewModel.benchmarkRunner.measureAsync('Render Component');
+
+    this.scheduleOnRenderEnd(onDone);
   }
 
   private isComponentIsBenchmarkedComponentSubtree(component: IComponent): boolean {
@@ -108,16 +117,7 @@ export class BenchmarkSingleRunComponent
     return false;
   }
 
-  onComponentWillRerender(component: IComponent) {
-    if (!this.isComponentIsBenchmarkedComponentSubtree(component)) {
-      return;
-    }
-    const onDone = this.viewModel.benchmarkRunner.measureAsync('Render Component');
-
-    this.scheduleOnRenderEnd(onDone, component);
-  }
-
-  private scheduleOnRenderEnd(onDone: () => void, component: IComponent) {
+  private scheduleOnRenderEnd(onDone: () => void): void {
     this.renderer.onRenderComplete(() => {
       onDone();
 
@@ -128,17 +128,17 @@ export class BenchmarkSingleRunComponent
     });
   }
 
-  private onMainThreadIdle(sequence: number) {
+  private onMainThreadIdle(sequence: number): void {
     if (this.isDestroyed() || sequence !== this.onIdleSequence) {
       return;
     }
 
     if (this.viewModel.verifyCompleted(this.benchmarkedComponent!)) {
-      this.notifyBenchmarkCompleted(new Date());
+      this.notifyBenchmarkCompleted();
     }
   }
 
-  private notifyBenchmarkCompleted(idleDate: Date) {
+  private notifyBenchmarkCompleted(): void {
     if (this.didComplete) {
       return;
     }

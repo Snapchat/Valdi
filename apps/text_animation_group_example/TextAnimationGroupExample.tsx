@@ -1,7 +1,7 @@
 import { StatefulComponent } from 'valdi_core/src/Component';
 import { Style } from 'valdi_core/src/Style';
 import { systemBoldFont, systemFont } from 'valdi_core/src/SystemFont';
-import { AttributedTextBuilder } from 'valdi_core/src/utils/AttributedTextBuilder';
+import { AttributedText, AttributedTextBuilder } from 'valdi_core/src/utils/AttributedTextBuilder';
 import { Label, TextAnimationGroup, TextView, View } from 'valdi_tsx/src/NativeTemplateElements';
 
 interface State {
@@ -57,7 +57,7 @@ export class App extends StatefulComponent<ViewModel, State> {
     <label style={styles.animatedLabel} value={this.animatedText(text)} />;
   }
 
-  private animatedText(text: string) {
+  private animatedText(text: string): AttributedText {
     return new AttributedTextBuilder()
       .append(text, {
         animationTransform: {
@@ -71,7 +71,7 @@ export class App extends StatefulComponent<ViewModel, State> {
       .build();
   }
 
-  private startAnimation = () => {
+  private startAnimation = (): void => {
     this.setState({ runId: this.state.runId + 1 });
   };
 }

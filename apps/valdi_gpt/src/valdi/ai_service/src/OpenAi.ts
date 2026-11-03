@@ -4,6 +4,10 @@ import { AiService, GptMessage, GptRole } from './AiService';
 const OPENAI_MODEL = 'gpt-4o-mini';
 const OPENAI_API_KEY = 'YOUR_API_KEY_HERE';
 
+interface ChatCompletionResponse {
+  choices?: { message: { content: string } }[];
+}
+
 /**
  * Provides barebones access to OpenAI, using direct HTTP requests.
  * A much better implementation would use the OpenAI SDK:
@@ -36,12 +40,14 @@ export class OpenAi implements AiService {
     try {
       const response = await this.client.post('/chat/completions', encodedRequestBody, {
         'Content-Type': 'application/json',
+        // HTTP header names are not camelCase.
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         Authorization: `Bearer ${OPENAI_API_KEY}`,
       });
       const body = response.body;
       if (body) {
         const text = new TextDecoder().decode(body);
-        const results = JSON.parse(text);
+        const results = JSON.parse(text) as ChatCompletionResponse;
         if (results.choices) {
           return results.choices[0].message.content;
         } else {
@@ -50,8 +56,8 @@ export class OpenAi implements AiService {
       } else {
         return '????';
       }
-    } catch (err: any) {
-      return err.toString();
+    } catch (err: unknown) {
+      return (err as Error).toString();
     }
   }
 }

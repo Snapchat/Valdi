@@ -1,8 +1,8 @@
-import { StatefulComponent } from 'valdi_core/src/Component';
 import { OpenAi } from 'ai_service/src/OpenAi';
-import { Message, MesssageViewModel } from './Message';
-import { InputBar } from './InputBar';
+import { StatefulComponent } from 'valdi_core/src/Component';
 import { AiService, GptRole } from '../../ai_service/src/AiService';
+import { InputBar } from './InputBar';
+import { Message, MesssageViewModel } from './Message';
 
 export interface ConversationViewModel {}
 
@@ -29,9 +29,9 @@ export class Conversation extends StatefulComponent<ConversationViewModel, Conve
       <InputBar onSubmit={this.onSubmit} />
       <scroll>
         <view flexDirection="column-reverse" paddingTop={20}>
-          {[...this.state!.results].reverse().forEach(message => (
-            <Message text={message.text} outbound={message.outbound} />
-          ))}
+          {[...this.state!.results].reverse().forEach(message => {
+            <Message text={message.text} outbound={message.outbound} />;
+          })}
         </view>
       </scroll>
     </layout>;

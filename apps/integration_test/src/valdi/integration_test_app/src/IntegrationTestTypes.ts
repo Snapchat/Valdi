@@ -18,8 +18,8 @@ export type NativeTemplateElementName =
 
 export interface IntegrationTestRenderContext {
   readonly caseId: string;
-  readonly rootRef: ElementRef<any>;
-  readonly targetRef: ElementRef<any>;
+  readonly rootRef: ElementRef;
+  readonly targetRef: ElementRef;
   record(message: string): void;
 }
 

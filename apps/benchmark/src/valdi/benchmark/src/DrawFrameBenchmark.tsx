@@ -1,18 +1,17 @@
+import { createBitmap } from 'drawing/src/BitmapFactory';
+import { BitmapAlphaType, BitmapColorType, IBitmap } from 'drawing/src/IBitmap';
+import { IManagedContext } from 'drawing/src/IManagedContext';
+import { createManagedContext } from 'drawing/src/ManagedContextFactory';
+import { Component } from 'valdi_core/src/Component';
+import { Device } from 'valdi_core/src/Device';
+import { GeometricPathBuilder, GeometricPathScaleType } from 'valdi_core/src/GeometricPath';
+import { setTimeoutInterruptible } from 'valdi_core/src/SetTimeout';
+import { Style } from 'valdi_core/src/Style';
+import { systemBoldFont, systemFont } from 'valdi_core/src/SystemFont';
+import { Stopwatch } from 'valdi_core/src/utils/Stopwatch';
 import { NavigationPage } from 'valdi_navigation/src/NavigationPage';
 import { NavigationPageStatefulComponent } from 'valdi_navigation/src/NavigationPageComponent';
-import { Style } from 'valdi_core/src/Style';
-import { Component } from 'valdi_core/src/Component';
-import { systemBoldFont, systemFont } from 'valdi_core/src/SystemFont';
-import { Device } from 'valdi_core/src/Device';
 import { Label, ScrollView } from 'valdi_tsx/src/NativeTemplateElements';
-import { Stopwatch } from 'valdi_core/src/utils/Stopwatch';
-import { GeometricPathBuilder, GeometricPathScaleType } from 'valdi_core/src/GeometricPath';
-import { createManagedContext } from 'drawing/src/ManagedContextFactory';
-import { createBitmap } from 'drawing/src/BitmapFactory';
-import { BitmapAlphaType, BitmapColorType } from 'drawing/src/IBitmap';
-import { IManagedContext } from 'drawing/src/IManagedContext';
-import { IBitmap } from 'drawing/src/IBitmap';
-import { setTimeoutInterruptible } from 'valdi_core/src/SetTimeout';
 
 // ---------------------------------------------------------------------------
 // Complex synthetic scene -- approximates a complex production editor screen
@@ -43,12 +42,31 @@ function hsla(h: number, s: number, l: number, a: number): string {
   let r = 0;
   let g = 0;
   let b = 0;
-  if (h < 60) { r = c; g = x; b = 0; }
-  else if (h < 120) { r = x; g = c; b = 0; }
-  else if (h < 180) { r = 0; g = c; b = x; }
-  else if (h < 240) { r = 0; g = x; b = c; }
-  else if (h < 300) { r = x; g = 0; b = c; }
-  else { r = c; g = 0; b = x; }
+  if (h < 60) {
+    r = c;
+    g = x;
+    b = 0;
+  } else if (h < 120) {
+    r = x;
+    g = c;
+    b = 0;
+  } else if (h < 180) {
+    r = 0;
+    g = c;
+    b = x;
+  } else if (h < 240) {
+    r = 0;
+    g = x;
+    b = c;
+  } else if (h < 300) {
+    r = x;
+    g = 0;
+    b = c;
+  } else {
+    r = c;
+    g = 0;
+    b = x;
+  }
   const ri = Math.round((r + m) * 255);
   const gi = Math.round((g + m) * 255);
   const bi = Math.round((b + m) * 255);
@@ -98,10 +116,26 @@ function makeStrokePath(frameIndex: number, strokeIdx: number): ReturnType<Geome
 }
 
 const STROKE_COLORS = [
-  'red', 'blue', 'green', 'orange', 'purple',
-  'cyan', 'magenta', 'yellow', '#FF6B6B', '#4ECDC4',
-  '#45B7D1', '#96CEB4', '#FFEAA7', '#DFE6E9', '#6C5CE7',
-  '#FD79A8', '#00B894', '#E17055', '#0984E3', '#636E72',
+  'red',
+  'blue',
+  'green',
+  'orange',
+  'purple',
+  'cyan',
+  'magenta',
+  'yellow',
+  '#FF6B6B',
+  '#4ECDC4',
+  '#45B7D1',
+  '#96CEB4',
+  '#FFEAA7',
+  '#DFE6E9',
+  '#6C5CE7',
+  '#FD79A8',
+  '#00B894',
+  '#E17055',
+  '#0984E3',
+  '#636E72',
 ];
 
 const STROKE_CAPS: Array<'round' | 'butt' | 'square'> = ['round', 'butt', 'square'];
@@ -112,24 +146,24 @@ class ComplexBenchmarkScene extends Component<ComplexBenchmarkSceneViewModel> {
     const bgHue = (idx * 6) % 360;
 
     // -- Root container with clipping (like playback bounds) --
-    <view
-      backgroundColor="black"
-      width="100%"
-      height="100%"
-      slowClipping
-      borderRadius={20 * ds}
-    >
+    <view backgroundColor="black" width="100%" height="100%" slowClipping borderRadius={20 * ds}>
       {/* Background layer: solid color + gradient overlay */}
       <view
         position="absolute"
-        top={0} left={0} right={0} bottom={0}
+        top={0}
+        left={0}
+        right={0}
+        bottom={0}
         background={`linear-gradient(180deg, ${hsla(bgHue, 50, 20, 1)}, ${hsla((bgHue + 60) % 360, 40, 10, 1)})`}
       />
 
       {/* Semi-transparent gradient overlay */}
       <view
         position="absolute"
-        top={0} left={0} right={0} bottom={0}
+        top={0}
+        left={0}
+        right={0}
+        bottom={0}
         background={`linear-gradient(45deg, rgba(255,255,255,0.05), rgba(255,255,255,0.15), rgba(255,255,255,0.05))`}
       />
 
@@ -168,8 +202,11 @@ class ComplexBenchmarkScene extends Component<ComplexBenchmarkSceneViewModel> {
   }
 
   private renderStickerEntity(
-    idx: number, variant: number,
-    leftPos: string, topPos: string, scaleFactor: number,
+    idx: number,
+    variant: number,
+    leftPos: string,
+    topPos: string,
+    scaleFactor: number,
   ): void {
     const rotation = (Math.PI / 6) * Math.sin((idx + variant * 20) * 0.05);
     const scale = scaleFactor + 0.1 * Math.sin(idx * 0.1 + variant);
@@ -177,14 +214,7 @@ class ComplexBenchmarkScene extends Component<ComplexBenchmarkSceneViewModel> {
     const path = makeAnimatedPath(idx, variant);
     const hue = (idx * 11 + variant * 73) % 360;
 
-    <view
-      position="absolute"
-      left={leftPos}
-      top={topPos}
-      rotation={rotation}
-      scaleX={scale}
-      scaleY={scale}
-    >
+    <view position="absolute" left={leftPos} top={topPos} rotation={rotation} scaleX={scale} scaleY={scale}>
       {/* Level 1: outer container */}
       <view
         width={`${size}%`}
@@ -226,33 +256,13 @@ class ComplexBenchmarkScene extends Component<ComplexBenchmarkSceneViewModel> {
   }
 
   private renderCaptionEntity(idx: number): void {
-    const rotation = Math.PI / 24 * Math.sin(idx * 0.08);
+    const rotation = (Math.PI / 24) * Math.sin(idx * 0.08);
     const hue = (idx * 4 + 200) % 360;
 
-    <view
-      position="absolute"
-      left="10%"
-      right="10%"
-      top="30%"
-      rotation={rotation}
-    >
-      <view
-        backgroundColor={hsla(hue, 40, 15, 0.75)}
-        borderRadius={16 * ds}
-        padding={12 * ds}
-        alignItems="center"
-      >
-        <view
-          width="100%"
-          borderRadius={12 * ds}
-          padding={8 * ds}
-          backgroundColor={hsla(hue, 30, 20, 0.5)}
-        >
-          <label
-            font={titleFont}
-            color={hsla((hue + 180) % 360, 80, 80, 1)}
-            value={`Caption #${idx}`}
-          />
+    <view position="absolute" left="10%" right="10%" top="30%" rotation={rotation}>
+      <view backgroundColor={hsla(hue, 40, 15, 0.75)} borderRadius={16 * ds} padding={12 * ds} alignItems="center">
+        <view width="100%" borderRadius={12 * ds} padding={8 * ds} backgroundColor={hsla(hue, 30, 20, 0.5)}>
+          <label font={titleFont} color={hsla((hue + 180) % 360, 80, 80, 1)} value={`Caption #${idx}`} />
           <label
             font={bodyFont}
             color="rgba(255,255,255,0.7)"
@@ -267,13 +277,7 @@ class ComplexBenchmarkScene extends Component<ComplexBenchmarkSceneViewModel> {
   private renderDrawingEntity(idx: number): void {
     const NUM_STROKES = 20;
 
-    <view
-      position="absolute"
-      top="15%"
-      left="5%"
-      right="5%"
-      height="70%"
-    >
+    <view position="absolute" top="15%" left="5%" right="5%" height="70%">
       {Array.from({ length: NUM_STROKES }, (_, i) => {
         const strokePath = makeStrokePath(idx, i);
         const color = STROKE_COLORS[i % STROKE_COLORS.length];
@@ -299,21 +303,14 @@ class ComplexBenchmarkScene extends Component<ComplexBenchmarkSceneViewModel> {
 
     <view
       position="absolute"
-      top={0} left={0} right={0} bottom={0}
+      top={0}
+      left={0}
+      right={0}
+      bottom={0}
       background={`linear-gradient(180deg, ${hsla(hue, 50, 50, 0.1)}, ${hsla((hue + 180) % 360, 50, 30, 0.15)})`}
     >
-      <view
-        position="absolute"
-        bottom="15%"
-        left="5%"
-        right="5%"
-        alignItems="center"
-      >
-        <label
-          font={smallFont}
-          color="rgba(255,255,255,0.5)"
-          value={`Filter: Vivid #${idx % 12}`}
-        />
+      <view position="absolute" bottom="15%" left="5%" right="5%" alignItems="center">
+        <label font={smallFont} color="rgba(255,255,255,0.5)" value={`Filter: Vivid #${idx % 12}`} />
       </view>
     </view>;
   }
@@ -338,16 +335,12 @@ class ComplexBenchmarkScene extends Component<ComplexBenchmarkSceneViewModel> {
         <view
           flexGrow={1}
           marginLeft={i > 0 ? 3 * ds : 0}
-          backgroundColor={hsla(itemHue, 50, 50 + (idx + i) % 20, 0.7)}
+          backgroundColor={hsla(itemHue, 50, 50 + ((idx + i) % 20), 0.7)}
           borderRadius={6 * ds}
           alignItems="center"
           justifyContent="center"
         >
-          <label
-            font={tinyFont}
-            color="white"
-            value={`${i + 1}`}
-          />
+          <label font={tinyFont} color="white" value={`${i + 1}`} />
         </view>;
       })}
     </view>;
@@ -357,7 +350,9 @@ class ComplexBenchmarkScene extends Component<ComplexBenchmarkSceneViewModel> {
     const hue1 = (idx * 7 + 30) % 360;
     const hue2 = (idx * 7 + 150) % 360;
 
-    {/* Clipping region 1 */}
+    {
+      /* Clipping region 1 */
+    }
     <view
       position="absolute"
       right="5%"
@@ -379,7 +374,9 @@ class ComplexBenchmarkScene extends Component<ComplexBenchmarkSceneViewModel> {
       </view>
     </view>;
 
-    {/* Clipping region 2 */}
+    {
+      /* Clipping region 2 */
+    }
     <view
       position="absolute"
       left="3%"
@@ -390,17 +387,15 @@ class ComplexBenchmarkScene extends Component<ComplexBenchmarkSceneViewModel> {
       borderRadius={10 * ds}
       backgroundColor={hsla(hue2, 50, 40, 0.3)}
     >
-      <view
-        width="100%"
-        height="100%"
-        flexDirection="column"
-      >
+      <view width="100%" height="100%" flexDirection="column">
         <view flexGrow={1} backgroundColor={hsla(hue2, 60, 60, 0.4)} />
         <view flexGrow={1} backgroundColor={hsla((hue2 + 90) % 360, 60, 60, 0.4)} />
       </view>
     </view>;
 
-    {/* Clipping region 3: nested circles */}
+    {
+      /* Clipping region 3: nested circles */
+    }
     <view
       position="absolute"
       right="8%"
@@ -411,12 +406,7 @@ class ComplexBenchmarkScene extends Component<ComplexBenchmarkSceneViewModel> {
       borderRadius={'50%'}
       backgroundColor={hsla((hue1 + 90) % 360, 50, 50, 0.25)}
     >
-      <view
-        width="100%"
-        height="100%"
-        alignItems="center"
-        justifyContent="center"
-      >
+      <view width="100%" height="100%" alignItems="center" justifyContent="center">
         <view
           width="60%"
           aspectRatio={1}
@@ -518,11 +508,7 @@ export class DrawFrameBenchmark extends NavigationPageStatefulComponent<ViewMode
     <view backgroundColor="white" width="100%" height="100%">
       <scroll style={styles.scroll} padding={16}>
         <layout flexDirection="column" width="100%">
-          <label
-            style={styles.title}
-            value="DrawFrame Benchmark"
-            font={systemBoldFont(20)}
-          />
+          <label style={styles.title} value="DrawFrame Benchmark" font={systemBoldFont(20)} />
 
           <layout flexDirection="row" marginTop={12} marginBottom={12}>
             <view
@@ -549,12 +535,7 @@ export class DrawFrameBenchmark extends NavigationPageStatefulComponent<ViewMode
             </view>
           </layout>
 
-          <label
-            value={this.state.resultText}
-            font={monoSpaceFont(8)}
-            color="black"
-            numberOfLines={0}
-          />
+          <label value={this.state.resultText} font={monoSpaceFont(8)} color="black" numberOfLines={0} />
         </layout>
       </scroll>
     </view>;
@@ -641,7 +622,7 @@ export class DrawFrameBenchmark extends NavigationPageStatefulComponent<ViewMode
       if (i % 10 === 0 || i === frameCount - 1) {
         console.log(
           `[Benchmark] #${i}/${frameCount}: ` +
-          `js=${formatMs(jsThreadMs)} main=${formatMs(mainThreadMs)} total=${formatMs(totalMs)}`,
+            `js=${formatMs(jsThreadMs)} main=${formatMs(mainThreadMs)} total=${formatMs(totalMs)}`,
         );
       }
     }
@@ -652,15 +633,42 @@ export class DrawFrameBenchmark extends NavigationPageStatefulComponent<ViewMode
     context.dispose();
 
     // Compute aggregate stats per phase
-    const renderStats = computeStats('Render(JS)', timings.map(t => t.render));
-    const layoutStats = computeStats('Layout(JS)', timings.map(t => t.layout));
-    const drawTotalStats = computeStats('Draw total', timings.map(t => t.drawTotal));
-    const drawMainStats = computeStats('Draw(main)', timings.map(t => t.drawMainThread));
-    const drawOhStats = computeStats('Draw sched', timings.map(t => t.drawOverhead));
-    const rasterStats = computeStats('Raster(JS)', timings.map(t => t.raster));
-    const jsStats = computeStats('JS thread', timings.map(t => t.jsThread));
-    const mainStats = computeStats('Main thrd', timings.map(t => t.mainThread));
-    const totalStats = computeStats('Frame tot', timings.map(t => t.total));
+    const renderStats = computeStats(
+      'Render(JS)',
+      timings.map(t => t.render),
+    );
+    const layoutStats = computeStats(
+      'Layout(JS)',
+      timings.map(t => t.layout),
+    );
+    const drawTotalStats = computeStats(
+      'Draw total',
+      timings.map(t => t.drawTotal),
+    );
+    const drawMainStats = computeStats(
+      'Draw(main)',
+      timings.map(t => t.drawMainThread),
+    );
+    const drawOhStats = computeStats(
+      'Draw sched',
+      timings.map(t => t.drawOverhead),
+    );
+    const rasterStats = computeStats(
+      'Raster(JS)',
+      timings.map(t => t.raster),
+    );
+    const jsStats = computeStats(
+      'JS thread',
+      timings.map(t => t.jsThread),
+    );
+    const mainStats = computeStats(
+      'Main thrd',
+      timings.map(t => t.mainThread),
+    );
+    const totalStats = computeStats(
+      'Frame tot',
+      timings.map(t => t.total),
+    );
 
     const fps = frameCount / (overallMs / 1000);
 
@@ -691,15 +699,15 @@ export class DrawFrameBenchmark extends NavigationPageStatefulComponent<ViewMode
       const t = timings[i];
       lines.push(
         `${String(i).padStart(2)}` +
-        ` ${f(t.render).padStart(5)}` +
-        ` ${f(t.layout).padStart(5)}` +
-        ` ${f(t.drawTotal).padStart(5)}` +
-        ` ${f(t.drawMainThread).padStart(4)}` +
-        ` ${f(t.drawOverhead).padStart(4)}` +
-        ` ${f(t.raster).padStart(5)}` +
-        ` ${f(t.jsThread).padStart(4)}` +
-        ` ${f(t.mainThread).padStart(4)}` +
-        ` ${f(t.total).padStart(5)}`,
+          ` ${f(t.render).padStart(5)}` +
+          ` ${f(t.layout).padStart(5)}` +
+          ` ${f(t.drawTotal).padStart(5)}` +
+          ` ${f(t.drawMainThread).padStart(4)}` +
+          ` ${f(t.drawOverhead).padStart(4)}` +
+          ` ${f(t.raster).padStart(5)}` +
+          ` ${f(t.jsThread).padStart(4)}` +
+          ` ${f(t.mainThread).padStart(4)}` +
+          ` ${f(t.total).padStart(5)}`,
       );
     }
 

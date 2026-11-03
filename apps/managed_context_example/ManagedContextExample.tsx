@@ -1,12 +1,12 @@
-import { Component, StatefulComponent } from 'valdi_core/src/Component';
-import { systemBoldFont, systemFont } from 'valdi_core/src/SystemFont';
-import { AnyRenderFunction } from 'valdi_core/src/AnyRenderFunction';
-import { createManagedContext, EmbeddedPlatformViewRasterMethod } from 'drawing/src/ManagedContextFactory';
+import { createBitmap } from 'drawing/src/BitmapFactory';
 import { BitmapAlphaType, BitmapColorType, ImageEncoding } from 'drawing/src/IBitmap';
-import { createBitmap, createBitmapWithBuffer } from 'drawing/src/BitmapFactory';
-import { Asset } from 'valdi_tsx/src/Asset';
+import { createManagedContext, EmbeddedPlatformViewRasterMethod } from 'drawing/src/ManagedContextFactory';
+import { AnyRenderFunction } from 'valdi_core/src/AnyRenderFunction';
 import { makeAssetFromBytes } from 'valdi_core/src/Asset';
+import { Component, StatefulComponent } from 'valdi_core/src/Component';
 import { Device } from 'valdi_core/src/Device';
+import { systemBoldFont } from 'valdi_core/src/SystemFont';
+import { Asset } from 'valdi_tsx/src/Asset';
 
 const COMPONENT_HEIGHT = 200;
 
@@ -39,7 +39,9 @@ class InnerComponent extends Component {
   }
 }
 
-function Section(viewModel: { name: string; children?: AnyRenderFunction | void }) {
+// JSX function components need a capitalized name.
+// eslint-disable-next-line @typescript-eslint/naming-convention
+function Section(viewModel: { name: string; children?: AnyRenderFunction | void }): void {
   <layout flexDirection="column">
     <layout padding={16}>
       <label value={viewModel.name} font={systemBoldFont(17)} color="black" />
@@ -48,7 +50,9 @@ function Section(viewModel: { name: string; children?: AnyRenderFunction | void 
   </layout>;
 }
 
-function Button(viewModel: { title: string; onTap: () => void }) {
+// JSX function components need a capitalized name.
+// eslint-disable-next-line @typescript-eslint/naming-convention
+function Button(viewModel: { title: string; onTap: () => void }): void {
   <view
     backgroundColor="cornflowerblue"
     padding={16}
@@ -105,14 +109,14 @@ export class App extends StatefulComponent<{}, State> {
     </view>;
   }
 
-  toggleDownscaleRatio = () => {
+  toggleDownscaleRatio = (): void => {
     const nextDownscaleRatioIndex = (this.state.downscaleRatioIndex + 1) % DOWNSCALE_RATIO.length;
     this.setState({
       downscaleRatioIndex: nextDownscaleRatioIndex,
     });
   };
 
-  toggleRasterMethod = () => {
+  toggleRasterMethod = (): void => {
     this.setState({
       rasterMethod:
         this.state.rasterMethod === EmbeddedPlatformViewRasterMethod.FAST
@@ -121,7 +125,7 @@ export class App extends StatefulComponent<{}, State> {
     });
   };
 
-  rasterize = () => {
+  rasterize = (): void => {
     this.doRasterize()
       .then(asset => {
         console.log('Rasterized asset:', asset);
@@ -179,5 +183,3 @@ export class App extends StatefulComponent<{}, State> {
     return makeAssetFromBytes(buffer);
   }
 }
-
-const styles = {};

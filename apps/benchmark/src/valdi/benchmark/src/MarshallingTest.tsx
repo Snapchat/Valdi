@@ -7,11 +7,12 @@
 // TS to native marshalling time = (2) - (1)
 // Native to TS marshalling time = (4) - (3)
 
+import { setTimeoutInterruptible } from 'valdi_core/src/SetTimeout';
+import { Style } from 'valdi_core/src/Style';
+import { systemBoldFont, systemFont } from 'valdi_core/src/SystemFont';
 import { NavigationPage } from 'valdi_navigation/src/NavigationPage';
 import { NavigationPageStatefulComponent } from 'valdi_navigation/src/NavigationPageComponent';
-import { Style } from 'valdi_core/src/Style';
 import { Label, ScrollView } from 'valdi_tsx/src/NativeTemplateElements';
-import { systemBoldFont, systemFont } from 'valdi_core/src/SystemFont';
 import {
   FunctionTiming,
   measureStrings,
@@ -19,8 +20,6 @@ import {
   getNativeFunctionTiming,
   measureStringMaps,
 } from './NativeHelper';
-import { StringMap } from 'coreutils/src/StringMap';
-import { setTimeoutInterruptible } from 'valdi_core/src/SetTimeout';
 import { now } from './cpp';
 
 interface Result {
@@ -35,12 +34,13 @@ interface Result {
   p90NativeToJs: number;
 }
 
-function runTest(body: (data: any) => any, data: any, iterations: number) {
+// The tests take different data types, so the body accepts the data it was paired with in allTests.
+function runTest(body: (data: never) => unknown, data: unknown, iterations: number): Result {
   clearNativeFunctionTiming();
   const jsTiming: FunctionTiming[] = [];
   for (let i = 0; i < iterations; ++i) {
     const jsEnter = now();
-    const ret = body(data);
+    body(data as never);
     const jsLeave = now();
     jsTiming.push({ enterTime: jsEnter, leaveTime: jsLeave });
   }
@@ -127,7 +127,7 @@ export class MarshallingTest extends NavigationPageStatefulComponent<ViewModel, 
     results: [],
   };
 
-  onCreate() {
+  onCreate(): void {
     setTimeoutInterruptible(() => {
       const results: Result[] = [];
       for (const t of allTests) {
@@ -148,13 +148,17 @@ export class MarshallingTest extends NavigationPageStatefulComponent<ViewModel, 
     </view>;
   }
 
-  private renderResults() {
+  private renderResults(): void {
     for (let i = 0; i < this.state.results.length; i++) {
       <label marginTop={15} value={allTests[i].name} font={systemBoldFont(12)} />;
       const r = this.state.results[i];
-      const jsToNative = `JS=> Avg: ${r.avgJsToNative.toFixed(2)} P10: ${r.p10JsToNative.toFixed(2)} P50 ${r.p50JsToNative.toFixed(2)} P90 ${r.p90JsToNative.toFixed(2)}`;
+      const jsToNative = `JS=> Avg: ${r.avgJsToNative.toFixed(2)} P10: ${r.p10JsToNative.toFixed(
+        2,
+      )} P50 ${r.p50JsToNative.toFixed(2)} P90 ${r.p90JsToNative.toFixed(2)}`;
       <label value={jsToNative} font={systemFont(10)} />;
-      const nativeToJs = `=>JS Avg: ${r.avgNativeToJs.toFixed(2)} P10: ${r.p10NativeToJs.toFixed(2)} P50 ${r.p50NativeToJs.toFixed(2)} P90 ${r.p90NativeToJs.toFixed(2)}`;
+      const nativeToJs = `=>JS Avg: ${r.avgNativeToJs.toFixed(2)} P10: ${r.p10NativeToJs.toFixed(
+        2,
+      )} P50 ${r.p50NativeToJs.toFixed(2)} P90 ${r.p90NativeToJs.toFixed(2)}`;
       <label value={nativeToJs} font={systemFont(10)} />;
     }
   }

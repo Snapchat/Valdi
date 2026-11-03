@@ -1,8 +1,8 @@
 import { fs } from 'file_system/src/FileSystem';
 import { Path } from 'valdi_cli/src/Path';
 
-import { createRgbaBitmap, encodeBase64Png } from './png';
 import { compareResults, type ComparisonSummary } from './compare';
+import { createRgbaBitmap, encodeBase64Png } from './png';
 import type { IntegrationTestCaseResult, IntegrationTestResult } from './types';
 
 function assert(value: boolean, message: string): void {
@@ -35,7 +35,7 @@ function writeJson(dir: Path, name: string, value: IntegrationTestResult): strin
   return file;
 }
 
-function comparisonCase(summary: ComparisonSummary, id: string) {
+function comparisonCase(summary: ComparisonSummary, id: string): ComparisonSummary['cases'][number] {
   const item = summary.cases.find(testCase => testCase.id === id);
   assert(item !== undefined, `Expected comparison case ${id}`);
   return item!;

@@ -10,37 +10,8 @@
 # concentrated in web_renderer, valdi_navigation, valdi_ssr, and the integration_test and
 # ledger_sql_demo apps.
 # Remove a line once its file lints clean. Do not add lines.
-apps/benchmark/src/valdi/benchmark/src/BenchmarkSingleRunComponent.tsx
-apps/benchmark/src/valdi/benchmark/src/DrawFrameBenchmark.tsx
-apps/benchmark/src/valdi/benchmark/src/MarshallingTest.tsx
-apps/benchmark/src/valdi/benchmark/src/MicroBenchTest.tsx
-apps/benchmark/src/valdi/benchmark/src/ProtoImportTest.tsx
-apps/benchmark/src/valdi/benchmark/src/RenderTest.tsx
 apps/benchmark/src/valdi/benchmark/src/main.tsx
-apps/helloworld/src/valdi/hello_world/src/ByteExactImageExample.tsx
-apps/helloworld/src/valdi/hello_world/src/GettingStartedCodelab.tsx
-apps/helloworld/src/valdi/hello_world/web/CppModule.ts
-apps/inline_text_children_example/InlineTextChildrenExample.tsx
-apps/integration_test/src/valdi/integration_test_app/src/IntegrationTestApp.tsx
-apps/integration_test/src/valdi/integration_test_app/src/IntegrationTestRunner.ts
-apps/integration_test/src/valdi/integration_test_app/src/IntegrationTestTypes.ts
-apps/integration_test/src/valdi/integration_test_app/src/WebWorkerProbe.ts
-apps/integration_test/src/valdi/integration_test_cli/src/compare.ts
-apps/integration_test/src/valdi/integration_test_cli/src/exportSnapshots.ts
-apps/integration_test/src/valdi/integration_test_cli/src/run.ts
-apps/integration_test/src/valdi/integration_test_cli/src/selfTest.ts
-apps/managed_context_example/ManagedContextExample.tsx
-apps/navigation_example/NavigationExample.tsx
-apps/snapshot_tests/src/cases/InlineImageLayout.tsx
-apps/snapshot_tests/src/cases/index.tsx
 apps/snapshot_tests/src/main.tsx
-apps/text_animation_group_example/TextAnimationGroupExample.tsx
-apps/text_attributes_example/TextAttributesExample.tsx
-apps/text_rendering_showcase/TextRenderingShowcase.tsx
-apps/transforms_playground/TransformsPlaygroundApp.tsx
-apps/valdi_gpt/src/valdi/ai_service/src/OpenAi.ts
-apps/valdi_gpt/src/valdi/conversation/src/Conversation.tsx
-apps/valdi_gpt/src/valdi/conversation/test/Conversation.spec.tsx
 src/valdi_modules/src/valdi/valdi_core/src/JSXBootstrap.ts
 src/valdi_modules/src/valdi/valdi_core/src/PostInit.ts
 src/valdi_modules/src/valdi/valdi_protobuf/web/ValdiProtobuf.ts

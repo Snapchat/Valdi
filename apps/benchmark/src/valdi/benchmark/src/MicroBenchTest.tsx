@@ -1,14 +1,23 @@
+import { Device } from 'valdi_core/src/Device';
+import { RequireFunc } from 'valdi_core/src/IModuleLoader';
+import { setTimeoutInterruptible } from 'valdi_core/src/SetTimeout';
+import { Style } from 'valdi_core/src/Style';
+import { systemFont } from 'valdi_core/src/SystemFont';
 import { NavigationPage } from 'valdi_navigation/src/NavigationPage';
 import { NavigationPageStatefulComponent } from 'valdi_navigation/src/NavigationPageComponent';
-import { Style } from 'valdi_core/src/Style';
 import { Label, ScrollView } from 'valdi_tsx/src/NativeTemplateElements';
-import { Device } from 'valdi_core/src/Device';
-import { systemFont } from 'valdi_core/src/SystemFont';
-import { setTimeoutInterruptible } from 'valdi_core/src/SetTimeout';
 
-import { RequireFunc } from 'valdi_core/src/IModuleLoader';
 declare const require: RequireFunc;
-const microbench = require('./microbench');
+interface MicroBenchConsole {
+  log(s: string): void;
+}
+
+interface MicroBench {
+  setConsole(console: MicroBenchConsole): void;
+  main(argc: number, argv: string[], global: typeof globalThis): void;
+}
+
+const microbench = require('./microbench') as MicroBench;
 
 export interface ViewModel {}
 export interface ComponentContext {}
@@ -19,15 +28,14 @@ export class MicroBenchTest extends NavigationPageStatefulComponent<ViewModel, C
     text: '',
   };
 
-  onCreate() {
+  onCreate(): void {
     setTimeoutInterruptible(() => {
       this.setState({ text: '' });
-      const self = this;
       microbench.setConsole({
-        log(s: string) {
+        log: (s: string): void => {
           console.log(s);
-          const text = self.state.text + '\n' + s;
-          self.setState({ text: text });
+          const text = this.state.text + '\n' + s;
+          this.setState({ text: text });
         },
       });
       const args = ['microbench'];

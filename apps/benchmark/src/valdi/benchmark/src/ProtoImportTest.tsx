@@ -1,11 +1,10 @@
+import { Style } from 'valdi_core/src/Style';
+import { systemFont } from 'valdi_core/src/SystemFont';
 import { NavigationPage } from 'valdi_navigation/src/NavigationPage';
 import { NavigationPageStatefulComponent } from 'valdi_navigation/src/NavigationPageComponent';
-import { Style } from 'valdi_core/src/Style';
-import { Label } from 'valdi_tsx/src/NativeTemplateElements';
-import { systemFont } from 'valdi_core/src/SystemFont';
-import { now } from './cpp';
-
 import { load } from 'valdi_protobuf/src/ProtobufBuilder';
+import { Label } from 'valdi_tsx/src/NativeTemplateElements';
+import { now } from './cpp';
 
 export function runProtoImport(src: string): number {
   const start = now();
@@ -29,7 +28,7 @@ export class ProtoImportTest extends NavigationPageStatefulComponent<ViewModel, 
     importLatencyNoIndex: 0,
   };
 
-  onCreate() {
+  onCreate(): void {
     const importLatency = runProtoImport('benchmark/src/proto.protodecl');
     const importLatencyNoIndex = runProtoImport('benchmark/src/proto_noidx.protodecl');
     this.setState({ importLatency: importLatency, importLatencyNoIndex: importLatencyNoIndex });

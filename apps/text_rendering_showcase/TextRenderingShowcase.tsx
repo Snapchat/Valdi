@@ -1,9 +1,12 @@
+import { createBitmap } from 'drawing/src/BitmapFactory';
+import { BitmapAlphaType, BitmapColorType, ImageEncoding } from 'drawing/src/IBitmap';
+import { createManagedContext, EmbeddedPlatformViewRasterMethod } from 'drawing/src/ManagedContextFactory';
+import { makeAssetFromBytes } from 'valdi_core/src/Asset';
 import { Component, StatefulComponent } from 'valdi_core/src/Component';
 import { Device } from 'valdi_core/src/Device';
 import { Style } from 'valdi_core/src/Style';
 import { systemBoldFont, systemFont } from 'valdi_core/src/SystemFont';
-import { AttributedTextBuilder } from 'valdi_core/src/utils/AttributedTextBuilder';
-import { makeAssetFromBytes } from 'valdi_core/src/Asset';
+import { AttributedText, AttributedTextBuilder } from 'valdi_core/src/utils/AttributedTextBuilder';
 import { Asset } from 'valdi_tsx/src/Asset';
 import { AttributedTextInlineViewVerticalAlignment } from 'valdi_tsx/src/AttributedTextInlineViewAttachment';
 import {
@@ -15,9 +18,13 @@ import {
   TextView,
   View,
 } from 'valdi_tsx/src/NativeTemplateElements';
-import { createManagedContext, EmbeddedPlatformViewRasterMethod } from 'drawing/src/ManagedContextFactory';
-import { BitmapAlphaType, BitmapColorType, ImageEncoding } from 'drawing/src/IBitmap';
-import { createBitmap } from 'drawing/src/BitmapFactory';
+
+type EditTextEvent = Parameters<NonNullable<TextField['onChange']>>[0];
+type EditTextBeginEvent = Parameters<NonNullable<TextField['onEditBegin']>>[0];
+type EditTextEndEvent = Parameters<NonNullable<TextField['onEditEnd']>>[0];
+type TextSelectionMenuEvent = Parameters<NonNullable<Label['onTextSelectionMenu']>>[0];
+type TextSelectionMenuAction = ReturnType<NonNullable<Label['onTextSelectionMenu']>>[number];
+type TextSelectionMenuActionEvent = Parameters<NonNullable<Label['onTextSelectionMenuAction']>>[0];
 
 const SNAPSHOT_WIDTH = 330;
 const SNAPSHOT_HEIGHT = 230;
@@ -244,8 +251,52 @@ class ExpandingInlineButton extends StatefulComponent<{}, ExpandingInlineState> 
     </view>;
   }
 
-  private toggle = () => {
+  private toggle = (): void => {
     this.setState({ expanded: !this.state.expanded });
+  };
+}
+
+interface CategoryTabViewModel {
+  id: CategoryId;
+  title: string;
+  selected: boolean;
+  onSelect: (id: CategoryId) => void;
+}
+
+class CategoryTab extends Component<CategoryTabViewModel> {
+  onRender(): void {
+    const selected = this.viewModel.selected;
+    <view style={selected ? styles.categoryTabSelected : styles.categoryTab} onTap={this.onTap}>
+      <label
+        style={selected ? styles.categoryTabLabelSelected : styles.categoryTabLabel}
+        value={this.viewModel.title}
+      />
+    </view>;
+  }
+
+  private onTap = (): void => {
+    this.viewModel.onSelect(this.viewModel.id);
+  };
+}
+
+interface FixtureCardViewModel {
+  id: string;
+  title: string;
+  description: string;
+  selected: boolean;
+  onSelect: (id: string) => void;
+}
+
+class FixtureCard extends Component<FixtureCardViewModel> {
+  onRender(): void {
+    <view style={this.viewModel.selected ? styles.fixtureCardSelected : styles.fixtureCard} onTap={this.onTap}>
+      <label style={styles.fixtureTitle} value={this.viewModel.title} />
+      <label style={styles.fixtureDescription} value={this.viewModel.description} />
+    </view>;
+  }
+
+  private onTap = (): void => {
+    this.viewModel.onSelect(this.viewModel.id);
   };
 }
 
@@ -310,16 +361,12 @@ export class App extends StatefulComponent<ViewModel, State> {
     <scroll style={styles.categoryScroll}>
       <view style={styles.categoryRow}>
         {categories.forEach(category => {
-          const selected = this.state.selectedCategory === category.id;
-          <view
-            style={selected ? styles.categoryTabSelected : styles.categoryTab}
-            onTap={() => this.selectCategory(category.id)}
-          >
-            <label
-              style={selected ? styles.categoryTabLabelSelected : styles.categoryTabLabel}
-              value={category.title}
-            />
-          </view>;
+          <CategoryTab
+            id={category.id}
+            title={category.title}
+            selected={this.state.selectedCategory === category.id}
+            onSelect={this.selectCategory}
+          />;
         })}
       </view>
     </scroll>;
@@ -330,14 +377,13 @@ export class App extends StatefulComponent<ViewModel, State> {
       {fixtures
         .filter(fixture => fixture.category === this.state.selectedCategory)
         .forEach(fixture => {
-          const selected = fixture.id === this.state.selectedFixtureId;
-          <view
-            style={selected ? styles.fixtureCardSelected : styles.fixtureCard}
-            onTap={() => this.selectFixture(fixture.id)}
-          >
-            <label style={styles.fixtureTitle} value={fixture.title} />
-            <label style={styles.fixtureDescription} value={fixture.description} />
-          </view>;
+          <FixtureCard
+            id={fixture.id}
+            title={fixture.title}
+            description={fixture.description}
+            selected={fixture.id === this.state.selectedFixtureId}
+            onSelect={this.selectFixture}
+          />;
         })}
     </view>;
   }
@@ -444,16 +490,13 @@ export class App extends StatefulComponent<ViewModel, State> {
       <textfield
         style={styles.primaryTextField}
         value={this.state.fieldValue}
-        onChange={event => this.updateField(event.text)}
-        onEditBegin={event => this.record(`textfield begin ${event.text.length}`)}
-        onEditEnd={event => this.record(`textfield end reason ${event.reason}`)}
-        onReturn={event => this.record(`textfield return ${event.text}`)}
-        onSelectionChange={event => this.record(`textfield selection ${event.selectionStart}-${event.selectionEnd}`)}
-        onWillChange={event => {
-          this.record(`textfield willChange ${event.text.length}`);
-          return event;
-        }}
-        onWillDelete={event => this.record(`textfield willDelete ${event.text.length}`)}
+        onChange={this.onTextFieldChange}
+        onEditBegin={this.onTextFieldEditBegin}
+        onEditEnd={this.onTextFieldEditEnd}
+        onReturn={this.onTextFieldReturn}
+        onSelectionChange={this.onTextFieldSelectionChange}
+        onWillChange={this.onTextFieldWillChange}
+        onWillDelete={this.onTextFieldWillDelete}
       />
       <view style={styles.textFieldRow}>
         <textfield style={styles.phoneTextField} value="+1 555 0100" />
@@ -468,11 +511,11 @@ export class App extends StatefulComponent<ViewModel, State> {
       <textview
         style={styles.primaryTextView}
         value={this.state.textViewValue}
-        onChange={event => this.updateTextView(event.text)}
-        onEditBegin={event => this.record(`textview begin ${event.text.length}`)}
-        onEditEnd={event => this.record(`textview end reason ${event.reason}`)}
-        onReturn={event => this.record(`textview return ${event.text.length}`)}
-        onSelectionChange={event => this.record(`textview selection ${event.selectionStart}-${event.selectionEnd}`)}
+        onChange={this.onTextViewChange}
+        onEditBegin={this.onTextViewEditBegin}
+        onEditEnd={this.onTextViewEditEnd}
+        onReturn={this.onTextViewReturn}
+        onSelectionChange={this.onTextViewSelectionChange}
       />
       <textview
         style={styles.disabledTextView}
@@ -486,26 +529,16 @@ export class App extends StatefulComponent<ViewModel, State> {
       <label
         style={styles.selectableLabel}
         value="Selectable label: long-press or drag handles, then try the custom iOS action menu."
-        onSelectionChange={event => this.record(`label selection ${event.selectionStart}-${event.selectionEnd}`)}
-        onTextSelectionMenu={event => [
-          {
-            id: 'log-label',
-            title: `Log ${event.selectedText.length}`,
-          },
-        ]}
-        onTextSelectionMenuAction={event => this.record(`label menu ${event.id}: ${event.selectedText}`)}
+        onSelectionChange={this.onLabelSelectionChange}
+        onTextSelectionMenu={this.onLabelTextSelectionMenu}
+        onTextSelectionMenuAction={this.onLabelTextSelectionMenuAction}
       />
       <textview
         style={styles.selectableTextView}
         value="Selectable TextView: verify disabled selection, copy handles, and the iOS custom menu action."
-        onSelectionChange={event => this.record(`textview selection ${event.selectionStart}-${event.selectionEnd}`)}
-        onTextSelectionMenu={event => [
-          {
-            id: 'log-textview',
-            title: `Log ${event.selectedText.length}`,
-          },
-        ]}
-        onTextSelectionMenuAction={event => this.record(`textview menu ${event.id}: ${event.selectedText}`)}
+        onSelectionChange={this.onTextViewSelectionChange}
+        onTextSelectionMenu={this.onTextViewTextSelectionMenu}
+        onTextSelectionMenuAction={this.onTextViewTextSelectionMenuAction}
       />
     </view>;
   }
@@ -663,7 +696,7 @@ export class App extends StatefulComponent<ViewModel, State> {
   private animatedText(
     text: string,
     overrides: { key: string; partPattern?: string; timeOffsetBetweenParts?: number; translationY?: number },
-  ) {
+  ): AttributedText {
     return new AttributedTextBuilder()
       .append(text, {
         animationTransform: {
@@ -682,7 +715,7 @@ export class App extends StatefulComponent<ViewModel, State> {
     return fixtures.find(fixture => fixture.id === this.state.selectedFixtureId) ?? fixtures[0];
   }
 
-  private selectCategory = (category: CategoryId) => {
+  private selectCategory = (category: CategoryId): void => {
     const firstFixture = fixtures.find(fixture => fixture.category === category) ?? fixtures[0];
     this.setState({
       eventLog: `Selected category ${category}.`,
@@ -691,7 +724,7 @@ export class App extends StatefulComponent<ViewModel, State> {
     });
   };
 
-  private selectFixture = (fixtureId: string) => {
+  private selectFixture = (fixtureId: string): void => {
     const fixture = fixtures.find(candidate => candidate.id === fixtureId) ?? fixtures[0];
     this.setState({
       eventLog: `Selected fixture ${fixture.title}.`,
@@ -714,7 +747,7 @@ export class App extends StatefulComponent<ViewModel, State> {
     });
   }
 
-  private restartAnimation = () => {
+  private restartAnimation = (): void => {
     this.setState({
       animationRun: this.state.animationRun + 1,
       eventLog: `Restarted text animations (${this.state.animationRun + 1}).`,
@@ -725,7 +758,61 @@ export class App extends StatefulComponent<ViewModel, State> {
     this.setState({ eventLog: message });
   }
 
-  private rasterizeSnapDrawing = () => {
+  private onTextFieldChange = (event: EditTextEvent): void => this.updateField(event.text);
+
+  private onTextFieldEditBegin = (event: EditTextBeginEvent): void =>
+    this.record(`textfield begin ${event.text.length}`);
+
+  private onTextFieldEditEnd = (event: EditTextEndEvent): void => this.record(`textfield end reason ${event.reason}`);
+
+  private onTextFieldReturn = (event: EditTextEvent): void => this.record(`textfield return ${event.text}`);
+
+  private onTextFieldSelectionChange = (event: EditTextEvent): void =>
+    this.record(`textfield selection ${event.selectionStart}-${event.selectionEnd}`);
+
+  private onTextFieldWillChange = (event: EditTextEvent): EditTextEvent => {
+    this.record(`textfield willChange ${event.text.length}`);
+    return event;
+  };
+
+  private onTextFieldWillDelete = (event: EditTextEvent): void =>
+    this.record(`textfield willDelete ${event.text.length}`);
+
+  private onTextViewChange = (event: EditTextEvent): void => this.updateTextView(event.text);
+
+  private onTextViewEditBegin = (event: EditTextBeginEvent): void => this.record(`textview begin ${event.text.length}`);
+
+  private onTextViewEditEnd = (event: EditTextEndEvent): void => this.record(`textview end reason ${event.reason}`);
+
+  private onTextViewReturn = (event: EditTextEvent): void => this.record(`textview return ${event.text.length}`);
+
+  private onTextViewSelectionChange = (event: EditTextEvent): void =>
+    this.record(`textview selection ${event.selectionStart}-${event.selectionEnd}`);
+
+  private onLabelSelectionChange = (event: EditTextEvent): void =>
+    this.record(`label selection ${event.selectionStart}-${event.selectionEnd}`);
+
+  private onLabelTextSelectionMenu = (event: TextSelectionMenuEvent): TextSelectionMenuAction[] => [
+    {
+      id: 'log-label',
+      title: `Log ${event.selectedText.length}`,
+    },
+  ];
+
+  private onLabelTextSelectionMenuAction = (event: TextSelectionMenuActionEvent): void =>
+    this.record(`label menu ${event.id}: ${event.selectedText}`);
+
+  private onTextViewTextSelectionMenu = (event: TextSelectionMenuEvent): TextSelectionMenuAction[] => [
+    {
+      id: 'log-textview',
+      title: `Log ${event.selectedText.length}`,
+    },
+  ];
+
+  private onTextViewTextSelectionMenuAction = (event: TextSelectionMenuActionEvent): void =>
+    this.record(`textview menu ${event.id}: ${event.selectedText}`);
+
+  private rasterizeSnapDrawing = (): void => {
     this.setState({ snapStatus: 'Rasterizing SnapDrawing text...' });
     this.doRasterizeSnapDrawing()
       .then(asset => {

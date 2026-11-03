@@ -1,8 +1,8 @@
-import { Component } from 'valdi_core/src/Component';
-import { getModuleFileEntryAsBytes } from 'valdi_core/src/Valdi';
-import { systemBoldFont, systemFont } from 'valdi_core/src/SystemFont';
 import { decodeBitmap } from 'drawing/src/BitmapFactory';
 import { IBitmap } from 'drawing/src/IBitmap';
+import { Component } from 'valdi_core/src/Component';
+import { systemBoldFont, systemFont } from 'valdi_core/src/SystemFont';
+import { getModuleFileEntryAsBytes } from 'valdi_core/src/Valdi';
 
 /**
  * Byte-exact bundled bitmap data (github.com/Snapchat/Valdi#116).
@@ -37,7 +37,7 @@ function loadCheckerBitmap(): IBitmap {
 
 function readPixels(bitmap: IBitmap): Pixel[] {
   const info = bitmap.getInfo();
-  return bitmap.accessPixels((view) => {
+  return bitmap.accessPixels(view => {
     const pixels: Pixel[] = [];
     for (let y = 0; y < info.height; y++) {
       for (let x = 0; x < info.width; x++) {
@@ -73,9 +73,9 @@ export class ByteExactImageExample extends Component {
         font={systemFont(12)}
         marginBottom={8}
       />
-      {this.pixels.map((pixel) => (
-        <label value={`${pixel.label}  ->  ${pixel.rgba}`} font={systemFont(12)} />
-      ))}
+      {this.pixels.map(pixel => {
+        <label value={`${pixel.label}  ->  ${pixel.rgba}`} font={systemFont(12)} />;
+      })}
     </layout>;
   }
 }
