@@ -11,10 +11,17 @@
 __attribute__((noreturn)) void __sc_apple_system_assert(const char* expr, const char* path, int line);
 #define _SC_SYSTEM_ASSERT(path, line, message) __sc_apple_system_assert(message, path, line)
 #elif defined(__GLIBC__)
-// Declaring a function from assert.h. It's hidden if NDEBUG is defined
+// Declaring a function from assert.h. It's hidden if NDEBUG is defined.
+// __assert_fail (what assert() expands to), not the legacy 3-arg __assert: Ubuntu 24.04's
+// glibc 2.39 routes __assert through the internal __libc_assert_fail with a NULL function
+// name, which strlen()s it and SIGSEGVs before the message is written, so the process dies
+// silently and death tests see no assertion text. __assert_fail prints and aborts.
 // NOLINTNEXTLINE(readability-identifier-naming)
-__attribute__((noinline)) extern "C" void __assert(const char* assertion, const char* file, int line);
-#define _SC_SYSTEM_ASSERT(path, line, message) __assert(message, path, line)
+extern "C" __attribute__((noreturn)) void __assert_fail(const char* assertion,
+                                                        const char* file,
+                                                        unsigned int line,
+                                                        const char* function) noexcept;
+#define _SC_SYSTEM_ASSERT(path, line, message) __assert_fail(message, path, line, __func__)
 #elif defined(EMSCRIPTEN)
 #if defined(NDEBUG)
 // Declaring a function from assert.h. It's hidden if NDEBUG is defined
