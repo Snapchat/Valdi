@@ -65,10 +65,14 @@ if [[ ! -w "$(npm prefix -g)" ]]; then
       mkdir -p ~/.npm-global/lib
       npm config set prefix '~/.npm-global'
       npm install -g npm@11
-      PATH=~/.npm-global/bin:$PATH
     else
       echo "warning: npm prefix location is not writeable $(npm prefix -g)"
     fi
+fi
+# Outside the check above: when this script runs again on the same machine (a CI retry), the prefix
+# is already writable, but the CLI that install_cli.sh links is still in ~/.npm-global/bin.
+if [[ -n "${CI:-}" ]]; then
+    PATH=~/.npm-global/bin:$PATH
 fi
 
 # Optional: Setup git credentials for internal CI (not mirrored to external repos).
