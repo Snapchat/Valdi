@@ -20,16 +20,30 @@ select_tests cpp
 # and bazel then hides it. --valdi_js_engine=auto overrides the workspace's Hermes default so tests
 # pick the engine the way release builds do (JavaScriptCore on iOS, QuickJS on Android). Hermes is
 # only compiled into debug builds, so tests that cover it select it explicitly.
-EXTRA_TEST_ARGS=()
+TEST_ARGS=(--keep_going --skip_incompatible_explicit_targets --test_output=errors
+    --experimental_ui_max_stdouterr_bytes=33554432 --valdi_js_engine=auto)
 if [[ "${GITHUB_ACTIONS:-}" == "true" ]] ; then
     # Quarantines the worker tests that leave a worker running past host teardown (see
     # orphanedWorkerTestsQuarantined in Runtime_tests.cpp). Remove when VALDI_ENABLE_TEARDOWN_STOP_ORPHANED_WORKERS
     # defaults on.
-    EXTRA_TEST_ARGS+=(--test_env=VALDI_QUARANTINE_ORPHANED_WORKER_TESTS=1)
+    TEST_ARGS+=(--test_env=VALDI_QUARANTINE_ORPHANED_WORKER_TESTS=1)
 fi
-# The guarded expansion keeps an empty array safe under `set -u` on macOS's bash 3.2.
-bzl test "${TEST_TARGETS[@]}" --keep_going --skip_incompatible_explicit_targets --test_output=errors \
-    --experimental_ui_max_stdouterr_bytes=33554432 --valdi_js_engine=auto ${EXTRA_TEST_ARGS[@]+"${EXTRA_TEST_ARGS[@]}"}
+# iOS test bundles all launch into one shared simulator. Started together, they hang in their first
+# test until the 300s timeout, so run them one at a time after everything else.
+IOS_TEST_TARGETS=()
+while IFS= read -r t ; do
+    [[ -n "$t" ]] && IOS_TEST_TARGETS+=("$t")
+done <<< "$(bzl query "kind('ios_(unit|ui)_test', set(${TEST_TARGETS[*]}))" --output=label)"
+OTHER_TEST_TARGETS=()
+for t in "${TEST_TARGETS[@]}" ; do
+    [[ " ${IOS_TEST_TARGETS[*]-} " == *" $t "* ]] || OTHER_TEST_TARGETS+=("$t")
+done
+status=0
+bzl test "${OTHER_TEST_TARGETS[@]}" "${TEST_ARGS[@]}" || status=$?
+if (( ${#IOS_TEST_TARGETS[@]} )) ; then
+    bzl test "${IOS_TEST_TARGETS[@]}" "${TEST_ARGS[@]}" --local_test_jobs=1 || status=$?
+fi
+(( status == 0 )) || exit "$status"
 
 # The hot-reload smoke runs as its own parallel job on external GitHub Actions
 # (the hotreload-smoke matrix leg). Gate it here too — but ONLY internally (skip
