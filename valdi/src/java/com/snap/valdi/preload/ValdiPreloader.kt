@@ -30,7 +30,7 @@ class ValdiPreloader(
     modulePath imports, up until the given depth.
      */
     fun preloadModule(modulePath: String, maxDepth: Int) {
-        runtime.getJSRuntime { it.preloadModule(modulePath, maxDepth) }
+        runtime.getJSRuntime("preloadModule($modulePath)") { it.preloadModule(modulePath, maxDepth) }
     }
 
     /**
