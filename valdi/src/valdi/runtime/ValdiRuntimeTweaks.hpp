@@ -92,6 +92,10 @@ public:
     // DecodingMode parses nested messages on first read instead of at decode. Arenas that pass EAGER or
     // LAZY are unaffected, and async decodes stay eager.
     bool protobufLazyDecodingByDefault() const;
+    // VALDI_PROTOBUF_FIELD_READS (default false). When true, the protobuf module reports fieldReadsEnabled
+    // to the TS Arena, whose message getters then fetch one field through getMessageField instead of
+    // materializing every field of the message through getMessageFields on first access.
+    bool enableProtobufFieldReads() const;
 
 private:
     Shared<ITweakValueProvider> _tweakValueProvider;

@@ -102,6 +102,7 @@ JSValueRef ProtobufModuleFactory::loadModule(IJavaScriptContext& jsContext,
                      std::make_pair("encodeMessageToJSON", &ProtobufModule::arenaEncodeMessageToJSON),
                      std::make_pair("setMessageField", &ProtobufModule::arenaSetMessageField),
                      std::make_pair("getMessageFields", &ProtobufModule::arenaGetMessageFields),
+                     std::make_pair("getMessageField", &ProtobufModule::arenaGetMessageField),
                      std::make_pair("copyMessage", &ProtobufModule::arenaCopyMessage),
                      std::make_pair("createArena", &ProtobufModule::createArena)});
 
@@ -118,6 +119,16 @@ JSValueRef ProtobufModuleFactory::loadModule(IJavaScriptContext& jsContext,
         if (!exceptionTracker) {
             return JSValueRef();
         }
+    }
+
+    // The TS Arena reads this once per arena; the getter stays registered either way so tests can
+    // force the per-field path without a tweak provider.
+    const auto& runtimeTweaks = _resourcesManager.getRuntimeTweaks();
+    auto fieldReadsEnabled = runtimeTweaks != nullptr && runtimeTweaks->enableProtobufFieldReads();
+    jsContext.setObjectProperty(
+        module.get(), "fieldReadsEnabled", jsContext.newBool(fieldReadsEnabled).get(), exceptionTracker);
+    if (!exceptionTracker) {
+        return JSValueRef();
     }
 
     return module;

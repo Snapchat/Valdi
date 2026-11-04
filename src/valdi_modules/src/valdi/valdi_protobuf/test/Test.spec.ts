@@ -1,13 +1,23 @@
 import { Base64 } from 'coreutils/src/Base64';
-import { Arena, DecodingMode } from 'valdi_protobuf/src/Arena';
+import { Arena, DecodingMode, setFieldReadsEnabledForTesting } from 'valdi_protobuf/src/Arena';
+import { Message } from 'valdi_protobuf/src/Message';
 import { loadDescriptorPoolFromProtoFiles } from 'valdi_protobuf/src/ProtobufBuilder';
-import { IArena, IMessage } from 'valdi_protobuf/src/types';
+import { IArena, IMessage, IMessageConstructor } from 'valdi_protobuf/src/types';
 import 'jasmine/src/jasmine';
 import { package_with_underscores, test } from './proto';
 
 interface MessageFactory<InterfaceType, MessageType> {
   create(arena: IArena, properties: InterfaceType): MessageType;
   decode(arena: IArena, buffer: Uint8Array): MessageType;
+}
+
+function withFieldReads(fn: () => void): void {
+  setFieldReadsEnabledForTesting(true);
+  try {
+    fn();
+  } finally {
+    setFieldReadsEnabledForTesting(undefined);
+  }
 }
 
 function testMessage<InterfaceType, MessageType extends IMessage & InterfaceType>(
@@ -35,8 +45,15 @@ function testMessage<InterfaceType, MessageType extends IMessage & InterfaceType
     // // Test using a message that was created through "decode"
     updateAndValidate(arena, factory.decode(arena, encoded));
     // Test using an arena with lazy decode mode
-    const eagerArena = new Arena(DecodingMode.LAZY);
-    updateAndValidate(eagerArena, factory.decode(eagerArena, encoded));
+    const lazyArena = new Arena(DecodingMode.LAZY);
+    updateAndValidate(lazyArena, factory.decode(lazyArena, encoded));
+    // Test with per-field reads, in both decode modes
+    withFieldReads(() => {
+      const fieldReadsArena = new Arena();
+      updateAndValidate(fieldReadsArena, factory.decode(fieldReadsArena, encoded));
+      const lazyFieldReadsArena = new Arena(DecodingMode.LAZY);
+      updateAndValidate(lazyFieldReadsArena, factory.decode(lazyFieldReadsArena, encoded));
+    });
   } catch (err: any) {
     console.error('Got error:', err);
     throw err;
@@ -2021,6 +2038,146 @@ describe('Valdi Proto Runtime', () => {
       const arena = new Arena(DecodingMode.LAZY);
       const message = test.Message.decode(arena, corruptedNestedMessage());
       expect(() => message.otherMessage).toThrowError(/test\.Message\.otherMessage/);
+    });
+  });
+
+  describe('per-field reads', () => {
+    function makeFieldReadsArena(): Arena {
+      let arena: Arena | undefined;
+      withFieldReads(() => {
+        arena = new Arena();
+      });
+      return arena!;
+    }
+
+    function messageFields() {
+      return (test.Message.create(new Arena(), {}).constructor as IMessageConstructor).fields;
+    }
+
+    function encodedMessage(): Uint8Array {
+      return test.Message.create(new Arena(), {
+        uint32: 42,
+        string: 'hello',
+        enum: test.Enum.VALUE_1,
+        selfMessage: { string: 'nested' },
+      }).encode();
+    }
+
+    it('fetches only the fields that are read', () => {
+      const arena = makeFieldReadsArena();
+      expect(arena.fieldReadsEnabled).toBe(true);
+      const bulk = spyOn(arena, 'getMessageFields').and.callThrough();
+      const single = spyOn(arena, 'getMessageField').and.callThrough();
+
+      const message = test.Message.decode(arena, encodedMessage());
+      expect(message.uint32).toBe(42);
+      expect(message.selfMessage?.string).toBe('nested');
+
+      // uint32 and selfMessage on the outer message, string on the nested one
+      expect(single).toHaveBeenCalledTimes(3);
+      expect(bulk).not.toHaveBeenCalled();
+    });
+
+    it('matches bulk reads field for field', () => {
+      const bytes = encodedMessage();
+      const perField = test.Message.decode(makeFieldReadsArena(), bytes);
+      const bulk = test.Message.decode(new Arena(), bytes);
+      for (const field of messageFields()) {
+        const expected = (bulk as any)[field.name];
+        const actual = (perField as any)[field.name];
+        if (expected instanceof Message) {
+          expect(actual.toPlainObject()).toEqual(expected.toPlainObject());
+        } else {
+          expect(actual).toEqual(expected);
+        }
+      }
+    });
+
+    it('switches to one bulk fetch after half the fields and keeps identities', () => {
+      const arena = makeFieldReadsArena();
+      const bulk = spyOn(arena, 'getMessageFields').and.callThrough();
+      const single = spyOn(arena, 'getMessageField').and.callThrough();
+
+      const message = test.Message.decode(arena, encodedMessage());
+      const nested = message.selfMessage;
+      expect(nested).toBeTruthy();
+      for (const field of messageFields()) {
+        (message as any)[field.name];
+      }
+
+      expect(bulk).toHaveBeenCalledTimes(1);
+      expect(single.calls.count()).toBeLessThanOrEqual(Math.max(1, messageFields().length >> 1));
+      expect(message.selfMessage).toBe(nested!);
+    });
+
+    it('reads a two-field message with two single fetches', () => {
+      const bytes = test.NewMessage.create(new Arena(), { oldValue: 'old', newValue: 'new' }).encode();
+      const arena = makeFieldReadsArena();
+      const bulk = spyOn(arena, 'getMessageFields').and.callThrough();
+      const single = spyOn(arena, 'getMessageField').and.callThrough();
+
+      const message = test.NewMessage.decode(arena, bytes);
+      expect(message.oldValue).toBe('old');
+      expect(message.newValue).toBe('new');
+
+      expect(single).toHaveBeenCalledTimes(2);
+      expect(bulk).not.toHaveBeenCalled();
+    });
+
+    it('reads each map entry in one fetch', () => {
+      const bytes = test.MapMessage.create(new Arena(), {
+        stringToString: new Map([
+          ['a', '1'],
+          ['b', '2'],
+          ['c', '3'],
+        ]),
+      }).encode();
+      const arena = makeFieldReadsArena();
+      const bulk = spyOn(arena, 'getMessageFields').and.callThrough();
+      const single = spyOn(arena, 'getMessageField').and.callThrough();
+
+      const map = test.MapMessage.decode(arena, bytes).stringToString;
+      expect(Array.from(map.entries())).toEqual([
+        ['a', '1'],
+        ['b', '2'],
+        ['c', '3'],
+      ]);
+
+      // One single fetch for the map field, then one bulk fetch per entry
+      expect(single).toHaveBeenCalledTimes(1);
+      expect(bulk).toHaveBeenCalledTimes(3);
+    });
+
+    it('reads everything in one fetch for toPlainObject', () => {
+      const arena = makeFieldReadsArena();
+      const bulk = spyOn(arena, 'getMessageFields').and.callThrough();
+      const single = spyOn(arena, 'getMessageField').and.callThrough();
+
+      const plain = test.Message.decode(arena, encodedMessage()).toPlainObject() as test.IMessage;
+
+      expect(plain.uint32).toBe(42);
+      expect(plain.selfMessage!.string).toBe('nested');
+      expect(single).not.toHaveBeenCalled();
+      // One for the outer message, one for the nested message
+      expect(bulk).toHaveBeenCalledTimes(2);
+    });
+
+    it('writes without fetching the other fields and clears one-of siblings', () => {
+      const arena = makeFieldReadsArena();
+      const bulk = spyOn(arena, 'getMessageFields').and.callThrough();
+
+      const message = test.OneOfMessage.create(arena, {});
+      message.string0 = 'first';
+      expect(message.string0).toBe('first');
+      message.string1 = 'second';
+      expect(message.string0).toBe('');
+      expect(message.string1).toBe('second');
+      expect(message.message0).toBeFalsy();
+      expect(bulk).not.toHaveBeenCalled();
+
+      const decoded = test.OneOfMessage.decode(new Arena(), message.encode());
+      expect(decoded.string0).toBe('');
+      expect(decoded.string1).toBe('second');
     });
   });
 

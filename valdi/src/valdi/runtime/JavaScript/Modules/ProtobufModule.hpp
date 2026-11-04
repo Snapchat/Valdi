@@ -54,6 +54,7 @@ public:
     JSValueRef arenaDecodeMessageDebugJSONAsync(JSFunctionNativeCallContext& callContext);
     JSValueRef arenaSetMessageField(JSFunctionNativeCallContext& callContext);
     JSValueRef arenaGetMessageFields(JSFunctionNativeCallContext& callContext);
+    JSValueRef arenaGetMessageField(JSFunctionNativeCallContext& callContext);
     JSValueRef arenaCopyMessage(JSFunctionNativeCallContext& callContext);
 
 protected:

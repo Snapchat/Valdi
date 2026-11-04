@@ -27,6 +27,12 @@ function toPlainObjectImpl(value: any): any {
 }
 
 /**
+ * Prototype key under which generated message classes expose a function that fetches every
+ * field of an instance in one native call.
+ */
+export const RESOLVE_ALL_FIELDS_KEY = '$resolveAllFields';
+
+/**
  * Base class for all message types
  */
 export class Message<MessageProps = {}> implements IMessage<MessageProps>, ConsoleRepresentable {
@@ -64,6 +70,7 @@ export class Message<MessageProps = {}> implements IMessage<MessageProps>, Conso
    * Eagerly recursively read the content of the message
    */
   toPlainObject(): MessageProps {
+    (this as any)[RESOLVE_ALL_FIELDS_KEY]?.(this);
     const out: any = {};
     for (const field of (this.constructor as IMessageConstructor).fields) {
       const fieldName = field.name;

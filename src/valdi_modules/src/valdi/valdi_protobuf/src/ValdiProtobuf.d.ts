@@ -135,6 +135,22 @@ export interface ValdiProtobufModule {
 
   getMessageFields(arena: INativeMessageArena, messageIndex: INativeMessageIndex): NativeFieldValues[];
 
+  /**
+   * Returns the value of a single field, in the same representation getMessageFields uses.
+   * Absent on implementations that only support getMessageFields.
+   */
+  getMessageField?(
+    arena: INativeMessageArena,
+    messageIndex: INativeMessageIndex,
+    fieldIndex: number,
+  ): NativeFieldValues | undefined;
+
+  /**
+   * True when the runtime config (VALDI_PROTOBUF_FIELD_READS) asks arenas to read fields
+   * one at a time through getMessageField.
+   */
+  fieldReadsEnabled?: boolean;
+
   copyMessage(
     arena: INativeMessageArena,
     messageIndex: INativeMessageIndex,

@@ -1,6 +1,6 @@
 import { StringMap } from 'coreutils/src/StringMap';
 import { makeMessageFields } from './FieldFactory';
-import { Message } from './Message';
+import { Message, RESOLVE_ALL_FIELDS_KEY } from './Message';
 import { IField, INativeMessageFactory } from './ValdiProtobuf';
 import { IArena, IDescriptor, IDescriptorPool, IMessage, IMessageConstructor } from './types';
 
@@ -51,8 +51,10 @@ export default class Descriptor implements IDescriptor {
 
       const messageFields = makeMessageFields(this.descriptorPool, fields);
 
+      Object.defineProperty(NewMessage.prototype, RESOLVE_ALL_FIELDS_KEY, { value: messageFields.resolveAll });
+
       let fieldIndex = 0;
-      for (const messageField of messageFields) {
+      for (const messageField of messageFields.fields) {
         const fieldName = fields[fieldIndex].name;
         try {
           Object.defineProperty(NewMessage.prototype, fieldName, {

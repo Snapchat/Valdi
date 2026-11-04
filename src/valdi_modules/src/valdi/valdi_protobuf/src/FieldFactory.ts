@@ -1,5 +1,6 @@
 import { lazyMap } from 'coreutils/src/ArrayUtils';
 import { StringMap } from 'coreutils/src/StringMap';
+import { RESOLVE_ALL_FIELDS_KEY } from './Message';
 import {
   FieldModifier,
   FieldType,
@@ -48,6 +49,12 @@ interface ValueConverterPair<JSType extends FieldValues, NativeType extends Nati
 
 // Key where the array containing the cached JS fields will be set on the IMessage instance
 const JS_FIELDS_KEY = Symbol('fields');
+// Key for the per-field cache used while an arena reads one field at a time: an array with
+// UNRESOLVED in the slots that have not been fetched yet (undefined is a legal fetched value).
+const JS_FIELD_VALUES_KEY = Symbol('fieldValues');
+// Key for the number of single-field fetches made on the instance so far.
+const JS_FIELD_FETCHES_KEY = Symbol('fieldFetches');
+const UNRESOLVED = Symbol('unresolved');
 
 const NOOP: ValueConverterPair<any, any> = {
   toNative: (arena, message, value) => value,
@@ -238,6 +245,8 @@ function mapValueConverterPair<JSType extends NonRepeatedFieldValues, NativeType
         }
 
         const item = itemFromNative(arena, message, value) as any as MapEntry;
+        // Both fields of the entry are read right away, so fetch them in one call
+        (item as any)[RESOLVE_ALL_FIELDS_KEY]?.(item);
 
         const mapKey = item.key;
         const mapValue = item.value;
@@ -320,32 +329,113 @@ function resolveFields(
     const arena = message.$arena;
     jsFields = arena.getMessageFields(message);
     (message as any)[JS_FIELDS_KEY] = jsFields;
+    const fieldValues = (message as any)[JS_FIELD_VALUES_KEY] as any[] | undefined;
 
     let index = 0;
     for (const converter of converters) {
-      const fromNative = converter?.fromNative;
-      if (fromNative) {
-        const unconvertedValue = jsFields[index];
-        if (unconvertedValue !== undefined) {
-          jsFields[index] = fromNative(arena, message, unconvertedValue);
+      const fieldValue = fieldValues?.[index];
+      if (fieldValues && fieldValue !== UNRESOLVED) {
+        // Keep the value an earlier single-field read handed out so its identity stays stable
+        jsFields[index] = fieldValue;
+      } else {
+        const fromNative = converter?.fromNative;
+        if (fromNative) {
+          const unconvertedValue = jsFields[index];
+          if (unconvertedValue !== undefined) {
+            jsFields[index] = fromNative(arena, message, unconvertedValue);
+          }
         }
       }
 
       index++;
+    }
+
+    if (fieldValues) {
+      (message as any)[JS_FIELD_VALUES_KEY] = undefined;
     }
   }
 
   return jsFields;
 }
 
-function clearOneOfFields(fields: readonly IField[], jsFields: FieldValue[], currentField: IField) {
+function fieldValuesForMessage(message: IMessage, fieldCount: number): any[] {
+  let fieldValues = (message as any)[JS_FIELD_VALUES_KEY] as any[] | undefined;
+  if (!fieldValues) {
+    fieldValues = new Array(fieldCount).fill(UNRESOLVED);
+    (message as any)[JS_FIELD_VALUES_KEY] = fieldValues;
+  }
+  return fieldValues;
+}
+
+/**
+ * Returns the JS value of one field. Fetches only that field when the arena reads per field,
+ * and falls back to one bulk fetch once the instance has asked for half of its fields that way
+ * and more than one field is still unfetched, since a native call per field then costs more
+ * than building the whole array once.
+ */
+function resolveField(
+  message: IMessage,
+  converters: readonly (ValueConverterPair<FieldValues, NativeFieldValues> | undefined)[],
+  index: number,
+): FieldValue {
+  const jsFields = (message as any)[JS_FIELDS_KEY] as any[] | undefined;
+  if (jsFields) {
+    return jsFields[index];
+  }
+
+  const arena = message.$arena;
+  if (!arena.fieldReadsEnabled) {
+    return resolveFields(message, converters)[index];
+  }
+
+  const fieldValues = fieldValuesForMessage(message, converters.length);
+  let value = fieldValues[index];
+  if (value !== UNRESOLVED) {
+    return value;
+  }
+
+  const fetches = ((message as any)[JS_FIELD_FETCHES_KEY] ?? 0) + 1;
+  if (fetches > Math.max(1, converters.length >> 1) && fetches < converters.length) {
+    return resolveFields(message, converters)[index];
+  }
+  (message as any)[JS_FIELD_FETCHES_KEY] = fetches;
+
+  value = arena.getMessageField!(message, index);
+  const fromNative = converters[index]?.fromNative;
+  if (fromNative && value !== undefined) {
+    value = fromNative(arena, message, value);
+  }
+  fieldValues[index] = value;
+  return value;
+}
+
+function storeField(
+  message: IMessage,
+  converters: readonly (ValueConverterPair<FieldValues, NativeFieldValues> | undefined)[],
+  index: number,
+  value: FieldValue,
+) {
+  const jsFields = (message as any)[JS_FIELDS_KEY] as any[] | undefined;
+  if (jsFields) {
+    jsFields[index] = value;
+  } else {
+    fieldValuesForMessage(message, converters.length)[index] = value;
+  }
+}
+
+function clearOneOfFields(
+  fields: readonly IField[],
+  message: IMessage,
+  converters: readonly (ValueConverterPair<FieldValues, NativeFieldValues> | undefined)[],
+  currentField: IField,
+) {
   for (let i = 0; i < fields.length; i++) {
     const field = fields[i];
     if (field === currentField || field.oneOfFieldIndex !== currentField.oneOfFieldIndex) {
       continue;
     }
 
-    jsFields[i] = undefined;
+    storeField(message, converters, i, undefined);
   }
 }
 
@@ -359,7 +449,7 @@ function makeMessageField(
   const defaultValue = defaultValueForField(fields[index]);
 
   function get(this: IMessage): any {
-    const value = resolveFields(this, converters)[index];
+    const value = resolveField(this, converters, index);
     if (value !== undefined) {
       return value;
     }
@@ -375,12 +465,10 @@ function makeMessageField(
           value = converter.preprocess(this.$arena, value);
         }
 
-        const jsFields = resolveFields(this, converters);
-
-        const currentValue = jsFields[index];
+        const currentValue = resolveField(this, converters, index);
 
         if (currentValue !== value) {
-          jsFields[index] = converter.postprocess ? converter.postprocess(value) : value;
+          storeField(this, converters, index, converter.postprocess ? converter.postprocess(value) : value);
 
           let nativeValue: NativeFieldValues | undefined;
           if (value !== undefined) {
@@ -390,7 +478,7 @@ function makeMessageField(
           this.$arena.setMessageField(this, field.index, converters.length, nativeValue);
 
           if (field.oneOfFieldIndex !== undefined) {
-            clearOneOfFields(fields, jsFields, field);
+            clearOneOfFields(fields, this, converters, field);
           }
         }
       },
@@ -406,17 +494,15 @@ function makeMessageField(
     return {
       get,
       set(this: IMessage, value: any) {
-        const jsFields = resolveFields(this, converters);
-
-        const currentValue = jsFields[index];
+        const currentValue = resolveField(this, converters, index);
 
         if (currentValue !== value) {
-          jsFields[index] = value;
+          storeField(this, converters, index, value);
 
           this.$arena.setMessageField(this, field.index, converters.length, value);
 
           if (field.oneOfFieldIndex !== undefined) {
-            clearOneOfFields(fields, jsFields, field);
+            clearOneOfFields(fields, this, converters, field);
           }
         }
       },
@@ -427,7 +513,16 @@ function makeMessageField(
   }
 }
 
-export function makeMessageFields(descriptorPool: IDescriptorPool, fields: readonly IField[]): IMessageField[] {
+export interface IMessageFields {
+  readonly fields: IMessageField[];
+  /**
+   * Fetches every field of the message in one native call, for callers that are about to read
+   * all of them.
+   */
+  resolveAll(message: IMessage): void;
+}
+
+export function makeMessageFields(descriptorPool: IDescriptorPool, fields: readonly IField[]): IMessageFields {
   const converters = fields.map(field => valueConverterPairForField(field, descriptorPool));
 
   const messageFields: IMessageField[] = [];
@@ -435,5 +530,10 @@ export function makeMessageFields(descriptorPool: IDescriptorPool, fields: reado
     messageFields.push(makeMessageField(fields, converters, i));
   }
 
-  return messageFields;
+  return {
+    fields: messageFields,
+    resolveAll(message: IMessage) {
+      resolveFields(message, converters);
+    },
+  };
 }

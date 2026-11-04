@@ -826,6 +826,35 @@ JSValueRef ProtobufModule::arenaGetMessageFields(JSFunctionNativeCallContext& ca
 }
 
 // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+JSValueRef ProtobufModule::arenaGetMessageField(JSFunctionNativeCallContext& callContext) {
+    auto arena = getArena(callContext, 0);
+    CHECK_CALL_CONTEXT(callContext);
+
+    auto messageIndex = getIndex(callContext, 1);
+    CHECK_CALL_CONTEXT(callContext);
+
+    auto fieldIndex = getIndex(callContext, 2);
+    CHECK_CALL_CONTEXT(callContext);
+
+    // Serialize descriptor access (e.g. message_type() on message-typed fields) against
+    // concurrent lazy DescriptorPool mutation from other JS runtimes.
+    auto factoryLocks = arena->lockRetainedMessageFactories();
+
+    auto* message = arena->getMessage(messageIndex, callContext.getExceptionTracker());
+    CHECK_CALL_CONTEXT(callContext);
+
+    const auto* descriptor = message->getDescriptor();
+
+    if (fieldIndex >= static_cast<size_t>(descriptor->field_count())) {
+        return callContext.throwError(onInvalidFieldsDescriptor());
+    }
+
+    const auto* fieldDescriptor = descriptor->field(static_cast<int>(fieldIndex));
+
+    return getProtobufMessageField(*arena, *message, fieldDescriptor, callContext);
+}
+
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 JSValueRef ProtobufModule::arenaCopyMessage(JSFunctionNativeCallContext& callContext) {
     auto arenaResult = getArena(callContext, 0);
     CHECK_CALL_CONTEXT(callContext);

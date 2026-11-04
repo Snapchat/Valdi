@@ -65,14 +65,28 @@ function nativeDecodingMode(decodingMode: DecodingMode | undefined): NativeDecod
   return decodingMode === DecodingMode.LAZY ? NATIVE_DECODING_MODE_LAZY : NATIVE_DECODING_MODE_EAGER;
 }
 
+let fieldReadsOverride: boolean | undefined;
+
+/**
+ * Forces per-field reads on or off for arenas created afterwards, regardless of the runtime
+ * config. Test only.
+ */
+export function setFieldReadsEnabledForTesting(enabled: boolean | undefined): void {
+  fieldReadsOverride = enabled;
+}
+
 export class Arena implements IArena {
   private protobuf: ValdiProtobufModule;
   private $native: INativeMessageArena;
+  readonly fieldReadsEnabled: boolean;
 
   constructor(decodingMode?: DecodingMode, encodingMode?: EncodingMode) {
     this.protobuf = getProtobufModule();
     const includeAllFields = encodingMode === EncodingMode.INCLUDE_ALL_FIELDS;
     this.$native = this.protobuf.createArena(nativeDecodingMode(decodingMode), includeAllFields);
+    this.fieldReadsEnabled =
+      (fieldReadsOverride ?? this.protobuf.fieldReadsEnabled === true) &&
+      typeof this.protobuf.getMessageField === 'function';
   }
 
   createMessage(constructor: IMessageConstructor): IMessage {
@@ -173,6 +187,10 @@ export class Arena implements IArena {
 
   getMessageFields(message: IMessage): any[] {
     return this.protobuf.getMessageFields(this.$native, message.$index);
+  }
+
+  getMessageField(message: IMessage, fieldIndex: number): any {
+    return this.protobuf.getMessageField!(this.$native, message.$index, fieldIndex);
   }
 
   setMessageField(message: IMessage, fieldIndex: number, totalFieldsLength: number, fieldValue: any): void {

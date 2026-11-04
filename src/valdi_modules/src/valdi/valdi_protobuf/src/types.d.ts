@@ -88,6 +88,12 @@ export interface IArena {
   batchEncodeMessageAsync(messages: readonly IMessage[]): Promise<Uint8Array[]>;
   encodeMessageToJSON(message: IMessage, printOptions: JSONPrintOptions | undefined): string;
   getMessageFields(message: IMessage): any[];
+  /**
+   * When true, message getters fetch one field at a time through getMessageField instead of
+   * materializing every field through getMessageFields on first access.
+   */
+  readonly fieldReadsEnabled?: boolean;
+  getMessageField?(message: IMessage, fieldIndex: number): any;
   setMessageField(message: IMessage, fieldIndex: number, totalFieldsLength: number, fieldValue: any): void;
   getMessageInstance(constructor: IMessageConstructor, messageIndex: INativeMessageIndex): IMessage;
   copyMessage(message: IMessage): IMessage;
