@@ -111,6 +111,11 @@ public:
         return std::find(_mmapModules.begin(), _mmapModules.end(), module) != _mmapModules.end();
     }
 
+    int heapLoadsOf(const char* module) const {
+        std::lock_guard<std::mutex> lock(_modulesMutex);
+        return static_cast<int>(std::count(_heapModules.begin(), _heapModules.end(), module));
+    }
+
     int totalPathCounters() const {
         return mmapSuccess + heap;
     }
@@ -209,11 +214,13 @@ protected:
         return *_wrapper;
     }
 
-    // Stands in for the end of a process: publishes what this launch missed and closes the pack.
-    void endLaunch() {
-        _wrapper->runtime->getResourceManager().flushPendingArchiveCachePublishes();
+    // Stands in for the end of a process: publishes what this launch missed and closes the pack. The runtime
+    // goes first because it can still be loading dependency bundles (valdi_core, coreutils) after loadModule
+    // returns, and a load that lands after the flush misses the pack. The shared cache outlives the runtime.
+    void endLaunch(const TemporaryDirectory& tmp) {
         _wrapper->teardown();
         _wrapper.reset();
+        ModuleArchiveCache::getShared(tmp.path(), "test")->flushPendingPublishes();
         ModuleArchiveCache::resetSharedInstancesForTesting();
     }
 
@@ -277,12 +284,12 @@ TEST_F(MmapModuleArchiveFixture, PackServesTheNextLaunch) {
         ASSERT_TRUE(result) << result.description();
         EXPECT_EQ(0, _metrics->mmapSuccess.load()) << "a new pack has nothing to serve";
         EXPECT_TRUE(_metrics->moduleTookHeapPath(kModuleName));
-        endLaunch();
+        endLaunch(tmp);
     }
     if (!packHasData(generationDirectory(tmp))) {
         GTEST_SKIP() << "Test module isn't ZStd-compressed in this build; the pack is not exercised";
     }
-    auto heapLoadsBefore = _metrics->heap.load();
+    auto testHeapLoadsBefore = _metrics->heapLoadsOf(kModuleName);
     auto pathCountersBefore = _metrics->totalPathCounters();
     auto latencyCallsBefore = _metrics->decompressLatencyCalls.load();
 
@@ -292,7 +299,9 @@ TEST_F(MmapModuleArchiveFixture, PackServesTheNextLaunch) {
     ASSERT_TRUE(result) << result.description();
 
     EXPECT_TRUE(_metrics->moduleTookMmapPath(kModuleName));
-    EXPECT_EQ(heapLoadsBefore, _metrics->heap.load());
+    // Only the test module is checked: the runtime also loads dependency bundles in the background, some
+    // before the test sets the cache directory, so they can take the heap path on either launch.
+    EXPECT_EQ(testHeapLoadsBefore, _metrics->heapLoadsOf(kModuleName));
     EXPECT_EQ(_metrics->totalPathCounters() - pathCountersBefore,
               _metrics->decompressLatencyCalls.load() - latencyCallsBefore);
 }
@@ -304,7 +313,7 @@ TEST_F(MmapModuleArchiveFixture, PackIsDeletedWhenTurnedOff) {
         auto& wrapper = makeWrapper(/*enablePack=*/true);
         wrapper.runtime->setMmapCacheDirectory(tmp.path(), "test");
         ASSERT_TRUE(wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources));
-        endLaunch();
+        endLaunch(tmp);
     }
     auto generation = generationDirectory(tmp);
     if (!packHasData(generation)) {
