@@ -37,6 +37,12 @@ class ValdiTweaksWiringTest {
         assertTrue(ValdiTweaks(enableAtomicInitialAutoRenderState = true).enableAtomicInitialAutoRenderState)
     }
 
+    @Test
+    fun scrollPinchWhileDraggingDefaultsOffAndCanBeEnabled() {
+        assertFalse(ValdiTweaks().enableScrollPinchWhileDragging)
+        assertTrue(ValdiTweaks(enableScrollPinchWhileDragging = true).enableScrollPinchWhileDragging)
+    }
+
     /**
      * Tweaks this test knowingly does not require a consumer for. Each entry needs a reason — an
      * unexplained entry is the same silent drop this test exists to catch.

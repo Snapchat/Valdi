@@ -55,6 +55,12 @@ open class DragGestureRecognizer(
         }
     }
 
+    protected fun cancelWithoutMomentum(event: MotionEvent) {
+        velocityX = 0f
+        velocityY = 0f
+        cancel(event)
+    }
+
     private fun recycleVelocityTracker() {
         this.velocityTracker?.recycle()
         this.velocityTracker = null

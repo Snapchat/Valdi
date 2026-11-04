@@ -58,4 +58,13 @@ data class ValdiTweaks(
           * crash every launch.
          */
          val disableModuleArchiveCacheForBuild: Boolean = false,
+         /**
+          * When true, a scroll view with `onPinch` pauses its drag while a second finger is down, resumes it
+          * from the remaining finger, and ends the pinch when either finger lifts. When false (default),
+          * scroll views behave as before: the drag keeps running during a pinch and the pinch ends only
+          * when the last finger lifts. Needs the V2 pinch recognizer and the legacy touch dispatcher. A
+          * pause is a full drag end: the scroll view runs `onDragEnding`, paging snap, overscroll
+          * bounce-back and `onScrollEnd`, and the resume emits a fresh `onDragStart`, all within one touch.
+         */
+         val enableScrollPinchWhileDragging: Boolean = false,
 )

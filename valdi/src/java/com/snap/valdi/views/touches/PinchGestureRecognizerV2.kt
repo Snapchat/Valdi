@@ -6,7 +6,8 @@ import android.view.View
 class PinchGestureRecognizerV2 (
         view: View,
         val listener: PinchGestureRecognizerListener,
-        val resetDetector: Boolean = false
+        val resetDetector: Boolean = false,
+        val endsOnPointerLift: Boolean = false
 ) : ValdiGestureRecognizer(view){
 
     var scale = 1.0f
@@ -31,6 +32,14 @@ class PinchGestureRecognizerV2 (
     }
 
     override fun onUpdate(event: MotionEvent) {
+        if (endsOnPointerLift && event.actionMasked == MotionEvent.ACTION_POINTER_UP && event.pointerCount <= 2) {
+            pinchDetector.reset()
+            if (isActive) {
+                // Ends through cancel() so the recognizer stays a dispatcher candidate and can begin again.
+                cancel(event)
+            }
+            return
+        }
         pinchDetector.onTouchEvent(event)
     }
 

@@ -149,6 +149,10 @@ open class ValdiScrollView(context: Context) : ValdiView(context, attributeSet(c
         get() = dragGestureRecognizer.stopScrollingOnTouch
         set(value) { dragGestureRecognizer.stopScrollingOnTouch = value }
 
+    var endsDragOnAdditionalPointer: Boolean
+        get() = dragGestureRecognizer.endsOnAdditionalPointer
+        set(value) { dragGestureRecognizer.endsOnAdditionalPointer = value }
+
     var fadingEdgeStartEnabled: Boolean = true
         set(value) {
             if (field != value) {

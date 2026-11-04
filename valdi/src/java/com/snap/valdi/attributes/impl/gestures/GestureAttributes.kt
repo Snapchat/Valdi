@@ -2,11 +2,13 @@ package com.snap.valdi.attributes.impl.gestures
 
 import android.view.View
 import android.view.ViewConfiguration
+import com.snap.valdi.ValdiTweaks
 import com.snap.valdi.attributes.impl.animations.ValdiAnimator
 import com.snap.valdi.callable.ValdiFunction
 import com.snap.valdi.extensions.ViewUtils
 import com.snap.valdi.utils.CoordinateResolver
 import com.snap.valdi.views.ValdiRootView
+import com.snap.valdi.views.ValdiScrollView
 import com.snap.valdi.views.touches.DoubleTapGestureRecognizer
 import com.snap.valdi.views.touches.DragGestureRecognizer
 import com.snap.valdi.views.touches.GestureRecognizers
@@ -18,7 +20,11 @@ import com.snap.valdi.views.touches.RotateGestureRecognizerV2
 import com.snap.valdi.views.touches.TapGestureRecognizer
 import com.snap.valdi.views.touches.TouchGestureRecognizer
 
-class GestureAttributes(private val coordinateResolver: CoordinateResolver) {
+class GestureAttributes(
+    private val coordinateResolver: CoordinateResolver,
+    private val tweaksFor: (View) -> ValdiTweaks? = { ViewUtils.findValdiContext(it)?.runtimeOrNull?.manager?.tweaks },
+    private val rootFor: (View) -> ValdiRootView? = { ViewUtils.findValdiContext(it)?.rootView }
+) {
 
     fun applyHitTest(view: View, hitTest: ValdiFunction) {
         val gestureRecognizer = addGestureRecognizersIfNeeded(view)
@@ -77,16 +83,28 @@ class GestureAttributes(private val coordinateResolver: CoordinateResolver) {
 
     fun applyOnPinch(view: View, action: ValdiFunction, predicate: ValdiFunction?, additionalValue: Any?) {
         val gestureRecognizer = addGestureRecognizersIfNeeded(view)
-        val pinchRecognizer = if (enablePinchGestureRecognizeV2(view)) {
-            PinchGestureRecognizerV2(view, PinchContext(action, predicate), enableV2GestureDetectorReset(view))
+        val usesPinchV2 = enablePinchGestureRecognizeV2(view)
+        val pinchWhileDragging = usesPinchV2 && view is ValdiScrollView &&
+            rootFor(view)?.useNewMultiTouchExperience != true &&
+            tweaksFor(view)?.enableScrollPinchWhileDragging == true
+        val pinchRecognizer = if (usesPinchV2) {
+            PinchGestureRecognizerV2(
+                view,
+                PinchContext(action, predicate),
+                enableV2GestureDetectorReset(view),
+                endsOnPointerLift = pinchWhileDragging
+            )
         } else {
             PinchGestureRecognizer(view, PinchContext(action, predicate))
         }
         gestureRecognizer.addGestureRecognizer(pinchRecognizer)
+        (view as? ValdiScrollView)?.endsDragOnAdditionalPointer = pinchWhileDragging
     }
 
     fun resetOnPinch(view: View) {
         removeGestureRecognizerIfNeeded(view, PinchGestureRecognizer::class.java)
+        removeGestureRecognizerIfNeeded(view, PinchGestureRecognizerV2::class.java)
+        (view as? ValdiScrollView)?.endsDragOnAdditionalPointer = false
     }
 
     fun applyOnRotate(view: View, action: ValdiFunction, predicate: ValdiFunction?, additionalValue: Any?) {
@@ -118,7 +136,7 @@ class GestureAttributes(private val coordinateResolver: CoordinateResolver) {
         val rootView = if (view is ValdiRootView) {
             view
         } else {
-            ViewUtils.findValdiContext(view)?.rootView
+            rootFor(view)
         }
         return rootView?.enablePinchGestureRecognizeV2 ?: false
     }
