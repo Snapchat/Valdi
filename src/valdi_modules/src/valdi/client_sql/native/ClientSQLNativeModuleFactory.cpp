@@ -108,8 +108,7 @@ Result<SQLiteStatement> prepareStatement(sqlite3* database, const StringBox& sql
 
     sqlite3_stmt* statement = nullptr;
     const char* tail = nullptr;
-    const auto status = sqlite3_prepare_v2(
-        database, sql.getCStr(), static_cast<int>(sql.length()), &statement, &tail);
+    const auto status = sqlite3_prepare_v2(database, sql.getCStr(), static_cast<int>(sql.length()), &statement, &tail);
     if (status != SQLITE_OK) {
         return Error(STRING_FORMAT("ClientSQLNative prepare failed: {}", clientSQLSQLiteError(database)));
     }
@@ -123,12 +122,8 @@ Result<SQLiteStatement> prepareStatement(sqlite3* database, const StringBox& sql
     while (tail != nullptr && tail < sqlEnd) {
         sqlite3_stmt* trailingStatement = nullptr;
         const char* nextTail = nullptr;
-        const auto trailingStatus = sqlite3_prepare_v2(
-            database,
-            tail,
-            static_cast<int>(sqlEnd - tail),
-            &trailingStatement,
-            &nextTail);
+        const auto trailingStatus =
+            sqlite3_prepare_v2(database, tail, static_cast<int>(sqlEnd - tail), &trailingStatement, &nextTail);
         SQLiteStatement preparedTrailingStatement(trailingStatement);
         if (trailingStatus != SQLITE_OK || preparedTrailingStatement != nullptr) {
             return Error("ClientSQLNative SQL must contain exactly one statement");
@@ -151,7 +146,8 @@ Result<int32_t> readUserVersion(sqlite3* database) {
     auto statement = statementResult.moveValue();
     const auto status = sqlite3_step(statement.get());
     if (status != SQLITE_ROW) {
-        return Error(STRING_FORMAT("ClientSQLNative failed to read schema version: {}", clientSQLSQLiteError(database)));
+        return Error(
+            STRING_FORMAT("ClientSQLNative failed to read schema version: {}", clientSQLSQLiteError(database)));
     }
 
     return sqlite3_column_int(statement.get(), 0);
@@ -166,18 +162,16 @@ Result<Void> enableAndVerifyWAL(sqlite3* database) {
     auto statement = statementResult.moveValue();
     const auto status = sqlite3_step(statement.get());
     if (status != SQLITE_ROW) {
-        return Error(STRING_FORMAT(
-            "ClientSQLNative failed to enable WAL mode: {}", clientSQLSQLiteError(database)));
+        return Error(STRING_FORMAT("ClientSQLNative failed to enable WAL mode: {}", clientSQLSQLiteError(database)));
     }
 
     const auto* mode = sqlite3_column_text(statement.get(), 0);
     const auto modeLength = sqlite3_column_bytes(statement.get(), 0);
     if (mode == nullptr || modeLength != 3 || sqlite3_strnicmp(reinterpret_cast<const char*>(mode), "wal", 3) != 0) {
-        const auto actualMode = mode == nullptr
-            ? std::string("<null>")
-            : std::string(reinterpret_cast<const char*>(mode), static_cast<size_t>(std::max(modeLength, 0)));
-        return Error(STRING_FORMAT(
-            "ClientSQLNative requires WAL journal mode but SQLite selected '{}'", actualMode));
+        const auto actualMode = mode == nullptr ? std::string("<null>") :
+                                                  std::string(reinterpret_cast<const char*>(mode),
+                                                              static_cast<size_t>(std::max(modeLength, 0)));
+        return Error(STRING_FORMAT("ClientSQLNative requires WAL journal mode but SQLite selected '{}'", actualMode));
     }
 
     return Void();
@@ -189,8 +183,7 @@ Error makeSQLExecutionError(sqlite3* database, std::string_view operation) {
 
 Result<Void> configureSQLiteConnection(sqlite3* database, bool writer) {
     if (sqlite3_libversion_number() < kMinimumClientSQLSQLiteVersion) {
-        return Error(STRING_FORMAT(
-            "ClientSQLNative requires SQLite 3.16.0 or newer; found {}", sqlite3_libversion()));
+        return Error(STRING_FORMAT("ClientSQLNative requires SQLite 3.16.0 or newer; found {}", sqlite3_libversion()));
     }
     sqlite3_busy_timeout(database, 5000);
 
@@ -301,16 +294,12 @@ Result<Void> bindParameters(sqlite3* database, sqlite3_stmt* statement, const Va
                 static constexpr Byte emptyBlobSentinel = 0;
                 const auto* blobData = buffer.size() == 0 ? &emptyBlobSentinel : buffer.data();
                 status = sqlite3_bind_blob(
-                    statement,
-                    sqliteIndex,
-                    blobData,
-                    static_cast<int>(buffer.size()),
-                    sqliteTransient());
+                    statement, sqliteIndex, blobData, static_cast<int>(buffer.size()), sqliteTransient());
                 break;
             }
             default:
-                return Error(STRING_FORMAT(
-                    "ClientSQLNative unsupported parameter type '{}'", valueTypeToString(parameter.getType())));
+                return Error(STRING_FORMAT("ClientSQLNative unsupported parameter type '{}'",
+                                           valueTypeToString(parameter.getType())));
         }
 
         auto bindResult = checkSQLiteStatus(database, status, "bind");
@@ -332,9 +321,9 @@ Result<Value> sqliteColumnToValue(sqlite3_stmt* statement, int columnIndex) {
                 return Value(static_cast<int32_t>(value));
             }
             if (value < -kMaxSafeJavaScriptInteger || value > kMaxSafeJavaScriptInteger) {
-                return Error(STRING_FORMAT(
-                    "ClientSQLNative integer value {} exceeds JavaScript's exact integer range; store 64-bit identifiers as TEXT",
-                    value));
+                return Error(STRING_FORMAT("ClientSQLNative integer value {} exceeds JavaScript's exact integer range; "
+                                           "store 64-bit identifiers as TEXT",
+                                           value));
             }
             return Value(static_cast<double>(value));
         }
@@ -344,8 +333,8 @@ Result<Value> sqliteColumnToValue(sqlite3_stmt* statement, int columnIndex) {
             const auto* text = sqlite3_column_text(statement, columnIndex);
             const auto byteCount = sqlite3_column_bytes(statement, columnIndex);
             if (byteCount < 0) {
-                return Error(STRING_FORMAT(
-                    "ClientSQLNative SQLite TEXT column {} returned an invalid length", columnIndex));
+                return Error(
+                    STRING_FORMAT("ClientSQLNative SQLite TEXT column {} returned an invalid length", columnIndex));
             }
             if (byteCount == 0) {
                 return Value(StringBox::emptyString());
@@ -361,8 +350,8 @@ Result<Value> sqliteColumnToValue(sqlite3_stmt* statement, int columnIndex) {
             const auto* data = sqlite3_column_blob(statement, columnIndex);
             const auto byteCount = sqlite3_column_bytes(statement, columnIndex);
             if (byteCount < 0) {
-                return Error(STRING_FORMAT(
-                    "ClientSQLNative SQLite BLOB column {} returned an invalid length", columnIndex));
+                return Error(
+                    STRING_FORMAT("ClientSQLNative SQLite BLOB column {} returned an invalid length", columnIndex));
             }
             if (byteCount > 0 && data == nullptr) {
                 return Error(STRING_FORMAT(
@@ -396,9 +385,9 @@ Result<Value> sqliteRowToValue(sqlite3_stmt* statement) {
 
 Result<Void> addQueryMaterializationBytes(size_t byteCount, size_t* materializedByteSize) {
     if (byteCount > kClientSQLMaxQueryResultBytes - *materializedByteSize) {
-        return Error(STRING_FORMAT(
-            "ClientSQLNative query result exceeds the {} byte materialization limit; add a LIMIT clause or select less data",
-            kClientSQLMaxQueryResultBytes));
+        return Error(STRING_FORMAT("ClientSQLNative query result exceeds the {} byte materialization limit; add a "
+                                   "LIMIT clause or select less data",
+                                   kClientSQLMaxQueryResultBytes));
     }
     *materializedByteSize += byteCount;
     return Void();
@@ -408,19 +397,18 @@ Result<size_t> sqliteRowMaterializedByteSize(sqlite3_stmt* statement) {
     size_t materializedByteSize = kClientSQLQueryResultRowOverheadBytes;
     const auto columnCount = sqlite3_column_count(statement);
     for (int columnIndex = 0; columnIndex < columnCount; ++columnIndex) {
-        auto overheadResult = addQueryMaterializationBytes(
-            kClientSQLQueryResultCellOverheadBytes, &materializedByteSize);
+        auto overheadResult =
+            addQueryMaterializationBytes(kClientSQLQueryResultCellOverheadBytes, &materializedByteSize);
         if (!overheadResult) {
             return overheadResult.moveError();
         }
 
         const auto* columnName = sqlite3_column_name(statement, columnIndex);
         if (columnName == nullptr) {
-            return Error(STRING_FORMAT(
-                "ClientSQLNative SQLite column {} returned a null name", columnIndex));
+            return Error(STRING_FORMAT("ClientSQLNative SQLite column {} returned a null name", columnIndex));
         }
-        auto columnNameResult = addQueryMaterializationBytes(
-            std::string_view(columnName).size(), &materializedByteSize);
+        auto columnNameResult =
+            addQueryMaterializationBytes(std::string_view(columnName).size(), &materializedByteSize);
         if (!columnNameResult) {
             return columnNameResult.moveError();
         }
@@ -435,8 +423,8 @@ Result<size_t> sqliteRowMaterializedByteSize(sqlite3_stmt* statement) {
             case SQLITE_BLOB: {
                 const auto byteCount = sqlite3_column_bytes(statement, columnIndex);
                 if (byteCount < 0) {
-                    return Error(STRING_FORMAT(
-                        "ClientSQLNative SQLite column {} returned an invalid length", columnIndex));
+                    return Error(
+                        STRING_FORMAT("ClientSQLNative SQLite column {} returned an invalid length", columnIndex));
                 }
                 columnByteSize = static_cast<size_t>(byteCount);
                 break;
@@ -591,8 +579,7 @@ Result<Value> queryStatement(sqlite3* database, const ClientSQLRequest& request)
         if (!rowMaterializedByteSize) {
             return rowMaterializedByteSize.moveError();
         }
-        auto sizeResult = addQueryMaterializationBytes(
-            rowMaterializedByteSize.value(), &materializedByteSize);
+        auto sizeResult = addQueryMaterializationBytes(rowMaterializedByteSize.value(), &materializedByteSize);
         if (!sizeResult) {
             return sizeResult.moveError();
         }
@@ -604,19 +591,15 @@ Result<Value> queryStatement(sqlite3* database, const ClientSQLRequest& request)
     }
 }
 
-using ClientSQLValueCallback =
-    snap::valdi_modules::client_sql::ClientSQLNativeConnectionProxy::ExecuteCallbackFn;
-using ClientSQLArrayCallback =
-    snap::valdi_modules::client_sql::ClientSQLNativeConnectionProxy::QueryCallbackFn;
+using ClientSQLValueCallback = snap::valdi_modules::client_sql::ClientSQLNativeConnectionProxy::ExecuteCallbackFn;
+using ClientSQLArrayCallback = snap::valdi_modules::client_sql::ClientSQLNativeConnectionProxy::QueryCallbackFn;
 
 struct ClientSQLTransactionCompletionState {
     std::atomic_bool completed{false};
     std::atomic<task_id_t> watchdogTaskId{DispatchQueue::TaskIDNull};
 };
 
-void notifyClientSQLCallbackSuccess(
-    const ClientSQLValueCallback& callback,
-    Value value) {
+void notifyClientSQLCallbackSuccess(const ClientSQLValueCallback& callback, Value value) {
     callback(std::move(value), std::nullopt);
 }
 
@@ -624,9 +607,7 @@ void notifyClientSQLCallbackError(const ClientSQLValueCallback& callback, Error 
     callback(Value::undefined(), error.getMessage());
 }
 
-void notifyClientSQLCallbackSuccess(
-    const ClientSQLArrayCallback& callback,
-    Value value) {
+void notifyClientSQLCallbackSuccess(const ClientSQLArrayCallback& callback, Value value) {
     auto array = value.getArrayRef();
     if (array == nullptr) {
         callback(std::nullopt, std::nullopt);
@@ -659,14 +640,12 @@ public:
     Ref<ClientSQLConnection> openHandle(ClientSQLOpenRequest request);
     void execute(const Ref<ClientSQLConnection>& connection, ClientSQLValueCallback callback, ClientSQLRequest request);
     void query(const Ref<ClientSQLConnection>& connection, ClientSQLArrayCallback callback, ClientSQLRequest request);
-    void queryOnWriter(
-        const Ref<ClientSQLConnection>& connection,
-        ClientSQLArrayCallback callback,
-        ClientSQLRequest request);
-    void transaction(
-        const Ref<ClientSQLConnection>& connection,
-        snap::valdi_modules::client_sql::ClientSQLNativeConnectionProxy::TransactionBodyFn body,
-        ClientSQLValueCallback callback);
+    void queryOnWriter(const Ref<ClientSQLConnection>& connection,
+                       ClientSQLArrayCallback callback,
+                       ClientSQLRequest request);
+    void transaction(const Ref<ClientSQLConnection>& connection,
+                     snap::valdi_modules::client_sql::ClientSQLNativeConnectionProxy::TransactionBodyFn body,
+                     ClientSQLValueCallback callback);
     void debugInfo(const Ref<ClientSQLConnection>& connection, ClientSQLValueCallback callback);
     void executeInTransaction(const Ref<ClientSQLConnection>& connection,
                               uint64_t transactionId,
@@ -676,11 +655,10 @@ public:
                             uint64_t transactionId,
                             ClientSQLArrayCallback callback,
                             ClientSQLRequest request);
-    void finishTransaction(
-        uint64_t transactionId,
-        ClientSQLValueCallback callback,
-        Value value,
-        std::optional<StringBox> error);
+    void finishTransaction(uint64_t transactionId,
+                           ClientSQLValueCallback callback,
+                           Value value,
+                           std::optional<StringBox> error);
     void closeHandle(const Ref<ClientSQLConnection>& connection, ClientSQLValueCallback callback);
     void abandonHandle();
     bool isTransactionOwner(const ClientSQLConnection* connection) const;
@@ -692,11 +670,10 @@ private:
     void enqueueWriterWork(DispatchFunction work, bool allowDuringTransaction);
     void runWriterWorkOnWriterThread(DispatchFunction work, bool allowDuringTransaction);
     void drainDeferredWriterWorkOnWriterThread();
-    void finishTransactionOnWriterThread(
-        uint64_t transactionId,
-        ClientSQLValueCallback callback,
-        Value value,
-        std::optional<StringBox> error);
+    void finishTransactionOnWriterThread(uint64_t transactionId,
+                                         ClientSQLValueCallback callback,
+                                         Value value,
+                                         std::optional<StringBox> error);
     bool hasActiveTransaction(uint64_t transactionId) const;
 
     Ref<ClientSQLQueueConnection> _writerConnection;
@@ -713,8 +690,7 @@ private:
     std::optional<std::string> _schemaFingerprint;
 };
 
-class ClientSQLConnection final
-    : public snap::valdi_modules::client_sql::ClientSQLNativeConnectionProxy {
+class ClientSQLConnection final : public snap::valdi_modules::client_sql::ClientSQLNativeConnectionProxy {
 public:
     explicit ClientSQLConnection(Ref<ClientSQLDatabaseCoordinator> coordinator)
         : _coordinator(std::move(coordinator)) {}
@@ -756,10 +732,7 @@ public:
         return Void();
     }
 
-    void execute(
-        StringBox sql,
-        std::optional<std::vector<Value>> parameters,
-        ExecuteCallbackFn callback) final {
+    void execute(StringBox sql, std::optional<std::vector<Value>> parameters, ExecuteCallbackFn callback) final {
         if (isClosed()) {
             notifyClientSQLCallbackError(callback, Error("ClientSQLNative connection is closed"));
             return;
@@ -779,15 +752,10 @@ public:
         coordinator->execute(
             strongSmallRef(this),
             std::move(callback),
-            ClientSQLRequest{
-                .sql = std::move(sql),
-                .parameters = makeClientSQLParameters(std::move(parameters))});
+            ClientSQLRequest{.sql = std::move(sql), .parameters = makeClientSQLParameters(std::move(parameters))});
     }
 
-    void query(
-        StringBox sql,
-        std::optional<std::vector<Value>> parameters,
-        QueryCallbackFn callback) final {
+    void query(StringBox sql, std::optional<std::vector<Value>> parameters, QueryCallbackFn callback) final {
         if (isClosed()) {
             notifyClientSQLCallbackError(callback, Error("ClientSQLNative connection is closed"));
             return;
@@ -800,22 +768,18 @@ public:
         }
         if (coordinator->isTransactionOwner(this)) {
             notifyClientSQLCallbackError(
-                callback,
-                Error("ClientSQLNative parent connection query is not allowed inside its transaction body"));
+                callback, Error("ClientSQLNative parent connection query is not allowed inside its transaction body"));
             return;
         }
         coordinator->query(
             strongSmallRef(this),
             std::move(callback),
-            ClientSQLRequest{
-                .sql = std::move(sql),
-                .parameters = makeClientSQLParameters(std::move(parameters))});
+            ClientSQLRequest{.sql = std::move(sql), .parameters = makeClientSQLParameters(std::move(parameters))});
     }
 
-    void queryOnWriter(
-        StringBox sql,
-        std::optional<std::vector<Value>> parameters,
-        QueryOnWriterCallbackFn callback) final {
+    void queryOnWriter(StringBox sql,
+                       std::optional<std::vector<Value>> parameters,
+                       QueryOnWriterCallbackFn callback) final {
         if (isClosed()) {
             notifyClientSQLCallbackError(callback, Error("ClientSQLNative connection is closed"));
             return;
@@ -828,16 +792,13 @@ public:
         }
         if (coordinator->isTransactionOwner(this)) {
             notifyClientSQLCallbackError(
-                callback,
-                Error("ClientSQLNative parent connection query is not allowed inside its transaction body"));
+                callback, Error("ClientSQLNative parent connection query is not allowed inside its transaction body"));
             return;
         }
         coordinator->queryOnWriter(
             strongSmallRef(this),
             std::move(callback),
-            ClientSQLRequest{
-                .sql = std::move(sql),
-                .parameters = makeClientSQLParameters(std::move(parameters))});
+            ClientSQLRequest{.sql = std::move(sql), .parameters = makeClientSQLParameters(std::move(parameters))});
     }
 
     void transaction(TransactionBodyFn body, TransactionCallbackFn callback) final {
@@ -882,8 +843,7 @@ public:
         }
         if (coordinator->isTransactionOwner(this)) {
             notifyClientSQLCallbackError(
-                callback,
-                Error("ClientSQLNative parent connection close is not allowed inside its transaction body"));
+                callback, Error("ClientSQLNative parent connection close is not allowed inside its transaction body"));
             return;
         }
         if (_closed.exchange(true)) {
@@ -919,41 +879,28 @@ private:
     std::atomic_bool _closed{false};
 };
 
-class ClientSQLTransaction final
-    : public snap::valdi_modules::client_sql::ClientSQLNativeTransactionProxy {
+class ClientSQLTransaction final : public snap::valdi_modules::client_sql::ClientSQLNativeTransactionProxy {
 public:
     ClientSQLTransaction(Ref<ClientSQLDatabaseCoordinator> coordinator,
                          Ref<ClientSQLConnection> connection,
                          uint64_t transactionId)
-        : _coordinator(std::move(coordinator)),
-          _connection(std::move(connection)),
-          _transactionId(transactionId) {}
+        : _coordinator(std::move(coordinator)), _connection(std::move(connection)), _transactionId(transactionId) {}
     ~ClientSQLTransaction() override = default;
 
-    void execute(
-        StringBox sql,
-        std::optional<std::vector<Value>> parameters,
-        ExecuteCallbackFn callback) final {
+    void execute(StringBox sql, std::optional<std::vector<Value>> parameters, ExecuteCallbackFn callback) final {
         _coordinator->executeInTransaction(
             _connection,
             _transactionId,
             std::move(callback),
-            ClientSQLRequest{
-                .sql = std::move(sql),
-                .parameters = makeClientSQLParameters(std::move(parameters))});
+            ClientSQLRequest{.sql = std::move(sql), .parameters = makeClientSQLParameters(std::move(parameters))});
     }
 
-    void query(
-        StringBox sql,
-        std::optional<std::vector<Value>> parameters,
-        QueryCallbackFn callback) final {
+    void query(StringBox sql, std::optional<std::vector<Value>> parameters, QueryCallbackFn callback) final {
         _coordinator->queryInTransaction(
             _connection,
             _transactionId,
             std::move(callback),
-            ClientSQLRequest{
-                .sql = std::move(sql),
-                .parameters = makeClientSQLParameters(std::move(parameters))});
+            ClientSQLRequest{.sql = std::move(sql), .parameters = makeClientSQLParameters(std::move(parameters))});
     }
 
 private:
@@ -962,9 +909,8 @@ private:
     uint64_t _transactionId;
 };
 
-ClientSQLDatabaseCoordinator::ClientSQLDatabaseCoordinator(
-    const Ref<IDispatchQueue>& resourceReleaseQueue,
-    std::chrono::milliseconds transactionTimeout)
+ClientSQLDatabaseCoordinator::ClientSQLDatabaseCoordinator(const Ref<IDispatchQueue>& resourceReleaseQueue,
+                                                           std::chrono::milliseconds transactionTimeout)
     : _resourceReleaseQueue(resourceReleaseQueue), _transactionTimeout(transactionTimeout) {
     gClientSQLLiveCoordinatorCount.fetch_add(1);
     auto writerQueue = createClientSQLDedicatedQueue(STRING_LITERAL("Valdi ClientSQL Writer"));
@@ -987,22 +933,20 @@ ClientSQLDatabaseCoordinator::~ClientSQLDatabaseCoordinator() {
     auto writerConnection = std::move(_writerConnection);
     auto readerConnections = std::move(_readerConnections);
     const auto* currentQueue = DispatchQueue::getCurrent();
-    const auto isDestroyingOnOwnedQueue = currentQueue != nullptr &&
+    const auto isDestroyingOnOwnedQueue =
+        currentQueue != nullptr &&
         ((writerConnection != nullptr && currentQueue == writerConnection->queue.get()) ||
-         std::any_of(
-             readerConnections.begin(), readerConnections.end(), [currentQueue](const auto& readerConnection) {
-                 return currentQueue == readerConnection->queue.get();
-             }));
+         std::any_of(readerConnections.begin(), readerConnections.end(), [currentQueue](const auto& readerConnection) {
+             return currentQueue == readerConnection->queue.get();
+         }));
     // The final coordinator ref is commonly released by one of its own queue
     // tasks. Transfer the queue-owning refs before that task frame unwinds.
-    if (isDestroyingOnOwnedQueue && _resourceReleaseQueue != nullptr &&
-        _resourceReleaseQueue.get() != currentQueue) {
-        _resourceReleaseQueue->async(
-            [writerConnection = std::move(writerConnection),
-             readerConnections = std::move(readerConnections)]() mutable {
-                readerConnections.clear();
-                writerConnection = nullptr;
-            });
+    if (isDestroyingOnOwnedQueue && _resourceReleaseQueue != nullptr && _resourceReleaseQueue.get() != currentQueue) {
+        _resourceReleaseQueue->async([writerConnection = std::move(writerConnection),
+                                      readerConnections = std::move(readerConnections)]() mutable {
+            readerConnections.clear();
+            writerConnection = nullptr;
+        });
     }
 }
 
@@ -1013,18 +957,20 @@ bool ClientSQLDatabaseCoordinator::hasWriterQueue() const {
 Ref<ClientSQLConnection> ClientSQLDatabaseCoordinator::openHandle(ClientSQLOpenRequest request) {
     _activeHandles.fetch_add(1);
     auto connection = makeShared<ClientSQLConnection>(strongSmallRef(this));
-    enqueueWriterWork([self = strongSmallRef(this), connection, request = std::move(request)]() {
-        if (connection->isClosed()) {
-            return;
-        }
+    enqueueWriterWork(
+        [self = strongSmallRef(this), connection, request = std::move(request)]() {
+            if (connection->isClosed()) {
+                return;
+            }
 
-        auto openResult = self->ensureOpen(request);
-        if (!openResult) {
-            connection->markOpenError(openResult.moveError());
-            return;
-        }
-        connection->markOpenSuccess();
-    }, false);
+            auto openResult = self->ensureOpen(request);
+            if (!openResult) {
+                connection->markOpenError(openResult.moveError());
+                return;
+            }
+            connection->markOpenSuccess();
+        },
+        false);
     return connection;
 }
 
@@ -1055,9 +1001,8 @@ void ClientSQLDatabaseCoordinator::drainDeferredWriterWorkOnWriterThread() {
 Result<Void> ClientSQLDatabaseCoordinator::ensureOpen(const ClientSQLOpenRequest& request) {
     const auto requestFingerprint = schemaFingerprint(request);
     if (_schemaFingerprint.has_value() && _schemaFingerprint.value() != requestFingerprint) {
-        return Error(STRING_FORMAT(
-            "ClientSQLNative database '{}' is already open with a different schema fingerprint",
-            request.name));
+        return Error(STRING_FORMAT("ClientSQLNative database '{}' is already open with a different schema fingerprint",
+                                   request.name));
     }
 
     if (_writerConnection->database == nullptr) {
@@ -1073,12 +1018,11 @@ Result<Void> ClientSQLDatabaseCoordinator::ensureOpen(const ClientSQLOpenRequest
             return currentVersion.moveError();
         }
 
-        auto schemaResult =
-            applySchema(_writerConnection->database.get(),
-                        currentVersion.value(),
-                        request.schemaVersion,
-                        request.createStatements,
-                        request.migrations);
+        auto schemaResult = applySchema(_writerConnection->database.get(),
+                                        currentVersion.value(),
+                                        request.schemaVersion,
+                                        request.createStatements,
+                                        request.migrations);
         if (!schemaResult) {
             return schemaResult.moveError();
         }
@@ -1124,7 +1068,8 @@ void ClientSQLDatabaseCoordinator::execute(const Ref<ClientSQLConnection>& conne
                 return;
             }
             notifyClientSQLCallbackSuccess(callback, Value::undefined());
-        }, false);
+        },
+        false);
 }
 
 void ClientSQLDatabaseCoordinator::query(const Ref<ClientSQLConnection>& connection,
@@ -1210,120 +1155,112 @@ void ClientSQLDatabaseCoordinator::queryOnWriter(const Ref<ClientSQLConnection>&
                 return;
             }
             notifyClientSQLCallbackSuccess(callback, result.moveValue());
-        }, false);
+        },
+        false);
 }
 
 void ClientSQLDatabaseCoordinator::transaction(
     const Ref<ClientSQLConnection>& connection,
     snap::valdi_modules::client_sql::ClientSQLNativeConnectionProxy::TransactionBodyFn body,
     ClientSQLValueCallback callback) {
-    enqueueWriterWork([self = strongSmallRef(this), connection, body = std::move(body), callback = std::move(callback)]() {
-        if (connection->isClosed()) {
-            notifyClientSQLCallbackError(callback, Error("ClientSQLNative connection is closed"));
-            return;
-        }
+    enqueueWriterWork(
+        [self = strongSmallRef(this), connection, body = std::move(body), callback = std::move(callback)]() {
+            if (connection->isClosed()) {
+                notifyClientSQLCallbackError(callback, Error("ClientSQLNative connection is closed"));
+                return;
+            }
 
-        auto openResult = connection->requireOpen();
-        if (!openResult) {
-            notifyClientSQLCallbackError(callback, openResult.moveError());
-            return;
-        }
+            auto openResult = connection->requireOpen();
+            if (!openResult) {
+                notifyClientSQLCallbackError(callback, openResult.moveError());
+                return;
+            }
 
-        auto database = self->_writerConnection->requireDatabase();
-        if (!database) {
-            notifyClientSQLCallbackError(callback, database.moveError());
-            return;
-        }
+            auto database = self->_writerConnection->requireDatabase();
+            if (!database) {
+                notifyClientSQLCallbackError(callback, database.moveError());
+                return;
+            }
 
-        Error sqlError;
-        if (!execRawSQL(database.value(), "BEGIN TRANSACTION", &sqlError)) {
-            notifyClientSQLCallbackError(callback, sqlError);
-            return;
-        }
+            Error sqlError;
+            if (!execRawSQL(database.value(), "BEGIN TRANSACTION", &sqlError)) {
+                notifyClientSQLCallbackError(callback, sqlError);
+                return;
+            }
 
-        const auto transactionId = self->_nextTransactionId++;
-        self->_activeTransactionId = transactionId;
-        self->_activeTransactionConnection.store(connection.get());
-        auto transaction = makeShared<ClientSQLTransaction>(self, connection, transactionId);
-        auto completionState = std::make_shared<ClientSQLTransactionCompletionState>();
-        completionState->watchdogTaskId.store(self->_writerConnection->queue->asyncAfter(
-            [self, transactionId, callback, completionState]() {
+            const auto transactionId = self->_nextTransactionId++;
+            self->_activeTransactionId = transactionId;
+            self->_activeTransactionConnection.store(connection.get());
+            auto transaction = makeShared<ClientSQLTransaction>(self, connection, transactionId);
+            auto completionState = std::make_shared<ClientSQLTransactionCompletionState>();
+            completionState->watchdogTaskId.store(self->_writerConnection->queue->asyncAfter(
+                [self, transactionId, callback, completionState]() {
+                    if (completionState->completed.exchange(true)) {
+                        return;
+                    }
+                    self->finishTransactionOnWriterThread(
+                        transactionId,
+                        callback,
+                        Value::undefined(),
+                        STRING_FORMAT("ClientSQLNative transaction timed out after {} ms because its completion "
+                                      "callback was not invoked",
+                                      self->_transactionTimeout.count()));
+                },
+                self->_transactionTimeout));
+            snap::valdi_modules::client_sql::ClientSQLNativeConnectionProxy::TransactionBodyCallbackFn doneCallback =
+                [self, transactionId, callback, completionState](Value value, std::optional<StringBox> error) {
+                    if (completionState->completed.exchange(true)) {
+                        return;
+                    }
+
+                    self->_writerConnection->queue->cancel(completionState->watchdogTaskId.load());
+
+                    self->finishTransaction(transactionId, callback, std::move(value), std::move(error));
+                };
+
+            try {
+                body(std::move(transaction), std::move(doneCallback));
+            } catch (const Exception& error) {
                 if (completionState->completed.exchange(true)) {
                     return;
                 }
+                self->_writerConnection->queue->cancel(completionState->watchdogTaskId.load());
+                self->finishTransactionOnWriterThread(transactionId, callback, Value::undefined(), error.getMessage());
+            } catch (const std::exception& error) {
+                if (completionState->completed.exchange(true)) {
+                    return;
+                }
+                self->_writerConnection->queue->cancel(completionState->watchdogTaskId.load());
                 self->finishTransactionOnWriterThread(
                     transactionId,
                     callback,
                     Value::undefined(),
-                    STRING_FORMAT(
-                        "ClientSQLNative transaction timed out after {} ms because its completion callback was not invoked",
-                        self->_transactionTimeout.count()));
-            },
-            self->_transactionTimeout));
-        snap::valdi_modules::client_sql::ClientSQLNativeConnectionProxy::TransactionBodyCallbackFn doneCallback =
-            [self, transactionId, callback, completionState](Value value, std::optional<StringBox> error) {
+                    STRING_FORMAT("ClientSQLNative transaction body threw a native exception: {}", error.what()));
+            } catch (...) {
                 if (completionState->completed.exchange(true)) {
                     return;
                 }
-
                 self->_writerConnection->queue->cancel(completionState->watchdogTaskId.load());
-
-                self->finishTransaction(
+                self->finishTransactionOnWriterThread(
                     transactionId,
                     callback,
-                    std::move(value),
-                    std::move(error));
-            };
-
-        try {
-            body(std::move(transaction), std::move(doneCallback));
-        } catch (const Exception& error) {
-            if (completionState->completed.exchange(true)) {
-                return;
+                    Value::undefined(),
+                    STRING_LITERAL("ClientSQLNative transaction body threw an unknown native exception"));
             }
-            self->_writerConnection->queue->cancel(completionState->watchdogTaskId.load());
-            self->finishTransactionOnWriterThread(
-                transactionId,
-                callback,
-                Value::undefined(),
-                error.getMessage());
-        } catch (const std::exception& error) {
-            if (completionState->completed.exchange(true)) {
-                return;
-            }
-            self->_writerConnection->queue->cancel(completionState->watchdogTaskId.load());
-            self->finishTransactionOnWriterThread(
-                transactionId,
-                callback,
-                Value::undefined(),
-                STRING_FORMAT("ClientSQLNative transaction body threw a native exception: {}", error.what()));
-        } catch (...) {
-            if (completionState->completed.exchange(true)) {
-                return;
-            }
-            self->_writerConnection->queue->cancel(completionState->watchdogTaskId.load());
-            self->finishTransactionOnWriterThread(
-                transactionId,
-                callback,
-                Value::undefined(),
-                STRING_LITERAL("ClientSQLNative transaction body threw an unknown native exception"));
-        }
-    }, false);
+        },
+        false);
 }
 
-void ClientSQLDatabaseCoordinator::debugInfo(
-    const Ref<ClientSQLConnection>& connection,
-    ClientSQLValueCallback callback) {
+void ClientSQLDatabaseCoordinator::debugInfo(const Ref<ClientSQLConnection>& connection,
+                                             ClientSQLValueCallback callback) {
     enqueueWriterWork(
         [self = strongSmallRef(this), connection, callback = std::move(callback)]() {
             auto info = makeShared<ValueMap>();
-            (*info)[STRING_LITERAL("activeHandles")] =
-                Value(static_cast<int32_t>(self->_activeHandles.load()));
+            (*info)[STRING_LITERAL("activeHandles")] = Value(static_cast<int32_t>(self->_activeHandles.load()));
             (*info)[STRING_LITERAL("activeTransaction")] = Value(self->_activeTransactionId != 0);
             (*info)[STRING_LITERAL("deferredWriterWork")] =
                 Value(static_cast<int32_t>(self->_deferredWriterWork.size()));
-            (*info)[STRING_LITERAL("readerConnections")] =
-                Value(static_cast<int32_t>(self->_readerConnections.size()));
+            (*info)[STRING_LITERAL("readerConnections")] = Value(static_cast<int32_t>(self->_readerConnections.size()));
             (*info)[STRING_LITERAL("readerConnectionsReady")] = Value(self->_readerConnectionsReady.load());
             (*info)[STRING_LITERAL("writerOpen")] = Value(self->_writerConnection->database != nullptr);
             (*info)[STRING_LITERAL("connectionClosed")] = Value(connection->isClosed());
@@ -1431,14 +1368,13 @@ void ClientSQLDatabaseCoordinator::finishTransaction(uint64_t transactionId,
                                                      ClientSQLValueCallback callback,
                                                      Value value,
                                                      std::optional<StringBox> error) {
-    _writerConnection->queue->async(
-        [self = strongSmallRef(this),
-         transactionId,
-         callback = std::move(callback),
-         value = std::move(value),
-         error = std::move(error)]() mutable {
-            self->finishTransactionOnWriterThread(transactionId, callback, std::move(value), std::move(error));
-        });
+    _writerConnection->queue->async([self = strongSmallRef(this),
+                                     transactionId,
+                                     callback = std::move(callback),
+                                     value = std::move(value),
+                                     error = std::move(error)]() mutable {
+        self->finishTransactionOnWriterThread(transactionId, callback, std::move(value), std::move(error));
+    });
 }
 
 void ClientSQLDatabaseCoordinator::finishTransactionOnWriterThread(uint64_t transactionId,
@@ -1493,21 +1429,25 @@ void ClientSQLDatabaseCoordinator::finishTransactionOnWriterThread(uint64_t tran
 
 void ClientSQLDatabaseCoordinator::closeHandle(const Ref<ClientSQLConnection>& connection,
                                                ClientSQLValueCallback callback) {
-    enqueueWriterWork([self = strongSmallRef(this), connection, callback = std::move(callback)]() {
-        (void)connection.get();
-        if (self->_activeHandles.fetch_sub(1) == 1) {
-            self->closeAllConnectionsOnWriterThread();
-        }
-        notifyClientSQLCallbackSuccess(callback, Value::undefined());
-    }, false);
+    enqueueWriterWork(
+        [self = strongSmallRef(this), connection, callback = std::move(callback)]() {
+            (void)connection.get();
+            if (self->_activeHandles.fetch_sub(1) == 1) {
+                self->closeAllConnectionsOnWriterThread();
+            }
+            notifyClientSQLCallbackSuccess(callback, Value::undefined());
+        },
+        false);
 }
 
 void ClientSQLDatabaseCoordinator::abandonHandle() {
-    enqueueWriterWork([self = strongSmallRef(this)]() {
-        if (self->_activeHandles.fetch_sub(1) == 1) {
-            self->closeAllConnectionsOnWriterThread();
-        }
-    }, false);
+    enqueueWriterWork(
+        [self = strongSmallRef(this)]() {
+            if (self->_activeHandles.fetch_sub(1) == 1) {
+                self->closeAllConnectionsOnWriterThread();
+            }
+        },
+        false);
 }
 
 Ref<ClientSQLQueueConnection> ClientSQLDatabaseCoordinator::nextReaderConnection() {
@@ -1519,6 +1459,9 @@ Ref<ClientSQLQueueConnection> ClientSQLDatabaseCoordinator::nextReaderConnection
 }
 
 void ClientSQLDatabaseCoordinator::closeAllConnectionsOnWriterThread() {
+    // The registry hands this coordinator to the next open while anything still holds it (e.g. the close
+    // task itself), so the next open must be free to bring a new schema.
+    _schemaFingerprint.reset();
     _writerConnection->database.reset();
     _writerConnection->openError = Error();
     _readerConnectionsReady.store(false);
@@ -1555,10 +1498,9 @@ Result<Void> applySchema(sqlite3* database,
                          const Ref<ValueArray>& createStatements,
                          const Ref<ValueArray>& migrations) {
     if (currentVersion > targetVersion) {
-        return Error(STRING_FORMAT(
-            "ClientSQLNative database schema version {} is newer than requested version {}",
-            currentVersion,
-            targetVersion));
+        return Error(STRING_FORMAT("ClientSQLNative database schema version {} is newer than requested version {}",
+                                   currentVersion,
+                                   targetVersion));
     }
     if (currentVersion == targetVersion) {
         return Void();
@@ -1589,8 +1531,7 @@ Result<Void> applySchema(sqlite3* database,
             }
             if (migration.first != expectedVersion) {
                 rollback();
-                return Error(STRING_FORMAT(
-                    "ClientSQLNative missing migration for schema version {}", expectedVersion));
+                return Error(STRING_FORMAT("ClientSQLNative missing migration for schema version {}", expectedVersion));
             }
             for (const auto& statement : *migration.second) {
                 if (!execRawSQL(database, statement.toStringBox().toStringView(), &sqlError)) {
@@ -1602,8 +1543,7 @@ Result<Void> applySchema(sqlite3* database,
         }
         if (expectedVersion <= targetVersion) {
             rollback();
-            return Error(STRING_FORMAT(
-                "ClientSQLNative missing migration for schema version {}", expectedVersion));
+            return Error(STRING_FORMAT("ClientSQLNative missing migration for schema version {}", expectedVersion));
         }
     }
 
@@ -1622,13 +1562,12 @@ Result<Void> applySchema(sqlite3* database,
 Result<Void> openWriterDatabase(const Ref<ClientSQLQueueConnection>& connection, const ClientSQLOpenRequest& request) {
     if (!DiskUtils::isDirectory(request.databasePath.databaseRoot) &&
         !DiskUtils::makeDirectory(request.databasePath.databaseRoot, true)) {
-        return Error(STRING_FORMAT(
-            "Could not create ClientSQLNative database directory '{}'",
-            request.databasePath.databaseRoot.toString()));
+        return Error(STRING_FORMAT("Could not create ClientSQLNative database directory '{}'",
+                                   request.databasePath.databaseRoot.toString()));
     }
 
-    auto writerDatabase =
-        openSQLiteDatabase(request.databasePath.databasePath, request.name, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, true);
+    auto writerDatabase = openSQLiteDatabase(
+        request.databasePath.databasePath, request.name, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, true);
     if (!writerDatabase) {
         return writerDatabase.moveError();
     }
@@ -1638,12 +1577,11 @@ Result<Void> openWriterDatabase(const Ref<ClientSQLQueueConnection>& connection,
         return currentVersion.moveError();
     }
 
-    auto schemaResult =
-        applySchema(writerDatabase.value().get(),
-                    currentVersion.value(),
-                    request.schemaVersion,
-                    request.createStatements,
-                    request.migrations);
+    auto schemaResult = applySchema(writerDatabase.value().get(),
+                                    currentVersion.value(),
+                                    request.schemaVersion,
+                                    request.createStatements,
+                                    request.migrations);
     if (!schemaResult) {
         return schemaResult.moveError();
     }
@@ -1679,8 +1617,8 @@ Result<ClientSQLDatabasePath> resolveDatabasePath(const Ref<IDiskCache>& diskCac
         return (byte >= 'a' && byte <= 'z') || (byte >= '0' && byte <= '9');
     };
     bool isCanonical = nameView.size() <= 240 &&
-        isLowercaseASCIIAlphaNumeric(static_cast<unsigned char>(nameView.front())) &&
-        isLowercaseASCIIAlphaNumeric(static_cast<unsigned char>(nameView.back()));
+                       isLowercaseASCIIAlphaNumeric(static_cast<unsigned char>(nameView.front())) &&
+                       isLowercaseASCIIAlphaNumeric(static_cast<unsigned char>(nameView.back()));
     for (const auto character : nameView) {
         const auto byte = static_cast<unsigned char>(character);
         if (!isLowercaseASCIIAlphaNumeric(byte) && byte != '-' && byte != '_' && byte != '.') {
@@ -1742,8 +1680,7 @@ public:
             _coordinators.erase(existing);
         }
 
-        auto coordinator = makeShared<ClientSQLDatabaseCoordinator>(
-            resourceReleaseQueue, transactionTimeout);
+        auto coordinator = makeShared<ClientSQLDatabaseCoordinator>(resourceReleaseQueue, transactionTimeout);
         _coordinators.emplace(databasePath, coordinator.toWeak());
         return coordinator;
     }
@@ -1757,8 +1694,7 @@ namespace {
 
 void requireSchemaSQLWithoutEmbeddedNull(const StringBox& sql, const StringBox& description) {
     if (containsEmbeddedNull(sql.toStringView())) {
-        throw Exception(STRING_FORMAT(
-            "ClientSQLNative {} contains an embedded NUL byte", description));
+        throw Exception(STRING_FORMAT("ClientSQLNative {} contains an embedded NUL byte", description));
     }
 }
 
@@ -1771,16 +1707,14 @@ Ref<snap::valdi_modules::client_sql::ClientSQLNativeConnectionProxy> openClientS
     double schemaVersion,
     std::vector<StringBox> createStatements,
     std::vector<snap::valdi_modules::client_sql::ClientSQLMigration> migrations) {
-    if (!std::isfinite(schemaVersion) || std::trunc(schemaVersion) != schemaVersion ||
-        schemaVersion < 1 ||
+    if (!std::isfinite(schemaVersion) || std::trunc(schemaVersion) != schemaVersion || schemaVersion < 1 ||
         schemaVersion > std::numeric_limits<int32_t>::max()) {
         throw Exception("ClientSQLNative schema version must be a positive 32-bit integer");
     }
 
     for (size_t statementIndex = 0; statementIndex < createStatements.size(); ++statementIndex) {
-        requireSchemaSQLWithoutEmbeddedNull(
-            createStatements[statementIndex],
-            STRING_FORMAT("create statement {}", statementIndex));
+        requireSchemaSQLWithoutEmbeddedNull(createStatements[statementIndex],
+                                            STRING_FORMAT("create statement {}", statementIndex));
     }
 
     std::unordered_set<int32_t> migrationVersions;
@@ -1792,14 +1726,12 @@ Ref<snap::valdi_modules::client_sql::ClientSQLNativeConnectionProxy> openClientS
         }
         const auto migrationVersion = static_cast<int32_t>(rawVersion);
         if (migrationVersion > static_cast<int32_t>(schemaVersion)) {
-            throw Exception(STRING_FORMAT(
-                "ClientSQLNative migration version {} exceeds schema version {}",
-                migrationVersion,
-                static_cast<int32_t>(schemaVersion)));
+            throw Exception(STRING_FORMAT("ClientSQLNative migration version {} exceeds schema version {}",
+                                          migrationVersion,
+                                          static_cast<int32_t>(schemaVersion)));
         }
         if (!migrationVersions.emplace(migrationVersion).second) {
-            throw Exception(STRING_FORMAT(
-                "ClientSQLNative duplicate migration version {}", migrationVersion));
+            throw Exception(STRING_FORMAT("ClientSQLNative duplicate migration version {}", migrationVersion));
         }
         for (size_t statementIndex = 0; statementIndex < migration.getStatements().size(); ++statementIndex) {
             requireSchemaSQLWithoutEmbeddedNull(
@@ -1818,9 +1750,7 @@ Ref<snap::valdi_modules::client_sql::ClientSQLNativeConnectionProxy> openClientS
         throw Exception("ClientSQLNative resource release queue is unavailable");
     }
     auto coordinator = databaseRegistry.coordinatorForDatabasePath(
-        databasePathValue.databasePath,
-        resourceReleaseQueue,
-        transactionTimeout);
+        databasePathValue.databasePath, resourceReleaseQueue, transactionTimeout);
     if (coordinator == nullptr || !coordinator->hasWriterQueue()) {
         throw Exception("ClientSQLNative writer queue is unavailable");
     }
@@ -1915,18 +1845,15 @@ ClientSQLNativeModuleFactory::ClientSQLNativeModuleFactory(const Ref<IDiskCache>
                                                            const Ref<IDispatchQueue>& workerQueue)
     : ClientSQLNativeModuleFactory(diskCache, workerQueue, kClientSQLDefaultTransactionTimeout) {}
 
-ClientSQLNativeModuleFactory::ClientSQLNativeModuleFactory(
-    const Ref<IDiskCache>& diskCache,
-    const Ref<IDispatchQueue>& workerQueue,
-    std::chrono::milliseconds transactionTimeout)
-    : ClientSQLNativeModuleFactory(
-          diskCache, workerQueue, transactionTimeout, workerQueue) {}
+ClientSQLNativeModuleFactory::ClientSQLNativeModuleFactory(const Ref<IDiskCache>& diskCache,
+                                                           const Ref<IDispatchQueue>& workerQueue,
+                                                           std::chrono::milliseconds transactionTimeout)
+    : ClientSQLNativeModuleFactory(diskCache, workerQueue, transactionTimeout, workerQueue) {}
 
-ClientSQLNativeModuleFactory::ClientSQLNativeModuleFactory(
-    const Ref<IDiskCache>& diskCache,
-    const Ref<IDispatchQueue>& workerQueue,
-    std::chrono::milliseconds transactionTimeout,
-    const Ref<IDispatchQueue>& resourceReleaseQueue)
+ClientSQLNativeModuleFactory::ClientSQLNativeModuleFactory(const Ref<IDiskCache>& diskCache,
+                                                           const Ref<IDispatchQueue>& workerQueue,
+                                                           std::chrono::milliseconds transactionTimeout,
+                                                           const Ref<IDispatchQueue>& resourceReleaseQueue)
     : _diskCache(diskCache),
       _workerQueue(workerQueue),
       _resourceReleaseQueue(resourceReleaseQueue),
@@ -1939,8 +1866,7 @@ ClientSQLNativeModuleFactory::ClientSQLNativeModuleFactory(
 ClientSQLNativeModuleFactory::~ClientSQLNativeModuleFactory() = default;
 
 Ref<snap::valdi_modules::client_sql::ClientSQLNativeModule> ClientSQLNativeModuleFactory::onLoadModule() {
-    return makeShared<ClientSQLNativeModule>(
-        _diskCache, _workerQueue, _resourceReleaseQueue, _transactionTimeout);
+    return makeShared<ClientSQLNativeModule>(_diskCache, _workerQueue, _resourceReleaseQueue, _transactionTimeout);
 }
 
 static auto kRegisterModule = Valdi::RegisterModuleFactory::registerTyped<ClientSQLNativeModuleFactory>();

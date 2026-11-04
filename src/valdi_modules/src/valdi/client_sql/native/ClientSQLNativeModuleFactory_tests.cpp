@@ -21,8 +21,8 @@
 #include <limits>
 #include <memory>
 #include <mutex>
-#include <stdlib.h>
 #include <stdexcept>
+#include <stdlib.h>
 #include <string>
 #include <thread>
 #include <vector>
@@ -33,8 +33,7 @@ namespace ValdiTest {
 
 class TypedClientSQLNativeModuleFactory : public ClientSQLNativeModuleFactory {
 public:
-    TypedClientSQLNativeModuleFactory(const Ref<IDiskCache>& diskCache,
-                                      const Ref<IDispatchQueue>& workerQueue)
+    TypedClientSQLNativeModuleFactory(const Ref<IDiskCache>& diskCache, const Ref<IDispatchQueue>& workerQueue)
         : ClientSQLNativeModuleFactory(diskCache, workerQueue) {}
 
     Ref<snap::valdi_modules::client_sql::ClientSQLNativeModule> loadTypedModule() {
@@ -257,10 +256,7 @@ Value callClientSQLAsync(const Value& connection, std::string_view method, Strin
     return asyncResult.waitForSuccess();
 }
 
-Value queryClientSQL(const Value& connection,
-                     std::string_view method,
-                     StringBox sql,
-                     Value parameters) {
+Value queryClientSQL(const Value& connection, std::string_view method, StringBox sql, Value parameters) {
     return callClientSQLAsync(connection, method, sql, std::move(parameters));
 }
 
@@ -276,9 +272,7 @@ TEST(ClientSQLNativeModuleFactory, rejectsTraversalDatabaseName) {
     auto module = factory->loadModule();
 
     const auto error = callNativeFunctionExpectingError(
-        module,
-        "openDatabase",
-        makeClientSQLOpenParameters(STRING_LITERAL("../escape.sqlite")));
+        module, "openDatabase", makeClientSQLOpenParameters(STRING_LITERAL("../escape.sqlite")));
     EXPECT_NE(std::string::npos, error.find("Invalid ClientSQLNative database name")) << error;
     workerQueue->fullTeardown();
 }
@@ -291,9 +285,7 @@ TEST(ClientSQLNativeModuleFactory, rejectsAbsoluteDatabaseName) {
     auto module = factory->loadModule();
 
     const auto error = callNativeFunctionExpectingError(
-        module,
-        "openDatabase",
-        makeClientSQLOpenParameters(STRING_LITERAL("/tmp/escape.sqlite")));
+        module, "openDatabase", makeClientSQLOpenParameters(STRING_LITERAL("/tmp/escape.sqlite")));
     EXPECT_NE(std::string::npos, error.find("Invalid ClientSQLNative database name")) << error;
     workerQueue->fullTeardown();
 }
@@ -304,9 +296,7 @@ TEST(ClientSQLNativeModuleFactory, rejectsMissingDatabaseStorageRoot) {
     auto module = factory->loadModule();
 
     const auto error = callNativeFunctionExpectingError(
-        module,
-        "openDatabase",
-        makeClientSQLOpenParameters(STRING_LITERAL("missing-root.sqlite")));
+        module, "openDatabase", makeClientSQLOpenParameters(STRING_LITERAL("missing-root.sqlite")));
     EXPECT_NE(std::string::npos, error.find("requires an owned database storage root")) << error;
     workerQueue->fullTeardown();
 }
@@ -318,12 +308,10 @@ TEST(ClientSQLNativeModuleFactory, rejectsControlCharactersInDatabaseName) {
     auto factory = makeShared<ClientSQLNativeModuleFactory>(diskCache, workerQueue);
     auto module = factory->loadModule();
 
-    const auto embeddedNullName = StringBox::fromString(
-        std::string_view("nul\0name.sqlite", sizeof("nul\0name.sqlite") - 1));
-    const auto nullError = callNativeFunctionExpectingError(
-        module,
-        "openDatabase",
-        makeClientSQLOpenParameters(embeddedNullName));
+    const auto embeddedNullName =
+        StringBox::fromString(std::string_view("nul\0name.sqlite", sizeof("nul\0name.sqlite") - 1));
+    const auto nullError =
+        callNativeFunctionExpectingError(module, "openDatabase", makeClientSQLOpenParameters(embeddedNullName));
     EXPECT_NE(std::string::npos, nullError.find("Invalid ClientSQLNative database name")) << nullError;
 
     const auto controlError = callNativeFunctionExpectingError(
@@ -349,9 +337,7 @@ TEST(ClientSQLNativeModuleFactory, rejectsFilesystemAliasDatabaseNames) {
 
     for (const auto& name : {"Uppercase.sqlite", "trailing-dot.", "double..dot.sqlite", "trailing-space.sqlite "}) {
         const auto error = callNativeFunctionExpectingError(
-            module,
-            "openDatabase",
-            makeClientSQLOpenParameters(StringBox::fromString(std::string_view(name))));
+            module, "openDatabase", makeClientSQLOpenParameters(StringBox::fromString(std::string_view(name))));
         EXPECT_NE(std::string::npos, error.find("Invalid ClientSQLNative database name")) << name << ": " << error;
     }
     workerQueue->fullTeardown();
@@ -364,9 +350,7 @@ TEST(ClientSQLNativeModuleFactory, rejectsEmptyDatabaseStorageRoot) {
     auto module = factory->loadModule();
 
     const auto error = callNativeFunctionExpectingError(
-        module,
-        "openDatabase",
-        makeClientSQLOpenParameters(STRING_LITERAL("empty-root.sqlite")));
+        module, "openDatabase", makeClientSQLOpenParameters(STRING_LITERAL("empty-root.sqlite")));
     EXPECT_NE(std::string::npos, error.find("database storage root must be nonempty and absolute")) << error;
     workerQueue->fullTeardown();
 }
@@ -378,9 +362,7 @@ TEST(ClientSQLNativeModuleFactory, rejectsRelativeDatabaseStorageRoot) {
     auto module = factory->loadModule();
 
     const auto error = callNativeFunctionExpectingError(
-        module,
-        "openDatabase",
-        makeClientSQLOpenParameters(STRING_LITERAL("relative-root.sqlite")));
+        module, "openDatabase", makeClientSQLOpenParameters(STRING_LITERAL("relative-root.sqlite")));
     EXPECT_NE(std::string::npos, error.find("database storage root must be nonempty and absolute")) << error;
     workerQueue->fullTeardown();
 }
@@ -404,16 +386,16 @@ TEST(ClientSQLNativeModuleFactory, opensWALDatabaseAndUsesReadonlyReaders) {
                      STRING_LITERAL("INSERT INTO item(id, name) VALUES (?, ?)"),
                      Value(ValueArray::make({Value(1), Value("Ada")})));
 
-    auto rows = queryClientSQL(
-                    connection, "query", STRING_LITERAL("SELECT name FROM item ORDER BY id"), Value::undefined())
-                    .getArrayRef();
+    auto rows =
+        queryClientSQL(connection, "query", STRING_LITERAL("SELECT name FROM item ORDER BY id"), Value::undefined())
+            .getArrayRef();
     ASSERT_NE(rows, nullptr);
     ASSERT_EQ(1ul, rows->size());
     EXPECT_EQ(STRING_LITERAL("Ada"), (*rows)[0].getMapValue("name").toStringBox());
 
-    auto journalRows = queryClientSQL(
-                           connection, "queryOnWriter", STRING_LITERAL("PRAGMA journal_mode"), Value::undefined())
-                           .getArrayRef();
+    auto journalRows =
+        queryClientSQL(connection, "queryOnWriter", STRING_LITERAL("PRAGMA journal_mode"), Value::undefined())
+            .getArrayRef();
     ASSERT_NE(journalRows, nullptr);
     ASSERT_EQ(1ul, journalRows->size());
     EXPECT_EQ(STRING_LITERAL("wal"), (*journalRows)[0].getMapValue("journal_mode").toStringBox());
@@ -484,10 +466,7 @@ TEST(ClientSQLNativeModuleFactory, usesDedicatedDatabaseQueuesWhenFallbackQueueI
     bool didStartBlocker = false;
     {
         std::unique_lock<std::mutex> lock(blockerMutex);
-        didStartBlocker = blockerCondition.wait_for(
-            lock,
-            std::chrono::seconds(5),
-            [&]() { return blockerStarted; });
+        didStartBlocker = blockerCondition.wait_for(lock, std::chrono::seconds(5), [&]() { return blockerStarted; });
     }
     if (!didStartBlocker) {
         {
@@ -511,19 +490,16 @@ TEST(ClientSQLNativeModuleFactory, usesDedicatedDatabaseQueuesWhenFallbackQueueI
     auto connection = callNativeFunction(module, "openDatabase", openParameters);
 
     ClientSQLAsyncResult insertResult;
-    callNativeFunction(connection,
-                       "execute",
-                       {Value("INSERT INTO item(id) VALUES (1)"),
-                        Value(ValueArray::make(0)),
-                        Value(insertResult.makeCallback())});
+    callNativeFunction(
+        connection,
+        "execute",
+        {Value("INSERT INTO item(id) VALUES (1)"), Value(ValueArray::make(0)), Value(insertResult.makeCallback())});
     insertResult.waitForSuccessWithin(std::chrono::seconds(2));
 
     ClientSQLAsyncResult queryResult;
     callNativeFunction(connection,
                        "query",
-                       {Value("SELECT id FROM item"),
-                        Value(ValueArray::make(0)),
-                        Value(queryResult.makeCallback())});
+                       {Value("SELECT id FROM item"), Value(ValueArray::make(0)), Value(queryResult.makeCallback())});
     auto queryValue = queryResult.waitForSuccessWithin(std::chrono::seconds(2));
 
     ClientSQLAsyncResult closeResult;
@@ -566,34 +542,29 @@ TEST(ClientSQLNativeModuleFactory, rejectsMultipleStatementsWithoutExecutingTheF
     const auto executeError = executeResult.waitForError().toString();
     EXPECT_NE(std::string::npos, executeError.find("exactly one statement")) << executeError;
 
-    auto countRows = queryClientSQL(
-                         connection,
-                         "query",
-                         STRING_LITERAL("SELECT COUNT(*) AS count FROM item"),
-                         Value(ValueArray::make(0)))
-                         .getArrayRef();
+    auto countRows =
+        queryClientSQL(
+            connection, "query", STRING_LITERAL("SELECT COUNT(*) AS count FROM item"), Value(ValueArray::make(0)))
+            .getArrayRef();
     ASSERT_NE(nullptr, countRows);
     ASSERT_EQ(1ul, countRows->size());
     EXPECT_EQ(0, (*countRows)[0].getMapValue("count").toInt());
 
     ClientSQLAsyncResult queryResult;
-    callNativeFunction(connection,
-                       "query",
-                       {Value("SELECT 1 AS value; SELECT 2 AS value"),
-                        Value(ValueArray::make(0)),
-                        Value(queryResult.makeCallback())});
+    callNativeFunction(
+        connection,
+        "query",
+        {Value("SELECT 1 AS value; SELECT 2 AS value"), Value(ValueArray::make(0)), Value(queryResult.makeCallback())});
     const auto queryError = queryResult.waitForError().toString();
     EXPECT_NE(std::string::npos, queryError.find("exactly one statement")) << queryError;
 
-    executeClientSQL(
-        connection,
-        STRING_LITERAL("INSERT INTO item(id) VALUES (3); -- trailing comment\n /* still trailing */"),
-        Value(ValueArray::make(0)));
-    auto rows = queryClientSQL(
-                    connection,
-                    "query",
-                    STRING_LITERAL("SELECT id FROM item; /* trailing comment */"),
-                    Value(ValueArray::make(0)))
+    executeClientSQL(connection,
+                     STRING_LITERAL("INSERT INTO item(id) VALUES (3); -- trailing comment\n /* still trailing */"),
+                     Value(ValueArray::make(0)));
+    auto rows = queryClientSQL(connection,
+                               "query",
+                               STRING_LITERAL("SELECT id FROM item; /* trailing comment */"),
+                               Value(ValueArray::make(0)))
                     .getArrayRef();
     ASSERT_NE(nullptr, rows);
     ASSERT_EQ(1ul, rows->size());
@@ -612,20 +583,16 @@ TEST(ClientSQLNativeModuleFactory, boundsQueryResultRowMaterialization) {
     auto factory = makeShared<ClientSQLNativeModuleFactory>(diskCache, workerQueue);
     auto module = factory->loadModule();
     auto connection = callNativeFunction(
-        module,
-        "openDatabase",
-        makeClientSQLOpenParameters(STRING_LITERAL("runtime-query-row-limit-test.sqlite")));
+        module, "openDatabase", makeClientSQLOpenParameters(STRING_LITERAL("runtime-query-row-limit-test.sqlite")));
 
     ClientSQLAsyncResult queryResult;
-    callNativeFunction(
-        connection,
-        "query",
-        {Value(
-             "WITH RECURSIVE generated(value) AS ("
-             "VALUES(1) UNION ALL SELECT value + 1 FROM generated WHERE value < 10001"
-             ") SELECT value FROM generated"),
-         Value::undefined(),
-         Value(queryResult.makeCallback())});
+    callNativeFunction(connection,
+                       "query",
+                       {Value("WITH RECURSIVE generated(value) AS ("
+                              "VALUES(1) UNION ALL SELECT value + 1 FROM generated WHERE value < 10001"
+                              ") SELECT value FROM generated"),
+                        Value::undefined(),
+                        Value(queryResult.makeCallback())});
     const auto error = queryResult.waitForError().toString();
     EXPECT_NE(std::string::npos, error.find("10000 row materialization limit")) << error;
 
@@ -642,17 +609,13 @@ TEST(ClientSQLNativeModuleFactory, boundsQueryOnWriterResultByteMaterialization)
     auto factory = makeShared<ClientSQLNativeModuleFactory>(diskCache, workerQueue);
     auto module = factory->loadModule();
     auto connection = callNativeFunction(
-        module,
-        "openDatabase",
-        makeClientSQLOpenParameters(STRING_LITERAL("runtime-query-byte-limit-test.sqlite")));
+        module, "openDatabase", makeClientSQLOpenParameters(STRING_LITERAL("runtime-query-byte-limit-test.sqlite")));
 
     ClientSQLAsyncResult queryResult;
     callNativeFunction(
         connection,
         "queryOnWriter",
-        {Value("SELECT zeroblob(8388609) AS payload"),
-         Value::undefined(),
-         Value(queryResult.makeCallback())});
+        {Value("SELECT zeroblob(8388609) AS payload"), Value::undefined(), Value(queryResult.makeCallback())});
     const auto error = queryResult.waitForError().toString();
     EXPECT_NE(std::string::npos, error.find("8388608 byte materialization limit")) << error;
 
@@ -669,14 +632,11 @@ TEST(ClientSQLNativeModuleFactory, countsNullCellAndColumnOverheadTowardQueryLim
     auto factory = makeShared<ClientSQLNativeModuleFactory>(diskCache, workerQueue);
     auto module = factory->loadModule();
     auto connection = callNativeFunction(
-        module,
-        "openDatabase",
-        makeClientSQLOpenParameters(STRING_LITERAL("runtime-query-null-overhead-test.sqlite")));
+        module, "openDatabase", makeClientSQLOpenParameters(STRING_LITERAL("runtime-query-null-overhead-test.sqlite")));
 
-    std::string sql =
-        "WITH RECURSIVE generated(value) AS ("
-        "VALUES(1) UNION ALL SELECT value + 1 FROM generated WHERE value < 300"
-        ") SELECT ";
+    std::string sql = "WITH RECURSIVE generated(value) AS ("
+                      "VALUES(1) UNION ALL SELECT value + 1 FROM generated WHERE value < 300"
+                      ") SELECT ";
     for (int columnIndex = 0; columnIndex < 512; ++columnIndex) {
         if (columnIndex != 0) {
             sql.append(", ");
@@ -690,9 +650,7 @@ TEST(ClientSQLNativeModuleFactory, countsNullCellAndColumnOverheadTowardQueryLim
     callNativeFunction(
         connection,
         "query",
-        {Value(StringCache::getGlobal().makeString(sql)),
-         Value::undefined(),
-         Value(queryResult.makeCallback())});
+        {Value(StringCache::getGlobal().makeString(sql)), Value::undefined(), Value(queryResult.makeCallback())});
     const auto error = queryResult.waitForError().toString();
     EXPECT_NE(std::string::npos, error.find("8388608 byte materialization limit")) << error;
 
@@ -718,11 +676,10 @@ TEST(ClientSQLNativeModuleFactory, rejectsIntegersOutsideJavaScriptSafeRange) {
     auto connection = callNativeFunction(module, "openDatabase", openParameters);
 
     ClientSQLAsyncResult queryResult;
-    callNativeFunction(connection,
-                       "query",
-                       {Value("SELECT 9007199254740992 AS value"),
-                        Value(ValueArray::make(0)),
-                        Value(queryResult.makeCallback())});
+    callNativeFunction(
+        connection,
+        "query",
+        {Value("SELECT 9007199254740992 AS value"), Value(ValueArray::make(0)), Value(queryResult.makeCallback())});
     const auto error = queryResult.waitForError().toString();
     EXPECT_NE(std::string::npos, error.find("exceeds JavaScript's exact integer range")) << error;
 
@@ -739,9 +696,7 @@ TEST(ClientSQLNativeModuleFactory, rejectsNonFiniteDoubleParameters) {
     auto factory = makeShared<ClientSQLNativeModuleFactory>(diskCache, workerQueue);
     auto module = factory->loadModule();
     auto connection = callNativeFunction(
-        module,
-        "openDatabase",
-        makeClientSQLOpenParameters(STRING_LITERAL("runtime-nonfinite-test.sqlite")));
+        module, "openDatabase", makeClientSQLOpenParameters(STRING_LITERAL("runtime-nonfinite-test.sqlite")));
 
     ClientSQLAsyncResult infinityResult;
     callNativeFunction(connection,
@@ -774,15 +729,12 @@ TEST(ClientSQLNativeModuleFactory, readsEmptyTextAndBlobValuesSafely) {
     auto factory = makeShared<ClientSQLNativeModuleFactory>(diskCache, workerQueue);
     auto module = factory->loadModule();
     auto connection = callNativeFunction(
-        module,
-        "openDatabase",
-        makeClientSQLOpenParameters(STRING_LITERAL("runtime-empty-values-test.sqlite")));
+        module, "openDatabase", makeClientSQLOpenParameters(STRING_LITERAL("runtime-empty-values-test.sqlite")));
 
-    auto rows = queryClientSQL(
-                    connection,
-                    "query",
-                    STRING_LITERAL("SELECT '' AS empty_text, CAST(X'' AS BLOB) AS empty_blob"),
-                    Value::undefined())
+    auto rows = queryClientSQL(connection,
+                               "query",
+                               STRING_LITERAL("SELECT '' AS empty_text, CAST(X'' AS BLOB) AS empty_blob"),
+                               Value::undefined())
                     .getArrayRef();
     ASSERT_NE(rows, nullptr);
     ASSERT_EQ(1ul, rows->size());
@@ -807,18 +759,16 @@ TEST(ClientSQLNativeModuleFactory, bindsEmptyArrayBufferAsZeroLengthBlob) {
     std::vector<Value> openParameters{
         Value("runtime-empty-blob-bind-test.sqlite"),
         Value(1),
-        Value(ValueArray::make({Value(
-            "CREATE TABLE item (id INTEGER NOT NULL PRIMARY KEY, payload BLOB NOT NULL)")})),
+        Value(ValueArray::make({Value("CREATE TABLE item (id INTEGER NOT NULL PRIMARY KEY, payload BLOB NOT NULL)")})),
         Value(ValueArray::make(0)),
     };
     auto connection = callNativeFunction(module, "openDatabase", openParameters);
 
     auto bytes = makeShared<Bytes>();
     auto emptyBlob = Value(makeShared<ValueTypedArray>(TypedArrayType::ArrayBuffer, bytes));
-    executeClientSQL(
-        connection,
-        STRING_LITERAL("INSERT INTO item(id, payload) VALUES (?, ?)"),
-        Value(ValueArray::make({Value(1), std::move(emptyBlob)})));
+    executeClientSQL(connection,
+                     STRING_LITERAL("INSERT INTO item(id, payload) VALUES (?, ?)"),
+                     Value(ValueArray::make({Value(1), std::move(emptyBlob)})));
 
     auto rows = queryClientSQL(
                     connection,
@@ -1014,8 +964,7 @@ TEST(ClientSQLNativeModuleFactory, commitsNativeTransactionAfterDoneCallback) {
                         }
 
                         auto rows = queryContext.getParameter(0).getArrayRef();
-                        if (rows == nullptr || rows->size() != 1 ||
-                            (*rows)[0].getMapValue("count").toInt() != 1) {
+                        if (rows == nullptr || rows->size() != 1 || (*rows)[0].getMapValue("count").toInt() != 1) {
                             (*doneCallback)({Value::undefined(), Value("transaction query did not observe write")});
                             return Value::undefined();
                         }
@@ -1029,12 +978,11 @@ TEST(ClientSQLNativeModuleFactory, commitsNativeTransactionAfterDoneCallback) {
                     {Value("SELECT COUNT(*) AS count FROM item"), Value(ValueArray::make(0)), Value(queryCallback)});
                 return Value::undefined();
             });
-        callNativeFunction(
-            transaction,
-            "execute",
-            {Value("INSERT INTO item(id, name) VALUES (?, ?)"),
-             Value(ValueArray::make({Value(1), Value("Ada")})),
-             Value(insertCallback)});
+        callNativeFunction(transaction,
+                           "execute",
+                           {Value("INSERT INTO item(id, name) VALUES (?, ?)"),
+                            Value(ValueArray::make({Value(1), Value("Ada")})),
+                            Value(insertCallback)});
         return Value::undefined();
     });
 
@@ -1042,9 +990,9 @@ TEST(ClientSQLNativeModuleFactory, commitsNativeTransactionAfterDoneCallback) {
     callNativeFunction(connection, "transaction", {Value(body), Value(transactionResult.makeCallback())});
     EXPECT_EQ(STRING_LITERAL("committed"), transactionResult.waitForSuccess().toStringBox());
 
-    auto rows = queryClientSQL(
-                    connection, "query", STRING_LITERAL("SELECT name FROM item ORDER BY id"), Value::undefined())
-                    .getArrayRef();
+    auto rows =
+        queryClientSQL(connection, "query", STRING_LITERAL("SELECT name FROM item ORDER BY id"), Value::undefined())
+            .getArrayRef();
     ASSERT_NE(rows, nullptr);
     ASSERT_EQ(1ul, rows->size());
     EXPECT_EQ(STRING_LITERAL("Ada"), (*rows)[0].getMapValue("name").toStringBox());
@@ -1088,12 +1036,11 @@ TEST(ClientSQLNativeModuleFactory, rollsBackNativeTransactionWhenDoneReceivesErr
                 (*doneCallback)({Value::undefined(), Value("rollback requested")});
                 return Value::undefined();
             });
-        callNativeFunction(
-            transaction,
-            "execute",
-            {Value("INSERT INTO item(id, name) VALUES (?, ?)"),
-             Value(ValueArray::make({Value(1), Value("Ada")})),
-             Value(insertCallback)});
+        callNativeFunction(transaction,
+                           "execute",
+                           {Value("INSERT INTO item(id, name) VALUES (?, ?)"),
+                            Value(ValueArray::make({Value(1), Value("Ada")})),
+                            Value(insertCallback)});
         return Value::undefined();
     });
 
@@ -1102,9 +1049,9 @@ TEST(ClientSQLNativeModuleFactory, rollsBackNativeTransactionWhenDoneReceivesErr
     const auto error = transactionResult.waitForError().toString();
     EXPECT_NE(std::string::npos, error.find("rollback requested")) << error;
 
-    auto rows = queryClientSQL(
-                    connection, "query", STRING_LITERAL("SELECT COUNT(*) AS count FROM item"), Value::undefined())
-                    .getArrayRef();
+    auto rows =
+        queryClientSQL(connection, "query", STRING_LITERAL("SELECT COUNT(*) AS count FROM item"), Value::undefined())
+            .getArrayRef();
     ASSERT_NE(rows, nullptr);
     ASSERT_EQ(1ul, rows->size());
     EXPECT_EQ(0, (*rows)[0].getMapValue("count").toInt());
@@ -1119,8 +1066,7 @@ TEST(ClientSQLNativeModuleFactory, timesOutAndRollsBackTransactionThatNeverCompl
     ClientSQLTemporaryDirectory directory;
     auto diskCache = makeShared<DiskCacheImpl>(directory.get());
     auto workerQueue = DispatchQueue::create(STRING_LITERAL("ClientSQL Test Worker"), ThreadQoSClassNormal);
-    auto factory = makeShared<ClientSQLNativeModuleFactory>(
-        diskCache, workerQueue, std::chrono::milliseconds(50));
+    auto factory = makeShared<ClientSQLNativeModuleFactory>(diskCache, workerQueue, std::chrono::milliseconds(50));
     auto module = factory->loadModule();
 
     std::vector<Value> openParameters{
@@ -1146,15 +1092,10 @@ TEST(ClientSQLNativeModuleFactory, timesOutAndRollsBackTransactionThatNeverCompl
             }
 
             auto insertCallback = makeShared<ValueFunctionWithCallable>(
-                [](const ValueFunctionCallContext& /*insertContext*/) -> Value {
-                    return Value::undefined();
-                });
-            callNativeFunction(
-                transaction,
-                "execute",
-                {Value("INSERT INTO item(id) VALUES (1)"),
-                 Value::undefined(),
-                 Value(insertCallback)});
+                [](const ValueFunctionCallContext& /*insertContext*/) -> Value { return Value::undefined(); });
+            callNativeFunction(transaction,
+                               "execute",
+                               {Value("INSERT INTO item(id) VALUES (1)"), Value::undefined(), Value(insertCallback)});
             return Value::undefined();
         });
 
@@ -1163,12 +1104,10 @@ TEST(ClientSQLNativeModuleFactory, timesOutAndRollsBackTransactionThatNeverCompl
     const auto error = transactionResult.waitForError().toString();
     EXPECT_NE(std::string::npos, error.find("timed out after 50 ms")) << error;
 
-    auto rows = queryClientSQL(
-                    connection,
-                    "queryOnWriter",
-                    STRING_LITERAL("SELECT COUNT(*) AS count FROM item"),
-                    Value::undefined())
-                    .getArrayRef();
+    auto rows =
+        queryClientSQL(
+            connection, "queryOnWriter", STRING_LITERAL("SELECT COUNT(*) AS count FROM item"), Value::undefined())
+            .getArrayRef();
     ASSERT_NE(rows, nullptr);
     ASSERT_EQ(1ul, rows->size());
     EXPECT_EQ(0, (*rows)[0].getMapValue("count").toInt());
@@ -1196,20 +1135,17 @@ TEST(ClientSQLNativeModuleFactory, rollsBackWhenTransactionBodyThrowsStandardExc
     auto workerQueue = DispatchQueue::create(STRING_LITERAL("ClientSQL Test Worker"), ThreadQoSClassNormal);
     auto factory = makeShared<TypedClientSQLNativeModuleFactory>(diskCache, workerQueue);
     auto module = factory->loadTypedModule();
-    auto connection = module->openDatabase(
-        STRING_LITERAL("runtime-transaction-standard-exception-test.sqlite"),
-        1,
-        {STRING_LITERAL("CREATE TABLE item (id INTEGER NOT NULL PRIMARY KEY)")},
-        {});
+    auto connection = module->openDatabase(STRING_LITERAL("runtime-transaction-standard-exception-test.sqlite"),
+                                           1,
+                                           {STRING_LITERAL("CREATE TABLE item (id INTEGER NOT NULL PRIMARY KEY)")},
+                                           {});
 
     std::mutex transactionMutex;
     std::condition_variable transactionCondition;
     bool transactionCallbackCalled = false;
     std::optional<StringBox> transactionError;
     connection->transaction(
-        [](auto /*transaction*/, auto /*doneCallback*/) {
-            throw std::runtime_error("standard transaction failure");
-        },
+        [](auto /*transaction*/, auto /*doneCallback*/) { throw std::runtime_error("standard transaction failure"); },
         [&transactionMutex, &transactionCondition, &transactionCallbackCalled, &transactionError](
             Value /*value*/, std::optional<StringBox> error) {
             {
@@ -1223,9 +1159,7 @@ TEST(ClientSQLNativeModuleFactory, rollsBackWhenTransactionBodyThrowsStandardExc
     {
         std::unique_lock<std::mutex> lock(transactionMutex);
         ASSERT_TRUE(transactionCondition.wait_for(
-            lock, std::chrono::seconds(5), [&transactionCallbackCalled]() {
-                return transactionCallbackCalled;
-            }));
+            lock, std::chrono::seconds(5), [&transactionCallbackCalled]() { return transactionCallbackCalled; }));
     }
     ASSERT_TRUE(transactionError.has_value());
     EXPECT_NE(std::string_view::npos, transactionError->toStringView().find("standard transaction failure"));
@@ -1234,44 +1168,39 @@ TEST(ClientSQLNativeModuleFactory, rollsBackWhenTransactionBodyThrowsStandardExc
     std::condition_variable queryCondition;
     bool queryCallbackCalled = false;
     std::optional<StringBox> queryError;
-    connection->query(
-        STRING_LITERAL("SELECT COUNT(*) AS count FROM item"),
-        std::nullopt,
-        [&queryMutex, &queryCondition, &queryCallbackCalled, &queryError](
-            std::optional<std::vector<Value>> /*rows*/, std::optional<StringBox> error) {
-            {
-                std::lock_guard<std::mutex> lock(queryMutex);
-                queryError = std::move(error);
-                queryCallbackCalled = true;
-            }
-            queryCondition.notify_one();
-        });
+    connection->query(STRING_LITERAL("SELECT COUNT(*) AS count FROM item"),
+                      std::nullopt,
+                      [&queryMutex, &queryCondition, &queryCallbackCalled, &queryError](
+                          std::optional<std::vector<Value>> /*rows*/, std::optional<StringBox> error) {
+                          {
+                              std::lock_guard<std::mutex> lock(queryMutex);
+                              queryError = std::move(error);
+                              queryCallbackCalled = true;
+                          }
+                          queryCondition.notify_one();
+                      });
     {
         std::unique_lock<std::mutex> lock(queryMutex);
         ASSERT_TRUE(queryCondition.wait_for(
-            lock, std::chrono::seconds(5), [&queryCallbackCalled]() {
-                return queryCallbackCalled;
-            }));
+            lock, std::chrono::seconds(5), [&queryCallbackCalled]() { return queryCallbackCalled; }));
     }
     EXPECT_FALSE(queryError.has_value());
 
     std::mutex closeMutex;
     std::condition_variable closeCondition;
     bool closeCallbackCalled = false;
-    connection->close([&closeMutex, &closeCondition, &closeCallbackCalled](
-                          Value /*value*/, std::optional<StringBox> /*error*/) {
-        {
-            std::lock_guard<std::mutex> lock(closeMutex);
-            closeCallbackCalled = true;
-        }
-        closeCondition.notify_one();
-    });
+    connection->close(
+        [&closeMutex, &closeCondition, &closeCallbackCalled](Value /*value*/, std::optional<StringBox> /*error*/) {
+            {
+                std::lock_guard<std::mutex> lock(closeMutex);
+                closeCallbackCalled = true;
+            }
+            closeCondition.notify_one();
+        });
     {
         std::unique_lock<std::mutex> lock(closeMutex);
         ASSERT_TRUE(closeCondition.wait_for(
-            lock, std::chrono::seconds(5), [&closeCallbackCalled]() {
-                return closeCallbackCalled;
-            }));
+            lock, std::chrono::seconds(5), [&closeCallbackCalled]() { return closeCallbackCalled; }));
     }
     workerQueue->fullTeardown();
 }
@@ -1297,49 +1226,46 @@ TEST(ClientSQLNativeModuleFactory, defersExternalWriterWorkUntilNativeTransactio
     bool transactionReady = false;
     Ref<ValueFunction> savedDoneCallback;
 
-    auto body = makeShared<ValueFunctionWithCallable>(
-        [&mutex, &condition, &transactionReady, &savedDoneCallback](const ValueFunctionCallContext& callContext)
-            -> Value {
-            auto transaction = callContext.getParameter(0);
-            auto doneCallback = callContext.getParameterAsFunction(1);
-            if (!callContext.getExceptionTracker()) {
-                return Value::undefined();
-            }
-
-            auto insertCallback = makeShared<ValueFunctionWithCallable>(
-                [&mutex, &condition, &transactionReady, &savedDoneCallback, doneCallback](
-                    const ValueFunctionCallContext& insertContext) -> Value {
-                    const auto& insertError = insertContext.getParameter(1);
-                    if (!insertError.isNullOrUndefined()) {
-                        (*doneCallback)({Value::undefined(), insertError});
-                        return Value::undefined();
-                    }
-
-                    {
-                        std::lock_guard<std::mutex> lock(mutex);
-                        savedDoneCallback = doneCallback;
-                        transactionReady = true;
-                    }
-                    condition.notify_one();
-                    return Value::undefined();
-                });
-            callNativeFunction(
-                transaction,
-                "execute",
-                {Value("INSERT INTO item(id, name) VALUES (?, ?)"),
-                 Value(ValueArray::make({Value(1), Value("Inside")})),
-                 Value(insertCallback)});
+    auto body = makeShared<ValueFunctionWithCallable>([&mutex, &condition, &transactionReady, &savedDoneCallback](
+                                                          const ValueFunctionCallContext& callContext) -> Value {
+        auto transaction = callContext.getParameter(0);
+        auto doneCallback = callContext.getParameterAsFunction(1);
+        if (!callContext.getExceptionTracker()) {
             return Value::undefined();
-        });
+        }
+
+        auto insertCallback = makeShared<ValueFunctionWithCallable>(
+            [&mutex, &condition, &transactionReady, &savedDoneCallback, doneCallback](
+                const ValueFunctionCallContext& insertContext) -> Value {
+                const auto& insertError = insertContext.getParameter(1);
+                if (!insertError.isNullOrUndefined()) {
+                    (*doneCallback)({Value::undefined(), insertError});
+                    return Value::undefined();
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    savedDoneCallback = doneCallback;
+                    transactionReady = true;
+                }
+                condition.notify_one();
+                return Value::undefined();
+            });
+        callNativeFunction(transaction,
+                           "execute",
+                           {Value("INSERT INTO item(id, name) VALUES (?, ?)"),
+                            Value(ValueArray::make({Value(1), Value("Inside")})),
+                            Value(insertCallback)});
+        return Value::undefined();
+    });
 
     ClientSQLAsyncResult transactionResult;
     callNativeFunction(firstConnection, "transaction", {Value(body), Value(transactionResult.makeCallback())});
 
     {
         std::unique_lock<std::mutex> lock(mutex);
-        ASSERT_TRUE(condition.wait_for(lock, std::chrono::seconds(5), [&transactionReady]() {
-            return transactionReady;
-        }));
+        ASSERT_TRUE(
+            condition.wait_for(lock, std::chrono::seconds(5), [&transactionReady]() { return transactionReady; }));
     }
 
     ClientSQLAsyncResult outsideWriteResult;
@@ -1413,49 +1339,46 @@ TEST(ClientSQLNativeModuleFactory, allowsSeparateHandleSnapshotReadersDuringActi
     bool transactionReady = false;
     Ref<ValueFunction> savedDoneCallback;
 
-    auto body = makeShared<ValueFunctionWithCallable>(
-        [&mutex, &condition, &transactionReady, &savedDoneCallback](const ValueFunctionCallContext& callContext)
-            -> Value {
-            auto transaction = callContext.getParameter(0);
-            auto doneCallback = callContext.getParameterAsFunction(1);
-            if (!callContext.getExceptionTracker()) {
-                return Value::undefined();
-            }
-
-            auto insertCallback = makeShared<ValueFunctionWithCallable>(
-                [&mutex, &condition, &transactionReady, &savedDoneCallback, doneCallback](
-                    const ValueFunctionCallContext& insertContext) -> Value {
-                    const auto& insertError = insertContext.getParameter(1);
-                    if (!insertError.isNullOrUndefined()) {
-                        (*doneCallback)({Value::undefined(), insertError});
-                        return Value::undefined();
-                    }
-
-                    {
-                        std::lock_guard<std::mutex> lock(mutex);
-                        savedDoneCallback = doneCallback;
-                        transactionReady = true;
-                    }
-                    condition.notify_one();
-                    return Value::undefined();
-                });
-            callNativeFunction(
-                transaction,
-                "execute",
-                {Value("INSERT INTO item(id, name) VALUES (?, ?)"),
-                 Value(ValueArray::make({Value(2), Value("Inside")})),
-                 Value(insertCallback)});
+    auto body = makeShared<ValueFunctionWithCallable>([&mutex, &condition, &transactionReady, &savedDoneCallback](
+                                                          const ValueFunctionCallContext& callContext) -> Value {
+        auto transaction = callContext.getParameter(0);
+        auto doneCallback = callContext.getParameterAsFunction(1);
+        if (!callContext.getExceptionTracker()) {
             return Value::undefined();
-        });
+        }
+
+        auto insertCallback = makeShared<ValueFunctionWithCallable>(
+            [&mutex, &condition, &transactionReady, &savedDoneCallback, doneCallback](
+                const ValueFunctionCallContext& insertContext) -> Value {
+                const auto& insertError = insertContext.getParameter(1);
+                if (!insertError.isNullOrUndefined()) {
+                    (*doneCallback)({Value::undefined(), insertError});
+                    return Value::undefined();
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    savedDoneCallback = doneCallback;
+                    transactionReady = true;
+                }
+                condition.notify_one();
+                return Value::undefined();
+            });
+        callNativeFunction(transaction,
+                           "execute",
+                           {Value("INSERT INTO item(id, name) VALUES (?, ?)"),
+                            Value(ValueArray::make({Value(2), Value("Inside")})),
+                            Value(insertCallback)});
+        return Value::undefined();
+    });
 
     ClientSQLAsyncResult transactionResult;
     callNativeFunction(firstConnection, "transaction", {Value(body), Value(transactionResult.makeCallback())});
 
     {
         std::unique_lock<std::mutex> lock(mutex);
-        ASSERT_TRUE(condition.wait_for(lock, std::chrono::seconds(5), [&transactionReady]() {
-            return transactionReady;
-        }));
+        ASSERT_TRUE(
+            condition.wait_for(lock, std::chrono::seconds(5), [&transactionReady]() { return transactionReady; }));
     }
 
     ClientSQLAsyncResult outsideReadResult;
@@ -1480,12 +1403,10 @@ TEST(ClientSQLNativeModuleFactory, allowsSeparateHandleSnapshotReadersDuringActi
 
     transactionResult.waitForSuccess();
 
-    auto rowsAfterCommit = queryClientSQL(
-                               secondConnection,
-                               "query",
-                               STRING_LITERAL("SELECT name FROM item ORDER BY id"),
-                               Value::undefined())
-                               .getArrayRef();
+    auto rowsAfterCommit =
+        queryClientSQL(
+            secondConnection, "query", STRING_LITERAL("SELECT name FROM item ORDER BY id"), Value::undefined())
+            .getArrayRef();
     ASSERT_NE(rowsAfterCommit, nullptr);
     ASSERT_EQ(2ul, rowsAfterCommit->size());
     EXPECT_EQ(STRING_LITERAL("Before"), (*rowsAfterCommit)[0].getMapValue("name").toStringBox());
@@ -1507,58 +1428,53 @@ TEST(ClientSQLNativeModuleFactory, rejectsParentConnectionReentrancyInsideTransa
     auto workerQueue = DispatchQueue::create(STRING_LITERAL("ClientSQL Test Worker"), ThreadQoSClassNormal);
     auto factory = makeShared<ClientSQLNativeModuleFactory>(diskCache, workerQueue);
     auto module = factory->loadModule();
-    auto connection = callNativeFunction(
-        module,
-        "openDatabase",
-        makeClientSQLOpenParameters(STRING_LITERAL("runtime-transaction-reentrancy-test.sqlite")));
+    auto connection =
+        callNativeFunction(module,
+                           "openDatabase",
+                           makeClientSQLOpenParameters(STRING_LITERAL("runtime-transaction-reentrancy-test.sqlite")));
 
     std::atomic_bool executeRejected{false};
     std::atomic_bool queryRejected{false};
     std::atomic_bool closeRejected{false};
-    auto body = makeShared<ValueFunctionWithCallable>(
-        [connection, &executeRejected, &queryRejected, &closeRejected](
-            const ValueFunctionCallContext& callContext) -> Value {
-            auto doneCallback = callContext.getParameterAsFunction(1);
-            if (!callContext.getExceptionTracker()) {
-                return Value::undefined();
-            }
-
-            auto executeCallback = makeShared<ValueFunctionWithCallable>(
-                [&executeRejected](const ValueFunctionCallContext& executeContext) -> Value {
-                    executeRejected.store(
-                        executeContext.getParameter(1).toString().find("parent connection execute") != std::string::npos);
-                    return Value::undefined();
-                });
-            callNativeFunction(
-                connection,
-                "execute",
-                {Value("INSERT INTO item(id) VALUES (1)"),
-                 Value(ValueArray::make(0)),
-                 Value(executeCallback)});
-
-            auto queryCallback = makeShared<ValueFunctionWithCallable>(
-                [&queryRejected](const ValueFunctionCallContext& queryContext) -> Value {
-                    queryRejected.store(
-                        queryContext.getParameter(1).toString().find("parent connection query") != std::string::npos);
-                    return Value::undefined();
-                });
-            callNativeFunction(
-                connection,
-                "query",
-                {Value("SELECT COUNT(*) AS count FROM item"),
-                 Value(ValueArray::make(0)),
-                 Value(queryCallback)});
-
-            auto closeCallback = makeShared<ValueFunctionWithCallable>(
-                [&closeRejected, doneCallback](const ValueFunctionCallContext& closeContext) -> Value {
-                    closeRejected.store(
-                        closeContext.getParameter(1).toString().find("parent connection close") != std::string::npos);
-                    (*doneCallback)({Value::undefined(), Value::undefined()});
-                    return Value::undefined();
-                });
-            callNativeFunction(connection, "close", {Value(closeCallback)});
+    auto body = makeShared<ValueFunctionWithCallable>([connection, &executeRejected, &queryRejected, &closeRejected](
+                                                          const ValueFunctionCallContext& callContext) -> Value {
+        auto doneCallback = callContext.getParameterAsFunction(1);
+        if (!callContext.getExceptionTracker()) {
             return Value::undefined();
-        });
+        }
+
+        auto executeCallback = makeShared<ValueFunctionWithCallable>(
+            [&executeRejected](const ValueFunctionCallContext& executeContext) -> Value {
+                executeRejected.store(executeContext.getParameter(1).toString().find("parent connection execute") !=
+                                      std::string::npos);
+                return Value::undefined();
+            });
+        callNativeFunction(
+            connection,
+            "execute",
+            {Value("INSERT INTO item(id) VALUES (1)"), Value(ValueArray::make(0)), Value(executeCallback)});
+
+        auto queryCallback = makeShared<ValueFunctionWithCallable>(
+            [&queryRejected](const ValueFunctionCallContext& queryContext) -> Value {
+                queryRejected.store(queryContext.getParameter(1).toString().find("parent connection query") !=
+                                    std::string::npos);
+                return Value::undefined();
+            });
+        callNativeFunction(
+            connection,
+            "query",
+            {Value("SELECT COUNT(*) AS count FROM item"), Value(ValueArray::make(0)), Value(queryCallback)});
+
+        auto closeCallback = makeShared<ValueFunctionWithCallable>(
+            [&closeRejected, doneCallback](const ValueFunctionCallContext& closeContext) -> Value {
+                closeRejected.store(closeContext.getParameter(1).toString().find("parent connection close") !=
+                                    std::string::npos);
+                (*doneCallback)({Value::undefined(), Value::undefined()});
+                return Value::undefined();
+            });
+        callNativeFunction(connection, "close", {Value(closeCallback)});
+        return Value::undefined();
+    });
 
     ClientSQLAsyncResult transactionResult;
     callNativeFunction(connection, "transaction", {Value(body), Value(transactionResult.makeCallback())});
@@ -1567,12 +1483,10 @@ TEST(ClientSQLNativeModuleFactory, rejectsParentConnectionReentrancyInsideTransa
     EXPECT_TRUE(queryRejected.load());
     EXPECT_TRUE(closeRejected.load());
 
-    auto rows = queryClientSQL(
-                    connection,
-                    "query",
-                    STRING_LITERAL("SELECT COUNT(*) AS count FROM item"),
-                    Value(ValueArray::make(0)))
-                    .getArrayRef();
+    auto rows =
+        queryClientSQL(
+            connection, "query", STRING_LITERAL("SELECT COUNT(*) AS count FROM item"), Value(ValueArray::make(0)))
+            .getArrayRef();
     ASSERT_NE(rows, nullptr);
     ASSERT_EQ(1ul, rows->size());
     EXPECT_EQ(0, (*rows)[0].getMapValue("count").toInt());
@@ -1591,14 +1505,9 @@ TEST(ClientSQLNativeModuleFactory, rejectsSchemaFingerprintMismatchForSharedIden
     auto module = factory->loadModule();
 
     auto firstConnection = callNativeFunction(
-        module,
-        "openDatabase",
-        makeClientSQLOpenParameters(STRING_LITERAL("schema-fingerprint-test.sqlite")));
+        module, "openDatabase", makeClientSQLOpenParameters(STRING_LITERAL("schema-fingerprint-test.sqlite")));
     queryClientSQL(
-        firstConnection,
-        "query",
-        STRING_LITERAL("SELECT COUNT(*) AS count FROM item"),
-        Value(ValueArray::make(0)));
+        firstConnection, "query", STRING_LITERAL("SELECT COUNT(*) AS count FROM item"), Value(ValueArray::make(0)));
 
     std::vector<Value> collidingOpenParameters{
         Value("schema-fingerprint-test.sqlite"),
@@ -1614,9 +1523,7 @@ TEST(ClientSQLNativeModuleFactory, rejectsSchemaFingerprintMismatchForSharedIden
     callNativeFunction(
         collidingConnection,
         "query",
-        {Value("SELECT COUNT(*) AS count FROM item"),
-         Value(ValueArray::make(0)),
-         Value(queryResult.makeCallback())});
+        {Value("SELECT COUNT(*) AS count FROM item"), Value(ValueArray::make(0)), Value(queryResult.makeCallback())});
     const auto error = queryResult.waitForError().toString();
     EXPECT_NE(std::string::npos, error.find("different schema fingerprint")) << error;
 
@@ -1638,28 +1545,18 @@ TEST(ClientSQLNativeModuleFactory, releasesManyClosedDatabaseCoordinators) {
 
     for (int index = 0; index < 64; ++index) {
         auto connection = callNativeFunction(
-            module,
-            "openDatabase",
-            makeClientSQLOpenParameters(STRING_FORMAT("lifetime-{}.sqlite", index)));
+            module, "openDatabase", makeClientSQLOpenParameters(STRING_FORMAT("lifetime-{}.sqlite", index)));
         queryClientSQL(
-            connection,
-            "query",
-            STRING_LITERAL("SELECT COUNT(*) AS count FROM item"),
-            Value(ValueArray::make(0)));
+            connection, "query", STRING_LITERAL("SELECT COUNT(*) AS count FROM item"), Value(ValueArray::make(0)));
         ClientSQLAsyncResult closeResult;
         callNativeFunction(connection, "close", {Value(closeResult.makeCallback())});
         closeResult.waitForSuccess();
     }
 
     auto finalConnection = callNativeFunction(
-        module,
-        "openDatabase",
-        makeClientSQLOpenParameters(STRING_LITERAL("lifetime-final.sqlite")));
+        module, "openDatabase", makeClientSQLOpenParameters(STRING_LITERAL("lifetime-final.sqlite")));
     queryClientSQL(
-        finalConnection,
-        "query",
-        STRING_LITERAL("SELECT COUNT(*) AS count FROM item"),
-        Value(ValueArray::make(0)));
+        finalConnection, "query", STRING_LITERAL("SELECT COUNT(*) AS count FROM item"), Value(ValueArray::make(0)));
     ClientSQLAsyncResult debugInfoResult;
     callNativeFunction(finalConnection, "debugInfo", {Value(debugInfoResult.makeCallback())});
     EXPECT_EQ(1, debugInfoResult.waitForSuccess().getMapValue("liveCoordinators").toInt());
@@ -1680,28 +1577,18 @@ TEST(ClientSQLNativeModuleFactory, releasesFinalDroppedHandleWithoutClose) {
     auto module = factory->loadModule();
 
     auto baselineConnection = callNativeFunction(
-        module,
-        "openDatabase",
-        makeClientSQLOpenParameters(STRING_LITERAL("lifetime-drop-baseline.sqlite")));
+        module, "openDatabase", makeClientSQLOpenParameters(STRING_LITERAL("lifetime-drop-baseline.sqlite")));
     queryClientSQL(
-        baselineConnection,
-        "query",
-        STRING_LITERAL("SELECT COUNT(*) AS count FROM item"),
-        Value::undefined());
+        baselineConnection, "query", STRING_LITERAL("SELECT COUNT(*) AS count FROM item"), Value::undefined());
     ClientSQLAsyncResult baselineDebugInfoResult;
     callNativeFunction(baselineConnection, "debugInfo", {Value(baselineDebugInfoResult.makeCallback())});
     const auto baselineCoordinatorCount =
         baselineDebugInfoResult.waitForSuccess().getMapValue("liveCoordinators").toInt();
 
     auto droppedConnection = callNativeFunction(
-        module,
-        "openDatabase",
-        makeClientSQLOpenParameters(STRING_LITERAL("lifetime-dropped-handle.sqlite")));
+        module, "openDatabase", makeClientSQLOpenParameters(STRING_LITERAL("lifetime-dropped-handle.sqlite")));
     queryClientSQL(
-        droppedConnection,
-        "query",
-        STRING_LITERAL("SELECT COUNT(*) AS count FROM item"),
-        Value::undefined());
+        droppedConnection, "query", STRING_LITERAL("SELECT COUNT(*) AS count FROM item"), Value::undefined());
 
     droppedConnection = Value::undefined();
     // The coordinator destructor only submits this task when its final ref is
@@ -1713,9 +1600,7 @@ TEST(ClientSQLNativeModuleFactory, releasesFinalDroppedHandleWithoutClose) {
 
     ClientSQLAsyncResult debugInfoResult;
     callNativeFunction(baselineConnection, "debugInfo", {Value(debugInfoResult.makeCallback())});
-    EXPECT_EQ(
-        baselineCoordinatorCount,
-        debugInfoResult.waitForSuccess().getMapValue("liveCoordinators").toInt());
+    EXPECT_EQ(baselineCoordinatorCount, debugInfoResult.waitForSuccess().getMapValue("liveCoordinators").toInt());
 
     EXPECT_EQ(1u, resourceReleaseQueue->flushTasks());
     EXPECT_EQ(0u, resourceReleaseQueue->pendingTaskCount());
@@ -1753,8 +1638,7 @@ TEST(ClientSQLNativeModuleFactory, validatesSchemaAndMigrationVersionsAtBoundary
         Value(ValueArray::make({Value("CREATE TABLE item (id INTEGER NOT NULL PRIMARY KEY)")})),
         Value(ValueArray::make({firstMigration, duplicateMigration})),
     };
-    const auto duplicateError =
-        callNativeFunctionExpectingError(module, "openDatabase", duplicateMigrationParameters);
+    const auto duplicateError = callNativeFunctionExpectingError(module, "openDatabase", duplicateMigrationParameters);
     EXPECT_NE(std::string::npos, duplicateError.find("duplicate migration version 2")) << duplicateError;
     workerQueue->fullTeardown();
 }
@@ -1767,10 +1651,9 @@ TEST(ClientSQLNativeModuleFactory, rejectsEmbeddedNullInSchemaAndMigrationSQL) {
     auto module = factory->loadModule();
 
     const std::string createSQLWithNull =
-        std::string("CREATE TABLE item (id INTEGER NOT NULL PRIMARY KEY)") + '\0' +
-        "DROP TABLE item";
-    auto createSQL = StringCache::getGlobal().makeString(
-        std::string_view(createSQLWithNull.data(), createSQLWithNull.size()));
+        std::string("CREATE TABLE item (id INTEGER NOT NULL PRIMARY KEY)") + '\0' + "DROP TABLE item";
+    auto createSQL =
+        StringCache::getGlobal().makeString(std::string_view(createSQLWithNull.data(), createSQLWithNull.size()));
     std::vector<Value> createParameters{
         Value("schema-null-test.sqlite"),
         Value(1),
@@ -1778,14 +1661,12 @@ TEST(ClientSQLNativeModuleFactory, rejectsEmbeddedNullInSchemaAndMigrationSQL) {
         Value(ValueArray::make(0)),
     };
     const auto createError = callNativeFunctionExpectingError(module, "openDatabase", createParameters);
-    EXPECT_NE(std::string::npos, createError.find("create statement 0 contains an embedded NUL byte"))
-        << createError;
+    EXPECT_NE(std::string::npos, createError.find("create statement 0 contains an embedded NUL byte")) << createError;
 
     const std::string migrationSQLWithNull =
-        std::string("ALTER TABLE item ADD COLUMN name TEXT") + '\0' +
-        "DROP TABLE item";
-    auto migrationSQL = StringCache::getGlobal().makeString(
-        std::string_view(migrationSQLWithNull.data(), migrationSQLWithNull.size()));
+        std::string("ALTER TABLE item ADD COLUMN name TEXT") + '\0' + "DROP TABLE item";
+    auto migrationSQL =
+        StringCache::getGlobal().makeString(std::string_view(migrationSQLWithNull.data(), migrationSQLWithNull.size()));
     Value migration;
     migration.setMapValue("version", Value(2));
     migration.setMapValue("statements", Value(ValueArray::make({Value(migrationSQL)})));
@@ -1824,9 +1705,8 @@ TEST(ClientSQLNativeModuleFactory, rejectsMissingMigrationVersions) {
 
     Value versionThreeMigration;
     versionThreeMigration.setMapValue("version", Value(3));
-    versionThreeMigration.setMapValue(
-        "statements",
-        Value(ValueArray::make({Value("ALTER TABLE item ADD COLUMN name TEXT")})));
+    versionThreeMigration.setMapValue("statements",
+                                      Value(ValueArray::make({Value("ALTER TABLE item ADD COLUMN name TEXT")})));
     std::vector<Value> upgradedOpenParameters{
         Value("runtime-migration-gap-test.sqlite"),
         Value(3),
@@ -1836,13 +1716,77 @@ TEST(ClientSQLNativeModuleFactory, rejectsMissingMigrationVersions) {
     auto upgradedConnection = callNativeFunction(module, "openDatabase", upgradedOpenParameters);
 
     ClientSQLAsyncResult queryResult;
-    callNativeFunction(upgradedConnection,
-                       "query",
-                       {Value("SELECT COUNT(*) AS count FROM item"),
-                        Value(ValueArray::make(0)),
-                        Value(queryResult.makeCallback())});
+    callNativeFunction(
+        upgradedConnection,
+        "query",
+        {Value("SELECT COUNT(*) AS count FROM item"), Value(ValueArray::make(0)), Value(queryResult.makeCallback())});
     const auto error = queryResult.waitForError().toString();
     EXPECT_NE(std::string::npos, error.find("missing migration for schema version 2")) << error;
+
+    ClientSQLAsyncResult upgradedCloseResult;
+    callNativeFunction(upgradedConnection, "close", {Value(upgradedCloseResult.makeCallback())});
+    upgradedCloseResult.waitForSuccess();
+    workerQueue->fullTeardown();
+}
+
+// The close callback runs inside the close task, which still holds the database's coordinator, so an open
+// made from it always gets that same coordinator back. It must still be free to bring a new schema.
+TEST(ClientSQLNativeModuleFactory, reopenWithNewSchemaFromCloseCallbackMigrates) {
+    ClientSQLTemporaryDirectory directory;
+    auto diskCache = makeShared<DiskCacheImpl>(directory.get());
+    auto workerQueue = DispatchQueue::create(STRING_LITERAL("ClientSQL Test Worker"), ThreadQoSClassNormal);
+    auto factory = makeShared<ClientSQLNativeModuleFactory>(diskCache, workerQueue);
+    auto module = factory->loadModule();
+
+    std::vector<Value> initialOpenParameters{
+        Value("reopen-from-close-callback-test.sqlite"),
+        Value(1),
+        Value(ValueArray::make({Value("CREATE TABLE item (id INTEGER NOT NULL PRIMARY KEY)")})),
+        Value(ValueArray::make(0)),
+    };
+    auto initialConnection = callNativeFunction(module, "openDatabase", initialOpenParameters);
+    queryClientSQL(
+        initialConnection, "query", STRING_LITERAL("SELECT COUNT(*) AS count FROM item"), Value::undefined());
+
+    Value versionTwoMigration;
+    versionTwoMigration.setMapValue("version", Value(2));
+    versionTwoMigration.setMapValue("statements",
+                                    Value(ValueArray::make({Value("ALTER TABLE item ADD COLUMN name TEXT")})));
+    std::vector<Value> upgradedOpenParameters{
+        Value("reopen-from-close-callback-test.sqlite"),
+        Value(2),
+        Value(ValueArray::make({Value("CREATE TABLE item (id INTEGER NOT NULL PRIMARY KEY, name TEXT)")})),
+        Value(ValueArray::make({versionTwoMigration})),
+    };
+
+    std::mutex mutex;
+    std::condition_variable condition;
+    Value upgradedConnection;
+    bool reopened = false;
+    auto closeCallback = makeShared<ValueFunctionWithCallable>([&](const ValueFunctionCallContext& /*callContext*/) {
+        auto connection = callNativeFunction(module, "openDatabase", upgradedOpenParameters);
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            upgradedConnection = std::move(connection);
+            reopened = true;
+        }
+        condition.notify_one();
+        return Value::undefined();
+    });
+    callNativeFunction(initialConnection, "close", {Value(closeCallback)});
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(condition.wait_for(lock, std::chrono::seconds(5), [&]() { return reopened; }));
+    }
+
+    executeClientSQL(upgradedConnection,
+                     STRING_LITERAL("INSERT INTO item(id, name) VALUES (?, ?)"),
+                     Value(ValueArray::make({Value(1), Value("Ada")})));
+    auto rows = queryClientSQL(upgradedConnection, "query", STRING_LITERAL("SELECT name FROM item"), Value::undefined())
+                    .getArrayRef();
+    ASSERT_NE(rows, nullptr);
+    ASSERT_EQ(1ul, rows->size());
+    EXPECT_EQ(STRING_LITERAL("Ada"), (*rows)[0].getMapValue("name").toStringBox());
 
     ClientSQLAsyncResult upgradedCloseResult;
     callNativeFunction(upgradedConnection, "close", {Value(upgradedCloseResult.makeCallback())});
