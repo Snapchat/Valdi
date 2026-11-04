@@ -9108,20 +9108,21 @@ TEST_P(RuntimeFixture, namesUnlabeledScopedRuntimeTaskAfterItsScopeForANRAttribu
     auto* runtime = wrapper.runtime->getJavaScriptRuntime();
     auto objectsManager = runtime->createNativeObjectsManager("MyFeature.MyCallsite");
 
-    auto getStringAsyncFn = getJsModulePropertyWithSchema(
-        wrapper.runtime, objectsManager, nullptr, "test/src/Promise", "getStringAsync", "f(): p<s>");
-    ASSERT_TRUE(getStringAsyncFn) << getStringAsyncFn.description();
-    auto callResult = getStringAsyncFn.value().getFunction()->call(ValueFunctionFlagsPropagatesError, {});
-    ASSERT_TRUE(callResult) << callResult.description();
-    auto promise = callResult.value().getTypedRef<Promise>();
-    ASSERT_NE(nullptr, promise);
+    auto receiveError = getJsModulePropertyAsUntypedFunction(
+        wrapper.runtime, objectsManager, "test/src/ErrorPropagation", "receiveError");
+    ASSERT_TRUE(receiveError) << receiveError.description();
+    Ref<Context> scopedContext;
+    auto captureContext = makeShared<ValueFunctionWithCallable>([&](const auto&) {
+        scopedContext = Context::currentRef();
+        return Value::undefined();
+    });
+    auto result = receiveError.value()->call(ValueFunctionFlagsCallSync, {Value(captureContext)});
+    ASSERT_TRUE(result) << result.description();
+    ASSERT_NE(nullptr, scopedContext);
 
-    // The completion runs in an unlabeled task owned by the scoped runtime's context.
-    std::promise<std::string> completionInfo;
-    promise->onComplete([&](const Result<Value>&) { completionInfo.set_value(runtime->getANRAttributionInfo()); });
-    auto completionFuture = completionInfo.get_future();
-    ASSERT_EQ(std::future_status::ready, completionFuture.wait_for(std::chrono::seconds(30)));
-    EXPECT_EQ(" [stuck-in: MyFeature.MyCallsite]", completionFuture.get());
+    std::string attribution;
+    runtime->dispatchOnJsThreadSync(scopedContext, [&](auto&) { attribution = runtime->getANRAttributionInfo(); });
+    EXPECT_EQ(" [stuck-in: MyFeature.MyCallsite]", attribution);
 
     runtime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("test.barrier"), [](auto&) {});
     EXPECT_EQ("", runtime->getANRAttributionInfo());
@@ -9375,6 +9376,49 @@ TEST_P(RuntimeFixture, supportsPromiseCallWithRegularReturnValue) {
     ASSERT_TRUE(promiseResult) << promiseResult.description();
 
     ASSERT_EQ("Hello World Sync", promiseResult.value().toString());
+}
+
+static std::string getANRAttributionDuringNativePromiseCompletion(RuntimeWrapper& wrapper) {
+    auto* runtime = wrapper.runtime->getJavaScriptRuntime();
+    auto getStringAsyncFn =
+        getJsModulePropertyWithSchema(wrapper.runtime, "test/src/Promise", "getStringAsync", "f(): p<s>");
+    EXPECT_TRUE(getStringAsyncFn) << getStringAsyncFn.value();
+    auto callResult = getStringAsyncFn.value().getFunction()->call(ValueFunctionFlagsPropagatesError, {});
+    EXPECT_TRUE(callResult) << callResult.description();
+    auto promise = callResult.value().getTypedRef<Promise>();
+    if (promise == nullptr) {
+        ADD_FAILURE() << "getStringAsync did not return a promise";
+        return "";
+    }
+
+    std::promise<std::string> completionInfo;
+    promise->onComplete([&](const Result<Value>&) { completionInfo.set_value(runtime->getANRAttributionInfo()); });
+    auto completionFuture = completionInfo.get_future();
+    if (completionFuture.wait_for(std::chrono::seconds(30)) != std::future_status::ready) {
+        ADD_FAILURE() << "promise never completed";
+        return "";
+    }
+    return completionFuture.get();
+}
+
+TEST_P(RuntimeFixture, namesNativePromiseCompletionAfterItsReferenceForANRAttribution) {
+    wrapper.teardown();
+    auto tweaks = makeShared<TestTweakValueProvider>().toShared();
+    tweaks->config.setMapValue("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS", Value(true));
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, tweaks);
+    auto* runtime = wrapper.runtime->getJavaScriptRuntime();
+
+    auto attribution = getANRAttributionDuringNativePromiseCompletion(wrapper);
+    EXPECT_NE(std::string::npos, attribution.find("[stuck-in: ")) << attribution;
+    EXPECT_NE(std::string::npos, attribution.find("getStringAsync.<r>]")) << attribution;
+
+    runtime->dispatchSynchronouslyOnJsThread(STRING_LITERAL("test.barrier"), [](auto&) {});
+    EXPECT_EQ("", runtime->getANRAttributionInfo());
+}
+
+TEST_P(RuntimeFixture, doesNotNameNativePromiseCompletionWithoutANRDiagnostics) {
+    auto attribution = getANRAttributionDuringNativePromiseCompletion(wrapper);
+    EXPECT_EQ(std::string::npos, attribution.find("getStringAsync")) << attribution;
 }
 
 TEST_P(RuntimeFixture, supportsPromiseCallWithPromiseParametersStepByStep) {

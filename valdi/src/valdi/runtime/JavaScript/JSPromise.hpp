@@ -40,7 +40,9 @@ private:
 
 class JSPromiseOnFulfilled : public JSFunction {
 public:
-    JSPromiseOnFulfilled(const Ref<PromiseCallback>& callback, const Ref<ValueMarshaller<JSValueRef>>& valueMarshaller);
+    JSPromiseOnFulfilled(const Ref<PromiseCallback>& callback,
+                         const Ref<ValueMarshaller<JSValueRef>>& valueMarshaller,
+                         StringBox anrAttribution);
     ~JSPromiseOnFulfilled() override;
 
     JSValueRef operator()(JSFunctionNativeCallContext& callContext) noexcept final;
@@ -54,11 +56,12 @@ public:
 private:
     Ref<PromiseCallback> _callback;
     Ref<ValueMarshaller<JSValueRef>> _valueMarshaller;
+    StringBox _anrAttribution;
 };
 
 class JSPromiseOnRejected : public JSFunction {
 public:
-    JSPromiseOnRejected(const Ref<PromiseCallback>& callback);
+    JSPromiseOnRejected(const Ref<PromiseCallback>& callback, StringBox anrAttribution);
     ~JSPromiseOnRejected() override;
 
     JSValueRef operator()(JSFunctionNativeCallContext& callContext) noexcept final;
@@ -66,6 +69,7 @@ public:
 private:
     Ref<PromiseCallback> _callback;
     Ref<ValueMarshaller<JSValueRef>> _valueMarshaller;
+    StringBox _anrAttribution;
 };
 
 class PromiseExecutor : public JSFunction {
@@ -107,7 +111,11 @@ private:
 
     void doOnCompleteWithValue(const Ref<PromiseCallback>& callback,
                                const JSValue& value,
+                               const StringBox& anrAttribution,
                                const JavaScriptEntryParameters& jsEntry);
+
+    /** ANR label for the native callback, named after the reference the promise was bridged through. */
+    StringBox getCompletionAttribution(const JavaScriptEntryParameters& jsEntry) const;
 
     void doOnComplete(const Ref<PromiseCallback>& callback, const JavaScriptEntryParameters& jsEntry);
 

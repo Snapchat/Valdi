@@ -1,5 +1,6 @@
 #pragma once
 
+#include "valdi_core/cpp/Utils/ReferenceInfo.hpp"
 #include "valdi_core/cpp/Utils/StringBox.hpp"
 
 #include <array>
@@ -26,6 +27,12 @@ public:
 
     /** Limits a stored label to kMaxLabelBytes without splitting UTF-8 characters. */
     static StringBox boundedLabel(const StringBox& label);
+
+    /**
+     * Bounded label for a bridge reference (e.g. "<anon>.friendmojiProvider.forUsers.<p1>"). Empty when no
+     * component has an assigned name: "<anon>.<p0>" would put unrelated work under one label.
+     */
+    static StringBox referenceLabel(const ReferenceInfo& referenceInfo);
 
     RestoreToken push(const StringBox& label);
     void pop(RestoreToken token);

@@ -6,7 +6,9 @@
 //
 
 #include "valdi/runtime/JavaScript/JSPromise.hpp"
+#include "valdi/runtime/JavaScript/JavaScriptANRAttribution.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptFunctionCallContext.hpp"
+#include "valdi/runtime/JavaScript/JavaScriptRuntime.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptTaskScheduler.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptUtils.hpp"
 
@@ -15,6 +17,10 @@
 namespace Valdi {
 
 STRING_CONST(thenPropertyKey, "then")
+
+static JavaScriptRuntime* getAttributingRuntime(IJavaScriptContext& jsContext, const StringBox& anrAttribution) {
+    return anrAttribution.isEmpty() ? nullptr : dynamic_cast<JavaScriptRuntime*>(jsContext.getTaskScheduler());
+}
 
 static JSPropertyName getCancelPropertyKey(IJavaScriptContext& jsContext) {
     static auto kCancel = STRING_LITERAL("cancel");
@@ -60,12 +66,15 @@ bool JSPromiseCancel::isJSPromiseCancelable(IJavaScriptContext& jsContext, const
 }
 
 JSPromiseOnFulfilled::JSPromiseOnFulfilled(const Ref<PromiseCallback>& callback,
-                                           const Ref<ValueMarshaller<JSValueRef>>& valueMarshaller)
-    : _callback(callback), _valueMarshaller(valueMarshaller) {}
+                                           const Ref<ValueMarshaller<JSValueRef>>& valueMarshaller,
+                                           StringBox anrAttribution)
+    : _callback(callback), _valueMarshaller(valueMarshaller), _anrAttribution(std::move(anrAttribution)) {}
 
 JSPromiseOnFulfilled::~JSPromiseOnFulfilled() = default;
 
 JSValueRef JSPromiseOnFulfilled::operator()(JSFunctionNativeCallContext& callContext) noexcept {
+    ScopedNativeCallActivity activity(getAttributingRuntime(callContext.getContext(), _anrAttribution),
+                                      _anrAttribution);
     JSPromiseOnFulfilled::callCompletionWithValue(callContext.getContext(),
                                                   callContext.getParameter(0),
                                                   _valueMarshaller,
@@ -90,10 +99,13 @@ void JSPromiseOnFulfilled::callCompletionWithValue(IJavaScriptContext& jsContext
     }
 }
 
-JSPromiseOnRejected::JSPromiseOnRejected(const Ref<PromiseCallback>& callback) : _callback(callback) {}
+JSPromiseOnRejected::JSPromiseOnRejected(const Ref<PromiseCallback>& callback, StringBox anrAttribution)
+    : _callback(callback), _anrAttribution(std::move(anrAttribution)) {}
 JSPromiseOnRejected::~JSPromiseOnRejected() = default;
 
 JSValueRef JSPromiseOnRejected::operator()(JSFunctionNativeCallContext& callContext) noexcept {
+    ScopedNativeCallActivity activity(getAttributingRuntime(callContext.getContext(), _anrAttribution),
+                                      _anrAttribution);
     auto resolvedValue = JSValueRef::makeUnretained(callContext.getContext(), callContext.getParameter(0));
     auto error = convertJSErrorToValdiError(callContext.getContext(), resolvedValue, nullptr);
     _callback->onFailure(std::move(error));
@@ -162,9 +174,19 @@ bool JSPromise::isCancelable() const {
 
 void JSPromise::doOnCompleteWithValue(const Ref<PromiseCallback>& callback,
                                       const JSValue& value,
+                                      const StringBox& anrAttribution,
                                       const JavaScriptEntryParameters& jsEntry) {
+    ScopedNativeCallActivity activity(getAttributingRuntime(jsEntry.jsContext, anrAttribution), anrAttribution);
     JSPromiseOnFulfilled::callCompletionWithValue(
         jsEntry.jsContext, value, _valueMarshaller, callback, jsEntry.exceptionTracker);
+}
+
+StringBox JSPromise::getCompletionAttribution(const JavaScriptEntryParameters& jsEntry) const {
+    auto* taskScheduler = jsEntry.jsContext.getTaskScheduler();
+    if (taskScheduler == nullptr || !taskScheduler->anrDiagnosticsEnabled()) {
+        return StringBox();
+    }
+    return JavaScriptANRAttribution::referenceLabel(_jsValue.getReferenceInfo());
 }
 
 void JSPromise::doOnComplete(const Ref<PromiseCallback>& callback, const JavaScriptEntryParameters& jsEntry) {
@@ -173,9 +195,11 @@ void JSPromise::doOnComplete(const Ref<PromiseCallback>& callback, const JavaScr
         return;
     }
 
+    auto anrAttribution = getCompletionAttribution(jsEntry);
+
     if (!jsEntry.jsContext.isValueObject(jsValue)) {
         // Our JS value is not a promise
-        doOnCompleteWithValue(callback, jsValue, jsEntry);
+        doOnCompleteWithValue(callback, jsValue, anrAttribution, jsEntry);
         return;
     }
 
@@ -184,19 +208,20 @@ void JSPromise::doOnComplete(const Ref<PromiseCallback>& callback, const JavaScr
 
     if (jsEntry.jsContext.isValueUndefined(thenCallback.get())) {
         // Not a promise
-        doOnCompleteWithValue(callback, jsValue, jsEntry);
+        doOnCompleteWithValue(callback, jsValue, anrAttribution, jsEntry);
         return;
     }
 
     std::array<JSValueRef, 2> parameters;
 
-    parameters[0] = jsEntry.jsContext.newFunction(makeShared<JSPromiseOnFulfilled>(callback, _valueMarshaller),
-                                                  jsEntry.exceptionTracker);
+    parameters[0] = jsEntry.jsContext.newFunction(
+        makeShared<JSPromiseOnFulfilled>(callback, _valueMarshaller, anrAttribution), jsEntry.exceptionTracker);
     if (!jsEntry.exceptionTracker) {
         return;
     }
 
-    parameters[1] = jsEntry.jsContext.newFunction(makeShared<JSPromiseOnRejected>(callback), jsEntry.exceptionTracker);
+    parameters[1] = jsEntry.jsContext.newFunction(makeShared<JSPromiseOnRejected>(callback, std::move(anrAttribution)),
+                                                  jsEntry.exceptionTracker);
     if (!jsEntry.exceptionTracker) {
         return;
     }

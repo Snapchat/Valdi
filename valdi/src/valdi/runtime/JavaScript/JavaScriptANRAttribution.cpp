@@ -1,5 +1,6 @@
 #include "valdi/runtime/JavaScript/JavaScriptANRAttribution.hpp"
 
+#include <algorithm>
 #include <utility>
 
 namespace Valdi {
@@ -16,6 +17,13 @@ StringBox JavaScriptANRAttribution::boundedLabel(const StringBox& label) {
         --length;
     }
     return StringBox::fromString(std::string(text.substr(0, length)) + "...");
+}
+
+StringBox JavaScriptANRAttribution::referenceLabel(const ReferenceInfo& referenceInfo) {
+    auto hasName = std::any_of(referenceInfo.begin(), referenceInfo.end(), [](const auto& component) {
+        return component.type == ReferenceInfo::Component::Type::Property && component.hasAssignedName;
+    });
+    return hasName ? boundedLabel(referenceInfo.toFunctionIdentifier()) : StringBox();
 }
 
 JavaScriptANRAttribution::RestoreToken JavaScriptANRAttribution::push(const StringBox& label) {

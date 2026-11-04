@@ -24,7 +24,6 @@
 
 #include "utils/debugging/Assert.hpp"
 
-#include <algorithm>
 #include <atomic>
 #include <future>
 
@@ -75,14 +74,7 @@ const StringBox& ValueFunctionWithJSValue::getDispatchAttribution(const JavaScri
     // Built from the immutable ReferenceInfo rather than getFunctionName(): callers dispatch from any
     // thread, and that cache is only written on the JS thread.
     std::call_once(_referenceAttributionOnce, [this]() {
-        const auto& referenceInfo = getReferenceInfo();
-        // A path with no assigned name ("<anon>.<p0>") would put unrelated callbacks under one label.
-        auto hasName = std::any_of(referenceInfo.begin(), referenceInfo.end(), [](const auto& component) {
-            return component.type == ReferenceInfo::Component::Type::Property && component.hasAssignedName;
-        });
-        if (hasName) {
-            _referenceAttribution = JavaScriptANRAttribution::boundedLabel(referenceInfo.toFunctionIdentifier());
-        }
+        _referenceAttribution = JavaScriptANRAttribution::referenceLabel(getReferenceInfo());
     });
     return _referenceAttribution;
 }
