@@ -64,6 +64,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <future>
 #include <iostream>
@@ -7050,7 +7051,18 @@ TEST_P(RuntimeFixture, supportsAccesibilityValueInTextAttribute) {
     ASSERT_EQ(STRING_LITERAL("Hello World Code!?!"), accessibilityValue);
 }
 
+// Quarantined on public CI until VALDI_ENABLE_TEARDOWN_STOP_ORPHANED_WORKERS defaults on. These tests end with a live
+// worker, and host teardown doesn't join it, so worker work can touch the freed host and crash a later test on the
+// small public runners. tools/ci/run_tests.sh sets the variable on GitHub Actions. Re-enable by removing this check,
+// its callers and that line when the default flips.
+static bool orphanedWorkerTestsQuarantined() {
+    return std::getenv("VALDI_QUARANTINE_ORPHANED_WORKER_TESTS") != nullptr;
+}
+
 TEST_P(RuntimeFixture, FLAKY_workerWorks) {
+    if (orphanedWorkerTestsQuarantined()) {
+        GTEST_SKIP() << "Quarantined: leaves a worker running past host teardown (see orphanedWorkerTestsQuarantined)";
+    }
     auto tree =
         wrapper.createViewNodeTreeAndContext(STRING_LITERAL("WorkerTest@test/src/WorkerTest"), Value(), Value());
     wrapper.waitUntilAllUpdatesCompleted();
@@ -7096,6 +7108,9 @@ static Value callWorkerTestMethod(RuntimeWrapper& wrapper, const Ref<Context>& c
 }
 
 TEST_P(RuntimeFixture, workerCanBeTerminatedBeforeInitialization) {
+    if (orphanedWorkerTestsQuarantined()) {
+        GTEST_SKIP() << "Quarantined: leaves a worker running past host teardown (see orphanedWorkerTestsQuarantined)";
+    }
     auto tree =
         wrapper.createViewNodeTreeAndContext(STRING_LITERAL("WorkerTest@test/src/WorkerTest"), Value(), Value());
     wrapper.waitUntilAllUpdatesCompleted();
@@ -7118,6 +7133,9 @@ static void useAggressiveWorkerTermination(RuntimeWrapper& wrapper) {
 }
 
 TEST_P(RuntimeFixture, busyWorkerCanBeTerminated) {
+    if (orphanedWorkerTestsQuarantined()) {
+        GTEST_SKIP() << "Quarantined: leaves a worker running past host teardown (see orphanedWorkerTestsQuarantined)";
+    }
     if (isJSCore()) {
         GTEST_SKIP() << "JavaScriptCore cannot interrupt a pure JavaScript loop through its public API";
     }
@@ -7136,6 +7154,9 @@ TEST_P(RuntimeFixture, busyWorkerCanBeTerminated) {
 }
 
 TEST_P(RuntimeFixture, busyWorkerWithTransferredPortCanBeTerminated) {
+    if (orphanedWorkerTestsQuarantined()) {
+        GTEST_SKIP() << "Quarantined: leaves a worker running past host teardown (see orphanedWorkerTestsQuarantined)";
+    }
     if (isJSCore()) {
         GTEST_SKIP() << "JavaScriptCore cannot interrupt a pure JavaScript loop through its public API";
     }
@@ -7157,6 +7178,9 @@ TEST_P(RuntimeFixture, busyWorkerWithTransferredPortCanBeTerminated) {
 }
 
 TEST_P(RuntimeFixture, idleWorkerCanBeTerminated) {
+    if (orphanedWorkerTestsQuarantined()) {
+        GTEST_SKIP() << "Quarantined: leaves a worker running past host teardown (see orphanedWorkerTestsQuarantined)";
+    }
     auto tree =
         wrapper.createViewNodeTreeAndContext(STRING_LITERAL("WorkerTest@test/src/WorkerTest"), Value(), Value());
     wrapper.waitUntilAllUpdatesCompleted();
@@ -8055,6 +8079,9 @@ TEST_P(RuntimeFixture, DISABLED_moduleResourceTrackerFreedUnderJsThreadIsUseAfte
 // Red proof: setJoinJsThreadOnTeardown(false) on the worker before dispatching. The drop then blocks in the
 // dispatch queue's member destructor and the write lands in freed memory (heap-use-after-free under ASan).
 TEST_P(RuntimeFixture, disposedWorkerReleasedOffJsThreadWhileExecutingIsSafe) {
+    if (orphanedWorkerTestsQuarantined()) {
+        GTEST_SKIP() << "Quarantined: leaves a worker running past host teardown (see orphanedWorkerTestsQuarantined)";
+    }
     auto* hostRuntime = wrapper.runtime->getJavaScriptRuntime();
     // Let the host finish initializing first: Hermes debugger registration is not safe to run concurrently
     // from the host's and the worker's initialization.

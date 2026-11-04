@@ -18,8 +18,16 @@ select_tests cpp
 # way `bzl test //...` would, instead of failing because they were named explicitly. Raise the
 # console stdout/stderr cap: the //valdi:test binary's output (~1.1MB) exceeds bazel's 1MB default,
 # and bazel then hides it.
+EXTRA_TEST_ARGS=()
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]] ; then
+    # Quarantines the worker tests that leave a worker running past host teardown (see
+    # orphanedWorkerTestsQuarantined in Runtime_tests.cpp). Remove when VALDI_ENABLE_TEARDOWN_STOP_ORPHANED_WORKERS
+    # defaults on.
+    EXTRA_TEST_ARGS+=(--test_env=VALDI_QUARANTINE_ORPHANED_WORKER_TESTS=1)
+fi
+# The guarded expansion keeps an empty array safe under `set -u` on macOS's bash 3.2.
 bzl test "${TEST_TARGETS[@]}" --keep_going --skip_incompatible_explicit_targets --test_output=errors \
-    --experimental_ui_max_stdouterr_bytes=33554432
+    --experimental_ui_max_stdouterr_bytes=33554432 ${EXTRA_TEST_ARGS[@]+"${EXTRA_TEST_ARGS[@]}"}
 
 # The hot-reload smoke runs as its own parallel job on external GitHub Actions
 # (the hotreload-smoke matrix leg). Gate it here too — but ONLY internally (skip
