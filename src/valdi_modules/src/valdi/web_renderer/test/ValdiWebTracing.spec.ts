@@ -158,7 +158,9 @@ describe('ValdiWebTracing', () => {
     const tracing = new RecordingTracing();
     setValdiWebTracing(tracing);
 
-    expect(() => wrapped()).toThrowError('callback failure');
+    expect(() => {
+      wrapped();
+    }).toThrowError('callback failure');
     expect(tracing.events).toEqual(['begin:Proxy.throw', 'end']);
   });
 

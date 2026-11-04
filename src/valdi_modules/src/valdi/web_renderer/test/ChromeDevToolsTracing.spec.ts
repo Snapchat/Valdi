@@ -14,7 +14,7 @@ class SequenceClock implements WebTracingClock {
 }
 
 describe('ChromeDevToolsTracing', () => {
-  let timeStampSpy: any;
+  let timeStampSpy: jasmine.Spy<(...args: unknown[]) => void>;
   let originalTimeStamp: typeof console.timeStamp | undefined;
 
   beforeEach(() => {

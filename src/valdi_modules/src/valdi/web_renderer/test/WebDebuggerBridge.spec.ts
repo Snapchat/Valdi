@@ -11,8 +11,8 @@ import type { ComponentPropertyEditRegistrar } from '../src/debug/ComponentHiera
 import type { StandaloneWebDebuggerRuntime, StandaloneWebDebuggerSnapshot } from '../src/debug/WebDebuggerBridge';
 import { WebDebuggerBridge } from '../src/debug/WebDebuggerBridge';
 
-interface FakeDebuggerWindow {
-  __VALDI_WEB_DEBUGGER__?: StandaloneWebDebuggerRuntime;
+// The debugger runtime global is keyed by its well-known (non-camelCase) name.
+type FakeDebuggerWindow = Partial<Record<'__VALDI_WEB_DEBUGGER__', StandaloneWebDebuggerRuntime>> & {
   addEventListener: jasmine.Spy;
   location: {
     href: string;
@@ -21,7 +21,9 @@ interface FakeDebuggerWindow {
   };
   parent: FakeDebuggerWindow | { postMessage: jasmine.Spy };
   removeEventListener: jasmine.Spy;
-}
+};
+
+type GlobalWithElement = Partial<Record<'Element', unknown>>;
 
 interface WebDebuggerBridgeRegistryState {
   componentPropertyEditExpiryTimer?: ReturnType<typeof setTimeout>;
@@ -62,7 +64,7 @@ describe('WebDebuggerBridge legacy renderer adapter', () => {
       return child;
     }
 
-    getBoundingClientRect() {
+    getBoundingClientRect(): { left: number; top: number; width: number; height: number } {
       return { left: 11, top: 22, width: 120, height: 44 };
     }
 
@@ -76,7 +78,7 @@ describe('WebDebuggerBridge legacy renderer adapter', () => {
   beforeEach(() => {
     previousWindow = (globalThis as { window?: unknown }).window;
     previousDocument = (globalThis as { document?: unknown }).document;
-    previousElement = (globalThis as { Element?: unknown }).Element;
+    previousElement = (globalThis as GlobalWithElement).Element;
     previousCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
     appendedOverlays = [];
     fakeWindow = {
@@ -89,7 +91,7 @@ describe('WebDebuggerBridge legacy renderer adapter', () => {
       removeEventListener: jasmine.createSpy('removeEventListener'),
     };
     fakeWindow.parent = fakeWindow;
-    (globalThis as { Element?: unknown }).Element = FakeElement;
+    (globalThis as GlobalWithElement).Element = FakeElement;
     let tokenCounter = 0;
     Object.defineProperty(globalThis, 'crypto', {
       configurable: true,
@@ -505,9 +507,6 @@ describe('WebDebuggerBridge legacy renderer adapter', () => {
     const editDebugComponentProperty = jasmine.createSpy('editDebugComponentProperty').and.returnValue(true);
     renderer.editDebugComponentProperty = editDebugComponentProperty;
     let nested = false;
-    // Assigned after the fake below, which closes over it, is installed.
-    // eslint-disable-next-line prefer-const
-    let runtime: StandaloneWebDebuggerRuntime;
     let innerSnapshot: StandaloneWebDebuggerSnapshot | undefined;
     delegate.getDebugSnapshot = jasmine
       .createSpy('getDebugSnapshot')
@@ -546,7 +545,7 @@ describe('WebDebuggerBridge legacy renderer adapter', () => {
         };
       });
     const bridge = new WebDebuggerBridge({} as HTMLElement, delegate, renderer);
-    runtime = fakeWindow.__VALDI_WEB_DEBUGGER__!;
+    const runtime = fakeWindow.__VALDI_WEB_DEBUGGER__!;
 
     const outerSnapshot = runtime.getSnapshot();
     const innerMetadata = innerSnapshot?.snapshot.tree?.component?.propertyEdits?.['title'];
@@ -583,9 +582,6 @@ describe('WebDebuggerBridge legacy renderer adapter', () => {
     const node = {} as never;
     const viewModel = { title: 'before' };
     renderer.editDebugComponentProperty = jasmine.createSpy('editDebugComponentProperty').and.returnValue(true);
-    // Assigned after the fake below, which closes over it, is installed.
-    // eslint-disable-next-line prefer-const
-    let bridge: WebDebuggerBridge;
     let capturedMetadata: WebRendererDebugPropertyEditMetadata | undefined;
     let retainedSnapshot: WebRendererDebugSnapshot | undefined;
     delegate.getDebugSnapshot = jasmine
@@ -617,7 +613,7 @@ describe('WebDebuggerBridge legacy renderer adapter', () => {
         bridge.destroy();
         return retainedSnapshot;
       });
-    bridge = new WebDebuggerBridge({} as HTMLElement, delegate, renderer);
+    const bridge = new WebDebuggerBridge({} as HTMLElement, delegate, renderer);
     const runtime = fakeWindow.__VALDI_WEB_DEBUGGER__!;
 
     expect(() => runtime.getSnapshot()).toThrowError('Web debugger runtime has been destroyed.');

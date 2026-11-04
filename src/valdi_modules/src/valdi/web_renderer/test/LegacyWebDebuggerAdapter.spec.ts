@@ -41,13 +41,13 @@ function installDom(): InstalledDom {
     readonly children: FakeHTMLElement[] = [];
     readonly childNodes = { item: (index: number) => this.children[index] ?? null };
     readonly classList = {
-      add: (_className: string) => {},
-      remove: (_className: string) => {},
+      add: () => {},
+      remove: () => {},
     };
     readonly dataset: Record<string, string> = {};
     readonly style: Record<string, unknown> = {
-      removeProperty: (_name: string) => {},
-      setProperty: (_name: string, _value: string) => {},
+      removeProperty: () => {},
+      setProperty: () => {},
     };
     readonly ownerDocument: FakeDocument;
     readonly tagName: string;
@@ -62,7 +62,7 @@ function installDom(): InstalledDom {
       this.ownerDocument = ownerDocument;
     }
 
-    get attributes() {
+    get attributes(): { length: number; item: (index: number) => { name: string; value: string } | null } {
       const entries = [...this.attributesByName.entries()];
       return {
         length: entries.length,
@@ -90,7 +90,7 @@ function installDom(): InstalledDom {
     getAttribute(name: string): string | null {
       return this.attributesByName.get(name) ?? null;
     }
-    getBoundingClientRect() {
+    getBoundingClientRect(): DOMRect {
       return { ...this.rect, x: this.rect.left, y: this.rect.top, right: 0, bottom: 0, toJSON: () => ({}) };
     }
     getRootNode(): FakeDocument {
@@ -274,7 +274,9 @@ function makeHierarchyRenderer(
   });
 }
 
-function captureSnapshot(delegate: ValdiWebRendererDelegate, elements: IRenderedElement[]) {
+type DebugSnapshot = ReturnType<ValdiWebRendererDelegate['getDebugSnapshot']>;
+
+function captureSnapshot(delegate: ValdiWebRendererDelegate, elements: IRenderedElement[]): DebugSnapshot {
   return delegate.getDebugSnapshot(makeRenderer(elements), MAX_WEB_DEBUGGER_SERIALIZED_CHARACTERS);
 }
 
@@ -308,7 +310,7 @@ function observeIndexedChildReads(children: WebValdiLayout[], onIndexedRead: () 
       if (typeof property === 'string' && /^(0|[1-9]\d*)$/.test(property)) {
         onIndexedRead();
       }
-      return Reflect.get(target, property, receiver);
+      return Reflect.get(target, property, receiver) as unknown;
     },
   });
 }
@@ -1303,7 +1305,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
   it('falls back atomically for shared, cyclic, partial, and over-deep virtual trees', () => {
     class BoundaryComponent {}
 
-    const captureWithRoot = (rootVirtualNode: MutableVirtualNode) => {
+    const captureWithRoot = (rootVirtualNode: MutableVirtualNode): DebugSnapshot => {
       const delegate = makeDelegate(dom.createElement('main'));
       delegate.onElementCreated(1, 'layout');
       delegate.onElementBecameRoot(1);
@@ -1921,7 +1923,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
       id: 1,
       get children(): IRenderedElement[] {
         eagerElementChildrenReads++;
-        return new Array(20_000).fill(undefined);
+        return new Array<IRenderedElement | undefined>(20_000).fill(undefined) as IRenderedElement[];
       },
       getAttribute: () => undefined,
       getAttributeNames: attributeReads,
@@ -1930,7 +1932,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     Object.defineProperty(adversarialRootVirtualNode, 'children', {
       get: () => {
         eagerVirtualChildrenReads++;
-        return new Array(20_000).fill(adversarialRootVirtualNode);
+        return new Array<Record<string, unknown>>(20_000).fill(adversarialRootVirtualNode);
       },
     });
     const getElementForId = jasmine.createSpy('getElementForId').and.returnValue(renderedElement);
@@ -1979,7 +1981,7 @@ describe('ValdiWebRendererDelegate debugger adapter', () => {
     Object.defineProperty(renderedElement, 'children', {
       get: () => {
         eagerChildrenReads++;
-        return new Array(20_000).fill(renderedElement);
+        return new Array<IRenderedElement>(20_000).fill(renderedElement);
       },
     });
     const getElementForId = jasmine.createSpy('getElementForId').and.returnValue(renderedElement);

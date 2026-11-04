@@ -17,8 +17,3 @@ src/valdi_modules/src/valdi/valdi_core/src/PostInit.ts
 src/valdi_modules/src/valdi/valdi_protobuf/web/ValdiProtobuf.ts
 src/valdi_modules/src/valdi/valdi_standalone/src/JasmineBootstrap.ts
 src/valdi_modules/src/valdi/valdi_test/test/SpecialCasing.spec.ts
-src/valdi_modules/src/valdi/web_renderer/test/ChromeDevToolsTracing.spec.ts
-src/valdi_modules/src/valdi/web_renderer/test/LegacyWebDebuggerAdapter.spec.ts
-src/valdi_modules/src/valdi/web_renderer/test/ValdiWebRuntimeTiming.spec.ts
-src/valdi_modules/src/valdi/web_renderer/test/ValdiWebTracing.spec.ts
-src/valdi_modules/src/valdi/web_renderer/test/WebDebuggerBridge.spec.ts
