@@ -62,8 +62,10 @@ CLEANUP_PATHS=(
     /opt/microsoft
 )
 
+# The image bake (client/snapci/image/setup.sh) sets SETUP_LINUX_ENV_NO_CLEANUP: it must not remove
+# anything from the image.
 for path in "${CLEANUP_PATHS[@]}"; do
-    if [ -d "$path" ]; then
+    if [ -d "$path" ] && [ -z "${SETUP_LINUX_ENV_NO_CLEANUP:-}" ]; then
         echo "  Removing $path"
         sudo rm -rf "$path"
     fi
@@ -84,11 +86,35 @@ df -h
 # ---------------------------------------------------------------------------
 echo "--- Installing system dependencies ---"
 
-sudo apt-get update -y
-sudo apt-get install -y \
-    libboost-all-dev \
-    libfontconfig1-dev \
-    zlib1g-dev
+# Packages that are already installed are skipped, and apt-get update runs only before the first
+# install. The client_linux VM image bakes this script, so internal jobs download nothing here.
+apt_installed() {
+    [ "$(dpkg-query -W -f='${Status}' "$1" 2>/dev/null)" = "install ok installed" ]
+}
+
+APT_UPDATED=0
+apt_update_once() {
+    if [ "$APT_UPDATED" = 0 ]; then
+        sudo apt-get update -y
+        APT_UPDATED=1
+    fi
+}
+
+# Bazel builds its own Boost (@boost), so only GitHub-hosted runners keep the system package.
+# It is 71 MB in 164 packages: when the GCE apt mirror is slow, it made internal CI wait up to 16 min.
+APT_PACKAGES=(libfontconfig1-dev zlib1g-dev)
+if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+    APT_PACKAGES+=(libboost-all-dev)
+fi
+
+APT_MISSING=()
+for pkg in "${APT_PACKAGES[@]}"; do
+    apt_installed "$pkg" || APT_MISSING+=("$pkg")
+done
+if [ "${#APT_MISSING[@]}" -gt 0 ]; then
+    apt_update_once
+    sudo apt-get install -y "${APT_MISSING[@]}"
+fi
 
 # Chrome/Puppeteer headless-shell needs a set of GTK/X/ALSA shared libraries. The GitHub
 # ubuntu runner image ships them by default, but the internal SnapCI VM (Ubuntu 22.04) does
@@ -101,6 +127,10 @@ for lib in \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 libcups2 \
     libdrm2 libgbm1 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
     libxrandr2 libgtk-3-0 libpango-1.0-0 libcairo2 libasound2; do
+    if apt_installed "$lib" || apt_installed "${lib}t64"; then
+        continue
+    fi
+    apt_update_once
     sudo apt-get install -y "$lib" 2>/dev/null || sudo apt-get install -y "${lib}t64"
 done
 
@@ -109,7 +139,7 @@ done
 # filename dynamically so a security-update revision bump (Ubuntu drops the old
 # file when it publishes the new one) doesn't 404 our pinned URL.
 ARCHIVE_URL="http://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses"
-if ! sudo apt-get install -y libtinfo5 2>/dev/null; then
+if ! apt_installed libtinfo5 && { apt_update_once; ! sudo apt-get install -y libtinfo5 2>/dev/null; }; then
     echo "libtinfo5 not available in apt, downloading from Ubuntu archive..."
     DEB=$(curl -fsSL "$ARCHIVE_URL/" | grep -oE 'libtinfo5_[^"]*_amd64\.deb' | sort -Vu | tail -n1)
     if [ -z "$DEB" ]; then
