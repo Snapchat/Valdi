@@ -761,6 +761,14 @@ Platform-wide:
 
 Scoped (trace to consumers, review lighter): `apps/**`, `docs/**`, examples.
 
+### Hot systems
+
+`.github/hot-systems.yml` lists the systems where regressions have historically reached users, with their paths and a gate (`flag` or `guard`), plus a catch-all `framework` entry for the rest of the framework source. When a hunk touches any of them, check it against the "Safe changes" section of `CONTRIBUTING.md`:
+
+- If the change is significant there (lifetime or teardown order, threading or locks, a bridge contract, error behavior, a default, the startup path, a removal of code that looks dead, hot-path logging, or a refactor) and the system's gate is `flag`, check that a runtime tweak defaulting to the old behavior covers **every** behavior change in the diff, including early returns and error paths. Report each change the tweak doesn't cover.
+- For a `guard` system, check that the description includes test results for the affected area.
+- For teardown and threading changes, check that the description lists the objects whose lifetime changes and the threads and locks involved. If it doesn't, ask for it.
+
 ### Framework rules (all `*.tsx`)
 
 - Valdi is NOT React: no hooks, no virtual DOM, no React lifecycle semantics. Flag React idioms that leaked in.

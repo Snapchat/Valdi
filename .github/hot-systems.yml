@@ -1,0 +1,208 @@
+# Valdi hot systems: the areas where a regression has historically reached users
+# and been hard to roll back. Read by .github/workflows/sensitive-file-notice.yml
+# and by tools/hot_systems/hot_systems.py. See CONTRIBUTING.md#safe-changes.
+#
+# Schema (version 1):
+#   id:     lowercase area id, also used for the `hot/<id>` PR label.
+#   label:  human-readable name.
+#   gate:   `flag` (runtime path: significant changes ship behind a runtime tweak
+#           that defaults to the old behavior) or `guard` (build time: a runtime
+#           flag can't cover it, so the system's test suite and a bake stand in).
+#   note:   one line shown in the PR comment.
+#   catch_all: optional, true on at most one system. It only claims files that
+#           no other system matched, and may have an `exclude:` list.
+#   globs:  repo-relative globs. `**` spans directories, `*` and `?` stay inside
+#           one path segment, `{a,b}` is alternation.
+#
+# Every glob must match at least one file (tools/hot_systems/hot_systems_test.py).
+
+version: 1
+
+systems:
+  - id: marshal
+    label: Bridge marshalling
+    gate: flag
+    note: Value marshallers, generated bridges and the promise bridge. Check nullability, raising vs non-raising paths and error codes on every platform.
+    globs:
+      - valdi_core/src/valdi_core/cpp/Marshalling/**
+      - third-party/djinni-support-lib/**
+      - valdi/src/valdi/jni/**
+      - valdi/src/valdi/android/{AndroidValueMarshallerRegistry.*,JavaValueDelegate.*,*JNI.hpp}
+      - valdi/src/valdi/android/{Java*ClassDelegate.*,MarshallerJNI.cpp,ValdiFunctionNative.hpp,ValdiMarshallableObjectDescriptorJavaClass.*}
+      - valdi_core/src/valdi_core/ios/valdi_core/{SCValdiMarshall*,SCValdiValue*,*Bridge*,*Promise*}
+      - compiler/compiler/Compiler/Sources/Generation/**
+      - valdi_core/src/valdi_core/cpp/Utils/ResolvablePromise*
+
+  - id: teardown
+    label: Runtime teardown / lifetime
+    gate: flag
+    note: JS runtime and worker teardown, disposal and destructors. List every object whose lifetime changes and every caller on a raising path.
+    globs:
+      - valdi/src/valdi/runtime/JavaScript/**
+      - valdi/src/valdi/runtime/{Runtime,RuntimeManager}.*
+      - valdi/src/valdi/runtime/Context/**
+      - valdi/src/valdi/ios/SCValdiJSWorker.*
+      - valdi/src/java/com/snap/valdi/{WorkerRuntimeCache.kt,jsmodules/ValdiJSWorker.kt}
+      - valdi/src/valdi/android/{NativeBridge,RuntimeWrapper,RuntimeManagerWrapper,RuntimeListener}.*
+      - src/valdi_modules/src/valdi/worker/**
+
+  - id: thread
+    label: JS thread / threading
+    gate: flag
+    note: Dispatch queues, locks, init order and main-thread sync calls. Include a thread and lock map, and call out any new synchronous call from the main thread onto the JS thread.
+    globs:
+      - valdi_core/src/valdi_core/cpp/Threading/**
+      - valdi/src/valdi/runtime/Utils/MainThreadManager.*
+      - valdi/src/valdi/android/{AndroidDispatchQueue,MainThreadDispatcher}.*
+
+  - id: resources
+    label: Resource and module loading
+    gate: flag
+    note: The resource manager and module loading. A module built against an older or newer runtime may still be loaded, so check renamed or removed modules, imports and exports for compatibility.
+    globs:
+      - valdi/src/valdi/runtime/Resources/{Bundle,DiskCacheImpl,EncryptedDiskCache,IResourceManagerListener,KeyValueStore,MmapBuffer,ModuleArchiveCache,Resource,ResourceManager,ResourceReloaderThrottler,UserSession,ValdiModuleArchive,ZStdUtils}.*
+      - valdi/src/valdi/runtime/Resources/Remote/**
+      - valdi/src/valdi/android/ResourceLoader.*
+      - valdi_core/src/valdi_core/cpp/Resources/**
+
+  - id: build
+    label: Build / Bazel / dependencies
+    gate: guard
+    note: Build rules and dependencies for every Valdi consumer. No runtime flag can cover this; run release-mode builds.
+    globs:
+      - bzl/**
+      - valdi/valdi.bzl
+      - bzlmod/**
+      - .bazelrc
+      - MODULE.bazel
+      - npm_modules/cli/{.bootstrap,.metadata}/**
+
+  - id: text
+    label: Text rendering / input
+    gate: flag
+    note: Text views, measurement and rich text. The flag must also cover early returns and error paths, not only the new code.
+    globs:
+      - valdi/src/valdi/ios/Views/SCValdiText*
+      - valdi/src/java/com/snap/valdi/views/Valdi{EditText,EditTextMultiline,TextView,TextViewBase}.kt
+      - valdi/src/java/com/snap/valdi/attributes/impl/{ValdiTextView*,richtext/**}
+      - valdi/src/valdi/runtime/Text/**
+      - valdi_core/src/valdi_core/cpp/Text/**
+      - valdi/src/valdi/ios/Text/**
+
+  - id: jsengine
+    label: JS engines
+    gate: guard
+    note: QuickJS, Hermes and JSC. Run the tests on every engine in use, and check that release bytecode still loads on 32-bit Android.
+    globs:
+      - valdi/src/valdi/{quickjs,hermes,jscore,v8,jsbridge}/**
+      - valdi_core/src/valdi_core/cpp/JavaScript/**
+      - third-party/quickjs/**
+
+  - id: oscompat
+    label: OS / ABI compatibility
+    gate: guard
+    note: SDK and NDK levels, toolchains and minSdk. List any platform API newer than the minimum supported OS, and any ABI or native dependency change.
+    globs:
+      - bzl/dependencies.bzl
+      - bzl/hermetic_android_sdk.bzl
+      - bzl/hermetic_ndk.bzl
+      - registry/modules/rules_android_ndk/**
+      - bzl/platforms/**
+      - bzl/toolchains/**
+      - bzl/swift_toolchains.bzl
+      - bzl/swift_toolchains/**
+      - bzlmod/swift_toolchains_extension.bzl
+      - "**/AndroidManifest.xml"
+
+  - id: compiler
+    label: Compiler / codegen
+    gate: guard
+    note: Compiler output reaches every module. Review the golden diff.
+    globs:
+      - compiler/compiler/Compiler/Sources/{Bazel,Config,CSS,Files,Generation,Images,Kotlin,Logs,Models,Parser,Pipeline,Processors,Sass,StaticRes,Template,TypeScript,Utils,ViewModels}/**
+      - compiler/compiler/Compiler/Sources/*.swift
+      - compiler/compiler/Compiler/{Vendors/**,Package.swift,Package.resolved}
+      - valdi/src/valdi/runtime/JavaScript/Modules/ProtobufModule*
+
+  - id: image
+    label: Images / assets / bitmaps
+    gate: flag
+    note: Asset loading, image caches and bitmaps. Check lifetimes across context and runtime teardown.
+    globs:
+      - valdi/src/valdi/runtime/Resources/{Asset*,*Asset,*AssetLoader,RemoteDownloaderToAssetLoaderAdapter}.*
+      - valdi/src/java/com/snap/valdi/bundle/**
+      - valdi/src/valdi/snap_drawing/ImageLoading/**
+      - snap_drawing/src/snap_drawing/cpp/Utils/{Image*,Bitmap*,*AnimatedImage.*}
+      - valdi/src/java/com/snap/valdi/{imageloading,drawables}/**
+      - valdi/src/java/com/snap/valdi/utils/{Bitmap*,ValdiImage*,ValdiRawImageResourceLoader.kt}
+      - valdi_core/src/valdi_core/ios/valdi_core/{SCValdiAssetWithImage*,SCValdiBitmap.*,SCValdiIOSBitmapFactory.*,SCValdiImage*,UIImage+Valdi.*}
+      - valdi/src/valdi/ios/SnapDrawing/AnimatedImage/**
+      - valdi/src/valdi/ios/SCValdiDefaultImageLoader.*
+      - valdi/src/valdi/android/{AndroidBitmap,AndroidBitmapFactory,AndroidAssetLoader}.*
+
+  - id: drawing
+    label: snap_drawing renderer
+    gate: flag
+    note: Compositor, layers and rasterization.
+    globs:
+      - snap_drawing/**
+      - valdi/src/valdi/snap_drawing/**
+      - valdi/src/valdi/android/snap_drawing/**
+
+  - id: gesture
+    label: Gestures / touch / hit-test
+    gate: flag
+    note: Touch dispatch, gesture recognizers, hit-testing and scroll. Describe touch priority and hit-test behavior before and after, on both platforms.
+    globs:
+      - valdi/src/java/com/snap/valdi/views/touches/**
+      - valdi/src/java/com/snap/valdi/attributes/impl/gestures/**
+      - valdi/src/java/com/snap/valdi/views/{ValdiScrollView,ValdiScrollableView,ValdiScrollUtil}.kt
+      - valdi/src/valdi/ios/Gestures/**
+      - valdi_core/src/valdi_core/ios/valdi_core/{SCValdiScrollView*,SCValdiTouches.*,SCValdiGestureListener.h}
+      - snap_drawing/src/snap_drawing/cpp/Touches/**
+      - snap_drawing/src/snap_drawing/cpp/Layers/Scroll/**
+      - valdi_core/src/valdi_core/cpp/Events/**
+
+  - id: view
+    label: View recycling / view manager
+    gate: flag
+    note: View nodes, attributes and recycling. Check subclass contracts that other code relies on.
+    globs:
+      - valdi/src/valdi/runtime/Views/**
+      - valdi/src/valdi/runtime/Attributes/**
+      - valdi/src/valdi/runtime/Context/ViewNode*
+      - valdi/src/java/com/snap/valdi/views/ValdiRecyclableView.kt
+      - valdi/src/valdi/android/{ViewManager,AndroidViewHolder,AndroidViewFactory,AndroidViewTransaction,DeferredViewOperations,AttributesBindingContextWrapper}.*
+
+  - id: layout
+    label: Yoga layout engine
+    gate: guard
+    note: Any layout change is app-wide, and a layout-engine upgrade can't be flagged. Verify layout tests exist and pass; an upgrade needs a full regression pass.
+    globs:
+      - third-party/yoga/{BUILD.bazel,src/yoga/**,src/android/**}
+
+  # Everything else in the framework. Named systems above carry the specific
+  # notes; this entry makes sure no framework change skips the checklist.
+  - id: framework
+    label: Other framework code
+    gate: flag
+    catch_all: true
+    note: Framework code outside the named systems. The same significance test applies, so a significant change still ships behind a runtime tweak that defaults to the old behavior.
+    globs:
+      - valdi/src/**
+      - valdi_core/src/**
+      - snap_drawing/src/**
+      - compiler/compiler/**
+      - src/valdi_modules/src/**
+    exclude:
+      - "**/test/**"
+      - "**/tests/**"
+      - "**/*_test.*"
+      - "**/*_tests.*"
+      - "**/*Test.kt"
+      - "**/*Tests.m"
+      - "**/*Tests.mm"
+      - "**/*Tests.swift"
+      - "**/*.spec.ts"
+      - "**/*.test.ts"
+      - "**/*.md"

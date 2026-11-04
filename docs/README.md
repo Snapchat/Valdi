@@ -93,6 +93,8 @@
  - [Valdi Style Guide](./docs/workflow-style-guide.md)
  - [Valdi Inspector](./docs/workflow-inspector.md)
  - [Testing](./docs/workflow-testing.md)
+ - [Putting a change behind a flag](./docs/workflow-flagging-changes.md)
+ - [Your pull request got a hot-systems comment](./docs/workflow-hot-systems-comment.md)
  - [Web development](./docs/workflow-web-development.md)
  - [Server-side rendering prototype](./docs/workflow-server-side-rendering.md)
  - [Hermes Debugger](./docs/workflow-hermes-debugger.md)

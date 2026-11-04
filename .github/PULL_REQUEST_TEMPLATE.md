@@ -23,9 +23,12 @@
 - [ ] No breaking changes (or documented in description)
 - [ ] Commit messages follow [conventional format](../CONTRIBUTING.md#commit-messages)
 - [ ] No secrets, API keys, or internal URLs included
+- [ ] If this touches a path in [`.github/hot-systems.yml`](hot-systems.yml): significant changes are behind a runtime tweak that defaults to the old behavior, or the description says why they aren't needed ([Safe changes](../CONTRIBUTING.md#safe-changes))
 
 ## Related Issues
 <!-- Link related issues using: Closes #(issue), Fixes #(issue), Relates to #(issue) -->
+
+Reverts / partially reverts: <!-- #PR, or "none". Count a forward fix that restores earlier behavior too. -->
 
 ## Additional Context
 <!-- Add any other context, screenshots, or information that would help reviewers -->

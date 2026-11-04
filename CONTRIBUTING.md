@@ -46,6 +46,26 @@ To make the best use of reviewers' time, please do not open pull requests for:
 
 Pull requests like these may be closed with a link to this section. If you are unsure whether a change is welcome, please ask in Discussions before starting.
 
+### Safe changes
+
+Some parts of Valdi have caused most of its serious regressions: bridge marshalling, runtime teardown, threading, module and resource loading, text, images, the renderer, gestures, view recycling, the JS engines, the compiler, the build and OS compatibility. They are listed, with their paths, in [`.github/hot-systems.yml`](./.github/hot-systems.yml), and the rest of the framework source is covered by a catch-all `framework` entry, so the same rules apply to any framework change. When a pull request touches framework code, a bot comments with the systems it touched and a short checklist ([what to do about it](./docs/docs/workflow-hot-systems-comment.md)). Changes that only touch tests or docs don't get the comment. The comment is advisory and never blocks a merge.
+
+A change to a hot system is **significant** if it does any of these:
+
+- Changes when or in what order objects are created, disposed or freed.
+- Changes which thread runs code, adds or removes a lock, or adds a synchronous cross-thread call.
+- Changes a bridge contract: nullability, return values, error codes, or whether a call raises.
+- Turns a silent failure into a raised one, or the reverse.
+- Changes a default, a base-class contract, the startup path, or a format produced at build time and read on device.
+- Removes code that looks dead, adds logging on a hot path, or refactors hot code. These count even when the intent is no behavior change.
+
+For a significant change:
+
+- **Runtime systems** (gate `flag` in the file): put the new behavior behind a runtime tweak that defaults to the old behavior, and make sure the tweak covers every behavior change in the pull request, including early returns and error paths. See [Putting a change behind a flag](./docs/docs/workflow-flagging-changes.md) for how.
+- **Build-time systems** (gate `guard`): a runtime tweak can't cover these, so say so in the pull request and include the test results for the affected area.
+- **Teardown and threading changes:** list in the pull request description every object whose lifetime changes and who can still hold it, and the threads and locks before and after.
+- **Not significant:** say why in the pull request description. Comments, tests, renames and fixes that only add a null check are not significant.
+
 ### Pull request limit
 
 Contributors who are not project collaborators may have up to five pull requests open at a time. Additional pull requests are closed automatically and can be reopened once some of your open pull requests are merged or closed.

@@ -1,0 +1,23 @@
+name: Hot Systems Check
+
+# Fails when a glob in .github/hot-systems.yml matches no file, so moving or
+# renaming a directory can't silently turn the hot-systems notice off.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Unit tests
+        run: python3 -m unittest discover -s tools/hot_systems -p 'test_*.py' -v
+      - name: Every glob matches a file
+        run: python3 tools/hot_systems/hot_systems.py check
