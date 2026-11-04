@@ -41,10 +41,12 @@ AAR_PATH="$OUTPUT_DIR/hello_world_export.aar"
 
 # Use valdi export command which handles all platform flags automatically
 # Build for arm64-v8a only to save disk space and time in CI
+# TEST_EXPORTED_LIB_BAZEL_ARGS adds Bazel flags. Internal Cool runs pass --remote_upload_local_results, because
+# client/.bazelrc turns uploads off and no other job builds this configuration. Empty on the public repo.
 valdi export android \
     --library ${TARGET_PREFIX}apps/helloworld:hello_world_export_android \
     --output_path "$AAR_PATH" \
-    --bazel_args="--fat_apk_cpu=arm64-v8a --android_cpu=arm64-v8a"
+    --bazel_args="--fat_apk_cpu=arm64-v8a --android_cpu=arm64-v8a${TEST_EXPORTED_LIB_BAZEL_ARGS:+ $TEST_EXPORTED_LIB_BAZEL_ARGS}"
 
 echo "[OK] Build completed successfully"
 
