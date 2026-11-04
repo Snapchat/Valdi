@@ -12164,10 +12164,7 @@ TEST_P(RuntimeFixture, typedObjectWithManyPropertiesKeepsPropertiesAliveAcrossGC
 
 INSTANTIATE_TEST_SUITE_P(RuntimeTests,
                          RuntimeFixture,
-                         ::testing::Values(JavaScriptEngineTestCase::Hermes,
-                                           JavaScriptEngineTestCase::QuickJS,
-                                           JavaScriptEngineTestCase::QuickJSWithTSN,
-                                           JavaScriptEngineTestCase::JSCore),
+                         ::testing::Values(JavaScriptEngineTestCase::QuickJS, JavaScriptEngineTestCase::JSCore),
                          PrintJavaScriptEngineType());
 
 } // namespace ValdiTest

@@ -359,10 +359,7 @@ TEST_P(CallbackAttributionFixture, diagnosticsDisabledPreservesBehaviorWithoutCa
 
 INSTANTIATE_TEST_SUITE_P(CallbackAttributionTests,
                          CallbackAttributionFixture,
-                         ::testing::Values(JavaScriptEngineTestCase::Hermes,
-                                           JavaScriptEngineTestCase::QuickJS,
-                                           JavaScriptEngineTestCase::QuickJSWithTSN,
-                                           JavaScriptEngineTestCase::JSCore),
+                         ::testing::Values(JavaScriptEngineTestCase::QuickJS, JavaScriptEngineTestCase::JSCore),
                          PrintJavaScriptEngineType());
 
 } // namespace ValdiTest

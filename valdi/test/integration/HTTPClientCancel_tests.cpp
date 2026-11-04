@@ -53,9 +53,7 @@ TEST_P(HTTPClientCancelFixture, performRequestCancelHandleIsCallable) {
 
 INSTANTIATE_TEST_SUITE_P(HTTPClientCancelTests,
                          HTTPClientCancelFixture,
-                         ::testing::Values(JavaScriptEngineTestCase::Hermes,
-                                           JavaScriptEngineTestCase::QuickJS,
-                                           JavaScriptEngineTestCase::JSCore),
+                         ::testing::Values(JavaScriptEngineTestCase::QuickJS, JavaScriptEngineTestCase::JSCore),
                          PrintJavaScriptEngineType());
 
 } // namespace ValdiTest

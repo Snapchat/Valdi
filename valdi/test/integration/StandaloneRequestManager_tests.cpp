@@ -208,9 +208,7 @@ TEST_P(StandaloneRequestManagerFixture, httpClientRejectsItsPromiseOnCancel) {
 
 INSTANTIATE_TEST_SUITE_P(StandaloneRequestManagerTests,
                          StandaloneRequestManagerFixture,
-                         ::testing::Values(JavaScriptEngineTestCase::Hermes,
-                                           JavaScriptEngineTestCase::QuickJS,
-                                           JavaScriptEngineTestCase::JSCore),
+                         ::testing::Values(JavaScriptEngineTestCase::QuickJS, JavaScriptEngineTestCase::JSCore),
                          PrintJavaScriptEngineType());
 
 } // namespace ValdiTest

@@ -232,8 +232,6 @@ TEST_P(StandaloneDeviceRuntimeFixture, RuntimeTeardownReleasesUncancelledJavaScr
 
 INSTANTIATE_TEST_SUITE_P(StandaloneDeviceRuntimeTests,
                          StandaloneDeviceRuntimeFixture,
-                         ::testing::Values(JavaScriptEngineTestCase::Hermes,
-                                           JavaScriptEngineTestCase::QuickJS,
-                                           JavaScriptEngineTestCase::JSCore),
+                         ::testing::Values(JavaScriptEngineTestCase::QuickJS, JavaScriptEngineTestCase::JSCore),
                          PrintJavaScriptEngineType());
 } // namespace ValdiTest

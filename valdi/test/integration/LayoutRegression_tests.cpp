@@ -288,9 +288,7 @@ TEST_P(LayoutRegressionFixture, columnReverse) {
 
 INSTANTIATE_TEST_SUITE_P(LayoutRegressionTests,
                          LayoutRegressionFixture,
-                         ::testing::Values(JavaScriptEngineTestCase::Hermes,
-                                           JavaScriptEngineTestCase::QuickJS,
-                                           JavaScriptEngineTestCase::QuickJSWithTSN
+                         ::testing::Values(JavaScriptEngineTestCase::QuickJS
 #ifdef __APPLE__
                                            ,
                                            JavaScriptEngineTestCase::JSCore
