@@ -1,3 +1,4 @@
+import { HeadlessValdiProtobufModule } from './headless/HeadlessValdiProtobufModule';
 import type { ValdiProtobufModule } from './src_symlink/ValdiProtobuf';
 
 // Re-export types needed by headless modules
@@ -13,6 +14,7 @@ export type {
   INativeMessageFactory,
   INativeNamespaceEntries,
   INativeMessageIndex,
+  NativeDecodingMode,
   NativeFieldValues,
 } from './src_symlink/ValdiProtobuf';
 
@@ -29,7 +31,6 @@ interface WebpackRequire {
 }
 declare const require: WebpackRequire;
 
-
 // Lazily obtain a webpack context, without ever touching bare `require` at top level
 function getWebpackContext(): WebpackRequireContext | undefined {
   return require.context('../../../src', true, /\.protodecl\.js$/);
@@ -44,9 +45,7 @@ function getWebpackContext(): WebpackRequireContext | undefined {
 function loadFn(path: string): Uint8Array {
   const context = getWebpackContext();
   if (!context) {
-    throw new Error(
-      "require.context is unavailable. Ensure your bundler provides it or swap in a custom loader."
-    );
+    throw new Error('require.context is unavailable. Ensure your bundler provides it or swap in a custom loader.');
   }
 
   // NOTE: your regex is /\.protodecl\.js$/, so `path` should include `.protodecl`
@@ -58,22 +57,18 @@ function loadFn(path: string): Uint8Array {
 
 /* ---------- Headless module wiring ---------- */
 
-import { HeadlessValdiProtobufModule } from './headless/HeadlessValdiProtobufModule';
-
 const moduleInstance: ValdiProtobufModule = new HeadlessValdiProtobufModule(loadFn);
 
 /* Re-export as named functions (mirrors the original CommonJS export) */
 export const createArena = moduleInstance.createArena.bind(moduleInstance);
 export const loadMessages = moduleInstance.loadMessages.bind(moduleInstance);
 export const parseAndLoadMessages = moduleInstance.parseAndLoadMessages?.bind(moduleInstance);
-export const getFieldsForMessageDescriptor =
-  moduleInstance.getFieldsForMessageDescriptor.bind(moduleInstance);
+export const getFieldsForMessageDescriptor = moduleInstance.getFieldsForMessageDescriptor.bind(moduleInstance);
 export const getNamespaceEntries = moduleInstance.getNamespaceEntries.bind(moduleInstance);
 export const createMessage = moduleInstance.createMessage.bind(moduleInstance);
 export const decodeMessage = moduleInstance.decodeMessage.bind(moduleInstance);
 export const decodeMessageAsync = moduleInstance.decodeMessageAsync.bind(moduleInstance);
-export const decodeMessageDebugJSONAsync =
-  moduleInstance.decodeMessageDebugJSONAsync.bind(moduleInstance);
+export const decodeMessageDebugJSONAsync = moduleInstance.decodeMessageDebugJSONAsync.bind(moduleInstance);
 export const encodeMessage = moduleInstance.encodeMessage.bind(moduleInstance);
 export const encodeMessageAsync = moduleInstance.encodeMessageAsync.bind(moduleInstance);
 export const batchEncodeMessageAsync = moduleInstance.batchEncodeMessageAsync.bind(moduleInstance);

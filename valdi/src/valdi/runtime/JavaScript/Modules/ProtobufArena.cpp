@@ -6,6 +6,8 @@
 //
 
 #include "valdi/runtime/JavaScript/Modules/ProtobufArena.hpp"
+#include "valdi_core/cpp/Utils/ExceptionTracker.hpp"
+#include "valdi_core/cpp/Utils/Format.hpp"
 #include "valdi_core/cpp/Utils/Trace.hpp"
 
 #include <algorithm>
@@ -168,7 +170,7 @@ BytesView ProtobufArena::encodeMessage(size_t messageIndex, ExceptionTracker& ex
 
 size_t ProtobufArena::fieldToMessageIndex(JSProtobufMessage& message,
                                           Protobuf::Field& field,
-                                          const google::protobuf::Descriptor* descriptor,
+                                          const google::protobuf::FieldDescriptor* fieldDescriptor,
                                           ExceptionTracker& exceptionTracker) {
     // Lazily decoding a nested message reads the nested descriptor's metadata, which can
     // lazily mutate the shared pool; serialize against concurrent pool access.
@@ -177,9 +179,15 @@ size_t ProtobufArena::fieldToMessageIndex(JSProtobufMessage& message,
     auto raw = field.getRaw();
     if (raw.data != nullptr) {
         // Parse the bytes of the message into a concrete message instance
-        auto outputMessage = createMessageForDescriptor(descriptor, message.getDataSource());
+        auto outputMessage = createMessageForDescriptor(fieldDescriptor->message_type(), message.getDataSource());
 
-        if (!outputMessage->decode(raw.data, static_cast<size_t>(raw.length), exceptionTracker)) {
+        SimpleExceptionTracker decodeExceptionTracker;
+        if (!outputMessage->decode(raw.data, static_cast<size_t>(raw.length), decodeExceptionTracker)) {
+            // A lazily decoded child fails at its first read, far from the decode call that took
+            // the bytes, so name the field it hangs off to point back at that payload.
+            exceptionTracker.onError(Error(fmt::format("{} (reached through field '{}')",
+                                                       decodeExceptionTracker.extractError().getMessage(),
+                                                       fieldDescriptor->full_name())));
             return 0;
         }
 

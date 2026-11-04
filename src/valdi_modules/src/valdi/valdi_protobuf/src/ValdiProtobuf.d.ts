@@ -64,8 +64,14 @@ export interface ILoadMessageResult {
   namespaces?: any;
 }
 
+/**
+ * Decoding mode handed to createArena: 0 lazy, 1 eager, 2 lets the runtime config
+ * (VALDI_PROTOBUF_LAZY_DEFAULT) pick. 0 and 1 match the former boolean eagerDecoding parameter.
+ */
+export type NativeDecodingMode = 0 | 1 | 2;
+
 export interface ValdiProtobufModule {
-  createArena(eagerDecoding: boolean, ignoreAllFieldsDuringEncoding: boolean): INativeMessageArena;
+  createArena(decodingMode: NativeDecodingMode, ignoreAllFieldsDuringEncoding: boolean): INativeMessageArena;
 
   loadMessages(path: string): ILoadMessageResult;
 

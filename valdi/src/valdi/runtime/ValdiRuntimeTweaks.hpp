@@ -88,6 +88,10 @@ public:
     // 0 (default) keeps preload as a single uninterrupted task. > 0 bounds the max contiguous JS
     // occupancy during startup preload so the 5s ANR watchdog ack can run. Read via getInt.
     int32_t preloadYieldChunkSize() const;
+    // VALDI_PROTOBUF_LAZY_DEFAULT (default false). When true, a protobuf Arena created without an explicit
+    // DecodingMode parses nested messages on first read instead of at decode. Arenas that pass EAGER or
+    // LAZY are unaffected, and async decodes stay eager.
+    bool protobufLazyDecodingByDefault() const;
 
 private:
     Shared<ITweakValueProvider> _tweakValueProvider;

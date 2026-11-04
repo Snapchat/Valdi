@@ -70,7 +70,7 @@ public:
 
     size_t fieldToMessageIndex(JSProtobufMessage& message,
                                Protobuf::Field& field,
-                               const google::protobuf::Descriptor* descriptor,
+                               const google::protobuf::FieldDescriptor* fieldDescriptor,
                                ExceptionTracker& exceptionTracker);
 
     BytesView encodeMessage(size_t messageIndex, ExceptionTracker& exceptionTracker) const;

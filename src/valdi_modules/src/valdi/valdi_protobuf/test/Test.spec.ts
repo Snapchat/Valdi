@@ -1986,6 +1986,44 @@ describe('Valdi Proto Runtime', () => {
     });
   });
 
+  describe('nested decode errors', () => {
+    function corruptedNestedMessage(): Uint8Array {
+      const bytes = test.Message.create(new Arena(), { otherMessage: { value: 'abc' } }).encode();
+      // OtherMessage { value: 'abc' } encodes as 0a 03 61 62 63. Stretch the inner string length
+      // past the child's bytes so the outer message still parses and only the child fails.
+      for (let i = 0; i + 4 < bytes.length; i++) {
+        if (
+          bytes[i] === 0x0a &&
+          bytes[i + 1] === 0x03 &&
+          bytes[i + 2] === 0x61 &&
+          bytes[i + 3] === 0x62 &&
+          bytes[i + 4] === 0x63
+        ) {
+          const corrupted = new Uint8Array(bytes);
+          corrupted[i + 1] = 0x7f;
+          return corrupted;
+        }
+      }
+      throw new Error('nested payload not found');
+    }
+
+    it('eager arenas fail at decode', () => {
+      const arena = new Arena(DecodingMode.EAGER);
+      expect(() => test.Message.decode(arena, corruptedNestedMessage())).toThrow();
+    });
+
+    it('arenas without a mode decode eagerly unless the runtime config says otherwise', () => {
+      const arena = new Arena();
+      expect(() => test.Message.decode(arena, corruptedNestedMessage())).toThrow();
+    });
+
+    it('lazy arenas fail at the first read and name the field', () => {
+      const arena = new Arena(DecodingMode.LAZY);
+      const message = test.Message.decode(arena, corruptedNestedMessage());
+      expect(() => message.otherMessage).toThrowError(/test\.Message\.otherMessage/);
+    });
+  });
+
   describe('bad inputs', () => {
     it('decoding bad data should throw', () => {
       const arena = new Arena();

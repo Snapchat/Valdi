@@ -5,6 +5,7 @@ import {
   INativeMessageArena,
   INativeMessageFactory,
   INativeNamespaceEntries,
+  NativeDecodingMode,
   NativeFieldValues,
 } from '../ValdiProtobuf';
 import { DescriptorDatabase } from './DescriptorDatabase';
@@ -15,7 +16,7 @@ const DUMMY_ARENA: INativeMessageArena = {};
 export class HeadlessValdiProtobufModule implements ValdiProtobufModule {
   constructor(private readonly loadProtoDeclFn: (path: string) => Uint8Array) {}
 
-  createArena(eagerDecoding: boolean, ignoreAllFieldsDuringEncoding: boolean): INativeMessageArena {
+  createArena(decodingMode: NativeDecodingMode, ignoreAllFieldsDuringEncoding: boolean): INativeMessageArena {
     return DUMMY_ARENA;
   }
 

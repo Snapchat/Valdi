@@ -1,5 +1,5 @@
 import { makeSingleCallInterruptibleCallback } from 'valdi_core/src/utils/FunctionUtils';
-import { ValdiProtobufModule, INativeMessageArena, INativeMessageIndex } from './ValdiProtobuf';
+import { ValdiProtobufModule, INativeMessageArena, INativeMessageIndex, NativeDecodingMode } from './ValdiProtobuf';
 import { getProtobufModule } from './ValdiProtobufModule';
 import { IArena, IMessage, IMessageConstructor, JSONPrintOptions } from './types';
 
@@ -15,7 +15,8 @@ export const enum DecodingMode {
    * a local disk cache. The arena will use the EAGER decoding mode when decoding
    * a message asynchronously, even if LAZY is set.
    *
-   * This is the default option.
+   * Arenas created without a mode use EAGER unless the runtime config
+   * VALDI_PROTOBUF_LAZY_DEFAULT is on, in which case they use LAZY.
    */
   EAGER = 0,
 
@@ -51,15 +52,27 @@ export const enum EncodingMode {
   INCLUDE_ALL_FIELDS = 1,
 }
 
+const NATIVE_DECODING_MODE_LAZY: NativeDecodingMode = 0;
+const NATIVE_DECODING_MODE_EAGER: NativeDecodingMode = 1;
+const NATIVE_DECODING_MODE_DEFAULT: NativeDecodingMode = 2;
+
+// Leaves the choice to the runtime config only when the caller did not pick a mode. EAGER is 0,
+// so this tests for undefined rather than truthiness.
+function nativeDecodingMode(decodingMode: DecodingMode | undefined): NativeDecodingMode {
+  if (decodingMode === undefined) {
+    return NATIVE_DECODING_MODE_DEFAULT;
+  }
+  return decodingMode === DecodingMode.LAZY ? NATIVE_DECODING_MODE_LAZY : NATIVE_DECODING_MODE_EAGER;
+}
+
 export class Arena implements IArena {
   private protobuf: ValdiProtobufModule;
   private $native: INativeMessageArena;
 
   constructor(decodingMode?: DecodingMode, encodingMode?: EncodingMode) {
     this.protobuf = getProtobufModule();
-    const eagerDecoding = decodingMode !== DecodingMode.LAZY;
     const includeAllFields = encodingMode === EncodingMode.INCLUDE_ALL_FIELDS;
-    this.$native = this.protobuf.createArena(eagerDecoding, includeAllFields);
+    this.$native = this.protobuf.createArena(nativeDecodingMode(decodingMode), includeAllFields);
   }
 
   createMessage(constructor: IMessageConstructor): IMessage {
