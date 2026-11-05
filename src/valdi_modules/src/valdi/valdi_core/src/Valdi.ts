@@ -13,7 +13,7 @@ import { IRenderer } from './IRenderer';
 import { IRootComponentsManager } from './IRootComponentsManager';
 import { jsx } from './JSXBootstrap';
 import { RootComponentsManager } from './RootComponentsManager';
-import { Style } from './Style';
+import { StyleValue } from './Style';
 import { NativeViewNodeInfo } from './ValdiRuntime';
 import { getValdiRuntime } from './ValdiRuntimeProvider';
 import { DaemonClientManager } from './debugging/DaemonClientManager';
@@ -196,7 +196,7 @@ export interface InjectedAttributes {
   $onTap?: () => void;
   $accessibilityId?: string;
   $marginBottom?: number;
-  $style?: Style<Layout>;
+  $style?: StyleValue<Layout>;
 }
 
 export class LegacyVueComponent<
