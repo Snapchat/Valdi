@@ -6635,7 +6635,7 @@ TEST_P(RuntimeFixture, canUseAndCreateStyles) {
                   .addAttribute("backgroundColor", "blue")
                   .addAttribute("opacity", 0.25)
                   .addAttribute("scaleX", 0.5)
-                  .addAttribute("scaleY", 1.0),
+                  .addAttribute("scaleY", 0.75),
               getRootView(tree));
 
     (*viewModel)[STRING_LITERAL("reverseStyles")] = Value(true);
@@ -6646,7 +6646,7 @@ TEST_P(RuntimeFixture, canUseAndCreateStyles) {
                   .addAttribute("backgroundColor", "red")
                   .addAttribute("opacity", 0.25)
                   .addAttribute("scaleX", 0.5)
-                  .addAttribute("scaleY", 1.0),
+                  .addAttribute("scaleY", 0.75),
               getRootView(tree));
 
     (*viewModel)[STRING_LITERAL("includeOverride")] = Value(false);
@@ -6655,8 +6655,7 @@ TEST_P(RuntimeFixture, canUseAndCreateStyles) {
 
     ASSERT_EQ(DummyView("SCValdiView")
                   .addAttribute("backgroundColor", "red")
-                  .addAttribute("scaleX", 0.5)
-                  .addAttribute("scaleY", 1.0),
+                  .addAttribute("scaleX", 0.5),
               getRootView(tree));
 }
 
