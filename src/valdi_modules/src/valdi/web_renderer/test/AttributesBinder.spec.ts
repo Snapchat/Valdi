@@ -251,6 +251,13 @@ describe('AttributesApplier', () => {
     expect(applier.getAttribute('width')).toBe(10);
   });
 
+  it('skips undefined entries in ordered style arrays', () => {
+    const applier = new AttributesApplier(1, new TestElementClass());
+
+    applier.setAttribute('style', [undefined, { attributes: { width: 10 } }]);
+    expect(applier.getAttribute('width')).toBe(10);
+  });
+
   it('removes attributes dropped from an ordered style array', () => {
     const applier = new AttributesApplier(1, new TestElementClass());
     const first = { attributes: { width: 10 } };

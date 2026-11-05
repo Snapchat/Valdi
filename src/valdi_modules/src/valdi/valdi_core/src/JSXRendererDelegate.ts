@@ -287,15 +287,17 @@ export class JSXRendererDelegate implements IRendererDelegate {
     } else if (
       Array.isArray(attributeValue) &&
       (attributeName === 'style' || attributeName === '$style') &&
-      attributeValue.every(value => value instanceof Style)
+      attributeValue.every(value => value === undefined || value instanceof Style)
     ) {
+      // Undefined entries add nothing, so they are dropped before crossing into native.
+      const styles = attributeValue.filter(value => value !== undefined);
       buffer.putUint32_3(
         RenderRequestEntryType.SET_ATTRIBUTE_STYLE_ARRAY | (id << 8),
         attributeNameParam,
-        attributeValue.length,
+        styles.length,
       );
 
-      for (const style of attributeValue) {
+      for (const style of styles) {
         buffer.putUint32(style.toNative(getValdiRuntime().createCSSRule));
       }
     } else if (Array.isArray(attributeValue)) {
