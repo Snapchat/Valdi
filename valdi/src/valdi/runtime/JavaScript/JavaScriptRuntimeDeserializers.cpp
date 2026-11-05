@@ -8,12 +8,14 @@
 #include "valdi/runtime/JavaScript/JavaScriptRuntimeDeserializers.hpp"
 
 #include "utils/time/StopWatch.hpp"
+#include "valdi/runtime/CSS/CSSAttributes.hpp"
 #include "valdi/runtime/CSS/StyleAttributesCache.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptStringCache.hpp"
 #include "valdi/runtime/JavaScript/JavaScriptUtils.hpp"
 #include "valdi/runtime/JavaScript/ValueFunctionWithJSValue.hpp"
 #include "valdi/runtime/Rendering/AnimationOptions.hpp"
 #include "valdi/runtime/Rendering/RenderRequest.hpp"
+#include "valdi_core/cpp/Utils/FlatMap.hpp"
 #include "valdi_core/cpp/Utils/Result.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
 #include "valdi_core/cpp/Utils/Trace.hpp"
@@ -22,6 +24,7 @@
 #include "valdi/runtime/Context/ContextManager.hpp"
 
 #include <fmt/format.h>
+#include <vector>
 
 namespace Valdi {
 
@@ -161,7 +164,7 @@ Ref<RenderRequest> JavaScriptRuntimeDeserializers::parseRequestDescriptor(
 
         RawViewNodeId nodeId = 0;
 
-        if (type < 14) {
+        if (type < 14 || type == 19) {
             // Those are always tied to a node id.
             nodeId = static_cast<RawViewNodeId>(typeHeader >> 8);
         }
@@ -201,7 +204,7 @@ Ref<RenderRequest> JavaScriptRuntimeDeserializers::parseRequestDescriptor(
             entry->setElementId(nodeId);
             entry->setParentElementId(static_cast<RawViewNodeId>(parentId));
             entry->setParentIndex(static_cast<int>(parentIndex));
-        } else if (type >= 5 && type <= 13) {
+        } else if ((type >= 5 && type <= 13) || type == 19) {
             if (current + 1 > length) {
                 return onParseError(exceptionTracker);
             }
@@ -309,6 +312,38 @@ Ref<RenderRequest> JavaScriptRuntimeDeserializers::parseRequestDescriptor(
                     return nullptr;
                 }
                 disableCallIfContextIsDestroyed(entry->getAttributeValue());
+            } else if (type == 19) {
+                // CSS style array
+                if (current + 1 > length) {
+                    return onParseError(exceptionTracker);
+                }
+
+                auto arrayLength = descriptor[current++];
+                if (current + arrayLength > length) {
+                    return onParseError(exceptionTracker);
+                }
+
+                std::vector<CSSStyleDeclaration> declarations;
+                FlatMap<AttributeId, size_t> declarationIndexByAttribute;
+                for (size_t i = 0; i < static_cast<size_t>(arrayLength); i++) {
+                    auto cssAttributesIndex = static_cast<size_t>(descriptor[current++]);
+                    auto cssAttributes = _styleAttributesCache.getAttributesForIndex(cssAttributesIndex);
+                    if (cssAttributes == nullptr) {
+                        return onParseError(exceptionTracker);
+                    }
+
+                    for (const auto& declaration : cssAttributes->getStyles()) {
+                        auto [it, inserted] =
+                            declarationIndexByAttribute.try_emplace(declaration.attribute.id, declarations.size());
+                        if (inserted) {
+                            declarations.emplace_back(declaration);
+                        } else {
+                            declarations[it->second] = declaration;
+                        }
+                    }
+                }
+
+                entry->setAttributeValue(Value(makeShared<CSSAttributes>(std::move(declarations))));
             }
         } else if (type == 14) {
             if (current + 12 > length) {

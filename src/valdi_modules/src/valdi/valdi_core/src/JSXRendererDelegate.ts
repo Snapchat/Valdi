@@ -34,6 +34,7 @@ const enum RenderRequestEntryType {
   ON_LAYOUT_COMPLETE = 16,
   CANCEL_ANIMATION = 17,
   ON_NEXT_DRAW = 18,
+  SET_ATTRIBUTE_STYLE_ARRAY = 19,
 }
 
 const bufferPool = [new Buffer(512)];
@@ -283,6 +284,20 @@ export class JSXRendererDelegate implements IRendererDelegate {
     } else if (typeof attributeValue === 'number') {
       buffer.putUint32_2(RenderRequestEntryType.SET_ATTRIBUTE_DOUBLE | (id << 8), attributeNameParam);
       buffer.putFloat64(attributeValue);
+    } else if (
+      Array.isArray(attributeValue) &&
+      (attributeName === 'style' || attributeName === '$style') &&
+      attributeValue.every(value => value instanceof Style)
+    ) {
+      buffer.putUint32_3(
+        RenderRequestEntryType.SET_ATTRIBUTE_STYLE_ARRAY | (id << 8),
+        attributeNameParam,
+        attributeValue.length,
+      );
+
+      for (const style of attributeValue) {
+        buffer.putUint32(style.toNative(getValdiRuntime().createCSSRule));
+      }
     } else if (Array.isArray(attributeValue)) {
       buffer.putUint32_3(
         RenderRequestEntryType.SET_ATTRIBUTE_ARRAY | (id << 8),

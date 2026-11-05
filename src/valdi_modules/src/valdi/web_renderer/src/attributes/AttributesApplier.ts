@@ -16,6 +16,52 @@ type StyleLike = {
   attributes?: Record<string, unknown>;
 };
 
+type StyleInput = Style<any> | ReadonlyArray<Style<any>> | undefined | null;
+
+function isStyleLike(value: unknown): value is StyleLike {
+  const attributes = (value as StyleLike | undefined)?.attributes;
+  return !!attributes && typeof attributes === 'object';
+}
+
+function normalizeStyles(value: StyleInput): StyleLike[] | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    return (value as ReadonlyArray<unknown>).filter(isStyleLike);
+  }
+  return isStyleLike(value) ? [value] : undefined;
+}
+
+function sameStyles(previous: StyleLike[], next: StyleLike[]): boolean {
+  if (previous.length !== next.length) {
+    return false;
+  }
+  for (let i = 0; i < next.length; i++) {
+    if (previous[i] !== next[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Later styles in an ordered array win; undefined leaves the earlier value in place.
+function mergeStyleAttributes(styles: StyleLike[]): Record<string, unknown> {
+  const merged: Record<string, unknown> = {};
+  for (let i = 0; i < styles.length; i++) {
+    const attributes = styles[i].attributes!;
+    const attributeNames = Object.keys(attributes);
+    for (let j = 0; j < attributeNames.length; j++) {
+      const attributeName = attributeNames[j];
+      const value = attributes[attributeName];
+      if (value !== undefined) {
+        merged[attributeName] = value;
+      }
+    }
+  }
+  return merged;
+}
+
 export enum AttributeSetResult {
   Unchanged,
   Changed,
@@ -147,7 +193,7 @@ export class AttributesApplier {
   private readonly attributes = new IndexedRecord<StoredAttribute>();
   private readonly dirtyAttributes = new IndexedRecord<string>();
   private dirtyComposites?: IndexedRecord<CompositeAttribute>;
-  private currentStyle?: StyleLike;
+  private currentStyles?: StyleLike[];
   private currentStyleAttributeNames?: string[];
 
   constructor(private readonly id: number, private readonly elementClass: AnyElementClass) {}
@@ -155,7 +201,7 @@ export class AttributesApplier {
   setAttribute(attributeName: string, value: unknown): AttributeSetResult {
     const actualAttributeName = attributeName.startsWith('$') ? attributeName.substring(1) : attributeName;
     if (actualAttributeName === 'style') {
-      return this.setStyle(value as Style<any> | undefined);
+      return this.setStyle(value as StyleInput);
     }
 
     const changedAttribute = this.updateAttributeForOwner(actualAttributeName, DIRECT_OWNER, value);
@@ -280,22 +326,19 @@ export class AttributesApplier {
     return shouldFlush;
   }
 
-  private setStyle(value: Style<any> | undefined | null): AttributeSetResult {
-    if (value === undefined || value === null) {
+  private setStyle(value: StyleInput): AttributeSetResult {
+    const styles = normalizeStyles(value);
+    if (!styles || styles.length === 0) {
       return this.clearCurrentStyle();
     }
-    const style = value as StyleLike;
-    const attributes = style.attributes;
-    if (!attributes || typeof attributes !== 'object') {
-      return this.clearCurrentStyle();
-    }
-    if (this.currentStyle === style) {
+    if (this.currentStyles && sameStyles(this.currentStyles, styles)) {
       return AttributeSetResult.Unchanged;
     }
 
+    const attributes = mergeStyleAttributes(styles);
     let result = this.clearCurrentStyle();
     const attributeNames = Object.keys(attributes);
-    this.currentStyle = style;
+    this.currentStyles = styles;
     this.currentStyleAttributeNames = attributeNames;
     for (let i = 0; i < attributeNames.length; i++) {
       const attributeName = attributeNames[i];
@@ -314,7 +357,7 @@ export class AttributesApplier {
 
   private clearCurrentStyle(): AttributeSetResult {
     const attributeNames = this.currentStyleAttributeNames;
-    this.currentStyle = undefined;
+    this.currentStyles = undefined;
     this.currentStyleAttributeNames = undefined;
     if (!attributeNames) {
       return AttributeSetResult.Unchanged;
