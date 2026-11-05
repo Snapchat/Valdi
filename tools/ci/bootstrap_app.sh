@@ -33,6 +33,44 @@ if [[ $(uname) != Linux ]] ; then
     if [[ -n "${SMOKE_TEST_NAME_PATTERN:-}" ]]; then
         NAME_FILTER=(--test-name-pattern="$SMOKE_TEST_NAME_PATTERN")
     fi
-    OPEN_SOURCE_DIR=$OPEN_SOURCE_DIR PROJECT_ROOT=$APP_DIR node -r ts-node/register --test --test-force-exit "${NAME_FILTER[@]}" "test/**/*test.ts"
+
+    # Usage: run_smoke_tests <app dir> [node test filter flags]
+    run_smoke_tests() {
+        local app_dir=$1
+        shift
+        OPEN_SOURCE_DIR=$OPEN_SOURCE_DIR PROJECT_ROOT=$app_dir PROJECT_NAME=valdi_app node -r ts-node/register --test --test-force-exit "$@" "test/**/*test.ts"
+    }
+
+    if [[ -n "${SMOKE_TEST_PARALLEL:-}" && -z "${SMOKE_TEST_NAME_PATTERN:-}" ]]; then
+        # Opt-in for CI hosts with enough cores and memory; the public runners (7 GB of RAM) leave it unset.
+        # Every test bootstraps its own app and Bazel workspace (about 30 s each), so tests that share
+        # /tmp/valdi_app queue behind each other. Run three groups at once, each in its own app dir and
+        # with its own Bazel server. Group 3 runs every test that groups 1 and 2 do not list, so a new
+        # or renamed test is never skipped.
+        GROUP1='build android|valdi doctor|finds project references'
+        GROUP2='build ios|build macos|finds code completions'
+        pids=()
+        start_group() {
+            local group=$1
+            shift
+            (
+                set -o pipefail
+                run_smoke_tests "${APP_DIR}_$group" "$@" 2>&1 | sed -u "s/^/[smoke $group] /"
+            ) &
+            pids+=($!)
+        }
+        start_group 1 --test-name-pattern="$GROUP1"
+        start_group 2 --test-name-pattern="$GROUP2"
+        start_group 3 --test-skip-pattern="$GROUP1|$GROUP2"
+        failed=0
+        for pid in "${pids[@]}"; do
+            wait "$pid" || failed=1
+        done
+        if [[ $failed != 0 ]]; then
+            exit 1
+        fi
+    else
+        run_smoke_tests "$APP_DIR" "${NAME_FILTER[@]}"
+    fi
     popd
 fi
