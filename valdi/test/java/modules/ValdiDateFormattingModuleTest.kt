@@ -7,12 +7,14 @@ import com.snap.valdi.utils.ValdiMarshaller
 import com.snap.valdi.utils.ValdiMarshallerJava
 import java.util.Calendar
 import java.util.Date
+import java.util.GregorianCalendar
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
@@ -129,5 +131,71 @@ class ValdiDateFormattingModuleTest {
             assertEquals(losAngeles.format(Date(timestamp)), formatDate(timestamp, format, "America/Los_Angeles"))
             assertNotEquals(utc.format(Date(timestamp)), losAngeles.format(Date(timestamp)))
         }
+    }
+
+    private fun utcMillis(year: Int, month: Int, day: Int, hour: Int = 12, minute: Int = 0): Long =
+        GregorianCalendar(TimeZone.getTimeZone("UTC")).apply {
+            clear()
+            set(year, month, day, hour, minute)
+        }.timeInMillis
+
+    private fun assertMonthAndYear(month: String, year: String, actual: String) {
+        assertTrue(actual, actual.contains(month) && actual.contains(year))
+    }
+
+    // Asserts components, not their order: Robolectric's ICU shadow returns the "yMMM" skeleton unchanged
+    // from getBestDateTimePattern, so en-US renders "2021Jan" here instead of a device's "Jan 2021".
+    @Test
+    @Config(qualifiers = "en-rUS")
+    fun shortNoDay_rendersAbbreviatedMonthAndYear() {
+        assertMonthAndYear("Jan", "2021", formatDate(utcMillis(2021, Calendar.JANUARY, 5), "SHORT_NO_DAY", "UTC"))
+    }
+
+    /** Guards against a full numeric date ("01/31/2021"), which includes the day. */
+    @Test
+    @Config(qualifiers = "en-rUS")
+    fun shortNoDay_omitsDayOfMonth() {
+        val result = formatDate(utcMillis(2021, Calendar.JANUARY, 31), "SHORT_NO_DAY", "UTC")
+
+        assertFalse(result, result.contains("31"))
+        assertTrue(result, result.contains("2021"))
+    }
+
+    /** Distinguishes SHORT_NO_DAY from its LONG_NO_DAY sibling, which spells the month out. */
+    @Test
+    @Config(qualifiers = "en-rUS")
+    fun shortNoDay_abbreviatesTheMonth() {
+        val timestamp = utcMillis(2021, Calendar.JANUARY, 5)
+
+        assertTrue(formatDate(timestamp, "SHORT_NO_DAY", "UTC").length < formatDate(timestamp, "LONG_NO_DAY").length)
+    }
+
+    /**
+     * Asserts ordering rather than glyphs: CLDR wording shifts between releases, but a year-first
+     * locale staying year-first is the property MemOne's scrubber hand-rolled per locale.
+     */
+    @Test
+    @Config(qualifiers = "zh-rCN")
+    fun shortNoDay_putsYearFirstInChinese() {
+        assertTrue(formatDate(utcMillis(2021, Calendar.JANUARY, 5), "SHORT_NO_DAY", "UTC").startsWith("2021"))
+    }
+
+    @Test
+    @Config(qualifiers = "ko-rKR")
+    fun shortNoDay_putsYearFirstInKorean() {
+        assertTrue(formatDate(utcMillis(2021, Calendar.JANUARY, 5), "SHORT_NO_DAY", "UTC").startsWith("2021"))
+    }
+
+    /**
+     * The DateUtils-based formats silently drop the time zone argument. SHORT_NO_DAY must honor it,
+     * since the fallback path in TimeUtils.ts does.
+     */
+    @Test
+    @Config(qualifiers = "en-rUS")
+    fun shortNoDay_honorsTimeZone() {
+        val newYearUtc = utcMillis(2021, Calendar.JANUARY, 1, hour = 0, minute = 30)
+
+        assertMonthAndYear("Jan", "2021", formatDate(newYearUtc, "SHORT_NO_DAY", "UTC"))
+        assertMonthAndYear("Dec", "2020", formatDate(newYearUtc, "SHORT_NO_DAY", "America/Los_Angeles"))
     }
 }

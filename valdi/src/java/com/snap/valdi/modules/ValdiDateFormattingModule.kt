@@ -5,6 +5,7 @@ import android.text.format.DateFormat
 import android.text.format.DateUtils
 import com.snap.valdi.utils.ExecutorsUtil
 import com.snap.valdi.utils.ValdiMarshaller
+import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.TimeZone
@@ -41,6 +42,12 @@ class ValdiDateFormattingModule(
         val mediumDate = DateFormat.getMediumDateFormat(context)
         val longDate = DateFormat.getLongDateFormat(context)
         val time = DateFormat.getTimeFormat(context)
+
+        // SimpleDateFormat rather than DateUtils so the time zone argument is honored; the CLDR
+        // skeleton keeps month/year ordering locale-correct (ZH: 2021年4月).
+        val shortMonthAndYear = context.resources.configuration.locale.let { locale ->
+            SimpleDateFormat(DateFormat.getBestDateTimePattern(locale, "yMMM"), locale)
+        }
     }
 
     private val formats = lazy { Formats(context) }
@@ -112,6 +119,9 @@ class ValdiDateFormattingModule(
                 or DateUtils.FORMAT_NO_YEAR
                 or DateUtils.FORMAT_NUMERIC_DATE
             )
+
+            // EN: Apr 2021 -> FR: avr. 2021 -> ZH: 2021年4月
+            "SHORT_NO_DAY" -> formatWithTimeZone(formats.value.shortMonthAndYear, timeZone, date)
 
             // EN: Apr 20, 2021 -> FR: 20 avr. 2021
             "MEDIUM" -> formatWithTimeZone(formats.value.mediumDate, timeZone, date)

@@ -83,6 +83,7 @@ static const double SCValdiTestEpochMillis = 1618939980000.0;
         @"LONG" : @"April 20, 2021",
         @"LONG_NO_YEAR" : @"April 20",
         @"LONG_NO_DAY" : @"April 2021",
+        @"SHORT_NO_DAY" : @"Apr 2021",
         @"DAY_OF_WEEK" : @"Tuesday",
         @"DAY_OF_WEEK_SHORT" : @"Tue",
     };

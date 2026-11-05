@@ -71,6 +71,9 @@ static NSDateFormatter *SCValdiMakeDateFormatter(NSString *format, NSLocale *loc
     } else if ([format isEqualToString:@"LONG_NO_DAY"]) {
         // EN: April 2021 -> FR: avril 2021
         [formatter setLocalizedDateFormatFromTemplate:@"MMMMy"];
+    } else if ([format isEqualToString:@"SHORT_NO_DAY"]) {
+        // EN: Apr 2021 -> FR: avr. 2021
+        [formatter setLocalizedDateFormatFromTemplate:@"MMMy"];
     } else if ([format isEqualToString:@"DAY_OF_WEEK"]) {
         // EN: Tuesday -> FR: mardi
         [formatter setLocalizedDateFormatFromTemplate:@"EEEE"];
