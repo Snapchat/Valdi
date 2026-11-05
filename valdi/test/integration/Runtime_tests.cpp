@@ -6638,7 +6638,31 @@ TEST_P(RuntimeFixture, canUseAndCreateStyles) {
                   .addAttribute("scaleY", 0.75),
               getRootView(tree));
 
+    // A direct scaleY attribute takes precedence over the scaleY from the style
+    (*viewModel)[STRING_LITERAL("scaleY")] = Value(1.0);
+    wrapper.setViewModel(tree->getContext(), Value(viewModel));
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    ASSERT_EQ(DummyView("SCValdiView")
+                  .addAttribute("backgroundColor", "blue")
+                  .addAttribute("opacity", 0.25)
+                  .addAttribute("scaleX", 0.5)
+                  .addAttribute("scaleY", 1.0),
+              getRootView(tree));
+
     (*viewModel)[STRING_LITERAL("reverseStyles")] = Value(true);
+    wrapper.setViewModel(tree->getContext(), Value(viewModel));
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    ASSERT_EQ(DummyView("SCValdiView")
+                  .addAttribute("backgroundColor", "red")
+                  .addAttribute("opacity", 0.25)
+                  .addAttribute("scaleX", 0.5)
+                  .addAttribute("scaleY", 1.0),
+              getRootView(tree));
+
+    // Removing the direct attribute falls back to the scaleY from the style
+    (*viewModel)[STRING_LITERAL("scaleY")] = Value::undefined();
     wrapper.setViewModel(tree->getContext(), Value(viewModel));
     wrapper.waitUntilAllUpdatesCompleted();
 
