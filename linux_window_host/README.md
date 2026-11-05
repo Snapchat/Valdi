@@ -21,9 +21,16 @@ this module from root wildcard queries/builds. The shared calculator model, TSX
 component and web launcher remain in `@valdi//apps/calculator`.
 
 Bazel does not inherit root-only overrides from dependencies. This module repeats
-Valdi's source submodule overrides and version pins and uses the Valdi registry
-at the reviewed upstream base for patched build rules. Keep those pins and
-`.bazelversion` aligned when updating the source checkout.
+Valdi's source submodule overrides and version pins; `check_config.py` runs before
+the host CI build and fails if those settings or `.bazelversion` drift from the
+parent checkout. Update them together when changing the root configuration.
+
+Both modules import compiler/toolchain flags from `bzl/valdi/common.bazelrc`, so
+those flags have one source. The host's `.bazelrc` selects the checkout's own
+registry (`file://%workspace%/../registry`) before BCR, keeping patched build rules
+in step with the source tree. It does not enable automatic Cargo repinning.
+If a crate dependency/lockfile intentionally changes, repin explicitly using
+`--repo_env=CARGO_BAZEL_REPIN=true` for that invocation.
 
 The SDL Linux build uses registry-provided ALSA, X11, Wayland and xkbcommon headers.
 SDL loads the corresponding desktop/audio libraries by soname at runtime; they
@@ -63,8 +70,9 @@ supplied font file; font discovery and fallback are not yet implemented.
 
 ## Headless CI and coverage
 
-`tools/ci/linux_window_host_tests.sh` runs the framebuffer and SDL host tests from
-this module. The `linux-window-host` matrix job in `Valdi CI` is non-blocking on
+`tools/ci/linux_window_host_tests.sh` checks configuration consistency, exercises
+the drift checker, and runs the framebuffer and SDL host tests from this module.
+The `linux-window-host` matrix job in `Valdi CI` is non-blocking on
 `ubuntu-24.04`, with a 45-minute test/build step and a 60-second per-test timeout.
 The script itself fails on build/test errors. Failed test logs are uploaded.
 PR and main-push filters include this module, shared sources and CI/build settings.

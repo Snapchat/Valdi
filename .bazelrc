@@ -1,53 +1,18 @@
 try-import %workspace%/.bazelrc.internal
 try-import %workspace%/.bazelrc.local
 
-# Enable bzlmod for module-based dependency resolution
-common --enable_bzlmod
-common --noenable_workspace
-
-# Bazel 8 flipped this to true by default; overlay/vendored/generated dirs
-# (websocketpp overlay, yoga, djinni, dist_dev, etc.) glob empty at load time.
-common --noincompatible_disallow_empty_glob
-
-# rules_kotlin 1.9.5's kt_kotlinc_options returns a struct from its rule impl,
-# which Bazel 8 disallows by default. Re-enable the legacy syntax until
-# rules_kotlin is upgraded.
-common --incompatible_disallow_struct_provider_syntax=false
+# Shared with the opt-in Linux host; keep its compiler/toolchain flags aligned.
+import %workspace%/bzl/valdi/common.bazelrc
 
 common --bes_instance_name=client
 common --enable_platform_specific_config
 
-# Disable workers for repo fetching to prevent OOM
-common --experimental_worker_for_repo_fetching=off
-
-# android configuration
-# Expose AndroidResourceInfo provider to Kotlin rules
-common --experimental_google_legacy_api=true
-common --experimental_enable_android_migration_apis=true
-common --incompatible_java_common_parameters=false
-
 # Flags for compilation
 common --define enable_web=true
-
-build --tool_java_language_version=17
-build --java_language_version=11
 
 ## Disable sandboxing for macs, both laptops and in CI; the performance hit is much too high.
 build:macos --spawn_strategy=local
 build:linux --sandbox_writable_path=/var/tmp
-
-# common cc configuration
-build --cxxopt=-std=c++20
-build --cxxopt=-Wno-ambiguous-reversed-operator
-build --cxxopt=-Wno-gcc-compat
-build --cxxopt=-Wno-nullability-extension
-build --cxxopt=-D_LIBCPP_ENABLE_CXX20_REMOVED_TYPE_TRAITS
-build --host_cxxopt=-std=c++20
-build --host_cxxopt=-Wno-nullability-extension
-
-## we need to disable this due to a bug in bazel
-## see https://github.com/bazelbuild/bazel/issues/12381
-build --incompatible_use_specific_tool_files=false
 
 # iOS and Apple cc changes and hacks
 ## For Objective-C source files
@@ -63,8 +28,6 @@ build:macos --copt=-fvisibility=hidden
 # java configuration
 ## Disable some java checks for now, djinni generates code that errors out
 build --javacopt=-XepDisableAllChecks
-build --java_runtime_version=remotejdk_11
-build --tool_java_runtime_version=remotejdk_17
 ## rules_java 8.13.0 emits the java launcher's JAVABIN with the pre-Bazel-8 external/ prefix
 ## (JAVABIN=external/rules_java++toolchains+<jdk>/bin/java, resolved under $JAVA_RUNFILES/_main/)
 ## while emitting the classpath with Bazel 8's layout, where external repos sit at the runfiles
@@ -75,9 +38,6 @@ build --tool_java_runtime_version=remotejdk_17
 ## rules_java bump past 8.13.0, at which point this line should go.
 build --legacy_external_runfiles
 
-build --flag_alias=snap_flavor=@snap_platforms//flavors:snap_flavor
-build --snap_flavor=client_development
-
 build --define=android_dexmerger_tool=d8_dexmerger
 build --define=android_incremental_dexing_tool=d8_dexbuilder
 build --define=android_standalone_dexing_tool=d8_compat_dx
@@ -86,9 +46,6 @@ build --incremental_dexing
 # Disable 3rd party libs warnings (bzlmod canonical names use module~ suffix)
 build --per_file_copt=external/protobuf[^/]*/.*\$@-Wno-everything
 build --per_file_copt=external/boringssl[^/]*/.*\$@-Wno-everything
-
-# Enable persistent worker for Valdi compilation
-build --strategy=ValdiCompile=worker
 
 ## Disable sandboxing for macs, both laptops and in CI; the performance hit is much too high.
 build:macos --spawn_strategy=local
@@ -109,18 +66,12 @@ build --experimental_reuse_sandbox_directories
 build --flag_alias=valdi_js_engine=@valdi//bzl/valdi:js_engine
 build --valdi_js_engine=hermes
 
-# Valdi Open Source Flags
-build --define=open_source_build=true
-
 common --@aspect_rules_ts//ts:skipLibCheck=always
 
 # cargo-bazel computes platform-specific lock digests (the binary itself
 # differs per OS), so a lockfile generated on macOS will fail validation
 # on Linux and vice versa. Auto-repin so builds work on any platform.
 build --repo_env=CARGO_BAZEL_REPIN=true
-
-# Remote cache (activated in CI via .bazelrc.local)
-build:ci --experimental_circuit_breaker_strategy=failure
 
 # AddressSanitizer, used by the nightly sanitizer job (tools/ci/sanitizer_tests.sh) to catch
 # teardown / threading memory-safety bugs (use-after-free, heap corruption) that an optimized build

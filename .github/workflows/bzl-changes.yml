@@ -8,6 +8,7 @@ on:
       - '**/BUILD'
       - 'MODULE.bazel'
       - '.bazelrc'
+      - 'bzl/valdi/common.bazelrc'
       - '.bazelversion'
       - '.bazelignore'
       - 'linux_window_host/**'
@@ -43,6 +44,7 @@ on:
       - '**/BUILD'
       - 'MODULE.bazel'
       - '.bazelrc'
+      - 'bzl/valdi/common.bazelrc'
       - '.bazelversion'
       - '.bazelignore'
       - 'linux_window_host/**'
@@ -177,7 +179,7 @@ jobs:
 
       - name: Upload test results
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: test-results-${{ matrix.runner }}
           path: |
@@ -255,7 +257,7 @@ jobs:
 
       - name: Upload test logs and crash reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: macos-test-logs
           path: /tmp/macos-test-logs
@@ -377,7 +379,7 @@ jobs:
       - name: "Upload: Valdi size report (main baseline)"
         if: matrix.task == 'build-export' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.size-report.outcome == 'success'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: valdi-size-report
           path: ${{ runner.temp }}/valdi-size/size-report.json
@@ -403,7 +405,7 @@ jobs:
 
       - name: Upload SDL host test logs
         if: matrix.task == 'linux-window-host' && failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: linux-window-host-logs
           path: /tmp/linux-window-host-logs
@@ -433,7 +435,7 @@ jobs:
 
       - name: "Upload regenerated goldens (on drift)"
         if: matrix.task == 'compiler-golden' && failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: regenerated-compiler-goldens
           path: ${{ runner.temp }}/regenerated-compiler-goldens
@@ -481,7 +483,7 @@ jobs:
 
       - name: Upload diff images
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: snapshot-diffs
           path: /tmp/valdi-snapshots/diffs/

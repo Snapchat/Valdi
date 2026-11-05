@@ -1,33 +1,12 @@
-# Linux source-consumer configuration; @valdi registers its native toolchains.
-common --enable_bzlmod
-common --noenable_workspace
-common --noincompatible_disallow_empty_glob
-common --incompatible_disallow_struct_provider_syntax=false
-common --experimental_worker_for_repo_fetching=off
-common --experimental_google_legacy_api=true
-common --experimental_enable_android_migration_apis=true
-common --incompatible_java_common_parameters=false
+# Share compiler/toolchain flags without importing the root workspace's settings.
+import %workspace%/../bzl/valdi/common.bazelrc
 
-build --cxxopt=-std=c++20
-build --host_cxxopt=-std=c++20
-build --cxxopt=-Wno-ambiguous-reversed-operator
-build --cxxopt=-Wno-gcc-compat
-build --cxxopt=-Wno-nullability-extension
-build --cxxopt=-D_LIBCPP_ENABLE_CXX20_REMOVED_TYPE_TRAITS
-build --host_cxxopt=-Wno-nullability-extension
-build --incompatible_use_specific_tool_files=false
-build --define=open_source_build=true
-build --@snap_platforms//flavors:snap_flavor=client_development
+# Resolve patched rules from this checkout before falling back to BCR.
+common --registry=file://%workspace%/../registry
+common --registry=https://bcr.bazel.build
 
 # Keep runtime and generated module bytecode in the same stage-1 engine profile.
 build --@valdi//bzl/valdi:js_engine=quickjs
 build --@valdi//bzl/valdi:js_bytecode_format=quickjs
-build --strategy=ValdiCompile=worker
-build --repo_env=CARGO_BAZEL_REPIN=true
-build --tool_java_language_version=17
-build --java_language_version=11
-build --tool_java_runtime_version=remotejdk_17
-build --java_runtime_version=remotejdk_11
-build:ci --experimental_circuit_breaker_strategy=failure
 
 try-import %workspace%/.bazelrc.local

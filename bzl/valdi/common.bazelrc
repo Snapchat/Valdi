@@ -1,0 +1,55 @@
+# Shared source-build configuration for the root and Linux host modules.
+# Keep workspace-specific settings, registries and local imports in their own rc.
+
+# Enable bzlmod for module-based dependency resolution
+common --enable_bzlmod
+common --noenable_workspace
+
+# Bazel 8 flipped this to true by default; overlay/vendored/generated dirs
+# (websocketpp overlay, yoga, djinni, dist_dev, etc.) glob empty at load time.
+common --noincompatible_disallow_empty_glob
+
+# rules_kotlin 1.9.5's kt_kotlinc_options returns a struct from its rule impl,
+# which Bazel 8 disallows by default. Re-enable the legacy syntax until
+# rules_kotlin is upgraded.
+common --incompatible_disallow_struct_provider_syntax=false
+
+# Disable workers for repo fetching to prevent OOM
+common --experimental_worker_for_repo_fetching=off
+
+# android configuration
+# Expose AndroidResourceInfo provider to Kotlin rules
+common --experimental_google_legacy_api=true
+common --experimental_enable_android_migration_apis=true
+common --incompatible_java_common_parameters=false
+
+build --tool_java_language_version=17
+build --java_language_version=11
+
+# common cc configuration
+build --cxxopt=-std=c++20
+build --cxxopt=-Wno-ambiguous-reversed-operator
+build --cxxopt=-Wno-gcc-compat
+build --cxxopt=-Wno-nullability-extension
+build --cxxopt=-D_LIBCPP_ENABLE_CXX20_REMOVED_TYPE_TRAITS
+build --host_cxxopt=-std=c++20
+build --host_cxxopt=-Wno-nullability-extension
+
+## we need to disable this due to a bug in bazel
+## see https://github.com/bazelbuild/bazel/issues/12381
+build --incompatible_use_specific_tool_files=false
+
+build --java_runtime_version=remotejdk_11
+build --tool_java_runtime_version=remotejdk_17
+
+build --flag_alias=snap_flavor=@snap_platforms//flavors:snap_flavor
+build --snap_flavor=client_development
+
+# Enable persistent worker for Valdi compilation
+build --strategy=ValdiCompile=worker
+
+# Valdi Open Source Flags
+build --define=open_source_build=true
+
+# Remote cache (activated in CI via .bazelrc.local)
+build:ci --experimental_circuit_breaker_strategy=failure

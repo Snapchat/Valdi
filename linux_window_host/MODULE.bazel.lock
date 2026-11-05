@@ -363,8 +363,6 @@
     "https://bcr.bazel.build/modules/rules_jvm_external/6.3/MODULE.bazel": "c998e060b85f71e00de5ec552019347c8bca255062c990ac02d051bb80a38df0",
     "https://bcr.bazel.build/modules/rules_jvm_external/6.6/MODULE.bazel": "153042249c7060536dc95b6bb9f9bb8063b8a0b0cb7acdb381bddbc2374aed55",
     "https://bcr.bazel.build/modules/rules_jvm_external/6.6/source.json": "b1d7ffc3877e5a76e6e48e6bce459cbb1712c90eba14861b112bd299587a534d",
-    "https://bcr.bazel.build/modules/rules_kotlin/2.3.10/MODULE.bazel": "f1b27fed6208560834600c0ef40ced22ed1f3e9094c83766ef8c8fafcf2dca9b",
-    "https://bcr.bazel.build/modules/rules_kotlin/2.3.10/source.json": "9400150a53b26ad353d75a1993ced70a2c7e4d29f03892a212ebe5b93d7cd359",
     "https://bcr.bazel.build/modules/rules_license/0.0.3/MODULE.bazel": "627e9ab0247f7d1e05736b59dbb1b6871373de5ad31c3011880b4133cafd4bd0",
     "https://bcr.bazel.build/modules/rules_license/0.0.4/MODULE.bazel": "6a88dd22800cf1f9f79ba32cacad0d3a423ed28efa2c2ed5582eaa78dd3ac1e5",
     "https://bcr.bazel.build/modules/rules_license/0.0.7/MODULE.bazel": "088fbeb0b6a419005b89cf93fe62d9517c0a2b8bb56af3244af65ecfe37e7d5d",
@@ -373,7 +371,6 @@
     "https://bcr.bazel.build/modules/rules_m4/0.3.bcr.1/MODULE.bazel": "41d4602bb89a1495fef1e694837f47bf18fc86e4cd7fb00cd6a4f6c0d2c395e4",
     "https://bcr.bazel.build/modules/rules_m4/0.3.bcr.1/source.json": "0f3dffd7c11d8ae41eaf65ebcca59df6ed0b6cc44bd323129f1070ded71160f5",
     "https://bcr.bazel.build/modules/rules_nodejs/5.8.2/MODULE.bazel": "6bc03c8f37f69401b888023bf511cb6ee4781433b0cb56236b2e55a21e3a026a",
-    "https://bcr.bazel.build/modules/rules_nodejs/6.2.0/MODULE.bazel": "ec27907f55eb34705adb4e8257952162a2d4c3ed0f0b3b4c3c1aad1fac7be35e",
     "https://bcr.bazel.build/modules/rules_nodejs/6.3.3/MODULE.bazel": "b66eadebd10f1f1b25f52f95ab5213a57e82c37c3f656fcd9a57ad04d2264ce7",
     "https://bcr.bazel.build/modules/rules_nodejs/6.7.5/MODULE.bazel": "97e6794043821d23c013baa4a50fd1c599f2e6ae92b06e2c5f1cd7074fd83e7c",
     "https://bcr.bazel.build/modules/rules_nodejs/6.7.5/source.json": "d60ee5a76258b1c8f99545ed24172b44d43ba64ca1a2dfc04371ef203df19fdf",
@@ -433,8 +430,6 @@
     "https://bcr.bazel.build/modules/tar.bzl/0.5.1/MODULE.bazel": "7c2eb3dcfc53b0f3d6f9acdfd911ca803eaf92aadf54f8ca6e4c1f3aee288351",
     "https://bcr.bazel.build/modules/tar.bzl/0.6.0/MODULE.bazel": "a3584b4edcfafcabd9b0ef9819808f05b372957bbdff41601429d5fd0aac2e7c",
     "https://bcr.bazel.build/modules/tar.bzl/0.6.0/source.json": "4a620381df075a16cb3a7ed57bd1d05f7480222394c64a20fa51bdb636fda658",
-    "https://bcr.bazel.build/modules/toolchains_llvm/1.7.0/MODULE.bazel": "55aca6a8c5b372651f663c5e22faf3664d81165e40074c98fb8a30ee5af83272",
-    "https://bcr.bazel.build/modules/toolchains_llvm/1.7.0/source.json": "cda5fa1abeab5561e811860222952f6cb9373f34b88c5b3f4417459dca057a6d",
     "https://bcr.bazel.build/modules/wayland/1.24.0.bcr.1/MODULE.bazel": "78049d9a0975cdaa3932ec5a78e7026a2e77f2bfe4d976fd709eeb55b10f6c51",
     "https://bcr.bazel.build/modules/wayland/1.24.0.bcr.1/source.json": "af780acbd3fbfe59cac8ad674371535f2a63bd4b5649c2c65b21f9b470942f11",
     "https://bcr.bazel.build/modules/xcb-proto/1.17.0/MODULE.bazel": "13062923a9e615a2f4d284a3f28e467536f7abcfd79d2c04c2acf3837e9da31b",
@@ -451,16 +446,7 @@
     "https://bcr.bazel.build/modules/zlib/1.3.2/MODULE.bazel": "7303cb87d80e438f313194fc640e38475a8d337b8c70ff6a0725f55236566a33",
     "https://bcr.bazel.build/modules/zlib/1.3.2/source.json": "8f35ed65174ee2ad9630baeccd243cadf482b72d2ab32b57f9d84dc30ab076e0",
     "https://bcr.bazel.build/modules/zstd/1.5.7/MODULE.bazel": "f5780cdbd6f4c5bb985a20f839844316fe48fb5e463056f372dbc37cfabdf450",
-    "https://bcr.bazel.build/modules/zstd/1.5.7/source.json": "f72c48184b6528ffc908a5a2bcbf3070c6684f3db03da2182c8ca999ae5f5cfd",
-    "https://raw.githubusercontent.com/Snapchat/Valdi/4aa98f01a46e65ead03a8fc8cc1c21e04f2a465d/registry/bazel_registry.json": "83b75b2f215f8a828c366a5a3ed9e22295e1f7c5dd303e72e29f7d4f00eb3007",
-    "https://raw.githubusercontent.com/Snapchat/Valdi/4aa98f01a46e65ead03a8fc8cc1c21e04f2a465d/registry/modules/rules_android/0.6.5/MODULE.bazel": "64c0dec0d8e00956ead4a2f869a77218970f81bb8561a72ecc6366e93f38f8bb",
-    "https://raw.githubusercontent.com/Snapchat/Valdi/4aa98f01a46e65ead03a8fc8cc1c21e04f2a465d/registry/modules/rules_android/0.6.5/source.json": "797781bbe789731f9103ad2342a7e001eb185745d66a306baf8dab12faf76d96",
-    "https://raw.githubusercontent.com/Snapchat/Valdi/4aa98f01a46e65ead03a8fc8cc1c21e04f2a465d/registry/modules/rules_android_ndk/0.1.3/MODULE.bazel": "3ca2a6bf93e33c696e0393ef86698d155f1b8c6f72e7418b782690a75bc1ab99",
-    "https://raw.githubusercontent.com/Snapchat/Valdi/4aa98f01a46e65ead03a8fc8cc1c21e04f2a465d/registry/modules/rules_android_ndk/0.1.3/source.json": "60c6b30df8d2db918a0151938cc7e9d461916fe434d04bf2e0fa7903e137bfca",
-    "https://raw.githubusercontent.com/Snapchat/Valdi/4aa98f01a46e65ead03a8fc8cc1c21e04f2a465d/registry/modules/rules_swift/3.1.2/MODULE.bazel": "72c8f5cf9d26427cee6c76c8e3853eb46ce6b0412a081b2b6db6e8ad56267400",
-    "https://raw.githubusercontent.com/Snapchat/Valdi/4aa98f01a46e65ead03a8fc8cc1c21e04f2a465d/registry/modules/rules_swift/3.1.2/source.json": "ce05f4a93cf84d20061bce86774aee4223814ccfe4120529b4eaa8116f04ec54",
-    "https://raw.githubusercontent.com/Snapchat/Valdi/4aa98f01a46e65ead03a8fc8cc1c21e04f2a465d/registry/modules/websocketpp/0.8.2.bcr.3/MODULE.bazel": "e3e56c3c4857b273c124d54fb987fa96bc76d88e36ad4924d8740a9a2c07d75b",
-    "https://raw.githubusercontent.com/Snapchat/Valdi/4aa98f01a46e65ead03a8fc8cc1c21e04f2a465d/registry/modules/websocketpp/0.8.2.bcr.3/source.json": "314e4a50b38ee1148091f86d9bf4ca9fff98544e5914ae0440116769a9f7a54c"
+    "https://bcr.bazel.build/modules/zstd/1.5.7/source.json": "f72c48184b6528ffc908a5a2bcbf3070c6684f3db03da2182c8ca999ae5f5cfd"
   },
   "selectedYankedVersions": {},
   "moduleExtensions": {
@@ -687,7 +673,7 @@
         "bzlTransitiveDigest": "G3yYrxGNK0NJmRnlZCpBq/bWZQZyxxfbU7W7yz8Kcvw=",
         "usagesDigest": "y+qbdPdJ59n4eNI6TsdYm0XhPKeUEt7mL3mrE85NFCY=",
         "recordedFileInputs": {
-          "@@valdi++_repo_rules+resvg//Cargo.lock": "b70631996d9140118410a57090f2da7ac7f8bb6b96e033e7a30b2839c6dc3b2f",
+          "@@valdi++_repo_rules+resvg//Cargo.lock": "22116883b7ad6692de7febea4181d78faee4f6b5df267edb05f3e518ee63cfe1",
           "@@valdi+//third-party/pngquant/Cargo.lock": "e729d773c3c08bf67745a49500b3d5be07ed4aa2b222dc552a42d46e105f75db",
           "@@valdi+//third-party/resvg/cargo-bazel-lock.json": "954b60ffc5158ff5451bdcbad7a7970525c94c8fe8a1cb8b48b942a4a90f229a"
         },
@@ -697,7 +683,7 @@
           "CARGO_BAZEL_GENERATOR_SHA256": null,
           "CARGO_BAZEL_GENERATOR_URL": null,
           "CARGO_BAZEL_ISOLATED": null,
-          "CARGO_BAZEL_REPIN": "true",
+          "CARGO_BAZEL_REPIN": null,
           "CARGO_BAZEL_REPIN_ONLY": null,
           "CARGO_BAZEL_TIMEOUT": null,
           "REPIN": null

@@ -9,6 +9,9 @@ if [[ $(uname) != Linux ]]; then
 fi
 
 cd "$(dirname "$0")/../../linux_window_host"
+python3 -m unittest discover -s test -p '*_test.py'
+python3 check_config.py
+
 if command -v bazel >/dev/null 2>&1; then
     bazel_cmd=bazel
 elif command -v bzl >/dev/null 2>&1; then

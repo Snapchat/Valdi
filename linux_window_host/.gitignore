@@ -1,2 +1,3 @@
 /bazel-*
 /.bazelrc.local
+__pycache__/
