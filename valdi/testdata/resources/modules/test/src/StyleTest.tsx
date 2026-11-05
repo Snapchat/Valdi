@@ -18,6 +18,6 @@ export class StyleTest extends Component<ViewModel> {
         : [baseStyle, overrideStyle]
       : [baseStyle];
 
-    <view style={style} scaleY={1} />;
+    <view style={style} />;
   }
 }
