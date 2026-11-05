@@ -6622,14 +6622,64 @@ TEST_P(RuntimeFixture, canUseViewPool) {
 }
 
 TEST_P(RuntimeFixture, canUseAndCreateStyles) {
-    auto tree = wrapper.createViewNodeTreeAndContext(STRING_LITERAL("StyleTest@test/src/StyleTest"), Value(), Value());
+    auto viewModel = makeShared<ValueMap>();
+    (*viewModel)[STRING_LITERAL("includeOverride")] = Value(true);
+    (*viewModel)[STRING_LITERAL("reverseStyles")] = Value(false);
+
+    auto tree =
+        wrapper.createViewNodeTreeAndContext(STRING_LITERAL("StyleTest@test/src/StyleTest"), Value(viewModel), Value());
 
     wrapper.waitUntilAllUpdatesCompleted();
 
     ASSERT_EQ(DummyView("SCValdiView")
-                  .addAttribute("backgroundColor", "red")
+                  .addAttribute("backgroundColor", "blue")
+                  .addAttribute("opacity", 0.25)
                   .addAttribute("scaleX", 0.5)
                   .addAttribute("scaleY", 0.75),
+              getRootView(tree));
+
+    // A direct scaleY attribute takes precedence over the scaleY from the style
+    (*viewModel)[STRING_LITERAL("scaleY")] = Value(1.0);
+    wrapper.setViewModel(tree->getContext(), Value(viewModel));
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    ASSERT_EQ(DummyView("SCValdiView")
+                  .addAttribute("backgroundColor", "blue")
+                  .addAttribute("opacity", 0.25)
+                  .addAttribute("scaleX", 0.5)
+                  .addAttribute("scaleY", 1.0),
+              getRootView(tree));
+
+    (*viewModel)[STRING_LITERAL("reverseStyles")] = Value(true);
+    wrapper.setViewModel(tree->getContext(), Value(viewModel));
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    ASSERT_EQ(DummyView("SCValdiView")
+                  .addAttribute("backgroundColor", "red")
+                  .addAttribute("opacity", 0.25)
+                  .addAttribute("scaleX", 0.5)
+                  .addAttribute("scaleY", 1.0),
+              getRootView(tree));
+
+    // Removing the direct attribute falls back to the scaleY from the style
+    (*viewModel)[STRING_LITERAL("scaleY")] = Value::undefined();
+    wrapper.setViewModel(tree->getContext(), Value(viewModel));
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    ASSERT_EQ(DummyView("SCValdiView")
+                  .addAttribute("backgroundColor", "red")
+                  .addAttribute("opacity", 0.25)
+                  .addAttribute("scaleX", 0.5)
+                  .addAttribute("scaleY", 0.75),
+              getRootView(tree));
+
+    (*viewModel)[STRING_LITERAL("includeOverride")] = Value(false);
+    wrapper.setViewModel(tree->getContext(), Value(viewModel));
+    wrapper.waitUntilAllUpdatesCompleted();
+
+    ASSERT_EQ(DummyView("SCValdiView")
+                  .addAttribute("backgroundColor", "red")
+                  .addAttribute("scaleX", 0.5),
               getRootView(tree));
 }
 

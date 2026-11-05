@@ -167,6 +167,23 @@ const myStyle = new Style<View>({
 
 That way you can define any immutable values in your style and then dynamically override any dynamic value using a regular attribute.
 
+Styles can also be composed without creating a merged `Style` instance by passing an array. Styles are applied from left to right, so later styles override earlier styles. Regular element attributes still override every style in the array. An entry can be `undefined`, which is skipped, so a conditional style needs no separate branch.
+
+```tsx
+const baseStyle = new Style<View>({
+  width: 100,
+  backgroundColor: 'red',
+});
+const selectedStyle = new Style<View>({
+  backgroundColor: 'blue',
+});
+
+// width: 100, backgroundColor: blue
+<view style={[baseStyle, selectedStyle]} />;
+// width: 100, backgroundColor: green
+<view style={[baseStyle, selectedStyle]} backgroundColor='green' />;
+```
+
 ## Performance considerations
 
 Note that styles are the perfect usecase for static and invariant attributes but should generally be avoided to be instantiated during rendering, for example:
@@ -212,6 +229,9 @@ class MyFastComponent {
     <view style={myCheapStyle}/>;
     // height: 100, width: 100, backgroundColor: blue
     <view style={myCheapStyle} backgroundColor='blue'/>;
+    // The array can be created during rendering. Its Style entries are reused,
+    // and Valdi shallow-compares the array before notifying native.
+    <view style={[myCheapStyle, myCheapStyle2]}/>;
   }
 }
 ```
@@ -251,6 +271,7 @@ class MyFastComponentWithLogic extends StatefulComponent<State> {
 - **Style Interning**: The first time a style instance is sent to the native runtime, it is assigned a unique integer identifier. Subsequent uses of the same style object only require passing this ID, drastically reducing marshalling overhead. This is why you should reuse style objects instead of creating them on the fly.
 - instantiating/merging/extending Style is costly, don't do it at render-time
 - instantiating/merging/extending Style should be done once, at initialization or lazy loaded
+- style arrays do not need to be memoized, but each Style in the array should be reused
 - use attributes for any dynamic value
 - you can also swap styles for dynamic values with limited granularity
 
