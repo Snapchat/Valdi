@@ -149,4 +149,4 @@ Please follow the [contributing](./CONTRIBUTING.md) guidelines.
 
 ## License
 
-Valdi is made available under the MIT [License](./LICENSE).
+Valdi is made available under the MIT [License](./LICENSE). Third-party software that Valdi includes, and its licenses, are listed in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
