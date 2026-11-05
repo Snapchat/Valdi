@@ -21,6 +21,10 @@ inputs:
     description: 'Cache key prefix for disk cache via actions/cache. Omit to skip disk cache.'
     required: false
     default: ''
+  disk_cache:
+    description: "Set to 'false' to keep the repository cache but skip Bazel's disk cache, which stores a second copy of every output next to the output base. For jobs whose build barely fits the runner's disk."
+    required: false
+    default: 'true'
 
 runs:
   using: 'composite'
@@ -174,15 +178,21 @@ runs:
     - name: Prune and configure disk cache
       if: inputs.cache_key != ''
       shell: bash
+      env:
+        DISK_CACHE: ${{ inputs.disk_cache }}
       run: |
         # Prune old cache files to prevent unbounded growth on persistent runners
         find "$HOME/.cache/bazel/disk" -type f -atime +7 -delete 2>/dev/null || true
         find "$HOME/.cache/bazel/repo" -type f -atime +7 -delete 2>/dev/null || true
 
-        echo "build:ci --disk_cache=$HOME/.cache/bazel/disk" >> .bazelrc.local
+        if [ "$DISK_CACHE" != "false" ]; then
+          echo "build:ci --disk_cache=$HOME/.cache/bazel/disk" >> .bazelrc.local
+        fi
         echo "build:ci --repository_cache=$HOME/.cache/bazel/repo" >> .bazelrc.local
         if [ -n "$BAZEL_CACHE_RC" ]; then
-          echo "build --disk_cache=$HOME/.cache/bazel/disk" >> "$BAZEL_CACHE_RC"
+          if [ "$DISK_CACHE" != "false" ]; then
+            echo "build --disk_cache=$HOME/.cache/bazel/disk" >> "$BAZEL_CACHE_RC"
+          fi
           echo "build --repository_cache=$HOME/.cache/bazel/repo" >> "$BAZEL_CACHE_RC"
         fi
 
@@ -191,8 +201,10 @@ runs:
       uses: actions/cache@v4
       continue-on-error: true
       with:
+        # With the disk cache off, leave its directory out too, or an older archive would still be restored
+        # onto the runner and saved again. actions/cache skips the empty line this leaves.
         path: |
-          ~/.cache/bazel/disk
+          ${{ inputs.disk_cache != 'false' && '~/.cache/bazel/disk' || '' }}
           ~/.cache/bazel/repo
           ~/.cache/bazelisk
         key: bazel-${{ runner.os }}-${{ inputs.cache_key }}-${{ hashFiles('MODULE.bazel', '**/*.bzl') }}-${{ github.run_id }}

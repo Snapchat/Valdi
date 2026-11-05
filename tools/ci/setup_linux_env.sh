@@ -141,13 +141,13 @@ done
 ARCHIVE_URL="http://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses"
 if ! apt_installed libtinfo5 && { apt_update_once; ! sudo apt-get install -y libtinfo5 2>/dev/null; }; then
     echo "libtinfo5 not available in apt, downloading from Ubuntu archive..."
-    DEB=$(curl -fsSL "$ARCHIVE_URL/" | grep -oE 'libtinfo5_[^"]*_amd64\.deb' | sort -Vu | tail -n1)
+    DEB=$(curl -fsSL --retry 3 --retry-all-errors "$ARCHIVE_URL/" | grep -oE 'libtinfo5_[^"]*_amd64\.deb' | sort -Vu | tail -n1)
     if [ -z "$DEB" ]; then
         echo "Could not locate a libtinfo5 deb under $ARCHIVE_URL/" >&2
         exit 1
     fi
     echo "Fetching $DEB"
-    curl -fsSLO "$ARCHIVE_URL/$DEB"
+    curl -fsSLO --retry 3 --retry-all-errors "$ARCHIVE_URL/$DEB"
     sudo apt install -y "./$DEB"
     rm "$DEB"
 fi
@@ -161,7 +161,7 @@ if ! command -v watchman >/dev/null 2>&1; then
     echo "--- Installing watchman ---"
     WATCHMAN_VERSION=v2026.04.20.00
     WATCHMAN_ZIP="watchman-${WATCHMAN_VERSION}-linux.zip"
-    curl -fsSLO "https://github.com/facebook/watchman/releases/download/${WATCHMAN_VERSION}/${WATCHMAN_ZIP}"
+    curl -fsSLO --retry 3 --retry-all-errors "https://github.com/facebook/watchman/releases/download/${WATCHMAN_VERSION}/${WATCHMAN_ZIP}"
     unzip -q "$WATCHMAN_ZIP"
     WATCHMAN_DIR="watchman-${WATCHMAN_VERSION}-linux"
     sudo mkdir -p /usr/local/bin /usr/local/lib /usr/local/var/run/watchman

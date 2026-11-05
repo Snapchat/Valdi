@@ -301,6 +301,9 @@ jobs:
           service_account_ro: ${{ vars.GCP_SERVICE_ACCOUNT_RO }}
           cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
           cache_key: ${{ matrix.task }}
+          # The Android export build fills the runner's disk with a second copy of its outputs in the
+          # disk cache ("No space left on device"); the remote cache already covers it.
+          disk_cache: ${{ matrix.task == 'build-export' && 'false' || 'true' }}
 
       - name: Setup Linux environment
         # Also installs watchman (needed by the hotreload smoke); see setup_linux_env.sh.
