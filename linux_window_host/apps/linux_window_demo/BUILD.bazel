@@ -8,9 +8,9 @@ cc_binary(
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
-        "//snap_drawing:snap_drawing_cc",
-        "//valdi_core:valdi_core_cc",
+        "@valdi//snap_drawing:snap_drawing_cc",
+        "@valdi//valdi_core:valdi_core_cc",
         "//valdi_linux_window:sdl_window_host",
-        "@valdi_system_sdl3//:sdl3",
+        "@sdl3//:sdl3",
     ],
 )

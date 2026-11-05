@@ -13,6 +13,7 @@ Many workflows just run a script. Run that script on your machine with the same 
 | **Release Test** | `./tools/ci/release_test.sh` |
 | **Lint Valdi Modules** | `./tools/ci/lint_modules.sh --changed origin/main` then `./tools/ci/lint_modules.sh` |
 | **Bazel smoke test** | `./tools/ci/bootstrap_app.sh` (set `OPEN_SOURCE_DIR=$(pwd)`, `PROJECT_ROOT=/tmp/valdi_app`) |
+| **SDL Window Host (experimental, non-blocking)** | `./tools/ci/linux_window_host_tests.sh` (Linux; builds the separate module and uses SDL offscreen software surfaces) |
 
 No Docker required; same as CI except for runner OS (e.g. macOS for iOS build).
 

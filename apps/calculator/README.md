@@ -6,7 +6,7 @@ component for every host. It defaults to the platform system font and requires n
 native component context. Hosts may optionally supply a font family, keyboard
 input connection and state/layout observations.
 
-The Linux launcher lives in `linux/main.cpp` and renders through `ValdiLayer`,
+The Linux launcher lives in `../../linux_window_host/apps/calculator/main.cpp` and renders through `ValdiLayer`,
 SnapDrawing and the optional SDL3 Linux window host.
 SnapDrawing rasterizes on the CPU in this baseline; SDL owns window-surface
 presentation. This example does not create a SnapDrawing GPU context.
@@ -35,26 +35,26 @@ attribute is omitted on web because the current web renderer does not implement
 it; long results may overflow at narrow widths.
 
 The shared `:calculator` module and `:calculator_web` launcher intentionally stay
-in wildcard builds; only the native SDL launchers are `manual`.
+in root wildcard builds; the native SDL launchers live in the separate
+`linux_window_host` Bazel module.
 
 ## Linux
 
 ### Build and run
 
-Install SDL3 >= 3.2 development headers/libraries and pkg-config. See the
-[host build notes](../../valdi_linux_window/README.md) for the experimental system
-dependency binding and current source-build qualification limits.
+The separate [host module](../../linux_window_host/README.md) builds pinned BCR
+SDL3 from source. It needs no system SDL development package. From the repository
+root, enter that module before building the native launcher:
 
 ```sh
-bazel build //apps/calculator:calculator_linux \
-  --//bzl/valdi:js_engine=quickjs \
-  --//bzl/valdi:js_bytecode_format=quickjs
+cd linux_window_host
+bazel build //apps/calculator:calculator_linux
 mkdir -p /tmp/valdi-calculator-modules
 bazel-bin/apps/calculator/calculator_linux /tmp/valdi-calculator-modules /path/to/font.ttf
 ```
 
 The host uses the runtime's configured default JavaScript engine. The command
-above explicitly selects matching QuickJS runtime and module bytecode profiles;
+above uses the host module's matching QuickJS runtime and module bytecode profiles;
 the repository's engine default and bytecode default are separate settings.
 For a prebuilt SDK, use its recorded engine/bytecode/compiler profile and
 regenerate every module and static resource with the matched tools. Do not reuse
@@ -122,7 +122,7 @@ result. It creates/destroys the complete application three times and checks the
 component's disconnect callback on teardown. The snapshot is the actual SDL
 window surface after resizing, not a recreated UI or render mockup.
 
-From the repository root, run the calculator on private Xvfb and headless Weston
+From `linux_window_host/`, run the calculator on private Xvfb and headless Weston
 displays, including 1× and 2× Wayland pixels:
 
 ```sh

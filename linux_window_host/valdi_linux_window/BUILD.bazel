@@ -13,9 +13,9 @@ cc_library(
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":framebuffer",
-        "//snap_drawing:snap_drawing_cc",
-        "//valdi_core:valdi_core_cc",
-        "@valdi_system_sdl3//:sdl3",
+        "@sdl3//:sdl3",
+        "@valdi//snap_drawing:snap_drawing_cc",
+        "@valdi//valdi_core:valdi_core_cc",
     ],
 )
 
@@ -33,10 +33,10 @@ cc_library(
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":sdl_window_host",
-        "//snap_drawing:snap_drawing_cc",
-        "//valdi:valdi_linux",
-        "//valdi:valdi_snap_drawing",
-        "//valdi_core:valdi_core_cc",
+        "@valdi//snap_drawing:snap_drawing_cc",
+        "@valdi//valdi:valdi_linux",
+        "@valdi//valdi:valdi_snap_drawing",
+        "@valdi//valdi_core:valdi_core_cc",
     ],
 )
 
@@ -46,17 +46,24 @@ cc_test(
     deps = [":framebuffer"],
 )
 
-# Requires a display server. Use Xvfb or a headless Wayland compositor in CI.
+# Run headless with SDL_VIDEODRIVER=offscreen; no display server is required.
 cc_test(
     name = "sdl_window_host_test",
+    size = "small",
+    timeout = "short",
     srcs = ["test/SDLWindowHostTest.cpp", "test/SystemThemeStub.cpp"],
     linkopts = ["-Wl,--wrap=SDL_GetSystemTheme"],
-    tags = ["manual", "requires-display"],
+    # Match @valdi//snap_drawing:test: the drawing/Skia closure links statically.
+    linkstatic = True,
+    env = {
+        "SDL_FRAMEBUFFER_ACCELERATION": "0",
+        "SDL_VIDEODRIVER": "offscreen",
+    },
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":sdl_window_host",
-        "//snap_drawing:snap_drawing_cc",
-        "//valdi_core:valdi_core_cc",
-        "@valdi_system_sdl3//:sdl3",
+        "@sdl3//:sdl3",
+        "@valdi//snap_drawing:snap_drawing_cc",
+        "@valdi//valdi_core:valdi_core_cc",
     ],
 )

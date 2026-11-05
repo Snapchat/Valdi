@@ -1,0 +1,99 @@
+module(name = "valdi_linux_window_host", version = "0.1")
+
+# Opt-in companion module. Ordinary @valdi consumers never load SDL's graph.
+bazel_dep(name = "valdi", version = "0.1")
+local_path_override(module_name = "valdi", path = "..")
+bazel_dep(name = "sdl3", version = "3.4.18")
+single_version_override(module_name = "sdl3", version = "3.4.18")
+bazel_dep(name = "rules_cc", version = "0.2.20")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "snap_platforms")
+
+# Root-only overrides are not inherited from @valdi. Keep these source paths,
+# versions aligned with ../MODULE.bazel when updating the checkout. Patched rules
+# come from the Valdi registry at this prototype's reviewed upstream base.
+_VALDI_REGISTRY = "https://raw.githubusercontent.com/Snapchat/Valdi/4aa98f01a46e65ead03a8fc8cc1c21e04f2a465d/registry"
+
+single_version_override(
+    module_name = "protobuf",
+    version = "29.3",
+)
+
+single_version_override(
+    module_name = "rules_pkg",
+    version = "0.9.1",
+)
+
+single_version_override(
+    module_name = "zlib",
+    version = "1.3.2",
+)
+
+single_version_override(
+    module_name = "rules_android_ndk",
+    version = "0.1.3",
+    registry = _VALDI_REGISTRY,
+)
+
+single_version_override(
+    module_name = "rules_android",
+    version = "0.6.5",
+    registry = _VALDI_REGISTRY,
+)
+
+single_version_override(
+    module_name = "rules_kotlin",
+    version = "2.3.10",
+)
+
+single_version_override(
+    module_name = "rules_swift",
+    version = "3.1.2",
+    registry = _VALDI_REGISTRY,
+)
+
+single_version_override(
+    module_name = "rules_apple",
+    version = "4.0.0",
+)
+
+local_path_override(
+    module_name = "android_macros",
+    path = "../bzl/macros",
+)
+
+local_path_override(
+    module_name = "snap_macros",
+    path = "../bzl/valdi/snap_macros",
+)
+
+local_path_override(
+    module_name = "snap_client_toolchains",
+    path = "../bzl/toolchains",
+)
+
+local_path_override(
+    module_name = "snap_platforms",
+    path = "../bzl/platforms",
+)
+
+local_path_override(
+    module_name = "skia_user_config",
+    path = "../third-party/skia_user_config",
+)
+
+local_path_override(
+    module_name = "rules_hdrs",
+    path = "../third-party/rules_hdrs",
+)
+
+local_path_override(
+    module_name = "valdi_toolchain",
+    path = "../bin",
+)
+
+single_version_override(
+    module_name = "websocketpp",
+    version = "0.8.2.bcr.3",
+    registry = _VALDI_REGISTRY,
+)
