@@ -167,7 +167,7 @@ const myStyle = new Style<View>({
 
 That way you can define any immutable values in your style and then dynamically override any dynamic value using a regular attribute.
 
-Styles can also be composed without creating a merged `Style` instance by passing an array. Styles are applied from left to right, so later styles override earlier styles. Regular element attributes still override every style in the array.
+Styles can also be composed without creating a merged `Style` instance by passing an array. Styles are applied from left to right, so later styles override earlier styles. Regular element attributes still override every style in the array. An entry can be `undefined`, which is skipped, so a conditional style needs no separate branch.
 
 ```tsx
 const baseStyle = new Style<View>({

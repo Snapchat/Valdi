@@ -39,7 +39,7 @@ interface Slotted extends ContainerTemplateElement {
 
 // Input-only: element interfaces keep a single IStyle so getAttribute('style') stays typed.
 type WithStyleArray<T extends { style?: IStyle<any> }> = Omit<T, 'style'> & {
-  style?: T['style'] | ReadonlyArray<NonNullable<T['style']>>;
+  style?: T['style'] | ReadonlyArray<NonNullable<T['style']> | undefined>;
 };
 
 declare global {

@@ -429,6 +429,24 @@ describe('Renderer', () => {
     expect(output.requests).toEqual([]);
   });
 
+  it('skips undefined entries in style arrays', () => {
+    const style = new Style({ backgroundColor: 'red' });
+    const renderStyleArray = (value: unknown) => {
+      const output = new RendererTestDelegate();
+      const renderer = makeRenderer(output);
+
+      renderer.begin();
+      renderer.beginElement(makeNodeProtoype('view'));
+      renderer.setAttribute('style', value);
+      renderer.endElement();
+      renderer.end();
+
+      return output.requests;
+    };
+
+    expect(renderStyleArray([undefined, style])).toEqual(renderStyleArray([style]));
+  });
+
   it('can render forEach without keys', () => {
     const output = new RendererTestDelegate();
     const renderer = makeRenderer(output);
