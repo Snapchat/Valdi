@@ -91,6 +91,8 @@ jobs:
             const CONTRIBUTING = 'https://github.com/Snapchat/Valdi/blob/main/CONTRIBUTING.md';
             const ISSUES = 'https://github.com/Snapchat/Valdi/issues/new/choose';
             const HACKERONE = 'https://hackerone.com/snapchat';
+            const NOT_ACCEPTED = `${CONTRIBUTING}#changes-we-generally-do-not-accept`;
+            const GOOD_PR = `${CONTRIBUTING}#what-makes-a-good-pull-request`;
 
             const RESPONSES = {
               'close: duplicate': {
@@ -147,6 +149,38 @@ jobs:
                   `Thank you for the contribution. We generally do not accept pull requests that only refactor or restyle code without fixing a concrete problem, because they are costly to review and can conflict with ongoing work. See our [contributing guide](${CONTRIBUTING}) for the kinds of changes we welcome.`,
                   '',
                   'We are closing this pull request. If this change addresses a specific bug or limitation, please describe it and link the related issue, and we will be glad to reconsider.',
+                ],
+              },
+              'r: blank-template': {
+                reason: 'not_planned',
+                message: [
+                  `Thank you for the pull request. The description doesn't yet say what problem this solves or show evidence that the change works, and we need both to review it. See [what makes a good pull request](${GOOD_PR}).`,
+                  '',
+                  'We are closing this for now. Please fill in the pull request template, link the related issue or describe the bug, add the commands or test output you used to check it, and then reopen it or open a new one.',
+                ],
+              },
+              'r: tests-only': {
+                reason: 'not_planned',
+                message: [
+                  `Thank you for the contribution. We generally do not accept test-only or CI-only pull requests that aren't tied to a reported bug, as described in our [contributing guide](${NOT_ACCEPTED}).`,
+                  '',
+                  'We are closing this pull request. If it covers a specific bug, please link the issue, and we will be glad to take another look.',
+                ],
+              },
+              'r: too-broad': {
+                reason: 'not_planned',
+                message: [
+                  `Thank you for the contribution. This pull request touches several unrelated areas at once, which makes it hard to review safely. We ask for one logical change per pull request, as described in our [contributing guide](${NOT_ACCEPTED}).`,
+                  '',
+                  'We are closing this one. Please split it into smaller, focused pull requests, each with its own description and evidence. Smaller pull requests are reviewed faster.',
+                ],
+              },
+              'r: near-identical': {
+                reason: 'not_planned',
+                message: [
+                  `Thank you for the contribution. This is one of several near-identical pull requests, such as the same small change applied file by file. Those are costly to review one at a time, as described in our [contributing guide](${NOT_ACCEPTED}).`,
+                  '',
+                  'We are closing this one. If the change fixes a concrete problem, please combine it into a single pull request that explains the problem and shows evidence that the change works.',
                 ],
               },
               'r: security': {
@@ -213,6 +247,10 @@ jobs:
               { name: 'r: support', color: 'd4c5f9', description: 'Usage question; redirected to Discussions and closed' },
               { name: 'r: feature-discussion', color: 'd4c5f9', description: 'Feature needs a Discussion first; closed' },
               { name: 'r: refactor-only', color: 'd4c5f9', description: 'Refactor-only PR without a linked problem; closed' },
+              { name: 'r: blank-template', color: 'd4c5f9', description: 'PR has no problem statement or evidence; closed' },
+              { name: 'r: tests-only', color: 'd4c5f9', description: 'Test- or CI-only PR not tied to a reported bug; closed' },
+              { name: 'r: too-broad', color: 'd4c5f9', description: 'PR touches many unrelated areas; split it; closed' },
+              { name: 'r: near-identical', color: 'd4c5f9', description: 'One of many near-identical PRs; combine them; closed' },
               { name: 'r: security', color: 'b60205', description: 'Security report redirected to HackerOne; closed and locked' },
               { name: 'r: spam', color: 'b60205', description: 'Spam; closed and locked' },
               { name: 'r: too-many-prs', color: 'd4c5f9', description: 'Author exceeded the open pull request limit; closed' },
