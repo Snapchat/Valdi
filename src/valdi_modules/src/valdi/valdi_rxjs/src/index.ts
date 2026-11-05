@@ -31,3 +31,10 @@ export { takeUntil } from './operators/takeUntil';
 export { combineLatest } from './observable/combineLatest';
 export { of } from './observable/of';
 export { catchError } from './operators/catchError';
+export { defer } from './observable/defer';
+export { connect } from './operators/connect';
+export { endWith } from './operators/endWith';
+export { ignoreElements } from './operators/ignoreElements';
+
+/* Types */
+export type { OperatorFunction } from './types';
