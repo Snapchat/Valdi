@@ -8,6 +8,7 @@ const overrideStyle = new Style<View>({ backgroundColor: 'blue', opacity: 0.25, 
 interface ViewModel {
   includeOverride: boolean;
   reverseStyles: boolean;
+  scaleY?: number;
 }
 
 export class StyleTest extends Component<ViewModel> {
@@ -18,6 +19,6 @@ export class StyleTest extends Component<ViewModel> {
         : [baseStyle, overrideStyle]
       : [baseStyle];
 
-    <view style={style} />;
+    <view style={style} scaleY={this.viewModel.scaleY} />;
   }
 }
