@@ -6,6 +6,7 @@
 //
 
 #include "valdi/standalone_runtime/ValdiStandaloneMain.hpp"
+#include "valdi/runtime/Interfaces/IJavaScriptContext.hpp"
 #include "valdi/runtime/Interfaces/ITweakValueProvider.hpp"
 #include "valdi/runtime/Runtime.hpp"
 #include "valdi/runtime/RuntimeManager.hpp"
@@ -64,6 +65,7 @@ Ref<ValdiStandaloneRuntime> createValdiStandaloneRuntime(const StandaloneArgumen
         tweakValueProvider->config.setMapValue(StringBox::fromCString("VALDI_ENABLE_TSN"), Value(true));
     }
 
+    IJavaScriptContext::setRemoteDebuggerRequiresDebuggerService(true);
     auto runtime = ValdiStandaloneRuntime::create(arguments.enableDebuggerService,
                                                   !arguments.enableHotReloader,
                                                   false,

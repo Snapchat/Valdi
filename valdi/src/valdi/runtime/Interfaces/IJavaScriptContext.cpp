@@ -11,6 +11,7 @@
 #include "valdi/runtime/JavaScript/JavaScriptValueMarshaller.hpp"
 #include "valdi_core/cpp/Constants.hpp"
 #include "valdi_core/cpp/Utils/ByteBuffer.hpp"
+#include <atomic>
 
 namespace Valdi {
 
@@ -37,6 +38,7 @@ void IJavaScriptContext::initialize(const IJavaScriptContextConfig& config, JSEx
     }
 
     _utf16Disabled = config.disableUTF16;
+    _remoteDebuggerEnabled = config.enableRemoteDebugger;
 
     _undefinedValue = ensureRetainedValue(onNewUndefined());
     _nullValue = ensureRetainedValue(onNewNull());
@@ -421,6 +423,20 @@ JavaScriptValueMarshaller* IJavaScriptContext::getValueMarshaller() const {
 
 bool IJavaScriptContext::utf16Disabled() const {
     return _utf16Disabled;
+}
+
+bool IJavaScriptContext::remoteDebuggerEnabled() const {
+    return _remoteDebuggerEnabled;
+}
+
+static std::atomic_bool kRemoteDebuggerRequiresDebuggerService = false;
+
+void IJavaScriptContext::setRemoteDebuggerRequiresDebuggerService(bool requiresDebuggerService) {
+    kRemoteDebuggerRequiresDebuggerService = requiresDebuggerService;
+}
+
+bool IJavaScriptContext::remoteDebuggerRequiresDebuggerService() {
+    return kRemoteDebuggerRequiresDebuggerService;
 }
 
 // We don't care about pure thread safety correctness of the interrupt booleans.

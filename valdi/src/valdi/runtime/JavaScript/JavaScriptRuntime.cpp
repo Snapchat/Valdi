@@ -624,6 +624,7 @@ Result<Void> JavaScriptRuntime::initializeContext() {
     std::unique_ptr<JavaScriptRuntimeDeserializers> runtimeDeserializers;
 
     IJavaScriptContextConfig config;
+    config.enableRemoteDebugger = _enableDebugger;
 
     JSExceptionTracker exceptionTracker(*jsContext);
     jsContext->initialize(config, exceptionTracker);

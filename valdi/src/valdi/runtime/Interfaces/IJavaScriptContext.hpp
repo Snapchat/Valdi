@@ -82,6 +82,9 @@ struct IJavaScriptContextConfig {
     bool disableUTF16 = false;
     bool disableValueMarshaller = false;
     bool disableProxyObjectStore = false;
+    // Whether the runtime was started with the debugger service. Only consulted when the process has opted in
+    // with IJavaScriptContext::setRemoteDebuggerRequiresDebuggerService().
+    bool enableRemoteDebugger = false;
 };
 
 struct IJavaScriptContextDebuggerInfo {
@@ -356,6 +359,12 @@ public:
     JavaScriptValueMarshaller* getValueMarshaller() const;
 
     bool utf16Disabled() const;
+    bool remoteDebuggerEnabled() const;
+
+    // Off by default, so every context opens the remote debugger ports as before. The standalone runtime
+    // turns it on so parallel test processes on one machine don't race for the same fixed ports.
+    static void setRemoteDebuggerRequiresDebuggerService(bool requiresDebuggerService);
+    static bool remoteDebuggerRequiresDebuggerService();
 
     void requestInterrupt();
     virtual void requestExecutionTermination();
@@ -448,6 +457,7 @@ private:
     JSValueRef _signedLongCache;
     JSPropertyNameRef _exportModePropertyName;
     bool _utf16Disabled = false;
+    bool _remoteDebuggerEnabled = false;
     bool _interruptRequested = false;
     bool _executionTerminationRequested = false;
     bool _tearingDown = false;

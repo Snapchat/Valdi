@@ -1264,6 +1264,10 @@ void JavaScriptCoreContext::startDebugger([[maybe_unused]] bool isWorker) {
         });
     }
 
+    if (remoteDebuggerRequiresDebuggerService() && !remoteDebuggerEnabled()) {
+        return;
+    }
+
     static std::atomic_bool kRemoteInspectorStarted = false;
 
     auto* debugger = DebuggerProxy::start();
