@@ -12,3 +12,6 @@ bazel-bin
 bazel-client
 bazel-out
 bazel-testlogs
+
+# The opt-in SDL host has its own module and dependency graph.
+linux_window_host

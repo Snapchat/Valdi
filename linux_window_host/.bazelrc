@@ -1,0 +1,12 @@
+# Share compiler/toolchain flags without importing the root workspace's settings.
+import %workspace%/../bzl/valdi/common.bazelrc
+
+# Resolve patched rules from this checkout before falling back to BCR.
+common --registry=file://%workspace%/../registry
+common --registry=https://bcr.bazel.build
+
+# Keep runtime and generated module bytecode in the same stage-1 engine profile.
+build --@valdi//bzl/valdi:js_engine=quickjs
+build --@valdi//bzl/valdi:js_bytecode_format=quickjs
+
+try-import %workspace%/.bazelrc.local

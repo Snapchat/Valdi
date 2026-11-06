@@ -1,0 +1,7 @@
+{
+  "name": "calculator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared Valdi calculator example with Linux and web launchers",
+  "license": "MIT"
+}
