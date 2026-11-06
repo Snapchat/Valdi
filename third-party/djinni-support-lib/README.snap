@@ -5,5 +5,3 @@ MODIFICATIONS:
  - added move assigment operator to GlobalRef in all djinni_support.hpp files
  - made JniClassInitializer constructor public to allow arbitrary additional initialization in JNI_OnLoad()
  - Speed up string passing between Java and C++ by 5x or more for larger strings
- 
-

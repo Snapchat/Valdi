@@ -18,6 +18,20 @@ public typealias Vtbl<T> = [(T, UnsafePointer<djinni.swift.ParameterList>?, Unsa
 protocol GenericProtocolWrapperContext: AnyObject {
     func dispatch(idx: Int32, params: UnsafePointer<djinni.swift.ParameterList>?, ret: UnsafeMutablePointer<djinni.swift.AnyValue>?) -> Void
     func getInst() -> AnyObject
+    /// The SwiftProxyCache entry of this context's proxy.
+    var proxyKey: SwiftProxyKey { get }
+}
+
+// A Swift object's proxy for one djinni interface: an object implementing several interfaces has a
+// proxy (a C++ object of a different class) for each.
+struct SwiftProxyKey: Hashable {
+    let object: UnsafeMutableRawPointer
+    let interface: ObjectIdentifier
+
+    init<I>(_ object: I) {
+        self.object = Unmanaged.passUnretained(object as AnyObject).toOpaque()
+        self.interface = ObjectIdentifier(I.self)
+    }
 }
 
 // The bridge between C++ caller and Swift protocol. We store
@@ -45,6 +59,9 @@ final class ProtocolWrapperContext<T>: GenericProtocolWrapperContext {
     func getInst() -> AnyObject {
         return inst as AnyObject
     }
+    var proxyKey: SwiftProxyKey {
+        return SwiftProxyKey(inst)
+    }
 }
 
 // This function has a C++ friendly signature. It is passed to C++ and will be
@@ -65,8 +82,7 @@ public func dispatcherProtocalCall(
     } else {
         // If the index is negative, release and destroy the context.  We do
         // this when the C++ side proxy (ProtocolWrapper) is destroyed.
-        let key = Unmanaged.passUnretained(ctx.getInst()).toOpaque()
-        SwiftProxyCache.shared.mapPtrToProxy.removeValue(forKey: key)
+        SwiftProxyCache.shared.mapPtrToProxy.removeValue(forKey: ctx.proxyKey)
     }
 }
 
@@ -99,9 +115,10 @@ class CppProxyCache {
 class SwiftProxyCache {
     static let shared = SwiftProxyCache()
     // Swift objects in c++
-    // Key:    Swift implementation object converted to an *Unretained* opaque pointer
+    // Key:    Swift implementation object (as an *Unretained* opaque pointer) and the interface
+    //         the proxy implements
     // Value : Weak proxy, no ownership, but can be converted to a C++ callable strong proxy
-    var mapPtrToProxy: [UnsafeMutableRawPointer: djinni.swift.WeakSwiftProxy] = [:]
+    var mapPtrToProxy: [SwiftProxyKey: djinni.swift.WeakSwiftProxy] = [:]
 }
 
 // 1. Object is a an existing cpp proxy  : return cpp proxy
@@ -137,7 +154,7 @@ public func swiftInterfaceToCpp<I>(_ s: I,
         return cppproxy.inst
     }
     // 2. Check swift proxy cache
-    let key = Unmanaged.passUnretained(s as AnyObject).toOpaque()
+    let key = SwiftProxyKey(s)
     if let weakProxy = SwiftProxyCache.shared.mapPtrToProxy[key] {
         return djinni.swift.strongify(weakProxy)
     }

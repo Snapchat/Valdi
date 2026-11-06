@@ -37,8 +37,8 @@ valdi:
   translator: '::djinni::valdi::NativeDataRef'
   header: '"$DataRef_valdi.hpp"'
 swift:
-  typename: 'NSData'
-  module: 'Foundation'
+  typename: 'DJDataRef'
+  module: 'DjinniSupport'
   generic: false
   translator: 'DataRefMarshaller'
   translator.module: 'DjinniSupport'

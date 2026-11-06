@@ -26,8 +26,13 @@ public final class Future<Output, Failure> where Failure : Error {
     // The token only needs to be unique within the scope of the Future object
     typealias Token = Int64
     var nextTokenValue: Token = 0
+    private let tokenLock = Lock()
     private func generateToken() -> Token {
-        return OSAtomicIncrement64(&nextTokenValue)
+        // (Not OSAtomicIncrement64, which is Darwin-only.)
+        tokenLock.lock()
+        defer { tokenLock.unlock() }
+        nextTokenValue += 1
+        return nextTokenValue
     }
     
     private let lock = Lock()

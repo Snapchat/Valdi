@@ -1,6 +1,8 @@
 #include "Data_swift.hpp"
 #include <cassert>
 
+#if DATAREF_OBJC
+
 namespace djinni {
 
 class DataRefSwift : public DataRef::Impl {
@@ -134,8 +136,11 @@ DataRef::DataRef(CFDataRef platformObj) {
 
 }
 
+#endif // DATAREF_OBJC
+
 namespace djinni::swift {
 
+// A DataView crosses as its bytes, which Swift borrows for the call (UnsafeRawBufferPointer).
 DataView DataViewAdaptor::toCpp(const AnyValue& s) {
     auto range = std::get<RangeValue>(s);
     return DataView(reinterpret_cast<const uint8_t*>(range.bytes), range.size);
@@ -145,42 +150,39 @@ AnyValue DataViewAdaptor::fromCpp(DataView c) {
     return RangeValue{c.buf(), c.len()};
 }
 
+// A DataRef crosses as a heap-held DataRef that the receiver takes over. Swift's DJDataRef owns one
+// and shares its buffer with C++ (and vice versa) by reference, so neither direction copies.
 DataRef DataRefAdaptor::toCpp(const AnyValue& s) {
-    auto range = std::get<RangeValue>(s);
-    if (range.size > 0) {
-        auto cfmutabledataref = const_cast<CFMutableDataRef>(reinterpret_cast<CFDataRef>(range.bytes));
-        return DataRef(cfmutabledataref);
-    } else {
-        return DataRef(reinterpret_cast<CFDataRef>(range.bytes));
-    }
+    auto* holder = const_cast<DataRef*>(reinterpret_cast<const DataRef*>(std::get<RangeValue>(s).bytes));
+    DataRef ref = std::move(*holder);
+    delete holder;
+    return ref;
 }
 
 AnyValue DataRefAdaptor::fromCpp(const DataRef& c) {
-    if (auto impl = std::dynamic_pointer_cast<DataRefSwift>(c.impl())) {
-        auto cfdata = impl->platformObj();
-        CFRetain(cfdata);
-        return RangeValue{reinterpret_cast<const uint8_t*>(cfdata), 0};
-    }
-    // The DataRef was constructed by another backend (the ObjC one, when both are linked). Its concrete
-    // Impl is not visible here, so wrap its buffer in a CFData whose deallocator keeps the Impl alive.
-    if (c.len() == 0) {
-        // Empty CFData holds a NULL byte pointer, and deallocating NULL skips the custom deallocator
-        // (leaking the holder below), so don't tie the Impl's lifetime to it — nothing to keep alive.
-        CFDataRef cfdata = CFDataCreate(kCFAllocatorDefault, nullptr, 0);
-        return RangeValue{reinterpret_cast<const uint8_t*>(cfdata), 0};
-    }
-    auto* holder = new std::shared_ptr<DataRef::Impl>(c.impl());
-    CFAllocatorContext context = {};
-    context.info = holder;
-    context.deallocate = [](void* /*ptr*/, void* info) {
-        delete reinterpret_cast<std::shared_ptr<DataRef::Impl>*>(info);
-    };
-    CFAllocatorRef deallocator = CFAllocatorCreate(kCFAllocatorDefault, &context);
-    assert(deallocator != nullptr);
-    CFDataRef cfdata = CFDataCreateWithBytesNoCopy(nullptr, c.buf(), c.len(), deallocator);
-    assert(cfdata != nullptr);
-    CFRelease(deallocator); // CFDataCreateWithBytesNoCopy retains the allocator, so release here
-    return RangeValue{reinterpret_cast<const uint8_t*>(cfdata), 0};
+    return RangeValue{new DataRef(c), 0};
+}
+
+const void* makeDataRef(const void* bytes, size_t size) {
+    return new DataRef(bytes, size);
+}
+
+const void* retainDataRef(const void* holder) {
+    return new DataRef(*reinterpret_cast<const DataRef*>(holder));
+}
+
+const void* dataRefBytes(const void* holder) {
+    auto* ref = reinterpret_cast<const DataRef*>(holder);
+    return ref->impl() ? ref->buf() : nullptr;
+}
+
+size_t dataRefSize(const void* holder) {
+    auto* ref = reinterpret_cast<const DataRef*>(holder);
+    return ref->impl() ? ref->len() : 0;
+}
+
+void releaseDataRef(const void* holder) {
+    delete reinterpret_cast<const DataRef*>(holder);
 }
 
 }

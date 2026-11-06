@@ -37,8 +37,8 @@ valdi:
   translator: '::djinni::valdi::NativeDataView'
   header: '"$DataView_valdi.hpp"'
 swift:
-  typename: 'NSData'
-  module: 'Foundation'
+  typename: 'UnsafeRawBufferPointer'
+  module: 'Swift'
   generic: false
   translator: 'DataViewMarshaller'
   translator.module: 'DjinniSupport'

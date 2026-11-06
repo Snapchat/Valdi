@@ -237,7 +237,7 @@ cc_library(
     hdrs = glob(["src/djinni/swiftxx/*.hpp"]),
     aspect_hints = [":djinni_support_lib_swift_interop"],
     features = SWIFT_CXX_INTEROP_FEATURES,
-    includes = ["swiftxx"],
+    includes = ["src/djinni/swiftxx"],
     # :djinni_support_lib links the ObjC backend on Apple platforms, which owns the DataRef
     # constructors; the Swift backend must not define them too (see Data_swift.cpp).
     local_defines = ["DJINNI_DISABLE_SWIFT_DATAREF_CTORS=1"],

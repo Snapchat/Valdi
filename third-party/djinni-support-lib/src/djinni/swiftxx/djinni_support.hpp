@@ -50,6 +50,7 @@ struct InterfaceValue {
     std::shared_ptr<ProtocolWrapper> sptr;
     template<typename T>
     InterfaceValue(const std::shared_ptr<T>& p) : ptr(p), sptr(std::dynamic_pointer_cast<ProtocolWrapper>(p)) {}
+    InterfaceValue(std::shared_ptr<void> p, std::shared_ptr<ProtocolWrapper> s) : ptr(std::move(p)), sptr(std::move(s)) {}
 };
 
 struct CompositeValue;
@@ -115,7 +116,13 @@ struct InterfaceInfo {
 };
 InterfaceInfo getInterfaceInfo(const AnyValue* v);
 
-using WeakSwiftProxy = std::weak_ptr<ProtocolWrapper>;
+// A Swift proxy (ProtocolWrapper subclass) held weakly. It keeps the interface pointer too: the
+// ProtocolWrapper is a different base of the proxy than the interface it implements, so a proxy
+// rebuilt from the wrapper alone would hand C++ the wrong subobject as the interface.
+struct WeakSwiftProxy {
+    std::weak_ptr<void> ptr;
+    std::weak_ptr<ProtocolWrapper> sptr;
+};
 WeakSwiftProxy weakify(const AnyValue& v);
 AnyValue strongify(const WeakSwiftProxy& v);
 

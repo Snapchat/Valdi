@@ -22,4 +22,12 @@ public:
     static AnyValue fromCpp(const CppType& c);
 };
 
+// A DataRef crosses between C++ and Swift as a heap-held DataRef (sharing its buffer), which Swift's
+// DJDataRef owns. These let Swift make, share, read and release one.
+const void* makeDataRef(const void* bytes, size_t size);
+const void* retainDataRef(const void* holder);
+const void* dataRefBytes(const void* holder);
+size_t dataRefSize(const void* holder);
+void releaseDataRef(const void* holder);
+
 }

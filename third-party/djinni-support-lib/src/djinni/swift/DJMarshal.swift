@@ -32,10 +32,11 @@ public enum SmallIntMarshaller<T: BinaryInteger>: Marshaller {
 public enum I64Marshaller: Marshaller {
     public typealias SwiftType = Int64
     public static func fromCpp(_ v: djinni.swift.AnyValue) -> SwiftType {
-        return SwiftType(exactly: djinni.swift.I64.toCpp(v))!
+        return SwiftType(djinni.swift.I64.toCpp(v))
     }
     public static func toCpp(_ s: SwiftType) -> djinni.swift.AnyValue {
-        return djinni.swift.I64.fromCpp(s)
+        // int64_t is `long` (Swift's Int) on Android and `long long` (Int64) on Apple.
+        return djinni.swift.I64.fromCpp(.init(s))
     }
 }
 // Both float and double are marshalled to double values
