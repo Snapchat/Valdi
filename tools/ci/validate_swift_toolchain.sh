@@ -8,7 +8,7 @@
 # hermetic Swift toolchain must live inside this tree so it reaches the public
 # repo and Linux CI can build the Valdi compiler from source.
 #
-# Called by: client_validate_valdi_open_source.sh (SnapCI)
+# Called by: the Valdi open source validation CI job.
 
 set -euo pipefail
 
@@ -25,6 +25,34 @@ pass() { echo "PASS: $1"; }
 echo "=== Validating Swift Toolchain Setup ==="
 
 pushd "$OPEN_SOURCE_DIR" > /dev/null
+
+# ---------------------------------------------------------------------------
+# 0. Warm-up: fetch the external repositories of checks 1-4 in one Bazel call
+#
+# A fresh CI VM has no external repositories, and checks 1-4 fetched theirs one call
+# after the other. One call for all targets lets Bazel fetch in parallel, so the
+# checks below find the repositories already fetched. On Linux the compiler analysis
+# fetches the repository of check 4, and on macOS the call lists its target. A
+# failure here is ignored: the check that owns the broken target reports it.
+# --keep_going lets one broken target not cancel the fetch for the others.
+#
+# .bazelrc turns repository workers off, so Bazel restarts a repository rule
+# whenever a label it needs is not ready and repeats its archive extraction
+# (boost 8 times, Android NDK 6 times). Virtual workers prevent the restarts.
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- Warm-up: fetch and analyze all targets in one call ---"
+
+WARMUP_TARGETS="//valdi:test_snap_drawing //valdi:test_hermes //valdi:test_layout"
+# shellcheck disable=SC2086
+if [[ "$(uname)" == "Linux" ]]; then
+    bzl build --nobuild //compiler/compiler:local_valdi_compiler $WARMUP_TARGETS \
+        --//bzl/valdi:use_local_compiler=true --keep_going --experimental_worker_for_repo_fetching=virtual || true
+else
+    bzl cquery "set($WARMUP_TARGETS @swift_toolchain_linux_x86_64_toolchains//:rules_swift_toolchain)" \
+        --//bzl/valdi:use_local_compiler=true --keep_going --experimental_worker_for_repo_fetching=virtual \
+        --output=label > /dev/null || true
+fi
 
 # ---------------------------------------------------------------------------
 # 1. Toolchain resolves for the compiler target
