@@ -167,7 +167,8 @@ if [ "$(uname -s)" = "Darwin" ]; then
     XCFRAMEWORK_PATH="$OUTPUT_DIR/HelloWorld.xcframework"
     valdi export ios \
         --library ${TARGET_PREFIX}apps/helloworld:hello_world_export_ios \
-        --output_path "$XCFRAMEWORK_PATH"
+        --output_path "$XCFRAMEWORK_PATH" \
+        ${TEST_EXPORTED_LIB_BAZEL_ARGS:+--bazel_args="$TEST_EXPORTED_LIB_BAZEL_ARGS"}
 
     echo "[OK] iOS export build completed successfully"
 
@@ -241,7 +242,8 @@ if [ "$(uname -s)" = "Darwin" ]; then
     SWIFT_XCFRAMEWORK_PATH="$OUTPUT_DIR/HelloWorldSwift.xcframework"
     valdi export ios \
         --library ${TARGET_PREFIX}apps/helloworld:hello_world_swift_export_ios \
-        --output_path "$SWIFT_XCFRAMEWORK_PATH"
+        --output_path "$SWIFT_XCFRAMEWORK_PATH" \
+        ${TEST_EXPORTED_LIB_BAZEL_ARGS:+--bazel_args="$TEST_EXPORTED_LIB_BAZEL_ARGS"}
 
     echo "[OK] Swift xcframework export build completed successfully"
 
