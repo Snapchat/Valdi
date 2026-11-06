@@ -1,11 +1,11 @@
-import { getStandaloneRuntime } from 'valdi_standalone/src/ValdiStandalone';
-import { ArgumentsParser } from 'valdi_standalone/src/ArgumentsParser';
-import { beginKeepAlive, endKeepAlive } from 'valdi_core/src/utils/KeepAliveCallback';
-import { FontManager } from 'drawing/src/FontManager';
 import { FontWeight, FontStyle } from 'drawing/src/DrawingModuleProvider';
+import { FontManager } from 'drawing/src/FontManager';
 import { fs } from 'file_system/src/FileSystem';
-import { renderAllTestCases } from './RenderTestCases';
+import { beginKeepAlive, endKeepAlive } from 'valdi_core/src/utils/KeepAliveCallback';
+import { ArgumentsParser } from 'valdi_standalone/src/ArgumentsParser';
+import { getStandaloneRuntime } from 'valdi_standalone/src/ValdiStandalone';
 import { compareSnapshots } from './CompareSnapshots';
+import { renderAllTestCases } from './RenderTestCases';
 import { TEST_FONT } from './cases/TestFont';
 
 const fontManager = FontManager.getDefault();
@@ -58,6 +58,16 @@ if (subcommand === 'render') {
   const actualDir = parser.addString('--actual-dir', 'Directory of actual PNGs', true);
   const outputDir = parser.addString('--output-dir', 'Directory for diff output PNGs', true);
   const tolerance = parser.addNumber('--tolerance', 'Per-channel tolerance (0-255)', false);
+  const maxDiffPixels = parser.addNumber(
+    '--max-diff-pixels',
+    'Absolute cap on mismatched pixels (default: unbounded)',
+    false,
+  );
+  const maxDiffPercent = parser.addNumber(
+    '--max-diff-percent',
+    'Mismatched-pixel budget as a percent of total (default: 0)',
+    false,
+  );
   parser.parse();
 
   const keepAlive = beginKeepAlive();
@@ -66,6 +76,8 @@ if (subcommand === 'render') {
     actualDir: actualDir.value!,
     outputDir: outputDir.value!,
     tolerance: tolerance.value ?? 0,
+    maxDiffPixels: maxDiffPixels.value ?? Number.MAX_SAFE_INTEGER,
+    maxDiffPercent: maxDiffPercent.value ?? 0,
   })
     .then(passed => {
       endKeepAlive(keepAlive);
@@ -81,6 +93,8 @@ if (subcommand === 'render') {
   console.error('');
   console.error('Subcommands:');
   console.error('  render   --output-dir <path>');
-  console.error('  compare  --baseline-dir <path> --actual-dir <path> --output-dir <path> [--tolerance N]');
+  console.error(
+    '  compare  --baseline-dir <path> --actual-dir <path> --output-dir <path> [--tolerance N] [--max-diff-pixels N] [--max-diff-percent N]',
+  );
   standalone.exit(1);
 }

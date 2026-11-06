@@ -9,6 +9,10 @@ export interface CompareOptions {
   actualDir: string;
   outputDir: string;
   tolerance: number;
+  // Budget for benign per-pixel noise. A case passes if mismatched pixels are within
+  // maxDiffPercent of the total, capped at maxDiffPixels. Both default to strict-zero.
+  maxDiffPixels: number;
+  maxDiffPercent: number;
 }
 
 interface CompareResult {
@@ -53,19 +57,38 @@ export async function compareSnapshots(options: CompareOptions): Promise<boolean
     try {
       const diff = pixelDiff(baselineBitmap, actualBitmap, options.tolerance);
 
-      if (diff.mismatchedPixels === 0) {
-        console.info(`[PASS] ${tc.name}`);
+      const baseInfo = baselineBitmap.getInfo();
+      const actInfo = actualBitmap.getInfo();
+      const dimensionsMatch = baseInfo.width === actInfo.width && baseInfo.height === actInfo.height;
+
+      // A dimension change always fails regardless of budget. Otherwise allow up to a
+      // percentage of pixels to differ, capped by an absolute count, to absorb benign
+      // rasterizer/anti-aliasing noise without hiding a real geometry change.
+      const allowedPixels = Math.min(
+        options.maxDiffPixels,
+        Math.floor((diff.totalPixels * options.maxDiffPercent) / 100),
+      );
+      const passed = dimensionsMatch && diff.mismatchedPixels <= allowedPixels;
+
+      if (passed) {
+        if (diff.mismatchedPixels > 0) {
+          console.info(
+            `[PASS WITH DIFF] ${tc.name} — ${diff.mismatchedPixels}/${
+              diff.totalPixels
+            } pixels (${diff.mismatchPercent.toFixed(2)}%) within budget of ${allowedPixels}`,
+          );
+        } else {
+          console.info(`[PASS] ${tc.name}`);
+        }
         results.push({ name: tc.name, status: 'pass', diff });
       } else {
         console.info(
           `[FAIL] ${tc.name} — ${diff.mismatchedPixels}/${diff.totalPixels} pixels (${diff.mismatchPercent.toFixed(
             2,
-          )}%), max diff: ${diff.maxDifference}`,
+          )}%), max diff: ${diff.maxDifference}, budget: ${allowedPixels}`,
         );
 
-        const baseInfo = baselineBitmap.getInfo();
-        const actInfo = actualBitmap.getInfo();
-        if (baseInfo.width === actInfo.width && baseInfo.height === actInfo.height) {
+        if (dimensionsMatch) {
           const diffImage = generateDiffImage(baselineBitmap, actualBitmap, options.tolerance);
           const diffPath = `${options.outputDir}/${tc.name}_diff.png`;
           fs.writeFileSync(diffPath, diffImage);

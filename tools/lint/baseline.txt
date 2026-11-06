@@ -11,7 +11,6 @@
 # ledger_sql_demo apps.
 # Remove a line once its file lints clean. Do not add lines.
 apps/benchmark/src/valdi/benchmark/src/main.tsx
-apps/snapshot_tests/src/main.tsx
 src/valdi_modules/src/valdi/valdi_core/src/JSXBootstrap.ts
 src/valdi_modules/src/valdi/valdi_core/src/PostInit.ts
 src/valdi_modules/src/valdi/valdi_protobuf/web/ValdiProtobuf.ts
