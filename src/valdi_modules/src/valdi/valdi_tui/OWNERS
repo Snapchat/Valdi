@@ -1,0 +1,11 @@
+--- !OWNERS
+
+version: 2
+
+default:
+  jira_project: COMPOSER
+  owners:
+    num_required_reviewers: 0
+    teams:
+    - Snapchat/composer
+

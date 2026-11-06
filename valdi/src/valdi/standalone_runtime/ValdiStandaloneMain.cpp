@@ -13,6 +13,7 @@
 #include "valdi/standalone_runtime/InMemoryDiskCache.hpp"
 #include "valdi/standalone_runtime/StandaloneMainQueue.hpp"
 #include "valdi/standalone_runtime/StandaloneResourceLoader.hpp"
+#include "valdi/standalone_runtime/StandaloneViewManager.hpp"
 #include "valdi/standalone_runtime/ValdiStandaloneRuntime.hpp"
 #include "valdi_core/cpp/Constants.hpp"
 #include "valdi_core/cpp/JavaScript/ModuleFactoryRegistry.hpp"
@@ -75,6 +76,10 @@ Ref<ValdiStandaloneRuntime> createValdiStandaloneRuntime(const StandaloneArgumen
                                                   nullptr,
                                                   resourceLoader,
                                                   tweakValueProvider.toShared());
+
+    // CLI applications and the module test runner render real layouts; the dummy copies of
+    // padding/justifyContent/alignItems/top would otherwise silently disable those attributes.
+    runtime->getViewManager().setRegisterLayoutAttributeOverrides(false);
 
     for (const auto& moduleFactoriesProvider : arguments.moduleFactoriesProviders) {
         runtime->getRuntimeManager().registerModuleFactoriesProvider(moduleFactoriesProvider);

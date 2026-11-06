@@ -144,11 +144,13 @@ void StandaloneViewManager::bindAttributes(const Valdi::StringBox& className, Va
         doRegisterAttribute("class", binder);
         doRegisterAttribute("color", binder);
         doRegisterAttribute("dummyHeight", binder);
-        doRegisterAttribute("padding", binder);
         doRegisterAttribute("onTap", binder);
-        doRegisterAttribute("justifyContent", binder);
-        doRegisterAttribute("alignItems", binder);
-        doRegisterAttribute("top", binder);
+        if (_registerLayoutAttributeOverrides) {
+            doRegisterAttribute("padding", binder);
+            doRegisterAttribute("justifyContent", binder);
+            doRegisterAttribute("alignItems", binder);
+            doRegisterAttribute("top", binder);
+        }
         doRegisterAttribute("opacity", binder);
         doRegisterAttribute("border", binder);
         doRegisterAttribute("boxShadow", binder);
@@ -226,6 +228,10 @@ void StandaloneViewManager::setKeepAttributesHistory(bool keepAttributesHistory)
 
 void StandaloneViewManager::setRegisterCustomAttributes(bool registerCustomAttributes) {
     _registerCustomAttributes = registerCustomAttributes;
+}
+
+void StandaloneViewManager::setRegisterLayoutAttributeOverrides(bool registerLayoutAttributeOverrides) {
+    _registerLayoutAttributeOverrides = registerLayoutAttributeOverrides;
 }
 
 void StandaloneViewManager::setAllowViewPooling(bool allowViewPooling) {
