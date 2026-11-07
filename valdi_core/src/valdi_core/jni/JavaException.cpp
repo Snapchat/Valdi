@@ -5,7 +5,7 @@
 namespace ValdiAndroid {
 
 static std::string handleFatalError(JNIEnv* env, jthrowable throwable, std::optional<std::string> additionalInfo) {
-    const auto* defaultErrorMessage = "Unknown Java Exception occured";
+    const auto* defaultErrorMessage = "Unknown Java Exception occurred";
 
     auto* exceptionHandlerClass = env->FindClass("com/snap/valdi/exceptions/GlobalExceptionHandler");
     if (env->ExceptionCheck() != 0u) {

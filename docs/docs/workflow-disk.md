@@ -1,6 +1,6 @@
 # Disk Management
 
-<!--TODO: Validate the build artificat paths relative to a boot strapped Valdi project -->
+<!--TODO: Validate the build artifact paths relative to a bootstrapped Valdi project -->
 
 Bazel stores intermediate/final build artifacts locally and may not always clean them up properly. As a result, you may occasionally find it filling up your local disk. If this occurs, the below steps can help reclaim some disk space.
 

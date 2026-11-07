@@ -142,7 +142,7 @@ cc_binary(
     ],
 )
 
-#TODO(rjaber): Find a way to split into seperate tests cases instead of treating it as one
+#TODO(rjaber): Find a way to split into separate tests cases instead of treating it as one
 sh_test(
     name = "262",
     size = "large",

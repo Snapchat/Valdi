@@ -106,12 +106,10 @@ dispatch.
 
 ## Brief implementation details
 
-[the implementation]: #todo-implementation-link
-
 * Standalone View tree implementation using Skia.
 * Inspector app is a small AppKit+Metal shell exposing the Skia implementation
 * Inspector UI itself is written in Valdi!
-    * Take a peek at [the implementation][]
+    * Take a peek at the implementation
     * Feel free to play around with the code if you want to improve the tool. You can hot reload the inspector the same way you can hot reload your components on iOS and Android.
 
 ### Hot Reloader Communication

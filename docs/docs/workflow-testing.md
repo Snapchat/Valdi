@@ -100,7 +100,7 @@ valdiIt('can perform layout', async driver => {
 
 ### UI Tests - How to identify views in tests?
 
-On the TypeScript side you can configure the `accessibiltyId` attribute on any view/label/image element. On iOS this `accessibiltyId` value is applied to the underlying `UIView` and can be retrieved using the usual XCTest APIs. On Android Valdi provides view matcher utilities for finding a reference to a View with a particular accessibilty id.
+On the TypeScript side you can configure the `accessibilityId` attribute on any view/label/image element. On iOS this `accessibilityId` value is applied to the underlying `UIView` and can be retrieved using the usual XCTest APIs. On Android Valdi provides view matcher utilities for finding a reference to a View with a particular accessibility id.
 
 ```xml
 <view accessibilityId={this.state.name} />;
@@ -148,9 +148,17 @@ extern NSString *SCValdiIdYoloOpenPage();
 
 #### iOS example
 
-<!-- TODO: example for iOS -->
+Valdi applies `accessibilityId` to the view's `accessibilityIdentifier`, so XCUITest queries find Valdi elements the same way they find native views:
 
-iOS [accessibiltyId example](#todo-example-ios)
+```swift
+func testWelcomeLabel() {
+    let app = XCUIApplication()
+    app.launch()
+
+    let welcome = app.descendants(matching: .any)["welcome-label"]
+    XCTAssertTrue(welcome.waitForExistence(timeout: 5))
+}
+```
 
 #### Android example
 

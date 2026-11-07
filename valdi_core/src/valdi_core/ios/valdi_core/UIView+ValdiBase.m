@@ -121,7 +121,7 @@ static BOOL SCValdiLayerHasAnimation(CALayer *layer)
     }
 
     // we recursively iterate through children only if the current view can be hitTested
-    // - child subviews can have an opportunity to recieve touch events
+    // - child subviews can have an opportunity to receive touch events
     // - the view with the highest zIndex has priority
     // - children views that return nil aren't considered
     auto hitTestRet = SCValdiCallHitTestActionWithUIEventAndView(customHitTest, point, event, self);
