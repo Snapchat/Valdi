@@ -97,6 +97,8 @@ typedef void (^SCValdiRuntimeCreatedCallback)(id<SCValdiRuntimeProtocol>);
                 attribution:(NSString*)attribution
                       block:(void (^)(id<SCValdiJSRuntime>))block;
 
+@property (readonly, nonatomic) NSArray<id<SCValdiJSRuntime>>* existingWorkerRuntimes;
+
 /**
  Aggregates memory statistics across all JS runtimes managed by this runtime manager.
  */

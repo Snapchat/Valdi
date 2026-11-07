@@ -831,6 +831,13 @@ static SCValdiCapturedJSStacktrace *toObjCStacktrace(const Valdi::JavaScriptCapt
     [self getWorkerOnExecutor:executor dispatchAttribution:SCValdiGetWorkerAttribution block:block];
 }
 
+- (NSArray<id<SCValdiJSRuntime>> *)existingWorkerRuntimes
+{
+    @synchronized(_workerExecutorCache) {
+        return _workerExecutorCache.objectEnumerator.allObjects;
+    }
+}
+
 - (void)getWorkerOnExecutor:(NSString *)executor
                 attribution:(NSString *)attribution
                       block:(void (^)(id<SCValdiJSRuntime>))block
