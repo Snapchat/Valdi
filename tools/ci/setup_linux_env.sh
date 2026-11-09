@@ -134,6 +134,23 @@ for lib in \
     sudo apt-get install -y "$lib" 2>/dev/null || sudo apt-get install -y "${lib}t64"
 done
 
+# Downloads below are served from VALDI_CI_DOWNLOAD_CACHE when it is set (GitHub Actions restores
+# it with .github/actions/download-cache), so a warm cache doesn't depend on github.com or the
+# Ubuntu archive being up. Unset (internal CI, local runs): plain download.
+DOWNLOAD_CACHE="${VALDI_CI_DOWNLOAD_CACHE:-}"
+if [ -n "$DOWNLOAD_CACHE" ]; then mkdir -p "$DOWNLOAD_CACHE"; fi
+
+# fetch_cached <url> <file>: put <file> in the current directory, from the cache when present.
+fetch_cached() {
+    if [ -n "$DOWNLOAD_CACHE" ] && [ -f "$DOWNLOAD_CACHE/$2" ]; then
+        echo "Using cached $2"
+        cp "$DOWNLOAD_CACHE/$2" "$2"
+        return 0
+    fi
+    curl -fsSLO --retry 3 --retry-all-errors "$1"
+    if [ -n "$DOWNLOAD_CACHE" ]; then cp "$2" "$DOWNLOAD_CACHE/$2"; fi
+}
+
 # libtinfo5 is not in the default repos on Ubuntu 24.04+ (used by newer GHA runners).
 # Fall back to the 22.04 archive package if apt can't find it. Discover the deb
 # filename dynamically so a security-update revision bump (Ubuntu drops the old
@@ -141,13 +158,16 @@ done
 ARCHIVE_URL="http://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses"
 if ! apt_installed libtinfo5 && { apt_update_once; ! sudo apt-get install -y libtinfo5 2>/dev/null; }; then
     echo "libtinfo5 not available in apt, downloading from Ubuntu archive..."
-    DEB=$(curl -fsSL --retry 3 --retry-all-errors "$ARCHIVE_URL/" | grep -oE 'libtinfo5_[^"]*_amd64\.deb' | sort -Vu | tail -n1)
+    DEB=$(ls "$DOWNLOAD_CACHE" 2>/dev/null | grep -E '^libtinfo5_.*_amd64\.deb$' | sort -Vu | tail -n1 || true)
+    if [ -z "$DEB" ]; then
+        DEB=$(curl -fsSL --retry 3 --retry-all-errors "$ARCHIVE_URL/" | grep -oE 'libtinfo5_[^"]*_amd64\.deb' | sort -Vu | tail -n1)
+    fi
     if [ -z "$DEB" ]; then
         echo "Could not locate a libtinfo5 deb under $ARCHIVE_URL/" >&2
         exit 1
     fi
     echo "Fetching $DEB"
-    curl -fsSLO --retry 3 --retry-all-errors "$ARCHIVE_URL/$DEB"
+    fetch_cached "$ARCHIVE_URL/$DEB" "$DEB"
     sudo apt install -y "./$DEB"
     rm "$DEB"
 fi
@@ -161,7 +181,7 @@ if ! command -v watchman >/dev/null 2>&1; then
     echo "--- Installing watchman ---"
     WATCHMAN_VERSION=v2026.04.20.00
     WATCHMAN_ZIP="watchman-${WATCHMAN_VERSION}-linux.zip"
-    curl -fsSLO --retry 3 --retry-all-errors "https://github.com/facebook/watchman/releases/download/${WATCHMAN_VERSION}/${WATCHMAN_ZIP}"
+    fetch_cached "https://github.com/facebook/watchman/releases/download/${WATCHMAN_VERSION}/${WATCHMAN_ZIP}" "$WATCHMAN_ZIP"
     unzip -q "$WATCHMAN_ZIP"
     WATCHMAN_DIR="watchman-${WATCHMAN_VERSION}-linux"
     sudo mkdir -p /usr/local/bin /usr/local/lib /usr/local/var/run/watchman

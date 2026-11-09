@@ -1,0 +1,17 @@
+name: 'Restore CI download cache'
+description: 'Cache the files tools/ci/setup_linux_env.sh downloads (watchman, libtinfo5) so a github.com or archive.ubuntu.com outage does not fail setup on a warm cache'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set download cache directory
+      shell: bash
+      run: echo "VALDI_CI_DOWNLOAD_CACHE=$HOME/.cache/valdi-ci-downloads" >> "$GITHUB_ENV"
+
+    - name: Mount download cache
+      uses: actions/cache@v4
+      continue-on-error: true
+      with:
+        path: ~/.cache/valdi-ci-downloads
+        # The script pins the downloads, so its hash is the cache version.
+        key: valdi-ci-downloads-${{ runner.os }}-${{ hashFiles('tools/ci/setup_linux_env.sh') }}

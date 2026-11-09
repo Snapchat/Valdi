@@ -50,6 +50,17 @@ jobs:
           sudo docker image prune --all --force >/dev/null 2>&1 || true
           df -h /
 
+      # This job doesn't use the remote-cache action, so keep Bazel's repository cache (rules_*
+      # archives from github.com) between runs: warm, a github.com outage doesn't fail the fetch.
+      - name: Mount Bazel repository cache
+        uses: actions/cache@v4
+        continue-on-error: true
+        with:
+          path: ~/.cache/bazel/_bazel_runner/cache/repos/v1
+          key: bazel-repo-${{ runner.os }}-perf-nightly-${{ hashFiles('MODULE.bazel') }}
+          restore-keys: |
+            bazel-repo-${{ runner.os }}-perf-nightly-
+
       # Regressions never redden the schedule (they file an issue below); the script
       # exits non-zero only when no benchmark built at all, so a broken suite can't
       # pass as green.

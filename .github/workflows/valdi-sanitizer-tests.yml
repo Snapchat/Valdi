@@ -83,6 +83,9 @@ jobs:
           cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
           cache_key: valdi-sanitizer-tests
 
+      - name: Restore CI download cache
+        uses: ./.github/actions/download-cache
+
       # Creates the `bzl` wrapper and reclaims disk (ASan output base is large).
       - name: Setup Linux environment
         run: source ./tools/ci/setup_linux_env.sh

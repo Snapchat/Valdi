@@ -77,6 +77,9 @@ jobs:
           cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
           cache_key: lint-modules
 
+      - name: Restore CI download cache
+        uses: ./.github/actions/download-cache
+
       # Frees disk: fetching the Bazel dependencies for the projectsync build fills a stock runner
       # ("No space left on device" extracting the Rust toolchain).
       - name: Setup Linux environment

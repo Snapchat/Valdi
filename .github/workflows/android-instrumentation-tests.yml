@@ -71,6 +71,9 @@ jobs:
           cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
           cache_key: android-instrumentation-tests
 
+      - name: Restore CI download cache
+        uses: ./.github/actions/download-cache
+
       # Also does the disk reclaiming. A cold build needs ~25 GB and the runner starts
       # with ~26 GB free, so this is not optional here.
       - name: Setup Linux environment
