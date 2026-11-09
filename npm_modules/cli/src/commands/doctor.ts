@@ -118,7 +118,7 @@ interface GroupedDiagnosticResult {
  *
  * This class orchestrates various system checks to ensure the development environment
  * is properly configured for Valdi development. It validates:
- * - Node.js version compatibility (≥18.0.0)
+ * - Node.js version compatibility (≥20.0.0)
  * - Bazel build system installation and functionality (with version validation)
  * - Java JDK installation (Java 17+ required)
  * - Platform-specific development tools (Android SDK, Xcode)
@@ -371,10 +371,10 @@ class ValdiDoctor {
   /**
    * Validates Node.js installation and version compatibility.
    *
-   * Valdi requires Node.js version 18.0.0 or higher for optimal compatibility.
+   * Valdi requires Node.js version 20.0.0 or higher.
    * This method:
    * 1. Checks if Node.js is installed and accessible via PATH
-   * 2. Validates the version meets minimum requirements (≥18.0.0)
+   * 2. Validates the version meets minimum requirements (≥20.0.0)
    * 3. Optionally attempts to upgrade to Node.js 20 if auto-fix is enabled
    * 4. Provides specific installation/upgrade instructions
    *
@@ -393,30 +393,25 @@ class ValdiDoctor {
 
       const majorVersion = Number.parseInt(majorVersionStr, 10);
 
-      if (majorVersion >= 18) {
+      if (majorVersion >= 20) {
         this.addResult({
           name: 'Node.js version',
           status: 'pass',
           message: `Node.js ${version} is installed`,
           category: 'Node.js installation',
         });
-
-        // Suggest upgrading to Node.js 20 for better performance
-        if (this.autoFix && majorVersion < 20) {
-          await this.attemptAutoFix('node', 'nvm install 20 && nvm use 20');
-        }
       } else {
         this.addResult({
           name: 'Node.js version',
           status: 'fail',
-          message: `Node.js ${version} is outdated. Valdi requires Node.js 18 or higher`,
+          message: `Node.js ${version} is outdated. Valdi requires Node.js 20 or higher`,
           fixable: true,
-          fixCommand: 'nvm install 18 && nvm use 18',
+          fixCommand: 'nvm install 20 && nvm use 20',
           category: 'Node.js installation',
         });
 
         if (this.autoFix) {
-          await this.attemptAutoFix('node', 'nvm install 18 && nvm use 18');
+          await this.attemptAutoFix('node', 'nvm install 20 && nvm use 20');
         }
       }
     } catch {

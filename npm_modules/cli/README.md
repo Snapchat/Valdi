@@ -56,7 +56,7 @@ For complete documentation, see:
 - Configures `PATH` and `JAVA_HOME` in your shell profile; asks for `sudo` for package installs and (macOS) the JDK symlink
 - Sets up shell autocomplete
 - The Android SDK/NDK aren't installed; Bazel downloads them during the build
-- Requires Node.js 18+ and, on macOS, Xcode 26.5 or 27
+- Requires Node.js 20+ and, on macOS, Xcode 26.5 or 27
 
 **`valdi doctor`** - Environment diagnostics
 - Validates Node.js, Bazel, Java, Android SDK and adb installations

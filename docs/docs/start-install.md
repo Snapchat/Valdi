@@ -4,7 +4,7 @@
 
 ## Prerequisites
 
-- **All platforms:** [Node.js](https://nodejs.org/) 18 or later (22 recommended)
+- **All platforms:** [Node.js](https://nodejs.org/) 20 or later (22 recommended)
 - **macOS:** Xcode 26.5 or 27; see [Prerequisites](../INSTALL.md#prerequisites).
 
 `valdi dev_setup` installs the rest (it asks for `sudo` and edits your shell profile; see the [Installation Guide](../INSTALL.md#what-valdi-dev_setup-installs) for details).

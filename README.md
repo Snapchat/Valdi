@@ -40,7 +40,7 @@ class HelloWorld extends Component {
 
 ## Quick Start
 
-**Prerequisites:** [Node.js](https://nodejs.org/) 18 or later (22 recommended) and, on macOS, Xcode 26.5 or 27. `valdi dev_setup` installs the rest. See the [Installation Guide](./docs/INSTALL.md#prerequisites).
+**Prerequisites:** [Node.js](https://nodejs.org/) 20 or later (22 recommended) and, on macOS, Xcode 26.5 or 27. `valdi dev_setup` installs the rest. See the [Installation Guide](./docs/INSTALL.md#prerequisites).
 
 ```bash
 # Install Valdi CLI

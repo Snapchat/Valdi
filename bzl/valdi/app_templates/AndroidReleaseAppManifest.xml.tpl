@@ -4,7 +4,7 @@
     package="@VALDI_APP_PACKAGE@"
 >
     <uses-sdk
-        android:minSdkVersion="19"
+        android:minSdkVersion="23"
         android:targetSdkVersion="34"
     />
 

@@ -59,7 +59,7 @@ def _hermetic_ndk_impl(ctx):
     # Create symlinks from ndk/<subpath> into the repo root
     _create_symlinks(ctx, ndk_path, clang_directory, sysroot_directory)
 
-    api_level = ctx.attr.api_level or 31
+    api_level = ctx.attr.api_level or 23
 
     result = ctx.execute([clang_directory + "/bin/clang", "--print-resource-dir"])
     if result.return_code != 0:
@@ -128,7 +128,7 @@ def _create_symlinks(ctx, ndk_path, clang_directory, sysroot_directory):
 _hermetic_ndk = repository_rule(
     implementation = _hermetic_ndk_impl,
     attrs = {
-        "api_level": attr.int(default = 31),
+        "api_level": attr.int(default = 23),
         "_build": attr.label(default = "@rules_android_ndk//:BUILD", allow_single_file = True),
         "_template_ndk_root": attr.label(default = "@rules_android_ndk//:BUILD.ndk_root.tpl", allow_single_file = True),
         "_template_target_systems": attr.label(default = "@rules_android_ndk//:target_systems.bzl.tpl", allow_single_file = True),
@@ -140,7 +140,7 @@ _hermetic_ndk = repository_rule(
 def _hermetic_ndk_extension_impl(module_ctx):
     root_modules = [m for m in module_ctx.modules if m.is_root and m.tags.configure]
 
-    api_level = 31
+    api_level = 23
     if root_modules and root_modules[0].tags.configure:
         api_level = root_modules[0].tags.configure[0].api_level
 
@@ -153,7 +153,7 @@ hermetic_ndk_extension = module_extension(
     implementation = _hermetic_ndk_extension_impl,
     tag_classes = {
         "configure": tag_class(attrs = {
-            "api_level": attr.int(default = 31),
+            "api_level": attr.int(default = 23),
         }),
     },
 )

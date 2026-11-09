@@ -7,7 +7,7 @@ This guide will help you set up your development environment and get started wit
 ## Prerequisites
 
 ### All Platforms
-**Install [Node.js](https://nodejs.org/) 18 or later** (22 recommended; it's what Valdi's CI uses). You need `npm` to install the Valdi CLI. On macOS you can use `brew install node`.
+**Install [Node.js](https://nodejs.org/) 20 or later** (22 recommended; it's what Valdi's CI uses). You need `npm` to install the Valdi CLI. On macOS you can use `brew install node`.
 
 ### macOS
 **Install Xcode 26.5 or 27** (from [Apple Developer downloads](https://developer.apple.com/download/all/) or the [App Store](https://apps.apple.com/us/app/xcode/id497799835)). It's required for iOS development.
