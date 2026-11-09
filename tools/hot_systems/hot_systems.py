@@ -234,6 +234,9 @@ class HotSystem:
     def with_globs(self, extra: list[str]) -> "HotSystem":
         return replace(self, globs=self.globs + extra)
 
+    def with_exclude(self, extra: list[str]) -> "HotSystem":
+        return replace(self, exclude=self.exclude + extra)
+
 
 @dataclass
 class Match:
@@ -248,12 +251,26 @@ def _require_str(entry: dict, key: str, where: str) -> str:
     return value.strip()
 
 
-def parse_systems(data, where: str, prefix: str = "") -> list[HotSystem]:
+def _globs_list(value, loc: str, key: str, required: bool) -> list[str]:
+    if value is None and not required:
+        return []
+    if not isinstance(value, list) or (required and not value) or not all(isinstance(g, str) and g for g in value):
+        raise ValueError(f"{loc}: `{key}` must be a {'non-empty ' if required else ''}list of strings")
+    for glob in value:
+        if glob.startswith("/") or glob.startswith("./"):
+            raise ValueError(f"{loc}: glob `{glob}` must be repo-relative")
+        compile_glob(glob)
+    return value
+
+
+def parse_systems(data, where: str, prefix: str = "", shared_exclude: Optional[list[str]] = None) -> list[HotSystem]:
     if not isinstance(data, dict) or data.get("version") != 1:
         raise ValueError(f"{where}: expected a mapping with `version: 1`")
     entries = data.get("systems")
     if not isinstance(entries, list) or not entries:
         raise ValueError(f"{where}: `systems` must be a non-empty list")
+    if shared_exclude is None:
+        shared_exclude = _globs_list(data.get("exclude"), where, "exclude", required=False)
     systems = []
     seen = set()
     for index, entry in enumerate(entries):
@@ -269,21 +286,11 @@ def parse_systems(data, where: str, prefix: str = "") -> list[HotSystem]:
         gate = _require_str(entry, "gate", loc)
         if gate not in GATES:
             raise ValueError(f"{loc}: gate must be one of {GATES}, got `{gate}`")
-        globs = entry.get("globs")
-        if not isinstance(globs, list) or not globs or not all(isinstance(g, str) and g for g in globs):
-            raise ValueError(f"{loc}: `globs` must be a non-empty list of strings")
+        globs = _globs_list(entry.get("globs"), loc, "globs", required=True)
         catch_all = entry.get("catch_all", False)
         if not isinstance(catch_all, bool):
             raise ValueError(f"{loc}: `catch_all` must be true or false")
-        exclude = entry.get("exclude", [])
-        if exclude and not catch_all:
-            raise ValueError(f"{loc}: `exclude` is only allowed on a `catch_all` system")
-        if not isinstance(exclude, list) or not all(isinstance(g, str) and g for g in exclude):
-            raise ValueError(f"{loc}: `exclude` must be a list of strings")
-        for glob in globs + exclude:
-            if glob.startswith("/") or glob.startswith("./"):
-                raise ValueError(f"{loc}: glob `{glob}` must be repo-relative")
-            compile_glob(glob)
+        exclude = _globs_list(entry.get("exclude"), loc, "exclude", required=False)
         systems.append(
             HotSystem(
                 id=system_id,
@@ -292,7 +299,7 @@ def parse_systems(data, where: str, prefix: str = "") -> list[HotSystem]:
                 note=_require_str(entry, "note", loc),
                 globs=[prefix + g for g in globs],
                 catch_all=catch_all,
-                exclude=[prefix + g for g in exclude],
+                exclude=[prefix + g for g in shared_exclude + exclude],
             )
         )
     if sum(s.catch_all for s in systems) > 1:
@@ -307,14 +314,16 @@ def load_systems(path: str = DEFAULT_CONFIG, prefix: str = "") -> list[HotSystem
 def parse_overlay(data, where: str, systems: list[HotSystem]) -> list[HotSystem]:
     """Merge an overlay into `systems`.
 
-    An overlay entry with an existing id only adds globs (label, gate and note
-    stay public). An entry with a new id must be complete and is appended.
+    An overlay entry with an existing id only adds globs and excludes (label,
+    gate and note stay public). An entry with a new id must be complete and is
+    appended. A top-level `exclude:` applies to every system.
     """
     if not isinstance(data, dict) or data.get("version") != 1:
         raise ValueError(f"{where}: expected a mapping with `version: 1`")
     entries = data.get("systems")
     if not isinstance(entries, list) or not entries:
         raise ValueError(f"{where}: `systems` must be a non-empty list")
+    shared_exclude = _globs_list(data.get("exclude"), where, "exclude", required=False)
     by_id = {s.id: s for s in systems}
     merged = [replace(s) for s in systems]
     merged_by_id = {s.id: s for s in merged}
@@ -325,21 +334,21 @@ def parse_overlay(data, where: str, systems: list[HotSystem]) -> list[HotSystem]
             raise ValueError(f"{loc}: expected a mapping")
         system_id = _require_str(entry, "id", loc)
         if system_id in by_id:
-            extra = set(entry) - {"id", "globs"}
+            extra = set(entry) - {"id", "globs", "exclude"}
             if extra:
-                raise ValueError(f"{loc}: `{system_id}` exists in the public file; only `globs` can be added")
-            globs = entry.get("globs")
-            if not isinstance(globs, list) or not globs or not all(isinstance(g, str) and g for g in globs):
-                raise ValueError(f"{loc}: `globs` must be a non-empty list of strings")
-            for glob in globs:
-                compile_glob(glob)
-            target = merged_by_id[system_id]
-            merged_by_id[system_id] = target.with_globs(globs)
+                raise ValueError(
+                    f"{loc}: `{system_id}` exists in the public file; only `globs` and `exclude` can be added"
+                )
+            globs = _globs_list(entry.get("globs"), loc, "globs", required=False)
+            exclude = _globs_list(entry.get("exclude"), loc, "exclude", required=False)
+            if not globs and not exclude:
+                raise ValueError(f"{loc}: add `globs` or `exclude`")
+            merged_by_id[system_id] = merged_by_id[system_id].with_globs(globs).with_exclude(exclude)
         else:
             new_entries.append(entry)
-    result = [merged_by_id[s.id] for s in merged]
+    result = [merged_by_id[s.id].with_exclude(shared_exclude) for s in merged]
     if new_entries:
-        result.extend(parse_systems({"version": 1, "systems": new_entries}, where))
+        result.extend(parse_systems({"version": 1, "systems": new_entries}, where, shared_exclude=shared_exclude))
     return result
 
 

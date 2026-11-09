@@ -153,9 +153,23 @@ class CatchAllTest(unittest.TestCase):
         self.assertEqual(by_id["teardown"], ["valdi/src/valdi/runtime/Runtime.cpp"])
         self.assertEqual(by_id["framework"], ["valdi/src/valdi/runtime/Utils/Other.cpp"])
 
-    def test_exclude_requires_catch_all_and_one_catch_all(self):
-        with self.assertRaises(ValueError):
-            _systems(MINIMAL.replace("      - .bazelrc\n", "      - .bazelrc\n    exclude:\n      - x\n"))
+    def test_named_system_exclude(self):
+        systems = _systems(MINIMAL.replace("      - .bazelrc\n", "      - .bazelrc\n    exclude:\n      - bzl/*.py\n"))
+        self.assertIsNone(systems[1].matching_glob("bzl/gen.py"))
+        self.assertIsNotNone(systems[1].matching_glob("bzl/rules.bzl"))
+
+    def test_top_level_exclude_applies_to_every_system(self):
+        systems = hs.parse_systems(
+            hs.parse_yaml_subset(MINIMAL.replace("version: 1\n", 'version: 1\nexclude:\n  - "**/*.md"\n')),
+            "<test>",
+            prefix="client/src/open_source/",
+        )
+        for system in systems:
+            self.assertIn("client/src/open_source/**/*.md", system.exclude)
+        self.assertEqual(hs.match_files(systems, ["client/src/open_source/bzl/README.md"]), [])
+        self.assertEqual(len(hs.match_files(systems, ["client/src/open_source/bzl/rules.bzl"])), 1)
+
+    def test_one_catch_all(self):
         with self.assertRaises(ValueError):
             _systems(CATCH_ALL + "  - id: other\n    label: O\n    gate: flag\n    catch_all: true\n    note: n\n    globs:\n      - x/**\n")
 
@@ -196,6 +210,25 @@ systems:
         self.assertIn("client/src/composer_snap_modules/**", merged[0].globs)
         self.assertEqual(merged[0].label, "Runtime teardown")
         self.assertNotIn("client/src/composer_snap_modules/**", public[0].globs)
+
+    def test_overlay_adds_excludes(self):
+        public = hs.parse_systems(hs.parse_yaml_subset(MINIMAL), "<test>", prefix="client/src/open_source/")
+        text = self.OVERLAY.replace(
+            "      - client/src/composer_snap_modules/**\n",
+            '      - client/src/composer_snap_modules/**\n    exclude:\n      - "**/*.py"\n',
+        ).replace("version: 1\n", 'version: 1\nexclude:\n  - "**/*.md"\n')
+        merged = hs.parse_overlay(hs.parse_yaml_subset(text), "<overlay>", public)
+        teardown, build, coreui = merged
+        self.assertIsNone(teardown.matching_glob("client/src/composer_snap_modules/gen.py"))
+        self.assertIsNotNone(teardown.matching_glob("client/src/composer_snap_modules/Foo.cpp"))
+        self.assertIsNone(build.matching_glob("client/src/open_source/bzl/README.md"))
+        self.assertIsNone(coreui.matching_glob("client/src/composer_modules/src/composer/coreui/README.md"))
+        self.assertNotIn("**/*.md", public[0].exclude)
+
+    def test_overlay_entry_needs_globs_or_exclude(self):
+        text = "version: 1\nsystems:\n  - id: teardown\n"
+        with self.assertRaises(ValueError):
+            hs.parse_overlay(hs.parse_yaml_subset(text), "<overlay>", _systems(MINIMAL))
 
     def test_overlay_cannot_relabel_public_system(self):
         text = self.OVERLAY.replace("  - id: teardown\n", "  - id: teardown\n    gate: guard\n")

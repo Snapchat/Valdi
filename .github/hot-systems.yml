@@ -10,13 +10,19 @@
 #           flag can't cover it, so the system's test suite and a bake stand in).
 #   note:   one line shown in the PR comment.
 #   catch_all: optional, true on at most one system. It only claims files that
-#           no other system matched, and may have an `exclude:` list.
+#           no other system matched.
+#   exclude: optional globs a system never claims, even when `globs` match.
 #   globs:  repo-relative globs. `**` spans directories, `*` and `?` stay inside
 #           one path segment, `{a,b}` is alternation.
+#
+# Top-level `exclude:` applies to every system. Docs don't ship or build.
 #
 # Every glob must match at least one file (tools/hot_systems/hot_systems_test.py).
 
 version: 1
+
+exclude:
+  - "**/*.md"
 
 systems:
   - id: marshal
@@ -195,6 +201,7 @@ systems:
       - compiler/compiler/**
       - src/valdi_modules/src/**
     exclude:
+      - "**/*.py"
       - "**/test/**"
       - "**/tests/**"
       - "**/*_test.*"
