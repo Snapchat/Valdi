@@ -37,7 +37,9 @@ jobs:
                 return prs[0].number;
               }
             }
-            core.setFailed('Could not find PR number');
+            // The PR may already be merged or closed (or its branch deleted) by
+            // the time this workflow_run fires, so there is nothing to comment on.
+            core.info('No open PR found for this run; skipping comment');
 
       - name: Comment on PR
         if: steps.find-pr.outputs.result
