@@ -9,7 +9,7 @@ Android and SnapDrawing rely on our custom implementation in Kotlin and C++, res
 
 We’ve taken this approach historically to fit with Valdi’s model of integrating seamlessly with native. 
 
-[The `TouchEvent` forms the basis of any touch actions.](./core-events.md#Events)
+[The `TouchEvent` forms the basis of any touch actions.](./core-events.md#touch-and-gesture-events)
 
 ## Gesture Recognizers 
 

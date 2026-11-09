@@ -16,7 +16,7 @@ A "bridged" feature architecture is one in which its UI is built using cross-pla
 ### When to use Bridging
 Bridging is a good solution for features that have existing complex data and APIs in Android/iOS that power the UI experience. Additionally, sometimes a feature needs to make heavy use of OS-specific APIs, perhaps to access physical resources like Bluetooth or camera frames that aren't otherwise directly available in Valdi.
 
-If the data and services are already available in Android/iOS, but with needs that aren't very complicated, consider adopting a [Full-Stack Valdi](#full-stack-valdi) architecture which will simplify ongoing development with key benefits discussed in detail below.
+If the data and services are already available in Android/iOS, but with needs that aren't very complicated, consider adopting a [Full-Stack Valdi](#full-stack-valdi-1) architecture which will simplify ongoing development with key benefits discussed in detail below.
 
 ### Shortcomings of Bridging
 A bridge-based approach for Valdi development has a few shortcomings. First and foremost, each bridged api must be implemented in each supported platform (eg Android/iOS). This adds development overhead, first by requiring more code be written in more languages, but also modifying this code requires each platform to be built entirely, instead of leveraging hot reload or, at worst, recompiling Valdi modules.

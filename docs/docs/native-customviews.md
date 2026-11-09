@@ -217,7 +217,7 @@ The `invalidateLayoutOnChange` parameter is used to tell Valdi whether the intri
 
 <!-- TODO: Link to widget source code -->
 
-[observable]: #replace-with-public-url
+[observable]: ../../src/valdi_modules/src/valdi/bridge_observables/src/utils/convertObservableToBridgeObservable.ts
 
 Let's say your attribute is called `observable`.
 - At the TSX level, pass the `observable` attribute like `observable={convertObservableToBridgeObservable(yourObservable)}` ([see the method][observable])

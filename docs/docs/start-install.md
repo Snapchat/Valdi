@@ -1,4 +1,4 @@
-# Getting Started with Valdi
+# Quick Start
 
 > **Get the Valdi CLI from npm.** Run `npm install -g @snap/valdi` and use the commands below. If you're contributing to Valdi itself, see [DEV_SETUP.md](../DEV_SETUP.md).
 

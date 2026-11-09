@@ -32,7 +32,7 @@ Text components can be directly styled via `style`, or via specific text attribu
 
 ### EditTextEvents
 
-Text editing is done via a callback on `onChange`, and associated callbacks `onWillChange`, `onSelectionChange`, and so on. [These receive an EditTextEvent](./core-events.md#Events).
+Text editing is done via a callback on `onChange`, and associated callbacks `onWillChange`, `onSelectionChange`, and so on. [These receive an EditTextEvent](./core-events.md#text-editing-events).
 
 ## Attributed Text 
 

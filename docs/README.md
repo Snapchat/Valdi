@@ -1,7 +1,7 @@
 # Valdi Docs
 
  - [What is Valdi?](./docs/start-about.md)
- - [Getting Started with Valdi](./docs/start-install.md)
+ - [Quick Start](./docs/start-install.md)
  - [Valdi Code Labs](./docs/start-code-lab.md)
  - [Valdi Command Line References](./docs/command-line-references.md)
 
