@@ -4,8 +4,8 @@
 
 [ESLint]: https://eslint.org
 [Prettier]: https://prettier.io
-[valdi-eslint-rules]: ../../../../src/valdi_modules/scripts/style-guide/ESLintRules.js
-[eslint-rc]: ../../../../src/valdi_modules/.eslintrc.js
+[valdi-eslint-rules]: ../../npm_modules/eslint-plugin-valdi/src/rules
+[eslint-rc]: ../../tools/lint/.eslintrc.js
 
 In this section we would like to share the details about why and how we can use `Valdi Style Guide`.
 `Valdi Style Guide` helps to achieve the following:

@@ -5,7 +5,7 @@ Valdi supports loading and displaying `https` and `res` images by default with t
 You will need a custom loader for each platform where you intend to load images.
 
 [iOS SCValdiImageLoader]: ../../valdi/src/valdi/ios/SCValdiDefaultImageLoader.m
-[Android ValdiImageLoader]: ../../valdi/src/java/com/snap/valdi/imageloading/DefaultValdiImageLoader.kt
+[Android ValdiImageLoader]: ../../valdi/src/java/com/snap/valdi/imageloading/DefaultValImageLoader.kt
 
 Before you create your custom loader, take a look at the existing custom loaders to determine if your functionality has already been implemented: See [iOS][iOS SCValdiImageLoader] and [Android][Android ValdiImageLoader].
 

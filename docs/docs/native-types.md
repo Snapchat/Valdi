@@ -41,7 +41,7 @@ This unified representation allows Valdi to handle complex data structures effic
 [Cancelable-Promise-ios]: ../../valdi_core/src/valdi_core/ios/valdi_core/SCValdiResolvablePromise.mm
 [Observable-ts]: ../../src/valdi_modules/src/valdi/bridge_observables/src/types/BridgeObservable.ts
 [BridgeSubject]: ../../src/valdi_modules/src/valdi/bridge_observables/src/types/BridgeSubject.d.ts
-[Asset]: ../../src/valdi_modules/src/valdi_modules/src/valdi/valdi_tsx/src/Asset.d.ts
+[Asset]: ../../src/valdi_modules/src/valdi/valdi_tsx/src/Asset.d.ts
 
 
 

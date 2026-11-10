@@ -1,6 +1,6 @@
 # Valdi rules for Bazel
 
-Each [valdi module](../../valdi_modules/src/valdi) contains a `BUILD.bazel` file which has a single call to `valdi_module` macros. The macro setups a few targets and aliases to build the module from source using the Valdi Toolchain.
+Each [valdi module](../../src/valdi_modules/src/valdi) contains a `BUILD.bazel` file which has a single call to `valdi_module` macros. The macro setups a few targets and aliases to build the module from source using the Valdi Toolchain.
 
 The list of targets created by the `valdi_module` macro includes:
 

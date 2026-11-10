@@ -14,7 +14,7 @@ Valdi's layout system is powered by [Yoga](https://github.com/facebook/yoga), Fa
 
 **Key Yoga Files:**
 - Enums/Types: [`third-party/yoga/src/yoga/YGEnums.h`](../../third-party/yoga/src/yoga/YGEnums.h)
-- Style Properties: [`third-party/yoga/src/yoga/YGStyle.h`](../../third-party/yoga/src/yoga/YGStyle.h)
+- Style Properties: [`third-party/yoga/src/yoga/style/Style.h`](../../third-party/yoga/src/yoga/style/Style.h)
 - Core API: [`third-party/yoga/src/yoga/Yoga.h`](../../third-party/yoga/src/yoga/Yoga.h)
 
 > **Important:** When debugging layout issues or understanding flexbox behavior, refer to this specific Yoga version as behavior may differ from other Yoga versions or standard CSS flexbox implementations.

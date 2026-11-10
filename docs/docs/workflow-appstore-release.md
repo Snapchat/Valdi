@@ -4,7 +4,7 @@
 
 This document explains how to build a Valdi application and submit it to the iOS App Store and Google Play Store.
 
-## Prequisites
+## Prerequisites
 
 You should have a `valdi_application()` target that represents your Valdi application in a `BUILD.bazel`. For example:
 ```py
@@ -125,7 +125,7 @@ app_assets/android/values:
 colors.xml	themes.xml
 ```
 
-The `valdi_application()` rule will generate the `AndroidManifest.xml` file depending on the attributes that arae being passed in. If you want complete control over the Android manifest, you can use the `android_app_manifest` attribute and pass a target or a file name that contains the manifest. Your provided manifest should set as its main activity `<package>.StartActivity`, where package is the value passed from the `android_package` attribute (which defaults to `com.snap.valdi` is not passed). If your package is `com.company.product`, then main activity should be `com.company.product.StartActivty`.
+The `valdi_application()` rule will generate the `AndroidManifest.xml` file depending on the attributes that are being passed in. If you want complete control over the Android manifest, you can use the `android_app_manifest` attribute and pass a target or a file name that contains the manifest. Your provided manifest should set as its main activity `<package>.StartActivity`, where package is the value passed from the `android_package` attribute (which defaults to `com.snap.valdi` if not passed). If your package is `com.company.product`, then main activity should be `com.company.product.StartActivity`.
 
 Once you have setup your resources, build your app in release mode using the `valdi package` command:
 ```sh
