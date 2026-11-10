@@ -1,4 +1,4 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.snapchat.client">
-    <uses-sdk android:minSdkVersion="23" />
+    <uses-sdk android:minSdkVersion="21" />
 </manifest>

@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.snap.valdi.test.runtime">
-    <uses-sdk android:minSdkVersion="23" />
+    <uses-sdk android:minSdkVersion="21" />
 
     <application>
         <!-- Declared here rather than in each consumer's androidTest manifest: manifest
