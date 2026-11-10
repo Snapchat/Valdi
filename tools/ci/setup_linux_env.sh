@@ -5,7 +5,7 @@
 # This script is the single source of truth for Linux CI environment preparation.
 # It is called by:
 #   - GitHub Actions (.github/workflows/bzl-changes.yml)
-#   - Internal SnapCI (client_validate_valdi_open_source.sh)
+#   - Internal SnapCI (the validate job)
 #
 # The script is idempotent and safe to run multiple times.
 

@@ -5,7 +5,7 @@ name: Android Instrumentation Tests
 # the Bazel remote cache (the bazel-cache action only uploads on push, schedule,
 # workflow_dispatch and release), so every PR would pay the full cost. Running on
 # main plus nightly still catches regressions, and PRs keep the cheap build gate that
-# internal CI runs via client_validate_valdi_open_source.sh.
+# internal CI runs via the validate job.
 #
 # Use the manual trigger to exercise this on a branch before merging.
 on:

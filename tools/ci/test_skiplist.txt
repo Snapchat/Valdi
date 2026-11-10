@@ -18,6 +18,6 @@
 
 # Run by other jobs. Listed so run_tests.sh doesn't build them a second time.
 //experiments/helloworld_playground:integration_test run_by:tools/ci/web_integration_test.sh # Needs --define enable_web=true and a headless browser.
-//compiler/companion:golden_test run_by:.github/workflows/bzl-changes.yml # Compiler Golden Diff job (internal: client_validate_valdi_open_source.sh).
+//compiler/companion:golden_test run_by:.github/workflows/bzl-changes.yml # Compiler Golden Diff job (internal: the validate job).
 //compiler/compiler:CompilerTests run_by:tools/ci/compiler_tests.sh # Compiler Unit Tests job.
 //valdi/fuzz:ValdiModuleArchive_fuzz_test run_by:tools/ci/sanitizer_tests.sh # Instrumented build of the whole runtime; the ASan job already builds it.

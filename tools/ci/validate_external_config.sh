@@ -8,7 +8,7 @@
 # It runs inside the internal monorepo so regressions are caught BEFORE
 # Copybara mirrors the change.
 #
-# Called by: client_validate_valdi_open_source.sh (SnapCI)
+# Called by: the internal validate job (SnapCI)
 
 set -euo pipefail
 
