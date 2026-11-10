@@ -4,7 +4,7 @@ Valdi supports exporting the heap of the VM in the V8 format, which is supported
 
 ## Prerequisite
 
-The heap dump is currently only supported with the Hermes engine. See information about [enabling Hermes](../workflow-hermes-debugger.md).
+The heap dump is currently only supported with the Hermes engine. See information about [enabling Hermes](./workflow-hermes-debugger.md).
 
 ## Requesting a heap dump
 

@@ -1,4 +1,4 @@
-# The Style<>
+# The `Style<>`
 
 ## What is styling?
 

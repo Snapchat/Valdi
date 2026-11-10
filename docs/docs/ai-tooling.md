@@ -269,8 +269,8 @@ Always check AI-generated code for these red flags:
 ## Resources
 
 - **[AGENTS.md](../../AGENTS.md)** - Comprehensive guide for AI assistants
-- **[Getting Started](./getting-started.md)** - Learn Valdi basics
-- **[API Reference](./api/)** - Complete API documentation
+- **[Getting Started](./start-introduction.md)** - Learn Valdi basics
+- **[API Reference](../api/api-reference-elements.md)** - Complete API documentation
 
 ## Getting Help
 

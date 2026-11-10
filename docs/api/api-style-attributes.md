@@ -1,6 +1,6 @@
 # Style Attributes Reference
 
-This document provides a comprehensive reference for all style attributes that can be used with the `Style<T>` object in Valdi. For usage patterns and best practices, see [The Style<> Guide](../docs/core-styling.md).
+This document provides a comprehensive reference for all style attributes that can be used with the `Style<T>` object in Valdi. For usage patterns and best practices, see [The `Style<>` Guide](../docs/core-styling.md).
 
 ## Yoga Layout Engine
 
@@ -1298,6 +1298,6 @@ const mixedStyles = {
 ## See Also
 
 - [Complete API Reference](api-reference-elements.md) - Full element documentation
-- [The Style<> Guide](../docs/core-styling.md) - Usage patterns and best practices
+- [The `Style<>` Guide](../docs/core-styling.md) - Usage patterns and best practices
 - [Quick Reference](api-quick-reference.md) - Common properties lookup
 - [Core Flexbox](../docs/core-flexbox.md) - Understanding flexbox layout

@@ -148,7 +148,7 @@ A pattern for passing child elements to a component. Similar to React's `childre
 ### State
 Internal data within a component that triggers re-renders when updated via `setState()`. See [Component States](./core-states.md).
 
-### Style<T>
+### `Style<T>`
 An object containing style properties for an element. The type parameter specifies which element it's for. See [Styling](./core-styling.md).
 
 ### StatefulComponent

@@ -9,7 +9,7 @@ This code lab starts by building a common UI and then splits off in to **Android
 # Pre-work
 Let's make sure you're setup to develop.
 
-In the [**Getting Started Codelab**](../getting_started) you were only modifying typescript which meant that the hotreloader could do all of the work of updating the UI. 
+In the [**Getting Started Codelab**](../getting_started/1-introduction.md) you were only modifying typescript which meant that the hotreloader could do all of the work of updating the UI. 
 
 In this codelab, we're going to be modifying native interfaces which means that we need a module linked build.
 

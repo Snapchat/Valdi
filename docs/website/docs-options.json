@@ -1,0 +1,18 @@
+{
+  "include": [
+    "**/*.{md,mdx}"
+  ],
+  "exclude": [
+    "website/**",
+    "README.md",
+    "**/README.md",
+    "**/node_modules/**"
+  ],
+  "sidebarPath": "sidebars.json",
+  "repoLinks": {
+    "rootPath": "..",
+    "url": "https://github.com/Snapchat/Valdi",
+    "ref": "main"
+  },
+  "stripPathPrefix": "docs"
+}

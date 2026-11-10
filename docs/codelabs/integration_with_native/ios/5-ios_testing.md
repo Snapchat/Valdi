@@ -6,4 +6,4 @@ On iOS, Valdi renders UI as native Views so we can work with them the same way y
 **TODO**: Unit Tests with publicly available iOS testing environments
 
 
-### [Check out the Android version >](../android/1-android_setup_for_devleopment.md)
+### [Check out the Android version >](../android/1-android_setup_for_development.md)

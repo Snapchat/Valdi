@@ -92,5 +92,5 @@ This is the last step that applies to both Android and iOS. From here, pick one 
 
 ### [iOS (Objective-C)>](../integration_with_native/ios/1-ios_setup_for_development.md)
 ### [iOS (Swift)>](../integration_with_native/ios_swift/1-ios_setup_for_development.md)
-### [Android >](../integration_with_native/android/1-android_setup_for_devleopment.md)
+### [Android >](../integration_with_native/android/1-android_setup_for_development.md)
 

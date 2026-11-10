@@ -317,7 +317,6 @@ const range: Range = { min: 0, max: 100 };
 
 ## See Also
 
-- [Foundation](./stdlib-foundation.md) - Extended utility functions
 - [File System](./stdlib-filesystem.md) - File I/O operations
 - [Performance Optimization](./performance-optimization.md) - Tips for efficient code
 

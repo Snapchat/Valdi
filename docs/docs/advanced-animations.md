@@ -31,7 +31,7 @@ This API is inspired by iOS's `animateWithDuration:animations:`. Your can pass a
 
 ## `AnimationOptions`
 
-Both functions [accept](./generated-docs/valdi_core/AnimationOptions/valdi-generated.md) `AnimationOptions`:
+Both functions [accept](../../src/valdi_modules/src/valdi/valdi_core/src/AnimationOptions.ts) `AnimationOptions`:
 
 ```ts
 export enum AnimationCurve {

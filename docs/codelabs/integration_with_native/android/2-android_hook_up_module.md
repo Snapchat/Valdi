@@ -3,7 +3,7 @@ Now that we have the module bundled up and the code in the right place, we can a
 
 **TODO**: Example using publicly available source code
 
-If you are having trouble with the imports, they were specified in the @GenerateNativeClass annotation during a [previous step](./6-native_build_module.md). If you're working with Android studio, it may not pick up the newly generated files, run a Bazel sync to pick up the new changes.
+If you are having trouble with the imports, they were specified in the @GenerateNativeClass annotation during a [previous step](../6-native_build_module.md). If you're working with Android studio, it may not pick up the newly generated files, run a Bazel sync to pick up the new changes.
 
 Rebuild and install the Android app. Navigate to the playground and load up your new UI.
 
