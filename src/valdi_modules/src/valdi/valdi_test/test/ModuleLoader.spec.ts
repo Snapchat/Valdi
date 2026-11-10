@@ -454,4 +454,32 @@ describe('ModuleLoader', () => {
     expect(sourceMapCalls).toEqual(['module_a/src/FileA', 'module_a/src/FileB', 'module_a/src/FileC']);
     expect(sourceMapContentCalls).toEqual(['hello', 'world']);
   });
+
+  it('propagates import failures while still resolving SourceMap', () => {
+    const sourceMap: ISourceMap = {
+      resolve(): MappedPosition | undefined {
+        return undefined;
+      },
+    };
+    const sourceMapCalls: string[] = [];
+
+    const loader = new ModuleLoader(
+      makeEvaluator(path => {
+        throw new Error(`Could not import ${path}`);
+      }),
+      (path: string) => {
+        sourceMapCalls.push(path);
+        return 'content';
+      },
+      undefined,
+    );
+
+    expect(() => loader.getOrCreateSourceMap('module_a/src/FileA', () => sourceMap)).toThrowError(
+      'Could not import module_a/src/FileA',
+    );
+    expect(sourceMapCalls).toEqual(['module_a/src/FileA']);
+
+    expect(loader.getOrCreateSourceMap('module_a/src/FileA', () => sourceMap)).toBe(sourceMap);
+    expect(sourceMapCalls).toEqual(['module_a/src/FileA']);
+  });
 });

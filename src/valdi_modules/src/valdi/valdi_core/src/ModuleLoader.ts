@@ -481,17 +481,22 @@ export class ModuleLoader implements IModuleLoader {
   getOrCreateSourceMap = (path: string, sourceMapFactory: SourceMapFactory): ISourceMap | undefined => {
     const resolvedPath = resolveAbsoluteImportFromPath(path);
     let module = this.modules[resolvedPath.absolutePath];
+    let importError: { error: any } | undefined;
     if (!module || !module.sourceMap) {
       // Attempt to load the module automatically if it's not in the map
       try {
         this.doImport(resolvedPath, undefined, true, true);
       } catch (err: any) {
-        console.log(`Could not load module ${path}: ${err.message}`);
+        // Resolve the source map anyway so frames from a module that throws during evaluation stay symbolicated
+        importError = { error: err };
       }
 
       module = this.modules[resolvedPath.absolutePath];
 
       if (!module) {
+        if (importError) {
+          throw importError.error;
+        }
         return undefined;
       }
     }
@@ -514,6 +519,9 @@ export class ModuleLoader implements IModuleLoader {
       }
     }
 
+    if (importError) {
+      throw importError.error;
+    }
     if (!sourceMap) {
       return undefined;
     }
