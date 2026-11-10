@@ -66,6 +66,8 @@ For a significant change:
 - **Teardown and threading changes:** list in the pull request description every object whose lifetime changes and who can still hold it, and the threads and locks before and after.
 - **Not significant:** say why in the pull request description. Comments, tests, renames and fixes that only add a null check are not significant.
 
+A significant change to any system except the catch-all `framework` entry also needs an [RFC](./rfcs/README.md#when-you-need-an-rfc), unless a maintainer waives it on the pull request.
+
 ### Pull request limit
 
 Contributors who are not project collaborators may have up to five pull requests open at a time. Additional pull requests are closed automatically and can be reopened once some of your open pull requests are merged or closed.

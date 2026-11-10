@@ -2,7 +2,7 @@
 
 - Status: Draft
 - Author(s): <GitHub handles>
-- Discussion: <link to the pitch Discussion>
+- Discussion: <link to the pitch Discussion or issue>
 - Implementation: <pull request links, once they exist>
 
 ## Summary
@@ -15,7 +15,7 @@ What problem does this solve? Who has it? What do they do today?
 
 ## Detailed design
 
-How it works. API shapes, examples, and behavior on each platform (iOS, Android, macOS, web).
+How it works. API shapes, examples, and behavior on each platform it affects (iOS, Android, macOS, web, Linux).
 
 ## Automated test strategy
 
@@ -23,6 +23,7 @@ How will this be tested automatically, so a regression fails CI instead of reach
 
 - Which kinds of tests: unit, component, compiler, runtime, or platform integration tests.
 - Which platforms the tests run on (iOS, Android, macOS, web), and which CI jobs run them.
+- Which existing suites cover the code you change, such as snapshot, Android Espresso, iOS Objective-C, teardown and ASan tests. Some run only in Snap's CI; maintainers run those when importing.
 - What a regression looks like, and which test would catch it.
 - Anything that can't be tested automatically, why, and how it will be verified instead.
 
