@@ -9,7 +9,13 @@
 #include "valdi/runtime/Attributes/DefaultAttributeProcessors.hpp"
 #include "valdi/runtime/Utils/MainThreadManager.hpp"
 #include "valdi/runtime/Views/GlobalViewFactories.hpp"
+#include "valdi/runtime/Views/View.hpp"
 #include "valdi/runtime/Views/ViewPreloader.hpp"
+#include "valdi_core/cpp/Utils/Trace.hpp"
+
+#include <algorithm>
+#include <memory>
+#include <vector>
 
 namespace Valdi {
 
@@ -43,11 +49,38 @@ void ViewManagerContext::registerViewClassReplacement(const StringBox& className
     _globalViewFactories->registerViewClassReplacement(className, replacementClassName);
 }
 
+namespace {
+
+// Small enough that one batch stays well under a frame on low-end Android devices.
+constexpr size_t kPooledViewReleaseBatchSize = 16;
+
+void releaseViewsInBatches(const Ref<MainThreadManager>& mainThreadManager,
+                           std::shared_ptr<std::vector<Ref<View>>> views) {
+    mainThreadManager->dispatch(nullptr, [mainThreadManager, views = std::move(views)]() mutable {
+        VALDI_TRACE("Valdi.releasePooledViews");
+        auto batchSize = std::min(views->size(), kPooledViewReleaseBatchSize);
+        views->erase(views->end() - static_cast<std::ptrdiff_t>(batchSize), views->end());
+        if (!views->empty()) {
+            // Each re-dispatch gets its own flush, so every batch runs in a separate main-thread message.
+            releaseViewsInBatches(mainThreadManager, std::move(views));
+        }
+    });
+}
+
+} // namespace
+
 void ViewManagerContext::clearViewPools() {
     if (_viewPreloader != nullptr) {
         _viewPreloader->stopPreload();
     }
-    _globalViewFactories->clearViewPools();
+    // The pools are emptied right away, but the views themselves are destroyed in small batches:
+    // on Android each one releases a Java reference through JNI, and destroying a full pool inline
+    // during applicationWillPause stalls the main thread long enough to trip the ANR watchdog.
+    auto views = std::make_shared<std::vector<Ref<View>>>();
+    _globalViewFactories->takePooledViews(*views);
+    if (!views->empty()) {
+        releaseViewsInBatches(_mainThreadManager, std::move(views));
+    }
 }
 
 void ViewManagerContext::preloadViews(const StringBox& className, size_t count) {

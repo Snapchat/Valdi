@@ -15,6 +15,7 @@
 namespace Valdi {
 
 class AttributesManager;
+class View;
 class ViewFactory;
 
 class GlobalViewFactories : public SharedPtrRefCountable {
@@ -23,6 +24,10 @@ public:
     ~GlobalViewFactories() override;
 
     void clearViewPools();
+    /**
+     * Empties every view pool and appends the pooled views to outViews.
+     */
+    void takePooledViews(std::vector<Ref<View>>& outViews) const;
     void registerViewClassReplacement(const StringBox& className, const StringBox& replacementClassName);
 
     Ref<ViewFactory> getViewFactory(const StringBox& className);

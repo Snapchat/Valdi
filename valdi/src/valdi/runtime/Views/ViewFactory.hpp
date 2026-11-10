@@ -39,6 +39,10 @@ public:
                          bool* outReusedFromPool = nullptr);
     void enqueueViewToPool(const Ref<View>& view);
     void clearViewPool();
+    /**
+     * Empties the pool and hands its views to the caller, so they can be destroyed outside the pool lock.
+     */
+    std::deque<Ref<View>> takePooledViews();
 
     const StringBox& getViewClassName() const;
     const Ref<BoundAttributes>& getBoundAttributes() const;

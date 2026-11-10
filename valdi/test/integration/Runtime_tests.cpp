@@ -5056,6 +5056,46 @@ TEST_P(RuntimeFixture, canPreloadViews) {
     ASSERT_EQ(10, getNumberOfPooledViews(viewClassName, stats));
 }
 
+TEST_P(RuntimeFixture, clearViewPoolsEmptiesPoolsNowAndReleasesViewsInBatchesOnMainThread) {
+    auto viewClassName = STRING_LITERAL("ValdiView");
+    auto viewManagerContext = wrapper.standaloneRuntime->getViewManagerContext();
+    auto viewFactory = viewManagerContext->getGlobalViewFactories()->getViewFactory(viewClassName);
+
+    constexpr size_t kViewCount = 40;
+    // Matches kPooledViewReleaseBatchSize in ViewManagerContext.cpp.
+    constexpr size_t kMaxViewsReleasedPerTask = 16;
+
+    std::vector<Weak<View>> pooledViews;
+    for (size_t i = 0; i < kViewCount; i++) {
+        auto view = viewFactory->createView(nullptr, nullptr, false);
+        pooledViews.emplace_back(weakRef(view.get()));
+        viewFactory->enqueueViewToPool(view);
+    }
+
+    auto countAliveViews = [&]() {
+        size_t aliveCount = 0;
+        for (const auto& pooledView : pooledViews) {
+            if (pooledView.lock() != nullptr) {
+                aliveCount++;
+            }
+        }
+        return aliveCount;
+    };
+
+    viewManagerContext->clearViewPools();
+
+    ASSERT_EQ(static_cast<size_t>(0), viewFactory->getPoolSize());
+    ASSERT_EQ(kViewCount, countAliveViews());
+
+    auto aliveCount = kViewCount;
+    while (aliveCount > 0) {
+        ASSERT_TRUE(wrapper.mainQueue->runNextTask(std::chrono::steady_clock::now() + std::chrono::seconds(10)));
+        auto newAliveCount = countAliveViews();
+        ASSERT_LE(aliveCount - newAliveCount, kMaxViewsReleasedPerTask);
+        aliveCount = newAliveCount;
+    }
+}
+
 TEST_P(RuntimeFixture, preloadOnlyAddsToThePoolIfMissing) {
     wrapper.teardown();
     wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), true);

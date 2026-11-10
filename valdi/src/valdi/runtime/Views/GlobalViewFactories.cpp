@@ -10,6 +10,8 @@
 #include "valdi/runtime/Interfaces/IViewManager.hpp"
 #include "valdi/runtime/Views/ViewFactory.hpp"
 
+#include <iterator>
+
 namespace Valdi {
 
 GlobalViewFactories::GlobalViewFactories(AttributesManager& attributesManager)
@@ -18,10 +20,17 @@ GlobalViewFactories::GlobalViewFactories(AttributesManager& attributesManager)
 GlobalViewFactories::~GlobalViewFactories() = default;
 
 void GlobalViewFactories::clearViewPools() {
-    std::lock_guard<Mutex> guard(_mutex);
+    std::vector<Ref<View>> pooledViews;
+    takePooledViews(pooledViews);
+}
 
-    for (const auto& it : _viewFactories) {
-        it.second->clearViewPool();
+void GlobalViewFactories::takePooledViews(std::vector<Ref<View>>& outViews) const {
+    // Destroying a view can be slow (a JNI call per view on Android), so it must not happen under
+    // _mutex, which getViewFactory() needs on the JS and preloader threads.
+    for (const auto& viewFactory : copyViewFactories()) {
+        auto pooledViews = viewFactory->takePooledViews();
+        outViews.insert(
+            outViews.end(), std::make_move_iterator(pooledViews.begin()), std::make_move_iterator(pooledViews.end()));
     }
 }
 

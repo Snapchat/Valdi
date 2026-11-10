@@ -20,8 +20,14 @@ ViewFactory::ViewFactory(StringBox viewClassName, IViewManager& viewManager, Ref
 ViewFactory::~ViewFactory() = default;
 
 void ViewFactory::clearViewPool() {
+    auto pooledViews = takePooledViews();
+}
+
+std::deque<Ref<View>> ViewFactory::takePooledViews() {
+    std::deque<Ref<View>> pooledViews;
     std::lock_guard<Mutex> lock(_mutex);
-    _pooledViews.clear();
+    pooledViews.swap(_pooledViews);
+    return pooledViews;
 }
 
 Ref<View> ViewFactory::createView(ViewNodeTree* viewNodeTree,
