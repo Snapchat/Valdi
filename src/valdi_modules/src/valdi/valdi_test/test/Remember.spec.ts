@@ -17,7 +17,7 @@ interface RememberedValue {
 }
 
 function makeRenderer(): Renderer {
-  return new Renderer('', undefined, new RendererTestDelegate());
+  return new Renderer('', undefined, new RendererTestDelegate(), undefined, false);
 }
 
 function makeNodePrototype(viewClass: string): NodePrototype {

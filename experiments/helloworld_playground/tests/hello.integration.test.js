@@ -70,6 +70,6 @@ describe('helloworld_playground — Valdi minimal wiring', () => {
     });
 
     expect(titleText).not.toBeNull();
-    expect(titleText).toContain('Valdi Hello World (Web)');
+    expect(titleText).toContain('Valdi Web');
   }, TIMEOUT);
 });
