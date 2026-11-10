@@ -64,6 +64,19 @@ static void appendSingleSegment(TextParagraph& paragraph,
                                 const CharactersIterator& iterator,
                                 bool isRightToLeft,
                                 TextScript script) {
+    if (!paragraph.segments.empty()) {
+        // Join with the previous segment when it continues it, so text is not split at paragraph boundaries.
+        auto& previous = paragraph.segments.back();
+        if (previous.end == iterator.rangeStart() && previous.isRTL == isRightToLeft &&
+            (previous.script == script || !previous.script.isStrong() || !script.isStrong())) {
+            previous.end = iterator.rangeEnd();
+            if (!previous.script.isStrong()) {
+                previous.script = script;
+            }
+            return;
+        }
+    }
+
     paragraph.segments.emplace_back(isRightToLeft, iterator.rangeStart(), iterator.rangeEnd(), script);
 }
 
@@ -225,24 +238,18 @@ TextParagraphList TextShaperHarfbuzz::resolveParagraphsICU(const Character* unic
         return out;
     }
 
-    auto runsCount = ubidi_countRuns(ubidi.ptr, &status);
+    auto paragraphsCount = ubidi_countParagraphs(ubidi.ptr);
+    UbiDiWrapper line;
 
-    if (U_FAILURE(status) != 0) {
-        return out;
-    }
-
-    for (int32_t i = 0; i < runsCount; i++) {
-        int32_t logicalStart = 0;
-        int32_t logicalLength = 0;
-        auto direction = ubidi_getVisualRun(ubidi.ptr, i, &logicalStart, &logicalLength);
-
-        if (logicalLength == 0) {
-            continue;
-        }
-
+    for (int32_t paragraphIndex = 0; paragraphIndex < paragraphsCount; paragraphIndex++) {
+        int32_t paragraphStart = 0;
+        int32_t paragraphLimit = 0;
         UBiDiLevel paraLevel;
 
-        ubidi_getParagraph(ubidi.ptr, logicalStart, nullptr, nullptr, &paraLevel, &status);
+        ubidi_getParagraphByIndex(ubidi.ptr, paragraphIndex, &paragraphStart, &paragraphLimit, &paraLevel, &status);
+        // Resolve runs one paragraph at a time so that runs from different paragraphs never get reordered together.
+        ubidi_setLine(ubidi.ptr, paragraphStart, paragraphLimit, line.ptr, &status);
+        auto runsCount = ubidi_countRuns(line.ptr, &status);
 
         if (U_FAILURE(status) != 0) {
             status = U_ZERO_ERROR;
@@ -259,16 +266,29 @@ TextParagraphList TextShaperHarfbuzz::resolveParagraphsICU(const Character* unic
 
         auto& paragraph = out[out.size() - 1];
 
-        auto isSegmentRTL = isBiDiLevelRightToLeft(direction);
+        for (int32_t i = 0; i < runsCount; i++) {
+            // The layout builder flips right-to-left paragraphs into visual order itself, so their runs are
+            // handed over from the rightmost one.
+            auto visualIndex = paragraphIsRightToLeft ? runsCount - 1 - i : i;
+            int32_t logicalStart = 0;
+            int32_t logicalLength = 0;
+            auto direction = ubidi_getVisualRun(line.ptr, visualIndex, &logicalStart, &logicalLength);
 
-        auto segmentStart = static_cast<size_t>(logicalStart);
-        auto segmentEnd = static_cast<size_t>(logicalStart + logicalLength);
+            if (logicalLength == 0) {
+                continue;
+            }
 
-        doAppendSegment(paragraph,
-                        unicodeText,
-                        utf16Index.getUTF32Index(segmentStart),
-                        utf16Index.getUTF32Index(segmentEnd),
-                        isSegmentRTL);
+            auto isSegmentRTL = isBiDiLevelRightToLeft(direction);
+
+            auto segmentStart = static_cast<size_t>(paragraphStart + logicalStart);
+            auto segmentEnd = static_cast<size_t>(paragraphStart + logicalStart + logicalLength);
+
+            doAppendSegment(paragraph,
+                            unicodeText,
+                            utf16Index.getUTF32Index(segmentStart),
+                            utf16Index.getUTF32Index(segmentEnd),
+                            isSegmentRTL);
+        }
     }
 
     return out;

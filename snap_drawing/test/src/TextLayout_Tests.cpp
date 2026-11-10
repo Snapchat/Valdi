@@ -365,12 +365,12 @@ TEST(TestShaper, resolvesParagraphs) {
     ASSERT_EQ(static_cast<size_t>(10), paragraphs[0].segments[0].end);
 
     ASSERT_EQ(static_cast<size_t>(3), paragraphs[1].segments.size());
-    ASSERT_EQ(static_cast<size_t>(23), paragraphs[1].segments[0].start);
-    ASSERT_EQ(static_cast<size_t>(36), paragraphs[1].segments[0].end);
+    ASSERT_EQ(static_cast<size_t>(10), paragraphs[1].segments[0].start);
+    ASSERT_EQ(static_cast<size_t>(14), paragraphs[1].segments[0].end);
     ASSERT_EQ(static_cast<size_t>(14), paragraphs[1].segments[1].start);
     ASSERT_EQ(static_cast<size_t>(23), paragraphs[1].segments[1].end);
-    ASSERT_EQ(static_cast<size_t>(10), paragraphs[1].segments[2].start);
-    ASSERT_EQ(static_cast<size_t>(14), paragraphs[1].segments[2].end);
+    ASSERT_EQ(static_cast<size_t>(23), paragraphs[1].segments[2].start);
+    ASSERT_EQ(static_cast<size_t>(36), paragraphs[1].segments[2].end);
 
     ASSERT_EQ(static_cast<size_t>(1), paragraphs[2].segments.size());
     ASSERT_EQ(static_cast<size_t>(36), paragraphs[2].segments[0].start);
@@ -1384,20 +1384,20 @@ TEST(TextLayout, supportsBidirectionalLineBreakingWithLeftToRightBaseDirection) 
         makeTextLayoutJSON(
             maxSize,
             {TextLayoutEntry(
-                Rect::makeXYWH(0.0, 0.0, 100.000000, 47.597000),
+                Rect::makeXYWH(0.0, 0.0, 117.000000, 47.597000),
                 std::nullopt,
                 {
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(0.000000, 0.0, 5.000000, 23.154000), testContainer.primaryFont, "."),
+                        Rect::makeXYWH(0.000000, 0.0, 17.000000, 23.154000), testContainer.primaryFont, "™ "),
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(5.000000, 0.0, 63.000000, 20.842000), testContainer.arabicFont, "طوال اليوم"),
+                        Rect::makeXYWH(17.000000, 0.0, 77.000000, 23.154000), testContainer.primaryFont, "Wikipedia"),
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(68.000000, 0.00, 17.000000, 23.154000), testContainer.primaryFont, "™ "),
+                        Rect::makeXYWH(94.000000, 0.0, 23.000000, 20.842000), testContainer.arabicFont, "قرأ "),
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(0.000000, 23.799000, 23.000000, 20.842000), testContainer.arabicFont, "قرأ "),
-                    TextLayoutEntrySegment(Rect::makeXYWH(23.000000, 23.799000, 77.000000, 23.154000),
-                                           testContainer.primaryFont,
-                                           "Wikipedia"),
+                        Rect::makeXYWH(0.000000, 23.799000, 5.000000, 23.154000), testContainer.primaryFont, "."),
+                    TextLayoutEntrySegment(Rect::makeXYWH(5.000000, 23.799000, 63.000000, 20.842000),
+                                           testContainer.arabicFont,
+                                           "طوال اليوم"),
                 })}),
         layout->toJSONValue());
 }
@@ -1423,22 +1423,51 @@ TEST(TextLayout, supportsBidirectionalLineBreakingWithRightToLeftBaseDirection) 
         makeTextLayoutJSON(
             maxSize,
             {TextLayoutEntry(
-                Rect::makeXYWH(20.000000, 0.0, 100.000000, 47.597000),
+                Rect::makeXYWH(3.000000, 0.0, 117.000000, 47.597000),
                 std::nullopt,
                 {
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(35.000000, 0.0, 5.000000, 23.154000), testContainer.primaryFont, "."),
+                        Rect::makeXYWH(3.000000, 0.0, 17.000000, 23.154000), testContainer.primaryFont, "™ "),
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(40.000000, 0.0, 63.000000, 20.842000), testContainer.arabicFont, "طوال اليوم"),
+                        Rect::makeXYWH(20.000000, 0.0, 77.000000, 23.154000), testContainer.primaryFont, "Wikipedia"),
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(103.000000, 0.00, 17.000000, 23.154000), testContainer.primaryFont, "™ "),
+                        Rect::makeXYWH(97.000000, 0.0, 23.000000, 20.842000), testContainer.arabicFont, "قرأ "),
                     TextLayoutEntrySegment(
-                        Rect::makeXYWH(20.000000, 23.799000, 23.000000, 20.842000), testContainer.arabicFont, "قرأ "),
-                    TextLayoutEntrySegment(Rect::makeXYWH(43.000000, 23.799000, 77.000000, 23.154000),
-                                           testContainer.primaryFont,
-                                           "Wikipedia"),
+                        Rect::makeXYWH(52.000000, 23.799000, 5.000000, 23.154000), testContainer.primaryFont, "."),
+                    TextLayoutEntrySegment(Rect::makeXYWH(57.000000, 23.799000, 63.000000, 20.842000),
+                                           testContainer.arabicFont,
+                                           "طوال اليوم"),
                 })}),
         layout->toJSONValue());
+}
+
+TEST(TextLayout, placesLeadingNumberOnTheRightInRightToLeftParagraph) {
+    TextLayoutTestContainer testContainer;
+
+    auto maxSize = Size::make(200, 10000);
+    TextLayoutBuilder builder(TextAlignRight, TextOverflowEllipsis, maxSize, 0, testContainer.fontManager, true, 1.0f);
+    builder.setIncludeSegments(true);
+
+    builder.append("65 متر", testContainer.primaryFont, TextLayoutLineHeight::multiple(1.0), 0.0, TextDecorationNone);
+
+    auto layout = builder.build();
+
+    ASSERT_TRUE(layout->fitsInMaxSize());
+    ASSERT_EQ(static_cast<size_t>(1), layout->getEntries().size());
+
+    const TextLayoutEntrySegment* numberSegment = nullptr;
+    const TextLayoutEntrySegment* wordSegment = nullptr;
+    for (const auto& segment : layout->getEntries()[0].segments) {
+        if (segment.characters.find("65") != std::string::npos) {
+            numberSegment = &segment;
+        } else if (segment.characters.find("متر") != std::string::npos) {
+            wordSegment = &segment;
+        }
+    }
+
+    ASSERT_NE(nullptr, numberSegment);
+    ASSERT_NE(nullptr, wordSegment);
+    ASSERT_GE(numberSegment->bounds.left, wordSegment->bounds.right);
 }
 
 TEST(TextLayout, emitsSeparateEntriesForEachColor) {
