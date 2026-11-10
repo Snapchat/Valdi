@@ -8,7 +8,7 @@ This doesn't mean you can't use Swift with Valdi. [Polyglot modules](./native-po
 
 ## Does Valdi support a web / HTML target?
 
-Yes, with caveats. A web renderer that targets HTML/CSS is actively in development and available to try today. Expect rough edges—it's not production-ready. See the [Roadmap](../../ROADMAP.md) for more detail.
+Yes, with caveats. The web renderer, which targets HTML/CSS, is in beta and you can try it today. Expect rough edges and API changes. See the [Roadmap](../../ROADMAP.md) for more detail.
 
 ## Why did Snap create this?
 

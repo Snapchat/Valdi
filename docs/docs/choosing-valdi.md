@@ -16,7 +16,7 @@ This page is a decision guide. It covers what Valdi is good at and honest gaps i
 | **Typing** | Strong (TypeScript, no `any` in generated APIs) | Optional (TypeScript overlay) | Strong (Dart) | Strong |
 | **Ecosystem** | Early-stage; Bazel-first | Large (npm) | Growing (pub.dev) | Platform SDKs |
 | **Dev platform** | macOS Apple Silicon (iOS + Android); Linux (Android only) | macOS, Windows, Linux | macOS, Windows, Linux | macOS (iOS); macOS/Windows/Linux (Android) |
-| **Target platforms** | iOS, Android, macOS desktop, Web (alpha) | iOS, Android, Web | iOS, Android, Web, Desktop | iOS or Android only |
+| **Target platforms** | iOS, Android, macOS desktop, Web (beta) | iOS, Android, Web | iOS, Android, Web, Desktop | iOS or Android only |
 | **Open source** | Yes (MIT) | Yes (MIT) | Yes (BSD) | Yes |
 | **Bazel integration** | First-class | Third-party rules only | Not supported | Via `rules_apple` / `rules_android` |
 
