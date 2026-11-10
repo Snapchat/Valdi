@@ -1,10 +1,11 @@
 import { StringSet } from 'coreutils/src/StringSet';
 import { ISourceMap } from 'source_map/src/ISourceMap';
 import { IModuleLoader, OnHotReloadCallback, OnModuleRegisteredCallback, RequireFunc } from './IModuleLoader';
-import { ValdiRuntime } from './ValdiRuntime';
 export { RequireFunc } from './IModuleLoader';
 
-declare const runtime: ValdiRuntime;
+declare const runtime: {
+  scheduleWorkItem(callback: () => void, delayMs?: number, interruptible?: boolean): number;
+};
 
 type JsEvalRetryableError = string;
 export type JSEvalResult = JsEvalRetryableError | undefined;
@@ -16,6 +17,10 @@ export type SourceMapFactory = (
   sourceMapLineOffset: number | undefined,
 ) => ISourceMap | undefined;
 
+// Web workers have no window, but load modules the same way the page does.
+const IS_WEB =
+  (typeof window !== 'undefined' && typeof window.document !== 'undefined') ||
+  typeof (globalThis as { importScripts?: unknown }).importScripts === 'function';
 interface ResolvedPath {
   absolutePath: string;
   directoryPaths: string[];
@@ -32,7 +37,7 @@ function normalizePath(pathEntries: string[]): string[] {
         // Keep the '..' we went outside our root
         out.push(pathEntry);
       }
-    } else if (pathEntry === '.' && runtime.getCurrentPlatform() !== 4) {
+    } else if (pathEntry === '.' && !IS_WEB) {
       // Omit '.' from the path on Android (1), iOS (2), MacOS (3). On Web (4) keep '.' in the path.
       continue;
     } else {
