@@ -62,9 +62,10 @@ Web entry files export view factories that are auto-registered with the `WebView
 ```typescript
 interface AttributeHandler {
   changeAttribute(name: string, value: unknown): void;
+  destroy?(): void;
 }
 
-type ViewFactory = (container: HTMLElement) => AttributeHandler;
+type ViewFactory = (container: HTMLElement) => AttributeHandler | void;
 
 function createMyViewFactory(): ViewFactory {
   return (container: HTMLElement): AttributeHandler => {
@@ -76,6 +77,9 @@ function createMyViewFactory(): ViewFactory {
         if (name === 'myAttribute' && typeof value === 'number') {
           element.textContent = String(value);
         }
+      },
+      destroy(): void {
+        element.remove();
       },
     };
   };
