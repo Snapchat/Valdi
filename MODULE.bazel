@@ -37,6 +37,18 @@ python.single_version_platform_override(
     platform = "aarch64-apple-darwin",
     python_version = "3.11.14",
 )
+python.single_version_platform_override(
+    patch_strip = 1,
+    patches = ["@valdi//bzl/patches/rules_python/1.9.0:remove_setuptools_spaces.patch"],
+    platform = "aarch64-unknown-linux-gnu",
+    python_version = "3.11.14",
+)
+python.single_version_platform_override(
+    patch_strip = 1,
+    patches = ["@valdi//bzl/patches/rules_python/1.9.0:remove_setuptools_spaces.patch"],
+    platform = "x86_64-unknown-linux-gnu",
+    python_version = "3.11.14",
+)
 
 bazel_dep(name = "bazel_skylib", version = "1.9.2")
 bazel_dep(name = "rules_java", version = "8.14.0")

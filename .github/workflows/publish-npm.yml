@@ -154,6 +154,62 @@ jobs:
       - name: Publish @snap/valdi to npm
         run: npm publish --access public --provenance
 
+  post-publish-test-cli:
+    name: Verify published CLI (${{ matrix.runner }})
+    needs: [detect-changes, publish-cli]
+    if: needs.detect-changes.outputs.cli == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        # Pinned, not ubuntu-latest: 26.04 lacks libxml2.so.2, which the LLVM 19 ld.lld needs.
+        runner: [ubuntu-24.04, macos-26]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Read published version
+        id: version
+        run: echo "version=$(jq -r .version npm_modules/cli/package.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Pin Xcode
+        if: runner.os == 'macOS'
+        uses: ./.github/actions/pin-xcode
+
+      - name: Configure Bazel cache
+        uses: ./.github/actions/bazel-cache
+        with:
+          gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          service_account_ro: ${{ vars.GCP_SERVICE_ACCOUNT_RO }}
+          cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Linux environment
+        if: runner.os == 'Linux'
+        run: source ./tools/ci/setup_linux_env.sh
+
+      - name: Install Bazel and watchman
+        if: runner.os == 'macOS'
+        run: |
+          brew install bazelisk watchman
+          bazel --version
+          watchman --version
+
+      - name: Wait for registry, install published CLI, bootstrap, build and test
+        run: ./tools/ci/post_publish_test.sh "${{ steps.version.outputs.version }}"
+
   publish-eslint-plugin:
     needs: detect-changes
     if: needs.detect-changes.outputs.eslint-plugin == 'true'
