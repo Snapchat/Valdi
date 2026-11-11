@@ -192,10 +192,15 @@ SWIFT_CXX_INTEROP_COPTS = [
 ]
 
 # C++/Swift interop can't precompile the swiftxx clang module under explicit modules (no libc++ `std`
-# module in system_sdks); build these targets' C modules implicitly so libc++ resolves.
+# module in system_sdks); build these targets' C modules implicitly so libc++ resolves. Their public
+# API has C++ types, which library evolution doesn't allow, so they never build with it (even where a
+# build turns it on for every module); their importers `internal import` them.
 SWIFT_CXX_INTEROP_FEATURES = [
     "-swift.use_c_modules",
     "-swift.emit_c_module",
+    "-swift.enable_library_evolution",
+    "-swift.emit_swiftinterface",
+    "-swift.emit_private_swiftinterface",
 ]
 
 swift_library(
