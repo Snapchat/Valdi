@@ -2433,7 +2433,7 @@ def __infer_base_project_path(targets):
     common_path = None
     for t in targets:
         base_path = t[ValdiModuleInfo].base_path
-        if not common_path:
+        if common_path == None:
             common_path = base_path
         else:
             common_path = __common_path(common_path, base_path)
@@ -2465,7 +2465,7 @@ def _invoke_valdi_hotreloader(ctx):
     cmd = """
 echo 'export BAZEL_BINDIR={bin_dir}' > {script_path}
 echo "export BAZEL_EXECROOT=$PWD" >> {script_path}
-echo '{executable} {args} "$@"' >> {script_path}
+echo 'exec {executable} {args} "$@"' >> {script_path}
     """.format(bin_dir = ctx.bin_dir.path, executable = executable.path, args = args, script_path = run_hotreloader.path)
 
     ctx.actions.run_shell(
