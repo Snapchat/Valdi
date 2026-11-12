@@ -97,12 +97,13 @@ jobs:
             xcode: '26.5.0'
             test_name_pattern: ''
           # macOS 27: its dyld rejects Rust proc-macros stripped by rustc < 1.98
-          # (rust-lang/rust#157750), which macOS 26 runners can't catch. `build ios`
-          # compiles the Rust tool crates, so that's all this leg runs: the full suite
-          # is three cold workspaces, more than this runner's ~44 GB disk / 7 GB RAM.
+          # (rust-lang/rust#157750), which macOS 26 runners can't catch. `build ios` and
+          # `build macos` compile the Rust tool crates and the macOS SDK path; the full suite
+          # is three cold workspaces, more than this runner's ~44 GB disk / 7 GB RAM (the two
+          # builds leave about 25 GB free).
           - runner: xcode-27
             xcode: '27.0.0'
-            test_name_pattern: 'build ios'
+            test_name_pattern: 'build ios|build macos'
     runs-on: ${{ matrix.runner }}
 
     steps:
