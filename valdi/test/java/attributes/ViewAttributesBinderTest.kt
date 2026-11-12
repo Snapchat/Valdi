@@ -2,14 +2,20 @@ package com.snap.valdi.attributes
 
 import android.content.Context
 import android.view.View
+import android.view.animation.LinearInterpolator
 import androidx.test.core.app.ApplicationProvider.getApplicationContext
 import com.snap.valdi.attributes.impl.ViewAttributesBinder
 import com.snap.valdi.attributes.impl.animations.ValdiAnimator
+import com.snap.valdi.attributes.impl.animations.ValdiInterpolatingAnimator
 import com.snap.valdi.attributes.impl.animations.ValdiValueAnimation
 import com.snap.valdi.drawables.BoxShadowRendererPool
+import com.snap.valdi.drawables.utils.BorderRadii
+import com.snap.valdi.extensions.ViewUtils
 import com.snap.valdi.logger.Logger
 import kotlin.math.PI
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -63,5 +69,45 @@ internal class ViewAttributesBinderTest {
         assertEquals(1.5f, view.scaleX, 0.001f)
         assertEquals(2.0f, view.scaleY, 0.001f)
         assertEquals(90.0f, view.rotation, 0.001f)
+    }
+
+    @Test
+    fun applyBorderRadiusWithoutAnimatorAfterAnimatedResetDoesNotThrow() {
+        val context = getApplicationContext<Context>()
+        val view = View(context)
+        val binder = makeBinder(context)
+
+        startAnimatedBorderRadiusReset(binder, view)
+
+        binder.applyBorderRadius(view, null, null)
+
+        assertNull(ViewUtils.getBorderRadii(view))
+    }
+
+    @Test
+    fun applyBorderRadiusWithoutAnimatorAfterAnimatedResetAppliesRadii() {
+        val context = getApplicationContext<Context>()
+        val view = View(context)
+        val binder = makeBinder(context)
+        val radii = BorderRadii(8.0f, 8.0f, 8.0f, 8.0f, false, false, false, false)
+
+        startAnimatedBorderRadiusReset(binder, view)
+
+        binder.applyBorderRadius(view, radii, null)
+
+        assertEquals(radii, ViewUtils.getBorderRadii(view))
+        assertNull(ViewUtils.getTransitionInfo(view)?.getValueAnimator(BORDER_RADIUS_KEY))
+    }
+
+    private fun startAnimatedBorderRadiusReset(binder: ViewAttributesBinder, view: View) {
+        binder.resetBorderRadius(view, ValdiInterpolatingAnimator(LinearInterpolator(), 300L, false))
+
+        val inFlight = ViewUtils.getTransitionInfo(view)?.getValueAnimator(BORDER_RADIUS_KEY)
+        assertNotNull(inFlight)
+        assertNull(inFlight!!.valueAnimation.additionalData)
+    }
+
+    private companion object {
+        const val BORDER_RADIUS_KEY = "BORDER_RADIUS_KEY"
     }
 }

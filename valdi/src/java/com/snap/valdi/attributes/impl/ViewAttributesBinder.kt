@@ -161,7 +161,8 @@ class ViewAttributesBinder(private val context: Context,
         if (animator == null) {
             val borderAnimator = ViewUtils.getTransitionInfo(view)?.getValueAnimator(BORDER_RADIUS_KEY)
             if (borderAnimator != null) {
-                val endValue = borderAnimator.valueAnimation.additionalData as BorderRadii
+                // Null when the running animation resets the radius (resetBorderRadius with an animator).
+                val endValue = borderAnimator.valueAnimation.additionalData as? BorderRadii
 
                 if (endValue == borderRadii) {
                     // If we are animating to those values, ignore this call and let the animation
