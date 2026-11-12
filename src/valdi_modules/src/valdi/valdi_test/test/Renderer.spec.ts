@@ -8,6 +8,7 @@ import { IRenderer } from 'valdi_core/src/IRenderer';
 import { IRendererDelegate } from 'valdi_core/src/IRendererDelegate';
 import { NodePrototype } from 'valdi_core/src/NodePrototype';
 import { Renderer } from 'valdi_core/src/Renderer';
+import { Style } from 'valdi_core/src/Style';
 import { RendererEventRecorder } from 'valdi_core/src/debugging/RendererEventRecorder';
 import { createReusableCallback } from 'valdi_core/src/utils/Callback';
 import { tryReuseCallback } from 'valdi_core/src/utils/CallbackInternal';
@@ -402,6 +403,48 @@ describe('Renderer', () => {
         ],
       },
     ]);
+  });
+
+  it('does not notify native when a recreated style array has the same entries', () => {
+    const output = new RendererTestDelegate();
+    const renderer = makeRenderer(output);
+    const node = makeNodeProtoype('view');
+    const baseStyle = new Style({ backgroundColor: 'red' });
+    const overrideStyle = new Style({ backgroundColor: 'blue' });
+
+    renderer.begin();
+    renderer.beginElement(node);
+    renderer.setAttribute('style', [baseStyle, overrideStyle]);
+    renderer.endElement();
+    renderer.end();
+
+    output.clear();
+
+    renderer.begin();
+    renderer.beginElement(node);
+    renderer.setAttribute('style', [baseStyle, overrideStyle]);
+    renderer.endElement();
+    renderer.end();
+
+    expect(output.requests).toEqual([]);
+  });
+
+  it('skips undefined entries in style arrays', () => {
+    const style = new Style({ backgroundColor: 'red' });
+    const renderStyleArray = (value: unknown) => {
+      const output = new RendererTestDelegate();
+      const renderer = makeRenderer(output);
+
+      renderer.begin();
+      renderer.beginElement(makeNodeProtoype('view'));
+      renderer.setAttribute('style', value);
+      renderer.endElement();
+      renderer.end();
+
+      return output.requests;
+    };
+
+    expect(renderStyleArray([undefined, style])).toEqual(renderStyleArray([style]));
   });
 
   it('can render forEach without keys', () => {

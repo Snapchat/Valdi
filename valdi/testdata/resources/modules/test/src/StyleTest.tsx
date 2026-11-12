@@ -2,12 +2,23 @@ import { Component } from 'valdi_core/src/Component';
 import { Style } from 'valdi_core/src/Style';
 import { View } from 'valdi_tsx/src/NativeTemplateElements';
 
-const rootStyle = new Style<View>({backgroundColor: 'red', scaleX: 0.5, scaleY: 0.75});
+const baseStyle = new Style<View>({ backgroundColor: 'red', scaleX: 0.5 });
+const overrideStyle = new Style<View>({ backgroundColor: 'blue', opacity: 0.25, scaleY: 0.75 });
 
-export class StyleTest extends Component {
+interface ViewModel {
+  includeOverride: boolean;
+  reverseStyles: boolean;
+  scaleY?: number;
+}
 
+export class StyleTest extends Component<ViewModel> {
   onRender() {
-    <view style={rootStyle}/>
-  }
+    const style = this.viewModel.includeOverride
+      ? this.viewModel.reverseStyles
+        ? [overrideStyle, baseStyle]
+        : [baseStyle, overrideStyle]
+      : [baseStyle];
 
+    <view style={style} scaleY={this.viewModel.scaleY} />;
+  }
 }

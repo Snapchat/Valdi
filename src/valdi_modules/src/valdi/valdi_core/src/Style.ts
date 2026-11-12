@@ -6,6 +6,8 @@ export type NativeStyle = number;
 
 export type StyleToNativeFunc = (attributes: PropertyList) => NativeStyle;
 
+export type StyleValue<T> = Style<T> | ReadonlyArray<Style<T> | undefined>;
+
 /**
  * A Style object holds a bag of attributes together and can
  * serialize them inside a native single object to avoid marshalling.
