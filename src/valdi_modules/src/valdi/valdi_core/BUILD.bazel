@@ -41,6 +41,7 @@ valdi_module(
     ios_module_name = "SCCValdiCore",
     ios_output_target = "release",
     single_file_codegen = True,
+    test_deps = ["//src/valdi_modules/src/valdi/jasmine"],
     visibility = ["//visibility:public"],
     web_deps = [":valdi_core_web"],
     web_register_native_module_id_overrides = {
@@ -51,7 +52,6 @@ valdi_module(
     },
     deps = [
         "//src/valdi_modules/src/valdi/coreutils",
-        "//src/valdi_modules/src/valdi/jasmine",
         "//src/valdi_modules/src/valdi/source_map",
         "//src/valdi_modules/src/valdi/valdi_tsx",
     ],

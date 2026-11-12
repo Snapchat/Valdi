@@ -6,7 +6,6 @@ cc_library(
     name = "client_sql_native_impl",
     srcs = ["native/ClientSQLNativeModuleFactory.cpp"],
     hdrs = ["native/ClientSQLNativeModuleFactory.hpp"],
-    alwayslink = 1,
     local_defines = select({
         "//bzl/conditions:ios": [],
         "//bzl/conditions:macos": [],
@@ -18,6 +17,7 @@ cc_library(
         "//bzl/valdi:clientsql_runtime_sqlite",
         "//valdi:valdi_runtime",
     ],
+    alwayslink = 1,
 )
 
 valdi_test(
@@ -63,6 +63,7 @@ valdi_module(
     ios_module_name = "SCCClientSQL",
     ios_output_target = "release",
     native_deps = ["//bzl/valdi:clientsql_native_implementation"],
+    test_deps = ["//src/valdi_modules/src/valdi/jasmine"],
     visibility = ["//visibility:public"],
     web_deps = [":client_sql_web"],
     web_register_native_module_id_overrides = {
@@ -75,10 +76,10 @@ valdi_module(
 
 filegroup(
     name = "clientsql_generator_test_data",
+    testonly = True,
     srcs = [
         "BUILD.bazel",
         "src/ClientSQLNative.d.ts",
     ],
-    testonly = True,
     visibility = ["//compiler/clientsql:__pkg__"],
 )

@@ -15,12 +15,14 @@ valdi_module(
     ios_module_name = "SCCValdiTest",
     ios_output_target = "debug",
     strings_dir = "strings",
-    visibility = ["//visibility:public"],
-    deps = [
+    test_deps = [
         "//src/valdi_modules/src/valdi/jasmine",
         "//src/valdi_modules/src/valdi/source_map",
-        "//src/valdi_modules/src/valdi/valdi_core",
         "//src/valdi_modules/src/valdi/valdi_standalone",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
         "//src/valdi_modules/src/valdi/valdi_tsx",
     ],
 )
