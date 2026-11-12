@@ -2,7 +2,7 @@ import * as ts from 'typescript';
 
 /**
  * Creates a TypeScript transformer that wraps console.log/warn/error/info/debug
- * call expressions in `if (runtime.isLoggingEnabled) { ... }` guards.
+ * call expressions in `if (__valdiRuntimeProvider.getValdiRuntime()?.isLoggingEnabled) { ... }` guards.
  *
  * This eliminates the cost of console logging in production builds:
  * - Argument evaluation at the call site is skipped
@@ -30,6 +30,8 @@ import * as ts from 'typescript';
  */
 
 const CONSOLE_METHODS = new Set(['log', 'warn', 'error', 'info', 'debug']);
+const RUNTIME_PROVIDER_MODULE = 'valdi_core/src/ValdiRuntimeProvider';
+const RUNTIME_PROVIDER_BINDING = '__valdiRuntimeProvider';
 
 /**
  * Returns true if the given CallExpression is a `console.X(...)` call
@@ -47,20 +49,44 @@ function isConsoleCall(node: ts.CallExpression): boolean {
 }
 
 /**
- * Creates the guard expression: `globalThis.runtime?.isLoggingEnabled`
+ * Creates the guard expression: `__valdiRuntimeProvider.getValdiRuntime()?.isLoggingEnabled`
  *
- * Uses optional chaining so modules that evaluate before the runtime is
- * initialized (e.g. during bootstrap) don't throw a TypeError.
+ * The runtime is looked up per call, not bound at module evaluation: on web,
+ * modules can evaluate before the host installs the runtime.
  */
 function createGuardExpression(factory: ts.NodeFactory): ts.Expression {
   return factory.createPropertyAccessChain(
-    factory.createPropertyAccessExpression(
-      factory.createIdentifier('globalThis'),
-      factory.createIdentifier('runtime'),
+    factory.createCallExpression(
+      factory.createPropertyAccessExpression(
+        factory.createIdentifier(RUNTIME_PROVIDER_BINDING),
+        factory.createIdentifier('getValdiRuntime'),
+      ),
+      undefined,
+      [],
     ),
     factory.createToken(ts.SyntaxKind.QuestionDotToken),
     factory.createIdentifier('isLoggingEnabled'),
   );
+}
+
+function createRuntimeProviderStatements(factory: ts.NodeFactory): ts.Statement[] {
+  const providerBinding = factory.createVariableStatement(
+    undefined,
+    factory.createVariableDeclarationList(
+      [
+        factory.createVariableDeclaration(
+          factory.createIdentifier(RUNTIME_PROVIDER_BINDING),
+          undefined,
+          undefined,
+          factory.createCallExpression(factory.createIdentifier('require'), undefined, [
+            factory.createStringLiteral(RUNTIME_PROVIDER_MODULE),
+          ]),
+        ),
+      ],
+      ts.NodeFlags.Const,
+    ),
+  );
+  return [providerBinding];
 }
 
 function unwrapParenthesizedExpression(node: ts.Expression): ts.Expression {
@@ -80,6 +106,7 @@ export function createConsoleLogTransformer(): ts.TransformerFactory<ts.SourceFi
     const factory = context.factory;
 
     return (sourceFile: ts.SourceFile): ts.SourceFile => {
+      let addedLoggingGuard = false;
       const visitor: ts.Visitor = (node: ts.Node): ts.Node => {
         const visitedNode = ts.visitEachChild(node, visitor, context);
 
@@ -89,7 +116,8 @@ export function createConsoleLogTransformer(): ts.TransformerFactory<ts.SourceFi
           ts.isCallExpression(visitedNode.expression) &&
           isConsoleCall(visitedNode.expression)
         ) {
-          // Wrap in: if (runtime.isLoggingEnabled) { <original statement> }
+          addedLoggingGuard = true;
+          // Wrap in: if (__valdiRuntimeProvider.getValdiRuntime()?.isLoggingEnabled) { <original statement> }
           return factory.createIfStatement(
             createGuardExpression(factory),
             factory.createBlock([visitedNode], /* multiLine */ true),
@@ -100,6 +128,7 @@ export function createConsoleLogTransformer(): ts.TransformerFactory<ts.SourceFi
         if (ts.isArrowFunction(visitedNode) && !ts.isBlock(visitedNode.body)) {
           const bodyExpression = unwrapParenthesizedExpression(visitedNode.body);
           if (ts.isCallExpression(bodyExpression) && isConsoleCall(bodyExpression)) {
+            addedLoggingGuard = true;
             const guardedCall = factory.createIfStatement(
               createGuardExpression(factory),
               factory.createBlock([factory.createExpressionStatement(bodyExpression)], /* multiLine */ true),
@@ -119,7 +148,14 @@ export function createConsoleLogTransformer(): ts.TransformerFactory<ts.SourceFi
         return visitedNode;
       };
 
-      return ts.visitNode(sourceFile, visitor) as ts.SourceFile;
+      const updatedSourceFile = ts.visitNode(sourceFile, visitor) as ts.SourceFile;
+      if (!addedLoggingGuard) {
+        return updatedSourceFile;
+      }
+      return factory.updateSourceFile(updatedSourceFile, [
+        ...createRuntimeProviderStatements(factory),
+        ...updatedSourceFile.statements,
+      ]);
     };
   };
 }

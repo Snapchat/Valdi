@@ -1,12 +1,13 @@
 module.path = "test/src/MyWorker";
 "use strict";
 var _a;
-if ((_a = globalThis.runtime) === null || _a === void 0 ? void 0 : _a.isLoggingEnabled) {
+const __valdiRuntimeProvider = require("valdi_core/src/ValdiRuntimeProvider");
+if ((_a = __valdiRuntimeProvider.getValdiRuntime()) === null || _a === void 0 ? void 0 : _a.isLoggingEnabled) {
     console.log('inside worker');
 }
 onmessage = () => {
     var _a;
-    if ((_a = globalThis.runtime) === null || _a === void 0 ? void 0 : _a.isLoggingEnabled) {
+    if ((_a = __valdiRuntimeProvider.getValdiRuntime()) === null || _a === void 0 ? void 0 : _a.isLoggingEnabled) {
         console.log('worker.onmessage');
     }
     postMessage('works');
