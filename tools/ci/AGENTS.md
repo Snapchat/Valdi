@@ -48,6 +48,23 @@ TypeScript dependency bump, which type-checks and unit specs do not cover.
 - A regenerated golden in a PR triggers a **Sensitive File Notice** comment so
   reviewers confirm the emit change is intended. See `compiler_goldens/README.md`.
 
+## API surface check
+
+`api_surface_tests.sh` runs in the `api-surface` job of `bzl-changes.yml` and in internal CI.
+It compares the tree against two baselines in `tools/api_surface/`:
+
+- `baseline.json`: the TypeScript surface (`NativeTemplateElements.d.ts`, `Component.ts`).
+  Removals fail; additions and changes only warn.
+- `native_baseline.json`: public Kotlin / Java / Objective-C / Swift classes and members that
+  native consumers subclass, bind, or call: view classes, attribute binders, and runtime entry
+  points (roots listed at the top of `extract_native_api.py`). It also records the attribute
+  names each class binds. A removed class or member, a changed declaration or signature, or a
+  dropped binding fails. Additions only warn.
+
+When a break is intentional, run `python3 tools/api_surface/check_api_surface.py . --update` and
+commit the regenerated baseline in the same PR, so reviewers see the break in the diff. To widen
+coverage, add a root to `extract_native_api.py` and regenerate.
+
 ## Native implementation check
 
 `native_impl_check.sh` is a static scan (no Bazel) that runs in the `api-surface` job of

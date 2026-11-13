@@ -9,6 +9,10 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 cd "$ROOT_DIR"
 
+echo "=== Valdi API Surface Check: unit tests ==="
+python3 -m unittest discover -s tools/api_surface -p 'test_*.py'
+echo
+
 echo "=== Valdi API Surface Check ==="
 echo "Comparing current API against baseline..."
 echo
