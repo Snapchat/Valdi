@@ -1,0 +1,32 @@
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+# Synthetic SVG and PNG inputs for the compiler's image pipeline (resvg rendering, image_toolbox
+# resizing, pngquant). Building :test runs every file in res/ through the compiler, so a toolchain
+# change that starts rejecting one of them fails tools/ci/test_modules.sh. See README.md.
+# Test-only: private so it can't become a dep of the HelloWorld app and ship these assets.
+valdi_module(
+    name = "asset_corpus",
+    srcs = glob([
+        "src/**/*.ts",
+        "test/**/*.ts",
+    ]) + [
+        "tsconfig.json",
+    ],
+    android_output_target = "release",
+    compilation_mode = "js",
+    ios_module_name = "SCCAssetCorpus",
+    ios_output_target = "release",
+    res = glob([
+        "res/**/*.png",
+        "res/**/*.svg",
+    ]),
+    test_deps = [
+        "//src/valdi_modules/src/valdi/jasmine",
+        "//src/valdi_modules/src/valdi/valdi_test",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <style type="text/css"><![CDATA[
+    .bg { fill: #f1faee; }
+    .shape { fill: #e63946; stroke: #1d3557; stroke-width: 2px; }
+    #accent { fill: #a8dadc; opacity: .8 }
+    g.group > rect { fill: #457b9d; }
+    circle:first-child { fill: #1d3557 }
+    rect[data-kind="tag"] { fill: rgb(255, 183, 3); }
+  ]]></style>
+  <style>
+    @media (min-width: 1px) { .media { fill: #2a9d8f } }
+  </style>
+  <rect class="bg" width="48" height="48"/>
+  <circle class="shape" cx="14" cy="14" r="8"/>
+  <rect id="accent" x="26" y="6" width="16" height="16"/>
+  <g class="group">
+    <circle cx="10" cy="36" r="4"/>
+    <rect x="18" y="30" width="10" height="12"/>
+  </g>
+  <rect data-kind="tag" x="32" y="30" width="10" height="5"/>
+  <rect class="media" x="32" y="38" width="10" height="5" style="stroke:#000;stroke-dasharray:2 1"/>
+</svg>
