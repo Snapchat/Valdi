@@ -196,8 +196,7 @@ describe('DebuggerInputMessageHandler', () => {
     expect(getRootVirtualNode).not.toHaveBeenCalled();
   });
 
-  // Skipped on Hermes, the default engine: the Error subclasses thrown by the handler reach the catch with an empty message.
-  xit('returns a structured failure for a cyclic direct-ID parent chain', async () => {
+  it('returns a structured failure for a cyclic direct-ID parent chain', async () => {
     const first = new TestElement(72, 'view', {});
     const second = new TestElement(73, 'view', {});
     first.parent = second.asRenderedElement();
@@ -226,8 +225,7 @@ describe('DebuggerInputMessageHandler', () => {
     expect(getRootVirtualNode).not.toHaveBeenCalled();
   });
 
-  // Skipped on Hermes, the default engine: the Error subclasses thrown by the handler reach the catch with an empty message.
-  xit('returns a structured failure for an over-deep direct-ID parent chain', async () => {
+  it('returns a structured failure for an over-deep direct-ID parent chain', async () => {
     const target = new TestElement(74, 'view', {});
     let child = target;
     for (let index = 0; index < 20001; index += 1) {
@@ -343,8 +341,7 @@ describe('DebuggerInputMessageHandler', () => {
     ]);
   });
 
-  // Skipped on Hermes, the default engine: the Error subclasses thrown by the handler reach the catch with an empty message.
-  xit('shares one work budget between virtual nodes and off-tree parents', async () => {
+  it('shares one work budget between virtual nodes and off-tree parents', async () => {
     const target = new TestElement(75, 'view', { accessibilityId: 'globally-bounded' });
     let child = target;
     for (let index = 0; index < 10000; index += 1) {
@@ -372,8 +369,7 @@ describe('DebuggerInputMessageHandler', () => {
     );
   });
 
-  // Skipped on Hermes, the default engine: the Error subclasses thrown by the handler reach the catch with an empty message.
-  xit('returns a structured failure when selector traversal exceeds its node budget', async () => {
+  it('returns a structured failure when selector traversal exceeds its node budget', async () => {
     let root = makeNode(undefined, []);
     for (let index = 0; index < 20001; index += 1) {
       root = makeNode(undefined, [root]);
@@ -390,8 +386,7 @@ describe('DebuggerInputMessageHandler', () => {
     expect(response['message']).toBe('Debugger input traversal exceeds the 20000-node work limit.');
   });
 
-  // Skipped on Hermes, the default engine: the Error subclasses thrown by the handler reach the catch with an empty message.
-  xit('rejects an over-wide tree before reading or queuing its children', async () => {
+  it('rejects an over-wide tree before reading or queuing its children', async () => {
     let childReadCount = 0;
     const children = new Proxy([] as IRenderedVirtualNode[], {
       get(target, property): unknown {
@@ -418,8 +413,7 @@ describe('DebuggerInputMessageHandler', () => {
     expect(childReadCount).toBe(0);
   });
 
-  // Skipped on Hermes, the default engine: the Error subclasses thrown by the handler reach the catch with an empty message.
-  xit('rejects cyclic virtual trees without revisiting a node', async () => {
+  it('rejects cyclic virtual trees without revisiting a node', async () => {
     const root = makeNode(undefined, []);
     root.children.push(root);
     const renderer = {
@@ -1092,8 +1086,7 @@ describe('DebuggerInputMessageHandler', () => {
     expect(readOnlyInput.getAttribute('value')).toBe('read only');
   });
 
-  // Skipped on Hermes, the default engine: the Error subclasses thrown by the handler reach the catch with an empty message.
-  xit('returns structured failures when app-owned input callbacks throw', async () => {
+  it('returns structured failures when app-owned input callbacks throw', async () => {
     const makeThrowingCallback = (name: string) => () => {
       throw new Error(`${name} failed`);
     };
@@ -1148,6 +1141,34 @@ describe('DebuggerInputMessageHandler', () => {
       );
     }
     expect(changeInput.getAttribute('value')).toBe('changed');
+  });
+
+  it('reports the selected descendant as elementId when an ancestor onTap throws', async () => {
+    const button = new TestElement(87, 'view', {
+      accessibilityId: 'throwing-button',
+      onTap: () => {
+        throw new Error('onTap failed');
+      },
+    });
+    const label = new TestElement(88, 'label', { accessibilityId: 'button-label', value: 'Send' });
+    label.parent = button.asRenderedElement();
+    button.children.push(label.asRenderedElement());
+    const handler = makeHandler(makeNode(undefined, [makeNode(button, [makeNode(label, [])])]));
+
+    const response = await send(handler, {
+      type: DebuggerInputType.Tap,
+      contextId: 'context-1',
+      accessibilityId: 'button-label',
+    });
+
+    expect(response).toEqual(
+      jasmine.objectContaining({
+        handled: false,
+        elementId: 88,
+        actionElementId: 87,
+        message: 'Element 87 onTap callback failed: onTap failed',
+      }),
+    );
   });
 
   it('keeps internal input mutation failures loud', async () => {
