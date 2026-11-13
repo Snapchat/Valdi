@@ -304,13 +304,23 @@ void RuntimeManager::attachHotReloader(const Ref<Runtime>& runtime) {
     }
 }
 
+static void applyYogaTweaks(YGConfig* yogaConfig, const ValdiRuntimeTweaks* runtimeTweaks) {
+    YGConfigSetExperimentalFeatureEnabled(yogaConfig,
+                                          YGExperimentalFeatureFixFlexBasisFitContent,
+                                          runtimeTweaks != nullptr ? runtimeTweaks->enableFixFlexBasisFitContent() :
+                                                                     false);
+}
+
 Ref<ViewManagerContext> RuntimeManager::createViewManagerContext(
-    IViewManager& viewManager, bool enablePreloading, const Ref<MainThreadManager>& mainThreadManagerOverride) {
+    IViewManager& viewManager,
+    bool enablePreloading,
+    const Ref<MainThreadManager>& mainThreadManagerOverride,
+    const Shared<YGConfig>& yogaConfigOverride) {
     auto viewManagerContext = makeShared<ViewManagerContext>(
         viewManager,
         _attributeIds,
         _colorPaletteManager,
-        _yogaConfig,
+        yogaConfigOverride != nullptr ? yogaConfigOverride : _yogaConfig,
         enablePreloading,
         mainThreadManagerOverride != nullptr ? mainThreadManagerOverride : _mainThreadManager,
         *_logger);
@@ -321,6 +331,11 @@ Ref<ViewManagerContext> RuntimeManager::createViewManagerContext(
     {
         std::lock_guard<Mutex> guard(_mutex);
         runtimeTweaks = _runtimeTweaks;
+    }
+
+    if (yogaConfigOverride != nullptr) {
+        applyYogaTweaks(yogaConfigOverride.get(), runtimeTweaks.get());
+        _yogaConfigOverrides.emplace_back(yogaConfigOverride);
     }
 
     // Seed the kill switch from the current tweaks so contexts created after the provider is set pick
@@ -660,10 +675,15 @@ void RuntimeManager::setTweakValueProvider(const Shared<ITweakValueProvider>& tw
 
     _anrDetector->setNudgeEnabled(runtimeTweaks != nullptr ? runtimeTweaks->shouldNudgeJSThread() : false);
 
-    YGConfigSetExperimentalFeatureEnabled(_yogaConfig.get(),
-                                          YGExperimentalFeatureFixFlexBasisFitContent,
-                                          runtimeTweaks != nullptr ? runtimeTweaks->enableFixFlexBasisFitContent() :
-                                                                     false);
+    applyYogaTweaks(_yogaConfig.get(), runtimeTweaks.get());
+    for (auto it = _yogaConfigOverrides.begin(); it != _yogaConfigOverrides.end();) {
+        if (auto yogaConfigOverride = it->lock()) {
+            applyYogaTweaks(yogaConfigOverride.get(), runtimeTweaks.get());
+            ++it;
+        } else {
+            it = _yogaConfigOverrides.erase(it);
+        }
+    }
 
     auto disableAnimationRemoveOnCompleteIos =
         runtimeTweaks != nullptr ? runtimeTweaks->disableAnimationRemoveOnCompleteIos() : false;

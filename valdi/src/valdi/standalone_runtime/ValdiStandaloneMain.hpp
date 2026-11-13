@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "valdi_core/cpp/Context/PlatformType.hpp"
 #include "valdi_core/cpp/Interfaces/ILogger.hpp"
 #include "valdi_core/cpp/Utils/StringBox.hpp"
 #include <memory>
@@ -15,7 +16,7 @@
 namespace snap::valdi_core {
 class HTTPRequestManager;
 class ModuleFactoriesProvider;
-}
+} // namespace snap::valdi_core
 
 namespace Valdi {
 class IJavaScriptBridge;
@@ -35,6 +36,8 @@ struct StandaloneArguments {
     bool enableDebuggerService = false;
     bool enableHotReloader = false;
     bool enableTSN = false;
+    // The platform the JS runtime is told it runs on. CLI applications built for a terminal pass macOS or Linux.
+    PlatformType platformType = PlatformTypeIOS;
 };
 
 Ref<ValdiStandaloneRuntime> createValdiStandaloneRuntime(const StandaloneArguments& arguments);

@@ -897,10 +897,14 @@ JSValueRef JavaScriptRuntime::runtimeGetBackendRenderingTypeForContextId(JSFunct
     static constexpr int32_t kBackendRenderingTypeIOS = 1;
     static constexpr int32_t kBackendRenderingTypeAndroid = 2;
     static constexpr int32_t kBackendRenderingTypeSnapDrawing = 3;
+    static constexpr int32_t kBackendRenderingTypeTerminal = 4;
 
     int32_t result;
-    if (viewManagerContext->getViewManager().getRenderingBackendType() == RenderingBackendTypeSnapDrawing) {
+    const auto backendType = viewManagerContext->getViewManager().getRenderingBackendType();
+    if (backendType == RenderingBackendTypeSnapDrawing) {
         result = kBackendRenderingTypeSnapDrawing;
+    } else if (backendType == RenderingBackendTypeTerminal) {
+        result = kBackendRenderingTypeTerminal;
     } else {
         switch (viewManagerContext->getViewManager().getPlatformType()) {
             case PlatformTypeAndroid:
@@ -4222,10 +4226,8 @@ void JavaScriptRuntime::onInterrupt(IJavaScriptContext& jsContext) {
         auto stackTraceString = stacktrace->getStackTrace();
         // The bundle named by the stack only feeds ANR reporting, so it rides the same gate as the breadcrumbs.
         auto stackBundleName = anrDiagnosticsEnabled() ? stacktrace->getStackBundleName() : StringBox();
-        captureSession->setCapturedStacktrace(JavaScriptCapturedStacktrace(JavaScriptCapturedStacktrace::Status::RUNNING,
-                                                                           stackTraceString,
-                                                                           Context::currentRef(),
-                                                                           stackBundleName));
+        captureSession->setCapturedStacktrace(JavaScriptCapturedStacktrace(
+            JavaScriptCapturedStacktrace::Status::RUNNING, stackTraceString, Context::currentRef(), stackBundleName));
     }
 }
 

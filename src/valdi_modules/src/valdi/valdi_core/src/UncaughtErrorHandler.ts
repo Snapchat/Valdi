@@ -90,6 +90,14 @@ export function setCatchAllUncaughtErrorHandler(errorHandler: UncaughtErrorHandl
 }
 
 /**
+ * The catch all error handler currently set with {@link setCatchAllUncaughtErrorHandler}, if any.
+ * Lets a caller install a temporary handler and restore the previous one afterwards.
+ */
+export function getCatchAllUncaughtErrorHandler(): UncaughtErrorHandler | undefined {
+  return errorHandlersProvider.catchAllErrorHandler;
+}
+
+/**
  * Register an error handler for the given contextId. The handler will be called
  * whenever an uncaught exception or an unhandled rejected promise is found.
  * @returns a dispose function, which should be called to unregister the error handler

@@ -64,6 +64,7 @@ export const enum BackendRenderingType {
   IOS = 1,
   ANDROID = 2,
   SNAP_DRAWING = 3,
+  TERMINAL = 4,
 }
 
 export type AssetEntry = Asset | string;
