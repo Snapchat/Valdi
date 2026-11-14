@@ -61,6 +61,12 @@ namespace snap::valdi_modules::binding_lang_both {
 
     virtual double count() = 0;
 
+    virtual double greetUser(Valdi::StringBox user) = 0;
+
+    virtual std::optional<double> lastGreeting() = 0;
+
+    virtual bool lastWasFormal() = 0;
+
     static Valdi::RegisteredCppGeneratedClass *getRegisteredClass();
 
     static void unmarshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Value &value, Valdi::Ref<IGreeter> &out);

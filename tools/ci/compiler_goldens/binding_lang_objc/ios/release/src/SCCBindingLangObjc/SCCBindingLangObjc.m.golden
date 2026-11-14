@@ -142,6 +142,9 @@ static id SCValdiBlockCreateOOOI_o(SCValdiBlockTrampoline trampoline) {
     static const SCValdiMarshallableObjectFieldDescriptor kFields[] = {
         {.name = "greet", .selName = "greetWithName:style:", .type = "f|m|(s, r<e>:'[0]'): s"},
         {.name = "count", .selName = "count", .type = "f|m|(): d"},
+        {.name = "greetUser", .selName = "greetUserWithUser:", .type = "f|m|(s): d"},
+        {.name = "lastGreeting", .selName = "lastGreeting", .type = "f|m|(): d@?"},
+        {.name = "lastWasFormal", .selName = "lastWasFormal", .type = "f|m|(): b"},
         {.name = nil},
     };
     static const char *const kIdentifiers[] = {

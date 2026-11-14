@@ -254,6 +254,10 @@ final class InterfaceFlattener {
             translate(type: union, fromReferences: fromReferences, mergeReference: mergeReference)
         }
 
+        let translatedIntersections = type.intersections?.map { intersection in
+            translate(type: intersection, fromReferences: fromReferences, mergeReference: mergeReference)
+        }
+
         let translatedArray = type.array.map { arrayType in
             translate(type: arrayType, fromReferences: fromReferences, mergeReference: mergeReference)
         }
@@ -273,6 +277,7 @@ final class InterfaceFlattener {
                              leadingComments: nil,
                              function: translatedFunction,
                              unions: translatedUnions,
+                             intersections: translatedIntersections,
                              typeReferenceIndex: translatedTypeReferenceIndex,
                              array: translatedArray,
                              typeArguments: translatedTypeArguments,

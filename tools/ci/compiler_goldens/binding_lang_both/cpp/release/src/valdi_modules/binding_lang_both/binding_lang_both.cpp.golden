@@ -41,6 +41,9 @@ namespace snap::valdi_modules::binding_lang_both {
     public:
     using GreetFn = Valdi::Function<Valdi::StringBox(Valdi::StringBox, Greeting)>;
     using CountFn = Valdi::Function<double()>;
+    using GreetUserFn = Valdi::Function<double(Valdi::StringBox)>;
+    using LastGreetingFn = Valdi::Function<std::optional<double>()>;
+    using LastWasFormalFn = Valdi::Function<bool()>;
 
     IGreeterProxy() = default;
     ~IGreeterProxy() override = default;
@@ -53,15 +56,30 @@ namespace snap::valdi_modules::binding_lang_both {
       return _count();
     }
 
+    double greetUser(Valdi::StringBox user) final {
+      return _greetUser(user);
+    }
+
+    std::optional<double> lastGreeting() final {
+      return _lastGreeting();
+    }
+
+    bool lastWasFormal() final {
+      return _lastWasFormal();
+    }
+
     static void unmarshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Value &value, Valdi::Ref<IGreeterProxy> &out) {
       out = Valdi::makeShared<IGreeterProxy>();
       auto &self = *out;
-      Valdi::CppMarshaller::unmarshallTypedObject(exceptionTracker, *getRegisteredClass(), value, self._greet, self._count);
+      Valdi::CppMarshaller::unmarshallTypedObject(exceptionTracker, *getRegisteredClass(), value, self._greet, self._count, self._greetUser, self._lastGreeting, self._lastWasFormal);
     }
 
     private:
     GreetFn _greet;
     CountFn _count;
+    GreetUserFn _greetUser;
+    LastGreetingFn _lastGreeting;
+    LastWasFormalFn _lastWasFormal;
   };
 
   IGreeter::IGreeter(): Valdi::CppGeneratedInterface(getRegisteredClass()) {
@@ -73,12 +91,12 @@ namespace snap::valdi_modules::binding_lang_both {
 
   void IGreeter::marshall(Valdi::ExceptionTracker &exceptionTracker, const Valdi::Ref<IGreeter> &value, Valdi::Value &out) {
     Valdi::CppMarshaller::marshallProxyObject(exceptionTracker, *getRegisteredClass(), *value, out, [&]() {
-      Valdi::CppMarshaller::marshallTypedObject(exceptionTracker, *getRegisteredClass(), out, Valdi::CppMarshaller::methodToFunction<IGreeter, &IGreeter::greet>(value), Valdi::CppMarshaller::methodToFunction<IGreeter, &IGreeter::count>(value));
+      Valdi::CppMarshaller::marshallTypedObject(exceptionTracker, *getRegisteredClass(), out, Valdi::CppMarshaller::methodToFunction<IGreeter, &IGreeter::greet>(value), Valdi::CppMarshaller::methodToFunction<IGreeter, &IGreeter::count>(value), Valdi::CppMarshaller::methodToFunction<IGreeter, &IGreeter::greetUser>(value), Valdi::CppMarshaller::methodToFunction<IGreeter, &IGreeter::lastGreeting>(value), Valdi::CppMarshaller::methodToFunction<IGreeter, &IGreeter::lastWasFormal>(value));
     });
   }
 
   Valdi::RegisteredCppGeneratedClass *IGreeter::getRegisteredClass() {
-    static auto *kRegisteredClass = Valdi::CppGeneratedClass::registerSchema("c+ 'snap::valdi_modules::binding_lang_both::IGreeter'{'greet':f|m|(s, r<e>:'[0]'): s, 'count':f|m|(): d}", []() -> Valdi::TypeReferencesVec {
+    static auto *kRegisteredClass = Valdi::CppGeneratedClass::registerSchema("c+ 'snap::valdi_modules::binding_lang_both::IGreeter'{'greet':f|m|(s, r<e>:'[0]'): s, 'count':f|m|(): d, 'greetUser':f|m|(s): d, 'lastGreeting':f|m|(): d@?, 'lastWasFormal':f|m|(): b}", []() -> Valdi::TypeReferencesVec {
       return {::snap::valdi_modules::binding_lang_both::getRegisteredEnumClass(static_cast<const Greeting *>(nullptr))};
     });
 

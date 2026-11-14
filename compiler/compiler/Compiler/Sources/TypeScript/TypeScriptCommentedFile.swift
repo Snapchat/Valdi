@@ -39,6 +39,15 @@ class TypeScriptCommentedFile {
                                                                                          fileContent: fileContent)
     }
 
+    /// Builds a commented file from an already dumped symbol list without going through the TypeScript compiler.
+    init(src: TypeScriptItemSrc, fileContent: String, dumpedSymbols: [TS.DumpedSymbolWithComments], references: [TS.AST.TypeReference]) {
+        self.src = src
+        self.fileContent = fileContent
+        self.linesIndexer = LinesIndexer(str: fileContent)
+        self.references = references
+        self.annotatedSymbols = dumpedSymbols.map { TypeScriptAnnotatedSymbol(symbol: $0) }
+    }
+
     private static func resolveSymbolsAndAnnotations(_ dumpedSymbolWithCommentsResult: [TS.DumpedSymbolWithComments], typeScriptCompiler: TypeScriptCompiler, fileContent: String) throws -> [TypeScriptAnnotatedSymbol] {
         return try dumpedSymbolWithCommentsResult.map { dumpedSymbol in
             let annotatedSymbol = TypeScriptAnnotatedSymbol(symbol: dumpedSymbol)

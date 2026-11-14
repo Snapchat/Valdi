@@ -145,6 +145,46 @@ final class TypeScriptNativeTypeExporter {
         throw CompilerError("Unrecognized type '\(name)'. Only annotated types can be exported.")
     }
 
+    private func typeDescription(type: TS.AST.TSType, references: [TS.AST.TypeReference]) -> String {
+        if let typeReferenceIndex = type.typeReferenceIndex, typeReferenceIndex >= 0 && typeReferenceIndex < references.count {
+            return references[typeReferenceIndex].name
+        }
+        return type.name
+    }
+
+    private func primitiveTypeName(type: TS.AST.TSType, references: [TS.AST.TypeReference]) -> String? {
+        guard let typeReferenceIndex = type.typeReferenceIndex else {
+            return ["string", "number", "boolean"].contains(type.name) ? type.name : nil
+        }
+        guard typeReferenceIndex >= 0 && typeReferenceIndex < references.count else {
+            return nil
+        }
+        // The companion resolves primitives to their lib wrapper types; a user type with the same name is not one.
+        let typeReference = references[typeReferenceIndex]
+        let libFileName = URL(fileURLWithPath: typeReference.fileName).lastPathComponent
+        guard libFileName.hasPrefix("lib.") && libFileName.hasSuffix(".d.ts") else {
+            return nil
+        }
+        switch typeReference.name {
+        case "String":
+            return "string"
+        case "Number":
+            return "number"
+        case "Boolean":
+            return "boolean"
+        default:
+            return nil
+        }
+    }
+
+    private func brandedPrimitiveTypeName(type: TS.AST.TSType, references: [TS.AST.TypeReference]) -> String? {
+        guard let intersections = type.intersections else {
+            return nil
+        }
+        let primitiveTypeNames = Set(intersections.compactMap { primitiveTypeName(type: $0, references: references) })
+        return primitiveTypeNames.count == 1 ? primitiveTypeNames.first : nil
+    }
+
     private func resolveType(type: TS.AST.TSType, references: [TS.AST.TypeReference]) throws -> ValdiModelPropertyType {
         var annotations: [ValdiTypeScriptAnnotation]? = nil
         if let leadingComments = type.leadingComments {
@@ -196,12 +236,12 @@ final class TypeScriptNativeTypeExporter {
 
             let typeReference = references[typeReferenceIndex]
 
-            if typeReference.name == "Uint8Array" {
+            if let primitiveTypeName = primitiveTypeName(type: type, references: references) {
+                return try resolveType(type: TS.AST.TSType(name: primitiveTypeName), references: references)
+            } else if typeReference.name == "Uint8Array" {
                 return .bytes
             } else if typeReference.name == "Long" {
                 return .long
-            } else if typeReference.name == "Number" {
-                return .double
             } else if typeReference.name == "Promise" || typeReference.name == "CancelablePromise" {
                 guard let typeArgument = type.typeArguments?.first else {
                     throw CompilerError("Promise types should have a single type argument")
@@ -255,31 +295,38 @@ final class TypeScriptNativeTypeExporter {
         }
 
         if let unions = type.unions {
-            var resolvedType: ValdiModelPropertyType?
-            var isOptional = false
+            let isNullish = { (member: TS.AST.TSType) in member.name == "null" || member.name == "undefined" }
+            let isOptional = unions.contains(where: isNullish)
+            var members = unions.filter { !isNullish($0) }
 
-            for union in unions {
-                if union.name == "null" || union.name == "undefined" {
-                    isOptional = true
-                } else {
-                    guard resolvedType == nil else {
-                        let desc = unions.map { $0.name }.joined(separator: " | ")
-                        throw CompilerError("Union types are only supported with null or undefined (got \(desc)")
-                    }
-
-                    resolvedType = try resolveType(type: union, references: references)
-                }
+            // TypeScript distributes `boolean & Brand` into `(true & Brand) | (false & Brand)`.
+            let brandedPrimitiveTypeNames = Set(members.map { brandedPrimitiveTypeName(type: $0, references: references) })
+            if members.count > 1, brandedPrimitiveTypeNames.count == 1, !brandedPrimitiveTypeNames.contains(nil) {
+                members = [members[0]]
             }
 
-            guard let type = resolvedType else {
+            guard members.count <= 1 else {
+                let desc = unions.map { $0.name }.joined(separator: " | ")
+                throw CompilerError("Union types are only supported with null or undefined (got \(desc)")
+            }
+            guard let member = members.first else {
                 let desc = unions.map { $0.name }.joined(separator: " | ")
                 throw CompilerError("Could not resolve type in union '\(desc)'")
             }
-            if isOptional {
-                return .nullable(type)
+
+            let resolvedType = try resolveType(type: member, references: references)
+            return isOptional ? .nullable(resolvedType) : resolvedType
+        }
+
+        if let intersections = type.intersections {
+            // Branded primitives like `number & { __brand: 'Id' }` only exist at compile time, so only the
+            // primitive member crosses the bridge. Non-primitive members are ignored whatever their shape.
+            guard let primitiveTypeName = brandedPrimitiveTypeName(type: type, references: references) else {
+                let desc = intersections.map { typeDescription(type: $0, references: references) }.joined(separator: " & ")
+                throw CompilerError("Intersection types are only supported with exactly one string, number or boolean member (got \(desc))")
             }
 
-            return type
+            return try resolveType(type: TS.AST.TSType(name: primitiveTypeName), references: references)
         }
 
         let typeName = type.name
