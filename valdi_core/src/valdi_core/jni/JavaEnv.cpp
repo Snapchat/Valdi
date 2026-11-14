@@ -7,7 +7,6 @@
 //
 
 #include "valdi_core/jni/JavaEnv.hpp"
-#include "utils/platform/JvmUtils.hpp"
 #include "valdi_core/cpp/Constants.hpp"
 #include "valdi_core/jni/JNIConstants.hpp"
 #include "valdi_core/jni/JavaCache.hpp"
@@ -62,7 +61,7 @@ JNIEnv* JavaEnv::getUnsafeEnv() {
         return env;
     }
 
-    env = snap::utils::platform::getEnv();
+    env = djinni::jniGetThreadEnv();
     attachedEnv = env;
     return env;
 }
