@@ -45,6 +45,13 @@ public:
     void bindAttributes(const StringBox& className, Valdi::AttributesBindingContext& binder) override;
 
     void setRegisterCustomAttributes(bool registerCustomAttributes);
+
+    /**
+     * Test-only: registers an untyped dummy attribute on the given view class, which shadows any layout attribute
+     * of the same name. Has no effect unless custom attributes are registered, and must be called before the first
+     * view tree resolves the class because bound attributes are cached per class.
+     */
+    void addDummyAttribute(const StringBox& className, const StringBox& attributeName);
     void setKeepAttributesHistory(bool keepAttributesHistory);
     void setAlwaysRenderInMainThread(bool alwaysRenderInMainThread);
     void setManagesChildFramesForClass(const StringBox& className, bool managesChildFrames);
@@ -65,6 +72,7 @@ private:
     bool _allowViewPooling = false;
     bool _alwaysRenderInMainThread = false;
     FlatSet<StringBox> _managedChildFrameClasses;
+    FlatMap<StringBox, std::vector<StringBox>> _extraDummyAttributes;
 };
 
 } // namespace Valdi
