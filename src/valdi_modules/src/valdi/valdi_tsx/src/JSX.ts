@@ -1,5 +1,6 @@
 import { IComponentBase } from './IComponentBase';
 import { IRenderedComponentHolder } from './IRenderedComponentHolder';
+import { IStyle } from './IStyle';
 import {
   AnimatedImage,
   BlurView,
@@ -36,26 +37,31 @@ interface Slotted extends ContainerTemplateElement {
   slot?: string;
 }
 
+// Input-only: element interfaces keep a single IStyle so getAttribute('style') stays typed.
+type WithStyleArray<T extends { style?: IStyle<any> }> = Omit<T, 'style'> & {
+  style?: T['style'] | ReadonlyArray<NonNullable<T['style']> | undefined>;
+};
+
 declare global {
   export namespace JSX {
     export interface IntrinsicElements {
-      view: View;
-      layout: Layout;
-      scroll: ScrollView;
-      shape: ShapeView;
-      label: Label;
-      image: ImageView;
-      video: VideoView;
-      webview: WebViewElement;
-      textfield: TextField;
-      textview: TextView;
-      textanimationgroup: TextAnimationGroup;
-      blur: BlurView;
-      glass: GlassView;
+      view: WithStyleArray<View>;
+      layout: WithStyleArray<Layout>;
+      scroll: WithStyleArray<ScrollView>;
+      shape: WithStyleArray<ShapeView>;
+      label: WithStyleArray<Label>;
+      image: WithStyleArray<ImageView>;
+      video: WithStyleArray<VideoView>;
+      webview: WithStyleArray<WebViewElement>;
+      textfield: WithStyleArray<TextField>;
+      textview: WithStyleArray<TextView>;
+      textanimationgroup: WithStyleArray<TextAnimationGroup>;
+      blur: WithStyleArray<BlurView>;
+      glass: WithStyleArray<GlassView>;
       slot: Slot;
       slotted: Slotted;
-      spinner: SpinnerView;
-      animatedimage: AnimatedImage;
+      spinner: WithStyleArray<SpinnerView>;
+      animatedimage: WithStyleArray<AnimatedImage>;
       'custom-view': CustomView | DeferredCustomView | { [key: string]: unknown };
     }
 

@@ -231,6 +231,66 @@ describe('AttributesApplier', () => {
     expect(applier.setAttribute('style', { attributes: { width: 20 } })).toBe(AttributeSetResult.Unchanged);
   });
 
+  it('resolves ordered style arrays so later styles win', () => {
+    const applier = new AttributesApplier(1, new TestElementClass());
+    const base = { attributes: { width: 10, paintOnly: 'base' } };
+    const override = { attributes: { width: 20 } };
+
+    applier.setAttribute('style', [base, override]);
+    expect(applier.getAttribute('width')).toBe(20);
+    expect(applier.getAttribute('paintOnly')).toBe('base');
+
+    applier.setAttribute('style', [override, base]);
+    expect(applier.getAttribute('width')).toBe(10);
+  });
+
+  it('keeps earlier style values when a later style sets undefined', () => {
+    const applier = new AttributesApplier(1, new TestElementClass());
+
+    applier.setAttribute('style', [{ attributes: { width: 10 } }, { attributes: { width: undefined } }]);
+    expect(applier.getAttribute('width')).toBe(10);
+  });
+
+  it('skips undefined entries in ordered style arrays', () => {
+    const applier = new AttributesApplier(1, new TestElementClass());
+
+    applier.setAttribute('style', [undefined, { attributes: { width: 10 } }]);
+    expect(applier.getAttribute('width')).toBe(10);
+  });
+
+  it('removes attributes dropped from an ordered style array', () => {
+    const applier = new AttributesApplier(1, new TestElementClass());
+    const first = { attributes: { width: 10 } };
+    const second = { attributes: { paintOnly: 'second' } };
+
+    applier.setAttribute('style', [first, second]);
+    expect(applier.getAttribute('width')).toBe(10);
+
+    applier.setAttribute('style', [second]);
+    expect(applier.getAttribute('width')).toBeUndefined();
+    expect(applier.getAttribute('paintOnly')).toBe('second');
+  });
+
+  it('treats an ordered style array with stable elements as unchanged', () => {
+    const applier = new AttributesApplier(1, new TestElementClass());
+    const first = { attributes: { width: 10 } };
+    const second = { attributes: { width: 20 } };
+
+    expect(applier.setAttribute('style', [first, second])).toBe(AttributeSetResult.ChangedAndInvalidatesLayout);
+    expect(applier.setAttribute('style', [first, second])).toBe(AttributeSetResult.Unchanged);
+    expect(applier.setAttribute('style', [first, second, first])).toBe(AttributeSetResult.ChangedAndInvalidatesLayout);
+  });
+
+  it('keeps direct attributes above ordered style array values', () => {
+    const applier = new AttributesApplier(1, new TestElementClass());
+
+    applier.setAttribute('width', 5);
+    expect(applier.setAttribute('style', [{ attributes: { width: 10 } }, { attributes: { width: 20 } }])).toBe(
+      AttributeSetResult.Unchanged,
+    );
+    expect(applier.getAttribute('width')).toBe(5);
+  });
+
   it('synchronizes external values without applying them back to the element', () => {
     const appliedValues: unknown[] = [];
     const binder = new AttributesBinder<HTMLElement>();
