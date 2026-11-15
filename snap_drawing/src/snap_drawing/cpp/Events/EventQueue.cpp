@@ -8,15 +8,18 @@
 #include "snap_drawing/cpp/Events/EventQueue.hpp"
 #include <algorithm>
 
-#include "utils/debugging/Assert.hpp"
-
 namespace snap::drawing {
 
 EventQueue::EventQueue(TimePoint initialTime) : _lastTime(initialTime) {}
 
 void EventQueue::flush(TimePoint currentTime) {
+    // Platform frame times can step backwards: Android's Choreographer subtracts a frame interval
+    // from callback times during buffer stuffing recovery without re-checking monotonicity.
+    // Treat a backwards step as no elapsed time so animations never run in reverse.
+    if (currentTime < _lastTime) {
+        currentTime = _lastTime;
+    }
     auto delta = currentTime - _lastTime;
-    SC_ASSERT(delta.seconds() >= 0);
     _lastTime = currentTime;
 
     collectNextEvents(currentTime);
