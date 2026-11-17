@@ -58,3 +58,16 @@ valdi_module(
         "//src/valdi_modules/src/valdi/valdi_tsx",
     ],
 )
+
+# Read by //apps/helloworld:hello_world_package_test: the native module declarations are the
+# source of truth for which module paths and export names each platform must register, and the
+# generated Objective-C factories are what the iOS factories subclass.
+filegroup(
+    name = "hello_world_package_test_data",
+    testonly = True,
+    srcs = glob(["src/**/*.d.ts"]) + [
+        ":ios.release.api.hdrs",
+        ":ios.release.api.srcs",
+    ],
+    visibility = ["//apps/helloworld:__pkg__"],
+)

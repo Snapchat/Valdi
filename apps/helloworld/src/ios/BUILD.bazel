@@ -11,3 +11,11 @@ objc_library(
         "//apps/helloworld/src/valdi/hello_world:hello_world_api_objc",
     ],
 )
+
+# Sources //apps/helloworld:hello_world_package_test scans.
+# The objc_library above is iOS-only, so the host test can't depend on it.
+filegroup(
+    name = "factory_srcs",
+    srcs = glob(["**/*.m"]),
+    visibility = ["//apps/helloworld:__pkg__"],
+)
