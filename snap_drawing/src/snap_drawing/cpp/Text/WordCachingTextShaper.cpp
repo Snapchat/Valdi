@@ -59,7 +59,7 @@ size_t WordCachingTextShaper::shapeUsingUniformFont(const Character* unicodeText
                                                     Scalar letterSpacing,
                                                     TextScript script,
                                                     std::vector<ShapedGlyph>& out) {
-    auto uniformFont = getUniformFont(font.typeface());
+    auto uniformFont = getUniformFont(font);
 
     auto written =
         breakdownByWordAndShape(unicodeText, length, *uniformFont, isRightToLeft, letterSpacing, script, out);
@@ -173,16 +173,19 @@ void WordCachingTextShaper::shapeWord(const Character* unicodeText,
     _tmp.clear();
 }
 
-Ref<Font> WordCachingTextShaper::getUniformFont(const Ref<Typeface>& typeface) {
-    const auto& it = _uniformFonts.find(typeface->getId());
+Ref<Font> WordCachingTextShaper::getUniformFont(const Font& font) {
+    auto hinting = font.getSkValue().getHinting();
+    auto key = (static_cast<uint64_t>(hinting) << 32) | font.typeface()->getId();
+    const auto& it = _uniformFonts.find(key);
     if (it != _uniformFonts.end()) {
         return it->second;
     }
 
-    auto font = Valdi::makeShared<Font>(nullptr, Ref<Typeface>(typeface), kUniformFontSize, 1.0, false);
-    _uniformFonts[typeface->getId()] = font;
+    auto uniformFont =
+        Valdi::makeShared<Font>(nullptr, Ref<Typeface>(font.typeface()), kUniformFontSize, 1.0, false, hinting);
+    _uniformFonts[key] = uniformFont;
 
-    return font;
+    return uniformFont;
 }
 
 void WordCachingTextShaper::copyGlyphs(const ShapedGlyph* glyphs, size_t length, std::vector<ShapedGlyph>& out) {

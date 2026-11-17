@@ -41,7 +41,7 @@ private:
     Ref<TextShaper> _innerShaper;
     TextShaperCache _cache;
     WordCachingTextShaperStrategy _strategy;
-    Valdi::FlatMap<uint32_t, Ref<Font>> _uniformFonts;
+    Valdi::FlatMap<uint64_t, Ref<Font>> _uniformFonts;
     std::vector<ShapedGlyph> _tmp;
 
     size_t shapeUsingUniformFont(const Character* unicodeText,
@@ -71,7 +71,7 @@ private:
 
     ShapedGlyph getSpaceGlyphForFont(FontId fontId, Font& font);
 
-    Ref<Font> getUniformFont(const Ref<Typeface>& typeface);
+    Ref<Font> getUniformFont(const Font& font);
 
     static void copyGlyphs(const ShapedGlyph* glyphs, size_t length, std::vector<ShapedGlyph>& out);
 };

@@ -18,6 +18,7 @@
 #include "snap_drawing/cpp/Utils/Geometry.hpp"
 
 #include "include/core/SkFont.h"
+#include "include/core/SkFontTypes.h"
 
 namespace snap::drawing {
 
@@ -35,8 +36,12 @@ using FontId = uint64_t;
 
 class Font : public Valdi::ValdiObject {
 public:
-    Font(
-        Ref<FontResolver>&& fontResolver, Ref<Typeface>&& typeface, Scalar size, double scale, bool respectDynamicType);
+    Font(Ref<FontResolver>&& fontResolver,
+         Ref<Typeface>&& typeface,
+         Scalar size,
+         double scale,
+         bool respectDynamicType,
+         SkFontHinting hinting = SkFontHinting::kNormal);
     ~Font() override;
 
     const SkFont& getSkValue() const;

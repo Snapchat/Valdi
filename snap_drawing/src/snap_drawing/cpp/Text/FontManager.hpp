@@ -113,6 +113,9 @@ public:
 
     const sk_sp<SkFontMgr>& getSkValue();
 
+    /** Sets hinting for subsequently resolved fonts. Configure before creating views. Defaults to Normal. */
+    void setFontHinting(SkFontHinting hinting);
+
     void setListener(const Ref<IFontManagerListener>& listener);
 
 protected:
@@ -129,6 +132,7 @@ private:
     Ref<TextShaper> _textShaper;
     Valdi::StringBox _defaultFontFamilyName;
     Ref<IFontManagerListener> _listener;
+    SkFontHinting _fontHinting = SkFontHinting::kNormal;
 
     std::unique_lock<Valdi::Mutex> lock();
     std::unique_lock<Valdi::Mutex> lock(bool shouldInitIfNeeded, bool* didInit);

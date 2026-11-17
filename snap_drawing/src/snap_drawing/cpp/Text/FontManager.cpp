@@ -139,6 +139,11 @@ bool FontManager::doLoad(std::unique_lock<Valdi::Mutex>& /*lock*/) {
     return isFirst;
 }
 
+void FontManager::setFontHinting(SkFontHinting hinting) {
+    auto guard = lock(/* shouldInitIfNeeded */ false, nullptr);
+    _fontHinting = hinting;
+}
+
 std::vector<String> FontManager::getAvailableFonts() {
     auto guard = lock();
     return doGetAvailableFonts(guard);
@@ -156,7 +161,7 @@ Valdi::Ref<Font> FontManager::getFontWithTypefaceAndSize(std::unique_lock<Valdi:
                                                          bool respectDynamicType) {
     // TODO(simon): Caching of Font objects
     auto font = Valdi::makeShared<Font>(
-        Valdi::strongSmallRef(this), Ref<Typeface>(typeface), fontSize, scale, respectDynamicType);
+        Valdi::strongSmallRef(this), Ref<Typeface>(typeface), fontSize, scale, respectDynamicType, _fontHinting);
     return Valdi::Ref<Font>(std::move(font));
 }
 
