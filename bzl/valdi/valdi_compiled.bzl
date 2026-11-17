@@ -92,6 +92,11 @@ ValdiModuleInfo = provider(
         "ios_release_nativesrc": "generated .c file containing all the generated C code",
         "cpp_srcs": "generated .cpp files containing all the generated C++ code",
         "cpp_hdrs": "generated .hpp files containing all the generated C++ header files",
+        "rust_srcs": "generated Rust crate root",
+        "rust_ffi_hdrs": "generated C FFI header for Rust bindings",
+        "rust_link_apple_params": "Apple linker response file for Rust native modules",
+        "rust_link_elf_params": "ELF linker response file for Rust native modules",
+        "native_language": "language used for native code generation",
         "ios_debug_sourcemap_archive": "A tree artifact containing archive of source and source maps",
         "ios_release_sourcemap_archive": "A tree artifact containing archive of source and source maps",
         "ios_sql_assets": "generated files for .sql files for this Valdi module",
@@ -330,6 +335,11 @@ valdi_compiled = rule(
         "single_file_codegen": attr.bool(
             doc = "Whether codegen should occur in a single file or one file per type",
             default = True,
+        ),
+        "native_language": attr.string(
+            doc = "Language used for native module bindings",
+            default = "cpp",
+            values = ["cpp", "rust"],
         ),
         "ios_language": attr.string_list(
             doc = "The languages for iOS output (e.g., ['objc'] or ['objc', 'swift'])",
@@ -999,7 +1009,15 @@ def _get_files_output_paths(ctx, module_name, module_directory, localization_mod
     # is invoked with --output-target debug (code coverage, or output_flavor=debug),
     # since that tells the compiler to skip the release output path entirely.
     if emit_release:
-        outputs += _get_cpp_generated_src(module_name)
+        if ctx.attr.native_language == "rust":
+            outputs += [_get_rust_generated_file(module_name, suffix) for suffix in [
+                ".rs",
+                "_ffi.h",
+                "_rust_link_apple.params",
+                "_rust_link_elf.params",
+            ]]
+        else:
+            outputs += _get_cpp_generated_src(module_name)
 
     # Add code coverage output file
     if code_coverage:
@@ -1409,6 +1427,9 @@ def _get_cpp_generated_src_dir():
     C++ codegen always outputs to release configuration.
     """
     return base_relative_dir("cpp", "release", "src")
+
+def _get_rust_generated_file(module_name, suffix):
+    return base_relative_dir("cpp", "release", "src/valdi_modules/{}/{}{}".format(module_name, module_name, suffix))
 
 def _get_cpp_generated_src(module_name):
     """Get C++ generated source file paths for single_file_codegen mode.
@@ -1872,6 +1893,9 @@ compilation_mode: {compilation_mode}
         exclude_globs = _yaml_named_list("exclude_globs", attr.exclude_globs),
     )
 
+    if attr.native_language == "rust":
+        module_def += "\nnative_language: rust"
+
     if attr.strings_dir:
         module_def += "\nstrings_dir: {}".format(attr.strings_dir)
 
@@ -1938,6 +1962,8 @@ def _create_valdi_module_info(ctx, module_name, module_yaml, module_definition, 
 
     base_path = paths.join(ctx.label.workspace_root, ctx.label.package)
     single_file_codegen = ctx.attr.single_file_codegen
+    emit_rust = emit_release and ctx.attr.native_language == "rust"
+    emit_cpp = emit_release and ctx.attr.native_language == "cpp"
 
     enable_web = ctx.var.get("enable_web")
     web_flavor = _web_output_flavor(ctx, code_coverage)
@@ -2003,8 +2029,13 @@ def _create_valdi_module_info(ctx, module_name, module_yaml, module_definition, 
 
         # C++ outputs (always in release configuration). Not generated when the compiler is
         # invoked with --output-target debug (code coverage, or output_flavor=debug).
-        cpp_srcs = _extract_cpp_generated_srcs(outputs, module_name, single_file_codegen) if emit_release else None,
-        cpp_hdrs = _extract_cpp_generated_hdrs(outputs, module_name, single_file_codegen) if emit_release else None,
+        cpp_srcs = _extract_cpp_generated_srcs(outputs, module_name, single_file_codegen) if emit_cpp else None,
+        cpp_hdrs = _extract_cpp_generated_hdrs(outputs, module_name, single_file_codegen) if emit_cpp else None,
+        native_language = ctx.attr.native_language,
+        rust_srcs = _extract_rust_generated_file(outputs, module_name, ".rs") if emit_rust else None,
+        rust_ffi_hdrs = _extract_rust_generated_file(outputs, module_name, "_ffi.h") if emit_rust else None,
+        rust_link_apple_params = _extract_rust_generated_file(outputs, module_name, "_rust_link_apple.params") if emit_rust else None,
+        rust_link_elf_params = _extract_rust_generated_file(outputs, module_name, "_rust_link_elf.params") if emit_rust else None,
 
         # web outputs
         protodecl_srcs = ctx.files.protodecl_srcs,
@@ -2233,6 +2264,11 @@ def _extract_ios_api_generated_swift_srcs(output_target, outputs, ios_module_nam
         return None
     debug_api_src, release_api_src = _get_ios_generated_api_src(ios_module_name, ios_language)
     return _filter_ios_src(outputs, output_target, debug_api_src, release_api_src, ".swift")
+
+def _extract_rust_generated_file(outputs, module_name, suffix):
+    path = _get_rust_generated_file(module_name, suffix)
+    found = [output for output in outputs if output.path.endswith(path)]
+    return found[0] if found else None
 
 def _extract_cpp_generated_srcs(outputs, module_name, single_file_codegen):
     """Extract C++ generated source files (.cpp) from outputs.

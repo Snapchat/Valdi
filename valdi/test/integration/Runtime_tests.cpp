@@ -59,6 +59,7 @@
 #include <yoga/node/Node.h>
 
 #include "valdi_core/cpp/Marshalling/RegisteredCppGeneratedClass.hpp"
+#include "valdi_core/cpp/Marshalling/RustValdi.h"
 #include "valdi_modules/test/test.hpp"
 
 #include <atomic>
@@ -77,6 +78,9 @@
 #include <vector>
 
 using namespace Valdi;
+
+extern "C" ValdiRustStatus rust_codegen_test_call_multiply_in_type_script(
+    void* runtime, void* nativeObjectsManager, double left, double right, double* out);
 
 namespace ValdiTest {
 
@@ -8348,6 +8352,48 @@ TEST_P(RuntimeFixture, supportsExportedFunction) {
               calculator->toString(snap::valdi_modules::test::CalculatorToStringFormat::DECIMAL));
     ASSERT_EQ(StringBox::fromCString("30"),
               calculator->toString(snap::valdi_modules::test::CalculatorToStringFormat::INTEGER));
+}
+
+TEST_P(RuntimeFixture, supportsRustCallingExportedFunction) {
+    auto loadResult =
+        wrapper.loadModule(STRING_LITERAL("rust_codegen_test"), ResourceManagerLoadModuleType::Sources);
+    ASSERT_TRUE(loadResult) << loadResult.description();
+
+    std::shared_ptr<snap::valdi_core::JSRuntimeNativeObjectsManager> nativeObjectsManager;
+    double result = 0;
+    auto* javaScriptRuntime =
+        static_cast<snap::valdi_core::JSRuntime*>(wrapper.runtime->getJavaScriptRuntime());
+    auto status = rust_codegen_test_call_multiply_in_type_script(
+        javaScriptRuntime, &nativeObjectsManager, 6.0, 7.0, &result);
+    std::string error;
+    if (status.code != 0) {
+        error.assign(reinterpret_cast<const char*>(status.message.data), status.message.len);
+        valdi_rust_buffer_drop(status.message);
+    }
+
+    ASSERT_EQ(status.code, 0) << error;
+    EXPECT_DOUBLE_EQ(result, 42.0);
+}
+
+TEST_P(RuntimeFixture, supportsTypeScriptCallingRustModule) {
+    auto loadResult =
+        wrapper.loadModule(STRING_LITERAL("rust_codegen_test"), ResourceManagerLoadModuleType::Sources);
+    ASSERT_TRUE(loadResult) << loadResult.description();
+
+    auto validationFunction = getJsModulePropertyWithSchema(wrapper.runtime,
+                                                            "rust_codegen_test/src/RustInteropValidation",
+                                                            "validateRustInterop",
+                                                            "f(): p<v>");
+    ASSERT_TRUE(validationFunction) << validationFunction.description();
+
+    auto callResult = validationFunction.value().getFunction()->call(ValueFunctionFlagsPropagatesError, {});
+    ASSERT_TRUE(callResult) << callResult.description();
+
+    auto validationPromise = callResult.value().getTypedRef<Promise>();
+    ASSERT_NE(validationPromise, nullptr);
+
+    auto validationResult = waitForPromise(validationPromise);
+    ASSERT_TRUE(validationResult) << validationResult.description();
 }
 
 TEST_P(RuntimeFixture, resolveAsTypedObjectReturnsTypedObject) {

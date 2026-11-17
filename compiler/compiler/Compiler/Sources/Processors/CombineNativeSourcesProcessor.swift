@@ -68,6 +68,20 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
         return .string(data)
     }
 
+    private func mergeRustSources(files: [FileAndContent]) -> File {
+        var data = "#[doc(hidden)]\npub use valdi_core_rust as __valdi_core;\n\n"
+        for file in files {
+            data += "//\n// \(file.filename)\n//\n\n"
+            data += file.content
+            data += "\n"
+        }
+        return .string(data)
+    }
+
+    private func mergeLinkerParameters(files: [FileAndContent]) -> File {
+        return .string(files.map(\.content).joined())
+    }
+
     /// Each generated ObjC source header imports the module's own consolidated
     /// header by its canonical name (see `IOSType.importHeaderStatement`). After
     /// merging into that very file the import refers to itself. It is a no-op
@@ -348,6 +362,7 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
 
         var isKotlin = false
         var isCppHeader = false
+        let isRustFfiHeader = platform == .cpp && bundleInfo.nativeLanguage == .rust && filename == "\(bundleInfo.name)_ffi.h"
         var fileAndContentArray = [FileAndContent]()
 
         for nativeSource in sortedNativeSources {
@@ -365,6 +380,7 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
                     isCppHeader = true
                 }
                 let nativeSourceContent = try nativeSource.data.file.readString()
+                if isRustFfiHeader && nativeSourceContent.isEmpty { continue }
                 fileAndContentArray.append(FileAndContent(filename: nativeSource.data.filename, content: nativeSourceContent))
             } catch let error {
                 return nativeSource.item.with(error: error)
@@ -375,11 +391,17 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
         if isKotlin {
             let file = mergeKotlinSources(files: fileAndContentArray)
             generatedNativeSource = NativeSource(relativePath: nil, filename: filename, file: file, groupingIdentifier: filename, groupingPriority: 0)
-        } else if isCppHeader {
+        } else if isCppHeader || isRustFfiHeader {
             let file = mergeCppHeaders(files: fileAndContentArray)
             generatedNativeSource = NativeSource(relativePath: relativePath, filename: filename, file: file, groupingIdentifier: filename, groupingPriority: 0)
         } else if filename.hasSuffix(".m") {
             let file = mergeObjcSources(files: fileAndContentArray)
+            generatedNativeSource = NativeSource(relativePath: relativePath, filename: filename, file: file, groupingIdentifier: filename, groupingPriority: 0)
+        } else if filename.hasSuffix(".rs") {
+            let file = mergeRustSources(files: fileAndContentArray)
+            generatedNativeSource = NativeSource(relativePath: relativePath, filename: filename, file: file, groupingIdentifier: filename, groupingPriority: 0)
+        } else if filename.hasSuffix(".params") {
+            let file = mergeLinkerParameters(files: fileAndContentArray)
             generatedNativeSource = NativeSource(relativePath: relativePath, filename: filename, file: file, groupingIdentifier: filename, groupingPriority: 0)
         } else {
             let file = mergeAnySources(files: fileAndContentArray, outputFilename: filename)
@@ -445,7 +467,7 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
             }
         }
 
-        if bundle.cppCodegenEnabled && !hasCpp {
+        if bundle.cppCodegenEnabled && bundle.nativeLanguage == .cpp && !hasCpp {
             let relativePath: String
             if let cppImportPathPrefix = projectConfig.cppImportPathPrefix {
                 relativePath = "\(cppImportPathPrefix)\(bundle.name)"
@@ -584,8 +606,16 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
         return output
     }
 
-    private func shouldProcessItem(item: CompilationItem) -> Bool {
-        return shouldProcessBundle(bundle: item.bundleInfo)
+    private func shouldProcessItem(item: CompilationItem, nativeSource: NativeSource) -> Bool {
+        if shouldProcessBundle(bundle: item.bundleInfo) {
+            return true
+        }
+        guard item.bundleInfo.nativeLanguage == .rust else { return false }
+        let name = item.bundleInfo.name
+        return nativeSource.groupingIdentifier == "\(name).rs" ||
+            nativeSource.groupingIdentifier == "\(name)_ffi.h" ||
+            nativeSource.groupingIdentifier == "\(name)_rust_link_apple.params" ||
+            nativeSource.groupingIdentifier == "\(name)_rust_link_elf.params"
     }
 
     private func shouldProcessBundle(bundle: CompilationItem.BundleInfo) -> Bool {
@@ -598,7 +628,7 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
 
     func process(items: CompilationItems) throws -> CompilationItems {
         return items.select { item -> NativeSource? in
-            guard case .nativeSource(let nativeSource) = item.kind, shouldProcessItem(item: item) else {
+            guard case .nativeSource(let nativeSource) = item.kind, shouldProcessItem(item: item, nativeSource: nativeSource) else {
                 return nil
             }
 

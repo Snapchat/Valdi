@@ -14,6 +14,7 @@ protocol NativeSourceGenerator {
     func generateObjCSources(parameters: NativeSourceParameters, type: IOSType) throws -> [NativeSource]
     func generateKotlinSources(parameters: NativeSourceParameters, fullTypeName: String) throws -> [NativeSource]
     func generateCppSources(parameters: NativeSourceParameters, cppType: CPPType) throws -> [NativeSource]
+    func generateRustSources(parameters: NativeSourceParameters, cppType: CPPType) throws -> [NativeSource]
 }
 
 extension NativeSourceGenerator {
@@ -46,8 +47,14 @@ extension NativeSourceGenerator {
             }
         }
         if let cppType = parameters.cppType {
-            sources += try generateCppSources(parameters: parameters, cppType: cppType).map {
-                NativeSourceAndPlatform(source: $0, platform: .cpp)
+            if parameters.bundleInfo.nativeLanguage == .rust {
+                sources += try generateRustSources(parameters: parameters, cppType: cppType).map {
+                    NativeSourceAndPlatform(source: $0, platform: .cpp)
+                }
+            } else {
+                sources += try generateCppSources(parameters: parameters, cppType: cppType).map {
+                    NativeSourceAndPlatform(source: $0, platform: .cpp)
+                }
             }
         }
 

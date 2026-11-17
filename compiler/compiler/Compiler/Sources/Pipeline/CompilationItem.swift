@@ -16,6 +16,11 @@ enum Platform: String, CaseIterable, Codable {
     case cpp
 }
 
+enum NativeLanguage: String, Codable {
+    case cpp
+    case rust
+}
+
 enum ModuleOutputTarget: Int {
     case debugOnly
     case releaseReady
@@ -285,6 +290,7 @@ struct CompilationItem {
         let iosCodegenEnabled: Bool
         let androidCodegenEnabled: Bool
         let cppCodegenEnabled: Bool
+        let nativeLanguage: NativeLanguage
         let disableCodeCoverage: Bool
         let singleFileCodegen: Bool
 
@@ -327,6 +333,7 @@ struct CompilationItem {
              iosCodegenEnabled: Bool,
              androidCodegenEnabled: Bool,
              cppCodegenEnabled: Bool,
+             nativeLanguage: NativeLanguage,
              disableCodeCoverage: Bool,
              singleFileCodegen: Bool,
              compilationModeConfig: CompilationModeConfig,
@@ -460,6 +467,7 @@ struct CompilationItem {
             self.iosCodegenEnabled = iosCodegenEnabled
             self.androidCodegenEnabled = androidCodegenEnabled
             self.cppCodegenEnabled = cppCodegenEnabled
+            self.nativeLanguage = nativeLanguage
             self.singleFileCodegen = singleFileCodegen
 
             self.stringsConfig = stringsConfig

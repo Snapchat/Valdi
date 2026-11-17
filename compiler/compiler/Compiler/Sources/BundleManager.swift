@@ -80,6 +80,7 @@ class BundleManager {
                                                     iosCodegenEnabled: false,
                                                     androidCodegenEnabled: false,
                                                     cppCodegenEnabled: false,
+                                                    nativeLanguage: .cpp,
                                                     disableCodeCoverage: false,
                                                     singleFileCodegen: false,
                                                     compilationModeConfig: CompilationModeConfig(js: nil, jsBytecode: nil, native: nil),
@@ -332,6 +333,10 @@ class BundleManager {
         let iosCodegenEnabled = Self.resolveCodegenEnabled(config: iosConfig, outputConfig: projectConfig.iosOutput)
         let androidCodegenEnabled = Self.resolveCodegenEnabled(config: androidConfig, outputConfig: projectConfig.androidOutput)
         let cppCodegenEnabled = Self.resolveCodegenEnabled(config: cppConfig, outputConfig: projectConfig.cppOutput)
+        let nativeLanguageString = config["native_language"]?.string ?? NativeLanguage.cpp.rawValue
+        guard let nativeLanguage = NativeLanguage(rawValue: nativeLanguageString) else {
+            throw CompilerError("native_language must be either 'cpp' or 'rust', found '\(nativeLanguageString)'")
+        }
 
 
         let iosGeneratedContextFactories = Self.resolveGeneratedContextFactories(config: iosConfig)
@@ -361,6 +366,7 @@ class BundleManager {
                                                         iosCodegenEnabled: iosCodegenEnabled,
                                                         androidCodegenEnabled: androidCodegenEnabled,
                                                         cppCodegenEnabled: cppCodegenEnabled,
+                                                        nativeLanguage: nativeLanguage,
                                                         disableCodeCoverage: disableCodeCoverage,
                                                         singleFileCodegen: singleFileCodegen,
                                                         compilationModeConfig: compilationModeConfig,

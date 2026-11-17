@@ -1,0 +1,17 @@
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+alias(
+    name = "test_framework",
+    actual = "//src/valdi_modules/src/valdi/jasmine",
+)
+
+valdi_module(
+    name = "rust_codegen_consumer_test",
+    srcs = [
+        "test/Consumer.spec.ts",
+        "tsconfig.json",
+    ],
+    test_deps = [":test_framework"],
+    visibility = ["//visibility:private"],
+    deps = ["//apps/rust_codegen_test"],
+)

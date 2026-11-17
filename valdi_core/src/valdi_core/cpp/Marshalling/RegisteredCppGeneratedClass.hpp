@@ -5,6 +5,7 @@
 #include "valdi_core/cpp/Utils/Function.hpp"
 #include "valdi_core/cpp/Utils/Shared.hpp"
 #include "valdi_core/cpp/Utils/StringBox.hpp"
+#include <string>
 #include <vector>
 
 namespace Valdi {
@@ -24,7 +25,12 @@ public:
                                 const char* schemaString,
                                 GetTypeReferencesFunction getTypeReferencesFunction,
                                 GetTypeArgumentsFunction getTypeArgumentsFunction);
+    RegisteredCppGeneratedClass(ValueSchemaRegistry* registry,
+                                std::string schemaString,
+                                GetTypeReferencesFunction getTypeReferencesFunction,
+                                GetTypeArgumentsFunction getTypeArgumentsFunction);
     RegisteredCppGeneratedClass(ValueSchemaRegistry* registry, const char* schemaString, bool isEnum);
+    RegisteredCppGeneratedClass(ValueSchemaRegistry* registry, std::string schemaString, bool isEnum);
     ~RegisteredCppGeneratedClass();
 
     void ensureSchemaRegistered(ExceptionTracker& exceptionTracker);
@@ -33,12 +39,14 @@ public:
     Result<Ref<ClassSchema>> getResolvedClassSchema();
     ValueSchema getResolvedSchema(ExceptionTracker& exceptionTracker);
     const StringBox& getClassName();
+    bool isGenericSchema() const;
 
 private:
     struct GenericData {
         GetTypeArgumentsFunction getTypeArguments;
     };
     ValueSchemaRegistry* _registry;
+    std::string _ownedSchemaString;
     const char* _schemaString;
     std::atomic_bool _schemaRegistered = false;
     std::atomic_bool _schemaResolved = false;

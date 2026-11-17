@@ -1,0 +1,7 @@
+{
+    "extends": "../../modules/_configs/base.tsconfig.json",
+    "compilerOptions": {
+        "types": ["../../modules/types/globals"],
+        "rootDirs": [".."]
+    }
+}

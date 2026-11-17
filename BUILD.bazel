@@ -28,3 +28,15 @@ filegroup(
     ],
     visibility = ["//compiler/clientsql:__pkg__"],
 )
+
+alias(
+    name = "valdi_core_rust",
+    actual = "//valdi_core:valdi_core_rust",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "valdi_core_rust_cc",
+    actual = "//valdi_core:valdi_core_rust_cc",
+    visibility = ["//visibility:public"],
+)

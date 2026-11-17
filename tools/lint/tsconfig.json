@@ -12,6 +12,7 @@
       "Valdi": ["src/valdi_modules/src/valdi/valdi_core/src/Valdi"],
       "tslib": ["src/valdi_modules/src/valdi/valdi_core/src/tslib.d.ts"],
       "jasmine": ["src/valdi_modules/src/valdi/jasmine/src/jasmine.d.ts"],
+      "rust_codegen_multifile_test/*": ["apps/rust_codegen_multifile_test/*"],
       "*": [
         "src/valdi_modules/src/valdi/*",
         "apps/benchmark/src/valdi/*",

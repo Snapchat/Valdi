@@ -1,0 +1,22 @@
+load("@rules_rust//rust:defs.bzl", "rust_library")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "rust_codegen_multifile_test",
+    srcs = glob([
+        "src/**/*.ts",
+        "test/**/*.ts",
+    ]) + ["tsconfig.json"],
+    native_deps = [":rust_codegen_multifile_test_impl"],
+    native_language = "rust",
+    test_deps = ["//src/valdi_modules/src/valdi/jasmine"],
+    visibility = ["//visibility:public"],
+)
+
+rust_library(
+    name = "rust_codegen_multifile_test_impl",
+    srcs = ["src/Secondary.rs"],
+    crate_name = "rust_codegen_multifile_test_impl",
+    edition = "2024",
+    deps = [":rust_codegen_multifile_test_rust"],
+)

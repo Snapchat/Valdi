@@ -182,5 +182,10 @@ module.exports = {
       files: [`${MODULES_ROOT}/**/*.d.ts`],
       rules: { '@snap/valdi/only-const-enum': 'error' },
     },
+    {
+      // This native codegen fixture tests how literal TypeScript `any` maps to Rust.
+      files: ['apps/rust_codegen_test/src/Calculator.d.ts'],
+      rules: { '@typescript-eslint/no-explicit-any': 'off' },
+    },
   ],
 };

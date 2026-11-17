@@ -1,11 +1,11 @@
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load(":valdi_compiled.bzl", "ValdiModuleInfo")
 
-def _collect_target_runfiles(target):
-    # Collect target and its dependencies module infos
-    module_infos = [target[ValdiModuleInfo]]
-    module_infos += [d[ValdiModuleInfo] for d in target[ValdiModuleInfo].deps.to_list()]
+def _module_infos(target):
+    module = target[ValdiModuleInfo]
+    return [module] + [d[ValdiModuleInfo] for d in module.deps.to_list()]
 
+def _collect_target_runfiles(module_infos):
     # Extract valdi modules and source maps
     valdi_modules = [m.android_debug_valdimodule for m in module_infos if m.android_debug_valdimodule]
     source_maps = [m.android_debug_sourcemaps for m in module_infos if m.android_debug_sourcemaps]
@@ -19,19 +19,20 @@ def _is_test_file(f, path_to_module):
     return "/test/" in path or path.endswith("/test")
 
 def _valdi_test_impl(ctx):
-    standalone_binary = ctx.executable._valdi_standalone_binary
-
     path_to_module = ctx.label.package
     test_paths = [f for f in ctx.files.srcs if _is_test_file(f, path_to_module)]
 
     has_tests = len(test_paths) > 0
+    modules = _module_infos(ctx.attr.target)
+    uses_rust = has_tests and any([m.native_language == "rust" for m in modules])
+    standalone_binary = ctx.executable.rust_test_binary if uses_rust else ctx.executable._valdi_standalone_binary
 
     # Check if code coverage is enabled via `bazel coverage` command or explicit flag
     code_coverage_enabled = ctx.configuration.coverage_enabled or ctx.attr.code_coverage[BuildSettingInfo].value
 
     # Always include standalone module runfiles
-    valdimodules = _collect_target_runfiles(ctx.attr.target)
-    valdimodules += _collect_target_runfiles(ctx.attr._valdi_standalone)
+    valdimodules = _collect_target_runfiles(modules)
+    valdimodules += _collect_target_runfiles(_module_infos(ctx.attr._valdi_standalone))
     runtime_files = valdimodules + ctx.files._api_version_file
     module_paths = ["--module_path {}".format(f.short_path) for f in runtime_files]
 
@@ -67,6 +68,9 @@ def _valdi_test_impl(ctx):
     runfiles = ctx.runfiles(
         files = [standalone_binary] + runtime_files,
     )
+    if uses_rust:
+        binary_info = ctx.attr.rust_test_binary[DefaultInfo]
+        runfiles = runfiles.merge(binary_info.default_runfiles).merge(binary_info.data_runfiles)
 
     return [DefaultInfo(executable = test_script, files = depset([standalone_binary] + runtime_files), runfiles = runfiles)]
 
@@ -108,6 +112,11 @@ valdi_test = rule(
         "_valdi_standalone": attr.label(
             default = Label("@valdi//src/valdi_modules/src/valdi/valdi_standalone"),
             doc = "The Valdi Standalone target to be added to all Valdi targets",
+        ),
+        "rust_test_binary": attr.label(
+            executable = True,
+            cfg = "exec",
+            doc = "A standalone executable linked with the module's native dependencies",
         ),
         "_valdi_standalone_binary": attr.label(
             executable = True,

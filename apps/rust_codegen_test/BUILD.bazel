@@ -1,0 +1,51 @@
+load("@rules_rust//rust:defs.bzl", "rust_library")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "rust_codegen_test",
+    srcs = glob([
+        "src/**/*.ts",
+        "test/**/*.ts",
+    ]) + ["tsconfig.json"],
+    native_deps = [":rust_codegen_test_impl"],
+    native_language = "rust",
+    test_deps = ["//src/valdi_modules/src/valdi/jasmine"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//apps/rust_codegen_multifile_test",
+        "//src/valdi_modules/src/valdi/valdi_core",
+    ],
+)
+
+rust_library(
+    name = "rust_codegen_test_impl",
+    srcs = ["src/Calculator.rs"],
+    crate_name = "rust_codegen_test_impl",
+    edition = "2024",
+    deps = [":rust_codegen_test_rust"],
+)
+
+cc_test(
+    name = "rust_codegen_test_ffi_test",
+    linkstatic = True,
+    srcs = ["rust_codegen_test_ffi_test.cpp"],
+    deps = [
+        ":rust_codegen_test_cpp",
+        "//libs/utils:utils_oss_cc",
+        "//valdi_core",
+        "@gtest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "rust_codegen_multiple_modules_link_test",
+    linkstatic = True,
+    srcs = ["rust_codegen_multiple_modules_link_test.cpp"],
+    deps = [
+        ":rust_codegen_test_cpp",
+        "//apps/rust_codegen_multifile_test:rust_codegen_multifile_test_cpp",
+        "//libs/utils:utils_oss_cc",
+        "//valdi_core",
+        "@gtest//:gtest_main",
+    ],
+)

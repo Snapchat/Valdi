@@ -1,0 +1,17 @@
+{
+    "extends": "../../modules/_configs/base.tsconfig.json",
+    "compilerOptions": {
+        "paths": {
+            "rust_codegen_test/*": [
+                "./*"
+            ]
+        },
+        "types": [
+            "../../modules/types/Long",
+            "../../modules/types/globals"
+        ],
+        "rootDirs": [
+            ".."
+        ]
+    }
+}
