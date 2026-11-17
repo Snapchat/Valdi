@@ -136,6 +136,10 @@ static std::optional<ValueSchema> parseIntSchema(TextParser& /*parser*/) {
     return ValueSchema::integer();
 }
 
+static std::optional<ValueSchema> parseBigIntSchema(TextParser& /*parser*/) {
+    return ValueSchema::bigInt();
+}
+
 static std::optional<ValueSchema> parseLongSchema(TextParser& /*parser*/) {
     return ValueSchema::longInteger();
 }
@@ -435,31 +439,33 @@ Result<ValueSchema> ValueSchemaParser::parse(std::string_view str) {
 
 using ValueSchemaTypeParserFn = std::optional<ValueSchema> (*)(TextParser& parser);
 
-constexpr std::array<std::pair<std::string_view, ValueSchemaTypeParserFn>, 19> kTypeParsers = {{
-    {kStringTypeUntyped, &parseUntypedSchema},
-    {kStringTypeVoid, &parseVoidSchema},
-    {kStringTypeInt, &parseIntSchema},
-    {kStringTypeLong, &parseLongSchema},
-    {kStringTypeDouble, &parseDoubleSchema},
-    {kStringTypeBool, &parseBoolSchema},
-    {kStringTypeString, &parseStringSchema},
-    {kStringTypeValueTypedArray, &parseValueTypedArraySchema},
-    {kStringTypeTypeReference, &parseTypeReferenceSchema},
-    {kStringTypeGenericTypeReference, &parseGenericTypeReferenceSchema},
-    {kStringTypeClass, &parseClassSchema},
-    {kStringTypeEnum, &parseEnumSchema},
-    {kStringTypeFunction, &parseFunctionSchema},
-    {kStringTypeArray, &parseArraySchema},
-    {kStringTypeMap, &parseMapSchema},
-    {kStringTypeES6Map, &parseES6MapSchema},
-    {kStringTypeES6Set, &parseES6SetSchema},
-    {kStringTypePromise, &parsePromiseSchema},
-    {kStringTypeSchemaRef, &parseRefSchema},
+constexpr std::array<std::pair<std::string_view, ValueSchemaTypeParserFn>, 21> kTypeParsers = {{
+    {kStringTypeUntyped.substr(0, 1), &parseUntypedSchema},
+    {kStringTypeVoid.substr(0, 1), &parseVoidSchema},
+    {kStringTypeInt.substr(0, 1), &parseIntSchema},
+    {kStringTypeLong.substr(0, 1), &parseLongSchema},
+    {kStringTypeBigInt, &parseBigIntSchema},
+    {kStringTypeBigIntShort, &parseBigIntSchema},
+    {kStringTypeDouble.substr(0, 1), &parseDoubleSchema},
+    {kStringTypeBool.substr(0, 1), &parseBoolSchema},
+    {kStringTypeString.substr(0, 1), &parseStringSchema},
+    {kStringTypeValueTypedArray.substr(0, 1), &parseValueTypedArraySchema},
+    {kStringTypeTypeReference.substr(0, 1), &parseTypeReferenceSchema},
+    {kStringTypeGenericTypeReference.substr(0, 1), &parseGenericTypeReferenceSchema},
+    {kStringTypeClass.substr(0, 1), &parseClassSchema},
+    {kStringTypeEnum.substr(0, 1), &parseEnumSchema},
+    {kStringTypeFunction.substr(0, 1), &parseFunctionSchema},
+    {kStringTypeArray.substr(0, 1), &parseArraySchema},
+    {kStringTypeMap.substr(0, 1), &parseMapSchema},
+    {kStringTypeES6Map.substr(0, 1), &parseES6MapSchema},
+    {kStringTypeES6Set.substr(0, 1), &parseES6SetSchema},
+    {kStringTypePromise.substr(0, 1), &parsePromiseSchema},
+    {kStringTypeSchemaRef.substr(0, 1), &parseRefSchema},
 }};
 
 std::optional<ValueSchema> ValueSchemaParser::parse(TextParser& parser) {
     for (const auto& typeParser : kTypeParsers) {
-        if (parser.tryParse(typeParser.first[0])) {
+        if (parser.tryParse(typeParser.first)) {
             auto isBoxed = parser.tryParse('@');
             auto isOptional = parser.tryParse('?');
             auto schema = typeParser.second(parser);

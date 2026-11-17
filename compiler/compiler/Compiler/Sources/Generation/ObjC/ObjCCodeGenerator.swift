@@ -351,6 +351,12 @@ final class ObjCClassGenerator {
                 propertyAttribute = "assign"
                 cElementType = .bool
             }
+        case .bigInt:
+            apiHeader.addImport(path: "<valdi_core/SCValdiBigInt.h>")
+            header.addImport(path: "<valdi_core/SCValdiBigInt.h>")
+            typeName = "SCValdiBigInt *"
+            propertyAttribute = "strong"
+            cElementType = .pointer
         case .long:
             if isOptional || !allowValueType {
                 typeName = "NSNumber *"

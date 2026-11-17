@@ -469,6 +469,8 @@ class PropertyTypeDescription: Encodable {
             typeStr = "double"
         case .bool:
             typeStr = "bool"
+        case .bigInt:
+            typeStr = "bigint"
         case .long:
             typeStr = "long"
         case let .array(elementType):

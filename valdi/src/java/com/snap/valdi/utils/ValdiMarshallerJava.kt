@@ -1,5 +1,6 @@
 package com.snap.valdi.utils
 
+import com.snap.valdi.BigInt
 import com.snap.valdi.callable.ValdiFunction
 import com.snapchat.client.valdi.UndefinedValue
 import com.snapchat.client.valdi.utils.CppObjectWrapper
@@ -147,6 +148,10 @@ class ValdiMarshallerJava: ValdiMarshaller(0) {
         return push(long)
     }
 
+    override fun pushBigInt(value: BigInt): Int {
+        return push(value)
+    }
+
     override fun pushOpaqueObject(obj: Any): Int {
         return push(obj)
     }
@@ -228,6 +233,7 @@ class ValdiMarshallerJava: ValdiMarshaller(0) {
             is Int -> ValueTypeInt
             is Double -> ValueTypeDouble
             is Long -> ValueTypeLong
+            is BigInt -> ValueTypeBigInt
             is Boolean -> ValueTypeBool
             is Map<*, *> -> ValueTypeMap
             is Iterable<*> -> ValueTypeArray

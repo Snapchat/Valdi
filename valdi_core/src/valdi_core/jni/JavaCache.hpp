@@ -70,6 +70,11 @@ public:
     DECLARE_JAVA_CLASS(Integer)
     DECLARE_JAVA_METHOD(Integer, Constructor, ConstructorType, int32_t)
 
+    DECLARE_JAVA_CLASS(BigInt)
+    DECLARE_JAVA_METHOD(BigInt, Constructor, ConstructorType, int64_t, int64_t)
+    DECLARE_JAVA_METHOD(BigInt, LongValue, int64_t)
+    DECLARE_JAVA_METHOD(BigInt, Handle, int64_t)
+
     DECLARE_JAVA_CLASS(Long)
     DECLARE_JAVA_METHOD(Long, Constructor, ConstructorType, int64_t)
 

@@ -586,6 +586,8 @@ final class CppCodeGenerator {
             return "double"
         case .bool:
             return "bool"
+        case .bigInt:
+            return "bigint"
         case .long:
             return "long"
         case .array(elementType: let elementType):
@@ -648,6 +650,9 @@ final class CppCodeGenerator {
             return getPrimitiveTypeParser(primitiveType: "double", isMovable: false, isIntrinsicallyNullable: false, defaultInitializationString: "0.0")
         case .bool:
             return getPrimitiveTypeParser(primitiveType: "bool", isMovable: false, isIntrinsicallyNullable: false, defaultInitializationString: "false")
+        case .bigInt:
+            header.includeSection.addInclude(path: "valdi_core/cpp/Utils/BigInt.hpp")
+            return CppTypeParser(typeNameResolver: CppCodeGenerator.makeRefType(typeName: CppCodeGenerator.getValdiTypeName(typeName: "BigInt")), method: nil, isMovable: true, isIntrinsicallyNullable: true, defaultInitializationString: nil)
         case .long:
             return getPrimitiveTypeParser(primitiveType: "int64_t", isMovable: false, isIntrinsicallyNullable: false, defaultInitializationString: "0")
         case .array(elementType: let elementType):

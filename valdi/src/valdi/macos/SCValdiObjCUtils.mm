@@ -8,6 +8,7 @@
 #import "SCValdiObjCUtils.h"
 
 #import "valdi_core/SCValdiNativeConvertible.h"
+#import "valdi_core/SCValdiBigInt.h"
 #import "valdi_core/cpp/Utils/StringCache.hpp"
 #import "valdi_core/cpp/Utils/ValueArray.hpp"
 #import "valdi_core/cpp/Utils/ValueFunction.hpp"
@@ -72,6 +73,8 @@ id NSObjectFromValue(const Valdi::Value &value) {
             return NSStringFromString(value.toStringBox());
         case Valdi::ValueType::Int:
             return @(value.toInt());
+        case Valdi::ValueType::BigInt:
+            return [[SCValdiBigInt alloc] initWithBigInt:Valdi::unsafeBridgeCast(value.getBigIntRef().get())];
         case Valdi::ValueType::Long:
             return @(value.toLong());
         case Valdi::ValueType::Double:

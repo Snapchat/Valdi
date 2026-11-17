@@ -300,6 +300,8 @@ private:
             } else {
                 return Ref<ValueMarshaller<ValueType>>(makeShared<IntValueMarshaller<ValueType>>(_delegate));
             }
+        } else if (schema.isBigInt()) {
+            return Ref<ValueMarshaller<ValueType>>(makeShared<BigIntValueMarshaller<ValueType>>(_delegate));
         } else if (schema.isLongInteger()) {
             if (schema.isBoxed()) {
                 return Ref<ValueMarshaller<ValueType>>(makeShared<LongObjectValueMarshaller<ValueType>>(_delegate));

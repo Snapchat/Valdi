@@ -143,6 +143,14 @@ public:
         return JSValueRef();
     }
 
+    JSValueRef newBigInt(const BigInt&, JSExceptionTracker&) override {
+        return JSValueRef();
+    }
+
+    Ref<BigInt> valueToBigInt(const JSValue&, JSExceptionTracker&) override {
+        return nullptr;
+    }
+
     JSValueRef newStringUTF8(const std::string_view& str, JSExceptionTracker& exceptionTracker) override {
         return JSValueRef();
     }

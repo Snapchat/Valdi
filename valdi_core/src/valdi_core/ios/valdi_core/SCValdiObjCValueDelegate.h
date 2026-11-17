@@ -68,6 +68,10 @@ public:
 
     ObjCValue newIntObject(int32_t value, Valdi::ExceptionTracker& exceptionTracker) final;
 
+    ObjCValue newBigInt(const Valdi::Ref<Valdi::BigInt>& value, Valdi::ExceptionTracker& exceptionTracker) final;
+    Valdi::Ref<Valdi::BigInt> valueToBigInt(const ObjCValue& value,
+                                            Valdi::ExceptionTracker& exceptionTracker) const final;
+
     ObjCValue newLong(int64_t value, Valdi::ExceptionTracker& exceptionTracker) final;
 
     ObjCValue newLongObject(int64_t value, Valdi::ExceptionTracker& exceptionTracker) final;

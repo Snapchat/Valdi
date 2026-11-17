@@ -70,6 +70,11 @@ public:
     Valdi::JSValueRef newFunction(const Valdi::Ref<Valdi::JSFunction>& callable,
                                   Valdi::JSExceptionTracker& exceptionTracker) override;
 
+    Valdi::JSValueRef newBigInt(const Valdi::BigInt& value, Valdi::JSExceptionTracker& exceptionTracker) override;
+
+    Valdi::Ref<Valdi::BigInt> valueToBigInt(const Valdi::JSValue& value,
+                                          Valdi::JSExceptionTracker& exceptionTracker) override;
+
     Valdi::JSValueRef newStringUTF8(const std::string_view& str, Valdi::JSExceptionTracker& exceptionTracker) override;
 
     Valdi::JSValueRef newStringUTF16(const std::u16string_view& str,
@@ -235,6 +240,7 @@ private:
     JSValue _uint32ArrayCtor = JS_UNDEFINED;
     JSValue _float32ArrayCtor = JS_UNDEFINED;
     JSValue _float64ArrayCtor = JS_UNDEFINED;
+    JSValue _bigIntFunction = JS_UNDEFINED;
     JSAtom _objectFinalizerAtomKey = JS_ATOM_NULL;
 
     JSClassID _functionClassID = 0;

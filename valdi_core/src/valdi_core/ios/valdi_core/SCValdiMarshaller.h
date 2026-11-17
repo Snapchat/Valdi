@@ -102,6 +102,10 @@ NSInteger SCValdiMarshallerPushOptionalDouble(SCValdiMarshallerRef marshaller, N
 
 NSInteger SCValdiMarshallerPushInt(SCValdiMarshallerRef marshaller, int32_t i);
 
+@class SCValdiBigInt;
+NSInteger SCValdiMarshallerPushBigInt(SCValdiMarshallerRef marshaller, SCValdiBigInt* value);
+SCValdiBigInt* _Nullable SCValdiMarshallerGetBigInt(SCValdiMarshallerRef marshaller, NSInteger index);
+
 NSInteger SCValdiMarshallerPushLong(SCValdiMarshallerRef marshaller, int64_t l);
 NSInteger SCValdiMarshallerPushOptionalLong(SCValdiMarshallerRef marshaller, NSNumber* _Nullable l);
 

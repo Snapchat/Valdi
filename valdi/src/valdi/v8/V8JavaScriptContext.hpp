@@ -46,6 +46,10 @@ public:
 
     JSValueRef newFunction(const Ref<JSFunction>& callable, JSExceptionTracker& exceptionTracker) override;
 
+    Valdi::JSValueRef newBigInt(const Valdi::BigInt& value, Valdi::JSExceptionTracker& exceptionTracker) override;
+
+    Ref<BigInt> valueToBigInt(const JSValue& value, JSExceptionTracker& exceptionTracker) override;
+
     JSValueRef newStringUTF8(const std::string_view& str, JSExceptionTracker& exceptionTracker) override;
     JSValueRef newStringUTF16(const std::u16string_view& str, JSExceptionTracker& exceptionTracker) override;
 
@@ -170,11 +174,13 @@ protected:
 private:
     inline JSValueRef toRetainedJSValueRef(const IndirectV8Persistent& value);
     inline JSValueRef toUnretainedJSValueRef(const IndirectV8Persistent& value);
+    void storeCaughtException(v8::TryCatch& catcher, const char* message, JSExceptionTracker& exceptionTracker);
 
     v8::ArrayBuffer::Allocator* _allocator;
     v8::Isolate::CreateParams _params;
     v8::Isolate* _isolate;
     v8::Global<v8::Context> _context;
+    v8::Global<v8::Function> _bigIntConstructor;
     v8::Persistent<v8::ObjectTemplate> _valdiObjectTemplate;
     v8::Persistent<v8::Private> _functionDataProperty;
 };

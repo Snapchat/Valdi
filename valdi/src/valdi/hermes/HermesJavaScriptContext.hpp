@@ -51,6 +51,10 @@ public:
 
     JSValueRef newFunction(const Ref<JSFunction>& callable, JSExceptionTracker& exceptionTracker) final;
 
+    JSValueRef newBigInt(const BigInt& value, JSExceptionTracker& exceptionTracker) override;
+
+    Ref<BigInt> valueToBigInt(const JSValue& value, JSExceptionTracker& exceptionTracker) override;
+
     JSValueRef newStringUTF8(const std::string_view& str, JSExceptionTracker& exceptionTracker) final;
 
     JSValueRef newStringUTF16(const std::u16string_view& str, JSExceptionTracker& exceptionTracker) final;

@@ -544,6 +544,14 @@ private:
 
 class TestPlatformValueDelegate : public PlatformValueDelegate<Value> {
 public:
+    Value newBigInt(const Ref<BigInt>& value, ExceptionTracker&) final {
+        return Value(value);
+    }
+
+    Ref<BigInt> valueToBigInt(const Value& value, ExceptionTracker& tracker) const final {
+        return value.checkedTo<Ref<BigInt>>(tracker);
+    }
+
     Value newVoid() final {
         return Value::undefined();
     }

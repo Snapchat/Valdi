@@ -198,6 +198,8 @@ class SchemaWriter {
             doAppendTypeName("d", boxed: asBoxed || isOptional, isOptional: isOptional)
         case .bool:
             doAppendTypeName("b", boxed: asBoxed || isOptional, isOptional: isOptional)
+        case .bigInt:
+            doAppendTypeName("B", boxed: false, isOptional: isOptional)
         case .long:
             doAppendTypeName("l", boxed: asBoxed || isOptional, isOptional: isOptional)
         case .array(elementType: let elementType):

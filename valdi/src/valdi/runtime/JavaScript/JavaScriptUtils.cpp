@@ -264,6 +264,8 @@ JSValueRef valueToJSValue(IJavaScriptContext& jsContext,
             return jsContext.newNumber(value.toDouble());
         case ValueType::Int:
             return jsContext.newNumber(value.toInt());
+        case ValueType::BigInt:
+            return jsContext.newBigInt(*value.getBigInt(), exceptionTracker);
         case ValueType::Long:
             return jsContext.newLong(value.toLong(), exceptionTracker);
         case ValueType::Bool:
@@ -776,6 +778,8 @@ Value jsValueToValue(IJavaScriptContext& jsContext,
             return Value(jsContext.valueToInt(jsValue, exceptionTracker));
         case Valdi::ValueType::Double:
             return Value(jsContext.valueToDouble(jsValue, exceptionTracker));
+        case Valdi::ValueType::BigInt:
+            return Value(jsContext.valueToBigInt(jsValue, exceptionTracker));
         case Valdi::ValueType::Long:
             return Value(jsContext.valueToLong(jsValue, exceptionTracker).toInt64());
         case Valdi::ValueType::Bool:

@@ -1,6 +1,7 @@
 package com.snap.valdi.utils
 
 import androidx.annotation.Keep
+import com.snap.valdi.BigInt
 import com.snap.valdi.actions.ValdiAction
 import com.snap.valdi.callable.ValdiFunction
 import com.snap.valdi.exceptions.AttributeError
@@ -182,6 +183,7 @@ abstract class ValdiMarshaller(handle: Long): NativeHandleWrapper(handle) {
     abstract fun pushDouble(double: Double): Int
     abstract fun pushBoolean(boolean: Boolean): Int
     abstract fun pushLong(long: Long): Int
+    abstract fun pushBigInt(value: BigInt): Int
 
     abstract fun setError(error: String)
 
@@ -524,6 +526,8 @@ abstract class ValdiMarshaller(handle: Long): NativeHandleWrapper(handle) {
     fun pushUntyped(untyped: Any?): Int {
         return if (untyped == null) {
             pushNull()
+        } else if (untyped is BigInt) {
+            pushBigInt(untyped)
         } else if (untyped is String) {
             pushString(untyped)
         } else if (untyped is Boolean) {
@@ -661,6 +665,7 @@ abstract class ValdiMarshaller(handle: Long): NativeHandleWrapper(handle) {
         val ValueTypeProxyObject = 13
         @JvmStatic
         val ValueTypeWrappedObject = 14
+        val ValueTypeBigInt = 15
 
         @Keep
         @JvmStatic

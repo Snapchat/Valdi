@@ -71,6 +71,9 @@ public:
     JSValueRef newInt(int32_t value, ExceptionTracker& exceptionTracker) final;
     JSValueRef newIntObject(int32_t value, ExceptionTracker& exceptionTracker) final;
 
+    JSValueRef newBigInt(const Ref<BigInt>& value, ExceptionTracker& exceptionTracker) final;
+    Ref<BigInt> valueToBigInt(const JSValueRef& value, ExceptionTracker& exceptionTracker) const final;
+
     JSValueRef newLong(int64_t value, ExceptionTracker& exceptionTracker) final;
     JSValueRef newLongObject(int64_t value, ExceptionTracker& exceptionTracker) final;
 

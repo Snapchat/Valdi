@@ -1,6 +1,7 @@
 package com.snap.valdi.utils
 
 import androidx.annotation.Keep
+import com.snap.valdi.BigInt
 import com.snap.valdi.callable.ValdiFunction
 import com.snap.valdi.exceptions.MarshallerException
 import com.snap.valdi.callable.ValdiFunctionNative
@@ -126,6 +127,8 @@ internal class ValdiMarshallerCPP: ValdiMarshaller {
     override fun pushDouble(double: Double) = nativePushDouble(nativeHandle, double)
     override fun pushBoolean(boolean: Boolean) = nativePushBoolean(nativeHandle, boolean)
     override fun pushLong(long: Long) = nativePushLong(nativeHandle, long)
+
+    override fun pushBigInt(value: BigInt) = nativePushBigInt(nativeHandle, value)
 
     override fun pushOpaqueObject(obj: Any) = nativePushOpaqueObject(nativeHandle, obj)
 
@@ -362,6 +365,10 @@ internal class ValdiMarshallerCPP: ValdiMarshaller {
 
         @JvmStatic
         private external fun nativeGetType(ptr: Long, index: Int): Int
+
+        // JNI registers jobject as java.lang.Object, so this private bridge must use Any.
+        @JvmStatic
+        private external fun nativePushBigInt(ptr: Long, value: Any): Int
 
         @JvmStatic
         private external fun nativeGetUntyped(ptr: Long, index: Int): Any?

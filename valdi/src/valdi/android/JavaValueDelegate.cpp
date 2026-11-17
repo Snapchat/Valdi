@@ -132,6 +132,21 @@ JavaValue JavaValueDelegate::newIntObject(int32_t value, Valdi::ExceptionTracker
     return JavaValue::makeObject(newJavaIntObject(value));
 }
 
+JavaValue JavaValueDelegate::newBigInt(const Valdi::Ref<Valdi::BigInt>& value,
+                                       Valdi::ExceptionTracker& exceptionTracker) {
+    return std::move(toJavaObject(JavaEnv(), value).getValue());
+}
+
+Valdi::Ref<Valdi::BigInt> JavaValueDelegate::valueToBigInt(const JavaValue& value,
+                                                           Valdi::ExceptionTracker& exceptionTracker) const {
+    auto object = value.getObject();
+    if (!JavaEnv::instanceOf(object, JavaEnv::getCache().getBigIntClass())) {
+        exceptionTracker.onError("Expected com.snap.valdi.BigInt");
+        return nullptr;
+    }
+    return bigIntFromJavaObject(object);
+}
+
 JavaValue JavaValueDelegate::newLong(int64_t value, Valdi::ExceptionTracker& exceptionTracker) {
     return JavaValue::makeLong(value);
 }

@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "valdi_core/cpp/Utils/BigInt.hpp"
 #include "valdi_core/cpp/Utils/Error.hpp"
 #include "valdi_core/cpp/Utils/InternedStringImpl.hpp"
 #include "valdi_core/cpp/Utils/Shared.hpp"
@@ -58,7 +59,8 @@ enum class ValueType : uint8_t {
      * ValdiObject. It could be a C++ object, platform specific
      * like Java or Objective-C, or a JS value.
      */
-    ValdiObject
+    ValdiObject,
+    BigInt,
 };
 
 std::string valueTypeToString(ValueType weakValueType);
@@ -81,6 +83,7 @@ public:
 
     explicit Value(int32_t anInt) noexcept;
     explicit Value(int64_t aLong) noexcept;
+    explicit Value(const Ref<BigInt>& value) noexcept;
     explicit Value(double aDouble) noexcept;
     explicit Value(bool aBool) noexcept;
 
@@ -121,6 +124,9 @@ public:
     bool isBool() const noexcept;
     bool isInt() const noexcept;
     bool isLong() const noexcept;
+    bool isBigInt() const noexcept;
+    const BigInt* getBigInt() const noexcept;
+    Ref<BigInt> getBigIntRef() const noexcept;
     bool isDouble() const noexcept;
     bool isString() const noexcept;
     bool isInternedString() const noexcept;
@@ -257,6 +263,9 @@ public:
 
     template<>
     int64_t checkedTo(ExceptionTracker& exceptionTracker) const;
+
+    template<>
+    Ref<BigInt> checkedTo(ExceptionTracker& exceptionTracker) const;
 
     template<>
     bool checkedTo(ExceptionTracker& exceptionTracker) const;

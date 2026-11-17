@@ -1223,6 +1223,19 @@ valdi_test(
     ],
 )
 
+cc_test(
+    name = "test_bigint_v8",
+    srcs = ["test/v8/BigInt_tests.cpp"],
+    copts = COMMON_COMPILE_FLAGS,
+    # V8 archives are optional and are not distributed with this repository.
+    tags = ["manual"],
+    deps = [
+        ":valdi_v8",
+        "//valdi_core",
+        "@gtest//:gtest_main",
+    ],
+)
+
 valdi_test(
     name = "test_hermes",
     srcs = glob(["test/hermes/**/*.cpp"]),

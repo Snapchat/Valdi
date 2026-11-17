@@ -22,6 +22,7 @@
 #include "valdi_core/cpp/Utils/StringCache.hpp"
 #include "valdi_core/cpp/Utils/ValueUtils.hpp"
 
+#include "hermes/VM/BigIntPrimitive.h"
 #include "hermes/VM/NativeState.h"
 #include "hermes/VM/PropertyAccessor.h"
 
@@ -428,6 +429,41 @@ JSValueRef HermesJavaScriptContext::onNewNumber(int32_t number) {
 
 JSValueRef HermesJavaScriptContext::onNewNumber(double number) {
     return toJSValueRefUncached(hermes::vm::HermesValue::encodeUntrustedNumberValue(number));
+}
+
+JSValueRef HermesJavaScriptContext::newBigInt(const BigInt& value, JSExceptionTracker& exceptionTracker) {
+    hermes::vm::GCScope gcScope(*_runtime);
+    if (auto small = value.toInt64()) {
+        auto result = hermes::vm::BigIntPrimitive::fromSigned(*_runtime, *small);
+        return checkCallAndGetValue(result, exceptionTracker);
+    }
+    const auto decimal = value.toString();
+    auto parsed = hermes::bigint::ParsedBigInt::parsedBigIntFromStringIntegerLiteral(
+        llvh::makeArrayRef(decimal.data(), decimal.size()), nullptr);
+    SC_ASSERT(parsed.has_value());
+    auto result = hermes::vm::BigIntPrimitive::fromBytes(*_runtime, parsed->getBytes());
+    return checkCallAndGetValue(result, exceptionTracker);
+}
+
+Ref<BigInt> HermesJavaScriptContext::valueToBigInt(const JSValue& value, JSExceptionTracker& exceptionTracker) {
+    auto hermesValue = toHermesValue(value);
+    if (!hermesValue.isBigInt()) {
+        exceptionTracker.onError("Expected bigint");
+        return nullptr;
+    }
+    auto* integer = hermesValue.getBigInt();
+    if (integer->isTruncationToSingleDigitLossless(true)) {
+        return BigInt::make(static_cast<int64_t>(integer->truncateToSingleDigit()));
+    }
+    hermes::vm::GCScope gcScope(*_runtime);
+    auto result = hermes::vm::BigIntPrimitive::toString(*_runtime, hermes::vm::createPseudoHandle(integer), 10);
+    if (!checkException(result.getStatus(), exceptionTracker)) {
+        return nullptr;
+    }
+    auto string = _runtime->makeHandle(result.getValue().getString());
+    auto decimal = hermes::vm::StringPrimitive::createStringView(*_runtime, string);
+    SC_ASSERT(decimal.isASCII());
+    return BigInt::make(std::string_view(decimal.castToCharPtr(), decimal.length()), exceptionTracker);
 }
 
 JSValueRef HermesJavaScriptContext::newStringUTF8(const std::string_view& str, JSExceptionTracker& exceptionTracker) {
@@ -1055,6 +1091,8 @@ bool HermesJavaScriptContext::valueToBool(const JSValue& value, JSExceptionTrack
         return hermesValue.getNumber() != 0;
     } else if (hermesValue.isBool()) {
         return hermesValue.getBool();
+    } else if (hermesValue.isBigInt()) {
+        return hermes::vm::toBoolean(hermesValue);
     } else if (hermesValue.isString()) {
         return hermesValue.getString()->getSize() != 0;
     } else {
@@ -1238,6 +1276,8 @@ ValueType HermesJavaScriptContext::getValueType(const JSValue& value) {
         return ValueType::Undefined;
     } else if (hermesValue->isNull()) {
         return ValueType::Null;
+    } else if (hermesValue->isBigInt()) {
+        return ValueType::BigInt;
     } else if (hermesValue->isNumber()) {
         return ValueType::Double;
     } else if (hermesValue->isBool()) {

@@ -150,6 +150,27 @@ open class ValdiMarshaller {
     public func pushDouble(_ value: Double) -> Int {
         return SwiftValdiMarshaller_PushDouble(marshallerCpp, value)
     }
+    public func pushBigInt(_ value: SCValdiBigInt) -> Int {
+        return SCValdiMarshallerPushBigInt(OpaquePointer(marshallerCpp), value)
+    }
+
+    public func getBigInt(_ index: Int) throws -> SCValdiBigInt {
+        let value = SCValdiMarshallerGetBigInt(OpaquePointer(marshallerCpp), index)
+        try checkError()
+        return value!
+    }
+
+    public func getOptionalBigInt(_ index: Int) throws -> SCValdiBigInt? {
+        return try getOptional(index) { try getBigInt($0) }
+    }
+
+    public func pushOptionalBigInt(_ value: SCValdiBigInt?) -> Int {
+        if let value {
+            return pushBigInt(value)
+        }
+        return pushUndefined()
+    }
+
     public func pushLong(_ value: Int64) -> Int {
         return SwiftValdiMarshaller_PushLong(marshallerCpp, value)
     }
@@ -390,6 +411,8 @@ open class ValdiMarshaller {
             return try getBool(index) as! T
         case is Int32.Type:
             return try getInt(index) as! T
+        case is SCValdiBigInt.Type:
+            return try getBigInt(index) as! T
         case is Int64.Type:
             return try getLong(index) as! T
         case is Double.Type:
@@ -416,6 +439,18 @@ open class ValdiMarshaller {
     }
     public func getTypedObjectPropertyInt(_ objectIndex: Int, _ propertyIndex: Int) throws -> Int32 {
         return try getTypedObjectProperty(objectIndex, propertyIndex, doGet: getInt)
+    }
+    public func getTypedObjectPropertyBigInt(_ objectIndex: Int, _ propertyIndex: Int) throws -> SCValdiBigInt {
+        return try getTypedObjectProperty(objectIndex, propertyIndex, doGet: getBigInt)
+    }
+    public func getTypedObjectPropertyOptionalBigInt(_ objectIndex: Int, _ propertyIndex: Int) throws -> SCValdiBigInt? {
+        return try getTypedObjectProperty(objectIndex, propertyIndex, doGet: getOptionalBigInt)
+    }
+    public func setTypedObjectPropertyBigInt(_ objectIndex: Int, _ propertyIndex: Int, _ value: SCValdiBigInt) throws {
+        try setTypedObjectProperty(objectIndex, propertyIndex) { _ = pushBigInt(value) }
+    }
+    public func setTypedObjectPropertyOptionalBigInt(_ objectIndex: Int, _ propertyIndex: Int, _ value: SCValdiBigInt?) throws {
+        try setTypedObjectProperty(objectIndex, propertyIndex) { _ = pushOptionalBigInt(value) }
     }
     public func getTypedObjectPropertyLong(_ objectIndex: Int, _ propertyIndex: Int) throws -> Int64 {
         return try getTypedObjectProperty(objectIndex, propertyIndex, doGet: getLong)
@@ -548,6 +583,8 @@ open class ValdiMarshaller {
 
     public func pushGenericTypeParameter<T>(_ value: T) throws -> Int {
         switch value {
+        case let bigIntValue as SCValdiBigInt:
+            return pushBigInt(bigIntValue)
         case let boolValue as Bool:
             return pushBool(boolValue)
         case let intValue as Int32:
@@ -908,6 +945,10 @@ open class ValdiMarshaller {
     public func isInt(_ index: Int) -> Bool {
         return SwiftValdiMarshaller_IsInt(marshallerCpp, index)
     }
+    public func isBigInt(_ index: Int) -> Bool {
+        return SwiftValdiMarshaller_IsBigInt(marshallerCpp, index)
+    }
+
     public func isLong(_ index: Int) -> Bool {
         return SwiftValdiMarshaller_IsLong(marshallerCpp, index)
     }
@@ -941,6 +982,8 @@ open class ValdiMarshaller {
             return try getBool(index) as Any
         } else if isInt(index) {
             return try getInt(index) as Any
+        } else if isBigInt(index) {
+            return try getBigInt(index)
         } else if isLong(index) {
             return try getLong(index) as Any
         } else if isDouble(index) {
@@ -977,6 +1020,8 @@ open class ValdiMarshaller {
         case nil:
             return pushNull()
             
+        case let bigIntValue as SCValdiBigInt:
+            return pushBigInt(bigIntValue)
         case let boolValue as Bool:
             return pushBool(boolValue)
             

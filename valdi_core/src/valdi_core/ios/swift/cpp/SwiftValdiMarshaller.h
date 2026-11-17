@@ -60,6 +60,7 @@ SwiftInt SwiftValdiMarshaller_GetDataSize(SwiftValdiMarshallerRef marshaller, Sw
 SwiftBool SwiftValdiMarshaller_IsNullOrUndefined(SwiftValdiMarshallerRef marshaller, SwiftInt index);
 SwiftBool SwiftValdiMarshaller_IsBool(SwiftValdiMarshallerRef marshaller, SwiftInt index);
 SwiftBool SwiftValdiMarshaller_IsInt(SwiftValdiMarshallerRef marshaller, SwiftInt index);
+SwiftBool SwiftValdiMarshaller_IsBigInt(SwiftValdiMarshallerRef marshaller, SwiftInt index);
 SwiftBool SwiftValdiMarshaller_IsLong(SwiftValdiMarshallerRef marshaller, SwiftInt index);
 SwiftBool SwiftValdiMarshaller_IsDouble(SwiftValdiMarshallerRef marshaller, SwiftInt index);
 SwiftBool SwiftValdiMarshaller_IsString(SwiftValdiMarshallerRef marshaller, SwiftInt index);

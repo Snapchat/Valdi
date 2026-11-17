@@ -558,6 +558,14 @@ JSValueRef JavaScriptValueDelegate::newIntObject(int32_t value, ExceptionTracker
     return _jsContext->newNumber(value);
 }
 
+JSValueRef JavaScriptValueDelegate::newBigInt(const Ref<BigInt>& value, ExceptionTracker& exceptionTracker) {
+    return _jsContext->newBigInt(*value, toJSExceptionTracker(exceptionTracker));
+}
+
+Ref<BigInt> JavaScriptValueDelegate::valueToBigInt(const JSValueRef& value, ExceptionTracker& exceptionTracker) const {
+    return _jsContext->valueToBigInt(value.get(), toJSExceptionTracker(exceptionTracker));
+}
+
 JSValueRef JavaScriptValueDelegate::newLong(int64_t value, ExceptionTracker& exceptionTracker) {
     return _jsContext->newLong(value, toJSExceptionTracker(exceptionTracker));
 }
