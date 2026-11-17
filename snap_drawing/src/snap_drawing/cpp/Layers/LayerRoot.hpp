@@ -14,6 +14,7 @@
 
 #include "snap_drawing/cpp/Events/EventQueue.hpp"
 #include "snap_drawing/cpp/Layers/Interfaces/ILayerRoot.hpp"
+#include "snap_drawing/cpp/Layers/Interfaces/ITextInputHost.hpp"
 #include "snap_drawing/cpp/Layers/Layer.hpp"
 #include "snap_drawing/cpp/Touches/HoverDispatcher.hpp"
 #include "snap_drawing/cpp/Touches/TouchDispatcher.hpp"
@@ -131,6 +132,9 @@ public:
 
     bool shouldRasterizeExternalSurface() const override;
 
+    void setTextInputHost(const Ref<ITextInputHost>& textInputHost);
+    ITextInputHost* getTextInputHost() const override;
+
     inline Scalar sanitizeCoordinate(Scalar value) const {
         return snap::drawing::sanitizeScalarFromScale(value, _scale);
     }
@@ -161,6 +165,7 @@ private:
     std::optional<TimePoint> _lastAbsoluteFrameTime;
     std::unique_ptr<CompositorPlaneList> _planeList;
     Ref<DisplayList> _lastDrawnFrame;
+    Ref<ITextInputHost> _textInputHost;
 
     bool needsLayout() const;
 

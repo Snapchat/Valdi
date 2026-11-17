@@ -11,6 +11,27 @@
 
 namespace snap::drawing {
 
+/**
+ * Reports a field's focus and edits to Valdi: its `value` and `focused` attributes, and the JS handlers the element
+ * sets, of which it holds the ones set.
+ */
+class EditableTextLayerListenerImpl : public EditableTextLayerListener {
+public:
+    void onEditBegin(EditableTextLayer& layer) override;
+    void onChange(EditableTextLayer& layer) override;
+    void onReturn(EditableTextLayer& layer) override;
+    void onEditEnd(EditableTextLayer& layer, EditTextEndReason reason) override;
+
+    Valdi::Ref<Valdi::ValueFunction> onEditBeginFn;
+    Valdi::Ref<Valdi::ValueFunction> onChangeFn;
+    Valdi::Ref<Valdi::ValueFunction> onReturnFn;
+    Valdi::Ref<Valdi::ValueFunction> onEditEndFn;
+
+private:
+    static void reportFocused(EditableTextLayer& layer);
+    static void call(const Valdi::Ref<Valdi::ValueFunction>& function, Valdi::Value event);
+};
+
 class EditableTextLayerClass : public ILayerClass {
 public:
     static Ref<EditableTextLayerClass> makeForTextField(const Ref<Resources>& resources,
@@ -85,6 +106,40 @@ public:
     // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
     void reset_onSelectionChange(EditableTextLayer& editableTextLayer, const AttributeContext& context);
 
+    DECLARE_BOOLEAN_ATTRIBUTE(EditableTextLayer, focused)
+
+    DECLARE_BOOLEAN_ATTRIBUTE(EditableTextLayer, enabled)
+
+    DECLARE_BOOLEAN_ATTRIBUTE(EditableTextLayer, closesWhenReturnKeyPressed)
+
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    Valdi::Result<Valdi::Void> apply_onChange(EditableTextLayer& editableTextLayer,
+                                              const Valdi::Ref<Valdi::ValueFunction>& value,
+                                              const AttributeContext& context);
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    void reset_onChange(EditableTextLayer& editableTextLayer, const AttributeContext& context);
+
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    Valdi::Result<Valdi::Void> apply_onEditBegin(EditableTextLayer& editableTextLayer,
+                                                 const Valdi::Ref<Valdi::ValueFunction>& value,
+                                                 const AttributeContext& context);
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    void reset_onEditBegin(EditableTextLayer& editableTextLayer, const AttributeContext& context);
+
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    Valdi::Result<Valdi::Void> apply_onEditEnd(EditableTextLayer& editableTextLayer,
+                                               const Valdi::Ref<Valdi::ValueFunction>& value,
+                                               const AttributeContext& context);
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    void reset_onEditEnd(EditableTextLayer& editableTextLayer, const AttributeContext& context);
+
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    Valdi::Result<Valdi::Void> apply_onReturn(EditableTextLayer& editableTextLayer,
+                                              const Valdi::Ref<Valdi::ValueFunction>& value,
+                                              const AttributeContext& context);
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    void reset_onReturn(EditableTextLayer& editableTextLayer, const AttributeContext& context);
+
     // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
     Valdi::Result<Valdi::Value> preprocess_font(const Valdi::Value& value);
 
@@ -96,6 +151,9 @@ private:
     int _defaultNumberOfLines;
     bool _managesChildFrames;
     TextVerticalAlignment _textVerticalAlignment;
+
+    // A textfield ends editing on return; a textview keeps it.
+    bool closesWhenReturnKeyPressedByDefault() const;
 };
 
 } // namespace snap::drawing

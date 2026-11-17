@@ -14,6 +14,8 @@
 
 namespace snap::drawing {
 
+class ITextInputHost;
+
 // The resolution the current frame will ultimately be presented/encoded at, in the root's
 // coordinate space. May be smaller than a descendant layer's own frame (e.g. a pinch-zoomed
 // sticker), which is what lets ExternalLayer avoid rasterizing its external content at a
@@ -45,6 +47,11 @@ public:
     // should override this so it always reflects the size of the frame currently being drawn.
     virtual OutputSize getOutputSize() const {
         return {};
+    }
+
+    // What shows an input method for a focused editable text layer. Null by default, which leaves them display-only.
+    virtual ITextInputHost* getTextInputHost() const {
+        return nullptr;
     }
 };
 

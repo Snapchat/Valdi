@@ -73,6 +73,7 @@ void LayerRoot::destroy() {
     _listener = nullptr;
     _destroyed = true;
     setContentLayer(nullptr, _sizingMode);
+    _textInputHost = nullptr;
     _eventQueue.clear();
 }
 
@@ -413,6 +414,14 @@ const Ref<Resources>& LayerRoot::getResources() const {
 
 bool LayerRoot::shouldRasterizeExternalSurface() const {
     return false;
+}
+
+void LayerRoot::setTextInputHost(const Ref<ITextInputHost>& textInputHost) {
+    _textInputHost = textInputHost;
+}
+
+ITextInputHost* LayerRoot::getTextInputHost() const {
+    return _textInputHost.get();
 }
 
 } // namespace snap::drawing
