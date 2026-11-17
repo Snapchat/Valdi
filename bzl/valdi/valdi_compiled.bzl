@@ -2365,7 +2365,7 @@ def _prepare_hotreload_explicit_input_list_file(ctx, all_targets):
 
     return file_list
 
-def _prepare_hotreload_arguments(module_names, config_yaml_file, explicit_input_list_file, toolchain, base_project_path):
+def _prepare_hotreload_arguments(module_names, config_yaml_file, explicit_input_list_file, toolchain, base_project_path, module_upload_base_url):
     """ Prepare arguments for the Valdi compiler invocation. """
 
     companion_bin_wrapper = toolchain.companion.files.to_list()[0]
@@ -2395,10 +2395,6 @@ def _prepare_hotreload_arguments(module_names, config_yaml_file, explicit_input_
 
     args.append("--module")
     args.append(_VALDI_BASE_MODULE_NAME)
-    args.append("--log-level")
-    args.append("info")
-    args.append("--monitor")
-    args.append("--usb")
     args.append("--inline-translations")
 
     # Probably need to cd to the base_project_path as part of the script
@@ -2412,6 +2408,11 @@ def _prepare_hotreload_arguments(module_names, config_yaml_file, explicit_input_
     args.append("android.codegen_enabled=false")
     args.append("--config-value")
     args.append("ios.codegen_enabled=false")
+
+    # Downloadable modules fail to compile without it; the regular compile rule forwards it the same way.
+    if module_upload_base_url:
+        args.append("--config-value")
+        args.append("module_upload_base_url={}".format(module_upload_base_url))
 
     return " ".join(args)
 
@@ -2457,15 +2458,17 @@ def _invoke_valdi_hotreloader(ctx):
 
     run_hotreloader = ctx.actions.declare_file("run_hotreloader.sh")
 
-    args = _prepare_hotreload_arguments([target[ValdiModuleInfo].name for target in ctx.attr.targets], config_yaml_file, explicit_input_list_file, toolchain, base_project_path)
+    args = _prepare_hotreload_arguments([target[ValdiModuleInfo].name for target in ctx.attr.targets], config_yaml_file, explicit_input_list_file, toolchain, base_project_path, ctx.var.get("module_upload_base_url"))
 
     # Here we run a command that outputs commands into run_hotreloader.sh.
     # We do this so that Bazel can resolve the tools and input_manifests of the
     # compiler and its dependencies.
+    # Mode args are read at script time so callers can swap them via VALDI_HOTRELOAD_MODE_ARGS.
     cmd = """
 echo 'export BAZEL_BINDIR={bin_dir}' > {script_path}
 echo "export BAZEL_EXECROOT=$PWD" >> {script_path}
-echo 'exec {executable} {args} "$@"' >> {script_path}
+echo 'MODE_ARGS=${{VALDI_HOTRELOAD_MODE_ARGS:---monitor --usb --log-level info}}' >> {script_path}
+echo 'exec {executable} {args} $MODE_ARGS "$@"' >> {script_path}
     """.format(bin_dir = ctx.bin_dir.path, executable = executable.path, args = args, script_path = run_hotreloader.path)
 
     ctx.actions.run_shell(
