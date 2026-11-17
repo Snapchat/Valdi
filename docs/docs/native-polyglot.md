@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Polyglot modules are a special kind of Valdi modules that expose a TypeScript API backed by a foreign language implementation, like Objective-C, Swift, C++, Java or Kotlin. When a regular Valdi module depends on a polyglot module, it will also depend on its implementation in the separate language. Some example of usecases for polyglot modules include:
+Polyglot modules are a special kind of Valdi modules that expose a TypeScript API backed by a foreign language implementation, like Objective-C, Swift, C++, Rust, Java or Kotlin. When a regular Valdi module depends on a polyglot module, it will also depend on its implementation in the separate language. Some example of usecases for polyglot modules include:
 
 - Exposing a third party library written in another language like C into TypeScript.
 - Providing a more optimized implementation of a function or module in another language.
@@ -261,3 +261,74 @@ auto kRegisterModule = RegisterModuleFactory::registerTyped<MyJoinerModule>();
 ```
 
 That's it! When TypeScript imports the `.d.ts` file, on all platforms the `loadModule()` of `MyJoinerModule` will be called, which will return the module instance that backs the implementation of the module.
+
+### Rust implementation
+
+Set `native_language = "rust"` to generate a safe Rust API instead of the high-level C++ API. The default is `"cpp"`, so existing modules are unchanged.
+
+```python
+load("@rules_rust//rust:defs.bzl", "rust_library")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "my_module",
+    native_deps = [":my_module_rust_impl"],
+    native_language = "rust",
+    # Etc...
+)
+
+rust_library(
+    name = "my_module_rust_impl",
+    srcs = ["native/Joiner.rs"],
+    crate_name = "my_module_rust_impl",
+    edition = "2024",
+    deps = [":my_module_rust"],
+)
+```
+
+The generated crate contains a trait for every `@ExportModule` and a deterministic registration macro. A minimal implementation looks like this:
+
+```rust
+use my_module::{JoinerModule, register_joiner};
+use valdi_core_rust::{ArrayRef, StringRef};
+
+#[derive(Default)]
+struct Joiner;
+
+impl JoinerModule for Joiner {
+    fn default_delimiter(&self) -> Result<String, String> {
+        Ok(" ".to_owned())
+    }
+
+    fn join(
+        &self,
+        components: ArrayRef<'_, StringRef<'_>>,
+        delimiter: StringRef<'_>,
+    ) -> Result<String, String> {
+        let components = components.to_vec()?;
+        let delimiter = delimiter.as_str()?;
+        Ok(components.join(delimiter.as_ref()))
+    }
+}
+
+register_joiner!(Joiner::default);
+```
+
+Rust mode creates these Bazel targets:
+
+- `<name>_cpp_ffi` is a declaration-only C header target for native consumers of the stable C ABI. It contains no generated C++ implementation.
+- `<name>_rust` is the generated Rust API crate used by the implementation.
+- `<name>_cpp` is the stable native-facing target. It exposes the declaration-only C ABI header and links the Rust implementation from `native_deps` plus Valdi's shared Rust runtime facade.
+- `<name>_native_android`, `<name>_native_ios`, and `<name>_native_desktop` continue to link through `<name>_cpp`.
+
+Valdi-module dependencies continue to propagate through their `<dep>_cpp` targets. Rust crates are not automatically added as dependencies of another module's generated Rust crate. An exported Rust signature may therefore use models, enums, and proxies declared in the same Valdi module, but not native declarations imported from another Valdi module. The compiler reports the foreign declaration when this restriction is violated. Ordinary TypeScript dependencies are unaffected.
+
+Rust bindings cover exported and generic models, numeric and string enums, proxies, modules, exported TypeScript functions, primitives, strings, `Long`, `bigint`, bytes, arrays, maps, dynamic values, nullability, callbacks, and promises. Generic models remain ordinary Rust generic types and are not specialized into C ABI declarations. Maps follow the existing native contract and are exposed as `Map<String, Value>`. Generated identifiers escape Rust keywords and report collisions after sanitization.
+
+Generated Rust code owns schema and module registration, deserializes directly from borrowed `Valdi::Value` references, and serializes Rust results directly back to `Valdi::Value`; it never constructs the corresponding C++ model. A single handwritten runtime facade exposes the fixed C ABI needed to access Valdi's C++ `Value`, schema registry, module registry, callbacks, proxies, and futures.
+
+Each synchronous call uses one stack-owned Valdi marshaller across the C ABI: arguments occupy the initial slots and Rust appends the result to the same stack. The common case fits four values inline. Null, undefined, primitives, and borrowed strings, bytes, models, arrays, and maps do not allocate bridge handles merely to cross the call, and existing callbacks, proxies, and futures are forwarded without another handle. The marshaller allocates spill storage only when more than four values are live. Returned collections still allocate their actual payload; creating or retaining a callback, proxy, future, or dynamic object beyond the call acquires the ownership state required by that runtime object.
+
+Incoming strings, bytes, arrays, models, callbacks, proxies, and futures use borrowed wrappers such as `StringRef<'a>`, `BytesRef<'a>`, `ArrayRef<'a, T>`, and `FooRef<'a>`. They are valid only for the call lifetime; call `to_owned()` before retaining one. Owned TypeScript arrays use `Array<T>`, while `Uint8Array` uses `BytesView`, so both remain unambiguous even inside generic models. A `BytesView` retained from Valdi retains the original typed-array wrapper through Valdi's intrusive reference counting; retaining, cloning, and returning it do not copy the byte buffer or allocate a Rust bridge handle. For JS-owned input, do not use a retained view after its JavaScript context has been torn down. A Rust-created `BytesView` owns a `Vec<u8>` and transfers that allocation to Valdi when returned. Proxy references and other owned runtime objects use RAII wrappers: `Drop` releases each owned value exactly once, and wrappers that implement `Clone` retain it before sharing ownership. Runtime-bound wrappers are not `Send` or `Sync` unless the underlying Valdi facility supports it; generated future completers are `Send` so background work can resolve or reject a future. Rust panics are translated to Valdi errors and never cross the C ABI; the C++ facade reports failures through status values rather than exceptions.
+
+Rust mode is supported on Android, iOS, macOS, and Linux/desktop. Web output is unchanged. It generates no per-module C++ source, high-level C++ models, proxies, or factory interfaces. The C-compatible header exposed by `<name>_cpp` contains the generic `Valdi::Value` module entry points and stable method identifiers; all per-type conversion remains in Rust. The toolchain contract is Rust 1.87 with edition 2024.

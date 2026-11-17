@@ -156,6 +156,10 @@ List of native Android dependencies (Bazel targets) that this module requires.
 
 List of native code dependencies (C++) that this module requires.
 
+#### `native_language` (Default: `"cpp"`)
+
+Shared native code generation language. Accepted values are `"cpp"` and `"rust"`. Rust mode generates Rust models and a safe `<name>_rust` API crate that marshals directly through `Valdi::Value`; the stable `<name>_cpp` native target exposes only a declaration-only C ABI header and links the shared runtime facade. See [Polyglot Modules](./native-polyglot.md#rust-implementation) for the target graph, supported types, and ownership rules.
+
 #### `web_deps` (Default: `[]`)
 
 List of web-specific dependencies that this module requires.

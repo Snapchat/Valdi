@@ -1108,6 +1108,7 @@ valdi_test(
     deps = [
         ":test_utils",
         ":valdi_runtime_with_vm",
+        "//apps/rust_codegen_test:rust_codegen_test_native",
         "//src/valdi_modules/src/cpp/valdi_http:valdi_http_cpp",
         "//src/valdi_modules/src/valdi/persistence:persistence_native",
         "//src/valdi_modules/src/valdi/valdi_core:valdi_core_native",
@@ -1117,6 +1118,7 @@ valdi_test(
         "//src/valdi_modules/src/valdi/valdi_protobuf:valdi_protobuf_native",
         "//src/valdi_modules/src/valdi/valdi_standalone:valdi_standalone_native",
         "//tsn",
+        "//valdi_core:valdi_core_rust_cc",
         "//valdi/testdata/resources/modules/local:local_native",
         "//valdi/testdata/resources/modules/remote:remote_native",
         "//valdi/testdata/resources/modules/remote_assets:remote_assets_native",
@@ -1398,8 +1400,8 @@ cc_binary(
     ],
 )
 
-cc_binary(
-    name = "valdi_standalone",
+cc_library(
+    name = "valdi_standalone_main",
     srcs = glob([
         "src/valdi/standalone/**/*.cpp",
         "src/valdi/standalone/**/*.hpp",
@@ -1410,6 +1412,12 @@ cc_binary(
         ":valdi_standalone_runtime",
         "//src/valdi_modules/src/valdi/valdi_cli:valdi_cli_native",
     ],
+)
+
+cc_binary(
+    name = "valdi_standalone",
+    visibility = ["//visibility:public"],
+    deps = [":valdi_standalone_main"],
 )
 
 cc_binary(

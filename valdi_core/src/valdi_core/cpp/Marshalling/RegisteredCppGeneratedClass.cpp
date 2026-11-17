@@ -22,10 +22,34 @@ RegisteredCppGeneratedClass::RegisteredCppGeneratedClass(ValueSchemaRegistry* re
     }
 }
 
+RegisteredCppGeneratedClass::RegisteredCppGeneratedClass(
+    ValueSchemaRegistry* registry,
+    std::string schemaString,
+    GetTypeReferencesFunction getTypeReferencesFunction,
+    GetTypeArgumentsFunction getTypeArgumentsFunction)
+    : _registry(registry),
+      _ownedSchemaString(std::move(schemaString)),
+      _schemaString(_ownedSchemaString.c_str()),
+      _getTypeReferencesFunction(std::move(getTypeReferencesFunction)) {
+    if (getTypeArgumentsFunction) {
+        _genericData = std::make_unique<GenericData>();
+        _genericData->getTypeArguments = std::move(getTypeArgumentsFunction);
+    }
+}
+
 RegisteredCppGeneratedClass::RegisteredCppGeneratedClass(ValueSchemaRegistry* registry,
                                                          const char* schemaString,
                                                          bool isEnum)
     : _registry(registry), _schemaString(schemaString), _isEnum(isEnum) {}
+
+RegisteredCppGeneratedClass::RegisteredCppGeneratedClass(
+    ValueSchemaRegistry* registry,
+    std::string schemaString,
+    bool isEnum)
+    : _registry(registry),
+      _ownedSchemaString(std::move(schemaString)),
+      _schemaString(_ownedSchemaString.c_str()),
+      _isEnum(isEnum) {}
 
 RegisteredCppGeneratedClass::~RegisteredCppGeneratedClass() = default;
 
@@ -141,7 +165,14 @@ ValueSchema RegisteredCppGeneratedClass::getResolvedSchema(ExceptionTracker& exc
         // Resolve dependencies. We do it with _schemaResolved set to true
         // so that circular dependencies can be properly managed.
         for (const auto& dependency : dependencies) {
-            dependency->getResolvedSchema(exceptionTracker);
+            if (dependency->isGenericSchema()) {
+                // A generic declaration has no concrete type arguments of its
+                // own. Register its base schema; the referencing generic key
+                // drives specialization in ValueSchemaTypeResolver.
+                dependency->ensureSchemaRegistered(exceptionTracker);
+            } else {
+                dependency->getResolvedSchema(exceptionTracker);
+            }
             if (!exceptionTracker) {
                 _schemaResolved = false;
                 return ValueSchema::voidType();
@@ -176,6 +207,10 @@ const StringBox& RegisteredCppGeneratedClass::getClassName() {
     }
 
     return _className;
+}
+
+bool RegisteredCppGeneratedClass::isGenericSchema() const {
+    return _genericData != nullptr;
 }
 
 } // namespace Valdi

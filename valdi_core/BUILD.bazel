@@ -4,6 +4,7 @@ load("@build_bazel_rules_swift//swift:swift.bzl", "swift_interop_hint", "swift_l
 load("@rules_android//rules:rules.bzl", "android_library")
 load("@rules_hdrs//umbrella_header:umbrella_header.bzl", "umbrella_header")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 load("@valdi//bzl:modulemap.bzl", "modulemap")
 load("@valdi//bzl:valdi_library.bzl", "COMMON_COMPILE_FLAGS", "OBJC_FLAGS")
 load("djinni_compat.bzl", "generate_djinni_compat_target")
@@ -90,15 +91,24 @@ cc_library(
 # abstraction
 cc_library(
     name = "valdi_core_cc",
-    srcs = glob([
-        "src/valdi_core/cpp/**/*.c",
-        "src/valdi_core/cpp/**/*.cpp",
-        "src/bindings/include/**/*_valdi.cpp",
-    ]),
-    hdrs = glob([
-        "src/valdi_core/cpp/**/*.h",
-        "src/valdi_core/cpp/**/*.hpp",
-    ]),
+    srcs = glob(
+        [
+            "src/valdi_core/cpp/**/*.c",
+            "src/valdi_core/cpp/**/*.cpp",
+            "src/bindings/include/**/*_valdi.cpp",
+        ],
+        exclude = ["src/valdi_core/cpp/Marshalling/RustValdi.cpp"],
+    ),
+    hdrs = glob(
+        [
+            "src/valdi_core/cpp/**/*.h",
+            "src/valdi_core/cpp/**/*.hpp",
+        ],
+        exclude = [
+            "src/valdi_core/cpp/Marshalling/RustValdi.h",
+            "src/valdi_core/cpp/Marshalling/RustValdi.hpp",
+        ],
+    ),
     copts = COMMON_COMPILE_FLAGS + COMPILER_FLAGS_CC,
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
@@ -113,6 +123,37 @@ cc_library(
         "@phmap",
         "@zoo",
     ],
+)
+
+cc_library(
+    name = "valdi_core_rust_cc",
+    srcs = ["src/valdi_core/cpp/Marshalling/RustValdi.cpp"],
+    hdrs = [
+        "src/valdi_core/cpp/Marshalling/RustValdi.h",
+        "src/valdi_core/cpp/Marshalling/RustValdi.hpp",
+    ],
+    copts = COMMON_COMPILE_FLAGS + COMPILER_FLAGS,
+    defines = select({
+        "@snap_client_toolchains//:compilation_mode_opt": [],
+        "//conditions:default": ["VALDI_RUST_TRACK_HANDLES=1"],
+    }),
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [":valdi_core_cc"],
+)
+
+rust_library(
+    name = "valdi_core_rust",
+    srcs = glob(["src/valdi_core/rust/**/*.rs"]),
+    crate_name = "valdi_core_rust",
+    edition = "2024",
+    visibility = ["//visibility:public"],
+)
+
+rust_test(
+    name = "valdi_core_rust_tests",
+    crate = ":valdi_core_rust",
+    deps = [":valdi_core_rust_cc"],
 )
 
 # Exposes the generated and hand-written JNI code,

@@ -39,4 +39,12 @@ final class ExportedModuleGenerator: NativeSourceGenerator {
                                               sourceFileName: parameters.sourceFileName)
         return try cppGenerator.write()
     }
+
+    func generateRustSources(parameters: NativeSourceParameters, cppType: CPPType) throws -> [NativeSource] {
+        return try RustModuleGenerator(exportedModule: exportedModule,
+                                       cppType: cppType,
+                                       bundleInfo: parameters.bundleInfo,
+                                       classMapping: parameters.classMapping,
+                                       sourceFileName: parameters.sourceFileName).write()
+    }
 }

@@ -70,4 +70,12 @@ class ValdiModelGenerator: NativeSourceGenerator {
         return try cppGenerator.write()
     }
 
+    func generateRustSources(parameters: NativeSourceParameters, cppType: CPPType) throws -> [NativeSource] {
+        return try RustModelGenerator(model: model,
+                                      cppType: cppType,
+                                      bundleInfo: parameters.bundleInfo,
+                                      classMapping: parameters.classMapping,
+                                      sourceFileName: parameters.sourceFileName).write()
+    }
+
 }

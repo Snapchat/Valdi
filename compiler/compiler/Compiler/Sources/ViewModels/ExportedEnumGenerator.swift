@@ -66,4 +66,11 @@ final class ExportedEnumGenerator: NativeSourceGenerator {
                                             sourceFileName: parameters.sourceFileName)
         return try cppGenerator.write()
     }
+
+    func generateRustSources(parameters: NativeSourceParameters, cppType: CPPType) throws -> [NativeSource] {
+        return try RustEnumGenerator(exportedEnum: exportedEnum,
+                                     cppType: cppType,
+                                     bundleInfo: parameters.bundleInfo,
+                                     sourceFileName: parameters.sourceFileName).write()
+    }
 }

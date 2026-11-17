@@ -19,7 +19,7 @@ def _is_test_file(f, path_to_module):
     return "/test/" in path or path.endswith("/test")
 
 def _valdi_test_impl(ctx):
-    standalone_binary = ctx.executable._valdi_standalone_binary
+    standalone_binary = ctx.executable.test_binary or ctx.executable._valdi_standalone_binary
 
     path_to_module = ctx.label.package
     test_paths = [f for f in ctx.files.srcs if _is_test_file(f, path_to_module)]
@@ -67,6 +67,9 @@ def _valdi_test_impl(ctx):
     runfiles = ctx.runfiles(
         files = [standalone_binary] + runtime_files,
     )
+    if ctx.attr.test_binary:
+        binary_info = ctx.attr.test_binary[DefaultInfo]
+        runfiles = runfiles.merge(binary_info.default_runfiles).merge(binary_info.data_runfiles)
 
     return [DefaultInfo(executable = test_script, files = depset([standalone_binary] + runtime_files), runfiles = runfiles)]
 
@@ -108,6 +111,11 @@ valdi_test = rule(
         "_valdi_standalone": attr.label(
             default = Label("@valdi//src/valdi_modules/src/valdi/valdi_standalone"),
             doc = "The Valdi Standalone target to be added to all Valdi targets",
+        ),
+        "test_binary": attr.label(
+            executable = True,
+            cfg = "exec",
+            doc = "A standalone executable linked with the module's native dependencies",
         ),
         "_valdi_standalone_binary": attr.label(
             executable = True,
