@@ -47,6 +47,7 @@ import {
   IntegrationTestRenderContext,
   NativeTemplateElementName,
 } from './IntegrationTestTypes';
+import { PLATFORM_FEATURE_TEST_CASES } from './PlatformFeatureCases';
 
 declare const runtime: ValdiRuntime;
 
@@ -4893,6 +4894,7 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
       }
     },
   },
+  ...PLATFORM_FEATURE_TEST_CASES,
 ];
 
 export type IntegrationCoverageLedgerElement = NativeTemplateElementName | 'slot';

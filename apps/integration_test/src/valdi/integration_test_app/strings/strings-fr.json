@@ -1,0 +1,8 @@
+{
+  "platform_greeting": {
+    "defaultMessage": "Bonjour depuis le module"
+  },
+  "platform_item_count": {
+    "defaultMessage": "{count%d} éléments"
+  }
+}

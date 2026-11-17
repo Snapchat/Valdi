@@ -36,6 +36,7 @@ valdi_module(
         "res/**/*.json",
         "res/**/*.svg",
     ]),
+    strings_dir = "strings",
     visibility = ["//visibility:public"],
     web_deps = [":integration_test_app_web"],
     # Exercise external Web asset emission in the integration harness. Other
