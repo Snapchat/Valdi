@@ -276,7 +276,7 @@ def valdi_module(
     _setup_native_target(name, all_valdi_module_deps, additional_native_deps, macos_deps, compiled_module_target, visibility)
 
     ### 8. Setup the test target
-    _setup_test_target(name, test_target_name, srcs, native_language)
+    _setup_test_target(name, test_target_name, srcs, test_deps)
 
     ### 9. Setup the prepared upload artifact if set
     if prepared_upload_artifact_name:
@@ -305,24 +305,23 @@ def valdi_hotreload(**kwargs):
         **kwargs
     )
 
-def _setup_test_target(name, test_target_name, srcs, native_language):
+def _setup_test_target(name, test_target_name, srcs, test_deps):
     target = ":{}".format(name)
-    test_binary = None
-    if native_language == "rust":
-        # A .valdimodule supplies JavaScript, not the Rust module factory.
-        # Link the factory into the executable that runs this module's tests.
-        test_binary_name = test_target_name + "_standalone"
-        native.cc_binary(
-            name = test_binary_name,
-            testonly = True,
-            deps = [
-                ":" + name + "_native",
-                "@valdi//valdi:valdi_standalone_main",
-            ],
-        )
-        test_binary = ":" + test_binary_name
 
-    valdi_test(name = test_target_name, srcs = srcs, target = target, test_binary = test_binary, hot_reload = select({
+    # A .valdimodule supplies JavaScript, not its Rust factories. valdi_test
+    # builds this executable only if a module in the test graph uses Rust.
+    test_binary_name = test_target_name + "_standalone"
+    native.cc_binary(
+        name = test_binary_name,
+        testonly = True,
+        tags = ["manual"],
+        deps = [
+            ":" + name + "_native",
+            "@valdi//valdi:valdi_standalone_main",
+        ] + [_native_target_for_target(dep) for dep in test_deps],
+    )
+
+    valdi_test(name = test_target_name, srcs = srcs, target = target, rust_test_binary = ":" + test_binary_name, hot_reload = select({
         "@valdi//bzl/valdi:valdi_hot_reload_enabled": True,
         "//conditions:default": False,
     }), tags = [

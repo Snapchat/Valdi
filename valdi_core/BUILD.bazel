@@ -132,7 +132,7 @@ cc_library(
         "src/valdi_core/cpp/Marshalling/RustValdi.h",
         "src/valdi_core/cpp/Marshalling/RustValdi.hpp",
     ],
-    copts = COMMON_COMPILE_FLAGS + COMPILER_FLAGS,
+    copts = COMMON_COMPILE_FLAGS + COMPILER_FLAGS_CC,
     defines = select({
         "@snap_client_toolchains//:compilation_mode_opt": [],
         "//conditions:default": ["VALDI_RUST_TRACK_HANDLES=1"],
