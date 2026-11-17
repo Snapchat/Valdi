@@ -93,6 +93,7 @@ indirect enum ValdiModelPropertyType {
     case double
     case bool
     case long
+    case bigInt
     case array(elementType: ValdiModelPropertyType)
     case bytes
     case map(keyType: ValdiModelPropertyType, valueType: ValdiModelPropertyType)
@@ -146,7 +147,7 @@ indirect enum ValdiModelPropertyType {
 
     var includesGenericType: Bool {
         switch self {
-        case .string, .double, .bool, .bytes, .map, .void, .object, .enum, .long, .any:
+        case .string, .double, .bool, .bytes, .map, .void, .object, .enum, .long, .bigInt, .any:
             return false
         case .array(let elementType):
             return elementType.includesGenericType

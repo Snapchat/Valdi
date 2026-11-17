@@ -8,6 +8,7 @@
 #import "djinni/objc/DJIMarshal+Private.h"
 
 #import "valdi_core/SCValdiObjCConversionUtils.h"
+#import "valdi_core/SCValdiBigInt.h"
 #import "valdi_core/SCValdiAction.h"
 #import "valdi_core/SCValdiFunctionWithCPPFunction+CPP.h"
 #import "valdi_core/SCValdiWrappedValue+Private.h"
@@ -211,6 +212,8 @@ public:
                 return NSStringFromStaticString(*value.getStaticString());
             case Valdi::ValueType::Int:
                 return @(value.toInt());
+            case Valdi::ValueType::BigInt:
+                return [[SCValdiBigInt alloc] initWithBigInt:Valdi::unsafeBridgeCast(value.getBigIntRef().get())];
             case Valdi::ValueType::Long:
                 return @(value.toLong());
             case Valdi::ValueType::Double:

@@ -25,6 +25,29 @@ function compile(str: string): CompiledFile {
 }
 
 describe('AST', () => {
+  it('recognizes bigint keywords, aliases, literals, and optional collections', () => {
+    const result = compile(`type Integer = bigint;
+      export interface Integers { value: bigint; alias: Integer; literal: 18446744073709551616n; optional?: bigint[]; }`);
+    const node = result.sourceFile.statements.find(ts.isInterfaceDeclaration)!;
+    const output = dumpInterface(node, { typeChecker: result.typeChecker, references: [] })!;
+    expect(output.members.slice(0, 3).map((member) => member.type.name)).toEqual(['bigint', 'bigint', 'bigint']);
+    expect(output.members[3]!.type.array?.name).toBe('bigint');
+    expect(output.members[3]!.isOptional).toBe(true);
+  });
+
+  it('preserves nullable bigint aliases and explicit unions', () => {
+    const project = new Project('/', { strictNullChecks: true });
+    const sourceFile = project.createSourceFile(
+      'Nullable.ts',
+      `type MaybeInteger = bigint | null | undefined;
+      export interface Integers { value: MaybeInteger; explicit: bigint | undefined; }`,
+    );
+    const node = sourceFile.statements.find(ts.isInterfaceDeclaration)!;
+    const output = dumpInterface(node, { typeChecker: project.typeChecker, references: [] })!;
+    expect(output.members[0]!.type.unions?.map((type) => type.name).sort()).toEqual(['bigint', 'null', 'undefined']);
+    expect(output.members[1]!.type.unions?.map((type) => type.name).sort()).toEqual(['bigint', 'undefined']);
+  });
+
   it('can find types to dump', () => {
     const result = compile(
       `class Component<VM> {

@@ -199,6 +199,9 @@ std::ostream& ValueSchema::outputToStream(std::ostream& os,
         case ValueSchemaInnerTypeInt:
             printType(os, format, kStringTypeInt, _flags);
             break;
+        case ValueSchemaInnerTypeBigInt:
+            printType(os, format, format == ValueSchemaPrintFormat::Short ? kStringTypeBigIntShort : kStringTypeBigInt, _flags);
+            break;
         case ValueSchemaInnerTypeLong:
             printType(os, format, kStringTypeLong, _flags);
             break;
@@ -469,6 +472,10 @@ bool ValueSchema::isInteger() const {
     return _type == ValueSchemaInnerTypeInt;
 }
 
+bool ValueSchema::isBigInt() const {
+    return _type == ValueSchemaInnerTypeBigInt;
+}
+
 bool ValueSchema::isLongInteger() const {
     return _type == ValueSchemaInnerTypeLong;
 }
@@ -729,6 +736,10 @@ ValueSchema ValueSchema::voidType() {
 
 ValueSchema ValueSchema::integer() {
     return ValueSchema(ValueSchemaInnerTypeInt, 0, 0, nullptr);
+}
+
+ValueSchema ValueSchema::bigInt() {
+    return ValueSchema(ValueSchemaInnerTypeBigInt, 0, 0, nullptr);
 }
 
 ValueSchema ValueSchema::longInteger() {

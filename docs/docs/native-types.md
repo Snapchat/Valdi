@@ -27,6 +27,7 @@ This unified representation allows Valdi to handle complex data structures effic
 | `string` | `String`   | `NSString*` |
 | `Uint8Array` | `ByteArray` | `NSData*` |
 | `Long` |  `Long`  |  `int64_t`, or `NSNumber*` if optional |
+| `bigint` | `com.snap.valdi.BigInt` | `SCValdiBigInt*` |
 | `T[]` or `Array<T>` | `Array<T>` | `NSArray<T *>*` |
 | arrow function or regular function |  lambda  | block |
 | [Annotated type](native-annotations.md) | Generated type | Generated type |
@@ -68,3 +69,34 @@ export function makeTypeConverter<T>(): TypeConverter<Observable<T>, BridgeObser
 ```
 
 <!-- TODO: publicly available instructions on how to register converters -->
+
+### Big integers
+
+JavaScript `bigint` values cross native boundaries without losing precision. C++ bindings use
+`Valdi::Ref<Valdi::BigInt>`, and Swift uses `SCValdiBigInt`. Native wrappers accept signed
+64-bit integers and decimal strings. Formatting returns decimal text, and arithmetic uses the
+JavaScript engine. Exact int64 conversion returns an optional value in C++ and Kotlin. Objective-C and Swift use
+`SCValdiBigIntInt64Result`, whose `success` field indicates whether `value` contains the
+exact integer. When conversion fails, `success` is false and `value` is zero.
+
+Public Valdi targets ES2016, so TypeScript rejects literals such as `123n`. To construct
+a big integer, include the BigInt type declaration and pass its decimal digits as a string:
+
+```typescript
+/// <reference lib="es2020.bigint" />
+
+const value = BigInt('18446744073709551616');
+```
+
+On Apple platforms, native `bigint` bindings with JavaScriptCore require iOS 18 or later
+or macOS 15 or later. This requirement applies to the bindings, not to JavaScript arithmetic.
+
+`Valdi::BigInt::make(int64_t)` returns a retained immutable integer. The decimal overload accepts
+`std::string_view` and an `ExceptionTracker`, reporting malformed input through the tracker.
+Its `toInt64()` returns `std::optional<int64_t>` and `toString()` returns `std::string`.
+Large integers keep their decimal payload in the same allocation as the C++ object. Kotlin
+keeps int64-sized values directly, without a native allocation or JNI call for construction,
+conversion, or formatting.
+
+Valdi's native Value-to-JSON helpers encode BigInts as decimal strings; decoding that JSON
+produces strings. JavaScript's built-in JSON behavior is unchanged.

@@ -149,6 +149,18 @@ function makeResolvedSymbol(symbol: ts.Symbol, isTypeParameter: boolean = false)
 }
 
 function resolveSymbolFromTypeName(typeName: ts.Type, typeChecker: ts.TypeChecker): SymbolGroup | undefined {
+  let primitiveName: string | undefined;
+  if ((typeName.flags & ts.TypeFlags.BigIntLike) !== 0) {
+    primitiveName = 'bigint';
+  } else if ((typeName.flags & ts.TypeFlags.Undefined) !== 0) {
+    primitiveName = 'undefined';
+  } else if ((typeName.flags & ts.TypeFlags.Null) !== 0) {
+    primitiveName = 'null';
+  }
+  if (primitiveName !== undefined) {
+    return { symbol: { name: primitiveName, isTypeParameter: false } };
+  }
+
   // Weird TypeScript bug, if typeName.isTypeParameter() is in the `if ` expression, then the compiler
   // seems to sometimes think this always evaluates to true, which is not correct.
   const isTypeParameter = typeName.isTypeParameter() as any;
@@ -257,6 +269,13 @@ function parseTypeFromSymbolGroup(
 ): AST.Type {
   if (symbolGroup.symbol) {
     const resolvedSymbol = symbolGroup.symbol;
+    if (
+      resolvedSymbol.sourceFile === undefined &&
+      (resolvedSymbol.name === 'bigint' || resolvedSymbol.name === 'undefined' || resolvedSymbol.name === 'null')
+    ) {
+      return { name: resolvedSymbol.name, leadingComments };
+    }
+
     if (resolvedSymbol.name === 'Array') {
       if (!type.typeArguments || type.typeArguments.length !== 1) {
         throw new Error(
@@ -352,6 +371,10 @@ function parseType(type: ts.TypeNode | undefined, references: AST.TypeReferences
       leadingComments,
       array: parseType(type.elementType, references),
     };
+  }
+
+  if ((references.typeChecker.getTypeAtLocation(type).flags & ts.TypeFlags.BigIntLike) !== 0) {
+    return { name: 'bigint', leadingComments };
   }
 
   if (ts.isTypeReferenceNode(type) || ts.isExpressionWithTypeArguments(type)) {

@@ -183,6 +183,7 @@ V8JavaScriptContext::V8JavaScriptContext(JavaScriptTaskScheduler* taskScheduler)
 V8JavaScriptContext::~V8JavaScriptContext() {
     prepareForTeardown();
     v8::HandleScope handleScope(_isolate);
+    _bigIntConstructor.Reset();
     _context.Reset();
     // TODO(rjaber): PersistentHandleVisitor seems to be deprecated find alternative
     _isolate->Dispose();
@@ -366,6 +367,80 @@ JSValueRef V8JavaScriptContext::newFunction(const Ref<JSFunction>& callable, JSE
 
     func->SetPrivate(context, _functionDataProperty.Get(_isolate), externalData);
     return toRetainedJSValueRef(IndirectV8Persistent::make(_isolate, func));
+}
+
+Valdi::JSValueRef V8JavaScriptContext::newBigInt(const Valdi::BigInt& value,
+                                                 Valdi::JSExceptionTracker& exceptionTracker) {
+    v8::HandleScope handleScope(_isolate);
+    if (auto small = value.toInt64()) {
+        return toRetainedJSValueRef(IndirectV8Persistent::make(_isolate, v8::BigInt::New(_isolate, *small)));
+    }
+
+    const auto decimal = value.toString();
+    if (decimal.size() > static_cast<size_t>(v8::String::kMaxLength)) {
+        exceptionTracker.onError("BigInt decimal exceeds V8's string capacity");
+        return {};
+    }
+
+    v8::TryCatch catcher(_isolate);
+    auto context = _context.Get(_isolate);
+    v8::Context::Scope contextScope(context);
+    v8::Local<v8::String> string;
+    if (!v8::String::NewFromUtf8(_isolate, decimal.data(), v8::NewStringType::kNormal, static_cast<int>(decimal.size()))
+             .ToLocal(&string)) {
+        storeCaughtException(catcher, "Cannot create BigInt decimal string", exceptionTracker);
+        return {};
+    }
+    v8::Local<v8::Value> argument = string;
+    v8::Local<v8::Value> result;
+    if (!_bigIntConstructor.Get(_isolate)->Call(context, v8::Undefined(_isolate), 1, &argument).ToLocal(&result)) {
+        storeCaughtException(catcher, "Cannot create bigint", exceptionTracker);
+        return {};
+    }
+    return toRetainedJSValueRef(IndirectV8Persistent::make(_isolate, result));
+}
+
+Ref<BigInt> V8JavaScriptContext::valueToBigInt(const JSValue& value, JSExceptionTracker& exceptionTracker) {
+    v8::HandleScope handleScope(_isolate);
+    auto jsValue = fromValdiJSValue(_isolate, value, exceptionTracker);
+    if (!exceptionTracker) {
+        return nullptr;
+    }
+    if (!jsValue->IsBigInt()) {
+        exceptionTracker.onError("Expected bigint");
+        return nullptr;
+    }
+    bool lossless;
+    auto integer = jsValue.As<v8::BigInt>()->Int64Value(&lossless);
+    if (lossless) {
+        return BigInt::make(integer);
+    }
+
+    v8::TryCatch catcher(_isolate);
+    auto context = _context.Get(_isolate);
+    v8::Context::Scope contextScope(context);
+    v8::Local<v8::String> string;
+    if (!jsValue->ToString(context).ToLocal(&string)) {
+        storeCaughtException(catcher, "Cannot format bigint", exceptionTracker);
+        return nullptr;
+    }
+    v8::String::Utf8Value decimal(_isolate, string);
+    if (*decimal == nullptr) {
+        storeCaughtException(catcher, "Cannot encode BigInt decimal string", exceptionTracker);
+        return nullptr;
+    }
+    return BigInt::make(std::string_view(*decimal, static_cast<size_t>(decimal.length())), exceptionTracker);
+}
+
+void V8JavaScriptContext::storeCaughtException(v8::TryCatch& catcher,
+                                               const char* message,
+                                               JSExceptionTracker& exceptionTracker) {
+    if (catcher.HasCaught()) {
+        exceptionTracker.storeException(
+            toRetainedJSValueRef(IndirectV8Persistent::make(_isolate, catcher.Exception())));
+    } else {
+        exceptionTracker.onError(message);
+    }
 }
 
 JSValueRef V8JavaScriptContext::newStringUTF8(const std::string_view& str, JSExceptionTracker& exceptionTracker) {
@@ -872,7 +947,7 @@ double V8JavaScriptContext::valueToDouble(const JSValue& value, JSExceptionTrack
 int32_t V8JavaScriptContext::valueToInt(const JSValue& value, JSExceptionTracker& exceptionTracker) {
     v8::HandleScope handleScope(_isolate);
 
-    auto val = v8::Local<v8::Int32>::Cast(fromValdiJSValue(_isolate, value, exceptionTracker));
+    auto val = fromValdiJSValue(_isolate, value, exceptionTracker);
     if (!exceptionTracker) {
         return 0;
     }
@@ -882,7 +957,7 @@ int32_t V8JavaScriptContext::valueToInt(const JSValue& value, JSExceptionTracker
         return 0;
     }
 
-    return val->Value();
+    return val.As<v8::Int32>()->Value();
 }
 
 Ref<RefCountable> V8JavaScriptContext::valueToWrappedObject(const JSValue& value,
@@ -973,6 +1048,9 @@ ValueType V8JavaScriptContext::getValueType(const JSValue& value) {
     }
     if (val->IsString() || val->IsStringObject()) {
         return ValueType::StaticString;
+    }
+    if (val->IsBigInt()) {
+        return ValueType::BigInt;
     }
     if (val->IsNumber() || val->IsNumberObject()) {
         return ValueType::Double;
@@ -1154,6 +1232,16 @@ JSValueRef V8JavaScriptContext::onNewUndefined() {
 
 void V8JavaScriptContext::onInitialize(JSExceptionTracker& exceptionTracker) {
     _isolate->SetData(static_cast<int>(IsolateDataSlot::ContextSlot), unsafeBridgeCast(this));
+    v8::HandleScope handleScope(_isolate);
+    v8::TryCatch catcher(_isolate);
+    auto context = _context.Get(_isolate);
+    v8::Local<v8::Value> constructor;
+    if (!context->Global()->Get(context, v8::String::NewFromUtf8Literal(_isolate, "BigInt")).ToLocal(&constructor)) {
+        storeCaughtException(catcher, "Cannot resolve BigInt constructor", exceptionTracker);
+        return;
+    }
+    SC_ASSERT(constructor->IsFunction());
+    _bigIntConstructor.Reset(_isolate, constructor.As<v8::Function>());
 }
 
 void V8JavaScriptContext::enqueueMicrotask(const JSValue& value, JSExceptionTracker& exceptionTracker) {

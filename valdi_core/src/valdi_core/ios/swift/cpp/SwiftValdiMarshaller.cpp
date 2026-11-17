@@ -252,6 +252,10 @@ SwiftBool SwiftValdiMarshaller_IsInt(SwiftValdiMarshallerRef marshaller, SwiftIn
     return SwiftValdiMarshaller_GetValueOrUndefined(marshaller, index).isInt();
 }
 
+SwiftBool SwiftValdiMarshaller_IsBigInt(SwiftValdiMarshallerRef marshaller, SwiftInt index) {
+    return SwiftValdiMarshaller_GetValueOrUndefined(marshaller, index).isBigInt();
+}
+
 SwiftBool SwiftValdiMarshaller_IsLong(SwiftValdiMarshallerRef marshaller, SwiftInt index) {
     return SwiftValdiMarshaller_GetValueOrUndefined(marshaller, index).isLong();
 }

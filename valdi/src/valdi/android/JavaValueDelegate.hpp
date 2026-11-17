@@ -60,6 +60,10 @@ public:
     JavaValue newInt(int32_t value, Valdi::ExceptionTracker& exceptionTracker) final;
     JavaValue newIntObject(int32_t value, Valdi::ExceptionTracker& exceptionTracker) final;
 
+    JavaValue newBigInt(const Valdi::Ref<Valdi::BigInt>& value, Valdi::ExceptionTracker& exceptionTracker) final;
+    Valdi::Ref<Valdi::BigInt> valueToBigInt(const JavaValue& value,
+                                            Valdi::ExceptionTracker& exceptionTracker) const final;
+
     JavaValue newLong(int64_t value, Valdi::ExceptionTracker& exceptionTracker) final;
     JavaValue newLongObject(int64_t value, Valdi::ExceptionTracker& exceptionTracker) final;
 

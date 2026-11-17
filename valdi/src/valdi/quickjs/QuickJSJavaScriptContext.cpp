@@ -115,6 +115,7 @@ QuickJSJavaScriptContext::~QuickJSJavaScriptContext() {
     JS_FreeValue(_context, _uint32ArrayCtor);
     JS_FreeValue(_context, _float32ArrayCtor);
     JS_FreeValue(_context, _float64ArrayCtor);
+    JS_FreeValue(_context, _bigIntFunction);
     JS_FreeAtom(_context, _objectFinalizerAtomKey);
 
     tsn_unload_in_context(_context);
@@ -133,6 +134,11 @@ void QuickJSJavaScriptContext::onInitialize(Valdi::JSExceptionTracker& exception
     auto guard = _threadAccessChecker.guard();
     auto globalObject = getGlobalObject(exceptionTracker);
     if (!exceptionTracker) {
+        return;
+    }
+
+    _bigIntFunction = JS_GetPropertyStr(_context, fromValdiJSValue(globalObject.get()), "BigInt");
+    if (!checkCall(exceptionTracker, JS_IsException(_bigIntFunction) ? -1 : 0)) {
         return;
     }
 
@@ -518,6 +524,40 @@ Valdi::JSValueRef QuickJSJavaScriptContext::onNewNumber(int32_t number) {
 
 Valdi::JSValueRef QuickJSJavaScriptContext::onNewNumber(double number) {
     return toUnretainedJSValueRef(JS_NewFloat64(_context, number));
+}
+
+Valdi::JSValueRef QuickJSJavaScriptContext::newBigInt(const Valdi::BigInt& value,
+                                                       Valdi::JSExceptionTracker& exceptionTracker) {
+    auto guard = _threadAccessChecker.guard();
+    if (auto small = value.toInt64()) {
+        return checkCallAndGetValue(exceptionTracker, JS_NewBigInt64(_context, *small));
+    }
+    auto decimal = value.toString();
+    auto string = JS_NewStringLen(_context, decimal.data(), decimal.size());
+    if (!checkCall(exceptionTracker, JS_IsException(string) ? -1 : 0)) {
+        return {};
+    }
+    auto result = JS_Call(_context, _bigIntFunction, JS_UNDEFINED, 1, &string);
+    JS_FreeValue(_context, string);
+    return checkCallAndGetValue(exceptionTracker, result);
+}
+
+Valdi::Ref<Valdi::BigInt> QuickJSJavaScriptContext::valueToBigInt(const Valdi::JSValue& value,
+                                                                Valdi::JSExceptionTracker& exceptionTracker) {
+    auto guard = _threadAccessChecker.guard();
+    auto jsValue = fromValdiJSValue(value);
+    if (!JS_IsBigInt(_context, jsValue)) {
+        exceptionTracker.onError("Expected bigint");
+        return nullptr;
+    }
+    size_t length;
+    const auto* decimal = JS_ToCStringLen(_context, &length, jsValue);
+    if (!checkCall(exceptionTracker, decimal == nullptr ? -1 : 0)) {
+        return nullptr;
+    }
+    auto result = Valdi::BigInt::make(std::string_view(decimal, length), exceptionTracker);
+    JS_FreeCString(_context, decimal);
+    return result;
 }
 
 Valdi::JSValueRef QuickJSJavaScriptContext::newStringUTF8(const std::string_view& str,
@@ -1150,6 +1190,9 @@ Valdi::ValueType QuickJSJavaScriptContext::getValueType(const Valdi::JSValue& va
     }
     if (JS_IsString(jsValue) != 0) {
         return Valdi::ValueType::StaticString;
+    }
+    if (JS_IsBigInt(_context, jsValue)) {
+        return Valdi::ValueType::BigInt;
     }
     if (JS_IsNumber(jsValue) != 0) {
         return Valdi::ValueType::Double;

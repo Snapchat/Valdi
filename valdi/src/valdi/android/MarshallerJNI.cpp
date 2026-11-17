@@ -52,6 +52,8 @@ static int valueTypeToInt(Valdi::ValueType type) {
             return 13;
         case Valdi::ValueType::ValdiObject:
             return 14;
+        case Valdi::ValueType::BigInt:
+            return 15;
     }
 }
 
@@ -408,6 +410,14 @@ jint nativePushLong(jlong ptr, jlong l) {
     }
 
     return static_cast<jint>(marshaller->pushLong(static_cast<int64_t>(l)));
+}
+
+jint nativePushBigInt(JNIEnv* env, jclass /*cls*/, jlong ptr, jobject value) {
+    auto* marshaller = unwrap(env, ptr);
+    if (marshaller == nullptr) {
+        return 0;
+    }
+    return static_cast<jint>(marshaller->push(Valdi::Value(ValdiAndroid::bigIntFromJavaObject(value))));
 }
 
 jint nativePushOpaqueObject(JNIEnv* env,
@@ -909,6 +919,7 @@ djinni::JniClassInitializer jvmMarshallerJNIOnLoad([] { // NOLINT(fuchsia-static
                                         ValdiMakeNativeMethod(nativeSetError),
                                         ValdiMakeNativeMethod(nativeCheckError),
                                         ValdiMakeNativeMethod(nativePushOpaqueObject),
+                                        ValdiMakeNativeMethod(nativePushBigInt),
                                         ValdiMakeNativeMethod(nativePushFunction),
                                         ValdiMakeNativeMethod(nativePushByteArray),
 

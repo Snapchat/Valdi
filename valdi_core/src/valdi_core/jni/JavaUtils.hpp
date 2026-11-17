@@ -33,6 +33,8 @@ class JavaEnv;
 JavaObject undefinedValueJavaObject(JavaEnv env);
 JavaObject toJavaObject(JavaEnv env, int32_t value);
 JavaObject toJavaObject(JavaEnv env, int64_t value);
+JavaObject toJavaObject(JavaEnv env, const Valdi::Ref<Valdi::BigInt>& value);
+Valdi::Ref<Valdi::BigInt> bigIntFromJavaObject(jobject value);
 JavaObject toJavaObject(JavaEnv env, double value);
 JavaObject toJavaObject(JavaEnv env, bool value);
 String toJavaObject(JavaEnv env, const std::string_view& str);

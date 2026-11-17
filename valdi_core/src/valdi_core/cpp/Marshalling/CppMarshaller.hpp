@@ -94,6 +94,10 @@ public:
         out = Value(value);
     }
 
+    inline static void marshall(ExceptionTracker& exceptionTracker, const Ref<BigInt>& value, Value& out) {
+        out = Value(value);
+    }
+
     inline static void marshall(ExceptionTracker& exceptionTracker, int64_t value, Value& out) {
         out = Value(value);
     }
@@ -213,6 +217,10 @@ public:
 
     inline static void unmarshall(ExceptionTracker& exceptionTracker, const Value& value, int32_t& out) {
         out = value.checkedTo<int32_t>(exceptionTracker);
+    }
+
+    inline static void unmarshall(ExceptionTracker& exceptionTracker, const Value& value, Ref<BigInt>& out) {
+        out = value.isNullOrUndefined() ? nullptr : value.checkedTo<Ref<BigInt>>(exceptionTracker);
     }
 
     inline static void unmarshall(ExceptionTracker& exceptionTracker, const Value& value, int64_t& out) {

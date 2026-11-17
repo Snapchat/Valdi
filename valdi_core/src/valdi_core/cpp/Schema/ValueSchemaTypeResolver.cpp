@@ -465,8 +465,8 @@ ValueSchemaRegistry* ValueSchemaTypeResolver::getRegistry() const {
 
 static bool shouldUseSchemaReference(const ValueSchema& schema) {
     // We avoid schema references if the schema is a simple type
-    if (schema.isUntyped() || schema.isString() || schema.isLongInteger() || schema.isDouble() || schema.isBoolean() ||
-        schema.isValueTypedArray()) {
+    if (schema.isUntyped() || schema.isString() || schema.isLongInteger() || schema.isBigInt() || schema.isDouble() ||
+        schema.isBoolean() || schema.isValueTypedArray()) {
         return false;
     }
 

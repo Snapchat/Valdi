@@ -159,6 +159,8 @@ JavaObject toJavaObject(JavaEnv env, const Valdi::Value& weakValue) {
             return toJavaObject(env, *weakValue.getStaticString());
         case Valdi::ValueType::Int:
             return toJavaObject(env, weakValue.toInt());
+        case Valdi::ValueType::BigInt:
+            return toJavaObject(env, weakValue.getBigIntRef());
         case Valdi::ValueType::Long:
             return toJavaObject(env, weakValue.toLong());
         case Valdi::ValueType::Double:
@@ -233,6 +235,26 @@ JavaObject toJavaObject(JavaEnv env, const Valdi::Ref<Valdi::ValueTypedProxyObje
 
 JavaObject toJavaObject(JavaEnv env, int32_t value) {
     return JavaObject(env, newJavaIntObject(value));
+}
+
+JavaObject toJavaObject(JavaEnv env, const Valdi::Ref<Valdi::BigInt>& value) {
+    auto& cache = JavaEnv::getCache();
+    auto small = value->toInt64();
+    auto handle = small ? 0 : bridgeRetain(value.get());
+    auto object = cache.getBigIntClass().newObject(cache.getBigIntConstructorMethod(), small.value_or(0), handle);
+    if (object == nullptr && handle != 0) {
+        bridgeRelease(handle);
+    }
+    return JavaObject(env, std::move(object));
+}
+
+Valdi::Ref<Valdi::BigInt> bigIntFromJavaObject(jobject value) {
+    auto& cache = JavaEnv::getCache();
+    auto handle = cache.getBigIntHandleMethod().call(value);
+    if (handle != 0) {
+        return Valdi::unsafeBridge<Valdi::BigInt>(reinterpret_cast<void*>(handle));
+    }
+    return Valdi::BigInt::make(cache.getBigIntLongValueMethod().call(value));
 }
 
 JavaObject toJavaObject(JavaEnv env, int64_t value) {
@@ -665,6 +687,10 @@ Valdi::Value toValue(JavaEnv env, ::djinni::LocalRef<jobject> object) {
             }
         }
 
+        if (JavaEnv::instanceOf(object, cache.getBigIntClass())) {
+            return Valdi::Value(bigIntFromJavaObject(object.get()));
+        }
+
         auto nativeObject = valdiObjectFromJavaObject(JavaObject(env, object.get()), "OpaqueJavaObject");
         return Valdi::Value(nativeObject);
     }
@@ -820,6 +846,8 @@ std::string getJavaTypeSignatureFromValueSchema(const Valdi::ValueSchema& schema
         } else {
             return kJniSigInt;
         }
+    } else if (schema.isBigInt()) {
+        return JAVA_CLASS("com/snap/valdi/BigInt");
     } else if (schema.isLongInteger()) {
         if (schema.isBoxed()) {
             return JAVA_CLASS("java/lang/Long");

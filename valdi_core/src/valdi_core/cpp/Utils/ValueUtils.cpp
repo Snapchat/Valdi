@@ -131,6 +131,9 @@ void writeValueToJSONWriter(const Value& value, JSONWriter& writer) {
         case ValueType::Long:
             writer.writeInt(value.toLong());
             break;
+        case ValueType::BigInt:
+            writer.writeString(value.getBigInt()->toString());
+            break;
         case ValueType::Double:
             writer.writeDouble(value.toDouble());
             break;

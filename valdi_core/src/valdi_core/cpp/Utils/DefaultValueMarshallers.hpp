@@ -172,6 +172,31 @@ public:
 };
 
 template<typename ValueType>
+class BigIntValueMarshaller : public ValueMarshaller<ValueType> {
+public:
+    BigIntValueMarshaller(const Ref<PlatformValueDelegate<ValueType>>& delegate)
+        : ValueMarshaller<ValueType>(delegate) {}
+
+    ValueType unmarshall(const Valdi::Value& value,
+                         const ReferenceInfoBuilder& referenceInfoBuilder,
+                         ExceptionTracker& exceptionTracker) final {
+        auto v = value.checkedTo<Ref<BigInt>>(exceptionTracker);
+        if (!exceptionTracker) {
+            return this->_delegate->newNull();
+        }
+
+        return this->_delegate->newBigInt(v, exceptionTracker);
+    }
+
+    Valdi::Value marshall(const ValueType* /*receiver*/,
+                          const ValueType& value,
+                          const ReferenceInfoBuilder& referenceInfoBuilder,
+                          ExceptionTracker& exceptionTracker) final {
+        return Valdi::Value(this->_delegate->valueToBigInt(value, exceptionTracker));
+    }
+};
+
+template<typename ValueType>
 class DoubleValueMarshaller : public ValueMarshaller<ValueType> {
 public:
     DoubleValueMarshaller(const Ref<PlatformValueDelegate<ValueType>>& delegate)
