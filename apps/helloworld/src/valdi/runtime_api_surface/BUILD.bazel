@@ -1,0 +1,23 @@
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+# Compile-time and runtime check of the global `runtime` API (valdi_core/src/ValdiRuntime.d.ts).
+# Nothing in this repo otherwise calls every method, so removing one or changing its signature
+# would pass CI and only break callers outside the repo. See test/ValdiRuntimeApi.spec.ts.
+#
+# Test-only: the HelloWorld app doesn't depend on it, so nothing here ships in the app bundle.
+valdi_module(
+    name = "runtime_api_surface",
+    srcs = glob([
+        "test/**/*.ts",
+    ]) + [
+        "tsconfig.json",
+    ],
+    android_output_target = "release",
+    ios_module_name = "SCCRuntimeApiSurface",
+    ios_output_target = "release",
+    test_deps = ["//src/valdi_modules/src/valdi/jasmine"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+    ],
+)
