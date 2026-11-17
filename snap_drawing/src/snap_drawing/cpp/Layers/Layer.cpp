@@ -378,10 +378,14 @@ void Layer::updateMatrix(Scalar width, Scalar height) {
 }
 
 void Layer::setTouchAreaExtension(Scalar left, Scalar right, Scalar top, Scalar bottom) {
-    _touchAreaExtensionLeft = left;
-    _touchAreaExtensionRight = right;
-    _touchAreaExtensionTop = top;
-    _touchAreaExtensionBottom = bottom;
+    if (_touchAreaExtensionLeft != left || _touchAreaExtensionRight != right || _touchAreaExtensionTop != top ||
+        _touchAreaExtensionBottom != bottom) {
+        _touchAreaExtensionLeft = left;
+        _touchAreaExtensionRight = right;
+        _touchAreaExtensionTop = top;
+        _touchAreaExtensionBottom = bottom;
+        onHitTestChanged();
+    }
 }
 
 void Layer::setBackgroundColor(Color backgroundColor) {
@@ -476,7 +480,10 @@ Color Layer::getBackgroundColor() const {
 }
 
 void Layer::setTouchEnabled(bool touchEnabled) {
-    _touchEnabled = touchEnabled;
+    if (_touchEnabled != touchEnabled) {
+        _touchEnabled = touchEnabled;
+        onHitTestChanged();
+    }
 }
 
 bool Layer::isTouchEnabled() const {
@@ -1081,6 +1088,33 @@ void Layer::removeGestureRecognizer(const Valdi::Ref<GestureRecognizer>& gesture
             return;
         }
         it++;
+    }
+}
+
+void Layer::setHoverListener(HoverListener hoverListener) {
+    auto hadHoverListener = hasHoverListener();
+    _hoverListener = std::move(hoverListener);
+    if (hadHoverListener != hasHoverListener()) {
+        onHitTestChanged();
+    }
+}
+
+// Changes that don't redraw still change which layer a still pointer hovers.
+void Layer::onHitTestChanged() {
+    if (_root != nullptr) {
+        _root->setNeedsHoverUpdate();
+    }
+}
+
+bool Layer::hasHoverListener() const {
+    return static_cast<bool>(_hoverListener);
+}
+
+void Layer::notifyHover(const HoverEvent& event) {
+    // A copy, as the listener may replace itself.
+    auto hoverListener = _hoverListener;
+    if (hoverListener) {
+        hoverListener(*this, event);
     }
 }
 

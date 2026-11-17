@@ -157,6 +157,7 @@ void LayerClass::bindAttributes(Valdi::AttributesBindingContext& binder) {
     BIND_FUNCTION_ATTRIBUTE(Layer, onTouch);
     BIND_FUNCTION_ATTRIBUTE(Layer, onTouchStart);
     BIND_FUNCTION_ATTRIBUTE(Layer, onTouchEnd);
+    BIND_FUNCTION_ATTRIBUTE(Layer, onHoverChange);
     BIND_FUNCTION_ATTRIBUTE(Layer, hitTest);
 
     snap::valdi_core::CompositeAttributePart longPressDurationPart = {
@@ -800,6 +801,49 @@ void LayerClass::reset_onTouchEnd(Layer& view, const AttributeContext& /*context
     auto& touchGesture = getOrCreateGestureRecognizer<TouchGestureRecognizer>(getResources(), view);
     touchGesture.setOnEndListener(TouchGestureRecognizerListener());
     removeGestureRecognizerIfNeeded<TouchGestureRecognizer>(view, touchGesture);
+}
+
+static void populateHoverEvent(const Valdi::ViewNode& viewNode, const HoverEvent& event, Valdi::Value& value) {
+    static auto kHovered = STRING_LITERAL("hovered");
+    static auto kX = STRING_LITERAL("x");
+    static auto kY = STRING_LITERAL("y");
+    static auto kAbsoluteX = STRING_LITERAL("absoluteX");
+    static auto kAbsoluteY = STRING_LITERAL("absoluteY");
+
+    value.setMapValue(kHovered, Valdi::Value(event.type != HoverEventTypeExited));
+
+    auto valdiPoint = Valdi::Point(event.location.x, event.location.y);
+    auto relative = viewNode.convertPointToRelativeDirectionAgnostic(valdiPoint);
+    auto absolute = viewNode.convertPointToAbsoluteDirectionAgnostic(valdiPoint);
+    populatePoint(Point(relative.x, relative.y), kX, kY, value);
+    populatePoint(Point(absolute.x, absolute.y), kAbsoluteX, kAbsoluteY, value);
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+Valdi::Result<Valdi::Void> LayerClass::apply_onHoverChange(Layer& view,
+                                                           const Valdi::Ref<Valdi::ValueFunction>& value,
+                                                           const AttributeContext& /*context*/) {
+    view.setHoverListener([value](Layer& layer, const HoverEvent& event) {
+        // Only the changes: a call per pointer move would re-render whatever the handler updates on every move.
+        if (event.type == HoverEventTypeMoved) {
+            return;
+        }
+        // A layer removed while hovered has no view node left to place the event in, and its element is gone, as
+        // onHoverChange's docs warn.
+        auto viewNode = valdiViewNodeFromLayer(layer);
+        if (viewNode == nullptr) {
+            return;
+        }
+        Valdi::Value jsEvent;
+        populateHoverEvent(*viewNode, event, jsEvent);
+        callEventHandler(value, jsEvent);
+    });
+    return Valdi::Void();
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+void LayerClass::reset_onHoverChange(Layer& view, const AttributeContext& /*context*/) {
+    view.setHoverListener(HoverListener());
 }
 
 // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)

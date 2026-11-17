@@ -16,6 +16,7 @@
 #include "snap_drawing/cpp/Layers/Interfaces/ILayer.hpp"
 
 #include "snap_drawing/cpp/Touches/GestureRecognizer.hpp"
+#include "snap_drawing/cpp/Touches/HoverEvent.hpp"
 
 #include "snap_drawing/cpp/Drawing/DrawingContext.hpp"
 #include "snap_drawing/cpp/Drawing/LayerContent.hpp"
@@ -220,6 +221,14 @@ public:
     void removeGestureRecognizerOfType(const std::type_info& type);
     std::optional<size_t> indexOfGestureRecognizerOfType(const std::type_info& type) const;
 
+    /**
+     Sets the listener notified while a hovering pointer is over this layer, which makes it a hover target.
+     See HoverDispatcher for which layer is hovered.
+     */
+    void setHoverListener(HoverListener hoverListener);
+    bool hasHoverListener() const;
+    void notifyHover(const HoverEvent& event);
+
     const Ref<RefCountable>& getAttachedData() const;
     virtual void setAttachedData(const Ref<RefCountable>& attachedData);
 
@@ -249,6 +258,7 @@ private:
     Ref<Resources> _resources;
     SafeContainer<std::vector<Valdi::Ref<Layer>>> _children;
     SafeContainer<std::vector<Valdi::Ref<GestureRecognizer>>> _gestureRecognizers;
+    HoverListener _hoverListener;
     SafeContainer<Valdi::FlatMap<String, Ref<IAnimation>>> _animations;
     Valdi::Weak<ILayer> _parent;
     ILayerRoot* _root = nullptr;
@@ -304,6 +314,7 @@ private:
     void drawForeground(Scalar width, Scalar height);
 
     void setVisualFrameDirty();
+    void onHitTestChanged();
 
     void notifyParentSetChildNeedsDisplay();
 

@@ -421,6 +421,11 @@ All properties from [Layout](#layout), plus:
 **`onTouchEnd`**: `(event: TouchEvent) => void`
 - Event handler called on the 'ended' touch events captured by this view.
 
+**`onHoverChange`**: `(event: HoverEvent) => void`
+- Event handler called when a hovering pointer, such as a mouse or a hand ray, starts or stops being over this view (`event.hovered`).
+- Only the innermost view with an `onHoverChange` under the pointer is hovered, and a view covering another blocks hover the way it blocks touches.
+- Only renderers with a hovering pointer call it; elsewhere it is ignored.
+
 **`onTouchDelayDuration`**: `number`
 - Specifies the minimum duration, in seconds, for an onTouch event to trigger.
 - When not set, will be zero.

@@ -36,6 +36,10 @@ public:
 
     virtual bool shouldRasterizeExternalSurface() const = 0;
 
+    // Called when a layer in the tree changed in a way that can change which layer a pointer hovers without
+    // redrawing, such as gaining or losing its hover listener.
+    virtual void setNeedsHoverUpdate() {}
+
     // Defaults to {0, 0} (unknown), in which case callers should treat output size as
     // unconstrained. Roots that draw straight to a fixed-resolution target (e.g. transcoding)
     // should override this so it always reflects the size of the frame currently being drawn.

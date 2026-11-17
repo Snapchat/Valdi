@@ -91,6 +91,13 @@ public:
     void reset_onTouchEnd(Layer& view, const AttributeContext& context);
 
     // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    Valdi::Result<Valdi::Void> apply_onHoverChange(Layer& view,
+                                                   const Valdi::Ref<Valdi::ValueFunction>& value,
+                                                   const AttributeContext& context);
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
+    void reset_onHoverChange(Layer& view, const AttributeContext& context);
+
+    // NOLINTNEXTLINE(readability-identifier-naming, readability-convert-member-functions-to-static)
     Valdi::Result<Valdi::Void> apply_hitTest(Layer& view,
                                              const Valdi::Ref<Valdi::ValueFunction>& value,
                                              const AttributeContext& context);

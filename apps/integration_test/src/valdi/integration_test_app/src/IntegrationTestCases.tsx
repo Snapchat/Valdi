@@ -5232,6 +5232,14 @@ export const INTEGRATION_ATTRIBUTE_COVERAGE_LEDGER: readonly IntegrationAttribut
   },
   {
     elements: ['view', 'scroll', 'blur'],
+    attributes: ['onHoverChange'],
+    kind: 'blocked-needs-host',
+    caseIds: [],
+    notes:
+      'Only snap_drawing hosts that dispatch a hovering pointer deliver it; snap_drawing HoverDispatcher_tests cover the dispatch.',
+  },
+  {
+    elements: ['view', 'scroll', 'blur'],
     attributes: [
       'onTapDisabled',
       'onTap',
