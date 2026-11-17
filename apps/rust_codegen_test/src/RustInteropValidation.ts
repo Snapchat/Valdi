@@ -118,13 +118,15 @@ export function validateSynchronousRustInterop(): void {
   assertDeepEqual(Array.from(echoBytes(new Uint8Array([0, 1, 2, 255]))), [0, 1, 2, 255], 'bytes');
   assertDeepEqual(Array.from(echoOptionalBytes(new Uint8Array([4, 2]))!), [4, 2], 'present optional bytes');
   assertEqual(echoOptionalBytes(undefined), undefined, 'absent optional bytes');
-  assertEqual(readAnyNumber(42 as any), 42, 'any number');
-  assertEqual(readAnyNumber(echoOptionalAny(42 as any) as any), 42, 'present optional any');
+  const dynamicNumber = 42 as unknown as object;
+  assertEqual(readAnyNumber(dynamicNumber), 42, 'any number');
+  assertEqual(readAnyNumber(echoOptionalAny(dynamicNumber)!), 42, 'present optional any');
   assertEqual(echoOptionalAny(undefined), undefined, 'absent optional any');
-  assertEqual(makeAnyString() as any, 'forty-two', 'returned any');
+  assertEqual<unknown>(makeAnyString(), 'forty-two', 'returned any');
 
-  const numberMap = { answer: 42 } as any as Map<string, number>;
-  assertEqual((echoNumberMap(numberMap) as any).answer, 42, 'map');
+  const numberMap = { answer: 42 };
+  const result = echoNumberMap(numberMap as unknown as Map<string, number>) as unknown as typeof numberMap;
+  assertEqual(result.answer, 42, 'map');
 }
 
 export function validateRetainedRustInterop(): void {

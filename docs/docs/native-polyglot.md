@@ -321,6 +321,8 @@ Rust mode creates these Bazel targets:
 - `<name>_cpp` is the stable native-facing target. It exposes the declaration-only C ABI header and links the Rust implementation from `native_deps` plus Valdi's shared Rust runtime facade.
 - `<name>_native_android`, `<name>_native_ios`, and `<name>_native_desktop` continue to link through `<name>_cpp`.
 
+For a TypeScript module whose tests call a Rust-backed module, put that module in `deps`. The test executable links native factories from those dependencies, including transitive ones. `test_deps` supplies JavaScript test helpers such as Jasmine; it does not link native factories.
+
 Valdi-module dependencies continue to propagate through their `<dep>_cpp` targets. Rust crates are not automatically added as dependencies of another module's generated Rust crate. An exported Rust signature may therefore use models, enums, and proxies declared in the same Valdi module, but not native declarations imported from another Valdi module. The compiler reports the foreign declaration when this restriction is violated. Ordinary TypeScript dependencies are unaffected.
 
 Rust bindings cover exported and generic models, numeric and string enums, proxies, modules, exported TypeScript functions, primitives, strings, `Long`, `bigint`, bytes, arrays, maps, dynamic values, nullability, callbacks, and promises. Generic models remain ordinary Rust generic types and are not specialized into C ABI declarations. Maps follow the existing native contract and are exposed as `Map<String, Value>`. Generated identifiers escape Rust keywords and report collisions after sanitization.

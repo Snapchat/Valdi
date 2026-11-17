@@ -276,7 +276,7 @@ def valdi_module(
     _setup_native_target(name, all_valdi_module_deps, additional_native_deps, macos_deps, compiled_module_target, visibility)
 
     ### 8. Setup the test target
-    _setup_test_target(name, test_target_name, srcs, test_deps)
+    _setup_test_target(name, test_target_name, srcs)
 
     ### 9. Setup the prepared upload artifact if set
     if prepared_upload_artifact_name:
@@ -305,7 +305,7 @@ def valdi_hotreload(**kwargs):
         **kwargs
     )
 
-def _setup_test_target(name, test_target_name, srcs, test_deps):
+def _setup_test_target(name, test_target_name, srcs):
     target = ":{}".format(name)
 
     # A .valdimodule supplies JavaScript, not its Rust factories. valdi_test
@@ -318,7 +318,7 @@ def _setup_test_target(name, test_target_name, srcs, test_deps):
         deps = [
             ":" + name + "_native",
             "@valdi//valdi:valdi_standalone_main",
-        ] + [_native_target_for_target(dep) for dep in test_deps],
+        ],
     )
 
     valdi_test(name = test_target_name, srcs = srcs, target = target, rust_test_binary = ":" + test_binary_name, hot_reload = select({
