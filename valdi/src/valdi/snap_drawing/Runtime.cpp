@@ -58,12 +58,13 @@ void Runtime::initializeViewManager(Valdi::PlatformType platformType) {
     }
 }
 
-void Runtime::registerAssetLoaders(Valdi::AssetLoaderManager& assetLoaderManager) {
+void Runtime::registerAssetLoaders(Valdi::AssetLoaderManager& assetLoaderManager, bool decodesImagesOnLoad) {
     auto& logger = _resources->getLogger();
     auto queue =
         Valdi::DispatchQueue::create(STRING_LITERAL("com.snap.valdi.ImageLoader"), Valdi::ThreadQoSClassNormal);
 
-    snap::drawing::registerAssetLoaders(assetLoaderManager, _resources, queue, logger, _maxCacheSizeInBytes);
+    snap::drawing::registerAssetLoaders(
+        assetLoaderManager, _resources, queue, logger, _maxCacheSizeInBytes, decodesImagesOnLoad);
 }
 
 const Ref<IFrameScheduler>& Runtime::getFrameScheduler() const {

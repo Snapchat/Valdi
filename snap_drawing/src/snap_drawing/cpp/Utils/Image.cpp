@@ -161,6 +161,14 @@ void Image::draw(const Valdi::BitmapInfo& bitmapInfo, void* bytes) {
     _skImage->scalePixels(pixmap, SkSamplingOptions(SkCubicResampler::Mitchell()));
 }
 
+Ref<Image> Image::decoded() const {
+    auto raster = _skImage->makeRasterImage();
+    auto decodedImage = Valdi::makeShared<Image>(raster != nullptr ? raster : _skImage);
+    decodedImage->_filter = _filter;
+    decodedImage->_sourceImage = _sourceImage;
+    return decodedImage;
+}
+
 Ref<Image> Image::withFilter(const Ref<Valdi::ImageFilter>& filter) {
     auto copiedImage = Valdi::makeShared<Image>(_skImage);
     copiedImage->_filter = filter;

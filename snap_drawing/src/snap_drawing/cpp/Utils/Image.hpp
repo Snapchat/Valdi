@@ -66,6 +66,12 @@ public:
     Valdi::Ref<Valdi::IBitmap> toConvertedBitmap(const Valdi::BitmapInfo& bitmapInfo);
 
     /**
+     Returns an Image holding this one's pixels decoded on the calling thread, so that drawing it doesn't decode.
+     An Image made from encoded data otherwise decodes on its first draw.
+     */
+    Ref<Image> decoded() const;
+
+    /**
      Make an Image from bytes representing an encoded image, like in PNG or JPG format.
      */
     static Valdi::Result<Ref<Image>> make(const Valdi::BytesView& data);

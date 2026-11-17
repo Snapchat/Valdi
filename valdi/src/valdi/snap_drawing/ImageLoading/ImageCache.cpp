@@ -94,6 +94,11 @@ Valdi::Result<CachedImage> ImageCache::getResizedCachedImage(const String& url,
     return result;
 }
 
+bool ImageCache::resizes(int imageWidth, int imageHeight, int preferredWidth, int preferredHeight) {
+    const auto scaled = findScaledDimensions(imageWidth, imageHeight, preferredWidth, preferredHeight);
+    return scaled.width != imageWidth || scaled.height != imageHeight;
+}
+
 size_t ImageCache::getCurrentSize() const {
     return _currentSize;
 }
