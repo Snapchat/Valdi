@@ -78,6 +78,10 @@ std::string getJavaTypeSignatureFromValueSchema(const Valdi::ValueSchema& schema
         return JAVA_CLASS("java/util/Map");
     } else if (schema.isTypeReference()) {
         auto typeReference = schema.getTypeReference();
+        if (typeReference.isPositional()) {
+            // A generic parameter of an exported class erases to Object in the generated Java/Kotlin class.
+            return kJniSigObject;
+        }
         SC_ASSERT(typeReference.isNamed());
         return getJavaTypeSignatureFromClassName(typeReference.getName());
     } else if (schema.isGenericTypeReference()) {

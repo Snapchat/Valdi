@@ -104,14 +104,13 @@ TEST(JavaTypeSignatureTest, genericTypeReferenceUsesTheNameOfItsType) {
     EXPECT_EQ("Lcom/snap/modules/GenAIGenerationRequest;", signatureOf(schema));
 }
 
-// A positional reference is a generic parameter of an exported class, like Input on a request model. Today it has no
-// signature and asserts. When that changes, these tests should expect Ljava/lang/Object;, which is what the
-// generated class erases a generic parameter to.
-TEST(JavaTypeSignatureDeathTest, positionalTypeReferenceAsserts) {
-    EXPECT_DEATH(signatureOf(ValueSchema::typeReference(ValueSchemaTypeReference::positional(0))), "isNamed");
+// A positional reference is a generic parameter of an exported class, like Input on a request model. The generated
+// class erases a generic parameter to Object.
+TEST(JavaTypeSignatureTest, positionalTypeReferenceIsObject) {
+    EXPECT_EQ("Ljava/lang/Object;", signatureOf(ValueSchema::typeReference(ValueSchemaTypeReference::positional(0))));
 }
 
-TEST(JavaTypeSignatureDeathTest, arrayOfPositionalTypeReferenceAsserts) {
-    EXPECT_DEATH(signatureOf(ValueSchema::array(ValueSchema::typeReference(ValueSchemaTypeReference::positional(0)))),
-                 "isNamed");
+TEST(JavaTypeSignatureTest, arrayOfPositionalTypeReferenceIsObjectArray) {
+    EXPECT_EQ("[Ljava/lang/Object;",
+              signatureOf(ValueSchema::array(ValueSchema::typeReference(ValueSchemaTypeReference::positional(0)))));
 }
