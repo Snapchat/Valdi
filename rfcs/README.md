@@ -36,5 +36,6 @@ Each RFC's `Status:` line is one of: Draft, Accepted, Implemented in `<version>`
 |---|---|
 | [0001: Optional Linux window host for SnapDrawing](0001-linux-snapdrawing-host.md) ([#196](https://github.com/Snapchat/Valdi/pull/196)) | Accepted |
 | [0002: Source-based Linux runtime embedding](0002-linux-headless-sdk.md) ([#197](https://github.com/Snapchat/Valdi/pull/197)) | Accepted |
+| [0003: Terminal rendering backend for CLI applications](0003-terminal-renderer.md) ([#202](https://github.com/Snapchat/Valdi/pull/202)) | Accepted |
 
 RFCs in review are [open pull requests with "RFC" in the title](https://github.com/Snapchat/Valdi/pulls?q=is%3Apr+is%3Aopen+RFC+in%3Atitle).
