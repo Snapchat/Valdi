@@ -9,11 +9,6 @@ common --noenable_workspace
 # (websocketpp overlay, yoga, djinni, dist_dev, etc.) glob empty at load time.
 common --noincompatible_disallow_empty_glob
 
-# rules_kotlin 1.9.5's kt_kotlinc_options returns a struct from its rule impl,
-# which Bazel 8 disallows by default. Re-enable the legacy syntax until
-# rules_kotlin is upgraded.
-common --incompatible_disallow_struct_provider_syntax=false
-
 # Disable workers for repo fetching to prevent OOM
 common --experimental_worker_for_repo_fetching=off
 

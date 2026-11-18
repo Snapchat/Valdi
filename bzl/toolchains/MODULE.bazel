@@ -3,7 +3,6 @@ module(name = "snap_client_toolchains")
 bazel_dep(name = "valdi")
 bazel_dep(name = "snap_platforms")
 bazel_dep(name = "bazel_skylib", version = "1.9.2")
-bazel_dep(name = "rules_kotlin", version = "2.3.10", repo_name = "rules_kotlin")
 bazel_dep(name = "rules_android_ndk", version = "0.1.3")
 
 # Use Valdi's hermetic NDK (downloads NDK r28) instead of rules_android_ndk's
