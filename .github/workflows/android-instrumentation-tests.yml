@@ -1,19 +1,36 @@
 name: Android Instrumentation Tests
 
-# Deliberately not run on pull requests. The job needs a cold x86_64 Valdi build
-# (~25 GB of output base, 40+ minutes) plus an emulator, and PR runs never populate
-# the Bazel remote cache (the bazel-cache action only uploads on push, schedule,
-# workflow_dispatch and release), so every PR would pay the full cost. Running on
-# main plus nightly still catches regressions, and PRs keep the cheap build gate that
-# internal CI runs via the validate job.
+# Runs on pushes to main, nightly, and on same-repo pull requests that touch the Android
+# runtime, the view classes or the test support. The job needs an x86_64 Valdi build (~25 GB of
+# output base) plus an emulator. A cold build takes 40+ minutes, but pull request runs read the
+# Bazel remote cache the nightly writes (the bazel-cache action gives them the read-only
+# identity), so they build mostly from cache. The nightly takes 20 to 27 minutes. Fork pull
+# requests get no remote cache and would build cold, so the job skips them; run it by hand
+# on a fork branch with the manual trigger instead. The pull_request and push paths match:
+# they cover what changes a view's class hierarchy or the test runtime, not every native
+# dependency.
 #
 # Use the manual trigger to exercise this on a branch before merging.
 on:
+  pull_request:
+    paths:
+      - 'apps/helloworld/**'
+      - 'valdi/src/java/**'
+      - 'valdi/src/android_support/**'
+      - 'valdi/src/android_test_support/**'
+      - 'valdi/src/android_test_runtime/**'
+      - 'valdi/BUILD.bazel'
+      - 'MODULE.bazel'
+      - 'tools/ci/android_instrumentation_tests.sh'
+      - 'tools/ci/setup_linux_env.sh'
+      - '.github/workflows/android-instrumentation-tests.yml'
   push:
     branches:
       - main
     paths:
       - 'apps/helloworld/**'
+      - 'valdi/src/java/**'
+      - 'valdi/src/android_support/**'
       - 'valdi/src/android_test_support/**'
       - 'valdi/src/android_test_runtime/**'
       - 'valdi/BUILD.bazel'
@@ -78,6 +95,8 @@ concurrency:
 jobs:
   android-instrumentation-tests:
     name: Android Instrumentation Tests
+    # Fork pull requests have no remote cache, so the build would be cold. See the header.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     # x86_64, not arm64: GitHub's arm64 Linux runners do not expose /dev/kvm, so an
     # emulator there would have no hardware acceleration.
     # Pinned, not ubuntu-latest: 26.04 lacks libxml2.so.2, which the LLVM 19 ld.lld needs.
