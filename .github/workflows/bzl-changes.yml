@@ -37,6 +37,8 @@ on:
       - 'snap_drawing/**'
       - 'experiments/helloworld_playground/**'
       - 'tools/valdi_web_devtools/**'
+      - 'valdi/testdata/**'
+      - 'tsn/**'
   push:
     branches:
       - main
@@ -75,6 +77,8 @@ on:
       - 'snap_drawing/**'
       - 'experiments/helloworld_playground/**'
       - 'tools/valdi_web_devtools/**'
+      - 'valdi/testdata/**'
+      - 'tsn/**'
 
 # Workflow-level permissions: id-token: write needed for GCP WIF auth on push events.
 # For fork PRs, GitHub automatically downgrades to read-only — the auth step
