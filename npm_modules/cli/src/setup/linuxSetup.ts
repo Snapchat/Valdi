@@ -13,6 +13,7 @@ import {
 } from '../utils/linuxDistro';
 import { wrapInColor } from '../utils/logUtils';
 import { DevSetupHelper, HOME_DIR } from './DevSetupHelper';
+import { installLibtinfo5 } from './libtinfo5';
 
 const BAZELISK_URL = 'https://github.com/bazelbuild/bazelisk/releases/download/v1.26.0/bazelisk-linux-amd64';
 
@@ -22,7 +23,7 @@ const BAZELISK_URL = 'https://github.com/bazelbuild/bazelisk/releases/download/v
  */
 function getDebianArchitecture(): string {
   const nodeArch = os.arch();
-  
+
   // Map Node.js arch names to Debian package arch names
   switch (nodeArch) {
     case 'x64': {
@@ -40,10 +41,7 @@ function getDebianArchitecture(): string {
     default: {
       // Fallback to amd64 for unknown architectures
       console.log(
-        wrapInColor(
-          `Warning: Unknown architecture '${nodeArch}', defaulting to amd64`,
-          ANSI_COLORS.YELLOW_COLOR,
-        ),
+        wrapInColor(`Warning: Unknown architecture '${nodeArch}', defaulting to amd64`, ANSI_COLORS.YELLOW_COLOR),
       );
       return 'amd64';
     }
@@ -56,10 +54,7 @@ export async function linuxSetup(): Promise<void> {
   // Detect Linux distribution
   const distro = detectLinuxDistro();
   console.log(
-    wrapInColor(
-      `Detected distribution: ${distro.name} (${distro.packageManager.name})`,
-      ANSI_COLORS.BLUE_COLOR,
-    ),
+    wrapInColor(`Detected distribution: ${distro.name} (${distro.packageManager.name})`, ANSI_COLORS.BLUE_COLOR),
   );
 
   if (distro.type === LinuxDistroType.UNKNOWN) {
@@ -116,14 +111,14 @@ export async function linuxSetup(): Promise<void> {
   // Install all packages
   if (packagesToInstall.length > 0) {
     const installCommand = buildInstallCommand(packagesToInstall, distro);
-    
+
     try {
       await devSetup.runShell(`Installing dependencies via ${distro.packageManager.name}`, [installCommand]);
     } catch {
       console.log();
       console.log(wrapInColor('Some packages failed to install.', ANSI_COLORS.YELLOW_COLOR));
       console.log(wrapInColor('Common issues:', ANSI_COLORS.YELLOW_COLOR));
-      
+
       if (distro.type === LinuxDistroType.REDHAT) {
         console.log('  - watchman may require EPEL repository on RHEL-based systems');
         console.log('    Run: sudo dnf install epel-release (or sudo yum install epel-release)');
@@ -131,7 +126,7 @@ export async function linuxSetup(): Promise<void> {
         console.log('  - Some packages may be in the AUR');
         console.log('    Consider using an AUR helper like yay or paru');
       }
-      
+
       console.log();
       console.log(wrapInColor('Continuing with setup...', ANSI_COLORS.YELLOW_COLOR));
     }
@@ -143,7 +138,8 @@ export async function linuxSetup(): Promise<void> {
 
   // Install libtinfo5 for Debian-based systems (needed for some Android tools)
   if (distro.type === LinuxDistroType.DEBIAN) {
-    const libtinfoInstalled = checkCommandExists('dpkg') && 
+    const libtinfoInstalled =
+      checkCommandExists('dpkg') &&
       (() => {
         try {
           execSync('dpkg -l libtinfo5', { stdio: 'ignore' });
@@ -154,51 +150,7 @@ export async function linuxSetup(): Promise<void> {
       })();
 
     if (!libtinfoInstalled) {
-      try {
-        const arch = getDebianArchitecture();
-        const version = '6.3-2ubuntu0.1';
-        const packageName = `libtinfo5_${version}_${arch}.deb`;
-        const packageUrl = `https://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/${packageName}`;
-        const tempPath = path.join(HOME_DIR, `.valdi/tmp/${packageName}`);
-        
-        // Ensure temp directory exists
-        const tempDir = path.dirname(tempPath);
-        if (!fs.existsSync(tempDir)) {
-          fs.mkdirSync(tempDir, { recursive: true });
-        }
-        
-        console.log(
-          wrapInColor(
-            `Downloading libtinfo5 for ${arch} architecture...`,
-            ANSI_COLORS.BLUE_COLOR,
-          ),
-        );
-        
-        // Download using DevSetupHelper (more robust than wget)
-        await devSetup.downloadToPath(packageUrl, tempPath);
-        
-        // Install the package
-        await devSetup.runShell('Installing libtinfo5 (required for Android tools)', [
-          `sudo apt install -y ${tempPath}`,
-        ]);
-        
-        // Clean up
-        fs.unlinkSync(tempPath);
-      } catch (error) {
-        console.log(
-          wrapInColor(
-            'Warning: libtinfo5 installation failed. Some Android command-line tools may not work.',
-            ANSI_COLORS.YELLOW_COLOR,
-          ),
-        );
-        console.log(
-          wrapInColor(
-            `Details: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            ANSI_COLORS.YELLOW_COLOR,
-          ),
-        );
-        console.log(wrapInColor('You may need to install it manually if you encounter issues.', ANSI_COLORS.YELLOW_COLOR));
-      }
+      await installLibtinfo5(devSetup);
     }
   } else if (distro.type === LinuxDistroType.REDHAT) {
     // For RHEL-based systems, try to install ncurses-compat-libs if available
@@ -218,7 +170,7 @@ export async function linuxSetup(): Promise<void> {
 
   const bazeliskPathSuffix = '.valdi/bin/bazelisk';
   const bazeliskTargetPath = path.join(HOME_DIR, bazeliskPathSuffix);
-  
+
   if (fs.existsSync(bazeliskTargetPath)) {
     console.log(wrapInColor('Bazelisk already installed.', ANSI_COLORS.GREEN_COLOR));
   } else {
