@@ -1,5 +1,6 @@
 #include "RuntimeTestsUtils.hpp"
 #include "TestAsyncUtils.hpp"
+#include "valdi/standalone_runtime/StandaloneViewManager.hpp"
 
 using namespace Valdi;
 
@@ -47,6 +48,10 @@ RuntimeWrapper::RuntimeWrapper(Valdi::IJavaScriptBridge* jsBridge,
                                               runtimeListener,
                                               resourceLoader,
                                               tweakValueProvider);
+    for (const char* attributeName : {"padding", "justifyContent", "alignItems", "top"}) {
+        standaloneRuntime->getViewManager().addDummyAttribute(
+            STRING_LITERAL("UIView"), StringCache::getGlobal().makeStringFromLiteral(attributeName));
+    }
     runtimeManager = &standaloneRuntime->getRuntimeManager();
     runtime = &standaloneRuntime->getRuntime();
     runtime->getResourceManager().setLazyModulePreloadingEnabled(false);
