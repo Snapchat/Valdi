@@ -117,6 +117,24 @@ typedef id<SCCBindingLangObjcIGreeter> _Nonnull(^SCCBindingLangObjcMakeGreeterBl
 @required
 - (BOOL)lastWasFormal;
 
+/**
+* NOTE: This method can be called from any thread.
+*/
+@required
+- (void)tagGreetingWithTag:(NSData * _Nonnull)tag;
+
+/**
+* NOTE: This method can be called from any thread.
+*/
+@required
+- (NSData * _Nullable)lastTag;
+
+/**
+* NOTE: This method can be called from any thread.
+*/
+@required
+- (int64_t)greetedAt;
+
 @end
 
 

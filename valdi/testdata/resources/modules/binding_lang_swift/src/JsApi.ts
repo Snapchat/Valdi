@@ -1,9 +1,10 @@
-import { Formal, Greeting, GreetingId, IGreeter, UserName } from './NativeApi';
+import { Formal, GreetedAt, Greeting, GreetingId, GreetingTag, IGreeter, UserName } from './NativeApi';
 
 class JsGreeter implements IGreeter {
   private _count: number = 0;
   private _lastGreeting: GreetingId | undefined;
   private _lastWasFormal = false as Formal;
+  private _lastTag: GreetingTag | undefined;
 
   greet(name: string, style: Greeting): string {
     this._count += 1;
@@ -32,6 +33,18 @@ class JsGreeter implements IGreeter {
 
   lastWasFormal(): Formal {
     return this._lastWasFormal;
+  }
+
+  tagGreeting(tag: GreetingTag): void {
+    this._lastTag = tag;
+  }
+
+  lastTag(): GreetingTag | undefined {
+    return this._lastTag;
+  }
+
+  greetedAt(): GreetedAt {
+    return Long.fromNumber(this._count) as GreetedAt;
   }
 }
 

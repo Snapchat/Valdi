@@ -31,6 +31,15 @@ class JsGreeter {
     lastWasFormal() {
         return this._lastWasFormal;
     }
+    tagGreeting(tag) {
+        this._lastTag = tag;
+    }
+    lastTag() {
+        return this._lastTag;
+    }
+    greetedAt() {
+        return Long.fromNumber(this._count);
+    }
 }
 /**
  * @ExportFunction

@@ -14,6 +14,8 @@ declare const idBrand: unique symbol;
 export type GreetingId = number & { readonly [idBrand]: 'GreetingId' };
 export type UserName = string & { __brand: 'UserName' };
 export type Formal = boolean & { __brand: 'Formal' };
+export type GreetingTag = Uint8Array & { __brand: 'GreetingTag' };
+export type GreetedAt = Long & { readonly [idBrand]: 'GreetedAt' };
 
 /**
  * @ExportProxy
@@ -24,6 +26,9 @@ export interface IGreeter {
   greetUser(user: UserName): GreetingId;
   lastGreeting(): GreetingId | undefined;
   lastWasFormal(): Formal;
+  tagGreeting(tag: GreetingTag): void;
+  lastTag(): GreetingTag | undefined;
+  greetedAt(): GreetedAt;
 }
 
 export function makeGreeter(): IGreeter;

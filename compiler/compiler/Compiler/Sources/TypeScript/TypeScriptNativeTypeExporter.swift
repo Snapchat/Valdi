@@ -177,12 +177,30 @@ final class TypeScriptNativeTypeExporter {
         }
     }
 
-    private func brandedPrimitiveTypeName(type: TS.AST.TSType, references: [TS.AST.TypeReference]) -> String? {
+    /// A branded type's base: a primitive's name, or `Uint8Array` or `Long`, which resolve as they do unbranded.
+    private func brandBaseTypeName(type: TS.AST.TSType, references: [TS.AST.TypeReference]) -> String? {
+        if let primitiveTypeName = primitiveTypeName(type: type, references: references) {
+            return primitiveTypeName
+        }
+        guard let typeReferenceIndex = type.typeReferenceIndex, typeReferenceIndex >= 0 && typeReferenceIndex < references.count else {
+            return nil
+        }
+        let name = references[typeReferenceIndex].name
+        return name == "Uint8Array" || name == "Long" ? name : nil
+    }
+
+    /// The one member of a branded intersection that crosses the bridge, or nil when there isn't exactly one.
+    private func brandBaseMember(type: TS.AST.TSType, references: [TS.AST.TypeReference]) -> (member: TS.AST.TSType, baseTypeName: String)? {
         guard let intersections = type.intersections else {
             return nil
         }
-        let primitiveTypeNames = Set(intersections.compactMap { primitiveTypeName(type: $0, references: references) })
-        return primitiveTypeNames.count == 1 ? primitiveTypeNames.first : nil
+        let baseMembers = intersections.compactMap { member in
+            brandBaseTypeName(type: member, references: references).map { (member: member, baseTypeName: $0) }
+        }
+        guard let first = baseMembers.first, baseMembers.allSatisfy({ $0.baseTypeName == first.baseTypeName }) else {
+            return nil
+        }
+        return first
     }
 
     private func resolveType(type: TS.AST.TSType, references: [TS.AST.TypeReference]) throws -> ValdiModelPropertyType {
@@ -300,8 +318,8 @@ final class TypeScriptNativeTypeExporter {
             var members = unions.filter { !isNullish($0) }
 
             // TypeScript distributes `boolean & Brand` into `(true & Brand) | (false & Brand)`.
-            let brandedPrimitiveTypeNames = Set(members.map { brandedPrimitiveTypeName(type: $0, references: references) })
-            if members.count > 1, brandedPrimitiveTypeNames.count == 1, !brandedPrimitiveTypeNames.contains(nil) {
+            let brandBaseTypeNames = Set(members.map { brandBaseMember(type: $0, references: references)?.baseTypeName })
+            if members.count > 1, brandBaseTypeNames.count == 1, !brandBaseTypeNames.contains(nil) {
                 members = [members[0]]
             }
 
@@ -319,14 +337,14 @@ final class TypeScriptNativeTypeExporter {
         }
 
         if let intersections = type.intersections {
-            // Branded primitives like `number & { __brand: 'Id' }` only exist at compile time, so only the
-            // primitive member crosses the bridge. Non-primitive members are ignored whatever their shape.
-            guard let primitiveTypeName = brandedPrimitiveTypeName(type: type, references: references) else {
+            // Branded types like `number & { __brand: 'Id' }` only exist at compile time, so only the base
+            // member crosses the bridge. The other members are ignored whatever their shape.
+            guard let base = brandBaseMember(type: type, references: references) else {
                 let desc = intersections.map { typeDescription(type: $0, references: references) }.joined(separator: " & ")
-                throw CompilerError("Intersection types are only supported with exactly one string, number or boolean member (got \(desc))")
+                throw CompilerError("Intersection types are only supported with exactly one string, number, boolean, Uint8Array or Long member (got \(desc))")
             }
 
-            return try resolveType(type: TS.AST.TSType(name: primitiveTypeName), references: references)
+            return try resolveType(type: base.member, references: references)
         }
 
         let typeName = type.name

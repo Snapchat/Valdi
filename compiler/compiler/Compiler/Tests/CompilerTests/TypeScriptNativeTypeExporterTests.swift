@@ -2,12 +2,15 @@ import XCTest
 import Foundation
 @testable import Compiler
 
-// Reference table mirroring what the companion emits for `number & { ... }` and `string & { ... }` brands.
+// Reference table mirroring what the companion emits for `number & { ... }`, `string & { ... }`,
+// `Uint8Array & { ... }` and `Long & { ... }` brands.
 private let references = [
     TS.AST.TypeReference(name: "Number", fileName: "/lib/lib.es5.d.ts"),
     TS.AST.TypeReference(name: "__type", fileName: "/proj/ids.ts"),
     TS.AST.TypeReference(name: "String", fileName: "/lib/lib.es5.d.ts"),
     TS.AST.TypeReference(name: "String", fileName: "/proj/String.ts"),
+    TS.AST.TypeReference(name: "Uint8Array", fileName: "/lib/lib.es5.d.ts"),
+    TS.AST.TypeReference(name: "Long", fileName: "/valdi/types/Long.d.ts"),
 ]
 
 private func makeReference(_ index: Int) -> TS.AST.TSType {
@@ -55,7 +58,7 @@ final class TypeScriptNativeTypeExporterTests: XCTestCase {
         let objectsOnly = TS.AST.TSType(name: "intersection", intersections: [makeReference(1), makeReference(1)])
 
         XCTAssertThrowsError(try exportModel(members: [makeMember(name: "value", type: objectsOnly)])) { error in
-            XCTAssertTrue("\(error)".contains("exactly one string, number or boolean member"), "\(error)")
+            XCTAssertTrue("\(error)".contains("exactly one string, number, boolean, Uint8Array or Long member"), "\(error)")
         }
     }
 
@@ -63,6 +66,26 @@ final class TypeScriptNativeTypeExporterTests: XCTestCase {
         let twoPrimitives = TS.AST.TSType(name: "intersection", intersections: [makeReference(0), makeReference(2)])
 
         XCTAssertThrowsError(try exportModel(members: [makeMember(name: "value", type: twoPrimitives)]))
+    }
+
+    func testBrandedBytesAndLongExportAsTheirBaseTypes() throws {
+        let model = try exportModel(members: [
+            makeMember(name: "key", type: TS.AST.TSType(name: "intersection", intersections: [makeReference(4), makeReference(1)])),
+            makeMember(name: "timestamp", type: TS.AST.TSType(name: "intersection", intersections: [makeReference(5), makeReference(1)])),
+        ])
+
+        guard case .bytes = model.properties[0].type else {
+            return XCTFail("Expected bytes, got \(model.properties[0].type)")
+        }
+        guard case .long = model.properties[1].type else {
+            return XCTFail("Expected long, got \(model.properties[1].type)")
+        }
+    }
+
+    func testIntersectionWithBytesAndLongIsRejected() {
+        let bytesAndLong = TS.AST.TSType(name: "intersection", intersections: [makeReference(4), makeReference(5)])
+
+        XCTAssertThrowsError(try exportModel(members: [makeMember(name: "value", type: bytesAndLong)]))
     }
 
     func testUserTypeNamedLikePrimitiveIsNotExportedAsPrimitive() {
