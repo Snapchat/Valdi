@@ -147,6 +147,11 @@ const standalone = getStandaloneRuntime();
 const once = standalone.arguments.indexOf('--once') >= 0;
 // Blocks the JS thread after the first frame, to exercise the native Ctrl+C escape hatch.
 const hang = standalone.arguments.indexOf('--hang') >= 0;
+// Logs a line once the first frame is out, so a test knows startup finished even when nothing is drawn.
+const reportReady = standalone.arguments.indexOf('--report-ready') >= 0;
+
+const READY_MARKER = 'tui_example: ready';
+const HUNG_MARKER = 'tui_example: blocking the JS thread';
 
 const instance = render(Demo, { title: 'Valdi TUI example' });
 
@@ -155,14 +160,17 @@ if (once) {
   void instance.nextFrame().then(() => instance.unmount());
 }
 
+if (reportReady) {
+  void instance.nextFrame().then(() => console.error(READY_MARKER));
+}
+
 if (hang) {
   void instance.nextFrame().then(() => {
-    const hangTimer = setTimeout(() => {
-      for (;;) {
-        // Never returns.
-      }
-    }, 50);
-    void instance.waitUntilExit().then(() => clearTimeout(hangTimer));
+    // Logged from the blocking task itself: once the marker is on screen, the JS thread can only be in the loop.
+    console.error(HUNG_MARKER);
+    for (;;) {
+      // Never returns.
+    }
   });
 }
 
