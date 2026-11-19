@@ -8118,10 +8118,16 @@ TEST_P(RuntimeFixture, DISABLED_moduleResourceTrackerFreedUnderJsThreadIsUseAfte
 //
 // Red proof: setJoinJsThreadOnTeardown(false) on the worker before dispatching. The drop then blocks in the
 // dispatch queue's member destructor and the write lands in freed memory (heap-use-after-free under ASan).
+// Workers created afterwards are stopped when the host tears down, so the worker doesn't outlive its host.
+static void enableStopOrphanedWorkers(RuntimeWrapper& wrapper) {
+    FlatMap<StringBox, bool> overrides;
+    overrides[STRING_LITERAL("VALDI_ENABLE_TEARDOWN_STOP_ORPHANED_WORKERS")] = true;
+    wrapper.runtime->setRuntimeTweaks(
+        makeShared<ValdiRuntimeTweaks>(makeShared<OverridingTweakValueProvider>(std::move(overrides)).toShared()));
+}
+
 TEST_P(RuntimeFixture, disposedWorkerReleasedOffJsThreadWhileExecutingIsSafe) {
-    if (orphanedWorkerTestsQuarantined()) {
-        GTEST_SKIP() << "Quarantined: leaves a worker running past host teardown (see orphanedWorkerTestsQuarantined)";
-    }
+    enableStopOrphanedWorkers(wrapper);
     auto* hostRuntime = wrapper.runtime->getJavaScriptRuntime();
     // Let the host finish initializing first: Hermes debugger registration is not safe to run concurrently
     // from the host's and the worker's initialization.

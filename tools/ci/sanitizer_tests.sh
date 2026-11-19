@@ -11,8 +11,8 @@
 # teardown paths that matter here.
 #
 # Usage: sanitizer_tests.sh [asan|tsan]   (default: asan)
-# `tsan` runs only //valdi:test_integration under ThreadSanitizer, with the same Hermes exclusion and
-# quarantine as ASan. It is nightly-only and non-blocking in CI while its first findings are triaged.
+# `tsan` runs only //valdi:test_integration under ThreadSanitizer, with the same Hermes exclusion as ASan.
+# It is nightly-only and non-blocking in CI while its first findings are triaged.
 
 set -eux
 
@@ -25,10 +25,6 @@ case "$MODE" in
     *) echo "usage: $0 [asan|tsan]" >&2; exit 2 ;;
 esac
 
-# disposedWorkerReleasedOffJsThreadWhileExecutingIsSafe is quarantined here (it still runs in
-# //valdi:test): the disposed worker it creates outlives its host Runtime, and a later task on the
-# worker's thread reads the host's freed ResourceManager while an unrelated test is running.
-# Remove the exclusion once workers no longer outlive their host.
 EXTRA=(--test_output=errors)
 if [ "$MODE" = tsan ]; then
     # report_thread_leaks=0: ResourceManager's own dispatch queue threads are never joined at
@@ -45,7 +41,7 @@ fi
 bzl test //valdi:test_integration \
     --config="$MODE" \
     "${EXTRA[@]}" \
-    --test_arg=--gtest_filter='-*/Hermes:*disposedWorkerReleasedOffJsThreadWhileExecutingIsSafe*'
+    --test_arg=--gtest_filter='-*/Hermes'
 
 if [ "$MODE" = tsan ]; then
     exit 0
