@@ -1,6 +1,7 @@
 #include "valdi/terminal/Sink/MemorySink.hpp"
 #include "valdi/terminal/Sink/TtySink.hpp"
 
+#include <chrono>
 #include <fcntl.h>
 #include <gtest/gtest.h>
 #include <thread>
@@ -120,6 +121,30 @@ TEST(TerminalSink, ttySinkWritesEverythingToANonBlockingDescriptorThatFillsUp) {
     ::close(fds[0]);
     ASSERT_EQ(payload.size(), received.size());
     ASSERT_EQ(payload, received);
+}
+
+TEST(TerminalSink, ttySinkDropsAWriteThatAFullDescriptorNeverDrains) {
+    int fds[2];
+    ASSERT_EQ(0, ::pipe(fds));
+    ASSERT_NE(-1, ::fcntl(fds[1], F_SETFL, ::fcntl(fds[1], F_GETFL) | O_NONBLOCK));
+    // Nobody reads, like a terminal stopped with Ctrl+S.
+    const std::string payload(4 * 1024 * 1024, 'x');
+    TtySink sink(fds[1], std::nullopt, std::chrono::milliseconds(50));
+
+    auto start = std::chrono::steady_clock::now();
+    sink.write(payload);
+    const auto first = std::chrono::steady_clock::now() - start;
+    // Loose bounds: poll() timeouts are coarse.
+    ASSERT_GE(first, std::chrono::milliseconds(40));
+    ASSERT_LT(first, std::chrono::seconds(5));
+
+    // A stalled sink does not wait out the deadline again for every later write.
+    start = std::chrono::steady_clock::now();
+    sink.write(payload);
+    ASSERT_LT(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(40));
+
+    ::close(fds[0]);
+    ::close(fds[1]);
 }
 
 TEST(TerminalSink, ttySinkHonorsAnExplicitColorLevel) {
