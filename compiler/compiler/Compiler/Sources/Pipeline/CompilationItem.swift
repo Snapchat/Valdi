@@ -510,13 +510,11 @@ struct CompilationItem {
                 }
                 return url
             } else {
-                guard relativeProjectPath.hasPrefix(name) else {
-                    return URL(string: baseDir.relativePath(to: sourceURL))!
+                if let bundlePath = try? itemPath(forRelativeProjectPath: relativeProjectPath),
+                   let url = URL(string: bundlePath) {
+                    return url
                 }
-
-                let bundlePath = String(relativeProjectPath[relativeProjectPath.index(name.endIndex, offsetBy: 1)..<relativeProjectPath.endIndex])
-
-                return URL(string: bundlePath)!
+                return URL(string: baseDir.relativePath(to: sourceURL))!
             }
         }
 
