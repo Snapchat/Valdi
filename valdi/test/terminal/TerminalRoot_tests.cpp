@@ -272,7 +272,6 @@ TEST(TerminalRoot, numbersFramesInIncreasingOrder) {
     render(f);
     f.root->paintNow();
     f.root->paintNow();
-    // The fixture finishes the root when it is destroyed, which paints once more.
     f.root->removeFrameObserver(id);
 
     ASSERT_EQ(3u, sequences.size());
@@ -353,7 +352,7 @@ TEST(TerminalRoot, observersRunWithoutHoldingTheRootsLocks) {
         workerFinishedWhileObserving = workerDone;
     }));
     render(f);
-    // destroy() paints a last frame; the observer must not run again once its captures are gone.
+    // The observer must not run again once its captures are gone.
     f.root->removeFrameObserver(observerId);
     if (worker.joinable()) {
         worker.join();
@@ -373,31 +372,127 @@ TEST(TerminalRoot, skipsObserversRemovedByAnEarlierObserverOfTheSameFrame) {
     ASSERT_EQ(0, removedCalls);
 }
 
-TEST(TerminalRoot, destroyFinishesTheOutputFirstAndLaterFinishIsANoOp) {
+TEST(TerminalRoot, destroyWithoutFinishAbandonsTheOutputAndLaterFinishIsANoOp) {
     TerminalTreeFixture f;
     f.sink->setIsTTY(false);
     auto label = addLabel(f, f.rootNode, "first", 1);
     render(f);
     f.set(label, "value", text("second"));
-    render(f);
-    ASSERT_EQ("", f.sink->output());
+    f.layout();
+    const auto frames = f.sink->frameCount();
     f.root->destroy();
-    ASSERT_EQ("second\n", f.sink->output());
     f.root->finish();
     f.root->destroy();
-    ASSERT_EQ("second\n", f.sink->output());
+    ASSERT_EQ("", f.sink->output());
+    ASSERT_EQ(frames, f.sink->frameCount());
 }
 
-TEST(TerminalRoot, destroyShowsTheCursorAgainOnAnInteractiveSink) {
+TEST(TerminalRoot, destroyAfterFinishKeepsTheFinishedOutput) {
+    TerminalTreeFixture f;
+    f.sink->setIsTTY(false);
+    addLabel(f, f.rootNode, "done", 1);
+    render(f);
+    f.root->finish();
+    f.root->destroy();
+    ASSERT_EQ("done\n", f.sink->output());
+}
+
+TEST(TerminalRoot, destroyWithoutFinishErasesTheLiveFrameAndShowsTheCursorOnAnInteractiveSink) {
+    TerminalTreeFixture f;
+    auto label = addLabel(f, f.rootNode, "hi", 1);
+    render(f);
+    ASSERT_NE(std::string(Ansi::kCursorShow), f.sink->writes().back());
+    // A pending update, like a component that threw halfway through rendering, is not painted.
+    f.set(label, "value", text("partial"));
+    f.layout();
+    const auto writes = f.sink->writes().size();
+    const auto frames = f.sink->frameCount();
+    f.root->destroy();
+    ASSERT_EQ(frames, f.sink->frameCount());
+    const auto all = f.sink->writes();
+    ASSERT_EQ((std::vector<std::string>{Ansi::eraseLines(2), std::string(Ansi::kCursorShow)}),
+              std::vector<std::string>(all.begin() + static_cast<std::ptrdiff_t>(writes), all.end()));
+}
+
+TEST(TerminalRoot, destroyBeforeAnyFrameWritesNothing) {
+    TerminalTreeFixture f;
+    addLabel(f, f.rootNode, "never shown", 1);
+    f.layout();
+    f.root->destroy();
+    ASSERT_EQ(0u, f.sink->writes().size());
+    ASSERT_EQ(0u, f.sink->frameCount());
+}
+
+TEST(TerminalRoot, finishFromAnotherThreadPaintsOnTheMainThreadAfterQueuedTransactions) {
+    TerminalTreeFixture f;
+    f.sink->setIsTTY(false);
+    auto label = addLabel(f, f.rootNode, "before", 1);
+    render(f);
+    f.mainQueue->flush();
+
+    std::thread::id paintThread;
+    f.root->addFrameObserver(
+        TerminalFrameObserver([&paintThread](const FrameSnapshot&) { paintThread = std::this_thread::get_id(); }));
+    // Stands in for a deferred view transaction: an update that reached the main queue before exit() was called on
+    // the JS thread. The main thread applies it without the tree lock in the real runtime.
+    DispatchFunction update([&]() {
+        f.set(label, "value", text("after"));
+        f.layout();
+    });
+    f.tree->getMainThreadManager()->dispatch(f.tree->getContext(), std::move(update));
+
+    std::atomic<bool> finished{false};
+    std::thread worker([&]() {
+        f.root->finish();
+        finished = true;
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    // The final paint is queued behind the transaction instead of reading the views from the calling thread.
+    EXPECT_FALSE(finished.load());
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!finished && std::chrono::steady_clock::now() < deadline) {
+        f.mainQueue->flush();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    worker.join();
+
+    EXPECT_EQ(std::this_thread::get_id(), paintThread);
+    EXPECT_EQ("after\n", f.sink->output());
+}
+
+TEST(TerminalRoot, finishFallsBackToTheLastFrameWhenTheMainThreadNeverRunsIt) {
+    TerminalTreeFixture f;
+    f.sink->setIsTTY(false);
+    auto label = addLabel(f, f.rootNode, "painted", 1);
+    render(f);
+    f.mainQueue->flush();
+    f.set(label, "value", text("queued"));
+    f.layout();
+
+    // The main queue is disposed, like a process that is already exiting: finish() must not hang.
+    f.mainQueue->dispose();
+    std::thread worker([&]() { f.root->finish(); });
+    worker.join();
+    EXPECT_EQ("painted\n", f.sink->output());
+}
+
+TEST(TerminalRoot, redrawDrawsTheFrameAgainBelowTheCursor) {
     TerminalTreeFixture f;
     addLabel(f, f.rootNode, "hi", 1);
     render(f);
-    ASSERT_NE(std::string(Ansi::kCursorShow), f.sink->writes().back());
-    f.root->destroy();
-    ASSERT_EQ(std::string(Ansi::kCursorShow), f.sink->writes().back());
+    f.mainQueue->flush();
+    const auto before = f.sink->output().size();
+
+    f.root->redraw();
+    f.mainQueue->flush();
+    const auto redrawn = f.sink->output().substr(before);
+    // Hides the cursor again (a suspend showed it) and redraws without erasing what the shell wrote meanwhile.
+    ASSERT_EQ(0u, redrawn.find(Ansi::kCursorHide));
+    ASSERT_NE(std::string::npos, redrawn.find("hi"));
+    ASSERT_EQ(std::string::npos, redrawn.find("\x1b[2K"));
 }
 
-TEST(TerminalRoot, destroyingTheLastReferenceFinishesTheOutput) {
+TEST(TerminalRoot, destroyingTheLastReferenceShowsTheCursorAgain) {
     TerminalTreeFixture f;
     addLabel(f, f.rootNode, "hi", 1);
     render(f);

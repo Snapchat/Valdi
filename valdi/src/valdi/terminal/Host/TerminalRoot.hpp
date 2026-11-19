@@ -32,7 +32,9 @@ struct TerminalRootOptions {
      * must run the function on the thread that applies view transactions (the main thread): a frame
      * is painted from the view tree as it stands, so painting from another thread while a
      * transaction is mutating the tree would show half an update. Dropping the function without
-     * running it is allowed; the next scheduleFrame() will dispatch again.
+     * running it is allowed; the next scheduleFrame() will dispatch again. finish() waits for the
+     * function it dispatches, so a dispatcher that queues functions for the calling thread makes a
+     * finish() called off the main thread wait for its timeout and finish without a final paint.
      */
     Function<void(DispatchFunction)> dispatcher;
 };
@@ -96,14 +98,27 @@ public:
     void clear();
 
     /**
+     * Forgets what the writer drew and schedules a paint that draws the frame again below the cursor, with the
+     * cursor hidden again. For when something else wrote to the terminal, such as the shell after the process
+     * was suspended and resumed. Static output already written is not repeated. Safe to call from any thread.
+     */
+    void redraw();
+
+    /**
      * Paints a final frame and lets the writer leave the output in a consistent state (cursor shown,
      * non-interactive sinks receive the final frame). Later calls and calls after destroy() do nothing.
+     *
+     * Safe to call from any thread. The final paint runs on the painting thread, after the view
+     * transactions already queued there, and finish() waits for it. If the painting thread does not run
+     * it within a couple of seconds the output is finished from the last painted frame instead.
      */
     void finish();
 
     /**
-     * Finishes the output if finish() was not called, then detaches from the tree; further paint
-     * requests are ignored. Also called by the destructor.
+     * Stops rendering and detaches from the tree; further paint requests are ignored. When finish() was
+     * not called the output is abandoned: nothing more is painted and no trailing newline is written; on an
+     * interactive sink the live frame already drawn is erased and the cursor shown again. Static output
+     * stays. Safe to call from any thread; also called by the destructor.
      */
     void destroy();
 
@@ -138,6 +153,8 @@ private:
     int initialRows() const;
     void applyLayout(int columns, int rows);
     bool canDispatch() const;
+    bool isOnPaintThread() const;
+    void finishOnPaintThread();
     void dispatchOnPaintThread(DispatchFunction function);
     bool isObserverRegistered(int id) const;
 };
