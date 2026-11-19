@@ -80,7 +80,7 @@ std::string styledText(std::string_view text, const Style& style, ColorLevel lev
 /** Looks up an environment variable; returns nullopt when it is not set. */
 using EnvGetter = std::function<std::optional<std::string>(std::string_view name)>;
 
-/** Decides the color level from NO_COLOR, FORCE_COLOR, COLORTERM, TERM_PROGRAM and TERM. */
+/** Decides the color level from FORCE_COLOR (which takes precedence), NO_COLOR, COLORTERM, TERM_PROGRAM and TERM. */
 ColorLevel detectColorLevel(const EnvGetter& env, bool isTTY);
 
 /** An EnvGetter backed by the process environment. */

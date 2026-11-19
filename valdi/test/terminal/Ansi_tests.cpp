@@ -112,6 +112,9 @@ TEST(TerminalAnsi, keepsTheAlphaOfValdiColorsAndBlendsOverABackdrop) {
 TEST(TerminalAnsi, detectsColorLevelFromTheEnvironment) {
     ASSERT_EQ(ColorLevel::None, detectColorLevel(makeEnv({{"NO_COLOR", "1"}, {"COLORTERM", "truecolor"}}), true));
     ASSERT_EQ(ColorLevel::TrueColor, detectColorLevel(makeEnv({{"FORCE_COLOR", "3"}}), false));
+    ASSERT_EQ(ColorLevel::Ansi256, detectColorLevel(makeEnv({{"NO_COLOR", "1"}, {"FORCE_COLOR", "2"}}), true));
+    ASSERT_EQ(ColorLevel::Basic16, detectColorLevel(makeEnv({{"NO_COLOR", "1"}, {"FORCE_COLOR", ""}}), false));
+    ASSERT_EQ(ColorLevel::None, detectColorLevel(makeEnv({{"NO_COLOR", "1"}, {"FORCE_COLOR", "nonsense"}}), true));
     ASSERT_EQ(ColorLevel::None, detectColorLevel(makeEnv({{"FORCE_COLOR", "0"}}), true));
     ASSERT_EQ(ColorLevel::Basic16, detectColorLevel(makeEnv({{"FORCE_COLOR", ""}}), false));
     ASSERT_EQ(ColorLevel::None, detectColorLevel(makeEnv({{"TERM", "xterm-256color"}}), false));
