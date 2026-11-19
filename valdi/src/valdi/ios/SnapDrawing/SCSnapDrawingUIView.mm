@@ -14,6 +14,7 @@
 #include "snap_drawing/cpp/Drawing/Surface/SurfacePresenterManager.hpp"
 
 #import "valdi/ios/SnapDrawing/SCValdiSnapDrawingSurfacePresenterManager.h"
+#import "valdi/ios/SnapDrawing/SCSnapDrawingViewport.h"
 #import "valdi/ios/SnapDrawing/SCValdiSurfacePresenterView.h"
 
 #import <QuartzCore/CAMetalLayer.h>
@@ -85,7 +86,8 @@ static CGFloat resolveContentsScale() {
 
 // The on-screen portion of this view, in its own (content) coordinate space. When the view is laid
 // out far larger than the screen (e.g. a pinch-zoomed sticker), this is a small sub-rect of bounds,
-// so we render/allocate only that region instead of a drawable for the full content.
+// so we render/allocate only that region instead of a drawable for the full content. Bounds don't
+// animate for a move, so the model bounds are the right region to intersect.
 - (CGRect)visibleContentRect
 {
     CGRect bounds = self.bounds;
@@ -93,21 +95,7 @@ static CGFloat resolveContentsScale() {
     if (window == nil || CGRectIsEmpty(bounds)) {
         return bounds;
     }
-    // Convert through the *presentation* layers, not -convertRect:fromView: (which uses the model
-    // geometry). During an animated move the model jumps to the destination immediately while the
-    // presentation layer is what's actually on screen, so model geometry would clamp to the
-    // destination mid-flight and reveal the edge. Presentation layers reflect the current on-screen
-    // (interpolated) position; they fall back to the model layer when nothing is animating, so this
-    // is also correct for static/gesture cases. Bounds don't animate for a move, so the model
-    // bounds are the right region to intersect.
-    CALayer *selfLayer = self.layer.presentationLayer ?: self.layer;
-    CALayer *windowLayer = window.layer.presentationLayer ?: window.layer;
-    CGRect windowInSelf = [selfLayer convertRect:window.bounds fromLayer:windowLayer];
-    CGRect visible = CGRectIntersection(bounds, windowInSelf);
-    if (CGRectIsNull(visible)) {
-        return CGRectZero;
-    }
-    return visible;
+    return SCSnapDrawingVisibleRect(bounds, SCSnapDrawingWindowRectInLayer(self.layer, window.layer, window.bounds));
 }
 
 - (void)refreshRenderViewport
@@ -145,8 +133,7 @@ static CGFloat resolveContentsScale() {
 // clamping needed) or leaves the window, so there is no cost for normal-sized content.
 - (void)updateViewportTracking:(CGRect)visible
 {
-    BOOL clamping = (self.window != nil) && !CGRectEqualToRect(visible, self.bounds);
-    if (clamping) {
+    if (SCSnapDrawingShouldTrackViewport(self.window != nil, self.bounds, visible)) {
         if (_viewportDisplayLink == nil) {
             SCSnapDrawingViewportDisplayLinkProxy *proxy = [SCSnapDrawingViewportDisplayLinkProxy new];
             proxy.view = self;

@@ -829,6 +829,30 @@ objc_library(
     ],
 )
 
+ios_unit_test(
+    name = "valdi_ios_snap_drawing_viewport_test",
+    minimum_os_version = "15.0",
+    runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",
+    deps = [":objc_snap_drawing_viewport_tests_lib"],
+)
+
+objc_library(
+    name = "objc_snap_drawing_viewport_tests_lib",
+    testonly = True,
+    srcs = [
+        "src/valdi/ios/SnapDrawing/SCSnapDrawingViewport.h",
+        "test/ios/SCSnapDrawingViewportTests.m",
+    ],
+    copts = ["-I."],
+    includes = ["src"],
+    module_name = "ValdiIosSnapDrawingViewportTests",
+    sdk_frameworks = [
+        "CoreGraphics",
+        "QuartzCore",
+    ],
+    target_compatible_with = ["@platforms//os:ios"],
+)
+
 # SCValdiDeviceModuleTests also ships in :objc_unit_tests_lib for the standalone repo's
 # suite; this target keeps it runnable from the monorepo, where @ocmock (an
 # :objc_unit_tests_lib dep) is not defined.
