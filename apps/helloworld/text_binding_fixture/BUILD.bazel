@@ -1,0 +1,40 @@
+load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
+load("@rules_kotlin//kotlin:jvm.bzl", "kt_jvm_test")
+
+# Host-app text views and attribute binders written against the public native API
+# (tools/api_surface/native_baseline.json) the way app code implements it. Nothing else in the
+# repo subclasses these runtime types from outside the runtime, so without this a removed or
+# re-signed class still passes every check.
+kt_android_library(
+    name = "text_binding_fixture",
+    srcs = glob(["android/**/*.kt"]),
+    visibility = ["//visibility:public"],
+    deps = ["//valdi:valdi_java"],
+)
+
+# Robolectric, no emulator. Run by tools/ci/run_tests.sh like //valdi:test_java, and skipped
+# wherever that one is (see tools/ci/select_tests.sh).
+kt_jvm_test(
+    name = "text_binding_fixture_test",
+    size = "small",
+    srcs = glob(["test/**/*.kt"]),
+    args = [
+        "--select-package=com.snap.valdi.helloworld.textbinding",
+    ],
+    main_class = "org.junit.platform.console.ConsoleLauncher",
+    runtime_deps = [
+        "@android_mvn//:org_junit_platform_junit_platform_launcher",
+        "@android_mvn//:org_junit_platform_junit_platform_reporting",
+        "@android_mvn//:org_junit_vintage_junit_vintage_engine",
+    ],
+    deps = [
+        ":text_binding_fixture",
+        "//valdi:valdi_java",
+        "@android_mvn//:androidx_test_core",
+        "@android_mvn//:junit_junit",
+        "@android_mvn//:org_junit_platform_junit_platform_console",
+        "@android_mvn//:org_robolectric_android_all",
+        "@android_mvn//:org_robolectric_annotations",
+        "@android_mvn//:org_robolectric_robolectric",
+    ],
+)
