@@ -1,16 +1,15 @@
 #include "valdi/terminal/Sink/TtySink.hpp"
 
 #include <cerrno>
+#include <chrono>
 #include <poll.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
 namespace Valdi::Terminal {
 
-static constexpr int kWritePollTimeoutMs = 100;
-
-TtySink::TtySink(int fd, std::optional<ColorLevel> colorLevelOverride)
-    : _fd(fd), _isTTY(::isatty(fd) != 0), _colorLevel(ColorLevel::None) {
+TtySink::TtySink(int fd, std::optional<ColorLevel> colorLevelOverride, std::chrono::milliseconds writeDeadline)
+    : _fd(fd), _isTTY(::isatty(fd) != 0), _colorLevel(ColorLevel::None), _writeDeadline(writeDeadline) {
     _colorLevel = colorLevelOverride ? *colorLevelOverride : detectColorLevel(processEnvGetter(), _isTTY);
 }
 
@@ -21,6 +20,10 @@ Ref<TtySink> TtySink::makeForStdout() {
 }
 
 void TtySink::write(std::string_view data) {
+    // Once a write has been dropped, later writes only take what fits right away instead of each waiting out the
+    // deadline again; the first write that completes resumes normal waiting.
+    const auto deadline =
+        std::chrono::steady_clock::now() + (_stalled.load() ? std::chrono::milliseconds(0) : _writeDeadline);
     while (!data.empty()) {
         const auto written = ::write(_fd, data.data(), data.size());
         if (written < 0) {
@@ -28,11 +31,16 @@ void TtySink::write(std::string_view data) {
                 continue;
             }
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                // A non-blocking descriptor with a full buffer: wait for room rather than dropping output.
+                const auto remaining =
+                    std::chrono::ceil<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+                if (remaining.count() <= 0) {
+                    _stalled = true;
+                    return;
+                }
                 struct pollfd descriptor{};
                 descriptor.fd = _fd;
                 descriptor.events = POLLOUT;
-                const int ready = ::poll(&descriptor, 1, kWritePollTimeoutMs);
+                const int ready = ::poll(&descriptor, 1, static_cast<int>(remaining.count()));
                 if (ready < 0 && errno != EINTR) {
                     return;
                 }
@@ -42,6 +50,7 @@ void TtySink::write(std::string_view data) {
         }
         data.remove_prefix(static_cast<size_t>(written));
     }
+    _stalled = false;
 }
 
 bool TtySink::queryWindowSize(int& columns, int& rows) const {
