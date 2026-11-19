@@ -94,7 +94,10 @@ public:
     void insertChild(const Ref<TerminalView>& child, size_t index);
     void removeFromParent();
 
-    /** Frame relative to the parent, in cells; fractional values are rounded when painting. */
+    /**
+     * Frame relative to the parent, in cells. Frames applied by view transactions are whole cells (setViewFrame
+     * asserts it); frames set directly, such as the root frame and frames in tests, are rounded when painting.
+     */
     const Frame& getFrame() const;
     void setFrame(const Frame& frame, bool requestRepaint = true);
 

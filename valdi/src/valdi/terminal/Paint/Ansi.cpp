@@ -289,11 +289,7 @@ static bool startsWithAny(const std::string& text, std::initializer_list<std::st
 }
 
 ColorLevel detectColorLevel(const EnvGetter& env, bool isTTY) {
-    const auto noColor = env("NO_COLOR");
-    if (noColor && !noColor->empty()) {
-        return ColorLevel::None;
-    }
-
+    // FORCE_COLOR wins over NO_COLOR, as in supports-color.
     const auto force = env("FORCE_COLOR");
     if (force) {
         if (force->empty() || *force == "true") {
@@ -307,6 +303,11 @@ ColorLevel detectColorLevel(const EnvGetter& env, bool isTTY) {
         if (end != force->c_str()) {
             return static_cast<ColorLevel>(std::clamp(level, 0L, 3L));
         }
+    }
+
+    const auto noColor = env("NO_COLOR");
+    if (noColor && !noColor->empty()) {
+        return ColorLevel::None;
     }
 
     if (!isTTY) {

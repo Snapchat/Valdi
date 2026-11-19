@@ -2,11 +2,24 @@
 
 #include "valdi/terminal/Host/TerminalRoot.hpp"
 #include "valdi/terminal/TerminalView.hpp"
+#include "utils/debugging/Assert.hpp"
 #include "valdi_core/cpp/Utils/Bytes.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 namespace Valdi {
+
+namespace {
+
+// The terminal runtime lays out with a Yoga point scale of 1, so frames arrive as whole cells and are only
+// cast here. A fractional value means that override was not applied to this tree.
+float toWholeCells(float value) {
+    SC_ASSERT(std::isfinite(value) && std::nearbyint(value) == value, "Terminal view frames must be whole cells");
+    return std::isfinite(value) ? static_cast<float>(std::lround(value)) : 0.0f;
+}
+
+} // namespace
 
 TerminalViewTransaction::TerminalViewTransaction() = default;
 TerminalViewTransaction::~TerminalViewTransaction() = default;
@@ -74,7 +87,10 @@ void TerminalViewTransaction::setViewFrame(const Ref<View>& view,
                                            const Ref<Animator>& /*animator*/) {
     auto terminalView = TerminalView::unwrap(view);
     if (terminalView != nullptr) {
-        terminalView->setFrame(newFrame);
+        terminalView->setFrame(Frame(toWholeCells(newFrame.x),
+                                     toWholeCells(newFrame.y),
+                                     toWholeCells(newFrame.width),
+                                     toWholeCells(newFrame.height)));
     }
 }
 
