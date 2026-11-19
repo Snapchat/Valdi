@@ -20,7 +20,7 @@ import {
 } from './TerminalBackend';
 import { makeTerminalRootContainer } from './TerminalRootContainer';
 import { ColorLevel } from './ansi';
-import { parseInput } from './keys';
+import { ESCAPE_TIMEOUT_MS, InputParser, KeyPress } from './keys';
 
 export interface RenderOptions {
   /**
@@ -116,6 +116,67 @@ function formatConsoleArgs(args: unknown[]): string {
       }
     })
     .join(' ');
+}
+
+type ConsoleMethod = (...args: unknown[]) => void;
+
+interface ConsolePatch {
+  readonly originals: { [method: string]: ConsoleMethod };
+  readonly wrappers: { [method: string]: ConsoleMethod };
+}
+
+// Every live renderer that patched the console, newest last. Console output goes to the newest one, so
+// renderers can unmount in any order without one of them leaving the console pointed at a dead root.
+const consoleRoutes: ((text: string) => void)[] = [];
+let consolePatch: ConsolePatch | undefined;
+
+function consoleTarget(): { [method: string]: ConsoleMethod } {
+  return console as unknown as { [method: string]: ConsoleMethod };
+}
+
+/** Sends console output to `write` until the returned function is called. */
+function routeConsole(write: (text: string) => void): () => void {
+  if (consolePatch === undefined) {
+    const target = consoleTarget();
+    const originals: { [method: string]: ConsoleMethod } = {};
+    const wrappers: { [method: string]: ConsoleMethod } = {};
+    for (const method of CONSOLE_METHODS) {
+      const original = target[method];
+      if (typeof original !== 'function') {
+        continue;
+      }
+      originals[method] = original;
+      wrappers[method] = (...args: unknown[]) => {
+        const route = consoleRoutes[consoleRoutes.length - 1];
+        if (route) {
+          route(formatConsoleArgs(args));
+        } else {
+          original.apply(console, args);
+        }
+      };
+      target[method] = wrappers[method];
+    }
+    consolePatch = { originals, wrappers };
+  }
+  consoleRoutes.push(write);
+  return () => {
+    const index = consoleRoutes.lastIndexOf(write);
+    if (index >= 0) {
+      consoleRoutes.splice(index, 1);
+    }
+    if (consoleRoutes.length > 0 || consolePatch === undefined) {
+      return;
+    }
+    const { originals, wrappers } = consolePatch;
+    consolePatch = undefined;
+    const target = consoleTarget();
+    for (const method of Object.keys(originals)) {
+      // Whoever patched the console after us keeps their patch; ours forwards to the original from now on.
+      if (target[method] === wrappers[method]) {
+        target[method] = originals[method];
+      }
+    }
+  };
 }
 
 function envNumber(name: string): number | undefined {
@@ -355,11 +416,20 @@ class TerminalRenderer<ViewModel extends object, Context extends object> impleme
         this.restoreConsole = undefined;
       }
     });
+    // Without finishOutput, destroyRoot() abandons the output: a component that throws on its first render
+    // leaves no partial frame, cursor move or trailing newline behind.
     if (finishOutput && this.root !== undefined) {
-      // Painted before the component tree is released, so the last frame stays on screen. The
-      // frame observer is still attached here, which keeps lastFrame() on that final frame.
+      // Painted before the component tree is released, so the last frame stays on screen. The final paint
+      // runs on the main thread and its observer callback is queued, so read the frame back to keep
+      // lastFrame() on it.
       const native = this.root.native;
-      attempt(() => this.backend.finishRoot(native));
+      attempt(() => {
+        this.backend.finishRoot(native);
+        const frame = this.backend.getLastFrame(native);
+        if (frame !== undefined) {
+          this.onFrame(frame);
+        }
+      });
     }
     for (const disposable of this.disposables.splice(0)) {
       attempt(() => disposable.dispose());
@@ -402,39 +472,49 @@ class TerminalRenderer<ViewModel extends object, Context extends object> impleme
     if (sink === 'tty' && wantsRawMode(this.terminal) && this.backend.setRawMode(native, true)) {
       this.disposables.push({ dispose: () => this.backend.setRawMode(native, false) });
     }
-    const observation = this.backend.observeInput(native, data => {
-      if (this.unmounted) {
-        return;
+    const parser = new InputParser();
+    let escapeTimer: number | undefined;
+    const cancelEscapeTimer = (): void => {
+      if (escapeTimer !== undefined) {
+        clearTimeout(escapeTimer);
+        escapeTimer = undefined;
       }
-      for (const press of parseInput(data)) {
+    };
+    const dispatch = (presses: KeyPress[]): void => {
+      for (const press of presses) {
+        if (this.unmounted) {
+          return;
+        }
         if (this.options.exitOnCtrlC !== false && press.key.ctrl && press.input === 'c') {
           this.exitFromApp();
           return;
         }
         this.app.dispatchInput(press);
       }
+    };
+    const observation = this.backend.observeInput(native, data => {
+      if (this.unmounted) {
+        return;
+      }
+      cancelEscapeTimer();
+      dispatch(parser.push(data));
+      if (parser.hasPending && !this.unmounted) {
+        escapeTimer = setTimeout(() => {
+          escapeTimer = undefined;
+          dispatch(parser.flush());
+        }, ESCAPE_TIMEOUT_MS);
+      }
     });
-    this.disposables.push({ dispose: () => observation.cancel() });
+    this.disposables.push({
+      dispose: () => {
+        observation.cancel();
+        cancelEscapeTimer();
+      },
+    });
   }
 
   private patchConsole(native: TerminalRootNative): void {
-    const target = console as unknown as { [method: string]: (...args: unknown[]) => void };
-    const originals: { [method: string]: (...args: unknown[]) => void } = {};
-    for (const method of CONSOLE_METHODS) {
-      const original = target[method];
-      if (typeof original !== 'function') {
-        continue;
-      }
-      originals[method] = original;
-      target[method] = (...args: unknown[]) => {
-        this.backend.writeAbove(native, formatConsoleArgs(args));
-      };
-    }
-    this.restoreConsole = () => {
-      for (const method of Object.keys(originals)) {
-        target[method] = originals[method]!;
-      }
-    };
+    this.restoreConsole = routeConsole(text => this.backend.writeAbove(native, text));
   }
 
   private onFrame(frame: TerminalFrame): void {

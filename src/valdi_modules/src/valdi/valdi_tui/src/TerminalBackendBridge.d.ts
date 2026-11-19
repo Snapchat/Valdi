@@ -62,15 +62,22 @@ export interface TerminalFrame {
 
 export function createRoot(options: CreateRootOptions): TerminalRootHandle;
 
-/** Paints the final frame and leaves the output consistent. Call before `destroyRoot`. */
+/**
+ * Paints the final frame and leaves the output consistent. Call before `destroyRoot`. The paint runs on
+ * the main thread after the view updates already queued there, and this call returns once it is done;
+ * {@link getLastFrame} then returns the final frame.
+ */
 export function finishRoot(native: TerminalRootNative): void;
 
+/**
+ * Releases the root. Without a prior {@link finishRoot} the output is abandoned as it stands: no final
+ * paint and no trailing newline, only the cursor is shown again.
+ */
 export function destroyRoot(native: TerminalRootNative): void;
 
 /**
- * Observes every painted frame. Frames are painted on the main thread and handed to the JS queue.
- * Painting that runs on the JS thread itself, such as the final frame of {@link finishRoot},
- * calls the callback synchronously on that thread.
+ * Observes every painted frame. Frames are painted on the main thread and handed to the JS queue, so
+ * the callback for the final frame of {@link finishRoot} can run after that call returns.
  */
 export function observeFrame(native: TerminalRootNative, callback: (frame: TerminalFrame) => void): Cancelable;
 

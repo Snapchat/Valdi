@@ -1,5 +1,5 @@
 import 'jasmine/src/jasmine';
-import { parseInput } from '../src/keys';
+import { InputParser, parseInput } from '../src/keys';
 
 describe('parseInput', () => {
   it('parses arrows and navigation keys', () => {
@@ -63,5 +63,80 @@ describe('parseInput', () => {
     expect(presses.map(press => press.input)).toEqual(['ab', '', '']);
     expect(presses[1].key.upArrow).toBe(true);
     expect(presses[2].key.return).toBe(true);
+  });
+
+  it('consumes unmapped CSI and SS3 sequences without typing them', () => {
+    const f5 = parseInput('a\x1b[15~b');
+    expect(f5.map(press => press.input)).toEqual(['a', 'b']);
+    expect(f5.some(press => press.key.meta)).toBe(false);
+    expect(parseInput('\x1b[I')).toEqual([]);
+    expect(parseInput('\x1b[O')).toEqual([]);
+    expect(parseInput('\x1bOP')).toEqual([]);
+    expect(parseInput('\x1b[<0;10;5M')).toEqual([]);
+    expect(parseInput('\x1b[1;5C')[0].key.rightArrow).toBe(true);
+  });
+
+  it('parses Alt with a character outside the BMP as one code point', () => {
+    const presses = parseInput('\x1b😀');
+    expect(presses.length).toBe(1);
+    expect(presses[0].input).toBe('😀');
+    expect(presses[0].key.meta).toBe(true);
+    expect(presses[0].raw).toBe('\x1b😀');
+  });
+
+  it('treats ESC [ and ESC O at the end of complete input as Alt combinations', () => {
+    const bracket = parseInput('\x1b[');
+    expect(bracket.length).toBe(1);
+    expect(bracket[0].input).toBe('[');
+    expect(bracket[0].key.meta).toBe(true);
+    const letter = parseInput('\x1bO');
+    expect(letter[0].input).toBe('O');
+    expect(letter[0].key.meta).toBe(true);
+  });
+});
+
+describe('InputParser', () => {
+  it('completes an escape sequence split after ESC', () => {
+    const parser = new InputParser();
+    expect(parser.push('\x1b')).toEqual([]);
+    expect(parser.hasPending).toBe(true);
+    const presses = parser.push('[A');
+    expect(presses.length).toBe(1);
+    expect(presses[0].key.upArrow).toBe(true);
+    expect(presses[0].key.escape).toBe(false);
+    expect(parser.hasPending).toBe(false);
+  });
+
+  it('completes an escape sequence split inside its parameters', () => {
+    const parser = new InputParser();
+    expect(parser.push('\x1b[')).toEqual([]);
+    const presses = parser.push('1;5C');
+    expect(presses.length).toBe(1);
+    expect(presses[0].key.rightArrow).toBe(true);
+    expect(presses[0].key.ctrl).toBe(true);
+    expect(presses[0].input).toBe('');
+  });
+
+  it('delivers text before a trailing ESC and keeps the ESC', () => {
+    const parser = new InputParser();
+    const presses = parser.push('ab\x1b');
+    expect(presses.map(press => press.input)).toEqual(['ab']);
+    expect(parser.hasPending).toBe(true);
+  });
+
+  it('turns a lone ESC into Escape when flushed after the timeout', () => {
+    const parser = new InputParser();
+    expect(parser.push('\x1b')).toEqual([]);
+    const presses = parser.flush();
+    expect(presses.length).toBe(1);
+    expect(presses[0].key.escape).toBe(true);
+    expect(parser.hasPending).toBe(false);
+    expect(parser.flush()).toEqual([]);
+  });
+
+  it('drops an unmapped sequence split across reads', () => {
+    const parser = new InputParser();
+    expect(parser.push('\x1b[1')).toEqual([]);
+    expect(parser.push('5~x').map(press => press.input)).toEqual(['x']);
   });
 });
