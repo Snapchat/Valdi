@@ -35,6 +35,10 @@ public:
     /** Returns the column after the last written cluster. */
     int writeText(int x, int y, std::string_view text, const Style& style, const IntRect& clip);
 
+    /**
+     * Writes segments as one continuous run of clusters, using the clusters layout formed when a
+     * segment has them so painted widths match measured ones.
+     */
     int writeSegments(int x, int y, const std::vector<StyledSegment>& segments, const IntRect& clip);
 
     /**
@@ -59,6 +63,12 @@ private:
         Cell cell;
     };
 
+    struct ClusterCursor {
+        int x = 0;
+        bool wroteCell = false;
+        std::string leading;
+    };
+
     int _width;
     int _height;
     std::vector<Slot> _slots;
@@ -68,6 +78,7 @@ private:
     bool inGrid(int x, int y) const;
     bool writable(const IntRect& clip, int x, int y) const;
     void clearCell(int x, int y);
+    void writeCluster(ClusterCursor& cursor, int y, const Cluster& cluster, const Style& style, const IntRect& clip);
     void putCluster(int x, int y, const Cluster& cluster, const Style& style, const IntRect& clip);
 };
 
