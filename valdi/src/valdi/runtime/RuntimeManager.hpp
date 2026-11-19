@@ -195,6 +195,9 @@ private:
 
     std::shared_ptr<MetricsStopWatch> _initStopWatch;
     std::shared_ptr<YGConfig> _yogaConfig;
+    // Guards _yogaConfigOverrides and _viewManagerContexts: contexts can be created lazily on a JS thread (the
+    // terminal backend does it on the first render) while the tweak provider is set from another thread.
+    mutable Mutex _viewManagerContextsMutex;
     std::vector<std::weak_ptr<YGConfig>> _yogaConfigOverrides;
     Shared<DebuggerService> _debuggerService;
     AttributeIds _attributeIds;

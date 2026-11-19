@@ -325,6 +325,9 @@ Ref<ViewManagerContext> RuntimeManager::createViewManagerContext(
         mainThreadManagerOverride != nullptr ? mainThreadManagerOverride : _mainThreadManager,
         *_logger);
 
+    // Held until the tweaks are applied so that a concurrent setTweakValueProvider() either sees this context or
+    // has already published the tweaks read below.
+    std::lock_guard<Mutex> contextsGuard(_viewManagerContextsMutex);
     _viewManagerContexts.emplace_back(viewManagerContext);
 
     Ref<ValdiRuntimeTweaks> runtimeTweaks;
@@ -462,7 +465,12 @@ void RuntimeManager::applicationWillTerminate() {
 }
 
 void RuntimeManager::clearViewPools() {
-    for (const auto& viewManagerContext : _viewManagerContexts) {
+    std::vector<Ref<ViewManagerContext>> viewManagerContexts;
+    {
+        std::lock_guard<Mutex> guard(_viewManagerContextsMutex);
+        viewManagerContexts = _viewManagerContexts;
+    }
+    for (const auto& viewManagerContext : viewManagerContexts) {
         viewManagerContext->clearViewPools();
     }
 }
@@ -480,7 +488,11 @@ void RuntimeManager::removeExpiredRuntimes() {
 
 void RuntimeManager::forceBindAttributes(const StringBox& className) {
     // Will lazily trigger the binding attributes if needed.
-    auto viewManagerContexts = _viewManagerContexts;
+    std::vector<Ref<ViewManagerContext>> viewManagerContexts;
+    {
+        std::lock_guard<Mutex> guard(_viewManagerContextsMutex);
+        viewManagerContexts = _viewManagerContexts;
+    }
 
     _workerQueue->async([viewManagerContexts, className]() {
         for (const auto& viewManagerContext : viewManagerContexts) {
@@ -676,6 +688,7 @@ void RuntimeManager::setTweakValueProvider(const Shared<ITweakValueProvider>& tw
 
     _anrDetector->setNudgeEnabled(runtimeTweaks != nullptr ? runtimeTweaks->shouldNudgeJSThread() : false);
 
+    std::unique_lock<Mutex> contextsGuard(_viewManagerContextsMutex);
     applyYogaTweaks(_yogaConfig.get(), runtimeTweaks.get());
     for (auto it = _yogaConfigOverrides.begin(); it != _yogaConfigOverrides.end();) {
         if (auto yogaConfigOverride = it->lock()) {
@@ -697,6 +710,7 @@ void RuntimeManager::setTweakValueProvider(const Shared<ITweakValueProvider>& tw
         viewManagerContext->setApplyManagedChildFramePadding(applyManagedChildFramePadding);
         viewManagerContext->setKeepsViewPoolingOnLayoutCallbacks(keepsViewPoolingOnLayoutCallbacks);
     }
+    contextsGuard.unlock();
 
     for (const auto& runtime : runtimes) {
         runtime->setRuntimeTweaks(runtimeTweaks);
