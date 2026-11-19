@@ -1942,6 +1942,11 @@ void ViewNode::updateYogaMeasureFunc() {
     auto* resolvedYogaNode = facebook::yoga::resolveRef(_yogaNode);
     if (needsYogaMeasureFunc()) {
         resolvedYogaNode->setMeasureFunc(ygMeasureYoga);
+        if (getBackend(_viewNodeTree) == RenderingBackendTypeTerminal) {
+            // Yoga's text rounding floors the left edge and ceils the right edge of measured nodes. Terminal
+            // measurements are already whole cells, so at point scale 1 it only makes flex siblings overlap.
+            resolvedYogaNode->setNodeType(facebook::yoga::NodeType::Default);
+        }
     } else {
         resolvedYogaNode->setMeasureFunc(nullptr);
     }
