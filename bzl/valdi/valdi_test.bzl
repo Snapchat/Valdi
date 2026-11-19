@@ -1,11 +1,11 @@
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
+load(":suffixed_deps.bzl", "get_suffixed_deps")
 load(":valdi_compiled.bzl", "ValdiModuleInfo")
 
-def _module_infos(target):
+def _collect_target_runfiles(target):
     module = target[ValdiModuleInfo]
-    return [module] + [d[ValdiModuleInfo] for d in module.deps.to_list()]
+    module_infos = [module] + [d[ValdiModuleInfo] for d in module.deps.to_list()]
 
-def _collect_target_runfiles(module_infos):
     # Extract valdi modules and source maps
     valdi_modules = [m.android_debug_valdimodule for m in module_infos if m.android_debug_valdimodule]
     source_maps = [m.android_debug_sourcemaps for m in module_infos if m.android_debug_sourcemaps]
@@ -19,20 +19,18 @@ def _is_test_file(f, path_to_module):
     return "/test/" in path or path.endswith("/test")
 
 def _valdi_test_impl(ctx):
+    standalone_binary = ctx.executable.test_binary
     path_to_module = ctx.label.package
     test_paths = [f for f in ctx.files.srcs if _is_test_file(f, path_to_module)]
 
     has_tests = len(test_paths) > 0
-    modules = _module_infos(ctx.attr.target)
-    uses_rust = has_tests and any([m.native_language == "rust" for m in modules])
-    standalone_binary = ctx.executable.rust_test_binary if uses_rust else ctx.executable._valdi_standalone_binary
 
     # Check if code coverage is enabled via `bazel coverage` command or explicit flag
     code_coverage_enabled = ctx.configuration.coverage_enabled or ctx.attr.code_coverage[BuildSettingInfo].value
 
     # Always include standalone module runfiles
-    valdimodules = _collect_target_runfiles(modules)
-    valdimodules += _collect_target_runfiles(_module_infos(ctx.attr._valdi_standalone))
+    valdimodules = _collect_target_runfiles(ctx.attr.target)
+    valdimodules += _collect_target_runfiles(ctx.attr._valdi_standalone)
     runtime_files = valdimodules + ctx.files._api_version_file
     module_paths = ["--module_path {}".format(f.short_path) for f in runtime_files]
 
@@ -68,13 +66,12 @@ def _valdi_test_impl(ctx):
     runfiles = ctx.runfiles(
         files = [standalone_binary] + runtime_files,
     )
-    if uses_rust:
-        binary_info = ctx.attr.rust_test_binary[DefaultInfo]
-        runfiles = runfiles.merge(binary_info.default_runfiles).merge(binary_info.data_runfiles)
+    binary_info = ctx.attr.test_binary[DefaultInfo]
+    runfiles = runfiles.merge(binary_info.default_runfiles).merge(binary_info.data_runfiles)
 
     return [DefaultInfo(executable = test_script, files = depset([standalone_binary] + runtime_files), runfiles = runfiles)]
 
-valdi_test = rule(
+_valdi_test = rule(
     implementation = _valdi_test_impl,
     test = True,
     fragments = ["coverage"],
@@ -113,16 +110,29 @@ valdi_test = rule(
             default = Label("@valdi//src/valdi_modules/src/valdi/valdi_standalone"),
             doc = "The Valdi Standalone target to be added to all Valdi targets",
         ),
-        "rust_test_binary": attr.label(
+        "test_binary": attr.label(
             executable = True,
             cfg = "exec",
+            mandatory = True,
             doc = "A standalone executable linked with the module's native dependencies",
-        ),
-        "_valdi_standalone_binary": attr.label(
-            executable = True,
-            cfg = "exec",
-            default = Label("@valdi_toolchain//:valdi_standalone"),
-            doc = "The Valdi Standalone binary used to run the test",
         ),
     },
 )
+
+def valdi_test(name, target, srcs, **kwargs):
+    """Runs a module's TypeScript tests with its native dependencies linked in."""
+    test_binary_name = name + "_standalone"
+    native.cc_binary(
+        name = test_binary_name,
+        testonly = True,
+        tags = ["manual"],
+        visibility = ["//visibility:private"],
+        deps = get_suffixed_deps([target], "_native") + ["@valdi//valdi:valdi_standalone_main"],
+    )
+    _valdi_test(
+        name = name,
+        target = target,
+        srcs = srcs,
+        test_binary = ":" + test_binary_name,
+        **kwargs
+    )

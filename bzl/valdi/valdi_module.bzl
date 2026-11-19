@@ -307,21 +307,7 @@ def valdi_hotreload(**kwargs):
 
 def _setup_test_target(name, test_target_name, srcs):
     target = ":{}".format(name)
-
-    # A .valdimodule supplies JavaScript, not its Rust factories. valdi_test
-    # builds this executable only if a module in the test graph uses Rust.
-    test_binary_name = test_target_name + "_standalone"
-    native.cc_binary(
-        name = test_binary_name,
-        testonly = True,
-        tags = ["manual"],
-        deps = [
-            ":" + name + "_native",
-            "@valdi//valdi:valdi_standalone_main",
-        ],
-    )
-
-    valdi_test(name = test_target_name, srcs = srcs, target = target, rust_test_binary = ":" + test_binary_name, hot_reload = select({
+    valdi_test(name = test_target_name, srcs = srcs, target = target, hot_reload = select({
         "@valdi//bzl/valdi:valdi_hot_reload_enabled": True,
         "//conditions:default": False,
     }), tags = [

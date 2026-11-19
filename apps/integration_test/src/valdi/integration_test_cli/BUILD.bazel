@@ -5,8 +5,10 @@ valdi_module(
     srcs = glob([
         "src/**/*.ts",
         "src/**/*.d.ts",
+        "test/**/*.ts",
     ]),
     native_deps = ["//apps/integration_test/src/cpp:integration_test_cli_cpp"],
+    test_deps = ["//src/valdi_modules/src/valdi/jasmine"],
     visibility = ["//visibility:public"],
     deps = [
         "//src/valdi_modules/src/valdi/coreutils",
