@@ -2,19 +2,63 @@
 
 #include "valdi/runtime/Utils/MainThreadManager.hpp"
 #include "valdi/terminal/Host/TerminalHost.hpp"
+#include "valdi/terminal/Paint/Ansi.hpp"
 #include "valdi/terminal/Paint/CellGrid.hpp"
 #include "valdi/terminal/Paint/Painter.hpp"
 #include "valdi/terminal/TerminalView.hpp"
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
+#include "valdi_core/cpp/Utils/TrackedLock.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <condition_variable>
 #include <iterator>
 #include <limits>
+#include <memory>
+#include <mutex>
 
 namespace Valdi {
 
 static constexpr int kFallbackColumns = 80;
 static constexpr int kFallbackRows = 24;
+// How long finish() waits for the painting thread before finishing without a final paint. Only reached when that
+// thread is stuck or no longer runs tasks, for example while the process is exiting.
+static constexpr auto kFinishWaitTimeout = std::chrono::milliseconds(2000);
+
+namespace {
+
+struct Completion {
+    std::mutex mutex;
+    std::condition_variable condition;
+    bool done = false;
+
+    void signal() {
+        {
+            std::lock_guard<std::mutex> guard(mutex);
+            done = true;
+        }
+        condition.notify_all();
+    }
+
+    void waitFor(std::chrono::milliseconds timeout) {
+        std::unique_lock<std::mutex> lock(mutex);
+        condition.wait_for(lock, timeout, [this]() { return done; });
+    }
+};
+
+// Signals when the dispatched function that holds it is destroyed, which is also what happens when a torn-down
+// queue drops the function without running it.
+struct CompletionToken {
+    std::shared_ptr<Completion> completion;
+
+    explicit CompletionToken(std::shared_ptr<Completion> completion) : completion(std::move(completion)) {}
+
+    ~CompletionToken() {
+        completion->signal();
+    }
+};
+
+} // namespace
 
 TerminalRoot::TerminalRoot(const Ref<ViewNodeTree>& tree,
                            const Ref<Terminal::ITerminalSink>& sink,
@@ -106,6 +150,12 @@ void TerminalRoot::setSizeOnPaintThread(int columns, int rows) {
 
 bool TerminalRoot::canDispatch() const {
     return _options.dispatcher || _tree->getMainThreadManager() != nullptr;
+}
+
+bool TerminalRoot::isOnPaintThread() const {
+    // A dispatcher must run functions on the main thread, so the main thread is the painting thread either way.
+    const auto& mainThreadManager = _tree->getMainThreadManager();
+    return mainThreadManager != nullptr && mainThreadManager->currentThreadIsMainThread();
 }
 
 void TerminalRoot::dispatchOnPaintThread(DispatchFunction function) {
@@ -298,17 +348,74 @@ void TerminalRoot::clear() {
     _sink->flush();
 }
 
+void TerminalRoot::redraw() {
+    {
+        std::lock_guard<RecursiveMutex> guard(_mutex);
+        if (_destroyed || _finished) {
+            return;
+        }
+        _writer = Terminal::FrameWriter(_sink, Terminal::FrameWriterOptions{_options.debug});
+    }
+    scheduleFrame();
+}
+
 void TerminalRoot::finish() {
     if (_destroyed || _finishRequested.exchange(true)) {
         return;
     }
     // After a Ctrl+C or signal restore the terminal is already in its final state; painting again would hide the
-    // cursor and repeat the newline.
+    // cursor and repeat the newline. Nothing reads the tree, so there is no need to hop.
+    if (_sink->isTTY() && Terminal::TerminalHost::isRestoreWritten()) {
+        std::lock_guard<RecursiveMutex> guard(_mutex);
+        if (!_finished) {
+            _writer.abandon();
+            _finished = true;
+        }
+        return;
+    }
+    if (!canDispatch() || isOnPaintThread()) {
+        finishOnPaintThread();
+        return;
+    }
+
+    // The final paint reads the views, which queued view transactions mutate on the painting thread without the
+    // tree lock. Running it there orders it after the transactions queued before this call, such as the last
+    // setState before exit(). Callers rely on the output being final when finish() returns, so wait for it.
+    auto completion = std::make_shared<Completion>();
+    {
+        auto token = std::make_shared<CompletionToken>(completion);
+        dispatchOnPaintThread(DispatchFunction([weakSelf = weakRef(this), token]() {
+            auto self = weakSelf.lock();
+            if (self != nullptr) {
+                self->finishOnPaintThread();
+            }
+            token->completion->signal();
+        }));
+    }
+    {
+        DropAllTrackedLocks dropAllTrackedLocks;
+        completion->waitFor(kFinishWaitTimeout);
+    }
+
+    // The painting thread did not get to it: leave the output consistent with the last frame that was painted.
+    std::lock_guard<RecursiveMutex> guard(_mutex);
+    if (!_finished) {
+        _writer.finish();
+        _finished = true;
+        _sink->flush();
+    }
+}
+
+void TerminalRoot::finishOnPaintThread() {
     const bool alreadyRestored = _sink->isTTY() && Terminal::TerminalHost::isRestoreWritten();
     if (!alreadyRestored) {
         paintNow();
     }
     std::lock_guard<RecursiveMutex> guard(_mutex);
+    // destroy() may have abandoned the output while the paint was queued.
+    if (_finished) {
+        return;
+    }
     if (alreadyRestored) {
         _writer.abandon();
     } else {
@@ -319,20 +426,42 @@ void TerminalRoot::finish() {
 }
 
 void TerminalRoot::destroy() {
-    if (_destroyed) {
-        return;
-    }
-    finish();
     if (_destroyed.exchange(true)) {
         return;
     }
-    auto treeLock = _tree->lock();
-    auto rootView = TerminalView::unwrap(_tree->getRootView());
-    if (rootView != nullptr) {
-        rootView->setRoot(nullptr);
+    _finishRequested = true;
+    {
+        std::lock_guard<RecursiveMutex> guard(_mutex);
+        if (!_finished) {
+            // Destroying without finish() abandons the output, as when the first render throws: no final paint and
+            // no trailing newline. A live frame that was already drawn is erased so that a half-built frame is not
+            // left above the error, and the cursor the first frame hid is shown again. After a signal or Ctrl+C
+            // restore the terminal is already final and the frame position is unknown, so nothing is written.
+            if (_frameSequence > 0 && _sink->isTTY() && !_options.debug &&
+                !Terminal::TerminalHost::isRestoreWritten()) {
+                _writer.clear();
+                _sink->write(Terminal::Ansi::kCursorShow);
+            }
+            _writer.abandon();
+            _finished = true;
+            _sink->flush();
+        }
+        _observers.clear();
     }
-    std::lock_guard<RecursiveMutex> guard(_mutex);
-    _observers.clear();
+
+    // The root view's back reference is read on the painting thread while it applies transactions.
+    auto detach = [tree = _tree]() {
+        auto treeLock = tree->lock();
+        auto rootView = TerminalView::unwrap(tree->getRootView());
+        if (rootView != nullptr) {
+            rootView->setRoot(nullptr);
+        }
+    };
+    if (canDispatch() && !isOnPaintThread()) {
+        dispatchOnPaintThread(DispatchFunction(std::move(detach)));
+    } else {
+        detach();
+    }
 }
 
 bool TerminalRoot::isDestroyed() const {
