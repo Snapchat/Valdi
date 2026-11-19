@@ -91,35 +91,39 @@ void CellGrid::putCluster(int x, int y, const Cluster& cluster, const Style& sty
     slot.cell = Cell{cluster.text, 1, resolved};
 }
 
+void CellGrid::writeCluster(
+    ClusterCursor& cursor, int y, const Cluster& cluster, const Style& style, const IntRect& clip) {
+    if (cluster.width == 0) {
+        // Zero-width clusters that come before any cell have no base to attach to; they travel with the next cell
+        // instead of landing on whatever was already to the left.
+        if (!cursor.wroteCell) {
+            cursor.leading += cluster.text;
+        } else if (writable(clip, cursor.x - 1, y)) {
+            auto& slot = slotAt(cursor.x - 1, y);
+            if (slot.occupied && slot.cell.width > 0) {
+                slot.cell.text += cluster.text;
+            }
+        }
+        return;
+    }
+    if (cursor.leading.empty()) {
+        putCluster(cursor.x, y, cluster, style, clip);
+    } else {
+        putCluster(cursor.x, y, Cluster{cursor.leading + cluster.text, cluster.width}, style, clip);
+        cursor.leading.clear();
+    }
+    cursor.wroteCell = true;
+    cursor.x += cluster.width;
+}
+
 int CellGrid::writeClusters(
     int x, int y, const std::vector<Cluster>& clusters, const Style& style, const IntRect& clip) {
-    int cursor = x;
-    bool wroteCell = false;
-    // Zero-width clusters that come before any cell have no base to attach to; they travel with the next cell
-    // instead of landing on whatever was already to the left.
-    std::string leading;
+    ClusterCursor cursor;
+    cursor.x = x;
     for (const auto& cluster : clusters) {
-        if (cluster.width == 0) {
-            if (!wroteCell) {
-                leading += cluster.text;
-            } else if (writable(clip, cursor - 1, y)) {
-                auto& slot = slotAt(cursor - 1, y);
-                if (slot.occupied && slot.cell.width > 0) {
-                    slot.cell.text += cluster.text;
-                }
-            }
-            continue;
-        }
-        if (leading.empty()) {
-            putCluster(cursor, y, cluster, style, clip);
-        } else {
-            putCluster(cursor, y, Cluster{leading + cluster.text, cluster.width}, style, clip);
-            leading.clear();
-        }
-        wroteCell = true;
-        cursor += cluster.width;
+        writeCluster(cursor, y, cluster, style, clip);
     }
-    return cursor;
+    return cursor.x;
 }
 
 int CellGrid::writeText(int x, int y, std::string_view text, const Style& style, const IntRect& clip) {
@@ -127,11 +131,20 @@ int CellGrid::writeText(int x, int y, std::string_view text, const Style& style,
 }
 
 int CellGrid::writeSegments(int x, int y, const std::vector<StyledSegment>& segments, const IntRect& clip) {
-    int cursor = x;
+    ClusterCursor cursor;
+    cursor.x = x;
     for (const auto& segment : segments) {
-        cursor = writeText(cursor, y, segment.text, segment.style, clip);
+        if (segment.clusters.empty() && !segment.text.empty()) {
+            for (const auto& cluster : clusterize(segment.text)) {
+                writeCluster(cursor, y, cluster, segment.style, clip);
+            }
+            continue;
+        }
+        for (const auto& cluster : segment.clusters) {
+            writeCluster(cursor, y, cluster, segment.style, clip);
+        }
     }
-    return cursor;
+    return cursor.x;
 }
 
 void CellGrid::fillBackground(const IntRect& rect, const TermColor& color, const IntRect& clip) {

@@ -24,6 +24,8 @@ int codePointWidth(char32_t codePoint);
 /**
  * Splits UTF-8 text into clusters: a base code point followed by its combining marks, variation
  * selectors, skin-tone modifiers and ZWJ sequences. Regional indicator pairs form one flag cluster.
+ * Invalid UTF-8 becomes U+FFFD; control characters and bidi embedding, override and isolate
+ * controls (U+202A-U+202E, U+2066-U+2069) are dropped.
  */
 std::vector<Cluster> clusterize(std::string_view text);
 
@@ -49,6 +51,8 @@ struct StyledSegment {
     std::string text;
     int width = 0;
     Style style;
+    /** The clusters of `text` as layout formed them, so painting does not re-cluster and drift from the measure. */
+    std::vector<Cluster> clusters;
 };
 
 struct StyledLine {

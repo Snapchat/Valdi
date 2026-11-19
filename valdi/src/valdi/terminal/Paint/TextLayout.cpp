@@ -148,64 +148,91 @@ static std::vector<char32_t> decodeUtf8(std::string_view text) {
     return out;
 }
 
-// Control characters would move the terminal cursor or start escape sequences, so they never reach a cell.
-static bool isControl(char32_t cp) {
-    return cp < 0x20 || (cp >= 0x7f && cp < 0xa0);
+// Control characters would move the terminal cursor or start escape sequences, and bidi embeddings, overrides and
+// isolates would reorder whatever the terminal prints after them, so none of them ever reach a cell.
+static bool isDropped(char32_t cp) {
+    return cp < 0x20 || (cp >= 0x7f && cp < 0xa0) || (cp >= 0x202a && cp <= 0x202e) || (cp >= 0x2066 && cp <= 0x2069);
 }
 
-std::vector<Cluster> clusterize(std::string_view text) {
-    std::vector<Cluster> clusters;
-    std::string current;
-    int currentWidth = 0;
+static std::vector<char32_t> decodeVisible(std::string_view text) {
+    auto codePoints = decodeUtf8(text);
+    codePoints.erase(std::remove_if(codePoints.begin(), codePoints.end(), isDropped), codePoints.end());
+    return codePoints;
+}
+
+namespace {
+
+struct ClusterSpan {
+    size_t begin = 0;
+    size_t end = 0;
+    int width = 0;
+};
+
+} // namespace
+
+static std::vector<ClusterSpan> clusterSpans(const std::vector<char32_t>& codePoints) {
+    std::vector<ClusterSpan> spans;
+    bool open = false;
+    ClusterSpan current;
     bool joinNext = false;
     bool pendingRegional = false;
 
-    const auto flush = [&]() {
-        if (!current.empty()) {
-            clusters.push_back(Cluster{std::move(current), currentWidth});
-        }
-        current.clear();
-        currentWidth = 0;
-        pendingRegional = false;
-    };
-
-    for (const char32_t cp : decodeUtf8(text)) {
-        if (isControl(cp)) {
-            continue;
-        }
+    for (size_t i = 0; i < codePoints.size(); i++) {
+        const char32_t cp = codePoints[i];
         if (cp == kZeroWidthJoiner) {
-            if (current.empty()) {
+            if (!open) {
                 continue;
             }
-            appendUtf8(current, cp);
+            current.end = i + 1;
             joinNext = true;
             continue;
         }
         if (joinNext) {
-            appendUtf8(current, cp);
+            current.end = i + 1;
             joinNext = false;
             continue;
         }
         if (isRegionalIndicator(cp) && pendingRegional) {
-            appendUtf8(current, cp);
-            currentWidth = 2;
+            current.end = i + 1;
+            current.width = 2;
             pendingRegional = false;
             continue;
         }
-        if (isZeroWidth(cp) && !current.empty()) {
-            appendUtf8(current, cp);
-            if (cp == kVariationSelector16 && currentWidth == 1) {
+        if (isZeroWidth(cp) && open) {
+            current.end = i + 1;
+            if (cp == kVariationSelector16 && current.width == 1) {
                 // Emoji presentation requested for a text-default symbol; terminals render it in two cells.
-                currentWidth = 2;
+                current.width = 2;
             }
             continue;
         }
-        flush();
-        appendUtf8(current, cp);
-        currentWidth = codePointWidth(cp);
+        if (open) {
+            spans.push_back(current);
+        }
+        open = true;
+        current = ClusterSpan{i, i + 1, codePointWidth(cp)};
         pendingRegional = isRegionalIndicator(cp);
     }
-    flush();
+    if (open) {
+        spans.push_back(current);
+    }
+    return spans;
+}
+
+static std::string encodeUtf8(const std::vector<char32_t>& codePoints, size_t begin, size_t end) {
+    std::string out;
+    for (size_t i = begin; i < end; i++) {
+        appendUtf8(out, codePoints[i]);
+    }
+    return out;
+}
+
+std::vector<Cluster> clusterize(std::string_view text) {
+    const auto codePoints = decodeVisible(text);
+    std::vector<Cluster> clusters;
+    for (const auto& span : clusterSpans(codePoints)) {
+        clusters.push_back(Cluster{encodeUtf8(codePoints, span.begin, span.end), span.width});
+    }
     return clusters;
 }
 
@@ -270,6 +297,7 @@ StyledLine toStyledLine(const ClusterLine& clusters) {
         hasSegment = true;
         current.style = cluster.style;
         current.text += cluster.text;
+        current.clusters.push_back(Cluster{cluster.text, cluster.width});
         current.width += cluster.width;
         line.width += cluster.width;
     }
@@ -279,16 +307,23 @@ StyledLine toStyledLine(const ClusterLine& clusters) {
     return line;
 }
 
+// Clusters are formed over the whole paragraph rather than per run, so a ZWJ sequence or a combining mark that
+// straddles a style change stays one cluster; it takes the style of its first code point.
 std::vector<ClusterLine> splitParagraphs(const std::vector<TextRun>& runs) {
+    struct Paragraph {
+        std::vector<char32_t> codePoints;
+        std::vector<size_t> runIndices;
+    };
     // Empty text is deliberately one empty row rather than zero, matching Ink's <Text>.
-    std::vector<ClusterLine> paragraphs(1);
-    for (const auto& run : runs) {
+    std::vector<Paragraph> paragraphs(1);
+    for (size_t r = 0; r < runs.size(); r++) {
+        const auto& text = runs[r].text;
         std::string normalized;
-        normalized.reserve(run.text.size());
-        for (size_t i = 0; i < run.text.size(); i++) {
-            const char c = run.text[i];
+        normalized.reserve(text.size());
+        for (size_t i = 0; i < text.size(); i++) {
+            const char c = text[i];
             if (c == '\r') {
-                if (i + 1 < run.text.size() && run.text[i + 1] == '\n') {
+                if (i + 1 < text.size() && text[i + 1] == '\n') {
                     i++;
                 }
                 normalized.push_back('\n');
@@ -298,24 +333,27 @@ std::vector<ClusterLine> splitParagraphs(const std::vector<TextRun>& runs) {
                 normalized.push_back(c);
             }
         }
-
-        size_t partStart = 0;
-        while (true) {
-            const size_t newline = normalized.find('\n', partStart);
-            const auto part =
-                std::string_view(normalized)
-                    .substr(partStart, newline == std::string::npos ? std::string::npos : newline - partStart);
-            for (auto& cluster : clusterize(part)) {
-                paragraphs.back().push_back(StyledCluster{std::move(cluster.text), cluster.width, run.style});
+        for (const char32_t cp : decodeUtf8(normalized)) {
+            if (cp == '\n') {
+                paragraphs.emplace_back();
+            } else if (!isDropped(cp)) {
+                paragraphs.back().codePoints.push_back(cp);
+                paragraphs.back().runIndices.push_back(r);
             }
-            if (newline == std::string::npos) {
-                break;
-            }
-            paragraphs.emplace_back();
-            partStart = newline + 1;
         }
     }
-    return paragraphs;
+
+    std::vector<ClusterLine> out;
+    out.reserve(paragraphs.size());
+    for (const auto& paragraph : paragraphs) {
+        auto& line = out.emplace_back();
+        for (const auto& span : clusterSpans(paragraph.codePoints)) {
+            line.push_back(StyledCluster{encodeUtf8(paragraph.codePoints, span.begin, span.end),
+                                         span.width,
+                                         runs[paragraph.runIndices[span.begin]].style});
+        }
+    }
+    return out;
 }
 
 struct WrappedLine {
@@ -387,6 +425,10 @@ std::vector<WrappedLine> wrapParagraph(const ClusterLine& clusters, int maxWidth
             continue;
         }
         for (size_t i = tokenStart; i < end; i++) {
+            // A cluster wider than the whole line can never fit; it is dropped so no line exceeds maxWidth.
+            if (clusters[i].width > maxWidth) {
+                continue;
+            }
             if (lineWidth + clusters[i].width > maxWidth && !line.empty()) {
                 pushLine();
             }

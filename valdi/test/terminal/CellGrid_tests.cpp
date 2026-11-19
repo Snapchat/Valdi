@@ -1,4 +1,5 @@
 #include "valdi/terminal/Paint/CellGrid.hpp"
+#include "valdi/terminal/Paint/TextLayout.hpp"
 
 #include <gtest/gtest.h>
 
@@ -148,6 +149,32 @@ TEST(TerminalCellGrid, rowTextCountsWideCharactersOnceAndEmptyCellsAsSpaces) {
     grid.writeText(1, 0, "日", Style(), grid.bounds());
     ASSERT_EQ(" 日   ", grid.rowText(0, 0, 6));
     ASSERT_EQ("", grid.rowText(3, 0, 6));
+}
+
+TEST(TerminalCellGrid, paintsClustersThatStraddleRunsAtTheirMeasuredWidth) {
+    const auto red = fgStyle(TermColor::ansi16(1));
+    const auto green = fgStyle(TermColor::ansi16(2));
+    const std::string family = "\U0001F468\u200D\U0001F469\u200D\U0001F467";
+    const auto lines =
+        layoutText({TextRun{"\U0001F468\u200D", red}, TextRun{"\U0001F469\u200D\U0001F467x", green}}, 10);
+    ASSERT_EQ(1u, lines.size());
+    CellGrid grid(6, 1);
+    const int end = grid.writeSegments(0, 0, lines[0].segments, grid.bounds());
+    ASSERT_EQ(lines[0].width, end);
+    ASSERT_EQ((Lines{family + "x"}), grid.toPlainLines());
+    ASSERT_EQ(family + "x   ", grid.rowText(0, 0, 6));
+}
+
+TEST(TerminalCellGrid, keepsACombiningMarkThatStartsARunOnThePreviousCell) {
+    const auto red = fgStyle(TermColor::ansi16(1));
+    const auto green = fgStyle(TermColor::ansi16(2));
+    const auto lines = layoutText({TextRun{"e", red}, TextRun{"\u0301x", green}}, 10);
+    ASSERT_EQ(1u, lines.size());
+    CellGrid grid(4, 1);
+    grid.writeText(0, 0, "zzzz", Style(), grid.bounds());
+    const int end = grid.writeSegments(1, 0, lines[0].segments, grid.bounds());
+    ASSERT_EQ(1 + lines[0].width, end);
+    ASSERT_EQ((Lines{"ze\u0301xz"}), grid.toPlainLines());
 }
 
 } // namespace ValdiTest

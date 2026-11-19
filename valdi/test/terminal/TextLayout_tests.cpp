@@ -85,6 +85,60 @@ TEST(TerminalTextSanitizing, rejectsOverlongAndOutOfRangeUtf8) {
     ASSERT_EQ((Lines{"\xf0\x90\x80\x80"}), layoutPlain("\xf0\x90\x80\x80", 20));
 }
 
+TEST(TerminalTextSanitizing, replacesEachByteOfATruncatedSequenceWithU_FFFD) {
+    const std::string replacement = "\xef\xbf\xbd";
+    ASSERT_EQ((Lines{replacement + replacement}), layoutPlain("\xe2\x82", 20));
+    ASSERT_EQ((Lines{replacement + replacement + "A"}), layoutPlain("\xe2\x82" "A", 20));
+    ASSERT_EQ((Lines{"a" + replacement + "b"}), layoutPlain("a\x80" "b", 20));
+}
+
+TEST(TerminalTextSanitizing, dropsBidiEmbeddingsOverridesAndIsolates) {
+    ASSERT_EQ((Lines{"abcdefghij"}),
+              layoutPlain("a\u202Ab\u202Bc\u202Cd\u202De\u202Ef\u2066g\u2067h\u2068i\u2069j", 20));
+    ASSERT_EQ(3, stringWidth("x\u202Ey\u2067z"));
+    const auto clusters = clusterize("\u202Ea");
+    ASSERT_EQ(1u, clusters.size());
+    ASSERT_EQ("a", clusters[0].text);
+}
+
+TEST(TerminalTextSanitizing, keepsJoinersAndNonJoiners) {
+    const auto nonJoined = clusterize("a\u200Cb");
+    ASSERT_EQ(2u, nonJoined.size());
+    ASSERT_EQ("a\u200C", nonJoined[0].text);
+    const auto joined = clusterize("\U0001F468\u200D\U0001F469");
+    ASSERT_EQ(1u, joined.size());
+    ASSERT_EQ("\U0001F468\u200D\U0001F469", joined[0].text);
+}
+
+TEST(TerminalWrap, keepsAZwjSequenceSplitAcrossRunsAsOneCluster) {
+    Style red;
+    red.fg = TermColor::ansi16(1);
+    Style green;
+    green.fg = TermColor::ansi16(2);
+    const auto lines = layoutText({TextRun{"\U0001F468\u200D", red}, TextRun{"\U0001F469\u200D\U0001F467", green}}, 10);
+    ASSERT_EQ(1u, lines.size());
+    ASSERT_EQ(2, lines[0].width);
+    ASSERT_EQ(1u, lines[0].segments.size());
+    ASSERT_EQ(red, lines[0].segments[0].style);
+    ASSERT_EQ("\U0001F468\u200D\U0001F469\u200D\U0001F467", lines[0].segments[0].text);
+    ASSERT_EQ(1u, lines[0].segments[0].clusters.size());
+}
+
+TEST(TerminalWrap, attachesACombiningMarkThatStartsARunToThePreviousCharacter) {
+    Style red;
+    red.fg = TermColor::ansi16(1);
+    Style green;
+    green.fg = TermColor::ansi16(2);
+    const auto lines = layoutText({TextRun{"ab", red}, TextRun{"\u0301c", green}}, 10);
+    ASSERT_EQ(1u, lines.size());
+    ASSERT_EQ(3, lines[0].width);
+    ASSERT_EQ(2u, lines[0].segments.size());
+    ASSERT_EQ("ab\u0301", lines[0].segments[0].text);
+    ASSERT_EQ(red, lines[0].segments[0].style);
+    ASSERT_EQ("c", lines[0].segments[1].text);
+    ASSERT_EQ(green, lines[0].segments[1].style);
+}
+
 TEST(TerminalWrap, returnsASingleLineWhenUnconstrained) {
     const auto lines = layoutText(plain("hello world"), std::nullopt);
     ASSERT_EQ((Lines{"hello world"}), linesToPlainText(lines));
@@ -119,12 +173,56 @@ TEST(TerminalWrap, doesNotSplitWideCharacters) {
     ASSERT_EQ((Lines{"日本", "語"}), layoutPlain("日本語", 4));
 }
 
-TEST(TerminalWrap, putsAClusterWiderThanTheLineOnItsOwnLineAndMeasuresItsRealWidth) {
+TEST(TerminalWrap, dropsAClusterWiderThanTheLineInsteadOfOverflowing) {
     const auto lines = layoutText(plain("日本"), 1);
-    ASSERT_EQ((Lines{"日", "本"}), linesToPlainText(lines));
-    ASSERT_EQ(2, measureLines(lines).width);
-    ASSERT_EQ(2, measureLines(lines).height);
-    ASSERT_EQ((Lines{"a", "日"}), layoutPlain("a日", 1));
+    ASSERT_EQ((Lines{""}), linesToPlainText(lines));
+    ASSERT_EQ(0, measureLines(lines).width);
+    ASSERT_EQ(1, measureLines(lines).height);
+    ASSERT_EQ((Lines{"a"}), layoutPlain("a日", 1));
+    ASSERT_EQ((Lines{"a", "b"}), layoutPlain("a日b", 1));
+    ASSERT_EQ((Lines{""}), layoutPlain("日本", 0));
+}
+
+TEST(TerminalWrap, truncatesWideCharactersWithoutOverflowing) {
+    ASSERT_EQ((Lines{"…"}), layoutPlain("日本", 1, WrapMode::TruncateEnd));
+    ASSERT_EQ((Lines{"…"}), layoutPlain("日本", 1, WrapMode::TruncateStart));
+    ASSERT_EQ((Lines{"…"}), layoutPlain("日本", 1, WrapMode::TruncateMiddle));
+    ASSERT_EQ((Lines{"…"}), layoutPlain("日本", 2, WrapMode::TruncateEnd));
+    ASSERT_EQ((Lines{"日…"}), layoutPlain("日本語", 3, WrapMode::TruncateEnd));
+    ASSERT_EQ((Lines{"…語"}), layoutPlain("日本語", 3, WrapMode::TruncateStart));
+
+    LayoutOptions options;
+    options.maxWidth = 1;
+    options.ellipsize = false;
+    for (const auto mode : {WrapMode::TruncateEnd, WrapMode::TruncateStart, WrapMode::TruncateMiddle}) {
+        options.mode = mode;
+        ASSERT_EQ((Lines{""}), linesToPlainText(layoutText(plain("日本"), options)));
+    }
+}
+
+TEST(TerminalWrap, neverReturnsALineWiderThanTheWidth) {
+    const std::vector<std::string> texts = {
+        "日本", "a日b本c", "日 本 語", "😀😀x", "\U0001F468\u200D\U0001F469\u200D\U0001F467 ok"};
+    for (const auto& text : texts) {
+        for (int width = 0; width <= 5; width++) {
+            for (const auto mode :
+                 {WrapMode::Wrap, WrapMode::TruncateEnd, WrapMode::TruncateStart, WrapMode::TruncateMiddle}) {
+                for (const bool ellipsize : {true, false}) {
+                    for (const int maxLines : {0, 1, 2}) {
+                        LayoutOptions options;
+                        options.maxWidth = width;
+                        options.mode = mode;
+                        options.ellipsize = ellipsize;
+                        options.maxLines = maxLines;
+                        for (const auto& line : layoutText(plain(text), options)) {
+                            ASSERT_LE(line.width, width) << text << " at width " << width;
+                            ASSERT_EQ(line.width, stringWidth(linesToPlainText({line})[0]));
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 TEST(TerminalWrap, clipsInsteadOfEllipsizingWhenEllipsizeIsOff) {
