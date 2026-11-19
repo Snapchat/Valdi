@@ -262,23 +262,31 @@ pipeline as on device:
   place. Frames are coalesced to one per turn of the main thread.
 - `observeFrame()` delivers each painted frame to JavaScript; `lastFrame()` and `nextFrame()`
   are built on it. Frames carry an increasing `sequence`, and an older frame never replaces a
-  newer one. Frames are painted on the main thread and handed to the JavaScript queue, except
-  the last frame at `unmount()`, which is painted and delivered on the JavaScript thread. `writeAbove()` queues lines that are written above the live frame, which is
+  newer one. Every frame is painted on the main thread, the thread that applies view
+  transactions, and handed to the JavaScript queue; `finishRoot()` called at `unmount()` queues
+  the last paint behind pending updates and waits for it. `writeAbove()` queues lines that are written above the live frame, which is
   how `console.log` is redirected, and `finishRoot()` paints the last frame and leaves the
-  output consistent when the application unmounts.
+  output consistent when the application unmounts. A root destroyed without `finishRoot()`, as when
+  the first render throws, leaves no partial frame: a frame already drawn on a terminal is erased
+  and the cursor shown.
 - Input is carried by the same bridge. `feedInput()` delivers text to the observers registered
   with `observeInput()` for the same root, which parse it into key presses and dispatch them to
-  `useInput()` handlers. Input and resize observers belong to one root, so several renders in
-  one process do not see each other's keys. `getTerminalApp()` returns the newest mounted
+  `useInput()` handlers. `feedInput()` reaches only its own root, so several memory-sink renders in
+  one process do not see each other's keys. Keyboard input read from the real terminal is shared,
+  like one stdin read by several Ink instances: every live `tty` root receives all of it. `getTerminalApp()` returns the newest mounted
   application, and unmounting restores the one before it.
 - For `tty` roots in an application built with `terminal = True`, a host (`TerminalHost`) reads the
-  real keyboard: `render()` asks it for raw mode when stdin is a terminal, and a reader thread
+  real keyboard: `render()` asks it for raw mode when stdin is a terminal and the process is the terminal's
+  foreground job (from a background job it waits until it is continued in the foreground), and a reader thread
   delivers the input, whole UTF-8 sequences at a time, to the same observers. A `SIGWINCH` handler
   wakes the reader, which lays the live roots out for the new size on the main thread and notifies
   `useResize()` handlers; roots created with explicit `columns` or `rows` keep their size. The host
   owns `SIGWINCH` for the life of the process: nothing else in a `terminal = True` binary may install
   a handler for it. The `valdi_standalone_terminal` test runner registers the backend without a host,
   so specs only use the memory sink.
+- With signal keys off, Ctrl+Z reaches `useInput()` as input rather than suspending. An external
+  `SIGTSTP` (`kill -TSTP`) restores the terminal and stops the process; on `SIGCONT` in the
+  foreground the host re-enters raw mode and redraws every `tty` root.
 
 The bridge module is `valdi_tui/src/TerminalBackendBridge`; its declarations live in
 `TerminalBackendBridge.d.ts` and `TerminalBackend.ts` wraps it.
