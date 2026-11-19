@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include <string>
 #include <thread>
+#include <unistd.h>
 
 using namespace Valdi;
 using namespace Valdi::Terminal;
@@ -63,6 +64,13 @@ void releaseOnWorkerThread(Ref<DestructionProbe> ref) {
 void releaseInPlace(Ref<DestructionProbe> /*ref*/) {}
 
 } // namespace
+
+TEST(TerminalHost, isNotInTheForegroundWithoutATerminalOnStdin) {
+    if (::isatty(STDIN_FILENO) != 0) {
+        GTEST_SKIP() << "stdin is a terminal";
+    }
+    EXPECT_FALSE(TerminalHost::isForeground());
+}
 
 TEST(TerminalHost, lastReleaseOfAHopReleasedRefHappensOnTheReleaseThread) {
     std::thread::id destroyedOn;

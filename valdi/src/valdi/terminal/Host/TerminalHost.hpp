@@ -46,6 +46,14 @@ public:
      * previously installed handler so the stack trace of the crash handler still prints. Also installs the SIGWINCH
      * handler, which the host owns for the life of the process: nothing else may install one after this call, and
      * any earlier one is replaced. Registers the exit restore.
+     *
+     * Suspend and resume: raw mode clears ISIG, so Ctrl+Z is delivered to the application as input and does not
+     * suspend. A SIGTSTP sent from outside restores the terminal modes and shows the cursor, then stops the
+     * process with the default action (unless SIGTSTP was ignored when this was called). On SIGCONT the reader
+     * thread re-enters raw mode if the process is in the foreground and redraws every `tty` root from scratch
+     * below the cursor; continued in the background it leaves the terminal alone until a later SIGCONT finds it
+     * in the foreground.
+     *
      * Call it after SignalHandler::install(); calling it again does nothing.
      */
     void installSignalHandlers();
@@ -68,7 +76,9 @@ public:
 
     /**
      * Puts the terminal in raw mode and starts delivering keyboard input. Calls are counted: raw mode
-     * ends with the matching last releaseRawMode(). Returns false when stdin is not a terminal.
+     * ends with the matching last releaseRawMode(). Returns false when stdin or stdout is not a terminal.
+     * In a background process group the request is counted but raw mode and input wait until SIGCONT finds
+     * the process in the foreground, since changing the modes from the background would stop it with SIGTTOU.
      */
     bool acquireRawMode();
     void releaseRawMode();
@@ -80,6 +90,9 @@ public:
 
     /** Whether raw mode may be entered: stdin and stdout must both be terminals. */
     static bool rawModeAllowed(bool stdinIsTTY, bool stdoutIsTTY);
+
+    /** Whether this process group is the foreground job of the terminal on stdin. */
+    static bool isForeground();
 
     /**
      * Whether the signal path or Ctrl+C already restored the terminal and wrote the trailing newline, in which case
@@ -113,10 +126,11 @@ private:
 
     void startReaderIfNeeded();
     void runReader();
-    void drainWakePipe(bool& resized);
+    void drainWakePipe(bool& resized, bool& resumed);
     void readStdin();
     void handleInput(const std::string& text);
     void handleResize();
+    void handleResume();
     void requestExit(int code);
 };
 
