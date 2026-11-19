@@ -21,11 +21,13 @@ class TerminalRootHandle;
  * notifications from the host to JS.
  *
  * Input has no reader of its own: hosts (or tests, through feedInput) push text in and the
- * observers registered with observeInput() receive it. Observers belong to one root, so several
- * renders in one process never see each other's input. dispatchInput() and dispatchResize() reach
- * every live root. A module created with a TerminalHost also receives the process terminal's
- * keyboard input, resize events and Ctrl+C for its `tty` roots, and asks the host to put the
- * terminal in raw mode on their behalf; without a host `tty` roots only draw.
+ * observers registered with observeInput() receive it. Observers are registered per root, and
+ * feedInput() reaches only the root it is given, so memory roots never see each other's input.
+ * dispatchInput() and dispatchResize() reach every live root. A module created with a TerminalHost
+ * also receives the process terminal's keyboard input, resize events and Ctrl+C, and asks the host
+ * to put the terminal in raw mode on behalf of its `tty` roots; without a host `tty` roots only draw.
+ * Keyboard input is shared like one stdin read by several Ink instances: every live `tty` root
+ * receives all of it.
  */
 class TerminalBackendModule final : public SharedPtrRefCountable, public snap::valdi_core::ModuleFactory {
 public:
@@ -46,6 +48,9 @@ public:
 
     /** Lays the live `tty` roots out for the new terminal size, then notifies their resize observers. */
     void handleHostResize(int columns, int rows);
+
+    /** The process was continued in the foreground after a stop: redraws the live `tty` roots from scratch. */
+    void handleHostResume();
 
     /** Whether a live `tty` root asked for Ctrl+C to exit the application (the default). */
     bool hostExitsOnCtrlC();

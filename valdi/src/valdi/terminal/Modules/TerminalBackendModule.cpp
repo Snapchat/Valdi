@@ -174,7 +174,10 @@ public:
             [handle = std::move(handle)](JavaScriptEntryParameters& /*entry*/) mutable { handle = nullptr; });
     }
 
-    /** Paints a last time so non-interactive output gets its single frame. */
+    /**
+     * Paints a last time on the main thread so non-interactive output gets its single frame, and waits for it.
+     * Destroying without finishing abandons the output instead.
+     */
     void finish() {
         if (!_destroyed) {
             _root->finish();
@@ -377,9 +380,9 @@ Value TerminalBackendModule::observeFrame(const ValueFunctionCallContext& callCo
         return Value();
     }
 
-    // Frames are painted on the main thread, and the flag hops the call onto the JS queue. Painting that happens
-    // on the JS thread itself (finishRoot) runs the callback synchronously on that thread instead, because a
-    // function called from its own queue's thread is never deferred.
+    // Frames are painted on the main thread, including the final frame of finishRoot, and the flag hops the call
+    // onto the JS queue. Only a host whose JS thread is also its main thread runs the callback synchronously,
+    // because a function called from its own queue's thread is never deferred.
     const auto id = handle->getRoot()->addFrameObserver([observer](const Terminal::FrameSnapshot& frame) {
         (*observer)(ValueFunctionFlagsNeverCallSync, {frameToValue(frame)});
     });
@@ -568,6 +571,14 @@ void TerminalBackendModule::handleHostResize(int columns, int rows) {
         }
         handle->getRoot()->setSizeOnPaintThread(columns, rows);
         dispatchResize(*handle, columns, rows);
+    }
+}
+
+void TerminalBackendModule::handleHostResume() {
+    for (const auto& handle : liveHandles()) {
+        if (handle->hostOptions().isTty) {
+            handle->getRoot()->redraw();
+        }
     }
 }
 

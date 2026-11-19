@@ -31,21 +31,48 @@ int gWakeFd[2] = {-1, -1};
 
 constexpr char kWakeResize = 'w';
 constexpr char kWakeUpdate = 'u';
+constexpr char kWakeResume = 'r';
 
-constexpr char kRestoreSequence[] = "\x1b[0m\x1b[?25h\n";
+// A signal can cut a frame write in the middle of an escape sequence; CAN (0x18) cancels it so the terminal parses
+// the restore from the ground state, and is ignored there otherwise.
+constexpr char kRestoreSequence[] = "\x18\x1b[0m\x1b[?25h\n";
 // The newline only separates the shell prompt from the frame the first time.
-constexpr char kRestoreSequenceNoNewline[] = "\x1b[0m\x1b[?25h";
+constexpr char kRestoreSequenceNoNewline[] = "\x18\x1b[0m\x1b[?25h";
+
+constexpr int kWriteWaits = 20;
+constexpr int kWriteWaitMs = 50;
 
 constexpr int kExitCodeInterrupted = 130;
 constexpr int kExitGraceMs = 1000;
 
 static_assert(std::atomic<bool>::is_always_lock_free, "signal handlers need lock-free atomics");
 
+struct sigaction gSuspendAction;
+
+// Async-signal-safe. Changing terminal modes from a background process group stops it with SIGTTOU, and while the
+// job is in the background the shell owns the modes anyway.
+bool isForegroundSignalSafe() {
+    const pid_t foreground = tcgetpgrp(STDIN_FILENO);
+    return foreground != -1 && foreground == getpgrp();
+}
+
+// Async-signal-safe. stdout can share a non-blocking file description with stdin, so a full terminal reports EAGAIN;
+// wait for room a bounded number of times instead of dropping the restore sequence.
 void writeFully(int fd, const char* data, size_t size) {
+    int waits = 0;
     while (size > 0) {
         const auto written = ::write(fd, data, size);
         if (written < 0) {
             if (errno == EINTR) {
+                continue;
+            }
+            if ((errno == EAGAIN || errno == EWOULDBLOCK) && waits < kWriteWaits) {
+                waits++;
+                struct pollfd descriptor;
+                descriptor.fd = fd;
+                descriptor.events = POLLOUT;
+                descriptor.revents = 0;
+                poll(&descriptor, 1, kWriteWaitMs);
                 continue;
             }
             return;
@@ -55,12 +82,12 @@ void writeFully(int fd, const char* data, size_t size) {
     }
 }
 
-// Async-signal-safe: only atomics, tcsetattr and write.
+// Async-signal-safe: only atomics, tcgetpgrp, getpgrp, tcsetattr and write.
 void restoreTerminalSignalSafe() {
     // Restores whenever the original modes are known instead of trusting gRawActive: a thread that is
     // halfway through leaving raw mode has already cleared the flag but may not have called tcsetattr yet,
     // and applying the saved modes twice is harmless.
-    if (gHasSavedTermios.load()) {
+    if (gHasSavedTermios.load() && isForegroundSignalSafe()) {
         tcsetattr(STDIN_FILENO, TCSANOW, &gSavedTermios);
     }
     gRawActive.store(false);
@@ -89,6 +116,40 @@ void wake(char reason) {
 
 void resizeSignalHandler(int /*signal*/) {
     wake(kWakeResize);
+}
+
+// Raw mode clears ISIG, so Ctrl+Z reaches the application as input; this only runs for a SIGTSTP sent from outside,
+// such as `kill -TSTP`. The terminal is handed back cooked with the cursor shown, then the process stops with the
+// default action. The trailing newline is left for the final restore.
+void suspendSignalHandler(int signalNumber) {
+    const int savedErrno = errno;
+    if (gRawActive.load() && gHasSavedTermios.load() && isForegroundSignalSafe()) {
+        tcsetattr(STDIN_FILENO, TCSANOW, &gSavedTermios);
+    }
+    gRawActive.store(false);
+    if (gOutputArmed.load()) {
+        writeFully(STDOUT_FILENO, kRestoreSequenceNoNewline, sizeof(kRestoreSequenceNoNewline) - 1);
+    }
+
+    struct sigaction defaultAction;
+    memset(&defaultAction, 0, sizeof(defaultAction));
+    defaultAction.sa_handler = SIG_DFL;
+    sigemptyset(&defaultAction.sa_mask);
+    sigaction(signalNumber, &defaultAction, nullptr);
+    sigset_t unblock;
+    sigemptyset(&unblock);
+    sigaddset(&unblock, signalNumber);
+    pthread_sigmask(SIG_UNBLOCK, &unblock, nullptr);
+    raise(signalNumber);
+
+    // Runs after SIGCONT. The SIGCONT handler wakes the reader, which re-enters raw mode and repaints; returning
+    // from here restores the signal mask.
+    sigaction(signalNumber, &gSuspendAction, nullptr);
+    errno = savedErrno;
+}
+
+void continueSignalHandler(int /*signal*/) {
+    wake(kWakeResume);
 }
 
 // These replace backward's SIGQUIT handler on purpose: Ctrl+backslash should end the program with the terminal
@@ -158,7 +219,8 @@ void ensureWakePipe() {
 }
 
 bool enableRawModeLocked() {
-    if (!TerminalHost::rawModeAllowed(isatty(STDIN_FILENO) != 0, isatty(STDOUT_FILENO) != 0)) {
+    if (!TerminalHost::rawModeAllowed(isatty(STDIN_FILENO) != 0, isatty(STDOUT_FILENO) != 0) ||
+        !isForegroundSignalSafe()) {
         return false;
     }
     if (!gHasSavedTermios.load()) {
@@ -183,7 +245,7 @@ bool enableRawModeLocked() {
 
 void disableRawMode() {
     // Restore before clearing the flag so that a signal arriving in between still sees raw mode as active.
-    if (gRawActive.load() && gHasSavedTermios.load()) {
+    if (gRawActive.load() && gHasSavedTermios.load() && isForegroundSignalSafe()) {
         tcsetattr(STDIN_FILENO, TCSANOW, &gSavedTermios);
     }
     gRawActive.store(false);
@@ -243,6 +305,22 @@ void TerminalHost::installSignalHandlers() {
     sigemptyset(&resize.sa_mask);
     resize.sa_flags = SA_RESTART;
     sigaction(SIGWINCH, &resize, nullptr);
+
+    struct sigaction currentSuspend;
+    if (sigaction(SIGTSTP, nullptr, &currentSuspend) != 0 || currentSuspend.sa_handler != SIG_IGN) {
+        memset(&gSuspendAction, 0, sizeof(gSuspendAction));
+        gSuspendAction.sa_handler = suspendSignalHandler;
+        sigemptyset(&gSuspendAction.sa_mask);
+        gSuspendAction.sa_flags = SA_RESTART;
+        sigaction(SIGTSTP, &gSuspendAction, nullptr);
+    }
+
+    struct sigaction resume;
+    memset(&resume, 0, sizeof(resume));
+    resume.sa_handler = continueSignalHandler;
+    sigemptyset(&resume.sa_mask);
+    resume.sa_flags = SA_RESTART;
+    sigaction(SIGCONT, &resume, nullptr);
 }
 
 void TerminalHost::setExitHandler(Function<void(int)> exitHandler) {
@@ -284,11 +362,16 @@ void TerminalHost::rootDetached() {
 
 bool TerminalHost::acquireRawMode() {
     std::lock_guard<Mutex> guard(_mutex);
-    if (_rawModeUsers == 0 && !enableRawModeLocked()) {
+    if (!rawModeAllowed(isatty(STDIN_FILENO) != 0, isatty(STDOUT_FILENO) != 0)) {
+        return false;
+    }
+    // In a background job the request is held: raw mode starts when SIGCONT finds the process in the foreground.
+    if (_rawModeUsers == 0 && isForegroundSignalSafe() && !enableRawModeLocked()) {
         return false;
     }
     _rawModeUsers++;
-    _readerWantsInput = true;
+    // Reading stdin from the background would stop the process with SIGTTIN.
+    _readerWantsInput = gRawActive.load();
     startReaderIfNeeded();
     wake(kWakeUpdate);
     return true;
@@ -314,6 +397,10 @@ void TerminalHost::restoreTerminal() {
 bool TerminalHost::rawModeAllowed(bool stdinIsTTY, bool stdoutIsTTY) {
     // With stdout redirected nothing is drawn, so a user at the keyboard would only lose echo and line editing.
     return stdinIsTTY && stdoutIsTTY;
+}
+
+bool TerminalHost::isForeground() {
+    return isForegroundSignalSafe();
 }
 
 bool TerminalHost::isRestoreWritten() {
@@ -395,13 +482,18 @@ void TerminalHost::runReader() {
         }
 
         bool resized = false;
+        bool resumed = false;
         if ((fds[0].revents & POLLIN) != 0) {
-            drainWakePipe(resized);
+            drainWakePipe(resized, resumed);
+        }
+        if (resumed) {
+            handleResume();
         }
         if (resized) {
             handleResize();
         }
-        if (count == 2) {
+        // A resume in the background turns input off; the stdin readiness polled before it must not be read.
+        if (count == 2 && _readerWantsInput) {
             if ((fds[1].revents & POLLNVAL) != 0) {
                 // A closed descriptor reports POLLNVAL forever; reading it would spin.
                 _stdinClosed = true;
@@ -412,7 +504,7 @@ void TerminalHost::runReader() {
     }
 }
 
-void TerminalHost::drainWakePipe(bool& resized) {
+void TerminalHost::drainWakePipe(bool& resized, bool& resumed) {
     char buffer[16];
     while (true) {
         const auto readCount = read(gWakeFd[0], buffer, sizeof(buffer));
@@ -422,6 +514,8 @@ void TerminalHost::drainWakePipe(bool& resized) {
         for (ssize_t i = 0; i < readCount; i++) {
             if (buffer[i] == kWakeResize) {
                 resized = true;
+            } else if (buffer[i] == kWakeResume) {
+                resumed = true;
             }
         }
     }
@@ -466,6 +560,31 @@ void TerminalHost::handleInput(const std::string& text) {
         return;
     }
     client->handleHostInput(StringBox::fromString(text));
+}
+
+void TerminalHost::handleResume() {
+    Ref<TerminalBackendModule> client;
+    {
+        std::lock_guard<Mutex> guard(_mutex);
+        if (_attachedRoots == 0) {
+            return;
+        }
+        if (!isForegroundSignalSafe()) {
+            // Continued with `bg`: the shell owns the terminal modes until the job is brought back.
+            gRawActive = false;
+            _readerWantsInput = false;
+            return;
+        }
+        if (_rawModeUsers > 0 && !gRawActive.load()) {
+            enableRawModeLocked();
+        }
+        _readerWantsInput = _rawModeUsers > 0 && gRawActive.load();
+        client = _client.lock();
+    }
+    // The shell wrote its job control messages below the frame while the process was stopped.
+    if (client != nullptr) {
+        client->handleHostResume();
+    }
 }
 
 void TerminalHost::handleResize() {
