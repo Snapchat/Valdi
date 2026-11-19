@@ -6,23 +6,31 @@ extension RustType {
     func pushStatement(
         value: String,
         to marshaller: String,
-        owned: Bool,
+        asReturnValue: Bool,
         coreModule: String
     ) -> String {
         switch self {
         case .void:
             return "\(marshaller).push_undefined();"
         case .bytes:
-            return owned
+            return asReturnValue
                 ? "\(value).push_owned_to(\(marshaller))?;"
                 : "\(coreModule)::ValdiPush::push_to(&\(value), \(marshaller))?;"
         case .nullable(let inner):
             let innerPush = inner.pushStatement(
                 value: "inner",
                 to: marshaller,
-                owned: owned,
+                asReturnValue: asReturnValue,
                 coreModule: coreModule)
-            return "match \(value) { Some(inner) => { \(innerPush) }, None => \(marshaller).push_undefined() };"
+            // The Promise trampoline reserves native undefined for a skipped call.
+            // An explicit native null still becomes JS undefined for an optional return.
+            let absentValue: String
+            if asReturnValue, case .future = inner {
+                absentValue = "push_null"
+            } else {
+                absentValue = "push_undefined"
+            }
+            return "match \(value) { Some(inner) => { \(innerPush) }, None => \(marshaller).\(absentValue)() };"
         default:
             return "\(coreModule)::ValdiPush::push_to(&\(value), \(marshaller))?;"
         }

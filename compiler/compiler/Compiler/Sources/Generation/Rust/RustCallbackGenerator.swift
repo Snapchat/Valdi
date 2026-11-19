@@ -23,7 +23,7 @@ struct RustCallbackGenerator {
         let pushResult = callback.returnType.pushStatement(
             value: "result",
             to: "result_marshaller",
-            owned: true,
+            asReturnValue: true,
             coreModule: "valdi_core_rust")
         var resultStatements = [String]()
         if !callback.parameters.isEmpty {
@@ -36,7 +36,7 @@ struct RustCallbackGenerator {
 
         let callMarshaller = callback.parameters.isEmpty ? "_marshaller" : "marshaller"
         let callValues = callback.parameters.map { parameter in
-            "                \(parameter.type.pushStatement(value: parameter.name, to: callMarshaller, owned: false, coreModule: "valdi_core_rust"))"
+            "                \(parameter.type.pushStatement(value: parameter.name, to: callMarshaller, asReturnValue: false, coreModule: "valdi_core_rust"))"
         }.joined(separator: "\n")
         let resultReader =
             callback.returnType.rustOwnedType == "()"

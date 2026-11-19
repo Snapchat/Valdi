@@ -48,7 +48,7 @@ final class RustFunctionGenerator {
             separator: ", ")
         let callMarshaller = parameters.isEmpty ? "_marshaller" : "marshaller"
         let serializedParameters = parameters.map { parameter in
-            "                \(parameter.type.pushStatement(value: parameter.name, to: callMarshaller, owned: false, coreModule: "valdi_core_rust"))"
+            "                \(parameter.type.pushStatement(value: parameter.name, to: callMarshaller, asReturnValue: false, coreModule: "valdi_core_rust"))"
         }.joined(separator: "\n")
         let resultReader =
             returnType.rustOwnedType == "()"

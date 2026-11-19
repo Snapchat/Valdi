@@ -102,4 +102,21 @@ TEST_F(CppGeneratedClassTests, canGetClassName) {
     ASSERT_EQ(STRING_LITERAL("MyObject"), registeredClass1.getClassName());
 }
 
+TEST_F(CppGeneratedClassTests, resolvesNestedDependenciesOfCppGenericSpecializations) {
+    auto leaf = registerSchema("c 'Leaf' {'value': i}");
+    auto inner = registerSchema("c 'Inner' {'leaf': r:'[0]'}", [&] { return TypeReferencesVec{&leaf}; });
+    RegisteredCppGeneratedClass box(_registry.get(),
+                                    "c 'Box' {'payload': r:0, 'inner': r:'[0]'}",
+                                    [&] { return TypeReferencesVec{&inner}; },
+                                    [](ExceptionTracker&) { return std::vector<ValueSchema>{ValueSchema::integer()}; });
+    auto root = registerSchema("c 'Root' {'box': g:'[0]'<i>}", [&] { return TypeReferencesVec{&box}; });
+
+    SimpleExceptionTracker exceptionTracker;
+    auto rootSchema = root.getResolvedClassSchema(exceptionTracker);
+    ASSERT_TRUE(exceptionTracker) << exceptionTracker.extractError();
+    auto boxSchema = rootSchema->getProperty(0).schema.getSchemaReference()->getSchema();
+    auto innerSchema = boxSchema.getClass()->getProperty(1).schema.getSchemaReference()->getSchema();
+    EXPECT_TRUE(innerSchema.getClass()->getProperty(0).schema.isSchemaReference());
+}
+
 } // namespace ValdiTest

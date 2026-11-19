@@ -54,7 +54,7 @@ final class RustProxyGenerator {
                 separator: ", ")
             let callMarshaller = method.parameters.isEmpty ? "_marshaller" : "marshaller"
             let values = method.parameters.map { parameter in
-                "                \(parameter.type.pushStatement(value: parameter.name, to: callMarshaller, owned: false, coreModule: "valdi_core_rust"))"
+                "                \(parameter.type.pushStatement(value: parameter.name, to: callMarshaller, asReturnValue: false, coreModule: "valdi_core_rust"))"
             }.joined(separator: "\n")
             let resultReader =
                 method.returnType.rustOwnedType == "()"
@@ -90,7 +90,7 @@ final class RustProxyGenerator {
             let pushResult = method.returnType.pushStatement(
                 value: "result",
                 to: "result_marshaller",
-                owned: true,
+                asReturnValue: true,
                 coreModule: "valdi_core_rust")
             var resultStatements = [String]()
             if !method.parameters.isEmpty {

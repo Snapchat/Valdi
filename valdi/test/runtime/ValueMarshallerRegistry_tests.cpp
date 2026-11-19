@@ -2359,36 +2359,6 @@ private:
     bool _ownerTearingDown;
 };
 
-TEST(ValueMarshallerRegistry, distinguishesAbsentOptionalPromisesFromMissingRequiredPromises) {
-    auto schemas = makeShared<ValueSchemaRegistry>();
-    auto registry = makeShared<TestValueMarshallerRegistry>(schemas);
-    auto schema = ValueSchema::parse("c 'Utils'{'optional': f(): p?<i>, 'required': f(): p<i>}");
-    ASSERT_TRUE(schema) << schema.description();
-    auto identifier = schemas->registerSchema(schema.value());
-
-    for (bool tearingDown : {false, true}) {
-        auto fn = makeShared<SkippedDuringTeardownValueFunction>(tearingDown);
-        auto object = Value().setMapValue("optional", Value(fn)).setMapValue("required", Value(fn));
-        SimpleExceptionTracker tracker;
-        auto utils = registry->unmarshall(identifier, object, tracker).getTypedRef<TestObject>();
-        ASSERT_TRUE(tracker) << tracker.extractError().toString();
-        ASSERT_NE(utils, nullptr);
-        for (size_t index = 0; index < 2; ++index) {
-            auto result = utils->getProperty(index).getTypedRef<TestFunction>()->call(nullptr, 0);
-            ASSERT_TRUE(result) << result.description();
-            if (index == 0 && !tearingDown) {
-                EXPECT_TRUE(result.value().isNullOrUndefined());
-            } else {
-                auto promise = result.value().getTypedRef<Promise>();
-                ASSERT_NE(promise, nullptr);
-                bool rejected = false;
-                promise->onComplete([&](const auto& settlement) { rejected = !settlement; });
-                EXPECT_TRUE(rejected);
-            }
-        }
-    }
-}
-
 // A synchronous native->JS bridge call whose JS body was skipped during runtime teardown returns
 // 'undefined'. For a non-Promise typed return, forwardCall() would fail to unmarshall the
 // 'undefined' and raise the uncatchable SCValdiError "Failed to unmarshall return value of

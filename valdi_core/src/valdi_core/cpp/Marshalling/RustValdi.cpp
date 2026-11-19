@@ -303,15 +303,9 @@ ValdiRustStatus valdi_rust_register_schema(ValdiRustSlice schema,
     auto* registry = Valdi::ValueSchemaRegistry::sharedInstance().get();
     switch (kind) {
         case ValdiRustSchemaKindClass:
-            *out = new Valdi::RegisteredCppGeneratedClass(
-                registry, std::move(schemaString), std::move(getTypeReferences), {});
-            break;
         case ValdiRustSchemaKindGeneric:
             *out = new Valdi::RegisteredCppGeneratedClass(
-                registry,
-                std::move(schemaString),
-                std::move(getTypeReferences),
-                [](Valdi::ExceptionTracker&) -> std::vector<Valdi::ValueSchema> { return {}; });
+                registry, kind == ValdiRustSchemaKindGeneric, std::move(schemaString), std::move(getTypeReferences));
             break;
         case ValdiRustSchemaKindEnum:
             *out = new Valdi::RegisteredCppGeneratedClass(registry, std::move(schemaString), true);

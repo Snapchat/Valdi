@@ -24,16 +24,15 @@ RegisteredCppGeneratedClass::RegisteredCppGeneratedClass(ValueSchemaRegistry* re
 
 RegisteredCppGeneratedClass::RegisteredCppGeneratedClass(
     ValueSchemaRegistry* registry,
+    bool isGenericDeclaration,
     std::string schemaString,
-    GetTypeReferencesFunction getTypeReferencesFunction,
-    GetTypeArgumentsFunction getTypeArgumentsFunction)
+    GetTypeReferencesFunction getTypeReferencesFunction)
     : _registry(registry),
       _ownedSchemaString(std::move(schemaString)),
       _schemaString(_ownedSchemaString.c_str()),
       _getTypeReferencesFunction(std::move(getTypeReferencesFunction)) {
-    if (getTypeArgumentsFunction) {
+    if (isGenericDeclaration) {
         _genericData = std::make_unique<GenericData>();
-        _genericData->getTypeArguments = std::move(getTypeArgumentsFunction);
     }
 }
 
@@ -141,7 +140,7 @@ ValueSchema RegisteredCppGeneratedClass::getResolvedSchema(ExceptionTracker& exc
         bool didChange = false;
 
         std::vector<ValueSchema> typeArguments;
-        if (_genericData) {
+        if (_genericData && _genericData->getTypeArguments) {
             typeArguments = _genericData->getTypeArguments(exceptionTracker);
             if (!exceptionTracker) {
                 return ValueSchema::voidType();
@@ -165,14 +164,12 @@ ValueSchema RegisteredCppGeneratedClass::getResolvedSchema(ExceptionTracker& exc
         // Resolve dependencies. We do it with _schemaResolved set to true
         // so that circular dependencies can be properly managed.
         for (const auto& dependency : dependencies) {
-            if (dependency->isGenericSchema()) {
-                // A generic declaration has no concrete type arguments of its
-                // own. Register its base schema; the referencing generic key
-                // drives specialization in ValueSchemaTypeResolver.
-                dependency->ensureSchemaRegistered(exceptionTracker);
-            } else {
-                dependency->getResolvedSchema(exceptionTracker);
+            if (dependency->_genericData && !dependency->_genericData->getTypeArguments) {
+                // Already registered by ensureSchemaRegistered(). Only the referencing schema
+                // provides concrete arguments for this generic declaration.
+                continue;
             }
+            dependency->getResolvedSchema(exceptionTracker);
             if (!exceptionTracker) {
                 _schemaResolved = false;
                 return ValueSchema::voidType();
@@ -207,10 +204,6 @@ const StringBox& RegisteredCppGeneratedClass::getClassName() {
     }
 
     return _className;
-}
-
-bool RegisteredCppGeneratedClass::isGenericSchema() const {
-    return _genericData != nullptr;
 }
 
 } // namespace Valdi

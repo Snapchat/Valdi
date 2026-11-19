@@ -106,17 +106,27 @@ final class RustCodeGeneratorTests: XCTestCase {
             RustType.bytes.pushStatement(
                 value: "result",
                 to: "marshaller",
-                owned: true,
+                asReturnValue: true,
                 coreModule: "valdi_core_rust"),
             "result.push_owned_to(marshaller)?;")
         XCTAssertEqual(
             RustType.nullable(.bytes).pushStatement(
                 value: "result",
                 to: "marshaller",
-                owned: true,
+                asReturnValue: true,
                 coreModule: "valdi_core_rust"),
             "match result { Some(inner) => { inner.push_owned_to(marshaller)?; }, None => marshaller.push_undefined() };")
 
+    }
+
+    func testOnlyAbsentOptionalFutureReturnsUseExplicitNull() {
+        let optionalFuture = RustType.nullable(.future(RustFutureType(rustName: "NumberFuture", value: .double)))
+        let result = optionalFuture.pushStatement(
+            value: "value", to: "marshaller", asReturnValue: true, coreModule: "valdi_core_rust")
+        let argument = optionalFuture.pushStatement(
+            value: "value", to: "marshaller", asReturnValue: false, coreModule: "valdi_core_rust")
+        XCTAssertTrue(result.contains("None => marshaller.push_null()"))
+        XCTAssertTrue(argument.contains("None => marshaller.push_undefined()"))
     }
 
     func testFutureCompletionUsesMarshallerWithoutTemporaryValues() {

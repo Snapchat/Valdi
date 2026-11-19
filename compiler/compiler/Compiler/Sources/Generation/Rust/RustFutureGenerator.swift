@@ -13,7 +13,7 @@ struct RustFutureGenerator {
         let resolvedArgument = hasValue ? "value" : ""
         let pushResolve = hasValue
             ? future.value.pushStatement(
-                value: "value", to: "marshaller", owned: false, coreModule: "valdi_core_rust")
+                value: "value", to: "marshaller", asReturnValue: false, coreModule: "valdi_core_rust")
             : "marshaller.push_undefined();"
         let deserializeSuccess =
             hasValue

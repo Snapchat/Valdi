@@ -62,7 +62,7 @@ final class RustModuleGenerator {
             let pushResult = method.returnType.pushStatement(
                 value: "result",
                 to: "result_marshaller",
-                owned: true,
+                asReturnValue: true,
                 coreModule: "$crate::__valdi_core")
             var resultStatements = [String]()
             if !method.parameters.isEmpty {

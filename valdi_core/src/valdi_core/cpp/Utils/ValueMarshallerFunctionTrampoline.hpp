@@ -94,10 +94,8 @@ public:
             return std::nullopt;
         }
 
-        if (_isPromiseReturnType && unconvertedReturnValue.isUndefined() &&
-            (!_returnValueMarshaller->isOptional() || valueFunction->ownerIsTearingDown())) {
-            // A live function returning an optional Promise may legitimately return 'undefined'.
-            // A required Promise can only be missing when the JS call was
+        if (_isPromiseReturnType && unconvertedReturnValue.isUndefined()) {
+            // A Promise-returning function can only yield 'undefined' when the JS call was
             // skipped or failed without the error reaching this tracker: the runtime was
             // torn down (dead task scheduler / disposed JS value) or the JS-side error was
             // swallowed because Promise calls don't set PropagatesError. Unmarshalling

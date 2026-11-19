@@ -26,9 +26,9 @@ public:
                                 GetTypeReferencesFunction getTypeReferencesFunction,
                                 GetTypeArgumentsFunction getTypeArgumentsFunction);
     RegisteredCppGeneratedClass(ValueSchemaRegistry* registry,
+                                bool isGenericDeclaration,
                                 std::string schemaString,
-                                GetTypeReferencesFunction getTypeReferencesFunction,
-                                GetTypeArgumentsFunction getTypeArgumentsFunction);
+                                GetTypeReferencesFunction getTypeReferencesFunction);
     RegisteredCppGeneratedClass(ValueSchemaRegistry* registry, const char* schemaString, bool isEnum);
     RegisteredCppGeneratedClass(ValueSchemaRegistry* registry, std::string schemaString, bool isEnum);
     ~RegisteredCppGeneratedClass();
@@ -39,10 +39,10 @@ public:
     Result<Ref<ClassSchema>> getResolvedClassSchema();
     ValueSchema getResolvedSchema(ExceptionTracker& exceptionTracker);
     const StringBox& getClassName();
-    bool isGenericSchema() const;
 
 private:
     struct GenericData {
+        // Empty for an unspecialized declaration; C++ template instances supply concrete arguments.
         GetTypeArgumentsFunction getTypeArguments;
     };
     ValueSchemaRegistry* _registry;
