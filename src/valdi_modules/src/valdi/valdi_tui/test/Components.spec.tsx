@@ -124,9 +124,11 @@ describe('components', () => {
     const instance = render(Logging, {}, { sink: 'memory', columns: 40, rows: 10 });
     try {
       await frameMatching(instance, isSettled);
-      const next = instance.nextFrame();
       console.log('hello', 'there');
-      await next;
+      // The frame that carries the line may already be painted, so check the output before waiting for another.
+      for (let attempt = 0; attempt < 10 && !instance.output().includes('hello there\n'); attempt++) {
+        await instance.nextFrame();
+      }
       expect(instance.output()).toContain('hello there\n');
     } finally {
       instance.unmount();
