@@ -20,7 +20,9 @@ import termios
 import time
 import unittest
 
-BINARY = sys.argv.pop(1)
+BINARY = os.path.realpath(sys.argv.pop(1))
+if not (os.path.isfile(BINARY) and os.access(BINARY, os.X_OK)):
+    raise SystemExit(f"not an executable file: {BINARY}")
 
 TIMEOUT = 30.0
 HIDE_CURSOR = "\x1b[?25l"
@@ -91,6 +93,7 @@ class PtySession:
             stdout=subprocess.PIPE if stdout_to_pipe else self.slave,
             stderr=self.slave,
             env=env,
+            shell=False,
             start_new_session=True,
             pass_fds=(status_write, release_read),
         )
