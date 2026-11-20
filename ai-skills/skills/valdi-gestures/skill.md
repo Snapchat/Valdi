@@ -131,7 +131,7 @@ Expand the tappable area beyond the visible bounds:
   touchAreaExtension={10}  // extends hit area by 10pt in each direction
   width={24} height={24}
 >
-  <image src={SIGIcon.checkmarkFill} />
+  <image src={HeliosIcon.checkmarkFill} />
 </view>
 ```
 

@@ -98,7 +98,7 @@ class TestParseIcons(unittest.TestCase):
     def test_parses_static_getters(self):
         with tempfile.NamedTemporaryFile(mode='w', suffix='.tsx', delete=False) as f:
             f.write("""
-export class SIGIcon {
+export class HeliosIcon {
     static get chatBubbleFill(): Asset { return Asset.fromModule('sig_chat_bubble_fill'); }
     static get gearFill(): Asset { return Asset.fromModule('sig_gear_fill'); }
     static get bellStroke(): Asset { return Asset.fromModule('sig_bell_stroke'); }
@@ -122,7 +122,7 @@ class TestFindIcons(unittest.TestCase):
     def setUp(self):
         self.icons_file = tempfile.NamedTemporaryFile(mode='w', suffix='.tsx', delete=False)
         self.icons_file.write("""
-export class SIGIcon {
+export class HeliosIcon {
     static get chatBubbleFill(): Asset { return Asset.fromModule('a'); }
     static get chatBubbleStroke(): Asset { return Asset.fromModule('b'); }
     static get gearFill(): Asset { return Asset.fromModule('c'); }

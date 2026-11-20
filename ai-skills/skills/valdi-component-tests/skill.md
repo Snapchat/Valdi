@@ -26,7 +26,7 @@ Good candidates for keys:
 - A spinner shown in a loading/saving state of a union type
 
 Do NOT add keys to:
-- Elements with hardcoded asset values (e.g., `src={SIGIcon.xSignStroke}`)
+- Elements with hardcoded asset values (e.g., `src={HeliosIcon.xSignStroke}`)
 - Label elements with always-present localized strings
 - Elements that are always rendered the same regardless of view model
 

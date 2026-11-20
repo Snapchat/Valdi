@@ -431,7 +431,7 @@ interface GameState {
 8. **Using CSS properties that don't exist** - No paddingHorizontal, paddingVertical, paddingInline. (`gap`/`rowGap`/`columnGap` DO now exist (Yoga upgrade), though margins remain the common way children are spaced in existing code.)
 9. **Using `flex: 1`** - `flex` doesn't exist on `View`; use `flexGrow: 1` instead
 10. **Using `fontSize` on Label** - Labels use `font: 'system 20'` (string), not `fontSize`
-11. **Typing SIGIcon values as `string`** - `SIGIcon.cameraStroke` etc. return `Asset`, not `string`; use `import { Asset } from 'valdi_core/src/Asset'` for ViewModel fields that store icon references
+11. **Typing HeliosIcon values as `string`** - `HeliosIcon.cameraStroke` etc. return `Asset`, not `string`; use `import { Asset } from 'valdi_core/src/Asset'` for ViewModel fields that store icon references
 12. **Using `overflow: 'hidden'`** - `View` only accepts `'visible' | 'scroll'`; remove overflow or use 'scroll'
 13. **Using type aliases in `@ExportModel` ViewModels** - Only primitives and other `@ExportModel` types are allowed
 14. **Importing `Shape` instead of `ShapeView`** - `Shape` is not exported; use `import { ShapeView } from 'valdi_tsx/src/NativeTemplateElements'` and `new Style<ShapeView>({...})`

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Fuzzy icon finder for Valdi's SIGIcon library.
+"""Fuzzy icon finder for Valdi's HeliosIcon library.
 
-Parses icon names from SIGIcons.tsx and performs fuzzy matching against
+Parses icon names from HeliosIcons.tsx and performs fuzzy matching against
 a search query. Uses word overlap, substring matching, and a synonym
 map to find relevant icons.
 
 Usage:
-    python3 find_icon.py "chat bubble" --icons-file /path/to/SIGIcons.tsx
+    python3 find_icon.py "chat bubble" --icons-file /path/to/HeliosIcons.tsx
     python3 find_icon.py "settings"
     python3 find_icon.py "arrow right share"
 """
@@ -46,7 +46,7 @@ SYNONYMS = {
 
 
 def parse_icons(filepath: str) -> List[str]:
-    """Parse icon getter names from SIGIcons.tsx."""
+    """Parse icon getter names from HeliosIcons.tsx."""
     pattern = re.compile(r"static get (\w+)\(\): Asset")
     icons = []
     with open(filepath, "r") as f:
@@ -220,7 +220,7 @@ def find_icons(query: str, icons_file: str, top_n: int = 5) -> List[Tuple[str, f
 
 
 def find_default_icons_file() -> str:
-    """Try to find SIGIcons.tsx in common locations."""
+    """Try to find HeliosIcons.tsx in common locations."""
     patterns = [
         # Common icon library locations
         "**/src/components/icon/*Icons.tsx",
@@ -235,13 +235,13 @@ def find_default_icons_file() -> str:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Fuzzy icon finder for Valdi SIGIcon library"
+        description="Fuzzy icon finder for Valdi HeliosIcon library"
     )
     parser.add_argument("query", help="Search query (e.g. 'chat bubble', 'settings', 'arrow right')")
     parser.add_argument(
         "--icons-file",
         default="",
-        help="Path to SIGIcons.tsx (auto-detected if not provided)",
+        help="Path to HeliosIcons.tsx (auto-detected if not provided)",
     )
     parser.add_argument(
         "--top",
@@ -260,7 +260,7 @@ def main():
     if not icons_file:
         icons_file = find_default_icons_file()
     if not icons_file:
-        print("Error: Could not find SIGIcons.tsx. Please provide --icons-file.", file=sys.stderr)
+        print("Error: Could not find HeliosIcons.tsx. Please provide --icons-file.", file=sys.stderr)
         sys.exit(1)
 
     results = find_icons(args.query, icons_file, args.top)
