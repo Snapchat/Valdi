@@ -34,6 +34,18 @@ class BigInt private constructor(private val longValue: Long, private val handle
         }
     }
 
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is BigInt) return false
+        if (handle == 0L) return other.handle == 0L && longValue == other.longValue
+        return other.handle != 0L && nativeEquals(other)
+    }
+
+    override fun hashCode(): Int = if (handle == 0L) longValue.hashCode() else nativeHashCode()
+
+    private external fun nativeEquals(other: BigInt): Boolean
+    private external fun nativeHashCode(): Int
+
     override fun toString(): String {
         return if (handle == 0L) {
             longValue.toString()

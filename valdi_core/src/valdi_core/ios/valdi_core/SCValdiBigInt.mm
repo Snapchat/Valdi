@@ -50,6 +50,21 @@
     return [self toString];
 }
 
+- (BOOL)isEqual:(id)object {
+    if (self == object) {
+        return YES;
+    }
+    if (![object isKindOfClass:[SCValdiBigInt class]]) {
+        return NO;
+    }
+    SCValdiBigInt* other = object;
+    return *_value == *other->_value;
+}
+
+- (NSUInteger)hash {
+    return _value->hash();
+}
+
 - (void)valdi_toNative:(void*)value {
     *static_cast<Valdi::Value*>(value) = Valdi::Value(_value);
 }

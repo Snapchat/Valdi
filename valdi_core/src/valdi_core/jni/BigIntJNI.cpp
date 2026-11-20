@@ -25,6 +25,16 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_snap_valdi_BigInt_nativeToString(J
     return ValdiAndroid::newJavaStringUTF8(value->toString()).release();
 }
 
+extern "C" JNIEXPORT jboolean JNICALL Java_com_snap_valdi_BigInt_nativeEquals(JNIEnv* /*env*/,
+                                                                              jobject self,
+                                                                              jobject other) {
+    return *ValdiAndroid::bigIntFromJavaObject(self) == *ValdiAndroid::bigIntFromJavaObject(other);
+}
+
+extern "C" JNIEXPORT jint JNICALL Java_com_snap_valdi_BigInt_nativeHashCode(JNIEnv* /*env*/, jobject self) {
+    return static_cast<jint>(ValdiAndroid::bigIntFromJavaObject(self)->hash());
+}
+
 extern "C" JNIEXPORT void JNICALL Java_com_snap_valdi_BigInt_nativeRelease(JNIEnv* /*env*/,
                                                                            jclass /*cls*/,
                                                                            jlong handle) {

@@ -155,7 +155,7 @@ open class ValdiMarshaller {
     }
 
     public func getBigInt(_ index: Int) throws -> SCValdiBigInt {
-        let value = SCValdiMarshallerGetBigInt(OpaquePointer(marshallerCpp), index)
+        let value = SwiftValdiMarshaller_GetBigInt(marshallerCpp, index).map { SCValdiBigInt(bigInt: $0) }
         try checkError()
         return value!
     }

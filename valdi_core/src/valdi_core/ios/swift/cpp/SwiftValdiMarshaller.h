@@ -52,6 +52,8 @@ SwiftBool SwiftValdiMarshaller_PushMapIteratorNext(SwiftValdiMarshallerRef marsh
 SwiftBool SwiftValdiMarshaller_GetBool(SwiftValdiMarshallerRef marshaller, SwiftInt index);
 SwiftInt32 SwiftValdiMarshaller_GetInt(SwiftValdiMarshallerRef marshaller, SwiftInt index);
 SwiftInt64 SwiftValdiMarshaller_GetLong(SwiftValdiMarshallerRef marshaller, SwiftInt index);
+// The stack owns the returned BigInt; SCValdiBigInt retains it when wrapping it.
+void* SwiftValdiMarshaller_GetBigInt(SwiftValdiMarshallerRef marshaller, SwiftInt index);
 SwiftDouble SwiftValdiMarshaller_GetDouble(SwiftValdiMarshallerRef marshaller, SwiftInt index);
 SwiftStringBox SwiftValdiMarshaller_GetString(SwiftValdiMarshallerRef marshaller, SwiftInt index);
 const unsigned char* SwiftValdiMarshaller_GetData(SwiftValdiMarshallerRef marshaller, SwiftInt index);

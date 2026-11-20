@@ -215,6 +215,15 @@ SwiftInt64 SwiftValdiMarshaller_GetLong(SwiftValdiMarshallerRef marshaller, Swif
     return SwiftValdiMarshaller_GetValue(marshaller, index).toLong();
 }
 
+void* SwiftValdiMarshaller_GetBigInt(SwiftValdiMarshallerRef marshaller, SwiftInt index) {
+    auto value = SwiftValdiMarshaller_GetValue(marshaller, index);
+    auto& exceptionTracker = SwiftValdiMarshaller_Unwrap(marshaller)->getExceptionTracker();
+    if (!exceptionTracker) {
+        return nullptr;
+    }
+    return Valdi::unsafeBridgeCast(value.checkedTo<Valdi::Ref<Valdi::BigInt>>(exceptionTracker).get());
+}
+
 double SwiftValdiMarshaller_GetDouble(SwiftValdiMarshallerRef marshaller, SwiftInt index) {
     return SwiftValdiMarshaller_GetValue(marshaller, index).toDouble();
 }

@@ -30,6 +30,24 @@
     XCTAssertNil([[SCValdiBigInt alloc] initWithString:@"1.5" error:nil]);
 }
 
+- (void)testEqualityAndHashUseTheNumericValue
+{
+    SCValdiBigInt *small = [[SCValdiBigInt alloc] initWithInt64:42];
+    SCValdiBigInt *sameSmall = [[SCValdiBigInt alloc] initWithString:@"+0042" error:nil];
+    XCTAssertEqualObjects(small, sameSmall);
+    XCTAssertEqual(small.hash, sameSmall.hash);
+    XCTAssertNotEqualObjects(small, @42);
+
+    SCValdiBigInt *large = [[SCValdiBigInt alloc] initWithString:@"18446744073709551616" error:nil];
+    SCValdiBigInt *sameLarge = [[SCValdiBigInt alloc] initWithString:@"+0018446744073709551616" error:nil];
+    SCValdiBigInt *negative = [[SCValdiBigInt alloc] initWithString:@"-18446744073709551616" error:nil];
+    XCTAssertEqualObjects(large, sameLarge);
+    XCTAssertEqual(large.hash, sameLarge.hash);
+    XCTAssertNotEqualObjects(large, negative);
+    NSSet *values = [NSSet setWithObjects:small, large, nil];
+    XCTAssertTrue([values containsObject:sameLarge]);
+}
+
 - (void)testBridgeRetainsNativeValue
 {
     auto native = Valdi::BigInt::make(INT64_MAX);
