@@ -46,6 +46,11 @@ public:
 
     void invalidateCachedItems(EvictionPolicy policy);
 
+    /**
+     Whether an image of the given size is cached resized when it is requested at the preferred size.
+     */
+    static bool resizes(int imageWidth, int imageHeight, int preferredWidth, int preferredHeight);
+
     void setMaxAge(uint64_t maxAgeSeconds);
     int getVariantCount(const String& url) const;
     size_t getCurrentSize() const;

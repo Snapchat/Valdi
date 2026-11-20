@@ -48,7 +48,12 @@ public:
 
     virtual void initializeViewManager(Valdi::PlatformType platformType);
 
-    void registerAssetLoaders(Valdi::AssetLoaderManager& assetLoaderManager);
+    /**
+     With decodesImagesOnLoad set, the image loader decodes images on its own queue as they load, instead of leaving
+     the decode to the first draw. A host that draws on one thread can set it to keep decodes out of its frames, at
+     the cost of holding decoded pixels for images that load but are never drawn.
+     */
+    void registerAssetLoaders(Valdi::AssetLoaderManager& assetLoaderManager, bool decodesImagesOnLoad = false);
 
     const Ref<IFrameScheduler>& getFrameScheduler() const;
 

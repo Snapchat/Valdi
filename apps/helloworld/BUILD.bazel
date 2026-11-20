@@ -1,5 +1,7 @@
 load("@rules_android//rules:rules.bzl", "android_binary")
+load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
+load("@rules_python//python:defs.bzl", "py_test")
 load(
     "//bzl/valdi:valdi_application.bzl",
     "valdi_application",
@@ -80,4 +82,34 @@ valdi_exported_library(
     ios_swift = True,
     web_package_name = "hello_world_swift_npm",
     deps = ["//apps/helloworld/src/valdi/hello_world"],
+)
+
+# Links HelloWorld's C++ factories into a host binary that lists what they register.
+cc_binary(
+    name = "dump_cpp_module_factories",
+    testonly = True,
+    srcs = ["registration_test/dump_cpp_module_factories.cpp"],
+    deps = [
+        "//apps/helloworld/src/cpp:native_module_cpp",
+        "@valdi//valdi_core",
+    ],
+)
+
+# Host-only checks, no device or emulator: every native module factory is registered, and
+# exported under the module path and names its .d.ts declares, on Android, iOS, C++ and web;
+# and the npm package ships each native .js with its .d.ts in the package layout.
+# Runs in tools/ci/run_tests.sh.
+py_test(
+    name = "hello_world_package_test",
+    size = "small",
+    srcs = ["registration_test/hello_world_package_test.py"],
+    data = [
+        ":dump_cpp_module_factories",
+        ":hello_world_export_npm",
+        "//apps/helloworld/src/android:native_module_android",
+        "//apps/helloworld/src/ios:factory_srcs",
+        "//apps/helloworld/src/valdi/hello_world:android.release.srcjar",
+        "//apps/helloworld/src/valdi/hello_world:hello_world_package_test_data",
+    ],
+    deps = ["@rules_python//python/runfiles"],
 )

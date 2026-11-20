@@ -9,9 +9,9 @@ valdi_module(
     ]) + [
         "tsconfig.json",
     ],
+    test_deps = ["//src/valdi_modules/src/valdi/jasmine"],
     visibility = ["//visibility:public"],
     deps = [
-        "//src/valdi_modules/src/valdi/jasmine",
         "//src/valdi_modules/src/valdi/valdi_core",
         "//src/valdi_modules/src/valdi/valdi_http",
         "//src/valdi_modules/src/valdi/web_renderer",

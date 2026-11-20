@@ -1,16 +1,6 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("@rules_kotlin//kotlin:kotlin.bzl", "define_kt_toolchain")
 load("@valdi//bzl/android:ndk_tools.bzl", "android_ndk_tools_toolchain")
 load("@valdi//bzl/conditions:custom_selects.bzl", "custom_selects")
-
-KOTLIN_LANGUAGE_LEVEL = "1.8"
-
-define_kt_toolchain(
-    name = "kotlin_toolchain",
-    api_version = KOTLIN_LANGUAGE_LEVEL,
-    jvm_target = "1.8",
-    language_version = KOTLIN_LANGUAGE_LEVEL,
-)
 
 # When enable_asserts_override is true (default). Set --@valdi//bzl/runtime_flags:enable_asserts_override=false to force asserts off.
 config_setting(

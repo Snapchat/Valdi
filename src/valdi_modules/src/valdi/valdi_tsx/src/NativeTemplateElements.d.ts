@@ -7,6 +7,7 @@ import {
   ContentSizeChangeEvent,
   DragEvent,
   EventTime,
+  HoverEvent,
   PinchEvent,
   RotateEvent,
   ScrollDragEndEvent,
@@ -816,6 +817,14 @@ interface ViewAttributes {
    * Event handler called on the 'ended' touch events captured by this view
    */
   onTouchEnd?: (event: TouchEvent) => void;
+
+  /**
+   * Event handler called when a hovering pointer, such as a mouse or a hand ray, starts or stops being over this
+   * view. Only the innermost view with an onHoverChange under the pointer is hovered, and a view covering another
+   * blocks hover the way it blocks touches. A view removed while hovered may not be told it stopped being hovered.
+   * Only renderers with a hovering pointer call it; elsewhere it is ignored.
+   */
+  onHoverChange?: (event: HoverEvent) => void;
 
   /**
    * Specifies the minimum duration, in seconds, for an onTouch event to trigger.

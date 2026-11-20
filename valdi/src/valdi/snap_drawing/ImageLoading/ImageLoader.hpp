@@ -23,7 +23,13 @@ class ImageLoaderTask;
 
 class ImageLoader : public Valdi::AssetLoaderFactory {
 public:
-    ImageLoader(const Valdi::Ref<Valdi::DispatchQueue>& queue, Valdi::ILogger& logger, size_t maxSize);
+    /**
+     With decodesOnLoad set, images are decoded on the loader's queue as they load, instead of on their first draw.
+     */
+    ImageLoader(const Valdi::Ref<Valdi::DispatchQueue>& queue,
+                Valdi::ILogger& logger,
+                size_t maxSize,
+                bool decodesOnLoad = false);
     ~ImageLoader() override;
 
     snap::valdi_core::AssetOutputType getOutputType() const override;
@@ -45,6 +51,7 @@ private:
     Valdi::Ref<Valdi::DispatchQueue> _queue;
     [[maybe_unused]] Valdi::ILogger& _logger;
     ImageCache _cache;
+    const bool _decodesOnLoad;
 
     size_t _reclamationInterval;
 

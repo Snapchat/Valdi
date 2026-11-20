@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="48" height="48" viewBox="0 0 48 48">
+  <defs>
+    <path id="star" d="M8 0 L10 6 L16 6 L11 10 L13 16 L8 12 L3 16 L5 10 L0 6 L6 6 Z"/>
+    <g id="pair">
+      <use href="#star" fill="#f72585"/>
+      <use xlink:href="#star" x="16" fill="currentColor"/>
+    </g>
+    <symbol id="badge" viewBox="0 0 10 10" preserveAspectRatio="xMidYMid meet">
+      <circle cx="5" cy="5" r="5" fill="#4cc9f0"/>
+      <use href="#star" transform="translate(1 1) scale(0.5)" fill="#fff"/>
+    </symbol>
+  </defs>
+  <use href="#pair" x="0" y="0" color="#7209b7"/>
+  <use href="#pair" transform="translate(8 16) rotate(10 16 8)" color="#3a0ca3" opacity="0.6"/>
+  <use href="#badge" x="4" y="34" width="12" height="12"/>
+  <use xlink:href="#badge" x="20" y="34" width="24" height="12"/>
+</svg>

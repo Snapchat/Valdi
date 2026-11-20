@@ -15,10 +15,13 @@ valdi_module(
     android_output_target = "release",
     ios_module_name = "SCCWorker",
     ios_output_target = "release",
+    test_deps = [
+        "@valdi//src/valdi_modules/src/valdi/jasmine",
+        "@valdi//src/valdi_modules/src/valdi/valdi_standalone",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "@valdi//src/valdi_modules/src/valdi/coreutils",
         "@valdi//src/valdi_modules/src/valdi/valdi_core",
-        "@valdi//src/valdi_modules/src/valdi/valdi_standalone",
     ],
 )

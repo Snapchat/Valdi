@@ -27,11 +27,13 @@ valdi_module(
     ios_module_name = "SCCFoundation",
     ios_output_target = "release",
     single_file_codegen = True,
+    test_deps = [
+        "//src/valdi_modules/src/valdi/jasmine",
+        "//src/valdi_modules/src/valdi/valdi_test",
+    ],
     visibility = ["//visibility:public"],
     deps = [
-        "//src/valdi_modules/src/valdi/jasmine",
         "//src/valdi_modules/src/valdi/valdi_core",
-        "//src/valdi_modules/src/valdi/valdi_test",
         "//src/valdi_modules/src/valdi/valdi_tsx",
     ],
 )

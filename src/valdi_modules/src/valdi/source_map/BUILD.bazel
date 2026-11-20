@@ -13,9 +13,9 @@ valdi_module(
     android_output_target = "release",
     ios_module_name = "SCCSourceMap",
     ios_output_target = "release",
+    test_deps = ["//src/valdi_modules/src/valdi/jasmine"],
     visibility = ["//visibility:public"],
     deps = [
         "//src/valdi_modules/src/valdi/coreutils",
-        "//src/valdi_modules/src/valdi/jasmine",
     ],
 )

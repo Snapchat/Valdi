@@ -24,12 +24,14 @@ class ImageLoader;
 
 Ref<ImageLoader> createImageLoader(const Valdi::Ref<Valdi::DispatchQueue>& queue,
                                    Valdi::ILogger& logger,
-                                   uint64_t maxCacheSizeInBytes);
+                                   uint64_t maxCacheSizeInBytes,
+                                   bool decodesImagesOnLoad = false);
 
 void registerAssetLoaders(Valdi::AssetLoaderManager& assetLoaderManager,
                           const Ref<Resources>& resources,
                           const Valdi::Ref<Valdi::DispatchQueue>& queue,
                           Valdi::ILogger& logger,
-                          uint64_t maxCacheSizeInBytes);
+                          uint64_t maxCacheSizeInBytes,
+                          bool decodesImagesOnLoad);
 
 } // namespace snap::drawing

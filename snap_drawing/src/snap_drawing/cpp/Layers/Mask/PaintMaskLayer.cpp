@@ -50,6 +50,9 @@ Ref<IMask> PaintMaskLayer::createMask(const Rect& /*bounds*/) {
     }
 
     Paint paint;
+    // Skia leaves a paint aliased by default, which draws a curved path's edge, such as a ring cut by a maskPath, as
+    // jagged pixels. A rect region stays aliased, so it erases whole pixels as before.
+    paint.setAntiAlias(!_path.isEmpty());
     onConfigurePaint(paint, pathBounds);
 
     return Valdi::makeShared<PaintMask>(paint, _path, _rect);

@@ -127,6 +127,17 @@ static id SCValdiBlockCreateOOOI_o(SCValdiBlockTrampoline trampoline) {
     };
 }
 
+static SCValdiFieldValue SCValdiFunctionInvokeOO_l(const void *function, SCValdiFieldValue* fields) {
+    int64_t result = ((int64_t (*) (const void *, const void * ))function)(SCValdiFieldValueGetPtr(fields[0]), SCValdiFieldValueGetPtr(fields[1]));
+    return SCValdiFieldValueMakeLong(result);
+}
+
+static id SCValdiBlockCreateOO_l(SCValdiBlockTrampoline trampoline) {
+    return ^int64_t(const void * p0) {
+        return SCValdiFieldValueGetLong(trampoline(nil, SCValdiFieldValueMakePtr(p0)));
+    };
+}
+
 @interface SCCBindingLangObjcIGreeter: SCValdiProxyMarshallableObject
 
 @end
@@ -137,11 +148,18 @@ static id SCValdiBlockCreateOOOI_o(SCValdiBlockTrampoline trampoline) {
 {
     static const SCValdiMarshallableObjectBlockSupport kBlocks[] = {
         { .typeEncoding = "oooi:o", .invoker = &SCValdiFunctionInvokeOOOI_o, .factory = &SCValdiBlockCreateOOOI_o },
+        { .typeEncoding = "oo:l", .invoker = &SCValdiFunctionInvokeOO_l, .factory = &SCValdiBlockCreateOO_l },
         { .typeEncoding = nil },
     };
     static const SCValdiMarshallableObjectFieldDescriptor kFields[] = {
         {.name = "greet", .selName = "greetWithName:style:", .type = "f|m|(s, r<e>:'[0]'): s"},
         {.name = "count", .selName = "count", .type = "f|m|(): d"},
+        {.name = "greetUser", .selName = "greetUserWithUser:", .type = "f|m|(s): d"},
+        {.name = "lastGreeting", .selName = "lastGreeting", .type = "f|m|(): d@?"},
+        {.name = "lastWasFormal", .selName = "lastWasFormal", .type = "f|m|(): b"},
+        {.name = "tagGreeting", .selName = "tagGreetingWithTag:", .type = "f|m|(t)"},
+        {.name = "lastTag", .selName = "lastTag", .type = "f|m|(): t?"},
+        {.name = "greetedAt", .selName = "greetedAt", .type = "f|m|(): l"},
         {.name = nil},
     };
     static const char *const kIdentifiers[] = {

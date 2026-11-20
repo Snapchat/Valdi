@@ -8,8 +8,7 @@
 
 #pragma once
 
-#define JAVA_CLASS(x) "L" x ";"
-#define JAVA_ARRAY(x) "[" x
+#include "valdi_core/cpp/Utils/JNISignatures.hpp"
 #include "valdi_core/jni/JavaObject.hpp"
 #include <jni.h>
 #include <string>
@@ -39,21 +38,6 @@ public:
 };
 
 class ConstructorType {};
-
-extern const char* const kJniSigObject;
-extern const char* const kJniSigClass;
-extern const char* const kJniSigString;
-extern const char* const kJniSigObjectArray;
-extern const char* const kJniSigByteArray;
-extern const char* const kJniSigVoid;
-extern const char* const kJniSigInt;
-extern const char* const kJniSigLong;
-extern const char* const kJniSigDouble;
-extern const char* const kJniSigFloat;
-extern const char* const kJniSigBool;
-extern const char* const kJniSigView;
-extern const char* const kJniSigConstructor;
-extern const char* const kJniSigConstructorRetType;
 
 template<typename T>
 struct GetJNIType {};
@@ -100,7 +84,7 @@ JAVA_OBJECT_TYPE(ValdiThreadType, JAVA_CLASS("com/snap/valdi/utils/ValdiThread")
 JAVA_OBJECT_TYPE(ValdiResultType, JAVA_CLASS("com/snap/valdi/utils/ValdiResult"))
 JAVA_OBJECT_TYPE(RunnableType, JAVA_CLASS("java/lang/Runnable"))
 
-JAVA_OBJECT_TYPE(Promise, JAVA_CLASS("com/snap/valdi/promise/Promise"))
+JAVA_OBJECT_TYPE(Promise, kJniSigPromise)
 JAVA_OBJECT_TYPE(PromiseCallback, JAVA_CLASS("com/snap/valdi/promise/PromiseCallback"))
 
 } // namespace ValdiAndroid

@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """Compare the current Valdi API surface against a baseline.
 
-Errors on removals (deleted interfaces, properties, types, enum members).
-Warns on additions and modifications (new or changed signatures).
+TypeScript surface (baseline.json):
+  Errors on removals (deleted interfaces, properties, types, enum members).
+  Warns on additions and modifications (new or changed signatures).
+
+Native surface (native_baseline.json, Kotlin / Java / Objective-C / Swift):
+  Errors on removed classes, removed members, changed class declarations,
+  changed member signatures and removed attribute bindings.
+  Warns on additions.
 
 Exit codes:
   0 — no changes, or only warnings (additions/modifications)
-  1 — breaking changes detected (removals)
+  1 — breaking changes detected (removals, or native signature changes)
   2 — additions/modifications only (use --strict to make this an error)
 
 Usage:
   check_api_surface.py <open_source_root>            # check against baseline
-  check_api_surface.py <open_source_root> --update    # regenerate baseline
+  check_api_surface.py <open_source_root> --update    # regenerate both baselines
   check_api_surface.py <open_source_root> --strict    # treat additions/modifications as errors
 """
 
@@ -20,8 +26,10 @@ import sys
 from pathlib import Path
 
 from extract_api import extract_api
+from extract_native_api import extract_native_api
 
 BASELINE_PATH = Path(__file__).parent / "baseline.json"
+NATIVE_BASELINE_PATH = Path(__file__).parent / "native_baseline.json"
 
 YELLOW = "\033[33m"
 RED = "\033[31m"
@@ -166,12 +174,70 @@ def _diff_classes(baseline: dict, current: dict):
     return warnings, errors
 
 
+def _diff_native(platform: str, baseline: dict, current: dict):
+    """Compare native classes. Returns (warnings, errors).
+
+    Native consumers compile against these signatures, so a changed
+    signature breaks them just like a removal does.
+    """
+    warnings = []
+    errors = []
+
+    for name in sorted(set(baseline) - set(current)):
+        errors.append(f"Removed {platform} class '{name}'")
+
+    for name in sorted(set(current) - set(baseline)):
+        warnings.append(f"Added {platform} class '{name}': {current[name]['declaration']}")
+
+    for name in sorted(set(baseline) & set(current)):
+        b_cls = baseline[name]
+        c_cls = current[name]
+
+        if b_cls.get("declaration") != c_cls.get("declaration"):
+            errors.append(
+                f"Changed {platform} class '{name}' declaration:\n"
+                f"         baseline: {b_cls.get('declaration')}\n"
+                f"         current:  {c_cls.get('declaration')}"
+            )
+
+        b_members = b_cls.get("members", {})
+        c_members = c_cls.get("members", {})
+        for member in sorted(set(b_members) | set(c_members)):
+            b_sigs = b_members.get(member, [])
+            c_sigs = c_members.get(member, [])
+            missing = [sig for sig in b_sigs if sig not in c_sigs]
+            added = [sig for sig in c_sigs if sig not in b_sigs]
+            if missing and not c_sigs:
+                for sig in missing:
+                    errors.append(f"Removed {platform} member '{name}.{member}' (was: {sig})")
+            elif missing:
+                for sig in missing:
+                    errors.append(
+                        f"Changed {platform} member '{name}.{member}':\n"
+                        f"         baseline: {sig}\n"
+                        f"         current:  {' | '.join(added) if added else ' | '.join(c_sigs)}"
+                    )
+            else:
+                for sig in added:
+                    warnings.append(f"Added {platform} member '{name}.{member}': {sig}")
+
+        b_bind = set(b_cls.get("bindings", []))
+        c_bind = set(c_cls.get("bindings", []))
+        for attr in sorted(b_bind - c_bind):
+            errors.append(f"{platform} class '{name}' no longer binds attribute '{attr}'")
+        for attr in sorted(c_bind - b_bind):
+            warnings.append(f"{platform} class '{name}' now binds attribute '{attr}'")
+
+    return warnings, errors
+
+
 def check(open_source_root: Path, strict: bool = False) -> int:
     """Run the API surface check. Returns exit code."""
-    if not BASELINE_PATH.exists():
-        print(f"{RED}No baseline found at {BASELINE_PATH}{RESET}")
-        print("Run with --update to generate one.")
-        return 1
+    for path in (BASELINE_PATH, NATIVE_BASELINE_PATH):
+        if not path.exists():
+            print(f"{RED}No baseline found at {path}{RESET}")
+            print("Run with --update to generate one.")
+            return 1
 
     baseline = json.loads(BASELINE_PATH.read_text())
     current = extract_api(open_source_root)
@@ -213,10 +279,21 @@ def check(open_source_root: Path, strict: bool = False) -> int:
     all_warnings.extend(w)
     all_errors.extend(e)
 
+    # Native classes
+    native_baseline = json.loads(NATIVE_BASELINE_PATH.read_text())
+    native_current = extract_native_api(open_source_root)
+    for platform in ("android", "ios"):
+        print(f"{BOLD}Checking native {platform} classes...{RESET}")
+        w, e = _diff_native(
+            platform, native_baseline.get(platform, {}), native_current.get(platform, {})
+        )
+        all_warnings.extend(w)
+        all_errors.extend(e)
+
     # Report
     print()
     if all_errors:
-        print(f"{RED}{BOLD}Breaking changes detected (removals):{RESET}")
+        print(f"{RED}{BOLD}Breaking changes detected:{RESET}")
         for msg in all_errors:
             error(msg)
         print()
@@ -234,8 +311,9 @@ def check(open_source_root: Path, strict: bool = False) -> int:
     if all_errors:
         total = len(all_errors)
         print(
-            f"{RED}{BOLD}{total} removal(s) — "
-            f"update baseline with --update if intentional.{RESET}"
+            f"{RED}{BOLD}{total} breaking change(s) — if intentional, run "
+            f"tools/api_surface/check_api_surface.py . --update and commit the "
+            f"baseline changes in the same PR.{RESET}"
         )
         return 1
 
@@ -263,6 +341,17 @@ def update(open_source_root: Path):
         f"{iface_count} interfaces, {type_count} types, "
         f"{enum_count} enums, {class_count} classes{RESET}"
     )
+
+    native = extract_native_api(open_source_root)
+    NATIVE_BASELINE_PATH.write_text(json.dumps(native, indent=2, sort_keys=True) + "\n")
+    for platform in ("android", "ios"):
+        classes = native.get(platform, {})
+        members = sum(len(sigs) for c in classes.values() for sigs in c["members"].values())
+        bindings = sum(len(c["bindings"]) for c in classes.values())
+        print(
+            f"{GREEN}Native {platform} baseline updated: "
+            f"{len(classes)} classes, {members} members, {bindings} attribute bindings{RESET}"
+        )
 
 
 def main():

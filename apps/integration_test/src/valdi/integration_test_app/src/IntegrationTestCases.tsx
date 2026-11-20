@@ -47,6 +47,7 @@ import {
   IntegrationTestRenderContext,
   NativeTemplateElementName,
 } from './IntegrationTestTypes';
+import { PLATFORM_FEATURE_TEST_CASES } from './PlatformFeatureCases';
 
 declare const runtime: ValdiRuntime;
 
@@ -4893,6 +4894,7 @@ export const INTEGRATION_TEST_CASES: readonly IntegrationTestCase[] = [
       }
     },
   },
+  ...PLATFORM_FEATURE_TEST_CASES,
 ];
 
 export type IntegrationCoverageLedgerElement = NativeTemplateElementName | 'slot';
@@ -5229,6 +5231,14 @@ export const INTEGRATION_ATTRIBUTE_COVERAGE_LEDGER: readonly IntegrationAttribut
     ],
     kind: 'interaction',
     caseIds: ['view-touch-hit-testing', 'view-touch-disabled-predicate-rejection'],
+  },
+  {
+    elements: ['view', 'scroll', 'blur'],
+    attributes: ['onHoverChange'],
+    kind: 'blocked-needs-host',
+    caseIds: [],
+    notes:
+      'Only snap_drawing hosts that dispatch a hovering pointer deliver it; snap_drawing HoverDispatcher_tests cover the dispatch.',
   },
   {
     elements: ['view', 'scroll', 'blur'],

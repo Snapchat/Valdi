@@ -1,0 +1,18 @@
+# Known ThreadSanitizer reports in //valdi:test_integration. Each is understood and either benign or
+# tracked; none is silenced to get a green run. Add an entry only with the reason and a ticket.
+#
+# Dispatch-table store in QuickJS. JS_CallInternal fills a process-wide `static` computed-goto table
+# on every call, so two runtimes on different threads (host and worker runtimes) write it
+# concurrently. Every runtime writes identical values, so it is benign in practice. Not fixed on
+# purpose: that would be a change to the QuickJS runtime.
+race_top:JS_CallInternal
+
+# Context::onDestroy (main thread, Runtime::fullTeardown) writes the context's runtime pointer while
+# a JS thread still inside a callback reads it through Context::getRuntime(). A real teardown race
+# in the runtime, tracked in a COMPOSER ticket (no runtime change in this PR).
+race:Valdi::Context::onDestroy
+
+# A JS thread frees a shared_ptr control block (promise result holders) while the main thread's
+# last access is its release in SharedPtrRefCountable. Probably an uninstrumented refcount handoff
+# and a false positive; not verified.
+race:Valdi::SharedPtrRefCountable::unsafeReleaseInner

@@ -151,7 +151,8 @@ describe('hotreload command helpers', () => {
       const repoRoot = path.resolve(process.cwd(), '../..');
       const valdiCompiledBzl = fs.readFileSync(path.join(repoRoot, 'bzl/valdi/valdi_compiled.bzl'), 'utf8');
 
-      expect(valdiCompiledBzl).toContain(`echo '{executable} {args} "$@"' >> {script_path}`);
+      expect(valdiCompiledBzl).toContain('echo \'MODE_ARGS=${{VALDI_HOTRELOAD_MODE_ARGS:---monitor --usb --log-level info}}\' >> {script_path}');
+      expect(valdiCompiledBzl).toContain('echo \'exec {executable} {args} $MODE_ARGS "$@"\' >> {script_path}');
     });
   });
 });

@@ -146,6 +146,28 @@ struct TextShaperTestContainer {
     }
 };
 
+TEST(TextLayout, fontHintingIsOptInAndPreservedWhenScaling) {
+    TextLayoutTestContainer container;
+    auto original = container.primaryFont;
+    EXPECT_EQ(SkFontHinting::kNormal, original->getSkValue().getHinting());
+
+    container.fontManager->setFontHinting(SkFontHinting::kNone);
+    auto unhinted = original->withSize(original->size() + 1);
+    ASSERT_TRUE(unhinted);
+    EXPECT_EQ(SkFontHinting::kNone, unhinted.value()->getSkValue().getHinting());
+    EXPECT_EQ(SkFontHinting::kNone, unhinted.value()->withScale(2)->getSkValue().getHinting());
+    EXPECT_EQ(SkFontHinting::kNormal, original->getSkValue().getHinting());
+    auto unhintedLarger = original->withSize(original->size() + 2);
+    ASSERT_TRUE(unhintedLarger);
+    EXPECT_NE(unhinted.value()->getFontId(), unhintedLarger.value()->getFontId());
+
+    container.fontManager->setFontHinting(SkFontHinting::kNormal);
+    auto hinted = original->withSize(original->size() + 1);
+    ASSERT_TRUE(hinted);
+    EXPECT_NE(hinted.value()->getFontId(), unhinted.value()->getFontId());
+    EXPECT_EQ(SkFontHinting::kNormal, hinted.value()->getSkValue().getHinting());
+}
+
 TEST(TextShaper, resolvesLTRInLTRContext) {
     TextShaperTestContainer testContainer;
     auto& segment = testContainer.segment;

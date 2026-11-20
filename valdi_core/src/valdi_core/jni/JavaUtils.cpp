@@ -13,6 +13,7 @@
 #include "valdi_core/cpp/Resources/Asset.hpp"
 #include "valdi_core/cpp/Schema/ValueSchema.hpp"
 #include "valdi_core/cpp/Text/UTF16Utils.hpp"
+#include "valdi_core/cpp/Utils/JavaTypeSignature.hpp"
 #include "valdi_core/cpp/Utils/LazyValueConvertible.hpp"
 #include "valdi_core/cpp/Utils/ObjectPool.hpp"
 #include "valdi_core/cpp/Utils/SmallVector.hpp"
@@ -790,88 +791,10 @@ Valdi::Ref<Valdi::ValueTypedProxyObject> newJavaProxy(jobject object,
     return Valdi::makeShared<JavaProxyObject>(object, typedObject);
 }
 
-std::string getJavaTypeSignatureFromTypeName(const std::string_view& typeName) {
-    std::string out = "L";
-    out += typeName;
-    out += ";";
-
-    return out;
-}
-
-std::string getJavaTypeSignatureFromClassName(const Valdi::StringBox& typeName) {
-    return getJavaTypeSignatureFromTypeName(typeName.replacing('.', '/').toStringView());
-}
-
-std::string getJavaTypeSignatureFromFunctionValueSchema(const Valdi::ValueFunctionSchema& functionSchema) {
-    return getJavaTypeSignatureFromClassName(
-        JavaFunctionTrampolineHelper::get().getFunctionClassNameForArity(functionSchema.getParametersSize()));
-}
-
 std::string getJavaTypeSignatureFromValueSchema(const Valdi::ValueSchema& schema, bool treatArrayAsList) {
-    if (schema.isUntyped()) {
-        return kJniSigObject;
-    } else if (schema.isVoid()) {
-        return kJniSigVoid;
-    } else if (schema.isString()) {
-        return kJniSigString;
-    } else if (schema.isInteger()) {
-        if (schema.isBoxed()) {
-            return JAVA_CLASS("java/lang/Integer");
-        } else {
-            return kJniSigInt;
-        }
-    } else if (schema.isLongInteger()) {
-        if (schema.isBoxed()) {
-            return JAVA_CLASS("java/lang/Long");
-        } else {
-            return kJniSigLong;
-        }
-    } else if (schema.isDouble()) {
-        if (schema.isBoxed()) {
-            return JAVA_CLASS("java/lang/Double");
-        } else {
-            return kJniSigDouble;
-        }
-    } else if (schema.isBoolean()) {
-        if (schema.isBoxed()) {
-            return JAVA_CLASS("java/lang/Boolean");
-        } else {
-            return kJniSigBool;
-        }
-    } else if (schema.isFunction()) {
-        return getJavaTypeSignatureFromFunctionValueSchema(*schema.getFunction());
-    } else if (schema.isClass()) {
-        return getJavaTypeSignatureFromClassName(schema.getClass()->getClassName());
-    } else if (schema.isEnum()) {
-        return getJavaTypeSignatureFromClassName(schema.getEnum()->getName());
-    } else if (schema.isValueTypedArray()) {
-        return kJniSigByteArray;
-    } else if (schema.isArray()) {
-        if (treatArrayAsList) {
-            return JAVA_CLASS("java/util/List");
-        } else {
-            std::string out = "[";
-            out += getJavaTypeSignatureFromValueSchema(schema.getArrayItemSchema(), treatArrayAsList);
-
-            return out;
-        }
-    } else if (schema.isMap()) {
-        return JAVA_CLASS("java/util/Map");
-    } else if (schema.isTypeReference()) {
-        auto typeReference = schema.getTypeReference();
-        SC_ASSERT(typeReference.isNamed());
-        return getJavaTypeSignatureFromClassName(typeReference.getName());
-    } else if (schema.isGenericTypeReference()) {
-        const auto& typeReference = schema.getGenericTypeReference()->getType();
-        SC_ASSERT(typeReference.isNamed());
-        return getJavaTypeSignatureFromClassName(typeReference.getName());
-    } else if (schema.isSchemaReference()) {
-        return getJavaTypeSignatureFromValueSchema(schema.getReferencedSchema(), treatArrayAsList);
-    } else if (schema.isPromise()) {
-        return std::string(GetJNIType<Promise>()());
-    } else {
-        std::abort();
-    }
+    return getJavaTypeSignatureFromValueSchema(schema, treatArrayAsList, [](size_t parametersSize) {
+        return JavaFunctionTrampolineHelper::get().getFunctionClassNameForArity(parametersSize);
+    });
 }
 
 std::optional<JavaValueType> schemaToJavaValueType(const Valdi::ValueSchema& schema) {

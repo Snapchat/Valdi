@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="72" height="36" viewBox="0 0 20 20" preserveAspectRatio="xMidYMid slice">
+  <rect width="20" height="20" fill="#003049"/>
+  <circle cx="10" cy="10" r="9" fill="#d62828"/>
+  <svg x="0" y="0" width="10" height="20" viewBox="0 0 10 10" preserveAspectRatio="xMinYMax meet">
+    <rect width="10" height="10" fill="#f77f00"/>
+  </svg>
+  <svg x="10" y="0" width="10" height="10" viewBox="0 0 10 5" preserveAspectRatio="none">
+    <rect width="10" height="5" fill="#fcbf49"/>
+  </svg>
+  <svg x="10" y="10" width="10" height="10" viewBox="0 0 20 10" preserveAspectRatio="xMaxYMid slice" overflow="visible">
+    <rect width="20" height="10" fill="#eae2b7" stroke="#000"/>
+  </svg>
+</svg>

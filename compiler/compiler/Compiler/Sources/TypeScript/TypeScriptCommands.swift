@@ -47,16 +47,18 @@ struct TS {
             var leadingComments: Comments?
             var function: FunctionType?
             var unions: [TSType]?
+            var intersections: [TSType]?
             var typeReferenceIndex: Int?
             var array: TSType?
             var typeArguments: [TypeArgument]?
             var isTypeParameter: Bool?
 
-            init(name: String, leadingComments: Comments? = nil, function: FunctionType? = nil, unions: [TSType]? = nil, typeReferenceIndex: Int? = nil, array: TSType? = nil, typeArguments: [TypeArgument]? = nil, isTypeParameter: Bool? = nil) {
+            init(name: String, leadingComments: Comments? = nil, function: FunctionType? = nil, unions: [TSType]? = nil, intersections: [TSType]? = nil, typeReferenceIndex: Int? = nil, array: TSType? = nil, typeArguments: [TypeArgument]? = nil, isTypeParameter: Bool? = nil) {
                 self.name = name
                 self.leadingComments = leadingComments
                 self.function = function
                 self.unions = unions
+                self.intersections = intersections
                 self.typeReferenceIndex = typeReferenceIndex
                 self.array = array
                 self.typeArguments = typeArguments

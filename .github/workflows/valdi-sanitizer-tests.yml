@@ -9,6 +9,9 @@ name: Valdi Sanitizer Tests
 # Fork PRs get no GCP credentials from GitHub; they build without the remote cache but can still
 # restore the actions/cache disk cache saved from main.
 #
+# A second job runs the integration tests under ThreadSanitizer. It runs on the nightly schedule only
+# (never on PRs or pushes) and is allowed to fail while its first findings are triaged.
+#
 # Use the manual trigger to exercise this on a branch before merging.
 on:
   pull_request:
@@ -23,6 +26,35 @@ on:
       - 'valdi/test/**'
       - 'snap_drawing/**'
       - 'valdi_core/src/**'
+      - '.bazelversion'
+      - 'BUILD.bazel'
+      - 'modules/**'
+      - 'libs/utils/**'
+      - 'tsn/**'
+      - 'valdi/testdata/**'
+      - 'valdi/generated-src/**'
+      - 'valdi_core/BUILD.bazel'
+      - 'valdi_core/generated-src/**'
+      - 'valdi_protobuf/**'
+      - 'third-party/djinni-support-lib/**'
+      - 'third-party/hermes/**'
+      - 'third-party/quickjs/**'
+      - 'third-party/yoga/**'
+      - 'src/valdi_modules/src/cpp/valdi_http/**'
+      - 'src/valdi_modules/src/valdi/client_sql/**'
+      - 'src/valdi_modules/src/valdi/coreutils/**'
+      - 'src/valdi_modules/src/valdi/drawing/**'
+      - 'src/valdi_modules/src/valdi/file_system/**'
+      - 'src/valdi_modules/src/valdi/jasmine/**'
+      - 'src/valdi_modules/src/valdi/persistence/**'
+      - 'src/valdi_modules/src/valdi/source_map/**'
+      - 'src/valdi_modules/src/valdi/valdi_http/**'
+      - 'src/valdi_modules/src/valdi/valdi_protobuf/**'
+      - 'src/valdi_modules/src/valdi/valdi_standalone/**'
+      - 'src/valdi_modules/src/valdi/valdi_tsx/**'
+      - 'src/valdi_modules/src/valdi/worker/**'
+      - 'valdi/valdi.bzl'
+      - 'valdi_core/djinni_compat.bzl'
   push:
     branches:
       - main
@@ -34,11 +66,38 @@ on:
       - 'valdi/BUILD.bazel'
       - 'valdi/src/**'
       - 'valdi/fuzz/**'
-      - 'valdi/test/integration/**'
-      - 'valdi/test/runtime/**'
-      - 'valdi/test/snap_drawing/**'
+      - 'valdi/test/**'
       - 'snap_drawing/**'
       - 'valdi_core/src/**'
+      - '.bazelversion'
+      - 'BUILD.bazel'
+      - 'modules/**'
+      - 'libs/utils/**'
+      - 'tsn/**'
+      - 'valdi/testdata/**'
+      - 'valdi/generated-src/**'
+      - 'valdi_core/BUILD.bazel'
+      - 'valdi_core/generated-src/**'
+      - 'valdi_protobuf/**'
+      - 'third-party/djinni-support-lib/**'
+      - 'third-party/hermes/**'
+      - 'third-party/quickjs/**'
+      - 'third-party/yoga/**'
+      - 'src/valdi_modules/src/cpp/valdi_http/**'
+      - 'src/valdi_modules/src/valdi/client_sql/**'
+      - 'src/valdi_modules/src/valdi/coreutils/**'
+      - 'src/valdi_modules/src/valdi/drawing/**'
+      - 'src/valdi_modules/src/valdi/file_system/**'
+      - 'src/valdi_modules/src/valdi/jasmine/**'
+      - 'src/valdi_modules/src/valdi/persistence/**'
+      - 'src/valdi_modules/src/valdi/source_map/**'
+      - 'src/valdi_modules/src/valdi/valdi_http/**'
+      - 'src/valdi_modules/src/valdi/valdi_protobuf/**'
+      - 'src/valdi_modules/src/valdi/valdi_standalone/**'
+      - 'src/valdi_modules/src/valdi/valdi_tsx/**'
+      - 'src/valdi_modules/src/valdi/worker/**'
+      - 'valdi/valdi.bzl'
+      - 'valdi_core/djinni_compat.bzl'
   schedule:
     - cron: '0 10 * * *'  # 10:00 UTC, ~3am PT (offset from the other nightly jobs)
   workflow_dispatch:
@@ -92,6 +151,48 @@ jobs:
 
       - name: Run integration tests under AddressSanitizer
         run: ./tools/ci/sanitizer_tests.sh
+
+      - name: Report disk usage
+        if: always()
+        run: df -h /
+
+  valdi-tsan-tests:
+    name: Valdi TSan Integration Tests
+    if: github.event_name == 'schedule'
+    # Findings are expected on the first runs; don't fail the workflow on them.
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Configure Bazel cache
+        uses: ./.github/actions/bazel-cache
+        with:
+          gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          service_account_ro: ${{ vars.GCP_SERVICE_ACCOUNT_RO }}
+          cache_bucket: ${{ vars.BAZEL_CACHE_BUCKET }}
+          cache_key: valdi-tsan-tests
+
+      - name: Restore CI download cache
+        uses: ./.github/actions/download-cache
+
+      # Creates the `bzl` wrapper and reclaims disk (TSan output base is large).
+      - name: Setup Linux environment
+        run: source ./tools/ci/setup_linux_env.sh
+
+      - name: Run integration tests under ThreadSanitizer
+        run: ./tools/ci/sanitizer_tests.sh tsan
 
       - name: Report disk usage
         if: always()

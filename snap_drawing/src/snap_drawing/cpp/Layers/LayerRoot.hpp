@@ -14,7 +14,9 @@
 
 #include "snap_drawing/cpp/Events/EventQueue.hpp"
 #include "snap_drawing/cpp/Layers/Interfaces/ILayerRoot.hpp"
+#include "snap_drawing/cpp/Layers/Interfaces/ITextInputHost.hpp"
 #include "snap_drawing/cpp/Layers/Layer.hpp"
+#include "snap_drawing/cpp/Touches/HoverDispatcher.hpp"
 #include "snap_drawing/cpp/Touches/TouchDispatcher.hpp"
 #include "snap_drawing/cpp/Touches/TouchEvent.hpp"
 #include "snap_drawing/cpp/Utils/TimePoint.hpp"
@@ -77,6 +79,14 @@ public:
     GestureTypes getGesturesTypesForTouchEvent(const TouchEvent& event) const;
     bool refreshTouches(const TimePoint& currentTime);
 
+    /**
+     Moves the hovering pointer to the given location, in the same coordinates as dispatchTouchEvent(), or takes it
+     away when nullopt. While a pointer hovers, each processed frame hit tests it again so the hovered layer follows
+     the content moving under it. See HoverDispatcher.
+     */
+    void dispatchHoverEvent(std::optional<Point> location);
+    void setNeedsHoverUpdate() override;
+
     void setSize(Size size, Scalar scale);
 
     // The visible sub-rect of the content, in content coordinates. When the content is laid out
@@ -101,6 +111,7 @@ public:
     uint64_t allocateLayerId() override;
 
     TouchDispatcher& getTouchDispatcher();
+    HoverDispatcher& getHoverDispatcher();
 
     void destroy();
 
@@ -121,6 +132,9 @@ public:
 
     bool shouldRasterizeExternalSurface() const override;
 
+    void setTextInputHost(const Ref<ITextInputHost>& textInputHost);
+    ITextInputHost* getTextInputHost() const override;
+
     inline Scalar sanitizeCoordinate(Scalar value) const {
         return snap::drawing::sanitizeScalarFromScale(value, _scale);
     }
@@ -131,6 +145,7 @@ private:
     Ref<Resources> _resources;
     LayerRootListener* _listener = nullptr;
     TouchDispatcher _touchDispatcher;
+    HoverDispatcher _hoverDispatcher;
     Valdi::Ref<Layer> _contentLayer;
     EventQueue _eventQueue;
     Size _size = Size::makeEmpty();
@@ -141,6 +156,7 @@ private:
     uint64_t _layerIdSequence = 0;
     bool _needsDisplay = false;
     bool _needsLayout = true;
+    bool _needsHoverUpdate = false;
     bool _didEnqueueFrame = false;
     bool _destroyed = false;
     bool _processingFrame = false;
@@ -149,6 +165,7 @@ private:
     std::optional<TimePoint> _lastAbsoluteFrameTime;
     std::unique_ptr<CompositorPlaneList> _planeList;
     Ref<DisplayList> _lastDrawnFrame;
+    Ref<ITextInputHost> _textInputHost;
 
     bool needsLayout() const;
 

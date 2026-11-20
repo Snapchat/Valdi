@@ -69,9 +69,11 @@ const Valdi::Ref<Layer>& LayerRoot::getContentLayer() const {
 }
 
 void LayerRoot::destroy() {
+    _hoverDispatcher.dispatch(std::nullopt, _contentLayer);
     _listener = nullptr;
     _destroyed = true;
     setContentLayer(nullptr, _sizingMode);
+    _textInputHost = nullptr;
     _eventQueue.clear();
 }
 
@@ -198,6 +200,20 @@ bool LayerRoot::dispatchTouchEvent(const TouchEvent& event) {
     }
 
     return processed;
+}
+
+void LayerRoot::dispatchHoverEvent(std::optional<Point> location) {
+    _hoverDispatcher.dispatch(location, _contentLayer);
+    if (_hoverDispatcher.hasPendingUpdate()) {
+        setNeedsHoverUpdate();
+    }
+}
+
+void LayerRoot::setNeedsHoverUpdate() {
+    if (_hoverDispatcher.hasPointer()) {
+        _needsHoverUpdate = true;
+        enqueueFrame();
+    }
 }
 
 GestureTypes LayerRoot::getGesturesTypesForTouchEvent(const TouchEvent& event) const {
@@ -333,6 +349,12 @@ void LayerRoot::processFrame(TimePoint absoluteFrameTime) {
         _eventQueue.flush(frameTime);
     }
 
+    _needsHoverUpdate = false;
+    if (_hoverDispatcher.hasPointer()) {
+        // What the notified listeners change would be drawn below without being hit tested, so test again next frame.
+        _needsHoverUpdate = _hoverDispatcher.refresh(_contentLayer) || _hoverDispatcher.hasPendingUpdate();
+    }
+
     Ref<DisplayList> displayList;
 
     if (_needsDisplay) {
@@ -354,7 +376,8 @@ void LayerRoot::processFrame(TimePoint absoluteFrameTime) {
 }
 
 bool LayerRoot::needsProcessFrame() const {
-    return _didEnqueueFrame || _needsDisplay || needsLayout() || !_eventQueue.isEmpty() || !_touchDispatcher.isEmpty();
+    return _didEnqueueFrame || _needsDisplay || needsLayout() || !_eventQueue.isEmpty() ||
+           !_touchDispatcher.isEmpty() || _needsHoverUpdate;
 }
 
 bool LayerRoot::needsLayout() const {
@@ -377,6 +400,10 @@ TouchDispatcher& LayerRoot::getTouchDispatcher() {
     return _touchDispatcher;
 }
 
+HoverDispatcher& LayerRoot::getHoverDispatcher() {
+    return _hoverDispatcher;
+}
+
 Scalar LayerRoot::getScale() const {
     return _scale;
 }
@@ -387,6 +414,14 @@ const Ref<Resources>& LayerRoot::getResources() const {
 
 bool LayerRoot::shouldRasterizeExternalSurface() const {
     return false;
+}
+
+void LayerRoot::setTextInputHost(const Ref<ITextInputHost>& textInputHost) {
+    _textInputHost = textInputHost;
+}
+
+ITextInputHost* LayerRoot::getTextInputHost() const {
+    return _textInputHost.get();
 }
 
 } // namespace snap::drawing

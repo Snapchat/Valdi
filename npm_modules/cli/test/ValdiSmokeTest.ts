@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 import assert from 'node:assert';
+import { type ChildProcess } from 'node:child_process';
 import { mkdir, rm } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -17,6 +18,48 @@ import { type ProjectConfig } from './helpers/ProjectHelpers';
 import { type TSServerClient, createClient, lineAndOffset } from './helpers/TypeScriptClient';
 import { error } from 'node:console';
 
+// A remote-cache download that goes idle past --remote_timeout fails the build with this
+// message even though nothing is wrong with the code under test.
+const REMOTE_CACHE_TIMEOUT = /Download of '[^']+' timed out/;
+
+function killProcessGroup(child: ChildProcess): void {
+  if (child.pid === undefined || child.exitCode !== null) {
+    return;
+  }
+  try {
+    process.kill(-child.pid, 'SIGTERM');
+  } catch {
+    // Already gone.
+  }
+}
+
+/**
+ * Runs `valdi build <platform>` and retries once if the build failed only because a remote
+ * cache download timed out. Bazel keeps everything it already fetched, so the retry resumes
+ * close to where the first attempt died instead of repeating the whole cold build. Any other
+ * failure is not retried.
+ */
+async function buildWithCacheRetry(platform: string, attempts = 2): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    const task = run('valdi', ['build', platform]);
+    let stderr = '';
+    task.process.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8');
+    });
+    try {
+      await lookForOutput({ stderr: [/Build completed successfully, \d+ total actions?/], idleTimeoutMs: 120_000 }, task);
+      return;
+    } catch (error_) {
+      // run() spawns detached, so an idle-timeout rejection leaves valdi and bazel running
+      // (and holding the output base lock) unless the whole group is killed.
+      killProcessGroup(task.process);
+      if (attempt >= attempts || !REMOTE_CACHE_TIMEOUT.test(stderr)) {
+        throw error_;
+      }
+      console.warn(`build ${platform} hit a remote cache download timeout; retrying (attempt ${attempt + 1} of ${attempts})`);
+    }
+  }
+}
 
 const PROJECT_ROOT = process.env['PROJECT_ROOT']!;
 const PROJECT_NAME = process.env['PROJECT_NAME'] ?? basename(PROJECT_ROOT);
@@ -45,20 +88,17 @@ void describe('valdi ui app', () => {
 
   void describe('cli', () => {
     void it('build ios', async () => {
-      const task = run('valdi', ['build', 'ios']);
       // Match build android's idle budget: a cold/remote-cache bazel build can go quiet
       // for well over the 30s default, which otherwise fails this as a flake.
-      await lookForOutput({ stderr: [/Build completed successfully, \d+ total actions?/], idleTimeoutMs: 120_000 }, task);
+      await buildWithCacheRetry('ios');
     });
 
     void it('build macos', async () => {
-      const task = run('valdi', ['build', 'macos']);
-      await lookForOutput({ stderr: [/Build completed successfully, \d+ total actions?/], idleTimeoutMs: 120_000 }, task);
+      await buildWithCacheRetry('macos');
     });
 
     void it('build android', async () => {
-      const task = run('valdi', ['build', 'android']);
-      await lookForOutput({ stderr: [/Build completed successfully, \d+ total actions?/], idleTimeoutMs: 120_000 }, task);
+      await buildWithCacheRetry('android');
     });
 
     void it('valdi doctor', async () => {

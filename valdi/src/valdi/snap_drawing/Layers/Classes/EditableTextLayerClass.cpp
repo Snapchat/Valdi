@@ -6,10 +6,12 @@
 #include "valdi/snap_drawing/Layers/Classes/EditableTextLayerClass.hpp"
 
 #include "snap_drawing/cpp/Resources.hpp"
+#include "valdi/runtime/Context/ViewNode.hpp"
 #include "valdi/snap_drawing/Utils/AttributedTextParser.hpp"
 #include "valdi/snap_drawing/Utils/AttributesBinderUtils.hpp"
 #include "valdi/snap_drawing/Utils/ValdiUtils.hpp"
 #include "valdi_core/cpp/Attributes/TextAttributeValue.hpp"
+#include "valdi_core/cpp/Text/UTF16Utils.hpp"
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
 #include "valdi_core/cpp/Utils/ValueMap.hpp"
 
@@ -85,6 +87,8 @@ Valdi::Ref<Layer> EditableTextLayerClass::instantiate() {
     auto layer = snap::drawing::makeLayer<snap::drawing::EditableTextLayer>(getResources());
     layer->getTextLayer().setNumberOfLines(_defaultNumberOfLines);
     layer->getTextLayer().setTextVerticalAlignment(_textVerticalAlignment);
+    layer->setClosesWhenReturnKeyPressed(closesWhenReturnKeyPressedByDefault());
+    layer->setListener(Valdi::makeShared<EditableTextLayerListenerImpl>());
     return layer;
 }
 
@@ -154,6 +158,14 @@ void EditableTextLayerClass::bindAttributes(Valdi::AttributesBindingContext& bin
     BIND_BOOLEAN_ATTRIBUTE(EditableTextLayer, selectable, false);
     BIND_UNTYPED_ATTRIBUTE(EditableTextLayer, selection, false);
     BIND_FUNCTION_ATTRIBUTE(EditableTextLayer, onSelectionChange);
+
+    BIND_BOOLEAN_ATTRIBUTE(EditableTextLayer, focused, false);
+    BIND_BOOLEAN_ATTRIBUTE(EditableTextLayer, enabled, false);
+    BIND_BOOLEAN_ATTRIBUTE(EditableTextLayer, closesWhenReturnKeyPressed, false);
+    BIND_FUNCTION_ATTRIBUTE(EditableTextLayer, onChange);
+    BIND_FUNCTION_ATTRIBUTE(EditableTextLayer, onEditBegin);
+    BIND_FUNCTION_ATTRIBUTE(EditableTextLayer, onEditEnd);
+    BIND_FUNCTION_ATTRIBUTE(EditableTextLayer, onReturn);
 
     REGISTER_PREPROCESSOR(font, true);
     REGISTER_PREPROCESSOR(customUnderlineStyle, true);
@@ -306,5 +318,139 @@ Valdi::Result<Valdi::Void> EditableTextLayerClass::apply_onSelectionChange(
 
 void EditableTextLayerClass::reset_onSelectionChange(EditableTextLayer& /*editableTextLayer*/,
                                                      const AttributeContext& /*context*/) {}
+
+// The field's own focus and edits fire these, which happens only under a root with a text input host.
+IMPLEMENT_BOOLEAN_ATTRIBUTE(
+    EditableTextLayer,
+    focused,
+    {
+        view.setFocused(value);
+        return Valdi::Void();
+    },
+    { view.setFocused(false); })
+
+IMPLEMENT_BOOLEAN_ATTRIBUTE(
+    EditableTextLayer,
+    enabled,
+    {
+        view.setEnabled(value);
+        return Valdi::Void();
+    },
+    { view.setEnabled(true); })
+
+IMPLEMENT_BOOLEAN_ATTRIBUTE(
+    EditableTextLayer,
+    closesWhenReturnKeyPressed,
+    {
+        view.setClosesWhenReturnKeyPressed(value);
+        return Valdi::Void();
+    },
+    { view.setClosesWhenReturnKeyPressed(closesWhenReturnKeyPressedByDefault()); })
+
+bool EditableTextLayerClass::closesWhenReturnKeyPressedByDefault() const {
+    return _defaultNumberOfLines == kTextFieldDefaultNumberOfLines;
+}
+
+static Valdi::Value makeEditTextEvent(const EditableTextLayer& layer) {
+    static auto kText = STRING_LITERAL("text");
+    static auto kSelectionStart = STRING_LITERAL("selectionStart");
+    static auto kSelectionEnd = STRING_LITERAL("selectionEnd");
+
+    // The cursor stays at the end: the event's selection is the text's length, in UTF-16 code units as JS counts.
+    const auto text = layer.getText().toStringView();
+    const auto cursor = static_cast<int32_t>(Valdi::utf8ToUtf16(text.data(), text.size()).second);
+    Valdi::Value event;
+    event.setMapValue(kText, Valdi::Value(layer.getText()));
+    event.setMapValue(kSelectionStart, Valdi::Value(cursor));
+    event.setMapValue(kSelectionEnd, Valdi::Value(cursor));
+    return event;
+}
+
+void EditableTextLayerListenerImpl::onEditBegin(EditableTextLayer& layer) {
+    reportFocused(layer);
+    call(onEditBeginFn, makeEditTextEvent(layer));
+}
+
+void EditableTextLayerListenerImpl::onChange(EditableTextLayer& layer) {
+    // As the iOS and Android fields do, so a page that sets the value back, or focuses again, isn't deduplicated away.
+    if (auto viewNode = valdiViewNodeFromLayer(layer); viewNode != nullptr) {
+        viewNode->valueChanged(viewNode->getAttributeIds().getIdForName("value"), Valdi::Value(layer.getText()));
+    }
+    call(onChangeFn, makeEditTextEvent(layer));
+}
+
+void EditableTextLayerListenerImpl::onReturn(EditableTextLayer& layer) {
+    call(onReturnFn, makeEditTextEvent(layer));
+}
+
+void EditableTextLayerListenerImpl::onEditEnd(EditableTextLayer& layer, EditTextEndReason reason) {
+    static auto kReason = STRING_LITERAL("reason");
+    reportFocused(layer);
+    auto event = makeEditTextEvent(layer);
+    event.setMapValue(kReason, Valdi::Value(static_cast<int32_t>(reason)));
+    call(onEditEndFn, std::move(event));
+}
+
+void EditableTextLayerListenerImpl::reportFocused(EditableTextLayer& layer) {
+    if (auto viewNode = valdiViewNodeFromLayer(layer); viewNode != nullptr) {
+        viewNode->valueChanged(viewNode->getAttributeIds().getIdForName("focused"), Valdi::Value(layer.isFocused()));
+    }
+}
+
+void EditableTextLayerListenerImpl::call(const Valdi::Ref<Valdi::ValueFunction>& function, Valdi::Value event) {
+    if (function != nullptr) {
+        (*function)({std::move(event)});
+    }
+}
+
+static EditableTextLayerListenerImpl& listenerOf(EditableTextLayer& layer) {
+    return *Valdi::castOrNull<EditableTextLayerListenerImpl>(layer.getListener());
+}
+
+Valdi::Result<Valdi::Void> EditableTextLayerClass::apply_onChange(EditableTextLayer& editableTextLayer,
+                                                                  const Valdi::Ref<Valdi::ValueFunction>& value,
+                                                                  const AttributeContext& /*context*/) {
+    listenerOf(editableTextLayer).onChangeFn = value;
+    return Valdi::Void();
+}
+
+void EditableTextLayerClass::reset_onChange(EditableTextLayer& editableTextLayer, const AttributeContext& /*context*/) {
+    listenerOf(editableTextLayer).onChangeFn = nullptr;
+}
+
+Valdi::Result<Valdi::Void> EditableTextLayerClass::apply_onEditBegin(EditableTextLayer& editableTextLayer,
+                                                                     const Valdi::Ref<Valdi::ValueFunction>& value,
+                                                                     const AttributeContext& /*context*/) {
+    listenerOf(editableTextLayer).onEditBeginFn = value;
+    return Valdi::Void();
+}
+
+void EditableTextLayerClass::reset_onEditBegin(EditableTextLayer& editableTextLayer,
+                                               const AttributeContext& /*context*/) {
+    listenerOf(editableTextLayer).onEditBeginFn = nullptr;
+}
+
+Valdi::Result<Valdi::Void> EditableTextLayerClass::apply_onEditEnd(EditableTextLayer& editableTextLayer,
+                                                                   const Valdi::Ref<Valdi::ValueFunction>& value,
+                                                                   const AttributeContext& /*context*/) {
+    listenerOf(editableTextLayer).onEditEndFn = value;
+    return Valdi::Void();
+}
+
+void EditableTextLayerClass::reset_onEditEnd(EditableTextLayer& editableTextLayer,
+                                             const AttributeContext& /*context*/) {
+    listenerOf(editableTextLayer).onEditEndFn = nullptr;
+}
+
+Valdi::Result<Valdi::Void> EditableTextLayerClass::apply_onReturn(EditableTextLayer& editableTextLayer,
+                                                                  const Valdi::Ref<Valdi::ValueFunction>& value,
+                                                                  const AttributeContext& /*context*/) {
+    listenerOf(editableTextLayer).onReturnFn = value;
+    return Valdi::Void();
+}
+
+void EditableTextLayerClass::reset_onReturn(EditableTextLayer& editableTextLayer, const AttributeContext& /*context*/) {
+    listenerOf(editableTextLayer).onReturnFn = nullptr;
+}
 
 } // namespace snap::drawing

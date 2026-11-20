@@ -1416,6 +1416,12 @@ static void SCValdiDetermineCornerRadiusMethod(CGFloat topLeftRadius, CGFloat to
         resetBlock:^(__kindof UIView *view) {
             view.valdiHitTest = nil;
         }];
+    // No-op binding. Only renderers that track a hovering pointer deliver onHoverChange.
+    [attributesBinder bindAttribute:@"onHoverChange"
+        withFunctionBlock:^(UIView *view, id<SCValdiFunction> attributeValue) {
+        }
+        resetBlock:^(__kindof UIView *view) {
+        }];
 }
 
 + (NSArray<SCNValdiCoreCompositeAttributePart *> *)_valdiTouchAreaExtensionComponents

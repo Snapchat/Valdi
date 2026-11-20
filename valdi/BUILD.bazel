@@ -427,6 +427,7 @@ cc_library(
     deps = [
         ":valdi_quickjs",
         ":valdi_standalone_runtime",
+        "//libs/utils:utils_oss_cc",
     ],
 )
 
@@ -601,7 +602,9 @@ kt_android_library(
 
 kt_jvm_test(
     name = "test_java",
-    size = "small",
+    # Robolectric cold-starts (android-all jar resolution, sandbox setup) can exceed the 60s "small"
+    # timeout on public macOS CI runners (TIMEOUT in 60.7s).
+    size = "medium",
     srcs = glob([
         "test/java/**/*.kt",
     ]),
@@ -843,6 +846,30 @@ objc_library(
         "//src/valdi_modules/src/valdi/valdi_test:valdi_test_objc",
         "@ocmock",
     ],
+)
+
+ios_unit_test(
+    name = "valdi_ios_snap_drawing_viewport_test",
+    minimum_os_version = "15.0",
+    runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",
+    deps = [":objc_snap_drawing_viewport_tests_lib"],
+)
+
+objc_library(
+    name = "objc_snap_drawing_viewport_tests_lib",
+    testonly = True,
+    srcs = [
+        "src/valdi/ios/SnapDrawing/SCSnapDrawingViewport.h",
+        "test/ios/SCSnapDrawingViewportTests.m",
+    ],
+    copts = ["-I."],
+    includes = ["src"],
+    module_name = "ValdiIosSnapDrawingViewportTests",
+    sdk_frameworks = [
+        "CoreGraphics",
+        "QuartzCore",
+    ],
+    target_compatible_with = ["@platforms//os:ios"],
 )
 
 # SCValdiDeviceModuleTests also ships in :objc_unit_tests_lib for the standalone repo's
@@ -1141,6 +1168,7 @@ valdi_test(
         # hands back rather than only the native performRequest binding.
         "//src/valdi_modules/src/valdi/valdi_http:valdi_http_native",
         "//src/valdi_modules/src/valdi/valdi_protobuf:valdi_protobuf_native",
+        "//src/valdi_modules/src/valdi/valdi_standalone:valdi_standalone_native",
         "//tsn",
         "//valdi/testdata/resources/modules/local:local_native",
         "//valdi/testdata/resources/modules/remote:remote_native",

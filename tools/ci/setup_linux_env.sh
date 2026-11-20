@@ -155,7 +155,7 @@ fetch_cached() {
 # Fall back to the 22.04 archive package if apt can't find it. Discover the deb
 # filename dynamically so a security-update revision bump (Ubuntu drops the old
 # file when it publishes the new one) doesn't 404 our pinned URL.
-ARCHIVE_URL="http://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses"
+ARCHIVE_URL="https://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses"
 if ! apt_installed libtinfo5 && { apt_update_once; ! sudo apt-get install -y libtinfo5 2>/dev/null; }; then
     echo "libtinfo5 not available in apt, downloading from Ubuntu archive..."
     DEB=$(ls "$DOWNLOAD_CACHE" 2>/dev/null | grep -E '^libtinfo5_.*_amd64\.deb$' | sort -Vu | tail -n1 || true)

@@ -24,9 +24,15 @@ function transform(input: string): string {
   return sanitize(result.outputText);
 }
 
-// The compiled optional-chaining guard: globalThis.runtime?.isLoggingEnabled
+// The compiled guard: __valdiRuntimeProvider.getValdiRuntime()?.isLoggingEnabled
 // ES2019 target emits the full ternary form.
-const IF_GUARD = 'if ((_a = globalThis.runtime) === null || _a === void 0 ? void 0 : _a.isLoggingEnabled)';
+const IF_GUARD =
+  'if ((_a = __valdiRuntimeProvider.getValdiRuntime()) === null || _a === void 0 ? void 0 : _a.isLoggingEnabled)';
+const GUARD_PATTERN = /__valdiRuntimeProvider\.getValdiRuntime\(\)/g;
+
+function expectRuntimeProviderImportOnce(result: string): void {
+  expect((result.match(/require\("valdi_core\/src\/ValdiRuntimeProvider"\)/g) || []).length).toBe(1);
+}
 
 describe('ConsoleLogTransformer', () => {
   describe('wraps direct console calls', () => {
@@ -90,8 +96,9 @@ describe('ConsoleLogTransformer', () => {
       `;
       const result = transform(input);
       // Should have 3 separate if guards
-      const guardCount = (result.match(/globalThis\.runtime/g) || []).length;
+      const guardCount = (result.match(GUARD_PATTERN) || []).length;
       expect(guardCount).toBe(3);
+      expectRuntimeProviderImportOnce(result);
     });
   });
 
@@ -134,16 +141,16 @@ describe('ConsoleLogTransformer', () => {
     it('does not wrap console.error used as a callback reference', () => {
       const input = `promise.catch(console.error);`;
       const result = transform(input);
-      expect(result).not.toContain('globalThis.runtime');
       expect(result).not.toContain('.isLoggingEnabled');
+      expect(result).not.toContain('ValdiRuntimeProvider');
       expect(result).toContain('promise.catch(console.error)');
     });
 
     it('does not wrap console.log assigned to a variable', () => {
       const input = `const result = console.log("test");`;
       const result = transform(input);
-      expect(result).not.toContain('globalThis.runtime');
       expect(result).not.toContain('.isLoggingEnabled');
+      expect(result).not.toContain('ValdiRuntimeProvider');
     });
 
     it('wraps console.log in expression-bodied arrow', () => {
@@ -164,16 +171,17 @@ describe('ConsoleLogTransformer', () => {
     it('does not wrap non-direct console usage in expression-bodied arrow', () => {
       const input = `const fn = (x: any) => doSomething(console.log(x));`;
       const result = transform(input);
-      expect(result).not.toContain('globalThis.runtime');
       expect(result).not.toContain('.isLoggingEnabled');
+      expect(result).not.toContain('ValdiRuntimeProvider');
       expect(result).toContain('doSomething(console.log(x))');
     });
 
     it('wraps nested expression-bodied arrow console calls in default parameters', () => {
       const input = `const fn = (x: any = (() => console.log("param"))()) => console.log(x);`;
       const result = transform(input);
-      const guardCount = (result.match(/globalThis\.runtime/g) || []).length;
+      const guardCount = (result.match(GUARD_PATTERN) || []).length;
       expect(guardCount).toBe(2);
+      expectRuntimeProviderImportOnce(result);
       expect(result).toContain('console.log("param")');
       expect(result).toContain('console.log(x)');
     });
@@ -184,18 +192,21 @@ describe('ConsoleLogTransformer', () => {
       const input = `console.trace("trace");`;
       const result = transform(input);
       expect(result).not.toContain('.isLoggingEnabled');
+      expect(result).not.toContain('ValdiRuntimeProvider');
     });
 
     it('does not wrap other objects with log method', () => {
       const input = `logger.log("test");`;
       const result = transform(input);
       expect(result).not.toContain('.isLoggingEnabled');
+      expect(result).not.toContain('ValdiRuntimeProvider');
     });
 
     it('does not wrap runtime.outputLog', () => {
       const input = `runtime.outputLog(2, "test");`;
       const result = transform(input);
       expect(result).not.toContain('.isLoggingEnabled');
+      expect(result).not.toContain('ValdiRuntimeProvider');
     });
   });
 

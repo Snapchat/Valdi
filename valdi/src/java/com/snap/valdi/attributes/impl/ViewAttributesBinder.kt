@@ -12,6 +12,7 @@ import com.snap.valdi.attributes.impl.animations.ValdiAnimator
 import com.snap.valdi.attributes.impl.animations.ViewAnimator
 import com.snap.valdi.attributes.impl.gestures.GestureAttributes
 import com.snap.valdi.attributes.impl.gradients.ValdiGradient
+import com.snap.valdi.callable.ValdiFunction
 import com.snap.valdi.drawables.BoxShadowRendererPool
 import com.snap.valdi.drawables.utils.BorderRadii
 import com.snap.valdi.exceptions.AttributeError
@@ -161,7 +162,8 @@ class ViewAttributesBinder(private val context: Context,
         if (animator == null) {
             val borderAnimator = ViewUtils.getTransitionInfo(view)?.getValueAnimator(BORDER_RADIUS_KEY)
             if (borderAnimator != null) {
-                val endValue = borderAnimator.valueAnimation.additionalData as BorderRadii
+                // Null when the running animation resets the radius (resetBorderRadius with an animator).
+                val endValue = borderAnimator.valueAnimation.additionalData as? BorderRadii
 
                 if (endValue == borderRadii) {
                     // If we are animating to those values, ignore this call and let the animation
@@ -556,6 +558,17 @@ class ViewAttributesBinder(private val context: Context,
         // no-op on Android — no native Liquid Glass implementation.
     }
 
+    // onHoverChange is delivered only by renderers that track a hovering pointer, which Android views don't.
+    // Registered as a no-op for the same reason as blurStyle above: so the C++ attribute applier finds a
+    // handler and does not log `Could not find attribute` for every view that sets it.
+    fun applyOnHoverChange(view: View, action: ValdiFunction) {
+        // no-op on Android — no hovering pointer is tracked.
+    }
+
+    fun resetOnHoverChange(view: View) {
+        // no-op on Android — no hovering pointer is tracked.
+    }
+
     override fun bindAttributes(attributesBindingContext: AttributesBindingContext<View>) {
         attributesBindingContext.bindArrayAttribute("background", false, this::applyBackground, this::resetBackground)
         attributesBindingContext.bindColorAttribute("backgroundColor", false, this::applyBackgroundColor, this::resetBackground)
@@ -603,6 +616,9 @@ class ViewAttributesBinder(private val context: Context,
         attributesBindingContext.bindFloatAttribute("onTouchDelayDuration", false, this::applyOnTouchDelayDuration, this::resetOnTouchDelayDuration)
 
         attributesBindingContext.bindFunctionAttribute("hitTest", gestureAttributes::applyHitTest, gestureAttributes::resetHitTest)
+
+        // Accepted as a no-op on Android — see applyOnHoverChange above.
+        attributesBindingContext.bindFunctionAttribute("onHoverChange", this::applyOnHoverChange, this::resetOnHoverChange)
 
         // iOS-only BlurView attribute; accepted as no-op on Android — see applyBlurStyle above.
         attributesBindingContext.bindStringAttribute("blurStyle", false, this::applyBlurStyle, this::resetBlurStyle)

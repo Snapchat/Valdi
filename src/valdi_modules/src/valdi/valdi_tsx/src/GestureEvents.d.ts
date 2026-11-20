@@ -54,6 +54,30 @@ export interface TouchEvent extends GestureEvent, Point {
   pointerLocations: Pointer[];
 }
 
+export interface HoverEvent extends GestureEvent, Point {
+  /**
+   * Whether the pointer is now over the element
+   */
+  hovered: boolean;
+
+  /**
+   * X Position from within the element
+   */
+  x: number;
+  /**
+   * Y position from within the element
+   */
+  y: number;
+  /**
+   * X position from within the root element
+   */
+  absoluteX: number;
+  /**
+   * Y position from within the root element
+   */
+  absoluteY: number;
+}
+
 export interface DragEvent extends TouchEvent {
   /**
    * Delta X from when the event started

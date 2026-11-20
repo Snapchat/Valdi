@@ -1161,6 +1161,39 @@ describe('AST', () => {
     expect(output).toEqual(expectedOutput);
   });
 
+  it('dumps branded primitives as an intersection with the primitive reference', () => {
+    const result = compile(
+      `
+    declare const idBrand: unique symbol;
+    export type PhotoId = number & { readonly [idBrand]: 'PhotoId' };
+    export type UserId = string & { __brand: 'UserId' };
+    export interface Capture {
+      photo: PhotoId;
+      user: UserId;
+    }
+    `.trim(),
+    );
+
+    const interfaceNode = findNode(
+      result.sourceFile,
+      undefined,
+      (node) => ts.isInterfaceDeclaration(node) && node.name.getText() === 'Capture',
+    );
+    const references: AST.TypeReference[] = [];
+    const output = dumpInterface(interfaceNode as ts.InterfaceDeclaration, {
+      typeChecker: result.typeChecker,
+      references,
+    });
+
+    const intersectionNames = output!.members.map((member) =>
+      member.type.intersections!.map((t) => references[t.typeReferenceIndex!].name),
+    );
+    expect(intersectionNames).toEqual([
+      ['Number', '__type'],
+      ['String', '__type'],
+    ]);
+  });
+
   it('can resolve import paths', () => {
     const result = compile(
       `

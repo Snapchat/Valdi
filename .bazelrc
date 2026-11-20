@@ -86,6 +86,18 @@ build:asan --copt=-Wno-macro-redefined
 build:asan --linkopt=-fsanitize=address
 build:asan --test_env=ASAN_OPTIONS=detect_leaks=0:halt_on_error=1
 
+# ThreadSanitizer, used by the nightly TSan mode of tools/ci/sanitizer_tests.sh (`tsan` argument) to
+# surface data races in the runtime's threading (ThreadedDispatchQueue, JS thread hand-off). Same
+# cost profile as asan: instrumented, slow, nightly / manual only. Hermes is excluded at the test
+# level, like asan; QuickJS engines only.
+build:tsan --copt=-fsanitize=thread
+build:tsan --copt=-fno-omit-frame-pointer
+build:tsan --copt=-Og
+build:tsan --copt=-g
+build:tsan --copt=-Wno-macro-redefined
+build:tsan --linkopt=-fsanitize=thread
+build:tsan --test_env=TSAN_OPTIONS=halt_on_error=1
+
 # Strict Android C++: compiles Valdi's Android C++ the way a larger Android app that vendors Valdi
 # does, so code that only breaks under those flags fails public CI instead of failing downstream.
 # Used by tools/ci/build_android_cpp_strict.sh; arm64-only (the --target override below is arm64).

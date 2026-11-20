@@ -50,9 +50,9 @@ select_tests() {
         fi
     done < "$skiplist"
     # Internal Linux CI runs Bazel tests in a sandbox with a read-only home, where Robolectric can't
-    # create its android-all download lock. Internal macOS runs //valdi:test_java instead.
+    # create its android-all download lock. Internal macOS runs these Robolectric targets instead.
     if [[ "${GITHUB_ACTIONS:-}" != "true" && "$platform" == linux ]] ; then
-        skipped+=("//valdi:test_java")
+        skipped+=("//valdi:test_java" "//apps/helloworld/text_binding_fixture:text_binding_fixture_test")
     fi
     local all='tests(//...) except attr(tags, "\bmanual\b", tests(//...))'"$platform_except"
     if (( ${#skipped[@]} )) ; then

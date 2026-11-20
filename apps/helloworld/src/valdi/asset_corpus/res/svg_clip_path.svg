@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <defs>
+    <clipPath id="circle">
+      <circle cx="24" cy="24" r="20"/>
+    </clipPath>
+    <clipPath id="bbox" clipPathUnits="objectBoundingBox">
+      <polygon points="0.5,0 1,1 0,1"/>
+    </clipPath>
+    <clipPath id="nested" clip-path="url(#circle)">
+      <rect x="0" y="24" width="48" height="24" transform="rotate(-15 24 24)"/>
+    </clipPath>
+  </defs>
+  <rect width="48" height="48" fill="#ddd"/>
+  <g clip-path="url(#circle)">
+    <rect width="24" height="48" fill="#e63946"/>
+    <rect x="24" width="24" height="48" fill="#457b9d"/>
+  </g>
+  <rect x="8" y="4" width="32" height="20" fill="#2a9d8f" clip-path="url(#bbox)"/>
+  <rect width="48" height="48" fill="#f4a261" fill-opacity="0.7" clip-path="url(#nested)" clip-rule="evenodd"/>
+</svg>

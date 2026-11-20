@@ -933,15 +933,11 @@ ClientSQLDatabaseCoordinator::~ClientSQLDatabaseCoordinator() {
     auto writerConnection = std::move(_writerConnection);
     auto readerConnections = std::move(_readerConnections);
     const auto* currentQueue = DispatchQueue::getCurrent();
-    const auto isDestroyingOnOwnedQueue =
-        currentQueue != nullptr &&
-        ((writerConnection != nullptr && currentQueue == writerConnection->queue.get()) ||
-         std::any_of(readerConnections.begin(), readerConnections.end(), [currentQueue](const auto& readerConnection) {
-             return currentQueue == readerConnection->queue.get();
-         }));
-    // The final coordinator ref is commonly released by one of its own queue
-    // tasks. Transfer the queue-owning refs before that task frame unwinds.
-    if (isDestroyingOnOwnedQueue && _resourceReleaseQueue != nullptr && _resourceReleaseQueue.get() != currentQueue) {
+    // Which thread drops the final coordinator ref is a race: a writer task and the caller that abandoned the handle
+    // each hold one, and either can be last. Hand the queue-owning refs off whenever this isn't the release queue,
+    // not only when it is one of the coordinator's own queues, so they are never destroyed on their own queue.
+    const auto hasQueueOwningRefs = writerConnection != nullptr || !readerConnections.empty();
+    if (hasQueueOwningRefs && _resourceReleaseQueue != nullptr && _resourceReleaseQueue.get() != currentQueue) {
         _resourceReleaseQueue->async([writerConnection = std::move(writerConnection),
                                       readerConnections = std::move(readerConnections)]() mutable {
             readerConnections.clear();

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="48" viewBox="0 0 96 48">
+  <rect width="96" height="48" fill="#fefae0"/>
+  <text x="48" y="18" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#283618">Valdi</text>
+  <text x="4" y="34" font-family="serif" font-size="10" fill="#606c38">a<tspan dy="-3" font-size="7" fill="#bc6c25">2</tspan><tspan dy="3" font-style="italic"> + b</tspan></text>
+  <text x="92" y="44" font-family="monospace" font-size="8" text-anchor="end" letter-spacing="1" transform="rotate(-5 92 44)">0123</text>
+</svg>

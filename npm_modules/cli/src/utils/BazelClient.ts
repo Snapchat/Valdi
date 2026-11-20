@@ -103,8 +103,9 @@ export class BazelLabel {
 
   get apparentRepo(): string | undefined {
     if (!this.repo) return undefined;
-    const tildeIndex = this.repo.indexOf('~');
-    return tildeIndex >= 0 ? this.repo.slice(0, tildeIndex) : this.repo;
+    const repo = this.repo.replace(/^@+/, '');
+    const separatorIndex = repo.search(/[~+]/);
+    return separatorIndex > 0 ? repo.slice(0, separatorIndex) : repo;
   }
 
   toString(): string {

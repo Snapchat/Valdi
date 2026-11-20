@@ -1591,10 +1591,10 @@ TEST(ClientSQLNativeModuleFactory, releasesFinalDroppedHandleWithoutClose) {
         droppedConnection, "query", STRING_LITERAL("SELECT COUNT(*) AS count FROM item"), Value::undefined());
 
     droppedConnection = Value::undefined();
-    // The coordinator destructor only submits this task when its final ref is
-    // released on one of its own database queues. Keeping the injected queue
-    // unflushed proves the queue-owning refs were handed off rather than being
-    // destroyed on that database queue.
+    // The coordinator destructor submits this task wherever its final ref is
+    // released, because a writer task and the dropping thread race to be last.
+    // Keeping the injected queue unflushed proves the queue-owning refs were
+    // handed off rather than being destroyed on a database queue.
     ASSERT_TRUE(resourceReleaseQueue->waitForPendingTask(std::chrono::seconds(5)));
     EXPECT_EQ(1u, resourceReleaseQueue->pendingTaskCount());
 
@@ -1611,6 +1611,36 @@ TEST(ClientSQLNativeModuleFactory, releasesFinalDroppedHandleWithoutClose) {
     ASSERT_TRUE(resourceReleaseQueue->waitForPendingTask(std::chrono::seconds(5)));
     EXPECT_EQ(1u, resourceReleaseQueue->flushTasks());
     EXPECT_EQ(0u, resourceReleaseQueue->pendingTaskCount());
+    workerQueue->fullTeardown();
+}
+
+TEST(ClientSQLNativeModuleFactory, handsOffQueueOwningRefsForEveryDroppedHandle) {
+    ClientSQLTemporaryDirectory directory;
+    auto diskCache = makeShared<DiskCacheImpl>(directory.get());
+    auto workerQueue = DispatchQueue::create(STRING_LITERAL("ClientSQL Test Worker"), ThreadQoSClassNormal);
+    auto resourceReleaseQueue = makeShared<FlushableClientSQLResourceReleaseQueue>();
+    auto factory = makeShared<ClientSQLNativeModuleFactory>(
+        diskCache, workerQueue, std::chrono::seconds(30), resourceReleaseQueue);
+    auto module = factory->loadModule();
+
+    // Dropping a handle races the writer task that abandons it for the final coordinator ref, so one
+    // drop only hits the losing order occasionally. Every drop must still produce its release task.
+    constexpr size_t kDropCount = 50;
+    for (size_t index = 0; index < kDropCount; ++index) {
+        auto connection = callNativeFunction(
+            module, "openDatabase", makeClientSQLOpenParameters(STRING_FORMAT("handoff-drop-{}.sqlite", index)));
+        queryClientSQL(connection, "query", STRING_LITERAL("SELECT COUNT(*) AS count FROM item"), Value::undefined());
+        connection = Value::undefined();
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (resourceReleaseQueue->pendingTaskCount() < kDropCount && std::chrono::steady_clock::now() < deadline) {
+        resourceReleaseQueue->waitForPendingTask(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    EXPECT_EQ(kDropCount, resourceReleaseQueue->pendingTaskCount());
+    EXPECT_EQ(kDropCount, resourceReleaseQueue->flushTasks());
     workerQueue->fullTeardown();
 }
 

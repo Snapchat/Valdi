@@ -22,6 +22,7 @@ on:
       - '**/*.hpp'
       - '**/*.h'
       - '**/*.c'
+      - '**/*.proto'
       - 'third-party/**'
       - 'src/**/*.ts'
       - 'src/**/*.tsx'
@@ -29,12 +30,15 @@ on:
       - 'apps/snapshot_tests/**'
       - 'apps/helloworld/**'
       - 'valdi/src/**'
+      - 'valdi/test/**'
       - 'valdi_core/src/**'
       - 'src/valdi_modules/src/valdi/*/ios/**'
       - 'src/valdi_modules/src/valdi/*/android/**'
       - 'snap_drawing/**'
       - 'experiments/helloworld_playground/**'
       - 'tools/valdi_web_devtools/**'
+      - 'valdi/testdata/**'
+      - 'tsn/**'
   push:
     branches:
       - main
@@ -58,6 +62,7 @@ on:
       - '**/*.hpp'
       - '**/*.h'
       - '**/*.c'
+      - '**/*.proto'
       - 'third-party/**'
       - 'src/**/*.ts'
       - 'src/**/*.tsx'
@@ -65,12 +70,15 @@ on:
       - 'apps/snapshot_tests/**'
       - 'apps/helloworld/**'
       - 'valdi/src/**'
+      - 'valdi/test/**'
       - 'valdi_core/src/**'
       - 'src/valdi_modules/src/valdi/*/ios/**'
       - 'src/valdi_modules/src/valdi/*/android/**'
       - 'snap_drawing/**'
       - 'experiments/helloworld_playground/**'
       - 'tools/valdi_web_devtools/**'
+      - 'valdi/testdata/**'
+      - 'tsn/**'
 
 # Workflow-level permissions: id-token: write needed for GCP WIF auth on push events.
 # For fork PRs, GitHub automatically downgrades to read-only — the auth step
@@ -97,12 +105,13 @@ jobs:
             xcode: '26.5.0'
             test_name_pattern: ''
           # macOS 27: its dyld rejects Rust proc-macros stripped by rustc < 1.98
-          # (rust-lang/rust#157750), which macOS 26 runners can't catch. `build ios`
-          # compiles the Rust tool crates, so that's all this leg runs: the full suite
-          # is three cold workspaces, more than this runner's ~44 GB disk / 7 GB RAM.
+          # (rust-lang/rust#157750), which macOS 26 runners can't catch. `build ios` and
+          # `build macos` compile the Rust tool crates and the macOS SDK path; the full suite
+          # is three cold workspaces, more than this runner's ~44 GB disk / 7 GB RAM (the two
+          # builds leave about 25 GB free).
           - runner: xcode-27
             xcode: '27.0.0'
-            test_name_pattern: 'build ios'
+            test_name_pattern: 'build ios|build macos'
     runs-on: ${{ matrix.runner }}
 
     steps:

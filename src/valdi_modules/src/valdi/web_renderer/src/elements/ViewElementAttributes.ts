@@ -960,6 +960,8 @@ export function buildViewAttributeAppliers(): AttributeApplierMap {
   // Web never clips children to the parent's viewport for hit testing or
   // painting, so extending it is already the default behavior.
   binder.bindNoOpAttribute('extendViewportWithChildren', true);
+  // Not delivered yet: matching native's innermost-view hover semantics with DOM pointer events is follow-up work.
+  binder.bindNoOpAttribute('onHoverChange');
   binder.bindFunctionAttribute(
     'onTouch',
     (element, callback, context) => {

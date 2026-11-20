@@ -8,6 +8,15 @@ on:
       - 'npm_modules/cli/debugger/**'
       - 'npm_modules/cli/package.json'
       - '.github/workflows/test-cli-linux.yml'
+      - 'npm_modules/cli/package-lock.json'
+      - 'npm_modules/cli/tsconfig.json'
+      - 'npm_modules/cli/tsconfig.dist.json'
+      - 'npm_modules/cli/scripts/**'
+      - 'npm_modules/cli/spec/**'
+      - 'npm_modules/cli/.eslintrc.js'
+      - 'npm_modules/cli/.bootstrap/**'
+      - 'npm_modules/cli/.metadata/**'
+      - 'ai-skills/**'
   push:
     branches:
       - main
@@ -17,6 +26,15 @@ on:
       - 'npm_modules/cli/debugger/**'
       - 'npm_modules/cli/package.json'
       - '.github/workflows/test-cli-linux.yml'
+      - 'npm_modules/cli/package-lock.json'
+      - 'npm_modules/cli/tsconfig.json'
+      - 'npm_modules/cli/tsconfig.dist.json'
+      - 'npm_modules/cli/scripts/**'
+      - 'npm_modules/cli/spec/**'
+      - 'npm_modules/cli/.eslintrc.js'
+      - 'npm_modules/cli/.bootstrap/**'
+      - 'npm_modules/cli/.metadata/**'
+      - 'ai-skills/**'
   workflow_dispatch:
 
 concurrency:

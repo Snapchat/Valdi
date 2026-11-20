@@ -356,12 +356,20 @@ function getAttributeCallback(element: IRenderedElement, name: string): Attribut
   return typeof value === 'function' ? value : undefined;
 }
 
-class DebuggerTraversalFailure extends Error {}
+// The message is set again after super(): on Hermes an Error subclass otherwise reports an empty message.
+class DebuggerTraversalFailure extends Error {
+  constructor(message: string) {
+    super(message);
+    this.message = message;
+  }
+}
 
 class DebuggerInputCallbackFailure extends Error {
   constructor(readonly elementId: number, callbackName: string, error: unknown) {
     const detail = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, ' ').slice(0, 256);
-    super(`Element ${elementId} ${callbackName} callback failed${detail ? `: ${detail}` : '.'}`);
+    const message = `Element ${elementId} ${callbackName} callback failed${detail ? `: ${detail}` : '.'}`;
+    super(message);
+    this.message = message;
   }
 }
 
@@ -1059,6 +1067,7 @@ export class DebuggerInputMessageHandler implements CustomMessageHandler {
     }
 
     const traversal = new DebuggerInputTraversal();
+    let selectedElementId: number | undefined;
     try {
       const selector = selectorFromRequest(request);
       const collection = getElementsForSelector(renderer, selector, traversal);
@@ -1093,6 +1102,7 @@ export class DebuggerInputMessageHandler implements CustomMessageHandler {
       }
 
       const selectedElement = matches[0]!.element;
+      selectedElementId = selectedElement.id;
       const selectedFacts = traversal.factsFor(selectedElement);
       if (request.type === DebuggerInputType.Tap) {
         const tapTarget = selectedFacts.tapTarget;
@@ -1250,6 +1260,7 @@ export class DebuggerInputMessageHandler implements CustomMessageHandler {
       if (error instanceof DebuggerInputCallbackFailure) {
         return {
           ...makeResult(request, false),
+          elementId: selectedElementId ?? error.elementId,
           actionElementId: error.elementId,
           message: error.message,
         };

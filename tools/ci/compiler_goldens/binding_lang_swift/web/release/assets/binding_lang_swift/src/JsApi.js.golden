@@ -5,9 +5,11 @@ exports.makeGreeter = void 0;
 class JsGreeter {
     constructor() {
         this._count = 0;
+        this._lastWasFormal = false;
     }
     greet(name, style) {
         this._count += 1;
+        this._lastWasFormal = (style === 2 /* Greeting.FORMAL */);
         switch (style) {
             case 1 /* Greeting.CASUAL */:
                 return 'Hi ' + name;
@@ -17,6 +19,26 @@ class JsGreeter {
     }
     count() {
         return this._count;
+    }
+    greetUser(user) {
+        this.greet(user, 1 /* Greeting.CASUAL */);
+        this._lastGreeting = this._count;
+        return this._lastGreeting;
+    }
+    lastGreeting() {
+        return this._lastGreeting;
+    }
+    lastWasFormal() {
+        return this._lastWasFormal;
+    }
+    tagGreeting(tag) {
+        this._lastTag = tag;
+    }
+    lastTag() {
+        return this._lastTag;
+    }
+    greetedAt() {
+        return Long.fromNumber(this._count);
     }
 }
 /**

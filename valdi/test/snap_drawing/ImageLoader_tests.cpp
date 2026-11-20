@@ -264,4 +264,32 @@ TEST_F(ImageLoaderTests, getReturnsANewImageWithoutFilter) {
     ASSERT_EQ(img->getFilter(), nullptr);
 }
 
+TEST_F(ImageLoaderTests, leavesDecodingToTheFirstDrawByDefault) {
+    auto result = loadImage(_url, getWidth(), getHeight());
+    ASSERT_TRUE(result);
+    EXPECT_TRUE(result.value()->getSkValue()->isLazyGenerated());
+}
+
+TEST_F(ImageLoaderTests, decodesOnLoadWhenAsked) {
+    _assetLoader = createImageLoader(_queue, ConsoleLogger::getLogger(), 0, /*decodesImagesOnLoad=*/true)
+                       ->createAssetLoader({}, _downloader);
+
+    auto result = loadImage(_url, getWidth(), getHeight());
+    ASSERT_TRUE(result);
+    EXPECT_FALSE(result.value()->getSkValue()->isLazyGenerated());
+}
+
+TEST_F(ImageLoaderTests, decodingOnLoadLeavesTheOriginalOfAResizedImageLazy) {
+    _assetLoader = createImageLoader(_queue, ConsoleLogger::getLogger(), 0, /*decodesImagesOnLoad=*/true)
+                       ->createAssetLoader({}, _downloader);
+
+    auto resized = loadImage(_url, getWidth() / 2, 0);
+    ASSERT_TRUE(resized);
+    auto original = loadImage(_url, getWidth(), getHeight());
+    ASSERT_TRUE(original);
+
+    EXPECT_EQ(_downloader->getDownloadRequests(), 1ull);
+    EXPECT_TRUE(original.value()->getSkValue()->isLazyGenerated());
+}
+
 } // namespace ValdiTest

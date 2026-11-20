@@ -5,6 +5,7 @@ export { RequireFunc } from './IModuleLoader';
 
 declare const runtime: {
   scheduleWorkItem(callback: () => void, delayMs?: number, interruptible?: boolean): number;
+  isLoggingEnabled: boolean;
 };
 
 type JsEvalRetryableError = string;
@@ -247,7 +248,11 @@ export class ModuleLoader implements IModuleLoader {
       const resolvedPath = resolveAbsoluteImportFromPath(path);
       this.doPreload(resolvedPath.absolutePath, 0, maxDepth, visited);
     } catch (err) {
-      console.log(`Could not preload module ${path}: ${(err as Error).message}`);
+      // Bootstrap can run before globalThis.console exists, and the console
+      // transformer skips globalThis.console, so guard the flag here.
+      if (runtime.isLoggingEnabled) {
+        globalThis.console?.log(`Could not preload module ${path}: ${(err as Error).message}`);
+      }
     }
   }
 

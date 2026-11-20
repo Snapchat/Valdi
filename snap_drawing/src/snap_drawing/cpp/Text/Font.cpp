@@ -13,8 +13,12 @@
 
 namespace snap::drawing {
 
-Font::Font(
-    Ref<FontResolver>&& fontResolver, Ref<Typeface>&& typeface, Scalar size, double scale, bool respectDynamicType)
+Font::Font(Ref<FontResolver>&& fontResolver,
+           Ref<Typeface>&& typeface,
+           Scalar size,
+           double scale,
+           bool respectDynamicType,
+           SkFontHinting hinting)
     : _fontResolver(std::move(fontResolver)),
       _typeface(std::move(typeface)),
       _font(_typeface->getSkValue(), size * scale),
@@ -22,6 +26,7 @@ Font::Font(
       _scale(scale),
       _respectDynamicType(respectDynamicType) {
     _font.setEdging(SkFont::Edging::kAntiAlias);
+    _font.setHinting(hinting);
 }
 
 Font::~Font() = default;
@@ -32,7 +37,12 @@ FontId Font::getFontId() const {
     auto sizeId = *reinterpret_cast<uint32_t*>(&size);
     auto typefaceId = _typeface->getId();
 
-    return (static_cast<FontId>(sizeId) << 32) | static_cast<FontId>(typefaceId);
+    // Typeface ids count up from 1 per process, so their top two bits are free for the hinting. Normal hinting maps to
+    // 0, keeping the ids fonts had before hinting was configurable.
+    auto hintingBits = (static_cast<uint32_t>(_font.getHinting()) ^ static_cast<uint32_t>(SkFontHinting::kNormal))
+                       << 30;
+
+    return (static_cast<FontId>(sizeId) << 32) | static_cast<FontId>(typefaceId ^ hintingBits);
 }
 
 const SkFont& Font::getSkValue() const {
@@ -56,8 +66,12 @@ Ref<Font> Font::withScale(double scale) {
         return Valdi::strongSmallRef(this);
     }
 
-    return Valdi::makeShared<Font>(
-        Ref<FontResolver>(_fontResolver), Ref<Typeface>(_typeface), _size, scale, _respectDynamicType);
+    return Valdi::makeShared<Font>(Ref<FontResolver>(_fontResolver),
+                                   Ref<Typeface>(_typeface),
+                                   _size,
+                                   scale,
+                                   _respectDynamicType,
+                                   _font.getHinting());
 }
 
 Valdi::Result<Ref<Font>> Font::withStyle(FontStyle style) {

@@ -41,8 +41,11 @@ private:
     Valdi::Weak<ImageLoaderTask> _task;
 };
 
-ImageLoader::ImageLoader(const Valdi::Ref<Valdi::DispatchQueue>& queue, Valdi::ILogger& logger, size_t maxSize)
-    : _queue(queue), _logger(logger), _cache(logger, maxSize), _reclamationInterval(0) {}
+ImageLoader::ImageLoader(const Valdi::Ref<Valdi::DispatchQueue>& queue,
+                         Valdi::ILogger& logger,
+                         size_t maxSize,
+                         bool decodesOnLoad)
+    : _queue(queue), _logger(logger), _cache(logger, maxSize), _decodesOnLoad(decodesOnLoad), _reclamationInterval(0) {}
 
 ImageLoader::~ImageLoader() = default;
 
@@ -154,8 +157,16 @@ void ImageLoader::loadImageFromBytes(const Ref<ImageLoaderTask>& task, const Val
         return;
     }
 
+    auto image = result.value();
+    // Only an image the cache keeps at full size: resizing decodes here anyway, and the cache holds the original as
+    // long as a resized copy lives, so decoding it first would pin its full-size pixels.
+    if (_decodesOnLoad &&
+        !ImageCache::resizes(image->width(), image->height(), task->getPreferredWidth(), task->getPreferredHeight())) {
+        image = image->decoded();
+    }
+
     imgResult = _cache.setCachedItemAndGetResizedImage(
-        task->getUrl(), result.value(), task->getPreferredWidth(), task->getPreferredHeight());
+        task->getUrl(), image, task->getPreferredWidth(), task->getPreferredHeight());
 
     handleImageLoadResult(task, imgResult);
 }

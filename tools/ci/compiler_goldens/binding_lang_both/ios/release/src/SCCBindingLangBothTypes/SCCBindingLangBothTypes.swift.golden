@@ -25,6 +25,7 @@ public func register_Greeting() {
 // IGreeter.swift
 //
 
+import Foundation
 import ValdiCoreSwift
 
 /**
@@ -34,6 +35,12 @@ import ValdiCoreSwift
 public protocol IGreeter : ValdiMarshallableInterface {
     func greet(name: String, style: Greeting) throws -> String
         func count() throws -> Double
+        func greetUser(user: String) throws -> Double
+        func lastGreeting() throws -> Double?
+        func lastWasFormal() throws -> Bool
+        func tagGreeting(tag: Data) throws -> Void
+        func lastTag() throws -> Data?
+        func greetedAt() throws -> Int64
 }
 
 
@@ -44,6 +51,12 @@ extension IGreeter {
         let objectIndex = try marshaller.pushObject(className: "IGreeter")
         try marshaller.setTypedObjectPropertyFunction(objectIndex, 0, Self.create_greet_bridgeFunction(using: self.greet))
         try marshaller.setTypedObjectPropertyFunction(objectIndex, 1, Self.create_count_bridgeFunction(using: self.count))
+        try marshaller.setTypedObjectPropertyFunction(objectIndex, 2, Self.create_greetUser_bridgeFunction(using: self.greetUser))
+        try marshaller.setTypedObjectPropertyFunction(objectIndex, 3, Self.create_lastGreeting_bridgeFunction(using: self.lastGreeting))
+        try marshaller.setTypedObjectPropertyFunction(objectIndex, 4, Self.create_lastWasFormal_bridgeFunction(using: self.lastWasFormal))
+        try marshaller.setTypedObjectPropertyFunction(objectIndex, 5, Self.create_tagGreeting_bridgeFunction(using: self.tagGreeting))
+        try marshaller.setTypedObjectPropertyFunction(objectIndex, 6, Self.create_lastTag_bridgeFunction(using: self.lastTag))
+        try marshaller.setTypedObjectPropertyFunction(objectIndex, 7, Self.create_greetedAt_bridgeFunction(using: self.greetedAt))
         }
         return objectIndex
     }
@@ -94,6 +107,136 @@ extension IGreeter {
             return __result
         }
     }
+    static func create_greetUser_bridgeFunction(using functionImpl: @escaping ((String) throws -> Double)) -> ((ValdiMarshaller) -> Bool) {
+        
+        return createBridgeFunctionWrapper({ marshaller in
+            let user : String = try marshaller.getString(0)
+            let result = try functionImpl(user)
+            _ = marshaller.pushDouble(result)
+            })
+    }
+    static func create_greetUser_from_bridgeFunction(using functionImpl: ValdiFunction) -> ((String) throws -> Double) {
+        
+        return { (user: String) throws -> Double in
+            let marshaller = ValdiMarshaller()
+            _ = marshaller.pushString(user)
+            if !functionImpl.perform(with: marshaller, sync: true) {
+                try marshaller.checkError()
+                throw ValdiError.functionCallFailed("greetUser")
+            }
+            let __result: Double = try marshaller.getDouble(-1)
+            try marshaller.checkError()
+            return __result
+        }
+    }
+    static func create_lastGreeting_bridgeFunction(using functionImpl: @escaping (() throws -> Double?)) -> ((ValdiMarshaller) -> Bool) {
+        
+        return createBridgeFunctionWrapper({ marshaller in
+            
+            let result = try functionImpl()
+            _ = marshaller.pushOptionalDouble(result)
+            })
+    }
+    static func create_lastGreeting_from_bridgeFunction(using functionImpl: ValdiFunction) -> (() throws -> Double?) {
+        
+        return { () throws -> Double? in
+            let marshaller = ValdiMarshaller()
+            
+            if !functionImpl.perform(with: marshaller, sync: true) {
+                try marshaller.checkError()
+                throw ValdiError.functionCallFailed("lastGreeting")
+            }
+            let __result: Double? = try marshaller.getOptionalDouble(-1)
+            try marshaller.checkError()
+            return __result
+        }
+    }
+    static func create_lastWasFormal_bridgeFunction(using functionImpl: @escaping (() throws -> Bool)) -> ((ValdiMarshaller) -> Bool) {
+        
+        return createBridgeFunctionWrapper({ marshaller in
+            
+            let result = try functionImpl()
+            _ = marshaller.pushBool(result)
+            })
+    }
+    static func create_lastWasFormal_from_bridgeFunction(using functionImpl: ValdiFunction) -> (() throws -> Bool) {
+        
+        return { () throws -> Bool in
+            let marshaller = ValdiMarshaller()
+            
+            if !functionImpl.perform(with: marshaller, sync: true) {
+                try marshaller.checkError()
+                throw ValdiError.functionCallFailed("lastWasFormal")
+            }
+            let __result: Bool = try marshaller.getBool(-1)
+            try marshaller.checkError()
+            return __result
+        }
+    }
+    static func create_tagGreeting_bridgeFunction(using functionImpl: @escaping ((Data) throws -> Void)) -> ((ValdiMarshaller) -> Bool) {
+        
+        return createBridgeFunctionWrapper({ marshaller in
+            let tag : Data = try marshaller.getData(0)
+            try functionImpl(tag)
+            // No return value for this call
+            })
+    }
+    static func create_tagGreeting_from_bridgeFunction(using functionImpl: ValdiFunction) -> ((Data) throws -> Void) {
+        
+        return { (tag: Data) throws -> Void in
+            let marshaller = ValdiMarshaller()
+            _ = marshaller.pushData(tag)
+            if !functionImpl.perform(with: marshaller, sync: false) {
+                try marshaller.checkError()
+                throw ValdiError.functionCallFailed("tagGreeting")
+            }
+            try marshaller.checkError()
+        }
+    }
+    static func create_lastTag_bridgeFunction(using functionImpl: @escaping (() throws -> Data?)) -> ((ValdiMarshaller) -> Bool) {
+        
+        return createBridgeFunctionWrapper({ marshaller in
+            
+            let result = try functionImpl()
+            _ = marshaller.pushOptionalData(result)
+            })
+    }
+    static func create_lastTag_from_bridgeFunction(using functionImpl: ValdiFunction) -> (() throws -> Data?) {
+        
+        return { () throws -> Data? in
+            let marshaller = ValdiMarshaller()
+            
+            if !functionImpl.perform(with: marshaller, sync: true) {
+                try marshaller.checkError()
+                throw ValdiError.functionCallFailed("lastTag")
+            }
+            let __result: Data? = try marshaller.getOptionalData(-1)
+            try marshaller.checkError()
+            return __result
+        }
+    }
+    static func create_greetedAt_bridgeFunction(using functionImpl: @escaping (() throws -> Int64)) -> ((ValdiMarshaller) -> Bool) {
+        
+        return createBridgeFunctionWrapper({ marshaller in
+            
+            let result = try functionImpl()
+            _ = marshaller.pushLong(result)
+            })
+    }
+    static func create_greetedAt_from_bridgeFunction(using functionImpl: ValdiFunction) -> (() throws -> Int64) {
+        
+        return { () throws -> Int64 in
+            let marshaller = ValdiMarshaller()
+            
+            if !functionImpl.perform(with: marshaller, sync: true) {
+                try marshaller.checkError()
+                throw ValdiError.functionCallFailed("greetedAt")
+            }
+            let __result: Int64 = try marshaller.getLong(-1)
+            try marshaller.checkError()
+            return __result
+        }
+    }
 
 }
 public class IGreeter_Proxy : IGreeter, ValdiMarshallableObject {
@@ -107,11 +250,47 @@ public class IGreeter_Proxy : IGreeter, ValdiMarshallableObject {
         return try self.count_implementation()
     }
     private var count_implementation: (() throws -> Double)
+    public func greetUser (user: String) throws -> Double {
+        
+        return try self.greetUser_implementation(user)
+    }
+    private var greetUser_implementation: ((String) throws -> Double)
+    public func lastGreeting () throws -> Double? {
+        
+        return try self.lastGreeting_implementation()
+    }
+    private var lastGreeting_implementation: (() throws -> Double?)
+    public func lastWasFormal () throws -> Bool {
+        
+        return try self.lastWasFormal_implementation()
+    }
+    private var lastWasFormal_implementation: (() throws -> Bool)
+    public func tagGreeting (tag: Data) throws -> Void {
+        
+        return try self.tagGreeting_implementation(tag)
+    }
+    private var tagGreeting_implementation: ((Data) throws -> Void)
+    public func lastTag () throws -> Data? {
+        
+        return try self.lastTag_implementation()
+    }
+    private var lastTag_implementation: (() throws -> Data?)
+    public func greetedAt () throws -> Int64 {
+        
+        return try self.greetedAt_implementation()
+    }
+    private var greetedAt_implementation: (() throws -> Int64)
 
     public required init(from marshaller: ValdiMarshaller, at objectIndex: Int) throws {
         let objectIndex = try marshaller.unwrapProxy(objectIndex)
         self.greet_implementation = Self.create_greet_from_bridgeFunction(using: try marshaller.getTypedObjectPropertyFunction(objectIndex, 0))
         self.count_implementation = Self.create_count_from_bridgeFunction(using: try marshaller.getTypedObjectPropertyFunction(objectIndex, 1))
+        self.greetUser_implementation = Self.create_greetUser_from_bridgeFunction(using: try marshaller.getTypedObjectPropertyFunction(objectIndex, 2))
+        self.lastGreeting_implementation = Self.create_lastGreeting_from_bridgeFunction(using: try marshaller.getTypedObjectPropertyFunction(objectIndex, 3))
+        self.lastWasFormal_implementation = Self.create_lastWasFormal_from_bridgeFunction(using: try marshaller.getTypedObjectPropertyFunction(objectIndex, 4))
+        self.tagGreeting_implementation = Self.create_tagGreeting_from_bridgeFunction(using: try marshaller.getTypedObjectPropertyFunction(objectIndex, 5))
+        self.lastTag_implementation = Self.create_lastTag_from_bridgeFunction(using: try marshaller.getTypedObjectPropertyFunction(objectIndex, 6))
+        self.greetedAt_implementation = Self.create_greetedAt_from_bridgeFunction(using: try marshaller.getTypedObjectPropertyFunction(objectIndex, 7))
         marshaller.pop()
     }
 
@@ -120,6 +299,12 @@ public class IGreeter_Proxy : IGreeter, ValdiMarshallableObject {
         [
             ValdiMarshallableObjectFieldDescriptor(name: "greet", type: "f(s, r<e>:'[0]'): s"),
             ValdiMarshallableObjectFieldDescriptor(name: "count", type: "f(): d"),
+            ValdiMarshallableObjectFieldDescriptor(name: "greetUser", type: "f(s): d"),
+            ValdiMarshallableObjectFieldDescriptor(name: "lastGreeting", type: "f(): d@?"),
+            ValdiMarshallableObjectFieldDescriptor(name: "lastWasFormal", type: "f(): b"),
+            ValdiMarshallableObjectFieldDescriptor(name: "tagGreeting", type: "f(t)"),
+            ValdiMarshallableObjectFieldDescriptor(name: "lastTag", type: "f(): t?"),
+            ValdiMarshallableObjectFieldDescriptor(name: "greetedAt", type: "f(): l"),
         ]
         let identifiers: [ValdiMarshallableIdentifier] =
         [

@@ -1,0 +1,10 @@
+{
+  "platform_greeting": {
+    "defaultMessage": "Hello from the module",
+    "example": "Hello from the module"
+  },
+  "platform_item_count": {
+    "defaultMessage": "{count%d} items",
+    "example": "3 items"
+  }
+}

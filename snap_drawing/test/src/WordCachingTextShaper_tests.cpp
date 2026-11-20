@@ -271,4 +271,20 @@ TEST_F(WordCachingTextShaperTest, canPrioritizeCacheHit) {
     glyphs.clear();
 }
 
+TEST_F(WordCachingTextShaperTest, prioritizeCacheHitKeepsTheFontHinting) {
+    WordCachingTextShaper textShaper(testTextShaper, WordCachingTextShaperStrategy::PrioritizeCacheHit);
+
+    auto unicode = utf8ToUnicode("word");
+    std::vector<ShapedGlyph> glyphs;
+
+    textShaper.shape(unicode.data(), unicode.size(), *avenirNext, false, 0.0f, TextScript::common(), glyphs);
+    fontManager->setFontHinting(SkFontHinting::kNone);
+    textShaper.shape(
+        unicode.data(), unicode.size(), *avenirNext->withSize(9.0f).value(), false, 0.0f, TextScript::common(), glyphs);
+
+    ASSERT_EQ(static_cast<size_t>(2), testTextShaper->shapeRequests.size());
+    EXPECT_EQ(SkFontHinting::kNormal, testTextShaper->shapeRequests[0].font->getSkValue().getHinting());
+    EXPECT_EQ(SkFontHinting::kNone, testTextShaper->shapeRequests[1].font->getSkValue().getHinting());
+}
+
 } // namespace snap::drawing

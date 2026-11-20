@@ -14,12 +14,20 @@ on:
     paths:
       - 'compiler/**'
       - '.github/workflows/compiler-tests.yml'
+      - '.bazelrc'
+      - '.bazelversion'
+      - 'bzl/valdi_compiler_swift_deps.bzl'
+      - 'tools/ci/compiler_tests.sh'
   push:
     branches:
       - main
     paths:
       - 'compiler/**'
       - '.github/workflows/compiler-tests.yml'
+      - '.bazelrc'
+      - '.bazelversion'
+      - 'bzl/valdi_compiler_swift_deps.bzl'
+      - 'tools/ci/compiler_tests.sh'
 
 # Workflow-level permissions: id-token: write needed for GCP WIF auth on the
 # bazel-cache action. The auth step has continue-on-error, so fork PRs (which

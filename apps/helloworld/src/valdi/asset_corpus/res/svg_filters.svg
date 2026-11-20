@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.5" result="blur"/>
+      <feOffset in="blur" dx="2" dy="2" result="offset"/>
+      <feFlood flood-color="#000" flood-opacity="0.5"/>
+      <feComposite in2="offset" operator="in" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="desaturate">
+      <feColorMatrix type="saturate" values="0.2"/>
+    </filter>
+    <filter id="blend" filterUnits="userSpaceOnUse" x="0" y="0" width="48" height="48">
+      <feTurbulence type="fractalNoise" baseFrequency="0.2" numOctaves="2" seed="4" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" xChannelSelector="R" yChannelSelector="G" result="displaced"/>
+      <feBlend in="displaced" in2="SourceGraphic" mode="multiply"/>
+    </filter>
+    <filter id="css" style="filter: none">
+      <feMorphology operator="dilate" radius="1"/>
+    </filter>
+  </defs>
+  <rect x="6" y="6" width="18" height="18" rx="3" fill="#e76f51" filter="url(#shadow)"/>
+  <circle cx="34" cy="14" r="9" fill="#2a9d8f" filter="url(#desaturate)"/>
+  <rect x="4" y="28" width="18" height="16" fill="#8ecae6" filter="url(#blend)"/>
+  <path d="M30 30 L44 30 L37 44 Z" fill="#023047" filter="url(#css)"/>
+  <circle cx="40" cy="40" r="4" fill="#ffb703" style="filter: blur(1px) drop-shadow(1px 1px 0 #000)"/>
+</svg>
