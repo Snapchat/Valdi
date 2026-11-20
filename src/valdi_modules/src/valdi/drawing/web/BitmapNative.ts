@@ -1,5 +1,6 @@
 import { BitmapAlphaType, BitmapColorType, BitmapInfo, ImageEncoding } from '../src/IBitmap';
 import { INativeBitmap } from '../src/INativeBitmap';
+import { decodePng } from './PngDecoder';
 
 type Meta = {
   info: BitmapInfo;
@@ -51,18 +52,22 @@ export function createNativeBitmap(
   return handle;
 }
 
-export function decodeNativeBitmap(_data: string | Uint8Array | ArrayBuffer): INativeBitmap {
-  // Stub: return a 1x1 transparent RGBA8
-  const info: BitmapInfo = {
-    width: 1,
-    height: 1,
-    colorType: BitmapColorType.RGBA8888,
-    alphaType: BitmapAlphaType.Premul,
-    rowBytes: 4,
-  };
-  const pixels = new ArrayBuffer(4); // RGBA = 0,0,0,0
+function toBytes(data: string | Uint8Array | ArrayBuffer): Uint8Array {
+  if (typeof data === 'string') {
+    const binary = atob(data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+  return data instanceof Uint8Array ? data : new Uint8Array(data);
+}
+
+export function decodeNativeBitmap(data: string | Uint8Array | ArrayBuffer): INativeBitmap {
+  const decoded = decodePng(toBytes(data));
   const handle: INativeBitmap = { brand: 'INativeBitmap' };
-  META.set(handle, { info, pixels, locked: false });
+  META.set(handle, { info: decoded.info, pixels: decoded.pixels, locked: false });
   return handle;
 }
 

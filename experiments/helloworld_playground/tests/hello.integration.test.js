@@ -72,4 +72,23 @@ describe('helloworld_playground — Valdi minimal wiring', () => {
     expect(titleText).not.toBeNull();
     expect(titleText).toContain('Valdi Web');
   }, TIMEOUT);
+
+  test('decodes the byte-exact .bin bitmap (getModuleFileEntryAsBytes + decodeBitmap on web)', async () => {
+    await page.goto(BASE_URL, { waitUntil: 'networkidle2', timeout: TIMEOUT });
+    await waitForValdiBootstrap(page);
+
+    const text = await page.evaluate(() => {
+      const app = document.getElementById('app');
+      return app && app.shadowRoot ? app.shadowRoot.textContent || '' : '';
+    });
+
+    // checker_2x2.png.bin is a lossless 2x2 black/white checker. A stubbed decode gives one transparent pixel.
+    const pixels = [...text.matchAll(/\((\d), (\d)\)\s+->\s+(rgba\([^)]*\))/g)].map(m => `(${m[1]}, ${m[2]}) ${m[3]}`);
+    expect(pixels).toEqual([
+      '(0, 0) rgba(0, 0, 0, 255)',
+      '(1, 0) rgba(255, 255, 255, 255)',
+      '(0, 1) rgba(255, 255, 255, 255)',
+      '(1, 1) rgba(0, 0, 0, 255)',
+    ]);
+  }, TIMEOUT);
 });
