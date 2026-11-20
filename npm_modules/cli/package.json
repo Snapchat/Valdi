@@ -14,6 +14,9 @@
   "bin": {
     "valdi": "dist/index.js"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "files": [
     "dist",
     "debugger",
