@@ -11,19 +11,24 @@ import { AlignSelfOverrides } from './AlignSelfOverrides';
 import { AspectRatioLayout } from './AspectRatioLayout';
 import { BasicLayout } from './BasicLayout';
 import { BorderStyles } from './BorderStyles';
+import { ClippedCaption } from './ClippedCaption';
 import { ColorPaletteThemes, ColorPaletteNestedOverride } from './ColorPalette';
 import { CustomMeasure } from './CustomMeasure';
 import { DisplayNone } from './DisplayNone';
 import { EmojiRendering } from './EmojiRendering';
 import { FlexBasisVariants } from './FlexBasisVariants';
+import { ImageContentModes } from './ImageContentModes';
 import { InlineImageLayout } from './InlineImageLayout';
 import { LayoutDirectionRtl } from './LayoutDirectionRtl';
 import { MaskImage } from './MaskImage';
 import { MinMaxConstraints } from './MinMaxConstraints';
 import { NegativeMargins } from './NegativeMargins';
 import { NestedViews } from './NestedViews';
+import { PaddedCaption } from './PaddedCaption';
 import { PercentageSizing } from './PercentageSizing';
 import { ReverseDirections } from './ReverseDirections';
+import { ScrollContentGrowth } from './ScrollContentGrowth';
+import { TabRow } from './TabRow';
 import { TextAlignment } from './TextAlignment';
 import { TextCombined } from './TextCombined';
 import { TextDecoration } from './TextDecoration';
@@ -328,6 +333,46 @@ export const testCases: SnapshotTestCase[] = [
     height: 220,
     render: () => {
       <ColorPaletteNestedOverride />;
+    },
+  },
+  {
+    name: 'ScrollContentGrowth',
+    width: 200,
+    height: 230,
+    render: () => {
+      <ScrollContentGrowth />;
+    },
+  },
+  {
+    name: 'TabRow',
+    width: 260,
+    height: 200,
+    render: () => {
+      <TabRow />;
+    },
+  },
+  {
+    name: 'ClippedCaption',
+    width: 200,
+    height: 200,
+    render: () => {
+      <ClippedCaption />;
+    },
+  },
+  {
+    name: 'PaddedCaption',
+    width: 200,
+    height: 360,
+    render: () => {
+      <PaddedCaption />;
+    },
+  },
+  {
+    name: 'ImageContentModes',
+    width: 160,
+    height: 190,
+    render: () => {
+      <ImageContentModes />;
     },
   },
 ];
