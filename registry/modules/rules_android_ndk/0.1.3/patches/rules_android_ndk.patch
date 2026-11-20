@@ -1,3 +1,4 @@
+diff --git a/BUILD.ndk_root.tpl b/BUILD.ndk_root.tpl
 --- BUILD.ndk_root.tpl
 +++ BUILD.ndk_root.tpl
 @@ -12,6 +12,18 @@ alias(
@@ -19,3 +20,28 @@
  # Loop over TARGET_SYSTEM_NAMES and define all toolchain targets.
  [toolchain(
      name = "toolchain_%s" % target_system_name,
+diff --git a/ndk_cc_toolchain_config.bzl b/ndk_cc_toolchain_config.bzl
+--- ndk_cc_toolchain_config.bzl
++++ ndk_cc_toolchain_config.bzl
+@@ -766,11 +766,6 @@
+                     actions = actions.all_link,
+                     flags = ["-Wl,--fix-cortex-a8", "-march=armv7-a"],
+                     features = ["crosstool_cpu_arm"],
+-                ),
+-                flag_set(
+-                    actions = actions.all_link,
+-                    flags = ["-Wl,-z,max-page-size=4096"],
+-                    features = ["crosstool_cpu_arm64", "crosstool_linker_lld"],
+                 ),
+ 
+                 # X86 options
+@@ -932,6 +927,9 @@
+                         # Force JNI symbols to be linked.
+                         "-Wl,--undefined-glob='Java_*'",
+                         "-Wl,--undefined-glob='JNI_*'",
++                        # 16KB page alignment for Android 15+ compatibility
++                        "-Wl,-z,max-page-size=16384",
++                        "-Wl,-z,common-page-size=16384",
+                     ],
+                 ),
+                 flag_set(
