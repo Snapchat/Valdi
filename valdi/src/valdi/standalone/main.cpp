@@ -3,6 +3,9 @@
 #include "valdi/standalone_runtime/ArgumentsParser.hpp"
 #include "valdi/standalone_runtime/SignalHandler.hpp"
 #include "valdi/standalone_runtime/ValdiStandaloneMain.hpp"
+#ifdef VALDI_STANDALONE_TERMINAL
+#include "valdi/terminal/Modules/TerminalModuleFactoriesProvider.hpp"
+#endif
 
 #include <iostream>
 
@@ -78,6 +81,10 @@ int main(int argc, const char** argv) {
         }
     }
     standaloneArguments.jsBridge = Valdi::JavaScriptBridge::get(engineType);
+#ifdef VALDI_STANDALONE_TERMINAL
+    // Lets valdi_tui specs render through the terminal backend with an in-memory sink.
+    standaloneArguments.moduleFactoriesProviders.emplace_back(Valdi::makeTerminalModuleFactoriesProvider());
+#endif
 
     return Valdi::runValdiStandalone(standaloneArguments);
 }

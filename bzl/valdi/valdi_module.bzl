@@ -91,6 +91,7 @@ def valdi_module(
         module_yaml = None,
         # Keep new optional arguments at the end to preserve existing positional call sites.
         web_no_inline_images = False,
+        test_standalone_binary = None,
         **kwargs):
     """ A convenient macro to wrap valdi_compiled rule. Use this macro instead of direct valdi_compiled rule invocation.
 
@@ -141,6 +142,8 @@ def valdi_module(
         macos_deps: Obj-C/C++ deps for the module's _desktop native target on macOS only (e.g. NSOpenPanel). Ignored on Linux.
         web_workers: Browser worker entry module paths.
         web_no_inline_images: Whether web bundlers should emit module images as separate assets.
+        test_standalone_binary: The Valdi Standalone binary that runs the module's tests, in place of the shared
+            runner. Only for modules whose specs need native code that the shared runner does not link.
         exclude_patterns: file patterns to exclude from the module
         exclude_globs: glob patterns to exclude from the module
         **kwargs: Additional keyword arguments.
@@ -251,7 +254,7 @@ def valdi_module(
     _setup_native_target(name, all_valdi_module_deps, native_deps, macos_deps, compiled_module_target, visibility)
 
     ### 8. Setup the test target
-    _setup_test_target(name, test_target_name, srcs)
+    _setup_test_target(name, test_target_name, srcs, test_standalone_binary)
 
     ### 9. Setup the prepared upload artifact if set
     if prepared_upload_artifact_name:
@@ -280,14 +283,15 @@ def valdi_hotreload(**kwargs):
         **kwargs
     )
 
-def _setup_test_target(name, test_target_name, srcs):
+def _setup_test_target(name, test_target_name, srcs, standalone_binary):
     target = ":{}".format(name)
+    runner_kwargs = {"standalone_binary": standalone_binary} if standalone_binary else {}
     valdi_test(name = test_target_name, srcs = srcs, target = target, hot_reload = select({
         "@valdi//bzl/valdi:valdi_hot_reload_enabled": True,
         "//conditions:default": False,
     }), tags = [
         "valdi_test",
-    ])
+    ], **runner_kwargs)
 
 def _setup_projectsync_target(
         name,
