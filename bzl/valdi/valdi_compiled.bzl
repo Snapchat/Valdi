@@ -2347,7 +2347,8 @@ def _append_hotreload_explicit_input_list_entry(target, json_entries):
         "module_path": base_path,
         "module_content": target[ValdiModuleInfo].module_definition,
         "monitor": is_external_ref == False,
-        "auto_discover": is_external_ref,
+        # Single-pass compiles (--compile) never start the monitor, so in-repo modules need discovery too.
+        "auto_discover": True,
         "files": [],
     })
 
@@ -2408,6 +2409,11 @@ def _prepare_hotreload_arguments(module_names, config_yaml_file, explicit_input_
     args.append("android.codegen_enabled=false")
     args.append("--config-value")
     args.append("ios.codegen_enabled=false")
+
+    # Every module shares one compile pass, so the flat template metadata path collides on dependencyData.json.
+    # The backslash keeps the generated script's shell from expanding $MODULE_NAME.
+    args.append("--config-value")
+    args.append("ios.output.metadata_path=metadata/\\$MODULE_NAME")
 
     # Downloadable modules fail to compile without it; the regular compile rule forwards it the same way.
     if module_upload_base_url:

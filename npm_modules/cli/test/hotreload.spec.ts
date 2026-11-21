@@ -154,5 +154,13 @@ describe('hotreload command helpers', () => {
       expect(valdiCompiledBzl).toContain('echo \'MODE_ARGS=${{VALDI_HOTRELOAD_MODE_ARGS:---monitor --usb --log-level info}}\' >> {script_path}');
       expect(valdiCompiledBzl).toContain('echo \'exec {executable} {args} $MODE_ARGS "$@"\' >> {script_path}');
     });
+
+    it('discovers in-repo module files so single-pass compiles see them', () => {
+      const repoRoot = path.resolve(process.cwd(), '../..');
+      const valdiCompiledBzl = fs.readFileSync(path.join(repoRoot, 'bzl/valdi/valdi_compiled.bzl'), 'utf8');
+
+      expect(valdiCompiledBzl).toContain('"auto_discover": True,');
+      expect(valdiCompiledBzl).toContain('ios.output.metadata_path=metadata/\\\\$MODULE_NAME');
+    });
   });
 });
