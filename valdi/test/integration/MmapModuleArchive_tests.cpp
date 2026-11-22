@@ -10,10 +10,12 @@
 
 #include "valdi/jsbridge/JavaScriptBridge.hpp"
 #include "valdi/runtime/Interfaces/ITweakValueProvider.hpp"
+#include "valdi/runtime/JavaScript/JavaScriptRuntime.hpp"
 #include "valdi/runtime/Metrics/Metrics.hpp"
 #include "valdi/runtime/Resources/ResourceManager.hpp"
 #include "valdi/runtime/ValdiRuntimeTweaks.hpp"
 #include "valdi_core/cpp/JavaScript/ModuleFactoryRegistry.hpp"
+#include "valdi_core/cpp/Utils/ByteBuffer.hpp"
 #include "valdi_core/cpp/Utils/DiskUtils.hpp"
 #include "valdi_core/cpp/Utils/Exception.hpp"
 #include "valdi_core/cpp/Utils/Format.hpp"
@@ -40,6 +42,7 @@ namespace ValdiTest {
 namespace {
 
 constexpr auto kPackTweakKey = "VALDI_MMAP_MODULE_ARCHIVES_CACHE_REUSE";
+constexpr auto kCompileTweakKey = "VALDI_ENABLE_MODULE_ARCHIVE_BYTECODE_COMPILE";
 constexpr auto kModuleName = "test";
 
 // ---------------------------------------------------------------------------
@@ -53,6 +56,9 @@ class MmapTweakProvider : public SharedPtrRefCountable,
 public:
     void setPackEnabled(bool enabled) {
         _config.setMapValue(kPackTweakKey, Value(static_cast<bool>(enabled)));
+    }
+    void setCompileEnabled(bool enabled) {
+        _config.setMapValue(kCompileTweakKey, Value(static_cast<bool>(enabled)));
     }
 
     StringBox getModulePath() override {
@@ -87,6 +93,8 @@ public:
     std::atomic<int> mmapSuccess{0};
     std::atomic<int> heap{0};
     std::atomic<int> decompressLatencyCalls{0};
+    std::atomic<int> compiledModules{0};
+    std::atomic<int> compileFailures{0};
 
     void emitModuleArchiveMmapSuccess(const StringBox& modulePath) override {
         ++mmapSuccess;
@@ -98,6 +106,12 @@ public:
     }
     void emitModuleDecompressLatency(const StringBox&, const MetricsDuration&) override {
         ++decompressLatencyCalls;
+    }
+    void emitModuleArchiveCompileLatency(const StringBox&, const MetricsDuration&) override {
+        ++compiledModules;
+    }
+    void emitModuleArchiveCompileFail(const StringBox&) override {
+        ++compileFailures;
     }
 
     // A module load can pull in dependency bundles, so counter totals alone can't tell which module took
@@ -304,6 +318,35 @@ TEST_F(MmapModuleArchiveFixture, PackServesTheNextLaunch) {
     EXPECT_EQ(testHeapLoadsBefore, _metrics->heapLoadsOf(kModuleName));
     EXPECT_EQ(_metrics->totalPathCounters() - pathCountersBefore,
               _metrics->decompressLatencyCalls.load() - latencyCallsBefore);
+}
+
+// With the compile switch on, the first launch stores the module's JS as QuickJS bytecode, and the next launch
+// evaluates that bytecode.
+TEST_F(MmapModuleArchiveFixture, PackStoresBytecodeThatTheNextLaunchEvaluates) {
+    TemporaryDirectory tmp;
+    _tweakProvider->setCompileEnabled(true);
+    {
+        auto& wrapper = makeWrapper(/*enablePack=*/true);
+        wrapper.runtime->setMmapCacheDirectory(tmp.path(), "test");
+        ASSERT_TRUE(wrapper.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources));
+        endLaunch(tmp);
+    }
+    if (!packHasData(generationDirectory(tmp))) {
+        GTEST_SKIP() << "Test module isn't ZStd-compressed in this build; the pack is not exercised";
+    }
+    EXPECT_GE(_metrics->compiledModules.load(), 1);
+    EXPECT_EQ(0, _metrics->compileFailures.load());
+
+    auto& nextLaunch = makeWrapper(/*enablePack=*/true);
+    nextLaunch.runtime->setMmapCacheDirectory(tmp.path(), "test");
+    ASSERT_TRUE(nextLaunch.loadModule(STRING_LITERAL(kModuleName), ResourceManagerLoadModuleType::Sources));
+    EXPECT_TRUE(_metrics->moduleTookMmapPath(kModuleName));
+
+    const std::string script = "return typeof global.require('test/src/JSInstance.vue.generated');";
+    auto result = nextLaunch.runtime->getJavaScriptRuntime()->evaluateScript(
+        makeShared<ByteBuffer>(script)->toBytesView(), STRING_LITERAL("bytecode_pack_check.js"));
+    ASSERT_TRUE(result) << result.description();
+    EXPECT_EQ("object", result.value().toStringBox().slowToString());
 }
 
 // Turning the pack off deletes it, so its files don't outlive the experiment.

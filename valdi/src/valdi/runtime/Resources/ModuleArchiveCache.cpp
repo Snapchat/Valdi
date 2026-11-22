@@ -9,6 +9,7 @@
 #include "valdi/runtime/Resources/ZStdUtils.hpp"
 #include "valdi/runtime/Utils/BytesUtils.hpp"
 #include "valdi_core/cpp/Interfaces/ILogger.hpp"
+#include "valdi_core/cpp/Resources/ValdiArchive.hpp"
 #include "valdi_core/cpp/Threading/DispatchQueue.hpp"
 #include "valdi_core/cpp/Utils/DiskUtils.hpp"
 #include "valdi_core/cpp/Utils/LoggerUtils.hpp"
@@ -277,6 +278,12 @@ struct SharedInstances {
 };
 
 std::atomic<bool> gApplicationInForeground{false};
+// steady_clock ticks of the last memory pressure report; 0 if none.
+std::atomic<int64_t> gLastMemoryPressure{0};
+
+bool hasSuffix(std::string_view str, std::string_view suffix) {
+    return str.size() >= suffix.size() && str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
 
 SharedInstances& sharedInstances() {
     static auto* kInstances = new SharedInstances();
@@ -322,6 +329,7 @@ Ref<ModuleArchiveCache> ModuleArchiveCache::getShared(const Path& root,
 }
 
 void ModuleArchiveCache::resetSharedInstancesForTesting() {
+    gLastMemoryPressure.store(0);
     std::unordered_map<std::string, Ref<ModuleArchiveCache>> instances;
     {
         auto& shared = sharedInstances();
@@ -349,6 +357,29 @@ void ModuleArchiveCache::setApplicationInForeground(bool inForeground) {
     for (const auto& instance : instances) {
         instance->onEnterForeground();
     }
+}
+
+void ModuleArchiveCache::onMemoryPressure() {
+    gLastMemoryPressure.store(std::chrono::steady_clock::now().time_since_epoch().count());
+}
+
+bool ModuleArchiveCache::isUnderMemoryPressure() const {
+    auto last = gLastMemoryPressure.load();
+    if (last == 0) {
+        return false;
+    }
+    auto since = std::chrono::steady_clock::now().time_since_epoch() - std::chrono::steady_clock::duration(last);
+    return since < _options.memoryPressureCooldown;
+}
+
+void ModuleArchiveCache::setCompiler(Ref<IModuleArchiveCompiler> compiler, Function<bool()> isEnabled) {
+    std::lock_guard<Mutex> guard(_mutex);
+    if (_compilerSet) {
+        return;
+    }
+    _compilerSet = true;
+    _compiler = std::move(compiler);
+    _compilerEnabled = std::move(isEnabled);
 }
 
 void ModuleArchiveCache::onEnterForeground() {
@@ -906,6 +937,8 @@ void ModuleArchiveCache::publishBatch() {
     uint64_t dataEnd = 0;
     uint64_t indexEnd = 0;
     Ref<Metrics> metrics;
+    Ref<IModuleArchiveCompiler> compiler;
+    CompileState compileState;
     {
         std::lock_guard<Mutex> guard(_mutex);
         entries.swap(_pendingEntries);
@@ -920,8 +953,13 @@ void ModuleArchiveCache::publishBatch() {
         dataEnd = _dataEnd;
         indexEnd = _indexEnd;
         metrics = _metrics;
+        compiler = _compiler;
+        compileState.isEnabled = _compilerEnabled;
     }
     VALDI_TRACE("Valdi.archiveCache.publish");
+
+    std::vector<PendingEntry> interrupted;
+    auto hadEnabledCheck = compileState.isEnabled != nullptr;
 
     auto failPublish = [&](const PendingEntry& entry) {
         if (metrics != nullptr) {
@@ -933,7 +971,8 @@ void ModuleArchiveCache::publishBatch() {
     std::vector<const PendingEntry*> written;
     bool writeFailed = false;
     auto offset = alignUp(dataEnd);
-    for (const auto& entry : entries) {
+    for (size_t i = 0; i < entries.size(); i++) {
+        const auto& entry = entries[i];
         if (writeFailed) {
             failPublish(entry);
             continue;
@@ -943,20 +982,42 @@ void ModuleArchiveCache::publishBatch() {
             failPublish(entry);
             continue;
         }
+        PublishContent publish{entry.content, entry.directory};
+        if (compiler != nullptr) {
+            auto compiled = compileForPublish(compiler, entry, metrics, compileState);
+            if (compileState.turnedOff) {
+                std::lock_guard<Mutex> guard(_mutex);
+                _compiler = nullptr;
+                _compilerEnabled = nullptr;
+                compiler = nullptr;
+            } else if (hadEnabledCheck && compileState.isEnabled == nullptr) {
+                std::lock_guard<Mutex> guard(_mutex);
+                _compilerEnabled = nullptr;
+                hadEnabledCheck = false;
+            }
+            if (!compiled) {
+                interrupted.assign(std::make_move_iterator(entries.begin() + static_cast<ptrdiff_t>(i)),
+                                   std::make_move_iterator(entries.end()));
+                entries.resize(i);
+                break;
+            }
+            publish = std::move(*compiled);
+        }
         RecordFields fields;
         fields.fileListOffset = offset;
-        fields.fileListLength = static_cast<uint32_t>(entry.directory.size());
+        fields.fileListLength = static_cast<uint32_t>(publish.directory.size());
         fields.fileListChecksum =
-            checksum64(reinterpret_cast<const Byte*>(entry.directory.data()), entry.directory.size());
-        fields.archiveSize = entry.content.size();
-        fields.contentHash = hash128(entry.content.data(), entry.content.size());
-        auto archiveOffset = alignUp(offset + entry.directory.size());
-        if (archiveOffset + entry.content.size() > _options.maxPackSize) {
+            checksum64(reinterpret_cast<const Byte*>(publish.directory.data()), publish.directory.size());
+        fields.archiveSize = publish.content.size();
+        fields.contentHash = hash128(publish.content.data(), publish.content.size());
+        auto archiveOffset = alignUp(offset + publish.directory.size());
+        if (archiveOffset + publish.content.size() > _options.maxPackSize) {
             failPublish(entry);
             continue;
         }
-        if (!writeAll(dataFd, reinterpret_cast<const Byte*>(entry.directory.data()), entry.directory.size(), offset) ||
-            !writeAll(dataFd, entry.content.data(), entry.content.size(), archiveOffset)) {
+        if (!writeAll(
+                dataFd, reinterpret_cast<const Byte*>(publish.directory.data()), publish.directory.size(), offset) ||
+            !writeAll(dataFd, publish.content.data(), publish.content.size(), archiveOffset)) {
             // Usually ENOSPC. Everything written so far is still committed below.
             writeFailed = true;
             failPublish(entry);
@@ -964,8 +1025,11 @@ void ModuleArchiveCache::publishBatch() {
         }
         appendRecord(records, fields, entry.moduleName.toStringView(), entry.identity);
         written.push_back(&entry);
-        dataEnd = archiveOffset + entry.content.size();
+        dataEnd = archiveOffset + publish.content.size();
         offset = alignUp(dataEnd);
+    }
+    if (compiler != nullptr && compileState.engineStarted) {
+        compiler->releaseResources();
     }
 
     if (!written.empty() && (fsync(dataFd) != 0 || !orderDataBeforeLaterWrites(dataFd))) {
@@ -996,6 +1060,106 @@ void ModuleArchiveCache::publishBatch() {
         // whose open truncates the tail.
         _usable = false;
     }
+    if (!interrupted.empty() && _usable) {
+        requeueLocked(std::move(interrupted));
+    }
+}
+
+void ModuleArchiveCache::requeueLocked(std::vector<PendingEntry>&& entries) {
+    for (auto& entry : entries) {
+        _pendingBytes += alignUp(entry.directory.size()) + alignUp(entry.content.size());
+        _pendingEntries.emplace_back(std::move(entry));
+    }
+    if (_publishScheduled) {
+        return;
+    }
+    auto now = std::chrono::steady_clock::now();
+    _firstPendingTime = now;
+    _lastMissTime = now;
+    _publishScheduled = true;
+    auto self = strongSmallRef(this);
+    _queue->asyncAfter([self]() { self->onPublishTimer(); }, _options.memoryPressureCooldown);
+}
+
+std::optional<ModuleArchiveCache::PublishContent> ModuleArchiveCache::compileForPublish(
+    const Ref<IModuleArchiveCompiler>& compiler,
+    const PendingEntry& entry,
+    const Ref<Metrics>& metrics,
+    CompileState& state) {
+    PublishContent original{entry.content, entry.directory};
+    auto archive = ValdiModuleArchive::deserialize(entry.content);
+    if (!archive) {
+        return original;
+    }
+
+    VALDI_TRACE_META("Valdi.archiveCache.compile", entry.moduleName);
+    MetricsStopWatch stopWatch;
+    std::vector<std::pair<StringBox, BytesView>> files;
+    const auto& paths = archive.value().getAllEntryPaths();
+    files.reserve(paths.size());
+    bool compiledAny = false;
+    for (const auto& path : paths) {
+        auto file = archive.value().getEntry(path);
+        if (!file) {
+            return original;
+        }
+        BytesView bytes(entry.content.getSource(), file->data, file->size);
+        auto pathView = path.toStringView();
+        if (hasSuffix(pathView, ".js") && !compiler->isCompiled(bytes)) {
+            if (isUnderMemoryPressure()) {
+                return std::nullopt;
+            }
+            if (state.isEnabled != nullptr) {
+                if (!state.isEnabled()) {
+                    state.turnedOff = true;
+                    return original;
+                }
+                state.isEnabled = nullptr;
+            }
+            if (!state.engineStarted) {
+                state.engineStarted = true;
+                if (!compiler->isSupported()) {
+                    state.turnedOff = true;
+                    return original;
+                }
+            }
+            std::string filename(entry.moduleName.toStringView());
+            filename.push_back('/');
+            filename.append(pathView.substr(0, pathView.size() - 3));
+            auto compiled = compiler->compile(bytes.asStringView(), filename);
+            if (!compiled) {
+                if (metrics != nullptr) {
+                    metrics->emitModuleArchiveCompileFail(entry.moduleName);
+                }
+                return original;
+            }
+            bytes = compiled.moveValue();
+            compiledAny = true;
+        }
+        files.emplace_back(path, std::move(bytes));
+    }
+    if (!compiledAny) {
+        return original;
+    }
+
+    ValdiArchiveBuilder builder;
+    for (const auto& [path, bytes] : files) {
+        builder.addEntry(ValdiArchiveEntry(path, bytes.data(), bytes.size()));
+    }
+    files.clear();
+    auto content = builder.build()->toBytesView();
+    auto compiledArchive = ValdiModuleArchive::deserialize(content);
+    if (!compiledArchive) {
+        return original;
+    }
+    auto directory = encodeDirectory(compiledArchive.value(), content);
+    if (!directory || directory->size() > 0xFFFFFFFFULL) {
+        return original;
+    }
+    if (metrics != nullptr) {
+        metrics->emitModuleArchiveCompileLatency(entry.moduleName, stopWatch.elapsed());
+    }
+    return PublishContent{std::move(content), std::move(*directory)};
 }
 
 void ModuleArchiveCache::scheduleMaintenanceLocked() {

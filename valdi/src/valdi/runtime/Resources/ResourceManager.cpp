@@ -382,6 +382,10 @@ Ref<Bundle> ResourceManager::getBundle(const StringBox& bundleName) {
     auto runtimeTweaks = _runtimeTweaks;
     auto archiveCache = _archiveCache;
     auto metrics = _metrics;
+    Ref<IModuleArchiveCompiler> archiveCompiler;
+    if (archiveCache != nullptr && runtimeTweaks != nullptr) {
+        archiveCompiler = std::move(_archiveCompiler);
+    }
 
     // We now have a lock on the Bundle itself. Release our lock so that
     // other threads can query the ResourceManager on other bundles.
@@ -395,6 +399,10 @@ Ref<Bundle> ResourceManager::getBundle(const StringBox& bundleName) {
         } else if (!runtimeTweaks->enableMmapModuleArchiveCacheReuse()) {
             archiveCache->scheduleRemoval();
             archiveCache = nullptr;
+        } else if (archiveCompiler != nullptr) {
+            // Read the switch at the first compile, off the load path and after launch config has arrived.
+            archiveCache->setCompiler(
+                archiveCompiler, [runtimeTweaks]() { return runtimeTweaks->enableModuleArchiveBytecodeCompile(); });
         }
     }
     // Builds that ship source maps (debug) keep the lookup, so on-device symbolication still works.
@@ -775,6 +783,11 @@ void ResourceManager::rememberPackEntry(const StringBox& bundleName, std::string
     } else {
         _packEntryKeyByBundle[bundleName] = std::move(entryKey);
     }
+}
+
+void ResourceManager::setArchiveCompiler(const Ref<IModuleArchiveCompiler>& compiler) {
+    std::lock_guard<Mutex> guard(_mutex);
+    _archiveCompiler = compiler;
 }
 
 void ResourceManager::setMmapCacheDirectory(const Path& path, const std::string& buildVersion) {

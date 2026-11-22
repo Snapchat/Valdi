@@ -362,6 +362,11 @@ void ValdiAndroid::NativeBridge::disableModuleArchiveCacheForBuild( // NOLINT
                                                ValdiAndroid::toStdString(env, buildVersion));
 }
 
+void ValdiAndroid::NativeBridge::notifyModuleArchiveCacheMemoryPressure( // NOLINT
+    fbjni::alias_ref<fbjni::JClass> /* clazz */) {                       // NOLINT
+    Valdi::ModuleArchiveCache::onMemoryPressure();
+}
+
 void ValdiAndroid::NativeBridge::setRuntimeManagerJsThreadQoS( // NOLINT
     fbjni::alias_ref<fbjni::JClass> /* clazz */,               // NOLINT
     jlong runtimeManagerHandle,
@@ -2673,6 +2678,8 @@ void ValdiAndroid::NativeBridge::registerNatives() {
                          ValdiAndroid::NativeBridge::setRuntimeManagerModuleArchiveCache),
         makeNativeMethod("disableModuleArchiveCacheForBuild",
                          ValdiAndroid::NativeBridge::disableModuleArchiveCacheForBuild),
+        makeNativeMethod("notifyModuleArchiveCacheMemoryPressure",
+                         ValdiAndroid::NativeBridge::notifyModuleArchiveCacheMemoryPressure),
         makeNativeMethod("setRetainsLayoutSpecsOnInvalidateLayout",
                          ValdiAndroid::NativeBridge::setRetainsLayoutSpecsOnInvalidateLayout),
         makeNativeMethod("setViewModel", ValdiAndroid::NativeBridge::setViewModel),

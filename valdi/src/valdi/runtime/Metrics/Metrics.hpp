@@ -100,6 +100,10 @@ public:
     virtual void emitModuleArchivePackSize(int64_t kilobytes) {};
     // Cache misses of this launch, reported once when module loads first go quiet.
     virtual void emitModuleArchiveLaunchMisses(int64_t misses) {};
+    // Time to compile the JS files of a missed module archive to bytecode before it is added to the pack.
+    virtual void emitModuleArchiveCompileLatency(const StringBox& module, const MetricsDuration& duration) {};
+    // A JS file of a missed module archive failed to compile; the archive is added to the pack as source.
+    virtual void emitModuleArchiveCompileFail(const StringBox& module) {};
     // View pool usage of one ViewNodeTree since the last emission, emitted when the tree is torn down
     // and when the app pauses. hits: views reused from the pool; misses: views created fresh; drops:
     // views from the factory released with pooling disabled via canBeReused (e.g. through a platform

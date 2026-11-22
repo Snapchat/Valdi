@@ -38,6 +38,7 @@ public class NativeBridge {
                                                                   String buildVersion,
                                                                   String bundledModulesIdentity);
     public static native void disableModuleArchiveCacheForBuild(String directory, String buildVersion);
+    public static native void notifyModuleArchiveCacheMemoryPressure();
 
     public static native long createRuntime(long runtimeManagerHandle, Object customResourceResolver);
     public static native void onRuntimeReady(long runtimeManagerHandle, long runtimeHandle);

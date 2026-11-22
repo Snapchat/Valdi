@@ -68,6 +68,9 @@ public:
     // Serve module archives from a per-build pack of decompressed archives, mapped once per process, instead
     // of decompressing each archive to the heap on every load. Off deletes the pack.
     bool enableMmapModuleArchiveCacheReuse() const;
+    // Compiles the JS files of module archives to bytecode before they are added to the pack, so later
+    // processes load bytecode instead of parsing source. Needs the pack and an engine with precompilation.
+    bool enableModuleArchiveBytecodeCompile() const;
     // Skips the per-module `<module>.map.json` lookup when the build ships no source maps, where every
     // lookup misses (on iOS a miss scans every loaded bundle). Off (default) keeps the lookup.
     bool skipSourceMapLookup() const;

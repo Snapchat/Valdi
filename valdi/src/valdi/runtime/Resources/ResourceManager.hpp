@@ -124,6 +124,8 @@ public:
 
     // `buildVersion` identifies the app build; the archive cache starts fresh when it changes.
     void setMmapCacheDirectory(const Path& path, const std::string& buildVersion);
+    // Handed to the pack on the first load while the pack is on; the pack reads the compile tweak later.
+    void setArchiveCompiler(const Ref<IModuleArchiveCompiler>& compiler);
 
     // Synchronously appends the archives of earlier cache misses to the persistent archive cache.
     void flushPendingArchiveCachePublishes();
@@ -150,6 +152,7 @@ private:
     std::optional<int32_t> _apiVersion;
     std::atomic_bool _lazyModulePreloadingEnabled = true;
     Ref<ModuleArchiveCache> _archiveCache;
+    Ref<IModuleArchiveCompiler> _archiveCompiler;
 
     ILogger& _logger;
     FlatMap<StringBox, Ref<Bundle>> _bundleByName;

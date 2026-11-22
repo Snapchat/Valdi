@@ -429,6 +429,7 @@ void RuntimeManager::applicationWillPause() {
 
 void RuntimeManager::applicationIsLowInMemory() {
     VALDI_INFO(*_logger, "Application is low in memory");
+    ModuleArchiveCache::onMemoryPressure();
     clearViewPools();
     for (const auto& runtime : getAllRuntimes()) {
         runtime->removeUnusedResources();

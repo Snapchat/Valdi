@@ -310,6 +310,7 @@ public:
     static void disableModuleArchiveCacheForBuild(fbjni::alias_ref<fbjni::JClass> clazz,
                                                   jstring directory,
                                                   jstring buildVersion);
+    static void notifyModuleArchiveCacheMemoryPressure(fbjni::alias_ref<fbjni::JClass> clazz);
     static void setRuntimeManagerJsThreadQoS(fbjni::alias_ref<fbjni::JClass> clazz,
                                              jlong runtimeManagerHandle,
                                              jint jsThreadQoS);

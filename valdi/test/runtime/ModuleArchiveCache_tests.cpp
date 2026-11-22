@@ -11,6 +11,7 @@
 #include "valdi/runtime/Utils/BytesUtils.hpp"
 #include "valdi_core/cpp/Resources/ValdiArchive.hpp"
 #include "valdi_core/cpp/Threading/DispatchQueue.hpp"
+#include "valdi_core/cpp/Utils/ByteBuffer.hpp"
 #include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
 #include "valdi_core/cpp/Utils/DiskUtils.hpp"
 #include "valdi_core/cpp/Utils/Exception.hpp"
@@ -73,6 +74,8 @@ public:
     std::atomic<int64_t> packSizeKb{-1};
     std::atomic<int> launchMissesReports{0};
     std::atomic<int64_t> launchMisses{-1};
+    std::atomic<int> compileLatency{0};
+    std::atomic<int> compileFail{0};
     std::mutex mutex;
     std::vector<std::string> resets;
 
@@ -95,6 +98,12 @@ public:
     void emitModuleArchiveLaunchMisses(int64_t misses) override {
         ++launchMissesReports;
         launchMisses = misses;
+    }
+    void emitModuleArchiveCompileLatency(const StringBox&, const MetricsDuration&) override {
+        ++compileLatency;
+    }
+    void emitModuleArchiveCompileFail(const StringBox&) override {
+        ++compileFail;
     }
 
     std::vector<std::string> getResets() {
@@ -138,6 +147,53 @@ std::vector<Byte> makeArchive(std::string_view fileContent) {
     auto bytes = builder.build();
     return std::vector<Byte>(bytes->begin(), bytes->end());
 }
+
+std::vector<Byte> makeArchive(const std::vector<std::pair<std::string_view, std::string_view>>& files) {
+    ValdiArchiveBuilder builder;
+    for (const auto& [path, content] : files) {
+        builder.addEntry(
+            ValdiArchiveEntry(StringCache::getGlobal().makeString(path), StringCache::getGlobal().makeString(content)));
+    }
+    auto bytes = builder.build();
+    return std::vector<Byte>(bytes->begin(), bytes->end());
+}
+
+// Marks compiled files with a prefix; fails on sources that contain "syntax error".
+class FakeCompiler : public IModuleArchiveCompiler {
+public:
+    bool supported = true;
+    std::atomic<int> supportChecks{0};
+    std::atomic<int> compiles{0};
+    std::atomic<int> releases{0};
+    std::mutex mutex;
+    std::vector<std::string> filenames;
+
+    bool isSupported() override {
+        ++supportChecks;
+        return supported;
+    }
+    bool isCompiled(const BytesView& jsFile) override {
+        return jsFile.asStringView().substr(0, 3) == "BC:";
+    }
+    Result<BytesView> compile(std::string_view source, std::string_view filename) override {
+        ++compiles;
+        {
+            std::lock_guard<std::mutex> guard(mutex);
+            filenames.emplace_back(filename);
+        }
+        if (source.find("syntax error") != std::string_view::npos) {
+            return Error("SyntaxError");
+        }
+        auto bytes = makeShared<ByteBuffer>();
+        std::string compiled = "BC:" + std::string(source);
+        bytes->append(reinterpret_cast<const Byte*>(compiled.data()),
+                      reinterpret_cast<const Byte*>(compiled.data()) + compiled.size());
+        return bytes->toBytesView();
+    }
+    void releaseResources() override {
+        ++releases;
+    }
+};
 
 std::vector<Byte> compress(const std::vector<Byte>& src, bool encodeContentSize = true) {
     auto* cctx = ZSTD_createCCtx();
@@ -264,6 +320,8 @@ protected:
         options.maxPublishDelay = std::chrono::hours(1);
         options.maintenanceDelay = std::chrono::hours(1);
         options.removalDelay = std::chrono::milliseconds(0);
+        // Short, so that the memory pressure of one test does not reach the next.
+        options.memoryPressureCooldown = std::chrono::milliseconds(50);
         options.queue = _queue;
         return options;
     }
@@ -951,6 +1009,201 @@ TEST_F(ModuleArchiveCacheFixture, CrashLoopResetIsReportedOncePerRecovery) {
     ModuleArchiveCache::disableForBuild(_root.path(), "build1");
     ASSERT_TRUE(load(*openCache(), "module", compressed, hit));
     EXPECT_EQ(2, countCrashLoops());
+}
+
+std::string_view fileContent(const ValdiModuleArchive& archive, std::string_view path) {
+    auto entry = archive.getEntry(StringCache::getGlobal().makeString(path));
+    EXPECT_TRUE(entry.has_value()) << path;
+    if (!entry) {
+        return {};
+    }
+    return std::string_view(reinterpret_cast<const char*>(entry->data), entry->size);
+}
+
+TEST_F(ModuleArchiveCacheFixture, CompilesJsFilesBeforePublishing) {
+    auto compiler = makeShared<FakeCompiler>();
+    auto compressed = compressWithTrailer(makeArchive({{"src/index.js", "source"}, {"res.json", "{}"}}));
+
+    auto cache = openCache();
+    cache->setCompiler(compiler);
+    bool hit = true;
+    auto result = load(*cache, "module", compressed, hit);
+    ASSERT_TRUE(result) << result.description();
+    EXPECT_EQ("source", fileContent(result.value(), "src/index.js")) << "the miss itself is served as source";
+    cache->flushPendingPublishes();
+
+    EXPECT_EQ(1, compiler->compiles.load());
+    EXPECT_EQ(std::vector<std::string>{"module/src/index"}, compiler->filenames);
+    EXPECT_EQ(1, compiler->releases.load());
+    EXPECT_EQ(1, _metrics->compileLatency.load());
+    EXPECT_EQ(0, _metrics->publishFail.load()) << "the content hash is checked against the source";
+
+    auto next = openCache();
+    ASSERT_TRUE(load(*next, "module", compressed, hit));
+    EXPECT_TRUE(hit);
+    auto served = load(*next, "module", compressed, hit);
+    ASSERT_TRUE(served);
+    EXPECT_EQ("BC:source", fileContent(served.value(), "src/index.js"));
+    EXPECT_EQ("{}", fileContent(served.value(), "res.json"));
+}
+
+TEST_F(ModuleArchiveCacheFixture, CompiledArchiveIsPublishedUnchanged) {
+    auto compiler = makeShared<FakeCompiler>();
+    auto archive = makeArchive({{"index.js", "BC:already"}, {"res.json", "{}"}});
+    auto compressed = compress(archive);
+
+    auto cache = openCache();
+    cache->setCompiler(compiler);
+    bool hit = true;
+    ASSERT_TRUE(load(*cache, "module", compressed, hit));
+    cache->flushPendingPublishes();
+    EXPECT_EQ(0, compiler->compiles.load());
+    EXPECT_EQ(0, _metrics->compileLatency.load());
+
+    auto served = load(*openCache(), "module", compressed, hit);
+    ASSERT_TRUE(served);
+    EXPECT_TRUE(hit);
+    const auto& content = served.value().getDecompressedContent();
+    EXPECT_EQ(archive, std::vector<Byte>(content.begin(), content.end()));
+}
+
+TEST_F(ModuleArchiveCacheFixture, CompiledArchiveDoesNotStartTheEngineOrWaitOnMemoryPressure) {
+    auto compiler = makeShared<FakeCompiler>();
+    auto compressed = compress(makeArchive({{"index.js", "BC:already"}}));
+
+    auto cache = openCache();
+    cache->setCompiler(compiler);
+    bool hit = true;
+    ASSERT_TRUE(load(*cache, "module", compressed, hit));
+    ModuleArchiveCache::onMemoryPressure();
+    cache->flushPendingPublishes();
+    EXPECT_EQ(0, compiler->supportChecks.load());
+    EXPECT_EQ(0, compiler->releases.load());
+
+    ASSERT_TRUE(load(*openCache(), "module", compressed, hit));
+    EXPECT_TRUE(hit) << "an archive that needs no compile is published right away";
+}
+
+TEST_F(ModuleArchiveCacheFixture, SwitchIsReadOnceAtTheFirstCompile) {
+    auto compiler = makeShared<FakeCompiler>();
+    std::atomic<int> reads{0};
+    auto cache = openCache();
+    cache->setCompiler(compiler, [&]() {
+        ++reads;
+        return true;
+    });
+    bool hit = true;
+
+    ASSERT_TRUE(load(*cache, "compiled", compress(makeArchive({{"index.js", "BC:already"}})), hit));
+    cache->flushPendingPublishes();
+    EXPECT_EQ(0, reads.load()) << "loads and archives that need no compile don't read the switch";
+
+    ASSERT_TRUE(load(*cache, "first", compress(makeArchive("one")), hit));
+    ASSERT_TRUE(load(*cache, "second", compress(makeArchive("two")), hit));
+    cache->flushPendingPublishes();
+    ASSERT_TRUE(load(*cache, "third", compress(makeArchive("three")), hit));
+    cache->flushPendingPublishes();
+    EXPECT_EQ(1, reads.load());
+    EXPECT_EQ(3, compiler->compiles.load());
+}
+
+TEST_F(ModuleArchiveCacheFixture, SwitchOffAtTheFirstCompileTurnsCompilationOff) {
+    auto compiler = makeShared<FakeCompiler>();
+    std::atomic<int> reads{0};
+    auto compressed = compress(makeArchive("source"));
+    auto cache = openCache();
+    cache->setCompiler(compiler, [&]() {
+        ++reads;
+        return false;
+    });
+    bool hit = true;
+
+    ASSERT_TRUE(load(*cache, "module", compressed, hit));
+    cache->flushPendingPublishes();
+    ASSERT_TRUE(load(*cache, "other", compress(makeArchive("other")), hit));
+    cache->flushPendingPublishes();
+    EXPECT_EQ(1, reads.load());
+    EXPECT_EQ(0, compiler->supportChecks.load()) << "the engine never starts";
+    EXPECT_EQ(0, compiler->compiles.load());
+
+    auto served = load(*openCache(), "module", compressed, hit);
+    ASSERT_TRUE(served);
+    EXPECT_TRUE(hit);
+    EXPECT_EQ("source", entryContent(served.value()));
+}
+
+TEST_F(ModuleArchiveCacheFixture, ArchiveThatFailsToCompileIsPublishedAsSource) {
+    auto compiler = makeShared<FakeCompiler>();
+    auto compressed = compress(makeArchive({{"a.js", "fine"}, {"b.js", "syntax error"}}));
+
+    auto cache = openCache();
+    cache->setCompiler(compiler);
+    bool hit = true;
+    ASSERT_TRUE(load(*cache, "module", compressed, hit));
+    cache->flushPendingPublishes();
+    EXPECT_EQ(1, _metrics->compileFail.load());
+
+    auto served = load(*openCache(), "module", compressed, hit);
+    ASSERT_TRUE(served);
+    EXPECT_TRUE(hit) << "the source is still stored, so the next process does not compile again";
+    EXPECT_EQ("fine", fileContent(served.value(), "a.js"));
+    EXPECT_EQ("syntax error", fileContent(served.value(), "b.js"));
+}
+
+TEST_F(ModuleArchiveCacheFixture, UnsupportedEngineTurnsCompilationOff) {
+    auto compiler = makeShared<FakeCompiler>();
+    compiler->supported = false;
+    auto compressed = compress(makeArchive("source"));
+
+    auto cache = openCache();
+    cache->setCompiler(compiler);
+    bool hit = true;
+    ASSERT_TRUE(load(*cache, "module", compressed, hit));
+    cache->flushPendingPublishes();
+    EXPECT_EQ(0, compiler->compiles.load());
+
+    auto served = load(*openCache(), "module", compressed, hit);
+    ASSERT_TRUE(served);
+    EXPECT_TRUE(hit);
+    EXPECT_EQ("source", entryContent(served.value()));
+}
+
+TEST_F(ModuleArchiveCacheFixture, OnlyTheFirstCompilerIsUsed) {
+    auto first = makeShared<FakeCompiler>();
+    auto second = makeShared<FakeCompiler>();
+    auto compressed = compress(makeArchive("source"));
+
+    auto cache = openCache();
+    cache->setCompiler(nullptr);
+    cache->setCompiler(first);
+    cache->setCompiler(second);
+    bool hit = true;
+    ASSERT_TRUE(load(*cache, "module", compressed, hit));
+    cache->flushPendingPublishes();
+    EXPECT_EQ(0, first->compiles.load()) << "a Runtime that turned compilation off decides for the process";
+    EXPECT_EQ(0, second->compiles.load());
+}
+
+TEST_F(ModuleArchiveCacheFixture, MemoryPressureDefersCompilationUntilItPasses) {
+    auto compiler = makeShared<FakeCompiler>();
+    auto compressed = compress(makeArchive("source"));
+
+    auto cache = openCache();
+    cache->setCompiler(compiler);
+    bool hit = true;
+    ASSERT_TRUE(load(*cache, "module", compressed, hit));
+    ModuleArchiveCache::onMemoryPressure();
+    cache->flushPendingPublishes();
+    EXPECT_EQ(0, compiler->compiles.load());
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    cache->flushPendingPublishes();
+    EXPECT_EQ(1, compiler->compiles.load()) << "the deferred miss stays queued in this process";
+
+    auto served = load(*openCache(), "module", compressed, hit);
+    ASSERT_TRUE(served);
+    EXPECT_TRUE(hit);
+    EXPECT_EQ("BC:source", entryContent(served.value()));
 }
 
 } // namespace ValdiTest

@@ -6,9 +6,11 @@
 #pragma once
 
 #include "valdi/runtime/Interfaces/IResourceLoader.hpp"
+#include "valdi/runtime/Resources/IModuleArchiveCompiler.hpp"
 #include "valdi/runtime/Resources/ValdiModuleArchive.hpp"
 #include "valdi_core/cpp/Threading/DispatchQueue.hpp"
 #include "valdi_core/cpp/Utils/Bytes.hpp"
+#include "valdi_core/cpp/Utils/Function.hpp"
 #include "valdi_core/cpp/Utils/Mutex.hpp"
 #include "valdi_core/cpp/Utils/PathUtils.hpp"
 #include "valdi_core/cpp/Utils/Result.hpp"
@@ -55,6 +57,8 @@ public:
         // How long scheduleRemoval() waits before deleting. Early loads can read the switch before the host
         // has its value; a load that opens the pack within this time cancels the removal.
         std::chrono::steady_clock::duration removalDelay = std::chrono::seconds(30);
+        // Compilation pauses until no memory pressure was reported for this long.
+        std::chrono::steady_clock::duration memoryPressureCooldown = std::chrono::seconds(60);
         size_t maxPackSize = 48 * 1024 * 1024;
         // Hashes every entry served from the pack and treats a mismatch as corruption. Too slow for
         // release builds; the hash is still recorded for diagnostics.
@@ -76,7 +80,7 @@ public:
 
     /**
      * Forgets the process-wide instances, so that the next getShared() opens the pack again as a new
-     * process would. Tests only.
+     * process would, and clears reported memory pressure. Tests only.
      */
     static void resetSharedInstancesForTesting();
 
@@ -86,6 +90,12 @@ public:
      * the app starts in the background state.
      */
     static void setApplicationInForeground(bool inForeground);
+
+    /**
+     * Reports memory pressure. Process-wide. Compilation stops at the next file and resumes once
+     * Options::memoryPressureCooldown passes without another report.
+     */
+    static void onMemoryPressure();
 
     /**
      * Deletes the pack of `buildVersion` and keeps the cache off for that build. Called by the host's
@@ -131,6 +141,17 @@ public:
      * variants of the module are not affected.
      */
     void reportParseFailure(const StringBox& moduleName, const std::string& entryKey, const Ref<Metrics>& metrics);
+
+    /**
+     * With a compiler, queued misses are compiled before they are appended, so the pack stores the bytecode of
+     * their JS files instead of the source. An archive that fails to compile is stored as it is. Only the first
+     * call has an effect, so every Runtime of the process can call it.
+     *
+     * `isEnabled`, if set, is called once per process on the background queue, right before the first file that
+     * needs a compile, instead of on every load; a false result turns compilation off for the process. By then
+     * module loads have gone quiet, so host config that arrives late in the launch is in place.
+     */
+    void setCompiler(Ref<IModuleArchiveCompiler> compiler, Function<bool()> isEnabled = nullptr);
 
     /**
      * Synchronously appends every queued miss to the pack and commits it.
@@ -186,6 +207,20 @@ private:
         std::string directory;
     };
 
+    struct PublishContent {
+        BytesView content;
+        std::string directory;
+    };
+
+    struct CompileState {
+        // Cleared once it returned true.
+        Function<bool()> isEnabled;
+        // Set once the engine was started, which happens at the first file that needs a compile.
+        bool engineStarted = false;
+        // isEnabled returned false or the engine can't precompile.
+        bool turnedOff = false;
+    };
+
     struct PendingBan {
         std::string key;
         StringBox moduleName;
@@ -230,6 +265,9 @@ private:
     size_t _launchMisses = 0;
     std::chrono::steady_clock::time_point _lastLoadTime;
     Ref<Metrics> _metrics;
+    Ref<IModuleArchiveCompiler> _compiler;
+    Function<bool()> _compilerEnabled;
+    bool _compilerSet = false;
 
     static std::string makeKey(const StringBox& moduleName, const ModuleContentIdentity& identity);
     static StringBox resetReasonName(ResetReason reason);
@@ -253,6 +291,13 @@ private:
     void onLaunchQuietTimer();
     void removeAllGenerations();
     void publishBatch();
+    bool isUnderMemoryPressure() const;
+    void requeueLocked(std::vector<PendingEntry>&& entries);
+    // Returns nullopt if memory pressure interrupted the compile; otherwise the content to append.
+    std::optional<PublishContent> compileForPublish(const Ref<IModuleArchiveCompiler>& compiler,
+                                                    const PendingEntry& entry,
+                                                    const Ref<Metrics>& metrics,
+                                                    CompileState& state);
     void scheduleMaintenanceLocked();
 };
 

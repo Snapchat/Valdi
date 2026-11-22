@@ -170,6 +170,10 @@ bool ValdiRuntimeTweaks::enableMmapModuleArchiveCacheReuse() const {
     return getConfigKey("VALDI_MMAP_MODULE_ARCHIVES_CACHE_REUSE");
 }
 
+bool ValdiRuntimeTweaks::enableModuleArchiveBytecodeCompile() const {
+    return getConfigKey("VALDI_ENABLE_MODULE_ARCHIVE_BYTECODE_COMPILE");
+}
+
 bool ValdiRuntimeTweaks::skipSourceMapLookup() const {
     return getConfigKey("VALDI_SKIP_SOURCE_MAP_LOOKUP");
 }
