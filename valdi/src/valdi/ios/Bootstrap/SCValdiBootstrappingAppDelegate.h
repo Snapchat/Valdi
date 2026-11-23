@@ -28,3 +28,14 @@
 - (UIView<SCValdiRootViewProtocol>*)createRootViewWithDependencies:(SCValdiBootstrappingDependencies*)dependencies;
 
 @end
+
+/**
+ * Scene delegate for apps whose Info.plist declares a UIApplicationSceneManifest. It builds the same
+ * window SCValdiBootstrappingAppDelegate builds without a scene, attached to the connecting UIWindowScene.
+ * Apps built with the iOS 27 SDK must adopt the scene life cycle or they fail to launch.
+ */
+@interface SCValdiBootstrappingSceneDelegate : UIResponder <UIWindowSceneDelegate>
+
+@property (strong, nonatomic) UIWindow* window;
+
+@end
