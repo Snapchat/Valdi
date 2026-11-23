@@ -1043,6 +1043,33 @@ TEST(ValueMarshallerRegistry, performsTypeValidationWhileUnmarshalling) {
               exceptionTracker.extractError().toString());
 }
 
+TEST(ValueMarshallerRegistry, canUnmarshallTypedObjectFromDifferentSchema) {
+    auto schemaRegistry = makeShared<ValueSchemaRegistry>();
+    auto valueMarshallerRegistry = makeShared<TestValueMarshallerRegistry>(schemaRegistry);
+
+    auto schema = ValueSchema::parse("c 'MyObject'{'aString': s, 'aDouble': d, 'anOptionalBool': b?}");
+    ASSERT_TRUE(schema) << schema.description();
+    auto identifier = schemaRegistry->registerSchema(schema.value());
+
+    // Same class, but registered elsewhere with fewer and reordered properties.
+    auto otherSchema = ValueSchema::parse("c 'MyObject'{'aDouble': d, 'aString': s}");
+    ASSERT_TRUE(otherSchema) << otherSchema.description();
+    auto object = Value(ValueTypedObject::make(otherSchema.value().getClassRef(),
+                                               {Value(42.0), Value(STRING_LITERAL("Hello world"))}));
+
+    SimpleExceptionTracker exceptionTracker;
+    auto result = valueMarshallerRegistry->unmarshall(identifier, object, exceptionTracker);
+
+    ASSERT_TRUE(exceptionTracker) << exceptionTracker.extractError().toString();
+
+    auto testObject = result.getTypedRef<TestObject>();
+    ASSERT_TRUE(testObject != nullptr);
+    ASSERT_EQ(static_cast<size_t>(3), testObject->getPropertiesSize());
+    ASSERT_EQ(Value(STRING_LITERAL("Hello world")), testObject->getProperty(0));
+    ASSERT_EQ(Value(42.0), testObject->getProperty(1));
+    ASSERT_TRUE(testObject->getProperty(2).isNullOrUndefined());
+}
+
 TEST(ValueMarshallerRegistry, canMarshallObjectReferences) {
     auto schemaRegistry = makeShared<ValueSchemaRegistry>();
     auto valueMarshallerRegistry = makeShared<TestValueMarshallerRegistry>(schemaRegistry);
