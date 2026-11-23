@@ -216,6 +216,24 @@ class ValdiRuntimeManager(context: Context,
 
     private var mainRuntimeListeners: MutableList<(runtime: IValdiRuntime)->Unit> = mutableListOf()
 
+    // Separate from this class so its public supertypes stay unchanged. Must stay above init: init registers it,
+    // and a property declared later is still null there, which Android stores and then crashes on.
+    private val trimMemoryCallbacks = object : ComponentCallbacks2 {
+        @Suppress("DEPRECATION")
+        override fun onTrimMemory(level: Int) {
+            // Pauses the background bytecode compile of the module archive pack. API 34+ no longer delivers the
+            // running levels; onLowMemory still reaches the pack there.
+            if (level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
+                level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) {
+                NativeBridge.notifyModuleArchiveCacheMemoryPressure()
+            }
+        }
+
+        override fun onConfigurationChanged(newConfig: Configuration) {}
+
+        override fun onLowMemory() {}
+    }
+
     init {
         this.logger = customLogger ?: DefaultLogger()
 
@@ -893,23 +911,6 @@ class ValdiRuntimeManager(context: Context,
         bitmapPool.clear()
         NativeBridge.applicationIsInLowMemory(handle.nativeHandle)
         snapDrawingRuntimeField?.clearCache()
-    }
-
-    // Separate from this class so its public supertypes stay unchanged.
-    private val trimMemoryCallbacks = object : ComponentCallbacks2 {
-        @Suppress("DEPRECATION")
-        override fun onTrimMemory(level: Int) {
-            // Pauses the background bytecode compile of the module archive pack. API 34+ no longer delivers the
-            // running levels; onLowMemory still reaches the pack there.
-            if (level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
-                level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) {
-                NativeBridge.notifyModuleArchiveCacheMemoryPressure()
-            }
-        }
-
-        override fun onConfigurationChanged(newConfig: Configuration) {}
-
-        override fun onLowMemory() {}
     }
 
     private fun makeRegisterFontOperation(descriptor: FontDescriptor, isFallback: Boolean, dataProvider: FontDataProvider): Runnable {

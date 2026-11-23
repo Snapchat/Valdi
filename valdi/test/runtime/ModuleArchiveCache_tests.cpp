@@ -1132,6 +1132,29 @@ TEST_F(ModuleArchiveCacheFixture, SwitchOffAtTheFirstCompileTurnsCompilationOff)
     EXPECT_EQ("source", entryContent(served.value()));
 }
 
+TEST_F(ModuleArchiveCacheFixture, SwitchOffPublishesUnderMemoryPressure) {
+    auto compiler = makeShared<FakeCompiler>();
+    std::atomic<int> reads{0};
+    auto compressed = compress(makeArchive("source"));
+    auto cache = openCache();
+    cache->setCompiler(compiler, [&]() {
+        ++reads;
+        return false;
+    });
+    bool hit = true;
+
+    ASSERT_TRUE(load(*cache, "module", compressed, hit));
+    ModuleArchiveCache::onMemoryPressure();
+    cache->flushPendingPublishes();
+    EXPECT_EQ(1, reads.load());
+    EXPECT_EQ(0, compiler->compiles.load());
+
+    auto served = load(*openCache(), "module", compressed, hit);
+    ASSERT_TRUE(served);
+    EXPECT_TRUE(hit) << "with compilation off, memory pressure does not defer the publish";
+    EXPECT_EQ("source", entryContent(served.value()));
+}
+
 TEST_F(ModuleArchiveCacheFixture, ArchiveThatFailsToCompileIsPublishedAsSource) {
     auto compiler = makeShared<FakeCompiler>();
     auto compressed = compress(makeArchive({{"a.js", "fine"}, {"b.js", "syntax error"}}));
