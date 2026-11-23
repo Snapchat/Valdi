@@ -4352,7 +4352,6 @@ void JavaScriptRuntime::dispatchOnJsThread(Ref<Context> ownerContext,
                                            JavaScriptTaskScheduleType scheduleType,
                                            uint32_t delayMs,
                                            JavaScriptThreadTask&& function) {
-    SC_ASSERT(ownerContext != nullptr);
     dispatchOnJsThreadImpl(std::move(ownerContext),
                            scheduleType,
                            delayMs,
@@ -4545,6 +4544,11 @@ bool JavaScriptRuntime::isReadyForANRDetection() const {
 const StringBox& JavaScriptRuntime::getCallbackAttribution() {
     SC_ASSERT(isInJsThread());
     return _callbackAttribution;
+}
+
+StringBox JavaScriptRuntime::getInnermostANRAttributionLabel() const {
+    std::lock_guard<Mutex> lock(_nativeCallActivityMutex);
+    return _anrAttribution.getInnermostLabel();
 }
 
 std::string JavaScriptRuntime::getANRAttributionInfo() const {

@@ -391,6 +391,8 @@ public:
 
     /** Explicit owner captured by callbacks exported on the JS thread. */
     const StringBox& getCallbackAttribution();
+    /** The innermost ANR breadcrumb frame's label, or empty when there is none. */
+    StringBox getInnermostANRAttributionLabel() const;
     bool isReadyForANRDetection() const final;
 
     void performGc();

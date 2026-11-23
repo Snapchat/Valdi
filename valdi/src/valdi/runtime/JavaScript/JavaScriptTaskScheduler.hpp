@@ -90,6 +90,10 @@ enum JavaScriptTaskScheduleType {
 
 class JavaScriptTaskScheduler : public SharedPtrRefCountable {
 public:
+    /**
+     * Schedules JS-thread work for `ownerContext`, with no ANR breadcrumb of its own. A null `ownerContext` runs the
+     * work under the runtime's global context.
+     */
     virtual void dispatchOnJsThread(Ref<Context> ownerContext,
                                     JavaScriptTaskScheduleType scheduleType,
                                     uint32_t delayMs,
@@ -99,7 +103,10 @@ public:
                                     JavaScriptTaskScheduleType scheduleType,
                                     uint32_t delayMs,
                                     JavaScriptThreadTask&& function) = 0;
-    /** Schedules a callback with its owning context and an optional ANR boundary label. */
+    /**
+     * Schedules JS-thread work for `ownerContext` under an optional ANR breadcrumb label. A null `ownerContext` runs
+     * the work under the runtime's global context.
+     */
     virtual void dispatchOnJsThread(Ref<Context> ownerContext,
                                     const StringBox& /*attribution*/,
                                     JavaScriptTaskScheduleType scheduleType,

@@ -9467,6 +9467,38 @@ TEST_P(RuntimeFixture, doesNotNameNativePromiseCompletionWithoutANRDiagnostics) 
     EXPECT_EQ(std::string::npos, attribution.find("getStringAsync")) << attribution;
 }
 
+TEST_P(RuntimeFixture, namesJsAfterANativePromiseAfterTheCallThatReturnedIt) {
+    wrapper.teardown();
+    auto tweaks = makeShared<TestTweakValueProvider>().toShared();
+    tweaks->config.setMapValue("VALDI_ENABLE_MODULE_LOAD_DIAGNOSTICS", Value(true));
+    wrapper = RuntimeWrapper(getJsBridge(), getTSNMode(), false, tweaks);
+    auto* runtime = wrapper.runtime->getJavaScriptRuntime();
+
+    auto continueAfterNativePromise = getJsModulePropertyWithSchema(
+        wrapper.runtime, "test/src/NativePromiseContinuation", "continueAfterNativePromise", "f(f(): p<s>, f())");
+    ASSERT_TRUE(continueAfterNativePromise) << continueAfterNativePromise.description();
+
+    auto pending = makeShared<ResolvablePromise>();
+    auto load =
+        makeShared<ValueFunctionWithCallable>([pending](const auto& /*callContext*/) { return Value(pending); });
+    std::promise<std::string> continued;
+    auto report = makeShared<ValueFunctionWithCallable>([&](const auto& /*callContext*/) {
+        continued.set_value(runtime->getANRAttributionInfo());
+        return Value::undefined();
+    });
+    auto result = continueAfterNativePromise.value().getFunction()->call(ValueFunctionFlagsCallSync,
+                                                                         {Value(load), Value(report)});
+    ASSERT_TRUE(result) << result.description();
+
+    // Settled from this thread, so the continuation is dispatched back to the JS thread with no inherited frames.
+    pending->fulfill(Value(STRING_LITERAL("loaded")));
+    auto continuedFuture = continued.get_future();
+    ASSERT_EQ(std::future_status::ready, continuedFuture.wait_for(std::chrono::seconds(30)));
+    auto attribution = continuedFuture.get();
+    EXPECT_NE(std::string::npos, attribution.find("[attribution: ")) << attribution;
+    EXPECT_NE(std::string::npos, attribution.find(".<r> -> ")) << attribution;
+}
+
 TEST_P(RuntimeFixture, supportsPromiseCallWithPromiseParametersStepByStep) {
     if (isJSCore()) {
         GTEST_SKIP() << "TODO(1929): The test is racy with the promise polyfill used on Linux JSCore.";
