@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
+#include "ViewNodeTestsUtils.hpp"
 #include "snap_drawing/cpp/Layers/EditableTextLayer.hpp"
 #include "snap_drawing/cpp/Layers/LayerRoot.hpp"
 #include "valdi/snap_drawing/Layers/Classes/EditableTextLayerClass.hpp"
+#include "valdi/snap_drawing/Utils/ValdiUtils.hpp"
 #include "valdi_core/cpp/Utils/ConsoleLogger.hpp"
 #include "valdi_core/cpp/Utils/StringCache.hpp"
 #include "valdi_core/cpp/Utils/ValueFunctionWithCallable.hpp"
@@ -69,6 +71,31 @@ TEST(EditableTextLayerListener, reportsEditsToTheElementsHandlersAsEditTextEvent
     ASSERT_EQ(4, change.getMapValue(STRING_LITERAL("selectionStart")).toInt());
     ASSERT_EQ(4, change.getMapValue(STRING_LITERAL("selectionEnd")).toInt());
     ASSERT_EQ(static_cast<int32_t>(EditTextEndReason::ReturnKeyPress), ends[0].getMapValue(STRING_LITERAL("reason")).toInt());
+}
+
+TEST(EditableTextLayerListener, remeasuresTheElementAfterAnEdit) {
+    ValdiTest::ViewNodeTestsDependencies utils;
+    auto rootNode = utils.createRootView();
+    auto fieldNode = utils.createView();
+    rootNode->appendChild(utils.getViewTransactionScope(), fieldNode);
+    rootNode->performLayout(utils.getViewTransactionScope(), Valdi::Size(100, 100), LayoutDirectionLTR);
+    ASSERT_FALSE(fieldNode->isFlexLayoutDirty());
+
+    auto resources = makeShared<Resources>(nullptr, 1.0f, ConsoleLogger::getLogger());
+    auto root = makeLayer<LayerRoot>(resources);
+    auto content = makeLayer<Layer>(resources);
+    root->setContentLayer(content, ContentLayerSizingModeMatchSize);
+    auto host = makeShared<SessionKeepingHost>();
+    root->setTextInputHost(host);
+    auto field = makeLayer<EditableTextLayer>(resources);
+    field->setListener(makeShared<EditableTextLayerListenerImpl>());
+    setValdiViewNodeToLayer(*field, fieldNode.get());
+    content->addChild(field);
+
+    field->setFocused(true);
+    host->session->replaceText(STRING_LITERAL("abc"));
+
+    ASSERT_TRUE(fieldNode->isFlexLayoutDirty());
 }
 
 } // namespace snap::drawing
