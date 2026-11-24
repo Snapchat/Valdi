@@ -1,5 +1,5 @@
 import 'jasmine/src/jasmine';
-import { supportsLocaleCasing } from './EngineSupport';
+import { supportsLocaleCasing, supportsLocaleSpecificCasing } from './EngineSupport';
 
 /**
  * Full Unicode SpecialCasing.txt coverage:
@@ -11,14 +11,19 @@ import { supportsLocaleCasing } from './EngineSupport';
  * assertions match native Intl behavior — both engines must agree.
  */
 
-// The rule only recognizes a literal `describe(...)` call, not describeIfLocaleCasing (which is
-// always describe or xdescribe). Remove once @snap/eslint-plugin-valdi follows the binding.
-/* eslint-disable @snap/valdi/no-declare-test-without-describe */
+// Marks every spec in the enclosing describe pending where the engine lacks the casing it tests.
+// The non-locale entry points always run.
+function skipUnless(supported: boolean, reason: string): void {
+  beforeEach(() => {
+    if (!supported) {
+      pending(reason);
+    }
+  });
+}
 
-// Skipped where the engine has no locale-aware casing; the non-locale entry points still run.
-const describeIfLocaleCasing = supportsLocaleCasing ? describe : xdescribe;
+describe('Turkic (tr, az) SpecialCasing', () => {
+  skipUnless(supportsLocaleSpecificCasing, 'the engine ignores the locale argument');
 
-describeIfLocaleCasing('Turkic (tr, az) SpecialCasing', () => {
   describe('uppercase', () => {
     it("maps 'i' to 'İ' under 'tr'", () => {
       expect('i'.toLocaleUpperCase('tr')).toBe('İ');
@@ -78,7 +83,9 @@ describeIfLocaleCasing('Turkic (tr, az) SpecialCasing', () => {
   });
 });
 
-describeIfLocaleCasing('Lithuanian (lt) SpecialCasing', () => {
+describe('Lithuanian (lt) SpecialCasing', () => {
+  skipUnless(supportsLocaleSpecificCasing, 'the engine ignores the locale argument');
+
   describe('lowercase', () => {
     it("adds combining dot when lowercasing 'I' with More_Above", () => {
       // I + acute → i + dot above + acute (Lithuanian dot preservation).
@@ -111,7 +118,9 @@ describeIfLocaleCasing('Lithuanian (lt) SpecialCasing', () => {
   });
 });
 
-describeIfLocaleCasing('Locale-independent rules (regression)', () => {
+describe('Locale-independent rules (regression)', () => {
+  skipUnless(supportsLocaleCasing, 'the engine has no locale-aware casing');
+
   it('preserves Greek final sigma under any locale', () => {
     expect('ΟΔΥΣΣΕΥΣ'.toLocaleLowerCase('en')).toBe('οδυσσευς');
     expect('ΟΔΥΣΣΕΥΣ'.toLocaleLowerCase('tr')).toBe('οδυσσευς');
@@ -136,7 +145,9 @@ describe('Non-locale entry points ignore extra args', () => {
   });
 });
 
-describeIfLocaleCasing('Locale argument shapes (ECMA-402 first-locale-wins)', () => {
+describe('Locale argument shapes (ECMA-402 first-locale-wins)', () => {
+  skipUnless(supportsLocaleSpecificCasing, 'the engine ignores the locale argument');
+
   it('accepts a bare tag string', () => {
     expect('i'.toLocaleUpperCase('tr')).toBe('İ');
   });
@@ -197,7 +208,9 @@ describeIfLocaleCasing('Locale argument shapes (ECMA-402 first-locale-wins)', ()
   });
 });
 
-describeIfLocaleCasing('Turkic Not_Before_Dot / After_I regressions (PR feedback)', () => {
+describe('Turkic Not_Before_Dot / After_I regressions (PR feedback)', () => {
+  skipUnless(supportsLocaleSpecificCasing, 'the engine ignores the locale argument');
+
   // Explicit test cases for Scott's P2 finding on PR #109963:
   // decomposed dotted I must produce plain 'i' under tr/az.
 
